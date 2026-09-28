@@ -529,9 +529,10 @@ program
 
 program
 	.command('secrets:push')
-	.description('Push secrets to remote provider (SSM)')
-	.requiredOption('--stage <stage>', 'Stage name')
-	.action(async (options: { stage: string }) => {
+	.description("Send a deployed stage's secrets to its store (secrets.store)")
+	.requiredOption('--stage <stage>', 'A deployed stage')
+	.option('--profile <profile>', "AWS profile for the stage's account")
+	.action(async (options: { stage: string; profile?: string }) => {
 		try {
 			const globalOptions = program.opts();
 			if (globalOptions.cwd) {
@@ -539,34 +540,13 @@ program
 			}
 
 			const { loadWorkspaceConfig } = await import('./config');
-			const { pushSecrets } = await import('./secrets/sync');
-			const { reconcileMissingSecrets } = await import('./secrets/reconcile');
-			const { readStageSecrets, writeStageSecrets } = await import(
-				'./secrets/storage'
-			);
-
+			const { pushStageSecrets } = await import('./secrets/transfer');
 			const { workspace } = await loadWorkspaceConfig();
 
-			const secrets = await readStageSecrets(options.stage, workspace.root);
-			if (secrets) {
-				const { derivedContainers } = await import('./reconcile/workspace');
-				const result = reconcileMissingSecrets(
-					secrets,
-					workspace,
-					await derivedContainers(workspace, options.stage),
-				);
-				if (result) {
-					await writeStageSecrets(result.secrets, workspace.root);
-					console.log(
-						`  Reconciled ${result.addedKeys.length} missing secret(s):`,
-					);
-					for (const key of result.addedKeys) {
-						console.log(`    + ${key}`);
-					}
-				}
-			}
-
-			await pushSecrets(options.stage, workspace);
+			const { addedKeys } = await pushStageSecrets(workspace, options.stage, {
+				profile: options.profile,
+			});
+			for (const key of addedKeys) console.log(`  + ${key} (reconciled)`);
 			console.log(`\n✓ Secrets pushed for stage "${options.stage}"`);
 		} catch (error) {
 			console.error(formatError(error));
@@ -576,9 +556,12 @@ program
 
 program
 	.command('secrets:pull')
-	.description('Pull secrets from remote provider (SSM)')
-	.requiredOption('--stage <stage>', 'Stage name')
-	.action(async (options: { stage: string }) => {
+	.description(
+		"Bring a deployed stage's secrets from its store into the local copy",
+	)
+	.requiredOption('--stage <stage>', 'A deployed stage')
+	.option('--profile <profile>', "AWS profile for the stage's account")
+	.action(async (options: { stage: string; profile?: string }) => {
 		try {
 			const globalOptions = program.opts();
 			if (globalOptions.cwd) {
@@ -586,35 +569,13 @@ program
 			}
 
 			const { loadWorkspaceConfig } = await import('./config');
-			const { pullSecrets } = await import('./secrets/sync');
-			const { writeStageSecrets } = await import('./secrets/storage');
-			const { reconcileMissingSecrets } = await import('./secrets/reconcile');
-
+			const { pullStageSecrets } = await import('./secrets/transfer');
 			const { workspace } = await loadWorkspaceConfig();
-			let secrets = await pullSecrets(options.stage, workspace);
 
-			if (!secrets) {
-				console.error(`No remote secrets found for stage "${options.stage}".`);
-				process.exit(1);
-			}
-
-			const { derivedContainers } = await import('./reconcile/workspace');
-			const result = reconcileMissingSecrets(
-				secrets,
-				workspace,
-				await derivedContainers(workspace, options.stage),
-			);
-			if (result) {
-				secrets = result.secrets;
-				console.log(
-					`  Reconciled ${result.addedKeys.length} missing secret(s):`,
-				);
-				for (const key of result.addedKeys) {
-					console.log(`    + ${key}`);
-				}
-			}
-
-			await writeStageSecrets(secrets, workspace.root);
+			const { addedKeys } = await pullStageSecrets(workspace, options.stage, {
+				profile: options.profile,
+			});
+			for (const key of addedKeys) console.log(`  + ${key} (reconciled)`);
 			console.log(`\n✓ Secrets pulled for stage "${options.stage}"`);
 		} catch (error) {
 			console.error(formatError(error));

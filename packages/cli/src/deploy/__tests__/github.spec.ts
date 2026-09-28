@@ -8,6 +8,7 @@ import {
 	ListOpenIDConnectProvidersCommand,
 } from '@aws-sdk/client-iam';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { initStageSecrets, writeStageSecrets } from '../../secrets/storage';
 import {
 	DEFAULT_POLICY_ARN,
 	deployGithubCommand,
@@ -34,6 +35,31 @@ export default defineWorkspace({
 	);
 	mkdirSync(join(home, '.gkm', 'beetlefit'), { recursive: true });
 	writeFileSync(join(home, '.gkm', 'beetlefit', 'prod.key'), 'a1b2c3\n');
+}
+
+/** The same workspace, its deployed stages' secrets in a custom store. */
+function storedWorkspace(root: string) {
+	// A custom store, so what reaches it can be read back here.
+	writeFileSync(
+		join(root, 'gkm.config.ts'),
+		`import { defineWorkspace } from '@geekmidas/cli/config';
+
+export default defineWorkspace({
+  name: 'beetlefit',
+  stages: { local: 'dev', deployed: ['staging', 'prod'], protected: ['prod'] },
+  secrets: {
+    store: {
+      provider: {
+        async pull() { return null; },
+        async push(stage, secrets) {
+          (globalThis as any).__pushedSecrets = { stage, secrets };
+        },
+      },
+    },
+  },
+});
+`,
+	);
 }
 
 /** Records every `gh` call instead of reaching GitHub. */
@@ -137,6 +163,37 @@ describe('deployGithubCommand', () => {
 		expect(output).toContain(`Policy:       ${DEFAULT_POLICY_ARN}`);
 		expect(output).toContain('repo:acme/beetlefit:environment:prod only');
 		expect(calls).toEqual([]);
+	});
+
+	it('plans to push a stored stage with the default credentials', async () => {
+		storedWorkspace(root);
+		await writeStageSecrets(initStageSecrets('prod'), root);
+		const { gh } = recordingGh();
+
+		await deployGithubCommand(
+			{ stage: 'prod', repo: 'acme/beetlefit', dryRun: true },
+			{ gh, cwd: root },
+		);
+
+		const output = log.mock.calls.flat().join('\n');
+		expect(output).toContain(
+			'pushed to the store with the default credentials',
+		);
+		expect(output).not.toContain('Secrets key:');
+	});
+
+	it('says to push a stored stage this machine has no secrets for', async () => {
+		storedWorkspace(root);
+		const { gh } = recordingGh();
+
+		await deployGithubCommand(
+			{ stage: 'prod', repo: 'acme/beetlefit', dryRun: true },
+			{ gh, cwd: root },
+		);
+
+		expect(log.mock.calls.flat().join('\n')).toContain(
+			'none on this machine — gkm secrets:push --stage prod later',
+		);
 	});
 
 	it('says to create the secrets key when the stage has none', async () => {
@@ -309,6 +366,70 @@ describe('against IAM', () => {
 				},
 			]);
 		} finally {
+			process.env.HOME = originalHome;
+			log.mockRestore();
+			rmSync(root, { recursive: true, force: true });
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it('tells a stored stage with no local secrets to push them', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'gkm-github-'));
+		const home = mkdtempSync(join(tmpdir(), 'gkm-home-'));
+		const originalHome = process.env.HOME;
+		process.env.HOME = home;
+		workspace(root, home);
+		storedWorkspace(root);
+		const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+		const { gh, calls } = recordingGh();
+
+		try {
+			await deployGithubCommand(
+				{ stage: 'prod', repo: 'acme/beetlefit', profile: 'acme-prod' },
+				{ gh, iam, cwd: root },
+			);
+
+			expect(JSON.stringify(calls)).not.toContain('GKM_SECRETS_KEY');
+			expect(log.mock.calls.flat().join('\n')).toContain(
+				'push them: gkm secrets:push --stage prod --profile acme-prod.',
+			);
+		} finally {
+			process.env.HOME = originalHome;
+			log.mockRestore();
+			rmSync(root, { recursive: true, force: true });
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
+	it('pushes a stored stage’s secrets instead of handing GitHub a key', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'gkm-github-'));
+		const home = mkdtempSync(join(tmpdir(), 'gkm-home-'));
+		const originalHome = process.env.HOME;
+		process.env.HOME = home;
+		workspace(root, home);
+		storedWorkspace(root);
+		await writeStageSecrets(
+			{ ...initStageSecrets('prod'), custom: { STRIPE_KEY: 'sk_live' } },
+			root,
+		);
+		const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+		const { gh, calls } = recordingGh();
+
+		try {
+			await deployGithubCommand(
+				{ stage: 'prod', repo: 'acme/beetlefit', profile: 'acme-prod' },
+				{ gh, iam, cwd: root },
+			);
+
+			const pushed = (globalThis as any).__pushedSecrets;
+			expect(pushed.stage).toBe('prod');
+			expect(pushed.secrets.custom).toEqual({ STRIPE_KEY: 'sk_live' });
+			expect(JSON.stringify(calls)).not.toContain('GKM_SECRETS_KEY');
+			expect(log.mock.calls.flat().join('\n')).toContain(
+				'"prod" pushed to the store with profile "acme-prod"',
+			);
+		} finally {
+			delete (globalThis as any).__pushedSecrets;
 			process.env.HOME = originalHome;
 			log.mockRestore();
 			rmSync(root, { recursive: true, force: true });

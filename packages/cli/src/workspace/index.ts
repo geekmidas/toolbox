@@ -257,7 +257,7 @@ export function wrapSingleAppAsWorkspace(
 		deploy: { default: 'dokploy', ...config.deploy },
 		shared: { packages: [] },
 		stages: validateStages(config.stages),
-		secrets: {},
+		secrets: config.secrets ?? {},
 	};
 }
 

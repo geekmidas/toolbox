@@ -280,102 +280,66 @@ gkm setup               # regenerates docker/.env and restarts services
 ```
 :::
 
-### Sharing Secrets via SSM
+### Deployed Stages: the Secrets Store
 
-For teams that want to share the same development secrets, use AWS Systems Manager (SSM) Parameter Store. Secrets are stored as `SecureString` parameters encrypted with an AWS-managed KMS key.
-
-#### 1. AWS Prerequisites
-
-You need an AWS account with SSM access. Create an IAM policy with these permissions:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ssm:GetParameter",
-        "ssm:PutParameter"
-      ],
-      "Resource": "arn:aws:ssm:*:*:parameter/gkm/*"
-    }
-  ]
-}
-```
-
-Attach this policy to an IAM user or role. Then configure credentials on each developer's machine:
-
-```bash
-# Option A: AWS CLI profile (recommended)
-aws configure --profile my-project
-# Enter Access Key ID, Secret Access Key, region
-
-# Option B: Environment variables
-export AWS_ACCESS_KEY_ID=AKIA...
-export AWS_SECRET_ACCESS_KEY=...
-export AWS_REGION=us-east-1
-```
-
-#### 2. Configure SSM in Your Workspace
-
-Add the `state` field to `gkm.config.ts`:
+The local stage's secrets belong to the machine running `gkm dev`. A
+**deployed** stage's secrets have to be reachable from wherever it is deployed
+from — a teammate's laptop, or a CI runner — and `.gkm/` is not committed, so
+they live in a **store**, set with `secrets.store` in `gkm.config.ts`:
 
 ```ts
 import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
-  name: 'my-app',  // Required — used in SSM parameter path
-  stages: { local: 'dev', deployed: ['prod'] },
+  name: 'my-app',  // Scopes the SSM parameter path
+  stages: { local: 'dev', deployed: ['staging', 'prod'] },
   constructs: './constructs/**/*.ts',
 
-  state: {
-    provider: 'ssm',
-    region: 'us-east-1',
-    // profile: 'my-project',  // Optional — uses default credential chain if omitted
+  secrets: {
+    enabled: true,
+    store: { provider: 'ssm', region: 'us-east-1' },
   },
 });
 ```
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `provider` | Yes | Must be `'ssm'` |
-| `region` | Yes | AWS region where parameters are stored |
-| `profile` | No | AWS CLI profile name (uses default credentials if omitted) |
+| `store` | Where a deployed stage's secrets live |
+|---|---|
+| `'file'` (default) | the encrypted `.gkm/secrets/<stage>.json` on this machine, with its key in `~/.gkm/`. It cannot serve a deploy from CI while `.gkm/` is gitignored |
+| `{ provider: 'ssm', region }` | one `SecureString` parameter per stage, `/gkm/<name>/<stage>/secrets`, in the AWS account of the active credentials — so with staging and production in different accounts, each stage's secrets sit beside its infrastructure |
+| `{ provider: store }` | any object with `pull(stage)` and `push(stage, secrets)` |
 
-Secrets are stored at the SSM parameter path: `/gkm/{workspace-name}/{stage}/secrets`
+`gkm init --deploy sst` writes the SSM store with the region you picked.
 
-::: info
-The same `state` config is also used for deployment state (`state:push/pull`). Both secrets and deployment state share the same AWS credentials and region but use different parameter paths.
-:::
-
-#### 3. Push/Pull Workflow
+#### Push and Pull
 
 ```bash
-# Developer A: after init or adding secrets
-gkm secrets:push --stage dev
+# Send this machine's secrets for a stage to its store
+gkm secrets:push --stage staging --profile acme-dev
+gkm secrets:push --stage prod    --profile acme-prod
 
-# Developer B: after cloning
-pnpm install
-gkm setup   # automatically pulls from SSM
+# Bring them back — onto a new machine, or a CI runner
+gkm secrets:pull --stage prod --profile acme-prod
 ```
 
-You can also push/pull manually:
+`--profile` names the AWS profile for the stage's account, and only that
+profile is used: exported `AWS_*` variables are never consulted when a profile
+is named, so they cannot put production's secrets in the staging account.
+Without `--profile` the default credential chain applies — which is what a
+deploy job wants, with the stage's OIDC role already assumed.
 
-```bash
-# Push local secrets to SSM
-gkm secrets:push --stage dev
+Both refuse a stage not in `stages.deployed`, and a stage kept in the `'file'`
+store. `pull` writes the local encrypted copy the deploy reads, generating a
+key if the machine has none.
 
-# Pull secrets from SSM to local
-gkm secrets:pull --stage dev
-```
+The credentials need `ssm:GetParameter` and `ssm:PutParameter` on
+`arn:aws:ssm:*:*:parameter/gkm/*` in each stage's account.
 
 #### Secret Resolution Priority
 
 `gkm setup` resolves secrets with this priority:
 1. **Local secrets exist** — use them (preserves manually added secrets like `STRIPE_KEY`)
-2. **SSM configured and has secrets** — pull and use those
-3. **Neither** — generate fresh secrets
+2. **A deployed stage whose store has secrets** — pull and use those
+3. **Neither** — generate fresh secrets (and, for a deployed stage with a store, offer to push them)
 
 ::: warning
 Only `gkm setup --force` regenerates secrets from scratch, which could lose manually added secrets. The `--force` flag is explicitly opt-in.
@@ -383,7 +347,7 @@ Only `gkm setup --force` regenerates secrets from scratch, which could lose manu
 
 ### Other Sharing Methods
 
-**Share the decryption key** (for teams without SSM)
+**Share the decryption key** (the local stage)
 
 ```bash
 # Original developer exports the key location:
@@ -419,9 +383,9 @@ gkm secrets:set STRIPE_KEY sk_test_xxx --stage dev
 
 These are preserved across `gkm setup` runs because setup checks for existing local secrets first.
 
-To share manual secrets with the team:
+For a deployed stage with a store, push them so a deploy from anywhere has them:
 ```bash
-gkm secrets:push --stage dev   # Team can now pull it
+gkm secrets:push --stage prod --profile acme-prod
 ```
 
 ### Setup Command Reference

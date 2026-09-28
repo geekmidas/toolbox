@@ -10,8 +10,11 @@
  * In the stage's account it makes sure GitHub's OIDC provider exists, and a
  * role that only this repository's `<stage>` environment can assume. On
  * GitHub it creates that environment and gives it what the generated deploy
- * workflow reads: `AWS_ROLE_ARN`, and the stage's secrets key as
- * `GKM_SECRETS_KEY`. Re-running it converges rather than duplicating.
+ * workflow reads: `AWS_ROLE_ARN`, and — when the stage's secrets are kept in
+ * the local file — its key as `GKM_SECRETS_KEY`. With `secrets.store` set to
+ * SSM the deploy job pulls them with the role instead, so no key is handed to
+ * GitHub, and this pushes the stage's local secrets to SSM in the same account,
+ * with the same profile. Re-running it converges rather than duplicating.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -28,6 +31,9 @@ import {
 } from '@aws-sdk/client-iam';
 import { loadWorkspaceConfig } from '../config.js';
 import { getKeyPath } from '../secrets/keystore.js';
+import { secretsExist } from '../secrets/storage.js';
+import { isRemoteStore } from '../secrets/store.js';
+import { pushStageSecrets } from '../secrets/transfer.js';
 import { assertDeployedStage } from '../workspace/stages.js';
 
 const logger = console;
@@ -200,6 +206,13 @@ export async function deployGithubCommand(
 	const policyArn = options.policyArn ?? DEFAULT_POLICY_ARN;
 	const keyPath = getKeyPath(options.stage, workspace.name);
 	const hasKey = existsSync(keyPath);
+	// A stage whose secrets are in a store is read from there by the deploy job,
+	// with the role; it needs no key on GitHub.
+	const remote = isRemoteStore(workspace, options.stage);
+	const hasSecrets = secretsExist(options.stage, workspace.root);
+	const via = options.profile
+		? `profile "${options.profile}"`
+		: 'the default credentials';
 
 	logger.log(`\n🔐 GitHub → AWS for stage "${options.stage}"\n`);
 	logger.log(`  Repository:   ${repo}`);
@@ -209,9 +222,15 @@ export async function deployGithubCommand(
 		`  Policy:       ${policyArn}${options.policyArn ? '' : '  (default; --policy-arn to narrow)'}`,
 	);
 	logger.log(`  Trusted by:   repo:${repo}:environment:${options.stage} only`);
-	logger.log(
-		`  Secrets key:  ${hasKey ? keyPath : `none at ${keyPath} — run gkm secrets:init --stage ${options.stage} first`}`,
-	);
+	if (remote) {
+		logger.log(
+			`  Secrets:      ${hasSecrets ? `pushed to the store with ${via}` : `none on this machine — gkm secrets:push --stage ${options.stage} later`}`,
+		);
+	} else {
+		logger.log(
+			`  Secrets key:  ${hasKey ? keyPath : `none at ${keyPath} — run gkm secrets:init --stage ${options.stage} first`}`,
+		);
+	}
 
 	if (options.dryRun) {
 		logger.log('\n  --dry-run: nothing changed.\n');
@@ -250,7 +269,20 @@ export async function deployGithubCommand(
 	]);
 	logger.log(`  ✓ GitHub: environment "${options.stage}", AWS_ROLE_ARN`);
 
-	if (hasKey) {
+	if (remote) {
+		if (hasSecrets) {
+			await pushStageSecrets(workspace, options.stage, {
+				...(options.profile ? { profile: options.profile } : {}),
+			});
+			logger.log(
+				`  ✓ Secrets: "${options.stage}" pushed to the store with ${via}`,
+			);
+		} else {
+			logger.log(
+				`  ⚠ No secrets for "${options.stage}" on this machine; the deploy job pulls them from the store, so push them: gkm secrets:push --stage ${options.stage}${options.profile ? ` --profile ${options.profile}` : ''}.`,
+			);
+		}
+	} else if (hasKey) {
 		// Through stdin, so the key is never an argument a process list shows.
 		gh(
 			[

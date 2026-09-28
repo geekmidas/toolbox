@@ -1,4 +1,4 @@
-import type { StagesConfig } from './workspace/types.js';
+import type { SecretsConfig, StagesConfig } from './workspace/types.js';
 
 export type MainProvider = 'aws' | 'server';
 export type LegacyProvider =
@@ -337,6 +337,8 @@ export interface GkmConfig {
 	name?: string;
 	/** The project's stages: which one is local, which deploy */
 	stages: StagesConfig;
+	/** Encrypted secrets, and where deployed stages' secrets are stored */
+	secrets?: SecretsConfig;
 	/**
 	 * Constructs glob pattern — one glob, every kind.
 	 *

@@ -183,11 +183,11 @@ export const database = new KyselyDatabase('Database');
 		expect(output(error)).toContain('No gkm.config.ts found');
 	});
 
-	describe('with secrets shared through SSM', () => {
+	describe('with a deployed stage kept in SSM', () => {
 		// With a constructs glob: a config with neither apps nor constructs is
-		// a single-app one, which has no \`state\` block.
+		// a single-app one.
 		const ssm = `constructs: './src/constructs/**/*.ts',
-  state: { provider: 'ssm', region: 'us-east-1' },`;
+  secrets: { store: { provider: 'ssm', region: 'us-east-1' } },`;
 
 		beforeEach(() => {
 			vi.stubEnv('AWS_ENDPOINT_URL', 'http://localhost:4566');
@@ -196,41 +196,50 @@ export const database = new KyselyDatabase('Database');
 			vi.stubEnv('AWS_REGION', 'us-east-1');
 		});
 
-		it('pushes fresh secrets for the team, then a new machine pulls them', async () => {
+		it('pushes fresh secrets to the store, then a new machine pulls them', async () => {
 			// A name nobody else in the emulator has used.
 			config(ssm, `shop-${Date.now()}`);
 
-			await setupCommand({ skipDocker: true });
-			expect(output(log)).toContain('No remote secrets found');
-			expect(output(log)).toContain('Secrets pushed to SSM');
-			const pushed = await readStageSecrets('dev', dir);
+			await setupCommand({ stage: 'prod', skipDocker: true });
+			expect(output(log)).toContain('The store holds none yet');
+			expect(output(log)).toContain('Secrets pushed to the store');
+			const pushed = await readStageSecrets('prod', dir);
 
 			// A second machine: no local secrets.
 			rmSync(join(dir, '.gkm'), { recursive: true, force: true });
 			log.mockClear();
-			await setupCommand({ skipDocker: true });
+			await setupCommand({ stage: 'prod', skipDocker: true });
 
-			expect(output(log)).toContain('Pulled secrets from SSM');
-			expect(await readStageSecrets('dev', dir)).toEqual(pushed);
+			expect(output(log)).toContain('Pulled secrets from the store');
+			expect(await readStageSecrets('prod', dir)).toEqual(pushed);
 		});
 
 		it('does not push when the developer declines', async () => {
 			answers.shouldPush = false;
 			config(ssm, `shop-declined-${Date.now()}`);
 
+			await setupCommand({ stage: 'prod', skipDocker: true });
+
+			expect(output(log)).not.toContain('Secrets pushed to the store');
+		});
+
+		it('keeps the local stage on this machine', async () => {
+			config(ssm, `shop-local-${Date.now()}`);
+
 			await setupCommand({ skipDocker: true });
 
-			expect(output(log)).not.toContain('Secrets pushed to SSM');
+			expect(output(log)).not.toContain('store');
+			expect(await readStageSecrets('dev', dir)).not.toBeNull();
 		});
 
 		it('generates locally when SSM cannot be reached', async () => {
 			vi.stubEnv('AWS_ENDPOINT_URL', 'http://127.0.0.1:1');
 			config(ssm);
 
-			await setupCommand({ skipDocker: true, yes: true });
+			await setupCommand({ stage: 'prod', skipDocker: true, yes: true });
 
-			expect(output(warn)).toContain('Failed to pull from SSM');
-			expect(await readStageSecrets('dev', dir)).not.toBeNull();
+			expect(output(warn)).toContain('Could not pull from the store');
+			expect(await readStageSecrets('prod', dir)).not.toBeNull();
 		});
 	});
 });

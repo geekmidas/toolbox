@@ -1,0 +1,369 @@
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+} from 'vitest';
+import { loadWorkspaceConfig } from '../../config';
+import { UndeclaredStage } from '../../workspace/stages';
+import type { NormalizedWorkspace } from '../../workspace/types';
+import { createStageSecrets } from '../generator';
+import { SsmSecretsStore, secretsParameterName } from '../ssm';
+import {
+	getSecretsPath,
+	initStageSecrets,
+	readStageSecrets,
+	writeStageSecrets,
+} from '../storage';
+import {
+	FileSecretsStore,
+	isRemoteStore,
+	type SecretsStore,
+	secretsStoreFor,
+} from '../store';
+import {
+	NoLocalSecrets,
+	NoRemoteSecretsStore,
+	NoStoredSecrets,
+	pullStageSecrets,
+	pushStageSecrets,
+} from '../transfer';
+import type { StageSecrets } from '../types';
+
+/**
+ * Against the AWS emulator on 4566 (`docker compose up`). The store takes a
+ * region like a real project's config; the SDK's standard endpoint variable
+ * points it at the emulator.
+ */
+const EMULATOR = {
+	AWS_ENDPOINT_URL: 'http://localhost:4566',
+	AWS_ACCESS_KEY_ID: 'test',
+	AWS_SECRET_ACCESS_KEY: 'test',
+};
+
+const saved: Record<string, string | undefined> = {};
+const originalHome = process.env.HOME;
+let root: string;
+let home: string;
+
+beforeAll(() => {
+	for (const [key, value] of Object.entries(EMULATOR)) {
+		saved[key] = process.env[key];
+		process.env[key] = value;
+	}
+});
+
+afterAll(() => {
+	for (const [key, value] of Object.entries(saved)) {
+		if (value === undefined) delete process.env[key];
+		else process.env[key] = value;
+	}
+});
+
+beforeEach(() => {
+	root = mkdtempSync(join(tmpdir(), 'gkm-store-'));
+	home = mkdtempSync(join(tmpdir(), 'gkm-store-home-'));
+	// Keys live under ~/.gkm; never the real one.
+	process.env.HOME = home;
+});
+
+afterEach(() => {
+	process.env.HOME = originalHome;
+	rmSync(root, { recursive: true, force: true });
+	rmSync(home, { recursive: true, force: true });
+});
+
+/** A unique project, so parameters from earlier runs never answer. */
+const project = () => `store-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+
+/** A workspace on disk, loaded the way every command loads one. */
+async function workspace(store?: string): Promise<NormalizedWorkspace> {
+	writeFileSync(
+		join(root, 'gkm.config.ts'),
+		`import { defineWorkspace } from '@geekmidas/cli/config';
+
+export default defineWorkspace({
+  name: '${project()}',
+  stages: { local: 'dev', deployed: ['staging', 'prod'] },
+  secrets: {${store ? ` store: ${store}` : ''} },
+});
+`,
+	);
+	return (await loadWorkspaceConfig(root)).workspace;
+}
+
+/** A store holding what it is given, in memory. */
+function memoryStore(): SecretsStore & { held: Map<string, StageSecrets> } {
+	const held = new Map<string, StageSecrets>();
+	return {
+		held,
+		async pull(stage) {
+			return held.get(stage) ?? null;
+		},
+		async push(stage, secrets) {
+			held.set(stage, secrets);
+		},
+	};
+}
+
+describe('FileSecretsStore', () => {
+	it('keeps a stage encrypted under .gkm/secrets, and reads it back', async () => {
+		const store = new FileSecretsStore(root);
+		const secrets = createStageSecrets('prod', ['postgres']);
+
+		await store.push('prod', secrets);
+
+		expect(existsSync(getSecretsPath('prod', root))).toBe(true);
+		expect(await store.pull('prod')).toEqual(secrets);
+	});
+
+	it('holds nothing for a stage never written', async () => {
+		expect(await new FileSecretsStore(root).pull('prod')).toBeNull();
+	});
+});
+
+describe('secretsStoreFor', () => {
+	it('uses the file when no store is configured', async () => {
+		const ws = await workspace();
+
+		expect(await secretsStoreFor(ws, 'prod')).toBeInstanceOf(FileSecretsStore);
+		expect(isRemoteStore(ws, 'prod')).toBe(false);
+	});
+
+	it('keeps the local stage in the file whatever the store', async () => {
+		const ws = await workspace("{ provider: 'ssm', region: 'us-east-1' }");
+
+		expect(await secretsStoreFor(ws, 'dev')).toBeInstanceOf(FileSecretsStore);
+		expect(isRemoteStore(ws, 'dev')).toBe(false);
+		expect(isRemoteStore(ws, 'prod')).toBe(true);
+	});
+
+	it('uses SSM for a deployed stage when configured', async () => {
+		const ws = await workspace("{ provider: 'ssm', region: 'us-east-1' }");
+
+		expect(await secretsStoreFor(ws, 'prod')).toBeInstanceOf(SsmSecretsStore);
+	});
+
+	it('uses a custom store as given', async () => {
+		const custom = memoryStore();
+		const ws = {
+			...(await workspace()),
+		} as NormalizedWorkspace;
+		ws.secrets = { store: { provider: custom } };
+
+		expect(await secretsStoreFor(ws, 'prod')).toBe(custom);
+	});
+
+	it('refuses a store that is not one', async () => {
+		await expect(
+			workspace('{ provider: { pull() {} } } as never'),
+		).rejects.toThrow('Workspace configuration validation failed');
+	});
+});
+
+describe('SsmSecretsStore', () => {
+	it('keeps a stage in one SecureString, and pulls it back', async () => {
+		const name = project();
+		const store = new SsmSecretsStore({ project: name, region: 'us-east-1' });
+		const secrets = createStageSecrets('prod', ['postgres']);
+		secrets.custom = { STRIPE_KEY: 'sk_live_1' };
+
+		await store.push('prod', secrets);
+
+		expect(await store.pull('prod')).toEqual(secrets);
+		const { Parameter } = await new SSMClient({ region: 'us-east-1' }).send(
+			new GetParameterCommand({ Name: secretsParameterName(name, 'prod') }),
+		);
+		expect(Parameter?.Type).toBe('SecureString');
+	});
+
+	it('overwrites a stage on a second push', async () => {
+		const store = new SsmSecretsStore({
+			project: project(),
+			region: 'us-east-1',
+		});
+		const first = initStageSecrets('prod');
+		const second = { ...first, custom: { ROTATED: 'yes' } };
+
+		await store.push('prod', first);
+		await store.push('prod', second);
+
+		expect(await store.pull('prod')).toEqual(second);
+	});
+
+	it('holds nothing for a stage never pushed', async () => {
+		const store = new SsmSecretsStore({
+			project: project(),
+			region: 'us-east-1',
+		});
+
+		expect(await store.pull('prod')).toBeNull();
+	});
+
+	it('reaches the endpoint it is given', async () => {
+		delete process.env.AWS_ENDPOINT_URL;
+
+		try {
+			const store = new SsmSecretsStore({
+				project: project(),
+				region: 'us-east-1',
+				endpoint: EMULATOR.AWS_ENDPOINT_URL,
+			});
+			const secrets = initStageSecrets('prod');
+
+			await store.push('prod', secrets);
+
+			expect(await store.pull('prod')).toEqual(secrets);
+		} finally {
+			process.env.AWS_ENDPOINT_URL = EMULATOR.AWS_ENDPOINT_URL;
+		}
+	});
+
+	it('names the parameter by project and stage', () => {
+		expect(secretsParameterName('beetlefit', 'prod')).toBe(
+			'/gkm/beetlefit/prod/secrets',
+		);
+	});
+
+	it('resolves a named profile from the profile, never from AWS_* env', async () => {
+		const credentials = join(home, 'credentials');
+		writeFileSync(
+			credentials,
+			'[acme-prod]\naws_access_key_id = LSIAPRODKEY\naws_secret_access_key = prod-secret\n',
+		);
+		writeFileSync(join(home, 'config'), '');
+		const previous = {
+			AWS_SHARED_CREDENTIALS_FILE: process.env.AWS_SHARED_CREDENTIALS_FILE,
+			AWS_CONFIG_FILE: process.env.AWS_CONFIG_FILE,
+		};
+		process.env.AWS_SHARED_CREDENTIALS_FILE = credentials;
+		process.env.AWS_CONFIG_FILE = join(home, 'config');
+		// Exported keys for another account, which must not win.
+		process.env.AWS_ACCESS_KEY_ID = 'LSIASTAGINGKEY';
+
+		try {
+			const store = new SsmSecretsStore({
+				project: 'beetlefit',
+				region: 'us-east-1',
+				profile: 'acme-prod',
+			});
+			const client = await (
+				store as unknown as { ssm(): Promise<SSMClient> }
+			).ssm();
+			const resolved = await client.config.credentials();
+
+			expect(resolved.accessKeyId).toBe('LSIAPRODKEY');
+		} finally {
+			process.env.AWS_ACCESS_KEY_ID = EMULATOR.AWS_ACCESS_KEY_ID;
+			for (const [key, value] of Object.entries(previous)) {
+				if (value === undefined) delete process.env[key];
+				else process.env[key] = value;
+			}
+		}
+	});
+});
+
+describe('pushStageSecrets / pullStageSecrets', () => {
+	it('round-trips a deployed stage through SSM', async () => {
+		const ws = await workspace("{ provider: 'ssm', region: 'us-east-1' }");
+		const secrets = {
+			...initStageSecrets('prod'),
+			custom: { STRIPE_KEY: 'sk_live_1' },
+		};
+		await writeStageSecrets(secrets, root);
+
+		await pushStageSecrets(ws, 'prod');
+		rmSync(getSecretsPath('prod', root));
+		const { secrets: pulled } = await pullStageSecrets(ws, 'prod');
+
+		expect(pulled.custom).toEqual({ STRIPE_KEY: 'sk_live_1' });
+		expect((await readStageSecrets('prod', root))?.custom).toEqual({
+			STRIPE_KEY: 'sk_live_1',
+		});
+	});
+
+	it('adds the keys the workspace now derives before pushing', async () => {
+		writeFileSync(
+			join(root, 'gkm.config.ts'),
+			`import { defineWorkspace } from '@geekmidas/cli/config';
+
+export default defineWorkspace({
+  name: '${project()}',
+  stages: { local: 'dev', deployed: ['prod'] },
+  apps: {
+    api: { type: 'backend', path: 'apps/api', port: 3400 },
+    web: { type: 'web', path: 'apps/web', port: 3401, framework: 'nextjs' },
+  },
+});
+`,
+		);
+		const ws = (await loadWorkspaceConfig(root)).workspace;
+		const custom = memoryStore();
+		ws.secrets = { store: { provider: custom } };
+		await writeStageSecrets(initStageSecrets('prod'), root);
+
+		const { addedKeys } = await pushStageSecrets(ws, 'prod');
+
+		expect(addedKeys.length).toBeGreaterThan(0);
+		const pushed = custom.held.get('prod')!;
+		for (const key of addedKeys) expect(pushed.custom).toHaveProperty(key);
+		expect((await readStageSecrets('prod', root))?.custom).toEqual(
+			pushed.custom,
+		);
+	});
+
+	it('pulls onto a machine with no key, making one', async () => {
+		const custom = memoryStore();
+		custom.held.set('prod', initStageSecrets('prod'));
+		const ws = await workspace();
+		ws.secrets = { store: { provider: custom } };
+
+		await pullStageSecrets(ws, 'prod');
+
+		expect(await readStageSecrets('prod', root)).not.toBeNull();
+	});
+
+	it('refuses the local stage and undeclared ones', async () => {
+		const ws = await workspace("{ provider: 'ssm', region: 'us-east-1' }");
+
+		await expect(pushStageSecrets(ws, 'dev')).rejects.toBeInstanceOf(
+			UndeclaredStage,
+		);
+		await expect(pullStageSecrets(ws, 'qa')).rejects.toBeInstanceOf(
+			UndeclaredStage,
+		);
+	});
+
+	it('refuses a stage kept in the local file', async () => {
+		const ws = await workspace();
+
+		await expect(pushStageSecrets(ws, 'prod')).rejects.toBeInstanceOf(
+			NoRemoteSecretsStore,
+		);
+	});
+
+	it('refuses to push secrets this machine does not have', async () => {
+		const ws = await workspace();
+		ws.secrets = { store: { provider: memoryStore() } };
+
+		await expect(pushStageSecrets(ws, 'prod')).rejects.toBeInstanceOf(
+			NoLocalSecrets,
+		);
+	});
+
+	it('refuses to pull what the store does not hold', async () => {
+		const ws = await workspace();
+		ws.secrets = { store: { provider: memoryStore() } };
+
+		await expect(pullStageSecrets(ws, 'prod')).rejects.toBeInstanceOf(
+			NoStoredSecrets,
+		);
+	});
+});

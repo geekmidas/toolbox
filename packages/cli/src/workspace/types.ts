@@ -291,6 +291,14 @@ export interface StagesConfig {
 export interface SecretsConfig {
 	/** Enable encrypted secrets (default: true) */
 	enabled?: boolean;
+	/**
+	 * Where deployed stages' secrets live, so a deploy can reach them from
+	 * anywhere: `'file'` (default — the encrypted `.gkm/secrets/<stage>.json`,
+	 * which cannot serve CI while `.gkm/` is gitignored), `{ provider: 'ssm',
+	 * region }` (each stage's secrets in its own AWS account), or any object
+	 * implementing `SecretsStore`. The local stage always uses the file.
+	 */
+	store?: import('../secrets/store.js').SecretsStoreConfig;
 	/** Encryption algorithm (default: 'aes-256-gcm') */
 	algorithm?: string;
 	/** Key derivation function (default: 'scrypt') */

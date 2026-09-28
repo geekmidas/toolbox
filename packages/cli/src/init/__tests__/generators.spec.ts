@@ -236,6 +236,37 @@ describe('generateMonorepoFiles', () => {
 		expect(paths).toContain('.gitignore');
 	});
 
+	it('keeps an SST workspace’s deployed secrets in SSM in its region', () => {
+		const options: TemplateOptions = {
+			...baseOptions,
+			template: 'fullstack',
+			monorepo: true,
+			apiPath: 'apps/api',
+			deployTarget: 'sst',
+			region: 'af-south-1',
+		};
+		const config = generateMonorepoFiles(options, minimalTemplate).find(
+			(f) => f.path === 'gkm.config.ts',
+		);
+		expect(config?.content).toContain(
+			"store: { provider: 'ssm', region: 'af-south-1' },",
+		);
+	});
+
+	it('leaves a Dokploy workspace on the default file store', () => {
+		const options: TemplateOptions = {
+			...baseOptions,
+			template: 'fullstack',
+			monorepo: true,
+			apiPath: 'apps/api',
+		};
+		const config = generateMonorepoFiles(options, minimalTemplate).find(
+			(f) => f.path === 'gkm.config.ts',
+		);
+		expect(config?.content).toContain('secrets: {');
+		expect(config?.content).not.toContain('store:');
+	});
+
 	it('should include correct workspace paths', () => {
 		const options: TemplateOptions = {
 			...baseOptions,
