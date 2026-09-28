@@ -1,5 +1,45 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.14
+
+### Patch Changes
+
+- [#65](https://github.com/geekmidas/toolbox/pull/65) [`9602a19`](https://github.com/geekmidas/toolbox/commit/9602a19a9b4fb9cecd2641d108976f73272df55e) Thanks [@geekmidas](https://github.com/geekmidas)! - The OpenAPI document validates, and says who may call what
+
+  Checked against kitchen-sink with Redocly, swagger-parser and openapi-typescript:
+  - **A registered schema kept its definition.** A schema with `.meta({ id })`
+    came out as `User: { $ref: '#/components/schemas/User' }` — a pointer to
+    itself, so the document had no `User` and validators refused it. Zod 4.6
+    already refers a registered schema to its `$defs` entry; that reference is no
+    longer written over the definition.
+  - **OpenAPI 3.1.0**, not 3.0.0: the schemas are JSON Schema 2020-12
+    (`type: ['string', 'null']`, `const`), which is 3.1's dialect. The
+    per-schema `$schema` markers are dropped.
+  - 🔒 **Security is documented.** An endpoint behind an authorizer gets a
+    `security` requirement and its scheme in `components.securitySchemes`;
+    before, every endpoint read as public. `RestApi`'s `authorizers: ['iam']`
+    now resolves built-in names to their scheme, as the factory's own
+    `.authorizers()` did.
+  - **The success status is the one the endpoint answers with**: `.status(201)`
+    is documented as `201`, not `200`.
+
+- Updated dependencies [[`ce969d3`](https://github.com/geekmidas/toolbox/commit/ce969d39a79811f36622f07a2f797cc493a87d1b), [`9602a19`](https://github.com/geekmidas/toolbox/commit/9602a19a9b4fb9cecd2641d108976f73272df55e)]:
+  - @geekmidas/events@10.0.0-alpha.14
+  - @geekmidas/schema@10.0.0-alpha.14
+  - @geekmidas/audit@10.0.0-alpha.14
+  - @geekmidas/auth@10.0.0-alpha.14
+  - @geekmidas/cache@10.0.0-alpha.14
+  - @geekmidas/db@10.0.0-alpha.14
+  - @geekmidas/emailkit@10.0.0-alpha.14
+  - @geekmidas/envkit@10.0.0-alpha.14
+  - @geekmidas/errors@10.0.0-alpha.14
+  - @geekmidas/logger@10.0.0-alpha.14
+  - @geekmidas/manifest@10.0.0-alpha.14
+  - @geekmidas/rate-limit@10.0.0-alpha.14
+  - @geekmidas/services@10.0.0-alpha.14
+  - @geekmidas/storage@10.0.0-alpha.14
+  - @geekmidas/telescope@10.0.0-alpha.14
+
 ## 10.0.0-alpha.13
 
 ### Patch Changes
