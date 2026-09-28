@@ -85,8 +85,10 @@ describe('createFreshWorkspaceSecrets', () => {
 			POSTGRES,
 		);
 
-		expect(secrets.custom.NODE_ENV).toBe('development');
 		expect(secrets.custom.JWT_SECRET).toBeTruthy();
+		// The command decides NODE_ENV; a stored one would be injected over it
+		// and turn `gkm exec -- next build` into a development build.
+		expect(secrets.custom).not.toHaveProperty('NODE_ENV');
 	});
 });
 
@@ -162,7 +164,7 @@ export default defineWorkspace({
 		// no credential for one. It used to get one from `services: { db: true }`,
 		// which is the config-says-so path this no longer has.
 		const read = await readStageSecrets('development', testDir);
-		expect(read?.custom.NODE_ENV).toBe('development');
+		expect(read?.custom.LOG_LEVEL).toBe('debug');
 		expect(read?.services.postgres).toBeUndefined();
 	});
 

@@ -350,8 +350,10 @@ export function createFreshWorkspaceSecrets(
 	if (isMultiApp) {
 		secrets.custom = generateFullstackCustomSecrets(workspace, containers);
 	} else {
+		// No `NODE_ENV`, for the reason `gkm init` gives: `gkm exec` injects
+		// secrets over the environment, so a stored one made every
+		// `gkm exec -- next build` a development build.
 		secrets.custom = {
-			NODE_ENV: 'development',
 			PORT: '3000',
 			LOG_LEVEL: 'debug',
 			JWT_SECRET: `dev-${Date.now()}-${Math.random().toString(36).slice(2)}`,

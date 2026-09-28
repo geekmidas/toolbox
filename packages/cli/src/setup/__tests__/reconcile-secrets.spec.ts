@@ -290,6 +290,16 @@ describe('reconcileSecrets', () => {
 });
 
 describe('generateFullstackCustomSecrets', () => {
+	it('should leave NODE_ENV to the command', () => {
+		// `gkm exec` injects secrets over the environment, so a stored
+		// NODE_ENV made `gkm exec -- next build` a development build.
+		const result = generateFullstackCustomSecrets(createWorkspace(), [
+			'postgres',
+		]);
+
+		expect(result).not.toHaveProperty('NODE_ENV');
+	});
+
 	it('should generate BETTER_AUTH_* secrets for better-auth framework apps', () => {
 		const workspace = createWorkspace();
 
