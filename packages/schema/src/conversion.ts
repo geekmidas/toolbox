@@ -79,8 +79,10 @@ function extractAndConvertDefs(
 		// Process all properties recursively
 		const processed: any = {};
 		for (const [key, value] of Object.entries(schema)) {
-			if (key === '$defs') {
-				// Skip $defs as they've been extracted
+			// `$defs` has been extracted. `$schema` names the dialect the converter
+			// wrote, which the document declares once for every schema in it; a
+			// copy on each one is noise the document does not need.
+			if (key === '$defs' || key === '$schema') {
 				continue;
 			}
 			processed[key] = processSchema(value);
@@ -209,6 +211,14 @@ export async function convertSchemaWithComponents(
 	const schemaId = metadata?.id || jsonSchema?.id;
 
 	if (schemaId) {
+		// Zod 4.6 already turns a registered schema into a `$ref` to its own
+		// `$defs` entry, which the conversion above moved into components. Adding
+		// that reference under the same id would replace the definition with a
+		// pointer to itself — `User: { $ref: '#/components/schemas/User' }` — and
+		// leave the document with no User at all.
+		if (typeof jsonSchema?.$ref === 'string') {
+			return componentCollector.getReference(schemaId);
+		}
 		// Remove the id from the schema before adding to components
 		const { id, ...schemaWithoutId } = jsonSchema;
 		// Add this schema to components and return a reference
