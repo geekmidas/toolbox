@@ -114,6 +114,25 @@ pnpm test:watch
 pnpm typecheck
 ```
 
+#### Test services
+
+Suites that need Postgres, Redis, the AWS emulator and the rest start them
+from the root `docker-compose.yml` themselves (`packages/testkit/test/services.ts`),
+so Docker must be running. The stack has a fixed project name,
+`geekmidas-toolbox-test`, so every checkout and worktree shares the same
+containers rather than competing for the same ports.
+
+If another project already holds a default port, move ours with the matching
+variable — the suites read the same ones (`packages/testkit/test/ports.ts`):
+
+```bash
+POSTGRES_HOST_PORT=5446 REDIS_HOST_PORT=6389 pnpm test
+```
+
+Variables: `POSTGRES_HOST_PORT`, `REDIS_HOST_PORT`, `SRH_HOST_PORT`,
+`LOCALSTACK_HOST_PORT`, `MINIO_API_HOST_PORT`, `MINIO_CONSOLE_HOST_PORT`,
+`RABBITMQ_HOST_PORT`, `RABBITMQ_MGMT_HOST_PORT`.
+
 ### 4. Lint and Format
 
 ```bash
