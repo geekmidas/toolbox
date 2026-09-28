@@ -40,8 +40,8 @@ import { createEndpointHooks } from '@geekmidas/client/endpoint-hooks';
 // React Query client (class-based)
 import { createTypedQueryClient } from '@geekmidas/client/react-query';
 
-// OpenAPI hooks generation
-import { generateReactQueryHooks } from '@geekmidas/client/openapi';
+// OpenAPI hooks from a paths type
+import { createOpenAPIHooks } from '@geekmidas/client/openapi';
 
 // Type utilities
 import type { TypedApiFunction, FilteredRequestConfig } from '@geekmidas/client/types';
@@ -379,48 +379,10 @@ const api = Object.assign(fetcher, hooks);
 
 ## OpenAPI Code Generation
 
-Generate React Query hooks from OpenAPI specifications:
-
-```bash
-# Using CLI
-pnpm gkm generate:react-query --input api-docs.json --output ./src/api
-
-# Programmatic usage
-import { generateReactQueryHooks } from '@geekmidas/client/openapi';
-import fs from 'fs/promises';
-
-const spec = JSON.parse(await fs.readFile('api-docs.json', 'utf-8'));
-const code = await generateReactQueryHooks(spec);
-await fs.writeFile('./src/api/generated.ts', code);
-```
-
-Generated hooks example:
-
-```typescript
-// Generated from OpenAPI spec
-export const api = createTypedQueryClient<{
-  'GET /users': {
-    response: User[];
-  };
-  'POST /users': {
-    body: CreateUserRequest;
-    response: User;
-  };
-  // ... all your endpoints
-}>({
-  baseUrl: process.env.REACT_APP_API_URL
-});
-
-// Use generated hooks
-function MyComponent() {
-  const { data: users } = api.useQuery('GET /users');
-  const createUser = api.useMutation('POST /users');
-
-  return (
-    // Your component
-  );
-}
-```
+Each surface's typed client is written by `gkm build` (and kept current by
+`gkm dev`) to `.gkm/openapi/<surface>.ts`: its `createApi()` returns a typed
+fetcher with React Query hooks, built from the endpoints themselves rather
+than from a spec file.
 
 ## Advanced Features
 
