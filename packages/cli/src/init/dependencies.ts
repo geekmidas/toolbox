@@ -46,8 +46,6 @@ export const DEPENDENCY_VERSIONS = {
 	clsx: '~2.1.1',
 	'lucide-react': '~1.48.0',
 	'tailwind-merge': '~3.7.0',
-	// 5.x: 6.x changes how the plugin is configured.
-	'vite-tsconfig-paths': '~5.1.4',
 
 	// Tooling
 	'@biomejs/biome': '~2.5.14',
@@ -66,27 +64,24 @@ export const DEPENDENCY_VERSIONS = {
 } as const;
 
 /**
- * The build and test toolchain, at the versions it was already on.
- *
- * Held here so it moves in one place, but not moved yet: it changes how every
- * scaffold compiles and runs, and tranche 2 (#40) moves it together with the
- * repository's own toolchain.
+ * The build and test toolchain, at the versions the repository itself builds
+ * and tests with (scripts/dependency-versions.json), so a scaffold compiles
+ * with the compiler its own `@geekmidas` packages were checked against.
  */
 export const TOOLCHAIN_VERSIONS = {
-	typescript: '~5.8.2',
-	tsx: '~4.20.0',
-	esbuild: '~0.27.0',
-	vitest: '~4.0.0',
-	vite: '^7.0.0',
-	'@vitejs/plugin-react': '^4.3.4',
-	storybook: '^8.4.7',
-	'@storybook/addon-a11y': '^8.4.7',
-	'@storybook/addon-essentials': '^8.4.7',
-	'@storybook/addon-interactions': '^8.4.7',
-	'@storybook/react': '^8.4.7',
-	'@storybook/react-vite': '^8.4.7',
-	// Storybook 8 builds on Vite 6; the UI package's Vite moves with it.
-	'vite@storybook': '^6.0.0',
+	typescript: '~7.0.2',
+	tsx: '~4.23.15',
+	esbuild: '~0.28.2',
+	// `@geekmidas/testkit` and `@geekmidas/db` declare this as their peer.
+	vitest: '~5.0.2',
+	vite: '~8.3.1',
+	'@vitejs/plugin-react': '^6.1.1',
+	storybook: '^10.6.0',
+	// Controls, actions, backgrounds, viewport and interactions are part of
+	// `storybook` itself since 9; docs and a11y are still add-ons.
+	'@storybook/addon-docs': '^10.6.0',
+	'@storybook/addon-a11y': '^10.6.0',
+	'@storybook/react-vite': '^10.6.0',
 } as const;
 
 /**
@@ -118,6 +113,16 @@ export const EXPO_VERSIONS = {
 	// NativeWind 4 is built on Tailwind 3.
 	tailwindcss: '~3.4.0',
 } as const;
+
+/**
+ * The pnpm a pnpm scaffold runs under, through \`packageManager\`.
+ *
+ * Pinned in every layout. Without it Corepack takes the newest pnpm, and 11
+ * fails the first install on dependencies with build scripts (esbuild) until
+ * they are approved — a single-app scaffold that did not pin it could not
+ * install at all.
+ */
+export const PNPM_VERSION = 'pnpm@10.13.1';
 
 /** The Biome config schema matching the Biome the scaffold installs. */
 export const BIOME_SCHEMA = `https://biomejs.dev/schemas/${DEPENDENCY_VERSIONS['@biomejs/biome'].replace(/^[~^]/, '')}/schema.json`;

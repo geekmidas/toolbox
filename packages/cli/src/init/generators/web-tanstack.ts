@@ -56,7 +56,6 @@ export function generateTanStackWebFiles(
 			tsx: TOOLCHAIN_VERSIONS['tsx'],
 			typescript: TOOLCHAIN_VERSIONS['typescript'],
 			vite: TOOLCHAIN_VERSIONS['vite'],
-			'vite-tsconfig-paths': DEPENDENCY_VERSIONS['vite-tsconfig-paths'],
 		},
 	};
 
@@ -65,16 +64,16 @@ import tailwindcss from '@tailwindcss/vite';
 import { tanstackStart } from '@tanstack/react-start/plugin/vite';
 import viteReact from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
-import tsconfigPaths from 'vite-tsconfig-paths';
 
 export default defineConfig({
+  // Vite resolves tsconfig \`paths\` itself; no plugin needed.
+  resolve: { tsconfigPaths: true },
   server: {
     port: Number(Credentials.PORT ?? 3001),
   },
   // VITE_* vars are inlined automatically; no manual loadEnv needed.
   envPrefix: 'VITE_',
   plugins: [
-    tsconfigPaths({ root: import.meta.dirname }),
     tailwindcss(),
     tanstackStart(),
     viteReact(),
@@ -98,7 +97,6 @@ export default defineConfig({
 			isolatedModules: true,
 			jsx: 'preserve',
 			incremental: true,
-			baseUrl: '.',
 			types: ['vite/client'],
 			paths: {
 				'~/*': ['./src/*', '../../packages/ui/src/*'],

@@ -94,7 +94,6 @@ export default nextConfig;
 					name: 'next',
 				},
 			],
-			baseUrl: '.',
 			paths: {
 				'~/*': ['./src/*', '../../packages/ui/src/*'],
 				[`${apiPackage}/client`]: ['../../apps/api/.gkm/openapi/api.ts'],

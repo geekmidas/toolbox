@@ -37,6 +37,31 @@ const baseOptions: TemplateOptions = {
 };
 
 describe('generatePackageJson', () => {
+	it('pins pnpm for a standalone pnpm app, so Corepack cannot pick a newer one', () => {
+		// pnpm 11 fails a first install on esbuild's unapproved build script.
+		const standalone = JSON.parse(
+			generatePackageJson(baseOptions, apiTemplate)[0]!.content,
+		);
+		expect(standalone.packageManager).toMatch(/^pnpm@10\./);
+
+		const npm = JSON.parse(
+			generatePackageJson(
+				{ ...baseOptions, packageManager: 'npm' },
+				apiTemplate,
+			)[0]!.content,
+		);
+		expect(npm.packageManager).toBeUndefined();
+
+		// In a workspace the root pins it, not the app.
+		const app = JSON.parse(
+			generatePackageJson(
+				{ ...baseOptions, monorepo: true, apiPath: 'apps/api' },
+				apiTemplate,
+			)[0]!.content,
+		);
+		expect(app.packageManager).toBeUndefined();
+	});
+
 	it('should generate package.json with correct name', () => {
 		const files = generatePackageJson(baseOptions, minimalTemplate);
 		expect(files).toHaveLength(1);
@@ -889,10 +914,38 @@ describe('generateUiPackageFiles', () => {
 		const pkgJson = files.find((f) => f.path === 'packages/ui/package.json');
 		expect(pkgJson).toBeDefined();
 		const pkg = JSON.parse(pkgJson!.content);
-		expect(pkg.devDependencies['@storybook/react']).toBeDefined();
 		expect(pkg.devDependencies['@storybook/react-vite']).toBeDefined();
-		expect(pkg.devDependencies['@storybook/addon-essentials']).toBeDefined();
+		expect(pkg.devDependencies['@storybook/addon-docs']).toBeDefined();
 		expect(pkg.devDependencies.storybook).toBeDefined();
+		// Storybook 9 folded these into `storybook` itself.
+		expect(pkg.devDependencies['@storybook/react']).toBeUndefined();
+		expect(pkg.devDependencies['@storybook/addon-essentials']).toBeUndefined();
+		expect(
+			pkg.devDependencies['@storybook/addon-interactions'],
+		).toBeUndefined();
+	});
+
+	it('parses components without TypeScript, which TypeScript 7 cannot serve', () => {
+		const files = generateUiPackageFiles(fullstackOptions);
+		const main = files.find((f) => f.path === 'packages/ui/.storybook/main.ts');
+		expect(main!.content).toContain("reactDocgen: 'react-docgen'");
+		for (const story of files.filter((f) => f.path.endsWith('.stories.tsx'))) {
+			expect(story.content).toContain("from '@storybook/react-vite'");
+		}
+	});
+
+	it('writes no baseUrl, which TypeScript 7 removed', () => {
+		for (const file of [
+			...generateUiPackageFiles(fullstackOptions),
+			...generateMonorepoFiles(fullstackOptions, minimalTemplate),
+			...generateAuthAppFiles(fullstackOptions),
+			...generateWebAppFiles(fullstackOptions),
+			...generateTanStackWebFiles(fullstackOptions),
+			...generateConfigFiles(fullstackOptions, apiTemplate),
+			...generateConfigFiles(baseOptions, apiTemplate),
+		].filter((f) => f.path.endsWith('tsconfig.json'))) {
+			expect(file.content, file.path).not.toContain('baseUrl');
+		}
 	});
 
 	it('should include Tailwind CSS dependencies', () => {
@@ -1179,7 +1232,8 @@ describe('generateConfigFiles - vitest.config.ts', () => {
 		const vitestConfig = files.find((f) => f.path === 'vitest.config.ts');
 		expect(vitestConfig!.content).toContain('globalSetup');
 		expect(vitestConfig!.content).toContain('./test/globalSetup.ts');
-		expect(vitestConfig!.content).toContain('vite-tsconfig-paths');
+		expect(vitestConfig!.content).toContain('tsconfigPaths: true');
+		expect(vitestConfig!.content).not.toContain('vite-tsconfig-paths');
 		expect(vitestConfig!.content).not.toContain('globals: true');
 	});
 

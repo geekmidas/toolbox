@@ -64,7 +64,6 @@ program
 	)
 	.option('--protected-stage <name>', 'Which deployed stage is production')
 	.option('--local-stage <name>', 'What gkm dev runs as (e.g. dev)')
-	.option('--region <region>', 'AWS region for an SST deploy (e.g. eu-west-1)')
 	.action(async (name: string | undefined, options: InitOptions) => {
 		try {
 			const globalOptions = program.opts();

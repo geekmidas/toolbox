@@ -61,7 +61,6 @@ export function generateAuthAppFiles(
 		compilerOptions: {
 			noEmit: true,
 			allowImportingTsExtensions: true,
-			baseUrl: '.',
 			paths: {
 				'~/*': ['./src/*'],
 				[`@${options.name}/*`]: ['../../packages/*/src'],

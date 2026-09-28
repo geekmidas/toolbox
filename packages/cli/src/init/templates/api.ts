@@ -68,9 +68,10 @@ export const apiTemplate: TemplateConfig = {
 		const db = databaseFor();
 		const mail = emailFor();
 
-		// Single-app projects have no `~/*` alias, so what a generated file
-		// imports depends on where it will sit.
-		const src = (path: string) => (monorepo ? `~/${path}` : `./${path}`);
+		// Every layout's tsconfig maps `~/*` to `src/*`, so a generated file
+		// imports through it wherever it sits. A single app wrote `./router.ts`
+		// from `src/endpoints/…`, which named a file that is not there.
+		const src = (path: string) => `~/${path}`;
 
 		// Whether this app declares its infrastructure.
 		//
@@ -205,7 +206,7 @@ export const healthEndpoint = router
   }));
 `
 					: `import { z } from 'zod';
-import { router } from './router.ts';
+import { router } from '~/router.ts';
 
 export const healthEndpoint = router
   .get('/health')
