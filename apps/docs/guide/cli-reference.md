@@ -200,18 +200,6 @@ Options:
   --version <string>     API version
 ```
 
-### `gkm generate:react-query`
-
-Generate React Query hooks from OpenAPI specification.
-
-```bash
-gkm generate:react-query [options]
-
-Options:
-  --input, -i <path>     Input OpenAPI file (default: .gkm/openapi.ts)
-  --output, -o <path>    Output path for hooks
-```
-
 ### `gkm init`
 
 Scaffold a new project with templates.
