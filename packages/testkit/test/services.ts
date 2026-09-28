@@ -36,7 +36,7 @@ function repoRoot(): string {
 		current = dirname(current);
 	}
 
-	throw new Error('No docker-compose.yml above this package');
+	throw new NoComposeFile(dirname(fileURLToPath(import.meta.url)));
 }
 
 /**
@@ -66,11 +66,39 @@ export async function ensureServices(
 			timeout: 300_000,
 		});
 	} catch (error) {
-		const detail = error instanceof Error ? error.message : String(error);
-
-		throw new Error(
-			`Could not start ${services.join(', ')} from ${resolve(cwd, 'docker-compose.yml')}. ` +
-				`Is Docker running, and are their ports free? ${detail}`,
+		throw new ServicesDidNotStart(
+			services,
+			resolve(cwd, 'docker-compose.yml'),
+			error instanceof Error ? error.message : String(error),
 		);
+	}
+}
+
+/** No `docker-compose.yml` in any directory above the suite. */
+export class NoComposeFile extends Error {
+	constructor(readonly from: string) {
+		super(
+			`No docker-compose.yml above ${from}. The test services are defined in the repo root's.`,
+		);
+		this.name = 'NoComposeFile';
+	}
+}
+
+/**
+ * `docker compose up` failed. The two usual causes — Docker not running, and a
+ * host port another project holds — both read as a bare connection refusal
+ * several frames later, so this says which services and which file.
+ */
+export class ServicesDidNotStart extends Error {
+	constructor(
+		readonly services: readonly string[],
+		readonly composeFile: string,
+		readonly detail: string,
+	) {
+		super(
+			`Could not start ${services.join(', ')} from ${composeFile}. Is Docker running, and are their ports free? ` +
+				`Another project holding one can be worked around with *_HOST_PORT (see testkit/test/ports.ts). ${detail}`,
+		);
+		this.name = 'ServicesDidNotStart';
 	}
 }

@@ -1,4 +1,5 @@
 import type { EventSubscriber, PublishableMessage } from '../types';
+import { PgBossNotStarted } from './errors';
 import type { PgBossConnection } from './PgBossConnection';
 
 export interface PgBossSubscriberOptions {
@@ -50,7 +51,7 @@ export class PgBossSubscriber<TMessage extends PublishableMessage<string, any>>
 
 		const boss = this.connection.instance;
 		if (!boss) {
-			throw new Error('PgBoss instance not initialized');
+			throw new PgBossNotStarted();
 		}
 
 		for (const messageType of messages) {

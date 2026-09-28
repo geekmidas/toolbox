@@ -120,7 +120,7 @@ describe('OpenAPI Schema', () => {
 
 			const doc = await buildOpenApiSchema([mockEndpoint]);
 
-			expect(doc).toHaveProperty('openapi', '3.0.0');
+			expect(doc).toHaveProperty('openapi', '3.1.0');
 			expect(doc).toHaveProperty('info');
 			expect(doc.info).toEqual({
 				title: 'API',

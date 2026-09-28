@@ -21,7 +21,6 @@ export const minimalTemplate: TemplateConfig = {
 		'@geekmidas/schema': GEEKMIDAS_VERSIONS['@geekmidas/schema'],
 		'@hono/node-server': DEPENDENCY_VERSIONS['@hono/node-server'],
 		hono: DEPENDENCY_VERSIONS.hono,
-		pino: DEPENDENCY_VERSIONS.pino,
 		zod: DEPENDENCY_VERSIONS.zod,
 	},
 

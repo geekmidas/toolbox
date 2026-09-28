@@ -1,5 +1,5 @@
 import type { EventConnection } from './types';
-import { EventPublisherType } from './types';
+import { EventPublisherType, UnsupportedEventTransport } from './types';
 
 export class EventConnectionFactory {
 	/**
@@ -34,7 +34,7 @@ export class EventConnectionFactory {
 				return PgBossConnection.fromConnectionString(connectionStr);
 			}
 			default:
-				throw new Error(`Unsupported connection type: ${protocol}`);
+				throw new UnsupportedEventTransport(protocol, 'connection');
 		}
 	}
 }

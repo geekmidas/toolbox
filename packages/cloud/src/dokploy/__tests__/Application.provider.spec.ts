@@ -1,7 +1,12 @@
+import { runInNewContext } from 'node:vm';
+import { runtime } from '@pulumi/pulumi';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { applicationProvider as provider } from '../Application';
+import {
+	DokployCallFailed,
+	applicationProvider as provider,
+} from '../Application';
 
 /**
  * The provider against Dokploy's tRPC API, served by MSW: what each lifecycle
@@ -132,8 +137,13 @@ describe('Dokploy application provider', () => {
 			}),
 		);
 		await expect(provider.delete!('app-1', outs)).rejects.toThrow(
-			'Dokploy application.remove failed: 500 Internal Server Error — database is locked',
+			DokployCallFailed,
 		);
+		await expect(provider.delete!('app-1', outs)).rejects.toMatchObject({
+			path: 'application.remove',
+			status: 500,
+			detail: 'database is locked',
+		});
 
 		server.resetHandlers();
 		answer(
@@ -141,8 +151,56 @@ describe('Dokploy application provider', () => {
 			'application.create',
 			() => new HttpResponse(null, { status: 401, statusText: 'Unauthorized' }),
 		);
-		await expect(provider.create!(inputs)).rejects.toThrow(
-			'Dokploy application.create failed: 401 Unauthorized',
+		await expect(provider.create!(inputs)).rejects.toMatchObject({
+			name: 'DokployCallFailed',
+			status: 401,
+		});
+	});
+
+	/**
+	 * What actually runs: Pulumi serialises the provider into state and the
+	 * deploy runs that text, not this module. Serialisation rewrites
+	 * `DokployCallFailed` into a plain function that drops `Error.prototype` and
+	 * never initialises `message` — which the provider host reports — so this
+	 * runs the serialised provider and checks the error still says something.
+	 */
+	it('still recognises a 404, and reports a failure, once serialised', async () => {
+		const serialised = await runtime.serializeFunction(() => provider, {
+			isFactoryFunction: true,
+		});
+		const module = { exports: {} as Record<string, typeof provider> };
+		runInNewContext(serialised.text, {
+			module,
+			exports: module.exports,
+			require,
+			global: globalThis,
+			fetch: (...args: Parameters<typeof fetch>) => fetch(...args),
+			Error,
+		});
+		const deployed = module.exports[serialised.exportName]!;
+
+		answer('post', 'application.remove', () =>
+			HttpResponse.json({}, { status: 404, statusText: 'Not Found' }),
+		);
+		await expect(deployed.delete!('app-1', outs)).resolves.toBeUndefined();
+
+		server.resetHandlers();
+		answer('post', 'application.remove', () =>
+			HttpResponse.text('database is locked', {
+				status: 500,
+				statusText: 'Internal Server Error',
+			}),
+		);
+		const failure = await deployed.delete!('app-1', outs).catch(
+			(error: unknown) => error as Error & { status: number },
+		);
+		expect(failure).toMatchObject({ name: 'DokployCallFailed', status: 500 });
+		expect(failure?.message).toContain(
+			'Dokploy application.remove failed: 500 Internal Server Error — database is locked',
+		);
+		expect(failure?.stack).toBeTruthy();
+		expect(`${failure}`).toMatch(
+			/^DokployCallFailed: Dokploy application\.remove failed/,
 		);
 	});
 });

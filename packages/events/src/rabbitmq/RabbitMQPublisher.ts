@@ -1,5 +1,6 @@
 import type amqplib from 'amqplib';
 import type { EventPublisher, PublishableMessage } from '../types';
+import { RabbitMQChannelUnavailable } from './errors';
 import type { RabbitMQConnection } from './RabbitMQConnection';
 
 export interface RabbitMQPublisherOptions {
@@ -34,7 +35,7 @@ export class RabbitMQPublisher<TMessage extends PublishableMessage<string, any>>
 
 		const channel = this.connection.amqpChannel;
 		if (!channel) {
-			throw new Error('Channel not initialized');
+			throw new RabbitMQChannelUnavailable();
 		}
 
 		const exchange = this.connection.exchangeName;

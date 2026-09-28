@@ -202,10 +202,7 @@ function CreateUserForm() {
 
 ## OpenAPI Type Generation
 
-Use `@geekmidas/cli` to generate TypeScript types from your OpenAPI spec:
-
-```bash
-gkm generate:react-query --input api-docs.json --output ./src/api
-```
-
-This generates type-safe hooks and fetchers from your API specification.
+Each surface's typed client is written by `gkm build` (and kept current by
+`gkm dev`) to `.gkm/openapi/<surface>.ts`: its `createApi()` returns a typed
+fetcher with React Query hooks, built from the endpoints themselves rather
+than from a spec file.

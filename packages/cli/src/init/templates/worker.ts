@@ -35,7 +35,6 @@ export const workerTemplate: TemplateConfig = {
 		'@geekmidas/events': GEEKMIDAS_VERSIONS['@geekmidas/events'],
 		'@geekmidas/logger': GEEKMIDAS_VERSIONS['@geekmidas/logger'],
 		'@geekmidas/schema': GEEKMIDAS_VERSIONS['@geekmidas/schema'],
-		pino: DEPENDENCY_VERSIONS.pino,
 	},
 
 	devDependencies: {

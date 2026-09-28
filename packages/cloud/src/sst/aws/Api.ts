@@ -153,7 +153,7 @@ export class Api<
 		// Fail the whole synth if any route is misconfigured, with one actionable
 		// message per offending route.
 		if (failures.length) {
-			throw new Error(failures.map((f) => f.message).join('\n\n'));
+			throw new RoutesMissingEnvironment(id, failures);
 		}
 	}
 
@@ -306,4 +306,19 @@ export interface ApiProps<TAuthorizers extends Record<string, unknown> = {}>
 	/** Default Lambda runtime for every route. Defaults to `nodejs24.x`; a route
 	 * may override it. */
 	runtime?: sst.aws.FunctionArgs['runtime'];
+}
+
+/**
+ * Routes that read variables nothing links or whitelists. Collected across
+ * every route so one synth reports all of them, each with its own suggestions,
+ * rather than stopping at the first.
+ */
+export class RoutesMissingEnvironment extends Error {
+	constructor(
+		readonly api: string,
+		readonly failures: readonly EnvValidationError[],
+	) {
+		super(failures.map((f) => f.message).join('\n\n'));
+		this.name = 'RoutesMissingEnvironment';
+	}
 }

@@ -462,16 +462,30 @@ export class Endpoint<
 	async toOpenApi3Route(
 		componentCollector?: ComponentCollector,
 	): Promise<EndpointOpenApiSchema<TRoute, TMethod>> {
+		// The status the handler answers with — `.status(201)` is documented as
+		// 201, not as the 200 every endpoint used to claim.
+		const status = String(this.status);
 		const operation: OpenAPIV3_1.OperationObject = {
 			operationId: this.operationId,
 			...(this.description && { description: this.description }),
 			...(this.tags && this.tags.length > 0 && { tags: this.tags }),
 			responses: {
-				'200': {
+				[status]: {
 					description: 'Successful response',
 				} as OpenAPIV3_1.ResponseObject,
 			},
 		};
+
+		// What protects it. Without this every endpoint read as public in the
+		// document, including the ones an authorizer guards.
+		const scheme = this.authorizer?.securityScheme;
+		if (this.authorizer && scheme && componentCollector) {
+			componentCollector.addSecurityScheme(
+				this.authorizer.name,
+				scheme as OpenAPIV3_1.SecuritySchemeObject,
+			);
+			operation.security = [{ [this.authorizer.name]: [] }];
+		}
 
 		// Add response schema
 		if (this.outputSchema) {
@@ -482,7 +496,7 @@ export class Endpoint<
 			if (responseSchema) {
 				set(
 					operation,
-					['responses', '200', 'content', this.responseType, 'schema'],
+					['responses', status, 'content', this.responseType, 'schema'],
 					responseSchema,
 				);
 			}
