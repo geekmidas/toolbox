@@ -908,6 +908,48 @@ export const sendMessage = api
   });
 ```
 
+## Feature Tests
+
+`featureTest` drives an app the way it runs deployed: a browser signs in and
+calls the API, the API asks the auth server who is calling, each over its URL,
+and every database is in its own transaction, rolled back after the test.
+Nothing runs as a server — each URL an app's constructs answer on is served
+in-process through MSW, from the real handler, for the test that made the
+request. Postgres and Mailpit are the real local ones `gkm test` starts.
+
+```typescript
+// test/config.ts
+import { featureTest } from '@geekmidas/constructs/testing';
+
+export const it = featureTest({
+  modules: import.meta.glob(
+    ['../../../constructs/*.ts', '../src/endpoints/**/*.ts'],
+    { eager: true },
+  ),
+  database,          // what a test receives as `db`
+  browser: Browser,  // your subclass of @geekmidas/testkit/browser, with your clients
+});
+
+// a test
+it('shows the signed-in user their profile', async ({ browser, mailbox, db }) => {
+  await browser.auth.signIn.magicLink({ email: 'ada@shop.test' });
+  await browser.visit((await mailbox('ada@shop.test').last()).link!);
+
+  expect(await browser.api.get('/profile')).toMatchObject({ email: 'ada@shop.test' });
+});
+```
+
+- **`browser`** — already the global `fetch`, so the app's own module-level
+  clients go through it; its cookie jar follows the browser's rules, so a
+  session cookie set for the wrong domain never reaches the API.
+- **`db`** — the app database's transaction for this test: rows the test seeds
+  are what the API's handlers see.
+- **`mailbox(address)`** — the mail actually sent, read from Mailpit.
+- Each database construct — the app's and each schema tenant, such as the auth
+  server's — gets its own transaction on its own connection, as deployed.
+- A request that belongs to no running test is refused with
+  `UnknownTestContext` rather than reaching some other test's data.
+
 ## AWS Lambda Adapters
 
 Deploy your constructs to AWS Lambda:

@@ -105,6 +105,7 @@ describe('envFor', () => {
 			'EVENT_PUBLISHER_CONNECTION_STRING',
 			'EVENT_SUBSCRIBER_CONNECTION_STRING',
 			'MAIL_FROM',
+			'MAIL_INBOX_URL',
 			'MAIL_URL',
 			'ORDERS_OWNER_URL',
 			'ORDERS_URL',
@@ -194,6 +195,18 @@ describe('envFor', () => {
 
 	it('supplies a sending identity', () => {
 		expect(env().MAIL_FROM).toBe('noreply@localhost');
+	});
+
+	it('says where the mail it sent can be read back', () => {
+		// Mailpit's inbox, on its own port beside SMTP — what a feature test
+		// reads a magic link from.
+		const ports = portsFor('development');
+		expect(env().MAIL_INBOX_URL).toBe(
+			`http://localhost:${ports['mailpit-web']}`,
+		);
+		expect(env().MAIL_INBOX_URL).not.toBe(
+			env().MAIL_URL.replace('smtp:', 'http:'),
+		);
 	});
 
 	it('lets the stage choose the sending identity', () => {
