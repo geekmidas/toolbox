@@ -1,5 +1,36 @@
 # @geekmidas/client
 
+## 10.0.0-alpha.20
+
+### Minor Changes
+
+- [#78](https://github.com/geekmidas/toolbox/pull/78) [`6ee966c`](https://github.com/geekmidas/toolbox/commit/6ee966c1ea27d25720ac6767c9f2e7ffe63b3f7f) Thanks [@geekmidas](https://github.com/geekmidas)! - Typed method calls: `api.post('/users', { body })`
+
+  Every client — `createTypedFetcher`, `createAuthAwareFetcher`, and so the
+  generated `createApi` — now answers by method as well as by
+  `api('POST /users', …)`: `api.get`, `post`, `put`, `patch`, `delete`, `options`.
+  The route autocompletes per method (only routes with a `POST` appear in
+  `api.post`), the second argument has only the keys the endpoint declares, and it
+  is required exactly when something in it is.
+
+  Three typing fixes came out of testing it, and apply to `api('…')` too:
+  - **Routes declared with `:param` were uncallable.** `InferOpenApi` keyed them by
+    the declared form (`/users/:id`) instead of the served one (`/users/{id}`), so
+    no path parameter was inferred and the documented `api('GET /users/{id}')` did
+    not typecheck against an endpoint declared that way. Paths are now keyed with
+    `ConvertRouteParams`, which `@geekmidas/constructs/endpoints` now exports.
+  - **A GET accepted any body.** An absent body is `requestBody?: never`, which
+    matched `{ content?: … }` with the body inferred as `unknown`.
+  - **A required query was optional.** `query` was always optional and never made
+    the argument required; now a query with a required key is required, and so is
+    the argument.
+
+### Patch Changes
+
+- Updated dependencies [[`6ee966c`](https://github.com/geekmidas/toolbox/commit/6ee966c1ea27d25720ac6767c9f2e7ffe63b3f7f), [`59e3fab`](https://github.com/geekmidas/toolbox/commit/59e3fabaec37ac7ffd9c26c2927daf0cc8f406c8)]:
+  - @geekmidas/constructs@10.0.0-alpha.20
+  - @geekmidas/schema@10.0.0-alpha.20
+
 ## 10.0.0-alpha.19
 
 ### Patch Changes

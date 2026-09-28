@@ -1,5 +1,75 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.20
+
+### Minor Changes
+
+- [#79](https://github.com/geekmidas/toolbox/pull/79) [`59e3fab`](https://github.com/geekmidas/toolbox/commit/59e3fabaec37ac7ffd9c26c2927daf0cc8f406c8) Thanks [@geekmidas](https://github.com/geekmidas)! - `session({ auth })`: the surface's authenticator is where a session is read
+
+  `api.auth(auth)` declared an edge and nothing more — every project then
+  re-implemented reading the session with a hand-written service. Now a session
+  callback receives `auth`, the construct named in `.auth()`, bound to the request:
+
+  ```ts
+  export const sessionRouter = router.session(async ({ auth }) => {
+    const session = await auth.getSession();
+    if (!session) throw new UnauthorizedError("No active session");
+    return session;
+  });
+  ```
+
+  Handlers still get whatever `.session()` returned. Only a `.session()` branch
+  asks the authenticator anything, so public routes pay nothing.
+  - `RestApi.auth()` takes an `Authenticator` — a construct with
+    `verify(headers, envParser) → session | null` — and keeps it.
+  - `BetterAuth` implements it: `verify` asks the auth server for the session at
+    the URL the `.auth()` edge injects, forwarding only `cookie` and
+    `authorization`. A failing server throws `SessionCheckFailed` rather than
+    reading as signed out. `AuthSession` is better-auth's session type.
+  - `auth.getSession()` on a surface with no `.auth()` throws `NoAuthenticator`.
+
+  Part 2 of #77.
+
+### Patch Changes
+
+- [#78](https://github.com/geekmidas/toolbox/pull/78) [`6ee966c`](https://github.com/geekmidas/toolbox/commit/6ee966c1ea27d25720ac6767c9f2e7ffe63b3f7f) Thanks [@geekmidas](https://github.com/geekmidas)! - Typed method calls: `api.post('/users', { body })`
+
+  Every client — `createTypedFetcher`, `createAuthAwareFetcher`, and so the
+  generated `createApi` — now answers by method as well as by
+  `api('POST /users', …)`: `api.get`, `post`, `put`, `patch`, `delete`, `options`.
+  The route autocompletes per method (only routes with a `POST` appear in
+  `api.post`), the second argument has only the keys the endpoint declares, and it
+  is required exactly when something in it is.
+
+  Three typing fixes came out of testing it, and apply to `api('…')` too:
+  - **Routes declared with `:param` were uncallable.** `InferOpenApi` keyed them by
+    the declared form (`/users/:id`) instead of the served one (`/users/{id}`), so
+    no path parameter was inferred and the documented `api('GET /users/{id}')` did
+    not typecheck against an endpoint declared that way. Paths are now keyed with
+    `ConvertRouteParams`, which `@geekmidas/constructs/endpoints` now exports.
+  - **A GET accepted any body.** An absent body is `requestBody?: never`, which
+    matched `{ content?: … }` with the body inferred as `unknown`.
+  - **A required query was optional.** `query` was always optional and never made
+    the argument required; now a query with a required key is required, and so is
+    the argument.
+
+- Updated dependencies []:
+  - @geekmidas/audit@10.0.0-alpha.20
+  - @geekmidas/auth@10.0.0-alpha.20
+  - @geekmidas/cache@10.0.0-alpha.20
+  - @geekmidas/db@10.0.0-alpha.20
+  - @geekmidas/emailkit@10.0.0-alpha.20
+  - @geekmidas/envkit@10.0.0-alpha.20
+  - @geekmidas/errors@10.0.0-alpha.20
+  - @geekmidas/events@10.0.0-alpha.20
+  - @geekmidas/logger@10.0.0-alpha.20
+  - @geekmidas/manifest@10.0.0-alpha.20
+  - @geekmidas/rate-limit@10.0.0-alpha.20
+  - @geekmidas/schema@10.0.0-alpha.20
+  - @geekmidas/services@10.0.0-alpha.20
+  - @geekmidas/storage@10.0.0-alpha.20
+  - @geekmidas/telescope@10.0.0-alpha.20
+
 ## 10.0.0-alpha.19
 
 ### Minor Changes
