@@ -19,10 +19,11 @@
  */
 
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import type { CacheBackend, EventsBackend } from '../types';
+import { TEST_STAGE } from '../workspace/stages';
 import { caddyfileRoot, sitesFor, toCaddyfile } from './caddyfile';
 import { bucketClient, pgClient } from './clients';
 import {
@@ -321,6 +322,7 @@ export async function reconcile(
 	if (plan.containers.includes('caddy')) {
 		await write(join(root, CADDYFILE_PATH), caddyfileRoot());
 		await write(join(root, caddySitesPath(stage)), caddyfile);
+		await pruneCaddySites(root, [stage, options.localStage, TEST_STAGE]);
 	}
 
 	if (start && plan.containers.length > 0) {
@@ -448,6 +450,29 @@ function addressesFor(
 }
 
 /** Write a file only when its content would change, so mtimes stay meaningful. */
+/**
+ * Remove the routes of stages this project no longer reconciles.
+ *
+ * Only the local stage and `test` are ever written, so any other file is left
+ * over from a stage that was renamed — `development` becoming `dev`. Caddy
+ * imports every file, and the leftover declares the same hosts as its
+ * replacement: it refuses the whole config as ambiguous, and every URL behind
+ * the edge goes with it.
+ */
+async function pruneCaddySites(
+	root: string,
+	stages: ReadonlyArray<string | undefined>,
+): Promise<void> {
+	const dir = dirname(join(root, caddySitesPath(TEST_STAGE)));
+	const keep = new Set(stages.map((stage) => stage && `${stage}.caddy`));
+
+	for (const file of await readdir(dir)) {
+		if (file.endsWith('.caddy') && !keep.has(file)) {
+			await rm(join(dir, file));
+		}
+	}
+}
+
 async function write(path: string, content: string): Promise<void> {
 	try {
 		if ((await readFile(path, 'utf-8')) === content) return;

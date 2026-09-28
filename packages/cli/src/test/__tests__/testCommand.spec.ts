@@ -1,5 +1,11 @@
 import type { EventEmitter } from 'node:events';
-import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	realpathSync,
+	writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import {
 	afterEach,
@@ -163,6 +169,29 @@ describe('testCommand', { timeout: 30_000 }, () => {
 
 		spawned[0]!.emit('error', new Error('npx: not found'));
 		await expect(running).rejects.toThrow('npx: not found');
+	});
+
+	it('reconciles what the workspace declares when run from its root', async () => {
+		// The root is not an app, and it is where the scaffold's `pnpm test` runs
+		// this from. It used to skip the reconcile there, so the suite started with
+		// no declared URL at all.
+		mkdirSync(join(dir, 'src', 'constructs'), { recursive: true });
+		writeFileSync(
+			join(dir, 'src', 'constructs', 'token.ts'),
+			`export const token = {
+  id: 'Token',
+  declare: () => [{ kind: 'secret', id: 'Token', provides: ['TOKEN'] }],
+};
+`,
+		);
+
+		const running = testCommand({ stage: 'dev' });
+		await until(() => spawned.length === 1);
+
+		expect(spawned[0]!.options.env?.TOKEN).toEqual(expect.any(String));
+
+		spawned[0]!.emit('close', 0);
+		await running;
 	});
 
 	it('refuses to guess a stage with no config and none named', async () => {

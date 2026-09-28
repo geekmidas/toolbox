@@ -30,10 +30,12 @@ export function generateTestFiles(
 		? '../src/constructs/database.ts'
 		: '~/services/database.ts';
 
-	// Which key holds the URL: the one the construct publishes, or the one the
-	// workspace's per-app secret sets.
-	const runtimeUrl = declares ? db.urlKey : 'DATABASE_URL';
-	const ownerUrl = declares ? db.ownerUrlKey : 'DATABASE_URL';
+	// Both layouts declare the same database, so both publish the same keys. A
+	// monorepo used to read a per-app secret here instead, and rendered the
+	// owner key as the runtime one — so its migrations ran as the role that may
+	// create nothing, and failed on the first table.
+	const runtimeUrl = db.urlKey;
+	const ownerUrl = db.ownerUrlKey;
 
 	return [
 		// kysely.config.ts - Kysely CLI configuration for migrations

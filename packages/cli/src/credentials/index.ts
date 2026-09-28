@@ -8,6 +8,7 @@ import { parse as parseYaml } from 'yaml';
 import {
 	getAppNameFromCwd,
 	loadWorkspaceAppInfo,
+	loadWorkspaceConfig,
 	type WorkspaceAppInfo,
 } from '../config';
 import { usesConstructs } from '../reconcile/workspace.js';
@@ -17,6 +18,7 @@ import {
 	secretsExist,
 	toEmbeddableSecrets,
 } from '../secrets/storage.js';
+import type { NormalizedWorkspace } from '../workspace/index.js';
 import { getDependencyEnvVars } from '../workspace/index.js';
 
 const logger = console;
@@ -729,14 +731,25 @@ export async function prepareEntryCredentials(options: {
 	let appName: string | undefined;
 	let appInfo: WorkspaceAppInfo | undefined;
 
+	let workspace: NormalizedWorkspace | undefined;
+
 	try {
 		appInfo = await loadWorkspaceAppInfo(cwd);
+		workspace = appInfo.workspace;
 		workspaceAppPort = appInfo.app.port;
 		secretsRoot = appInfo.workspaceRoot;
 		appName = appInfo.appName;
 	} catch {
-		// Not in a workspace - use defaults (expected for non-gkm apps using gkm exec)
-		secretsRoot = findSecretsRoot(cwd);
+		// Not an app — but possibly the workspace root, which is where the
+		// scaffold's own `pnpm test` runs `gkm test` from. Without the workspace
+		// here that run skipped the reconcile below: no container started, and the
+		// URLs were whatever the stored secrets said, on ports nothing listened on.
+		workspace = await loadWorkspaceConfig(cwd)
+			.then((loaded) => loaded.workspace)
+			.catch(() => undefined);
+		// Otherwise not in a workspace at all (expected for non-gkm apps using
+		// gkm exec) — use defaults.
+		secretsRoot = workspace?.root ?? findSecretsRoot(cwd);
 		appName = getAppNameFromCwd(cwd) ?? undefined;
 	}
 
@@ -745,7 +758,7 @@ export async function prepareEntryCredentials(options: {
 
 	// Load secrets and inject PORT. Outside a workspace there are no declared
 	// stages to read, so only a stage asked for by name is loaded.
-	const stage = options.stage ?? appInfo?.workspace.stages.local;
+	const stage = options.stage ?? workspace?.stages.local;
 	const credentials = stage
 		? await loadSecretsForApp(secretsRoot, stage, appName)
 		: {};
@@ -758,10 +771,10 @@ export async function prepareEntryCredentials(options: {
 	// An app that has adopted the constructs glob derives its containers, ports,
 	// and URLs from what it declares. The branch below is what it replaces:
 	// parsing a hand-written compose file for ports and rewriting URLs to match.
-	if (appInfo && usesConstructs(appInfo.workspace)) {
+	if (workspace && usesConstructs(workspace)) {
 		const { reconcileWorkspace } = await import('../reconcile/workspace.js');
-		const reconciled = await reconcileWorkspace(appInfo.workspace, {
-			stage: options.reconcileStage ?? appInfo.workspace.stages.local,
+		const reconciled = await reconcileWorkspace(workspace, {
+			stage: options.reconcileStage ?? workspace.stages.local,
 			start: options.startDocker ?? false,
 		});
 
