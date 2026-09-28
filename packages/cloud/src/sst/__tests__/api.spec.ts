@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { App } from '../App';
-import { Api } from '../aws/Api';
+import { Api, RoutesMissingEnvironment } from '../aws/Api';
 import { type GkmLinkable, ResourceType } from '../Linkable';
 
 /**
@@ -167,6 +167,7 @@ describe('Api', () => {
 				],
 			});
 
+		expect(build).toThrow(RoutesMissingEnvironment);
 		expect(build).toThrow(/Http POST \/pay[\s\S]*STRIPE_KEY/);
 		expect(build).toThrow(/Http GET \/mail[\s\S]*SMTP_URL/);
 	});

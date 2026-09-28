@@ -162,7 +162,7 @@ export class SNSSubscriber<TMessage extends PublishableMessage<string, any>>
 			const response = await this.sqsClient.send(createCommand);
 			this.queueUrl = response.QueueUrl!;
 		} else {
-			throw new Error('Queue must exist or createQueue option must be true');
+			throw new SnsQueueMissing(this.options.queueName);
 		}
 
 		// Get queue ARN
@@ -214,5 +214,18 @@ export class SNSSubscriber<TMessage extends PublishableMessage<string, any>>
 
 		const response = await this.connection.snsClient.send(command);
 		this.subscriptionArn = response.SubscriptionArn!;
+	}
+}
+
+/**
+ * A subscriber asked to use a queue it may not create. The SQS queue behind an
+ * SNS subscription has to exist first, or `createQueue` has to allow it.
+ */
+export class SnsQueueMissing extends Error {
+	constructor(readonly queueName: string | undefined) {
+		super(
+			`The SNS subscriber's queue${queueName ? ` "${queueName}"` : ''} is not created here: pass createQueue: true, or create the queue first.`,
+		);
+		this.name = 'SnsQueueMissing';
 	}
 }

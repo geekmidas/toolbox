@@ -1,3 +1,4 @@
+export { PgBossNotStarted } from './errors';
 export type { PgBossConnectionConfig } from './PgBossConnection';
 export { PgBossConnection } from './PgBossConnection';
 export { PgBossPublisher } from './PgBossPublisher';

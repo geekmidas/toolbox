@@ -16,7 +16,7 @@ export type {
 	MappedEvent,
 	PublishableMessage,
 } from './types';
-export { EventPublisherType } from './types';
+export { EventPublisherType, UnsupportedEventTransport } from './types';
 
 // Specific integrations should be imported via subpaths:
 // - @geekmidas/events/basic

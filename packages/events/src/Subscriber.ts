@@ -3,7 +3,7 @@ import type {
 	EventSubscriber,
 	PublishableMessage,
 } from './types';
-import { EventPublisherType } from './types';
+import { EventPublisherType, UnsupportedEventTransport } from './types';
 
 export class Subscriber {
 	/**
@@ -56,7 +56,10 @@ export class Subscriber {
 			}
 			// Future implementations for EventBridge, Kafka, etc.
 			default:
-				throw new Error(`Unsupported event subscriber type: ${url.protocol}`);
+				throw new UnsupportedEventTransport(
+					url.protocol.replace(':', ''),
+					'subscriber',
+				);
 		}
 	}
 
@@ -104,7 +107,7 @@ export class Subscriber {
 				);
 			}
 			default:
-				throw new Error(`Unsupported connection type: ${connection.type}`);
+				throw new UnsupportedEventTransport(connection.type, 'subscriber');
 		}
 	}
 }
