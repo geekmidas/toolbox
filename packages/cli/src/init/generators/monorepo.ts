@@ -7,7 +7,11 @@ import {
 	WORKSPACE_CONSTRUCTS_GLOB,
 	workspaceConstructsGlobs,
 } from '../constructs.js';
-import { DEPENDENCY_VERSIONS } from '../dependencies.js';
+import {
+	BIOME_SCHEMA,
+	DEPENDENCY_VERSIONS,
+	TOOLCHAIN_VERSIONS,
+} from '../dependencies.js';
 import type {
 	GeneratedFile,
 	TemplateConfig,
@@ -97,13 +101,13 @@ export function generateMonorepoFiles(
 			...deploy.dependencies,
 		},
 		devDependencies: {
-			'@biomejs/biome': '~2.3.0',
+			'@biomejs/biome': DEPENDENCY_VERSIONS['@biomejs/biome'],
 			'@geekmidas/cli': GEEKMIDAS_VERSIONS['@geekmidas/cli'],
-			esbuild: '~0.27.0',
-			tsx: '~4.20.0',
-			turbo: '~2.3.0',
-			typescript: '~5.8.2',
-			vitest: '~4.0.0',
+			esbuild: TOOLCHAIN_VERSIONS['esbuild'],
+			tsx: TOOLCHAIN_VERSIONS['tsx'],
+			turbo: DEPENDENCY_VERSIONS['turbo'],
+			typescript: TOOLCHAIN_VERSIONS['typescript'],
+			vitest: TOOLCHAIN_VERSIONS['vitest'],
 			...deploy.devDependencies,
 		},
 	};
@@ -119,7 +123,7 @@ export function generateMonorepoFiles(
 
 	// Root biome.json
 	const biomeConfig = {
-		$schema: 'https://biomejs.dev/schemas/2.3.0/schema.json',
+		$schema: BIOME_SCHEMA,
 		vcs: {
 			enabled: true,
 			clientKind: 'git',
@@ -175,7 +179,18 @@ export function generateMonorepoFiles(
 		tasks: {
 			build: {
 				dependsOn: ['^build'],
-				outputs: ['dist/**'],
+				// Turbo hashes a package's own files, and an app's constructs and
+				// the config naming them live above it, at the root. Without these,
+				// editing a construct replays a stale cached build. Root task config
+				// applies to every package, so a new app is covered with nothing
+				// generated. `$TURBO_ROOT$` needs turbo 2.4+.
+				inputs: [
+					'$TURBO_DEFAULT$',
+					'$TURBO_ROOT$/constructs/**/*.ts',
+					'$TURBO_ROOT$/gkm.config.ts',
+				],
+				// A backend's build is under `.gkm/`; a Next.js site's under `.next/`.
+				outputs: ['dist/**', '.gkm/**', '.next/**', '!.next/cache/**'],
 			},
 			dev: {
 				cache: false,

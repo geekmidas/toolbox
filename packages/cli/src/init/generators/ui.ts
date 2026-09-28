@@ -1,3 +1,4 @@
+import { DEPENDENCY_VERSIONS, TOOLCHAIN_VERSIONS } from '../dependencies.js';
 import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
 
 /**
@@ -31,32 +32,36 @@ export function generateUiPackageFiles(
 			'build:storybook': 'storybook build -o dist/storybook',
 		},
 		dependencies: {
-			'@radix-ui/react-dialog': '~1.1.4',
-			'@radix-ui/react-label': '~2.1.2',
-			'@radix-ui/react-separator': '~1.1.2',
-			'@radix-ui/react-slot': '~1.2.4',
-			'@radix-ui/react-tabs': '~1.1.2',
-			'@radix-ui/react-tooltip': '~1.1.6',
-			'class-variance-authority': '~0.7.1',
-			clsx: '^2.1.1',
-			'lucide-react': '~0.562.0',
-			'tailwind-merge': '~3.4.0',
+			'@radix-ui/react-dialog': DEPENDENCY_VERSIONS['@radix-ui/react-dialog'],
+			'@radix-ui/react-label': DEPENDENCY_VERSIONS['@radix-ui/react-label'],
+			'@radix-ui/react-separator':
+				DEPENDENCY_VERSIONS['@radix-ui/react-separator'],
+			'@radix-ui/react-slot': DEPENDENCY_VERSIONS['@radix-ui/react-slot'],
+			'@radix-ui/react-tabs': DEPENDENCY_VERSIONS['@radix-ui/react-tabs'],
+			'@radix-ui/react-tooltip': DEPENDENCY_VERSIONS['@radix-ui/react-tooltip'],
+			'class-variance-authority':
+				DEPENDENCY_VERSIONS['class-variance-authority'],
+			clsx: DEPENDENCY_VERSIONS['clsx'],
+			'lucide-react': DEPENDENCY_VERSIONS['lucide-react'],
+			'tailwind-merge': DEPENDENCY_VERSIONS['tailwind-merge'],
 		},
 		devDependencies: {
-			'@storybook/addon-a11y': '^8.4.7',
-			'@storybook/addon-essentials': '^8.4.7',
-			'@storybook/addon-interactions': '^8.4.7',
-			'@storybook/react': '^8.4.7',
-			'@storybook/react-vite': '^8.4.7',
-			'@tailwindcss/vite': '^4.0.0',
-			'@types/react': '^19.0.0',
-			'@types/react-dom': '^19.0.0',
-			react: '^19.0.0',
-			'react-dom': '^19.0.0',
-			storybook: '^8.4.7',
-			tailwindcss: '^4.0.0',
-			typescript: '^5.8.2',
-			vite: '^6.0.0',
+			'@storybook/addon-a11y': TOOLCHAIN_VERSIONS['@storybook/addon-a11y'],
+			'@storybook/addon-essentials':
+				TOOLCHAIN_VERSIONS['@storybook/addon-essentials'],
+			'@storybook/addon-interactions':
+				TOOLCHAIN_VERSIONS['@storybook/addon-interactions'],
+			'@storybook/react': TOOLCHAIN_VERSIONS['@storybook/react'],
+			'@storybook/react-vite': TOOLCHAIN_VERSIONS['@storybook/react-vite'],
+			'@tailwindcss/vite': DEPENDENCY_VERSIONS['@tailwindcss/vite'],
+			'@types/react': DEPENDENCY_VERSIONS['@types/react'],
+			'@types/react-dom': DEPENDENCY_VERSIONS['@types/react-dom'],
+			react: DEPENDENCY_VERSIONS['react'],
+			'react-dom': DEPENDENCY_VERSIONS['react-dom'],
+			storybook: TOOLCHAIN_VERSIONS['storybook'],
+			tailwindcss: DEPENDENCY_VERSIONS['tailwindcss'],
+			typescript: TOOLCHAIN_VERSIONS['typescript'],
+			vite: TOOLCHAIN_VERSIONS['vite@storybook'],
 		},
 		peerDependencies: {
 			react: '>=18.0.0',
