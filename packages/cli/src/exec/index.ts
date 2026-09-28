@@ -9,6 +9,14 @@ import {
 
 const logger = console;
 
+/** `gkm exec` was given nothing to run. */
+export class NoCommandSpecified extends Error {
+	constructor() {
+		super('No command specified. Usage: gkm exec -- <command>');
+		this.name = 'NoCommandSpecified';
+	}
+}
+
 /**
  * Options for the exec command.
  */
@@ -34,8 +42,8 @@ export async function execCommand(
 ): Promise<void> {
 	const cwd = options.cwd ?? process.cwd();
 
-	if (commandArgs.length === 0) {
-		throw new Error('No command specified. Usage: gkm exec -- <command>');
+	if (!commandArgs[0]) {
+		throw new NoCommandSpecified();
 	}
 
 	// Load .env files
@@ -69,11 +77,7 @@ export async function execCommand(
 	await createCredentialsPreload(preloadPath, secretsJsonPath);
 
 	// Build command
-	const [cmd, ...args] = commandArgs;
-
-	if (!cmd) {
-		throw new Error('No command specified');
-	}
+	const [cmd, ...args] = commandArgs as [string, ...string[]];
 
 	logger.log(`🚀 Running: ${[cmd, ...args].join(' ')}`);
 
