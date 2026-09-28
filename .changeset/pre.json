@@ -42,6 +42,7 @@
     "deploy-github-oidc",
     "drop-free-standing-builders",
     "drop-generate-react-query",
+    "fresh-scaffold-tests-run",
     "init-deploy-target",
     "init-github-actions",
     "init-logger-deps",
