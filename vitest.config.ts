@@ -23,6 +23,10 @@ export default defineConfig({
 				'**/sniffer-hooks.ts',
 				'**/sniffer-worker.ts',
 				'**/sniffer-envkit-patch.ts',
+				'**/sniffer-routes-worker.ts',
+				// The commander wiring: each command's options and a call into the
+				// function that does the work, which has tests of its own.
+				'packages/cli/src/index.ts',
 				'**/__fixtures__/**',
 			],
 			include: ['packages/*/src/**/*.{ts,tsx}'],

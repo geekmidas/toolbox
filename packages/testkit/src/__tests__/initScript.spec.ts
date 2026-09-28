@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { POSTGRES_PORT } from '../../test/ports';
 import { parseInitScript, runInitScript } from '../initScript';
 
 describe('parseInitScript', () => {
@@ -184,7 +185,7 @@ echo "Database initialization complete!"
 
 const PG_CONFIG = {
 	host: 'localhost',
-	port: 5432,
+	port: POSTGRES_PORT,
 	user: 'geekmidas',
 	password: 'geekmidas',
 };

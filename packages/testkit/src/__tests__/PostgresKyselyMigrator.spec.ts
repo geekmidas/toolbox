@@ -11,6 +11,7 @@ import {
 	vi,
 } from 'vitest';
 import { createTestDatabase } from '../../test/helpers';
+import { POSTGRES_PORT } from '../../test/ports';
 import { PostgresKyselyMigrator } from '../PostgresKyselyMigrator';
 import { PostgresMigrator } from '../PostgresMigrator';
 
@@ -90,7 +91,7 @@ describe('PostgresKyselyMigrator', () => {
 				dialect: new PostgresDialect({
 					pool: new Pool({
 						host: 'localhost',
-						port: 5432,
+						port: POSTGRES_PORT,
 						user: 'geekmidas',
 						password: 'geekmidas',
 						database: testDbName,
@@ -100,7 +101,7 @@ describe('PostgresKyselyMigrator', () => {
 
 			const provider = new TestMigrationProvider();
 			const migrator = new PostgresKyselyMigrator({
-				uri: `postgresql://geekmidas:geekmidas@localhost:5432/${testDbName}`,
+				uri: `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${testDbName}`,
 				db,
 				provider,
 			});
@@ -113,13 +114,13 @@ describe('PostgresKyselyMigrator', () => {
 	describe('migrate method', () => {
 		it('should apply migrations successfully', async () => {
 			const newDbName = `test_migrate_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${newDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${newDbName}`;
 
 			const db = new Kysely<TestSchema>({
 				dialect: new PostgresDialect({
 					pool: new Pool({
 						host: 'localhost',
-						port: 5432,
+						port: POSTGRES_PORT,
 						user: 'geekmidas',
 						password: 'geekmidas',
 						database: newDbName,
@@ -183,7 +184,7 @@ describe('PostgresKyselyMigrator', () => {
 			// Verify tables were created
 			const client = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: newDbName,
@@ -213,13 +214,13 @@ describe('PostgresKyselyMigrator', () => {
 
 		it('should handle migration errors', async () => {
 			const errorDbName = `test_migrate_error_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${errorDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${errorDbName}`;
 
 			const db = new Kysely<TestSchema>({
 				dialect: new PostgresDialect({
 					pool: new Pool({
 						host: 'localhost',
-						port: 5432,
+						port: POSTGRES_PORT,
 						user: 'geekmidas',
 						password: 'geekmidas',
 						database: errorDbName,
@@ -258,7 +259,7 @@ describe('PostgresKyselyMigrator', () => {
 			// Cleanup the created database
 			const cleanupClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: 'postgres',
@@ -280,13 +281,13 @@ describe('PostgresKyselyMigrator', () => {
 
 		it('should destroy database connection after migrations', async () => {
 			const destroyDbName = `test_destroy_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${destroyDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${destroyDbName}`;
 
 			const db = new Kysely<TestSchema>({
 				dialect: new PostgresDialect({
 					pool: new Pool({
 						host: 'localhost',
-						port: 5432,
+						port: POSTGRES_PORT,
 						user: 'geekmidas',
 						password: 'geekmidas',
 						database: destroyDbName,
@@ -325,13 +326,13 @@ describe('PostgresKyselyMigrator', () => {
 	describe('integration with PostgresMigrator', () => {
 		it('should work with complete workflow', async () => {
 			const integrationDbName = `test_integration_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${integrationDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${integrationDbName}`;
 
 			const db = new Kysely<TestSchema>({
 				dialect: new PostgresDialect({
 					pool: new Pool({
 						host: 'localhost',
-						port: 5432,
+						port: POSTGRES_PORT,
 						user: 'geekmidas',
 						password: 'geekmidas',
 						database: integrationDbName,
@@ -414,7 +415,7 @@ describe('PostgresKyselyMigrator', () => {
 			// Verify final schema
 			const verifyClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: integrationDbName,
@@ -453,13 +454,13 @@ describe('PostgresKyselyMigrator', () => {
 
 		it('should handle empty migrations', async () => {
 			const emptyDbName = `test_empty_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${emptyDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${emptyDbName}`;
 
 			const db = new Kysely<TestSchema>({
 				dialect: new PostgresDialect({
 					pool: new Pool({
 						host: 'localhost',
-						port: 5432,
+						port: POSTGRES_PORT,
 						user: 'geekmidas',
 						password: 'geekmidas',
 						database: emptyDbName,
@@ -487,13 +488,13 @@ describe('PostgresKyselyMigrator', () => {
 
 		it('should work with FileMigrationProvider pattern', async () => {
 			const fileProviderDbName = `test_file_provider_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${fileProviderDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${fileProviderDbName}`;
 
 			const db = new Kysely<TestSchema>({
 				dialect: new PostgresDialect({
 					pool: new Pool({
 						host: 'localhost',
-						port: 5432,
+						port: POSTGRES_PORT,
 						user: 'geekmidas',
 						password: 'geekmidas',
 						database: fileProviderDbName,
@@ -553,7 +554,7 @@ describe('PostgresKyselyMigrator', () => {
 			// Verify both tables exist
 			const verifyClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: fileProviderDbName,
@@ -580,14 +581,14 @@ describe('PostgresKyselyMigrator', () => {
 	describe('afterCreate hook', () => {
 		it('should call afterCreate before migrations run', async () => {
 			const hookDbName = `test_kysely_hook_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${hookDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${hookDbName}`;
 			const callOrder: string[] = [];
 
 			const db = new Kysely<TestSchema>({
 				dialect: new PostgresDialect({
 					pool: new Pool({
 						host: 'localhost',
-						port: 5432,
+						port: POSTGRES_PORT,
 						user: 'geekmidas',
 						password: 'geekmidas',
 						database: hookDbName,
@@ -625,13 +626,13 @@ describe('PostgresKyselyMigrator', () => {
 
 		it('should allow creating users and schemas before migrations', async () => {
 			const schemaDbName = `test_kysely_schema_hook_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${schemaDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${schemaDbName}`;
 
 			const db = new Kysely<TestSchema>({
 				dialect: new PostgresDialect({
 					pool: new Pool({
 						host: 'localhost',
-						port: 5432,
+						port: POSTGRES_PORT,
 						user: 'geekmidas',
 						password: 'geekmidas',
 						database: schemaDbName,
@@ -664,7 +665,7 @@ describe('PostgresKyselyMigrator', () => {
 				afterCreate: async () => {
 					const client = new Client({
 						host: 'localhost',
-						port: 5432,
+						port: POSTGRES_PORT,
 						user: 'geekmidas',
 						password: 'geekmidas',
 						database: schemaDbName,
@@ -684,13 +685,13 @@ describe('PostgresKyselyMigrator', () => {
 	describe('error scenarios', () => {
 		it('should handle provider errors', async () => {
 			const providerErrorDbName = `test_provider_error_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${providerErrorDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${providerErrorDbName}`;
 
 			const db = new Kysely<TestSchema>({
 				dialect: new PostgresDialect({
 					pool: new Pool({
 						host: 'localhost',
-						port: 5432,
+						port: POSTGRES_PORT,
 						user: 'geekmidas',
 						password: 'geekmidas',
 						database: providerErrorDbName,
@@ -717,7 +718,7 @@ describe('PostgresKyselyMigrator', () => {
 			// Cleanup
 			const cleanupClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: 'postgres',
@@ -734,13 +735,13 @@ describe('PostgresKyselyMigrator', () => {
 
 		it('should handle invalid SQL in migrations', async () => {
 			const invalidSqlDbName = `test_invalid_sql_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${invalidSqlDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${invalidSqlDbName}`;
 
 			const db = new Kysely<TestSchema>({
 				dialect: new PostgresDialect({
 					pool: new Pool({
 						host: 'localhost',
-						port: 5432,
+						port: POSTGRES_PORT,
 						user: 'geekmidas',
 						password: 'geekmidas',
 						database: invalidSqlDbName,
@@ -776,7 +777,7 @@ describe('PostgresKyselyMigrator', () => {
 			// Cleanup
 			const cleanupClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: 'postgres',

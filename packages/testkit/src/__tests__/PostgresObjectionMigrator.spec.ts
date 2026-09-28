@@ -13,6 +13,7 @@ import {
 	vi,
 } from 'vitest';
 import { createTestDatabase } from '../../test/helpers';
+import { POSTGRES_PORT } from '../../test/ports';
 import { PostgresObjectionMigrator } from '../PostgresObjectionMigrator';
 
 describe('PostgresObjectionMigrator', () => {
@@ -94,11 +95,11 @@ exports.down = function(knex) {
 		it('should create a PostgresObjectionMigrator instance', () => {
 			const knexInstance = knex({
 				client: 'pg',
-				connection: `postgresql://geekmidas:geekmidas@localhost:5432/${testDbName}`,
+				connection: `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${testDbName}`,
 			});
 
 			const migrator = new PostgresObjectionMigrator({
-				uri: `postgresql://geekmidas:geekmidas@localhost:5432/${testDbName}`,
+				uri: `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${testDbName}`,
 				knex: knexInstance,
 			});
 
@@ -110,7 +111,7 @@ exports.down = function(knex) {
 	describe('migrate method', () => {
 		it('should run migrations to latest', async () => {
 			const newDbName = `test_migrate_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${newDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${newDbName}`;
 
 			const knexInstance = knex({
 				client: 'pg',
@@ -138,7 +139,7 @@ exports.down = function(knex) {
 			// Verify tables were created
 			const verifyClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: newDbName,
@@ -162,7 +163,7 @@ exports.down = function(knex) {
 
 		it('should handle no pending migrations', async () => {
 			const newDbName = `test_no_pending_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${newDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${newDbName}`;
 
 			// First, create and migrate the database
 			const knexInstance1 = knex({
@@ -206,7 +207,7 @@ exports.down = function(knex) {
 
 		it('should handle migration errors', async () => {
 			const newDbName = `test_migration_error_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${newDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${newDbName}`;
 
 			// Create a bad migration file
 			const badMigrationsDir = path.join(
@@ -254,7 +255,7 @@ exports.down = function(knex) {
 			await fs.rm(badMigrationsDir, { recursive: true, force: true });
 			const cleanupClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: 'postgres',
@@ -266,7 +267,7 @@ exports.down = function(knex) {
 
 		it('should destroy knex connection after migration', async () => {
 			const newDbName = `test_destroy_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${newDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${newDbName}`;
 
 			const knexInstance = knex({
 				client: 'pg',
@@ -294,7 +295,7 @@ exports.down = function(knex) {
 	describe('rollback method', () => {
 		it('should rollback last migration batch', async () => {
 			const newDbName = `test_rollback_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${newDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${newDbName}`;
 
 			// First, create and migrate the database
 			const knexInstance1 = knex({
@@ -338,7 +339,7 @@ exports.down = function(knex) {
 			// Verify tables were dropped
 			const verifyClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: newDbName,
@@ -358,12 +359,12 @@ exports.down = function(knex) {
 
 		it('should handle no migrations to rollback', async () => {
 			const newDbName = `test_no_rollback_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${newDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${newDbName}`;
 
 			// Create database without running migrations
 			const createClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: 'postgres',
@@ -392,7 +393,7 @@ exports.down = function(knex) {
 			// Cleanup
 			const cleanupClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: 'postgres',
@@ -404,7 +405,7 @@ exports.down = function(knex) {
 
 		it('should handle rollback errors', async () => {
 			const newDbName = `test_rollback_error_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${newDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${newDbName}`;
 
 			const knexInstance = knex({
 				client: 'pg',
@@ -433,7 +434,7 @@ exports.down = function(knex) {
 	describe('status method', () => {
 		it('should return migration status', async () => {
 			const newDbName = `test_status_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${newDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${newDbName}`;
 
 			// First, create and partially migrate the database
 			const knexInstance1 = knex({
@@ -477,7 +478,7 @@ exports.down = function(knex) {
 
 		it('should destroy connection after getting status', async () => {
 			const newDbName = `test_status_destroy_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${newDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${newDbName}`;
 
 			const knexInstance = knex({
 				client: 'pg',
@@ -497,7 +498,7 @@ exports.down = function(knex) {
 			// Create database first
 			const createClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: 'postgres',
@@ -513,7 +514,7 @@ exports.down = function(knex) {
 			// Cleanup
 			const cleanupClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: 'postgres',
@@ -527,7 +528,7 @@ exports.down = function(knex) {
 	describe('integration scenarios', () => {
 		it('should handle complete workflow with complex migrations', async () => {
 			const integrationDbName = `test_integration_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${integrationDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${integrationDbName}`;
 
 			const knexInstance = knex({
 				client: 'pg',
@@ -548,7 +549,7 @@ exports.down = function(knex) {
 			// Verify we can insert data into the migrated tables
 			const testClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: integrationDbName,
@@ -584,7 +585,7 @@ exports.down = function(knex) {
 
 		it('should work with transaction-based tests', async () => {
 			const transactionDbName = `test_transaction_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${transactionDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${transactionDbName}`;
 
 			const knexInstance = knex({
 				client: 'pg',

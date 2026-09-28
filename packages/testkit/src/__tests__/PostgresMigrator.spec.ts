@@ -10,6 +10,7 @@ import {
 	vi,
 } from 'vitest';
 import { createTestDatabase } from '../../test/helpers';
+import { POSTGRES_PORT } from '../../test/ports';
 import { PostgresMigrator } from '../PostgresMigrator';
 
 // Create a concrete implementation for testing
@@ -61,7 +62,7 @@ describe('PostgresMigrator', () => {
 	describe('constructor', () => {
 		it('should create a PostgresMigrator instance', () => {
 			const migrator = new TestPostgresMigrator(
-				`postgresql://geekmidas:geekmidas@localhost:5432/${testDbName}`,
+				`postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${testDbName}`,
 			);
 			expect(migrator).toBeInstanceOf(PostgresMigrator);
 		});
@@ -70,7 +71,7 @@ describe('PostgresMigrator', () => {
 	describe('start method', () => {
 		it('should create database, migrate, and return cleanup function', async () => {
 			const newDbName = `test_start_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${newDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${newDbName}`;
 			const migrator = new TestPostgresMigrator(uri);
 
 			// Add a simple migration to verify it runs
@@ -94,7 +95,7 @@ describe('PostgresMigrator', () => {
 
 		it('should handle existing database', async () => {
 			// Use the already created test database
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${testDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${testDbName}`;
 			const migrator = new TestPostgresMigrator(uri);
 
 			let migrationRan = false;
@@ -113,7 +114,7 @@ describe('PostgresMigrator', () => {
 
 		it('should handle URI with query parameters', async () => {
 			const queryDbName = `test_query_params_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${queryDbName}?ssl=false&timeout=30`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${queryDbName}?ssl=false&timeout=30`;
 			const migrator = new TestPostgresMigrator(uri);
 
 			const cleanup = await migrator.start();
@@ -126,7 +127,7 @@ describe('PostgresMigrator', () => {
 
 		it('should clean up connections even if migration fails', async () => {
 			const failDbName = `test_fail_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${failDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${failDbName}`;
 			const migrator = new TestPostgresMigrator(uri);
 			migrator.migrateError = new Error('Migration failed');
 
@@ -138,7 +139,7 @@ describe('PostgresMigrator', () => {
 			// Cleanup the failed database
 			const cleanupClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: 'postgres',
@@ -153,7 +154,7 @@ describe('PostgresMigrator', () => {
 
 		it('should return cleanup function that drops database', async () => {
 			const cleanupDbName = `test_cleanup_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${cleanupDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${cleanupDbName}`;
 			const migrator = new TestPostgresMigrator(uri);
 
 			const cleanup = await migrator.start();
@@ -164,7 +165,7 @@ describe('PostgresMigrator', () => {
 			// Verify database exists before cleanup
 			const checkClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: 'postgres',
@@ -183,7 +184,7 @@ describe('PostgresMigrator', () => {
 			// Verify database was dropped
 			const checkClient2 = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: 'postgres',
@@ -202,7 +203,7 @@ describe('PostgresMigrator', () => {
 		it('should handle connection errors gracefully', async () => {
 			// Use invalid credentials to test connection error
 			const badDbName = `test_bad_connection_${Date.now()}`;
-			const uri = `postgresql://invalid_user:invalid_pass@localhost:5432/${badDbName}`;
+			const uri = `postgresql://invalid_user:invalid_pass@localhost:${POSTGRES_PORT}/${badDbName}`;
 			const migrator = new TestPostgresMigrator(uri);
 
 			await expect(migrator.start()).rejects.toThrow();
@@ -211,7 +212,7 @@ describe('PostgresMigrator', () => {
 		it('should handle invalid database names', async () => {
 			// Use a database name with invalid characters
 			const invalidDbName = 'test-invalid-db-name!';
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${invalidDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${invalidDbName}`;
 			const migrator = new TestPostgresMigrator(uri);
 
 			await expect(migrator.start).rejects.toThrow();
@@ -221,7 +222,7 @@ describe('PostgresMigrator', () => {
 	describe('URI parsing', () => {
 		it('should parse different URI formats correctly', async () => {
 			const testDbName = `test_uri_parsing_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${testDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${testDbName}`;
 			const migrator = new TestPostgresMigrator(uri);
 
 			const cleanup = await migrator.start();
@@ -236,7 +237,7 @@ describe('PostgresMigrator', () => {
 	describe('error handling', () => {
 		it('should propagate migration errors', async () => {
 			const errorDbName = `test_migration_error_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${errorDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${errorDbName}`;
 			const migrator = new TestPostgresMigrator(uri);
 			const migrationError = new Error('Custom migration error');
 			migrator.migrateError = migrationError;
@@ -246,7 +247,7 @@ describe('PostgresMigrator', () => {
 			// Cleanup the created database
 			const cleanupClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: 'postgres',
@@ -261,7 +262,7 @@ describe('PostgresMigrator', () => {
 
 		it('should handle cleanup errors gracefully', async () => {
 			const cleanupErrorDbName = `test_cleanup_error_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${cleanupErrorDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${cleanupErrorDbName}`;
 			const migrator = new TestPostgresMigrator(uri);
 
 			const cleanup = await migrator.start();
@@ -269,7 +270,7 @@ describe('PostgresMigrator', () => {
 			// Manually drop the database to cause a cleanup error
 			const adminClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: 'postgres',
@@ -288,7 +289,7 @@ describe('PostgresMigrator', () => {
 	describe('afterCreate hook', () => {
 		it('should call afterCreate after database creation and before migrate', async () => {
 			const hookDbName = `test_after_create_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${hookDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${hookDbName}`;
 			const callOrder: string[] = [];
 
 			const migrator = new TestPostgresMigrator(uri, async (receivedUri) => {
@@ -309,7 +310,7 @@ describe('PostgresMigrator', () => {
 
 		it('should skip afterCreate when not provided', async () => {
 			const noHookDbName = `test_no_hook_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${noHookDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${noHookDbName}`;
 			const migrator = new TestPostgresMigrator(uri);
 
 			const cleanup = await migrator.start();
@@ -321,7 +322,7 @@ describe('PostgresMigrator', () => {
 
 		it('should propagate afterCreate errors and not run migrate', async () => {
 			const errorHookDbName = `test_hook_error_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${errorHookDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${errorHookDbName}`;
 
 			const migrator = new TestPostgresMigrator(uri, async () => {
 				throw new Error('afterCreate failed');
@@ -333,7 +334,7 @@ describe('PostgresMigrator', () => {
 			// Cleanup the created database
 			const cleanupClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: 'postgres',
@@ -350,12 +351,12 @@ describe('PostgresMigrator', () => {
 
 		it('should allow afterCreate to set up database objects before migrations', async () => {
 			const setupDbName = `test_hook_setup_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${setupDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${setupDbName}`;
 
 			const migrator = new TestPostgresMigrator(uri, async () => {
 				const client = new Client({
 					host: 'localhost',
-					port: 5432,
+					port: POSTGRES_PORT,
 					user: 'geekmidas',
 					password: 'geekmidas',
 					database: setupDbName,
@@ -371,7 +372,7 @@ describe('PostgresMigrator', () => {
 				// Verify schema exists during migration
 				const client = new Client({
 					host: 'localhost',
-					port: 5432,
+					port: POSTGRES_PORT,
 					user: 'geekmidas',
 					password: 'geekmidas',
 					database: setupDbName,
@@ -395,7 +396,7 @@ describe('PostgresMigrator', () => {
 			// TypeScript ensures abstract methods are implemented
 			// This test verifies the TestPostgresMigrator implements migrate
 			const migrator = new TestPostgresMigrator(
-				`postgresql://geekmidas:geekmidas@localhost:5432/${testDbName}`,
+				`postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${testDbName}`,
 			);
 			expect(typeof migrator.migrate).toBe('function');
 		});
@@ -404,14 +405,14 @@ describe('PostgresMigrator', () => {
 	describe('integration scenarios', () => {
 		it('should handle complete workflow', async () => {
 			const integrationDbName = `test_integration_${Date.now()}`;
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${integrationDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${integrationDbName}`;
 			const migrator = new TestPostgresMigrator(uri);
 
 			// Add a migration that creates a table
 			migrator.addMigration(async () => {
 				const client = new Client({
 					host: 'localhost',
-					port: 5432,
+					port: POSTGRES_PORT,
 					user: 'geekmidas',
 					password: 'geekmidas',
 					database: integrationDbName,
@@ -437,7 +438,7 @@ describe('PostgresMigrator', () => {
 			// Verify the table was created
 			const verifyClient = new Client({
 				host: 'localhost',
-				port: 5432,
+				port: POSTGRES_PORT,
 				user: 'geekmidas',
 				password: 'geekmidas',
 				database: integrationDbName,
@@ -456,7 +457,7 @@ describe('PostgresMigrator', () => {
 
 		it('should handle database that already exists and cleanup', async () => {
 			// Use the existing test database
-			const uri = `postgresql://geekmidas:geekmidas@localhost:5432/${testDbName}`;
+			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${testDbName}`;
 			const migrator = new TestPostgresMigrator(uri);
 
 			// Start migration (database already exists)

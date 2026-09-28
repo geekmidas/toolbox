@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { POSTGRES_PORT } from '../../../../testkit/test/ports';
 import type { PublishableMessage } from '../../types';
 import { PgBossConnection } from '../PgBossConnection';
 import { PgBossPublisher } from '../PgBossPublisher';
@@ -9,9 +10,8 @@ type TestMessage =
 	| PublishableMessage<'user.created', { userId: string }>
 	| PublishableMessage<'user.updated', { userId: string; name: string }>;
 
-const POSTGRES_URL = 'postgres://geekmidas:geekmidas@localhost:5432/geekmidas';
-const PGBOSS_CONNECTION_STRING =
-	'pgboss://geekmidas:geekmidas@localhost:5432/geekmidas?schema=pgboss_test';
+const POSTGRES_URL = `postgres://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/geekmidas`;
+const PGBOSS_CONNECTION_STRING = `pgboss://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/geekmidas?schema=pgboss_test`;
 
 const TEST_SCHEMAS = [
 	'pgboss_conn_test',
