@@ -1,7 +1,6 @@
 # Tranche 2: the build and test toolchain
 
-**Status: done, TypeScript at 6.0** (#58). Tracked in #40; TypeScript 7 is
-blocked on the tools listed in step 6.
+**Status: done** (#58, then TypeScript 7). Tracked in #40.
 
 Deferred from [tranche 1](./tranche-1-dependencies.md) because the toolchain
 changes how every package compiles and runs. Kept separate so that a failure
@@ -67,22 +66,28 @@ candidate cause:
    interactions are core now, so only `addon-docs` and `addon-a11y` remain;
    stories import types from `@storybook/react-vite`; backgrounds use
    `options` and `initialGlobals`.
-6. **TypeScript: 6.0, not 7.** TypeScript 7's package ships the native compiler
-   and a new `unstable/*` API, not the classic compiler API — and three things
-   on our path still need the classic one:
-   - **`openapi-typescript`** (a runtime dependency of the CLI, driving
-     `openapi-react-query`): latest 7.13 supports `typescript ^5.x` and builds
-     its output through the compiler API.
-   - **Storybook's docgen** (`@joshwooding/vite-plugin-react-docgen-typescript`
-     0.9): `typescript >=4.3 <7 || >=7.1.0-0` — it skips 7.0 explicitly.
-   - **Next.js 15**, which typechecks through the compiler API in
-     `next build` (kitchen-sink's admin, and every Next scaffold).
+6. **TypeScript 7.** First 6.0 (#58): the last JavaScript compiler, which moved
+   `types` to default `[]` — so the base config names `node` — and deprecated
+   `baseUrl`. Then 7.0, the native compiler, whose package ships a new
+   `unstable/*` API instead of the classic compiler API. Three things on our
+   path needed the classic one, and each went away first:
+   - **`openapi-typescript`**, run by `gkm generate:react-query`: the command
+     and the dependency were deleted (#66) once our own generator was verified
+     against it (#65).
+   - **Storybook's TypeScript docgen**, which skips 7.0: Storybook uses
+     `react-docgen` instead (#67).
+   - **Next.js 15**, which typechecked through the compiler API in
+     `next build`: Next 16 runs the project's own `tsc` (#67).
 
-   tsdown is ready (rolldown-plugin-dts 0.28 accepts `~7.0.0` and generates
-   declarations with tsgo). 6.0 is the last JavaScript compiler and keeps the
-   API; it moved `types` to default `[]`, so the base config names `node`, and
-   deprecates `baseUrl`, which kitchen-sink no longer sets. **7 follows when
-   `openapi-typescript` supports it and TypeScript 7.1 ships.**
+   What 7 itself asked for: declarations go through tsgo (rolldown-plugin-dts
+   0.28 picks it when 7 is installed), which emits nothing for a JSON entry —
+   so `packages/client/src/openapi.json`, a stale file nothing used, was
+   deleted; one `@types/react` for the workspace (an override on
+   VitePress's `@docsearch/react`, held to the list by `check:deps`), because 7
+   resolved the global `React` namespace to the hoisted 18 where 6 had picked
+   19; and a cast in cloud's `fromManifest` that 7 checks and 6 did not. The
+   20 errors 7 reports inside SST's own platform source stay outside
+   `ts:check:sst`, as before.
 
 ## Done when
 
