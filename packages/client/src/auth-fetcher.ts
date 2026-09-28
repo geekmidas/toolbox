@@ -1,4 +1,5 @@
 import { TypedFetcher } from './fetcher';
+import { methodCalls } from './methods';
 import type {
 	ExtractEndpointResponse,
 	FetcherOptions,
@@ -221,7 +222,8 @@ export function createAuthAwareFetcher<
 		return baseFetcher.request(endpoint, mergedConfig);
 	};
 
-	return fetcher as TypedApiFunction<Paths>;
+	const api = fetcher as TypedApiFunction<Paths>;
+	return Object.assign(api, methodCalls<Paths>(api));
 }
 
 /**

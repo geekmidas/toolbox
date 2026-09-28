@@ -10,4 +10,5 @@
 export * from './auth-fetcher';
 export * from './fetcher';
 export * from './infer';
+export * from './methods';
 export * from './types';

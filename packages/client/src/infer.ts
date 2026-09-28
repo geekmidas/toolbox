@@ -1,4 +1,5 @@
 import type {
+	ConvertRouteParams,
 	Endpoint,
 	EndpointSchemas,
 } from '@geekmidas/constructs/endpoints';
@@ -117,8 +118,14 @@ export type InferOpenApiFromEndpoint<T> =
 		any
 	>
 		? {
+				// Keyed the way the endpoint is served and documented — `/users/{id}`,
+				// not the `/users/:id` it was declared with. Keyed by the declared
+				// form, no route with a parameter could be called by its OpenAPI
+				// path, and no path parameter was inferred at all.
 				paths: {
-					[K in TRoute]: InferRouteParameters<TRoute> & {
+					[K in ConvertRouteParams<TRoute>]: InferRouteParameters<
+						ConvertRouteParams<TRoute>
+					> & {
 						[M in LowercaseMethod<TMethod>]: InferOperation<TInput, TOutput>;
 					};
 				};

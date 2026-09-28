@@ -1,4 +1,5 @@
 import qs from 'qs';
+import { methodCalls } from './methods';
 import type {
 	EndpointString,
 	ErrorTransformer,
@@ -6,6 +7,7 @@ import type {
 	FetcherOptions,
 	FilteredRequestConfig,
 	ParseEndpoint,
+	TypedApiFunction,
 	TypedEndpoint,
 	WrappedResult,
 } from './types';
@@ -160,7 +162,7 @@ export function createTypedFetcher<Paths>(options?: FetcherOptions) {
 		config?: FilteredRequestConfig<Paths, T>,
 	) => fetcher.request(endpoint, config);
 
-	return Object.assign(fn, {
+	return Object.assign(fn, methodCalls<Paths>(fn as TypedApiFunction<Paths>), {
 		wrap: <E = unknown>(onError?: ErrorTransformer<E>) =>
 			Object.assign(fetcher.wrap(onError), fn, {
 				wrap: undefined,

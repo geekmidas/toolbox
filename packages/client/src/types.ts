@@ -35,10 +35,15 @@ export type ExtractRequestBody<
 	Paths,
 	Route extends OpenAPIRoutes<Paths>,
 	Method extends ExtractMethod<Paths, Route>,
-> = Paths[Route][Method] extends {
-	requestBody?: { content?: { 'application/json'?: infer B } };
-}
-	? B
+> = Paths[Route][Method] extends { requestBody?: infer RB }
+	? // An absent body is declared `requestBody?: never`, which reads as
+		// `undefined` — and `undefined` matches `{ content?: … }` with `B`
+		// inferred as `unknown`, so a GET accepted any body at all.
+		[NonNullable<RB>] extends [never]
+		? never
+		: NonNullable<RB> extends { content?: { 'application/json'?: infer B } }
+			? B
+			: never
 	: never;
 
 export type ExtractResponse<
@@ -133,7 +138,8 @@ export type ExtractEndpointConfig<
  * Build a request config type where:
  * - `params` is required if the endpoint has path parameters
  * - `body` is required if the endpoint has a request body
- * - `query` and `headers` are always optional
+ * - `query` is required if it has a required key, optional otherwise
+ * - `headers` is always optional
  */
 export type FilteredRequestConfig<
 	Paths,
@@ -160,8 +166,12 @@ type BuildRequestConfig<TParams, TQuery, TBody> = SimplifyIntersection<
 	([TParams] extends [never] ? {} : { params: TParams }) &
 		// body: required if not never
 		([TBody] extends [never] ? {} : { body: TBody }) &
-		// query: optional if not never
-		([TQuery] extends [never] ? {} : { query?: TQuery }) & {
+		// query: required when it has a required key, optional otherwise
+		([TQuery] extends [never]
+			? {}
+			: {} extends TQuery
+				? { query?: TQuery }
+				: { query: TQuery }) & {
 			// headers: always optional
 			headers?: Record<string, string>;
 		}
@@ -171,6 +181,13 @@ type BuildRequestConfig<TParams, TQuery, TBody> = SimplifyIntersection<
  * Simplify intersection types for better IDE display
  */
 type SimplifyIntersection<T> = { [K in keyof T]: T[K] };
+
+/** Whether a query has a key the caller must supply. */
+type HasRequiredQuery<TQuery> = [TQuery] extends [never]
+	? false
+	: {} extends TQuery
+		? false
+		: true;
 
 /**
  * Check if the config object is required (has any required fields)
@@ -183,7 +200,9 @@ export type IsConfigRequired<
 		? Lowercase<Method> extends ExtractMethod<Paths, Route>
 			? ExtractPathParams<Paths, Route> extends never
 				? ExtractRequestBody<Paths, Route, Lowercase<Method>> extends never
-					? false
+					? HasRequiredQuery<
+							ExtractQueryParams<Paths, Route, Lowercase<Method>>
+						>
 					: true
 				: true
 			: false
