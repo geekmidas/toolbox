@@ -25,7 +25,6 @@ const base: TemplateOptions = {
 	name: 'beetlefit',
 	template: 'api',
 	telescope: true,
-	database: true,
 	studio: true,
 	loggerType: 'pino',
 	routesStructure: 'centralized-endpoints',
@@ -35,7 +34,7 @@ const base: TemplateOptions = {
 	deployTarget: 'sst',
 	region: 'eu-west-1',
 	stages: { local: 'dev', deployed: ['prod'], protected: ['prod'] },
-	services: { db: true, cache: true, mail: true, storage: true },
+	constructs: { database: true, cache: true, uploads: true, mail: true },
 };
 
 /** Every file a scaffold of this shape writes that pins anything. */
