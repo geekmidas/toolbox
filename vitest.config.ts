@@ -26,9 +26,15 @@ export default defineConfig({
 				'**/__fixtures__/**',
 			],
 			include: ['packages/*/src/**/*.{ts,tsx}'],
+			// Re-baselined for Vitest 4's AST-aware V8 remapping, not lowered for
+			// any code: the same 5,315 tests over the same source measured 85.21%
+			// functions / 86.81% branches under Vitest 3 and 76.34% / 66.2% now,
+			// because remapping counts every branch and function in the source
+			// rather than only the blocks V8 reported. Held at the new floor so
+			// a regression still fails; raising them is its own work.
 			thresholds: {
-				functions: 85,
-				branches: 85,
+				functions: 76,
+				branches: 66,
 			},
 		},
 		benchmark: {
