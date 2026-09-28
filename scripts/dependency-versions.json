@@ -2,9 +2,6 @@
 	"@apidevtools/swagger-parser": {
 		"dependencies": "~13.1.0"
 	},
-	"@better-auth/test-utils": {
-		"devDependencies": "~1.7.6"
-	},
 	"@aws-sdk/client-iam": {
 		"dependencies": "~3.1136.0"
 	},
@@ -34,6 +31,9 @@
 	"@aws-sdk/s3-request-presigner": {
 		"dependencies": "~3.844.0",
 		"peerDependencies": ">=3.1136.0"
+	},
+	"@better-auth/test-utils": {
+		"devDependencies": "~1.7.6"
 	},
 	"@biomejs/biome": {
 		"devDependencies": "~2.3.11"
@@ -259,7 +259,8 @@
 		"peerDependencies": ">=1.39.0"
 	},
 	"@valibot/to-json-schema": {
-		"peerDependencies": ">=1.8.0"
+		"peerDependencies": ">=1.8.0",
+		"devDependencies": "~1.8.0"
 	},
 	"@vitejs/plugin-react": {
 		"devDependencies": "^6.1.1"
@@ -465,6 +466,9 @@
 	},
 	"typescript": {
 		"devDependencies": "~6.0.3"
+	},
+	"valibot": {
+		"devDependencies": "~1.5.0"
 	},
 	"vite": {
 		"devDependencies": "~8.3.1"
