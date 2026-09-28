@@ -15,7 +15,12 @@ import {
 	secretsExist,
 	writeStageSecrets,
 } from '../secrets/storage.js';
-import { isSSMConfigured, pullSecrets, pushSecrets } from '../secrets/sync.js';
+import { isRemoteStore } from '../secrets/store.js';
+import {
+	NoStoredSecrets,
+	pullStageSecrets,
+	pushStageSecrets,
+} from '../secrets/transfer.js';
 import type { StageSecrets } from '../secrets/types.js';
 import { ensureTrusted } from '../trust/index.js';
 import type { ComposeServiceName } from '../types.js';
@@ -137,7 +142,7 @@ async function reconcileLocal(
 /**
  * Resolve secrets with priority:
  * 1. Local secrets exist → use them (preserves manual additions)
- * 2. SSM configured and has secrets → pull and use
+ * 2. A deployed stage whose store has secrets → pull and use
  * 3. Neither → generate fresh secrets
  *
  * --force skips checks 1 and 2 and always regenerates.
@@ -171,19 +176,21 @@ async function resolveSecrets(
 		}
 	}
 
-	// Try SSM pull if configured
-	if (isSSMConfigured(workspace)) {
-		logger.log('☁️  Checking for remote secrets in SSM...');
+	// A deployed stage whose secrets live in a store: bring them down.
+	if (isRemoteStore(workspace, stage)) {
+		logger.log('☁️  Checking the secrets store...');
 		try {
-			const remoteSecrets = await pullSecrets(stage, workspace);
-			if (remoteSecrets) {
-				logger.log('✅ Pulled secrets from SSM');
-				await writeStageSecrets(remoteSecrets, workspace.root);
-				return remoteSecrets;
-			}
-			logger.log('   No remote secrets found');
+			const { secrets } = await pullStageSecrets(workspace, stage);
+			logger.log('✅ Pulled secrets from the store');
+			return secrets;
 		} catch (error) {
-			logger.warn(`⚠️  Failed to pull from SSM: ${(error as Error).message}`);
+			if (error instanceof NoStoredSecrets) {
+				logger.log('   The store holds none yet');
+			} else {
+				logger.warn(
+					`⚠️  Could not pull from the store: ${(error as Error).message}`,
+				);
+			}
 		}
 	}
 
@@ -401,21 +408,24 @@ async function generateFreshSecrets(
 	await writeStageSecrets(secrets, workspace.root);
 	logger.log(`   Secrets written to .gkm/secrets/${stage}.json`);
 
-	// Offer to push to SSM if configured
-	if (isSSMConfigured(workspace) && !options.yes) {
+	// A deployed stage's fresh secrets belong in its store, where a deploy
+	// from anywhere can reach them.
+	if (isRemoteStore(workspace, stage) && !options.yes) {
 		const { shouldPush } = await prompts({
 			type: 'confirm',
 			name: 'shouldPush',
-			message: 'Push secrets to SSM for team sharing?',
+			message: `Push the "${stage}" secrets to its store?`,
 			initial: true,
 		});
 
 		if (shouldPush) {
 			try {
-				await pushSecrets(stage, workspace);
-				logger.log('☁️  Secrets pushed to SSM');
+				await pushStageSecrets(workspace, stage);
+				logger.log('☁️  Secrets pushed to the store');
 			} catch (error) {
-				logger.warn(`⚠️  Failed to push to SSM: ${(error as Error).message}`);
+				logger.warn(
+					`⚠️  Could not push to the store: ${(error as Error).message}`,
+				);
 			}
 		}
 	}

@@ -449,12 +449,25 @@ ${workspaceConstructsGlobs(options.routesStructure, dirname(options.apiPath))
   ],
 
   secrets: {
-    enabled: true,
+    enabled: true,${secretsStore(options)}
   },
 });
 `;
 
 	return config;
+}
+
+/**
+ * Where a deployed stage's secrets live. On AWS that is SSM in the stage's own
+ * account, which the deploy job reaches with the role it already assumed; a
+ * server target keeps the encrypted local file, the default.
+ */
+function secretsStore(options: TemplateOptions): string {
+	if (options.deployTarget !== 'sst' || !options.region) return '';
+	return `
+    // Deployed stages keep their secrets in SSM, in the account each stage
+    // deploys to: \`gkm secrets:push --stage <stage> --profile <profile>\`.
+    store: { provider: 'ssm', region: '${options.region}' },`;
 }
 
 /**

@@ -230,6 +230,38 @@ function deploy(options: TemplateOptions): string {
 `
 		: '';
 
+	// A stage's secrets reach the runner through its store. SSM needs nothing
+	// but the role the job already assumed; the local file needs its key, and
+	// the encrypted file itself, which a checkout of an ignored `.gkm/` lacks.
+	const stageSecrets = sst
+		? `${credentials}
+      # The stage's secrets, from SSM in the account the role belongs to —
+      # pushed there once with \`gkm secrets:push --stage <stage> --profile …\`.
+      # The stage reaches the shell as a variable, never pasted into the script:
+      # on a manual run it is whatever was typed.
+      - name: Stage secrets
+        run: ${pm.exec} gkm secrets:pull --stage "$STAGE"
+        env:
+          STAGE: \${{ matrix.stage }}
+`
+		: `
+      # The stage's secrets are kept in the encrypted .gkm/secrets/<stage>.json,
+      # and each environment holds its key as GKM_SECRETS_KEY. .gkm/ is
+      # gitignored, so a checkout has the key but not the file: set
+      # secrets.store in gkm.config.ts to a store CI can reach before deploying
+      # from here.
+      # Owner-only, as the CLI writes its own keys. The stage reaches the shell
+      # as a variable, never pasted into the script: on a manual run it is
+      # whatever was typed.
+      - name: Stage secrets key
+        run: |
+          mkdir -p -m 700 ~/.gkm/${options.name}
+          (umask 077 && printf '%s' "$KEY" > ~/.gkm/${options.name}/"$STAGE".key)
+        env:
+          KEY: \${{ secrets.GKM_SECRETS_KEY }}
+          STAGE: \${{ matrix.stage }}
+`;
+
 	const deployEnv = sst
 		? ''
 		: `
@@ -314,20 +346,7 @@ ${pm.setup}
 ${pm.setup}
       - name: Install
         run: ${pm.install}
-
-      # The stage's secrets are committed encrypted; the key never is. Each
-      # environment holds its own as GKM_SECRETS_KEY.
-      # Owner-only, as the CLI writes its own keys. The stage reaches the shell
-      # as a variable, never pasted into the script: on a manual run it is
-      # whatever was typed.
-      - name: Stage secrets key
-        run: |
-          mkdir -p -m 700 ~/.gkm/${options.name}
-          (umask 077 && printf '%s' "$KEY" > ~/.gkm/${options.name}/"$STAGE".key)
-        env:
-          KEY: \${{ secrets.GKM_SECRETS_KEY }}
-          STAGE: \${{ matrix.stage }}
-${credentials}
+${stageSecrets}
       - name: Deploy
         run: ${pm.run} "deploy:$STAGE"
         env:

@@ -108,11 +108,41 @@ describe('generateGithubFiles', () => {
 		for (const step of job.steps as { run?: string }[]) {
 			expect(step.run ?? '').not.toContain('${{');
 		}
+	});
+
+	it('pulls an SST stage’s secrets from SSM once the role is assumed', () => {
+		const job = parse(files()['.github/workflows/deploy.yml']!).jobs.deploy;
+		const names = job.steps.map(
+			(s: { name?: string; uses?: string }) => s.name ?? s.uses,
+		);
+		const pull = job.steps.find(
+			(s: { name?: string }) => s.name === 'Stage secrets',
+		);
+
+		expect(pull.run).toBe('pnpm exec gkm secrets:pull --stage "$STAGE"');
+		expect(pull.env).toEqual({ STAGE: '${{ matrix.stage }}' });
+		expect(names.indexOf('Stage secrets')).toBeGreaterThan(
+			names.indexOf('aws-actions/configure-aws-credentials@v4'),
+		);
+		expect(names.indexOf('Stage secrets')).toBeLessThan(
+			names.indexOf('Deploy'),
+		);
+		expect(JSON.stringify(job)).not.toContain('GKM_SECRETS_KEY');
+	});
+
+	it('hands a Dokploy stage its secrets key, and says the file is not there', () => {
+		const deployYml = files({ deployTarget: 'dokploy', region: undefined })[
+			'.github/workflows/deploy.yml'
+		]!;
+		const job = parse(deployYml).jobs.deploy;
 		const key = job.steps.find(
 			(s: { name?: string }) => s.name === 'Stage secrets key',
 		);
+
 		expect(key.run).toContain('~/.gkm/beetlefit/"$STAGE".key');
 		expect(key.env.KEY).toBe('${{ secrets.GKM_SECRETS_KEY }}');
+		expect(deployYml).toContain('.gkm/ is\n      # gitignored');
+		expect(deployYml).toContain('secrets.store');
 	});
 
 	it('assumes an AWS role in the chosen region for SST', () => {

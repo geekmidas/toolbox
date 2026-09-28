@@ -200,8 +200,9 @@ release should also need approval:
 
 | Environment setting | Target | Value |
 |---|---|---|
-| secret `GKM_SECRETS_KEY` | both | the stage's key, from `~/.gkm/<project>/<stage>.key` |
 | variable `AWS_ROLE_ARN` | SST | an IAM role that trusts GitHub's OIDC provider for this repo |
+| the stage's secrets | SST | pulled from SSM in the stage's account by `gkm secrets:pull` in the job; put there with `gkm secrets:push --stage <stage> --profile <profile>` |
+| secret `GKM_SECRETS_KEY` | Dokploy | the stage's key, from `~/.gkm/<project>/<stage>.key` — the encrypted file itself is under the gitignored `.gkm/`, so set `secrets.store` to a store CI can reach |
 | secret `DOKPLOY_API_TOKEN`, variable `DOKPLOY_ENDPOINT` | Dokploy | your Dokploy API token and URL |
 
 ## Step-by-Step Execution

@@ -316,8 +316,10 @@ In the stage's account it creates GitHub's OIDC provider if missing, and the
 role `<project>-github-<stage>`, which only this repository's `<stage>`
 environment can assume — a staging job cannot use the production role. On
 GitHub (through `gh`, so be logged in) it creates the `<stage>` environment and
-sets `AWS_ROLE_ARN` and `GKM_SECRETS_KEY` (from
-`~/.gkm/<project>/<stage>.key`), which the generated deploy workflow reads.
+sets `AWS_ROLE_ARN`, which the generated deploy workflow reads. With
+`secrets.store` set to SSM it pushes the stage's local secrets to SSM in the
+same account, with the same profile, and hands GitHub no key; with the `'file'`
+store it sets `GKM_SECRETS_KEY` (from `~/.gkm/<project>/<stage>.key`).
 Re-running it converges.
 
 | Option | |
@@ -403,7 +405,18 @@ gkm secrets:rotate --stage production --service postgres
 
 # Import from JSON
 gkm secrets:import --stage production --file secrets.json
+
+# A deployed stage's secrets to and from its store (secrets.store)
+gkm secrets:push --stage production --profile acme-prod
+gkm secrets:pull --stage production --profile acme-prod
 ```
+
+`secrets:push` and `secrets:pull` take a stage in `stages.deployed` whose
+secrets are kept in a store — SSM, or a custom one — and refuse any other.
+`--profile` resolves only that AWS profile, never exported `AWS_*` variables;
+without it the default credentials are used, as in a deploy job. `pull` writes
+the local encrypted copy, generating a key if the machine has none. See
+[the secrets store](./dev-server.md#deployed-stages-the-secrets-store).
 
 ### State Management
 

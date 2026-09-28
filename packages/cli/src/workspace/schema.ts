@@ -551,8 +551,25 @@ const StagesConfigSchema = z
 		}
 	});
 
+const SecretsStoreSchema = z.union([
+	z.literal('file'),
+	z.object({ provider: z.literal('ssm'), region: AwsRegionSchema }).strict(),
+	z.object({
+		/** Any backend: an object implementing SecretsStore */
+		provider: z.custom<{ pull: Function; push: Function }>(
+			(val) =>
+				typeof val === 'object' &&
+				val !== null &&
+				typeof (val as any).pull === 'function' &&
+				typeof (val as any).push === 'function',
+			{ message: 'a secrets store implements pull() and push()' },
+		),
+	}),
+]);
+
 const SecretsConfigSchema = z.object({
 	enabled: z.boolean().optional(),
+	store: SecretsStoreSchema.optional(),
 	algorithm: z.string().optional(),
 	kdf: z.enum(['scrypt', 'pbkdf2']).optional(),
 });
