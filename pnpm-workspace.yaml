@@ -7,3 +7,11 @@ packages:
   - "packages/*"
   - "packages/telescope/ui"
   - "packages/studio/ui"
+
+packageExtensions:
+  # Its declarations import React's types without declaring them, so they
+  # resolved through the hoist to VitePress's @types/react 18 — and ui's code
+  # block mixed React 18's CSSProperties with 19's.
+  prism-react-renderer:
+    peerDependencies:
+      "@types/react": "*"

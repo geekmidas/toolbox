@@ -9,6 +9,11 @@ const config: StorybookConfig = {
 		name: '@storybook/react-vite',
 		options: {},
 	},
+	// `react-docgen` parses components itself. The TypeScript-based docgen
+	// calls into TypeScript's JavaScript API, which TypeScript 7 no longer ships.
+	typescript: {
+		reactDocgen: 'react-docgen',
+	},
 	viteFinal: async (config) => {
 		// Add Tailwind CSS v4 plugin
 		const tailwindcss = await import('@tailwindcss/vite');
