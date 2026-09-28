@@ -8,17 +8,28 @@ export interface OpenApiSchemaOptions {
 
 export interface ComponentCollector {
 	schemas: Record<string, OpenAPIV3_1.SchemaObject>;
+	/** The schemes operations name in their `security` requirements. */
+	securitySchemes: Record<string, OpenAPIV3_1.SecuritySchemeObject>;
 	addSchema(id: string, schema: OpenAPIV3_1.SchemaObject): void;
+	addSecurityScheme(
+		name: string,
+		scheme: OpenAPIV3_1.SecuritySchemeObject,
+	): void;
 	getReference(id: string): OpenAPIV3_1.ReferenceObject;
 }
 
 export function createComponentCollector(): ComponentCollector {
 	const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {};
+	const securitySchemes: Record<string, OpenAPIV3_1.SecuritySchemeObject> = {};
 
 	return {
 		schemas,
+		securitySchemes,
 		addSchema(id: string, schema: OpenAPIV3_1.SchemaObject) {
 			schemas[id] = schema;
+		},
+		addSecurityScheme(name, scheme) {
+			securitySchemes[name] = scheme;
 		},
 		getReference(id: string): OpenAPIV3_1.ReferenceObject {
 			return { $ref: `#/components/schemas/${id}` };
@@ -55,7 +66,11 @@ export async function buildOpenApiSchema(
 	}
 
 	const doc: OpenAPIV3_1.Document = {
-		openapi: '3.0.0',
+		// 3.1, not 3.0: the schemas are JSON Schema 2020-12 — what Zod 4 and
+		// Valibot emit — and 3.1 is the version whose schema objects are that
+		// dialect. Declared 3.0, `type: ['string', 'null']`, `const` and
+		// `prefixItems` were all invalid there.
+		openapi: '3.1.0',
 		info: {
 			title,
 			version,
@@ -64,10 +79,17 @@ export async function buildOpenApiSchema(
 		paths,
 	};
 
-	// Add components if any schemas were collected
-	if (Object.keys(componentCollector.schemas).length > 0) {
+	// Add components if any schemas or security schemes were collected. A
+	// `security` requirement naming a scheme the document does not define is
+	// invalid, so the two travel together.
+	const { schemas, securitySchemes } = componentCollector;
+	if (
+		Object.keys(schemas).length > 0 ||
+		Object.keys(securitySchemes).length > 0
+	) {
 		doc.components = {
-			schemas: componentCollector.schemas,
+			...(Object.keys(schemas).length > 0 && { schemas }),
+			...(Object.keys(securitySchemes).length > 0 && { securitySchemes }),
 		};
 	}
 
