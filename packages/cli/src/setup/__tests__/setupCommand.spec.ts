@@ -115,7 +115,8 @@ export const database = new KyselyDatabase('Database');
 
 		const secrets = await readStageSecrets('dev', dir);
 		expect(secrets?.stage).toBe('dev');
-		expect(secrets?.custom.NODE_ENV).toBe('development');
+		expect(secrets?.custom.JWT_SECRET).toBeTruthy();
+		expect(secrets?.custom).not.toHaveProperty('NODE_ENV');
 		const said = output(log);
 		expect(said).toContain('Generating fresh development secrets');
 		expect(said).toContain('No containers declared');

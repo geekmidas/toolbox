@@ -32,7 +32,8 @@ export function generateDbUrl(
  * Generate fullstack-aware custom secrets for a workspace.
  *
  * Generates:
- * - Common secrets: NODE_ENV, PORT, LOG_LEVEL, JWT_SECRET
+ * - Common secrets: PORT, LOG_LEVEL, JWT_SECRET (no `NODE_ENV` — the command
+ *   decides that; see `gkm init`)
  * - Per-app database passwords and URLs for backend apps with db service
  * - Better-auth secrets for apps using the better-auth framework
  */
@@ -44,7 +45,6 @@ export function generateFullstackCustomSecrets(
 	// config carried a flag saying so.
 	const hasDb = containers.includes('postgres');
 	const customs: Record<string, string> = {
-		NODE_ENV: 'development',
 		PORT: '3000',
 		LOG_LEVEL: 'debug',
 		JWT_SECRET: `dev-${Date.now()}-${Math.random().toString(36).slice(2)}`,
