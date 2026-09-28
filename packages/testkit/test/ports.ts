@@ -36,3 +36,6 @@ export const MINIO_PORT = port('MINIO_API_HOST_PORT', 9000);
 export const RABBITMQ_PORT = port('RABBITMQ_HOST_PORT', 5672);
 export const LOCALSTACK_PORT = port('LOCALSTACK_HOST_PORT', 4566);
 export const LOCALSTACK_URL = `http://localhost:${LOCALSTACK_PORT}`;
+export const MAILPIT_SMTP_PORT = port('MAILPIT_SMTP_HOST_PORT', 1025);
+export const MAILPIT_PORT = port('MAILPIT_HOST_PORT', 8025);
+export const MAILPIT_URL = `http://localhost:${MAILPIT_PORT}`;

@@ -41,6 +41,18 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+  # Where `gkm test` sends an app's mail, and where a feature test reads it
+  # back — the same container an app's local stack runs.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "${MAILPIT_SMTP_HOST_PORT:-1025}:1025"
+      - "${MAILPIT_HOST_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
   rabbitmq:
     image: rabbitmq:4.1.1-management
     ports:
