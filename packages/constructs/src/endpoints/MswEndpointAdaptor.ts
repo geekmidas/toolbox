@@ -1,17 +1,17 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
 import type { Service } from '@geekmidas/services';
 import { ServiceDiscovery } from '@geekmidas/services';
+import { TEST_CONTEXT_HEADER } from '@geekmidas/testkit/context';
 import { Hono } from 'hono';
 import { type HttpHandler, http } from 'msw';
 import type { Endpoint } from './Endpoint';
 import { HonoEndpoint } from './HonoEndpointAdaptor';
 
 /**
- * Header used to identify which test context a request belongs to.
- * Each concurrent test registers its own context (services, db transaction, etc.)
- * and the MSW handler looks it up by this header value.
+ * Header used to identify which test context a request belongs to — defined
+ * once, in testkit, where the stamped `fetch` that writes it lives.
  */
-export const TEST_CONTEXT_HEADER = 'x-test-context-id';
+export { TEST_CONTEXT_HEADER };
 
 /**
  * Per-test context containing an isolated ServiceDiscovery instance.

@@ -9,3 +9,11 @@ export { TestEndpointAdaptor } from '../endpoints/TestEndpointAdaptor';
 export { TestFunctionAdaptor } from '../functions/TestFunctionAdaptor';
 export { TestQueueAdaptor } from '../queue/TestQueueAdaptor';
 export { TestSubscriberAdaptor } from '../subscribers/TestSubscriberAdaptor';
+export {
+	type FeatureContext,
+	type FeatureIt,
+	type FeatureTestOptions,
+	featureTest,
+	NoInbox,
+	UnknownTestContext,
+} from '../testing/featureTest';

@@ -293,6 +293,7 @@
 		"@geekmidas/rate-limit": "workspace:^",
 		"@geekmidas/storage": "workspace:^",
 		"@geekmidas/telescope": "workspace:*",
+		"@geekmidas/testkit": "workspace:^",
 		"@middy/core": ">=7.9.2",
 		"@types/aws-lambda": ">=8.10.163",
 		"better-auth": ">=1.7.5",
@@ -311,7 +312,19 @@
 		"@geekmidas/db": {
 			"optional": true
 		},
+		"@geekmidas/emailkit": {
+			"optional": true
+		},
 		"@geekmidas/rate-limit": {
+			"optional": true
+		},
+		"@geekmidas/storage": {
+			"optional": true
+		},
+		"@geekmidas/telescope": {
+			"optional": true
+		},
+		"@geekmidas/testkit": {
 			"optional": true
 		},
 		"@middy/core": {
@@ -320,28 +333,19 @@
 		"@types/aws-lambda": {
 			"optional": true
 		},
+		"better-auth": {
+			"optional": true
+		},
 		"hono": {
-			"optional": true
-		},
-		"msw": {
-			"optional": true
-		},
-		"@geekmidas/storage": {
 			"optional": true
 		},
 		"kysely": {
 			"optional": true
 		},
+		"msw": {
+			"optional": true
+		},
 		"pg": {
-			"optional": true
-		},
-		"@geekmidas/emailkit": {
-			"optional": true
-		},
-		"better-auth": {
-			"optional": true
-		},
-		"@geekmidas/telescope": {
 			"optional": true
 		}
 	}
