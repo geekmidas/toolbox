@@ -1,5 +1,13 @@
 # @geekmidas/studio
 
+## 10.0.0-alpha.12
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/db@10.0.0-alpha.12
+  - @geekmidas/telescope@10.0.0-alpha.12
+
 ## 10.0.0-alpha.11
 
 ### Patch Changes
