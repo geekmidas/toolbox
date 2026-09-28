@@ -1,6 +1,7 @@
+import type { ConstructManifest } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import type { NormalizedWorkspace } from '../../workspace/types';
-import { backendsOf, constructGlobs } from '../workspace';
+import { backendsOf, constructGlobs, surfaceAddresses } from '../workspace';
 
 /** A workspace deploying to `target`, declaring nothing. */
 function deployingTo(target?: 'dokploy'): NormalizedWorkspace {
@@ -91,5 +92,64 @@ describe('constructGlobs', () => {
 		// The hard switch reconcile reads: a project that has not adopted
 		// constructs is untouched.
 		expect(constructGlobs(ws({}))).toEqual([]);
+	});
+});
+
+/**
+ * Where each declared surface and site answers: at the port the workspace gave
+ * the app serving it, and nowhere when no app serves it.
+ */
+describe('surfaceAddresses', () => {
+	const manifest = {
+		Api: {
+			kind: 'rest-api',
+			id: 'Api',
+			path: '.',
+			endpoints: [],
+			provides: ['API_URL'],
+		},
+		Console: {
+			kind: 'site',
+			id: 'Console',
+			variant: 'static',
+			app: { path: 'apps/console' },
+			dependencies: [],
+			provides: ['CONSOLE_URL'],
+		},
+		Billing: {
+			kind: 'rest-api',
+			id: 'Billing',
+			path: '.',
+			endpoints: [],
+			provides: ['BILLING_URL'],
+		},
+		Orders: { kind: 'database', id: 'Orders', provides: ['ORDERS_URL'] },
+	} as unknown as ConstructManifest;
+
+	const workspace = {
+		name: 'shop',
+		root: '/ws',
+		apps: {
+			api: { type: 'backend', path: 'apps/api', port: 3000 },
+			console: { type: 'frontend', path: 'apps/console', port: 3001 },
+		},
+	} as unknown as NormalizedWorkspace;
+
+	it('addresses a surface and a site at their apps, skipping the unserved', () => {
+		// Billing has no app in the workspace, and a database is not a surface.
+		expect(surfaceAddresses(workspace, manifest)).toEqual({
+			Api: 'http://localhost:3000',
+			Console: 'http://localhost:3001',
+		});
+	});
+
+	it('addresses apps however the caller reaches them', () => {
+		expect(
+			surfaceAddresses(
+				workspace,
+				manifest,
+				(app, port) => `http://${app}:${port}`,
+			),
+		).toEqual({ Api: 'http://api:3000', Console: 'http://console:3001' });
 	});
 });

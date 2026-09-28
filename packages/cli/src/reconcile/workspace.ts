@@ -174,8 +174,3 @@ function appKeyOfHost(
 function localAddress(port: number): string {
 	return `http://localhost:${port}`;
 }
-
-/** A workspace path and a declared path, comparable. */
-function _normalizePath(path: string): string {
-	return path.replace(/^\.\//, '').replace(/\/+$/, '');
-}
