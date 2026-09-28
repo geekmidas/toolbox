@@ -96,7 +96,9 @@ function waitForNpm(version, tag) {
 	const deadline = Date.now() + WAIT_MINUTES * 60_000;
 	let current = npmView('dist-tags')[tag];
 	while (compare(version, current) > 0 && Date.now() < deadline) {
-		console.log(`npm's "${tag}" is ${current}; waiting for ${version} to publish…`);
+		console.log(
+			`npm's "${tag}" is ${current}; waiting for ${version} to publish…`,
+		);
 		// Synchronous on purpose: the script is otherwise synchronous, and this
 		// is a CI job with nothing else to do.
 		Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30_000);
