@@ -88,6 +88,23 @@ function npmView(field) {
 	);
 }
 
+/** How long a pull request waits for a release main has just versioned. */
+const WAIT_MINUTES = 10;
+
+/** npm's version on `tag`, polled until it reaches `version` or time runs out. */
+function waitForNpm(version, tag) {
+	const deadline = Date.now() + WAIT_MINUTES * 60_000;
+	let current = npmView('dist-tags')[tag];
+	while (compare(version, current) > 0 && Date.now() < deadline) {
+		console.log(`npm's "${tag}" is ${current}; waiting for ${version} to publish…`);
+		// Synchronous on purpose: the script is otherwise synchronous, and this
+		// is a CI job with nothing else to do.
+		Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30_000);
+		current = npmView('dist-tags')[tag];
+	}
+	return current;
+}
+
 function main() {
 	const args = process.argv.slice(2);
 	const bumped = args.includes('--bumped');
@@ -115,6 +132,15 @@ function main() {
 	}
 	const order = compare(inGit, onNpm);
 
+	// On a pull request, behind npm only means main has released since the
+	// branch was cut — update the branch; nothing is stuck. On main it means
+	// every bump from here lands on or below a published version.
+	if (order < 0 && expectReleased) {
+		return decide(
+			false,
+			`npm's "${tag}" (${onNpm}) is ahead of this branch (${inGit}): main has released since; update the branch.`,
+		);
+	}
 	if (order < 0) {
 		fail(
 			`git is at ${inGit} but npm's "${tag}" is already ${onNpm}. Every bump from here lands on or below a published version, so nothing will publish until the versions in git are moved past ${onNpm}.`,
@@ -122,9 +148,13 @@ function main() {
 	}
 
 	if (expectReleased) {
-		if (order > 0) {
+		// Ahead can mean in flight: main's release job pushes the version bump
+		// a few minutes before its publish lands, and a pull request checked in
+		// that window would read as stuck. So wait for npm before calling it.
+		const published = order > 0 ? waitForNpm(inGit, tag) : onNpm;
+		if (compare(inGit, published) > 0) {
 			fail(
-				`This branch is at ${inGit} but npm's "${tag}" is ${onNpm}: that release never published. Check the "Publish packages" step of the latest run on main.`,
+				`This branch is at ${inGit} but npm's "${tag}" is still ${published} after ${WAIT_MINUTES} minutes: that release never published. Check the "Publish packages" step of the latest run on main.`,
 			);
 		}
 		return decide(false, `${inGit} is on npm.`);
