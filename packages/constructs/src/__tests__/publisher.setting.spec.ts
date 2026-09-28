@@ -10,6 +10,10 @@ import { RestApi } from '../rest-api';
 /** Endpoints are built from a surface now, so the tests build one. */
 const api = new RestApi('Test', { path: '.', defaultAuthorizer: 'none' });
 
+/** A surface that logs to `logger` — the logger is the surface's, not a route's. */
+const apiLoggingTo = (logger: Logger) =>
+	new RestApi('Test', { path: '.', defaultAuthorizer: 'none', logger });
+
 // Test event types
 type TestEvent =
 	| PublishableMessage<'test.created', { id: string }>
@@ -56,8 +60,7 @@ describe('publisher service setting combinations', () => {
 			const mockPublisherService = createMockPublisherService('endpoint');
 			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
 
-			const endpoint = api.endpoints
-				.logger(mockLogger)
+			const endpoint = apiLoggingTo(mockLogger)
 				.post('/test')
 				.publisher(mockPublisherService)
 				.output(z.object({ id: z.string() }))
@@ -89,9 +92,7 @@ describe('publisher service setting combinations', () => {
 			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
 
 			// Create factory with publisher
-			const factory = api.endpoints
-				.logger(mockLogger)
-				.publisher(mockPublisherService);
+			const factory = apiLoggingTo(mockLogger).publisher(mockPublisherService);
 
 			// Create endpoint using factory
 			const endpoint = factory
@@ -131,10 +132,9 @@ describe('publisher service setting combinations', () => {
 			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
 
 			// Create factory with logger, services, and publisher
-			const factory = api.endpoints
-				.logger(mockLogger)
-				.services([])
-				.publisher(mockPublisherService);
+			const factory = apiLoggingTo(mockLogger)
+				.publisher(mockPublisherService)
+				.services([]);
 
 			const endpoint = factory
 				.post('/test')
@@ -182,9 +182,9 @@ describe('publisher service setting combinations', () => {
 				.mockResolvedValue(endpointPublisher);
 
 			// Create factory with publisher
-			const factory = api.endpoints
-				.logger(mockLogger)
-				.publisher(factoryPublisherService);
+			const factory = apiLoggingTo(mockLogger).publisher(
+				factoryPublisherService,
+			);
 
 			// Create endpoint that overrides factory publisher
 			const endpoint = factory
@@ -222,8 +222,7 @@ describe('publisher service setting combinations', () => {
 			const mockPublisherService = createMockPublisherService('chain');
 			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
 
-			const endpoint = api.endpoints
-				.logger(mockLogger)
+			const endpoint = apiLoggingTo(mockLogger)
 				.post('/test')
 				.publisher(mockPublisherService)
 				.body(z.object({ name: z.string() }))
@@ -255,9 +254,7 @@ describe('publisher service setting combinations', () => {
 			const mockPublisherService = createMockPublisherService('factory-chain');
 			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
 
-			const factory = api.endpoints
-				.logger(mockLogger)
-				.publisher(mockPublisherService);
+			const factory = apiLoggingTo(mockLogger).publisher(mockPublisherService);
 
 			const endpoint = factory
 				.post('/test')
@@ -293,9 +290,7 @@ describe('publisher service setting combinations', () => {
 			const mockPublisherService = createMockPublisherService('shared-factory');
 			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
 
-			const factory = api.endpoints
-				.logger(mockLogger)
-				.publisher(mockPublisherService);
+			const factory = apiLoggingTo(mockLogger).publisher(mockPublisherService);
 
 			// Create multiple endpoints from same factory
 			const endpoint1 = factory
@@ -362,8 +357,7 @@ describe('publisher service setting combinations', () => {
 			const publisherService2 = createMockPublisherService('endpoint-2');
 			publisherService2.register = vi.fn().mockResolvedValue(publisher2);
 
-			const endpoint1 = api.endpoints
-				.logger(mockLogger)
+			const endpoint1 = apiLoggingTo(mockLogger)
 				.post('/api/v1/resource')
 				.publisher(publisherService1)
 				.output(z.object({ id: z.string() }))
@@ -373,8 +367,7 @@ describe('publisher service setting combinations', () => {
 				})
 				.handle(async () => ({ id: 'res-1' }));
 
-			const endpoint2 = api.endpoints
-				.logger(mockLogger)
+			const endpoint2 = apiLoggingTo(mockLogger)
 				.post('/api/v2/resource')
 				.publisher(publisherService2)
 				.output(z.object({ id: z.string() }))
@@ -418,8 +411,7 @@ describe('publisher service setting combinations', () => {
 
 	describe('edge cases and error scenarios', () => {
 		it('should handle undefined publisher gracefully', async () => {
-			const endpoint = api.endpoints
-				.logger(mockLogger)
+			const endpoint = apiLoggingTo(mockLogger)
 				.post('/test')
 				.output(z.object({ id: z.string() }))
 
@@ -453,8 +445,7 @@ describe('publisher service setting combinations', () => {
 				.fn()
 				.mockRejectedValue(registrationError);
 
-			const endpoint = api.endpoints
-				.logger(mockLogger)
+			const endpoint = apiLoggingTo(mockLogger)
 				.post('/test')
 				.publisher(mockPublisherService)
 				.output(z.object({ id: z.string() }))
@@ -485,10 +476,9 @@ describe('publisher service setting combinations', () => {
 			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
 
 			// Test a typical factory setup with logger, services, and publisher
-			const factory = api.endpoints
-				.logger(mockLogger)
-				.services([])
-				.publisher(mockPublisherService);
+			const factory = apiLoggingTo(mockLogger)
+				.publisher(mockPublisherService)
+				.services([]);
 
 			const endpoint = factory
 				.post('/api/v1/users')

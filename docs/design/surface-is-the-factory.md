@@ -189,3 +189,19 @@ own Postgres never got its binding and connections landed on the wrong database 
 which reports as `password authentication failed for user "geekmidas"` and reads
 convincingly as bad credentials. It is not. Check `lsof -nP -iTCP:5432
 -sTCP:LISTEN` before touching the volume.
+
+## Addendum: no `.endpoints`
+
+`api.endpoints` was the one object between a surface and a branch —
+`api.endpoints.database(db)`. The verbs already had sugar (`api.get()`), and
+the branching methods now do too: `api.database(db)`, `api.session(...)`,
+`api.auditor(...)`, `api.publisher(...)`, `api.actor(...)`,
+`api.authorizer(...)`, `api.authorize(...)`, `api.rls(...)`, `api.route(...)`.
+The factory itself is private. `services` is not among them: it is replaced by
+`dependsOn` on constructs, and the surface does not reintroduce it.
+
+What this section argues still holds, because each of those *returns a branch*
+and leaves the surface untouched: the surface's config carries no grant, and a
+group opts in. `dependsOn` stays off the surface — it is per endpoint, and
+`api.dependsOn(x)` would read as the API depending on something, which `.calls()`
+and `.auth()` already say. Examples above are kept as they were written.

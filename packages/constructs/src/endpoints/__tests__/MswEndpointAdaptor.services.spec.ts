@@ -27,13 +27,13 @@ const auditStore: Service<'auditStore', AuditStorage> = {
 	register: () => ({}) as AuditStorage,
 };
 
-const listOrders = api.endpoints
+const listOrders = api
 	.database(database)
 	.get('/orders')
 	.output(z.object({ orders: z.array(z.string()) }))
 	.handle(async ({ db }) => ({ orders: (db as Db).orders() }));
 
-const audited = api.endpoints
+const audited = api
 	.auditor(auditStore)
 	.get('/audited')
 	.output(z.object({ ok: z.boolean() }))

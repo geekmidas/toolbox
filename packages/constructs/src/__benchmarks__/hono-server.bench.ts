@@ -18,7 +18,7 @@ const api = new RestApi('Bench', {
 	path: '.',
 	defaultAuthorizer: 'none',
 	logger: silentLogger,
-}).endpoints;
+});
 
 // Helper to create a Hono app from endpoints
 function createApp(

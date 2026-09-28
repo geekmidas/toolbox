@@ -1354,6 +1354,22 @@ describe('generateAgentFiles', () => {
 		expect(claude).not.toContain('## Commands');
 	});
 
+	it('shows handlers the `db` the router gives them', () => {
+		const withDb: TemplateOptions = {
+			...baseOptions,
+			constructs: { ...baseOptions.constructs, database: true },
+		};
+		const agents = generateAgentFiles(withDb, minimalTemplate)[0].content;
+
+		// What the scaffold's own endpoints use — not a service lookup, and not
+		// a factory reached through `.endpoints`.
+		expect(agents).toContain('async ({ db }) =>');
+		expect(agents).toContain('export const router = api.database(database);');
+		expect(agents).toContain("import { router } from '~/router.ts';");
+		expect(agents).not.toContain('services.database');
+		expect(agents).not.toContain('.endpoints');
+	});
+
 	it('names the glob the workspace actually uses', () => {
 		// A monorepo keeps constructs at its root; a single app keeps them under
 		// `src/`. The guide quotes the config, so quoting the wrong one is the

@@ -165,9 +165,9 @@ describe('Construct environment getter', () => {
 				},
 			} satisfies Service<'auth', any>;
 
-			const endpoint = api.endpoints
-				.services([authService])
+			const endpoint = api
 				.get('/users')
+				.services([authService])
 				.handle(async () => []);
 
 			const envVars = await endpoint.getEnvironment();
@@ -186,14 +186,14 @@ describe('Construct environment getter', () => {
 				},
 			} satisfies Service<'storage', any>;
 
-			const postEndpoint = api.endpoints
-				.services([storageService])
+			const postEndpoint = api
 				.post('/upload')
+				.services([storageService])
 				.handle(async () => ({ success: true }));
 
-			const getEndpoint = api.endpoints
-				.services([storageService])
+			const getEndpoint = api
 				.get('/files')
+				.services([storageService])
 				.handle(async () => []);
 
 			expect(await postEndpoint.getEnvironment()).toEqual([
@@ -663,9 +663,9 @@ describe('Construct environment getter', () => {
 		});
 
 		it('works on Endpoint constructs', async () => {
-			const endpoint = api.endpoints
-				.services([dbService])
+			const endpoint = api
 				.get('/users')
+				.services([dbService])
 				.handle(async () => []);
 
 			expect(await endpoint.getEnvironment({ markOptional: true })).toEqual([

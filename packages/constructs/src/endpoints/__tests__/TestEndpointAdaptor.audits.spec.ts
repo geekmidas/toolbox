@@ -14,6 +14,10 @@ import { TestEndpointAdaptor } from '../TestEndpointAdaptor';
 /** Endpoints are built from a surface now, so this builds one. */
 const api = new RestApi('Test', { path: '.', defaultAuthorizer: 'none' });
 
+/** A surface that logs to `logger` — the logger is the surface's, not a route's. */
+const apiLoggingTo = (logger: Logger) =>
+	new RestApi('Test', { path: '.', defaultAuthorizer: 'none', logger });
+
 // Test audit action types
 type TestAuditAction =
 	| AuditableAction<'user.created', { userId: string; email: string }>
@@ -445,8 +449,7 @@ describe('TestEndpointAdaptor with auditorStorage and database', () => {
 			};
 
 			// Create a router with default auditor and database
-			const router = api.endpoints
-				.logger(mockLogger)
+			const router = apiLoggingTo(mockLogger)
 				.database(databaseService)
 				.auditor(auditStorageService);
 

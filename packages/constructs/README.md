@@ -26,7 +26,7 @@ pnpm add @geekmidas/constructs
 
 ```typescript
 // The HTTP surface. Endpoints are built from it — `api.get(…)`, or
-// `api.endpoints` for a branch that a group of endpoints shares.
+// `api.database(db)` for a branch that a group of endpoints shares.
 import { RestApi } from '@geekmidas/constructs/rest-api';
 
 // Endpoint internals: the factory a surface hands you, and the builder it
@@ -289,7 +289,7 @@ For custom authentication methods, use `.securitySchemes()` on the surface's fac
 ```typescript
 import { api } from '../constructs/api';
 
-const router = api.endpoints
+const router = api
   .securitySchemes({
     // Custom OAuth2 with specific flows
     oauth2: {
@@ -328,7 +328,7 @@ Set a default authorizer for every endpoint built from one branch:
 // A branch of the surface's factory, with a default every endpoint on it
 // inherits. (The surface's own `default` does the same thing for every
 // endpoint it serves — this narrows it for one group.)
-const router = api.endpoints.authorizer('jwt');
+const router = api.authorizer('jwt');
 
 // Protected by default
 export const getProfile = router

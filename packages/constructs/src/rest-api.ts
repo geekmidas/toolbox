@@ -40,6 +40,9 @@ import {
 import { EndpointFactory } from './endpoints/EndpointFactory';
 import { envParserFor } from './endpoints/surfaceEnv';
 
+/** The factory a surface builds its endpoints from. */
+type Endpoints = EndpointFactory<[], '', Logger>;
+
 export interface RestApiConfig<
 	// `readonly []` rather than `readonly string[]`: a surface that declares no
 	// authorizers of its own should narrow `defaultAuthorizer` to the built-ins
@@ -129,8 +132,9 @@ export interface RestApiConfig<
  * into a handler. Putting one on the surface hands it to every route the
  * surface serves — a health check gets the database because a report needed it
  * — which is the thing least privilege forbids and the reason `.calls()` is not
- * spelled `dependsOn`. They belong to the endpoint, or to a factory branched
- * from `api.endpoints` for a group of endpoints that genuinely share them.
+ * spelled `dependsOn`. They belong to the endpoint, or to a branch —
+ * `api.database(db)` — for a group of endpoints that genuinely share them. A
+ * branch is a new factory; the surface config stays free of grants.
  *
  * `auth` is not here either: `.auth(construct)` already declares it, and a
  * second way to say the same thing is the duplication this whole model removes.
@@ -204,7 +208,7 @@ export class RestApi<
 				: undefined,
 		);
 
-		this.endpoints = new EndpointFactory({
+		this.#endpoints = new EndpointFactory({
 			defaultLogger: this.logger,
 			...(config.authorizers
 				? {
@@ -224,51 +228,69 @@ export class RestApi<
 				: {}),
 			surface: { id: this.id, envParser: this.envParser },
 		});
+
+		const endpoints = this.#endpoints;
+		this.get = endpoints.get.bind(endpoints);
+		this.post = endpoints.post.bind(endpoints);
+		this.put = endpoints.put.bind(endpoints);
+		this.patch = endpoints.patch.bind(endpoints);
+		this.delete = endpoints.delete.bind(endpoints);
+		this.options = endpoints.options.bind(endpoints);
+		this.database = endpoints.database.bind(endpoints);
+		this.session = endpoints.session.bind(endpoints);
+		this.auditor = endpoints.auditor.bind(endpoints);
+		this.actor = endpoints.actor.bind(endpoints);
+		this.publisher = endpoints.publisher.bind(endpoints);
+		this.authorizer = endpoints.authorizer.bind(endpoints);
+		this.authorize = endpoints.authorize.bind(endpoints);
+		this.rls = endpoints.rls.bind(endpoints);
+		this.route = endpoints.route.bind(endpoints);
 	}
 
 	/**
-	 * This surface's endpoint factory.
+	 * This surface's endpoint factory, which every method below starts from.
 	 *
-	 * `api.get('/users')` is the short form and covers most routes. Reach for
-	 * this one when a *group* of endpoints shares something a single route would
-	 * otherwise repeat — a database, an auditor, a publisher:
+	 * Private: a surface *is* where endpoints are built, so there is no second
+	 * object to reach through first. `api.database(db)` said the same
+	 * thing as `api.database(db)` with one more word to learn.
+	 */
+	readonly #endpoints: Endpoints;
+
+	/** `api.get('/users')` — one route on this surface. */
+	readonly get: Endpoints['get'];
+	readonly post: Endpoints['post'];
+	readonly put: Endpoints['put'];
+	readonly patch: Endpoints['patch'];
+	readonly delete: Endpoints['delete'];
+	readonly options: Endpoints['options'];
+
+	/**
+	 * A branch for a *group* of endpoints that shares what a single route would
+	 * otherwise repeat — a database, an auditor, a publisher, a session:
 	 *
 	 * ```ts
-	 * const audited = api.endpoints.database(db).auditor(AuditStore);
-	 * export const createUser = audited.post('/users').handle(...);
+	 * export const router = api.database(database);
+	 * export const createUser = router.post('/users').handle(({ db }) => …);
 	 * ```
 	 *
-	 * A factory branched from here keeps the surface, so its endpoints still
-	 * know which API serves them. That is deliberately narrower than putting the
-	 * same thing in the surface's own config: a group opts in, where a surface
-	 * would grant it to every route it serves.
+	 * Each returns a new factory and leaves the surface as it was. That is the
+	 * whole difference from putting the same thing in the surface's config: a
+	 * group opts in, where the surface would grant it to every route it serves —
+	 * a health check handed the database because a profile endpoint needed it.
+	 *
+	 * `dependsOn` is deliberately not here. It is per endpoint, and on the
+	 * surface it would read as the API depending on something, which is what
+	 * `.calls()` and `.auth()` say instead.
 	 */
-	readonly endpoints: EndpointFactory<[], '', Logger>;
-
-	/** `api.get('/users')` — sugar for `api.endpoints.get('/users')`. */
-	get<TPath extends string>(path: TPath) {
-		return this.endpoints.get(path);
-	}
-
-	post<TPath extends string>(path: TPath) {
-		return this.endpoints.post(path);
-	}
-
-	put<TPath extends string>(path: TPath) {
-		return this.endpoints.put(path);
-	}
-
-	patch<TPath extends string>(path: TPath) {
-		return this.endpoints.patch(path);
-	}
-
-	delete<TPath extends string>(path: TPath) {
-		return this.endpoints.delete(path);
-	}
-
-	options<TPath extends string>(path: TPath) {
-		return this.endpoints.options(path);
-	}
+	readonly database: Endpoints['database'];
+	readonly session: Endpoints['session'];
+	readonly auditor: Endpoints['auditor'];
+	readonly actor: Endpoints['actor'];
+	readonly publisher: Endpoints['publisher'];
+	readonly authorizer: Endpoints['authorizer'];
+	readonly authorize: Endpoints['authorize'];
+	readonly rls: Endpoints['rls'];
+	readonly route: Endpoints['route'];
 
 	/**
 	 * What authenticates this surface.

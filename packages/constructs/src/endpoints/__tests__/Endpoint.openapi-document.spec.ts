@@ -20,7 +20,7 @@ const User = z
 
 describe('the OpenAPI document', () => {
 	it('keeps a registered schema as its definition, not a pointer to itself', async () => {
-		const getUser = api.endpoints
+		const getUser = api
 			.get('/users/:id')
 			.params(z.object({ id: z.string() }))
 			.output(User)
@@ -42,7 +42,7 @@ describe('the OpenAPI document', () => {
 	});
 
 	it('is OpenAPI 3.1, whose schemas are the JSON Schema dialect it contains', async () => {
-		const list = api.endpoints
+		const list = api
 			.get('/things')
 			.output(z.object({ note: z.string().nullable() }))
 			.handle(async () => ({ note: null }));
@@ -55,8 +55,8 @@ describe('the OpenAPI document', () => {
 	});
 
 	it('documents who may call an endpoint an authorizer guards', async () => {
-		const open = api.endpoints.get('/open').handle(async () => ({}));
-		const guarded = api.endpoints
+		const open = api.get('/open').handle(async () => ({}));
+		const guarded = api
 			.get('/guarded')
 			.authorizer('iam')
 			.handle(async () => ({}));
@@ -75,7 +75,7 @@ describe('the OpenAPI document', () => {
 	});
 
 	it('documents the status an endpoint answers with', async () => {
-		const create = api.endpoints
+		const create = api
 			.post('/things')
 			.status(201)
 			.body(z.object({ name: z.string() }))

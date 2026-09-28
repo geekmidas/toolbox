@@ -380,7 +380,7 @@ import { authService, type Session } from './services/auth.ts';
  * Depend on constructs per endpoint with \`.dependsOn([…])\`.`
  }
  */
-export const router = api.endpoints${options.constructs.database ? '.database(database)' : ''};
+export const router = api${options.constructs.database ? '.database(database)' : ''};
 
 // The auth client available, but the session not enforced.
 export const r = router.services([authService]);
@@ -440,7 +440,7 @@ import { database } from '${constructsImport('database')}';`
  * Depend on constructs per endpoint with \`.dependsOn([…])\`.`
  }
  */
-export const router = api.endpoints${options.constructs.database ? '.database(database)' : ''};
+export const router = api${options.constructs.database ? '.database(database)' : ''};
 `,
 			});
 		}

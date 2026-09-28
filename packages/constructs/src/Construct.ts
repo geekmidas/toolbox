@@ -66,7 +66,7 @@ export abstract class Construct<
 	 * What an endpoint's `surface` is to it, and for the same reason: something
 	 * has to say which process a runnable belongs to, and until this existed the
 	 * only thing that said so was the directory its file sat in. Set by the
-	 * factory it was built from — `worker.crons`, `api.endpoints` — so it is
+	 * factory it was built from — `worker.crons`, `api.get(…)` — so it is
 	 * carried rather than configured.
 	 *
 	 * Undefined for a construct built from a free-standing builder, which is

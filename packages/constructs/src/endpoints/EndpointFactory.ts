@@ -1272,7 +1272,7 @@ export interface EndpointFactoryOptions<
 	 * endpoint without one has no logger, no env parser and nothing to
 	 * attribute its traffic to — which was survivable only while `e` existed.
 	 *
-	 * Carried through every derived factory, so `api.endpoints.database(db)`
+	 * Carried through every derived factory, so `api.database(db)`
 	 * still produces endpoints that know which API serves them.
 	 */
 	surface: EndpointSurface;

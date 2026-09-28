@@ -10,7 +10,9 @@ import { RestApi } from '../../rest-api';
 import { AmazonApiGatewayV2Endpoint } from '../AmazonApiGatewayV2EndpointAdaptor';
 
 /** Endpoints are built from a surface now, so the tests build one. */
-const api = new RestApi('Test', { path: '.', defaultAuthorizer: 'none' });
+/** A surface that logs to `logger` — the logger is the surface's, not a route's. */
+const apiLoggingTo = (logger: Logger) =>
+	new RestApi('Test', { path: '.', defaultAuthorizer: 'none', logger });
 
 // Test event types
 type TestEvent =
@@ -39,10 +41,7 @@ describe('AmazonApiGatewayV2Endpoint Factory Publisher Pattern', () => {
 		};
 
 		// Create factory with publisher exactly as user described
-		const r = api.endpoints
-			.logger(mockLogger)
-			.services([])
-			.publisher(EventsService);
+		const r = apiLoggingTo(mockLogger).publisher(EventsService);
 
 		// Create endpoint from factory
 		const endpoint = r
@@ -118,9 +117,9 @@ describe('AmazonApiGatewayV2Endpoint Factory Publisher Pattern', () => {
 			register: vi.fn().mockResolvedValue(mockPublisher),
 		};
 
-		const factory = api.endpoints
-			.logger(mockLogger)
-			.publisher(ConditionalEventsService);
+		const factory = apiLoggingTo(mockLogger).publisher(
+			ConditionalEventsService,
+		);
 
 		const endpoint = factory
 			.put('/orders/:id')
@@ -202,9 +201,7 @@ describe('AmazonApiGatewayV2Endpoint Factory Publisher Pattern', () => {
 		};
 
 		// Create shared factory
-		const factory = api.endpoints
-			.logger(mockLogger)
-			.publisher(SharedEventsService);
+		const factory = apiLoggingTo(mockLogger).publisher(SharedEventsService);
 
 		// Create multiple endpoints from same factory
 		const createEndpoint = factory
