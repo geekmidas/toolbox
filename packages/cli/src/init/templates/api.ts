@@ -32,7 +32,6 @@ export const apiTemplate: TemplateConfig = {
 		'@geekmidas/auth': GEEKMIDAS_VERSIONS['@geekmidas/auth'],
 		'@hono/node-server': DEPENDENCY_VERSIONS['@hono/node-server'],
 		hono: DEPENDENCY_VERSIONS.hono,
-		pino: DEPENDENCY_VERSIONS.pino,
 		zod: DEPENDENCY_VERSIONS.zod,
 	},
 

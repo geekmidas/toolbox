@@ -23,6 +23,12 @@ export function generatePackageJson(
 	const devDependencies = { ...template.devDependencies };
 	const scripts = { ...template.scripts };
 
+	// The logger the scaffold imports is `@geekmidas/logger/<loggerType>`, and
+	// only the pino one needs pino installed beside it.
+	if (options.loggerType === 'pino') {
+		dependencies.pino = DEPENDENCY_VERSIONS.pino;
+	}
+
 	// Add optional dependencies based on user choices
 	if (telescope) {
 		dependencies['@geekmidas/telescope'] =

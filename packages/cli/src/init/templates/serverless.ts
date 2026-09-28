@@ -22,7 +22,6 @@ export const serverlessTemplate: TemplateConfig = {
 		'@geekmidas/schema': GEEKMIDAS_VERSIONS['@geekmidas/schema'],
 		'@hono/node-server': DEPENDENCY_VERSIONS['@hono/node-server'],
 		hono: DEPENDENCY_VERSIONS.hono,
-		pino: DEPENDENCY_VERSIONS.pino,
 	},
 
 	devDependencies: {
