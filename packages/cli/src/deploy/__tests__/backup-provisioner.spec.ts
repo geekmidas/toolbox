@@ -9,6 +9,7 @@ import {
 import {
 	DeleteBucketCommand,
 	DeleteObjectsCommand,
+	GetBucketLocationCommand,
 	ListObjectsV2Command,
 	S3Client,
 } from '@aws-sdk/client-s3';
@@ -424,5 +425,58 @@ describe('backup-provisioner', () => {
 				logs.some((l) => l.includes('Warning: Could not verify destination')),
 			).toBe(true);
 		});
+	});
+
+	describe('on a second provisioning', () => {
+		it('reuses the bucket and IAM user that survived, and the destination Dokploy kept', async () => {
+			setupDokployMocks({ createDestinationId: 'dest_first' });
+			const first = await provisionBackupDestination(createOptions());
+			createdBuckets.push(first.bucketName);
+			createdUsers.push(first.iamUserName);
+			server.resetHandlers();
+			setupDokployMocks({
+				existingDestination: {
+					destinationId: 'dest_kept',
+					name: 'test-project-production-s3',
+				},
+			});
+			logs.length = 0;
+
+			const second = await provisionBackupDestination(
+				createOptions({
+					existingState: { ...first, destinationId: 'dest_gone' },
+				}),
+			);
+
+			expect(second).toMatchObject({
+				bucketName: first.bucketName,
+				iamUserName: first.iamUserName,
+				iamAccessKeyId: first.iamAccessKeyId,
+				destinationId: 'dest_kept',
+			});
+			expect(logs).toEqual(
+				expect.arrayContaining([
+					`   Using existing S3 bucket: ${first.bucketName}`,
+					`   Using existing IAM user: ${first.iamUserName}`,
+					'   ✓ Using existing Dokploy destination',
+				]),
+			);
+		});
+	});
+
+	it('creates the bucket in the region configured', async () => {
+		setupDokployMocks({});
+
+		const result = await provisionBackupDestination(
+			createOptions({ config: { type: 's3', region: 'eu-west-1' } }),
+		);
+		createdBuckets.push(result.bucketName);
+		createdUsers.push(result.iamUserName);
+
+		const location = await s3Client.send(
+			new GetBucketLocationCommand({ Bucket: result.bucketName }),
+		);
+		expect(location.LocationConstraint).toBe('eu-west-1');
+		expect(result.region).toBe('eu-west-1');
 	});
 });
