@@ -1,6 +1,9 @@
 import { ensureServices } from './services';
 
-/** Redis, and the HTTP proxy the Upstash client speaks to. */
+/**
+ * Redis, the HTTP proxy the Upstash client speaks to, and the Postgres the
+ * database-backed cache keeps its table in.
+ */
 export default async function globalSetup() {
-	await ensureServices('redis', 'cache');
+	await ensureServices('postgres', 'redis', 'cache');
 }

@@ -92,8 +92,12 @@ function clientFor(url: string): Redis {
 		// A cache miss is recoverable and a hung request is not. Failing fast and
 		// letting the caller treat it as a miss is the behaviour a cache should
 		// have; retrying forever turns a degraded cache into a degraded app.
+		//
+		// The offline queue stays on: the socket connects after the constructor
+		// returns, so without it the first command of every fresh client — every
+		// cold start — is rejected before the connection has had a chance. The
+		// retry bound above is what keeps a queued command from waiting forever.
 		maxRetriesPerRequest: 2,
-		enableOfflineQueue: false,
 	});
 
 	clients.set(url, client);
