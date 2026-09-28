@@ -3,7 +3,6 @@
 	"compilerOptions": {
 		"types": ["node"],
 		"jsx": "react-jsx",
-		"baseUrl": ".",
 		"paths": {
 			"@kitchen-sink/constructs/*": ["./constructs/*"]
 		}

@@ -4,6 +4,9 @@
     /* Language and Environment */
     "target": "ES2022",
     "lib": ["ES2023"],
+    // TypeScript 6 includes no `@types/*` unless named; every package here
+    // runs on Node, and 5.x picked these up implicitly.
+    "types": ["node"],
 
     /* Type Checking */
     "strict": true,

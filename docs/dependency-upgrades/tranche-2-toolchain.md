@@ -1,6 +1,7 @@
 # Tranche 2: the build and test toolchain
 
-**Status: in progress** on `deps/tranche-2-toolchain`. Tracked in #40.
+**Status: done, TypeScript at 6.0** (#58). Tracked in #40; TypeScript 7 is
+blocked on the tools listed in step 6.
 
 Deferred from [tranche 1](./tranche-1-dependencies.md) because the toolchain
 changes how every package compiles and runs. Kept separate so that a failure
@@ -66,9 +67,22 @@ candidate cause:
    interactions are core now, so only `addon-docs` and `addon-a11y` remain;
    stories import types from `@storybook/react-vite`; backgrounds use
    `options` and `initialGlobals`.
-6. **TypeScript** last. It's the widest blast radius, and the other tools need
-   to support it first. Check each one's TypeScript 7 support before starting
-   this step.
+6. **TypeScript: 6.0, not 7.** TypeScript 7's package ships the native compiler
+   and a new `unstable/*` API, not the classic compiler API — and three things
+   on our path still need the classic one:
+   - **`openapi-typescript`** (a runtime dependency of the CLI, driving
+     `openapi-react-query`): latest 7.13 supports `typescript ^5.x` and builds
+     its output through the compiler API.
+   - **Storybook's docgen** (`@joshwooding/vite-plugin-react-docgen-typescript`
+     0.9): `typescript >=4.3 <7 || >=7.1.0-0` — it skips 7.0 explicitly.
+   - **Next.js 15**, which typechecks through the compiler API in
+     `next build` (kitchen-sink's admin, and every Next scaffold).
+
+   tsdown is ready (rolldown-plugin-dts 0.28 accepts `~7.0.0` and generates
+   declarations with tsgo). 6.0 is the last JavaScript compiler and keeps the
+   API; it moved `types` to default `[]`, so the base config names `node`, and
+   deprecates `baseUrl`, which kitchen-sink no longer sets. **7 follows when
+   `openapi-typescript` supports it and TypeScript 7.1 ships.**
 
 ## Done when
 
