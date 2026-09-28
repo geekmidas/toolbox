@@ -4,7 +4,7 @@ TypeScript monorepo for building modern web applications. Packages are under the
 
 ## Stack
 
-- **TypeScript** 5.8.2, **Node.js** ≥ 22.0.0
+- **TypeScript** 7 (the native compiler), **Node.js** ≥ 22.0.0
 - **pnpm** 10.13.1 (package manager), **Turbo** (monorepo)
 - **tsdown** (build, generates ESM + CJS), **Vitest** (testing)
 - **Biome** (lint + format), **Hono** (HTTP framework)
