@@ -76,7 +76,7 @@ interface API {
       email: string;
     };
   };
-  'GET /users/:id': {
+  'GET /users/{id}': {
     params: {
       id: string;
     };
@@ -102,7 +102,7 @@ const user = await api('POST /users', {
 });
 // user is typed as { id: string; name: string; email: string }
 
-const singleUser = await api('GET /users/:id', {
+const singleUser = await api('GET /users/{id}', {
   params: { id: '123' }
 });
 // singleUser is typed as { id: string; name: string; email: string }
@@ -280,6 +280,26 @@ function CreateUser() {
 }
 ```
 
+### Method Calls
+
+Every client also answers by method — the same request as
+`api('POST /users', …)`, with the method as the call:
+
+```typescript
+await api.get('/health');                                   // declares nothing → no second argument
+await api.get('/users/{id}', { params: { id: '123' } });    // path params → argument required
+await api.post('/users', { body: { name: 'Ada', email } }); // body → argument required
+await api.get('/search', { query: { q: 'ada' } });          // required query key → required
+await api.get('/users', { query: { page: 2 } });            // optional query → optional
+
+await api.post('/users', { body: { name: 'Ada' } });        // ❌ `email` is missing
+await api.get('/health', { body: {} });                     // ❌ GET /health takes no body
+await api.post('/health');                                  // ❌ /health has no POST
+```
+
+The route autocompletes per method — only routes with a `POST` appear in
+`api.post` — and the second argument has only the keys the endpoint declares.
+
 ### Type-Safe Config Requirements
 
 The generated client enforces config requirements at the type level:
@@ -395,14 +415,14 @@ Type-safe cache invalidation:
 await api.invalidateQueries('GET /users');
 
 // Invalidate with params
-await api.invalidateQueries('GET /users/:id', {
+await api.invalidateQueries('GET /users/{id}', {
   params: { id: '123' }
 });
 
 // Invalidate multiple queries
 await Promise.all([
   api.invalidateQueries('GET /users'),
-  api.invalidateQueries('GET /users/:id')
+  api.invalidateQueries('GET /users/{id}')
 ]);
 ```
 
@@ -411,20 +431,20 @@ await Promise.all([
 Implement optimistic UI updates:
 
 ```typescript
-const updateUser = api.useMutation('PUT /users/:id', {
+const updateUser = api.useMutation('PUT /users/{id}', {
   onMutate: async (variables) => {
     // Cancel outgoing refetches
-    await api.cancelQueries('GET /users/:id', {
+    await api.cancelQueries('GET /users/{id}', {
       params: { id: variables.params.id }
     });
 
     // Snapshot previous value
-    const previousUser = api.getQueryData('GET /users/:id', {
+    const previousUser = api.getQueryData('GET /users/{id}', {
       params: { id: variables.params.id }
     });
 
     // Optimistically update
-    api.setQueryData('GET /users/:id', {
+    api.setQueryData('GET /users/{id}', {
       params: { id: variables.params.id }
     }, variables.body);
 
@@ -433,14 +453,14 @@ const updateUser = api.useMutation('PUT /users/:id', {
   onError: (err, variables, context) => {
     // Rollback on error
     if (context?.previousUser) {
-      api.setQueryData('GET /users/:id', {
+      api.setQueryData('GET /users/{id}', {
         params: { id: variables.params.id }
       }, context.previousUser);
     }
   },
   onSettled: (data, error, variables) => {
     // Refetch after mutation
-    api.invalidateQueries('GET /users/:id', {
+    api.invalidateQueries('GET /users/{id}', {
       params: { id: variables.params.id }
     });
   }
@@ -461,7 +481,7 @@ const api = createTypedFetcher<API>({
 });
 
 // Per-request headers
-const user = await api('GET /users/:id', {
+const user = await api('GET /users/{id}', {
   params: { id: '123' },
   headers: {
     'X-Request-ID': requestId
@@ -477,7 +497,7 @@ Handle errors with full type safety:
 import { HttpError } from '@geekmidas/errors';
 
 try {
-  const user = await api('GET /users/:id', {
+  const user = await api('GET /users/{id}', {
     params: { id: '123' }
   });
 } catch (error) {
@@ -537,7 +557,7 @@ function UsersList() {
 
   const handleUserHover = (userId: string) => {
     // Prefetch user details on hover
-    api.prefetchQuery('GET /users/:id', {
+    api.prefetchQuery('GET /users/{id}', {
       params: { id: userId }
     });
   };

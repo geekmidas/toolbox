@@ -14,6 +14,7 @@ export {
 } from './Authorizer';
 export type { ActorExtractor, MappedAudit } from './audit';
 export {
+	type ConvertRouteParams,
 	Endpoint,
 	type EndpointContext,
 	type EndpointHandler,
