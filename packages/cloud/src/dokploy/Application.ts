@@ -241,6 +241,13 @@ export interface ApplicationArgs {
 	environmentId: Input<string>;
 }
 
+/**
+ * The provider itself, for tests: its create/read/update/delete are what talk
+ * to Dokploy, and a dynamic resource gives no other way to reach them without a
+ * Pulumi engine.
+ */
+export { provider as applicationProvider };
+
 export class Application extends dynamic.Resource {
 	declare readonly applicationId: Output<string>;
 	declare readonly appName: Output<string>;

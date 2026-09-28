@@ -22,9 +22,12 @@ const STUB_ACCOUNT = '123456789012';
 class StubComponent {
 	readonly name: string;
 	readonly nodes: { bucket: { region: string } };
+	/** What the component was constructed with, so a wrapper's args are assertable. */
+	readonly args: unknown;
 
-	constructor(name: string, _props?: unknown) {
+	constructor(name: string, props?: unknown) {
 		this.name = name;
+		this.args = props;
 		this.nodes = { bucket: { region: STUB_REGION } };
 	}
 
@@ -53,6 +56,24 @@ class StubRouter extends StubComponent {
 
 	routeBucket(pattern: string, bucket: unknown) {
 		this.routed.push({ pattern, bucket });
+	}
+}
+
+/**
+ * An HTTP API records the routes and authorizers it was given, and hands each
+ * authorizer back an id, so how routes are wired to them is assertable.
+ */
+class StubApiGateway extends StubComponent {
+	readonly routes: { key: string; handler: unknown; args: unknown }[] = [];
+	readonly authorizers: { name: string; [k: string]: unknown }[] = [];
+
+	route(key: string, handler: unknown, args?: unknown) {
+		this.routes.push({ key, handler, args });
+	}
+
+	addAuthorizer(config: { name: string; [k: string]: unknown }) {
+		this.authorizers.push(config);
+		return { id: `${config.name}-authorizer-id` };
 	}
 }
 
@@ -111,7 +132,8 @@ Object.assign(globalThis, {
 			Queue: StubComponent,
 			SnsTopic: StubComponent,
 			Function: StubComponent,
-			ApiGatewayV2: StubComponent,
+			ApiGatewayV2: StubApiGateway,
+			CronV2: StubComponent,
 			StaticSite: StubComponent,
 			Router: StubRouter,
 			Postgres: StubPostgres,

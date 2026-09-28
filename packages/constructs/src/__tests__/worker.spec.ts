@@ -178,4 +178,50 @@ describe('Worker', () => {
 			expect(worker.logger).toBe(logger);
 		});
 	});
+
+	describe('.database()', () => {
+		it('names where its schedules live, as an edge and as its store', () => {
+			const database = new KyselyDatabase<Record<string, never>, 'Db'>('Db');
+			const worker = new Worker('Jobs');
+
+			const scheduled = worker.database(database);
+
+			expect(scheduled.scheduleStore).toBe(database);
+			expect(scheduled.declare()[0]).toMatchObject({
+				dependencies: [expect.objectContaining({ target: 'Db' })],
+			});
+			// Immutable: the worker it came from has no store.
+			expect(worker.scheduleStore).toBeUndefined();
+		});
+	});
+
+	describe('function sugar', () => {
+		it('starts a function from input, output, timeout or memory size', async () => {
+			const { z } = await import('zod');
+			const worker = new Worker('Jobs');
+			const input = z.object({ id: z.string() });
+			const output = z.object({ ok: z.boolean() });
+
+			const fn = worker
+				.input(input)
+				.output(output)
+				.timeout(5_000)
+				.memorySize(512)
+				.handle(async () => ({ ok: true }));
+
+			expect(fn.input).toBe(input);
+			expect(fn.outputSchema).toBe(output);
+			expect(fn.timeout).toBe(5_000);
+			expect(fn.memorySize).toBe(512);
+			expect(
+				worker.output(output).handle(async () => ({ ok: true })).outputSchema,
+			).toBe(output);
+			expect(worker.timeout(1_000).handle(async () => ({})).timeout).toBe(
+				1_000,
+			);
+			expect(worker.memorySize(256).handle(async () => ({})).memorySize).toBe(
+				256,
+			);
+		});
+	});
 });

@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SRH_URL } from '../../../testkit/test/ports';
-import { UpstashCache } from '../upstash';
+import {
+	parseUpstashUrl,
+	UpstashCache,
+	upstashCacheDriver,
+	upstashInsecureCacheDriver,
+} from '../upstash';
 
 describe('UpstashCache', () => {
 	let cache: UpstashCache;
@@ -273,5 +278,33 @@ describe('UpstashCache', () => {
 
 			expect(results).toEqual(values);
 		});
+	});
+});
+
+describe('the upstash drivers', () => {
+	it('read the endpoint and token out of one URL', () => {
+		expect(parseUpstashUrl('https://:tok%2Fen@eu1.upstash.io/')).toEqual({
+			endpoint: 'https://eu1.upstash.io',
+			token: 'tok/en',
+		});
+		// A token written where a username goes is still the token.
+		expect(parseUpstashUrl('http://tok@localhost:8079')).toEqual({
+			endpoint: 'http://localhost:8079',
+			token: 'tok',
+		});
+	});
+
+	it('reach the proxy through a URL that carries its token', async () => {
+		const proxy = new URL(SRH_URL);
+		proxy.password = 'example_token';
+		const cache = upstashInsecureCacheDriver.create(proxy.toString());
+		const key = `test:${Date.now()}:driver`;
+
+		expect(upstashCacheDriver.scheme).toBe('https:');
+		expect(upstashInsecureCacheDriver.scheme).toBe('http:');
+
+		await cache.set(key, { via: 'url' }, 60);
+		expect(await cache.get(key)).toEqual({ via: 'url' });
+		await cache.delete(key);
 	});
 });
