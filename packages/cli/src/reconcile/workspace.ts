@@ -17,7 +17,7 @@ import {
 	eventsBackendFor,
 	providerOf,
 } from '../workspace/backends.js';
-import { appKey, hostOf } from '../workspace/derive.js';
+import { appKey } from '../workspace/derive.js';
 import { allConstructGlobs } from '../workspace/index.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { appServices } from './apps.js';
@@ -149,25 +149,15 @@ export function surfaceAddresses(
 		if (declaration.kind !== 'rest-api' && declaration.kind !== 'site')
 			continue;
 
-		// The app serving it, by the same name the derivation gave it — a surface
-		// mounted into another answers at its host's port, not at one of its own.
-		const host =
-			declaration.kind === 'site' ? appKey(id) : appKeyOfHost(manifest, id);
-		const app = host ? workspace.apps[host] : undefined;
+		// Every site and every surface is its own app, keyed by its id the way
+		// the derivation keyed it.
+		const host = appKey(id);
+		const port = workspace.apps[host]?.port;
 
-		if (host && app?.port) addresses[id] = at(host, app.port);
+		if (port) addresses[id] = at(host, port);
 	}
 
 	return addresses;
-}
-
-/** The app key serving a surface, following a mount to its host. */
-function appKeyOfHost(
-	manifest: ConstructManifest,
-	id: string,
-): string | undefined {
-	const host = hostOf(manifest, id);
-	return host ? appKey(host) : undefined;
 }
 
 /** Where a local process answers, given the port the workspace gave it. */
