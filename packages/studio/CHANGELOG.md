@@ -1,5 +1,22 @@
 # @geekmidas/studio
 
+## 10.0.0-alpha.13
+
+### Patch Changes
+
+- [#58](https://github.com/geekmidas/toolbox/pull/58) [`07d1827`](https://github.com/geekmidas/toolbox/commit/07d1827bb0a2a76d04a0fc25a7517df282004137) Thanks [@geekmidas](https://github.com/geekmidas)! - The build and test toolchain moves to its latest versions (tranche 2)
+  - **tsx 4.23, tsdown 0.23.** The CLI runs TypeScript through tsx, so its
+    `tsx` dependency moves with it.
+  - **Vite 8, `@vitejs/plugin-react` 6** for the Studio and Telescope UIs, which
+    ship inside those packages.
+  - **Vitest 5.** `@geekmidas/testkit` and `@geekmidas/db` require `vitest ~5.0.2`,
+    so a project on an older Vitest needs to move with them. A fresh `gkm init`
+    already ships Vitest 4+; the scaffold's pin follows with #43.
+
+- Updated dependencies [[`07d1827`](https://github.com/geekmidas/toolbox/commit/07d1827bb0a2a76d04a0fc25a7517df282004137)]:
+  - @geekmidas/db@10.0.0-alpha.13
+  - @geekmidas/telescope@10.0.0-alpha.13
+
 ## 10.0.0-alpha.12
 
 ### Patch Changes
