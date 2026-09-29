@@ -37,8 +37,12 @@ export class Cron<
 	 * Carried from the worker that built it, which declared it once with
 	 * `.database(db)`. Unread on AWS, where the schedule is an EventBridge rule
 	 * and nothing in this process fires anything.
+	 *
+	 * A service rather than the construct, because what reads it is service
+	 * discovery in the generated server — which registers services, and failed
+	 * on the construct with `service.register is not a function`.
 	 */
-	scheduleStore?: unknown;
+	scheduleStore?: Service<string, unknown>;
 
 	static isCron(obj: any): obj is Cron<any, any, any, any> {
 		return Boolean(

@@ -316,7 +316,9 @@ export class CronBuilder<
 
 		// And where that process keeps the schedule, when a server is what runs
 		// it. Declared once on the worker rather than repeated per cron.
-		cron.scheduleStore = this._scheduleStore;
+		cron.scheduleStore = this._scheduleStore
+			? serviceOf(this._scheduleStore as Consumable<string, unknown>)
+			: undefined;
 
 		// No reset. `.handle()` reads this builder and leaves it alone, so a
 		// configured base — `const fn = f.logger(log).timeout(60_000)` — keeps

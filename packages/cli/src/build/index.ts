@@ -650,21 +650,33 @@ export function turboFilters(workspace: NormalizedWorkspace): {
 	const filters: string[] = [];
 	const unpackaged: string[] = [];
 
-	for (const [appName, app] of Object.entries(workspace.apps)) {
-		const pkgPath = join(workspace.root, app.path, 'package.json');
-		if (!existsSync(pkgPath)) {
-			unpackaged.push(appName);
-			continue;
-		}
-		const name = JSON.parse(readFileSync(pkgPath, 'utf8')).name;
-		if (typeof name === 'string' && name.length > 0) {
-			filters.push(name);
-		} else {
-			unpackaged.push(appName);
-		}
+	for (const appName of Object.keys(workspace.apps)) {
+		const name = appPackageName(workspace, appName);
+		if (name) filters.push(name);
+		else unpackaged.push(appName);
 	}
 
 	return { filters, unpackaged };
+}
+
+/**
+ * The package name turbo knows an app by, from its own `package.json`.
+ *
+ * Not the app's key: `api` in the workspace is `@shop/api` to turbo, and a
+ * filter naming the key matches nothing.
+ */
+export function appPackageName(
+	workspace: NormalizedWorkspace,
+	appName: string,
+): string | undefined {
+	const app = workspace.apps[appName];
+	if (!app) return undefined;
+
+	const pkgPath = join(workspace.root, app.path, 'package.json');
+	if (!existsSync(pkgPath)) return undefined;
+
+	const name = JSON.parse(readFileSync(pkgPath, 'utf8')).name;
+	return typeof name === 'string' && name.length > 0 ? name : undefined;
 }
 
 /**

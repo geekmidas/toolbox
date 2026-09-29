@@ -4,7 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import chokidar from 'chokidar';
 import fg from 'fast-glob';
-import { buildApp } from '../build/index';
+import { appPackageName, buildApp, turboFilters } from '../build/index';
 import { resolveProviders } from '../build/providerResolver';
 import type {
 	NormalizedHooksConfig,
@@ -1045,14 +1045,27 @@ async function workspaceDevCommand(
 				`App "${options.app}" not found. Available apps: ${appNames}`,
 			);
 		}
-		turboFilter = ['--filter', options.app];
+		turboFilter = [
+			'--filter',
+			appPackageName(workspace, options.app) ?? options.app,
+		];
 		logger.log(`\n🎯 Running single app: ${options.app}`);
 	} else if (options.filter) {
 		// Use custom filter
 		turboFilter = ['--filter', options.filter];
 		logger.log(`\n🔍 Using filter: ${options.filter}`);
 	} else {
-		// Run all apps
+		// Every app, by name. Left to infer its own scope at the workspace root,
+		// turbo includes the root package — whose `dev` script is `gkm dev`,
+		// which arrives here and starts turbo again, and every app twice over.
+		// `gkm build` names its apps for the same reason.
+		const { filters, unpackaged } = turboFilters(workspace);
+		turboFilter = filters.flatMap((name) => ['--filter', name]);
+		if (unpackaged.length > 0) {
+			logger.warn(
+				`⚠️  No package.json with a name for: ${unpackaged.join(', ')} — turbo cannot run ${unpackaged.length === 1 ? 'it' : 'them'}.`,
+			);
+		}
 		logger.log(`\n🎯 Running all ${appCount} apps`);
 	}
 

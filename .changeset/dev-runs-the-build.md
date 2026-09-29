@@ -1,5 +1,6 @@
 ---
 '@geekmidas/cli': patch
+'@geekmidas/constructs': patch
 ---
 
 `gkm dev` runs the build's own pipeline, and starts an auth server
@@ -21,3 +22,11 @@ Also fixed on the way, each found by running `gkm dev` against a real app:
 - Restarting or stopping the dev server ran `kill -9` on every process with a
   socket on its port — the browser, the web app's server — not only the one
   listening on it.
+- `gkm dev` at a workspace root ran turbo with no filter, so turbo also ran the
+  root package's own `dev` — `gkm dev` again — and every app started twice,
+  fighting over its port. Dev now names each app's package, as `gkm build` does.
+- Every app in a workspace asked for port 3000, because the CLI turned a
+  missing `--port` into 3000 before the workspace's port was consulted.
+- A `Worker`'s crons failed to schedule on a server: the schedule store reached
+  service discovery as the construct rather than its service, and pg-boss was
+  handed a Kysely client where it needs `executeSql`.

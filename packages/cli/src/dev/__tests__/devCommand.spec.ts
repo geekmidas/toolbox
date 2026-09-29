@@ -386,7 +386,9 @@ ${apps}
 
 			const [turbo] = fakes.spawned;
 			expect(turbo!.command).toBe('pnpm');
-			expect(turbo!.args).toEqual(['turbo', 'run', 'dev']);
+			// Each app by its package name. Unfiltered, turbo at the root runs the
+			// root package's own `dev` — `gkm dev` — and recurses.
+			expect(turbo!.args).toEqual(['turbo', 'run', 'dev', '--filter', 'web']);
 			expect(turbo!.options.cwd).toBe(dir);
 			expect(turbo!.options.env?.API_URL).toBe('http://localhost:3310');
 			expect(turbo!.options.env?.GKM_CONFIG_PATH).toBe(
@@ -397,6 +399,9 @@ ${apps}
 			expect(said).toContain('Frontend apps validated');
 			expect(said).toContain('web → http://localhost:3311 (depends on: api)');
 			expect(output(warn)).toContain('no "dev" secrets found');
+			expect(output(warn)).toContain(
+				'No package.json with a name for: api, app',
+			);
 
 			turbo!.emit('exit', 0);
 			await expect(running).resolves.toBeUndefined();

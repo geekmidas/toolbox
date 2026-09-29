@@ -215,9 +215,19 @@ export async function setupCrons(
     .then((s) => Object.values(s));
 
   const { PgBoss } = await import('pg-boss');
-  // The pool the construct already opened — no connection string is read here,
-  // and none is named anywhere outside the construct that owns it.
-  const boss = new PgBoss({ db: store as never });
+  const { CompiledQuery } = await import('kysely');
+  // The connection the construct already opened — no connection string is
+  // read here, and none is named anywhere outside the construct that owns it.
+  // pg-boss takes a \`db\` with \`executeSql\`, and the construct's client is
+  // Kysely, so this is the adapter between them; handing Kysely over as-is
+  // failed on the first query with \`executeSql is not a function\`.
+  const kysely = store as { executeQuery(query: unknown): Promise<{ rows: unknown[] }> };
+  const boss = new PgBoss({
+    db: {
+      executeSql: (text: string, values?: unknown[]) =>
+        kysely.executeQuery(CompiledQuery.raw(text, values ?? [])),
+    },
+  });
   await boss.start();
 
   // What this app declares now. Anything else under the prefix belonged to a
