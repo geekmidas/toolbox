@@ -169,9 +169,16 @@ export async function writeTestHarness(
 		sources,
 		endpoints.map(({ construct }) => construct as Endpoint<any, any, any, any>),
 	);
+	const files = [
+		...new Set([
+			...Object.values(manifest.constructs).map(({ source }) => source.file),
+			...manifest.endpoints.map(({ source }) => source.file),
+		]),
+	];
 	const harnessFor = (dir: string) =>
 		harnessModule({
 			dir,
+			files,
 			database,
 			surfaces: surfaces.map((id, index) => ({
 				id,
@@ -289,12 +296,14 @@ function specifierFrom(dir: string, file: string): string {
 
 function harnessModule(options: {
 	dir: string;
+	/** Every module the manifest points at, by absolute path. */
+	files: string[];
 	database: ConstructSource | undefined;
 	surfaces: { id: string; secured: boolean }[];
 	auths: AuthClient[];
 	drivers: RuntimeDrivers;
 }): string {
-	const { surfaces, auths, drivers, database, dir } = options;
+	const { surfaces, auths, drivers, database, dir, files } = options;
 	const plugins = [...new Set(auths.flatMap(({ plugins }) => plugins))].sort();
 
 	const imports = [
@@ -316,6 +325,12 @@ function harnessModule(options: {
 			? [`import { ${plugins.join(', ')} } from 'better-auth/client/plugins';`]
 			: []),
 		...(drivers.imports ? [drivers.imports] : []),
+		// Every construct and endpoint module, imported here — inside the app,
+		// where its tsconfig paths resolve — rather than by path from the kit.
+		...files.map(
+			(file, index) =>
+				`import * as __module${index} from '${specifierFrom(dir, file)}';`,
+		),
 	];
 
 	const url = (id: string) =>
@@ -356,7 +371,12 @@ export class Browser extends TestBrowser {
 ${members.join('\n\n')}
 }
 
+/** The app's modules, by the path the manifest records for each. */
+const modules = {
+${files.map((file, index) => `\t${JSON.stringify(file)}: __module${index},`).join('\n')}
+};
+
 /** \`it\`, for a test that drives the app the way it runs deployed. */
-export const it = featureTest${database ? '<Browser, DatabaseOf<typeof __database>>' : ''}({ manifest, browser: Browser });
+export const it = featureTest${database ? '<Browser, DatabaseOf<typeof __database>>' : ''}({ manifest, modules, browser: Browser });
 `;
 }
