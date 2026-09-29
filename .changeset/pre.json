@@ -46,6 +46,7 @@
     "constructs-only-compose",
     "deploy-github-oidc",
     "dev-reads-the-surface",
+    "dev-runs-the-build",
     "drop-free-standing-builders",
     "drop-generate-react-query",
     "fresh-scaffold-tests-run",
