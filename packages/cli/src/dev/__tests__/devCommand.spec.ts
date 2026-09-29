@@ -84,7 +84,9 @@ vi.mock('chokidar', async () => {
 	};
 });
 
-const { devCommand } = await import('../index');
+const { devCommand, DevPortInUse, WorkspacePortsInUse } = await import(
+	'../index'
+);
 
 /** Resolves once `check` holds, polling — dev mode's steps are all async. */
 async function until(check: () => boolean, timeout = 15_000): Promise<void> {
@@ -407,6 +409,27 @@ ${apps}
 			await expect(running).resolves.toBeUndefined();
 		});
 
+		// Checked before turbo starts anything: a port held by a server a
+		// previous run left behind failed one app while the others ran.
+		it("starts nothing when an app's provisioned port is taken", async () => {
+			const { port, server } = await occupiedPort();
+
+			try {
+				workspace(
+					`    api: { type: 'backend', path: 'apps/api', port: ${port} },`,
+				);
+
+				const error = await devCommand({}).catch((e: unknown) => e);
+				expect(error).toBeInstanceOf(WorkspacePortsInUse);
+				expect(
+					(error as InstanceType<typeof WorkspacePortsInUse>).held,
+				).toEqual([expect.objectContaining({ app: 'api', port })]);
+				expect(fakes.spawned).toEqual([]);
+			} finally {
+				server.close();
+			}
+		});
+
 		it('filters turbo to one app, and fails when turbo does', async () => {
 			workspace(api);
 
@@ -598,6 +621,28 @@ ${apps}
 			);
 			expect(written.STRIPE_KEY).toBe('sk_dev');
 			expect(output(log)).toContain('Running app: api on port 3321');
+		});
+
+		// Every other app's URL, CORS list and cookie domain names this port. A
+		// run that found it held moved to the next free one — in a workspace,
+		// usually another app's — and two servers fought over it.
+		it('refuses a provisioned port that is taken, rather than moving off it', async () => {
+			const { port, server } = await occupiedPort();
+
+			try {
+				const api = workspaceWithApp(
+					`    api: { type: 'backend', path: 'apps/api', port: ${port} },`,
+					'api',
+				);
+				process.chdir(api);
+
+				const error = await devCommand({}).catch((e: unknown) => e);
+				expect(error).toBeInstanceOf(DevPortInUse);
+				expect((error as InstanceType<typeof DevPortInUse>).port).toBe(port);
+				expect(fakes.spawned).toEqual([]);
+			} finally {
+				server.close();
+			}
 		});
 
 		it('falls back to the whole workspace from a directory that is not an app', async () => {

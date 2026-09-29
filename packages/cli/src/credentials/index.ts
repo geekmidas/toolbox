@@ -851,10 +851,15 @@ export async function prepareEntryCredentials(options: {
 		}
 	}
 
-	// Inject dependency URLs (works for both frontend and backend apps)
+	// Dependency URLs as `http://localhost:<port>`, for whatever reconcile did
+	// not resolve. Declared addresses win — each app behind the edge on its own
+	// HTTPS host; assigned over them, these overwrote the hosts the apps' CORS
+	// origins name.
 	if (appInfo?.appName) {
 		const depEnv = getDependencyEnvVars(appInfo.workspace, appInfo.appName);
-		Object.assign(credentials, depEnv);
+		for (const [key, value] of Object.entries(depEnv)) {
+			credentials[key] ??= value;
+		}
 	}
 
 	// Default event connection strings to pgboss when postgres is available.

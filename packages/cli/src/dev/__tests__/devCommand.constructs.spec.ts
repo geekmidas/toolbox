@@ -1,5 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { cpSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+	cpSync,
+	mkdirSync,
+	readFileSync,
+	realpathSync,
+	writeFileSync,
+} from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { EnvironmentParser } from '@geekmidas/envkit';
@@ -228,7 +234,18 @@ export default defineWorkspace({
 		}
 
 		it('serves the API: its endpoints, the database it declared, and its dev tools', async () => {
-			const request = await dev('api', envFor(await freePort()));
+			const authPort = await freePort();
+			const request = await dev('api', envFor(authPort));
+
+			// The auth server's address is the one reconcile resolved — behind
+			// the edge, where its trusted origins point — not the workspace's
+			// `http://localhost:<port>` fallback, which used to overwrite it.
+			const written = JSON.parse(
+				readFileSync(join(dir, '.gkm', 'dev-secrets-api.json'), 'utf-8'),
+			);
+			expect(written[provideKey('Auth', 'url')]).toBe(
+				`http://localhost:${authPort}`,
+			);
 
 			const health = await request('/health');
 			expect(health.status).toBe(200);
