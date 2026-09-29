@@ -35,11 +35,6 @@ export function constructGlobs(workspace: NormalizedWorkspace): string[] {
 	return allConstructGlobs(workspace);
 }
 
-/** Whether any app has adopted the constructs glob. */
-export function usesConstructs(workspace: NormalizedWorkspace): boolean {
-	return constructGlobs(workspace).length > 0;
-}
-
 /** The backends a workspace's target implies, as the plan takes them. */
 export function backendsOf(workspace: NormalizedWorkspace) {
 	const on = providerOf(workspace);

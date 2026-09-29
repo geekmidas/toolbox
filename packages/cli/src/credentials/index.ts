@@ -1,25 +1,20 @@
-import { execSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { config as dotenvConfig } from 'dotenv';
-import { parse as parseYaml } from 'yaml';
 import {
 	getAppNameFromCwd,
 	loadWorkspaceAppInfo,
 	loadWorkspaceConfig,
 	type WorkspaceAppInfo,
 } from '../config';
-import { usesConstructs } from '../reconcile/workspace.js';
-import { generatePgBossUrl } from '../secrets/generator.js';
 import {
 	readStageSecrets,
 	secretsExist,
 	toEmbeddableSecrets,
 } from '../secrets/storage.js';
 import type { NormalizedWorkspace } from '../workspace/index.js';
-import { getDependencyEnvVars } from '../workspace/index.js';
 
 const logger = console;
 
@@ -114,68 +109,10 @@ export async function findAvailablePort(
 // Docker Compose port mapping
 // ---------------------------------------------------------------------------
 
-/**
- * A port mapping extracted from docker-compose.yml.
- * Only entries using env var interpolation (e.g., `${VAR:-default}:container`) are captured.
- */
-export interface ComposePortMapping {
-	service: string;
-	envVar: string;
-	defaultPort: number;
-	containerPort: number;
-}
-
 /** Port state persisted to .gkm/ports.json, keyed by env var name. */
 export type PortState = Record<string, number>;
 
-export interface ResolvedServicePorts {
-	dockerEnv: Record<string, string>;
-	ports: PortState;
-	mappings: ComposePortMapping[];
-}
-
 const PORT_STATE_PATH = '.gkm/ports.json';
-
-/**
- * Parse docker-compose.yml and extract all port mappings that use env var interpolation.
- * Entries like `'${POSTGRES_HOST_PORT:-5432}:5432'` are captured.
- * Fixed port mappings like `'5050:80'` are skipped.
- * @internal Exported for testing
- */
-export function parseComposePortMappings(
-	composePath: string,
-): ComposePortMapping[] {
-	if (!existsSync(composePath)) {
-		return [];
-	}
-
-	const content = readFileSync(composePath, 'utf-8');
-	const compose = parseYaml(content) as {
-		services?: Record<string, { ports?: string[] }>;
-	};
-
-	if (!compose?.services) {
-		return [];
-	}
-
-	const results: ComposePortMapping[] = [];
-
-	for (const [serviceName, serviceConfig] of Object.entries(compose.services)) {
-		for (const portMapping of serviceConfig?.ports ?? []) {
-			const match = String(portMapping).match(/\$\{(\w+):-(\d+)\}:(\d+)/);
-			if (match?.[1] && match[2] && match[3]) {
-				results.push({
-					service: serviceName,
-					envVar: match[1],
-					defaultPort: Number(match[2]),
-					containerPort: Number(match[3]),
-				});
-			}
-		}
-	}
-
-	return results;
-}
 
 /**
  * Load saved port state from .gkm/ports.json.
@@ -206,325 +143,13 @@ export async function savePortState(
 	);
 }
 
-/**
- * Check if a project's own Docker container is running and return its host port.
- * Uses `docker compose port` scoped to the project's compose file.
- * @internal Exported for testing
- */
-export function getContainerHostPort(
-	workspaceRoot: string,
-	service: string,
-	containerPort: number,
-): number | null {
-	try {
-		const result = execSync(`docker compose port ${service} ${containerPort}`, {
-			cwd: workspaceRoot,
-			stdio: 'pipe',
-		})
-			.toString()
-			.trim();
-		const match = result.match(/:(\d+)$/);
-		return match ? Number(match[1]) : null;
-	} catch {
-		return null;
-	}
-}
-
-/**
- * Resolve host ports for Docker services by parsing docker-compose.yml.
- * Priority: running container → saved state → find available port.
- * Persists resolved ports to .gkm/ports.json.
- * @internal Exported for testing
- */
-export async function resolveServicePorts(
-	workspaceRoot: string,
-): Promise<ResolvedServicePorts> {
-	const composePath = join(workspaceRoot, 'docker-compose.yml');
-	const mappings = parseComposePortMappings(composePath);
-
-	if (mappings.length === 0) {
-		return { dockerEnv: {}, ports: {}, mappings: [] };
-	}
-
-	const savedState = await loadPortState(workspaceRoot);
-	const dockerEnv: Record<string, string> = {};
-	const ports: PortState = {};
-	// Track ports assigned in this cycle to avoid duplicates
-	const assignedPorts = new Set<number>();
-
-	logger.log('\n🔌 Resolving service ports...');
-
-	for (const mapping of mappings) {
-		// 1. Check if own container is already running
-		const containerPort = getContainerHostPort(
-			workspaceRoot,
-			mapping.service,
-			mapping.containerPort,
-		);
-		if (containerPort !== null) {
-			ports[mapping.envVar] = containerPort;
-			dockerEnv[mapping.envVar] = String(containerPort);
-			assignedPorts.add(containerPort);
-			logger.log(
-				`   🔄 ${mapping.service}:${mapping.containerPort}: reusing existing container on port ${containerPort}`,
-			);
-			continue;
-		}
-
-		// 2. Check saved port state
-		const savedPort = savedState[mapping.envVar];
-		if (
-			savedPort &&
-			!assignedPorts.has(savedPort) &&
-			(await isPortAvailable(savedPort))
-		) {
-			ports[mapping.envVar] = savedPort;
-			dockerEnv[mapping.envVar] = String(savedPort);
-			assignedPorts.add(savedPort);
-			logger.log(
-				`   💾 ${mapping.service}:${mapping.containerPort}: using saved port ${savedPort}`,
-			);
-			continue;
-		}
-
-		// 3. Find available port (skipping ports already assigned this cycle)
-		let resolvedPort = await findAvailablePort(mapping.defaultPort);
-		while (assignedPorts.has(resolvedPort)) {
-			resolvedPort = await findAvailablePort(resolvedPort + 1);
-		}
-		ports[mapping.envVar] = resolvedPort;
-		dockerEnv[mapping.envVar] = String(resolvedPort);
-		assignedPorts.add(resolvedPort);
-
-		if (resolvedPort !== mapping.defaultPort) {
-			logger.log(
-				`   ⚡ ${mapping.service}:${mapping.containerPort}: port ${mapping.defaultPort} occupied, using port ${resolvedPort}`,
-			);
-		} else {
-			logger.log(
-				`   ✅ ${mapping.service}:${mapping.containerPort}: using default port ${resolvedPort}`,
-			);
-		}
-	}
-
-	await savePortState(workspaceRoot, ports);
-
-	return { dockerEnv, ports, mappings };
-}
-
 // ---------------------------------------------------------------------------
 // URL rewriting
 // ---------------------------------------------------------------------------
 
-/**
- * Replace a port in a URL string.
- * Handles both `hostname:port` and `localhost:port` patterns.
- * @internal Exported for testing
- */
-export function replacePortInUrl(
-	url: string,
-	oldPort: number,
-	newPort: number,
-): string {
-	if (oldPort === newPort) return url;
-	// Replace literal :port (in authority section)
-	let result = url.replace(
-		new RegExp(`:${oldPort}(?=[/?#]|$)`, 'g'),
-		`:${newPort}`,
-	);
-	// Replace URL-encoded :port (e.g., in query params like endpoint=http%3A%2F%2Flocalhost%3A4566)
-	result = result.replace(
-		new RegExp(`%3A${oldPort}(?=[%/?#&]|$)`, 'gi'),
-		`%3A${newPort}`,
-	);
-	return result;
-}
-
-/**
- * Rewrite connection URLs and port vars in secrets with resolved ports.
- * Uses the parsed compose mappings to determine which default ports to replace.
- * Pure transform — does not modify secrets on disk.
- * @internal Exported for testing
- */
-export function rewriteUrlsWithPorts(
-	secrets: Record<string, string>,
-	resolvedPorts: ResolvedServicePorts,
-): Record<string, string> {
-	const { ports, mappings } = resolvedPorts;
-	const result = { ...secrets };
-
-	// Build a map of defaultPort → resolvedPort for all changed ports
-	const portReplacements: { defaultPort: number; resolvedPort: number }[] = [];
-	// Collect Docker service names for hostname rewriting
-	const serviceNames = new Set<string>();
-	for (const mapping of mappings) {
-		serviceNames.add(mapping.service);
-		const resolved = ports[mapping.envVar];
-		if (resolved !== undefined) {
-			portReplacements.push({
-				defaultPort: mapping.defaultPort,
-				resolvedPort: resolved,
-			});
-		}
-	}
-
-	// Rewrite _HOST env vars that use Docker service names
-	for (const [key, value] of Object.entries(result)) {
-		if (!key.endsWith('_HOST')) continue;
-		if (serviceNames.has(value)) {
-			result[key] = 'localhost';
-		}
-	}
-
-	// Rewrite _PORT env vars whose values match a default port
-	for (const [key, value] of Object.entries(result)) {
-		if (!key.endsWith('_PORT')) continue;
-		for (const { defaultPort, resolvedPort } of portReplacements) {
-			if (value === String(defaultPort)) {
-				result[key] = String(resolvedPort);
-			}
-		}
-	}
-
-	// Rewrite URLs: replace Docker service hostnames with localhost and fix ports
-	for (const [key, value] of Object.entries(result)) {
-		if (
-			!key.endsWith('_URL') &&
-			!key.endsWith('_ENDPOINT') &&
-			!key.endsWith('_CONNECTION_STRING') &&
-			key !== 'DATABASE_URL'
-		)
-			continue;
-
-		let rewritten = value;
-		for (const name of serviceNames) {
-			rewritten = rewritten.replace(
-				new RegExp(`@${name}:`, 'g'),
-				'@localhost:',
-			);
-		}
-		for (const { defaultPort, resolvedPort } of portReplacements) {
-			rewritten = replacePortInUrl(rewritten, defaultPort, resolvedPort);
-		}
-		result[key] = rewritten;
-	}
-
-	return result;
-}
-
 // ---------------------------------------------------------------------------
 // Docker Compose services
 // ---------------------------------------------------------------------------
-
-/**
- * Build the environment variables to pass to `docker compose up`.
- * Merges process.env, secrets, and port mappings so that Docker Compose
- * can interpolate variables like ${POSTGRES_USER} correctly.
- * @internal Exported for testing
- */
-export function buildDockerComposeEnv(
-	secretsEnv?: Record<string, string>,
-	portEnv?: Record<string, string>,
-): Record<string, string | undefined> {
-	return { ...process.env, ...secretsEnv, ...portEnv };
-}
-
-/**
- * Parse all service names from a docker-compose.yml file.
- * @internal Exported for testing
- */
-export function parseComposeServiceNames(composePath: string): string[] {
-	if (!existsSync(composePath)) {
-		return [];
-	}
-
-	const content = readFileSync(composePath, 'utf-8');
-	const compose = parseYaml(content) as {
-		services?: Record<string, unknown>;
-	};
-
-	return Object.keys(compose?.services ?? {});
-}
-
-/**
- * Start docker-compose services for a single-app project (no workspace config).
- * Starts all services defined in docker-compose.yml.
- */
-export async function startComposeServices(
-	cwd: string,
-	portEnv?: Record<string, string>,
-	secretsEnv?: Record<string, string>,
-): Promise<void> {
-	const composeFile = join(cwd, 'docker-compose.yml');
-	if (!existsSync(composeFile)) {
-		return;
-	}
-
-	const servicesToStart = parseComposeServiceNames(composeFile);
-	if (servicesToStart.length === 0) {
-		return;
-	}
-
-	logger.log(`🐳 Starting services: ${servicesToStart.join(', ')}`);
-
-	try {
-		execSync(`docker compose up -d ${servicesToStart.join(' ')}`, {
-			cwd,
-			stdio: 'inherit',
-			env: buildDockerComposeEnv(secretsEnv, portEnv),
-		});
-
-		logger.log('✅ Services started');
-	} catch (error) {
-		logger.error('❌ Failed to start services:', (error as Error).message);
-		throw error;
-	}
-}
-
-/**
- * Start docker-compose services for a workspace.
- * Discovers all services from docker-compose.yml and starts everything
- * except app services (which are managed by turbo).
- * @internal Exported for testing
- */
-export async function startWorkspaceServices(
-	workspace: { root: string; apps: Record<string, unknown> },
-	portEnv?: Record<string, string>,
-	secretsEnv?: Record<string, string>,
-): Promise<void> {
-	const composeFile = join(workspace.root, 'docker-compose.yml');
-	if (!existsSync(composeFile)) {
-		return;
-	}
-
-	// Discover all services from docker-compose.yml
-	const allServices = parseComposeServiceNames(composeFile);
-
-	// Exclude app services (managed by turbo, not docker)
-	const appNames = new Set(Object.keys(workspace.apps));
-	const servicesToStart = allServices.filter((name) => !appNames.has(name));
-
-	if (servicesToStart.length === 0) {
-		return;
-	}
-
-	logger.log(`🐳 Starting services: ${servicesToStart.join(', ')}`);
-
-	try {
-		// Start services with docker-compose, passing secrets so that
-		// POSTGRES_USER, POSTGRES_PASSWORD, etc. are interpolated correctly
-		execSync(`docker compose up -d ${servicesToStart.join(' ')}`, {
-			cwd: workspace.root,
-			stdio: 'inherit',
-			env: buildDockerComposeEnv(secretsEnv, portEnv),
-		});
-
-		logger.log('✅ Services started');
-	} catch (error) {
-		logger.error('❌ Failed to start services:', (error as Error).message);
-		throw error;
-	}
-}
 
 // ---------------------------------------------------------------------------
 // Secrets loading
@@ -695,9 +320,6 @@ export interface EntryCredentialsResult {
  * Loads workspace config, secrets, resolves Docker ports, rewrites URLs,
  * injects PORT, dependency URLs, and writes credentials JSON.
  *
- * @param options.resolveDockerPorts - How to resolve Docker ports:
- *   - `'full'` (default): probe running containers, saved state, then find available ports. Used by dev/test.
- *   - `'readonly'`: check running containers and saved state only, never probe for new ports. Used by exec.
  * @param options.stage - The stage whose secrets to load. Default: the project's `stages.local`.
  * @param options.startDocker - Start Docker Compose services after port resolution. Default: false.
  * @param options.secretsFileName - Custom secrets JSON filename. Default: 'dev-secrets-{appName}.json' or 'dev-secrets.json'.
@@ -706,7 +328,6 @@ export interface EntryCredentialsResult {
 export async function prepareEntryCredentials(options: {
 	explicitPort?: number;
 	cwd?: string;
-	resolveDockerPorts?: 'full' | 'readonly';
 	/** The stage whose secrets to load. Default: the project's `stages.local` */
 	stage?: string;
 	/** Start Docker Compose services after port resolution. Default: false */
@@ -723,7 +344,6 @@ export async function prepareEntryCredentials(options: {
 	reconcileStage?: string;
 }): Promise<EntryCredentialsResult> {
 	const cwd = options.cwd ?? process.cwd();
-	const portMode = options.resolveDockerPorts ?? 'full';
 
 	// Try to get workspace app config for port and secrets
 	let workspaceAppPort: number | undefined;
@@ -768,19 +388,19 @@ export async function prepareEntryCredentials(options: {
 
 	const declaredKeys: string[] = [];
 
-	// An app that has adopted the constructs glob derives its containers, ports,
-	// and URLs from what it declares. The branch below is what it replaces:
-	// parsing a hand-written compose file for ports and rewriting URLs to match.
-	if (workspace && usesConstructs(workspace)) {
+	// Every address — containers, the edge, each app — comes from what the
+	// workspace declares. Outside a workspace (a non-gkm app using `gkm exec`)
+	// there is nothing to resolve, only the secrets above.
+	if (workspace) {
 		const { reconcileWorkspace } = await import('../reconcile/workspace.js');
 		const reconciled = await reconcileWorkspace(workspace, {
 			stage: options.reconcileStage ?? workspace.stages.local,
 			start: options.startDocker ?? false,
 		});
 
-		// Declared URLs win over anything sniffed or stored: the manifest is the
-		// statement of what exists, and a stale secret naming an old port is
-		// exactly the drift this replaces.
+		// Declared URLs win over anything stored: the manifest is the statement
+		// of what exists, and a stale secret naming an old port is exactly the
+		// drift this replaces.
 		Object.assign(credentials, reconciled.env);
 		declaredKeys.push(...Object.keys(reconciled.env));
 
@@ -789,96 +409,6 @@ export async function prepareEntryCredentials(options: {
 				`🔌 Resolved ${Object.keys(reconciled.env).length} declared URL(s)`,
 			);
 		}
-	} else {
-		// Resolve Docker ports and rewrite connection URLs
-		const composePath = join(secretsRoot, 'docker-compose.yml');
-		const mappings = parseComposePortMappings(composePath);
-		if (mappings.length > 0) {
-			let resolvedPorts: ResolvedServicePorts;
-
-			if (portMode === 'full') {
-				// Full resolution: probe containers, saved state, find available ports
-				resolvedPorts = await resolveServicePorts(secretsRoot);
-			} else {
-				// Readonly: check running containers and saved state only
-				const savedPorts = await loadPortState(secretsRoot);
-				const ports: PortState = {};
-
-				for (const mapping of mappings) {
-					const containerPort = getContainerHostPort(
-						secretsRoot,
-						mapping.service,
-						mapping.containerPort,
-					);
-					if (containerPort !== null) {
-						ports[mapping.envVar] = containerPort;
-					} else {
-						const saved = savedPorts[mapping.envVar];
-						if (saved !== undefined) {
-							ports[mapping.envVar] = saved;
-						}
-					}
-				}
-
-				resolvedPorts = { dockerEnv: {}, ports, mappings };
-			}
-
-			// Start Docker services if requested (between port resolution and URL rewriting)
-			// Docker needs raw secrets (POSTGRES_USER, etc.) + resolved port env for compose interpolation
-			if (options.startDocker) {
-				if (appInfo) {
-					await startWorkspaceServices(
-						appInfo.workspace,
-						resolvedPorts.dockerEnv,
-						credentials,
-					);
-				} else {
-					await startComposeServices(
-						secretsRoot,
-						resolvedPorts.dockerEnv,
-						credentials,
-					);
-				}
-			}
-
-			if (Object.keys(resolvedPorts.ports).length > 0) {
-				const rewritten = rewriteUrlsWithPorts(credentials, resolvedPorts);
-				Object.assign(credentials, rewritten);
-				logger.log(
-					`🔌 Applied ${Object.keys(resolvedPorts.ports).length} port mapping(s)`,
-				);
-			}
-		}
-	}
-
-	// Dependency URLs as `http://localhost:<port>`, for whatever reconcile did
-	// not resolve. Declared addresses win — each app behind the edge on its own
-	// HTTPS host; assigned over them, these overwrote the hosts the apps' CORS
-	// origins name.
-	if (appInfo?.appName) {
-		const depEnv = getDependencyEnvVars(appInfo.workspace, appInfo.appName);
-		for (const [key, value] of Object.entries(depEnv)) {
-			credentials[key] ??= value;
-		}
-	}
-
-	// Default event connection strings to pgboss when postgres is available.
-	// Normally these come from secrets (gkm setup always creates pgboss credentials),
-	// but this handles old secrets files that predate the pgboss default.
-	if (
-		!credentials.EVENT_PUBLISHER_CONNECTION_STRING &&
-		!credentials.EVENT_SUBSCRIBER_CONNECTION_STRING &&
-		credentials.PGBOSS_DB_USER
-	) {
-		const pgbossUrl = generatePgBossUrl({
-			username: credentials.PGBOSS_DB_USER,
-			password: credentials.PGBOSS_DB_PASSWORD ?? '',
-			host: credentials.POSTGRES_HOST ?? 'localhost',
-			port: Number(credentials.POSTGRES_PORT ?? '5432'),
-			database: credentials.POSTGRES_DB ?? 'app',
-		});
-		credentials.EVENT_PUBLISHER_CONNECTION_STRING = pgbossUrl;
-		credentials.EVENT_SUBSCRIBER_CONNECTION_STRING = pgbossUrl;
 	}
 
 	// Write secrets to temp JSON file (always write since we have PORT)

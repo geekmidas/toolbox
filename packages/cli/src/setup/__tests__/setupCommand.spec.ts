@@ -109,7 +109,7 @@ export const database = new KyselyDatabase('Database');
 	}
 
 	it('generates secrets on a first run, and has nothing to start', async () => {
-		config(apps);
+		config(`${apps}\n  constructs: './constructs/**/*.ts',`);
 
 		await setupCommand();
 
@@ -157,7 +157,7 @@ export const database = new KyselyDatabase('Database');
 	});
 
 	it('uses existing secrets unchanged when nothing is missing', async () => {
-		config('');
+		config(`constructs: './constructs/**/*.ts',`);
 		await setupCommand({ skipDocker: true });
 		const first = await readStageSecrets('dev', dir);
 
@@ -167,7 +167,7 @@ export const database = new KyselyDatabase('Database');
 	});
 
 	it('regenerates everything on --force, and a single app gets its own set', async () => {
-		config('');
+		config(`constructs: './constructs/**/*.ts',`);
 		await setupCommand({ skipDocker: true });
 		const first = await readStageSecrets('dev', dir);
 

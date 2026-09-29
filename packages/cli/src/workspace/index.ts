@@ -1,6 +1,5 @@
 import { basename, isAbsolute, join } from 'node:path';
 import type { GkmConfig, Routes } from '../types.js';
-import { getPublicEnvPrefix } from './publicEnv.js';
 import {
 	formatValidationErrors,
 	safeValidateWorkspaceConfig,
@@ -431,41 +430,6 @@ export function getAppBuildOrder(workspace: NormalizedWorkspace): string[] {
 	}
 
 	return result;
-}
-
-/**
- * Generate environment variables for app dependencies.
- *
- * Each dependency gets the un-prefixed `{DEP}_URL` (for server-side use) and,
- * when the consuming app's framework supports a public-var prefix, also the
- * prefixed form (e.g. `NEXT_PUBLIC_{DEP}_URL` for Next.js, `VITE_{DEP}_URL`
- * for Vite/TanStack Start). The prefixed form is what gets bundled into the
- * client at build time.
- */
-export function getDependencyEnvVars(
-	workspace: NormalizedWorkspace,
-	appName: string,
-	urlPrefix = 'http://localhost',
-): Record<string, string> {
-	const app = workspace.apps[appName];
-	if (!app) return {};
-
-	const env: Record<string, string> = {};
-	const publicPrefix = getPublicEnvPrefix(app.framework);
-
-	for (const depName of app.dependencies) {
-		const dep = workspace.apps[depName];
-		if (dep) {
-			const url = `${urlPrefix}:${dep.port}`;
-			const envKey = `${depName.toUpperCase()}_URL`;
-			env[envKey] = url;
-			if (publicPrefix) {
-				env[`${publicPrefix}${envKey}`] = url;
-			}
-		}
-	}
-
-	return env;
 }
 
 /**

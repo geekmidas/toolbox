@@ -63,49 +63,33 @@ When you run `gkm dev` from a fullstack workspace root, here's what happens step
 
 Loads `.env` from the project root using dotenv. This happens before any config is read so environment variables are available during config loading.
 
-### 2. Detect Workspace Mode
+### 2. Load the Workspace
 
-The CLI loads `gkm.config.ts` and checks for an `apps` property. If found, it enters **workspace mode** — orchestrating multiple apps through Turbo. Otherwise, it runs as a single-app dev server.
+The CLI loads `gkm.config.ts` and discovers every construct its `constructs`
+glob matches. The apps are read off that graph: each `RestApi`, auth server and
+`StaticSite` with a `path` is an app, on a port the workspace assigns. A config
+that declares no constructs is an error (`WorkspaceDeclaresNoConstructs`) —
+there is no other source of apps, containers or URLs.
+
+Run from the workspace root, `gkm dev` starts every app; run from an app's
+directory — which is what turbo does — it starts that one.
 
 ### 3. Validate Apps
 
-- **Port conflicts** — checks that no two apps share the same port. Errors immediately if conflicts found.
-- **Frontend validation** — verifies Next.js apps have the expected setup (package.json, next.config.ts, etc.).
+- **Port conflicts** — no two apps may share a port.
+- **Ports free** — every app's provisioned port is checked before anything
+  starts. If one is held (usually a dev server a previous run left behind), dev
+  stops with `WorkspacePortsInUse`, naming each port and what holds it. It never
+  moves an app to another port: every other app's URL, CORS origins and cookie
+  domain name that one.
+- **Frontend validation** — verifies Next.js apps have the expected setup
+  (package.json, next.config.ts, etc.).
 
-### 4. Copy API Clients
-
-For each backend app that has generated an OpenAPI spec (`.gkm/openapi.ts`), the typed client is copied to dependent frontend apps. This enables type-safe API calls from the frontend.
-
-### 5. Resolve Docker Service Ports
-
-::: info Hand-written path
-Steps 5–8 apply when no app declares constructs. Where one does, reconcile
-replaces all four — there is no hand-written compose file left to read ports out
-of.
-:::
+### 4. Reconcile
 
 ```
-🔌 Resolving service ports...
-   ✅ postgres:5432: using default port 5432
-   ⚡ redis:6379: port 6379 occupied, using port 6380
-   💾 mailpit:1025: using saved port 1026
+🐳 Services: postgres, mailpit, caddy
 ```
-
-The CLI parses `docker-compose.yml` for port mappings that use environment variable interpolation (e.g., `${POSTGRES_HOST_PORT:-5432}:5432`). For each service, ports are resolved with this priority:
-
-1. **Running container** — if the project's Docker container is already running, reuse its port
-2. **Saved state** — check `.gkm/ports.json` for a previously resolved port
-3. **Find available** — if the default port is occupied, find the next available port (tries up to 10 ports)
-
-Resolved ports are persisted to `.gkm/ports.json` so external tools (database GUIs, etc.) keep working across restarts.
-
-### 6. Start Docker Services
-
-```
-🐳 Starting services: postgres, redis, mailpit
-```
-
-Starts the containers the manifest implies, with resolved ports injected.
 
 **Which containers exist is derived, not configured.** A declared
 `KyselyDatabase` is why a Postgres runs; a declared `ObjectStorage` is why MinIO
@@ -122,70 +106,62 @@ declared.
 | `new Cache('…')`, deploying to a server | nothing — it is a table |
 | `new Email('…')` | `mailpit` |
 | a topic or queue, deploying to AWS | the AWS emulator (SNS and SQS) |
-| a topic or queue, deploying to a server | nothing — pg-boss lives in Postgres |
+| a topic, queue or worker, deploying to a server | nothing — pg-boss lives in Postgres |
+| a `RestApi` or `StaticSite` | `caddy`, the edge each app answers behind |
 
-There is no `services` block and no flag that starts a container. A container
-exists because something declared it; an image pin, or a service no construct
-implies, goes in your own `docker-compose.yml`, merged over the generated
-`docker-compose.constructs.yml`.
+There is no `services` block and no flag that starts a container. The containers
+are written to the generated `docker-compose.constructs.yml`; an image pin, or a
+service no construct implies, goes in your own `docker-compose.yml`, merged over
+it. Reconcile then creates what the URLs name — databases, roles, buckets — and
+persists the ports it assigned to `.gkm/ports.json`, so external tools keep
+working across restarts.
 
-If `docker-compose.yml` is missing, a warning is printed and services are skipped.
-
-### 7. Load and Rewrite Secrets
+### 5. Load Secrets and Resolve Addresses
 
 ```
 🔐 Loading secrets from stage: development
-   Loaded 15 secret(s)
+   Loaded 23 secret(s)
+🔒 App URLs:
+   Api: https://api.shop.localhost:28006
+   Web: https://web.shop.localhost:28006
 ```
 
-Secrets are loaded from the local stage's file — `.gkm/secrets/dev.json` for `stages: { local: 'dev', … }` — and from no other stage. Connection URLs in the secrets are rewritten with the resolved Docker ports. For example, if PostgreSQL was assigned port 5433:
+Secrets are loaded from the local stage's file — `.gkm/secrets/dev.json` for
+`stages: { local: 'dev', … }` — and from no other stage. Every address reconcile
+resolved is merged over them, and declared addresses win: a stale URL in a
+secret cannot point an app at the wrong port.
 
-```
-DATABASE_URL=postgresql://api:pass@localhost:5432/app_dev
-→ DATABASE_URL=postgresql://api:pass@localhost:5433/app_dev
-```
+Each app answers behind the edge on its own HTTPS host. That is the address the
+other apps receive (`API_URL`, and `NEXT_PUBLIC_API_URL` / `VITE_API_URL` for a
+frontend) and the one their CORS origins and cookie domain name. Nothing is
+handed out as `http://localhost:<port>`.
 
-### 8. Generate Dependency URLs
-
-```
-📡 Dependency URLs:
-   API_URL=http://localhost:3000
-   NEXT_PUBLIC_API_URL=http://localhost:3000
-   AUTH_URL=http://localhost:3002
-   NEXT_PUBLIC_AUTH_URL=http://localhost:3002
-```
-
-For each app dependency defined in the workspace config, URL environment variables are generated. Frontend apps also get `NEXT_PUBLIC_` prefixed variants for client-side access.
-
-### 9. Start All Apps via Turbo
+### 6. Start All Apps via Turbo
 
 ```
 🏃 Starting turbo run dev...
 
 📋 Apps (in dependency order):
    🔧 api → http://localhost:3000
-   🔧 auth → http://localhost:3002
-   🌐 web → http://localhost:3001 (depends on: api, auth)
+   🔧 auth → http://localhost:3001
+   🌐 web → http://localhost:3002 (depends on: api, auth)
 ```
 
-The CLI spawns `pnpm turbo run dev` with all secrets, dependency URLs, and port mappings injected into the environment. Apps are started in dependency order — backends first, then frontends.
+The listed ports are where each app's own dev server listens — what the edge
+forwards to. Turbo is filtered to each app's package, never the workspace root's
+own `dev` script (which is `gkm dev`, and would start everything again).
 
 Each app's `dev` script runs individually:
-- **api** — `gkm dev` (discovers endpoints, starts Hono server with hot-reload)
-- **auth** — `gkm dev --entry ./src/index.ts` (runs the Hono auth server with secret injection)
-- **web** — `gkm exec -- next dev --turbopack` (runs Next.js with workspace env vars injected)
+- **api** — `gkm dev` (builds the server with the same pipeline as `gkm build`, and starts it)
+- **auth** — `gkm dev` (an auth server serves itself; the entry only starts it)
+- **web** — `gkm exec -- next dev` (its port and every address injected; Next reads `PORT`, and a Vite config reads `Credentials.PORT` with `strictPort`)
 
-### 10. Watch for OpenAPI Changes
+### 7. Graceful Shutdown
 
-When a backend's `.gkm/openapi.ts` changes (regenerated on endpoint file changes), the updated typed client is automatically copied to dependent frontend apps. This keeps the frontend's API types in sync during development.
-
-### 11. Graceful Shutdown
-
-On `Ctrl+C` (SIGINT/SIGTERM):
-1. Turbo process group is killed
-2. OpenAPI file watcher is closed
-3. 2-second grace period for cleanup
-4. Process exits
+On `Ctrl+C` (SIGINT/SIGTERM), turbo's process group is stopped and each app's
+`gkm dev` stops its server. A server also exits on its own when the `gkm dev`
+that started it is gone — even one killed outright — so it never keeps its port
+for the next run to find taken.
 
 ## Single-App Mode
 
@@ -444,10 +420,9 @@ Resolved ports are saved to `.gkm/ports.json` so external tools keep working acr
 ```
 1. .env                          (dotenv, if exists)
 2. Encrypted secrets             (.gkm/secrets/{stage}.json, decrypted)
-3. URL rewriting                 (ports adjusted for Docker resolution)
-4. Dependency URLs generated     ({APP}_URL, NEXT_PUBLIC_{APP}_URL)
-5. GKM_CONFIG_PATH set           (for child processes)
-6. All injected into turbo env   (NODE_ENV=development)
+3. Declared addresses            (reconcile: containers, the edge, every app)
+4. GKM_CONFIG_PATH set           (for child processes)
+5. All injected into turbo env   (NODE_ENV=development)
 ```
 
 ### Single-App Mode

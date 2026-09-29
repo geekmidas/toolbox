@@ -245,7 +245,9 @@ export async function loadWorkspaceConfig(
  */
 async function withDerivedApps(loaded: LoadedConfig): Promise<LoadedConfig> {
 	const globs = allConstructGlobs(loaded.workspace);
-	if (globs.length === 0) return loaded;
+	if (globs.length === 0) {
+		throw new WorkspaceDeclaresNoConstructs(loaded.workspace.root);
+	}
 
 	try {
 		const manifest = await discover({
@@ -267,6 +269,25 @@ async function withDerivedApps(loaded: LoadedConfig): Promise<LoadedConfig> {
 			`⚠️  Could not read constructs, so apps come from config alone: ${message}`,
 		);
 		return loaded;
+	}
+}
+
+/**
+ * A workspace with no `constructs` glob.
+ *
+ * In v10 every address, container and app comes from what the workspace
+ * declares — there is no second path that reads a hand-written compose file or
+ * an `apps` block's ports. A config that declares nothing has nothing to run.
+ */
+export class WorkspaceDeclaresNoConstructs extends Error {
+	constructor(readonly root: string) {
+		super(
+			`The workspace at ${root} declares no constructs. Every workspace names ` +
+				"where its constructs live — `constructs: ['./constructs/**/*.ts', " +
+				"'./apps/*/endpoints/**/*.ts']` in gkm.config.ts — and its apps, " +
+				'containers and URLs are derived from them.',
+		);
+		this.name = 'WorkspaceDeclaresNoConstructs';
 	}
 }
 

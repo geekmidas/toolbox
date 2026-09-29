@@ -343,7 +343,10 @@ export default defineConfig({
 	});
 
 	describe('a workspace', () => {
-		/** A workspace with a backend, a Next.js site and a mobile app. */
+		/**
+		 * A workspace with a backend, a Next.js site and a mobile app, and an
+		 * empty construct glob.
+		 */
 		function workspace(apps: string, extra = '') {
 			writeFileSync(
 				join(dir, 'gkm.config.ts'),
@@ -353,6 +356,7 @@ export default defineWorkspace({
   name: 'shop',
   stages: { local: 'dev', deployed: ['prod'] },
   secrets: { enabled: true },
+  constructs: './src/constructs/**/*.ts',
   apps: {
 ${apps}
   },
@@ -360,6 +364,8 @@ ${apps}
 });
 `,
 			);
+			mkdirSync(join(dir, 'src', 'constructs'), { recursive: true });
+			writeFileSync(join(dir, 'src', 'constructs', 'noop.ts'), 'export {};\n');
 		}
 
 		const api = `    api: { type: 'backend', path: 'apps/api', port: 3310 },`;
@@ -379,7 +385,7 @@ ${apps}
 			writeFileSync(join(dir, 'apps', 'web', 'next.config.ts'), 'export {};\n');
 		}
 
-		it('runs every app through turbo with the dependency URLs, and exits with it', async () => {
+		it('runs every app through turbo, and exits with it', async () => {
 			workspace([api, web, mobile].join('\n'));
 			nextApp();
 
@@ -392,7 +398,6 @@ ${apps}
 			// root package's own `dev` — `gkm dev` — and recurses.
 			expect(turbo!.args).toEqual(['turbo', 'run', 'dev', '--filter', 'web']);
 			expect(turbo!.options.cwd).toBe(dir);
-			expect(turbo!.options.env?.API_URL).toBe('http://localhost:3310');
 			expect(turbo!.options.env?.GKM_CONFIG_PATH).toBe(
 				join(dir, 'gkm.config.ts'),
 			);

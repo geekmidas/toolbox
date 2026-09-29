@@ -55,7 +55,7 @@ export async function execCommand(
 	// Prepare credentials: loads secrets, resolves Docker ports, rewrites URLs,
 	// injects dependency URLs. Uses readonly port mode (no probing for new ports).
 	const { credentials, secretsJsonPath, appName } =
-		await prepareEntryCredentials({ cwd, resolveDockerPorts: 'readonly' });
+		await prepareEntryCredentials({ cwd });
 
 	if (appName) {
 		logger.log(`📦 App: ${appName}`);

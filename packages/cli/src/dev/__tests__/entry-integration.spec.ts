@@ -34,6 +34,7 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 export default defineWorkspace({
   stages: { local: 'development', deployed: ['production'] },
   name: 'test-workspace',
+  constructs: './constructs/**/*.ts',
   apps: {
     api: {
       type: 'backend',
@@ -191,6 +192,7 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 export default defineWorkspace({
   stages: { local: 'development', deployed: ['production'] },
   name: 'test-workspace',
+  constructs: './constructs/**/*.ts',
   apps: {
     api: {
       type: 'backend',
@@ -273,6 +275,7 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 export default defineWorkspace({
   stages: { local: 'development', deployed: ['production'] },
   name: 'test-workspace',
+  constructs: './constructs/**/*.ts',
   apps: {
     api: {
       type: 'backend',

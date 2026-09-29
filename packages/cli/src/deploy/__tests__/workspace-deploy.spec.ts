@@ -320,6 +320,7 @@ describe('workspaceDeployCommand', () => {
 
 export default defineWorkspace({
   name: 'shop',
+  constructs: './src/constructs/**/*.ts',
   stages: { local: 'dev', deployed: ['${STAGE}', 'staging'] },
   apps: ${
 		extra.apps ??
