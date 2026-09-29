@@ -92,6 +92,20 @@ jobs:
           CI: true
         run: pnpm run test:once
 
+      # An application, driven the way one is: `gkm test` reconciles its test
+      # stage (its own containers, on ports it allocates), writes the test
+      # manifest and the harness generated from it, and runs its suite through
+      # that — so the CLI, the constructs and the harness are proven together,
+      # which no package's own tests can do. No committed secrets or shared key:
+      # auto-setup generates the stage.
+      - name: Test (kitchen-sink, through gkm test)
+        timeout-minutes: 15
+        working-directory: apps/kitchen-sink
+        env:
+          CI: true
+          GKM_AUTO_SETUP: '1'
+        run: pnpm test
+
       - name: Commit synced versions
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: scripts/release.sh sync

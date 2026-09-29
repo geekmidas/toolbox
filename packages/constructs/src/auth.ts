@@ -314,6 +314,28 @@ export class BetterAuth<
 		return { app };
 	}
 
+	/**
+	 * The ids of the better-auth plugins this server runs — what a client has
+	 * to pair its own plugins with (`magic-link` with `magicLinkClient`).
+	 * Resolved the way the server resolves them, options callback included.
+	 */
+	async pluginIds(options: ServiceRegisterOptions): Promise<string[]> {
+		const { plugins = [] } = await this.configured(options);
+		return plugins.map(({ id }) => id);
+	}
+
+	/** Better-auth's options as given — a value, or a callback of the environment. */
+	private async configured(
+		options: ServiceRegisterOptions,
+	): Promise<BetterAuthOptions> {
+		// Hoisted: narrowing a property of `this` is not preserved across the
+		// await, and the false branch is the plain-object form.
+		const configure = this.config.options;
+		return typeof configure === 'function'
+			? await configure(options)
+			: (configure ?? {});
+	}
+
 	private async connect(
 		options: ServiceRegisterOptions,
 		as: { owner?: boolean } = {},
@@ -361,13 +383,7 @@ export class BetterAuth<
 			Record<string, never>
 		>;
 
-		// Hoisted: narrowing a property of `this` is not preserved across the
-		// await, and the false branch is the plain-object form.
-		const configure = this.config.options;
-		const configured: BetterAuthOptions =
-			typeof configure === 'function'
-				? await configure(options)
-				: (configure ?? {});
+		const configured = await this.configured(options);
 
 		// `Auth<O>` is invariant in its options in better-auth 1.7, so the value
 		// built from a concrete literal is not assignable to the `AuthServer`

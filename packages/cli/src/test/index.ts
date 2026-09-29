@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { loadWorkspaceConfig } from '../config';
 import {
 	createCredentialsPreload,
@@ -8,6 +8,13 @@ import {
 	prepareEntryCredentials,
 } from '../credentials';
 import { sniffAppEnvironment } from '../deploy/sniffer';
+import {
+	backendsOf,
+	constructGlobs,
+	usesConstructs,
+} from '../reconcile/workspace.js';
+import { TEST_STAGE } from '../workspace/stages';
+import { TEST_MANIFEST_ENV, writeTestHarness } from './harness';
 
 export interface TestOptions {
 	/** Stage to load secrets from (default: development) */
@@ -132,6 +139,30 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 	const preloadPath = join(gkmDir, 'test-credentials-preload.ts');
 	await createCredentialsPreload(preloadPath, result.secretsJsonPath);
 
+	// 6. The test manifest: what was discovered and resolved above, kept for the
+	//    suite, so a feature test is built from it rather than declaring it all
+	//    again — and the harness generated from it, `it` and a `Browser` with a
+	//    typed client per surface.
+	const workspace = await loadWorkspaceConfig(cwd)
+		.then((loaded) => loaded.workspace)
+		.catch(() => undefined);
+	const manifestPath =
+		workspace && usesConstructs(workspace)
+			? await writeTestHarness({
+					root: workspace.root,
+					targets: [
+						workspace.root,
+						...Object.values(workspace.apps).map((app) =>
+							isAbsolute(app.path) ? app.path : join(workspace.root, app.path),
+						),
+					],
+					patterns: constructGlobs(workspace),
+					cacheBackend: backendsOf(workspace).cache,
+					stage: TEST_STAGE,
+					env: finalCredentials,
+				})
+			: undefined;
+
 	// Merge NODE_OPTIONS with existing value (if any)
 	const existingNodeOptions = process.env.NODE_OPTIONS ?? '';
 	const tsxImport = '--import=tsx';
@@ -168,6 +199,7 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 		env: {
 			...process.env,
 			...finalCredentials,
+			...(manifestPath ? { [TEST_MANIFEST_ENV]: manifestPath } : {}),
 			NODE_ENV: 'test',
 			NODE_OPTIONS: nodeOptions,
 		},

@@ -1,0 +1,192 @@
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { TestManifest } from '@geekmidas/constructs/testing';
+import { TEST_MANIFEST_ENV as KIT_READS } from '@geekmidas/constructs/testing';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { TEST_MANIFEST_ENV, writeTestHarness } from '../harness';
+
+/**
+ * What `gkm test` writes for a feature test to be built from, for a small app
+ * declared the way a real one is: a database and the auth server's schema
+ * tenant, a Better Auth server with the magic-link plugin, an API that names
+ * it, and one endpoint on that API.
+ *
+ * That the harness then *runs* is proven where it can be — an app driven
+ * through `gkm test`, kitchen-sink's suite. This is what it writes.
+ */
+const fixture = join(import.meta.dirname, '__fixtures__', 'harness-app');
+
+const env = {
+	API_URL: 'https://api-test.shop.localhost:28000',
+	AUTH_URL: 'https://auth-test.shop.localhost:28000',
+	AUTH_SECRET: 'a-signing-secret-that-is-at-least-32-chars',
+	DATABASE_URL: 'postgres://database_test:pw@localhost:5432/database_test',
+};
+
+describe('writeTestHarness', () => {
+	let root: string;
+	let apps: string[];
+
+	beforeEach(async () => {
+		root = await mkdtemp(join(tmpdir(), 'gkm-harness-'));
+		apps = [join(root, 'apps', 'api'), join(root, 'apps', 'web')];
+	});
+
+	afterEach(() => rm(root, { recursive: true, force: true }));
+
+	const write = () =>
+		writeTestHarness({
+			root: fixture,
+			targets: apps,
+			patterns: ['./constructs/**/*.ts', './endpoints/**/*.ts'],
+			stage: 'test',
+			env,
+			cacheBackend: 'db',
+		});
+
+	const read = (app: string, file: string) =>
+		readFile(join(app, '.gkm', 'test', file), 'utf-8');
+
+	it('records where every construct and endpoint is exported, and the stage’s env', async () => {
+		await write();
+
+		const manifest = JSON.parse(
+			await read(apps[0]!, 'manifest.json'),
+		) as TestManifest;
+
+		expect(manifest.stage).toBe('test');
+		expect(manifest.env).toEqual(env);
+		expect(manifest.constructs).toMatchObject({
+			Database: {
+				kind: 'database',
+				source: {
+					file: join(fixture, 'constructs', 'database.ts'),
+					export: 'database',
+				},
+			},
+			AuthDatabase: {
+				kind: 'database-schema',
+				source: { export: 'authDatabase' },
+			},
+			Auth: { kind: 'rest-api', source: { export: 'auth' } },
+			Api: { kind: 'rest-api', source: { export: 'api' } },
+		});
+		expect(manifest.endpoints).toEqual(
+			expect.arrayContaining([
+				{
+					surface: 'Api',
+					source: {
+						file: join(fixture, 'endpoints', 'health.ts'),
+						export: 'health',
+					},
+				},
+				{
+					surface: 'Api',
+					source: {
+						file: join(fixture, 'endpoints', 'notes.ts'),
+						export: 'listNotes',
+					},
+				},
+			]),
+		);
+	});
+
+	it('writes the same harness into every app, so each can map #test to itself', async () => {
+		const path = await write();
+
+		expect(path).toBe(join(apps[0]!, '.gkm', 'test', 'manifest.json'));
+		for (const app of apps) {
+			expect((await readdir(join(app, '.gkm', 'test'))).sort()).toEqual([
+				'clients',
+				'index.ts',
+				'manifest.json',
+			]);
+		}
+		expect(await read(apps[1]!, 'index.ts')).toBe(
+			await read(apps[0]!, 'index.ts'),
+		);
+	});
+
+	it('generates each surface’s typed client with the build’s generator', async () => {
+		await write();
+
+		const client = await read(apps[0]!, 'clients/api.ts');
+
+		expect(client).toContain('export function createApi(');
+		expect(client).toContain("'/health'");
+	});
+
+	it('gives the browser a client per surface, keyed off the construct', async () => {
+		await write();
+
+		const harness = await read(apps[0]!, 'index.ts');
+
+		expect(harness).toContain(
+			"import { createApi as createApi } from './clients/api.js';",
+		);
+		expect(harness).toContain('readonly api = createApi({');
+		expect(harness).toContain('baseURL: manifest.env["API_URL"]!');
+		expect(harness).toContain('fetch: this.fetch');
+	});
+
+	it('pairs the auth server’s plugins with better-auth’s client plugins', async () => {
+		await write();
+
+		const harness = await read(apps[0]!, 'index.ts');
+
+		// `magic-link` on the server is `magicLinkClient` on the client — the
+		// pairing is written down, because the names follow no single rule.
+		expect(harness).toContain(
+			"import { magicLinkClient } from 'better-auth/client/plugins';",
+		);
+		expect(harness).toContain('readonly auth = createAuthClient({');
+		expect(harness).toContain(
+			'baseURL: `${manifest.env["AUTH_URL"]!}/api/auth`',
+		);
+		expect(harness).toContain('plugins: [magicLinkClient()]');
+	});
+
+	it('exports the configured it, built from the manifest beside it', async () => {
+		await write();
+
+		const harness = await read(apps[0]!, 'index.ts');
+
+		expect(harness).toContain(
+			"const manifest = loadTestManifest(new URL('./manifest.json', import.meta.url));",
+		);
+		expect(harness).toMatch(
+			/export const it = featureTest(<.+>)?\(\{ manifest, browser: Browser \}\);/,
+		);
+	});
+
+	it('types db by the schema of the database the endpoints name', async () => {
+		await write();
+
+		const harness = await read(apps[0]!, 'index.ts');
+
+		// Imported as a type from where it is declared, relative to this copy.
+		expect(harness).toMatch(
+			/import type \{ database as __database \} from '(\.\.\/)+.*constructs\/database\.js';/,
+		);
+		expect(harness).toContain(
+			'featureTest<Browser, DatabaseOf<typeof __database>>({ manifest, browser: Browser })',
+		);
+	});
+
+	it('names the manifest in the variable the kit reads', () => {
+		expect(TEST_MANIFEST_ENV).toBe(KIT_READS);
+	});
+
+	it('rewrites the harness whole, so a client for a surface that is gone is gone', async () => {
+		await write();
+		const stale = join(apps[0]!, '.gkm', 'test', 'clients', 'removed.ts');
+		await writeFile(stale, '');
+
+		await write();
+
+		expect(await readdir(join(apps[0]!, '.gkm', 'test', 'clients'))).toEqual([
+			'api.ts',
+		]);
+	});
+});

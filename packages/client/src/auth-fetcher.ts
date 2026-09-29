@@ -1,5 +1,5 @@
 import { TypedFetcher } from './fetcher';
-import { methodCalls } from './methods';
+import { type MethodCalls, methodCalls } from './methods';
 import type {
 	ExtractEndpointResponse,
 	FetcherOptions,
@@ -167,7 +167,7 @@ export function createAuthAwareFetcher<
 	options: AuthFetcherOptions<EndpointAuth, SecuritySchemes> & {
 		baseURL: string;
 	},
-): TypedApiFunction<Paths> {
+): TypedApiFunction<Paths> & MethodCalls<Paths> {
 	const {
 		endpointAuth,
 		securitySchemes,

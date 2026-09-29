@@ -7,3 +7,4 @@
 
 # Dependencies
 node_modules/
+docker-compose.constructs.yml

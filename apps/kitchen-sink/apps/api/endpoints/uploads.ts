@@ -1,18 +1,11 @@
-import { RestApi } from '@geekmidas/constructs/rest-api';
-import { logger } from '@kitchen-sink/constructs/logger.js';
+import { api } from '@kitchen-sink/constructs/api.js';
 import { uploads } from '@kitchen-sink/constructs/storage.js';
 import { z } from 'zod';
 
-/** Endpoints are built from a surface now. */
-const api = new RestApi('Test', {
-	path: 'apps/test',
-	defaultAuthorizer: 'none',
-	logger,
-});
-
 /**
- * A presigned upload URL. Uses its own lean factory — only the bucket — to show
- * that an endpoint need not share the big router.
+ * A presigned upload URL. Built from the surface directly rather than the
+ * router — only the bucket — to show that an endpoint need not share the big
+ * router's database, auditor and publisher.
  *
  * `.dependsOn([uploads])` is the whole of the wiring: the construct
  * declares the bucket, the target injects `UPLOADS_URL`, and the scheme in that

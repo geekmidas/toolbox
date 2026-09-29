@@ -90,6 +90,7 @@
 		"@geekmidas/logger": "workspace:~",
 		"@geekmidas/manifest": "workspace:*",
 		"@geekmidas/schema": "workspace:~",
+		"@geekmidas/services": "workspace:~",
 		"chokidar": "~5.0.0",
 		"commander": "~15.0.0",
 		"dotenv": "~18.0.1",
@@ -109,6 +110,7 @@
 		"@types/node": "~24.9.1",
 		"@types/pg": "~8.23.1",
 		"@types/prompts": "~2.4.9",
+		"better-auth": "~1.7.6",
 		"typescript": "~7.0.2",
 		"vitest": "~5.0.2",
 		"zod": "~4.6.5"
