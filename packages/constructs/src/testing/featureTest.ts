@@ -60,6 +60,13 @@ export interface FeatureTestOptions<TBrowser extends TestBrowser> {
 	 * Defaults to the manifest `gkm test` names in `GKM_TEST_MANIFEST`.
 	 */
 	manifest?: TestManifest;
+	/**
+	 * The app's modules, already imported, by the absolute path the manifest
+	 * records for them. The generated harness imports them statically, from
+	 * inside the app, so they resolve the way the app's own code does — its
+	 * tsconfig paths included. A module not here is imported by path.
+	 */
+	modules?: Readonly<Record<string, Record<string, unknown>>>;
 	/** The browser each test gets — the generated one, with the app's clients. */
 	browser?: new () => TBrowser;
 	/**
@@ -184,7 +191,7 @@ export function featureTest<
 	let restoreFetch: () => void = () => {};
 
 	beforeAll(async () => {
-		app = await load(manifest, options.database);
+		app = await load(manifest, options.database, options.modules ?? {});
 		for (const database of app.databases) bindToTests(database);
 
 		network = setupServer(
@@ -288,6 +295,7 @@ export function featureTest<
 async function load(
 	manifest: TestManifest,
 	database: string | undefined,
+	modules: Readonly<Record<string, Record<string, unknown>>>,
 ): Promise<LoadedApp> {
 	const envParser = new EnvironmentParser({ ...manifest.env });
 	const imported = async ({
@@ -296,7 +304,11 @@ async function load(
 	}: {
 		file: string;
 		export: string;
-	}) => ((await import(file)) as Record<string, unknown>)[name];
+	}) =>
+		// Imported by path only as a fallback: from inside `node_modules`, a
+		// dynamic import is left to Node, which knows nothing of the app's
+		// tsconfig paths — `~/router.ts` resolves in the app and not here.
+		(modules[file] ?? ((await import(file)) as Record<string, unknown>))[name];
 
 	const constructs = await Promise.all(
 		Object.values(manifest.constructs).map(({ source }) => imported(source)),

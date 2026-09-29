@@ -156,7 +156,7 @@ describe('writeTestHarness', () => {
 			"const manifest = loadTestManifest(new URL('./manifest.json', import.meta.url));",
 		);
 		expect(harness).toMatch(
-			/export const it = featureTest(<.+>)?\(\{ manifest, browser: Browser \}\);/,
+			/export const it = featureTest(<.+>)?\(\{ manifest, modules, browser: Browser \}\);/,
 		);
 	});
 
@@ -170,8 +170,30 @@ describe('writeTestHarness', () => {
 			/import type \{ database as __database \} from '(\.\.\/)+.*constructs\/database\.js';/,
 		);
 		expect(harness).toContain(
-			'featureTest<Browser, DatabaseOf<typeof __database>>({ manifest, browser: Browser })',
+			'featureTest<Browser, DatabaseOf<typeof __database>>({ manifest, modules, browser: Browser })',
 		);
+	});
+
+	it('imports every construct and endpoint module itself, keyed as the manifest keys it', async () => {
+		// From inside the app, where its tsconfig paths resolve: a dynamic import
+		// from the kit in node_modules is left to Node, which knows none of them.
+		await write();
+
+		const harness = await read(apps[0]!, 'index.ts');
+		const manifest = JSON.parse(
+			await read(apps[0]!, 'manifest.json'),
+		) as TestManifest;
+		const files = new Set([
+			...Object.values(manifest.constructs).map(({ source }) => source.file),
+			...manifest.endpoints.map(({ source }) => source.file),
+		]);
+
+		for (const file of files) {
+			expect(harness).toContain(`${JSON.stringify(file)}: __module`);
+		}
+		expect(
+			harness.match(/^import \* as __module\d+ from '\.\.\//gm),
+		).toHaveLength(files.size);
 	});
 
 	it('names the manifest in the variable the kit reads', () => {
