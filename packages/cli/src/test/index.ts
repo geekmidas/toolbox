@@ -35,6 +35,13 @@ export interface TestOptions {
 	 * Intended for CI. Also enabled by the GKM_AUTO_SETUP env var.
 	 */
 	autoSetup?: boolean;
+	/**
+	 * Write the test manifest and the harness generated from it, then stop —
+	 * no containers started, no suite run. What typechecking a suite needs:
+	 * `#test` is generated, so a typecheck that runs before `gkm test` has
+	 * nothing to resolve it to without this.
+	 */
+	prepare?: boolean;
 }
 
 /**
@@ -77,7 +84,8 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 	//    starts services, rewrites URLs, injects dependency URLs
 	const result = await prepareEntryCredentials({
 		stage,
-		startDocker: true,
+		// Preparing writes files; it has no suite to start containers for.
+		startDocker: !options.prepare,
 		secretsFileName: 'test-secrets.json',
 		resolveDockerPorts: 'full',
 		// The same reconcile `gkm dev` runs, differing only in what the resources
@@ -162,6 +170,15 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 					env: finalCredentials,
 				})
 			: undefined;
+
+	if (options.prepare) {
+		console.log(
+			manifestPath
+				? `  🧪 Test harness written beside ${manifestPath}`
+				: '  🧪 Nothing to prepare: this project declares no constructs',
+		);
+		return;
+	}
 
 	// Merge NODE_OPTIONS with existing value (if any)
 	const existingNodeOptions = process.env.NODE_OPTIONS ?? '';

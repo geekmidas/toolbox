@@ -21,6 +21,8 @@ included. It now writes `.gkm/test/` into each app:
 
 An app maps `"#test": "./.gkm/test/index.ts"`, and a test is `import { it }
 from '#test'` — no construct, environment key or client written by hand.
+`gkm test --prepare` writes it and stops, for a typecheck that runs before the
+suite.
 
 `featureTest` reads the manifest (`GKM_TEST_MANIFEST`), imports the app's own
 construct and endpoint instances from their sources, serves each auth server's
