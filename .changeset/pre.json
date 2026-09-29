@@ -66,6 +66,7 @@
     "setup-leaves-node-env",
     "single-app-paths",
     "surface-has-no-app",
+    "test-manifest",
     "test-ports",
     "testkit-feature-primitives",
     "tranche-2-toolchain",

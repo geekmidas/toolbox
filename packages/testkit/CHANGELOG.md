@@ -1,5 +1,14 @@
 # @geekmidas/testkit
 
+## 10.0.0-alpha.22
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/envkit@10.0.0-alpha.22
+  - @geekmidas/logger@10.0.0-alpha.22
+  - @geekmidas/services@10.0.0-alpha.22
+
 ## 10.0.0-alpha.21
 
 ### Minor Changes
