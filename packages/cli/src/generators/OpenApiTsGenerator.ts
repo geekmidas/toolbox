@@ -703,6 +703,8 @@ export interface CreateApiOptions {
   queryClient?: QueryClient;
   /** Optional request interceptor */
   onRequest?: (config: RequestInit) => RequestInit | Promise<RequestInit>;
+  /** The \`fetch\` requests go out on — a test browser's, for one */
+  fetch?: typeof fetch;
 }
 
 /**
@@ -732,6 +734,7 @@ export function createApi(options: CreateApiOptions) {
     securitySchemes,
     authStrategies: options.authStrategies,
     onRequest: options.onRequest,
+    ...(options.fetch ? { fetch: options.fetch } : {}),
   });
 
   const hooks = createEndpointHooks<paths>(fetcher, { queryClient: options.queryClient });

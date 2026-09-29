@@ -20,10 +20,13 @@ import { defineConfig } from 'vitest/config';
  * decide whether a test passed.
  */
 export default defineConfig({
+	// `@kitchen-sink/constructs/*` is a tsconfig path; Vite reads those itself.
+	resolve: { tsconfigPaths: true },
 	test: {
 		name: 'kitchen-sink',
-		include: ['src/__tests__/**/*.spec.ts'],
-		globalSetup: ['./src/__tests__/__helpers__/globalSetup.ts'],
+		include: ['**/__tests__/**/*.spec.ts'],
+		exclude: ['**/node_modules/**', '**/.gkm/**'],
+		globalSetup: ['./apps/api/__tests__/__helpers__/globalSetup.ts'],
 		// Vitest 4 flattened these out of `poolOptions` and dropped `minWorkers`;
 		// one worker is `maxWorkers: 1` alone.
 		pool: 'threads',

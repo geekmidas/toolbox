@@ -1,137 +1,123 @@
-import { describe, expect, it } from 'vitest';
-import { eventually, getJson, patchJson, postJson } from './__helpers__/app.js';
-import { messageTo } from './__helpers__/mailpit.js';
+import { users } from '@kitchen-sink/constructs/topics.js';
+import { describe, expect } from 'vitest';
+import { it } from '#test';
+import { emailsQueue } from '../queues/emails.js';
+import { userEventsSubscriber } from '../subscribers/userEvents.js';
 import { signIn } from './__helpers__/signIn.js';
 
-interface User {
-	id: string;
-	email: string;
-}
-
-interface Notification {
-	id: string;
-	type: string;
-	body: string;
-}
-
-const unique = (prefix: string) =>
-	`${prefix}+${Date.now()}${Math.random().toString(36).slice(2, 6)}@example.com`;
-
-/** Register, sign in, and be ready to read your own feed. */
-async function member(prefix: string) {
-	const email = unique(prefix);
-	const created = await postJson<User>('/users', { name: 'Ada', email });
-	const session = await signIn(email);
-
-	return { email, id: created.body.id, cookie: session.cookie };
-}
+const address = (who: string) => `${who}+${crypto.randomUUID()}@example.com`;
 
 /**
- * The topic and the queue, driven through the application.
+ * The topic and the queue, each tested at its own end.
  *
- * These are the assertions the whole exercise is for. `POST /users` publishes
- * to a topic *and* enqueues on a queue in one request, and both are delivered
- * by whichever transport the project selected — pg-boss here, SNS and SQS on
- * the `sns` backend, with the same application code either way. Nothing below
- * mentions a broker, which is the property being tested as much as the delivery
- * is.
- *
- * Everything waits on an outcome rather than on a sleep: a subscriber and a
- * worker each run on their own clock, so the request that caused the work
- * returns before the work is done.
+ * Delivery is the broker's job — pg-boss here, SNS and SQS deployed — and not
+ * the application's, so no test here waits on one. What the application owns
+ * is what it *publishes* and what its handlers *do* with what they are handed,
+ * and each is checked directly: the endpoint's publishing through `published`,
+ * the subscriber and the worker by handing them events.
  */
-describe('the topic fans out', () => {
-	it('writes a notification for the user that was created', async () => {
-		const ada = await member('ada');
-
-		const notification = await eventually(async () => {
-			const { body } = await getJson<{ notifications: Notification[] }>(
-				'/notifications',
-				{ headers: { cookie: ada.cookie } },
-			);
-
-			return body.notifications.find((n) => n.type === 'user.created');
+describe('publishing', () => {
+	it('announces a created user on the topic, and enqueues their welcome', async ({
+		browser,
+		published,
+	}) => {
+		const email = address('ada');
+		const user = await browser.api.post('/users', {
+			body: { name: 'Ada', email },
 		});
 
-		expect(notification.body).toContain('joined');
-	});
-
-	it('delivers the second event too, which nothing used to publish', async () => {
-		// `user.updated` has been in the topic's contract from the start with
-		// nothing emitting it, so the subscriber's branch for it had never run. A
-		// declared event nothing publishes is a contract that has never been
-		// tested.
-		const ada = await member('ada');
-
-		await patchJson(
-			'/me',
-			{ name: 'Ada Lovelace' },
+		expect(published(users)).toEqual([
 			{
-				headers: { cookie: ada.cookie },
+				type: 'user.created',
+				payload: { userId: user.id, email, name: 'Ada' },
 			},
-		);
-
-		const notification = await eventually(async () => {
-			const { body } = await getJson<{ notifications: Notification[] }>(
-				'/notifications',
-				{ headers: { cookie: ada.cookie } },
-			);
-
-			return body.notifications.find((n) => n.type === 'user.updated');
-		});
-
-		expect(notification.body).toContain('name');
+		]);
+		expect(published(emailsQueue)).toEqual([
+			expect.objectContaining({
+				payload: expect.objectContaining({ to: email, template: 'welcome' }),
+			}),
+		]);
 	});
 
-	it('gives each user only their own notifications', async () => {
-		// Fan-out is not broadcast: the subscriber keys each row to the user the
-		// event was about, and the endpoint filters by the session.
-		const ada = await member('ada');
-		const grace = await member('grace');
-
-		const mine = await eventually(async () => {
-			const { body } = await getJson<{ notifications: Notification[] }>(
-				'/notifications',
-				{ headers: { cookie: grace.cookie } },
-			);
-
-			return body.notifications.length > 0 ? body.notifications : undefined;
+	it('announces a profile update, naming what changed', async ({
+		browser,
+		mailbox,
+		published,
+	}) => {
+		// The second event, which nothing used to publish.
+		const email = address('ada');
+		const user = await browser.api.post('/users', {
+			body: { name: 'Ada', email },
 		});
+		await signIn({ browser, mailbox }, email);
 
-		expect(mine).toHaveLength(1);
-		expect(ada.id).not.toBe(grace.id);
+		await browser.api.patch('/me', { body: { name: 'Ada Lovelace' } });
+
+		expect(published(users)).toContainEqual({
+			type: 'user.updated',
+			payload: { userId: user.id, changes: ['name'] },
+		});
 	});
 });
 
-describe('the queue drains', () => {
-	it('sends the welcome mail the create enqueued', async () => {
-		// Point-to-point, unlike the topic: one worker, every message. The mail
-		// really arrives at a real SMTP server, which is the only assertion that
-		// would fail if delivery broke — a mock would still say `send` was called.
-		const email = unique('welcome');
-		await postJson<User>('/users', { name: 'Grace', email });
+describe('the subscriber', () => {
+	it('writes each user a notification of their own', async ({
+		browser,
+		db,
+		subscriber,
+	}) => {
+		const ada = await browser.api.post('/users', {
+			body: { name: 'Ada', email: address('ada') },
+		});
+		const grace = await browser.api.post('/users', {
+			body: { name: 'Grace', email: address('grace') },
+		});
 
-		const message = await eventually(() => messageTo(email));
+		await subscriber(userEventsSubscriber).invoke({
+			events: [
+				{
+					type: 'user.created',
+					payload: { userId: ada.id, email: ada.email, name: 'Ada' },
+				},
+				{
+					type: 'user.updated',
+					payload: { userId: grace.id, changes: ['name'] },
+				},
+			],
+		});
 
-		expect(message.Subject).toBe('Welcome aboard');
+		const rows = await db
+			.selectFrom('notifications')
+			.select(['user_id', 'type', 'body'])
+			.where('user_id', 'in', [ada.id, grace.id])
+			.orderBy('type')
+			.execute();
+		expect(rows).toEqual([
+			{ user_id: ada.id, type: 'user.created', body: 'Ada joined' },
+			{
+				user_id: grace.id,
+				type: 'user.updated',
+				body: 'Profile updated: name',
+			},
+		]);
 	});
+});
 
-	it('does not send it twice for the same user', async () => {
-		// The worker dedupes on a cache key, which is the cache doing work rather
-		// than being demonstrated — and it is the app's own database holding it.
-		const email = unique('once');
-		await postJson<User>('/users', { name: 'Grace', email });
+describe('the welcome worker', () => {
+	it('sends the welcome mail, once per user', async ({ mailbox, queue }) => {
+		const email = address('grace');
+		const job = {
+			to: email,
+			name: 'Grace',
+			userId: crypto.randomUUID(),
+			template: 'welcome' as const,
+		};
 
-		await eventually(() => messageTo(email));
-		await new Promise((r) => setTimeout(r, 1500));
+		// Twice, as a redelivery would: the second is deduplicated.
+		await queue(emailsQueue).invoke({ messages: [job] });
+		await queue(emailsQueue).invoke({ messages: [job] });
 
-		const { messages } = await import('./__helpers__/mailpit.js');
-		const welcomes = (await messages()).filter(
-			(m) =>
-				m.Subject === 'Welcome aboard' &&
-				m.To.some((to) => to.Address === email),
-		);
-
-		expect(welcomes).toHaveLength(1);
+		const sent = await mailbox(email).all();
+		expect(sent.map(({ subject }) => subject)).toEqual(['Welcome aboard']);
 	});
 });

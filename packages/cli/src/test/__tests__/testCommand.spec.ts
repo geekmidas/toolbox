@@ -194,6 +194,29 @@ describe('testCommand', { timeout: 30_000 }, () => {
 		await running;
 	});
 
+	it('prepares the harness a typecheck needs, and runs nothing', async () => {
+		mkdirSync(join(dir, 'src', 'constructs'), { recursive: true });
+		writeFileSync(
+			join(dir, 'src', 'constructs', 'token.ts'),
+			`export const token = {
+  id: 'Token',
+  declare: () => [{ kind: 'secret', id: 'Token', provides: ['TOKEN'] }],
+};
+`,
+		);
+
+		await testCommand({ stage: 'dev', prepare: true });
+
+		expect(spawned).toEqual([]);
+		const manifest = JSON.parse(
+			readFileSync(join(dir, '.gkm', 'test', 'manifest.json'), 'utf-8'),
+		);
+		expect(manifest.constructs).toMatchObject({
+			Token: { kind: 'secret', source: { export: 'token' } },
+		});
+		expect(existsSync(join(dir, '.gkm', 'test', 'index.ts'))).toBe(true);
+	});
+
 	it('refuses to guess a stage with no config and none named', async () => {
 		writeFileSync(join(dir, 'gkm.config.ts'), 'export default ;\n');
 

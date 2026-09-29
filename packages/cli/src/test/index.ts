@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { loadWorkspaceConfig } from '../config';
 import {
 	createCredentialsPreload,
@@ -8,6 +8,13 @@ import {
 	prepareEntryCredentials,
 } from '../credentials';
 import { sniffAppEnvironment } from '../deploy/sniffer';
+import {
+	backendsOf,
+	constructGlobs,
+	usesConstructs,
+} from '../reconcile/workspace.js';
+import { TEST_STAGE } from '../workspace/stages';
+import { TEST_MANIFEST_ENV, writeTestHarness } from './harness';
 
 export interface TestOptions {
 	/** Stage to load secrets from (default: development) */
@@ -28,6 +35,13 @@ export interface TestOptions {
 	 * Intended for CI. Also enabled by the GKM_AUTO_SETUP env var.
 	 */
 	autoSetup?: boolean;
+	/**
+	 * Write the test manifest and the harness generated from it, then stop —
+	 * no containers started, no suite run. What typechecking a suite needs:
+	 * `#test` is generated, so a typecheck that runs before `gkm test` has
+	 * nothing to resolve it to without this.
+	 */
+	prepare?: boolean;
 }
 
 /**
@@ -70,7 +84,8 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 	//    starts services, rewrites URLs, injects dependency URLs
 	const result = await prepareEntryCredentials({
 		stage,
-		startDocker: true,
+		// Preparing writes files; it has no suite to start containers for.
+		startDocker: !options.prepare,
 		secretsFileName: 'test-secrets.json',
 		resolveDockerPorts: 'full',
 		// The same reconcile `gkm dev` runs, differing only in what the resources
@@ -132,6 +147,39 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 	const preloadPath = join(gkmDir, 'test-credentials-preload.ts');
 	await createCredentialsPreload(preloadPath, result.secretsJsonPath);
 
+	// 6. The test manifest: what was discovered and resolved above, kept for the
+	//    suite, so a feature test is built from it rather than declaring it all
+	//    again — and the harness generated from it, `it` and a `Browser` with a
+	//    typed client per surface.
+	const workspace = await loadWorkspaceConfig(cwd)
+		.then((loaded) => loaded.workspace)
+		.catch(() => undefined);
+	const manifestPath =
+		workspace && usesConstructs(workspace)
+			? await writeTestHarness({
+					root: workspace.root,
+					targets: [
+						workspace.root,
+						...Object.values(workspace.apps).map((app) =>
+							isAbsolute(app.path) ? app.path : join(workspace.root, app.path),
+						),
+					],
+					patterns: constructGlobs(workspace),
+					cacheBackend: backendsOf(workspace).cache,
+					stage: TEST_STAGE,
+					env: finalCredentials,
+				})
+			: undefined;
+
+	if (options.prepare) {
+		console.log(
+			manifestPath
+				? `  🧪 Test harness written beside ${manifestPath}`
+				: '  🧪 Nothing to prepare: this project declares no constructs',
+		);
+		return;
+	}
+
 	// Merge NODE_OPTIONS with existing value (if any)
 	const existingNodeOptions = process.env.NODE_OPTIONS ?? '';
 	const tsxImport = '--import=tsx';
@@ -168,6 +216,7 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 		env: {
 			...process.env,
 			...finalCredentials,
+			...(manifestPath ? { [TEST_MANIFEST_ENV]: manifestPath } : {}),
 			NODE_ENV: 'test',
 			NODE_OPTIONS: nodeOptions,
 		},

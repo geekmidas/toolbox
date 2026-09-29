@@ -28,7 +28,10 @@ export default defineWorkspace({
 	// One glob, every kind. A database implies Postgres, a bucket implies MinIO,
 	// mail implies Mailpit — none of it listed anywhere. It is also where the
 	// apps come from: a `site` is an app, and so is a `rest-api` that named one.
-	constructs: './constructs/**/*.ts',
+	constructs: [
+		'./constructs/**/*.ts',
+		'./apps/*/{endpoints,queues,subscribers,crons,functions}/**/*.ts',
+	],
 
 	// Read from the environment rather than written down, for the reason
 	// `sst.config.ts` reads its sending identity that way: an endpoint and a

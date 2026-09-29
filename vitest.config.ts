@@ -33,6 +33,12 @@ export default defineConfig({
 				// given run did not call as untested source.
 				'**/__tests__/**',
 				'**/*.test-d.ts',
+				// Runs only under `gkm test`, which writes the manifest it is built
+				// from and preloads the credentials every construct reads — so its
+				// test is an app driven that way: kitchen-sink's suite, run in CI by
+				// its own step. A package run has neither, and faking both is how a
+				// spec ends up testing the fake.
+				'packages/constructs/src/testing/featureTest.ts',
 			],
 			include: ['packages/*/src/**/*.{ts,tsx}'],
 			thresholds: {

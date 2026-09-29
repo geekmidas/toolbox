@@ -274,6 +274,10 @@ program
 		'--auto-setup',
 		'Generate a fresh stage (secrets + key) from the workspace config when none exists (for CI; also via GKM_AUTO_SETUP)',
 	)
+	.option(
+		'--prepare',
+		'Write the test manifest and #test harness, then stop — for a typecheck that runs before the suite',
+	)
 	.argument('[pattern]', 'Pattern to filter tests')
 	.action(async (pattern: string | undefined, options: TestOptions) => {
 		try {

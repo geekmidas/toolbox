@@ -44,13 +44,17 @@
 		"zod": "~4.6.5"
 	},
 	"devDependencies": {
+		"@geekmidas/client": "workspace:*",
 		"@geekmidas/cloud": "workspace:*",
+		"@geekmidas/testkit": "workspace:*",
 		"@pulumi/aws": "~7.47.0",
 		"@pulumi/pulumi": "~3.263.0",
 		"@pulumi/random": "~4.21.2",
+		"@tanstack/react-query": "~5.104.0",
 		"@types/node": "~24.9.1",
 		"@types/pg": "~8.23.1",
 		"@types/react": "~19.3.0",
+		"msw": "~2.15.0",
 		"sst": "~4.17.1",
 		"tsx": "~4.23.15"
 	}
