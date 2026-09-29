@@ -2,8 +2,10 @@ import { type ChildProcess, execSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
+import type { ConstructManifest } from '@geekmidas/manifest';
 import chokidar from 'chokidar';
 import fg from 'fast-glob';
+import { ownersContext, servedBy } from '../build/owners';
 import { resolveProviders } from '../build/providerResolver';
 import type {
 	BuildContext,
@@ -44,7 +46,7 @@ import {
 	OPENAPI_OUTPUT_PATH,
 	resolveOpenApiConfig,
 } from '../openapi';
-import { discover } from '../reconcile/discover.js';
+import { type ConstructSource, discover } from '../reconcile/discover.js';
 import { reconcileWorkspace, usesConstructs } from '../reconcile/workspace.js';
 import {
 	readStageSecrets,
@@ -393,6 +395,10 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		logger.log(`📄 OpenAPI output: ${OPENAPI_OUTPUT_PATH}`);
 	}
 
+	// Where a surface's `path` is measured from, so dev can tell which surface
+	// this app serves.
+	const workspaceRoot = workspace?.root ?? secretsRoot;
+
 	const buildContext: BuildContext = {
 		telescope,
 		studio,
@@ -406,6 +412,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		resolved.providers[0] as LegacyProvider,
 		enableOpenApi,
 		appRoot,
+		workspaceRoot,
 	);
 
 	// Generate OpenAPI spec on startup
@@ -570,6 +577,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 					resolved.providers[0] as LegacyProvider,
 					enableOpenApi,
 					appRoot,
+					workspaceRoot,
 					true, // bust module cache on rebuild
 				);
 
@@ -1201,7 +1209,8 @@ async function workspaceDevCommand(
 async function declaredConstructs(
 	config: any,
 	appRoot: string,
-): Promise<Record<string, { kind: string; of?: string }>> {
+	sources: Record<string, ConstructSource>,
+): Promise<ConstructManifest> {
 	const patterns =
 		typeof config?.constructs === 'string' || Array.isArray(config?.constructs)
 			? config.constructs
@@ -1210,12 +1219,13 @@ async function declaredConstructs(
 	if (!patterns) return {};
 
 	try {
-		return (await discover({
+		return await discover({
 			patterns: (Array.isArray(patterns) ? patterns : [patterns]).map((p) =>
 				isAbsolute(p) ? p : join(appRoot, p),
 			),
 			cwd: appRoot,
-		})) as Record<string, { kind: string; of?: string }>;
+			sources,
+		});
 	} catch {
 		// A discovery failure here is not fatal: the generators below import the
 		// same modules and will report it with a better message than "no drivers".
@@ -1228,9 +1238,13 @@ async function buildServer(
 	context: BuildContext,
 	provider: LegacyProvider,
 	enableOpenApi: boolean,
-	appRoot: string = process.cwd(),
+	appRoot: string,
+	workspaceRoot: string,
 	bustCache = false,
 ): Promise<void> {
+	const sources: Record<string, ConstructSource> = {};
+	const declared = await declaredConstructs(config, appRoot, sources);
+
 	// The entry point registers the drivers its target needs — see
 	// `generators/drivers.ts`. Decided here because this is where the app root is
 	// known, and read by every generator that writes an entry.
@@ -1241,10 +1255,20 @@ async function buildServer(
 	// the URL for, so the driver registered is the one the URL needs.
 	context = {
 		...context,
+		// The surface the entry imports its logger and env parser from, and the
+		// constructs a runnable is built from — read from the same discovery
+		// `gkm build` runs, so the two write the same entry.
+		...ownersContext({
+			declared,
+			sources,
+			workspaceRoot,
+			appRoot,
+			studio: context.studio,
+		}),
 		storageDrivers: driversFor({
 			appRoot,
 			cache: cacheBackendsIn(
-				await declaredConstructs(config, appRoot),
+				declared,
 				cacheBackendFor(providerOf(config ?? {})),
 			),
 		}),
@@ -1260,7 +1284,7 @@ async function buildServer(
 
 	// Load all constructs (resolve paths relative to appRoot)
 	const [
-		allEndpoints,
+		loadedEndpoints,
 		allFunctions,
 		allCrons,
 		allSubscribers,
@@ -1278,6 +1302,8 @@ async function buildServer(
 		config.queues ? queueGenerator.load(config.queues, appRoot, bustCache) : [],
 		config.topics ? topicGenerator.load(config.topics, appRoot, bustCache) : [],
 	]);
+
+	const allEndpoints = servedBy(loadedEndpoints, context.surface);
 
 	// Ensure .gkm directory exists in app root
 	const outputDir = join(appRoot, '.gkm', provider);
