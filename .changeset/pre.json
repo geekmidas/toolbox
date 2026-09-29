@@ -36,6 +36,7 @@
   "changesets": [
     "align-deps-tranche-1",
     "alpha-packaging",
+    "auth-migrations-no-server",
     "branch-from-the-surface",
     "claude-md-imports-agents",
     "cli-starts-again",
@@ -47,6 +48,7 @@
     "drop-free-standing-builders",
     "drop-generate-react-query",
     "fresh-scaffold-tests-run",
+    "harness-static-imports",
     "init-deploy-target",
     "init-github-actions",
     "init-logger-deps",

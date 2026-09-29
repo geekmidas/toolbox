@@ -1,5 +1,34 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.23
+
+### Patch Changes
+
+- [#84](https://github.com/geekmidas/toolbox/pull/84) [`7c7e0ef`](https://github.com/geekmidas/toolbox/commit/7c7e0efac3b655a20c9eb8f3a4ff4e3e9e4deea9) Thanks [@geekmidas](https://github.com/geekmidas)! - The generated test harness imports the app's modules itself
+
+  `featureTest` imported each construct and endpoint by path. From a published
+  `@geekmidas/constructs` — inside `node_modules` — Vitest leaves that dynamic
+  import to Node, which knows nothing of the app's tsconfig paths, so the first
+  endpoint importing `~/router.ts` failed with `Cannot find package '~'`. (In this
+  repo the packages are linked sources, which Vite processes, so it never showed.)
+
+  The generated `index.ts` now imports every module the manifest records,
+  statically, from inside the app, and hands them to `featureTest` as `modules`
+  keyed by the recorded path — resolving the way the app's own code does. A
+  module not handed over is still imported by path.
+
+- Updated dependencies [[`31a4ed5`](https://github.com/geekmidas/toolbox/commit/31a4ed57b5c962bc5b961e734b20249b3c64f3d6), [`7c7e0ef`](https://github.com/geekmidas/toolbox/commit/7c7e0efac3b655a20c9eb8f3a4ff4e3e9e4deea9)]:
+  - @geekmidas/constructs@10.0.0-alpha.23
+  - @geekmidas/cache@10.0.0-alpha.23
+  - @geekmidas/db@10.0.0-alpha.23
+  - @geekmidas/envkit@10.0.0-alpha.23
+  - @geekmidas/errors@10.0.0-alpha.23
+  - @geekmidas/logger@10.0.0-alpha.23
+  - @geekmidas/manifest@10.0.0-alpha.23
+  - @geekmidas/schema@10.0.0-alpha.23
+  - @geekmidas/services@10.0.0-alpha.23
+  - @geekmidas/telescope@10.0.0-alpha.23
+
 ## 10.0.0-alpha.22
 
 ### Minor Changes
