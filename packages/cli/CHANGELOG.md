@@ -1,5 +1,37 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.26
+
+### Patch Changes
+
+- [#87](https://github.com/geekmidas/toolbox/pull/87) [`ff05e7c`](https://github.com/geekmidas/toolbox/commit/ff05e7c99720e80996ca0ae4caa7f86dd0305f0c) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm dev` keeps every app on its provisioned port, on its HTTPS address
+  - An app in a workspace no longer drifts to the next free port when its own
+    is taken. Every other app's URL, CORS origins and cookie domain name that
+    port, and the next free one was usually another app's — two backends ended
+    up fighting over the web app's. It now fails with `DevPortInUse`, naming
+    what holds the port.
+  - `gkm dev` at a workspace root checks every app's port before starting
+    anything, and fails with `WorkspacePortsInUse` listing each one held.
+  - A dev server exits when the `gkm dev` that started it is gone, even when
+    that process was killed outright. Before, the server kept its port and the
+    next run found it taken.
+  - 🐛 The addresses reconcile resolves — each app behind the edge on its own HTTPS
+    host — are no longer overwritten by `http://localhost:<port>` dependency
+    URLs. Those now only fill in what reconcile did not resolve. A frontend was
+    calling the API on a host its CORS origins did not list.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.26
+  - @geekmidas/constructs@10.0.0-alpha.26
+  - @geekmidas/db@10.0.0-alpha.26
+  - @geekmidas/envkit@10.0.0-alpha.26
+  - @geekmidas/errors@10.0.0-alpha.26
+  - @geekmidas/logger@10.0.0-alpha.26
+  - @geekmidas/manifest@10.0.0-alpha.26
+  - @geekmidas/schema@10.0.0-alpha.26
+  - @geekmidas/services@10.0.0-alpha.26
+  - @geekmidas/telescope@10.0.0-alpha.26
+
 ## 10.0.0-alpha.25
 
 ### Patch Changes

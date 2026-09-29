@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/testkit",
-	"version": "10.0.0-alpha.25",
+	"version": "10.0.0-alpha.26",
 	"private": false,
 	"type": "module",
 	"exports": {

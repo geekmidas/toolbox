@@ -47,6 +47,7 @@
     "deploy-github-oidc",
     "dev-reads-the-surface",
     "dev-runs-the-build",
+    "dev-strict-ports",
     "drop-free-standing-builders",
     "drop-generate-react-query",
     "fresh-scaffold-tests-run",
