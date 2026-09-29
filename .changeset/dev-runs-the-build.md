@@ -27,9 +27,12 @@ Also fixed on the way, each found by running `gkm dev` against a real app:
   fighting over its port. Dev now names each app's package, as `gkm build` does.
 - Every app in a workspace asked for port 3000, because the CLI turned a
   missing `--port` into 3000 before the workspace's port was consulted.
-- A `Worker`'s crons failed to schedule on a server: the schedule store reached
-  service discovery as the construct rather than its service, and pg-boss was
-  handed a Kysely client where it needs `executeSql`.
+- A `Worker`'s crons never scheduled on a server. They are now scheduled
+  through the events broker — the app's one pg-boss, as the broker's role, in
+  its schema — rather than a second pg-boss on the worker's database as the
+  runtime role, which could neither create a schema nor use the broker's.
+  Reconcile resolves the broker's connection strings for a declared worker on
+  pg-boss even when no queue or topic is declared.
 - From an app with its own tsconfig — a Vite or Next frontend — every `gkm`
   command failed to load another app's constructs through the root tsconfig's
   path aliases. The hook that resolves them was installed with

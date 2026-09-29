@@ -60,6 +60,9 @@ const WEB_ORIGIN = 'http://web.shop.localhost';
 const schema = `dev_spec_${randomUUID().slice(0, 8)}`;
 const { host, port, user, password, database } = TEST_DATABASE_CONFIG;
 const url = `postgres://${user}:${password}@${host}:${port}/${database}?search_path=${schema}`;
+// The events broker: pg-boss in a schema of its own, which it creates.
+const brokerSchema = `${schema}_pgboss`;
+const broker = `pgboss://${user}:${password}@${host}:${port}/${database}?schema=${brokerSchema}`;
 
 /** What reconcile resolves for this workspace, with auth answering on `authPort`. */
 function envFor(authPort: number): Record<string, string> {
@@ -73,6 +76,10 @@ function envFor(authPort: number): Record<string, string> {
 		[provideKey('Auth', 'url')]: `http://localhost:${authPort}`,
 		[provideKey('Auth', 'trustedOrigins')]: WEB_ORIGIN,
 		[provideKey('Api', 'trustedOrigins')]: WEB_ORIGIN,
+		// What reconcile resolves for a declared worker on pg-boss: the broker a
+		// server schedules the worker's crons through.
+		EVENT_PUBLISHER_CONNECTION_STRING: broker,
+		EVENT_SUBSCRIBER_CONNECTION_STRING: broker,
 	};
 }
 
@@ -122,6 +129,7 @@ afterAll(async () => {
 	const client = new pg.Client(TEST_DATABASE_CONFIG);
 	await client.connect();
 	await client.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+	await client.query(`DROP SCHEMA IF EXISTS "${brokerSchema}" CASCADE`);
 	await client.end();
 });
 
@@ -230,6 +238,25 @@ export default defineWorkspace({
 			const db = await request('/database');
 			expect(db.status).toBe(200);
 			expect(await db.json()).toEqual({ answer: 42 });
+
+			// The worker's cron, scheduled through the broker — the row pg-boss
+			// fires it from, not a timer in the process.
+			await until(async () => {
+				const client = new pg.Client(TEST_DATABASE_CONFIG);
+				await client.connect();
+				try {
+					const { rows } = await client.query(
+						`select name, cron from "${brokerSchema}".schedule`,
+					);
+					return rows.some(
+						(row) => row.name === 'cron.nightly' && row.cron === '0 0 * * *',
+					);
+				} catch {
+					return false;
+				} finally {
+					await client.end();
+				}
+			});
 
 			// The surface declared no Telescope; the entry supplies one.
 			expect((await request('/__telescope')).status).toBe(200);

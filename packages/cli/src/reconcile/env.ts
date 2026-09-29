@@ -337,9 +337,12 @@ function brokerEnv(plan: Plan, ports: PortAssignments): Record<string, string> {
 	const carrier = plan.resources.find(
 		(r) => r.kind === 'queue' || r.kind === 'topic',
 	);
-	if (!carrier) return {};
 
-	const publisher = urlFor(carrier, plan, ports, '');
+	const publisher = carrier
+		? urlFor(carrier, plan, ports, '')
+		: plan.workerBroker
+			? workerBroker(plan, ports)
+			: undefined;
 	if (!publisher) return {};
 
 	return {
@@ -349,6 +352,18 @@ function brokerEnv(plan: Plan, ports: PortAssignments): Record<string, string> {
 		EVENT_SUBSCRIBER_CONNECTION_STRING:
 			plan.events === 'sns' ? publisher.replace(/^sns:/, 'sqs:') : publisher,
 	};
+}
+
+/**
+ * The broker a worker schedules its crons through, when nothing else declared
+ * one — pg-boss in the declared database, on that database's port.
+ */
+function workerBroker(plan: Plan, ports: PortAssignments): string | undefined {
+	const database = plan.resources.find((r) => r.kind === 'database');
+	if (!database?.container) return undefined;
+
+	const port = ports[primaryPortKey(database.container)];
+	return port === undefined ? undefined : broker(plan, port);
 }
 
 /**

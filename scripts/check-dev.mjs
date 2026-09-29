@@ -37,7 +37,15 @@ const probes = probeArgs.map((arg) => {
 const TIMEOUT_MS = 5 * 60_000;
 
 /** Output that means an app is not serving, whatever the probes say. */
-const FATAL = [/EADDRINUSE/, /Turbo exited with code/, /run dev exited \(/];
+const FATAL = [
+	/EADDRINUSE/,
+	/Turbo exited with code/,
+	/run dev exited \(/,
+	// A worker's crons that could not be scheduled: the server still answers,
+	// so only its log says the integration is broken.
+	/Failed to schedule crons/,
+	/crons have nowhere to keep their schedule/,
+];
 
 let output = '';
 const dev = spawn('pnpm', ['dev'], {

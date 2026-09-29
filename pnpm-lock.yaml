@@ -400,6 +400,9 @@ importers:
         specifier: ~2.9.1
         version: 2.9.1
     devDependencies:
+      '@geekmidas/events':
+        specifier: workspace:~
+        version: link:../events
       '@geekmidas/studio':
         specifier: workspace:~
         version: link:../studio
@@ -427,6 +430,9 @@ importers:
       kysely:
         specifier: ~0.29.6
         version: 0.29.6
+      pg-boss:
+        specifier: ~12.33.3
+        version: 12.33.4
       typescript:
         specifier: ~7.0.2
         version: 7.0.2
@@ -15051,9 +15057,7 @@ snapshots:
       metro-runtime: 0.83.1
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.5': {}
 
