@@ -115,6 +115,26 @@ jobs:
           GKM_AUTO_SETUP: '1'
         run: pnpm test
 
+      # `gkm build` from the workspace root, as a deploy runs it: every app,
+      # through turbo — the API's handlers, the auth server's own entry, the
+      # Vite site and the Next app.
+      - name: Build (kitchen-sink, through gkm build)
+        timeout-minutes: 10
+        working-directory: apps/kitchen-sink
+        run: pnpm build
+
+      # `gkm dev` on the whole workspace, from its root. Setup generates the
+      # local stage (there are no committed secrets) and starts its containers;
+      # migrate gives the auth server its tables; then every app has to answer
+      # on the port the workspace provisioned for it — see scripts/check-dev.mjs.
+      - name: Dev (kitchen-sink, through gkm dev)
+        timeout-minutes: 15
+        working-directory: apps/kitchen-sink
+        run: |
+          pnpm exec gkm setup --yes
+          pnpm migrate
+          pnpm --dir ../.. run check:dev
+
       - name: Commit synced versions
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: scripts/release.sh sync

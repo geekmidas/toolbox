@@ -106,7 +106,9 @@ describe('QueueGenerator', () => {
 	});
 
 	describe('server provider', () => {
-		it('generates queues.ts with the setupQueues poller even when empty', async () => {
+		// The entry calls `setupQueues` whatever the app declares, and an app
+		// with no Queue has no reason to install `@geekmidas/events`.
+		it('generates a setupQueues that imports nothing at runtime when empty', async () => {
 			const infos = await generator.build(context, [], outputDir, {
 				provider: 'server',
 			});
@@ -115,8 +117,8 @@ describe('QueueGenerator', () => {
 
 			const content = await readFile(join(outputDir, 'queues.ts'), 'utf-8');
 			expect(content).toContain('export async function setupQueues');
-			expect(content).toContain('const queues = [');
-			expect(content).toContain('EVENT_SUBSCRIBER_CONNECTION_STRING');
+			expect(content).not.toContain('@geekmidas/events');
+			expect(content).not.toMatch(/^import (?!type )/m);
 		});
 
 		it('subscribes each queue by its name and validates the payload', async () => {

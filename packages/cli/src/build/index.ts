@@ -1,48 +1,6 @@
-/**
- * The entry for a surface that serves itself.
- *
- * Two lines, because the construct owns the serving. A generator writing the
- * mounts would be a second description of routes the declaration already
- * carries — which is how Better Auth came to be mounted by a hand-written hook,
- * and then served by nothing at all when that hook was deleted for duplicating
- * CORS the graph had started deriving.
- *
- * The import specifier comes from discovery, which globbed the file and
- * imported it. Nothing about the surface is named here.
- */
-async function writeSurfaceEntry(
-	outputDir: string,
-	source: ConstructSource,
-): Promise<void> {
-	await mkdir(outputDir, { recursive: true });
-
-	const rel = relative(outputDir, source.file).replace(/\.ts$/, '.js');
-	const specifier = rel.startsWith('.') ? rel : `./${rel}`;
-
-	await writeFile(
-		join(outputDir, 'app.ts'),
-		`/**
- * Generated entry for a surface that serves itself.
- *
- * Its routes, its CORS origins and its clients all come from the construct's
- * own declaration. This file exists only to start it.
- */
-import { snifferContext } from '@geekmidas/constructs';
-import { defaultEnvParser } from '@geekmidas/constructs/endpoints';
-import { ${source.exportName} as surface } from '${specifier}';
-
-const envParser = defaultEnvParser();
-
-export const { app } = await surface.server({ envParser, context: snifferContext });
-
-export default app;
-`,
-	);
-}
-
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import type { Cron } from '@geekmidas/constructs/crons';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
@@ -50,6 +8,7 @@ import type { Function } from '@geekmidas/constructs/functions';
 import type { Queue } from '@geekmidas/constructs/queue';
 import type { Subscriber } from '@geekmidas/constructs/subscribers';
 import type { Topic } from '@geekmidas/constructs/topic';
+import type { ConstructManifest } from '@geekmidas/manifest';
 import {
 	loadAppConfig,
 	loadConfig,
@@ -76,7 +35,7 @@ import {
 } from '../generators';
 import { generateOpenApi } from '../openapi.js';
 import { type ConstructSource, discover } from '../reconcile/discover.js';
-import type { GkmConfig } from '../types';
+import type { CacheBackend, GkmConfig } from '../types';
 import {
 	type BuildOptions,
 	type BuildResult,
@@ -100,10 +59,17 @@ import {
 	type ManifestField,
 	type ServerAppInfo,
 } from './manifests';
-import { ownersContext, servedBy, servedSurface } from './owners';
+import { ownersContext, servedBy } from './owners';
 import { groupInfosByPartition, hasPartitions } from './partitions';
 import { resolveProviders } from './providerResolver';
-import type { BuildContext } from './types';
+import { selfServingSurface, writeSurfaceEntry } from './surfaceEntry';
+import type {
+	BuildContext,
+	NormalizedHooksConfig,
+	NormalizedProductionConfig,
+	NormalizedStudioConfig,
+	NormalizedTelescopeConfig,
+} from './types';
 
 const logger = console;
 
@@ -212,6 +178,82 @@ export async function buildCommand(
 		logger.log(`🪝 Server hooks enabled`);
 	}
 
+	return buildApp({
+		config,
+		workspaceRoot: loadedConfig.workspace.root,
+		appRoot: process.cwd(),
+		providers: resolved.providers,
+		enableOpenApi: resolved.enableOpenApi,
+		cacheBackend,
+		production,
+		telescope,
+		studio,
+		hooks,
+		markOptional: options.markOptional ?? false,
+		skipBundle: options.skipBundle ?? false,
+		stage: options.stage,
+	});
+}
+
+/** What one app's build needs, once its config has been read. */
+export interface BuildAppInput {
+	config: GkmConfig;
+	workspaceRoot: string;
+	/** The app being built — the directory a surface's `path` names. */
+	appRoot: string;
+	providers: LegacyProvider[];
+	enableOpenApi: boolean;
+	cacheBackend: CacheBackend;
+	production?: NormalizedProductionConfig;
+	telescope?: NormalizedTelescopeConfig;
+	studio?: NormalizedStudioConfig;
+	hooks?: NormalizedHooksConfig;
+	markOptional?: boolean;
+	skipBundle?: boolean;
+	stage?: string;
+	/** Re-import changed modules — `gkm dev` rebuilding after an edit. */
+	bustCache?: boolean;
+	/**
+	 * Generate a server even when the globs find nothing.
+	 *
+	 * A build with nothing in it has nothing to deploy. A dev server with
+	 * nothing in it is how a project starts: it runs, and the first endpoint
+	 * written appears on the next rebuild.
+	 */
+	serveEmpty?: boolean;
+}
+
+export interface AppBuildOutput extends BuildResult {
+	/**
+	 * The surface the entry starts, when the app's surface serves itself — its
+	 * `app.ts` exports the construct's own `app`, with no `createApp` to call.
+	 */
+	selfServing?: string;
+}
+
+/**
+ * Turn one app's constructs into its generated entry.
+ *
+ * `gkm build` and `gkm dev` both run this. They used to be two copies of it,
+ * and every time the build learned something about constructs — that the
+ * entry takes its logger from the surface, that an auth server serves itself —
+ * dev did not, and failed on exactly the apps the build had learned to handle.
+ */
+export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
+	const {
+		config,
+		workspaceRoot,
+		appRoot,
+		providers,
+		enableOpenApi,
+		cacheBackend,
+		production,
+		telescope,
+		studio,
+		hooks,
+		bustCache = false,
+	} = input;
+
 	// `constructs` accepts the partitioned shape every other glob does; only the
 	// flat forms name a construct file.
 	const constructGlobs =
@@ -228,16 +270,38 @@ export async function buildCommand(
 	const declared = constructGlobs
 		? await discover({
 				patterns: constructGlobs,
-				cwd: process.cwd(),
+				cwd: appRoot,
+				bustCache,
 				sources: constructSources,
 			})
 		: {};
 
+	// A surface that serves itself is started, not generated for: its routes
+	// are the construct's, and the entry only has to call it.
+	const selfServing = selfServingSurface({
+		declared,
+		sources: constructSources,
+		workspaceRoot,
+		appRoot,
+	});
+
+	if (selfServing) {
+		await writeSurfaceEntry(
+			join(appRoot, '.gkm', 'server'),
+			selfServing.source,
+		);
+		logger.log(
+			`Generated a server for ${selfServing.id} from its own declaration`,
+		);
+
+		return { selfServing: selfServing.id };
+	}
+
 	const derived = ownersContext({
 		declared,
 		sources: constructSources,
-		workspaceRoot: loadedConfig.workspace.root,
-		appRoot: process.cwd(),
+		workspaceRoot,
+		appRoot,
 		studio,
 	});
 
@@ -256,10 +320,10 @@ export async function buildCommand(
 		// named nowhere. Reading only the default registers a driver for a
 		// protocol the target never composes.
 		storageDrivers: driversFor({
-			appRoot: process.cwd(),
+			appRoot,
 			cache: cacheBackendsIn(declared, cacheBackend),
 		}),
-		markOptional: options.markOptional ?? false,
+		markOptional: input.markOptional ?? false,
 	};
 
 	// Initialize generators
@@ -287,12 +351,12 @@ export async function buildCommand(
 		allQueues,
 		allTopics,
 	] = await Promise.all([
-		endpointGenerator.load(code),
-		functionGenerator.load(code),
-		cronGenerator.load(code),
-		subscriberGenerator.load(code),
-		queueGenerator.load(code),
-		topicGenerator.load(code),
+		endpointGenerator.load(code, appRoot, bustCache),
+		functionGenerator.load(code, appRoot, bustCache),
+		cronGenerator.load(code, appRoot, bustCache),
+		subscriberGenerator.load(code, appRoot, bustCache),
+		queueGenerator.load(code, appRoot, bustCache),
+		topicGenerator.load(code, appRoot, bustCache),
 	]);
 
 	const allEndpoints = servedBy(loadedEndpoints, derived.surface);
@@ -305,6 +369,7 @@ export async function buildCommand(
 	logger.log(`Found ${allTopics.length} topics`);
 
 	if (
+		!input.serveEmpty &&
 		allEndpoints.length === 0 &&
 		allFunctions.length === 0 &&
 		allCrons.length === 0 &&
@@ -312,33 +377,6 @@ export async function buildCommand(
 		allQueues.length === 0 &&
 		allTopics.length === 0
 	) {
-		// A surface whose routes are *declared* rather than discovered — an auth
-		// server's wildcard. There is nothing for a glob to find, and that is not
-		// an empty app: the construct serves itself and the entry only starts it.
-		const served = servedSurface(
-			declared,
-			loadedConfig.workspace.root,
-			process.cwd(),
-		);
-		const selfServing =
-			served &&
-			served.endpoints.length > 0 &&
-			constructSources[served.id] !== undefined
-				? ([served.id, served] as const)
-				: undefined;
-
-		if (selfServing) {
-			const [id] = selfServing;
-
-			await writeSurfaceEntry(
-				join(process.cwd(), '.gkm', 'server'),
-				constructSources[id]!,
-			);
-			logger.log(`Generated a server for ${id} from its own declaration`);
-
-			return {};
-		}
-
 		logger.log(
 			'No endpoints, functions, crons, subscribers, queues, or topics found to process',
 		);
@@ -346,16 +384,17 @@ export async function buildCommand(
 	}
 
 	// Ensure .gkm directory exists
-	const rootOutputDir = join(process.cwd(), '.gkm');
+	const rootOutputDir = join(appRoot, '.gkm');
 	await mkdir(rootOutputDir, { recursive: true });
 
 	// Build for each provider and generate per-provider manifests
 	let result: BuildResult = {};
-	for (const provider of resolved.providers) {
+	for (const provider of providers) {
 		const providerResult = await buildForProvider(
 			provider,
 			buildContext,
-			rootOutputDir,
+			appRoot,
+			declared,
 			endpointGenerator,
 			functionGenerator,
 			cronGenerator,
@@ -368,9 +407,9 @@ export async function buildCommand(
 			allSubscribers,
 			allQueues,
 			allTopics,
-			resolved.enableOpenApi,
-			options.skipBundle ?? false,
-			options.stage,
+			enableOpenApi,
+			input.skipBundle ?? false,
+			input.stage,
 		);
 		// Keep the master key from the server provider
 		if (providerResult.masterKey) {
@@ -391,7 +430,8 @@ export async function buildCommand(
 async function buildForProvider(
 	provider: LegacyProvider,
 	context: BuildContext,
-	rootOutputDir: string,
+	appRoot: string,
+	discovered: ConstructManifest,
 	endpointGenerator: EndpointGenerator,
 	functionGenerator: FunctionGenerator,
 	cronGenerator: CronGenerator,
@@ -408,7 +448,8 @@ async function buildForProvider(
 	skipBundle: boolean,
 	stage?: string,
 ): Promise<BuildResult> {
-	const outputDir = join(process.cwd(), '.gkm', provider);
+	const rootOutputDir = join(appRoot, '.gkm');
+	const outputDir = join(rootOutputDir, provider);
 
 	// Ensure output directory exists
 	await mkdir(outputDir, { recursive: true });
@@ -444,13 +485,6 @@ async function buildForProvider(
 	// Assemble manifest fields (flat or partitioned per construct type)
 	const manifestRoutes = assembleManifestField(routes, endpoints);
 
-	// Discovery imports application code, so it runs once here and everything
-	// downstream reads what it wrote — a deploy config calling it would evaluate
-	// the whole runtime graph inside its own toolchain.
-	const discovered = context.constructGlobs
-		? await discover({ patterns: context.constructGlobs, cwd: process.cwd() })
-		: {};
-
 	const manifestFunctions = assembleManifestField(functionInfos, functions);
 	const manifestCrons = assembleManifestField(cronInfos, crons);
 	const manifestQueues = assembleManifestField(queueInfos, queues);
@@ -475,8 +509,8 @@ async function buildForProvider(
 		const serverRouteField = assembleManifestField(routeMetadata, endpoints);
 
 		const appInfo: ServerAppInfo = {
-			handler: relative(process.cwd(), join(outputDir, 'app.ts')),
-			endpoints: relative(process.cwd(), join(outputDir, 'endpoints.ts')),
+			handler: relative(appRoot, join(outputDir, 'app.ts')),
+			endpoints: relative(appRoot, join(outputDir, 'endpoints.ts')),
 		};
 
 		await generateServerManifest(
@@ -616,21 +650,33 @@ export function turboFilters(workspace: NormalizedWorkspace): {
 	const filters: string[] = [];
 	const unpackaged: string[] = [];
 
-	for (const [appName, app] of Object.entries(workspace.apps)) {
-		const pkgPath = join(workspace.root, app.path, 'package.json');
-		if (!existsSync(pkgPath)) {
-			unpackaged.push(appName);
-			continue;
-		}
-		const name = JSON.parse(readFileSync(pkgPath, 'utf8')).name;
-		if (typeof name === 'string' && name.length > 0) {
-			filters.push(name);
-		} else {
-			unpackaged.push(appName);
-		}
+	for (const appName of Object.keys(workspace.apps)) {
+		const name = appPackageName(workspace, appName);
+		if (name) filters.push(name);
+		else unpackaged.push(appName);
 	}
 
 	return { filters, unpackaged };
+}
+
+/**
+ * The package name turbo knows an app by, from its own `package.json`.
+ *
+ * Not the app's key: `api` in the workspace is `@shop/api` to turbo, and a
+ * filter naming the key matches nothing.
+ */
+export function appPackageName(
+	workspace: NormalizedWorkspace,
+	appName: string,
+): string | undefined {
+	const app = workspace.apps[appName];
+	if (!app) return undefined;
+
+	const pkgPath = join(workspace.root, app.path, 'package.json');
+	if (!existsSync(pkgPath)) return undefined;
+
+	const name = JSON.parse(readFileSync(pkgPath, 'utf8')).name;
+	return typeof name === 'string' && name.length > 0 ? name : undefined;
 }
 
 /**

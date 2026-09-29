@@ -263,9 +263,9 @@ describe('SubscriberGenerator', () => {
 			expect(subscribersContent).toContain(
 				'export async function setupSubscribers',
 			);
-			expect(subscribersContent).toContain('const subscribers = [');
-			expect(subscribersContent).toContain('import type { EnvironmentParser }');
-			expect(subscribersContent).toContain('import type { Logger }');
+			// An app with no Topic has no reason to install `@geekmidas/events`.
+			expect(subscribersContent).not.toContain('@geekmidas/events');
+			expect(subscribersContent).not.toMatch(/^import (?!type )/m);
 		});
 
 		it('should generate subscribers.ts file for server provider with subscribers', async () => {

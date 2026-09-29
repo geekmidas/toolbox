@@ -144,6 +144,9 @@ importers:
       pg:
         specifier: ~8.23.0
         version: 8.23.0
+      pg-boss:
+        specifier: ~12.33.3
+        version: 12.33.4
       pino:
         specifier: ~10.3.1
         version: 10.3.1
@@ -397,9 +400,18 @@ importers:
         specifier: ~2.9.1
         version: 2.9.1
     devDependencies:
+      '@geekmidas/events':
+        specifier: workspace:~
+        version: link:../events
+      '@geekmidas/studio':
+        specifier: workspace:~
+        version: link:../studio
       '@geekmidas/testkit':
         specifier: workspace:*
         version: link:../testkit
+      '@hono/node-server':
+        specifier: ~1.19.5
+        version: 1.19.5(hono@4.13.8)
       '@types/lodash.kebabcase':
         specifier: ~4.1.9
         version: 4.1.9
@@ -415,6 +427,12 @@ importers:
       better-auth:
         specifier: ~1.7.6
         version: 1.7.6(@opentelemetry/api@1.9.1)(next@16.3.6(@opentelemetry/api@1.9.1)(@types/node@24.9.1)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(pg@8.23.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(vitest@5.0.2)(vue@3.5.18(typescript@7.0.2))
+      kysely:
+        specifier: ~0.29.6
+        version: 0.29.6
+      pg-boss:
+        specifier: ~12.33.3
+        version: 12.33.4
       typescript:
         specifier: ~7.0.2
         version: 7.0.2
@@ -15039,9 +15057,7 @@ snapshots:
       metro-runtime: 0.83.1
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.5': {}
 

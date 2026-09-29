@@ -1,14 +1,12 @@
 import { type ChildProcess, execSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
-import type { ConstructManifest } from '@geekmidas/manifest';
+import { dirname, join, resolve } from 'node:path';
 import chokidar from 'chokidar';
 import fg from 'fast-glob';
-import { ownersContext, servedBy } from '../build/owners';
+import { appPackageName, buildApp, turboFilters } from '../build/index';
 import { resolveProviders } from '../build/providerResolver';
 import type {
-	BuildContext,
 	NormalizedHooksConfig,
 	NormalizedProductionConfig,
 	NormalizedStudioConfig,
@@ -31,22 +29,7 @@ import {
 	rewriteUrlsWithPorts,
 	startWorkspaceServices,
 } from '../credentials';
-import {
-	CronGenerator,
-	cacheBackendsIn,
-	driversFor,
-	EndpointGenerator,
-	FunctionGenerator,
-	QueueGenerator,
-	SubscriberGenerator,
-	TopicGenerator,
-} from '../generators';
-import {
-	generateOpenApiFrom,
-	OPENAPI_OUTPUT_PATH,
-	resolveOpenApiConfig,
-} from '../openapi';
-import { type ConstructSource, discover } from '../reconcile/discover.js';
+import { OPENAPI_OUTPUT_PATH, resolveOpenApiConfig } from '../openapi';
 import { reconcileWorkspace, usesConstructs } from '../reconcile/workspace.js';
 import {
 	readStageSecrets,
@@ -395,32 +378,29 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		logger.log(`📄 OpenAPI output: ${OPENAPI_OUTPUT_PATH}`);
 	}
 
-	// Where a surface's `path` is measured from, so dev can tell which surface
-	// this app serves.
-	const workspaceRoot = workspace?.root ?? secretsRoot;
-
-	const buildContext: BuildContext = {
-		telescope,
-		studio,
-		hooks,
-	};
+	// The build's own pipeline, for the server target: what dev runs is what
+	// `gkm build` would have generated, never a second reading of the same
+	// constructs.
+	const build = (bustCache = false) =>
+		buildApp({
+			config,
+			// Where a surface's `path` is measured from, so the build can tell
+			// which surface this app serves.
+			workspaceRoot: workspace?.root ?? secretsRoot,
+			appRoot,
+			providers: ['server'],
+			enableOpenApi,
+			cacheBackend: cacheBackendFor(providerOf(workspace ?? config)),
+			telescope,
+			studio,
+			hooks,
+			skipBundle: true,
+			bustCache,
+			serveEmpty: true,
+		});
 
 	// Build initial version
-	await buildServer(
-		config,
-		buildContext,
-		resolved.providers[0] as LegacyProvider,
-		enableOpenApi,
-		appRoot,
-		workspaceRoot,
-	);
-
-	// Generate OpenAPI spec on startup
-	if (enableOpenApi) {
-		await generateOpenApiFrom(config.constructs, {
-			openapi: config.openapi,
-		});
-	}
+	const initial = await build();
 
 	// Determine runtime (default to node)
 	const runtime: Runtime = config.runtime ?? 'node';
@@ -493,6 +473,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		runtime,
 		appRoot,
 		secretsJsonPath,
+		initial.selfServing !== undefined,
 	);
 
 	await devServer.start();
@@ -571,26 +552,11 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		rebuildTimeout = setTimeout(async () => {
 			try {
 				logger.log('🔄 Rebuilding...');
-				await buildServer(
-					config,
-					buildContext,
-					resolved.providers[0] as LegacyProvider,
-					enableOpenApi,
-					appRoot,
-					workspaceRoot,
-					true, // bust module cache on rebuild
-				);
-
-				// Regenerate OpenAPI if enabled
-				if (enableOpenApi) {
-					await generateOpenApiFrom(config.constructs, {
-						openapi: config.openapi,
-						silent: true,
-						bustCache: true,
-					});
-				}
+				// Bust the module cache: the edit is what the rebuild is for.
+				const rebuilt = await build(true);
 
 				logger.log('✅ Rebuild complete, restarting server...');
+				devServer.selfServing = rebuilt.selfServing !== undefined;
 				await devServer.restart();
 			} catch (error) {
 				const err = error as Error;
@@ -1079,14 +1045,27 @@ async function workspaceDevCommand(
 				`App "${options.app}" not found. Available apps: ${appNames}`,
 			);
 		}
-		turboFilter = ['--filter', options.app];
+		turboFilter = [
+			'--filter',
+			appPackageName(workspace, options.app) ?? options.app,
+		];
 		logger.log(`\n🎯 Running single app: ${options.app}`);
 	} else if (options.filter) {
 		// Use custom filter
 		turboFilter = ['--filter', options.filter];
 		logger.log(`\n🔍 Using filter: ${options.filter}`);
 	} else {
-		// Run all apps
+		// Every app, by name. Left to infer its own scope at the workspace root,
+		// turbo includes the root package — whose `dev` script is `gkm dev`,
+		// which arrives here and starts turbo again, and every app twice over.
+		// `gkm build` names its apps for the same reason.
+		const { filters, unpackaged } = turboFilters(workspace);
+		turboFilter = filters.flatMap((name) => ['--filter', name]);
+		if (unpackaged.length > 0) {
+			logger.warn(
+				`⚠️  No package.json with a name for: ${unpackaged.join(', ')} — turbo cannot run ${unpackaged.length === 1 ? 'it' : 'them'}.`,
+			);
+		}
 		logger.log(`\n🎯 Running all ${appCount} apps`);
 	}
 
@@ -1197,130 +1176,6 @@ async function workspaceDevCommand(
 			}
 		});
 	});
-}
-
-/**
- * What the app declares, or nothing when it declares in the old way.
- *
- * Discovery imports the application's construct modules, which is why this is
- * guarded rather than unconditional: a project with no `constructs` glob has
- * not adopted the model, and there is nothing to import.
- */
-async function declaredConstructs(
-	config: any,
-	appRoot: string,
-	sources: Record<string, ConstructSource>,
-): Promise<ConstructManifest> {
-	const patterns =
-		typeof config?.constructs === 'string' || Array.isArray(config?.constructs)
-			? config.constructs
-			: undefined;
-
-	if (!patterns) return {};
-
-	try {
-		return await discover({
-			patterns: (Array.isArray(patterns) ? patterns : [patterns]).map((p) =>
-				isAbsolute(p) ? p : join(appRoot, p),
-			),
-			cwd: appRoot,
-			sources,
-		});
-	} catch {
-		// A discovery failure here is not fatal: the generators below import the
-		// same modules and will report it with a better message than "no drivers".
-		return {};
-	}
-}
-
-async function buildServer(
-	config: any,
-	context: BuildContext,
-	provider: LegacyProvider,
-	enableOpenApi: boolean,
-	appRoot: string,
-	workspaceRoot: string,
-	bustCache = false,
-): Promise<void> {
-	const sources: Record<string, ConstructSource> = {};
-	const declared = await declaredConstructs(config, appRoot, sources);
-
-	// The entry point registers the drivers its target needs — see
-	// `generators/drivers.ts`. Decided here because this is where the app root is
-	// known, and read by every generator that writes an entry.
-	//
-	// Both halves of the answer, because both halves decide where a cache lives:
-	// the declaration for a cache that named its database, and the deploy
-	// target for one that named nowhere — the same target reconcile composed
-	// the URL for, so the driver registered is the one the URL needs.
-	context = {
-		...context,
-		// The surface the entry imports its logger and env parser from, and the
-		// constructs a runnable is built from — read from the same discovery
-		// `gkm build` runs, so the two write the same entry.
-		...ownersContext({
-			declared,
-			sources,
-			workspaceRoot,
-			appRoot,
-			studio: context.studio,
-		}),
-		storageDrivers: driversFor({
-			appRoot,
-			cache: cacheBackendsIn(
-				declared,
-				cacheBackendFor(providerOf(config ?? {})),
-			),
-		}),
-	};
-
-	// Initialize generators
-	const endpointGenerator = new EndpointGenerator();
-	const functionGenerator = new FunctionGenerator();
-	const cronGenerator = new CronGenerator();
-	const subscriberGenerator = new SubscriberGenerator();
-	const queueGenerator = new QueueGenerator();
-	const topicGenerator = new TopicGenerator();
-
-	// Load all constructs (resolve paths relative to appRoot)
-	const [
-		loadedEndpoints,
-		allFunctions,
-		allCrons,
-		allSubscribers,
-		allQueues,
-		allTopics,
-	] = await Promise.all([
-		endpointGenerator.load(config.constructs, appRoot, bustCache),
-		config.functions
-			? functionGenerator.load(config.functions, appRoot, bustCache)
-			: [],
-		config.crons ? cronGenerator.load(config.crons, appRoot, bustCache) : [],
-		config.subscribers
-			? subscriberGenerator.load(config.subscribers, appRoot, bustCache)
-			: [],
-		config.queues ? queueGenerator.load(config.queues, appRoot, bustCache) : [],
-		config.topics ? topicGenerator.load(config.topics, appRoot, bustCache) : [],
-	]);
-
-	const allEndpoints = servedBy(loadedEndpoints, context.surface);
-
-	// Ensure .gkm directory exists in app root
-	const outputDir = join(appRoot, '.gkm', provider);
-	await mkdir(outputDir, { recursive: true });
-
-	// Build for server provider
-	await Promise.all([
-		endpointGenerator.build(context, allEndpoints, outputDir, {
-			provider,
-			enableOpenApi,
-		}),
-		functionGenerator.build(context, allFunctions, outputDir, { provider }),
-		cronGenerator.build(context, allCrons, outputDir, { provider }),
-		subscriberGenerator.build(context, allSubscribers, outputDir, { provider }),
-		queueGenerator.build(context, allQueues, outputDir, { provider }),
-		topicGenerator.build(context, allTopics, outputDir, { provider }),
-	]);
 }
 
 /**
@@ -1519,12 +1374,18 @@ export function generateServerEntryContent(options: {
 	runtime?: Runtime;
 	enableOpenApi?: boolean;
 	appImportPath?: string;
+	/**
+	 * `app.ts` is a surface serving itself — it exports the construct's own
+	 * `app`, with no `createApp` around it to start.
+	 */
+	selfServing?: boolean;
 }): string {
 	const {
 		secretsJsonPath,
 		runtime = 'node',
 		enableOpenApi = false,
 		appImportPath = './app.js',
+		selfServing = false,
 	} = options;
 
 	const credentialsInjection = secretsJsonPath
@@ -1558,6 +1419,25 @@ if (existsSync(secretsPath)) {
       injectWs(server);
       console.log('🔌 Telescope real-time updates enabled');
     }`;
+
+	if (selfServing) {
+		return `#!/usr/bin/env node
+/**
+ * Development server entry point for a surface that serves itself
+ * This file is auto-generated by 'gkm dev'
+ */
+${credentialsInjection}
+const port = process.argv.includes('--port')
+  ? Number.parseInt(process.argv[process.argv.indexOf('--port') + 1])
+  : 3000;
+
+// Dynamic import so Credentials are populated before the surface evaluates
+const { app } = await import('${appImportPath}');
+
+${serveCode.replace(/^ {4}/gm, '')}
+console.log(\`Server started on port \${port}\`);
+`;
+	}
 
 	return `#!/usr/bin/env node
 /**
@@ -1604,6 +1484,8 @@ class DevServer {
 		private runtime: Runtime = 'node',
 		private appRoot: string = process.cwd(),
 		private secretsJsonPath?: string,
+		/** Whether `app.ts` is a surface serving itself rather than `createApp`. */
+		public selfServing = false,
 	) {
 		this.actualPort = requestedPort;
 	}
@@ -1736,10 +1618,14 @@ class DevServer {
 
 	private killProcessesOnPort(port: number): void {
 		try {
-			// Use lsof to find PIDs on the port and kill them with -9
-			execSync(`lsof -ti tcp:${port} | xargs kill -9 2>/dev/null || true`, {
-				stdio: 'ignore',
-			});
+			// Whatever is *listening* on the port — the server this replaces.
+			// Without `-sTCP:LISTEN`, lsof also lists every client connected to
+			// it, so a restart killed the browser, the web app's server, or the
+			// test runner that happened to hold a keep-alive socket.
+			execSync(
+				`lsof -ti tcp:${port} -sTCP:LISTEN | xargs kill -9 2>/dev/null || true`,
+				{ stdio: 'ignore' },
+			);
 		} catch {
 			// Ignore errors - port may already be free
 		}
@@ -1773,6 +1659,7 @@ class DevServer {
 			secretsJsonPath: this.secretsJsonPath,
 			runtime: this.runtime,
 			enableOpenApi: this.enableOpenApi,
+			selfServing: this.selfServing,
 		});
 
 		await fsWriteFile(serverPath, content);

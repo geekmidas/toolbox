@@ -48,7 +48,8 @@
 		"dependencies": "~10.6.0"
 	},
 	"@hono/node-server": {
-		"dependencies": "~1.19.5"
+		"dependencies": "~1.19.5",
+		"devDependencies": "~1.19.5"
 	},
 	"@middy/core": {
 		"devDependencies": "~7.9.2",
@@ -394,6 +395,7 @@
 		"peerDependencies": ">=8.23.0"
 	},
 	"pg-boss": {
+		"dependencies": "~12.33.3",
 		"devDependencies": "~12.33.3",
 		"peerDependencies": ">=12.33.3"
 	},

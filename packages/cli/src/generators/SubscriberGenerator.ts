@@ -133,6 +133,27 @@ export const handler = adapter.handler;
 		const subscribersFileName = 'subscribers.ts';
 		const subscribersPath = join(outputDir, subscribersFileName);
 
+		// Nothing to poll, so nothing to import. Every app gets this file, and
+		// `@geekmidas/events` is only installed by one that declared a Topic or
+		// a Queue — importing it here crashed every dev server that had not.
+		if (subscribers.length === 0) {
+			await writeFile(
+				subscribersPath,
+				`/**
+ * Generated subscribers setup — this app declares none.
+ */
+import type { EnvironmentParser } from '@geekmidas/envkit';
+import type { Logger } from '@geekmidas/logger';
+
+export async function setupSubscribers(
+  _envParser: EnvironmentParser<any>,
+  _logger: Logger,
+): Promise<void> {}
+`,
+			);
+			return subscribersPath;
+		}
+
 		// Group imports by file
 		const importsByFile = new Map<string, string[]>();
 

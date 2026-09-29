@@ -262,6 +262,17 @@ export interface Plan {
 	events: EventsBackend;
 	/** Where the cache lives, for everything downstream that composes its URL. */
 	cache: CacheBackend;
+	/**
+	 * A worker is declared and the broker is pg-boss, so the broker is needed
+	 * whether or not a queue or topic is.
+	 *
+	 * On a server a worker's crons are scheduled through the events broker —
+	 * the app's one pg-boss. Crons are not in the manifest (a worker does not
+	 * list them), so the worker is the signal. pg-boss is a schema in the
+	 * declared database, so this starts nothing and provisions nothing; it only
+	 * means the broker's connection strings are resolved.
+	 */
+	workerBroker?: true;
 	/** Containers to start, deduplicated. */
 	containers: string[];
 	/**
@@ -537,7 +548,19 @@ export function planFor(
 		}
 	}
 
-	return { stage, events, cache, containers: [...containers], resources };
+	const workerBroker =
+		events === 'pgboss' &&
+		Object.values(manifest).some((d) => d?.kind === 'worker') &&
+		resources.some((r) => r.kind === 'database');
+
+	return {
+		stage,
+		events,
+		cache,
+		containers: [...containers],
+		resources,
+		...(workerBroker ? { workerBroker: true as const } : {}),
+	};
 }
 
 /**

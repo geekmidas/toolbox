@@ -1,3 +1,4 @@
+import { Credentials } from '@geekmidas/envkit/credentials';
 import { defineConfig } from 'vite';
 
 /**
@@ -14,4 +15,12 @@ export default defineConfig({
 	// build inlines it under the name the bundler expects. Nothing here names
 	// a host.
 	envPrefix: 'VITE_',
+	// The port the workspace provisioned for this app, which `gkm exec` injects
+	// — the one every other app's `WEB_URL` and the API's CORS origins name.
+	// Strict, because Vite drifting to the next free port serves the site
+	// somewhere nothing points at.
+	server: {
+		port: Number(Credentials.PORT),
+		strictPort: true,
+	},
 });

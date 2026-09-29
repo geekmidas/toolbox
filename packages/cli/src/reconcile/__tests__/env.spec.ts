@@ -440,3 +440,56 @@ describe('cache backends', () => {
 		expect(env.SESSIONS_URL).toBe(`${env.ORDERS_URL}?table=cache_sessions`);
 	});
 });
+
+/**
+ * A worker's crons are scheduled through the events broker on a server — the
+ * app's one pg-boss. Crons are not in the manifest, so a declared worker is
+ * what says the broker is needed, even with no queue or topic.
+ */
+describe('the broker a worker schedules through', () => {
+	const workerOnly = {
+		Orders: { kind: 'database', id: 'Orders', provides: ['ORDERS_URL'] },
+		Jobs: { kind: 'worker', id: 'Jobs', provides: [] },
+	} as const satisfies ConstructManifest;
+
+	function workerEnv(manifest: ConstructManifest, events?: 'pgboss' | 'sns') {
+		const plan = planFor(manifest, 'development', provisionOrder(manifest), {
+			localStage: 'development',
+			...(events ? { events } : {}),
+		});
+
+		return envFor(plan, {
+			ports: Object.fromEntries(
+				portKeys(plan.containers).map((key, index) => [key, 20000 + index]),
+			),
+		});
+	}
+
+	it('resolves pg-boss in the declared database for a worker alone', () => {
+		const env = workerEnv(workerOnly);
+
+		expect(env.EVENT_SUBSCRIBER_CONNECTION_STRING).toMatch(
+			/^pgboss:\/\/.*\/orders\?schema=pgboss$/,
+		);
+		expect(env.EVENT_PUBLISHER_CONNECTION_STRING).toBe(
+			env.EVENT_SUBSCRIBER_CONNECTION_STRING,
+		);
+	});
+
+	it('resolves nothing when the broker is not pg-boss', () => {
+		// On AWS a cron is an EventBridge rule; nothing in the process schedules.
+		expect(
+			workerEnv(workerOnly, 'sns').EVENT_SUBSCRIBER_CONNECTION_STRING,
+		).toBeUndefined();
+	});
+
+	it('resolves nothing for a worker with no database to hold pg-boss', () => {
+		// Starting a Postgres to hold only a schedule is the container reconcile
+		// refuses to invent; the generated scheduler says what is missing.
+		const { Jobs } = workerOnly;
+
+		expect(
+			workerEnv({ Jobs }).EVENT_SUBSCRIBER_CONNECTION_STRING,
+		).toBeUndefined();
+	});
+});

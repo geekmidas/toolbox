@@ -229,7 +229,10 @@ program
 				}
 
 				await devCommand({
-					port: options.port ? Number.parseInt(options.port, 10) : 3000,
+					// Unset without `--port`, so an app in a workspace gets the port the
+					// workspace gave it. Defaulting to 3000 here meant every app asked
+					// for 3000, and the first to start took it from the others.
+					port: options.port ? Number.parseInt(options.port, 10) : undefined,
 					portExplicit: !!options.port,
 					enableOpenApi: options.enableOpenapi ?? true,
 					entry: options.entry,

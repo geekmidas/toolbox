@@ -191,34 +191,31 @@ export async function setupCrons(
     }
   };
 
-  // Declared once on the worker, carried onto every cron it built — so this
-  // reads it from any of them rather than from config or the environment.
-  const scheduleStore = prepared.find(({ cron }) => cron.scheduleStore)?.cron
-    .scheduleStore;
+  // The app's one pg-boss: the events broker's, as the broker's role, in the
+  // broker's schema. A server fires its own crons, and a process scheduling in
+  // memory fires each job once per replica — so the schedule lives in
+  // Postgres. It used to be a second pg-boss on the worker's database, as the
+  // runtime role, which can neither create a schema nor use the broker's.
+  const { url } = envParser
+    .create((get) => ({
+      url: get('EVENT_SUBSCRIBER_CONNECTION_STRING').string().optional(),
+    }))
+    .parse();
 
-  if (!scheduleStore) {
-    // Declared, not discovered. A worker says where its schedules live with
-    // \`.database(db)\`; inferring one from whatever database happened to be
-    // around would move the schedules the day an app declared a second.
+  if (!url?.startsWith('pgboss://')) {
     logger.error(
       { crons: prepared.map(({ name }) => name) },
-      'These crons have nowhere to keep their schedule. A server fires its own ' +
-        'crons, and a process scheduling in memory fires each job once per ' +
-        'replica — so the schedule lives in Postgres. Say where with ' +
-        '\`new Worker(…).database(db)\`.',
+      'These crons have nowhere to keep their schedule. On a server they are ' +
+        'scheduled through the pg-boss events broker ' +
+        '(EVENT_SUBSCRIBER_CONNECTION_STRING), and ' +
+        (url ? 'the broker configured is not pg-boss.' : 'none is configured.'),
     );
     return;
   }
 
-  const [store] = await serviceDiscovery
-    .register([scheduleStore])
-    .then((s) => Object.values(s));
-
-  const { PgBoss } = await import('pg-boss');
-  // The pool the construct already opened — no connection string is read here,
-  // and none is named anywhere outside the construct that owns it.
-  const boss = new PgBoss({ db: store as never });
-  await boss.start();
+  const { PgBossConnection } = await import('@geekmidas/events/pgboss');
+  const connection = await PgBossConnection.fromConnectionString(url);
+  const boss = connection.instance!;
 
   // What this app declares now. Anything else under the prefix belonged to a
   // cron since renamed or deleted, and would keep firing at a handler that has
@@ -245,7 +242,7 @@ export async function setupCrons(
     logger.info({ cron: entry.name, schedule: entry.schedule }, 'Cron scheduled');
   }
 
-  running.push({ stop: () => boss.stop() });
+  running.push({ stop: () => connection.close() });
   logger.info({ count: prepared.length }, 'Crons scheduled');
 }
 
