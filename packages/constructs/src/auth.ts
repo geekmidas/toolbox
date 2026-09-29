@@ -238,12 +238,17 @@ export class BetterAuth<
 		// whole point of the split is that a handler's role cannot do it — so a
 		// migrator that connected the way a handler does would fail on the first
 		// `CREATE TABLE` rather than working by accident.
-		const auth = await this.connect(options, { owner: true });
+		//
+		// The options, not a server built from them: better-auth checks its
+		// schema when a server starts, and before the migration that creates the
+		// tables it can only report them missing — an error in every migrate
+		// log, about the very tables the next line creates.
+		const resolved = await this.optionsFor(options, { owner: true });
 		// better-auth 1.7 split the migration builder out of `better-auth/db`
 		// into its own entry, so importing it no longer drags the whole db layer
 		// in behind it.
 		const { getMigrations } = await import('better-auth/db/migration');
-		const { runMigrations } = await getMigrations(auth.options);
+		const { runMigrations } = await getMigrations(resolved);
 
 		return runMigrations;
 	}
@@ -340,6 +345,24 @@ export class BetterAuth<
 		options: ServiceRegisterOptions,
 		as: { owner?: boolean } = {},
 	): Promise<AuthServer> {
+		// `Auth<O>` is invariant in its options in better-auth 1.7, so the value
+		// built from a concrete literal is not assignable to the `AuthServer`
+		// alias, which names the constraint. The runtime object is the same one
+		// either way; the assertion keeps the variance where it happens instead
+		// of spreading a generic through the construct's public type.
+		return betterAuth(await this.optionsFor(options, as)) as AuthServer;
+	}
+
+	/**
+	 * Everything better-auth is given: the app's options, and what the construct
+	 * owns — its secret, its URL, its tenant's connection, the origins and cookie
+	 * domain its graph derives. One place, so the server and its migrations are
+	 * built from the same options.
+	 */
+	private async optionsFor(
+		options: ServiceRegisterOptions,
+		as: { owner?: boolean } = {},
+	): Promise<Parameters<typeof betterAuth>[0]> {
 		const { secret, baseUrl, trustedOrigins, cookieDomain } = options.envParser
 			.create((get) => ({
 				secret: get(this.keys.secret).string(),
@@ -385,12 +408,7 @@ export class BetterAuth<
 
 		const configured = await this.configured(options);
 
-		// `Auth<O>` is invariant in its options in better-auth 1.7, so the value
-		// built from a concrete literal is not assignable to the `AuthServer`
-		// alias, which names the constraint. The runtime object is the same one
-		// either way; the assertion keeps the variance where it happens instead
-		// of spreading a generic through the construct's public type.
-		return betterAuth({
+		return {
 			...configured,
 			secret,
 			baseURL: baseUrl,
@@ -421,7 +439,7 @@ export class BetterAuth<
 						}
 					: {}),
 			},
-		}) as AuthServer;
+		};
 	}
 }
 
