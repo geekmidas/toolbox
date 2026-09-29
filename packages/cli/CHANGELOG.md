@@ -1,5 +1,33 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.24
+
+### Patch Changes
+
+- [#85](https://github.com/geekmidas/toolbox/pull/85) [`3016bfb`](https://github.com/geekmidas/toolbox/commit/3016bfb2b6815804355f1e6ae0f373da1776e25c) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm dev` starts again
+
+  Every `gkm dev` failed with `No owner to take a logger and an environment parser
+from`. The generated entry reads its logger and env parser off the `RestApi` it
+  serves, and `gkm build` discovered that `RestApi` before generating, but dev
+  never did. Both now derive it the same way, and dev serves only the endpoints
+  built from its own `RestApi`, as build already did.
+
+  A `RestApi` declared without a `telescope` no longer fails every request once
+  Telescope is on: the entry falls back to the in-memory Telescope that
+  `telescope` config describes.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.24
+  - @geekmidas/constructs@10.0.0-alpha.24
+  - @geekmidas/db@10.0.0-alpha.24
+  - @geekmidas/envkit@10.0.0-alpha.24
+  - @geekmidas/errors@10.0.0-alpha.24
+  - @geekmidas/logger@10.0.0-alpha.24
+  - @geekmidas/manifest@10.0.0-alpha.24
+  - @geekmidas/schema@10.0.0-alpha.24
+  - @geekmidas/services@10.0.0-alpha.24
+  - @geekmidas/telescope@10.0.0-alpha.24
+
 ## 10.0.0-alpha.23
 
 ### Patch Changes
