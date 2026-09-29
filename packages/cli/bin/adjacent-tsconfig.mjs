@@ -35,19 +35,24 @@ function matcherFor(directory) {
 	return matchers.get(directory);
 }
 
-export async function resolve(specifier, context, nextResolve) {
-	const parent = context.parentURL;
-	if (!parent?.startsWith('file:') || NOT_BARE.test(specifier)) {
-		return nextResolve(specifier, context);
-	}
+/**
+ * The files a specifier maps to through the importing module's own tsconfig,
+ * or nothing when this hook has no business with it.
+ */
+function candidatesFor(specifier, parent) {
+	if (!parent?.startsWith('file:') || NOT_BARE.test(specifier)) return [];
 
 	const parentPath = fileURLToPath(parent);
 	if (!TS_SOURCE.test(parentPath) || parentPath.includes('/node_modules/')) {
-		return nextResolve(specifier, context);
+		return [];
 	}
 
-	const match = matcherFor(dirname(parentPath));
-	for (const candidate of match?.(specifier) ?? []) {
+	return matcherFor(dirname(parentPath))?.(specifier) ?? [];
+}
+
+/** For `module.register()` — the off-thread hooks. */
+export async function resolve(specifier, context, nextResolve) {
+	for (const candidate of candidatesFor(specifier, context.parentURL)) {
 		try {
 			return await nextResolve(pathToFileURL(candidate).href, context);
 		} catch {
@@ -56,4 +61,37 @@ export async function resolve(specifier, context, nextResolve) {
 	}
 
 	return nextResolve(specifier, context);
+}
+
+/**
+ * For `module.registerHooks()` — the in-thread hooks.
+ *
+ * tsx 4.23 resolves through these, and they are consulted before anything
+ * `register()` installed: its resolver threw on a mapped alias and the
+ * off-thread hook above was never asked. Registered the same way, after tsx,
+ * this one is asked first again.
+ */
+export function resolveSync(specifier, context, nextResolve) {
+	for (const candidate of candidatesFor(specifier, context.parentURL)) {
+		try {
+			return nextResolve(pathToFileURL(candidate).href, context);
+		} catch {
+			// The next mapping, as TypeScript tries them in order.
+		}
+	}
+
+	return nextResolve(specifier, context);
+}
+
+/**
+ * Install this hook the way the running tsx installed its own, so it is asked
+ * before tsx's resolver rather than after it.
+ */
+export async function registerAdjacentTsconfig() {
+	const { register, registerHooks } = await import('node:module');
+	if (registerHooks) {
+		registerHooks({ resolve: resolveSync });
+	} else {
+		register(import.meta.url);
+	}
 }

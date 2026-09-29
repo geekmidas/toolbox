@@ -30,3 +30,8 @@ Also fixed on the way, each found by running `gkm dev` against a real app:
 - A `Worker`'s crons failed to schedule on a server: the schedule store reached
   service discovery as the construct rather than its service, and pg-boss was
   handed a Kysely client where it needs `executeSql`.
+- From an app with its own tsconfig — a Vite or Next frontend — every `gkm`
+  command failed to load another app's constructs through the root tsconfig's
+  path aliases. The hook that resolves them was installed with
+  `module.register()`, and tsx 4.23's in-thread resolver threw before it was
+  asked; it is now installed with `module.registerHooks()` when Node has it.

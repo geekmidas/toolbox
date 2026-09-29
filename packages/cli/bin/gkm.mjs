@@ -38,8 +38,8 @@ if (
 // tsx is loaded. Resolve each module's path aliases through its own tsconfig
 // rather than the one tsx took from the cwd — registered after tsx, so it is
 // asked first. See `adjacent-tsconfig.mjs`.
-const { register } = await import('node:module');
-register('./adjacent-tsconfig.mjs', import.meta.url);
+const { registerAdjacentTsconfig } = await import('./adjacent-tsconfig.mjs');
+await registerAdjacentTsconfig();
 
 // Run the CLI
 await import('../dist/index.mjs');
