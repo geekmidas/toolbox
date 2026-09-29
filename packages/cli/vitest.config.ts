@@ -49,6 +49,13 @@ export default defineProject({
 		// They were the only failing suites in the repo, and they were failing
 		// because nothing started the emulator rather than because anything was
 		// wrong with them.
-		globalSetup: ['../testkit/test/awsSetup.ts'],
+		//
+		// `gkm dev` is run against a real app too: its auth server signs a user
+		// up in the test Postgres, and its API queries through the database it
+		// declared.
+		globalSetup: [
+			'../testkit/test/awsSetup.ts',
+			'../testkit/test/globalSetup.ts',
+		],
 	},
 });

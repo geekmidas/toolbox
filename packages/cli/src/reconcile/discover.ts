@@ -83,6 +83,13 @@ export interface ConstructSource {
 	file: string;
 	/** The name it was exported as — what an import statement has to say. */
 	exportName: string;
+	/**
+	 * The exported construct itself.
+	 *
+	 * What a declaration cannot say — whether it serves itself — the object can
+	 * be asked, and discovery already imported it.
+	 */
+	construct: unknown;
 }
 
 /**
@@ -158,7 +165,7 @@ export async function discover(
 
 				manifest[id] = { ...declaration, id };
 				sources[id] = source;
-				if (out) out[id] = { file, exportName };
+				if (out) out[id] = { file, exportName, construct: exported };
 			}
 		}
 	}

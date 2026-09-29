@@ -124,6 +124,27 @@ export const handler = adapter.handler;
 
 		const queuesPath = join(outputDir, 'queues.ts');
 
+		// Nothing to poll, so nothing to import. Every app gets this file, and
+		// `@geekmidas/events` is only installed by one that declared a Topic or
+		// a Queue — importing it here crashed every dev server that had not.
+		if (queues.length === 0) {
+			await writeFile(
+				queuesPath,
+				`/**
+ * Generated queues setup — this app declares none.
+ */
+import type { EnvironmentParser } from '@geekmidas/envkit';
+import type { Logger } from '@geekmidas/logger';
+
+export async function setupQueues(
+  _envParser: EnvironmentParser<any>,
+  _logger: Logger,
+): Promise<void> {}
+`,
+			);
+			return queuesPath;
+		}
+
 		// Group imports by file
 		const importsByFile = new Map<string, string[]>();
 		for (const { path, key } of queues) {

@@ -105,12 +105,15 @@
 		"yaml": "~2.9.1"
 	},
 	"devDependencies": {
+		"@geekmidas/studio": "workspace:~",
 		"@geekmidas/testkit": "workspace:*",
+		"@hono/node-server": "~1.19.5",
 		"@types/lodash.kebabcase": "~4.1.9",
 		"@types/node": "~24.9.1",
 		"@types/pg": "~8.23.1",
 		"@types/prompts": "~2.4.9",
 		"better-auth": "~1.7.6",
+		"kysely": "~0.29.6",
 		"typescript": "~7.0.2",
 		"vitest": "~5.0.2",
 		"zod": "~4.6.5"
