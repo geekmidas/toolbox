@@ -16,7 +16,7 @@
  * shipped at once.
  */
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
 const [workspaceArg, ...probeArgs] = process.argv.slice(2);
@@ -125,10 +125,37 @@ async function check() {
 	return failures;
 }
 
+/** Pids listening on a port, per `lsof`. */
+function listeners(port) {
+	const found = spawnSync('lsof', ['-ti', `tcp:${port}`, '-sTCP:LISTEN'], {
+		encoding: 'utf8',
+	});
+	return found.stdout.split('\n').filter(Boolean).map(Number);
+}
+
+/** `command (pid N)`, for a report. */
+function describePid(pid) {
+	const found = spawnSync('ps', ['-o', 'comm=', '-p', String(pid)], {
+		encoding: 'utf8',
+	});
+	return `${found.stdout.trim() || 'a process'} (pid ${pid})`;
+}
+
+// Whatever held a provisioned port before this check started anything is not
+// this check's to report — and never its to stop.
+const foreign = new Set();
+const snapshot = setInterval(() => {
+	const ports = Object.values(provisionedPorts());
+	if (ports.length === 0) return;
+	clearInterval(snapshot);
+	for (const port of ports) for (const pid of listeners(port)) foreign.add(pid);
+}, 200);
+
 let failures;
 try {
 	failures = await check();
 } finally {
+	clearInterval(snapshot);
 	// The group, not the pid: turbo's children are the servers.
 	try {
 		process.kill(-dev.pid, 'SIGINT');
@@ -137,6 +164,23 @@ try {
 	try {
 		process.kill(-dev.pid, 'SIGKILL');
 	} catch {}
+}
+
+// Nothing dev started may outlive it: a server left on its port is what the
+// next `gkm dev` finds taken. Reported, never killed — a process on one of
+// these ports may be the developer's own, and this check once killed one.
+const ours = (port) => listeners(port).filter((pid) => !foreign.has(pid));
+const ports = Object.values(provisionedPorts());
+const deadline = Date.now() + 15_000;
+let leftover = ports.filter((port) => ours(port).length > 0);
+while (leftover.length > 0 && Date.now() < deadline) {
+	await sleep(1_000);
+	leftover = ports.filter((port) => ours(port).length > 0);
+}
+for (const port of leftover) {
+	failures.push(
+		`still listening on ${port} after dev stopped: ${ours(port).map(describePid).join(', ')}`,
+	);
 }
 
 if (failures.length > 0) {

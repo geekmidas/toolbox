@@ -444,10 +444,16 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		}
 	}
 
-	// Inject dependency URLs if in workspace mode
+	// Dependency URLs as `http://localhost:<port>`, for whatever reconcile did
+	// not resolve. Declared addresses win: each app behind the edge, on its own
+	// HTTPS host, which is what its CORS origins and cookie domain name.
+	// Assigned over them, these made a frontend call the API on a host its CORS
+	// refused.
 	if (workspace && workspaceAppName) {
 		const depEnv = getDependencyEnvVars(workspace, workspaceAppName);
-		Object.assign(appSecrets, depEnv);
+		for (const [key, value] of Object.entries(depEnv)) {
+			appSecrets[key] ??= value;
+		}
 	}
 
 	if (Object.keys(appSecrets).length > 0) {
@@ -466,7 +472,11 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	const devServer = new DevServer(
 		resolved.providers[0] as LegacyProvider,
 		options.port ?? workspaceAppPort ?? 3000,
-		options.portExplicit ?? false,
+		// A workspace's port is as fixed as one passed with --port: every other
+		// app's URL, CORS list and cookie domain names it. Drifting to the next
+		// free port served the app where nothing points — and in a workspace the
+		// next free port is usually another app's.
+		options.portExplicit ?? workspaceAppPort !== undefined,
 		enableOpenApi,
 		telescope,
 		studio,
@@ -989,6 +999,7 @@ async function workspaceDevCommand(
 	const rawSecrets = await loadDevSecrets(workspace);
 
 	let secretsEnv: Record<string, string>;
+	const appUrls: Record<string, string> = {};
 
 	if (usesConstructs(workspace)) {
 		// Derive the containers from what the app declares, start them, create
@@ -1007,6 +1018,14 @@ async function workspaceDevCommand(
 		}
 
 		secretsEnv = { ...rawSecrets, ...reconciled.env };
+
+		// Where each app answers, behind the edge — the addresses the apps were
+		// just given, rather than their ports.
+		for (const resource of reconciled.plan.resources) {
+			if (resource.kind !== 'rest-api' && resource.kind !== 'site') continue;
+			const address = reconciled.env[resource.envKey];
+			if (address) appUrls[resource.id] = address;
+		}
 	} else {
 		// Resolve dynamic service ports from the hand-written docker-compose.yml
 		const resolvedPorts = await resolveServicePorts(workspace.root);
@@ -1026,8 +1045,20 @@ async function workspaceDevCommand(
 		logger.log(`   Loaded ${Object.keys(secretsEnv).length} secret(s)`);
 	}
 
-	// Generate dependency URLs
-	const dependencyEnv = generateAllDependencyEnvVars(workspace);
+	if (Object.keys(appUrls).length > 0) {
+		logger.log('🔒 App URLs:');
+		for (const [id, address] of Object.entries(appUrls)) {
+			logger.log(`   ${id}: ${address}`);
+		}
+	}
+
+	// Dependency URLs, for whatever reconcile did not resolve — see the note on
+	// the per-app path. Declared addresses win.
+	const dependencyEnv = Object.fromEntries(
+		Object.entries(generateAllDependencyEnvVars(workspace)).filter(
+			([key]) => secretsEnv[key] === undefined,
+		),
+	);
 	if (Object.keys(dependencyEnv).length > 0) {
 		logger.log('📡 Dependency URLs:');
 		for (const [key, value] of Object.entries(dependencyEnv)) {
@@ -1105,6 +1136,23 @@ async function workspaceDevCommand(
 		// Inject config path so child processes can find the workspace config
 		...(configPath ? { GKM_CONFIG_PATH: configPath } : {}),
 	};
+
+	// Every app's port, before anything starts. Each app checks its own as it
+	// starts too, but by then turbo has launched the rest, and a port held by a
+	// server a previous run left behind fails one app while the others run.
+	const scoped = options.app
+		? [options.app]
+		: options.filter
+			? []
+			: Object.keys(workspace.apps);
+	const held: { app: string; port: number; holder: string | undefined }[] = [];
+	for (const appName of scoped) {
+		const port = workspace.apps[appName]?.port;
+		if (port && !(await isPortAvailable(port))) {
+			held.push({ app: appName, port, holder: listenerOn(port) });
+		}
+	}
+	if (held.length > 0) throw new WorkspacePortsInUse(held);
 
 	// Spawn turbo run dev
 	logger.log('\n🏃 Starting turbo run dev...\n');
@@ -1388,6 +1436,24 @@ export function generateServerEntryContent(options: {
 		selfServing = false,
 	} = options;
 
+	// Exit with the `gkm dev` that started this server. Dev stops it on a
+	// signal, but a dev process killed outright — SIGKILL, a closed terminal, a
+	// crashed parent — never gets to, and the server kept its port: the next
+	// `gkm dev` found it taken and started somewhere nothing points at.
+	const parentWatch = `// Exit when the gkm dev that started this server is gone.
+const __gkmDevPid = Number(process.env.GKM_DEV_PID);
+if (__gkmDevPid) {
+  setInterval(() => {
+    try {
+      process.kill(__gkmDevPid, 0);
+    } catch {
+      process.exit(0);
+    }
+  }, 1000).unref();
+}
+
+`;
+
 	const credentialsInjection = secretsJsonPath
 		? `import { existsSync, readFileSync } from 'node:fs';
 
@@ -1426,8 +1492,7 @@ if (existsSync(secretsPath)) {
  * Development server entry point for a surface that serves itself
  * This file is auto-generated by 'gkm dev'
  */
-${credentialsInjection}
-const port = process.argv.includes('--port')
+${credentialsInjection}${parentWatch}const port = process.argv.includes('--port')
   ? Number.parseInt(process.argv[process.argv.indexOf('--port') + 1])
   : 3000;
 
@@ -1444,8 +1509,7 @@ console.log(\`Server started on port \${port}\`);
  * Development server entry point
  * This file is auto-generated by 'gkm dev'
  */
-${credentialsInjection}
-const port = process.argv.includes('--port')
+${credentialsInjection}${parentWatch}const port = process.argv.includes('--port')
   ? Number.parseInt(process.argv[process.argv.indexOf('--port') + 1])
   : 3000;
 
@@ -1466,6 +1530,62 @@ start({
   process.exit(1);
 });
 `;
+}
+
+/** A port this app must serve on is held by something else. */
+export class DevPortInUse extends Error {
+	constructor(
+		readonly port: number,
+		/** What holds it, when `lsof` could say — `node (pid 123)`. */
+		readonly holder: string | undefined,
+	) {
+		super(
+			`Port ${port} is already in use${holder ? ` by ${holder}` : ''}. ` +
+				'It is the port this app is provisioned on — the one every other ' +
+				'app and its CORS origins point at — so dev will not move off it. ' +
+				'Stop what is holding it (often a dev server a previous run left ' +
+				'behind), or pass -p/--port to run this app somewhere else.',
+		);
+		this.name = 'DevPortInUse';
+	}
+}
+
+/** Apps whose provisioned ports are held before the workspace starts. */
+export class WorkspacePortsInUse extends Error {
+	constructor(
+		readonly held: readonly {
+			app: string;
+			port: number;
+			holder: string | undefined;
+		}[],
+	) {
+		super(
+			`Ports this workspace's apps are provisioned on are already in use:\n${held
+				.map(
+					({ app, port, holder }) =>
+						`   ${app}: ${port}${holder ? ` — held by ${holder}` : ''}`,
+				)
+				.join('\n')}\n` +
+				'Stop what is holding them (often dev servers a previous run left ' +
+				'behind) and start again. Nothing was started.',
+		);
+		this.name = 'WorkspacePortsInUse';
+	}
+}
+
+/** What is listening on a port, as `command (pid N)`, if `lsof` can tell. */
+function listenerOn(port: number): string | undefined {
+	try {
+		const out = execSync(`lsof -nP -iTCP:${port} -sTCP:LISTEN -Fpc`, {
+			encoding: 'utf8',
+			stdio: ['ignore', 'pipe', 'ignore'],
+		});
+		const pid = out.match(/^p(\d+)/m)?.[1];
+		const command = out.match(/^c(.+)$/m)?.[1];
+		return pid ? `${command ?? 'a process'} (pid ${pid})` : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 class DevServer {
@@ -1501,9 +1621,9 @@ class DevServer {
 			// Port was explicitly specified - throw if unavailable
 			const available = await isPortAvailable(this.requestedPort);
 			if (!available) {
-				throw new Error(
-					`Port ${this.requestedPort} is already in use. ` +
-						`Either stop the process using that port or omit -p/--port to auto-select an available port.`,
+				throw new DevPortInUse(
+					this.requestedPort,
+					listenerOn(this.requestedPort),
 				);
 			}
 			this.actualPort = this.requestedPort;
@@ -1537,7 +1657,12 @@ class DevServer {
 			['tsx', serverEntryPath, '--port', this.actualPort.toString()],
 			{
 				stdio: 'inherit',
-				env: { ...process.env, NODE_ENV: 'development' },
+				env: {
+					...process.env,
+					NODE_ENV: 'development',
+					// So the server can exit with this process — see the entry.
+					GKM_DEV_PID: String(process.pid),
+				},
 				detached: true,
 			},
 		);
