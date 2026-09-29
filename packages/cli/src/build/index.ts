@@ -50,7 +50,6 @@ import type { Function } from '@geekmidas/constructs/functions';
 import type { Queue } from '@geekmidas/constructs/queue';
 import type { Subscriber } from '@geekmidas/constructs/subscribers';
 import type { Topic } from '@geekmidas/constructs/topic';
-import { provideKey } from '@geekmidas/manifest';
 import {
 	loadAppConfig,
 	loadConfig,
@@ -101,6 +100,7 @@ import {
 	type ManifestField,
 	type ServerAppInfo,
 } from './manifests';
+import { ownersContext, servedBy, servedSurface } from './owners';
 import { groupInfosByPartition, hasPartitions } from './partitions';
 import { resolveProviders } from './providerResolver';
 import type { BuildContext } from './types';
@@ -233,75 +233,17 @@ export async function buildCommand(
 			})
 		: {};
 
-	// Which surface this server answers on, so the entry can derive its CORS.
-	//
-	// The app's own API, not the auth server it may also mount: an auth surface
-	// declares its own endpoints, and the origins that may call *it* are a
-	// different list from the ones that may call the API.
-	const surfaces = Object.values(declared).filter(
-		(d): d is Extract<typeof d, { kind: 'rest-api' }> => d.kind === 'rest-api',
-	);
-	// The surface this build serves is the one whose declared `path` is the
-	// directory being built — asked of every surface, because a workspace has
-	// several and each app's build serves exactly one.
-	const workspaceRoot = loadedConfig.workspace.root;
-	const served = surfaces.find(
-		(d) => resolve(workspaceRoot, d.path) === resolve(process.cwd()),
-	);
-	const primary =
-		served ?? surfaces.find((d) => d.endpoints.length === 0) ?? surfaces[0];
-
-	// Which database Studio browses: the one the app declared. A reader is not a
-	// candidate — it is the same data through a role that cannot write, so
-	// browsing it would be the same rows under a second name.
-	const browsable = Object.entries(declared).find(
-		([, d]) => d.kind === 'database',
-	);
-	const browsableSource = browsable
-		? constructSources[browsable[0]]
-		: undefined;
-
-	// Every construct something can be built from, by id. A generated cron
-	// imports the worker that owns it; a generated handler imports its surface.
-	const owners: Record<string, { specifier: string; exportName: string }> = {};
-	for (const [id, declaration] of Object.entries(declared)) {
-		if (declaration.kind !== 'rest-api' && declaration.kind !== 'worker')
-			continue;
-		const source = constructSources[id];
-		if (!source) continue;
-		owners[id] = { specifier: source.file, exportName: source.exportName };
-	}
+	const derived = ownersContext({
+		declared,
+		sources: constructSources,
+		workspaceRoot: loadedConfig.workspace.root,
+		appRoot: process.cwd(),
+		studio,
+	});
 
 	const buildContext: BuildContext = {
-		owners,
-		...(primary
-			? {
-					surface: {
-						id: primary.id,
-						trustedOriginsKey: provideKey(primary.id, 'trustedOrigins'),
-						...(primary.cors ? { cors: primary.cors } : {}),
-						...(constructSources[primary.id]
-							? {
-									module: {
-										specifier: constructSources[primary.id]!.file,
-										exportName: constructSources[primary.id]!.exportName,
-									},
-								}
-							: {}),
-					},
-				}
-			: {}),
+		...derived,
 		telescope,
-		studio:
-			studio && browsableSource
-				? {
-						...studio,
-						database: {
-							specifier: browsableSource.file,
-							exportName: browsableSource.exportName,
-						},
-					}
-				: studio,
 		hooks,
 		production,
 		constructGlobs,
@@ -353,15 +295,7 @@ export async function buildCommand(
 		topicGenerator.load(code),
 	]);
 
-	// One glob finds every surface's endpoints, wherever their files live. A
-	// build keeps the ones built from the surface it serves; one built from no
-	// surface at all has nowhere else to go.
-	const allEndpoints = primary
-		? loadedEndpoints.filter(
-				({ construct }) =>
-					!construct.surface || construct.surface.id === primary.id,
-			)
-		: loadedEndpoints;
+	const allEndpoints = servedBy(loadedEndpoints, derived.surface);
 
 	logger.log(`Found ${allEndpoints.length} endpoints`);
 	logger.log(`Found ${allFunctions.length} functions`);
@@ -381,6 +315,11 @@ export async function buildCommand(
 		// A surface whose routes are *declared* rather than discovered — an auth
 		// server's wildcard. There is nothing for a glob to find, and that is not
 		// an empty app: the construct serves itself and the entry only starts it.
+		const served = servedSurface(
+			declared,
+			loadedConfig.workspace.root,
+			process.cwd(),
+		);
 		const selfServing =
 			served &&
 			served.endpoints.length > 0 &&

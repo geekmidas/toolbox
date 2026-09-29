@@ -170,6 +170,36 @@ describe('EndpointGenerator hooks generation', () => {
 			expect(beforeSetupCallIndex).toBeLessThan(setupEndpointsIndex);
 		});
 
+		// A surface declared without a Telescope gave the middleware `undefined`,
+		// and every request failed on it.
+		it('falls back to an inline Telescope when the surface has none', async () => {
+			await generator.build(
+				{
+					...baseContext,
+					telescope: {
+						enabled: true,
+						path: '/__telescope',
+						maxEntries: 100,
+						recordBody: true,
+						ignore: [],
+						websocket: false,
+					},
+				},
+				[mockConstruct],
+				testOutputDir,
+				{ provider: 'server' },
+			);
+
+			const appContent = await readFile(join(testOutputDir, 'app.ts'), 'utf-8');
+
+			expect(appContent).toMatch(
+				/const telescope =\s*__surface\.telescope \?\?\s*new Telescope\(/,
+			);
+			expect(appContent).toContain(
+				"import { Telescope, InMemoryStorage } from '@geekmidas/telescope';",
+			);
+		});
+
 		it('should place afterSetup after setupEndpoints', async () => {
 			const contextWithHooks: BuildContext = {
 				...baseContext,

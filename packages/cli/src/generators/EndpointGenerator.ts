@@ -594,10 +594,11 @@ export async function setupEndpoints(
 		let telescopeImports = '';
 		if (telescopeEnabled) {
 			if (telescopeFromSurface) {
-				// The surface was declared with a Telescope, and the entry already
-				// imports the surface. Nothing to print but the middleware.
-				telescopeImports =
-					"import { createMiddleware, createUI } from '@geekmidas/telescope/hono';";
+				// The entry already imports the surface, which may or may not have
+				// been given a Telescope — an object, so only the running entry can
+				// tell. The inline one stands in when it was not.
+				telescopeImports = `import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
+import { createMiddleware, createUI } from '@geekmidas/telescope/hono';`;
 			} else if (usesExternalTelescope) {
 				const relativeTelescopePath = relative(
 					dirname(appPath),
@@ -778,7 +779,20 @@ ${cors.imports}
 ${context.storageDrivers?.imports ?? ''}
 
 ${runtime.bindings}
-${telescopeFromSurface ? 'const telescope = __surface.telescope;' : ''}
+${
+	telescopeEnabled && telescopeFromSurface
+		? `// The surface's own Telescope, or the one \`telescope\` config describes.
+const telescope =
+  __surface.telescope ??
+  new Telescope({
+    enabled: true,
+    path: '${context.telescope?.path}',
+    ignorePatterns: ${JSON.stringify(context.telescope?.ignore)},
+    recordBody: ${context.telescope?.recordBody},
+    storage: new InMemoryStorage({ maxEntries: ${context.telescope?.maxEntries} }),
+  });`
+		: ''
+}
 
 ${
 	context.storageDrivers?.setup
