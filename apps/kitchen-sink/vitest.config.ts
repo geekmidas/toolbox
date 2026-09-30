@@ -26,7 +26,10 @@ export default defineConfig({
 		name: 'kitchen-sink',
 		include: ['**/__tests__/**/*.spec.ts'],
 		exclude: ['**/node_modules/**', '**/.gkm/**'],
-		globalSetup: ['./apps/api/__tests__/__helpers__/globalSetup.ts'],
+		// The test stage, reconciled and every construct's `db/<construct>/`
+		// migrated, however the suite is started — `gkm test`, plain `vitest`, an
+		// editor. Nothing is torn down: the next run applies only what is new.
+		globalSetup: ['@geekmidas/cli/vitest'],
 		// Vitest 4 flattened these out of `poolOptions` and dropped `minWorkers`;
 		// one worker is `maxWorkers: 1` alone.
 		pool: 'threads',

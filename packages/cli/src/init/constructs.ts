@@ -9,7 +9,8 @@
  * reason the constructs own both faces at runtime.
  */
 
-import { provideKey, serviceKey } from '@geekmidas/manifest';
+import { migrationFolder, provideKey, serviceKey } from '@geekmidas/manifest';
+import { stamp } from '../migrate/names.js';
 import type { GeneratedFile, RoutesStructure } from './templates/index.js';
 
 /** The glob every generated config points at. One glob, every kind. */
@@ -143,9 +144,10 @@ export const database = new KyselyDatabase<Database, '${db.id}'>('${db.id}', {
  */
 export function usersMigration(): GeneratedFile {
 	return {
-		// The table the scaffolded endpoints and factories expect. Applied by
-		// `gkm exec -- pnpm kysely migrate:latest`, or by the test setup.
-		path: 'src/db/migrations/001_create_users.ts',
+		// The table the scaffolded endpoints and factories expect, in the folder
+		// named by the database construct. Applied by `gkm migrate`, and by the
+		// test setup before any test runs.
+		path: `${migrationFolder(databaseFor().id)}/${stamp()}_create_users.ts`,
 		content: `import type { Kysely } from 'kysely';
 
 export async function up(db: Kysely<unknown>): Promise<void> {

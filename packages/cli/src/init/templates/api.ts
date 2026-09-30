@@ -4,7 +4,6 @@ import {
 	databaseFor,
 	emailFor,
 	storageFor,
-	usersMigration,
 } from '../constructs.js';
 import { DEPENDENCY_VERSIONS, TOOLCHAIN_VERSIONS } from '../dependencies.js';
 import { stageEnv } from '../generators/stages.js';
@@ -406,12 +405,9 @@ export const router = api${options.constructs.database ? '.database(database)' :
 		}
 
 		// The database — a construct, not a hand-written service. A workspace
-		// declares it at its root, but the API still owns the schema: the
-		// test setup and `kysely migrate` read migrations from here.
+		// declares it, and keeps its migrations, at its root.
 		if (options.constructs.database && declares) {
 			files.push(...databaseFiles());
-		} else if (options.constructs.database) {
-			files.push(usersMigration());
 		}
 
 		// Object storage — MinIO locally, S3 deployed, one declaration for both.

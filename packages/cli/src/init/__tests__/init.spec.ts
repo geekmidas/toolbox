@@ -740,7 +740,7 @@ describe('initCommand', () => {
 
 			const projectDir = join(tempDir, 'my-api');
 			expect(existsSync(join(projectDir, 'test/config.ts'))).toBe(true);
-			expect(existsSync(join(projectDir, 'test/globalSetup.ts'))).toBe(true);
+			expect(existsSync(join(projectDir, 'test/globalSetup.ts'))).toBe(false);
 			expect(existsSync(join(projectDir, 'test/factory/index.ts'))).toBe(true);
 			expect(existsSync(join(projectDir, 'test/factory/users.ts'))).toBe(true);
 			expect(existsSync(join(projectDir, 'test/example.spec.ts'))).toBe(true);
@@ -770,7 +770,7 @@ describe('initCommand', () => {
 
 			const apiDir = join(tempDir, 'my-fullstack', 'apps/api');
 			expect(existsSync(join(apiDir, 'test/config.ts'))).toBe(true);
-			expect(existsSync(join(apiDir, 'test/globalSetup.ts'))).toBe(true);
+			expect(existsSync(join(apiDir, 'test/globalSetup.ts'))).toBe(false);
 			expect(existsSync(join(apiDir, 'test/factory/index.ts'))).toBe(true);
 			expect(existsSync(join(apiDir, 'test/factory/users.ts'))).toBe(true);
 			expect(existsSync(join(apiDir, 'vitest.config.ts'))).toBe(true);
@@ -785,8 +785,7 @@ describe('initCommand', () => {
 
 			const vitestConfigPath = join(tempDir, 'my-api', 'vitest.config.ts');
 			const content = await readFile(vitestConfigPath, 'utf-8');
-			expect(content).toContain('globalSetup');
-			expect(content).toContain('./test/globalSetup.ts');
+			expect(content).toContain("globalSetup: ['@geekmidas/cli/vitest']");
 			// Vite resolves them itself; the plugin's tsconfck peers TS 5 only.
 			expect(content).toContain('tsconfigPaths: true');
 			expect(content).not.toContain('vite-tsconfig-paths');

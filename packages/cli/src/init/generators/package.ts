@@ -75,7 +75,6 @@ export function generatePackageJson(
 		devDependencies['@geekmidas/testkit'] =
 			GEEKMIDAS_VERSIONS['@geekmidas/testkit'];
 		devDependencies['@faker-js/faker'] = DEPENDENCY_VERSIONS['@faker-js/faker'];
-		devDependencies['kysely-ctl'] = DEPENDENCY_VERSIONS['kysely-ctl'];
 	}
 
 	// For monorepo apps, remove biome/turbo/esbuild (they're at root) and lint/fmt scripts

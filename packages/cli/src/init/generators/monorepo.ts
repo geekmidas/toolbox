@@ -4,6 +4,7 @@ import {
 	databaseFor,
 	emailFor,
 	storageFor,
+	usersMigration,
 	WORKSPACE_CONSTRUCTS_GLOB,
 	workspaceConstructsGlobs,
 } from '../constructs.js';
@@ -300,8 +301,12 @@ ${isSst ? '\n# SST\n.sst/\n' : ''}`;
 
 export default defineConfig({
   test: {
-    // Each app and package is its own project, so its own config — an app's
-    // \`globalSetup\`, its path aliases — applies to its own tests.
+    // The test stage, reconciled and every database construct's migrations
+    // applied, before any project's tests start — declared here, once, so no
+    // project filter can skip it and nothing runs it twice.
+    globalSetup: ['@geekmidas/cli/vitest'],
+    // Each app and package is its own project, so its own config — its path
+    // aliases — applies to its own tests.
     projects: ['apps/*', 'packages/*'],
     // The shared packages ship without tests of their own.
     passWithNoTests: true,
@@ -552,6 +557,9 @@ export const database = new KyselyDatabase<Database, '${db.id}'>('${db.id}', {
 export const authDb = database.schema<Record<string, never>, 'AuthDb'>('AuthDb');
 `,
 	});
+
+	// Its migrations beside it, in the folder its name gives.
+	files.push(usersMigration());
 
 	files.push({
 		path: 'constructs/auth.ts',

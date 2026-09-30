@@ -258,31 +258,55 @@ export class BetterAuth<
 	}
 
 	/**
-	 * Better Auth's own migrations, for the app's migrate step.
-	 *
-	 * It brings its own schema — users, sessions, accounts, verifications — so
-	 * the app never writes those tables and never gets to drift from them.
+	 * The tenant this server keeps its tables in — whose migrations folder,
+	 * `db/<tenant>/`, Better Auth's schema is written into.
 	 */
-	async migrations(
+	get databaseId(): string {
+		return this.config.database.id;
+	}
+
+	/**
+	 * The SQL that brings the tenant up to Better Auth's schema, or `undefined`
+	 * when it already matches.
+	 *
+	 * What `gkm migration` writes as the tenant's next migration, so Better
+	 * Auth's tables are committed, reviewed and applied like any other — rather
+	 * than diffed against the database at runtime, where a change nobody wrote
+	 * down happens on whichever machine migrates first.
+	 *
+	 * Compared as the owner, against the tenant `gkm migrate` has already brought
+	 * up to date: what comes back is only what the committed files are missing.
+	 */
+	async pendingMigration(
 		options: ServiceRegisterOptions,
-	): Promise<() => Promise<void>> {
-		// As the owner, not the runtime role. Creating tables is DDL, and the
-		// whole point of the split is that a handler's role cannot do it — so a
-		// migrator that connected the way a handler does would fail on the first
-		// `CREATE TABLE` rather than working by accident.
-		//
+	): Promise<string | undefined> {
 		// The options, not a server built from them: better-auth checks its
 		// schema when a server starts, and before the migration that creates the
-		// tables it can only report them missing — an error in every migrate
-		// log, about the very tables the next line creates.
+		// tables it can only report them missing.
 		const resolved = await this.optionsFor(options, { owner: true });
-		// better-auth 1.7 split the migration builder out of `better-auth/db`
-		// into its own entry, so importing it no longer drags the whole db layer
-		// in behind it.
-		const { getMigrations } = await import('better-auth/db/migration');
-		const { runMigrations } = await getMigrations(resolved);
+		const db = (resolved.database as { db: Kysely<Record<string, never>> }).db;
 
-		return runMigrations;
+		try {
+			// better-auth 1.7 split the migration builder out of `better-auth/db`
+			// into its own entry, so importing it no longer drags the whole db
+			// layer in behind it.
+			const { getMigrations } = await import('better-auth/db/migration');
+			const { toBeCreated, toBeAdded, toBeAddedIndexes, compileMigrations } =
+				await getMigrations(resolved);
+
+			if (
+				toBeCreated.length === 0 &&
+				toBeAdded.length === 0 &&
+				toBeAddedIndexes.length === 0
+			) {
+				return undefined;
+			}
+
+			return idempotent(await compileMigrations());
+		} finally {
+			// Its own pool: left open, it keeps the process that asked alive.
+			await db.destroy();
+		}
 	}
 
 	/**
@@ -500,4 +524,23 @@ export class SessionCheckFailed extends Error {
 		);
 		this.name = 'SessionCheckFailed';
 	}
+}
+
+/**
+ * Better Auth's DDL, safe to run where its tables already exist.
+ *
+ * Its SQL is Kysely's, so its shape is known: `create table "…"`, `create index
+ * "…"`, `alter table "…" add column "…"`. A database that has been running
+ * already has those — Better Auth used to create them at runtime — and the
+ * first committed migration would fail on them rather than recording that they
+ * are there.
+ */
+export function idempotent(statements: string): string {
+	return statements
+		.replace(/\bcreate table "/gi, 'create table if not exists "')
+		.replace(
+			/\bcreate (unique )?index "/gi,
+			(_, unique = '') => `create ${unique}index if not exists "`,
+		)
+		.replace(/\badd column "/gi, 'add column if not exists "');
 }

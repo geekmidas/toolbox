@@ -9,6 +9,8 @@ export default defineConfig({
 		'src/reconcile/public.ts',
 		'src/workspace/index.ts',
 		'src/openapi.ts',
+		// A Vitest global setup: `globalSetup: ['@geekmidas/cli/vitest']`.
+		'src/vitest.ts',
 		// Sniffer files need to be standalone for subprocess loading via --import
 		'src/deploy/sniffer-loader.ts',
 		'src/deploy/sniffer-worker.ts',

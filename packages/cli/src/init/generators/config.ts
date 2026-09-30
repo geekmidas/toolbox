@@ -8,16 +8,30 @@ import type {
 import { stagesBlock } from './stages.js';
 
 /**
- * Vitest config content with globalSetup for database-enabled apps
+ * Vitest config for a database-enabled app.
+ *
+ * On its own, it is the root config and carries gkm's setup: the test stage
+ * reconciled and every construct migrated, however the suite starts. In a
+ * workspace the root config carries it instead — once, so no project filter
+ * can skip it and nothing runs it twice.
  */
-const vitestConfigContent = `import { defineConfig } from 'vitest/config';
+const vitestConfigFor = (
+	monorepo: boolean,
+) => `import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   // Vite resolves tsconfig \`paths\` itself; no plugin needed.
   resolve: { tsconfigPaths: true },
   test: {
-    environment: 'node',
-    globalSetup: './test/globalSetup.ts',
+    environment: 'node',${
+			monorepo
+				? ''
+				: `
+    // The test stage, reconciled and every database construct's migrations
+    // applied, before any test runs — whether \`gkm test\` or plain
+    // \`vitest\` started it.
+    globalSetup: ['@geekmidas/cli/vitest'],`
+		}
   },
 });
 `;
@@ -145,7 +159,7 @@ export default defineConfig({${stagesBlock(options.stages)}${
 		if (options.constructs.database) {
 			files.push({
 				path: 'vitest.config.ts',
-				content: vitestConfigContent,
+				content: vitestConfigFor(Boolean(options.monorepo)),
 			});
 		}
 
@@ -258,7 +272,7 @@ export default defineConfig({${stagesBlock(options.stages)}${
 	if (options.constructs.database) {
 		files.push({
 			path: 'vitest.config.ts',
-			content: vitestConfigContent,
+			content: vitestConfigFor(Boolean(options.monorepo)),
 		});
 	}
 
@@ -327,7 +341,7 @@ function generateSingleAppConfigFiles(
 	if (options.constructs.database) {
 		files.push({
 			path: 'vitest.config.ts',
-			content: vitestConfigContent,
+			content: vitestConfigFor(Boolean(options.monorepo)),
 		});
 	}
 

@@ -87,10 +87,66 @@ beforeAll(async () => {
 	await client.query(`CREATE SCHEMA "${schema}"`);
 	await client.end();
 
-	// better-auth's own tables, created as the owner — the tenant has no
-	// separate owner URL here, so it falls back to its runtime one.
-	const migrate = await auth().migrations(options());
-	await migrate();
+	// better-auth's own tables, from the SQL `gkm migration` would commit — the
+	// tenant has no separate owner URL here, so it compares as its runtime one.
+	await applyPending();
+});
+
+/** Apply what better-auth says the tenant is missing, in the tenant's schema. */
+async function applyPending(): Promise<string | undefined> {
+	const pending = await auth().pendingMigration(options());
+	if (!pending) return undefined;
+
+	const client = new pg.Client(TEST_DATABASE_CONFIG);
+	await client.connect();
+	try {
+		await client.query(`SET search_path TO "${schema}"`);
+		await client.query(pending);
+	} finally {
+		await client.end();
+	}
+
+	return pending;
+}
+
+describe('BetterAuth.pendingMigration', () => {
+	// The setup above applied it, so what is left is the proof it was all of it:
+	// a second comparison finds nothing, which is what lets `gkm migration`
+	// say "up to date" instead of writing an empty file.
+	it('is nothing once its SQL has been applied', async () => {
+		expect(await auth().pendingMigration(options())).toBeUndefined();
+	});
+
+	it('is SQL that runs again where its tables already exist', async () => {
+		// Recompiled against an empty schema, then run twice: the second time is
+		// a database Better Auth set up at runtime, before migrations were files.
+		const fresh = `${schema}_again`;
+		const client = new pg.Client(TEST_DATABASE_CONFIG);
+		await client.connect();
+		try {
+			await client.query(`CREATE SCHEMA "${fresh}"`);
+			const pending = await auth().pendingMigration(
+				options({
+					AUTH_DB_URL: url.replace(
+						`search_path=${schema}`,
+						`search_path=${fresh}`,
+					),
+				}),
+			);
+			expect(pending).toContain('create table if not exists "user"');
+
+			await client.query(`SET search_path TO "${fresh}"`);
+			await client.query(pending!);
+			await client.query(pending!);
+		} finally {
+			await client.query(`DROP SCHEMA IF EXISTS "${fresh}" CASCADE`);
+			await client.end();
+		}
+	});
+
+	it('names the tenant its tables live in', () => {
+		expect(auth().databaseId).toBe('AuthDb');
+	});
 });
 
 afterAll(async () => {

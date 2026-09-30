@@ -27,8 +27,6 @@ export function generateAuthAppFiles(
 		scripts: {
 			dev: 'gkm dev',
 			build: 'gkm build',
-			'db:migrate': 'gkm exec -- npx @better-auth/cli migrate',
-			'db:generate': 'gkm exec -- npx @better-auth/cli generate',
 		},
 		// What the generated entry and the construct behind it load. The
 		// container is built from this package, so it names them itself rather

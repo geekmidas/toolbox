@@ -928,6 +928,18 @@ async function workspaceDevCommand(
 		...reconciled.env,
 	};
 
+	// Pending migrations are reported, not applied. A failure to check is only
+	// a warning too: nothing about it should keep the apps from starting.
+	await import('../migrate/index.js')
+		.then(({ reportPendingMigrations }) =>
+			reportPendingMigrations(workspace, reconciled.env),
+		)
+		.catch((error: unknown) => {
+			logger.log(
+				`⚠️  Could not check for pending migrations: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		});
+
 	// Where each app answers, behind the edge — the addresses the apps were just
 	// given, rather than their ports.
 	const appUrls: Record<string, string> = {};

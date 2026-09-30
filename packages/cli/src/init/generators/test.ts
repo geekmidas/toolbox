@@ -7,7 +7,7 @@ import type {
 
 /**
  * Generate test infrastructure files when database is enabled.
- * Includes transaction-isolated test config, global setup with migrations,
+ * Includes transaction-isolated test config,
  * factory system with builders/seeds, and an example spec.
  */
 export function generateTestFiles(
@@ -38,30 +38,6 @@ export function generateTestFiles(
 	const ownerUrl = db.ownerUrlKey;
 
 	return [
-		// kysely.config.ts - Kysely CLI configuration for migrations
-		{
-			path: 'kysely.config.ts',
-			content: `import { Credentials } from '@geekmidas/envkit/credentials';
-import { PostgresDialect } from 'kysely';
-import { defineConfig } from 'kysely-ctl';
-import pg from 'pg';
-
-// The owner role's URL — the one that may create, alter, and drop. Both keys
-// are published by the declared database construct; run this under
-// \`gkm exec -- pnpm kysely migrate:latest\` so they are injected.
-const url = Credentials.${ownerUrl} ?? Credentials.${runtimeUrl};
-
-export default defineConfig({
-  dialect: new PostgresDialect({
-    pool: new pg.Pool({ connectionString: url }),
-  }),
-  migrations: {
-    migrationFolder: './src/db/migrations',
-  },
-});
-`,
-		},
-
 		// test/config.ts - Wraps vitest `it` with transaction auto-rollback
 		{
 			path: 'test/config.ts',
@@ -74,46 +50,6 @@ export const it = wrapVitestKyselyTransaction<Database>(itVitest, {
   // the plugins it was given, \`CamelCasePlugin\` included.
   connection: database,
 });
-`,
-		},
-
-		// test/globalSetup.ts - Creates the test database and runs migrations
-		{
-			path: 'test/globalSetup.ts',
-			content: `import fs from 'node:fs/promises';
-import path from 'node:path';
-import { Credentials } from '@geekmidas/envkit/credentials';
-import { PostgresKyselyMigrator } from '@geekmidas/testkit/kysely';
-import { Kysely, PostgresDialect } from 'kysely';
-import { FileMigrationProvider } from 'kysely/migration';
-import pg from 'pg';
-
-export default async function globalSetup() {
-  // \`gkm test\` reconciles the test stage before this runs: the container is
-  // up, the database exists, and its roles are created. What is left is the
-  // schema, which is what migrations are for.
-  const databaseUrl = Credentials.${ownerUrl} ?? Credentials.${runtimeUrl}!;
-  const migrationFolder = path.resolve(import.meta.dirname, '../src/db/migrations');
-
-  const db = new Kysely({
-    dialect: new PostgresDialect({
-      pool: new pg.Pool({ connectionString: databaseUrl }),
-    }),
-  });
-
-  const migrator = new PostgresKyselyMigrator({
-    uri: databaseUrl,
-    db,
-    provider: new FileMigrationProvider({
-      fs,
-      path,
-      migrationFolder,
-    }),
-  });
-
-  const teardown = await migrator.start();
-  return teardown;
-}
 `,
 		},
 

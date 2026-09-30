@@ -54,6 +54,16 @@
 				"types": "./dist/openapi.d.cts",
 				"default": "./dist/openapi.cjs"
 			}
+		},
+		"./vitest": {
+			"import": {
+				"types": "./dist/vitest.d.mts",
+				"default": "./dist/vitest.mjs"
+			},
+			"require": {
+				"types": "./dist/vitest.d.cts",
+				"default": "./dist/vitest.cjs"
+			}
 		}
 	},
 	"files": [

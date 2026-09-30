@@ -81,6 +81,12 @@ export {
 	UnknownParent,
 } from './errors';
 export {
+	MIGRATIONS_ROOT,
+	type MigrationTarget,
+	migrationFolder,
+	migrationTargets,
+} from './migrations';
+export {
 	cacheTable,
 	canonicalId,
 	cloudName,
