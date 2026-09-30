@@ -1,4 +1,5 @@
 import { getPublicEnvPrefix } from '../workspace/index.js';
+import { rootSite } from '../workspace/rootSite.js';
 import type {
 	DokployWorkspaceConfig,
 	NormalizedAppConfig,
@@ -56,20 +57,8 @@ export function resolveHost(
 }
 
 /**
- * Which site the base domain points at.
- *
- * Three rules, in order, and the last one is the point:
- *
- * 1. **One site** — it is the root. Unambiguous, so nothing has to be said.
- * 2. **Named `web`** — the convention wins, because people already rely on it.
- * 3. **Declared `root: true`** — the site says so itself.
- *
- * Anything else throws. It used to take the *first* `type: 'web'` it iterated,
- * and that object is built from the manifest, which is built in glob traversal
- * order — so two sites with neither named `web` meant renaming a file could
- * move the production root domain, silently. The same shape as
- * `CacheIsAmbiguous`: unambiguous with one and arbitrary with two, so two is an
- * error rather than a coin toss.
+ * Whether this app is the site the base domain points at — see `rootSite`,
+ * which the local edge asks too.
  *
  * @throws {AmbiguousRootSite} when several sites could be the root and none says it is
  */
@@ -80,44 +69,14 @@ export function isMainFrontendApp(
 ): boolean {
 	if (app.type !== 'web') return false;
 
-	const sites = Object.entries(allApps).filter(([, a]) => a.type === 'web');
+	const sites = Object.entries(allApps)
+		.filter(([, a]) => a.type === 'web')
+		.map(([name, a]) => ({ name, root: a.root }));
 
-	// 1. The only site there is.
-	if (sites.length === 1) return true;
-
-	// 2. The convention.
-	const named = sites.filter(([name]) => name === 'web');
-	if (named.length > 0) return appName === 'web';
-
-	// 3. What a site declared about itself.
-	const declared = sites.filter(([, a]) => a.root === true);
-	if (declared.length === 1) return declared[0]![0] === appName;
-
-	throw new AmbiguousRootSite(
-		sites.map(([name]) => name),
-		declared.length > 1,
-	);
+	return rootSite(sites) === appName;
 }
 
-/** Several sites could hold the base domain, and none of them says it does. */
-export class AmbiguousRootSite extends Error {
-	constructor(
-		readonly sites: readonly string[],
-		readonly tooMany = false,
-	) {
-		super(
-			tooMany
-				? `More than one site declares \`root: true\` — ${sites.join(', ')}. ` +
-						`The base domain points at one of them.`
-				: `${sites.length} sites and nothing says which holds the base ` +
-						`domain: ${sites.join(', ')}. Name one of them \`web\`, or ` +
-						`declare \`root: true\` on the one the base domain points at. ` +
-						`It used to be whichever the glob reached first, which is not a ` +
-						`thing to decide a production hostname.`,
-		);
-		this.name = 'AmbiguousRootSite';
-	}
-}
+export { AmbiguousRootSite } from '../workspace/rootSite.js';
 
 /**
  * Generate public URL build args for a web/mobile app based on its dependencies.

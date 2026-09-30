@@ -1,5 +1,6 @@
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
+import { AmbiguousRootSite } from '../../workspace/rootSite';
 import { caddyfileRoot, hostFor, sitesFor, toCaddyfile } from '../caddyfile';
 import { planFor } from '../plan';
 
@@ -81,11 +82,75 @@ describe('sitesFor', () => {
 				host: 'api.shop.localhost',
 				upstream: 'http://host.docker.internal:3000',
 			},
+			// The only site holds the base domain, as it does deployed.
 			{
-				host: 'web.shop.localhost',
+				host: 'shop.localhost',
 				upstream: 'http://host.docker.internal:5173',
 			},
 		]);
+	});
+
+	describe('the site the base domain points at', () => {
+		// The rule a deploy uses for the base domain, applied to the local edge,
+		// so what a developer browses has the shape production serves.
+		const site = (id: string, root?: true) =>
+			({
+				kind: 'site',
+				id,
+				variant: 'static',
+				app: { path: `apps/${id.toLowerCase()}` },
+				dependencies: [],
+				...(root ? { root } : {}),
+			}) as const;
+
+		const hosts = (
+			manifest: ConstructManifest,
+			stage = 'development',
+			project = 'shop',
+		) =>
+			Object.fromEntries(
+				planFor(manifest, stage, provisionOrder(manifest), {
+					localStage: 'development',
+				})
+					.resources.filter((r) => r.kind === 'site')
+					.map((r) => [r.id, hostFor(r, project)]),
+			);
+
+		it('is the site named web, and the others stay on subdomains', () => {
+			expect(hosts({ Web: site('Web'), Admin: site('Admin') })).toEqual({
+				Web: 'shop.localhost',
+				Admin: 'admin.shop.localhost',
+			});
+		});
+
+		it('is the site that declares root when none is named web', () => {
+			expect(
+				hosts({ Landing: site('Landing', true), Admin: site('Admin') }),
+			).toEqual({
+				Landing: 'shop.localhost',
+				Admin: 'admin.shop.localhost',
+			});
+		});
+
+		it('refuses to guess between sites when none says', () => {
+			expect(() =>
+				hosts({ Landing: site('Landing'), Admin: site('Admin') }),
+			).toThrow(AmbiguousRootSite);
+		});
+
+		it('keeps a stage label outside the local stage, so stages share the edge', () => {
+			// One edge serves every stage; `gkm test` on the bare host would take
+			// it from `gkm dev`.
+			expect(hosts({ Web: site('Web') }, 'test')).toEqual({
+				Web: 'test.shop.localhost',
+			});
+		});
+
+		it('keeps its own name when there is no project to own a domain', () => {
+			expect(hosts({ Web: site('Web') }, 'development', '')).toEqual({
+				Web: 'web.localhost',
+			});
+		});
 	});
 
 	it('routes nothing to a surface nothing has started', () => {

@@ -119,11 +119,9 @@ working across restarts.
 ### 5. Load Secrets and Resolve Addresses
 
 ```
-🔐 Loading secrets from stage: development
-   Loaded 23 secret(s)
-🔒 App URLs:
-   Api: https://api.shop.localhost:28006
-   Web: https://web.shop.localhost:28006
+shop: 2 app(s)
+   api  https://api.shop.localhost:28006 -> http://localhost:3000
+   web  https://shop.localhost:28006 -> http://localhost:3002
 ```
 
 Secrets are loaded from the local stage's file — `.gkm/secrets/dev.json` for
@@ -131,10 +129,17 @@ Secrets are loaded from the local stage's file — `.gkm/secrets/dev.json` for
 resolved is merged over them, and declared addresses win: a stale URL in a
 secret cannot point an app at the wrong port.
 
-Each app answers behind the edge on its own HTTPS host. That is the address the
-other apps receive (`API_URL`, and `NEXT_PUBLIC_API_URL` / `VITE_API_URL` for a
-frontend) and the one their CORS origins and cookie domain name. Nothing is
-handed out as `http://localhost:<port>`.
+Each app answers behind the edge on its own HTTPS host — the left of each line
+above. That is the address the other apps receive (`API_URL`, and
+`NEXT_PUBLIC_API_URL` / `VITE_API_URL` for a frontend) and the one their CORS
+origins and cookie domain name. The right is the local port the edge forwards
+to; nothing is handed out as `http://localhost:<port>`.
+
+The site the base domain points at when deployed answers on the project's bare
+host locally — `https://shop.localhost` — by the same rule: the only site, else
+the site named `web`, else the one declaring `root: true`. Every other app is a
+subdomain of it. A browser trusts these addresses once the edge's authority is
+in the system store: `gkm dev` asks once, or run `gkm trust`.
 
 ### 6. Start All Apps via Turbo
 
