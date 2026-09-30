@@ -1,5 +1,16 @@
 # @geekmidas/cloud
 
+## 10.0.0-alpha.30
+
+### Patch Changes
+
+- Updated dependencies [[`58eba5c`](https://github.com/geekmidas/toolbox/commit/58eba5cd5bc0e76565668bd9a48d836dd622ef98)]:
+  - @geekmidas/manifest@10.0.0-alpha.30
+  - @geekmidas/db@10.0.0-alpha.30
+  - @geekmidas/envkit@10.0.0-alpha.30
+  - @geekmidas/events@10.0.0-alpha.30
+  - @geekmidas/storage@10.0.0-alpha.30
+
 ## 10.0.0-alpha.29
 
 ### Patch Changes

@@ -1,5 +1,40 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.30
+
+### Patch Changes
+
+- [#93](https://github.com/geekmidas/toolbox/pull/93) [`58eba5c`](https://github.com/geekmidas/toolbox/commit/58eba5cd5bc0e76565668bd9a48d836dd622ef98) Thanks [@geekmidas](https://github.com/geekmidas)! - `BetterAuth#pendingMigration()` replaces `migrations()`
+
+  Better Auth's schema is now committed SQL in its tenant's migrations folder,
+  written by `gkm migration auth`, instead of being diffed and applied at
+  runtime. `pendingMigration(options)` returns what the tenant is missing — as
+  `create table if not exists`/`create index if not exists`/`add column if not
+exists`, so the first migration also applies to a database Better Auth set up
+  at runtime — or `undefined` when it matches. `databaseId` names the tenant.
+
+  A feature test's harness also trusts the local edge's CA in each worker, so a
+  suite started by plain `vitest` reaches `https://` addresses as one started by
+  `gkm test` does.
+
+- Updated dependencies [[`58eba5c`](https://github.com/geekmidas/toolbox/commit/58eba5cd5bc0e76565668bd9a48d836dd622ef98)]:
+  - @geekmidas/manifest@10.0.0-alpha.30
+  - @geekmidas/audit@10.0.0-alpha.30
+  - @geekmidas/auth@10.0.0-alpha.30
+  - @geekmidas/cache@10.0.0-alpha.30
+  - @geekmidas/db@10.0.0-alpha.30
+  - @geekmidas/emailkit@10.0.0-alpha.30
+  - @geekmidas/envkit@10.0.0-alpha.30
+  - @geekmidas/errors@10.0.0-alpha.30
+  - @geekmidas/events@10.0.0-alpha.30
+  - @geekmidas/logger@10.0.0-alpha.30
+  - @geekmidas/rate-limit@10.0.0-alpha.30
+  - @geekmidas/schema@10.0.0-alpha.30
+  - @geekmidas/services@10.0.0-alpha.30
+  - @geekmidas/storage@10.0.0-alpha.30
+  - @geekmidas/telescope@10.0.0-alpha.30
+  - @geekmidas/testkit@10.0.0-alpha.30
+
 ## 10.0.0-alpha.29
 
 ### Patch Changes
