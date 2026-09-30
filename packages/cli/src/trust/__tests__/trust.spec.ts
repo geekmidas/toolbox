@@ -277,7 +277,11 @@ describe('gkm trust', () => {
 			await expect(isTrusted('https://shop.localhost')).resolves.toBe(true);
 			const [command, args] = boundary.calls[0]!;
 			expect(command).toBe(process.execPath);
-			expect(args[1]).toContain('"https://shop.localhost"');
+			// The system store, where `gkm trust` installs the root. Node's own
+			// bundle never contains it, so without this an installed root still
+			// read as untrusted.
+			expect(args[0]).toBe('--use-system-ca');
+			expect(args[2]).toContain('"https://shop.localhost"');
 
 			boundary.trusted = false;
 			await expect(isTrusted('https://shop.localhost')).resolves.toBe(false);

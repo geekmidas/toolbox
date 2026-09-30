@@ -195,11 +195,11 @@ export default defineConfig({
 
 			// Built into the app root, and the entry it starts is written there.
 			const [server] = fakes.spawned;
-			expect(server!.command).toBe('npx');
-			expect(server!.args.slice(0, 2)).toEqual([
-				'tsx',
-				join(dir, '.gkm', 'server', 'server.ts'),
-			]);
+			// The app's own tsx, through node. Through npx it printed the
+			// developer's npm config warnings on every start.
+			expect(server!.command).toBe(process.execPath);
+			expect(server!.args[0]).toMatch(/tsx\/dist\/cli\.mjs$/);
+			expect(server!.args[1]).toBe(join(dir, '.gkm', 'server', 'server.ts'));
 			expect(server!.args[2]).toBe('--port');
 			expect(existsSync(join(dir, '.gkm', 'server', 'server.ts'))).toBe(true);
 			expect(server!.options.env?.NODE_ENV).toBe('development');
@@ -207,10 +207,14 @@ export default defineConfig({
 			const said = output(log);
 			expect(said).toContain('Loaded env: .env.local');
 			expect(output(warn)).toContain('Missing env files: .env.missing');
-			expect(said).toContain('Telescope enabled at /__telescope');
-			expect(said).toContain('Studio enabled at /__studio');
-			expect(said).toContain('Server hooks enabled from ./src/hooks');
-			expect(said).toContain('✓ Ready');
+			// One ready line with the address, and what the app mounts — not the
+			// build's progress, which is `gkm build`'s to print.
+			expect(said).toMatch(/server ready in [\d.]+s {2}http:\/\/localhost:\d+/);
+			expect(said).toContain(
+				'docs /__docs · telescope /__telescope · studio /__studio',
+			);
+			expect(said).not.toContain('Found 0 functions');
+			expect(said).not.toContain('Loading constructs from');
 
 			// Watches the constructs it loads, and the hooks file.
 			const [watcher] = fakes.watchers;
@@ -224,7 +228,9 @@ export default defineConfig({
 			watcher!.emit('change', 'src/constructs/noop.ts');
 			watcher!.emit('change', 'src/constructs/noop.ts');
 			await until(() => fakes.spawned.length === 2);
-			expect(output(log)).toContain('Rebuild complete, restarting server');
+			expect(output(log)).toContain(
+				'src/constructs/noop.ts changed — rebuilding',
+			);
 			// The old server is killed as a process group before the new one starts.
 			expect(kill).toHaveBeenCalledWith(-server!.pid, 'SIGKILL');
 
@@ -295,10 +301,9 @@ export default defineConfig({
 			await until(() => fakes.spawned.length === 1);
 
 			const [entry] = fakes.spawned;
-			expect(entry!.args).toEqual([
-				'tsx',
-				join(dir, '.gkm', 'entry-wrapper.ts'),
-			]);
+			expect(entry!.command).toBe(process.execPath);
+			expect(entry!.args[0]).toMatch(/tsx\/dist\/cli\.mjs$/);
+			expect(entry!.args[1]).toBe(join(dir, '.gkm', 'entry-wrapper.ts'));
 			expect(entry!.options.env?.PORT).toBe(String(port));
 			expect(
 				readFileSync(join(dir, '.gkm', 'entry-wrapper.ts'), 'utf-8'),
@@ -402,10 +407,11 @@ ${apps}
 				join(dir, 'gkm.config.ts'),
 			);
 			const said = output(log);
-			expect(said).toContain('1 backend, 1 web, 1 mobile app(s)');
-			expect(said).toContain('Frontend apps validated');
-			expect(said).toContain('web → http://localhost:3311 (depends on: api)');
-			expect(output(warn)).toContain('no "dev" secrets found');
+			// Each app once, with the address it answers on.
+			expect(said).toContain('shop: 3 app(s)');
+			expect(said).toContain('   web  http://localhost:3311');
+			// The local stage is derived; a missing stored one is not a problem.
+			expect(output(warn)).not.toContain('secrets found');
 			expect(output(warn)).toContain(
 				'No package.json with a name for: api, app',
 			);
@@ -584,10 +590,10 @@ ${apps}
 			void devCommand({});
 			await until(() => fakes.watchers.length === 1);
 
-			expect(fakes.spawned[0]!.args).toEqual([
-				'tsx',
+			expect(fakes.spawned[0]!.args[0]).toMatch(/tsx\/dist\/cli\.mjs$/);
+			expect(fakes.spawned[0]!.args[1]).toBe(
 				join(auth, '.gkm', 'entry-wrapper.ts'),
-			]);
+			);
 			expect(fakes.spawned[0]!.options.env?.PORT).toBe('3320');
 			const said = output(log);
 			expect(said).toContain('Using entry point: ./src/main.ts');
@@ -625,7 +631,9 @@ ${apps}
 				readFileSync(join(dir, '.gkm', 'dev-secrets-api.json'), 'utf-8'),
 			);
 			expect(written.STRIPE_KEY).toBe('sk_dev');
-			expect(output(log)).toContain('Running app: api on port 3321');
+			expect(output(log)).toMatch(
+				/api ready in [\d.]+s {2}http:\/\/localhost:3321/,
+			);
 		});
 
 		// Every other app's URL, CORS list and cookie domain names this port. A
@@ -663,7 +671,6 @@ ${apps}
 
 			expect(fakes.spawned[0]!.command).toBe('pnpm');
 			expect(fakes.spawned[0]!.options.env?.SHARED).toBe('yes');
-			expect(output(log)).toContain('Loading secrets from stage: dev');
 			fakes.spawned[0]!.emit('exit', 0);
 			await running;
 		});
