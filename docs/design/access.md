@@ -27,6 +27,24 @@ it goes wrong:
 It's the same every time, apart from tenant-based apps, which add one key.
 So it should be a toolbox concept that every app uses.
 
+## Decisions made
+
+Settled in discussion. Don't reopen these without a new reason:
+
+- **The `permissions` table stays.** `role_permissions` references it by
+  foreign key, and an admin UI lists it. A proposal to drop it in favour of
+  the constant alone was rejected.
+- **There's no "super admin" concept in code:** no flag, no column, no
+  special case in session resolution. Super admin is a role that holds every
+  permission through `role_permissions` rows.
+- **Migrations hold schema, not data.** The rows in `permissions` and the
+  declared roles' grants come from the construct's sync, never from a
+  migration.
+- **Access is a toolbox concept shared by every app,** not something each
+  app builds. Tenant-based apps use the same model plus a tenant key.
+- **The permission catalogue is defined once, typed, and shared.** Every app
+  (API, web, Expo) gates on the same `Permission` type.
+
 ## Model
 
 **Roles and grants are data.** There's no "super admin" concept anywhere in
