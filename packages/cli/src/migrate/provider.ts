@@ -1,13 +1,15 @@
 /**
- * One construct's migrations, read from its folder.
+ * One construct's migrations and seeds, read from its folders.
  *
  * Two kinds of file, told apart by extension rather than by configuration: a
- * script exports `up` (and may export `down`), and a `.sql` file is its own
- * `up`. The second is what makes a folder independent of the client the app
- * uses — Better Auth's schema is SQL whatever the application queries with.
+ * script exports `up` (and may export `down`) — or `seed(db, { stage })`, in
+ * `seeds/` — and a
+ * `.sql` file is run whole. The second is what makes a folder independent of
+ * the client the app uses — Better Auth's schema is SQL whatever the
+ * application queries with.
  */
 
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Kysely, sql } from 'kysely';
@@ -40,6 +42,36 @@ export class MigrationHasNoUp extends Error {
 		);
 		this.name = 'MigrationHasNoUp';
 	}
+}
+
+/** A script in a seeds folder that exports no `seed`. */
+export class SeedHasNoSeed extends Error {
+	constructor(readonly file: string) {
+		super(
+			`${file} is in a seeds folder but exports no \`seed\` function. ` +
+				`Export \`async function seed(db, { stage })\`, or move the ` +
+				`file out of the folder if it is not a seed.`,
+		);
+		this.name = 'SeedHasNoSeed';
+	}
+}
+
+/**
+ * What a seed is handed beside its database.
+ *
+ * Seeds run on every stage, production included, so a seed that should write
+ * something only somewhere — a demo tenant on `development`, never on
+ * `production` — decides by the stage it is given.
+ */
+export interface SeedContext {
+	/** The stage being seeded: the local one, `test`, or a deployed one. */
+	stage: string;
+}
+
+/** One seed: what it is called, and what it does. */
+export interface Seed {
+	name: string;
+	run: (db: Kysely<unknown>, context: SeedContext) => Promise<void>;
 }
 
 /**
@@ -90,6 +122,50 @@ export function folderProvider(
 			return migrations;
 		},
 	};
+}
+
+/**
+ * The seeds in a folder, loaded, in name order.
+ *
+ * Every one runs on every pass — there is no history to consult — so the order
+ * is the only thing between two seeds where one reads what another writes.
+ * Name them to sort that way.
+ */
+export async function loadSeeds(
+	folder: string,
+	raw: typeof sql,
+): Promise<Seed[]> {
+	const files = [...(await migrationFiles(folder))].sort(([a], [b]) =>
+		a < b ? -1 : a > b ? 1 : 0,
+	);
+
+	const seeds: Seed[] = [];
+	for (const [name, file] of files) {
+		seeds.push({
+			name,
+			run:
+				extname(file) === '.sql'
+					? (await sqlMigration(file, raw)).up
+					: await scriptSeed(file),
+		});
+	}
+
+	return seeds;
+}
+
+/**
+ * A seed script, imported as it is on disk now.
+ *
+ * Keyed by its modification time: a seed is run again after it is edited, and
+ * a process that has imported it once would otherwise run the old one.
+ */
+async function scriptSeed(file: string): Promise<Seed['run']> {
+	const url = pathToFileURL(file);
+	url.searchParams.set('mtime', String((await stat(file)).mtimeMs));
+	const module = (await import(url.href)) as { seed?: unknown };
+	if (typeof module.seed !== 'function') throw new SeedHasNoSeed(file);
+
+	return module.seed as Seed['run'];
 }
 
 function isMigration(file: string): boolean {

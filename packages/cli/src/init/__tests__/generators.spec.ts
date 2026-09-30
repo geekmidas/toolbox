@@ -673,7 +673,9 @@ describe('what a workspace runs its tools with', () => {
 
 		expect(api.filter((path) => path.includes('migration'))).toEqual([]);
 		expect(root).toContainEqual(
-			expect.stringMatching(/^db\/database\/\d{14}_create_users\.ts$/),
+			expect.stringMatching(
+				/^db\/database\/migrations\/\d{14}_create_users\.ts$/,
+			),
 		);
 	});
 });
@@ -1379,18 +1381,20 @@ describe('generateAgentFiles', () => {
 		expect(agents).not.toContain('.endpoints');
 	});
 
-	it('keeps data out of migrations', () => {
+	it('keeps data out of migrations, and reference data in seeds', () => {
 		const withDb: TemplateOptions = {
 			...baseOptions,
 			constructs: { ...baseOptions.constructs, database: true },
 		};
 		const agents = generateAgentFiles(withDb, minimalTemplate)[0].content;
 
-		// A permission catalogue inserted by a migration is a copy of a constant,
-		// kept in step by a test — the guide says so before an agent writes one.
+		// A permission catalogue inserted by a migration is data in the wrong
+		// place — the guide says where it goes before an agent writes one.
 		expect(agents).toContain('Migrations hold schema, never data.');
-		expect(agents).toContain('Data the code defines lives in the code.');
-		expect(agents).toContain('Nothing needs seeding to run.');
+		expect(agents).toContain('Reference data is a seed.');
+		expect(agents).toContain('A seed is an upsert, run every time.');
+		expect(agents).toContain('db/database/migrations/');
+		expect(agents).toContain('gkm dev --seed');
 	});
 
 	it('names the glob the workspace actually uses', () => {

@@ -1,6 +1,6 @@
 /**
- * `gkm migrate` and `gkm migration` — applying a construct's migrations, and
- * writing its next one.
+ * `gkm migrate`, `gkm seed` and `gkm migration` — applying a construct's
+ * migrations, running its seeds, and writing its next migration.
  *
  * Both work on a stage this machine reconciles: its containers up, its roles
  * provisioned, its owner URLs resolved. A deployed stage is migrated by the
@@ -27,9 +27,12 @@ import { constructGlobs, reconcileWorkspace } from '../reconcile/workspace.js';
 import { TEST_STAGE } from '../workspace/stages';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import {
+	type MigrationRun,
+	migrateAndSeed,
 	migrateDatabases,
 	NoSuchMigrationTarget,
 	pendingMigrations,
+	type SeedRun,
 } from './databases';
 import { slug, stamp } from './names';
 
@@ -37,15 +40,26 @@ export {
 	KyselyNotFound,
 	MigrationFailed,
 	type MigrationRun,
+	MigrationsOutsideFolder,
+	migrateAndSeed,
 	migrateDatabases,
 	NoOwnerCredential,
 	NoSuchMigrationTarget,
 	type PendingMigrations,
 	pendingMigrations,
+	SeedFailed,
+	type SeedOptions,
+	type SeedRun,
+	seedDatabases,
+	UnknownDatabaseFolder,
 	UnknownMigrationFolder,
 } from './databases';
 export { slug, stamp } from './names';
-export { DuplicateMigration, MigrationHasNoUp } from './provider';
+export {
+	DuplicateMigration,
+	MigrationHasNoUp,
+	SeedHasNoSeed,
+} from './provider';
 
 const logger = console;
 
@@ -89,6 +103,8 @@ export interface ReadyStage {
 	sources: Record<string, ConstructSource>;
 	/** Every URL the stage resolved — the owner URLs among them. */
 	env: Record<string, string>;
+	/** The stage it is: the local one, or `test`. */
+	stage: string;
 }
 
 /**
@@ -122,7 +138,13 @@ export async function readyStage(
 		start: true,
 	});
 
-	return { workspace, manifest, sources, env: { ...reconciled.env } };
+	return {
+		workspace,
+		manifest,
+		sources,
+		env: { ...reconciled.env },
+		stage: target,
+	};
 }
 
 /** `gkm migrate [construct]`. */
@@ -144,13 +166,60 @@ export async function migrateCommand(
 		return;
 	}
 
+	logMigrations(runs);
+}
+
+/**
+ * `gkm seed [construct]` — migrate, then run the seeds.
+ *
+ * Always migrates first: a seed is written against the schema its migrations
+ * build, and against an older one it fails on a table that is not there yet.
+ */
+export async function seedCommand(options: MigrateOptions = {}): Promise<void> {
+	const ready = await readyStage(process.cwd(), options.stage);
+
+	const { migrations, seeds } = await migrateAndSeed({
+		root: ready.workspace.root,
+		manifest: ready.manifest,
+		sources: ready.sources,
+		env: ready.env,
+		stage: ready.stage,
+		...(options.construct ? { only: options.construct } : {}),
+	});
+
+	if (migrations.length === 0) {
+		logger.log('🗄️  No database constructs to seed.');
+		return;
+	}
+
+	logMigrations(migrations);
+	logSeeds(seeds);
+}
+
+/** One line per construct: up to date, or what was applied. */
+export function logMigrations(
+	runs: readonly MigrationRun[],
+	log: (line: string) => void = logger.log,
+): void {
 	for (const { target, applied } of runs) {
 		if (applied.length === 0) {
-			logger.log(`🗄️  ${target.folder}: up to date`);
+			log(`🗄️  ${target.migrations}: up to date`);
 			continue;
 		}
-		logger.log(`🗄️  ${target.folder}: applied ${applied.length}`);
-		for (const name of applied) logger.log(`   ✓ ${name}`);
+		log(`🗄️  ${target.migrations}: applied ${applied.length}`);
+		for (const name of applied) log(`   ✓ ${name}`);
+	}
+}
+
+/** One line per construct that has seeds, and each seed it ran. */
+export function logSeeds(
+	runs: readonly SeedRun[],
+	log: (line: string) => void = logger.log,
+): void {
+	for (const { target, seeded } of runs) {
+		if (seeded.length === 0) continue;
+		log(`🌱 ${target.seeds}: ran ${seeded.length}`);
+		for (const name of seeded) log(`   ✓ ${name}`);
 	}
 }
 
@@ -182,9 +251,44 @@ export async function reportPendingMigrations(
 
 	for (const { target, pending: names } of pending) {
 		logger.log(
-			`⚠️  ${target.folder}: ${names.length} pending (${names.join(', ')}) — run gkm migrate`,
+			`⚠️  ${target.migrations}: ${names.length} pending (${names.join(', ')}) — run gkm migrate`,
 		);
 	}
+}
+
+/**
+ * What `gkm dev --migrate` and `gkm dev --seed` do before the apps start:
+ * migrate, and with `seed`, run the seeds after — once, at startup, never on a
+ * save, for the reason {@link reportPendingMigrations} gives.
+ *
+ * A failure here is thrown, unlike the report's: the developer asked for the
+ * database to be brought up to date, and apps started against one in an
+ * unknown state would fail somewhere less obvious.
+ */
+export async function prepareDevDatabases(
+	workspace: NormalizedWorkspace,
+	env: Readonly<Record<string, string>>,
+	{ seed = false }: { seed?: boolean } = {},
+): Promise<void> {
+	const sources: Record<string, ConstructSource> = {};
+	const manifest = await discover({
+		patterns: constructGlobs(workspace),
+		cwd: workspace.root,
+		sources,
+	});
+	const options = { root: workspace.root, manifest, sources, env };
+
+	if (!seed) {
+		logMigrations(await migrateDatabases(options));
+		return;
+	}
+
+	const { migrations, seeds } = await migrateAndSeed({
+		...options,
+		stage: workspace.stages.local,
+	});
+	logMigrations(migrations);
+	logSeeds(seeds);
 }
 
 export interface MigrationOptions {
@@ -294,7 +398,7 @@ async function writeAuthMigration(
 	});
 
 	if (!pending) {
-		logger.log(`✓ ${target.folder}: ${auth.id} is up to date`);
+		logger.log(`✓ ${target.migrations}: ${auth.id} is up to date`);
 		return undefined;
 	}
 
@@ -325,10 +429,10 @@ async function write(
 	file: string,
 	content: string,
 ): Promise<string> {
-	const folder = join(root, target.folder);
+	const folder = join(root, target.migrations);
 	await mkdir(folder, { recursive: true });
 	await writeFile(join(folder, file), content, { flag: 'wx' });
-	return `${target.folder}/${file}`;
+	return `${target.migrations}/${file}`;
 }
 
 function ids(targets: readonly MigrationTarget[]): string[] {

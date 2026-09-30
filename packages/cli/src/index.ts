@@ -216,12 +216,16 @@ program
 		'Enable OpenAPI documentation for development server',
 		true,
 	)
+	.option('--migrate', 'Apply pending migrations before the apps start')
+	.option('--seed', 'Migrate, then run the seeds, before the apps start')
 	.action(
 		async (options: {
 			port?: string;
 			entry?: string;
 			watch?: boolean;
 			enableOpenapi?: boolean;
+			migrate?: boolean;
+			seed?: boolean;
 		}) => {
 			try {
 				const globalOptions = program.opts();
@@ -238,6 +242,8 @@ program
 					enableOpenApi: options.enableOpenapi ?? true,
 					entry: options.entry,
 					watch: options.watch,
+					migrate: options.migrate,
+					seed: options.seed,
 				});
 			} catch (error) {
 				console.error(formatError(error));
@@ -284,7 +290,7 @@ program
 	)
 	.option(
 		'--setup',
-		'Reconcile and migrate the test stage and write the harness, then stop — what @geekmidas/cli/vitest runs',
+		'Reconcile, migrate and seed the test stage and write the harness, then stop — what @geekmidas/cli/vitest runs',
 	)
 	.argument('[pattern]', 'Pattern to filter tests')
 	.action(async (pattern: string | undefined, options: TestOptions) => {
@@ -303,7 +309,7 @@ program
 program
 	.command('migrate')
 	.description(
-		"Apply each database construct's migrations from db/<construct>/, as its owner",
+		"Apply each database construct's migrations from db/<construct>/migrations/, as its owner",
 	)
 	.argument('[construct]', 'Only this construct, by name')
 	.option(
@@ -319,6 +325,35 @@ program
 				}
 				const { migrateCommand } = await import('./migrate/index.js');
 				await migrateCommand({
+					...options,
+					...(construct ? { construct } : {}),
+				});
+			} catch (error) {
+				console.error(formatError(error));
+				process.exit(1);
+			}
+		},
+	);
+
+program
+	.command('seed')
+	.description(
+		"Migrate, then run each database construct's seeds from db/<construct>/seeds/, as its owner",
+	)
+	.argument('[construct]', 'Only this construct, by name')
+	.option(
+		'--stage <stage>',
+		'The local stage (default) or test — a deploy seeds its own stage',
+	)
+	.action(
+		async (construct: string | undefined, options: { stage?: string }) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+				const { seedCommand } = await import('./migrate/index.js');
+				await seedCommand({
 					...options,
 					...(construct ? { construct } : {}),
 				});

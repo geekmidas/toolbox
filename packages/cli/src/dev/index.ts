@@ -245,6 +245,10 @@ export interface DevOptions {
 	entry?: string;
 	/** Watch for file changes (default: true with --entry) */
 	watch?: boolean;
+	/** Apply pending migrations before the apps start. */
+	migrate?: boolean;
+	/** Migrate, then run the seeds, before the apps start. */
+	seed?: boolean;
 }
 
 export async function devCommand(options: DevOptions): Promise<void> {
@@ -928,17 +932,26 @@ async function workspaceDevCommand(
 		...reconciled.env,
 	};
 
-	// Pending migrations are reported, not applied. A failure to check is only
-	// a warning too: nothing about it should keep the apps from starting.
-	await import('../migrate/index.js')
-		.then(({ reportPendingMigrations }) =>
-			reportPendingMigrations(workspace, reconciled.env),
-		)
-		.catch((error: unknown) => {
-			logger.log(
-				`⚠️  Could not check for pending migrations: ${error instanceof Error ? error.message : String(error)}`,
-			);
+	// Asked for, the databases are migrated (and seeded) before anything
+	// starts, and a failure stops here. Otherwise pending migrations are only
+	// reported, and a failure to check is only a warning: nothing about it
+	// should keep the apps from starting.
+	if (options.migrate || options.seed) {
+		const { prepareDevDatabases } = await import('../migrate/index.js');
+		await prepareDevDatabases(workspace, reconciled.env, {
+			seed: !!options.seed,
 		});
+	} else {
+		await import('../migrate/index.js')
+			.then(({ reportPendingMigrations }) =>
+				reportPendingMigrations(workspace, reconciled.env),
+			)
+			.catch((error: unknown) => {
+				logger.log(
+					`⚠️  Could not check for pending migrations: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			});
+	}
 
 	// Where each app answers, behind the edge — the addresses the apps were just
 	// given, rather than their ports.

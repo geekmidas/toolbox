@@ -1,6 +1,6 @@
 /**
- * The Vitest global setup for a gkm project: the test stage, reconciled and
- * migrated, before any test runs.
+ * The Vitest global setup for a gkm project: the test stage, reconciled,
+ * migrated and seeded, before any test runs.
  *
  * ```ts
  * // vitest.config.ts — the only one
@@ -11,8 +11,8 @@
  *
  * Declared once, at the root, it runs however the suite starts — `gkm test`,
  * plain `vitest`, an editor's runner, a filtered run of one project. Its
- * databases are migrated for every construct at once, and kept rather than
- * dropped afterwards, so there is no per-project setup to be skipped by a
+ * databases are migrated and seeded for every construct at once, and kept
+ * rather than dropped afterwards, so there is no per-project setup to be skipped by a
  * filter and no teardown to run twice.
  */
 
@@ -56,10 +56,10 @@ export default function setup(project?: RerunningProject): void {
 	Object.assign(process.env, env);
 	if (ready.manifest) process.env[TEST_MANIFEST_ENV] = ready.manifest;
 
-	// A migration written while watching is applied on the next run, rather
-	// than waiting for Vitest to be restarted.
+	// A migration or seed written while watching is applied on the next run,
+	// rather than waiting for Vitest to be restarted.
 	project?.onTestsRerun(() => {
-		gkm(['migrate', '--stage', 'test'], cwd);
+		gkm(['seed', '--stage', 'test'], cwd);
 	});
 }
 

@@ -179,10 +179,10 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 		return;
 	}
 
-	// 6. The databases, migrated — once, here, for every construct, before
-	//    any project's tests start. Not a Vitest `globalSetup` per project: one
-	//    of those runs only when its project has a matching test, and two of
-	//    them run twice.
+	// 6. The databases, migrated and seeded — once, here, for every construct,
+	//    before any project's tests start. Not a Vitest `globalSetup` per
+	//    project: one of those runs only when its project has a matching test,
+	//    and two of them run twice.
 	if (workspace) {
 		await migrateTestStage(workspace, result.credentials);
 	}
@@ -266,14 +266,17 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 	});
 }
 
-/** Apply every construct's migrations to the test stage just reconciled. */
+/**
+ * Migrate the test stage just reconciled, then seed it: a test run never
+ * starts without the reference data the app needs.
+ */
 async function migrateTestStage(
 	workspace: NonNullable<
 		Awaited<ReturnType<typeof loadWorkspaceConfig>>['workspace']
 	>,
 	env: Readonly<Record<string, string>>,
 ): Promise<void> {
-	const { migrateDatabases } = await import('../migrate/index.js');
+	const { migrateAndSeed } = await import('../migrate/index.js');
 	const { discover } = await import('../reconcile/discover.js');
 
 	const sources = {};
@@ -283,16 +286,22 @@ async function migrateTestStage(
 		sources,
 	});
 
-	const runs = await migrateDatabases({
+	const { migrations, seeds } = await migrateAndSeed({
 		root: workspace.root,
 		manifest,
 		sources,
 		env,
+		stage: TEST_STAGE,
 	});
 
-	for (const { target, applied } of runs) {
+	for (const { target, applied } of migrations) {
 		if (applied.length > 0) {
-			console.log(`  🗄️  ${target.folder}: applied ${applied.join(', ')}`);
+			console.log(`  🗄️  ${target.migrations}: applied ${applied.join(', ')}`);
+		}
+	}
+	for (const { target, seeded } of seeds) {
+		if (seeded.length > 0) {
+			console.log(`  🌱 ${target.seeds}: ran ${seeded.join(', ')}`);
 		}
 	}
 }
