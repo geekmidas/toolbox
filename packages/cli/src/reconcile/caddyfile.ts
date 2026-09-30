@@ -152,7 +152,23 @@ function portOf(address: string): string | undefined {
  * resolves and no certificate can be issued for.
  */
 export function hostFor(resource: PlannedResource, project: string): string {
-	return [resource.name, project, LOCAL_TLD].filter(Boolean).join('.');
+	// The root site answers on the project's bare host, as it does on the base
+	// domain deployed; everything else on a subdomain of it. A stage other than
+	// the local one keeps a label — the stage — because one edge serves every
+	// stage, and `gkm test` claiming the bare host would take it from `gkm dev`.
+	// Only under a project: without one, the "bare host" is `localhost` itself,
+	// which is nobody's domain to take.
+	const label = resource.root && project ? stageOf(resource) : resource.name;
+
+	return [label, project, LOCAL_TLD].filter(Boolean).join('.');
+}
+
+/** The stage a resource's name carries, or nothing for the local stage's. */
+function stageOf(resource: PlannedResource): string | undefined {
+	const base = resource.id.toLowerCase();
+	return resource.name === base
+		? undefined
+		: resource.name.slice(base.length + 1);
 }
 
 /**

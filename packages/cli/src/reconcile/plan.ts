@@ -21,6 +21,8 @@ import {
 	publicEnvFor,
 } from '@geekmidas/manifest';
 import { type CacheBackend, DEFAULT_CACHE, type EventsBackend } from '../types';
+import { appKey } from '../workspace/derive.js';
+import { rootSite } from '../workspace/rootSite.js';
 import { EDGE_KINDS } from './caddyfile';
 
 /**
@@ -198,6 +200,12 @@ export interface PlannedResource {
 	 * these; the env writer still resolves their URL.
 	 */
 	provisions: boolean;
+	/**
+	 * The site the base domain points at, by the rule a deploy uses
+	 * (`rootSite`) — so locally it answers on the project's bare host, the
+	 * shape production serves, rather than a subdomain of it.
+	 */
+	root?: true;
 	/** The schema a tenant pins on its roles' `search_path`. */
 	schema?: string;
 	/** For a cache in a database: the table entries are kept in. */
@@ -546,6 +554,22 @@ export function planFor(
 
 			for (const resource of placeless) resource.of = only.id;
 		}
+	}
+
+	// The site the base domain points at: the same answer a deploy gives, so the
+	// local edge serves it on the bare host.
+	const sites = resources.filter((r) => r.kind === 'site');
+	const root = rootSite(
+		sites.map((r) => {
+			const declared = manifest[r.id];
+			return {
+				name: appKey(r.id),
+				...(declared?.kind === 'site' && declared.root ? { root: true } : {}),
+			};
+		}),
+	);
+	for (const site of sites) {
+		if (appKey(site.id) === root) site.root = true;
 	}
 
 	const workerBroker =
