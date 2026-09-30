@@ -70,8 +70,8 @@ code, transport chosen by the connection-string protocol.
 # 1. Containers, databases, buckets, and URLs — all derived from src/constructs
 gkm setup
 
-# 2. Migrate (through `gkm exec`, which is what injects the database URL)
-pnpm migrate
+# 2. Migrate: each database construct's db/<construct>/ folder, as its owner
+gkm migrate
 
 # 3. Boot Hono + the subscriber/queue pollers
 pnpm dev

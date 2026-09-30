@@ -11,6 +11,7 @@ import { sniffAppEnvironment } from '../deploy/sniffer';
 import { backendsOf, constructGlobs } from '../reconcile/workspace.js';
 import { TEST_STAGE } from '../workspace/stages';
 import { TEST_MANIFEST_ENV, writeTestHarness } from './harness';
+import { TEST_READY_ENV, TEST_READY_FILE, type TestReady } from './ready';
 
 export interface TestOptions {
 	/** Stage to load secrets from (default: development) */
@@ -38,6 +39,13 @@ export interface TestOptions {
 	 * nothing to resolve it to without this.
 	 */
 	prepare?: boolean;
+	/**
+	 * Everything the suite needs, then stop: the stage reconciled, its
+	 * databases migrated, the harness and credentials written. What the Vitest
+	 * global setup (`@geekmidas/cli/vitest`) runs, so a suite started by plain
+	 * `vitest` — or an editor — gets the same stage `gkm test` would give it.
+	 */
+	setup?: boolean;
 }
 
 /**
@@ -171,6 +179,34 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 		return;
 	}
 
+	// 6. The databases, migrated — once, here, for every construct, before
+	//    any project's tests start. Not a Vitest `globalSetup` per project: one
+	//    of those runs only when its project has a matching test, and two of
+	//    them run twice.
+	if (workspace) {
+		await migrateTestStage(workspace, result.credentials);
+	}
+
+	// What the Vitest global setup loads, and how it knows this run already did
+	// its work.
+	const readyPath = join(cwd, TEST_READY_FILE);
+	await writeFile(
+		readyPath,
+		JSON.stringify(
+			{
+				env: result.secretsJsonPath,
+				...(manifestPath ? { manifest: manifestPath } : {}),
+			} satisfies TestReady,
+			null,
+			2,
+		),
+	);
+
+	if (options.setup) {
+		console.log(`  🧪 Test stage ready: ${TEST_READY_FILE}`);
+		return;
+	}
+
 	// Merge NODE_OPTIONS with existing value (if any)
 	const existingNodeOptions = process.env.NODE_OPTIONS ?? '';
 	const tsxImport = '--import=tsx';
@@ -208,6 +244,7 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 			...process.env,
 			...finalCredentials,
 			...(manifestPath ? { [TEST_MANIFEST_ENV]: manifestPath } : {}),
+			[TEST_READY_ENV]: readyPath,
 			NODE_ENV: 'test',
 			NODE_OPTIONS: nodeOptions,
 		},
@@ -227,6 +264,37 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 			reject(error);
 		});
 	});
+}
+
+/** Apply every construct's migrations to the test stage just reconciled. */
+async function migrateTestStage(
+	workspace: NonNullable<
+		Awaited<ReturnType<typeof loadWorkspaceConfig>>['workspace']
+	>,
+	env: Readonly<Record<string, string>>,
+): Promise<void> {
+	const { migrateDatabases } = await import('../migrate/index.js');
+	const { discover } = await import('../reconcile/discover.js');
+
+	const sources = {};
+	const manifest = await discover({
+		patterns: constructGlobs(workspace),
+		cwd: workspace.root,
+		sources,
+	});
+
+	const runs = await migrateDatabases({
+		root: workspace.root,
+		manifest,
+		sources,
+		env,
+	});
+
+	for (const { target, applied } of runs) {
+		if (applied.length > 0) {
+			console.log(`  🗄️  ${target.folder}: applied ${applied.join(', ')}`);
+		}
+	}
 }
 
 /** `gkm test` outside a project that declares stages, with none named. */

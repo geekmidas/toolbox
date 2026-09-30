@@ -141,7 +141,8 @@ environment and fail in a way that looks like a config bug. Go through
 
 	if (!isWorker) sections.push(endpointSection(options));
 	if (isWorker || isServerless) sections.push(backgroundSection(template));
-	if (database) sections.push(databaseSection(), queriesSection());
+	if (database)
+		sections.push(databaseSection(), migrationsSection(), queriesSection());
 
 	sections.push(`## Environment
 
@@ -207,7 +208,7 @@ function layoutBlock(
 
 	if (monorepo) {
 		return `constructs/          # every construct: the surface, the database, topics
-${apiPath}/            # the API app
+${database ? 'db/<construct>/      # migrations, one folder per database construct\n' : ''}${apiPath}/            # the API app
 gkm.config.ts        # name, constructs glob, secrets`;
 	}
 
@@ -221,7 +222,10 @@ gkm.config.ts        # name, constructs glob, secrets`;
 		lines.push('src/crons/           # scheduled work');
 		lines.push('src/subscribers/     # topic consumers');
 	}
-	if (database) lines.push('src/db/              # migrations, schema');
+	if (database)
+		lines.push(
+			'db/<construct>/      # migrations, one folder per database construct',
+		);
 
 	lines.push('gkm.config.ts        # name, constructs glob, secrets');
 
@@ -364,6 +368,39 @@ export const monthly = router
 
 Queries go through Kysely. Never open your own connection pool — the one the
 construct provides is the one that gets credentials, pooling and shutdown.`;
+}
+
+function migrationsSection(): string {
+	return `## Migrations
+
+Each database construct has its own folder, named after the construct:
+\`Database\` is \`db/database/\`, a tenant \`AuthDatabase\` is
+\`db/auth-database/\`. Each keeps its own history, in its own schema, and is
+migrated as its own **owner** role — the role a handler runs as cannot create a
+table.
+
+\`\`\`bash
+gkm migration database add_workouts   # db/database/20260930143012_add_workouts.ts
+gkm migration auth                    # Better Auth's schema change, as SQL
+gkm migrate                           # apply every folder, parents first
+gkm migrate database                  # apply one construct's
+\`\`\`
+
+- Files are \`<UTC timestamp>_<name>.ts\` exporting \`up\` (and \`down\`), or
+  \`.sql\`, which runs whole. Never rename or edit one that has been applied —
+  it is recorded by name. Change the schema with a new migration.
+- Write migrations with \`Kysely<unknown>\` and snake_case names: they are the
+  SQL, and the camelCase plugin is the app's, not theirs.
+- \`gkm migration auth\` compares Better Auth's schema to its tenant and writes
+  only the difference. Run it after adding a Better Auth plugin, and commit the
+  file.
+- Tests migrate themselves: the root vitest config's
+  \`globalSetup: ['@geekmidas/cli/vitest']\` applies every folder to the test
+  stage before any test runs. \`gkm dev\` only reports what is pending.
+- A deploy migrates before the new version goes live, so the old version runs
+  against the new schema until it is replaced. Keep each migration compatible
+  with the code before it: add a column in one release, stop using the old one,
+  drop it in a later release.`;
 }
 
 function queriesSection(): string {

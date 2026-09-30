@@ -665,10 +665,16 @@ describe('what a workspace runs its tools with', () => {
 		);
 	});
 
-	it('ships the migration its endpoints and test setup expect', () => {
-		const paths = apiTemplate.files(options).map((f) => f.path);
+	it('ships the migration its endpoints and tests expect, at the root', () => {
+		// A workspace keeps migrations beside its constructs, in the folder the
+		// database construct's name gives — not inside the API.
+		const api = apiTemplate.files(options).map((f) => f.path);
+		const root = generateRootConstructs(options).map((f) => f.path);
 
-		expect(paths).toContain('src/db/migrations/001_create_users.ts');
+		expect(api.filter((path) => path.includes('migration'))).toEqual([]);
+		expect(root).toContainEqual(
+			expect.stringMatching(/^db\/database\/\d{14}_create_users\.ts$/),
+		);
 	});
 });
 
@@ -1206,7 +1212,6 @@ describe('generateTestFiles', () => {
 		const files = generateTestFiles(baseOptions, minimalTemplate);
 		const paths = files.map((f) => f.path);
 		expect(paths).toContain('test/config.ts');
-		expect(paths).toContain('test/globalSetup.ts');
 		expect(paths).toContain('test/factory/index.ts');
 		expect(paths).toContain('test/factory/users.ts');
 		expect(paths).toContain('test/example.spec.ts');
@@ -1227,20 +1232,16 @@ describe('generateTestFiles', () => {
 		expect(configFile!.content).not.toContain('new Kysely');
 	});
 
-	it('should migrate as the owner role in globalSetup', () => {
-		const files = generateTestFiles(baseOptions, minimalTemplate);
-		const setupFile = files.find((f) => f.path === 'test/globalSetup.ts');
-		expect(setupFile).toBeDefined();
-		expect(setupFile!.content).toContain('PostgresKyselyMigrator');
-		expect(setupFile!.content).toContain('Credentials');
+	// `@geekmidas/cli/vitest` migrates every construct before any test runs,
+	// as its owner. A migrator of the project's own is a second one to keep in
+	// step — with the folder, the role, and which constructs there are.
+	it('writes no migrator of its own', () => {
+		const paths = generateTestFiles(baseOptions, minimalTemplate).map(
+			(f) => f.path,
+		);
 
-		// Migrations connect as the DDL role the database construct declares.
-		expect(setupFile!.content).toContain('DATABASE_OWNER_URL');
-
-		// Reconcile creates the roles before the suite runs, so there is no init
-		// script left to run and no per-app password to thread through it.
-		expect(setupFile!.content).not.toContain('runInitScript');
-		expect(setupFile!.content).not.toContain('PGBOSS_DB_PASSWORD');
+		expect(paths).not.toContain('test/globalSetup.ts');
+		expect(paths).not.toContain('kysely.config.ts');
 	});
 
 	it('should use KyselyFactory in factory files', () => {
@@ -1275,25 +1276,7 @@ describe('generateTestFiles', () => {
 		expect(files.length).toBeGreaterThan(0);
 		const paths = files.map((f) => f.path);
 		expect(paths).toContain('test/config.ts');
-		expect(paths).toContain('test/globalSetup.ts');
-	});
-
-	it('should migrate as the owner role in a monorepo too', () => {
-		const options: TemplateOptions = {
-			...baseOptions,
-			template: 'fullstack',
-			monorepo: true,
-			apiPath: 'apps/api',
-		};
-		const files = generateTestFiles(options, apiTemplate);
-
-		// The root declares the same database, so it publishes the same keys.
-		for (const path of ['test/globalSetup.ts', 'kysely.config.ts']) {
-			const file = files.find((f) => f.path === path);
-			expect(file!.content).toContain(
-				'Credentials.DATABASE_OWNER_URL ?? Credentials.DATABASE_URL',
-			);
-		}
+		expect(paths).not.toContain('test/globalSetup.ts');
 	});
 });
 
@@ -1304,8 +1287,9 @@ describe('generateConfigFiles - vitest.config.ts', () => {
 		expect(paths).toContain('vitest.config.ts');
 
 		const vitestConfig = files.find((f) => f.path === 'vitest.config.ts');
-		expect(vitestConfig!.content).toContain('globalSetup');
-		expect(vitestConfig!.content).toContain('./test/globalSetup.ts');
+		expect(vitestConfig!.content).toContain(
+			"globalSetup: ['@geekmidas/cli/vitest']",
+		);
 		expect(vitestConfig!.content).toContain('tsconfigPaths: true');
 		expect(vitestConfig!.content).not.toContain('vite-tsconfig-paths');
 		expect(vitestConfig!.content).not.toContain('globals: true');

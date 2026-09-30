@@ -9,7 +9,7 @@
 		"build": "gkm build",
 		"start": "node apps/api/.gkm/server/app.js",
 		"openapi": "gkm openapi",
-		"migrate": "pnpm --filter @kitchen-sink/api migrate",
+		"migrate": "gkm migrate",
 		"test": "gkm test --run",
 		"test:watch": "gkm test"
 	},

@@ -282,6 +282,10 @@ program
 		'--prepare',
 		'Write the test manifest and #test harness, then stop — for a typecheck that runs before the suite',
 	)
+	.option(
+		'--setup',
+		'Reconcile and migrate the test stage and write the harness, then stop — what @geekmidas/cli/vitest runs',
+	)
 	.argument('[pattern]', 'Pattern to filter tests')
 	.action(async (pattern: string | undefined, options: TestOptions) => {
 		try {
@@ -290,6 +294,56 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await testCommand({ ...options, pattern });
+		} catch (error) {
+			console.error(formatError(error));
+			process.exit(1);
+		}
+	});
+
+program
+	.command('migrate')
+	.description(
+		"Apply each database construct's migrations from db/<construct>/, as its owner",
+	)
+	.argument('[construct]', 'Only this construct, by name')
+	.option(
+		'--stage <stage>',
+		'The local stage (default) or test — a deploy migrates its own stage',
+	)
+	.action(
+		async (construct: string | undefined, options: { stage?: string }) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+				const { migrateCommand } = await import('./migrate/index.js');
+				await migrateCommand({
+					...options,
+					...(construct ? { construct } : {}),
+				});
+			} catch (error) {
+				console.error(formatError(error));
+				process.exit(1);
+			}
+		},
+	);
+
+program
+	.command('migration')
+	.description(
+		"Write a construct's next migration: an empty one for a database, the schema change for an auth server",
+	)
+	.argument('<construct>', 'The construct, by name')
+	.argument('[name]', 'What the migration is called')
+	.action(async (construct: string, name: string | undefined) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			const { migrationCommand } = await import('./migrate/index.js');
+			await migrationCommand({ construct, ...(name ? { name } : {}) });
 		} catch (error) {
 			console.error(formatError(error));
 			process.exit(1);

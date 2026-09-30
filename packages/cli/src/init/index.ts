@@ -560,10 +560,16 @@ function printNextSteps(
 	// `gkm dev` reconciles the containers its constructs imply first.
 	console.log(`  ${devCommand}`);
 
-	if (!options.monorepo && options.constructs.database) {
+	if (options.constructs.database) {
 		console.log('');
-		console.log('  # Then, once the container is up:');
-		console.log(`  gkm exec -- pnpm kysely migrate:latest`);
+		console.log(
+			"  # Apply each database construct's db/<construct>/ migrations:",
+		);
+		console.log('  gkm migrate');
+		if (options.monorepo) {
+			console.log("  # Better Auth's tables, as its tenant's first migration:");
+			console.log('  gkm migration auth && gkm migrate');
+		}
 	}
 	console.log('');
 

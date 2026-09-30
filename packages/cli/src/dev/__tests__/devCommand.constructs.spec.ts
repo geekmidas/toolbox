@@ -123,12 +123,22 @@ beforeAll(async () => {
 	await client.query(`CREATE SCHEMA "${schema}"`);
 	await client.end();
 
-	// better-auth's own tables, through the construct — the app's migrate step.
-	const migrate = await auth.migrations({
+	// better-auth's own tables, from the SQL `gkm migration` would commit for
+	// the tenant, run in its schema.
+	const pending = await auth.pendingMigration({
 		envParser: new EnvironmentParser(envFor(0)),
 		context: serviceContext,
 	});
-	await migrate();
+	if (pending) {
+		const tenant = new pg.Client(TEST_DATABASE_CONFIG);
+		await tenant.connect();
+		try {
+			await tenant.query(`SET search_path TO "${schema}"`);
+			await tenant.query(pending);
+		} finally {
+			await tenant.end();
+		}
+	}
 });
 
 afterAll(async () => {
