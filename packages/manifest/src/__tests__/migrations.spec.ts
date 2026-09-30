@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { ConstructManifest } from '../declaration';
-import { migrationFolder, migrationTargets } from '../migrations';
+import {
+	databaseFolder,
+	migrationFolder,
+	migrationTargets,
+	seedFolder,
+} from '../migrations';
 import { canonicalId } from '../naming';
 
 /**
@@ -34,8 +39,19 @@ const manifest = {
 describe('migrationTargets', () => {
 	it('is every database and tenant, parents first, each in its own folder', () => {
 		expect(migrationTargets(manifest)).toEqual([
-			{ id: 'Database', folder: 'db/database' },
-			{ id: 'AuthDatabase', folder: 'db/auth-database', of: 'Database' },
+			{
+				id: 'Database',
+				folder: 'db/database',
+				migrations: 'db/database/migrations',
+				seeds: 'db/database/seeds',
+			},
+			{
+				id: 'AuthDatabase',
+				folder: 'db/auth-database',
+				migrations: 'db/auth-database/migrations',
+				seeds: 'db/auth-database/seeds',
+				of: 'Database',
+			},
 		]);
 	});
 
@@ -48,10 +64,15 @@ describe('migrationTargets', () => {
 	});
 });
 
-describe('migrationFolder', () => {
+describe('databaseFolder', () => {
 	it('is named by the construct, in kebab case', () => {
-		expect(migrationFolder('AuthDatabase')).toBe('db/auth-database');
-		expect(migrationFolder('S3Archive')).toBe('db/s3-archive');
+		expect(databaseFolder('AuthDatabase')).toBe('db/auth-database');
+		expect(databaseFolder('S3Archive')).toBe('db/s3-archive');
+	});
+
+	it('holds the migrations and the seeds, each in a folder of its own', () => {
+		expect(migrationFolder('AuthDatabase')).toBe('db/auth-database/migrations');
+		expect(seedFolder('AuthDatabase')).toBe('db/auth-database/seeds');
 	});
 
 	it('reads back to the construct it names', () => {

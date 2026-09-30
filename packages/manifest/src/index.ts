@@ -81,10 +81,13 @@ export {
 	UnknownParent,
 } from './errors';
 export {
+	DATABASE_FOLDERS,
+	databaseFolder,
 	MIGRATIONS_ROOT,
 	type MigrationTarget,
 	migrationFolder,
 	migrationTargets,
+	seedFolder,
 } from './migrations';
 export {
 	cacheTable,

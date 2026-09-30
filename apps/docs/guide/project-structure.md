@@ -16,11 +16,14 @@ my-api/
 │   ├── endpoints/             # the routes glob
 │   │   ├── health.ts
 │   │   └── users/
-│   ├── db/migrations/         # applied by kysely-ctl or the test setup
 │   ├── router.ts              # the shared endpoint factory
 │   └── config/
 │       ├── env.ts             # EnvironmentParser + Credentials
 │       └── logger.ts
+├── db/
+│   └── database/              # one folder per database construct
+│       ├── migrations/        # the schema's history — gkm migrate
+│       └── seeds/             # reference data, run every pass — gkm seed
 ├── test/                      # transaction-isolated suite + factories
 └── .gkm/                      # generated — compose, secrets, manifest
 ```

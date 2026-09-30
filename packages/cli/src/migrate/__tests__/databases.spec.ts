@@ -10,12 +10,18 @@ import { TEST_DATABASE_CONFIG } from '../../../../testkit/test/globalSetup';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import {
 	MigrationFailed,
+	MigrationsOutsideFolder,
+	migrateAndSeed,
 	migrateDatabases,
 	NoOwnerCredential,
 	NoSuchMigrationTarget,
 	pendingMigrations,
+	SeedFailed,
+	seedDatabases,
+	UnknownDatabaseFolder,
 	UnknownMigrationFolder,
 } from '../databases';
+import { SeedHasNoSeed } from '../provider';
 
 /**
  * A database and a schema tenant inside it, each with the owner and runtime
@@ -120,11 +126,13 @@ describe('migrateDatabases', () => {
 
 	beforeEach(async () => {
 		root = await createTempDir('migrate-');
-		await mkdir(join(root, 'db/database'), { recursive: true });
-		await mkdir(join(root, 'db/auth-database'), { recursive: true });
+		await mkdir(join(root, 'db/database/migrations'), { recursive: true });
+		await mkdir(join(root, 'db/auth-database/migrations'), {
+			recursive: true,
+		});
 
 		await writeFile(
-			join(root, 'db/database/20260101000000_users.ts'),
+			join(root, 'db/database/migrations/20260101000000_users.ts'),
 			`export async function up(db) {
   await db.schema.createTable('users').addColumn('id', 'uuid', (c) => c.primaryKey()).execute();
 }
@@ -134,7 +142,7 @@ export async function down(db) {
 `,
 		);
 		await writeFile(
-			join(root, 'db/auth-database/20260101000100_better_auth.sql'),
+			join(root, 'db/auth-database/migrations/20260101000100_better_auth.sql'),
 			`create table "session" ("id" text not null primary key);
 create index "session_id_idx" on "session" ("id");
 `,
@@ -201,7 +209,7 @@ create index "session_id_idx" on "session" ("id");
 	it('applies a migration merged after a newer one already ran', async () => {
 		await migrateDatabases({ root, manifest, sources, env });
 		await writeFile(
-			join(root, 'db/database/20251231000000_older.ts'),
+			join(root, 'db/database/migrations/20251231000000_older.ts'),
 			`export async function up(db) {
   await db.schema.createTable('older').addColumn('id', 'uuid').execute();
 }
@@ -252,7 +260,7 @@ create index "session_id_idx" on "session" ("id");
 
 	it('names the migration that failed', async () => {
 		await writeFile(
-			join(root, 'db/database/20260102000000_broken.sql'),
+			join(root, 'db/database/migrations/20260102000000_broken.sql'),
 			'create table "users" ("id" uuid);',
 		);
 
@@ -268,5 +276,231 @@ create index "session_id_idx" on "session" ("id");
 			construct: 'Database',
 			migration: '20260102000000_broken',
 		});
+	});
+
+	it('refuses a migration left beside migrations/, rather than never running it', async () => {
+		await writeFile(
+			join(root, 'db/database/20260103000000_loose.ts'),
+			'export async function up() {}',
+		);
+
+		const failure = await migrateDatabases({
+			root,
+			manifest,
+			sources,
+			env,
+		}).catch((error: unknown) => error);
+
+		expect(failure).toBeInstanceOf(MigrationsOutsideFolder);
+		expect(failure).toMatchObject({
+			folder: 'db/database',
+			files: ['20260103000000_loose.ts'],
+		});
+	});
+
+	it('refuses a folder beside migrations/ and seeds/', async () => {
+		await mkdir(join(root, 'db/database/fixtures'));
+
+		await expect(
+			migrateDatabases({ root, manifest, sources, env }),
+		).rejects.toBeInstanceOf(UnknownDatabaseFolder);
+	});
+});
+
+describe('seedDatabases', () => {
+	let root: string;
+	const stage = 'production';
+
+	const seedFile = (name: string, content: string) =>
+		writeFile(join(root, 'db/database/seeds', name), content);
+
+	const roles = async () =>
+		(
+			await query<{ name: string }>(
+				`SELECT name FROM "${app.schema}".roles ORDER BY name`,
+			)
+		).map((row) => row.name);
+
+	beforeEach(async () => {
+		root = await createTempDir('seed-');
+		await mkdir(join(root, 'db/database/migrations'), { recursive: true });
+		await mkdir(join(root, 'db/database/seeds'), { recursive: true });
+		await mkdir(join(root, 'db/auth-database/migrations'), {
+			recursive: true,
+		});
+
+		await writeFile(
+			join(root, 'db/database/migrations/20260101000000_roles.ts'),
+			`export async function up(db) {
+  await db.schema.createTable('roles').addColumn('name', 'text', (c) => c.primaryKey()).execute();
+}
+`,
+		);
+		await seedFile(
+			'roles.ts',
+			`export async function seed(db) {
+  await db.insertInto('roles').values([{ name: 'Member' }, { name: 'Super admin' }])
+    .onConflict((oc) => oc.column('name').doNothing()).execute();
+}
+`,
+		);
+
+		return async () => {
+			await cleanupDir(root);
+			for (const schema of [app.schema, auth.schema]) {
+				for (const table of await tablesIn(schema)) {
+					await query(`DROP TABLE IF EXISTS "${schema}"."${table}" CASCADE`);
+				}
+			}
+		};
+	});
+
+	it('migrates, then seeds', async () => {
+		const { migrations, seeds } = await migrateAndSeed({
+			root,
+			manifest,
+			sources,
+			env,
+			stage,
+		});
+
+		expect(migrations.map((r) => [r.target.id, r.applied])).toEqual([
+			['Database', ['20260101000000_roles']],
+			['AuthDatabase', []],
+		]);
+		expect(seeds.map((r) => [r.target.id, r.seeded])).toEqual([
+			['Database', ['roles']],
+			['AuthDatabase', []],
+		]);
+		expect(await roles()).toEqual(['Member', 'Super admin']);
+	});
+
+	it('runs every seed again on the next pass, applying what changed', async () => {
+		await migrateAndSeed({ root, manifest, sources, env, stage });
+		await seedFile(
+			'roles.ts',
+			`export async function seed(db) {
+  await db.insertInto('roles').values([{ name: 'Member' }, { name: 'Reviewer' }])
+    .onConflict((oc) => oc.column('name').doNothing()).execute();
+}
+`,
+		);
+
+		const again = await seedDatabases({ root, manifest, sources, env, stage });
+
+		expect(again[0]?.seeded).toEqual(['roles']);
+		expect(await roles()).toEqual(['Member', 'Reviewer', 'Super admin']);
+	});
+
+	it('runs seeds in name order, and a .sql seed whole', async () => {
+		await seedFile(
+			'02_reviewer.sql',
+			`insert into roles (name) values ('Reviewer') on conflict do nothing;`,
+		);
+		await seedFile(
+			'01_admin.ts',
+			`export async function seed(db) {
+  await db.insertInto('roles').values({ name: 'Admin' }).onConflict((oc) => oc.doNothing()).execute();
+}
+`,
+		);
+
+		const { seeds } = await migrateAndSeed({
+			root,
+			manifest,
+			sources,
+			env,
+			stage,
+		});
+
+		expect(seeds[0]?.seeded).toEqual(['01_admin', '02_reviewer', 'roles']);
+	});
+
+	it('migrates the database a tenant lives in before seeding only the tenant', async () => {
+		await mkdir(join(root, 'db/auth-database/seeds'), { recursive: true });
+		await writeFile(
+			join(root, 'db/auth-database/migrations/20260101000100_session.sql'),
+			'create table "session" ("id" text primary key);',
+		);
+		await writeFile(
+			join(root, 'db/auth-database/seeds/session.sql'),
+			`insert into "session" ("id") values ('system') on conflict do nothing;`,
+		);
+
+		const { migrations, seeds } = await migrateAndSeed({
+			root,
+			manifest,
+			sources,
+			env,
+			stage,
+			only: 'auth-database',
+		});
+
+		expect(migrations.map((r) => r.target.id)).toEqual([
+			'Database',
+			'AuthDatabase',
+		]);
+		expect(seeds.map((r) => [r.target.id, r.seeded])).toEqual([
+			['AuthDatabase', ['session']],
+		]);
+		expect(await roles()).toEqual([]);
+	});
+
+	it('hands every seed the stage, so it can decide what belongs there', async () => {
+		await seedFile(
+			'demo.ts',
+			`export async function seed(db, { stage }) {
+  if (stage === 'production') return;
+  await db.insertInto('roles').values({ name: 'Demo' }).onConflict((oc) => oc.doNothing()).execute();
+}
+`,
+		);
+
+		await migrateAndSeed({ root, manifest, sources, env, stage });
+		expect(await roles()).toEqual(['Member', 'Super admin']);
+
+		await seedDatabases({
+			root,
+			manifest,
+			sources,
+			env,
+			stage: 'development',
+		});
+		expect(await roles()).toEqual(['Demo', 'Member', 'Super admin']);
+	});
+
+	it('rolls a failing seed back and names it', async () => {
+		await seedFile(
+			'zz_broken.ts',
+			`export async function seed(db) {
+  await db.insertInto('roles').values({ name: 'Half' }).execute();
+  await db.insertInto('missing').values({ name: 'x' }).execute();
+}
+`,
+		);
+
+		const failure = await migrateAndSeed({
+			root,
+			manifest,
+			sources,
+			env,
+			stage,
+		}).catch((error: unknown) => error);
+
+		expect(failure).toBeInstanceOf(SeedFailed);
+		expect(failure).toMatchObject({
+			construct: 'Database',
+			seed: 'zz_broken',
+		});
+		// The seed before it stays; the broken one's first insert does not.
+		expect(await roles()).toEqual(['Member', 'Super admin']);
+	});
+
+	it('refuses a seed script that exports no seed', async () => {
+		await seedFile('lookup.ts', 'export async function up() {}');
+
+		await expect(
+			migrateAndSeed({ root, manifest, sources, env, stage }),
+		).rejects.toBeInstanceOf(SeedHasNoSeed);
 	});
 });

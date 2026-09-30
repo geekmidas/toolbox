@@ -208,7 +208,7 @@ function layoutBlock(
 
 	if (monorepo) {
 		return `constructs/          # every construct: the surface, the database, topics
-${database ? 'db/<construct>/      # migrations, one folder per database construct\n' : ''}${apiPath}/            # the API app
+${database ? 'db/<construct>/      # migrations/ and seeds/, one folder per database construct\n' : ''}${apiPath}/            # the API app
 gkm.config.ts        # name, constructs glob, secrets`;
 	}
 
@@ -224,7 +224,7 @@ gkm.config.ts        # name, constructs glob, secrets`;
 	}
 	if (database)
 		lines.push(
-			'db/<construct>/      # migrations, one folder per database construct',
+			'db/<construct>/      # migrations/ and seeds/, one folder per database construct',
 		);
 
 	lines.push('gkm.config.ts        # name, constructs glob, secrets');
@@ -371,32 +371,52 @@ construct provides is the one that gets credentials, pooling and shutdown.`;
 }
 
 function migrationsSection(): string {
-	return `## Migrations
+	return `## Migrations and seeds
 
 Each database construct has its own folder, named after the construct:
 \`Database\` is \`db/database/\`, a tenant \`AuthDatabase\` is
-\`db/auth-database/\`. Each keeps its own history, in its own schema, and is
-migrated as its own **owner** role — the role a handler runs as cannot create a
+\`db/auth-database/\`. It holds two folders and nothing else:
+
+\`\`\`
+db/database/
+  migrations/   # the schema's history, applied once each
+  seeds/        # the reference data the app needs, run on every pass
+\`\`\`
+
+Each construct keeps its own history, in its own schema, and is migrated and
+seeded as its own **owner** role — the role a handler runs as cannot create a
 table.
 
 \`\`\`bash
-gkm migration database add_workouts   # db/database/20260930143012_add_workouts.ts
+gkm migration database add_workouts   # db/database/migrations/20260930143012_add_workouts.ts
 gkm migration auth                    # Better Auth's schema change, as SQL
-gkm migrate                           # apply every folder, parents first
+gkm migrate                           # apply every construct's migrations, parents first
 gkm migrate database                  # apply one construct's
+gkm seed                              # migrate, then run every seed
+gkm dev --migrate                     # migrate before the apps start
+gkm dev --seed                        # migrate and seed before the apps start
 \`\`\`
 
-- Files are \`<UTC timestamp>_<name>.ts\` exporting \`up\` (and \`down\`), or
-  \`.sql\`, which runs whole. Never rename or edit one that has been applied —
-  it is recorded by name. Change the schema with a new migration.
+- Migrations are \`<UTC timestamp>_<name>.ts\` exporting \`up\` (and
+  \`down\`), or \`.sql\`, which runs whole. Never rename or edit one that has
+  been applied — it is recorded by name. Change the schema with a new
+  migration.
 - Write migrations with \`Kysely<unknown>\` and snake_case names: they are the
   SQL, and the camelCase plugin is the app's, not theirs.
 - \`gkm migration auth\` compares Better Auth's schema to its tenant and writes
   only the difference. Run it after adding a Better Auth plugin, and commit the
   file.
-- Tests migrate themselves: the root vitest config's
-  \`globalSetup: ['@geekmidas/cli/vitest']\` applies every folder to the test
-  stage before any test runs. \`gkm dev\` only reports what is pending.
+- Seeds always run after migrations, never instead of them. Each is a
+  \`.ts\` exporting \`seed(db, { stage })\`, or \`.sql\`, run in name
+  order, in a transaction of its own.
+- **Seeds run on every stage, production included.** Write them to be safe
+  there. A seed that belongs only somewhere checks the stage it is handed:
+  \`if (stage === 'production') return;\`. A \`.sql\` seed has no stage, so
+  it must be right everywhere.
+- Tests migrate and seed themselves: the root vitest config's
+  \`globalSetup: ['@geekmidas/cli/vitest']\` does both for the test stage
+  before any test runs. \`gkm dev\` without a flag only reports what is
+  pending.
 - A deploy migrates before the new version goes live, so the old version runs
   against the new schema until it is replaced. Keep each migration compatible
   with the code before it: add a column in one release, stop using the old one,
@@ -405,29 +425,26 @@ gkm migrate database                  # apply one construct's
 **Migrations hold schema, never data.** Tables, columns, constraints, indexes.
 No inserts, updates or deletes against the application's rows.
 
-- **Data the code defines lives in the code.** A permission catalogue, the
-  system roles, a list of statuses — if a constant in the source already says
-  what they are, a table holding them is a copy, and a copy drifts. Keep the
-  constant; store only what users create (a custom role, which permission keys
-  it grants), checked against the constant in code.
-- **Define it once, typed, where every app can import it.** A catalogue in
-  code belongs in a shared package (\`packages/models\`), declared \`as const\`
-  so its keys are a union type. The API's guards, the web app's gates and a
-  mobile app's gates then all name the same keys, and a typo — or a removed
+- **Reference data is a seed.** A permission catalogue, the roles and what
+  they grant, a list of statuses — rows the app needs in order to run — are
+  written by a seed in \`db/<construct>/seeds/\`, never by a migration.
+- **A seed is an upsert, run every time.** There is no history: every seed
+  runs on every \`gkm seed\`, so changing what it writes and running it again
+  is how the change is applied. Write \`onConflict(…).doUpdateSet(…)\` (or
+  \`doNothing()\`), never a bare insert.
+- **Define it once, typed, where every app can import it.** A catalogue
+  belongs in code, declared \`as const\` so its keys are a union type, and the
+  seed writes the table from that constant — so the two cannot drift, and no
+  test is needed to keep them in step. The API's guards, the web app's gates
+  and a mobile app's gates all name the same keys, and a typo — or a removed
   permission still checked somewhere — fails to compile instead of failing
   closed at runtime.
-- **A rule is not a row.** "Every user is a member", "a super admin has every
-  permission" are logic. A row per user, or a grant per permission, is a
-  snapshot of the rule that goes stale the moment the rule's inputs change.
-- **Nothing needs seeding to run.** If the app fails without some rows present,
-  those rows are code in the wrong place. Sample and demo data comes from test
-  factories — never a migration, never a deploy.
-- **A backfill is the one exception.** When a schema change needs existing rows
-  transformed — a new non-null column filled from an old one — do it in the
-  same migration, keyed on the rows it transforms. It never inserts rows that
-  were not there.
-- **A test that only keeps two copies in step is the smell.** Delete a copy,
-  and the test with it.`;
+- **Sample data is factories'.** Demo users, a tournament for a test — those
+  come from test factories, never a seed and never a migration.
+- **A backfill is the one data change a migration makes.** When a schema
+  change needs existing rows transformed — a new non-null column filled from
+  an old one — do it in the same migration, keyed on the rows it transforms.
+  It never inserts rows that were not there.`;
 }
 
 function queriesSection(): string {

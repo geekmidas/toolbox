@@ -13,6 +13,7 @@ import { pathToFileURL } from 'node:url';
 import {
 	type ConstructManifest,
 	canonicalId,
+	DATABASE_FOLDERS,
 	MIGRATIONS_ROOT,
 	type MigrationTarget,
 	migrationTargets,
@@ -22,7 +23,7 @@ import type { Kysely } from 'kysely';
 import type { Migrator } from 'kysely/migration';
 import pg from 'pg';
 import type { ConstructSource } from '../reconcile/discover';
-import { folderProvider, migrationFiles } from './provider';
+import { folderProvider, loadSeeds, migrationFiles } from './provider';
 
 export interface DatabasesOptions {
 	/** The project root — where `db/` lives. */
@@ -43,6 +44,17 @@ export interface MigrationRun {
 	target: MigrationTarget;
 	/** The migrations this run applied, in order. */
 	applied: string[];
+}
+
+export interface SeedOptions extends DatabasesOptions {
+	/** The stage being seeded, handed to every seed. */
+	stage: string;
+}
+
+export interface SeedRun {
+	target: MigrationTarget;
+	/** The seeds this run ran, in order — every one, every time. */
+	seeded: string[];
 }
 
 export interface PendingMigrations {
@@ -78,6 +90,53 @@ export class NoSuchMigrationTarget extends Error {
 					: 'This project declares no database.'),
 		);
 		this.name = 'NoSuchMigrationTarget';
+	}
+}
+
+/**
+ * A migration left directly in a construct's folder, where nothing reads it.
+ *
+ * Migrations moved into `migrations/` so seeds could sit beside them. A file
+ * still at the old level would otherwise never run, and nothing would say so.
+ */
+export class MigrationsOutsideFolder extends Error {
+	constructor(
+		readonly folder: string,
+		readonly files: readonly string[],
+	) {
+		super(
+			`${folder} has ${files.join(', ')} directly inside it, where nothing ` +
+				`runs them. Migrations live in ${folder}/migrations/ and seeds in ` +
+				`${folder}/seeds/ — move ${files.length === 1 ? 'it' : 'them'} there.`,
+		);
+		this.name = 'MigrationsOutsideFolder';
+	}
+}
+
+/** A folder inside a construct's folder that is neither `migrations` nor `seeds`. */
+export class UnknownDatabaseFolder extends Error {
+	constructor(readonly folder: string) {
+		super(
+			`${folder} is neither migrations/ nor seeds/, so nothing in it would ` +
+				`ever run. A construct's folder holds those two; rename or remove it.`,
+		);
+		this.name = 'UnknownDatabaseFolder';
+	}
+}
+
+/** A seed failed; its own writes are rolled back, the ones before it stay. */
+export class SeedFailed extends Error {
+	constructor(
+		readonly construct: string,
+		readonly seed: string,
+		override readonly cause: unknown,
+	) {
+		super(
+			`${construct}: seed '${seed}' failed — ` +
+				`${cause instanceof Error ? cause.message : String(cause)}. ` +
+				`Its writes were rolled back; fix it and run it again.`,
+		);
+		this.name = 'SeedFailed';
 	}
 }
 
@@ -132,7 +191,7 @@ export async function migrateDatabases(
 		// No folder, or an empty one, is nothing to do — and no reason to
 		// connect, which a construct nobody has written a migration for yet
 		// should not need.
-		const files = await migrationFiles(join(options.root, target.folder));
+		const files = await migrationFiles(join(options.root, target.migrations));
 		if (files.size === 0) {
 			runs.push({ target, applied: [] });
 			continue;
@@ -157,6 +216,91 @@ export async function migrateDatabases(
 }
 
 /**
+ * Run every construct's seeds, parents first — each one, every time, on every
+ * stage, production included. Each is handed the stage, so a seed decides
+ * what belongs where.
+ *
+ * Seeds are reference data kept up to date by being run again, so there is no
+ * history: a seed is an upsert, and a changed one is applied by the next run.
+ * Each runs in its own transaction, as the construct's owner, so a failure
+ * leaves nothing half-written. Assumes the schema is migrated —
+ * {@link migrateAndSeed} is what makes that true.
+ */
+export async function seedDatabases(options: SeedOptions): Promise<SeedRun[]> {
+	const runs: SeedRun[] = [];
+
+	for (const target of await targetsFor(options)) {
+		const folder = join(options.root, target.seeds);
+		if ((await migrationFiles(folder)).size === 0) {
+			runs.push({ target, seeded: [] });
+			continue;
+		}
+
+		const seeded = await withOwner(options, target, async (db, kysely) => {
+			const names: string[] = [];
+			for (const seed of await loadSeeds(folder, kysely.sql)) {
+				try {
+					await db
+						.transaction()
+						.execute((trx) => seed.run(trx, { stage: options.stage }));
+				} catch (error) {
+					throw new SeedFailed(target.id, seed.name, error);
+				}
+				names.push(seed.name);
+			}
+			return names;
+		});
+
+		runs.push({ target, seeded });
+	}
+
+	return runs;
+}
+
+/**
+ * Migrate, then seed: a seed only ever runs against the schema it was written
+ * for.
+ *
+ * With `only`, the constructs it lives in are migrated too — a tenant's seed
+ * cannot run before the database that owns its schema exists — and only it is
+ * seeded.
+ */
+export async function migrateAndSeed(options: SeedOptions): Promise<{
+	migrations: MigrationRun[];
+	seeds: SeedRun[];
+}> {
+	const migrations: MigrationRun[] = [];
+	for (const target of await withParents(options)) {
+		migrations.push(
+			...(await migrateDatabases({ ...options, only: target.id })),
+		);
+	}
+
+	return { migrations, seeds: await seedDatabases(options) };
+}
+
+/** The targets `only` names, after the ones it lives in; all without it. */
+async function withParents(
+	options: DatabasesOptions,
+): Promise<MigrationTarget[]> {
+	const chosen = await targetsFor(options);
+	if (!options.only) return chosen;
+
+	const all = migrationTargets(options.manifest);
+	const ids = new Set<string>();
+	for (const target of chosen) {
+		let current: MigrationTarget | undefined = target;
+		while (current) {
+			ids.add(current.id);
+			const parent: string | undefined = current.of;
+			current = parent ? all.find((t) => t.id === parent) : undefined;
+		}
+	}
+
+	return all.filter((target) => ids.has(target.id));
+}
+
+/**
  * What each construct's folder has that its history does not — without
  * applying any of it. What `gkm dev` reports.
  */
@@ -166,7 +310,7 @@ export async function pendingMigrations(
 	const found: PendingMigrations[] = [];
 
 	for (const target of await targetsFor(options)) {
-		const files = await migrationFiles(join(options.root, target.folder));
+		const files = await migrationFiles(join(options.root, target.migrations));
 		if (files.size === 0) continue;
 
 		const pending = await withMigrator(options, target, async (migrator) =>
@@ -198,6 +342,7 @@ async function targetsFor(
 		if (!folders.includes(relative)) {
 			throw new UnknownMigrationFolder(relative, folders);
 		}
+		await checkLayout(options.root, relative);
 	}
 
 	if (!options.only) return targets;
@@ -214,6 +359,28 @@ async function targetsFor(
 	return chosen;
 }
 
+/**
+ * A construct's folder holds `migrations/` and `seeds/`, and nothing else —
+ * anything beside them is a file or folder nothing would ever run.
+ */
+async function checkLayout(root: string, folder: string): Promise<void> {
+	const entries = await readdir(join(root, folder), { withFileTypes: true });
+
+	const loose = entries
+		.filter((entry) => entry.isFile() && !entry.name.startsWith('.'))
+		.map((entry) => entry.name);
+	if (loose.length > 0) throw new MigrationsOutsideFolder(folder, loose);
+
+	for (const entry of entries) {
+		if (
+			entry.isDirectory() &&
+			!(DATABASE_FOLDERS as readonly string[]).includes(entry.name)
+		) {
+			throw new UnknownDatabaseFolder(`${folder}/${entry.name}`);
+		}
+	}
+}
+
 async function foldersIn(dir: string): Promise<string[]> {
 	const entries = await readdir(dir, { withFileTypes: true }).catch(
 		(error: NodeJS.ErrnoException) => {
@@ -228,7 +395,7 @@ async function foldersIn(dir: string): Promise<string[]> {
 }
 
 /**
- * A migrator for one target, connected as its owner and closed afterwards.
+ * A migrator for one target, connected as its owner.
  *
  * No `migrationTableSchema`: the owner role's `search_path` is pinned to the
  * construct's schema, so the history lands there — `app.kysely_migration` for
@@ -244,26 +411,43 @@ async function withMigrator<T>(
 	target: MigrationTarget,
 	run: (migrator: Migrator) => Promise<T>,
 ): Promise<T> {
+	return withOwner(options, target, (db, { Migrator, sql }) =>
+		run(
+			new Migrator({
+				db,
+				provider: folderProvider(join(options.root, target.migrations), sql),
+				allowUnorderedMigrations: true,
+			}),
+		),
+	);
+}
+
+/**
+ * One target's database, connected as its owner and closed afterwards — what
+ * migrations and seeds both run as.
+ */
+async function withOwner<T>(
+	options: DatabasesOptions,
+	target: MigrationTarget,
+	run: (
+		db: Kysely<unknown>,
+		kysely: Awaited<ReturnType<typeof kyselyFrom>>,
+	) => Promise<T>,
+): Promise<T> {
 	const from =
 		options.sources?.[target.id]?.file ??
 		(target.of ? options.sources?.[target.of]?.file : undefined) ??
 		join(options.root, 'package.json');
-	const { Kysely, PostgresDialect, sql, Migrator } = await kyselyFrom(from);
+	const kysely = await kyselyFrom(from);
 
-	const db: Kysely<unknown> = new Kysely<unknown>({
-		dialect: new PostgresDialect({
+	const db: Kysely<unknown> = new kysely.Kysely<unknown>({
+		dialect: new kysely.PostgresDialect({
 			pool: new pg.Pool(poolConfig(ownerUrl(options, target))),
 		}),
 	});
 
 	try {
-		return await run(
-			new Migrator({
-				db,
-				provider: folderProvider(join(options.root, target.folder), sql),
-				allowUnorderedMigrations: true,
-			}),
-		);
+		return await run(db, kysely);
 	} finally {
 		await db.destroy();
 	}
