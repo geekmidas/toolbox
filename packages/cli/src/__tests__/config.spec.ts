@@ -2,7 +2,12 @@ import { realpathSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { getAppNameFromCwd, loadAppConfig, loadConfig } from '../config';
+import {
+	getAppNameFromCwd,
+	loadAppConfig,
+	loadConfig,
+	WorkspaceDeclaresNoConstructs,
+} from '../config';
 import { cleanupDir, createTempDir } from './test-helpers';
 
 describe('loadConfig', () => {
@@ -195,6 +200,7 @@ describe('loadAppConfig', () => {
 export default {
   stages: { local: 'development', deployed: ['production'] },
   name: 'test-workspace',
+  constructs: './src/constructs/**/*.ts',
   apps: {
     api: {
       type: 'backend',
@@ -271,6 +277,7 @@ export default {
 export default {
   stages: { local: 'development', deployed: ['production'] },
   name: 'test-workspace',
+  constructs: './src/constructs/**/*.ts',
   apps: {
     api: {
       type: 'backend',
@@ -294,6 +301,43 @@ export default {
 
 		await expect(loadAppConfig()).rejects.toThrow(
 			'App "unknown" not found in workspace config',
+		);
+	});
+
+	it('refuses a workspace that declares no constructs glob', async () => {
+		const workspaceRoot = tempDir;
+		const appDir = join(workspaceRoot, 'apps', 'api');
+		await mkdir(appDir, { recursive: true });
+
+		const workspaceConfig = `
+export default {
+  stages: { local: 'development', deployed: ['production'] },
+  name: 'test-workspace',
+  apps: {
+    api: {
+      type: 'backend',
+      path: 'apps/api',
+      port: 3000,
+      routes: './src/endpoints/**/*.ts',
+      envParser: './src/config/env',
+      logger: './src/config/logger',
+    },
+  },
+};
+`;
+		await writeFile(join(workspaceRoot, 'gkm.config.ts'), workspaceConfig);
+		await writeFile(
+			join(appDir, 'package.json'),
+			JSON.stringify({ name: '@test-workspace/api', version: '1.0.0' }),
+		);
+
+		process.chdir(appDir);
+
+		const error = await loadAppConfig().catch((e: unknown) => e);
+
+		expect(error).toBeInstanceOf(WorkspaceDeclaresNoConstructs);
+		expect(realpathSync((error as WorkspaceDeclaresNoConstructs).root)).toBe(
+			realpathSync(workspaceRoot),
 		);
 	});
 
@@ -331,6 +375,7 @@ export default {
 export default {
   stages: { local: 'development', deployed: ['production'] },
   name: 'env-test',
+  constructs: './src/constructs/**/*.ts',
   apps: {
     api: {
       type: 'backend',

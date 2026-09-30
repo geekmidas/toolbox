@@ -8,11 +8,7 @@ import {
 	prepareEntryCredentials,
 } from '../credentials';
 import { sniffAppEnvironment } from '../deploy/sniffer';
-import {
-	backendsOf,
-	constructGlobs,
-	usesConstructs,
-} from '../reconcile/workspace.js';
+import { backendsOf, constructGlobs } from '../reconcile/workspace.js';
 import { TEST_STAGE } from '../workspace/stages';
 import { TEST_MANIFEST_ENV, writeTestHarness } from './harness';
 
@@ -80,14 +76,13 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 		console.log(`  📦 Loaded env: ${defaultEnv.loaded.join(', ')}`);
 	}
 
-	// 2. Prepare credentials: loads secrets, resolves Docker ports,
-	//    starts services, rewrites URLs, injects dependency URLs
+	// 2. Prepare credentials: loads secrets and reconciles the test stage —
+	//    starts its containers and resolves every declared address
 	const result = await prepareEntryCredentials({
 		stage,
 		// Preparing writes files; it has no suite to start containers for.
 		startDocker: !options.prepare,
 		secretsFileName: 'test-secrets.json',
-		resolveDockerPorts: 'full',
 		// The same reconcile `gkm dev` runs, differing only in what the resources
 		// are called: one container and one role pair serve both stages, so the
 		// suffix is the whole of the isolation.
@@ -132,12 +127,9 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 		}
 	}
 
-	// 4. Rewrite DATABASE_URL for test isolation (append _test suffix)
-	finalCredentials = rewriteDatabaseUrlForTests(finalCredentials);
-
 	console.log('');
 
-	// 5. Write final credentials and create preload script
+	// 4. Write final credentials and create preload script
 	await writeFile(
 		result.secretsJsonPath,
 		JSON.stringify(finalCredentials, null, 2),
@@ -147,29 +139,28 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 	const preloadPath = join(gkmDir, 'test-credentials-preload.ts');
 	await createCredentialsPreload(preloadPath, result.secretsJsonPath);
 
-	// 6. The test manifest: what was discovered and resolved above, kept for the
+	// 5. The test manifest: what was discovered and resolved above, kept for the
 	//    suite, so a feature test is built from it rather than declaring it all
 	//    again — and the harness generated from it, `it` and a `Browser` with a
 	//    typed client per surface.
 	const workspace = await loadWorkspaceConfig(cwd)
 		.then((loaded) => loaded.workspace)
 		.catch(() => undefined);
-	const manifestPath =
-		workspace && usesConstructs(workspace)
-			? await writeTestHarness({
-					root: workspace.root,
-					targets: [
-						workspace.root,
-						...Object.values(workspace.apps).map((app) =>
-							isAbsolute(app.path) ? app.path : join(workspace.root, app.path),
-						),
-					],
-					patterns: constructGlobs(workspace),
-					cacheBackend: backendsOf(workspace).cache,
-					stage: TEST_STAGE,
-					env: finalCredentials,
-				})
-			: undefined;
+	const manifestPath = workspace
+		? await writeTestHarness({
+				root: workspace.root,
+				targets: [
+					workspace.root,
+					...Object.values(workspace.apps).map((app) =>
+						isAbsolute(app.path) ? app.path : join(workspace.root, app.path),
+					),
+				],
+				patterns: constructGlobs(workspace),
+				cacheBackend: backendsOf(workspace).cache,
+				stage: TEST_STAGE,
+				env: finalCredentials,
+			})
+		: undefined;
 
 	if (options.prepare) {
 		console.log(
@@ -236,40 +227,6 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 			reject(error);
 		});
 	});
-}
-
-const TEST_DB_SUFFIX = '_test';
-
-/**
- * Rewrite DATABASE_URL to point to a separate test database.
- * Appends `_test` to the database name (e.g., `app` -> `app_test`).
- * @internal Exported for testing
- */
-export function rewriteDatabaseUrlForTests(
-	env: Record<string, string>,
-): Record<string, string> {
-	const result = { ...env };
-
-	for (const key of Object.keys(result)) {
-		if (!key.includes('DATABASE_URL')) continue;
-
-		const value = result[key] as string;
-		try {
-			const url = new URL(value);
-			const dbName = url.pathname.slice(1);
-			if (dbName && !dbName.endsWith(TEST_DB_SUFFIX)) {
-				url.pathname = `/${dbName}${TEST_DB_SUFFIX}`;
-				result[key] = url.toString();
-				console.log(
-					`  🧪 ${key}: using test database "${dbName}${TEST_DB_SUFFIX}"`,
-				);
-			}
-		} catch {
-			// Not a valid URL, skip
-		}
-	}
-
-	return result;
 }
 
 /** `gkm test` outside a project that declares stages, with none named. */

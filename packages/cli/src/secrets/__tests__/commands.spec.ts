@@ -100,6 +100,7 @@ describe('secrets commands', () => {
 
 export default defineWorkspace({
   name: 'shop',
+  constructs: './src/constructs/**/*.ts',
   stages: { local: 'dev', deployed: ['prod'] },
   apps: {
     api: { type: 'backend', path: 'apps/api', port: 3000 },

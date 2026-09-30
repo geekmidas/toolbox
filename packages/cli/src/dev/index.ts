@@ -25,12 +25,9 @@ import {
 	loadEnvFiles,
 	loadSecretsForApp,
 	prepareEntryCredentials,
-	resolveServicePorts,
-	rewriteUrlsWithPorts,
-	startWorkspaceServices,
 } from '../credentials';
 import { OPENAPI_OUTPUT_PATH, resolveOpenApiConfig } from '../openapi';
-import { reconcileWorkspace, usesConstructs } from '../reconcile/workspace.js';
+import { reconcileWorkspace } from '../reconcile/workspace.js';
 import {
 	readStageSecrets,
 	secretsExist,
@@ -49,7 +46,6 @@ import { cacheBackendFor, providerOf } from '../workspace/backends.js';
 import {
 	type FrontendFramework,
 	getAppBuildOrder,
-	getDependencyEnvVars,
 	type MobileFramework,
 	type NormalizedWorkspace,
 } from '../workspace/index.js';
@@ -57,29 +53,18 @@ import {
 // Re-export shared utilities from credentials module so existing imports
 // from '../dev' or '../dev/index' continue to work.
 export {
-	buildDockerComposeEnv,
-	type ComposePortMapping,
 	createCredentialsPreload,
 	createEntryWrapper,
 	type EntryCredentialsResult,
 	findAvailablePort,
 	findSecretsRoot,
-	getContainerHostPort,
 	isPortAvailable,
 	loadEnvFiles,
 	loadPortState,
 	loadSecretsForApp,
 	type PortState,
-	parseComposePortMappings,
-	parseComposeServiceNames,
 	prepareEntryCredentials,
-	type ResolvedServicePorts,
-	replacePortInUrl,
-	resolveServicePorts,
-	rewriteUrlsWithPorts,
 	savePortState,
-	startComposeServices,
-	startWorkspaceServices,
 } from '../credentials';
 
 // Re-export execCommand from its own module
@@ -316,6 +301,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 			}
 
 			config = loadedConfig.raw as GkmConfig;
+			workspace = loadedConfig.workspace;
 		}
 	} else {
 		// Try to load workspace config
@@ -405,7 +391,8 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	// Determine runtime (default to node)
 	const runtime: Runtime = config.runtime ?? 'node';
 
-	// Load secrets for dev mode, resolve Docker ports, and write to JSON file
+	// Load secrets for dev mode, resolve every declared address, and write to
+	// JSON file
 	let secretsJsonPath: string | undefined;
 	const appSecrets = await loadSecretsForApp(
 		secretsRoot,
@@ -413,11 +400,10 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		workspaceAppName,
 	);
 
-	if (workspace && usesConstructs(workspace)) {
+	if (workspace) {
 		// The same reconcile `gkm setup` and the workspace dev path run: derive
 		// the containers from what the app declares, start them, create what the
-		// URLs name, and inject those URLs. It replaces the branch below, which
-		// has no hand-written compose file left to read ports out of.
+		// URLs name, and inject those URLs.
 		const reconciled = await reconcileWorkspace(workspace, {
 			stage: workspace.stages.local,
 		});
@@ -432,28 +418,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		// Declared URLs win over anything sniffed or stored — the manifest is the
 		// statement of what exists.
 		Object.assign(appSecrets, reconciled.env);
-	} else {
-		// Resolve Docker service ports and rewrite connection URLs
-		const resolvedPorts = await resolveServicePorts(secretsRoot);
-		if (Object.keys(resolvedPorts.ports).length > 0) {
-			const rewritten = rewriteUrlsWithPorts(appSecrets, resolvedPorts);
-			Object.assign(appSecrets, rewritten);
-			logger.log(
-				`🔌 Applied ${Object.keys(resolvedPorts.ports).length} port mapping(s)`,
-			);
-		}
-	}
-
-	// Dependency URLs as `http://localhost:<port>`, for whatever reconcile did
-	// not resolve. Declared addresses win: each app behind the edge, on its own
-	// HTTPS host, which is what its CORS origins and cookie domain name.
-	// Assigned over them, these made a frontend call the API on a host its CORS
-	// refused.
-	if (workspace && workspaceAppName) {
-		const depEnv = getDependencyEnvVars(workspace, workspaceAppName);
-		for (const [key, value] of Object.entries(depEnv)) {
-			appSecrets[key] ??= value;
-		}
 	}
 
 	if (Object.keys(appSecrets).length > 0) {
@@ -598,25 +562,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
 	process.on('SIGINT', shutdown);
 	process.on('SIGTERM', shutdown);
-}
-
-/**
- * Generate all dependency environment variables for all apps.
- * Returns a flat object with all {APP_NAME}_URL variables.
- * @internal Exported for testing
- */
-export function generateAllDependencyEnvVars(
-	workspace: NormalizedWorkspace,
-	urlPrefix = 'http://localhost',
-): Record<string, string> {
-	const env: Record<string, string> = {};
-
-	for (const appName of Object.keys(workspace.apps)) {
-		const appEnv = getDependencyEnvVars(workspace, appName, urlPrefix);
-		Object.assign(env, appEnv);
-	}
-
-	return env;
 }
 
 /**
@@ -994,51 +939,35 @@ async function workspaceDevCommand(
 	// (e.g. import { createApi } from '@myapp/api/client')
 	// No file copying needed — pnpm workspace resolution handles it.
 
-	// Load secrets BEFORE starting Docker so POSTGRES_USER, POSTGRES_PASSWORD,
-	// etc. are available for docker-compose variable interpolation
 	const rawSecrets = await loadDevSecrets(workspace);
 
-	let secretsEnv: Record<string, string>;
+	// Derive the containers from what the apps declare, start them, create what
+	// the URLs name, and inject those URLs. Safe to do on every start because
+	// the blast radius is this project's containers and `.gkm/`, and because the
+	// converged case costs one hash and one health check.
+	const reconciled = await reconcileWorkspace(workspace, {
+		stage: workspace.stages.local,
+	});
+
+	if (reconciled.changed && reconciled.plan.containers.length > 0) {
+		logger.log(`🐳 Services: ${reconciled.plan.containers.join(', ')}`);
+		for (const [container, address] of Object.entries(reconciled.addresses)) {
+			logger.log(`   ${container}: ${address}`);
+		}
+	}
+
+	const secretsEnv: Record<string, string> = {
+		...rawSecrets,
+		...reconciled.env,
+	};
+
+	// Where each app answers, behind the edge — the addresses the apps were just
+	// given, rather than their ports.
 	const appUrls: Record<string, string> = {};
-
-	if (usesConstructs(workspace)) {
-		// Derive the containers from what the app declares, start them, create
-		// what the URLs name, and inject those URLs. Safe to do on every start
-		// because the blast radius is this project's containers and `.gkm/`, and
-		// because the converged case costs one hash and one health check.
-		const reconciled = await reconcileWorkspace(workspace, {
-			stage: workspace.stages.local,
-		});
-
-		if (reconciled.changed && reconciled.plan.containers.length > 0) {
-			logger.log(`🐳 Services: ${reconciled.plan.containers.join(', ')}`);
-			for (const [container, address] of Object.entries(reconciled.addresses)) {
-				logger.log(`   ${container}: ${address}`);
-			}
-		}
-
-		secretsEnv = { ...rawSecrets, ...reconciled.env };
-
-		// Where each app answers, behind the edge — the addresses the apps were
-		// just given, rather than their ports.
-		for (const resource of reconciled.plan.resources) {
-			if (resource.kind !== 'rest-api' && resource.kind !== 'site') continue;
-			const address = reconciled.env[resource.envKey];
-			if (address) appUrls[resource.id] = address;
-		}
-	} else {
-		// Resolve dynamic service ports from the hand-written docker-compose.yml
-		const resolvedPorts = await resolveServicePorts(workspace.root);
-
-		// Start docker-compose services with resolved ports AND secrets
-		await startWorkspaceServices(
-			workspace,
-			resolvedPorts.dockerEnv,
-			rawSecrets,
-		);
-
-		// Rewrite URLs with resolved ports (hostnames and port numbers)
-		secretsEnv = rewriteUrlsWithPorts(rawSecrets, resolvedPorts);
+	for (const resource of reconciled.plan.resources) {
+		if (resource.kind !== 'rest-api' && resource.kind !== 'site') continue;
+		const address = reconciled.env[resource.envKey];
+		if (address) appUrls[resource.id] = address;
 	}
 
 	if (Object.keys(secretsEnv).length > 0) {
@@ -1049,20 +978,6 @@ async function workspaceDevCommand(
 		logger.log('🔒 App URLs:');
 		for (const [id, address] of Object.entries(appUrls)) {
 			logger.log(`   ${id}: ${address}`);
-		}
-	}
-
-	// Dependency URLs, for whatever reconcile did not resolve — see the note on
-	// the per-app path. Declared addresses win.
-	const dependencyEnv = Object.fromEntries(
-		Object.entries(generateAllDependencyEnvVars(workspace)).filter(
-			([key]) => secretsEnv[key] === undefined,
-		),
-	);
-	if (Object.keys(dependencyEnv).length > 0) {
-		logger.log('📡 Dependency URLs:');
-		for (const [key, value] of Object.entries(dependencyEnv)) {
-			logger.log(`   ${key}=${value}`);
 		}
 	}
 
@@ -1131,7 +1046,6 @@ async function workspaceDevCommand(
 	const turboEnv: Record<string, string> = {
 		...process.env,
 		...secretsEnv,
-		...dependencyEnv,
 		NODE_ENV: 'development',
 		// Inject config path so child processes can find the workspace config
 		...(configPath ? { GKM_CONFIG_PATH: configPath } : {}),

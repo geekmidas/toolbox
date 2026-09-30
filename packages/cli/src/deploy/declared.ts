@@ -19,7 +19,7 @@ import {
 	type SqlClient,
 	type Statement,
 } from '../reconcile/provision.js';
-import { constructGlobs, usesConstructs } from '../reconcile/workspace.js';
+import { constructGlobs } from '../reconcile/workspace.js';
 import {
 	cacheBackendFor,
 	eventsBackendFor,
@@ -73,10 +73,6 @@ export interface DeclaredOptions {
 
 /**
  * Provision everything the workspace declares, and return what it resolved.
- *
- * Nothing happens for a project that has not adopted the model: `usesConstructs`
- * is the same hard switch reconcile reads, so an existing deploy is untouched
- * until it declares something.
  */
 export async function provisionDeclared(
 	options: DeclaredOptions,
@@ -88,8 +84,6 @@ export async function provisionDeclared(
 		provisioned: {},
 		clusters: {},
 	};
-
-	if (!usesConstructs(workspace)) return empty;
 
 	const manifest =
 		options.manifest ??

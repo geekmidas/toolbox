@@ -29,6 +29,7 @@ function workspace(root: string, home: string) {
 
 export default defineWorkspace({
   name: 'beetlefit',
+  constructs: './src/constructs/**/*.ts',
   stages: { local: 'dev', deployed: ['staging', 'prod'], protected: ['prod'] },
 });
 `,
@@ -46,6 +47,7 @@ function storedWorkspace(root: string) {
 
 export default defineWorkspace({
   name: 'beetlefit',
+  constructs: './src/constructs/**/*.ts',
   stages: { local: 'dev', deployed: ['staging', 'prod'], protected: ['prod'] },
   secrets: {
     store: {

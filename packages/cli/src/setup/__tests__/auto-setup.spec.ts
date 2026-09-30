@@ -111,6 +111,7 @@ describe('ensureStageSecrets', () => {
 export default defineWorkspace({
   stages: { local: 'development', deployed: ['production'] },
   name: 'test-workspace',
+  constructs: './src/constructs/**/*.ts',
   apps: {
     api: {
       type: 'backend',
@@ -160,8 +161,8 @@ export default defineWorkspace({
 		// Round-trips through the keystore the same way `gkm test` reads it.
 		//
 		// Asserted on a custom secret rather than a Postgres credential: this
-		// project declares no constructs, so there is no database and correctly
-		// no credential for one. It used to get one from `services: { db: true }`,
+		// project's constructs glob matches nothing, so there is no database and
+		// correctly no credential for one. It used to get one from `services: { db: true }`,
 		// which is the config-says-so path this no longer has.
 		const read = await readStageSecrets('development', testDir);
 		expect(read?.custom.LOG_LEVEL).toBe('debug');

@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -6,13 +6,11 @@ import {
 	createSurfaceFile,
 	createTempDir,
 } from '../../__tests__/test-helpers';
-import { writeStageSecrets } from '../../secrets/storage';
 import { prepareEntryCredentials } from '../index';
 
 /**
- * What `gkm dev --entry`, `gkm exec` and `gkm test` hand a process, for the two
- * shapes of project they meet: one that declares its constructs, and one with
- * only an older secrets file.
+ * What `gkm dev --entry`, `gkm exec` and `gkm test` hand a process in a
+ * workspace that declares its constructs.
  */
 describe('prepareEntryCredentials', () => {
 	let dir: string;
@@ -57,53 +55,5 @@ describe('prepareEntryCredentials', () => {
 		expect(result.credentials.TEST_URL).toMatch(/^https?:\/\//);
 		// The workspace's port for the app, and its dependency URLs.
 		expect(result.credentials.PORT).toBe('3500');
-	});
-
-	it('defaults the event connection strings for secrets that predate them', async () => {
-		// An older secrets file: pg-boss credentials, no event strings.
-		await writeStageSecrets(
-			{
-				stage: 'dev',
-				createdAt: '2025-01-01T00:00:00.000Z',
-				updatedAt: '2025-01-01T00:00:00.000Z',
-				services: {
-					postgres: {
-						host: 'localhost',
-						port: 5432,
-						username: 'app',
-						password: 'app',
-						database: 'shop',
-					},
-					pgboss: {
-						host: 'localhost',
-						port: 5432,
-						username: 'pgboss',
-						password: 'jobs',
-						database: 'shop',
-					},
-				},
-				urls: {},
-				custom: {},
-			},
-			dir,
-		);
-
-		const result = await prepareEntryCredentials({
-			cwd: dir,
-			stage: 'dev',
-			explicitPort: 4100,
-		});
-
-		expect(result.credentials.EVENT_PUBLISHER_CONNECTION_STRING).toBe(
-			result.credentials.EVENT_SUBSCRIBER_CONNECTION_STRING,
-		);
-		expect(result.credentials.EVENT_PUBLISHER_CONNECTION_STRING).toContain(
-			'pgboss:jobs@localhost:5432/shop',
-		);
-		expect(result.credentials.PORT).toBe('4100');
-		// And it is written where the preload reads it.
-		expect(JSON.parse(readFileSync(result.secretsJsonPath, 'utf-8')).PORT).toBe(
-			'4100',
-		);
 	});
 });

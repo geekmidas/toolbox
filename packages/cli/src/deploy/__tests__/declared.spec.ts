@@ -63,8 +63,6 @@ function workspaceWith(
 				port: 3000,
 				dependencies: [],
 				resolvedDeployTarget: 'dokploy',
-				// The hard switch: reconcile and this both read it, so a project
-				// that has not adopted the model is untouched.
 				constructs: './src/constructs/**/*.ts',
 			},
 		},
@@ -87,29 +85,6 @@ const run = (workspace: NormalizedWorkspace) =>
 	});
 
 describe('provisionDeclared', () => {
-	it('does nothing for a project that has not adopted the model', async () => {
-		// `usesConstructs` is the same hard switch reconcile reads. An existing
-		// deploy must be untouched until it declares something.
-		const legacy = workspaceWith({
-			apps: {
-				api: {
-					type: 'backend',
-					path: 'apps/api',
-					port: 3000,
-					dependencies: [],
-					resolvedDeployTarget: 'dokploy',
-				},
-			} as NormalizedWorkspace['apps'],
-		});
-
-		expect(await run(legacy)).toEqual({
-			env: {},
-			statements: [],
-			provisioned: {},
-			clusters: {},
-		});
-	});
-
 	it('resolves the URLs the sniffer cannot see', async () => {
 		// The gap this closes: a construct reads its own key inside
 		// `@geekmidas/constructs`, so a walk of application code finds no

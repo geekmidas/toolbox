@@ -337,24 +337,22 @@ export const getUser = api
 
 ## Environment Variables
 
-### Workspace-Level Variables
+### What the Workspace Resolves
+
+Every address comes from what the workspace declares: databases, caches, mail,
+buckets, the broker, and each app's URL behind the edge. You don't write
+`DATABASE_URL` or `API_URL` anywhere — `gkm dev`, `gkm exec` and `gkm test`
+inject them, and they win over anything in `.env` or a stage's secrets, so a
+stale value there cannot point an app at the wrong port.
+
+### What You Supply
+
+Values nothing can derive — a third party's API key, a `Credential` — come from
+the stage's secrets (`gkm secrets:set`) or `.env`:
 
 ```bash
 # .env (root)
-DATABASE_URL=postgres://localhost:5432/myapp
-REDIS_URL=redis://localhost:6379
-JWT_SECRET=development-secret
-```
-
-### App-Specific Variables
-
-```bash
-# apps/api/.env.local
-PORT=3000
-LOG_LEVEL=debug
-
-# apps/web/.env.local
-NEXT_PUBLIC_API_URL=http://localhost:3000
+STRIPE_SECRET_KEY=sk_test_…
 ```
 
 ### Variable Resolution
@@ -533,13 +531,18 @@ gkm deploy --app web --stage production
 
 ### Port Conflicts
 
-```bash
-# Check what's using a port
-lsof -i :3000
+Every app runs on the port the workspace provisioned for it, and `gkm dev`
+checks them all before starting anything. When one is held it stops with
+`WorkspacePortsInUse`, naming the port and what holds it — usually a dev server
+a previous run left behind:
 
-# Use different ports
-gkm dev --app api --port 3100
+```bash
+# See what is listening on it
+lsof -nP -iTCP:3000 -sTCP:LISTEN
 ```
+
+Stop that process and run `gkm dev` again. To run a single app somewhere else,
+pass the port explicitly: `gkm dev --app api --port 3100`.
 
 ### Dependency Cycles
 

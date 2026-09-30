@@ -91,6 +91,7 @@ async function workspace(store?: string): Promise<NormalizedWorkspace> {
 
 export default defineWorkspace({
   name: '${project()}',
+  constructs: './src/constructs/**/*.ts',
   stages: { local: 'dev', deployed: ['staging', 'prod'] },
   secrets: {${store ? ` store: ${store}` : ''} },
 });
@@ -296,6 +297,7 @@ describe('pushStageSecrets / pullStageSecrets', () => {
 
 export default defineWorkspace({
   name: '${project()}',
+  constructs: './src/constructs/**/*.ts',
   stages: { local: 'dev', deployed: ['prod'] },
   apps: {
     api: { type: 'backend', path: 'apps/api', port: 3400 },
