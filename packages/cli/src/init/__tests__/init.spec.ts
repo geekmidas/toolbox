@@ -179,7 +179,19 @@ describe('initCommand', () => {
 			expect(
 				existsSync(join(projectDir, 'src/subscribers/user-events.ts')),
 			).toBe(true);
-			expect(existsSync(join(projectDir, 'src/events/types.ts'))).toBe(true);
+			// Events are a declared topic, not a hand-rolled publisher service
+			// reading a broker URL of its own.
+			expect(existsSync(join(projectDir, 'src/events'))).toBe(false);
+			const topics = await readFile(
+				join(projectDir, 'src/constructs/topics.ts'),
+				'utf8',
+			);
+			expect(topics).toContain("t.topic('users')");
+			const subscriber = await readFile(
+				join(projectDir, 'src/subscribers/user-events.ts'),
+				'utf8',
+			);
+			expect(subscriber).toContain('.topic(users)');
 		});
 
 		it('scaffolds a cron, and points it at where the schedule lives', async () => {
@@ -223,7 +235,7 @@ describe('initCommand', () => {
 			// Built from the worker, so it carries the worker's logger and says
 			// which process runs it — and handed a batch, which is what both
 			// transports deliver.
-			expect(subscriber).toContain('worker\n  .publisher(');
+			expect(subscriber).toContain('worker\n  .topic(users)');
 			expect(subscriber).toContain('async ({ events, logger })');
 		});
 	});

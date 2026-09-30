@@ -28,7 +28,7 @@ export function generateTestFiles(
 	const declares = !options.monorepo;
 	const schema = declares
 		? '../src/constructs/database.ts'
-		: '~/services/database.ts';
+		: `@${options.name}/constructs/database.ts`;
 
 	// Both layouts declare the same database, so both publish the same keys. A
 	// monorepo used to read a per-app secret here instead, and rendered the
@@ -65,8 +65,7 @@ export default defineConfig({
 		// test/config.ts - Wraps vitest `it` with transaction auto-rollback
 		{
 			path: 'test/config.ts',
-			content: declares
-				? `import { it as itVitest } from 'vitest';
+			content: `import { it as itVitest } from 'vitest';
 import { wrapVitestKyselyTransaction } from '@geekmidas/testkit/kysely';
 import { type Database, database } from '${schema}';
 
@@ -74,24 +73,6 @@ export const it = wrapVitestKyselyTransaction<Database>(itVitest, {
   // The construct itself, so the tests connect the way the app does — with
   // the plugins it was given, \`CamelCasePlugin\` included.
   connection: database,
-});
-`
-				: `import { it as itVitest } from 'vitest';
-import { Kysely, PostgresDialect } from 'kysely';
-import pg from 'pg';
-import { wrapVitestKyselyTransaction } from '@geekmidas/testkit/kysely';
-import type { Database } from '${schema}';
-
-const db = new Kysely<Database>({
-  dialect: new PostgresDialect({
-    pool: new pg.Pool({ connectionString: process.env.${runtimeUrl} }),
-  }),
-});
-
-export const it = wrapVitestKyselyTransaction<Database>(itVitest, {
-  // A function, or a construct: an instance is taken for a construct and has
-  // no service to register.
-  connection: () => db,
 });
 `,
 		},
@@ -171,7 +152,7 @@ export const usersBuilder = KyselyFactory.createBuilder<Database, 'users'>(
     id: faker.string.uuid(),
     name: faker.person.fullName(),
     email: faker.internet.email(),
-    ${declares ? 'createdAt' : 'created_at'}: new Date(),
+    createdAt: new Date(),
   }),
 );
 `,

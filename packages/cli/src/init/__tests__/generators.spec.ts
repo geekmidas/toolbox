@@ -640,8 +640,29 @@ describe('what a workspace runs its tools with', () => {
 		const files = generateTestFiles(options, apiTemplate);
 
 		expect(file(files, 'test/example.spec.ts')).toContain('async ({ trx })');
-		// A function: an instance is taken for a construct.
-		expect(file(files, 'test/config.ts')).toContain('connection: () => db');
+		// The root construct, not a client of its own: the workspace's API has no
+		// hand-rolled database service to import one from.
+		const config = file(files, 'test/config.ts');
+		expect(config).toContain('connection: database');
+		expect(config).toContain('/constructs/database.ts');
+		expect(config).not.toContain('services/');
+	});
+
+	// The API reaches its database and its auth server through the root's
+	// constructs. A hand-rolled service beside them was a second client — its
+	// own pool, its own copy of the schema — that nothing kept in step.
+	it('gives the API no hand-rolled services', () => {
+		const files = apiTemplate.files({ ...options, studio: true });
+
+		expect(files.map((f) => f.path)).not.toContainEqual(
+			expect.stringMatching(/^src\/services\//),
+		);
+		expect(file(files, 'src/router.ts')).toContain(
+			'router.session(async ({ auth })',
+		);
+		expect(file(files, 'src/config/studio.ts')).toContain(
+			'...database.clientConfig',
+		);
 	});
 
 	it('ships the migration its endpoints and test setup expect', () => {
