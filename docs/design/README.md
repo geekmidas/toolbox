@@ -6,6 +6,11 @@ This directory contains design documents, architectural decision records (ADRs),
 
 ### Active Planning
 
+- **[Access: Roles and Permissions as a Construct](./access.md)** - An `Access` construct owning roles, permissions and grants; `RestApi.access(access)` resolves a typed `session.permissions`, endpoints `.authorize('users.view')`; custom roles; tenant-scoped roles
+  - Status: Draft - open questions
+  - Impact: High - new construct, surface method and endpoint form
+  - First user: beetlefit
+
 - **[Constructs Paradigm: Resources as Constructs](./constructs-paradigm.md)** - Promote resources (bucket, database, cache, secret) to constructs; the `function → resource` dependency edge becomes the single primitive
   - Status: Draft
   - Impact: High - Core model change across constructs, manifest, cli, and cloud
