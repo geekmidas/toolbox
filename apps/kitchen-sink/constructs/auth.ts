@@ -34,9 +34,10 @@ export const authDb = database.schema<Record<string, never>, 'AuthDb'>(
  * forget, reuse, or leak, and no hash worth stealing — which also means the
  * auth server has a hard dependency on being able to *send*: the link is the
  * credential, so mail is not a nicety here but the whole login path. That is
- * why the options are a function — it is handed the same registration options
- * the construct got, so the mail client comes from the construct that owns it
- * rather than from a transport configured a second time.
+ * why the options are a function, and why the mailer is in `dependsOn`: it is
+ * declared as an edge and handed back as a client in `services`, so the mail
+ * client comes from the construct that owns it rather than from a transport
+ * configured a second time.
  */
 export const auth = new BetterAuth('Auth', {
 	path: 'apps/auth',
@@ -49,23 +50,22 @@ export const auth = new BetterAuth('Auth', {
 	//
 	// No `code` glob: this surface's routes are declared, not discovered —
 	// `declare()` returns the wildcard, and `auth.server()` mounts it.
-	options: async (options) => {
-		const mailer = await mail.service.register(options);
-
-		return {
-			plugins: [
-				magicLink({
-					sendMagicLink: async ({ email, url }) => {
-						await mailer.sendTemplate('magicLink', {
-							to: email,
-							subject: 'Your sign-in link',
-							props: { url },
-						});
-					},
-				}),
-			],
-		};
-	},
-	// What `options` reaches, declared: the mailer is an edge like the
-	// database, so the auth server's container is given the mail URL.
-}).dependsOn([mail]);
+	//
+	// What `options` uses, declared once: the mailer is an edge like the
+	// database — so the auth server's container is given the mail URL — and
+	// its client arrives in `services`, so there is no other way to reach it.
+	dependsOn: [mail],
+	options: async ({ services }) => ({
+		plugins: [
+			magicLink({
+				sendMagicLink: async ({ email, url }) => {
+					await services.mail.sendTemplate('magicLink', {
+						to: email,
+						subject: 'Your sign-in link',
+						props: { url },
+					});
+				},
+			}),
+		],
+	}),
+});

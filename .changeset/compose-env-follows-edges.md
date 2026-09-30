@@ -20,5 +20,8 @@ Found with it, in `@geekmidas/constructs`:
   edges — a container's environment, a deploy's grants — knew the endpoint
   reached a database. It is recorded like any `.dependsOn()`.
 - `BetterAuth` had no way to declare what its `options` use — the mailer a
-  magic link goes through, usually — so that edge was invisible. It has
-  `.dependsOn([...])` now.
+  magic link goes through, usually — so that edge was invisible, and `options`
+  imported and registered the construct by hand. Its config takes
+  `dependsOn: [...]` now: each construct is an edge on the server's handler,
+  and `options` receives a client for each in `services`, typed as an
+  endpoint's are — `options: async ({ services }) => …services.mail…`.
