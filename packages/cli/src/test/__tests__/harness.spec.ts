@@ -186,17 +186,21 @@ describe('writeTestHarness', () => {
 		);
 	});
 
-	it('types db by the schema of the database the endpoints name', async () => {
+	it('types db by every database construct, keyed by its service name', async () => {
 		await write();
 
 		const harness = await read(apps[0]!, 'index.ts');
 
-		// Imported as a type from where it is declared, relative to this copy.
+		// Each imported as a type from where it is declared, relative to this
+		// copy — the tenant as much as the database it lives in.
 		expect(harness).toMatch(
-			/import type \{ database as __database \} from '(\.\.\/)+.*constructs\/database\.js';/,
+			/import type \{ database as __Database \} from '(\.\.\/)+.*constructs\/database\.js';/,
+		);
+		expect(harness).toMatch(
+			/import type \{ authDatabase as __AuthDatabase \} from '(\.\.\/)+.*constructs\/database\.js';/,
 		);
 		expect(harness).toContain(
-			'featureTest<Browser, DatabaseOf<typeof __database>>({ manifest, modules, browser: Browser })',
+			'featureTest<Browser, { database: DatabaseOf<typeof __Database>; authDatabase: DatabaseOf<typeof __AuthDatabase> }>({ manifest, modules, browser: Browser })',
 		);
 	});
 
@@ -238,7 +242,7 @@ describe('writeTestHarness', () => {
 			"import { createFactory as __databaseFactory } from '../../../../test/factories/database.js';",
 		);
 		expect(harness).toContain(
-			'featureTest<Browser, DatabaseOf<typeof __database>, { authDatabase: typeof __authDatabaseFactory; database: typeof __databaseFactory }>' +
+			'featureTest<Browser, { database: DatabaseOf<typeof __Database>; authDatabase: DatabaseOf<typeof __AuthDatabase> }, { authDatabase: typeof __authDatabaseFactory; database: typeof __databaseFactory }>' +
 				'({ manifest, modules, browser: Browser, factories: { authDatabase: __authDatabaseFactory, database: __databaseFactory } })',
 		);
 	});

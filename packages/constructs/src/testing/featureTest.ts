@@ -76,11 +76,6 @@ export interface FeatureTestOptions<
 	/** The browser each test gets — the generated one, with the app's clients. */
 	browser?: new () => TBrowser;
 	/**
-	 * The database a test receives as `db`, by construct id. Defaults to the
-	 * one the app's endpoints name with `.database()`.
-	 */
-	database?: string;
-	/**
 	 * Each database's test factory — `createFactory` from
 	 * `test/factories/<construct>.ts`, which the generated harness imports —
 	 * keyed by the database's service name. Each is called once per test with
@@ -90,6 +85,14 @@ export interface FeatureTestOptions<
 	factories?: TFactories;
 }
 
+/** Each database's schema, keyed by its service name. */
+export type DatabaseSchemas = Record<string, unknown>;
+
+/** Each database's transaction for this test, keyed by its service name. */
+export type TransactionsOf<TDatabases extends DatabaseSchemas> = {
+	[K in keyof TDatabases]: Kysely<TDatabases[K]>;
+};
+
 /** Each database's factory, built on this test's transaction. */
 export type FactoriesOf<TFactories extends FactoryBuilders> = {
 	[K in keyof TFactories]: ReturnType<TFactories[K]>;
@@ -97,13 +100,17 @@ export type FactoriesOf<TFactories extends FactoryBuilders> = {
 
 export interface FeatureContext<
 	TBrowser extends TestBrowser,
-	DB,
+	TDatabases extends DatabaseSchemas = {},
 	TFactories extends FactoryBuilders = {},
 > {
 	/** This test's browser, already the global `fetch`. */
 	browser: TBrowser;
-	/** The app database's transaction for this test, rolled back after it. */
-	db: Kysely<DB>;
+	/**
+	 * Every database's transaction for this test, keyed by its service name —
+	 * `db.database`, `db.authDatabase` — each rolled back after it. The same
+	 * transactions the endpoints and the auth server are handed.
+	 */
+	db: TransactionsOf<TDatabases>;
 	/**
 	 * Each database's test factory, keyed by its service name —
 	 * `factories.database`, `factories.authDatabase` — each on that database's
@@ -166,28 +173,28 @@ export interface PublishedMessage {
 
 type FeatureFn<
 	TBrowser extends TestBrowser,
-	DB,
+	TDatabases extends DatabaseSchemas,
 	TFactories extends FactoryBuilders,
-> = (context: FeatureContext<TBrowser, DB, TFactories>) => unknown;
+> = (context: FeatureContext<TBrowser, TDatabases, TFactories>) => unknown;
 
 export interface FeatureIt<
 	TBrowser extends TestBrowser,
-	DB,
+	TDatabases extends DatabaseSchemas = {},
 	TFactories extends FactoryBuilders = {},
 > {
 	(
 		name: string,
-		fn: FeatureFn<TBrowser, DB, TFactories>,
+		fn: FeatureFn<TBrowser, TDatabases, TFactories>,
 		timeout?: number,
 	): void;
 	only(
 		name: string,
-		fn: FeatureFn<TBrowser, DB, TFactories>,
+		fn: FeatureFn<TBrowser, TDatabases, TFactories>,
 		timeout?: number,
 	): void;
 	skip(
 		name: string,
-		fn: FeatureFn<TBrowser, DB, TFactories>,
+		fn: FeatureFn<TBrowser, TDatabases, TFactories>,
 		timeout?: number,
 	): void;
 }
@@ -221,18 +228,16 @@ interface LoadedApp {
 	emails: Email[];
 	/** Every topic and queue — what a test's publishing is recorded for. */
 	channels: (Topic<any, any> | Queue<any, any>)[];
-	/** What `db` is. */
-	database?: KyselyDatabase;
 	readMail?: (address: string) => Mailbox;
 }
 
 export function featureTest<
 	TBrowser extends TestBrowser = TestBrowser,
-	DB = unknown,
+	TDatabases extends DatabaseSchemas = {},
 	TFactories extends FactoryBuilders = {},
 >(
 	options: FeatureTestOptions<TBrowser, TFactories> = {},
-): FeatureIt<TBrowser, DB, TFactories> {
+): FeatureIt<TBrowser, TDatabases, TFactories> {
 	const manifest = options.manifest ?? loadTestManifest();
 	const BrowserClass = (options.browser ?? TestBrowser) as new () => TBrowser;
 
@@ -242,7 +247,7 @@ export function featureTest<
 	let restoreFetch: () => void = () => {};
 
 	beforeAll(async () => {
-		app = await load(manifest, options.database, options.modules ?? {});
+		app = await load(manifest, options.modules ?? {});
 		factoryDatabases = databasesFor(options.factories ?? {}, app.databases);
 		for (const database of app.databases) bindToTests(database);
 
@@ -269,7 +274,8 @@ export function featureTest<
 	});
 
 	const run =
-		(fn: FeatureFn<TBrowser, DB, TFactories>) => async (): Promise<void> => {
+		(fn: FeatureFn<TBrowser, TDatabases, TFactories>) =>
+		async (): Promise<void> => {
 			const id = randomUUID();
 			const state: ContextState = {
 				transactions: new TransactionRegistry(),
@@ -289,26 +295,26 @@ export function featureTest<
 					const browser = new BrowserClass();
 					const restore = browser.install();
 					try {
-						const db = app.database
-							? ((await state.transactions.get(
-									app.database.id,
-									urlOf(app.database, app.envParser),
-									app.database.clientConfig,
-								)) as Kysely<DB>)
-							: (undefined as never);
-						const factories: Record<string, unknown> = {};
-						for (const [name, database] of factoryDatabases) {
-							factories[name] = options.factories![name]!(
+						// Every database, on this test's transaction for it — the one
+						// its endpoints and the auth server resolve to as well.
+						const transactions: Record<string, Kysely<any>> = {};
+						for (const database of app.databases) {
+							transactions[database.service.serviceName] =
 								(await state.transactions.get(
 									database.id,
 									urlOf(database, app.envParser),
 									database.clientConfig,
-								)) as Kysely<any>,
+								)) as Kysely<any>;
+						}
+						const factories: Record<string, unknown> = {};
+						for (const [name, database] of factoryDatabases) {
+							factories[name] = options.factories![name]!(
+								transactions[database.service.serviceName]!,
 							);
 						}
 						await fn({
 							browser,
-							db,
+							db: transactions as TransactionsOf<TDatabases>,
 							factories: factories as FactoriesOf<TFactories>,
 							mailbox: (address) => {
 								if (!app.readMail) throw new NoInbox();
@@ -327,7 +333,7 @@ export function featureTest<
 								new TestQueueAdaptor(queue, state.discovery) as QueueAdaptorOf<
 									typeof queue
 								>,
-						} as FeatureContext<TBrowser, DB, TFactories>);
+						} as FeatureContext<TBrowser, TDatabases, TFactories>);
 					} finally {
 						restore();
 					}
@@ -345,7 +351,7 @@ export function featureTest<
 
 	const it = ((name, fn, timeout) => test(name, run(fn), timeout)) as FeatureIt<
 		TBrowser,
-		DB,
+		TDatabases,
 		TFactories
 	>;
 	it.only = (name, fn, timeout) => test.only(name, run(fn), timeout);
@@ -361,7 +367,6 @@ export function featureTest<
  */
 async function load(
 	manifest: TestManifest,
-	database: string | undefined,
 	modules: Readonly<Record<string, Record<string, unknown>>>,
 ): Promise<LoadedApp> {
 	const envParser = new EnvironmentParser({ ...manifest.env });
@@ -418,7 +423,6 @@ async function load(
 		auths,
 		emails,
 		channels,
-		database: databaseOf(databases, endpoints, database),
 		...(inbox ? { readMail: createMailbox({ inbox }) } : {}),
 	};
 }
@@ -463,32 +467,6 @@ function databasesFor(
 		}
 		return [name, database];
 	});
-}
-
-/**
- * The database a test sees as `db`: the one named, or else the one the
- * endpoints were given with `.database()` — found by the service they hold,
- * which is the construct's own.
- */
-function databaseOf(
-	databases: KyselyDatabase[],
-	endpoints: Endpoint<any, any, any, any>[],
-	named: string | undefined,
-): KyselyDatabase | undefined {
-	if (named) {
-		const found = databases.find(({ id }) => id === named);
-		if (!found)
-			throw new UnknownDatabase(
-				named,
-				databases.map(({ id }) => id),
-			);
-		return found;
-	}
-
-	const services = new Set<unknown>(
-		endpoints.map((e) => e.databaseService).filter(Boolean),
-	);
-	return databases.find((database) => services.has(database.service));
 }
 
 /**
@@ -651,19 +629,5 @@ export class UnknownFactory extends Error {
 				`Name the file after the database construct: test/factories/<construct>.ts.`,
 		);
 		this.name = 'UnknownFactory';
-	}
-}
-
-/** `featureTest({ database })` named a database the app does not declare. */
-export class UnknownDatabase extends Error {
-	constructor(
-		readonly id: string,
-		readonly declared: string[],
-	) {
-		super(
-			`featureTest was asked for the database '${id}', and the app declares ` +
-				`${declared.length ? declared.map((d) => `'${d}'`).join(', ') : 'none'}.`,
-		);
-		this.name = 'UnknownDatabase';
 	}
 }

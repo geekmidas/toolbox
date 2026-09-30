@@ -11,6 +11,7 @@ export { TestQueueAdaptor } from '../queue/TestQueueAdaptor';
 export { TestSubscriberAdaptor } from '../subscribers/TestSubscriberAdaptor';
 export {
 	type DatabaseOf,
+	type DatabaseSchemas,
 	type FactoriesOf,
 	type FactoryBuilders,
 	type FeatureContext,
@@ -18,7 +19,7 @@ export {
 	type FeatureTestOptions,
 	featureTest,
 	NoInbox,
-	UnknownDatabase,
+	type TransactionsOf,
 	UnknownFactory,
 	UnknownTestContext,
 } from '../testing/featureTest';

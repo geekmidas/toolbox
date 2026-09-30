@@ -86,7 +86,7 @@ describe('the subscriber', () => {
 			],
 		});
 
-		const rows = await db
+		const rows = await db.database
 			.selectFrom('notifications')
 			.select(['user_id', 'type', 'body'])
 			.where('user_id', 'in', [ada.id, grace.id])

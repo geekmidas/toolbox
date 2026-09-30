@@ -7,10 +7,7 @@ import type { Browser } from '#test';
  * later request from this browser carries it.
  */
 export async function signIn(
-	{
-		browser,
-		mailbox,
-	}: Pick<FeatureContext<Browser, unknown>, 'browser' | 'mailbox'>,
+	{ browser, mailbox }: Pick<FeatureContext<Browser>, 'browser' | 'mailbox'>,
 	email: string,
 ): Promise<void> {
 	await browser.auth.signIn.magicLink({ email });

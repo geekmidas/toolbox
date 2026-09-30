@@ -944,8 +944,12 @@ it('shows the signed-in user their profile', async ({ browser, mailbox }) => {
 - **`browser`** — already the global `fetch`; its cookie jar follows the
   browser's rules, so a session cookie set for the wrong domain never reaches
   the API.
-- **`db`** — the transaction of the database the endpoints name, typed by its
-  schema.
+- **`db`** — every database construct's transaction for this test, keyed by
+  its service name (`db.database`, `db.authDatabase`), each typed by its
+  schema. The endpoints and the auth server are handed the same transactions.
+- **`factories`** — each database's factory, from
+  `test/factories/<construct>.ts` at the project root, keyed the same way and
+  built on the same transaction: `factories.database.insert('users', …)`.
 - **`mailbox(address)`** — the mail actually sent, read from Mailpit.
 - **`published(topic | queue)`** — what the test published or enqueued.
   Nothing is delivered: a subscriber or a worker is run on its own with
