@@ -18,7 +18,12 @@
  * point these apps at the test databases.
  */
 
-import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
+import {
+	type ConstructManifest,
+	dependenciesOf,
+	provisionOrder,
+	publicEnvFor,
+} from '@geekmidas/manifest';
 import { appKey } from '../workspace/derive.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import type { ComposeService } from './compose.js';
@@ -99,11 +104,101 @@ export function inNetworkEnv(
 	);
 }
 
+/**
+ * The keys one app's environment may hold: what its own declaration provides
+ * and requires, and what each construct it has an edge to provides.
+ *
+ * The edges, not the manifest. Every app used to be handed every key the
+ * workspace resolved — a web app got the database's owner URL and the auth
+ * server's signing secret, and the API got the auth server's database — which
+ * is exactly what a declared edge exists to rule out. A deploy composes an
+ * app's environment from its edges; so does this.
+ *
+ * One hop: a surface an app calls is reached over HTTP, so its URL is the
+ * app's business and its database is not. A site also gets the public
+ * variant of each key its bundle inlines (`NEXT_PUBLIC_API_URL`), and a surface
+ * the edges of the workers whose crons and subscribers its server runs.
+ *
+ * `undefined` for an app no declaration describes, which gets nothing but its
+ * port.
+ */
+export function appEnvKeys(
+	manifest: ConstructManifest,
+	appName: string,
+	/** Each owner's runnables' edges, from discovery — see `DiscoverOptions`. */
+	runnables: Readonly<Record<string, readonly string[]>> = {},
+): Set<string> | undefined {
+	const entry = Object.entries(manifest).find(
+		([id, d]) =>
+			(d.kind === 'rest-api' || d.kind === 'site') && appKey(id) === appName,
+	);
+	if (!entry) return undefined;
+	const [id, declaration] = entry;
+
+	const keys = new Set<string>([
+		...(declaration.provides ?? []),
+		...(declaration.requires ?? []),
+		// A handler the surface declares itself — an auth server's wildcard —
+		// states what it needs on the handler.
+		...(declaration.kind === 'rest-api'
+			? declaration.endpoints.flatMap((endpoint) => endpoint.requires ?? [])
+			: []),
+	]);
+
+	const edges = [
+		...dependenciesOf(declaration).map((edge) => edge.target),
+		// The endpoints the glob found, which the surface's node does not list.
+		...(runnables[id] ?? []),
+	];
+	// The server the build generates — a surface whose endpoints the glob finds,
+	// so it declares none — also runs the workers' crons and subscribers. One
+	// that serves itself (an auth server's wildcard) runs only its own handler.
+	if (declaration.kind === 'rest-api' && declaration.endpoints.length === 0) {
+		for (const [otherId, other] of Object.entries(manifest)) {
+			if (other.kind !== 'worker') continue;
+			edges.push(
+				...dependenciesOf(other).map((edge) => edge.target),
+				...(runnables[otherId] ?? []),
+			);
+			// A server schedules its crons through the broker.
+			keys.add('EVENT_PUBLISHER_CONNECTION_STRING');
+			keys.add('EVENT_SUBSCRIBER_CONNECTION_STRING');
+		}
+	}
+
+	for (const id of edges) {
+		const target = manifest[id];
+		if (!target) continue;
+		for (const key of target.provides ?? []) keys.add(key);
+
+		if (target.kind === 'queue' || target.kind === 'topic') {
+			keys.add('EVENT_PUBLISHER_CONNECTION_STRING');
+			keys.add('EVENT_SUBSCRIBER_CONNECTION_STRING');
+		}
+		// The S3 client reads its credentials beside the URL, not in it. A file
+		// server is reached by its URL alone.
+		if (target.kind === 'objects') {
+			keys.add('AWS_ACCESS_KEY_ID');
+			keys.add('AWS_SECRET_ACCESS_KEY');
+			keys.add('AWS_REGION');
+		}
+	}
+
+	if (declaration.kind === 'site') {
+		for (const key of Object.keys(publicEnvFor(declaration, manifest))) {
+			keys.add(key);
+		}
+	}
+
+	return keys;
+}
+
 /** One compose service per app the workspace runs, behind the apps profile. */
 export function appServices(
 	workspace: NormalizedWorkspace,
 	manifest: ConstructManifest,
 	containers: readonly string[],
+	runnables: Readonly<Record<string, readonly string[]>> = {},
 ): Record<string, ComposeService> {
 	const env = inNetworkEnv(workspace, manifest);
 	const services: Record<string, ComposeService> = {};
@@ -114,6 +209,10 @@ export function appServices(
 
 		const key = appKey(name);
 		const health = app.type === 'web' ? '/' : '/health';
+		const allowed = appEnvKeys(manifest, name, runnables);
+		const own = Object.fromEntries(
+			Object.entries(env).filter(([envKey]) => allowed?.has(envKey)),
+		);
 
 		services[key] = {
 			image: `${key}:\${TAG:-latest}`,
@@ -123,7 +222,7 @@ export function appServices(
 			environment: {
 				NODE_ENV: 'production',
 				PORT: String(app.port),
-				...env,
+				...own,
 			},
 			// The edge fronts the host's browser; apps talk to each other directly.
 			...(containers.some((c) => c !== 'caddy')

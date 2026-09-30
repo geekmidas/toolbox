@@ -129,6 +129,29 @@ describe('BetterAuth.declare', () => {
 		]);
 	});
 
+	// Whatever `options` reaches — the mailer a magic link goes through — is
+	// invisible to the graph unless declared; declared, it is an edge on the
+	// handler beside the database.
+	it('declares what its options reach as edges on its handler', () => {
+		const mailer = new KyselyDatabase('Mailer');
+		const construct = new BetterAuth('Auth', {
+			database: tenant,
+			path: 'apps/auth',
+		}).dependsOn([mailer]);
+
+		const surface = construct
+			.declare()
+			.find((declaration) => declaration.kind === 'rest-api');
+
+		expect(
+			surface?.kind === 'rest-api' && surface.endpoints[0]?.dependencies,
+		).toEqual([
+			{ target: 'AuthDb', kind: 'database' },
+			{ target: 'Mailer', kind: 'database' },
+		]);
+		expect(construct.id).toBe('Auth');
+	});
+
 	it('mounts its routes under the base path it was given', () => {
 		const construct = auth({}, '/auth');
 

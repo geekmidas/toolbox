@@ -75,6 +75,18 @@ export interface DiscoverOptions {
 	 * caller, which wants the manifest and nothing else, is unchanged.
 	 */
 	sources?: Record<string, ConstructSource>;
+	/**
+	 * Filled in, when provided, with the ids each owner's runnables declared an
+	 * edge to — keyed by the surface an endpoint was built from, or the worker
+	 * a cron or subscriber was.
+	 *
+	 * A runnable is not a declaration: a surface's endpoints are found by the
+	 * glob, not listed by the surface, so its node says `endpoints: []` until a
+	 * build folds the routes in. Anything deciding what an app's process reaches
+	 * — which keys its container is given — needs those edges before any build,
+	 * and discovery is already importing the files they are in.
+	 */
+	runnables?: Record<string, string[]>;
 }
 
 /** Where a construct was declared, and under what name. */
@@ -144,7 +156,10 @@ export async function discover(
 		const module = await import(bustCache ? `${file}?t=${Date.now()}` : file);
 
 		for (const [exportName, exported] of Object.entries(module)) {
-			if (!isDeclarable(exported)) continue;
+			if (!isDeclarable(exported)) {
+				if (options.runnables) recordRunnable(options.runnables, exported);
+				continue;
+			}
 
 			// The same construct, reached again through a re-export. Skipped
 			// rather than re-declared: it has already claimed its id, from the
@@ -177,6 +192,40 @@ export async function discover(
 	warnIfNothingFound(globs, matched, Object.keys(manifest).length);
 
 	return manifest;
+}
+
+/**
+ * Record a runnable's edges under the construct that owns it — the surface an
+ * endpoint was built from, or the worker a cron or subscriber was. Anything
+ * with no owner, or that is not a runnable at all, is left alone.
+ */
+function recordRunnable(
+	runnables: Record<string, string[]>,
+	exported: unknown,
+): void {
+	if (typeof exported !== 'object' || exported === null) return;
+
+	const runnable = exported as {
+		surface?: { id?: unknown };
+		owner?: unknown;
+		constructs?: unknown;
+	};
+	const owner =
+		typeof runnable.surface?.id === 'string'
+			? runnable.surface.id
+			: typeof runnable.owner === 'string'
+				? runnable.owner
+				: undefined;
+	if (!owner || !Array.isArray(runnable.constructs)) return;
+
+	const key = canonicalId(owner);
+	const edges = runnables[key] ?? [];
+	runnables[key] = edges;
+	for (const id of runnable.constructs) {
+		if (typeof id !== 'string') continue;
+		const target = canonicalId(id);
+		if (!edges.includes(target)) edges.push(target);
+	}
 }
 
 /**

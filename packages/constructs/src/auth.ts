@@ -123,6 +123,8 @@ export class BetterAuth<
 	constructor(
 		id: ConstructName<TName>,
 		private readonly config: BetterAuthConfig<TDatabase>,
+		/** Internal: how `.dependsOn()` carries its constructs into the copy. */
+		private readonly uses: readonly Consumable[] = [],
 	) {
 		const canonical = canonicalId(id as string);
 
@@ -161,6 +163,29 @@ export class BetterAuth<
 	 * surface's job is to send everything under `basePath` to one handler, which
 	 * is exactly what the declaration says.
 	 */
+	/**
+	 * Constructs the auth server's `options` reach.
+	 *
+	 * `options` can register any service — the mailer a magic link is sent
+	 * through, most often — and nothing about a callback says which. Declared
+	 * here, each is an edge on the server's handler like its database is, so
+	 * whatever is composed from the edges (a deploy's grants, a container's
+	 * environment) includes it. Undeclared, the auth server's container was
+	 * given no mail URL and its first magic link failed.
+	 *
+	 * @example
+	 * ```ts
+	 * export const auth = new BetterAuth('Auth', { … }).dependsOn([email]);
+	 * ```
+	 */
+	dependsOn(constructs: readonly Consumable[]): BetterAuth<TName, TDatabase> {
+		return new BetterAuth<TName, TDatabase>(
+			this.id as ConstructName<TName>,
+			this.config,
+			[...this.uses, ...constructs],
+		);
+	}
+
 	declare(): Declaration[] {
 		return [
 			{
@@ -187,7 +212,10 @@ export class BetterAuth<
 						// construct takes whatever database it is given, and a
 						// hardcoded kind is a second statement of a fact the
 						// tenant already makes.
-						dependencies: [edgeTo(this.config.database)],
+						dependencies: [
+							edgeTo(this.config.database),
+							...this.uses.map(edgeTo),
+						],
 						requires: [this.keys.secret],
 					},
 				],

@@ -66,4 +66,6 @@ export const auth = new BetterAuth('Auth', {
 			],
 		};
 	},
-});
+	// What `options` reaches, declared: the mailer is an edge like the
+	// database, so the auth server's container is given the mail URL.
+}).dependsOn([mail]);

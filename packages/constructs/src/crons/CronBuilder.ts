@@ -9,6 +9,7 @@ import { cloneWith } from '../clone';
 import {
 	type Consumable,
 	idsOf,
+	isConsumable,
 	type ServicesOf,
 	serviceOf,
 	servicesOf,
@@ -271,6 +272,10 @@ export class CronBuilder<
 				TDatabaseServiceName,
 				TDatabase
 			>,
+			// The edge, as `.dependsOn()` records one — see EndpointFactory.
+			...(isConsumable(source)
+				? { _constructs: idsOf([source], this._constructs) }
+				: {}),
 		}) as unknown as CronBuilder<
 			TInput,
 			TServices,

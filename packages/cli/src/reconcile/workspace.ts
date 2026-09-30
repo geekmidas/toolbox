@@ -87,12 +87,15 @@ export async function reconcileWorkspace(
 	workspace: NormalizedWorkspace,
 	options: WorkspaceReconcileOptions,
 ): Promise<ReconcileResult> {
-	const manifest =
-		options.manifest ??
-		(await discover({
-			patterns: constructGlobs(workspace),
-			cwd: workspace.root,
-		}));
+	// Discovered here even when a manifest was handed in: the apps' services
+	// are given the keys their runnables reach, and only discovery sees those.
+	const runnables: Record<string, string[]> = {};
+	const discovered = await discover({
+		patterns: constructGlobs(workspace),
+		cwd: workspace.root,
+		runnables,
+	});
+	const manifest = options.manifest ?? discovered;
 
 	const result = await reconcile({
 		root: workspace.root,
@@ -103,7 +106,8 @@ export async function reconcileWorkspace(
 		...backendsOf(workspace),
 		saved: await loadPortState(workspace.root),
 		addresses: surfaceAddresses(workspace, manifest),
-		apps: (containers) => appServices(workspace, manifest, containers),
+		apps: (containers) =>
+			appServices(workspace, manifest, containers, runnables),
 		...(options.start === undefined ? {} : { start: options.start }),
 	});
 

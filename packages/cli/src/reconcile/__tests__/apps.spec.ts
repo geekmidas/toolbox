@@ -72,11 +72,73 @@ describe('inNetworkEnv', () => {
 	});
 });
 
+/**
+ * The graph an app's environment is composed from: an API whose endpoints use
+ * the `Auth` tenant — edges the glob finds, not the surface's own node — and a
+ * site that calls the API. `Orders` is reached by nothing.
+ */
+const withApps = {
+	...manifest,
+	Api: {
+		kind: 'rest-api',
+		id: 'Api',
+		path: 'apps/api',
+		endpoints: [],
+		provides: ['API_URL', 'API_TRUSTED_ORIGINS', 'API_COOKIE_DOMAIN'],
+	},
+	Web: {
+		kind: 'site',
+		id: 'Web',
+		variant: 'static',
+		app: { path: 'apps/web' },
+		dependencies: [{ target: 'Api', kind: 'rest-api' }],
+		provides: ['WEB_URL'],
+	},
+	Signer: {
+		kind: 'rest-api',
+		id: 'Signer',
+		path: 'apps/signer',
+		provides: ['SIGNER_URL'],
+		endpoints: [
+			{
+				id: 'SignerHandler',
+				handler: 'Signer.handler',
+				method: 'ANY',
+				path: '/*',
+				dependencies: [],
+				requires: ['SIGNER_SECRET'],
+			},
+		],
+	},
+	SignerSecret: {
+		kind: 'secret',
+		id: 'SignerSecret',
+		provides: ['SIGNER_SECRET'],
+	},
+} as unknown as ConstructManifest;
+
+const withAppsWorkspace = {
+	...workspace,
+	apps: {
+		api: workspace.apps.api,
+		web: { ...workspace.apps.api, type: 'web', path: 'apps/web', port: 3002 },
+		signer: { ...workspace.apps.api, path: 'apps/signer', port: 3004 },
+	},
+} as unknown as NormalizedWorkspace;
+
+/** What the glob found: the API's endpoints use the tenant. */
+const runnables = { Api: ['Auth'] };
+
 describe('appServices', () => {
 	it('builds each app from its Dockerfile, behind the apps profile', () => {
-		const services = appServices(workspace, manifest, ['postgres']);
+		const services = appServices(
+			withAppsWorkspace,
+			withApps,
+			['postgres'],
+			runnables,
+		);
 
-		expect(Object.keys(services)).toEqual(['api']);
+		expect(Object.keys(services)).toEqual(['api', 'web', 'signer']);
 		expect(services.api).toMatchObject({
 			build: { context: '.', dockerfile: '.gkm/docker/Dockerfile.api' },
 			profiles: [APPS_PROFILE],
@@ -87,7 +149,35 @@ describe('appServices', () => {
 			NODE_ENV: 'production',
 			PORT: '3000',
 		});
-		expect(services.api?.environment?.ORDERS_URL).toContain('@postgres:5432/');
+		expect(services.api?.environment?.AUTH_URL).toContain('@postgres:5432/');
+	});
+
+	// Every app used to be handed every key the workspace resolved — a site got
+	// the database's owner URL. An app's environment is its edges.
+	describe('an app gets what its edges reach, and nothing else', () => {
+		const env = (app: string) =>
+			appServices(withAppsWorkspace, withApps, ['postgres'], runnables)[app]
+				?.environment ?? {};
+
+		it('gives the API the tenant its endpoints use, and not the database nothing reaches', () => {
+			expect(env('api')).toHaveProperty('AUTH_URL');
+			expect(env('api')).toHaveProperty('API_URL');
+			expect(env('api')).not.toHaveProperty('ORDERS_URL');
+			expect(env('api')).not.toHaveProperty('WEB_URL');
+		});
+
+		it('gives a site what it calls, and the public variant its bundle inlines', () => {
+			expect(env('web')).toHaveProperty('API_URL');
+			expect(env('web')).toHaveProperty('VITE_API_URL');
+			expect(env('web')).toHaveProperty('WEB_URL');
+			expect(env('web')).not.toHaveProperty('AUTH_URL');
+			expect(env('web')).not.toHaveProperty('ORDERS_URL');
+		});
+
+		it('gives a surface what its own handler requires', () => {
+			expect(env('signer')).toHaveProperty('SIGNER_SECRET');
+			expect(env('signer')).not.toHaveProperty('AUTH_URL');
+		});
 	});
 
 	it('builds a single-app project from its one Dockerfile', () => {
