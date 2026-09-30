@@ -253,6 +253,27 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 		};
 	}
 
+	/**
+	 * What this database's clients are built with besides a dialect — the
+	 * plugins and logging it was declared with.
+	 *
+	 * Public so that whatever opens a connection to it outside \`connect()\` —
+	 * a test's transaction — builds the same client. A test that dropped the
+	 * plugins would write \`createdAt\` where production writes \`created_at\`.
+	 */
+	get clientConfig(): Omit<KyselyConfig, 'dialect'> {
+		// Split what the manifest declared from what Kysely takes, so neither
+		// leaks into the other: \`schema\`, \`roles\` and \`version\` describe
+		// infrastructure and mean nothing to a client.
+		const {
+			schema: _schema,
+			roles: _roles,
+			version: _version,
+			...kysely
+		} = this.options;
+		return kysely;
+	}
+
 	private async connect(
 		options: ServiceRegisterOptions,
 		as: { owner?: boolean } = {},
@@ -264,13 +285,8 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 			}))
 			.parse();
 
-		// Split what the manifest declared from what Kysely takes, so neither
-		// leaks into the other: `schema` and `roles` describe infrastructure and
-		// mean nothing to a client.
-		const { schema: _schema, roles: _roles, ...kysely } = this.options;
-
 		return new Kysely<DB>({
-			...kysely,
+			...this.clientConfig,
 			dialect: new PostgresDialect({
 				pool: pool(as.owner ? (ownerUrl ?? url) : url),
 			}),

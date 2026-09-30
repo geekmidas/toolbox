@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { sql } from 'kysely';
+import { CamelCasePlugin, type Kysely, sql } from 'kysely';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { TEST_DATABASE_CONFIG } from '../../test/globalSetup';
@@ -91,6 +91,27 @@ describe('openBoundTransaction', () => {
 			tx.db,
 		);
 		expect(rows.rows.map((r) => r.email)).toEqual(['kept@shop.test']);
+		await tx.rollback();
+	});
+	// The code under test is handed this Kysely in place of its own. Built
+	// without the database's plugins, it wrote `signedUpAt` to a table whose
+	// column is `signed_up_at`, and a test failed on code production ran fine.
+	it('builds the client the database’s own config describes', async () => {
+		await committed(
+			`CREATE TABLE "${schema}".members (signed_up_at text NOT NULL)`,
+		);
+		const tx = await openBoundTransaction(tenantUrl, {
+			plugins: [new CamelCasePlugin()],
+		});
+		const db = tx.db as unknown as Kysely<{
+			members: { signedUpAt: string };
+		}>;
+
+		await db.insertInto('members').values({ signedUpAt: 'today' }).execute();
+
+		expect(await db.selectFrom('members').selectAll().execute()).toEqual([
+			{ signedUpAt: 'today' },
+		]);
 		await tx.rollback();
 	});
 });
