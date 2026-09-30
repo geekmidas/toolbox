@@ -197,6 +197,49 @@ export class NotAConstruct extends Error {
  * `@geekmidas/constructs` — a linked workspace, two versions in a lockfile — is
  * still a construct, and `instanceof` is exactly the check that says otherwise.
  */
+/**
+ * The construct a service was derived from — the \`users\` topic, for
+ * \`users.publisher\`. A symbol, so it rides on the service object without
+ * becoming part of its shape.
+ */
+const DERIVED_FROM = Symbol.for('@geekmidas/constructs/derivedFrom');
+
+/**
+ * Mark a service as standing for the construct it was derived from.
+ *
+ * \`.publisher(users.publisher)\` takes a service, not the topic, and an id
+ * cannot be recovered from a service name. Without the mark the edge was lost:
+ * the manifest never heard that the API publishes to \`users\`, so the app's
+ * container was composed without \`USERS_PUBLISHER_CONNECTION_STRING\`.
+ */
+export function derivedFrom<S extends Service>(
+	service: S,
+	construct: { id: string },
+): S {
+	Object.defineProperty(service, DERIVED_FROM, { value: construct.id });
+	return service;
+}
+
+/**
+ * \`existing\`, with the edge a service stands for — a construct's own id, or
+ * the id a derived service was marked with. Unchanged for a plain service.
+ */
+export function edgesWith(
+	service: unknown,
+	existing: readonly string[] = [],
+): string[] {
+	if (isConsumable(service)) return idsOf([service], existing);
+
+	const id =
+		typeof service === 'object' && service !== null
+			? (service as { [DERIVED_FROM]?: unknown })[DERIVED_FROM]
+			: undefined;
+
+	return typeof id === 'string'
+		? [...new Set([...existing, id])]
+		: [...existing];
+}
+
 export function isConsumable(value: unknown): value is Consumable {
 	if (typeof value !== 'object' || value === null) return false;
 

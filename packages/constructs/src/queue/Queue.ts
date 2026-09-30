@@ -16,6 +16,7 @@ import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceRecord } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Construct, ConstructType } from '../Construct';
+import { derivedFrom } from '../construct-interface';
 
 /**
  * The wire message a queue carries: `{ type: <queue name>, payload: <message> }`.
@@ -176,20 +177,25 @@ export class Queue<
 		EventPublisher<QueueMessage<TName, TMessage>>
 	> {
 		const envVar = this.connectionKey;
-		return {
-			serviceName: `${this.name}Publisher`,
-			async register({ envParser }) {
-				const { connectionString } = envParser
-					.create((get) => ({
-						connectionString: get(envVar).string(),
-					}))
-					.parse();
+		// Marked with this construct, so whatever it is injected into records an
+		// edge to it — and is given this construct's connection string.
+		return derivedFrom(
+			{
+				serviceName: `${this.name}Publisher`,
+				async register({ envParser }) {
+					const { connectionString } = envParser
+						.create((get) => ({
+							connectionString: get(envVar).string(),
+						}))
+						.parse();
 
-				return Publisher.fromConnectionString<QueueMessage<TName, TMessage>>(
-					connectionString as EventPublisherConnectionString,
-				);
+					return Publisher.fromConnectionString<QueueMessage<TName, TMessage>>(
+						connectionString as EventPublisherConnectionString,
+					);
+				},
 			},
-		};
+			this,
+		);
 	}
 }
 

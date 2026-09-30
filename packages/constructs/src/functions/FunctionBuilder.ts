@@ -9,6 +9,7 @@ import { ConstructType } from '../Construct';
 import { cloneWith } from '../clone';
 import {
 	type Consumable,
+	edgesWith,
 	idsOf,
 	isConsumable,
 	type ServicesOf,
@@ -262,6 +263,8 @@ export class FunctionBuilder<
 		TAuditAction
 	> {
 		return cloneWith(this, {
+			// The topic a derived publisher stands for is an edge like `.dependsOn()`.
+			_constructs: edgesWith(publisher, this._constructs),
 			_publisher: publisher as unknown as Service<
 				TEventPublisherServiceName,
 				TEventPublisher

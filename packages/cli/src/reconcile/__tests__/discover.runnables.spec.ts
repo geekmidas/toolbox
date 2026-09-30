@@ -26,22 +26,26 @@ describe('discover — runnables', () => {
 			`import { KyselyDatabase } from '@geekmidas/constructs/database/kysely';
 import { ObjectStorage } from '@geekmidas/constructs/object-storage';
 import { RestApi } from '@geekmidas/constructs/rest-api';
+import { t } from '@geekmidas/constructs/topic';
 import { Worker } from '@geekmidas/constructs/worker';
 
 export const orders = new KyselyDatabase('Orders');
 export const uploads = new ObjectStorage('Uploads');
 export const api = new RestApi('Api', { path: '.', defaultAuthorizer: 'none' });
 export const jobs = new Worker('Jobs');
+export const users = t.topic('users').events({});
 `,
 		);
 		await createTestFile(
 			dir,
 			'endpoints/orders.ts',
-			`import { api, orders, uploads } from '../constructs/index.js';
+			`import { api, orders, uploads, users } from '../constructs/index.js';
 
-// The database through the surface's branch, the bucket per endpoint.
+// The database through the surface's branch, the bucket per endpoint, and the
+// topic through the publisher derived from it.
 export const listOrders = api
 	.database(orders)
+	.publisher(users.publisher)
 	.get('/orders')
 	.dependsOn([uploads])
 	.handle(async () => null);
@@ -76,8 +80,10 @@ export const nightly = jobs
 		// The surface's own node is unchanged — the edges are beside it.
 		expect(manifest.Api).toMatchObject({ kind: 'rest-api', endpoints: [] });
 		expect(runnables).toEqual({
-			// `api.database(orders)` is an edge like `.dependsOn()`.
-			Api: ['Orders', 'Uploads'],
+			// `api.database(orders)` is an edge like `.dependsOn()`, and so is
+			// `.publisher(users.publisher)`: without it the API's container was
+			// composed without `USERS_PUBLISHER_CONNECTION_STRING`.
+			Api: ['Orders', 'Users', 'Uploads'],
 			Jobs: ['Orders'],
 		});
 	});

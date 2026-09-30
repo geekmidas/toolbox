@@ -10,6 +10,7 @@ import type { Service } from '@geekmidas/services';
 import uniqBy from 'lodash.uniqby';
 import {
 	type Consumable,
+	edgesWith,
 	idsOf,
 	isConsumable,
 	type ServicesOf,
@@ -740,7 +741,9 @@ export class EndpointFactory<
 			TRlsConfig
 		>({
 			defaultServices: this.defaultServices,
-			defaultConstructs: this.defaultConstructs,
+			// An edge, as \`.database()\` is: a publisher derived from a topic is
+			// what makes the app need that topic's connection string.
+			defaultConstructs: edgesWith(publisher, this.defaultConstructs),
 			basePath: this.basePath,
 			defaultAuthorizeFn: this.defaultAuthorizeFn,
 			defaultLogger: this.defaultLogger,
