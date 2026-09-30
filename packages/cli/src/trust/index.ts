@@ -230,7 +230,15 @@ export async function isTrusted(url: string): Promise<boolean> {
 	try {
 		await run(
 			process.execPath,
-			['-e', `fetch(${JSON.stringify(url)}).then(()=>0,()=>process.exit(1))`],
+			[
+				// The operating system's store — where `gkm trust` installs the root,
+				// and what a browser reads. Without it Node checks only its own
+				// bundled authorities, so an installed root still read as untrusted
+				// and every run asked again.
+				'--use-system-ca',
+				'-e',
+				`fetch(${JSON.stringify(url)}).then(()=>0,()=>process.exit(1))`,
+			],
 			{ env, timeout: 15_000 },
 		);
 

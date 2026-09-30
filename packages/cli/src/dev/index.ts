@@ -1,6 +1,7 @@
 import { type ChildProcess, execSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import chokidar from 'chokidar';
 import fg from 'fast-glob';
@@ -26,13 +27,14 @@ import {
 	loadSecretsForApp,
 	prepareEntryCredentials,
 } from '../credentials';
-import { OPENAPI_OUTPUT_PATH, resolveOpenApiConfig } from '../openapi';
+import { resolveOpenApiConfig } from '../openapi';
 import { reconcileWorkspace } from '../reconcile/workspace.js';
 import {
 	readStageSecrets,
 	secretsExist,
 	toEmbeddableSecrets,
 } from '../secrets/storage.js';
+import { ensureTrusted } from '../trust/index.js';
 import type {
 	GkmConfig,
 	LegacyProvider,
@@ -43,6 +45,7 @@ import type {
 	TelescopeConfig,
 } from '../types';
 import { cacheBackendFor, providerOf } from '../workspace/backends.js';
+import { appKey } from '../workspace/derive.js';
 import {
 	type FrontendFramework,
 	getAppBuildOrder,
@@ -276,9 +279,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
 			workspaceAppName = appConfig.appName;
 			workspaceAppPort = appConfig.app.port;
 			workspace = appConfig.workspace;
-			logger.log(
-				`📦 Running app: ${appConfig.appName} on port ${workspaceAppPort}`,
-			);
 
 			// Check if app has an entry point (non-gkm app like better-auth)
 			if (appConfig.app.entry) {
@@ -296,7 +296,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
 			// Route to workspace dev mode for multi-app workspaces
 			if (loadedConfig.type === 'workspace') {
-				logger.log('📦 Detected workspace configuration');
 				return workspaceDevCommand(loadedConfig.workspace, options);
 			}
 
@@ -309,7 +308,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
 		// Route to workspace dev mode for multi-app workspaces
 		if (loadedConfig.type === 'workspace') {
-			logger.log('📦 Detected workspace configuration');
 			return workspaceDevCommand(loadedConfig.workspace, options);
 		}
 
@@ -335,55 +333,45 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	// Force server provider for dev mode
 	const resolved = resolveProviders(config, { provider: 'server' });
 
-	logger.log('🚀 Starting development server...');
-	logger.log(`Loading constructs from: ${config.constructs}`);
-
 	// Normalize telescope configuration
 	const telescope = normalizeTelescopeConfig(config.telescope);
-	if (telescope) {
-		logger.log(`🔭 Telescope enabled at ${telescope.path}`);
-	}
 
 	// Normalize studio configuration
 	const studio = normalizeStudioConfig(config.studio);
-	if (studio) {
-		logger.log(`🗄️  Studio enabled at ${studio.path}`);
-	}
 
 	// Normalize hooks configuration
 	const hooks = normalizeHooksConfig(config.hooks, appRoot);
-	if (hooks) {
-		logger.log(`🪝 Server hooks enabled from ${config.hooks?.server}`);
-	}
 
 	// Resolve OpenAPI configuration
 	const openApiConfig = resolveOpenApiConfig(config);
 	// Enable OpenAPI docs endpoint if either root config or provider config enables it
 	const enableOpenApi = openApiConfig.enabled || resolved.enableOpenApi;
-	if (enableOpenApi) {
-		logger.log(`📄 OpenAPI output: ${OPENAPI_OUTPUT_PATH}`);
-	}
 
 	// The build's own pipeline, for the server target: what dev runs is what
 	// `gkm build` would have generated, never a second reading of the same
 	// constructs.
+	// Quietly: the build's progress — every count, every generated file — is
+	// `gkm build`'s output, and repeated on every start and rebuild it buried
+	// the one line dev has to say. Warnings and errors still print.
 	const build = (bustCache = false) =>
-		buildApp({
-			config,
-			// Where a surface's `path` is measured from, so the build can tell
-			// which surface this app serves.
-			workspaceRoot: workspace?.root ?? secretsRoot,
-			appRoot,
-			providers: ['server'],
-			enableOpenApi,
-			cacheBackend: cacheBackendFor(providerOf(workspace ?? config)),
-			telescope,
-			studio,
-			hooks,
-			skipBundle: true,
-			bustCache,
-			serveEmpty: true,
-		});
+		quietly(() =>
+			buildApp({
+				config,
+				// Where a surface's `path` is measured from, so the build can tell
+				// which surface this app serves.
+				workspaceRoot: workspace?.root ?? secretsRoot,
+				appRoot,
+				providers: ['server'],
+				enableOpenApi,
+				cacheBackend: cacheBackendFor(providerOf(workspace ?? config)),
+				telescope,
+				studio,
+				hooks,
+				skipBundle: true,
+				bustCache,
+				serveEmpty: true,
+			}),
+		);
 
 	// Build initial version
 	const initial = await build();
@@ -394,6 +382,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	// Load secrets for dev mode, resolve every declared address, and write to
 	// JSON file
 	let secretsJsonPath: string | undefined;
+	let publicUrl: string | undefined;
 	const appSecrets = await loadSecretsForApp(
 		secretsRoot,
 		config.stages.local,
@@ -418,6 +407,14 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		// Declared URLs win over anything sniffed or stored — the manifest is the
 		// statement of what exists.
 		Object.assign(appSecrets, reconciled.env);
+
+		// This app's own address behind the edge, for the ready line.
+		const own = reconciled.plan.resources.find(
+			(r) =>
+				(r.kind === 'rest-api' || r.kind === 'site') &&
+				appKey(r.id) === workspaceAppName,
+		);
+		publicUrl = own ? reconciled.env[own.envKey] : undefined;
 	}
 
 	if (Object.keys(appSecrets).length > 0) {
@@ -428,7 +425,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
 			: 'dev-secrets.json';
 		secretsJsonPath = join(secretsDir, secretsFileName);
 		await writeFile(secretsJsonPath, JSON.stringify(appSecrets, null, 2));
-		logger.log(`🔐 Loaded ${Object.keys(appSecrets).length} secret(s)`);
 	}
 
 	// Start the dev server
@@ -450,6 +446,8 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		initial.selfServing !== undefined,
 	);
 
+	devServer.label = workspaceAppName ?? 'server';
+	devServer.publicUrl = publicUrl;
 	await devServer.start();
 
 	// Watch for file changes
@@ -475,8 +473,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		p.startsWith('./') ? p.slice(2) : p,
 	);
 
-	logger.log(`👀 Watching for changes in: ${normalizedPatterns.join(', ')}`);
-
 	// Resolve glob patterns to actual files (chokidar 4.x doesn't support globs)
 	const resolvedFiles = await fg(normalizedPatterns, {
 		cwd: appRoot,
@@ -494,19 +490,11 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		),
 	];
 
-	logger.log(
-		`📁 Found ${resolvedFiles.length} files in ${dirsToWatch.length} directories`,
-	);
-
 	const watcher = chokidar.watch([...resolvedFiles, ...dirsToWatch], {
 		ignored: /(^|[/\\])\../, // ignore dotfiles
 		persistent: true,
 		ignoreInitial: true,
 		cwd: appRoot,
-	});
-
-	watcher.on('ready', () => {
-		logger.log('🔍 File watcher ready');
 	});
 
 	watcher.on('error', (error) => {
@@ -516,7 +504,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	let rebuildTimeout: NodeJS.Timeout | null = null;
 
 	watcher.on('change', async (path) => {
-		logger.log(`📝 File changed: ${path}`);
+		logger.log(`🔄 ${path} changed — rebuilding`);
 
 		// Debounce rebuilds
 		if (rebuildTimeout) {
@@ -525,11 +513,9 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
 		rebuildTimeout = setTimeout(async () => {
 			try {
-				logger.log('🔄 Rebuilding...');
 				// Bust the module cache: the edit is what the rebuild is for.
 				const rebuilt = await build(true);
 
-				logger.log('✅ Rebuild complete, restarting server...');
 				devServer.selfServing = rebuilt.selfServing !== undefined;
 				await devServer.restart();
 			} catch (error) {
@@ -849,15 +835,12 @@ export async function loadDevSecrets(
 	const stage = workspace.stages.local;
 	if (secretsExist(stage, workspace.root)) {
 		const secrets = await readStageSecrets(stage, workspace.root);
-		if (secrets) {
-			logger.log(`🔐 Loading secrets from stage: ${stage}`);
-			return toEmbeddableSecrets(secrets);
-		}
+		if (secrets) return toEmbeddableSecrets(secrets);
 	}
 
-	logger.warn(
-		`⚠️  Secrets enabled but no "${stage}" secrets found. Run "gkm setup" to initialize the local stage`,
-	);
+	// Nothing to warn about: the local stage's own secrets and every address are
+	// derived by reconcile. A stored stage only adds what nothing can derive — a
+	// third party's key — and a construct missing one says so when it is read.
 	return {};
 }
 
@@ -875,23 +858,9 @@ async function workspaceDevCommand(
 	options: DevOptions,
 ): Promise<void> {
 	const appCount = Object.keys(workspace.apps).length;
-	const backendApps = Object.entries(workspace.apps).filter(
-		([_, app]) => app.type === 'backend',
-	);
 	const frontendApps = Object.entries(workspace.apps).filter(
 		([_, app]) => app.type === 'web',
 	);
-	const mobileApps = Object.entries(workspace.apps).filter(
-		([_, app]) => app.type === 'mobile',
-	);
-
-	logger.log(`\n🚀 Starting workspace: ${workspace.name}`);
-	const counts = [
-		`${backendApps.length} backend`,
-		`${frontendApps.length} web`,
-	];
-	if (mobileApps.length > 0) counts.push(`${mobileApps.length} mobile`);
-	logger.log(`   ${counts.join(', ')} app(s)`);
 
 	// Check for port conflicts
 	const conflicts = checkPortConflicts(workspace);
@@ -908,7 +877,6 @@ async function workspaceDevCommand(
 
 	// Validate frontend apps (Next.js setup)
 	if (frontendApps.length > 0) {
-		logger.log('\n🔍 Validating frontend apps...');
 		const validationResults = await validateFrontendApps(workspace);
 
 		let hasErrors = false;
@@ -932,7 +900,6 @@ async function workspaceDevCommand(
 				'Frontend app validation failed. Fix the issues above and try again.',
 			);
 		}
-		logger.log('✅ Frontend apps validated');
 	}
 
 	// Frontend apps import API clients directly from backend packages
@@ -970,16 +937,13 @@ async function workspaceDevCommand(
 		if (address) appUrls[resource.id] = address;
 	}
 
-	if (Object.keys(secretsEnv).length > 0) {
-		logger.log(`   Loaded ${Object.keys(secretsEnv).length} secret(s)`);
-	}
-
-	if (Object.keys(appUrls).length > 0) {
-		logger.log('🔒 App URLs:');
-		for (const [id, address] of Object.entries(appUrls)) {
-			logger.log(`   ${id}: ${address}`);
-		}
-	}
+	// A browser trusts the edge's HTTPS addresses only once its authority is in
+	// the system store. Asked here, once, rather than left for the first page
+	// load to say "your connection is not private".
+	const firstUrl = Object.values(appUrls).find((url) =>
+		url.startsWith('https://'),
+	);
+	if (firstUrl) await ensureTrusted(workspace.root, firstUrl);
 
 	// Build turbo filter
 	let turboFilter: string[] = [];
@@ -995,11 +959,9 @@ async function workspaceDevCommand(
 			'--filter',
 			appPackageName(workspace, options.app) ?? options.app,
 		];
-		logger.log(`\n🎯 Running single app: ${options.app}`);
 	} else if (options.filter) {
 		// Use custom filter
 		turboFilter = ['--filter', options.filter];
-		logger.log(`\n🔍 Using filter: ${options.filter}`);
 	} else {
 		// Every app, by name. Left to infer its own scope at the workspace root,
 		// turbo includes the root package — whose `dev` script is `gkm dev`,
@@ -1012,23 +974,25 @@ async function workspaceDevCommand(
 				`⚠️  No package.json with a name for: ${unpackaged.join(', ')} — turbo cannot run ${unpackaged.length === 1 ? 'it' : 'them'}.`,
 			);
 		}
-		logger.log(`\n🎯 Running all ${appCount} apps`);
 	}
 
-	// List apps and their ports
+	// Each app once: the address it is reached at, and the local port the edge
+	// forwards it to.
 	const buildOrder = getAppBuildOrder(workspace);
-	logger.log('\n📋 Apps (in dependency order):');
+	const width = Math.max(...buildOrder.map((name) => name.length));
+	logger.log(`\n${workspace.name}: ${appCount} app(s)`);
 	for (const appName of buildOrder) {
 		const app = workspace.apps[appName];
 		if (!app) continue;
-		const deps =
-			app.dependencies.length > 0
-				? ` (depends on: ${app.dependencies.join(', ')})`
-				: '';
-		const icon =
-			app.type === 'backend' ? '🔧' : app.type === 'mobile' ? '📱' : '🌐';
-		logger.log(`   ${icon} ${appName} → http://localhost:${app.port}${deps}`);
+		const local = `http://localhost:${app.port}`;
+		const url = Object.entries(appUrls).find(
+			([id]) => appKey(id) === appName,
+		)?.[1];
+		logger.log(
+			`   ${appName.padEnd(width)}  ${url ? `${url} -> ${local}` : local}`,
+		);
 	}
+	logger.log('');
 
 	// Find the config file path for GKM_CONFIG_PATH
 	const configFiles = ['gkm.config.ts', 'gkm.config.js', 'gkm.config.json'];
@@ -1069,7 +1033,6 @@ async function workspaceDevCommand(
 	if (held.length > 0) throw new WorkspacePortsInUse(held);
 
 	// Spawn turbo run dev
-	logger.log('\n🏃 Starting turbo run dev...\n');
 
 	const turboProcess = spawn('pnpm', ['turbo', 'run', 'dev', ...turboFilter], {
 		cwd: workspace.root,
@@ -1262,11 +1225,14 @@ class EntryRunner {
 		// Pass PORT as environment variable
 		const env = { ...process.env, PORT: String(this.port) };
 
-		this.childProcess = spawn('npx', ['tsx', this.wrapperPath], {
-			stdio: 'inherit',
-			env,
-			detached: true,
-		});
+		this.childProcess = spawn(
+			...tsxCommand(dirname(this.wrapperPath), [this.wrapperPath]),
+			{
+				stdio: 'inherit',
+				env,
+				detached: true,
+			},
+		);
 
 		this.isRunning = true;
 
@@ -1414,7 +1380,6 @@ ${credentialsInjection}${parentWatch}const port = process.argv.includes('--port'
 const { app } = await import('${appImportPath}');
 
 ${serveCode.replace(/^ {4}/gm, '')}
-console.log(\`Server started on port \${port}\`);
 `;
 	}
 
@@ -1444,6 +1409,33 @@ start({
   process.exit(1);
 });
 `;
+}
+
+/** Run `fn` with `console.log` muted — warnings and errors still print. */
+async function quietly<T>(fn: () => Promise<T>): Promise<T> {
+	const log = console.log;
+	console.log = () => {};
+	try {
+		return await fn();
+	} finally {
+		console.log = log;
+	}
+}
+
+/**
+ * How to run a TypeScript entry with the app's own tsx.
+ *
+ * Straight through node rather than `npx tsx`: npx reads the developer's npm
+ * config on every start and warned about each key it did not recognise — nine
+ * lines per app, per restart, about nothing gkm does.
+ */
+function tsxCommand(appRoot: string, args: string[]): [string, string[]] {
+	try {
+		const cli = createRequire(join(appRoot, 'package.json')).resolve('tsx/cli');
+		return [process.execPath, [cli, ...args]];
+	} catch {
+		return ['npx', ['tsx', ...args]];
+	}
 }
 
 /** A port this app must serve on is held by something else. */
@@ -1524,6 +1516,15 @@ class DevServer {
 		this.actualPort = requestedPort;
 	}
 
+	/** What the ready line calls this app. */
+	label = 'server';
+
+	/**
+	 * Where the app is reached — its HTTPS address behind the edge, when it has
+	 * one. The local port is only what the edge forwards to.
+	 */
+	publicUrl: string | undefined;
+
 	async start(): Promise<void> {
 		this.startTime = Date.now();
 		if (this.isRunning) {
@@ -1562,13 +1563,14 @@ class DevServer {
 		// Create server entry file
 		await this.createServerEntry();
 
-		logger.log(`\n⏳ Starting server...`);
-
 		// Start the server using tsx (TypeScript execution)
 		// Use detached: true so we can kill the entire process tree
 		this.serverProcess = spawn(
-			'npx',
-			['tsx', serverEntryPath, '--port', this.actualPort.toString()],
+			...tsxCommand(this.appRoot, [
+				serverEntryPath,
+				'--port',
+				this.actualPort.toString(),
+			]),
 			{
 				stdio: 'inherit',
 				env: {
@@ -1598,33 +1600,23 @@ class DevServer {
 		await new Promise((resolve) => setTimeout(resolve, 1000));
 
 		if (this.isRunning) {
-			const base = `http://localhost:${this.actualPort}`;
-			const lines: string[] = [`  Local:     ${base}`];
-			if (this.enableOpenApi) {
-				lines.push(`  API Docs:  ${base}/__docs`);
-			}
-			if (this.telescope) {
-				lines.push(`  Telescope: ${base}${this.telescope.path}`);
-			}
-			if (this.studio) {
-				lines.push(`  Studio:    ${base}${this.studio.path}`);
-			}
-
-			const maxLen = Math.max(...lines.map((l) => l.length));
-			const pad = (s: string) => s.padEnd(maxLen);
-			const border = '─'.repeat(maxLen + 2);
-
-			logger.log('');
+			const local = `http://localhost:${this.actualPort}`;
+			const address = this.publicUrl ? `${this.publicUrl} -> ${local}` : local;
+			const seconds = ((Date.now() - this.startTime) / 1000).toFixed(1);
 			logger.log(
-				`  \x1b[32m✓ Ready\x1b[0m in ${((Date.now() - this.startTime) / 1000).toFixed(1)}s`,
+				`\x1b[32m✓\x1b[0m ${this.label} ready in ${seconds}s  ${address}`,
 			);
-			logger.log('');
-			logger.log(`  ┌${border}┐`);
-			for (const line of lines) {
-				logger.log(`  │ ${pad(line)} │`);
-			}
-			logger.log(`  └${border}┘`);
-			logger.log('');
+
+			// What the generated app mounts. An app that serves itself — an auth
+			// server — mounts none of it.
+			const tools = this.selfServing
+				? []
+				: [
+						...(this.enableOpenApi ? ['docs /__docs'] : []),
+						...(this.telescope ? [`telescope ${this.telescope.path}`] : []),
+						...(this.studio ? [`studio ${this.studio.path}`] : []),
+					];
+			if (tools.length > 0) logger.log(`  ${tools.join(' · ')}`);
 		}
 	}
 

@@ -49,7 +49,7 @@ vi.mock('../../reconcile/workspace.js', async (importOriginal) => {
 		...actual,
 		reconcileWorkspace: vi.fn(async () => ({
 			changed: false,
-			plan: { containers: [] },
+			plan: { containers: [], resources: [] },
 			addresses: {},
 			env: fakes.env,
 		})),
@@ -301,9 +301,10 @@ export default defineWorkspace({
 			const request = (path: string, init?: RequestInit) =>
 				fetch(`http://localhost:${authPort}${path}`, init);
 
-			expect(output(log)).toContain(
-				'Generated a server for Auth from its own declaration',
-			);
+			// Started from its own declaration, and advertising nothing it does not
+			// mount: an auth server has no docs, Telescope or Studio.
+			expect(output(log)).toMatch(/auth ready in [\d.]+s/);
+			expect(output(log)).not.toContain('docs /__docs');
 
 			// Signed out is an answer, not a failure.
 			const signedOut = await request('/api/auth/get-session');

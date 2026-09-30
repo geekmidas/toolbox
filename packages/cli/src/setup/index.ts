@@ -128,9 +128,16 @@ async function reconcileLocal(
 	}
 
 	// Only where something actually answers on https. A project with no edge has
-	// no authority to trust and should never be asked about one.
-	const served = result.plan.resources.find((r) => r.kind === 'file-server');
-	const url = served ? result.env[served.envKey] : undefined;
+	// no authority to trust and should never be asked about one. Every app
+	// behind the edge answers there — not only a file server, which used to be
+	// the only one asked about, so a workspace of APIs and sites never was.
+	const url = result.plan.resources
+		.filter(
+			(r) =>
+				r.kind === 'rest-api' || r.kind === 'site' || r.kind === 'file-server',
+		)
+		.map((r) => result.env[r.envKey])
+		.find((address) => address?.startsWith('https://'));
 
 	if (url) {
 		await ensureTrusted(workspace.root, url, {

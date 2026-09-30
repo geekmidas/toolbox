@@ -6,7 +6,7 @@
  *   node scripts/check-dev.mjs <workspace> <app>:<path> [<app>:<path> …]
  *
  * Starts the workspace's `pnpm dev`, reads the port each app was given from
- * dev's own listing (`api → http://localhost:3000`), and asks each named app
+ * dev's own listing (`api  https://api.… -> http://localhost:3000`), and asks each named app
  * for its path on exactly that port — so an app serving somewhere else, or
  * another app answering on its port, fails rather than passing by accident.
  *
@@ -68,11 +68,14 @@ dev.on('exit', () => {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** `app → http://localhost:3000`, as dev lists the apps it starts. */
+/**
+ * Each app's port, as dev lists them: `api  https://api.… -> http://localhost:3000`,
+ * or `api  http://localhost:3000` for an app with no edge address.
+ */
 function provisionedPorts() {
 	const ports = {};
 	for (const [, app, port] of output.matchAll(
-		/(\S+) → http:\/\/localhost:(\d+)/g,
+		/^ {3}(\S+) +(?:\S+ -> )?http:\/\/localhost:(\d+)\s*$/gm,
 	)) {
 		ports[app] = Number(port);
 	}
