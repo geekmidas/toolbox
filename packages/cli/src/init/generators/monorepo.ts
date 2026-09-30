@@ -511,15 +511,20 @@ export const logger = createLogger();
 	files.push({
 		path: 'constructs/database.ts',
 		content: `import { KyselyDatabase } from '@geekmidas/constructs/database/kysely';
-import type { Generated } from 'kysely';
+import { CamelCasePlugin, type Generated } from 'kysely';
 
-/** Your database schema. Add tables here. */
+/**
+ * Your database schema. Add tables here.
+ *
+ * camelCase, because of the plugin below: the columns are snake_case in
+ * Postgres (\`created_at\`), and Kysely maps between the two.
+ */
 export interface Database {
   users: {
     id: Generated<string>;
     name: string;
     email: string;
-    created_at: Generated<Date>;
+    createdAt: Generated<Date>;
   };
 }
 
@@ -530,14 +535,19 @@ export interface Database {
  * \`${db.urlKey}\` all derive from this line — which is why nothing lists
  * \`postgres\` anywhere.
  */
-export const database = new KyselyDatabase<Database, '${db.id}'>('${db.id}');
+export const database = new KyselyDatabase<Database, '${db.id}'>('${db.id}', {
+  // Yours to keep, change or remove. Every connection this construct opens —
+  // every endpoint, the tests — uses it.
+  plugins: [new CamelCasePlugin()],
+});
 
 /**
  * The auth server's own schema in that same Postgres, with its own role.
  *
  * A schema tenant rather than a second database: one container, and a role
  * whose \`search_path\` is pinned, so Better Auth's tables cannot collide with
- * the application's.
+ * the application's. It takes its own options: no plugin, because Better
+ * Auth names its own columns.
  */
 export const authDb = database.schema<Record<string, never>, 'AuthDb'>('AuthDb');
 `,

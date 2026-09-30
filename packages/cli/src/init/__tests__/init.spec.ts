@@ -127,8 +127,12 @@ describe('initCommand', () => {
 			// A plain id: the project name already scopes every physical name,
 			// so `MyApi` here would deploy as `production-my-api-my-api`.
 			expect(database).toContain(
-				"new KyselyDatabase<Database, 'Database'>('Database')",
+				"new KyselyDatabase<Database, 'Database'>('Database', {",
 			);
+			// The plugin is written out, where the project can see and change it,
+			// and the schema is camelCase to match.
+			expect(database).toContain('plugins: [new CamelCasePlugin()]');
+			expect(database).toContain('createdAt: Generated<Date>');
 			expect(database).not.toContain('MyApi');
 
 			// And the config points reconcile at it.

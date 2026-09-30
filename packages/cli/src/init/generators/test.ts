@@ -65,7 +65,18 @@ export default defineConfig({
 		// test/config.ts - Wraps vitest `it` with transaction auto-rollback
 		{
 			path: 'test/config.ts',
-			content: `import { it as itVitest } from 'vitest';
+			content: declares
+				? `import { it as itVitest } from 'vitest';
+import { wrapVitestKyselyTransaction } from '@geekmidas/testkit/kysely';
+import { type Database, database } from '${schema}';
+
+export const it = wrapVitestKyselyTransaction<Database>(itVitest, {
+  // The construct itself, so the tests connect the way the app does — with
+  // the plugins it was given, \`CamelCasePlugin\` included.
+  connection: database,
+});
+`
+				: `import { it as itVitest } from 'vitest';
 import { Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
 import { wrapVitestKyselyTransaction } from '@geekmidas/testkit/kysely';
@@ -160,7 +171,7 @@ export const usersBuilder = KyselyFactory.createBuilder<Database, 'users'>(
     id: faker.string.uuid(),
     name: faker.person.fullName(),
     email: faker.internet.email(),
-    created_at: new Date(),
+    ${declares ? 'createdAt' : 'created_at'}: new Date(),
   }),
 );
 `,

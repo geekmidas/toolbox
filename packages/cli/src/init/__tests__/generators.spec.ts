@@ -456,7 +456,7 @@ describe('generateRootConstructs - the apps, as constructs', () => {
 			"new Email('Mail'",
 		);
 		expect(at(files, 'constructs/database.ts')!.content).toContain(
-			"('Database')",
+			"('Database', {",
 		);
 		expect(all).not.toMatch(/Beetlefit/);
 	});
@@ -1199,7 +1199,11 @@ describe('generateTestFiles', () => {
 		expect(configFile!.content).toContain('@geekmidas/testkit/kysely');
 		// The declared database's schema type, and the key it publishes.
 		expect(configFile!.content).toContain('../src/constructs/database.ts');
-		expect(configFile!.content).toContain('process.env.DATABASE_URL');
+		// Connects through the construct, so the tests use the plugins the app
+		// does — a hand-rolled client without `CamelCasePlugin` writes
+		// `createdAt` where the app writes `created_at`.
+		expect(configFile!.content).toContain('connection: database');
+		expect(configFile!.content).not.toContain('new Kysely');
 	});
 
 	it('should migrate as the owner role in globalSetup', () => {

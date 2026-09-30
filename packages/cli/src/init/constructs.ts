@@ -96,15 +96,20 @@ export function databaseFiles(): GeneratedFile[] {
 		{
 			path: 'src/constructs/database.ts',
 			content: `import { KyselyDatabase } from '@geekmidas/constructs/database/kysely';
-import type { Generated } from 'kysely';
+import { CamelCasePlugin, type Generated } from 'kysely';
 
-/** Your database schema. Add tables here. */
+/**
+ * Your database schema. Add tables here.
+ *
+ * camelCase, because of the plugin below: the columns are snake_case in
+ * Postgres (\`created_at\`), and Kysely maps between the two.
+ */
 export interface Database {
   users: {
     id: Generated<string>;
     name: string;
     email: string;
-    created_at: Generated<Date>;
+    createdAt: Generated<Date>;
   };
 }
 
@@ -119,7 +124,11 @@ export interface Database {
  * inference, so passing only \`Database\` would leave the name at \`string\`
  * and widen the service key away from \`${db.service}\`.
  */
-export const database = new KyselyDatabase<Database, '${db.id}'>('${db.id}');
+export const database = new KyselyDatabase<Database, '${db.id}'>('${db.id}', {
+  // Yours to keep, change or remove. Every connection this construct opens —
+  // every endpoint, the tests — uses it.
+  plugins: [new CamelCasePlugin()],
+});
 `,
 		},
 		usersMigration(),
