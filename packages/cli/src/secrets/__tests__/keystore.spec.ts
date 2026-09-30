@@ -124,19 +124,16 @@ describe('toEmbeddableSecrets, for every service', () => {
 	it('falls back to defaults where a credential leaves a field out', () => {
 		const secrets = createStageSecrets('dev', [
 			'postgres',
-			'rabbitmq',
 			'minio',
 			'localstack',
 		]);
 		delete secrets.services.postgres!.database;
-		delete secrets.services.rabbitmq!.vhost;
 		delete secrets.services.minio!.bucket;
 		delete secrets.services.localstack!.region;
 		delete secrets.services.localstack!.accessKeyId;
 
 		expect(toEmbeddableSecrets(secrets)).toMatchObject({
 			POSTGRES_DB: 'app',
-			RABBITMQ_VHOST: '/',
 			STORAGE_BUCKET: 'app',
 			AWS_REGION: 'us-east-1',
 			AWS_ACCESS_KEY_ID: secrets.services.localstack!.username,

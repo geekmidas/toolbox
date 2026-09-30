@@ -1,4 +1,4 @@
-import type { ComposeServiceName, EventsBackend } from '../types';
+import type { ComposeServiceName } from '../types';
 
 /** Credentials for a specific service */
 export interface ServiceCredentials {
@@ -8,8 +8,6 @@ export interface ServiceCredentials {
 	password: string;
 	/** Database name (for postgres) */
 	database?: string;
-	/** Virtual host (for rabbitmq) */
-	vhost?: string;
 	/** Bucket name (for minio) */
 	bucket?: string;
 	/** Access key ID (for localstack) */
@@ -26,13 +24,10 @@ export interface StageSecrets {
 	createdAt: string;
 	/** ISO timestamp when secrets were last updated */
 	updatedAt: string;
-	/** Event backend type (if events are enabled) */
-	eventsBackend?: EventsBackend;
 	/** Service-specific credentials */
 	services: {
 		postgres?: ServiceCredentials;
 		redis?: ServiceCredentials;
-		rabbitmq?: ServiceCredentials;
 		minio?: ServiceCredentials;
 		mailpit?: ServiceCredentials;
 		localstack?: ServiceCredentials;
@@ -42,7 +37,6 @@ export interface StageSecrets {
 	urls: {
 		DATABASE_URL?: string;
 		REDIS_URL?: string;
-		RABBITMQ_URL?: string;
 		STORAGE_ENDPOINT?: string;
 		SMTP_HOST?: string;
 		SMTP_PORT?: string;
@@ -66,5 +60,8 @@ export interface EncryptedPayload {
 /** Secrets that get encrypted and embedded in the bundle */
 export type EmbeddableSecrets = Record<string, string>;
 
-/** Services that support automatic credential generation */
-export type SecretServiceName = ComposeServiceName;
+/**
+ * The containers that get a generated credential. Not `rabbitmq`: its
+ * container runs as the local user, and a topic's broker URL is reconcile's.
+ */
+export type SecretServiceName = Exclude<ComposeServiceName, 'rabbitmq'>;

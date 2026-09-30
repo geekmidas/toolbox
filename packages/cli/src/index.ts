@@ -24,10 +24,11 @@ import {
 	secretsSetCommand,
 	secretsShowCommand,
 } from './secrets';
+import type { SecretServiceName } from './secrets/types';
 import { type SetupOptions, setupCommand } from './setup/index';
 import { type TestOptions, testCommand } from './test/index';
 import { trustCommand } from './trust/index';
-import type { ComposeServiceName, LegacyProvider, MainProvider } from './types';
+import type { LegacyProvider, MainProvider } from './types';
 import { type UpgradeOptions, upgradeCommand } from './upgrade/index';
 
 const program = new Command();
@@ -499,9 +500,9 @@ program
 	.requiredOption('--stage <stage>', 'Stage name')
 	.option(
 		'--service <service>',
-		'Specific service to rotate (postgres, redis, rabbitmq)',
+		'Specific service to rotate (postgres, redis, minio, …)',
 	)
-	.action(async (options: { stage: string; service?: ComposeServiceName }) => {
+	.action(async (options: { stage: string; service?: SecretServiceName }) => {
 		try {
 			const globalOptions = program.opts();
 			if (globalOptions.cwd) {

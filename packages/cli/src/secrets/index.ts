@@ -2,7 +2,6 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { loadWorkspaceConfig } from '../config';
 import { generateFullstackCustomSecrets } from '../setup/fullstack-secrets';
-import type { ComposeServiceName } from '../types';
 import { createStageSecrets, rotateServicePassword } from './generator';
 import {
 	maskPassword,
@@ -11,6 +10,7 @@ import {
 	setCustomSecret,
 	writeStageSecrets,
 } from './storage';
+import type { SecretServiceName } from './types';
 
 const logger = console;
 
@@ -30,7 +30,7 @@ export interface SecretsShowOptions {
 
 export interface SecretsRotateOptions {
 	stage: string;
-	service?: ComposeServiceName;
+	service?: SecretServiceName;
 }
 
 export interface SecretsImportOptions {
@@ -92,9 +92,6 @@ export async function secretsInitCommand(
 	}
 	if (secrets.urls.REDIS_URL) {
 		logger.log(`  REDIS_URL: ${maskUrl(secrets.urls.REDIS_URL)}`);
-	}
-	if (secrets.urls.RABBITMQ_URL) {
-		logger.log(`  RABBITMQ_URL: ${maskUrl(secrets.urls.RABBITMQ_URL)}`);
 	}
 	if (secrets.urls.STORAGE_ENDPOINT) {
 		logger.log(`  STORAGE_ENDPOINT: ${secrets.urls.STORAGE_ENDPOINT}`);
@@ -201,9 +198,6 @@ export async function secretsShowCommand(
 			if (creds.database) {
 				logger.log(`    database: ${creds.database}`);
 			}
-			if (creds.vhost) {
-				logger.log(`    vhost: ${creds.vhost}`);
-			}
 			if (creds.bucket) {
 				logger.log(`    bucket: ${creds.bucket}`);
 			}
@@ -220,11 +214,6 @@ export async function secretsShowCommand(
 	if (secrets.urls.REDIS_URL) {
 		logger.log(
 			`  REDIS_URL: ${reveal ? secrets.urls.REDIS_URL : maskUrl(secrets.urls.REDIS_URL)}`,
-		);
-	}
-	if (secrets.urls.RABBITMQ_URL) {
-		logger.log(
-			`  RABBITMQ_URL: ${reveal ? secrets.urls.RABBITMQ_URL : maskUrl(secrets.urls.RABBITMQ_URL)}`,
 		);
 	}
 	if (secrets.urls.STORAGE_ENDPOINT) {
@@ -275,7 +264,7 @@ export async function secretsRotateCommand(
 	} else {
 		// Rotate all services
 		let updated = secrets;
-		const services = Object.keys(secrets.services) as ComposeServiceName[];
+		const services = Object.keys(secrets.services) as SecretServiceName[];
 
 		for (const svc of services) {
 			updated = rotateServicePassword(updated, svc);

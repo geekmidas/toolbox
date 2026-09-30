@@ -2,13 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
 	createStageSecrets,
 	generateConnectionUrls,
-	generateEventConnectionStrings,
 	generateLocalStackAccessKeyId,
 	generateLocalStackCredentials,
 	generateMinioEndpoint,
 	generatePgBossUrl,
 	generatePostgresUrl,
-	generateRabbitmqUrl,
 	generateRedisUrl,
 	generateSecurePassword,
 	generateServiceCredentials,
@@ -61,16 +59,6 @@ describe('generateServiceCredentials', () => {
 		expect(creds.password).toHaveLength(32);
 	});
 
-	it('should generate rabbitmq credentials with defaults', () => {
-		const creds = generateServiceCredentials('rabbitmq');
-
-		expect(creds.host).toBe('localhost');
-		expect(creds.port).toBe(5672);
-		expect(creds.username).toBe('app');
-		expect(creds.vhost).toBe('/');
-		expect(creds.password).toHaveLength(32);
-	});
-
 	it('should generate minio credentials with defaults', () => {
 		const creds = generateServiceCredentials('minio');
 
@@ -88,18 +76,14 @@ describe('generateServicesCredentials', () => {
 
 		expect(creds.postgres).toBeDefined();
 		expect(creds.redis).toBeDefined();
-		expect(creds.rabbitmq).toBeUndefined();
+		expect(creds.minio).toBeUndefined();
 	});
 
 	it('should generate unique passwords for each service', () => {
-		const creds = generateServicesCredentials([
-			'postgres',
-			'redis',
-			'rabbitmq',
-		]);
+		const creds = generateServicesCredentials(['postgres', 'redis', 'minio']);
 
 		expect(creds.postgres!.password).not.toBe(creds.redis!.password);
-		expect(creds.redis!.password).not.toBe(creds.rabbitmq!.password);
+		expect(creds.redis!.password).not.toBe(creds.minio!.password);
 	});
 });
 
@@ -184,34 +168,6 @@ describe('generateMinioEndpoint', () => {
 	});
 });
 
-describe('generateRabbitmqUrl', () => {
-	it('should generate valid rabbitmq URL with default vhost', () => {
-		const creds: ServiceCredentials = {
-			host: 'rabbitmq',
-			port: 5672,
-			username: 'app',
-			password: 'secret123',
-			vhost: '/',
-		};
-
-		const url = generateRabbitmqUrl(creds);
-		expect(url).toBe('amqp://app:secret123@rabbitmq:5672/%2F');
-	});
-
-	it('should handle custom vhost', () => {
-		const creds: ServiceCredentials = {
-			host: 'rabbitmq',
-			port: 5672,
-			username: 'app',
-			password: 'secret123',
-			vhost: '/myapp',
-		};
-
-		const url = generateRabbitmqUrl(creds);
-		expect(url).toBe('amqp://app:secret123@rabbitmq:5672/%2Fmyapp');
-	});
-});
-
 describe('generateConnectionUrls', () => {
 	it('should generate DATABASE_URL for postgres', () => {
 		const urls = generateConnectionUrls({
@@ -226,7 +182,6 @@ describe('generateConnectionUrls', () => {
 
 		expect(urls.DATABASE_URL).toBe('postgresql://app:secret@postgres:5432/app');
 		expect(urls.REDIS_URL).toBeUndefined();
-		expect(urls.RABBITMQ_URL).toBeUndefined();
 	});
 
 	it('should generate all URLs when all services present', () => {
@@ -244,13 +199,6 @@ describe('generateConnectionUrls', () => {
 				username: 'default',
 				password: 'redis-pass',
 			},
-			rabbitmq: {
-				host: 'rabbitmq',
-				port: 5672,
-				username: 'app',
-				password: 'rmq-pass',
-				vhost: '/',
-			},
 			minio: {
 				host: 'minio',
 				port: 9000,
@@ -262,7 +210,6 @@ describe('generateConnectionUrls', () => {
 
 		expect(urls.DATABASE_URL).toBeDefined();
 		expect(urls.REDIS_URL).toBeDefined();
-		expect(urls.RABBITMQ_URL).toBeDefined();
 		expect(urls.STORAGE_ENDPOINT).toBe('http://minio:9000');
 	});
 
@@ -297,19 +244,14 @@ describe('createStageSecrets', () => {
 
 		expect(secrets.services.postgres).toBeDefined();
 		expect(secrets.services.redis).toBeDefined();
-		expect(secrets.services.rabbitmq).toBeUndefined();
+		expect(secrets.services.minio).toBeUndefined();
 	});
 
 	it('should generate connection URLs', () => {
-		const secrets = createStageSecrets('production', [
-			'postgres',
-			'redis',
-			'rabbitmq',
-		]);
+		const secrets = createStageSecrets('production', ['postgres', 'redis']);
 
 		expect(secrets.urls.DATABASE_URL).toBeDefined();
 		expect(secrets.urls.REDIS_URL).toBeDefined();
-		expect(secrets.urls.RABBITMQ_URL).toBeDefined();
 	});
 
 	it('should generate STORAGE_ENDPOINT for minio', () => {
@@ -380,13 +322,13 @@ describe('rotateServicePassword', () => {
 		const original = createStageSecrets('production', [
 			'postgres',
 			'redis',
-			'rabbitmq',
+			'minio',
 		]);
 
 		const rotated = rotateServicePassword(original, 'postgres');
 
 		expect(rotated.services.redis).toEqual(original.services.redis);
-		expect(rotated.services.rabbitmq).toEqual(original.services.rabbitmq);
+		expect(rotated.services.minio).toEqual(original.services.minio);
 	});
 });
 
@@ -449,121 +391,12 @@ describe('generateLocalStackCredentials', () => {
 	});
 });
 
-describe('generateEventConnectionStrings', () => {
-	it('should generate pgboss connection strings', () => {
-		const services: StageSecrets['services'] = {
-			pgboss: {
-				host: 'localhost',
-				port: 5432,
-				username: 'pgboss',
-				password: 'secret',
-				database: 'myapp_dev',
-			},
-		};
-
-		const result = generateEventConnectionStrings('pgboss', services);
-		expect(result.publisher).toContain('pgboss://');
-		expect(result.subscriber).toContain('pgboss://');
-		expect(result.publisher).toBe(result.subscriber);
-	});
-
-	it('should generate sns/sqs connection strings', () => {
-		const services: StageSecrets['services'] = {
-			localstack: {
-				host: 'localhost',
-				port: 4566,
-				username: 'localstack',
-				password: 'secret',
-				accessKeyId: 'LSIAtest1234567890xx',
-				region: 'us-east-1',
-			},
-		};
-
-		const result = generateEventConnectionStrings('sns', services);
-		expect(result.publisher).toContain('sns://');
-		expect(result.subscriber).toContain('sqs://');
-		expect(result.publisher).toContain('LSIAtest1234567890xx');
-	});
-
-	it('should generate rabbitmq connection strings', () => {
-		const services: StageSecrets['services'] = {
-			rabbitmq: {
-				host: 'localhost',
-				port: 5672,
-				username: 'app',
-				password: 'secret',
-				vhost: '/',
-			},
-		};
-
-		const result = generateEventConnectionStrings('rabbitmq', services);
-		expect(result.publisher).toContain('amqp://');
-		expect(result.subscriber).toContain('amqp://');
-		expect(result.publisher).toBe(result.subscriber);
-	});
-
-	it('should throw if pgboss credentials missing', () => {
-		expect(() => generateEventConnectionStrings('pgboss', {})).toThrow(
-			'pgboss credentials required',
-		);
-	});
-
-	it('should throw if localstack credentials missing', () => {
-		expect(() => generateEventConnectionStrings('sns', {})).toThrow(
-			'localstack credentials required',
-		);
-	});
-});
-
 describe('createStageSecrets with events', () => {
-	it('should create pgboss credentials when eventsBackend is pgboss', () => {
-		const secrets = createStageSecrets('development', ['postgres'], {
-			eventsBackend: 'pgboss',
-		});
-
-		expect(secrets.eventsBackend).toBe('pgboss');
-		expect(secrets.services.pgboss).toBeDefined();
-		expect(secrets.services.pgboss!.username).toBe('pgboss');
-		expect(secrets.services.pgboss!.host).toBe(secrets.services.postgres!.host);
-		expect(secrets.services.pgboss!.database).toBe(
-			secrets.services.postgres!.database,
-		);
-		expect(secrets.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain(
-			'pgboss://',
-		);
-		expect(secrets.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toContain(
-			'pgboss://',
-		);
-	});
-
-	it('should create localstack credentials when eventsBackend is sns', () => {
-		const secrets = createStageSecrets('development', [], {
-			eventsBackend: 'sns',
-		});
-
-		expect(secrets.eventsBackend).toBe('sns');
-		expect(secrets.services.localstack).toBeDefined();
-		expect(secrets.services.localstack!.accessKeyId).toMatch(/^LSIA/);
-		expect(secrets.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain('sns://');
-		expect(secrets.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toContain('sqs://');
-	});
-
-	it('should use rabbitmq credentials when eventsBackend is rabbitmq', () => {
-		const secrets = createStageSecrets('development', ['rabbitmq'], {
-			eventsBackend: 'rabbitmq',
-		});
-
-		expect(secrets.eventsBackend).toBe('rabbitmq');
-		expect(secrets.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain('amqp://');
-		expect(secrets.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toContain(
-			'amqp://',
-		);
-	});
-
-	it('should default event URLs to pgboss when postgres is present without explicit eventsBackend', () => {
+	// The pair a worker's crons schedule through. A topic's or queue's own
+	// broker URL is reconcile's, derived from the declaration.
+	it('points the event URLs at pgboss when there is a postgres', () => {
 		const secrets = createStageSecrets('development', ['postgres']);
 
-		expect(secrets.eventsBackend).toBeUndefined();
 		expect(secrets.services.pgboss).toBeDefined();
 		expect(secrets.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain(
 			'pgboss://',

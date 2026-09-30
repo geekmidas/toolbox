@@ -1,6 +1,9 @@
 import { randomBytes } from 'node:crypto';
-import type { ComposeServiceName, EventsBackend } from '../types';
-import type { ServiceCredentials, StageSecrets } from './types';
+import type {
+	SecretServiceName,
+	ServiceCredentials,
+	StageSecrets,
+} from './types';
 
 /**
  * Generate a secure random password using URL-safe base64 characters.
@@ -14,7 +17,7 @@ export function generateSecurePassword(length = 32): string {
 
 /** Default service configurations (localhost for local dev via Docker port mapping) */
 const SERVICE_DEFAULTS: Record<
-	ComposeServiceName,
+	SecretServiceName,
 	Omit<ServiceCredentials, 'password'>
 > = {
 	postgres: {
@@ -27,12 +30,6 @@ const SERVICE_DEFAULTS: Record<
 		host: 'localhost',
 		port: 6379,
 		username: 'default',
-	},
-	rabbitmq: {
-		host: 'localhost',
-		port: 5672,
-		username: 'app',
-		vhost: '/',
 	},
 	minio: {
 		host: 'localhost',
@@ -65,7 +62,7 @@ const PGBOSS_DEFAULTS: Omit<ServiceCredentials, 'password'> = {
  * Generate credentials for a specific service.
  */
 export function generateServiceCredentials(
-	service: ComposeServiceName,
+	service: SecretServiceName,
 ): ServiceCredentials {
 	const defaults = SERVICE_DEFAULTS[service];
 	return {
@@ -78,7 +75,7 @@ export function generateServiceCredentials(
  * Generate credentials for multiple services.
  */
 export function generateServicesCredentials(
-	services: ComposeServiceName[],
+	services: SecretServiceName[],
 ): StageSecrets['services'] {
 	const result: StageSecrets['services'] = {};
 
@@ -103,15 +100,6 @@ export function generatePostgresUrl(creds: ServiceCredentials): string {
 export function generateRedisUrl(creds: ServiceCredentials): string {
 	const { password, host, port } = creds;
 	return `redis://:${encodeURIComponent(password)}@${host}:${port}`;
-}
-
-/**
- * Generate connection URL for RabbitMQ.
- */
-export function generateRabbitmqUrl(creds: ServiceCredentials): string {
-	const { username, password, host, port, vhost } = creds;
-	const encodedVhost = encodeURIComponent(vhost ?? '/');
-	return `amqp://${username}:${encodeURIComponent(password)}@${host}:${port}/${encodedVhost}`;
 }
 
 /**
@@ -142,52 +130,10 @@ export function generatePgBossUrl(creds: ServiceCredentials): string {
 }
 
 /**
- * Generate event connection strings based on the events backend.
- */
-export function generateEventConnectionStrings(
-	eventsBackend: EventsBackend,
-	services: StageSecrets['services'],
-): { publisher: string; subscriber: string } {
-	switch (eventsBackend) {
-		case 'pgboss': {
-			const creds = services.pgboss;
-			if (!creds) {
-				throw new Error('pgboss credentials required for pgboss events');
-			}
-			const url = generatePgBossUrl(creds);
-			return { publisher: url, subscriber: url };
-		}
-		case 'sns': {
-			const creds = services.localstack;
-			if (!creds) {
-				throw new Error('localstack credentials required for sns events');
-			}
-			const endpoint = `http://${creds.host}:${creds.port}`;
-			const region = creds.region ?? 'us-east-1';
-			const accessKeyId = creds.accessKeyId ?? creds.username;
-			const secretKey = encodeURIComponent(creds.password);
-			return {
-				publisher: `sns://${accessKeyId}:${secretKey}@${creds.host}:${creds.port}?region=${region}&endpoint=${encodeURIComponent(endpoint)}`,
-				subscriber: `sqs://${accessKeyId}:${secretKey}@${creds.host}:${creds.port}?region=${region}&endpoint=${encodeURIComponent(endpoint)}`,
-			};
-		}
-		case 'rabbitmq': {
-			const creds = services.rabbitmq;
-			if (!creds) {
-				throw new Error('rabbitmq credentials required for rabbitmq events');
-			}
-			const url = generateRabbitmqUrl(creds);
-			return { publisher: url, subscriber: url };
-		}
-	}
-}
-
-/**
  * Generate connection URLs from service credentials.
  */
 export function generateConnectionUrls(
 	services: StageSecrets['services'],
-	eventsBackend?: EventsBackend,
 ): StageSecrets['urls'] {
 	const urls: StageSecrets['urls'] = {};
 
@@ -199,20 +145,13 @@ export function generateConnectionUrls(
 		urls.REDIS_URL = generateRedisUrl(services.redis);
 	}
 
-	if (services.rabbitmq) {
-		urls.RABBITMQ_URL = generateRabbitmqUrl(services.rabbitmq);
-	}
-
 	if (services.minio) {
 		urls.STORAGE_ENDPOINT = generateMinioEndpoint(services.minio);
 	}
 
-	if (eventsBackend) {
-		const eventUrls = generateEventConnectionStrings(eventsBackend, services);
-		urls.EVENT_PUBLISHER_CONNECTION_STRING = eventUrls.publisher;
-		urls.EVENT_SUBSCRIBER_CONNECTION_STRING = eventUrls.subscriber;
-	} else if (services.pgboss) {
-		// Default to pgboss when credentials exist but no explicit events backend
+	// A topic's or queue's own broker URL is reconcile's, derived from the
+	// declaration. This pair is what a worker's crons schedule through.
+	if (services.pgboss) {
 		const pgbossUrl = generatePgBossUrl(services.pgboss);
 		urls.EVENT_PUBLISHER_CONNECTION_STRING = pgbossUrl;
 		urls.EVENT_SUBSCRIBER_CONNECTION_STRING = pgbossUrl;
@@ -244,12 +183,11 @@ export function generateLocalStackCredentials(): ServiceCredentials {
  * @param services - List of services to generate credentials for
  * @param options - Optional configuration
  * @param options.projectName - Project name used to derive the database name (e.g., 'myapp' → 'myapp_dev')
- * @param options.eventsBackend - Event backend type (pgboss, sns, rabbitmq)
  */
 export function createStageSecrets(
 	stage: string,
-	services: ComposeServiceName[],
-	options?: { projectName?: string; eventsBackend?: EventsBackend },
+	services: SecretServiceName[],
+	options?: { projectName?: string },
 ): StageSecrets {
 	const now = new Date().toISOString();
 	const serviceCredentials = generateServicesCredentials(services);
@@ -278,20 +216,12 @@ export function createStageSecrets(
 		};
 	}
 
-	// Generate event-specific credentials
-	const eventsBackend = options?.eventsBackend;
-	if (eventsBackend === 'sns') {
-		// LocalStack credentials with LSIA-prefixed access key
-		serviceCredentials.localstack = generateLocalStackCredentials();
-	}
-
-	const urls = generateConnectionUrls(serviceCredentials, eventsBackend);
+	const urls = generateConnectionUrls(serviceCredentials);
 
 	return {
 		stage,
 		createdAt: now,
 		updatedAt: now,
-		eventsBackend,
 		services: serviceCredentials,
 		urls,
 		custom: {},
@@ -303,7 +233,7 @@ export function createStageSecrets(
  */
 export function rotateServicePassword(
 	secrets: StageSecrets,
-	service: ComposeServiceName,
+	service: SecretServiceName,
 ): StageSecrets {
 	const currentCreds = secrets.services[service];
 	if (!currentCreds) {
@@ -324,6 +254,6 @@ export function rotateServicePassword(
 		...secrets,
 		updatedAt: new Date().toISOString(),
 		services: newServices,
-		urls: generateConnectionUrls(newServices, secrets.eventsBackend),
+		urls: generateConnectionUrls(newServices),
 	};
 }
