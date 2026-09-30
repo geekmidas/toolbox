@@ -1379,6 +1379,20 @@ describe('generateAgentFiles', () => {
 		expect(agents).not.toContain('.endpoints');
 	});
 
+	it('keeps data out of migrations', () => {
+		const withDb: TemplateOptions = {
+			...baseOptions,
+			constructs: { ...baseOptions.constructs, database: true },
+		};
+		const agents = generateAgentFiles(withDb, minimalTemplate)[0].content;
+
+		// A permission catalogue inserted by a migration is a copy of a constant,
+		// kept in step by a test — the guide says so before an agent writes one.
+		expect(agents).toContain('Migrations hold schema, never data.');
+		expect(agents).toContain('Data the code defines lives in the code.');
+		expect(agents).toContain('Nothing needs seeding to run.');
+	});
+
 	it('names the glob the workspace actually uses', () => {
 		// A monorepo keeps constructs at its root; a single app keeps them under
 		// `src/`. The guide quotes the config, so quoting the wrong one is the

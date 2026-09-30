@@ -35,3 +35,32 @@ scaffolds.
 **Not affected:** `@geekmidas/envkit`'s parser has its own builder, and
 `get('ADMIN_EMAIL').string().email()` is that API rather than Zod's. Leave it
 alone.
+
+## Database hygiene
+
+**Migrations hold schema, never data.** Tables, columns, constraints, indexes.
+No inserts, updates or deletes against the application's rows.
+
+- **Data the code defines lives in the code.** A permission catalogue, the
+  system roles, a list of statuses — if a constant in the source already says
+  what they are, a table holding them is a copy, and a copy drifts. Keep the
+  constant; store only what users create (a custom role, which permission keys
+  it grants), checked against the constant in code.
+- **Define it once, typed, where every app can import it.** A catalogue in
+  code belongs in a shared package (`packages/models`), declared `as const`
+  so its keys are a union type. The API's guards, the web app's gates and a
+  mobile app's gates then all name the same keys, and a typo — or a removed
+  permission still checked somewhere — fails to compile instead of failing
+  closed at runtime.
+- **A rule is not a row.** "Every user is a member", "a super admin has every
+  permission" are logic. A row per user, or a grant per permission, is a
+  snapshot of the rule that goes stale the moment the rule's inputs change.
+- **Nothing needs seeding to run.** If the app fails without some rows present,
+  those rows are code in the wrong place. Sample and demo data comes from test
+  factories — never a migration, never a deploy.
+- **A backfill is the one exception.** When a schema change needs existing rows
+  transformed — a new non-null column filled from an old one — do it in the
+  same migration, keyed on the rows it transforms. It never inserts rows that
+  were not there.
+- **A test that only keeps two copies in step is the smell.** Delete a copy,
+  and the test with it.
