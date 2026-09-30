@@ -44,6 +44,7 @@
     "client-method-calls",
     "constructs-feature-test",
     "constructs-only-compose",
+    "constructs-only-workspaces",
     "deploy-github-oidc",
     "dev-reads-the-surface",
     "dev-runs-the-build",

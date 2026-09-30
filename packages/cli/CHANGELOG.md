@@ -1,5 +1,36 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.27
+
+### Patch Changes
+
+- [#88](https://github.com/geekmidas/toolbox/pull/88) [`bf9a2bd`](https://github.com/geekmidas/toolbox/commit/bf9a2bdb8c5e8eff4b237b4b2506f1747e139fa9) Thanks [@geekmidas](https://github.com/geekmidas)! - Every workspace declares constructs; the hand-written path is gone
+
+  A workspace with no `constructs` glob now fails at load with
+  `WorkspaceDeclaresNoConstructs`. Its apps, containers and every address —
+  databases, the broker, each app behind the edge on its own HTTPS host — come
+  from what it declares, and there is no second way to get them.
+
+  Removed with it: reading ports out of a hand-written `docker-compose.yml`
+  (`resolveServicePorts`, `rewriteUrlsWithPorts`, `startWorkspaceServices` and
+  the rest of that family), the `http://localhost:<port>` dependency URLs built
+  from an `apps` block (`getDependencyEnvVars`), `gkm exec`'s `resolveDockerPorts`
+  option, the pg-boss URL built from old `PGBOSS_DB_*` secrets, and `gkm test`'s
+  `_test` rewrite of `DATABASE_URL` — reconcile's test stage names its own
+  databases.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.27
+  - @geekmidas/constructs@10.0.0-alpha.27
+  - @geekmidas/db@10.0.0-alpha.27
+  - @geekmidas/envkit@10.0.0-alpha.27
+  - @geekmidas/errors@10.0.0-alpha.27
+  - @geekmidas/logger@10.0.0-alpha.27
+  - @geekmidas/manifest@10.0.0-alpha.27
+  - @geekmidas/schema@10.0.0-alpha.27
+  - @geekmidas/services@10.0.0-alpha.27
+  - @geekmidas/telescope@10.0.0-alpha.27
+
 ## 10.0.0-alpha.26
 
 ### Patch Changes
