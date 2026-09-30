@@ -1,5 +1,53 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.29
+
+### Patch Changes
+
+- [#92](https://github.com/geekmidas/toolbox/pull/92) [`cf82cef`](https://github.com/geekmidas/toolbox/commit/cf82cefb1aa19cc551c61e58a5c4d8ed608c85b3) Thanks [@geekmidas](https://github.com/geekmidas)! - A publisher derived from a topic or queue is an edge to it
+
+  `.publisher(users.publisher)` took a plain service, so the endpoint, cron or
+  function it was given to recorded no edge to the `users` topic — unlike
+  `.database()` or `.dependsOn()`. The app's environment is composed from its
+  edges, so kitchen-sink's API container was generated without
+  `USERS_PUBLISHER_CONNECTION_STRING` while its handlers publish to `users`.
+
+  `Topic#publisher` and `Queue#publisher` are marked with the construct they
+  stand for (`derivedFrom`), and every publishing builder's `.publisher()`
+  records that id (`edgesWith`), the way `.database()` does. A subscriber's
+  `.publisher()` is a binding, not a dependency, and records nothing.
+
+- [#92](https://github.com/geekmidas/toolbox/pull/92) [`a8632d3`](https://github.com/geekmidas/toolbox/commit/a8632d33f5e3acd8e84a5714602da5e6b85c9094) Thanks [@geekmidas](https://github.com/geekmidas)! - A feature test's database client is built with the construct's own Kysely config
+
+  `featureTest` handed endpoints, and the test's `db`, a Kysely it built itself —
+  with a dialect and nothing else. A database declared with
+  `plugins: [new CamelCasePlugin()]` ran without it under test, so a test wrote
+  `createdAt` to a `created_at` column and failed on code production ran fine
+  (or passed on code it would not).
+
+  `KyselyDatabase` exposes `clientConfig` — the Kysely options it was declared
+  with, less `schema`/`roles`/`version` — and `connect()` builds from it.
+  `openBoundTransaction(url, config)` and `TransactionRegistry.get(key, url,
+config)` take it, and `featureTest` passes it for every test transaction.
+
+- Updated dependencies [[`a8632d3`](https://github.com/geekmidas/toolbox/commit/a8632d33f5e3acd8e84a5714602da5e6b85c9094)]:
+  - @geekmidas/testkit@10.0.0-alpha.29
+  - @geekmidas/audit@10.0.0-alpha.29
+  - @geekmidas/auth@10.0.0-alpha.29
+  - @geekmidas/cache@10.0.0-alpha.29
+  - @geekmidas/db@10.0.0-alpha.29
+  - @geekmidas/emailkit@10.0.0-alpha.29
+  - @geekmidas/envkit@10.0.0-alpha.29
+  - @geekmidas/errors@10.0.0-alpha.29
+  - @geekmidas/events@10.0.0-alpha.29
+  - @geekmidas/logger@10.0.0-alpha.29
+  - @geekmidas/manifest@10.0.0-alpha.29
+  - @geekmidas/rate-limit@10.0.0-alpha.29
+  - @geekmidas/schema@10.0.0-alpha.29
+  - @geekmidas/services@10.0.0-alpha.29
+  - @geekmidas/storage@10.0.0-alpha.29
+  - @geekmidas/telescope@10.0.0-alpha.29
+
 ## 10.0.0-alpha.28
 
 ### Patch Changes

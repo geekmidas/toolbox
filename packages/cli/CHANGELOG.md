@@ -1,5 +1,60 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.29
+
+### Patch Changes
+
+- [#92](https://github.com/geekmidas/toolbox/pull/92) [`83fc04a`](https://github.com/geekmidas/toolbox/commit/83fc04a7c4889d39141783a5b0565d098ed68058) Thanks [@geekmidas](https://github.com/geekmidas)! - The scaffolded AGENTS.md sets standards for Kysely queries and relations
+
+  A project with a database gets a "Writing queries and relations" section:
+  camelCase in TypeScript through `CamelCasePlugin` (snake_case in Postgres and in
+  migrations; `sql.ref` in raw fragments), `Generated`/`Selectable`/`Insertable`
+  types, every `*_id` a foreign key with its `onDelete` written out (`restrict`
+  by default, `cascade` for owned rows, `set null` for optional links) and an
+  index, related rows nested in one query with `jsonArrayFrom`/`jsonObjectFrom`
+  rather than a query per row, multi-table writes in `withTransaction`, and
+  cursor pagination with `paginatedSearch`.
+
+  The scaffold follows it: `constructs/database.ts` passes
+  `plugins: [new CamelCasePlugin()]` to the construct — written out, the
+  project's to keep or change — with a camelCase schema, and a single-app
+  project's tests connect through the construct (`connection: database`) so they
+  use the same plugins the app does.
+
+- [#92](https://github.com/geekmidas/toolbox/pull/92) [`0bad964`](https://github.com/geekmidas/toolbox/commit/0bad9649b6316fbaf40e7fb5ea46c64de2509e72) Thanks [@geekmidas](https://github.com/geekmidas)! - The scaffold writes no hand-rolled services
+  - A workspace API's `src/services/database.ts` (its own pool, its own snake_case
+    copy of the schema) is gone. Its tests connect through the root database
+    construct, and Studio builds its client from `database.clientConfig`.
+  - A workspace API's `src/services/auth.ts` (fetching `AUTH_URL` by hand) is
+    gone. The router's session comes from the auth construct the API already
+    names: `router.session(async ({ auth }) => auth.getSession())`.
+  - A worker's `src/events/` (a publisher service reading `RABBITMQ_URL`) is
+    gone. It declares a topic in `src/constructs/topics.ts`, and its subscriber
+    binds with `.topic(users)`.
+
+- [#92](https://github.com/geekmidas/toolbox/pull/92) [`b0cfa80`](https://github.com/geekmidas/toolbox/commit/b0cfa801fc868acc03bd0be9a1fc61faa0c517ab) Thanks [@geekmidas](https://github.com/geekmidas)! - `RABBITMQ_URL` and the rabbitmq credentials behind it are gone
+
+  A RabbitMQ container got a generated password, and from it `RABBITMQ_URL`
+  and `RABBITMQ_USER`/`_PASSWORD`/`_HOST`/`_PORT`/`_VHOST`. The container runs
+  as the local user, so none of them could connect. A topic's broker URL is its
+  own key — `USERS_PUBLISHER_CONNECTION_STRING` for a `users` topic — which
+  reconcile derives from the declaration, `rabbitmq://` or `pgboss://` by target.
+
+  The stored `eventsBackend` goes with it: nothing passed one any more, and it
+  was the other way an `amqp://` URL built from those credentials got in.
+
+- Updated dependencies [[`cf82cef`](https://github.com/geekmidas/toolbox/commit/cf82cefb1aa19cc551c61e58a5c4d8ed608c85b3), [`a8632d3`](https://github.com/geekmidas/toolbox/commit/a8632d33f5e3acd8e84a5714602da5e6b85c9094)]:
+  - @geekmidas/constructs@10.0.0-alpha.29
+  - @geekmidas/cache@10.0.0-alpha.29
+  - @geekmidas/db@10.0.0-alpha.29
+  - @geekmidas/envkit@10.0.0-alpha.29
+  - @geekmidas/errors@10.0.0-alpha.29
+  - @geekmidas/logger@10.0.0-alpha.29
+  - @geekmidas/manifest@10.0.0-alpha.29
+  - @geekmidas/schema@10.0.0-alpha.29
+  - @geekmidas/services@10.0.0-alpha.29
+  - @geekmidas/telescope@10.0.0-alpha.29
+
 ## 10.0.0-alpha.28
 
 ### Patch Changes
