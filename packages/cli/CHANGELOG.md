@@ -1,5 +1,59 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.28
+
+### Patch Changes
+
+- [#91](https://github.com/geekmidas/toolbox/pull/91) [`376b2ce`](https://github.com/geekmidas/toolbox/commit/376b2ce470ee919e2f30a0eebd9ba229d37112af) Thanks [@geekmidas](https://github.com/geekmidas)! - An app's compose environment is its edges, not the whole workspace
+
+  `docker-compose.constructs.yml` gave every app every key the workspace
+  resolved — a web app got the database's owner URL and the auth server's
+  signing secret, the API got the auth server's database. Each app's service now
+  holds what its own declaration provides and requires, and what each construct
+  it has an edge to provides: a site also gets the public variants its bundle
+  inlines, and the generated API server the edges of the workers whose crons it
+  runs.
+
+  Found with it, in `@geekmidas/constructs`:
+  - `api.database(db)` (and a function's or cron's `.database(db)`) wired the
+    database's service but never recorded the edge, so nothing composed from the
+    edges — a container's environment, a deploy's grants — knew the endpoint
+    reached a database. It is recorded like any `.dependsOn()`.
+  - `BetterAuth` had no way to declare what its `options` use — the mailer a
+    magic link goes through, usually — so that edge was invisible, and `options`
+    imported and registered the construct by hand. Its config takes
+    `dependsOn: [...]` now: each construct is an edge on the server's handler,
+    and `options` receives a client for each in `services`, typed as an
+    endpoint's are — `options: async ({ services }) => …services.mail…`.
+
+- [#89](https://github.com/geekmidas/toolbox/pull/89) [`6b7d566`](https://github.com/geekmidas/toolbox/commit/6b7d566e5ea9da2cbe94180aa2991a9892cc3515) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm dev` says each thing once, at the address you use
+  - Each app is listed once: `api  https://api.shop.localhost:28006 -> http://localhost:3000` — the address it is reached at behind the edge, and the local port the edge forwards to. The per-app banner that printed `Local: http://localhost:3000` as if that were the address is one line now: `✓ api ready in 1.0s  https://… -> http://localhost:3000`, followed by the dev tools it actually mounts (none, for an auth server).
+  - The build dev runs is quiet — its counts, generated files, manifest and OpenAPI output are `gkm build`'s. So are the watcher's globs and file counts, the secrets count (mostly addresses), and the warning that no local-stage secrets exist: reconcile derives them.
+  - Servers start through the app's own tsx rather than `npx tsx`, which printed the developer's npm config warnings on every start.
+  - A browser trusts the edge's HTTPS addresses once its authority is in the system store. `gkm dev` now asks once (or says to run `gkm trust`) for any workspace with apps behind the edge, and `gkm setup` does too — it only did for a workspace with a file server. The trust check reads the system store (`--use-system-ca`), so a root `gkm trust` installed no longer reads as untrusted.
+
+- [#90](https://github.com/geekmidas/toolbox/pull/90) [`3d6af9d`](https://github.com/geekmidas/toolbox/commit/3d6af9d522cfe87323d26881f033e3d1a5bbc892) Thanks [@geekmidas](https://github.com/geekmidas)! - The root site answers on the project's bare host locally, as it does deployed
+
+  A deploy points the base domain at one site — the only one, else the one named
+  `web`, else the one declaring `root: true` — but the local edge put every site
+  on a subdomain, so `web` was `https://web.shop.localhost` in dev and the bare
+  domain in production. Both now use one rule (`rootSite`), and locally the root
+  site is `https://shop.localhost`; every other app stays a subdomain of it. A
+  stage other than the local one keeps a label (`test.shop.localhost`), because
+  one edge serves every stage.
+
+- Updated dependencies [[`376b2ce`](https://github.com/geekmidas/toolbox/commit/376b2ce470ee919e2f30a0eebd9ba229d37112af)]:
+  - @geekmidas/constructs@10.0.0-alpha.28
+  - @geekmidas/cache@10.0.0-alpha.28
+  - @geekmidas/db@10.0.0-alpha.28
+  - @geekmidas/envkit@10.0.0-alpha.28
+  - @geekmidas/errors@10.0.0-alpha.28
+  - @geekmidas/logger@10.0.0-alpha.28
+  - @geekmidas/manifest@10.0.0-alpha.28
+  - @geekmidas/schema@10.0.0-alpha.28
+  - @geekmidas/services@10.0.0-alpha.28
+  - @geekmidas/telescope@10.0.0-alpha.28
+
 ## 10.0.0-alpha.27
 
 ### Patch Changes
