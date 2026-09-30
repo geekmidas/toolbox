@@ -11,7 +11,12 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import get from 'lodash.get';
 import { ConstructType } from '../Construct';
 import { cloneWith } from '../clone';
-import { type Consumable, serviceOf } from '../construct-interface';
+import {
+	type Consumable,
+	idsOf,
+	isConsumable,
+	serviceOf,
+} from '../construct-interface';
 
 export abstract class BaseFunctionBuilder<
 	TInput extends ComposableStandardSchema,
@@ -218,6 +223,10 @@ export abstract class BaseFunctionBuilder<
 				TDatabaseServiceName,
 				TDatabase
 			>,
+			// The edge, as `.dependsOn()` records one — see EndpointFactory.
+			...(isConsumable(source)
+				? { _constructs: idsOf([source], this._constructs) }
+				: {}),
 		}) as unknown as BaseFunctionBuilder<
 			TInput,
 			OutSchema,

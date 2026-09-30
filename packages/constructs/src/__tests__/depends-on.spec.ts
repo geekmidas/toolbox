@@ -4,6 +4,7 @@ import { registerStorageDriver, type StorageClient } from '@geekmidas/storage';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { NotAConstruct } from '../construct-interface';
+import { KyselyDatabase } from '../database/kysely';
 import { EndpointFactory } from '../endpoints/EndpointFactory';
 import { ObjectStorage } from '../object-storage';
 import { q } from '../queue';
@@ -243,5 +244,42 @@ describe('.dependsOn — the ids it records', () => {
 		expect(cron.constructs).toEqual(['Uploads']);
 		expect(worker.constructs).toEqual(['Uploads']);
 		expect(subscriber.constructs).toEqual(['Uploads']);
+	});
+
+	// `.database(db)` is an edge like any `.dependsOn()`. It wired the service
+	// and dropped the id, so an endpoint built from `api.database(db)` reached a
+	// database nothing composed from the edges knew about.
+	it('records the database a surface branch was given', () => {
+		const orders = new KyselyDatabase('Orders');
+
+		const endpoint = api
+			.database(orders)
+			.get('/orders')
+			.dependsOn([uploads])
+			.handle(async () => null);
+
+		expect(endpoint.constructs).toEqual(['Orders', 'Uploads']);
+	});
+
+	it('records the database a function was given', () => {
+		const orders = new KyselyDatabase('Orders');
+
+		const fn = testWorker
+			.dependsOn([uploads])
+			.database(orders)
+			.handle(async () => null);
+
+		expect(fn.constructs).toEqual(['Uploads', 'Orders']);
+	});
+
+	it('records the database a cron was given', () => {
+		const orders = new KyselyDatabase('Orders');
+
+		const cron = testWorker
+			.cron('rate(1 day)')
+			.database(orders)
+			.handle(async () => null);
+
+		expect(cron.constructs).toEqual(['Orders']);
 	});
 });

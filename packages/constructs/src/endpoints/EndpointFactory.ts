@@ -10,6 +10,8 @@ import type { Service } from '@geekmidas/services';
 import uniqBy from 'lodash.uniqby';
 import {
 	type Consumable,
+	idsOf,
+	isConsumable,
 	type ServicesOf,
 	serviceOf,
 	servicesOf,
@@ -859,7 +861,13 @@ export class EndpointFactory<
 			TRlsConfig
 		>({
 			defaultServices: this.defaultServices,
-			defaultConstructs: this.defaultConstructs,
+			// The database is an edge like any `.dependsOn()`: without its id here an
+			// endpoint built from `api.database(db)` reached a database the
+			// manifest never heard of, so nothing composed from the edges — a
+			// deploy's grants, an app container's environment — included it.
+			defaultConstructs: isConsumable(source)
+				? idsOf([source], this.defaultConstructs)
+				: this.defaultConstructs,
 			basePath: this.basePath,
 			defaultAuthorizeFn: this.defaultAuthorizeFn as unknown as
 				| AuthorizeFn<TServices, TLogger, TSession, undefined, T>

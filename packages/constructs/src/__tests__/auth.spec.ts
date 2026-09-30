@@ -129,6 +129,65 @@ describe('BetterAuth.declare', () => {
 		]);
 	});
 
+	// Whatever `options` reaches — the mailer a magic link goes through — is
+	// invisible to the graph unless declared; declared, it is an edge on the
+	// handler beside the database.
+	it('declares what its options use as edges on its handler', () => {
+		const mailer = new KyselyDatabase('Mailer');
+		const construct = new BetterAuth('Auth', {
+			database: tenant,
+			path: 'apps/auth',
+			dependsOn: [mailer],
+		});
+
+		const surface = construct
+			.declare()
+			.find((declaration) => declaration.kind === 'rest-api');
+
+		expect(
+			surface?.kind === 'rest-api' && surface.endpoints[0]?.dependencies,
+		).toEqual([
+			{ target: 'AuthDb', kind: 'database' },
+			{ target: 'Mailer', kind: 'database' },
+		]);
+	});
+
+	// The same list hands `options` its clients, so a magic-link plugin sends
+	// through the declared mailer with nothing imported and registered by hand.
+	it('hands options a client for each construct it depends on', async () => {
+		const registered: unknown[] = [];
+		const mailer = {
+			id: 'Mailer',
+			declare: () => [],
+			service: {
+				serviceName: 'mailer' as const,
+				register: async (options: unknown) => {
+					registered.push(options);
+					return { send: (to: string) => `sent to ${to}` };
+				},
+			},
+		};
+
+		let sent: string | undefined;
+		const construct = new BetterAuth('Auth', {
+			database: tenant,
+			path: 'apps/auth',
+			dependsOn: [mailer],
+			options: async ({ services }) => {
+				// Typed from `dependsOn`: `services.mailer` is the mailer's client.
+				sent = services.mailer.send('ada@shop.test');
+				return {};
+			},
+		});
+
+		const given = options();
+		await construct.pluginIds(given);
+
+		expect(sent).toBe('sent to ada@shop.test');
+		// Registered with the options this call was given.
+		expect(registered).toEqual([given]);
+	});
+
 	it('mounts its routes under the base path it was given', () => {
 		const construct = auth({}, '/auth');
 
@@ -221,7 +280,9 @@ describe('BetterAuth.server', () => {
 
 		const { app } = await construct.server(opts);
 
-		expect(seen).toBe(opts);
+		// The options it was registered with, and `services` — empty, with
+		// nothing in `dependsOn`.
+		expect(seen).toEqual({ ...opts, services: {} });
 		expect((await app.request(signUp(email('fn')))).status).toBe(200);
 	});
 

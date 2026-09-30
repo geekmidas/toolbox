@@ -34,7 +34,11 @@ import {
 	provideKey,
 	serviceKey,
 } from '@geekmidas/manifest';
-import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
+import type {
+	Service,
+	ServiceRecord,
+	ServiceRegisterOptions,
+} from '@geekmidas/services';
 import { betterAuth } from 'better-auth';
 import type { Hono } from 'hono';
 import type { Kysely } from 'kysely';
@@ -43,6 +47,7 @@ import {
 	type Construct,
 	type Consumable,
 	edgeTo,
+	type ServicesOf,
 } from './construct-interface';
 
 /** The server better-auth hands back. */
@@ -57,7 +62,20 @@ export type BetterAuthOptions = Omit<
 	'database' | 'secret' | 'basePath' | 'baseURL'
 >;
 
-export interface BetterAuthConfig<TDatabase extends Consumable> {
+/**
+ * What an `options` callback is handed: the options this construct was
+ * registered with, and a client for each construct its `dependsOn` names —
+ * keyed by service name, exactly as an endpoint's handler receives them.
+ */
+export type BetterAuthOptionsContext<TUses extends readonly Consumable[]> =
+	ServiceRegisterOptions & {
+		services: ServiceRecord<[...ServicesOf<TUses>]>;
+	};
+
+export interface BetterAuthConfig<
+	TDatabase extends Consumable,
+	TUses extends readonly Consumable[] = readonly [],
+> {
 	/**
 	 * The schema tenant its tables live in.
 	 *
@@ -82,18 +100,28 @@ export interface BetterAuthConfig<TDatabase extends Consumable> {
 	 */
 	basePath?: string;
 	/**
+	 * The constructs `options` uses — the mailer a magic link goes through,
+	 * most often.
+	 *
+	 * One list, two jobs, the way an endpoint's `.dependsOn()` has: each is an
+	 * edge on the server's handler, so whatever is composed from the edges (a
+	 * container's environment, a deploy's grants) includes it; and each is
+	 * handed to `options` as a client in `services`, so there is no other way
+	 * for `options` to reach it — nothing to import and register by hand, and
+	 * so nothing that can be used without being declared.
+	 */
+	dependsOn?: TUses;
+	/**
 	 * The rest of better-auth's options: providers, plugins, email settings.
 	 *
 	 * A function when they need another construct — a magic-link plugin has to
-	 * *send* the link, and the thing that sends mail is a construct whose client
-	 * has to be registered. It is handed the same `ServiceRegisterOptions` this
-	 * construct was, so the env parser flows through the graph rather than being
-	 * imported out of application config.
+	 * *send* the link. It is handed the options this construct was registered
+	 * with, and `services`: a client for each construct in `dependsOn`.
 	 */
 	options?:
 		| BetterAuthOptions
 		| ((
-				options: ServiceRegisterOptions,
+				context: BetterAuthOptionsContext<TUses>,
 		  ) => BetterAuthOptions | Promise<BetterAuthOptions>);
 }
 
@@ -102,6 +130,7 @@ const DEFAULT_BASE_PATH = '/api/auth';
 export class BetterAuth<
 	TName extends string = string,
 	TDatabase extends Consumable = Consumable,
+	const TUses extends readonly Consumable[] = readonly [],
 > implements Construct<TName, AuthServer>, Authenticator<AuthSession>
 {
 	readonly id: TName;
@@ -122,7 +151,7 @@ export class BetterAuth<
 
 	constructor(
 		id: ConstructName<TName>,
-		private readonly config: BetterAuthConfig<TDatabase>,
+		private readonly config: BetterAuthConfig<TDatabase, TUses>,
 	) {
 		const canonical = canonicalId(id as string);
 
@@ -187,7 +216,10 @@ export class BetterAuth<
 						// construct takes whatever database it is given, and a
 						// hardcoded kind is a second statement of a fact the
 						// tenant already makes.
-						dependencies: [edgeTo(this.config.database)],
+						dependencies: [
+							edgeTo(this.config.database),
+							...(this.config.dependsOn ?? []).map(edgeTo),
+						],
 						requires: [this.keys.secret],
 					},
 				],
@@ -336,9 +368,21 @@ export class BetterAuth<
 		// Hoisted: narrowing a property of `this` is not preserved across the
 		// await, and the false branch is the plain-object form.
 		const configure = this.config.options;
-		return typeof configure === 'function'
-			? await configure(options)
-			: (configure ?? {});
+		if (typeof configure !== 'function') return configure ?? {};
+
+		// A client for each declared construct, from the options this call was
+		// given — not the process-wide discovery, which keeps whichever env
+		// parser reached it first.
+		const services: Record<string, unknown> = {};
+		for (const construct of this.config.dependsOn ?? []) {
+			services[construct.service.serviceName] =
+				await construct.service.register(options);
+		}
+
+		return configure({
+			...options,
+			services,
+		} as BetterAuthOptionsContext<TUses>);
 	}
 
 	private async connect(
