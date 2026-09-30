@@ -47,6 +47,7 @@
     "constructs-feature-test",
     "constructs-only-compose",
     "constructs-only-workspaces",
+    "database-hygiene",
     "deploy-github-oidc",
     "dev-reads-the-surface",
     "dev-runs-the-build",

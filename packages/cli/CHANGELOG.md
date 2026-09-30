@@ -1,5 +1,30 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.31
+
+### Patch Changes
+
+- [#94](https://github.com/geekmidas/toolbox/pull/94) [`48b3ab4`](https://github.com/geekmidas/toolbox/commit/48b3ab471c242b9fb63cf20b4220e15bf0580ee4) Thanks [@geekmidas](https://github.com/geekmidas)! - The scaffolded AGENTS.md sets database hygiene
+
+  Migrations hold schema, never data. Data the code defines — a permission
+  catalogue, system roles — lives in the code, once, typed and in a shared
+  package every app imports; the database stores only what users create. A rule
+  ("every user is a member") is logic, not a row; nothing needs seeding to run;
+  a backfill is the one exception; and a test that only keeps two copies in step
+  means one copy should go.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.31
+  - @geekmidas/constructs@10.0.0-alpha.31
+  - @geekmidas/db@10.0.0-alpha.31
+  - @geekmidas/envkit@10.0.0-alpha.31
+  - @geekmidas/errors@10.0.0-alpha.31
+  - @geekmidas/logger@10.0.0-alpha.31
+  - @geekmidas/manifest@10.0.0-alpha.31
+  - @geekmidas/schema@10.0.0-alpha.31
+  - @geekmidas/services@10.0.0-alpha.31
+  - @geekmidas/telescope@10.0.0-alpha.31
+
 ## 10.0.0-alpha.30
 
 ### Patch Changes
