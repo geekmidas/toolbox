@@ -58,6 +58,7 @@
     "edge-root-site",
     "fresh-scaffold-tests-run",
     "gkm-migrate",
+    "gkm-seed",
     "harness-static-imports",
     "init-deploy-target",
     "init-github-actions",
