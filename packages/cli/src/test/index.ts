@@ -10,7 +10,11 @@ import {
 import { sniffAppEnvironment } from '../deploy/sniffer';
 import { backendsOf, constructGlobs } from '../reconcile/workspace.js';
 import { TEST_STAGE } from '../workspace/stages';
-import { TEST_MANIFEST_ENV, writeTestHarness } from './harness';
+import {
+	DEFAULT_FACTORIES_DIR,
+	TEST_MANIFEST_ENV,
+	writeTestHarness,
+} from './harness';
 import { TEST_READY_ENV, TEST_READY_FILE, type TestReady } from './ready';
 
 export interface TestOptions {
@@ -167,6 +171,10 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 				cacheBackend: backendsOf(workspace).cache,
 				stage: TEST_STAGE,
 				env: finalCredentials,
+				factories: join(
+					workspace.root,
+					workspace.test.factories ?? DEFAULT_FACTORIES_DIR,
+				),
 			})
 		: undefined;
 

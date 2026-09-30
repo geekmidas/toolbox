@@ -1,10 +1,22 @@
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+	mkdir,
+	mkdtemp,
+	readdir,
+	readFile,
+	rm,
+	writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TestManifest } from '@geekmidas/constructs/testing';
 import { TEST_MANIFEST_ENV as KIT_READS } from '@geekmidas/constructs/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TEST_MANIFEST_ENV, writeTestHarness } from '../harness';
+import {
+	FactoryHasNoCreate,
+	TEST_MANIFEST_ENV,
+	UnknownFactoryFile,
+	writeTestHarness,
+} from '../harness';
 
 /**
  * What `gkm test` writes for a feature test to be built from, for a small app
@@ -35,7 +47,7 @@ describe('writeTestHarness', () => {
 
 	afterEach(() => rm(root, { recursive: true, force: true }));
 
-	const write = () =>
+	const write = (factories?: string) =>
 		writeTestHarness({
 			root: fixture,
 			targets: apps,
@@ -43,7 +55,21 @@ describe('writeTestHarness', () => {
 			stage: 'test',
 			env,
 			cacheBackend: 'db',
+			...(factories ? { factories } : {}),
 		});
+
+	/** A factories folder holding these files, each exporting `createFactory`. */
+	const factoriesWith = async (
+		files: Record<string, string> = {},
+	): Promise<string> => {
+		const folder = join(root, 'test', 'factories');
+		await mkdir(folder, { recursive: true });
+		for (const [name, content] of Object.entries(files)) {
+			await writeFile(join(folder, name), content);
+		}
+		return folder;
+	};
+	const FACTORY = 'export function createFactory(db) { return { db }; }\n';
 
 	const read = (app: string, file: string) =>
 		readFile(join(app, '.gkm', 'test', file), 'utf-8');
@@ -194,6 +220,53 @@ describe('writeTestHarness', () => {
 		expect(
 			harness.match(/^import \* as __module\d+ from '\.\.\//gm),
 		).toHaveLength(files.size);
+	});
+
+	it('hands a test each database’s factory, keyed by its service name', async () => {
+		const folder = await factoriesWith({
+			'database.ts': FACTORY,
+			'auth-database.ts': FACTORY,
+		});
+
+		await write(folder);
+
+		const harness = await read(apps[0]!, 'index.ts');
+		expect(harness).toContain(
+			"import { createFactory as __authDatabaseFactory } from '../../../../test/factories/auth-database.js';",
+		);
+		expect(harness).toContain(
+			"import { createFactory as __databaseFactory } from '../../../../test/factories/database.js';",
+		);
+		expect(harness).toContain(
+			'featureTest<Browser, DatabaseOf<typeof __database>, { authDatabase: typeof __authDatabaseFactory; database: typeof __databaseFactory }>' +
+				'({ manifest, modules, browser: Browser, factories: { authDatabase: __authDatabaseFactory, database: __databaseFactory } })',
+		);
+	});
+
+	it('hands no factories when the folder is empty or missing', async () => {
+		await write(join(root, 'test', 'factories'));
+
+		const harness = await read(apps[0]!, 'index.ts');
+		expect(harness).not.toContain('factories');
+	});
+
+	it('refuses a factory named after no database, rather than never handing it over', async () => {
+		const folder = await factoriesWith({ 'users.ts': FACTORY });
+
+		const failure = await write(folder).catch((error: unknown) => error);
+
+		expect(failure).toBeInstanceOf(UnknownFactoryFile);
+		expect(failure).toMatchObject({
+			known: ['Database', 'AuthDatabase'],
+		});
+	});
+
+	it('refuses a factory that exports no createFactory', async () => {
+		const folder = await factoriesWith({
+			'database.ts': 'export const factory = {};\n',
+		});
+
+		await expect(write(folder)).rejects.toBeInstanceOf(FactoryHasNoCreate);
 	});
 
 	it('names the manifest in the variable the kit reads', () => {

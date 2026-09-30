@@ -46,6 +46,27 @@ describe('users', () => {
 		expect(users.map((u) => u.email)).toContain(email);
 	});
 
+	it('reads a user the database’s factory inserted', async ({
+		browser,
+		mailbox,
+		factories,
+	}) => {
+		// Built on this test's transaction, so the endpoint sees the row — and
+		// it is rolled back with everything else.
+		const email = address('katherine');
+		const katherine = await factories.database.insert('users', {
+			name: 'Katherine',
+			email,
+		});
+		await signIn({ browser, mailbox }, email);
+
+		const user = await browser.api.get('/users/{id}', {
+			params: { id: katherine.id },
+		});
+
+		expect(user).toMatchObject({ id: katherine.id, name: 'Katherine' });
+	});
+
 	it('refuses to read one without a session', async ({ browser }) => {
 		const created = await browser.api.post('/users', {
 			body: { name: 'Ada', email: address('ada') },

@@ -15,13 +15,20 @@
  * environment key, not a client.
  */
 
-import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { extname, join, relative } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { BetterAuth } from '@geekmidas/constructs/auth';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { TestManifest } from '@geekmidas/constructs/testing';
 import { EnvironmentParser } from '@geekmidas/envkit';
-import { kebabCase, provideKey } from '@geekmidas/manifest';
+import {
+	type ConstructManifest,
+	canonicalId,
+	kebabCase,
+	provideKey,
+	serviceKey,
+} from '@geekmidas/manifest';
 import { serviceContext } from '@geekmidas/services';
 import {
 	cacheBackendsIn,
@@ -93,6 +100,106 @@ export interface WriteTestHarnessOptions {
 	 * the build's server entry registers a driver for.
 	 */
 	cacheBackend: CacheBackend;
+	/**
+	 * The folder of test factories, absolute: `test/factories` at the root, or
+	 * where `test.factories` in the config points. Absent or empty, a test is
+	 * handed no factories.
+	 */
+	factories?: string;
+}
+
+/** Where a project keeps its test factories, relative to its root. */
+export const DEFAULT_FACTORIES_DIR = 'test/factories';
+
+/** A file in the factories folder that names no database construct. */
+export class UnknownFactoryFile extends Error {
+	constructor(
+		readonly file: string,
+		readonly known: readonly string[],
+	) {
+		super(
+			`${file} names no database construct, so no test could be handed it. ` +
+				(known.length > 0
+					? `The databases: ${known.join(', ')}. `
+					: 'This project declares no database. ') +
+				`Name a factory after its database: test/factories/<construct>.ts.`,
+		);
+		this.name = 'UnknownFactoryFile';
+	}
+}
+
+/** A factory file that exports no `createFactory`. */
+export class FactoryHasNoCreate extends Error {
+	constructor(readonly file: string) {
+		super(
+			`${file} is a test factory but exports no \`createFactory\`. ` +
+				`Export \`function createFactory(db: Kysely<Database>)\` returning ` +
+				`the factory.`,
+		);
+		this.name = 'FactoryHasNoCreate';
+	}
+}
+
+/** One database's factory: the file, and the service name a test keys it by. */
+export interface FactorySource {
+	file: string;
+	service: string;
+}
+
+/**
+ * The factories in a folder, each matched to the database it is named after.
+ *
+ * A file that names no database, or exports no `createFactory`, is refused
+ * rather than skipped: either is a factory no test would ever be handed.
+ */
+export async function factorySources(
+	folder: string | undefined,
+	declared: ConstructManifest,
+): Promise<FactorySource[]> {
+	if (!folder) return [];
+
+	const entries = await readdir(folder, { withFileTypes: true }).catch(
+		(error: NodeJS.ErrnoException) => {
+			if (error.code === 'ENOENT') return [];
+			throw error;
+		},
+	);
+
+	const databases = Object.entries(declared)
+		.filter(
+			([, declaration]) =>
+				declaration.kind === 'database' ||
+				declaration.kind === 'database-schema',
+		)
+		.map(([id]) => id);
+
+	const found: FactorySource[] = [];
+	for (const entry of entries) {
+		if (!entry.isFile() || !isFactoryFile(entry.name)) continue;
+
+		const file = join(folder, entry.name);
+		const id = canonicalId(entry.name.slice(0, -extname(entry.name).length));
+		if (!databases.includes(id)) {
+			throw new UnknownFactoryFile(file, databases);
+		}
+
+		const module = (await import(pathToFileURL(file).href)) as {
+			createFactory?: unknown;
+		};
+		if (typeof module.createFactory !== 'function') {
+			throw new FactoryHasNoCreate(file);
+		}
+
+		found.push({ file, service: serviceKey(id) });
+	}
+
+	return found.sort((a, b) => (a.service < b.service ? -1 : 1));
+}
+
+function isFactoryFile(file: string): boolean {
+	if (file.endsWith('.d.ts')) return false;
+	if (/\.(spec|test)\.[cm]?[jt]s$/.test(file)) return false;
+	return ['.ts', '.mts', '.js', '.mjs'].includes(extname(file));
 }
 
 /** Write the manifest, the clients and the harness; return the manifest path. */
@@ -169,6 +276,7 @@ export async function writeTestHarness(
 		sources,
 		endpoints.map(({ construct }) => construct as Endpoint<any, any, any, any>),
 	);
+	const factories = await factorySources(options.factories, declared);
 	const files = [
 		...new Set([
 			...Object.values(manifest.constructs).map(({ source }) => source.file),
@@ -188,6 +296,7 @@ export async function writeTestHarness(
 			})),
 			auths,
 			drivers,
+			factories,
 		});
 	const json = `${JSON.stringify(manifest, null, 2)}\n`;
 
@@ -302,8 +411,9 @@ function harnessModule(options: {
 	surfaces: { id: string; secured: boolean }[];
 	auths: AuthClient[];
 	drivers: RuntimeDrivers;
+	factories: FactorySource[];
 }): string {
-	const { surfaces, auths, drivers, database, dir, files } = options;
+	const { surfaces, auths, drivers, database, dir, files, factories } = options;
 	const plugins = [...new Set(auths.flatMap(({ plugins }) => plugins))].sort();
 
 	const imports = [
@@ -325,6 +435,10 @@ function harnessModule(options: {
 			? [`import { ${plugins.join(', ')} } from 'better-auth/client/plugins';`]
 			: []),
 		...(drivers.imports ? [drivers.imports] : []),
+		...factories.map(
+			({ file, service }) =>
+				`import { createFactory as __${service}Factory } from '${specifierFrom(dir, file)}';`,
+		),
 		// Every construct and endpoint module, imported here — inside the app,
 		// where its tsconfig paths resolve — rather than by path from the kit.
 		...files.map(
@@ -361,6 +475,17 @@ function harnessModule(options: {
 		),
 	];
 
+	// Each database's factory, keyed as the test is handed it.
+	const factoriesType = factories.length
+		? `{ ${factories.map(({ service }) => `${service}: typeof __${service}Factory`).join('; ')} }`
+		: '';
+	const factoriesOption = factories.length
+		? `, factories: { ${factories.map(({ service }) => `${service}: __${service}Factory`).join(', ')} }`
+		: '';
+	const generics = database
+		? `<Browser, DatabaseOf<typeof __database>${factoriesType ? `, ${factoriesType}` : ''}>`
+		: '';
+
 	return `// Generated by \`gkm test\` from the app's constructs — do not edit.
 ${imports.join('\n')}
 
@@ -377,6 +502,6 @@ ${files.map((file, index) => `\t${JSON.stringify(file)}: __module${index},`).joi
 };
 
 /** \`it\`, for a test that drives the app the way it runs deployed. */
-export const it = featureTest${database ? '<Browser, DatabaseOf<typeof __database>>' : ''}({ manifest, modules, browser: Browser });
+export const it = featureTest${generics}({ manifest, modules, browser: Browser${factoriesOption} });
 `;
 }

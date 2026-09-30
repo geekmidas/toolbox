@@ -11,12 +11,15 @@ export { TestQueueAdaptor } from '../queue/TestQueueAdaptor';
 export { TestSubscriberAdaptor } from '../subscribers/TestSubscriberAdaptor';
 export {
 	type DatabaseOf,
+	type FactoriesOf,
+	type FactoryBuilders,
 	type FeatureContext,
 	type FeatureIt,
 	type FeatureTestOptions,
 	featureTest,
 	NoInbox,
 	UnknownDatabase,
+	UnknownFactory,
 	UnknownTestContext,
 } from '../testing/featureTest';
 export {

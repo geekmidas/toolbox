@@ -580,5 +580,22 @@ Run tests through \`gkm test\`, not \`vitest\` directly${
 		database
 			? ' — it is what starts the database and injects the secrets the suite needs'
 			: ''
-	}.`;
+	}.${
+		database
+			? `
+
+**Factories, one per database.** \`test/factories/<construct>.ts\` at the
+project root — \`database.ts\` for \`Database\` — exports
+\`createFactory(db)\`. A feature test is handed every one as \`factories\`,
+keyed by service name and built on that test's transaction, so insert through
+\`factories.database\` rather than importing and building one:
+
+\`\`\`typescript
+it('reads a user', async ({ browser, factories }) => {
+  const ada = await factories.database.insert('users', { name: 'Ada' });
+  // …
+});
+\`\`\``
+			: ''
+	}`;
 }

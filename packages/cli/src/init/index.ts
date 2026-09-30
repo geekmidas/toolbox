@@ -24,7 +24,10 @@ import {
 } from './generators/monorepo.js';
 import { generatePackageJson } from './generators/package.js';
 import { generateSourceFiles } from './generators/source.js';
-import { generateTestFiles } from './generators/test.js';
+import {
+	generateTestFactoryFiles,
+	generateTestFiles,
+} from './generators/test.js';
 import { generateUiPackageFiles } from './generators/ui.js';
 import { generateWebAppFiles } from './generators/web.js';
 import { generateTanStackWebFiles } from './generators/web-tanstack.js';
@@ -400,6 +403,9 @@ export async function initCommand(
 				...generateMonorepoFiles(templateOptions, baseTemplate),
 				...generateRootConstructs(templateOptions),
 				...generateModelsPackage(templateOptions),
+				// The project's, like its migrations: a factory belongs to a
+				// database, and every app's tests are handed it.
+				...generateTestFactoryFiles(templateOptions),
 			]
 		: [];
 

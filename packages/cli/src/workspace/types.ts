@@ -687,6 +687,22 @@ export type WorkspaceInput<TApps extends AppsRecord> = {
 };
 
 /**
+ * How `gkm test` builds what a feature test is handed.
+ */
+export interface TestConfig {
+	/**
+	 * The folder of test factories, relative to the root.
+	 *
+	 * Defaults to `test/factories`. A factory belongs to a database, not to an
+	 * app, so each file is named after one — `database.ts` for `Database`,
+	 * `auth-database.ts` for `AuthDatabase` — and exports `createFactory(db)`.
+	 * Every app's harness builds them on each test's transactions, and a test is
+	 * handed them as `factories`, keyed by service name.
+	 */
+	factories?: string;
+}
+
+/**
  * Extract app names from apps record.
  */
 export type InferAppNames<TApps extends AppsRecord> = keyof TApps & string;
@@ -713,6 +729,7 @@ export type InferredWorkspaceConfig<TApps extends AppsRecord> = {
 	stages: StagesConfig;
 	secrets?: SecretsConfig;
 	state?: StateConfig;
+	test?: TestConfig;
 };
 
 // Legacy types for backwards compatibility
@@ -828,6 +845,9 @@ export interface WorkspaceConfig {
 
 	/** State provider configuration (local filesystem by default, or SSM for team collaboration) */
 	state?: StateConfig;
+
+	/** What `gkm test` hands a feature test: where the factories are. */
+	test?: TestConfig;
 }
 
 /**
@@ -896,6 +916,8 @@ export interface NormalizedWorkspace {
 	secrets: SecretsConfig;
 	/** State provider configuration (undefined = local filesystem) */
 	state?: StateConfig;
+	/** What `gkm test` hands a feature test (empty object if not specified) */
+	test: TestConfig;
 }
 
 /**

@@ -11,7 +11,10 @@ import {
 	generateRootConstructs,
 } from '../generators/monorepo.js';
 import { generatePackageJson } from '../generators/package.js';
-import { generateTestFiles } from '../generators/test.js';
+import {
+	generateTestFactoryFiles,
+	generateTestFiles,
+} from '../generators/test.js';
 import { generateUiPackageFiles } from '../generators/ui.js';
 import { generateWebAppFiles } from '../generators/web.js';
 import { generateTanStackWebFiles } from '../generators/web-tanstack.js';
@@ -1214,9 +1217,9 @@ describe('generateTestFiles', () => {
 		const files = generateTestFiles(baseOptions, minimalTemplate);
 		const paths = files.map((f) => f.path);
 		expect(paths).toContain('test/config.ts');
-		expect(paths).toContain('test/factory/index.ts');
-		expect(paths).toContain('test/factory/users.ts');
 		expect(paths).toContain('test/example.spec.ts');
+		// The factory is the project's, not the app's.
+		expect(paths.filter((path) => path.includes('factor'))).toEqual([]);
 	});
 
 	it('should use wrapVitestKyselyTransaction in config', () => {
@@ -1246,17 +1249,34 @@ describe('generateTestFiles', () => {
 		expect(paths).not.toContain('kysely.config.ts');
 	});
 
-	it('should use KyselyFactory in factory files', () => {
-		const files = generateTestFiles(baseOptions, minimalTemplate);
-		const factoryIndex = files.find((f) => f.path === 'test/factory/index.ts');
-		expect(factoryIndex).toBeDefined();
-		expect(factoryIndex!.content).toContain('KyselyFactory');
-		expect(factoryIndex!.content).toContain('createFactory');
+	it('writes one factory per database, named after it, at the project root', () => {
+		const files = generateTestFactoryFiles(baseOptions);
+		expect(files.map((f) => f.path)).toEqual(['test/factories/database.ts']);
 
-		const usersBuilder = files.find((f) => f.path === 'test/factory/users.ts');
-		expect(usersBuilder).toBeDefined();
-		expect(usersBuilder!.content).toContain('KyselyFactory.createBuilder');
-		expect(usersBuilder!.content).toContain("'users'");
+		const factory = files[0]!.content;
+		expect(factory).toContain('KyselyFactory.createBuilder');
+		expect(factory).toContain('export function createFactory');
+		expect(factory).toContain('factories.database');
+		// From the root: a single app's constructs live under src/.
+		expect(factory).toContain("from '../../src/constructs/database.ts'");
+
+		const monorepo = generateTestFactoryFiles({
+			...baseOptions,
+			monorepo: true,
+			apiPath: 'apps/api',
+		})[0]!.content;
+		expect(monorepo).toContain(
+			`from '@${baseOptions.name}/constructs/database.ts'`,
+		);
+	});
+
+	it('writes no factory without a database', () => {
+		expect(
+			generateTestFactoryFiles({
+				...baseOptions,
+				constructs: { ...baseOptions.constructs, database: false },
+			}),
+		).toEqual([]);
 	});
 
 	it('should generate example spec with transaction-wrapped it', () => {

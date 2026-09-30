@@ -54,7 +54,13 @@ import { TestSubscriberAdaptor } from '../subscribers/TestSubscriberAdaptor';
 import { Topic } from '../topic/Topic';
 import { loadTestManifest, type TestManifest } from './manifest';
 
-export interface FeatureTestOptions<TBrowser extends TestBrowser> {
+/** How each database's test factory is built, keyed by its service name. */
+export type FactoryBuilders = Record<string, (db: Kysely<any>) => unknown>;
+
+export interface FeatureTestOptions<
+	TBrowser extends TestBrowser,
+	TFactories extends FactoryBuilders = {},
+> {
 	/**
 	 * What the app declares and the environment its test stage resolved.
 	 * Defaults to the manifest `gkm test` names in `GKM_TEST_MANIFEST`.
@@ -74,13 +80,36 @@ export interface FeatureTestOptions<TBrowser extends TestBrowser> {
 	 * one the app's endpoints name with `.database()`.
 	 */
 	database?: string;
+	/**
+	 * Each database's test factory — `createFactory` from
+	 * `test/factories/<construct>.ts`, which the generated harness imports —
+	 * keyed by the database's service name. Each is called once per test with
+	 * that database's transaction, so what a test inserts through it is rolled
+	 * back with everything else, and seen by the endpoints it calls.
+	 */
+	factories?: TFactories;
 }
 
-export interface FeatureContext<TBrowser extends TestBrowser, DB> {
+/** Each database's factory, built on this test's transaction. */
+export type FactoriesOf<TFactories extends FactoryBuilders> = {
+	[K in keyof TFactories]: ReturnType<TFactories[K]>;
+};
+
+export interface FeatureContext<
+	TBrowser extends TestBrowser,
+	DB,
+	TFactories extends FactoryBuilders = {},
+> {
 	/** This test's browser, already the global `fetch`. */
 	browser: TBrowser;
 	/** The app database's transaction for this test, rolled back after it. */
 	db: Kysely<DB>;
+	/**
+	 * Each database's test factory, keyed by its service name —
+	 * `factories.database`, `factories.authDatabase` — each on that database's
+	 * transaction for this test.
+	 */
+	factories: FactoriesOf<TFactories>;
 	/** The mail sent to an address during this test, read from Mailpit. */
 	mailbox: (address: string) => Mailbox;
 	/**
@@ -135,14 +164,32 @@ export interface PublishedMessage {
 	payload: unknown;
 }
 
-type FeatureFn<TBrowser extends TestBrowser, DB> = (
-	context: FeatureContext<TBrowser, DB>,
-) => unknown;
+type FeatureFn<
+	TBrowser extends TestBrowser,
+	DB,
+	TFactories extends FactoryBuilders,
+> = (context: FeatureContext<TBrowser, DB, TFactories>) => unknown;
 
-export interface FeatureIt<TBrowser extends TestBrowser, DB> {
-	(name: string, fn: FeatureFn<TBrowser, DB>, timeout?: number): void;
-	only(name: string, fn: FeatureFn<TBrowser, DB>, timeout?: number): void;
-	skip(name: string, fn: FeatureFn<TBrowser, DB>, timeout?: number): void;
+export interface FeatureIt<
+	TBrowser extends TestBrowser,
+	DB,
+	TFactories extends FactoryBuilders = {},
+> {
+	(
+		name: string,
+		fn: FeatureFn<TBrowser, DB, TFactories>,
+		timeout?: number,
+	): void;
+	only(
+		name: string,
+		fn: FeatureFn<TBrowser, DB, TFactories>,
+		timeout?: number,
+	): void;
+	skip(
+		name: string,
+		fn: FeatureFn<TBrowser, DB, TFactories>,
+		timeout?: number,
+	): void;
 }
 
 /** Everything one test owns, found again from its id. */
@@ -182,16 +229,21 @@ interface LoadedApp {
 export function featureTest<
 	TBrowser extends TestBrowser = TestBrowser,
 	DB = unknown,
->(options: FeatureTestOptions<TBrowser> = {}): FeatureIt<TBrowser, DB> {
+	TFactories extends FactoryBuilders = {},
+>(
+	options: FeatureTestOptions<TBrowser, TFactories> = {},
+): FeatureIt<TBrowser, DB, TFactories> {
 	const manifest = options.manifest ?? loadTestManifest();
 	const BrowserClass = (options.browser ?? TestBrowser) as new () => TBrowser;
 
 	let app: LoadedApp;
+	let factoryDatabases: [string, KyselyDatabase][] = [];
 	let network: SetupServer;
 	let restoreFetch: () => void = () => {};
 
 	beforeAll(async () => {
 		app = await load(manifest, options.database, options.modules ?? {});
+		factoryDatabases = databasesFor(options.factories ?? {}, app.databases);
 		for (const database of app.databases) bindToTests(database);
 
 		network = setupServer(
@@ -216,71 +268,85 @@ export function featureTest<
 		network?.close();
 	});
 
-	const run = (fn: FeatureFn<TBrowser, DB>) => async (): Promise<void> => {
-		const id = randomUUID();
-		const state: ContextState = {
-			transactions: new TransactionRegistry(),
-			discovery: new ServiceDiscovery(app.envParser),
-			surfaces: new Map(),
-			auth: new Map(),
-			addresses: new Set(),
-			published: new Map(),
-		};
-		contexts.set(id, state);
-		// Before anything resolves them: a publisher is a service, so the one this
-		// test's endpoints get is whichever is registered under its name first.
-		await state.discovery.register(recorders(app.channels, state));
+	const run =
+		(fn: FeatureFn<TBrowser, DB, TFactories>) => async (): Promise<void> => {
+			const id = randomUUID();
+			const state: ContextState = {
+				transactions: new TransactionRegistry(),
+				discovery: new ServiceDiscovery(app.envParser),
+				surfaces: new Map(),
+				auth: new Map(),
+				addresses: new Set(),
+				published: new Map(),
+			};
+			contexts.set(id, state);
+			// Before anything resolves them: a publisher is a service, so the one this
+			// test's endpoints get is whichever is registered under its name first.
+			await state.discovery.register(recorders(app.channels, state));
 
-		try {
-			await runInTestContext(id, async () => {
-				const browser = new BrowserClass();
-				const restore = browser.install();
-				try {
-					await fn({
-						browser,
-						db: app.database
+			try {
+				await runInTestContext(id, async () => {
+					const browser = new BrowserClass();
+					const restore = browser.install();
+					try {
+						const db = app.database
 							? ((await state.transactions.get(
 									app.database.id,
 									urlOf(app.database, app.envParser),
 									app.database.clientConfig,
 								)) as Kysely<DB>)
-							: (undefined as never),
-						mailbox: (address) => {
-							if (!app.readMail) throw new NoInbox();
-							state.addresses.add(address);
-							return app.readMail(address);
-						},
-						published: (channel) => [
-							...(state.published.get(channel.id) ?? []),
-						],
-						subscriber: (subscriber) =>
-							new TestSubscriberAdaptor(
-								subscriber,
-								state.discovery,
-							) as SubscriberAdaptorOf<typeof subscriber>,
-						queue: (queue) =>
-							new TestQueueAdaptor(queue, state.discovery) as QueueAdaptorOf<
-								typeof queue
-							>,
-					});
-				} finally {
-					restore();
-				}
-			});
-		} finally {
-			contexts.delete(id);
-			await Promise.all([
-				state.transactions.rollbackAll(),
-				...[...state.addresses].map((address) =>
-					app.readMail?.(address).clear(),
-				),
-			]);
-		}
-	};
+							: (undefined as never);
+						const factories: Record<string, unknown> = {};
+						for (const [name, database] of factoryDatabases) {
+							factories[name] = options.factories![name]!(
+								(await state.transactions.get(
+									database.id,
+									urlOf(database, app.envParser),
+									database.clientConfig,
+								)) as Kysely<any>,
+							);
+						}
+						await fn({
+							browser,
+							db,
+							factories: factories as FactoriesOf<TFactories>,
+							mailbox: (address) => {
+								if (!app.readMail) throw new NoInbox();
+								state.addresses.add(address);
+								return app.readMail(address);
+							},
+							published: (channel) => [
+								...(state.published.get(channel.id) ?? []),
+							],
+							subscriber: (subscriber) =>
+								new TestSubscriberAdaptor(
+									subscriber,
+									state.discovery,
+								) as SubscriberAdaptorOf<typeof subscriber>,
+							queue: (queue) =>
+								new TestQueueAdaptor(queue, state.discovery) as QueueAdaptorOf<
+									typeof queue
+								>,
+						} as FeatureContext<TBrowser, DB, TFactories>);
+					} finally {
+						restore();
+					}
+				});
+			} finally {
+				contexts.delete(id);
+				await Promise.all([
+					state.transactions.rollbackAll(),
+					...[...state.addresses].map((address) =>
+						app.readMail?.(address).clear(),
+					),
+				]);
+			}
+		};
 
 	const it = ((name, fn, timeout) => test(name, run(fn), timeout)) as FeatureIt<
 		TBrowser,
-		DB
+		DB,
+		TFactories
 	>;
 	it.only = (name, fn, timeout) => test.only(name, run(fn), timeout);
 	it.skip = (name, fn, timeout) => test.skip(name, run(fn), timeout);
@@ -377,6 +443,25 @@ function recorders(
 		return [channel.service.serviceName, channel.publisher.serviceName].map(
 			(serviceName) => ({ serviceName, register: () => publisher }),
 		);
+	});
+}
+
+/** Each factory's database, found by the service name it is keyed by. */
+function databasesFor(
+	factories: FactoryBuilders,
+	databases: KyselyDatabase[],
+): [string, KyselyDatabase][] {
+	return Object.keys(factories).map((name) => {
+		const database = databases.find(
+			(candidate) => candidate.service.serviceName === name,
+		);
+		if (!database) {
+			throw new UnknownFactory(
+				name,
+				databases.map((candidate) => candidate.service.serviceName),
+			);
+		}
+		return [name, database];
 	});
 }
 
@@ -548,6 +633,24 @@ export class NoInbox extends Error {
 				`<ID>_INBOX_URL.`,
 		);
 		this.name = 'NoInbox';
+	}
+}
+
+/** A factory keyed by a service name no database the app declares has. */
+export class UnknownFactory extends Error {
+	constructor(
+		readonly factory: string,
+		readonly known: readonly string[],
+	) {
+		super(
+			`There is a test factory for '${factory}', and no database this app ` +
+				`declares is called that. ` +
+				(known.length > 0
+					? `Its databases: ${known.join(', ')}. `
+					: 'It declares no database. ') +
+				`Name the file after the database construct: test/factories/<construct>.ts.`,
+		);
+		this.name = 'UnknownFactory';
 	}
 }
 
