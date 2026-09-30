@@ -21,9 +21,8 @@ import {
 	pullStageSecrets,
 	pushStageSecrets,
 } from '../secrets/transfer.js';
-import type { StageSecrets } from '../secrets/types.js';
+import type { SecretServiceName, StageSecrets } from '../secrets/types.js';
 import { ensureTrusted } from '../trust/index.js';
-import type { ComposeServiceName } from '../types.js';
 import type { LoadedConfig, NormalizedWorkspace } from '../workspace/types.js';
 import {
 	generateFullstackCustomSecrets,
@@ -222,21 +221,23 @@ async function resolveSecrets(
  */
 function credentialedServices(
 	containers: readonly string[],
-): ComposeServiceName[] {
-	const byContainer: Readonly<Record<string, ComposeServiceName>> = {
+): SecretServiceName[] {
+	const byContainer: Readonly<Record<string, SecretServiceName>> = {
 		postgres: 'postgres',
 		redis: 'redis',
 		minio: 'minio',
 		mailpit: 'mailpit',
 		localstack: 'localstack',
-		rabbitmq: 'rabbitmq',
+		// No `rabbitmq`: the container runs as the local user, and a topic's
+		// \`rabbitmq://\` URL is reconcile's. A generated password matched
+		// nothing, and the \`RABBITMQ_URL\` built from it could never connect.
 	};
 
 	return [
 		...new Set(
 			containers
 				.map((container) => byContainer[container])
-				.filter((name): name is ComposeServiceName => Boolean(name)),
+				.filter((name): name is SecretServiceName => Boolean(name)),
 		),
 	];
 }
@@ -262,10 +263,7 @@ export function reconcileSecrets(
 				...result,
 				services: { ...result.services, [name]: creds },
 			};
-			result.urls = generateConnectionUrls(
-				result.services,
-				result.eventsBackend,
-			);
+			result.urls = generateConnectionUrls(result.services);
 			logger.log(`   🔄 Adding missing service credentials: ${name}`);
 			changed = true;
 		}
@@ -286,7 +284,7 @@ export function reconcileSecrets(
 				},
 			},
 		};
-		result.urls = generateConnectionUrls(result.services, result.eventsBackend);
+		result.urls = generateConnectionUrls(result.services);
 		logger.log('   🔄 Adding missing service credentials: pgboss');
 		changed = true;
 	}

@@ -456,7 +456,7 @@ describe('generateRootConstructs - the apps, as constructs', () => {
 			"new Email('Mail'",
 		);
 		expect(at(files, 'constructs/database.ts')!.content).toContain(
-			"('Database')",
+			"('Database', {",
 		);
 		expect(all).not.toMatch(/Beetlefit/);
 	});
@@ -640,8 +640,29 @@ describe('what a workspace runs its tools with', () => {
 		const files = generateTestFiles(options, apiTemplate);
 
 		expect(file(files, 'test/example.spec.ts')).toContain('async ({ trx })');
-		// A function: an instance is taken for a construct.
-		expect(file(files, 'test/config.ts')).toContain('connection: () => db');
+		// The root construct, not a client of its own: the workspace's API has no
+		// hand-rolled database service to import one from.
+		const config = file(files, 'test/config.ts');
+		expect(config).toContain('connection: database');
+		expect(config).toContain('/constructs/database.ts');
+		expect(config).not.toContain('services/');
+	});
+
+	// The API reaches its database and its auth server through the root's
+	// constructs. A hand-rolled service beside them was a second client — its
+	// own pool, its own copy of the schema — that nothing kept in step.
+	it('gives the API no hand-rolled services', () => {
+		const files = apiTemplate.files({ ...options, studio: true });
+
+		expect(files.map((f) => f.path)).not.toContainEqual(
+			expect.stringMatching(/^src\/services\//),
+		);
+		expect(file(files, 'src/router.ts')).toContain(
+			'router.session(async ({ auth })',
+		);
+		expect(file(files, 'src/config/studio.ts')).toContain(
+			'...database.clientConfig',
+		);
 	});
 
 	it('ships the migration its endpoints and test setup expect', () => {
@@ -1199,7 +1220,11 @@ describe('generateTestFiles', () => {
 		expect(configFile!.content).toContain('@geekmidas/testkit/kysely');
 		// The declared database's schema type, and the key it publishes.
 		expect(configFile!.content).toContain('../src/constructs/database.ts');
-		expect(configFile!.content).toContain('process.env.DATABASE_URL');
+		// Connects through the construct, so the tests use the plugins the app
+		// does — a hand-rolled client without `CamelCasePlugin` writes
+		// `createdAt` where the app writes `created_at`.
+		expect(configFile!.content).toContain('connection: database');
+		expect(configFile!.content).not.toContain('new Kysely');
 	});
 
 	it('should migrate as the owner role in globalSetup', () => {

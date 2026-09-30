@@ -311,33 +311,6 @@ describe('toEmbeddableSecrets', () => {
 		expect(embeddable.REDIS_PORT).toBe('6379');
 	});
 
-	it('should include rabbitmq service credentials', () => {
-		const secrets: StageSecrets = {
-			stage: 'production',
-			createdAt: new Date().toISOString(),
-			updatedAt: new Date().toISOString(),
-			services: {
-				rabbitmq: {
-					host: 'rabbitmq',
-					port: 5672,
-					username: 'app',
-					password: 'rmq-pass',
-					vhost: '/myapp',
-				},
-			},
-			urls: {},
-			custom: {},
-		};
-
-		const embeddable = toEmbeddableSecrets(secrets);
-
-		expect(embeddable.RABBITMQ_USER).toBe('app');
-		expect(embeddable.RABBITMQ_PASSWORD).toBe('rmq-pass');
-		expect(embeddable.RABBITMQ_HOST).toBe('rabbitmq');
-		expect(embeddable.RABBITMQ_PORT).toBe('5672');
-		expect(embeddable.RABBITMQ_VHOST).toBe('/myapp');
-	});
-
 	it('should include minio service credentials', () => {
 		const secrets: StageSecrets = {
 			stage: 'production',
@@ -600,18 +573,10 @@ describe('validateEnvironmentVariables', () => {
 					username: 'default',
 					password: 'redis-secret',
 				},
-				rabbitmq: {
-					host: 'rabbitmq',
-					port: 5672,
-					username: 'guest',
-					password: 'guest',
-					vhost: '/',
-				},
 			},
 			urls: {
 				DATABASE_URL: 'postgresql://...',
 				REDIS_URL: 'redis://...',
-				RABBITMQ_URL: 'amqp://...',
 			},
 			custom: {
 				JWT_SECRET: 'jwt-secret-value',
@@ -622,11 +587,9 @@ describe('validateEnvironmentVariables', () => {
 			[
 				'DATABASE_URL',
 				'REDIS_URL',
-				'RABBITMQ_URL',
 				'JWT_SECRET',
 				'POSTGRES_PASSWORD',
 				'REDIS_PASSWORD',
-				'RABBITMQ_USER',
 				'MISSING_VAR',
 			],
 			secrets,
@@ -636,10 +599,8 @@ describe('validateEnvironmentVariables', () => {
 		expect(result.missing).toEqual(['MISSING_VAR']);
 		expect(result.provided).toContain('DATABASE_URL');
 		expect(result.provided).toContain('REDIS_URL');
-		expect(result.provided).toContain('RABBITMQ_URL');
 		expect(result.provided).toContain('JWT_SECRET');
 		expect(result.provided).toContain('POSTGRES_PASSWORD');
 		expect(result.provided).toContain('REDIS_PASSWORD');
-		expect(result.provided).toContain('RABBITMQ_USER');
 	});
 });

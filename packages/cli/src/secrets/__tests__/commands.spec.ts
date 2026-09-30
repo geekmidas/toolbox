@@ -55,12 +55,7 @@ describe('secrets commands', () => {
 
 	/** A stage with credentials and URLs for every service, stored encrypted. */
 	async function seed(stage = 'dev') {
-		const secrets = createStageSecrets(stage, [
-			'postgres',
-			'redis',
-			'rabbitmq',
-			'minio',
-		]);
+		const secrets = createStageSecrets(stage, ['postgres', 'redis', 'minio']);
 		secrets.custom = { STRIPE_KEY: 'sk_test_123' };
 		await writeStageSecrets(secrets);
 		return secrets;
@@ -216,7 +211,6 @@ export default defineWorkspace({
 			expect(out).toContain('postgres:');
 			expect(out).toContain('DATABASE_URL:');
 			expect(out).toContain('REDIS_URL:');
-			expect(out).toContain('RABBITMQ_URL:');
 			expect(out).toContain('STRIPE_KEY:');
 			expect(out).not.toContain(secrets.services.postgres!.password);
 			expect(out).not.toContain('sk_test_123');
@@ -277,7 +271,7 @@ export default defineWorkspace({
 			await secretsRotateCommand({ stage: 'dev' });
 
 			const after = (await readStageSecrets('dev'))!;
-			for (const service of ['postgres', 'redis', 'rabbitmq'] as const) {
+			for (const service of ['postgres', 'redis', 'minio'] as const) {
 				expect(after.services[service]!.password).not.toBe(
 					before.services[service]!.password,
 				);

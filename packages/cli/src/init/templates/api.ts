@@ -312,51 +312,10 @@ export const getUserEndpoint = router
 			},
 		];
 
-		// Add auth service for monorepo (calls auth app for session)
+		// The monorepo router: the API names the auth construct (`.auth(auth)` at
+		// the root), so the session comes from it rather than a service that
+		// fetches the auth server by hand.
 		if (options.monorepo) {
-			files.push({
-				path: 'src/services/auth.ts',
-				content: `import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
-
-export interface Session {
-  user: {
-    id: string;
-    email: string;
-    name: string;
-  };
-}
-
-export interface AuthClient {
-  getSession: (cookie: string) => Promise<Session | null>;
-}
-
-export const authService = {
-  serviceName: 'auth' as const,
-  async register({ envParser, context }: ServiceRegisterOptions) {
-    const logger = context.getLogger();
-
-    const config = envParser
-      .create((get) => ({
-        url: get('AUTH_URL').string(),
-      }))
-      .parse();
-
-    logger.info({ authUrl: config.url }, 'Auth service configured');
-
-    return {
-      getSession: async (cookie: string): Promise<Session | null> => {
-        const res = await fetch(\`\${config.url}/api/auth/get-session\`, {
-          headers: { cookie },
-        });
-        if (!res.ok) return null;
-        return (await res.json()) as Session | null;
-      },
-    };
-  },
-} satisfies Service<'auth', AuthClient>;
-`,
-			});
-
 			// Add router with session
 			files.push({
 				path: 'src/router.ts',
@@ -367,7 +326,6 @@ import { api } from '${constructsImport('api')}';${
 import { database } from '${constructsImport('database')}';`
 						: ''
 				}
-import { authService, type Session } from './services/auth.ts';
 
 /**
  * The shared endpoint factory — no session required.
@@ -382,15 +340,17 @@ import { authService, type Session } from './services/auth.ts';
  */
 export const router = api${options.constructs.database ? '.database(database)' : ''};
 
-// The auth client available, but the session not enforced.
-export const r = router.services([authService]);
+/**
+ * Requires an active session — throws when there is none.
+ *
+ * \`auth\` is the construct named in \`.auth()\` on the API, bound to this
+ * request: it asks the auth server whose cookie this is. Handlers built from
+ * this router get whatever this returns as \`session\`.
+ */
+export const sessionRouter = router.session(async ({ auth }) => {
+  const session = await auth.getSession();
 
-// Requires an active session — throws when there is none.
-export const sessionRouter = r.session<Session>(async ({ services, header }) => {
-  const cookie = header('cookie') || '';
-  const session = await services.auth.getSession(cookie);
-
-  if (!session?.user) {
+  if (!session) {
     throw new UnauthorizedError('No active session');
   }
 
@@ -516,50 +476,6 @@ export const cache = new Cache('${kv.id}');
 			});
 		}
 
-		// The workspace path, until its auth app declares its own half.
-		if (options.constructs.database && !declares) {
-			files.push({
-				path: 'src/services/database.ts',
-				content: `import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
-import { Kysely, PostgresDialect } from 'kysely';
-import pg from 'pg';
-
-// Define your database schema
-export interface Database {
-  users: {
-    id: string;
-    name: string;
-    email: string;
-    created_at: Date;
-  };
-}
-
-export const databaseService = {
-  serviceName: 'database' as const,
-  async register({ envParser, context }: ServiceRegisterOptions) {
-    const logger = context.getLogger();
-    logger.info('Connecting to database');
-
-    const config = envParser
-      .create((get) => ({
-        url: get('DATABASE_URL').string(),
-      }))
-      .parse();
-
-    const db = new Kysely<Database>({
-      dialect: new PostgresDialect({
-        pool: new pg.Pool({ connectionString: config.url }),
-      }),
-    });
-
-    logger.info('Database connection established');
-    return db;
-  },
-} satisfies Service<'database', Kysely<Database>>;
-`,
-			});
-		}
-
 		// Add Telescope config if enabled
 		if (options.telescope) {
 			files.push({
@@ -582,17 +498,19 @@ export const telescope = new Telescope({
 				content: `import { Direction, InMemoryMonitoringStorage, Studio } from '@geekmidas/studio';
 import { Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
-import type { Database } from '${src(declares ? 'constructs/database.ts' : 'services/database.ts')}';
+import { type Database, database } from '${declares ? src('constructs/database.ts') : constructsImport('database')}';
 import { envParser } from '${src('config/env.ts')}';
 
 const studioConfig = envParser
   .create((get) => ({
-    databaseUrl: get('${declares ? db.urlKey : 'DATABASE_URL'}').string(),
+    databaseUrl: get('${db.urlKey}').string(),
   }))
   .parse();
 
-// Create a Kysely instance for Studio
+// Studio's own client, built the way the construct builds its own — the same
+// plugins — so the browser shows what the app's queries see.
 const db = new Kysely<Database>({
+  ...database.clientConfig,
   dialect: new PostgresDialect({
     pool: new pg.Pool({ connectionString: studioConfig.databaseUrl }),
   }),

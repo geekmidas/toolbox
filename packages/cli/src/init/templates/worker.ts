@@ -35,6 +35,7 @@ export const workerTemplate: TemplateConfig = {
 		'@geekmidas/events': GEEKMIDAS_VERSIONS['@geekmidas/events'],
 		'@geekmidas/logger': GEEKMIDAS_VERSIONS['@geekmidas/logger'],
 		'@geekmidas/schema': GEEKMIDAS_VERSIONS['@geekmidas/schema'],
+		zod: DEPENDENCY_VERSIONS.zod,
 	},
 
 	devDependencies: {
@@ -107,57 +108,40 @@ export const config = envParser
 				content: loggerContent,
 			},
 
-			// src/events/types.ts
+			// The topic this worker subscribes to. Declaring it is what puts a
+			// broker in the plan — no service names one, and nothing reads a
+			// broker URL by hand.
 			{
-				path: 'src/events/types.ts',
-				content: `import type { PublishableMessage } from '@geekmidas/events';
+				path: 'src/constructs/topics.ts',
+				content: `import { t } from '@geekmidas/constructs/topic';
+import { z } from 'zod';
 
-// Define your event types here
-export type AppEvents =
-  | PublishableMessage<'user.created', { userId: string; email: string }>
-  | PublishableMessage<'user.updated', { userId: string; changes: Record<string, unknown> }>
-  | PublishableMessage<'order.placed', { orderId: string; userId: string; total: number }>;
-`,
-			},
-
-			// src/events/publisher.ts
-			{
-				path: 'src/events/publisher.ts',
-				content: `import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
-import { Publisher, type EventPublisher } from '@geekmidas/events';
-import type { AppEvents } from './types.ts';
-
-export const eventsPublisherService = {
-  serviceName: 'events' as const,
-  async register({ envParser, context }: ServiceRegisterOptions) {
-    const logger = context.getLogger();
-    logger.info('Connecting to message broker');
-
-    const config = envParser
-      .create((get) => ({
-        url: get('RABBITMQ_URL').string().default('amqp://localhost:5672'),
-      }))
-      .parse();
-
-    const publisher = await Publisher.fromConnectionString<AppEvents>(
-      \`rabbitmq://\${config.url.replace('amqp://', '')}?exchange=events\`
-    );
-
-    logger.info('Message broker connection established');
-    return publisher;
-  },
-} satisfies Service<'events', EventPublisher<AppEvents>>;
+/**
+ * The \`users\` topic: pub/sub fan-out, any number of subscribers.
+ *
+ * The event map is the contract. It types \`users.publisher\` and every
+ * subscriber that binds with \`.topic(users)\`, so an event cannot be published
+ * in one shape and read in another.
+ */
+export const users = t.topic('users').events({
+  'user.created': z.object({ userId: z.string(), email: z.email() }),
+  'user.updated': z.object({
+    userId: z.string(),
+    changes: z.record(z.string(), z.unknown()),
+  }),
+});
 `,
 			},
 
 			// src/subscribers/user-events.ts
 			{
 				path: 'src/subscribers/user-events.ts',
-				content: `import { worker } from '~/constructs/worker.ts';
-import { eventsPublisherService } from '~/events/publisher.ts';
+				content: `import { users } from '~/constructs/topics.ts';
+import { worker } from '~/constructs/worker.ts';
 
+// Bound to the topic, not handed its publisher: a subscriber consumes.
 export const userEventsSubscriber = worker
-  .publisher(eventsPublisherService)
+  .topic(users)
   .subscribe(['user.created', 'user.updated'])
   .handle(async ({ events, logger }) => {
     // A batch, not a single event. Both transports deliver in batches, so

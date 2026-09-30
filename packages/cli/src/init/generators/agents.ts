@@ -141,7 +141,7 @@ environment and fail in a way that looks like a config bug. Go through
 
 	if (!isWorker) sections.push(endpointSection(options));
 	if (isWorker || isServerless) sections.push(backgroundSection(template));
-	if (database) sections.push(databaseSection());
+	if (database) sections.push(databaseSection(), queriesSection());
 
 	sections.push(`## Environment
 
@@ -364,6 +364,89 @@ export const monthly = router
 
 Queries go through Kysely. Never open your own connection pool — the one the
 construct provides is the one that gets credentials, pooling and shutdown.`;
+}
+
+function queriesSection(): string {
+	return `## Writing queries and relations
+
+**Names: snake_case in Postgres, camelCase in TypeScript.** Kysely's
+\`CamelCasePlugin\` does the mapping, and it is set where you can see it — on
+the database construct in \`constructs/database.ts\`:
+
+\`\`\`typescript
+export const database = new KyselyDatabase<Database, 'Database'>('Database', {
+  plugins: [new CamelCasePlugin()],
+});
+\`\`\`
+
+It is the project's plugin, not the toolbox's: keep it, change it, or remove it,
+but do it there. It applies to every connection the construct opens: every
+endpoint, and the tests, which connect through the construct.
+
+- The \`Database\` interface is camelCase: \`userId\`, \`createdAt\`.
+- Migrations are the SQL, so they spell columns in snake_case.
+- A raw \`sql\` fragment is not rewritten. Refer to columns with
+  \`sql.ref('users.createdAt')\` or \`eb.ref(…)\`, never inside the string.
+- A schema tenant takes its own options. Better Auth's tenant gets no plugin —
+  its tables are its own.
+
+**Types.** \`Generated<T>\` for every column the database fills in (ids,
+defaults, timestamps). Derive row types with \`Selectable<Database['users']>\`,
+\`Insertable<…>\` and \`Updateable<…>\` rather than writing them again.
+
+**Relations are foreign keys.** Every \`*_id\` column references its parent,
+with its delete rule written out:
+
+\`\`\`typescript
+.addColumn('user_id', 'uuid', (col) =>
+  col.notNull().references('users.id').onDelete('cascade'),
+)
+\`\`\`
+
+- \`restrict\` by default.
+- \`cascade\` only for rows that belong to the parent — a user's notifications.
+- \`set null\` for an optional link, on a nullable column.
+- Index every foreign key column. Postgres does not do it for you.
+
+**Reading related rows: one query, nested.** \`jsonArrayFrom\` and
+\`jsonObjectFrom\` from \`kysely/helpers/postgres\` return children already in
+the shape of the response:
+
+\`\`\`typescript
+import { jsonArrayFrom } from 'kysely/helpers/postgres';
+
+const user = await db
+  .selectFrom('users')
+  .select((eb) => [
+    'users.id',
+    'users.name',
+    jsonArrayFrom(
+      eb
+        .selectFrom('notifications')
+        .select(['notifications.id', 'notifications.body', 'notifications.createdAt'])
+        .whereRef('notifications.userId', '=', 'users.id')
+        .orderBy('notifications.createdAt', 'desc'),
+    ).as('notifications'),
+  ])
+  .where('users.id', '=', id)
+  .executeTakeFirstOrThrow();
+\`\`\`
+
+- Never query once per row in a loop.
+- Use joins to filter, or for a flat result — not to build nested ones by hand.
+- Qualify columns (\`users.id\`) once a query touches more than one table.
+- Select the columns the response needs. \`selectAll()\` only returns a whole
+  row.
+- Nested rows come back as JSON: a timestamp inside \`jsonArrayFrom\` is a
+  string, not a \`Date\`. Say so in the output schema (\`z.coerce.date()\`).
+
+**Writes that touch several tables run in one transaction.** Use
+\`withTransaction(db, async (trx) => …)\` from \`@geekmidas/db/kysely\`: it joins
+the transaction \`db\` already is — an endpoint with an auditor, a test —
+instead of opening a second one.
+
+**Lists paginate by cursor**, with \`paginatedSearch\` from
+\`@geekmidas/db/kysely/pagination\`, not by offset.`;
 }
 
 function conventionsSection(): string {

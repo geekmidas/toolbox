@@ -16,6 +16,7 @@ import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Construct, ConstructType } from '../Construct';
+import { derivedFrom } from '../construct-interface';
 
 /** A topic's event contract — a map of event type → payload schema. */
 export type TopicEvents = Record<string, StandardSchemaV1>;
@@ -151,19 +152,24 @@ export class Topic<
 		EventPublisher<TopicMessage<TEvents>>
 	> {
 		const envVar = this.connectionKey;
-		return {
-			serviceName: `${this.name}Publisher`,
-			async register({ envParser }) {
-				const { connectionString } = envParser
-					.create((get) => ({
-						connectionString: get(envVar).string(),
-					}))
-					.parse();
+		// Marked with this construct, so whatever it is injected into records an
+		// edge to it — and is given this construct's connection string.
+		return derivedFrom(
+			{
+				serviceName: `${this.name}Publisher`,
+				async register({ envParser }) {
+					const { connectionString } = envParser
+						.create((get) => ({
+							connectionString: get(envVar).string(),
+						}))
+						.parse();
 
-				return Publisher.fromConnectionString<TopicMessage<TEvents>>(
-					connectionString as EventPublisherConnectionString,
-				);
+					return Publisher.fromConnectionString<TopicMessage<TEvents>>(
+						connectionString as EventPublisherConnectionString,
+					);
+				},
 			},
-		};
+			this,
+		);
 	}
 }

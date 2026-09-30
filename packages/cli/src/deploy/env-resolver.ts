@@ -171,7 +171,7 @@ export function resolveEnvVar(
 			return context.userSecrets.custom[varName];
 		}
 
-		// Check URLs (DATABASE_URL, REDIS_URL, RABBITMQ_URL)
+		// Check URLs (DATABASE_URL, REDIS_URL, …)
 		if (varName in context.userSecrets.urls) {
 			return context.userSecrets.urls[
 				varName as keyof typeof context.userSecrets.urls

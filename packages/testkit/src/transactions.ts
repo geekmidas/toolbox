@@ -15,7 +15,7 @@
  * can end the transaction the test will roll back.
  */
 
-import { Kysely, PostgresDialect } from 'kysely';
+import { Kysely, type KyselyConfig, PostgresDialect } from 'kysely';
 import pg from 'pg';
 
 /** How to reach one database: a URL, and its search path as a startup option. */
@@ -51,9 +51,16 @@ export interface BoundTransaction {
 	rollback(): Promise<void>;
 }
 
-/** Open a connection to `url` and begin the transaction a test will roll back. */
+/**
+ * Open a connection to `url` and begin the transaction a test will roll back.
+ *
+ * `config` is what the database's own clients are built with — its plugins
+ * above all. The code under test is handed this Kysely in place of its own, so
+ * one built without them runs different queries than production does.
+ */
 export async function openBoundTransaction(
 	url: string,
+	config: Omit<KyselyConfig, 'dialect'> = {},
 ): Promise<BoundTransaction> {
 	const client = new pg.Client(connectionConfig(url));
 	await client.connect();
@@ -61,6 +68,7 @@ export async function openBoundTransaction(
 
 	return {
 		db: new Kysely({
+			...config,
 			dialect: new PostgresDialect({
 				// A "pool" of the one connection. Released never, ended never: the
 				// test owns it, and it closes in `rollback`.
@@ -124,10 +132,14 @@ function savepointing(client: pg.Client): pg.PoolClient {
 export class TransactionRegistry<TKey = string> {
 	private readonly open = new Map<TKey, Promise<BoundTransaction>>();
 
-	get(key: TKey, url: string): Promise<Kysely<any>> {
+	get(
+		key: TKey,
+		url: string,
+		config?: Omit<KyselyConfig, 'dialect'>,
+	): Promise<Kysely<any>> {
 		let transaction = this.open.get(key);
 		if (!transaction) {
-			transaction = openBoundTransaction(url);
+			transaction = openBoundTransaction(url, config);
 			this.open.set(key, transaction);
 		}
 		return transaction.then(({ db }) => db);

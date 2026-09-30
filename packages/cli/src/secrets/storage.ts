@@ -201,13 +201,6 @@ export function toEmbeddableSecrets(secrets: StageSecrets): EmbeddableSecrets {
 			REDIS_HOST: secrets.services.redis.host,
 			REDIS_PORT: String(secrets.services.redis.port),
 		}),
-		...(secrets.services.rabbitmq && {
-			RABBITMQ_USER: secrets.services.rabbitmq.username,
-			RABBITMQ_PASSWORD: secrets.services.rabbitmq.password,
-			RABBITMQ_HOST: secrets.services.rabbitmq.host,
-			RABBITMQ_PORT: String(secrets.services.rabbitmq.port),
-			RABBITMQ_VHOST: secrets.services.rabbitmq.vhost ?? '/',
-		}),
 		...(secrets.services.minio && {
 			STORAGE_ACCESS_KEY_ID: secrets.services.minio.username,
 			STORAGE_SECRET_ACCESS_KEY: secrets.services.minio.password,

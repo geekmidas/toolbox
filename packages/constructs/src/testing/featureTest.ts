@@ -242,6 +242,7 @@ export function featureTest<
 							? ((await state.transactions.get(
 									app.database.id,
 									urlOf(app.database, app.envParser),
+									app.database.clientConfig,
 								)) as Kysely<DB>)
 							: (undefined as never),
 						mailbox: (address) => {
@@ -428,6 +429,7 @@ function bindToTests(database: KyselyDatabase): void {
 		return state.transactions.get(
 			database.id,
 			urlOf(database, options.envParser),
+			database.clientConfig,
 		);
 	};
 }
