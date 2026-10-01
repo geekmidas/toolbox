@@ -3,7 +3,6 @@ import { describe, expect } from 'vitest';
 import { it } from '#test';
 import { emailsQueue } from '../queues/emails.js';
 import { userEventsSubscriber } from '../subscribers/userEvents.js';
-import { signIn } from './__helpers__/signIn.js';
 
 const address = (who: string) => `${who}+${crypto.randomUUID()}@example.com`;
 
@@ -41,7 +40,6 @@ describe('publishing', () => {
 
 	it('announces a profile update, naming what changed', async ({
 		browser,
-		mailbox,
 		published,
 	}) => {
 		// The second event, which nothing used to publish.
@@ -49,7 +47,7 @@ describe('publishing', () => {
 		const user = await browser.api.post('/users', {
 			body: { name: 'Ada', email },
 		});
-		await signIn({ browser, mailbox }, email);
+		await browser.signIn(email);
 
 		await browser.api.patch('/me', { body: { name: 'Ada Lovelace' } });
 
@@ -86,7 +84,8 @@ describe('the subscriber', () => {
 			],
 		});
 
-		const rows = await db
+		const app = await db.get('database');
+		const rows = await app
 			.selectFrom('notifications')
 			.select(['user_id', 'type', 'body'])
 			.where('user_id', 'in', [ada.id, grace.id])

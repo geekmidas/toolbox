@@ -714,6 +714,14 @@ const AppConfigSchema = z
 		},
 	);
 
+/** What `gkm test` hands a feature test. */
+const TestConfigSchema = z
+	.object({
+		/** The folder of per-database factories; `test/factories` by default. */
+		factories: z.string().optional(),
+	})
+	.strict();
+
 /**
  * Workspace configuration schema.
  */
@@ -744,6 +752,7 @@ export const WorkspaceConfigSchema = z
 		stages: StagesConfigSchema,
 		secrets: SecretsConfigSchema.optional(),
 		state: StateConfigSchema.optional(),
+		test: TestConfigSchema.optional(),
 	})
 	// Strict, so a key this schema no longer has fails instead of being
 	// dropped: a leftover `services:` block is a question the config used to

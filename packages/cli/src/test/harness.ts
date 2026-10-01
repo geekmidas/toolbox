@@ -15,13 +15,19 @@
  * environment key, not a client.
  */
 
-import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { extname, join, relative } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { BetterAuth } from '@geekmidas/constructs/auth';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { TestManifest } from '@geekmidas/constructs/testing';
 import { EnvironmentParser } from '@geekmidas/envkit';
-import { kebabCase, provideKey } from '@geekmidas/manifest';
+import {
+	canonicalId,
+	kebabCase,
+	provideKey,
+	serviceKey,
+} from '@geekmidas/manifest';
 import { serviceContext } from '@geekmidas/services';
 import {
 	cacheBackendsIn,
@@ -93,6 +99,98 @@ export interface WriteTestHarnessOptions {
 	 * the build's server entry registers a driver for.
 	 */
 	cacheBackend: CacheBackend;
+	/**
+	 * The folder of test factories, absolute: `test/factories` at the root, or
+	 * where `test.factories` in the config points. Absent or empty, a test is
+	 * handed no factories.
+	 */
+	factories?: string;
+}
+
+/** Where a project keeps its test factories, relative to its root. */
+export const DEFAULT_FACTORIES_DIR = 'test/factories';
+
+/** A file in the factories folder that names no database construct. */
+export class UnknownFactoryFile extends Error {
+	constructor(
+		readonly file: string,
+		readonly known: readonly string[],
+	) {
+		super(
+			`${file} names no database construct, so no test could be handed it. ` +
+				(known.length > 0
+					? `The databases: ${known.join(', ')}. `
+					: 'This project declares no database. ') +
+				`Name a factory after its database: test/factories/<construct>.ts.`,
+		);
+		this.name = 'UnknownFactoryFile';
+	}
+}
+
+/** A factory file that exports no `createFactory`. */
+export class FactoryHasNoCreate extends Error {
+	constructor(readonly file: string) {
+		super(
+			`${file} is a test factory but exports no \`createFactory\`. ` +
+				`Export \`function createFactory(db: Kysely<Database>)\` returning ` +
+				`the factory.`,
+		);
+		this.name = 'FactoryHasNoCreate';
+	}
+}
+
+/** One database's factory: the file, and the service name a test keys it by. */
+export interface FactorySource {
+	file: string;
+	service: string;
+}
+
+/**
+ * The factories in a folder, each matched to the database it is named after.
+ *
+ * A file that names no database, or exports no `createFactory`, is refused
+ * rather than skipped: either is a factory no test would ever be handed.
+ */
+export async function factorySources(
+	folder: string | undefined,
+	databases: readonly string[],
+): Promise<FactorySource[]> {
+	if (!folder) return [];
+
+	const entries = await readdir(folder, { withFileTypes: true }).catch(
+		(error: NodeJS.ErrnoException) => {
+			if (error.code === 'ENOENT') return [];
+			throw error;
+		},
+	);
+
+	const found: FactorySource[] = [];
+	for (const entry of entries) {
+		if (!entry.isFile() || !isFactoryFile(entry.name)) continue;
+
+		const file = join(folder, entry.name);
+		const id = canonicalId(entry.name.slice(0, -extname(entry.name).length));
+		if (!databases.includes(id)) {
+			throw new UnknownFactoryFile(file, databases);
+		}
+
+		const module = (await import(pathToFileURL(file).href)) as {
+			createFactory?: unknown;
+		};
+		if (typeof module.createFactory !== 'function') {
+			throw new FactoryHasNoCreate(file);
+		}
+
+		found.push({ file, service: serviceKey(id) });
+	}
+
+	return found.sort((a, b) => (a.service < b.service ? -1 : 1));
+}
+
+function isFactoryFile(file: string): boolean {
+	if (file.endsWith('.d.ts')) return false;
+	if (/\.(spec|test)\.[cm]?[jt]s$/.test(file)) return false;
+	return ['.ts', '.mts', '.js', '.mjs'].includes(extname(file));
 }
 
 /** Write the manifest, the clients and the harness; return the manifest path. */
@@ -164,10 +262,16 @@ export async function writeTestHarness(
 		appRoot: options.root,
 		cache: cacheBackendsIn(declared, options.cacheBackend),
 	});
-	const database = await databaseSource(
-		declared,
-		sources,
-		endpoints.map(({ construct }) => construct as Endpoint<any, any, any, any>),
+
+	// The app's own databases: not a tenant an auth server owns — reached
+	// through that server — and not a reader of one. What a test is handed.
+	const owners = new Set(auths.map((auth) => auth.databaseId));
+	const databases = databaseSources(declared, sources).filter(
+		({ id, kind }) => !owners.has(id) && kind !== 'database-reader',
+	);
+	const factories = await factorySources(
+		options.factories,
+		databases.map(({ id }) => id),
 	);
 	const files = [
 		...new Set([
@@ -179,7 +283,7 @@ export async function writeTestHarness(
 		harnessModule({
 			dir,
 			files,
-			database,
+			databases,
 			surfaces: surfaces.map((id, index) => ({
 				id,
 				// The client the generator writes for a surface with authorizers
@@ -188,6 +292,8 @@ export async function writeTestHarness(
 			})),
 			auths,
 			drivers,
+			factories,
+			mail: Object.values(declared).some(({ kind }) => kind === 'email'),
 		});
 	const json = `${JSON.stringify(manifest, null, 2)}\n`;
 
@@ -214,6 +320,8 @@ interface AuthClient {
 	id: string;
 	basePath: string;
 	plugins: string[];
+	/** The schema tenant it owns — reached through it, never by a test. */
+	databaseId: string;
 }
 
 /** Each auth server, with the client plugins its server plugins pair with. */
@@ -240,6 +348,7 @@ async function authClients(
 			id,
 			basePath: exported.basePath,
 			plugins: ids.flatMap((plugin) => CLIENT_PLUGINS[plugin] ?? []),
+			databaseId: exported.databaseId,
 		});
 	}
 
@@ -266,26 +375,32 @@ function propertyOf(id: string): string {
  * The same rule `featureTest` applies at runtime, applied here so `db` can be
  * typed by the construct's schema.
  */
-async function databaseSource(
+/** A database construct: its id, its service name, and where it is exported. */
+interface DatabaseSource {
+	id: string;
+	kind: string;
+	service: string;
+	source: ConstructSource;
+}
+
+/**
+ * Every database construct the app declares — a database, a schema tenant, a
+ * reader — keyed as a test is handed its transaction.
+ */
+function databaseSources(
 	declared: Awaited<ReturnType<typeof discover>>,
 	sources: Record<string, ConstructSource>,
-	endpoints: Endpoint<any, any, any, any>[],
-): Promise<ConstructSource | undefined> {
-	const services = new Set<unknown>(
-		endpoints.map((endpoint) => endpoint.databaseService).filter(Boolean),
-	);
-	if (services.size === 0) return undefined;
-
-	for (const [id, declaration] of Object.entries(declared)) {
-		const source = sources[id];
-		if (!source || !declaration.kind.startsWith('database')) continue;
-
-		const exported = (await import(source.file))[source.exportName] as {
-			service?: unknown;
-		};
-		if (services.has(exported?.service)) return source;
-	}
-	return undefined;
+): DatabaseSource[] {
+	return Object.entries(declared)
+		.filter(([id, declaration]) =>
+			Boolean(sources[id] && declaration.kind.startsWith('database')),
+		)
+		.map(([id, declaration]) => ({
+			id,
+			kind: declaration.kind,
+			service: serviceKey(id),
+			source: sources[id]!,
+		}));
 }
 
 /** An import specifier for `file`, from the harness written into `dir`. */
@@ -298,21 +413,31 @@ function harnessModule(options: {
 	dir: string;
 	/** Every module the manifest points at, by absolute path. */
 	files: string[];
-	database: ConstructSource | undefined;
+	databases: DatabaseSource[];
 	surfaces: { id: string; secured: boolean }[];
 	auths: AuthClient[];
 	drivers: RuntimeDrivers;
+	factories: FactorySource[];
+	/** Whether the app sends mail — what a magic-link sign-in is read from. */
+	mail: boolean;
 }): string {
-	const { surfaces, auths, drivers, database, dir, files } = options;
+	const { surfaces, auths, drivers, databases, dir, files, factories, mail } =
+		options;
+	// One auth server a test can sign in to without a person: a magic link,
+	// read from the app's inbox. With two, which one \`signIn\` means is a
+	// guess, so neither gets it.
+	const magicLinks = mail
+		? auths.filter(({ plugins }) => plugins.includes('magicLinkClient'))
+		: [];
+	const signIn = magicLinks.length === 1 ? magicLinks[0] : undefined;
 	const plugins = [...new Set(auths.flatMap(({ plugins }) => plugins))].sort();
 
 	const imports = [
-		`import {${database ? ' type DatabaseOf,' : ''} featureTest, loadTestManifest } from '@geekmidas/constructs/testing';`,
-		...(database
-			? [
-					`import type { ${database.exportName} as __database } from '${specifierFrom(dir, database.file)}';`,
-				]
-			: []),
+		`import {${databases.length ? ' type DatabaseOf,' : ''} featureTest, loadTestManifest${signIn ? ', signInWithMagicLink' : ''} } from '@geekmidas/constructs/testing';`,
+		...databases.map(
+			({ id, source }) =>
+				`import type { ${source.exportName} as __${id} } from '${specifierFrom(dir, source.file)}';`,
+		),
 		`import { Browser as TestBrowser } from '@geekmidas/testkit/browser';`,
 		...surfaces.map(
 			({ id }) =>
@@ -325,6 +450,10 @@ function harnessModule(options: {
 			? [`import { ${plugins.join(', ')} } from 'better-auth/client/plugins';`]
 			: []),
 		...(drivers.imports ? [drivers.imports] : []),
+		...factories.map(
+			({ file, service }) =>
+				`import { createFactory as __${service}Factory } from '${specifierFrom(dir, file)}';`,
+		),
 		// Every construct and endpoint module, imported here — inside the app,
 		// where its tsconfig paths resolve — rather than by path from the kit.
 		...files.map(
@@ -359,7 +488,31 @@ function harnessModule(options: {
 		fetchOptions: { customFetchImpl: this.fetch },
 	});`,
 		),
+		...(signIn
+			? [
+					`	/**
+	 * Sign in as \`email\` through \`${signIn.id}\`'s magic link, the way a person
+	 * does — the email opened, the link followed. The session it then reports.
+	 */
+	signIn(email: string) {
+		return signInWithMagicLink(this, this.${propertyOf(signIn.id)}, email);
+	}`,
+				]
+			: []),
 	];
+
+	// Each database's factory, keyed as the test is handed it.
+	const factoriesType = factories.length
+		? `{ ${factories.map(({ service }) => `${service}: typeof __${service}Factory`).join('; ')} }`
+		: '';
+	const factoriesOption = factories.length
+		? `, factories: { ${factories.map(({ service }) => `${service}: __${service}Factory`).join(', ')} }`
+		: '';
+	// Each database's schema, keyed as the test is handed its transaction.
+	const databasesType = `{ ${databases.map(({ id, service }) => `${service}: DatabaseOf<typeof __${id}>`).join('; ')} }`;
+	const generics = databases.length
+		? `<Browser, ${databasesType}${factoriesType ? `, ${factoriesType}` : ''}>`
+		: '';
 
 	return `// Generated by \`gkm test\` from the app's constructs — do not edit.
 ${imports.join('\n')}
@@ -377,6 +530,6 @@ ${files.map((file, index) => `\t${JSON.stringify(file)}: __module${index},`).joi
 };
 
 /** \`it\`, for a test that drives the app the way it runs deployed. */
-export const it = featureTest${database ? '<Browser, DatabaseOf<typeof __database>>' : ''}({ manifest, modules, browser: Browser });
+export const it = featureTest${generics}({ manifest, modules, browser: Browser${factoriesOption} });
 `;
 }

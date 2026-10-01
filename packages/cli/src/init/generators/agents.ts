@@ -580,5 +580,29 @@ Run tests through \`gkm test\`, not \`vitest\` directly${
 		database
 			? ' — it is what starts the database and injects the secrets the suite needs'
 			: ''
-	}.`;
+	}.${
+		database
+			? `
+
+**Factories, one per database.** \`test/factories/<construct>.ts\` at the
+project root — \`database.ts\` for \`Database\` — exports
+\`createFactory(db)\`. A feature test gets each by service name, on that
+test's transaction — the one \`db.get\` returns and its endpoints use — so
+ask for it rather than importing and building one. Sign in the way a person
+does, through \`browser.signIn\`:
+
+\`\`\`typescript
+it('reads a user', async ({ browser, db, factories }) => {
+  const factory = await factories.get('database');
+  const ada = await factory.insert('users', { email: 'ada@example.com' });
+
+  await browser.signIn(ada.email);
+  // … act through browser.api …
+
+  const app = await db.get('database');
+  // … assert on what was written …
+});
+\`\`\``
+			: ''
+	}`;
 }

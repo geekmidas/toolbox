@@ -177,6 +177,7 @@ export function normalizeWorkspace(
 		stages: validateStages(config.stages),
 		secrets: config.secrets ?? {},
 		state: config.state,
+		test: config.test ?? {},
 	};
 }
 
@@ -257,6 +258,7 @@ export function wrapSingleAppAsWorkspace(
 		shared: { packages: [] },
 		stages: validateStages(config.stages),
 		secrets: config.secrets ?? {},
+		test: config.test ?? {},
 	};
 }
 

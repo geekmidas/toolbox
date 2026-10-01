@@ -933,19 +933,34 @@ Map it once in the app's `package.json` — `"imports": { "#test":
 ```typescript
 import { it } from '#test';
 
-it('shows the signed-in user their profile', async ({ browser, mailbox }) => {
-  await browser.auth.signIn.magicLink({ email: 'ada@shop.test' });
-  await browser.visit((await mailbox('ada@shop.test').last()).link!);
+it('shows the signed-in user their orders', async ({ browser, db, factories }) => {
+  const factory = await factories.get('database');
+  await factory.insert('orders', { email: 'ada@shop.test' });
 
-  expect(await browser.api.get('/profile')).toMatchObject({ email: 'ada@shop.test' });
+  await browser.signIn('ada@shop.test');
+  const { orders } = await browser.api.get('/orders');
+  expect(orders).toHaveLength(1);
+
+  const app = await db.get('database');
+  expect(await app.selectFrom('orders').selectAll().execute()).toHaveLength(1);
 });
 ```
 
 - **`browser`** — already the global `fetch`; its cookie jar follows the
   browser's rules, so a session cookie set for the wrong domain never reaches
   the API.
-- **`db`** — the transaction of the database the endpoints name, typed by its
-  schema.
+- **`browser.signIn(email)`** — when the auth server has the magic-link plugin
+  and the app sends mail: the link requested, read from the inbox and
+  followed, as a person signs in. Returns the session the auth server reports.
+- **`db.get(name)`** — the app's own databases by service name
+  (`db.get('database')`), each this test's transaction, typed by its schema.
+  Opened on first use by whatever reaches it first — the test, a factory, an
+  endpoint — and the same one for all of them. A tenant an auth server owns is
+  not among them: it is reached through the auth server, as the app reaches
+  it. Nor is a reader.
+- **`factories.get(name)`** — each of those databases' factory, from
+  `test/factories/<construct>.ts` at the project root, on the same
+  transaction: `(await factories.get('database')).insert('users', …)`.
 - **`mailbox(address)`** — the mail actually sent, read from Mailpit.
 - **`published(topic | queue)`** — what the test published or enqueued.
   Nothing is delivered: a subscriber or a worker is run on its own with

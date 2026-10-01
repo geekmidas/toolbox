@@ -1,3 +1,4 @@
+import { kebabCase, serviceKey } from '@geekmidas/manifest';
 import { databaseFor } from '../constructs.js';
 import type {
 	GeneratedFile,
@@ -6,9 +7,9 @@ import type {
 } from '../templates/index.js';
 
 /**
- * Generate test infrastructure files when database is enabled.
- * Includes transaction-isolated test config,
- * factory system with builders/seeds, and an example spec.
+ * Generate test infrastructure files when database is enabled: the
+ * transaction-isolated test config and an example spec, in the app. The
+ * factory is the project's — see {@link generateTestFactoryFiles}.
  */
 export function generateTestFiles(
 	options: TemplateOptions,
@@ -53,47 +54,6 @@ export const it = wrapVitestKyselyTransaction<Database>(itVitest, {
 `,
 		},
 
-		// test/factory/index.ts - Factory aggregator
-		{
-			path: 'test/factory/index.ts',
-			content: `import type { Kysely } from 'kysely';
-import { KyselyFactory } from '@geekmidas/testkit/kysely';
-import type { Database } from '${schema}';
-import { usersBuilder } from './users.ts';
-
-const builders = { users: usersBuilder };
-const seeds = {};
-
-export function createFactory(db: Kysely<Database>) {
-  return new KyselyFactory<Database, typeof builders, typeof seeds>(
-    builders,
-    seeds,
-    db,
-  );
-}
-
-export type Factory = ReturnType<typeof createFactory>;
-`,
-		},
-
-		// test/factory/users.ts - Example builder
-		{
-			path: 'test/factory/users.ts',
-			content: `import { KyselyFactory } from '@geekmidas/testkit/kysely';
-import type { Database } from '${schema}';
-
-export const usersBuilder = KyselyFactory.createBuilder<Database, 'users'>(
-  'users',
-  ({ faker }) => ({
-    id: faker.string.uuid(),
-    name: faker.person.fullName(),
-    email: faker.internet.email(),
-    createdAt: new Date(),
-  }),
-);
-`,
-		},
-
 		// test/example.spec.ts - Example test showing usage
 		{
 			path: 'test/example.spec.ts',
@@ -107,6 +67,66 @@ describe('example', () => {
     expect(trx).toBeDefined();
   });
 });
+`,
+		},
+	];
+}
+
+/**
+ * The database's test factory, at the project root:
+ * `test/factories/<construct>.ts`.
+ *
+ * A factory belongs to a database, not to an app, so there is one per database
+ * for the whole project. `gkm test` finds it by that name and hands every
+ * feature test \`factories.get('database')\`, built on the test's transaction.
+ */
+export function generateTestFactoryFiles(
+	options: TemplateOptions,
+): GeneratedFile[] {
+	if (!options.constructs.database) {
+		return [];
+	}
+
+	const db = databaseFor();
+	// From the project root: a single app keeps its constructs under `src/`, a
+	// monorepo maps them through the root tsconfig.
+	const schema = options.monorepo
+		? `@${options.name}/constructs/database.ts`
+		: '../../src/constructs/database.ts';
+
+	return [
+		{
+			path: `test/factories/${kebabCase(db.id)}.ts`,
+			content: `import type { Kysely } from 'kysely';
+import { KyselyFactory } from '@geekmidas/testkit/kysely';
+import type { Database } from '${schema}';
+
+const usersBuilder = KyselyFactory.createBuilder<Database, 'users'>(
+  'users',
+  ({ faker }) => ({
+    id: faker.string.uuid(),
+    name: faker.person.fullName(),
+    email: faker.internet.email(),
+    createdAt: new Date(),
+  }),
+);
+
+const builders = { users: usersBuilder };
+const seeds = {};
+
+/**
+ * This database's factory. \`gkm test\` builds it on each feature test's
+ * transaction and hands it over as \`factories.get('${serviceKey(db.id)}')\`.
+ */
+export function createFactory(db: Kysely<Database>) {
+  return new KyselyFactory<Database, typeof builders, typeof seeds>(
+    builders,
+    seeds,
+    db,
+  );
+}
+
+export type Factory = ReturnType<typeof createFactory>;
 `,
 		},
 	];

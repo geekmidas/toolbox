@@ -11,12 +11,20 @@ export { TestQueueAdaptor } from '../queue/TestQueueAdaptor';
 export { TestSubscriberAdaptor } from '../subscribers/TestSubscriberAdaptor';
 export {
 	type DatabaseOf,
+	type DatabaseSchemas,
+	type FactoryBuilders,
 	type FeatureContext,
 	type FeatureIt,
 	type FeatureTestOptions,
 	featureTest,
+	type MagicLinkAuthClient,
 	NoInbox,
+	SignInFailed,
+	signInWithMagicLink,
+	type TestDatabases,
+	type TestFactories,
 	UnknownDatabase,
+	UnknownFactory,
 	UnknownTestContext,
 } from '../testing/featureTest';
 export {

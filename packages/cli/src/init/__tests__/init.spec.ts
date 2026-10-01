@@ -741,8 +741,9 @@ describe('initCommand', () => {
 			const projectDir = join(tempDir, 'my-api');
 			expect(existsSync(join(projectDir, 'test/config.ts'))).toBe(true);
 			expect(existsSync(join(projectDir, 'test/globalSetup.ts'))).toBe(false);
-			expect(existsSync(join(projectDir, 'test/factory/index.ts'))).toBe(true);
-			expect(existsSync(join(projectDir, 'test/factory/users.ts'))).toBe(true);
+			expect(existsSync(join(projectDir, 'test/factories/database.ts'))).toBe(
+				true,
+			);
 			expect(existsSync(join(projectDir, 'test/example.spec.ts'))).toBe(true);
 			expect(existsSync(join(projectDir, 'vitest.config.ts'))).toBe(true);
 		});
@@ -771,8 +772,11 @@ describe('initCommand', () => {
 			const apiDir = join(tempDir, 'my-fullstack', 'apps/api');
 			expect(existsSync(join(apiDir, 'test/config.ts'))).toBe(true);
 			expect(existsSync(join(apiDir, 'test/globalSetup.ts'))).toBe(false);
-			expect(existsSync(join(apiDir, 'test/factory/index.ts'))).toBe(true);
-			expect(existsSync(join(apiDir, 'test/factory/users.ts'))).toBe(true);
+			// The project's factory, at the root — every app's tests get it.
+			expect(existsSync(join(apiDir, 'test/factories'))).toBe(false);
+			expect(
+				existsSync(join(tempDir, 'my-fullstack', 'test/factories/database.ts')),
+			).toBe(true);
 			expect(existsSync(join(apiDir, 'vitest.config.ts'))).toBe(true);
 		});
 
