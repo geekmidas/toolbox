@@ -59,6 +59,23 @@ function rootConstructDependencies(
 }
 
 /**
+ * What `test/factories/` imports at the root: the factory and faker, and
+ * Kysely's types where the root does not already install it for the
+ * constructs.
+ */
+function rootFactoryDependencies(
+	options: TemplateOptions,
+): Record<string, string> {
+	return {
+		'@geekmidas/testkit': GEEKMIDAS_VERSIONS['@geekmidas/testkit'],
+		'@faker-js/faker': DEPENDENCY_VERSIONS['@faker-js/faker'],
+		...(options.template === 'fullstack'
+			? {}
+			: { kysely: DEPENDENCY_VERSIONS.kysely }),
+	};
+}
+
+/**
  * Generate monorepo root files (pnpm-workspace.yaml, root package.json, etc.)
  */
 export function generateMonorepoFiles(
@@ -110,6 +127,10 @@ export function generateMonorepoFiles(
 			turbo: DEPENDENCY_VERSIONS['turbo'],
 			typescript: TOOLCHAIN_VERSIONS['typescript'],
 			vitest: TOOLCHAIN_VERSIONS['vitest'],
+			// The test factories live at the root — a factory belongs to a
+			// database, not to an app — and resolve their imports from the root
+			// `node_modules`, as the constructs do.
+			...(options.constructs.database ? rootFactoryDependencies(options) : {}),
 			...deploy.devDependencies,
 		},
 	};

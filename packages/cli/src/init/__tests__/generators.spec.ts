@@ -295,6 +295,45 @@ describe('generateMonorepoFiles', () => {
 		expect(config?.content).not.toContain('store:');
 	});
 
+	it('installs what the root test factory imports, at the root', () => {
+		// The factory lives at the root, so its imports resolve from the root
+		// `node_modules` — not from the API app's, where testkit used to be.
+		const rootPackage = (options: TemplateOptions) =>
+			JSON.parse(
+				generateMonorepoFiles(options, minimalTemplate).find(
+					(f) => f.path === 'package.json',
+				)!.content,
+			) as { devDependencies: Record<string, string> };
+
+		const withDb = rootPackage({
+			...baseOptions,
+			template: 'fullstack',
+			monorepo: true,
+			apiPath: 'apps/api',
+			constructs: { ...baseOptions.constructs, database: true },
+		});
+		expect(withDb.devDependencies).toHaveProperty('@geekmidas/testkit');
+		expect(withDb.devDependencies).toHaveProperty('@faker-js/faker');
+
+		// An API monorepo's root installs nothing for the constructs, so the
+		// factory's Kysely types come from here too.
+		const api = rootPackage({
+			...baseOptions,
+			monorepo: true,
+			apiPath: 'apps/api',
+			constructs: { ...baseOptions.constructs, database: true },
+		});
+		expect(api.devDependencies).toHaveProperty('kysely');
+
+		const withoutDb = rootPackage({
+			...baseOptions,
+			monorepo: true,
+			apiPath: 'apps/api',
+			constructs: { ...baseOptions.constructs, database: false },
+		});
+		expect(withoutDb.devDependencies).not.toHaveProperty('@geekmidas/testkit');
+	});
+
 	it('should include correct workspace paths', () => {
 		const options: TemplateOptions = {
 			...baseOptions,
@@ -1260,14 +1299,25 @@ describe('generateTestFiles', () => {
 		// From the root: a single app's constructs live under src/.
 		expect(factory).toContain("from '../../src/constructs/database.ts'");
 
-		const monorepo = generateTestFactoryFiles({
+		// A fullstack monorepo declares its constructs at the root, through the
+		// path the root tsconfig maps.
+		const fullstack = generateTestFactoryFiles({
+			...baseOptions,
+			template: 'fullstack',
+			monorepo: true,
+			apiPath: 'apps/api',
+		})[0]!.content;
+		expect(fullstack).toContain(
+			`from '@${baseOptions.name}/constructs/database.ts'`,
+		);
+
+		// An API monorepo keeps them in the app, where the root has no alias.
+		const api = generateTestFactoryFiles({
 			...baseOptions,
 			monorepo: true,
 			apiPath: 'apps/api',
 		})[0]!.content;
-		expect(monorepo).toContain(
-			`from '@${baseOptions.name}/constructs/database.ts'`,
-		);
+		expect(api).toContain("from '../../apps/api/src/constructs/database.ts'");
 	});
 
 	it('writes no factory without a database', () => {
