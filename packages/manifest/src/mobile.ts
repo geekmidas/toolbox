@@ -9,7 +9,11 @@
  */
 
 /**
- * The scheme's base: the one given, or the project's name made a valid scheme.
+ * An app's scheme: the one given, or the project's name made a valid scheme.
+ *
+ * One for every stage. A development build and the store build register the
+ * same scheme, so the auth server of whichever stage a build talks to trusts
+ * it, and nothing about the app differs between stages but its URLs.
  *
  * A scheme is a letter followed by letters, digits, `+`, `-` or `.` — so
  * `Corner Shop` becomes `corner-shop`, and a name that starts with a digit gets a
@@ -22,18 +26,6 @@ export function schemeBase(project: string, given?: string): string {
 		.replace(/^-+|-+$/g, '');
 	if (!raw) return 'app';
 	return /^[a-z]/.test(raw) ? raw : `app${raw}`;
-}
-
-/**
- * The scheme an app answers on in one stage.
- *
- * A deployed stage uses the base as it is — `shop`, what the store build
- * registers. A local or test stage suffixes it — `shop-dev` — so a
- * development build on the same phone never answers the store build's links.
- * Pass no stage for a deployed one.
- */
-export function appScheme(base: string, localStage?: string): string {
-	return localStage ? `${base}-${schemeBase(localStage)}` : base;
 }
 
 /** Where an Expo development server runs, for the `exp://` origins it sends. */

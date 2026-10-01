@@ -7,8 +7,7 @@
  * - its `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_AUTH_URL`, which locally are
  *   the servers' own ports — reachable once the app swaps `localhost` for the
  *   address Metro is served from, which is what makes a phone on the LAN work;
- * - its URL scheme, per stage (`shop`, or `shop-dev` locally), so a
- *   development build and the store build on one phone never share links;
+ * - its URL scheme (`shop`), the same on every stage;
  * - the scheme in the auth server's and the API's trusted origins — and, on a
  *   local stage, the `exp://` origins Expo Go sends from;
  * - Better Auth's Expo plugin on the auth server, and sign-in links an app asks
@@ -58,10 +57,10 @@ export interface MobileAppConfig {
 	 */
 	variant?: MobileAppDeclaration['variant'];
 	/**
-	 * The scheme's base, before a stage suffix.
+	 * Its URL scheme.
 	 *
-	 * Normally omitted: it is the project's name — `shop` — and a local
-	 * stage suffixes it. Give one only when the app is known by another name.
+	 * Normally omitted: it is the project's name — `shop` — on every stage.
+	 * Give one only when the app is known by another name.
 	 */
 	scheme?: string;
 }

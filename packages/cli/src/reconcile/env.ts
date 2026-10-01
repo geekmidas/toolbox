@@ -15,7 +15,6 @@
 import { createHash } from 'node:crypto';
 import { ownerRole, readerRole } from '@geekmidas/db/pg/roles';
 import {
-	appScheme,
 	cacheTable,
 	cookieDomain,
 	mobileOrigins,
@@ -460,11 +459,9 @@ function urlFor(
 	// A secret has no address, so there is no port to wait for.
 	if (resource.kind === 'secret') return localSecret(project, plan, resource);
 
-	// A mobile app resolves its scheme for this stage — suffixed, because this
-	// is a local or test stage and a store build on the same phone answers the
-	// bare one.
+	// A mobile app resolves its scheme — the same on every stage.
 	if (resource.kind === 'mobile-app') {
-		return appScheme(schemeBase(project, resource.scheme), plan.stage);
+		return schemeBase(project, resource.scheme);
 	}
 
 	// A credential resolves to nothing here, deliberately. A secret is derived

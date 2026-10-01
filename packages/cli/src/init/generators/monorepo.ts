@@ -589,7 +589,7 @@ export const authDb = database.schema<Record<string, never>, 'AuthDb'>('AuthDb')
 
 	files.push({
 		path: 'constructs/auth.ts',
-		content: `import { BetterAuth } from '@geekmidas/constructs/auth';
+		content: `${frontendFramework === 'expo' ? "import { expo } from '@better-auth/expo';\n" : ''}import { BetterAuth } from '@geekmidas/constructs/auth';
 import { authDb } from './database.ts';
 
 /**
@@ -604,7 +604,15 @@ import { authDb } from './database.ts';
 export const auth = new BetterAuth('Auth', {
   path: 'apps/auth',
   database: authDb,
-  basePath: '/api/auth',
+  basePath: '/api/auth',${
+		frontendFramework === 'expo'
+			? `
+  // The mobile app signs in through Better Auth's Expo plugin: it sends its
+  // scheme as the origin, and this is what reads it. The construct refuses to
+  // start without it once a MobileApp depends on this server.
+  options: { plugins: [expo()] },`
+			: ''
+	}
 });
 `,
 	});
@@ -652,7 +660,7 @@ import { auth } from './auth.ts';
  * The mobile app — a construct like a site, which is what makes it an app.
  *
  * \`.dependsOn()\` is the single fact behind what a mobile app otherwise has
- * written down by hand: its API and auth URLs, its URL scheme per stage, the
+ * written down by hand: its API and auth URLs, its URL scheme, the
  * scheme in the auth server's trusted origins, Better Auth's Expo plugin, and
  * sign-in links a phone can open.
  */

@@ -608,6 +608,22 @@ describe('generateRootConstructs - the apps, as constructs', () => {
 		);
 	});
 
+	it('gives the auth server the Expo plugin a mobile app signs in through', () => {
+		const expoAuth = at(
+			generateRootConstructs({ ...fullstackBase, frontendFramework: 'expo' }),
+			'constructs/auth.ts',
+		)!.content;
+		const webAuth = at(
+			generateRootConstructs({ ...fullstackBase, frontendFramework: 'nextjs' }),
+			'constructs/auth.ts',
+		)!.content;
+
+		expect(expoAuth).toContain("import { expo } from '@better-auth/expo';");
+		expect(expoAuth).toContain('options: { plugins: [expo()] },');
+		expect(webAuth).not.toContain('@better-auth/expo');
+		expect(webAuth).not.toContain('expo()');
+	});
+
 	it('declares the site with the path it lives at', () => {
 		const files = generateRootConstructs({
 			...fullstackBase,

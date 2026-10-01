@@ -249,7 +249,7 @@ export interface PlannedResource {
 	 * under the name its bundler will inline.
 	 */
 	publicEnv?: Record<string, string>;
-	/** For a mobile app: the scheme's base it gave, before a stage suffix. */
+	/** For a mobile app: the scheme it gave, when not the project's name. */
 	scheme?: string;
 	/**
 	 * The ids that depend on this one — the graph read backwards.

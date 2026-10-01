@@ -91,7 +91,6 @@ export {
 	seedFolder,
 } from './migrations';
 export {
-	appScheme,
 	isWebOrigin,
 	type MetroHost,
 	mobileOrigins,

@@ -74,8 +74,8 @@ const env = (lan: string | null = LAN, metroPorts?: Record<string, number>) => {
 };
 
 describe('a mobile app on a local stage', () => {
-	it('answers on its scheme, suffixed with the stage', () => {
-		expect(env().APP_SCHEME).toBe('shop-dev');
+	it('answers on its scheme — the same on every stage', () => {
+		expect(env().APP_SCHEME).toBe('shop');
 	});
 
 	it('is built with each surface’s own port, which a phone can reach', () => {
@@ -90,14 +90,14 @@ describe('a mobile app on a local stage', () => {
 	it('is trusted by what it calls: its scheme, and Expo Go on this machine', () => {
 		const origins = env().AUTH_TRUSTED_ORIGINS!.split(',');
 
-		expect(origins).toContain('shop-dev://');
-		expect(origins).toContain('shop-dev://*');
+		expect(origins).toContain('shop://');
+		expect(origins).toContain('shop://*');
 		expect(origins).toContain(`exp://${LAN}:*`);
 		expect(origins).toContain('exp://localhost:*');
 		// The browser is still there, and no subnet is.
 		expect(origins.some((o) => o.startsWith('https://'))).toBe(true);
 		expect(origins.join(',')).not.toContain('*.*');
-		expect(env().API_TRUSTED_ORIGINS).toContain('shop-dev://');
+		expect(env().API_TRUSTED_ORIGINS).toContain('shop://');
 	});
 
 	it('trusts Expo Go on Metro’s exact port when the workspace placed it', () => {

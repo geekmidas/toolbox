@@ -90,9 +90,7 @@ import { EnvironmentParser } from '@geekmidas/envkit';
  * \`MobileApp\` construct's \`.dependsOn([api, auth])\` is where every value
  * here comes from, so none of it is written down.
  *
- * - \`APP_SCHEME\`: the URL scheme for this stage — \`${scheme}\` deployed,
- *   \`${scheme}-dev\` locally, so a development build and the store build on
- *   one phone never answer each other's links.
+ * - \`APP_SCHEME\`: the URL scheme — \`${scheme}\`, the same on every stage.
  * - \`EXPO_PUBLIC_API_URL\` / \`EXPO_PUBLIC_AUTH_URL\`: where the servers
  *   answer. Locally that is their own port on \`localhost\`, which
  *   \`config.ts\` points at the machine Metro was served from.
