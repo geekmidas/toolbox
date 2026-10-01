@@ -1,3 +1,4 @@
+import { schemeBase } from '@geekmidas/manifest';
 import {
 	DEPENDENCY_VERSIONS,
 	EXPO_VERSIONS,
@@ -23,10 +24,12 @@ export function generateExpoAppFiles(
 	const packageName = `@${options.name}/app`;
 	const apiPackage = `@${options.name}/api`;
 	const modelsPackage = `@${options.name}/models`;
-	// Expo bundle id / scheme — kept simple; the user can rename later.
+	// The slug is Expo's project name. The scheme — and the bundle id built on
+	// it — is not written here: the \`MobileApp\` construct resolves it per
+	// stage, and \`app.config.ts\` reads it from \`APP_SCHEME\`.
 	const slug = options.name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-	const scheme = slug.replace(/-/g, '');
-	const bundleId = `com.${scheme}.app`;
+	// What the deployed auth server trusts: the same derivation, not a copy.
+	const scheme = schemeBase(options.name);
 
 	const packageJson = {
 		name: packageName,
@@ -78,27 +81,53 @@ export function generateExpoAppFiles(
 	};
 
 	const appConfig = `import type { ConfigContext, ExpoConfig } from '@expo/config';
+import { EnvironmentParser } from '@geekmidas/envkit';
 
 /**
- * Expo runtime config. Public env vars (\`EXPO_PUBLIC_*\`) are inlined
- * at build time; everything else is read at runtime from \`extra\`.
+ * What the app is built with, from the environment \`gkm\` injects — the
+ * \`MobileApp\` construct's \`.dependsOn([api, auth])\` is where every value
+ * here comes from, so none of it is written down.
+ *
+ * - \`APP_SCHEME\`: the URL scheme for this stage — \`${scheme}\` deployed,
+ *   \`${scheme}-dev\` locally, so a development build and the store build on
+ *   one phone never answer each other's links.
+ * - \`EXPO_PUBLIC_API_URL\` / \`EXPO_PUBLIC_AUTH_URL\`: where the servers
+ *   answer. Locally that is their own port on \`localhost\`, which
+ *   \`config.ts\` points at the machine Metro was served from.
+ *
+ * Read at runtime from \`Constants.expoConfig.extra.config\` — see \`config.ts\`.
  */
-export default function config(_context: ConfigContext): ExpoConfig {
+const config = new EnvironmentParser({ ...process.env })
+  .create((get) => ({
+    scheme: get('APP_SCHEME').string(),
+    apiUrl: get('EXPO_PUBLIC_API_URL').string(),
+    authUrl: get('EXPO_PUBLIC_AUTH_URL').string(),
+  }))
+  .parse();
+
+export type Config = typeof config;
+
+// A bundle id and an Android package allow no hyphens; one per scheme, so
+// each stage installs beside the others.
+const bundleId = \`com.\${config.scheme.replace(/[^a-z0-9]/g, '')}.app\`;
+
+export default function expoConfig({ config: base }: ConfigContext): ExpoConfig {
   return {
+    ...base,
     name: '${options.name}',
     slug: '${slug}',
     version: '0.0.1',
     orientation: 'portrait',
     icon: './assets/icon.png',
-    scheme: '${scheme}',
+    scheme: config.scheme,
     userInterfaceStyle: 'automatic',
     newArchEnabled: true,
     ios: {
       supportsTablet: true,
-      bundleIdentifier: '${bundleId}',
+      bundleIdentifier: bundleId,
     },
     android: {
-      package: '${bundleId}',
+      package: bundleId,
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon.png',
         backgroundColor: '#ffffff',
@@ -124,6 +153,7 @@ export default function config(_context: ConfigContext): ExpoConfig {
     experiments: {
       typedRoutes: true,
     },
+    extra: { ...base.extra, config },
   };
 }
 `;
@@ -137,16 +167,16 @@ export default function config(_context: ConfigContext): ExpoConfig {
 			dev: {
 				developmentClient: true,
 				distribution: 'internal',
+				// Locally \`gkm\` injects the scheme and both URLs from the graph.
 				environment: 'development',
-				env: {
-					EXPO_PUBLIC_API_URL: 'http://localhost:3000',
-					EXPO_PUBLIC_AUTH_URL: 'http://localhost:3002',
-				},
 			},
 			preview: {
 				distribution: 'internal',
 				environment: 'preview',
+				// EAS builds outside \`gkm\`, so a store build is told its scheme —
+				// the bare one, which is what the deployed auth server trusts.
 				env: {
+					APP_SCHEME: scheme,
 					EXPO_PUBLIC_API_URL: 'https://api.example.com',
 					EXPO_PUBLIC_AUTH_URL: 'https://auth.example.com',
 				},
@@ -154,7 +184,10 @@ export default function config(_context: ConfigContext): ExpoConfig {
 			production: {
 				autoIncrement: true,
 				environment: 'production',
+				// EAS builds outside \`gkm\`, so a store build is told its scheme —
+				// the bare one, which is what the deployed auth server trusts.
 				env: {
+					APP_SCHEME: scheme,
 					EXPO_PUBLIC_API_URL: 'https://api.example.com',
 					EXPO_PUBLIC_AUTH_URL: 'https://auth.example.com',
 				},
@@ -224,23 +257,37 @@ export default {
 
 	const nativewindEnvDts = `/// <reference types="nativewind/types" />\n`;
 
-	const configTs = `import { EnvironmentParser } from '@geekmidas/envkit';
+	const configTs = `import Constants from 'expo-constants';
+
+import type { Config } from './app.config.ts';
+
+const built = Constants.expoConfig?.extra?.config as Config;
 
 /**
- * Public app config. EXPO_PUBLIC_* vars are inlined into the bundle at
- * build time, so they're safe to read in client code.
+ * The host this device loaded the bundle from — \`localhost\` on the iOS
+ * simulator, \`10.0.2.2\` on the Android emulator, the machine's LAN address
+ * on a phone. Whatever it is, the device has already reached it.
  */
-const envParser = new EnvironmentParser({
-  EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
-  EXPO_PUBLIC_AUTH_URL: process.env.EXPO_PUBLIC_AUTH_URL,
-});
+const metro = (Constants.expoConfig?.hostUri ?? '').split(':')[0];
 
-export const config = envParser
-  .create((get) => ({
-    apiUrl: get('EXPO_PUBLIC_API_URL').string(),
-    authUrl: get('EXPO_PUBLIC_AUTH_URL').string(),
-  }))
-  .parse();
+/**
+ * A server's URL as this device reaches it.
+ *
+ * Locally the servers are injected as \`http://localhost:<port>\`, which is
+ * this device only when it is the simulator; everywhere else \`localhost\` is
+ * swapped for the host Metro was served from. Deployed URLs have no
+ * \`localhost\` in them and pass through untouched.
+ */
+export function reachable(url: string): string {
+  if (!metro || metro === 'localhost' || metro === '127.0.0.1') return url;
+  return url.replace(/\\/\\/(localhost|127\\.0\\.0\\.1)(?=[:/]|$)/, \`//\${metro}\`);
+}
+
+export const config = {
+  scheme: built.scheme,
+  apiUrl: reachable(built.apiUrl),
+  authUrl: reachable(built.authUrl),
+};
 `;
 
 	const queryClientTs = `import { QueryClient } from '@tanstack/react-query';
@@ -261,14 +308,14 @@ import * as SecureStore from 'expo-secure-store';
 
 import { config } from '@/config.ts';
 
-export const STORAGE_PREFIX = '${scheme}';
+export const STORAGE_PREFIX = config.scheme;
 export const COOKIE_STORE_KEY = \`\${STORAGE_PREFIX}_cookie\`;
 
 export const authClient = createAuthClient({
   baseURL: config.authUrl,
   plugins: [
     expoClient({
-      scheme: '${scheme}',
+      scheme: config.scheme,
       storagePrefix: STORAGE_PREFIX,
       storage: SecureStore,
     }),

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { serviceContext } from '@geekmidas/services';
+import { magicLink } from 'better-auth/plugins';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import pg from 'pg';
@@ -9,6 +10,7 @@ import { TEST_DATABASE_CONFIG } from '../../../testkit/test/globalSetup';
 import {
 	BetterAuth,
 	type BetterAuthOptions,
+	deviceLink,
 	SessionCheckFailed,
 } from '../auth';
 import { KyselyDatabase } from '../database/kysely';
@@ -352,6 +354,102 @@ describe('BetterAuth.server', () => {
 		const plain = await auth().server(options());
 		const narrow = await plain.app.request(signUp(email('n')));
 		expect(narrow.headers.get('set-cookie')).not.toMatch(/Domain=/i);
+	});
+});
+
+describe('BetterAuth with a mobile app among its callers', () => {
+	const SCHEME = 'beetlefit-dev';
+	const DEVICE_URL = 'http://192.168.1.20:3002';
+	/** What a target derives once `App` declares `.dependsOn([auth])`. */
+	const mobile = (env: Record<string, string> = {}) =>
+		options({
+			AUTH_TRUSTED_ORIGINS: [WEB_ORIGIN, `${SCHEME}://`, `${SCHEME}://*`].join(
+				',',
+			),
+			AUTH_DEVICE_URL: DEVICE_URL,
+			...env,
+		});
+
+	/** An auth server whose magic links are kept rather than sent. */
+	function withMagicLink() {
+		const sent: string[] = [];
+		const construct = auth({
+			plugins: [
+				magicLink({
+					sendMagicLink: async ({ url }) => {
+						sent.push(url);
+					},
+				}),
+			],
+		});
+		return { construct, sent };
+	}
+
+	const askForLink = (callbackURL: string, origin: string) =>
+		new Request(`${AUTH_URL}/api/auth/sign-in/magic-link`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', origin },
+			body: JSON.stringify({ email: email('ada'), callbackURL }),
+		});
+
+	it('adds Better Auth’s Expo plugin, which an app signs in through', async () => {
+		const server = await auth().service.register(mobile());
+		const ids = server.options.plugins?.map((plugin) => plugin.id);
+
+		expect(ids).toContain('expo');
+	});
+
+	it('adds no Expo plugin where nothing but browsers call it', async () => {
+		const server = await auth().service.register(options());
+		const ids = server.options.plugins?.map((plugin) => plugin.id) ?? [];
+
+		expect(ids).not.toContain('expo');
+	});
+
+	it('builds a link the app asked for on the address a phone reaches', async () => {
+		const { construct, sent } = withMagicLink();
+		const { app } = await construct.server(mobile());
+
+		const response = await app.request(
+			askForLink(`${SCHEME}://signed-in`, `${SCHEME}://`),
+		);
+
+		expect(response.status).toBe(200);
+		expect(new URL(sent[0]!).origin).toBe(DEVICE_URL);
+		expect(new URL(sent[0]!).searchParams.get('callbackURL')).toBe(
+			`${SCHEME}://signed-in`,
+		);
+	});
+
+	it('leaves a browser’s link on the server’s own address', async () => {
+		const { construct, sent } = withMagicLink();
+		const { app } = await construct.server(mobile());
+
+		await app.request(askForLink('/dashboard', WEB_ORIGIN));
+
+		expect(new URL(sent[0]!).origin).toBe(AUTH_URL);
+	});
+});
+
+describe('deviceLink', () => {
+	const link = (callbackURL: string) =>
+		`http://auth-dev.shop.localhost:28006/api/auth/magic-link/verify?token=t&callbackURL=${encodeURIComponent(callbackURL)}`;
+
+	it('moves an app’s link to the device address, path and token kept', () => {
+		expect(
+			deviceLink(link('shop-dev://home'), 'http://192.168.1.20:3002'),
+		).toBe(
+			'http://192.168.1.20:3002/api/auth/magic-link/verify?token=t&callbackURL=shop-dev%3A%2F%2Fhome',
+		);
+	});
+
+	it('leaves a browser’s link alone, relative or absolute', () => {
+		expect(deviceLink(link('/home'), 'http://192.168.1.20:3002')).toBe(
+			link('/home'),
+		);
+		expect(
+			deviceLink(link('https://shop.com/home'), 'http://192.168.1.20:3002'),
+		).toBe(link('https://shop.com/home'));
 	});
 });
 

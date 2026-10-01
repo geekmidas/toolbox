@@ -26,10 +26,12 @@ import {
 	cookieDomain,
 	DEFAULT_POSTGRES_VERSION,
 	dependentsOf,
+	mobileOrigins,
 	PUBLIC,
 	PUBLIC_PREFIX,
 	providedKeyFor,
 	provisionOrder,
+	schemeBase,
 } from '@geekmidas/manifest';
 import {
 	Cache,
@@ -648,6 +650,8 @@ async function callersOf(
 	id: string,
 	manifest: ConstructManifest,
 	provisioned: ProvisionedManifest,
+	/** The app's name — a mobile caller's scheme base when it gives none. */
+	project: string,
 ): Promise<{ trustedOrigins: string; cookieDomain?: string }> {
 	// Every address here is a Pulumi output, not a string — a CloudFront domain
 	// and an API Gateway endpoint are both known only after their resource
@@ -672,8 +676,17 @@ async function callersOf(
 	const own = await resolved(provisioned[id]?.provides().url);
 	const domain = cookieDomain([...(own ? [own] : []), ...origins]);
 
+	// A mobile caller is reached by its scheme — the bare one, deployed: what
+	// the store build registers.
+	const schemes = dependentsOf(manifest, id).flatMap((caller) => {
+		const app = manifest[caller];
+		return app?.kind === 'mobile-app'
+			? mobileOrigins(schemeBase(project, app.scheme))
+			: [];
+	});
+
 	return {
-		trustedOrigins: origins.join(','),
+		trustedOrigins: [...origins, ...schemes].join(','),
 		...(domain ? { cookieDomain: domain } : {}),
 	};
 }
@@ -811,6 +824,10 @@ export function fromManifest(
 	for (const id of [...rest, ...sites]) {
 		const declaration = manifest[id];
 		if (!declaration) continue;
+		// A mobile app ships through EAS and the stores, not this stack. It is
+		// in the manifest for what it makes the surfaces trust, which
+		// `callersOf` reads off the graph.
+		if (declaration.kind === 'mobile-app') continue;
 
 		const component = provisionerFor(declaration.kind)(
 			stack,
@@ -841,7 +858,7 @@ export function fromManifest(
 	for (const [id, deferred] of callers) {
 		// Resolved with the promise itself: the addresses it needs are Pulumi
 		// outputs, so the answer arrives when they do.
-		deferred.resolve(callersOf(id, manifest, provisioned));
+		deferred.resolve(callersOf(id, manifest, provisioned, $app.name));
 	}
 
 	// Last, and only now: the roles exist as passwords and secrets from the

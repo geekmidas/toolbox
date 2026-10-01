@@ -96,7 +96,9 @@ function assignPorts(apps: Record<string, NormalizedAppConfig>): void {
 
 	let next = 3000;
 	for (const [, app] of ordered) {
-		if (app.port) continue;
+		// A mobile app is served by Metro on its own port; nothing reaches it at
+		// one of ours.
+		if (app.port || app.type === 'mobile') continue;
 		while (taken.has(next)) next += 1;
 		app.port = next;
 		taken.add(next);
@@ -128,17 +130,20 @@ export function derivedApps(
 	const defaultTarget: DeployTarget = workspace.deploy?.default ?? 'dokploy';
 
 	for (const [id, declaration] of Object.entries(manifest)) {
-		// Two kinds are apps: a site and an HTTP surface. A worker is not one —
-		// it names the process that runs a cron or a subscriber, and that process
-		// is the app's server, which already exists. Everything else is a
-		// resource one of them uses.
-		if (declaration.kind !== 'site' && declaration.kind !== 'rest-api')
+		// Three kinds are apps: a site, a mobile app and an HTTP surface. A worker
+		// is not one — it names the process that runs a cron or a subscriber, and
+		// that process is the app's server, which already exists. Everything else
+		// is a resource one of them uses.
+		if (
+			declaration.kind !== 'site' &&
+			declaration.kind !== 'mobile-app' &&
+			declaration.kind !== 'rest-api'
+		)
 			continue;
 
-		// No opt-in to be had. A site is an app and so is a surface, and each
-		// says where it lives.
+		// No opt-in to be had. Each says where it lives.
 		const spec: AppSpec =
-			declaration.kind === 'site'
+			declaration.kind === 'site' || declaration.kind === 'mobile-app'
 				? declaration.app
 				: {
 						path: declaration.path,
@@ -152,7 +157,12 @@ export function derivedApps(
 
 		apps[name] = {
 			...configured,
-			type: declaration.kind === 'site' ? 'web' : 'backend',
+			type:
+				declaration.kind === 'site'
+					? 'web'
+					: declaration.kind === 'mobile-app'
+						? 'mobile'
+						: 'backend',
 			path: spec.path,
 			port: spec.port ?? configured?.port ?? 0,
 			dependencies: [],
@@ -163,6 +173,9 @@ export function derivedApps(
 						...(declaration.root ? { root: true } : {}),
 						...(spec.config ? { config: spec.config } : {}),
 					}
+				: {}),
+			...(declaration.kind === 'mobile-app'
+				? { framework: configured?.framework ?? declaration.flavour }
 				: {}),
 			// One glob fans out to the six the build reads, because each generator
 			// already inspects every export and keeps what it recognises. A
@@ -183,11 +196,11 @@ export function derivedApps(
 	// depends on a surface depends on the app that serves it — which for a
 	// mounted auth server is its host, not a container that does not exist.
 	for (const [id, declaration] of Object.entries(manifest)) {
-		// Two kinds are apps: a site and an HTTP surface. A worker is not one —
-		// it names the process that runs a cron or a subscriber, and that process
-		// is the app's server, which already exists. Everything else is a
-		// resource one of them uses.
-		if (declaration.kind !== 'site' && declaration.kind !== 'rest-api')
+		if (
+			declaration.kind !== 'site' &&
+			declaration.kind !== 'mobile-app' &&
+			declaration.kind !== 'rest-api'
+		)
 			continue;
 
 		const app = apps[appKey(id)];

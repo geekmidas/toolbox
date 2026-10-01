@@ -341,3 +341,32 @@ describe('appKey', () => {
 		expect(appKey('AdminConsole')).toBe('admin-console');
 	});
 });
+
+describe('a mobile app', () => {
+	const manifest = {
+		Api: surface('Api'),
+		App: {
+			kind: 'mobile-app',
+			id: 'App',
+			flavour: 'expo',
+			app: { path: 'apps/app' },
+			dependencies: [{ target: 'Api', kind: 'rest-api' }],
+			provides: ['APP_SCHEME'],
+		},
+	} as unknown as ConstructManifest;
+
+	it('is an Expo app at the path it declared', () => {
+		expect(derivedApps(manifest, workspace()).app).toMatchObject({
+			type: 'mobile',
+			framework: 'expo',
+			path: 'apps/app',
+		});
+	});
+
+	it('takes none of the ports the servers answer on — Metro has its own', () => {
+		const apps = derivedApps(manifest, workspace());
+
+		expect(apps.app?.port).toBe(0);
+		expect(apps.api?.port).toBe(3000);
+	});
+});

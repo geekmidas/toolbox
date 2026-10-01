@@ -16,6 +16,7 @@ import type {
 	Declaration,
 	Dependency,
 	DerivedDeclaration,
+	MobileAppDeclaration,
 	SiteDeclaration,
 } from './declaration';
 import { DERIVES_FROM, PUBLIC } from './declaration';
@@ -157,10 +158,14 @@ export function dependentsOf(
  * `EXPO_PUBLIC_` all mean "inline this into the bundle" — so it is the one thing
  * a variant changes, and it changes nothing else.
  */
-export const PUBLIC_PREFIX: Record<SiteDeclaration['variant'], string> = {
+export const PUBLIC_PREFIX: Record<
+	SiteDeclaration['variant'] | MobileAppDeclaration['flavour'],
+	string
+> = {
 	static: 'VITE_',
 	tanstack: 'VITE_',
 	next: 'NEXT_PUBLIC_',
+	expo: 'EXPO_PUBLIC_',
 };
 
 /**
@@ -182,10 +187,13 @@ export const PUBLIC_PREFIX: Record<SiteDeclaration['variant'], string> = {
  * locally and the same site built by a deploy must inline the same names.
  */
 export function publicEnvFor(
-	declaration: SiteDeclaration,
+	declaration: SiteDeclaration | MobileAppDeclaration,
 	manifest: ConstructManifest,
 ): Record<string, string> {
-	const prefix = PUBLIC_PREFIX[declaration.variant];
+	const prefix =
+		PUBLIC_PREFIX[
+			declaration.kind === 'site' ? declaration.variant : declaration.flavour
+		];
 	const keys: Record<string, string> = {};
 
 	for (const edge of declaration.dependencies) {

@@ -46,6 +46,7 @@ export type {
 	Glob,
 	IdsOf,
 	IdsOfKind,
+	MobileAppDeclaration,
 	Node,
 	ObjectsDeclaration,
 	OidcDeclaration,
@@ -89,6 +90,13 @@ export {
 	migrationTargets,
 	seedFolder,
 } from './migrations';
+export {
+	appScheme,
+	isWebOrigin,
+	type MetroHost,
+	mobileOrigins,
+	schemeBase,
+} from './mobile';
 export {
 	cacheTable,
 	canonicalId,

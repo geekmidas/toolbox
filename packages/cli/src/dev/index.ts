@@ -1009,6 +1009,21 @@ async function workspaceDevCommand(
 	for (const appName of buildOrder) {
 		const app = workspace.apps[appName];
 		if (!app) continue;
+		// A mobile app answers on its scheme, and a phone reaches this machine
+		// at its LAN address — which is what to check when sign-in fails there.
+		if (app.type === 'mobile') {
+			const own = reconciled.plan.resources.find(
+				(r) => r.kind === 'mobile-app' && appKey(r.id) === appName,
+			);
+			const scheme = own ? reconciled.env[own.envKey] : undefined;
+			const device = Object.entries(reconciled.env).find(([key]) =>
+				key.endsWith('_DEVICE_URL'),
+			)?.[1];
+			logger.log(
+				`   ${appName.padEnd(width)}  ${scheme ? `${scheme}://` : 'mobile'}${device ? ` — devices reach ${new URL(device).hostname}` : ''}`,
+			);
+			continue;
+		}
 		const local = `http://localhost:${app.port}`;
 		const url = Object.entries(appUrls).find(
 			([id]) => appKey(id) === appName,

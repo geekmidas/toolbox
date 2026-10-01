@@ -89,6 +89,8 @@ const CONTAINERLESS: Partial<Record<DeclarationKind, true>> = {
 	// A site is the second: it is served by its own framework's dev server, and
 	// what the target resolves for it is only where that server answers.
 	site: true,
+	// A mobile app resolves its scheme, which nothing has to be running for.
+	'mobile-app': true,
 };
 
 /**
@@ -113,6 +115,7 @@ const ROLES: Partial<Record<DeclarationKind, string>> = {
 	queue: 'publisherConnectionString',
 	topic: 'publisherConnectionString',
 	credential: 'credential',
+	'mobile-app': 'scheme',
 };
 
 /** The kinds whose container is the events backend's rather than their own. */
@@ -246,6 +249,8 @@ export interface PlannedResource {
 	 * under the name its bundler will inline.
 	 */
 	publicEnv?: Record<string, string>;
+	/** For a mobile app: the scheme's base it gave, before a stage suffix. */
+	scheme?: string;
 	/**
 	 * The ids that depend on this one — the graph read backwards.
 	 *
@@ -461,6 +466,12 @@ export function planFor(
 				: {}),
 			...(declaration.kind === 'site'
 				? { publicEnv: publicEnvFor(declaration, manifest) }
+				: {}),
+			...(declaration.kind === 'mobile-app'
+				? {
+						publicEnv: publicEnvFor(declaration, manifest),
+						...(declaration.scheme ? { scheme: declaration.scheme } : {}),
+					}
 				: {}),
 			...(declaration.kind === 'file-server' && declaration.open?.length
 				? { open: declaration.open }

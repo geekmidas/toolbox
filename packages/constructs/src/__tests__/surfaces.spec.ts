@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { Cache } from '../cache';
 import { edgeTo, NotAConstruct } from '../construct-interface';
 import { KyselyDatabase } from '../database/kysely';
+import { MobileApp } from '../mobile-app';
 import { RestApi } from '../rest-api';
 import { StaticSite } from '../site';
 
@@ -92,6 +93,38 @@ describe('StaticSite', () => {
 		) as ConstructManifest;
 
 		expect(dependentsOf(manifest, 'Api')).toEqual(['Console']);
+	});
+});
+
+describe('MobileApp', () => {
+	const app = new MobileApp('App', { path: 'apps/app' });
+
+	it('declares where it lives, its flavour, and the scheme it provides', () => {
+		expect(app.declare()[0]).toEqual({
+			kind: 'mobile-app',
+			id: 'App',
+			flavour: 'expo',
+			app: { path: 'apps/app' },
+			dependencies: [],
+			provides: ['APP_SCHEME'],
+		});
+	});
+
+	it('carries the scheme base it was given', () => {
+		expect(
+			new MobileApp('App', { path: 'apps/app', scheme: 'fit' }).declare()[0],
+		).toMatchObject({ scheme: 'fit' });
+	});
+
+	it('is a caller of what it depends on, like a site', () => {
+		const manifest = Object.fromEntries(
+			[...api.declare(), ...app.dependsOn([api]).declare()].map((d) => [
+				d.id,
+				d,
+			]),
+		) as ConstructManifest;
+
+		expect(dependentsOf(manifest, 'Api')).toEqual(['App']);
 	});
 });
 
