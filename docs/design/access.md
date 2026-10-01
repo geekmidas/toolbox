@@ -2,23 +2,23 @@
 
 - **Status:** Draft, open questions below
 - **Impact:** High: a new construct, a new surface method, a new endpoint form
-- **First user:** beetlefit (replaces its hand-written access control)
+- **First user:** a fullstack app with staff screens (replaces its hand-written
+  access control)
 
 ## Why
 
-Every app with staff screens rebuilds the same thing, and beetlefit shows how
-it goes wrong:
+Every app with staff screens rebuilds the same thing, and it goes wrong the
+same way:
 
 - **Four tables written by hand:** `permissions`, `roles`,
   `role_permissions`, `user_roles`.
-- **A permission catalogue that exists twice:** it's `PERMISSIONS` in
-  `apps/api/src/access.ts`, and again as rows inserted by
-  `002_create_access_control.ts`, with a test whose only job is to keep the
-  two in step. Adding a permission means writing a migration, and granting it
+- **A permission catalogue that exists twice:** a `PERMISSIONS` constant in
+  the API, and again as rows inserted by a migration, with a test whose only
+  job is to keep the two in step. Adding a permission means writing a migration, and granting it
   to Super admin means writing another.
 - **Data in a migration:** the system roles and their grants are inserted by
   the migration, when they're seed data.
-- **A permission lookup written by hand** in `sessionRouter`.
+- **A permission lookup written by hand** in the app's session code.
 - **A Better Auth hook written by hand** that grants `Member` to every new
   user.
 - **The catalogue is reachable only from the API.** The web app and the Expo
@@ -95,7 +95,7 @@ export type Permission = PermissionOf<typeof access>;
   `roles`. Adding a permission is one line in the construct: the row appears,
   and `'*'` roles are granted it. Apps don't write seed files for any of this.
 - **The default role:** it's granted to a new user through Better Auth's
-  user-created hook, which replaces beetlefit's hand-written one.
+  user-created hook, which replaces the app's hand-written one.
 
 ### Declared roles vs custom roles
 
@@ -238,8 +238,8 @@ once those grants are removed or the removal is explicitly confirmed.
 
 ## Where things stand (2026-09-30)
 
-This design came out of cleaning up beetlefit's migrations. For picking up
-where this left off:
+This design came out of cleaning up an app's migrations. For picking up where
+this left off:
 
 **Merged**
 - toolbox #93 (released in alpha.30):
@@ -249,8 +249,6 @@ where this left off:
   - the `@geekmidas/cli/vitest` global setup;
   - `gkm dev` reporting pending migrations;
   - `BetterAuth#pendingMigration()`.
-- beetlefit #117: alpha.30, with migrations moved into `db/database/` and
-  `db/auth-database/`.
 
 **Open**
 - **toolbox #94** (database hygiene in AGENTS.md): **needs correcting before
@@ -264,13 +262,8 @@ where this left off:
   - sample data comes from factories.
 
 **Not started**
-- **beetlefit migration names:** rename `001_`–`003_` to timestamps, and
-  update the local test database's `app.kysely_migration` rows to the new
-  names so nothing re-runs.
-- **beetlefit 002:** remove the inserts. With this construct, beetlefit's
-  four tables and its hand-written lookup and hook go away entirely, so 002
-  becomes the construct's migrations instead.
 - **Migrations on deploy:** PR B (Dokploy) and PR C (the AWS migrate
   function).
-- **Local dev databases:** `gkm migrate` once in beetlefit. The local dev
-  database never had its app tables.
+- **Adopting it in an app:** its four hand-written tables, lookup and hook go
+  away. Its access-control migration becomes the construct's migrations, and
+  the rows it inserted move out of the migration.
