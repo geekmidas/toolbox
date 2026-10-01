@@ -55,6 +55,7 @@ export function generateExpoAppFiles(
 			expo: EXPO_VERSIONS['expo'],
 			'expo-constants': EXPO_VERSIONS['expo-constants'],
 			'expo-dev-client': EXPO_VERSIONS['expo-dev-client'],
+			'expo-device': EXPO_VERSIONS['expo-device'],
 			'expo-linking': EXPO_VERSIONS['expo-linking'],
 			'expo-router': EXPO_VERSIONS['expo-router'],
 			'expo-secure-store': EXPO_VERSIONS['expo-secure-store'],
@@ -258,29 +259,41 @@ export default {
 	const nativewindEnvDts = `/// <reference types="nativewind/types" />\n`;
 
 	const configTs = `import Constants from 'expo-constants';
+import * as Device from 'expo-device';
+import { Platform } from 'react-native';
 
 import type { Config } from './app.config.ts';
 
 const built = Constants.expoConfig?.extra?.config as Config;
 
-/**
- * The host this device loaded the bundle from — \`localhost\` on the iOS
- * simulator, \`10.0.2.2\` on the Android emulator, the machine's LAN address
- * on a phone. Whatever it is, the device has already reached it.
- */
+/** The host this device loaded the bundle from: Metro's, as the device sees it. */
 const metro = (Constants.expoConfig?.hostUri ?? '').split(':')[0];
+
+/**
+ * A private address on the local network — what a phone on the same Wi-Fi
+ * reaches this machine on. A tunnel's \`*.exp.direct\` host is not one: a
+ * tunnel forwards only Metro, so the servers are not behind it.
+ */
+const isLan = (host: string) =>
+  /^10\\./.test(host) ||
+  /^192\\.168\\./.test(host) ||
+  /^172\\.(1[6-9]|2\\d|3[01])\\./.test(host);
+
+/** \`localhost\` from inside the Android emulator is the emulator itself. */
+const isAndroidEmulator = Platform.OS === 'android' && !Device.isDevice;
 
 /**
  * A server's URL as this device reaches it.
  *
- * Locally the servers are injected as \`http://localhost:<port>\`, which is
- * this device only when it is the simulator; everywhere else \`localhost\` is
- * swapped for the host Metro was served from. Deployed URLs have no
- * \`localhost\` in them and pass through untouched.
+ * Locally the servers are injected as \`http://localhost:<port>\`. That is this
+ * device only on the iOS simulator. The Android emulator reaches this machine
+ * at \`10.0.2.2\`, and a phone at the LAN address Metro was served from.
+ * Deployed URLs have no \`localhost\` in them and pass through untouched.
  */
 export function reachable(url: string): string {
-  if (!metro || metro === 'localhost' || metro === '127.0.0.1') return url;
-  return url.replace(/\\/\\/(localhost|127\\.0\\.0\\.1)(?=[:/]|$)/, \`//\${metro}\`);
+  const host = isLan(metro) ? metro : isAndroidEmulator ? '10.0.2.2' : undefined;
+  if (!host) return url;
+  return url.replace(/\\/\\/(localhost|127\\.0\\.0\\.1)(?=[:/]|$)/, \`//\${host}\`);
 }
 
 export const config = {

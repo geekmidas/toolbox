@@ -44,7 +44,8 @@ existed.
   envkit into `extra.config`. The app reads `Constants.expoConfig.extra.config`
   at runtime. Nothing about a stage is written into the app.
 - **The LAN address is found, never configured.** The app reads it from
-  Expo's `hostUri` (the host the device loaded the bundle from). The local
+  Expo's `hostUri` (the host the device loaded the bundle from), and uses it
+  only when it is a private address. The local
   target reads the machine's network interfaces.
 - **A mobile app gets each server's own port, not the edge's hostname.**
   `https://api-dev.beetlefit.localhost` resolves only on this machine, and the
@@ -144,10 +145,18 @@ a mobile caller it also:
 - **`apps/app/app.config.ts`:** parses `APP_SCHEME`, `EXPO_PUBLIC_API_URL` and
   `EXPO_PUBLIC_AUTH_URL` into `extra.config`. The scheme, and the bundle id and
   Android package built on it, come from there.
-- **`apps/app/config.ts`:** reads `extra.config` and swaps `localhost` for the
-  host Metro served the bundle from. That is `localhost` on the iOS simulator,
-  `10.0.2.2` on the Android emulator, and the LAN address on a phone. Deployed
-  URLs pass through untouched.
+- **`apps/app/config.ts`:** reads `extra.config` and points `localhost` at a
+  host the device reaches, in the order carsharenova's `src/config.ts` settled
+  on:
+  - **Metro's host, when it is a private LAN address:** a phone on the same
+    Wi-Fi.
+  - **`10.0.2.2` on the Android emulator** (`Platform.OS === 'android'` and
+    not `Device.isDevice`), whose own `localhost` is the emulator itself. This
+    matters when Metro runs with `--localhost`.
+  - **Otherwise, unchanged:** the iOS simulator shares the machine's
+    `localhost`. A tunnel's `*.exp.direct` host is never used, because a tunnel
+    forwards only Metro, not the servers.
+  Deployed URLs have no `localhost` in them and pass through untouched.
 - **The auth client:** takes its scheme and storage prefix from that config.
 - **`eas.json`:** a store build is told the bare `APP_SCHEME`, since EAS builds
   outside `gkm`. The development profile carries nothing `gkm` injects.

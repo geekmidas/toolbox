@@ -20,9 +20,9 @@ app otherwise writes down by hand is derived from:
   locally (`beetlefit-dev`), so a development build and the store build on one
   phone never answer each other's links. It arrives as `APP_SCHEME`.
 - **URLs a phone can reach:** `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_AUTH_URL`.
-  Locally they're each server's own port, which the app points at the host
-  Metro served it from (the LAN address on a phone), instead of an edge
-  hostname that only resolves on this machine.
+  Locally they're each server's own port, which the app points at the LAN
+  address Metro served it from on a phone, or `10.0.2.2` on the Android
+  emulator, instead of an edge hostname that only resolves on this machine.
 - **Trusted origins:** the scheme, in every surface it depends on. Locally that
   also covers the `exp://` origins Expo Go sends from, for this machine's exact
   LAN address and `localhost`, never a subnet.

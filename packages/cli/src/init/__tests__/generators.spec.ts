@@ -481,6 +481,21 @@ describe('generateExpoAppFiles', () => {
 		expect(configTs).toContain('Constants.expoConfig?.hostUri');
 		expect(configTs).toContain('apiUrl: reachable(built.apiUrl)');
 		expect(configTs).toContain('authUrl: reachable(built.authUrl)');
+		// The emulator's \`localhost\` is itself, so it reaches the host at
+		// 10.0.2.2 — and a tunnel's host is never one the servers sit behind.
+		expect(configTs).toContain("Platform.OS === 'android' && !Device.isDevice");
+		expect(configTs).toContain("'10.0.2.2'");
+		expect(configTs).toContain('isLan(metro) ? metro');
+		expect(configTs).not.toMatch(/\\`/);
+	});
+
+	it('installs expo-device, which tells the emulator from a phone', () => {
+		const pkg = JSON.parse(
+			generateExpoAppFiles(fullstackOptions).find(
+				(f) => f.path === 'apps/app/package.json',
+			)!.content,
+		);
+		expect(pkg.dependencies['expo-device']).toBeDefined();
 	});
 
 	it('tells a store build its scheme, and a dev build nothing gkm injects', () => {

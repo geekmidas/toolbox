@@ -92,6 +92,7 @@ export const EXPO_VERSIONS = {
 	expo: '~55.0.0',
 	'expo-constants': '~55.0.0',
 	'expo-dev-client': '~55.0.0',
+	'expo-device': '~55.0.0',
 	'expo-linking': '~55.0.0',
 	'expo-router': '~55.0.0',
 	'expo-splash-screen': '~55.0.0',
