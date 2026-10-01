@@ -10,8 +10,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { sitesFor, toCaddyfile } from '../caddyfile';
 import type { Docker } from '../index';
 import { COMPOSE_PATH, reconcile } from '../index';
+import { planHash, saveState } from '../state';
 
 /** A database and mail — one container that provisions, one that does not. */
 const manifest = {
@@ -166,6 +168,46 @@ describe('reconcile', () => {
 
 		expect(second.changed).toBe(false);
 		expect(calls.up).toHaveLength(0);
+	});
+
+	it('provisions again when the role DDL changed, though no container did', async () => {
+		// A toolbox upgrade that adds a grant changes no container and no route.
+		// The state an older toolbox recorded hashed neither, so without the
+		// statements in the hash the existing database never got the grant.
+		// A database with a schema, so it has roles of its own to provision.
+		const withRoles = {
+			Orders: {
+				kind: 'database',
+				id: 'Orders',
+				schema: 'app',
+				provides: ['ORDERS_URL'],
+			},
+		} as const satisfies ConstructManifest;
+		const first = await run({ manifest: withRoles });
+		await saveState(root, {
+			stage: 'development',
+			hash: planHash(first.plan, first.compose, {
+				caddyfile: toCaddyfile(sitesFor(first.plan, 'toolbox')),
+			}),
+		});
+
+		const ran: string[] = [];
+		const { docker } = fakeDocker({ healthy: true });
+		const second = await run({
+			manifest: withRoles,
+			docker,
+			sql: () => ({
+				async query(_db: string | undefined, sql: string) {
+					ran.push(sql);
+					return [];
+				},
+			}),
+		});
+
+		expect(second.changed).toBe(true);
+		expect(ran.some((sql) => sql.startsWith('GRANT CREATE ON DATABASE'))).toBe(
+			true,
+		);
 	});
 
 	it('acts again when the containers are not healthy', async () => {
