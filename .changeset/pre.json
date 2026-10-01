@@ -84,6 +84,7 @@
     "single-app-paths",
     "surface-has-no-app",
     "test-client-config",
+    "test-factories",
     "test-manifest",
     "test-ports",
     "testkit-feature-primitives",

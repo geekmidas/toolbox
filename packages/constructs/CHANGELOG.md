@@ -1,5 +1,87 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.33
+
+### Patch Changes
+
+- [#97](https://github.com/geekmidas/toolbox/pull/97) [`e7178a8`](https://github.com/geekmidas/toolbox/commit/e7178a8d804b7f9ffbffd2df3f6974d8f65feeb5) Thanks [@geekmidas](https://github.com/geekmidas)! - Feature tests: `db.get`, `factories.get` and `browser.signIn`
+
+  A feature test is handed the app's own databases by name, a factory for each,
+  and a way to sign in, with nothing to import:
+
+  ```ts
+  it("lets a member join a tournament", async ({ browser, db, factories }) => {
+    const factory = await factories.get("database");
+    const tournament = await factory.insert("tournaments", {});
+
+    const { user } = await browser.signIn("ada@example.com");
+    await browser.api.post("/tournaments/{id}/join", {
+      params: { id: tournament.id },
+    });
+
+    const app = await db.get("database");
+    const members = await app
+      .selectFrom("tournamentMembers")
+      .selectAll()
+      .execute();
+    expect(members).toMatchObject([{ userId: user.id }]);
+  });
+  ```
+
+  - **`db.get(name)`:** a database's transaction for this test, by service name
+    and typed by its schema. It opens on first use by whatever reaches it first
+    (the test, a factory or an endpoint), and they all share it.
+  - **The app's own databases only:** a schema tenant an auth server owns is
+    reached through that server, as the app reaches it, and a reader is the same
+    database through a read-only role. Neither is handed to a test.
+    `db.get('authDb')` throws `UnknownDatabase` and doesn't compile.
+  - **`factories.get(name)`:** one per database, from
+    `test/factories/<construct>.ts` at the project root (`database.ts` for
+    `Database`), exporting `createFactory(db)`. It's built once on that
+    database's transaction for the test, so endpoints see the rows and they're
+    rolled back with everything else.
+    - A file named after no database of the app's, the auth tenant included,
+      throws `UnknownFactoryFile`.
+    - A file without `createFactory` throws `FactoryHasNoCreate`.
+    - ✅ `test: { factories: '…' }` in `gkm.config.ts` moves the folder.
+  - **`browser.signIn(email)`:** generated when one auth server has the
+    magic-link plugin and the app sends mail. It requests the link, reads it
+    from the inbox (cleared first, so it's this request's), follows it, and
+    returns the session the auth server reports. `SignInFailed` says which step
+    failed.
+  - **`gkm init`** scaffolds `test/factories/database.ts` at the project root, in
+    both layouts.
+
+  **Breaking:** `db` used to be one transaction, inferred from whichever database
+  the endpoints named first, and opened before every test. Nothing is inferred
+  now, and nothing opens before it's used. `featureTest({ database })` is gone.
+
+  **Moving an existing project:**
+  - move the factory to `test/factories/database.ts` at the root, keeping its
+    `createFactory(db)` export;
+  - replace `createFactory(db)` with `await factories.get('database')`;
+  - replace `db.selectFrom(…)` with `(await db.get('database')).selectFrom(…)`;
+  - replace a hand-written magic-link helper with `browser.signIn(email)`;
+  - replace `FeatureContext<Browser, unknown>` with `FeatureContext<Browser>`.
+
+- Updated dependencies []:
+  - @geekmidas/audit@10.0.0-alpha.33
+  - @geekmidas/auth@10.0.0-alpha.33
+  - @geekmidas/cache@10.0.0-alpha.33
+  - @geekmidas/db@10.0.0-alpha.33
+  - @geekmidas/emailkit@10.0.0-alpha.33
+  - @geekmidas/envkit@10.0.0-alpha.33
+  - @geekmidas/errors@10.0.0-alpha.33
+  - @geekmidas/events@10.0.0-alpha.33
+  - @geekmidas/logger@10.0.0-alpha.33
+  - @geekmidas/manifest@10.0.0-alpha.33
+  - @geekmidas/rate-limit@10.0.0-alpha.33
+  - @geekmidas/schema@10.0.0-alpha.33
+  - @geekmidas/services@10.0.0-alpha.33
+  - @geekmidas/storage@10.0.0-alpha.33
+  - @geekmidas/telescope@10.0.0-alpha.33
+  - @geekmidas/testkit@10.0.0-alpha.33
+
 ## 10.0.0-alpha.32
 
 ### Patch Changes
