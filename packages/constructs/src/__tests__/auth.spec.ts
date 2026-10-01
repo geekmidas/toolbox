@@ -370,10 +370,15 @@ describe('BetterAuth with a mobile app among its callers', () => {
 			...env,
 		});
 
-	/** An auth server whose magic links are kept rather than sent. */
+	/**
+	 * An auth server whose magic links are kept rather than sent — with the
+	 * origin check on: Better Auth turns it off under a test runner unless told
+	 * otherwise, and these requests are about exactly that check.
+	 */
 	function withMagicLink() {
 		const sent: string[] = [];
 		const construct = auth({
+			advanced: { disableOriginCheck: false },
 			plugins: [
 				magicLink({
 					sendMagicLink: async ({ url }) => {
@@ -419,6 +424,55 @@ describe('BetterAuth with a mobile app among its callers', () => {
 		expect(new URL(sent[0]!).searchParams.get('callbackURL')).toBe(
 			`${SCHEME}://signed-in`,
 		);
+	});
+
+	it('accepts an app’s sign-in with only what the Expo client sends — no Origin header', async () => {
+		// React Native's fetch sends no Origin. The Expo client sends its scheme
+		// as \`expo-origin\` instead, and the server plugin is what turns that
+		// into the origin Better Auth checks. Apps once set \`Origin\` to the
+		// auth server's own URL by hand to get past this; this is the request
+		// without that.
+		const { construct, sent } = withMagicLink();
+		const { app } = await construct.server(mobile());
+
+		const response = await app.request(
+			new Request(`${AUTH_URL}/api/auth/sign-in/magic-link`, {
+				method: 'POST',
+				headers: {
+					'content-type': 'application/json',
+					'expo-origin': `${SCHEME}://`,
+				},
+				body: JSON.stringify({
+					email: email('ada'),
+					callbackURL: `${SCHEME}://signed-in`,
+				}),
+			}),
+		);
+
+		expect(response.status).toBe(200);
+		expect(sent).toHaveLength(1);
+	});
+
+	it('refuses the same request from a scheme nothing declared', async () => {
+		const { construct, sent } = withMagicLink();
+		const { app } = await construct.server(mobile());
+
+		const response = await app.request(
+			new Request(`${AUTH_URL}/api/auth/sign-in/magic-link`, {
+				method: 'POST',
+				headers: {
+					'content-type': 'application/json',
+					'expo-origin': 'evil://',
+				},
+				body: JSON.stringify({
+					email: email('ada'),
+					callbackURL: 'evil://signed-in',
+				}),
+			}),
+		);
+
+		expect(response.status).toBe(403);
+		expect(sent).toHaveLength(0);
 	});
 
 	it('leaves a browser’s link on the server’s own address', async () => {
