@@ -35,6 +35,16 @@ export interface RoleSpec {
 	reader?: string;
 	/** The schema they operate in, pinned on every role's `search_path`. */
 	schema: string;
+	/**
+	 * The database itself, when these are a database construct's roles rather
+	 * than a schema tenant's.
+	 *
+	 * Its owner may then create in the database — which is what a migration
+	 * needs to create a trusted extension (`citext`, `pg_trgm`): Postgres asks
+	 * for `CREATE` on the database for that, not on the schema. A tenant's owner
+	 * is not given it, so it stays confined to its own schema.
+	 */
+	database?: string;
 	/** Supplied, never generated here. */
 	passwords: { runtime: string; owner: string; reader?: string };
 }
@@ -62,7 +72,7 @@ export interface RoleStatement {
  * leaving a half-granted role that looks complete.
  */
 export function roleStatements(spec: RoleSpec): RoleStatement[] {
-	const { runtime, owner, schema, passwords } = spec;
+	const { runtime, owner, schema, passwords, database } = spec;
 
 	return [
 		{
@@ -112,6 +122,17 @@ export function roleStatements(spec: RoleSpec): RoleStatement[] {
 			describe: `${schema} is owned by ${owner}`,
 			sql: `ALTER SCHEMA ${ident(schema)} OWNER TO ${ident(owner)}`,
 		},
+		...(database
+			? [
+					{
+						// The migrator of a database, not of a tenant inside one: it may
+						// create trusted extensions, which Postgres grants on the
+						// database rather than the schema. Idempotent, so no check.
+						describe: `${owner} may create in database ${database}`,
+						sql: `GRANT CREATE ON DATABASE ${ident(database)} TO ${ident(owner)}`,
+					},
+				]
+			: []),
 		{
 			describe: `${runtime} may use ${schema}`,
 			sql: `GRANT USAGE ON SCHEMA ${ident(schema)} TO ${ident(runtime)}`,

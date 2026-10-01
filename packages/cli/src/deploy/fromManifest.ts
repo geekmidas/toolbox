@@ -204,6 +204,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 			...statementsFor({
 				id: declaration.id,
 				database: postgres.databaseName,
+				ownsDatabase: true,
 				runtime,
 				owner,
 				...(reads ? { reader: readerRole(runtime) } : {}),
@@ -591,6 +592,8 @@ function statementsFor(options: {
 	owner: string;
 	reader?: string;
 	schema: string;
+	/** A database's roles rather than a tenant's: its owner may create in it. */
+	ownsDatabase?: boolean;
 	context: DokployProvisionContext;
 }): DeferredStatement[] {
 	const { id, database, runtime, owner, reader, schema, context } = options;
@@ -600,6 +603,7 @@ function statementsFor(options: {
 		owner,
 		...(reader ? { reader } : {}),
 		schema,
+		...(options.ownsDatabase ? { database } : {}),
 		passwords: {
 			runtime: derivedPassword(context, runtime),
 			owner: derivedPassword(context, owner),

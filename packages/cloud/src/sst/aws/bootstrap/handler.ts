@@ -28,6 +28,11 @@ export interface BootstrapTenant {
 	runtime: string;
 	owner: string;
 	reader?: string;
+	/**
+	 * The database's own roles rather than a tenant's: its owner may create in
+	 * the database, for trusted extensions.
+	 */
+	ownsDatabase?: boolean;
 	passwords: { runtime: string; owner: string; reader?: string };
 }
 
@@ -75,7 +80,11 @@ export async function handler(event: BootstrapEvent): Promise<BootstrapResult> {
 
 	try {
 		for (const tenant of event.tenants) {
-			for (const statement of roleStatements(tenant)) {
+			const spec = {
+				...tenant,
+				...(tenant.ownsDatabase ? { database: event.master.database } : {}),
+			};
+			for (const statement of roleStatements(spec)) {
 				if (statement.exists) {
 					const { rows } = await client.query(
 						statement.exists.sql,

@@ -97,6 +97,8 @@ beforeAll(async () => {
 			runtime,
 			owner: spec.owner,
 			schema: spec.schema,
+			// The database's roles, not the tenant's: its owner may create in it.
+			...(spec === app ? { database } : {}),
 			passwords: { runtime: PASSWORD, owner: PASSWORD },
 		})) {
 			if (statement.exists) {
@@ -276,6 +278,45 @@ create index "session_id_idx" on "session" ("id");
 			construct: 'Database',
 			migration: '20260102000000_broken',
 		});
+	});
+
+	it('lets a database create a trusted extension, and confines a tenant to its schema', async () => {
+		await writeFile(
+			join(root, 'db/database/migrations/20260102000000_extensions.ts'),
+			`import { sql } from 'kysely';
+export async function up(db) {
+  await sql\`create extension if not exists citext\`.execute(db);
+}
+`,
+		);
+
+		const runs = await migrateDatabases({
+			root,
+			manifest,
+			sources,
+			env,
+			only: 'Database',
+		});
+		expect(runs[0]?.applied).toContain('20260102000000_extensions');
+
+		await writeFile(
+			join(root, 'db/auth-database/migrations/20260102000100_extensions.ts'),
+			`import { sql } from 'kysely';
+export async function up(db) {
+  await sql\`create extension if not exists unaccent\`.execute(db);
+}
+`,
+		);
+		const failure = await migrateDatabases({
+			root,
+			manifest,
+			sources,
+			env,
+			only: 'AuthDatabase',
+		}).catch((error: unknown) => error);
+
+		expect(failure).toBeInstanceOf(MigrationFailed);
+		expect(String((failure as Error).message)).toContain('permission denied');
 	});
 
 	it('refuses a migration left beside migrations/, rather than never running it', async () => {

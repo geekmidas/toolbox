@@ -241,6 +241,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 				schema: d.schema,
 				runtime,
 				owner: ownerRole(runtime),
+				ownsDatabase: true,
 				...(hasReader(d.id, context) ? { reader: readerRole(runtime) } : {}),
 			});
 
