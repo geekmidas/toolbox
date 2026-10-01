@@ -278,7 +278,13 @@ export async function reconcile(
 	// a bucket renamed changes the routing without changing a container, and a
 	// hash that ignored it would leave the old routes in place.
 	const caddyfile = toCaddyfile(sitesFor(plan, project, options.addresses));
-	const hash = planHash(plan, compose, { caddyfile });
+	// And so is what provisioning runs. A toolbox upgrade that changes the role
+	// DDL — a new grant — changes no container and no route, so a hash without
+	// it reported convergence and the existing database never got the grant.
+	const postgres = postgresStatements(plan, project)
+		.map((statement) => statement.create)
+		.join(';\n');
+	const hash = planHash(plan, compose, { caddyfile, postgres });
 	const addresses = addressesFor(plan.containers, ports);
 	const env = envFor(plan, {
 		ports,
