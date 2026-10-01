@@ -1,3 +1,4 @@
+import { schemeBase } from '@geekmidas/manifest';
 import {
 	DEPENDENCY_VERSIONS,
 	EXPO_VERSIONS,
@@ -23,10 +24,12 @@ export function generateExpoAppFiles(
 	const packageName = `@${options.name}/app`;
 	const apiPackage = `@${options.name}/api`;
 	const modelsPackage = `@${options.name}/models`;
-	// Expo bundle id / scheme — kept simple; the user can rename later.
+	// The slug is Expo's project name. The scheme — and the bundle id built on
+	// it — is not written here: the \`MobileApp\` construct resolves it per
+	// stage, and \`app.config.ts\` reads it from \`APP_SCHEME\`.
 	const slug = options.name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-	const scheme = slug.replace(/-/g, '');
-	const bundleId = `com.${scheme}.app`;
+	// What the deployed auth server trusts: the same derivation, not a copy.
+	const scheme = schemeBase(options.name);
 
 	const packageJson = {
 		name: packageName,
@@ -52,6 +55,7 @@ export function generateExpoAppFiles(
 			expo: EXPO_VERSIONS['expo'],
 			'expo-constants': EXPO_VERSIONS['expo-constants'],
 			'expo-dev-client': EXPO_VERSIONS['expo-dev-client'],
+			'expo-device': EXPO_VERSIONS['expo-device'],
 			'expo-linking': EXPO_VERSIONS['expo-linking'],
 			'expo-router': EXPO_VERSIONS['expo-router'],
 			'expo-secure-store': EXPO_VERSIONS['expo-secure-store'],
@@ -64,6 +68,7 @@ export function generateExpoAppFiles(
 			'react-native-gesture-handler':
 				EXPO_VERSIONS['react-native-gesture-handler'],
 			'react-native-reanimated': EXPO_VERSIONS['react-native-reanimated'],
+			'react-native-worklets': EXPO_VERSIONS['react-native-worklets'],
 			'react-native-safe-area-context':
 				EXPO_VERSIONS['react-native-safe-area-context'],
 			'react-native-screens': EXPO_VERSIONS['react-native-screens'],
@@ -78,27 +83,53 @@ export function generateExpoAppFiles(
 	};
 
 	const appConfig = `import type { ConfigContext, ExpoConfig } from '@expo/config';
+import { EnvironmentParser } from '@geekmidas/envkit';
 
 /**
- * Expo runtime config. Public env vars (\`EXPO_PUBLIC_*\`) are inlined
- * at build time; everything else is read at runtime from \`extra\`.
+ * What the app is built with, from the environment \`gkm\` injects — the
+ * \`MobileApp\` construct's \`.dependsOn([api, auth])\` is where every value
+ * here comes from, so none of it is written down.
+ *
+ * - \`APP_SCHEME\`: the URL scheme for this stage — \`${scheme}\` deployed,
+ *   \`${scheme}-dev\` locally, so a development build and the store build on
+ *   one phone never answer each other's links.
+ * - \`EXPO_PUBLIC_API_URL\` / \`EXPO_PUBLIC_AUTH_URL\`: where the servers
+ *   answer. Locally that is their own port on \`localhost\`, which
+ *   \`config.ts\` points at the machine Metro was served from.
+ *
+ * Read at runtime from \`Constants.expoConfig.extra.config\` — see \`config.ts\`.
  */
-export default function config(_context: ConfigContext): ExpoConfig {
+const config = new EnvironmentParser({ ...process.env })
+  .create((get) => ({
+    scheme: get('APP_SCHEME').string(),
+    apiUrl: get('EXPO_PUBLIC_API_URL').string(),
+    authUrl: get('EXPO_PUBLIC_AUTH_URL').string(),
+  }))
+  .parse();
+
+export type Config = typeof config;
+
+// A bundle id and an Android package allow no hyphens; one per scheme, so
+// each stage installs beside the others.
+const bundleId = \`com.\${config.scheme.replace(/[^a-z0-9]/g, '')}.app\`;
+
+export default function expoConfig({ config: base }: ConfigContext): ExpoConfig {
   return {
+    ...base,
     name: '${options.name}',
     slug: '${slug}',
     version: '0.0.1',
     orientation: 'portrait',
     icon: './assets/icon.png',
-    scheme: '${scheme}',
+    scheme: config.scheme,
     userInterfaceStyle: 'automatic',
     newArchEnabled: true,
     ios: {
       supportsTablet: true,
-      bundleIdentifier: '${bundleId}',
+      bundleIdentifier: bundleId,
     },
     android: {
-      package: '${bundleId}',
+      package: bundleId,
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon.png',
         backgroundColor: '#ffffff',
@@ -124,6 +155,7 @@ export default function config(_context: ConfigContext): ExpoConfig {
     experiments: {
       typedRoutes: true,
     },
+    extra: { ...base.extra, config },
   };
 }
 `;
@@ -137,16 +169,16 @@ export default function config(_context: ConfigContext): ExpoConfig {
 			dev: {
 				developmentClient: true,
 				distribution: 'internal',
+				// Locally \`gkm\` injects the scheme and both URLs from the graph.
 				environment: 'development',
-				env: {
-					EXPO_PUBLIC_API_URL: 'http://localhost:3000',
-					EXPO_PUBLIC_AUTH_URL: 'http://localhost:3002',
-				},
 			},
 			preview: {
 				distribution: 'internal',
 				environment: 'preview',
+				// EAS builds outside \`gkm\`, so a store build is told its scheme —
+				// the bare one, which is what the deployed auth server trusts.
 				env: {
+					APP_SCHEME: scheme,
 					EXPO_PUBLIC_API_URL: 'https://api.example.com',
 					EXPO_PUBLIC_AUTH_URL: 'https://auth.example.com',
 				},
@@ -154,7 +186,10 @@ export default function config(_context: ConfigContext): ExpoConfig {
 			production: {
 				autoIncrement: true,
 				environment: 'production',
+				// EAS builds outside \`gkm\`, so a store build is told its scheme —
+				// the bare one, which is what the deployed auth server trusts.
 				env: {
+					APP_SCHEME: scheme,
 					EXPO_PUBLIC_API_URL: 'https://api.example.com',
 					EXPO_PUBLIC_AUTH_URL: 'https://auth.example.com',
 				},
@@ -224,23 +259,49 @@ export default {
 
 	const nativewindEnvDts = `/// <reference types="nativewind/types" />\n`;
 
-	const configTs = `import { EnvironmentParser } from '@geekmidas/envkit';
+	const configTs = `import Constants from 'expo-constants';
+import * as Device from 'expo-device';
+import { Platform } from 'react-native';
+
+import type { Config } from './app.config.ts';
+
+const built = Constants.expoConfig?.extra?.config as Config;
+
+/** The host this device loaded the bundle from: Metro's, as the device sees it. */
+const metro = (Constants.expoConfig?.hostUri ?? '').split(':')[0];
 
 /**
- * Public app config. EXPO_PUBLIC_* vars are inlined into the bundle at
- * build time, so they're safe to read in client code.
+ * A private address on the local network — what a phone on the same Wi-Fi
+ * reaches this machine on. A tunnel's \`*.exp.direct\` host is not one: a
+ * tunnel forwards only Metro, so the servers are not behind it.
  */
-const envParser = new EnvironmentParser({
-  EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
-  EXPO_PUBLIC_AUTH_URL: process.env.EXPO_PUBLIC_AUTH_URL,
-});
+const isLan = (host: string) =>
+  /^10\\./.test(host) ||
+  /^192\\.168\\./.test(host) ||
+  /^172\\.(1[6-9]|2\\d|3[01])\\./.test(host);
 
-export const config = envParser
-  .create((get) => ({
-    apiUrl: get('EXPO_PUBLIC_API_URL').string(),
-    authUrl: get('EXPO_PUBLIC_AUTH_URL').string(),
-  }))
-  .parse();
+/** \`localhost\` from inside the Android emulator is the emulator itself. */
+const isAndroidEmulator = Platform.OS === 'android' && !Device.isDevice;
+
+/**
+ * A server's URL as this device reaches it.
+ *
+ * Locally the servers are injected as \`http://localhost:<port>\`. That is this
+ * device only on the iOS simulator. The Android emulator reaches this machine
+ * at \`10.0.2.2\`, and a phone at the LAN address Metro was served from.
+ * Deployed URLs have no \`localhost\` in them and pass through untouched.
+ */
+export function reachable(url: string): string {
+  const host = isLan(metro) ? metro : isAndroidEmulator ? '10.0.2.2' : undefined;
+  if (!host) return url;
+  return url.replace(/\\/\\/(localhost|127\\.0\\.0\\.1)(?=[:/]|$)/, \`//\${host}\`);
+}
+
+export const config = {
+  scheme: built.scheme,
+  apiUrl: reachable(built.apiUrl),
+  authUrl: reachable(built.authUrl),
+};
 `;
 
 	const queryClientTs = `import { QueryClient } from '@tanstack/react-query';
@@ -254,21 +315,23 @@ export const queryClient = new QueryClient({
 });
 `;
 
-	const authClientTs = `import { expoClient } from '@better-auth/expo/client';
+	const authClientTs = `import { expoClient, getSetCookie } from '@better-auth/expo/client';
 import { magicLinkClient } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
+import * as Linking from 'expo-linking';
 import * as SecureStore from 'expo-secure-store';
+import { useEffect } from 'react';
 
 import { config } from '@/config.ts';
 
-export const STORAGE_PREFIX = '${scheme}';
+export const STORAGE_PREFIX = config.scheme;
 export const COOKIE_STORE_KEY = \`\${STORAGE_PREFIX}_cookie\`;
 
 export const authClient = createAuthClient({
   baseURL: config.authUrl,
   plugins: [
     expoClient({
-      scheme: '${scheme}',
+      scheme: config.scheme,
       storagePrefix: STORAGE_PREFIX,
       storage: SecureStore,
     }),
@@ -277,6 +340,36 @@ export const authClient = createAuthClient({
 });
 
 export const { signIn, useSession } = authClient;
+
+/**
+ * Sign in from the emailed link.
+ *
+ * The link opens in the phone's browser, which is what receives the session
+ * cookie — not the app. The auth server's Expo plugin carries the cookie on the
+ * redirect back into the app (\`?cookie=\`), and this stores it where the
+ * Expo client keeps its own, merged with what is already there, then tells the
+ * client the session changed. The Expo client does this itself only for a
+ * sign-in it opened (social); a link opened from mail arrives as a deep link.
+ *
+ * Called once, from the root layout.
+ */
+export function useSessionFromLink() {
+  const url = Linking.useLinkingURL();
+
+  useEffect(() => {
+    const cookie = url ? Linking.parse(url).queryParams?.cookie : undefined;
+    if (typeof cookie !== 'string') return;
+
+    void (async () => {
+      const previous = await SecureStore.getItemAsync(COOKIE_STORE_KEY);
+      await SecureStore.setItemAsync(
+        COOKIE_STORE_KEY,
+        getSetCookie(cookie, previous ?? undefined),
+      );
+      authClient.$store.notify('$sessionSignal');
+    })();
+  }, [url]);
+}
 
 export async function signOut() {
   try {
@@ -347,7 +440,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo } from 'react';
 import 'react-native-reanimated';
 
-import { authClient } from '@/lib/auth-client.ts';
+import { authClient, useSessionFromLink } from '@/lib/auth-client.ts';
 import { ApiProvider } from '@/lib/api-context.tsx';
 import { createAppApi } from '@/lib/api.ts';
 import { queryClient } from '@/lib/query-client.ts';
@@ -372,6 +465,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout() {
   const api = useMemo(() => createAppApi(), []);
+  // The emailed sign-in link comes back as a deep link carrying the session.
+  useSessionFromLink();
 
   return (
     <QueryClientProvider client={queryClient}>

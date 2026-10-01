@@ -6,6 +6,7 @@ This directory contains design documents, architectural decision records (ADRs),
 
 ### Active Planning
 
+- **[MobileApp: an Expo App as a Construct](./mobile-app.md)** - An Expo app declared like a site: `.dependsOn([api, auth])` derives its URLs, a per-stage scheme, the scheme in the surfaces' trusted origins, Better Auth's Expo plugin, and sign-in links a phone can open
 - **[Constructs Paradigm: Resources as Constructs](./constructs-paradigm.md)** - Promote resources (bucket, database, cache, secret) to constructs; the `function → resource` dependency edge becomes the single primitive
   - Status: Draft
   - Impact: High - Core model change across constructs, manifest, cli, and cloud

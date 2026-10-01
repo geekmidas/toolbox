@@ -35,6 +35,7 @@ import {
 import { portKeys, portsOf, primaryPortKey } from './containers';
 import { dockerCli } from './docker';
 import { envFor } from './env';
+import { lanAddress } from './lan';
 import { type Plan, planFor } from './plan';
 import {
 	allocate,
@@ -162,6 +163,14 @@ export interface ReconcileOptions {
 	manifest: ConstructManifest;
 	/** The stage being reconciled: the project's local stage, or `test`. */
 	stage: string;
+	/**
+	 * This machine's LAN address, for a mobile app's `exp://` origins and the
+	 * address its sign-in links are built on. Read from the network interfaces
+	 * when absent; `null` for none.
+	 */
+	lanAddress?: string | null;
+	/** Each mobile app's Metro port, by construct id. */
+	metroPorts?: Readonly<Record<string, number>>;
 	/** The project's local stage, whose resources carry no suffix. */
 	localStage?: string;
 	/** The events backend, until `topic` and `queue` are kinds. */
@@ -286,11 +295,19 @@ export async function reconcile(
 		.join(';\n');
 	const hash = planHash(plan, compose, { caddyfile, postgres });
 	const addresses = addressesFor(plan.containers, ports);
+	// Only a project with a mobile app reads it, so only one looks for it.
+	const lan = plan.resources.some((r) => r.kind === 'mobile-app')
+		? options.lanAddress === undefined
+			? lanAddress()
+			: (options.lanAddress ?? undefined)
+		: undefined;
 	const env = envFor(plan, {
 		ports,
 		project,
 		...(options.mailFrom ? { mailFrom: options.mailFrom } : {}),
 		...(options.addresses ? { addresses: options.addresses } : {}),
+		...(lan ? { lanAddress: lan } : {}),
+		...(options.metroPorts ? { metroPorts: options.metroPorts } : {}),
 	});
 	// Pointed at whether or not it exists yet: the copy below fills it in, and
 	// anything that reads the environment starts after this returns.

@@ -31,6 +31,7 @@ import {
 	canonicalId,
 	type Declaration,
 	environmentCase,
+	isWebOrigin,
 	provideKey,
 	serviceKey,
 } from '@geekmidas/manifest';
@@ -431,35 +432,39 @@ export class BetterAuth<
 		options: ServiceRegisterOptions,
 		as: { owner?: boolean } = {},
 	): Promise<Parameters<typeof betterAuth>[0]> {
-		const { secret, baseUrl, trustedOrigins, cookieDomain } = options.envParser
-			.create((get) => ({
-				secret: get(this.keys.secret).string(),
-				// The surface's own URL, resolved by the target — not guessed from
-				// a port, which was wrong the moment the server moved to 3001.
-				baseUrl: get(this.keys.url).string(),
-				// Better Auth's CSRF check applies to every caller, not just
-				// browsers, so an API calling the auth server is rejected unless
-				// its origin is trusted. The list is derived from the graph and
-				// arrives as one comma-separated value, for the same reason every
-				// other derived value arrives as a string: it crosses a process
-				// boundary as env.
-				trustedOrigins: get(this.keys.trustedOrigins)
-					.string()
-					.default('')
-					.transform((value) =>
-						value
-							.split(',')
-							.map((origin) => origin.trim())
-							.filter(Boolean),
-					),
-				// The domain a session cookie has to carry to be readable by a
-				// frontend on a sibling host. Optional because there is often
-				// nothing to widen to: locally everything shares `localhost`,
-				// where cookies ignore the port and a `Domain` would only be a
-				// value the browser refuses.
-				cookieDomain: get(this.keys.cookieDomain).string().optional(),
-			}))
-			.parse();
+		const { secret, baseUrl, trustedOrigins, cookieDomain, deviceUrl } =
+			options.envParser
+				.create((get) => ({
+					secret: get(this.keys.secret).string(),
+					// The surface's own URL, resolved by the target — not guessed from
+					// a port, which was wrong the moment the server moved to 3001.
+					baseUrl: get(this.keys.url).string(),
+					// Better Auth's CSRF check applies to every caller, not just
+					// browsers, so an API calling the auth server is rejected unless
+					// its origin is trusted. The list is derived from the graph and
+					// arrives as one comma-separated value, for the same reason every
+					// other derived value arrives as a string: it crosses a process
+					// boundary as env.
+					trustedOrigins: get(this.keys.trustedOrigins)
+						.string()
+						.default('')
+						.transform((value) =>
+							value
+								.split(',')
+								.map((origin) => origin.trim())
+								.filter(Boolean),
+						),
+					// The domain a session cookie has to carry to be readable by a
+					// frontend on a sibling host. Optional because there is often
+					// nothing to widen to: locally everything shares `localhost`,
+					// where cookies ignore the port and a `Domain` would only be a
+					// value the browser refuses.
+					cookieDomain: get(this.keys.cookieDomain).string().optional(),
+					// Where a phone reaches this server, on a local stage with a mobile
+					// app: its own port on the LAN address. Never deployed.
+					deviceUrl: get(provideKey(this.id, 'deviceUrl')).string().optional(),
+				}))
+				.parse();
 
 		// The tenant's own client: one construct, one connection, so what auth
 		// writes and what the browser inspects cannot be two different databases.
@@ -476,21 +481,41 @@ export class BetterAuth<
 
 		const configured = await this.configured(options);
 
+		// Whatever the app added wins over the derived list rather than
+		// replacing it: an origin nobody declared is still sometimes real.
+		const origins = [
+			...trustedOrigins,
+			...(configured.trustedOrigins && Array.isArray(configured.trustedOrigins)
+				? configured.trustedOrigins
+				: []),
+		];
+
+		const plugins = [...(configured.plugins ?? [])];
+		// A mobile app depends on this server: its scheme is among the origins.
+		// Better Auth's Expo plugin is what lets it sign in — the app sends its
+		// scheme as the origin, and the plugin is what reads it — so it is added
+		// here rather than written into every app that has one.
+		if (
+			origins.some((origin) => !isWebOrigin(origin)) &&
+			!plugins.some((plugin) => plugin.id === 'expo')
+		) {
+			plugins.push(await expoPlugin(this.id));
+		}
+		// A sign-in link the app asked for is opened on the phone, which cannot
+		// resolve this server's local hostname; on a local stage it is built on
+		// the address the phone reaches it on instead.
+		if (deviceUrl) {
+			for (const plugin of plugins) reachableFromDevice(plugin, deviceUrl);
+		}
+
 		return {
 			...configured,
 			secret,
 			baseURL: baseUrl,
 			basePath: this.basePath,
 			database: { db, type: 'postgres' },
-			// Whatever the app added wins over the derived list rather than
-			// replacing it: an origin nobody declared is still sometimes real.
-			trustedOrigins: [
-				...trustedOrigins,
-				...(configured.trustedOrigins &&
-				Array.isArray(configured.trustedOrigins)
-					? configured.trustedOrigins
-					: []),
-			],
+			plugins,
+			trustedOrigins: origins,
 			advanced: {
 				...configured.advanced,
 				// Only when a domain was derived. Better Auth reads the presence
@@ -508,6 +533,79 @@ export class BetterAuth<
 					: {}),
 			},
 		};
+	}
+}
+
+/** Better Auth's Expo plugin, which a mobile app's sign-in needs. */
+async function expoPlugin(
+	server: string,
+): Promise<NonNullable<BetterAuthOptions['plugins']>[number]> {
+	try {
+		const { expo } = (await import('@better-auth/expo')) as {
+			expo: () => NonNullable<BetterAuthOptions['plugins']>[number];
+		};
+		return expo();
+	} catch (error) {
+		throw new ExpoPluginMissing(server, error);
+	}
+}
+
+/** Links already rewritten — an `options` object is reused across builds. */
+const rewritten = new WeakSet<object>();
+
+/**
+ * Build the magic links an app asked for on the address a phone reaches.
+ *
+ * An app's link carries its scheme as the `callbackURL` (`shop-dev://…`)
+ * where a browser's carries a path or an `http(s)` URL — which is how the two
+ * are told apart. A browser's link is left alone: it is opened on this
+ * machine, where the server's own hostname resolves.
+ *
+ * Better Auth's magic-link plugin calls `sendMagicLink` through the options
+ * object it returns, so wrapping it there is wrapping the call.
+ */
+function reachableFromDevice(plugin: { id: string }, deviceUrl: string): void {
+	if (plugin.id !== 'magic-link') return;
+	const options = (plugin as { options?: MagicLinkOptions }).options;
+	if (!options?.sendMagicLink || rewritten.has(options)) return;
+	rewritten.add(options);
+
+	const send = options.sendMagicLink;
+	options.sendMagicLink = (data, ...rest) =>
+		send({ ...data, url: deviceLink(data.url, deviceUrl) }, ...rest);
+}
+
+interface MagicLinkOptions {
+	sendMagicLink?: (
+		data: { email: string; url: string; token: string },
+		...rest: unknown[]
+	) => unknown;
+}
+
+/** A magic link moved to the device address when an app is its destination. */
+export function deviceLink(url: string, deviceUrl: string): string {
+	try {
+		const link = new URL(url);
+		const callback = link.searchParams.get('callbackURL') ?? '/';
+		if (callback.startsWith('/') || isWebOrigin(callback)) return url;
+		return new URL(`${link.pathname}${link.search}`, deviceUrl).toString();
+	} catch {
+		return url;
+	}
+}
+
+/** A mobile app depends on this auth server, and `@better-auth/expo` is absent. */
+export class ExpoPluginMissing extends Error {
+	constructor(
+		readonly server: string,
+		override readonly cause: unknown,
+	) {
+		super(
+			`'${server}' is called by a mobile app, and a mobile app signs in through ` +
+				`Better Auth's Expo plugin — install it where the auth server runs: ` +
+				`pnpm add @better-auth/expo`,
+		);
+		this.name = 'ExpoPluginMissing';
 	}
 }
 

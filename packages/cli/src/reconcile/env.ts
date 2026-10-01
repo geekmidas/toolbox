@@ -14,7 +14,14 @@
 
 import { createHash } from 'node:crypto';
 import { ownerRole, readerRole } from '@geekmidas/db/pg/roles';
-import { cacheTable, cookieDomain, provideKey } from '@geekmidas/manifest';
+import {
+	appScheme,
+	cacheTable,
+	cookieDomain,
+	mobileOrigins,
+	provideKey,
+	schemeBase,
+} from '@geekmidas/manifest';
 import { hostFor } from './caddyfile';
 import { primaryPortKey } from './containers';
 import { PgBossNeedsDatabase, type Plan, type PlannedResource } from './plan';
@@ -85,6 +92,15 @@ export interface EnvOptions {
 	 */
 	addresses?: Readonly<Record<string, string>>;
 	/**
+	 * This machine's address on the local network — what a phone running the
+	 * app reaches it on. Only a local stage has one, and only a project with a
+	 * mobile app reads it: its `exp://` origins, and the address sign-in links
+	 * for the app are built on.
+	 */
+	lanAddress?: string;
+	/** Each mobile app's Metro port, by id — the exact port its `exp://` origins name. */
+	metroPorts?: Readonly<Record<string, number>>;
+	/**
 	 * The domain mail is sent from locally.
 	 *
 	 * Stage config, exactly as it is deployed — the difference is only that here
@@ -131,7 +147,15 @@ export function envFor(
 		// graph rather than every app the workspace happens to run is what makes
 		// it the same list deployed, where no workspace is watching.
 		if (resource.kind === 'rest-api') {
-			Object.assign(env, surfaceEnv(resource, url, resolved));
+			Object.assign(
+				env,
+				surfaceEnv(resource, url, resolved, {
+					plan,
+					...(options.addresses ? { addresses: options.addresses } : {}),
+					...(options.lanAddress ? { lanAddress: options.lanAddress } : {}),
+					...(options.metroPorts ? { metroPorts: options.metroPorts } : {}),
+				}),
+			);
 		}
 		if (url) env[resource.envKey] = url;
 
@@ -173,7 +197,7 @@ export function envFor(
 	// constructs it depends on resolved, so every source has to exist before any
 	// of them can be read. Doing it inline would make the result depend on the
 	// order the manifest happened to be keyed in.
-	Object.assign(env, publicEnv(plan, env));
+	Object.assign(env, publicEnv(plan, env, options.addresses));
 
 	Object.assign(env, brokerEnv(plan, options.ports));
 
@@ -202,12 +226,25 @@ export function envFor(
 function publicEnv(
 	plan: Plan,
 	resolved: Record<string, string>,
+	/** Where each surface answers on its own port — what a mobile app is given. */
+	addresses: Readonly<Record<string, string>> = {},
 ): Record<string, string> {
 	const env: Record<string, string> = {};
+	// Which construct each key belongs to, so a mobile app can be handed the
+	// surface's own port rather than the edge's hostname.
+	const owners = new Map(plan.resources.map((r) => [r.envKey, r.id]));
 
 	for (const resource of plan.resources) {
 		for (const [key, source] of Object.entries(resource.publicEnv ?? {})) {
-			const value = resolved[source];
+			// A phone cannot open `https://api-dev.shop.localhost` — the hostname
+			// resolves only on this machine, and the edge routes by it, so no LAN
+			// address can stand in for it. The surface's own port can: the app
+			// swaps `localhost` for the host Metro was served from, and reaches it.
+			const direct =
+				resource.kind === 'mobile-app'
+					? addresses[owners.get(source) ?? '']
+					: undefined;
+			const value = direct ?? resolved[source];
 			if (value) env[key] = value;
 		}
 	}
@@ -245,6 +282,12 @@ function surfaceEnv(
 	 * model that is *different* from the deployed one rather than matching it.
 	 */
 	resolved: Readonly<Record<string, string>> = {},
+	local: {
+		plan?: Plan;
+		addresses?: Readonly<Record<string, string>>;
+		lanAddress?: string;
+		metroPorts?: Readonly<Record<string, number>>;
+	} = {},
 ): Record<string, string> {
 	if (!url) return {};
 
@@ -263,9 +306,45 @@ function surfaceEnv(
 	// would make every surface trust every other one that shares a port.
 	const domain = cookieDomain([url, ...origins]);
 
+	// A mobile caller is reached by its scheme, not an address, so it adds its
+	// scheme — and, on this local stage, the `exp://` hosts Expo Go sends from —
+	// rather than an origin read off a URL. After the cookie domain on purpose:
+	// a scheme is not a host anything shares a cookie with.
+	const mobile = (resource.callers ?? [])
+		.map((caller) =>
+			local.plan?.resources.find(
+				(r) => r.id === caller && r.kind === 'mobile-app',
+			),
+		)
+		.filter((caller): caller is PlannedResource => Boolean(caller));
+	const hosts = [...(local.lanAddress ? [local.lanAddress] : []), LOCAL_HOST];
+	const schemes = mobile.flatMap((caller) => {
+		const scheme = resolved[caller.id];
+		const port = local.metroPorts?.[caller.id];
+		return scheme
+			? mobileOrigins(scheme, { hosts, ...(port ? { port } : {}) })
+			: [];
+	});
+
+	// Where a phone reaches this surface: its own port on the LAN address. What
+	// the auth server builds a sign-in link on when the app asked for it — the
+	// link is opened on the phone, which cannot resolve the edge's hostname.
+	const own = local.addresses?.[resource.id];
+	const device =
+		mobile.length > 0 && local.lanAddress && own
+			? own.replace(
+					/\/\/(localhost|127\.0\.0\.1)(?=[:/]|$)/,
+					`//${local.lanAddress}`,
+				)
+			: undefined;
+
 	return {
-		[provideKey(resource.id, 'trustedOrigins')]: origins.join(','),
+		[provideKey(resource.id, 'trustedOrigins')]: [
+			...origins,
+			...new Set(schemes),
+		].join(','),
 		...(domain ? { [provideKey(resource.id, 'cookieDomain')]: domain } : {}),
+		...(device ? { [provideKey(resource.id, 'deviceUrl')]: device } : {}),
 	};
 }
 
@@ -380,6 +459,13 @@ function urlFor(
 ): string | undefined {
 	// A secret has no address, so there is no port to wait for.
 	if (resource.kind === 'secret') return localSecret(project, plan, resource);
+
+	// A mobile app resolves its scheme for this stage — suffixed, because this
+	// is a local or test stage and a store build on the same phone answers the
+	// bare one.
+	if (resource.kind === 'mobile-app') {
+		return appScheme(schemeBase(project, resource.scheme), plan.stage);
+	}
 
 	// A credential resolves to nothing here, deliberately. A secret is derived
 	// because the platform owns it; a credential was issued by a third party, so

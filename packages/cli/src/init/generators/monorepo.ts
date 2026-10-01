@@ -55,6 +55,11 @@ function rootConstructDependencies(
 		...(options.constructs.cache
 			? { '@geekmidas/cache': v['@geekmidas/cache'] }
 			: {}),
+		// A mobile app signs in through Better Auth's Expo plugin, which the
+		// auth server loads when one depends on it.
+		...(options.frontendFramework === 'expo'
+			? { '@better-auth/expo': DEPENDENCY_VERSIONS['better-auth'] }
+			: {}),
 	};
 }
 
@@ -635,6 +640,29 @@ export const api = new RestApi('Api', {
 			: frontendFramework === 'expo'
 				? undefined
 				: "{ path: 'apps/web', variant: 'next' }";
+
+	if (frontendFramework === 'expo') {
+		files.push({
+			path: 'constructs/app.ts',
+			content: `import { MobileApp } from '@geekmidas/constructs/mobile-app';
+import { api } from './api.ts';
+import { auth } from './auth.ts';
+
+/**
+ * The mobile app — a construct like a site, which is what makes it an app.
+ *
+ * \`.dependsOn()\` is the single fact behind what a mobile app otherwise has
+ * written down by hand: its API and auth URLs, its URL scheme per stage, the
+ * scheme in the auth server's trusted origins, Better Auth's Expo plugin, and
+ * sign-in links a phone can open.
+ */
+export const app = new MobileApp('App', { path: 'apps/app' }).dependsOn([
+  api,
+  auth,
+]);
+`,
+		});
+	}
 
 	if (variant !== undefined) {
 		files.push({

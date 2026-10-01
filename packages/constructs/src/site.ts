@@ -17,9 +17,9 @@
  * asymmetry is the honest one: a site consumes addresses, not connections.
  *
  * Only the static variant ships. SSR deploy shapes are unstable and each one is
- * its own maintenance, so they follow rather than arrive together; Expo and
- * mobile are out of scope entirely, because an app store is not infrastructure
- * and there is no URL to hand anyone.
+ * its own maintenance, so they follow rather than arrive together. A mobile app
+ * is not a site — it is reached by a scheme, not a URL — and is its own
+ * construct: see `MobileApp`.
  */
 
 import {

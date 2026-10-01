@@ -295,6 +295,27 @@ describe('generateMonorepoFiles', () => {
 		expect(config?.content).not.toContain('store:');
 	});
 
+	it('installs the Expo plugin the auth server loads for a mobile app', () => {
+		const rootDependencies = (frontendFramework: 'expo' | 'nextjs') =>
+			(
+				JSON.parse(
+					generateMonorepoFiles(
+						{
+							...baseOptions,
+							template: 'fullstack',
+							monorepo: true,
+							apiPath: 'apps/api',
+							frontendFramework,
+						},
+						minimalTemplate,
+					).find((f) => f.path === 'package.json')!.content,
+				) as { dependencies: Record<string, string> }
+			).dependencies;
+
+		expect(rootDependencies('expo')).toHaveProperty('@better-auth/expo');
+		expect(rootDependencies('nextjs')).not.toHaveProperty('@better-auth/expo');
+	});
+
 	it('installs what the root test factory imports, at the root', () => {
 		// The factory lives at the root, so its imports resolve from the root
 		// `node_modules` — not from the API app's, where testkit used to be.
@@ -436,23 +457,95 @@ describe('generateExpoAppFiles', () => {
 		expect(paths).toContain('apps/app/lib/auth-client.ts');
 	});
 
-	it('uses EXPO_PUBLIC_ prefix in config.ts', () => {
-		const files = generateExpoAppFiles(fullstackOptions);
-		const configTs = files.find((f) => f.path === 'apps/app/config.ts');
-		expect(configTs).toBeDefined();
-		expect(configTs!.content).toContain('EXPO_PUBLIC_API_URL');
-		expect(configTs!.content).toContain('EXPO_PUBLIC_AUTH_URL');
-		expect(configTs!.content).not.toContain('VITE_');
-		expect(configTs!.content).not.toContain('NEXT_PUBLIC_');
+	it('builds app.config.ts from what gkm injects, into extra.config', () => {
+		// The scheme and both URLs come from the MobileApp construct's edges —
+		// nothing about the stage is written into the app.
+		const appConfig = generateExpoAppFiles(fullstackOptions).find(
+			(f) => f.path === 'apps/app/app.config.ts',
+		)!.content;
+
+		expect(appConfig).toContain("get('APP_SCHEME')");
+		expect(appConfig).toContain("get('EXPO_PUBLIC_API_URL')");
+		expect(appConfig).toContain("get('EXPO_PUBLIC_AUTH_URL')");
+		expect(appConfig).toContain('scheme: config.scheme');
+		expect(appConfig).toContain('extra: { ...base.extra, config }');
+		expect(appConfig).not.toMatch(/scheme: '/);
 	});
 
-	it('seeds eas.json with EXPO_PUBLIC_ env vars per profile', () => {
-		const files = generateExpoAppFiles(fullstackOptions);
-		const eas = JSON.parse(
-			files.find((f) => f.path === 'apps/app/eas.json')!.content,
+	it('reads its config at runtime, pointed at the host Metro served it from', () => {
+		const configTs = generateExpoAppFiles(fullstackOptions).find(
+			(f) => f.path === 'apps/app/config.ts',
+		)!.content;
+
+		expect(configTs).toContain('Constants.expoConfig?.extra?.config');
+		expect(configTs).toContain('Constants.expoConfig?.hostUri');
+		expect(configTs).toContain('apiUrl: reachable(built.apiUrl)');
+		expect(configTs).toContain('authUrl: reachable(built.authUrl)');
+		// The emulator's \`localhost\` is itself, so it reaches the host at
+		// 10.0.2.2 — and a tunnel's host is never one the servers sit behind.
+		expect(configTs).toContain("Platform.OS === 'android' && !Device.isDevice");
+		expect(configTs).toContain("'10.0.2.2'");
+		expect(configTs).toContain('isLan(metro) ? metro');
+		expect(configTs).not.toMatch(/\\`/);
+	});
+
+	it('tracks one Expo SDK — 57 — for every package the SDK versions', () => {
+		const pkg = JSON.parse(
+			generateExpoAppFiles(fullstackOptions).find(
+				(f) => f.path === 'apps/app/package.json',
+			)!.content,
 		);
-		expect(eas.build.dev.env.EXPO_PUBLIC_API_URL).toBeDefined();
-		expect(eas.build.dev.env.EXPO_PUBLIC_AUTH_URL).toBeDefined();
+		const sdk = Object.entries(pkg.dependencies as Record<string, string>)
+			.filter(([name]) => name === 'expo' || name.startsWith('expo-'))
+			.map(([, version]) => version.replace(/^[~^]/, '').split('.')[0]);
+
+		expect(new Set(sdk)).toEqual(new Set(['57']));
+		// Reanimated 4 runs on worklets, which the SDK pins beside it.
+		expect(pkg.dependencies['react-native-worklets']).toBeDefined();
+	});
+
+	it('signs in from the emailed link, which brings the session back as ?cookie=', () => {
+		// The link opens in the phone's browser, which gets the cookie; the auth
+		// server's Expo plugin carries it back on the deep link, and the app has
+		// to store it — the Expo client does that only for sign-ins it opened.
+		const files = generateExpoAppFiles(fullstackOptions);
+		const authClient = files.find(
+			(f) => f.path === 'apps/app/lib/auth-client.ts',
+		)!.content;
+		const layout = files.find(
+			(f) => f.path === 'apps/app/app/_layout.tsx',
+		)!.content;
+
+		expect(authClient).toContain('export function useSessionFromLink()');
+		expect(authClient).toContain('Linking.useLinkingURL()');
+		// Merged into what the Expo client keeps, not written over it.
+		expect(authClient).toContain('getSetCookie(cookie, previous ?? undefined)');
+		expect(authClient).toContain("authClient.$store.notify('$sessionSignal')");
+		expect(layout).toContain('useSessionFromLink();');
+		expect(authClient).not.toMatch(/\\`/);
+	});
+
+	it('installs expo-device, which tells the emulator from a phone', () => {
+		const pkg = JSON.parse(
+			generateExpoAppFiles(fullstackOptions).find(
+				(f) => f.path === 'apps/app/package.json',
+			)!.content,
+		);
+		expect(pkg.dependencies['expo-device']).toBeDefined();
+	});
+
+	it('tells a store build its scheme, and a dev build nothing gkm injects', () => {
+		const eas = JSON.parse(
+			generateExpoAppFiles(fullstackOptions).find(
+				(f) => f.path === 'apps/app/eas.json',
+			)!.content,
+		);
+
+		expect(eas.build.dev.env).toBeUndefined();
+		expect(eas.build.production.env.APP_SCHEME).toMatch(/^[a-z][a-z0-9+.-]*$/);
+		expect(eas.build.preview.env.APP_SCHEME).toBe(
+			eas.build.production.env.APP_SCHEME,
+		);
 	});
 
 	it('declares expo + better-auth/expo as dependencies', () => {
@@ -501,6 +594,18 @@ describe('generateRootConstructs - the apps, as constructs', () => {
 			"('Database', {",
 		);
 		expect(all).not.toMatch(/Shop/);
+	});
+
+	it('declares a mobile app as a MobileApp that depends on the API and auth', () => {
+		const files = generateRootConstructs({
+			...fullstackBase,
+			frontendFramework: 'expo',
+		});
+
+		expect(at(files, 'constructs/site.ts')).toBeUndefined();
+		expect(at(files, 'constructs/app.ts')!.content).toContain(
+			"new MobileApp('App', { path: 'apps/app' }).dependsOn([",
+		);
 	});
 
 	it('declares the site with the path it lives at', () => {

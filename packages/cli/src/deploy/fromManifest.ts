@@ -46,7 +46,9 @@ import {
 	type Declaration,
 	type DeclarationKind,
 	dependentsOf,
+	mobileOrigins,
 	provideKey,
+	schemeBase,
 } from '@geekmidas/manifest';
 import { resourceName } from '../reconcile/plan.js';
 import type { DokployApi } from './dokploy-api';
@@ -556,10 +558,24 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 
 		const domain = cookieDomain([url, ...origins]);
 
+		// A mobile caller is reached by its scheme — the bare one, deployed:
+		// what the store build registers.
+		const schemes = dependentsOf(context.manifest, declaration.id).flatMap(
+			(caller) => {
+				const app = context.manifest[caller];
+				return app?.kind === 'mobile-app'
+					? mobileOrigins(schemeBase(context.project, app.scheme))
+					: [];
+			},
+		);
+
 		return {
 			provides: {
 				[provideKey(declaration.id, 'url')]: url,
-				[provideKey(declaration.id, 'trustedOrigins')]: origins.join(','),
+				[provideKey(declaration.id, 'trustedOrigins')]: [
+					...origins,
+					...schemes,
+				].join(','),
 				...(domain
 					? { [provideKey(declaration.id, 'cookieDomain')]: domain }
 					: {}),

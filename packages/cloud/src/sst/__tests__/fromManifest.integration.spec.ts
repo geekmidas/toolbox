@@ -3,6 +3,7 @@ import {
 	PUBLIC,
 	PUBLIC_PREFIX,
 	providedKeyFor,
+	schemeBase,
 } from '@geekmidas/manifest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseNeedsVpc } from '../aws/Database';
@@ -215,6 +216,37 @@ describe('fromManifest', () => {
 		expect(await settle(provisioned.Auth!.provides().trustedOrigins)).toContain(
 			origin('Api'),
 		);
+	});
+
+	it('builds nothing for a mobile app, and has the surfaces it calls trust its scheme', async () => {
+		vi.spyOn(console, 'log').mockImplementation(() => {});
+
+		const provisioned = fromManifest(
+			stack,
+			{
+				...manifest(),
+				App: {
+					kind: 'mobile-app',
+					id: 'App',
+					variant: 'expo',
+					app: { path: 'apps/app' },
+					dependencies: [{ target: 'Auth', kind: 'rest-api' }],
+					provides: ['APP_SCHEME'],
+				},
+			} as ConstructManifest,
+			overrides,
+			{ cache: 'db' },
+		);
+
+		// EAS and the stores ship it — this stack has nothing to create for it.
+		expect(provisioned.App).toBeUndefined();
+		const origins = String(
+			await settle(provisioned.Auth!.provides().trustedOrigins),
+		).split(',');
+		// The bare scheme deployed: the one the store build registers.
+		const scheme = `${schemeBase($app.name)}://`;
+		expect(origins).toContain(scheme);
+		expect(origins).toContain(`${scheme}*`);
 	});
 
 	it('prints every route and exactly what it can reach', () => {

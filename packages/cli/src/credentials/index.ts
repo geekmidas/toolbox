@@ -385,6 +385,12 @@ export async function prepareEntryCredentials(options: {
 
 	// Always inject PORT into credentials so apps can read it
 	credentials.PORT = String(resolvedPort);
+	// Expo reads its Metro port from here when `expo start` is given none, so
+	// a mobile app runs where the workspace placed it — and where the `exp://`
+	// origins its auth server trusts say it is.
+	if (appInfo?.app.type === 'mobile') {
+		credentials.RCT_METRO_PORT = String(resolvedPort);
+	}
 
 	const declaredKeys: string[] = [];
 

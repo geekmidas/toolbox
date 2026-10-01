@@ -511,6 +511,36 @@ export interface SiteDeclaration extends Node {
 }
 
 /**
+ * A mobile app — Expo — declared like a site, for the same reason: its edges
+ * are what make it worth declaring.
+ *
+ * It differs from a site in one way that matters. A browser is reached at an
+ * origin; an app is reached through its URL *scheme*. So what a surface trusts
+ * for it is `shop://`, not an address, and what it provides is that scheme
+ * — per stage, so a development build and the store build on one phone never
+ * answer the same links.
+ *
+ * It ships through its own toolchain (EAS, the stores), so nothing deploys it:
+ * it is an app the targets derive for, never one they run.
+ */
+export interface MobileAppDeclaration extends Node {
+	kind: 'mobile-app';
+	/** Which toolchain builds it. Expo is the one that ships. */
+	variant: 'expo';
+	/** Where it lives — `path` included. */
+	app: AppSpec;
+	/**
+	 * The scheme's base, before a stage suffix: `shop`.
+	 *
+	 * Normally omitted, and then it is the project's name. A local stage
+	 * suffixes it (`shop-dev`); a deployed stage uses it as it is.
+	 */
+	scheme?: string;
+	/** What it calls — the surfaces whose URLs it is built with. */
+	dependencies: readonly Dependency[];
+}
+
+/**
  * A process with no port.
  *
  * The sibling of `RestApiDeclaration`, and the answer to a question the model
@@ -634,6 +664,7 @@ export type Declaration =
 	| CredentialDeclaration
 	| RestApiDeclaration
 	| SiteDeclaration
+	| MobileAppDeclaration
 	| WorkerDeclaration
 	| OidcDeclaration
 	| QueueDeclaration
@@ -816,6 +847,12 @@ export interface ProvidesByKind {
 	/** Where the site is served. Public for the same reason an API's is. */
 	site: { url: string };
 	/**
+	 * The URL scheme it answers on for this stage — `shop`, or
+	 * `shop-dev` locally. What its `app.config.ts` registers and what the
+	 * surfaces it calls trust.
+	 */
+	'mobile-app': { scheme: string };
+	/**
 	 * Where tokens come from and which audience they must carry.
 	 *
 	 * Two keys because the halves have different lifetimes: the issuer may be a
@@ -878,6 +915,8 @@ export const PUBLIC: {
 	// not a browser's.
 	function: [],
 	cron: [],
+	// Read by its `app.config.ts` at build time, never shipped as a variable.
+	'mobile-app': [],
 	// Its own address, which it needs in order to build absolute links to
 	// itself — and which an email templating a link to it needs too.
 	site: ['url'],

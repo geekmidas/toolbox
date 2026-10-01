@@ -374,7 +374,7 @@ A Vite + TanStack Start app with file-based routing via `@tanstack/react-router`
 
 #### Expo (`apps/app`)
 
-A React Native mobile app on Expo SDK 55 with expo-router and NativeWind.
+A React Native mobile app on Expo SDK 57 with expo-router and NativeWind.
 
 - expo-router screens under `app/` (`_layout.tsx`, `index.tsx`, `login.tsx`)
 - NativeWind for Tailwind-style class names on React Native primitives

@@ -204,6 +204,16 @@
 				"default": "./dist/site.cjs"
 			}
 		},
+		"./mobile-app": {
+			"import": {
+				"types": "./dist/mobile-app.d.mts",
+				"default": "./dist/mobile-app.mjs"
+			},
+			"require": {
+				"types": "./dist/mobile-app.d.cts",
+				"default": "./dist/mobile-app.cjs"
+			}
+		},
 		"./worker": {
 			"import": {
 				"types": "./dist/worker.d.mts",
@@ -257,6 +267,7 @@
 		"qs": "~6.16.0"
 	},
 	"devDependencies": {
+		"@better-auth/expo": "~1.7.6",
 		"@geekmidas/audit": "workspace:^",
 		"@geekmidas/auth": "workspace:*",
 		"@geekmidas/cache": "workspace:^",
@@ -285,6 +296,7 @@
 		"zod": "~4.6.5"
 	},
 	"peerDependencies": {
+		"@better-auth/expo": ">=1.7.5",
 		"@geekmidas/audit": "workspace:^",
 		"@geekmidas/auth": "workspace:*",
 		"@geekmidas/cache": "workspace:^",
@@ -303,6 +315,9 @@
 		"pg": ">=8.23.0"
 	},
 	"peerDependenciesMeta": {
+		"@better-auth/expo": {
+			"optional": true
+		},
 		"@geekmidas/audit": {
 			"optional": true
 		},

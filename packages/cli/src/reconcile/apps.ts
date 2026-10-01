@@ -130,7 +130,8 @@ export function appEnvKeys(
 ): Set<string> | undefined {
 	const entry = Object.entries(manifest).find(
 		([id, d]) =>
-			(d.kind === 'rest-api' || d.kind === 'site') && appKey(id) === appName,
+			(d.kind === 'rest-api' || d.kind === 'site' || d.kind === 'mobile-app') &&
+			appKey(id) === appName,
 	);
 	if (!entry) return undefined;
 	const [id, declaration] = entry;
@@ -184,7 +185,7 @@ export function appEnvKeys(
 		}
 	}
 
-	if (declaration.kind === 'site') {
+	if (declaration.kind === 'site' || declaration.kind === 'mobile-app') {
 		for (const key of Object.keys(publicEnvFor(declaration, manifest))) {
 			keys.add(key);
 		}

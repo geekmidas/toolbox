@@ -688,3 +688,33 @@ describe('a surface with callers', () => {
 		expect(env.API_COOKIE_DOMAIN).toBe('.shop.com');
 	});
 });
+
+describe('a surface a mobile app calls', () => {
+	it('trusts the app’s bare scheme — what the store build registers', async () => {
+		const { env } = await provision(
+			{ addresses: { Auth: 'https://auth.shop.com' } },
+			{
+				Auth: {
+					kind: 'rest-api',
+					id: 'Auth',
+					path: '.',
+					endpoints: [],
+					provides: ['AUTH_URL'],
+				},
+				App: {
+					kind: 'mobile-app',
+					id: 'App',
+					variant: 'expo',
+					app: { path: 'apps/app' },
+					dependencies: [{ target: 'Auth', kind: 'rest-api' }],
+					provides: ['APP_SCHEME'],
+				},
+			} as unknown as ConstructManifest,
+		);
+
+		// The project's name, unsuffixed: no development build answers it.
+		expect(env.AUTH_TRUSTED_ORIGINS).toBe('shop://,shop://*');
+		// A scheme is not a host anything shares a cookie with.
+		expect(env.AUTH_COOKIE_DOMAIN).toBeUndefined();
+	});
+});

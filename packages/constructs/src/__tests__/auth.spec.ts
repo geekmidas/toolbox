@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { serviceContext } from '@geekmidas/services';
+import { magicLink } from 'better-auth/plugins';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import pg from 'pg';
@@ -9,6 +10,7 @@ import { TEST_DATABASE_CONFIG } from '../../../testkit/test/globalSetup';
 import {
 	BetterAuth,
 	type BetterAuthOptions,
+	deviceLink,
 	SessionCheckFailed,
 } from '../auth';
 import { KyselyDatabase } from '../database/kysely';
@@ -352,6 +354,202 @@ describe('BetterAuth.server', () => {
 		const plain = await auth().server(options());
 		const narrow = await plain.app.request(signUp(email('n')));
 		expect(narrow.headers.get('set-cookie')).not.toMatch(/Domain=/i);
+	});
+});
+
+describe('BetterAuth with a mobile app among its callers', () => {
+	const SCHEME = 'shop-dev';
+	const DEVICE_URL = 'http://192.168.1.20:3002';
+	/** What a target derives once `App` declares `.dependsOn([auth])`. */
+	const mobile = (env: Record<string, string> = {}) =>
+		options({
+			AUTH_TRUSTED_ORIGINS: [WEB_ORIGIN, `${SCHEME}://`, `${SCHEME}://*`].join(
+				',',
+			),
+			AUTH_DEVICE_URL: DEVICE_URL,
+			...env,
+		});
+
+	/**
+	 * An auth server whose magic links are kept rather than sent — with the
+	 * origin check on: Better Auth turns it off under a test runner unless told
+	 * otherwise, and these requests are about exactly that check.
+	 */
+	function withMagicLink() {
+		const sent: string[] = [];
+		const construct = auth({
+			advanced: { disableOriginCheck: false },
+			plugins: [
+				magicLink({
+					sendMagicLink: async ({ url }) => {
+						sent.push(url);
+					},
+				}),
+			],
+		});
+		return { construct, sent };
+	}
+
+	const askForLink = (callbackURL: string, origin: string) =>
+		new Request(`${AUTH_URL}/api/auth/sign-in/magic-link`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', origin },
+			body: JSON.stringify({ email: email('ada'), callbackURL }),
+		});
+
+	it('adds Better Auth’s Expo plugin, which an app signs in through', async () => {
+		const server = await auth().service.register(mobile());
+		const ids = server.options.plugins?.map((plugin) => plugin.id);
+
+		expect(ids).toContain('expo');
+	});
+
+	it('adds no Expo plugin where nothing but browsers call it', async () => {
+		const server = await auth().service.register(options());
+		const ids = server.options.plugins?.map((plugin) => plugin.id) ?? [];
+
+		expect(ids).not.toContain('expo');
+	});
+
+	it('builds a link the app asked for on the address a phone reaches', async () => {
+		const { construct, sent } = withMagicLink();
+		const { app } = await construct.server(mobile());
+
+		const response = await app.request(
+			askForLink(`${SCHEME}://signed-in`, `${SCHEME}://`),
+		);
+
+		expect(response.status).toBe(200);
+		expect(new URL(sent[0]!).origin).toBe(DEVICE_URL);
+		expect(new URL(sent[0]!).searchParams.get('callbackURL')).toBe(
+			`${SCHEME}://signed-in`,
+		);
+	});
+
+	it('accepts an app’s sign-in with only what the Expo client sends — no Origin header', async () => {
+		// React Native's fetch sends no Origin. The Expo client sends its scheme
+		// as \`expo-origin\` instead, and the server plugin is what turns that
+		// into the origin Better Auth checks. Apps once set \`Origin\` to the
+		// auth server's own URL by hand to get past this; this is the request
+		// without that.
+		const { construct, sent } = withMagicLink();
+		const { app } = await construct.server(mobile());
+
+		const response = await app.request(
+			new Request(`${AUTH_URL}/api/auth/sign-in/magic-link`, {
+				method: 'POST',
+				headers: {
+					'content-type': 'application/json',
+					'expo-origin': `${SCHEME}://`,
+				},
+				body: JSON.stringify({
+					email: email('ada'),
+					callbackURL: `${SCHEME}://signed-in`,
+				}),
+			}),
+		);
+
+		expect(response.status).toBe(200);
+		expect(sent).toHaveLength(1);
+	});
+
+	it('hands the app the session when the emailed link is opened outside it', async () => {
+		// The link opens in the phone's browser, which gets the session cookie —
+		// the app does not. Better Auth's Expo plugin carries it on the redirect
+		// back into the app, as ?cookie=, for a scheme this server trusts: the
+		// dev build's, and Expo Go's exp:// address on this machine.
+		for (const callbackURL of [
+			`${SCHEME}://signed-in`,
+			'exp://192.168.1.20:8081/--/signed-in',
+		]) {
+			const { construct, sent } = withMagicLink();
+			const { app } = await construct.server(
+				mobile({
+					AUTH_TRUSTED_ORIGINS: [
+						WEB_ORIGIN,
+						`${SCHEME}://`,
+						`${SCHEME}://*`,
+						'exp://192.168.1.20:*',
+						'exp://192.168.1.20:*/**',
+					].join(','),
+				}),
+			);
+			await app.request(
+				new Request(`${AUTH_URL}/api/auth/sign-in/magic-link`, {
+					method: 'POST',
+					headers: {
+						'content-type': 'application/json',
+						'expo-origin': `${SCHEME}://`,
+					},
+					body: JSON.stringify({ email: email('ada'), callbackURL }),
+				}),
+			);
+
+			// Opened from the email: no cookie, no origin — just the link.
+			const link = new URL(sent[0]!);
+			const opened = await app.request(
+				`${AUTH_URL}${link.pathname}${link.search}`,
+			);
+			const location = new URL(opened.headers.get('location')!);
+
+			expect(`${location.protocol}//${location.host}`).toBe(
+				`${new URL(callbackURL).protocol}//${new URL(callbackURL).host}`,
+			);
+			expect(location.searchParams.get('cookie')).toMatch(/session_token=/);
+		}
+	});
+
+	it('refuses the same request from a scheme nothing declared', async () => {
+		const { construct, sent } = withMagicLink();
+		const { app } = await construct.server(mobile());
+
+		const response = await app.request(
+			new Request(`${AUTH_URL}/api/auth/sign-in/magic-link`, {
+				method: 'POST',
+				headers: {
+					'content-type': 'application/json',
+					'expo-origin': 'evil://',
+				},
+				body: JSON.stringify({
+					email: email('ada'),
+					callbackURL: 'evil://signed-in',
+				}),
+			}),
+		);
+
+		expect(response.status).toBe(403);
+		expect(sent).toHaveLength(0);
+	});
+
+	it('leaves a browser’s link on the server’s own address', async () => {
+		const { construct, sent } = withMagicLink();
+		const { app } = await construct.server(mobile());
+
+		await app.request(askForLink('/dashboard', WEB_ORIGIN));
+
+		expect(new URL(sent[0]!).origin).toBe(AUTH_URL);
+	});
+});
+
+describe('deviceLink', () => {
+	const link = (callbackURL: string) =>
+		`http://auth-dev.shop.localhost:28006/api/auth/magic-link/verify?token=t&callbackURL=${encodeURIComponent(callbackURL)}`;
+
+	it('moves an app’s link to the device address, path and token kept', () => {
+		expect(
+			deviceLink(link('shop-dev://home'), 'http://192.168.1.20:3002'),
+		).toBe(
+			'http://192.168.1.20:3002/api/auth/magic-link/verify?token=t&callbackURL=shop-dev%3A%2F%2Fhome',
+		);
+	});
+
+	it('leaves a browser’s link alone, relative or absolute', () => {
+		expect(deviceLink(link('/home'), 'http://192.168.1.20:3002')).toBe(
+			link('/home'),
+		);
+		expect(
+			deviceLink(link('https://shop.com/home'), 'http://192.168.1.20:3002'),
+		).toBe(link('https://shop.com/home'));
 	});
 });
 
