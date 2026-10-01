@@ -479,11 +479,11 @@ describe('generateRootConstructs - the apps, as constructs', () => {
 		files.find((f) => f.path === path);
 
 	it('names its resources plainly, since the workspace name scopes them', () => {
-		// `name: 'beetlefit'` already makes the cache `production-beetlefit-cache`
-		// on deploy; `BeetlefitCache` would make it `…-beetlefit-beetlefit-cache`.
+		// `name: 'shop'` already makes the cache `production-shop-cache`
+		// on deploy; `ShopCache` would make it `…-shop-shop-cache`.
 		const files = generateRootConstructs({
 			...fullstackBase,
-			name: 'beetlefit',
+			name: 'shop',
 			constructs: { database: true, cache: true, mail: true, uploads: true },
 		});
 		const all = files.map((f) => f.content).join('\n');
@@ -500,7 +500,7 @@ describe('generateRootConstructs - the apps, as constructs', () => {
 		expect(at(files, 'constructs/database.ts')!.content).toContain(
 			"('Database', {",
 		);
-		expect(all).not.toMatch(/Beetlefit/);
+		expect(all).not.toMatch(/Shop/);
 	});
 
 	it('declares the site with the path it lives at', () => {

@@ -54,11 +54,11 @@ export interface ScaffoldedDatabase extends ScaffoldedConstruct {
 }
 
 /**
- * Plain ids — `Database`, not `Beetlefit`.
+ * Plain ids — `Database`, not `Shop`.
  *
  * The workspace `name` already scopes every physical name
- * (`production-beetlefit-database`), so an id that carried the project too
- * would say it twice: `production-beetlefit-beetlefit-cache`. Within a
+ * (`production-shop-database`), so an id that carried the project too
+ * would say it twice: `production-shop-shop-cache`. Within a
  * workspace the constructs are declared once, at its root, so there is no
  * second app's `Database` to collide with.
  */

@@ -4,10 +4,10 @@
 
 `gkm init` names what it declares plainly: `Database`, `Cache`, `Uploads`, `Mail`
 
-The scaffold named them after the project — `new Cache('BeetlefitCache')`,
-`new KyselyDatabase<Database, 'Beetlefit'>('Beetlefit')` — but the workspace
+The scaffold named them after the project — `new Cache('ShopCache')`,
+`new KyselyDatabase<Database, 'Shop'>('Shop')` — but the workspace
 `name` already scopes every physical name, so the cache deployed as
-`production-beetlefit-beetlefit-cache`. The ids are now plain, and so are the
+`production-shop-shop-cache`. The ids are now plain, and so are the
 keys they publish: `DATABASE_URL`, `DATABASE_OWNER_URL`, `CACHE_URL`,
 `UPLOADS_URL`, `MAIL_URL`.
 

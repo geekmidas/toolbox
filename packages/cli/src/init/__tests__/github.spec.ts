@@ -4,7 +4,7 @@ import { generateGithubFiles } from '../generators/github';
 import type { TemplateOptions } from '../templates/index';
 
 const workspace: TemplateOptions = {
-	name: 'beetlefit',
+	name: 'shop',
 	template: 'fullstack',
 	monorepo: true,
 	apiPath: 'apps/api',
@@ -139,7 +139,7 @@ describe('generateGithubFiles', () => {
 			(s: { name?: string }) => s.name === 'Stage secrets key',
 		);
 
-		expect(key.run).toContain('~/.gkm/beetlefit/"$STAGE".key');
+		expect(key.run).toContain('~/.gkm/shop/"$STAGE".key');
 		expect(key.env.KEY).toBe('${{ secrets.GKM_SECRETS_KEY }}');
 		expect(deployYml).toContain('.gkm/ is\n      # gitignored');
 		expect(deployYml).toContain('secrets.store');

@@ -6,7 +6,7 @@ describe('generateDeployFiles', () => {
 	it('refuses an SST scaffold with no region to write', () => {
 		expect(() =>
 			generateDeployFiles({
-				name: 'beetlefit',
+				name: 'shop',
 				template: 'fullstack',
 				monorepo: true,
 				deployTarget: 'sst',

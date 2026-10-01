@@ -28,14 +28,14 @@ function workspace(root: string, home: string) {
 		`import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
-  name: 'beetlefit',
+  name: 'shop',
   constructs: './src/constructs/**/*.ts',
   stages: { local: 'dev', deployed: ['staging', 'prod'], protected: ['prod'] },
 });
 `,
 	);
-	mkdirSync(join(home, '.gkm', 'beetlefit'), { recursive: true });
-	writeFileSync(join(home, '.gkm', 'beetlefit', 'prod.key'), 'a1b2c3\n');
+	mkdirSync(join(home, '.gkm', 'shop'), { recursive: true });
+	writeFileSync(join(home, '.gkm', 'shop', 'prod.key'), 'a1b2c3\n');
 }
 
 /** The same workspace, its deployed stages' secrets in a custom store. */
@@ -46,7 +46,7 @@ function storedWorkspace(root: string) {
 		`import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
-  name: 'beetlefit',
+  name: 'shop',
   constructs: './src/constructs/**/*.ts',
   stages: { local: 'dev', deployed: ['staging', 'prod'], protected: ['prod'] },
   secrets: {
@@ -79,7 +79,7 @@ describe('trustPolicy', () => {
 		const policy = JSON.parse(
 			trustPolicy(
 				'arn:aws:iam::111:oidc-provider/token.actions.githubusercontent.com',
-				'acme/beetlefit',
+				'acme/shop',
 				'prod',
 			),
 		);
@@ -97,7 +97,7 @@ describe('trustPolicy', () => {
 						'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
 						// An exact match, not a wildcard: a staging job cannot assume it.
 						'token.actions.githubusercontent.com:sub':
-							'repo:acme/beetlefit:environment:prod',
+							'repo:acme/shop:environment:prod',
 					},
 				},
 			},
@@ -107,7 +107,7 @@ describe('trustPolicy', () => {
 
 describe('roleName', () => {
 	it('is the project and stage, within IAM limits', () => {
-		expect(roleName('beetlefit', 'prod')).toBe('beetlefit-github-prod');
+		expect(roleName('shop', 'prod')).toBe('shop-github-prod');
 		expect(roleName('x'.repeat(80), 'prod')).toHaveLength(64);
 	});
 });
@@ -139,7 +139,7 @@ describe('deployGithubCommand', () => {
 
 		await expect(
 			deployGithubCommand(
-				{ stage: 'qa', repo: 'acme/beetlefit' },
+				{ stage: 'qa', repo: 'acme/shop' },
 				{ gh, cwd: root },
 			),
 		).rejects.toThrow('"qa" is not a deployed stage');
@@ -152,7 +152,7 @@ describe('deployGithubCommand', () => {
 		await deployGithubCommand(
 			{
 				stage: 'prod',
-				repo: 'acme/beetlefit',
+				repo: 'acme/shop',
 				profile: 'acme-prod',
 				dryRun: true,
 			},
@@ -160,10 +160,10 @@ describe('deployGithubCommand', () => {
 		);
 
 		const output = log.mock.calls.flat().join('\n');
-		expect(output).toContain('Role:         beetlefit-github-prod');
+		expect(output).toContain('Role:         shop-github-prod');
 		expect(output).toContain('AWS profile:  acme-prod');
 		expect(output).toContain(`Policy:       ${DEFAULT_POLICY_ARN}`);
-		expect(output).toContain('repo:acme/beetlefit:environment:prod only');
+		expect(output).toContain('repo:acme/shop:environment:prod only');
 		expect(calls).toEqual([]);
 	});
 
@@ -173,7 +173,7 @@ describe('deployGithubCommand', () => {
 		const { gh } = recordingGh();
 
 		await deployGithubCommand(
-			{ stage: 'prod', repo: 'acme/beetlefit', dryRun: true },
+			{ stage: 'prod', repo: 'acme/shop', dryRun: true },
 			{ gh, cwd: root },
 		);
 
@@ -189,7 +189,7 @@ describe('deployGithubCommand', () => {
 		const { gh } = recordingGh();
 
 		await deployGithubCommand(
-			{ stage: 'prod', repo: 'acme/beetlefit', dryRun: true },
+			{ stage: 'prod', repo: 'acme/shop', dryRun: true },
 			{ gh, cwd: root },
 		);
 
@@ -202,7 +202,7 @@ describe('deployGithubCommand', () => {
 		const { gh } = recordingGh();
 
 		await deployGithubCommand(
-			{ stage: 'staging', repo: 'acme/beetlefit', dryRun: true },
+			{ stage: 'staging', repo: 'acme/shop', dryRun: true },
 			{ gh, cwd: root },
 		);
 
@@ -243,7 +243,7 @@ describe('an expired SSO login', () => {
 
 		try {
 			const run = deployGithubCommand(
-				{ stage: 'prod', repo: 'acme/beetlefit', profile: 'acme-prod' },
+				{ stage: 'prod', repo: 'acme/shop', profile: 'acme-prod' },
 				{ gh: recordingGh().gh, iam, cwd: root },
 			);
 			await expect(run).rejects.toThrow(SsoSessionExpired);
@@ -325,18 +325,13 @@ describe('against IAM', () => {
 
 		try {
 			const { roleArn } = await deployGithubCommand(
-				{ stage: 'prod', repo: 'acme/beetlefit' },
+				{ stage: 'prod', repo: 'acme/shop' },
 				{ gh, iam, cwd: root },
 			);
 
 			expect(calls).toEqual([
 				{
-					args: [
-						'api',
-						'--method',
-						'PUT',
-						'repos/acme/beetlefit/environments/prod',
-					],
+					args: ['api', '--method', 'PUT', 'repos/acme/shop/environments/prod'],
 					input: undefined,
 				},
 				{
@@ -347,7 +342,7 @@ describe('against IAM', () => {
 						'--env',
 						'prod',
 						'--repo',
-						'acme/beetlefit',
+						'acme/shop',
 						'--body',
 						roleArn!,
 					],
@@ -362,7 +357,7 @@ describe('against IAM', () => {
 						'--env',
 						'prod',
 						'--repo',
-						'acme/beetlefit',
+						'acme/shop',
 					],
 					input: 'a1b2c3',
 				},
@@ -387,7 +382,7 @@ describe('against IAM', () => {
 
 		try {
 			await deployGithubCommand(
-				{ stage: 'prod', repo: 'acme/beetlefit', profile: 'acme-prod' },
+				{ stage: 'prod', repo: 'acme/shop', profile: 'acme-prod' },
 				{ gh, iam, cwd: root },
 			);
 
@@ -419,7 +414,7 @@ describe('against IAM', () => {
 
 		try {
 			await deployGithubCommand(
-				{ stage: 'prod', repo: 'acme/beetlefit', profile: 'acme-prod' },
+				{ stage: 'prod', repo: 'acme/shop', profile: 'acme-prod' },
 				{ gh, iam, cwd: root },
 			);
 

@@ -104,14 +104,12 @@ describe('initCommand, answered interactively', () => {
 			'tanstack-start',
 		]);
 
-		await initCommand('beetlefit', { skipInstall: true });
+		await initCommand('shop', { skipInstall: true });
 
-		expect(read('beetlefit/gkm.config.ts')).toContain("protected: ['prod']");
-		expect(existsSync(join(dir, 'beetlefit/apps/web/src/routes'))).toBe(true);
-		expect(existsSync(join(dir, 'beetlefit/constructs/database.ts'))).toBe(
-			true,
-		);
-		expect(JSON.parse(read('beetlefit/package.json')).scripts).toHaveProperty(
+		expect(read('shop/gkm.config.ts')).toContain("protected: ['prod']");
+		expect(existsSync(join(dir, 'shop/apps/web/src/routes'))).toBe(true);
+		expect(existsSync(join(dir, 'shop/constructs/database.ts'))).toBe(true);
+		expect(JSON.parse(read('shop/package.json')).scripts).toHaveProperty(
 			'deploy:prod',
 		);
 	});

@@ -22,7 +22,7 @@ import {
 } from '../templates/index';
 
 const base: TemplateOptions = {
-	name: 'beetlefit',
+	name: 'shop',
 	template: 'api',
 	telescope: true,
 	studio: true,

@@ -190,7 +190,7 @@ describe(
 					}),
 				);
 			}
-			// What beetlefit's says: a name, the stages, and where constructs live.
+			// What shop's says: a name, the stages, and where constructs live.
 			// The apps are read off the graph.
 			writeFileSync(
 				join(dir, 'gkm.config.ts'),

@@ -629,7 +629,7 @@ const PROTECTED: string[] = ['prod']; // from stages.protected
 export default $config({
   app(input) {
     return {
-      name: 'beetlefit',
+      name: 'shop',
       removal: PROTECTED.includes(input?.stage) ? 'retain' : 'remove',
       protect: PROTECTED.includes(input?.stage),
       home: 'aws',
@@ -641,7 +641,7 @@ export default $config({
     const { backends, constructs } = await import('./.gkm/manifest/aws.js');
     const vpc = new sst.aws.Vpc('Vpc', { nat: 'ec2' });
     // …
-    return fromManifest(new Stack(app, 'Beetlefit'), constructs, {
+    return fromManifest(new Stack(app, 'Shop'), constructs, {
       Database: { vpc },                                      // RDS needs a network
       Mail: { from: process.env.MAIL_FROM as string },        // a verified SES sender
     }, backends);

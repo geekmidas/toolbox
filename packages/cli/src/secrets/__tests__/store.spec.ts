@@ -228,9 +228,7 @@ describe('SsmSecretsStore', () => {
 	});
 
 	it('names the parameter by project and stage', () => {
-		expect(secretsParameterName('beetlefit', 'prod')).toBe(
-			'/gkm/beetlefit/prod/secrets',
-		);
+		expect(secretsParameterName('shop', 'prod')).toBe('/gkm/shop/prod/secrets');
 	});
 
 	it('resolves a named profile from the profile, never from AWS_* env', async () => {
@@ -251,7 +249,7 @@ describe('SsmSecretsStore', () => {
 
 		try {
 			const store = new SsmSecretsStore({
-				project: 'beetlefit',
+				project: 'shop',
 				region: 'us-east-1',
 				profile: 'acme-prod',
 			});

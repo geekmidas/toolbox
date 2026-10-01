@@ -50,7 +50,7 @@ export function validateProjectName(name: string): boolean | string {
 		return 'Project name can only contain letters, numbers, hyphens, underscores, @, /, and .';
 	}
 
-	// `init beetlefit--monorepo` is `init beetlefit --monorepo` with the space
+	// `init shop--monorepo` is `init shop --monorepo` with the space
 	// lost, and the flag then ends up in every package scope and physical name.
 	const flag = name.match(/--(\w[\w-]*)$/)?.[1];
 	if (flag && INIT_FLAGS.includes(flag)) {

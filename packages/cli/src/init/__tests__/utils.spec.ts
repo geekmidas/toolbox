@@ -34,8 +34,8 @@ describe('validateProjectName', () => {
 	});
 
 	it('rejects a name that swallowed a flag for want of a space', () => {
-		expect(validateProjectName('beetlefit--monorepo')).toBe(
-			'"beetlefit--monorepo" ends in the --monorepo flag. Did you mean `beetlefit --monorepo`?',
+		expect(validateProjectName('shop--monorepo')).toBe(
+			'"shop--monorepo" ends in the --monorepo flag. Did you mean `shop --monorepo`?',
 		);
 		expect(validateProjectName('shop--yes')).toContain('--yes flag');
 	});
