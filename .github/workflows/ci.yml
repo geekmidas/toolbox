@@ -92,10 +92,15 @@ jobs:
       - name: Typecheck
         run: pnpm run ts:check
 
+      # The package suites run on the pull request, and a push to main is one
+      # that already passed them. The kitchen-sink steps below still run on
+      # main: they drive the CLI, the constructs and the harness together.
       - name: Set Test Environment
+        if: github.event_name != 'push'
         uses: hoverkraft-tech/compose-action@v2.2.0
 
       - name: Test (unit)
+        if: github.event_name != 'push'
         timeout-minutes: 10
         env:
           CI: true
