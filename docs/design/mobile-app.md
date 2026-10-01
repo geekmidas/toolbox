@@ -11,16 +11,16 @@ A web app is a construct, so the graph knows who calls the API and the auth
 server, and none of the following is written down: the site's API URL, the
 API's CORS origins, the auth server's trusted origins. A mobile app was not a
 construct, so all of it was hand-maintained, and some of it could not be done
-at all. carsharenova's auth server shows the cost:
+at all. An app wired up by hand ends up with:
 
 - **Its scheme hard-coded twice:** in `app.config.ts`, and in the auth server's
-  `trustedOrigins` (`'com.technanimals.carsharenova://'`). A development build
-  and the store build on one phone answer the same links.
+  `trustedOrigins`. A development build and the store build on one phone
+  answer the same links.
 - **Dev-only wildcards in `trustedOrigins`:** `exp://**`,
   `exp://192.168.*.*:*/**`, `http://192.168.*.*:*`. Every phone on the subnet
   is trusted because one is.
 - **`expo()` added by hand** to the auth server.
-- **A `normalizeMagicLinkUrl` helper.** The auth server builds magic links on
+- **A helper that rewrites magic links.** The auth server builds them on
   its `baseURL`, which a phone cannot open locally, so the app's links are
   rebuilt on the machine's LAN IP.
 - **URLs in `eas.json`**, per profile, kept in step with the servers by hand.
@@ -171,8 +171,7 @@ app's scheme. The app never had the cookie.
   `EXPO_PUBLIC_AUTH_URL` into `extra.config`. The scheme, and the bundle id and
   Android package built on it, come from there.
 - **`apps/app/config.ts`:** reads `extra.config` and points `localhost` at a
-  host the device reaches, in the order carsharenova's `src/config.ts` settled
-  on:
+  host the device reaches, in this order:
   - **Metro's host, when it is a private LAN address:** a phone on the same
     Wi-Fi.
   - **`10.0.2.2` on the Android emulator** (`Platform.OS === 'android'` and
@@ -200,8 +199,8 @@ app's scheme. The app never had the cookie.
   secure storage) rather than a cookie jar. This is how device login gets
   tested.
 - **`expo start --tunnel`.** A tunnel forwards only Metro's port, so the
-  servers would have to be reached through Metro (carsharenova proxies
-  `/__api` and `/__auth`). LAN only for now.
+  servers would have to be reached through Metro, by proxying their paths
+  (`/__api`, `/__auth`). LAN only for now.
 - **Building the store app from the graph.** EAS builds outside `gkm`, so
   `eas.json` still carries the deployed URLs. A `gkm build` for a mobile app
   could resolve them from the deployed stage.
