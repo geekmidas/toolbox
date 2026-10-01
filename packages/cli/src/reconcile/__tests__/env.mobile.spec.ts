@@ -66,7 +66,7 @@ const env = (lan: string | null = LAN) => {
 	);
 	return envFor(plan, {
 		ports,
-		project: 'beetlefit',
+		project: 'shop',
 		addresses,
 		...(lan ? { lanAddress: lan } : {}),
 	});
@@ -74,7 +74,7 @@ const env = (lan: string | null = LAN) => {
 
 describe('a mobile app on a local stage', () => {
 	it('answers on its scheme, suffixed with the stage', () => {
-		expect(env().APP_SCHEME).toBe('beetlefit-dev');
+		expect(env().APP_SCHEME).toBe('shop-dev');
 	});
 
 	it('is built with each surface’s own port, which a phone can reach', () => {
@@ -89,14 +89,14 @@ describe('a mobile app on a local stage', () => {
 	it('is trusted by what it calls: its scheme, and Expo Go on this machine', () => {
 		const origins = env().AUTH_TRUSTED_ORIGINS!.split(',');
 
-		expect(origins).toContain('beetlefit-dev://');
-		expect(origins).toContain('beetlefit-dev://*');
+		expect(origins).toContain('shop-dev://');
+		expect(origins).toContain('shop-dev://*');
 		expect(origins).toContain(`exp://${LAN}:*`);
 		expect(origins).toContain('exp://localhost:*');
 		// The browser is still there, and no subnet is.
 		expect(origins.some((o) => o.startsWith('https://'))).toBe(true);
 		expect(origins.join(',')).not.toContain('*.*');
-		expect(env().API_TRUSTED_ORIGINS).toContain('beetlefit-dev://');
+		expect(env().API_TRUSTED_ORIGINS).toContain('shop-dev://');
 	});
 
 	it('gives the auth server the address a phone reaches it on', () => {

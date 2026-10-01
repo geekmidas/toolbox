@@ -24,43 +24,40 @@ const manifest = {
 
 describe('schemeBase', () => {
 	it('is the project’s name, made a valid URL scheme', () => {
-		expect(schemeBase('beetlefit')).toBe('beetlefit');
-		expect(schemeBase('Beetle Fit')).toBe('beetle-fit');
+		expect(schemeBase('shop')).toBe('shop');
+		expect(schemeBase('Corner Shop')).toBe('corner-shop');
 		expect(schemeBase('@shop/app')).toBe('shop-app');
 		// A scheme starts with a letter.
 		expect(schemeBase('2fit')).toBe('app2fit');
 	});
 
 	it('is the one the app gave, when it gave one', () => {
-		expect(schemeBase('beetlefit', 'fitbeetle')).toBe('fitbeetle');
+		expect(schemeBase('shop', 'storefront')).toBe('storefront');
 	});
 });
 
 describe('appScheme', () => {
 	it('suffixes a local stage, so a dev build never answers the store build’s links', () => {
-		expect(appScheme('beetlefit', 'dev')).toBe('beetlefit-dev');
-		expect(appScheme('beetlefit', 'test')).toBe('beetlefit-test');
+		expect(appScheme('shop', 'dev')).toBe('shop-dev');
+		expect(appScheme('shop', 'test')).toBe('shop-test');
 	});
 
 	it('is the bare base deployed — what the store build registers', () => {
-		expect(appScheme('beetlefit')).toBe('beetlefit');
+		expect(appScheme('shop')).toBe('shop');
 	});
 });
 
 describe('mobileOrigins', () => {
 	it('trusts the scheme, with or without a path after it', () => {
-		expect(mobileOrigins('beetlefit')).toEqual([
-			'beetlefit://',
-			'beetlefit://*',
-		]);
+		expect(mobileOrigins('shop')).toEqual(['shop://', 'shop://*']);
 	});
 
 	it('adds the exact hosts Expo Go is served from, not a subnet', () => {
 		expect(
-			mobileOrigins('beetlefit-dev', { hosts: ['192.168.1.20', 'localhost'] }),
+			mobileOrigins('shop-dev', { hosts: ['192.168.1.20', 'localhost'] }),
 		).toEqual([
-			'beetlefit-dev://',
-			'beetlefit-dev://*',
+			'shop-dev://',
+			'shop-dev://*',
 			'exp://192.168.1.20:*',
 			'exp://192.168.1.20:*/**',
 			'exp://localhost:*',
@@ -69,7 +66,7 @@ describe('mobileOrigins', () => {
 	});
 
 	it('is never a web origin, so it never widens a cookie', () => {
-		const origins = mobileOrigins('beetlefit', { hosts: ['localhost'] });
+		const origins = mobileOrigins('shop', { hosts: ['localhost'] });
 		expect(origins.some(isWebOrigin)).toBe(false);
 		expect(cookieDomain(['https://api.shop.com', 'https://shop.com'])).toBe(
 			'.shop.com',

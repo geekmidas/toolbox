@@ -12,7 +12,7 @@
  * The scheme's base: the one given, or the project's name made a valid scheme.
  *
  * A scheme is a letter followed by letters, digits, `+`, `-` or `.` — so
- * `Beetle Fit` becomes `beetle-fit`, and a name that starts with a digit gets a
+ * `Corner Shop` becomes `corner-shop`, and a name that starts with a digit gets a
  * leading `app`.
  */
 export function schemeBase(project: string, given?: string): string {
@@ -27,8 +27,8 @@ export function schemeBase(project: string, given?: string): string {
 /**
  * The scheme an app answers on in one stage.
  *
- * A deployed stage uses the base as it is — `beetlefit`, what the store build
- * registers. A local or test stage suffixes it — `beetlefit-dev` — so a
+ * A deployed stage uses the base as it is — `shop`, what the store build
+ * registers. A local or test stage suffixes it — `shop-dev` — so a
  * development build on the same phone never answers the store build's links.
  * Pass no stage for a deployed one.
  */
@@ -46,7 +46,7 @@ export interface MetroHost {
  * The origins a surface trusts for a mobile caller.
  *
  * Better Auth's Expo plugin sends the app's scheme as its origin
- * (`beetlefit://`), and a link can carry a path after it (`beetlefit://*`).
+ * (`shop://`), and a link can carry a path after it (`shop://*`).
  * In development, Expo Go sends `exp://<host>:<port>` instead — so a local
  * stage adds the hosts a device actually reaches Metro on, exactly, with any
  * port: a whole subnet is not trusted because one phone is on it.

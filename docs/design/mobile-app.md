@@ -3,7 +3,6 @@
 - **Status:** Implemented (this PR). Device sign-in in tests and tunnels follow.
 - **Impact:** Medium: a new construct and declaration kind, origin derivation
   in all three targets, the auth server pairs Better Auth's Expo plugin.
-- **First user:** beetlefit (`apps/app`)
 
 ## Why
 
@@ -35,8 +34,8 @@ existed.
   its `.dependsOn([api, auth])` is the single fact everything below is derived
   from. Not `.calls()`: a site and an app depend on surfaces.
 - **The scheme is derived, per stage.** The base is the project's name
-  (`beetlefit`), or the one the construct gives. A local or test stage
-  suffixes it (`beetlefit-dev`), so a development build and the store build on
+  (`shop`), or the one the construct gives. A local or test stage
+  suffixes it (`shop-dev`), so a development build and the store build on
   one phone never answer each other's links. A deployed stage uses the base:
   what the store build registers.
 - **`app.config.ts` reads what `gkm` injects.** The scheme (`APP_SCHEME`) and
@@ -48,7 +47,7 @@ existed.
   only when it is a private address. The local
   target reads the machine's network interfaces.
 - **A mobile app gets each server's own port, not the edge's hostname.**
-  `https://api-dev.beetlefit.localhost` resolves only on this machine, and the
+  `https://api-dev.shop.localhost` resolves only on this machine, and the
   edge (Caddy) routes by hostname, so no LAN address can stand in for it.
   `http://localhost:3000` can: the app swaps `localhost` for the host Metro
   served it from, which the device has already reached. A browser keeps the
@@ -83,9 +82,9 @@ provides: ['APP_SCHEME']
 
 | Function | Answers |
 |---|---|
-| `schemeBase(project, given?)` | `beetlefit`; `Beetle Fit` → `beetle-fit`; a leading digit gets `app` |
-| `appScheme(base, localStage?)` | `beetlefit-dev` locally, `beetlefit` deployed |
-| `mobileOrigins(scheme, metro?)` | `beetlefit://`, `beetlefit://*`, and on a local stage `exp://<host>:*` (and `/**`) per host |
+| `schemeBase(project, given?)` | `shop`; `Corner Shop` → `corner-shop`; a leading digit gets `app` |
+| `appScheme(base, localStage?)` | `shop-dev` locally, `shop` deployed |
+| `mobileOrigins(scheme, metro?)` | `shop://`, `shop://*`, and on a local stage `exp://<host>:*` (and `/**`) per host |
 | `isWebOrigin(origin)` | what a cookie domain may be derived from: a scheme never is |
 
 ## What each target derives
@@ -97,10 +96,10 @@ For `App` calling `Api` and `Auth`, on stage `dev`, with LAN address
 
 | Key | Value |
 |---|---|
-| `APP_SCHEME` | `beetlefit-dev` |
+| `APP_SCHEME` | `shop-dev` |
 | `EXPO_PUBLIC_API_URL` | `http://localhost:3000` (the API's own port) |
 | `EXPO_PUBLIC_AUTH_URL` | `http://localhost:3001` |
-| `AUTH_TRUSTED_ORIGINS` | the web origins, then `beetlefit-dev://`, `beetlefit-dev://*`, `exp://192.168.1.20:*`, `exp://192.168.1.20:*/**`, `exp://localhost:*`, `exp://localhost:*/**` |
+| `AUTH_TRUSTED_ORIGINS` | the web origins, then `shop-dev://`, `shop-dev://*`, `exp://192.168.1.20:*`, `exp://192.168.1.20:*/**`, `exp://localhost:*`, `exp://localhost:*/**` |
 | `API_TRUSTED_ORIGINS` | the same, for the API |
 | `AUTH_DEVICE_URL` | `http://192.168.1.20:3001`: the auth server on the LAN |
 
@@ -115,7 +114,7 @@ For `App` calling `Api` and `Auth`, on stage `dev`, with LAN address
 
 ### Deployed (Dokploy, AWS)
 
-A surface a mobile app depends on trusts `beetlefit://` and `beetlefit://*`:
+A surface a mobile app depends on trusts `shop://` and `shop://*`:
 the bare scheme. No `exp://`, and no device URL. Neither target builds or
 deploys the app. EAS and the stores do, so SST skips the declaration and
 Dokploy has no provisioner for it.
@@ -130,7 +129,7 @@ a mobile caller it also:
    optional peer dependency of `@geekmidas/constructs`, loaded only then.
    Without it, `ExpoPluginMissing` says what to install.
 2. **Builds an app's magic link on `AUTH_DEVICE_URL`** on a local stage. A
-   link whose `callbackURL` is a scheme (`beetlefit-dev://…`) was asked for by
+   link whose `callbackURL` is a scheme (`shop-dev://…`) was asked for by
    the app, and will be opened on the phone. It is rebuilt on the device
    address, path and token kept. A link whose callback is a path or an
    `http(s)` URL was asked for by a browser, and is left alone. The magic-link
@@ -144,7 +143,7 @@ calls `/magic-link/verify`, gets the session cookie, and is redirected to the
 app's scheme. The app never had the cookie.
 
 - **Server:** Better Auth's Expo plugin carries it on that redirect,
-  `beetlefit-dev://…?cookie=<set-cookie>`, for a destination the server
+  `shop-dev://…?cookie=<set-cookie>`, for a destination the server
   trusts. In 1.7 the check is `isTrustedOrigin`, so the wildcard `exp://`
   origins cover Expo Go too. Tested here for both.
 - **App:** the Expo client stores a `?cookie=` itself only for a sign-in it
@@ -189,7 +188,7 @@ app's scheme. The app never had the cookie.
 `gkm dev` lists the app with its scheme and the address devices reach:
 
 ```
-   app  beetlefit-dev:// — devices reach 192.168.1.20
+   app  shop-dev:// — devices reach 192.168.1.20
 ```
 
 ## Not in this design yet

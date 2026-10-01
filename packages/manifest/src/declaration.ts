@@ -516,7 +516,7 @@ export interface SiteDeclaration extends Node {
  *
  * It differs from a site in one way that matters. A browser is reached at an
  * origin; an app is reached through its URL *scheme*. So what a surface trusts
- * for it is `beetlefit://`, not an address, and what it provides is that scheme
+ * for it is `shop://`, not an address, and what it provides is that scheme
  * — per stage, so a development build and the store build on one phone never
  * answer the same links.
  *
@@ -530,10 +530,10 @@ export interface MobileAppDeclaration extends Node {
 	/** Where it lives — `path` included. */
 	app: AppSpec;
 	/**
-	 * The scheme's base, before a stage suffix: `beetlefit`.
+	 * The scheme's base, before a stage suffix: `shop`.
 	 *
 	 * Normally omitted, and then it is the project's name. A local stage
-	 * suffixes it (`beetlefit-dev`); a deployed stage uses it as it is.
+	 * suffixes it (`shop-dev`); a deployed stage uses it as it is.
 	 */
 	scheme?: string;
 	/** What it calls — the surfaces whose URLs it is built with. */
@@ -847,8 +847,8 @@ export interface ProvidesByKind {
 	/** Where the site is served. Public for the same reason an API's is. */
 	site: { url: string };
 	/**
-	 * The URL scheme it answers on for this stage — `beetlefit`, or
-	 * `beetlefit-dev` locally. What its `app.config.ts` registers and what the
+	 * The URL scheme it answers on for this stage — `shop`, or
+	 * `shop-dev` locally. What its `app.config.ts` registers and what the
 	 * surfaces it calls trust.
 	 */
 	'mobile-app': { scheme: string };

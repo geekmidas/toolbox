@@ -358,7 +358,7 @@ describe('BetterAuth.server', () => {
 });
 
 describe('BetterAuth with a mobile app among its callers', () => {
-	const SCHEME = 'beetlefit-dev';
+	const SCHEME = 'shop-dev';
 	const DEVICE_URL = 'http://192.168.1.20:3002';
 	/** What a target derives once `App` declares `.dependsOn([auth])`. */
 	const mobile = (env: Record<string, string> = {}) =>

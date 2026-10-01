@@ -16,8 +16,8 @@ export const app = new MobileApp('App', { path: 'apps/app' })
 Like a `StaticSite`, its `.dependsOn()` is the single fact everything a mobile
 app otherwise writes down by hand is derived from:
 
-- **A scheme per stage:** the project's name deployed (`beetlefit`), suffixed
-  locally (`beetlefit-dev`), so a development build and the store build on one
+- **A scheme per stage:** the project's name deployed (`shop`), suffixed
+  locally (`shop-dev`), so a development build and the store build on one
   phone never answer each other's links. It arrives as `APP_SCHEME`.
 - **URLs a phone can reach:** `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_AUTH_URL`.
   Locally they're each server's own port, which the app points at the LAN

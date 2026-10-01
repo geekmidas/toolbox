@@ -556,7 +556,7 @@ const rewritten = new WeakSet<object>();
 /**
  * Build the magic links an app asked for on the address a phone reaches.
  *
- * An app's link carries its scheme as the `callbackURL` (`beetlefit-dev://…`)
+ * An app's link carries its scheme as the `callbackURL` (`shop-dev://…`)
  * where a browser's carries a path or an `http(s)` URL — which is how the two
  * are told apart. A browser's link is left alone: it is opened on this
  * machine, where the server's own hostname resolves.
