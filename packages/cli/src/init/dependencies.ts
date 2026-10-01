@@ -84,31 +84,33 @@ export const TOOLCHAIN_VERSIONS = {
 } as const;
 
 /**
- * The Expo app's packages, which track an Expo SDK release (55) rather than
- * their own latest: SDK 55 is tested against exactly these, React Native and
+ * The Expo app's packages, which track an Expo SDK release (57) rather than
+ * their own latest: SDK 57 is tested against exactly these, React Native and
  * React included, so they move when the SDK does.
  */
 export const EXPO_VERSIONS = {
-	expo: '~55.0.0',
-	'expo-constants': '~55.0.0',
-	'expo-dev-client': '~55.0.0',
-	'expo-device': '~55.0.0',
-	'expo-linking': '~55.0.0',
-	'expo-router': '~55.0.0',
-	'expo-splash-screen': '~55.0.0',
-	'expo-status-bar': '~55.0.0',
-	'expo-secure-store': '~14.2.0',
-	react: '19.2.0',
-	'react-dom': '19.2.0',
-	'react-native': '0.83.6',
-	'react-native-gesture-handler': '~2.30.0',
-	'react-native-reanimated': '~4.2.0',
-	'react-native-safe-area-context': '~5.6.0',
-	'react-native-screens': '~4.23.0',
+	expo: '~57.0.26',
+	'expo-constants': '~57.0.20',
+	'expo-dev-client': '~57.0.19',
+	'expo-device': '~57.0.2',
+	'expo-linking': '~57.0.11',
+	'expo-router': '~57.0.24',
+	'expo-splash-screen': '~57.0.9',
+	'expo-status-bar': '~57.0.1',
+	'expo-secure-store': '~57.0.4',
+	react: '19.2.3',
+	'react-dom': '19.2.3',
+	'react-native': '0.86.3',
+	'react-native-gesture-handler': '~2.32.0',
+	'react-native-reanimated': '4.5.1',
+	// Reanimated 4 runs its worklets on this, pinned by the SDK beside it.
+	'react-native-worklets': '0.10.1',
+	'react-native-safe-area-context': '~5.7.0',
+	'react-native-screens': '~4.26.0',
 	'react-native-web': '~0.21.0',
 	'@react-navigation/native': '^7.1.0',
 	'@babel/core': '^7.25.0',
-	'@types/react': '~19.0.0',
+	'@types/react': '~19.2.2',
 	nativewind: '~4.2.0',
 	// NativeWind 4 is built on Tailwind 3.
 	tailwindcss: '~3.4.0',

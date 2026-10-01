@@ -489,6 +489,21 @@ describe('generateExpoAppFiles', () => {
 		expect(configTs).not.toMatch(/\\`/);
 	});
 
+	it('tracks one Expo SDK — 57 — for every package the SDK versions', () => {
+		const pkg = JSON.parse(
+			generateExpoAppFiles(fullstackOptions).find(
+				(f) => f.path === 'apps/app/package.json',
+			)!.content,
+		);
+		const sdk = Object.entries(pkg.dependencies as Record<string, string>)
+			.filter(([name]) => name === 'expo' || name.startsWith('expo-'))
+			.map(([, version]) => version.replace(/^[~^]/, '').split('.')[0]);
+
+		expect(new Set(sdk)).toEqual(new Set(['57']));
+		// Reanimated 4 runs on worklets, which the SDK pins beside it.
+		expect(pkg.dependencies['react-native-worklets']).toBeDefined();
+	});
+
 	it('installs expo-device, which tells the emulator from a phone', () => {
 		const pkg = JSON.parse(
 			generateExpoAppFiles(fullstackOptions).find(

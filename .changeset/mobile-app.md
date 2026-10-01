@@ -35,7 +35,9 @@ app otherwise writes down by hand is derived from:
 - **Deployed:** Dokploy and AWS trust the bare scheme. Neither builds the app;
   EAS and the stores do.
 
-`gkm init` with Expo declares the app in `constructs/app.ts` and installs
+`gkm init` with Expo scaffolds on Expo SDK 57 (React Native 0.86, with
+`react-native-worklets` for Reanimated 4), declares the app in
+`constructs/app.ts` and installs
 `@better-auth/expo` at the root. Its `app.config.ts` parses `APP_SCHEME` and
 both URLs into `extra.config`, which `config.ts` reads at runtime. `eas.json`
 no longer hard-codes local URLs. `gkm dev` lists the app with its scheme and

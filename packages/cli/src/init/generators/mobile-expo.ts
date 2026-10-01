@@ -68,6 +68,7 @@ export function generateExpoAppFiles(
 			'react-native-gesture-handler':
 				EXPO_VERSIONS['react-native-gesture-handler'],
 			'react-native-reanimated': EXPO_VERSIONS['react-native-reanimated'],
+			'react-native-worklets': EXPO_VERSIONS['react-native-worklets'],
 			'react-native-safe-area-context':
 				EXPO_VERSIONS['react-native-safe-area-context'],
 			'react-native-screens': EXPO_VERSIONS['react-native-screens'],
