@@ -98,6 +98,8 @@ export interface EnvOptions {
 	 * for the app are built on.
 	 */
 	lanAddress?: string;
+	/** Each mobile app's Metro port, by id — the exact port its `exp://` origins name. */
+	metroPorts?: Readonly<Record<string, number>>;
 	/**
 	 * The domain mail is sent from locally.
 	 *
@@ -151,6 +153,7 @@ export function envFor(
 					plan,
 					...(options.addresses ? { addresses: options.addresses } : {}),
 					...(options.lanAddress ? { lanAddress: options.lanAddress } : {}),
+					...(options.metroPorts ? { metroPorts: options.metroPorts } : {}),
 				}),
 			);
 		}
@@ -283,6 +286,7 @@ function surfaceEnv(
 		plan?: Plan;
 		addresses?: Readonly<Record<string, string>>;
 		lanAddress?: string;
+		metroPorts?: Readonly<Record<string, number>>;
 	} = {},
 ): Record<string, string> {
 	if (!url) return {};
@@ -314,10 +318,13 @@ function surfaceEnv(
 		)
 		.filter((caller): caller is PlannedResource => Boolean(caller));
 	const hosts = [...(local.lanAddress ? [local.lanAddress] : []), LOCAL_HOST];
-	const schemes = mobile
-		.map((caller) => resolved[caller.id])
-		.filter((scheme): scheme is string => Boolean(scheme))
-		.flatMap((scheme) => mobileOrigins(scheme, { hosts }));
+	const schemes = mobile.flatMap((caller) => {
+		const scheme = resolved[caller.id];
+		const port = local.metroPorts?.[caller.id];
+		return scheme
+			? mobileOrigins(scheme, { hosts, ...(port ? { port } : {}) })
+			: [];
+	});
 
 	// Where a phone reaches this surface: its own port on the LAN address. What
 	// the auth server builds a sign-in link on when the app asked for it — the

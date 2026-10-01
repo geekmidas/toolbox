@@ -99,14 +99,26 @@ describe('StaticSite', () => {
 describe('MobileApp', () => {
 	const app = new MobileApp('App', { path: 'apps/app' });
 
-	it('declares where it lives, its flavour, and the scheme it provides', () => {
+	it('declares where it lives, its variant, and the scheme it provides', () => {
 		expect(app.declare()[0]).toEqual({
 			kind: 'mobile-app',
 			id: 'App',
-			flavour: 'expo',
+			variant: 'expo',
 			app: { path: 'apps/app' },
 			dependencies: [],
 			provides: ['APP_SCHEME'],
+		});
+	});
+
+	it('carries a port and config into its app, as a site does', () => {
+		expect(
+			new MobileApp('App', {
+				path: 'apps/app',
+				port: 8081,
+				config: { client: './config.ts' },
+			}).declare()[0],
+		).toMatchObject({
+			app: { path: 'apps/app', port: 8081, config: { client: './config.ts' } },
 		});
 	});
 

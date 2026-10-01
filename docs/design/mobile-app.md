@@ -30,9 +30,10 @@ existed.
 
 ## Decisions
 
-- **A construct, `MobileApp`, with Expo as its flavour.** Like `StaticSite`,
-  its `.dependsOn([api, auth])` is the single fact everything below is derived
-  from. Not `.calls()`: a site and an app depend on surfaces.
+- **A construct, `MobileApp`, shaped like `StaticSite`.** The same config
+  (`path`, `port?`, `config?`, `variant?`, here `'expo'`) plus `scheme?`, and
+  the same `.dependsOn([api, auth])` as the single fact everything below is
+  derived from. Not `.calls()`: a site and an app depend on surfaces.
 - **The scheme is derived, per stage.** The base is the project's name
   (`shop`), or the one the construct gives. A local or test stage
   suffixes it (`shop-dev`), so a development build and the store build on
@@ -44,8 +45,8 @@ existed.
   at runtime. Nothing about a stage is written into the app.
 - **The LAN address is found, never configured.** The app reads it from
   Expo's `hostUri` (the host the device loaded the bundle from), and uses it
-  only when it is a private address. The local
-  target reads the machine's network interfaces.
+  only when it is a private address. The local target reads the machine's
+  network interfaces.
 - **A mobile app gets each server's own port, not the edge's hostname.**
   `https://api-dev.shop.localhost` resolves only on this machine, and the
   edge (Caddy) routes by hostname, so no LAN address can stand in for it.
@@ -53,8 +54,12 @@ existed.
   served it from, which the device has already reached. A browser keeps the
   edge.
 - **Exact origins, not wildcards.** On a local stage the trusted `exp://`
-  origins are this machine's LAN address and `localhost`, with any port. Not a
-  subnet.
+  origins are this machine's LAN address and `localhost`, on Metro's port. Not
+  a subnet, and not any port.
+- **Metro runs on the app's port.** A mobile app is given a port in the
+  workspace's stable order, as a site is, or the one its `port` names.
+  `gkm exec` hands it to Expo as `RCT_METRO_PORT`, which `expo start` uses when
+  given no `--port`.
 - **The auth server pairs `expo()` itself** when a scheme is among its trusted
   origins, the way it already derives everything else from its callers.
 
@@ -70,8 +75,8 @@ The declaration:
 
 ```
 kind: 'mobile-app'
-flavour: 'expo'
-app: { path: 'apps/app' }
+variant: 'expo'
+app: { path: 'apps/app', port?, config? }
 scheme?: string          // the base, when not the project's name
 dependencies: [Api, Auth]
 provides: ['APP_SCHEME']
@@ -84,7 +89,7 @@ provides: ['APP_SCHEME']
 |---|---|
 | `schemeBase(project, given?)` | `shop`; `Corner Shop` → `corner-shop`; a leading digit gets `app` |
 | `appScheme(base, localStage?)` | `shop-dev` locally, `shop` deployed |
-| `mobileOrigins(scheme, metro?)` | `shop://`, `shop://*`, and on a local stage `exp://<host>:*` (and `/**`) per host |
+| `mobileOrigins(scheme, metro?)` | `shop://`, `shop://*`, and on a local stage `exp://<host>:<metro port>` (and `/**`) per host |
 | `isWebOrigin(origin)` | what a cookie domain may be derived from: a scheme never is |
 
 ## What each target derives
@@ -92,14 +97,15 @@ provides: ['APP_SCHEME']
 ### Local (`gkm dev`, `gkm test`, `gkm migrate`)
 
 For `App` calling `Api` and `Auth`, on stage `dev`, with LAN address
-`192.168.1.20`:
+`192.168.1.20` and the app on port 3003:
 
 | Key | Value |
 |---|---|
 | `APP_SCHEME` | `shop-dev` |
 | `EXPO_PUBLIC_API_URL` | `http://localhost:3000` (the API's own port) |
 | `EXPO_PUBLIC_AUTH_URL` | `http://localhost:3001` |
-| `AUTH_TRUSTED_ORIGINS` | the web origins, then `shop-dev://`, `shop-dev://*`, `exp://192.168.1.20:*`, `exp://192.168.1.20:*/**`, `exp://localhost:*`, `exp://localhost:*/**` |
+| `RCT_METRO_PORT` | `3003`, from `gkm exec`, in the app |
+| `AUTH_TRUSTED_ORIGINS` | the web origins, then `shop-dev://`, `shop-dev://*`, `exp://192.168.1.20:3003`, `exp://192.168.1.20:3003/**`, `exp://localhost:3003`, `exp://localhost:3003/**` |
 | `API_TRUSTED_ORIGINS` | the same, for the API |
 | `AUTH_DEVICE_URL` | `http://192.168.1.20:3001`: the auth server on the LAN |
 
@@ -109,8 +115,8 @@ For `App` calling `Api` and `Auth`, on stage `dev`, with LAN address
   not a host anything shares a cookie with.
 - **Listening on the LAN:** the dev servers already do. `@hono/node-server`
   and `Bun.serve` listen on every interface when given no hostname.
-- **Ports:** a mobile app is given none of the `30xx` ports. Metro picks its
-  own, and the `exp://` origins trust any port on an exact host.
+- **A mobile app gets no compose service** and nothing behind the edge: Metro
+  is reached by `exp://`, and a build ships through EAS.
 
 ### Deployed (Dokploy, AWS)
 

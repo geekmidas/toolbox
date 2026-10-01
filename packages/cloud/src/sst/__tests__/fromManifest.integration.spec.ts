@@ -228,7 +228,7 @@ describe('fromManifest', () => {
 				App: {
 					kind: 'mobile-app',
 					id: 'App',
-					flavour: 'expo',
+					variant: 'expo',
 					app: { path: 'apps/app' },
 					dependencies: [{ target: 'Auth', kind: 'rest-api' }],
 					provides: ['APP_SCHEME'],

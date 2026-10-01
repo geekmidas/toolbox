@@ -16,6 +16,9 @@ export const app = new MobileApp('App', { path: 'apps/app' })
 Like a `StaticSite`, its `.dependsOn()` is the single fact everything a mobile
 app otherwise writes down by hand is derived from:
 
+- **Shaped like `StaticSite`:** `path`, `port?`, `config?` and
+  `variant?` (`'expo'`), plus `scheme?`. A mobile app is given a port in the
+  same stable order, and `gkm exec` hands it to Expo as `RCT_METRO_PORT`.
 - **A scheme per stage:** the project's name deployed (`shop`), suffixed
   locally (`shop-dev`), so a development build and the store build on one
   phone never answer each other's links. It arrives as `APP_SCHEME`.
@@ -25,7 +28,7 @@ app otherwise writes down by hand is derived from:
   emulator, instead of an edge hostname that only resolves on this machine.
 - **Trusted origins:** the scheme, in every surface it depends on. Locally that
   also covers the `exp://` origins Expo Go sends from, for this machine's exact
-  LAN address and `localhost`, never a subnet.
+  LAN address and `localhost` on Metro's port, never a subnet.
 - **Better Auth's Expo plugin:** `BetterAuth` adds `expo()` itself when a
   mobile app depends on it. `@better-auth/expo` is an optional peer, and
   `ExpoPluginMissing` says to install it.

@@ -41,9 +41,22 @@ export interface MobileAppConfig {
 	 */
 	path: string;
 	/**
-	 * Which toolchain builds it. Expo is the one that ships, and the default.
+	 * The port Metro serves it on locally.
+	 *
+	 * Normally omitted: ports are assigned in a stable order, as a site's are,
+	 * and `gkm exec` hands it to Expo as `RCT_METRO_PORT`.
 	 */
-	flavour?: MobileAppDeclaration['flavour'];
+	port?: number;
+	/**
+	 * Modules to import when sniffing which env vars the app reads — its
+	 * values are inlined at build time, as a site's are.
+	 */
+	config?: { client?: string; server?: string };
+	/**
+	 * Which toolchain builds it — the same field a site names its framework
+	 * by. Expo is the one that ships, and the default.
+	 */
+	variant?: MobileAppDeclaration['variant'];
 	/**
 	 * The scheme's base, before a stage suffix.
 	 *
@@ -89,8 +102,12 @@ export class MobileApp<TName extends string = string>
 			{
 				kind: 'mobile-app',
 				id: this.id,
-				flavour: this.config.flavour ?? 'expo',
-				app: { path: this.config.path },
+				variant: this.config.variant ?? 'expo',
+				app: {
+					path: this.config.path,
+					...(this.config.port ? { port: this.config.port } : {}),
+					...(this.config.config ? { config: this.config.config } : {}),
+				},
 				...(this.config.scheme ? { scheme: this.config.scheme } : {}),
 				dependencies: this.dependencies,
 				provides: [this.keys.scheme],

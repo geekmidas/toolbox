@@ -96,9 +96,7 @@ function assignPorts(apps: Record<string, NormalizedAppConfig>): void {
 
 	let next = 3000;
 	for (const [, app] of ordered) {
-		// A mobile app is served by Metro on its own port; nothing reaches it at
-		// one of ours.
-		if (app.port || app.type === 'mobile') continue;
+		if (app.port) continue;
 		while (taken.has(next)) next += 1;
 		app.port = next;
 		taken.add(next);
@@ -175,7 +173,10 @@ export function derivedApps(
 					}
 				: {}),
 			...(declaration.kind === 'mobile-app'
-				? { framework: configured?.framework ?? declaration.flavour }
+				? {
+						framework: configured?.framework ?? declaration.variant,
+						...(spec.config ? { config: spec.config } : {}),
+					}
 				: {}),
 			// One glob fans out to the six the build reads, because each generator
 			// already inspects every export and keeps what it recognises. A

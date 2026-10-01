@@ -526,7 +526,7 @@ export interface SiteDeclaration extends Node {
 export interface MobileAppDeclaration extends Node {
 	kind: 'mobile-app';
 	/** Which toolchain builds it. Expo is the one that ships. */
-	flavour: 'expo';
+	variant: 'expo';
 	/** Where it lives — `path` included. */
 	app: AppSpec;
 	/**

@@ -348,7 +348,7 @@ describe('a mobile app', () => {
 		App: {
 			kind: 'mobile-app',
 			id: 'App',
-			flavour: 'expo',
+			variant: 'expo',
 			app: { path: 'apps/app' },
 			dependencies: [{ target: 'Api', kind: 'rest-api' }],
 			provides: ['APP_SCHEME'],
@@ -363,10 +363,10 @@ describe('a mobile app', () => {
 		});
 	});
 
-	it('takes none of the ports the servers answer on — Metro has its own', () => {
+	it('is given a port in the stable order, after the servers', () => {
 		const apps = derivedApps(manifest, workspace());
 
-		expect(apps.app?.port).toBe(0);
 		expect(apps.api?.port).toBe(3000);
+		expect(apps.app?.port).toBe(3001);
 	});
 });

@@ -39,7 +39,7 @@ const manifest = {
 	App: {
 		kind: 'mobile-app',
 		id: 'App',
-		flavour: 'expo',
+		variant: 'expo',
 		app: { path: 'apps/app' },
 		dependencies: [
 			{ target: 'Api', kind: 'rest-api' },
@@ -57,7 +57,7 @@ const addresses = {
 };
 
 /** `null` for a machine on no network. */
-const env = (lan: string | null = LAN) => {
+const env = (lan: string | null = LAN, metroPorts?: Record<string, number>) => {
 	const plan = planFor(manifest, 'dev', provisionOrder(manifest), {
 		localStage: 'dev',
 	});
@@ -69,6 +69,7 @@ const env = (lan: string | null = LAN) => {
 		project: 'shop',
 		addresses,
 		...(lan ? { lanAddress: lan } : {}),
+		...(metroPorts ? { metroPorts } : {}),
 	});
 };
 
@@ -97,6 +98,16 @@ describe('a mobile app on a local stage', () => {
 		expect(origins.some((o) => o.startsWith('https://'))).toBe(true);
 		expect(origins.join(',')).not.toContain('*.*');
 		expect(env().API_TRUSTED_ORIGINS).toContain('shop-dev://');
+	});
+
+	it('trusts Expo Go on Metro’s exact port when the workspace placed it', () => {
+		const origins = env(LAN, { App: 8081 }).AUTH_TRUSTED_ORIGINS!.split(',');
+
+		expect(origins).toContain(`exp://${LAN}:8081`);
+		expect(origins).toContain('exp://localhost:8081');
+		expect(
+			origins.some((o) => o.startsWith('exp://') && o.includes(':*')),
+		).toBe(false);
 	});
 
 	it('gives the auth server the address a phone reaches it on', () => {

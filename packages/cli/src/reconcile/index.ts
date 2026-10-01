@@ -169,6 +169,8 @@ export interface ReconcileOptions {
 	 * when absent; `null` for none.
 	 */
 	lanAddress?: string | null;
+	/** Each mobile app's Metro port, by construct id. */
+	metroPorts?: Readonly<Record<string, number>>;
 	/** The project's local stage, whose resources carry no suffix. */
 	localStage?: string;
 	/** The events backend, until `topic` and `queue` are kinds. */
@@ -299,6 +301,7 @@ export async function reconcile(
 		...(options.mailFrom ? { mailFrom: options.mailFrom } : {}),
 		...(options.addresses ? { addresses: options.addresses } : {}),
 		...(lan ? { lanAddress: lan } : {}),
+		...(options.metroPorts ? { metroPorts: options.metroPorts } : {}),
 	});
 	// Pointed at whether or not it exists yet: the copy below fills it in, and
 	// anything that reads the environment starts after this returns.

@@ -40,6 +40,8 @@ export function appScheme(base: string, localStage?: string): string {
 export interface MetroHost {
 	/** The hosts a device reaches it on: the LAN address, `localhost`. */
 	hosts: readonly string[];
+	/** Metro's port, when the target placed it — otherwise any port. */
+	port?: number;
 }
 
 /**
@@ -48,16 +50,17 @@ export interface MetroHost {
  * Better Auth's Expo plugin sends the app's scheme as its origin
  * (`shop://`), and a link can carry a path after it (`shop://*`).
  * In development, Expo Go sends `exp://<host>:<port>` instead — so a local
- * stage adds the hosts a device actually reaches Metro on, exactly, with any
- * port: a whole subnet is not trusted because one phone is on it.
+ * stage adds the hosts a device actually reaches Metro on, and Metro's port
+ * when the target placed it: a whole subnet is not trusted because one phone
+ * is on it.
  */
 export function mobileOrigins(scheme: string, metro?: MetroHost): string[] {
 	return [
 		`${scheme}://`,
 		`${scheme}://*`,
 		...(metro?.hosts ?? []).flatMap((host) => [
-			`exp://${host}:*`,
-			`exp://${host}:*/**`,
+			`exp://${host}:${metro?.port ?? '*'}`,
+			`exp://${host}:${metro?.port ?? '*'}/**`,
 		]),
 	];
 }

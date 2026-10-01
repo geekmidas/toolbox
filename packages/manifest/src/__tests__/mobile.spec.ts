@@ -7,7 +7,7 @@ import { cookieDomain } from '../naming';
 const app: MobileAppDeclaration = {
 	kind: 'mobile-app',
 	id: 'App',
-	flavour: 'expo',
+	variant: 'expo',
 	app: { path: 'apps/app' },
 	dependencies: [
 		{ target: 'Api', kind: 'rest-api' },
@@ -62,6 +62,17 @@ describe('mobileOrigins', () => {
 			'exp://192.168.1.20:*/**',
 			'exp://localhost:*',
 			'exp://localhost:*/**',
+		]);
+	});
+
+	it('names Metro’s port when the target placed it', () => {
+		expect(
+			mobileOrigins('shop-dev', { hosts: ['192.168.1.20'], port: 8081 }),
+		).toEqual([
+			'shop-dev://',
+			'shop-dev://*',
+			'exp://192.168.1.20:8081',
+			'exp://192.168.1.20:8081/**',
 		]);
 	});
 

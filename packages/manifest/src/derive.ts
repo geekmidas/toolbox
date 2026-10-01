@@ -159,7 +159,7 @@ export function dependentsOf(
  * a variant changes, and it changes nothing else.
  */
 export const PUBLIC_PREFIX: Record<
-	SiteDeclaration['variant'] | MobileAppDeclaration['flavour'],
+	SiteDeclaration['variant'] | MobileAppDeclaration['variant'],
 	string
 > = {
 	static: 'VITE_',
@@ -190,10 +190,7 @@ export function publicEnvFor(
 	declaration: SiteDeclaration | MobileAppDeclaration,
 	manifest: ConstructManifest,
 ): Record<string, string> {
-	const prefix =
-		PUBLIC_PREFIX[
-			declaration.kind === 'site' ? declaration.variant : declaration.flavour
-		];
+	const prefix = PUBLIC_PREFIX[declaration.variant];
 	const keys: Record<string, string> = {};
 
 	for (const edge of declaration.dependencies) {

@@ -106,6 +106,7 @@ export async function reconcileWorkspace(
 		...backendsOf(workspace),
 		saved: await loadPortState(workspace.root),
 		addresses: surfaceAddresses(workspace, manifest),
+		metroPorts: metroPorts(workspace, manifest),
 		apps: (containers) =>
 			appServices(workspace, manifest, containers, runnables),
 		...(options.start === undefined ? {} : { start: options.start }),
@@ -114,6 +115,24 @@ export async function reconcileWorkspace(
 	await savePortState(workspace.root, { ...result.ports });
 
 	return result;
+}
+
+/**
+ * Where each mobile app's Metro runs: its app's port, which `gkm exec` hands
+ * Expo as `RCT_METRO_PORT`. Kept apart from the surfaces' addresses — a phone
+ * reaches Metro by `exp://`, not through the edge.
+ */
+export function metroPorts(
+	workspace: NormalizedWorkspace,
+	manifest: ConstructManifest,
+): Record<string, number> {
+	const ports: Record<string, number> = {};
+	for (const [id, declaration] of Object.entries(manifest)) {
+		if (declaration.kind !== 'mobile-app') continue;
+		const port = workspace.apps[appKey(id)]?.port;
+		if (port) ports[id] = port;
+	}
+	return ports;
 }
 
 /**
