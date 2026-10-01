@@ -315,10 +315,12 @@ export const queryClient = new QueryClient({
 });
 `;
 
-	const authClientTs = `import { expoClient } from '@better-auth/expo/client';
+	const authClientTs = `import { expoClient, getSetCookie } from '@better-auth/expo/client';
 import { magicLinkClient } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
+import * as Linking from 'expo-linking';
 import * as SecureStore from 'expo-secure-store';
+import { useEffect } from 'react';
 
 import { config } from '@/config.ts';
 
@@ -338,6 +340,36 @@ export const authClient = createAuthClient({
 });
 
 export const { signIn, useSession } = authClient;
+
+/**
+ * Sign in from the emailed link.
+ *
+ * The link opens in the phone's browser, which is what receives the session
+ * cookie — not the app. The auth server's Expo plugin carries the cookie on the
+ * redirect back into the app (\`?cookie=\`), and this stores it where the
+ * Expo client keeps its own, merged with what is already there, then tells the
+ * client the session changed. The Expo client does this itself only for a
+ * sign-in it opened (social); a link opened from mail arrives as a deep link.
+ *
+ * Called once, from the root layout.
+ */
+export function useSessionFromLink() {
+  const url = Linking.useLinkingURL();
+
+  useEffect(() => {
+    const cookie = url ? Linking.parse(url).queryParams?.cookie : undefined;
+    if (typeof cookie !== 'string') return;
+
+    void (async () => {
+      const previous = await SecureStore.getItemAsync(COOKIE_STORE_KEY);
+      await SecureStore.setItemAsync(
+        COOKIE_STORE_KEY,
+        getSetCookie(cookie, previous ?? undefined),
+      );
+      authClient.$store.notify('$sessionSignal');
+    })();
+  }, [url]);
+}
 
 export async function signOut() {
   try {
@@ -408,7 +440,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo } from 'react';
 import 'react-native-reanimated';
 
-import { authClient } from '@/lib/auth-client.ts';
+import { authClient, useSessionFromLink } from '@/lib/auth-client.ts';
 import { ApiProvider } from '@/lib/api-context.tsx';
 import { createAppApi } from '@/lib/api.ts';
 import { queryClient } from '@/lib/query-client.ts';
@@ -433,6 +465,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout() {
   const api = useMemo(() => createAppApi(), []);
+  // The emailed sign-in link comes back as a deep link carrying the session.
+  useSessionFromLink();
 
   return (
     <QueryClientProvider client={queryClient}>

@@ -137,6 +137,31 @@ a mobile caller it also:
    plugin calls `sendMagicLink` through the options object it returns, so the
    construct wraps it there. The app's own `sendMagicLink` is unchanged.
 
+### Signing in from the emailed link
+
+The link is opened on the phone, in its browser — not in the app. The browser
+calls `/magic-link/verify`, gets the session cookie, and is redirected to the
+app's scheme. The app never had the cookie.
+
+- **Server:** Better Auth's Expo plugin carries it on that redirect,
+  `beetlefit-dev://…?cookie=<set-cookie>`, for a destination the server
+  trusts. In 1.7 the check is `isTrustedOrigin`, so the wildcard `exp://`
+  origins cover Expo Go too. Tested here for both.
+- **App:** the Expo client stores a `?cookie=` itself only for a sign-in it
+  opened (social, through `openAuthSessionAsync`). A link opened from mail
+  arrives as a deep link it never sees, and that is not fixed as of 1.7.7. So
+  the scaffold's `useSessionFromLink()`, called once from the root layout,
+  reads it off the incoming link (`Linking.useLinkingURL`). It merges it into
+  the Expo client's own store with the client's `getSetCookie`, keyed
+  `<storagePrefix>_cookie`, and notifies `$sessionSignal`.
+- **Merging matters.** `set-cookie` can carry more than one Better Auth cookie
+  (the token and the cached session). A hand-written parser that keeps the
+  first and writes over the store loses the rest.
+- **No `Origin` override.** Requesting the link needs nothing extra either: the
+  Expo client sends `expo-origin`, the server plugin turns it into the origin,
+  and an undeclared scheme is refused. Tested with the origin check on, which
+  Better Auth turns off under a test runner by default.
+
 ## The app
 
 `gkm init --template fullstack` with Expo scaffolds:

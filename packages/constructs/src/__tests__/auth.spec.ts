@@ -453,6 +453,52 @@ describe('BetterAuth with a mobile app among its callers', () => {
 		expect(sent).toHaveLength(1);
 	});
 
+	it('hands the app the session when the emailed link is opened outside it', async () => {
+		// The link opens in the phone's browser, which gets the session cookie —
+		// the app does not. Better Auth's Expo plugin carries it on the redirect
+		// back into the app, as ?cookie=, for a scheme this server trusts: the
+		// dev build's, and Expo Go's exp:// address on this machine.
+		for (const callbackURL of [
+			`${SCHEME}://signed-in`,
+			'exp://192.168.1.20:8081/--/signed-in',
+		]) {
+			const { construct, sent } = withMagicLink();
+			const { app } = await construct.server(
+				mobile({
+					AUTH_TRUSTED_ORIGINS: [
+						WEB_ORIGIN,
+						`${SCHEME}://`,
+						`${SCHEME}://*`,
+						'exp://192.168.1.20:*',
+						'exp://192.168.1.20:*/**',
+					].join(','),
+				}),
+			);
+			await app.request(
+				new Request(`${AUTH_URL}/api/auth/sign-in/magic-link`, {
+					method: 'POST',
+					headers: {
+						'content-type': 'application/json',
+						'expo-origin': `${SCHEME}://`,
+					},
+					body: JSON.stringify({ email: email('ada'), callbackURL }),
+				}),
+			);
+
+			// Opened from the email: no cookie, no origin — just the link.
+			const link = new URL(sent[0]!);
+			const opened = await app.request(
+				`${AUTH_URL}${link.pathname}${link.search}`,
+			);
+			const location = new URL(opened.headers.get('location')!);
+
+			expect(`${location.protocol}//${location.host}`).toBe(
+				`${new URL(callbackURL).protocol}//${new URL(callbackURL).host}`,
+			);
+			expect(location.searchParams.get('cookie')).toMatch(/session_token=/);
+		}
+	});
+
 	it('refuses the same request from a scheme nothing declared', async () => {
 		const { construct, sent } = withMagicLink();
 		const { app } = await construct.server(mobile());

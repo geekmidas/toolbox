@@ -504,6 +504,27 @@ describe('generateExpoAppFiles', () => {
 		expect(pkg.dependencies['react-native-worklets']).toBeDefined();
 	});
 
+	it('signs in from the emailed link, which brings the session back as ?cookie=', () => {
+		// The link opens in the phone's browser, which gets the cookie; the auth
+		// server's Expo plugin carries it back on the deep link, and the app has
+		// to store it — the Expo client does that only for sign-ins it opened.
+		const files = generateExpoAppFiles(fullstackOptions);
+		const authClient = files.find(
+			(f) => f.path === 'apps/app/lib/auth-client.ts',
+		)!.content;
+		const layout = files.find(
+			(f) => f.path === 'apps/app/app/_layout.tsx',
+		)!.content;
+
+		expect(authClient).toContain('export function useSessionFromLink()');
+		expect(authClient).toContain('Linking.useLinkingURL()');
+		// Merged into what the Expo client keeps, not written over it.
+		expect(authClient).toContain('getSetCookie(cookie, previous ?? undefined)');
+		expect(authClient).toContain("authClient.$store.notify('$sessionSignal')");
+		expect(layout).toContain('useSessionFromLink();');
+		expect(authClient).not.toMatch(/\\`/);
+	});
+
 	it('installs expo-device, which tells the emulator from a phone', () => {
 		const pkg = JSON.parse(
 			generateExpoAppFiles(fullstackOptions).find(

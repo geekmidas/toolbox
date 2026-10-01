@@ -32,6 +32,11 @@ app otherwise writes down by hand is derived from:
 - **Sign-in links a phone can open:** locally, a magic link the app asked for
   (its `callbackURL` is the scheme) is built on the auth server's LAN address,
   `AUTH_DEVICE_URL`. A browser's link is left alone.
+- **Signing in from the emailed link:** the server's Expo plugin carries the
+  session back into the app as `?cookie=` (tested for the dev build's scheme
+  and Expo Go). The scaffold's `useSessionFromLink()` stores it, merged with
+  the client's `getSetCookie`, since the Expo client only does this for social
+  sign-in.
 - **Deployed:** Dokploy and AWS trust the bare scheme. Neither builds the app;
   EAS and the stores do.
 
