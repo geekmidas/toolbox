@@ -38,29 +38,74 @@ alone.
 
 ## Database hygiene
 
-**Migrations hold schema, never data.** Tables, columns, constraints, indexes.
-No inserts, updates or deletes against the application's rows.
+A database construct's folder holds two folders and nothing else:
+`db/<construct>/migrations/` for the schema's history, and
+`db/<construct>/seeds/` for the reference data the app needs to run.
 
-- **Data the code defines lives in the code.** A permission catalogue, the
-  system roles, a list of statuses — if a constant in the source already says
-  what they are, a table holding them is a copy, and a copy drifts. Keep the
-  constant; store only what users create (a custom role, which permission keys
-  it grants), checked against the constant in code.
+**Migrations hold schema, never data.** Tables, columns, constraints, indexes,
+extensions. No inserts, updates or deletes against the application's rows.
+
+- **Reference data is a seed.** A permission catalogue, the system roles and
+  what they grant, a list of statuses — rows the app needs in order to run —
+  are written by a seed in `db/<construct>/seeds/`, never by a migration.
+- **A seed is an upsert, run every time.** There is no history: every seed
+  runs on every pass, after the migrations, so changing what it writes and
+  running it again is how the change is applied. Write
+  `onConflict(…).doUpdateSet(…)` (or `doNothing()`), never a bare insert.
+- **Seeds run on every stage, production included.** Each is handed the stage
+  — `seed(db, { stage })` — and one that belongs only somewhere returns early
+  (`if (stage === 'production') return;`). A `.sql` seed has no stage, so it
+  must be right everywhere.
 - **Define it once, typed, where every app can import it.** A catalogue in
-  code belongs in a shared package (`packages/models`), declared `as const`
-  so its keys are a union type. The API's guards, the web app's gates and a
-  mobile app's gates then all name the same keys, and a typo — or a removed
-  permission still checked somewhere — fails to compile instead of failing
-  closed at runtime.
-- **A rule is not a row.** "Every user is a member", "a super admin has every
-  permission" are logic. A row per user, or a grant per permission, is a
-  snapshot of the rule that goes stale the moment the rule's inputs change.
-- **Nothing needs seeding to run.** If the app fails without some rows present,
-  those rows are code in the wrong place. Sample and demo data comes from test
-  factories — never a migration, never a deploy.
-- **A backfill is the one exception.** When a schema change needs existing rows
-  transformed — a new non-null column filled from an old one — do it in the
-  same migration, keyed on the rows it transforms. It never inserts rows that
-  were not there.
-- **A test that only keeps two copies in step is the smell.** Delete a copy,
-  and the test with it.
+  code belongs in a shared package (`packages/models`), declared `as const` so
+  its keys are a union type, and the seed writes the table from that constant
+  — so the two cannot drift, and no test is needed to keep them in step. The
+  API's guards, the web app's gates and a mobile app's gates all name the same
+  keys, and a typo fails to compile instead of failing closed at runtime.
+- **Sample data is factories'.** Demo users, a tournament for a test — those
+  come from test factories, never a seed and never a migration.
+- **A backfill is the one data change a migration makes.** When a schema
+  change needs existing rows transformed — a new non-null column filled from
+  an old one — do it in the same migration, keyed on the rows it transforms.
+  It never inserts rows that were not there.
+
+```bash
+gkm migrate         # migrations only
+gkm seed            # migrations, then seeds
+gkm dev --migrate   # migrate before the apps start
+gkm dev --seed      # migrate and seed before the apps start
+```
+
+`gkm test` and the `@geekmidas/cli/vitest` setup migrate and seed the test
+stage before any test runs.
+
+## Feature tests
+
+A feature test imports `it` from `#test` — the harness `gkm test` generates —
+and asks for what it uses by construct name. Nothing is imported or built by
+hand:
+
+```typescript
+it('lets a member join a tournament', async ({ browser, db, factories }) => {
+  const factory = await factories.get('database');
+  const tournament = await factory.insert('tournaments', {});
+
+  await browser.signIn('ada@example.com');
+  await browser.api.post('/tournaments/{id}/join', {
+    params: { id: tournament.id },
+  });
+
+  const app = await db.get('database');
+  // … assert on what was written …
+});
+```
+
+- **`db.get(name)`** — the app's own databases by service name, each this
+  test's transaction, opened on first use and shared with the endpoints. A
+  tenant an auth server owns is reached through that server, never directly;
+  a reader is not handed over.
+- **`factories.get(name)`** — one factory per database, from
+  `test/factories/<construct>.ts` at the project root, exporting
+  `createFactory(db)`, on the same transaction.
+- **`browser.signIn(email)`** — sign in the way a person does, through the
+  auth server's magic link and the app's inbox. Returns the session.
