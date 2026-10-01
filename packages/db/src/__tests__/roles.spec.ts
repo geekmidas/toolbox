@@ -13,7 +13,8 @@ const spec = {
 	passwords: { runtime: 'r-pw', owner: 'o-pw' },
 };
 
-const sqlOf = (s: typeof spec) => roleStatements(s).map((x) => x.sql);
+const sqlOf = (s: Parameters<typeof roleStatements>[0]) =>
+	roleStatements(s).map((x) => x.sql);
 
 describe('roleStatements', () => {
 	it('creates the owner before the schema it owns', () => {
@@ -121,6 +122,18 @@ describe('the reader role', () => {
 		for (const statement of granted) {
 			expect(statement).not.toMatch(/INSERT|UPDATE|DELETE|SEQUENCE/);
 		}
+	});
+
+	it('lets a database’s owner create in it, for trusted extensions', () => {
+		// `CREATE EXTENSION citext` needs CREATE on the database, not the schema:
+		// without it, a migration that adds one fails with permission denied.
+		expect(sqlOf({ ...spec, database: 'shop' })).toContain(
+			'GRANT CREATE ON DATABASE "shop" TO "orders_owner"',
+		);
+	});
+
+	it('keeps a tenant’s owner confined to its schema', () => {
+		expect(sqlOf(spec).join('\n')).not.toContain('ON DATABASE');
 	});
 
 	it('refuses to be created without a password of its own', () => {

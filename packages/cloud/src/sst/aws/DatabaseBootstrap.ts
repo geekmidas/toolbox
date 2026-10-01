@@ -65,6 +65,8 @@ export class DatabaseBootstrap {
 		runtime: string;
 		owner: string;
 		reader?: string;
+		/** The database's own roles, whose owner may create in it. */
+		ownsDatabase?: boolean;
 	}): { runtime: $util.Output<string>; reader?: $util.Output<string> } {
 		const runtime = this.password(tenant.runtime);
 		const reader = tenant.reader ? this.password(tenant.reader) : undefined;
@@ -75,6 +77,7 @@ export class DatabaseBootstrap {
 			runtime: tenant.runtime,
 			owner: tenant.owner,
 			...(tenant.reader ? { reader: tenant.reader } : {}),
+			...(tenant.ownsDatabase ? { ownsDatabase: true } : {}),
 			// Filled in by `bootstrapEvent` once the outputs resolve. The function
 			// reads them straight out of its input and never fetches a secret, so
 			// it needs no IAM to read one.

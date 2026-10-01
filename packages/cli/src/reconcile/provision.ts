@@ -221,6 +221,11 @@ function rolesFor(
 		owner,
 		...(reader ? { reader } : {}),
 		schema,
+		// A database's owner may create in it — trusted extensions; a tenant's
+		// stays confined to its schema.
+		...(resource.kind === 'database'
+			? { database: rootDatabase(resource, plan) }
+			: {}),
 		passwords: {
 			runtime: localRolePassword(project, plan, runtime),
 			owner: localRolePassword(project, plan, owner),
