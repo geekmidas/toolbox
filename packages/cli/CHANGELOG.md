@@ -1,5 +1,45 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.36
+
+### Patch Changes
+
+- ✨ [#103](https://github.com/geekmidas/toolbox/pull/103) [`95cef66`](https://github.com/geekmidas/toolbox/commit/95cef66e07893be917b5d560a06618c60504b94e) Thanks [@geekmidas](https://github.com/geekmidas)! - `MobileApp`: one scheme for every stage, and the app adds `expo()` itself
+  - **One scheme.** A mobile app's scheme is the project's name (`shop`), or the
+    one its construct gives, on every stage: local, test and deployed. It was
+    suffixed locally (`shop-dev`). `appScheme` is gone from `@geekmidas/manifest`,
+    and `schemeBase` is the scheme.
+  - **`@geekmidas/constructs` no longer depends on `@better-auth/expo`.** The
+    auth construct imported it as an optional peer, and pnpm gives
+    `@geekmidas/constructs` a separate copy for every workspace package that
+    resolves that peer differently. A construct from one copy is not an instance
+    of the other, so the test harness found none of an app's databases and every
+    feature test failed with `UnknownFactory`.
+  - ✨ **The app adds `expo()` to its auth server's plugins.** When the graph says a
+    mobile app calls the auth server (a scheme among its derived trusted
+    origins) and the plugin is missing, the server refuses to start with
+    `ExpoPluginRequired`, naming the scheme. It finds the plugin by its `id`
+    without importing the package. An origin the app trusts by hand is not
+    checked. `gkm init` with Expo writes `expo()` into `constructs/auth.ts`.
+
+  **Moving an existing app:**
+  - ✨ add `import { expo } from '@better-auth/expo'` and `options: { plugins: [expo()] }`
+    to the auth construct;
+  - 🐛 install `@better-auth/expo` where that file resolves its imports;
+  - rebuild the app with the scheme without its stage suffix.
+
+- Updated dependencies [[`95cef66`](https://github.com/geekmidas/toolbox/commit/95cef66e07893be917b5d560a06618c60504b94e)]:
+  - @geekmidas/manifest@10.0.0-alpha.36
+  - @geekmidas/constructs@10.0.0-alpha.36
+  - @geekmidas/cache@10.0.0-alpha.36
+  - @geekmidas/db@10.0.0-alpha.36
+  - @geekmidas/envkit@10.0.0-alpha.36
+  - @geekmidas/errors@10.0.0-alpha.36
+  - @geekmidas/logger@10.0.0-alpha.36
+  - @geekmidas/schema@10.0.0-alpha.36
+  - @geekmidas/services@10.0.0-alpha.36
+  - @geekmidas/telescope@10.0.0-alpha.36
+
 ## 10.0.0-alpha.35
 
 ### Patch Changes

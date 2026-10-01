@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/services",
-	"version": "10.0.0-alpha.35",
+	"version": "10.0.0-alpha.36",
 	"private": false,
 	"type": "module",
 	"exports": {
