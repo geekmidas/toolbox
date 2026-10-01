@@ -491,15 +491,16 @@ export class BetterAuth<
 		];
 
 		const plugins = [...(configured.plugins ?? [])];
-		// A mobile app depends on this server: its scheme is among the origins.
-		// Better Auth's Expo plugin is what lets it sign in — the app sends its
-		// scheme as the origin, and the plugin is what reads it — so it is added
-		// here rather than written into every app that has one.
-		if (
-			origins.some((origin) => !isWebOrigin(origin)) &&
-			!plugins.some((plugin) => plugin.id === 'expo')
-		) {
-			plugins.push(await expoPlugin(this.id));
+		// A mobile app depends on this server: the graph put its scheme among
+		// the derived origins. It signs in through Better Auth's Expo plugin —
+		// the app sends its scheme as the origin, and the plugin is what reads
+		// it — so a server without it would refuse every request the app made.
+		// Asked of the app rather than imported here: a package this one
+		// imported would have to be its peer, and an optional peer gives every
+		// differently-resolving workspace package its own copy of this one.
+		const mobile = trustedOrigins.filter((origin) => !isWebOrigin(origin));
+		if (mobile.length > 0 && !plugins.some((plugin) => plugin.id === 'expo')) {
+			throw new ExpoPluginRequired(this.id, mobile);
 		}
 		// A sign-in link the app asked for is opened on the phone, which cannot
 		// resolve this server's local hostname; on a local stage it is built on
@@ -536,27 +537,13 @@ export class BetterAuth<
 	}
 }
 
-/** Better Auth's Expo plugin, which a mobile app's sign-in needs. */
-async function expoPlugin(
-	server: string,
-): Promise<NonNullable<BetterAuthOptions['plugins']>[number]> {
-	try {
-		const { expo } = (await import('@better-auth/expo')) as {
-			expo: () => NonNullable<BetterAuthOptions['plugins']>[number];
-		};
-		return expo();
-	} catch (error) {
-		throw new ExpoPluginMissing(server, error);
-	}
-}
-
 /** Links already rewritten — an `options` object is reused across builds. */
 const rewritten = new WeakSet<object>();
 
 /**
  * Build the magic links an app asked for on the address a phone reaches.
  *
- * An app's link carries its scheme as the `callbackURL` (`shop-dev://…`)
+ * An app's link carries its scheme as the `callbackURL` (`shop://…`)
  * where a browser's carries a path or an `http(s)` URL — which is how the two
  * are told apart. A browser's link is left alone: it is opened on this
  * machine, where the server's own hostname resolves.
@@ -594,18 +581,19 @@ export function deviceLink(url: string, deviceUrl: string): string {
 	}
 }
 
-/** A mobile app depends on this auth server, and `@better-auth/expo` is absent. */
-export class ExpoPluginMissing extends Error {
+/** A mobile app depends on this auth server, which has no Expo plugin. */
+export class ExpoPluginRequired extends Error {
 	constructor(
 		readonly server: string,
-		override readonly cause: unknown,
+		/** The schemes the graph says call it — what made the plugin necessary. */
+		readonly origins: readonly string[],
 	) {
 		super(
-			`'${server}' is called by a mobile app, and a mobile app signs in through ` +
-				`Better Auth's Expo plugin — install it where the auth server runs: ` +
-				`pnpm add @better-auth/expo`,
+			`'${server}' is called by a mobile app (${origins[0]}), and a mobile app ` +
+				`signs in through Better Auth's Expo plugin: add expo() from ` +
+				`'@better-auth/expo' to this auth server's plugins.`,
 		);
-		this.name = 'ExpoPluginMissing';
+		this.name = 'ExpoPluginRequired';
 	}
 }
 

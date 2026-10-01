@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ConstructManifest, MobileAppDeclaration } from '../declaration';
 import { dependentsOf, publicEnvFor } from '../derive';
-import { appScheme, isWebOrigin, mobileOrigins, schemeBase } from '../mobile';
+import { isWebOrigin, mobileOrigins, schemeBase } from '../mobile';
 import { cookieDomain } from '../naming';
 
 const app: MobileAppDeclaration = {
@@ -36,17 +36,6 @@ describe('schemeBase', () => {
 	});
 });
 
-describe('appScheme', () => {
-	it('suffixes a local stage, so a dev build never answers the store build’s links', () => {
-		expect(appScheme('shop', 'dev')).toBe('shop-dev');
-		expect(appScheme('shop', 'test')).toBe('shop-test');
-	});
-
-	it('is the bare base deployed — what the store build registers', () => {
-		expect(appScheme('shop')).toBe('shop');
-	});
-});
-
 describe('mobileOrigins', () => {
 	it('trusts the scheme, with or without a path after it', () => {
 		expect(mobileOrigins('shop')).toEqual(['shop://', 'shop://*']);
@@ -54,10 +43,10 @@ describe('mobileOrigins', () => {
 
 	it('adds the exact hosts Expo Go is served from, not a subnet', () => {
 		expect(
-			mobileOrigins('shop-dev', { hosts: ['192.168.1.20', 'localhost'] }),
+			mobileOrigins('shop', { hosts: ['192.168.1.20', 'localhost'] }),
 		).toEqual([
-			'shop-dev://',
-			'shop-dev://*',
+			'shop://',
+			'shop://*',
 			'exp://192.168.1.20:*',
 			'exp://192.168.1.20:*/**',
 			'exp://localhost:*',
@@ -67,10 +56,10 @@ describe('mobileOrigins', () => {
 
 	it('names Metro’s port when the target placed it', () => {
 		expect(
-			mobileOrigins('shop-dev', { hosts: ['192.168.1.20'], port: 8081 }),
+			mobileOrigins('shop', { hosts: ['192.168.1.20'], port: 8081 }),
 		).toEqual([
-			'shop-dev://',
-			'shop-dev://*',
+			'shop://',
+			'shop://*',
 			'exp://192.168.1.20:8081',
 			'exp://192.168.1.20:8081/**',
 		]);

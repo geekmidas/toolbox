@@ -33,8 +33,7 @@
 		"peerDependencies": ">=3.1136.0"
 	},
 	"@better-auth/expo": {
-		"devDependencies": "~1.7.6",
-		"peerDependencies": ">=1.7.5"
+		"devDependencies": "~1.7.6"
 	},
 	"@better-auth/test-utils": {
 		"devDependencies": "~1.7.6"

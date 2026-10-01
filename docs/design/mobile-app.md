@@ -2,7 +2,7 @@
 
 - **Status:** Implemented (this PR). Device sign-in in tests and tunnels follow.
 - **Impact:** Medium: a new construct and declaration kind, origin derivation
-  in all three targets, the auth server pairs Better Auth's Expo plugin.
+  in all three targets, the auth server requires Better Auth's Expo plugin.
 
 ## Why
 
@@ -34,11 +34,10 @@ existed.
   (`path`, `port?`, `config?`, `variant?`, here `'expo'`) plus `scheme?`, and
   the same `.dependsOn([api, auth])` as the single fact everything below is
   derived from. Not `.calls()`: a site and an app depend on surfaces.
-- **The scheme is derived, per stage.** The base is the project's name
-  (`shop`), or the one the construct gives. A local or test stage
-  suffixes it (`shop-dev`), so a development build and the store build on
-  one phone never answer each other's links. A deployed stage uses the base:
-  what the store build registers.
+- **One scheme, for every stage.** It is the project's name (`shop`), or the
+  one the construct gives. A development build and the store build register
+  the same scheme, and whichever stage's auth server a build talks to trusts
+  it. Nothing about the app differs between stages but its URLs.
 - **`app.config.ts` reads what `gkm` injects.** The scheme (`APP_SCHEME`) and
   the URLs (`EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_AUTH_URL`) are parsed with
   envkit into `extra.config`. The app reads `Constants.expoConfig.extra.config`
@@ -60,8 +59,14 @@ existed.
   workspace's stable order, as a site is, or the one its `port` names.
   `gkm exec` hands it to Expo as `RCT_METRO_PORT`, which `expo start` uses when
   given no `--port`.
-- **The auth server pairs `expo()` itself** when a scheme is among its trusted
-  origins, the way it already derives everything else from its callers.
+- **The app adds `expo()`; the auth server checks for it.** The construct
+  knows a mobile app calls it, because the graph put a scheme among its derived
+  origins, and refuses to start without the plugin (`ExpoPluginRequired`). It
+  does not import `@better-auth/expo` itself: a package it imported would have
+  to be its peer, and an optional peer gives every differently-resolving
+  workspace package its own copy of `@geekmidas/constructs`. Then a construct
+  from one copy is not an instance of the other, and the test harness finds
+  none of the app's databases.
 
 ## Model
 
@@ -87,8 +92,7 @@ provides: ['APP_SCHEME']
 
 | Function | Answers |
 |---|---|
-| `schemeBase(project, given?)` | `shop`; `Corner Shop` → `corner-shop`; a leading digit gets `app` |
-| `appScheme(base, localStage?)` | `shop-dev` locally, `shop` deployed |
+| `schemeBase(project, given?)` | the scheme, on every stage: `shop`; `Corner Shop` → `corner-shop`; a leading digit gets `app` |
 | `mobileOrigins(scheme, metro?)` | `shop://`, `shop://*`, and on a local stage `exp://<host>:<metro port>` (and `/**`) per host |
 | `isWebOrigin(origin)` | what a cookie domain may be derived from: a scheme never is |
 
@@ -101,11 +105,11 @@ For `App` calling `Api` and `Auth`, on stage `dev`, with LAN address
 
 | Key | Value |
 |---|---|
-| `APP_SCHEME` | `shop-dev` |
+| `APP_SCHEME` | `shop` |
 | `EXPO_PUBLIC_API_URL` | `http://localhost:3000` (the API's own port) |
 | `EXPO_PUBLIC_AUTH_URL` | `http://localhost:3001` |
 | `RCT_METRO_PORT` | `3003`, from `gkm exec`, in the app |
-| `AUTH_TRUSTED_ORIGINS` | the web origins, then `shop-dev://`, `shop-dev://*`, `exp://192.168.1.20:3003`, `exp://192.168.1.20:3003/**`, `exp://localhost:3003`, `exp://localhost:3003/**` |
+| `AUTH_TRUSTED_ORIGINS` | the web origins, then `shop://`, `shop://*`, `exp://192.168.1.20:3003`, `exp://192.168.1.20:3003/**`, `exp://localhost:3003`, `exp://localhost:3003/**` |
 | `API_TRUSTED_ORIGINS` | the same, for the API |
 | `AUTH_DEVICE_URL` | `http://192.168.1.20:3001`: the auth server on the LAN |
 
@@ -130,12 +134,15 @@ Dokploy has no provisioner for it.
 `BetterAuth` already merges the derived origins with any its options add. With
 a mobile caller it also:
 
-1. **Adds `expo()` from `@better-auth/expo`** when any trusted origin is not a
-   web origin, unless the app's options already include it. The package is an
-   optional peer dependency of `@geekmidas/constructs`, loaded only then.
-   Without it, `ExpoPluginMissing` says what to install.
+1. **Requires `expo()` from `@better-auth/expo`** in the app's plugins when
+   any *derived* trusted origin is not a web origin — the graph says a mobile
+   app calls it. Without it, it refuses to start with `ExpoPluginRequired`,
+   naming the scheme: the app would otherwise be refused on every request.
+   It finds the plugin by its `id`, so it never imports the package. An
+   origin the app adds by hand is not checked: a native client outside the
+   graph may sign in another way.
 2. **Builds an app's magic link on `AUTH_DEVICE_URL`** on a local stage. A
-   link whose `callbackURL` is a scheme (`shop-dev://…`) was asked for by
+   link whose `callbackURL` is a scheme (`shop://…`) was asked for by
    the app, and will be opened on the phone. It is rebuilt on the device
    address, path and token kept. A link whose callback is a path or an
    `http(s)` URL was asked for by a browser, and is left alone. The magic-link
@@ -149,7 +156,7 @@ calls `/magic-link/verify`, gets the session cookie, and is redirected to the
 app's scheme. The app never had the cookie.
 
 - **Server:** Better Auth's Expo plugin carries it on that redirect,
-  `shop-dev://…?cookie=<set-cookie>`, for a destination the server
+  `shop://…?cookie=<set-cookie>`, for a destination the server
   trusts. In 1.7 the check is `isTrustedOrigin`, so the wildcard `exp://`
   origins cover Expo Go too. Tested here for both.
 - **App:** the Expo client stores a `?cookie=` itself only for a sign-in it
@@ -172,6 +179,8 @@ app's scheme. The app never had the cookie.
 `gkm init --template fullstack` with Expo scaffolds:
 
 - **`constructs/app.ts`:** the `MobileApp`, depending on the API and auth.
+- **`constructs/auth.ts`:** `expo()` in the auth server's plugins, which the
+  construct requires once the app depends on it.
 - **`apps/app/app.config.ts`:** parses `APP_SCHEME`, `EXPO_PUBLIC_API_URL` and
   `EXPO_PUBLIC_AUTH_URL` into `extra.config`. The scheme, and the bundle id and
   Android package built on it, come from there.
@@ -194,7 +203,7 @@ app's scheme. The app never had the cookie.
 `gkm dev` lists the app with its scheme and the address devices reach:
 
 ```
-   app  shop-dev:// — devices reach 192.168.1.20
+   app  shop:// — devices reach 192.168.1.20
 ```
 
 ## Not in this design yet

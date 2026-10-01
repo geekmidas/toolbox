@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { expo } from '@better-auth/expo';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { serviceContext } from '@geekmidas/services';
 import { magicLink } from 'better-auth/plugins';
@@ -11,6 +12,7 @@ import {
 	BetterAuth,
 	type BetterAuthOptions,
 	deviceLink,
+	ExpoPluginRequired,
 	SessionCheckFailed,
 } from '../auth';
 import { KyselyDatabase } from '../database/kysely';
@@ -358,7 +360,7 @@ describe('BetterAuth.server', () => {
 });
 
 describe('BetterAuth with a mobile app among its callers', () => {
-	const SCHEME = 'shop-dev';
+	const SCHEME = 'shop';
 	const DEVICE_URL = 'http://192.168.1.20:3002';
 	/** What a target derives once `App` declares `.dependsOn([auth])`. */
 	const mobile = (env: Record<string, string> = {}) =>
@@ -380,6 +382,7 @@ describe('BetterAuth with a mobile app among its callers', () => {
 		const construct = auth({
 			advanced: { disableOriginCheck: false },
 			plugins: [
+				expo(),
 				magicLink({
 					sendMagicLink: async ({ url }) => {
 						sent.push(url);
@@ -397,18 +400,40 @@ describe('BetterAuth with a mobile app among its callers', () => {
 			body: JSON.stringify({ email: email('ada'), callbackURL }),
 		});
 
-	it('adds Better Auth’s Expo plugin, which an app signs in through', async () => {
-		const server = await auth().service.register(mobile());
+	it('refuses to start without the Expo plugin once a mobile app calls it', async () => {
+		// The app signs in through it; without it every request the app makes
+		// would be refused, so the server says so when it is built instead.
+		const failure = await auth()
+			.service.register(mobile())
+			.catch((error: unknown) => error);
+
+		expect(failure).toBeInstanceOf(ExpoPluginRequired);
+		expect(failure).toMatchObject({
+			server: 'Auth',
+			origins: [`${SCHEME}://`, `${SCHEME}://*`],
+		});
+	});
+
+	it('starts with the Expo plugin the app gave it', async () => {
+		const server = await auth({ plugins: [expo()] }).service.register(mobile());
 		const ids = server.options.plugins?.map((plugin) => plugin.id);
 
 		expect(ids).toContain('expo');
 	});
 
-	it('adds no Expo plugin where nothing but browsers call it', async () => {
+	it('needs no Expo plugin where nothing but browsers call it', async () => {
 		const server = await auth().service.register(options());
 		const ids = server.options.plugins?.map((plugin) => plugin.id) ?? [];
 
 		expect(ids).not.toContain('expo');
+	});
+
+	it('needs none for a native origin the app trusts by hand, outside the graph', async () => {
+		const server = await auth({
+			trustedOrigins: ['partner://'],
+		}).service.register(options());
+
+		expect(server.options.trustedOrigins).toContain('partner://');
 	});
 
 	it('builds a link the app asked for on the address a phone reaches', async () => {

@@ -296,7 +296,6 @@
 		"zod": "~4.6.5"
 	},
 	"peerDependencies": {
-		"@better-auth/expo": ">=1.7.5",
 		"@geekmidas/audit": "workspace:^",
 		"@geekmidas/auth": "workspace:*",
 		"@geekmidas/cache": "workspace:^",
@@ -315,9 +314,6 @@
 		"pg": ">=8.23.0"
 	},
 	"peerDependenciesMeta": {
-		"@better-auth/expo": {
-			"optional": true
-		},
 		"@geekmidas/audit": {
 			"optional": true
 		},
