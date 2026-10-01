@@ -78,7 +78,7 @@ describe('example', () => {
  *
  * A factory belongs to a database, not to an app, so there is one per database
  * for the whole project. `gkm test` finds it by that name and hands every
- * feature test \`factories.database\`, built on the test's transaction.
+ * feature test \`factories.get('database')\`, built on the test's transaction.
  */
 export function generateTestFactoryFiles(
 	options: TemplateOptions,
@@ -116,7 +116,7 @@ const seeds = {};
 
 /**
  * This database's factory. \`gkm test\` builds it on each feature test's
- * transaction and hands it over as \`factories.${serviceKey(db.id)}\`.
+ * transaction and hands it over as \`factories.get('${serviceKey(db.id)}')\`.
  */
 export function createFactory(db: Kysely<Database>) {
   return new KyselyFactory<Database, typeof builders, typeof seeds>(

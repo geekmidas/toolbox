@@ -1256,7 +1256,7 @@ describe('generateTestFiles', () => {
 		const factory = files[0]!.content;
 		expect(factory).toContain('KyselyFactory.createBuilder');
 		expect(factory).toContain('export function createFactory');
-		expect(factory).toContain('factories.database');
+		expect(factory).toContain("factories.get('database')");
 		// From the root: a single app's constructs live under src/.
 		expect(factory).toContain("from '../../src/constructs/database.ts'");
 

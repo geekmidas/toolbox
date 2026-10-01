@@ -15,7 +15,7 @@ const seeds = {};
 
 /**
  * `Database`'s factory. `gkm test` finds it by its name, builds it on each
- * feature test's transaction, and hands it over as `factories.database`.
+ * feature test's transaction, and hands it over as `factories.get('database')`.
  */
 export function createFactory(db: Kysely<Database>) {
 	return new KyselyFactory<Database, typeof builders, typeof seeds>(

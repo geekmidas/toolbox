@@ -1,6 +1,5 @@
 import { describe, expect } from 'vitest';
 import { it } from '#test';
-import { signIn } from './__helpers__/signIn.js';
 
 const address = (who: string) => `${who}+${crypto.randomUUID()}@example.com`;
 
@@ -48,17 +47,17 @@ describe('users', () => {
 
 	it('reads a user the database’s factory inserted', async ({
 		browser,
-		mailbox,
 		factories,
 	}) => {
 		// Built on this test's transaction, so the endpoint sees the row — and
 		// it is rolled back with everything else.
 		const email = address('katherine');
-		const katherine = await factories.database.insert('users', {
+		const factory = await factories.get('database');
+		const katherine = await factory.insert('users', {
 			name: 'Katherine',
 			email,
 		});
-		await signIn({ browser, mailbox }, email);
+		await browser.signIn(email);
 
 		const user = await browser.api.get('/users/{id}', {
 			params: { id: katherine.id },
@@ -77,12 +76,12 @@ describe('users', () => {
 		).rejects.toMatchObject({ status: 401 });
 	});
 
-	it('reads one with a session', async ({ browser, mailbox }) => {
+	it('reads one with a session', async ({ browser }) => {
 		const email = address('hopper');
 		const created = await browser.api.post('/users', {
 			body: { name: 'Grace', email },
 		});
-		await signIn({ browser, mailbox }, email);
+		await browser.signIn(email);
 
 		const user = await browser.api.get('/users/{id}', {
 			params: { id: created.id },
@@ -93,11 +92,10 @@ describe('users', () => {
 
 	it('404s a user that is not there rather than 500ing', async ({
 		browser,
-		mailbox,
 	}) => {
 		const email = address('hopper');
 		await browser.api.post('/users', { body: { name: 'Grace', email } });
-		await signIn({ browser, mailbox }, email);
+		await browser.signIn(email);
 
 		await expect(
 			browser.api.get('/users/{id}', {
@@ -106,15 +104,12 @@ describe('users', () => {
 		).rejects.toMatchObject({ status: 404 });
 	});
 
-	it('updates your own profile, and nobody else’s', async ({
-		browser,
-		mailbox,
-	}) => {
+	it('updates your own profile, and nobody else’s', async ({ browser }) => {
 		// The session decides whose profile this is. An id in the path would be
 		// an authorization question dressed up as routing.
 		const email = address('ada');
 		await browser.api.post('/users', { body: { name: 'Ada', email } });
-		await signIn({ browser, mailbox }, email);
+		await browser.signIn(email);
 
 		const me = await browser.api.patch('/me', {
 			body: { name: 'Ada Lovelace' },

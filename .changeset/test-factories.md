@@ -3,52 +3,59 @@
 '@geekmidas/constructs': patch
 ---
 
-Feature tests are handed every database by name: `db` and `factories`, keyed by service name
+Feature tests: `db.get`, `factories.get` and `browser.signIn`
 
-A factory belongs to a database, not to an app, so it's named after one:
-`test/factories/<construct>.ts` at the project root (`database.ts` for
-`Database`, `auth-database.ts` for `AuthDatabase`), exporting
-`createFactory(db)`. `gkm test` finds them and every app's generated harness
-imports them, so a test no longer imports and builds its own:
+A feature test is handed the app's own databases by name, a factory for each,
+and a way to sign in, with nothing to import:
 
 ```ts
-it('reads a user', async ({ browser, factories }) => {
-  const ada = await factories.database.insert('users', { name: 'Ada' });
+it('lets a member join a tournament', async ({ browser, db, factories }) => {
+  const factory = await factories.get('database');
+  const tournament = await factory.insert('tournaments', {});
+
+  const { user } = await browser.signIn('ada@example.com');
+  await browser.api.post('/tournaments/{id}/join', {
+    params: { id: tournament.id },
+  });
+
+  const app = await db.get('database');
+  const members = await app.selectFrom('tournamentMembers').selectAll().execute();
+  expect(members).toMatchObject([{ userId: user.id }]);
 });
 ```
 
-- **Keyed by service name** (`factories.database`, `factories.authDatabase`),
-  and typed from each `createFactory`.
-- **Built on the test's transactions:** each factory gets its database's
-  transaction for that test, so the endpoints and the auth server see the rows,
-  and they're rolled back with everything else.
-- **Refused, not skipped:** a file named after no database construct throws
-  `UnknownFactoryFile`, and one without a `createFactory` export throws
-  `FactoryHasNoCreate`.
-- **`test: { factories: '…' }`** in `gkm.config.ts` moves the folder.
-- **`featureTest({ factories })`** takes them directly; `UnknownFactory` names a
-  key no declared database has.
-
-**`db` is keyed by construct too — breaking.** A test used to get one `db`,
-inferred from whichever database the endpoints named first. It now gets every
-database construct's transaction for the test, by service name, each typed by
-its schema:
-
-```ts
-it('…', async ({ db }) => {
-  await db.database.selectFrom('users')…;
-  await db.authDatabase.selectFrom('session')…;
-});
-```
-
-Nothing is inferred, so nothing can be picked wrongly: `featureTest({ database })`
-and `UnknownDatabase` are gone. In existing tests, `db.selectFrom(…)` becomes
-`db.database.selectFrom(…)`, and `FeatureContext<Browser, unknown>` becomes
-`FeatureContext<Browser>`.
+- **`db.get(name)`:** a database's transaction for this test, by service name
+  and typed by its schema. It opens on first use by whatever reaches it first
+  (the test, a factory or an endpoint), and they all share it.
+- **The app's own databases only:** a schema tenant an auth server owns is
+  reached through that server, as the app reaches it, and a reader is the same
+  database through a read-only role. Neither is handed to a test.
+  `db.get('authDb')` throws `UnknownDatabase` and doesn't compile.
+- **`factories.get(name)`:** one per database, from
+  `test/factories/<construct>.ts` at the project root (`database.ts` for
+  `Database`), exporting `createFactory(db)`. It's built once on that
+  database's transaction for the test, so endpoints see the rows and they're
+  rolled back with everything else.
+  - A file named after no database of the app's, the auth tenant included,
+    throws `UnknownFactoryFile`.
+  - A file without `createFactory` throws `FactoryHasNoCreate`.
+  - `test: { factories: '…' }` in `gkm.config.ts` moves the folder.
+- **`browser.signIn(email)`:** generated when one auth server has the
+  magic-link plugin and the app sends mail. It requests the link, reads it
+  from the inbox (cleared first, so it's this request's), follows it, and
+  returns the session the auth server reports. `SignInFailed` says which step
+  failed.
 - **`gkm init`** scaffolds `test/factories/database.ts` at the project root, in
-  both layouts, instead of `test/factory/` inside the API app.
+  both layouts.
 
-**Moving an existing project:** move the factory to
-`test/factories/database.ts` at the root, keep its `createFactory(db)` export,
-and replace `createFactory(db)` in tests with the `factories.database` the test
-is handed.
+**Breaking:** `db` used to be one transaction, inferred from whichever database
+the endpoints named first, and opened before every test. Nothing is inferred
+now, and nothing opens before it's used. `featureTest({ database })` is gone.
+
+**Moving an existing project:**
+- move the factory to `test/factories/database.ts` at the root, keeping its
+  `createFactory(db)` export;
+- replace `createFactory(db)` with `await factories.get('database')`;
+- replace `db.selectFrom(…)` with `(await db.get('database')).selectFrom(…)`;
+- replace a hand-written magic-link helper with `browser.signIn(email)`;
+- replace `FeatureContext<Browser, unknown>` with `FeatureContext<Browser>`.

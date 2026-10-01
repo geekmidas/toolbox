@@ -186,21 +186,30 @@ describe('writeTestHarness', () => {
 		);
 	});
 
-	it('types db by every database construct, keyed by its service name', async () => {
+	it('types db by the app’s own databases, keyed by service name', async () => {
 		await write();
 
 		const harness = await read(apps[0]!, 'index.ts');
 
-		// Each imported as a type from where it is declared, relative to this
-		// copy — the tenant as much as the database it lives in.
+		// Imported as a type from where it is declared, relative to this copy.
 		expect(harness).toMatch(
 			/import type \{ database as __Database \} from '(\.\.\/)+.*constructs\/database\.js';/,
 		);
-		expect(harness).toMatch(
-			/import type \{ authDatabase as __AuthDatabase \} from '(\.\.\/)+.*constructs\/database\.js';/,
-		);
 		expect(harness).toContain(
-			'featureTest<Browser, { database: DatabaseOf<typeof __Database>; authDatabase: DatabaseOf<typeof __AuthDatabase> }>({ manifest, modules, browser: Browser })',
+			'featureTest<Browser, { database: DatabaseOf<typeof __Database> }>({ manifest, modules, browser: Browser })',
+		);
+		// The auth server's tenant is its own, reached through it.
+		expect(harness).not.toContain('__AuthDatabase');
+	});
+
+	it('gives the browser a magic-link signIn when the app sends mail', async () => {
+		await write();
+
+		const harness = await read(apps[0]!, 'index.ts');
+
+		expect(harness).toContain('signInWithMagicLink } from');
+		expect(harness).toContain(
+			'return signInWithMagicLink(this, this.auth, email);',
 		);
 	});
 
@@ -227,23 +236,17 @@ describe('writeTestHarness', () => {
 	});
 
 	it('hands a test each database’s factory, keyed by its service name', async () => {
-		const folder = await factoriesWith({
-			'database.ts': FACTORY,
-			'auth-database.ts': FACTORY,
-		});
+		const folder = await factoriesWith({ 'database.ts': FACTORY });
 
 		await write(folder);
 
 		const harness = await read(apps[0]!, 'index.ts');
 		expect(harness).toContain(
-			"import { createFactory as __authDatabaseFactory } from '../../../../test/factories/auth-database.js';",
-		);
-		expect(harness).toContain(
 			"import { createFactory as __databaseFactory } from '../../../../test/factories/database.js';",
 		);
 		expect(harness).toContain(
-			'featureTest<Browser, { database: DatabaseOf<typeof __Database>; authDatabase: DatabaseOf<typeof __AuthDatabase> }, { authDatabase: typeof __authDatabaseFactory; database: typeof __databaseFactory }>' +
-				'({ manifest, modules, browser: Browser, factories: { authDatabase: __authDatabaseFactory, database: __databaseFactory } })',
+			'featureTest<Browser, { database: DatabaseOf<typeof __Database> }, { database: typeof __databaseFactory }>' +
+				'({ manifest, modules, browser: Browser, factories: { database: __databaseFactory } })',
 		);
 	});
 
@@ -260,9 +263,13 @@ describe('writeTestHarness', () => {
 		const failure = await write(folder).catch((error: unknown) => error);
 
 		expect(failure).toBeInstanceOf(UnknownFactoryFile);
-		expect(failure).toMatchObject({
-			known: ['Database', 'AuthDatabase'],
-		});
+		expect(failure).toMatchObject({ known: ['Database'] });
+	});
+
+	it('refuses a factory for the auth server’s tenant, which is reached through it', async () => {
+		const folder = await factoriesWith({ 'auth-database.ts': FACTORY });
+
+		await expect(write(folder)).rejects.toBeInstanceOf(UnknownFactoryFile);
 	});
 
 	it('refuses a factory that exports no createFactory', async () => {

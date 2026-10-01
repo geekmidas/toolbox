@@ -23,7 +23,6 @@ import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { TestManifest } from '@geekmidas/constructs/testing';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import {
-	type ConstructManifest,
 	canonicalId,
 	kebabCase,
 	provideKey,
@@ -154,7 +153,7 @@ export interface FactorySource {
  */
 export async function factorySources(
 	folder: string | undefined,
-	declared: ConstructManifest,
+	databases: readonly string[],
 ): Promise<FactorySource[]> {
 	if (!folder) return [];
 
@@ -164,14 +163,6 @@ export async function factorySources(
 			throw error;
 		},
 	);
-
-	const databases = Object.entries(declared)
-		.filter(
-			([, declaration]) =>
-				declaration.kind === 'database' ||
-				declaration.kind === 'database-schema',
-		)
-		.map(([id]) => id);
 
 	const found: FactorySource[] = [];
 	for (const entry of entries) {
@@ -271,8 +262,17 @@ export async function writeTestHarness(
 		appRoot: options.root,
 		cache: cacheBackendsIn(declared, options.cacheBackend),
 	});
-	const databases = databaseSources(declared, sources);
-	const factories = await factorySources(options.factories, declared);
+
+	// The app's own databases: not a tenant an auth server owns — reached
+	// through that server — and not a reader of one. What a test is handed.
+	const owners = new Set(auths.map((auth) => auth.databaseId));
+	const databases = databaseSources(declared, sources).filter(
+		({ id, kind }) => !owners.has(id) && kind !== 'database-reader',
+	);
+	const factories = await factorySources(
+		options.factories,
+		databases.map(({ id }) => id),
+	);
 	const files = [
 		...new Set([
 			...Object.values(manifest.constructs).map(({ source }) => source.file),
@@ -293,6 +293,7 @@ export async function writeTestHarness(
 			auths,
 			drivers,
 			factories,
+			mail: Object.values(declared).some(({ kind }) => kind === 'email'),
 		});
 	const json = `${JSON.stringify(manifest, null, 2)}\n`;
 
@@ -319,6 +320,8 @@ interface AuthClient {
 	id: string;
 	basePath: string;
 	plugins: string[];
+	/** The schema tenant it owns — reached through it, never by a test. */
+	databaseId: string;
 }
 
 /** Each auth server, with the client plugins its server plugins pair with. */
@@ -345,6 +348,7 @@ async function authClients(
 			id,
 			basePath: exported.basePath,
 			plugins: ids.flatMap((plugin) => CLIENT_PLUGINS[plugin] ?? []),
+			databaseId: exported.databaseId,
 		});
 	}
 
@@ -374,6 +378,7 @@ function propertyOf(id: string): string {
 /** A database construct: its id, its service name, and where it is exported. */
 interface DatabaseSource {
 	id: string;
+	kind: string;
 	service: string;
 	source: ConstructSource;
 }
@@ -390,7 +395,12 @@ function databaseSources(
 		.filter(([id, declaration]) =>
 			Boolean(sources[id] && declaration.kind.startsWith('database')),
 		)
-		.map(([id]) => ({ id, service: serviceKey(id), source: sources[id]! }));
+		.map(([id, declaration]) => ({
+			id,
+			kind: declaration.kind,
+			service: serviceKey(id),
+			source: sources[id]!,
+		}));
 }
 
 /** An import specifier for `file`, from the harness written into `dir`. */
@@ -408,13 +418,22 @@ function harnessModule(options: {
 	auths: AuthClient[];
 	drivers: RuntimeDrivers;
 	factories: FactorySource[];
+	/** Whether the app sends mail — what a magic-link sign-in is read from. */
+	mail: boolean;
 }): string {
-	const { surfaces, auths, drivers, databases, dir, files, factories } =
+	const { surfaces, auths, drivers, databases, dir, files, factories, mail } =
 		options;
+	// One auth server a test can sign in to without a person: a magic link,
+	// read from the app's inbox. With two, which one \`signIn\` means is a
+	// guess, so neither gets it.
+	const magicLinks = mail
+		? auths.filter(({ plugins }) => plugins.includes('magicLinkClient'))
+		: [];
+	const signIn = magicLinks.length === 1 ? magicLinks[0] : undefined;
 	const plugins = [...new Set(auths.flatMap(({ plugins }) => plugins))].sort();
 
 	const imports = [
-		`import {${databases.length ? ' type DatabaseOf,' : ''} featureTest, loadTestManifest } from '@geekmidas/constructs/testing';`,
+		`import {${databases.length ? ' type DatabaseOf,' : ''} featureTest, loadTestManifest${signIn ? ', signInWithMagicLink' : ''} } from '@geekmidas/constructs/testing';`,
 		...databases.map(
 			({ id, source }) =>
 				`import type { ${source.exportName} as __${id} } from '${specifierFrom(dir, source.file)}';`,
@@ -469,6 +488,17 @@ function harnessModule(options: {
 		fetchOptions: { customFetchImpl: this.fetch },
 	});`,
 		),
+		...(signIn
+			? [
+					`	/**
+	 * Sign in as \`email\` through \`${signIn.id}\`'s magic link, the way a person
+	 * does — the email opened, the link followed. The session it then reports.
+	 */
+	signIn(email: string) {
+		return signInWithMagicLink(this, this.${propertyOf(signIn.id)}, email);
+	}`,
+				]
+			: []),
 	];
 
 	// Each database's factory, keyed as the test is handed it.

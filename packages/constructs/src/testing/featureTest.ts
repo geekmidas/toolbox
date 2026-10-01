@@ -88,15 +88,30 @@ export interface FeatureTestOptions<
 /** Each database's schema, keyed by its service name. */
 export type DatabaseSchemas = Record<string, unknown>;
 
-/** Each database's transaction for this test, keyed by its service name. */
-export type TransactionsOf<TDatabases extends DatabaseSchemas> = {
-	[K in keyof TDatabases]: Kysely<TDatabases[K]>;
-};
+/**
+ * The app's databases for this test, by service name — `db.get('database')`.
+ *
+ * Each is this test's transaction on that database: opened by whatever reaches
+ * it first — the test, a factory, an endpoint — and the same one for all of
+ * them, rolled back after the test.
+ */
+export interface TestDatabases<TDatabases extends DatabaseSchemas> {
+	get<K extends keyof TDatabases & string>(
+		name: K,
+	): Promise<Kysely<TDatabases[K]>>;
+}
 
-/** Each database's factory, built on this test's transaction. */
-export type FactoriesOf<TFactories extends FactoryBuilders> = {
-	[K in keyof TFactories]: ReturnType<TFactories[K]>;
-};
+/**
+ * Each of the app's databases' test factory, by service name —
+ * `await factories.get('database')`. Built on first use, on that database's
+ * transaction for this test — the one `db.get` returns — and the same factory
+ * for the rest of the test.
+ */
+export interface TestFactories<TFactories extends FactoryBuilders> {
+	get<K extends keyof TFactories & string>(
+		name: K,
+	): Promise<ReturnType<TFactories[K]>>;
+}
 
 export interface FeatureContext<
 	TBrowser extends TestBrowser,
@@ -106,17 +121,17 @@ export interface FeatureContext<
 	/** This test's browser, already the global `fetch`. */
 	browser: TBrowser;
 	/**
-	 * Every database's transaction for this test, keyed by its service name —
-	 * `db.database`, `db.authDatabase` — each rolled back after it. The same
-	 * transactions the endpoints and the auth server are handed.
+	 * The app's own databases — not a tenant an auth server owns, not a
+	 * reader — by service name: `await db.get('database')`. The same
+	 * transaction the test's endpoints and factories use.
 	 */
-	db: TransactionsOf<TDatabases>;
+	db: TestDatabases<TDatabases>;
 	/**
-	 * Each database's test factory, keyed by its service name —
-	 * `factories.database`, `factories.authDatabase` — each on that database's
-	 * transaction for this test.
+	 * Each of the app's databases' test factory, by service name —
+	 * `await factories.get('database')` — on the same transaction `db.get`
+	 * returns.
 	 */
-	factories: FactoriesOf<TFactories>;
+	factories: TestFactories<TFactories>;
 	/** The mail sent to an address during this test, read from Mailpit. */
 	mailbox: (address: string) => Mailbox;
 	/**
@@ -209,6 +224,8 @@ interface ContextState {
 	auth: Map<BetterAuth, Promise<Hono>>;
 	/** The addresses this test read mail for, cleared after it. */
 	addresses: Set<string>;
+	/** This test's inbox, when the app sends mail — what `browser.signIn` reads. */
+	mailbox?: (address: string) => Mailbox;
 	/** What this test published, by topic or queue id. */
 	published: Map<string, PublishedMessage[]>;
 }
@@ -243,12 +260,14 @@ export function featureTest<
 
 	let app: LoadedApp;
 	let factoryDatabases: [string, KyselyDatabase][] = [];
+	let owned: KyselyDatabase[] = [];
 	let network: SetupServer;
 	let restoreFetch: () => void = () => {};
 
 	beforeAll(async () => {
 		app = await load(manifest, options.modules ?? {});
-		factoryDatabases = databasesFor(options.factories ?? {}, app.databases);
+		owned = ownDatabases(app, manifest);
+		factoryDatabases = databasesFor(options.factories ?? {}, owned);
 		for (const database of app.databases) bindToTests(database);
 
 		network = setupServer(
@@ -285,6 +304,13 @@ export function featureTest<
 				addresses: new Set(),
 				published: new Map(),
 			};
+			const readMail = app.readMail;
+			if (readMail) {
+				state.mailbox = (address) => {
+					state.addresses.add(address);
+					return readMail(address);
+				};
+			}
 			contexts.set(id, state);
 			// Before anything resolves them: a publisher is a service, so the one this
 			// test's endpoints get is whichever is registered under its name first.
@@ -295,31 +321,57 @@ export function featureTest<
 					const browser = new BrowserClass();
 					const restore = browser.install();
 					try {
-						// Every database, on this test's transaction for it — the one
-						// its endpoints and the auth server resolve to as well.
-						const transactions: Record<string, Kysely<any>> = {};
-						for (const database of app.databases) {
-							transactions[database.service.serviceName] =
-								(await state.transactions.get(
-									database.id,
-									urlOf(database, app.envParser),
-									database.clientConfig,
-								)) as Kysely<any>;
-						}
-						const factories: Record<string, unknown> = {};
-						for (const [name, database] of factoryDatabases) {
-							factories[name] = options.factories![name]!(
-								transactions[database.service.serviceName]!,
-							);
-						}
+						// A database's transaction for this test, opened on first use —
+						// the registry hands everyone in the test the same one.
+						const transaction = (database: KyselyDatabase) =>
+							state.transactions.get(
+								database.id,
+								urlOf(database, app.envParser),
+								database.clientConfig,
+							) as Promise<Kysely<any>>;
+						const db: TestDatabases<any> = {
+							get: (name) => {
+								const database = owned.find(
+									(candidate) => candidate.service.serviceName === name,
+								);
+								if (!database) {
+									throw new UnknownDatabase(
+										name,
+										owned.map((candidate) => candidate.service.serviceName),
+									);
+								}
+								return transaction(database);
+							},
+						};
+						const built = new Map<string, Promise<unknown>>();
+						const factories: TestFactories<any> = {
+							get: (name) => {
+								const database = factoryDatabases.find(
+									([candidate]) => candidate === name,
+								)?.[1];
+								if (!database) {
+									throw new UnknownFactory(
+										name,
+										factoryDatabases.map(([candidate]) => candidate),
+									);
+								}
+								let factory = built.get(name);
+								if (!factory) {
+									factory = transaction(database).then(
+										options.factories![name]!,
+									);
+									built.set(name, factory);
+								}
+								return factory as Promise<any>;
+							},
+						};
 						await fn({
 							browser,
-							db: transactions as TransactionsOf<TDatabases>,
-							factories: factories as FactoriesOf<TFactories>,
+							db: db as TestDatabases<TDatabases>,
+							factories: factories as TestFactories<TFactories>,
 							mailbox: (address) => {
-								if (!app.readMail) throw new NoInbox();
-								state.addresses.add(address);
-								return app.readMail(address);
+								if (!state.mailbox) throw new NoInbox();
+								return state.mailbox(address);
 							},
 							published: (channel) => [
 								...(state.published.get(channel.id) ?? []),
@@ -448,6 +500,24 @@ function recorders(
 			(serviceName) => ({ serviceName, register: () => publisher }),
 		);
 	});
+}
+
+/**
+ * The databases a test is handed: the app's own. A schema tenant an auth server
+ * owns is reached through that server, as the app reaches it, and a reader is
+ * the same database through a read-only role — neither is another database to
+ * test against.
+ */
+function ownDatabases(
+	app: LoadedApp,
+	manifest: TestManifest,
+): KyselyDatabase[] {
+	const owners = new Set(app.auths.map((auth) => auth.databaseId));
+	return app.databases.filter(
+		(database) =>
+			!owners.has(database.id) &&
+			manifest.constructs[database.id]?.kind !== 'database-reader',
+	);
 }
 
 /** Each factory's database, found by the service name it is keyed by. */
@@ -585,6 +655,71 @@ function isLocal(url: URL): boolean {
 	);
 }
 
+/** What `signInWithMagicLink` uses of a better-auth client. */
+export interface MagicLinkAuthClient<TSession> {
+	signIn: {
+		magicLink(input: {
+			email: string;
+		}): Promise<{ error?: { message?: string } | null }>;
+	};
+	getSession(): Promise<{ data: TSession | null }>;
+}
+
+/**
+ * Sign a test's browser in the way a person does: ask the auth server for a
+ * magic link, open the email it sent, follow the link.
+ *
+ * What the generated `browser.signIn(email)` calls. The address's mail is
+ * cleared first — so the link is this request's, not one an earlier test left
+ * — and cleared again after the test, like any address a test reads. Returns
+ * the session the auth server then reports, as better-auth hands it back.
+ */
+export async function signInWithMagicLink<TSession>(
+	browser: TestBrowser,
+	auth: MagicLinkAuthClient<TSession>,
+	email: string,
+): Promise<TSession> {
+	const context = currentTestContext();
+	const state = context && contexts.get(context.id);
+	if (!state) throw new UnknownTestContext('signIn', context?.id);
+	if (!state.mailbox) throw new NoInbox();
+
+	const inbox = state.mailbox(email);
+	await inbox.clear();
+
+	const requested = await auth.signIn.magicLink({ email });
+	if (requested.error) {
+		throw new SignInFailed(
+			email,
+			`the auth server refused the magic link: ${requested.error.message ?? 'no reason given'}`,
+		);
+	}
+
+	const mail = await inbox.last();
+	if (!mail.link) throw new SignInFailed(email, 'its email held no link');
+	await browser.visit(mail.link);
+
+	const { data } = await auth.getSession();
+	if (!data) {
+		throw new SignInFailed(
+			email,
+			'the auth server reported no session after the link was opened',
+		);
+	}
+	return data;
+}
+
+/** `browser.signIn` finished without a session. */
+export class SignInFailed extends Error {
+	constructor(
+		readonly email: string,
+		readonly reason: string,
+	) {
+		super(`Signing ${email} in failed: ${reason}.`);
+		this.name = 'SignInFailed';
+	}
+}
+
 /** A request reached an in-process server without a test to belong to. */
 export class UnknownTestContext extends Error {
 	constructor(
@@ -611,6 +746,24 @@ export class NoInbox extends Error {
 				`<ID>_INBOX_URL.`,
 		);
 		this.name = 'NoInbox';
+	}
+}
+
+/** `db.get(name)` named no database the test is handed. */
+export class UnknownDatabase extends Error {
+	constructor(
+		readonly database: string,
+		readonly known: readonly string[],
+	) {
+		super(
+			`db.get('${database}') names no database of this app's. ` +
+				(known.length > 0
+					? `Its databases: ${known.join(', ')}. `
+					: 'It declares no database of its own. ') +
+				`A tenant an auth server owns is reached through that server, and a ` +
+				`reader through the database it reads.`,
+		);
+		this.name = 'UnknownDatabase';
 	}
 }
 
