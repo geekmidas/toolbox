@@ -88,11 +88,15 @@ export function generateTestFactoryFiles(
 	}
 
 	const db = databaseFor();
-	// From the project root: a single app keeps its constructs under `src/`, a
-	// monorepo maps them through the root tsconfig.
-	const schema = options.monorepo
-		? `@${options.name}/constructs/database.ts`
-		: '../../src/constructs/database.ts';
+	// From the project root. A fullstack monorepo declares its constructs at
+	// the root and maps them through the root tsconfig; an API monorepo keeps
+	// them in the app, and a single app under `src/`.
+	const schema =
+		options.monorepo && options.template === 'fullstack'
+			? `@${options.name}/constructs/database.ts`
+			: options.monorepo
+				? `../../${options.apiPath}/src/constructs/database.ts`
+				: '../../src/constructs/database.ts';
 
 	return [
 		{
