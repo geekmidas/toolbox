@@ -1,5 +1,37 @@
 # @geekmidas/cloud
 
+## 10.0.0-alpha.34
+
+### Patch Changes
+
+- [#99](https://github.com/geekmidas/toolbox/pull/99) [`1e71b33`](https://github.com/geekmidas/toolbox/commit/1e71b33cf55a6eff0f458b3b8e80ab98d1058acc) Thanks [@geekmidas](https://github.com/geekmidas)! - A database's owner role can create trusted extensions
+
+  A migration running `create extension if not exists citext` failed with
+  `permission denied to create extension "citext"`. The extension is trusted, so
+  a role without superuser may create it, but Postgres also requires `CREATE` on
+  the database itself. Each construct's owner role (the one migrations run as)
+  was confined to its own schema, and nothing granted that.
+
+  `roleStatements` now takes `database` for a database construct's roles and
+  adds `GRANT CREATE ON DATABASE <database> TO <owner>`. All three provisioners
+  pass it for a database, and only for a database:
+  - reconcile (`gkm dev`, `gkm test`, `gkm migrate`);
+  - the Dokploy deploy;
+  - the AWS bootstrap Lambda.
+
+  A schema tenant's owner (`.schema('AuthDatabase')`) is unchanged and stays
+  confined to its own schema. The app's runtime role is untouched.
+
+  **Existing databases** get the grant on the next reconcile or deploy. The
+  statement is idempotent.
+
+- Updated dependencies [[`1e71b33`](https://github.com/geekmidas/toolbox/commit/1e71b33cf55a6eff0f458b3b8e80ab98d1058acc)]:
+  - @geekmidas/db@10.0.0-alpha.34
+  - @geekmidas/envkit@10.0.0-alpha.34
+  - @geekmidas/events@10.0.0-alpha.34
+  - @geekmidas/manifest@10.0.0-alpha.34
+  - @geekmidas/storage@10.0.0-alpha.34
+
 ## 10.0.0-alpha.33
 
 ### Patch Changes

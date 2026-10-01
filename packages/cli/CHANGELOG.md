@@ -1,5 +1,58 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.34
+
+### Patch Changes
+
+- [#98](https://github.com/geekmidas/toolbox/pull/98) [`8297710`](https://github.com/geekmidas/toolbox/commit/8297710a8e8c0e055fbc9b9ef14039c6f3a33a1e) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm init` installs what the root test factory imports, at the root
+
+  A monorepo's `test/factories/database.ts` sits at the workspace root. It
+  resolves its imports from the root `node_modules`, but testkit and faker were
+  only installed for the API app, so a freshly scaffolded monorepo's tests failed
+  with `Cannot find package '@geekmidas/testkit'`.
+  - ✨ **Root dependencies:** with a database, the root `package.json` now adds
+    `@geekmidas/testkit` and `@faker-js/faker`, plus `kysely` in an API
+    monorepo, whose root installs nothing for constructs.
+  - **The factory's import:** an API monorepo's factory imports the database
+    construct from the app (`../../apps/api/src/constructs/database.ts`). Its root
+    has no `@<name>/constructs` alias; only a fullstack workspace maps one.
+
+  **Existing monorepo:** add `@geekmidas/testkit` and `@faker-js/faker` to the
+  root `devDependencies`.
+
+- [#99](https://github.com/geekmidas/toolbox/pull/99) [`1e71b33`](https://github.com/geekmidas/toolbox/commit/1e71b33cf55a6eff0f458b3b8e80ab98d1058acc) Thanks [@geekmidas](https://github.com/geekmidas)! - A database's owner role can create trusted extensions
+
+  A migration running `create extension if not exists citext` failed with
+  `permission denied to create extension "citext"`. The extension is trusted, so
+  a role without superuser may create it, but Postgres also requires `CREATE` on
+  the database itself. Each construct's owner role (the one migrations run as)
+  was confined to its own schema, and nothing granted that.
+
+  `roleStatements` now takes `database` for a database construct's roles and
+  adds `GRANT CREATE ON DATABASE <database> TO <owner>`. All three provisioners
+  pass it for a database, and only for a database:
+  - reconcile (`gkm dev`, `gkm test`, `gkm migrate`);
+  - the Dokploy deploy;
+  - the AWS bootstrap Lambda.
+
+  A schema tenant's owner (`.schema('AuthDatabase')`) is unchanged and stays
+  confined to its own schema. The app's runtime role is untouched.
+
+  **Existing databases** get the grant on the next reconcile or deploy. The
+  statement is idempotent.
+
+- Updated dependencies [[`1e71b33`](https://github.com/geekmidas/toolbox/commit/1e71b33cf55a6eff0f458b3b8e80ab98d1058acc)]:
+  - @geekmidas/db@10.0.0-alpha.34
+  - @geekmidas/cache@10.0.0-alpha.34
+  - @geekmidas/constructs@10.0.0-alpha.34
+  - @geekmidas/envkit@10.0.0-alpha.34
+  - @geekmidas/errors@10.0.0-alpha.34
+  - @geekmidas/logger@10.0.0-alpha.34
+  - @geekmidas/manifest@10.0.0-alpha.34
+  - @geekmidas/schema@10.0.0-alpha.34
+  - @geekmidas/services@10.0.0-alpha.34
+  - @geekmidas/telescope@10.0.0-alpha.34
+
 ## 10.0.0-alpha.33
 
 ### Patch Changes
