@@ -18,4 +18,11 @@ export interface TestReady {
 	env: string;
 	/** The test manifest the `#test` harness reads. */
 	manifest?: string;
+	/**
+	 * The test stage's databases this run created, and the port of the
+	 * Postgres that holds them: what `gkm test --teardown` drops when the
+	 * suite ends — or, if a run was killed before its teardown, what the next
+	 * one drops before it starts.
+	 */
+	databases?: { port: number; names: string[] };
 }

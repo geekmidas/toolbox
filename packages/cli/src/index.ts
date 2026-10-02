@@ -298,6 +298,10 @@ program
 		'--setup',
 		'Reconcile, migrate and seed the test stage and write the harness, then stop — what @geekmidas/cli/vitest runs',
 	)
+	.option(
+		'--teardown',
+		"Drop the test stage's databases the last setup created, then stop — what @geekmidas/cli/vitest runs when the suite ends",
+	)
 	.argument('[pattern]', 'Pattern to filter tests')
 	.action(async (pattern: string | undefined, options: TestOptions) => {
 		try {

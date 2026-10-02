@@ -9,6 +9,7 @@ import {
 	loadWorkspaceConfig,
 	type WorkspaceAppInfo,
 } from '../config';
+import type { ReconcileResult } from '../reconcile/index.js';
 import { toEmbeddableSecrets } from '../secrets/storage.js';
 import {
 	FileSecretsStore,
@@ -312,6 +313,8 @@ export interface EntryCredentialsResult {
 	 * resolved. `gkm test` did exactly that.
 	 */
 	declaredKeys: string[];
+	/** The reconcile just run, in a workspace: its plan and its ports. */
+	reconciled?: ReconcileResult;
 }
 
 /**
@@ -397,13 +400,14 @@ export async function prepareEntryCredentials(options: {
 	}
 
 	const declaredKeys: string[] = [];
+	let reconciled: ReconcileResult | undefined;
 
 	// Every address — containers, the edge, each app — comes from what the
 	// workspace declares. Outside a workspace (a non-gkm app using `gkm exec`)
 	// there is nothing to resolve, only the secrets above.
 	if (workspace) {
 		const { reconcileWorkspace } = await import('../reconcile/workspace.js');
-		const reconciled = await reconcileWorkspace(workspace, {
+		reconciled = await reconcileWorkspace(workspace, {
 			stage: options.reconcileStage ?? workspace.stages.local,
 			start: options.startDocker ?? false,
 		});
@@ -439,5 +443,6 @@ export async function prepareEntryCredentials(options: {
 		secretsRoot,
 		appInfo,
 		declaredKeys,
+		...(reconciled ? { reconciled } : {}),
 	};
 }

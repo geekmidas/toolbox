@@ -8,6 +8,8 @@ import {
 	prepareEntryCredentials,
 } from '../credentials';
 import { sniffAppEnvironment } from '../deploy/sniffer';
+import { primaryPortKey } from '../reconcile/containers';
+import type { ReconcileResult } from '../reconcile/index.js';
 import { backendsOf, constructGlobs } from '../reconcile/workspace.js';
 import { TEST_STAGE } from '../workspace/stages';
 import {
@@ -16,6 +18,7 @@ import {
 	writeTestHarness,
 } from './harness';
 import { TEST_READY_ENV, TEST_READY_FILE, type TestReady } from './ready';
+import { dropTestDatabases } from './teardown';
 
 export interface TestOptions {
 	/** Stage to load secrets from (default: development) */
@@ -50,6 +53,11 @@ export interface TestOptions {
 	 * `vitest` — or an editor — gets the same stage `gkm test` would give it.
 	 */
 	setup?: boolean;
+	/**
+	 * Drop the test stage's databases the last setup created, then stop — what
+	 * the Vitest global setup's teardown runs when the suite ends.
+	 */
+	teardown?: boolean;
 }
 
 /**
@@ -65,6 +73,11 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 		(await loadWorkspaceConfig(cwd)
 			.then((loaded) => loaded.workspace.stages.local)
 			.catch(() => undefined));
+	if (options.teardown) {
+		await teardown(cwd);
+		return;
+	}
+
 	if (!stage) {
 		throw new NoStageToTest();
 	}
@@ -86,6 +99,13 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 	const defaultEnv = loadEnvFiles('.env');
 	if (defaultEnv.loaded.length > 0) {
 		console.log(`  📦 Loaded env: ${defaultEnv.loaded.join(', ')}`);
+	}
+
+	// A run killed before its teardown left its databases behind, migrated —
+	// so an edited migration would not run again. Dropped before reconciling,
+	// which then creates them afresh.
+	if (!options.prepare) {
+		await teardown(cwd);
 	}
 
 	// 2. Prepare credentials: loads secrets and reconciles the test stage —
@@ -204,6 +224,7 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 			{
 				env: result.secretsJsonPath,
 				...(manifestPath ? { manifest: manifestPath } : {}),
+				...testDatabases(result.reconciled),
 			} satisfies TestReady,
 			null,
 			2,
@@ -272,6 +293,38 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 			reject(error);
 		});
 	});
+}
+
+/** Drop what the last setup created — see `dropTestDatabases`. */
+async function teardown(cwd: string): Promise<void> {
+	const root = await loadWorkspaceConfig(cwd)
+		.then((loaded) => loaded.workspace.root)
+		.catch(() => cwd);
+	const dropped = await dropTestDatabases(cwd, root);
+	if (dropped.length > 0) {
+		console.log(`  🧹 Dropped ${dropped.join(', ')}`);
+	}
+}
+
+/**
+ * The test stage's Postgres databases, to drop when the suite ends — those
+ * the plan provisions, on the port the shared container answers.
+ */
+function testDatabases(
+	reconciled: ReconcileResult | undefined,
+): Pick<TestReady, 'databases'> {
+	const port = reconciled?.ports[primaryPortKey('postgres')];
+	const names = (reconciled?.plan.resources ?? [])
+		.filter(
+			(resource) =>
+				resource.kind === 'database' &&
+				resource.provisions &&
+				resource.container === 'postgres',
+		)
+		.map((resource) => resource.name);
+	return port !== undefined && names.length > 0
+		? { databases: { port, names } }
+		: {};
 }
 
 /**
