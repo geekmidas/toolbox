@@ -12,7 +12,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { ComposeFile } from './compose';
 import type { Plan } from './plan';
@@ -85,6 +85,14 @@ export async function saveState(
 
 	await mkdir(dirname(path), { recursive: true });
 	await writeFile(path, `${JSON.stringify(state, null, 2)}\n`);
+}
+
+/**
+ * Forget what was applied, so the next reconcile of this stage converges from
+ * nothing — creating again whatever was dropped underneath the record.
+ */
+export async function forgetState(root: string, stage: string): Promise<void> {
+	await rm(statePath(root, stage), { force: true });
 }
 
 function statePath(root: string, stage: string): string {

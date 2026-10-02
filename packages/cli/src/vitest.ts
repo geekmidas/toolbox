@@ -11,9 +11,10 @@
  *
  * Declared once, at the root, it runs however the suite starts — `gkm test`,
  * plain `vitest`, an editor's runner, a filtered run of one project. Its
- * databases are migrated and seeded for every construct at once, and kept
- * rather than dropped afterwards, so there is no per-project setup to be skipped by a
- * filter and no teardown to run twice.
+ * databases are created, migrated and seeded for every construct at once, so
+ * there is no per-project setup to be skipped by a filter — and dropped by the
+ * teardown it returns when the suite ends, once, so the next run starts from
+ * its migrations rather than from whatever the last one left.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -39,7 +40,7 @@ export interface RerunningProject {
 	onTestsRerun(callback: () => void | Promise<void>): void;
 }
 
-export default function setup(project?: RerunningProject): void {
+export default function setup(project?: RerunningProject): () => void {
 	const cwd = process.cwd();
 
 	// `gkm test` did the work before starting Vitest; anything else — plain
@@ -61,6 +62,12 @@ export default function setup(project?: RerunningProject): void {
 	project?.onTestsRerun(() => {
 		gkm(['seed', '--stage', 'test'], cwd);
 	});
+
+	// When the suite ends — once, after the last run in watch mode. Every test
+	// rolled back, so nothing in the databases is anyone's.
+	return () => {
+		gkm(['test', '--teardown'], cwd);
+	};
 }
 
 function prepare(cwd: string): string {
