@@ -56,6 +56,7 @@
     "drop-free-standing-builders",
     "drop-generate-react-query",
     "edge-root-site",
+    "external-api",
     "fresh-scaffold-tests-run",
     "gkm-migrate",
     "gkm-seed",
