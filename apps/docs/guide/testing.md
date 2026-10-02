@@ -105,8 +105,148 @@ it('updates my profile', async ({ browser, faker }) => {
 - **`faker`** is testkit's faker, the same one factories are given, seeded
   from the test's name: a failing test fails again with the same data.
 - **An `ExternalApi`'s fake** — `test/fakes/<id>.ts` — answers at the URL the
-  test stage resolved for it, served in-process like a `RestApi`, so a handler
-  that calls Polar calls the fake with nothing for the test to set up.
+  test stage resolved for it, so a handler that calls Polar calls the fake with
+  nothing for the test to set up. See [Fakes](#fakes).
+
+## Fakes
+
+A fake stands in for an API somebody else runs — Polar, a carrier, a payment
+gateway — wherever the real one can't be called: in every feature test, and in
+`gkm dev --fake`. It is a **working implementation** of the API, not a mock:
+the client under test talks HTTP to it exactly as it would to the provider,
+and the test asserts on what the endpoint did and what the fake received,
+never on which functions were called.
+
+### Where a fake lives
+
+One file per [`ExternalApi`](/packages/constructs#an-api-somebody-else-runs),
+at `test/fakes/<id>.ts` in the workspace root — the construct's id in kebab
+case, so `Shipping` is `test/fakes/shipping.ts` and `PayFast` is
+`test/fakes/pay-fast.ts`. gkm finds it by that path, the way it finds
+`test/factories/<database>.ts`.
+
+The construct never imports its fake. That is what keeps a fake, and the
+responses it answers from, out of every deployed bundle, however a bundler
+follows imports.
+
+### Writing one
+
+Default-export `fake.app(…)` with a fetch handler — a Hono app is the usual
+one — and the credentials the fake accepts:
+
+```typescript
+// test/fakes/shipping.ts
+import { fake } from '@geekmidas/constructs/external-api';
+import type { shipping } from '../../constructs/shipping';
+import { Hono } from 'hono';
+
+const carrier = new Hono().post('/quotes', async (c) => {
+  // Refuse what the provider refuses, so the client's error path is tested.
+  if (c.req.header('authorization') !== 'Bearer fake-key') {
+    return c.json({ error: 'unknown key' }, 401);
+  }
+
+  const { destination, weightKg } = await c.req.json();
+  return c.json({ destination, amount: 50 + weightKg * 10 });
+});
+
+export default fake.app<typeof shipping>(carrier, {
+  credentials: { apiKey: 'fake-key' },
+});
+```
+
+- **Answer in the provider's shape.** Start from a recorded response — the
+  provider's docs, or a sandbox call saved as JSON beside the fake — so the
+  client parses what it will parse in production.
+- **Cover the paths the client handles**: the refusal for bad credentials, a
+  missing resource, a rate limit. A fake that only ever succeeds tests only
+  the happy path.
+- **`credentials`** are what a test and `gkm dev --fake` hand the construct as
+  `<ID>_CREDENTIALS`. `fake.app<typeof shipping>` checks them against the
+  construct's schema, and the handler checks them the way the provider would.
+
+### Asserting on what it received
+
+A fake can export more than its default. Keep what it was asked for, export a
+way to read it, and import that in the test — it is the same module instance
+the harness serves:
+
+```typescript
+// test/fakes/shipping.ts
+const asked = new Map<string, QuoteRequest[]>();
+
+export function quotesFor(destination: string): QuoteRequest[] {
+  return asked.get(destination) ?? [];
+}
+
+// …in the handler: asked.set(destination, [...quotesFor(destination), request])
+```
+
+```typescript
+// apps/api/__tests__/shipping.spec.ts
+import { it } from '#test';
+import { quotesFor } from '../../../test/fakes/shipping';
+
+it('asks the carrier for exactly the parcel it was given', async ({
+  browser,
+  faker,
+}) => {
+  const destination = faker.location.city();
+
+  await browser.api.post('/shipping/quotes', {
+    body: { destination, weightKg: 3.5 },
+  });
+
+  expect(quotesFor(destination)).toEqual([{ destination, weightKg: 3.5 }]);
+});
+```
+
+### State lives for the test file
+
+A fake is loaded once per test file, not once per test, so what it keeps
+carries over from one test to the next in the same file. Read state by a key
+the test chose — a destination, a user id, an email from the test's `faker` —
+rather than the whole list, as above. Where that isn't possible, export a
+`reset()` from the fake and call it in a `beforeEach`. Different test files
+never share a fake's state.
+
+### A provider's own local server
+
+Where the provider publishes one — Stripe's `stripe-mock` — use its image
+instead of writing a fake. It runs as a container beside Postgres and Mailpit,
+on an allocated host port, in tests and in `gkm dev --fake`:
+
+```typescript
+// test/fakes/stripe.ts
+import { fake } from '@geekmidas/constructs/external-api';
+import type { stripe } from '../../constructs/stripe';
+
+export default fake.image<typeof stripe>('stripe/stripe-mock', {
+  port: 12111, // the port the image listens on inside the container
+  credentials: { secretKey: 'sk_test_fake', webhookSecret: 'whsec_fake' },
+});
+```
+
+There is nothing to import from an image fake: assert on what the endpoint
+returned, or on what the provider's server reports through its own API.
+
+### In `gkm dev`
+
+`gkm dev` calls the real API — its sandbox — with the local stage's own
+credentials. `gkm dev --fake` serves every app fake on a port of its own and
+runs every image fake, and the apps it starts are pointed at them.
+
+### When there is none
+
+`gkm test` and `gkm dev --fake` stop before anything runs:
+
+| Error | Means |
+|---|---|
+| `NoFake` | an `ExternalApi` has no `test/fakes/<id>.ts`; the message names the file to create |
+| `NotAFake` | the file's default export isn't `fake.app(…)` or `fake.image(…)` |
+
+Commands that act on a stage — `gkm setup`, `secrets:*`, `deploy` — never read
+a fake, and don't need one to exist.
 
 ## Unit Testing
 

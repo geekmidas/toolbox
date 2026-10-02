@@ -11,17 +11,38 @@ import { Hono } from 'hono';
  * path, `test/fakes/<construct>.ts`; the construct never imports it, so it is
  * in no deployed bundle.
  */
+/** A quote the carrier was asked for. */
+export interface QuoteRequest {
+	destination: string;
+	weightKg: number;
+}
+
+/**
+ * Every quote the carrier was asked for, by destination — what a test asserts
+ * on, by importing it from here.
+ *
+ * Keyed by something the test chooses, because this module is loaded once per
+ * test file: a test reading the whole list would see the tests before it.
+ */
+const asked = new Map<string, QuoteRequest[]>();
+
+/** The quotes asked for a destination. */
+export function quotesFor(destination: string): QuoteRequest[] {
+	return asked.get(destination) ?? [];
+}
+
 const carrier = new Hono().post('/quotes', async (c) => {
 	if (c.req.header('authorization') !== 'Bearer fake-key') {
 		return c.json({ error: 'unknown key' }, 401);
 	}
 
-	const { destination, weightKg } = await c.req.json<{
-		destination: string;
-		weightKg: number;
-	}>();
+	const request = await c.req.json<QuoteRequest>();
+	asked.set(request.destination, [...quotesFor(request.destination), request]);
 
-	return c.json({ destination, amount: 50 + weightKg * 10 });
+	return c.json({
+		destination: request.destination,
+		amount: 50 + request.weightKg * 10,
+	});
 });
 
 export default fake.app<typeof shipping>(carrier, {

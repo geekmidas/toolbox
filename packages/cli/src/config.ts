@@ -290,12 +290,13 @@ export interface AppConfigResult {
 }
 
 /**
- * The app a directory is part of: the one whose configured `path` contains it.
+ * The app a directory is part of: the one whose `path` contains it.
  *
- * Read off the config, never the filesystem's package names — an app is where
- * `gkm.config.ts` says it is, whatever its `package.json` happens to be
- * called. The deepest match wins, so an app inside another app's folder is its
- * own; the workspace root belongs to no app unless one lives there.
+ * An app's path is the one its construct declares — `new RestApi('Api',
+ * { path: 'apps/api' })` — read off the workspace the constructs were derived
+ * into, never off the filesystem's package names. The deepest match wins, so
+ * an app inside another app's folder is its own; the workspace root belongs to
+ * no app unless one lives there.
  */
 function resolveWorkspaceApp(
 	loadedConfig: LoadedConfig,
@@ -328,7 +329,7 @@ export class NotInAnApp extends Error {
 		readonly apps: Readonly<Record<string, string>>,
 	) {
 		super(
-			`${cwd} is not inside any app in gkm.config.ts. Apps: ` +
+			`${cwd} is not inside any app's path. Apps: ` +
 				Object.entries(apps)
 					.map(([key, path]) => `${key} (${path})`)
 					.join(', ') +
@@ -350,11 +351,11 @@ function appPaths(loadedConfig: LoadedConfig): Record<string, string> {
 
 /**
  * The backend app a directory is part of, with its gkm config — found by the
- * `path` each app is configured at.
+ * `path` its construct declares.
  *
  * @example
  * ```ts
- * // From apps/api, where gkm.config.ts declares an app at `apps/api`
+ * // From apps/api, where a construct declares `path: 'apps/api'`
  * const { app, workspace, workspaceRoot } = await loadAppConfig();
  * ```
  *
@@ -400,7 +401,7 @@ export interface WorkspaceAppInfo {
 
 /**
  * The app a directory is part of, frontend or backend — found by the `path`
- * each app is configured at. Unlike `loadAppConfig`, the app need not have a
+ * its construct declares. Unlike `loadAppConfig`, the app need not have a
  * gkm config, which is what `gkm exec` and `gkm test` from a site need.
  *
  * @throws {NotInAnApp} when no app's path contains the directory.
