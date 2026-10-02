@@ -1,5 +1,6 @@
 import {
 	DEFAULT_POSTGRES_VERSION,
+	kebabCase,
 	type PostgresVersion,
 } from '@geekmidas/manifest';
 /**
@@ -93,8 +94,42 @@ const PORTS: Readonly<Record<string, readonly ContainerPort[]>> = {
 	caddy: [{ key: 'caddy', inside: 443, label: 'https edge' }],
 };
 
-/** The ports a container needs published. Empty for one gkm does not know. */
-export function portsOf(container: string): readonly ContainerPort[] {
+/**
+ * An external API's fake, as the local target runs it.
+ *
+ * Keyed by its port key, `<id>-fake`, which is also its container's name when
+ * it has one — so `primaryPortKey` finds its port with no table to consult.
+ * A module fake has no image: gkm serves it, on the port this key is assigned.
+ */
+export interface PlannedFake {
+	/** The external API it stands in for. */
+	id: string;
+	/** The image to run, for a fake the provider publishes. */
+	image?: string;
+	/** The port that image listens on inside the container. */
+	port?: number;
+}
+
+/** The port key — and container name, for an image — of an API's fake. */
+export function fakeKey(id: string): string {
+	return `${kebabCase(id)}-fake`;
+}
+
+/**
+ * The ports a container needs published. Empty for one gkm does not know.
+ *
+ * `fakes` answers for the containers no table can: an external API's fake
+ * listens wherever its declaration says.
+ */
+export function portsOf(
+	container: string,
+	fakes: Readonly<Record<string, PlannedFake>> = {},
+): readonly ContainerPort[] {
+	const fake = fakes[container];
+	if (fake?.port !== undefined) {
+		return [{ key: container, inside: fake.port, label: `${fake.id} fake` }];
+	}
+
 	return PORTS[container] ?? [];
 }
 
@@ -109,10 +144,16 @@ export function primaryPortKey(container: string): string {
  * What allocation is handed: it assigns ports to names and knows nothing about
  * what listens on them.
  */
-export function portKeys(containers: readonly string[]): string[] {
-	return [...containers]
+export function portKeys(
+	containers: readonly string[],
+	fakes: Readonly<Record<string, PlannedFake>> = {},
+): string[] {
+	const keys = [...containers]
 		.sort()
-		.flatMap((container) => portsOf(container).map((port) => port.key));
+		.flatMap((container) => portsOf(container, fakes).map((port) => port.key));
+
+	// A module fake runs in no container, and still needs a port to answer on.
+	return [...new Set([...keys, ...Object.keys(fakes).sort()])];
 }
 
 /**

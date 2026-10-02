@@ -848,6 +848,9 @@ export async function workspaceDeployCommand(
 			environmentId: environmentId as string,
 			stage,
 			appUrls,
+			// What `gkm secrets:set` gave this stage: a third party's credentials,
+			// which a construct reads itself and the sniffer therefore never sees.
+			...(stageSecrets ? { supplied: stageSecrets.custom } : {}),
 			// The one already discovered above, so a deploy reads the manifest once
 			// and cannot act on two different versions of it.
 			manifest,

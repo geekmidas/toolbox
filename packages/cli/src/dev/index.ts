@@ -52,6 +52,7 @@ import {
 	type MobileFramework,
 	type NormalizedWorkspace,
 } from '../workspace/index.js';
+import { closeFakes, serveFakes } from './fakes.js';
 
 // Re-export shared utilities from credentials module so existing imports
 // from '../dev' or '../dev/index' continue to work.
@@ -932,6 +933,13 @@ async function workspaceDevCommand(
 		...reconciled.env,
 	};
 
+	// Here and not in reconcile: every app's own `gkm dev` reconciles too, and
+	// only this process — the one that outlives them — may own the ports.
+	const fakes = await serveFakes(reconciled.fakes, reconciled.ports);
+	for (const { id, port } of fakes) {
+		logger.log(`🎭 ${id} fake: http://localhost:${port}`);
+	}
+
 	// Asked for, the databases are migrated (and seeded) before anything
 	// starts, and a failure stops here. Otherwise pending migrations are only
 	// reported, and a failure to check is only a warning: nothing about it
@@ -1091,6 +1099,7 @@ async function workspaceDevCommand(
 		isShuttingDown = true;
 
 		logger.log('\n🛑 Shutting down workspace...');
+		closeFakes(fakes);
 
 		// Kill turbo process group
 		const pid = turboProcess.pid;

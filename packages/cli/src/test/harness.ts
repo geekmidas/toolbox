@@ -37,6 +37,7 @@ import {
 import { EndpointGenerator } from '../generators/EndpointGenerator.js';
 import { OpenApiTsGenerator } from '../generators/OpenApiTsGenerator.js';
 import { type ConstructSource, discover } from '../reconcile/discover.js';
+import { readFakes } from '../reconcile/fakes.js';
 import type { CacheBackend } from '../types.js';
 
 /**
@@ -273,6 +274,11 @@ export async function writeTestHarness(
 		options.factories,
 		databases.map(({ id }) => id),
 	);
+	// Each external API's fake, from the convention rather than the construct —
+	// which is what keeps a fake out of every deployed bundle.
+	const fakes = Object.entries(await readFakes(options.root, declared)).map(
+		([id, { file }]) => ({ id, file }),
+	);
 	const files = [
 		...new Set([
 			...Object.values(manifest.constructs).map(({ source }) => source.file),
@@ -293,6 +299,7 @@ export async function writeTestHarness(
 			auths,
 			drivers,
 			factories,
+			fakes,
 			mail: Object.values(declared).some(({ kind }) => kind === 'email'),
 		});
 	const json = `${JSON.stringify(manifest, null, 2)}\n`;
@@ -418,11 +425,22 @@ function harnessModule(options: {
 	auths: AuthClient[];
 	drivers: RuntimeDrivers;
 	factories: FactorySource[];
+	/** Each external API's fake, by construct id and the file it lives in. */
+	fakes: { id: string; file: string }[];
 	/** Whether the app sends mail — what a magic-link sign-in is read from. */
 	mail: boolean;
 }): string {
-	const { surfaces, auths, drivers, databases, dir, files, factories, mail } =
-		options;
+	const {
+		surfaces,
+		auths,
+		drivers,
+		databases,
+		dir,
+		files,
+		factories,
+		fakes,
+		mail,
+	} = options;
 	// One auth server a test can sign in to without a person: a magic link,
 	// read from the app's inbox. With two, which one \`signIn\` means is a
 	// guess, so neither gets it.
@@ -453,6 +471,10 @@ function harnessModule(options: {
 		...factories.map(
 			({ file, service }) =>
 				`import { createFactory as __${service}Factory } from '${specifierFrom(dir, file)}';`,
+		),
+		...fakes.map(
+			({ id, file }) =>
+				`import __${id}Fake from '${specifierFrom(dir, file)}';`,
 		),
 		// Every construct and endpoint module, imported here — inside the app,
 		// where its tsconfig paths resolve — rather than by path from the kit.
@@ -493,8 +515,9 @@ function harnessModule(options: {
 					`	/**
 	 * Sign in as \`email\` through \`${signIn.id}\`'s magic link, the way a person
 	 * does — the email opened, the link followed. The session it then reports.
+	 * Without an address, as somebody new: \`user.email\` says who.
 	 */
-	signIn(email: string) {
+	signIn(email?: string) {
 		return signInWithMagicLink(this, this.${propertyOf(signIn.id)}, email);
 	}`,
 				]
@@ -507,6 +530,9 @@ function harnessModule(options: {
 		: '';
 	const factoriesOption = factories.length
 		? `, factories: { ${factories.map(({ service }) => `${service}: __${service}Factory`).join(', ')} }`
+		: '';
+	const fakesOption = fakes.length
+		? `, fakes: { ${fakes.map(({ id }) => `${id}: __${id}Fake`).join(', ')} }`
 		: '';
 	// Each database's schema, keyed as the test is handed its transaction.
 	const databasesType = `{ ${databases.map(({ id, service }) => `${service}: DatabaseOf<typeof __${id}>`).join('; ')} }`;
@@ -530,6 +556,6 @@ ${files.map((file, index) => `\t${JSON.stringify(file)}: __module${index},`).joi
 };
 
 /** \`it\`, for a test that drives the app the way it runs deployed. */
-export const it = featureTest${generics}({ manifest, modules, browser: Browser${factoriesOption} });
+export const it = featureTest${generics}({ manifest, modules, browser: Browser${factoriesOption}${fakesOption} });
 `;
 }

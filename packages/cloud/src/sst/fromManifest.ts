@@ -45,6 +45,7 @@ import { Database, DatabaseNeedsVpc, type DatabaseProps } from './aws/Database';
 import { DatabaseBootstrap } from './aws/DatabaseBootstrap';
 import { DatabaseReader, DatabaseSchema } from './aws/DerivedDatabase';
 import { Email, EmailNeedsSender } from './aws/Email';
+import { ExternalApi, type ExternalApiProps } from './aws/ExternalApi';
 import { FileServer } from './aws/FileServer';
 import { ObjectStorage } from './aws/ObjectStorage';
 import { Queue } from './aws/Queue';
@@ -399,6 +400,19 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 
 	// The same storage as a secret, under a different role — see the component.
 	credential: (stack, d, props) => new Credential(stack, d.id, props),
+
+	// Nothing to provision: the URL this stage calls, and the credentials kept
+	// as a secret.
+	'external-api': (stack, d, props) => {
+		if (d.kind !== 'external-api') {
+			throw new UnknownDeclarationKind(d.kind, []);
+		}
+
+		return new ExternalApi(stack, d.id, {
+			...(props as Partial<ExternalApiProps>),
+			url: d.url,
+		});
+	},
 };
 
 /**

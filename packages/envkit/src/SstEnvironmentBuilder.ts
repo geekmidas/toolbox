@@ -41,6 +41,8 @@ export enum ResourceType {
 	// a cache is whatever the selected backend turned out to be.
 	Email = 'gkm:aws:Email',
 	Cache = 'gkm:aws:Cache',
+	// Somebody else's API: an address and the credentials it was issued.
+	ExternalApi = 'gkm:aws:ExternalApi',
 }
 
 /**
@@ -145,6 +147,7 @@ export type SstResource =
 
 // Value types without the `type` key (for resolver parameters)
 type SecretValue = Omit<Secret, 'type'>;
+type ExternalApiValue = { url: string; credentials: string };
 type PostgresValue = Omit<Postgres, 'type'>;
 type BucketValue = Omit<Bucket, 'type'>;
 type SnsTopicValue = Omit<SnsTopic, 'type'>;
@@ -204,6 +207,11 @@ const dynamoResolver = (name: string, value: DynamoValue) => ({
 	[`${name}Name`]: value.name,
 });
 
+const externalApiResolver = (name: string, value: ExternalApiValue) => ({
+	[`${name}Url`]: value.url,
+	[`${name}Credentials`]: value.credentials,
+});
+
 const noopResolver = () => ({});
 
 /**
@@ -229,6 +237,7 @@ export const sstResolvers: Resolvers = {
 	[ResourceType.SnsTopic]: topicResolver,
 	[ResourceType.SSTDynamo]: dynamoResolver,
 	[ResourceType.SSTQueue]: queueResolver,
+	[ResourceType.ExternalApi]: externalApiResolver,
 };
 
 /**

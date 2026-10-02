@@ -172,6 +172,13 @@ export function envFor(
 			if (owner) env[provideKey(resource.id, 'ownerUrl')] = owner;
 		}
 
+		// An external API owns a second key, and here it is the fake's: the
+		// stage's real credentials are for the provider, which nothing local
+		// ever calls.
+		if (resource.kind === 'external-api' && url && resource.fake) {
+			env[provideKey(resource.id, 'credentials')] = resource.fake.credentials;
+		}
+
 		// Mail owns a second key. It is the sending identity, which is the one
 		// thing about mail that differs per stage — so it travels with the URL
 		// rather than being written into the construct.
@@ -471,6 +478,13 @@ function urlFor(
 	// `gkm secrets` or `.env` like any other supplied value, and the construct's
 	// own schema is what reports it missing.
 	if (resource.kind === 'credential') return undefined;
+
+	// An external API is never the provider here: it is its fake, on the port
+	// its key was assigned — a container's for an image, gkm's own for a module.
+	if (resource.kind === 'external-api') {
+		const port = resource.fake ? ports[resource.fake.key] : undefined;
+		return port === undefined ? undefined : `http://${LOCAL_HOST}:${port}`;
+	}
 
 	// A surface answers on the app's own port, and a site on its dev server's —
 	// both assigned by the workspace, neither published by a container.

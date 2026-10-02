@@ -228,4 +228,14 @@ describe('faker', () => {
 			});
 		});
 	});
+	describe('seed', () => {
+		it('makes what follows repeatable', () => {
+			faker.seed(42);
+			const first = [faker.internet.email(), faker.string.uuid()];
+			faker.seed(42);
+			const second = [faker.internet.email(), faker.string.uuid()];
+
+			expect(second).toEqual(first);
+		});
+	});
 });

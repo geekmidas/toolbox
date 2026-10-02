@@ -1,4 +1,8 @@
-import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
+import {
+	type ConstructManifest,
+	NoUrlForStage,
+	provisionOrder,
+} from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import type { DokployApi } from '../dokploy-api';
 import {
@@ -6,6 +10,7 @@ import {
 	CacheIsAmbiguous,
 	CacheNeedsAHome,
 	type DokployProvisionContext,
+	MissingSuppliedSecret,
 	type Provisioned,
 	provisionableKinds,
 	provisionerFor,
@@ -716,5 +721,78 @@ describe('a surface a mobile app calls', () => {
 		expect(env.AUTH_TRUSTED_ORIGINS).toBe('shop://,shop://*');
 		// A scheme is not a host anything shares a cookie with.
 		expect(env.AUTH_COOKIE_DOMAIN).toBeUndefined();
+	});
+});
+
+describe('a third party’s credentials', () => {
+	const stripe = {
+		Stripe: {
+			kind: 'credential',
+			id: 'Stripe',
+			provides: ['STRIPE_CREDENTIALS'],
+		},
+	} as unknown as ConstructManifest;
+
+	it('come from what the stage was given', async () => {
+		const { env } = await provision(
+			{ supplied: { STRIPE_CREDENTIALS: '{"secretKey":"sk_live_1"}' } },
+			stripe,
+		);
+
+		expect(env.STRIPE_CREDENTIALS).toBe('{"secretKey":"sk_live_1"}');
+	});
+
+	it('fail the deploy when the stage was never given them, naming the command', async () => {
+		await expect(provision({}, stripe)).rejects.toThrow(MissingSuppliedSecret);
+		await expect(provision({}, stripe)).rejects.toThrow(
+			"gkm secrets:set STRIPE_CREDENTIALS '…' --stage production",
+		);
+	});
+});
+
+describe('an external API', () => {
+	const payfast = {
+		PayFast: {
+			kind: 'external-api',
+			id: 'PayFast',
+			url: {
+				production: 'https://www.payfast.co.za',
+				default: 'https://sandbox.payfast.co.za',
+			},
+			provides: ['PAY_FAST_URL', 'PAY_FAST_CREDENTIALS'],
+		},
+	} as unknown as ConstructManifest;
+	const supplied = { PAY_FAST_CREDENTIALS: '{"merchantId":"m_1"}' };
+
+	it('is called at the URL for its stage, with the stage’s credentials', async () => {
+		const { env } = await provision({ supplied }, payfast);
+
+		expect(env).toMatchObject({
+			PAY_FAST_URL: 'https://www.payfast.co.za',
+			PAY_FAST_CREDENTIALS: '{"merchantId":"m_1"}',
+		});
+	});
+
+	it('falls back to the default URL for a stage it does not name', async () => {
+		const { env } = await provision({ supplied, stage: 'staging' }, payfast);
+
+		expect(env.PAY_FAST_URL).toBe('https://sandbox.payfast.co.za');
+	});
+
+	it('fails the deploy when the stage was never given its credentials', async () => {
+		await expect(provision({}, payfast)).rejects.toThrow(MissingSuppliedSecret);
+	});
+
+	it('fails the deploy for a stage it has no URL for', async () => {
+		const prodOnly = {
+			PayFast: {
+				...payfast.PayFast,
+				url: { production: 'https://www.payfast.co.za' },
+			},
+		} as unknown as ConstructManifest;
+
+		await expect(
+			provision({ supplied, stage: 'staging' }, prodOnly),
+		).rejects.toThrow(NoUrlForStage);
 	});
 });

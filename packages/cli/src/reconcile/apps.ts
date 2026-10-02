@@ -29,7 +29,7 @@ import type { NormalizedWorkspace } from '../workspace/types.js';
 import type { ComposeService } from './compose.js';
 import { portKeys, portsOf } from './containers.js';
 import { envFor } from './env.js';
-import { planFor } from './plan.js';
+import { type PlanOptions, planFor } from './plan.js';
 import { backendsOf, surfaceAddresses } from './workspace.js';
 
 /** The profile app services carry, so `gkm dev` starts only the containers. */
@@ -58,6 +58,12 @@ export function dockerfileOf(appName: string, path: string): string {
 export function inNetworkEnv(
 	workspace: NormalizedWorkspace,
 	manifest: ConstructManifest,
+	/**
+	 * External APIs' fakes. An image fake is a container on the network like
+	 * any other; a module fake is served by `gkm dev` on the host, which an app
+	 * container does not reach, so its URL is left as the host sees it.
+	 */
+	fakes: PlanOptions['fakes'] = {},
 ): Record<string, string> {
 	const plan = planFor(
 		manifest,
@@ -66,6 +72,7 @@ export function inNetworkEnv(
 		{
 			localStage: workspace.stages.local,
 			...backendsOf(workspace),
+			fakes,
 		},
 	);
 
@@ -73,14 +80,14 @@ export function inNetworkEnv(
 	const targets = new Map<number, string>();
 	let next = 49_152;
 	for (const container of [...plan.containers].sort()) {
-		for (const port of portsOf(container)) {
+		for (const port of portsOf(container, plan.fakes)) {
 			placeholders[port.key] = next;
 			targets.set(next, `${container}:${port.inside}`);
 			next += 1;
 		}
 	}
 	// Every key allocation would have assigned, so envFor finds each one.
-	for (const key of portKeys(plan.containers)) {
+	for (const key of portKeys(plan.containers, plan.fakes)) {
 		placeholders[key] ??= next++;
 	}
 
@@ -200,8 +207,9 @@ export function appServices(
 	manifest: ConstructManifest,
 	containers: readonly string[],
 	runnables: Readonly<Record<string, readonly string[]>> = {},
+	fakes: PlanOptions['fakes'] = {},
 ): Record<string, ComposeService> {
-	const env = inNetworkEnv(workspace, manifest);
+	const env = inNetworkEnv(workspace, manifest, fakes);
 	const services: Record<string, ComposeService> = {};
 
 	for (const [name, app] of Object.entries(workspace.apps)) {

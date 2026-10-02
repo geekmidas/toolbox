@@ -22,6 +22,7 @@ import { allConstructGlobs } from '../workspace/index.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { appServices } from './apps.js';
 import { discover } from './discover.js';
+import { readFakes } from './fakes.js';
 import { type ReconcileResult, reconcile } from './index.js';
 import { planFor } from './plan.js';
 
@@ -66,6 +67,7 @@ export async function derivedContainers(
 	return planFor(found, stage, provisionOrder(found), {
 		localStage: workspace.stages.local,
 		...backendsOf(workspace),
+		fakes: await readFakes(workspace.root, found),
 	}).containers;
 }
 
@@ -96,6 +98,7 @@ export async function reconcileWorkspace(
 		runnables,
 	});
 	const manifest = options.manifest ?? discovered;
+	const fakes = await readFakes(workspace.root, manifest);
 
 	const result = await reconcile({
 		root: workspace.root,
@@ -107,8 +110,9 @@ export async function reconcileWorkspace(
 		saved: await loadPortState(workspace.root),
 		addresses: surfaceAddresses(workspace, manifest),
 		metroPorts: metroPorts(workspace, manifest),
+		fakes,
 		apps: (containers) =>
-			appServices(workspace, manifest, containers, runnables),
+			appServices(workspace, manifest, containers, runnables, fakes),
 		...(options.start === undefined ? {} : { start: options.start }),
 	});
 

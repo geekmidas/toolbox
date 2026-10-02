@@ -13,7 +13,7 @@ import { z } from 'zod';
  * somebody forgot. Set it as one JSON value:
  *
  * ```
- * gkm secrets:set PAYMENTS_CREDENTIAL '{"secretKey":"sk_...","webhookSecret":"whsec_..."}'
+ * gkm secrets:set PAYMENTS_CREDENTIALS '{"secretKey":"sk_...","webhookSecret":"whsec_..."}'
  * ```
  *
  * A handler reaches it as `services.payments.secretKey` — already parsed, with

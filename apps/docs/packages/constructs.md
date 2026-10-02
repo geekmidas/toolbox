@@ -49,6 +49,7 @@ pnpm add @geekmidas/constructs
 | `/file-server` | `FileServer` — a domain that serves a bucket's objects |
 | `/cache` | `Cache` — a declared cache |
 | `/credential` | `Credential` — a third-party credential with a shape |
+| `/external-api` | `ExternalApi` — an HTTP API somebody else runs, faked locally |
 | `/email` | `Email` — declared outbound mail |
 | `/rest-api` | `RestApi` — an API surface |
 | `/site` | `StaticSite` — a declared static site |
@@ -108,6 +109,7 @@ drift.
 | `FileServer` | `/file-server` | a `StorageClient` **superset** — plus `url()` and `signedUrl()` |
 | `Cache` | `/cache` | `CacheClient` |
 | `Credential` | `/credential` | the parsed, validated value — no `await` at the call site |
+| `ExternalApi` | `/external-api` | whatever its `client` builds — the real API deployed, its fake locally |
 | `Email` | `/email` | an `EmailClient` typed by your templates |
 | `Topic` | `/topic` | `topic.publisher` — a typed `EventPublisher` |
 | `Queue` | `/queue` | `send()` |
@@ -143,6 +145,90 @@ does not match the shape, which is what keeps environment sniffing confined to
 A construct that owns no client — a `Cron`, a `Subscriber` — types its
 `service` as `never`, so depending on one is a compile error rather than a stub
 that throws at runtime. You cannot call a queue worker; you send to its queue.
+
+### An API somebody else runs
+
+Polar, Stripe, a payment gateway: nothing to provision, but an address that
+changes by stage and credentials the provider issued for each one.
+
+```typescript
+// constructs/polar.ts
+import { ExternalApi } from '@geekmidas/constructs/external-api';
+
+export const polar = new ExternalApi('Polar', {
+  url: 'https://www.polaraccesslink.com',
+  credentials: z.object({ clientId: z.string(), clientSecret: z.string() }),
+  client: ({ url, credentials }) => new PolarClient(url, credentials),
+});
+
+.dependsOn([polar])
+.handle(async ({ services }) => services.polar.exchangeCode(code))
+```
+
+It provides two keys, `POLAR_URL` and `POLAR_CREDENTIALS`:
+
+| | Deployed | `gkm dev` | Tests |
+|---|---|---|---|
+| `POLAR_URL` | `url` | the fake | the fake |
+| `POLAR_CREDENTIALS` | the stage's secret | the fake's `credentials` | the fake's `credentials` |
+
+**`url` is one URL or one per stage.** A string answers every stage. A record
+is keyed by stage name, with `default` for any stage not listed — for a
+provider whose sandbox lives somewhere else:
+
+```typescript
+url: {
+  prod: 'https://www.payfast.co.za',
+  default: 'https://sandbox.payfast.co.za',
+},
+```
+
+**Credentials are one JSON value per stage:**
+
+```bash
+gkm secrets:set POLAR_CREDENTIALS '{"clientId":"…","clientSecret":"…"}' --stage prod
+```
+
+Both are checked at deploy: a stage the `url` record does not name, with no
+`default`, fails with `NoUrlForStage`, and a stage with no `POLAR_CREDENTIALS`
+fails with `MissingSuppliedSecret`, naming the command above. The JSON itself
+is validated against the schema when the process starts (`MalformedCredential`).
+
+#### The fake
+
+**The construct never names its fake** — so no bundler can carry a fake, or the
+responses it answers from, into a deployed build. It lives at
+`test/fakes/<id>.ts`, found by name the way `test/factories/<database>.ts` is,
+and default-exports one of two things.
+
+An app — a working implementation of the API, served by gkm in-process
+through MSW in a feature test and on an allocated port in `gkm dev`:
+
+```typescript
+// test/fakes/polar.ts
+import { fake } from '@geekmidas/constructs/external-api';
+import type { polar } from '../../constructs/polar';
+
+export default fake.app<typeof polar>(
+  new Hono().post('/v3/oauth2/token', (c) => c.json({ access_token: 'fake' })),
+  { credentials: { clientId: 'fake', clientSecret: 'fake' } },
+);
+```
+
+Or an image the provider publishes, run as a container. `port` is the one it
+listens on inside; the host port is allocated like every other container's:
+
+```typescript
+// test/fakes/stripe.ts
+export default fake.image<typeof stripe>('stripe/stripe-mock', {
+  port: 12111,
+  credentials: { secretKey: 'sk_test_fake', webhookSecret: 'whsec_fake' },
+});
+```
+
+`<typeof polar>` checks the fake's credentials against the construct's schema.
+An external API with no fake fails a local stage with `NoFake`, naming the file
+to create.
 
 ### The database, and what comes off it
 

@@ -81,6 +81,33 @@ pnpm test:ui           # Visual UI
 pnpm test path/to/file # Specific file
 ```
 
+## Feature Tests
+
+`gkm test` generates `#test`: an `it` that hands each test what it uses, by
+name, so a test imports nothing but `it`:
+
+```typescript
+import { it } from '#test';
+
+it('updates my profile', async ({ browser, faker }) => {
+  const { user } = await browser.signIn();
+  await browser.api.post('/users', {
+    body: { name: faker.person.fullName(), email: user.email },
+  });
+  // …
+});
+```
+
+- **`browser.signIn()`** signs in through the auth server's magic link, the way
+  a person does: the email really sent to Mailpit, the link really followed.
+  With no address it signs in as somebody new, unique to the test, and
+  `user.email` says who. Pass an address when the test needs a particular one.
+- **`faker`** is testkit's faker, the same one factories are given, seeded
+  from the test's name: a failing test fails again with the same data.
+- **An `ExternalApi`'s fake** — `test/fakes/<id>.ts` — answers at the URL the
+  test stage resolved for it, served in-process like a `RestApi`, so a handler
+  that calls Polar calls the fake with nothing for the test to set up.
+
 ## Unit Testing
 
 ### Testing Services
@@ -218,7 +245,9 @@ describe('User API', () => {
 
 ## Mocking External APIs with MSW
 
-Use Mock Service Worker for external HTTP APIs:
+An API declared as an [`ExternalApi`](/packages/constructs#an-api-somebody-else-runs)
+needs none of this in a feature test: its fake is served at its URL for you.
+For code that calls an API directly, use Mock Service Worker:
 
 ```typescript
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';

@@ -46,6 +46,7 @@ import {
 	type Declaration,
 	type DeclarationKind,
 	dependentsOf,
+	externalApiUrl,
 	mobileOrigins,
 	provideKey,
 	schemeBase,
@@ -107,6 +108,12 @@ export interface DokployProvisionContext {
 	 * one and invalidate every live session.
 	 */
 	secrets?: Readonly<Record<string, string>>;
+	/**
+	 * What the stage was given by hand — `gkm secrets:set KEY … --stage` — by
+	 * key. Where a third party's credentials come from: nothing here can derive
+	 * a Stripe key.
+	 */
+	supplied?: Readonly<Record<string, string>>;
 	/** DDL accumulated by the provisioners, applied once at the end. */
 	deferred: DeferredStatement[];
 	/**
@@ -525,6 +532,43 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	},
 
 	/**
+	 * A third party's credentials, as the stage was given them.
+	 *
+	 * Nothing is created and nothing derived: the value was issued by somebody
+	 * else. A stage that was never given one fails the deploy here, naming the
+	 * command that sets it — not the first request that needs it.
+	 */
+	credential: async (declaration, context) => {
+		if (declaration.kind !== 'credential') {
+			throw new WrongKind(declaration.kind);
+		}
+
+		const key = provideKey(declaration.id, 'credentials');
+		return { provides: { [key]: supplied(declaration.id, key, context) } };
+	},
+
+	/**
+	 * An API somebody else runs: the URL this stage calls it at, and the
+	 * credentials it was issued for this stage.
+	 */
+	'external-api': async (declaration, context) => {
+		if (declaration.kind !== 'external-api') {
+			throw new WrongKind(declaration.kind);
+		}
+
+		const credentials = provideKey(declaration.id, 'credentials');
+		return {
+			provides: {
+				[provideKey(declaration.id, 'url')]: externalApiUrl(
+					declaration,
+					context.stage,
+				),
+				[credentials]: supplied(declaration.id, credentials, context),
+			},
+		};
+	},
+
+	/**
 	 * A surface, at the address whatever created its domain assigned.
 	 *
 	 * Nothing is provisioned here: the application and its domain are the
@@ -854,6 +898,40 @@ function quoted(name: string): string {
 }
 
 /** A provisioner was handed a declaration of the wrong kind. */
+/**
+ * A value only the stage's own secrets can hold.
+ *
+ * @throws {MissingSuppliedSecret} when the stage was never given it.
+ */
+function supplied(
+	id: string,
+	key: string,
+	context: DokployProvisionContext,
+): string {
+	const value = context.supplied?.[key];
+	if (value === undefined) {
+		throw new MissingSuppliedSecret(id, key, context.stage);
+	}
+
+	return value;
+}
+
+/** A construct needs a value the stage was never given. */
+export class MissingSuppliedSecret extends Error {
+	constructor(
+		readonly id: string,
+		readonly key: string,
+		readonly stage: string,
+	) {
+		super(
+			`'${id}' needs ${key}, and the stage '${stage}' has none. It was issued ` +
+				`by a third party, so nothing can derive it: ` +
+				`gkm secrets:set ${key} '…' --stage ${stage}`,
+		);
+		this.name = 'MissingSuppliedSecret';
+	}
+}
+
 export class WrongKind extends Error {
 	constructor(readonly kind: string) {
 		super(`No Dokploy provisioner handles '${kind}'`);

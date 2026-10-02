@@ -24,6 +24,8 @@ import { type CacheBackend, DEFAULT_CACHE, type EventsBackend } from '../types';
 import { appKey } from '../workspace/derive.js';
 import { rootSite } from '../workspace/rootSite.js';
 import { EDGE_KINDS } from './caddyfile';
+import { fakeKey, type PlannedFake } from './containers';
+import type { LocalFake } from './fakes';
 
 /**
  * Which container serves a kind.
@@ -91,6 +93,10 @@ const CONTAINERLESS: Partial<Record<DeclarationKind, true>> = {
 	site: true,
 	// A mobile app resolves its scheme, which nothing has to be running for.
 	'mobile-app': true,
+	// An external API is answered by its fake. A module fake runs in no
+	// container — gkm serves it — and an image's container is added per API,
+	// since no kind-wide table can name it.
+	'external-api': true,
 };
 
 /**
@@ -114,7 +120,7 @@ const REQUIRES: Readonly<Record<string, readonly string[]>> = {
 const ROLES: Partial<Record<DeclarationKind, string>> = {
 	queue: 'publisherConnectionString',
 	topic: 'publisherConnectionString',
-	credential: 'credential',
+	credential: 'credentials',
 	'mobile-app': 'scheme',
 };
 
@@ -239,6 +245,12 @@ export interface PlannedResource {
 	 */
 	open?: readonly string[];
 	/**
+	 * For an external API: the port key its fake answers on, and the
+	 * credentials it accepts — what a local stage is handed in place of the
+	 * provider and the stage's own.
+	 */
+	fake?: { key: string; credentials: string };
+	/**
 	 * For a site: the keys its bundle needs, mapped to the key each value comes
 	 * from — `{ VITE_API_URL: 'API_URL' }`.
 	 *
@@ -288,6 +300,11 @@ export interface Plan {
 	workerBroker?: true;
 	/** Containers to start, deduplicated. */
 	containers: string[];
+	/**
+	 * Each external API's fake, by its port key — `<id>-fake`. An image fake's
+	 * key is also in `containers`; a module fake's is a port gkm serves on.
+	 */
+	fakes?: Record<string, PlannedFake>;
 	/**
 	 * Everything the stage resolves a URL for, parents before children.
 	 *
@@ -341,6 +358,12 @@ export interface PlanOptions {
 	 * construct implies is already in the plan before this is read.
 	 */
 	extraContainers?: readonly string[];
+	/**
+	 * Each external API's fake, by id — read from `test/fakes` by `readFakes`,
+	 * since the declaration never names one. An external API without one
+	 * resolves no URL.
+	 */
+	fakes?: Readonly<Record<string, LocalFake>>;
 }
 
 /**
@@ -422,6 +445,7 @@ export function planFor(
 ): Plan {
 	const containers = new Set<string>();
 	const resources: PlannedResource[] = [];
+	const fakes: Record<string, PlannedFake> = {};
 
 	const events = options.events ?? DEFAULT_EVENTS;
 	const cache = options.cache ?? DEFAULT_CACHE.aws;
@@ -430,13 +454,25 @@ export function planFor(
 		const declaration: Declaration | undefined = manifest[id];
 		if (!declaration) continue;
 
-		const container = containerFor(
-			declaration.kind,
-			events,
-			cache,
-			'of' in declaration && typeof declaration.of === 'string',
-			options.edge !== false,
-		);
+		const local =
+			declaration.kind === 'external-api' ? options.fakes?.[id] : undefined;
+		const fake = local && { key: fakeKey(id), ...local };
+		if (fake) {
+			fakes[fake.key] = {
+				id,
+				...(fake.image ? { image: fake.image, port: fake.port } : {}),
+			};
+		}
+
+		const container = fake?.image
+			? fake.key
+			: containerFor(
+					declaration.kind,
+					events,
+					cache,
+					'of' in declaration && typeof declaration.of === 'string',
+					options.edge !== false,
+				);
 		if (!container && !CONTAINERLESS[declaration.kind]) continue;
 
 		if (container) {
@@ -475,6 +511,9 @@ export function planFor(
 				: {}),
 			...(declaration.kind === 'file-server' && declaration.open?.length
 				? { open: declaration.open }
+				: {}),
+			...(fake
+				? { fake: { key: fake.key, credentials: fake.credentials } }
 				: {}),
 			...('of' in declaration ? { of: declaration.of } : {}),
 			...('schema' in declaration && declaration.schema
@@ -594,6 +633,7 @@ export function planFor(
 		cache,
 		containers: [...containers],
 		resources,
+		...(Object.keys(fakes).length ? { fakes } : {}),
 		...(workerBroker ? { workerBroker: true as const } : {}),
 	};
 }

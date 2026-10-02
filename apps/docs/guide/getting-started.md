@@ -284,6 +284,7 @@ Everything below is real today. `import { X } from '@geekmidas/constructs/…'`:
 | `FileServer` | `/file-server` | storage client **plus** `url()` / `signedUrl()` | MinIO | S3 + CDN |
 | `Cache` | `/cache` | `CacheClient` | Redis / Postgres table | Upstash, ElastiCache, or the database |
 | `Credential` | `/credential` | the parsed, validated value | injected secret | secret manager |
+| `ExternalApi` | `/external-api` | whatever its `client` builds | its fake | the provider's URL |
 | `Email` | `/email` | a sender, typed by your templates | Mailpit | SES, Resend, or SMTP |
 | `Topic` | `/topic` | `topic.publisher` — a typed publisher | pg-boss / RabbitMQ / LocalStack | SNS |
 | `Queue` | `/queue` | `send()` | pg-boss / RabbitMQ / LocalStack | SQS |
@@ -352,7 +353,10 @@ export const stripe = new Credential('Stripe', {
 .handle(async ({ services }) => services.stripe.secretKey)
 ```
 
-A malformed or half-set credential fails when the process starts, not on the
+It is one JSON value per stage, set with
+`gkm secrets:set STRIPE_CREDENTIALS '{"secretKey":"…","webhookSecret":"…"}' --stage prod`.
+A stage that was never given one fails `gkm deploy`, naming that command. A
+malformed or half-set credential fails when the process starts, not on the
 first request that needs the one field somebody forgot.
 
 ---

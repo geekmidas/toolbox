@@ -35,6 +35,7 @@ import {
 	runInTestContext,
 	testContextOf,
 } from '@geekmidas/testkit/context';
+import { type FakerFactory, faker } from '@geekmidas/testkit/faker';
 import { createMailbox, type Mailbox } from '@geekmidas/testkit/mailbox';
 import { TransactionRegistry } from '@geekmidas/testkit/transactions';
 import { Hono } from 'hono';
@@ -47,6 +48,7 @@ import { KyselyDatabase } from '../database/kysely';
 import { Email } from '../email';
 import { Endpoint } from '../endpoints/Endpoint';
 import { HonoEndpoint } from '../endpoints/HonoEndpointAdaptor';
+import type { Fake } from '../external-api';
 import { Queue } from '../queue/Queue';
 import { TestQueueAdaptor } from '../queue/TestQueueAdaptor';
 import type { Subscriber } from '../subscribers/Subscriber';
@@ -83,6 +85,12 @@ export interface FeatureTestOptions<
 	 * back with everything else, and seen by the endpoints it calls.
 	 */
 	factories?: TFactories;
+	/**
+	 * Each external API's fake — the default export of `test/fakes/<id>.ts`,
+	 * which the generated harness imports — keyed by the API's construct id.
+	 * An app fake is served at the URL the test stage resolved for it.
+	 */
+	fakes?: Readonly<Record<string, Fake>>;
 }
 
 /** Each database's schema, keyed by its service name. */
@@ -132,6 +140,12 @@ export interface FeatureContext<
 	 * returns.
 	 */
 	factories: TestFactories<TFactories>;
+	/**
+	 * Testkit's faker — the one factories are handed — seeded from this test's
+	 * name, so a failing test fails again with the same data, and so a test
+	 * imports nothing to make some.
+	 */
+	faker: FakerFactory;
 	/** The mail sent to an address during this test, read from Mailpit. */
 	mailbox: (address: string) => Mailbox;
 	/**
@@ -275,6 +289,9 @@ export function featureTest<
 			...app.auths.map((auth) =>
 				authHandler(auth, manifest.env, app.envParser),
 			),
+			...Object.entries(options.fakes ?? {}).flatMap(([id, fake]) =>
+				fakeHandler(id, fake, manifest.env),
+			),
 		);
 		network.listen({
 			onUnhandledRequest(request, print) {
@@ -293,9 +310,10 @@ export function featureTest<
 	});
 
 	const run =
-		(fn: FeatureFn<TBrowser, TDatabases, TFactories>) =>
+		(name: string, fn: FeatureFn<TBrowser, TDatabases, TFactories>) =>
 		async (): Promise<void> => {
 			const id = randomUUID();
+			faker.seed(seedOf(name));
 			const state: ContextState = {
 				transactions: new TransactionRegistry(),
 				discovery: new ServiceDiscovery(app.envParser),
@@ -369,6 +387,7 @@ export function featureTest<
 							browser,
 							db: db as TestDatabases<TDatabases>,
 							factories: factories as TestFactories<TFactories>,
+							faker,
 							mailbox: (address) => {
 								if (!state.mailbox) throw new NoInbox();
 								return state.mailbox(address);
@@ -401,14 +420,27 @@ export function featureTest<
 			}
 		};
 
-	const it = ((name, fn, timeout) => test(name, run(fn), timeout)) as FeatureIt<
+	const it = ((name, fn, timeout) =>
+		test(name, run(name, fn), timeout)) as FeatureIt<
 		TBrowser,
 		TDatabases,
 		TFactories
 	>;
-	it.only = (name, fn, timeout) => test.only(name, run(fn), timeout);
-	it.skip = (name, fn, timeout) => test.skip(name, run(fn), timeout);
+	it.only = (name, fn, timeout) => test.only(name, run(name, fn), timeout);
+	it.skip = (name, fn, timeout) => test.skip(name, run(name, fn), timeout);
 	return it;
+}
+
+/**
+ * A test's faker seed, from its name: the same test draws the same data on
+ * every run, and two tests draw different data.
+ */
+function seedOf(name: string): number {
+	let hash = 0;
+	for (const char of name) {
+		hash = (Math.imul(hash, 31) + char.charCodeAt(0)) | 0;
+	}
+	return hash >>> 0;
 }
 
 /**
@@ -606,6 +638,28 @@ function surfaceHandlers(
 	});
 }
 
+/**
+ * An external API's app fake, answering at the URL the test stage resolved for
+ * it — so a handler that calls Polar calls the fake, and the test sets up
+ * nothing.
+ *
+ * Not per test, unlike a surface: a fake stands in for somebody else's server,
+ * which no test's transaction reaches. An image fake has no handler here — its
+ * container answers on localhost, which is let through.
+ */
+function fakeHandler(
+	id: string,
+	fake: Fake,
+	env: Record<string, string | undefined>,
+) {
+	const base = env[provideKey(id, 'url')];
+	if (fake.kind !== 'app' || !base) return [];
+
+	return [
+		http.all(`${trim(base)}/*`, ({ request }) => fake.handler.fetch(request)),
+	];
+}
+
 /** An auth server, served at its URL, on the transaction of the test that asked. */
 function authHandler(
 	auth: BetterAuth,
@@ -677,7 +731,7 @@ export interface MagicLinkAuthClient<TSession> {
 export async function signInWithMagicLink<TSession>(
 	browser: TestBrowser,
 	auth: MagicLinkAuthClient<TSession>,
-	email: string,
+	email: string = freshAddress(),
 ): Promise<TSession> {
 	const context = currentTestContext();
 	const state = context && contexts.get(context.id);
@@ -707,6 +761,24 @@ export async function signInWithMagicLink<TSession>(
 		);
 	}
 	return data;
+}
+
+/**
+ * An address nobody else signs in as — what `browser.signIn()` uses when the
+ * test does not care who it is.
+ *
+ * Unique rather than only seeded: tests in other files run at the same time,
+ * against the same Mailpit and the same unique columns, and a seeded address
+ * repeats wherever two tests share a name. The readable half is the seeded
+ * faker's, so a failure still names somebody.
+ */
+function freshAddress(): string {
+	const name = faker.internet
+		.username()
+		.toLowerCase()
+		.replace(/[^a-z0-9]/g, '');
+
+	return `${name}.${randomUUID().slice(0, 8)}@example.test`;
 }
 
 /** `browser.signIn` finished without a session. */

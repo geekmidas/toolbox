@@ -67,6 +67,8 @@ export interface DeclaredOptions {
 	appUrls: Readonly<Record<string, string>>;
 	/** Secrets already generated for this stage, so a redeploy rotates none. */
 	secrets?: Readonly<Record<string, string>>;
+	/** What the stage was given by hand, by key — third parties' credentials. */
+	supplied?: Readonly<Record<string, string>>;
 	/** A manifest already in hand, for a caller that has discovered one. */
 	manifest?: ConstructManifest;
 }
@@ -109,6 +111,7 @@ export async function provisionDeclared(
 		storage: storageBackendFor(providerOf(workspace)),
 		addresses: surfaceAddresses(workspace, manifest, options.appUrls),
 		...(options.secrets ? { secrets: options.secrets } : {}),
+		...(options.supplied ? { supplied: options.supplied } : {}),
 		deferred: [],
 		clusters: {},
 	};

@@ -86,7 +86,7 @@ export class Credential<
 	 * Declared once and read by both `declare()` and `connect()`, so the key the
 	 * target publishes and the key the client reads cannot drift.
 	 */
-	private readonly keys: { credential: string };
+	private readonly keys: { credentials: string };
 
 	/**
 	 * The resolved value, held as the *promise* rather than the value.
@@ -104,7 +104,7 @@ export class Credential<
 		const canonical = canonicalId(id as string);
 
 		this.id = canonical as TName;
-		this.keys = { credential: provideKey(canonical, 'credential') };
+		this.keys = { credentials: provideKey(canonical, 'credentials') };
 
 		// A field, not a getter: consumers cache services by object identity.
 		this.service = {
@@ -118,7 +118,7 @@ export class Credential<
 			{
 				kind: 'credential',
 				id: this.id,
-				provides: [this.keys.credential],
+				provides: [this.keys.credentials],
 			},
 		];
 	}
@@ -131,18 +131,39 @@ export class Credential<
 		return this.resolved;
 	}
 
-	private async resolve(
-		options: ServiceRegisterOptions,
-	): Promise<Value<TSchema>> {
-		const { raw } = options.envParser
-			.create((get) => ({ raw: get(this.keys.credential).string() }))
-			.parse();
+	private resolve(options: ServiceRegisterOptions): Promise<Value<TSchema>> {
+		return readCredentials(
+			this.id,
+			this.keys.credentials,
+			this.options.schema,
+			options.envParser,
+		);
+	}
+}
 
-		try {
-			return await parseSchema(this.options.schema, decode(raw));
-		} catch (issues) {
-			throw new MalformedCredential(this.id, this.keys.credential, issues);
-		}
+/**
+ * A credentials key, read and validated against its schema.
+ *
+ * Shared with every construct that holds a third party's credentials — an
+ * `ExternalApi` reads its own the same way — so the shape a stage stores and
+ * the error a bad value raises are the same everywhere.
+ *
+ * @throws {MalformedCredential} when the value is not what the schema says.
+ */
+export async function readCredentials<TSchema extends StandardSchemaV1>(
+	id: string,
+	key: string,
+	schema: TSchema,
+	envParser: ServiceRegisterOptions['envParser'],
+): Promise<Value<TSchema>> {
+	const { raw } = envParser
+		.create((get) => ({ raw: get(key).string() }))
+		.parse();
+
+	try {
+		return await parseSchema(schema, decode(raw));
+	} catch (issues) {
+		throw new MalformedCredential(id, key, issues);
 	}
 }
 

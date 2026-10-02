@@ -35,8 +35,9 @@ import {
 import { portKeys, portsOf, primaryPortKey } from './containers';
 import { dockerCli } from './docker';
 import { envFor } from './env';
+import type { LocalFake } from './fakes';
 import { lanAddress } from './lan';
-import { type Plan, planFor } from './plan';
+import { type Plan, type PlanOptions, planFor } from './plan';
 import {
 	allocate,
 	isPortFree,
@@ -179,6 +180,8 @@ export interface ReconcileOptions {
 	cache?: CacheBackend;
 	/** Containers no construct implies — the config exceptions. */
 	extraContainers?: readonly string[];
+	/** Each external API's fake, by id — see `readFakes`. */
+	fakes?: PlanOptions['fakes'];
 	/** Whether the local edge fronts surfaces, sites and file servers. */
 	edge?: boolean;
 	/**
@@ -225,6 +228,12 @@ export interface ReconcileResult {
 	env: Readonly<Record<string, string>>;
 	/** What the applier created, or found already there. */
 	provisioned: Applied[];
+	/**
+	 * Each external API's fake, by id. An image fake is already running with
+	 * the containers; an app fake is the caller's to serve — `gkm dev` does —
+	 * on `ports[fakeKey(id)]`.
+	 */
+	fakes: Readonly<Record<string, LocalFake>>;
 	/** The hash recorded for this state. */
 	hash: string;
 	/**
@@ -262,6 +271,7 @@ export async function reconcile(
 		events: options.events,
 		cache: options.cache,
 		extraContainers: options.extraContainers,
+		...(options.fakes ? { fakes: options.fakes } : {}),
 		...(options.edge === undefined ? {} : { edge: options.edge }),
 	});
 
@@ -269,10 +279,15 @@ export async function reconcile(
 
 	// What is already running wins over what was recorded: a container on a port
 	// is the fact, and the file is only a memory of one.
-	const observed = await observedPorts(docker, composePath, plan.containers);
+	const observed = await observedPorts(
+		docker,
+		composePath,
+		plan.containers,
+		plan.fakes,
+	);
 	const ports = await allocate(
 		project,
-		portKeys(plan.containers),
+		portKeys(plan.containers, plan.fakes),
 		{ ...options.saved, ...observed },
 		probe,
 	);
@@ -323,6 +338,7 @@ export async function reconcile(
 		addresses,
 		env,
 		provisioned: [],
+		fakes: options.fakes ?? {},
 		hash,
 		changed: false,
 	};
@@ -435,11 +451,12 @@ async function observedPorts(
 	docker: Docker,
 	composePath: string,
 	containers: readonly string[],
+	fakes?: Plan['fakes'],
 ): Promise<PortAssignments> {
 	const observed: Record<string, number> = {};
 
 	for (const container of containers) {
-		for (const port of portsOf(container)) {
+		for (const port of portsOf(container, fakes)) {
 			const running = await docker.publishedPort(
 				composePath,
 				container,

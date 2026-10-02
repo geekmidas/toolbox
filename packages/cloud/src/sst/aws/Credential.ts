@@ -10,10 +10,10 @@ import { Secret, type SecretProps } from './Secret';
  * the construct validates on the way in. Both are values you set out of band
  * with `sst secret set`.
  *
- * The role is `credential` rather than `value`, and that is not cosmetic. The
+ * The role is `credentials` rather than `value`, and that is not cosmetic. The
  * role *is* the contract — `providedKeyFor` turns it into the key the app
  * declared — so a credential providing `value` would supply `STRIPE_VALUE`
- * against a declared `STRIPE_CREDENTIAL`, and `assertProvides` would reject the
+ * against a declared `STRIPE_CREDENTIALS`, and `assertProvides` would reject the
  * stack at synth. Which is the check working; renaming here is the fix.
  */
 export class Credential<
@@ -21,7 +21,7 @@ export class Credential<
 	TDomain extends string = string,
 > extends Secret<TStage, TDomain> {
 	override provides(): Record<string, $util.Input<string>> {
-		return { credential: this.value };
+		return { credentials: this.value };
 	}
 }
 

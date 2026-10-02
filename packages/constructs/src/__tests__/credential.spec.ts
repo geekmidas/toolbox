@@ -35,13 +35,13 @@ const register = (
 describe('Credential', () => {
 	it('declares one key holding the whole credential', () => {
 		expect(stripe.declare()).toEqual([
-			{ kind: 'credential', id: 'Stripe', provides: ['STRIPE_CREDENTIAL'] },
+			{ kind: 'credential', id: 'Stripe', provides: ['STRIPE_CREDENTIALS'] },
 		]);
 	});
 
 	it('hands a handler the parsed value, with nothing to await at the call site', async () => {
 		const value = await register(new Credential('Stripe', { schema }), {
-			STRIPE_CREDENTIAL: '{"secretKey":"sk_1","webhookSecret":"whsec_1"}',
+			STRIPE_CREDENTIALS: '{"secretKey":"sk_1","webhookSecret":"whsec_1"}',
 		});
 
 		expect(value).toEqual({ secretKey: 'sk_1', webhookSecret: 'whsec_1' });
@@ -51,7 +51,7 @@ describe('Credential', () => {
 		// An operator setting one by hand would get the quotes wrong once.
 		const value = await register(
 			new Credential('ApiKey', { schema: z.string() }),
-			{ API_KEY_CREDENTIAL: 'sk_live_plain' },
+			{ API_KEY_CREDENTIALS: 'sk_live_plain' },
 		);
 
 		expect(value).toBe('sk_live_plain');
@@ -60,7 +60,7 @@ describe('Credential', () => {
 	it('keeps a JSON string a string when told to', async () => {
 		const value = await register(
 			new Credential('ApiKey', { schema: z.string() }),
-			{ API_KEY_CREDENTIAL: 'json:"{\\"not\\":\\"parsed\\"}"' },
+			{ API_KEY_CREDENTIALS: 'json:"{\\"not\\":\\"parsed\\"}"' },
 		);
 
 		expect(value).toBe('{"not":"parsed"}');
@@ -71,7 +71,7 @@ describe('Credential', () => {
 		// first request that needs the one field somebody forgot.
 		await expect(
 			register(new Credential('Stripe', { schema }), {
-				STRIPE_CREDENTIAL: '{"secretKey":"sk_1"}',
+				STRIPE_CREDENTIALS: '{"secretKey":"sk_1"}',
 			}),
 		).rejects.toThrow(MalformedCredential);
 	});
@@ -79,7 +79,7 @@ describe('Credential', () => {
 	it('says which field, not just that something is wrong', async () => {
 		await expect(
 			register(new Credential('Stripe', { schema }), {
-				STRIPE_CREDENTIAL: '{"secretKey":"sk_1"}',
+				STRIPE_CREDENTIALS: '{"secretKey":"sk_1"}',
 			}),
 		).rejects.toThrow(/webhookSecret/);
 	});

@@ -92,16 +92,19 @@ export function composeFor(plan: Plan, options: ComposeOptions): ComposeFile {
 				? plan.resources.find((r) => r.version)?.version
 				: undefined;
 
+		const fake = plan.fakes?.[container];
 		const image = declared
 			? postgresImage(declared)
-			: DEFAULT_IMAGES[container];
+			: (fake?.image ?? DEFAULT_IMAGES[container]);
 		if (!image) throw new UnknownContainer(container);
 
-		services[container] = define(
-			container,
-			image,
-			publish(container, options.ports),
-		);
+		const published = publish(container, options.ports, plan.fakes);
+		services[container] = fake
+			? // An external API's fake: the provider's image, as it ships. It has
+				// no volume — a fake keeps nothing worth keeping — and no
+				// healthcheck, so running is what ready means.
+				{ image, restart: 'unless-stopped', ports: published }
+			: define(container, image, published);
 
 		const volume = volumeOf(container);
 		if (volume) volumes[volume] = {};
@@ -353,8 +356,12 @@ function define(
  * from the container's first, so MinIO's console cannot land on whatever was
  * allocated to the next container.
  */
-function publish(container: string, ports: PortAssignments): string[] {
-	return portsOf(container).map((port) => {
+function publish(
+	container: string,
+	ports: PortAssignments,
+	fakes?: Plan['fakes'],
+): string[] {
+	return portsOf(container, fakes).map((port) => {
 		const assigned = ports[port.key];
 		if (assigned === undefined) throw new UnassignedPort(port.key);
 
