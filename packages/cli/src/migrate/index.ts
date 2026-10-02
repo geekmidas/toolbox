@@ -24,6 +24,7 @@ import { loadWorkspaceConfig } from '../config';
 import { loadSecretsForApp } from '../credentials';
 import { type ConstructSource, discover } from '../reconcile/discover';
 import { constructGlobs, reconcileWorkspace } from '../reconcile/workspace.js';
+import { secretsStoreFor } from '../secrets/store.js';
 import { TEST_STAGE } from '../workspace/stages';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import {
@@ -388,9 +389,10 @@ async function writeAuthMigration(
 
 	// Its secret and URL come from the stage's secrets; the tenant's owner URL
 	// from the reconcile above, which wins.
+	const stage = ready.workspace.stages.local;
 	const secrets = await loadSecretsForApp(
-		ready.workspace.root,
-		ready.workspace.stages.local,
+		await secretsStoreFor(ready.workspace, stage),
+		stage,
 	);
 	const pending = await auth.pendingMigration({
 		envParser: new EnvironmentParser({ ...secrets, ...ready.env }),

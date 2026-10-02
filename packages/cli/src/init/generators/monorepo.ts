@@ -497,7 +497,7 @@ function secretsStore(options: TemplateOptions): string {
 	if (options.deployTarget !== 'sst' || !options.region) return '';
 	return `
     // Deployed stages keep their secrets in SSM, in the account each stage
-    // deploys to: \`gkm secrets:push --stage <stage> --profile <profile>\`.
+    // deploys to: \`gkm secrets:set <KEY> '…' --stage <stage>\` writes there.
     store: { provider: 'ssm', region: '${options.region}' },`;
 }
 

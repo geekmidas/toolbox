@@ -9,11 +9,12 @@ import {
 	loadWorkspaceConfig,
 	type WorkspaceAppInfo,
 } from '../config';
+import { toEmbeddableSecrets } from '../secrets/storage.js';
 import {
-	readStageSecrets,
-	secretsExist,
-	toEmbeddableSecrets,
-} from '../secrets/storage.js';
+	FileSecretsStore,
+	type SecretsStore,
+	secretsStoreFor,
+} from '../secrets/store.js';
 import type { NormalizedWorkspace } from '../workspace/index.js';
 
 const logger = console;
@@ -161,18 +162,16 @@ export async function savePortState(
  * @internal Exported for testing
  */
 export async function loadSecretsForApp(
-	secretsRoot: string,
+	store: SecretsStore,
 	stage: string,
 	appName?: string,
 ): Promise<Record<string, string>> {
 	let secrets: Record<string, string> = {};
 
-	if (secretsExist(stage, secretsRoot)) {
-		const stageSecrets = await readStageSecrets(stage, secretsRoot);
-		if (stageSecrets) {
-			logger.log(`🔐 Loading secrets from stage: ${stage}`);
-			secrets = toEmbeddableSecrets(stageSecrets);
-		}
+	const stageSecrets = await store.read(stage);
+	if (stageSecrets) {
+		logger.log(`🔐 Loading secrets from stage: ${stage}`);
+		secrets = toEmbeddableSecrets(stageSecrets);
 	}
 
 	if (Object.keys(secrets).length === 0) {
@@ -379,9 +378,14 @@ export async function prepareEntryCredentials(options: {
 	// Load secrets and inject PORT. Outside a workspace there are no declared
 	// stages to read, so only a stage asked for by name is loaded.
 	const stage = options.stage ?? workspace?.stages.local;
-	const credentials = stage
-		? await loadSecretsForApp(secretsRoot, stage, appName)
-		: {};
+	// The stage's own store; outside a workspace nothing names one but the file.
+	const store = stage
+		? workspace
+			? await secretsStoreFor(workspace, stage)
+			: new FileSecretsStore(secretsRoot)
+		: undefined;
+	const credentials =
+		store && stage ? await loadSecretsForApp(store, stage, appName) : {};
 
 	// Always inject PORT into credentials so apps can read it
 	credentials.PORT = String(resolvedPort);

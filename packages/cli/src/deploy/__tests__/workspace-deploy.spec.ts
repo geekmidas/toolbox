@@ -38,7 +38,7 @@ import {
 	storeDokployRegistryId,
 } from '../../auth/credentials';
 import { loadWorkspaceConfig } from '../../config';
-import { writeStageSecrets } from '../../secrets/storage';
+import { FileSecretsStore } from '../../secrets/file';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { deployCommand, workspaceDeployCommand } from '../index';
 
@@ -658,17 +658,14 @@ export const config = new EnvironmentParser(process.env)
 		};
 
 		const secrets = (custom: Record<string, string>) =>
-			writeStageSecrets(
-				{
-					stage: STAGE,
-					createdAt: '2026-01-01T00:00:00.000Z',
-					updatedAt: '2026-01-01T00:00:00.000Z',
-					services: {},
-					urls: {},
-					custom,
-				},
-				root,
-			);
+			new FileSecretsStore(root).write(STAGE, {
+				stage: STAGE,
+				createdAt: '2026-01-01T00:00:00.000Z',
+				updatedAt: '2026-01-01T00:00:00.000Z',
+				services: {},
+				urls: {},
+				custom,
+			});
 
 		it('bakes the stage secrets it reads into its image, encrypted', async () => {
 			readsSecrets();

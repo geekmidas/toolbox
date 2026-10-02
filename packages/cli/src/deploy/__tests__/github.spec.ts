@@ -8,7 +8,8 @@ import {
 	ListOpenIDConnectProvidersCommand,
 } from '@aws-sdk/client-iam';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { initStageSecrets, writeStageSecrets } from '../../secrets/storage';
+import { initStageSecrets } from '../../secrets/storage';
+import type { StageSecrets } from '../../secrets/types';
 import {
 	DEFAULT_POLICY_ARN,
 	deployGithubCommand,
@@ -38,9 +39,21 @@ export default defineWorkspace({
 	writeFileSync(join(home, '.gkm', 'shop', 'prod.key'), 'a1b2c3\n');
 }
 
+/** What the custom store below holds, and every write it was asked for. */
+interface Held {
+	stages: Record<string, StageSecrets>;
+	writes: string[];
+}
+
+function held(): Held {
+	const g = globalThis as { __heldSecrets?: Held };
+	g.__heldSecrets ??= { stages: {}, writes: [] };
+	return g.__heldSecrets;
+}
+
 /** The same workspace, its deployed stages' secrets in a custom store. */
 function storedWorkspace(root: string) {
-	// A custom store, so what reaches it can be read back here.
+	// A custom store, so what it holds can be set and read back here.
 	writeFileSync(
 		join(root, 'gkm.config.ts'),
 		`import { defineWorkspace } from '@geekmidas/cli/config';
@@ -52,9 +65,14 @@ export default defineWorkspace({
   secrets: {
     store: {
       provider: {
-        async pull() { return null; },
-        async push(stage, secrets) {
-          (globalThis as any).__pushedSecrets = { stage, secrets };
+        name: 'memory',
+        async read(stage) {
+          return (globalThis as any).__heldSecrets?.stages[stage] ?? null;
+        },
+        async write(stage, secrets) {
+          const held = ((globalThis as any).__heldSecrets ??= { stages: {}, writes: [] });
+          held.stages[stage] = secrets;
+          held.writes.push(stage);
         },
       },
     },
@@ -128,6 +146,7 @@ describe('deployGithubCommand', () => {
 	});
 
 	afterEach(() => {
+		delete (globalThis as { __heldSecrets?: Held }).__heldSecrets;
 		process.env.HOME = originalHome;
 		log.mockRestore();
 		rmSync(root, { recursive: true, force: true });
@@ -167,9 +186,9 @@ describe('deployGithubCommand', () => {
 		expect(calls).toEqual([]);
 	});
 
-	it('plans to push a stored stage with the default credentials', async () => {
+	it('plans to read a stored stage with the default credentials', async () => {
 		storedWorkspace(root);
-		await writeStageSecrets(initStageSecrets('prod'), root);
+		held().stages.prod = initStageSecrets('prod');
 		const { gh } = recordingGh();
 
 		await deployGithubCommand(
@@ -179,12 +198,12 @@ describe('deployGithubCommand', () => {
 
 		const output = log.mock.calls.flat().join('\n');
 		expect(output).toContain(
-			'pushed to the store with the default credentials',
+			'in the store (memory), read with the default credentials',
 		);
 		expect(output).not.toContain('Secrets key:');
 	});
 
-	it('says to push a stored stage this machine has no secrets for', async () => {
+	it('says to set the secrets of a stored stage whose store is empty', async () => {
 		storedWorkspace(root);
 		const { gh } = recordingGh();
 
@@ -194,7 +213,7 @@ describe('deployGithubCommand', () => {
 		);
 
 		expect(log.mock.calls.flat().join('\n')).toContain(
-			'none on this machine — gkm secrets:push --stage prod later',
+			"none in the store yet — gkm secrets:set <KEY> '…' --stage prod",
 		);
 	});
 
@@ -370,7 +389,7 @@ describe('against IAM', () => {
 		}
 	});
 
-	it('tells a stored stage with no local secrets to push them', async () => {
+	it('tells a stored stage with an empty store to set its secrets', async () => {
 		const root = mkdtempSync(join(tmpdir(), 'gkm-github-'));
 		const home = mkdtempSync(join(tmpdir(), 'gkm-home-'));
 		const originalHome = process.env.HOME;
@@ -388,9 +407,11 @@ describe('against IAM', () => {
 
 			expect(JSON.stringify(calls)).not.toContain('GKM_SECRETS_KEY');
 			expect(log.mock.calls.flat().join('\n')).toContain(
-				'push them: gkm secrets:push --stage prod --profile acme-prod.',
+				`⚠ The "prod" store holds no secrets yet; set them with gkm secrets:set <KEY> '…' --stage prod (AWS_PROFILE=acme-prod).`,
 			);
+			expect(held().writes).toEqual([]);
 		} finally {
+			delete (globalThis as { __heldSecrets?: Held }).__heldSecrets;
 			process.env.HOME = originalHome;
 			log.mockRestore();
 			rmSync(root, { recursive: true, force: true });
@@ -398,17 +419,17 @@ describe('against IAM', () => {
 		}
 	});
 
-	it('pushes a stored stage’s secrets instead of handing GitHub a key', async () => {
+	it('leaves a stored stage’s secrets in its store, handing GitHub no key', async () => {
 		const root = mkdtempSync(join(tmpdir(), 'gkm-github-'));
 		const home = mkdtempSync(join(tmpdir(), 'gkm-home-'));
 		const originalHome = process.env.HOME;
 		process.env.HOME = home;
 		workspace(root, home);
 		storedWorkspace(root);
-		await writeStageSecrets(
-			{ ...initStageSecrets('prod'), custom: { STRIPE_KEY: 'sk_live' } },
-			root,
-		);
+		held().stages.prod = {
+			...initStageSecrets('prod'),
+			custom: { STRIPE_KEY: 'sk_live' },
+		};
 		const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 		const { gh, calls } = recordingGh();
 
@@ -418,15 +439,17 @@ describe('against IAM', () => {
 				{ gh, iam, cwd: root },
 			);
 
-			const pushed = (globalThis as any).__pushedSecrets;
-			expect(pushed.stage).toBe('prod');
-			expect(pushed.secrets.custom).toEqual({ STRIPE_KEY: 'sk_live' });
+			// Nothing is sent anywhere: the deploy job reads the store itself.
+			expect(held().writes).toEqual([]);
+			expect(held().stages.prod?.custom).toEqual({ STRIPE_KEY: 'sk_live' });
 			expect(JSON.stringify(calls)).not.toContain('GKM_SECRETS_KEY');
-			expect(log.mock.calls.flat().join('\n')).toContain(
-				'"prod" pushed to the store with profile "acme-prod"',
+			const output = log.mock.calls.flat().join('\n');
+			expect(output).toContain(
+				'in the store (memory), read with profile "acme-prod"',
 			);
+			expect(output).not.toContain('store holds no secrets yet');
 		} finally {
-			delete (globalThis as any).__pushedSecrets;
+			delete (globalThis as { __heldSecrets?: Held }).__heldSecrets;
 			process.env.HOME = originalHome;
 			log.mockRestore();
 			rmSync(root, { recursive: true, force: true });

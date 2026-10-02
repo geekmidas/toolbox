@@ -110,23 +110,11 @@ describe('generateGithubFiles', () => {
 		}
 	});
 
-	it('pulls an SST stage’s secrets from SSM once the role is assumed', () => {
+	it('leaves an SST stage’s secrets to the deploy, which reads SSM with the role', () => {
 		const job = parse(files()['.github/workflows/deploy.yml']!).jobs.deploy;
-		const names = job.steps.map(
-			(s: { name?: string; uses?: string }) => s.name ?? s.uses,
-		);
-		const pull = job.steps.find(
-			(s: { name?: string }) => s.name === 'Stage secrets',
-		);
+		const steps = job.steps as { name?: string; run?: string }[];
 
-		expect(pull.run).toBe('pnpm exec gkm secrets:pull --stage "$STAGE"');
-		expect(pull.env).toEqual({ STAGE: '${{ matrix.stage }}' });
-		expect(names.indexOf('Stage secrets')).toBeGreaterThan(
-			names.indexOf('aws-actions/configure-aws-credentials@v4'),
-		);
-		expect(names.indexOf('Stage secrets')).toBeLessThan(
-			names.indexOf('Deploy'),
-		);
+		expect(steps.some((s) => s.run?.includes('secrets:pull'))).toBe(false);
 		expect(JSON.stringify(job)).not.toContain('GKM_SECRETS_KEY');
 	});
 

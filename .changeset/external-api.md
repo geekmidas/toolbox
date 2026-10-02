@@ -41,6 +41,25 @@
   `browser.signIn()` with no address signs in as a new, unique user. testkit's
   `faker` regains `seed()`, which the spread had dropped.
 
-**Moving an existing app:** rename every `<ID>_CREDENTIAL` secret to
-`<ID>_CREDENTIALS` and set it on each deployed stage:
-`gkm secrets:set STRIPE_CREDENTIALS '{…}' --stage production`.
+- **Every command reads and writes the stage's own secrets store.** `gkm
+  deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
+  store for the stage they act on: the file for the local stage, and
+  `secrets.store` for a deployed one. A stage kept in SSM is set with
+  `gkm secrets:set` and read by the deploy, with nothing pushed or pulled in
+  between. `secrets:push` and `secrets:pull` only copy a stage between this
+  machine's file and its store. `gkm setup` no longer offers to push,
+  `deploy:github` no longer pushes, and the generated SST workflow has no
+  pull step.
+- **`SecretsStore` is `{ name, read(stage), write(stage, secrets) }`.** The
+  file store is `FileSecretsStore` (`name: 'file'`), and SSM is
+  `AwsSecretsStore` (`name: 'ssm'`), renamed from `SsmSecretsStore`. The free
+  functions `readStageSecrets`, `writeStageSecrets`, `setCustomSecret`,
+  `secretsExist` and `getSecretsPath` are gone.
+
+**Moving an existing app:**
+- Rename every `<ID>_CREDENTIAL` secret to `<ID>_CREDENTIALS` and set it on
+  each deployed stage: `gkm secrets:set STRIPE_CREDENTIALS '{…}' --stage production`.
+- A custom `secrets.store` provider renames `pull` to `read` and `push` to
+  `write`, and adds a `name`.
+- A deployed stage whose secrets were only in this machine's file needs one
+  `gkm secrets:push --stage <stage>` to move them onto its store.

@@ -31,9 +31,7 @@ import {
 } from '@aws-sdk/client-iam';
 import { loadWorkspaceConfig } from '../config.js';
 import { getKeyPath } from '../secrets/keystore.js';
-import { secretsExist } from '../secrets/storage.js';
-import { isRemoteStore } from '../secrets/store.js';
-import { pushStageSecrets } from '../secrets/transfer.js';
+import { isRemoteStore, secretsStoreFor } from '../secrets/store.js';
 import { assertDeployedStage } from '../workspace/stages.js';
 
 const logger = console;
@@ -209,7 +207,12 @@ export async function deployGithubCommand(
 	// A stage whose secrets are in a store is read from there by the deploy job,
 	// with the role; it needs no key on GitHub.
 	const remote = isRemoteStore(workspace, options.stage);
-	const hasSecrets = secretsExist(options.stage, workspace.root);
+	// Read from the stage's own store, with the same credentials the role is
+	// created with: what the deploy job will find there.
+	const store = await secretsStoreFor(workspace, options.stage, {
+		...(options.profile ? { profile: options.profile } : {}),
+	});
+	const hasSecrets = remote && (await store.read(options.stage)) !== null;
 	const via = options.profile
 		? `profile "${options.profile}"`
 		: 'the default credentials';
@@ -224,7 +227,7 @@ export async function deployGithubCommand(
 	logger.log(`  Trusted by:   repo:${repo}:environment:${options.stage} only`);
 	if (remote) {
 		logger.log(
-			`  Secrets:      ${hasSecrets ? `pushed to the store with ${via}` : `none on this machine — gkm secrets:push --stage ${options.stage} later`}`,
+			`  Secrets:      ${hasSecrets ? `in the store (${store.name}), read with ${via}` : `none in the store yet — gkm secrets:set <KEY> '…' --stage ${options.stage}`}`,
 		);
 	} else {
 		logger.log(
@@ -270,16 +273,10 @@ export async function deployGithubCommand(
 	logger.log(`  ✓ GitHub: environment "${options.stage}", AWS_ROLE_ARN`);
 
 	if (remote) {
-		if (hasSecrets) {
-			await pushStageSecrets(workspace, options.stage, {
-				...(options.profile ? { profile: options.profile } : {}),
-			});
+		// Nothing to send: the deploy job reads the stage's store itself.
+		if (!hasSecrets) {
 			logger.log(
-				`  ✓ Secrets: "${options.stage}" pushed to the store with ${via}`,
-			);
-		} else {
-			logger.log(
-				`  ⚠ No secrets for "${options.stage}" on this machine; the deploy job pulls them from the store, so push them: gkm secrets:push --stage ${options.stage}${options.profile ? ` --profile ${options.profile}` : ''}.`,
+				`  ⚠ The "${options.stage}" store holds no secrets yet; set them with gkm secrets:set <KEY> '…' --stage ${options.stage}${options.profile ? ` (AWS_PROFILE=${options.profile})` : ''}.`,
 			);
 		}
 	} else if (hasKey) {

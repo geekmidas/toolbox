@@ -2,9 +2,9 @@ import { execSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import prompts from 'prompts';
+import { FileSecretsStore } from '../secrets/file.js';
 import { createStageSecrets } from '../secrets/generator.js';
 import { getKeyPath } from '../secrets/keystore.js';
-import { writeStageSecrets } from '../secrets/storage.js';
 import {
 	deployedProblems,
 	InvalidStages,
@@ -490,7 +490,8 @@ export async function initCommand(
 
 	devSecrets.custom = customSecrets;
 
-	await writeStageSecrets(devSecrets, targetDir);
+	// The local stage's store is always the file.
+	await new FileSecretsStore(targetDir).write(local, devSecrets);
 	const keyPath = getKeyPath(local, name);
 	console.log(`  Secrets: .gkm/secrets/${local}.json (encrypted)`);
 	console.log(`  Key: ${keyPath}\n`);

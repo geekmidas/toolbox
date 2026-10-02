@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { FileSecretsStore } from '../file';
 import { createStageSecrets } from '../generator';
 import {
 	secretsImportCommand,
@@ -11,7 +12,7 @@ import {
 	secretsSetCommand,
 	secretsShowCommand,
 } from '../index';
-import { readStageSecrets, writeStageSecrets } from '../storage';
+import type { StageSecrets } from '../types';
 
 /** What `process.exit` becomes here, so a refusal can be asserted on. */
 class Exited extends Error {
@@ -53,11 +54,16 @@ describe('secrets commands', () => {
 		rmSync(home, { recursive: true, force: true });
 	});
 
+	/** Outside a workspace, every stage is kept in the file. */
+	const stored = (stage: string) => new FileSecretsStore(dir).read(stage);
+	const store = (secrets: StageSecrets) =>
+		new FileSecretsStore(dir).write(secrets.stage, secrets);
+
 	/** A stage with credentials and URLs for every service, stored encrypted. */
 	async function seed(stage = 'dev') {
 		const secrets = createStageSecrets(stage, ['postgres', 'redis', 'minio']);
 		secrets.custom = { STRIPE_KEY: 'sk_test_123' };
-		await writeStageSecrets(secrets);
+		await store(secrets);
 		return secrets;
 	}
 
@@ -65,9 +71,9 @@ describe('secrets commands', () => {
 		it('writes a stage outside a workspace', async () => {
 			await secretsInitCommand({ stage: 'dev' });
 
-			expect(await readStageSecrets('dev')).toMatchObject({ stage: 'dev' });
+			expect(await stored('dev')).toMatchObject({ stage: 'dev' });
 			expect(printed()).toContain('Secrets initialized for stage "dev"');
-			expect(printed()).toContain('.gkm/secrets/dev.json');
+			expect(printed()).toContain('Store: file');
 		});
 
 		it('refuses to overwrite a stage without --force', async () => {
@@ -85,7 +91,7 @@ describe('secrets commands', () => {
 			await secretsInitCommand({ stage: 'dev', force: true });
 
 			// The fresh stage has none of the seeded custom secrets.
-			expect((await readStageSecrets('dev'))?.custom).toEqual({});
+			expect((await stored('dev'))?.custom).toEqual({});
 		});
 
 		it('generates per-app secrets in a workspace with several apps', async () => {
@@ -113,7 +119,7 @@ export default defineWorkspace({
 
 			await secretsInitCommand({ stage: 'dev' });
 
-			const custom = (await readStageSecrets('dev'))?.custom ?? {};
+			const custom = (await stored('dev'))?.custom ?? {};
 			expect(Object.keys(custom).length).toBeGreaterThan(0);
 			expect(printed()).toContain('generating per-app secrets');
 			expect(printed()).toContain('Custom secrets:');
@@ -128,9 +134,7 @@ export default defineWorkspace({
 				stage: 'dev',
 			});
 
-			expect((await readStageSecrets('dev'))?.custom.SENTRY_DSN).toBe(
-				'https://sentry',
-			);
+			expect((await stored('dev'))?.custom.SENTRY_DSN).toBe('https://sentry');
 			expect(printed()).toContain('Secret "SENTRY_DSN" set for stage "dev"');
 		});
 
@@ -159,9 +163,7 @@ export default defineWorkspace({
 					stage: 'dev',
 				});
 
-				expect((await readStageSecrets('dev'))?.custom.WEBHOOK_SECRET).toBe(
-					'whsec_123',
-				);
+				expect((await stored('dev'))?.custom.WEBHOOK_SECRET).toBe('whsec_123');
 			});
 
 			it('refuses an empty pipe', async () => {
@@ -232,7 +234,7 @@ export default defineWorkspace({
 		it('shows a stage that holds nothing without inventing entries', async () => {
 			// What `secrets:init` writes now: no containers, so no credentials
 			// and no URLs — reconcile provides those.
-			await writeStageSecrets(createStageSecrets('bare', []));
+			await store(createStageSecrets('bare', []));
 
 			await secretsShowCommand({ stage: 'bare' });
 
@@ -256,7 +258,7 @@ export default defineWorkspace({
 
 			await secretsRotateCommand({ stage: 'dev', service: 'postgres' });
 
-			const after = (await readStageSecrets('dev'))!;
+			const after = (await stored('dev'))!;
 			expect(after.services.postgres!.password).not.toBe(
 				before.services.postgres!.password,
 			);
@@ -270,7 +272,7 @@ export default defineWorkspace({
 
 			await secretsRotateCommand({ stage: 'dev' });
 
-			const after = (await readStageSecrets('dev'))!;
+			const after = (await stored('dev'))!;
 			for (const service of ['postgres', 'redis', 'minio'] as const) {
 				expect(after.services[service]!.password).not.toBe(
 					before.services[service]!.password,
@@ -309,7 +311,7 @@ export default defineWorkspace({
 				stage: 'dev',
 			});
 
-			expect((await readStageSecrets('dev'))?.custom).toEqual({
+			expect((await stored('dev'))?.custom).toEqual({
 				STRIPE_KEY: 'sk_test_123',
 				SENTRY_DSN: 'https://s',
 			});
@@ -324,7 +326,7 @@ export default defineWorkspace({
 				merge: false,
 			});
 
-			expect((await readStageSecrets('dev'))?.custom).toEqual({
+			expect((await stored('dev'))?.custom).toEqual({
 				ONLY: 'this',
 			});
 		});

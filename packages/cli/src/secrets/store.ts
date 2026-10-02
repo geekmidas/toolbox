@@ -1,25 +1,27 @@
 /**
- * Where a stage's secrets live when they are not only on one machine.
+ * Where a stage's secrets are kept.
  *
- * A deployed stage has to reach its secrets from wherever it is deployed from
- * — a teammate's laptop today, a CI runner tomorrow — and `.gkm/` is not
- * committed, so the encrypted file on the machine that created them is not a
- * home for them. A store is: `push` puts a stage's secrets there, `pull`
- * brings them back, and the deploy reads the local copy `pull` writes.
+ * Every command that needs a stage's secrets — `gkm dev`, `test`, `deploy`,
+ * `build`, `setup`, `secrets:*` — asks {@link secretsStoreFor} for that
+ * stage's store and reads or writes it. None of them knows whether that is a
+ * file on this machine or SSM in the stage's account: the local stage is
+ * always the file, and a deployed stage is whatever `secrets.store` names.
  *
  * The same shape deploy state has (`StateProvider`): one interface, a backend
  * per place, and a custom object for any place this package does not ship.
  */
 
 import type { NormalizedWorkspace } from '../workspace/types.js';
-import { readStageSecrets, writeStageSecrets } from './storage.js';
+import { FileSecretsStore } from './file.js';
 import type { StageSecrets } from './types.js';
 
 export interface SecretsStore {
-	/** The stage's secrets, or null if the store holds none for it. */
-	pull(stage: string): Promise<StageSecrets | null>;
-	/** Replace the stage's secrets in the store. */
-	push(stage: string, secrets: StageSecrets): Promise<void>;
+	/** Which kind of store this is — `'file'`, `'ssm'`, or a custom one's. */
+	readonly name: string;
+	/** The stage's secrets, or null when it has none here. */
+	read(stage: string): Promise<StageSecrets | null>;
+	/** Replace the stage's secrets. */
+	write(stage: string, secrets: StageSecrets): Promise<void>;
 }
 
 /** Secrets in SSM Parameter Store, in the account of the active credentials. */
@@ -45,19 +47,6 @@ export type SecretsStoreConfig =
 	| SsmSecretsStoreConfig
 	| CustomSecretsStoreConfig;
 
-/** The encrypted file under `.gkm/secrets/`, and its key under `~/.gkm/`. */
-export class FileSecretsStore implements SecretsStore {
-	constructor(private readonly root: string) {}
-
-	pull(stage: string): Promise<StageSecrets | null> {
-		return readStageSecrets(stage, this.root);
-	}
-
-	push(_stage: string, secrets: StageSecrets): Promise<void> {
-		return writeStageSecrets(secrets, this.root);
-	}
-}
-
 export interface SecretsStoreOptions {
 	/**
 	 * The AWS profile for the stage's account. Only that profile is used —
@@ -68,7 +57,8 @@ export interface SecretsStoreOptions {
 }
 
 /**
- * The store a stage's secrets live in.
+ * The store a stage's secrets are kept in — what every command reads and
+ * writes, for the stage it acts on.
  *
  * The local stage is always the file: its secrets belong to the machine
  * running `gkm dev`. A deployed stage uses `secrets.store`.
@@ -88,8 +78,8 @@ export async function secretsStoreFor(
 		return configured.provider;
 	}
 
-	const { SsmSecretsStore } = await import('./ssm.js');
-	return new SsmSecretsStore({
+	const { AwsSecretsStore } = await import('./aws.js');
+	return new AwsSecretsStore({
 		project: workspace.name,
 		region: configured.region,
 		...(options.profile ? { profile: options.profile } : {}),
@@ -104,3 +94,5 @@ export function isRemoteStore(
 	const configured = workspace.secrets.store ?? 'file';
 	return stage !== workspace.stages.local && configured !== 'file';
 }
+
+export { FileSecretsStore };

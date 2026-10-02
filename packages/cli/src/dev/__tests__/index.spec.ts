@@ -4,6 +4,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { FileSecretsStore } from '../../secrets/file.js';
 import type {
 	NormalizedAppConfig,
 	NormalizedWorkspace,
@@ -997,7 +998,10 @@ describe('loadSecretsForApp', () => {
 				NODE_ENV: 'development',
 			});
 
-			const secrets = await loadSecretsForApp(testDir, 'development');
+			const secrets = await loadSecretsForApp(
+				new FileSecretsStore(testDir),
+				'development',
+			);
 
 			expect(secrets).toEqual({
 				DATABASE_URL: 'postgresql://localhost/mydb',
@@ -1015,16 +1019,23 @@ describe('loadSecretsForApp', () => {
 			});
 
 			expect(
-				(await loadSecretsForApp(testDir, 'development')).DATABASE_URL,
+				(await loadSecretsForApp(new FileSecretsStore(testDir), 'development'))
+					.DATABASE_URL,
 			).toBe('postgresql://localhost/developmentdb');
-			expect((await loadSecretsForApp(testDir, 'dev')).DATABASE_URL).toBe(
-				'postgresql://localhost/devdb',
-			);
-			expect(await loadSecretsForApp(testDir, 'local')).toEqual({});
+			expect(
+				(await loadSecretsForApp(new FileSecretsStore(testDir), 'dev'))
+					.DATABASE_URL,
+			).toBe('postgresql://localhost/devdb');
+			expect(
+				await loadSecretsForApp(new FileSecretsStore(testDir), 'local'),
+			).toEqual({});
 		});
 
 		it('should return empty object if no secrets exist', async () => {
-			const secrets = await loadSecretsForApp(testDir, 'development');
+			const secrets = await loadSecretsForApp(
+				new FileSecretsStore(testDir),
+				'development',
+			);
 
 			expect(secrets).toEqual({});
 		});
@@ -1039,7 +1050,7 @@ describe('loadSecretsForApp', () => {
 			});
 
 			const authSecrets = await loadSecretsForApp(
-				testDir,
+				new FileSecretsStore(testDir),
 				'development',
 				'auth',
 			);
@@ -1060,7 +1071,11 @@ describe('loadSecretsForApp', () => {
 				API_DATABASE_URL: 'postgresql://api_user:pass@localhost/apidb',
 			});
 
-			const apiSecrets = await loadSecretsForApp(testDir, 'development', 'api');
+			const apiSecrets = await loadSecretsForApp(
+				new FileSecretsStore(testDir),
+				'development',
+				'api',
+			);
 
 			expect(apiSecrets.DATABASE_URL).toBe(
 				'postgresql://api_user:pass@localhost/apidb',
@@ -1075,7 +1090,7 @@ describe('loadSecretsForApp', () => {
 
 			// Asking for 'auth' app but AUTH_DATABASE_URL doesn't exist
 			const authSecrets = await loadSecretsForApp(
-				testDir,
+				new FileSecretsStore(testDir),
 				'development',
 				'auth',
 			);
@@ -1091,7 +1106,7 @@ describe('loadSecretsForApp', () => {
 
 			// App name is lowercase but secrets are uppercase prefixed
 			const secrets = await loadSecretsForApp(
-				testDir,
+				new FileSecretsStore(testDir),
 				'development',
 				'myservice',
 			);
@@ -1100,7 +1115,11 @@ describe('loadSecretsForApp', () => {
 		});
 
 		it('should return empty object if no secrets exist for app', async () => {
-			const secrets = await loadSecretsForApp(testDir, 'development', 'api');
+			const secrets = await loadSecretsForApp(
+				new FileSecretsStore(testDir),
+				'development',
+				'api',
+			);
 
 			expect(secrets).toEqual({});
 		});
@@ -1131,7 +1150,10 @@ describe('loadSecretsForApp', () => {
 				JSON.stringify(stageSecrets, null, 2),
 			);
 
-			const secrets = await loadSecretsForApp(testDir, 'development');
+			const secrets = await loadSecretsForApp(
+				new FileSecretsStore(testDir),
+				'development',
+			);
 
 			expect(secrets.POSTGRES_USER).toBe('postgres');
 			expect(secrets.POSTGRES_PASSWORD).toBe('postgres123');
@@ -1163,7 +1185,10 @@ describe('loadSecretsForApp', () => {
 				JSON.stringify(stageSecrets, null, 2),
 			);
 
-			const secrets = await loadSecretsForApp(testDir, 'development');
+			const secrets = await loadSecretsForApp(
+				new FileSecretsStore(testDir),
+				'development',
+			);
 
 			expect(secrets.REDIS_PASSWORD).toBe('redis123');
 			expect(secrets.REDIS_HOST).toBe('localhost');

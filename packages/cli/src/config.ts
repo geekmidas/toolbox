@@ -117,9 +117,17 @@ function findConfigPath(cwd: string): ConfigDiscoveryResult {
 		currentDir = dirname(currentDir);
 	}
 
-	throw new Error(
-		'Configuration file not found. Please create gkm.config.json, gkm.config.ts, or gkm.config.js in the project root.',
-	);
+	throw new ConfigNotFound(cwd);
+}
+
+/** No gkm config in a directory or any of its parents. */
+export class ConfigNotFound extends Error {
+	constructor(readonly cwd: string) {
+		super(
+			'Configuration file not found. Please create gkm.config.json, gkm.config.ts, or gkm.config.js in the project root.',
+		);
+		this.name = 'ConfigNotFound';
+	}
 }
 
 /**
@@ -217,6 +225,22 @@ export async function loadConfig(
  * }
  * ```
  */
+/**
+ * The workspace a directory belongs to, as its config states it — without
+ * discovering its constructs.
+ *
+ * For callers that need a fact the config holds (where a stage's secrets are
+ * stored) and nothing the graph adds. `loadWorkspaceConfig` imports every
+ * construct module to derive the apps, which is a cost a secrets read should
+ * not pay.
+ */
+export async function loadWorkspaceSettings(
+	cwd: string = process.cwd(),
+): Promise<LoadedConfig['workspace']> {
+	const { config, workspaceRoot } = await loadRawConfig(cwd);
+	return processConfig(config, workspaceRoot).workspace;
+}
+
 export async function loadWorkspaceConfig(
 	cwd: string = process.cwd(),
 ): Promise<LoadedConfig> {

@@ -698,13 +698,12 @@ program
 
 			const { loadWorkspaceConfig } = await import('./config');
 			const { reconcileMissingSecrets } = await import('./secrets/reconcile');
-			const { readStageSecrets, writeStageSecrets } = await import(
-				'./secrets/storage'
-			);
+			const { secretsStoreFor } = await import('./secrets/store');
 
 			const { workspace } = await loadWorkspaceConfig();
 			const stage = options.stage ?? workspace.stages.local;
-			const secrets = await readStageSecrets(stage, workspace.root);
+			const store = await secretsStoreFor(workspace, stage);
+			const secrets = await store.read(stage);
 
 			if (!secrets) {
 				console.error(
@@ -725,7 +724,7 @@ program
 				return;
 			}
 
-			await writeStageSecrets(result.secrets, workspace.root);
+			await store.write(stage, result.secrets);
 			console.log(
 				`\n✓ Reconciled ${result.addedKeys.length} missing secret(s) for stage "${stage}":`,
 			);

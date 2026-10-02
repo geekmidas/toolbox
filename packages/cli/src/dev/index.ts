@@ -29,11 +29,8 @@ import {
 } from '../credentials';
 import { resolveOpenApiConfig } from '../openapi';
 import { FAKE_ENV, reconcileWorkspace } from '../reconcile/workspace.js';
-import {
-	readStageSecrets,
-	secretsExist,
-	toEmbeddableSecrets,
-} from '../secrets/storage.js';
+import { toEmbeddableSecrets } from '../secrets/storage.js';
+import { FileSecretsStore, secretsStoreFor } from '../secrets/store.js';
 import { ensureTrusted } from '../trust/index.js';
 import type {
 	GkmConfig,
@@ -394,8 +391,11 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	// JSON file
 	let secretsJsonPath: string | undefined;
 	let publicUrl: string | undefined;
+	// The local stage's store, which is always the file.
 	const appSecrets = await loadSecretsForApp(
-		secretsRoot,
+		workspace
+			? await secretsStoreFor(workspace, config.stages.local)
+			: new FileSecretsStore(secretsRoot),
 		config.stages.local,
 		workspaceAppName,
 	);
@@ -845,10 +845,8 @@ export async function loadDevSecrets(
 	}
 
 	const stage = workspace.stages.local;
-	if (secretsExist(stage, workspace.root)) {
-		const secrets = await readStageSecrets(stage, workspace.root);
-		if (secrets) return toEmbeddableSecrets(secrets);
-	}
+	const secrets = await (await secretsStoreFor(workspace, stage)).read(stage);
+	if (secrets) return toEmbeddableSecrets(secrets);
 
 	// Nothing to warn about: the local stage's own secrets and every address are
 	// derived by reconcile. A stored stage only adds what nothing can derive — a

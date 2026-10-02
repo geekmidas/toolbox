@@ -9,8 +9,8 @@
 
 import { assertDeployedStage } from '../workspace/stages.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
+import { FileSecretsStore } from './file.js';
 import { reconcileMissingSecrets } from './reconcile.js';
-import { readStageSecrets, writeStageSecrets } from './storage.js';
 import {
 	isRemoteStore,
 	type SecretsStoreOptions,
@@ -84,16 +84,17 @@ export async function pushStageSecrets(
 ): Promise<TransferResult> {
 	remoteOnly(workspace, stage);
 
-	const local = await readStageSecrets(stage, workspace.root);
+	// From this machine's file into the stage's store: two stores, one copy.
+	const file = new FileSecretsStore(workspace.root);
+	const local = await file.read(stage);
 	if (!local) throw new NoLocalSecrets(stage);
 
 	const result = await reconcile(local, workspace, stage);
-	if (result.addedKeys.length) {
-		await writeStageSecrets(result.secrets, workspace.root);
-	}
-
+	// Both copies end the same: the keys the workspace now derives go to the
+	// file as well as the store.
+	if (result.addedKeys.length) await file.write(stage, result.secrets);
 	const store = await secretsStoreFor(workspace, stage, options);
-	await store.push(stage, result.secrets);
+	await store.write(stage, result.secrets);
 	return result;
 }
 
@@ -105,11 +106,12 @@ export async function pullStageSecrets(
 ): Promise<TransferResult> {
 	remoteOnly(workspace, stage);
 
+	// From the stage's store into this machine's file.
 	const store = await secretsStoreFor(workspace, stage, options);
-	const stored = await store.pull(stage);
+	const stored = await store.read(stage);
 	if (!stored) throw new NoStoredSecrets(stage);
 
 	const result = await reconcile(stored, workspace, stage);
-	await writeStageSecrets(result.secrets, workspace.root);
+	await new FileSecretsStore(workspace.root).write(stage, result.secrets);
 	return result;
 }

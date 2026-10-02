@@ -287,18 +287,23 @@ export default defineWorkspace({
 |---|---|
 | `'file'` (default) | the encrypted `.gkm/secrets/<stage>.json` on this machine, with its key in `~/.gkm/`. It cannot serve a deploy from CI while `.gkm/` is gitignored |
 | `{ provider: 'ssm', region }` | one `SecureString` parameter per stage, `/gkm/<name>/<stage>/secrets`, in the AWS account of the active credentials — so with staging and production in different accounts, each stage's secrets sit beside its infrastructure |
-| `{ provider: store }` | any object with `pull(stage)` and `push(stage, secrets)` |
+| `{ provider: store }` | any object with a `name`, `read(stage)` and `write(stage, secrets)` |
 
 `gkm init --deploy sst` writes the SSM store with the region you picked.
 
-#### Push and Pull
+**Every command reads and writes the stage's store directly.** `gkm
+secrets:set KEY … --stage prod` writes to SSM; `gkm deploy`, `gkm build`,
+`gkm setup` and `gkm exec --stage prod` read from it. There is no copy on this
+machine to keep in step, and nothing to push before a deploy. The local stage
+is always the file, whatever `store` says.
+
+#### Copying between this machine and a store
 
 ```bash
-# Send this machine's secrets for a stage to its store
-gkm secrets:push --stage staging --profile acme-dev
-gkm secrets:push --stage prod    --profile acme-prod
+# A stage kept in the file before it had a store: send it there once
+gkm secrets:push --stage prod --profile acme-prod
 
-# Bring them back — onto a new machine, or a CI runner
+# A copy of a stored stage on this machine
 gkm secrets:pull --stage prod --profile acme-prod
 ```
 
@@ -309,18 +314,17 @@ Without `--profile` the default credential chain applies — which is what a
 deploy job wants, with the stage's OIDC role already assumed.
 
 Both refuse a stage not in `stages.deployed`, and a stage kept in the `'file'`
-store. `pull` writes the local encrypted copy the deploy reads, generating a
-key if the machine has none.
+store. Neither is part of deploying: a deploy reads the store itself.
 
 The credentials need `ssm:GetParameter` and `ssm:PutParameter` on
 `arn:aws:ssm:*:*:parameter/gkm/*` in each stage's account.
 
 #### Secret Resolution Priority
 
-`gkm setup` resolves secrets with this priority:
-1. **Local secrets exist** — use them (preserves manually added secrets like `STRIPE_KEY`)
-2. **A deployed stage whose store has secrets** — pull and use those
-3. **Neither** — generate fresh secrets (and, for a deployed stage with a store, offer to push them)
+`gkm setup` reads the stage's store — the file for the local stage, `secrets.store` for a deployed one:
+1. **The store has secrets** — use them, adding any key the workspace now derives (manually added secrets like `STRIPE_KEY` are kept)
+2. **It has none** — generate fresh secrets and write them to that store
+3. **It cannot be reached** — stop, rather than generate secrets nobody else can read
 
 ::: warning
 Only `gkm setup --force` regenerates secrets from scratch, which could lose manually added secrets. The `--force` flag is explicitly opt-in.

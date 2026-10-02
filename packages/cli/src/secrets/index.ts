@@ -1,18 +1,34 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { loadWorkspaceConfig } from '../config';
-import { generateFullstackCustomSecrets } from '../setup/fullstack-secrets';
-import { createStageSecrets, rotateServicePassword } from './generator';
 import {
-	maskPassword,
-	readStageSecrets,
-	secretsExist,
-	setCustomSecret,
-	writeStageSecrets,
-} from './storage';
+	ConfigNotFound,
+	loadWorkspaceConfig,
+	loadWorkspaceSettings,
+} from '../config';
+import { generateFullstackCustomSecrets } from '../setup/fullstack-secrets';
+import { FileSecretsStore } from './file.js';
+import { createStageSecrets, rotateServicePassword } from './generator';
+import { maskPassword, withCustomSecret } from './storage';
+import { type SecretsStore, secretsStoreFor } from './store.js';
 import type { SecretServiceName } from './types';
 
 const logger = console;
+
+/**
+ * The store the stage named on the command line keeps its secrets in — SSM in
+ * its account, for a deployed stage kept there. Outside any workspace nothing
+ * names a store, so it is the file.
+ */
+async function storeFor(stage: string): Promise<SecretsStore> {
+	try {
+		return await secretsStoreFor(await loadWorkspaceSettings(), stage);
+	} catch (error) {
+		if (error instanceof ConfigNotFound) {
+			return new FileSecretsStore(process.cwd());
+		}
+		throw error;
+	}
+}
 
 export interface SecretsInitOptions {
 	stage: string;
@@ -48,8 +64,10 @@ export async function secretsInitCommand(
 ): Promise<void> {
 	const { stage, force } = options;
 
+	const store = await storeFor(stage);
+
 	// Check if secrets already exist
-	if (!force && secretsExist(stage)) {
+	if (!force && (await store.read(stage))) {
 		logger.error(
 			`Secrets already exist for stage "${stage}". Use --force to overwrite.`,
 		);
@@ -81,11 +99,10 @@ export async function secretsInitCommand(
 		secrets.custom = workspaceSecrets;
 	}
 
-	// Write to file
-	await writeStageSecrets(secrets);
+	await store.write(stage, secrets);
 
 	logger.log(`\n✓ Secrets initialized for stage "${stage}"`);
-	logger.log(`  Location: .gkm/secrets/${stage}.json`);
+	logger.log(`  Store: ${store.name}`);
 
 	if (secrets.urls.DATABASE_URL) {
 		logger.log(`\n  DATABASE_URL: ${maskUrl(secrets.urls.DATABASE_URL)}`);
@@ -152,15 +169,17 @@ export async function secretsSetCommand(
 		}
 	}
 
-	try {
-		await setCustomSecret(stage, key, secretValue);
-		logger.log(`\n✓ Secret "${key}" set for stage "${stage}"`);
-	} catch (error) {
+	const store = await storeFor(stage);
+	const secrets = await store.read(stage);
+	if (!secrets) {
 		logger.error(
-			error instanceof Error ? error.message : 'Failed to set secret',
+			`Secrets not found for stage "${stage}". Run "gkm secrets:init --stage ${stage}" first.`,
 		);
 		process.exit(1);
 	}
+
+	await store.write(stage, withCustomSecret(secrets, key, secretValue));
+	logger.log(`\n✓ Secret "${key}" set for stage "${stage}" (${store.name})`);
 }
 
 /**
@@ -171,7 +190,7 @@ export async function secretsShowCommand(
 ): Promise<void> {
 	const { stage, reveal } = options;
 
-	const secrets = await readStageSecrets(stage);
+	const secrets = await (await storeFor(stage)).read(stage);
 
 	if (!secrets) {
 		logger.error(
@@ -242,7 +261,8 @@ export async function secretsRotateCommand(
 ): Promise<void> {
 	const { stage, service } = options;
 
-	const secrets = await readStageSecrets(stage);
+	const store = await storeFor(stage);
+	const secrets = await store.read(stage);
 
 	if (!secrets) {
 		logger.error(
@@ -259,7 +279,7 @@ export async function secretsRotateCommand(
 		}
 
 		const updated = rotateServicePassword(secrets, service);
-		await writeStageSecrets(updated);
+		await store.write(stage, updated);
 		logger.log(`\n✓ Password rotated for ${service} in stage "${stage}"`);
 	} else {
 		// Rotate all services
@@ -270,7 +290,7 @@ export async function secretsRotateCommand(
 			updated = rotateServicePassword(updated, svc);
 		}
 
-		await writeStageSecrets(updated);
+		await store.write(stage, updated);
 		logger.log(
 			`\n✓ Passwords rotated for all services in stage "${stage}": ${services.join(', ')}`,
 		);
@@ -320,7 +340,8 @@ export async function secretsImportCommand(
 	}
 
 	// Check if secrets exist for stage
-	const secrets = await readStageSecrets(stage);
+	const store = await storeFor(stage);
+	const secrets = await store.read(stage);
 
 	if (!secrets) {
 		logger.error(
@@ -340,7 +361,7 @@ export async function secretsImportCommand(
 		custom: updatedCustom,
 	};
 
-	await writeStageSecrets(updated);
+	await store.write(stage, updated);
 
 	const importedCount = Object.keys(importedSecrets).length;
 	const totalCount = Object.keys(updatedCustom).length;

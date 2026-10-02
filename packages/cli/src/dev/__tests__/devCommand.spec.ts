@@ -19,7 +19,7 @@ import {
 	vi,
 } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
-import { writeStageSecrets } from '../../secrets/storage';
+import { FileSecretsStore } from '../../secrets/file';
 
 /**
  * What `gkm dev` does between reading the config and handing a process to the
@@ -537,17 +537,14 @@ ${apps}
 
 	/** Local secrets for the \`dev\` stage, written the way \`gkm setup\` does. */
 	async function secrets(root: string, custom: Record<string, string>) {
-		await writeStageSecrets(
-			{
-				stage: 'dev',
-				createdAt: '2026-01-01T00:00:00.000Z',
-				updatedAt: '2026-01-01T00:00:00.000Z',
-				services: {},
-				urls: {},
-				custom,
-			},
-			root,
-		);
+		await new FileSecretsStore(root).write('dev', {
+			stage: 'dev',
+			createdAt: '2026-01-01T00:00:00.000Z',
+			updatedAt: '2026-01-01T00:00:00.000Z',
+			services: {},
+			urls: {},
+			custom,
+		});
 	}
 
 	/** A workspace config at the root, and an app directory to run from. */

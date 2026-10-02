@@ -60,7 +60,7 @@ import { loadWorkspaceConfig } from '../config';
 import { discover } from '../reconcile/discover.js';
 import type { SqlClient, Statement } from '../reconcile/provision.js';
 import { constructGlobs } from '../reconcile/workspace.js';
-import { readStageSecrets } from '../secrets/storage.js';
+import { secretsStoreFor } from '../secrets/store.js';
 import { derivedApps } from '../workspace/derive.js';
 import {
 	getAppBuildOrder,
@@ -593,8 +593,9 @@ export async function workspaceDeployCommand(
 	// ==================================================================
 	logger.log('\n🔐 Loading secrets and analyzing environment requirements...');
 
-	// Load secrets for this stage
-	const stageSecrets = await readStageSecrets(stage, workspace.root);
+	// The stage's own store — SSM in its account, for a stage kept there.
+	const secretsStore = await secretsStoreFor(workspace, stage);
+	const stageSecrets = await secretsStore.read(stage);
 	if (!stageSecrets) {
 		logger.log(`   ⚠️  No secrets found for stage "${stage}"`);
 		logger.log(
