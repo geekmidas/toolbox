@@ -175,7 +175,7 @@ It provides two keys, `POLAR_URL` and `POLAR_CREDENTIALS`:
 **Fakes are opt-in.** Plain `gkm dev` calls the real API — its sandbox, say —
 at its `url` for the local stage, with the local stage's own credentials.
 `gkm test` always uses the fakes, and `gkm dev --fake` uses them too. Nothing
-that acts on a stage (`gkm setup`, `secrets:push`, `deploy`) reads one.
+that acts on a stage (`gkm setup`, `secrets:*`, `deploy`) reads one.
 
 **`url` is one URL or one per stage.** A string answers every stage. A record
 is keyed by stage name, with `default` for any stage not listed — for a

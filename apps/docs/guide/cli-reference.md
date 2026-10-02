@@ -407,18 +407,12 @@ gkm secrets:rotate --stage production --service postgres
 
 # Import from JSON
 gkm secrets:import --stage production --file secrets.json
-
-# Copy a stage between this machine's file and its store (secrets.store)
-gkm secrets:push --stage production --profile acme-prod
-gkm secrets:pull --stage production --profile acme-prod
 ```
 
 Every `secrets:*` command reads and writes the stage's own store: for a
 deployed stage kept in SSM, `secrets:set` writes to SSM and `secrets:show`
-reads from it. `secrets:push` and `secrets:pull` only copy a stage between the
-encrypted file on this machine and its store — moving a stage onto a store, or
-keeping a copy — and no deploy needs either. `--profile` resolves only that AWS
-profile, never exported `AWS_*` variables. See
+reads from it, with the default AWS credentials (`AWS_PROFILE`, or a deploy
+job's role). See
 [the secrets store](./dev-server.md#deployed-stages-the-secrets-store).
 
 ### State Management

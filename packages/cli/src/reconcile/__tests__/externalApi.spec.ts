@@ -168,7 +168,7 @@ describe('derivedContainers', () => {
 			secrets: {},
 		}) as NormalizedWorkspace;
 
-	it('never reads a fake — setup, secrets:push and docker run none', async () => {
+	it('never reads a fake — setup, secrets:* and docker run none', async () => {
 		for (const stage of ['development', 'production']) {
 			const containers = await derivedContainers(
 				workspace(join(fixtures, 'fakes-broken')),

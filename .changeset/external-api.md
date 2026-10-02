@@ -46,10 +46,9 @@
   store for the stage they act on: the file for the local stage, and
   `secrets.store` for a deployed one. A stage kept in SSM is set with
   `gkm secrets:set` and read by the deploy, with nothing pushed or pulled in
-  between. `secrets:push` and `secrets:pull` only copy a stage between this
-  machine's file and its store. `gkm setup` no longer offers to push,
-  `deploy:github` no longer pushes, and the generated SST workflow has no
-  pull step.
+  between. `secrets:push` and `secrets:pull` are removed. `gkm setup` no
+  longer offers to push, `deploy:github` no longer pushes, and the generated
+  SST workflow has no pull step.
 - **`SecretsStore` is `{ name, read(stage), write(stage, secrets) }`.** The
   file store is `FileSecretsStore` (`name: 'file'`), and SSM is
   `AwsSecretsStore` (`name: 'ssm'`), renamed from `SsmSecretsStore`. The free
@@ -73,8 +72,9 @@
   each deployed stage: `gkm secrets:set STRIPE_CREDENTIALS '{…}' --stage production`.
 - A custom `secrets.store` provider renames `pull` to `read` and `push` to
   `write`, and adds a `name`.
-- A deployed stage whose secrets were only in this machine's file needs one
-  `gkm secrets:push --stage <stage>` to move them onto its store.
+- A deployed stage whose secrets were only in this machine's file: set
+  `secrets.store`, then write its values to the store with
+  `gkm secrets:import --stage <stage> --file …` or `gkm secrets:set`.
 - An existing Dokploy stage's next deploy generates its seed and signing
   secret: live sessions end once, the database roles take their new passwords,
   and a bucket's root user is reset.

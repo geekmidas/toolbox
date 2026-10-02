@@ -66,7 +66,7 @@ export async function derivedContainers(
 		}));
 
 	// No fakes: they run only for `gkm test` and `gkm dev --fake`, and the
-	// commands asking this — `setup`, `secrets:push`, `docker` — are neither.
+	// commands asking this — `setup`, `secrets:*`, `docker` — are neither.
 	return planFor(found, stage, provisionOrder(found), {
 		localStage: workspace.stages.local,
 		...backendsOf(workspace),

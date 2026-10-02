@@ -297,26 +297,9 @@ secrets:set KEY … --stage prod` writes to SSM; `gkm deploy`, `gkm build`,
 machine to keep in step, and nothing to push before a deploy. The local stage
 is always the file, whatever `store` says.
 
-#### Copying between this machine and a store
-
-```bash
-# A stage kept in the file before it had a store: send it there once
-gkm secrets:push --stage prod --profile acme-prod
-
-# A copy of a stored stage on this machine
-gkm secrets:pull --stage prod --profile acme-prod
-```
-
-`--profile` names the AWS profile for the stage's account, and only that
-profile is used: exported `AWS_*` variables are never consulted when a profile
-is named, so they cannot put production's secrets in the staging account.
-Without `--profile` the default credential chain applies — which is what a
-deploy job wants, with the stage's OIDC role already assumed.
-
-Both refuse a stage not in `stages.deployed`, and a stage kept in the `'file'`
-store. Neither is part of deploying: a deploy reads the store itself.
-
-The credentials need `ssm:GetParameter` and `ssm:PutParameter` on
+The SSM store uses the default AWS credential chain: `AWS_PROFILE` on a
+laptop — `AWS_PROFILE=acme-prod gkm secrets:set … --stage prod` — and the
+stage's OIDC role in a deploy job. The credentials need `ssm:GetParameter` and `ssm:PutParameter` on
 `arn:aws:ssm:*:*:parameter/gkm/*` in each stage's account.
 
 #### Secret Resolution Priority
@@ -366,12 +349,9 @@ When you add secrets manually with `gkm secrets:set`:
 gkm secrets:set STRIPE_KEY sk_test_xxx --stage dev
 ```
 
-These are preserved across `gkm setup` runs because setup checks for existing local secrets first.
-
-For a deployed stage with a store, push them so a deploy from anywhere has them:
-```bash
-gkm secrets:push --stage prod --profile acme-prod
-```
+These are preserved across `gkm setup` runs because setup reads the stage's
+existing secrets first. For a deployed stage with a store, `secrets:set` writes
+there, so a deploy from anywhere has them.
 
 ### Setup Command Reference
 

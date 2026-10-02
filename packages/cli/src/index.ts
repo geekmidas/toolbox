@@ -630,62 +630,6 @@ program
 	});
 
 program
-	.command('secrets:push')
-	.description("Send a deployed stage's secrets to its store (secrets.store)")
-	.requiredOption('--stage <stage>', 'A deployed stage')
-	.option('--profile <profile>', "AWS profile for the stage's account")
-	.action(async (options: { stage: string; profile?: string }) => {
-		try {
-			const globalOptions = program.opts();
-			if (globalOptions.cwd) {
-				process.chdir(globalOptions.cwd);
-			}
-
-			const { loadWorkspaceConfig } = await import('./config');
-			const { pushStageSecrets } = await import('./secrets/transfer');
-			const { workspace } = await loadWorkspaceConfig();
-
-			const { addedKeys } = await pushStageSecrets(workspace, options.stage, {
-				profile: options.profile,
-			});
-			for (const key of addedKeys) console.log(`  + ${key} (reconciled)`);
-			console.log(`\n✓ Secrets pushed for stage "${options.stage}"`);
-		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
-		}
-	});
-
-program
-	.command('secrets:pull')
-	.description(
-		"Bring a deployed stage's secrets from its store into the local copy",
-	)
-	.requiredOption('--stage <stage>', 'A deployed stage')
-	.option('--profile <profile>', "AWS profile for the stage's account")
-	.action(async (options: { stage: string; profile?: string }) => {
-		try {
-			const globalOptions = program.opts();
-			if (globalOptions.cwd) {
-				process.chdir(globalOptions.cwd);
-			}
-
-			const { loadWorkspaceConfig } = await import('./config');
-			const { pullStageSecrets } = await import('./secrets/transfer');
-			const { workspace } = await loadWorkspaceConfig();
-
-			const { addedKeys } = await pullStageSecrets(workspace, options.stage, {
-				profile: options.profile,
-			});
-			for (const key of addedKeys) console.log(`  + ${key} (reconciled)`);
-			console.log(`\n✓ Secrets pulled for stage "${options.stage}"`);
-		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
-		}
-	});
-
-program
 	.command('secrets:reconcile')
 	.description('Backfill missing custom secrets from workspace config')
 	.option('--stage <stage>', 'Stage name (default: stages.local)')

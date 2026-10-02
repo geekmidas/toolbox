@@ -12,7 +12,6 @@ import {
 	it,
 } from 'vitest';
 import { loadWorkspaceConfig } from '../../config';
-import { UndeclaredStage } from '../../workspace/stages';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { AwsSecretsStore, secretsParameterName } from '../aws';
 import { createStageSecrets } from '../generator';
@@ -23,13 +22,6 @@ import {
 	type SecretsStore,
 	secretsStoreFor,
 } from '../store';
-import {
-	NoLocalSecrets,
-	NoRemoteSecretsStore,
-	NoStoredSecrets,
-	pullStageSecrets,
-	pushStageSecrets,
-} from '../transfer';
 import type { StageSecrets } from '../types';
 
 /**
@@ -274,106 +266,6 @@ describe('AwsSecretsStore', () => {
 				else process.env[key] = value;
 			}
 		}
-	});
-});
-
-describe('pushStageSecrets / pullStageSecrets', () => {
-	it('round-trips a deployed stage through SSM', async () => {
-		const ws = await workspace("{ provider: 'ssm', region: 'us-east-1' }");
-		const secrets = {
-			...initStageSecrets('prod'),
-			custom: { STRIPE_KEY: 'sk_live_1' },
-		};
-		const file = new FileSecretsStore(root);
-		await file.write('prod', secrets);
-
-		await pushStageSecrets(ws, 'prod');
-		rmSync(file.path('prod'));
-		const { secrets: pulled } = await pullStageSecrets(ws, 'prod');
-
-		expect(pulled.custom).toEqual({ STRIPE_KEY: 'sk_live_1' });
-		expect((await file.read('prod'))?.custom).toEqual({
-			STRIPE_KEY: 'sk_live_1',
-		});
-	});
-
-	it('adds the keys the workspace now derives before pushing', async () => {
-		writeFileSync(
-			join(root, 'gkm.config.ts'),
-			`import { defineWorkspace } from '@geekmidas/cli/config';
-
-export default defineWorkspace({
-  name: '${project()}',
-  constructs: './src/constructs/**/*.ts',
-  stages: { local: 'dev', deployed: ['prod'] },
-  apps: {
-    api: { type: 'backend', path: 'apps/api', port: 3400 },
-    web: { type: 'web', path: 'apps/web', port: 3401, framework: 'nextjs' },
-  },
-});
-`,
-		);
-		const ws = (await loadWorkspaceConfig(root)).workspace;
-		const custom = memoryStore();
-		ws.secrets = { store: { provider: custom } };
-		await new FileSecretsStore(root).write('prod', initStageSecrets('prod'));
-
-		const { addedKeys } = await pushStageSecrets(ws, 'prod');
-
-		expect(addedKeys.length).toBeGreaterThan(0);
-		const pushed = custom.held.get('prod')!;
-		for (const key of addedKeys) expect(pushed.custom).toHaveProperty(key);
-		expect((await new FileSecretsStore(root).read('prod'))?.custom).toEqual(
-			pushed.custom,
-		);
-	});
-
-	it('pulls onto a machine with no key, making one', async () => {
-		const custom = memoryStore();
-		custom.held.set('prod', initStageSecrets('prod'));
-		const ws = await workspace();
-		ws.secrets = { store: { provider: custom } };
-
-		await pullStageSecrets(ws, 'prod');
-
-		expect(await new FileSecretsStore(root).read('prod')).not.toBeNull();
-	});
-
-	it('refuses the local stage and undeclared ones', async () => {
-		const ws = await workspace("{ provider: 'ssm', region: 'us-east-1' }");
-
-		await expect(pushStageSecrets(ws, 'dev')).rejects.toBeInstanceOf(
-			UndeclaredStage,
-		);
-		await expect(pullStageSecrets(ws, 'qa')).rejects.toBeInstanceOf(
-			UndeclaredStage,
-		);
-	});
-
-	it('refuses a stage kept in the local file', async () => {
-		const ws = await workspace();
-
-		await expect(pushStageSecrets(ws, 'prod')).rejects.toBeInstanceOf(
-			NoRemoteSecretsStore,
-		);
-	});
-
-	it('refuses to push secrets this machine does not have', async () => {
-		const ws = await workspace();
-		ws.secrets = { store: { provider: memoryStore() } };
-
-		await expect(pushStageSecrets(ws, 'prod')).rejects.toBeInstanceOf(
-			NoLocalSecrets,
-		);
-	});
-
-	it('refuses to pull what the store does not hold', async () => {
-		const ws = await workspace();
-		ws.secrets = { store: { provider: memoryStore() } };
-
-		await expect(pullStageSecrets(ws, 'prod')).rejects.toBeInstanceOf(
-			NoStoredSecrets,
-		);
 	});
 });
 
