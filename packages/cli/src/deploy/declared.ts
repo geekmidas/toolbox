@@ -65,9 +65,9 @@ export interface DeclaredOptions {
 	 * makes a surface's own URL available to the constructs that depend on it.
 	 */
 	appUrls: Readonly<Record<string, string>>;
-	/** Secrets already generated for this stage, so a redeploy rotates none. */
-	secrets?: Readonly<Record<string, string>>;
-	/** What the stage was given by hand, by key — third parties' credentials. */
+	/** The stage's random seed, which every derived password is salted with. */
+	seed: string;
+	/** The stage's values by key: given by hand, and generated once. */
 	supplied?: Readonly<Record<string, string>>;
 	/** A manifest already in hand, for a caller that has discovered one. */
 	manifest?: ConstructManifest;
@@ -110,7 +110,7 @@ export async function provisionDeclared(
 		events: eventsBackendFor(providerOf(workspace)),
 		storage: storageBackendFor(providerOf(workspace)),
 		addresses: surfaceAddresses(workspace, manifest, options.appUrls),
-		...(options.secrets ? { secrets: options.secrets } : {}),
+		seed: options.seed,
 		...(options.supplied ? { supplied: options.supplied } : {}),
 		deferred: [],
 		clusters: {},

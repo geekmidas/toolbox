@@ -56,6 +56,18 @@
   functions `readStageSecrets`, `writeStageSecrets`, `setCustomSecret`,
   `secretsExist` and `getSecretsPath` are gone.
 
+- **Security: Dokploy no longer derives secrets from repo facts.** An auth
+  server's signing secret, and every Dokploy database and bucket password,
+  were a SHA-256 of the project name, stage and construct id, all of which
+  are in the repo. Now:
+  - **Signing secrets** are random, generated on the stage's first deploy and
+    kept in its secrets store.
+  - **Derived passwords** are salted with a random per-stage seed kept in the
+    same store.
+  - **Role passwords** are set on every apply (`ALTER ROLE … PASSWORD`), so an
+    existing database moves to the new passwords rather than locking the app
+    out.
+
 **Moving an existing app:**
 - Rename every `<ID>_CREDENTIAL` secret to `<ID>_CREDENTIALS` and set it on
   each deployed stage: `gkm secrets:set STRIPE_CREDENTIALS '{…}' --stage production`.
@@ -63,3 +75,6 @@
   `write`, and adds a `name`.
 - A deployed stage whose secrets were only in this machine's file needs one
   `gkm secrets:push --stage <stage>` to move them onto its store.
+- An existing Dokploy stage's next deploy generates its seed and signing
+  secret: live sessions end once, the database roles take their new passwords,
+  and a bucket's root user is reset.

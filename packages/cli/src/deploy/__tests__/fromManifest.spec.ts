@@ -135,7 +135,10 @@ async function provision(
 		addresses: { Api: 'https://api.example.com' },
 		deferred: [],
 		clusters: {},
+		seed: 'stage-seed',
 		...overrides,
+		// What the deploy generated before provisioning — see generated.spec.
+		supplied: { AUTH_SECRET: 'generated-signing-key', ...overrides.supplied },
 	};
 
 	const env: Record<string, string> = {};
@@ -794,5 +797,39 @@ describe('an external API', () => {
 		await expect(
 			provision({ supplied, stage: 'staging' }, prodOnly),
 		).rejects.toThrow(NoUrlForStage);
+	});
+});
+
+describe('what a deploy derives', () => {
+	it('salts every derived password with the stage’s seed', async () => {
+		const first = await provision({ seed: 'seed-one' });
+		const second = await provision({ seed: 'seed-two' });
+
+		expect(first.env.ORDERS_URL).not.toBe(second.env.ORDERS_URL);
+		// The same seed, the same password: a redeploy locks nobody out.
+		expect((await provision({ seed: 'seed-one' })).env.ORDERS_URL).toBe(
+			first.env.ORDERS_URL,
+		);
+	});
+
+	it('cannot be computed from what the repo holds', async () => {
+		// The old derivation: project, stage and role, all in the repo.
+		const { createHash } = await import('node:crypto');
+		const guess = createHash('sha256')
+			.update('shop:production:role:orders_production')
+			.digest('base64url')
+			.slice(0, 32);
+
+		const { env } = await provision();
+
+		expect(env.ORDERS_URL).not.toContain(encodeURIComponent(guess));
+	});
+
+	it('signs with the stage’s stored key, never a derived one', async () => {
+		const { env } = await provision({
+			supplied: { AUTH_SECRET: 'stored-signing-key' },
+		});
+
+		expect(env.AUTH_SECRET).toBe('stored-signing-key');
 	});
 });

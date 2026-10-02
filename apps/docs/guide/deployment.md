@@ -217,6 +217,19 @@ In production, the CLI auto-injects these variables:
 | `BETTER_AUTH_SECRET` | Generated | Random secret, persisted in state |
 | `BETTER_AUTH_TRUSTED_ORIGINS` | Derived | All frontend URLs (comma-separated) |
 
+**Generated secrets** are created once per stage and kept in its secrets store,
+so every later deploy reads the same values:
+
+- **Each `secret` construct's value**, such as an auth server's signing secret.
+  It's random rather than derived, and `gkm secrets:set AUTH_SECRET … --stage
+  production` replaces it with your own.
+- **The stage's seed**, which salts every password the Dokploy target derives:
+  each database's master and roles, and each bucket's root user. Nothing in
+  the repo is enough to compute one.
+
+The first deploy of a stage generates both and writes them to the store; it
+prints `🔑 Generated for "production" (ssm): AUTH_SECRET, seed`.
+
 **Custom secrets** are injected from the secrets store:
 
 ```bash

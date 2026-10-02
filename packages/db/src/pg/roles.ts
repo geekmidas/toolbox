@@ -80,11 +80,13 @@ export function roleStatements(spec: RoleSpec): RoleStatement[] {
 			exists: roleExists(owner),
 			sql: `CREATE ROLE ${ident(owner)} LOGIN PASSWORD ${literal(passwords.owner)}`,
 		},
+		passwordStatement(owner, passwords.owner),
 		{
 			describe: `role ${runtime}`,
 			exists: roleExists(runtime),
 			sql: `CREATE ROLE ${ident(runtime)} LOGIN PASSWORD ${literal(passwords.runtime)}`,
 		},
+		passwordStatement(runtime, passwords.runtime),
 		{
 			// Postgres will not let you create an object owned by a role you are
 			// not a member of, and an RDS master is not a superuser — so
@@ -180,6 +182,22 @@ export function roleStatements(spec: RoleSpec): RoleStatement[] {
 }
 
 /**
+ * The role's password, set to what the caller supplied — every time.
+ *
+ * `CREATE ROLE` only runs for a role that is not there, so on its own a role
+ * keeps the password it was born with, and an app handed a different one is
+ * locked out. Setting it on every apply is what lets the supplied password be
+ * the truth: rotated, or re-derived, the role follows. Idempotent, so it needs
+ * no check.
+ */
+function passwordStatement(role: string, password: string): RoleStatement {
+	return {
+		describe: `${role} has its current password`,
+		sql: `ALTER ROLE ${ident(role)} WITH LOGIN PASSWORD ${literal(password)}`,
+	};
+}
+
+/**
  * A role that may read and nothing else.
  *
  * `SELECT` and no more, on what exists and on what the owner creates later. No
@@ -199,6 +217,7 @@ function readerStatements(spec: RoleSpec, reader: string): RoleStatement[] {
 			exists: roleExists(reader),
 			sql: `CREATE ROLE ${ident(reader)} LOGIN PASSWORD ${literal(password)}`,
 		},
+		passwordStatement(reader, password),
 		{
 			describe: `${reader} may use ${schema}`,
 			sql: `GRANT USAGE ON SCHEMA ${ident(schema)} TO ${ident(reader)}`,
