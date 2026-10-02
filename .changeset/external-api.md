@@ -17,11 +17,14 @@
   cannot reach a deployed bundle. The file default-exports
   `fake.app(handler, { credentials })` or
   `fake.image('stripe/stripe-mock', { port, credentials })`.
-  - **Feature tests** serve an app fake in-process through MSW.
-  - **`gkm dev`** serves it on an allocated port.
+  - **Fakes are opt-in:** only `gkm test` and `gkm dev --fake` use them.
+    Plain `gkm dev` calls the real API at its `url` for the local stage, with
+    that stage's own credentials.
+  - **Feature tests** serve an app fake in-process through MSW, and
+    `gkm dev --fake` serves it on an allocated port.
   - **An image fake** runs as a container on an allocated host port.
-  - **Local and test stages** get the fake's URL and credentials.
-  - **No fake:** an external API without one fails with `NoFake`.
+  - **No fake:** an external API without one fails `gkm test` or
+    `gkm dev --fake` with `NoFake`.
 - **Deploying** resolves the URL for the stage (`NoUrlForStage` when it has
   none) and the credentials from the stage's secrets, on Dokploy and on AWS.
 - **`Credential` provides `<ID>_CREDENTIALS`**, renamed from `<ID>_CREDENTIAL`.

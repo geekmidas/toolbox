@@ -17,6 +17,7 @@ import { ownerRole, readerRole } from '@geekmidas/db/pg/roles';
 import {
 	cacheTable,
 	cookieDomain,
+	externalApiUrl,
 	mobileOrigins,
 	provideKey,
 	schemeBase,
@@ -172,9 +173,8 @@ export function envFor(
 			if (owner) env[provideKey(resource.id, 'ownerUrl')] = owner;
 		}
 
-		// An external API owns a second key, and here it is the fake's: the
-		// stage's real credentials are for the provider, which nothing local
-		// ever calls.
+		// An external API owns a second key. Faked, it is the fake's; otherwise
+		// it is the stage's own, from its secrets like any value it was given.
 		if (resource.kind === 'external-api' && url && resource.fake) {
 			env[provideKey(resource.id, 'credentials')] = resource.fake.credentials;
 		}
@@ -479,10 +479,16 @@ function urlFor(
 	// own schema is what reports it missing.
 	if (resource.kind === 'credential') return undefined;
 
-	// An external API is never the provider here: it is its fake, on the port
-	// its key was assigned — a container's for an image, gkm's own for a module.
+	// An external API is the provider, at its URL for this stage — unless the
+	// plan was made with fakes (`gkm test`, `gkm dev --fake`), and then it is
+	// its fake, on the port its key was assigned.
 	if (resource.kind === 'external-api') {
-		const port = resource.fake ? ports[resource.fake.key] : undefined;
+		if (!resource.fake) {
+			return resource.url === undefined
+				? undefined
+				: externalApiUrl({ id: resource.id, url: resource.url }, plan.stage);
+		}
+		const port = ports[resource.fake.key];
 		return port === undefined ? undefined : `http://${LOCAL_HOST}:${port}`;
 	}
 

@@ -251,6 +251,11 @@ export interface PlannedResource {
 	 */
 	fake?: { key: string; credentials: string };
 	/**
+	 * For an external API with no fake in this plan: the URL it is called at,
+	 * as declared — one string, or one per stage name.
+	 */
+	url?: string | Readonly<Record<string, string>>;
+	/**
 	 * For a site: the keys its bundle needs, mapped to the key each value comes
 	 * from — `{ VITE_API_URL: 'API_URL' }`.
 	 *
@@ -514,6 +519,9 @@ export function planFor(
 				: {}),
 			...(fake
 				? { fake: { key: fake.key, credentials: fake.credentials } }
+				: {}),
+			...(declaration.kind === 'external-api' && !fake
+				? { url: declaration.url }
 				: {}),
 			...('of' in declaration ? { of: declaration.of } : {}),
 			...('schema' in declaration && declaration.schema

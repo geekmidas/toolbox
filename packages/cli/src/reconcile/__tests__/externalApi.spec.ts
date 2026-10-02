@@ -3,11 +3,13 @@ import { fileURLToPath } from 'node:url';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { provisionOrder } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
+import type { NormalizedWorkspace } from '../../workspace/types';
 import { composeFor } from '../compose';
 import { portKeys } from '../containers';
 import { envFor } from '../env';
 import { NoFake, NotAFake, readFakes } from '../fakes';
 import { planFor } from '../plan';
+import { derivedContainers, fakesApply } from '../workspace';
 
 const manifest = {
 	Polar: {
@@ -120,5 +122,60 @@ describe('an external API, locally', () => {
 			ports: ['4011:12111'],
 		});
 		expect(compose.services['polar-fake']).toBeUndefined();
+	});
+});
+
+describe('an external API, unfaked', () => {
+	const real = planFor(manifest, 'production', provisionOrder(manifest), {
+		localStage: 'development',
+	});
+
+	it('is the provider, at its URL for the stage, with no fake running', () => {
+		expect(real.containers).not.toContain('stripe-fake');
+		expect(real.fakes).toBeUndefined();
+		expect(envFor(real, { ports: {} })).toMatchObject({
+			POLAR_URL: 'https://www.polaraccesslink.com',
+			STRIPE_URL: 'https://api.stripe.com',
+		});
+	});
+
+	it('leaves its credentials to the stage’s own secrets', () => {
+		expect(envFor(real, { ports: {} })).not.toHaveProperty('POLAR_CREDENTIALS');
+	});
+});
+
+describe('fakesApply', () => {
+	it('fakes for gkm test, always', () => {
+		expect(fakesApply('test', undefined, {})).toBe(true);
+	});
+
+	it('fakes for gkm dev only when asked, by the flag or the workspace', () => {
+		expect(fakesApply('development', undefined, {})).toBe(false);
+		expect(fakesApply('development', true, {})).toBe(true);
+		expect(fakesApply('development', undefined, { GKM_FAKE: '1' })).toBe(true);
+	});
+});
+
+describe('derivedContainers', () => {
+	const workspace = (root: string) =>
+		({
+			stages: { local: 'development', deployed: ['production'] },
+			name: 'shop',
+			root,
+			apps: {},
+			deploy: { default: 'dokploy' },
+			shared: { packages: [] },
+			secrets: {},
+		}) as NormalizedWorkspace;
+
+	it('never reads a fake — setup, secrets:push and docker run none', async () => {
+		for (const stage of ['development', 'production']) {
+			const containers = await derivedContainers(
+				workspace(join(fixtures, 'fakes-broken')),
+				stage,
+				manifest,
+			);
+			expect(containers).not.toContain('stripe-fake');
+		}
 	});
 });

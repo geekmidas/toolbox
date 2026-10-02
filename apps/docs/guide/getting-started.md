@@ -284,7 +284,7 @@ Everything below is real today. `import { X } from '@geekmidas/constructs/…'`:
 | `FileServer` | `/file-server` | storage client **plus** `url()` / `signedUrl()` | MinIO | S3 + CDN |
 | `Cache` | `/cache` | `CacheClient` | Redis / Postgres table | Upstash, ElastiCache, or the database |
 | `Credential` | `/credential` | the parsed, validated value | injected secret | secret manager |
-| `ExternalApi` | `/external-api` | whatever its `client` builds | its fake | the provider's URL |
+| `ExternalApi` | `/external-api` | whatever its `client` builds | the provider, or its fake with `--fake` | the provider's URL |
 | `Email` | `/email` | a sender, typed by your templates | Mailpit | SES, Resend, or SMTP |
 | `Topic` | `/topic` | `topic.publisher` — a typed publisher | pg-boss / RabbitMQ / LocalStack | SNS |
 | `Queue` | `/queue` | `send()` | pg-boss / RabbitMQ / LocalStack | SQS |

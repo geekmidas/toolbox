@@ -167,10 +167,15 @@ export const polar = new ExternalApi('Polar', {
 
 It provides two keys, `POLAR_URL` and `POLAR_CREDENTIALS`:
 
-| | Deployed | `gkm dev` | Tests |
-|---|---|---|---|
-| `POLAR_URL` | `url` | the fake | the fake |
-| `POLAR_CREDENTIALS` | the stage's secret | the fake's `credentials` | the fake's `credentials` |
+| | Deployed, and `gkm dev` | `gkm dev --fake` and `gkm test` |
+|---|---|---|
+| `POLAR_URL` | `url`, for the stage | the fake |
+| `POLAR_CREDENTIALS` | the stage's secret | the fake's `credentials` |
+
+**Fakes are opt-in.** Plain `gkm dev` calls the real API — its sandbox, say —
+at its `url` for the local stage, with the local stage's own credentials.
+`gkm test` always uses the fakes, and `gkm dev --fake` uses them too. Nothing
+that acts on a stage (`gkm setup`, `secrets:push`, `deploy`) reads one.
 
 **`url` is one URL or one per stage.** A string answers every stage. A record
 is keyed by stage name, with `default` for any stage not listed — for a
@@ -202,7 +207,7 @@ responses it answers from, into a deployed build. It lives at
 and default-exports one of two things.
 
 An app — a working implementation of the API, served by gkm in-process
-through MSW in a feature test and on an allocated port in `gkm dev`:
+through MSW in a feature test and on an allocated port by `gkm dev --fake`:
 
 ```typescript
 // test/fakes/polar.ts
@@ -227,8 +232,8 @@ export default fake.image<typeof stripe>('stripe/stripe-mock', {
 ```
 
 `<typeof polar>` checks the fake's credentials against the construct's schema.
-An external API with no fake fails a local stage with `NoFake`, naming the file
-to create.
+An external API with no fake fails `gkm test` and `gkm dev --fake` with
+`NoFake`, naming the file to create.
 
 ### The database, and what comes off it
 

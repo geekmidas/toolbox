@@ -28,7 +28,7 @@ import {
 	prepareEntryCredentials,
 } from '../credentials';
 import { resolveOpenApiConfig } from '../openapi';
-import { reconcileWorkspace } from '../reconcile/workspace.js';
+import { FAKE_ENV, reconcileWorkspace } from '../reconcile/workspace.js';
 import {
 	readStageSecrets,
 	secretsExist,
@@ -250,6 +250,12 @@ export interface DevOptions {
 	migrate?: boolean;
 	/** Migrate, then run the seeds, before the apps start. */
 	seed?: boolean;
+	/**
+	 * Call each external API's fake (`test/fakes/<id>.ts`) instead of the
+	 * provider. Without it an external API is the real one, at its URL for the
+	 * local stage, with the local stage's own credentials.
+	 */
+	fake?: boolean;
 }
 
 export async function devCommand(options: DevOptions): Promise<void> {
@@ -400,6 +406,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		// URLs name, and inject those URLs.
 		const reconciled = await reconcileWorkspace(workspace, {
 			stage: workspace.stages.local,
+			...(options.fake ? { fake: true } : {}),
 		});
 
 		if (reconciled.changed && reconciled.plan.containers.length > 0) {
@@ -919,6 +926,7 @@ async function workspaceDevCommand(
 	// converged case costs one hash and one health check.
 	const reconciled = await reconcileWorkspace(workspace, {
 		stage: workspace.stages.local,
+		...(options.fake ? { fake: true } : {}),
 	});
 
 	if (reconciled.changed && reconciled.plan.containers.length > 0) {
@@ -933,9 +941,12 @@ async function workspaceDevCommand(
 		...reconciled.env,
 	};
 
-	// Here and not in reconcile: every app's own `gkm dev` reconciles too, and
-	// only this process — the one that outlives them — may own the ports.
-	const fakes = await serveFakes(reconciled.fakes, reconciled.ports);
+	// Only with `--fake`, and here rather than in reconcile: every app's own
+	// `gkm dev` reconciles too, and only this process — the one that outlives
+	// them — may own the ports.
+	const fakes = options.fake
+		? await serveFakes(reconciled.fakes, reconciled.ports)
+		: [];
 	for (const { id, port } of fakes) {
 		logger.log(`🎭 ${id} fake: http://localhost:${port}`);
 	}
@@ -1061,6 +1072,8 @@ async function workspaceDevCommand(
 		NODE_ENV: 'development',
 		// Inject config path so child processes can find the workspace config
 		...(configPath ? { GKM_CONFIG_PATH: configPath } : {}),
+		// Each app reconciles again, and must point at the same fakes.
+		...(options.fake ? { [FAKE_ENV]: '1' } : {}),
 	};
 
 	// Every app's port, before anything starts. Each app checks its own as it

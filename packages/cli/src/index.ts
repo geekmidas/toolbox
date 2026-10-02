@@ -218,6 +218,10 @@ program
 	)
 	.option('--migrate', 'Apply pending migrations before the apps start')
 	.option('--seed', 'Migrate, then run the seeds, before the apps start')
+	.option(
+		'--fake',
+		'Call each external API’s fake (test/fakes/<id>.ts) instead of the provider',
+	)
 	.action(
 		async (options: {
 			port?: string;
@@ -226,6 +230,7 @@ program
 			enableOpenapi?: boolean;
 			migrate?: boolean;
 			seed?: boolean;
+			fake?: boolean;
 		}) => {
 			try {
 				const globalOptions = program.opts();
@@ -244,6 +249,7 @@ program
 					watch: options.watch,
 					migrate: options.migrate,
 					seed: options.seed,
+					fake: options.fake,
 				});
 			} catch (error) {
 				console.error(formatError(error));

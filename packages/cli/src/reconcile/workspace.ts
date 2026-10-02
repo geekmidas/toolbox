@@ -19,6 +19,7 @@ import {
 } from '../workspace/backends.js';
 import { appKey } from '../workspace/derive.js';
 import { allConstructGlobs } from '../workspace/index.js';
+import { TEST_STAGE } from '../workspace/stages.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { appServices } from './apps.js';
 import { discover } from './discover.js';
@@ -64,10 +65,11 @@ export async function derivedContainers(
 			cwd: workspace.root,
 		}));
 
+	// No fakes: they run only for `gkm test` and `gkm dev --fake`, and the
+	// commands asking this — `setup`, `secrets:push`, `docker` — are neither.
 	return planFor(found, stage, provisionOrder(found), {
 		localStage: workspace.stages.local,
 		...backendsOf(workspace),
-		fakes: await readFakes(workspace.root, found),
 	}).containers;
 }
 
@@ -77,6 +79,31 @@ export interface WorkspaceReconcileOptions {
 	start?: boolean;
 	/** A manifest already in hand — the dev watcher has one; setup does not. */
 	manifest?: ConstructManifest;
+	/**
+	 * Point every external API at its fake (`test/fakes/<id>.ts`) instead of
+	 * the provider — `gkm dev --fake`. Always so for the test stage; otherwise
+	 * an external API is the real one, at its URL for this stage.
+	 */
+	fake?: boolean;
+}
+
+/**
+ * Set by `gkm dev --fake` for the apps it starts. Each app's own `gkm dev`
+ * reconciles too, and must answer the way the workspace did.
+ */
+export const FAKE_ENV = 'GKM_FAKE';
+
+/**
+ * Whether external APIs are faked: always for `gkm test`, and for `gkm dev`
+ * only when asked — by `--fake`, or by the workspace that started this app
+ * with it. Never for anything acting on a deployed stage.
+ */
+export function fakesApply(
+	stage: string,
+	fake?: boolean,
+	env: NodeJS.ProcessEnv = process.env,
+): boolean {
+	return fake === true || stage === TEST_STAGE || env[FAKE_ENV] === '1';
 }
 
 /**
@@ -98,7 +125,9 @@ export async function reconcileWorkspace(
 		runnables,
 	});
 	const manifest = options.manifest ?? discovered;
-	const fakes = await readFakes(workspace.root, manifest);
+	const fakes = fakesApply(options.stage, options.fake)
+		? await readFakes(workspace.root, manifest)
+		: {};
 
 	const result = await reconcile({
 		root: workspace.root,

@@ -91,6 +91,8 @@ Options:
   --port, -p <number>    Port number (default: 3000)
   --host <string>        Host to bind (default: localhost)
   --open                 Open browser automatically
+  --fake                 Call each ExternalApi's fake (test/fakes/<id>.ts)
+                         instead of the provider
 ```
 
 **Features:**
