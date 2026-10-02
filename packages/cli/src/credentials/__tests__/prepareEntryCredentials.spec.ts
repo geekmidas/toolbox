@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -109,21 +109,15 @@ describe('prepareEntryCredentials', () => {
 		expect(result.appInfo).toBeUndefined();
 	});
 
-	it('should extract appName from package.json', async () => {
+	it('names no app outside a workspace, whatever the package is called', async () => {
+		// An app is what gkm.config.ts declares; with no config there is none,
+		// and a package.json name is not one.
 		const result = await prepareEntryCredentials({ cwd: testDir });
 
-		expect(result.appName).toBe('my-app');
-	});
-
-	it('should extract appName from scoped package', async () => {
-		writeFileSync(
-			join(testDir, 'package.json'),
-			JSON.stringify({ name: '@scope/my-app', version: '0.0.1' }),
+		expect(result.appName).toBeUndefined();
+		expect(result.secretsJsonPath).toBe(
+			join(testDir, '.gkm', 'dev-secrets.json'),
 		);
-
-		const result = await prepareEntryCredentials({ cwd: testDir });
-
-		expect(result.appName).toBe('my-app');
 	});
 
 	it('should write credentials JSON with all secrets and PORT', async () => {

@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, parse } from 'node:path';
+import { existsSync, realpathSync } from 'node:fs';
+import { dirname, join, parse, resolve, sep } from 'node:path';
 import { discover } from './reconcile/discover.js';
 import type { GkmConfig } from './types.js';
 import { derivedApps } from './workspace/derive.js';
@@ -127,41 +127,6 @@ export class ConfigNotFound extends Error {
 			'Configuration file not found. Please create gkm.config.json, gkm.config.ts, or gkm.config.js in the project root.',
 		);
 		this.name = 'ConfigNotFound';
-	}
-}
-
-/**
- * Get app name from package.json in the given directory.
- * Handles scoped packages by extracting the name after the scope.
- *
- * @example
- * getAppNameFromCwd('/path/to/apps/api')
- * // package.json: { "name": "@myorg/api" }
- * // Returns: 'api'
- */
-export function getAppNameFromCwd(cwd: string = process.cwd()): string | null {
-	const packageJsonPath = join(cwd, 'package.json');
-
-	if (!existsSync(packageJsonPath)) {
-		return null;
-	}
-
-	try {
-		const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-		const name = packageJson.name as string | undefined;
-
-		if (!name) {
-			return null;
-		}
-
-		// Handle scoped packages: @scope/name -> name
-		if (name.startsWith('@') && name.includes('/')) {
-			return name.split('/')[1] ?? null;
-		}
-
-		return name;
-	} catch {
-		return null;
 	}
 }
 
@@ -325,94 +290,108 @@ export interface AppConfigResult {
 }
 
 /**
- * The app a package directory refers to, and what the workspace calls it.
+ * The app a directory is part of: the one whose configured `path` contains it.
  *
- * A single-app config is wrapped as a one-app workspace keyed `api`, which is
- * almost never the package name. Matching on the key alone means an app like
- * `@geekmidas/example` resolves to nothing and silently loses everything that
- * comes from the workspace — including the URLs its constructs declare.
+ * Read off the config, never the filesystem's package names — an app is where
+ * `gkm.config.ts` says it is, whatever its `package.json` happens to be
+ * called. The deepest match wins, so an app inside another app's folder is its
+ * own; the workspace root belongs to no app unless one lives there.
  */
 function resolveWorkspaceApp(
 	loadedConfig: LoadedConfig,
-	appName: string,
+	cwd: string,
 ): { key: string; app: NormalizedAppConfig } | undefined {
-	const apps = loadedConfig.workspace.apps;
+	const here = real(cwd);
+	let found: { key: string; app: NormalizedAppConfig; dir: string } | undefined;
 
-	const named = apps[appName];
-	if (named) return { key: appName, app: named };
-
-	const names = Object.keys(apps);
-	const only = names[0];
-	if (loadedConfig.type !== 'single' || names.length !== 1 || !only) {
-		return undefined;
+	for (const [key, app] of Object.entries(loadedConfig.workspace.apps)) {
+		const dir = real(join(loadedConfig.workspace.root, app.path));
+		const inside = here === dir || here.startsWith(`${dir}${sep}`);
+		if (inside && (!found || dir.length > found.dir.length)) {
+			found = { key, app, dir };
+		}
 	}
 
-	const app = apps[only];
+	return found && { key: found.key, app: found.app };
+}
 
-	return app ? { key: only, app } : undefined;
+/** A path with its symlinks resolved, where it exists — `/tmp` is `/private/tmp`. */
+function real(path: string): string {
+	const absolute = resolve(path);
+	return existsSync(absolute) ? realpathSync(absolute) : absolute;
+}
+
+/** A directory that no app in the workspace lives in. */
+export class NotInAnApp extends Error {
+	constructor(
+		readonly cwd: string,
+		readonly apps: Readonly<Record<string, string>>,
+	) {
+		super(
+			`${cwd} is not inside any app in gkm.config.ts. Apps: ` +
+				Object.entries(apps)
+					.map(([key, path]) => `${key} (${path})`)
+					.join(', ') +
+				'.',
+		);
+		this.name = 'NotInAnApp';
+	}
+}
+
+/** Every app's path, by key — what `NotInAnApp` lists. */
+function appPaths(loadedConfig: LoadedConfig): Record<string, string> {
+	return Object.fromEntries(
+		Object.entries(loadedConfig.workspace.apps).map(([key, app]) => [
+			key,
+			app.path,
+		]),
+	);
 }
 
 /**
- * Load app-specific configuration from workspace.
- * Uses the app name from package.json to find the correct app config.
+ * The backend app a directory is part of, with its gkm config — found by the
+ * `path` each app is configured at.
  *
  * @example
  * ```ts
- * // From apps/api directory with package.json: { "name": "@myorg/api" }
+ * // From apps/api, where gkm.config.ts declares an app at `apps/api`
  * const { app, workspace, workspaceRoot } = await loadAppConfig();
- * console.log(app.routes); // './src/endpoints/**\/*.ts'
  * ```
+ *
+ * @throws {NotInAnApp} when no app's path contains the directory.
+ * @throws {NotABackendApp} when the app it is in has no gkm config to run.
  */
 export async function loadAppConfig(
 	cwd: string = process.cwd(),
 ): Promise<AppConfigResult> {
-	const appName = getAppNameFromCwd(cwd);
+	const { appName, app, workspace, workspaceRoot } =
+		await loadWorkspaceAppInfo(cwd);
 
-	if (!appName) {
-		throw new Error(
-			'Could not determine app name. Ensure package.json exists with a "name" field.',
-		);
-	}
-
-	const { config, workspaceRoot } = await loadRawConfig(cwd);
-	const loadedConfig = await withDerivedApps(
-		processConfig(config, workspaceRoot),
-	);
-
-	const resolved = resolveWorkspaceApp(loadedConfig, appName);
-
-	if (!resolved) {
-		throw new Error(
-			`App "${appName}" not found in workspace config. Available apps: ${Object.keys(
-				loadedConfig.workspace.apps,
-			).join(', ')}. ` +
-				`Ensure the package.json name matches the app key in gkm.config.ts.`,
-		);
-	}
-
-	const { key, app } = resolved;
-
-	// Keyed by what the workspace calls the app, not by the package name — for a
-	// single-app config those differ.
-	const gkmConfig = getAppGkmConfig(loadedConfig.workspace, key);
-
-	if (!gkmConfig) {
-		throw new Error(
-			`App "${appName}" is not a backend app and cannot be run with gkm dev.`,
-		);
-	}
+	const gkmConfig = getAppGkmConfig(workspace, appName);
+	if (!gkmConfig) throw new NotABackendApp(appName);
 
 	return {
 		appName,
 		app,
 		gkmConfig,
-		workspace: loadedConfig.workspace,
+		workspace,
 		workspaceRoot,
 		appRoot: join(workspaceRoot, app.path),
 	};
 }
 
+/** The app a directory is in has no gkm config — a site, or an entry app. */
+export class NotABackendApp extends Error {
+	constructor(readonly appName: string) {
+		super(
+			`App "${appName}" is not a backend app and cannot be run with gkm dev.`,
+		);
+		this.name = 'NotABackendApp';
+	}
+}
+
 export interface WorkspaceAppInfo {
+	/** The app's key in the workspace. */
 	appName: string;
 	app: NormalizedAppConfig;
 	workspace: NormalizedWorkspace;
@@ -420,38 +399,25 @@ export interface WorkspaceAppInfo {
 }
 
 /**
- * Load workspace info for any app (frontend or backend).
- * Unlike loadAppConfig, this does NOT require the app to have a gkm config
- * (routes, entry, etc.), making it suitable for gkm exec/test from frontend apps.
+ * The app a directory is part of, frontend or backend — found by the `path`
+ * each app is configured at. Unlike `loadAppConfig`, the app need not have a
+ * gkm config, which is what `gkm exec` and `gkm test` from a site need.
+ *
+ * @throws {NotInAnApp} when no app's path contains the directory.
  */
 export async function loadWorkspaceAppInfo(
 	cwd: string = process.cwd(),
 ): Promise<WorkspaceAppInfo> {
-	const appName = getAppNameFromCwd(cwd);
-
-	if (!appName) {
-		throw new Error(
-			'Could not determine app name. Ensure package.json exists with a "name" field.',
-		);
-	}
-
 	const { config, workspaceRoot } = await loadRawConfig(cwd);
 	const loadedConfig = await withDerivedApps(
 		processConfig(config, workspaceRoot),
 	);
 
-	const resolved = resolveWorkspaceApp(loadedConfig, appName);
-
-	if (!resolved) {
-		const availableApps = Object.keys(loadedConfig.workspace.apps).join(', ');
-		throw new Error(
-			`App "${appName}" not found in workspace config. Available apps: ${availableApps}. ` +
-				`Ensure the package.json name matches the app key in gkm.config.ts.`,
-		);
-	}
+	const resolved = resolveWorkspaceApp(loadedConfig, cwd);
+	if (!resolved) throw new NotInAnApp(cwd, appPaths(loadedConfig));
 
 	return {
-		appName,
+		appName: resolved.key,
 		app: resolved.app,
 		workspace: loadedConfig.workspace,
 		workspaceRoot,

@@ -253,10 +253,18 @@ describe('docker templates', () => {
 			} as GkmConfig;
 			const result = resolveDockerConfig(config);
 
-			// imageName comes from package.json or defaults to 'api'
-			expect(typeof result.imageName).toBe('string');
+			expect(result.imageName).toBe('api');
 			expect(result.baseImage).toBe('node:22-alpine');
 			expect(result.port).toBe(3000);
+		});
+
+		it('names the image after the project the config names', () => {
+			const config = {
+				name: 'shop',
+				stages: { local: 'development', deployed: ['production'] },
+			} as GkmConfig;
+
+			expect(resolveDockerConfig(config).imageName).toBe('shop');
 		});
 
 		it('should use config values when provided', () => {

@@ -546,22 +546,11 @@ exec "$@"
 export function resolveDockerConfig(config: GkmConfig): Required<DockerConfig> {
 	const docker = config.docker ?? {};
 
-	// Try to get image name from package.json name
-	let defaultImageName = 'api';
-	try {
-		// eslint-disable-next-line @typescript-eslint/no-require-imports
-		const pkg = require(`${process.cwd()}/package.json`);
-		if (pkg.name) {
-			// Remove scope and use just the package name
-			defaultImageName = pkg.name.replace(/^@[^/]+\//, '');
-		}
-	} catch {
-		// Ignore if package.json doesn't exist
-	}
-
 	return {
 		registry: docker.registry ?? '',
-		imageName: docker.imageName ?? defaultImageName,
+		// The project's name, from the config — what somebody types after
+		// `docker pull` — never whatever the directory's package.json is called.
+		imageName: docker.imageName ?? config.name ?? 'api',
 		baseImage: docker.baseImage ?? 'node:22-alpine',
 		port: docker.port ?? 3000,
 	};

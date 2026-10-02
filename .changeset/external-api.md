@@ -67,6 +67,15 @@
     existing database moves to the new passwords rather than locking the app
     out.
 
+- **An app is found by its configured path, never by a `package.json`
+  name.**
+  - **`gkm dev`, `test` and `exec`** run the app whose `path` in
+    `gkm.config.ts` holds the current directory, and anywhere else `gkm dev`
+    hands the workspace to turbo. A folder no app lives in fails with
+    `NotInAnApp`.
+  - **`gkm docker`** names its default image after the config's `name`.
+  - **Removed:** `getAppNameFromCwd` and `getAppNameFromPackageJson`.
+
 **Moving an existing app:**
 - Rename every `<ID>_CREDENTIAL` secret to `<ID>_CREDENTIALS` and set it on
   each deployed stage: `gkm secrets:set STRIPE_CREDENTIALS '{…}' --stage production`.

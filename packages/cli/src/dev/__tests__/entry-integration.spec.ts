@@ -171,12 +171,11 @@ export default defineWorkspace({
 			expect(result.credentials.PORT).toBe('5000');
 		});
 
-		it('should write credentials with app name from package.json when not in workspace', async () => {
+		it('writes the plain credentials file when there is no app to name it after', async () => {
 			const result = await prepareEntryCredentials({ cwd: workspaceDir });
 
-			// App name extracted from package.json is used for app-specific filename
 			expect(result.secretsJsonPath).toBe(
-				join(workspaceDir, '.gkm', 'dev-secrets-standalone-app.json'),
+				join(workspaceDir, '.gkm', 'dev-secrets.json'),
 			);
 		});
 	});

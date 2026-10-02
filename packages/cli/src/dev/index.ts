@@ -2,7 +2,7 @@ import { type ChildProcess, execSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import chokidar from 'chokidar';
 import fg from 'fast-glob';
 import { appPackageName, buildApp, turboFilters } from '../build/index';
@@ -14,9 +14,10 @@ import type {
 	NormalizedTelescopeConfig,
 } from '../build/types';
 import {
-	getAppNameFromCwd,
 	loadAppConfig,
 	loadWorkspaceConfig,
+	NotABackendApp,
+	NotInAnApp,
 	parseModuleConfig,
 } from '../config';
 import {
@@ -268,63 +269,36 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		logger.log(`📦 Loaded env: ${defaultEnv.loaded.join(', ')}`);
 	}
 
-	// Check if we're in an app subdirectory
-	const appName = getAppNameFromCwd();
-	let config: GkmConfig;
-	let appRoot: string = process.cwd();
-	let secretsRoot: string = process.cwd(); // Where .gkm/secrets/ lives
-	let workspaceAppName: string | undefined; // Set if in workspace mode
-	let workspaceAppPort: number | undefined; // Port from workspace config
-	let workspace: NormalizedWorkspace | undefined; // Set if in workspace mode
-
-	if (appName) {
-		// Try to load app-specific config from workspace
-		try {
-			const appConfig = await loadAppConfig();
-			config = appConfig.gkmConfig;
-			appRoot = appConfig.appRoot;
-			secretsRoot = appConfig.workspaceRoot;
-			workspaceAppName = appConfig.appName;
-			workspaceAppPort = appConfig.app.port;
-			workspace = appConfig.workspace;
-
-			// Check if app has an entry point (non-gkm app like better-auth)
-			if (appConfig.app.entry) {
-				logger.log(`📄 Using entry point: ${appConfig.app.entry}`);
-				return entryDevCommand({
-					...options,
-					entry: appConfig.app.entry,
-					port: workspaceAppPort,
-					portExplicit: true,
-				});
-			}
-		} catch {
-			// Not in a workspace or app not found in workspace - fall back to regular loading
-			const loadedConfig = await loadWorkspaceConfig();
-
-			// Route to workspace dev mode for multi-app workspaces
-			if (loadedConfig.type === 'workspace') {
-				return workspaceDevCommand(loadedConfig.workspace, options);
-			}
-
-			config = loadedConfig.raw as GkmConfig;
-			workspace = loadedConfig.workspace;
+	// The app whose configured path holds this directory. Anywhere else, the
+	// workspace runs: turbo starts each app's own `gkm dev`, in its folder.
+	const appConfig = await loadAppConfig().catch((error: unknown) => {
+		if (error instanceof NotInAnApp || error instanceof NotABackendApp) {
+			return undefined;
 		}
-	} else {
-		// Try to load workspace config
-		const loadedConfig = await loadWorkspaceConfig();
+		throw error;
+	});
 
-		// Route to workspace dev mode for multi-app workspaces
-		if (loadedConfig.type === 'workspace') {
-			return workspaceDevCommand(loadedConfig.workspace, options);
-		}
+	if (!appConfig) {
+		const { workspace: everything } = await loadWorkspaceConfig();
+		return workspaceDevCommand(everything, options);
+	}
 
-		// Single-app mode - use existing logic
-		config = loadedConfig.raw as GkmConfig;
-		// Wrapped as a one-app workspace, which is what reconcile reads. Nothing
-		// below depends on an app name, so this only turns on the parts that need
-		// a workspace at all.
-		workspace = loadedConfig.workspace;
+	const config: GkmConfig = appConfig.gkmConfig;
+	const appRoot = appConfig.appRoot;
+	const secretsRoot = appConfig.workspaceRoot; // Where .gkm/secrets/ lives
+	const workspaceAppName = appConfig.appName;
+	const workspaceAppPort = appConfig.app.port;
+	const workspace: NormalizedWorkspace = appConfig.workspace;
+
+	// An app with an entry point (a non-gkm app like better-auth) runs it.
+	if (appConfig.app.entry) {
+		logger.log(`📄 Using entry point: ${appConfig.app.entry}`);
+		return entryDevCommand({
+			...options,
+			entry: appConfig.app.entry,
+			port: workspaceAppPort,
+			portExplicit: true,
+		});
 	}
 
 	// Load any additional env files specified in config
@@ -480,9 +454,11 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		.flat()
 		.filter((p): p is string => typeof p === 'string');
 
-	// Normalize patterns - remove leading ./ when using cwd option
+	// Relative to the app, which the watcher runs from: the construct globs
+	// arrive absolute from the config, and a relative path is what the change
+	// line prints.
 	const normalizedPatterns = watchPatterns.map((p) =>
-		p.startsWith('./') ? p.slice(2) : p,
+		isAbsolute(p) ? relative(appRoot, p) : p.replace(/^\.\//, ''),
 	);
 
 	// Resolve glob patterns to actual files (chokidar 4.x doesn't support globs)

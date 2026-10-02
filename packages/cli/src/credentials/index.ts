@@ -4,9 +4,10 @@ import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { config as dotenvConfig } from 'dotenv';
 import {
-	getAppNameFromCwd,
+	ConfigNotFound,
 	loadWorkspaceAppInfo,
 	loadWorkspaceConfig,
+	NotInAnApp,
 	type WorkspaceAppInfo,
 } from '../config';
 import type { ReconcileResult } from '../reconcile/index.js';
@@ -361,7 +362,12 @@ export async function prepareEntryCredentials(options: {
 		workspaceAppPort = appInfo.app.port;
 		secretsRoot = appInfo.workspaceRoot;
 		appName = appInfo.appName;
-	} catch {
+	} catch (error) {
+		// Anything but "not in an app" or "not in a workspace" is a real fault —
+		// a config that does not load — and must not be mistaken for either.
+		if (!(error instanceof NotInAnApp || error instanceof ConfigNotFound)) {
+			throw error;
+		}
 		// Not an app — but possibly the workspace root, which is where the
 		// scaffold's own `pnpm test` runs `gkm test` from. Without the workspace
 		// here that run skipped the reconcile below: no container started, and the
@@ -371,8 +377,8 @@ export async function prepareEntryCredentials(options: {
 			.catch(() => undefined);
 		// Otherwise not in a workspace at all (expected for non-gkm apps using
 		// gkm exec) — use defaults.
+		// No app here, so no per-app keys to map.
 		secretsRoot = workspace?.root ?? findSecretsRoot(cwd);
-		appName = getAppNameFromCwd(cwd) ?? undefined;
 	}
 
 	// Determine port: explicit --port > workspace config > default 3000
