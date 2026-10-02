@@ -1,4 +1,3 @@
-import prompts from 'prompts';
 import { loadWorkspaceConfig } from '../config.js';
 import {
 	derivedContainers,
@@ -10,17 +9,7 @@ import {
 	generateSecurePassword,
 	generateServiceCredentials,
 } from '../secrets/generator.js';
-import {
-	readStageSecrets,
-	secretsExist,
-	writeStageSecrets,
-} from '../secrets/storage.js';
-import { isRemoteStore } from '../secrets/store.js';
-import {
-	NoStoredSecrets,
-	pullStageSecrets,
-	pushStageSecrets,
-} from '../secrets/transfer.js';
+import { secretsStoreFor } from '../secrets/store.js';
 import type { SecretServiceName, StageSecrets } from '../secrets/types.js';
 import { ensureTrusted } from '../trust/index.js';
 import type { LoadedConfig, NormalizedWorkspace } from '../workspace/types.js';
@@ -161,48 +150,29 @@ async function resolveSecrets(
 	// Force regeneration
 	if (options.force) {
 		logger.log('🔐 Generating fresh secrets (--force)...');
-		return generateFreshSecrets(stage, workspace, options);
+		return generateFreshSecrets(stage, workspace);
 	}
 
-	// Check local secrets first
-	if (secretsExist(stage, workspace.root)) {
-		logger.log('🔐 Using existing local secrets');
-		const secrets = await readStageSecrets(stage, workspace.root);
-		if (secrets) {
-			// Reconcile: add any missing workspace-derived keys without overwriting
-			const reconciled = reconcileSecrets(
-				secrets,
-				workspace,
-				await derivedContainers(workspace, stage),
-			);
-			if (reconciled) {
-				await writeStageSecrets(reconciled, workspace.root);
-			}
-			return reconciled ?? secrets;
+	// The stage's own store — SSM in its account, for a stage kept there
+	const store = await secretsStoreFor(workspace, stage);
+	const secrets = await store.read(stage);
+	if (secrets) {
+		logger.log('🔐 Using existing secrets');
+		// Reconcile: add any missing workspace-derived keys without overwriting
+		const reconciled = reconcileSecrets(
+			secrets,
+			workspace,
+			await derivedContainers(workspace, stage),
+		);
+		if (reconciled) {
+			await store.write(stage, reconciled);
 		}
-	}
-
-	// A deployed stage whose secrets live in a store: bring them down.
-	if (isRemoteStore(workspace, stage)) {
-		logger.log('☁️  Checking the secrets store...');
-		try {
-			const { secrets } = await pullStageSecrets(workspace, stage);
-			logger.log('✅ Pulled secrets from the store');
-			return secrets;
-		} catch (error) {
-			if (error instanceof NoStoredSecrets) {
-				logger.log('   The store holds none yet');
-			} else {
-				logger.warn(
-					`⚠️  Could not pull from the store: ${(error as Error).message}`,
-				);
-			}
-		}
+		return reconciled ?? secrets;
 	}
 
 	// Generate fresh secrets
 	logger.log('🔐 Generating fresh development secrets...');
-	return generateFreshSecrets(stage, workspace, options);
+	return generateFreshSecrets(stage, workspace);
 }
 
 /**
@@ -374,7 +344,7 @@ export function createFreshWorkspaceSecrets(
  *
  * Powers `gkm test --auto-setup` / `GKM_AUTO_SETUP`: CI can run without a
  * committed secrets file or a shared encryption key — the stage is regenerated
- * from the committed `gkm.config.ts`, and `writeStageSecrets` mints a local key.
+ * from the committed `gkm.config.ts`, and the file store mints a local key.
  *
  * @returns true if fresh secrets were generated, false if existing ones were kept
  */
@@ -384,7 +354,8 @@ export async function ensureStageSecrets(
 ): Promise<boolean> {
 	const { workspace } = await loadWorkspaceConfig(cwd);
 
-	if (secretsExist(stage, workspace.root)) {
+	const store = await secretsStoreFor(workspace, stage);
+	if (await store.read(stage)) {
 		return false;
 	}
 
@@ -393,7 +364,7 @@ export async function ensureStageSecrets(
 		workspace,
 		await derivedContainers(workspace, stage),
 	);
-	await writeStageSecrets(secrets, workspace.root);
+	await store.write(stage, secrets);
 	return true;
 }
 
@@ -403,7 +374,6 @@ export async function ensureStageSecrets(
 async function generateFreshSecrets(
 	stage: string,
 	workspace: NormalizedWorkspace,
-	options: SetupOptions,
 ) {
 	const secrets = createFreshWorkspaceSecrets(
 		stage,
@@ -411,31 +381,10 @@ async function generateFreshSecrets(
 		await derivedContainers(workspace, stage),
 	);
 
-	// Write secrets
-	await writeStageSecrets(secrets, workspace.root);
-	logger.log(`   Secrets written to .gkm/secrets/${stage}.json`);
-
-	// A deployed stage's fresh secrets belong in its store, where a deploy
-	// from anywhere can reach them.
-	if (isRemoteStore(workspace, stage) && !options.yes) {
-		const { shouldPush } = await prompts({
-			type: 'confirm',
-			name: 'shouldPush',
-			message: `Push the "${stage}" secrets to its store?`,
-			initial: true,
-		});
-
-		if (shouldPush) {
-			try {
-				await pushStageSecrets(workspace, stage);
-				logger.log('☁️  Secrets pushed to the store');
-			} catch (error) {
-				logger.warn(
-					`⚠️  Could not push to the store: ${(error as Error).message}`,
-				);
-			}
-		}
-	}
+	// Straight to the stage's store, where a deploy from anywhere reads them.
+	const store = await secretsStoreFor(workspace, stage);
+	await store.write(stage, secrets);
+	logger.log(`   Secrets written to the "${stage}" store (${store.name})`);
 
 	return secrets;
 }

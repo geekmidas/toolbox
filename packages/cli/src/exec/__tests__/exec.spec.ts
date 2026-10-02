@@ -16,7 +16,7 @@ import {
 	vi,
 } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
-import { writeStageSecrets } from '../../secrets/storage';
+import { FileSecretsStore } from '../../secrets/file';
 import { execCommand, NoCommandSpecified } from '../index';
 
 /**
@@ -116,17 +116,14 @@ describe('execCommand', () => {
 };
 `,
 		);
-		await writeStageSecrets(
-			{
-				stage: 'dev',
-				createdAt: '2026-01-01T00:00:00.000Z',
-				updatedAt: '2026-01-01T00:00:00.000Z',
-				services: {},
-				urls: {},
-				custom: { STRIPE_KEY: 'sk_exec' },
-			},
-			dir,
-		);
+		await new FileSecretsStore(dir).write('dev', {
+			stage: 'dev',
+			createdAt: '2026-01-01T00:00:00.000Z',
+			updatedAt: '2026-01-01T00:00:00.000Z',
+			services: {},
+			urls: {},
+			custom: { STRIPE_KEY: 'sk_exec' },
+		});
 		const api = join(dir, 'apps', 'api');
 		mkdirSync(api, { recursive: true });
 		writeFileSync(join(api, 'package.json'), JSON.stringify({ name: 'api' }));

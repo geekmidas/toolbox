@@ -43,8 +43,18 @@ export interface StageSecrets {
 		EVENT_PUBLISHER_CONNECTION_STRING?: string;
 		EVENT_SUBSCRIBER_CONNECTION_STRING?: string;
 	};
-	/** Custom user-defined secrets */
+	/**
+	 * Values injected by key: those set with `gkm secrets:set` — a third
+	 * party's credentials — and those generated once for the stage, such as an
+	 * auth server's signing secret.
+	 */
 	custom: Record<string, string>;
+	/**
+	 * Random, generated once per stage: what every password a deploy derives
+	 * is salted with. Without it a derived password is a function of the
+	 * project and stage names, which anyone reading the repo has.
+	 */
+	seed?: string;
 }
 
 /** Encrypted payload for build-time injection */

@@ -19,7 +19,7 @@ import {
 import type { SecretsStore } from './store.js';
 import type { StageSecrets } from './types.js';
 
-export interface SsmSecretsStoreOptions {
+export interface AwsSecretsStoreOptions {
 	/** The workspace name, which scopes the parameter path. */
 	project: string;
 	region: string;
@@ -38,10 +38,12 @@ export function secretsParameterName(project: string, stage: string): string {
 	return `/gkm/${project}/${stage}/secrets`;
 }
 
-export class SsmSecretsStore implements SecretsStore {
+export class AwsSecretsStore implements SecretsStore {
+	readonly name = 'ssm';
+
 	private client?: SSMClient;
 
-	constructor(private readonly options: SsmSecretsStoreOptions) {}
+	constructor(private readonly options: AwsSecretsStoreOptions) {}
 
 	private async ssm(): Promise<SSMClient> {
 		if (this.client) return this.client;
@@ -59,7 +61,7 @@ export class SsmSecretsStore implements SecretsStore {
 		return this.client;
 	}
 
-	async pull(stage: string): Promise<StageSecrets | null> {
+	async read(stage: string): Promise<StageSecrets | null> {
 		const ssm = await this.ssm();
 
 		try {
@@ -78,7 +80,7 @@ export class SsmSecretsStore implements SecretsStore {
 		}
 	}
 
-	async push(stage: string, secrets: StageSecrets): Promise<void> {
+	async write(stage: string, secrets: StageSecrets): Promise<void> {
 		const ssm = await this.ssm();
 
 		await ssm.send(

@@ -40,6 +40,7 @@ export type {
 	DerivedDeclaration,
 	DerivedKind,
 	EmailDeclaration,
+	ExternalApiDeclaration,
 	FileServerDeclaration,
 	Fn,
 	FunctionDeclaration,
@@ -81,6 +82,11 @@ export {
 	InvalidConstructId,
 	UnknownParent,
 } from './errors';
+export {
+	DEFAULT_STAGE_URL,
+	externalApiUrl,
+	NoUrlForStage,
+} from './external';
 export {
 	DATABASE_FOLDERS,
 	databaseFolder,

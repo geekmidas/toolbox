@@ -81,6 +81,7 @@ const run = (workspace: NormalizedWorkspace) =>
 		environmentId: 'environment',
 		stage: 'production',
 		appUrls: { api: 'https://api.example.com' },
+		seed: 'stage-seed',
 		manifest,
 	});
 

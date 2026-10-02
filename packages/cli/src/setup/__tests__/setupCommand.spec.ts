@@ -17,7 +17,9 @@ import {
 	vi,
 } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
-import { readStageSecrets, writeStageSecrets } from '../../secrets/storage';
+import { loadWorkspaceConfig } from '../../config';
+import { FileSecretsStore } from '../../secrets/file';
+import { secretsStoreFor } from '../../secrets/store';
 
 /**
  * `gkm setup` as a developer runs it: in a project, with its keys under a home
@@ -25,14 +27,8 @@ import { readStageSecrets, writeStageSecrets } from '../../secrets/storage';
  * container — the projects declare none, or pass `--skip-docker`.
  *
  * The SSM cases talk to the AWS emulator the suite already runs, through the
- * SDK's own `AWS_ENDPOINT_URL`, so push and pull are the real calls.
+ * SDK's own `AWS_ENDPOINT_URL`, so reads and writes are the real calls.
  */
-
-const answers = vi.hoisted(() => ({ shouldPush: true }));
-
-vi.mock('prompts', () => ({
-	default: vi.fn(async () => answers),
-}));
 
 const { setupCommand } = await import('../index');
 
@@ -47,7 +43,6 @@ describe('setupCommand', () => {
 	let cwd: string;
 	let log: MockInstance;
 	let error: MockInstance;
-	let warn: MockInstance;
 
 	const output = (spy: MockInstance) => spy.mock.calls.flat().join('\n');
 
@@ -59,10 +54,9 @@ describe('setupCommand', () => {
 		// Compose reads this from the environment; anything that reaches it from
 		// here gets a project of its own, never a shared one.
 		vi.stubEnv('COMPOSE_PROJECT_NAME', `gkm-spec-${Date.now()}`);
-		answers.shouldPush = true;
 		log = vi.spyOn(console, 'log').mockImplementation(() => {});
 		error = vi.spyOn(console, 'error').mockImplementation(() => {});
-		warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
 		vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
 			throw new Exited(code);
 		}) as never);
@@ -113,7 +107,7 @@ export const database = new KyselyDatabase('Database');
 
 		await setupCommand();
 
-		const secrets = await readStageSecrets('dev', dir);
+		const secrets = await new FileSecretsStore(dir).read('dev');
 		expect(secrets?.stage).toBe('dev');
 		expect(secrets?.custom.JWT_SECRET).toBeTruthy();
 		expect(secrets?.custom).not.toHaveProperty('NODE_ENV');
@@ -129,26 +123,23 @@ export const database = new KyselyDatabase('Database');
 	it('keeps existing secrets, adding only what is missing', async () => {
 		config(`${apps}\n  constructs: './constructs/**/*.ts',`);
 		database();
-		await writeStageSecrets(
-			{
-				stage: 'dev',
-				createdAt: '2026-01-01T00:00:00.000Z',
-				updatedAt: '2026-01-01T00:00:00.000Z',
-				services: {},
-				urls: {},
-				custom: { STRIPE_KEY: 'sk_kept' },
-			},
-			dir,
-		);
+		await new FileSecretsStore(dir).write('dev', {
+			stage: 'dev',
+			createdAt: '2026-01-01T00:00:00.000Z',
+			updatedAt: '2026-01-01T00:00:00.000Z',
+			services: {},
+			urls: {},
+			custom: { STRIPE_KEY: 'sk_kept' },
+		});
 
 		await setupCommand({ skipDocker: true });
 
-		const secrets = await readStageSecrets('dev', dir);
+		const secrets = await new FileSecretsStore(dir).read('dev');
 		expect(secrets?.custom.STRIPE_KEY).toBe('sk_kept');
 		// The declared database brought Postgres, and with it credentials.
 		expect(secrets?.services.postgres).toBeDefined();
 		expect(secrets?.services.pgboss?.username).toBe('pgboss');
-		expect(output(log)).toContain('Using existing local secrets');
+		expect(output(log)).toContain('Using existing secrets');
 		expect(existsSync(join(dir, 'docker', '.env'))).toBe(true);
 		// The per-role passwords the Postgres init script reads.
 		expect(readFileSync(join(dir, 'docker', '.env'), 'utf-8')).toContain(
@@ -159,21 +150,21 @@ export const database = new KyselyDatabase('Database');
 	it('uses existing secrets unchanged when nothing is missing', async () => {
 		config(`constructs: './constructs/**/*.ts',`);
 		await setupCommand({ skipDocker: true });
-		const first = await readStageSecrets('dev', dir);
+		const first = await new FileSecretsStore(dir).read('dev');
 
 		await setupCommand({ skipDocker: true, stage: 'dev' });
 
-		expect(await readStageSecrets('dev', dir)).toEqual(first);
+		expect(await new FileSecretsStore(dir).read('dev')).toEqual(first);
 	});
 
 	it('regenerates everything on --force, and a single app gets its own set', async () => {
 		config(`constructs: './constructs/**/*.ts',`);
 		await setupCommand({ skipDocker: true });
-		const first = await readStageSecrets('dev', dir);
+		const first = await new FileSecretsStore(dir).read('dev');
 
 		await setupCommand({ skipDocker: true, force: true });
 
-		const second = await readStageSecrets('dev', dir);
+		const second = await new FileSecretsStore(dir).read('dev');
 		expect(output(log)).toContain('Generating fresh secrets (--force)');
 		expect(second?.custom.JWT_SECRET).toMatch(/^dev-/);
 		expect(second?.custom.JWT_SECRET).not.toBe(first?.custom.JWT_SECRET);
@@ -190,6 +181,12 @@ export const database = new KyselyDatabase('Database');
 		const ssm = `constructs: './src/constructs/**/*.ts',
   secrets: { store: { provider: 'ssm', region: 'us-east-1' } },`;
 
+		/** What the stage's own store holds, resolved as every command does. */
+		async function storedIn(stage: string) {
+			const { workspace } = await loadWorkspaceConfig(dir);
+			return (await secretsStoreFor(workspace, stage)).read(stage);
+		}
+
 		beforeEach(() => {
 			vi.stubEnv('AWS_ENDPOINT_URL', 'http://localhost:4566');
 			vi.stubEnv('AWS_ACCESS_KEY_ID', 'test');
@@ -197,31 +194,24 @@ export const database = new KyselyDatabase('Database');
 			vi.stubEnv('AWS_REGION', 'us-east-1');
 		});
 
-		it('pushes fresh secrets to the store, then a new machine pulls them', async () => {
+		it('writes fresh secrets to the store, where a new machine finds them', async () => {
 			// A name nobody else in the emulator has used.
 			config(ssm, `shop-${Date.now()}`);
 
 			await setupCommand({ stage: 'prod', skipDocker: true });
-			expect(output(log)).toContain('The store holds none yet');
-			expect(output(log)).toContain('Secrets pushed to the store');
-			const pushed = await readStageSecrets('prod', dir);
+			expect(output(log)).toContain('Secrets written to the "prod" store');
+			// Nothing on this machine to forget to push.
+			expect(existsSync(join(dir, '.gkm', 'secrets', 'prod.json'))).toBe(false);
+			const stored = await storedIn('prod');
+			expect(stored?.stage).toBe('prod');
 
-			// A second machine: no local secrets.
+			// A second machine: the same store, nothing local.
 			rmSync(join(dir, '.gkm'), { recursive: true, force: true });
 			log.mockClear();
 			await setupCommand({ stage: 'prod', skipDocker: true });
 
-			expect(output(log)).toContain('Pulled secrets from the store');
-			expect(await readStageSecrets('prod', dir)).toEqual(pushed);
-		});
-
-		it('does not push when the developer declines', async () => {
-			answers.shouldPush = false;
-			config(ssm, `shop-declined-${Date.now()}`);
-
-			await setupCommand({ stage: 'prod', skipDocker: true });
-
-			expect(output(log)).not.toContain('Secrets pushed to the store');
+			expect(output(log)).toContain('Using existing secrets');
+			expect(await storedIn('prod')).toEqual(stored);
 		});
 
 		it('keeps the local stage on this machine', async () => {
@@ -229,18 +219,21 @@ export const database = new KyselyDatabase('Database');
 
 			await setupCommand({ skipDocker: true });
 
-			expect(output(log)).not.toContain('store');
-			expect(await readStageSecrets('dev', dir)).not.toBeNull();
+			expect(output(log)).toContain(
+				'Secrets written to the "dev" store (file)',
+			);
+			expect(output(log)).not.toContain('(ssm)');
+			expect(await new FileSecretsStore(dir).read('dev')).not.toBeNull();
 		});
 
-		it('generates locally when SSM cannot be reached', async () => {
+		it('stops when SSM cannot be reached, rather than generating secrets nobody can read', async () => {
 			vi.stubEnv('AWS_ENDPOINT_URL', 'http://127.0.0.1:1');
 			config(ssm);
 
-			await setupCommand({ stage: 'prod', skipDocker: true, yes: true });
-
-			expect(output(warn)).toContain('Could not pull from the store');
-			expect(await readStageSecrets('prod', dir)).not.toBeNull();
+			await expect(
+				setupCommand({ stage: 'prod', skipDocker: true, yes: true }),
+			).rejects.toThrow();
+			expect(existsSync(join(dir, '.gkm', 'secrets', 'prod.json'))).toBe(false);
 		});
 	});
 });

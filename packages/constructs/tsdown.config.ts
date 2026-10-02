@@ -9,6 +9,7 @@ export default defineConfig({
 		'src/file-server.ts',
 		'src/cache.ts',
 		'src/credential.ts',
+		'src/external-api.ts',
 		'src/auth.ts',
 		'src/rest-api.ts',
 		'src/site.ts',

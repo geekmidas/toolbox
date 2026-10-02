@@ -2,7 +2,7 @@ import { type ChildProcess, execSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import chokidar from 'chokidar';
 import fg from 'fast-glob';
 import { appPackageName, buildApp, turboFilters } from '../build/index';
@@ -14,9 +14,10 @@ import type {
 	NormalizedTelescopeConfig,
 } from '../build/types';
 import {
-	getAppNameFromCwd,
 	loadAppConfig,
 	loadWorkspaceConfig,
+	NotABackendApp,
+	NotInAnApp,
 	parseModuleConfig,
 } from '../config';
 import {
@@ -28,12 +29,9 @@ import {
 	prepareEntryCredentials,
 } from '../credentials';
 import { resolveOpenApiConfig } from '../openapi';
-import { reconcileWorkspace } from '../reconcile/workspace.js';
-import {
-	readStageSecrets,
-	secretsExist,
-	toEmbeddableSecrets,
-} from '../secrets/storage.js';
+import { FAKE_ENV, reconcileWorkspace } from '../reconcile/workspace.js';
+import { toEmbeddableSecrets } from '../secrets/storage.js';
+import { FileSecretsStore, secretsStoreFor } from '../secrets/store.js';
 import { ensureTrusted } from '../trust/index.js';
 import type {
 	GkmConfig,
@@ -52,6 +50,7 @@ import {
 	type MobileFramework,
 	type NormalizedWorkspace,
 } from '../workspace/index.js';
+import { closeFakes, serveFakes } from './fakes.js';
 
 // Re-export shared utilities from credentials module so existing imports
 // from '../dev' or '../dev/index' continue to work.
@@ -249,6 +248,12 @@ export interface DevOptions {
 	migrate?: boolean;
 	/** Migrate, then run the seeds, before the apps start. */
 	seed?: boolean;
+	/**
+	 * Call each external API's fake (`test/fakes/<id>.ts`) instead of the
+	 * provider. Without it an external API is the real one, at its URL for the
+	 * local stage, with the local stage's own credentials.
+	 */
+	fake?: boolean;
 }
 
 export async function devCommand(options: DevOptions): Promise<void> {
@@ -264,63 +269,36 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		logger.log(`📦 Loaded env: ${defaultEnv.loaded.join(', ')}`);
 	}
 
-	// Check if we're in an app subdirectory
-	const appName = getAppNameFromCwd();
-	let config: GkmConfig;
-	let appRoot: string = process.cwd();
-	let secretsRoot: string = process.cwd(); // Where .gkm/secrets/ lives
-	let workspaceAppName: string | undefined; // Set if in workspace mode
-	let workspaceAppPort: number | undefined; // Port from workspace config
-	let workspace: NormalizedWorkspace | undefined; // Set if in workspace mode
-
-	if (appName) {
-		// Try to load app-specific config from workspace
-		try {
-			const appConfig = await loadAppConfig();
-			config = appConfig.gkmConfig;
-			appRoot = appConfig.appRoot;
-			secretsRoot = appConfig.workspaceRoot;
-			workspaceAppName = appConfig.appName;
-			workspaceAppPort = appConfig.app.port;
-			workspace = appConfig.workspace;
-
-			// Check if app has an entry point (non-gkm app like better-auth)
-			if (appConfig.app.entry) {
-				logger.log(`📄 Using entry point: ${appConfig.app.entry}`);
-				return entryDevCommand({
-					...options,
-					entry: appConfig.app.entry,
-					port: workspaceAppPort,
-					portExplicit: true,
-				});
-			}
-		} catch {
-			// Not in a workspace or app not found in workspace - fall back to regular loading
-			const loadedConfig = await loadWorkspaceConfig();
-
-			// Route to workspace dev mode for multi-app workspaces
-			if (loadedConfig.type === 'workspace') {
-				return workspaceDevCommand(loadedConfig.workspace, options);
-			}
-
-			config = loadedConfig.raw as GkmConfig;
-			workspace = loadedConfig.workspace;
+	// The app whose configured path holds this directory. Anywhere else, the
+	// workspace runs: turbo starts each app's own `gkm dev`, in its folder.
+	const appConfig = await loadAppConfig().catch((error: unknown) => {
+		if (error instanceof NotInAnApp || error instanceof NotABackendApp) {
+			return undefined;
 		}
-	} else {
-		// Try to load workspace config
-		const loadedConfig = await loadWorkspaceConfig();
+		throw error;
+	});
 
-		// Route to workspace dev mode for multi-app workspaces
-		if (loadedConfig.type === 'workspace') {
-			return workspaceDevCommand(loadedConfig.workspace, options);
-		}
+	if (!appConfig) {
+		const { workspace: everything } = await loadWorkspaceConfig();
+		return workspaceDevCommand(everything, options);
+	}
 
-		// Single-app mode - use existing logic
-		config = loadedConfig.raw as GkmConfig;
-		// Wrapped as a one-app workspace, which is what reconcile reads. Nothing
-		// below depends on an app name, so this only turns on the parts that need
-		// a workspace at all.
-		workspace = loadedConfig.workspace;
+	const config: GkmConfig = appConfig.gkmConfig;
+	const appRoot = appConfig.appRoot;
+	const secretsRoot = appConfig.workspaceRoot; // Where .gkm/secrets/ lives
+	const workspaceAppName = appConfig.appName;
+	const workspaceAppPort = appConfig.app.port;
+	const workspace: NormalizedWorkspace = appConfig.workspace;
+
+	// An app with an entry point (a non-gkm app like better-auth) runs it.
+	if (appConfig.app.entry) {
+		logger.log(`📄 Using entry point: ${appConfig.app.entry}`);
+		return entryDevCommand({
+			...options,
+			entry: appConfig.app.entry,
+			port: workspaceAppPort,
+			portExplicit: true,
+		});
 	}
 
 	// Load any additional env files specified in config
@@ -387,8 +365,11 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	// JSON file
 	let secretsJsonPath: string | undefined;
 	let publicUrl: string | undefined;
+	// The local stage's store, which is always the file.
 	const appSecrets = await loadSecretsForApp(
-		secretsRoot,
+		workspace
+			? await secretsStoreFor(workspace, config.stages.local)
+			: new FileSecretsStore(secretsRoot),
 		config.stages.local,
 		workspaceAppName,
 	);
@@ -399,6 +380,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		// URLs name, and inject those URLs.
 		const reconciled = await reconcileWorkspace(workspace, {
 			stage: workspace.stages.local,
+			...(options.fake ? { fake: true } : {}),
 		});
 
 		if (reconciled.changed && reconciled.plan.containers.length > 0) {
@@ -472,9 +454,11 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		.flat()
 		.filter((p): p is string => typeof p === 'string');
 
-	// Normalize patterns - remove leading ./ when using cwd option
+	// Relative to the app, which the watcher runs from: the construct globs
+	// arrive absolute from the config, and a relative path is what the change
+	// line prints.
 	const normalizedPatterns = watchPatterns.map((p) =>
-		p.startsWith('./') ? p.slice(2) : p,
+		isAbsolute(p) ? relative(appRoot, p) : p.replace(/^\.\//, ''),
 	);
 
 	// Resolve glob patterns to actual files (chokidar 4.x doesn't support globs)
@@ -837,10 +821,8 @@ export async function loadDevSecrets(
 	}
 
 	const stage = workspace.stages.local;
-	if (secretsExist(stage, workspace.root)) {
-		const secrets = await readStageSecrets(stage, workspace.root);
-		if (secrets) return toEmbeddableSecrets(secrets);
-	}
+	const secrets = await (await secretsStoreFor(workspace, stage)).read(stage);
+	if (secrets) return toEmbeddableSecrets(secrets);
 
 	// Nothing to warn about: the local stage's own secrets and every address are
 	// derived by reconcile. A stored stage only adds what nothing can derive — a
@@ -918,6 +900,7 @@ async function workspaceDevCommand(
 	// converged case costs one hash and one health check.
 	const reconciled = await reconcileWorkspace(workspace, {
 		stage: workspace.stages.local,
+		...(options.fake ? { fake: true } : {}),
 	});
 
 	if (reconciled.changed && reconciled.plan.containers.length > 0) {
@@ -931,6 +914,16 @@ async function workspaceDevCommand(
 		...rawSecrets,
 		...reconciled.env,
 	};
+
+	// Only with `--fake`, and here rather than in reconcile: every app's own
+	// `gkm dev` reconciles too, and only this process — the one that outlives
+	// them — may own the ports.
+	const fakes = options.fake
+		? await serveFakes(reconciled.fakes, reconciled.ports)
+		: [];
+	for (const { id, port } of fakes) {
+		logger.log(`🎭 ${id} fake: http://localhost:${port}`);
+	}
 
 	// Asked for, the databases are migrated (and seeded) before anything
 	// starts, and a failure stops here. Otherwise pending migrations are only
@@ -1053,6 +1046,8 @@ async function workspaceDevCommand(
 		NODE_ENV: 'development',
 		// Inject config path so child processes can find the workspace config
 		...(configPath ? { GKM_CONFIG_PATH: configPath } : {}),
+		// Each app reconciles again, and must point at the same fakes.
+		...(options.fake ? { [FAKE_ENV]: '1' } : {}),
 	};
 
 	// Every app's port, before anything starts. Each app checks its own as it
@@ -1091,6 +1086,7 @@ async function workspaceDevCommand(
 		isShuttingDown = true;
 
 		logger.log('\n🛑 Shutting down workspace...');
+		closeFakes(fakes);
 
 		// Kill turbo process group
 		const pid = turboProcess.pid;

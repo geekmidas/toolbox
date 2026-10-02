@@ -1,68 +1,8 @@
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { scopedName } from '@geekmidas/manifest';
-import type { GkmConfig } from '../config';
-import { dockerCommand, findLockfilePath } from '../docker';
+import { dockerCommand } from '../docker';
 import type { DeployResult, DockerDeployConfig } from './types';
-
-/**
- * Get app name from package.json in the current working directory
- * Used for Dokploy app/project naming
- */
-export function getAppNameFromCwd(): string | undefined {
-	const packageJsonPath = join(process.cwd(), 'package.json');
-
-	if (!existsSync(packageJsonPath)) {
-		return undefined;
-	}
-
-	try {
-		const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-		if (pkg.name) {
-			// Strip org scope if present (e.g., @myorg/app -> app)
-			return pkg.name.replace(/^@[^/]+\//, '');
-		}
-	} catch {
-		// Ignore parse errors
-	}
-
-	return undefined;
-}
-
-/**
- * Get app name from package.json adjacent to the lockfile (project root)
- * Used for Docker image naming
- */
-export function getAppNameFromPackageJson(): string | undefined {
-	const cwd = process.cwd();
-
-	// Find the lockfile to determine the project root
-	const lockfilePath = findLockfilePath(cwd);
-	if (!lockfilePath) {
-		return undefined;
-	}
-
-	// Use the package.json adjacent to the lockfile
-	const projectRoot = dirname(lockfilePath);
-	const packageJsonPath = join(projectRoot, 'package.json');
-
-	if (!existsSync(packageJsonPath)) {
-		return undefined;
-	}
-
-	try {
-		const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-		if (pkg.name) {
-			// Strip org scope if present (e.g., @myorg/app -> app)
-			return pkg.name.replace(/^@[^/]+\//, '');
-		}
-	} catch {
-		// Ignore parse errors
-	}
-
-	return undefined;
-}
 
 const logger = console;
 
@@ -207,7 +147,7 @@ export async function deployDocker(
 ): Promise<DeployResult> {
 	const { stage, tag, skipPush, masterKey, config, buildArgs } = options;
 
-	// imageName should always be set by resolveDockerConfig
+	// imageName is always set by the caller
 	const imageName = config.imageName!;
 	const imageRef = getImageRef(config.registry, imageName, tag);
 
@@ -265,55 +205,4 @@ export function applicationName(
 	return app === project
 		? `${stage}-${project}`.toLowerCase()
 		: scopedName([stage, project], app);
-}
-
-/**
- * Resolve Docker deploy config from gkm config.
- *
- * **`name` is the scope, exactly as it is in an SST config.** `sst.config.ts`
- * declares `name: 'kitchen-sink'` and every physical name is built from
- * `[stage, name]`; this is the same statement in the same place, so a construct
- * carries one name across providers rather than two that happen to match.
- *
- * A package.json name is the fallback, not the source. It used to be the source,
- * which put the *monorepo* name on the Dokploy project and the *package* name on
- * the application — two accidents of directory layout standing in for a
- * decision, neither of them scoped by stage.
- *
- * - `projectName` — the gkm config's `name`. The Dokploy project, and the `app`
- *   half of every scoped name, the way `$app.name` is in SST.
- * - `appName` — the application within it, scoped `{stage}-{name}` by the
- *   shared rule. Dropped to the project alone when the app *is* the project, so
- *   a workspace named for its one app is not `…-kitchen-sink-kitchen-sink`.
- * - `imageName` — the Docker image, which is a different question: an image is
- *   pushed to a registry under a name a human reads, and it carries no stage
- *   because one image is deployed to several.
- */
-export function resolveDockerConfig(
-	config: GkmConfig,
-	stage?: string,
-): DockerDeployConfig {
-	const projectName =
-		config.name ?? getAppNameFromPackageJson() ?? getAppNameFromCwd() ?? 'app';
-
-	// `api`, because that is the key the workspace projection gives a single-app
-	// backend — the same key a workspace config would write. Asking the
-	// filesystem instead is what put the *package* name here and the *monorepo*
-	// name on the project: two accidents of layout, neither scoped.
-	const appId = 'api';
-	const appName =
-		stage === undefined ? appId : applicationName(stage, projectName, appId);
-
-	// The project's name, not the app key: an image is what somebody types after
-	// `docker pull`, so `kitchen-sink` and not `api`. It carries no stage
-	// either — one image is deployed to several, and the registry path already
-	// scopes it.
-	const imageName = config.docker?.imageName ?? projectName;
-
-	return {
-		registry: config.docker?.registry,
-		imageName,
-		projectName,
-		appName,
-	};
 }

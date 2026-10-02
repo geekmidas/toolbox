@@ -3,9 +3,9 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-	getAppNameFromCwd,
 	loadAppConfig,
 	loadConfig,
+	NotInAnApp,
 	WorkspaceDeclaresNoConstructs,
 } from '../config';
 import { cleanupDir, createTempDir } from './test-helpers';
@@ -111,68 +111,6 @@ export default {
 	});
 });
 
-describe('getAppNameFromCwd', () => {
-	let tempDir: string;
-
-	beforeEach(async () => {
-		tempDir = await createTempDir();
-	});
-
-	afterEach(async () => {
-		await cleanupDir(tempDir);
-	});
-
-	it('should return app name from package.json', async () => {
-		const packageJson = { name: 'my-app', version: '1.0.0' };
-		await writeFile(join(tempDir, 'package.json'), JSON.stringify(packageJson));
-
-		const appName = getAppNameFromCwd(tempDir);
-
-		expect(appName).toBe('my-app');
-	});
-
-	it('should extract name from scoped package', async () => {
-		const packageJson = { name: '@myorg/api', version: '1.0.0' };
-		await writeFile(join(tempDir, 'package.json'), JSON.stringify(packageJson));
-
-		const appName = getAppNameFromCwd(tempDir);
-
-		expect(appName).toBe('api');
-	});
-
-	it('should handle scoped package with nested scope', async () => {
-		const packageJson = { name: '@my-company/auth-service', version: '1.0.0' };
-		await writeFile(join(tempDir, 'package.json'), JSON.stringify(packageJson));
-
-		const appName = getAppNameFromCwd(tempDir);
-
-		expect(appName).toBe('auth-service');
-	});
-
-	it('should return null if package.json does not exist', async () => {
-		const appName = getAppNameFromCwd(tempDir);
-
-		expect(appName).toBeNull();
-	});
-
-	it('should return null if package.json has no name field', async () => {
-		const packageJson = { version: '1.0.0' };
-		await writeFile(join(tempDir, 'package.json'), JSON.stringify(packageJson));
-
-		const appName = getAppNameFromCwd(tempDir);
-
-		expect(appName).toBeNull();
-	});
-
-	it('should return null if package.json is invalid JSON', async () => {
-		await writeFile(join(tempDir, 'package.json'), 'not valid json');
-
-		const appName = getAppNameFromCwd(tempDir);
-
-		expect(appName).toBeNull();
-	});
-});
-
 describe('loadAppConfig', () => {
 	let tempDir: string;
 	let originalCwd: string;
@@ -232,7 +170,7 @@ export default {
 		);
 	});
 
-	it('resolves the only app of a single-app config, whatever the package is called', async () => {
+	it('resolves a single-app config’s one app, whatever its package is called', async () => {
 		// A single-app config is wrapped as a one-app workspace keyed `api`, which
 		// is almost never the package name. Matching on the key alone loses
 		// everything the workspace carries — including the constructs glob the
@@ -257,7 +195,8 @@ export default {
 
 		const result = await loadAppConfig();
 
-		expect(result.appName).toBe('example');
+		// The app's key in the config — never its package name.
+		expect(result.appName).toBe('api');
 		expect(result.app.constructs).toBe('./src/constructs/**/*.ts');
 		// Absolute, because the build resolves an app's globs once here rather
 		// than leaving each caller to guess which directory they are relative to.
@@ -266,7 +205,7 @@ export default {
 		]);
 	});
 
-	it('should throw error if app not found in workspace', async () => {
+	it('refuses a directory no app in the config lives in', async () => {
 		// Create workspace structure
 		const workspaceRoot = tempDir;
 		const appDir = join(workspaceRoot, 'apps', 'unknown');
@@ -292,16 +231,15 @@ export default {
 `;
 		await writeFile(join(workspaceRoot, 'gkm.config.ts'), workspaceConfig);
 
-		// Create app package.json with different name
-		const packageJson = { name: '@test-workspace/unknown', version: '1.0.0' };
+		// A package named like an app is not one: only the config's paths count.
+		const packageJson = { name: '@test-workspace/api', version: '1.0.0' };
 		await writeFile(join(appDir, 'package.json'), JSON.stringify(packageJson));
 
-		// Change to app directory
 		process.chdir(appDir);
 
-		await expect(loadAppConfig()).rejects.toThrow(
-			'App "unknown" not found in workspace config',
-		);
+		const error = await loadAppConfig().catch((e: unknown) => e);
+		expect(error).toBeInstanceOf(NotInAnApp);
+		expect((error as NotInAnApp).apps).toEqual({ api: 'apps/api' });
 	});
 
 	it('refuses a workspace that declares no constructs glob', async () => {
@@ -341,28 +279,34 @@ export default {
 		);
 	});
 
-	it('should throw error if no package.json exists', async () => {
-		// Create workspace structure without package.json in app
-		const workspaceRoot = tempDir;
-		const appDir = join(workspaceRoot, 'apps', 'api');
+	it('finds the app by its path, with no package.json at all', async () => {
+		const appDir = join(tempDir, 'apps', 'api', 'src');
 		await mkdir(appDir, { recursive: true });
-
-		const workspaceConfig = `
+		await writeFile(
+			join(tempDir, 'gkm.config.ts'),
+			`
 export default {
   stages: { local: 'development', deployed: ['production'] },
-  routes: './src/endpoints/**/*.ts',
-  envParser: './src/config/env',
-  logger: './src/config/logger',
+  name: 'test-workspace',
+  constructs: './src/constructs/**/*.ts',
+  apps: {
+    api: {
+      type: 'backend',
+      path: 'apps/api',
+      port: 3000,
+      routes: './src/endpoints/**/*.ts',
+      envParser: './src/config/env',
+      logger: './src/config/logger',
+    },
+  },
 };
-`;
-		await writeFile(join(workspaceRoot, 'gkm.config.ts'), workspaceConfig);
+`,
+		);
 
-		// Change to app directory (no package.json)
+		// A folder inside the app, which has no package.json of its own.
 		process.chdir(appDir);
 
-		await expect(loadAppConfig()).rejects.toThrow(
-			'Could not determine app name',
-		);
+		expect((await loadAppConfig()).appName).toBe('api');
 	});
 
 	it('should use GKM_CONFIG_PATH env var when set', async () => {
@@ -390,13 +334,10 @@ export default {
 `;
 		await writeFile(configPath, workspaceConfig);
 
-		// Create app directory in temp dir (separate from workspace)
-		const appDir = join(tempDir, 'apps', 'api');
+		// The app inside the workspace the variable names — what `gkm dev` sets
+		// it to for each app it starts.
+		const appDir = join(workspaceRoot, 'apps', 'api');
 		await mkdir(appDir, { recursive: true });
-
-		// Create app package.json
-		const packageJson = { name: '@env-test/api', version: '1.0.0' };
-		await writeFile(join(appDir, 'package.json'), JSON.stringify(packageJson));
 
 		// Set GKM_CONFIG_PATH
 		process.env.GKM_CONFIG_PATH = configPath;

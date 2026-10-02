@@ -91,6 +91,8 @@ Options:
   --port, -p <number>    Port number (default: 3000)
   --host <string>        Host to bind (default: localhost)
   --open                 Open browser automatically
+  --fake                 Call each ExternalApi's fake (test/fakes/<id>.ts)
+                         instead of the provider
 ```
 
 **Features:**
@@ -405,17 +407,12 @@ gkm secrets:rotate --stage production --service postgres
 
 # Import from JSON
 gkm secrets:import --stage production --file secrets.json
-
-# A deployed stage's secrets to and from its store (secrets.store)
-gkm secrets:push --stage production --profile acme-prod
-gkm secrets:pull --stage production --profile acme-prod
 ```
 
-`secrets:push` and `secrets:pull` take a stage in `stages.deployed` whose
-secrets are kept in a store — SSM, or a custom one — and refuse any other.
-`--profile` resolves only that AWS profile, never exported `AWS_*` variables;
-without it the default credentials are used, as in a deploy job. `pull` writes
-the local encrypted copy, generating a key if the machine has none. See
+Every `secrets:*` command reads and writes the stage's own store: for a
+deployed stage kept in SSM, `secrets:set` writes to SSM and `secrets:show`
+reads from it, with the default AWS credentials (`AWS_PROFILE`, or a deploy
+job's role). See
 [the secrets store](./dev-server.md#deployed-stages-the-secrets-store).
 
 ### State Management

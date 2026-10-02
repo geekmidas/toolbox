@@ -92,10 +92,14 @@ describe('users', () => {
 
 	it('404s a user that is not there rather than 500ing', async ({
 		browser,
+		faker,
 	}) => {
-		const email = address('hopper');
-		await browser.api.post('/users', { body: { name: 'Grace', email } });
-		await browser.signIn(email);
+		// Signed in as somebody new — the test does not care who — and given
+		// the profile that lets the session through.
+		const { user } = await browser.signIn();
+		await browser.api.post('/users', {
+			body: { name: faker.person.fullName(), email: user.email },
+		});
 
 		await expect(
 			browser.api.get('/users/{id}', {

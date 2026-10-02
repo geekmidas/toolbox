@@ -183,8 +183,7 @@ export class NotAConstruct extends Error {
 
 		super(
 			`.dependsOn() takes constructs, and was given ${name}. ` +
-				`Pass it to .services([…]) instead, or lift it with ` +
-				`Construct.fromService().`,
+				`Pass it to .services([…]) instead.`,
 		);
 		this.name = 'NotAConstruct';
 	}
@@ -256,8 +255,8 @@ export function isConsumable(value: unknown): value is Consumable {
  * The service behind either face.
  *
  * `.database()` and the publisher slots take a construct now; they took a
- * `Service` before and still do, because a hand-written one is exactly what
- * `Construct.fromService` exists to lift and not everything has been lifted.
+ * `Service` before and still do, because not every hand-written service has a
+ * construct to stand for it.
  */
 export function serviceOf<TName extends string, TClient>(
 	source: Consumable<TName, TClient> | Service<TName, TClient>,

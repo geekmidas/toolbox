@@ -1,4 +1,8 @@
-import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
+import {
+	type ConstructManifest,
+	NoUrlForStage,
+	provisionOrder,
+} from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import type { DokployApi } from '../dokploy-api';
 import {
@@ -6,6 +10,7 @@ import {
 	CacheIsAmbiguous,
 	CacheNeedsAHome,
 	type DokployProvisionContext,
+	MissingSuppliedSecret,
 	type Provisioned,
 	provisionableKinds,
 	provisionerFor,
@@ -130,7 +135,10 @@ async function provision(
 		addresses: { Api: 'https://api.example.com' },
 		deferred: [],
 		clusters: {},
+		seed: 'stage-seed',
 		...overrides,
+		// What the deploy generated before provisioning — see generated.spec.
+		supplied: { AUTH_SECRET: 'generated-signing-key', ...overrides.supplied },
 	};
 
 	const env: Record<string, string> = {};
@@ -716,5 +724,112 @@ describe('a surface a mobile app calls', () => {
 		expect(env.AUTH_TRUSTED_ORIGINS).toBe('shop://,shop://*');
 		// A scheme is not a host anything shares a cookie with.
 		expect(env.AUTH_COOKIE_DOMAIN).toBeUndefined();
+	});
+});
+
+describe('a third party’s credentials', () => {
+	const stripe = {
+		Stripe: {
+			kind: 'credential',
+			id: 'Stripe',
+			provides: ['STRIPE_CREDENTIALS'],
+		},
+	} as unknown as ConstructManifest;
+
+	it('come from what the stage was given', async () => {
+		const { env } = await provision(
+			{ supplied: { STRIPE_CREDENTIALS: '{"secretKey":"sk_live_1"}' } },
+			stripe,
+		);
+
+		expect(env.STRIPE_CREDENTIALS).toBe('{"secretKey":"sk_live_1"}');
+	});
+
+	it('fail the deploy when the stage was never given them, naming the command', async () => {
+		await expect(provision({}, stripe)).rejects.toThrow(MissingSuppliedSecret);
+		await expect(provision({}, stripe)).rejects.toThrow(
+			"gkm secrets:set STRIPE_CREDENTIALS '…' --stage production",
+		);
+	});
+});
+
+describe('an external API', () => {
+	const payfast = {
+		PayFast: {
+			kind: 'external-api',
+			id: 'PayFast',
+			url: {
+				production: 'https://www.payfast.co.za',
+				default: 'https://sandbox.payfast.co.za',
+			},
+			provides: ['PAY_FAST_URL', 'PAY_FAST_CREDENTIALS'],
+		},
+	} as unknown as ConstructManifest;
+	const supplied = { PAY_FAST_CREDENTIALS: '{"merchantId":"m_1"}' };
+
+	it('is called at the URL for its stage, with the stage’s credentials', async () => {
+		const { env } = await provision({ supplied }, payfast);
+
+		expect(env).toMatchObject({
+			PAY_FAST_URL: 'https://www.payfast.co.za',
+			PAY_FAST_CREDENTIALS: '{"merchantId":"m_1"}',
+		});
+	});
+
+	it('falls back to the default URL for a stage it does not name', async () => {
+		const { env } = await provision({ supplied, stage: 'staging' }, payfast);
+
+		expect(env.PAY_FAST_URL).toBe('https://sandbox.payfast.co.za');
+	});
+
+	it('fails the deploy when the stage was never given its credentials', async () => {
+		await expect(provision({}, payfast)).rejects.toThrow(MissingSuppliedSecret);
+	});
+
+	it('fails the deploy for a stage it has no URL for', async () => {
+		const prodOnly = {
+			PayFast: {
+				...payfast.PayFast,
+				url: { production: 'https://www.payfast.co.za' },
+			},
+		} as unknown as ConstructManifest;
+
+		await expect(
+			provision({ supplied, stage: 'staging' }, prodOnly),
+		).rejects.toThrow(NoUrlForStage);
+	});
+});
+
+describe('what a deploy derives', () => {
+	it('salts every derived password with the stage’s seed', async () => {
+		const first = await provision({ seed: 'seed-one' });
+		const second = await provision({ seed: 'seed-two' });
+
+		expect(first.env.ORDERS_URL).not.toBe(second.env.ORDERS_URL);
+		// The same seed, the same password: a redeploy locks nobody out.
+		expect((await provision({ seed: 'seed-one' })).env.ORDERS_URL).toBe(
+			first.env.ORDERS_URL,
+		);
+	});
+
+	it('cannot be computed from what the repo holds', async () => {
+		// The old derivation: project, stage and role, all in the repo.
+		const { createHash } = await import('node:crypto');
+		const guess = createHash('sha256')
+			.update('shop:production:role:orders_production')
+			.digest('base64url')
+			.slice(0, 32);
+
+		const { env } = await provision();
+
+		expect(env.ORDERS_URL).not.toContain(encodeURIComponent(guess));
+	});
+
+	it('signs with the stage’s stored key, never a derived one', async () => {
+		const { env } = await provision({
+			supplied: { AUTH_SECRET: 'stored-signing-key' },
+		});
+
+		expect(env.AUTH_SECRET).toBe('stored-signing-key');
 	});
 });

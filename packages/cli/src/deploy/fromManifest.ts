@@ -46,6 +46,7 @@ import {
 	type Declaration,
 	type DeclarationKind,
 	dependentsOf,
+	externalApiUrl,
 	mobileOrigins,
 	provideKey,
 	schemeBase,
@@ -103,10 +104,16 @@ export interface DokployProvisionContext {
 	 */
 	addresses?: Readonly<Record<string, string>>;
 	/**
-	 * Secrets already generated for this stage, so a redeploy does not rotate
-	 * one and invalidate every live session.
+	 * The stage's random seed, from its store: what every derived password is
+	 * salted with, so none can be computed from the project and stage names.
 	 */
-	secrets?: Readonly<Record<string, string>>;
+	seed: string;
+	/**
+	 * The stage's values by key, from its store: what it was given by hand
+	 * (`gkm secrets:set`, a third party's credentials) and what it generated
+	 * once (a `secret` construct's value — see `withGeneratedSecrets`).
+	 */
+	supplied?: Readonly<Record<string, string>>;
 	/** DDL accumulated by the provisioners, applied once at the end. */
 	deferred: DeferredStatement[];
 	/**
@@ -498,11 +505,13 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	},
 
 	/**
-	 * A signing key, generated once and remembered.
+	 * A signing key, generated once and remembered in the stage's store.
 	 *
-	 * Regenerating it on every deploy would invalidate every live session, which
-	 * is why the value comes from state when there is one. Nothing is created in
-	 * Dokploy: a secret has no address.
+	 * Random, never derived: a key computed from the project and stage names
+	 * signs sessions anyone reading the repo could forge. The deploy generates
+	 * it before provisioning (`withGeneratedSecrets`) and every later deploy
+	 * reads the same one, so live sessions survive a redeploy. Nothing is
+	 * created in Dokploy: a secret has no address.
 	 */
 	secret: async (declaration, context) => {
 		if (declaration.kind !== 'secret') throw new WrongKind(declaration.kind);
@@ -515,11 +524,42 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 		const key = declaration.provides?.[0];
 		if (!key) return { provides: {} };
 
+		return { provides: { [key]: supplied(declaration.id, key, context) } };
+	},
+
+	/**
+	 * A third party's credentials, as the stage was given them.
+	 *
+	 * Nothing is created and nothing derived: the value was issued by somebody
+	 * else. A stage that was never given one fails the deploy here, naming the
+	 * command that sets it — not the first request that needs it.
+	 */
+	credential: async (declaration, context) => {
+		if (declaration.kind !== 'credential') {
+			throw new WrongKind(declaration.kind);
+		}
+
+		const key = provideKey(declaration.id, 'credentials');
+		return { provides: { [key]: supplied(declaration.id, key, context) } };
+	},
+
+	/**
+	 * An API somebody else runs: the URL this stage calls it at, and the
+	 * credentials it was issued for this stage.
+	 */
+	'external-api': async (declaration, context) => {
+		if (declaration.kind !== 'external-api') {
+			throw new WrongKind(declaration.kind);
+		}
+
+		const credentials = provideKey(declaration.id, 'credentials');
 		return {
 			provides: {
-				[key]:
-					context.secrets?.[key] ??
-					derivedPassword(context, `secret:${declaration.id}`),
+				[provideKey(declaration.id, 'url')]: externalApiUrl(
+					declaration,
+					context.stage,
+				),
+				[credentials]: supplied(declaration.id, credentials, context),
 			},
 		};
 	},
@@ -819,18 +859,20 @@ function soleDatabase(context: DokployProvisionContext): string | undefined {
 }
 
 /**
- * A password derived from the project, the stage and the role.
+ * A password derived from the stage's seed, the project, the stage and the role.
  *
- * Derived rather than random for the reason the local target derives its own: a
- * redeploy must not lock the running application out of its own database, and
- * two projects must not share a credential.
+ * Derived rather than stored per role so a redeploy hands the running
+ * application the password it already has, and two projects never share one.
+ * The seed is what makes it secret: random, generated once and kept in the
+ * stage's store. Without it the inputs are all in the repo, and so was every
+ * production password.
  */
 function derivedPassword(
 	context: DokployProvisionContext,
 	role: string,
 ): string {
 	return createHash('sha256')
-		.update(`${context.project}:${context.stage}:role:${role}`)
+		.update(`${context.seed}:${context.project}:${context.stage}:role:${role}`)
 		.digest('base64url')
 		.slice(0, 32);
 }
@@ -854,6 +896,40 @@ function quoted(name: string): string {
 }
 
 /** A provisioner was handed a declaration of the wrong kind. */
+/**
+ * A value only the stage's own secrets can hold.
+ *
+ * @throws {MissingSuppliedSecret} when the stage was never given it.
+ */
+function supplied(
+	id: string,
+	key: string,
+	context: DokployProvisionContext,
+): string {
+	const value = context.supplied?.[key];
+	if (value === undefined) {
+		throw new MissingSuppliedSecret(id, key, context.stage);
+	}
+
+	return value;
+}
+
+/** A construct needs a value the stage was never given. */
+export class MissingSuppliedSecret extends Error {
+	constructor(
+		readonly id: string,
+		readonly key: string,
+		readonly stage: string,
+	) {
+		super(
+			`'${id}' needs ${key}, and the stage '${stage}' has none. Nothing can ` +
+				`derive it; set it in the stage's secrets: ` +
+				`gkm secrets:set ${key} '…' --stage ${stage}`,
+		);
+		this.name = 'MissingSuppliedSecret';
+	}
+}
+
 export class WrongKind extends Error {
 	constructor(readonly kind: string) {
 		super(`No Dokploy provisioner handles '${kind}'`);

@@ -1,5 +1,5 @@
 import { resolveEnvKeys } from '@geekmidas/envkit/sst';
-import { providedKeyFor, provideKey } from '@geekmidas/manifest';
+import { NoUrlForStage, providedKeyFor, provideKey } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import { ObjectStorage } from '../aws/ObjectStorage';
 import { type ProvidesMismatch, UnknownDeclarationKind } from '../errors';
@@ -249,18 +249,91 @@ describe('the key a provided role becomes', () => {
 describe('Credential', () => {
 	it('provides under the role the declaration named', async () => {
 		// The role *is* the contract: providing `value` against a declared
-		// `STRIPE_CREDENTIAL` supplies `STRIPE_VALUE`, and assertProvides
+		// `STRIPE_CREDENTIALS` supplies `STRIPE_VALUE`, and assertProvides
 		// rejects the stack at synth. Which is the check working.
 		const { Credential } = await import('../aws/Credential');
 
 		expect(
 			Object.keys(new Credential({} as never, 'Stripe').provides()),
-		).toEqual(['credential']);
+		).toEqual(['credentials']);
 	});
 
 	it('agrees with what the construct declares', () => {
-		expect(providedKeyFor('Stripe', 'credential', 'credential')).toBe(
-			'STRIPE_CREDENTIAL',
+		expect(providedKeyFor('Stripe', 'credential', 'credentials')).toBe(
+			'STRIPE_CREDENTIALS',
 		);
+	});
+
+	it('links under the key the construct reads, not the secret’s bare name', async () => {
+		const { Credential } = await import('../aws/Credential');
+		const stripe = new Credential({} as never, 'Stripe');
+
+		expect(resolveEnvKeys({ Stripe: { type: stripe._type } })).toEqual([
+			'STRIPE_CREDENTIALS',
+		]);
+		expect(stripe.getSSTLink().properties).toEqual(stripe.provides());
+	});
+
+	it('is what a function depending on it is linked to', async () => {
+		const { Credential } = await import('../aws/Credential');
+		const stripe = new Credential({} as never, 'Stripe');
+
+		const { link, envKeys } = resolveEdges(
+			[{ target: 'Stripe', kind: 'credential' }],
+			{ Stripe: stripe },
+		);
+
+		expect(link).toEqual([stripe]);
+		expect(envKeys).toEqual(['STRIPE_CREDENTIALS']);
+	});
+});
+
+describe('ExternalApi', () => {
+	const stack = (stage: string) => ({ stage }) as never;
+
+	it('provides the URL for its stage and its credentials, under the declared keys', async () => {
+		const { ExternalApi } = await import('../aws/ExternalApi');
+		const payfast = new ExternalApi(stack('production'), 'PayFast', {
+			url: {
+				production: 'https://www.payfast.co.za',
+				default: 'https://sandbox.payfast.co.za',
+			},
+		});
+
+		expect(payfast.provides().url).toBe('https://www.payfast.co.za');
+		expect(
+			Object.keys(payfast.provides()).map((role) =>
+				providedKeyFor('PayFast', 'external-api', role),
+			),
+		).toEqual(['PAY_FAST_URL', 'PAY_FAST_CREDENTIALS']);
+	});
+
+	it('falls back to the default URL for a stage it does not name', async () => {
+		const { ExternalApi } = await import('../aws/ExternalApi');
+		const payfast = new ExternalApi(stack('staging'), 'PayFast', {
+			url: {
+				production: 'https://www.payfast.co.za',
+				default: 'https://sandbox.payfast.co.za',
+			},
+		});
+
+		expect(payfast.provides().url).toBe('https://sandbox.payfast.co.za');
+	});
+
+	it('fails synth for a stage it has no URL for', async () => {
+		const { ExternalApi } = await import('../aws/ExternalApi');
+
+		expect(
+			() =>
+				new ExternalApi(stack('staging'), 'PayFast', {
+					url: { production: 'https://www.payfast.co.za' },
+				}),
+		).toThrow(NoUrlForStage);
+	});
+
+	it('flattens into the same keys at runtime', () => {
+		expect(
+			resolveEnvKeys({ PayFast: { type: 'gkm:aws:ExternalApi' } }).sort(),
+		).toEqual(['PAY_FAST_CREDENTIALS', 'PAY_FAST_URL']);
 	});
 });

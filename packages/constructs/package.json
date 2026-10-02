@@ -174,6 +174,16 @@
 				"default": "./dist/credential.cjs"
 			}
 		},
+		"./external-api": {
+			"import": {
+				"types": "./dist/external-api.d.mts",
+				"default": "./dist/external-api.mjs"
+			},
+			"require": {
+				"types": "./dist/external-api.d.cts",
+				"default": "./dist/external-api.cjs"
+			}
+		},
 		"./auth": {
 			"import": {
 				"types": "./dist/auth.d.mts",

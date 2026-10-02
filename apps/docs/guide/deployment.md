@@ -217,6 +217,19 @@ In production, the CLI auto-injects these variables:
 | `BETTER_AUTH_SECRET` | Generated | Random secret, persisted in state |
 | `BETTER_AUTH_TRUSTED_ORIGINS` | Derived | All frontend URLs (comma-separated) |
 
+**Generated secrets** are created once per stage and kept in its secrets store,
+so every later deploy reads the same values:
+
+- **Each `secret` construct's value**, such as an auth server's signing secret.
+  It's random rather than derived, and `gkm secrets:set AUTH_SECRET … --stage
+  production` replaces it with your own.
+- **The stage's seed**, which salts every password the Dokploy target derives:
+  each database's master and roles, and each bucket's root user. Nothing in
+  the repo is enough to compute one.
+
+The first deploy of a stage generates both and writes them to the store; it
+prints `🔑 Generated for "production" (ssm): AUTH_SECRET, seed`.
+
 **Custom secrets** are injected from the secrets store:
 
 ```bash
@@ -724,8 +737,7 @@ profile:
 gkm secrets:init --stage staging
 gkm secrets:init --stage prod
 
-# AWS (SST): OIDC role in the stage's account + the GitHub environment,
-# and the stage's secrets pushed to SSM in that same account
+# AWS (SST): OIDC role in the stage's account + the GitHub environment
 gkm deploy:github --stage staging --profile acme-dev
 gkm deploy:github --stage prod    --profile acme-prod
 ```
@@ -733,20 +745,19 @@ gkm deploy:github --stage prod    --profile acme-prod
 `.gkm/` is gitignored, so a checkout in CI does not have the stage's secrets.
 On SST, `gkm init` sets `secrets.store` to SSM
 (see [the secrets store](./dev-server.md#deployed-stages-the-secrets-store)):
-each stage's secrets are one `SecureString` in its own account, and the deploy
-job runs `gkm secrets:pull --stage "$STAGE"` with the role it assumed — no key
-on GitHub. After changing a stage's secrets, push them again with the same
-profile:
+each stage's secrets are one `SecureString` in its own account. `gkm
+secrets:set` writes there, and the deploy reads there with the role the job
+assumed — no key on GitHub, and no pull or push step:
 
 ```bash
-gkm secrets:push --stage prod --profile acme-prod
+AWS_PROFILE=acme-prod gkm secrets:set POLAR_CREDENTIALS '{…}' --stage prod
 ```
 
 [`gkm deploy:github`](./cli-reference.md#gkm-deploy-github) creates GitHub's
 OIDC provider in the account if missing and a role only this repository's
 `<stage>` environment can assume, then sets the environment's `AWS_ROLE_ARN`.
-With the SSM store it pushes the stage's local secrets with the same profile;
-with the `'file'` store it sets `GKM_SECRETS_KEY` instead. No long-lived AWS
+With the SSM store there is nothing to hand over — the deploy reads the store
+with the role; with the `'file'` store it sets `GKM_SECRETS_KEY` instead. No long-lived AWS
 keys are stored anywhere.
 
 For **Dokploy**, set the environment's values with `gh`. The workflow writes
@@ -765,7 +776,7 @@ gh variable set DOKPLOY_ENDPOINT --env prod --body https://dokploy.example.com
 | Setting | Target | Set by |
 |---|---|---|
 | variable `AWS_ROLE_ARN` | SST | `gkm deploy:github` |
-| the stage's secrets in SSM | SST | `gkm deploy:github`, or `gkm secrets:push --profile` |
+| the stage's secrets in SSM | SST | `gkm secrets:set … --stage <stage>` |
 | secret `GKM_SECRETS_KEY` | Dokploy (`'file'` store) | `gh secret set` |
 | secret `DOKPLOY_API_TOKEN`, variable `DOKPLOY_ENDPOINT` | Dokploy | `gh` |
 

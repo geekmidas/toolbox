@@ -100,6 +100,31 @@ describe('roleStatements', () => {
 		expect(ownerStatement?.sql).toContain("'it''s'");
 	});
 
+	it('sets every role’s password on each apply, not only when creating it', () => {
+		// A role that already exists keeps the password it was created with
+		// unless something sets it, and an app handed the current one is locked
+		// out. Unguarded, so it runs every time.
+		const statements = roleStatements({
+			...spec,
+			reader: 'orders_reader',
+			passwords: { ...spec.passwords, reader: 'rd-pw' },
+		});
+		const passwords = statements.filter((s) =>
+			s.sql.includes('WITH LOGIN PASSWORD'),
+		);
+
+		expect(passwords.map((s) => s.sql)).toEqual([
+			`ALTER ROLE "orders_owner" WITH LOGIN PASSWORD 'o-pw'`,
+			`ALTER ROLE "orders" WITH LOGIN PASSWORD 'r-pw'`,
+			`ALTER ROLE "orders_reader" WITH LOGIN PASSWORD 'rd-pw'`,
+		]);
+		for (const statement of passwords) expect(statement.exists).toBeUndefined();
+		// And never in the line a reconciler prints.
+		for (const statement of passwords) {
+			expect(statement.describe).not.toMatch(/pw/);
+		}
+	});
+
 	it('creates no reader role unless one was asked for', () => {
 		// Roles nothing connects as are noise in `\du` and one more thing to
 		// explain.

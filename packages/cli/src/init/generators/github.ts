@@ -230,20 +230,12 @@ function deploy(options: TemplateOptions): string {
 `
 		: '';
 
-	// A stage's secrets reach the runner through its store. SSM needs nothing
-	// but the role the job already assumed; the local file needs its key, and
-	// the encrypted file itself, which a checkout of an ignored `.gkm/` lacks.
+	// A stage's secrets are read from its store by the deploy itself. SSM needs
+	// nothing but the role the job already assumed; the local file needs its
+	// key, and the encrypted file itself, which a checkout of an ignored
+	// `.gkm/` lacks.
 	const stageSecrets = sst
-		? `${credentials}
-      # The stage's secrets, from SSM in the account the role belongs to —
-      # pushed there once with \`gkm secrets:push --stage <stage> --profile …\`.
-      # The stage reaches the shell as a variable, never pasted into the script:
-      # on a manual run it is whatever was typed.
-      - name: Stage secrets
-        run: ${pm.exec} gkm secrets:pull --stage "$STAGE"
-        env:
-          STAGE: \${{ matrix.stage }}
-`
+		? credentials
 		: `
       # The stage's secrets are kept in the encrypted .gkm/secrets/<stage>.json,
       # and each environment holds its key as GKM_SECRETS_KEY. .gkm/ is

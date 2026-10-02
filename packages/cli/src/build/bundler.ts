@@ -156,24 +156,37 @@ export async function bundleServer(
 
 	if (stage) {
 		const {
-			readStageSecrets,
 			toEmbeddableSecrets,
 			validateEnvironmentVariables,
 			initStageSecrets,
-			writeStageSecrets,
 		} = await import('../secrets/storage');
+		const { FileSecretsStore, secretsStoreFor } = await import(
+			'../secrets/store'
+		);
+		const { ConfigNotFound, loadWorkspaceSettings } = await import('../config');
 		const { encryptSecrets, generateDefineOptions } = await import(
 			'../secrets/encryption'
 		);
 
-		let secrets = await readStageSecrets(stage);
+		// The stage's own store — SSM for a deployed stage kept there. Outside
+		// any workspace nothing names one, so it is the file.
+		const store = await loadWorkspaceSettings().then(
+			(workspace) => secretsStoreFor(workspace, stage),
+			(error) => {
+				if (error instanceof ConfigNotFound) {
+					return new FileSecretsStore(process.cwd());
+				}
+				throw error;
+			},
+		);
+		let secrets = await store.read(stage);
 
 		if (!secrets) {
 			// Auto-initialize secrets for the stage
 			console.log(`  Initializing secrets for stage "${stage}"...`);
 			secrets = initStageSecrets(stage);
-			await writeStageSecrets(secrets);
-			console.log(`  ✓ Created .gkm/secrets/${stage}.json`);
+			await store.write(stage, secrets);
+			console.log(`  ✓ Created the "${stage}" secrets (${store.name})`);
 		}
 
 		// Validate environment variables if constructs are provided
@@ -191,7 +204,7 @@ export async function bundleServer(
 						...validation.missing.map((v) => `  ❌ ${v}`),
 						'',
 						'To fix this, either:',
-						`  1. Add the missing variables to .gkm/secrets/${stage}.json using:`,
+						`  1. Add the missing variables to the "${stage}" secrets using:`,
 						`     gkm secrets:set <KEY> <VALUE> --stage ${stage}`,
 						'',
 						`  2. Or import from a JSON file:`,

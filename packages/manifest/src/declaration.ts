@@ -273,6 +273,29 @@ export interface CredentialDeclaration extends Node {
 }
 
 /**
+ * An HTTP API somebody else runs — Polar, Stripe, a payment gateway.
+ *
+ * Provisions nothing, like {@link OidcDeclaration}: the API already exists. What
+ * makes it a node rather than a URL somebody writes into `.env` is that its
+ * address changes by stage — the real one deployed, a fake locally and in
+ * tests — and switching it is the target's job, not each app's.
+ *
+ * The fake is not here, and that is deliberate: it lives in `test/fakes/<id>.ts`,
+ * which only gkm reads, so nothing in a deployed bundle can reach it. Its
+ * credentials are a second key holding JSON, issued per stage the way a
+ * {@link CredentialDeclaration}'s are.
+ */
+export interface ExternalApiDeclaration extends Node {
+	kind: 'external-api';
+	/**
+	 * Where it answers deployed: one URL for every stage, or one per stage name,
+	 * with `default` for any stage not listed. A local or test stage never reads
+	 * this — it is handed the fake.
+	 */
+	url: string | Readonly<Record<string, string>>;
+}
+
+/**
  * An identity provider somebody else runs.
  *
  * Provisions nothing — the issuer already exists — so a target's whole job is
@@ -666,6 +689,7 @@ export type Declaration =
 	| MobileAppDeclaration
 	| WorkerDeclaration
 	| OidcDeclaration
+	| ExternalApiDeclaration
 	| QueueDeclaration
 	| TopicDeclaration
 	| FunctionDeclaration
@@ -832,7 +856,7 @@ export interface ProvidesByKind {
 	 * The credential as one JSON object, parsed and validated by the construct
 	 * that declared the schema.
 	 */
-	credential: { credential: string };
+	credential: { credentials: string };
 	/**
 	 * The producer's connection string. One key, not two: the consumer is
 	 * reached through the queue rather than by an address of its own.
@@ -858,6 +882,11 @@ export interface ProvidesByKind {
 	 * deployment.
 	 */
 	oidc: { issuer: string; audience: string };
+	/**
+	 * Where it answers — the provider, or its fake — and the credentials it
+	 * was issued for this stage, as one JSON object.
+	 */
+	'external-api': { url: string; credentials: string };
 	/**
 	 * A worker is reached by nothing — it reaches out, to a queue, a schedule,
 	 * a topic. So it publishes no address, the way a cron does not.
@@ -909,6 +938,9 @@ export const PUBLIC: {
 	// issuer is a public URL and an audience is a client id, which is the half
 	// of an OAuth client that is meant to be seen.
 	oidc: ['issuer', 'audience'],
+	// Called from the server with credentials a browser must never hold, and
+	// the address alone is no use to anyone without them.
+	'external-api': [],
 	// An invocation address is not a public one: reaching it is IAM's business,
 	// not a browser's.
 	function: [],

@@ -4,17 +4,19 @@ import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { config as dotenvConfig } from 'dotenv';
 import {
-	getAppNameFromCwd,
+	ConfigNotFound,
 	loadWorkspaceAppInfo,
 	loadWorkspaceConfig,
+	NotInAnApp,
 	type WorkspaceAppInfo,
 } from '../config';
 import type { ReconcileResult } from '../reconcile/index.js';
+import { toEmbeddableSecrets } from '../secrets/storage.js';
 import {
-	readStageSecrets,
-	secretsExist,
-	toEmbeddableSecrets,
-} from '../secrets/storage.js';
+	FileSecretsStore,
+	type SecretsStore,
+	secretsStoreFor,
+} from '../secrets/store.js';
 import type { NormalizedWorkspace } from '../workspace/index.js';
 
 const logger = console;
@@ -162,18 +164,16 @@ export async function savePortState(
  * @internal Exported for testing
  */
 export async function loadSecretsForApp(
-	secretsRoot: string,
+	store: SecretsStore,
 	stage: string,
 	appName?: string,
 ): Promise<Record<string, string>> {
 	let secrets: Record<string, string> = {};
 
-	if (secretsExist(stage, secretsRoot)) {
-		const stageSecrets = await readStageSecrets(stage, secretsRoot);
-		if (stageSecrets) {
-			logger.log(`🔐 Loading secrets from stage: ${stage}`);
-			secrets = toEmbeddableSecrets(stageSecrets);
-		}
+	const stageSecrets = await store.read(stage);
+	if (stageSecrets) {
+		logger.log(`🔐 Loading secrets from stage: ${stage}`);
+		secrets = toEmbeddableSecrets(stageSecrets);
 	}
 
 	if (Object.keys(secrets).length === 0) {
@@ -362,7 +362,12 @@ export async function prepareEntryCredentials(options: {
 		workspaceAppPort = appInfo.app.port;
 		secretsRoot = appInfo.workspaceRoot;
 		appName = appInfo.appName;
-	} catch {
+	} catch (error) {
+		// Anything but "not in an app" or "not in a workspace" is a real fault —
+		// a config that does not load — and must not be mistaken for either.
+		if (!(error instanceof NotInAnApp || error instanceof ConfigNotFound)) {
+			throw error;
+		}
 		// Not an app — but possibly the workspace root, which is where the
 		// scaffold's own `pnpm test` runs `gkm test` from. Without the workspace
 		// here that run skipped the reconcile below: no container started, and the
@@ -372,8 +377,8 @@ export async function prepareEntryCredentials(options: {
 			.catch(() => undefined);
 		// Otherwise not in a workspace at all (expected for non-gkm apps using
 		// gkm exec) — use defaults.
+		// No app here, so no per-app keys to map.
 		secretsRoot = workspace?.root ?? findSecretsRoot(cwd);
-		appName = getAppNameFromCwd(cwd) ?? undefined;
 	}
 
 	// Determine port: explicit --port > workspace config > default 3000
@@ -382,9 +387,14 @@ export async function prepareEntryCredentials(options: {
 	// Load secrets and inject PORT. Outside a workspace there are no declared
 	// stages to read, so only a stage asked for by name is loaded.
 	const stage = options.stage ?? workspace?.stages.local;
-	const credentials = stage
-		? await loadSecretsForApp(secretsRoot, stage, appName)
-		: {};
+	// The stage's own store; outside a workspace nothing names one but the file.
+	const store = stage
+		? workspace
+			? await secretsStoreFor(workspace, stage)
+			: new FileSecretsStore(secretsRoot)
+		: undefined;
+	const credentials =
+		store && stage ? await loadSecretsForApp(store, stage, appName) : {};
 
 	// Always inject PORT into credentials so apps can read it
 	credentials.PORT = String(resolvedPort);

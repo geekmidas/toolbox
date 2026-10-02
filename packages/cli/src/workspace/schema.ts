@@ -556,13 +556,14 @@ const SecretsStoreSchema = z.union([
 	z.object({ provider: z.literal('ssm'), region: AwsRegionSchema }).strict(),
 	z.object({
 		/** Any backend: an object implementing SecretsStore */
-		provider: z.custom<{ pull: Function; push: Function }>(
+		provider: z.custom<{ name: string; read: Function; write: Function }>(
 			(val) =>
 				typeof val === 'object' &&
 				val !== null &&
-				typeof (val as any).pull === 'function' &&
-				typeof (val as any).push === 'function',
-			{ message: 'a secrets store implements pull() and push()' },
+				typeof (val as any).name === 'string' &&
+				typeof (val as any).read === 'function' &&
+				typeof (val as any).write === 'function',
+			{ message: 'a secrets store has a name, read() and write()' },
 		),
 	}),
 ]);

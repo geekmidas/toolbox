@@ -60,7 +60,8 @@ import { loadWorkspaceConfig } from '../config';
 import { discover } from '../reconcile/discover.js';
 import type { SqlClient, Statement } from '../reconcile/provision.js';
 import { constructGlobs } from '../reconcile/workspace.js';
-import { readStageSecrets } from '../secrets/storage.js';
+import { initStageSecrets } from '../secrets/storage.js';
+import { secretsStoreFor } from '../secrets/store.js';
 import { derivedApps } from '../workspace/derive.js';
 import {
 	getAppBuildOrder,
@@ -84,6 +85,7 @@ import {
 	validateEnvVars,
 } from './env-resolver.js';
 import type { DokployCluster } from './fromManifest';
+import { withGeneratedSecrets } from './generated.js';
 import { createStateProvider } from './StateProvider.js';
 import { generateSecretsReport, prepareSecretsForAllApps } from './secrets.js';
 import { sniffAllApps } from './sniffer.js';
@@ -593,12 +595,24 @@ export async function workspaceDeployCommand(
 	// ==================================================================
 	logger.log('\n🔐 Loading secrets and analyzing environment requirements...');
 
-	// Load secrets for this stage
-	const stageSecrets = await readStageSecrets(stage, workspace.root);
-	if (!stageSecrets) {
-		logger.log(`   ⚠️  No secrets found for stage "${stage}"`);
+	// The stage's own store — SSM in its account, for a stage kept there.
+	const secretsStore = await secretsStoreFor(workspace, stage);
+	const stored = await secretsStore.read(stage);
+	if (!stored) {
+		logger.log(`   ⚠️  No secrets found for stage "${stage}"; starting them`);
+	}
+
+	// What the stage generates once — its seed, each `secret` construct's
+	// value — written back before anything is provisioned with it, so the next
+	// deploy derives the same passwords and signs with the same key.
+	const { secrets: stageSecrets, generated } = withGeneratedSecrets(
+		stored ?? initStageSecrets(stage),
+		manifest,
+	);
+	if (generated.length > 0) {
+		await secretsStore.write(stage, stageSecrets);
 		logger.log(
-			`      Run "gkm secrets:init --stage ${stage}" to create secrets`,
+			`   🔑 Generated for "${stage}" (${secretsStore.name}): ${generated.join(', ')}`,
 		);
 	}
 
@@ -848,6 +862,11 @@ export async function workspaceDeployCommand(
 			environmentId: environmentId as string,
 			stage,
 			appUrls,
+			// What the stage holds by key — a third party's credentials, and what
+			// it generated — which a construct reads itself and the sniffer
+			// therefore never sees.
+			supplied: stageSecrets.custom,
+			seed: stageSecrets.seed as string,
 			// The one already discovered above, so a deploy reads the manifest once
 			// and cannot act on two different versions of it.
 			manifest,

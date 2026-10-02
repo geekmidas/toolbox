@@ -318,6 +318,9 @@ function coordinateOutsideRadius(
  */
 export const faker = Object.freeze(
 	Object.assign({}, baseFaker, {
+		// A prototype method, so the spread above leaves it behind. The modules
+		// copied across still draw from `baseFaker`, so seeding it seeds them.
+		seed: (seed?: number) => baseFaker.seed(seed),
 		timestamps,
 		identifier,
 		sequence,

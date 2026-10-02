@@ -17,7 +17,7 @@ import {
 	vi,
 } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
-import { readStageSecrets } from '../../secrets/storage';
+import { FileSecretsStore } from '../../secrets/file';
 
 /**
  * `gkm test` prepares a stage and hands it to Vitest. Everything up to the
@@ -129,7 +129,7 @@ describe('testCommand', { timeout: 30_000 }, () => {
 		expect(vitest!.options.env?.FROM_DOTENV).toBe('yes');
 
 		// Auto-setup minted the local stage from the config.
-		expect(await readStageSecrets('dev', dir)).not.toBeNull();
+		expect(await new FileSecretsStore(dir).read('dev')).not.toBeNull();
 		expect(output()).toContain('Generated fresh dev secrets (auto-setup)');
 		expect(output()).toContain('Loaded env: .env');
 

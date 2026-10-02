@@ -1,223 +1,50 @@
-import { existsSync } from 'node:fs';
-import { mkdir, rm } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
-	getSecretsDir,
-	getSecretsPath,
 	maskPassword,
-	readStageSecrets,
-	secretsExist,
-	setCustomSecret,
 	toEmbeddableSecrets,
 	validateEnvironmentVariables,
-	writeStageSecrets,
+	withCustomSecret,
 } from '../storage';
 import type { StageSecrets } from '../types';
 
-describe('path utilities', () => {
-	describe('getSecretsDir', () => {
-		it('should return .gkm/secrets relative to cwd', () => {
-			const dir = getSecretsDir('/project');
-			expect(dir).toBe('/project/.gkm/secrets');
+describe('withCustomSecret', () => {
+	const secrets: StageSecrets = {
+		stage: 'production',
+		createdAt: '2024-01-01T00:00:00.000Z',
+		updatedAt: '2024-01-01T00:00:00.000Z',
+		services: {},
+		urls: {},
+		custom: { API_KEY: 'old-value' },
+	};
+
+	it('adds a custom secret', () => {
+		const updated = withCustomSecret(secrets, 'WEBHOOK', 'whsec_1');
+
+		expect(updated.custom).toEqual({
+			API_KEY: 'old-value',
+			WEBHOOK: 'whsec_1',
 		});
 	});
 
-	describe('getSecretsPath', () => {
-		it('should return path for stage file', () => {
-			const path = getSecretsPath('production', '/project');
-			expect(path).toBe('/project/.gkm/secrets/production.json');
-		});
+	it('replaces an existing custom secret', () => {
+		const updated = withCustomSecret(secrets, 'API_KEY', 'new-value');
 
-		it('should handle stage names with special characters', () => {
-			const path = getSecretsPath('dev-local', '/project');
-			expect(path).toBe('/project/.gkm/secrets/dev-local.json');
-		});
+		expect(updated.custom.API_KEY).toBe('new-value');
 	});
 
-	describe('secretsExist', () => {
-		it('should return false for non-existent secrets', () => {
-			const exists = secretsExist('nonexistent', '/nonexistent-path');
-			expect(exists).toBe(false);
-		});
-	});
-});
+	it('moves updatedAt on, and leaves the rest as it was', () => {
+		const updated = withCustomSecret(secrets, 'KEY', 'value');
 
-describe('file operations', () => {
-	let tempDir: string;
-
-	beforeEach(async () => {
-		tempDir = join(tmpdir(), `gkm-test-${Date.now()}`);
-		await mkdir(tempDir, { recursive: true });
+		expect(updated.updatedAt).not.toBe(secrets.updatedAt);
+		expect(updated.createdAt).toBe(secrets.createdAt);
+		expect(updated.stage).toBe('production');
 	});
 
-	afterEach(async () => {
-		if (existsSync(tempDir)) {
-			await rm(tempDir, { recursive: true });
-		}
+	it('returns a copy, never changing the secrets it was given', () => {
+		withCustomSecret(secrets, 'API_KEY', 'new-value');
 
-		// Clean up keystore directory created at ~/.gkm/{tempDir-basename}
-		const keystoreDir = join(homedir(), '.gkm', basename(tempDir));
-		await rm(keystoreDir, { recursive: true, force: true });
-	});
-
-	describe('writeStageSecrets / readStageSecrets', () => {
-		it('should write and read secrets', async () => {
-			const secrets: StageSecrets = {
-				stage: 'production',
-				createdAt: '2024-01-01T00:00:00.000Z',
-				updatedAt: '2024-01-01T00:00:00.000Z',
-				services: {
-					postgres: {
-						host: 'postgres',
-						port: 5432,
-						username: 'app',
-						password: 'secret123',
-						database: 'app',
-					},
-				},
-				urls: {
-					DATABASE_URL: 'postgresql://app:secret123@postgres:5432/app',
-				},
-				custom: {},
-			};
-
-			await writeStageSecrets(secrets, tempDir);
-			const read = await readStageSecrets('production', tempDir);
-
-			expect(read).toEqual(secrets);
-		});
-
-		it('should create directory if it does not exist', async () => {
-			const secrets: StageSecrets = {
-				stage: 'staging',
-				createdAt: new Date().toISOString(),
-				updatedAt: new Date().toISOString(),
-				services: {},
-				urls: {},
-				custom: {},
-			};
-
-			await writeStageSecrets(secrets, tempDir);
-
-			expect(existsSync(join(tempDir, '.gkm/secrets'))).toBe(true);
-			expect(existsSync(join(tempDir, '.gkm/secrets/staging.json'))).toBe(true);
-		});
-
-		it('should return null for non-existent stage', async () => {
-			const read = await readStageSecrets('nonexistent', tempDir);
-			expect(read).toBeNull();
-		});
-	});
-
-	describe('secretsExist', () => {
-		it('should return true when secrets file exists', async () => {
-			const secrets: StageSecrets = {
-				stage: 'test',
-				createdAt: new Date().toISOString(),
-				updatedAt: new Date().toISOString(),
-				services: {},
-				urls: {},
-				custom: {},
-			};
-
-			await writeStageSecrets(secrets, tempDir);
-			expect(secretsExist('test', tempDir)).toBe(true);
-		});
-
-		it('should return false when secrets file does not exist', () => {
-			expect(secretsExist('nonexistent', tempDir)).toBe(false);
-		});
-	});
-
-	describe('setCustomSecret', () => {
-		it('should add custom secret to existing secrets', async () => {
-			const secrets: StageSecrets = {
-				stage: 'production',
-				createdAt: new Date().toISOString(),
-				updatedAt: new Date().toISOString(),
-				services: {},
-				urls: {},
-				custom: {},
-			};
-
-			await writeStageSecrets(secrets, tempDir);
-			const updated = await setCustomSecret(
-				'production',
-				'API_KEY',
-				'sk_test_123',
-				tempDir,
-			);
-
-			expect(updated.custom.API_KEY).toBe('sk_test_123');
-		});
-
-		it('should update existing custom secret', async () => {
-			const secrets: StageSecrets = {
-				stage: 'production',
-				createdAt: new Date().toISOString(),
-				updatedAt: new Date().toISOString(),
-				services: {},
-				urls: {},
-				custom: { API_KEY: 'old-value' },
-			};
-
-			await writeStageSecrets(secrets, tempDir);
-			const updated = await setCustomSecret(
-				'production',
-				'API_KEY',
-				'new-value',
-				tempDir,
-			);
-
-			expect(updated.custom.API_KEY).toBe('new-value');
-		});
-
-		it('should update updatedAt timestamp', async () => {
-			const originalTime = '2024-01-01T00:00:00.000Z';
-			const secrets: StageSecrets = {
-				stage: 'production',
-				createdAt: originalTime,
-				updatedAt: originalTime,
-				services: {},
-				urls: {},
-				custom: {},
-			};
-
-			await writeStageSecrets(secrets, tempDir);
-			const updated = await setCustomSecret(
-				'production',
-				'KEY',
-				'value',
-				tempDir,
-			);
-
-			expect(updated.updatedAt).not.toBe(originalTime);
-		});
-
-		it('should throw if secrets do not exist for stage', async () => {
-			await expect(
-				setCustomSecret('nonexistent', 'KEY', 'value', tempDir),
-			).rejects.toThrow('Secrets not found for stage "nonexistent"');
-		});
-
-		it('should persist changes to disk', async () => {
-			const secrets: StageSecrets = {
-				stage: 'production',
-				createdAt: new Date().toISOString(),
-				updatedAt: new Date().toISOString(),
-				services: {},
-				urls: {},
-				custom: {},
-			};
-
-			await writeStageSecrets(secrets, tempDir);
-			await setCustomSecret('production', 'NEW_KEY', 'new-value', tempDir);
-
-			const read = await readStageSecrets('production', tempDir);
-			expect(read!.custom.NEW_KEY).toBe('new-value');
-		});
+		expect(secrets.custom).toEqual({ API_KEY: 'old-value' });
+		expect(secrets.updatedAt).toBe('2024-01-01T00:00:00.000Z');
 	});
 });
 

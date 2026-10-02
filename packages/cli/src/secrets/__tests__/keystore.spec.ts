@@ -8,6 +8,7 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { FileSecretsStore, MissingSecretsKey } from '../file';
 import { createStageSecrets } from '../generator';
 import {
 	deleteKey,
@@ -17,7 +18,7 @@ import {
 	keyExists,
 	requireKey,
 } from '../keystore';
-import { readStageSecrets, toEmbeddableSecrets } from '../storage';
+import { toEmbeddableSecrets } from '../storage';
 
 describe('the key store', () => {
 	let home: string;
@@ -90,8 +91,11 @@ describe('the key store', () => {
 			JSON.stringify({ version: 1, encrypted: 'x', iv: 'y' }),
 		);
 
-		await expect(readStageSecrets('prod', project)).rejects.toThrow(
-			`Decryption key not found for stage "prod". Expected key at: ~/.gkm/${basename(project)}/prod.key`,
+		const reading = new FileSecretsStore(project).read('prod');
+
+		await expect(reading).rejects.toBeInstanceOf(MissingSecretsKey);
+		await expect(reading).rejects.toThrow(
+			`Expected key at: ~/.gkm/${basename(project)}/prod.key`,
 		);
 		expect(existsSync(getKeyPath('prod', basename(project)))).toBe(false);
 	});
