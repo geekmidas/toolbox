@@ -89,6 +89,7 @@
     "single-app-paths",
     "surface-has-no-app",
     "test-client-config",
+    "test-db-teardown",
     "test-factories",
     "test-manifest",
     "test-ports",
