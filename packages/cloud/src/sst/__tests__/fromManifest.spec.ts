@@ -263,6 +263,29 @@ describe('Credential', () => {
 			'STRIPE_CREDENTIALS',
 		);
 	});
+
+	it('links under the key the construct reads, not the secret’s bare name', async () => {
+		const { Credential } = await import('../aws/Credential');
+		const stripe = new Credential({} as never, 'Stripe');
+
+		expect(resolveEnvKeys({ Stripe: { type: stripe._type } })).toEqual([
+			'STRIPE_CREDENTIALS',
+		]);
+		expect(stripe.getSSTLink().properties).toEqual(stripe.provides());
+	});
+
+	it('is what a function depending on it is linked to', async () => {
+		const { Credential } = await import('../aws/Credential');
+		const stripe = new Credential({} as never, 'Stripe');
+
+		const { link, envKeys } = resolveEdges(
+			[{ target: 'Stripe', kind: 'credential' }],
+			{ Stripe: stripe },
+		);
+
+		expect(link).toEqual([stripe]);
+		expect(envKeys).toEqual(['STRIPE_CREDENTIALS']);
+	});
 });
 
 describe('ExternalApi', () => {

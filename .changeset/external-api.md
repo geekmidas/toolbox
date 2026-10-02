@@ -25,6 +25,11 @@
 - **Deploying** resolves the URL for the stage (`NoUrlForStage` when it has
   none) and the credentials from the stage's secrets, on Dokploy and on AWS.
 - **`Credential` provides `<ID>_CREDENTIALS`**, renamed from `<ID>_CREDENTIAL`.
+- **AWS `Credential` links under `<ID>_CREDENTIALS`.** It reported SST's
+  secret type, which resolves to the bare `<ID>`, so a function that declared
+  `STRIPE_CREDENTIALS` was linked to nothing. It now has its own type
+  (`gkm:aws:Credential`) and resolver, and holds the `sst.Secret` under the
+  same name, so values already set with `sst secret set Stripe …` still apply.
 - **Dokploy now resolves credentials.** A stage missing `<ID>_CREDENTIALS` for
   a `Credential` or an `ExternalApi` fails `gkm deploy` with
   `MissingSuppliedSecret`, naming the `gkm secrets:set` command. Before this,
