@@ -10,29 +10,28 @@ export { TestFunctionAdaptor } from '../functions/TestFunctionAdaptor';
 export { TestQueueAdaptor } from '../queue/TestQueueAdaptor';
 export { TestSubscriberAdaptor } from '../subscribers/TestSubscriberAdaptor';
 export {
+	type ClientOf,
 	type DatabaseOf,
 	type DatabaseSchemas,
 	DeliveryDidNotSettle,
 	DeliveryFailed,
 	type FactoryBuilders,
-	type FakeExports,
-	type FakeModule,
-	type FakeModules,
 	type FeatureContext,
 	type FeatureIt,
 	type FeatureTestOptions,
 	featureTest,
-	ImageFakeHasNoState,
 	type MagicLinkAuthClient,
 	MessageRejected,
-	NoFakeFor,
 	NoInbox,
+	type ServiceClients,
 	SignInFailed,
 	signInWithMagicLink,
 	type TestDatabases,
 	type TestFactories,
+	type TestServices,
 	UnknownDatabase,
 	UnknownFactory,
+	UnknownService,
 	UnknownTestContext,
 } from '../testing/featureTest';
 export {

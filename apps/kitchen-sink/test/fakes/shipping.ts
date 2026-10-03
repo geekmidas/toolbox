@@ -1,49 +1,55 @@
 import { fake } from '@geekmidas/constructs/external-api';
-import type { shipping } from '@kitchen-sink/constructs/shipping.js';
+import type {
+	QuoteRequest,
+	shipping,
+} from '@kitchen-sink/constructs/shipping.js';
 import { Hono } from 'hono';
 
 /**
- * The carrier, as far as kitchen-sink needs one: it checks the key and quotes
- * a flat rate by weight.
+ * The carrier, as far as kitchen-sink needs one: it checks the key, quotes a
+ * flat rate by weight, and lists what it was asked — the carrier's own API,
+ * `POST /quotes` and `GET /quotes`.
  *
- * A working implementation of the carrier's interface rather than a mock — the
- * client talks HTTP to it exactly as it would to the carrier. Found by its
- * path, `test/fakes/<construct>.ts`; the construct never imports it, so it is
- * in no deployed bundle.
+ * A working implementation of that interface rather than a mock, and hidden: a
+ * test never imports this. It asserts through the client a handler gets,
+ * `services.get('shipping')`, so the same assertion holds against the
+ * carrier's sandbox. Found by its path, `test/fakes/<construct>.ts`; the
+ * construct never imports it, so it is in no deployed bundle.
  */
-/** A quote the carrier was asked for. */
-export interface QuoteRequest {
-	destination: string;
-	weightKg: number;
-}
 
 /**
- * Every quote the carrier was asked for, by destination — what a test asserts
- * on, through `fake(shipping).quotesFor(…)`.
- *
- * Keyed by something the test chooses, because this module is loaded once per
- * test file: a test reading the whole list would see the tests before it.
+ * Every quote the carrier was asked for, by destination. This module is loaded
+ * once per test file, so a test reads by a destination it chose, never the
+ * whole list.
  */
 const asked = new Map<string, QuoteRequest[]>();
 
-/** The quotes asked for a destination. */
-export function quotesFor(destination: string): QuoteRequest[] {
-	return asked.get(destination) ?? [];
-}
+const authorized = (header: string | undefined) => header === 'Bearer fake-key';
 
-const carrier = new Hono().post('/quotes', async (c) => {
-	if (c.req.header('authorization') !== 'Bearer fake-key') {
-		return c.json({ error: 'unknown key' }, 401);
-	}
+const carrier = new Hono()
+	.post('/quotes', async (c) => {
+		if (!authorized(c.req.header('authorization'))) {
+			return c.json({ error: 'unknown key' }, 401);
+		}
 
-	const request = await c.req.json<QuoteRequest>();
-	asked.set(request.destination, [...quotesFor(request.destination), request]);
+		const request = await c.req.json<QuoteRequest>();
+		asked.set(request.destination, [
+			...(asked.get(request.destination) ?? []),
+			request,
+		]);
 
-	return c.json({
-		destination: request.destination,
-		amount: 50 + request.weightKg * 10,
+		return c.json({
+			destination: request.destination,
+			amount: 50 + request.weightKg * 10,
+		});
+	})
+	.get('/quotes', (c) => {
+		if (!authorized(c.req.header('authorization'))) {
+			return c.json({ error: 'unknown key' }, 401);
+		}
+
+		return c.json(asked.get(c.req.query('destination') ?? '') ?? []);
 	});
-});
 
 export default fake.app<typeof shipping>(carrier, {
 	credentials: { apiKey: 'fake-key' },

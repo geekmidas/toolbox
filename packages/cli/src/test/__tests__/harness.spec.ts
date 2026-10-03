@@ -186,7 +186,7 @@ describe('writeTestHarness', () => {
 			"const manifest = loadTestManifest(new URL('./manifest.json', import.meta.url));",
 		);
 		expect(harness).toMatch(
-			/export const it = featureTest(<.+>)?\(\{ manifest, modules, browser: Browser(, fakes: \{[^}]*\})? \}\);/,
+			/export const it = featureTest(<.+>)?\(\{ manifest, modules, browser: Browser \}\);/,
 		);
 	});
 
@@ -200,7 +200,7 @@ describe('writeTestHarness', () => {
 			/import type \{ database as __Database \} from '(\.\.\/)+.*constructs\/database\.js';/,
 		);
 		expect(harness).toContain(
-			'featureTest<Browser, { database: DatabaseOf<typeof __Database> }, {}, { Carrier: typeof __CarrierFake }>({ manifest, modules, browser: Browser, fakes: { Carrier: __CarrierFake } })',
+			'featureTest<Browser, { database: DatabaseOf<typeof __Database> }, {}, { database: ClientOf<typeof __Database>; mail: ClientOf<typeof __Mail>; notes: ClientOf<typeof __Notes> }>({ manifest, modules, browser: Browser })',
 		);
 		// The auth server's tenant is its own, reached through it.
 		expect(harness).not.toContain('__AuthDatabase');
@@ -250,17 +250,19 @@ describe('writeTestHarness', () => {
 		).toHaveLength(files.size);
 	});
 
-	it('hands featureTest each fake’s whole module, typed, so fake(construct) reads it', async () => {
+	it('types services by each construct’s client, keyed by service name', async () => {
 		await write();
 
 		const harness = await read(apps[0]!, 'index.ts');
-		// The namespace, not only the default export: the named exports are what
-		// a test reads, from the same instance the test stage serves.
-		expect(harness).toMatch(
-			/^import \* as __CarrierFake from '.*test\/fakes\/carrier\.js';$/m,
+
+		// What a handler depending on each construct is handed. The auth server's
+		// tenant is reached through it, so it is not here.
+		expect(harness).toContain(
+			'{ database: ClientOf<typeof __Database>; mail: ClientOf<typeof __Mail>; notes: ClientOf<typeof __Notes> }',
 		);
-		expect(harness).toContain('fakes: { Carrier: __CarrierFake }');
-		expect(harness).toContain('{ Carrier: typeof __CarrierFake }');
+		expect(harness).not.toContain('authDatabase: ClientOf');
+		// One type import per construct, though the database is named twice.
+		expect(harness.match(/as __Database \}/g)).toHaveLength(1);
 	});
 
 	it('hands a test each database’s factory, keyed by its service name', async () => {
@@ -273,8 +275,8 @@ describe('writeTestHarness', () => {
 			"import { createFactory as __databaseFactory } from '../../../../test/factories/database.js';",
 		);
 		expect(harness).toContain(
-			'featureTest<Browser, { database: DatabaseOf<typeof __Database> }, { database: typeof __databaseFactory }, { Carrier: typeof __CarrierFake }>' +
-				'({ manifest, modules, browser: Browser, factories: { database: __databaseFactory }, fakes: { Carrier: __CarrierFake } })',
+			'featureTest<Browser, { database: DatabaseOf<typeof __Database> }, { database: typeof __databaseFactory }, { database: ClientOf<typeof __Database>; mail: ClientOf<typeof __Mail>; notes: ClientOf<typeof __Notes> }>' +
+				'({ manifest, modules, browser: Browser, factories: { database: __databaseFactory } })',
 		);
 	});
 

@@ -45,6 +45,7 @@ import { http } from 'msw';
 import { type SetupServer, setupServer } from 'msw/node';
 import { afterAll, beforeAll, test } from 'vitest';
 import { BetterAuth } from '../auth';
+import { type Consumable, isConsumable } from '../construct-interface';
 import { KyselyDatabase } from '../database/kysely';
 import { Email } from '../email';
 import { Endpoint } from '../endpoints/Endpoint';
@@ -63,7 +64,6 @@ export type FactoryBuilders = Record<string, (db: Kysely<any>) => unknown>;
 export interface FeatureTestOptions<
 	TBrowser extends TestBrowser,
 	TFactories extends FactoryBuilders = {},
-	TFakes extends FakeModules = {},
 > {
 	/**
 	 * What the app declares and the environment its test stage resolved.
@@ -88,28 +88,37 @@ export interface FeatureTestOptions<
 	 */
 	factories?: TFactories;
 	/**
-	 * Each external API's fake module — `test/fakes/<id>.ts`, which the
-	 * generated harness imports — keyed by the API's construct id. Its default
-	 * export is the fake, served at the URL the test stage resolved for it; its
-	 * named exports are what a test reads through `fake(construct)`.
+	 * Each external API's fake — the default export of `test/fakes/<id>.ts`,
+	 * which the generated harness imports — keyed by the API's construct id.
+	 * An app fake is served at the URL the test stage resolved for it.
 	 */
-	fakes?: TFakes;
+	fakes?: Readonly<Record<string, Fake>>;
 }
-
-/** A fake's module: the fake as its default export, beside whatever it shares. */
-export type FakeModule = { readonly default: Fake } & Record<string, unknown>;
-
-/** Each external API's fake module, by construct id. */
-export type FakeModules = Record<string, FakeModule>;
-
-/** What `fake(construct)` hands a test: the module's named exports. */
-export type FakeExports<
-	TFakes extends FakeModules,
-	TId extends string,
-> = TId extends keyof TFakes ? Omit<TFakes[TId], 'default'> : never;
 
 /** Each database's schema, keyed by its service name. */
 export type DatabaseSchemas = Record<string, unknown>;
+
+/** Each construct's client, keyed by its service name — what `services` types. */
+export type ServiceClients = Record<string, unknown>;
+
+/** The client a construct's service registers — what a handler is handed. */
+export type ClientOf<C> = C extends {
+	service: { register: (...args: any[]) => infer TClient };
+}
+	? Awaited<TClient>
+	: never;
+
+/**
+ * The app's services for this test, by service name — `services.get('shipping')`.
+ *
+ * What a handler that depends on the construct is handed, resolved the way the
+ * test's endpoints resolve it: an external API's client aimed at whatever the
+ * test stage resolved (its fake, which the test never sees), a topic or queue's
+ * recorder, a database's transaction for this test.
+ */
+export interface TestServices<TServices extends ServiceClients> {
+	get<K extends keyof TServices & string>(name: K): Promise<TServices[K]>;
+}
 
 /**
  * The app's databases for this test, by service name — `db.get('database')`.
@@ -140,7 +149,7 @@ export interface FeatureContext<
 	TBrowser extends TestBrowser,
 	TDatabases extends DatabaseSchemas = {},
 	TFactories extends FactoryBuilders = {},
-	TFakes extends FakeModules = {},
+	TServices extends ServiceClients = {},
 > {
 	/** This test's browser, already the global `fetch`. */
 	browser: TBrowser;
@@ -181,14 +190,12 @@ export interface FeatureContext<
 		subscriber: S,
 	) => SubscriberAdaptorOf<S>;
 	/**
-	 * What an external API's fake shares — its module's named exports, from the
-	 * same instance the test stage serves: `fake(push).outbox.sentTo(token)`.
-	 * Keyed by the construct, as `queue(…)` and `published(…)` are, so a fake
-	 * the app does not declare is a type error rather than a relative import.
+	 * The app's services, by service name — `await services.get('shipping')` —
+	 * as a handler is handed them. Assert on an external API through its own
+	 * client: the fake behind it stays hidden, and the same assertion holds
+	 * against the real API.
 	 */
-	fake: <C extends { readonly id: keyof TFakes & string }>(
-		construct: C,
-	) => FakeExports<TFakes, C['id']>;
+	services: TestServices<TServices>;
 	/** A queue's worker, run on its own with this test's services. */
 	queue: <Q extends Queue<any, any, any, any, any, any>>(
 		queue: Q,
@@ -249,30 +256,30 @@ type FeatureFn<
 	TBrowser extends TestBrowser,
 	TDatabases extends DatabaseSchemas,
 	TFactories extends FactoryBuilders,
-	TFakes extends FakeModules,
+	TServices extends ServiceClients,
 > = (
-	context: FeatureContext<TBrowser, TDatabases, TFactories, TFakes>,
+	context: FeatureContext<TBrowser, TDatabases, TFactories, TServices>,
 ) => unknown;
 
 export interface FeatureIt<
 	TBrowser extends TestBrowser,
 	TDatabases extends DatabaseSchemas = {},
 	TFactories extends FactoryBuilders = {},
-	TFakes extends FakeModules = {},
+	TServices extends ServiceClients = {},
 > {
 	(
 		name: string,
-		fn: FeatureFn<TBrowser, TDatabases, TFactories, TFakes>,
+		fn: FeatureFn<TBrowser, TDatabases, TFactories, TServices>,
 		timeout?: number,
 	): void;
 	only(
 		name: string,
-		fn: FeatureFn<TBrowser, TDatabases, TFactories, TFakes>,
+		fn: FeatureFn<TBrowser, TDatabases, TFactories, TServices>,
 		timeout?: number,
 	): void;
 	skip(
 		name: string,
-		fn: FeatureFn<TBrowser, TDatabases, TFactories, TFakes>,
+		fn: FeatureFn<TBrowser, TDatabases, TFactories, TServices>,
 		timeout?: number,
 	): void;
 }
@@ -315,6 +322,8 @@ interface LoadedApp {
 	emails: Email[];
 	/** Every topic and queue — what a test's publishing is recorded for. */
 	channels: (Topic<any, any> | Queue<any, any>)[];
+	/** Every construct a handler can depend on — what `services` resolves. */
+	consumables: Consumable[];
 	/** Every topic subscriber, by the name it is exported as. */
 	subscribers: {
 		name: string;
@@ -327,10 +336,10 @@ export function featureTest<
 	TBrowser extends TestBrowser = TestBrowser,
 	TDatabases extends DatabaseSchemas = {},
 	TFactories extends FactoryBuilders = {},
-	TFakes extends FakeModules = {},
+	TServices extends ServiceClients = {},
 >(
-	options: FeatureTestOptions<TBrowser, TFactories, TFakes> = {},
-): FeatureIt<TBrowser, TDatabases, TFactories, TFakes> {
+	options: FeatureTestOptions<TBrowser, TFactories> = {},
+): FeatureIt<TBrowser, TDatabases, TFactories, TServices> {
 	const manifest = options.manifest ?? loadTestManifest();
 	const BrowserClass = (options.browser ?? TestBrowser) as new () => TBrowser;
 
@@ -351,8 +360,8 @@ export function featureTest<
 			...app.auths.map((auth) =>
 				authHandler(auth, manifest.env, app.envParser),
 			),
-			...Object.entries(options.fakes ?? {}).flatMap(([id, module]) =>
-				fakeHandler(id, module.default, manifest.env),
+			...Object.entries(options.fakes ?? {}).flatMap(([id, fake]) =>
+				fakeHandler(id, fake, manifest.env),
 			),
 		);
 		network.listen({
@@ -383,7 +392,10 @@ export function featureTest<
 	});
 
 	const run =
-		(name: string, fn: FeatureFn<TBrowser, TDatabases, TFactories, TFakes>) =>
+		(
+			name: string,
+			fn: FeatureFn<TBrowser, TDatabases, TFactories, TServices>,
+		) =>
 		async (): Promise<void> => {
 			const id = randomUUID();
 			faker.seed(seedOf(name));
@@ -470,8 +482,9 @@ export function featureTest<
 							published: (channel) => [
 								...(state.published.get(channel.id) ?? []),
 							],
-							fake: (construct) =>
-								fakeExports(options.fakes ?? {}, construct.id),
+							services: {
+								get: (name) => resolveService(app, state, name) as never,
+							},
 							// A consumer run by hand delivers what it published, as a
 							// request does.
 							subscriber: (subscriber) =>
@@ -483,7 +496,7 @@ export function featureTest<
 								thenDeliver(new TestQueueAdaptor(queue, state.discovery), () =>
 									deliver(app, state, id),
 								) as QueueAdaptorOf<typeof queue>,
-						} as FeatureContext<TBrowser, TDatabases, TFactories, TFakes>);
+						} as FeatureContext<TBrowser, TDatabases, TFactories, TServices>);
 					} finally {
 						restore();
 					}
@@ -504,7 +517,7 @@ export function featureTest<
 		TBrowser,
 		TDatabases,
 		TFactories,
-		TFakes
+		TServices
 	>;
 	it.only = (name, fn, timeout) => test.only(name, run(name, fn), timeout);
 	it.skip = (name, fn, timeout) => test.skip(name, run(name, fn), timeout);
@@ -586,6 +599,7 @@ async function load(
 	const emails = unique(
 		constructs.filter((value): value is Email => value instanceof Email),
 	);
+	const consumables = unique(constructs.filter(isConsumable));
 	const channels = unique(
 		constructs.filter(
 			(value): value is Topic<any, any> | Queue<any, any> =>
@@ -604,6 +618,7 @@ async function load(
 		auths,
 		emails,
 		channels,
+		consumables,
 		subscribers,
 		...(inbox ? { readMail: createMailbox({ inbox }) } : {}),
 	};
@@ -910,17 +925,27 @@ function fakeHandler(
 }
 
 /**
- * A fake module's named exports — what `fake(construct)` returns. The default
- * export is the fake being served; everything else is what the fake chose to
- * share with a test.
+ * A construct's client for this test, by service name — through the test's own
+ * discovery, so a topic or queue is its recorder and a database its
+ * transaction, exactly as the test's endpoints get them.
  */
-function fakeExports(fakes: FakeModules, id: string) {
-	const module = fakes[id];
-	if (!module) throw new NoFakeFor(id, Object.keys(fakes));
-	if (module.default.kind === 'image') throw new ImageFakeHasNoState(id);
+async function resolveService(
+	app: LoadedApp,
+	state: ContextState,
+	name: string,
+): Promise<unknown> {
+	const construct = app.consumables.find(
+		(candidate) => candidate.service.serviceName === name,
+	);
+	if (!construct) {
+		throw new UnknownService(
+			name,
+			app.consumables.map((candidate) => candidate.service.serviceName),
+		);
+	}
 
-	const { default: _served, ...shared } = module;
-	return shared as never;
+	const registered = await state.discovery.register([construct.service]);
+	return (registered as Record<string, unknown>)[name];
 }
 
 /** An auth server, served at its URL, on the transaction of the test that asked. */
@@ -1170,28 +1195,16 @@ export class DeliveryDidNotSettle extends Error {
 	}
 }
 
-/** `fake(construct)` for an external API with no fake module. */
-export class NoFakeFor extends Error {
+/** `services.get(name)` for a name no construct of the app is served by. */
+export class UnknownService extends Error {
 	constructor(
-		readonly id: string,
+		readonly serviceName: string,
 		readonly available: readonly string[],
 	) {
 		super(
-			`'${id}' has no fake: there is no test/fakes/${id}.ts for this app` +
-				(available.length ? ` (fakes: ${available.join(', ')})` : '') +
-				'. Add one, exporting what the test should read.',
+			`The app declares no construct served as '${serviceName}'. Its services are: ` +
+				`${available.join(', ') || 'none'}.`,
 		);
-		this.name = 'NoFakeFor';
-	}
-}
-
-/** `fake(construct)` for a fake that runs as a container, holding no module state. */
-export class ImageFakeHasNoState extends Error {
-	constructor(readonly id: string) {
-		super(
-			`'${id}' is faked by a container image, which shares no state with the ` +
-				"test. Assert through the provider's own API instead.",
-		);
-		this.name = 'ImageFakeHasNoState';
+		this.name = 'UnknownService';
 	}
 }

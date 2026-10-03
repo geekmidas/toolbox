@@ -167,30 +167,44 @@ export default fake.app<typeof shipping>(carrier, {
 
 ### Asserting on what it received
 
-A fake can export more than its default. Keep what it was asked for, export a
-way to read it, and read it in the test through `fake(construct)` — the
-module's named exports, from the same instance the harness serves:
+A fake stays hidden: a test never imports one or reads its state. It asserts
+through the client a handler gets — `services.get('shipping')` — so the
+assertion is about the provider's contract, and holds against the provider's
+sandbox as much as against the fake.
+
+So a fake implements the provider's read endpoints too, not only the ones the
+app calls to act. The carrier lists the quotes it was asked for; the fake
+does the same:
 
 ```typescript
-// test/fakes/shipping.ts
+// constructs/shipping.ts — the client gains the carrier's read endpoint
+client: ({ url, credentials }) => ({
+  async quote(destination: string, weightKg: number): Promise<Quote> { /* POST /quotes */ },
+  async quotes(destination: string): Promise<QuoteRequest[]> { /* GET /quotes */ },
+}),
+```
+
+```typescript
+// test/fakes/shipping.ts — a more complete carrier, exporting only itself
 const asked = new Map<string, QuoteRequest[]>();
 
-export function quotesFor(destination: string): QuoteRequest[] {
-  return asked.get(destination) ?? [];
-}
+const carrier = new Hono()
+  .post('/quotes', async (c) => { /* record, then quote */ })
+  .get('/quotes', (c) => c.json(asked.get(c.req.query('destination') ?? '') ?? []));
 
-// …in the handler: asked.set(destination, [...quotesFor(destination), request])
+export default fake.app<typeof shipping>(carrier, {
+  credentials: { apiKey: 'fake-key' },
+});
 ```
 
 ```typescript
 // apps/api/__tests__/shipping.spec.ts
-import { shipping } from '~/constructs/shipping';
 import { it } from '#test';
 
 it('asks the carrier for exactly the parcel it was given', async ({
   browser,
-  fake,
   faker,
+  services,
 }) => {
   const destination = faker.location.city();
 
@@ -198,19 +212,21 @@ it('asks the carrier for exactly the parcel it was given', async ({
     body: { destination, weightKg: 3.5 },
   });
 
-  expect(fake(shipping).quotesFor(destination)).toEqual([
+  const carrier = await services.get('shipping');
+  expect(await carrier.quotes(destination)).toEqual([
     { destination, weightKg: 3.5 },
   ]);
 });
 ```
 
-`fake(…)` is keyed by the construct, like `queue(…)` and `published(…)`, and
-typed from the fake module's exports — reading a fake the app does not declare
-is a type error, not a relative import that resolves to the wrong file. Only
-the named exports are handed over; the default export is the fake being served.
-An image fake runs as a container and shares no state with the test, so
-`fake(…)` refuses it (`ImageFakeHasNoState`): assert through the provider's own
-API instead.
+`services.get(name)` resolves by service name, typed by each construct's client,
+the way the test's endpoints resolve it: an external API's client aimed at what
+the test stage resolved, a topic or queue as its recorder, a database as the
+test's transaction.
+
+A provider with no read endpoint — a push service, an incoming webhook — gives
+a test nothing to ask it. Assert on what the app itself did instead: the row it
+wrote, the status it recorded, what it published.
 
 ### Background work, end to end
 
@@ -257,9 +273,8 @@ a redelivery, say — and deliver whatever it publishes.
 A fake is loaded once per test file, not once per test, so what it keeps
 carries over from one test to the next in the same file. Read state by a key
 the test chose — a destination, a user id, an email from the test's `faker` —
-rather than the whole list, as above. Where that isn't possible, export a
-`reset()` from the fake and call it in a `beforeEach`. Different test files
-never share a fake's state.
+rather than the whole list, as above. Different test files never share a
+fake's state.
 
 ### A provider's own local server
 

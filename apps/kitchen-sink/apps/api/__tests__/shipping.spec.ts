@@ -1,4 +1,3 @@
-import { shipping } from '@kitchen-sink/constructs/shipping.js';
 import { describe, expect } from 'vitest';
 import { it } from '#test';
 
@@ -19,8 +18,8 @@ describe('shipping', () => {
 
 	it('asks the carrier for exactly the parcel it was given', async ({
 		browser,
-		fake,
 		faker,
+		services,
 	}) => {
 		// A destination no other test uses: the fake keeps what it was asked
 		// for the whole file, so this test reads only its own.
@@ -30,9 +29,11 @@ describe('shipping', () => {
 			body: { destination, weightKg: 3.5 },
 		});
 
-		// What the fake was asked, read through the construct — the same module
-		// the test stage serves, not a relative import of it.
-		expect(fake(shipping).quotesFor(destination)).toEqual([
+		// Asked through the carrier's own API, with the client a handler gets —
+		// the fake stays hidden, and the same assertion holds against the
+		// carrier's sandbox.
+		const carrier = await services.get('shipping');
+		expect(await carrier.quotes(destination)).toEqual([
 			{ destination, weightKg: 3.5 },
 		]);
 	});

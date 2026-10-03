@@ -287,6 +287,12 @@ export async function writeTestHarness(
 	const fakes = Object.entries(await readFakes(options.root, declared)).map(
 		([id, { file }]) => ({ id, file }),
 	);
+	// Every construct a handler can depend on — what a test reaches through
+	// `services.get(…)`, typed by the client its service registers. A tenant an
+	// auth server owns is reached through that server, as databases are.
+	const services = serviceSources(declared, sources).filter(
+		({ id }) => !owners.has(id),
+	);
 	const files = [
 		...new Set([
 			...Object.values(manifest.constructs).map(({ source }) => source.file),
@@ -312,6 +318,7 @@ export async function writeTestHarness(
 			drivers,
 			factories,
 			fakes,
+			services,
 			mail: Object.values(declared).some(({ kind }) => kind === 'email'),
 		});
 	const json = `${JSON.stringify(manifest, null, 2)}\n`;
@@ -422,6 +429,37 @@ function databaseSources(
 		}));
 }
 
+/** The kinds whose construct hands a handler a client — what `services` reaches. */
+const SERVICE_KINDS = new Set([
+	'cache',
+	'credential',
+	'database',
+	'database-schema',
+	'database-reader',
+	'email',
+	'external-api',
+	'file-server',
+	'objects',
+	'queue',
+	'topic',
+]);
+
+function serviceSources(
+	declared: Awaited<ReturnType<typeof discover>>,
+	sources: Record<string, ConstructSource>,
+): DatabaseSource[] {
+	return Object.entries(declared)
+		.filter(([id, declaration]) =>
+			Boolean(sources[id] && SERVICE_KINDS.has(declaration.kind)),
+		)
+		.map(([id, declaration]) => ({
+			id,
+			kind: declaration.kind,
+			service: serviceKey(id),
+			source: sources[id]!,
+		}));
+}
+
 /** An import specifier for `file`, from the harness written into `dir`. */
 function specifierFrom(dir: string, file: string): string {
 	const path = relative(dir, file).replace(/\.tsx?$/, '.js');
@@ -433,6 +471,8 @@ function harnessModule(options: {
 	/** Every module the manifest points at, by absolute path. */
 	files: string[];
 	databases: DatabaseSource[];
+	/** Every construct a test reaches through `services`, by service name. */
+	services: DatabaseSource[];
 	surfaces: { id: string; secured: boolean }[];
 	auths: AuthClient[];
 	drivers: RuntimeDrivers;
@@ -447,6 +487,7 @@ function harnessModule(options: {
 		auths,
 		drivers,
 		databases,
+		services,
 		dir,
 		files,
 		factories,
@@ -463,8 +504,18 @@ function harnessModule(options: {
 	const plugins = [...new Set(auths.flatMap(({ plugins }) => plugins))].sort();
 
 	const imports = [
-		`import {${databases.length ? ' type DatabaseOf,' : ''} featureTest, loadTestManifest${signIn ? ', signInWithMagicLink' : ''} } from '@geekmidas/constructs/testing';`,
-		...databases.map(
+		`import {${services.length ? ' type ClientOf,' : ''}${databases.length ? ' type DatabaseOf,' : ''} featureTest, loadTestManifest${signIn ? ', signInWithMagicLink' : ''} } from '@geekmidas/constructs/testing';`,
+		// A type import per construct the types name: each database, and each
+		// construct a test reaches through `services` — once, though a database
+		// is both.
+		...[
+			...new Map(
+				[...databases, ...services].map((construct) => [
+					construct.id,
+					construct,
+				]),
+			).values(),
+		].map(
 			({ id, source }) =>
 				`import type { ${source.exportName} as __${id} } from '${specifierFrom(dir, source.file)}';`,
 		),
@@ -484,12 +535,9 @@ function harnessModule(options: {
 			({ file, service }) =>
 				`import { createFactory as __${service}Factory } from '${specifierFrom(dir, file)}';`,
 		),
-		// The whole module, not only the fake it exports by default: a test
-		// reads what the fake shares through `fake(construct)`, from this same
-		// instance the test stage serves.
 		...fakes.map(
 			({ id, file }) =>
-				`import * as __${id}Fake from '${specifierFrom(dir, file)}';`,
+				`import __${id}Fake from '${specifierFrom(dir, file)}';`,
 		),
 		// Every construct and endpoint module, imported here — inside the app,
 		// where its tsconfig paths resolve — rather than by path from the kit.
@@ -551,16 +599,16 @@ function harnessModule(options: {
 		: '';
 	// Each database's schema, keyed as the test is handed its transaction.
 	const databasesType = `{ ${databases.map(({ id, service }) => `${service}: DatabaseOf<typeof __${id}>`).join('; ')} }`;
-	// Each fake module's type, keyed by construct id — what types `fake(…)`.
-	const fakesType = fakes.length
-		? `{ ${fakes.map(({ id }) => `${id}: typeof __${id}Fake`).join('; ')} }`
+	// Each construct's client, keyed as `services.get(…)` is called.
+	const servicesType = services.length
+		? `{ ${services.map(({ id, service }) => `${service}: ClientOf<typeof __${id}>`).join('; ')} }`
 		: '';
 	// Positional, so a later one needs those before it, even when empty.
 	const generics =
-		databases.length || factoriesType || fakesType
+		databases.length || factoriesType || servicesType
 			? `<Browser, ${databases.length ? databasesType : '{}'}${
-					factoriesType || fakesType ? `, ${factoriesType || '{}'}` : ''
-				}${fakesType ? `, ${fakesType}` : ''}>`
+					factoriesType || servicesType ? `, ${factoriesType || '{}'}` : ''
+				}${servicesType ? `, ${servicesType}` : ''}>`
 			: '';
 
 	return `// Generated by \`gkm test\` from the app's constructs — do not edit.
