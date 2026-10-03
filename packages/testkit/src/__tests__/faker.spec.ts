@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgeRangeInvalid, faker } from '../faker';
 
 describe('faker', () => {
@@ -133,6 +133,17 @@ describe('faker', () => {
 	});
 
 	describe('age', () => {
+		// An age is measured from now, so the clock is pinned for every one of
+		// these: two calls a millisecond apart gave birthdates a millisecond
+		// apart, and a test straddling midnight could count a birthday twice.
+		beforeEach(() => {
+			vi.useFakeTimers({ toFake: ['Date'] });
+			vi.setSystemTime(new Date('2026-06-01T12:00:00.000Z'));
+		});
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
 		/** Whole years between a birthdate and today — the age as people count it. */
 		const yearsOld = (birthdate: Date, today = new Date()) => {
 			let years = today.getFullYear() - birthdate.getFullYear();
