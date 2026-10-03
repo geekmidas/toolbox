@@ -1,38 +1,40 @@
-import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
+import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import type { Service } from '@geekmidas/services';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { ConstructType } from '../../Construct';
+import { Topic, type TopicMessage } from '../../topic/Topic';
 import { Subscriber, type SubscriberContext } from '../Subscriber';
 import { SubscriberBuilder } from '../SubscriberBuilder';
 
-// Define test event types
-type UserEvent =
-	| PublishableMessage<
-			'user.created',
-			{ userId: string; email: string; name: string }
-	  >
-	| PublishableMessage<
-			'user.updated',
-			{ userId: string; changes: Record<string, any> }
-	  >
-	| PublishableMessage<'user.deleted', { userId: string; deletedAt: Date }>;
-
-// Mock event publisher
-class TestEventPublisher implements EventPublisher<UserEvent> {
-	async publish(events: UserEvent[]): Promise<void> {
-		void events;
-	}
-}
-
-// Mock service for testing
-const TestEventService: Service<'testEventPublisher', TestEventPublisher> = {
-	serviceName: 'testEventPublisher' as const,
-	register() {
-		return new TestEventPublisher();
+// The topic these subscribers bind to — its events are the contract.
+const users = new Topic('users', {
+	events: {
+		'user.created': z.object({
+			userId: z.string(),
+			email: z.string(),
+			name: z.string(),
+		}),
+		'user.updated': z.object({
+			userId: z.string(),
+			changes: z.record(z.string(), z.any()),
+		}),
+		'user.deleted': z.object({ userId: z.string(), deletedAt: z.date() }),
 	},
-};
+});
+
+type UserEvent = TopicMessage<typeof users.eventSchemas>;
+type UserEventPublisher = EventPublisher<UserEvent>;
+
+/** A subscriber to `users`, typed the way `worker.topic(users)` would type it. */
+const UserSubscriber = Subscriber<
+	[],
+	Logger,
+	undefined,
+	UserEventPublisher,
+	['user.created']
+>;
 
 // Mock logger
 const mockLogger: Logger = {
@@ -48,14 +50,14 @@ const mockLogger: Logger = {
 describe('Subscriber', () => {
 	describe('isSubscriber', () => {
 		it('should identify valid subscriber instances', () => {
-			const subscriber = new Subscriber(
+			const subscriber = new UserSubscriber(
 				async () => {},
 				30000,
 				['user.created'],
 				undefined,
 				[],
 				mockLogger,
-				TestEventService,
+				'users',
 			);
 
 			expect(Subscriber.isSubscriber(subscriber)).toBe(true);
@@ -74,14 +76,14 @@ describe('Subscriber', () => {
 	describe('constructor', () => {
 		it('should create a subscriber with correct type', () => {
 			const handler = vi.fn();
-			const subscriber = new Subscriber(
+			const subscriber = new UserSubscriber(
 				handler,
 				30000,
 				['user.created'],
 				undefined,
 				[],
 				mockLogger,
-				TestEventService,
+				'users',
 			);
 
 			expect(subscriber.type).toBe(ConstructType.Subscriber);
@@ -92,14 +94,14 @@ describe('Subscriber', () => {
 		});
 
 		it('should accept explicit timeout value', () => {
-			const subscriber = new Subscriber(
+			const subscriber = new UserSubscriber(
 				async () => {},
 				45000,
 				['user.created'],
 				undefined,
 				[],
 				mockLogger,
-				TestEventService,
+				'users',
 			);
 
 			expect(subscriber.timeout).toBe(45000);
@@ -111,7 +113,7 @@ describe('SubscriberBuilder', () => {
 	describe('timeout', () => {
 		it('should set custom timeout', () => {
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.timeout(60000)
 				.subscribe('user.created')
 				.handle(async () => {});
@@ -121,7 +123,7 @@ describe('SubscriberBuilder', () => {
 
 		it('should use default timeout if not set', () => {
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.subscribe('user.created')
 				.handle(async () => {});
 
@@ -136,7 +138,7 @@ describe('SubscriberBuilder', () => {
 			});
 
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.output(outputSchema)
 				.subscribe('user.created')
 				.handle(async () => ({ processed: 1 }));
@@ -155,7 +157,7 @@ describe('SubscriberBuilder', () => {
 			};
 
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.services([mockService])
 				.subscribe('user.created')
 				.handle(async () => {});
@@ -178,7 +180,7 @@ describe('SubscriberBuilder', () => {
 			};
 
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.services([service1])
 				.services([service2])
 				.subscribe('user.created')
@@ -196,7 +198,7 @@ describe('SubscriberBuilder', () => {
 			};
 
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.logger(customLogger)
 				.subscribe('user.created')
 				.handle(async () => {});
@@ -205,21 +207,52 @@ describe('SubscriberBuilder', () => {
 		});
 	});
 
-	describe('publisher', () => {
-		it('should set publisher service', () => {
+	describe('topic', () => {
+		it('should bind the topic by name', () => {
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.subscribe('user.created')
 				.handle(async () => {});
 
-			expect(subscriber.publisherService).toBe(TestEventService);
+			expect(subscriber.topicName).toBe('users');
+		});
+
+		it('should not make the bound topic a dependency', () => {
+			// Binding is not publishing: no producer service, no edge.
+			const subscriber = new SubscriberBuilder()
+				.topic(users)
+				.subscribe('user.created')
+				.handle(async () => {});
+
+			expect(subscriber.services).toEqual([]);
+			expect(subscriber.constructs).toEqual([]);
+			expect(subscriber.events).toEqual([]);
+		});
+
+		it('should take a topic it publishes follow-ups to through dependsOn', () => {
+			const audit = new Topic('Audit', {
+				events: { 'audit.recorded': z.object({ subject: z.string() }) },
+			});
+
+			const subscriber = new SubscriberBuilder()
+				.topic(users)
+				.dependsOn([audit])
+				.subscribe('user.created')
+				.handle(async ({ services }) => {
+					await services.audit.publish([
+						{ type: 'audit.recorded', payload: { subject: 'x' } },
+					]);
+				});
+
+			expect(subscriber.services).toEqual([audit.service]);
+			expect(subscriber.constructs).toEqual(['Audit']);
 		});
 	});
 
 	describe('subscribe', () => {
 		it('should subscribe to single event', () => {
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.subscribe('user.created')
 				.handle(async () => {});
 
@@ -228,7 +261,7 @@ describe('SubscriberBuilder', () => {
 
 		it('should subscribe to multiple events via chaining', () => {
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.subscribe('user.created')
 				.subscribe('user.updated')
 				.subscribe('user.deleted')
@@ -243,7 +276,7 @@ describe('SubscriberBuilder', () => {
 
 		it('should subscribe to multiple events via array', () => {
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.subscribe(['user.created', 'user.updated', 'user.deleted'])
 				.handle(async () => {});
 
@@ -256,7 +289,7 @@ describe('SubscriberBuilder', () => {
 
 		it('should mix array and single subscriptions', () => {
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.subscribe(['user.created', 'user.updated'])
 				.subscribe('user.deleted')
 				.handle(async () => {});
@@ -273,7 +306,7 @@ describe('SubscriberBuilder', () => {
 		it('should create a subscriber instance', () => {
 			const handler = vi.fn(async () => {});
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.subscribe('user.created')
 				.handle(handler);
 
@@ -291,7 +324,7 @@ describe('SubscriberBuilder', () => {
 			);
 
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.subscribe('user.created')
 				.handle(handler);
 
@@ -314,7 +347,7 @@ describe('SubscriberBuilder', () => {
 			const handler = vi.fn(
 				async ({
 					events,
-				}: SubscriberContext<TestEventPublisher, ['user.created']>) => {
+				}: SubscriberContext<UserEventPublisher, ['user.created']>) => {
 					// Type assertions to verify correct typing
 					events.forEach((event) => {
 						if (event.type === 'user.created') {
@@ -331,7 +364,7 @@ describe('SubscriberBuilder', () => {
 			const outputSchema = z.object({ processed: z.number() });
 
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.output(outputSchema)
 				.subscribe('user.created')
 				.handle(handler);
@@ -363,7 +396,7 @@ describe('SubscriberBuilder', () => {
 			});
 
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.subscribe(['user.created', 'user.updated'])
 				.handle(handler);
 
@@ -407,7 +440,7 @@ describe('SubscriberBuilder', () => {
 			const subscriber = new SubscriberBuilder()
 				.timeout(45000)
 				.logger(customLogger)
-				.publisher(TestEventService)
+				.topic(users)
 				.services([mockService])
 				.output(z.object({ success: z.boolean() }))
 				.subscribe('user.created')
@@ -418,7 +451,7 @@ describe('SubscriberBuilder', () => {
 
 			expect(subscriber.timeout).toBe(45000);
 			expect(subscriber.logger).toBe(customLogger);
-			expect(subscriber.publisherService).toBe(TestEventService);
+			expect(subscriber.topicName).toBe('users');
 			expect(subscriber.services).toEqual([mockService]);
 			expect(subscriber.subscribedEvents).toEqual([
 				'user.created',

@@ -3,21 +3,23 @@
 Unified event messaging library with support for multiple backends.
 
 ::: tip Topics and queues are constructs
-A publisher service written by hand is the case `Topic` removes — declare the
-event contract and the typed producer comes off it:
+In an application you rarely build a publisher by hand. Declare a `Topic` and
+its publisher is its `service`, typed to the topic's events:
 
 ```typescript
 import { Topic } from '@geekmidas/constructs/topic';
 
-export const users = new Topic('users', {
-  'user.created': z.object({ userId: z.string(), email: z.email() }),
+export const users = new Topic('Users', {
+  events: {
+    'user.created': z.object({ userId: z.string(), email: z.email() }),
+  },
 });
-
-users.publisher;   // an EventPublisher typed to this topic's events
 ```
 
-This package is what those constructs are built on, and what you reach for
-directly when you are wiring a broker yourself.
+An endpoint publishes to it with `.event(users, { type, payload })`; anything
+that `.dependsOn([users])` gets it as `services.users`. This package is what
+those constructs are built on, and what you reach for directly when you are
+wiring a broker yourself.
 :::
 
 ## Installation
@@ -264,99 +266,127 @@ For AWS-based backends (SQS/SNS), production deployments should use Lambda with 
 
 ## Integration with Constructs
 
-The `@geekmidas/constructs` package provides builders for both publishing events (from endpoints, crons, and functions) and subscribing to events. This section covers the end-to-end flow.
+`@geekmidas/constructs` declares the topics and queues, publishes to them from
+endpoints, functions and crons, and runs the subscribers and queue consumers.
+This section covers the end-to-end flow; the
+[Constructs](/packages/constructs#event-publishing) page has every option.
 
-### Defining a Publisher Service
-
-Both publishers and subscribers use a service that wraps the `Publisher`/`Subscriber` from `@geekmidas/events`. The service reads the connection string from environment variables:
+### A Topic Is the Publisher
 
 ```typescript
-import type { Service } from '@geekmidas/services';
-import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
-import { Publisher } from '@geekmidas/events';
+// constructs/topics.ts
+import { Topic } from '@geekmidas/constructs/topic';
 
-// Define all event types in one place
-type AppEvents =
-  | PublishableMessage<'user.created', { userId: string; email: string }>
-  | PublishableMessage<'user.updated', { userId: string; changes: string[] }>
-  | PublishableMessage<'order.placed', { orderId: string; total: number }>;
-
-// Create the publisher service
-const eventPublisherService = {
-  serviceName: 'eventPublisher' as const,
-  async register(envParser) {
-    const config = envParser.create((get) => ({
-      connectionString: get('EVENT_PUBLISHER_CONNECTION_STRING').string(),
-    })).parse();
-
-    return Publisher.fromConnectionString<AppEvents>(config.connectionString);
+export const users = new Topic('Users', {
+  events: {
+    'user.created': z.object({ userId: z.string(), email: z.email() }),
+    'user.updated': z.object({ userId: z.string(), changes: z.array(z.string()) }),
   },
-} satisfies Service<'eventPublisher', EventPublisher<AppEvents>>;
+});
 ```
+
+The event map is the contract: it types every `.event(users, …)` that publishes
+to the topic and every subscriber that binds to it. The topic's `service` reads
+`USERS_PUBLISHER_CONNECTION_STRING` and calls `Publisher.fromConnectionString`
+with it — the hand-written publisher service this page used to show, derived.
 
 ### Publishing from Endpoints
 
-Use `.publisher()` and `.event()` on endpoint or factory builders:
-
 ```typescript
-import { api } from '../constructs/api';
+import { users } from '../constructs/topics';
+import { router } from './router';
 
-// Declarative — events published automatically after handler returns
-const createUser = api
+// Declarative — published once the handler has succeeded
+export const createUser = router
   .post('/users')
-  .publisher(eventPublisherService)
   .body(userSchema)
   .output(userResponseSchema)
-  .event({
+  .event(users, {
     type: 'user.created',
-    payload: (response) => ({ userId: response.id, email: response.email }),
-    when: (response) => response.verified, // optional condition
+    payload: (user) => ({ userId: user.id, email: user.email }),
+    when: (user) => user.verified, // optional condition
   })
-  .handle(async ({ body }) => {
-    return await insertUser(body);
-  });
+  .handle(async ({ body, db }) => insertUser(db, body));
 
-// Manual — publish inside the handler
-const transferFunds = api
-  .post('/transfers')
-  .publisher(eventPublisherService)
-  .handle(async ({ body, publish }) => {
-    const result = await processTransfer(body);
-    await publish('order.placed', { orderId: result.id, total: result.amount });
-    return result;
+// Imperative — `.event()` and `.dependsOn([users])` both put the topic's
+// publisher in the handler as `services.users`
+export const renameUser = router
+  .patch('/users/:id')
+  .dependsOn([users])
+  .handle(async ({ params, body, services }) => {
+    const changes = await rename(params.id, body.name);
+    if (changes.length) {
+      await services.users.publish([
+        { type: 'user.updated', payload: { userId: params.id, changes } },
+      ]);
+    }
+    return { changes };
   });
 ```
 
+`.event()` is repeatable across topics. An endpoint that names two topics
+publishes to each, every event through its own topic's publisher.
+
 ### Subscribing to Events
 
-Use the `s` builder from `@geekmidas/constructs/subscribers`:
+A subscriber is built from a `Worker` and binds to the topic:
 
 ```typescript
-import { s } from '@geekmidas/constructs/subscribers';
+import { users } from '../constructs/topics';
+import { worker } from '../constructs/worker';
 
-export const onUserCreated = s
-  .dependsOn([database, email])
-  .publisher(orders.publisher) // optional, for chaining events
-  .subscribe('user.created')
+export const onUserCreated = worker
+  .topic(users)
+  .dependsOn([mail])
+  .subscribe(['user.created'])
   .handle(async ({ events, services, logger }) => {
     for (const event of events) {
-      await services.mail.sendTemplate('welcome', { to: event.payload.email });
+      await services.mail.sendTemplate('welcome', {
+        to: event.payload.email,
+        subject: 'Welcome',
+        props: {},
+      });
       logger.info({ userId: event.payload.userId }, 'Welcome email sent');
     }
   });
 ```
 
-See the [Constructs: Event Subscribers](/packages/constructs#event-subscribers) section for full subscriber builder documentation, including testing.
+Binding is not depending: the subscriber is never handed the topic's publisher
+connection string. One that publishes follow-up events depends on the topic it
+publishes to, `.dependsOn([notifications])`.
+
+### Queues
+
+A queue is point-to-point: one construct, the queue and its single consumer.
+
+```typescript
+export const emails = worker
+  .queue('Emails')
+  .message(z.object({ to: z.email(), template: z.enum(['welcome']) }))
+  .dependsOn([mail])
+  .handle(async ({ messages, services }) => { /* … */ });
+
+// A producer depends on it; `type` is the queue's name as written
+export const invite = router
+  .post('/invites')
+  .dependsOn([emails])
+  .handle(async ({ body, services }) => {
+    await services.emails.publish([
+      { type: 'Emails', payload: { to: body.email, template: 'welcome' } },
+    ]);
+  });
+```
+
+See [Constructs: Event Subscribers](/packages/constructs#event-subscribers) and
+[Queues](/packages/constructs#queues) for testing and every option.
 
 ### End-to-End Flow
-
-Here's how events flow through the system:
 
 ```
 1. Endpoint handler returns response
          │
-2. Framework publishes declared events via Publisher
-   (using EVENT_PUBLISHER_CONNECTION_STRING)
+2. Framework publishes each .event() through its topic's publisher
+   (using <TOPIC>_PUBLISHER_CONNECTION_STRING)
          │
 3. Events arrive at the backend (pgboss queue, RabbitMQ exchange,
    SNS topic, SQS queue, or in-memory)
@@ -366,13 +396,14 @@ Here's how events flow through the system:
    - Prod (Lambda): SQS/SNS event source mapping triggers handler
    - Prod (Server): Built-in polling loop
          │
-5. Subscriber handler processes events, optionally publishes
-   follow-up events via its own publisher
+5. Subscriber handler processes events, optionally publishing
+   follow-ups to a topic it depends on
 ```
 
 ### Resolution: How Connection Strings Get Set
 
-When PostgreSQL is enabled, the CLI automatically creates pgboss credentials and sets the event connection strings. No explicit `events` configuration is needed:
+Declaring a topic or a queue is what puts a broker in the local plan. There is
+no `events` configuration:
 
 ```typescript
 // gkm.config.ts — nothing to configure: on a server target, pg-boss lives in
@@ -386,67 +417,14 @@ export default defineWorkspace({
 
 The CLI automatically:
 1. Creates a dedicated `pgboss` PostgreSQL user and schema
-2. Generates `EVENT_PUBLISHER_CONNECTION_STRING` and `EVENT_SUBSCRIBER_CONNECTION_STRING`
+2. Resolves `<ID>_PUBLISHER_CONNECTION_STRING` for each topic and queue, given
+   only to what depends on it, plus `EVENT_SUBSCRIBER_CONNECTION_STRING` for
+   the pollers
 3. Injects them into your environment during `gkm dev` and `gkm exec`
 
 On an AWS target the CLI uses SNS and SQS instead — it adds the AWS emulator
 container locally and switches the connection string protocol to `sns://` and
 `sqs://`.
 
-Your publisher and subscriber services read these env vars via `envParser`, so the same code works across all backends — only the connection string changes.
-
-### Example: Complete Event System
-
-```typescript
-// src/events/types.ts — shared event types
-import type { PublishableMessage } from '@geekmidas/events';
-
-export type AppEvents =
-  | PublishableMessage<'user.created', { userId: string; email: string }>
-  | PublishableMessage<'user.updated', { userId: string }>;
-
-// src/services/eventPublisher.ts — publisher service
-import { Publisher } from '@geekmidas/events';
-import type { Service } from '@geekmidas/services';
-import type { EventPublisher } from '@geekmidas/events';
-import type { AppEvents } from '../events/types';
-
-export const eventPublisherService = {
-  serviceName: 'eventPublisher' as const,
-  async register(envParser) {
-    const config = envParser.create((get) => ({
-      url: get('EVENT_PUBLISHER_CONNECTION_STRING').string(),
-    })).parse();
-    return Publisher.fromConnectionString<AppEvents>(config.url);
-  },
-} satisfies Service<'eventPublisher', EventPublisher<AppEvents>>;
-
-// src/endpoints/users.ts — endpoint that publishes
-import { api } from '../constructs/api';
-import { eventPublisherService } from '../services/eventPublisher';
-
-export const createUser = api
-  .post('/users')
-  .publisher(eventPublisherService)
-  .body(createUserSchema)
-  .output(userSchema)
-  .event({
-    type: 'user.created',
-    payload: (res) => ({ userId: res.id, email: res.email }),
-  })
-  .handle(async ({ body }) => {
-    return await db.insertInto('users').values(body).returningAll().executeTakeFirstOrThrow();
-  });
-
-// src/subscribers/userEvents.ts — subscriber that reacts
-import { s } from '@geekmidas/constructs/subscribers';
-
-export const onUserCreated = s
-  .services([emailService])
-  .subscribe('user.created')
-  .handle(async ({ events, services }) => {
-    for (const event of events) {
-      await services.email.send('welcome', { to: event.payload.email });
-    }
-  });
-```
+The publisher picks its transport from the protocol, so the same code works
+across all backends — only the connection string changes.

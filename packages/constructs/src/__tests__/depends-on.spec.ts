@@ -7,9 +7,8 @@ import { NotAConstruct } from '../construct-interface';
 import { KyselyDatabase } from '../database/kysely';
 import { EndpointFactory } from '../endpoints/EndpointFactory';
 import { ObjectStorage } from '../object-storage';
-import { q } from '../queue';
 import { RestApi } from '../rest-api';
-import { t } from '../topic';
+import { Topic } from '../topic';
 import { Worker } from '../worker';
 
 /** Endpoints come from a surface now, so the tests build one. */
@@ -35,11 +34,14 @@ registerStorageDriver({
 
 const uploads = new ObjectStorage('Uploads');
 
-const users = t
-	.topic('users')
-	.events({ 'user.created': z.object({ id: z.string() }) });
+const users = new Topic('users', {
+	events: { 'user.created': z.object({ id: z.string() }) },
+});
 
-const emails = q
+/** Everything runnable is built from the process that runs it. */
+const testWorker = new Worker('Jobs');
+
+const emails = testWorker
 	.queue('emails')
 	.message(z.object({ to: z.email() }))
 	.handle(async () => {});
@@ -57,9 +59,6 @@ const envParser = new EnvironmentParser({
 /** Resolve an endpoint's services exactly as the adaptors do. */
 const resolve = (services: readonly unknown[]) =>
 	ServiceDiscovery.getInstance(envParser as never).register(services as never);
-
-/** Everything runnable is built from the process that runs it. */
-const testWorker = new Worker('Jobs');
 
 describe('.dependsOn', () => {
 	it('reaches a construct under its own id', async () => {
@@ -228,7 +227,7 @@ describe('.dependsOn — the ids it records', () => {
 			.cron('rate(1 day)')
 			.dependsOn([uploads])
 			.handle(async () => null);
-		const worker = q
+		const worker = testWorker
 			.queue('reports')
 			.message(z.object({ id: z.string() }))
 			.dependsOn([uploads])

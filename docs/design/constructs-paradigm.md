@@ -2,7 +2,31 @@
 
 - **Status**: Draft
 - **Impact**: High — changes the core model of `@geekmidas/constructs`, `@geekmidas/manifest`, `@geekmidas/cli`, and `@geekmidas/cloud`
-- **Breaking**: Nothing stops working. Four deprecations are planned, all warn-and-honour with removal no earlier than a later major: `.services([…])`, the per-kind config globs, `s`/`q.queue()`, and the workspace `services: { db, cache, mail }` block.
+- **Breaking**: as shipped in v10, the free-standing builders (`e`, `f`, `c`, `s`, `q`, `t`), `api.endpoints`, `.publisher(…)` and the workspace `services: { db, cache, mail }` block are removed rather than deprecated. `.services([…])` remains on the builders as the legacy path; `.dependsOn([…])` replaces it. *(The draft planned four warn-and-honour deprecations instead — superseded.)*
+
+> **Where this landed (v10).** This is a design record; the authoring sketches
+> below (`t.name(…)`, `q.name(…)`, `userEvents.name(…).on(…)`, a queue's
+> `send()`) were proposals, and where they differ from what shipped they are
+> marked superseded. The API today:
+>
+> ```ts
+> export const api = new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'none', logger });
+> export const router = api.database(database).auditor(AuditStorageService);
+> export const worker = new Worker('Jobs', { logger }).database(database);
+>
+> export const users = new Topic('Users', { events: { 'user.created': schema } });
+>
+> export const createUser = router.post('/users')
+>   .dependsOn([emails])
+>   .event(users, { type: 'user.created', payload: (u) => ({ userId: u.id }) })
+>   .handle(async ({ services }) => {
+>     await services.emails.publish([{ type: 'Emails', payload }]);
+>   });
+>
+> export const emails = worker.queue('Emails').message(schema).handle(…);
+> export const onUser = worker.topic(users).subscribe(['user.created']).handle(…);
+> export const cleanup = worker.cron('rate(1 day)').handle(…);
+> ```
 
 ## Overview
 
@@ -185,8 +209,8 @@ several declarations still has exactly one.
 | `ObjectStorage` | a bucket | `StorageClient` |
 | `Database` | a connection | request-scoped connection |
 | `Cache` | an endpoint | cache client |
-| `Topic` | the topic | `publish()` |
-| `Queue` | the queue URL | `send()` |
+| `Topic` | the topic | an `EventPublisher` — `publish([{ type, payload }])` |
+| `Queue` | the queue URL | an `EventPublisher` typed to its `message` |
 | `Function` | an ARN | typed invoker |
 | `RestApi` | a URL | typed caller |
 | `Subscriber` | **nothing** — binds to another's topic | — |
@@ -232,16 +256,22 @@ triggers.
 | trigger | author |
 |---|---|
 | an API | `api.post('/orders').handle(…)` — no name; method + path is the identity |
-| a topic | `userEvents.name('SendWelcome').on(['user.created']).handle(…)` |
-| a queue | `q.name('ProcessOrder').message(schema).handle(…)` — one worker, so the queue and its worker are one construct |
-| a schedule | `c.name('DailyReport').schedule('0 6 * * *').handle(…)` |
-| direct invoke | `f.name('SendEmail').input(schema).handle(…)` |
+| a topic | `worker.topic(users).subscribe(['user.created']).handle(…)` |
+| a queue | `worker.queue('ProcessOrder').message(schema).handle(…)` — one consumer, so the queue and its consumer are one construct |
+| a schedule | `worker.cron('cron(0 6 * * *)').handle(…)` |
+| direct invoke | `worker.input(schema).handle(…)` |
 
-**What retires is `s` and `e`** — subscribers are vended by their topic,
-endpoints by their API. The other helpers stay: `f` and `c` because their
-triggers aren't constructs (a schedule isn't infrastructure, direct invoke isn't
-a surface), and `t` and `q` because they create the *surface itself*, which
-nothing else vends, and both accumulate configuration.
+**What shipped retires every free-standing helper.** Endpoints are vended by
+their API, and everything without a port by a `Worker` — the process that runs
+it, which is also where the logger comes from. A topic is declared with
+`new Topic(id, { events })`.
+
+> **Superseded:** the draft retired only `s` and `e`, kept `f` and `c` because
+> their triggers aren't constructs, and kept `t` and `q` because they create the
+> surface itself. It also had a topic vend its own subscribers
+> (`userEvents.name('SendWelcome').on([…])`). What decided it was that a cron,
+> a subscriber and a queue consumer all need to say which process runs them,
+> and a `Worker` is that statement.
 
 This makes constraints **unrepresentable rather than enforced**: an endpoint
 can't exist without a surface, can't belong to two, and can't subscribe to a
@@ -250,10 +280,10 @@ topic it doesn't reference. There is no such thing as an endpoint shared by
 and have both depend on it, which is better anyway since the routes usually
 differ in authorizer and response shape.
 
-Back-compat: `export const e = new RestApi('api')` keeps every existing
-`e.post('/users')` working, gaining a surface named `api` — which matches the
-current single-gateway behaviour. `s` retires and `q.queue(name)` becomes
-`new Queue(name)`.
+> **Superseded back-compat plan:** `export const e = new RestApi('api')` was to
+> keep every existing `e.post('/users')` working, with `s` retiring and
+> `q.queue(name)` becoming `new Queue(name)`. v10 removed `e`, `s` and `q`
+> outright; a queue is `worker.queue(name)`.
 
 ### `.dependsOn([…])` takes constructs only
 
@@ -281,8 +311,8 @@ formatter), so the graph is complete rather than complete-except-the-boring-ones
 
 ```ts
 export const uploads      = new ObjectStorage('Uploads');
-export const processOrder = q.name('ProcessOrder').message(schema).handle(…);
-export const userEvents   = t.name('UserEvents').events({ … });
+export const processOrder = worker.queue('ProcessOrder').message(schema).handle(…);
+export const userEvents   = new Topic('UserEvents', { events: { … } });
 
 export const createOrder  = api.post('/orders').handle(…);   // no name
 ```
@@ -339,8 +369,8 @@ const uploads = new ObjectStorage('uploads');
 //  aws target   → an S3 bucket, and the adapter writes UPLOADS_URL
 ```
 
-This generalizes an existing convention rather than inventing one — `Topic` and
-`Queue` publishers already read a connection string and select transport by
+This generalizes an existing convention rather than inventing one — a `Topic`'s
+and a `Queue`'s `service` (their publisher) reads a connection string and select transport by
 protocol (`pgboss://` locally, `sns://` deployed). One variable per construct to
 inject, rotate, and log.
 
@@ -880,9 +910,11 @@ hold `DEFAULT_LOGGER = new ConsoleLogger()` at module scope — a process-global
 logger with no request correlation, which is exactly the staleness this design
 removes. They read `context.getLogger()` instead.
 
-**`.service` is a constructor-assigned field, not a getter.** `Topic.publisher`
-is a getter returning a fresh object literal per access, so `serviceEnvCache`
-(keyed by object identity) never hits for topic and queue publishers.
+**`.service` is a constructor-assigned field, not a getter.** *Done.* The
+draft found `Topic.publisher` a getter returning a fresh object literal per
+access, so `serviceEnvCache` (keyed by object identity) never hit for topic and
+queue publishers. `publisher` is gone: a topic's and a queue's publisher is
+their `service`, assigned once in the constructor.
 
 **Builders return new instances instead of mutating.** *Done.* Every builder —
 `Topic`, `Queue`, `Subscriber`, `Function`, `Cron`, `Endpoint` — now clones
@@ -1307,7 +1339,8 @@ isolatedTest('lists orders', async ({ trx }) => {
 ### A queue and its producer
 
 ```ts
-export const processOrder = q.name('ProcessOrder')
+export const processOrder = worker
+  .queue('ProcessOrder')
   .message(z.object({ orderId: z.string() }))
   .batchSize(10)
   .dependsOn([ordersDb])
@@ -1318,7 +1351,9 @@ export const createOrder = api.post('/orders')
   .handle(async ({ body, services }) => {
     const order = await services.ordersDb.insertInto('orders').values(body)
       .returningAll().executeTakeFirstOrThrow();
-    await services.processOrder.send({ orderId: order.id });
+    await services.processOrder.publish([
+      { type: 'ProcessOrder', payload: { orderId: order.id } },
+    ]);
     return order;
   });
 ```
@@ -1328,27 +1363,36 @@ producer consumes only the publisher. The adapter derives asymmetric permissions
 from the same resource: `sqs:SendMessage` for `createOrder`,
 `ReceiveMessage`/`DeleteMessage` plus the event-source mapping for the worker.
 
-`send()` rather than a callable is deliberate: a `Function`'s client is callable
-because it's request/response and returns the output type; a queue send is
-fire-and-forget returning `void`. The shape tells you the semantics.
+Not a callable, deliberately: a `Function`'s client is callable because it's
+request/response and returns the output type; sending to a queue is
+fire-and-forget. *(The draft proposed `send(message)`; what shipped is the
+`EventPublisher` every broker already implements, `publish([{ type, payload }])`,
+with `type` the queue's name as written.)*
 
 ### Topic fan-out
 
 ```ts
-export const userEvents = t.name('UserEvents').events({
-  'user.created': z.object({ id: z.string(), email: z.string() }),
-  'user.deleted': z.object({ id: z.string() }),
+export const userEvents = new Topic('UserEvents', {
+  events: {
+    'user.created': z.object({ id: z.string(), email: z.email() }),
+    'user.deleted': z.object({ id: z.string() }),
+  },
 });
 
-export const sendWelcome = userEvents.name('SendWelcome')
-  .on(['user.created']).dependsOn([emailer]).handle(async ({ event }) => …);
+export const sendWelcome = worker.topic(userEvents)
+  .subscribe(['user.created']).dependsOn([emailer]).handle(async ({ events }) => …);
 
-export const provisionWorkspace = userEvents.name('ProvisionWorkspace')
-  .on(['user.created', 'user.deleted']).dependsOn([ordersDb]).handle(…);
+export const provisionWorkspace = worker.topic(userEvents)
+  .subscribe(['user.created', 'user.deleted']).dependsOn([ordersDb]).handle(…);
+
+// A producer names the topic per event, after its handler succeeds:
+export const signUp = api.post('/users')
+  .event(userEvents, { type: 'user.created', payload: (u) => ({ id: u.id, email: u.email }) })
+  .handle(…);
 ```
 
 Fan-out is "more than one declaration names this topic". Nothing about `Topic`
-changes when you add the fifth subscriber. The handler's `event` is the topic's
+changes when you add the fifth subscriber. The handler's `events` are the topic's
 event union narrowed to the selected keys, so subscribing to an undeclared event
 is a compile error.
 
@@ -1683,7 +1727,7 @@ triggered by a surface nests inside it.**
 ```
 
 **Position is the trigger**, so there is no `trigger` field — `createOrder`
-sitting in `api.endpoints` *is* the statement that the API triggers it. One less
+being built from `api` *is* the statement that the API triggers it. One less
 thing to state, one less reference to validate.
 
 The rule for what nests follows from what's consumable: **nothing ever depends
@@ -1739,7 +1783,7 @@ consumers compile unchanged.
 - **`requires` ⊆ ⋃ `provides`** across a construct's dependencies — the declared
   contract, enforced. This is what would have caught `function` omitting its own
   `provides`: a consumer would require a key nothing supplies.
-- **Route uniqueness per API** on `${method} ${path}` within `api.endpoints`.
+- **Route uniqueness per API** on `${method} ${path}` across the endpoints built from it.
 - **Authorizer names** — every endpoint's `authorizer` exists on its API.
 - **Subscribed events** — every subscriber's events are declared by its topic.
 - **Cycles** over function→function edges.
@@ -2620,7 +2664,9 @@ gone.
 
 **Phase 4 — surfaces.** `RestApi` with authorizers, `Topic`/`Queue` retrofitted
 onto the interface (constructor-assigned `service`, no default logger, publisher
-naming), `e` as a default `RestApi`, `s` deprecated.
+naming), `e` as a default `RestApi`, `s` deprecated. *(Superseded: v10
+removed `e` and `s` outright, and `Topic`/`Queue` expose their publisher as
+`service`.)*
 
 **Phase 5 — `Cache`, `Secret`, and declaration-first env.** Sniffing narrows to
 `fromService` lifts and the deprecated `.services()`.

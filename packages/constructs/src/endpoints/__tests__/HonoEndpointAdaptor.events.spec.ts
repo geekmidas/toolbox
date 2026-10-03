@@ -1,255 +1,197 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
-import type {
-	EventPublisher,
-	MappedEvent,
-	PublishableMessage,
-} from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
-import { type Service, ServiceDiscovery } from '@geekmidas/services';
+import { ServiceDiscovery } from '@geekmidas/services';
 import { Hono } from 'hono';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { Endpoint } from '../Endpoint';
+import { recordTopic } from '../../__tests__/__helpers__/recordingPublisher';
+import { RestApi } from '../../rest-api';
+import { Topic } from '../../topic/Topic';
+import type { Endpoint } from '../Endpoint';
 import { HonoEndpoint } from '../HonoEndpointAdaptor';
 
-// Test event types
-type TestEvent =
-	| PublishableMessage<'user.created', { userId: string; email: string }>
-	| PublishableMessage<'user.updated', { userId: string; changes: string[] }>
-	| PublishableMessage<'notification.sent', { userId: string; type: string }>;
+/** Any endpoint, whatever it was built with — what an adaptor serves. */
+type AnyEndpoint = Endpoint<
+	any,
+	any,
+	any,
+	any,
+	any,
+	any,
+	any,
+	any,
+	any,
+	any,
+	any,
+	any
+>;
 
-describe('HonoEndpoint Events', () => {
-	const mockLogger: Logger = {
+const users = new Topic('Users', {
+	events: {
+		'user.created': z.object({ userId: z.string(), email: z.string() }),
+		'user.updated': z.object({
+			userId: z.string(),
+			changes: z.array(z.string()),
+		}),
+	},
+});
+
+const notifications = new Topic('Notifications', {
+	events: {
+		'notification.sent': z.object({ userId: z.string(), type: z.string() }),
+	},
+});
+
+class DatabaseConnectionFailed extends Error {
+	constructor() {
+		super('Database connection failed');
+		this.name = 'DatabaseConnectionFailed';
+	}
+}
+
+const createMockLogger = (): Logger => {
+	const logger: Logger = {
 		debug: vi.fn(),
 		info: vi.fn(),
 		warn: vi.fn(),
 		error: vi.fn(),
 		fatal: vi.fn(),
 		trace: vi.fn(),
-		child: vi.fn(() => mockLogger),
+		child: vi.fn(() => logger),
 	};
-	const envParser = new EnvironmentParser({});
-	const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
+	return logger;
+};
+
+/** Serve one endpoint from a Hono app with its own service discovery. */
+const serve = (endpoint: AnyEndpoint) => {
+	const serviceDiscovery = new ServiceDiscovery(new EnvironmentParser({}));
+	const app = new Hono();
+	HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
+	new HonoEndpoint(endpoint).addRoute(serviceDiscovery, app);
+	return app;
+};
+
+const request = (app: Hono, method: string, path: string, body: unknown = {}) =>
+	app.request(path, {
+		method,
+		body: JSON.stringify(body),
+		headers: { 'Content-Type': 'application/json' },
+	});
+
+describe('HonoEndpoint Events', () => {
+	let mockLogger: Logger;
+	let api: RestApi<'Test'>;
+
+	beforeEach(() => {
+		mockLogger = createMockLogger();
+		api = new RestApi('Test', {
+			path: '.',
+			defaultAuthorizer: 'none',
+			logger: mockLogger,
+		});
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
 
 	it('should publish events after successful endpoint execution', async () => {
-		const mockPublisher: EventPublisher<TestEvent> = {
-			publish: vi.fn().mockResolvedValue(undefined),
-		};
+		const publisher = recordTopic(users);
 
-		const mockPublisherService: Service<
-			'publisher',
-			EventPublisher<TestEvent>
-		> = {
-			serviceName: 'publisher' as const,
-			register: vi.fn().mockResolvedValue(mockPublisher),
-		};
-
-		const outputSchema = z.object({ id: z.string(), email: z.string() });
-
-		const events: MappedEvent<
-			EventPublisher<TestEvent>,
-			typeof outputSchema
-		>[] = [
-			{
+		const endpoint = api
+			.post('/users')
+			.output(z.object({ id: z.string(), email: z.string() }))
+			.event(users, {
 				type: 'user.created',
 				payload: (response) => ({ userId: response.id, email: response.email }),
-			},
-		];
+			})
+			.handle(async () => ({ id: '123', email: 'test@example.com' }));
 
-		const endpoint = new Endpoint({
-			route: '/users',
-			method: 'POST',
-			fn: async () => ({ id: '123', email: 'test@example.com' }),
-			input: undefined,
-			output: outputSchema,
-			services: [],
-			logger: mockLogger,
-			timeout: undefined,
-			memorySize: undefined,
-			status: 200,
-			getSession: undefined,
-			authorize: undefined,
-			description: undefined,
-			events,
-			publisherService: mockPublisherService,
-		});
-
-		const adaptor = new HonoEndpoint(endpoint);
-		const app = new Hono();
-		HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
-
-		adaptor.addRoute(serviceDiscovery, app);
-
-		const response = await app.request('/users', {
-			method: 'POST',
-			body: JSON.stringify({}),
-			headers: { 'Content-Type': 'application/json' },
-		});
+		const response = await request(serve(endpoint), 'POST', '/users');
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({
 			id: '123',
 			email: 'test@example.com',
 		});
-
-		expect(mockPublisher.publish).toHaveBeenCalledWith([
-			{
-				type: 'user.created',
-				payload: { userId: '123', email: 'test@example.com' },
-			},
+		expect(publisher.calls).toEqual([
+			[
+				{
+					type: 'user.created',
+					payload: { userId: '123', email: 'test@example.com' },
+				},
+			],
 		]);
 	});
 
-	it('should publish multiple events after successful endpoint execution', async () => {
-		const mockPublisher: EventPublisher<TestEvent> = {
-			publish: vi.fn().mockResolvedValue(undefined),
-		};
+	it('should publish events to two topics, each through its own publisher', async () => {
+		const usersPublisher = recordTopic(users);
+		const notificationsPublisher = recordTopic(notifications);
 
-		const mockPublisherService: Service<string, EventPublisher<TestEvent>> = {
-			serviceName: Math.random().toString(),
-			register: vi.fn().mockResolvedValue(mockPublisher),
-		};
-
-		const outputSchema = z.object({ id: z.string(), email: z.string() });
-
-		const events: MappedEvent<
-			EventPublisher<TestEvent>,
-			typeof outputSchema
-		>[] = [
-			{
+		const endpoint = api
+			.post('/users')
+			.status(201)
+			.output(z.object({ id: z.string(), email: z.string() }))
+			.event(users, {
 				type: 'user.created',
 				payload: (response) => ({ userId: response.id, email: response.email }),
-			},
-			{
+			})
+			.event(notifications, {
 				type: 'notification.sent',
 				payload: (response) => ({ userId: response.id, type: 'welcome' }),
-			},
-		];
+			})
+			.handle(async () => ({ id: '456', email: 'user@example.com' }));
 
-		const endpoint = new Endpoint({
-			route: '/users',
-			method: 'POST',
-			fn: async () => ({ id: '456', email: 'user@example.com' }),
-			input: undefined,
-			output: outputSchema,
-			services: [],
-			logger: mockLogger,
-			timeout: undefined,
-			memorySize: undefined,
-			status: 201,
-			getSession: undefined,
-			authorize: undefined,
-			description: undefined,
-			events,
-			publisherService: mockPublisherService,
-		});
-
-		const adaptor = new HonoEndpoint(endpoint);
-		const app = new Hono();
-
-		HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
-
-		adaptor.addRoute(serviceDiscovery, app);
-
-		const response = await app.request('/users', {
-			method: 'POST',
-			body: JSON.stringify({}),
-			headers: { 'Content-Type': 'application/json' },
-		});
+		const response = await request(serve(endpoint), 'POST', '/users');
 
 		expect(response.status).toBe(201);
-		expect(await response.json()).toEqual({
-			id: '456',
-			email: 'user@example.com',
-		});
-
-		expect(mockPublisher.publish).toHaveBeenCalledWith([
-			{
-				type: 'user.created',
-				payload: { userId: '456', email: 'user@example.com' },
-			},
-			{
-				type: 'notification.sent',
-				payload: { userId: '456', type: 'welcome' },
-			},
+		expect(usersPublisher.calls).toEqual([
+			[
+				{
+					type: 'user.created',
+					payload: { userId: '456', email: 'user@example.com' },
+				},
+			],
+		]);
+		expect(notificationsPublisher.calls).toEqual([
+			[
+				{
+					type: 'notification.sent',
+					payload: { userId: '456', type: 'welcome' },
+				},
+			],
 		]);
 	});
 
 	it('should respect when conditions for events', async () => {
-		const mockPublisher: EventPublisher<TestEvent> = {
-			publish: vi.fn().mockResolvedValue(undefined),
-		};
+		const publisher = recordTopic(users);
 
-		const mockPublisherService: Service<string, EventPublisher<TestEvent>> = {
-			serviceName: Math.random().toString(),
-			register: vi.fn().mockResolvedValue(mockPublisher),
-		};
-
-		const outputSchema = z.object({
-			id: z.string(),
-			email: z.string(),
-			isNew: z.boolean(),
-		});
-
-		const events: MappedEvent<
-			EventPublisher<TestEvent>,
-			typeof outputSchema
-		>[] = [
-			{
+		const endpoint = api
+			.put('/users/:id')
+			.output(
+				z.object({ id: z.string(), email: z.string(), isNew: z.boolean() }),
+			)
+			.event(users, {
 				type: 'user.created',
 				payload: (response) => ({ userId: response.id, email: response.email }),
 				when: (response) => response.isNew === true,
-			},
-			{
+			})
+			.event(users, {
 				type: 'user.updated',
 				payload: (response) => ({ userId: response.id, changes: ['email'] }),
 				when: (response) => response.isNew === false,
-			},
-		];
-
-		const endpoint = new Endpoint({
-			route: '/users/:id',
-			method: 'PUT',
-			fn: async () => ({
+			})
+			.handle(async () => ({
 				id: '789',
 				email: 'updated@example.com',
 				isNew: false,
-			}),
-			input: undefined,
-			output: outputSchema,
-			services: [],
-			logger: mockLogger,
-			timeout: undefined,
-			memorySize: undefined,
-			status: 200,
-			getSession: undefined,
-			authorize: undefined,
-			description: undefined,
-			events,
-			publisherService: mockPublisherService,
-		});
+			}));
 
-		const adaptor = new HonoEndpoint(endpoint);
-		const app = new Hono();
-		HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
-
-		adaptor.addRoute(serviceDiscovery, app);
-
-		const response = await app.request('/users/789', {
-			method: 'PUT',
-			body: JSON.stringify({}),
-			headers: { 'Content-Type': 'application/json' },
-		});
+		const response = await request(serve(endpoint), 'PUT', '/users/789');
 
 		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({
-			id: '789',
-			email: 'updated@example.com',
-			isNew: false,
-		});
-
 		// Only user.updated event should be published due to when condition
-		expect(mockPublisher.publish).toHaveBeenCalledWith([
+		expect(publisher.published).toEqual([
 			{
 				type: 'user.updated',
 				payload: { userId: '789', changes: ['email'] },
@@ -257,169 +199,63 @@ describe('HonoEndpoint Events', () => {
 		]);
 	});
 
-	it('should not publish events when no publisher is configured', async () => {
-		const outputSchema = z.object({ id: z.string(), email: z.string() });
-
-		const events: MappedEvent<
-			EventPublisher<TestEvent>,
-			typeof outputSchema
-		>[] = [
-			{
-				type: 'user.created',
-				payload: (response) => ({ userId: response.id, email: response.email }),
-			},
-		];
-
-		const endpoint = new Endpoint({
-			route: '/users',
-			method: 'POST',
-			fn: async () => ({ id: '999', email: 'test@example.com' }),
-			input: undefined,
-			output: outputSchema,
-			services: [],
-			logger: mockLogger,
-			timeout: undefined,
-			memorySize: undefined,
-			status: 200,
-			getSession: undefined,
-			authorize: undefined,
-			description: undefined,
-			events,
-			publisherService: undefined, // No publisher service
-		});
-
-		const adaptor = new HonoEndpoint(endpoint);
-		const app = new Hono();
-		HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
-
-		adaptor.addRoute(serviceDiscovery, app);
-
-		const response = await app.request('/users', {
-			method: 'POST',
-			body: JSON.stringify({}),
-			headers: { 'Content-Type': 'application/json' },
-		});
-
-		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({
+	it('should not run the handler when the topic publisher cannot be registered', async () => {
+		// `.event(users, …)` makes the topic a dependency, as `.dependsOn` would:
+		// with no USERS_PUBLISHER_CONNECTION_STRING the handler's services cannot
+		// be built, so it never runs — no write whose event would be lost.
+		const handle = vi.fn(async () => ({
 			id: '999',
 			email: 'test@example.com',
-		});
+		}));
 
-		// No publisher calls should be made
-		expect(mockLogger.warn).toHaveBeenCalledWith(
-			'No publisher service available',
+		const endpoint = api
+			.post('/users')
+			.output(z.object({ id: z.string(), email: z.string() }))
+			.event(users, {
+				type: 'user.created',
+				payload: (response) => ({ userId: response.id, email: response.email }),
+			})
+			.handle(handle);
+
+		const response = await request(serve(endpoint), 'POST', '/users');
+
+		expect(response.status).toBe(500);
+		expect(await response.text()).toContain(
+			'USERS_PUBLISHER_CONNECTION_STRING',
 		);
+		expect(handle).not.toHaveBeenCalled();
 	});
 
 	it('should not publish events when no events are configured', async () => {
-		const mockPublisher: EventPublisher<TestEvent> = {
-			publish: vi.fn().mockResolvedValue(undefined),
-		};
+		const publisher = recordTopic(users);
 
-		const mockPublisherService: Service<
-			'publisher',
-			EventPublisher<TestEvent>
-		> = {
-			serviceName: 'publisher' as const,
-			register: vi.fn().mockResolvedValue(mockPublisher),
-		};
+		const endpoint = api
+			.post('/users')
+			.dependsOn([users])
+			.output(z.object({ id: z.string(), email: z.string() }))
+			.handle(async () => ({ id: '111', email: 'test@example.com' }));
 
-		const outputSchema = z.object({ id: z.string(), email: z.string() });
-
-		const endpoint = new Endpoint({
-			route: '/users',
-			method: 'POST',
-			fn: async () => ({ id: '111', email: 'test@example.com' }),
-			input: undefined,
-			output: outputSchema,
-			services: [],
-			logger: mockLogger,
-			timeout: undefined,
-			memorySize: undefined,
-			status: 200,
-			getSession: undefined,
-			authorize: undefined,
-			description: undefined,
-			events: undefined, // No events
-			publisherService: mockPublisherService,
-		});
-
-		const adaptor = new HonoEndpoint(endpoint);
-		const app = new Hono();
-		HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
-
-		adaptor.addRoute(serviceDiscovery, app);
-
-		const response = await app.request('/users', {
-			method: 'POST',
-			body: JSON.stringify({}),
-			headers: { 'Content-Type': 'application/json' },
-		});
+		const response = await request(serve(endpoint), 'POST', '/users');
 
 		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({
-			id: '111',
-			email: 'test@example.com',
-		});
-
-		// No events should be published - with optimization, event processing is skipped entirely
-		// for endpoints without events configured, so no log message is emitted
-		expect(mockPublisher.publish).not.toHaveBeenCalled();
+		expect(publisher.calls).toEqual([]);
 	});
 
 	it('should continue processing even when event publishing fails', async () => {
 		const publishError = new Error('Event bus connection failed');
-		const mockPublisher: EventPublisher<TestEvent> = {
-			publish: vi.fn().mockRejectedValue(publishError),
-		};
+		const publisher = recordTopic(users);
+		vi.spyOn(publisher, 'publish').mockRejectedValue(publishError);
 
-		const mockPublisherService: Service<string, EventPublisher<TestEvent>> = {
-			serviceName: Math.random().toString(),
-			register: vi.fn().mockResolvedValue(mockPublisher),
-		};
-
-		const outputSchema = z.object({ id: z.string(), email: z.string() });
-
-		const events: MappedEvent<
-			EventPublisher<TestEvent>,
-			typeof outputSchema
-		>[] = [
-			{
+		const endpoint = api
+			.post('/users')
+			.output(z.object({ id: z.string(), email: z.string() }))
+			.event(users, {
 				type: 'user.created',
 				payload: (response) => ({ userId: response.id, email: response.email }),
-			},
-		];
+			})
+			.handle(async () => ({ id: '888', email: 'error@example.com' }));
 
-		const endpoint = new Endpoint({
-			route: '/users',
-			method: 'POST',
-			fn: async () => ({ id: '888', email: 'error@example.com' }),
-			input: undefined,
-			output: outputSchema,
-			services: [],
-			logger: mockLogger,
-			timeout: undefined,
-			memorySize: undefined,
-			status: 200,
-			getSession: undefined,
-			authorize: undefined,
-			description: undefined,
-			events,
-			publisherService: mockPublisherService,
-		});
-
-		const adaptor = new HonoEndpoint(endpoint);
-		const app = new Hono();
-		HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
-
-		adaptor.addRoute(serviceDiscovery, app);
-
-		const response = await app.request('/users', {
-			method: 'POST',
-			body: JSON.stringify({}),
-			headers: { 'Content-Type': 'application/json' },
-		});
+		const response = await request(serve(endpoint), 'POST', '/users');
 
 		// The endpoint should still succeed despite event publishing failure
 		expect(response.status).toBe(200);
@@ -427,8 +263,7 @@ describe('HonoEndpoint Events', () => {
 			id: '888',
 			email: 'error@example.com',
 		});
-
-		expect(mockPublisher.publish).toHaveBeenCalled();
+		expect(publisher.publish).toHaveBeenCalled();
 		expect(mockLogger.error).toHaveBeenCalledWith(
 			publishError,
 			'Failed to publish events',
@@ -436,64 +271,26 @@ describe('HonoEndpoint Events', () => {
 	});
 
 	it('should publish events with input data context', async () => {
-		const mockPublisher: EventPublisher<TestEvent> = {
-			publish: vi.fn().mockResolvedValue(undefined),
-		};
+		const publisher = recordTopic(users);
 
-		const mockPublisherService: Service<string, EventPublisher<TestEvent>> = {
-			serviceName: Math.random().toString(),
-			register: vi.fn().mockResolvedValue(mockPublisher),
-		};
-
-		const bodySchema = z.object({ name: z.string(), email: z.string() });
-		const outputSchema = z.object({
-			id: z.string(),
-			name: z.string(),
-			email: z.string(),
-		});
-
-		const events: MappedEvent<
-			EventPublisher<TestEvent>,
-			typeof outputSchema
-		>[] = [
-			{
+		const endpoint = api
+			.post('/users')
+			.status(201)
+			.body(z.object({ name: z.string(), email: z.string() }))
+			.output(z.object({ id: z.string(), name: z.string(), email: z.string() }))
+			.event(users, {
 				type: 'user.created',
 				payload: (response) => ({ userId: response.id, email: response.email }),
-			},
-		];
-
-		const endpoint = new Endpoint({
-			route: '/users',
-			method: 'POST',
-			fn: async ({ body }) => ({
+			})
+			.handle(async ({ body }) => ({
 				id: '777',
 				name: body.name,
 				email: body.email,
-			}),
-			input: { body: bodySchema },
-			output: outputSchema,
-			services: [],
-			logger: mockLogger,
-			timeout: undefined,
-			memorySize: undefined,
-			status: 201,
-			getSession: undefined,
-			authorize: undefined,
-			description: undefined,
-			events,
-			publisherService: mockPublisherService,
-		});
+			}));
 
-		const adaptor = new HonoEndpoint(endpoint);
-		const app = new Hono();
-		HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
-
-		adaptor.addRoute(serviceDiscovery, app);
-
-		const response = await app.request('/users', {
-			method: 'POST',
-			body: JSON.stringify({ name: 'John Doe', email: 'john@example.com' }),
-			headers: { 'Content-Type': 'application/json' },
+		const response = await request(serve(endpoint), 'POST', '/users', {
+			name: 'John Doe',
+			email: 'john@example.com',
 		});
 
 		expect(response.status).toBe(201);
@@ -502,8 +299,7 @@ describe('HonoEndpoint Events', () => {
 			name: 'John Doe',
 			email: 'john@example.com',
 		});
-
-		expect(mockPublisher.publish).toHaveBeenCalledWith([
+		expect(publisher.published).toEqual([
 			{
 				type: 'user.created',
 				payload: { userId: '777', email: 'john@example.com' },
@@ -511,67 +307,25 @@ describe('HonoEndpoint Events', () => {
 		]);
 	});
 
-	it('should not publish events when endpoint throws an error', async () => {
-		const mockPublisher: EventPublisher<TestEvent> = {
-			publish: vi.fn().mockResolvedValue(undefined),
-		};
+	it('should not publish events when handler throws an error', async () => {
+		const publisher = recordTopic(users);
 
-		const mockPublisherService: Service<
-			'publisher',
-			EventPublisher<TestEvent>
-		> = {
-			serviceName: 'publisher' as const,
-			register: vi.fn().mockResolvedValue(mockPublisher),
-		};
-
-		const outputSchema = z.object({ id: z.string(), email: z.string() });
-
-		const events: MappedEvent<
-			EventPublisher<TestEvent>,
-			typeof outputSchema
-		>[] = [
-			{
+		const endpoint = api
+			.post('/users')
+			.output(z.object({ id: z.string(), email: z.string() }))
+			.event(users, {
 				type: 'user.created',
 				payload: (response) => ({ userId: response.id, email: response.email }),
-			},
-		];
+			})
+			.handle(async (): Promise<{ id: string; email: string }> => {
+				throw new DatabaseConnectionFailed();
+			});
 
-		const endpoint = new Endpoint({
-			route: '/users',
-			method: 'POST',
-			fn: async () => {
-				throw new Error('Something went wrong');
-			},
-			input: undefined,
-			output: outputSchema,
-			services: [],
-			logger: mockLogger,
-			timeout: undefined,
-			memorySize: undefined,
-			status: 200,
-			getSession: undefined,
-			authorize: undefined,
-			description: undefined,
-			events,
-			publisherService: mockPublisherService,
-		});
+		const response = await request(serve(endpoint), 'POST', '/users');
 
-		const adaptor = new HonoEndpoint(endpoint);
-		const app = new Hono();
-		HonoEndpoint.applyEventMiddleware(app, serviceDiscovery);
-
-		adaptor.addRoute(serviceDiscovery, app);
-
-		const response = await app.request('/users', {
-			method: 'POST',
-			body: JSON.stringify({}),
-			headers: { 'Content-Type': 'application/json' },
-		});
-
-		// Should return 500 due to error
+		// The endpoint should return an error response
 		expect(response.status).toBe(500);
-
-		// No events should be published when endpoint throws an error
-		expect(mockPublisher.publish).not.toHaveBeenCalled();
+		// Events should not be published when handler fails
+		expect(publisher.calls).toEqual([]);
 	});
 });

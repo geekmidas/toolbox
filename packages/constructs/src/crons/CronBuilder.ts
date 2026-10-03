@@ -1,6 +1,8 @@
-import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
-import type { ComposableStandardSchema } from '@geekmidas/schema';
+import type {
+	ComposableStandardSchema,
+	InferStandardSchema,
+} from '@geekmidas/schema';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
@@ -8,7 +10,6 @@ import { ConstructType } from '../Construct';
 import { cloneWith } from '../clone';
 import {
 	type Consumable,
-	edgesWith,
 	idsOf,
 	isConsumable,
 	type ServicesOf,
@@ -16,6 +17,8 @@ import {
 	servicesOf,
 } from '../construct-interface';
 import { FunctionBuilder, type FunctionHandler } from '../functions';
+import type { EventFor } from '../publisher';
+import type { Topic } from '../topic/Topic';
 import { Cron, type ScheduleExpression } from './Cron';
 
 export class CronBuilder<
@@ -23,8 +26,6 @@ export class CronBuilder<
 	TServices extends Service[],
 	TLogger extends Logger = Logger,
 	OutSchema extends StandardSchemaV1 | undefined = undefined,
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TDatabase = undefined,
 	TDatabaseServiceName extends string = string,
 > extends FunctionBuilder<
@@ -32,8 +33,6 @@ export class CronBuilder<
 	OutSchema,
 	TServices,
 	TLogger,
-	TEventPublisher,
-	TEventPublisherServiceName,
 	undefined,
 	string,
 	TDatabase,
@@ -56,8 +55,6 @@ export class CronBuilder<
 		TServices,
 		TLogger,
 		OutSchema,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TDatabase,
 		TDatabaseServiceName
 	> {
@@ -71,8 +68,6 @@ export class CronBuilder<
 		TServices,
 		TLogger,
 		OutSchema,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TDatabase,
 		TDatabaseServiceName
 	> {
@@ -83,8 +78,6 @@ export class CronBuilder<
 			TServices,
 			TLogger,
 			OutSchema,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TDatabase,
 			TDatabaseServiceName
 		>;
@@ -97,8 +90,6 @@ export class CronBuilder<
 		TServices,
 		TLogger,
 		T,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TDatabase,
 		TDatabaseServiceName
 	> {
@@ -109,8 +100,6 @@ export class CronBuilder<
 			TServices,
 			TLogger,
 			T,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TDatabase,
 			TDatabaseServiceName
 		>;
@@ -134,8 +123,6 @@ export class CronBuilder<
 		[...TServices, ...ServicesOf<T>],
 		TLogger,
 		OutSchema,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TDatabase,
 		TDatabaseServiceName
 	> {
@@ -159,8 +146,6 @@ export class CronBuilder<
 			[...TServices, ...ServicesOf<T>],
 			TLogger,
 			OutSchema,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TDatabase,
 			TDatabaseServiceName
 		>;
@@ -173,8 +158,6 @@ export class CronBuilder<
 		[...TServices, ...T],
 		TLogger,
 		OutSchema,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TDatabase,
 		TDatabaseServiceName
 	> {
@@ -188,8 +171,6 @@ export class CronBuilder<
 			[...TServices, ...T],
 			TLogger,
 			OutSchema,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TDatabase,
 			TDatabaseServiceName
 		>;
@@ -202,8 +183,6 @@ export class CronBuilder<
 		TServices,
 		T,
 		OutSchema,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TDatabase,
 		TDatabaseServiceName
 	> {
@@ -214,39 +193,32 @@ export class CronBuilder<
 			TServices,
 			T,
 			OutSchema,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TDatabase,
 			TDatabaseServiceName
 		>;
 	}
 
-	override publisher<T extends EventPublisher<any>, TName extends string>(
-		publisher: Service<TName, T>,
+	/**
+	 * Publish `event` to `topic` each time the cron has run successfully —
+	 * repeatable, to as many topics as it names. The topic becomes a dependency
+	 * as with `.dependsOn([topic])`, so `services.<topic>` is there too.
+	 */
+	override event<TTopic extends Topic<any, any>>(
+		topic: TTopic,
+		event: EventFor<TTopic, InferStandardSchema<OutSchema>>,
 	): CronBuilder<
 		TInput,
-		TServices,
+		[...TServices, TTopic['service']],
 		TLogger,
 		OutSchema,
-		T,
-		TName,
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		return cloneWith(this, {
-			// The topic a derived publisher stands for is an edge like `.dependsOn()`.
-			_constructs: edgesWith(publisher, this._constructs),
-			_publisher: publisher as unknown as Service<
-				TEventPublisherServiceName,
-				TEventPublisher
-			>,
-		}) as unknown as CronBuilder<
+		return this.withEvent(topic, event as never) as unknown as CronBuilder<
 			TInput,
-			TServices,
+			[...TServices, TTopic['service']],
 			TLogger,
 			OutSchema,
-			T,
-			TName,
 			TDatabase,
 			TDatabaseServiceName
 		>;
@@ -258,16 +230,7 @@ export class CronBuilder<
 	 */
 	override database<T, TName extends string>(
 		source: Consumable<TName, T> | Service<TName, T>,
-	): CronBuilder<
-		TInput,
-		TServices,
-		TLogger,
-		OutSchema,
-		TEventPublisher,
-		TEventPublisherServiceName,
-		T,
-		TName
-	> {
+	): CronBuilder<TInput, TServices, TLogger, OutSchema, T, TName> {
 		const service = serviceOf(source);
 
 		return cloneWith(this, {
@@ -284,8 +247,6 @@ export class CronBuilder<
 			TServices,
 			TLogger,
 			OutSchema,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			T,
 			TName
 		>;
@@ -298,8 +259,6 @@ export class CronBuilder<
 		TServices,
 		TLogger,
 		OutSchema,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TDatabase,
 		TDatabaseServiceName
 	> {
@@ -311,7 +270,6 @@ export class CronBuilder<
 			this.outputSchema,
 			this._services,
 			this._logger,
-			this._publisher,
 			this._events,
 			this._memorySize,
 			this._databaseService,

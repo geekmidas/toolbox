@@ -62,16 +62,16 @@ export interface CreateMswHandlersOptions {
 
 /**
  * Options for registering a per-test context.
- * Follows the same pattern as TestRequestAdaptor — services, database,
- * publisher, and auditorStorage are provided explicitly.
+ * Follows the same pattern as TestRequestAdaptor — services, database and
+ * auditorStorage are provided explicitly. A topic is a service under its own
+ * name, so a recorder in `services` (`{ users: recorder }`) captures what an
+ * endpoint publishes to it.
  */
 export interface RegisterContextOptions {
 	/** Service instances keyed by serviceName */
 	services?: Record<string, unknown>;
 	/** Database instance — required when endpoints use .database() */
 	database?: unknown;
-	/** Event publisher service definition */
-	publisher?: Service;
 	/** Audit storage instance — required when endpoints use .auditor() */
 	auditorStorage?: unknown;
 }
@@ -150,11 +150,6 @@ export function createMswHandlers(
 					break;
 				}
 			}
-		}
-
-		// Register publisher service
-		if (ctxOptions.publisher) {
-			serviceDefs.push(ctxOptions.publisher);
 		}
 
 		// Register auditor storage service from endpoint metadata

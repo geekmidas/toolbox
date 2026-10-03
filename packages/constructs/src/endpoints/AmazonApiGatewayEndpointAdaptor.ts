@@ -95,8 +95,6 @@ export abstract class AmazonApiGatewayEndpoint<
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
 	TSession = unknown,
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TAuditStorage extends AuditStorage | undefined = undefined,
 	TAuditStorageServiceName extends string = string,
 	TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
@@ -126,8 +124,6 @@ export abstract class AmazonApiGatewayEndpoint<
 			TServices,
 			TLogger,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			TAuditAction

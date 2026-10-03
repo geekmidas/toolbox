@@ -11,32 +11,19 @@ import {
 } from './Generator';
 
 export class FunctionGenerator extends ConstructGenerator<
-	Function<any, any, any, any, any, any, any, any, any, any, any, any>,
+	Function<any, any, any, any, any, any, any, any, any, any>,
 	FunctionInfo[]
 > {
 	isConstruct(
 		value: any,
-	): value is Function<
-		any,
-		any,
-		any,
-		any,
-		any,
-		any,
-		any,
-		any,
-		any,
-		any,
-		any,
-		any
-	> {
+	): value is Function<any, any, any, any, any, any, any, any, any, any> {
 		return Function.isFunction(value);
 	}
 
 	async build(
 		context: BuildContext,
 		constructs: GeneratedConstruct<
-			Function<any, any, any, any, any, any, any, any, any, any, any, any>
+			Function<any, any, any, any, any, any, any, any, any, any>
 		>[],
 		outputDir: string,
 		options?: GeneratorOptions,

@@ -54,7 +54,7 @@ describe('SubscriberGenerator', () => {
 			key: string,
 			subscribedEvents: string[],
 			timeout: number = 30000,
-		): GeneratedConstruct<Subscriber<any, any, any, any, any, any>> => {
+		): GeneratedConstruct<Subscriber<any, any, any, any, any>> => {
 			const subscriber = new SubscriberBuilder()
 				.subscribe(subscribedEvents as any)
 				.timeout(timeout)
@@ -136,17 +136,16 @@ describe('SubscriberGenerator', () => {
 					logger.info({ eventCount: events.length }, 'Processing events');
 				});
 
-			const construct: GeneratedConstruct<
-				Subscriber<any, any, any, any, any, any>
-			> = {
-				key: 'deepSubscriber',
-				name: 'deep-subscriber',
-				construct: subscriber,
-				path: {
-					absolute: join(tempDir, 'src/subscribers/deep/processor.ts'),
-					relative: 'src/subscribers/deep/processor.ts',
-				},
-			};
+			const construct: GeneratedConstruct<Subscriber<any, any, any, any, any>> =
+				{
+					key: 'deepSubscriber',
+					name: 'deep-subscriber',
+					construct: subscriber,
+					path: {
+						absolute: join(tempDir, 'src/subscribers/deep/processor.ts'),
+						relative: 'src/subscribers/deep/processor.ts',
+					},
+				};
 
 			await generator.build(context, [construct], outputDir);
 
@@ -183,17 +182,16 @@ describe('SubscriberGenerator', () => {
 					logger.info({ eventCount: events.length }, 'Processing all events');
 				});
 
-			const construct: GeneratedConstruct<
-				Subscriber<any, any, any, any, any, any>
-			> = {
-				key: 'catchAllSubscriber',
-				name: 'catch-all-subscriber',
-				construct: subscriber,
-				path: {
-					absolute: join(tempDir, 'catchAllSubscriber.ts'),
-					relative: 'catchAllSubscriber.ts',
-				},
-			};
+			const construct: GeneratedConstruct<Subscriber<any, any, any, any, any>> =
+				{
+					key: 'catchAllSubscriber',
+					name: 'catch-all-subscriber',
+					construct: subscriber,
+					path: {
+						absolute: join(tempDir, 'catchAllSubscriber.ts'),
+						relative: 'catchAllSubscriber.ts',
+					},
+				};
 
 			const subscriberInfos = await generator.build(
 				context,
@@ -347,17 +345,16 @@ describe('SubscriberGenerator', () => {
 					logger.info({ eventCount: events.length }, 'Processing events');
 				});
 
-			const construct: GeneratedConstruct<
-				Subscriber<any, any, any, any, any, any>
-			> = {
-				key: 'myCustomSubscriberName',
-				name: 'custom-name',
-				construct: subscriber,
-				path: {
-					absolute: join(tempDir, 'subscriber.ts'),
-					relative: 'subscriber.ts',
-				},
-			};
+			const construct: GeneratedConstruct<Subscriber<any, any, any, any, any>> =
+				{
+					key: 'myCustomSubscriberName',
+					name: 'custom-name',
+					construct: subscriber,
+					path: {
+						absolute: join(tempDir, 'subscriber.ts'),
+						relative: 'subscriber.ts',
+					},
+				};
 
 			await generator.build(context, [construct], outputDir);
 

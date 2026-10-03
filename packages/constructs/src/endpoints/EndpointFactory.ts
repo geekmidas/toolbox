@@ -3,14 +3,12 @@ import type {
 	AuditStorage,
 	ExtractStorageAuditAction,
 } from '@geekmidas/audit';
-import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import uniqBy from 'lodash.uniqby';
 import {
 	type Consumable,
-	edgesWith,
 	idsOf,
 	isConsumable,
 	type ServicesOf,
@@ -37,8 +35,6 @@ export class EndpointFactory<
 	TBasePath extends string = '',
 	TLogger extends Logger = Logger,
 	TSession = unknown,
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TAuthorizers extends readonly string[] = readonly string[],
 	TAuditStorage extends AuditStorage<any> | undefined = undefined,
 	TAuditStorageServiceName extends string = string,
@@ -76,9 +72,6 @@ export class EndpointFactory<
 		undefined,
 		TDatabase
 	>;
-	private defaultEventPublisher:
-		| Service<TEventPublisherServiceName, TEventPublisher>
-		| undefined;
 	private defaultSessionExtractor?: SessionFn<
 		TServices,
 		TLogger,
@@ -114,7 +107,6 @@ export class EndpointFactory<
 		// @ts-expect-error
 		defaultServices = [] as TServices,
 		defaultConstructs = [] as string[],
-		defaultEventPublisher,
 		availableAuthorizers = [],
 		defaultAuthorizerName,
 		defaultAuditorStorage,
@@ -128,8 +120,6 @@ export class EndpointFactory<
 		TBasePath,
 		TLogger,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -149,7 +139,6 @@ export class EndpointFactory<
 		this.defaultAuthorizeFn = defaultAuthorizeFn;
 		this.defaultLogger = defaultLogger;
 		this.defaultSessionExtractor = defaultSessionExtractor;
-		this.defaultEventPublisher = defaultEventPublisher;
 		this.availableAuthorizers = availableAuthorizers;
 		this.defaultAuthorizerName = defaultAuthorizerName;
 		this.defaultAuditorStorage = defaultAuditorStorage;
@@ -205,8 +194,6 @@ export class EndpointFactory<
 		TBasePath,
 		TLogger,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		T,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -225,8 +212,6 @@ export class EndpointFactory<
 			TBasePath,
 			TLogger,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			T,
 			TAuditStorage,
 			TAuditStorageServiceName,
@@ -242,7 +227,6 @@ export class EndpointFactory<
 			defaultAuthorizeFn: this.defaultAuthorizeFn,
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: this.defaultSessionExtractor,
-			defaultEventPublisher: this.defaultEventPublisher,
 			availableAuthorizers: authorizerConfigs,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -277,8 +261,6 @@ export class EndpointFactory<
 		TBasePath,
 		TLogger,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -293,8 +275,6 @@ export class EndpointFactory<
 			TBasePath,
 			TLogger,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			TAuditStorage,
 			TAuditStorageServiceName,
@@ -310,7 +290,6 @@ export class EndpointFactory<
 			defaultAuthorizeFn: this.defaultAuthorizeFn,
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: this.defaultSessionExtractor,
-			defaultEventPublisher: this.defaultEventPublisher,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -346,8 +325,6 @@ export class EndpointFactory<
 		TBasePath,
 		TLogger,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -377,8 +354,6 @@ export class EndpointFactory<
 			TBasePath,
 			TLogger,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			TAuditStorage,
 			TAuditStorageServiceName,
@@ -394,7 +369,6 @@ export class EndpointFactory<
 			defaultAuthorizeFn: this.defaultAuthorizeFn,
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: this.defaultSessionExtractor,
-			defaultEventPublisher: this.defaultEventPublisher,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName:
 				name === 'none' ? undefined : (name as TAuthorizers[number]),
@@ -415,8 +389,6 @@ export class EndpointFactory<
 		JoinPaths<TBasePath, TPath>,
 		TLogger,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -432,8 +404,6 @@ export class EndpointFactory<
 			JoinPaths<TBasePath, TPath>,
 			TLogger,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			TAuditStorage,
 			TAuditStorageServiceName,
@@ -449,7 +419,6 @@ export class EndpointFactory<
 			defaultAuthorizeFn: this.defaultAuthorizeFn,
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: this.defaultSessionExtractor,
-			defaultEventPublisher: this.defaultEventPublisher,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -469,8 +438,6 @@ export class EndpointFactory<
 		TBasePath,
 		TLogger,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -485,8 +452,6 @@ export class EndpointFactory<
 			TBasePath,
 			TLogger,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			TAuditStorage,
 			TAuditStorageServiceName,
@@ -502,7 +467,6 @@ export class EndpointFactory<
 			defaultAuthorizeFn: fn,
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: this.defaultSessionExtractor,
-			defaultEventPublisher: this.defaultEventPublisher,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -533,8 +497,6 @@ export class EndpointFactory<
 		TBasePath,
 		TLogger,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -560,8 +522,6 @@ export class EndpointFactory<
 			TBasePath,
 			TLogger,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			TAuditStorage,
 			TAuditStorageServiceName,
@@ -580,8 +540,6 @@ export class EndpointFactory<
 		TBasePath,
 		TLogger,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -596,8 +554,6 @@ export class EndpointFactory<
 			TBasePath,
 			TLogger,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			TAuditStorage,
 			TAuditStorageServiceName,
@@ -619,7 +575,6 @@ export class EndpointFactory<
 			defaultSessionExtractor: this.defaultSessionExtractor as unknown as
 				| SessionFn<[...S, ...TServices], TLogger, TSession, TDatabase>
 				| undefined,
-			defaultEventPublisher: this.defaultEventPublisher,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -642,8 +597,6 @@ export class EndpointFactory<
 		TBasePath,
 		L,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -658,8 +611,6 @@ export class EndpointFactory<
 			TBasePath,
 			L,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			TAuditStorage,
 			TAuditStorageServiceName,
@@ -684,7 +635,6 @@ export class EndpointFactory<
 				L,
 				TSession
 			>,
-			defaultEventPublisher: this.defaultEventPublisher,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -703,63 +653,6 @@ export class EndpointFactory<
 		});
 	}
 
-	publisher<
-		T extends EventPublisher<any>,
-		TServiceName extends string = string,
-	>(
-		publisher: Service<TServiceName, T>,
-	): EndpointFactory<
-		TServices,
-		TBasePath,
-		TLogger,
-		TSession,
-		T,
-		TServiceName,
-		TAuthorizers,
-		TAuditStorage,
-		TAuditStorageServiceName,
-		TAuditAction,
-		TDatabase,
-		TDatabaseServiceName,
-		TSecuritySchemes,
-		TRlsConfig
-	> {
-		return new EndpointFactory<
-			TServices,
-			TBasePath,
-			TLogger,
-			TSession,
-			T,
-			TServiceName,
-			TAuthorizers,
-			TAuditStorage,
-			TAuditStorageServiceName,
-			TAuditAction,
-			TDatabase,
-			TDatabaseServiceName,
-			TSecuritySchemes,
-			TRlsConfig
-		>({
-			defaultServices: this.defaultServices,
-			// An edge, as \`.database()\` is: a publisher derived from a topic is
-			// what makes the app need that topic's connection string.
-			defaultConstructs: edgesWith(publisher, this.defaultConstructs),
-			basePath: this.basePath,
-			defaultAuthorizeFn: this.defaultAuthorizeFn,
-			defaultLogger: this.defaultLogger,
-			defaultSessionExtractor: this.defaultSessionExtractor,
-			defaultEventPublisher: publisher,
-			availableAuthorizers: this.availableAuthorizers,
-			defaultAuthorizerName: this.defaultAuthorizerName,
-			defaultAuditorStorage: this.defaultAuditorStorage,
-			defaultDatabaseService: this.defaultDatabaseService,
-			defaultActorExtractor: this.defaultActorExtractor,
-			customSecuritySchemes: this.customSecuritySchemes,
-			surface: this.surface,
-			defaultRlsConfig: this.defaultRlsConfig,
-		});
-	}
-
 	session<T>(
 		session: SessionFn<TServices, TLogger, T, TDatabase>,
 	): EndpointFactory<
@@ -767,8 +660,6 @@ export class EndpointFactory<
 		TBasePath,
 		TLogger,
 		T,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -783,8 +674,6 @@ export class EndpointFactory<
 			TBasePath,
 			TLogger,
 			T,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			TAuditStorage,
 			TAuditStorageServiceName,
@@ -804,7 +693,6 @@ export class EndpointFactory<
 			>,
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: session,
-			defaultEventPublisher: this.defaultEventPublisher,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -834,8 +722,6 @@ export class EndpointFactory<
 		TBasePath,
 		TLogger,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -852,8 +738,6 @@ export class EndpointFactory<
 			TBasePath,
 			TLogger,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			TAuditStorage,
 			TAuditStorageServiceName,
@@ -881,7 +765,6 @@ export class EndpointFactory<
 			defaultSessionExtractor: this.defaultSessionExtractor as unknown as
 				| SessionFn<TServices, TLogger, TSession, T>
 				| undefined,
-			defaultEventPublisher: this.defaultEventPublisher,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -904,8 +787,6 @@ export class EndpointFactory<
 		TBasePath,
 		TLogger,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		T,
 		TName,
@@ -920,8 +801,6 @@ export class EndpointFactory<
 			TBasePath,
 			TLogger,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			T,
 			TName,
@@ -937,7 +816,6 @@ export class EndpointFactory<
 			defaultAuthorizeFn: this.defaultAuthorizeFn,
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: this.defaultSessionExtractor,
-			defaultEventPublisher: this.defaultEventPublisher,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: storage,
@@ -965,8 +843,6 @@ export class EndpointFactory<
 		TBasePath,
 		TLogger,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -981,8 +857,6 @@ export class EndpointFactory<
 			TBasePath,
 			TLogger,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			TAuditStorage,
 			TAuditStorageServiceName,
@@ -998,7 +872,6 @@ export class EndpointFactory<
 			defaultAuthorizeFn: this.defaultAuthorizeFn,
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: this.defaultSessionExtractor,
-			defaultEventPublisher: this.defaultEventPublisher,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -1035,8 +908,6 @@ export class EndpointFactory<
 		TBasePath,
 		TLogger,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -1051,8 +922,6 @@ export class EndpointFactory<
 			TBasePath,
 			TLogger,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			TAuditStorage,
 			TAuditStorageServiceName,
@@ -1068,7 +937,6 @@ export class EndpointFactory<
 			defaultAuthorizeFn: this.defaultAuthorizeFn,
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: this.defaultSessionExtractor,
-			defaultEventPublisher: this.defaultEventPublisher,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -1091,8 +959,6 @@ export class EndpointFactory<
 		TLogger,
 		undefined,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -1109,8 +975,6 @@ export class EndpointFactory<
 			TLogger,
 			undefined,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			TAuditStorage,
 			TAuditStorageServiceName,
@@ -1144,10 +1008,6 @@ export class EndpointFactory<
 				TLogger,
 				TSession
 			>;
-		}
-
-		if (this.defaultEventPublisher) {
-			builder._setPublisher(this.defaultEventPublisher);
 		}
 
 		// Set available authorizers and default
@@ -1239,8 +1099,6 @@ export interface EndpointFactoryOptions<
 	TBasePath extends string = '',
 	TLogger extends Logger = Logger,
 	TSession = unknown,
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TAuthorizers extends readonly string[] = readonly string[],
 	TAuditStorage extends AuditStorage | undefined = undefined,
 	TAuditStorageServiceName extends string = string,
@@ -1267,8 +1125,6 @@ export interface EndpointFactoryOptions<
 	>;
 	defaultLogger?: TLogger;
 	defaultSessionExtractor?: SessionFn<TServices, TLogger, TSession, TDatabase>;
-	defaultEventPublisher?: Service<TEventPublisherServiceName, TEventPublisher>;
-	defaultEvents?: MappedEvent<TEventPublisher, undefined>[];
 	availableAuthorizers?: Authorizer[];
 	defaultAuthorizerName?: TAuthorizers[number];
 	defaultAuditorStorage?: Service<TAuditStorageServiceName, TAuditStorage>;

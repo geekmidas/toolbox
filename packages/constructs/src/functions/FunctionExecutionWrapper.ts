@@ -24,8 +24,6 @@ export abstract class FunctionExecutionWrapper<
 	TOutSchema extends StandardSchemaV1 | undefined = undefined,
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TAuditStorage extends AuditStorage | undefined = undefined,
 	TAuditStorageServiceName extends string = string,
 	TDatabase = undefined,
@@ -42,8 +40,6 @@ export abstract class FunctionExecutionWrapper<
 			TServices,
 			TLogger,
 			TOutSchema,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			TDatabase,
@@ -203,7 +199,6 @@ export abstract class FunctionExecutionWrapper<
 			this.serviceDiscovery,
 			this.fn.events,
 			response,
-			this.fn.publisherService,
 		);
 	}
 

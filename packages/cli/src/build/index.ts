@@ -441,7 +441,7 @@ async function buildForProvider(
 	endpoints: GeneratedConstruct<Endpoint<any, any, any, any, any, any>>[],
 	functions: GeneratedConstruct<Function<any, any, any, any>>[],
 	crons: GeneratedConstruct<Cron<any, any, any, any>>[],
-	subscribers: GeneratedConstruct<Subscriber<any, any, any, any, any, any>>[],
+	subscribers: GeneratedConstruct<Subscriber<any, any, any, any, any>>[],
 	queues: GeneratedConstruct<Queue<any, any, any, any>>[],
 	topics: GeneratedConstruct<Topic<any, any>>[],
 	enableOpenApi: boolean,

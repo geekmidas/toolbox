@@ -1,5 +1,4 @@
 import type { AuditStorage } from '@geekmidas/audit';
-import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import type {
@@ -9,23 +8,23 @@ import type {
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import get from 'lodash.get';
+import uniqBy from 'lodash.uniqby';
 import { ConstructType } from '../Construct';
 import { cloneWith } from '../clone';
 import {
 	type Consumable,
-	edgesWith,
 	idsOf,
 	isConsumable,
 	serviceOf,
 } from '../construct-interface';
+import { type EventFor, type TopicEvent, topicEvent } from '../publisher';
+import type { Topic } from '../topic/Topic';
 
 export abstract class BaseFunctionBuilder<
 	TInput extends ComposableStandardSchema,
 	OutSchema extends StandardSchemaV1 | undefined = undefined,
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TAuditStorage extends AuditStorage | undefined = undefined,
 	TAuditStorageServiceName extends string = string,
 	TDatabase = undefined,
@@ -64,8 +63,8 @@ export abstract class BaseFunctionBuilder<
 	 */
 	public _scheduleStore?: unknown;
 
-	protected _events: MappedEvent<TEventPublisher, OutSchema>[] = [];
-	protected _publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
+	/** What the built construct publishes, each event bound to its topic. */
+	public _events: TopicEvent[] = [];
 	protected _auditorStorage?: Service<TAuditStorageServiceName, TAuditStorage>;
 	protected _databaseService?: Service<TDatabaseServiceName, TDatabase>;
 
@@ -125,47 +124,26 @@ export abstract class BaseFunctionBuilder<
 
 	abstract input<T extends ComposableStandardSchema>(schema: T): any;
 
-	event<TEvent extends MappedEvent<TEventPublisher, OutSchema>>(
-		event: TEvent,
+	/**
+	 * A clone that publishes `event` to `topic` once the handler succeeds, and
+	 * has the topic as a dependency the way `.dependsOn([topic])` would: in
+	 * `services`, and an edge in the manifest. Each builder types it as its own
+	 * `event()`, since only it knows how its services widen.
+	 */
+	protected withEvent(
+		topic: Topic<any, any>,
+		event: EventFor<Topic<any, any>, any>,
 	): this {
-		// Replaced rather than pushed: a clone shares whatever array the field
-		// points at, so an in-place push would be seen by the base it came from.
-		return cloneWith(this, { _events: [...this._events, event] });
-	}
-
-	publisher<T extends EventPublisher<any>, TName extends string>(
-		publisher: Service<TName, T>,
-	): BaseFunctionBuilder<
-		TInput,
-		OutSchema,
-		TServices,
-		TLogger,
-		T,
-		TName,
-		TAuditStorage,
-		TAuditStorageServiceName,
-		TDatabase,
-		TDatabaseServiceName
-	> {
 		return cloneWith(this, {
-			// The topic a derived publisher stands for is an edge like `.dependsOn()`.
-			_constructs: edgesWith(publisher, this._constructs),
-			_publisher: publisher as unknown as Service<
-				TEventPublisherServiceName,
-				TEventPublisher
-			>,
-		}) as unknown as BaseFunctionBuilder<
-			TInput,
-			OutSchema,
-			TServices,
-			TLogger,
-			T,
-			TName,
-			TAuditStorage,
-			TAuditStorageServiceName,
-			TDatabase,
-			TDatabaseServiceName
-		>;
+			// Replaced rather than pushed: a clone shares whatever array the field
+			// points at, so an in-place push would be seen by the base it came from.
+			_events: [...this._events, topicEvent(topic, event)],
+			_services: uniqBy(
+				[...this._services, topic.service],
+				(s: Service) => s.serviceName,
+			) as unknown as TServices,
+			_constructs: idsOf([topic as unknown as Consumable], this._constructs),
+		});
 	}
 
 	auditor<T extends AuditStorage, TName extends string>(
@@ -175,8 +153,6 @@ export abstract class BaseFunctionBuilder<
 		OutSchema,
 		TServices,
 		TLogger,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		T,
 		TName,
 		TDatabase,
@@ -192,8 +168,6 @@ export abstract class BaseFunctionBuilder<
 			OutSchema,
 			TServices,
 			TLogger,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			T,
 			TName,
 			TDatabase,
@@ -212,8 +186,6 @@ export abstract class BaseFunctionBuilder<
 		OutSchema,
 		TServices,
 		TLogger,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuditStorage,
 		TAuditStorageServiceName,
 		T,
@@ -235,8 +207,6 @@ export abstract class BaseFunctionBuilder<
 			OutSchema,
 			TServices,
 			TLogger,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			T,

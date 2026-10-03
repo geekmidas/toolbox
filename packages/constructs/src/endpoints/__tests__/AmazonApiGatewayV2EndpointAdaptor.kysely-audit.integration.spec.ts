@@ -169,7 +169,6 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits,
 			});
@@ -247,7 +246,6 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits,
 			});
@@ -328,7 +326,6 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits: [],
 			});
@@ -413,7 +410,6 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits: [],
 			});
@@ -508,7 +504,6 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits: [],
 			});
@@ -607,7 +602,6 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits,
 			});
@@ -685,7 +679,6 @@ describe('AmazonApiGatewayV2Endpoint Kysely Audit Integration', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits,
 				actorExtractor: async ({ header }) => {

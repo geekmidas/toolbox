@@ -4,9 +4,9 @@ import {
 	type PublishableMessage,
 	Publisher,
 } from '@geekmidas/events';
-import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
+	type ConstructName,
 	canonicalId,
 	type Declaration,
 	provideKey,
@@ -16,7 +16,6 @@ import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Construct, ConstructType } from '../Construct';
-import { derivedFrom } from '../construct-interface';
 
 /** A topic's event contract — a map of event type → payload schema. */
 export type TopicEvents = Record<string, StandardSchemaV1>;
@@ -35,12 +34,20 @@ export type TopicMessage<TEvents extends TopicEvents> = {
 /**
  * A topic — pub/sub fan-out. Unlike a `Queue` (point-to-point, one consumer), a
  * topic is a *resource* owned by no single handler: it declares the event
- * contract, derives a typed producer (`topic.publisher`), and any number of
- * subscribers (`s.topic(topic)`) bind to it. `gkm build` discovers it into the
- * manifest's `topics` field; infra provisions an SNS topic.
+ * contract, and any number of subscribers (`worker.topic(topic)`) bind to it.
+ * `gkm build` discovers it into the manifest's `topics` field; infra provisions
+ * an SNS topic.
  *
- * This replaces hand-writing a publisher `Service`: the publisher is *derived*
- * from the declared event contract, the same way `Queue` derives its publisher.
+ * A construct publishes with `.event(topic, { type, payload })`, repeatable
+ * across topics, each event going through its own topic's publisher. That also
+ * puts `services.<topic>` in the handler, as `.dependsOn([topic])` does, for an
+ * event the handler decides on itself.
+ *
+ * ```ts
+ * export const users = new Topic('Users', {
+ *   events: { 'user.created': z.object({ userId: z.string() }) },
+ * });
+ * ```
  */
 export class Topic<
 	TName extends string = string,
@@ -64,26 +71,57 @@ export class Topic<
 	 */
 	readonly id: string;
 
+	/** The name it was declared with — what the broker routes on. */
+	readonly name: TName;
+
 	/**
-	 * The producer's env key, read by both {@link declare} and
-	 * {@link publisher} so the two cannot drift.
+	 * The event contract — a map of event type → payload schema. Named
+	 * `eventSchemas` (not `events`) to avoid clashing with `Construct.events`,
+	 * which is the array of `MappedEvent`s a construct *publishes*.
 	 */
+	readonly eventSchemas: TEvents;
+
+	/**
+	 * The topic as a dependency — what `.dependsOn([users])` and
+	 * `.event(users, …)` dissolve into, reachable as `services.users`.
+	 *
+	 * The producer, because publishing is the only thing depending on a topic
+	 * can mean: a subscriber binds to the topic instead, and is never handed
+	 * this. It reads `<NAME>_PUBLISHER_CONNECTION_STRING` and picks the
+	 * transport from its protocol — `pgboss://` locally, `sns://` deployed.
+	 *
+	 * A field assigned once, not a getter: services are cached by object
+	 * identity, and a fresh literal on every access never hit that cache.
+	 */
+	readonly service: Service<
+		Uncapitalize<TName>,
+		EventPublisher<TopicMessage<TEvents>>
+	>;
+
+	/** The producer's env key, read by both {@link declare} and the service. */
 	private readonly connectionKey: string;
 
-	constructor(
-		public readonly name: TName,
-		/**
-		 * The event contract — a map of event type → payload schema. Named
-		 * `eventSchemas` (not `events`) to avoid clashing with `Construct.events`,
-		 * which is the array of `MappedEvent`s a construct *publishes*.
-		 */
-		public readonly eventSchemas: TEvents,
-		logger: Logger = DEFAULT_LOGGER,
-	) {
-		super(ConstructType.Topic, logger, [], []);
+	constructor(name: ConstructName<TName>, options: TopicOptions<TEvents>) {
+		super(ConstructType.Topic, DEFAULT_LOGGER, [], []);
 
-		this.id = canonicalId(name);
+		this.name = name as TName;
+		this.id = canonicalId(name as string);
+		this.eventSchemas = options.events;
 		this.connectionKey = provideKey(this.id, 'publisherConnectionString');
+
+		const envVar = this.connectionKey;
+		this.service = {
+			serviceName: serviceKey(this.id) as Uncapitalize<TName>,
+			async register({ envParser }) {
+				const { connectionString } = envParser
+					.create((get) => ({ connectionString: get(envVar).string() }))
+					.parse();
+
+				return Publisher.fromConnectionString<TopicMessage<TEvents>>(
+					connectionString as EventPublisherConnectionString,
+				);
+			},
+		};
 	}
 
 	/**
@@ -115,61 +153,9 @@ export class Topic<
 	get eventTypes(): (keyof TEvents & string)[] {
 		return Object.keys(this.eventSchemas) as (keyof TEvents & string)[];
 	}
+}
 
-	/**
-	 * The producer side — a `Service` exposing an `EventPublisher` typed to the
-	 * union of this topic's events. Inject via `.publisher(topic.publisher)` (for
-	 * declarative `.event(...)`) or `.services([topic.publisher])` (to publish
-	 * imperatively). Reads `<NAME>_PUBLISHER_CONNECTION_STRING` and selects the
-	 * transport from the URL protocol — `pgboss://` locally, `sns://` deployed.
-	 *
-	 * Because it's a `Service`, the connection-string requirement is sniffed into
-	 * the manifest of whatever construct injects it (least-privilege linking).
-	 */
-	/**
-	 * The topic as a dependency — what `.dependsOn([users])` dissolves into,
-	 * reachable as `services.users`.
-	 *
-	 * It is the producer, because publishing is the only thing depending on a
-	 * topic can mean: a subscriber *binds* with `s.topic(…)` instead, and is
-	 * deliberately never handed this. {@link publisher} is the same service
-	 * under its older `<name>Publisher` key.
-	 */
-	get service(): Service<
-		Uncapitalize<TName>,
-		EventPublisher<TopicMessage<TEvents>>
-	> {
-		const { register } = this.publisher;
-
-		return {
-			serviceName: serviceKey(this.id) as Uncapitalize<TName>,
-			register,
-		};
-	}
-
-	get publisher(): Service<
-		`${TName}Publisher`,
-		EventPublisher<TopicMessage<TEvents>>
-	> {
-		const envVar = this.connectionKey;
-		// Marked with this construct, so whatever it is injected into records an
-		// edge to it — and is given this construct's connection string.
-		return derivedFrom(
-			{
-				serviceName: `${this.name}Publisher`,
-				async register({ envParser }) {
-					const { connectionString } = envParser
-						.create((get) => ({
-							connectionString: get(envVar).string(),
-						}))
-						.parse();
-
-					return Publisher.fromConnectionString<TopicMessage<TEvents>>(
-						connectionString as EventPublisherConnectionString,
-					);
-				},
-			},
-			this,
-		);
-	}
+export interface TopicOptions<TEvents extends TopicEvents> {
+	/** Each event this topic carries — its type, and its payload's schema. */
+	events: TEvents;
 }

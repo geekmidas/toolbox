@@ -113,22 +113,24 @@ export const config = envParser
 			// broker URL by hand.
 			{
 				path: 'src/constructs/topics.ts',
-				content: `import { t } from '@geekmidas/constructs/topic';
+				content: `import { Topic } from '@geekmidas/constructs/topic';
 import { z } from 'zod';
 
 /**
  * The \`users\` topic: pub/sub fan-out, any number of subscribers.
  *
- * The event map is the contract. It types \`users.publisher\` and every
- * subscriber that binds with \`.topic(users)\`, so an event cannot be published
- * in one shape and read in another.
+ * The event map is the contract. It types every \`.event(users, …)\` that
+ * publishes to it and every subscriber that binds with \`worker.topic(users)\`,
+ * so an event cannot be published in one shape and read in another.
  */
-export const users = t.topic('users').events({
-  'user.created': z.object({ userId: z.string(), email: z.email() }),
-  'user.updated': z.object({
-    userId: z.string(),
-    changes: z.record(z.string(), z.unknown()),
-  }),
+export const users = new Topic('users', {
+  events: {
+    'user.created': z.object({ userId: z.string(), email: z.email() }),
+    'user.updated': z.object({
+      userId: z.string(),
+      changes: z.record(z.string(), z.unknown()),
+    }),
+  },
 });
 `,
 			},

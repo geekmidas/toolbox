@@ -91,7 +91,6 @@ describe('HonoEndpoint Audits', () => {
 			authorize: undefined,
 			description: undefined,
 			events: [],
-			publisherService: undefined,
 			auditorStorageService: auditStorageService,
 			audits,
 		});
@@ -172,7 +171,6 @@ describe('HonoEndpoint Audits', () => {
 			authorize: undefined,
 			description: undefined,
 			events: [],
-			publisherService: undefined,
 			auditorStorageService: auditStorageService,
 			audits,
 		});
@@ -245,7 +243,6 @@ describe('HonoEndpoint Audits', () => {
 			authorize: undefined,
 			description: undefined,
 			events: [],
-			publisherService: undefined,
 			auditorStorageService: auditStorageService,
 			audits,
 		});
@@ -309,7 +306,6 @@ describe('HonoEndpoint Audits', () => {
 			authorize: undefined,
 			description: undefined,
 			events: [],
-			publisherService: undefined,
 			auditorStorageService: auditStorageService,
 			actorExtractor,
 			audits,
@@ -369,7 +365,6 @@ describe('HonoEndpoint Audits', () => {
 			authorize: undefined,
 			description: undefined,
 			events: [],
-			publisherService: undefined,
 			auditorStorageService: undefined, // No auditor storage
 			audits,
 		});
@@ -425,7 +420,6 @@ describe('HonoEndpoint Audits', () => {
 			authorize: undefined,
 			description: undefined,
 			events: [],
-			publisherService: undefined,
 			auditorStorageService: auditStorageService,
 			audits: [], // No audits
 		});
@@ -484,7 +478,6 @@ describe('HonoEndpoint Audits', () => {
 			authorize: undefined,
 			description: undefined,
 			events: [],
-			publisherService: undefined,
 			auditorStorageService: auditStorageService,
 			audits,
 		});
@@ -544,7 +537,6 @@ describe('HonoEndpoint Audits', () => {
 			authorize: undefined,
 			description: undefined,
 			events: [],
-			publisherService: undefined,
 			auditorStorageService: auditStorageService,
 			audits,
 		});
@@ -603,7 +595,6 @@ describe('HonoEndpoint Audits', () => {
 			authorize: undefined,
 			description: undefined,
 			events: [],
-			publisherService: undefined,
 			auditorStorageService: auditStorageService,
 			audits,
 		});

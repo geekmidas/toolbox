@@ -44,7 +44,6 @@ export class AWSLambdaSubscriber<
 	TLogger extends Logger = Logger,
 	OutSchema extends StandardSchemaV1 | undefined = undefined,
 	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TSubscribedEvents extends any[] = [],
 > {
 	private _logger!: TLogger;
@@ -57,7 +56,6 @@ export class AWSLambdaSubscriber<
 			TLogger,
 			OutSchema,
 			TEventPublisher,
-			TEventPublisherServiceName,
 			TSubscribedEvents
 		>,
 	) {

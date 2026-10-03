@@ -35,10 +35,12 @@ pnpm add @geekmidas/constructs
 |--------|-------------|
 | `/` | Core types and utilities |
 | `/endpoints` | `EndpointFactory` (what `api.get()` and `api.database()` return) and types |
-| `/functions` | Cloud function builder (`f`) |
-| `/crons` | Scheduled task builder (`c`) and AWS adaptor (`AWSScheduledFunction`) |
-| `/subscribers` | Event subscriber builder (`s`) — topic fan-out |
-| `/queue` | Queue worker builder (`q`) — point-to-point queue + single consumer |
+| `/worker` | `Worker` — the process with no port; builds crons, subscribers, queues and functions |
+| `/topic` | `Topic` — a declared event contract; its publisher is its service |
+| `/functions` | The `Function` construct (built with `worker.input(…)` / `worker.dependsOn(…)`) |
+| `/crons` | The `Cron` construct (built with `worker.cron(…)`) and `AWSScheduledFunction` |
+| `/subscribers` | The `Subscriber` construct (built with `worker.topic(…)`) — topic fan-out |
+| `/queue` | The `Queue` construct (built with `worker.queue(…)`) — one queue, one consumer |
 | `/types` | Type definitions |
 | `/hono` | Hono framework adapter (`HonoEndpoint`) |
 | `/aws` | AWS Lambda adaptors (API Gateway v1/v2, `AWSLambdaFunction`, `AWSLambdaSubscriber`, `AWSLambdaQueue`, `AWSScheduledFunction`) |
@@ -111,8 +113,8 @@ drift.
 | `Credential` | `/credential` | the parsed, validated value — no `await` at the call site |
 | `ExternalApi` | `/external-api` | whatever its `client` builds — the real API deployed, its fake locally |
 | `Email` | `/email` | an `EmailClient` typed by your templates |
-| `Topic` | `/topic` | `topic.publisher` — a typed `EventPublisher` |
-| `Queue` | `/queue` | `send()` |
+| `Topic` | `/topic` | an `EventPublisher` typed to its events |
+| `Queue` | `worker.queue(…)` | an `EventPublisher` typed to its `message` |
 | `RestApi` | `/rest-api` | — a surface; it owns a URL, not a client |
 | `StaticSite` | `/site` | — a surface |
 | `BetterAuth` | `/auth` | the auth server |
@@ -278,7 +280,7 @@ is the same reason the Postgres driver does not create it lazily.
 RLS context:
 
 ```typescript
-export const router = e.logger(logger).database(database);
+export const router = api.database(database);
 
 export const listOrders = router
   .get('/orders')
@@ -365,48 +367,26 @@ throw createError.internalServerError('Something went wrong');
 
 ### Services — the escape hatch
 
-A `Service` is still how you reach something no construct describes: a
-third-party SDK, an internal client, anything you assemble yourself. Prefer a
-construct where one exists — a hand-written database service is the case the
-`KyselyDatabase` construct replaces, and it is the one the build cannot see
-into, since it has to *run* the service against a sniffer to learn which env
-keys it touches.
-
-```typescript
-import type { Service } from '@geekmidas/constructs';
-import type { EnvironmentParser } from '@geekmidas/envkit';
-
-const databaseService = {
-  serviceName: 'database' as const,
-  async register(envParser: EnvironmentParser<{}>) {
-    const config = envParser.create((get) => ({
-      url: get('DATABASE_URL').string()
-    })).parse();
-
-    const db = await createConnection(config.url);
-    return db;
-  }
-} satisfies Service<'database', Database>;
-
-// Use in endpoint
-const endpoint = api
-  .get('/data')
-  .services([databaseService])
-  .handle(async ({ services }) => {
-    const db = services.database;
-    return await db.query('...');
-  });
-```
-
-::: warning
-`.services()` with a hand-written resource service is deprecated — it still
-works and will keep working through this major. The database above is one line
-as a construct:
+Reach for a construct first. A third-party API is an `ExternalApi`, a key
+somebody issued you is a `Credential`, and a database is a `KyselyDatabase` —
+each is one declaration, and each goes in `.dependsOn([...])`:
 
 ```typescript
 export const database = new KyselyDatabase<Database, 'Orders'>('Orders');
+
+const endpoint = api
+  .get('/data')
+  .dependsOn([database])
+  .handle(async ({ services }) =>
+    services.database.selectFrom('orders').selectAll().execute(),
+  );
 ```
-:::
+
+A hand-written `Service` (`{ serviceName, register }`) is what the build cannot
+see into: it has to *run* the service against a sniffer to learn which env keys
+it touches, and it records no edge, so a deploy target cannot grant it
+anything. The builders still accept one through `.services()` for code that has
+not moved yet; new code should not need it.
 
 ## Advanced Usage
 
@@ -442,16 +422,16 @@ Combine cookie reading with session management by calling `.session()` on a
 branch — here the app's `router` (`api.database(database)`):
 
 ```typescript
-const sessionRouter = router
-  .services([AuthService])
-  .session(async ({ cookie, services }) => {
-    const sessionToken = cookie('session');
-    if (!sessionToken) {
-      throw new ForbiddenError('No active session');
-    }
+// The surface was declared with `.auth(auth)`; `auth` here is that construct,
+// verifying this request's headers — the session cookie included.
+const sessionRouter = router.session(async ({ auth }) => {
+  const session = await auth.getSession();
+  if (!session) {
+    throw new ForbiddenError('No active session');
+  }
 
-    return await services.auth.verifySession(sessionToken);
-  });
+  return session;
+});
 
 // Endpoints created from sessionRouter automatically have session available
 const profileEndpoint = sessionRouter
@@ -658,26 +638,23 @@ const uploadEndpoint = api
 
 ### Authorization and Sessions
 
-`.session()` is called on the **factory** to create a session-enabled router. The session callback receives `header`, `cookie`, `services`, and `db` (when a database is configured). Throw an error to reject unauthorized requests.
+`.session()` is called on the **factory** to create a session-enabled router. The session callback receives `header`, `cookie`, `services`, `auth` (the construct the surface named with `.auth(…)`), and `db` (when a database is configured). Throw an error to reject unauthorized requests.
 
 ```typescript
 import { api } from '../constructs/api';
 import { ForbiddenError } from '@geekmidas/errors';
 
-// Branch from the surface with the database, then add services
-const r = api
-  .database(DatabaseService)
-  .services([AuthService]);
-
-// Create a session-enabled router
-const sessionRouter = r
-  .session(async ({ header, services, db, cookie }) => {
-    const token = cookie('session_token') || header('authorization');
-    if (!token) {
+// Branch from the surface with the database, then add a session.
+// `auth` is the construct the surface named with `.auth(auth)`.
+const sessionRouter = api
+  .database(database)
+  .session(async ({ auth, db }) => {
+    const session = await auth.getSession();
+    if (!session) {
       throw new ForbiddenError('No active session');
     }
 
-    return await services.auth.verifyToken(token);
+    return session;
   });
 
 // Endpoints created from sessionRouter have session in their context
@@ -917,7 +894,6 @@ import { api } from '../constructs/api';
 
 const router = api
   .database(database)
-  .services([auditStorageService])
   .session(extractSession)
   .authorizer('jwt')
   .auditor(auditStorageService)
@@ -956,7 +932,6 @@ When the audit storage uses the same database as the endpoint (e.g., both use th
 ```typescript
 const router = api
   .database(database)
-  .services([auditStorageService])
   .auditor(auditStorageService)
   .actor(({ session }) => ({ id: session.sub, type: 'user' }));
 
@@ -1135,175 +1110,146 @@ const endpoint = api
 
 ### Event Publishing
 
-Endpoints can declare events that are published automatically after the handler returns:
+Events go to a **topic**, and a topic is a construct: it declares the event
+contract, and its publisher is its `service`.
 
 ```typescript
-import { api } from '../constructs/api';
+// constructs/topics.ts
+import { Topic } from '@geekmidas/constructs/topic';
 
-const createOrder = api
-  .post('/orders')
-  .dependsOn([database])
-  .publisher(orders.publisher)
-  .body(orderSchema)
-  .output(orderResponseSchema)
-  .events([
-    {
-      type: 'order.created',
-      payload: (response) => ({
-        orderId: response.id,
-        total: response.total,
-      }),
-    },
-  ])
-  .handle(async ({ body, services }) => {
-    return await services.database
-      .insertInto('orders')
-      .values(body)
-      .returningAll()
-      .executeTakeFirstOrThrow();
-  });
+export const orders = new Topic('Orders', {
+  events: {
+    'order.created': z.object({ orderId: z.string(), total: z.number() }),
+    'order.cancelled': z.object({ orderId: z.string() }),
+  },
+});
 ```
 
-You can also publish events manually inside the handler using the `publish` function:
+An endpoint publishes with `.event(topic, …)`. The event is sent once the
+handler has succeeded, with a payload built from what it returned:
 
 ```typescript
-const endpoint = api
+import { orders } from '../constructs/topics';
+import { router } from './router';
+
+export const createOrder = router
+  .post('/orders')
+  .body(orderSchema)
+  .output(orderResponseSchema)
+  .event(orders, {
+    type: 'order.created',
+    payload: (order) => ({ orderId: order.id, total: order.total }),
+  })
+  .handle(async ({ body, db }) =>
+    db.insertInto('orders').values(body).returningAll().executeTakeFirstOrThrow(),
+  );
+```
+
+`type` is checked against the topic's events and `payload` against that event's
+schema, so an event cannot be published in one shape and read in another. Pass
+`when: (output) => boolean` to publish only for some outputs. A failed publish
+is logged, never thrown: the handler has already succeeded, and an event that
+could not be delivered does not turn its response into an error.
+
+**Several topics.** `.event()` is repeatable, and each call names its own
+topic. Two calls to two topics publish to each, through each topic's own
+publisher — there is no single shared one to configure:
+
+```typescript
+export const cancelOrder = router
+  .post('/orders/:id/cancel')
+  .output(orderResponseSchema)
+  .event(orders, {
+    type: 'order.cancelled',
+    payload: (order) => ({ orderId: order.id }),
+  })
+  .event(audit, {
+    type: 'audit.recorded',
+    payload: (order) => ({ subject: `order:${order.id}` }),
+  })
+  .handle(async ({ params, db }) => { /* … */ });
+```
+
+**Publishing from the handler.** `.event(orders, …)` also puts the topic's
+publisher in the handler as `services.orders` — exactly what
+`.dependsOn([orders])` does — for an event the handler decides on itself:
+
+```typescript
+export const createTransfer = router
   .post('/transfers')
-  .publisher(eventPublisherService)
-  .handle(async ({ body, publish }) => {
+  .dependsOn([transfers])
+  .handle(async ({ body, services }) => {
     const result = await processTransfer(body);
 
-    await publish('transfer.completed', {
-      transferId: result.id,
-      amount: result.amount,
-    });
+    if (result.flagged) {
+      await services.transfers.publish([
+        { type: 'transfer.flagged', payload: { transferId: result.id } },
+      ]);
+    }
 
     return result;
   });
 ```
 
-The `.publisher()` method accepts an event publisher service that implements the `@geekmidas/events` publisher interface. See [Defining a Publisher Service](#defining-a-publisher-service) below for how to create one.
+The service key is the topic's id, uncapitalised: `Orders` is `services.orders`.
+Depending on a topic is what gives a handler `ORDERS_PUBLISHER_CONNECTION_STRING`;
+the publisher reads it and picks its transport from the protocol — `pgboss://`
+locally, `sns://` deployed.
 
-### Defining a Publisher Service
-
-The publisher service follows the standard service pattern. It wraps a `Publisher` from `@geekmidas/events` and uses `EVENT_PUBLISHER_CONNECTION_STRING` to connect to the correct backend:
-
-```typescript
-import type { Service } from '@geekmidas/services';
-import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
-import { Publisher } from '@geekmidas/events';
-
-// 1. Define your event types
-type AppEvents =
-  | PublishableMessage<'user.created', { userId: string; email: string }>
-  | PublishableMessage<'order.placed', { orderId: string; total: number }>
-  | PublishableMessage<'notification.sent', { userId: string; type: string }>;
-
-// 2. Create the publisher service
-const eventPublisherService = {
-  serviceName: 'eventPublisher' as const,
-  async register(envParser) {
-    const config = envParser.create((get) => ({
-      connectionString: get('EVENT_PUBLISHER_CONNECTION_STRING').string(),
-    })).parse();
-
-    return Publisher.fromConnectionString<AppEvents>(config.connectionString);
-  },
-} satisfies Service<'eventPublisher', EventPublisher<AppEvents>>;
-
-// 3. Use with endpoints
-const createUser = api
-  .post('/users')
-  .publisher(eventPublisherService)
-  .output(userSchema)
-  .event({
-    type: 'user.created',
-    payload: (response) => ({ userId: response.id, email: response.email }),
-  })
-  .handle(async ({ body }) => {
-    return await createUser(body);
-  });
-```
-
-The connection string protocol determines which backend is used (`pgboss://`, `rabbitmq://`, `sns://`, `sqs://`, `basic://`). When using `services.events` in your workspace config, the CLI auto-generates this env var.
-
-::: tip A topic derives its publisher
-Writing the service above by hand is the case `Topic` removes. Declare the event
-contract and the producer comes off it, typed to the union of that topic's
-events:
-
-```typescript
-import { Topic } from '@geekmidas/constructs/topic';
-
-export const users = new Topic('users', {
-  'user.created': z.object({ userId: z.string(), email: z.email() }),
-});
-
-const createUser = api
-  .post('/users')
-  .publisher(users.publisher)   // derived, not hand-written
-  .event({ type: 'user.created', payload: (r) => ({ userId: r.id, email: r.email }) })
-  .handle(async ({ body }) => createUser(body));
-```
-
-A subscriber binds to the topic instead of depending on it — `s.topic(users)` —
-and is granted nothing on it, because at runtime it only reads its own queue.
-:::
-
-### Factory-Level Publisher
-
-Set a default publisher on the factory so all endpoints inherit it:
-
-```typescript
-const router = api
-  .database(database)
-  .publisher(users.publisher);
-
-// All endpoints can use .event() without specifying .publisher()
-const createOrder = router
-  .post('/orders')
-  .event({
-    type: 'order.placed',
-    payload: (response) => ({ orderId: response.id, total: response.total }),
-  })
-  .handle(async ({ body }) => { /* ... */ });
-```
+Functions and crons take `.event(topic, …)` the same way. Publishing is never
+granted to a branch or a surface: only the routes that name the topic can
+publish to it.
 
 ## Event Subscribers
 
-The `s` builder creates event subscribers that react to published events. Subscribers receive batches of events and can use services, logging, and even publish follow-up events.
+A subscriber is built from the `Worker` that runs it, and **binds** to a topic
+rather than depending on it. It is handed the topic's event types and no
+connection string it could publish with.
+
+```typescript
+// constructs/worker.ts
+import { Worker } from '@geekmidas/constructs/worker';
+
+export const worker = new Worker('Jobs', { logger }).database(database);
+```
 
 ### Basic Subscriber
 
 ```typescript
-import { s } from '@geekmidas/constructs/subscribers';
+import { users } from '../constructs/topics';
+import { worker } from '../constructs/worker';
 
-export const onUserCreated = s
-  .subscribe('user.created')
+export const onUserCreated = worker
+  .topic(users)
+  .subscribe(['user.created'])
   .handle(async ({ events, logger }) => {
     for (const event of events) {
       logger.info({ userId: event.payload.userId }, 'Processing new user');
-      await sendWelcomeEmail(event.payload.email);
     }
   });
 ```
 
+`.topic()` comes first because what comes first decides what is built: a topic
+makes a subscriber, where `.dependsOn()` first would make a plain function.
+
 ### With Dependencies
 
 ```typescript
-export const onOrderPlaced = s
+export const onOrderCreated = worker
+  .topic(orders)
   .dependsOn([database, email])
-  .subscribe('order.placed')
+  .subscribe(['order.created'])
   .handle(async ({ events, services, logger }) => {
     for (const event of events) {
-      const order = await services.orders
+      const order = await services.database
         .selectFrom('orders')
         .where('id', '=', event.payload.orderId)
         .selectAll()
         .executeTakeFirstOrThrow();
 
-      await services.email.sendTemplate('order-confirmation', {
+      await services.email.sendTemplate('orderConfirmation', {
         to: order.customerEmail,
+        subject: 'Your order',
         props: { orderId: order.id, total: order.total },
       });
 
@@ -1315,39 +1261,38 @@ export const onOrderPlaced = s
 ### Subscribing to Multiple Events
 
 ```typescript
-export const onUserEvents = s
+export const onUserEvents = worker
+  .topic(users)
   .subscribe(['user.created', 'user.updated'])
-  .handle(async ({ events, logger }) => {
+  .handle(async ({ events }) => {
     for (const event of events) {
       if (event.type === 'user.created') {
-        // TypeScript narrows payload to { userId: string; email: string }
+        // TypeScript narrows payload to the topic's 'user.created' schema
         await indexNewUser(event.payload.userId);
       } else {
-        // event.type === 'user.updated'
         await reindexUser(event.payload.userId);
       }
     }
   });
 ```
 
-### With Publisher (Chaining Events)
+### Publishing Follow-up Events
 
-Subscribers can publish follow-up events using a publisher service:
+A subscriber that emits follow-ups depends on the topic it emits to — the only
+reason it would need a publisher at all:
 
 ```typescript
-export const onUserCreated = s
-  .publisher(eventPublisherService)
-  .subscribe('user.created')
-  .handle(async ({ events, publish }) => {
-    for (const event of events) {
-      await createUserProfile(event.payload.userId);
-
-      // Publish a follow-up event
-      await publish('notification.sent', {
-        userId: event.payload.userId,
-        type: 'welcome',
-      });
-    }
+export const onUserCreated = worker
+  .topic(users)
+  .dependsOn([notifications])
+  .subscribe(['user.created'])
+  .handle(async ({ events, services }) => {
+    await services.notifications.publish(
+      events.map((event) => ({
+        type: 'notification.sent',
+        payload: { userId: event.payload.userId, kind: 'welcome' },
+      })),
+    );
   });
 ```
 
@@ -1355,34 +1300,35 @@ export const onUserCreated = s
 
 | Method | Description |
 |--------|-------------|
-| `.subscribe(events)` | Event type(s) to listen for (string or string array) |
-| `.services(services)` | Inject services into the handler context |
-| `.publisher(service)` | Set publisher service (provides `publish` in context) |
+| `worker.topic(topic)` | The topic to bind to — types the events and records the binding |
+| `.subscribe(events)` | Event type(s) to listen for (string or array) |
+| `.dependsOn([...])` | Constructs whose clients the handler gets in `services` |
 | `.output(schema)` | Validate the return value with a StandardSchema |
-| `.logger(logger)` | Set a custom logger instance |
 | `.timeout(ms)` | Set execution timeout in milliseconds |
-| `.handle(fn)` | Define the handler function and build the `Subscriber` instance |
+| `.handle(fn)` | Define the handler and build the `Subscriber` |
+
+The logger comes from the worker.
 
 ### Handler Context
 
-The handler receives:
-
 ```typescript
 {
-  events: Array<{ type: string; payload: T }>;  // Batch of events (type-safe)
-  services: ServiceRecord;                       // Registered services
-  logger: Logger;                                // Logger instance
-  publish: (type, payload) => Promise<void>;     // If .publisher() is set
+  events: Array<{ type; payload }>;  // A batch, typed by the topic's contract
+  services: ServiceRecord;           // From .dependsOn([...])
+  logger: Logger;                    // The worker's
 }
 ```
 
 ### How Subscribers Run
 
-**Development (`gkm dev`):**
-The CLI scans your routes for exported `Subscriber` instances, generates polling code, and starts listening on server startup. It uses `EVENT_SUBSCRIBER_CONNECTION_STRING` to connect. See [Events: Dev Server](/packages/events#dev-server) for details.
+**Development (`gkm dev`) and server builds:**
+Subscribers run in-process as pg-boss pollers beside the server, using
+`EVENT_SUBSCRIBER_CONNECTION_STRING`. See [Events: Dev Server](/packages/events#dev-server).
 
 **Production (AWS Lambda):**
-Each subscriber is compiled into a Lambda handler via `AWSLambdaSubscriber`. The handler parses SQS/SNS events, filters to subscribed types, and invokes the handler. Configure event source mappings in your IaC tool.
+Each subscriber is compiled into a Lambda handler via `AWSLambdaSubscriber`,
+which parses SQS/SNS records, filters to the subscribed types, and invokes the
+handler. The build records the binding on the topic's manifest entry.
 
 ```typescript
 import { AWSLambdaSubscriber } from '@geekmidas/constructs/aws';
@@ -1395,65 +1341,60 @@ const adaptor = new AWSLambdaSubscriber(envParser, onUserCreated);
 export const handler = adaptor.handler;
 ```
 
-**Production (Server):**
-When building with `gkm build --provider server`, subscribers are included in the generated server and poll using the configured connection string.
-
 ### Testing Subscribers
 
+A subscriber is tested by handing it events — delivery is the broker's job.
+In a `featureTest`, `subscriber()` runs it with the test's services:
+
 ```typescript
-import { TestSubscriberAdaptor } from '@geekmidas/constructs/testing';
-import { describe, it, expect } from 'vitest';
+import { it } from '#test';
 
-describe('onUserCreated subscriber', () => {
-  it('should send welcome email', async () => {
-    const adaptor = new TestSubscriberAdaptor(onUserCreated);
-
-    const result = await adaptor.invoke({
-      events: [
-        {
-          type: 'user.created',
-          payload: { userId: '123', email: 'test@example.com' },
-        },
-      ],
-    });
-
-    // Assert side effects (email sent, etc.)
+it('writes each user a notification', async ({ subscriber, db }) => {
+  await subscriber(onUserCreated).invoke({
+    events: [
+      {
+        type: 'user.created',
+        payload: { userId: '123', email: 'ada@example.com', name: 'Ada' },
+      },
+    ],
   });
+
+  // Assert on what the handler did — a row, a mail in the mailbox, …
 });
 ```
+
+`TestSubscriberAdaptor` from `@geekmidas/constructs/testing` does the same
+outside a feature test: `new TestSubscriberAdaptor(onUserCreated).invoke({ events })`.
 
 ### Project Configuration
 
-Register subscriber files in `gkm.config.ts` so the CLI can discover them:
+Subscribers are discovered by the one `constructs` glob in `gkm.config.ts`,
+like every other construct:
 
 ```typescript
-import { defineConfig } from '@geekmidas/cli/config';
-
-export default defineConfig({
-  stages: { local: 'dev', deployed: ['prod'] },
-  routes: './src/endpoints/**/*.ts',
-  subscribers: './src/subscribers/**/*.ts',
-  envParser: './src/config/env',
-  logger: './src/logger',
-});
+constructs: [
+  './constructs/**/*.ts',
+  './apps/*/{endpoints,queues,subscribers,crons,functions}/**/*.ts',
+],
 ```
-
-::: tip
-Subscribers can also be co-located with endpoints in the same route files. The CLI discovers all exported `Subscriber` instances regardless of file location.
-:::
 
 ## Queues
 
-A **queue** is point-to-point work distribution: a queue and its *single* consumer. Where a subscriber (`s`) is topic fan-out — many subscribers each filtering a stream by `subscribedEvents` — a queue (`q`) drains *every* message of its one typed `message` and hands it to exactly one handler. Reach for `q` for job/task processing (send an order to be fulfilled), and `s` for broadcasting domain events (notify everyone a user was created).
+A **queue** is point-to-point work: a queue and its *single* consumer, declared
+as one construct. Where a subscriber is topic fan-out — any number of them, each
+filtering a stream by event type — a queue drains *every* message of its one
+typed `message` and hands it to exactly one handler. Reach for a queue for jobs
+(send an order to be fulfilled), and a topic for domain events (tell everyone a
+user was created).
 
 ### Basic Queue
 
 ```typescript
-import { q } from '@geekmidas/constructs/queue';
+import { worker } from '../constructs/worker';
 import { z } from 'zod';
 
-export const ordersQueue = q
-  .queue('orders')
+export const orderJobs = worker
+  .queue('OrderJobs')
   .message(z.object({ orderId: z.string() }))
   .handle(async ({ messages, logger }) => {
     for (const { orderId } of messages) {
@@ -1462,130 +1403,137 @@ export const ordersQueue = q
   });
 ```
 
+One construct because a queue has exactly one consumer: nothing can attach a
+second, or forget to attach the first.
+
 ### With Dependencies
 
 `.dependsOn()` names constructs. The edge is what the manifest records, and what
-a deploy target reads to grant this worker exactly what it named:
+a deploy target reads to grant this consumer exactly what it named:
 
 ```typescript
-export const ordersQueue = q
-  .queue('orders')
+export const orderJobs = worker
+  .queue('OrderJobs')
   .dependsOn([database])
   .message(z.object({ orderId: z.string() }))
   .handle(async ({ messages, services }) => {
     for (const { orderId } of messages) {
-      await fulfil(services.orders, orderId);
+      await fulfil(services.database, orderId);
     }
   });
 ```
 
-### Sending to a Queue (the auto-publisher)
+### Sending to a Queue
 
-Every queue exposes a `publisher` — a ready-to-inject `Service` typed to the queue's `message`. Any endpoint, function, or other worker connects to the queue by dropping it into `.services([...])`:
+A producer sends to a queue by depending on it. The queue's `service` is its
+publisher, typed to its `message`:
 
 ```typescript
-import { api } from '../constructs/api';
-import { ordersQueue } from './queues/orders';
+import { orderJobs } from '../queues/orderJobs';
 
-export const createOrder = api
+export const createOrder = router
   .post('/orders')
   .body(z.object({ sku: z.string() }))
-  .services([ordersQueue.publisher]) // producer side
+  .dependsOn([orderJobs])
   .handle(async ({ body, services }) => {
     const orderId = crypto.randomUUID();
-    // serviceName is `<name>Publisher` → here `ordersPublisher`
-    await services.ordersPublisher.publish([
-      { type: 'orders', payload: { orderId } },
+    await services.orderJobs.publish([
+      { type: 'OrderJobs', payload: { orderId } },
     ]);
     return { orderId };
   });
 ```
 
-The publisher reads `ORDERS_PUBLISHER_CONNECTION_STRING` and selects its transport from the URL protocol — `pgboss://` locally, `sqs://` when deployed — so the same code publishes to Postgres in dev and SQS in prod. Because it's a `Service`, the connection-string requirement is sniffed into the manifest and infra links *exactly* that queue with least privilege. Multiple queues never collide: each gets its own `<NAME>_PUBLISHER_CONNECTION_STRING`.
+`type` is the queue's name exactly as written — it is the wire type the
+consumer subscribes to, so it is never rewritten. The service key is the
+canonical id, uncapitalised (`services.orderJobs`).
+
+The publisher reads `ORDER_JOBS_PUBLISHER_CONNECTION_STRING` and selects its
+transport from the protocol — `pgboss://` locally, `sqs://` deployed — so the
+same code publishes to Postgres in dev and SQS in prod. Each queue gets its own
+key, and only constructs that depend on it are given one.
 
 ### Configuration Options
 
 | Method | Description |
 |--------|-------------|
-| `.queue(name)` | Queue name — drives the infra queue and its `<NAME>_*` env vars |
-| `.message(schema)` | The typed message (job) payload |
-| `.services([...])` | Services available to the handler (sniffed for env vars) |
+| `worker.queue(name)` | Queue name — the wire `type`, and the source of its id and env keys |
+| `.message(schema)` | The typed message payload |
+| `.dependsOn([...])` | Constructs whose clients the handler gets in `services` |
 | `.timeout(ms)` | Handler timeout (default `30000`) |
 | `.batchSize(n)` | SQS event-source batch size (deployed) |
 | `.fifo()` | Mark the queue as FIFO (deployed) |
-| `.logger(logger)` | Custom logger |
 
 ### How Queues Run
 
-A queue is **not** an HTTP route — it's a background worker, and it runs in three modes:
+A queue is **not** an HTTP route — it's background work, and it runs in three modes:
 
 **Development (`gkm dev`):**
-The CLI generates a `setupQueues()` pg-boss poller that runs **in-process alongside** the Hono server. Each queue subscribes by its **name** on the shared `EVENT_SUBSCRIBER_CONNECTION_STRING` (pg-boss routes by name), so a producer publishing with `pgboss://` reaches it. No SQS or Lambda required locally.
+The CLI generates a pg-boss poller that runs **in-process alongside** the Hono
+server. Each queue subscribes by its **name** on the shared
+`EVENT_SUBSCRIBER_CONNECTION_STRING` (pg-boss routes by name), so a producer
+publishing with `pgboss://` reaches it. No SQS or Lambda required locally.
 
 **Production (AWS Lambda):**
-Each queue is compiled into a Lambda handler via `AWSLambdaQueue`, backed by an SQS event-source mapping. The handler unwraps each record's `payload`, validates it against `message`, and hands the batch to the handler. It uses SQS partial-batch responses, so a record that fails validation (or a handler error) is retried without re-processing the rest.
+Each queue's consumer is compiled into a Lambda handler via `AWSLambdaQueue`,
+subscribed to its SQS queue. The handler unwraps each record's `payload`,
+validates it against `message`, and hands the batch to the handler. It uses SQS
+partial-batch responses, so a record that fails validation (or a handler error)
+is retried without re-processing the rest.
 
 ```typescript
 import { AWSLambdaQueue } from '@geekmidas/constructs/aws';
 import { EnvironmentParser } from '@geekmidas/envkit';
-import { ordersQueue } from './queues/orders';
+import { orderJobs } from './queues/orderJobs';
 
 const envParser = new EnvironmentParser(process.env);
-const adaptor = new AWSLambdaQueue(envParser, ordersQueue);
+const adaptor = new AWSLambdaQueue(envParser, orderJobs);
 
 export const handler = adaptor.handler;
 ```
 
 **Production (Server):**
-With `gkm build --provider server`, queues are included in the generated server and poll using the configured connection string (same as dev).
+With `gkm build --provider server`, queues are included in the generated server
+and poll using the configured connection string (same as dev).
 
 ### Testing Queues
 
+In a `featureTest`, what a request enqueued is in `published(queue)`, and the
+consumer is run on its own with `queue(queue).invoke(...)`:
+
 ```typescript
-import { TestQueueAdaptor } from '@geekmidas/constructs/testing';
-import { describe, it, expect } from 'vitest';
+import { it } from '#test';
 
-describe('ordersQueue', () => {
-  it('fulfils each order in the batch', async () => {
-    const adaptor = new TestQueueAdaptor(ordersQueue);
+it('enqueues the order and fulfils it', async ({ browser, published, queue }) => {
+  const { orderId } = await browser.api.post('/orders', { body: { sku: 'A1' } });
+  expect(published(orderJobs)).toEqual([
+    { type: 'OrderJobs', payload: { orderId } },
+  ]);
 
-    const result = await adaptor.invoke({
-      messages: [{ orderId: '1' }, { orderId: '2' }],
-    });
+  await queue(orderJobs).invoke({ messages: [{ orderId }] });
 
-    // Assert side effects (orders fulfilled, etc.)
-  });
+  // Assert side effects (orders fulfilled, etc.)
 });
 ```
 
-### Project Configuration
-
-Register queue files in `gkm.config.ts` so the CLI discovers them:
-
-```typescript
-import { defineConfig } from '@geekmidas/cli/config';
-
-export default defineConfig({
-  stages: { local: 'dev', deployed: ['prod'] },
-  routes: './src/endpoints/**/*.ts',
-  subscribers: './src/subscribers/**/*.ts',
-  queues: './src/queues/**/*.ts',
-  envParser: './src/config/env',
-  logger: './src/logger',
-});
-```
+`TestQueueAdaptor` from `@geekmidas/constructs/testing` runs a consumer outside
+a feature test: `new TestQueueAdaptor(orderJobs).invoke({ messages })`.
 
 ## Cron Jobs
 
-The `c` builder creates scheduled tasks that run on a cron or rate schedule. Cron jobs extend the same function builder as cloud functions, so they support services, input/output schemas, logging, event publishing, and database access.
+A cron is a scheduled function, built from the worker that runs it:
+`worker.cron(schedule)`. It supports dependencies, input/output schemas,
+logging, event publishing, and database access. On AWS it is an EventBridge
+rule; on a server the worker schedules it in Postgres, which is why the worker
+takes `.database(database)`.
 
 ### Basic Cron
 
 ```typescript
-import { c } from '@geekmidas/constructs/crons';
+import { worker } from '../constructs/worker';
 
-export const dailyCleanup = c
-  .schedule('rate(1 day)')
+export const dailyCleanup = worker
+  .cron('rate(1 day)')
   .handle(async ({ logger }) => {
     logger.info('Running daily cleanup');
     await cleanupExpiredSessions();
@@ -1600,47 +1548,42 @@ Crons accept two schedule formats:
 **Rate expressions** — run at a fixed interval:
 
 ```typescript
-c.schedule('rate(5 minutes)')
-c.schedule('rate(1 hour)')
-c.schedule('rate(7 days)')
+worker.cron('rate(5 minutes)')
+worker.cron('rate(1 hour)')
+worker.cron('rate(7 days)')
 ```
 
 **Cron expressions** — run on a specific schedule (minute, hour, day, month, weekday):
 
 ```typescript
 // Every day at midnight
-c.schedule('cron(0 0 * * *)')
+worker.cron('cron(0 0 * * *)')
 
 // Every Monday at 9am
-c.schedule('cron(0 9 * * MON)')
+worker.cron('cron(0 9 * * MON)')
 
 // Every 15 minutes during business hours on weekdays
-c.schedule('cron(*/15 9-17 * * MON-FRI)')
+worker.cron('cron(*/15 9-17 * * MON-FRI)')
 
 // First day of every month at noon
-c.schedule('cron(0 12 1 * *)')
+worker.cron('cron(0 12 1 * *)')
 ```
 
-### With Services
+### With Dependencies
 
 ```typescript
-import { c } from '@geekmidas/constructs/crons';
-
-export const syncCron = c
+export const syncCron = worker
+  .cron('rate(30 minutes)')
   .dependsOn([database, cache])
-  .schedule('rate(30 minutes)')
   .handle(async ({ services, logger }) => {
-    const db = services.orders;
-    const kv = services.sessions;
-
-    const staleRecords = await db
+    const staleRecords = await services.database
       .selectFrom('records')
       .where('updated_at', '<', new Date(Date.now() - 3600000))
       .selectAll()
       .execute();
 
     for (const record of staleRecords) {
-      await kv.delete(`record:${record.id}`);
+      await services.sessions.delete(`record:${record.id}`);
     }
 
     logger.info({ count: staleRecords.length }, 'Cache invalidated');
@@ -1651,10 +1594,10 @@ export const syncCron = c
 ### With Input and Output Schemas
 
 ```typescript
-import { c } from '@geekmidas/constructs/crons';
 import { z } from 'zod';
 
-export const reportCron = c
+export const reportCron = worker
+  .cron('cron(0 6 * * MON)')
   .input(z.object({
     reportType: z.enum(['daily', 'weekly', 'monthly']),
   }))
@@ -1662,7 +1605,6 @@ export const reportCron = c
     generatedAt: z.string(),
     rowCount: z.number(),
   }))
-  .schedule('cron(0 6 * * MON)')
   .handle(async ({ input }) => {
     const report = await generateReport(input.reportType);
     return {
@@ -1675,11 +1617,9 @@ export const reportCron = c
 ### With Database Access
 
 ```typescript
-import { c } from '@geekmidas/constructs/crons';
-
-export const archiveCron = c
+export const archiveCron = worker
+  .cron('cron(0 2 * * *)')
   .database(database)
-  .schedule('cron(0 2 * * *)')
   .handle(async ({ db, logger }) => {
     const cutoff = new Date(Date.now() - 90 * 24 * 3600000); // 90 days
 
@@ -1695,23 +1635,29 @@ export const archiveCron = c
 
 ### With Event Publishing
 
-```typescript
-import { c } from '@geekmidas/constructs/crons';
+`.event(topic, …)` publishes after each successful run. For one event per row,
+publish through the topic's service, which `.event()` or `.dependsOn([topic])`
+puts in the handler:
 
-export const reminderCron = c
-  .dependsOn([database])
-  .publisher(orders.publisher)
-  .schedule('rate(1 hour)')
-  .handle(async ({ services, publish }) => {
-    const users = await services.orders
+```typescript
+export const reminderCron = worker
+  .cron('rate(1 hour)')
+  .dependsOn([database, reminders])
+  .output(z.object({ notified: z.number() }))
+  .event(reminders, {
+    type: 'reminders.swept',
+    payload: (result) => ({ count: result.notified }),
+  })
+  .handle(async ({ services }) => {
+    const users = await services.database
       .selectFrom('users')
       .where('reminder_due', '<', new Date())
       .selectAll()
       .execute();
 
-    for (const user of users) {
-      await publish('reminder.due', { userId: user.id });
-    }
+    await services.reminders.publish(
+      users.map((user) => ({ type: 'reminder.due', payload: { userId: user.id } })),
+    );
 
     return { notified: users.length };
   });
@@ -1721,32 +1667,20 @@ export const reminderCron = c
 
 | Method | Description |
 |--------|-------------|
-| `.schedule(expression)` | Set the cron or rate schedule expression |
+| `worker.cron(expression)` | The cron or rate schedule expression |
 | `.input(schema)` | Validate the input payload with a StandardSchema |
 | `.output(schema)` | Validate the return value with a StandardSchema |
-| `.services(services)` | Inject services into the handler context |
-| `.database(service)` | Set the database service (provides `db` in context) |
-| `.publisher(service)` | Set the event publisher service (provides `publish` in context) |
-| `.logger(logger)` | Set a custom logger instance |
+| `.dependsOn([...])` | Constructs whose clients the handler gets in `services` |
+| `.database(database)` | The database (provides `db` in context) |
+| `.event(topic, { type, payload, when? })` | Publish to a topic after each successful run |
 | `.timeout(ms)` | Set the execution timeout in milliseconds (default: 30000) |
 | `.memorySize(mb)` | Set the memory allocation in MB (AWS Lambda) |
-| `.handle(fn)` | Define the handler function and build the `Cron` instance |
+| `.handle(fn)` | Define the handler and build the `Cron` |
 
 ### Project Configuration
 
-Register your cron files in `gkm.config.ts` so the CLI can discover and build them:
-
-```typescript
-import { defineConfig } from '@geekmidas/cli/config';
-
-export default defineConfig({
-  stages: { local: 'dev', deployed: ['prod'] },
-  routes: './src/endpoints/**/*.ts',
-  crons: './src/crons/**/*.ts',    // glob pattern for cron files
-  envParser: './src/config/env',
-  logger: './src/logger',
-});
-```
+Crons are found by the same `constructs` glob as everything else in
+`gkm.config.ts` — there is no per-kind glob.
 
 ### AWS Lambda Deployment
 
@@ -1958,6 +1892,32 @@ describe('Simple Endpoint', () => {
 });
 ```
 
+#### Capturing Published Events
+
+A topic is a service under its own id, so a recorder passed in `services`
+stands in for its publisher and captures what `.event(users, …)` sent:
+
+```typescript
+const published: { type: string; payload: unknown }[] = [];
+const users = {
+  async publish(messages: { type: string; payload: unknown }[]) {
+    published.push(...messages);
+  },
+};
+
+await new TestEndpointAdaptor(createUser).request({
+  body: { name: 'Ada', email: 'ada@example.com' },
+  services: { users },
+  headers: { host: 'example.com' },
+});
+
+expect(published).toEqual([
+  { type: 'user.created', payload: expect.objectContaining({ name: 'Ada' }) },
+]);
+```
+
+In a `featureTest`, `published(users)` does this for you.
+
 ## Frontend Integration Testing with MSW
 
 Use `createMswHandlers` to test frontend code against real backend endpoints — with full validation, authorization, and session handling — without running an HTTP server.
@@ -2051,11 +2011,12 @@ registerContext(contextId, {
     auth: mockAuthService,
     storage: mockStorageService,
     notification: mockNotificationService,
+    // A topic is a service under its own name, so a recorder here
+    // captures what endpoints publish to it with .event(users, …)
+    users: usersRecorder,
   },
   // Database instance (from .database() on the factory)
   database: transactionDb,
-  // Event publisher service definition (from .publisher() on the factory)
-  publisher: mockPublisherService,
   // Audit storage instance (from .auditor() on the factory)
   auditorStorage: mockAuditStorage,
 });
@@ -2080,7 +2041,6 @@ registerContext(contextId, {
 |----------|------|-------------|
 | `services` | `Record<string, unknown>` | Service instances keyed by `serviceName` |
 | `database` | `unknown` | Database instance (required when endpoints use `.database()`) |
-| `publisher` | `Service` | Event publisher service (required when endpoints use `.publisher()`) |
 | `auditorStorage` | `unknown` | Audit storage instance (required when endpoints use `.auditor()`) |
 
 ## OpenAPI Documentation

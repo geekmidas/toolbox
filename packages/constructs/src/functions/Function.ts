@@ -13,6 +13,7 @@ import type { Service, ServiceRecord } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
 import { Construct, ConstructType } from '../Construct';
+import type { TopicEvent } from '../publisher';
 
 export class FunctionFactory<
 	TServices extends Service[] = [],
@@ -50,8 +51,6 @@ export class Function<
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
 	OutSchema extends StandardSchemaV1 | undefined = undefined,
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TAuditStorage extends AuditStorage | undefined = undefined,
 	TAuditStorageServiceName extends string = string,
 	TDatabase = undefined,
@@ -79,8 +78,6 @@ export class Function<
 	>,
 > extends Construct<
 	TLogger,
-	TEventPublisherServiceName,
-	TEventPublisher,
 	OutSchema,
 	TServices,
 	TAuditStorageServiceName,
@@ -148,8 +145,8 @@ export class Function<
 		outputSchema?: OutSchema,
 		services: TServices = [] as unknown as TServices,
 		logger: TLogger = DEFAULT_LOGGER,
-		publisherService?: Service<TEventPublisherServiceName, TEventPublisher>,
-		events: MappedEvent<TEventPublisher, OutSchema>[] = [],
+		/** What it publishes once its handler succeeds, each to its own topic. */
+		events: TopicEvent[] = [],
 		memorySize?: number,
 		auditorStorageService?: Service<TAuditStorageServiceName, TAuditStorage>,
 		public override databaseService?: Service<TDatabaseServiceName, TDatabase>,
@@ -164,7 +161,6 @@ export class Function<
 			logger,
 			services,
 			events,
-			publisherService,
 			outputSchema,
 			timeout,
 			memorySize,

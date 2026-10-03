@@ -11,16 +11,16 @@ import {
 } from './Generator';
 
 export class SubscriberGenerator extends ConstructGenerator<
-	Subscriber<any, any, any, any, any, any>,
+	Subscriber<any, any, any, any, any>,
 	SubscriberInfo[]
 > {
-	isConstruct(value: any): value is Subscriber<any, any, any, any, any, any> {
+	isConstruct(value: any): value is Subscriber<any, any, any, any, any> {
 		return Subscriber.isSubscriber(value);
 	}
 
 	async build(
 		context: BuildContext,
-		constructs: GeneratedConstruct<Subscriber<any, any, any, any, any, any>>[],
+		constructs: GeneratedConstruct<Subscriber<any, any, any, any, any>>[],
 		outputDir: string,
 		options?: GeneratorOptions,
 	): Promise<SubscriberInfo[]> {
@@ -93,7 +93,7 @@ export class SubscriberGenerator extends ConstructGenerator<
 		outputDir: string,
 		sourceFile: string,
 		exportName: string,
-		_subscriber: Subscriber<any, any, any, any, any, any>,
+		_subscriber: Subscriber<any, any, any, any, any>,
 		context: BuildContext,
 		/** The construct that owns this — its worker, or its surface. */
 		owner: string | undefined,
@@ -125,7 +125,7 @@ export const handler = adapter.handler;
 
 	private async generateServerSubscribersFile(
 		outputDir: string,
-		subscribers: GeneratedConstruct<Subscriber<any, any, any, any, any, any>>[],
+		subscribers: GeneratedConstruct<Subscriber<any, any, any, any, any>>[],
 	): Promise<string> {
 		// Ensure output directory exists
 		await mkdir(outputDir, { recursive: true });

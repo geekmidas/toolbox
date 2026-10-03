@@ -2,7 +2,13 @@ import type { AuditRecord, AuditStorage } from '@geekmidas/audit';
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import { Topic } from '../../topic/Topic';
 import { FunctionBuilder } from '../FunctionBuilder';
+
+const users = new Topic('Users', {
+	events: { 'user.created': z.object({ userId: z.string() }) },
+});
 
 // In-memory audit storage for testing
 class InMemoryAuditStorage implements AuditStorage {
@@ -163,21 +169,27 @@ describe('FunctionBuilder - State Isolation', () => {
 		});
 	});
 
-	describe('publisher isolation', () => {
-		it('should reset publisher after handle() is called', () => {
+	describe('event isolation', () => {
+		it('should keep an event, its topic service and its id to the function that named it', () => {
 			const f = new FunctionBuilder();
-			const mockPublisher: any = {
-				serviceName: 'publisher',
-				async register() {
-					return { publish: () => {} };
-				},
-			};
 
-			const fn1 = f.publisher(mockPublisher).handle(async () => ({}));
+			const fn1 = f
+				.event(users, {
+					type: 'user.created',
+					payload: () => ({ userId: '1' }),
+				})
+				.handle(async () => ({}));
 			const fn2 = f.handle(async () => ({}));
 
-			expect((fn1 as any).publisherService).toBe(mockPublisher);
-			expect((fn2 as any).publisherService).toBeUndefined();
+			expect(fn1.events.map((e) => [e.topic, e.type])).toEqual([
+				[users.service, 'user.created'],
+			]);
+			expect(fn1.services).toEqual([users.service]);
+			expect(fn1.constructs).toEqual(['Users']);
+
+			expect(fn2.events).toEqual([]);
+			expect(fn2.services).toEqual([]);
+			expect(fn2.constructs).toEqual([]);
 		});
 	});
 

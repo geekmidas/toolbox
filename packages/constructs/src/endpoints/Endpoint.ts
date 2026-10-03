@@ -1,10 +1,5 @@
 import type { AuditableAction, Auditor, AuditStorage } from '@geekmidas/audit';
 import type { EnvironmentParser } from '@geekmidas/envkit';
-import type {
-	EventPublisher,
-	ExtractPublisherMessage,
-	MappedEvent,
-} from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import type { RateLimitConfig } from '@geekmidas/rate-limit';
 import type {
@@ -29,6 +24,7 @@ import type { OpenAPIV3_1 } from 'openapi-types';
 import { ConstructType } from '../Construct';
 import type { Authenticator } from '../construct-interface';
 import { Function, type FunctionHandler } from '../functions';
+import type { TopicEvent } from '../publisher';
 import type { HttpMethod, LowerHttpMethod, RemoveUndefined } from '../types';
 import type { Authorizer } from './Authorizer';
 import type { ActorExtractor, MappedAudit } from './audit';
@@ -68,8 +64,6 @@ export class Endpoint<
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
 	TSession = unknown,
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TAuditStorage extends AuditStorage | undefined = undefined,
 	TAuditStorageServiceName extends string = string,
 	TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
@@ -83,8 +77,6 @@ export class Endpoint<
 	TServices,
 	TLogger,
 	OutSchema,
-	TEventPublisher,
-	TEventPublisherServiceName,
 	TAuditStorage,
 	TAuditStorageServiceName,
 	TDatabase,
@@ -631,7 +623,6 @@ export class Endpoint<
 		authorize,
 		rateLimit,
 		status = SuccessStatus.OK,
-		publisherService,
 		events,
 		authorizer,
 		surface,
@@ -651,8 +642,6 @@ export class Endpoint<
 		TLogger,
 		TSession,
 		OutSchema,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuditStorage,
 		TAuditStorageServiceName,
 		TAuditAction,
@@ -667,7 +656,6 @@ export class Endpoint<
 			outputSchema,
 			services,
 			logger,
-			publisherService,
 			events,
 			memorySize,
 			auditorStorageService,
@@ -808,8 +796,6 @@ export interface EndpointOptions<
 	TLogger extends Logger = Logger,
 	TSession = unknown,
 	OutSchema extends StandardSchemaV1 | undefined = undefined,
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TAuditStorage extends AuditStorage | undefined = undefined,
 	TAuditStorageServiceName extends string = string,
 	TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
@@ -867,12 +853,8 @@ export interface EndpointOptions<
 	rateLimit?: RateLimitConfig;
 	/** Success HTTP status code */
 	status: SuccessStatus | undefined;
-	/**
-	 * Event publisher service for publishing events from this endpoint
-	 */
-	publisherService?: Service<TEventPublisherServiceName, TEventPublisher>;
-
-	events?: MappedEvent<TEventPublisher, OutSchema>[];
+	/** What it publishes once its handler succeeds, each to its own topic. */
+	events?: TopicEvent[];
 	/** Optional authorizer configuration */
 	authorizer?: Authorizer;
 	/** The surface this endpoint was built from. Every endpoint has one. */
@@ -1364,9 +1346,4 @@ export enum SuccessStatus {
 export type EndpointOutput<T> =
 	T extends Endpoint<any, any, any, infer OutSchema, any, any, any, any>
 		? InferStandardSchema<OutSchema>
-		: never;
-
-export type EndpointEvent<T> =
-	T extends Endpoint<any, any, any, any, any, any, any, infer TEventPublisher>
-		? ExtractPublisherMessage<TEventPublisher>
 		: never;

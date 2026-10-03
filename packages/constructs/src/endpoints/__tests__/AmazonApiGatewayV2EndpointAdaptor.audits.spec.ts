@@ -93,7 +93,6 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
 			authorize: undefined,
 			description: undefined,
 			events: [],
-			publisherService: undefined,
 			auditorStorageService: auditStorageService,
 			audits,
 		});
@@ -178,7 +177,6 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
 			authorize: undefined,
 			description: undefined,
 			events: [],
-			publisherService: undefined,
 			auditorStorageService: auditStorageService,
 			audits,
 		});
@@ -256,7 +254,6 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
 			authorize: undefined,
 			description: undefined,
 			events: [],
-			publisherService: undefined,
 			auditorStorageService: auditStorageService,
 			audits,
 		});
@@ -326,7 +323,6 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
 			authorize: undefined,
 			description: undefined,
 			events: [],
-			publisherService: undefined,
 			auditorStorageService: auditStorageService,
 			actorExtractor,
 			audits,
@@ -392,7 +388,6 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
 			authorize: undefined,
 			description: undefined,
 			events: [],
-			publisherService: undefined,
 			auditorStorageService: undefined, // No auditor storage
 			audits,
 		});
@@ -461,7 +456,6 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
 			authorize: undefined,
 			description: undefined,
 			events: [],
-			publisherService: undefined,
 			auditorStorageService: auditStorageService,
 			audits,
 		});
@@ -526,7 +520,6 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
 			authorize: undefined,
 			description: undefined,
 			events: [],
-			publisherService: undefined,
 			auditorStorageService: auditStorageService,
 			audits,
 		});
@@ -590,7 +583,6 @@ describe('AmazonApiGatewayV2Endpoint Audits', () => {
 			authorize: undefined,
 			description: undefined,
 			events: [],
-			publisherService: undefined,
 			auditorStorageService: auditStorageService,
 			audits,
 		});

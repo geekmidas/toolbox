@@ -1,6 +1,5 @@
 import { api } from '@kitchen-sink/constructs/api.js';
 import { database } from '@kitchen-sink/constructs/database.js';
-import { users } from '@kitchen-sink/constructs/topics.js';
 import { AuditStorageService } from '../services/AuditStorageService.js';
 
 /**
@@ -14,9 +13,10 @@ import { AuditStorageService } from '../services/AuditStorageService.js';
  * - `.database(database)`           — `db` in context, typed by the construct's
  *                                     schema (and the audit transaction)
  * - `.auditor(AuditStorageService)` — `auditor` in context + declarative `.audit([...])`
- * - `.publisher(users.publisher)`   — the topic's *derived* producer, so
- *                                     `.event(...)` declarations are delivered
- *                                     without a publisher service to write
+ *
+ * Nothing that publishes is here either: an endpoint that publishes names the
+ * topic itself, `.event(users, …)`, so only the routes that publish to `users`
+ * can.
  *
  * `.dependsOn([auth, sessions])` used to be here too, and that was the mistake.
  * It injects a client, so putting it on a shared factory hands the auth server
@@ -26,7 +26,4 @@ import { AuditStorageService } from '../services/AuditStorageService.js';
  * No default authorizer → endpoints are public; opt in per-endpoint with
  * `.authorizer('iam')` (see the protected endpoint in users.ts).
  */
-export const router = api
-	.database(database)
-	.auditor(AuditStorageService)
-	.publisher(users.publisher);
+export const router = api.database(database).auditor(AuditStorageService);

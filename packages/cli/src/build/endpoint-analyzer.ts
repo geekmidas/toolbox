@@ -62,8 +62,6 @@ export function analyzeEndpointFeatures(
 		any,
 		any,
 		any,
-		any,
-		any,
 		any
 	>,
 ): EndpointFeatures {
@@ -139,8 +137,6 @@ export function analyzeEndpoint(
 		any,
 		any,
 		any,
-		any,
-		any,
 		any
 	>,
 	exportName: string,
@@ -167,8 +163,6 @@ export function analyzeEndpoint(
 export function analyzeEndpoints(
 	endpoints: Array<{
 		endpoint: Endpoint<
-			any,
-			any,
 			any,
 			any,
 			any,

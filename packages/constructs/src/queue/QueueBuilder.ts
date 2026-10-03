@@ -12,10 +12,11 @@ import {
 import { Queue, type QueueHandler } from './Queue';
 
 /**
- * Builds a {@link Queue} worker — `q.queue('orders').services([db]).message(schema).handle(fn)`.
- * Services are an array (sniffed for required env vars); `message` is the typed
- * job payload; `handle` is the single consumer. The queue name is captured as a
- * literal so `queue.publisher` is typed to `{ type: '<name>', payload }`.
+ * Builds a {@link Queue} and its one consumer. Reached through
+ * `worker.queue('orders')`, never constructed by hand: the worker stamps itself
+ * as the owner. `message` is the typed job payload and `handle` the consumer.
+ * The queue name is captured as a literal so `queue.service` publishes
+ * `{ type: '<name>', payload }`.
  */
 export class QueueBuilder<
 	TName extends string = string,
@@ -32,6 +33,8 @@ export class QueueBuilder<
 	/** The construct ids `.dependsOn()` named — what the manifest records. */
 	public _constructs: string[] = [];
 	private _logger: TLogger = DEFAULT_LOGGER as TLogger;
+	/** The worker that runs this queue's consumer — stamped by `worker.queue()`. */
+	public _owner?: string;
 
 	/** The queue name — drives the infra queue and its `<NAME>_*` env vars. */
 	queue<T extends string>(
@@ -126,16 +129,8 @@ export class QueueBuilder<
 	handle(
 		fn: QueueHandler<NonNullable<TMessage>, TServices, TLogger>,
 	): Queue<TName, NonNullable<TMessage>, TServices, TLogger> {
-		if (!this._name) {
-			throw new Error(
-				'Queue requires a name — call .queue(name) before .handle().',
-			);
-		}
-		if (!this._messageSchema) {
-			throw new Error(
-				'Queue requires a message schema — call .message(schema) before .handle().',
-			);
-		}
+		if (!this._name) throw new QueueNeedsName();
+		if (!this._messageSchema) throw new QueueNeedsMessage(this._name);
 
 		const queue = new Queue<TName, NonNullable<TMessage>, TServices, TLogger>(
 			this._name as TName,
@@ -148,6 +143,8 @@ export class QueueBuilder<
 			this._fifo,
 			this._constructs,
 		);
+		// Which process runs the consumer: the worker it was built from.
+		queue.owner = this._owner;
 
 		// No reset. `.handle()` reads this builder and leaves it alone, so a
 		// configured base — `const fn = f.logger(log).timeout(60_000)` — keeps
@@ -156,5 +153,26 @@ export class QueueBuilder<
 		// exactly once, and quietly reverted the logger to the default.
 
 		return queue;
+	}
+}
+
+/** A queue built without a name — only reachable by building one by hand. */
+export class QueueNeedsName extends Error {
+	constructor() {
+		super(
+			"A queue needs a name: build it from a worker, worker.queue('Emails').",
+		);
+		this.name = 'QueueNeedsName';
+	}
+}
+
+/** A queue whose message was never described. */
+export class QueueNeedsMessage extends Error {
+	constructor(readonly queue: string) {
+		super(
+			`Queue '${queue}' has no message: call .message(schema) before .handle(), ` +
+				'so its producers and its consumer agree on what it carries.',
+		);
+		this.name = 'QueueNeedsMessage';
 	}
 }

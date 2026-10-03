@@ -204,7 +204,7 @@ export interface SubscriberInfo {
 	subscribedEvents: readonly string[];
 	/** Delivery transport — `topic` (SNS fan-out) or `queue` (SQS). */
 	transport?: 'topic' | 'queue';
-	/** The {@link TopicInfo.name} this subscriber binds to (via `s.topic(topic)`). */
+	/** The {@link TopicInfo.name} this subscriber binds to (via `worker.topic(topic)`). */
 	topic?: string;
 	timeout?: number;
 	memorySize?: number;

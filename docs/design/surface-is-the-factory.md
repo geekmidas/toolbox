@@ -64,8 +64,8 @@ has to be named.
 The surface holds what the **process** is: logger, environment parser, CORS,
 authorizers.
 
-It must never hold `dependsOn`, `database`, `auditor` or `publisher`. Those four
-inject a client into a handler, so putting one on the surface hands it to every
+It must never hold `dependsOn`, `database`, `auditor` or a topic's
+`.event(topic, …)`. Those four inject a client into a handler, so putting one on the surface hands it to every
 route the surface serves — a health check gets the database because a profile
 endpoint needed it. This is the reasoning already written into
 `RestApi.calls()`'s doc comment: spelling it `dependsOn` would invite the thing
@@ -74,17 +74,25 @@ least privilege forbids.
 `auth` is excluded for a second reason: `.auth(construct)` already declares it,
 and a second way to say the same thing is the duplication this model removes.
 
-Shared grants go on a factory branched from `api.endpoints`, which a *group*
-opts into:
+Shared grants go on a branch of the surface, which a *group* opts into:
 
 ```ts
-export const router = api.endpoints
-  .database(database)
-  .auditor(AuditStorageService)
-  .publisher(users.publisher);
+export const router = api.database(database).auditor(AuditStorageService);
 
 export const listUsers = router.get('/users').dependsOn([sessions]).handle(...)
+
+export const createUser = router
+  .post('/users')
+  .event(users, { type: 'user.created', payload: (u) => ({ userId: u.id }) })
+  .handle(...)
 ```
+
+Publishing is not shared at all. An endpoint that publishes names the topic
+itself, `.event(users, …)`, so only the routes that publish to `users` can.
+
+> **Superseded:** this section first branched from `api.endpoints` and put a
+> shared `.publisher(users.publisher)` on the router. Both are gone — see the
+> addendum and the `.event(topic, …)` note there.
 
 ## What is built
 
@@ -98,7 +106,8 @@ export const listUsers = router.get('/users').dependsOn([sessions]).handle(...)
    that had lost their parser.
 
 3. **`RestApi` is a factory.** `api.get/post/put/patch/delete/options` for a
-   single route, `api.endpoints` for a group. `readonly logger` and
+   single route, a branch (`api.database(db)`, `api.auditor(...)`, …) for a
+   group. (Built first as `api.endpoints`; removed, see the addendum.) `readonly logger` and
    `readonly envParser` are always defined — the surface's own if given, the
    defaults otherwise.
 
@@ -124,8 +133,8 @@ instances, so which one you got depended on your import path.
 Every caller now builds from a surface. Three shapes came up:
 
 - **A single route.** `api.get('/users')` — the surface's own sugar.
-- **A group sharing something.** `api.endpoints.database(db).auditor(store)`,
-  which is what `apps/example`'s router and kitchen-sink's became. The grant is
+- **A group sharing something.** `api.database(db).auditor(store)` (first
+  spelled through `api.endpoints`, since removed), which is what `apps/example`'s router and kitchen-sink's became. The grant is
   opted into by the group rather than handed to every route on the surface.
 - **A fixture that emits source as text.** The CLI's test helpers and `init`
   templates write endpoint files as strings, so the *string* had to grow a
@@ -192,10 +201,9 @@ convincingly as bad credentials. It is not. Check `lsof -nP -iTCP:5432
 
 ## Addendum: no `.endpoints`
 
-`api.endpoints` was the one object between a surface and a branch —
-`api.endpoints.database(db)`. The verbs already had sugar (`api.get()`), and
-the branching methods now do too: `api.database(db)`, `api.session(...)`,
-`api.auditor(...)`, `api.publisher(...)`, `api.actor(...)`,
+`api.endpoints` was the one object between a surface and a branch. The verbs
+already had sugar (`api.get()`), and the branching methods now do too:
+`api.database(db)`, `api.session(...)`, `api.auditor(...)`, `api.actor(...)`,
 `api.authorizer(...)`, `api.authorize(...)`, `api.rls(...)`, `api.route(...)`.
 The factory itself is private. `services` is not among them: it is replaced by
 `dependsOn` on constructs, and the surface does not reintroduce it.
@@ -204,4 +212,15 @@ What this section argues still holds, because each of those *returns a branch*
 and leaves the surface untouched: the surface's config carries no grant, and a
 group opts in. `dependsOn` stays off the surface — it is per endpoint, and
 `api.dependsOn(x)` would read as the API depending on something, which `.calls()`
-and `.auth()` already say. Examples above are kept as they were written.
+and `.auth()` already say. Examples above have been updated to this spelling.
+
+## Addendum: no `.publisher()`
+
+A shared publisher slot — `api.publisher(...)`, or `.publisher(...)` on a
+branch or an endpoint — went the same way, and for the reason this document
+gives for `database`: it handed every route on the branch a way to publish.
+An event now carries its topic, `.event(users, { type, payload })`, repeatable
+across topics, each event going through its own topic's publisher. It also
+puts `services.users` in the handler, as `.dependsOn([users])` does, for events
+the handler decides on. A topic is a construct, and its publisher is its
+`service`.

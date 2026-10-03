@@ -8,10 +8,10 @@ import {
 } from './Generator';
 
 /**
- * Discovers `t` topics into `manifest.topics`. A topic is a *resource*, not a
- * function — it has no handler to generate. Producers reach it via its derived
- * publisher (`topic.publisher`, whose connection string is sniffed onto the
- * producing construct) and subscribers bind via `s.topic(topic)`; this generator
+ * Discovers topics (`new Topic(…)`) into `manifest.topics`. A topic is a
+ * *resource*, not a function — it has no handler to generate. Producers name it
+ * with `.event(topic, …)` or `.dependsOn([topic])`, and subscribers bind with
+ * `worker.topic(topic)`; this generator
  * only records the topic + its event contract so infra can provision the SNS
  * topic. Identical output for every provider (locally pg-boss routes by event
  * name, so there's nothing to run).

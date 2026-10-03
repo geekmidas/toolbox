@@ -19,25 +19,32 @@ is injected — `gkm dev` reconciles all of it before the server starts.
 | `Cache` | `src/constructs/cache.ts` | `SESSIONS_URL` | Redis + the HTTP proxy the client speaks | Upstash |
 | `FileServer` | `src/constructs/storage.ts` | `UPLOADS_URL`, `UPLOADS_SERVER_URL` | MinIO container + a Caddy edge serving `https://uploadsserver.kitchen-sink.localhost` | S3 bucket + CloudFront |
 | `Email` | `src/constructs/email.ts` | `MAIL_URL`, `MAIL_FROM` | Mailpit — a real inbox on its own port | SES over SMTP |
-| `t` topic | `src/constructs/topics.ts` | `USERS_PUBLISHER_CONNECTION_STRING` | pg-boss, in the declared database | SNS topic |
-| `q` queue | `src/queues/emails.ts` | `EMAILS_PUBLISHER_CONNECTION_STRING` | pg-boss, in the declared database | SQS queue |
+| `Topic` | `constructs/topics.ts` | `USERS_PUBLISHER_CONNECTION_STRING` | pg-boss, in the declared database | SNS topic |
+| `worker.queue()` | `apps/api/queues/emails.ts` | `EMAILS_PUBLISHER_CONNECTION_STRING` | pg-boss, in the declared database | SQS queue |
 
 Ports are allocated, not fixed, so several projects run at once; the app never
 sees one. Run `gkm setup` to converge the containers without starting the server.
 
 ### Handlers
 
-| Construct | File | Locally (`gkm dev`) | Deployed |
-|-----------|------|---------------------|----------|
-| `e` endpoint | `src/endpoints/*` | Hono route | API Gateway v2 |
-| `f` function | `src/functions/reindex.ts` | direct invoke | Lambda |
-| `c` cron | `src/crons/cleanup.ts` | — | EventBridge schedule → Lambda |
-| `s` subscriber (topic fan-out) | `src/subscribers/userEvents.ts` | in-process pg-boss poller | SNS subscription |
-| `q` queue worker (point-to-point) | `src/queues/emails.ts` | in-process pg-boss poller | SQS event-source |
+Endpoints come from the `RestApi` surface (`constructs/api.ts`); everything
+without a port comes from the `Worker` (`constructs/worker.ts`), which also
+supplies the logger.
 
-Each reaches a resource by *consuming its construct* — `.database(database.service)`,
-`.services([uploads.service, mail.service])`, `.publisher(users.publisher)`. No
-handler names a host, a port, a bucket, a broker, or a provider.
+| Construct | File | Built with | Locally (`gkm dev`) | Deployed |
+|-----------|------|------------|---------------------|----------|
+| endpoint | `apps/api/endpoints/*` | `router.post(…)` — `router = api.database(database).auditor(…)` | Hono route | API Gateway v2 |
+| function | `apps/api/functions/reindex.ts` | `worker.dependsOn([…]).input(…)` | direct invoke | Lambda |
+| cron | `apps/api/crons/cleanup.ts` | `worker.cron('rate(1 day)')` | pg-boss schedule | EventBridge schedule → Lambda |
+| subscriber (topic fan-out) | `apps/api/subscribers/userEvents.ts` | `worker.topic(users).subscribe([…])` | in-process pg-boss poller | SNS subscription |
+| queue + its consumer (point-to-point) | `apps/api/queues/emails.ts` | `worker.queue('emails').message(…)` | in-process pg-boss poller | SQS event-source |
+
+Each reaches a resource by *naming its construct*: `.dependsOn([sessions,
+emailsQueue])` puts `services.sessions` and `services.emails` in the handler,
+and `.event(users, { type: 'user.created', payload })` publishes to the topic
+once the handler succeeds. Nothing that publishes sits on the shared `router` —
+only the routes that name `users` can publish to it. No handler names a host, a
+port, a bucket, a broker, or a provider.
 
 ### Services & DI (`src/services/`)
 
@@ -58,9 +65,11 @@ is needed.
 
 ### Cross-construct event flow
 
-`POST /users` does it all in one request: insert → publish `user.created` to the
-**topic** (the `userEvents` subscriber fans out) → enqueue a welcome email on the
-**queue** (the `emails` worker drains it) → audit → invalidate the cache. Both the
+`POST /users` does it all in one request: insert → enqueue a welcome email on
+the **queue** (`services.emails.publish(…)`, drained by its one consumer) →
+audit → invalidate the cache → publish `user.created` to the **topic**
+(`.event(users, …)`, once the handler has succeeded; the `userEvents`
+subscriber fans out). Both the
 topic and the queue run over pg-boss locally and SNS/SQS when deployed — the same
 code, transport chosen by the connection-string protocol.
 

@@ -4,11 +4,11 @@ import {
 	type SniffResult,
 	sniffWithFireAndForget,
 } from '@geekmidas/envkit/sniffer';
-import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import type { Service, ServiceContext } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import compact from 'lodash.compact';
+import type { TopicEvent } from './publisher';
 
 // Cache for service environment variables to handle singleton services
 // Stores both the full list and the optional subset so the same sniff result
@@ -48,8 +48,6 @@ const snifferContext: ServiceContext = {
 
 export abstract class Construct<
 	TLogger extends Logger = Logger,
-	TServiceName extends string = string,
-	T extends EventPublisher<any> | undefined = undefined,
 	OutSchema extends StandardSchemaV1 | undefined = undefined,
 	TServices extends Service[] = [],
 	TAuditStorageServiceName extends string = string,
@@ -78,8 +76,11 @@ export abstract class Construct<
 		public readonly type: ConstructType,
 		public readonly logger: TLogger,
 		public readonly services: TServices,
-		public readonly events: MappedEvent<T, any>[] = [],
-		public readonly publisherService?: Service<TServiceName, T>,
+		/**
+		 * What this construct publishes once its handler succeeds — each event
+		 * bound to its own topic, so a construct publishes to as many as it names.
+		 */
+		public readonly events: TopicEvent[] = [],
 		public outputSchema?: OutSchema,
 		public readonly timeout?: number,
 		public readonly memorySize?: number,
@@ -131,8 +132,8 @@ export abstract class Construct<
 		const optionalVars = new Set<string>();
 		const services: Service[] = compact([
 			...this.services,
-			this.publisherService,
-			this.publisherService,
+			// Each topic an event names is a dependency like any other.
+			...this.events.map(({ topic }) => topic),
 			this.auditorStorageService,
 			this.databaseService,
 		]);

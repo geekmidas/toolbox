@@ -750,6 +750,46 @@ export function isServed(id: string, manifest: ConstructManifest): boolean {
 	);
 }
 
+/**
+ * Kinds this stack provisions nothing for of their own.
+ *
+ * - `mobile-app` ships through EAS and the stores. It is in the manifest for
+ *   what it makes the surfaces trust, which `callersOf` reads off the graph.
+ * - `worker` is a process, not a resource: what it runs is provisioned as
+ *   what it is — a queue's consumer by {@link subscribeConsumers}.
+ * - `cron` and `function` are Lambdas built from `manifest.crons` and
+ *   `manifest.functions` (`Cron.fromManifest`, `Function.fromManifest`).
+ */
+export const PROVISIONED_ELSEWHERE: ReadonlySet<DeclarationKind> =
+	new Set<DeclarationKind>(['mobile-app', 'worker', 'cron', 'function']);
+
+/** A provisioned queue: what {@link subscribeConsumers} subscribes through. */
+interface Consumable {
+	consume(consumer: { handler: string; link?: unknown[] }): unknown;
+}
+
+/**
+ * Subscribe every queue's one consumer — the handler the build wrote for it,
+ * linked to what that consumer depends on.
+ *
+ * After every construct is provisioned, because a consumer links to things
+ * that `provisionOrder` does not order before the queue.
+ */
+export function subscribeConsumers(
+	manifest: ConstructManifest,
+	provisioned: ProvisionedManifest,
+): void {
+	for (const [id, declaration] of Object.entries(manifest)) {
+		if (declaration?.kind !== 'queue') continue;
+
+		const queue = provisioned[id] as unknown as Consumable | undefined;
+		if (!queue) continue;
+
+		const { link } = resolveEdges(declaration.worker.dependencies, provisioned);
+		queue.consume({ handler: declaration.worker.handler, link });
+	}
+}
+
 /** The provisioner for a kind. Pure — the lookup is testable without Pulumi. */
 export function provisionerFor(kind: DeclarationKind): Provisioner {
 	const provisioner = PROVISIONERS[kind];
@@ -838,10 +878,7 @@ export function fromManifest(
 	for (const id of [...rest, ...sites]) {
 		const declaration = manifest[id];
 		if (!declaration) continue;
-		// A mobile app ships through EAS and the stores, not this stack. It is
-		// in the manifest for what it makes the surfaces trust, which
-		// `callersOf` reads off the graph.
-		if (declaration.kind === 'mobile-app') continue;
+		if (PROVISIONED_ELSEWHERE.has(declaration.kind)) continue;
 
 		const component = provisionerFor(declaration.kind)(
 			stack,
@@ -864,6 +901,9 @@ export function fromManifest(
 
 		provisioned[id] = component;
 	}
+
+	// Each queue's one consumer, once everything it links to exists.
+	subscribeConsumers(manifest, provisioned);
 
 	for (const line of describeRoutes(manifest)) console.log(line);
 

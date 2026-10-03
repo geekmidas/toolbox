@@ -629,46 +629,56 @@ implements GkmLinkable`). Linking one to a `Function`/`Api`/`Cron` makes its
   `<NAME>_NAME` env var consumed by `@geekmidas/storage`'s `AmazonStorageClient`
   (`AmazonStorageClient.create({ bucket: get('UPLOADS_NAME').string() })`). The
   pattern other resource constructs follow.
-- **Pending**: `Database`/`Postgres`, `Dynamo`, `Secret`, `Network` (VPC),
-  `Topic` (SNS), `Queue` (SQS).
+- **`Topic`** ✓ — `sst.aws.SnsTopic`; provides
+  `<ID>_PUBLISHER_CONNECTION_STRING` (`sns://…`) and nothing else.
+- **`Queue`** ✓ — `sst.aws.Queue`; provides
+  `<ID>_PUBLISHER_CONNECTION_STRING` (`sqs://…`), and subscribes its one
+  consumer with `Queue.consume(...)`.
+- **Pending**: `Dynamo`, `Network` (VPC).
 
-### Subscribers (topic) vs queues (point-to-point) — direction
+### Subscribers (topic) vs queues (point-to-point)
 
 The runtime handler is transport-agnostic (the adaptors parse both SNS and SQS),
-so the split is modelled in the **app** as two distinct builders:
+so the split is modelled in the **app** as two constructs, both built from a
+`Worker`:
 
-- **`s` — `Subscriber` (topic fan-out)**: many subscribers each filter a stream
-  by their `subscribedEvents`. Infra side: `TopicSubscriber` (SNS subscription).
-- **`q` — `Queue` (point-to-point)**: a queue and its *single* consumer that
-  **drains every message** of its one typed `message` (this resolves the earlier
-  open question — a queue is a true job consumer, not a filtered subscriber).
-  Infra side: `QueueSubscriber` (SQS event-source). The durable
-  `Topic → Queue → Lambda` pattern composes from `Topic` + `Queue` +
-  `QueueSubscriber`.
+- **`worker.topic(topic).subscribe([...])` — `Subscriber` (topic fan-out)**:
+  any number of subscribers bind to a `Topic` and each filters it by its
+  subscribed event types. Binding is not depending: a subscriber is never given
+  the topic's publisher connection string. The build records the binding on the
+  topic's declaration (`subscribers`).
+- **`worker.queue(name).message(schema)` — `Queue` (point-to-point)**: a queue
+  and its *single* consumer, one construct, which **drains every message** of
+  its one typed `message`. The declaration nests the consumer (`worker:
+  { id, handler, dependencies }`) because position is the trigger.
 
-**Status — app + runtime side built** (`@geekmidas/constructs`):
+**Producers** depend on what they send to. `.dependsOn([emails])` makes
+`services.emails` the queue's publisher; `.event(users, …)` on an endpoint,
+function or cron publishes to a topic after the handler succeeds (and puts
+`services.users` in the handler, as `.dependsOn([users])` does). Either way the
+edge is in the manifest, so only producers are linked to the resource.
 
-- `q` builder (`@geekmidas/constructs/queue`) → a `Queue` construct
-  (`ConstructType.Queue`); `gkm build` discovers it into `manifest.queues`
-  (`QueueInfo`).
-- Producer side is the queue's auto-`publisher` — a `Service` reading
-  `<NAME>_PUBLISHER_CONNECTION_STRING`; injected via `.services([queue.publisher])`,
-  so the env requirement is sniffed into the manifest (least-privilege linking).
-- Runtime: `AWSLambdaQueue` (deployed SQS event-source, partial-batch failures)
-  and an in-process pg-boss poller (`setupQueues()`) for `gkm dev` / server.
-  `SubscriberInfo` carries a `transport` (`topic` | `queue`) field.
+**Infra side** (`fromManifest`):
 
-**Still infra-side (this doc's scope, pending)**: the cloud `TopicSubscriber` /
-`QueueSubscriber` `fromManifest` factories that turn `manifest.queues` /
-`manifest.subscribers` into the SNS subscription / SQS event-source mapping.
+- Every `queue` is provisioned as `Queue`, and once everything else exists
+  `subscribeConsumers` calls `queue.consume({ handler, link })` for its one
+  consumer: the handler the build wrote, linked to what the consumer declared
+  in `.dependsOn()`. `Queue.consume({ handler, link, timeout?, batchSize? })`
+  subscribes a Lambda (`nodejs24.x`) with the queue itself always linked.
+- Every `topic` is provisioned as `Topic`.
+- `worker`, `cron` and `function` are in `PROVISIONED_ELSEWHERE`: a worker is a
+  process rather than a resource, and crons and functions are Lambdas built
+  from `manifest.crons` / `manifest.functions` (`Cron.fromManifest`,
+  `Function.fromManifest`).
+- **Pending**: SNS subscriptions for topic subscribers. The binding is in the
+  manifest; nothing in `fromManifest` turns it into a subscription yet.
 
 ### Connection strings with multiple queues/topics
 
-Each messaging linkable's resolver emits a **name-namespaced** connection string
-(`ORDERS_PUBLISHER_CONNECTION_STRING`, `EVENTS_PUBLISHER_CONNECTION_STRING`, …),
-so multiple resources never collide and each auto-publisher reads its own. A
-caller only receives the strings for the resources it's *linked* to. The protocol
-in each string selects the transport (local `pgboss`/localstack vs deployed
+Each messaging resource emits a **name-namespaced** connection string
+(`ORDERS_PUBLISHER_CONNECTION_STRING`, `USERS_PUBLISHER_CONNECTION_STRING`, …),
+so multiple resources never collide and each publisher reads its own. A caller
+only receives the strings for the resources it's *linked* to. The protocol in
+each string selects the transport (local `pgboss`/emulator vs deployed
 `sqs`/`sns`). Worked through end-to-end in
 [`sst-e2e-example.md`](./sst-e2e-example.md).
-</content>

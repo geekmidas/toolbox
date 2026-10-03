@@ -76,6 +76,7 @@ import type { ScheduleExpression } from './crons/Cron';
 import { CronBuilder } from './crons/CronBuilder';
 import { envParserFor } from './endpoints/surfaceEnv';
 import { FunctionBuilder } from './functions/FunctionBuilder';
+import { QueueBuilder } from './queue/QueueBuilder';
 import { SubscriberBuilder } from './subscribers/SubscriberBuilder';
 import type { Topic, TopicEvents } from './topic/Topic';
 
@@ -175,12 +176,32 @@ export class Worker<TName extends string = string>
 	}
 
 	/**
+	 * A queue and its one consumer, run by this worker.
+	 *
+	 * One construct, because a queue has exactly one consumer: nothing else can
+	 * attach a second, or forget to attach the first. Producers send to it by
+	 * depending on it — `.dependsOn([emails])` makes `services.emails` the
+	 * publisher.
+	 *
+	 * @example
+	 * ```ts
+	 * export const emails = worker
+	 *   .queue('Emails')
+	 *   .message(z.object({ userId: z.uuid(), template: z.string() }))
+	 *   .handle(async ({ messages, services }) => { … });
+	 * ```
+	 */
+	queue<TQueueName extends string>(name: TQueueName) {
+		return this.own(new QueueBuilder().logger(this.logger)).queue(name);
+	}
+
+	/**
 	 * A runnable that consumes a topic.
 	 *
 	 * Binding is not publishing: a consumer is handed the topic's event types
-	 * and no connection string it could publish with. Chain `.publishes(…)` when
-	 * the handler emits follow-up events, which is the only reason it would need
-	 * one.
+	 * and no connection string it could publish with. A handler that emits
+	 * follow-up events depends on the topic it emits to —
+	 * `.dependsOn([orders])` — which is the only reason it would need one.
 	 *
 	 * @example `worker.topic(users).subscribe(['user.created']).handle(…)`
 	 */
@@ -188,22 +209,6 @@ export class Worker<TName extends string = string>
 		topic: Topic<TTopicName, TEvents>,
 	) {
 		return this.own(new SubscriberBuilder().logger(this.logger)).topic(topic);
-	}
-
-	/**
-	 * A runnable that consumes events typed from a publisher service.
-	 *
-	 * The older of the two ways to bind a subscriber, kept for a project whose
-	 * events come from a hand-written publisher rather than a `Topic`
-	 * construct. `topic()` is the one to reach for: it types the events the same
-	 * way and hands the consumer no connection string it could publish with.
-	 */
-	publisher<T extends EventPublisher<any>, TPubName extends string>(
-		service: Service<TPubName, T> | Consumable<TPubName, T>,
-	) {
-		return this.own(new SubscriberBuilder().logger(this.logger)).publisher(
-			service as never,
-		);
 	}
 
 	/**
