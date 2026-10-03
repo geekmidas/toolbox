@@ -291,6 +291,10 @@ export async function writeTestHarness(
 		...new Set([
 			...Object.values(manifest.constructs).map(({ source }) => source.file),
 			...manifest.endpoints.map(({ source }) => source.file),
+			// Delivery loads each subscriber too. Left to a dynamic import, it is
+			// resolved by Node — which knows nothing of the app's tsconfig paths, so
+			// a subscriber importing `~/…` failed every test file that delivered.
+			...(manifest.subscribers ?? []).map(({ source }) => source.file),
 		]),
 	];
 	const harnessFor = (dir: string) =>

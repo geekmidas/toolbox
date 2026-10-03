@@ -440,6 +440,41 @@ export async function applyCarriers(
 	return applied;
 }
 
+/** The Postgres databases the plan creates — each is a `CREATE DATABASE`. */
+export function postgresDatabaseNames(plan: Plan): string[] {
+	return plan.resources
+		.filter(
+			(resource) =>
+				resource.kind === 'database' &&
+				resource.provisions &&
+				resource.container === 'postgres',
+		)
+		.map((resource) => resource.name);
+}
+
+/**
+ * Whether every one of these databases exists. A database dropped behind the
+ * recorded state's back — by another checkout's test teardown, against the
+ * same container — makes the state a lie, and only asking Postgres finds out.
+ * Unreachable counts as missing: applying again is what finds out why.
+ */
+export async function databasesExist(
+	client: SqlClient,
+	names: readonly string[],
+): Promise<boolean> {
+	if (names.length === 0) return true;
+	try {
+		const rows = (await client.query(
+			undefined,
+			'SELECT datname FROM pg_catalog.pg_database WHERE datname = ANY($1)',
+			[names],
+		)) as { datname: string }[];
+		return new Set(rows.map((row) => row.datname)).size === names.length;
+	} catch {
+		return false;
+	}
+}
+
 /** The object-storage operations the applier needs. */
 export interface BucketClient {
 	exists(bucket: string): Promise<boolean>;

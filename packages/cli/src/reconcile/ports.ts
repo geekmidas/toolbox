@@ -102,6 +102,36 @@ export async function allocate(
 	return assignments;
 }
 
+/**
+ * The ports to keep: what running containers are observed on, then what was
+ * saved — minus any saved entry whose port something else already holds.
+ *
+ * Spreading one over the other let an observed port override its own key and
+ * leave a *different* key still saved on the same number: two services on one
+ * port, and whichever answered first won. Saved keys for containers the plan no
+ * longer has — a backend switched and back — were the usual source. Observed
+ * wins because it is what is actually bound; a dropped entry is simply
+ * allocated again.
+ */
+export function keptPorts(
+	saved: PortAssignments = {},
+	observed: PortAssignments = {},
+): PortAssignments {
+	const kept: Record<string, number> = { ...observed };
+	const taken = new Set(Object.values(observed));
+
+	// Sorted, so which of two colliding saved entries survives is stable.
+	for (const [key, port] of Object.entries(saved).sort(([a], [b]) =>
+		a < b ? -1 : 1,
+	)) {
+		if (key in kept || taken.has(port)) continue;
+		kept[key] = port;
+		taken.add(port);
+	}
+
+	return kept;
+}
+
 /** The window was exhausted. */
 export class NoPortAvailable extends Error {
 	/** Where the search started. */

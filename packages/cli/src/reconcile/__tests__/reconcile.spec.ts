@@ -45,6 +45,19 @@ function fakeDocker(
 	return { docker, calls };
 }
 
+/**
+ * Postgres holding these databases: answers the existence check reconcile's
+ * fast path makes, and nothing else.
+ */
+function postgresWith(databases: readonly string[]) {
+	return () => ({
+		query: async (_database: string | undefined, sql: string) =>
+			sql.includes('pg_database')
+				? databases.map((datname) => ({ datname }))
+				: [],
+	});
+}
+
 describe('reconcile', () => {
 	let root: string;
 
@@ -157,7 +170,7 @@ describe('reconcile', () => {
 			localStage: 'development',
 			docker,
 			probe: async () => true,
-			sql: () => ({ query: async () => [] }),
+			sql: postgresWith(['orders']),
 			buckets: () => ({
 				exists: async () => true,
 				create: async () => {},
@@ -168,6 +181,41 @@ describe('reconcile', () => {
 
 		expect(second.changed).toBe(false);
 		expect(calls.up).toHaveLength(0);
+	});
+
+	it('creates a database again when it was dropped behind the recorded state', async () => {
+		// Every checkout shares one Postgres. Another checkout's test teardown
+		// drops `orders_test` by name, and this checkout's state still says it
+		// was created — trusting it left the suite with no database at all.
+		await run();
+
+		const created: string[] = [];
+		const { docker } = fakeDocker({ healthy: true });
+		const second = await reconcile({
+			root,
+			project: 'toolbox',
+			manifest,
+			stage: 'development',
+			localStage: 'development',
+			docker,
+			probe: async () => true,
+			sql: () => ({
+				query: async (_database, sql) => {
+					if (sql.includes('pg_database')) return [];
+					if (sql.startsWith('CREATE DATABASE')) created.push(sql);
+					return [];
+				},
+			}),
+			buckets: () => ({
+				exists: async () => true,
+				create: async () => {},
+				policy: async () => undefined,
+				setPolicy: async () => {},
+			}),
+		});
+
+		expect(second.changed).toBe(true);
+		expect(created).toEqual(['CREATE DATABASE "orders"']);
 	});
 
 	it('provisions again when the role DDL changed, though no container did', async () => {

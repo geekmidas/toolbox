@@ -10,6 +10,7 @@ import {
 import { sniffAppEnvironment } from '../deploy/sniffer';
 import { primaryPortKey } from '../reconcile/containers';
 import type { ReconcileResult } from '../reconcile/index.js';
+import { postgresDatabaseNames } from '../reconcile/provision.js';
 import { backendsOf, constructGlobs } from '../reconcile/workspace.js';
 import { TEST_STAGE } from '../workspace/stages';
 import {
@@ -314,14 +315,7 @@ function testDatabases(
 	reconciled: ReconcileResult | undefined,
 ): Pick<TestReady, 'databases'> {
 	const port = reconciled?.ports[primaryPortKey('postgres')];
-	const names = (reconciled?.plan.resources ?? [])
-		.filter(
-			(resource) =>
-				resource.kind === 'database' &&
-				resource.provisions &&
-				resource.container === 'postgres',
-		)
-		.map((resource) => resource.name);
+	const names = reconciled ? postgresDatabaseNames(reconciled.plan) : [];
 	return port !== undefined && names.length > 0
 		? { databases: { port, names } }
 		: {};
