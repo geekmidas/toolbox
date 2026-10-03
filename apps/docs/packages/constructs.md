@@ -49,7 +49,7 @@ pnpm add @geekmidas/constructs
 | `/file-server` | `FileServer` — a domain that serves a bucket's objects |
 | `/cache` | `Cache` — a declared cache |
 | `/credential` | `Credential` — a third-party credential with a shape |
-| `/external-api` | `ExternalApi` — an HTTP API somebody else runs, faked locally |
+| `/external-api` | `ExternalApi` — an HTTP API somebody else runs, faked in tests |
 | `/email` | `Email` — declared outbound mail |
 | `/rest-api` | `RestApi` — an API surface |
 | `/site` | `StaticSite` — a declared static site |
@@ -109,7 +109,7 @@ drift.
 | `FileServer` | `/file-server` | a `StorageClient` **superset** — plus `url()` and `signedUrl()` |
 | `Cache` | `/cache` | `CacheClient` |
 | `Credential` | `/credential` | the parsed, validated value — no `await` at the call site |
-| `ExternalApi` | `/external-api` | whatever its `client` builds — the real API deployed, its fake locally |
+| `ExternalApi` | `/external-api` | whatever its `client` builds — the real API, or its fake in tests and `gkm dev --fake` |
 | `Email` | `/email` | an `EmailClient` typed by your templates |
 | `Topic` | `/topic` | `topic.publisher` — a typed `EventPublisher` |
 | `Queue` | `/queue` | `send()` |
@@ -215,7 +215,7 @@ import { fake } from '@geekmidas/constructs/external-api';
 import type { polar } from '../../constructs/polar';
 
 export default fake.app<typeof polar>(
-  new Hono().post('/v3/oauth2/token', (c) => c.json({ access_token: 'fake' })),
+  new Hono().post('/v3/users', (c) => c.json({ 'polar-user-id': 1 })),
   { credentials: { clientId: 'fake', clientSecret: 'fake' } },
 );
 ```
@@ -233,7 +233,9 @@ export default fake.image<typeof stripe>('stripe/stripe-mock', {
 
 `<typeof polar>` checks the fake's credentials against the construct's schema.
 An external API with no fake fails `gkm test` and `gkm dev --fake` with
-`NoFake`, naming the file to create.
+`NoFake`, naming the file to create. Writing a fake, asserting on what it
+received, and how long its state lives are in the
+[testing guide](/guide/testing#fakes).
 
 ### The database, and what comes off it
 
