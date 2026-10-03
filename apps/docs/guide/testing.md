@@ -201,6 +201,46 @@ it('asks the carrier for exactly the parcel it was given', async ({
 });
 ```
 
+### Background work, end to end
+
+What a request publishes is delivered before the test sees the response —
+in-process, no broker, no Docker:
+
+- A **queue**'s messages go to its one consumer, as a batch.
+- A **topic**'s events go to every subscriber that named that event type, and
+  only those — the fan-out the broker does deployed.
+- Each payload is checked against the consumer's schema first, so a producer
+  sending the wrong shape fails the test (`MessageRejected`).
+- Consumers run in the **test's transaction**: they see the rows the endpoint
+  wrote, and what they write rolls back with the test.
+- What a consumer publishes is delivered in turn, until nothing is left. A
+  chain that never settles fails with `DeliveryDidNotSettle`.
+- A consumer that throws fails the test (`DeliveryFailed`). Deployed, the
+  message would be retried; here that would only hide the bug.
+
+```typescript
+it('writes a notification when a user is created', async ({ browser, db }) => {
+  const user = await browser.api.post('/users', { body: { name: 'Ada', email } });
+
+  // The `user.created` subscriber has already run.
+  const app = await db.get('database');
+  expect(
+    await app.selectFrom('notifications').where('user_id', '=', user.id).execute(),
+  ).toHaveLength(1);
+});
+```
+
+What is tested is the contract: what a handler is handed — `messages` for a
+queue, `events` (`{ type, payload }`) for a subscriber. Turning an SNS envelope
+or an SQS record into that shape is each adaptor's job, and tested there. One
+thing to know: a transport carries JSON, so a `Date` in a payload arrives as a
+string deployed — write payload schemas with `z.iso.datetime()`, not
+`z.date()`.
+
+`published(topic)` still records everything published, and
+`queue(q).invoke(...)` / `subscriber(s).invoke(...)` run a consumer on its own —
+a redelivery, say — and deliver whatever it publishes.
+
 ### State lives for the test file
 
 A fake is loaded once per test file, not once per test, so what it keeps

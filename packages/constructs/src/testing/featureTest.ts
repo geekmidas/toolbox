@@ -38,6 +38,7 @@ import {
 import { type FakerFactory, faker } from '@geekmidas/testkit/faker';
 import { createMailbox, type Mailbox } from '@geekmidas/testkit/mailbox';
 import { TransactionRegistry } from '@geekmidas/testkit/transactions';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Hono } from 'hono';
 import type { Kysely } from 'kysely';
 import { http } from 'msw';
@@ -150,8 +151,10 @@ export interface FeatureContext<
 	mailbox: (address: string) => Mailbox;
 	/**
 	 * What this test published to a topic or enqueued on a queue, in order.
-	 * Nothing is delivered — a subscriber or a worker is tested on its own, by
-	 * handing it events — so this is where publishing is asserted.
+	 *
+	 * Also delivered: once each request the test makes has answered, a queue's
+	 * messages reach its consumer and a topic's events every subscriber that
+	 * named them, in this test's transaction — see {@link deliver}.
 	 */
 	published: (channel: { id: string }) => PublishedMessage[];
 	/**
@@ -240,6 +243,13 @@ interface ContextState {
 	mailbox?: (address: string) => Mailbox;
 	/** What this test published, by topic or queue id. */
 	published: Map<string, PublishedMessage[]>;
+	/** What was published and is still to be delivered, in order. */
+	pending: {
+		channel: Topic<any, any> | Queue<any, any>;
+		messages: PublishedMessage[];
+	}[];
+	/** Set while delivering, so a consumer's own requests do not deliver again. */
+	delivering: boolean;
 }
 
 /** Every test in flight in this process, by id. */
@@ -257,6 +267,11 @@ interface LoadedApp {
 	emails: Email[];
 	/** Every topic and queue — what a test's publishing is recorded for. */
 	channels: (Topic<any, any> | Queue<any, any>)[];
+	/** Every topic subscriber, by the name it is exported as. */
+	subscribers: {
+		name: string;
+		subscriber: Subscriber<any, any, any, any, any>;
+	}[];
 	readMail?: (address: string) => Mailbox;
 }
 
@@ -300,7 +315,18 @@ export function featureTest<
 			},
 		});
 		// After MSW's interceptor, so the stamp is on before a request is caught.
-		restoreFetch = installContextFetch();
+		const restoreStamp = installContextFetch();
+		// Outermost: once a request the test made has answered, what it
+		// published is delivered before the test sees the response.
+		const stamped = globalThis.fetch;
+		globalThis.fetch = deliveringFetch(stamped, (id) => {
+			const state = contexts.get(id);
+			return state ? deliver(app, state, id) : Promise.resolve();
+		});
+		restoreFetch = () => {
+			globalThis.fetch = stamped;
+			restoreStamp();
+		};
 	});
 	afterAll(() => {
 		restoreFetch();
@@ -319,6 +345,8 @@ export function featureTest<
 				auth: new Map(),
 				addresses: new Set(),
 				published: new Map(),
+				pending: [],
+				delivering: false,
 			};
 			const readMail = app.readMail;
 			if (readMail) {
@@ -393,15 +421,17 @@ export function featureTest<
 							published: (channel) => [
 								...(state.published.get(channel.id) ?? []),
 							],
+							// A consumer run by hand delivers what it published, as a
+							// request does.
 							subscriber: (subscriber) =>
-								new TestSubscriberAdaptor(
-									subscriber,
-									state.discovery,
+								thenDeliver(
+									new TestSubscriberAdaptor(subscriber, state.discovery),
+									() => deliver(app, state, id),
 								) as SubscriberAdaptorOf<typeof subscriber>,
 							queue: (queue) =>
-								new TestQueueAdaptor(queue, state.discovery) as QueueAdaptorOf<
-									typeof queue
-								>,
+								thenDeliver(new TestQueueAdaptor(queue, state.discovery), () =>
+									deliver(app, state, id),
+								) as QueueAdaptorOf<typeof queue>,
 						} as FeatureContext<TBrowser, TDatabases, TFactories>);
 					} finally {
 						restore();
@@ -472,6 +502,23 @@ async function load(
 	).filter((value): value is Endpoint<any, any, any, any> =>
 		Endpoint.isEndpoint(value),
 	);
+	const subscribers = (
+		await Promise.all(
+			(manifest.subscribers ?? []).map(async ({ source }) => ({
+				name: source.export,
+				subscriber: await imported(source),
+			})),
+		)
+	).filter(
+		(
+			entry,
+		): entry is {
+			name: string;
+			subscriber: Subscriber<any, any, any, any, any>;
+		} =>
+			(entry.subscriber as { __IS_SUBSCRIBER__?: unknown })
+				?.__IS_SUBSCRIBER__ === true,
+	);
 
 	const unique = <T>(values: T[]) => [...new Set(values)];
 	const databases = unique(
@@ -505,6 +552,7 @@ async function load(
 		auths,
 		emails,
 		channels,
+		subscribers,
 		...(inbox ? { readMail: createMailbox({ inbox }) } : {}),
 	};
 }
@@ -521,10 +569,12 @@ function recorders(
 	return channels.map((channel) => {
 		const publisher = {
 			async publish(messages: PublishedMessage[]) {
+				const sent = messages.map(({ type, payload }) => ({ type, payload }));
 				state.published.set(channel.id, [
 					...(state.published.get(channel.id) ?? []),
-					...messages.map(({ type, payload }) => ({ type, payload })),
+					...sent,
 				]);
+				state.pending.push({ channel, messages: sent });
 			},
 		};
 		return {
@@ -579,6 +629,153 @@ function databasesFor(
  * the one place a test's connection can be handed over. Outside a test it is
  * the database it always was.
  */
+/** Rounds of delivery before a chain of consumers is called a loop. */
+const MAX_DELIVERY_ROUNDS = 25;
+
+/**
+ * Deliver what this test published, in-process, as the broker would — and
+ * keep delivering what the consumers publish in turn, until nothing is left.
+ *
+ * - A queue's messages go to its one consumer, as a batch.
+ * - A topic's events go to every subscriber that named their type, and only
+ *   those: fan-out, as the filter policy (SNS) or the per-subscriber queue
+ *   (pg-boss) does it.
+ * - Each payload is checked against the consumer's schema first. Turning an
+ *   SNS envelope or an SQS record into `{ type, payload }` is each adaptor's
+ *   job and tested there; what is tested here is what the handler is handed.
+ * - Consumers run as the server side of this test, so their databases are
+ *   this test's transactions and their writes roll back with it.
+ * - A consumer that throws fails the test. Deployed, the message would be
+ *   retried; here a retry would only hide the bug.
+ */
+async function deliver(
+	app: LoadedApp,
+	state: ContextState,
+	id: string,
+): Promise<void> {
+	if (state.delivering) return;
+	state.delivering = true;
+	try {
+		for (let round = 0; state.pending.length > 0; round++) {
+			if (round === MAX_DELIVERY_ROUNDS) {
+				throw new DeliveryDidNotSettle(MAX_DELIVERY_ROUNDS, [
+					...new Set(state.pending.map(({ channel }) => channel.id)),
+				]);
+			}
+			for (const { channel, messages } of state.pending.splice(0)) {
+				if (channel instanceof Queue) {
+					await toQueue(channel, messages, state, id);
+				} else {
+					await toSubscribers(channel, messages, app, state, id);
+				}
+			}
+		}
+	} finally {
+		state.delivering = false;
+	}
+}
+
+async function toQueue(
+	queue: Queue<any, any>,
+	messages: PublishedMessage[],
+	state: ContextState,
+	id: string,
+): Promise<void> {
+	const payloads: unknown[] = [];
+	for (const message of messages) {
+		payloads.push(
+			await accepted(queue.messageSchema, message, `queue '${queue.name}'`),
+		);
+	}
+
+	await runAsServer(id, () =>
+		new TestQueueAdaptor(queue, state.discovery).invoke({ messages: payloads }),
+	).catch((error: unknown) => {
+		throw new DeliveryFailed(`queue '${queue.name}'`, messages, error);
+	});
+}
+
+async function toSubscribers(
+	topic: Topic<any, any>,
+	messages: PublishedMessage[],
+	app: LoadedApp,
+	state: ContextState,
+	id: string,
+): Promise<void> {
+	for (const { name, subscriber } of app.subscribers) {
+		if (subscriber.topicName !== topic.name) continue;
+
+		const named = messages.filter(({ type }) =>
+			(subscriber.subscribedEvents ?? []).includes(type),
+		);
+		if (named.length === 0) continue;
+
+		const consumer = `subscriber '${name}'`;
+		const events: PublishedMessage[] = [];
+		for (const message of named) {
+			const schema = (topic.eventSchemas as Record<string, unknown>)[
+				message.type
+			];
+			events.push({
+				type: message.type,
+				payload: await accepted(schema, message, consumer),
+			});
+		}
+
+		await runAsServer(id, () =>
+			new TestSubscriberAdaptor(subscriber, state.discovery).invoke({
+				events,
+			} as never),
+		).catch((error: unknown) => {
+			throw new DeliveryFailed(consumer, named, error);
+		});
+	}
+}
+
+/** The payload, if the consumer's schema takes it — what the handler is handed. */
+async function accepted(
+	schema: unknown,
+	message: PublishedMessage,
+	consumer: string,
+): Promise<unknown> {
+	const standard = (schema as StandardSchemaV1 | undefined)?.['~standard'];
+	if (!standard) return message.payload;
+
+	const result = await standard.validate(message.payload);
+	if (result.issues) {
+		throw new MessageRejected(consumer, message, result.issues);
+	}
+	return result.value;
+}
+
+/** `fetch`, delivering what the test published once each of its requests answers. */
+function deliveringFetch(
+	inner: typeof fetch,
+	settle: (id: string) => Promise<void>,
+): typeof fetch {
+	return async (input, init) => {
+		const context = currentTestContext();
+		const response = await inner(input, init);
+		// The test's own requests only: a handler's requests are part of the one
+		// being served, and a consumer's are part of a delivery already running.
+		if (context?.side === 'client') await settle(context.id);
+		return response;
+	};
+}
+
+/** An adaptor whose `invoke` delivers what it published before returning. */
+function thenDeliver<
+	T extends { invoke: (...args: any[]) => Promise<unknown> },
+>(adaptor: T, settle: () => Promise<void>): T {
+	const invoke = adaptor.invoke.bind(adaptor);
+	adaptor.invoke = (async (...args: unknown[]) => {
+		const result = await invoke(...args);
+		await settle();
+		return result;
+	}) as T['invoke'];
+	return adaptor;
+}
+
 function bindToTests(database: KyselyDatabase): void {
 	if (bound.has(database)) return;
 	bound.add(database);
@@ -854,5 +1051,55 @@ export class UnknownFactory extends Error {
 				`Name the file after the database construct: test/factories/<construct>.ts.`,
 		);
 		this.name = 'UnknownFactory';
+	}
+}
+
+/** A published message the consumer's own schema refuses. */
+export class MessageRejected extends Error {
+	constructor(
+		readonly consumer: string,
+		readonly published: PublishedMessage,
+		readonly issues: ReadonlyArray<StandardSchemaV1.Issue>,
+	) {
+		super(
+			`${consumer} refuses '${published.type}': ${issues
+				.map((issue) => issue.message)
+				.join('; ')}. What is published must be what the consumer's schema ` +
+				'takes — fix the producer, or the schema.',
+		);
+		this.name = 'MessageRejected';
+	}
+}
+
+/** A consumer that threw while handling what the test published. */
+export class DeliveryFailed extends Error {
+	constructor(
+		readonly consumer: string,
+		readonly messages: readonly PublishedMessage[],
+		override readonly cause: unknown,
+	) {
+		super(
+			`${consumer} failed handling ${messages
+				.map(({ type }) => `'${type}'`)
+				.join(', ')}: ${(cause as Error)?.message ?? String(cause)}. ` +
+				'Deployed, the message would be retried; here the failure is the result.',
+			{ cause },
+		);
+		this.name = 'DeliveryFailed';
+	}
+}
+
+/** Consumers that kept publishing to each other without settling. */
+export class DeliveryDidNotSettle extends Error {
+	constructor(
+		readonly rounds: number,
+		readonly channels: readonly string[],
+	) {
+		super(
+			`Delivery did not settle after ${rounds} rounds — consumers are still ` +
+				`publishing to ${channels.join(', ')}. A consumer that publishes to ` +
+				'what triggers it loops forever deployed too.',
+		);
+		this.name = 'DeliveryDidNotSettle';
 	}
 }
