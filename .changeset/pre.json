@@ -59,6 +59,7 @@
     "external-api",
     "faker-lowercase-email",
     "featuretest-delivery",
+    "featuretest-services-fixture",
     "fresh-scaffold-tests-run",
     "gkm-migrate",
     "gkm-seed",

@@ -1,5 +1,37 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.44
+
+### Minor Changes
+
+- [#120](https://github.com/geekmidas/toolbox/pull/120) [`067b7a9`](https://github.com/geekmidas/toolbox/commit/067b7a9b3ede9e2de4f52b9d4fdf5af008abc269) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: `featureTest`: a `services` fixture — assert through the client a handler gets, with the fake behind it hidden (#119)
+
+  `await services.get('shipping')` returns what a handler depending on that construct is handed, resolved the way the test's endpoints resolve it: an external API's client aimed at whatever the test stage resolved (its fake, which the test never sees), a topic or queue as its recorder, a database as the test's transaction. The generated harness types it per service name (`ClientOf<typeof shipping>`); a name the app does not declare is a type error, and `UnknownService` at runtime.
+
+  A test asserts on an external API through the provider's own contract — the fake implements the provider's read endpoints too — so the same assertion holds against the provider's sandbox. Fakes stay hidden: tests no longer import a fake's module to read its state.
+
+  The delivery errors from #115 (`DeliveryFailed`, `MessageRejected`, `DeliveryDidNotSettle`) are now exported from `@geekmidas/constructs/testing`.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/audit@10.0.0-alpha.44
+  - @geekmidas/auth@10.0.0-alpha.44
+  - @geekmidas/cache@10.0.0-alpha.44
+  - @geekmidas/db@10.0.0-alpha.44
+  - @geekmidas/emailkit@10.0.0-alpha.44
+  - @geekmidas/envkit@10.0.0-alpha.44
+  - @geekmidas/errors@10.0.0-alpha.44
+  - @geekmidas/events@10.0.0-alpha.44
+  - @geekmidas/logger@10.0.0-alpha.44
+  - @geekmidas/manifest@10.0.0-alpha.44
+  - @geekmidas/rate-limit@10.0.0-alpha.44
+  - @geekmidas/schema@10.0.0-alpha.44
+  - @geekmidas/services@10.0.0-alpha.44
+  - @geekmidas/storage@10.0.0-alpha.44
+  - @geekmidas/telescope@10.0.0-alpha.44
+  - @geekmidas/testkit@10.0.0-alpha.44
+
 ## 10.0.0-alpha.43
 
 ### Patch Changes

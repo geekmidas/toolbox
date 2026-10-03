@@ -1,5 +1,7 @@
 # @geekmidas/envkit
 
+## 10.0.0-alpha.44
+
 ## 10.0.0-alpha.43
 
 ## 10.0.0-alpha.42
