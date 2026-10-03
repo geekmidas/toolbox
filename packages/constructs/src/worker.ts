@@ -30,6 +30,15 @@
  * than a design: the store could be a cache, or something the target
  * provisions, and Postgres is what exists.
  *
+ * ## The database is everything's default
+ *
+ * The same `.database(db)` is the database every cron, queue, subscriber and
+ * function built from the worker receives as `db`. The work a worker groups is
+ * usually work against one database, and naming it per handler was a line
+ * repeated in every file that could drift in any one of them. A runnable that
+ * works against another names its own with `.database(other)`, which replaces
+ * the worker's — client and manifest edge both — rather than adding to it.
+ *
  * It is not an app. A worker names the process that runs its crons and
  * subscribers, and that process is the app's server — the same one the
  * endpoints run in, minus the HTTP surface. Giving a worker a container of its
@@ -43,14 +52,21 @@
  * import { Worker } from '@geekmidas/constructs/worker';
  * import { logger } from './logger.js';
  *
- * export const worker = new Worker('Worker', { logger }).calls([database]);
+ * export const worker = new Worker('Worker', { logger }).database(database);
  *
  * // crons/cleanup.ts
  * import { worker } from '@acme/constructs/worker.js';
  *
  * export const cleanup = worker
  *   .cron('rate(1 day)')
- *   .handle(async ({ logger }) => { … });
+ *   .handle(async ({ db, logger }) => { … });
+ *
+ * // queues/reports.ts — against another database than the worker's
+ * export const reports = worker
+ *   .queue('Reports')
+ *   .database(analytics)
+ *   .message(z.object({ id: z.uuid() }))
+ *   .handle(async ({ messages, db }) => { … });
  * ```
  */
 
@@ -99,8 +115,11 @@ export interface WorkerConfig {
 	envParser?: EnvironmentParser<{}>;
 }
 
-export class Worker<TName extends string = string>
-	implements Declarable<TName>
+export class Worker<
+	TName extends string = string,
+	TDatabase = undefined,
+	TDatabaseServiceName extends string = string,
+> implements Declarable<TName>
 {
 	readonly id: TName;
 
@@ -112,7 +131,8 @@ export class Worker<TName extends string = string>
 
 	/**
 	 * Where this worker's schedules live, when it has crons and a server runs
-	 * them. `undefined` until `.database(…)` says.
+	 * them — and the database everything built from it receives as `db`.
+	 * `undefined` until `.database(…)` says.
 	 */
 	readonly scheduleStore?: Consumable<string, unknown>;
 
@@ -136,7 +156,10 @@ export class Worker<TName extends string = string>
 	}
 
 	/**
-	 * The database this worker keeps its schedules in.
+	 * The database this worker keeps its schedules in, and the one everything
+	 * built from it — crons, queues, subscribers, functions — receives as `db`.
+	 * One of them that works against another database names it with its own
+	 * `.database(other)`, which replaces this one for that runnable alone.
 	 *
 	 * Only a server target uses it. On AWS a cron is an EventBridge rule
 	 * invoking a Lambda and nothing here is consulted — but a server has nothing
@@ -153,12 +176,16 @@ export class Worker<TName extends string = string>
 	 * @example
 	 * ```ts
 	 * export const jobs = new Worker('Jobs', { logger }).database(database);
+	 *
+	 * export const sweep = jobs
+	 *   .cron('rate(1 hour)')
+	 *   .handle(async ({ db }) => db.deleteFrom('sessions').execute());
 	 * ```
 	 */
 	database<T, TDbName extends string>(
 		source: Consumable<TDbName, T>,
-	): Worker<TName> {
-		return new Worker<TName>(
+	): Worker<TName, T, TDbName> {
+		return new Worker<TName, T, TDbName>(
 			this.id as ConstructName<TName>,
 			this.config,
 			[...this.dependencies, edgeTo(source)],
@@ -172,7 +199,16 @@ export class Worker<TName extends string = string>
 	 * @example `worker.cron('rate(1 day)').handle(async ({ logger }) => { … })`
 	 */
 	cron(schedule: ScheduleExpression) {
-		return this.own(new CronBuilder().logger(this.logger)).schedule(schedule);
+		return this.own(
+			new CronBuilder<
+				ComposableStandardSchema,
+				Service[],
+				Logger,
+				undefined,
+				TDatabase,
+				TDatabaseServiceName
+			>().logger(this.logger),
+		).schedule(schedule);
 	}
 
 	/**
@@ -192,7 +228,16 @@ export class Worker<TName extends string = string>
 	 * ```
 	 */
 	queue<TQueueName extends string>(name: TQueueName) {
-		return this.own(new QueueBuilder().logger(this.logger)).queue(name);
+		return this.own(
+			new QueueBuilder<
+				string,
+				undefined,
+				[],
+				Logger,
+				TDatabase,
+				TDatabaseServiceName
+			>().logger(this.logger),
+		).queue(name);
 	}
 
 	/**
@@ -208,7 +253,17 @@ export class Worker<TName extends string = string>
 	topic<TTopicName extends string, TEvents extends TopicEvents>(
 		topic: Topic<TTopicName, TEvents>,
 	) {
-		return this.own(new SubscriberBuilder().logger(this.logger)).topic(topic);
+		return this.own(
+			new SubscriberBuilder<
+				[],
+				Logger,
+				undefined,
+				undefined,
+				[],
+				TDatabase,
+				TDatabaseServiceName
+			>().logger(this.logger),
+		).topic(topic);
 	}
 
 	/**
@@ -253,7 +308,9 @@ export class Worker<TName extends string = string>
 	 */
 	handle(
 		...args: Parameters<
-			ReturnType<Worker<TName>['schemalessFunction']>['handle']
+			ReturnType<
+				Worker<TName, TDatabase, TDatabaseServiceName>['schemalessFunction']
+			>['handle']
 		>
 	) {
 		return this.schemalessFunction().handle(...args);
@@ -266,7 +323,18 @@ export class Worker<TName extends string = string>
 
 	/** The function builder the delegating methods above are built on. */
 	private get functions() {
-		return this.own(new FunctionBuilder().logger(this.logger));
+		return this.own(
+			new FunctionBuilder<
+				any,
+				undefined,
+				[],
+				Logger,
+				undefined,
+				string,
+				TDatabase,
+				TDatabaseServiceName
+			>().logger(this.logger),
+		);
 	}
 
 	/**
@@ -275,8 +343,10 @@ export class Worker<TName extends string = string>
 	 * Not `.dependsOn()`: this records the edge that derives the worker's
 	 * environment and its access, the same distinction `RestApi.calls()` draws.
 	 */
-	calls(constructs: readonly Declarable[]): Worker<TName> {
-		return new Worker<TName>(
+	calls(
+		constructs: readonly Declarable[],
+	): Worker<TName, TDatabase, TDatabaseServiceName> {
+		return new Worker<TName, TDatabase, TDatabaseServiceName>(
 			this.id as ConstructName<TName>,
 			this.config,
 			[...this.dependencies, ...constructs.map(edgeTo)],
@@ -286,15 +356,30 @@ export class Worker<TName extends string = string>
 
 	/**
 	 * Stamps this worker's id onto a builder, so everything built from it says
-	 * which process runs it.
+	 * which process runs it — and hands it the worker's database.
+	 *
+	 * The database goes through the builder's own `.database()` rather than
+	 * being written into its fields, so the default is recorded exactly as an
+	 * explicit one would be: the client the handler gets, and the edge the
+	 * manifest reads. That is also what lets a later `.database(other)` replace
+	 * it outright. The builder arrives already typed with this worker's
+	 * database; this is the runtime half of that.
 	 */
-	private own<T extends { _owner?: string; _scheduleStore?: unknown }>(
-		builder: T,
-	): T {
-		builder._owner = this.id;
-		builder._scheduleStore = this.scheduleStore;
+	private own<
+		T extends {
+			_owner?: string;
+			_scheduleStore?: unknown;
+			database(source: Consumable<string, unknown>): unknown;
+		},
+	>(builder: T): T {
+		const owned = this.scheduleStore
+			? (builder.database(this.scheduleStore) as T)
+			: builder;
 
-		return builder;
+		owned._owner = this.id;
+		owned._scheduleStore = this.scheduleStore;
+
+		return owned;
 	}
 
 	declare(): Declaration[] {

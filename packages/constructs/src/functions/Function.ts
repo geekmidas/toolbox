@@ -196,8 +196,11 @@ export type FunctionHandler<
 
 /**
  * Conditional type that adds `db` property only when TDatabase is configured.
+ *
+ * Exported because a queue's and a subscriber's context take `db` the same
+ * way, and one definition is what keeps the three from disagreeing.
  */
-type DatabaseContext<TDatabase> = TDatabase extends undefined
+export type DatabaseContext<TDatabase> = TDatabase extends undefined
 	? {}
 	: { db: TDatabase };
 

@@ -10,8 +10,8 @@ import { ConstructType } from '../Construct';
 import { cloneWith } from '../clone';
 import {
 	type Consumable,
+	databaseEdges,
 	idsOf,
-	isConsumable,
 	type ServicesOf,
 	serviceOf,
 	servicesOf,
@@ -238,10 +238,18 @@ export class CronBuilder<
 				TDatabaseServiceName,
 				TDatabase
 			>,
-			// The edge, as `.dependsOn()` records one — see EndpointFactory.
-			...(isConsumable(source)
-				? { _constructs: idsOf([source], this._constructs) }
-				: {}),
+			// The edge, as `.dependsOn()` records one — see EndpointFactory —
+			// in place of the one a previous `.database()` added, which is how a
+			// worker's default database is overridden rather than added to.
+			...databaseEdges(
+				{
+					constructs: this._constructs,
+					edge: this._databaseEdge,
+					service: this._databaseService as Service | undefined,
+					services: this._services,
+				},
+				source,
+			),
 		}) as unknown as CronBuilder<
 			TInput,
 			TServices,

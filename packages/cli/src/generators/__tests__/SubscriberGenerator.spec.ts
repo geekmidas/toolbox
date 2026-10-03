@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { KyselyDatabase } from '@geekmidas/constructs/database/kysely';
 import {
 	type Subscriber,
 	SubscriberBuilder,
@@ -343,6 +344,48 @@ describe('SubscriberGenerator', () => {
 			// Pushed on SNS, polled elsewhere, and off with --no-subscribers.
 			expect(content).toContain("connectionString.startsWith('sns:')");
 			expect(content).toContain("process.env.GKM_SUBSCRIBERS === 'off'");
+		});
+
+		it('hands each polled subscriber its database as db', async () => {
+			const users = new Topic('Users', {
+				events: { 'user.created': z.object({ id: z.string() }) },
+			});
+			const subscriber = new Worker('Jobs')
+				.database(new KyselyDatabase('Orders'))
+				.topic(users)
+				.subscribe(['user.created'])
+				.handle(async () => {});
+			const construct = {
+				key: 'userEvents',
+				name: 'userevents',
+				construct: subscriber,
+				path: {
+					absolute: join(tempDir, 'userEvents.ts'),
+					relative: 'userEvents.ts',
+				},
+			};
+
+			await generator.build(context, [construct], outputDir, {
+				provider: 'server',
+			});
+			const content = await readFile(
+				join(outputDir, 'subscribers.ts'),
+				'utf-8',
+			);
+			// Polled here; a pushed one goes through SnsPushSubscriberAdaptor,
+			// whose Lambda adaptor registers the database itself.
+			expect(content).toContain(
+				'await serviceDiscovery.register([subscriber.databaseService])',
+			);
+			expect(content).toMatch(/logger: subscriber\.logger,\s+db,/);
+
+			// On Lambda the subscriber runs alone, so the database is its own env
+			// and edge.
+			const [info] = await generator.build(context, [construct], outputDir, {
+				provider: 'aws-lambda',
+			});
+			expect(info?.environment).toContain('ORDERS_URL');
+			expect(info?.dependencies).toEqual(['Orders']);
 		});
 
 		it('should handle subscribers with custom environment parser patterns', async () => {

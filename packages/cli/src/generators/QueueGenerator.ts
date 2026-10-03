@@ -21,16 +21,16 @@ import {
  *   by an SQS event-source mapping.
  */
 export class QueueGenerator extends ConstructGenerator<
-	Queue<any, any, any, any>,
+	Queue<any, any, any, any, any, any>,
 	QueueInfo[]
 > {
-	isConstruct(value: any): value is Queue<any, any, any, any> {
+	isConstruct(value: any): value is Queue<any, any, any, any, any, any> {
 		return Queue.isQueue(value);
 	}
 
 	async build(
 		context: BuildContext,
-		constructs: GeneratedConstruct<Queue<any, any, any, any>>[],
+		constructs: GeneratedConstruct<Queue<any, any, any, any, any, any>>[],
 		outputDir: string,
 		options?: GeneratorOptions,
 	): Promise<QueueInfo[]> {
@@ -119,7 +119,7 @@ export const handler = adapter.handler;
 
 	private async generateServerQueuesFile(
 		outputDir: string,
-		queues: GeneratedConstruct<Queue<any, any, any, any>>[],
+		queues: GeneratedConstruct<Queue<any, any, any, any, any, any>>[],
 	): Promise<string> {
 		await mkdir(outputDir, { recursive: true });
 
@@ -222,6 +222,12 @@ export async function setupQueues(
       const services = queue.services.length > 0
         ? await serviceDiscovery.register(queue.services)
         : {};
+      // The queue's database — the worker's, or its own — handed over as \`db\`.
+      const db = queue.databaseService
+        ? (await serviceDiscovery.register([queue.databaseService]))[
+            queue.databaseService.serviceName
+          ]
+        : undefined;
 
       // A queue's messages carry one type — its own name.
       await eventSubscriber.subscribe([queue.name], async (message) => {
@@ -236,7 +242,8 @@ export async function setupQueues(
             messages: [validation.value],
             services: services,
             logger: queue.logger,
-          });
+            db,
+          } as any);
         } catch (error) {
           logger.error({ error, queue: queue.name }, 'Failed to process queue message');
           // Rethrown so the transport keeps the message for a retry.

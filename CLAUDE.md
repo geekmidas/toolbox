@@ -109,7 +109,8 @@ export const users = new Topic('Users', {
   events: { 'user.created': z.object({ userId: z.string(), email: z.email() }) },
 });
 
-// constructs/worker.ts — the process with no port
+// constructs/worker.ts — the process with no port; its database is the
+// default `db` of everything built from it
 import { Worker } from '@geekmidas/constructs/worker';
 
 export const worker = new Worker('Jobs', { logger }).database(database);
@@ -124,10 +125,17 @@ export const onUser = worker
 export const emails = worker
   .queue('Emails')
   .message(z.object({ to: z.email() }))
-  .handle(async ({ messages, services }) => { … });
+  .handle(async ({ messages, db }) => { … });
+
+// queues/reports.ts — `.database(other)` replaces the worker's for this one
+export const reports = worker
+  .queue('Reports')
+  .database(analytics)
+  .message(z.object({ id: z.uuid() }))
+  .handle(async ({ messages, db }) => { … });
 
 // crons/cleanup.ts
-export const cleanup = worker.cron('rate(1 day)').handle(async () => { … });
+export const cleanup = worker.cron('rate(1 day)').handle(async ({ db }) => { … });
 ```
 
 - **Publishing to a topic**: `.event(topic, { type, payload, when? })` on an

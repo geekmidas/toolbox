@@ -12,16 +12,20 @@ import {
 } from './Generator';
 
 export class SubscriberGenerator extends ConstructGenerator<
-	Subscriber<any, any, any, any, any>,
+	Subscriber<any, any, any, any, any, any, any>,
 	SubscriberInfo[]
 > {
-	isConstruct(value: any): value is Subscriber<any, any, any, any, any> {
+	isConstruct(
+		value: any,
+	): value is Subscriber<any, any, any, any, any, any, any> {
 		return Subscriber.isSubscriber(value);
 	}
 
 	async build(
 		context: BuildContext,
-		constructs: GeneratedConstruct<Subscriber<any, any, any, any, any>>[],
+		constructs: GeneratedConstruct<
+			Subscriber<any, any, any, any, any, any, any>
+		>[],
 		outputDir: string,
 		options?: GeneratorOptions,
 	): Promise<SubscriberInfo[]> {
@@ -94,7 +98,7 @@ export class SubscriberGenerator extends ConstructGenerator<
 		outputDir: string,
 		sourceFile: string,
 		exportName: string,
-		_subscriber: Subscriber<any, any, any, any, any>,
+		_subscriber: Subscriber<any, any, any, any, any, any, any>,
 		context: BuildContext,
 		/** The construct that owns this — its worker, or its surface. */
 		owner: string | undefined,
@@ -126,7 +130,9 @@ export const handler = adapter.handler;
 
 	private async generateServerSubscribersFile(
 		outputDir: string,
-		subscribers: GeneratedConstruct<Subscriber<any, any, any, any, any>>[],
+		subscribers: GeneratedConstruct<
+			Subscriber<any, any, any, any, any, any, any>
+		>[],
 	): Promise<string> {
 		await mkdir(outputDir, { recursive: true });
 		const subscribersPath = join(outputDir, 'subscribers.ts');
@@ -326,6 +332,13 @@ export async function setupSubscribers(
       const services = subscriber.services.length > 0
         ? await serviceDiscovery.register(subscriber.services)
         : {};
+      // The subscriber's database — the worker's, or its own — as \`db\`. A
+      // pushed subscriber gets it from the adaptor above instead.
+      const db = subscriber.databaseService
+        ? (await serviceDiscovery.register([subscriber.databaseService]))[
+            subscriber.databaseService.serviceName
+          ]
+        : undefined;
 
       await eventSubscriber.subscribe(events, async (event) => {
         try {
@@ -333,7 +346,8 @@ export async function setupSubscribers(
             events: [event],
             services: services as any,
             logger: subscriber.logger,
-          });
+            db,
+          } as any);
         } catch (error) {
           logger.error({ error, event, subscriber: id }, 'Failed to process event');
           // Rethrown so the transport keeps the event for a retry — as a queue
