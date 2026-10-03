@@ -1,5 +1,23 @@
 # @geekmidas/testkit
 
+## 10.0.0-alpha.39
+
+### Patch Changes
+
+- [#108](https://github.com/geekmidas/toolbox/pull/108) [`9bfd949`](https://github.com/geekmidas/toolbox/commit/9bfd94997337b1990a5413d3127717cbf560be91) Thanks [@geekmidas](https://github.com/geekmidas)! - testkit's `faker` makes every email address lowercase
+
+  `faker.internet.email()` and `faker.internet.exampleEmail()` now return
+  lowercase addresses. That covers the `faker` a feature test is handed and
+  the one factories build with. Better Auth stores addresses lowercased, so a
+  test that signed in as faker's `Ada.Lovelace@…` and read back
+  `ada.lovelace@…` failed only when faker happened to capitalise. The rest of
+  `faker.internet` is unchanged.
+
+- Updated dependencies []:
+  - @geekmidas/envkit@10.0.0-alpha.39
+  - @geekmidas/logger@10.0.0-alpha.39
+  - @geekmidas/services@10.0.0-alpha.39
+
 ## 10.0.0-alpha.38
 
 ### Patch Changes

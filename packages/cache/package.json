@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/cache",
-	"version": "10.0.0-alpha.38",
+	"version": "10.0.0-alpha.39",
 	"description": "Unified cache interface with multiple storage implementations",
 	"private": false,
 	"type": "module",
