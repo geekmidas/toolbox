@@ -110,6 +110,7 @@ export class Topic<
 		this.connectionKey = provideKey(this.id, 'publisherConnectionString');
 
 		const envVar = this.connectionKey;
+		const topic = this.name as string;
 		this.service = {
 			serviceName: serviceKey(this.id) as Uncapitalize<TName>,
 			async register({ envParser }) {
@@ -117,8 +118,11 @@ export class Topic<
 					.create((get) => ({ connectionString: get(envVar).string() }))
 					.parse();
 
+				// Named as a topic, so a broker with one address for everything
+				// (pg-boss) fans each message out to every subscriber.
 				return Publisher.fromConnectionString<TopicMessage<TEvents>>(
 					connectionString as EventPublisherConnectionString,
+					{ topic },
 				);
 			},
 		};

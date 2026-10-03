@@ -222,6 +222,10 @@ program
 		'--fake',
 		'Call each external API’s fake (test/fakes/<id>.ts) instead of the provider',
 	)
+	.option(
+		'--no-subscribers',
+		'Run no topic subscribers: nothing is subscribed, polled or pushed to',
+	)
 	.action(
 		async (options: {
 			port?: string;
@@ -231,6 +235,7 @@ program
 			migrate?: boolean;
 			seed?: boolean;
 			fake?: boolean;
+			subscribers?: boolean;
 		}) => {
 			try {
 				const globalOptions = program.opts();
@@ -250,6 +255,7 @@ program
 					migrate: options.migrate,
 					seed: options.seed,
 					fake: options.fake,
+					subscribers: options.subscribers,
 				});
 			} catch (error) {
 				console.error(formatError(error));

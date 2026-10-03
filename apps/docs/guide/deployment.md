@@ -177,8 +177,11 @@ new Email('Mail');                                 // → MAIL_URL, MAIL_FROM
 Which backend a cache or a broker resolves to is the deploy target's answer,
 not config: on a server the cache is a table in the database and events use
 pg-boss; on AWS the cache is Upstash and events use SNS and SQS. Each still
-generates its own URLs — `EVENT_PUBLISHER_CONNECTION_STRING` and
-`EVENT_SUBSCRIBER_CONNECTION_STRING` for a declared topic or queue.
+generates its own URLs — a declared topic or queue its own
+`<ID>_PUBLISHER_CONNECTION_STRING`, which its producers and its consumers both
+read, plus `EVENT_PUBLISHER_CONNECTION_STRING` on pg-boss for the crons to
+schedule through. On the AWS target `gkm dev` creates each topic and queue on
+the local emulator, the way it creates MinIO buckets.
 
 **2. Secrets Store**
 
@@ -585,7 +588,9 @@ if something declared it.
   owner, and a reader where anything reads through one
 - a MinIO compose stack per declared bucket
 - pg-boss as a schema tenant of the database that already exists, when a queue
-  or topic is carried by it
+  or topic is carried by it — the only broker a Dokploy deploy provisions today
+  (SNS on Dokploy would deliver to the server's push route, but is not
+  provisioned yet)
 - every URL the app needs, resolved and encrypted into the build
 
 **Deploy the backends**

@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { Queue } from '@geekmidas/constructs/queue';
+import { provideKey } from '@geekmidas/manifest';
 import type { BuildContext } from '../build/types';
 import type { QueueInfo } from '../types';
 import { runtimeFor } from './EndpointGenerator.js';
@@ -11,11 +12,11 @@ import {
 } from './Generator';
 
 /**
- * Generates the runtime for `q` queue workers.
+ * Generates the runtime for queue consumers (`worker.queue(…)`).
  *
  * - **server** (`gkm dev`): a single `queues.ts` exposing `setupQueues()` that
- *   runs an in-process pg-boss poller alongside the Hono server — no SQS/Lambda.
- *   Each queue subscribes by its **name** on the shared event connection.
+ *   polls each queue in-process, alongside the Hono server, through the queue's
+ *   own connection string — pg-boss by default, SQS on the AWS emulator.
  * - **aws-lambda**: one handler file per queue wrapping `AWSLambdaQueue`, backed
  *   by an SQS event-source mapping.
  */
@@ -165,67 +166,64 @@ export async function setupQueues(
 			)
 			.join('\n');
 
-		const allExportNames = queues.map(({ key }) => key);
+		// Each queue's consumer reaches its own queue, by the queue's own key.
+		const entries = queues
+			.map(
+				({ key, construct }) =>
+					`  { queue: ${key}, connectionKey: '${provideKey(
+						construct.id,
+						'publisherConnectionString',
+					)}' },`,
+			)
+			.join('\n');
 
 		const content = `/**
- * Generated queue workers setup
+ * Generated queue consumers setup.
  *
- * ⚠️  WARNING: This is for LOCAL DEVELOPMENT ONLY
- * This runs an in-process pg-boss poller alongside the HTTP server. Each queue
- * subscribes by its name on the shared event connection
- * (EVENT_SUBSCRIBER_CONNECTION_STRING), so producers using
- * <NAME>_PUBLISHER_CONNECTION_STRING (pgboss:// locally) reach it.
+ * Each queue's one consumer polls its own queue, through the queue's own
+ * connection string — the one its producers publish on. SQS cannot push, so
+ * this is a poller on every transport: pg-boss locally by default, the SQS
+ * queue on the AWS emulator.
  *
- * For production, queues run as AWS Lambda with SQS event-source mappings.
+ * Deployed on Lambda, a queue's consumer is an SQS event source instead.
  */
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 import { EventConnectionFactory, Subscriber } from '@geekmidas/events';
-import type { EventConnection, EventSubscriber } from '@geekmidas/events';
+import type { EventConnection } from '@geekmidas/events';
 import { ServiceDiscovery } from '@geekmidas/services';
 ${imports}
 
 const queues = [
-  ${allExportNames.join(',\n  ')}
+${entries}
 ];
-
-const activeSubscribers: EventSubscriber<any>[] = [];
 
 export async function setupQueues(
   envParser: EnvironmentParser<any>,
   logger: Logger,
 ): Promise<void> {
-  if (queues.length === 0) {
-    return;
-  }
-
-  logger.info('Setting up queue workers in polling mode (local development)');
-
-  const config = envParser.create((get) => ({
-    connectionString: get('EVENT_SUBSCRIBER_CONNECTION_STRING').string(),
-  })).parse();
-
   const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
+  const connections = new Map<string, EventConnection>();
 
-  let connection: EventConnection;
-  try {
-    connection = await EventConnectionFactory.fromConnectionString(config.connectionString);
-    const connectionType = new URL(config.connectionString).protocol.replace(':', '');
-    logger.info({ connectionType }, 'Created shared event connection for queues');
-  } catch (error) {
-    logger.error({ error }, 'Failed to create event connection for queues');
-    return;
-  }
+  for (const { queue, connectionKey } of queues) {
+    const connectionString = process.env[connectionKey];
+    if (!connectionString) {
+      logger.error({ queue: queue.name, connectionKey }, 'No connection string for this queue');
+      continue;
+    }
 
-  for (const queue of queues) {
     try {
+      let connection = connections.get(connectionString);
+      if (!connection) {
+        connection = await EventConnectionFactory.fromConnectionString(connectionString);
+        connections.set(connectionString, connection);
+      }
       const eventSubscriber = await Subscriber.fromConnection(connection);
-
       const services = queue.services.length > 0
         ? await serviceDiscovery.register(queue.services)
         : {};
 
-      // A queue subscribes to a single "type" — its own name.
+      // A queue's messages carry one type — its own name.
       await eventSubscriber.subscribe([queue.name], async (message) => {
         try {
           const validation = await queue.messageSchema['~standard'].validate(message.payload);
@@ -239,30 +237,23 @@ export async function setupQueues(
             services: services,
             logger: queue.logger,
           });
-
-          logger.debug({ queue: queue.name }, 'Successfully processed queue message');
         } catch (error) {
           logger.error({ error, queue: queue.name }, 'Failed to process queue message');
-          // Message will become visible again for retry.
+          // Rethrown so the transport keeps the message for a retry.
+          throw error;
         }
       });
-
-      activeSubscribers.push(eventSubscriber);
-      logger.info({ queue: queue.name }, 'Queue worker started polling');
+      logger.info({ queue: queue.name }, 'Queue consumer started polling');
     } catch (error) {
-      logger.error({ error, queue: queue.name }, 'Failed to setup queue worker');
+      logger.error({ error, queue: queue.name }, 'Failed to set up queue consumer');
     }
   }
 
   const shutdown = () => {
-    logger.info('Stopping all queue workers');
-    for (const _ of activeSubscribers) {
-      connection.stop();
-    }
+    for (const connection of connections.values()) void connection.close();
   };
-
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
 }
 `;
 

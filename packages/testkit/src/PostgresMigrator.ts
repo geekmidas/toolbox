@@ -116,8 +116,14 @@ export abstract class PostgresMigrator {
 				try {
 					await db.query(`CREATE DATABASE "${database}"`);
 				} catch (error: any) {
-					// 42P04 = duplicate_database — another process created it between our check and create
-					if (error?.code === '42P04') {
+					// Another process created it between our check and our create. Postgres
+					// reports that as 42P04 (duplicate_database) — or, when the two creates
+					// race inside the catalog itself, as 23505 on pg_database's name index.
+					if (
+						error?.code === '42P04' ||
+						(error?.code === '23505' &&
+							error?.constraint === 'pg_database_datname_index')
+					) {
 						return { alreadyExisted: true };
 					}
 					throw error;

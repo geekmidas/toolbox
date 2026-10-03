@@ -175,6 +175,13 @@ describe('composeFor', () => {
 		expect(compose(['minio']).services.minio.command).not.toContain('mkdir');
 	});
 
+	it('lets the emulator reach the host, where SNS pushes to subscribers', () => {
+		// Docker Desktop resolves the name itself; Linux does not.
+		expect(compose(['localstack']).services.localstack?.extra_hosts).toEqual([
+			'host.docker.internal:host-gateway',
+		]);
+	});
+
 	it('prefixes localstack credentials as it requires', () => {
 		const { environment } = compose(['localstack']).services.localstack;
 

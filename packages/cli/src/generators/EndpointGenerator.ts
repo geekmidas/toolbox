@@ -801,9 +801,11 @@ ${afterSetupCall}
 
       const port = options.port ?? 3000;
 
-      // Start subscribers in background (non-blocking, local development only)
-      await setupSubscribers(envParser, logger).catch((error) => {
+      // Mount pushed subscribers' routes and start polled ones. What comes
+      // back subscribes the routes, once the server can answer them.
+      const subscribeForPush = await setupSubscribers(honoApp, envParser, logger).catch((error) => {
         logger.error({ error }, 'Failed to start subscribers');
+        return async (_port: number) => {};
       });
 
       // Start queue workers in background (non-blocking, local development only)
@@ -823,6 +825,8 @@ ${afterSetupCall}
       await options.serve(honoApp, port);
 
       logger.info({ port }, 'Server started');
+
+      await subscribeForPush(port);
     }
   };
 }
@@ -945,9 +949,11 @@ export const handler = ${exportName};
 		// Subscriber + queue setup code (background workers share the same flag)
 		const subscriberSetup = includeSubscribers
 			? `
-      // Start subscribers in background
-      await setupSubscribers(envParser, logger).catch((error) => {
+      // Mount pushed subscribers' routes and start polled ones. What comes
+      // back subscribes the routes, once the server can answer them.
+      const subscribeForPush = await setupSubscribers(honoApp, envParser, logger).catch((error) => {
         logger.error({ error }, 'Failed to start subscribers');
+        return async (_port: number) => {};
       });
 
       // Start queue workers in background
@@ -1059,6 +1065,7 @@ ${gracefulShutdownCode}${subscriberSetup}
       await options.serve(honoApp, port);
 
       logger.info({ port }, 'Production server started');
+${includeSubscribers ? '\n      await subscribeForPush(port);' : ''}
     }
   };
 }

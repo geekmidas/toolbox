@@ -69,6 +69,12 @@ export class Subscriber {
 	 */
 	static async fromConnection<TMessage extends PublishableMessage<string, any>>(
 		connection: EventConnection,
+		/**
+		 * Subscribing to a topic as a named subscriber. pg-boss needs both to
+		 * give each subscriber its own queue; the other transports carry the
+		 * topic in their address and ignore it.
+		 */
+		options: { topic?: string; subscription?: string } = {},
 	): Promise<EventSubscriber<TMessage>> {
 		switch (connection.type) {
 			case EventPublisherType.Basic: {
@@ -104,6 +110,7 @@ export class Subscriber {
 				const { PgBossConnection } = await import('./pgboss');
 				return new PgBossSubscriber<TMessage>(
 					connection as InstanceType<typeof PgBossConnection>,
+					options,
 				);
 			}
 			default:

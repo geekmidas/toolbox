@@ -1,13 +1,15 @@
+import * as snsUrl from '@geekmidas/events/sns/url';
+import * as sqsUrl from '@geekmidas/events/sqs/url';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { provisionOrder } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import { portKeys } from '../containers';
-import { envFor, UnprovisionedEventsBackend } from '../env';
+import { envFor } from '../env';
 import { type PlanOptions, planFor } from '../plan';
 
 /**
  * The local values that are not an address: a secret the platform owns, the
- * `roles: false` downgrade, and the one backend the local target refuses.
+ * `roles: false` downgrade, and events on the AWS emulator.
  */
 
 function resolve(
@@ -77,14 +79,37 @@ describe('events on SNS, locally', () => {
 			},
 			provides: ['EMAILS_PUBLISHER_CONNECTION_STRING'],
 		},
+		Users: {
+			kind: 'topic',
+			id: 'Users',
+			events: ['user.created'],
+			subscribers: [],
+			provides: ['USERS_PUBLISHER_CONNECTION_STRING'],
+		},
 	} as const satisfies ConstructManifest;
 
-	it('is refused, naming the backends that work', () => {
-		expect(() => resolve(manifest, 'dev', { events: 'sns' })).toThrow(
-			UnprovisionedEventsBackend,
-		);
-		expect(() => resolve(manifest, 'dev', { events: 'sns' })).toThrow(
-			"Use 'pgboss' (the default) or 'rabbitmq'",
-		);
+	it('addresses each topic and queue by its own emulator ARN or URL', () => {
+		const env = resolve(manifest, 'dev', { events: 'sns' });
+
+		const topic = snsUrl.parse(env.USERS_PUBLISHER_CONNECTION_STRING!);
+		expect(topic.topicArn).toBe('arn:aws:sns:us-east-1:000000000000:users');
+		expect(topic.endpoint).toMatch(/^http:\/\/localhost:\d+$/);
+
+		const queue = sqsUrl.parse(env.EMAILS_PUBLISHER_CONNECTION_STRING!);
+		expect(queue.queueUrl).toBe(`${queue.endpoint}/000000000000/emails`);
+	});
+
+	it('carries the emulator’s credential, never the developer’s AWS profile', () => {
+		const env = resolve(manifest, 'dev', { events: 'sns' });
+		const url = new URL(env.USERS_PUBLISHER_CONNECTION_STRING!);
+
+		expect(url.searchParams.get('accessKeyId')).toMatch(/^LSIA/);
+	});
+
+	it('has no single broker address, so none is handed out', () => {
+		const env = resolve(manifest, 'dev', { events: 'sns' });
+
+		expect(env.EVENT_PUBLISHER_CONNECTION_STRING).toBeUndefined();
+		expect(env.EVENT_SUBSCRIBER_CONNECTION_STRING).toBeUndefined();
 	});
 });

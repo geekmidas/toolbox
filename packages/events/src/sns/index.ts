@@ -1,3 +1,21 @@
+export {
+	confirmSnsSubscription,
+	SnsCertificateUnavailable,
+	SnsCertificateUntrusted,
+	SnsConfirmationFailed,
+	SnsEndpointNotHttp,
+	type SnsHttpMessage,
+	SnsMessageTypeUnknown,
+	SnsNotAConfirmation,
+	SnsSignatureInvalid,
+	SnsSignatureVersionUnknown,
+	type SubscribeHttpEndpointOptions,
+	snsStringToSign,
+	subscribeHttpEndpoint,
+	toSnsEvent,
+	type VerifySnsMessageOptions,
+	verifySnsMessage,
+} from './push';
 export type { SNSConnectionConfig } from './SNSConnection';
 export { SNSConnection } from './SNSConnection';
 export type { SNSPublisherOptions } from './SNSPublisher';

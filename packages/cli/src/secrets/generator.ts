@@ -150,11 +150,9 @@ export function generateConnectionUrls(
 	}
 
 	// A topic's or queue's own broker URL is reconcile's, derived from the
-	// declaration. This pair is what a worker's crons schedule through.
+	// declaration. This is what a worker's crons schedule through.
 	if (services.pgboss) {
-		const pgbossUrl = generatePgBossUrl(services.pgboss);
-		urls.EVENT_PUBLISHER_CONNECTION_STRING = pgbossUrl;
-		urls.EVENT_SUBSCRIBER_CONNECTION_STRING = pgbossUrl;
+		urls.EVENT_PUBLISHER_CONNECTION_STRING = generatePgBossUrl(services.pgboss);
 	}
 
 	if (services.mailpit) {

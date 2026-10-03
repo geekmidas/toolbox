@@ -4,3 +4,8 @@ export { AmazonApiGatewayV2Endpoint } from '../endpoints/AmazonApiGatewayV2Endpo
 export { AWSLambdaFunction } from '../functions/AWSLambdaFunction';
 export { AWSLambdaQueue } from '../queue/AWSLambdaQueueAdaptor';
 export { AWSLambdaSubscriber } from '../subscribers/AWSLambdaSubscriberAdaptor';
+export {
+	type SnsPushOptions,
+	type SnsPushResponse,
+	SnsPushSubscriberAdaptor,
+} from '../subscribers/SnsPushSubscriberAdaptor';

@@ -13,9 +13,11 @@
 		"peerDependencies": ">=3.1136.0"
 	},
 	"@aws-sdk/client-sns": {
+		"dependencies": "~3.1136.0",
 		"peerDependencies": ">=3.1136.0"
 	},
 	"@aws-sdk/client-sqs": {
+		"dependencies": "~3.1136.0",
 		"peerDependencies": ">=3.1136.0"
 	},
 	"@aws-sdk/client-ssm": {

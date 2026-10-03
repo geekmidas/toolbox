@@ -1196,7 +1196,7 @@ export const createTransfer = router
 The service key is the topic's id, uncapitalised: `Orders` is `services.orders`.
 Depending on a topic is what gives a handler `ORDERS_PUBLISHER_CONNECTION_STRING`;
 the publisher reads it and picks its transport from the protocol — `pgboss://`
-locally, `sns://` deployed.
+on a server target, `sns://` on AWS (locally, against the AWS emulator).
 
 Functions and crons take `.event(topic, …)` the same way. Publishing is never
 granted to a branch or a surface: only the routes that name the topic can
@@ -1205,8 +1205,9 @@ publish to it.
 ## Event Subscribers
 
 A subscriber is built from the `Worker` that runs it, and **binds** to a topic
-rather than depending on it. It is handed the topic's event types and no
-connection string it could publish with.
+rather than depending on it. Its handler is handed the topic's event types and
+no publisher; the runtime that feeds it reaches the topic through the topic's
+own connection string.
 
 ```typescript
 // constructs/worker.ts
@@ -1324,8 +1325,26 @@ The logger comes from the worker.
 ### How Subscribers Run
 
 **Development (`gkm dev`) and server builds:**
-Subscribers run in-process as pg-boss pollers beside the server, using
-`EVENT_SUBSCRIBER_CONNECTION_STRING`. See [Events: Dev Server](/packages/events#dev-server).
+Subscribers run in-process beside the server, each through the
+`<ID>_PUBLISHER_CONNECTION_STRING` of the topic it is bound to — there is no
+shared subscriber string. How a subscriber is fed follows that string:
+
+- **`sns://` — pushed.** The server mounts
+  `POST /__gkm/subscribers/<exportName>` and, once listening, subscribes it to
+  the topic with a filter policy on the `type` attribute listing the events
+  from `.subscribe([...])`. SNS fans out, one subscription per subscriber. The
+  route is `SnsPushSubscriberAdaptor` (from `@geekmidas/constructs/aws`), which
+  hands each notification to `AWSLambdaSubscriber` as an SNS Lambda event — the
+  same parsing, services and error handling as deployed. Confirmations are
+  confirmed automatically; signatures are verified except against an emulator.
+  `GKM_SUBSCRIBER_PUSH_URL` is the public base SNS pushes to (locally it
+  defaults to `http://host.docker.internal:<port>`).
+- **`pgboss://`, `rabbitmq://` — polled.** On pg-boss each subscriber drains a
+  queue of its own, `<topic>/<exportName>`, so every subscriber sees every
+  event and replicas of one subscriber share it.
+
+`gkm dev --no-subscribers` runs none of them. See
+[Events: Dev Server](/packages/events#dev-server).
 
 **Production (AWS Lambda):**
 Each subscriber is compiled into a Lambda handler via `AWSLambdaSubscriber`,
@@ -1453,7 +1472,8 @@ canonical id, uncapitalised (`services.orderJobs`).
 The publisher reads `ORDER_JOBS_PUBLISHER_CONNECTION_STRING` and selects its
 transport from the protocol — `pgboss://` locally, `sqs://` deployed — so the
 same code publishes to Postgres in dev and SQS in prod. Each queue gets its own
-key, and only constructs that depend on it are given one.
+key, given to the constructs that depend on it and to the server that runs its
+consumer.
 
 ### Configuration Options
 
@@ -1471,10 +1491,13 @@ key, and only constructs that depend on it are given one.
 A queue is **not** an HTTP route — it's background work, and it runs in three modes:
 
 **Development (`gkm dev`):**
-The CLI generates a pg-boss poller that runs **in-process alongside** the Hono
-server. Each queue subscribes by its **name** on the shared
-`EVENT_SUBSCRIBER_CONNECTION_STRING` (pg-boss routes by name), so a producer
-publishing with `pgboss://` reaches it. No SQS or Lambda required locally.
+The CLI generates a poller that runs **in-process alongside** the Hono server.
+Each queue's consumer polls its own queue through the queue's own
+`ORDER_JOBS_PUBLISHER_CONNECTION_STRING` — the string its producers publish on
+— so it is always the queue they reach: pg-boss by default, or the SQS queue on
+the local AWS emulator for an AWS target. Queues are polled on every transport
+(SQS cannot push), and `--no-subscribers` leaves them running. No Lambda
+required locally.
 
 **Production (AWS Lambda):**
 Each queue's consumer is compiled into a Lambda handler via `AWSLambdaQueue`,

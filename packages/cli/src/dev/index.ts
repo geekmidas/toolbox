@@ -254,9 +254,21 @@ export interface DevOptions {
 	 * local stage, with the local stage's own credentials.
 	 */
 	fake?: boolean;
+	/**
+	 * `false` (`--no-subscribers`) runs no topic subscribers. Every declared
+	 * subscriber runs otherwise — fan-out is the default, opting out is this.
+	 */
+	subscribers?: boolean;
 }
 
+/** Read by the generated server: no subscriber is subscribed or polled. */
+export const SUBSCRIBERS_ENV = 'GKM_SUBSCRIBERS';
+
 export async function devCommand(options: DevOptions): Promise<void> {
+	// Set on this process, so the server it starts — directly or through turbo
+	// — inherits it.
+	if (options.subscribers === false) process.env[SUBSCRIBERS_ENV] = 'off';
+
 	// Handle --entry mode: run any file with secret injection
 	if (options.entry) {
 		return entryDevCommand(options);

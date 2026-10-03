@@ -25,7 +25,7 @@ import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import type { CacheBackend, EventsBackend } from '../types';
 import { TEST_STAGE } from '../workspace/stages';
 import { caddyfileRoot, sitesFor, toCaddyfile } from './caddyfile';
-import { bucketClient, pgClient } from './clients';
+import { bucketClient, carrierClient, pgClient } from './clients';
 import {
 	type ComposeFile,
 	type ComposeService,
@@ -47,11 +47,14 @@ import {
 import {
 	type Applied,
 	applyBuckets,
+	applyCarriers,
 	applyPolicies,
 	applyPostgres,
 	type BucketClient,
 	bucketNames,
 	bucketPolicies,
+	type CarrierClient,
+	carrierNames,
 	postgresStatements,
 	type SqlClient,
 } from './provision';
@@ -214,6 +217,7 @@ export interface ReconcileOptions {
 	/** Injected for tests; the defaults talk to the containers just started. */
 	sql?: (port: number) => SqlClient;
 	buckets?: (port: number) => BucketClient;
+	carriers?: (port: number) => CarrierClient;
 }
 
 export interface ReconcileResult {
@@ -264,6 +268,7 @@ export async function reconcile(
 		probe = isPortFree,
 		sql = pgClient,
 		buckets = bucketClient,
+		carriers = carrierClient,
 	} = options;
 
 	const plan = planFor(manifest, stage, provisionOrder(manifest), {
@@ -396,7 +401,9 @@ export async function reconcile(
 	// Only once the containers are up: there is nothing to create inside a
 	// container that is not running.
 	const provisioned =
-		start && provision ? await create(plan, ports, sql, buckets, project) : [];
+		start && provision
+			? await create(plan, ports, sql, buckets, carriers, project)
+			: [];
 
 	await saveState(root, { hash, stage });
 
@@ -404,7 +411,7 @@ export async function reconcile(
 }
 
 /**
- * Create the databases, schemas, and buckets the plan names.
+ * Create the databases, schemas, buckets, topics and queues the plan names.
  *
  * Idempotent throughout, so this runs on every non-converged reconcile rather
  * than being something to remember.
@@ -414,6 +421,7 @@ async function create(
 	ports: PortAssignments,
 	sql: (port: number) => SqlClient,
 	buckets: (port: number) => BucketClient,
+	emulatorCarriers: (port: number) => CarrierClient,
 	/** Seeds the derived role passwords — see `localRolePassword`. */
 	project: string,
 ): Promise<Applied[]> {
@@ -436,6 +444,17 @@ async function create(
 		if (names.length > 0) applied.push(...(await applyBuckets(client, names)));
 		if (policies.length > 0)
 			applied.push(...(await applyPolicies(client, policies)));
+	}
+
+	const emulatorPort = ports[primaryPortKey('localstack')];
+	const carriers = carrierNames(plan);
+	if (
+		emulatorPort !== undefined &&
+		carriers.topics.length + carriers.queues.length > 0
+	) {
+		applied.push(
+			...(await applyCarriers(emulatorCarriers(emulatorPort), carriers)),
+		);
 	}
 
 	return applied;

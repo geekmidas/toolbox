@@ -100,6 +100,10 @@ services:
     image: floci/floci:latest
     ports:
       - "${LOCALSTACK_HOST_PORT:-4566}:4566" # AWS emulator gateway
+    # SNS push tests deliver to a server on the host. Docker Desktop resolves
+    # host.docker.internal by itself; Linux (CI) needs it mapped.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
       - AWS_ACCESS_KEY_ID=test

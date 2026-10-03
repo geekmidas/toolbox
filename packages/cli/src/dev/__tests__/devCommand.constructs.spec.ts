@@ -85,7 +85,6 @@ function envFor(authPort: number): Record<string, string> {
 		// What reconcile resolves for a declared worker on pg-boss: the broker a
 		// server schedules the worker's crons through.
 		EVENT_PUBLISHER_CONNECTION_STRING: broker,
-		EVENT_SUBSCRIBER_CONNECTION_STRING: broker,
 	};
 }
 

@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { Subscriber } from '@geekmidas/constructs/subscribers';
+import { canonicalId, provideKey } from '@geekmidas/manifest';
 import type { BuildContext } from '../build/types';
 import type { SubscriberInfo } from '../types';
 import { runtimeFor } from './EndpointGenerator.js';
@@ -127,13 +128,10 @@ export const handler = adapter.handler;
 		outputDir: string,
 		subscribers: GeneratedConstruct<Subscriber<any, any, any, any, any>>[],
 	): Promise<string> {
-		// Ensure output directory exists
 		await mkdir(outputDir, { recursive: true });
+		const subscribersPath = join(outputDir, 'subscribers.ts');
 
-		const subscribersFileName = 'subscribers.ts';
-		const subscribersPath = join(outputDir, subscribersFileName);
-
-		// Nothing to poll, so nothing to import. Every app gets this file, and
+		// Nothing to run, so nothing to import. Every app gets this file, and
 		// `@geekmidas/events` is only installed by one that declared a Topic or
 		// a Queue — importing it here crashed every dev server that had not.
 		if (subscribers.length === 0) {
@@ -146,28 +144,28 @@ import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 
 export async function setupSubscribers(
+  _app: unknown,
   _envParser: EnvironmentParser<any>,
   _logger: Logger,
-): Promise<void> {}
+): Promise<(port: number) => Promise<void>> {
+  return async () => {};
+}
 `,
 			);
 			return subscribersPath;
 		}
 
-		// Group imports by file
 		const importsByFile = new Map<string, string[]>();
-
 		for (const { path, key } of subscribers) {
-			const relativePath = relative(dirname(subscribersPath), path.relative);
-			const importPath = relativePath.replace(/\.ts$/, '.js');
-
-			if (!importsByFile.has(importPath)) {
-				importsByFile.set(importPath, []);
-			}
-			importsByFile.get(importPath)?.push(key);
+			const importPath = relative(
+				dirname(subscribersPath),
+				path.relative,
+			).replace(/\.ts$/, '.js');
+			importsByFile.set(importPath, [
+				...(importsByFile.get(importPath) ?? []),
+				key,
+			]);
 		}
-
-		// Generate import statements
 		const imports = Array.from(importsByFile.entries())
 			.map(
 				([importPath, exports]) =>
@@ -175,131 +173,195 @@ export async function setupSubscribers(
 			)
 			.join('\n');
 
-		const allExportNames = subscribers.map(({ key }) => key);
+		// Each subscriber reaches the topic it is bound to, by that topic's own
+		// key — resolved here, at build time, from the binding.
+		const entries = subscribers
+			.map(({ key, construct }) => {
+				const connectionKey = construct.topicName
+					? provideKey(
+							canonicalId(construct.topicName),
+							'publisherConnectionString',
+						)
+					: undefined;
+				return `  { id: '${key}', subscriber: ${key}, topic: ${
+					construct.topicName ? `'${construct.topicName}'` : 'undefined'
+				}, connectionKey: ${
+					connectionKey ? `'${connectionKey}'` : 'undefined'
+				} },`;
+			})
+			.join('\n');
 
 		const content = `/**
- * Generated subscribers setup
+ * Generated subscribers setup.
  *
- * ⚠️  WARNING: This is for LOCAL DEVELOPMENT ONLY
- * This uses event polling which is not suitable for production.
+ * Each subscriber is run against the topic it is bound to, through that
+ * topic's own connection string:
  *
- * For production, use AWS Lambda with SQS/SNS event source mappings.
- * Lambda automatically:
- * - Scales based on queue depth
- * - Handles batch processing and retries
- * - Manages dead letter queues
- * - Provides better cost optimization
+ * - **sns://** — pushed, not polled. The subscriber gets an HTTP route on this
+ *   server, and the route is subscribed to the topic with a filter policy of
+ *   the events it named, so SNS fans out to each subscriber. The route runs the
+ *   subscriber through the same adaptor a Lambda subscription does.
+ * - **anything else** (pgboss://, rabbitmq://, sqs://) — polled. On pg-boss
+ *   each subscriber drains a queue of its own, \`<topic>/<subscriber>\`, so
+ *   every subscriber sees every event; replicas of one subscriber share it.
  *
- * This polling implementation is useful for:
- * - Local development and testing
- * - Understanding event flow without Lambda deployment
- *
- * Supported connection strings:
- * - sqs://region/account-id/queue-name (SQS queue)
- * - sns://region/account-id/topic-name (SNS topic)
- * - rabbitmq://host:port/queue-name (RabbitMQ)
- * - pgboss://user:pass@host:port/database (pg-boss / PostgreSQL)
- * - basic://in-memory (In-memory for testing)
+ * GKM_SUBSCRIBERS=off (\`gkm dev --no-subscribers\`) runs none of them.
+ * GKM_SUBSCRIBER_PUSH_URL is the address SNS pushes to; against the local
+ * emulator it defaults to this server through host.docker.internal.
  */
+import { connect } from 'node:net';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 import { EventConnectionFactory, Subscriber } from '@geekmidas/events';
-import type { EventConnection, EventSubscriber } from '@geekmidas/events';
+import type { EventConnection } from '@geekmidas/events';
 import { ServiceDiscovery } from '@geekmidas/services';
 ${imports}
 
 const subscribers = [
-  ${allExportNames.join(',\n  ')}
+${entries}
 ];
 
-const activeSubscribers: EventSubscriber<any>[] = [];
+/** The route a subscriber's pushes arrive on. */
+export const SUBSCRIBER_ROUTE = (id: string) => \`/__gkm/subscribers/\${id}\`;
 
+/** Resolves once something is accepting connections on the port. */
+async function listening(port: number): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const open = await new Promise<boolean>((resolve) => {
+      const socket = connect(port, '127.0.0.1');
+      socket.once('connect', () => { socket.end(); resolve(true); });
+      socket.once('error', () => resolve(false));
+    });
+    if (open) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+/**
+ * Mount each pushed subscriber's route and start each polled one. Returns what
+ * to run once the server is listening: subscribing a route makes SNS send its
+ * confirmation at once, so the route has to be reachable first.
+ */
 export async function setupSubscribers(
+  app: { post: (path: string, handler: (c: any) => unknown) => unknown },
   envParser: EnvironmentParser<any>,
   logger: Logger,
-): Promise<void> {
-  if (subscribers.length === 0) {
-    return;
+): Promise<(port: number) => Promise<void>> {
+  if (process.env.GKM_SUBSCRIBERS === 'off') {
+    logger.info('Subscribers are off (--no-subscribers)');
+    return async () => {};
   }
-
-  logger.info('Setting up subscribers in polling mode (local development)');
-
-  const config = envParser.create((get) => ({
-    connectionString: get('EVENT_SUBSCRIBER_CONNECTION_STRING').string(),
-  })).parse();
 
   const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
+  const connections = new Map<string, EventConnection>();
+  const afterListening: ((port: number) => Promise<void>)[] = [];
 
-  // Create connection once, outside the loop (more efficient)
-  // EventConnectionFactory automatically determines the right connection type
-  let connection: EventConnection;
-  try {
-    connection = await EventConnectionFactory.fromConnectionString(config.connectionString);
+  for (const { id, subscriber, topic, connectionKey } of subscribers) {
+    const events = subscriber.subscribedEvents || [];
+    if (events.length === 0) {
+      logger.warn({ subscriber: id }, 'Subscriber has no subscribed events, skipping');
+      continue;
+    }
+    const connectionString = connectionKey ? process.env[connectionKey] : undefined;
+    if (!connectionString) {
+      logger.error(
+        { subscriber: id, connectionKey },
+        'No connection string for the topic this subscriber is bound to',
+      );
+      continue;
+    }
 
-    const connectionType = new URL(config.connectionString).protocol.replace(':', '');
-    logger.info({ connectionType }, 'Created shared event connection');
-  } catch (error) {
-    logger.error({ error }, 'Failed to create event connection');
-    return;
-  }
-
-  for (const subscriber of subscribers) {
     try {
-      // Create subscriber from shared connection
-      const eventSubscriber = await Subscriber.fromConnection(connection);
+      if (connectionString.startsWith('sns:')) {
+        const { SNSConnection, snsUrl, subscribeHttpEndpoint } = await import('@geekmidas/events/sns');
+        const { SnsPushSubscriberAdaptor } = await import('@geekmidas/constructs/aws');
+        const address = snsUrl.parse(connectionString);
+        const route = SUBSCRIBER_ROUTE(id);
+        const adaptor = new SnsPushSubscriberAdaptor(envParser, subscriber, {
+          topicArn: address.topicArn,
+          // An emulator signs nothing. Decided by the address this server was
+          // configured with, never by anything a request says about itself.
+          verify: !address.endpoint,
+          ...(address.endpoint ? { emulatorEndpoint: address.endpoint } : {}),
+        });
 
-      // Register services
+        app.post(route, async (c: any) => {
+          const body = JSON.parse(await c.req.text());
+          const response = await adaptor.handle(body);
+          return c.json(response.body, response.status);
+        });
+
+        afterListening.push(async (port) => {
+          const base =
+            process.env.GKM_SUBSCRIBER_PUSH_URL ??
+            (address.endpoint ? \`http://host.docker.internal:\${port}\` : undefined);
+          if (!base) {
+            logger.error(
+              { subscriber: id },
+              'Set GKM_SUBSCRIBER_PUSH_URL to the public URL of this worker, which SNS pushes to',
+            );
+            return;
+          }
+          const connection = await SNSConnection.fromConnectionString(connectionString);
+          await subscribeHttpEndpoint(connection, {
+            endpoint: new URL(route, base).toString(),
+            events,
+          });
+          logger.info({ subscriber: id, events }, 'Subscriber subscribed for push');
+        });
+        continue;
+      }
+
+      let connection = connections.get(connectionString);
+      if (!connection) {
+        connection = await EventConnectionFactory.fromConnectionString(connectionString);
+        connections.set(connectionString, connection);
+      }
+      // Named, so a broker with one address for everything (pg-boss) gives
+      // this subscriber a queue of its own: fan-out, not competition.
+      const eventSubscriber = await Subscriber.fromConnection(connection, {
+        topic,
+        subscription: id,
+      });
       const services = subscriber.services.length > 0
         ? await serviceDiscovery.register(subscriber.services)
         : {};
 
-      // Subscribe to events
-      const subscribedEvents = subscriber.subscribedEvents || [];
-
-      if (subscribedEvents.length === 0) {
-        logger.warn({ subscriber: subscriber.constructor.name }, 'Subscriber has no subscribed events, skipping');
-        continue;
-      }
-
-      await eventSubscriber.subscribe(subscribedEvents, async (event) => {
+      await eventSubscriber.subscribe(events, async (event) => {
         try {
-          // Process single event (batch of 1)
           await subscriber.handler({
             events: [event],
             services: services as any,
             logger: subscriber.logger,
           });
-
-          logger.debug({ eventType: event.type }, 'Successfully processed event');
         } catch (error) {
-          logger.error({ error, event }, 'Failed to process event');
-          // Event will become visible again for retry
+          logger.error({ error, event, subscriber: id }, 'Failed to process event');
+          // Rethrown so the transport keeps the event for a retry — as a queue
+          // consumer's failure does, and as a pushed subscriber's 500 does.
+          throw error;
         }
       });
-
-      activeSubscribers.push(eventSubscriber);
-
-      logger.info(
-        {
-          events: subscribedEvents,
-        },
-        'Subscriber started polling'
-      );
+      logger.info({ subscriber: id, events }, 'Subscriber started polling');
     } catch (error) {
-      logger.error({ error, subscriber: subscriber.constructor.name }, 'Failed to setup subscriber');
+      logger.error({ error, subscriber: id }, 'Failed to set up subscriber');
     }
   }
 
-  // Setup graceful shutdown
   const shutdown = () => {
-    logger.info('Stopping all subscribers');
-    for (const eventSubscriber of activeSubscribers) {
-      connection.stop();
+    for (const connection of connections.values()) void connection.close();
+  };
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
+
+  return async (port) => {
+    if (afterListening.length === 0) return;
+    await listening(port);
+    for (const subscribe of afterListening) {
+      await subscribe(port).catch((error) => {
+        logger.error({ error }, 'Failed to subscribe for push');
+      });
     }
   };
-
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
 }
 `;
 

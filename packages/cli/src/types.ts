@@ -73,10 +73,14 @@ export interface ProductionConfig {
  * Supported event backend types.
  *
  * - `pgboss`: Reuses PostgreSQL with a dedicated user/schema. Auto-enables db service.
- * - `sns`: Adds LocalStack container with SNS+SQS services.
+ * - `sns`: Adds the AWS emulator (floci) container; each topic and queue is
+ *   created on it and addressed by its own string.
  * - `rabbitmq`: Adds RabbitMQ container.
  *
- * All backends generate EVENT_PUBLISHER_CONNECTION_STRING and EVENT_SUBSCRIBER_CONNECTION_STRING.
+ * Each topic and queue resolves its own `<ID>_PUBLISHER_CONNECTION_STRING`,
+ * which its producers and its consumers both read. pg-boss and RabbitMQ also
+ * resolve `EVENT_PUBLISHER_CONNECTION_STRING`, the one broker crons schedule
+ * through.
  */
 export type EventsBackend = 'pgboss' | 'sns' | 'rabbitmq';
 

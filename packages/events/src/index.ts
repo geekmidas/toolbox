@@ -4,7 +4,7 @@ export { EventConnectionFactory } from './EventConnection';
 export type { EventPublisherConnectionString } from './Publisher';
 
 // Generic factories
-export { Publisher } from './Publisher';
+export { Publisher, type PublisherOptions } from './Publisher';
 export type { EventSubscriberConnectionString } from './Subscriber';
 
 export { Subscriber } from './Subscriber';

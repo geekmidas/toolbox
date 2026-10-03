@@ -374,10 +374,9 @@ describe('reconcile', () => {
 		expect(env.EMAILS_PUBLISHER_CONNECTION_STRING).toMatch(
 			/^pgboss:\/\/.*\/orders\?schema=pgboss$/,
 		);
-		// The local pollers open one connection and subscribe every worker on it.
-		expect(env.EVENT_SUBSCRIBER_CONNECTION_STRING).toBe(
-			env.EMAILS_PUBLISHER_CONNECTION_STRING,
-		);
+		// The queue's consumer polls the queue's own string; there is no shared
+		// subscriber string to fall out of step with it.
+		expect(env.EVENT_SUBSCRIBER_CONNECTION_STRING).toBeUndefined();
 	});
 
 	it('starts nothing when asked only what would change', async () => {
