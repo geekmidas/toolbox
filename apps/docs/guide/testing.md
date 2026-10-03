@@ -540,6 +540,10 @@ faker.resetAllSequences();
 // Prices (as numbers, not strings)
 const price = faker.price(); // 29.99
 
+// A birthdate for someone of a given age today
+const adult = faker.age(18); // exactly 18
+const student = faker.age(18, 24); // 18 to 24, inclusive
+
 // Coordinates within radius
 const location = faker.coordinates.within(
   { lat: 40.7128, lng: -74.0060 }, // NYC

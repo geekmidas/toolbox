@@ -291,6 +291,10 @@ faker.sequence('user');  // 1 (separate sequence)
 faker.price();           // 29.99
 faker.identifier();      // "com.example.widget1"
 
+// Birthdates, by age today
+faker.age(18);           // someone who is 18 today
+faker.age(18, 24);       // someone aged 18 to 24, inclusive
+
 // Coordinates
 const center = { lat: 40.7128, lng: -74.0060 };
 faker.coordinates.within(center, 1000);  // Within 1km

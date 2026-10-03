@@ -215,6 +215,43 @@ function price(): number {
 	return +faker.commerce.price();
 }
 
+/**
+ * A birthdate for someone of the given age today: exactly `min` years old, or
+ * anywhere from `min` to `max` inclusive.
+ *
+ * Through faker's own `date.birthdate`, so seeding faker makes it repeatable.
+ *
+ * @param min - The youngest age, in whole years
+ * @param max - The oldest age, in whole years (default: `min`)
+ * @returns The birthdate
+ *
+ * @example
+ * ```typescript
+ * faker.age(18);     // someone who is 18 today
+ * faker.age(18, 24); // someone aged 18 to 24
+ * ```
+ */
+function age(min: number, max: number = min): Date {
+	if (min < 0 || max < min) throw new AgeRangeInvalid(min, max);
+
+	return baseFaker.date.birthdate({ mode: 'age', min, max });
+}
+
+/** An age range no one can be: a negative age, or an oldest below a youngest. */
+export class AgeRangeInvalid extends Error {
+	constructor(
+		readonly min: number,
+		readonly max: number,
+	) {
+		super(
+			`faker.age(${min}, ${max}) asks for an age no one can be. Pass the ` +
+				'youngest age first and the oldest second, neither negative: ' +
+				'faker.age(18) or faker.age(18, 24).',
+		);
+		this.name = 'AgeRangeInvalid';
+	}
+}
+
 type Coordinate = {
 	lat: number;
 	lng: number;
@@ -347,6 +384,7 @@ export const faker = Object.freeze(
 		resetSequence,
 		resetAllSequences,
 		price,
+		age,
 		coordinates: {
 			within: coordinateInRadius,
 			outside: coordinateOutsideRadius,

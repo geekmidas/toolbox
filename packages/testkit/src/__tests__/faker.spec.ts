@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { faker } from '../faker';
+import { AgeRangeInvalid, faker } from '../faker';
 
 describe('faker', () => {
 	describe('sequence', () => {
@@ -129,6 +129,55 @@ describe('faker', () => {
 
 			expect(createdAt.getMilliseconds()).toBe(0);
 			expect(updatedAt.getMilliseconds()).toBe(0);
+		});
+	});
+
+	describe('age', () => {
+		/** Whole years between a birthdate and today — the age as people count it. */
+		const yearsOld = (birthdate: Date, today = new Date()) => {
+			let years = today.getFullYear() - birthdate.getFullYear();
+			const birthdayPassed =
+				today.getMonth() > birthdate.getMonth() ||
+				(today.getMonth() === birthdate.getMonth() &&
+					today.getDate() >= birthdate.getDate());
+			if (!birthdayPassed) years--;
+			return years;
+		};
+
+		it('returns a date', () => {
+			expect(faker.age(18)).toBeInstanceOf(Date);
+		});
+
+		it('is someone exactly that age, given one age', () => {
+			for (let i = 0; i < 200; i++) {
+				expect(yearsOld(faker.age(18))).toBe(18);
+			}
+		});
+
+		it('is someone within the range, inclusive, given two', () => {
+			const seen = new Set<number>();
+			for (let i = 0; i < 500; i++) {
+				const years = yearsOld(faker.age(18, 24));
+				expect(years).toBeGreaterThanOrEqual(18);
+				expect(years).toBeLessThanOrEqual(24);
+				seen.add(years);
+			}
+			// Both ends are reachable, not just the middle.
+			expect(seen.has(18)).toBe(true);
+			expect(seen.has(24)).toBe(true);
+		});
+
+		it('repeats when faker is seeded', () => {
+			faker.seed(42);
+			const first = faker.age(30, 40);
+			faker.seed(42);
+
+			expect(faker.age(30, 40)).toEqual(first);
+		});
+
+		it('refuses an age no one can be', () => {
+			expect(() => faker.age(24, 18)).toThrow(AgeRangeInvalid);
+			expect(() => faker.age(-1)).toThrow(AgeRangeInvalid);
 		});
 	});
 
