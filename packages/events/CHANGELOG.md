@@ -1,5 +1,12 @@
 # @geekmidas/events
 
+## 10.0.0-alpha.41
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/schema@10.0.0-alpha.41
+
 ## 10.0.0-alpha.40
 
 ### Minor Changes

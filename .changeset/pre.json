@@ -97,6 +97,7 @@
     "test-factories",
     "test-manifest",
     "test-ports",
+    "testkit-faker-age",
     "testkit-feature-primitives",
     "tranche-2-toolchain",
     "tranche-3-react-ui",

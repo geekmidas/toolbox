@@ -1,5 +1,27 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.41
+
+### Patch Changes
+
+- Updated dependencies [[`ec054c3`](https://github.com/geekmidas/toolbox/commit/ec054c3c54f7ca7913c3d0552c961d4d08ac1595)]:
+  - @geekmidas/testkit@10.0.0-alpha.41
+  - @geekmidas/audit@10.0.0-alpha.41
+  - @geekmidas/auth@10.0.0-alpha.41
+  - @geekmidas/cache@10.0.0-alpha.41
+  - @geekmidas/db@10.0.0-alpha.41
+  - @geekmidas/emailkit@10.0.0-alpha.41
+  - @geekmidas/envkit@10.0.0-alpha.41
+  - @geekmidas/errors@10.0.0-alpha.41
+  - @geekmidas/events@10.0.0-alpha.41
+  - @geekmidas/logger@10.0.0-alpha.41
+  - @geekmidas/manifest@10.0.0-alpha.41
+  - @geekmidas/rate-limit@10.0.0-alpha.41
+  - @geekmidas/schema@10.0.0-alpha.41
+  - @geekmidas/services@10.0.0-alpha.41
+  - @geekmidas/storage@10.0.0-alpha.41
+  - @geekmidas/telescope@10.0.0-alpha.41
+
 ## 10.0.0-alpha.40
 
 ### Minor Changes

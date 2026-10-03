@@ -1,5 +1,20 @@
 # @geekmidas/testkit
 
+## 10.0.0-alpha.41
+
+### Minor Changes
+
+- [#114](https://github.com/geekmidas/toolbox/pull/114) [`ec054c3`](https://github.com/geekmidas/toolbox/commit/ec054c3c54f7ca7913c3d0552c961d4d08ac1595) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: `faker.age(min, max?)` returns a birthdate for someone of that age today
+
+  `faker.age(18)` is someone exactly 18; `faker.age(18, 24)` is someone aged 18 to 24 inclusive. It goes through faker's `date.birthdate`, so a seeded faker repeats it. An impossible range (negative, or oldest below youngest) throws `AgeRangeInvalid`.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/envkit@10.0.0-alpha.41
+  - @geekmidas/logger@10.0.0-alpha.41
+  - @geekmidas/services@10.0.0-alpha.41
+
 ## 10.0.0-alpha.40
 
 ### Patch Changes
