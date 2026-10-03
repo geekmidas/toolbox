@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import knex from 'knex';
 import { Client } from 'pg';
@@ -16,6 +17,16 @@ import { createTestDatabase } from '../../test/helpers';
 import { POSTGRES_PORT } from '../../test/ports';
 import { PostgresObjectionMigrator } from '../PostgresObjectionMigrator';
 
+/** A temp directory that is an ES module package, for knex to load migrations from. */
+async function esmMigrationsDir(prefix: string): Promise<string> {
+	const dir = await fs.mkdtemp(path.join(tmpdir(), prefix));
+	await fs.writeFile(
+		path.join(dir, 'package.json'),
+		JSON.stringify({ type: 'module' }),
+	);
+	return dir;
+}
+
 describe('PostgresObjectionMigrator', () => {
 	let testDbName: string;
 	let cleanupDb: () => Promise<void>;
@@ -28,19 +39,18 @@ describe('PostgresObjectionMigrator', () => {
 		testDbName = `test_postgres_objection_migrator_${Date.now()}`;
 		cleanupDb = await createTestDatabase(testDbName);
 
-		// Create test migrations directory
-		testMigrationsDir = path.join(
-			process.cwd(),
-			'test-migrations',
-			Date.now().toString(),
-		);
-		await fs.mkdir(testMigrationsDir, { recursive: true });
+		// An ES module package of migrations, as an app in this repo has: knex
+		// loads a `.js` migration with `import()` when its nearest package.json
+		// says "type": "module". In the OS temp dir, not the cwd — they were
+		// CommonJS written under the cwd, so whether they loaded depended on
+		// which package the suite was run from.
+		testMigrationsDir = await esmMigrationsDir('objection-migrations-');
 
 		// Create test migration files
 		await fs.writeFile(
 			path.join(testMigrationsDir, '001_create_users.js'),
 			`
-exports.up = function(knex) {
+export function up(knex) {
   return knex.schema.createTable('users', function(table) {
     table.increments('id').primary();
     table.string('name');
@@ -49,7 +59,7 @@ exports.up = function(knex) {
   });
 };
 
-exports.down = function(knex) {
+export function down(knex) {
   return knex.schema.dropTable('users');
 };
 `,
@@ -58,7 +68,7 @@ exports.down = function(knex) {
 		await fs.writeFile(
 			path.join(testMigrationsDir, '002_create_posts.js'),
 			`
-exports.up = function(knex) {
+export function up(knex) {
   return knex.schema.createTable('posts', function(table) {
     table.increments('id').primary();
     table.string('title');
@@ -68,7 +78,7 @@ exports.up = function(knex) {
   });
 };
 
-exports.down = function(knex) {
+export function down(knex) {
   return knex.schema.dropTable('posts');
 };
 `,
@@ -210,20 +220,17 @@ exports.down = function(knex) {
 			const uri = `postgresql://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/${newDbName}`;
 
 			// Create a bad migration file
-			const badMigrationsDir = path.join(
-				process.cwd(),
-				'bad-migrations',
-				Date.now().toString(),
+			const badMigrationsDir = await esmMigrationsDir(
+				'objection-bad-migrations-',
 			);
-			await fs.mkdir(badMigrationsDir, { recursive: true });
 			await fs.writeFile(
 				path.join(badMigrationsDir, '001_bad_migration.js'),
 				`
-exports.up = function(knex) {
+export function up(knex) {
   throw new Error('Migration failed on purpose');
 };
 
-exports.down = function(knex) {
+export function down(knex) {
   return Promise.resolve();
 };
 `,

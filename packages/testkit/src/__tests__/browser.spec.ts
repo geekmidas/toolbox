@@ -20,6 +20,7 @@ const seen: {
 	method: string;
 	cookie?: string;
 	context?: string;
+	forwardedFor?: string;
 	body: string;
 }[] = [];
 
@@ -40,6 +41,7 @@ beforeAll(async () => {
 			method: request.method!,
 			cookie: request.headers.cookie,
 			context: request.headers[TEST_CONTEXT_HEADER] as string | undefined,
+			forwardedFor: request.headers['x-forwarded-for'] as string | undefined,
 			body: await read(request),
 		});
 
@@ -96,6 +98,45 @@ describe('Browser', () => {
 		await bob.fetch(`${base}/profile`);
 
 		expect(last().cookie).toBeUndefined();
+	});
+
+	it('connects from an address of its own, on every request', async () => {
+		const ada = new Browser();
+		const bob = new Browser();
+
+		await ada.fetch(`${base}/profile`);
+		const first = last().forwardedFor;
+		await ada.fetch(`${base}/profile`);
+
+		expect(first).toBe(ada.address);
+		expect(first).toMatch(/^10\.\d+\.\d+\.\d+$/);
+		expect(last().forwardedFor).toBe(first);
+
+		// A different person, on a different connection.
+		await bob.fetch(`${base}/profile`);
+		expect(last().forwardedFor).toBe(bob.address);
+		expect(bob.address).not.toBe(ada.address);
+	});
+
+	it('keeps its address across a redirect', async () => {
+		const ada = new Browser({ address: '10.1.2.3' });
+
+		await ada.fetch(`${base}/verify`);
+
+		expect(seen.slice(-2).map(({ forwardedFor }) => forwardedFor)).toEqual([
+			'10.1.2.3',
+			'10.1.2.3',
+		]);
+	});
+
+	it('keeps an address a request chose — a test that is several machines', async () => {
+		const ada = new Browser();
+
+		await ada.fetch(`${base}/profile`, {
+			headers: { 'x-forwarded-for': '203.0.113.7' },
+		});
+
+		expect(last().forwardedFor).toBe('203.0.113.7');
 	});
 
 	it('does not send a host’s cookie to another host', async () => {

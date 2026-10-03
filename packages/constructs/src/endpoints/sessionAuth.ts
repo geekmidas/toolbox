@@ -12,8 +12,17 @@ export interface SessionAuth {
 	getSession(): Promise<AuthSession | null>;
 }
 
-/** The headers a session travels in; nothing else is forwarded. */
-const SESSION_HEADERS = ['cookie', 'authorization'] as const;
+/**
+ * What is forwarded to the auth server: the headers a session travels in, and
+ * whose request it is — nothing else.
+ *
+ * The client's address goes with the session because the auth server
+ * rate-limits by it, `/get-session` included. Without it every user's session
+ * check arrived from the surface itself — one shared bucket, so enough
+ * traffic from anyone turned every session check into a 429 — and in tests,
+ * concurrent tests queued on the same rate-limit row.
+ */
+const SESSION_HEADERS = ['cookie', 'authorization', 'x-forwarded-for'] as const;
 
 /** `auth` for one request on one surface. */
 export function sessionAuth(

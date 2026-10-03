@@ -74,7 +74,7 @@ describe('session({ auth })', () => {
 		).rejects.toBeInstanceOf(UnauthorizedError);
 	});
 
-	it('forwards the session headers and nothing else', async () => {
+	it('forwards the session headers and whose request it is, nothing else', async () => {
 		const { construct, asked } = authenticator();
 		const me = signedIn(surface(construct))
 			.get('/me')
@@ -86,12 +86,16 @@ describe('session({ auth })', () => {
 				cookie: 'session=ada',
 				authorization: 'Bearer t',
 				'x-forwarded-for': '10.0.0.1',
+				'x-request-id': 'r-1',
 			},
 		});
 
+		// The client's address too: the auth server rate-limits `/get-session`
+		// by it, and without it every user's session check shared one bucket.
 		expect(Object.fromEntries(asked[0]!)).toEqual({
 			cookie: 'session=ada',
 			authorization: 'Bearer t',
+			'x-forwarded-for': '10.0.0.1',
 		});
 	});
 
