@@ -39,6 +39,7 @@
     "auth-migrations-no-server",
     "auth-pending-migration",
     "branch-from-the-surface",
+    "browser-client-address",
     "claude-md-imports-agents",
     "cli-starts-again",
     "client-coercion-types",

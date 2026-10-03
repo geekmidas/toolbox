@@ -1,5 +1,7 @@
 # @geekmidas/db
 
+## 10.0.0-alpha.45
+
 ## 10.0.0-alpha.44
 
 ## 10.0.0-alpha.43
