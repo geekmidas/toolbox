@@ -228,6 +228,25 @@ describe('faker', () => {
 			});
 		});
 	});
+	describe('internet', () => {
+		it('makes every email address lowercase', () => {
+			// Seeded so the names faker capitalises come up every run.
+			faker.seed(1);
+			const emails = Array.from({ length: 50 }, () => [
+				faker.internet.email(),
+				faker.internet.exampleEmail(),
+				faker.internet.email({ firstName: 'Ada', lastName: 'Lovelace' }),
+			]).flat();
+
+			for (const email of emails) expect(email).toBe(email.toLowerCase());
+		});
+
+		it('keeps the rest of faker.internet', () => {
+			expect(faker.internet.url()).toMatch(/^https?:\/\//);
+			expect(faker.internet.username()).toEqual(expect.any(String));
+		});
+	});
+
 	describe('seed', () => {
 		it('makes what follows repeatable', () => {
 			faker.seed(42);

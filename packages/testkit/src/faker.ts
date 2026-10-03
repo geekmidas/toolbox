@@ -316,8 +316,28 @@ function coordinateOutsideRadius(
  * const productPrice = faker.price();
  * ```
  */
+/**
+ * `faker.internet`, with every address lowercase.
+ *
+ * An auth server stores addresses lowercased — Better Auth does — so a test
+ * that signs in as faker's `Ada.Lovelace@…` and reads back `ada.lovelace@…`
+ * fails only when faker happened to capitalise: a flake, not a bug. The rest
+ * of the module is faker's own, through the prototype.
+ */
+const internet: typeof baseFaker.internet = Object.assign(
+	Object.create(baseFaker.internet),
+	{
+		email: (...args: Parameters<typeof baseFaker.internet.email>) =>
+			baseFaker.internet.email(...args).toLowerCase(),
+		exampleEmail: (
+			...args: Parameters<typeof baseFaker.internet.exampleEmail>
+		) => baseFaker.internet.exampleEmail(...args).toLowerCase(),
+	},
+);
+
 export const faker = Object.freeze(
 	Object.assign({}, baseFaker, {
+		internet,
 		// A prototype method, so the spread above leaves it behind. The modules
 		// copied across still draw from `baseFaker`, so seeding it seeds them.
 		seed: (seed?: number) => baseFaker.seed(seed),
