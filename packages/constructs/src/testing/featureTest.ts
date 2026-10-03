@@ -63,6 +63,7 @@ export type FactoryBuilders = Record<string, (db: Kysely<any>) => unknown>;
 export interface FeatureTestOptions<
 	TBrowser extends TestBrowser,
 	TFactories extends FactoryBuilders = {},
+	TFakes extends FakeModules = {},
 > {
 	/**
 	 * What the app declares and the environment its test stage resolved.
@@ -87,12 +88,25 @@ export interface FeatureTestOptions<
 	 */
 	factories?: TFactories;
 	/**
-	 * Each external API's fake — the default export of `test/fakes/<id>.ts`,
-	 * which the generated harness imports — keyed by the API's construct id.
-	 * An app fake is served at the URL the test stage resolved for it.
+	 * Each external API's fake module — `test/fakes/<id>.ts`, which the
+	 * generated harness imports — keyed by the API's construct id. Its default
+	 * export is the fake, served at the URL the test stage resolved for it; its
+	 * named exports are what a test reads through `fake(construct)`.
 	 */
-	fakes?: Readonly<Record<string, Fake>>;
+	fakes?: TFakes;
 }
+
+/** A fake's module: the fake as its default export, beside whatever it shares. */
+export type FakeModule = { readonly default: Fake } & Record<string, unknown>;
+
+/** Each external API's fake module, by construct id. */
+export type FakeModules = Record<string, FakeModule>;
+
+/** What `fake(construct)` hands a test: the module's named exports. */
+export type FakeExports<
+	TFakes extends FakeModules,
+	TId extends string,
+> = TId extends keyof TFakes ? Omit<TFakes[TId], 'default'> : never;
 
 /** Each database's schema, keyed by its service name. */
 export type DatabaseSchemas = Record<string, unknown>;
@@ -126,6 +140,7 @@ export interface FeatureContext<
 	TBrowser extends TestBrowser,
 	TDatabases extends DatabaseSchemas = {},
 	TFactories extends FactoryBuilders = {},
+	TFakes extends FakeModules = {},
 > {
 	/** This test's browser, already the global `fetch`. */
 	browser: TBrowser;
@@ -165,6 +180,15 @@ export interface FeatureContext<
 	subscriber: <S extends Subscriber<any, any, any, any, any, any, any>>(
 		subscriber: S,
 	) => SubscriberAdaptorOf<S>;
+	/**
+	 * What an external API's fake shares — its module's named exports, from the
+	 * same instance the test stage serves: `fake(push).outbox.sentTo(token)`.
+	 * Keyed by the construct, as `queue(…)` and `published(…)` are, so a fake
+	 * the app does not declare is a type error rather than a relative import.
+	 */
+	fake: <C extends { readonly id: keyof TFakes & string }>(
+		construct: C,
+	) => FakeExports<TFakes, C['id']>;
 	/** A queue's worker, run on its own with this test's services. */
 	queue: <Q extends Queue<any, any, any, any, any, any>>(
 		queue: Q,
@@ -225,26 +249,30 @@ type FeatureFn<
 	TBrowser extends TestBrowser,
 	TDatabases extends DatabaseSchemas,
 	TFactories extends FactoryBuilders,
-> = (context: FeatureContext<TBrowser, TDatabases, TFactories>) => unknown;
+	TFakes extends FakeModules,
+> = (
+	context: FeatureContext<TBrowser, TDatabases, TFactories, TFakes>,
+) => unknown;
 
 export interface FeatureIt<
 	TBrowser extends TestBrowser,
 	TDatabases extends DatabaseSchemas = {},
 	TFactories extends FactoryBuilders = {},
+	TFakes extends FakeModules = {},
 > {
 	(
 		name: string,
-		fn: FeatureFn<TBrowser, TDatabases, TFactories>,
+		fn: FeatureFn<TBrowser, TDatabases, TFactories, TFakes>,
 		timeout?: number,
 	): void;
 	only(
 		name: string,
-		fn: FeatureFn<TBrowser, TDatabases, TFactories>,
+		fn: FeatureFn<TBrowser, TDatabases, TFactories, TFakes>,
 		timeout?: number,
 	): void;
 	skip(
 		name: string,
-		fn: FeatureFn<TBrowser, TDatabases, TFactories>,
+		fn: FeatureFn<TBrowser, TDatabases, TFactories, TFakes>,
 		timeout?: number,
 	): void;
 }
@@ -299,9 +327,10 @@ export function featureTest<
 	TBrowser extends TestBrowser = TestBrowser,
 	TDatabases extends DatabaseSchemas = {},
 	TFactories extends FactoryBuilders = {},
+	TFakes extends FakeModules = {},
 >(
-	options: FeatureTestOptions<TBrowser, TFactories> = {},
-): FeatureIt<TBrowser, TDatabases, TFactories> {
+	options: FeatureTestOptions<TBrowser, TFactories, TFakes> = {},
+): FeatureIt<TBrowser, TDatabases, TFactories, TFakes> {
 	const manifest = options.manifest ?? loadTestManifest();
 	const BrowserClass = (options.browser ?? TestBrowser) as new () => TBrowser;
 
@@ -322,8 +351,8 @@ export function featureTest<
 			...app.auths.map((auth) =>
 				authHandler(auth, manifest.env, app.envParser),
 			),
-			...Object.entries(options.fakes ?? {}).flatMap(([id, fake]) =>
-				fakeHandler(id, fake, manifest.env),
+			...Object.entries(options.fakes ?? {}).flatMap(([id, module]) =>
+				fakeHandler(id, module.default, manifest.env),
 			),
 		);
 		network.listen({
@@ -354,7 +383,7 @@ export function featureTest<
 	});
 
 	const run =
-		(name: string, fn: FeatureFn<TBrowser, TDatabases, TFactories>) =>
+		(name: string, fn: FeatureFn<TBrowser, TDatabases, TFactories, TFakes>) =>
 		async (): Promise<void> => {
 			const id = randomUUID();
 			faker.seed(seedOf(name));
@@ -441,6 +470,8 @@ export function featureTest<
 							published: (channel) => [
 								...(state.published.get(channel.id) ?? []),
 							],
+							fake: (construct) =>
+								fakeExports(options.fakes ?? {}, construct.id),
 							// A consumer run by hand delivers what it published, as a
 							// request does.
 							subscriber: (subscriber) =>
@@ -452,7 +483,7 @@ export function featureTest<
 								thenDeliver(new TestQueueAdaptor(queue, state.discovery), () =>
 									deliver(app, state, id),
 								) as QueueAdaptorOf<typeof queue>,
-						} as FeatureContext<TBrowser, TDatabases, TFactories>);
+						} as FeatureContext<TBrowser, TDatabases, TFactories, TFakes>);
 					} finally {
 						restore();
 					}
@@ -472,7 +503,8 @@ export function featureTest<
 		test(name, run(name, fn), timeout)) as FeatureIt<
 		TBrowser,
 		TDatabases,
-		TFactories
+		TFactories,
+		TFakes
 	>;
 	it.only = (name, fn, timeout) => test.only(name, run(name, fn), timeout);
 	it.skip = (name, fn, timeout) => test.skip(name, run(name, fn), timeout);
@@ -877,6 +909,20 @@ function fakeHandler(
 	];
 }
 
+/**
+ * A fake module's named exports — what `fake(construct)` returns. The default
+ * export is the fake being served; everything else is what the fake chose to
+ * share with a test.
+ */
+function fakeExports(fakes: FakeModules, id: string) {
+	const module = fakes[id];
+	if (!module) throw new NoFakeFor(id, Object.keys(fakes));
+	if (module.default.kind === 'image') throw new ImageFakeHasNoState(id);
+
+	const { default: _served, ...shared } = module;
+	return shared as never;
+}
+
 /** An auth server, served at its URL, on the transaction of the test that asked. */
 function authHandler(
 	auth: BetterAuth,
@@ -1121,5 +1167,31 @@ export class DeliveryDidNotSettle extends Error {
 				'what triggers it loops forever deployed too.',
 		);
 		this.name = 'DeliveryDidNotSettle';
+	}
+}
+
+/** `fake(construct)` for an external API with no fake module. */
+export class NoFakeFor extends Error {
+	constructor(
+		readonly id: string,
+		readonly available: readonly string[],
+	) {
+		super(
+			`'${id}' has no fake: there is no test/fakes/${id}.ts for this app` +
+				(available.length ? ` (fakes: ${available.join(', ')})` : '') +
+				'. Add one, exporting what the test should read.',
+		);
+		this.name = 'NoFakeFor';
+	}
+}
+
+/** `fake(construct)` for a fake that runs as a container, holding no module state. */
+export class ImageFakeHasNoState extends Error {
+	constructor(readonly id: string) {
+		super(
+			`'${id}' is faked by a container image, which shares no state with the ` +
+				"test. Assert through the provider's own API instead.",
+		);
+		this.name = 'ImageFakeHasNoState';
 	}
 }

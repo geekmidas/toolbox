@@ -168,8 +168,8 @@ export default fake.app<typeof shipping>(carrier, {
 ### Asserting on what it received
 
 A fake can export more than its default. Keep what it was asked for, export a
-way to read it, and import that in the test — it is the same module instance
-the harness serves:
+way to read it, and read it in the test through `fake(construct)` — the
+module's named exports, from the same instance the harness serves:
 
 ```typescript
 // test/fakes/shipping.ts
@@ -184,11 +184,12 @@ export function quotesFor(destination: string): QuoteRequest[] {
 
 ```typescript
 // apps/api/__tests__/shipping.spec.ts
+import { shipping } from '~/constructs/shipping';
 import { it } from '#test';
-import { quotesFor } from '../../../test/fakes/shipping';
 
 it('asks the carrier for exactly the parcel it was given', async ({
   browser,
+  fake,
   faker,
 }) => {
   const destination = faker.location.city();
@@ -197,9 +198,19 @@ it('asks the carrier for exactly the parcel it was given', async ({
     body: { destination, weightKg: 3.5 },
   });
 
-  expect(quotesFor(destination)).toEqual([{ destination, weightKg: 3.5 }]);
+  expect(fake(shipping).quotesFor(destination)).toEqual([
+    { destination, weightKg: 3.5 },
+  ]);
 });
 ```
+
+`fake(…)` is keyed by the construct, like `queue(…)` and `published(…)`, and
+typed from the fake module's exports — reading a fake the app does not declare
+is a type error, not a relative import that resolves to the wrong file. Only
+the named exports are handed over; the default export is the fake being served.
+An image fake runs as a container and shares no state with the test, so
+`fake(…)` refuses it (`ImageFakeHasNoState`): assert through the provider's own
+API instead.
 
 ### Background work, end to end
 

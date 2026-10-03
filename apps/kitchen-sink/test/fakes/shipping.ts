@@ -19,7 +19,7 @@ export interface QuoteRequest {
 
 /**
  * Every quote the carrier was asked for, by destination — what a test asserts
- * on, by importing it from here.
+ * on, through `fake(shipping).quotesFor(…)`.
  *
  * Keyed by something the test chooses, because this module is loaded once per
  * test file: a test reading the whole list would see the tests before it.
