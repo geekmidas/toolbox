@@ -30,6 +30,12 @@ export interface TestManifest {
 	/** Every endpoint, and the surface that serves it. */
 	endpoints: { surface: string; source: TestManifestSource }[];
 	/**
+	 * Every topic subscriber — what a topic's events are delivered to. Not a
+	 * construct, so not in `constructs`: the build finds them, as it finds
+	 * endpoints.
+	 */
+	subscribers?: { source: TestManifestSource }[];
+	/**
 	 * The test stage's environment — reconcile's output, keyed as the
 	 * constructs derive their keys.
 	 */

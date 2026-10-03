@@ -1364,8 +1364,14 @@ export const handler = adaptor.handler;
 
 ### Testing Subscribers
 
-A subscriber is tested by handing it events — delivery is the broker's job.
-In a `featureTest`, `subscriber()` runs it with the test's services:
+In a `featureTest`, a subscriber runs whenever a request publishes an event it
+named — delivered in-process, in the test's transaction, after the topic's
+schema has accepted the payload (see
+[Background work, end to end](/guide/testing#background-work-end-to-end)). So
+the usual test drives the endpoint and asserts what the subscriber did.
+
+To run one on its own — a redelivery, an event no endpoint publishes yet —
+`subscriber()` hands it events directly, with the test's services:
 
 ```typescript
 import { it } from '#test';
@@ -1523,23 +1529,26 @@ and poll using the configured connection string (same as dev).
 
 ### Testing Queues
 
-In a `featureTest`, what a request enqueued is in `published(queue)`, and the
-consumer is run on its own with `queue(queue).invoke(...)`:
+In a `featureTest`, what a request enqueues is delivered to the queue's
+consumer before the response comes back — in-process, in the test's
+transaction, after the queue's `message` schema accepted it. `published(queue)`
+still records it:
 
 ```typescript
 import { it } from '#test';
 
-it('enqueues the order and fulfils it', async ({ browser, published, queue }) => {
+it('enqueues the order and fulfils it', async ({ browser, published }) => {
   const { orderId } = await browser.api.post('/orders', { body: { sku: 'A1' } });
   expect(published(orderJobs)).toEqual([
     { type: 'OrderJobs', payload: { orderId } },
   ]);
 
-  await queue(orderJobs).invoke({ messages: [{ orderId }] });
-
-  // Assert side effects (orders fulfilled, etc.)
+  // The consumer has already run: assert what it did (order fulfilled, …).
 });
 ```
+
+`queue(orderJobs).invoke({ messages })` runs the consumer on its own — a
+redelivery, say — and delivers whatever it publishes.
 
 `TestQueueAdaptor` from `@geekmidas/constructs/testing` runs a consumer outside
 a feature test: `new TestQueueAdaptor(orderJobs).invoke({ messages })`.

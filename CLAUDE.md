@@ -140,8 +140,10 @@ export const cleanup = worker.cron('rate(1 day)').handle(async () => { … });
   queue's name as written.
 - A subscriber is bound, not given a publisher. One that emits follow-ups
   names the topic: `.dependsOn([orders])`.
-- Tests: `published(users)` / `published(emails)` and
-  `queue(emails).invoke({ messages })` in a `featureTest`.
+- Tests: a `featureTest` delivers what a request publishes in-process — the
+  queue's consumer and each subscriber that named the event run in the test's
+  transaction, after their schema accepts the payload. `published(users)`
+  records it; `queue(emails).invoke(...)` runs a consumer on its own.
 
 ### Service Pattern
 

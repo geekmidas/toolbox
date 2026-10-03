@@ -36,6 +36,7 @@ import {
 } from '../generators/drivers.js';
 import { EndpointGenerator } from '../generators/EndpointGenerator.js';
 import { OpenApiTsGenerator } from '../generators/OpenApiTsGenerator.js';
+import { SubscriberGenerator } from '../generators/SubscriberGenerator.js';
 import { type ConstructSource, discover } from '../reconcile/discover.js';
 import { readFakes } from '../reconcile/fakes.js';
 import type { CacheBackend } from '../types.js';
@@ -220,6 +221,12 @@ export async function writeTestHarness(
 				endpoint.surface !== undefined,
 		);
 
+	// Topic subscribers, which a test delivers to. Not constructs, so the build
+	// finds them the way it finds endpoints.
+	const subscribers = (
+		await new SubscriberGenerator().load(options.patterns, options.root)
+	).map(({ key, path }) => ({ source: { file: path.absolute, export: key } }));
+
 	const manifest: TestManifest = {
 		stage: options.stage,
 		constructs: Object.fromEntries(
@@ -239,6 +246,7 @@ export async function writeTestHarness(
 			}),
 		),
 		endpoints: endpoints.map(({ surface, source }) => ({ surface, source })),
+		subscribers,
 		env: options.env,
 	};
 	// One typed client per surface, from the generator the build uses.

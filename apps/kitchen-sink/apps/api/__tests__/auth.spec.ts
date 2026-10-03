@@ -72,8 +72,10 @@ describe('signing in with a magic link', () => {
 		await browser.auth.signIn.magicLink({ email });
 		await browser.visit((await mailbox(email).last()).link!);
 
-		expect(await browser.api.get('/notifications')).toEqual({
-			notifications: [],
+		// Her own notification, written by the subscriber when she was created —
+		// delivered in this test, so it is there to read.
+		expect(await browser.api.get('/notifications')).toMatchObject({
+			notifications: [{ type: 'user.created', body: 'Grace joined' }],
 		});
 	});
 });
