@@ -322,6 +322,10 @@ function define(
 				image,
 				restart: 'unless-stopped',
 				ports: published,
+				// SNS pushes to subscribers on the host — the dev server — and only
+				// Docker Desktop resolves host.docker.internal on its own. On Linux
+				// the name has to be mapped, or every push is refused.
+				extra_hosts: ['host.docker.internal:host-gateway'],
 				environment: {
 					AWS_DEFAULT_REGION: EMULATOR_REGION,
 					AWS_ACCESS_KEY_ID: EMULATOR_CREDENTIALS.accessKeyId,
