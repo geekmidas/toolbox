@@ -90,6 +90,7 @@
     "session-reads-auth",
     "setup-leaves-node-env",
     "single-app-paths",
+    "sns-push-subscribers",
     "surface-has-no-app",
     "test-client-config",
     "test-db-teardown",
