@@ -173,6 +173,42 @@ export function idsOf(
 	return [...new Set([...existing, ...constructs.map(({ id }) => id)])];
 }
 
+/**
+ * The edges after `.database(source)` names a builder's database.
+ *
+ * A database replaces the one before it — a worker's default, overridden by a
+ * runnable that names its own — so the edge the previous one added goes with
+ * it. Left behind, a Lambda built from a queue that moved to another database
+ * would still be granted the worker's.
+ *
+ * Only an edge `.database()` added is removed, which is why it is returned as
+ * `_databaseEdge` for the next call to read — and not even that one when
+ * `.dependsOn()` has since named the same construct, since the handler still
+ * reaches it through `services`.
+ */
+export function databaseEdges(
+	current: {
+		constructs: readonly string[];
+		edge: string | undefined;
+		service: Service | undefined;
+		services: readonly Service[];
+	},
+	source: unknown,
+): { _constructs: string[]; _databaseEdge: string | undefined } {
+	const stillDependedOn =
+		current.service !== undefined && current.services.includes(current.service);
+	const kept =
+		current.edge && !stillDependedOn
+			? current.constructs.filter((id) => id !== current.edge)
+			: [...current.constructs];
+
+	if (!isConsumable(source) || kept.includes(source.id)) {
+		return { _constructs: kept, _databaseEdge: undefined };
+	}
+
+	return { _constructs: [...kept, source.id], _databaseEdge: source.id };
+}
+
 /** Something that is not a construct was passed to `.dependsOn()`. */
 export class NotAConstruct extends Error {
 	constructor(readonly value: unknown) {

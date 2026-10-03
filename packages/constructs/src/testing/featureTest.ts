@@ -162,11 +162,13 @@ export interface FeatureContext<
 	 * with this test's services: its databases resolve to this test's
 	 * transactions, as an endpoint's do.
 	 */
-	subscriber: <S extends Subscriber<any, any, any, any, any>>(
+	subscriber: <S extends Subscriber<any, any, any, any, any, any, any>>(
 		subscriber: S,
 	) => SubscriberAdaptorOf<S>;
 	/** A queue's worker, run on its own with this test's services. */
-	queue: <Q extends Queue<any, any, any, any>>(queue: Q) => QueueAdaptorOf<Q>;
+	queue: <Q extends Queue<any, any, any, any, any, any>>(
+		queue: Q,
+	) => QueueAdaptorOf<Q>;
 }
 
 type SubscriberAdaptorOf<S> =
@@ -175,20 +177,38 @@ type SubscriberAdaptorOf<S> =
 		infer TLogger,
 		infer OutSchema,
 		infer TEventPublisher,
-		infer TSubscribedEvents
+		infer TSubscribedEvents,
+		infer TDatabase,
+		infer TDatabaseServiceName
 	>
 		? TestSubscriberAdaptor<
 				TServices,
 				TLogger,
 				OutSchema,
 				TEventPublisher,
-				TSubscribedEvents
+				TSubscribedEvents,
+				TDatabase,
+				TDatabaseServiceName
 			>
 		: never;
 
 type QueueAdaptorOf<Q> =
-	Q extends Queue<infer TName, infer TMessage, infer TServices, infer TLogger>
-		? TestQueueAdaptor<TName, TMessage, TServices, TLogger>
+	Q extends Queue<
+		infer TName,
+		infer TMessage,
+		infer TServices,
+		infer TLogger,
+		infer TDatabase,
+		infer TDatabaseServiceName
+	>
+		? TestQueueAdaptor<
+				TName,
+				TMessage,
+				TServices,
+				TLogger,
+				TDatabase,
+				TDatabaseServiceName
+			>
 		: never;
 
 /** The schema a database construct was declared with — what `db` is typed by. */

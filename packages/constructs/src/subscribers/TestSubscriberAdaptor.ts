@@ -25,6 +25,8 @@ export class TestSubscriberAdaptor<
 	TEventPublisher extends EventPublisher<any> | undefined = undefined,
 	TSubscribedEvents extends
 		ExtractPublisherMessage<TEventPublisher>['type'][] = ExtractPublisherMessage<TEventPublisher>['type'][],
+	TDatabase = undefined,
+	TDatabaseServiceName extends string = string,
 > {
 	static getDefaultServiceDiscovery() {
 		return ServiceDiscovery.getInstance(new EnvironmentParser({}));
@@ -36,7 +38,9 @@ export class TestSubscriberAdaptor<
 			TLogger,
 			OutSchema,
 			TEventPublisher,
-			TSubscribedEvents
+			TSubscribedEvents,
+			TDatabase,
+			TDatabaseServiceName
 		>,
 		private serviceDiscovery: ServiceDiscovery<any> = TestSubscriberAdaptor.getDefaultServiceDiscovery(),
 	) {}
@@ -45,7 +49,8 @@ export class TestSubscriberAdaptor<
 		request: TestSubscriberRequest<
 			TEventPublisher,
 			TSubscribedEvents,
-			TServices
+			TServices,
+			TDatabase
 		>,
 	): Promise<InferStandardSchema<OutSchema>> {
 		// Create logger with test context
@@ -60,6 +65,9 @@ export class TestSubscriberAdaptor<
 		} else {
 			services = await this.serviceDiscovery.register(this.subscriber.services);
 		}
+
+		// The request's db stands in for the subscriber's — a transaction, say.
+		const db = request.db !== undefined ? request.db : await this.getDatabase();
 
 		// Filter events to only subscribed types
 		const filteredEvents = this.filterEvents(request.events);
@@ -79,7 +87,8 @@ export class TestSubscriberAdaptor<
 				events: filteredEvents,
 				services,
 				logger,
-			});
+				db,
+			} as unknown as Parameters<typeof this.subscriber.handler>[0]);
 
 			// Validate output if schema is provided
 			let output: any = result;
@@ -96,6 +105,15 @@ export class TestSubscriberAdaptor<
 
 			return output;
 		}) as Promise<InferStandardSchema<OutSchema>>;
+	}
+
+	private async getDatabase(): Promise<TDatabase | undefined> {
+		const service = this.subscriber.databaseService;
+		if (!service) return undefined;
+
+		const registered = await this.serviceDiscovery.register([service]);
+
+		return registered[service.serviceName] as TDatabase | undefined;
 	}
 
 	private filterEvents(
@@ -115,7 +133,10 @@ export type TestSubscriberRequest<
 	TEventPublisher extends EventPublisher<any> | undefined = undefined,
 	TSubscribedEvents extends any[] = [],
 	TServices extends Service[] = [],
+	TDatabase = undefined,
 > = {
 	events: ExtractEventPayloads<TEventPublisher, TSubscribedEvents>[];
 	services?: ServiceRecord<TServices>;
+	/** Stands in for the subscriber's database — a transaction, say. */
+	db?: TDatabase;
 };

@@ -1216,6 +1216,12 @@ import { Worker } from '@geekmidas/constructs/worker';
 export const worker = new Worker('Jobs', { logger }).database(database);
 ```
 
+The worker's `.database(database)` is the default database for everything built
+from it — subscribers, queues, crons and functions all receive it as `db`,
+typed from the construct. One that works against another database names its own
+with `.database(other)`, which replaces the worker's for that runnable alone:
+its `db`, and the manifest edge a deploy grants it from.
+
 ### Basic Subscriber
 
 ```typescript
@@ -1234,6 +1240,34 @@ export const onUserCreated = worker
 
 `.topic()` comes first because what comes first decides what is built: a topic
 makes a subscriber, where `.dependsOn()` first would make a plain function.
+
+### With Database Access
+
+The worker's database is already there as `db`:
+
+```typescript
+export const onUserCreated = worker
+  .topic(users)
+  .subscribe(['user.created'])
+  .handle(async ({ events, db }) => {
+    await db
+      .insertInto('profiles')
+      .values(events.map((event) => ({ userId: event.payload.userId })))
+      .execute();
+  });
+```
+
+`.database(other)` gives one subscriber a different one, and retypes `db`:
+
+```typescript
+export const trackSignup = worker
+  .topic(users)
+  .database(analytics)
+  .subscribe(['user.created'])
+  .handle(async ({ events, db }) => {
+    // db is analytics' client, not the worker's
+  });
+```
 
 ### With Dependencies
 
@@ -1433,6 +1467,36 @@ export const orderJobs = worker
 One construct because a queue has exactly one consumer: nothing can attach a
 second, or forget to attach the first.
 
+### With Database Access
+
+A queue built from a worker with `.database(database)` gets that database as
+`db`; `.database(other)` replaces it for this queue:
+
+```typescript
+export const orderJobs = worker
+  .queue('OrderJobs')
+  .message(z.object({ orderId: z.string() }))
+  .handle(async ({ messages, db }) => {
+    for (const { orderId } of messages) {
+      await db
+        .updateTable('orders')
+        .set({ status: 'fulfilled' })
+        .where('id', '=', orderId)
+        .execute();
+    }
+  });
+
+export const reportJobs = worker
+  .queue('ReportJobs')
+  .database(analytics)
+  .message(z.object({ reportId: z.string() }))
+  .handle(async ({ messages, db }) => { /* db is analytics' client */ });
+```
+
+Every runtime hands it over the same way — the server's poller, the Lambda
+adaptor, and `TestQueueAdaptor`, which also takes a `db` in the request to stand
+in for it (a transaction, say).
+
 ### With Dependencies
 
 `.dependsOn()` names constructs. The edge is what the manifest records, and what
@@ -1559,7 +1623,8 @@ A cron is a scheduled function, built from the worker that runs it:
 `worker.cron(schedule)`. It supports dependencies, input/output schemas,
 logging, event publishing, and database access. On AWS it is an EventBridge
 rule; on a server the worker schedules it in Postgres, which is why the worker
-takes `.database(database)`.
+takes `.database(database)` — and that database is every cron's `db` unless
+the cron names its own.
 
 ### Basic Cron
 
@@ -1650,10 +1715,13 @@ export const reportCron = worker
 
 ### With Database Access
 
+The worker's database is the cron's `db` without naming it again;
+`.database(other)` overrides it for one cron, and the schedule stays in the
+worker's:
+
 ```typescript
 export const archiveCron = worker
   .cron('cron(0 2 * * *)')
-  .database(database)
   .handle(async ({ db, logger }) => {
     const cutoff = new Date(Date.now() - 90 * 24 * 3600000); // 90 days
 
@@ -1705,7 +1773,7 @@ export const reminderCron = worker
 | `.input(schema)` | Validate the input payload with a StandardSchema |
 | `.output(schema)` | Validate the return value with a StandardSchema |
 | `.dependsOn([...])` | Constructs whose clients the handler gets in `services` |
-| `.database(database)` | The database (provides `db` in context) |
+| `.database(database)` | The database `db` is, in place of the worker's |
 | `.event(topic, { type, payload, when? })` | Publish to a topic after each successful run |
 | `.timeout(ms)` | Set the execution timeout in milliseconds (default: 30000) |
 | `.memorySize(mb)` | Set the memory allocation in MB (AWS Lambda) |

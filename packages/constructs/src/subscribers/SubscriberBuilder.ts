@@ -9,8 +9,10 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { cloneWith } from '../clone';
 import {
 	type Consumable,
+	databaseEdges,
 	idsOf,
 	type ServicesOf,
+	serviceOf,
 	servicesOf,
 } from '../construct-interface';
 import type { Topic, TopicEvents, TopicMessage } from '../topic/Topic';
@@ -22,6 +24,8 @@ export class SubscriberBuilder<
 	OutSchema extends StandardSchemaV1 | undefined = undefined,
 	TEventPublisher extends EventPublisher<any> | undefined = undefined,
 	TSubscribedEvents extends any[] = [],
+	TDatabase = undefined,
+	TDatabaseServiceName extends string = string,
 > {
 	private _subscribedEvents: TSubscribedEvents = [] as any;
 	private _timeout?: number;
@@ -36,6 +40,10 @@ export class SubscriberBuilder<
 	 */
 	public _owner?: string;
 	private _topicName?: string;
+	/** What the handler's `db` comes from — the worker's, unless overridden. */
+	private _databaseService?: Service<TDatabaseServiceName, TDatabase>;
+	/** The edge `.database()` added, so the next one can replace it. */
+	private _databaseEdge?: string;
 
 	constructor() {
 		this._timeout = 30000; // Default timeout
@@ -57,7 +65,9 @@ export class SubscriberBuilder<
 		TLogger,
 		OutSchema,
 		EventPublisher<TopicMessage<TEvents>>,
-		TSubscribedEvents
+		TSubscribedEvents,
+		TDatabase,
+		TDatabaseServiceName
 	> {
 		return cloneWith(this, {
 			_topicName: topic.name,
@@ -66,7 +76,9 @@ export class SubscriberBuilder<
 			TLogger,
 			OutSchema,
 			EventPublisher<TopicMessage<TEvents>>,
-			TSubscribedEvents
+			TSubscribedEvents,
+			TDatabase,
+			TDatabaseServiceName
 		>;
 	}
 
@@ -81,7 +93,9 @@ export class SubscriberBuilder<
 		TLogger,
 		T,
 		TEventPublisher,
-		TSubscribedEvents
+		TSubscribedEvents,
+		TDatabase,
+		TDatabaseServiceName
 	> {
 		return cloneWith(this, {
 			outputSchema: schema as unknown as OutSchema,
@@ -106,7 +120,9 @@ export class SubscriberBuilder<
 		TLogger,
 		OutSchema,
 		TEventPublisher,
-		TSubscribedEvents
+		TSubscribedEvents,
+		TDatabase,
+		TDatabaseServiceName
 	> {
 		// Both halves of the edge, from one call and one clone: the services the
 		// handler runs with, and the ids the manifest records. Recording them
@@ -125,7 +141,9 @@ export class SubscriberBuilder<
 			TLogger,
 			OutSchema,
 			TEventPublisher,
-			TSubscribedEvents
+			TSubscribedEvents,
+			TDatabase,
+			TDatabaseServiceName
 		>;
 	}
 
@@ -136,7 +154,9 @@ export class SubscriberBuilder<
 		TLogger,
 		OutSchema,
 		TEventPublisher,
-		TSubscribedEvents
+		TSubscribedEvents,
+		TDatabase,
+		TDatabaseServiceName
 	> {
 		return cloneWith(this, {
 			_services: [...this._services, ...services] as any,
@@ -150,9 +170,51 @@ export class SubscriberBuilder<
 		T,
 		OutSchema,
 		TEventPublisher,
-		TSubscribedEvents
+		TSubscribedEvents,
+		TDatabase,
+		TDatabaseServiceName
 	> {
 		return cloneWith(this, { _logger: logger as unknown as TLogger }) as any;
+	}
+
+	/**
+	 * The database the handler receives as `db`.
+	 *
+	 * A subscriber built from a worker already has the worker's, when the
+	 * worker named one with `.database(db)`; this replaces it — the edge as well
+	 * as the client — for a consumer that works against a different database.
+	 */
+	database<T, TDbName extends string>(
+		source: Consumable<TDbName, T> | Service<TDbName, T>,
+	): SubscriberBuilder<
+		TServices,
+		TLogger,
+		OutSchema,
+		TEventPublisher,
+		TSubscribedEvents,
+		T,
+		TDbName
+	> {
+		return cloneWith(this, {
+			_databaseService: serviceOf(source),
+			...databaseEdges(
+				{
+					constructs: this._constructs,
+					edge: this._databaseEdge,
+					service: this._databaseService as Service | undefined,
+					services: this._services,
+				},
+				source,
+			),
+		}) as unknown as SubscriberBuilder<
+			TServices,
+			TLogger,
+			OutSchema,
+			TEventPublisher,
+			TSubscribedEvents,
+			T,
+			TDbName
+		>;
 	}
 
 	subscribe<
@@ -170,7 +232,9 @@ export class SubscriberBuilder<
 		TEventPublisher,
 		TEvent extends any[]
 			? [...TSubscribedEvents, ...TEvent]
-			: [...TSubscribedEvents, TEvent]
+			: [...TSubscribedEvents, TEvent],
+		TDatabase,
+		TDatabaseServiceName
 	> {
 		const eventsToAdd = Array.isArray(event) ? event : [event];
 		return cloneWith(this, {
@@ -184,14 +248,17 @@ export class SubscriberBuilder<
 			TSubscribedEvents,
 			TServices,
 			TLogger,
-			OutSchema
+			OutSchema,
+			TDatabase
 		>,
 	): Subscriber<
 		TServices,
 		TLogger,
 		OutSchema,
 		TEventPublisher,
-		TSubscribedEvents
+		TSubscribedEvents,
+		TDatabase,
+		TDatabaseServiceName
 	> {
 		const subscriber = new Subscriber(
 			fn,
@@ -202,6 +269,7 @@ export class SubscriberBuilder<
 			this._logger,
 			this._topicName,
 			this._constructs,
+			this._databaseService,
 		);
 
 		// Which process runs it. Carried from the factory rather than inferred

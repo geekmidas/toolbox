@@ -5,8 +5,10 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { cloneWith } from '../clone';
 import {
 	type Consumable,
+	databaseEdges,
 	idsOf,
 	type ServicesOf,
+	serviceOf,
 	servicesOf,
 } from '../construct-interface';
 import { Queue, type QueueHandler } from './Queue';
@@ -16,13 +18,16 @@ import { Queue, type QueueHandler } from './Queue';
  * `worker.queue('orders')`, never constructed by hand: the worker stamps itself
  * as the owner. `message` is the typed job payload and `handle` the consumer.
  * The queue name is captured as a literal so `queue.service` publishes
- * `{ type: '<name>', payload }`.
+ * `{ type: '<name>', payload }`. The handler's `db` is the worker's database
+ * unless `.database(other)` names another.
  */
 export class QueueBuilder<
 	TName extends string = string,
 	TMessage extends StandardSchemaV1 | undefined = undefined,
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
+	TDatabase = undefined,
+	TDatabaseServiceName extends string = string,
 > {
 	private _name?: string;
 	private _messageSchema?: TMessage;
@@ -35,16 +40,29 @@ export class QueueBuilder<
 	private _logger: TLogger = DEFAULT_LOGGER as TLogger;
 	/** The worker that runs this queue's consumer — stamped by `worker.queue()`. */
 	public _owner?: string;
+	/** What the handler's `db` comes from — the worker's, unless overridden. */
+	private _databaseService?: Service<TDatabaseServiceName, TDatabase>;
+	/** The edge `.database()` added, so the next one can replace it. */
+	private _databaseEdge?: string;
 
 	/** The queue name — drives the infra queue and its `<NAME>_*` env vars. */
 	queue<T extends string>(
 		name: T,
-	): QueueBuilder<T, TMessage, TServices, TLogger> {
+	): QueueBuilder<
+		T,
+		TMessage,
+		TServices,
+		TLogger,
+		TDatabase,
+		TDatabaseServiceName
+	> {
 		return cloneWith(this, { _name: name }) as unknown as QueueBuilder<
 			T,
 			TMessage,
 			TServices,
-			TLogger
+			TLogger,
+			TDatabase,
+			TDatabaseServiceName
 		>;
 	}
 
@@ -75,7 +93,14 @@ export class QueueBuilder<
 	 */
 	dependsOn<const T extends readonly Consumable[]>(
 		constructs: T,
-	): QueueBuilder<TName, TMessage, [...TServices, ...ServicesOf<T>], TLogger> {
+	): QueueBuilder<
+		TName,
+		TMessage,
+		[...TServices, ...ServicesOf<T>],
+		TLogger,
+		TDatabase,
+		TDatabaseServiceName
+	> {
 		// Both halves of the edge, from one call and one clone: the services the
 		// handler runs with, and the ids the manifest records. Recording them
 		// separately is what let them drift apart.
@@ -92,47 +117,131 @@ export class QueueBuilder<
 			TName,
 			TMessage,
 			[...TServices, ...ServicesOf<T>],
-			TLogger
+			TLogger,
+			TDatabase,
+			TDatabaseServiceName
 		>;
 	}
 
 	services<T extends Service[]>(
 		services: T,
-	): QueueBuilder<TName, TMessage, [...TServices, ...T], TLogger> {
+	): QueueBuilder<
+		TName,
+		TMessage,
+		[...TServices, ...T],
+		TLogger,
+		TDatabase,
+		TDatabaseServiceName
+	> {
 		return cloneWith(this, {
 			_services: [...this._services, ...services] as unknown as TServices,
 		}) as unknown as QueueBuilder<
 			TName,
 			TMessage,
 			[...TServices, ...T],
-			TLogger
+			TLogger,
+			TDatabase,
+			TDatabaseServiceName
 		>;
 	}
 
 	logger<T extends Logger>(
 		logger: T,
-	): QueueBuilder<TName, TMessage, TServices, T> {
+	): QueueBuilder<
+		TName,
+		TMessage,
+		TServices,
+		T,
+		TDatabase,
+		TDatabaseServiceName
+	> {
 		return cloneWith(this, {
 			_logger: logger as unknown as TLogger,
-		}) as unknown as QueueBuilder<TName, TMessage, TServices, T>;
+		}) as unknown as QueueBuilder<
+			TName,
+			TMessage,
+			TServices,
+			T,
+			TDatabase,
+			TDatabaseServiceName
+		>;
+	}
+
+	/**
+	 * The database the handler receives as `db`.
+	 *
+	 * A queue built from a worker already has the worker's, when the worker
+	 * named one with `.database(db)`; this replaces it — the edge as well as
+	 * the client — for a consumer that works against a different database.
+	 */
+	database<T, TDbName extends string>(
+		source: Consumable<TDbName, T> | Service<TDbName, T>,
+	): QueueBuilder<TName, TMessage, TServices, TLogger, T, TDbName> {
+		return cloneWith(this, {
+			_databaseService: serviceOf(source),
+			...databaseEdges(
+				{
+					constructs: this._constructs,
+					edge: this._databaseEdge,
+					service: this._databaseService as Service | undefined,
+					services: this._services,
+				},
+				source,
+			),
+		}) as unknown as QueueBuilder<
+			TName,
+			TMessage,
+			TServices,
+			TLogger,
+			T,
+			TDbName
+		>;
 	}
 
 	/** The typed message (job) payload the queue carries. */
 	message<T extends StandardSchemaV1>(
 		schema: T,
-	): QueueBuilder<TName, T, TServices, TLogger> {
+	): QueueBuilder<
+		TName,
+		T,
+		TServices,
+		TLogger,
+		TDatabase,
+		TDatabaseServiceName
+	> {
 		return cloneWith(this, {
 			_messageSchema: schema as unknown as TMessage,
-		}) as unknown as QueueBuilder<TName, T, TServices, TLogger>;
+		}) as unknown as QueueBuilder<
+			TName,
+			T,
+			TServices,
+			TLogger,
+			TDatabase,
+			TDatabaseServiceName
+		>;
 	}
 
 	handle(
-		fn: QueueHandler<NonNullable<TMessage>, TServices, TLogger>,
-	): Queue<TName, NonNullable<TMessage>, TServices, TLogger> {
+		fn: QueueHandler<NonNullable<TMessage>, TServices, TLogger, TDatabase>,
+	): Queue<
+		TName,
+		NonNullable<TMessage>,
+		TServices,
+		TLogger,
+		TDatabase,
+		TDatabaseServiceName
+	> {
 		if (!this._name) throw new QueueNeedsName();
 		if (!this._messageSchema) throw new QueueNeedsMessage(this._name);
 
-		const queue = new Queue<TName, NonNullable<TMessage>, TServices, TLogger>(
+		const queue = new Queue<
+			TName,
+			NonNullable<TMessage>,
+			TServices,
+			TLogger,
+			TDatabase,
+			TDatabaseServiceName
+		>(
 			this._name as TName,
 			fn,
 			this._messageSchema as NonNullable<TMessage>,
@@ -142,6 +251,7 @@ export class QueueBuilder<
 			this._batchSize,
 			this._fifo,
 			this._constructs,
+			this._databaseService,
 		);
 		// Which process runs the consumer: the worker it was built from.
 		queue.owner = this._owner;

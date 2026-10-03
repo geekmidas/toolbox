@@ -26,6 +26,8 @@ type SubscriberEvent<TServices extends Service[], TLogger extends Logger> = {
 	events: any[];
 	services: ServiceRecord<TServices>;
 	logger: TLogger;
+	/** The subscriber's database, when it has one. */
+	db?: unknown;
 };
 
 type Middleware<
@@ -45,6 +47,8 @@ export class AWSLambdaSubscriber<
 	OutSchema extends StandardSchemaV1 | undefined = undefined,
 	TEventPublisher extends EventPublisher<any> | undefined = undefined,
 	TSubscribedEvents extends any[] = [],
+	TDatabase = undefined,
+	TDatabaseServiceName extends string = string,
 > {
 	private _logger!: TLogger;
 	private _services!: ServiceRecord<TServices>;
@@ -56,7 +60,9 @@ export class AWSLambdaSubscriber<
 			TLogger,
 			OutSchema,
 			TEventPublisher,
-			TSubscribedEvents
+			TSubscribedEvents,
+			TDatabase,
+			TDatabaseServiceName
 		>,
 	) {
 		this._logger = subscriber.logger;
@@ -83,6 +89,20 @@ export class AWSLambdaSubscriber<
 		}
 
 		return this._services;
+	}
+
+	/** The subscriber's database, registered as functions register theirs. */
+	private async getDatabase(): Promise<TDatabase | undefined> {
+		const service = this.subscriber.databaseService;
+		if (!service) return undefined;
+
+		const registered = await ServiceDiscovery.getInstance(
+			this.envParser,
+		).register([service]);
+
+		return registered[service.serviceName as keyof typeof registered] as
+			| TDatabase
+			| undefined;
 	}
 
 	private error(): Middleware<TServices, TLogger, OutSchema> {
@@ -120,6 +140,7 @@ export class AWSLambdaSubscriber<
 		return {
 			before: async (req) => {
 				req.event.services = await this.getServices();
+				req.event.db = await this.getDatabase();
 			},
 		};
 	}
@@ -286,12 +307,14 @@ export class AWSLambdaSubscriber<
 			};
 		}
 
-		// Execute the subscriber with the parsed context
+		// Execute the subscriber with the parsed context. Cast because `db` is
+		// in it only when TDatabase is set, which a generic cannot resolve.
 		const result = await this.subscriber.handler({
 			events: event.events,
 			services: event.services,
 			logger: event.logger,
-		});
+			db: event.db,
+		} as unknown as Parameters<typeof this.subscriber.handler>[0]);
 
 		// Parse output if schema is provided
 		if (this.subscriber.outputSchema && result) {

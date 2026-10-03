@@ -113,4 +113,41 @@ export const nightly = jobs
 		expect(runnables.Jobs).toHaveLength(2);
 		expect(manifest.Receipts).toMatchObject({ kind: 'queue' });
 	});
+
+	it('records a queue’s and a subscriber’s own database under their worker', async () => {
+		await createTestFile(
+			dir,
+			'subscribers/audit.ts',
+			`import { Worker } from '@geekmidas/constructs/worker';
+import { z } from 'zod';
+import { orders, users } from '../constructs/index.js';
+
+// A worker with no database of its own; its runnables name theirs.
+const reports = new Worker('Reports');
+
+export const audit = reports
+	.topic(users)
+	.database(orders)
+	.subscribe(['user.created'])
+	.handle(async () => {});
+
+export const rollup = reports
+	.queue('Rollup')
+	.database(orders)
+	.message(z.object({ id: z.string() }))
+	.handle(async () => {});
+`,
+		);
+		const runnables: Record<string, string[]> = {};
+
+		await discover({
+			patterns: ['constructs/**/*.ts', 'subscribers/**/*.ts'],
+			cwd: dir,
+			runnables,
+		});
+
+		// The handler's `db` reaches the database, so the process running it has
+		// to be composed with it.
+		expect(runnables.Reports).toEqual(['Orders']);
+	});
 });

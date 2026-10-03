@@ -16,6 +16,7 @@ import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceRecord } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Construct, ConstructType } from '../Construct';
+import type { DatabaseContext } from '../functions/Function';
 
 /**
  * The wire message a queue carries: `{ type: <queue name>, payload: <message> }`.
@@ -37,18 +38,31 @@ export type QueueMessage<
  *
  * Producers send to it by depending on it: `.dependsOn([emails])` makes
  * `services.emails` the publisher.
+ *
+ * Its handler gets `db` when it has a database: the worker's, declared once
+ * with `worker.database(db)`, or its own with `.database(other)`.
  */
 export class Queue<
 	TName extends string = string,
 	TMessage extends StandardSchemaV1 = StandardSchemaV1,
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
-> extends Construct<TLogger, undefined, TServices> {
+	TDatabase = undefined,
+	TDatabaseServiceName extends string = string,
+> extends Construct<
+	TLogger,
+	undefined,
+	TServices,
+	string,
+	undefined,
+	TDatabaseServiceName,
+	TDatabase
+> {
 	__IS_QUEUE__ = true;
 
 	static isQueue(
 		obj: unknown,
-	): obj is Queue<string, StandardSchemaV1, Service[], Logger> {
+	): obj is Queue<string, StandardSchemaV1, Service[], Logger, any> {
 		return Boolean(
 			obj &&
 				(obj as { __IS_QUEUE__?: boolean }).__IS_QUEUE__ === true &&
@@ -89,7 +103,12 @@ export class Queue<
 
 	constructor(
 		public readonly name: TName,
-		public readonly handler: QueueHandler<TMessage, TServices, TLogger>,
+		public readonly handler: QueueHandler<
+			TMessage,
+			TServices,
+			TLogger,
+			TDatabase
+		>,
 		public readonly messageSchema: TMessage,
 		public override readonly timeout: number = 30000,
 		public override readonly services: TServices = [] as unknown as TServices,
@@ -103,6 +122,11 @@ export class Queue<
 		 * existing positional argument moves.
 		 */
 		constructs: string[] = [],
+		/**
+		 * What the handler's `db` is registered from — after `constructs`, for
+		 * the same reason.
+		 */
+		databaseService?: Service<TDatabaseServiceName, TDatabase>,
 	) {
 		super(
 			ConstructType.Queue,
@@ -116,6 +140,7 @@ export class Queue<
 			constructs,
 		);
 
+		this.databaseService = databaseService;
 		this.id = canonicalId(name);
 		this.connectionKey = provideKey(this.id, 'publisherConnectionString');
 
@@ -168,21 +193,26 @@ export class Queue<
 	}
 }
 
-/** The context a queue handler receives — a batch of typed messages. */
+/**
+ * The context a queue handler receives — a batch of typed messages, and `db`
+ * when the queue has a database.
+ */
 export type QueueContext<
 	TMessage extends StandardSchemaV1,
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
+	TDatabase = undefined,
 > = {
 	messages: InferStandardSchema<TMessage>[];
 	services: ServiceRecord<TServices>;
 	logger: TLogger;
-};
+} & DatabaseContext<TDatabase>;
 
 export type QueueHandler<
 	TMessage extends StandardSchemaV1,
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
+	TDatabase = undefined,
 > = (
-	ctx: QueueContext<TMessage, TServices, TLogger>,
+	ctx: QueueContext<TMessage, TServices, TLogger, TDatabase>,
 ) => unknown | Promise<unknown>;

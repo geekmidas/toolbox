@@ -44,11 +44,19 @@ export interface SnsPushResponse {
  * endpoint is only a different way for the event to arrive.
  */
 export class SnsPushSubscriberAdaptor {
-	private readonly lambda: AWSLambdaSubscriber<any, any, any, any, any>;
+	private readonly lambda: AWSLambdaSubscriber<
+		any,
+		any,
+		any,
+		any,
+		any,
+		any,
+		any
+	>;
 
 	constructor(
 		envParser: EnvironmentParser<{}>,
-		readonly subscriber: Subscriber<any, any, any, any, any>,
+		readonly subscriber: Subscriber<any, any, any, any, any, any, any>,
 		private readonly options: SnsPushOptions,
 	) {
 		this.lambda = new AWSLambdaSubscriber(envParser, subscriber);

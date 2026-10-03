@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { KyselyDatabase } from '@geekmidas/constructs/database/kysely';
 import type { Queue } from '@geekmidas/constructs/queue';
 import { Worker } from '@geekmidas/constructs/worker';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -13,6 +14,21 @@ import type { GeneratedConstruct } from '../Generator';
 import { QueueGenerator } from '../QueueGenerator';
 
 const schema = z.object({ orderId: z.string() });
+const orders = new KyselyDatabase('Orders');
+
+/** A queue built from a worker whose database is the default for it. */
+const withDatabase = (
+	key: string,
+): GeneratedConstruct<Queue<any, any, any, any, any, any>> => ({
+	key,
+	name: key.toLowerCase(),
+	construct: new Worker('Jobs')
+		.database(orders)
+		.queue('orders')
+		.message(schema)
+		.handle(async () => {}),
+	path: { absolute: `/tmp/${key}.ts`, relative: `${key}.ts` },
+});
 
 describe('QueueGenerator', () => {
 	let tempDir: string;
@@ -98,6 +114,20 @@ describe('QueueGenerator', () => {
 			expect(handler).toContain('export const handler = adapter.handler');
 		});
 
+		it('carries the worker’s database as the queue’s env and edge', async () => {
+			const [info] = await generator.build(
+				context,
+				[withDatabase('ordersQueue')],
+				outputDir,
+				{ provider: 'aws-lambda' },
+			);
+
+			// The Lambda runs the queue alone, so the database has to be in its
+			// own environment and grant — the worker's are not deployed with it.
+			expect(info?.environment).toContain('ORDERS_URL');
+			expect(info?.dependencies).toEqual(['Orders']);
+		});
+
 		it('returns an empty array for no queues', async () => {
 			const infos = await generator.build(context, [], outputDir, {
 				provider: 'aws-lambda',
@@ -139,6 +169,18 @@ describe('QueueGenerator', () => {
 			expect(content).toContain('eventSubscriber.subscribe([queue.name]');
 			expect(content).toContain("queue.messageSchema['~standard'].validate");
 			expect(content).toContain('messages: [validation.value]');
+		});
+
+		it('registers each queue’s database and hands it to the handler as db', async () => {
+			await generator.build(context, [withDatabase('ordersQueue')], outputDir, {
+				provider: 'server',
+			});
+
+			const content = await readFile(join(outputDir, 'queues.ts'), 'utf-8');
+			expect(content).toContain(
+				'await serviceDiscovery.register([queue.databaseService])',
+			);
+			expect(content).toMatch(/logger: queue\.logger,\s+db,/);
 		});
 	});
 });

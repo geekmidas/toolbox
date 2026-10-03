@@ -12,7 +12,7 @@ import type {
 	SQSEvent,
 	SQSRecord,
 } from 'aws-lambda';
-import type { Queue } from './Queue';
+import type { Queue, QueueContext } from './Queue';
 
 export type AWSLambdaHandler<TEvent = any, TResult = any> = Handler<
 	TEvent,
@@ -35,12 +35,21 @@ export class AWSLambdaQueue<
 	TMessage extends StandardSchemaV1 = StandardSchemaV1,
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
+	TDatabase = undefined,
+	TDatabaseServiceName extends string = string,
 > {
 	private _services?: ServiceRecord<TServices>;
 
 	constructor(
 		private readonly envParser: EnvironmentParser<{}>,
-		readonly queue: Queue<TName, TMessage, TServices, TLogger>,
+		readonly queue: Queue<
+			TName,
+			TMessage,
+			TServices,
+			TLogger,
+			TDatabase,
+			TDatabaseServiceName
+		>,
 	) {}
 
 	get logger(): TLogger {
@@ -62,6 +71,20 @@ export class AWSLambdaQueue<
 				: ({} as ServiceRecord<TServices>);
 
 		return this._services;
+	}
+
+	/** The queue's database, registered as functions register theirs. */
+	private async getDatabase(): Promise<TDatabase | undefined> {
+		const service = this.queue.databaseService;
+		if (!service) return undefined;
+
+		const registered = await ServiceDiscovery.getInstance(
+			this.envParser,
+		).register([service]);
+
+		return registered[service.serviceName as keyof typeof registered] as
+			| TDatabase
+			| undefined;
 	}
 
 	private safeJsonParse(value: string): unknown {
@@ -97,6 +120,7 @@ export class AWSLambdaQueue<
 		}) as TLogger;
 
 		const services = await this.getServices();
+		const db = await this.getDatabase();
 		const schema = this.queue.messageSchema;
 
 		const batchItemFailures: { itemIdentifier: string }[] = [];
@@ -129,7 +153,14 @@ export class AWSLambdaQueue<
 		}
 
 		try {
-			await this.queue.handler({ messages, services, logger });
+			// Cast because `db` is in the context only when TDatabase is set, a
+			// condition a generic cannot resolve; `undefined` when it is not.
+			await this.queue.handler({
+				messages,
+				services,
+				logger,
+				db,
+			} as unknown as QueueContext<TMessage, TServices, TLogger, TDatabase>);
 		} catch (error) {
 			logger.error(wrapError(error), 'Queue handler failed; retrying batch');
 			// Handler processes the batch atomically — fail the whole batch so SQS
