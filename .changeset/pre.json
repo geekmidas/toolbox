@@ -62,6 +62,7 @@
     "fresh-scaffold-tests-run",
     "gkm-migrate",
     "gkm-seed",
+    "gkm-test-reliability",
     "harness-static-imports",
     "init-deploy-target",
     "init-github-actions",

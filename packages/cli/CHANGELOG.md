@@ -1,5 +1,26 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.43
+
+### Patch Changes
+
+- 🐛 [#118](https://github.com/geekmidas/toolbox/pull/118) [`5aa1b52`](https://github.com/geekmidas/toolbox/commit/5aa1b52be04d6479d77c06da227e5700c00877be) Thanks [@geekmidas](https://github.com/geekmidas)! - :bug: `gkm test` reliability: subscribers load in the harness, a dropped test database is recreated, and no two services share a port
+  - The generated harness imports every topic subscriber module itself. Delivery loads subscribers, and left to Node's own `import()` one importing a tsconfig alias (`~/…`) failed every test file that delivered.
+  - Reconcile's fast path checks the plan's Postgres databases still exist. Every checkout shares one Postgres, so another checkout's test teardown could drop `<name>_test` while this one's recorded state still claimed it — and the suite started with no database.
+  - Saved and observed ports are merged without collisions (`keptPorts`). An observed port overrode its own key but left a different saved key on the same number, so two services shared a port — Mailpit's inbox answered by an external API's fake.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.43
+  - @geekmidas/constructs@10.0.0-alpha.43
+  - @geekmidas/db@10.0.0-alpha.43
+  - @geekmidas/envkit@10.0.0-alpha.43
+  - @geekmidas/errors@10.0.0-alpha.43
+  - @geekmidas/logger@10.0.0-alpha.43
+  - @geekmidas/manifest@10.0.0-alpha.43
+  - @geekmidas/schema@10.0.0-alpha.43
+  - @geekmidas/services@10.0.0-alpha.43
+  - @geekmidas/telescope@10.0.0-alpha.43
+
 ## 10.0.0-alpha.42
 
 ### Patch Changes
