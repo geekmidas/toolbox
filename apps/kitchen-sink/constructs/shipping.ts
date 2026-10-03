@@ -7,6 +7,12 @@ export interface Quote {
 	amount: number;
 }
 
+/** A quote the carrier was asked for — what its `GET /quotes` lists. */
+export interface QuoteRequest {
+	destination: string;
+	weightKg: number;
+}
+
 /**
  * A carrier's API — somebody else's server, with an address that changes by
  * stage.
@@ -28,21 +34,33 @@ export const shipping = new ExternalApi('Shipping', {
 		default: 'https://sandbox.carrier.example',
 	},
 	credentials: z.object({ apiKey: z.string().min(1) }),
-	client: ({ url, credentials }) => ({
-		async quote(destination: string, weightKg: number): Promise<Quote> {
-			const response = await fetch(`${url}/quotes`, {
-				method: 'POST',
-				headers: {
-					authorization: `Bearer ${credentials.apiKey}`,
-					'content-type': 'application/json',
-				},
-				body: JSON.stringify({ destination, weightKg }),
-			});
-			if (!response.ok) throw new QuoteRefused(response.status);
+	client: ({ url, credentials }) => {
+		const authorization = `Bearer ${credentials.apiKey}`;
 
-			return (await response.json()) as Quote;
-		},
-	}),
+		return {
+			async quote(destination: string, weightKg: number): Promise<Quote> {
+				const response = await fetch(`${url}/quotes`, {
+					method: 'POST',
+					headers: { authorization, 'content-type': 'application/json' },
+					body: JSON.stringify({ destination, weightKg }),
+				});
+				if (!response.ok) throw new QuoteRefused(response.status);
+
+				return (await response.json()) as Quote;
+			},
+
+			/** The quotes asked for a destination — the carrier's `GET /quotes`. */
+			async quotes(destination: string): Promise<QuoteRequest[]> {
+				const response = await fetch(
+					`${url}/quotes?destination=${encodeURIComponent(destination)}`,
+					{ headers: { authorization } },
+				);
+				if (!response.ok) throw new QuoteRefused(response.status);
+
+				return (await response.json()) as QuoteRequest[];
+			},
+		};
+	},
 });
 
 /** The carrier answered a quote with an error. */

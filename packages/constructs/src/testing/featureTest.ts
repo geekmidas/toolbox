@@ -45,6 +45,7 @@ import { http } from 'msw';
 import { type SetupServer, setupServer } from 'msw/node';
 import { afterAll, beforeAll, test } from 'vitest';
 import { BetterAuth } from '../auth';
+import { type Consumable, isConsumable } from '../construct-interface';
 import { KyselyDatabase } from '../database/kysely';
 import { Email } from '../email';
 import { Endpoint } from '../endpoints/Endpoint';
@@ -97,6 +98,28 @@ export interface FeatureTestOptions<
 /** Each database's schema, keyed by its service name. */
 export type DatabaseSchemas = Record<string, unknown>;
 
+/** Each construct's client, keyed by its service name — what `services` types. */
+export type ServiceClients = Record<string, unknown>;
+
+/** The client a construct's service registers — what a handler is handed. */
+export type ClientOf<C> = C extends {
+	service: { register: (...args: any[]) => infer TClient };
+}
+	? Awaited<TClient>
+	: never;
+
+/**
+ * The app's services for this test, by service name — `services.get('shipping')`.
+ *
+ * What a handler that depends on the construct is handed, resolved the way the
+ * test's endpoints resolve it: an external API's client aimed at whatever the
+ * test stage resolved (its fake, which the test never sees), a topic or queue's
+ * recorder, a database's transaction for this test.
+ */
+export interface TestServices<TServices extends ServiceClients> {
+	get<K extends keyof TServices & string>(name: K): Promise<TServices[K]>;
+}
+
 /**
  * The app's databases for this test, by service name — `db.get('database')`.
  *
@@ -126,6 +149,7 @@ export interface FeatureContext<
 	TBrowser extends TestBrowser,
 	TDatabases extends DatabaseSchemas = {},
 	TFactories extends FactoryBuilders = {},
+	TServices extends ServiceClients = {},
 > {
 	/** This test's browser, already the global `fetch`. */
 	browser: TBrowser;
@@ -165,6 +189,13 @@ export interface FeatureContext<
 	subscriber: <S extends Subscriber<any, any, any, any, any, any, any>>(
 		subscriber: S,
 	) => SubscriberAdaptorOf<S>;
+	/**
+	 * The app's services, by service name — `await services.get('shipping')` —
+	 * as a handler is handed them. Assert on an external API through its own
+	 * client: the fake behind it stays hidden, and the same assertion holds
+	 * against the real API.
+	 */
+	services: TestServices<TServices>;
 	/** A queue's worker, run on its own with this test's services. */
 	queue: <Q extends Queue<any, any, any, any, any, any>>(
 		queue: Q,
@@ -225,26 +256,30 @@ type FeatureFn<
 	TBrowser extends TestBrowser,
 	TDatabases extends DatabaseSchemas,
 	TFactories extends FactoryBuilders,
-> = (context: FeatureContext<TBrowser, TDatabases, TFactories>) => unknown;
+	TServices extends ServiceClients,
+> = (
+	context: FeatureContext<TBrowser, TDatabases, TFactories, TServices>,
+) => unknown;
 
 export interface FeatureIt<
 	TBrowser extends TestBrowser,
 	TDatabases extends DatabaseSchemas = {},
 	TFactories extends FactoryBuilders = {},
+	TServices extends ServiceClients = {},
 > {
 	(
 		name: string,
-		fn: FeatureFn<TBrowser, TDatabases, TFactories>,
+		fn: FeatureFn<TBrowser, TDatabases, TFactories, TServices>,
 		timeout?: number,
 	): void;
 	only(
 		name: string,
-		fn: FeatureFn<TBrowser, TDatabases, TFactories>,
+		fn: FeatureFn<TBrowser, TDatabases, TFactories, TServices>,
 		timeout?: number,
 	): void;
 	skip(
 		name: string,
-		fn: FeatureFn<TBrowser, TDatabases, TFactories>,
+		fn: FeatureFn<TBrowser, TDatabases, TFactories, TServices>,
 		timeout?: number,
 	): void;
 }
@@ -287,6 +322,8 @@ interface LoadedApp {
 	emails: Email[];
 	/** Every topic and queue — what a test's publishing is recorded for. */
 	channels: (Topic<any, any> | Queue<any, any>)[];
+	/** Every construct a handler can depend on — what `services` resolves. */
+	consumables: Consumable[];
 	/** Every topic subscriber, by the name it is exported as. */
 	subscribers: {
 		name: string;
@@ -299,9 +336,10 @@ export function featureTest<
 	TBrowser extends TestBrowser = TestBrowser,
 	TDatabases extends DatabaseSchemas = {},
 	TFactories extends FactoryBuilders = {},
+	TServices extends ServiceClients = {},
 >(
 	options: FeatureTestOptions<TBrowser, TFactories> = {},
-): FeatureIt<TBrowser, TDatabases, TFactories> {
+): FeatureIt<TBrowser, TDatabases, TFactories, TServices> {
 	const manifest = options.manifest ?? loadTestManifest();
 	const BrowserClass = (options.browser ?? TestBrowser) as new () => TBrowser;
 
@@ -354,7 +392,10 @@ export function featureTest<
 	});
 
 	const run =
-		(name: string, fn: FeatureFn<TBrowser, TDatabases, TFactories>) =>
+		(
+			name: string,
+			fn: FeatureFn<TBrowser, TDatabases, TFactories, TServices>,
+		) =>
 		async (): Promise<void> => {
 			const id = randomUUID();
 			faker.seed(seedOf(name));
@@ -441,6 +482,9 @@ export function featureTest<
 							published: (channel) => [
 								...(state.published.get(channel.id) ?? []),
 							],
+							services: {
+								get: (name) => resolveService(app, state, name) as never,
+							},
 							// A consumer run by hand delivers what it published, as a
 							// request does.
 							subscriber: (subscriber) =>
@@ -452,7 +496,7 @@ export function featureTest<
 								thenDeliver(new TestQueueAdaptor(queue, state.discovery), () =>
 									deliver(app, state, id),
 								) as QueueAdaptorOf<typeof queue>,
-						} as FeatureContext<TBrowser, TDatabases, TFactories>);
+						} as FeatureContext<TBrowser, TDatabases, TFactories, TServices>);
 					} finally {
 						restore();
 					}
@@ -472,7 +516,8 @@ export function featureTest<
 		test(name, run(name, fn), timeout)) as FeatureIt<
 		TBrowser,
 		TDatabases,
-		TFactories
+		TFactories,
+		TServices
 	>;
 	it.only = (name, fn, timeout) => test.only(name, run(name, fn), timeout);
 	it.skip = (name, fn, timeout) => test.skip(name, run(name, fn), timeout);
@@ -554,6 +599,7 @@ async function load(
 	const emails = unique(
 		constructs.filter((value): value is Email => value instanceof Email),
 	);
+	const consumables = unique(constructs.filter(isConsumable));
 	const channels = unique(
 		constructs.filter(
 			(value): value is Topic<any, any> | Queue<any, any> =>
@@ -572,6 +618,7 @@ async function load(
 		auths,
 		emails,
 		channels,
+		consumables,
 		subscribers,
 		...(inbox ? { readMail: createMailbox({ inbox }) } : {}),
 	};
@@ -877,6 +924,30 @@ function fakeHandler(
 	];
 }
 
+/**
+ * A construct's client for this test, by service name — through the test's own
+ * discovery, so a topic or queue is its recorder and a database its
+ * transaction, exactly as the test's endpoints get them.
+ */
+async function resolveService(
+	app: LoadedApp,
+	state: ContextState,
+	name: string,
+): Promise<unknown> {
+	const construct = app.consumables.find(
+		(candidate) => candidate.service.serviceName === name,
+	);
+	if (!construct) {
+		throw new UnknownService(
+			name,
+			app.consumables.map((candidate) => candidate.service.serviceName),
+		);
+	}
+
+	const registered = await state.discovery.register([construct.service]);
+	return (registered as Record<string, unknown>)[name];
+}
+
 /** An auth server, served at its URL, on the transaction of the test that asked. */
 function authHandler(
 	auth: BetterAuth,
@@ -1121,5 +1192,19 @@ export class DeliveryDidNotSettle extends Error {
 				'what triggers it loops forever deployed too.',
 		);
 		this.name = 'DeliveryDidNotSettle';
+	}
+}
+
+/** `services.get(name)` for a name no construct of the app is served by. */
+export class UnknownService extends Error {
+	constructor(
+		readonly serviceName: string,
+		readonly available: readonly string[],
+	) {
+		super(
+			`The app declares no construct served as '${serviceName}'. Its services are: ` +
+				`${available.join(', ') || 'none'}.`,
+		);
+		this.name = 'UnknownService';
 	}
 }

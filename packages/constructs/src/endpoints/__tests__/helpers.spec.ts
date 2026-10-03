@@ -4,19 +4,18 @@ import { getProjectRoot } from '../helpers';
 
 describe('helpers', () => {
 	describe('getProjectRoot', () => {
-		it('should find project root from current directory', async () => {
-			const cwd = process.cwd();
-			const root = await getProjectRoot(cwd);
-			// Should find the toolbox root which has pnpm-lock.yaml
-			expect(root).toBe(cwd);
+		// The toolbox root — the directory holding pnpm-lock.yaml — found from
+		// this file, not from `process.cwd()`: the suite runs from the repo root
+		// in CI and from the package locally, and only one of those is the root.
+		const toolboxRoot = path.resolve(import.meta.dirname, '../../../../..');
+
+		it('should find project root from the root itself', async () => {
+			expect(await getProjectRoot(toolboxRoot)).toBe(toolboxRoot);
 		});
 
 		it('should find project root from nested directory', async () => {
-			const cwd = process.cwd();
-			const nested = path.join(cwd, 'packages', 'constructs', 'src');
-			const root = await getProjectRoot(nested);
-			// Should find the toolbox root
-			expect(root).toBe(cwd);
+			const nested = path.join(toolboxRoot, 'packages', 'constructs', 'src');
+			expect(await getProjectRoot(nested)).toBe(toolboxRoot);
 		});
 
 		it('should return root when reaching filesystem root', async () => {

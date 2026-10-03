@@ -1,6 +1,5 @@
 import { describe, expect } from 'vitest';
 import { it } from '#test';
-import { quotesFor } from '../../../test/fakes/shipping.js';
 
 /**
  * An external API, end to end. The endpoint calls the carrier over HTTP; the
@@ -20,6 +19,7 @@ describe('shipping', () => {
 	it('asks the carrier for exactly the parcel it was given', async ({
 		browser,
 		faker,
+		services,
 	}) => {
 		// A destination no other test uses: the fake keeps what it was asked
 		// for the whole file, so this test reads only its own.
@@ -29,6 +29,12 @@ describe('shipping', () => {
 			body: { destination, weightKg: 3.5 },
 		});
 
-		expect(quotesFor(destination)).toEqual([{ destination, weightKg: 3.5 }]);
+		// Asked through the carrier's own API, with the client a handler gets —
+		// the fake stays hidden, and the same assertion holds against the
+		// carrier's sandbox.
+		const carrier = await services.get('shipping');
+		expect(await carrier.quotes(destination)).toEqual([
+			{ destination, weightKg: 3.5 },
+		]);
 	});
 });

@@ -107,6 +107,17 @@ async function occupiedPort(): Promise<{ port: number; server: Server }> {
 	return { port: address.port, server };
 }
 
+/**
+ * A port nothing holds. A test that starts the dev server takes one rather than
+ * the default 3000, which a developer's own dev server is usually sitting on —
+ * and then the test fails with `DevPortInUse` on every machine but CI's.
+ */
+async function freePort(): Promise<number> {
+	const { port, server } = await occupiedPort();
+	await new Promise((r) => server.close(r));
+	return port;
+}
+
 // Starting a server waits a second for it, as the real one does.
 describe('devCommand', { timeout: 30_000 }, () => {
 	let dir: string;
@@ -191,7 +202,7 @@ export default defineConfig({
 				'export function afterSetup() {}\n',
 			);
 
-			await devCommand({});
+			await devCommand({ port: await freePort() });
 
 			// Built into the app root, and the entry it starts is written there.
 			const [server] = fakes.spawned;
@@ -245,7 +256,7 @@ export default defineConfig({
 		it('reports a server that exits with an error, and a failed rebuild', async () => {
 			singleApp();
 
-			await devCommand({});
+			await devCommand({ port: await freePort() });
 
 			const [server] = fakes.spawned;
 			server!.emit('error', new Error('spawn npx ENOENT'));
@@ -682,7 +693,7 @@ export default defineConfig({
 		writeFileSync(join(dir, 'src', 'constructs', 'noop.ts'), 'export {};\n');
 		writeFileSync(join(dir, 'src', 'hooks.ts'), 'export {};\n');
 
-		await devCommand({});
+		await devCommand({ port: await freePort() });
 
 		const entry = readFileSync(
 			join(dir, '.gkm', 'server', 'server.ts'),

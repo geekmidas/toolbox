@@ -231,6 +231,24 @@ so image pins and extra services live there.
 - **MSW** for external HTTP APIs; traditional mocks only for filesystem, time, env vars
 - **Behavior over implementation**: test what code does, not how it calls things
 
+### No known failures
+
+A red test is fixed before anything is committed — never reported as "known"
+or "pre-existing" and pushed anyway. "It fails on `main` too" means `main` is
+broken, not that the failure is acceptable. Every affected suite is fully green
+locally before a commit or PR.
+
+A test that passes in CI but not locally almost always depends on where it runs
+or what the machine is running — fix the test, not the machine:
+
+- **cwd**: never assert against `process.cwd()`; resolve paths from the test
+  file (`import.meta.dirname`). The suite runs from the repo root in CI and from
+  the package locally.
+- **Ports**: never start a server on a fixed port such as 3000 — a developer's
+  own dev server is on it. Listen on `0` and read the port back.
+- **Local state**: shared containers, a stale `.gkm/` file, another worktree's
+  run. Make the code tolerate it, or make the test set up what it needs.
+
 ### Structure
 
 - Test files: `.spec.ts` or `.test.ts` alongside source
