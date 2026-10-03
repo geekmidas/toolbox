@@ -342,39 +342,70 @@ gkm dev --source "./src/endpoints/**/*.ts" --port 3000
 |--------|-------------|
 | `--source` | Glob pattern for endpoint files |
 | `--port` | Server port (default: 3000) |
+| `--no-subscribers` | Run no topic subscribers — nothing is subscribed, polled or pushed to. Queue consumers still run |
 
 **Features:**
 - Hot reload on file changes
 - Telescope debugging dashboard integration
 - **Automatic OpenAPI generation** on startup and file changes (when enabled in config)
 - **Dynamic Docker port resolution** — automatically avoids port conflicts between projects
-- **Automatic subscriber startup** — discovers and starts event subscribers in polling mode
+- **Automatic subscriber startup** — discovers and starts topic subscribers and queue consumers
 
-#### Subscriber Polling
+#### Subscribers and Queues
 
-When running `gkm dev`, any event subscribers defined in your routes are automatically discovered and started in polling mode. The CLI generates a `setupSubscribers()` function that runs on server startup.
+When running `gkm dev`, every topic subscriber and queue consumer the app's
+workers declare is discovered and started on server startup, from generated
+`setupSubscribers()` and `setupQueues()` functions. Fan-out is the default;
+`gkm dev --no-subscribers` (which sets `GKM_SUBSCRIBERS=off`) runs no topic
+subscribers, while queues still run.
 
-To enable subscriber polling, set the `EVENT_SUBSCRIBER_CONNECTION_STRING` environment variable:
+There is no shared subscriber connection string. Each consumer reaches the
+thing it consumes through that thing's own `<ID>_PUBLISHER_CONNECTION_STRING` —
+a queue's consumer its queue's, a subscriber the string of the topic it is
+bound to — the same string the producers publish on. The server that runs the
+workers is handed every topic's and queue's string.
 
-```bash
-# .env
-EVENT_SUBSCRIBER_CONNECTION_STRING=pgboss://user:pass@localhost:5432/mydb
-```
+How a message arrives depends on the transport in that string:
 
-The appropriate subscriber backend is selected based on the connection string protocol:
+| Consumer | Transport | Delivery |
+|----------|-----------|----------|
+| Queue | any | **Polled**, on the queue's own address — SQS cannot push |
+| Topic subscriber | `sns://` | **Pushed** over HTTP by SNS |
+| Topic subscriber | `pgboss://`, `rabbitmq://` | **Polled** |
 
-| Protocol | Backend | Description |
-|----------|---------|-------------|
-| `pgboss://` | pg-boss | PostgreSQL-based job queue |
-| `rabbitmq://` | RabbitMQ | AMQP message broker |
-| `sqs://` | AWS SQS | Amazon Simple Queue Service |
-| `sns://` | AWS SNS | Amazon Simple Notification Service |
-| `basic://` | In-memory | For local testing only |
+**Pushed (SNS).** Each subscriber gets a route on the server,
+`POST /__gkm/subscribers/<exportName>`. Once the server is listening, the route
+is subscribed to the topic with a filter policy on the `type` message attribute
+listing the events from `.subscribe([...])` — SNS does the fan-out, one
+subscription per subscriber. The route runs the subscriber through the same
+`AWSLambdaSubscriber` adaptor a Lambda subscription does, handed the
+notification as an SNS Lambda event. Subscription confirmations are confirmed
+automatically, and every message's signature is verified against a certificate
+served over https from `sns.<region>.amazonaws.com` — except against an
+emulator, which signs nothing (decided by the `endpoint` in the connection
+string, never by the request). Startup converges: a subscription stuck pending
+confirmation is replaced, and a confirmed one whose event list changed has its
+filter updated.
 
-The dev server creates a single shared connection from the connection string, then registers each subscriber to poll for its declared event types. Events are processed one at a time per subscriber. Failed events are retried automatically by the backend.
+`GKM_SUBSCRIBER_PUSH_URL` is the public base URL SNS pushes to. Against the
+local emulator it defaults to `http://host.docker.internal:<port>`; anywhere
+else it must be set, or the subscriber is not subscribed.
+
+**Polled (pg-boss).** A topic's messages are published as the pg-boss event
+`<topic>/<type>`, and each subscriber drains a queue of its own,
+`<topic>/<subscriberExportName>`, bound to the events it names. Every
+subscriber sees every message; replicas of one subscriber share its queue and
+compete. A queue stays a work queue named by the queue.
+
+A failure is retried on every path: a pushed subscriber that throws answers
+500, which makes SNS retry, and a polled subscriber or a queue consumer that
+throws leaves the message with the transport for another attempt.
 
 ::: tip
-For AWS-based backends (SQS/SNS), production deployments should use Lambda with event source mappings for proper scaling and dead letter queues. For pg-boss and RabbitMQ, the polling approach used by `gkm dev` is also suitable for production via `gkm build --provider server`.
+Deployed on AWS Lambda nothing changes: SNS invokes each subscriber's function,
+and a queue's consumer is its SQS event source. The push route is how a
+server-hosted worker consumes an SNS topic. Tests (`gkm test`, `featureTest`)
+record publishes rather than deliver them.
 :::
 
 ### Test
@@ -487,7 +518,10 @@ When the project declares a topic or queue, additional credentials are generated
 - **sns**: `AWS_ACCESS_KEY_ID` (LSIA-prefixed), `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AWS_ENDPOINT_URL`
 - **rabbitmq**: Uses the RabbitMQ service credentials
 
-All event backends generate `EVENT_PUBLISHER_CONNECTION_STRING` and `EVENT_SUBSCRIBER_CONNECTION_STRING` for use with `@geekmidas/events`.
+Each topic and queue gets its own `<ID>_PUBLISHER_CONNECTION_STRING`, read by
+its producers and its consumers. pg-boss and RabbitMQ also get
+`EVENT_PUBLISHER_CONNECTION_STRING` — the one broker crons schedule through;
+SNS has no single broker address, so it has none.
 
 ## Reconcile
 
@@ -497,7 +531,9 @@ It reads the `constructs` glob, inspects every export of every matching module,
 and builds a manifest. From the manifest it computes the containers a stage
 needs, compares that against what is running, and applies the difference:
 allocating ports, writing `docker-compose.constructs.yml`, starting containers,
-creating databases, roles, schemas, and buckets.
+creating databases, roles, schemas, and buckets — and, on the `sns` backend,
+each topic and queue on the AWS emulator, whose deterministic ARNs and queue
+URLs are what the `sns://` / `sqs://` connection strings are composed from.
 
 ```bash
 gkm setup    # reconcile only
@@ -695,7 +731,7 @@ The `providers.server.production` configuration controls production build behavi
 | `openapi` | `boolean` | `false` | Include OpenAPI docs in production |
 
 ::: tip
-When deploying with pg-boss or RabbitMQ via Docker, set `subscribers: 'include'` so the server process polls for events. For AWS-based backends (SQS/SNS), leave it as `'exclude'` and use Lambda with event source mappings instead.
+When deploying with pg-boss or RabbitMQ via Docker, set `subscribers: 'include'` so the server process polls for events. On Lambda, leave it as `'exclude'`: SNS invokes each subscriber's function and SQS each queue's.
 :::
 
 **Production vs Development:**
@@ -1120,9 +1156,9 @@ thing at all.
 
 | Backend | Key | Infrastructure | Environment Variables |
 |---------|-----|---------------|----------------------|
-| pg-boss | `events: 'pgboss'` | Reuses PostgreSQL (auto-enables `db`) | `EVENT_PUBLISHER_CONNECTION_STRING`, `EVENT_SUBSCRIBER_CONNECTION_STRING`, `PGBOSS_DB_*` |
-| AWS SNS | `events: 'sns'` | LocalStack container (SNS+SQS) | `EVENT_PUBLISHER_CONNECTION_STRING`, `EVENT_SUBSCRIBER_CONNECTION_STRING`, `AWS_*` |
-| RabbitMQ | `events: 'rabbitmq'` | RabbitMQ container | `EVENT_PUBLISHER_CONNECTION_STRING`, `EVENT_SUBSCRIBER_CONNECTION_STRING` |
+| pg-boss | `events: 'pgboss'` | Reuses PostgreSQL (auto-enables `db`) | `<ID>_PUBLISHER_CONNECTION_STRING` per topic/queue, `EVENT_PUBLISHER_CONNECTION_STRING`, `PGBOSS_DB_*` |
+| AWS SNS | `events: 'sns'` | AWS emulator container (floci); each topic and queue created on it | `<ID>_PUBLISHER_CONNECTION_STRING` per topic (`sns://`) and queue (`sqs://`) |
+| RabbitMQ | `events: 'rabbitmq'` | RabbitMQ container | `<ID>_PUBLISHER_CONNECTION_STRING` per topic/queue, `EVENT_PUBLISHER_CONNECTION_STRING` |
 
 ::: tip
 **pgboss** is recommended for most projects — it reuses your existing PostgreSQL database with a dedicated `pgboss` user and schema, so there's no extra infrastructure to manage. Use **sns** for AWS-native projects, or **rabbitmq** for high-throughput messaging.

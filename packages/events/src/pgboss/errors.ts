@@ -11,3 +11,15 @@ export class PgBossNotStarted extends Error {
 		this.name = 'PgBossNotStarted';
 	}
 }
+
+/** A topic subscription with no name to give the subscriber's own queue. */
+export class PgBossSubscriptionNeedsName extends Error {
+	constructor(readonly topic: string) {
+		super(
+			`Subscribing to topic '${topic}' on pg-boss needs a subscription name: ` +
+				'each subscriber drains a queue of its own, and that queue is named ' +
+				'for it. Pass `subscription`.',
+		);
+		this.name = 'PgBossSubscriptionNeedsName';
+	}
+}

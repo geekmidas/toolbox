@@ -124,9 +124,13 @@ describe('HonoEndpoint with PgBoss Publisher', () => {
 		return app;
 	};
 
+	// A subscriber to the topic, as the generated server subscribes one: by
+	// name, so it drains a queue of its own that every message is copied to.
 	const subscribe = async (types: string[], received: unknown[]) => {
 		const subscriber = new PgBossSubscriber<any>(connection, {
 			pollingIntervalSeconds: 1,
+			topic: 'Orders',
+			subscription: `test-${crypto.randomUUID()}`,
 		});
 		await subscriber.subscribe(types, async (event) => {
 			received.push(event);

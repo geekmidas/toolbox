@@ -5,6 +5,17 @@ import type {
 } from './types';
 import { EventPublisherType, UnsupportedEventTransport } from './types';
 
+/** How a publisher is used, beyond the address it reaches. */
+export interface PublisherOptions {
+	/**
+	 * The topic this publisher fans out to. SNS and RabbitMQ name the topic in
+	 * their address already; pg-boss has one address for every topic and queue,
+	 * so it is told here that a message goes to every subscriber rather than to
+	 * one queue.
+	 */
+	topic?: string;
+}
+
 export class Publisher {
 	/**
 	 * Create a publisher from a connection string
@@ -14,6 +25,7 @@ export class Publisher {
 		TMessage extends PublishableMessage<string, any>,
 	>(
 		connectionStr: EventPublisherConnectionString,
+		options: PublisherOptions = {},
 	): Promise<EventPublisher<TMessage>> {
 		const url = new URL(connectionStr);
 		switch (url.protocol.replace(':', '')) {
@@ -37,7 +49,10 @@ export class Publisher {
 			}
 			case EventPublisherType.PgBoss: {
 				const { PgBossPublisher } = await import('./pgboss');
-				return PgBossPublisher.fromConnectionString<TMessage>(connectionStr);
+				return PgBossPublisher.fromConnectionString<TMessage>(
+					connectionStr,
+					options,
+				);
 			}
 			// Future implementations for EventBridge, Kafka, etc.
 			default:

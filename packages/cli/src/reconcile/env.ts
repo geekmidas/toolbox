@@ -14,6 +14,8 @@
 
 import { createHash } from 'node:crypto';
 import { ownerRole, readerRole } from '@geekmidas/db/pg/roles';
+import * as snsUrl from '@geekmidas/events/sns/url';
+import * as sqsUrl from '@geekmidas/events/sqs/url';
 import {
 	cacheTable,
 	cookieDomain,
@@ -24,6 +26,13 @@ import {
 } from '@geekmidas/manifest';
 import { hostFor } from './caddyfile';
 import { primaryPortKey } from './containers';
+import {
+	EMULATOR_CREDENTIALS,
+	EMULATOR_REGION,
+	emulatorEndpoint,
+	emulatorQueueUrl,
+	emulatorTopicArn,
+} from './emulator';
 import { PgBossNeedsDatabase, type Plan, type PlannedResource } from './plan';
 import type { PortAssignments } from './ports';
 
@@ -430,13 +439,12 @@ function brokerEnv(plan: Plan, ports: PortAssignments): Record<string, string> {
 			: undefined;
 	if (!publisher) return {};
 
-	return {
-		EVENT_PUBLISHER_CONNECTION_STRING: publisher,
-		// One connection for both directions everywhere except SNS, where the
-		// thing you publish to and the thing you poll are different services.
-		EVENT_SUBSCRIBER_CONNECTION_STRING:
-			plan.events === 'sns' ? publisher.replace(/^sns:/, 'sqs:') : publisher,
-	};
+	// One broker address only where there is one broker: pg-boss and RabbitMQ.
+	// On SNS every topic and queue is its own address, carried by its own
+	// `<ID>_PUBLISHER_CONNECTION_STRING`, and no single string stands for them.
+	if (plan.events === 'sns') return {};
+
+	return { EVENT_PUBLISHER_CONNECTION_STRING: publisher };
 }
 
 /**
@@ -630,7 +638,7 @@ function urlFor(
 
 		case 'queue':
 		case 'topic':
-			return broker(plan, port);
+			return broker(plan, port, resource);
 
 		default:
 			return undefined;
@@ -644,7 +652,12 @@ function urlFor(
  * same `.publish()` reaches pg-boss here and SQS deployed because the string it
  * was handed said so.
  */
-function broker(plan: Plan, port: number): string {
+function broker(
+	plan: Plan,
+	port: number,
+	/** The topic or queue — needed where each is its own address (SNS/SQS). */
+	resource?: PlannedResource,
+): string {
 	switch (plan.events) {
 		case 'pgboss': {
 			// A schema tenant of the database the app already declared, which is
@@ -660,12 +673,34 @@ function broker(plan: Plan, port: number): string {
 			// naming it here is the whole of the setup.
 			return `rabbitmq://${LOCAL_USER}:${LOCAL_USER}@${LOCAL_HOST}:${port}?exchange=${RABBITMQ_EXCHANGE}`;
 
-		case 'sns':
-			// An SNS URL carries the ARN of a topic that has to exist first, so
-			// this needs a provisioning step LocalStack has not been given yet.
-			// Failing here names the gap; composing a URL without the ARN would
-			// fail at the first publish instead.
-			throw new UnprovisionedEventsBackend('sns');
+		case 'sns': {
+			// The emulator's ARNs and queue URLs are deterministic, so the address
+			// is composed here and the topic or queue is created beside it by the
+			// applier (`applyCarriers`). Credentials ride in the string: the
+			// emulator's are not the developer's AWS profile, and must not be
+			// picked up from it.
+			if (!resource) throw new UnprovisionedEventsBackend('sns');
+			const endpoint = emulatorEndpoint(port);
+			const address =
+				resource.kind === 'topic'
+					? snsUrl.build({
+							topicArn: emulatorTopicArn(resource.name),
+							region: EMULATOR_REGION,
+							endpoint,
+						})
+					: sqsUrl.build({
+							queueUrl: emulatorQueueUrl(resource.name, port),
+							region: EMULATOR_REGION,
+							endpoint,
+						});
+			const url = new URL(address);
+			url.searchParams.set('accessKeyId', EMULATOR_CREDENTIALS.accessKeyId);
+			url.searchParams.set(
+				'secretAccessKey',
+				EMULATOR_CREDENTIALS.secretAccessKey,
+			);
+			return url.toString();
+		}
 	}
 }
 
@@ -765,18 +800,17 @@ function schemaOf(resource: PlannedResource, plan: Plan): string | undefined {
 }
 
 /**
- * A backend whose local addresses cannot be derived yet.
+ * A broker address asked for without the topic or queue it would name.
  *
- * SNS and SQS are addressed by ARN, which means the topic and queue have to be
- * created in LocalStack before a URL can name them. Until that provisioning
- * lands, saying so is better than handing out a string that fails on first use.
+ * On SNS each topic and queue is its own address, so there is no project-wide
+ * one to hand out — a cron's schedule store, say, cannot live there.
  */
 export class UnprovisionedEventsBackend extends Error {
 	constructor(readonly backend: string) {
 		super(
-			`The local target cannot derive addresses for '${backend}' yet — its ` +
-				`topics and queues are named by ARN, which nothing creates locally. ` +
-				`Use 'pgboss' (the default) or 'rabbitmq' for local development.`,
+			`'${backend}' has no single broker address: each topic and queue is ` +
+				`addressed by its own ARN. Something asked for one without naming ` +
+				`the topic or queue.`,
 		);
 		this.name = 'UnprovisionedEventsBackend';
 	}

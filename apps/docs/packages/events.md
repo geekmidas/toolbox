@@ -152,6 +152,53 @@ const publisher = await SNSPublisher.create<AppEvents>({
 });
 ```
 
+#### Push Delivery over HTTP
+
+SNS can deliver to an HTTP(S) endpoint instead of a queue that is polled: it
+POSTs each message to the subscribed URL, in the same envelope a Lambda
+subscription receives. `/sns` has the three pieces an endpoint needs:
+
+```typescript
+import {
+  SNSConnection,
+  confirmSnsSubscription,
+  subscribeHttpEndpoint,
+  verifySnsMessage,
+} from '@geekmidas/events/sns';
+
+const connection = await SNSConnection.fromConnectionString(
+  process.env.USERS_PUBLISHER_CONNECTION_STRING!,
+);
+
+// Safe on every start — converges on one confirmed subscription
+await subscribeHttpEndpoint(connection, {
+  endpoint: 'https://worker.example.com/__gkm/subscribers/onUserCreated',
+  events: ['user.created'], // FilterPolicy on the `type` message attribute
+  deadLetterQueueArn: 'arn:aws:sqs:us-east-1:123456789:users-dlq', // optional
+});
+
+// In the route: throws unless SNS signed it
+await verifySnsMessage(message);
+if (message.Type === 'SubscriptionConfirmation') {
+  await confirmSnsSubscription(message);
+}
+```
+
+- `subscribeHttpEndpoint` subscribes with a filter policy on the `type`
+  attribute `SNSPublisher` sets, so each endpoint gets only the events it names.
+  Run again, it converges: a confirmed subscription has its filter (and
+  dead-letter queue) brought up to date, and one stuck pending confirmation is
+  dropped and subscribed afresh. SNS retries an endpoint for a limited time and
+  then drops the message; `deadLetterQueueArn` keeps what it gives up on.
+- `verifySnsMessage` checks the signature against a certificate that must be
+  served over https from `sns.<region>.amazonaws.com` — anywhere else is a
+  certificate the sender chose. It throws rather than returning `false`.
+- `confirmSnsSubscription` visits the `SubscribeURL`; until then SNS delivers
+  nothing.
+
+`gkm dev` and server builds wire all of this for each topic subscriber — see
+[Dev Server](#dev-server).
+
 ### pg-boss (PostgreSQL)
 
 pg-boss uses your existing PostgreSQL database as a message queue, so there's no need for a separate message broker.
@@ -212,17 +259,44 @@ const subscriber = new PgBossSubscriber<AppEvents>(connection, {
 });
 ```
 
+#### Topic Fan-out
+
+pg-boss has one address for every topic and queue, so it is told when a
+publisher is a topic and who a subscriber is. Without that, a message goes to
+the queue named by its type — a work queue, shared among whoever drains it.
+
+```typescript
+const publisher = await Publisher.fromConnectionString<AppEvents>(url, {
+  topic: 'Users',
+});
+
+const connection = await EventConnectionFactory.fromConnectionString(url);
+const subscriber = await Subscriber.fromConnection<AppEvents>(connection, {
+  topic: 'Users',
+  subscription: 'onUserCreated',
+});
+```
+
+A topic's message is published as the pg-boss event `<topic>/<type>`
+(`Users/user.created`). Each subscriber drains a queue of its own,
+`<topic>/<subscription>`, bound to the events it names — so every subscriber
+sees every message, and replicas of one subscriber share its queue and compete.
+A `topic` without a `subscription` throws `PgBossSubscriptionNeedsName`. A
+`Topic` construct's publisher is created with `{ topic }`, and the generated
+runtime names each subscriber by its export name; queues stay work queues named
+by the queue.
+
 #### Dev Server Integration
 
-`gkm dev` automatically starts pg-boss subscribers. When PostgreSQL is enabled, the CLI creates a dedicated pgboss user and sets `EVENT_SUBSCRIBER_CONNECTION_STRING` automatically — no manual configuration needed.
-
-The dev server discovers your subscribers, connects to pg-boss, and begins polling for events in the background. See [Dev Server](#dev-server) for more details.
+`gkm dev` automatically starts pg-boss subscribers and queue consumers, each
+through the `<ID>_PUBLISHER_CONNECTION_STRING` of the topic or queue it
+consumes — no manual configuration needed. See [Dev Server](#dev-server).
 
 ## CLI Integration
 
 ### Event Backend Setup
 
-When a database is declared, the CLI automatically sets up **pg-boss** as the default event backend — no explicit configuration needed. A dedicated `pgboss` user and schema are created in your PostgreSQL database, and `EVENT_PUBLISHER_CONNECTION_STRING` / `EVENT_SUBSCRIBER_CONNECTION_STRING` are set automatically.
+When a database is declared, the CLI automatically sets up **pg-boss** as the default event backend — no explicit configuration needed. A dedicated `pgboss` user and schema are created in your PostgreSQL database, and each topic and queue gets its own `<ID>_PUBLISHER_CONNECTION_STRING`, plus `EVENT_PUBLISHER_CONNECTION_STRING` for crons to schedule through.
 
 The backend follows the deploy target — there is nothing to configure. A
 project deploying to a server uses pg-boss, in the Postgres its declared
@@ -232,36 +306,63 @@ local AWS emulator in development.
 | Backend | Infrastructure | Connection String Protocol |
 |---------|---------------|---------------------------|
 | `pgboss` (default) | Reuses PostgreSQL (dedicated user/schema) | `pgboss://` |
-| `sns` | LocalStack container (SNS+SQS) | `sns://` / `sqs://` |
+| `sns` | AWS emulator container (floci) | `sns://` / `sqs://` |
 | `rabbitmq` | RabbitMQ container | `rabbitmq://` |
 
 The CLI automatically:
 - Creates a dedicated `pgboss` PostgreSQL user and schema via an idempotent init script
-- Generates `EVENT_PUBLISHER_CONNECTION_STRING` and `EVENT_SUBSCRIBER_CONNECTION_STRING`
-- For **sns**: adds a LocalStack container with `LSIA`-prefixed access keys
+- Generates `<ID>_PUBLISHER_CONNECTION_STRING` for each topic and queue — read by
+  its producers and its consumers alike — and, on pg-boss and RabbitMQ,
+  `EVENT_PUBLISHER_CONNECTION_STRING`, the one broker crons schedule through
+  (SNS has no single broker address, so it has none)
+- For **sns**: adds the AWS emulator container (`LSIA`-prefixed access keys),
+  creates each topic and queue on it, and composes the `sns://` / `sqs://`
+  strings from its deterministic ARNs and queue URLs with the emulator's
+  credential
 - For **rabbitmq**: adds a RabbitMQ container with management plugin
 
 ## Dev Server
 
-When running `gkm dev`, subscribers are automatically started for local development. The CLI discovers all subscriber definitions in your routes, generates setup code, and begins polling for events on server startup.
-
-The connection strings are set automatically when PostgreSQL is enabled — no manual configuration needed. You can verify them with `gkm secrets:show`:
+When running `gkm dev`, every topic subscriber and queue consumer is started on
+server startup. There is no shared subscriber connection string: each consumer
+reaches the thing it consumes through that thing's own
+`<ID>_PUBLISHER_CONNECTION_STRING` — a queue's consumer its queue's, a
+subscriber its topic's. You can see them with `gkm secrets:show`:
 
 ```bash
+USERS_PUBLISHER_CONNECTION_STRING=pgboss://pgboss:...@localhost:5432/mydb?schema=pgboss
+EMAILS_PUBLISHER_CONNECTION_STRING=pgboss://pgboss:...@localhost:5432/mydb?schema=pgboss
 EVENT_PUBLISHER_CONNECTION_STRING=pgboss://pgboss:...@localhost:5432/mydb?schema=pgboss
-EVENT_SUBSCRIBER_CONNECTION_STRING=pgboss://pgboss:...@localhost:5432/mydb?schema=pgboss
 ```
 
-Supported connection string protocols:
+How each consumer is fed:
 
-- `pgboss://` - pg-boss (PostgreSQL)
-- `rabbitmq://` - RabbitMQ
-- `sqs://` - AWS SQS
-- `sns://` - AWS SNS
-- `basic://` - In-memory (for testing)
+- **Queues are polled** on every transport, on the queue's own address — SQS
+  cannot push.
+- **Topic subscribers on pg-boss or RabbitMQ are polled.** On pg-boss each
+  drains its own queue, so every subscriber sees every message
+  ([Topic Fan-out](#topic-fan-out)).
+- **Topic subscribers on SNS are pushed to**, not polled. The server mounts
+  `POST /__gkm/subscribers/<exportName>` per subscriber and, once listening,
+  subscribes it to the topic with a filter policy on the `type` attribute from
+  `.subscribe([...])` — SNS does the fan-out, one subscription per subscriber.
+  The route hands the notification to the same `AWSLambdaSubscriber` adaptor a
+  Lambda subscription uses (`SnsPushSubscriberAdaptor` from
+  `@geekmidas/constructs/aws`). Confirmations are confirmed automatically and
+  signatures verified, except against an emulator, which signs nothing —
+  decided by the `endpoint` in the connection string. Startup converges, so a
+  stale pending subscription is replaced and a changed event list updates the
+  filter.
+
+`GKM_SUBSCRIBER_PUSH_URL` is the public base URL SNS pushes to; against the
+local emulator it defaults to `http://host.docker.internal:<port>`.
+`gkm dev --no-subscribers` runs no topic subscribers (queues still run).
 
 ::: tip
-For AWS-based backends (SQS/SNS), production deployments should use Lambda with event source mappings for proper scaling and dead letter queues. For pg-boss and RabbitMQ, the polling approach is also suitable for production via `gkm build --provider server`.
+On Lambda nothing changes: SNS invokes each subscriber's function, and a queue
+is consumed through its SQS event source. For pg-boss and RabbitMQ, the polling
+runtime is also suitable for production via `gkm build --provider server`.
+Tests (`gkm test`, `featureTest`) record publishes rather than deliver them.
 :::
 
 ## Integration with Constructs
@@ -351,9 +452,10 @@ export const onUserCreated = worker
   });
 ```
 
-Binding is not depending: the subscriber is never handed the topic's publisher
-connection string. One that publishes follow-up events depends on the topic it
-publishes to, `.dependsOn([notifications])`.
+Binding is not depending: the subscriber's handler is never handed the topic's
+publisher — the runtime that feeds it reaches the topic through
+`USERS_PUBLISHER_CONNECTION_STRING`. One that publishes follow-up events
+depends on the topic it publishes to, `.dependsOn([notifications])`.
 
 ### Queues
 
@@ -391,10 +493,10 @@ See [Constructs: Event Subscribers](/packages/constructs#event-subscribers) and
 3. Events arrive at the backend (pgboss queue, RabbitMQ exchange,
    SNS topic, SQS queue, or in-memory)
          │
-4. Subscriber receives events:
-   - Dev: CLI polls via EVENT_SUBSCRIBER_CONNECTION_STRING
-   - Prod (Lambda): SQS/SNS event source mapping triggers handler
-   - Prod (Server): Built-in polling loop
+4. Subscriber receives events, through its topic's own string:
+   - Server (dev or prod), SNS: pushed to POST /__gkm/subscribers/<name>
+   - Server, pg-boss/RabbitMQ: polled (pg-boss: one queue per subscriber)
+   - Lambda: SNS invokes the function
          │
 5. Subscriber handler processes events, optionally publishing
    follow-ups to a topic it depends on
@@ -418,13 +520,12 @@ export default defineWorkspace({
 The CLI automatically:
 1. Creates a dedicated `pgboss` PostgreSQL user and schema
 2. Resolves `<ID>_PUBLISHER_CONNECTION_STRING` for each topic and queue, given
-   only to what depends on it, plus `EVENT_SUBSCRIBER_CONNECTION_STRING` for
-   the pollers
+   to what depends on it and to the server that runs its consumers
 3. Injects them into your environment during `gkm dev` and `gkm exec`
 
 On an AWS target the CLI uses SNS and SQS instead — it adds the AWS emulator
-container locally and switches the connection string protocol to `sns://` and
-`sqs://`.
+container locally, creates each topic and queue on it, and composes `sns://`
+and `sqs://` strings from the emulator's deterministic ARNs and queue URLs.
 
 The publisher picks its transport from the protocol, so the same code works
 across all backends — only the connection string changes.

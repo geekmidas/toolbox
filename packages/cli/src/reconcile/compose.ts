@@ -17,6 +17,7 @@
 
 import { stringify } from 'yaml';
 import { DEFAULT_IMAGES, portsOf, postgresImage, volumeOf } from './containers';
+import { EMULATOR_CREDENTIALS, EMULATOR_REGION } from './emulator';
 import type { Plan } from './plan';
 import type { PortAssignments } from './ports';
 
@@ -322,21 +323,18 @@ function define(
 				restart: 'unless-stopped',
 				ports: published,
 				environment: {
-					AWS_DEFAULT_REGION: 'us-east-1',
-					// The prefix LocalStack required on issued keys. floci does not
-					// care, and keeping it means a project that pins the old image
-					// still works.
-					AWS_ACCESS_KEY_ID: 'LSIAQAAAAAAVNCBMPNSG',
-					AWS_SECRET_ACCESS_KEY: LOCAL_USER,
+					AWS_DEFAULT_REGION: EMULATOR_REGION,
+					AWS_ACCESS_KEY_ID: EMULATOR_CREDENTIALS.accessKeyId,
+					AWS_SECRET_ACCESS_KEY: EMULATOR_CREDENTIALS.secretAccessKey,
 				},
 				volumes: ['localstack-data:/var/lib/localstack'],
 				healthcheck: {
-					test: [
-						'CMD',
-						'curl',
-						'-f',
-						'http://localhost:4566/_localstack/health',
-					],
+					// Bash, not curl: the floci image ships no curl, so a curl check
+					// never passes and `--wait` fails every start. A TCP connect is
+					// the fact a waiter needs — the gateway binds the port once its
+					// HTTP server is up — and the repo's own compose file does the
+					// same.
+					test: ['CMD', 'bash', '-c', 'exec 3<>/dev/tcp/localhost/4566'],
 					interval: '10s',
 					timeout: '5s',
 					retries: 5,

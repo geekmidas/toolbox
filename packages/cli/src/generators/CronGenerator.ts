@@ -194,7 +194,7 @@ export async function setupCrons(
   // runtime role, which can neither create a schema nor use the broker's.
   const { url } = envParser
     .create((get) => ({
-      url: get('EVENT_SUBSCRIBER_CONNECTION_STRING').string().optional(),
+      url: get('EVENT_PUBLISHER_CONNECTION_STRING').string().optional(),
     }))
     .parse();
 
@@ -203,7 +203,7 @@ export async function setupCrons(
       { crons: prepared.map(({ name }) => name) },
       'These crons have nowhere to keep their schedule. On a server they are ' +
         'scheduled through the pg-boss events broker ' +
-        '(EVENT_SUBSCRIBER_CONNECTION_STRING), and ' +
+        '(EVENT_PUBLISHER_CONNECTION_STRING), and ' +
         (url ? 'the broker configured is not pg-boss.' : 'none is configured.'),
     );
     return;

@@ -392,6 +392,54 @@ export function bucketPolicy(bucket: string, open: readonly string[]): string {
 	});
 }
 
+/**
+ * The topics and queues to create on the AWS emulator.
+ *
+ * Only on the `sns` backend: pg-boss makes its own tables on first connect and
+ * a RabbitMQ exchange is declared by the client, but an SNS topic and an SQS
+ * queue must exist before anything can publish to them.
+ */
+export function carrierNames(plan: Plan): {
+	topics: string[];
+	queues: string[];
+} {
+	if (plan.events !== 'sns') return { topics: [], queues: [] };
+
+	const named = (kind: 'topic' | 'queue') =>
+		plan.resources.filter((r) => r.kind === kind).map((r) => r.name);
+
+	return { topics: named('topic'), queues: named('queue') };
+}
+
+/** The emulator operations the applier needs. Both creates are idempotent. */
+export interface CarrierClient {
+	topicExists(name: string): Promise<boolean>;
+	createTopic(name: string): Promise<void>;
+	queueExists(name: string): Promise<boolean>;
+	createQueue(name: string): Promise<void>;
+}
+
+/** Create each topic and queue the plan names, skipping those that exist. */
+export async function applyCarriers(
+	client: CarrierClient,
+	carriers: { topics: readonly string[]; queues: readonly string[] },
+): Promise<Applied[]> {
+	const applied: Applied[] = [];
+
+	for (const name of carriers.topics) {
+		const created = !(await client.topicExists(name));
+		if (created) await client.createTopic(name);
+		applied.push({ id: name, describe: `topic ${name}`, created });
+	}
+	for (const name of carriers.queues) {
+		const created = !(await client.queueExists(name));
+		if (created) await client.createQueue(name);
+		applied.push({ id: name, describe: `queue ${name}`, created });
+	}
+
+	return applied;
+}
+
 /** The object-storage operations the applier needs. */
 export interface BucketClient {
 	exists(bucket: string): Promise<boolean>;

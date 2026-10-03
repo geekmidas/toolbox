@@ -4,8 +4,10 @@ import {
 	type Subscriber,
 	SubscriberBuilder,
 } from '@geekmidas/constructs/subscribers';
-
+import { Topic } from '@geekmidas/constructs/topic';
+import { Worker } from '@geekmidas/constructs/worker';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import {
 	cleanupDir,
 	createMockBuildContext,
@@ -296,9 +298,51 @@ describe('SubscriberGenerator', () => {
 			expect(subscribersContent).toContain('const subscribers = [');
 			expect(subscribersContent).toContain('userEventSubscriber');
 			expect(subscribersContent).toContain('orderEventSubscriber');
+			// Not bound to a topic, so there is no topic string to reach.
 			expect(subscribersContent).toContain(
-				'Setting up subscribers in polling mode',
+				"{ id: 'userEventSubscriber', subscriber: userEventSubscriber, topic: undefined, connectionKey: undefined }",
 			);
+		});
+
+		it('reaches each subscriber’s topic by that topic’s own key', async () => {
+			const users = new Topic('Users', {
+				events: { 'user.created': z.object({ id: z.string() }) },
+			});
+			const subscriber = new Worker('Jobs')
+				.topic(users)
+				.subscribe(['user.created'])
+				.handle(async () => {});
+
+			await generator.build(
+				context,
+				[
+					{
+						key: 'userEvents',
+						name: 'userevents',
+						construct: subscriber,
+						path: {
+							absolute: join(tempDir, 'userEvents.ts'),
+							relative: 'userEvents.ts',
+						},
+					},
+				],
+				outputDir,
+				{ provider: 'server' },
+			);
+
+			const content = await readFile(
+				join(outputDir, 'subscribers.ts'),
+				'utf-8',
+			);
+			// Not the shared EVENT_SUBSCRIBER_CONNECTION_STRING, which reached only
+			// the first carrier in the plan.
+			expect(content).toContain(
+				"connectionKey: 'USERS_PUBLISHER_CONNECTION_STRING'",
+			);
+			expect(content).not.toContain('EVENT_SUBSCRIBER_CONNECTION_STRING');
+			// Pushed on SNS, polled elsewhere, and off with --no-subscribers.
+			expect(content).toContain("connectionString.startsWith('sns:')");
+			expect(content).toContain("process.env.GKM_SUBSCRIBERS === 'off'");
 		});
 
 		it('should handle subscribers with custom environment parser patterns', async () => {

@@ -1,10 +1,21 @@
 import type { EventSubscriber, PublishableMessage } from '../types';
-import { PgBossNotStarted } from './errors';
+import { PgBossNotStarted, PgBossSubscriptionNeedsName } from './errors';
 import type { PgBossConnection } from './PgBossConnection';
+import { topicEvent } from './PgBossPublisher';
 
 export interface PgBossSubscriberOptions {
 	batchSize?: number;
 	pollingIntervalSeconds?: number;
+	/**
+	 * Subscribing to a topic. Each subscriber then drains a queue of its own,
+	 * `<topic>/<subscription>`, bound to the events it names — so every
+	 * subscriber sees every message, and replicas of one subscriber share it.
+	 * Without it, messages are drained from the queue named by their type:
+	 * work shared among whoever drains it.
+	 */
+	topic?: string;
+	/** The subscriber's own name on the topic. Required with `topic`. */
+	subscription?: string;
 }
 
 export class PgBossSubscriber<TMessage extends PublishableMessage<string, any>>
@@ -54,29 +65,49 @@ export class PgBossSubscriber<TMessage extends PublishableMessage<string, any>>
 			throw new PgBossNotStarted();
 		}
 
-		for (const messageType of messages) {
-			await boss.createQueue(messageType);
-			await boss.work(
-				messageType,
-				{
-					...(this.options.batchSize && {
-						batchSize: this.options.batchSize,
-					}),
-					...(this.options.pollingIntervalSeconds && {
-						pollingIntervalSeconds: this.options.pollingIntervalSeconds,
-					}),
-				},
+		const work = {
+			...(this.options.batchSize && { batchSize: this.options.batchSize }),
+			...(this.options.pollingIntervalSeconds && {
+				pollingIntervalSeconds: this.options.pollingIntervalSeconds,
+			}),
+		};
+
+		const { topic, subscription } = this.options;
+		if (topic) {
+			if (!subscription) throw new PgBossSubscriptionNeedsName(topic);
+
+			const queue = topicEvent(topic, subscription);
+			await boss.createQueue(queue);
+			for (const type of messages) {
+				await boss.subscribe(topicEvent(topic, type), queue);
+			}
+			await boss.work<{ type: string; payload: unknown }>(
+				queue,
+				work,
 				async (jobs) => {
 					for (const job of jobs) {
-						const fullMessage = {
-							type: job.name,
-							payload: job.data,
-						} as TMessage;
-
-						await listener(fullMessage);
+						await listener({
+							type: job.data.type,
+							payload: job.data.payload,
+						} as TMessage);
 					}
 				},
 			);
+			return;
+		}
+
+		for (const messageType of messages) {
+			await boss.createQueue(messageType);
+			await boss.work(messageType, work, async (jobs) => {
+				for (const job of jobs) {
+					const fullMessage = {
+						type: job.name,
+						payload: job.data,
+					} as TMessage;
+
+					await listener(fullMessage);
+				}
+			});
 		}
 	}
 }

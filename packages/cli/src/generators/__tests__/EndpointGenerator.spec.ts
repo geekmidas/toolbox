@@ -485,7 +485,12 @@ describe('EndpointGenerator', () => {
 			const appContent = await readFile(appPath, 'utf-8');
 
 			expect(appContent).toContain('import { setupSubscribers }');
-			expect(appContent).toContain('Start subscribers in background');
+			// Subscribers get the app, to mount their push routes on, and are
+			// subscribed only once the server is listening.
+			expect(appContent).toContain(
+				'await setupSubscribers(honoApp, envParser, logger)',
+			);
+			expect(appContent).toContain('await subscribeForPush(port);');
 			expect(appContent).toContain(
 				'setupEndpoints(honoApp, envParser, logger, true)',
 			);

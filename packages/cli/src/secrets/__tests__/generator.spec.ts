@@ -401,8 +401,8 @@ describe('createStageSecrets with events', () => {
 		expect(secrets.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain(
 			'pgboss://',
 		);
-		expect(secrets.urls.EVENT_SUBSCRIBER_CONNECTION_STRING).toContain(
-			'pgboss://',
+		expect(secrets.urls).not.toHaveProperty(
+			'EVENT_SUBSCRIBER_CONNECTION_STRING',
 		);
 	});
 });

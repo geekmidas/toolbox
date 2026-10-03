@@ -41,7 +41,6 @@ export interface StageSecrets {
 		SMTP_HOST?: string;
 		SMTP_PORT?: string;
 		EVENT_PUBLISHER_CONNECTION_STRING?: string;
-		EVENT_SUBSCRIBER_CONNECTION_STRING?: string;
 	};
 	/**
 	 * Values injected by key: those set with `gkm secrets:set` — a third

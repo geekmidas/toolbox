@@ -103,7 +103,6 @@ describe('envFor', () => {
 			'CONSOLE_URL',
 			'EMAILS_PUBLISHER_CONNECTION_STRING',
 			'EVENT_PUBLISHER_CONNECTION_STRING',
-			'EVENT_SUBSCRIBER_CONNECTION_STRING',
 			'MAIL_FROM',
 			'MAIL_INBOX_URL',
 			'MAIL_URL',
@@ -258,12 +257,10 @@ describe('envFor', () => {
 		expect(env().USERS_PUBLISHER_CONNECTION_STRING).toContain(url);
 	});
 
-	it('resolves the shared connection the local pollers open', () => {
-		// One connection for every worker in the project: the generated pollers
-		// subscribe each by name on it.
-		expect(env().EVENT_SUBSCRIBER_CONNECTION_STRING).toBe(
-			env().EVENT_PUBLISHER_CONNECTION_STRING,
-		);
+	it('resolves no shared subscriber connection — each consumer reads its own', () => {
+		// A queue's consumer polls the queue's string and a subscriber its
+		// topic's; one shared string reached only the first carrier in the plan.
+		expect(env().EVENT_SUBSCRIBER_CONNECTION_STRING).toBeUndefined();
 	});
 
 	it('follows the stage into the queue database', () => {
@@ -468,18 +465,15 @@ describe('the broker a worker schedules through', () => {
 	it('resolves pg-boss in the declared database for a worker alone', () => {
 		const env = workerEnv(workerOnly);
 
-		expect(env.EVENT_SUBSCRIBER_CONNECTION_STRING).toMatch(
+		expect(env.EVENT_PUBLISHER_CONNECTION_STRING).toMatch(
 			/^pgboss:\/\/.*\/orders\?schema=pgboss$/,
-		);
-		expect(env.EVENT_PUBLISHER_CONNECTION_STRING).toBe(
-			env.EVENT_SUBSCRIBER_CONNECTION_STRING,
 		);
 	});
 
 	it('resolves nothing when the broker is not pg-boss', () => {
 		// On AWS a cron is an EventBridge rule; nothing in the process schedules.
 		expect(
-			workerEnv(workerOnly, 'sns').EVENT_SUBSCRIBER_CONNECTION_STRING,
+			workerEnv(workerOnly, 'sns').EVENT_PUBLISHER_CONNECTION_STRING,
 		).toBeUndefined();
 	});
 
@@ -489,7 +483,7 @@ describe('the broker a worker schedules through', () => {
 		const { Jobs } = workerOnly;
 
 		expect(
-			workerEnv({ Jobs }).EVENT_SUBSCRIBER_CONNECTION_STRING,
+			workerEnv({ Jobs }).EVENT_PUBLISHER_CONNECTION_STRING,
 		).toBeUndefined();
 	});
 });

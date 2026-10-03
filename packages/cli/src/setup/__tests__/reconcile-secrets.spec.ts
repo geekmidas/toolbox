@@ -66,8 +66,6 @@ function createSecrets(custom: Record<string, string> = {}): StageSecrets {
 			DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/test_dev',
 			EVENT_PUBLISHER_CONNECTION_STRING:
 				'pgboss://pgboss:pgboss-pass@localhost:5432/test_dev?schema=pgboss',
-			EVENT_SUBSCRIBER_CONNECTION_STRING:
-				'pgboss://pgboss:pgboss-pass@localhost:5432/test_dev?schema=pgboss',
 		},
 		custom,
 	};

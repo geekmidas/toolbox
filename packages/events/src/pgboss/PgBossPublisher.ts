@@ -2,10 +2,27 @@ import type { EventPublisher, PublishableMessage } from '../types';
 import { PgBossNotStarted } from './errors';
 import type { PgBossConnection } from './PgBossConnection';
 
+export interface PgBossPublisherOptions {
+	/**
+	 * Publishing to a topic: each message is fanned out to every subscriber's
+	 * own queue rather than inserted into one shared queue. Without it, a
+	 * message goes to the queue named by its type — a work queue, one consumer.
+	 */
+	topic?: string;
+}
+
+/** The pg-boss event a topic's message type is published as. */
+export function topicEvent(topic: string, type: string): string {
+	return `${topic}/${type}`;
+}
+
 export class PgBossPublisher<TMessage extends PublishableMessage<string, any>>
 	implements EventPublisher<TMessage>
 {
-	constructor(private connection: PgBossConnection) {}
+	constructor(
+		private connection: PgBossConnection,
+		private options: PgBossPublisherOptions = {},
+	) {}
 
 	/**
 	 * Create a PgBossPublisher from a connection string.
@@ -13,11 +30,14 @@ export class PgBossPublisher<TMessage extends PublishableMessage<string, any>>
 	 */
 	static async fromConnectionString<
 		TMessage extends PublishableMessage<string, any>,
-	>(connectionString: string): Promise<PgBossPublisher<TMessage>> {
+	>(
+		connectionString: string,
+		options: PgBossPublisherOptions = {},
+	): Promise<PgBossPublisher<TMessage>> {
 		const { PgBossConnection } = await import('./PgBossConnection');
 		const connection =
 			await PgBossConnection.fromConnectionString(connectionString);
-		return new PgBossPublisher<TMessage>(connection);
+		return new PgBossPublisher<TMessage>(connection, options);
 	}
 
 	async publish(messages: TMessage[]): Promise<void> {
@@ -28,6 +48,20 @@ export class PgBossPublisher<TMessage extends PublishableMessage<string, any>>
 		const boss = this.connection.instance;
 		if (!boss) {
 			throw new PgBossNotStarted();
+		}
+
+		// A topic: pg-boss copies the job into every queue subscribed to the
+		// event — one per subscriber — so each subscriber sees each message.
+		// The type rides in the data, because the job is named for the queue.
+		const { topic } = this.options;
+		if (topic) {
+			for (const m of messages) {
+				await boss.publish(topicEvent(topic, m.type), {
+					type: m.type,
+					payload: m.payload,
+				});
+			}
+			return;
 		}
 
 		// Group jobs by queue name (v11+ requires per-queue insert calls)

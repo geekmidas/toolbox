@@ -4,12 +4,14 @@ import { describe, expect, it } from 'vitest';
 import { planFor } from '../plan';
 import {
 	applyBuckets,
+	applyCarriers,
 	applyPolicies,
 	applyPostgres,
 	type BucketClient,
 	bucketNames,
 	bucketPolicies,
 	bucketPolicy,
+	carrierNames,
 	postgresStatements,
 	quoteIdentifier,
 	type SqlClient,
@@ -442,5 +444,75 @@ describe('bucket policies', () => {
 		expect(
 			(await applyPolicies(client, bucketPolicies(plan())))[0],
 		).toMatchObject({ created: true });
+	});
+});
+
+describe('carriers on the AWS emulator', () => {
+	const manifest = {
+		Orders: { kind: 'database', id: 'Orders', provides: ['ORDERS_URL'] },
+		Emails: {
+			kind: 'queue',
+			id: 'Emails',
+			worker: {
+				id: 'EmailsWorker',
+				handler: 'emails.handler',
+				dependencies: [],
+			},
+			provides: ['EMAILS_PUBLISHER_CONNECTION_STRING'],
+		},
+		Users: {
+			kind: 'topic',
+			id: 'Users',
+			events: ['user.created'],
+			subscribers: [],
+			provides: ['USERS_PUBLISHER_CONNECTION_STRING'],
+		},
+	} as const satisfies ConstructManifest;
+
+	const plan = (events: 'pgboss' | 'sns', stage = 'dev') =>
+		planFor(manifest, stage, provisionOrder(manifest), {
+			localStage: 'dev',
+			events,
+		});
+
+	it('names each topic and queue on SNS, stage-scoped like everything else', () => {
+		expect(carrierNames(plan('sns'))).toEqual({
+			topics: ['users'],
+			queues: ['emails'],
+		});
+		expect(carrierNames(plan('sns', 'test'))).toEqual({
+			topics: ['users-test'],
+			queues: ['emails-test'],
+		});
+	});
+
+	it('names none on pg-boss, which makes its own tables', () => {
+		expect(carrierNames(plan('pgboss'))).toEqual({ topics: [], queues: [] });
+	});
+
+	it('creates only what is missing', async () => {
+		const existing = new Set(['topic:users']);
+		const created: string[] = [];
+		const client = {
+			topicExists: async (name: string) => existing.has(`topic:${name}`),
+			createTopic: async (name: string) => {
+				created.push(`topic:${name}`);
+			},
+			queueExists: async (name: string) => existing.has(`queue:${name}`),
+			createQueue: async (name: string) => {
+				created.push(`queue:${name}`);
+			},
+		};
+
+		const applied = await applyCarriers(client, {
+			topics: ['users'],
+			queues: ['emails'],
+		});
+
+		expect(created).toEqual(['queue:emails']);
+		expect(applied).toEqual([
+			{ id: 'users', describe: 'topic users', created: false },
+			{ id: 'emails', describe: 'queue emails', created: true },
+		]);
 	});
 });

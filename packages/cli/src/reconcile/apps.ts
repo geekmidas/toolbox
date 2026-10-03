@@ -162,6 +162,9 @@ export function appEnvKeys(
 	// so it declares none — also runs the workers' crons and subscribers. One
 	// that serves itself (an auth server's wildcard) runs only its own handler.
 	if (declaration.kind === 'rest-api' && declaration.endpoints.length === 0) {
+		const runsWorkers = Object.values(manifest).some(
+			(other) => other.kind === 'worker',
+		);
 		for (const [otherId, other] of Object.entries(manifest)) {
 			if (other.kind !== 'worker') continue;
 			edges.push(
@@ -170,7 +173,16 @@ export function appEnvKeys(
 			);
 			// A server schedules its crons through the broker.
 			keys.add('EVENT_PUBLISHER_CONNECTION_STRING');
-			keys.add('EVENT_SUBSCRIBER_CONNECTION_STRING');
+		}
+		// Each consumer reaches the thing it consumes: a queue's consumer its
+		// queue, a subscriber its topic. Which subscriber binds which topic is
+		// only known once the build has found them, so a server that runs the
+		// workers is handed every carrier's address.
+		if (runsWorkers) {
+			for (const other of Object.values(manifest)) {
+				if (other.kind !== 'queue' && other.kind !== 'topic') continue;
+				for (const key of other.provides ?? []) keys.add(key);
+			}
 		}
 	}
 
@@ -181,7 +193,6 @@ export function appEnvKeys(
 
 		if (target.kind === 'queue' || target.kind === 'topic') {
 			keys.add('EVENT_PUBLISHER_CONNECTION_STRING');
-			keys.add('EVENT_SUBSCRIBER_CONNECTION_STRING');
 		}
 		// The S3 client reads its credentials beside the URL, not in it. A file
 		// server is reached by its URL alone.

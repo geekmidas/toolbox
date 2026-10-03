@@ -189,12 +189,21 @@ There is no `services` block. Whether there are events is a declared `Topic` or
 in `packages/cli/src/types.ts`):
 
 - **pgboss** (server / Dokploy): Reuses PostgreSQL (dedicated user/schema). NOT a `ComposeServiceName` — uses separate `PGBOSS_DEFAULTS`.
-- **sns** (AWS): Adds an AWS emulator container (`floci`, LocalStack-compatible on port 4566). Access keys keep the `LSIA` prefix LocalStack required.
+- **sns** (AWS): Adds an AWS emulator container (`floci`, LocalStack-compatible on port 4566). Access keys keep the `LSIA` prefix LocalStack required. `gkm dev` creates each topic and queue on it and composes `sns://`/`sqs://` strings from its deterministic ARNs/URLs.
 - **rabbitmq**: Adds RabbitMQ container; no target selects it by default.
 
-Each topic and queue provides `<ID>_PUBLISHER_CONNECTION_STRING` to whatever
-depends on it; the broker also gets `EVENT_PUBLISHER_CONNECTION_STRING` and
-`EVENT_SUBSCRIBER_CONNECTION_STRING`.
+Each topic and queue provides `<ID>_PUBLISHER_CONNECTION_STRING`, read by its
+producers and its consumers alike (a queue's consumer, a topic's subscribers).
+There is no shared subscriber string. `EVENT_PUBLISHER_CONNECTION_STRING` exists
+only on pg-boss/RabbitMQ — the one broker crons schedule through; SNS has none.
+
+Delivery on a server: queues are always polled. Topic subscribers on SNS are
+pushed to — the server mounts `POST /__gkm/subscribers/<exportName>` and
+subscribes it with a `type` filter policy (`GKM_SUBSCRIBER_PUSH_URL` is the
+public base; the emulator defaults to `host.docker.internal`). On pg-boss a
+topic publishes `<topic>/<type>` and each subscriber drains its own queue
+`<topic>/<subscriber>`, so every subscriber sees every message.
+`gkm dev --no-subscribers` runs no topic subscribers.
 
 ### Compose
 
