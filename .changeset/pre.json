@@ -58,6 +58,7 @@
     "edge-root-site",
     "external-api",
     "faker-lowercase-email",
+    "featuretest-delivery",
     "fresh-scaffold-tests-run",
     "gkm-migrate",
     "gkm-seed",
@@ -104,6 +105,7 @@
     "typescript-7",
     "upgrade-follows-release-line",
     "v10-the-manifest-is-the-source",
+    "worker-database",
     "worker-template"
   ]
 }

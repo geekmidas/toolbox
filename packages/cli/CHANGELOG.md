@@ -1,5 +1,29 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.42
+
+### Patch Changes
+
+- [#116](https://github.com/geekmidas/toolbox/pull/116) [`9917e96`](https://github.com/geekmidas/toolbox/commit/9917e9608582a11170d289f14476c5ed72d18d3b) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: `featureTest` delivers what a test publishes to its consumers, end to end without a broker (#115)
+
+  Once each request a test makes has answered, what it published reaches the consumers that would receive it deployed: a queue's messages its one consumer, a topic's events every subscriber that named them, and only those. Each payload is checked against the consumer's schema first (`MessageRejected`); consumers run in the test's transaction, so they see the endpoint's rows and their writes roll back; what they publish is delivered in turn until nothing is left (`DeliveryDidNotSettle`); and a consumer that throws fails the test (`DeliveryFailed`). `published(...)` still records, and `queue(q).invoke()` / `subscriber(s).invoke()` deliver what they publish too.
+
+  `gkm test` now records each topic subscriber in the test manifest (`subscribers`).
+
+- [#117](https://github.com/geekmidas/toolbox/pull/117) [`9d96389`](https://github.com/geekmidas/toolbox/commit/9d9638977a5b24dd64bb8135d6bcdc1ed182b594) Thanks [@geekmidas](https://github.com/geekmidas)! - `worker.database(db)` is now the default database for everything built from the worker: crons, queues, subscribers and functions receive it as `db`, typed from the construct, and it still names where a server keeps cron schedules. `.database(other)` on a cron, queue or subscriber overrides it — retyping `db` and replacing the manifest edge rather than adding to it. Queues and subscribers gain `.database()`, carry `databaseService`, and contribute the database's env; the Lambda, test and generated server runtimes (`queues.ts`, `subscribers.ts`, SNS push) pass `db` to their handlers.
+
+- Updated dependencies [[`9917e96`](https://github.com/geekmidas/toolbox/commit/9917e9608582a11170d289f14476c5ed72d18d3b), [`9d96389`](https://github.com/geekmidas/toolbox/commit/9d9638977a5b24dd64bb8135d6bcdc1ed182b594)]:
+  - @geekmidas/constructs@10.0.0-alpha.42
+  - @geekmidas/cache@10.0.0-alpha.42
+  - @geekmidas/db@10.0.0-alpha.42
+  - @geekmidas/envkit@10.0.0-alpha.42
+  - @geekmidas/errors@10.0.0-alpha.42
+  - @geekmidas/logger@10.0.0-alpha.42
+  - @geekmidas/manifest@10.0.0-alpha.42
+  - @geekmidas/schema@10.0.0-alpha.42
+  - @geekmidas/services@10.0.0-alpha.42
+  - @geekmidas/telescope@10.0.0-alpha.42
+
 ## 10.0.0-alpha.41
 
 ### Patch Changes
