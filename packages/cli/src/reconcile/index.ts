@@ -41,6 +41,7 @@ import { type Plan, type PlanOptions, planFor } from './plan';
 import {
 	allocate,
 	isPortFree,
+	keptPorts,
 	type PortAssignments,
 	type PortProbe,
 } from './ports';
@@ -55,6 +56,8 @@ import {
 	bucketPolicies,
 	type CarrierClient,
 	carrierNames,
+	databasesExist,
+	postgresDatabaseNames,
 	postgresStatements,
 	type SqlClient,
 } from './provision';
@@ -293,7 +296,7 @@ export async function reconcile(
 	const ports = await allocate(
 		project,
 		portKeys(plan.containers, plan.fakes),
-		{ ...options.saved, ...observed },
+		keptPorts(options.saved, observed),
 		probe,
 	);
 
@@ -349,12 +352,19 @@ export async function reconcile(
 	};
 
 	const recorded = await loadState(root, stage);
+	const postgresPort = ports[primaryPortKey('postgres')];
 	const converged =
 		recorded?.hash === hash &&
 		// The file is gitignored and derived; a fresh checkout with the state
 		// still around must write it rather than trust a hash of nothing.
 		existsSync(composePath) &&
-		(!start || (await docker.healthy(composePath, plan.containers)));
+		(!start || (await docker.healthy(composePath, plan.containers))) &&
+		// Every checkout shares one Postgres, so another one's test teardown can
+		// drop a database this checkout's state still records as created.
+		(!start ||
+			!provision ||
+			postgresPort === undefined ||
+			(await databasesExist(sql(postgresPort), postgresDatabaseNames(plan))));
 
 	// The fast path, and the reason reconciling on every start is acceptable.
 	if (converged) return result;

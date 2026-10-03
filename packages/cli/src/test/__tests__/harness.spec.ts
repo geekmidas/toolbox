@@ -51,7 +51,11 @@ describe('writeTestHarness', () => {
 		writeTestHarness({
 			root: fixture,
 			targets: apps,
-			patterns: ['./constructs/**/*.ts', './endpoints/**/*.ts'],
+			patterns: [
+				'./constructs/**/*.ts',
+				'./endpoints/**/*.ts',
+				'./subscribers/**/*.ts',
+			],
 			stage: 'test',
 			env,
 			cacheBackend: 'db',
@@ -213,7 +217,7 @@ describe('writeTestHarness', () => {
 		);
 	});
 
-	it('imports every construct and endpoint module itself, keyed as the manifest keys it', async () => {
+	it('imports every construct, endpoint and subscriber module itself, keyed as the manifest keys it', async () => {
 		// From inside the app, where its tsconfig paths resolve: a dynamic import
 		// from the kit in node_modules is left to Node, which knows none of them.
 		await write();
@@ -225,8 +229,19 @@ describe('writeTestHarness', () => {
 		const files = new Set([
 			...Object.values(manifest.constructs).map(({ source }) => source.file),
 			...manifest.endpoints.map(({ source }) => source.file),
+			...(manifest.subscribers ?? []).map(({ source }) => source.file),
 		]);
 
+		// A subscriber is loaded by delivery; one importing `~/…` failed every
+		// test file when it was left to Node's own import.
+		expect(manifest.subscribers).toEqual([
+			{
+				source: {
+					file: join(fixture, 'subscribers', 'noteEvents.ts'),
+					export: 'onNoteCreated',
+				},
+			},
+		]);
 		for (const file of files) {
 			expect(harness).toContain(`${JSON.stringify(file)}: __module`);
 		}

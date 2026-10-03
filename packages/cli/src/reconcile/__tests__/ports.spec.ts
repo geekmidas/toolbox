@@ -1,6 +1,12 @@
 import { createServer } from 'node:net';
 import { describe, expect, it } from 'vitest';
-import { allocate, isPortFree, NoPortAvailable, startingPort } from '../ports';
+import {
+	allocate,
+	isPortFree,
+	keptPorts,
+	NoPortAvailable,
+	startingPort,
+} from '../ports';
 
 /** Nothing is listening anywhere. */
 const free = async () => true;
@@ -145,6 +151,45 @@ describe('allocate', () => {
 
 	it('allocates nothing for no containers', async () => {
 		expect(await allocate('toolbox', [], {}, free)).toEqual({});
+	});
+});
+
+describe('keptPorts', () => {
+	it('never leaves two keys on one port', () => {
+		// What kitchen-sink's ports.json held after a backend switch: Mailpit's
+		// web port observed where a stale fake was still saved, so requests for
+		// the inbox reached the fake.
+		const kept = keptPorts(
+			{ 'mailpit-web': 20701, 'shipping-fake': 20708, redis: 20705 },
+			{ 'mailpit-web': 20708, caddy: 20705 },
+		);
+
+		expect(kept).toEqual({ 'mailpit-web': 20708, caddy: 20705 });
+		expect(new Set(Object.values(kept)).size).toBe(Object.keys(kept).length);
+	});
+
+	it('keeps a saved port nothing else holds, so ports stay stable', () => {
+		expect(keptPorts({ postgres: 20704, mailpit: 20700 }, {})).toEqual({
+			postgres: 20704,
+			mailpit: 20700,
+		});
+	});
+
+	it('lets a dropped key be allocated afresh', async () => {
+		const kept = keptPorts(
+			{ 'shipping-fake': 20708 },
+			{ 'mailpit-web': 20708 },
+		);
+
+		const ports = await allocate(
+			'kitchen-sink',
+			['mailpit-web', 'shipping-fake'],
+			kept,
+			async () => true,
+		);
+
+		expect(ports['mailpit-web']).toBe(20708);
+		expect(ports['shipping-fake']).not.toBe(20708);
 	});
 });
 
