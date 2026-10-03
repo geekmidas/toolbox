@@ -1,7 +1,13 @@
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import { Topic } from '../../topic/Topic';
 import { CronBuilder } from '../CronBuilder';
+
+const users = new Topic('Users', {
+	events: { 'user.created': z.object({ userId: z.string() }) },
+});
 
 const ServiceA = {
 	serviceName: 'a' as const,
@@ -189,25 +195,29 @@ describe('CronBuilder - State Isolation', () => {
 		});
 	});
 
-	describe('publisher isolation', () => {
-		it('should reset publisher after handle() is called', () => {
+	describe('event isolation', () => {
+		it('should keep an event, its topic service and its id to the cron that named it', () => {
 			const c = new CronBuilder();
-			const mockPublisher: any = {
-				serviceName: 'publisher',
-				async register() {
-					return { publish: () => {} };
-				},
-			};
 
 			const cron1 = c
 				.schedule('rate(5 minutes)')
-				.publisher(mockPublisher)
+				.event(users, {
+					type: 'user.created',
+					payload: () => ({ userId: '1' }),
+				})
 				.handle(async () => ({}));
 
 			const cron2 = c.schedule('rate(10 minutes)').handle(async () => ({}));
 
-			expect((cron1 as any).publisherService).toBe(mockPublisher);
-			expect((cron2 as any).publisherService).toBeUndefined();
+			expect(cron1.events.map((e) => [e.topic, e.type])).toEqual([
+				[users.service, 'user.created'],
+			]);
+			expect(cron1.services).toEqual([users.service]);
+			expect(cron1.constructs).toEqual(['Users']);
+
+			expect(cron2.events).toEqual([]);
+			expect(cron2.services).toEqual([]);
+			expect(cron2.constructs).toEqual([]);
 		});
 	});
 

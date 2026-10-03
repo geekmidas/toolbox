@@ -178,7 +178,6 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits,
 			});
@@ -247,7 +246,6 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits,
 			});
@@ -319,7 +317,6 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits: [],
 			});
@@ -395,7 +392,6 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits: [],
 			});
@@ -481,7 +477,6 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits: [],
 			});
@@ -571,7 +566,6 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits,
 			});
@@ -640,7 +634,6 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits,
 				actorExtractor: async ({ header }) => {
@@ -749,7 +742,6 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits: [],
 				databaseService,
@@ -850,7 +842,6 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits: [],
 				databaseService,
@@ -944,7 +935,6 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits: [],
 				databaseService,
@@ -1037,7 +1027,6 @@ describe('HonoEndpoint Kysely Audit Integration', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits: [],
 				databaseService,

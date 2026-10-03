@@ -1,26 +1,34 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
-import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
-import { type Service, ServiceDiscovery } from '@geekmidas/services';
+import { ServiceDiscovery } from '@geekmidas/services';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
+import { TestEndpointAdaptor } from '../endpoints/TestEndpointAdaptor';
 import { publishConstructEvents } from '../publisher';
 import { RestApi } from '../rest-api';
+import { Topic } from '../topic/Topic';
+import { recordingPublisher } from './__helpers__/recordingPublisher';
 
-/** Endpoints are built from a surface now, so the tests build one. */
-const api = new RestApi('Test', { path: '.', defaultAuthorizer: 'none' });
+const tests = new Topic('Tests', {
+	events: {
+		'test.created': z.object({ id: z.string() }),
+		'test.updated': z.object({ id: z.string(), changes: z.array(z.string()) }),
+		'test.deleted': z.object({ id: z.string() }),
+	},
+});
 
-/** A surface that logs to `logger` — the logger is the surface's, not a route's. */
-const apiLoggingTo = (logger: Logger) =>
-	new RestApi('Test', { path: '.', defaultAuthorizer: 'none', logger });
+const notifications = new Topic('Notifications', {
+	events: {
+		'notification.sent': z.object({ to: z.string() }),
+	},
+});
 
-// Test event types
-type TestEvent =
-	| PublishableMessage<'test.created', { id: string }>
-	| PublishableMessage<'test.updated', { id: string; changes: string[] }>
-	| PublishableMessage<'test.deleted', { id: string }>;
-
-describe('publisher service setting combinations', () => {
+/**
+ * Where an endpoint's events go is decided by the topic each `.event()` names
+ * — there is no publisher slot to set on a surface, a branch or an endpoint.
+ * These are the combinations that slot used to cover, asked of topics.
+ */
+describe('event topic combinations', () => {
 	const mockLogger: Logger = {
 		debug: vi.fn(),
 		info: vi.fn(),
@@ -31,478 +39,282 @@ describe('publisher service setting combinations', () => {
 		child: vi.fn(() => mockLogger),
 	};
 
-	const serviceDiscovery = ServiceDiscovery.getInstance(
-		new EnvironmentParser({}),
-	);
-
-	// Create mock publishers
-	const createMockPublisher = (_name: string): EventPublisher<TestEvent> => ({
-		publish: vi.fn().mockResolvedValue(undefined),
+	const api = new RestApi('Test', {
+		path: '.',
+		defaultAuthorizer: 'none',
+		logger: mockLogger,
 	});
 
-	const createMockPublisherService = (
-		name: string,
-	): Service<string, EventPublisher<TestEvent>> => {
-		const publisher = createMockPublisher(name);
-		return {
-			serviceName: `${name}-publisher-${Math.random()}`,
-			register: vi.fn().mockResolvedValue(publisher),
-		};
-	};
+	const serviceDiscovery = new ServiceDiscovery(new EnvironmentParser({}));
 
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});
 
-	describe('setting publisher via endpoint.publisher()', () => {
-		it('should use publisher set directly on endpoint', async () => {
-			const mockPublisher = createMockPublisher('endpoint');
-			const mockPublisherService = createMockPublisherService('endpoint');
-			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
-
-			const endpoint = apiLoggingTo(mockLogger)
+	describe('.event(topic, …) on an endpoint', () => {
+		it('should make the topic a dependency: its service and its id', () => {
+			const endpoint = api
 				.post('/test')
-				.publisher(mockPublisherService)
 				.output(z.object({ id: z.string() }))
-				.event({
+				.event(tests, {
 					type: 'test.created',
 					payload: (response) => ({ id: response.id }),
 				})
 				.handle(async () => ({ id: '123' }));
 
-			await publishConstructEvents(
-				endpoint,
-				{ id: '123' },
-				serviceDiscovery as ServiceDiscovery<any, any>,
-			);
-
-			expect(mockPublisher.publish).toHaveBeenCalledWith([
+			expect(endpoint.services.map((s) => s.serviceName)).toEqual(['tests']);
+			expect(endpoint.services[0]).toBe(tests.service);
+			// The manifest edge, as `.dependsOn([tests])` would record it.
+			expect(endpoint.constructs).toEqual(['Tests']);
+			expect(endpoint.events).toEqual([
 				{
+					topic: tests.service,
 					type: 'test.created',
-					payload: { id: '123' },
+					payload: expect.any(Function),
 				},
 			]);
 		});
-	});
 
-	describe('setting publisher via factory.publisher()', () => {
-		it('should use publisher from factory when not overridden', async () => {
-			const mockPublisher = createMockPublisher('factory');
-			const mockPublisherService = createMockPublisherService('factory');
-			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
-
-			// Create factory with publisher
-			const factory = apiLoggingTo(mockLogger).publisher(mockPublisherService);
-
-			// Create endpoint using factory
-			const endpoint = factory
+		it('should require the topic publisher env var', async () => {
+			const endpoint = api
 				.post('/test')
 				.output(z.object({ id: z.string() }))
-				.event({
+				.event(tests, {
 					type: 'test.created',
 					payload: (response) => ({ id: response.id }),
 				})
 				.handle(async () => ({ id: '123' }));
 
-			// Verify the publisher service is set on the endpoint
-			expect(endpoint.publisherService).toBeDefined();
-			expect(endpoint.publisherService?.serviceName).toBe(
-				mockPublisherService.serviceName,
+			expect(await endpoint.getEnvironment()).toContain(
+				'TESTS_PUBLISHER_CONNECTION_STRING',
 			);
-
-			await publishConstructEvents(
-				endpoint,
-				{ id: '123' },
-				serviceDiscovery as ServiceDiscovery<any, any>,
-			);
-
-			expect(mockPublisher.publish).toHaveBeenCalledWith([
-				{
-					type: 'test.created',
-					payload: { id: '123' },
-				},
-			]);
 		});
 
-		it('should work with factory that has logger and services', async () => {
-			const mockPublisher = createMockPublisher('factory-with-services');
-			const mockPublisherService = createMockPublisherService(
-				'factory-with-services',
-			);
-			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
+		it('should make services.<topic> available to the handler', async () => {
+			const publisher = recordingPublisher();
 
-			// Create factory with logger, services, and publisher
-			const factory = apiLoggingTo(mockLogger)
-				.publisher(mockPublisherService)
-				.services([]);
-
-			const endpoint = factory
+			const endpoint = api
 				.post('/test')
 				.output(z.object({ id: z.string() }))
-				.event({
+				.event(tests, {
 					type: 'test.created',
 					payload: (response) => ({ id: response.id }),
 				})
-				.handle(async () => ({ id: '456' }));
+				.handle(async ({ services }) => {
+					// An event the handler decides on itself, through the same
+					// publisher the declared one goes through.
+					await services.tests.publish([
+						{ type: 'test.updated', payload: { id: '123', changes: ['x'] } },
+					]);
+					return { id: '123' };
+				});
 
-			// Verify the publisher service is set
-			expect(endpoint.publisherService).toBeDefined();
-			expect(endpoint.publisherService?.serviceName).toBe(
-				mockPublisherService.serviceName,
-			);
+			await new TestEndpointAdaptor(endpoint).request({
+				services: { tests: publisher },
+				headers: { host: 'example.com' },
+			});
 
-			await publishConstructEvents(
-				endpoint,
-				{ id: '456' },
-				serviceDiscovery as ServiceDiscovery<any, any>,
-			);
+			expect(publisher.published).toEqual([
+				{ type: 'test.updated', payload: { id: '123', changes: ['x'] } },
+				{ type: 'test.created', payload: { id: '123' } },
+			]);
+		});
 
-			expect(mockPublisher.publish).toHaveBeenCalledWith([
-				{
+		it('should add a topic named twice only once', () => {
+			const endpoint = api
+				.post('/test')
+				.dependsOn([tests])
+				.output(z.object({ id: z.string() }))
+				.event(tests, {
 					type: 'test.created',
-					payload: { id: '456' },
-				},
+					payload: (response) => ({ id: response.id }),
+				})
+				.event(tests, {
+					type: 'test.updated',
+					payload: (response) => ({ id: response.id, changes: [] }),
+				})
+				.handle(async () => ({ id: '123' }));
+
+			expect(endpoint.services.map((s) => s.serviceName)).toEqual(['tests']);
+			expect(endpoint.constructs).toEqual(['Tests']);
+			expect(endpoint.events.map((e) => e.type)).toEqual([
+				'test.created',
+				'test.updated',
+			]);
+		});
+
+		it('should add each topic named, and keep each event bound to its own', () => {
+			const endpoint = api
+				.post('/test')
+				.output(z.object({ id: z.string() }))
+				.event(tests, {
+					type: 'test.created',
+					payload: (response) => ({ id: response.id }),
+				})
+				.event(notifications, {
+					type: 'notification.sent',
+					payload: (response) => ({ to: response.id }),
+				})
+				.handle(async () => ({ id: '123' }));
+
+			expect(endpoint.services.map((s) => s.serviceName)).toEqual([
+				'tests',
+				'notifications',
+			]);
+			expect(endpoint.constructs).toEqual(['Tests', 'Notifications']);
+			expect(endpoint.events.map((e) => [e.topic, e.type])).toEqual([
+				[tests.service, 'test.created'],
+				[notifications.service, 'notification.sent'],
 			]);
 		});
 	});
 
-	describe('overriding factory publisher at endpoint level', () => {
-		it('should use endpoint publisher over factory publisher', async () => {
-			const factoryPublisher = createMockPublisher('factory');
-			const factoryPublisherService = createMockPublisherService('factory');
-			factoryPublisherService.register = vi
-				.fn()
-				.mockResolvedValue(factoryPublisher);
+	describe('an endpoint built from a branch', () => {
+		it('should keep its own events and topic dependency', () => {
+			// A branch shares what a group needs; topics stay per endpoint.
+			const branch = api.route('/api/v1');
 
-			const endpointPublisher = createMockPublisher('endpoint-override');
-			const endpointPublisherService =
-				createMockPublisherService('endpoint-override');
-			endpointPublisherService.register = vi
-				.fn()
-				.mockResolvedValue(endpointPublisher);
+			const endpoint = branch
+				.post('/users')
+				.output(z.object({ id: z.string() }))
+				.event(tests, {
+					type: 'test.created',
+					payload: (response) => ({ id: response.id }),
+				})
+				.handle(async () => ({ id: '123' }));
 
-			// Create factory with publisher
-			const factory = apiLoggingTo(mockLogger).publisher(
-				factoryPublisherService,
+			const sibling = branch
+				.post('/quiet')
+				.output(z.object({ id: z.string() }))
+				.handle(async () => ({ id: '123' }));
+
+			expect(endpoint._path).toBe('/api/v1/users');
+			expect(endpoint.services.map((s) => s.serviceName)).toEqual(['tests']);
+			expect(endpoint.constructs).toEqual(['Tests']);
+			expect(sibling.events).toEqual([]);
+			expect(sibling.services).toEqual([]);
+			expect(sibling.constructs).toEqual([]);
+		});
+	});
+
+	describe('events through the builder chain', () => {
+		it('should keep events declared before other builder methods', async () => {
+			const publisher = recordingPublisher();
+
+			const endpoint = api
+				.post('/test')
+				.output(z.object({ id: z.string() }))
+				.event(tests, {
+					type: 'test.created',
+					payload: (response) => ({ id: response.id }),
+				})
+				.description('Test endpoint')
+				.tags(['test'])
+				.handle(async () => ({ id: '123' }));
+
+			await publishConstructEvents<any>(
+				endpoint,
+				{ id: '123' },
+				serviceDiscovery,
+				mockLogger,
+				{ tests: publisher },
 			);
 
-			// Create endpoint that overrides factory publisher
-			const endpoint = factory
-				.post('/test')
-				.publisher(endpointPublisherService) // Override factory publisher
-				.output(z.object({ id: z.string() }))
-				.event({
+			expect(publisher.published).toEqual([
+				{ type: 'test.created', payload: { id: '123' } },
+			]);
+		});
+	});
+
+	describe('multiple endpoints', () => {
+		it('should not leak events between endpoints built from one base', async () => {
+			const publisher = recordingPublisher();
+			const base = api.post('/test').output(z.object({ id: z.string() }));
+
+			const created = base
+				.event(tests, {
+					type: 'test.created',
+					payload: (response) => ({ id: response.id }),
+				})
+				.handle(async () => ({ id: '1' }));
+
+			const updated = base
+				.event(tests, {
 					type: 'test.updated',
 					payload: (response) => ({ id: response.id, changes: ['name'] }),
 				})
-				.handle(async () => ({ id: '789' }));
+				.handle(async () => ({ id: '2' }));
 
-			await publishConstructEvents(
-				endpoint,
-				{ id: '789' },
-				serviceDiscovery as ServiceDiscovery<any, any>,
+			expect(created.events.map((e) => e.type)).toEqual(['test.created']);
+			expect(updated.events.map((e) => e.type)).toEqual(['test.updated']);
+
+			await publishConstructEvents<any>(
+				created,
+				{ id: '1' },
+				serviceDiscovery,
+				mockLogger,
+				{ tests: publisher },
+			);
+			await publishConstructEvents<any>(
+				updated,
+				{ id: '2' },
+				serviceDiscovery,
+				mockLogger,
+				{ tests: publisher },
 			);
 
-			// Factory publisher should NOT be called
-			expect(factoryPublisher.publish).not.toHaveBeenCalled();
-
-			// Endpoint publisher SHOULD be called
-			expect(endpointPublisher.publish).toHaveBeenCalledWith([
-				{
-					type: 'test.updated',
-					payload: { id: '789', changes: ['name'] },
-				},
-			]);
-		});
-	});
-
-	describe('publisher inheritance through endpoint builder chain', () => {
-		it('should maintain publisher through builder method chain', async () => {
-			const mockPublisher = createMockPublisher('chain');
-			const mockPublisherService = createMockPublisherService('chain');
-			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
-
-			const endpoint = apiLoggingTo(mockLogger)
-				.post('/test')
-				.publisher(mockPublisherService)
-				.body(z.object({ name: z.string() }))
-				.output(z.object({ id: z.string() }))
-				.event({
-					type: 'test.created',
-					payload: (response) => ({ id: response.id }),
-				})
-				.handle(async (_body) => ({ id: '999' }));
-
-			expect(endpoint.publisherService).toBeDefined();
-
-			await publishConstructEvents(
-				endpoint,
-				{ id: '999' },
-				serviceDiscovery as ServiceDiscovery<any, any>,
-			);
-
-			expect(mockPublisher.publish).toHaveBeenCalledWith([
-				{
-					type: 'test.created',
-					payload: { id: '999' },
-				},
+			expect(publisher.calls).toEqual([
+				[{ type: 'test.created', payload: { id: '1' } }],
+				[{ type: 'test.updated', payload: { id: '2', changes: ['name'] } }],
 			]);
 		});
 
-		it('should maintain factory publisher through builder chain', async () => {
-			const mockPublisher = createMockPublisher('factory-chain');
-			const mockPublisherService = createMockPublisherService('factory-chain');
-			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
+		it('should send each endpoint to the topic it named', async () => {
+			const testsPublisher = recordingPublisher();
+			const notificationsPublisher = recordingPublisher();
 
-			const factory = apiLoggingTo(mockLogger).publisher(mockPublisherService);
-
-			const endpoint = factory
-				.post('/test')
-				.body(z.object({ name: z.string() }))
-				.query(z.object({ filter: z.string().optional() }))
+			const endpoint1 = api
+				.post('/test1')
 				.output(z.object({ id: z.string() }))
-				.event({
+				.event(tests, {
 					type: 'test.created',
 					payload: (response) => ({ id: response.id }),
 				})
-				.handle(async () => ({ id: '111' }));
+				.handle(async () => ({ id: '1' }));
 
-			expect(endpoint.publisherService).toBeDefined();
-
-			await publishConstructEvents(
-				endpoint,
-				{ id: '111' },
-				serviceDiscovery as ServiceDiscovery<any, any>,
-			);
-
-			expect(mockPublisher.publish).toHaveBeenCalledWith([
-				{
-					type: 'test.created',
-					payload: { id: '111' },
-				},
-			]);
-		});
-	});
-
-	describe('multiple endpoints with same/different publishers', () => {
-		it('should handle multiple endpoints from same factory', async () => {
-			const mockPublisher = createMockPublisher('shared-factory');
-			const mockPublisherService = createMockPublisherService('shared-factory');
-			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
-
-			const factory = apiLoggingTo(mockLogger).publisher(mockPublisherService);
-
-			// Create multiple endpoints from same factory
-			const endpoint1 = factory
-				.post('/users')
+			const endpoint2 = api
+				.post('/test2')
 				.output(z.object({ id: z.string() }))
-				.event({
-					type: 'test.created',
-					payload: (response) => ({ id: response.id }),
+				.event(notifications, {
+					type: 'notification.sent',
+					payload: (response) => ({ to: response.id }),
 				})
-				.handle(async () => ({ id: 'user-1' }));
+				.handle(async () => ({ id: '2' }));
 
-			const endpoint2 = factory
-				.put('/users/:id')
-				.output(z.object({ id: z.string() }))
-				.event({
-					type: 'test.updated',
-					payload: (response) => ({ id: response.id, changes: ['status'] }),
-				})
-				.handle(async () => ({ id: 'user-2' }));
-
-			// Both endpoints should have the same publisher service
-			expect(endpoint1.publisherService?.serviceName).toBe(
-				mockPublisherService.serviceName,
-			);
-			expect(endpoint2.publisherService?.serviceName).toBe(
-				mockPublisherService.serviceName,
-			);
-
-			// Test both endpoints
-			await publishConstructEvents(
+			const provided = {
+				tests: testsPublisher,
+				notifications: notificationsPublisher,
+			};
+			await publishConstructEvents<any>(
 				endpoint1,
-				{ id: 'user-1' },
-				serviceDiscovery as ServiceDiscovery<any, any>,
+				{ id: '1' },
+				serviceDiscovery,
+				mockLogger,
+				provided,
 			);
-
-			await publishConstructEvents(
+			await publishConstructEvents<any>(
 				endpoint2,
-				{ id: 'user-2' },
-				serviceDiscovery as ServiceDiscovery<any, any>,
+				{ id: '2' },
+				serviceDiscovery,
+				mockLogger,
+				provided,
 			);
 
-			// Publisher should be called twice
-			expect(mockPublisher.publish).toHaveBeenCalledTimes(2);
-			expect(mockPublisher.publish).toHaveBeenNthCalledWith(1, [
-				{
-					type: 'test.created',
-					payload: { id: 'user-1' },
-				},
+			expect(testsPublisher.published).toEqual([
+				{ type: 'test.created', payload: { id: '1' } },
 			]);
-			expect(mockPublisher.publish).toHaveBeenNthCalledWith(2, [
-				{
-					type: 'test.updated',
-					payload: { id: 'user-2', changes: ['status'] },
-				},
-			]);
-		});
-
-		it('should handle different publishers for different endpoints', async () => {
-			const publisher1 = createMockPublisher('endpoint-1');
-			const publisherService1 = createMockPublisherService('endpoint-1');
-			publisherService1.register = vi.fn().mockResolvedValue(publisher1);
-
-			const publisher2 = createMockPublisher('endpoint-2');
-			const publisherService2 = createMockPublisherService('endpoint-2');
-			publisherService2.register = vi.fn().mockResolvedValue(publisher2);
-
-			const endpoint1 = apiLoggingTo(mockLogger)
-				.post('/api/v1/resource')
-				.publisher(publisherService1)
-				.output(z.object({ id: z.string() }))
-				.event({
-					type: 'test.created',
-					payload: (response) => ({ id: response.id }),
-				})
-				.handle(async () => ({ id: 'res-1' }));
-
-			const endpoint2 = apiLoggingTo(mockLogger)
-				.post('/api/v2/resource')
-				.publisher(publisherService2)
-				.output(z.object({ id: z.string() }))
-				.event({
-					type: 'test.created',
-					payload: (response) => ({ id: response.id }),
-				})
-				.handle(async () => ({ id: 'res-2' }));
-
-			// Test both endpoints
-			await publishConstructEvents(
-				endpoint1,
-				{ id: 'res-1' },
-				serviceDiscovery as ServiceDiscovery<any, any>,
-			);
-
-			await publishConstructEvents(
-				endpoint2,
-				{ id: 'res-2' },
-				serviceDiscovery as ServiceDiscovery<any, any>,
-			);
-
-			// Each publisher should only be called once
-			expect(publisher1.publish).toHaveBeenCalledTimes(1);
-			expect(publisher1.publish).toHaveBeenCalledWith([
-				{
-					type: 'test.created',
-					payload: { id: 'res-1' },
-				},
-			]);
-
-			expect(publisher2.publish).toHaveBeenCalledTimes(1);
-			expect(publisher2.publish).toHaveBeenCalledWith([
-				{
-					type: 'test.created',
-					payload: { id: 'res-2' },
-				},
-			]);
-		});
-	});
-
-	describe('edge cases and error scenarios', () => {
-		it('should handle undefined publisher gracefully', async () => {
-			const endpoint = apiLoggingTo(mockLogger)
-				.post('/test')
-				.output(z.object({ id: z.string() }))
-
-				.event({
-					// @ts-expect-error
-					type: 'test.created',
-					// @ts-expect-error
-					payload: (response) => ({ id: response.id }),
-				})
-				.handle(async () => ({ id: '000' }));
-
-			// Should not have publisher service
-			expect(endpoint.publisherService).toBeUndefined();
-
-			// Should not throw, but should warn
-			await publishConstructEvents(
-				endpoint,
-				{ id: '000' },
-				serviceDiscovery as ServiceDiscovery<any, any>,
-			);
-
-			expect(mockLogger.warn).toHaveBeenCalledWith(
-				'No publisher service available',
-			);
-		});
-
-		it('should handle publisher service registration failure', async () => {
-			const registrationError = new Error('Service registration failed');
-			const mockPublisherService = createMockPublisherService('failing');
-			mockPublisherService.register = vi
-				.fn()
-				.mockRejectedValue(registrationError);
-
-			const endpoint = apiLoggingTo(mockLogger)
-				.post('/test')
-				.publisher(mockPublisherService)
-				.output(z.object({ id: z.string() }))
-				.event({
-					type: 'test.created',
-					payload: (response) => ({ id: response.id }),
-				})
-				.handle(async () => ({ id: '404' }));
-
-			// Should not throw but should log error
-			await publishConstructEvents(
-				endpoint,
-				{ id: '404' },
-				serviceDiscovery as ServiceDiscovery<any, any>,
-			);
-
-			expect(mockLogger.error).toHaveBeenCalledWith(
-				registrationError,
-				'Something went wrong publishing events',
-			);
-		});
-	});
-
-	describe('factory publisher with services', () => {
-		it('should maintain publisher with services factory', async () => {
-			const mockPublisher = createMockPublisher('services');
-			const mockPublisherService = createMockPublisherService('services');
-			mockPublisherService.register = vi.fn().mockResolvedValue(mockPublisher);
-
-			// Test a typical factory setup with logger, services, and publisher
-			const factory = apiLoggingTo(mockLogger)
-				.publisher(mockPublisherService)
-				.services([]);
-
-			const endpoint = factory
-				.post('/api/v1/users')
-				.output(z.object({ id: z.string() }))
-				.event({
-					type: 'test.created',
-					payload: (response) => ({ id: response.id }),
-				})
-				.handle(async () => ({ id: 'services-123' }));
-
-			expect(endpoint._path).toBe('/api/v1/users');
-			expect(endpoint.publisherService).toBeDefined();
-
-			await publishConstructEvents(
-				endpoint,
-				{ id: 'services-123' },
-				serviceDiscovery as ServiceDiscovery<any, any>,
-			);
-
-			expect(mockPublisher.publish).toHaveBeenCalledWith([
-				{
-					type: 'test.created',
-					payload: { id: 'services-123' },
-				},
+			expect(notificationsPublisher.published).toEqual([
+				{ type: 'notification.sent', payload: { to: '2' } },
 			]);
 		});
 	});

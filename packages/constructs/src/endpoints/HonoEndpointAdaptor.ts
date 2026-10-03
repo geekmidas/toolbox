@@ -94,8 +94,6 @@ function analyzeEndpointFeatures(
 		any,
 		any,
 		any,
-		any,
-		any,
 		any
 	>,
 ): EndpointFeatures {
@@ -122,8 +120,6 @@ export class HonoEndpoint<
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
 	TSession = unknown,
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TAuditStorage extends AuditStorage | undefined = undefined,
 	TAuditStorageServiceName extends string = string,
 	TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
@@ -142,8 +138,6 @@ export class HonoEndpoint<
 			TServices,
 			TLogger,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			TAuditAction,
@@ -280,8 +274,6 @@ export class HonoEndpoint<
 		TServices extends Service[] = [],
 		TLogger extends Logger = Logger,
 		TSession = unknown,
-		TEventPublisher extends EventPublisher<any> | undefined = undefined,
-		TEventPublisherServiceName extends string = string,
 		TAuditStorage extends AuditStorage | undefined = undefined,
 		TAuditStorageServiceName extends string = string,
 		TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
@@ -299,8 +291,6 @@ export class HonoEndpoint<
 			TServices,
 			TLogger,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			TAuditAction,
@@ -590,7 +580,7 @@ export class HonoEndpoint<
 
 							// Only publish events if configured (no global middleware overhead)
 							if (features.hasEvents && Endpoint.isSuccessStatus(status)) {
-								await publishConstructEvents<any, any>(
+								await publishConstructEvents<any>(
 									endpoint as any,
 									output,
 									serviceDiscovery,

@@ -1,9 +1,9 @@
-import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v4';
 import { sniffService } from '../Construct';
 import { RestApi } from '../rest-api';
+import { Topic } from '../topic/Topic';
 import { Worker } from '../worker';
 
 /** Endpoints are built from a surface now, so this builds one. */
@@ -241,20 +241,12 @@ describe('Construct environment getter', () => {
 
 	describe('Subscriber', () => {
 		it('should detect environment variables from subscriber services', async () => {
-			type UserEvents =
-				| PublishableMessage<'user.created', { userId: string }>
-				| PublishableMessage<'user.updated', { userId: string }>;
-
-			class UserEventPublisher implements EventPublisher<UserEvents> {
-				async publish(_events: UserEvents[]): Promise<void> {}
-			}
-
-			const eventPublisherService: Service<'events', UserEventPublisher> = {
-				serviceName: 'events' as const,
-				register() {
-					return new UserEventPublisher();
+			const users = new Topic('Users', {
+				events: {
+					'user.created': z.object({ userId: z.string() }),
+					'user.updated': z.object({ userId: z.string() }),
 				},
-			};
+			});
 
 			const notificationService = {
 				serviceName: 'notification' as const,
@@ -272,7 +264,7 @@ describe('Construct environment getter', () => {
 			} satisfies Service<'notification', any>;
 
 			const subscriber = testWorker
-				.publisher(eventPublisherService)
+				.topic(users)
 				.services([notificationService])
 				.subscribe('user.created')
 				.handle(async () => {
@@ -281,6 +273,7 @@ describe('Construct environment getter', () => {
 
 			const envVars = await subscriber.getEnvironment();
 
+			// Bound to the topic, not publishing to it: no publisher env.
 			expect(envVars).toEqual([
 				'NOTIFICATION_API_KEY',
 				'NOTIFICATION_ENDPOINT',

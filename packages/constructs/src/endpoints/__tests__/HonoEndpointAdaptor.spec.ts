@@ -498,7 +498,6 @@ describe('HonoEndpointAdaptor', () => {
 				getSession: undefined,
 				authorize: undefined,
 				description: undefined,
-				publisherService: undefined,
 			});
 
 			const adaptor = new HonoEndpoint(endpoint);
@@ -540,7 +539,6 @@ describe('HonoEndpointAdaptor', () => {
 				getSession: undefined,
 				authorize: undefined,
 				description: undefined,
-				publisherService: undefined,
 			});
 
 			const adaptor = new HonoEndpoint(endpoint);
@@ -596,7 +594,6 @@ describe('HonoEndpointAdaptor', () => {
 				status: undefined,
 				getSession: undefined,
 				authorize: undefined,
-				publisherService: undefined,
 				description: undefined,
 			});
 

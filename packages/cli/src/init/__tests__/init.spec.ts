@@ -186,7 +186,7 @@ describe('initCommand', () => {
 				join(projectDir, 'src/constructs/topics.ts'),
 				'utf8',
 			);
-			expect(topics).toContain("t.topic('users')");
+			expect(topics).toContain("new Topic('users', {");
 			const subscriber = await readFile(
 				join(projectDir, 'src/subscribers/user-events.ts'),
 				'utf8',

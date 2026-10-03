@@ -167,6 +167,16 @@ export async function discover(
 			if (seen.has(exported as object)) continue;
 			seen.add(exported as object);
 
+			// A construct that is also something a process runs — a queue and its
+			// consumer, built from a worker — reaches what it depends on through
+			// that process, exactly as an endpoint or a cron does.
+			if (
+				options.runnables &&
+				typeof (exported as { owner?: unknown }).owner === 'string'
+			) {
+				recordRunnable(options.runnables, exported);
+			}
+
 			for (const declaration of exported.declare()) {
 				// Canonicalise here too: a construct built by hand rather than through
 				// a constructor is still subject to the same identity rule.

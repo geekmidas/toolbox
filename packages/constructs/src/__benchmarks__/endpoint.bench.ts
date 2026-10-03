@@ -12,6 +12,7 @@ import { z } from 'zod';
 import type { MappedAudit } from '../endpoints/audit';
 import { TestEndpointAdaptor } from '../endpoints/TestEndpointAdaptor';
 import { RestApi } from '../rest-api';
+import { Topic } from '../topic/Topic';
 
 // Silent logger for benchmarks - no console output
 const silentLogger = new ConsoleLogger({}, LogLevel.Silent);
@@ -85,18 +86,17 @@ const AuditStorageService: Service<'auditStorage', MockAuditStorage> = {
 	register: async () => new MockAuditStorage(),
 };
 
-// Event publisher
+// A topic, and a publisher that discards what it is given
+const users = new Topic('Users', {
+	events: { 'user.created': z.object({ userId: z.string() }) },
+});
+
 type TestEvent = PublishableMessage<'user.created', { userId: string }>;
 
 class MockPublisher implements EventPublisher<TestEvent> {
 	async publish(_messages: TestEvent[]): Promise<void> {}
 	async close(): Promise<void> {}
 }
-
-const PublisherService: Service<'publisher', MockPublisher> = {
-	serviceName: 'publisher' as const,
-	register: async () => new MockPublisher(),
-};
 
 // Pre-registered services for benchmarks
 const registeredDatabase = await DatabaseService.register({} as any);
@@ -432,10 +432,9 @@ describe('Endpoint Handling - Manual Audit', () => {
 describe('Endpoint Handling - Event Publishing', () => {
 	const publisherEndpoint = api
 		.post('/users')
-		.publisher(PublisherService)
 		.body(z.object({ name: z.string(), email: z.string() }))
 		.output(z.object({ id: z.string() }))
-		.event({
+		.event(users, {
 			type: 'user.created',
 			payload: (response) => ({ userId: response.id }),
 		})
@@ -446,10 +445,9 @@ describe('Endpoint Handling - Event Publishing', () => {
 	test('POST with event publishing', async ({ bench }) => {
 		await bench('POST with event publishing', async () => {
 			await adaptor.request({
-				services: {},
+				services: { users: new MockPublisher() },
 				headers: { 'content-type': 'application/json' },
 				body: { name: 'Test User', email: 'test@example.com' },
-				publisher: PublisherService,
 			});
 		}).run();
 	});

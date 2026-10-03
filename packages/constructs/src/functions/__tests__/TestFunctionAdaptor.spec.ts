@@ -1,10 +1,11 @@
-import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
-import { serviceContext } from '@geekmidas/services';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ServiceDiscovery, serviceContext } from '@geekmidas/services';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
-
+import { recordTopic } from '../../__tests__/__helpers__/recordingPublisher';
+import { Topic } from '../../topic/Topic';
+import { Worker } from '../../worker';
 import { Function } from '../Function';
 import { TestFunctionAdaptor } from '../TestFunctionAdaptor';
 
@@ -22,28 +23,12 @@ class TestService implements Service<'TestService', TestService> {
 	}
 }
 
-// Mock event publisher
-type TestEvent = PublishableMessage<'test.event', { data: string }>;
+const tests = new Topic('Tests', {
+	events: { 'test.event': z.object({ data: z.string() }) },
+});
 
-class TestPublisher implements EventPublisher<TestEvent> {
-	publishedEvents: TestEvent[] = [];
-
-	async publish(events: TestEvent[]): Promise<void> {
-		this.publishedEvents.push(...events);
-	}
-}
-
-class TestPublisherService
-	implements Service<'TestPublisherService', TestPublisher>
-{
-	serviceName = 'TestPublisherService' as const;
-	static serviceName = 'TestPublisherService';
-	publisher = new TestPublisher();
-
-	async register() {
-		return this.publisher;
-	}
-}
+/** Everything runnable is built from the process that runs it. */
+const worker = new Worker('Jobs');
 
 describe.skip('TestFunctionAdaptor', () => {
 	let logger: ConsoleLogger;
@@ -255,101 +240,49 @@ describe.skip('TestFunctionAdaptor', () => {
 	});
 
 	describe('events', () => {
+		beforeEach(() => {
+			ServiceDiscovery.reset();
+		});
+
+		afterEach(() => {
+			vi.restoreAllMocks();
+		});
+
 		it('should publish events after successful execution', async () => {
-			const publisherService = new TestPublisherService();
+			const publisher = recordTopic(tests);
 
-			const fn = new Function(
-				async () => ({ id: '123' }),
-				undefined,
-				undefined,
-				undefined,
-				z.object({ id: z.string() }),
-				[],
-				logger,
-				publisherService,
-				[
-					{
-						type: 'test.event',
-						payload: (response) => ({ data: response.id }),
-					},
-				],
-			);
+			const fn = worker
+				.input(z.object({}))
+				.output(z.object({ id: z.string() }))
+				.event(tests, {
+					type: 'test.event',
+					payload: (response) => ({ data: response.id }),
+				})
+				.handle(async () => ({ id: '123' }));
 
-			const adaptor = new TestFunctionAdaptor(fn);
+			await new TestFunctionAdaptor(fn).invoke({ input: {} } as never);
 
-			await adaptor.invoke({
-				input: {},
-				services: {},
-				publisher: publisherService,
-			});
-
-			expect(publisherService.publisher.publishedEvents).toHaveLength(1);
-			expect(publisherService.publisher.publishedEvents[0]).toEqual({
-				type: 'test.event',
-				payload: { data: '123' },
-			});
+			expect(publisher.published).toEqual([
+				{ type: 'test.event', payload: { data: '123' } },
+			]);
 		});
 
 		it('should conditionally publish events based on when clause', async () => {
-			const publisherService = new TestPublisherService();
+			const publisher = recordTopic(tests);
 
-			const fn = new Function(
-				async () => ({ success: false }),
-				undefined,
-				undefined,
-				undefined,
-				z.object({ success: z.boolean() }),
-				[],
-				logger,
-				publisherService,
-				[
-					{
-						type: 'test.event',
-						payload: () => ({ data: 'test' }),
-						when: (response) => response.success === true,
-					},
-				],
-			);
+			const fn = worker
+				.input(z.object({}))
+				.output(z.object({ success: z.boolean() }))
+				.event(tests, {
+					type: 'test.event',
+					payload: () => ({ data: 'test' }),
+					when: (response) => response.success === true,
+				})
+				.handle(async () => ({ success: false }));
 
-			const adaptor = new TestFunctionAdaptor(fn);
+			await new TestFunctionAdaptor(fn).invoke({ input: {} } as never);
 
-			await adaptor.invoke({
-				input: {},
-				services: {},
-				publisher: publisherService,
-			});
-
-			expect(publisherService.publisher.publishedEvents).toHaveLength(0);
-		});
-
-		it('should work without publisher service in context', async () => {
-			const publisherService = new TestPublisherService();
-
-			const fn = new Function(
-				async () => ({ id: '123' }),
-				undefined,
-				undefined,
-				undefined,
-				z.object({ id: z.string() }),
-				[],
-				logger,
-				publisherService,
-				[
-					{
-						type: 'test.event',
-						payload: (response) => ({ data: response.id }),
-					},
-				],
-			);
-
-			const adaptor = new TestFunctionAdaptor(fn);
-
-			// Should not throw when publisher is not provided in context
-			const result = await adaptor.invoke({
-				input: {},
-				services: {},
-			});
-			expect(result).toEqual({ id: '123' });
+			expect(publisher.published).toEqual([]);
 		});
 	});
 

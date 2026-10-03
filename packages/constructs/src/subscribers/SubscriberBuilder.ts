@@ -21,7 +21,6 @@ export class SubscriberBuilder<
 	TLogger extends Logger = Logger,
 	OutSchema extends StandardSchemaV1 | undefined = undefined,
 	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TSubscribedEvents extends any[] = [],
 > {
 	private _subscribedEvents: TSubscribedEvents = [] as any;
@@ -36,7 +35,6 @@ export class SubscriberBuilder<
 	 * `Worker` hands out, so a subscriber is not owned by its directory.
 	 */
 	public _owner?: string;
-	private _publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
 	private _topicName?: string;
 
 	constructor() {
@@ -44,15 +42,13 @@ export class SubscriberBuilder<
 	}
 
 	/**
-	 * Bind this subscriber to a {@link Topic} — the preferred way to type and wire
-	 * a fan-out consumer. It supplies the subscribable event types (and their
-	 * payloads) from the topic's contract and records the binding for the manifest,
-	 * so infra wires the SNS subscription.
+	 * Bind this subscriber to a {@link Topic}: the subscribable event types (and
+	 * their payloads) come from the topic's contract, and the binding is recorded
+	 * for the manifest, so infra wires the SNS subscription.
 	 *
-	 * Prefer this over typing via a hand-written publisher service: a consumer does
-	 * not publish, so binding a topic does *not* require the topic's publisher
-	 * connection string (least privilege). Use `.publisher(...)` only when the
-	 * subscriber actually publishes follow-up events.
+	 * A consumer does not publish, so binding a topic does *not* hand it the
+	 * topic's publisher connection string (least privilege). One that publishes
+	 * follow-up events depends on the topic it publishes to: `.dependsOn([orders])`.
 	 */
 	topic<TName extends string, TEvents extends TopicEvents>(
 		topic: Topic<TName, TEvents>,
@@ -61,7 +57,6 @@ export class SubscriberBuilder<
 		TLogger,
 		OutSchema,
 		EventPublisher<TopicMessage<TEvents>>,
-		TEventPublisherServiceName,
 		TSubscribedEvents
 	> {
 		return cloneWith(this, {
@@ -71,7 +66,6 @@ export class SubscriberBuilder<
 			TLogger,
 			OutSchema,
 			EventPublisher<TopicMessage<TEvents>>,
-			TEventPublisherServiceName,
 			TSubscribedEvents
 		>;
 	}
@@ -87,7 +81,6 @@ export class SubscriberBuilder<
 		TLogger,
 		T,
 		TEventPublisher,
-		TEventPublisherServiceName,
 		TSubscribedEvents
 	> {
 		return cloneWith(this, {
@@ -113,7 +106,6 @@ export class SubscriberBuilder<
 		TLogger,
 		OutSchema,
 		TEventPublisher,
-		TEventPublisherServiceName,
 		TSubscribedEvents
 	> {
 		// Both halves of the edge, from one call and one clone: the services the
@@ -133,7 +125,6 @@ export class SubscriberBuilder<
 			TLogger,
 			OutSchema,
 			TEventPublisher,
-			TEventPublisherServiceName,
 			TSubscribedEvents
 		>;
 	}
@@ -145,7 +136,6 @@ export class SubscriberBuilder<
 		TLogger,
 		OutSchema,
 		TEventPublisher,
-		TEventPublisherServiceName,
 		TSubscribedEvents
 	> {
 		return cloneWith(this, {
@@ -160,23 +150,9 @@ export class SubscriberBuilder<
 		T,
 		OutSchema,
 		TEventPublisher,
-		TEventPublisherServiceName,
 		TSubscribedEvents
 	> {
 		return cloneWith(this, { _logger: logger as unknown as TLogger }) as any;
-	}
-
-	publisher<T extends EventPublisher<any>, TName extends string>(
-		publisher: Service<TName, T>,
-	): SubscriberBuilder<
-		TServices,
-		TLogger,
-		OutSchema,
-		T,
-		TName,
-		TSubscribedEvents
-	> {
-		return cloneWith(this, { _publisher: publisher as any }) as any;
 	}
 
 	subscribe<
@@ -192,7 +168,6 @@ export class SubscriberBuilder<
 		TLogger,
 		OutSchema,
 		TEventPublisher,
-		TEventPublisherServiceName,
 		TEvent extends any[]
 			? [...TSubscribedEvents, ...TEvent]
 			: [...TSubscribedEvents, TEvent]
@@ -216,7 +191,6 @@ export class SubscriberBuilder<
 		TLogger,
 		OutSchema,
 		TEventPublisher,
-		TEventPublisherServiceName,
 		TSubscribedEvents
 	> {
 		const subscriber = new Subscriber(
@@ -226,7 +200,6 @@ export class SubscriberBuilder<
 			this.outputSchema,
 			this._services,
 			this._logger,
-			this._publisher,
 			this._topicName,
 			this._constructs,
 		);

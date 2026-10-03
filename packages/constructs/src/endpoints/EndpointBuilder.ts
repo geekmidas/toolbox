@@ -3,9 +3,9 @@ import type {
 	AuditStorage,
 	ExtractStorageAuditAction,
 } from '@geekmidas/audit';
-import type { EventPublisher, MappedEvent } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import type { RateLimitConfig } from '@geekmidas/rate-limit';
+import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
@@ -13,13 +13,14 @@ import { ConstructType } from '../Construct';
 import { cloneWith } from '../clone';
 import {
 	type Consumable,
-	edgesWith,
 	idsOf,
 	type ServicesOf,
 	serviceOf,
 	servicesOf,
 } from '../construct-interface';
 import { BaseFunctionBuilder } from '../functions';
+import type { EventFor } from '../publisher';
+import type { Topic } from '../topic/Topic';
 import type { HttpMethod } from '../types';
 import type { Authorizer, SecurityScheme } from './Authorizer';
 import { getSecurityScheme } from './Authorizer';
@@ -46,8 +47,6 @@ export class EndpointBuilder<
 	TLogger extends Logger = Logger,
 	OutSchema extends StandardSchemaV1 | undefined = undefined,
 	TSession = unknown,
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TAuthorizers extends readonly string[] = readonly string[],
 	TAuditStorage extends AuditStorage | undefined = undefined,
 	TAuditStorageServiceName extends string = string,
@@ -62,8 +61,6 @@ export class EndpointBuilder<
 	OutSchema,
 	TServices,
 	TLogger,
-	TEventPublisher,
-	TEventPublisherServiceName,
 	TAuditStorage,
 	TAuditStorageServiceName,
 	TDatabase,
@@ -102,13 +99,6 @@ export class EndpointBuilder<
 		super(ConstructType.Endpoint);
 	}
 
-	// Internal setter for EndpointFactory to set default publisher
-	_setPublisher(
-		publisher: Service<TEventPublisherServiceName, TEventPublisher>,
-	) {
-		this._publisher = publisher;
-	}
-
 	// Internal setter for EndpointFactory to set default auditor storage
 	_setAuditorStorage(
 		storage: Service<TAuditStorageServiceName, TAuditStorage>,
@@ -129,12 +119,54 @@ export class EndpointBuilder<
 		return cloneWith(this, { _status: status });
 	}
 
-	override event<TEvent extends MappedEvent<TEventPublisher, OutSchema>>(
-		event: TEvent,
-	): this {
-		// Replaced rather than pushed: a clone shares whatever array the field
-		// points at, so an in-place push would be seen by the base it came from.
-		return cloneWith(this, { _events: [...this._events, event] });
+	/**
+	 * Publish `event` to `topic` once the handler has succeeded — repeatable,
+	 * one call per event, to as many topics as the endpoint names. The topic
+	 * becomes a dependency as with `.dependsOn([topic])`, so `services.<topic>`
+	 * is there for events the handler decides on itself.
+	 *
+	 * @example
+	 * ```ts
+	 * router.post('/users')
+	 *   .event(users, {
+	 *     type: 'user.created',
+	 *     payload: (user) => ({ userId: user.id, email: user.email }),
+	 *   })
+	 * ```
+	 */
+	event<TTopic extends Topic<any, any>>(
+		topic: TTopic,
+		event: EventFor<TTopic, InferStandardSchema<OutSchema>>,
+	): EndpointBuilder<
+		TRoute,
+		TMethod,
+		TInput,
+		[...TServices, TTopic['service']],
+		TLogger,
+		OutSchema,
+		TSession,
+		TAuthorizers,
+		TAuditStorage,
+		TAuditStorageServiceName,
+		TAuditAction,
+		TDatabase,
+		TDatabaseServiceName
+	> {
+		return this.withEvent(topic, event as never) as unknown as EndpointBuilder<
+			TRoute,
+			TMethod,
+			TInput,
+			[...TServices, TTopic['service']],
+			TLogger,
+			OutSchema,
+			TSession,
+			TAuthorizers,
+			TAuditStorage,
+			TAuditStorageServiceName,
+			TAuditAction,
+			TDatabase,
+			TDatabaseServiceName
+		>;
 	}
 
 	tags(tags: string[]): this {
@@ -167,51 +199,6 @@ export class EndpointBuilder<
 		return cloneWith(this, { _responseType: type });
 	}
 
-	override publisher<T extends EventPublisher<any>, TName extends string>(
-		publisher: Service<TName, T>,
-	): EndpointBuilder<
-		TRoute,
-		TMethod,
-		TInput,
-		TServices,
-		TLogger,
-		OutSchema,
-		TSession,
-		T,
-		TName,
-		TAuthorizers,
-		TAuditStorage,
-		TAuditStorageServiceName,
-		TAuditAction,
-		TDatabase,
-		TDatabaseServiceName
-	> {
-		return cloneWith(this, {
-			// The topic a derived publisher stands for is an edge like `.dependsOn()`.
-			_constructs: edgesWith(publisher, this._constructs),
-			_publisher: publisher as unknown as Service<
-				TEventPublisherServiceName,
-				TEventPublisher
-			>,
-		}) as unknown as EndpointBuilder<
-			TRoute,
-			TMethod,
-			TInput,
-			TServices,
-			TLogger,
-			OutSchema,
-			TSession,
-			T,
-			TName,
-			TAuthorizers,
-			TAuditStorage,
-			TAuditStorageServiceName,
-			TAuditAction,
-			TDatabase,
-			TDatabaseServiceName
-		>;
-	}
-
 	body<T extends StandardSchemaV1>(
 		schema: T,
 	): EndpointBuilder<
@@ -222,8 +209,6 @@ export class EndpointBuilder<
 		TLogger,
 		OutSchema,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -246,8 +231,6 @@ export class EndpointBuilder<
 		TLogger,
 		OutSchema,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -270,8 +253,6 @@ export class EndpointBuilder<
 		TLogger,
 		OutSchema,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -292,8 +273,6 @@ export class EndpointBuilder<
 		TLogger,
 		OutSchema,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -326,8 +305,6 @@ export class EndpointBuilder<
 		TLogger,
 		OutSchema,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -377,8 +354,6 @@ export class EndpointBuilder<
 		TLogger,
 		OutSchema,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -409,8 +384,6 @@ export class EndpointBuilder<
 			TLogger,
 			OutSchema,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			TAuditStorage,
 			TAuditStorageServiceName,
@@ -430,8 +403,6 @@ export class EndpointBuilder<
 		TLogger,
 		OutSchema,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -452,8 +423,6 @@ export class EndpointBuilder<
 			TLogger,
 			OutSchema,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			TAuditStorage,
 			TAuditStorageServiceName,
@@ -473,8 +442,6 @@ export class EndpointBuilder<
 		T,
 		OutSchema,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -492,8 +459,6 @@ export class EndpointBuilder<
 			T,
 			OutSchema,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			TAuditStorage,
 			TAuditStorageServiceName,
@@ -513,8 +478,6 @@ export class EndpointBuilder<
 		TLogger,
 		T,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -532,8 +495,6 @@ export class EndpointBuilder<
 			TLogger,
 			T,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			TAuditStorage,
 			TAuditStorageServiceName,
@@ -558,8 +519,6 @@ export class EndpointBuilder<
 		TLogger,
 		OutSchema,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		T,
 		TName,
@@ -580,8 +539,6 @@ export class EndpointBuilder<
 			TLogger,
 			OutSchema,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			T,
 			TName,
@@ -605,8 +562,6 @@ export class EndpointBuilder<
 		TLogger,
 		OutSchema,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -663,8 +618,6 @@ export class EndpointBuilder<
 		TLogger,
 		OutSchema,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuthorizers,
 		TAuditStorage,
 		TAuditStorageServiceName,
@@ -687,8 +640,6 @@ export class EndpointBuilder<
 			TLogger,
 			OutSchema,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuthorizers,
 			TAuditStorage,
 			TAuditStorageServiceName,
@@ -773,8 +724,6 @@ export class EndpointBuilder<
 		TServices,
 		TLogger,
 		TSession,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuditStorage,
 		TAuditStorageServiceName,
 		TAuditAction,
@@ -821,7 +770,6 @@ export class EndpointBuilder<
 			status: this._status,
 			getSession: this._getSession,
 			rateLimit: this._rateLimit,
-			publisherService: this._publisher,
 			events: this._events,
 			authorizer,
 			surface: this._surface,

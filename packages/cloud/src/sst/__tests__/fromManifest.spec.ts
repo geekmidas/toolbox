@@ -5,9 +5,11 @@ import { ObjectStorage } from '../aws/ObjectStorage';
 import { type ProvidesMismatch, UnknownDeclarationKind } from '../errors';
 import {
 	assertProvides,
+	PROVISIONED_ELSEWHERE,
 	type ProvisionedManifest,
 	provisionerFor,
 	resolveEdges,
+	subscribeConsumers,
 } from '../fromManifest';
 
 /**
@@ -335,5 +337,66 @@ describe('ExternalApi', () => {
 		expect(
 			resolveEnvKeys({ PayFast: { type: 'gkm:aws:ExternalApi' } }).sort(),
 		).toEqual(['PAY_FAST_CREDENTIALS', 'PAY_FAST_URL']);
+	});
+});
+
+describe('a queue’s one consumer', () => {
+	it('is subscribed from the handler the build wrote, linked to what it depends on', () => {
+		const consumed: { handler: string; link?: unknown[] }[] = [];
+		const uploads = { _id: 'Uploads', _type: 'sst.aws.Bucket' };
+		const provisioned = {
+			Uploads: uploads,
+			Emails: {
+				_id: 'Emails',
+				_type: 'sst.aws.Queue',
+				consume: (consumer: { handler: string; link?: unknown[] }) =>
+					consumed.push(consumer),
+			},
+		} as unknown as ProvisionedManifest;
+
+		subscribeConsumers(
+			{
+				Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+				Emails: {
+					kind: 'queue',
+					id: 'Emails',
+					provides: ['EMAILS_PUBLISHER_CONNECTION_STRING'],
+					worker: {
+						id: 'EmailsWorker',
+						handler: '.gkm/aws-lambda/queues/emails.handler',
+						dependencies: [{ target: 'Uploads', kind: 'objects' }],
+					},
+				},
+			} as never,
+			provisioned,
+		);
+
+		expect(consumed).toEqual([
+			{ handler: '.gkm/aws-lambda/queues/emails.handler', link: [uploads] },
+		]);
+	});
+
+	it('subscribes through SST, with the queue itself linked', async () => {
+		const { Queue } = await import('../aws/Queue');
+		const queue = new Queue({} as never, 'Emails');
+
+		queue.consume({ handler: 'emails.handler', link: [], batchSize: 5 });
+
+		const [{ subscriber, args }] = (
+			queue as unknown as { subscribed: { subscriber: any; args: unknown }[] }
+		).subscribed;
+		expect(subscriber.handler).toBe('emails.handler');
+		expect(subscriber.link).toEqual([queue]);
+		expect(args).toEqual({ batch: { size: 5 } });
+	});
+});
+
+describe('kinds provisioned elsewhere', () => {
+	it('skips a worker, which is a process rather than a resource', () => {
+		// A worker in the manifest used to throw UnknownDeclarationKind at synth,
+		// so any app with background work could not be deployed to AWS at all.
+		expect(PROVISIONED_ELSEWHERE.has('worker')).toBe(true);
+		expect(PROVISIONED_ELSEWHERE.has('mobile-app')).toBe(true);
+		expect(PROVISIONED_ELSEWHERE.has('queue')).toBe(false);
 	});
 });

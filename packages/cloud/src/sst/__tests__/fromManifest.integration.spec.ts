@@ -44,6 +44,12 @@ function manifest(): ConstructManifest {
 			id: 'Emails',
 			fifo: true,
 			provides: keys('Emails', 'queue', ['publisherConnectionString']),
+			// The queue's one consumer, as the build folds it in.
+			worker: {
+				id: 'EmailsWorker',
+				handler: '.gkm/aws-lambda/queues/emails.handler',
+				dependencies: [{ target: 'Uploads', kind: 'objects' }],
+			},
 		},
 		Users: {
 			kind: 'topic',
@@ -170,6 +176,27 @@ describe('fromManifest', () => {
 		expect(argsOf(provisioned.Emails)).toMatchObject({ fifo: true });
 		// The declared Postgres major, not whatever the default is that month.
 		expect(argsOf(provisioned.Orders)).toMatchObject({ vpc, version: '18' });
+	});
+
+	it('subscribes each queue’s one consumer, linked to the queue and what it reaches', () => {
+		vi.spyOn(console, 'log').mockImplementation(() => {});
+
+		const provisioned = fromManifest(stack, manifest(), overrides, {
+			cache: 'db',
+			email: 'smtp',
+		});
+		const { subscribed } = provisioned.Emails as unknown as {
+			subscribed: { subscriber: { handler: string; link: unknown[] } }[];
+		};
+
+		expect(subscribed).toHaveLength(1);
+		expect(subscribed[0]?.subscriber.handler).toBe(
+			'.gkm/aws-lambda/queues/emails.handler',
+		);
+		expect(subscribed[0]?.subscriber.link).toEqual([
+			provisioned.Emails,
+			provisioned.Uploads,
+		]);
 	});
 
 	it('builds the site against the addresses its edges resolve to', () => {

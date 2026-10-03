@@ -31,8 +31,7 @@ import { FunctionBuilder } from '../functions/FunctionBuilder';
 import { ObjectStorage } from '../object-storage';
 import { QueueBuilder } from '../queue/QueueBuilder';
 import { SubscriberBuilder } from '../subscribers/SubscriberBuilder';
-import { t } from '../topic';
-import { TopicBuilder } from '../topic/TopicBuilder';
+import { Topic } from '../topic';
 
 registerStorageDriver({
 	scheme: 's3:',
@@ -61,19 +60,6 @@ const loggerB = new ConsoleLogger({ which: 'b' });
 const schemaA = z.object({ a: z.string() });
 const schemaB = z.object({ b: z.string() });
 
-const publisherA = {
-	serviceName: 'pa' as const,
-	async register() {
-		return {};
-	},
-};
-const publisherB = {
-	serviceName: 'pb' as const,
-	async register() {
-		return {};
-	},
-};
-
 const auditA = {
 	serviceName: 'aa' as const,
 	async register() {
@@ -100,8 +86,21 @@ const dbB = {
 	},
 };
 
-const topicA = t.topic('alpha').events({ 'a.one': z.object({}) });
-const topicB = t.topic('beta').events({ 'b.one': z.object({}) });
+const topicA = new Topic('alpha', { events: { 'a.one': z.object({}) } });
+const topicB = new Topic('beta', { events: { 'b.one': z.object({}) } });
+
+/** `.event()` to one of the two topics; read back as the topics published to. */
+const eventField = {
+	name: 'event',
+	a: ['alpha'],
+	b: ['beta'],
+	set: (b: any, v: string[]) =>
+		v[0] === 'alpha'
+			? b.event(topicA, { type: 'a.one', payload: () => ({}) })
+			: b.event(topicB, { type: 'b.one', payload: () => ({}) }),
+	get: (built: { events: { topic: Service }[] }) =>
+		built.events.map((e) => e.topic.serviceName),
+};
 
 /** One field: how to set it, and how to read it back off what was built. */
 interface Field<B> {
@@ -209,13 +208,6 @@ reusable(
 			get: (f) => f.outputSchema,
 		},
 		{
-			name: 'publisher',
-			a: publisherA,
-			b: publisherB,
-			set: (b, v) => b.publisher(v),
-			get: (f) => f.publisherService,
-		},
-		{
 			name: 'auditor',
 			a: auditA,
 			b: auditB,
@@ -231,13 +223,7 @@ reusable(
 		},
 		// Accumulating, like services and dependsOn: each chain adds its own, so
 		// isolation means each holds only what it added — not that one holds more.
-		{
-			name: 'event',
-			a: ['ea'],
-			b: ['eb'],
-			set: (b, v) => b.event({ type: v[0] } as any),
-			get: (f) => f.events.map((e: any) => e.type),
-		},
+		eventField,
 	] as Field<any>[],
 );
 
@@ -302,13 +288,7 @@ reusable(
 			set: (b, v) => b.output(v),
 			get: (c) => c.outputSchema,
 		},
-		{
-			name: 'publisher',
-			a: publisherA,
-			b: publisherB,
-			set: (b, v) => b.publisher(v),
-			get: (c) => c.publisherService,
-		},
+		eventField,
 		{
 			name: 'database',
 			a: dbA,
@@ -417,13 +397,6 @@ reusable(
 			get: (s) => s.logger,
 		},
 		{
-			name: 'publisher',
-			a: publisherA,
-			b: publisherB,
-			set: (b, v) => b.publisher(v),
-			get: (s) => s.publisherService,
-		},
-		{
 			name: 'services',
 			a: ['a'],
 			b: ['b'],
@@ -436,33 +409,6 @@ reusable(
 			b: ['Emails'],
 			set: (b, v) => b.dependsOn([v[0] === 'Uploads' ? uploads : emails]),
 			get: (s) => s.constructs,
-		},
-	] as Field<any>[],
-);
-
-// Found last, and it had both bugs untouched: `t` is a module singleton that
-// mutated and reset, so a configured base lasted one topic and two chains off
-// one base shared an object. It is a builder like any other; it was simply
-// missed when the others were enumerated.
-reusable(
-	'TopicBuilder',
-	// `.events()` is the terminal call and needs a name, so the base carries one.
-	() => new TopicBuilder().topic('base'),
-	(b) => b.events({ 'a.one': z.object({}) }),
-	[
-		{
-			name: 'topic',
-			a: 'alpha',
-			b: 'beta',
-			set: (b, v) => b.topic(v),
-			get: (t) => t.name,
-		},
-		{
-			name: 'logger',
-			a: loggerA,
-			b: loggerB,
-			set: (b, v) => b.logger(v),
-			get: (t) => t.logger,
 		},
 	] as Field<any>[],
 );

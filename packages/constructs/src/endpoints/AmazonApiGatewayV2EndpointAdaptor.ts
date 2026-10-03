@@ -23,7 +23,6 @@ export class AmazonApiGatewayV2Endpoint<
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
 	TSession = unknown,
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
 > extends AmazonApiGatewayEndpoint<
 	AmazonApiGatewayV2EndpointHandler,
 	APIGatewayProxyEventV2,
@@ -33,8 +32,7 @@ export class AmazonApiGatewayV2Endpoint<
 	TOutSchema,
 	TServices,
 	TLogger,
-	TSession,
-	TEventPublisher
+	TSession
 > {
 	override getCookies(e: APIGatewayProxyEventV2): CookieFn {
 		return createApiGatewayCookies(
@@ -82,8 +80,7 @@ export class AmazonApiGatewayV2Endpoint<
 			TOutSchema,
 			TServices,
 			TLogger,
-			TSession,
-			TEventPublisher
+			TSession
 		>,
 		options: AmazonApiGatewayEndpointOptions = {},
 	) {

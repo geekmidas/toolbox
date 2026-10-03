@@ -24,8 +24,6 @@ export class TestFunctionAdaptor<
 	TOutSchema extends StandardSchemaV1 | undefined = undefined,
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TAuditStorage extends AuditStorage | undefined = undefined,
 	TAuditStorageServiceName extends string = string,
 	TDatabase = undefined,
@@ -40,8 +38,6 @@ export class TestFunctionAdaptor<
 		TOutSchema extends StandardSchemaV1 | undefined = undefined,
 		TServices extends Service[] = [],
 		TLogger extends Logger = Logger,
-		TEventPublisher extends EventPublisher<any> | undefined = undefined,
-		TEventPublisherServiceName extends string = string,
 		TAuditStorage extends AuditStorage | undefined = undefined,
 		TAuditStorageServiceName extends string = string,
 		TDatabase = undefined,
@@ -56,8 +52,6 @@ export class TestFunctionAdaptor<
 			TServices,
 			TLogger,
 			TOutSchema,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			TDatabase,
@@ -75,8 +69,6 @@ export class TestFunctionAdaptor<
 			TServices,
 			TLogger,
 			TOutSchema,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			TDatabase,
@@ -90,14 +82,7 @@ export class TestFunctionAdaptor<
 	) {}
 
 	async invoke(
-		ctx: TestFunctionRequest<
-			TInput,
-			TServices,
-			TEventPublisher,
-			TEventPublisherServiceName,
-			TDatabase,
-			TAuditAction
-		>,
+		ctx: TestFunctionRequest<TInput, TServices, TDatabase, TAuditAction>,
 	): Promise<InferStandardSchema<TOutSchema>> {
 		// Parse input if schema is provided
 
@@ -183,14 +168,14 @@ export class TestFunctionAdaptor<
 				}
 			}
 
-			// Register publisher service if provided in context
-
+			// A topic the test handed in as a service — a recorder — is published
+			// to directly, as `TestEndpointAdaptor` does.
 			await publishEvents(
 				logger,
 				this.serviceDiscovery,
 				this.fn.events,
 				output,
-				this.fn.publisherService,
+				services as Record<string, unknown>,
 			);
 
 			return output;
@@ -201,8 +186,6 @@ export class TestFunctionAdaptor<
 export type TestFunctionRequest<
 	TInput extends ComposableStandardSchema | undefined = undefined,
 	TServices extends Service[] = [],
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TDatabase = undefined,
 	TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
 		string,
@@ -211,7 +194,6 @@ export type TestFunctionRequest<
 > = {
 	input: InferComposableStandardSchema<TInput>;
 	services: ServiceRecord<TServices>;
-	publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
 	db?: TDatabase;
 	auditor?: Auditor<TAuditAction>;
 } & InferComposableStandardSchema<{ input: TInput }>;

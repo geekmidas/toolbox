@@ -11,7 +11,8 @@ import type { StackType } from '../Stack';
  * work queue. Link it to a producer and the runtime resolves `<NAME>_URL`,
  * `<NAME>_ARN`, and a `<NAME>_PUBLISHER_CONNECTION_STRING` (`sqs://?queueUrl=…`)
  * that `@geekmidas/events`'s `Publisher.fromConnectionString` consumes. Its
- * single consumer is wired by `QueueSubscriber`.
+ * one consumer — the handler the queue was declared with — is subscribed by
+ * {@link Queue.consume}.
  *
  * SST's native `Queue` link exposes only `url`, so `getSSTLink` is overridden to
  * also expose `arn` (what the resolver needs). `QueueProps` extends
@@ -73,6 +74,25 @@ export class Queue<
 		};
 	}
 
+	/**
+	 * Subscribe the queue's one consumer: a Lambda running `handler`, linked to
+	 * what the consumer depends on and to this queue itself.
+	 *
+	 * A queue has exactly one consumer, so this is called once per queue — by
+	 * `fromManifest`, from the handler the build wrote for it.
+	 */
+	consume(consumer: QueueConsumer) {
+		return this.subscribe(
+			{
+				handler: consumer.handler,
+				link: [this, ...(consumer.link ?? [])],
+				runtime: 'nodejs24.x',
+				...(consumer.timeout ? { timeout: consumer.timeout } : {}),
+			},
+			consumer.batchSize ? { batch: { size: consumer.batchSize } } : {},
+		);
+	}
+
 	override getSSTLink() {
 		const link = super.getSSTLink();
 		return {
@@ -80,6 +100,16 @@ export class Queue<
 			properties: { ...link.properties, arn: this.arn, ...this.provides() },
 		};
 	}
+}
+
+/** The queue's one consumer, as {@link Queue.consume} subscribes it. */
+export interface QueueConsumer {
+	/** The built handler — `.gkm/aws-lambda/queues/emails.handler`. */
+	handler: string;
+	/** What the consumer depends on; the queue itself is always linked. */
+	link?: unknown[];
+	timeout?: `${number} seconds` | `${number} minutes`;
+	batchSize?: number;
 }
 
 export interface QueueProps extends sst.aws.QueueArgs {

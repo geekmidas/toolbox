@@ -140,29 +140,12 @@ export function corsFor(surface: BuildContext['surface']): {
 }
 
 export class EndpointGenerator extends ConstructGenerator<
-	Endpoint<
-		any,
-		any,
-		any,
-		any,
-		any,
-		any,
-		any,
-		any,
-		any,
-		any,
-		any,
-		any,
-		any,
-		any
-	>,
+	Endpoint<any, any, any, any, any, any, any, any, any, any, any, any>,
 	RouteInfo[]
 > {
 	isConstruct(
 		value: any,
 	): value is Endpoint<
-		any,
-		any,
 		any,
 		any,
 		any,
@@ -182,22 +165,7 @@ export class EndpointGenerator extends ConstructGenerator<
 	async build(
 		context: BuildContext,
 		constructs: GeneratedConstruct<
-			Endpoint<
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any
-			>
+			Endpoint<any, any, any, any, any, any, any, any, any, any, any, any>
 		>[],
 		outputDir: string,
 		options?: GeneratorOptions,
@@ -318,8 +286,6 @@ export class EndpointGenerator extends ConstructGenerator<
 			any,
 			any,
 			any,
-			any,
-			any,
 			any
 		>,
 		context: BuildContext,
@@ -361,22 +327,7 @@ export class EndpointGenerator extends ConstructGenerator<
 	private async generateEndpointsFile(
 		outputDir: string,
 		endpoints: GeneratedConstruct<
-			Endpoint<
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any
-			>
+			Endpoint<any, any, any, any, any, any, any, any, any, any, any, any>
 		>[],
 		context: BuildContext,
 	): Promise<string> {
@@ -425,7 +376,7 @@ import { ServiceDiscovery } from '@geekmidas/services';
 import type { Hono } from 'hono';
 ${endpointImports}
 
-export const endpoints: Endpoint<any, any, any, any, any, any, any, any, any, any, any, any, any, any>[] = [
+export const endpoints: Endpoint<any, any, any, any, any, any, any, any, any, any, any, any>[] = [
   ${allExportNames.join(',\n  ')}
 ];
 
@@ -472,22 +423,7 @@ export async function setupEndpoints(
 	private async generateOptimizedEndpointsFile(
 		endpointsPath: string,
 		endpoints: GeneratedConstruct<
-			Endpoint<
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any,
-				any
-			>
+			Endpoint<any, any, any, any, any, any, any, any, any, any, any, any>
 		>[],
 		_endpointImports: string,
 		_allExportNames: string[],

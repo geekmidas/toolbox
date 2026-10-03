@@ -16,7 +16,6 @@ import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceRecord } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { Construct, ConstructType } from '../Construct';
-import { derivedFrom } from '../construct-interface';
 
 /**
  * The wire message a queue carries: `{ type: <queue name>, payload: <message> }`.
@@ -32,18 +31,19 @@ export type QueueMessage<
 /**
  * A queue worker — a point-to-point SQS-style queue and its single consumer.
  * Unlike a `Subscriber` (topic fan-out, filtered by `subscribedEvents`), a queue
- * drains every message of its one `message` type. Build one with `q` (see
- * `QueueBuilder`); `gkm build` discovers it into the manifest's `queues` field.
+ * drains every message of its one `message` type. Build one from the worker
+ * that runs it — `worker.queue('Emails').message(schema).handle(…)` — and
+ * `gkm build` discovers it into the manifest's `queues` field.
  *
- * The producer side is {@link Queue.publisher} — a ready-to-inject `Service`
- * that any endpoint/function drops into `.services([...])` to send messages.
+ * Producers send to it by depending on it: `.dependsOn([emails])` makes
+ * `services.emails` the publisher.
  */
 export class Queue<
 	TName extends string = string,
 	TMessage extends StandardSchemaV1 = StandardSchemaV1,
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
-> extends Construct<TLogger, string, undefined, undefined, TServices> {
+> extends Construct<TLogger, undefined, TServices> {
 	__IS_QUEUE__ = true;
 
 	static isQueue(
@@ -67,9 +67,23 @@ export class Queue<
 	readonly id: string;
 
 	/**
-	 * The producer's env key. Read by both {@link declare} and
-	 * {@link publisher}, so what the target publishes and what the producer
-	 * looks up cannot drift.
+	 * The queue as a dependency — what `.dependsOn([emails])` dissolves into,
+	 * reachable as `services.emails`.
+	 *
+	 * The producer: the queue's one consumer is the handler it was built with,
+	 * so the only thing another construct can want from a queue is to send to
+	 * it. It reads `<NAME>_PUBLISHER_CONNECTION_STRING` and picks the transport
+	 * from its protocol — `pgboss://` locally, `sqs://` deployed. A field
+	 * assigned once, not a getter: services are cached by object identity.
+	 */
+	readonly service: Service<
+		Uncapitalize<TName>,
+		EventPublisher<QueueMessage<TName, TMessage>>
+	>;
+
+	/**
+	 * The producer's env key. Read by both {@link declare} and the service, so
+	 * what the target publishes and what the producer looks up cannot drift.
 	 */
 	private readonly connectionKey: string;
 
@@ -96,7 +110,6 @@ export class Queue<
 			services,
 			[],
 			undefined,
-			undefined,
 			timeout,
 			undefined, // memorySize
 			undefined, // auditorStorageService
@@ -105,6 +118,20 @@ export class Queue<
 
 		this.id = canonicalId(name);
 		this.connectionKey = provideKey(this.id, 'publisherConnectionString');
+
+		const envVar = this.connectionKey;
+		this.service = {
+			serviceName: serviceKey(this.id) as Uncapitalize<TName>,
+			async register({ envParser }) {
+				const { connectionString } = envParser
+					.create((get) => ({ connectionString: get(envVar).string() }))
+					.parse();
+
+				return Publisher.fromConnectionString<QueueMessage<TName, TMessage>>(
+					connectionString as EventPublisherConnectionString,
+				);
+			},
+		};
 	}
 
 	/**
@@ -138,64 +165,6 @@ export class Queue<
 				},
 			},
 		];
-	}
-
-	/**
-	 * The producer side — a `Service` exposing an `EventPublisher` typed to this
-	 * queue's message. Inject it via `.services([queue.publisher])`; the handler
-	 * then calls `services.<name>Publisher.publish([{ type, payload }])`.
-	 *
-	 * It reads `<NAME>_PUBLISHER_CONNECTION_STRING` and builds the transport from
-	 * the URL protocol — `pgboss://` locally, `sqs://` deployed — so the same
-	 * code publishes to Postgres in dev and SQS in prod. Because it's a `Service`,
-	 * `Construct.getEnvironment()` sniffs it, so the env requirement flows into
-	 * the manifest and infra links exactly this queue with least privilege.
-	 */
-	/**
-	 * The queue as a dependency — what `.dependsOn([emailsQueue])` dissolves
-	 * into, reachable as `services.emails`.
-	 *
-	 * It is the producer: a consumer is the worker written right here, so the
-	 * only thing another construct can want from a queue is the ability to send
-	 * to it. {@link publisher} is the same service under its older
-	 * `<name>Publisher` key, kept for `.services([queue.publisher])`.
-	 */
-	get service(): Service<
-		Uncapitalize<TName>,
-		EventPublisher<QueueMessage<TName, TMessage>>
-	> {
-		const { register } = this.publisher;
-
-		return {
-			serviceName: serviceKey(this.id) as Uncapitalize<TName>,
-			register,
-		};
-	}
-
-	get publisher(): Service<
-		`${TName}Publisher`,
-		EventPublisher<QueueMessage<TName, TMessage>>
-	> {
-		const envVar = this.connectionKey;
-		// Marked with this construct, so whatever it is injected into records an
-		// edge to it — and is given this construct's connection string.
-		return derivedFrom(
-			{
-				serviceName: `${this.name}Publisher`,
-				async register({ envParser }) {
-					const { connectionString } = envParser
-						.create((get) => ({
-							connectionString: get(envVar).string(),
-						}))
-						.parse();
-
-					return Publisher.fromConnectionString<QueueMessage<TName, TMessage>>(
-						connectionString as EventPublisherConnectionString,
-					);
-				},
-			},
-			this,
-		);
 	}
 }
 

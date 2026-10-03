@@ -286,8 +286,8 @@ Everything below is real today. `import { X } from '@geekmidas/constructs/…'`:
 | `Credential` | `/credential` | the parsed, validated value | injected secret | secret manager |
 | `ExternalApi` | `/external-api` | whatever its `client` builds | the provider, or its fake with `--fake` | the provider's URL |
 | `Email` | `/email` | a sender, typed by your templates | Mailpit | SES, Resend, or SMTP |
-| `Topic` | `/topic` | `topic.publisher` — a typed publisher | pg-boss / RabbitMQ / LocalStack | SNS |
-| `Queue` | `/queue` | `send()` | pg-boss / RabbitMQ / LocalStack | SQS |
+| `Topic` | `/topic` | a publisher typed to its events, via `.event(topic, …)` or `.dependsOn([topic])` | pg-boss / RabbitMQ / LocalStack | SNS |
+| `Queue` | `worker.queue(…)` | a publisher typed to its message, via `.dependsOn([queue])` | pg-boss / RabbitMQ / LocalStack | SQS |
 | `RestApi` | `/rest-api` | — (a surface) | the dev server | API Gateway |
 | `StaticSite` | `/site` | — (a surface) | the dev server | CDN |
 | `BetterAuth` | `/auth` | the auth server | container | provisioned |
@@ -369,19 +369,26 @@ permission on its topic at all — the subscription is created at deploy, and at
 runtime it only reads its own queue.
 
 ```typescript
-// A topic: the event contract, and a derived typed publisher
+// A topic: the event contract. Its publisher is its service.
 import { Topic } from '@geekmidas/constructs/topic';
 
-export const users = new Topic('users', {
-  'user.created': z.object({ userId: z.string(), email: z.email() }),
+export const users = new Topic('Users', {
+  events: {
+    'user.created': z.object({ userId: z.string(), email: z.email() }),
+  },
 });
 ```
 
 ```typescript
-// A subscriber — bound to the topic, granted nothing on it
-import { s } from '@geekmidas/constructs/subscribers';
+// A worker: the process with no port that runs everything below
+import { Worker } from '@geekmidas/constructs/worker';
 
-export const sendWelcome = s
+export const worker = new Worker('Jobs', { logger }).database(database);
+```
+
+```typescript
+// A subscriber — bound to the topic, granted nothing on it
+export const sendWelcome = worker
   .topic(users)
   .subscribe(['user.created'])
   .dependsOn([email])
@@ -389,29 +396,30 @@ export const sendWelcome = s
 ```
 
 ```typescript
-// A queue worker — one queue, one consumer, one construct
-import { q } from '@geekmidas/constructs/queue';
-
-export const processOrder = q
-  .queue('orders')
+// A queue and its one consumer — one construct
+export const orders = worker
+  .queue('Orders')
   .message(z.object({ orderId: z.string() }))
   .dependsOn([database])
-  .handle(async ({ message, services }) => { /* … */ });
+  .handle(async ({ messages, services }) => { /* … */ });
 ```
 
 ```typescript
 // A schedule
-import { c } from '@geekmidas/constructs/crons';
-
-export const dailyReport = c
-  .schedule('cron(0 6 * * *)')   // or rate(1 day)
+export const dailyReport = worker
+  .cron('cron(0 6 * * *)')   // or rate(1 day)
   .dependsOn([database, uploads])
   .handle(async ({ services }) => { /* … */ });
 ```
 
-Publishing is the only side that needs the topic's connection string, so only
-the producer gets it — `.publisher(users.publisher)` on the factory, or
-`.dependsOn([users])` where a handler publishes directly.
+Publishing is the only side that needs a connection string, so only the
+producer gets one. An endpoint, function or cron publishes to a topic with
+`.event(users, { type: 'user.created', payload: (output) => ({ … }) })`, sent
+once its handler has succeeded; name several topics and each event goes
+through its own topic's publisher. `.event()` also puts `services.users` in the
+handler, for an event the handler decides on itself. Sending to a queue is
+depending on it: `.dependsOn([orders])`, then
+`services.orders.publish([{ type: 'Orders', payload }])`.
 
 ---
 
@@ -502,21 +510,25 @@ AWS is outstanding. The Dokploy/server path is the one to use today.
 
 ## Coming From v9
 
-Nothing stops working. Four things are on notice, all warn-and-honour:
+Each v9 shape has one replacement:
 
-| Deprecated | Replacement |
+| v9 | v10 |
 |---|---|
+| `e.post(…)`, `api.endpoints.post(…)` | `api.post(…)`, or a branch: `api.database(db).post(…)` |
 | `.services([dbService])` with a hand-written `Service` | `.dependsOn([construct])` |
+| `.publisher(service)` + `.event({ type, payload })` | `.event(topic, { type, payload })` |
 | Per-kind globs (`routes`, `crons`, `subscribers`) | one `constructs` glob |
-| `q.queue(name)` | `new Queue(name)` |
+| `q.queue(name)`, `s.topic(…)`, `c.schedule(…)` | `worker.queue(name)`, `worker.topic(…)`, `worker.cron(…)` |
 | Workspace `services: { … }` | the constructs that imply them; backends follow the deploy target |
 
 The `services` block is gone entirely. Whether a resource exists is its
 construct; which backend serves it follows the deploy target; an image pin is
 your own `docker-compose.yml`.
 
-`export const e` still works and gains a surface named `api`, which matches the
-current single-gateway behaviour.
+`e` and the other free-standing builders are gone in v10: endpoints come from a
+`RestApi`, and crons, subscribers, queues and functions from a `Worker`.
+`.publisher(...)` went with them — a construct publishes to a topic with
+`.event(topic, …)`.
 
 ---
 

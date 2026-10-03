@@ -1,7 +1,9 @@
 import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
-import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
-import type { ComposableStandardSchema } from '@geekmidas/schema';
+import type {
+	ComposableStandardSchema,
+	InferStandardSchema,
+} from '@geekmidas/schema';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
@@ -9,13 +11,14 @@ import { ConstructType } from '../Construct';
 import { cloneWith } from '../clone';
 import {
 	type Consumable,
-	edgesWith,
 	idsOf,
 	isConsumable,
 	type ServicesOf,
 	serviceOf,
 	servicesOf,
 } from '../construct-interface';
+import type { EventFor } from '../publisher';
+import type { Topic } from '../topic/Topic';
 import { BaseFunctionBuilder } from './BaseFunctionBuilder';
 import { Function, type FunctionHandler } from './Function';
 
@@ -24,8 +27,6 @@ export class FunctionBuilder<
 	OutSchema extends StandardSchemaV1 | undefined = undefined,
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TAuditStorage extends AuditStorage | undefined = undefined,
 	TAuditStorageServiceName extends string = string,
 	TDatabase = undefined,
@@ -39,8 +40,6 @@ export class FunctionBuilder<
 	OutSchema,
 	TServices,
 	TLogger,
-	TEventPublisher,
-	TEventPublisherServiceName,
 	TAuditStorage,
 	TAuditStorageServiceName,
 	TDatabase,
@@ -67,8 +66,6 @@ export class FunctionBuilder<
 		T,
 		TServices,
 		TLogger,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuditStorage,
 		TAuditStorageServiceName,
 		TDatabase,
@@ -82,8 +79,6 @@ export class FunctionBuilder<
 			T,
 			TServices,
 			TLogger,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			TDatabase,
@@ -99,8 +94,6 @@ export class FunctionBuilder<
 		OutSchema,
 		TServices,
 		TLogger,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuditStorage,
 		TAuditStorageServiceName,
 		TDatabase,
@@ -114,8 +107,6 @@ export class FunctionBuilder<
 			OutSchema,
 			TServices,
 			TLogger,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			TDatabase,
@@ -142,8 +133,6 @@ export class FunctionBuilder<
 		OutSchema,
 		[...TServices, ...ServicesOf<T>],
 		TLogger,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuditStorage,
 		TAuditStorageServiceName,
 		TDatabase,
@@ -170,8 +159,6 @@ export class FunctionBuilder<
 			OutSchema,
 			[...TServices, ...ServicesOf<T>],
 			TLogger,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			TDatabase,
@@ -187,8 +174,6 @@ export class FunctionBuilder<
 		OutSchema,
 		[...TServices, ...T],
 		TLogger,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuditStorage,
 		TAuditStorageServiceName,
 		TDatabase,
@@ -205,8 +190,6 @@ export class FunctionBuilder<
 			OutSchema,
 			[...TServices, ...T],
 			TLogger,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			TDatabase,
@@ -222,8 +205,6 @@ export class FunctionBuilder<
 		OutSchema,
 		TServices,
 		T,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuditStorage,
 		TAuditStorageServiceName,
 		TDatabase,
@@ -237,8 +218,6 @@ export class FunctionBuilder<
 			OutSchema,
 			TServices,
 			T,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			TDatabase,
@@ -247,35 +226,31 @@ export class FunctionBuilder<
 		>;
 	}
 
-	override publisher<T extends EventPublisher<any>, TName extends string>(
-		publisher: Service<TName, T>,
+	/**
+	 * Publish `event` to `topic` once the function has succeeded — repeatable,
+	 * one call per event, to as many topics as it names. The topic becomes a
+	 * dependency as with `.dependsOn([topic])`, so `services.<topic>` is there
+	 * for events the handler decides on itself.
+	 */
+	event<TTopic extends Topic<any, any>>(
+		topic: TTopic,
+		event: EventFor<TTopic, InferStandardSchema<OutSchema>>,
 	): FunctionBuilder<
 		TInput,
 		OutSchema,
-		TServices,
+		[...TServices, TTopic['service']],
 		TLogger,
-		T,
-		TName,
 		TAuditStorage,
 		TAuditStorageServiceName,
 		TDatabase,
 		TDatabaseServiceName,
 		TAuditAction
 	> {
-		return cloneWith(this, {
-			// The topic a derived publisher stands for is an edge like `.dependsOn()`.
-			_constructs: edgesWith(publisher, this._constructs),
-			_publisher: publisher as unknown as Service<
-				TEventPublisherServiceName,
-				TEventPublisher
-			>,
-		}) as unknown as FunctionBuilder<
+		return this.withEvent(topic, event as never) as unknown as FunctionBuilder<
 			TInput,
 			OutSchema,
-			TServices,
+			[...TServices, TTopic['service']],
 			TLogger,
-			T,
-			TName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			TDatabase,
@@ -291,8 +266,6 @@ export class FunctionBuilder<
 		OutSchema,
 		TServices,
 		TLogger,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		T,
 		TName,
 		TDatabase,
@@ -309,8 +282,6 @@ export class FunctionBuilder<
 			OutSchema,
 			TServices,
 			TLogger,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			T,
 			TName,
 			TDatabase,
@@ -328,8 +299,6 @@ export class FunctionBuilder<
 		OutSchema,
 		TServices,
 		TLogger,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuditStorage,
 		TAuditStorageServiceName,
 		TDatabase,
@@ -341,8 +310,6 @@ export class FunctionBuilder<
 			OutSchema,
 			TServices,
 			TLogger,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			TDatabase,
@@ -362,8 +329,6 @@ export class FunctionBuilder<
 		OutSchema,
 		TServices,
 		TLogger,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuditStorage,
 		TAuditStorageServiceName,
 		T,
@@ -386,8 +351,6 @@ export class FunctionBuilder<
 			OutSchema,
 			TServices,
 			TLogger,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			T,
@@ -411,8 +374,6 @@ export class FunctionBuilder<
 		TServices,
 		TLogger,
 		OutSchema,
-		TEventPublisher,
-		TEventPublisherServiceName,
 		TAuditStorage,
 		TAuditStorageServiceName,
 		TDatabase,
@@ -436,7 +397,6 @@ export class FunctionBuilder<
 			this.outputSchema,
 			this._services,
 			this._logger,
-			this._publisher,
 			this._events,
 			this._memorySize,
 			this._auditorStorage,

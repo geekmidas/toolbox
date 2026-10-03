@@ -26,14 +26,17 @@ describe('discover — runnables', () => {
 			`import { KyselyDatabase } from '@geekmidas/constructs/database/kysely';
 import { ObjectStorage } from '@geekmidas/constructs/object-storage';
 import { RestApi } from '@geekmidas/constructs/rest-api';
-import { t } from '@geekmidas/constructs/topic';
+import { Topic } from '@geekmidas/constructs/topic';
 import { Worker } from '@geekmidas/constructs/worker';
+import { z } from 'zod';
 
 export const orders = new KyselyDatabase('Orders');
 export const uploads = new ObjectStorage('Uploads');
 export const api = new RestApi('Api', { path: '.', defaultAuthorizer: 'none' });
 export const jobs = new Worker('Jobs');
-export const users = t.topic('users').events({});
+export const users = new Topic('users', {
+	events: { 'user.created': z.object({ id: z.string() }) },
+});
 `,
 		);
 		await createTestFile(
@@ -42,13 +45,27 @@ export const users = t.topic('users').events({});
 			`import { api, orders, uploads, users } from '../constructs/index.js';
 
 // The database through the surface's branch, the bucket per endpoint, and the
-// topic through the publisher derived from it.
+// topic the endpoint publishes to.
 export const listOrders = api
 	.database(orders)
-	.publisher(users.publisher)
 	.get('/orders')
 	.dependsOn([uploads])
+	.event(users, { type: 'user.created', payload: () => ({ id: '1' }) })
 	.handle(async () => null);
+`,
+		);
+		await createTestFile(
+			dir,
+			'queues/receipts.ts',
+			`import { z } from 'zod';
+import { jobs, uploads } from '../constructs/index.js';
+
+// A queue and its consumer, run by the worker: what it reaches is the worker's.
+export const receipts = jobs
+	.queue('Receipts')
+	.message(z.object({ orderId: z.string() }))
+	.dependsOn([uploads])
+	.handle(async () => {});
 `,
 		);
 		await createTestFile(
@@ -72,7 +89,12 @@ export const nightly = jobs
 		const runnables: Record<string, string[]> = {};
 
 		const manifest = await discover({
-			patterns: ['constructs/**/*.ts', 'endpoints/**/*.ts', 'crons/**/*.ts'],
+			patterns: [
+				'constructs/**/*.ts',
+				'endpoints/**/*.ts',
+				'crons/**/*.ts',
+				'queues/**/*.ts',
+			],
 			cwd: dir,
 			runnables,
 		});
@@ -81,10 +103,14 @@ export const nightly = jobs
 		expect(manifest.Api).toMatchObject({ kind: 'rest-api', endpoints: [] });
 		expect(runnables).toEqual({
 			// `api.database(orders)` is an edge like `.dependsOn()`, and so is
-			// `.publisher(users.publisher)`: without it the API's container was
-			// composed without `USERS_PUBLISHER_CONNECTION_STRING`.
-			Api: ['Orders', 'Users', 'Uploads'],
-			Jobs: ['Orders'],
+			// `.event(users, …)`: without it the API's container was composed
+			// without `USERS_PUBLISHER_CONNECTION_STRING`.
+			Api: ['Orders', 'Uploads', 'Users'],
+			// The queue's consumer runs in the worker, so its bucket is the worker's
+			// too — a queue is a declaration *and* a runnable.
+			Jobs: expect.arrayContaining(['Orders', 'Uploads']),
 		});
+		expect(runnables.Jobs).toHaveLength(2);
+		expect(manifest.Receipts).toMatchObject({ kind: 'queue' });
 	});
 });

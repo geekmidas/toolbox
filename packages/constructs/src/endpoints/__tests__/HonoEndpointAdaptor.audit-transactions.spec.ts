@@ -204,7 +204,6 @@ describe('HonoEndpoint Audit Transactions', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits,
 			});
@@ -271,7 +270,6 @@ describe('HonoEndpoint Audit Transactions', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits,
 			});
@@ -342,7 +340,6 @@ describe('HonoEndpoint Audit Transactions', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits,
 			});
@@ -412,7 +409,6 @@ describe('HonoEndpoint Audit Transactions', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits,
 			});
@@ -500,7 +496,6 @@ describe('HonoEndpoint Audit Transactions', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits,
 			});
@@ -588,7 +583,6 @@ describe('HonoEndpoint Audit Transactions', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits: [],
 			});
@@ -674,7 +668,6 @@ describe('HonoEndpoint Audit Transactions', () => {
 				authorize: undefined,
 				description: undefined,
 				events: [],
-				publisherService: undefined,
 				auditorStorageService: auditStorageService,
 				audits,
 			});

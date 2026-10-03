@@ -1,6 +1,7 @@
 import { NotFoundError } from '@geekmidas/errors';
 import { auth } from '@kitchen-sink/constructs/auth.js';
 import { sessions } from '@kitchen-sink/constructs/cache.js';
+import { users } from '@kitchen-sink/constructs/topics.js';
 import { z } from 'zod';
 import { emailsQueue } from '../queues/emails.js';
 import { router } from './router.js';
@@ -53,16 +54,19 @@ export const listUsers = router
 /**
  * Create a user — the cross-construct centerpiece. A single request:
  *  1. inserts the row (DB service),
- *  2. publishes `user.created` to the **topic** (declarative `.event(...)`),
- *     which the `userEvents` subscriber fans out on,
- *  3. enqueues a welcome email on the **queue** (point-to-point) via the
- *     queue's auto-publisher, which the `emails` worker drains,
+ *  2. publishes `user.created` to the **topic** (`.event(users, …)`), which
+ *     the `userEvents` subscriber fans out on,
+ *  3. enqueues a welcome email on the **queue** (point-to-point) through
+ *     `services.emails`, which the queue's one consumer drains,
  *  4. records an audit entry,
  *  5. invalidates the list cache.
  */
 export const createUser = router
 	.post('/users')
-	.dependsOn([sessions])
+	// The queue is a dependency like the cache: `services.emails` is its
+	// publisher, and its connection string (EMAILS_PUBLISHER_CONNECTION_STRING)
+	// is declared by the queue construct and resolved by the target.
+	.dependsOn([sessions, emailsQueue])
 	.body(
 		z.object({
 			name: z.string().min(1),
@@ -70,13 +74,8 @@ export const createUser = router
 		}),
 	)
 	.output(UserSchema)
-	// Queue producer — the queue derives its own publisher, so the only thing
-	// written here is which queue. Its connection string
-	// (EMAILS_PUBLISHER_CONNECTION_STRING) is declared by the queue construct and
-	// resolved by the target, never by this file.
-	.services([emailsQueue.publisher])
-	// Topic fan-out — delivered through the router's topic publisher.
-	.event({
+	// Topic fan-out — published to `users` once the handler has succeeded.
+	.event(users, {
 		type: 'user.created',
 		payload: (r) => ({ userId: r.id, email: r.email, name: r.name }),
 	})
@@ -88,7 +87,7 @@ export const createUser = router
 			.executeTakeFirstOrThrow();
 
 		// Point-to-point: enqueue the welcome email for the single worker.
-		await services.emailsPublisher.publish([
+		await services.emails.publish([
 			{
 				type: 'emails',
 				payload: {
@@ -166,7 +165,7 @@ export const updateMe = router
 	.dependsOn([auth, sessions])
 	.body(z.object({ name: z.string().min(1) }))
 	.output(UserSchema)
-	.event({
+	.event(users, {
 		type: 'user.updated',
 		payload: (r) => ({ userId: r.id, changes: ['name'] }),
 	})

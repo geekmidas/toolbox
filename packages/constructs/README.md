@@ -33,14 +33,13 @@ import { RestApi } from '@geekmidas/constructs/rest-api';
 // returns. There is no free-standing `e` — an endpoint belongs to a surface.
 import { EndpointBuilder, EndpointFactory } from '@geekmidas/constructs/endpoints';
 
-// Functions
-import { f, FunctionBuilder } from '@geekmidas/constructs/functions';
+// The process with no port. Crons, topic subscribers, queues and functions
+// are built from it — `worker.cron(…)`, `worker.topic(…)`, `worker.queue(…)`,
+// `worker.input(…)` — and carry its logger.
+import { Worker } from '@geekmidas/constructs/worker';
 
-// Crons
-import { c, CronBuilder } from '@geekmidas/constructs/crons';
-
-// Subscribers
-import { s, SubscriberBuilder } from '@geekmidas/constructs/subscribers';
+// A declared event contract. Its publisher is its `service`.
+import { Topic } from '@geekmidas/constructs/topic';
 ```
 
 ## Quick Start
@@ -126,15 +125,31 @@ export const searchUsers = api
   });
 ```
 
-### Cloud Functions
+### The Worker
 
-Create serverless functions with input/output validation:
+Everything that is not an HTTP route is built from a `Worker`: the process
+that runs a schedule, drains a queue or consumes a topic. It takes no
+authorizer, because nothing reaches it from outside.
 
 ```typescript
-import { f } from '@geekmidas/constructs/functions';
+// constructs/worker.ts
+import { Worker } from '@geekmidas/constructs/worker';
+import { database } from './database';
+import { logger } from './logger';
+
+// `.database(…)` is where a server target keeps cron schedules.
+export const worker = new Worker('Jobs', { logger }).database(database);
+```
+
+### Cloud Functions
+
+Create functions with input/output validation:
+
+```typescript
+import { worker } from '../constructs/worker';
 import { z } from 'zod';
 
-export const processOrder = f
+export const processOrder = worker
   .input(z.object({
     orderId: z.string(),
     items: z.array(z.object({
@@ -145,13 +160,12 @@ export const processOrder = f
   .output(z.object({
     orderId: z.string(),
     status: z.enum(['processing', 'completed', 'failed']),
-    processedAt: z.string().datetime()
+    processedAt: z.iso.datetime()
   }))
   .timeout(300000) // 5 minutes
   .handle(async ({ input, logger }) => {
     logger.info(`Processing order ${input.orderId}`);
 
-    // Process order logic
     for (const item of input.items) {
       logger.info(`Processing item ${item.id}, quantity: ${item.quantity}`);
     }
@@ -166,87 +180,99 @@ export const processOrder = f
 
 ### Scheduled Tasks (Crons)
 
-Define cron jobs with schedules:
-
 ```typescript
-import { cron } from '@geekmidas/constructs/crons';
+import { worker } from '../constructs/worker';
 
 // Daily report at 9 AM UTC
-export const dailyReport = cron
-  .schedule('cron(0 9 * * ? *)')
+export const dailyReport = worker
+  .cron('cron(0 9 * * ? *)')
   .timeout(600000) // 10 minutes
   .handle(async ({ logger }) => {
-    logger.info('Generating daily report');
-
-    const reportDate = new Date().toISOString().split('T')[0];
     const reportData = {
-      date: reportDate,
+      date: new Date().toISOString().split('T')[0],
       totalOrders: 150,
-      totalRevenue: 12500.00
     };
 
-    logger.info('Daily report generated', reportData);
+    logger.info(reportData, 'Daily report generated');
     return reportData;
   });
 
 // Hourly cleanup
-export const hourlyCleanup = cron
-  .schedule('rate(1 hour)')
-  .timeout(300000) // 5 minutes
-  .handle(async ({ logger }) => {
-    logger.info('Running hourly cleanup');
+export const hourlyCleanup = worker
+  .cron('rate(1 hour)')
+  .dependsOn([database])
+  .handle(async ({ services, logger }) => {
+    const result = await services.database
+      .deleteFrom('sessions')
+      .where('expires_at', '<', new Date())
+      .executeTakeFirst();
 
-    const itemsCleaned = 42;
-    logger.info(`Cleaned ${itemsCleaned} items`);
-
-    return { itemsCleaned };
+    logger.info({ deleted: Number(result.numDeletedRows) }, 'Cleaned up');
   });
 ```
 
-### Event Subscribers
+On AWS a cron is an EventBridge rule; on a server the worker schedules it in
+the database it was given.
 
-Handle events with type-safe message processing:
+### Topics and Subscribers
+
+A topic declares the event contract once. A subscriber binds to it from the
+worker and is typed by it:
 
 ```typescript
-import { SubscriberBuilder } from '@geekmidas/constructs/subscribers';
+// constructs/topics.ts
+import { Topic } from '@geekmidas/constructs/topic';
 import { z } from 'zod';
 
-export const userEventsSubscriber = new SubscriberBuilder()
-  .subscribe(['user.created', 'user.updated', 'user.deleted'])
-  .timeout(30000)
-  .output(z.object({
-    processed: z.number(),
-    success: z.boolean()
-  }))
+export const users = new Topic('Users', {
+  events: {
+    'user.created': z.object({ userId: z.string(), email: z.email() }),
+    'user.updated': z.object({ userId: z.string(), changes: z.array(z.string()) }),
+  },
+});
+
+// subscribers/userEvents.ts
+export const userEventsSubscriber = worker
+  .topic(users)
+  .subscribe(['user.created', 'user.updated'])
   .handle(async ({ events, logger }) => {
-    logger.info(
-      { eventCount: events.length },
-      'Processing user events'
-    );
-
     for (const event of events) {
-      try {
-        switch (event.type) {
-          case 'user.created':
-            logger.info({ userId: event.data.userId }, 'User created');
-            break;
-          case 'user.updated':
-            logger.info({ userId: event.data.userId }, 'User updated');
-            break;
-          case 'user.deleted':
-            logger.info({ userId: event.data.userId }, 'User deleted');
-            break;
-        }
-      } catch (error) {
-        logger.error({ error, event }, 'Failed to process event');
-        throw error;
-      }
+      // event.type narrows event.payload to that event's schema
+      logger.info({ type: event.type, userId: event.payload.userId }, 'User event');
     }
+  });
+```
 
-    return {
-      processed: events.length,
-      success: true
-    };
+A subscriber is bound, not handed a publisher. One that emits follow-ups
+depends on the topic it emits to: `.dependsOn([notifications])`.
+
+### Queues
+
+A queue and its one consumer are one construct. Producers send by depending on
+it:
+
+```typescript
+// queues/emails.ts
+export const emails = worker
+  .queue('Emails')
+  .message(z.object({ to: z.email(), template: z.enum(['welcome']) }))
+  .dependsOn([mail])
+  .handle(async ({ messages, services }) => {
+    for (const { to, template } of messages) {
+      await services.mail.sendTemplate(template, { to, subject: 'Welcome', props: {} });
+    }
+  });
+
+// endpoints/invites.ts
+export const invite = api
+  .post('/invites')
+  .body(z.object({ email: z.email() }))
+  .dependsOn([emails])
+  .handle(async ({ body, services }) => {
+    // `type` is the queue's name exactly as written
+    await services.emails.publish([
+      { type: 'Emails', payload: { to: body.email, template: 'welcome' } },
+    ]);
   });
 ```
 
@@ -344,98 +370,68 @@ export const getHealth = router
   .handle(async () => ({ status: 'ok' }));
 ```
 
-### Service Discovery
+### Dependencies
 
-Inject services into your constructs:
+`.dependsOn([...])` takes constructs. Each one's client lands in the handler's
+`services` under the construct's own id, and the edge is what the manifest
+records — so the environment, the runtime client and the cloud access all come
+from the one line:
 
 ```typescript
 import { api } from '../constructs/api';
-import type { Service } from '@geekmidas/services';
-import type { EnvironmentParser } from '@geekmidas/envkit';
-import { Kysely } from 'kysely';
+import { database } from '../constructs/database';
 import { z } from 'zod';
 
-// Define a database service
-const databaseService = {
-  serviceName: 'database' as const,
-  async register(envParser: EnvironmentParser<{}>) {
-    const config = envParser.create((get) => ({
-      url: get('DATABASE_URL').string()
-    })).parse();
-
-    const db = new Kysely({ /* config */ });
-    return db;
-  }
-} satisfies Service<'database', Kysely<Database>>;
-
-// Use service in endpoint
 export const getUserFromDb = api
   .get('/users/:id')
   .params(z.object({ id: z.string() }))
-  .services([databaseService])
+  .dependsOn([database])
   .handle(async ({ params, services }) => {
-    // services.database is fully typed
-    const user = await services.database
+    // services.database is a Kysely client typed by the construct's schema
+    return services.database
       .selectFrom('users')
       .where('id', '=', params.id)
       .selectAll()
       .executeTakeFirst();
-
-    return user;
   });
 ```
+
+A hand-written `Service` still works through `.services()` on every builder,
+for code that has not moved to a construct yet. It records no edge, so a deploy
+target cannot grant it anything.
 
 ### Event Publishing
 
-Publish events from any construct:
+An endpoint, function or cron publishes to a topic with `.event(topic, …)`,
+once its handler has succeeded:
 
 ```typescript
-import { api } from '../constructs/api';
-import type { Service } from '@geekmidas/services';
-import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
-import { z } from 'zod';
+import { users } from '../constructs/topics';
 
-// Define event types
-type UserEvents =
-  | PublishableMessage<'user.created', { userId: string; email: string }>
-  | PublishableMessage<'user.updated', { userId: string }>;
-
-// Create event publisher service
-const userEventPublisher = {
-  serviceName: 'userEventPublisher' as const,
-  async register(envParser: EnvironmentParser<{}>) {
-    const config = envParser.create((get) => ({
-      publisherUrl: get('EVENT_PUBLISHER_URL').string()
-    })).parse();
-
-    const { Publisher } = await import('@geekmidas/events');
-    return Publisher.fromConnectionString<UserEvents>(config.publisherUrl);
-  }
-} satisfies Service<'userEventPublisher', EventPublisher<UserEvents>>;
-
-// Use in endpoint with event publishing
-export const createUser = api
+export const createUser = router
   .post('/users')
-  .body(z.object({
-    name: z.string(),
-    email: z.email()
-  }))
-  .publisher(userEventPublisher)
-  .event('user.created', (body, result) => ({
-    userId: result.id,
-    email: body.email
-  }))
-  .handle(async ({ body, publish }) => {
-    const user = {
-      id: crypto.randomUUID(),
-      name: body.name,
-      email: body.email
-    };
-
-    // Events are automatically published after successful execution
-    return user;
-  });
+  .body(z.object({ name: z.string(), email: z.email() }))
+  .output(z.object({ id: z.string(), name: z.string(), email: z.email() }))
+  .event(users, {
+    type: 'user.created',
+    payload: (user) => ({ userId: user.id, email: user.email }),
+    when: (user) => !user.email.endsWith('@example.com'), // optional
+  })
+  .handle(async ({ body }) => ({ id: crypto.randomUUID(), ...body }));
 ```
+
+- `type` is checked against the topic's events, and `payload` against that
+  event's schema.
+- `.event()` is repeatable across topics. Two calls to two topics publish to
+  each, every event through its own topic's publisher.
+- It also puts the topic's publisher in the handler as `services.users`, as
+  `.dependsOn([users])` would, for events the handler decides on:
+  `await services.users.publish([{ type: 'user.updated', payload }])`.
+- A failed publish is logged, never thrown — the handler already succeeded.
+
+The publisher reads `USERS_PUBLISHER_CONNECTION_STRING`, which only constructs
+that publish to the topic are given, and picks its transport from the protocol:
+`pgboss://` locally, `sns://` deployed.
 
 ### Database Context
 
@@ -633,10 +629,11 @@ For complex scenarios, use `ctx.auditor` to record audits manually within your h
 
 ```typescript
 export const processOrder = api
-  .post('/orders')
-  .database(databaseService)
-  .services([paymentService])
+  .database(database)
   .auditor(auditStorageService)
+  .post('/orders')
+  // `payments` is an ExternalApi whose client has `charge()`
+  .dependsOn([payments])
   .actor(({ session }) => ({ id: session.userId, type: 'user' }))
   .handle(async ({ body, db, services, auditor }) => {
     // db is automatically the transaction when auditor uses KyselyAuditStorage
@@ -647,7 +644,7 @@ export const processOrder = api
       .executeTakeFirstOrThrow();
 
     // Manual audit for payment (external service call)
-    const payment = await services.payment.charge(order.total);
+    const payment = await services.payments.charge(order.total);
     auditor.audit('payment.processed', {
       orderId: order.id,
       amount: order.total,
@@ -1097,19 +1094,19 @@ Every construct has an async `getEnvironment()` method that returns the environm
 
 ```typescript
 import { api } from '../constructs/api';
-import { databaseService } from './services/database';
-import { cacheService } from './services/cache';
+import { cache } from '../constructs/cache';
+import { database } from '../constructs/database';
 
 const endpoint = api
   .get('/users')
-  .services([databaseService, cacheService])
+  .dependsOn([database, cache])
   .handle(async ({ services }) => {
     // Implementation
   });
 
 // Detect required environment variables
 const envVars = await endpoint.getEnvironment();
-// Returns: ['CACHE_URL', 'DATABASE_URL'] (sorted alphabetically)
+// Returns: ['DATABASE_URL', 'SESSIONS_URL'] (sorted alphabetically)
 ```
 
 ### How It Works
@@ -1197,33 +1194,37 @@ This manifest can then be used by infrastructure-as-code tools (Terraform, CDK, 
 - **Deduplication**: Each variable listed once even if used by multiple services
 - **Sorted Output**: Variables always returned in alphabetical order
 - **Error Resilient**: Parse failures don't affect detection
-- **Publisher Support**: Detects variables from `.publisher()` services
+- **Topic Support**: A topic named by `.event(topic, …)` contributes its `<ID>_PUBLISHER_CONNECTION_STRING`
 
 ### Example with Multiple Services
 
 ```typescript
 import { api } from '../constructs/api';
-import { databaseService } from './services/database';
-import { cacheService } from './services/cache';
-import { emailService } from './services/email';
+import { cache } from '../constructs/cache';
+import { database } from '../constructs/database';
+import { mail } from '../constructs/email';
+import { users } from '../constructs/topics';
 
 const endpoint = api
   .post('/users')
-  .services([databaseService, cacheService, emailService])
+  .dependsOn([database, cache, mail])
+  .output(userSchema)
+  .event(users, {
+    type: 'user.created',
+    payload: (user) => ({ userId: user.id, email: user.email }),
+  })
   .handle(async ({ services }) => {
     // Create user
   });
 
-// Automatically detects all variables from all services
+// Detects the keys of every construct it names
 const envVars = await endpoint.getEnvironment();
 // Returns: [
-//   'CACHE_URL',
 //   'DATABASE_URL',
-//   'DATABASE_PORT',
-//   'SMTP_HOST',
-//   'SMTP_PORT',
-//   'SMTP_USER',
-//   'SMTP_PASS'
+//   'MAIL_FROM',
+//   'MAIL_URL',
+//   'SESSIONS_URL',
+//   'USERS_PUBLISHER_CONNECTION_STRING'
 // ]
 ```
 

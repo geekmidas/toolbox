@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { CronBuilder } from '../crons/CronBuilder';
 import { KyselyDatabase } from '../database/kysely';
-import { TopicBuilder } from '../topic/TopicBuilder';
+import { Topic } from '../topic/Topic';
 import { Worker } from '../worker';
 
 /** A logger distinguishable from the console default. */
@@ -87,7 +88,7 @@ describe('Worker', () => {
 		it('gives a subscriber its logger', () => {
 			const logger = testLogger();
 			const worker = new Worker('Worker', { logger });
-			const topic = new TopicBuilder().topic('users').events({});
+			const topic = new Topic('users', { events: {} });
 
 			// Built from the worker directly — there is no `subscribers` namespace
 			// to reach through, which was a hop that named a collection to get at
@@ -129,11 +130,31 @@ describe('Worker', () => {
 
 			const cron = worker.cron('rate(1 day)').handle(async () => {});
 			const fn = worker.functions.handle(async () => {});
+			const queue = worker
+				.queue('Emails')
+				.message(z.object({ to: z.string() }))
+				.handle(async () => {});
+			const subscriber = worker
+				.topic(new Topic('Users', { events: { 'user.created': z.object({}) } }))
+				.subscribe(['user.created'])
+				.handle(async () => {});
 
 			// One field says which process runs a construct, whatever its kind.
 			// Before this, only the directory said it.
 			expect(cron.owner).toBe('Jobs');
 			expect(fn.owner).toBe('Jobs');
+			expect(queue.owner).toBe('Jobs');
+			expect(subscriber.owner).toBe('Jobs');
+		});
+
+		it('gives a queue its logger', () => {
+			const logger = testLogger();
+			const queue = new Worker('Worker', { logger })
+				.queue('Emails')
+				.message(z.object({ to: z.string() }))
+				.handle(async () => {});
+
+			expect(queue.logger).toBe(logger);
 		});
 
 		it('stamps the canonical id, not what was typed', () => {

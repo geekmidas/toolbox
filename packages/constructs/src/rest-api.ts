@@ -135,7 +135,7 @@ export interface RestApiConfig<
 /**
  * What is *not* here, and why.
  *
- * `dependsOn`, `database`, `auditor` and `publisher` all inject a capability
+ * `dependsOn`, `database`, `auditor` and `.event(topic, …)` all inject a capability
  * into a handler. Putting one on the surface hands it to every route the
  * surface serves — a health check gets the database because a report needed it
  * — which is the thing least privilege forbids and the reason `.calls()` is not
@@ -251,7 +251,6 @@ export class RestApi<
 		this.session = endpoints.session.bind(endpoints);
 		this.auditor = endpoints.auditor.bind(endpoints);
 		this.actor = endpoints.actor.bind(endpoints);
-		this.publisher = endpoints.publisher.bind(endpoints);
 		this.authorizer = endpoints.authorizer.bind(endpoints);
 		this.authorize = endpoints.authorize.bind(endpoints);
 		this.rls = endpoints.rls.bind(endpoints);
@@ -297,7 +296,6 @@ export class RestApi<
 	readonly session: Endpoints['session'];
 	readonly auditor: Endpoints['auditor'];
 	readonly actor: Endpoints['actor'];
-	readonly publisher: Endpoints['publisher'];
 	readonly authorizer: Endpoints['authorizer'];
 	readonly authorize: Endpoints['authorize'];
 	readonly rls: Endpoints['rls'];

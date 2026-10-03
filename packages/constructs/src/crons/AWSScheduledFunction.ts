@@ -38,8 +38,6 @@ export class AWSScheduledFunction<
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
 	TOutSchema extends StandardSchemaV1 | undefined = undefined,
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TDatabase = undefined,
 	TDatabaseServiceName extends string = string,
 > extends AWSLambdaFunction<
@@ -47,8 +45,6 @@ export class AWSScheduledFunction<
 	TOutSchema,
 	TServices,
 	TLogger,
-	TEventPublisher,
-	TEventPublisherServiceName,
 	undefined,
 	string,
 	TDatabase,
@@ -62,8 +58,6 @@ export class AWSScheduledFunction<
 			TServices,
 			TLogger,
 			TOutSchema,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TDatabase,
 			TDatabaseServiceName
 		>,

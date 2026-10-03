@@ -45,8 +45,6 @@ export async function processEndpointAudits<
 		TServices,
 		TLogger,
 		TSession,
-		any,
-		any,
 		TAuditStorage,
 		TAuditStorageServiceName,
 		TAuditAction
@@ -229,8 +227,6 @@ export async function createAuditContext<
 		TServices,
 		TLogger,
 		TSession,
-		any,
-		any,
 		TAuditStorage,
 		TAuditStorageServiceName,
 		TAuditAction,

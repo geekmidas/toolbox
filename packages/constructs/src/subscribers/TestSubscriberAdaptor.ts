@@ -8,7 +8,6 @@ import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceRecord } from '@geekmidas/services';
 import { runWithRequestContext, ServiceDiscovery } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import { publishEvents } from '../publisher';
 import type { Subscriber } from './Subscriber';
 
 // Helper type to extract payload types for subscribed events
@@ -24,7 +23,6 @@ export class TestSubscriberAdaptor<
 	TLogger extends Logger = Logger,
 	OutSchema extends StandardSchemaV1 | undefined = undefined,
 	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TSubscribedEvents extends
 		ExtractPublisherMessage<TEventPublisher>['type'][] = ExtractPublisherMessage<TEventPublisher>['type'][],
 > {
@@ -38,7 +36,6 @@ export class TestSubscriberAdaptor<
 			TLogger,
 			OutSchema,
 			TEventPublisher,
-			TEventPublisherServiceName,
 			TSubscribedEvents
 		>,
 		private serviceDiscovery: ServiceDiscovery<any> = TestSubscriberAdaptor.getDefaultServiceDiscovery(),
@@ -96,15 +93,6 @@ export class TestSubscriberAdaptor<
 
 				output = validationResult.value;
 			}
-
-			// Publish events if configured
-			await publishEvents(
-				logger,
-				this.serviceDiscovery,
-				this.subscriber.events,
-				output,
-				this.subscriber.publisherService,
-			);
 
 			return output;
 		}) as Promise<InferStandardSchema<OutSchema>>;

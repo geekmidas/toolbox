@@ -143,36 +143,32 @@ export const createUser = api
 
 ### 5. Create Subscribers (Optional)
 
-Create event subscribers in `src/subscribers/`:
+Declare the topic once, and a worker to run what has no port; a subscriber is
+built from the worker and binds to the topic:
 
 ```typescript
+// src/constructs/topics.ts
+import { Topic } from '@geekmidas/constructs/topic';
+import { z } from 'zod';
+
+export const users = new Topic('Users', {
+  events: {
+    'user.created': z.object({ userId: z.string(), email: z.email() }),
+    'user.updated': z.object({ userId: z.string() }),
+  },
+});
+
+// src/constructs/worker.ts
+import { Worker } from '@geekmidas/constructs/worker';
+
+export const worker = new Worker('Jobs', { logger });
+
 // src/subscribers/userSubscriber.ts
-import { SubscriberBuilder } from '@geekmidas/constructs/subscribers';
-import type { Service } from '@geekmidas/services';
-import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
-import type { EnvironmentParser } from '@geekmidas/envkit';
+import { users } from '../constructs/topics';
+import { worker } from '../constructs/worker';
 
-// Define event types
-type UserEvents =
-  | PublishableMessage<'user.created', { userId: string; email: string }>
-  | PublishableMessage<'user.updated', { userId: string }>;
-
-// Create event publisher service
-const userEventPublisher = {
-  serviceName: 'userEventPublisher' as const,
-  async register(envParser: EnvironmentParser<{}>) {
-    const config = envParser.create((get) => ({
-      publisherUrl: get('EVENT_PUBLISHER_URL').string()
-    })).parse();
-
-    const { Publisher } = await import('@geekmidas/events');
-    return Publisher.fromConnectionString<UserEvents>(config.publisherUrl);
-  }
-} satisfies Service<'userEventPublisher', EventPublisher<UserEvents>>;
-
-// Create subscriber
-export const userCreatedSubscriber = new SubscriberBuilder()
-  .publisher(userEventPublisher)
+export const userCreatedSubscriber = worker
+  .topic(users)
   .subscribe(['user.created'])
   .handle(async ({ events, logger }) => {
     for (const event of events) {
@@ -181,6 +177,11 @@ export const userCreatedSubscriber = new SubscriberBuilder()
     }
   });
 ```
+
+An endpoint publishes to the topic with `.event(users, { type: 'user.created',
+payload: (user) => ({ userId: user.id, email: user.email }) })`. Declaring the
+topic is what puts a broker in the local plan and resolves
+`USERS_PUBLISHER_CONNECTION_STRING` for whatever publishes to it.
 
 ### 6. Build Handlers
 

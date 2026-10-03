@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { type Queue, QueueBuilder } from '@geekmidas/constructs/queue';
+import type { Queue } from '@geekmidas/constructs/queue';
+import { Worker } from '@geekmidas/constructs/worker';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
@@ -34,7 +35,7 @@ describe('QueueGenerator', () => {
 		key: string,
 		name: string,
 	): GeneratedConstruct<Queue<any, any, any, any>> => {
-		const queue = new QueueBuilder()
+		const queue = new Worker('Jobs')
 			.queue(name)
 			.batchSize(5)
 			.message(schema)
@@ -53,7 +54,7 @@ describe('QueueGenerator', () => {
 
 	describe('isConstruct', () => {
 		it('identifies queues and rejects everything else', () => {
-			const queue = new QueueBuilder()
+			const queue = new Worker('Jobs')
 				.queue('orders')
 				.message(schema)
 				.handle(async () => {});

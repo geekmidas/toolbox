@@ -22,7 +22,6 @@ export class AmazonApiGatewayV1Endpoint<
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
 	TSession = unknown,
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
 > extends AmazonApiGatewayEndpoint<
 	AmazonApiGatewayV1EndpointHandler,
 	APIGatewayProxyEvent,
@@ -32,8 +31,7 @@ export class AmazonApiGatewayV1Endpoint<
 	TOutSchema,
 	TServices,
 	TLogger,
-	TSession,
-	TEventPublisher
+	TSession
 > {
 	override getInput(e: APIGatewayProxyEvent): GetInputResponse {
 		// For arrays, AWS API Gateway V1 provides multiValueQueryStringParameters
@@ -93,8 +91,7 @@ export class AmazonApiGatewayV1Endpoint<
 			TOutSchema,
 			TServices,
 			TLogger,
-			TSession,
-			TEventPublisher
+			TSession
 		>,
 		options: AmazonApiGatewayEndpointOptions = {},
 	) {

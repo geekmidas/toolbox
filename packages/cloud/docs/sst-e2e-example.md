@@ -1,198 +1,204 @@
 # End-to-end example: application → build → infrastructure
 
-> Status: **blueprint.** It shows the intended full loop and resolves how
-> connection strings work with multiple queues/topics. The `q` builder, the
-> `Queue`/`Topic` linkables, and their resolvers are **not built yet** — this is
-> the spec for that work. Companion to [`sst-constructs.md`](./sst-constructs.md).
+> Status: **built, not yet proven on a live stack.** The constructs, the
+> manifest, the `Queue`/`Topic` components and `fromManifest` exist and are
+> unit-tested; SNS subscriptions for topic subscribers are still outstanding
+> (§5). Companion to [`sst-constructs.md`](./sst-constructs.md).
 
 ## Scenario
 
 An orders service:
 
 - `POST /orders` (an **endpoint**) validates input, writes to the DB, **sends a
-  job to the `orders` queue**, and **emits an `order.created` event to the
-  `events` topic**.
-- A **queue worker** drains `orders` and fulfils each order (one consumer).
+  job to the `Fulfilment` queue**, and **publishes `order.created` to the
+  `Orders` topic**.
+- The queue's **one consumer** drains `Fulfilment` and fulfils each order.
 - A **topic subscriber** reacts to `order.created` to send a notification (one
-  of many possible fan-out subscribers).
+  of any number of fan-out subscribers).
 
-Two distinct messaging resources: a **queue** (`orders`) and a **topic**
-(`events`). That's what surfaces the multi-connection-string question.
+Two distinct messaging resources: a **queue** (`Fulfilment`) and a **topic**
+(`Orders`). That's what surfaces the multi-connection-string question.
 
 ## 1. Application (`@geekmidas/constructs`)
 
 ```ts
-// app/events/orders.ts — a queue + its single consumer (q builder)
-import { q } from '@geekmidas/constructs/queue';
+// constructs/topics.ts — the topic: an event contract, and its publisher
+import { Topic } from '@geekmidas/constructs/topic';
 import { z } from 'zod';
-import { databaseService } from '../services';
 
-export const orders = q
-  .queue('orders')
-  .services([databaseService])               // array, per the services API
+export const orders = new Topic('Orders', {
+  events: {
+    'order.created': z.object({ orderId: z.string() }),
+  },
+});
+```
+
+```ts
+// constructs/worker.ts — the process with no port
+import { Worker } from '@geekmidas/constructs/worker';
+
+export const worker = new Worker('Jobs', { logger }).database(database);
+```
+
+```ts
+// queues/fulfilment.ts — a queue and its single consumer, one construct
+export const fulfilment = worker
+  .queue('Fulfilment')
+  .dependsOn([database])
   .message(z.object({ orderId: z.string() }))
   .handle(async ({ messages, services }) => {
-    for (const { orderId } of messages) await services.database.fulfil(orderId);
+    for (const { orderId } of messages) await fulfil(services.database, orderId);
   });
 ```
 
 ```ts
-// app/events/topic.ts — the event bus publisher + a subscriber (s builder)
-import { publisher } from '@geekmidas/constructs/events';
-import { s } from '@geekmidas/constructs/subscribers';
-import { z } from 'zod';
-
-export const events = publisher('events', {
-  'order.created': z.object({ orderId: z.string() }),
-});
-
-export const notify = s
-  .publisher(events)
-  .subscribe('order.created')
+// subscribers/notify.ts — bound to the topic, granted nothing on it
+export const notify = worker
+  .topic(orders)
+  .subscribe(['order.created'])
   .handle(async ({ events }) => { /* send notification */ });
 ```
 
 ```ts
-// app/endpoints/createOrder.ts — the caller; connects to BOTH resources
-import { api } from '../constructs/api';
-import { databaseService } from '../services';
-import { orders } from '../events/orders';
-import { events } from '../events/topic';
-
-export default e
-  .services([databaseService])
-  .publisher(orders.publisher)   // queue producer  → ORDERS_PUBLISHER_CONNECTION_STRING
-  .publisher(events.publisher)   // topic producer  → EVENTS_PUBLISHER_CONNECTION_STRING
+// endpoints/createOrder.ts — the caller; connects to BOTH resources
+export const createOrder = api
+  .database(database)
   .post('/orders')
+  .dependsOn([fulfilment])          // queue producer → FULFILMENT_PUBLISHER_CONNECTION_STRING
   .body(z.object({ sku: z.string() }))
-  .handle(async ({ body, services, publishers }) => {
-    const order = await services.database.createOrder(body);
-    await publishers.orders.publish([{ orderId: order.id }]);
-    await publishers.events.publish([{ type: 'order.created', payload: { orderId: order.id } }]);
+  .output(z.object({ id: z.string() }))
+  .event(orders, {                  // topic producer → ORDERS_PUBLISHER_CONNECTION_STRING
+    type: 'order.created',
+    payload: (order) => ({ orderId: order.id }),
+  })
+  .handle(async ({ body, db, services }) => {
+    const order = await insertOrder(db, body);
+    await services.fulfilment.publish([
+      { type: 'Fulfilment', payload: { orderId: order.id } },
+    ]);
     return order;
   });
 ```
 
-The handler is **transport-agnostic** — it just calls `publish`. Which transport
-runs is decided by the connection string at runtime (next section).
+The handler is **transport-agnostic** — it calls `publish`, and `.event()`
+publishes after it returns. Which transport runs is decided by the connection
+string at runtime (§4). `.event(orders, …)` also puts `services.orders` in the
+handler, as `.dependsOn([orders])` would, for an event the handler decides on.
 
 ## 2. What `gkm build` emits (manifest)
 
-A **single TypeScript module** per provider — `<out>/manifest/aws.ts` —
-`export const manifest = { … } as const`, with derived types. A queue is a new
-`queues` field on that object:
+A **single TypeScript module** per provider — `.gkm/manifest/aws.ts` — whose
+`constructs` export is every declaration keyed by id. Each queue nests its one
+consumer; each topic lists the subscribers bound to it:
 
 ```ts
-// .gkm/manifest/aws.ts  (generated)
-export const manifest = {
-  routes: [
-    { method: 'POST', path: '/orders', handler: 'createOrder.handler',
-      environment: ['ORDERS_PUBLISHER_CONNECTION_STRING',
-                    'EVENTS_PUBLISHER_CONNECTION_STRING'],
-      authorizer: 'none' },
-  ],
-  queues: [                                   // new — from the q builder
-    { name: 'orders', handler: 'orders.handler', environment: [] },
-  ],
-  subscribers: [                              // topic subscribers, from s
-    { name: 'notify', handler: 'notify.handler',
-      subscribedEvents: ['order.created'], transport: 'topic' },
-  ],
+// .gkm/manifest/aws.ts  (generated, abridged)
+export const constructs = {
+  Fulfilment: {
+    kind: 'queue',
+    id: 'Fulfilment',
+    provides: ['FULFILMENT_PUBLISHER_CONNECTION_STRING'],
+    worker: {
+      id: 'FulfilmentWorker',
+      handler: '.gkm/aws-lambda/queues/fulfilment.handler',
+      dependencies: [{ target: 'Database', kind: 'database' }],
+    },
+  },
+  Orders: {
+    kind: 'topic',
+    id: 'Orders',
+    provides: ['ORDERS_PUBLISHER_CONNECTION_STRING'],
+    events: ['order.created'],
+    subscribers: [
+      {
+        id: 'notify',
+        handler: '.gkm/aws-lambda/subscribers/notify.handler',
+        events: ['order.created'],
+        dependencies: [],
+      },
+    ],
+  },
+  // … the route's entry records its edges to Fulfilment and Orders
 } as const;
-
-export type Route = (typeof manifest.routes)[number];
-export type Queue = (typeof manifest.queues)[number];
-// …derived Subscriber/etc.
 ```
 
-(Item shapes — `RouteInfo`/`QueueInfo`/… — and the `Manifest`/`ManifestField`
-types live in `@geekmidas/manifest`. A field can be a flat array or a
-partitioned `Record<string, …[]>`.)
-
-The endpoint's required env (`ORDERS_PUBLISHER_CONNECTION_STRING`,
-`EVENTS_PUBLISHER_CONNECTION_STRING`) is captured **because it declared
-`.publisher(orders.publisher)` / `.publisher(events.publisher)`** — the publisher
-each needs that connection string env var. This is what drives the links in
-infra.
+The endpoint's required env (`FULFILMENT_PUBLISHER_CONNECTION_STRING`,
+`ORDERS_PUBLISHER_CONNECTION_STRING`) is captured **because it named both** —
+`.dependsOn([fulfilment])` and `.event(orders, …)` are edges, and each
+construct's `service` reads its own connection string. That is what drives the
+links in infra.
 
 ## 3. Infrastructure (`sst.config.ts`)
 
 ```ts
-import { App, Api, Database, Queue, QueueSubscriber, Topic, Subscriber } from '@geekmidas/cloud/sst';
-import { manifest } from './.gkm/manifest/aws';
+const { App, fromManifest, Stack } = await import('@geekmidas/cloud/sst');
+const { backends, constructs } = await import('./.gkm/manifest/aws.js');
 
-const { zoneId } = await aws.route53.getZone({ name: 'example.com' });
-const app = new App({ name: 'shop', stage: 'prod', domain: 'example.com', hostedZoneId: zoneId, region: 'us-east-1' });
-const stack = app.stack('orders');
+const vpc = new sst.aws.Vpc('Vpc', { nat: 'ec2' });
+const app = new App({ name: 'shop', stage: $app.stage, domain: 'example.com', hostedZoneId, region: 'us-east-1' });
+const stack = new Stack(app, 'Orders');
 
-const db      = new Database(stack, 'main');
-const ordersQ = new Queue(stack, 'orders');   // SQS + DLQ, linkable
-const eventsT = new Topic(stack, 'events');    // SNS, linkable
-
-// Queue worker (one consumer) — SQS event source
-QueueSubscriber.fromManifest(stack, manifest.queues, { queue: ordersQ, links: [db] });
-
-// Topic subscribers (fan-out)
-Subscriber.fromManifest(stack, manifest.subscribers, { topic: eventsT, links: [db] });
-
-// The API — its routes are linked to the resources they publish to
-Api.fromManifest(stack, 'Api', manifest.routes, { links: [db, ordersQ, eventsT] });
+return fromManifest(stack, constructs, { Database: { vpc } }, backends);
 ```
 
-Each integrator takes the relevant **field** (`manifest.routes`,
-`manifest.queues`, …) — flat or partitioned.
+No queue, topic, link or IAM is written here. `fromManifest`:
+
+- provisions `Fulfilment` as a `Queue` and `Orders` as a `Topic`;
+- once everything exists, subscribes each queue's one consumer with
+  `queue.consume({ handler, link })` — the handler the build wrote, linked to
+  what the consumer declared (`Database`); the queue itself is always linked.
+  `Queue.consume` also takes `timeout` and `batchSize`;
+- skips `worker`, `cron` and `function` (`PROVISIONED_ELSEWHERE`): a worker is a
+  process, not a resource, and crons and functions are built from
+  `manifest.crons` / `manifest.functions`.
 
 ## 4. Resolving connection strings with multiple resources
 
 This is the answer to "multiple topics/queues → multiple connection strings."
 
-Each messaging linkable's resolver (in `@geekmidas/envkit/sst`) emits a
-**name-namespaced** connection string:
+Each messaging component's `provides()` emits a **name-namespaced** connection
+string:
 
-| Resource (`_id`) | `_type` | env var produced |
+| Resource | Component | env var produced |
 | --- | --- | --- |
-| `orders` | `Queue` | `ORDERS_PUBLISHER_CONNECTION_STRING` = `sqs://?queueUrl=…&region=…` |
-| `events` | `Topic` (SnsTopic) | `EVENTS_PUBLISHER_CONNECTION_STRING` = `sns://?topicArn=…&region=…` |
+| `Fulfilment` | `Queue` | `FULFILMENT_PUBLISHER_CONNECTION_STRING` = `sqs://?queueUrl=…&region=…` |
+| `Orders` | `Topic` (SnsTopic) | `ORDERS_PUBLISHER_CONNECTION_STRING` = `sns://?topicArn=…&region=…` |
 
 So linking **both** to the `POST /orders` Lambda yields **both** env vars — no
-collision, because each is keyed by the resource name (`environmentCase(_id)`).
+collision, because each is keyed by the resource id.
 
-The **auto-publisher knows its own name**, so it reads its own var:
+Each construct's **publisher knows its own key**, so it reads its own var:
 
 ```ts
-// orders.publisher  ≈  Publisher.fromConnectionString(get('ORDERS_PUBLISHER_CONNECTION_STRING'))
-// events.publisher  ≈  Publisher.fromConnectionString(get('EVENTS_PUBLISHER_CONNECTION_STRING'))
+// fulfilment.service  ≈  Publisher.fromConnectionString(get('FULFILMENT_PUBLISHER_CONNECTION_STRING'))
+// orders.service      ≈  Publisher.fromConnectionString(get('ORDERS_PUBLISHER_CONNECTION_STRING'))
 ```
 
-Least-privilege linking ties it together: because `createOrder` declared both
-publishers, validation requires both connection-string vars, so infra links the
-route to **exactly** `ordersQ` and `eventsT` (and `db`) — granting send
-permission and resolving those two strings, nothing more.
+Least-privilege linking ties it together: because `createOrder` named both,
+its environment requires both connection strings, so infra links the route to
+**exactly** the queue and the topic (and the database) — granting send
+permission and resolving those two strings, nothing more. The subscriber is
+*bound* to the topic rather than depending on it, so it is never given the
+topic's string and cannot publish.
 
 ### Local vs deployed (same code)
 
 The protocol in each connection string selects the transport (see
 [`sst-constructs.md`](./sst-constructs.md) §14 and the events registry):
 
-| | `ORDERS_PUBLISHER_CONNECTION_STRING` | transport |
+| | `FULFILMENT_PUBLISHER_CONNECTION_STRING` | transport |
 | --- | --- | --- |
-| **`gkm dev`** | `pgboss://…?queue=orders` (or localstack `sqs://…localhost:4566…`) | Postgres / localstack |
-| **deployed** | `sqs://?queueUrl=https://sqs…/shop-orders-orders` | real SQS |
+| **`gkm dev`** | `pgboss://…` (or the AWS emulator's `sqs://…localhost:4566…`) | Postgres / emulator |
+| **deployed** | `sqs://?queueUrl=https://sqs…/shop-orders-fulfilment` | real SQS |
 
-`gkm dev` injects the local strings (per the configured backend + docker
-compose); the `Queue`/`Topic` link injects the deployed strings. The handler and
+`gkm dev` injects the local strings (per the deploy target's broker); the
+`Queue`/`Topic` link injects the deployed strings. The handler and its
 `publish(...)` calls are identical.
 
-## 5. What this requires building
+## 5. What is still outstanding
 
-1. `Queue` + `Topic` `ResourceType`s + resolvers in `@geekmidas/envkit/sst`
-   emitting `<NAME>_PUBLISHER_CONNECTION_STRING` (and `…_SUBSCRIBER_…` where
-   relevant).
-2. `Queue` / `Topic` linkable constructs in `@geekmidas/cloud/sst`.
-3. The `q` `QueueBuilder` + auto-`publisher` in `@geekmidas/constructs/queue`,
-   and the auto-`publisher` on the `events` publisher.
-4. `QueueInfo`/`QueuesManifest` in `@geekmidas/manifest` + `gkm build` discovery
-   of `q` definitions and the `transport` field on `SubscriberInfo`.
-5. `QueueSubscriber` (SQS event source) + `Subscriber`/`TopicSubscriber` (SNS) in
-   `@geekmidas/cloud/sst`, with `fromManifest`.
-6. `gkm dev` / secrets emitting per-resource connection strings locally.
+- **SNS subscriptions for topic subscribers.** The binding is in the manifest
+  (`Orders.subscribers`), but `fromManifest` does not yet turn it into a
+  subscription.
+- **A stack that has come up.** The decisions are unit-tested as pure
+  functions; a deploy has not been run end to end.

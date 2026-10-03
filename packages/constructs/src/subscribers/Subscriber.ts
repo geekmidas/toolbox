@@ -21,22 +21,14 @@ export class Subscriber<
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
 	OutSchema extends StandardSchemaV1 | undefined = undefined,
+	/** The topic's message union — what types the events this subscriber receives. */
 	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TSubscribedEvents extends
 		ExtractPublisherMessage<TEventPublisher>['type'][] = ExtractPublisherMessage<TEventPublisher>['type'][],
-> extends Construct<
-	TLogger,
-	TEventPublisherServiceName,
-	TEventPublisher,
-	OutSchema,
-	TServices
-> {
+> extends Construct<TLogger, OutSchema, TServices> {
 	__IS_SUBSCRIBER__ = true;
 
-	static isSubscriber(
-		obj: any,
-	): obj is Subscriber<any, any, any, any, any, any> {
+	static isSubscriber(obj: any): obj is Subscriber<any, any, any, any, any> {
 		return Boolean(
 			obj &&
 				obj.__IS_SUBSCRIBER__ === true &&
@@ -57,15 +49,10 @@ export class Subscriber<
 		public override readonly outputSchema?: OutSchema,
 		public override readonly services: TServices = [] as unknown as TServices,
 		public override readonly logger: TLogger = DEFAULT_LOGGER as TLogger,
-		public override readonly publisherService?: Service<
-			TEventPublisherServiceName,
-			TEventPublisher
-		>,
 		/**
 		 * The name of the {@link Topic} this subscriber binds to (via
-		 * `s.topic(topic)`), recorded for the manifest so infra wires the SNS
-		 * subscription. Undefined when the subscriber's events are typed from a
-		 * (hand-written) publisher instead.
+		 * `worker.topic(topic)`), recorded for the manifest so infra wires the
+		 * SNS subscription.
 		 */
 		public readonly topicName?: string,
 		/**
@@ -79,7 +66,6 @@ export class Subscriber<
 			logger,
 			services,
 			[],
-			publisherService,
 			outputSchema,
 			timeout,
 			undefined, // memorySize

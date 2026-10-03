@@ -159,7 +159,7 @@ export interface FeatureContext<
 	 * with this test's services: its databases resolve to this test's
 	 * transactions, as an endpoint's do.
 	 */
-	subscriber: <S extends Subscriber<any, any, any, any, any, any>>(
+	subscriber: <S extends Subscriber<any, any, any, any, any>>(
 		subscriber: S,
 	) => SubscriberAdaptorOf<S>;
 	/** A queue's worker, run on its own with this test's services. */
@@ -172,7 +172,6 @@ type SubscriberAdaptorOf<S> =
 		infer TLogger,
 		infer OutSchema,
 		infer TEventPublisher,
-		infer TEventPublisherServiceName,
 		infer TSubscribedEvents
 	>
 		? TestSubscriberAdaptor<
@@ -180,7 +179,6 @@ type SubscriberAdaptorOf<S> =
 				TLogger,
 				OutSchema,
 				TEventPublisher,
-				TEventPublisherServiceName,
 				TSubscribedEvents
 			>
 		: never;
@@ -512,14 +510,15 @@ async function load(
 }
 
 /**
- * A publisher that records rather than sends, under every name a topic or
- * queue is injected by — `users`, and the older `usersPublisher`.
+ * A publisher that records rather than sends, under the name a topic or queue
+ * is injected by — `services.users` — which is also the one `.event(users, …)`
+ * publishes through.
  */
 function recorders(
 	channels: LoadedApp['channels'],
 	state: ContextState,
 ): { serviceName: string; register: () => unknown }[] {
-	return channels.flatMap((channel) => {
+	return channels.map((channel) => {
 		const publisher = {
 			async publish(messages: PublishedMessage[]) {
 				state.published.set(channel.id, [
@@ -528,9 +527,10 @@ function recorders(
 				]);
 			},
 		};
-		return [channel.service.serviceName, channel.publisher.serviceName].map(
-			(serviceName) => ({ serviceName, register: () => publisher }),
-		);
+		return {
+			serviceName: channel.service.serviceName,
+			register: () => publisher,
+		};
 	});
 }
 

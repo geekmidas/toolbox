@@ -4,17 +4,15 @@ import type { Logger } from '@geekmidas/logger';
 import type { ComposableStandardSchema } from '@geekmidas/schema';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-
 import { ConstructType } from '../Construct';
 import { Function, type FunctionHandler } from '../functions';
+import type { TopicEvent } from '../publisher';
 
 export class Cron<
 	TInput extends ComposableStandardSchema | undefined = undefined,
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
 	OutSchema extends StandardSchemaV1 | undefined = undefined,
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TDatabase = undefined,
 	TDatabaseServiceName extends string = string,
 > extends Function<
@@ -22,8 +20,6 @@ export class Cron<
 	TServices,
 	TLogger,
 	OutSchema,
-	TEventPublisher,
-	TEventPublisherServiceName,
 	undefined,
 	string,
 	TDatabase,
@@ -60,8 +56,8 @@ export class Cron<
 		outputSchema?: OutSchema,
 		services: TServices = [] as unknown as TServices,
 		logger?: TLogger,
-		publisherService?: Service<TEventPublisherServiceName, TEventPublisher>,
-		events: any[] = [],
+		/** What it publishes once it has run, each to its own topic. */
+		events: TopicEvent[] = [],
 		memorySize?: number,
 		databaseService?: Service<TDatabaseServiceName, TDatabase>,
 		/**
@@ -78,7 +74,6 @@ export class Cron<
 			outputSchema,
 			services,
 			logger,
-			publisherService,
 			events,
 			memorySize,
 			undefined, // auditorStorageService

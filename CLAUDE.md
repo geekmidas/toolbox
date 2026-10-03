@@ -64,29 +64,84 @@ toolbox/
 
 An endpoint is built from the surface that will serve it, so the logger, the
 env parser and the authorizers come from the `RestApi` rather than being passed
-per endpoint. (`e` was retired in v10.)
+per endpoint. (`e` and `api.endpoints` were retired in v10.)
 
 ```typescript
 // constructs/api.ts
 import { RestApi } from '@geekmidas/constructs/rest-api';
 
 export const api = new RestApi('Api', {
+  path: 'apps/api',
   authorizers: ['iam'],
   defaultAuthorizer: 'none',
   logger,
 });
 
+// endpoints/router.ts — what a group of endpoints shares
+export const router = api.database(database).auditor(AuditStorageService);
+
 // endpoints/users.ts
-export const createUser = api.endpoints
+export const createUser = router
   .post('/users')
-  .body(z.object({ name: z.string() }))
-  .output(z.object({ id: z.string() }))
-  .handle(async ({ body, logger }) => ({ id: '123' }));
+  .dependsOn([sessions, emails])
+  .body(z.object({ name: z.string(), email: z.email() }))
+  .output(z.object({ id: z.string(), email: z.email() }))
+  .event(users, {
+    type: 'user.created',
+    payload: (user) => ({ userId: user.id, email: user.email }),
+  })
+  .handle(async ({ body, db, services }) => { … });
 ```
 
-`api.endpoints` can be branched first to share what a group of endpoints needs
-— `.database(db)`, `.auditor(...)`, `.publisher(...)` — while each endpoint
-still names its own `.dependsOn([...])`.
+A one-off route is `api.post(…)` directly. A branch (`api.database(db)`,
+`.auditor(...)`, `.session(...)`) is a new factory shared by a group; it never
+grants to the whole surface. Each endpoint still names its own
+`.dependsOn([...])` — that is what injects `services.<id>`, so a health check
+is never handed the auth server because a profile route needed it.
+
+### Topics and Queues
+
+```typescript
+// constructs/topics.ts — a topic is a construct; its publisher is its service
+import { Topic } from '@geekmidas/constructs/topic';
+
+export const users = new Topic('Users', {
+  events: { 'user.created': z.object({ userId: z.string(), email: z.email() }) },
+});
+
+// constructs/worker.ts — the process with no port
+import { Worker } from '@geekmidas/constructs/worker';
+
+export const worker = new Worker('Jobs', { logger }).database(database);
+
+// subscribers/userEvents.ts — bind to a topic, filter by event type
+export const onUser = worker
+  .topic(users)
+  .subscribe(['user.created'])
+  .handle(async ({ events, services, logger }) => { … });
+
+// queues/emails.ts — a queue and its one consumer, one construct
+export const emails = worker
+  .queue('Emails')
+  .message(z.object({ to: z.email() }))
+  .handle(async ({ messages, services }) => { … });
+
+// crons/cleanup.ts
+export const cleanup = worker.cron('rate(1 day)').handle(async () => { … });
+```
+
+- **Publishing to a topic**: `.event(topic, { type, payload, when? })` on an
+  endpoint, function or cron, sent after the handler succeeds. Repeatable;
+  each event goes through its own topic's publisher. It also puts
+  `services.users` in the handler (as `.dependsOn([users])` would) for events
+  the handler decides on: `services.users.publish([{ type, payload }])`.
+- **Sending to a queue**: `.dependsOn([emails])`, then
+  `services.emails.publish([{ type: 'Emails', payload }])` — `type` is the
+  queue's name as written.
+- A subscriber is bound, not given a publisher. One that emits follow-ups
+  names the topic: `.dependsOn([orders])`.
+- Tests: `published(users)` / `published(emails)` and
+  `queue(emails).invoke({ messages })` in a `featureTest`.
 
 ### Service Pattern
 
@@ -137,7 +192,9 @@ in `packages/cli/src/types.ts`):
 - **sns** (AWS): Adds an AWS emulator container (`floci`, LocalStack-compatible on port 4566). Access keys keep the `LSIA` prefix LocalStack required.
 - **rabbitmq**: Adds RabbitMQ container; no target selects it by default.
 
-All generate `EVENT_PUBLISHER_CONNECTION_STRING` and `EVENT_SUBSCRIBER_CONNECTION_STRING`.
+Each topic and queue provides `<ID>_PUBLISHER_CONNECTION_STRING` to whatever
+depends on it; the broker also gets `EVENT_PUBLISHER_CONNECTION_STRING` and
+`EVENT_SUBSCRIBER_CONNECTION_STRING`.
 
 ### Compose
 

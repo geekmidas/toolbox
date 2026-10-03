@@ -88,8 +88,6 @@ export class TestEndpointAdaptor<
 	TServices extends Service[] = [],
 	TLogger extends Logger = Logger,
 	TSession = unknown,
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TAuditStorage extends AuditStorage | undefined = undefined,
 	TAuditStorageServiceName extends string = string,
 	TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
@@ -107,8 +105,6 @@ export class TestEndpointAdaptor<
 		TServices extends Service[] = [],
 		TLogger extends Logger = Logger,
 		TSession = unknown,
-		TEventPublisher extends EventPublisher<any> | undefined = undefined,
-		TEventPublisherServiceName extends string = string,
 		TAuditStorage extends AuditStorage | undefined = undefined,
 		TAuditStorageServiceName extends string = string,
 		TAuditAction extends AuditableAction<string, unknown> = AuditableAction<
@@ -126,8 +122,6 @@ export class TestEndpointAdaptor<
 			TServices,
 			TLogger,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			TAuditAction,
@@ -146,8 +140,6 @@ export class TestEndpointAdaptor<
 			TServices,
 			TLogger,
 			TSession,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			TAuditAction,
@@ -163,8 +155,6 @@ export class TestEndpointAdaptor<
 		ctx: TestRequestAdaptor<
 			TInput,
 			TServices,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			TDatabase,
@@ -334,11 +324,14 @@ export class TestEndpointAdaptor<
 
 			const { output, metadata } = result;
 
-			ctx.publisher && (await this.serviceDiscovery.register([ctx.publisher]));
+			// A topic the test handed in as a service — a recorder — is published
+			// to directly; any other is registered as it is deployed.
 			await publishConstructEvents(
 				this.endpoint,
 				output,
 				this.serviceDiscovery,
+				this.endpoint.logger,
+				ctx.services as Record<string, unknown>,
 			);
 
 			// Convert cookies to Set-Cookie headers
@@ -369,8 +362,6 @@ export class TestEndpointAdaptor<
 		ctx: TestRequestAdaptor<
 			TInput,
 			TServices,
-			TEventPublisher,
-			TEventPublisherServiceName,
 			TAuditStorage,
 			TAuditStorageServiceName,
 			TDatabase,
@@ -407,8 +398,6 @@ type DatabaseRequirement<TDatabase = undefined> = TDatabase extends undefined
 export type TestRequestAdaptor<
 	TInput extends EndpointSchemas = {},
 	TServices extends Service[] = [],
-	TEventPublisher extends EventPublisher<any> | undefined = undefined,
-	TEventPublisherServiceName extends string = string,
 	TAuditStorage extends AuditStorage | undefined = undefined,
 	_TAuditStorageServiceName extends string = string,
 	TDatabase = undefined,
@@ -416,7 +405,6 @@ export type TestRequestAdaptor<
 > = {
 	services: ServiceRecord<TServices>;
 	headers: Record<string, string>;
-	publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
 } & InferComposableStandardSchema<TInput> &
 	AuditStorageRequirement<TAuditStorage> &
 	DatabaseRequirement<TDatabase>;

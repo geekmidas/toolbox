@@ -40,6 +40,14 @@ class StubComponent {
 		return `https://sqs.${STUB_REGION}.amazonaws.com/${STUB_ACCOUNT}/${this.name}`;
 	}
 
+	/** What `subscribe` was given, so a consumer's wiring is assertable. */
+	readonly subscribed: { subscriber: unknown; args: unknown }[] = [];
+
+	subscribe(subscriber: unknown, args?: unknown) {
+		this.subscribed.push({ subscriber, args });
+		return this;
+	}
+
 	/** Components override this to widen the payload; the base supplies a name. */
 	getSSTLink() {
 		return { properties: { name: this.name }, include: [] };

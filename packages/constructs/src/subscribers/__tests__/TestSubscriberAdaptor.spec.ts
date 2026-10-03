@@ -1,40 +1,43 @@
-import type { EventPublisher, PublishableMessage } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
-import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import { serviceContext } from '@geekmidas/services';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { recordingPublisher } from '../../__tests__/__helpers__/recordingPublisher';
+import { Topic } from '../../topic/Topic';
 import { Subscriber } from '../Subscriber';
 import { SubscriberBuilder } from '../SubscriberBuilder';
 import { TestSubscriberAdaptor } from '../TestSubscriberAdaptor';
 
 // --- Test fixtures ---
 
-type UserEvent =
-	| PublishableMessage<
-			'user.created',
-			{ userId: string; email: string; name: string }
-	  >
-	| PublishableMessage<
-			'user.updated',
-			{ userId: string; changes: Record<string, any> }
-	  >
-	| PublishableMessage<'user.deleted', { userId: string }>;
+const users = new Topic('users', {
+	events: {
+		'user.created': z.object({
+			userId: z.string(),
+			email: z.string(),
+			name: z.string(),
+		}),
+		'user.updated': z.object({
+			userId: z.string(),
+			changes: z.record(z.string(), z.any()),
+		}),
+		'user.deleted': z.object({ userId: z.string() }),
+	},
+});
 
-class TestEventPublisher implements EventPublisher<UserEvent> {
-	publishedEvents: UserEvent[] = [];
-	async publish(events: UserEvent[]): Promise<void> {
-		this.publishedEvents.push(...events);
+const audit = new Topic('Audit', {
+	events: {
+		'audit.recorded': z.object({ subject: z.string(), count: z.number() }),
+	},
+});
+
+class HandlerFailed extends Error {
+	constructor() {
+		super('Handler failed');
+		this.name = 'HandlerFailed';
 	}
 }
-
-const TestEventService: Service<'testEventPublisher', TestEventPublisher> = {
-	serviceName: 'testEventPublisher' as const,
-	register() {
-		return new TestEventPublisher();
-	},
-};
 
 const TestDbService: Service<'db', { query: () => string }> = {
 	serviceName: 'db' as const,
@@ -44,17 +47,14 @@ const TestDbService: Service<'db', { query: () => string }> = {
 };
 
 describe('TestSubscriberAdaptor', () => {
-	let logger: ConsoleLogger;
-
 	beforeEach(() => {
-		logger = new ConsoleLogger();
 		vi.clearAllMocks();
 	});
 
 	describe('basic execution', () => {
 		it('should invoke a subscriber and return result', async () => {
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.subscribe('user.created')
 				.handle(async ({ events }) => ({
 					processed: events.length,
@@ -82,7 +82,7 @@ describe('TestSubscriberAdaptor', () => {
 		it('should return early with batchItemFailures for empty events', async () => {
 			const handler = vi.fn(async () => ({ processed: 0 }));
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.subscribe('user.created')
 				.handle(handler);
 
@@ -100,7 +100,7 @@ describe('TestSubscriberAdaptor', () => {
 		it('should handle multiple events in a batch', async () => {
 			const processedIds: string[] = [];
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.subscribe(['user.created', 'user.updated'])
 				.handle(async ({ events }) => {
 					for (const event of events) {
@@ -142,7 +142,7 @@ describe('TestSubscriberAdaptor', () => {
 			const outputSchema = z.object({ processed: z.number() });
 
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.output(outputSchema)
 				.subscribe('user.created')
 				.handle(async ({ events }) => ({
@@ -172,7 +172,7 @@ describe('TestSubscriberAdaptor', () => {
 			const outputSchema = z.object({ processed: z.number() });
 
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.output(outputSchema)
 				.subscribe('user.created')
 				.handle(async () => ({
@@ -203,7 +203,7 @@ describe('TestSubscriberAdaptor', () => {
 		it('should filter out events not in subscribedEvents', async () => {
 			const receivedEvents: any[] = [];
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.subscribe('user.created')
 				.handle(async ({ events }) => {
 					receivedEvents.push(...events);
@@ -239,7 +239,7 @@ describe('TestSubscriberAdaptor', () => {
 		it('should return early if all events are filtered out', async () => {
 			const handler = vi.fn(async () => ({}));
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.subscribe('user.created')
 				.handle(handler);
 
@@ -284,7 +284,7 @@ describe('TestSubscriberAdaptor', () => {
 	describe('services', () => {
 		it('should use provided services from request', async () => {
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.services([TestDbService])
 				.subscribe('user.created')
 				.handle(async ({ services }) => ({
@@ -312,7 +312,7 @@ describe('TestSubscriberAdaptor', () => {
 
 		it('should auto-resolve services when not provided', async () => {
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.services([TestDbService])
 				.subscribe('user.created')
 				.handle(async ({ services }) => ({
@@ -339,7 +339,7 @@ describe('TestSubscriberAdaptor', () => {
 
 		it('should use custom ServiceDiscovery when provided', async () => {
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.services([TestDbService])
 				.subscribe('user.created')
 				.handle(async ({ services }) => ({
@@ -385,7 +385,7 @@ describe('TestSubscriberAdaptor', () => {
 			};
 
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.logger(mockLogger)
 				.subscribe('user.created')
 				.handle(async ({ logger }) => {
@@ -414,120 +414,75 @@ describe('TestSubscriberAdaptor', () => {
 		});
 	});
 
-	describe('event publishing', () => {
-		it('should publish events after successful execution', async () => {
-			const testPublisher = new TestEventPublisher();
-			const publisherService: Service<'publisher', TestEventPublisher> = {
-				serviceName: 'publisher' as const,
-				register() {
-					return testPublisher;
-				},
-			};
+	describe('follow-up events', () => {
+		it('should publish follow-ups through a topic the subscriber depends on', async () => {
+			const auditPublisher = recordingPublisher();
 
-			const subscriber = new Subscriber(
-				async ({ events }) => ({
-					count: events.length,
-				}),
-				30000,
-				['user.created'] as any,
-				z.object({ count: z.number() }),
-				[],
-				logger,
-				publisherService as any,
-			);
+			const subscriber = new SubscriberBuilder()
+				.topic(users)
+				.dependsOn([audit])
+				.subscribe('user.created')
+				.output(z.object({ count: z.number() }))
+				.handle(async ({ events, services }) => {
+					await services.audit.publish([
+						{
+							type: 'audit.recorded',
+							payload: { subject: 'users', count: events.length },
+						},
+					]);
+					return { count: events.length };
+				});
 
-			// Add events to publish after handler completes
-			(subscriber as any).events = [
-				{
-					type: 'user.updated',
-					payload: (response: any) => ({
-						userId: 'derived',
-						changes: { count: response.count },
-					}),
-				},
-			];
+			const adaptor = new TestSubscriberAdaptor(subscriber);
 
-			const adaptor = new TestSubscriberAdaptor(subscriber as any);
-
-			await adaptor.invoke({
+			const result = await adaptor.invoke({
 				events: [
 					{
 						type: 'user.created',
-						payload: {
-							userId: '1',
-							email: 'a@b.com',
-							name: 'A',
-						},
+						payload: { userId: '1', email: 'a@b.com', name: 'A' },
 					},
-				] as any,
-				services: {},
+				],
+				services: { audit: auditPublisher },
 			});
 
-			expect(testPublisher.publishedEvents).toHaveLength(1);
-			expect(testPublisher.publishedEvents[0]).toEqual({
-				type: 'user.updated',
-				payload: { userId: 'derived', changes: { count: 1 } },
-			});
+			expect(result).toEqual({ count: 1 });
+			expect(auditPublisher.published).toEqual([
+				{ type: 'audit.recorded', payload: { subject: 'users', count: 1 } },
+			]);
 		});
 
-		it('should conditionally publish events with when clause', async () => {
-			const testPublisher = new TestEventPublisher();
-			const publisherService: Service<'publisher', TestEventPublisher> = {
-				serviceName: 'publisher' as const,
-				register() {
-					return testPublisher;
-				},
-			};
+		it('should publish nothing the handler did not', async () => {
+			// A subscriber has no declarative events: binding is not publishing.
+			const auditPublisher = recordingPublisher();
 
-			const subscriber = new Subscriber(
-				async () => ({ success: false }),
-				30000,
-				['user.created'] as any,
-				z.object({ success: z.boolean() }),
-				[],
-				logger,
-				publisherService as any,
-			);
+			const subscriber = new SubscriberBuilder()
+				.topic(users)
+				.dependsOn([audit])
+				.subscribe('user.created')
+				.handle(async ({ events }) => ({ count: events.length }));
 
-			(subscriber as any).events = [
-				{
-					type: 'user.updated',
-					payload: () => ({
-						userId: 'test',
-						changes: {},
-					}),
-					when: (response: any) => response.success === true,
-				},
-			];
-
-			const adaptor = new TestSubscriberAdaptor(subscriber as any);
-
-			await adaptor.invoke({
+			await new TestSubscriberAdaptor(subscriber).invoke({
 				events: [
 					{
 						type: 'user.created',
-						payload: {
-							userId: '1',
-							email: 'a@b.com',
-							name: 'A',
-						},
+						payload: { userId: '1', email: 'a@b.com', name: 'A' },
 					},
-				] as any,
-				services: {},
+				],
+				services: { audit: auditPublisher },
 			});
 
-			// when clause returned false — no events published
-			expect(testPublisher.publishedEvents).toHaveLength(0);
+			expect(subscriber.events).toEqual([]);
+			expect(auditPublisher.calls).toEqual([]);
 		});
 	});
 
 	describe('error handling', () => {
 		it('should propagate errors from handler execution', async () => {
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.subscribe('user.created')
 				.handle(async () => {
-					throw new Error('Handler failed');
+					throw new HandlerFailed();
 				});
 
 			const adaptor = new TestSubscriberAdaptor(subscriber);
@@ -546,7 +501,7 @@ describe('TestSubscriberAdaptor', () => {
 					],
 					services: {},
 				}),
-			).rejects.toThrow('Handler failed');
+			).rejects.toThrow(HandlerFailed);
 		});
 	});
 
@@ -562,7 +517,7 @@ describe('TestSubscriberAdaptor', () => {
 			let contextLogger: any;
 
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.subscribe('user.created')
 				.handle(async ({ events }) => {
 					contextLogger = serviceContext.getLogger();
@@ -592,7 +547,7 @@ describe('TestSubscriberAdaptor', () => {
 			let hasContext = false;
 
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.subscribe('user.created')
 				.handle(async ({ events }) => {
 					hasContext = serviceContext.hasContext();
@@ -622,7 +577,7 @@ describe('TestSubscriberAdaptor', () => {
 			let requestId: string | undefined;
 
 			const subscriber = new SubscriberBuilder()
-				.publisher(TestEventService)
+				.topic(users)
 				.subscribe('user.created')
 				.handle(async ({ events }) => {
 					requestId = serviceContext.getRequestId();
