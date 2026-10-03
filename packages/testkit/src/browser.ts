@@ -17,6 +17,7 @@
  * ```
  */
 
+import { randomInt } from 'node:crypto';
 import { CookieJar } from 'tough-cookie';
 import { currentTestContext } from './context';
 
@@ -31,11 +32,27 @@ export interface BrowserOptions {
 	 * itself once installed.
 	 */
 	fetch?: typeof fetch;
+	/**
+	 * The address this browser connects from. A fresh one by default, from a
+	 * private range nothing routes to — see {@link Browser.address}.
+	 */
+	address?: string;
 }
 
 export class Browser {
 	/** The cookies this browser holds. */
 	readonly jar = new CookieJar();
+
+	/**
+	 * The address this browser connects from, sent as `x-forwarded-for` the way
+	 * a proxy in front of the app adds it. Each browser is a different person on
+	 * a different connection, so what an app keys by client — an auth server's
+	 * rate limit — counts each on its own. Without it every browser was the same
+	 * client, and concurrent tests queued on the same rate-limit row of each
+	 * other's open transactions. A request that sets the header itself — a test
+	 * that is several machines — keeps its own.
+	 */
+	readonly address: string;
 
 	/**
 	 * This browser's `fetch`: cookies from the jar on the way out, `Set-Cookie`
@@ -52,6 +69,7 @@ export class Browser {
 
 	constructor(options: BrowserOptions = {}) {
 		this.send = options.fetch ?? globalThis.fetch;
+		this.address = options.address ?? privateAddress();
 		this.fetch = (input, init) => {
 			if (currentTestContext()?.side === 'server') {
 				return this.send(input, init);
@@ -91,13 +109,12 @@ export class Browser {
 			request.method === 'GET' || request.method === 'HEAD'
 				? undefined
 				: await request.arrayBuffer();
+		const headers = new Headers(request.headers);
+		if (!headers.has('x-forwarded-for')) {
+			headers.set('x-forwarded-for', this.address);
+		}
 		return this.request(
-			{
-				url: request.url,
-				method: request.method,
-				headers: new Headers(request.headers),
-				body,
-			},
+			{ url: request.url, method: request.method, headers, body },
 			redirect,
 		);
 	}
@@ -186,4 +203,13 @@ export class TooManyRedirects extends Error {
 		);
 		this.name = 'TooManyRedirects';
 	}
+}
+
+/**
+ * An address from 10.0.0.0/8, which nothing routes to. Random rather than
+ * counted: test files run in separate workers that share no counter.
+ */
+function privateAddress(): string {
+	const n = randomInt(1, 2 ** 24 - 1);
+	return `10.${(n >> 16) & 255}.${(n >> 8) & 255}.${n & 255}`;
 }
