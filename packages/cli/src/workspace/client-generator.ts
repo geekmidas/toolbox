@@ -1,17 +1,14 @@
 import { join } from 'node:path';
-import { isPartitionedRoutes, type Routes } from '../types.js';
+import type { Routes } from '../types.js';
 import type { NormalizedWorkspace } from './types.js';
 
 /**
  * Normalize routes to an array of patterns.
- * Handles string, string[], and PartitionedRoutes (extracts paths).
+ * Handles a glob or a list of them.
  * @internal Exported for use in dev command
  */
 export function normalizeRoutes(routes: Routes | undefined): string[] {
 	if (!routes) return [];
-	if (isPartitionedRoutes(routes)) {
-		return Array.isArray(routes.paths) ? routes.paths : [routes.paths];
-	}
 	return Array.isArray(routes) ? routes : [routes];
 }
 

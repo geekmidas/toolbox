@@ -352,15 +352,7 @@ export function allConstructGlobs(workspace: NormalizedWorkspace): string[] {
 /** A `Routes` in any of its accepted shapes, as a flat list of patterns. */
 export function constructPatterns(routes: Routes | undefined): string[] {
 	if (!routes) return [];
-	if (typeof routes === 'string') return [routes];
-	if (Array.isArray(routes)) return routes;
-
-	// Partitioned form: surfaces are the deploy slices now, but the shape is
-	// still accepted until it retires.
-	const paths = (routes as { paths?: string | string[] }).paths;
-	if (!paths) return [];
-
-	return Array.isArray(paths) ? paths : [paths];
+	return typeof routes === 'string' ? [routes] : routes;
 }
 
 /**

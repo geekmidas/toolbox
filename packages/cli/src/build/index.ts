@@ -35,17 +35,18 @@ import {
 	withCompute,
 	withRoutes,
 } from '../reconcile/emit.js';
-import type { CacheBackend, GkmConfig, MainProvider } from '../types';
-import {
-	type BuildOptions,
-	type BuildResult,
-	type CronInfo,
-	type FunctionInfo,
-	isPartitionedRoutes,
-	type QueueInfo,
-	type RouteInfo,
-	type Routes,
-	type SubscriberInfo,
+import type {
+	BuildOptions,
+	BuildResult,
+	CacheBackend,
+	CronInfo,
+	FunctionInfo,
+	GkmConfig,
+	MainProvider,
+	QueueInfo,
+	RouteInfo,
+	Routes,
+	SubscriberInfo,
 } from '../types';
 import { DEFAULT_EMAIL } from '../types.js';
 import { cacheBackendFor, providerOf } from '../workspace/backends.js';
@@ -185,12 +186,7 @@ async function declaredIn(
 	config: GkmConfig,
 	cwd: string,
 ): Promise<ConstructManifest> {
-	const patterns =
-		typeof config.constructs === 'string' || Array.isArray(config.constructs)
-			? config.constructs
-			: undefined;
-
-	return patterns ? discover({ patterns, cwd }) : {};
+	return discover({ patterns: config.constructs, cwd });
 }
 
 /**
@@ -392,12 +388,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		bustCache = false,
 	} = input;
 
-	// `constructs` accepts the partitioned shape every other glob does; only the
-	// flat forms name a construct file.
-	const constructGlobs =
-		typeof config.constructs === 'string' || Array.isArray(config.constructs)
-			? config.constructs
-			: undefined;
+	const constructGlobs = config.constructs;
 
 	// Discovery imports application code, so it runs once here and everything
 	// downstream reads what it wrote — a deploy config calling it would evaluate
@@ -995,15 +986,7 @@ function getAppOutputPath(
 	return join(appPath, '.gkm');
 }
 
-/**
- * Format routes for logging, handling PartitionedRoutes.
- */
+/** Format routes for logging. */
 function formatRoutes(routes: Routes): string {
-	if (isPartitionedRoutes(routes)) {
-		const paths = Array.isArray(routes.paths)
-			? routes.paths.join(', ')
-			: routes.paths;
-		return `${paths} (partitioned)`;
-	}
 	return Array.isArray(routes) ? routes.join(', ') : routes;
 }
