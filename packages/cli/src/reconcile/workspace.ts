@@ -85,6 +85,8 @@ export interface WorkspaceReconcileOptions {
 	 * an external API is the real one, at its URL for this stage.
 	 */
 	fake?: boolean;
+	/** Told each slow step as it starts — see `ReconcileOptions.progress`. */
+	progress?: (message: string) => void;
 }
 
 /**
@@ -143,6 +145,7 @@ export async function reconcileWorkspace(
 		apps: (containers) =>
 			appServices(workspace, manifest, containers, runnables, fakes),
 		...(options.start === undefined ? {} : { start: options.start }),
+		...(options.progress ? { progress: options.progress } : {}),
 	});
 
 	await savePortState(workspace.root, { ...result.ports });

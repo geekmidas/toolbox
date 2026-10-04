@@ -9,7 +9,7 @@
  * container this project did not generate.
  */
 
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -32,6 +32,32 @@ export function composeFiles(composePath: string): string[] {
 /** How long to wait for containers to pass their health checks. */
 const HEALTH_TIMEOUT_MS = 120_000;
 
+/** `docker compose up` exited unsuccessfully; its own output said why. */
+export class ComposeUpFailed extends Error {
+	constructor(
+		readonly services: readonly string[],
+		readonly code: number | null,
+	) {
+		super(
+			`docker compose could not start ${services.join(', ')} (exit ${code ?? 'signal'}). Its output above names the container; \`docker compose logs <service>\` shows why it stopped.`,
+		);
+		this.name = 'ComposeUpFailed';
+	}
+}
+
+/** Run compose with its output on this terminal rather than captured. */
+function shown(args: readonly string[], services: readonly string[]) {
+	return new Promise<void>((resolve, reject) => {
+		const child = spawn('docker', args, {
+			stdio: ['ignore', 'inherit', 'inherit'],
+		});
+		child.on('error', reject);
+		child.on('close', (code) =>
+			code === 0 ? resolve() : reject(new ComposeUpFailed(services, code)),
+		);
+	});
+}
+
 export const dockerCli: Docker = {
 	async publishedPort(composePath, service, inside) {
 		try {
@@ -53,8 +79,8 @@ export const dockerCli: Docker = {
 		}
 	},
 
-	async up(composePath, services) {
-		await run('docker', [
+	async up(composePath, services, options = {}) {
+		const args = [
 			'compose',
 			...composeFiles(composePath),
 			'up',
@@ -66,7 +92,10 @@ export const dockerCli: Docker = {
 			'--wait',
 			`--wait-timeout=${Math.floor(HEALTH_TIMEOUT_MS / 1000)}`,
 			...services,
-		]);
+		];
+
+		if (options.show) return shown(args, services);
+		await run('docker', args);
 	},
 
 	async copyOut(composePath, service, from, to) {
