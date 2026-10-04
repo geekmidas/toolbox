@@ -588,6 +588,9 @@ importers:
       '@types/aws-lambda':
         specifier: '>=8.10.163'
         version: 8.10.163
+      cron-parser:
+        specifier: ~5.10.1
+        version: 5.10.1
       fast-glob:
         specifier: ~3.3.3
         version: 3.3.3

@@ -136,7 +136,7 @@ export class CronGenerator extends ConstructGenerator<
  */
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
-import { toCronExpression } from '@geekmidas/constructs/crons';
+import { runCron, scheduleInProcess, toCronExpression } from '@geekmidas/constructs/crons';
 import { ServiceDiscovery } from '@geekmidas/services';
 ${imports}
 
@@ -177,11 +177,10 @@ export async function setupCrons(
 
   const run = async (entry: (typeof prepared)[number]) => {
     try {
-      await entry.cron.handler({
-        input: undefined,
-        services: entry.services,
-        logger: entry.cron.logger,
-      });
+      // The cron's own function, the way its Lambda would run it — services,
+      // the worker's database as \`db\`, its events. It used to call a
+      // \`handler\` a Cron does not have, so every firing logged a failure.
+      await runCron(entry.cron, serviceDiscovery);
     } catch (error) {
       logger.error({ error, cron: entry.name }, 'Cron failed');
     }
@@ -192,13 +191,28 @@ export async function setupCrons(
   // memory fires each job once per replica — so the schedule lives in
   // Postgres. It used to be a second pg-boss on the worker's database, as the
   // runtime role, which can neither create a schema nor use the broker's.
-  const { url } = envParser
+  const { url, devPid } = envParser
     .create((get) => ({
       url: get('EVENT_PUBLISHER_CONNECTION_STRING').string().optional(),
+      // Set by \`gkm dev\` on the server it starts, and by nothing deployed.
+      devPid: get('GKM_DEV_PID').string().optional(),
     }))
     .parse();
 
   if (!url?.startsWith('pgboss://')) {
+    // \`gkm dev\` on a target whose crons are infrastructure once deployed —
+    // EventBridge rules on AWS — has no broker to keep a schedule in. It is one
+    // process, so a timer fires each job once, which is all pg-boss is for
+    // here. Only there: a deployed server firing by timer fires once per
+    // replica, so outside dev this stays the error below.
+    if (devPid) {
+      for (const entry of prepared) {
+        running.push(scheduleInProcess(entry.schedule, () => run(entry)));
+        logger.info({ cron: entry.name, schedule: entry.schedule }, 'Cron scheduled in this process');
+      }
+      return;
+    }
+
     logger.error(
       { crons: prepared.map(({ name }) => name) },
       'These crons have nowhere to keep their schedule. On a server they are ' +

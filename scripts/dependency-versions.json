@@ -316,6 +316,9 @@
 	"expo-secure-store": {
 		"peerDependencies": "^14.2.3"
 	},
+	"cron-parser": {
+		"dependencies": "~5.10.1"
+	},
 	"fast-glob": {
 		"dependencies": "~3.3.3"
 	},
