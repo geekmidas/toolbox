@@ -43,6 +43,7 @@
     "build-follows-deploy-target",
     "claude-md-imports-agents",
     "cli-starts-again",
+    "client-at-root",
     "client-coercion-types",
     "client-method-calls",
     "compose-env-follows-edges",
