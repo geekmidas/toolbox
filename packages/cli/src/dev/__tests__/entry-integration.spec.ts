@@ -1,13 +1,31 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { type AddressInfo, createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { prepareEntryCredentials } from '../index';
 
+/**
+ * A port nothing holds. Not 3000: a developer's own dev server is usually on
+ * it, and an app whose port another project holds is moved off it — so a test
+ * that configured 3000 asserted a port the machine decided.
+ */
+async function freePort(): Promise<number> {
+	const server = createServer();
+	await new Promise<void>((r) => server.listen(0, r));
+	const { port } = server.address() as AddressInfo;
+	await new Promise((r) => server.close(r));
+	return port;
+}
+
 describe('prepareEntryCredentials', () => {
 	let workspaceDir: string;
+	let API_PORT: number;
+	let AUTH_PORT: number;
 
 	beforeEach(async () => {
+		API_PORT = await freePort();
+		AUTH_PORT = await freePort();
 		workspaceDir = join(tmpdir(), `gkm-entry-test-${Date.now()}`);
 		await mkdir(workspaceDir, { recursive: true });
 	});
@@ -39,7 +57,7 @@ export default defineWorkspace({
     api: {
       type: 'backend',
       path: 'apps/api',
-      port: 3000,
+      port: ${API_PORT},
       routes: './src/endpoints/**/*.ts',
       envParser: './src/config/env#envParser',
       logger: './src/config/logger#logger',
@@ -47,7 +65,7 @@ export default defineWorkspace({
     auth: {
       type: 'backend',
       path: 'apps/auth',
-      port: 3002,
+      port: ${AUTH_PORT},
       envParser: './src/config/env#envParser',
       logger: './src/config/logger#logger',
     },
@@ -87,24 +105,24 @@ export default defineWorkspace({
 			);
 		});
 
-		it('should inject PORT from workspace config for api app (port 3000)', async () => {
+		it('should inject PORT from workspace config for api app (its configured port)', async () => {
 			const apiDir = join(workspaceDir, 'apps', 'api');
 
 			const result = await prepareEntryCredentials({ cwd: apiDir });
 
-			expect(result.resolvedPort).toBe(3000);
-			expect(result.credentials.PORT).toBe('3000');
+			expect(result.resolvedPort).toBe(API_PORT);
+			expect(result.credentials.PORT).toBe(String(API_PORT));
 			expect(result.appName).toBe('api');
 			expect(result.secretsRoot).toBe(workspaceDir);
 		});
 
-		it('should inject PORT from workspace config for auth app (port 3002)', async () => {
+		it('should inject PORT from workspace config for auth app (its configured port)', async () => {
 			const authDir = join(workspaceDir, 'apps', 'auth');
 
 			const result = await prepareEntryCredentials({ cwd: authDir });
 
-			expect(result.resolvedPort).toBe(3002);
-			expect(result.credentials.PORT).toBe('3002');
+			expect(result.resolvedPort).toBe(AUTH_PORT);
+			expect(result.credentials.PORT).toBe(String(AUTH_PORT));
 			expect(result.appName).toBe('auth');
 			expect(result.secretsRoot).toBe(workspaceDir);
 		});
@@ -136,7 +154,7 @@ export default defineWorkspace({
 			const content = await readFile(result.secretsJsonPath, 'utf-8');
 			const parsed = JSON.parse(content);
 
-			expect(parsed.PORT).toBe('3000');
+			expect(parsed.PORT).toBe(String(API_PORT));
 		});
 	});
 
@@ -196,7 +214,7 @@ export default defineWorkspace({
     api: {
       type: 'backend',
       path: 'apps/api',
-      port: 3000,
+      port: ${API_PORT},
       routes: './src/endpoints/**/*.ts',
       envParser: './src/config/env#envParser',
       logger: './src/config/logger#logger',
@@ -204,7 +222,7 @@ export default defineWorkspace({
     auth: {
       type: 'backend',
       path: 'apps/auth',
-      port: 3002,
+      port: ${AUTH_PORT},
       envParser: './src/config/env#envParser',
       logger: './src/config/logger#logger',
     },
@@ -249,18 +267,18 @@ export default defineWorkspace({
 
 			const result = await prepareEntryCredentials({ cwd: authDir });
 
-			expect(result.resolvedPort).toBe(3002);
-			expect(result.credentials.PORT).toBe('3002');
+			expect(result.resolvedPort).toBe(AUTH_PORT);
+			expect(result.credentials.PORT).toBe(String(AUTH_PORT));
 			expect(result.appName).toBe('auth');
 		});
 
-		it('should read port 3000 for api when GKM_CONFIG_PATH is set', async () => {
+		it('should read the api port it was configured with when GKM_CONFIG_PATH is set', async () => {
 			const apiDir = join(workspaceDir, 'apps', 'api');
 
 			const result = await prepareEntryCredentials({ cwd: apiDir });
 
-			expect(result.resolvedPort).toBe(3000);
-			expect(result.credentials.PORT).toBe('3000');
+			expect(result.resolvedPort).toBe(API_PORT);
+			expect(result.credentials.PORT).toBe(String(API_PORT));
 			expect(result.appName).toBe('api');
 		});
 	});
@@ -279,7 +297,7 @@ export default defineWorkspace({
     api: {
       type: 'backend',
       path: 'apps/api',
-      port: 3000,
+      port: ${API_PORT},
       routes: './src/endpoints/**/*.ts',
       envParser: './src/config/env#envParser',
       logger: './src/config/logger#logger',
@@ -326,7 +344,7 @@ export default defineWorkspace({
 
 			const result = await prepareEntryCredentials({ cwd: apiDir });
 
-			expect(result.credentials.PORT).toBe('3000');
+			expect(result.credentials.PORT).toBe(String(API_PORT));
 			expect(result.credentials.DATABASE_URL).toBe(
 				'postgresql://localhost:5432/test',
 			);
@@ -341,7 +359,7 @@ export default defineWorkspace({
 			const content = await readFile(result.secretsJsonPath, 'utf-8');
 			const parsed = JSON.parse(content);
 
-			expect(parsed.PORT).toBe('3000');
+			expect(parsed.PORT).toBe(String(API_PORT));
 			expect(parsed.DATABASE_URL).toBe('postgresql://localhost:5432/test');
 			expect(parsed.API_KEY).toBe('test-api-key');
 		});
