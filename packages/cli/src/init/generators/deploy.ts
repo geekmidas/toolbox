@@ -76,7 +76,8 @@ export function generateDeployFiles(options: TemplateOptions): GeneratedFile[] {
 	const hasDatabase = options.constructs.database;
 
 	// Provider inputs keyed by construct id: the two things a neutral
-	// declaration cannot carry, and that the synth refuses to guess.
+	// declaration cannot carry. `fromManifest` types its overrides from the
+	// manifest, so leaving either out is a type error in sst.config.ts.
 	const inputs = [
 		...(hasDatabase
 			? [
@@ -89,7 +90,7 @@ export function generateDeployFiles(options: TemplateOptions): GeneratedFile[] {
 		...(options.constructs.mail
 			? [
 					`        // Every provider rejects an unverified sender, so there is no
-        // default; the synth stops with \`EmailNeedsSender\` until it is set.
+        // default — \`fromManifest\` requires it, by the manifest's types.
         ${mail.id}: { from: process.env.MAIL_FROM as string },`,
 				]
 			: []),

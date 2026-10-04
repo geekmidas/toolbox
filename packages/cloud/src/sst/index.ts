@@ -62,7 +62,6 @@ export {
 } from './errors';
 export {
 	assertProvides,
-	type ComponentOverrides,
 	describeRoutes,
 	fromManifest,
 	isServed,
@@ -76,4 +75,9 @@ export {
 } from './fromManifest';
 export { type GkmLinkable, ResourceType } from './Linkable';
 export { kebab, prefixedName, regionOfArn } from './naming';
+export type {
+	ManifestBackends,
+	ManifestOverrides,
+	OverrideFor,
+} from './overrides';
 export { Stack, type StackType } from './Stack';

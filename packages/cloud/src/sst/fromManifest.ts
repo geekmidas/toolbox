@@ -62,6 +62,7 @@ import {
 	UnresolvedDependency,
 } from './errors';
 import type { GkmLinkable } from './Linkable';
+import type { ManifestBackends, ManifestOverrides } from './overrides';
 import type { StackType } from './Stack';
 
 /**
@@ -138,21 +139,6 @@ type Provisioner = (
 	props: Record<string, unknown>,
 	context: ProvisionContext,
 ) => Provisioned;
-
-/**
- * Provider-specific props, per construct id.
- *
- * Neutral options — `versioned`, and later `cdn` — travel in the declaration,
- * because the app legitimately has an opinion about them. Anything with S3 in
- * its name does not belong in application code, so lifecycle rules, CORS, and
- * canned ACLs are supplied here, in the deploy layer, keyed by the id they
- * apply to and typed against the component that receives them.
- *
- * A third escape hatch needs no API at all: `fromManifest` returns the
- * components, so `provisioned.Uploads.nodes.bucket` is reachable for anything
- * neither route covers.
- */
-export type ComponentOverrides = Record<string, Record<string, unknown>>;
 
 /**
  * Which component provisions which kind.
@@ -951,20 +937,34 @@ export function assertProvides(
  * tenant, a read replica, and the surface over a bucket all resolve an address
  * off something else, and a pass in map order would find it half the time.
  */
-export function fromManifest(
+export function fromManifest<
+	const M extends ConstructManifest,
+	const B extends ManifestBackends = {},
+>(
 	stack: StackType,
-	manifest: ConstructManifest,
-	overrides: ComponentOverrides = {},
+	manifest: M,
+	/**
+	 * Provider-specific props, per construct id — typed from the manifest, so
+	 * only its ids are keys, each takes what its kind's component reads, and
+	 * what the synth cannot guess (a database's `vpc`, mail's `from`) is
+	 * required. See {@link ManifestOverrides}.
+	 *
+	 * Neutral options — `versioned`, `fifo` — travel in the declaration,
+	 * because the app legitimately has an opinion about them. Anything with S3
+	 * in its name does not belong in application code, so it is supplied here.
+	 * A third escape hatch needs no API: the components are returned, so
+	 * `provisioned.Uploads.nodes.bucket` is reachable for anything else.
+	 */
+	overrides: ManifestOverrides<M, B>,
 	/**
 	 * The backend choices that are config rather than declaration.
 	 *
 	 * Defaulted the same way the local target defaults them, so a stage deployed
-	 * without saying gets the same backend a developer ran against.
+	 * without saying gets the same backend a developer ran against. Typed
+	 * literally, because the backend decides what is required above: an
+	 * ElastiCache cache needs a `vpc`, Resend or SMTP mail a `url`.
 	 */
-	backends: {
-		cache?: 'upstash' | 'elasticache' | 'db';
-		email?: 'resend' | 'ses' | 'smtp';
-	} = {},
+	backends: B = {} as B,
 ): ProvisionedManifest {
 	const provisioned: ProvisionedManifest = {};
 
@@ -1006,7 +1006,7 @@ export function fromManifest(
 		const component = provisionerFor(declaration.kind)(
 			stack,
 			declaration,
-			overrides[id] ?? {},
+			(overrides as Record<string, Record<string, unknown>>)[id] ?? {},
 			context,
 		);
 
