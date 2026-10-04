@@ -1,4 +1,5 @@
 import { realpathSync, writeFileSync } from 'node:fs';
+import { type AddressInfo, createServer } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -9,11 +10,26 @@ import {
 import { prepareEntryCredentials } from '../index';
 import { createPackageJson, createSecretsFile } from './helpers';
 
+/**
+ * A port nothing holds. Not a fixed one: an app whose port another process
+ * holds is moved off it, so a test that configured 3001 asserted whatever the
+ * machine happened to be running.
+ */
+async function freePort(): Promise<number> {
+	const server = createServer();
+	await new Promise<void>((r) => server.listen(0, r));
+	const { port } = server.address() as AddressInfo;
+	await new Promise((r) => server.close(r));
+	return port;
+}
+
 describe('workspace credentials', () => {
 	let testDir: string;
 	let apiDir: string;
+	let apiPort: number;
 
 	beforeEach(async () => {
+		apiPort = await freePort();
 		testDir = realpathSync(await createTempDir('gkm-ws-creds-'));
 		// Compose reads this from the environment; anything that reaches it from
 		// here gets a project of its own, never a shared one.
@@ -26,7 +42,7 @@ describe('workspace credentials', () => {
   name: 'test-workspace',
   stages: { local: 'development', deployed: ['production'] },
   constructs: './src/constructs/**/*.ts',
-  apps: { api: { type: 'backend', path: 'apps/api', port: 3001 } },
+  apps: { api: { type: 'backend', path: 'apps/api', port: ${apiPort} } },
 };
 `,
 		);
@@ -55,8 +71,8 @@ describe('workspace credentials', () => {
 	it('should resolve port from workspace config', async () => {
 		const result = await prepareEntryCredentials({ cwd: apiDir });
 
-		expect(result.resolvedPort).toBe(3001);
-		expect(result.credentials.PORT).toBe('3001');
+		expect(result.resolvedPort).toBe(apiPort);
+		expect(result.credentials.PORT).toBe(String(apiPort));
 	});
 
 	it('should map APP_DATABASE_URL to DATABASE_URL', async () => {

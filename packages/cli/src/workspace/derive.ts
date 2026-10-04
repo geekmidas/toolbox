@@ -163,6 +163,11 @@ export function derivedApps(
 						: 'backend',
 			path: spec.path,
 			port: spec.port ?? configured?.port ?? 0,
+			// The label it answers on, under a stage's domain and locally alike.
+			...((declaration.kind === 'rest-api' || declaration.kind === 'site') &&
+			declaration.subdomain
+				? { subdomain: declaration.subdomain }
+				: {}),
 			dependencies: [],
 			resolvedDeployTarget: configured?.resolvedDeployTarget ?? defaultTarget,
 			...(declaration.kind === 'site'

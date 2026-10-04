@@ -26,6 +26,7 @@ import {
 	providerOf,
 	storageBackendFor,
 } from '../workspace/backends.js';
+import { appKey } from '../workspace/derive.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import type { DokployApi } from './dokploy-api';
 import {
@@ -109,7 +110,7 @@ export async function provisionDeclared(
 		cache: cacheBackendFor(providerOf(workspace)),
 		events: eventsBackendFor(providerOf(workspace)),
 		storage: storageBackendFor(providerOf(workspace)),
-		addresses: surfaceAddresses(workspace, manifest, options.appUrls),
+		addresses: surfaceAddresses(manifest, options.appUrls),
 		seed: options.seed,
 		...(options.supplied ? { supplied: options.supplied } : {}),
 		deferred: [],
@@ -199,35 +200,23 @@ function carriersLast(
 }
 
 /**
- * Where each declared surface answers.
+ * Where each declared surface answers: its own app's address.
  *
- * Every `rest-api` in a process answers on that process's address, so an app
- * serving both its own API and an auth server publishes one address twice —
- * which is exactly what it does at runtime, and the same rule the local target
- * applies.
- *
- * A workspace with two backends is the case this does not answer, and the
- * manifest cannot yet: which surface belongs to which app is what §2's endpoint
- * merge would record. Until then the first backend's address is used, and a
- * second backend's surfaces would be wrong rather than missing — worth knowing
- * before relying on it.
+ * Every surface is an app of its own, keyed by its id the way the derivation
+ * keyed it — `Api` is `api`, `Webhooks` is `webhooks` — and answers on that
+ * app's host, `{subdomain}.{domain}`. It used to be handed the first backend's
+ * address, so a workspace with two APIs pointed both at the same one.
  */
 function surfaceAddresses(
-	workspace: NormalizedWorkspace,
 	manifest: ConstructManifest,
 	appUrls: Readonly<Record<string, string>>,
 ): Record<string, string> {
 	const addresses: Record<string, string> = {};
 
-	const backend = Object.entries(workspace.apps).find(
-		([, app]) => app.type === 'backend',
-	);
-	const url = backend ? appUrls[backend[0]] : undefined;
-
-	if (!url) return addresses;
-
 	for (const [id, declaration] of Object.entries(manifest)) {
-		if (declaration.kind === 'rest-api') addresses[id] = url;
+		if (declaration.kind !== 'rest-api') continue;
+		const url = appUrls[appKey(id)];
+		if (url) addresses[id] = url;
 	}
 
 	return addresses;

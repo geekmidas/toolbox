@@ -75,9 +75,18 @@ the name does not.
 Everything above is structural — it does not vary by stage. A hostname does, so
 it is config rather than derivation:
 
-- the site holding the base domain gets `domains[stage]` — `example.com`
-- everything else gets `{name}.{base}` — `api.example.com`, `admin.example.com`
-- `app.domain` overrides either, per stage
+- each stage's base domain is `deploy.domains[stage]` in `gkm.config.ts`
+- the site holding the base domain answers on it — `example.com`
+- every other surface on `{subdomain}.{base}` — `api.example.com`,
+  `admin.example.com` — where the subdomain is the construct's own
+  `subdomain` option, or its id kebab-cased:
+
+  ```ts
+  new RestApi('Api', { path: 'apps/api', subdomain: 'v1' })  // v1.example.com
+  new RestApi('Webhooks', { path: 'apps/hooks' })            // webhooks.example.com
+  ```
+
+  The same label is used locally under the project: `v1.shop.localhost`.
 
 Which site holds the base domain is itself declared, not guessed. One site is
 the root because it is the only one; a site named `web` wins by convention; past

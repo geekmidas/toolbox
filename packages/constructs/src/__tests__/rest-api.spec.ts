@@ -17,6 +17,17 @@ const authServer = {
 };
 
 describe('RestApi', () => {
+	it('declares the subdomain it answers on, and nothing when it names none', () => {
+		const named = new RestApi('Api', {
+			path: 'apps/api',
+			subdomain: 'v1',
+			defaultAuthorizer: 'none',
+		});
+
+		expect(named.declare()[0]).toMatchObject({ subdomain: 'v1' });
+		expect(api().declare()[0]).not.toHaveProperty('subdomain');
+	});
+
 	it.each([
 		['patch', 'PATCH'],
 		['delete', 'DELETE'],

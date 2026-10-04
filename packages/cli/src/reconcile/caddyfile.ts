@@ -158,9 +158,21 @@ export function hostFor(resource: PlannedResource, project: string): string {
 	// stage, and `gkm test` claiming the bare host would take it from `gkm dev`.
 	// Only under a project: without one, the "bare host" is `localhost` itself,
 	// which is nobody's domain to take.
-	const label = resource.root && project ? stageOf(resource) : resource.name;
+	const label =
+		resource.root && project ? stageOf(resource) : labelOf(resource);
 
 	return [label, project, LOCAL_TLD].filter(Boolean).join('.');
+}
+
+/**
+ * A resource's own label: its `subdomain` where it declared one — the label a
+ * deploy uses too — with the stage it carries kept, so `gkm test` and `gkm dev`
+ * still answer on different hosts.
+ */
+function labelOf(resource: PlannedResource): string {
+	if (!resource.subdomain) return resource.name;
+	const stage = stageOf(resource);
+	return stage ? `${resource.subdomain}-${stage}` : resource.subdomain;
 }
 
 /** The stage a resource's name carries, or nothing for the local stage's. */

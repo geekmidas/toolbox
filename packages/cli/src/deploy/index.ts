@@ -820,10 +820,6 @@ export async function workspaceDeployCommand(
 	// ==================================================================
 	// Initialize per-app database users if Postgres is provisioned
 	// ==================================================================
-	// Read before the declared block below, which needs it to work out where a
-	// surface will answer — that has to be known before any environment is
-	// saved, and it used to be decided inside the app loop, which is too late.
-	const dokployConfig = workspace.deploy.dokploy;
 
 	// ==================================================================
 	// The declared half: everything the construct manifest says exists
@@ -856,7 +852,7 @@ export async function workspaceDeployCommand(
 				appName,
 				app,
 				stage,
-				dokployConfig,
+				workspace.deploy?.domains,
 				false,
 			)}`;
 		}
@@ -987,7 +983,7 @@ export async function workspaceDeployCommand(
 			appName,
 			app,
 			stage,
-			dokployConfig,
+			workspace.deploy?.domains,
 			isMainFrontend,
 		);
 		frontendUrls.push(`https://${hostname}`);
@@ -1087,7 +1083,7 @@ export async function workspaceDeployCommand(
 					appName,
 					app,
 					stage,
-					dokployConfig,
+					workspace.deploy?.domains,
 					false, // Backend apps are not main frontend
 				);
 
@@ -1307,7 +1303,7 @@ export async function workspaceDeployCommand(
 					appName,
 					app,
 					stage,
-					dokployConfig,
+					workspace.deploy?.domains,
 					isMainFrontend,
 				);
 

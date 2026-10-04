@@ -54,6 +54,28 @@ describe('sitesFor', () => {
 		]);
 	});
 
+	it('answers a surface on the subdomain it declared, as a deploy does', () => {
+		const named = {
+			Api: {
+				kind: 'rest-api',
+				id: 'Api',
+				path: '.',
+				subdomain: 'v1',
+				endpoints: [],
+			},
+		} as const satisfies ConstructManifest;
+
+		const [site] = sitesFor(
+			planFor(named, 'development', provisionOrder(named), {
+				localStage: 'development',
+			}),
+			'shop',
+			{ Api: 'http://localhost:3000' },
+		);
+
+		expect(site?.host).toBe('v1.shop.localhost');
+	});
+
 	it('routes a surface and a site to the process serving them', () => {
 		// Not a container: `gkm dev` starts these on the host, so the edge has to
 		// leave Docker's network to reach them. Their addresses arrive as options

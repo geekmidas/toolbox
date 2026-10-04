@@ -56,14 +56,17 @@ export default defineWorkspace({
 
   deploy: {
     default: 'dokploy',
+    // Each deployed stage's base domain — read by every target, not only
+    // Dokploy. The root site answers on it; every other surface on
+    // `{subdomain}.{domain}`.
+    domains: {
+      production: 'myapp.com',
+      staging: 'staging.myapp.com',
+    },
     dokploy: {
       endpoint: 'https://dokploy.myserver.com',
       projectId: 'proj_abc123',
       registry: 'ghcr.io/myorg',
-      domains: {
-        production: 'myapp.com',
-        staging: 'staging.myapp.com',
-      },
     },
     dns: {
       provider: 'route53',
