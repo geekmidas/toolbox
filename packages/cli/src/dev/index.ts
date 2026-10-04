@@ -285,6 +285,9 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	});
 
 	if (!appConfig) {
+		// Discovery imports every construct and route module — the longest
+		// silence of a start, before anything else can be said.
+		logger.log('🔎 Reading gkm.config.ts and the constructs');
 		const { workspace: everything } = await loadWorkspaceConfig();
 		return workspaceDevCommand(everything, options);
 	}
@@ -385,6 +388,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		);
 
 	// Build initial version
+	logger.log(`🔨 Building ${workspaceAppName ?? 'the app'}`);
 	const initial = await build();
 
 	// Determine runtime (default to node)
@@ -410,6 +414,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		const reconciled = await reconcileWorkspace(workspace, {
 			stage: workspace.stages.local,
 			...(options.fake ? { fake: true } : {}),
+			progress: (message) => logger.log(message),
 		});
 
 		// Every start, not only the one that changed something: where the inbox
@@ -953,6 +958,7 @@ async function workspaceDevCommand(
 	const reconciled = await reconcileWorkspace(workspace, {
 		stage: workspace.stages.local,
 		...(options.fake ? { fake: true } : {}),
+		progress: (message) => logger.log(message),
 	});
 
 	// Every start, not only the one that changed something: where the inbox is
@@ -983,6 +989,11 @@ async function workspaceDevCommand(
 	// starts, and a failure stops here. Otherwise pending migrations are only
 	// reported, and a failure to check is only a warning: nothing about it
 	// should keep the apps from starting.
+	logger.log(
+		options.migrate || options.seed
+			? '🗄️  Migrating the databases'
+			: '🗄️  Checking for pending migrations',
+	);
 	if (options.migrate || options.seed) {
 		const { prepareDevDatabases } = await import('../migrate/index.js');
 		await prepareDevDatabases(workspace, reconciled.env, {
@@ -1105,6 +1116,9 @@ async function workspaceDevCommand(
 	};
 
 	// Spawn turbo run dev
+	logger.log(
+		`🚀 Starting ${appCount} app(s) — each builds before it answers, and says so when it is ready`,
+	);
 
 	const turboProcess = spawn('pnpm', ['turbo', 'run', 'dev', ...turboFilter], {
 		cwd: workspace.root,

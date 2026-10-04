@@ -25,14 +25,19 @@ const manifest = {
 function fakeDocker(
 	options: { running?: Record<string, number>; healthy?: boolean } = {},
 ) {
-	const calls = { up: [] as string[][], healthy: 0 };
+	const calls = {
+		up: [] as string[][],
+		shown: [] as boolean[],
+		healthy: 0,
+	};
 
 	const docker: Docker = {
 		async publishedPort(_path, service, inside) {
 			return options.running?.[`${service}:${inside}`];
 		},
-		async up(_path, services) {
+		async up(_path, services, upOptions = {}) {
 			calls.up.push([...services]);
+			calls.shown.push(upOptions.show ?? false);
 		},
 		async healthy() {
 			calls.healthy++;
@@ -90,6 +95,48 @@ describe('reconcile', () => {
 			...overrides,
 		});
 	};
+
+	it('says what it is doing as it does it, and lets Docker show its own progress', async () => {
+		// A first `gkm dev` pulls every image and creates every database: minutes
+		// of work that, captured, read as a hang.
+		const { docker, calls } = fakeDocker();
+		const said: string[] = [];
+
+		await run({ docker, progress: (message) => said.push(message) });
+
+		expect(said).toEqual([
+			expect.stringMatching(
+				/^🐳 Starting mailpit, postgres|^🐳 Starting postgres, mailpit/,
+			),
+			expect.stringMatching(/^🗄️ {2}Creating what the constructs declare/),
+		]);
+		expect(calls.shown).toEqual([true]);
+	});
+
+	it('stays silent, with Docker captured, when nobody asked for progress', async () => {
+		// `gkm test` and anything else that reconciles in the background.
+		const { docker, calls } = fakeDocker();
+
+		await run({ docker });
+
+		expect(calls.shown).toEqual([false]);
+	});
+
+	it('says nothing when there is nothing to do', async () => {
+		const { docker } = fakeDocker({ healthy: true });
+		const said: string[] = [];
+		const progress = (message: string) => said.push(message);
+
+		await run({ docker, progress });
+		said.length = 0;
+		await run({
+			docker,
+			progress,
+			sql: postgresWith(['orders']),
+		});
+
+		expect(said).toEqual([]);
+	});
 
 	it('derives its containers from what the app declared', async () => {
 		// The list stops being a hand-maintained `services:` block: a database

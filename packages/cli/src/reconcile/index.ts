@@ -138,8 +138,19 @@ export interface Docker {
 		service: string,
 		inside: number,
 	): Promise<number | undefined>;
-	/** Bring the named services up, detached. */
-	up(composePath: string, services: readonly string[]): Promise<void>;
+	/**
+	 * Bring the named services up, detached, and wait for their health checks.
+	 *
+	 * `show` lets Compose draw its own progress — the pulls, the containers it
+	 * creates, each one turning healthy — rather than capturing it. A first
+	 * start pulls every image and can take minutes, and minutes of nothing
+	 * read as a hang.
+	 */
+	up(
+		composePath: string,
+		services: readonly string[],
+		options?: { show?: boolean },
+	): Promise<void>;
 	/** Whether every named service is running and passing its health check. */
 	healthy(composePath: string, services: readonly string[]): Promise<boolean>;
 	/**
@@ -167,6 +178,13 @@ export interface Docker {
 export interface ReconcileOptions {
 	/** The project root — where `.gkm/` lives. */
 	root: string;
+	/**
+	 * Told each slow step as it starts — starting the containers, creating what
+	 * the constructs declare — and, given one, Docker shows its own progress.
+	 * Absent, reconcile is silent: `gkm test` and the converged case say
+	 * nothing.
+	 */
+	progress?: (message: string) => void;
 	/**
 	 * The project name, which seeds port allocation and names the compose
 	 * project. Two checkouts of the same repo share it deliberately.
@@ -386,7 +404,14 @@ export async function reconcile(
 	}
 
 	if (start && plan.containers.length > 0) {
-		await docker.up(composePath, plan.containers);
+		options.progress?.(
+			`🐳 Starting ${plan.containers.join(', ')} — the first start pulls each image, which can take a few minutes`,
+		);
+		await docker.up(
+			composePath,
+			plan.containers,
+			options.progress ? { show: true } : {},
+		);
 	}
 
 	// A running Caddy does not notice a changed import, so the routes this
@@ -416,6 +441,11 @@ export async function reconcile(
 
 	// Only once the containers are up: there is nothing to create inside a
 	// container that is not running.
+	if (start && provision) {
+		options.progress?.(
+			'🗄️  Creating what the constructs declare — databases, roles, buckets, topics',
+		);
+	}
 	const provisioned =
 		start && provision
 			? await create(plan, ports, sql, buckets, carriers, project)
