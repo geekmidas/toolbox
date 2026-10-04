@@ -223,14 +223,10 @@ export function wrapSingleAppAsWorkspace(
 	const app: NormalizedAppConfig = {
 		type: 'backend',
 		path: '.',
-		port:
-			(typeof config.providers?.server === 'object'
-				? config.providers.server.port
-				: undefined) ?? 3000,
+		port: 3000,
 		dependencies: [],
 		resolvedDeployTarget: config.deploy?.default ?? 'dokploy',
 		constructs: config.constructs,
-		providers: config.providers,
 		hooks: config.hooks,
 		telescope: config.telescope,
 		studio: config.studio,
@@ -356,15 +352,7 @@ export function allConstructGlobs(workspace: NormalizedWorkspace): string[] {
 /** A `Routes` in any of its accepted shapes, as a flat list of patterns. */
 export function constructPatterns(routes: Routes | undefined): string[] {
 	if (!routes) return [];
-	if (typeof routes === 'string') return [routes];
-	if (Array.isArray(routes)) return routes;
-
-	// Partitioned form: surfaces are the deploy slices now, but the shape is
-	// still accepted until it retires.
-	const paths = (routes as { paths?: string | string[] }).paths;
-	if (!paths) return [];
-
-	return Array.isArray(paths) ? paths : [paths];
+	return typeof routes === 'string' ? [routes] : routes;
 }
 
 /**
@@ -394,7 +382,6 @@ export function getAppGkmConfig(
 		// as the constructs. Which surface an endpoint belongs to is the
 		// endpoint's to say, not its file's, so the build sorts them there.
 		constructs: appConstructGlobs(workspace, appName),
-		providers: app.providers,
 		hooks: app.hooks,
 		telescope: app.telescope,
 		studio: app.studio,

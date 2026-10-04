@@ -1,24 +1,16 @@
 /**
- * Deployment manifest types — the build output of `gkm build` that enumerates a
- * project's deployable units (routes, functions, crons, subscribers, queues)
- * with the metadata an infrastructure layer needs to provision them.
- *
- * `gkm build` writes a single TypeScript module per provider
- * (`<out>/manifest/aws.ts`) of the form:
+ * The construct manifest — every construct the application declares, keyed by
+ * id, with its dependency edges — is the shape `gkm build` writes to
+ * `.gkm/manifest/<target>.ts` and `@geekmidas/cloud/sst` provisions from:
  *
  * ```ts
- * export const manifest = { routes: [...], functions: [...], ... } as const;
- * export type Route = (typeof manifest.routes)[number];
- * // ...derived types
+ * export const constructs = { … } as const satisfies ConstructManifest;
+ * export const backends = { … } as const;
  * ```
  *
- * This is the dependency-free data contract shared between the producer
- * (`@geekmidas/cli`) and consumers (e.g. `@geekmidas/cloud/sst`'s `fromManifest`
- * integrators).
- *
- * The types below describe the **per-kind** manifest. The construct manifest
- * that replaces it — every construct keyed by id, with dependency edges — lives
- * in `./declaration`; both are exported while the migration runs.
+ * The `*Info` types below are what the build generates per handler before it
+ * folds them into the declarations they belong to — a route into its surface,
+ * a queue's worker into its queue.
  */
 
 export type {
@@ -114,25 +106,6 @@ export {
 	scopedName,
 	serviceKey,
 } from './naming';
-
-/**
- * A manifest field is either a flat list or, when the build is partitioned
- * (e.g. by authorizer), an object keyed by partition name. Readonly-tolerant so
- * the `as const` generated manifest assigns cleanly.
- */
-export type ManifestField<T> =
-	| readonly T[]
-	| Readonly<Record<string, readonly T[]>>;
-
-/** Flatten a manifest field (array or partitioned) into a plain array. */
-export function flattenManifestField<T>(
-	field: ManifestField<T> | undefined,
-): T[] {
-	if (!field) return [];
-	return Array.isArray(field)
-		? [...field]
-		: Object.values(field as Record<string, readonly T[]>).flat();
-}
 
 /** A single HTTP route. */
 export interface RouteInfo {
@@ -250,18 +223,4 @@ export interface QueueInfo {
 	 * See {@link RouteInfo.dependencies} — same field, same reason.
 	 */
 	dependencies?: readonly string[];
-}
-
-/**
- * The full deployment manifest — the shape of `export const manifest` in a
- * generated `manifest/<provider>.ts`. Each field is a {@link ManifestField}
- * (flat or partitioned).
- */
-export interface Manifest {
-	routes: ManifestField<RouteInfo>;
-	functions?: ManifestField<FunctionInfo>;
-	crons?: ManifestField<CronInfo>;
-	subscribers?: ManifestField<SubscriberInfo>;
-	queues?: ManifestField<QueueInfo>;
-	topics?: ManifestField<TopicInfo>;
 }

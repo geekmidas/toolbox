@@ -29,11 +29,11 @@ export class SubscriberGenerator extends ConstructGenerator<
 		outputDir: string,
 		options?: GeneratorOptions,
 	): Promise<SubscriberInfo[]> {
-		const provider = options?.provider || 'aws-lambda';
+		const target = options?.target ?? 'aws';
 		const logger = console;
 		const subscriberInfos: SubscriberInfo[] = [];
 
-		if (provider === 'server') {
+		if (target === 'server') {
 			// Generate subscribers.ts for server-based polling (even if empty)
 			await this.generateServerSubscribersFile(outputDir, constructs);
 
@@ -46,10 +46,6 @@ export class SubscriberGenerator extends ConstructGenerator<
 		}
 
 		if (constructs.length === 0) {
-			return subscriberInfos;
-		}
-
-		if (provider !== 'aws-lambda') {
 			return subscriberInfos;
 		}
 
@@ -70,7 +66,7 @@ export class SubscriberGenerator extends ConstructGenerator<
 
 			subscriberInfos.push({
 				name: key,
-				handler: relative(process.cwd(), handlerFile).replace(
+				handler: relative(options?.root ?? process.cwd(), handlerFile).replace(
 					/\.ts$/,
 					'.handler',
 				),

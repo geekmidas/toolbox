@@ -37,7 +37,7 @@ export const serverlessTemplate: TemplateConfig = {
 
 	scripts: {
 		dev: 'gkm dev',
-		build: 'gkm build --provider aws-apigatewayv2',
+		build: 'gkm build --provider aws',
 		test: 'vitest',
 		'test:once': 'vitest run',
 		typecheck: 'tsc --noEmit',
@@ -47,7 +47,7 @@ export const serverlessTemplate: TemplateConfig = {
 	},
 
 	files: (options: TemplateOptions): GeneratedFile[] => {
-		const { loggerType, routesStructure, name } = options;
+		const { loggerType, routesStructure } = options;
 
 		const loggerContent = `import { createLogger } from '@geekmidas/logger/${loggerType}';
 

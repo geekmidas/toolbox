@@ -1,20 +1,8 @@
 import { z } from 'zod/v4';
 import { stageProblems } from './stages.js';
 
-/**
- * Routes can be a string glob, array of globs, or a partitioned config
- * with glob paths and a partition function.
- */
-const RoutesSchema = z.union([
-	z.string(),
-	z.array(z.string()),
-	z.object({
-		paths: z.union([z.string(), z.array(z.string())]),
-		partition: z.custom<(filepath: string) => string>(
-			(val) => typeof val === 'function',
-		),
-	}),
-]);
+/** Routes are a glob, or a list of them. */
+const RoutesSchema = z.union([z.string(), z.array(z.string())]);
 
 /**
  * Telescope configuration schema.
@@ -182,15 +170,16 @@ const MOBILE_FRAMEWORKS = ['expo'] as const;
 
 /**
  * Deploy target schema.
- * Currently only 'dokploy' is supported.
+ * 'dokploy' is deployed by `gkm deploy`; 'sst' by `sst deploy`, from the
+ * manifest `gkm build` writes.
  * 'vercel' and 'cloudflare' are planned for Phase 2.
  */
-const DeployTargetSchema = z.enum(['dokploy', 'vercel', 'cloudflare']);
+const DeployTargetSchema = z.enum(['dokploy', 'sst', 'vercel', 'cloudflare']);
 
 /**
  * Supported deploy targets (Phase 1).
  */
-const SUPPORTED_DEPLOY_TARGETS = ['dokploy'] as const;
+const SUPPORTED_DEPLOY_TARGETS = ['dokploy', 'sst'] as const;
 
 /**
  * Phase 2 deploy targets (not yet implemented).
@@ -221,9 +210,9 @@ export function isPhase2DeployTarget(target: string): boolean {
 export function getDeployTargetError(target: string, appName?: string): string {
 	if (isPhase2DeployTarget(target)) {
 		const context = appName ? ` for app "${appName}"` : '';
-		return `Deploy target "${target}"${context} is coming in Phase 2. Currently only "dokploy" is supported.`;
+		return `Deploy target "${target}"${context} is coming in Phase 2. Currently "dokploy" and "sst" are supported.`;
 	}
-	return `Unknown deploy target: ${target}. Supported: dokploy. Coming in Phase 2: vercel, cloudflare.`;
+	return `Unknown deploy target: ${target}. Supported: dokploy, sst. Coming in Phase 2: vercel, cloudflare.`;
 }
 
 /**

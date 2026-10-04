@@ -1,15 +1,24 @@
 import { resolveEnvKeys } from '@geekmidas/envkit/sst';
 import { NoUrlForStage, providedKeyFor, provideKey } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
+import { App } from '../App';
+import { Cron } from '../aws/Cron';
+import { Database } from '../aws/Database';
+import { DatabaseSchema } from '../aws/DerivedDatabase';
+import { Function } from '../aws/Function';
 import { ObjectStorage } from '../aws/ObjectStorage';
+import { RestApiSurface } from '../aws/RestApiSurface';
 import { type ProvidesMismatch, UnknownDeclarationKind } from '../errors';
 import {
 	assertProvides,
+	mountRoutes,
 	PROVISIONED_ELSEWHERE,
 	type ProvisionedManifest,
+	provisionCompute,
 	provisionerFor,
 	resolveEdges,
 	subscribeConsumers,
+	vpcFor,
 } from '../fromManifest';
 
 /**
@@ -363,7 +372,7 @@ describe('a queue’s one consumer', () => {
 					provides: ['EMAILS_PUBLISHER_CONNECTION_STRING'],
 					worker: {
 						id: 'EmailsWorker',
-						handler: '.gkm/aws-lambda/queues/emails.handler',
+						handler: 'apps/api/.gkm/aws/queues/emails.handler',
 						dependencies: [{ target: 'Uploads', kind: 'objects' }],
 					},
 				},
@@ -372,7 +381,7 @@ describe('a queue’s one consumer', () => {
 		);
 
 		expect(consumed).toEqual([
-			{ handler: '.gkm/aws-lambda/queues/emails.handler', link: [uploads] },
+			{ handler: 'apps/api/.gkm/aws/queues/emails.handler', link: [uploads] },
 		]);
 	});
 
@@ -388,6 +397,162 @@ describe('a queue’s one consumer', () => {
 		expect(subscriber.handler).toBe('emails.handler');
 		expect(subscriber.link).toEqual([queue]);
 		expect(args).toEqual({ batch: { size: 5 } });
+	});
+});
+
+describe('a surface’s endpoints', () => {
+	const routesOf = (surface: RestApiSurface) =>
+		(
+			surface as unknown as {
+				routes: { key: string; handler: any; args: unknown }[];
+			}
+		).routes;
+
+	it('are mounted from the handlers the build wrote, each linked to what it depends on', () => {
+		// An API Gateway with no routes 404s everything — which is what a deploy
+		// produced while the routes sat in the manifest with nothing reading them.
+		const api = new RestApiSurface({} as never, 'Api');
+		const uploads = { _id: 'Uploads', _type: 'sst.aws.Bucket' };
+
+		mountRoutes(
+			{
+				Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+				Api: {
+					kind: 'rest-api',
+					id: 'Api',
+					provides: ['API_URL'],
+					endpoints: [
+						{
+							id: 'ApiGET/users/{id}',
+							method: 'GET',
+							path: '/users/{id}',
+							handler: 'apps/api/.gkm/aws/routes/getUser.handler',
+							dependencies: [{ target: 'Uploads', kind: 'objects' }],
+							authorizer: 'none',
+						},
+						{
+							id: 'ApiGET/health',
+							method: 'GET',
+							path: '/health',
+							handler: 'apps/api/.gkm/aws/routes/health.handler',
+							dependencies: [],
+						},
+					],
+				},
+			} as never,
+			{ Uploads: uploads, Api: api } as unknown as ProvisionedManifest,
+		);
+
+		const [getUser, health] = routesOf(api);
+		expect(getUser?.key).toBe('GET /users/{id}');
+		expect(getUser?.handler.handler).toBe(
+			'apps/api/.gkm/aws/routes/getUser.handler',
+		);
+		expect(getUser?.handler.link).toEqual([uploads]);
+		expect(getUser?.args).toEqual({});
+		// Least privilege: an endpoint is linked to its own edges, not the app's.
+		expect(health?.key).toBe('GET /health');
+		expect(health?.handler.link).toEqual([]);
+	});
+
+	it('leaves IAM to the gateway, and every other authorizer to the handler', () => {
+		const api = new RestApiSurface({} as never, 'Api');
+
+		api.mount({
+			method: 'POST',
+			path: '/x',
+			handler: 'x.handler',
+			authorizer: 'iam',
+		});
+		api.mount({
+			method: 'POST',
+			path: '/y',
+			handler: 'y.handler',
+			authorizer: 'session',
+		});
+
+		const [x, y] = routesOf(api);
+		expect(x?.args).toEqual({ auth: { iam: true } });
+		expect(y?.args).toEqual({});
+	});
+
+	it('runs a handler that reaches a database inside the database’s network', () => {
+		const vpc = { id: 'stub-vpc' } as never;
+		const cluster = new Database({} as never, 'Orders', { vpc });
+		const tenant = new DatabaseSchema('Billing', cluster, 'billing');
+
+		expect(vpcFor([cluster as never])).toBe(vpc);
+		// A schema tenant lives in its parent's cluster, so in its network too.
+		expect(vpcFor([{ _id: 'Uploads' } as never, tenant as never])).toBe(vpc);
+		expect(vpcFor([{ _id: 'Uploads' } as never])).toBeUndefined();
+	});
+});
+
+describe('functions and crons', () => {
+	const stack = new App({
+		name: 'shop',
+		stage: 'prod',
+		domain: 'example.com',
+		hostedZoneId: 'Z',
+		region: 'eu-west-1',
+	}).stack('jobs');
+	const argsOf = (component: unknown) =>
+		(component as { args: Record<string, any> }).args;
+
+	it('are deployed from the declarations, each linked to its own edges', () => {
+		// The `manifest.crons` / `manifest.functions` tables they were built from
+		// are gone: the declarations carry the handler, schedule and edges.
+		const vpc = { id: 'stub-vpc' } as never;
+		const orders = new Database({} as never, 'Orders', { vpc });
+		const uploads = { _id: 'Uploads', _type: 'sst.aws.Bucket' };
+		const provisioned = {
+			Orders: orders,
+			Uploads: uploads,
+		} as unknown as ProvisionedManifest;
+
+		const [digest] = provisionCompute(
+			stack,
+			{
+				Orders: { kind: 'database', id: 'Orders' },
+				Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+				Invoice: {
+					kind: 'function',
+					id: 'Invoice',
+					handler: 'apps/api/.gkm/aws/functions/invoice.handler',
+					dependencies: [{ target: 'Uploads', kind: 'objects' }],
+					provides: ['INVOICE_URL'],
+				},
+				Digest: {
+					kind: 'cron',
+					id: 'Digest',
+					handler: 'apps/api/.gkm/aws/crons/digest.handler',
+					schedule: 'rate(1 day)',
+					dependencies: [{ target: 'Orders', kind: 'database' }],
+				},
+			} as never,
+			provisioned,
+		);
+
+		const invoice = provisioned.Invoice as unknown as Function;
+		expect(invoice).toBeInstanceOf(Function);
+		expect(argsOf(invoice)).toMatchObject({
+			name: stack.logicalPrefixedName('Invoice'),
+			handler: 'apps/api/.gkm/aws/functions/invoice.handler',
+			link: [uploads],
+			url: { authorization: 'iam' },
+		});
+		expect(argsOf(invoice).vpc).toBeUndefined();
+
+		// A cron is a schedule, not something to link to; its Lambda reaches
+		// the database, so it runs in the database's network.
+		expect(provisioned.Digest).toBeUndefined();
+		expect(digest).toBeInstanceOf(Cron);
+		expect(argsOf(digest).schedule).toBe('rate(1 day)');
+		expect(argsOf(digest!.processor)).toMatchObject({
+			handler: 'apps/api/.gkm/aws/crons/digest.handler',
+			link: [orders],
+			vpc,
+		});
 	});
 });
 

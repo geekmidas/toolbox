@@ -5,69 +5,8 @@ import type {
 } from './workspace/types.js';
 
 export type MainProvider = 'aws' | 'server';
-export type LegacyProvider =
-	| 'server'
-	| 'aws-apigatewayv1'
-	| 'aws-apigatewayv2'
-	| 'aws-lambda';
 
-export interface PartitionedRoutes {
-	paths: string | string[];
-	partition: (filepath: string) => string;
-}
-
-export type Routes = string | string[] | PartitionedRoutes;
-
-export function isPartitionedRoutes(
-	routes: Routes | undefined,
-): routes is PartitionedRoutes {
-	return (
-		typeof routes === 'object' &&
-		routes !== null &&
-		!Array.isArray(routes) &&
-		'paths' in routes
-	);
-}
-
-export interface ProviderConfig {
-	enabled?: boolean;
-	outputDir?: string;
-}
-
-export interface AWSApiGatewayConfig extends ProviderConfig {
-	// Additional AWS API Gateway specific options
-}
-
-export interface AWSLambdaConfig extends ProviderConfig {
-	// Additional AWS Lambda specific options
-}
-
-export interface ProductionConfig {
-	/** Enable production mode (default: false) */
-	enabled?: boolean;
-	/** Bundle server into single file (default: true) */
-	bundle?: boolean;
-	/** Minify bundled output (default: true) */
-	minify?: boolean;
-	/** Health check endpoint path (default: '/health') */
-	healthCheck?: string;
-	/** Enable graceful shutdown handling (default: true) */
-	gracefulShutdown?: boolean;
-	/** Packages to exclude from bundling (default: []) */
-	external?: string[];
-	/** Include subscribers in production build (default: 'exclude' for serverless) */
-	subscribers?: 'include' | 'exclude';
-	/** Include OpenAPI spec in production (default: false) */
-	openapi?: boolean;
-	/**
-	 * Enable build-time optimized handler generation (default: true)
-	 * Generates specialized handlers based on endpoint tier:
-	 * - minimal: Near-raw-Hono performance for simple endpoints
-	 * - standard: Optimized handlers for auth/services
-	 * - full: Uses HonoEndpoint.addRoutes for complex endpoints
-	 */
-	optimizedHandlers?: boolean;
-}
+export type Routes = string | string[];
 
 /**
  * Supported event backend types.
@@ -220,13 +159,6 @@ export interface DockerConfig {
 	port?: number;
 }
 
-export interface ServerConfig extends ProviderConfig {
-	enableOpenApi?: boolean;
-	port?: number;
-	/** Production build configuration */
-	production?: ProductionConfig;
-}
-
 export type Runtime = 'node' | 'bun';
 
 export interface TelescopeConfig {
@@ -294,36 +226,6 @@ export interface HooksConfig {
 	server?: string;
 }
 
-/** Dokploy deployment configuration */
-export interface DokployProviderConfig {
-	/** Dokploy API endpoint (e.g., 'https://dokploy.example.com') */
-	endpoint: string;
-	/** Project ID in Dokploy */
-	projectId: string;
-	/** Application ID in Dokploy */
-	applicationId: string;
-	/** Container registry (overrides docker.registry if set) */
-	registry?: string;
-	/** Registry ID in Dokploy (recommended for private registries) */
-	registryId?: string;
-}
-
-export interface ProvidersConfig {
-	aws?: {
-		apiGateway?: {
-			v1?: boolean | AWSApiGatewayConfig;
-			v2?: boolean | AWSApiGatewayConfig;
-		};
-		lambda?: {
-			functions?: boolean | AWSLambdaConfig;
-			crons?: boolean | AWSLambdaConfig;
-		};
-	};
-	server?: boolean | ServerConfig;
-	/** Dokploy deployment configuration */
-	dokploy?: boolean | DokployProviderConfig;
-}
-
 export interface GkmConfig {
 	/**
 	 * What this app is called, and therefore how everything it declares is named.
@@ -360,7 +262,6 @@ export interface GkmConfig {
 	 * @example './src/**\/*.ts'
 	 */
 	constructs: Routes;
-	providers?: ProvidersConfig;
 	/**
 	 * Server lifecycle hooks for customizing the Hono app.
 	 * Allows adding custom routes, middleware, error handlers, etc.
@@ -454,9 +355,8 @@ export interface GkmConfig {
 }
 
 export interface BuildOptions {
+	/** Overrides the deploy target's: a Dockerfile builds a server regardless. */
 	provider?: MainProvider;
-	// Legacy support - will be deprecated
-	providers?: LegacyProvider[];
 	enableOpenApi?: boolean;
 	/** Build for production (no dev tools, bundled output) */
 	production?: boolean;
@@ -485,7 +385,6 @@ export interface BuildResult {
 export type {
 	CronInfo,
 	FunctionInfo,
-	Manifest,
 	QueueInfo,
 	RouteInfo,
 	SubscriberInfo,

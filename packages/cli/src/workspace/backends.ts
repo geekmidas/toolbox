@@ -33,8 +33,7 @@ import {
  * `MainProvider` is the right axis rather than the deploy target's own name —
  * three targets share one answer.
  *
- * An AWS deploy names no `deploy.default` at all, because it goes through SST,
- * which is why the absence is what selects `aws`.
+ * An AWS deploy names `deploy.default: 'sst'`, because it goes through SST.
  */
 export function providerOf(workspace: {
 	deploy?: { default?: string } | undefined;

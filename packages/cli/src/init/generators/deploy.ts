@@ -46,7 +46,7 @@ export function deployPackage(options: TemplateOptions): DeployPackage {
 				// `sst.config.ts` reads — it never imports the application.
 				scripts: perStage(
 					options,
-					(stage) => `gkm build --provider aws && sst deploy --stage ${stage}`,
+					(stage) => `gkm build && sst deploy --stage ${stage}`,
 				),
 				// What `@geekmidas/cloud/sst` imports. They are optional peers of
 				// the cloud package, so nothing installs them unless asked.
@@ -129,7 +129,7 @@ export default $config({
 
   async run() {
     const { App, fromManifest, Stack } = await import('@geekmidas/cloud/sst');
-    // Written by \`gkm build --provider aws\`. Imported rather than discovered,
+    // Written by \`gkm build\`. Imported rather than discovered,
     // so SST's toolchain never evaluates the application's own modules.
     const { backends, constructs } = await import('./.gkm/manifest/aws.js');
 

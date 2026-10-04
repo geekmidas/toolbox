@@ -58,7 +58,7 @@ describe('EndpointGenerator hooks generation', () => {
 	describe('generateAppFile', () => {
 		it('should not include hooks when hooks config is undefined', async () => {
 			await generator.build(baseContext, [mockConstruct], testOutputDir, {
-				provider: 'server',
+				target: 'server',
 			});
 
 			const appContent = await readFile(join(testOutputDir, 'app.ts'), 'utf-8');
@@ -77,7 +77,7 @@ describe('EndpointGenerator hooks generation', () => {
 			};
 
 			await generator.build(contextWithHooks, [mockConstruct], testOutputDir, {
-				provider: 'server',
+				target: 'server',
 			});
 
 			const appContent = await readFile(join(testOutputDir, 'app.ts'), 'utf-8');
@@ -95,7 +95,7 @@ describe('EndpointGenerator hooks generation', () => {
 			};
 
 			await generator.build(contextWithHooks, [mockConstruct], testOutputDir, {
-				provider: 'server',
+				target: 'server',
 			});
 
 			const appContent = await readFile(join(testOutputDir, 'app.ts'), 'utf-8');
@@ -117,7 +117,7 @@ describe('EndpointGenerator hooks generation', () => {
 			};
 
 			await generator.build(contextWithHooks, [mockConstruct], testOutputDir, {
-				provider: 'server',
+				target: 'server',
 			});
 
 			const appContent = await readFile(join(testOutputDir, 'app.ts'), 'utf-8');
@@ -147,7 +147,7 @@ describe('EndpointGenerator hooks generation', () => {
 			};
 
 			await generator.build(contextWithHooks, [mockConstruct], testOutputDir, {
-				provider: 'server',
+				target: 'server',
 			});
 
 			const appContent = await readFile(join(testOutputDir, 'app.ts'), 'utf-8');
@@ -187,7 +187,7 @@ describe('EndpointGenerator hooks generation', () => {
 				},
 				[mockConstruct],
 				testOutputDir,
-				{ provider: 'server' },
+				{ target: 'server' },
 			);
 
 			const appContent = await readFile(join(testOutputDir, 'app.ts'), 'utf-8');
@@ -209,7 +209,7 @@ describe('EndpointGenerator hooks generation', () => {
 			};
 
 			await generator.build(contextWithHooks, [mockConstruct], testOutputDir, {
-				provider: 'server',
+				target: 'server',
 			});
 
 			const appContent = await readFile(join(testOutputDir, 'app.ts'), 'utf-8');
@@ -236,7 +236,7 @@ describe('EndpointGenerator hooks generation', () => {
 			};
 
 			await generator.build(contextWithHooks, [mockConstruct], testOutputDir, {
-				provider: 'server',
+				target: 'server',
 			});
 
 			const appContent = await readFile(join(testOutputDir, 'app.ts'), 'utf-8');

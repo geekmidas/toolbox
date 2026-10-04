@@ -145,33 +145,3 @@ export async function deployDokploy(
 		url: deploymentUrl,
 	};
 }
-
-/**
- * Validate Dokploy configuration
- */
-export function validateDokployConfig(
-	config: Partial<DokployDeployConfig> | undefined,
-): config is DokployDeployConfig {
-	if (!config) {
-		return false;
-	}
-
-	const required = ['endpoint', 'projectId', 'applicationId'] as const;
-	const missing = required.filter((key) => !config[key]);
-
-	if (missing.length > 0) {
-		throw new Error(
-			`Missing Dokploy configuration: ${missing.join(', ')}\n` +
-				'Configure in gkm.config.ts:\n' +
-				'  providers: {\n' +
-				'    dokploy: {\n' +
-				"      endpoint: 'https://dokploy.example.com',\n" +
-				"      projectId: 'proj_xxx',\n" +
-				"      applicationId: 'app_xxx',\n" +
-				'    },\n' +
-				'  }',
-		);
-	}
-
-	return true;
-}

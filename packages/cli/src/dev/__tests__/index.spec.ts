@@ -392,11 +392,6 @@ describe('normalizeProductionConfig', () => {
 		expect(result).toBeUndefined();
 	});
 
-	it('should return undefined when cliProduction is false even with config', () => {
-		const result = normalizeProductionConfig(false, { bundle: true });
-		expect(result).toBeUndefined();
-	});
-
 	it('should return default config when cliProduction is true', () => {
 		const result = normalizeProductionConfig(true);
 		expect(result).toBeDefined();
@@ -404,11 +399,8 @@ describe('normalizeProductionConfig', () => {
 		expect(result?.bundle).toBe(true);
 	});
 
-	it('should merge custom config with defaults', () => {
-		const result = normalizeProductionConfig(true, { bundle: false });
-		expect(result).toBeDefined();
-		expect(result?.enabled).toBe(true);
-		expect(result?.bundle).toBe(false);
+	it('runs the worker’s background work in the server it builds', () => {
+		expect(normalizeProductionConfig(true)?.subscribers).toBe('include');
 	});
 });
 

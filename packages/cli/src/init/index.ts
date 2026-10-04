@@ -632,7 +632,7 @@ function printNextSteps(
 		console.log('🚀 Deployment (AWS, through SST):');
 		for (const stage of deployed) {
 			console.log(
-				`  ${getRunCommand(pkgManager, `deploy:${stage}`)}  # gkm build --provider aws, then sst deploy`,
+				`  ${getRunCommand(pkgManager, `deploy:${stage}`)}  # gkm build, then sst deploy`,
 			);
 		}
 		console.log(`  Uses your AWS credentials, in ${options.region}.`);

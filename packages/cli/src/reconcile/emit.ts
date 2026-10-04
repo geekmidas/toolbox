@@ -18,8 +18,6 @@
  * can select out of it. `JSON.parse` returns `any` and gives all of that up.
  */
 
-import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
 import type {
 	ConstructManifest,
 	CronInfo,
@@ -33,9 +31,6 @@ import type {
 } from '@geekmidas/manifest';
 import { canonicalId, provideKey } from '@geekmidas/manifest';
 import type { CacheBackend, EmailBackend } from '../types.js';
-
-/** Where the build writes it, relative to the app root. */
-export const MANIFEST_PATH = '.gkm/manifest.ts';
 
 /**
  * Fold the build's generated routes into the surface that serves them.
@@ -51,11 +46,10 @@ export const MANIFEST_PATH = '.gkm/manifest.ts';
  * already knows where it wrote each handler. Asking the declaration to restate
  * any of that is how the two come to disagree.
  *
- * Attribution is by exclusion — routes go to the surface that declared none of
- * its own. A surface with static endpoints (an auth server's single wildcard)
- * keeps them. That is exact while an app has one API of its own, and needs a
- * real answer the day it has two; the alternative today would be inventing one
- * before anything needs it.
+ * Attribution is to the surface the build served — the one whose `path` is
+ * the app being built. Without one, routes go to the surface that declared none
+ * of its own; a surface with static endpoints (an auth server's single
+ * wildcard) keeps them.
  *
  * **Only from a provider that generates one handler per route.** The `server`
  * provider generates a single catch-all — `ALL *` pointing at the Hono app that
@@ -68,13 +62,14 @@ export const MANIFEST_PATH = '.gkm/manifest.ts';
 export function withRoutes(
 	manifest: ConstructManifest,
 	routes: readonly RouteInfo[],
-	options: { perRoute: boolean },
+	options: { perRoute: boolean; surface?: string },
 ): ConstructManifest {
 	if (routes.length === 0 || !options.perRoute) return manifest;
 
-	const target = Object.entries(manifest).find(
-		([, declaration]) =>
-			declaration.kind === 'rest-api' && declaration.endpoints.length === 0,
+	const target = Object.entries(manifest).find(([id, declaration]) =>
+		options.surface
+			? id === options.surface
+			: declaration.kind === 'rest-api' && declaration.endpoints.length === 0,
 	);
 
 	if (!target) return manifest;
@@ -229,7 +224,7 @@ export function manifestModule(
 	backends: Backends = {},
 ): string {
 	return `${HEADER}
-export const manifest = ${serialise(manifest)} as const satisfies ConstructManifest;
+export const constructs = ${serialise(manifest)} as const satisfies ConstructManifest;
 
 /**
  * Where the backends that are *config* rather than declaration resolved to.
@@ -243,30 +238,16 @@ export const manifest = ${serialise(manifest)} as const satisfies ConstructManif
 export const backends = ${serialise(backends)} as const;
 
 // Derived types
-export type Ids = IdsOf<typeof manifest>;
-export type Construct<Id extends Ids> = DeclarationOf<typeof manifest, Id>;
+export type Ids = IdsOf<typeof constructs>;
+export type Construct<Id extends Ids> = DeclarationOf<typeof constructs, Id>;
 export type Kind = Construct<Ids>['kind'];
 
 // Useful union types
-export type ProvidedKeys = AllProvidedKeys<typeof manifest>;
-export type Surfaces = IdsOfKind<typeof manifest, 'rest-api'>;
+export type ProvidedKeys = AllProvidedKeys<typeof constructs>;
+export type Surfaces = IdsOfKind<typeof constructs, 'rest-api'>;
 export type CacheBackend = (typeof backends)['cache'];
 export type EmailBackend = (typeof backends)['email'];
 `;
-}
-
-/** Write it where the deploy config expects to import it from. */
-export async function writeManifestModule(
-	manifest: ConstructManifest,
-	appRoot: string,
-	backends: Backends = {},
-): Promise<string> {
-	const path = join(appRoot, MANIFEST_PATH);
-
-	await mkdir(dirname(path), { recursive: true });
-	await writeFile(path, manifestModule(manifest, backends), 'utf8');
-
-	return path;
 }
 
 /** The choices that are deployment config rather than declaration. */

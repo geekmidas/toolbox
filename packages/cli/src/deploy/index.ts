@@ -573,6 +573,12 @@ export async function workspaceDeployCommand(
 	const dokployApps = appsToDeployNames.filter((name) => {
 		const app = workspace.apps[name]!;
 		const target = app.resolvedDeployTarget;
+		if (target === 'sst') {
+			logger.log(
+				`   ⚠️  Skipping ${name}: it deploys with SST — run \`gkm build && sst deploy --stage ${stage}\``,
+			);
+			return false;
+		}
 		if (!isDeployTargetSupported(target)) {
 			logger.log(
 				`   ⚠️  Skipping ${name}: ${getDeployTargetError(target, name)}`,

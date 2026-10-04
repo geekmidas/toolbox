@@ -80,12 +80,7 @@ export async function dockerCommand(
 	const config = await loadConfig();
 	const dockerConfig = resolveDockerConfig(config);
 
-	// Get health check path from production config
-	const serverConfig =
-		typeof config.providers?.server === 'object'
-			? config.providers.server
-			: undefined;
-	const healthCheckPath = serverConfig?.production?.healthCheck ?? '/health';
+	const healthCheckPath = '/health';
 
 	// Determine Dockerfile type
 	// Default: Multi-stage (builds inside Docker for reproducibility)

@@ -1,6 +1,12 @@
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -80,7 +86,7 @@ describe('workspaceBuildCommand', () => {
 		} as unknown as NormalizedWorkspace;
 	}
 
-	it('builds every app through turbo and reports where each one went', async () => {
+	it('builds the backends itself, the rest through turbo, and reports where each went', async () => {
 		turboExits({ code: 0 });
 
 		const result = await workspaceBuildCommand(
@@ -114,7 +120,10 @@ describe('workspaceBuildCommand', () => {
 
 		const [command, spawnOptions] = vi.mocked(spawn).mock.calls[0]!;
 		expect(command).toContain('turbo run build');
-		expect(command).toContain('--filter=@shop/api');
+		expect(command).toContain('--filter=@shop/web');
+		// The backend is the root's to build, and nothing pulls it back in.
+		expect(command).not.toContain('--filter=@shop/api');
+		expect(command).toContain('--only');
 		expect(spawnOptions).toMatchObject({
 			cwd: root,
 			env: expect.objectContaining({ NODE_ENV: 'production' }),
@@ -138,11 +147,33 @@ describe('workspaceBuildCommand', () => {
 		expect(printed()).toContain('Backend apps: none');
 	});
 
+	it('writes the application’s one manifest at the root, and starts no turbo for backends alone', async () => {
+		mkdirSync(join(root, '.gkm/manifest'), { recursive: true });
+		writeFileSync(join(root, '.gkm/manifest/aws.ts'), 'export {};');
+
+		await workspaceBuildCommand(
+			workspace({
+				api: app('backend', 'apps/api'),
+				admin: app('backend', 'apps/admin'),
+			}),
+			{},
+		);
+
+		expect(spawn).not.toHaveBeenCalled();
+		expect(existsSync(join(root, '.gkm/manifest/server.ts'))).toBe(true);
+		// Only the target being built has a manifest.
+		expect(existsSync(join(root, '.gkm/manifest/aws.ts'))).toBe(false);
+		expect(existsSync(join(root, 'apps/api/.gkm/manifest'))).toBe(false);
+	});
+
 	it('fails every app when turbo exits non-zero', async () => {
 		turboExits({ code: 2 });
 
 		await expect(
-			workspaceBuildCommand(workspace({ api: app('backend', 'apps/api') }), {}),
+			workspaceBuildCommand(
+				workspace({ web: app('web', 'apps/web', { framework: 'vite' }) }),
+				{},
+			),
 		).rejects.toThrow('Turbo build failed with exit code 2');
 		expect(printed()).toContain('Build failed: Turbo build failed');
 	});
@@ -151,16 +182,19 @@ describe('workspaceBuildCommand', () => {
 		turboExits({ error: new Error('spawn ENOENT') });
 
 		await expect(
-			workspaceBuildCommand(workspace({ api: app('backend', 'apps/api') }), {}),
+			workspaceBuildCommand(
+				workspace({ web: app('web', 'apps/web', { framework: 'vite' }) }),
+				{},
+			),
 		).rejects.toThrow('spawn ENOENT');
 	});
 
 	it('refuses an app turbo could not build, before starting it', async () => {
 		const ws = workspace({ api: app('backend', 'apps/api') });
-		ws.apps.worker = app('backend', 'apps/worker');
+		ws.apps.site = app('web', 'apps/site', { framework: 'vite' });
 
 		await expect(workspaceBuildCommand(ws, {})).rejects.toThrow(
-			'No package.json for workspace app(s): worker',
+			'No package.json for workspace app(s): site',
 		);
 		expect(spawn).not.toHaveBeenCalled();
 	});

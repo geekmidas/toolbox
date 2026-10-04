@@ -91,7 +91,7 @@ describe('CronGenerator', () => {
 					context,
 					constructs,
 					outputDir,
-					{ provider: 'aws-lambda' },
+					{ target: 'aws' },
 				);
 
 				expect(cronInfos).toHaveLength(3);
@@ -169,7 +169,7 @@ describe('CronGenerator', () => {
 					context,
 					[construct],
 					outputDir,
-					{ provider: 'aws-lambda' },
+					{ target: 'aws' },
 				);
 
 				// Since the construct has a schedule, it should use that or default logic
@@ -196,7 +196,7 @@ describe('CronGenerator', () => {
 					);
 
 					await generator.build(context, constructs, outputDir, {
-						provider: 'aws-lambda',
+						target: 'aws',
 					});
 
 					const handlerPath = join(outputDir, 'crons', 'deepCron.ts');
@@ -230,7 +230,7 @@ describe('CronGenerator', () => {
 				const constructs = await generator.load('**/crons/*.ts', dir);
 
 				await generator.build(context, constructs, outputDir, {
-					provider: 'aws-lambda',
+					target: 'aws',
 				});
 
 				expect(logSpy).toHaveBeenCalledWith('Generated cron handler: testCron');
@@ -256,7 +256,7 @@ describe('CronGenerator', () => {
 
 					const constructs = await generator.load('**/crons/*.ts', dir);
 					await generator.build(context, constructs, outputDir, {
-						provider: 'server',
+						target: 'server',
 					});
 
 					const file = await readFile(join(outputDir, 'crons.ts'), 'utf-8');
@@ -276,7 +276,7 @@ describe('CronGenerator', () => {
 					await mkdir(outputDir, { recursive: true });
 
 					await generator.build(context, [], outputDir, {
-						provider: 'server',
+						target: 'server',
 					});
 
 					const file = await readFile(join(outputDir, 'crons.ts'), 'utf-8');
@@ -300,7 +300,7 @@ describe('CronGenerator', () => {
 
 					const constructs = await generator.load('**/crons/*.ts', dir);
 					await generator.build(context, constructs, outputDir, {
-						provider: 'server',
+						target: 'server',
 					});
 
 					const file = await readFile(join(outputDir, 'crons.ts'), 'utf-8');
@@ -343,34 +343,7 @@ describe('CronGenerator', () => {
 						context,
 						constructs,
 						outputDir,
-						{ provider: 'server' },
-					);
-
-					expect(cronInfos).toEqual([]);
-				},
-			);
-
-			itWithDir(
-				'should return empty array for aws-apigatewayv1 provider',
-				async ({ dir }) => {
-					const outputDir = join(dir, 'output');
-					const cronsDir = join(dir, 'crons');
-					await mkdir(outputDir, { recursive: true });
-
-					await createMockCronFile(
-						cronsDir,
-						'testCron.ts',
-						'testCron',
-						'rate(1 hour)',
-					);
-
-					const constructs = await generator.load('**/crons/*.ts', dir);
-
-					const cronInfos = await generator.build(
-						context,
-						constructs,
-						outputDir,
-						{ provider: 'aws-apigatewayv1' },
+						{ target: 'server' },
 					);
 
 					expect(cronInfos).toEqual([]);
@@ -380,7 +353,7 @@ describe('CronGenerator', () => {
 
 		it('should return empty array for empty constructs', async () => {
 			const cronInfos = await generator.build(context, [], outputDir, {
-				provider: 'aws-lambda',
+				target: 'aws',
 			});
 			expect(cronInfos).toEqual([]);
 		});
@@ -442,7 +415,7 @@ describe('CronGenerator', () => {
 			const constructs = await generator.load('**/crons/*.ts', dir);
 
 			const cronInfos = await generator.build(context, constructs, outputDir, {
-				provider: 'aws-lambda',
+				target: 'aws',
 			});
 
 			// Find crons by name since order may vary
@@ -484,7 +457,7 @@ describe('CronGenerator', () => {
 					constructs,
 					outputDir,
 					{
-						provider: 'aws-lambda',
+						target: 'aws',
 					},
 				);
 
@@ -523,7 +496,7 @@ describe('CronGenerator', () => {
 				const constructs = await generator.load('**/crons/*.ts', dir);
 
 				await generator.build(customContext, constructs, outputDir, {
-					provider: 'aws-lambda',
+					target: 'aws',
 				});
 
 				const handlerPath = join(outputDir, 'crons', 'customCron.ts');

@@ -1,14 +1,30 @@
-import { readFile } from 'node:fs/promises';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { readdir, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { itWithDir } from '@geekmidas/testkit/os';
-import { describe, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
 	createMockCronFile,
 	createMockEndpointFile,
 	createMockFunctionFile,
 	createTestFile,
 } from '../../__tests__/test-helpers';
-import { buildCommand } from '../index';
+import { buildApp, buildCommand, writeManifest } from '../index';
+
+/** The generated manifest, imported the way `sst.config.ts` imports it. */
+async function readManifest(path: string) {
+	const source = await readFile(path, 'utf-8');
+	const module = await import(`${path}?t=${Date.now()}`);
+	return {
+		source,
+		constructs: module.constructs as Record<string, any>,
+		backends: module.backends as Record<string, string>,
+	};
+}
+
+const ofKind = (constructs: Record<string, any>, kind: string) =>
+	Object.values(constructs).filter((d) => d.kind === kind);
 
 describe('buildCommand', () => {
 	itWithDir(
@@ -81,18 +97,18 @@ export default {
 				expect(endpointsContent).toContain('HonoEndpoint');
 
 				// Verify server manifest was created at .gkm/manifest/server.ts
-				const manifestPath = join(dir, '.gkm', 'manifest', 'server.ts');
-				const manifestContent = await readFile(manifestPath, 'utf-8');
-
-				// Verify manifest structure
-				expect(manifestContent).toContain('export const manifest = {');
-				expect(manifestContent).toContain('} as const;');
-				expect(manifestContent).toContain('app:');
-				expect(manifestContent).toContain('routes:');
-
-				// Verify derived types are exported
-				expect(manifestContent).toContain('export type Route =');
-				expect(manifestContent).toContain('export type Authorizer =');
+				// The application's declarations, with no route table beside them.
+				// Its endpoints are on its surface, as on AWS, each served by the
+				// one process.
+				const { source, constructs } = await readManifest(
+					join(dir, '.gkm', 'manifest', 'server.ts'),
+				);
+				expect(source).not.toContain('export const manifest');
+				const [api] = ofKind(constructs, 'rest-api');
+				expect(api.endpoints.length).toBeGreaterThan(0);
+				expect(
+					api.endpoints.every((e: any) => e.handler === '.gkm/server/app.ts'),
+				).toBe(true);
 			} finally {
 				process.chdir(originalCwd);
 			}
@@ -165,8 +181,8 @@ export default {
 				// Build for AWS Lambda
 				await buildCommand({ provider: 'aws' });
 
-				const awsLambdaDir = join(dir, '.gkm', 'aws-lambda');
-				const awsApiGatewayV2Dir = join(dir, '.gkm', 'aws-apigatewayv2');
+				const awsLambdaDir = join(dir, '.gkm', 'aws');
+				const awsApiGatewayV2Dir = join(dir, '.gkm', 'aws', 'routes');
 
 				// Verify Lambda handlers were created
 				expect(
@@ -211,34 +227,28 @@ export default {
 				).toContain('AmazonApiGatewayV2Endpoint');
 
 				// Verify AWS manifest was created at .gkm/manifest/aws.ts
-				const manifestPath = join(dir, '.gkm', 'manifest', 'aws.ts');
-				const manifestContent = await readFile(manifestPath, 'utf-8');
+				// Every route, function and cron is in the declarations, folded
+				// where it belongs — there is no route table beside them.
+				const { source, constructs } = await readManifest(
+					join(dir, '.gkm', 'manifest', 'aws.ts'),
+				);
+				expect(source).not.toContain('export const manifest');
 
-				// Verify manifest is TypeScript with as const
-				expect(manifestContent).toContain('export const manifest = {');
-				expect(manifestContent).toContain('} as const;');
+				const [api] = ofKind(constructs, 'rest-api');
+				expect(api.endpoints.map((e: any) => `${e.method} ${e.path}`)).toEqual(
+					expect.arrayContaining(['GET /users', 'POST /posts']),
+				);
 
-				// Verify derived types are exported
-				expect(manifestContent).toContain('export type Route =');
-				expect(manifestContent).toContain('export type Function =');
-				expect(manifestContent).toContain('export type Cron =');
-				expect(manifestContent).toContain('export type Authorizer =');
-
-				// Verify routes are included (JSON.stringify output uses quoted keys/values)
-				expect(manifestContent).toContain('/users');
-				expect(manifestContent).toContain('/posts');
-				expect(manifestContent).toContain('GET');
-				expect(manifestContent).toContain('POST');
-
-				// Verify functions are included
-				expect(manifestContent).toContain('processDataFunction');
-				expect(manifestContent).toContain('sendEmailFunction');
-
-				// Verify crons are included
-				expect(manifestContent).toContain('dailyCleanupCron');
-				expect(manifestContent).toContain('hourlyReportCron');
-				expect(manifestContent).toContain('rate(1 day)');
-				expect(manifestContent).toContain('cron(0 * * * ? *)');
+				expect(constructs.processDataFunction).toMatchObject({
+					kind: 'function',
+					handler: '.gkm/aws/functions/processDataFunction.handler',
+				});
+				expect(constructs.sendEmailFunction?.kind).toBe('function');
+				expect(constructs.dailyCleanupCron).toMatchObject({
+					kind: 'cron',
+					schedule: 'rate(1 day)',
+				});
+				expect(constructs.hourlyReportCron?.schedule).toBe('cron(0 * * * ? *)');
 			} finally {
 				process.chdir(originalCwd);
 			}
@@ -391,7 +401,7 @@ export default {
 				// handed a parser through an import the build composed as text,
 				// which is the only reason a module path had to be named in
 				// config at all — an endpoint built from its surface carries one.
-				const handlerFile = join(dir, '.gkm/aws-apigatewayv2/testEndpoint.ts');
+				const handlerFile = join(dir, '.gkm/aws/routes/testEndpoint.ts');
 				const handlerContent = await readFile(handlerFile, 'utf-8');
 				expect(handlerContent).toContain('testEndpoint');
 				expect(handlerContent).not.toContain('envParser');
@@ -471,9 +481,8 @@ export const auth = {
 	);
 
 	itWithDir(
-		'should create output directories for each provider',
+		'builds for where the project deploys when no provider is given',
 		async ({ dir }) => {
-			// Create config with multiple providers
 			await createTestFile(
 				dir,
 				'gkm.config.ts',
@@ -481,10 +490,7 @@ export const auth = {
 export default {
   stages: { local: 'development', deployed: ['production'] },
   constructs: './src/**/*.ts',
-  functions: undefined,
-  crons: undefined,
-  envParser: './config/env',
-  logger: './config/logger',
+  deploy: { default: 'dokploy' },
 };
 `,
 			);
@@ -497,27 +503,200 @@ export default {
 				'GET',
 			);
 
-			// Create env and logger files
-			await createTestFile(dir, 'config/env.ts', 'export default {}');
-			await createTestFile(dir, 'config/logger.ts', 'export default {}');
+			const originalCwd = process.cwd();
+			process.chdir(dir);
+
+			try {
+				await buildCommand({});
+
+				expect(existsSync(join(dir, '.gkm/server/app.ts'))).toBe(true);
+				expect(existsSync(join(dir, '.gkm/aws'))).toBe(false);
+				expect(existsSync(join(dir, '.gkm/manifest/server.ts'))).toBe(true);
+			} finally {
+				process.chdir(originalCwd);
+			}
+		},
+	);
+
+	itWithDir(
+		'writes one tree of handlers for aws, and no legacy provider directories',
+		async ({ dir }) => {
+			await createTestFile(
+				dir,
+				'gkm.config.ts',
+				`
+export default {
+  stages: { local: 'development', deployed: ['production'] },
+  constructs: './src/**/*.ts',
+  deploy: { default: 'sst' },
+};
+`,
+			);
+
+			await createMockEndpointFile(
+				dir,
+				'src/endpoints/test.ts',
+				'testEndpoint',
+				'/test',
+				'GET',
+			);
 
 			const originalCwd = process.cwd();
 			process.chdir(dir);
 
 			try {
-				await buildCommand({ provider: 'aws' });
+				await buildCommand({});
 
-				const v2HandlerFile = join(
-					dir,
-					'.gkm/aws-apigatewayv2/testEndpoint.ts',
+				expect(
+					await readFile(join(dir, '.gkm/aws/routes/testEndpoint.ts'), 'utf-8'),
+				).toContain('AmazonApiGatewayV2Endpoint');
+				expect(await readdir(join(dir, '.gkm'))).toEqual(
+					expect.not.arrayContaining([
+						'aws-lambda',
+						'aws-apigatewayv1',
+						'aws-apigatewayv2',
+					]),
 				);
 
-				const v2Content = await readFile(v2HandlerFile, 'utf-8');
-
-				expect(v2Content).toContain('AmazonApiGatewayV2Endpoint');
+				const { constructs } = await readManifest(
+					join(dir, '.gkm/manifest/aws.ts'),
+				);
+				const [api] = ofKind(constructs, 'rest-api');
+				expect(api.endpoints[0].handler).toBe(
+					'.gkm/aws/routes/testEndpoint.handler',
+				);
 			} finally {
 				process.chdir(originalCwd);
 			}
+		},
+	);
+
+	itWithDir(
+		'leaves the manifest to the root, and hands back what it built with root paths',
+		async ({ dir }) => {
+			// An app's build writes its handlers; the manifest is the
+			// application's, written once by the root from every app's output.
+			const appRoot = join(dir, 'apps', 'api');
+			await createMockEndpointFile(
+				appRoot,
+				'src/endpoints/test.ts',
+				'testEndpoint',
+				'/test',
+				'GET',
+			);
+
+			const { built } = await buildApp({
+				config: {
+					stages: { local: 'development', deployed: ['production'] },
+					constructs: './src/**/*.ts',
+				},
+				workspaceRoot: dir,
+				appRoot,
+				target: 'aws',
+				enableOpenApi: false,
+				cacheBackend: 'upstash',
+			});
+
+			expect(existsSync(join(dir, '.gkm/manifest'))).toBe(false);
+			expect(existsSync(join(appRoot, '.gkm/manifest'))).toBe(false);
+			expect(built?.routes).toEqual([
+				expect.objectContaining({
+					handler: 'apps/api/.gkm/aws/routes/testEndpoint.handler',
+				}),
+			]);
+		},
+	);
+
+	it('folds each app’s routes into its own surface, in one manifest', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'gkm-manifest-'));
+		const surface = (id: string) => ({
+			kind: 'rest-api',
+			id,
+			provides: [],
+			endpoints: [],
+		});
+		const route = (app: string) => ({
+			path: '/x',
+			method: 'GET',
+			handler: `apps/${app}/.gkm/aws/routes/x.handler`,
+			authorizer: 'none',
+		});
+
+		try {
+			await writeManifest({
+				workspaceRoot: dir,
+				target: 'aws',
+				builds: ['api', 'admin'].map((app) => ({
+					surface: app === 'api' ? 'Api' : 'Admin',
+					routes: [route(app)],
+					functions: [],
+					crons: [],
+					subscribers: [],
+					queues: [],
+					topics: [],
+				})),
+				constructs: { Api: surface('Api'), Admin: surface('Admin') } as never,
+				backends: {},
+			});
+
+			const { constructs } = await readManifest(
+				join(dir, '.gkm/manifest/aws.ts'),
+			);
+			expect(constructs.Api.endpoints[0].handler).toBe(
+				'apps/api/.gkm/aws/routes/x.handler',
+			);
+			expect(constructs.Admin.endpoints[0].handler).toBe(
+				'apps/admin/.gkm/aws/routes/x.handler',
+			);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	itWithDir(
+		'clears what an older build left, so only this build’s output is read',
+		async ({ dir }) => {
+			const appRoot = join(dir, 'apps', 'api');
+			await createMockEndpointFile(
+				appRoot,
+				'src/endpoints/test.ts',
+				'testEndpoint',
+				'/test',
+				'GET',
+			);
+			// The per-provider trees, an app-level manifest, and a handler for an
+			// endpoint that no longer exists.
+			for (const stale of [
+				'.gkm/aws-lambda/routes/old.ts',
+				'.gkm/aws-apigatewayv2/old.ts',
+				'.gkm/manifest/aws.ts',
+				'.gkm/aws/routes/deletedEndpoint.ts',
+			]) {
+				await createTestFile(appRoot, stale, 'export {};');
+			}
+
+			await buildApp({
+				config: {
+					stages: { local: 'development', deployed: ['production'] },
+					constructs: './src/**/*.ts',
+				},
+				workspaceRoot: dir,
+				appRoot,
+				target: 'aws',
+				enableOpenApi: false,
+				cacheBackend: 'upstash',
+			});
+
+			expect(await readdir(join(appRoot, '.gkm'))).toEqual(
+				expect.not.arrayContaining([
+					'aws-lambda',
+					'aws-apigatewayv2',
+					'manifest',
+				]),
+			);
+			expect(await readdir(join(appRoot, '.gkm/aws/routes'))).toEqual([
+				'testEndpoint.ts',
+			]);
 		},
 	);
 

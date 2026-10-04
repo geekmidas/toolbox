@@ -186,8 +186,8 @@ topic is what puts a broker in the local plan and resolves
 ### 6. Build Handlers
 
 ```bash
-# Generate AWS Lambda handlers
-npx gkm build --provider aws-apigatewayv1
+# Build for where gkm.config.ts deploys (AWS for `deploy: { default: 'sst' }`)
+npx gkm build
 
 # Generate server application
 npx gkm build --provider server
@@ -311,17 +311,20 @@ Generate handlers from your endpoints.
 gkm build [options]
 ```
 
+By default it builds for where the project deploys: `deploy: { default: 'sst' }`
+builds for AWS, one Lambda per construct; `dokploy` (the default when nothing
+is declared) builds a server.
+
 **Options:**
-- `--provider <provider>`: Target provider (default: `aws-apigatewayv1`)
-  - `aws-apigatewayv1`: AWS API Gateway v1 Lambda handlers
-  - `aws-apigatewayv2`: AWS API Gateway v2 Lambda handlers
+- `--provider <provider>`: Override the deploy target
+  - `aws`: One Lambda handler per construct (API Gateway v2 for endpoints)
   - `server`: Server application with Hono
 - `--production`: Generate production-optimized bundle (server provider only)
 
 **Example:**
 ```bash
-# Generate AWS Lambda handlers
-gkm build --provider aws-apigatewayv1
+# Build for where gkm.config.ts deploys
+gkm build
 
 # Generate server application
 gkm build --provider server
@@ -923,15 +926,6 @@ export default defineConfig({
     registry: 'ghcr.io/myorg',
     imageName: 'my-api',
   },
-
-  // For Dokploy deployments
-  providers: {
-    dokploy: {
-      endpoint: 'https://dokploy.example.com',
-      projectId: 'proj_xxx',
-      applicationId: 'app_xxx',
-    },
-  },
 });
 ```
 
@@ -941,7 +935,7 @@ export default defineConfig({
 
 ### `gkm deploy:init`
 
-Initialize a new Dokploy deployment by creating a project and application via the Dokploy API. Automatically updates `gkm.config.ts` with the configuration.
+Initialize a new Dokploy deployment by creating a project and application via the Dokploy API. Nothing is written to `gkm.config.ts`: the ids are rediscovered by name on each run and kept in the deploy state file.
 
 ```bash
 gkm deploy:init --project <name> --app <name> [options]
@@ -976,8 +970,7 @@ gkm deploy:init \
 1. Searches for existing project by name, or creates a new one
 2. Creates a new application in the project
 3. Configures registry if `--registry-id` is provided
-4. Updates `gkm.config.ts` with the Dokploy configuration
-5. Shows next steps for secrets and deployment
+4. Shows next steps for secrets and deployment
 
 ### `gkm deploy:list`
 
@@ -1045,21 +1038,16 @@ The following commands are planned for future releases:
 The `gkm.config.ts` file defines how the CLI discovers and processes your endpoints:
 
 ```typescript
-// Construct types accept a string, string[], or partitioned config
-type Routes = string | string[] | PartitionedRoutes;
-
-interface PartitionedRoutes {
-  paths: string | string[];
-  partition: (filepath: string) => string;
-}
+// Construct types accept a glob string or an array of them
+type Routes = string | string[];
 
 interface GkmConfig {
-  routes: Routes;                // Glob patterns or partitioned config
+  routes: Routes;                // Glob patterns
   envParser: string;             // Path to environment parser
   logger: string;                // Path to logger configuration
-  functions?: Routes;            // Glob patterns or partitioned config
-  crons?: Routes;                // Glob patterns or partitioned config
-  subscribers?: Routes;          // Glob patterns or partitioned config
+  functions?: Routes;            // Glob patterns
+  crons?: Routes;                // Glob patterns
+  subscribers?: Routes;          // Glob patterns
   runtime?: 'node' | 'bun';     // Runtime environment (default: 'node')
   telescope?: boolean | TelescopeConfig; // Telescope debugging config
 }
@@ -1078,7 +1066,7 @@ interface TelescopeConfig {
 
 #### `routes`
 
-Glob pattern(s) to discover endpoint files. Can be a single pattern, array of patterns, or a partitioned config:
+Glob pattern(s) to discover endpoint files. Can be a single pattern or an array of patterns:
 
 ```typescript
 // Single pattern
@@ -1090,18 +1078,7 @@ routes: [
   'src/api/**/*.ts',
   'src/handlers/**/*.ts'
 ]
-
-// Partitioned — groups constructs in the generated manifest
-routes: {
-  paths: './src/endpoints/**/*.ts',
-  partition: (filepath) => {
-    const match = filepath.match(/endpoints\/([^/]+)\//);
-    return match?.[1] ?? 'default';
-  },
-}
 ```
-
-The same partitioned format works for `functions`, `crons`, and `subscribers`. When a `partition` callback is provided, the generated manifest groups constructs by partition name (e.g., `manifest.routes.admin`). Without it, manifest fields remain flat arrays.
 
 #### `envParser`
 
@@ -1357,42 +1334,24 @@ interface AppSpec {
 }
 ```
 
-## Providers
+## Build Targets
 
-### AWS API Gateway v1
+### AWS
 
-Generates Lambda handlers compatible with AWS API Gateway v1 (REST API).
-
-```bash
-gkm build --provider aws-apigatewayv1
-```
-
-**Generated Handler:**
-```typescript
-import { AmazonApiGatewayV1Endpoint } from '@geekmidas/constructs/aws';
-import { myEndpoint } from '../src/routes/example.js';
-import { envParser } from '../src/env.js';
-
-const adapter = new AmazonApiGatewayV1Endpoint(envParser, myEndpoint);
-
-export const handler = adapter.handler;
-```
-
-### AWS API Gateway v2
-
-Generates Lambda handlers compatible with AWS API Gateway v2 (HTTP API).
+Generates one Lambda handler per construct. Endpoints get an API Gateway v2
+(HTTP API) adapter.
 
 ```bash
-gkm build --provider aws-apigatewayv2
+gkm build                  # with deploy: { default: 'sst' }
+gkm build --provider aws   # whatever the deploy target
 ```
 
 **Generated Handler:**
 ```typescript
 import { AmazonApiGatewayV2Endpoint } from '@geekmidas/constructs/aws';
-import { myEndpoint } from '../src/routes/example.js';
-import { envParser } from '../src/env.js';
+import { myEndpoint } from '../../../src/routes/example.js';
 
-const adapter = new AmazonApiGatewayV2Endpoint(envParser, myEndpoint);
+const adapter = new AmazonApiGatewayV2Endpoint(myEndpoint);
 
 export const handler = adapter.handler;
 ```
@@ -1434,139 +1393,141 @@ export default createApp;
 
 ## Output Structure
 
-The CLI generates files in the `.gkm/<provider>` directory:
+Handlers are generated beside the app, in `<app>/.gkm/<target>`; the manifest
+at the workspace root, where `sst.config.ts` runs:
 
 ```
-.gkm/
-├── aws-apigatewayv1/
-│   ├── getUsers.ts          # Individual Lambda handler
-│   ├── createUser.ts        # Individual Lambda handler
-├── server/
-│   ├── app.ts               # Server application
-│   ├── endpoints.ts         # Endpoint exports
-├── manifest/
-│   ├── aws.ts               # AWS manifest with types
-│   └── server.ts            # Server manifest with types
-└── openapi.json             # OpenAPI specification
+<root>/
+├── .gkm/manifest/
+│   ├── aws.ts                   # AWS manifest with types
+│   └── server.ts                # Server manifest with types
+└── apps/api/.gkm/
+    ├── aws/
+    │   ├── routes/getUsers.ts   # One Lambda handler per endpoint
+    │   ├── functions/
+    │   ├── crons/
+    │   ├── queues/
+    │   └── subscribers/
+    └── server/
+        ├── app.ts               # Server application
+        └── endpoints.ts         # Endpoint exports
 ```
 
 ### Build Manifest
 
-The CLI generates TypeScript manifests with full type information in the `.gkm/manifest/` directory. These manifests export both the data and derived types for type-safe usage.
+The manifest is the application's, not an app's: the root `gkm build` builds
+every backend and writes it once, to `.gkm/manifest/aws.ts` or
+`.gkm/manifest/server.ts` at the workspace root. An app's own build writes no
+manifest. Every handler path in it is relative to the workspace root. `gkm init`
+adds a root tsconfig alias for the manifest, `@<project>/manifest`.
 
-#### AWS Manifest (`.gkm/manifest/aws.ts`)
+It exports two values — every declared construct keyed by id, and the backends
+the build resolved — and the types derived from them:
 
 ```typescript
-export const manifest = {
-  routes: [
-    {
-      path: '/users',
-      method: 'GET',
-      handler: '.gkm/aws-apigatewayv1/getUsers.handler',
-      authorizer: 'jwt',
+export const constructs = {
+  Database: { id: 'Database', kind: 'database' },
+  Api: {
+    id: 'Api',
+    kind: 'rest-api',
+    path: 'apps/api',
+    endpoints: [
+      {
+        id: 'ApiGET/users',
+        method: 'GET',
+        path: '/users',
+        handler: 'apps/api/.gkm/aws/routes/getUsers.handler',
+        dependencies: [{ target: 'Database', kind: 'database' }],
+        authorizer: 'iam',
+      },
+    ],
+  },
+  ProcessData: {
+    id: 'ProcessData',
+    kind: 'function',
+    handler: 'apps/api/.gkm/aws/functions/processData.handler',
+    dependencies: [],
+  },
+  DailyCleanup: {
+    id: 'DailyCleanup',
+    kind: 'cron',
+    handler: 'apps/api/.gkm/aws/crons/dailyCleanup.handler',
+    schedule: 'rate(1 day)',
+    dependencies: [{ target: 'Database', kind: 'database' }],
+  },
+  Emails: {
+    id: 'Emails',
+    kind: 'queue',
+    // The queue's consumer is nested in it
+    worker: {
+      id: 'emails',
+      handler: 'apps/api/.gkm/aws/queues/emails.handler',
+      dependencies: [],
     },
-    {
-      path: '/users',
-      method: 'POST',
-      handler: '.gkm/aws-apigatewayv1/createUser.handler',
-      authorizer: 'jwt',
-    },
-  ],
-  functions: [
-    {
-      name: 'processData',
-      handler: '.gkm/aws-lambda/functions/processData.handler',
-      timeout: 60,
-      memorySize: 256,
-    },
-  ],
-  crons: [
-    {
-      name: 'dailyCleanup',
-      handler: '.gkm/aws-lambda/crons/dailyCleanup.handler',
-      schedule: 'rate(1 day)',
-      timeout: 300,
-      memorySize: 512,
-    },
-  ],
-  subscribers: [],
-} as const;
+  },
+  Users: {
+    id: 'Users',
+    kind: 'topic',
+    events: ['user.created'],
+    // As are a topic's subscribers
+    subscribers: [
+      {
+        id: 'onUser',
+        handler: 'apps/api/.gkm/aws/subscribers/onUser.handler',
+        events: ['user.created'],
+        dependencies: [],
+      },
+    ],
+  },
+} as const satisfies ConstructManifest;
+
+export const backends = { cache: 'upstash', email: 'ses' } as const;
 
 // Derived types
-export type Route = (typeof manifest.routes)[number];
-export type Function = (typeof manifest.functions)[number];
-export type Cron = (typeof manifest.crons)[number];
-export type Subscriber = (typeof manifest.subscribers)[number];
+export type Ids = IdsOf<typeof constructs>;
+export type Construct<Id extends Ids> = DeclarationOf<typeof constructs, Id>;
+export type Kind = Construct<Ids>['kind'];
 
 // Useful union types
-export type Authorizer = Route['authorizer'];
-export type HttpMethod = Route['method'];
-export type RoutePath = Route['path'];
+export type ProvidedKeys = AllProvidedKeys<typeof constructs>;
+export type Surfaces = IdsOfKind<typeof constructs, 'rest-api'>;
+export type CacheBackend = (typeof backends)['cache'];
+export type EmailBackend = (typeof backends)['email'];
 ```
 
-When routes are partitioned, the manifest groups them by partition name and generates partition-aware types:
+A `RestApi` carries its endpoints, each with its method, path, handler, the
+dependencies it declared and its authorizer. On AWS the handler is the
+endpoint's own Lambda (`apps/api/.gkm/aws/routes/<export>.handler`); in the
+server manifest every endpoint's handler is the app entry
+(`apps/api/.gkm/server/app.ts`). Functions and crons are top-level
+declarations; a queue's worker and a topic's subscribers are nested in the
+queue or topic.
+
+#### Using the Manifest
+
+On AWS, `fromManifest` from `@geekmidas/cloud/sst` provisions all of it —
+resources, each API's endpoints, queue consumers, functions and crons:
 
 ```typescript
-export const manifest = {
-  routes: {
-    "admin": [{ path: '/admin/users', method: 'GET', handler: '...', authorizer: 'jwt' }],
-    "default": [{ path: '/users', method: 'GET', handler: '...', authorizer: 'jwt' }],
-  },
-  functions: [...], // flat if not partitioned
-} as const;
+// sst.config.ts
+const { App, fromManifest, Stack } = await import('@geekmidas/cloud/sst');
+const { backends, constructs } = await import('./.gkm/manifest/aws.js');
 
-// Partition-aware derived types
-export type RoutePartition = keyof typeof manifest.routes;
-export type Route<P extends RoutePartition = RoutePartition> =
-  (typeof manifest.routes)[P][number];
+fromManifest(new Stack(app, 'Shop'), constructs, { Database: { vpc } }, backends);
 ```
 
-#### Server Manifest (`.gkm/manifest/server.ts`)
+The types narrow to what was declared:
 
 ```typescript
-export const manifest = {
-  app: {
-    handler: '.gkm/server/app.ts',
-    endpoints: '.gkm/server/endpoints.ts',
-  },
-  routes: [
-    { path: '/users', method: 'GET', authorizer: 'jwt' },
-    { path: '/users', method: 'POST', authorizer: 'jwt' },
-  ],
-  subscribers: [
-    { name: 'orderHandler', subscribedEvents: ['order.created'] },
-  ],
-} as const;
+import { constructs, type Construct, type Surfaces } from './.gkm/manifest/aws';
 
-// Derived types
-export type Route = (typeof manifest.routes)[number];
-export type Subscriber = (typeof manifest.subscribers)[number];
+const api: Construct<'Api'> = constructs.Api;
 
-// Useful union types
-export type Authorizer = Route['authorizer'];
-export type HttpMethod = Route['method'];
-export type RoutePath = Route['path'];
-```
-
-#### Using Manifest Types
-
-Import the manifest types for type-safe infrastructure configuration:
-
-```typescript
-import { manifest, type Route, type Authorizer } from './.gkm/manifest/aws';
-
-// Type-safe route iteration
-for (const route of manifest.routes) {
-  console.log(`${route.method} ${route.path} -> ${route.handler}`);
+for (const endpoint of api.endpoints) {
+  console.log(`${endpoint.method} ${endpoint.path} -> ${endpoint.handler}`);
 }
 
-// Use union types for validation
-function isValidMethod(method: string): method is HttpMethod {
-  return manifest.routes.some((r) => r.method === method);
-}
-
-// Access authorizer names
-const authorizers = new Set(manifest.routes.map((r) => r.authorizer));
+const surface: Surfaces = 'Api'; // any other id is a type error
 ```
 
 ## OpenAPI Generation
@@ -1661,17 +1622,17 @@ provider:
 
 functions:
   getUsers:
-    handler: .gkm/aws-apigatewayv1/getUsers.handler
+    handler: .gkm/aws/routes/getUsers.handler
     events:
-      - http:
-          path: users
+      - httpApi:
+          path: /users
           method: get
-  
+
   createUser:
-    handler: .gkm/aws-apigatewayv1/createUser.handler
+    handler: .gkm/aws/routes/createUser.handler
     events:
-      - http:
-          path: users
+      - httpApi:
+          path: /users
           method: post
 ```
 
@@ -1922,7 +1883,7 @@ Error: OpenAPI generation failed: Invalid endpoint schema
     "dev": "gkm dev",
     "dev:port": "gkm dev --port 8080",
     "build": "gkm build",
-    "build:lambda": "gkm build --provider aws-apigatewayv1",
+    "build:lambda": "gkm build --provider aws",
     "build:server": "gkm build --provider server",
     "docs": "gkm openapi --output src/api.ts"
   }
@@ -2016,8 +1977,8 @@ DEBUG=gkm:* npx gkm build
 ### Types
 
 ```typescript
-// Provider options
-type Provider = 'server' | 'aws-apigatewayv1' | 'aws-apigatewayv2';
+// Build targets
+type Provider = 'aws' | 'server';
 
 // Runtime options
 type Runtime = 'node' | 'bun';
@@ -2055,7 +2016,7 @@ interface TelescopeConfig {
 
 // Build options
 interface BuildOptions {
-  provider: Provider;
+  provider?: Provider; // default: where gkm.config.ts deploys
 }
 
 // Dev options

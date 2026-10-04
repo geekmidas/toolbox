@@ -28,11 +28,11 @@ export class FunctionGenerator extends ConstructGenerator<
 		outputDir: string,
 		options?: GeneratorOptions,
 	): Promise<FunctionInfo[]> {
-		const provider = options?.provider || 'aws-lambda';
+		const target = options?.target ?? 'aws';
 		const logger = console;
 		const functionInfos: FunctionInfo[] = [];
 
-		if (constructs.length === 0 || provider !== 'aws-lambda') {
+		if (constructs.length === 0 || target === 'server') {
 			return functionInfos;
 		}
 
@@ -52,7 +52,7 @@ export class FunctionGenerator extends ConstructGenerator<
 
 			functionInfos.push({
 				name: key,
-				handler: relative(process.cwd(), handlerFile).replace(
+				handler: relative(options?.root ?? process.cwd(), handlerFile).replace(
 					/\.ts$/,
 					'.handler',
 				),

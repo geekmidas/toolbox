@@ -748,12 +748,12 @@ export type DeclarationKind = Declaration['kind'];
  * anything:
  *
  * ```ts
- * export const manifest = {
+ * export const constructs = {
  *   Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
  * } as const satisfies ConstructManifest;
  *
- * type Ids = IdsOf<typeof manifest>;                       // 'Uploads'
- * type Env = ProvidedKeys<typeof manifest, 'Uploads'>;     // 'UPLOADS_URL'
+ * type Ids = IdsOf<typeof constructs>;                     // 'Uploads'
+ * type Env = ProvidedKeys<typeof constructs, 'Uploads'>;   // 'UPLOADS_URL'
  * ```
  */
 export type ConstructManifest = Readonly<Record<ConstructId, Declaration>>;

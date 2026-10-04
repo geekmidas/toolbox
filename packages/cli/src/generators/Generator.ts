@@ -3,11 +3,7 @@ import type { Construct } from '@geekmidas/constructs';
 import fg from 'fast-glob';
 import kebabCase from 'lodash.kebabcase';
 import type { BuildContext } from '../build/types';
-import {
-	isPartitionedRoutes,
-	type LegacyProvider,
-	type Routes,
-} from '../types';
+import type { MainProvider, Routes } from '../types';
 
 /**
  * Zod v4 maintains a process-wide registry of schemas registered via
@@ -30,7 +26,13 @@ export function clearZodGlobalRegistry(): void {
 }
 
 export interface GeneratorOptions {
-	provider?: LegacyProvider;
+	/** Where the build deploys: one Lambda per construct, or one process. */
+	target?: MainProvider;
+	/**
+	 * What a handler path in the manifest is relative to — the workspace root,
+	 * which is where `sst.config.ts` runs and resolves it from.
+	 */
+	root?: string;
 	[key: string]: any;
 }
 
@@ -62,22 +64,11 @@ export abstract class ConstructGenerator<T extends Construct, R = void> {
 	): Promise<GeneratedConstruct<T>[]> {
 		const logger = console;
 
-		// Extract glob patterns and optional partition function
-		let globPatterns: string[];
-		let partitionFn: ((filepath: string) => string) | undefined;
-
-		if (isPartitionedRoutes(patterns)) {
-			globPatterns = Array.isArray(patterns.paths)
-				? patterns.paths
-				: [patterns.paths];
-			partitionFn = patterns.partition;
-		} else {
-			globPatterns = Array.isArray(patterns)
-				? patterns
-				: patterns
-					? [patterns]
-					: [];
-		}
+		const globPatterns = Array.isArray(patterns)
+			? patterns
+			: patterns
+				? [patterns]
+				: [];
 
 		// Find all files
 		const files = fg.stream(globPatterns, {
@@ -102,9 +93,6 @@ export abstract class ConstructGenerator<T extends Construct, R = void> {
 				const importPath = bustCache ? `${file}?t=${Date.now()}` : file;
 				const module = await import(importPath);
 
-				// Compute partition name for this file (if partition function provided)
-				const partition = partitionFn ? partitionFn(file) : undefined;
-
 				// Check all exports for constructs
 				for (const [key, construct] of Object.entries(module)) {
 					if (this.isConstruct(construct)) {
@@ -116,7 +104,6 @@ export abstract class ConstructGenerator<T extends Construct, R = void> {
 								absolute: file,
 								relative: relative(process.cwd(), file),
 							},
-							partition,
 						});
 					}
 				}
@@ -142,6 +129,4 @@ export interface GeneratedConstruct<T extends Construct> {
 		absolute: string;
 		relative: string;
 	};
-	/** Partition name assigned by the partition function, if configured. */
-	partition?: string;
 }

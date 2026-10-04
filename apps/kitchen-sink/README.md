@@ -167,5 +167,5 @@ that fails at the first publish.
 ## Building
 
 ```bash
-pnpm build     # server + aws-apigatewayv2 manifests under .gkm/
+pnpm build     # deploys to Dokploy, so a server build + manifest under .gkm/
 ```

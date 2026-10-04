@@ -79,46 +79,6 @@ describe('Function', () => {
 			invalidVars: ['SMTP_URL'],
 		});
 	});
-
-	it('builds one function per manifest entry, named for the stack', () => {
-		const functions = Function.fromManifest(
-			stack,
-			{
-				billing: [
-					{
-						name: 'Invoice',
-						handler: '.gkm/aws-lambda/functions/invoice.handler',
-						environment: ['DB_URL'],
-						timeout: 60,
-						memorySize: 512,
-					},
-				],
-				ops: [
-					{
-						name: 'Ping',
-						handler: '.gkm/aws-lambda/functions/ping.handler',
-						environment: [],
-					},
-				],
-			} as never,
-			{ links: [db] },
-		);
-
-		expect(functions.map((f) => argsOf(f))).toEqual([
-			expect.objectContaining({
-				name: stack.logicalPrefixedName('Invoice'),
-				timeout: '60 seconds',
-				memory: '512 MB',
-				link: [db],
-			}),
-			expect.objectContaining({
-				name: stack.logicalPrefixedName('Ping'),
-				timeout: undefined,
-				memory: undefined,
-				link: [],
-			}),
-		]);
-	});
 });
 
 describe('Cron', () => {
@@ -135,37 +95,6 @@ describe('Cron', () => {
 			schedule: 'rate(1 day)',
 			function: processor.arn,
 		});
-	});
-
-	it('builds a validated function and a schedule per manifest cron', () => {
-		const crons = Cron.fromManifest(
-			stack,
-			[
-				{
-					name: 'Digest',
-					handler: '.gkm/aws-lambda/crons/digest.handler',
-					schedule: 'cron(0 8 * * ? *)',
-					environment: ['DB_URL'],
-					timeout: 120,
-					memorySize: 1024,
-				},
-				{
-					name: 'Sweep',
-					handler: '.gkm/aws-lambda/crons/sweep.handler',
-					schedule: 'rate(1 hour)',
-					environment: [],
-				},
-			] as never,
-			{ links: [db], enabled: true },
-		);
-
-		const [digest, sweep] = crons.map((c) => argsOf(c));
-		expect(digest).toMatchObject({
-			schedule: 'cron(0 8 * * ? *)',
-			enabled: true,
-			function: expect.stringContaining('DigestFunction'),
-		});
-		expect(sweep).toMatchObject({ schedule: 'rate(1 hour)' });
 	});
 });
 

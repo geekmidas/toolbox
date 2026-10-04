@@ -1,11 +1,5 @@
-import {
-	type CronInfo,
-	flattenManifestField,
-	type ManifestField,
-} from '@geekmidas/manifest';
-import type { GkmLinkable } from '../Linkable';
 import type { StackType } from '../Stack';
-import { Function } from './Function';
+import type { Function } from './Function';
 
 export type CronExpressionValue = number | '*' | '?' | `${number}/${number}`;
 export type CronExpressionDay =
@@ -52,6 +46,9 @@ export class Cron<
 	TStage extends string = string,
 	TDomain extends string = string,
 > extends sst.aws.CronV2 {
+	/** The function it invokes. */
+	readonly processor: CronProps['processor'];
+
 	constructor(
 		_stack: StackType<TStage, TDomain>,
 		name: string,
@@ -63,44 +60,7 @@ export class Cron<
 			schedule,
 			function: processor.arn,
 		});
-	}
-
-	/**
-	 * Build one `Cron` per entry in a `gkm build` manifest's `crons` field (flat
-	 * or partitioned). Each cron's handler becomes a validated `Function` (the
-	 * cron's target), so pass `links` for that function's env validation;
-	 * remaining `props` are CronV2 args.
-	 *
-	 * ```ts
-	 * Cron.fromManifest(stack, manifest.crons, { links: [db] });
-	 * ```
-	 */
-	static fromManifest<
-		TStage extends string = string,
-		TDomain extends string = string,
-	>(
-		stack: StackType<TStage, TDomain>,
-		crons: ManifestField<CronInfo>,
-		props: Omit<CronProps, 'processor' | 'schedule'> & {
-			links?: GkmLinkable[];
-		} = {},
-	): Cron<TStage, TDomain>[] {
-		const { links, ...cronArgs } = props;
-		return flattenManifestField(crons).map((cron) => {
-			const processor = new Function(stack, `${cron.name}Function`, {
-				name: stack.logicalPrefixedName(cron.name),
-				handler: cron.handler,
-				envVars: cron.environment,
-				links,
-				timeout: cron.timeout ? `${cron.timeout} seconds` : undefined,
-				memory: cron.memorySize ? `${cron.memorySize} MB` : undefined,
-			});
-			return new Cron(stack, cron.name, {
-				...cronArgs,
-				processor,
-				schedule: cron.schedule as CronSchedule,
-			});
-		});
+		this.processor = processor;
 	}
 }
 

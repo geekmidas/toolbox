@@ -1,9 +1,8 @@
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { deployDokploy, validateDokployConfig } from '../dokploy';
+import { deployDokploy } from '../dokploy';
 import { generateTag } from '../index';
-import type { DokployDeployConfig } from '../types';
 
 // Mock auth functions
 vi.mock('../../auth', () => ({
@@ -13,95 +12,6 @@ vi.mock('../../auth', () => ({
 
 // MSW server for mocking Dokploy API
 const server = setupServer();
-
-describe('validateDokployConfig', () => {
-	it('should return true for valid complete config', () => {
-		const config: DokployDeployConfig = {
-			endpoint: 'https://dokploy.example.com',
-			projectId: 'proj_123',
-			applicationId: 'app_456',
-		};
-
-		const result = validateDokployConfig(config);
-		expect(result).toBe(true);
-	});
-
-	it('should return true with optional registry', () => {
-		const config: DokployDeployConfig = {
-			endpoint: 'https://dokploy.example.com',
-			projectId: 'proj_123',
-			applicationId: 'app_456',
-			registry: 'ghcr.io/myorg',
-		};
-
-		const result = validateDokployConfig(config);
-		expect(result).toBe(true);
-	});
-
-	it('should return false for undefined config', () => {
-		const result = validateDokployConfig(undefined);
-		expect(result).toBe(false);
-	});
-
-	it('should throw for missing endpoint', () => {
-		const config = {
-			projectId: 'proj_123',
-			applicationId: 'app_456',
-		} as Partial<DokployDeployConfig>;
-
-		expect(() => validateDokployConfig(config)).toThrow(
-			'Missing Dokploy configuration: endpoint',
-		);
-	});
-
-	it('should throw for missing projectId', () => {
-		const config = {
-			endpoint: 'https://dokploy.example.com',
-			applicationId: 'app_456',
-		} as Partial<DokployDeployConfig>;
-
-		expect(() => validateDokployConfig(config)).toThrow(
-			'Missing Dokploy configuration: projectId',
-		);
-	});
-
-	it('should throw for missing applicationId', () => {
-		const config = {
-			endpoint: 'https://dokploy.example.com',
-			projectId: 'proj_123',
-		} as Partial<DokployDeployConfig>;
-
-		expect(() => validateDokployConfig(config)).toThrow(
-			'Missing Dokploy configuration: applicationId',
-		);
-	});
-
-	it('should list all missing fields', () => {
-		const config = {
-			endpoint: 'https://dokploy.example.com',
-		} as Partial<DokployDeployConfig>;
-
-		expect(() => validateDokployConfig(config)).toThrow(
-			'Missing Dokploy configuration: projectId, applicationId',
-		);
-	});
-
-	it('should throw for empty config object', () => {
-		const config = {} as Partial<DokployDeployConfig>;
-
-		expect(() => validateDokployConfig(config)).toThrow(
-			'Missing Dokploy configuration: endpoint, projectId, applicationId',
-		);
-	});
-
-	it('should include configuration example in error', () => {
-		const config = {} as Partial<DokployDeployConfig>;
-
-		expect(() => validateDokployConfig(config)).toThrow(
-			'Configure in gkm.config.ts:',
-		);
-	});
-});
 
 describe('deployDokploy', () => {
 	beforeEach(() => {

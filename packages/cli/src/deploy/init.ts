@@ -1,6 +1,3 @@
-import { existsSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import {
 	getDokployCredentials,
 	getDokployRegistryId,
@@ -79,123 +76,6 @@ async function getEndpoint(providedEndpoint?: string): Promise<string> {
 async function createApi(endpoint: string): Promise<DokployApi> {
 	const token = await getApiToken();
 	return new DokployApi({ baseUrl: endpoint, token });
-}
-
-/**
- * Update gkm.config.ts with Dokploy configuration
- */
-/**
- * Whether the file's `dokploy` block is more than a flat literal.
- *
- * A spread, a `process.env`, a ternary or a nested object all defeat the
- * single-level regex below — the first two by being expressions it would
- * stringify away, the last by ending the match at the wrong brace.
- */
-function unsafeToRewrite(content: string): boolean {
-	const start = content.indexOf('dokploy:');
-	if (start === -1) return false;
-
-	// Far enough to see the block without parsing the file: the regex only ever
-	// looked this far itself.
-	const block = content.slice(start, content.indexOf('\n\t},', start) + 1);
-
-	return /\.\.\.|process\.env|\?\s|`|\{[^}]*\{/s.test(block);
-}
-
-export async function updateConfig(
-	config: DokployDeployConfig,
-	cwd: string = process.cwd(),
-): Promise<void> {
-	const configPath = join(cwd, 'gkm.config.ts');
-
-	if (!existsSync(configPath)) {
-		logger.warn(
-			'\n  gkm.config.ts not found. Add this configuration manually:\n',
-		);
-		logger.log(`  providers: {`);
-		logger.log(`    dokploy: {`);
-		logger.log(`      endpoint: '${config.endpoint}',`);
-		logger.log(`      projectId: '${config.projectId}',`);
-		logger.log(`      applicationId: '${config.applicationId}',`);
-		logger.log(`    },`);
-		logger.log(`  },`);
-		return;
-	}
-
-	const content = await readFile(configPath, 'utf-8');
-
-	// Refuse rather than corrupt.
-	//
-	// The rewrite below is `replace(/dokploy:\s*\{[^}]*\}/s, …)` — it matches to
-	// the *first* closing brace and replaces the whole block. That is fine for a
-	// flat literal and destructive for anything else: a nested `domains: { … }`
-	// ends the match early and leaves the tail of the old block orphaned, and
-	// every key this function does not itself write is dropped on the floor,
-	// including the registry and the domains a deploy needs.
-	//
-	// It cost a corrupted config to find, so it says what it would have done and
-	// leaves the file alone. The ids are not lost by skipping: they are
-	// rediscovered by name on the next run and remembered in the state file,
-	// which is the thing whose job that is.
-	if (unsafeToRewrite(content)) {
-		logger.warn(
-			'\n  gkm.config.ts holds a dokploy block this cannot safely rewrite —' +
-				'\n  it contains an expression or a nested object. Leaving it alone.',
-		);
-		logger.log(`\n  Discovered, if you want them written down:`);
-		logger.log(`    projectId: '${config.projectId}'`);
-		logger.log(`    applicationId: '${config.applicationId}'`);
-		if (config.registryId) {
-			logger.log(`    registryId: '${config.registryId}'`);
-		}
-		return;
-	}
-
-	// Check if providers.dokploy already exists
-	if (content.includes('dokploy:') && content.includes('applicationId:')) {
-		logger.log('\n  Dokploy config already exists in gkm.config.ts');
-		logger.log('  Updating with new values...');
-	}
-
-	// Build the dokploy config string
-	const registryLine = config.registryId
-		? `\n\t\t\tregistryId: '${config.registryId}',`
-		: '';
-	const dokployConfigStr = `dokploy: {
-			endpoint: '${config.endpoint}',
-			projectId: '${config.projectId}',
-			applicationId: '${config.applicationId}',${registryLine}
-		}`;
-
-	// Try to add or update the dokploy config
-	let newContent: string;
-
-	if (content.includes('providers:')) {
-		// Add dokploy to existing providers
-		if (content.includes('dokploy:')) {
-			// Update existing dokploy config (handle multi-line with registryId)
-			newContent = content.replace(/dokploy:\s*\{[^}]*\}/s, dokployConfigStr);
-		} else {
-			// Add dokploy to providers
-			newContent = content.replace(
-				/providers:\s*\{/,
-				`providers: {\n\t\t${dokployConfigStr},`,
-			);
-		}
-	} else {
-		// Add providers section before the closing of defineConfig
-		newContent = content.replace(
-			/}\s*\)\s*;?\s*$/,
-			`
-	providers: {
-		${dokployConfigStr},
-	},
-});`,
-		);
-	}
-
-	await writeFile(configPath, newContent);
-	logger.log('\n  ✓ Updated gkm.config.ts with Dokploy configuration');
 }
 
 /**
@@ -295,9 +175,8 @@ export async function deployInitCommand(
 		applicationId: application.applicationId,
 	};
 
-	// Step 6: Update gkm.config.ts
-	await updateConfig(config);
-
+	// Nothing is written into gkm.config.ts: the ids are rediscovered by name
+	// on the next deploy and remembered in the state file.
 	logger.log(`\n✅ Dokploy deployment initialized!`);
 	logger.log(`\n📋 Configuration:`);
 	logger.log(`   Project ID: ${projectId}`);

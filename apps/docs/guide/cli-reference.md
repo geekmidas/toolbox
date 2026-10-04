@@ -58,21 +58,6 @@ export default defineConfig({
     server: './src/config/hooks',
   },
 
-  // Build providers
-  providers: {
-    server: {
-      enableOpenApi: true,
-      production: {
-        bundle: true,
-        minify: true,
-      },
-    },
-    aws: {
-      apiGateway: { v2: true },
-      lambda: { functions: true, crons: true },
-    },
-  },
-
   // Environment files
   env: ['.env', '.env.local'],
 });
@@ -165,29 +150,45 @@ a clone, or after adding a construct.
 
 ### `gkm build`
 
-Build for production deployment.
+Build for where the project deploys: `deploy: { default: 'sst' }` builds for
+AWS, one Lambda per construct; `dokploy` — the default when nothing is
+declared — builds a server.
 
 ```bash
 gkm build [options]
 
 Options:
-  --provider <string>    Build provider: server, aws-apigatewayv1, aws-apigatewayv2
-  --minify               Minify output
-  --sourcemap            Generate source maps
+  --provider <string>    Override the deploy target: aws or server
+  --production           Build for production (no dev tools, bundled output)
+  --enable-openapi       Generate OpenAPI documentation (server builds)
+  --stage <stage>        Inject encrypted secrets for a deployment stage
 ```
+
+A Dockerfile builds a server whatever the project deploys to:
+`gkm build --provider server --production`.
 
 **Output Structure:**
 ```
-.gkm/
-├── server/
-│   ├── app.ts           # Hono app entry point
-│   ├── endpoints.ts     # All endpoint exports
-│   └── dist/            # Production bundle
-├── aws-apigatewayv2/
-│   ├── routes/*.ts      # Per-endpoint handlers
-│   └── manifest.json    # Route manifest
-└── manifest.json        # Multi-provider summary
+<root>/
+├── .gkm/manifest/
+│   └── aws.ts               # or server.ts — paths relative to the root
+└── apps/api/.gkm/
+    ├── server/
+    │   ├── app.ts           # Hono app entry point
+    │   ├── endpoints.ts     # All endpoint exports
+    │   └── dist/            # Production bundle
+    └── aws/
+        ├── routes/*.ts      # Per-endpoint handlers (API Gateway v2)
+        ├── functions/*.ts
+        ├── crons/*.ts
+        ├── queues/*.ts
+        └── subscribers/*.ts
 ```
+
+The manifest is written at the workspace root because `sst.config.ts` runs
+there, so every handler path in it is relative to the root
+(`apps/api/.gkm/aws/routes/getUser.handler`). `gkm init` adds a root
+tsconfig alias for it, `@<project>/manifest`.
 
 ### `gkm openapi`
 
