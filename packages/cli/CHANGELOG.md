@@ -1,5 +1,26 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.52
+
+### Patch Changes
+
+- [#136](https://github.com/geekmidas/toolbox/pull/136) [`0eb2628`](https://github.com/geekmidas/toolbox/commit/0eb2628f0fc00dc65543f6c6fe64400cd3bbd6b5) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm dev` runs crons and queue consumers it was silently skipping
+  - ✨ **Crons under `gkm dev` on the SST target.** Server crons are scheduled through pg-boss. A project that deploys to AWS has no pg-boss locally, so `setupCrons` logged one error and scheduled nothing. Under `gkm dev`, which is one process, crons now run in-process on their schedule, in UTC, via the new `scheduleInProcess` in `@geekmidas/constructs/crons`. Outside `gkm dev` it is still an error, because a timer in each deployed replica would fire every job once per replica.
+  - ✨ **Server-target crons never ran their handler.** The generated `run` called `cron.handler()`, which a `Cron` doesn't have, so every firing logged "Cron failed", on pg-boss too. Crons now run through the new `runCron`, with the same steps as the Lambda adaptor: services, the worker's database as `db`, an auditor if declared, parsed output, and published events.
+  - 🐛 **The S3 driver for a workspace that installs `@geekmidas/storage` at its root.** The entry registered the S3 driver only when the app's own `package.json` listed storage. In a workspace that lists it once at the root, any service that injected a bucket threw `UnregisteredStorageScheme`. A queue consumer that depended on a bucket logged that once and was never polled, so its messages sat on the queue. The dependency is now found the way Node resolves it: the app's `package.json` or any directory above it.
+
+- Updated dependencies [[`0eb2628`](https://github.com/geekmidas/toolbox/commit/0eb2628f0fc00dc65543f6c6fe64400cd3bbd6b5)]:
+  - @geekmidas/constructs@10.0.0-alpha.52
+  - @geekmidas/cache@10.0.0-alpha.52
+  - @geekmidas/db@10.0.0-alpha.52
+  - @geekmidas/envkit@10.0.0-alpha.52
+  - @geekmidas/errors@10.0.0-alpha.52
+  - @geekmidas/logger@10.0.0-alpha.52
+  - @geekmidas/manifest@10.0.0-alpha.52
+  - @geekmidas/schema@10.0.0-alpha.52
+  - @geekmidas/services@10.0.0-alpha.52
+  - @geekmidas/telescope@10.0.0-alpha.52
+
 ## 10.0.0-alpha.51
 
 ### Minor Changes

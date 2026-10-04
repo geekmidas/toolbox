@@ -1,5 +1,14 @@
 # @geekmidas/rate-limit
 
+## 10.0.0-alpha.52
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.52
+  - @geekmidas/logger@10.0.0-alpha.52
+  - @geekmidas/services@10.0.0-alpha.52
+
 ## 10.0.0-alpha.51
 
 ### Patch Changes

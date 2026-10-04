@@ -1,5 +1,7 @@
 # @geekmidas/ui
 
+## 10.0.0-alpha.52
+
 ## 10.0.0-alpha.51
 
 ## 10.0.0-alpha.50

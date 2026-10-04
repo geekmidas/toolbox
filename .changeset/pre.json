@@ -54,6 +54,7 @@
     "deploy-domains-subdomains",
     "deploy-github-oidc",
     "dev-app-ports",
+    "dev-background-work",
     "dev-progress",
     "dev-reads-the-surface",
     "dev-runs-the-build",
