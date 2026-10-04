@@ -291,19 +291,28 @@ gkm build
 
 ### Auto-Generated API Client
 
-Each backend app exposes its generated OpenAPI client as a package entry point. Frontends import it directly — no copy step needed:
+Each API's typed client belongs to the application, like its manifest: it is
+generated at the workspace root, one file per surface, and every app reaches
+it through one alias — no package export, no copy step:
 
 ```typescript
 // apps/web/src/lib/api.ts
-import { createApi } from '@myapp/api/client';
+import { createApi } from '@myapp/client/api';
 ```
 
-The `./client` entry point is generated at build time into `.gkm/openapi.ts` and exposed via the backend app's `package.json` exports. TypeScript resolves it through the monorepo's package references.
+`new RestApi('Api')` writes `.gkm/client/api.ts`; a second surface,
+`new RestApi('Webhooks')`, writes `.gkm/client/webhooks.ts`. `gkm init` maps
+the alias in the root tsconfig and in each frontend's own (an app's `paths`
+replaces the root's rather than merging with it):
 
-To regenerate the client after endpoint changes:
+```json
+{ "compilerOptions": { "paths": { "@myapp/client/*": ["../../.gkm/client/*"] } } }
+```
+
+To regenerate the clients after endpoint changes:
 
 ```bash
-gkm openapi   # regenerates .gkm/openapi.ts for all backend apps
+gkm openapi   # regenerates every surface's client
 gkm build     # also regenerates as part of the build
 ```
 

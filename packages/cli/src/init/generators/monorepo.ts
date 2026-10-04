@@ -10,6 +10,7 @@ import {
 import {
 	BIOME_SCHEMA,
 	DEPENDENCY_VERSIONS,
+	EXPO_VERSIONS,
 	PNPM_VERSION,
 	TOOLCHAIN_VERSIONS,
 } from '../dependencies.js';
@@ -59,6 +60,34 @@ function rootConstructDependencies(
 		...(options.frontendFramework === 'expo'
 			? { '@better-auth/expo': DEPENDENCY_VERSIONS['better-auth'] }
 			: {}),
+	};
+}
+
+/**
+ * What each API's generated client imports, installed where the client is.
+ *
+ * The client is written to the root's `.gkm/client/`, so it resolves
+ * `@geekmidas/client` and React Query from the root `node_modules` — as the
+ * root `constructs/` folder does its imports — not from whichever site imports
+ * it.
+ *
+ * React is pinned here too, because React Query's hooks resolve it from the
+ * root, and a frontend running a different React than the one its client's
+ * hooks resolve loads two — a broken hook call. So the root's React is the
+ * workspace's: every frontend that imports a client runs this one. It starts
+ * as the scaffolded frontend's; a frontend added later — a web app beside an
+ * Expo app — is kept on the same version, not given its own.
+ */
+function rootClientDependencies(
+	options: TemplateOptions,
+): Record<string, string> {
+	return {
+		'@geekmidas/client': GEEKMIDAS_VERSIONS['@geekmidas/client'],
+		'@tanstack/react-query': DEPENDENCY_VERSIONS['@tanstack/react-query'],
+		react:
+			options.frontendFramework === 'expo'
+				? EXPO_VERSIONS.react
+				: DEPENDENCY_VERSIONS.react,
 	};
 }
 
@@ -121,6 +150,7 @@ export function generateMonorepoFiles(
 			// `node_modules`, not from any app's — so what the constructs load,
 			// and the peers each of them needs, are installed here.
 			...(isFullstack ? rootConstructDependencies(options) : {}),
+			...(isFullstack ? rootClientDependencies(options) : {}),
 			...deploy.dependencies,
 		},
 		devDependencies: {
@@ -300,6 +330,8 @@ ${isSst ? '\n# SST\n.sst/\n' : ''}`;
 				[`@${options.name}/manifest`]: [
 					`./.gkm/manifest/${isSst ? 'aws' : 'server'}.ts`,
 				],
+				// Each API's typed client, generated beside the manifest.
+				[`@${options.name}/client/*`]: ['./.gkm/client/*'],
 			},
 			...(isFullstack
 				? {

@@ -882,9 +882,9 @@ async function workspaceDevCommand(
 		}
 	}
 
-	// Frontend apps import API clients directly from backend packages
-	// (e.g. import { createApi } from '@myapp/api/client')
-	// No file copying needed — pnpm workspace resolution handles it.
+	// Frontend apps import each API's client from the workspace root's
+	// `.gkm/client/` through their tsconfig alias
+	// (`import { createApi } from '@myapp/client/api'`) — nothing is copied.
 
 	const rawSecrets = await loadDevSecrets(workspace);
 

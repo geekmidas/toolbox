@@ -604,6 +604,11 @@ export default {
 					handler: 'apps/api/.gkm/aws/routes/testEndpoint.handler',
 				}),
 			]);
+
+			// The typed client is the application's too: at the root, where a
+			// site's `@<name>/client/<surface>` alias points — not in the app.
+			expect(existsSync(join(dir, '.gkm/client'))).toBe(true);
+			expect(existsSync(join(appRoot, '.gkm/client'))).toBe(false);
 		},
 	);
 

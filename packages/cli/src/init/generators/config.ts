@@ -104,7 +104,8 @@ export default defineConfig({${stagesBlock(options.stages)}${
   studio: './src/config/studio#studio',`;
 	}
 
-	// Always add openapi config (output path is fixed to .gkm/openapi.ts)
+	// Always add openapi config: each surface's client is written to the
+	// workspace root's `.gkm/client/`, imported as `@<name>/client/<surface>`
 	gkmConfig += `
   openapi: {
     enabled: true,

@@ -198,7 +198,6 @@ Generate OpenAPI specification from endpoints.
 gkm openapi [options]
 
 Options:
-  --output, -o <path>    Output path (default: .gkm/openapi.ts)
   --title <string>       API title
   --version <string>     API version
 ```

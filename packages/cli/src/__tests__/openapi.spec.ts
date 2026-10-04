@@ -216,7 +216,7 @@ export const listAll = adminApi
 		});
 
 		expect(result?.outputPaths).toEqual([
-			join(tempDir, './.gkm/openapi/admin-api.ts'),
+			join(tempDir, './.gkm/client/admin-api.ts'),
 		]);
 	});
 
@@ -623,9 +623,11 @@ describe('openapiCommand - workspace mode', () => {
 
 		await openapiCommand({ cwd: tempDir, app: 'api' });
 
-		// Should generate OpenAPI in the backend app's .gkm folder
-		const outputPath = join(apiDir, openApiPathFor('Test'));
+		// At the workspace root, whichever app it was generated from — where a
+		// site's `@<name>/client/<surface>` alias points.
+		const outputPath = join(tempDir, openApiPathFor('Test'));
 		expect(existsSync(outputPath)).toBe(true);
+		expect(existsSync(join(apiDir, openApiPathFor('Test')))).toBe(false);
 
 		const content = await readFile(outputPath, 'utf-8');
 		expect(content).toContain('export interface paths');

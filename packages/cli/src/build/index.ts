@@ -538,7 +538,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 	// than from a second discovery pass over the same files.
 	await generateOpenApi(
 		allEndpoints.map(({ construct }) => construct),
-		{ openapi: config.openapi },
+		{ openapi: config.openapi, root: workspaceRoot },
 	);
 
 	return result;
@@ -917,10 +917,9 @@ export async function workspaceBuildCommand(
 
 		logger.log(`\n✅ Workspace build complete!`);
 
-		// No OpenAPI pass here. Each surface's own build writes its client
-		// (`.gkm/openapi/<surface>.ts`) before turbo builds whatever depends on
-		// it; a second pass after every app had built came too late to feed
-		// anything, and ran without the app's credentials.
+		// No OpenAPI pass here. Each backend's build above wrote its surfaces'
+		// clients to the root's `.gkm/client/<surface>.ts` before turbo built
+		// the sites that import them as `@<name>/client/<surface>`.
 
 		// Summary
 		logger.log(`\n📋 Build Summary:`);

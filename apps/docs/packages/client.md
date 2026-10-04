@@ -203,6 +203,7 @@ function CreateUserForm() {
 ## OpenAPI Type Generation
 
 Each surface's typed client is written by `gkm build` (and kept current by
-`gkm dev`) to `.gkm/openapi/<surface>.ts`: its `createApi()` returns a typed
+`gkm dev`) to the workspace root's `.gkm/client/<surface>.ts`, imported as
+`@<name>/client/<surface>`: its `createApi()` returns a typed
 fetcher with React Query hooks, built from the endpoints themselves rather
 than from a spec file.

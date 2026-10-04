@@ -16,7 +16,6 @@ export function generateTanStackWebFiles(
 	}
 
 	const packageName = `@${options.name}/web`;
-	const apiPackage = `@${options.name}/api`;
 	const modelsPackage = `@${options.name}/models`;
 	const uiPackage = `@${options.name}/ui`;
 
@@ -32,7 +31,6 @@ export function generateTanStackWebFiles(
 			typecheck: 'tsc --noEmit',
 		},
 		dependencies: {
-			[apiPackage]: 'workspace:*',
 			[modelsPackage]: 'workspace:*',
 			[uiPackage]: 'workspace:*',
 			'@geekmidas/client': GEEKMIDAS_VERSIONS['@geekmidas/client'],
@@ -104,7 +102,8 @@ export default defineConfig({
 				[`${modelsPackage}/*`]: ['../../packages/models/src/*'],
 				[uiPackage]: ['../../packages/ui/src'],
 				[`${uiPackage}/*`]: ['../../packages/ui/src/*'],
-				[`${apiPackage}/client`]: ['../../apps/api/.gkm/openapi/api.ts'],
+				// Every API's client, generated at the workspace root.
+				[`@${options.name}/client/*`]: ['../../.gkm/client/*'],
 			},
 		},
 		include: ['**/*.ts', '**/*.tsx', 'src/routeTree.gen.ts'],
@@ -176,7 +175,7 @@ export const authClient = createAuthClient({
 export const { signIn, signUp, signOut, useSession, magicLink } = authClient;
 `;
 
-	const apiIndexTs = `import { createApi } from '${apiPackage}/client';
+	const apiIndexTs = `import { createApi } from '@${options.name}/client/api';
 import { clientConfig } from '~/config/client.ts';
 import { getQueryClient } from '~/lib/query-client.ts';
 
