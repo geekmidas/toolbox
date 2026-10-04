@@ -1,9 +1,8 @@
 import { DEPENDENCY_VERSIONS, PNPM_VERSION } from '../dependencies.js';
-import {
-	type GeneratedFile,
-	OPENAPI_OUTPUT_PATH,
-	type TemplateConfig,
-	type TemplateOptions,
+import type {
+	GeneratedFile,
+	TemplateConfig,
+	TemplateOptions,
 } from '../templates/index.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 
@@ -105,13 +104,6 @@ export function generatePackageJson(
 		packageName = `@${name}/${appName}`;
 	}
 
-	// `./client` below is generated code that imports `@geekmidas/client` and
-	// React Query, and it resolves both from this package — not from the site
-	// that imports it. The client's React Query peer resolves here too.
-	dependencies['@geekmidas/client'] = GEEKMIDAS_VERSIONS['@geekmidas/client'];
-	dependencies['@tanstack/react-query'] =
-		DEPENDENCY_VERSIONS['@tanstack/react-query'];
-
 	const packageJson = {
 		name: packageName,
 		version: '0.0.1',
@@ -121,9 +113,6 @@ export function generatePackageJson(
 		...(!monorepo && options.packageManager === 'pnpm'
 			? { packageManager: PNPM_VERSION }
 			: {}),
-		exports: {
-			'./client': OPENAPI_OUTPUT_PATH,
-		},
 		scripts,
 		dependencies: sortObject(dependencies),
 		devDependencies: sortObject(devDependencies),

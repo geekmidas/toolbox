@@ -1,7 +1,7 @@
 /**
  * A hand-written `paths` fixture in openapi-typescript's shape, for the
  * client's own tests. Applications get theirs from `gkm build`, which writes
- * a typed client per surface to `.gkm/openapi/<surface>.ts`.
+ * a typed client per surface to the workspace root's `.gkm/client/<surface>.ts`.
  *
  * This is a placeholder file showing the expected structure.
  */

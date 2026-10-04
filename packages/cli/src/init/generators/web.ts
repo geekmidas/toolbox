@@ -11,7 +11,6 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 	}
 
 	const packageName = `@${options.name}/web`;
-	const apiPackage = `@${options.name}/api`;
 	const modelsPackage = `@${options.name}/models`;
 	const uiPackage = `@${options.name}/ui`;
 
@@ -28,7 +27,6 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 			typecheck: 'tsc --noEmit',
 		},
 		dependencies: {
-			[apiPackage]: 'workspace:*',
 			[modelsPackage]: 'workspace:*',
 			[uiPackage]: 'workspace:*',
 			'@geekmidas/client': GEEKMIDAS_VERSIONS['@geekmidas/client'],
@@ -57,7 +55,7 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 const nextConfig: NextConfig = {
   output: 'standalone',
   reactStrictMode: true,
-  transpilePackages: ['${apiPackage}', '${modelsPackage}', '${uiPackage}'],
+  transpilePackages: ['${modelsPackage}', '${uiPackage}'],
 };
 
 export default nextConfig;
@@ -96,7 +94,8 @@ export default nextConfig;
 			],
 			paths: {
 				'~/*': ['./src/*', '../../packages/ui/src/*'],
-				[`${apiPackage}/client`]: ['../../apps/api/.gkm/openapi/api.ts'],
+				// Every API's client, generated at the workspace root.
+				[`@${options.name}/client/*`]: ['../../.gkm/client/*'],
 				[`${modelsPackage}`]: ['../../packages/models/src'],
 				[`${modelsPackage}/*`]: ['../../packages/models/src/*'],
 				[`${uiPackage}`]: ['../../packages/ui/src'],
@@ -198,7 +197,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 `;
 
 	// API client setup - imports directly from the API package export
-	const apiIndexTs = `import { createApi } from '${apiPackage}/client';
+	const apiIndexTs = `import { createApi } from '@${options.name}/client/api';
 import { getQueryClient } from '~/lib/query-client.ts';
 import { clientConfig } from '~/config/client.ts';
 

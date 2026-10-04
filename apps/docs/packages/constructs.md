@@ -2093,7 +2093,6 @@ Use `createMswHandlers` to test frontend code against real backend endpoints —
 ```json
 {
   "exports": {
-    "./client": "./.gkm/openapi.ts",
     "./endpoints": "./.gkm/server/endpoints.ts"
   }
 }
@@ -2123,7 +2122,7 @@ Each test registers its own context with `registerContext()`. The context ID is 
 
 ```typescript
 // apps/web/src/__tests__/users.spec.tsx
-import { createApi } from '@myapp/api/client';
+import { createApi } from '@myapp/client/api';
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
 import { mswServer, registerContext, TEST_CONTEXT_HEADER } from '../test/msw-server';

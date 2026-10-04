@@ -22,7 +22,6 @@ export function generateExpoAppFiles(
 	}
 
 	const packageName = `@${options.name}/app`;
-	const apiPackage = `@${options.name}/api`;
 	const modelsPackage = `@${options.name}/models`;
 	// The slug is Expo's project name. The scheme — and the bundle id built on
 	// it — is not written here: the \`MobileApp\` construct resolves it per
@@ -44,7 +43,6 @@ export function generateExpoAppFiles(
 			typecheck: 'tsc --noEmit',
 		},
 		dependencies: {
-			[apiPackage]: 'workspace:*',
 			[modelsPackage]: 'workspace:*',
 			'@better-auth/expo': DEPENDENCY_VERSIONS['better-auth'],
 			'@geekmidas/client': GEEKMIDAS_VERSIONS['@geekmidas/client'],
@@ -224,7 +222,8 @@ module.exports = withNativeWind(config, { input: './global.css' });
 				'@/*': ['./*'],
 				[modelsPackage]: ['../../packages/models/src'],
 				[`${modelsPackage}/*`]: ['../../packages/models/src/*'],
-				[`${apiPackage}/client`]: ['../../apps/api/.gkm/openapi/api.ts'],
+				// Every API's client, generated at the workspace root.
+				[`@${options.name}/client/*`]: ['../../.gkm/client/*'],
 			},
 		},
 		include: [
@@ -378,7 +377,7 @@ export async function signOut() {
 }
 `;
 
-	const apiTs = `import { createApi } from '${apiPackage}/client';
+	const apiTs = `import { createApi } from '@${options.name}/client/api';
 
 import { config } from '@/config.ts';
 import { authClient } from './auth-client.ts';

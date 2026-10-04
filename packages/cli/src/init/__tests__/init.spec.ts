@@ -655,11 +655,34 @@ describe('initCommand', () => {
 			await expect(
 				readFile(join(root, 'gkm.config.ts'), 'utf-8'),
 			).resolves.toContain("deploy: { default: 'sst' },");
-			// No export of a server build an AWS build never writes.
+			// The api package exports nothing: its client is the application's,
+			// generated at the root and reached through the tsconfig alias.
 			const api = JSON.parse(
 				await readFile(join(root, 'apps/api/package.json'), 'utf-8'),
 			);
-			expect(api.exports['./endpoints']).toBeUndefined();
+			expect(api.exports).toBeUndefined();
+			// What the client imports is installed where the client is — the
+			// root — and React with it, the one every frontend runs.
+			expect(api.dependencies).not.toHaveProperty('@geekmidas/client');
+			for (const dep of [
+				'@geekmidas/client',
+				'@tanstack/react-query',
+				'react',
+			]) {
+				expect(pkg.dependencies[dep]).toBeDefined();
+			}
+			const rootTsconfig = JSON.parse(
+				await readFile(join(root, 'tsconfig.json'), 'utf-8'),
+			);
+			expect(
+				rootTsconfig.compilerOptions.paths['@my-fullstack/client/*'],
+			).toEqual(['./.gkm/client/*']);
+			const web = JSON.parse(
+				await readFile(join(root, 'apps/web/tsconfig.json'), 'utf-8'),
+			);
+			expect(web.compilerOptions.paths['@my-fullstack/client/*']).toEqual([
+				'../../.gkm/client/*',
+			]);
 			expect(pkg.devDependencies.sst).toMatch(/^~4\./);
 			// What \`@geekmidas/cloud/sst\` imports: optional peers of the cloud
 			// package, so the scaffold installs them itself.

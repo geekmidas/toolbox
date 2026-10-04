@@ -208,7 +208,7 @@ Loading routes from: src/endpoints/**/*.ts
 Using envParser: ./src/config/env
 🔭 Telescope enabled at /__telescope
 🗄️  Studio enabled at /__studio
-📄 OpenAPI output: .gkm/openapi.ts
+📄 OpenAPI client generated: .gkm/client/api.ts
 🔐 Loaded 12 secret(s)
 Server running on http://localhost:3000
 👀 Watching for changes in: src/endpoints/**/*.ts, src/config/env.ts, src/config/logger.ts

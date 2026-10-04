@@ -2,7 +2,7 @@
 
 import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative as relativePath, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import { kebabCase } from '@geekmidas/manifest';
@@ -25,19 +25,15 @@ interface OpenAPIOptions {
 }
 
 /**
- * Default output path for generated OpenAPI client (used for single-app configs)
- */
-export const OPENAPI_OUTPUT_PATH = './.gkm/openapi.ts';
-
-/**
- * Where a surface's generated client lands.
+ * Where a surface's generated client lands, under the workspace root.
  *
  * Named from the surface, so `new RestApi('Webhooks')` writes
- * `.gkm/openapi/webhooks.ts` — the same kebab form that gives it its container
- * name and its `WEBHOOKS_URL`.
+ * `.gkm/client/webhooks.ts` — the same kebab form that gives it its container
+ * name and its `WEBHOOKS_URL` — and a site imports it as
+ * `@<name>/client/webhooks`, through the alias its tsconfig maps.
  */
 export function openApiPathFor(surfaceId: string): string {
-	return `./.gkm/openapi/${kebabCase(surfaceId)}.ts`;
+	return `./.gkm/client/${kebabCase(surfaceId)}.ts`;
 }
 
 /**
@@ -93,6 +89,7 @@ export async function generateOpenApiFrom(
 		openapi?: boolean | OpenApiConfig;
 		silent?: boolean;
 		bustCache?: boolean;
+		root?: string;
 	} = {},
 ): Promise<OpenApiResult | null> {
 	const loaded = await new EndpointGenerator().load(
@@ -123,8 +120,16 @@ export async function generateOpenApi(
 	options: {
 		openapi?: boolean | OpenApiConfig;
 		silent?: boolean;
+		/**
+		 * The workspace root, whose `.gkm/client/` holds every surface's client.
+		 * The client is the application's, like its manifest — a site reaches it
+		 * as `@<name>/client/<surface>` — so it is written there whichever
+		 * directory the build happened to run in.
+		 */
+		root?: string;
 	} = {},
 ): Promise<OpenApiResult | null> {
+	const root = options.root ?? process.cwd();
 	const logger = options.silent ? { log: () => {} } : console;
 	const openApiConfig = resolveOpenApiConfig({ openapi: options.openapi });
 
@@ -164,7 +169,7 @@ export async function generateOpenApi(
 
 	for (const [surfaceId, surfaceEndpoints] of bySurface) {
 		const relative = openApiPathFor(surfaceId);
-		const outputPath = join(process.cwd(), relative);
+		const outputPath = join(root, relative);
 
 		await mkdir(dirname(outputPath), { recursive: true });
 
@@ -179,14 +184,14 @@ export async function generateOpenApi(
 		await writeFile(outputPath, tsContent);
 		written.push(relative);
 		logger.log(
-			`📄 OpenAPI client generated: ${relative} (${surfaceEndpoints.length} endpoints)`,
+			`📄 OpenAPI client generated: ${relativePath(process.cwd(), outputPath)} (${surfaceEndpoints.length} endpoints)`,
 		);
 	}
 
 	return {
 		// The first, for a caller that wants one path. `outputPaths` has them all.
-		outputPath: join(process.cwd(), written[0]!),
-		outputPaths: written.map((r) => join(process.cwd(), r)),
+		outputPath: join(root, written[0]!),
+		outputPaths: written.map((r) => join(root, r)),
 		endpointCount: endpoints.length,
 	};
 }
@@ -210,6 +215,7 @@ export async function openapiCommand(
 
 			const result = await generateOpenApiFrom(config.constructs, {
 				openapi: config.openapi,
+				root: loadedConfig.workspace.root,
 			});
 
 			if (result) {
@@ -345,6 +351,7 @@ async function generateOpenApiForApp(
 		// is the failure the filter above was written to describe.
 		openapi: app.openapi ?? { enabled: true },
 		silent,
+		root: workspaceRoot,
 	});
 }
 
