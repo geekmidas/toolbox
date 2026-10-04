@@ -1,5 +1,7 @@
 # @geekmidas/logger
 
+## 10.0.0-alpha.48
+
 ## 10.0.0-alpha.47
 
 ## 10.0.0-alpha.46
