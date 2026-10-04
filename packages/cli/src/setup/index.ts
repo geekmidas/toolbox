@@ -1,4 +1,5 @@
 import { loadWorkspaceConfig } from '../config.js';
+import { describeServices } from '../reconcile/containers.js';
 import {
 	derivedContainers,
 	reconcileWorkspace,
@@ -110,9 +111,9 @@ async function reconcileLocal(
 		return;
 	}
 
-	logger.log(`🐳 Services: ${result.plan.containers.join(', ')}`);
-	for (const [container, address] of Object.entries(result.addresses)) {
-		logger.log(`   ${container}: ${address}`);
+	logger.log('🐳 Services');
+	for (const line of describeServices(result.services)) {
+		logger.log(line);
 	}
 
 	// Only where something actually answers on https. A project with no edge has

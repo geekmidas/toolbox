@@ -88,8 +88,30 @@ directory — which is what turbo does — it starts that one.
 ### 4. Reconcile
 
 ```
-🐳 Services: postgres, mailpit, caddy
+🐳 Services
+   postgres       localhost:28001
+   smtp           localhost:28006
+   mailpit inbox  http://localhost:28007
+   https edge     localhost:28010
 ```
+
+Printed on every start, every published port with what it is for — the inbox
+and the MinIO and RabbitMQ consoles as links you can open.
+
+An app reaches the inbox over the same edge it reaches an API by: a
+`MobileApp` or `StaticSite` that `.dependsOn([mailer])` is built with
+`EXPO_PUBLIC_MAILER_INBOX_URL` (or `VITE_`/`NEXT_PUBLIC_`) on a local stage, so
+an **Open email app** button can open the sign-in link the server just sent.
+Deployed mail has no inbox, so the key is not set there — fall back to the
+device's mail app:
+
+```ts
+const inbox = process.env.EXPO_PUBLIC_MAILER_INBOX_URL;
+Linking.openURL(inbox ?? (Platform.OS === 'ios' ? 'message:' : 'mailto:'));
+```
+
+Like the API's URL, it is `localhost` on a phone until the app swaps in the
+host Metro was served from.
 
 **Which containers exist is derived, not configured.** A declared
 `KyselyDatabase` is why a Postgres runs; a declared `ObjectStorage` is why MinIO

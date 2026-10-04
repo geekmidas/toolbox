@@ -28,6 +28,11 @@ const manifest = {
 		provides: ['API_URL', 'API_TRUSTED_ORIGINS', 'API_COOKIE_DOMAIN'],
 	},
 	Orders: { kind: 'database', id: 'Orders', provides: ['ORDERS_URL'] },
+	Mailer: {
+		kind: 'email',
+		id: 'Mailer',
+		provides: ['MAILER_URL', 'MAILER_FROM'],
+	},
 	Console: {
 		kind: 'site',
 		id: 'Console',
@@ -37,6 +42,7 @@ const manifest = {
 			{ target: 'Api', kind: 'rest-api' },
 			{ target: 'Orders', kind: 'database' },
 			{ target: 'UploadsServer', kind: 'file-server' },
+			{ target: 'Mailer', kind: 'email' },
 		],
 		provides: ['CONSOLE_URL'],
 	},
@@ -101,6 +107,10 @@ describe('siteEnvironment', () => {
 				Api: provided({ url: 'https://api.example.com' }),
 				Orders: provided({ url: 'postgres://user:pw@db/orders' }),
 				UploadsServer: provided({ url: 'https://files.example.com' }),
+				Mailer: provided({
+					url: 'smtp://user:pw@email-smtp.example.com:587',
+					from: 'hello@shop.test',
+				}),
 			}),
 		);
 
@@ -120,6 +130,13 @@ describe('siteEnvironment', () => {
 		// it has one, reads env like anything else. `PUBLIC` decides only what
 		// may be *prefixed*, and a password may not.
 		expect(built()).not.toHaveProperty('VITE_ORDERS_URL');
+	});
+
+	it('has no inbox to share for deployed mail, and never shares the mail URL', () => {
+		// The inbox is Mailpit's, and exists only locally: deployed, an app that
+		// reads it falls back to the phone's own mail app.
+		expect(built()).not.toHaveProperty('VITE_MAILER_INBOX_URL');
+		expect(built()).not.toHaveProperty('VITE_MAILER_URL');
 	});
 
 	it('fails loudly on an edge nothing provisioned', () => {

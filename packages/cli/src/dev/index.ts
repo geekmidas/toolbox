@@ -29,6 +29,7 @@ import {
 	prepareEntryCredentials,
 } from '../credentials';
 import { resolveOpenApiConfig } from '../openapi';
+import { describeServices } from '../reconcile/containers.js';
 import { FAKE_ENV, reconcileWorkspace } from '../reconcile/workspace.js';
 import { toEmbeddableSecrets } from '../secrets/storage.js';
 import { FileSecretsStore, secretsStoreFor } from '../secrets/store.js';
@@ -395,10 +396,12 @@ export async function devCommand(options: DevOptions): Promise<void> {
 			...(options.fake ? { fake: true } : {}),
 		});
 
-		if (reconciled.changed && reconciled.plan.containers.length > 0) {
-			logger.log(`🐳 Services: ${reconciled.plan.containers.join(', ')}`);
-			for (const [container, address] of Object.entries(reconciled.addresses)) {
-				logger.log(`   ${container}: ${address}`);
+		// Every start, not only the one that changed something: where the inbox
+		// is matters on the hundredth `gkm dev` as much as the first.
+		if (reconciled.services.length > 0) {
+			logger.log('🐳 Services');
+			for (const line of describeServices(reconciled.services)) {
+				logger.log(line);
 			}
 		}
 
@@ -915,10 +918,12 @@ async function workspaceDevCommand(
 		...(options.fake ? { fake: true } : {}),
 	});
 
-	if (reconciled.changed && reconciled.plan.containers.length > 0) {
-		logger.log(`🐳 Services: ${reconciled.plan.containers.join(', ')}`);
-		for (const [container, address] of Object.entries(reconciled.addresses)) {
-			logger.log(`   ${container}: ${address}`);
+	// Every start, not only the one that changed something: where the inbox is
+	// matters on the hundredth `gkm dev` as much as the first.
+	if (reconciled.services.length > 0) {
+		logger.log('🐳 Services');
+		for (const line of describeServices(reconciled.services)) {
+			logger.log(line);
 		}
 	}
 

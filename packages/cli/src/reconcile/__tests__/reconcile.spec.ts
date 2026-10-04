@@ -332,10 +332,30 @@ describe('reconcile', () => {
 		expect(compose.services.postgres.ports).not.toContain('5432:5432');
 	});
 
-	it('reports where each container can be reached', async () => {
-		const { addresses } = await run({ saved: { postgres: 21111 } });
+	it('reports every port a person might open, the inbox as a link', async () => {
+		const { services, ports } = await run({ saved: { postgres: 21111 } });
 
-		expect(addresses.postgres).toBe('localhost:21111');
+		expect(services).toEqual(
+			expect.arrayContaining([
+				{
+					container: 'postgres',
+					label: 'postgres',
+					address: 'localhost:21111',
+				},
+				{
+					container: 'mailpit',
+					label: 'smtp',
+					address: `localhost:${ports.mailpit}`,
+				},
+				// Not only the port an app connects to: the inbox is why Mailpit
+				// is a real container, and it is no use if nobody can find it.
+				{
+					container: 'mailpit',
+					label: 'mailpit inbox',
+					address: `http://localhost:${ports['mailpit-web']}`,
+				},
+			]),
+		);
 	});
 
 	it('resolves a URL for every construct', async () => {

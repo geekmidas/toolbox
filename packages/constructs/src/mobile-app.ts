@@ -7,6 +7,9 @@
  * - its `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_AUTH_URL`, which locally are
  *   the servers' own ports — reachable once the app swaps `localhost` for the
  *   address Metro is served from, which is what makes a phone on the LAN work;
+ * - with an `Email` among them, Mailpit's inbox on a local stage
+ *   (`EXPO_PUBLIC_<ID>_INBOX_URL`), so a sign-in link can be opened from the
+ *   app — unset deployed, where there is no inbox;
  * - its URL scheme (`shop`), the same on every stage;
  * - the scheme in the auth server's and the API's trusted origins — and, on a
  *   local stage, the `exp://` origins Expo Go sends from;

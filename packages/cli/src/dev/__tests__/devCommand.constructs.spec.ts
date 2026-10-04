@@ -50,7 +50,7 @@ vi.mock('../../reconcile/workspace.js', async (importOriginal) => {
 		reconcileWorkspace: vi.fn(async () => ({
 			changed: false,
 			plan: { containers: [], resources: [] },
-			addresses: {},
+			services: [],
 			env: fakes.env,
 		})),
 	};

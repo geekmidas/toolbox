@@ -32,7 +32,13 @@ import {
 	composeFor,
 	toYaml,
 } from './compose';
-import { portKeys, portsOf, primaryPortKey } from './containers';
+import {
+	portKeys,
+	portsOf,
+	primaryPortKey,
+	type ServiceAddress,
+	serviceAddresses,
+} from './containers';
 import { dockerCli } from './docker';
 import { envFor } from './env';
 import type { LocalFake } from './fakes';
@@ -229,8 +235,8 @@ export interface ReconcileResult {
 	compose: ComposeFile;
 	/** Every assigned port, keyed by port key. Persist this. */
 	ports: PortAssignments;
-	/** The address of each container, keyed by container. */
-	addresses: Readonly<Record<string, string>>;
+	/** Every port the containers publish, labelled — consoles and inbox too. */
+	services: readonly ServiceAddress[];
 	/** The `<NAME>_URL` values this stage resolves. */
 	env: Readonly<Record<string, string>>;
 	/** What the applier created, or found already there. */
@@ -317,7 +323,7 @@ export async function reconcile(
 		.map((statement) => statement.create)
 		.join(';\n');
 	const hash = planHash(plan, compose, { caddyfile, postgres });
-	const addresses = addressesFor(plan.containers, ports);
+	const services = serviceAddresses(plan.containers, ports, plan.fakes);
 	// Only a project with a mobile app reads it, so only one looks for it.
 	const lan = plan.resources.some((r) => r.kind === 'mobile-app')
 		? options.lanAddress === undefined
@@ -343,7 +349,7 @@ export async function reconcile(
 		plan,
 		compose,
 		ports,
-		addresses,
+		services,
 		env,
 		provisioned: [],
 		fakes: options.fakes ?? {},
@@ -496,26 +502,6 @@ async function observedPorts(
 	}
 
 	return observed;
-}
-
-/**
- * Where each container can be reached on this machine.
- *
- * The primary port only — a container's console is for a human to open, not
- * something an app connects to.
- */
-function addressesFor(
-	containers: readonly string[],
-	ports: PortAssignments,
-): Record<string, string> {
-	const addresses: Record<string, string> = {};
-
-	for (const container of containers) {
-		const port = ports[primaryPortKey(container)];
-		if (port !== undefined) addresses[container] = `localhost:${port}`;
-	}
-
-	return addresses;
 }
 
 /** Write a file only when its content would change, so mtimes stay meaningful. */
