@@ -8,12 +8,22 @@
 
 export const KMS_SCHEME = 'kms:';
 
-/** `kms://<region>?key=<key arn>&index=<hmac key arn>` */
+/**
+ * `kms://<region>?key=<key arn>&index=<hmac key arn>[&endpoint=<url>]`
+ *
+ * `endpoint` reaches an emulator instead of AWS — floci, locally and in tests —
+ * the same parameter an `sns://` connection string carries for the same reason.
+ */
 export function kmsUrl(input: {
 	region: string;
 	key: string;
 	index: string;
+	endpoint?: string;
 }): string {
-	const query = new URLSearchParams({ key: input.key, index: input.index });
+	const query = new URLSearchParams({
+		key: input.key,
+		index: input.index,
+		...(input.endpoint ? { endpoint: input.endpoint } : {}),
+	});
 	return `${KMS_SCHEME}//${input.region}?${query}`;
 }

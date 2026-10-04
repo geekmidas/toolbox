@@ -38,11 +38,7 @@ import {
 /** The ciphertext's key field: the version lives inside KMS's own blob. */
 const KMS_KEY_ID = 'kms';
 
-export function kmsCipher(
-	construct: string,
-	url: string,
-	client?: KMSClient,
-): Cipher {
+export function kmsCipher(construct: string, url: string): Cipher {
 	const parsed = new URL(url);
 	const region = parsed.hostname;
 	const keyId = parsed.searchParams.get('key');
@@ -54,7 +50,10 @@ export function kmsCipher(
 		);
 	}
 
-	const kms = client ?? new KMSClient({ region });
+	const endpoint = parsed.searchParams.get('endpoint');
+	// Credentials are not part of the address: the default chain — a Lambda's
+	// role deployed, the environment against an emulator.
+	const kms = new KMSClient({ region, ...(endpoint ? { endpoint } : {}) });
 	// What KMS checks on every decrypt, and what CloudTrail shows each call was
 	// for — a data key minted for one construct will not open for another.
 	const context = { construct };

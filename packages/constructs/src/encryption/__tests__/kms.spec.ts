@@ -1,104 +1,86 @@
-import { createHmac, randomBytes } from 'node:crypto';
-import { KMSClient } from '@aws-sdk/client-kms';
+import {
+	CreateKeyCommand,
+	type CreateKeyCommandInput,
+	KMSClient,
+	ScheduleKeyDeletionCommand,
+} from '@aws-sdk/client-kms';
 import { kmsUrl } from '@geekmidas/manifest';
-import { HttpResponse, http } from 'msw';
-import { setupServer } from 'msw/node';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { CiphertextNotAuthentic, open, seal } from '../cipher';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { CiphertextNotAuthentic } from '../cipher';
 import { kmsCipher } from '../kms';
 
 /**
- * KMS, as far as this cipher uses it: a master key that wraps data keys under
- * an encryption context, and an HMAC key. Real crypto, so a context or blob
- * mismatch fails the way KMS fails it.
+ * Against floci — the AWS emulator the test stack already runs for SNS and
+ * SQS — so every call is a real KMS call: a data key it wrapped, a context it
+ * checks, a MAC it computed.
  */
-const master = randomBytes(32);
-const hmac = randomBytes(32);
-const calls: string[] = [];
+const endpoint = `http://localhost:${process.env.LOCALSTACK_HOST_PORT || 4566}`;
+const region = 'eu-west-1';
 
-const context = (body: { EncryptionContext?: Record<string, string> }) =>
-	Buffer.from(JSON.stringify(body.EncryptionContext ?? {}));
-
-const server = setupServer(
-	http.post('https://kms.eu-west-1.amazonaws.com/', async ({ request }) => {
-		const action = request.headers.get('x-amz-target')!.split('.')[1]!;
-		const body = (await request.json()) as Record<string, any>;
-		calls.push(action);
-
-		switch (action) {
-			case 'GenerateDataKey': {
-				const plaintext = randomBytes(32);
-				return HttpResponse.json({
-					KeyId: body.KeyId,
-					Plaintext: plaintext.toString('base64'),
-					CiphertextBlob: seal(master, plaintext, context(body)).toString(
-						'base64',
-					),
-				});
-			}
-			case 'Decrypt': {
-				const plaintext = open(
-					master,
-					Buffer.from(body.CiphertextBlob, 'base64'),
-					context(body),
-				);
-				if (!plaintext) {
-					return HttpResponse.json(
-						{ __type: 'InvalidCiphertextException', message: 'invalid' },
-						{ status: 400 },
-					);
-				}
-				return HttpResponse.json({ Plaintext: plaintext.toString('base64') });
-			}
-			case 'GenerateMac':
-				return HttpResponse.json({
-					Mac: createHmac('sha256', hmac)
-						.update(Buffer.from(body.Message, 'base64'))
-						.digest('base64'),
-				});
-			default:
-				return HttpResponse.json({}, { status: 400 });
-		}
-	}),
-);
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
-afterEach(() => {
-	server.resetHandlers();
-	calls.length = 0;
-});
-afterAll(() => server.close());
-
-const client = new KMSClient({
-	region: 'eu-west-1',
+const kms = new KMSClient({
+	region,
+	endpoint,
 	credentials: { accessKeyId: 'test', secretAccessKey: 'test' },
 });
-const url = kmsUrl({
-	region: 'eu-west-1',
-	key: 'arn:aws:kms:eu-west-1:123456789012:key/enc',
-	index: 'arn:aws:kms:eu-west-1:123456789012:key/mac',
+let url: string;
+const keys: string[] = [];
+
+async function createKey(input: CreateKeyCommandInput): Promise<string> {
+	const arn = (await kms.send(new CreateKeyCommand(input))).KeyMetadata!.Arn!;
+	keys.push(arn);
+	return arn;
+}
+
+beforeAll(async () => {
+	// What the cipher's own client reads — the default chain, as on a Lambda.
+	vi.stubEnv('AWS_ACCESS_KEY_ID', 'test');
+	vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'test');
+
+	url = kmsUrl({
+		region,
+		endpoint,
+		key: await createKey({}),
+		index: await createKey({
+			KeyUsage: 'GENERATE_VERIFY_MAC',
+			KeySpec: 'HMAC_256',
+		}),
+	});
+});
+
+afterAll(async () => {
+	vi.unstubAllEnvs();
+	for (const KeyId of keys) {
+		await kms.send(
+			new ScheduleKeyDeletionCommand({ KeyId, PendingWindowInDays: 7 }),
+		);
+	}
 });
 
 describe('the KMS cipher', () => {
-	it('seals with a fresh data key from KMS, and opens through KMS', async () => {
-		const pii = kmsCipher('Pii', url, client);
+	it('seals with a data key KMS wrapped, and opens through KMS', async () => {
+		const pii = kmsCipher('Pii', url);
 
 		const ciphertext = await pii.encrypt('ada@example.com');
 		expect(ciphertext).toMatch(/^gkm1\.kms\./);
 		expect(await pii.decrypt(ciphertext)).toBe('ada@example.com');
-		expect(calls).toEqual(['GenerateDataKey', 'Decrypt']);
 	});
 
-	it('binds the data key to the construct, so another cannot open it', async () => {
-		const ciphertext = await kmsCipher('Pii', url, client).encrypt('secret');
+	it('never writes the same ciphertext twice', async () => {
+		const pii = kmsCipher('Pii', url);
 
-		await expect(
-			kmsCipher('Billing', url, client).decrypt(ciphertext),
-		).rejects.toThrow();
+		expect(await pii.encrypt('same')).not.toBe(await pii.encrypt('same'));
+	});
+
+	it('binds the data key to the construct, so KMS refuses another', async () => {
+		const ciphertext = await kmsCipher('Pii', url).encrypt('secret');
+
+		await expect(kmsCipher('Billing', url).decrypt(ciphertext)).rejects.toThrow(
+			/ciphertext is invalid/i,
+		);
 	});
 
 	it('refuses a ciphertext whose data was altered', async () => {
-		const pii = kmsCipher('Pii', url, client);
+		const pii = kmsCipher('Pii', url);
 		const [version, keyId, payload] = (await pii.encrypt('secret')).split('.');
 		const bytes = Buffer.from(payload!, 'base64url');
 		bytes[bytes.length - 1]! ^= 1;
@@ -108,17 +90,19 @@ describe('the KMS cipher', () => {
 		).rejects.toBeInstanceOf(CiphertextNotAuthentic);
 	});
 
-	it('indexes through the HMAC key, the same every time', async () => {
-		const pii = kmsCipher('Pii', url, client);
+	it('indexes through the HMAC key: the same every time, different per value', async () => {
+		const pii = kmsCipher('Pii', url);
 
 		expect(await pii.index('ada@example.com')).toBe(
 			await pii.index('ada@example.com'),
 		);
-		expect(calls).toEqual(['GenerateMac', 'GenerateMac']);
+		expect(await pii.index('ada@example.com')).not.toBe(
+			await pii.index('bob@example.com'),
+		);
 	});
 
 	it('has nothing to move on reencrypt — KMS keeps every version it rotated through', async () => {
-		const pii = kmsCipher('Pii', url, client);
+		const pii = kmsCipher('Pii', url);
 		const ciphertext = await pii.encrypt('kept');
 
 		expect(await pii.reencrypt(ciphertext)).toBe(ciphertext);
