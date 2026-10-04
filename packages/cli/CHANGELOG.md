@@ -1,5 +1,35 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.50
+
+### Minor Changes
+
+- [#132](https://github.com/geekmidas/toolbox/pull/132) [`1e2a05c`](https://github.com/geekmidas/toolbox/commit/1e2a05caa63b9ef83ffab8f57c807b6975b5d517) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: `gkm dev` moves an app off a port another project holds, and refuses only when the holder is the same app
+
+  An app's port was fixed (3000, 3001, …) and `gkm dev` refused to start if anything held one — so two projects that both default to 3000 could not run at once. Now the holder is asked who it is: every process gkm starts is tagged with `GKM_DEV_APP=<workspace>#<app>`, inherited by whatever binds the port, and read back from the holder (`lsof`, then `ps eww` / `/proc/<pid>/environ`).
+  - **Held by this same app** — left by a previous `gkm dev` — it still refuses, naming the pid (`WorkspacePortsInUse`), since moving would start a second copy.
+  - **Held by anything else** — untagged, another workspace's, or unreadable — the app moves to the next free port past its siblings', says so, and keeps it in `.gkm/app-ports.json`. The edge routes, every address an app or a phone is handed, and the ready lines follow it.
+
+  `gkm exec` applies the same rule but never refuses, since the command may bind nothing. Deploys never read the file.
+
+### Patch Changes
+
+- [#130](https://github.com/geekmidas/toolbox/pull/130) [`2341496`](https://github.com/geekmidas/toolbox/commit/234149689cc3e47a8e8b6c706ef0e677adf6b88f) Thanks [@geekmidas](https://github.com/geekmidas)! - :loud_sound: `gkm dev` says what it is doing while it starts
+
+  A first `gkm dev` pulled every image, waited on each health check and created every database with nothing on screen — minutes that read as a hang. It now names each step as it begins: reading `gkm.config.ts` and the constructs, starting the containers (with Docker's own progress shown — the pulls, each container created and turning healthy), creating the databases, roles, buckets and topics, checking or applying migrations, building each app, and starting the apps. A converged start says none of the reconcile steps, and `gkm test` and other background reconciles stay silent.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.50
+  - @geekmidas/constructs@10.0.0-alpha.50
+  - @geekmidas/db@10.0.0-alpha.50
+  - @geekmidas/envkit@10.0.0-alpha.50
+  - @geekmidas/errors@10.0.0-alpha.50
+  - @geekmidas/logger@10.0.0-alpha.50
+  - @geekmidas/manifest@10.0.0-alpha.50
+  - @geekmidas/schema@10.0.0-alpha.50
+  - @geekmidas/services@10.0.0-alpha.50
+  - @geekmidas/telescope@10.0.0-alpha.50
+
 ## 10.0.0-alpha.49
 
 ### Minor Changes

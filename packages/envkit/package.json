@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/envkit",
-	"version": "10.0.0-alpha.49",
+	"version": "10.0.0-alpha.50",
 	"private": false,
 	"type": "module",
 	"exports": {

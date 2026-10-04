@@ -1,5 +1,7 @@
 # @geekmidas/envkit
 
+## 10.0.0-alpha.50
+
 ## 10.0.0-alpha.49
 
 ## 10.0.0-alpha.48
