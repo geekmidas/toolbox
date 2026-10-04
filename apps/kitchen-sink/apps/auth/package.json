@@ -4,7 +4,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"build": "gkm build --providers server,aws-apigatewayv2",
+		"build": "gkm build",
 		"dev": "gkm dev",
 		"start": "node .gkm/server/app.js"
 	}

@@ -185,14 +185,14 @@ describe('generateServerManifest', () => {
 				endpoints: '.gkm/server/endpoints.ts',
 			};
 
-			await generateServerManifest(dir, appInfo, [], []);
+			await generateServerManifest(dir, [appInfo], [], []);
 
 			const manifestPath = join(dir, 'manifest', 'server.ts');
 			const content = await readFile(manifestPath, 'utf-8');
 
 			expect(content).toContain('export const manifest = {');
 			expect(content).toContain('} as const;');
-			expect(content).toContain('app:');
+			expect(content).toContain('apps:');
 			expect(content).toContain('.gkm/server/app.ts');
 			expect(content).toContain('.gkm/server/endpoints.ts');
 		},
@@ -221,7 +221,7 @@ describe('generateServerManifest', () => {
 				},
 			];
 
-			await generateServerManifest(dir, appInfo, routes, []);
+			await generateServerManifest(dir, [appInfo], routes, []);
 
 			const manifestPath = join(dir, 'manifest', 'server.ts');
 			const content = await readFile(manifestPath, 'utf-8');
@@ -258,7 +258,7 @@ describe('generateServerManifest', () => {
 				},
 			];
 
-			await generateServerManifest(dir, appInfo, routes, []);
+			await generateServerManifest(dir, [appInfo], routes, []);
 
 			const manifestPath = join(dir, 'manifest', 'server.ts');
 			const content = await readFile(manifestPath, 'utf-8');
@@ -287,7 +287,7 @@ describe('generateServerManifest', () => {
 				},
 			];
 
-			await generateServerManifest(dir, appInfo, [], subscribers);
+			await generateServerManifest(dir, [appInfo], [], subscribers);
 
 			const manifestPath = join(dir, 'manifest', 'server.ts');
 			const content = await readFile(manifestPath, 'utf-8');
@@ -306,7 +306,7 @@ describe('generateServerManifest', () => {
 			endpoints: '.gkm/server/endpoints.ts',
 		};
 
-		await generateServerManifest(dir, appInfo, [], []);
+		await generateServerManifest(dir, [appInfo], [], []);
 
 		const manifestPath = join(dir, 'manifest', 'server.ts');
 		const content = await readFile(manifestPath, 'utf-8');
@@ -335,7 +335,7 @@ describe('generateServerManifest', () => {
 			},
 		];
 
-		await generateServerManifest(dir, appInfo, routes, []);
+		await generateServerManifest(dir, [appInfo], routes, []);
 
 		expect(logSpy).toHaveBeenCalledWith(
 			'Generated server manifest with 1 routes, 0 subscribers, 0 queues, 0 topics',
@@ -565,7 +565,7 @@ describe('generateServerManifest (partitioned)', () => {
 				},
 			];
 
-			await generateServerManifest(dir, appInfo, routes, subscribers);
+			await generateServerManifest(dir, [appInfo], routes, subscribers);
 
 			const manifestPath = join(dir, 'manifest', 'server.ts');
 			const content = await readFile(manifestPath, 'utf-8');

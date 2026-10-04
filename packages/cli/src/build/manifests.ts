@@ -20,6 +20,33 @@ export interface ServerAppInfo {
 	endpoints: string;
 }
 
+/** One app's routes, and the surface it serves them on. */
+export interface ServedRoutes {
+	surface?: string;
+	routes: ManifestField<RouteInfo>;
+}
+
+/**
+ * Concatenate one field across every app, keeping partitions apart.
+ *
+ * Each app's build produces its own field; the manifest is the application's,
+ * so it holds all of them.
+ */
+export function mergeFields<T>(
+	fields: readonly ManifestField<T>[],
+): ManifestField<T> {
+	if (fields.every(Array.isArray)) return (fields as T[][]).flat();
+
+	const merged: Record<string, T[]> = {};
+	for (const field of fields) {
+		const entries = Array.isArray(field) ? { default: field } : field;
+		for (const [partition, items] of Object.entries(entries)) {
+			merged[partition] = [...(merged[partition] ?? []), ...items];
+		}
+	}
+	return merged;
+}
+
 /**
  * A manifest field is either a flat array (no partition) or
  * an object keyed by partition name (partitioned).
@@ -102,8 +129,11 @@ export async function generateAwsManifest(
 	 */
 	constructs: ConstructManifest = {},
 	backends: { cache?: string; email?: string } = {},
-	/** The surface these routes are served on — the app's own API. */
-	surface?: string,
+	/**
+	 * Each app's routes and the surface that serves them. Without it, every
+	 * route goes to the surface that declared none of its own.
+	 */
+	served: readonly ServedRoutes[] = [{ routes }],
 ): Promise<void> {
 	const manifestDir = join(outputDir, 'manifest');
 	await mkdir(manifestDir, { recursive: true });
@@ -125,15 +155,20 @@ export async function generateAwsManifest(
 	// Routes first, then the compute they sit beside: a queue's worker and a
 	// topic's subscriber nest inside the resource that triggers them, so the
 	// resource has to be there before they can be folded in.
-	const awsConstructs = withCompute(
-		withRoutes(constructs, flatten(awsRoutes), { perRoute: true, surface }),
-		{
-			functions: flatten(functions),
-			crons: flatten(crons),
-			queues: flatten(queues),
-			subscribers: flatten(subscribers),
-		},
+	const withServed = served.reduce(
+		(manifest, app) =>
+			withRoutes(manifest, flatten(filterAllRoutes(app.routes)), {
+				perRoute: true,
+				surface: app.surface,
+			}),
+		constructs,
 	);
+	const awsConstructs = withCompute(withServed, {
+		functions: flatten(functions),
+		crons: flatten(crons),
+		queues: flatten(queues),
+		subscribers: flatten(subscribers),
+	});
 
 	const content = `export const manifest = {
   routes: ${serializeField(awsRoutes)},
@@ -190,7 +225,8 @@ export type RoutePath = Route['path'];
 
 export async function generateServerManifest(
 	outputDir: string,
-	appInfo: ServerAppInfo,
+	/** Every app's server entry. */
+	apps: readonly ServerAppInfo[],
 	routes: ManifestField<RouteInfo>,
 	subscribers: ManifestField<SubscriberInfo>,
 	queues: ManifestField<QueueInfo> = [],
@@ -232,7 +268,7 @@ export async function generateServerManifest(
 	// an app with seven of them — see `withRoutes`. The routes are above; the
 	// declarations are what this export is for.
 	const content = `export const manifest = {
-  app: ${JSON.stringify(appInfo, null, 2)},
+  apps: ${JSON.stringify(apps, null, 2)},
   routes: ${serializeField(serverRoutes)},
   subscribers: ${serializeField(serverSubscribers)},
   queues: ${serializeField(serverQueues)},

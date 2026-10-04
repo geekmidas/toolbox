@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import type { Cron } from '@geekmidas/constructs/crons';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
@@ -33,9 +33,14 @@ import type { CacheBackend, GkmConfig, MainProvider } from '../types';
 import {
 	type BuildOptions,
 	type BuildResult,
+	type CronInfo,
+	type FunctionInfo,
 	isPartitionedRoutes,
+	type QueueInfo,
 	type RouteInfo,
 	type Routes,
+	type SubscriberInfo,
+	type TopicInfo,
 } from '../types';
 import { DEFAULT_EMAIL } from '../types.js';
 import { cacheBackendFor, providerOf } from '../workspace/backends.js';
@@ -50,6 +55,7 @@ import {
 	generateAwsManifest,
 	generateServerManifest,
 	type ManifestField,
+	mergeFields,
 	type ServerAppInfo,
 } from './manifests';
 import { ownersContext, servedBy } from './owners';
@@ -87,6 +93,13 @@ function rootGkmConfig(workspace: NormalizedWorkspace): GkmConfig {
 		}
 	);
 }
+
+/** Directories under `.gkm/` that the removed per-provider builds wrote. */
+const SUPERSEDED_OUTPUT = [
+	'aws-apigatewayv1',
+	'aws-apigatewayv2',
+	'aws-lambda',
+];
 
 /** Whether `--provider` named something a build can target. */
 export function isMainProvider(value: string): value is MainProvider {
@@ -144,17 +157,77 @@ export async function buildCommand(
 	// AWS, one process for a server. `--provider` overrides it for a Dockerfile,
 	// which builds a server whatever the project deploys to.
 	const target = options.provider ?? providerOf(loadedConfig.workspace);
+	const workspaceRoot = loadedConfig.workspace.root;
+	const appRoot = process.cwd();
+
+	const output = await buildOneApp({
+		config,
+		options,
+		workspace: loadedConfig.workspace,
+		appRoot,
+		target,
+	});
+
+	// Inside an app, its handlers are all there is to write: the manifest is
+	// the application's, and only the root has all of it.
+	if (resolve(appRoot) === resolve(workspaceRoot)) {
+		await writeManifest({
+			workspaceRoot,
+			target,
+			builds: output.built ? [output.built] : [],
+			constructs: await declaredIn(config, workspaceRoot),
+			backends: backendsOf(loadedConfig.workspace),
+		});
+	}
+
+	return output;
+}
+
+/** What the workspace declares, read through a config's globs. */
+async function declaredIn(
+	config: GkmConfig,
+	cwd: string,
+): Promise<ConstructManifest> {
+	const patterns =
+		typeof config.constructs === 'string' || Array.isArray(config.constructs)
+			? config.constructs
+			: undefined;
+
+	return patterns ? discover({ patterns, cwd }) : {};
+}
+
+/**
+ * The backend choices the manifest records — answered by the deploy target,
+ * the same place reconcile and the build's drivers read them.
+ */
+function backendsOf(workspace: { deploy?: { default?: string } }): {
+	cache: CacheBackend;
+	email: typeof DEFAULT_EMAIL;
+} {
+	return {
+		cache: cacheBackendFor(providerOf(workspace)),
+		email: DEFAULT_EMAIL,
+	};
+}
+
+/** One app's build, from its config and the command's options. */
+async function buildOneApp(input: {
+	config: GkmConfig;
+	options: BuildOptions;
+	workspace: NormalizedWorkspace;
+	appRoot: string;
+	target: MainProvider;
+}): Promise<AppBuildOutput> {
+	const { config, options, workspace, appRoot, target } = input;
 
 	// One answer for which backends this app uses, read once — from the
 	// deploy target, which is the same place reconcile reads it. The build
 	// registers drivers for it and records it in the manifest, so a deploy
 	// cannot pick differently and hand the running code a URL it has no driver
 	// for.
-	const cacheBackend = cacheBackendFor(providerOf(loadedConfig.workspace));
+	const cacheBackend = cacheBackendFor(providerOf(workspace));
 
-	// Normalize production configuration
 	const production = normalizeProductionConfig(options.production ?? false);
-
 	if (production) {
 		logger.log(`🏭 Building for PRODUCTION`);
 	}
@@ -176,16 +249,15 @@ export async function buildCommand(
 		logger.log(`🗄️  Studio enabled at ${studio.path}`);
 	}
 
-	// Normalize hooks configuration
-	const hooks = normalizeHooksConfig(config.hooks);
+	const hooks = normalizeHooksConfig(config.hooks, appRoot);
 	if (hooks) {
 		logger.log(`🪝 Server hooks enabled`);
 	}
 
 	return buildApp({
 		config,
-		workspaceRoot: loadedConfig.workspace.root,
-		appRoot: process.cwd(),
+		workspaceRoot: workspace.root,
+		appRoot,
 		target,
 		enableOpenApi: options.enableOpenApi ?? false,
 		cacheBackend,
@@ -234,6 +306,80 @@ export interface AppBuildOutput extends BuildResult {
 	 * `app.ts` exports the construct's own `app`, with no `createApp` to call.
 	 */
 	selfServing?: string;
+	/** What it generated, for the application's manifest. */
+	built?: AppBuild;
+}
+
+/** One app's generated handlers, as the application's manifest records them. */
+export interface AppBuild {
+	/** The surface its endpoints are served on. */
+	surface?: string;
+	/** Its server entry, on the server target. */
+	app?: ServerAppInfo;
+	routes: ManifestField<RouteInfo>;
+	functions: ManifestField<FunctionInfo>;
+	crons: ManifestField<CronInfo>;
+	subscribers: ManifestField<SubscriberInfo>;
+	queues: ManifestField<QueueInfo>;
+	topics: ManifestField<TopicInfo>;
+}
+
+/**
+ * Write the application's manifest: every declared construct, with what each
+ * app generated folded into it.
+ *
+ * The manifest belongs to the whole application, so only the root writes it —
+ * once, after every app has built, from the constructs the workspace declares.
+ * An app's own build generates its handlers and nothing else.
+ */
+export async function writeManifest(input: {
+	workspaceRoot: string;
+	target: MainProvider;
+	builds: readonly AppBuild[];
+	constructs: ConstructManifest;
+	backends: { cache?: string; email?: string };
+}): Promise<void> {
+	const { workspaceRoot, target, builds, constructs, backends } = input;
+	const outputDir = join(workspaceRoot, '.gkm');
+
+	// One manifest, for the target this build is for. The other target's,
+	// left by an earlier build, would describe an application that is not
+	// being deployed.
+	const other = target === 'aws' ? 'server' : 'aws';
+	await rm(join(outputDir, 'manifest', `${other}.ts`), { force: true });
+
+	const merged = <K extends keyof AppBuild>(key: K) =>
+		mergeFields(builds.map((build) => build[key] as ManifestField<never>));
+
+	if (target === 'server') {
+		await generateServerManifest(
+			outputDir,
+			builds.flatMap((build) => (build.app ? [build.app] : [])),
+			merged('routes'),
+			merged('subscribers'),
+			merged('queues'),
+			merged('topics'),
+			constructs,
+			backends,
+		);
+		return;
+	}
+
+	await generateAwsManifest(
+		outputDir,
+		merged('routes'),
+		merged('functions'),
+		merged('crons'),
+		merged('subscribers'),
+		merged('queues'),
+		merged('topics'),
+		constructs,
+		backends,
+		builds.map(({ surface, routes }) => ({
+			...(surface ? { surface } : {}),
+			routes,
+		})),
+	);
 }
 
 /**
@@ -393,7 +539,6 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		buildContext,
 		appRoot,
 		workspaceRoot,
-		declared,
 		endpointGenerator,
 		functionGenerator,
 		cronGenerator,
@@ -426,7 +571,6 @@ async function buildForTarget(
 	context: BuildContext,
 	appRoot: string,
 	workspaceRoot: string,
-	discovered: ConstructManifest,
 	endpointGenerator: EndpointGenerator,
 	functionGenerator: FunctionGenerator,
 	cronGenerator: CronGenerator,
@@ -444,12 +588,25 @@ async function buildForTarget(
 	enableOpenApi: boolean,
 	skipBundle: boolean,
 	stage?: string,
-): Promise<BuildResult> {
-	// The handlers live beside the app they import; the manifest lives at the
-	// workspace root, where `sst.config.ts` runs and imports it, so every path
-	// in it is measured from there.
+): Promise<AppBuildOutput> {
+	// The handlers live beside the app they import. What they are goes into
+	// the application's manifest, which the root writes, so every path is
+	// measured from there.
 	const outputDir = join(appRoot, '.gkm', target);
-	const manifestRoot = join(workspaceRoot, '.gkm');
+
+	// What an older build wrote and nothing writes now — the per-provider trees
+	// and an app-level manifest — would otherwise sit beside the real output
+	// forever, read by whoever opens `.gkm/` first.
+	await Promise.all(
+		[
+			...SUPERSEDED_OUTPUT.map((dir) => join(appRoot, '.gkm', dir)),
+			...(appRoot === workspaceRoot ? [] : [join(appRoot, '.gkm', 'manifest')]),
+		].map((dir) => rm(dir, { recursive: true, force: true })),
+	);
+
+	// A fresh tree for AWS, so a deleted endpoint's handler goes with it. Not
+	// for the server: `gkm dev` rebuilds into it while its process runs.
+	if (target === 'aws') await rm(outputDir, { recursive: true, force: true });
 	await mkdir(outputDir, { recursive: true });
 
 	logger.log(`\nGenerating handlers for ${target}`);
@@ -481,17 +638,15 @@ async function buildForTarget(
 		`Generated ${routes.length} routes, ${functionInfos.length} functions, ${cronInfos.length} crons, ${subscriberInfos.length} subscribers, ${queueInfos.length} queues, ${topicInfos.length} topics for ${target}`,
 	);
 
-	// Assemble manifest fields (flat or partitioned per construct type)
-	const manifestRoutes = assembleManifestField(routes, endpoints);
-
-	const manifestFunctions = assembleManifestField(functionInfos, functions);
-	const manifestCrons = assembleManifestField(cronInfos, crons);
-	const manifestQueues = assembleManifestField(queueInfos, queues);
-	const manifestTopics = assembleManifestField(topicInfos, topics);
-	const manifestSubscribers = assembleManifestField(
-		subscriberInfos,
-		subscribers,
-	);
+	// Flat or partitioned per construct type, as the manifest carries them.
+	const fields = {
+		...(context.surface ? { surface: context.surface.id } : {}),
+		functions: assembleManifestField(functionInfos, functions),
+		crons: assembleManifestField(cronInfos, crons),
+		queues: assembleManifestField(queueInfos, queues),
+		topics: assembleManifestField(topicInfos, topics),
+		subscribers: assembleManifestField(subscriberInfos, subscribers),
+	};
 
 	if (target === 'server') {
 		// For server, collect actual route metadata from endpoint constructs
@@ -504,21 +659,14 @@ async function buildForTarget(
 			})),
 		);
 
-		const serverRouteField = assembleManifestField(routeMetadata, endpoints);
-
-		const appInfo: ServerAppInfo = {
-			handler: relative(workspaceRoot, join(outputDir, 'app.ts')),
-			endpoints: relative(workspaceRoot, join(outputDir, 'endpoints.ts')),
+		const built: AppBuild = {
+			...fields,
+			routes: assembleManifestField(routeMetadata, endpoints),
+			app: {
+				handler: relative(workspaceRoot, join(outputDir, 'app.ts')),
+				endpoints: relative(workspaceRoot, join(outputDir, 'endpoints.ts')),
+			},
 		};
-
-		await generateServerManifest(
-			manifestRoot,
-			appInfo,
-			serverRouteField,
-			manifestSubscribers,
-			manifestQueues,
-			manifestTopics,
-		);
 
 		// Bundle for production if enabled
 		let masterKey: string | undefined;
@@ -554,23 +702,12 @@ async function buildForTarget(
 			}
 		}
 
-		return { masterKey };
-	} else {
-		await generateAwsManifest(
-			manifestRoot,
-			manifestRoutes,
-			manifestFunctions,
-			manifestCrons,
-			manifestSubscribers,
-			manifestQueues,
-			manifestTopics,
-			discovered,
-			{ cache: context.cacheBackend, email: context.emailBackend },
-			context.surface?.id,
-		);
+		return { masterKey, built };
 	}
 
-	return {};
+	return {
+		built: { ...fields, routes: assembleManifestField(routes, endpoints) },
+	};
 }
 
 /**
@@ -615,9 +752,12 @@ export function detectPackageManager(): 'pnpm' | 'npm' | 'yarn' {
 export function getTurboCommand(
 	pm: 'pnpm' | 'npm' | 'yarn',
 	filters: string | readonly string[] = [],
+	/** Build only the named packages, not what they depend on. */
+	{ only = false }: { only?: boolean } = {},
 ): string {
 	const list = typeof filters === 'string' ? [filters] : filters;
-	const filterArgs = list.map((f) => ` --filter=${f}`).join('');
+	const filterArgs =
+		list.map((f) => ` --filter=${f}`).join('') + (only ? ' --only' : '');
 	switch (pm) {
 		case 'pnpm':
 			return `pnpm exec turbo run build${filterArgs}`;
@@ -641,14 +781,18 @@ export function getTurboCommand(
  *
  * @internal Exported for testing
  */
-export function turboFilters(workspace: NormalizedWorkspace): {
+export function turboFilters(
+	workspace: NormalizedWorkspace,
+	{ exclude }: { exclude?: NormalizedAppConfig['type'] } = {},
+): {
 	filters: string[];
 	unpackaged: string[];
 } {
 	const filters: string[] = [];
 	const unpackaged: string[] = [];
 
-	for (const appName of Object.keys(workspace.apps)) {
+	for (const [appName, app] of Object.entries(workspace.apps)) {
+		if (app.type === exclude) continue;
 		const name = appPackageName(workspace, appName);
 		if (name) filters.push(name);
 		else unpackaged.push(appName);
@@ -706,13 +850,43 @@ export async function workspaceBuildCommand(
 	const buildOrder = getAppBuildOrder(workspace);
 	logger.log(`   Build order: ${buildOrder.join(' → ')}`);
 
-	// Use Turbo for parallel builds with dependency awareness
-	const pm = detectPackageManager();
-	logger.log(`\n📦 Using ${pm} with Turbo for parallel builds...\n`);
-
 	try {
-		// Run turbo build which handles dependency ordering and parallelization
-		const { filters, unpackaged } = turboFilters(workspace);
+		// The backends here, in this process, because the manifest is the
+		// application's: the root builds each one, then writes it once from
+		// everything they generated and everything the workspace declares.
+		const target = options.provider ?? providerOf(workspace);
+		const builds: AppBuild[] = [];
+		for (const appName of buildOrder) {
+			const app = workspace.apps[appName];
+			const config = getAppGkmConfig(workspace, appName);
+			if (!app || app.type !== 'backend' || !config) continue;
+
+			logger.log(`\n⚙️  ${appName}`);
+			const output = await buildOneApp({
+				config,
+				options,
+				workspace,
+				appRoot: join(workspace.root, app.path),
+				target,
+			});
+			if (output.built) builds.push(output.built);
+		}
+
+		await writeManifest({
+			workspaceRoot: workspace.root,
+			target,
+			builds,
+			constructs: await discover({
+				patterns: allConstructGlobs(workspace),
+				cwd: workspace.root,
+			}),
+			backends: backendsOf(workspace),
+		});
+
+		// Everything else is its own toolchain's — Vite, Next — through turbo.
+		const { filters, unpackaged } = turboFilters(workspace, {
+			exclude: 'backend',
+		});
 		if (unpackaged.length > 0) {
 			throw new Error(
 				`No package.json for workspace app(s): ${unpackaged.join(', ')}. ` +
@@ -720,33 +894,38 @@ export async function workspaceBuildCommand(
 					`name back to know which app it is building.`,
 			);
 		}
-		const turboCommand = getTurboCommand(pm, filters);
-		logger.log(`Running: ${turboCommand}`);
+		const pm = detectPackageManager();
+		const turboCommand = getTurboCommand(pm, filters, { only: true });
 
-		await new Promise<void>((resolve, reject) => {
-			const child = spawn(turboCommand, {
-				shell: true,
-				cwd: workspace.root,
-				stdio: 'inherit',
-				env: {
-					...process.env,
-					// Pass production flag to builds
-					NODE_ENV: options.production ? 'production' : 'development',
-				},
-			});
+		if (filters.length > 0) {
+			logger.log(`\n📦 Using ${pm} with Turbo for the other apps...\n`);
+			logger.log(`Running: ${turboCommand}`);
 
-			child.on('close', (code) => {
-				if (code === 0) {
-					resolve();
-				} else {
-					reject(new Error(`Turbo build failed with exit code ${code}`));
-				}
-			});
+			await new Promise<void>((resolve, reject) => {
+				const child = spawn(turboCommand, {
+					shell: true,
+					cwd: workspace.root,
+					stdio: 'inherit',
+					env: {
+						...process.env,
+						// Pass production flag to builds
+						NODE_ENV: options.production ? 'production' : 'development',
+					},
+				});
 
-			child.on('error', (err) => {
-				reject(err);
+				child.on('close', (code) => {
+					if (code === 0) {
+						resolve();
+					} else {
+						reject(new Error(`Turbo build failed with exit code ${code}`));
+					}
+				});
+
+				child.on('error', (err) => {
+					reject(err);
+				});
 			});
-		});
+		}
 
 		// Mark all apps as successful
 		for (const [appName, app] of apps) {

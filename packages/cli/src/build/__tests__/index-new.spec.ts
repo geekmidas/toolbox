@@ -1,15 +1,16 @@
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { itWithDir } from '@geekmidas/testkit/os';
-import { describe, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
 	createMockCronFile,
 	createMockEndpointFile,
 	createMockFunctionFile,
 	createTestFile,
 } from '../../__tests__/test-helpers';
-import { buildApp, buildCommand } from '../index';
+import { buildApp, buildCommand, writeManifest } from '../index';
 
 describe('buildCommand', () => {
 	itWithDir(
@@ -88,7 +89,7 @@ export default {
 				// Verify manifest structure
 				expect(manifestContent).toContain('export const manifest = {');
 				expect(manifestContent).toContain('} as const;');
-				expect(manifestContent).toContain('app:');
+				expect(manifestContent).toContain('apps:');
 				expect(manifestContent).toContain('routes:');
 
 				// Verify derived types are exported
@@ -563,11 +564,10 @@ export default {
 	);
 
 	itWithDir(
-		'writes the manifest at the workspace root, with paths measured from there',
+		'leaves the manifest to the root, and hands back what it built with root paths',
 		async ({ dir }) => {
-			// `sst.config.ts` runs at the root and imports the manifest from there,
-			// so a build run inside `apps/api` — the way turbo runs it — has to
-			// write it there, and name each handler by its path from there.
+			// An app's build writes its handlers; the manifest is the
+			// application's, written once by the root from every app's output.
 			const appRoot = join(dir, 'apps', 'api');
 			await createMockEndpointFile(
 				appRoot,
@@ -576,6 +576,102 @@ export default {
 				'/test',
 				'GET',
 			);
+
+			const { built } = await buildApp({
+				config: {
+					stages: { local: 'development', deployed: ['production'] },
+					constructs: './src/**/*.ts',
+				},
+				workspaceRoot: dir,
+				appRoot,
+				target: 'aws',
+				enableOpenApi: false,
+				cacheBackend: 'upstash',
+			});
+
+			expect(existsSync(join(dir, '.gkm/manifest'))).toBe(false);
+			expect(existsSync(join(appRoot, '.gkm/manifest'))).toBe(false);
+			expect(built?.routes).toEqual([
+				expect.objectContaining({
+					handler: 'apps/api/.gkm/aws/routes/testEndpoint.handler',
+				}),
+			]);
+		},
+	);
+
+	it('folds each app’s routes into its own surface, in one manifest', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'gkm-manifest-'));
+		const surface = (id: string) => ({
+			kind: 'rest-api',
+			id,
+			provides: [],
+			endpoints: [],
+		});
+		const route = (app: string) => ({
+			path: '/x',
+			method: 'GET',
+			handler: `apps/${app}/.gkm/aws/routes/x.handler`,
+			authorizer: 'none',
+		});
+
+		try {
+			await writeManifest({
+				workspaceRoot: dir,
+				target: 'aws',
+				builds: ['api', 'admin'].map((app) => ({
+					surface: app === 'api' ? 'Api' : 'Admin',
+					routes: [route(app)],
+					functions: [],
+					crons: [],
+					subscribers: [],
+					queues: [],
+					topics: [],
+				})),
+				constructs: { Api: surface('Api'), Admin: surface('Admin') } as never,
+				backends: {},
+			});
+
+			const manifest = await readFile(
+				join(dir, '.gkm/manifest/aws.ts'),
+				'utf-8',
+			);
+			const constructs = JSON.parse(
+				manifest
+					.split('export const constructs = ')[1]!
+					.split(' as const;')[0]!,
+			);
+			expect(constructs.Api.endpoints[0].handler).toBe(
+				'apps/api/.gkm/aws/routes/x.handler',
+			);
+			expect(constructs.Admin.endpoints[0].handler).toBe(
+				'apps/admin/.gkm/aws/routes/x.handler',
+			);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	itWithDir(
+		'clears what an older build left, so only this build’s output is read',
+		async ({ dir }) => {
+			const appRoot = join(dir, 'apps', 'api');
+			await createMockEndpointFile(
+				appRoot,
+				'src/endpoints/test.ts',
+				'testEndpoint',
+				'/test',
+				'GET',
+			);
+			// The per-provider trees, an app-level manifest, and a handler for an
+			// endpoint that no longer exists.
+			for (const stale of [
+				'.gkm/aws-lambda/routes/old.ts',
+				'.gkm/aws-apigatewayv2/old.ts',
+				'.gkm/manifest/aws.ts',
+				'.gkm/aws/routes/deletedEndpoint.ts',
+			]) {
+				await createTestFile(appRoot, stale, 'export {};');
+			}
 
 			await buildApp({
 				config: {
@@ -589,17 +685,16 @@ export default {
 				cacheBackend: 'upstash',
 			});
 
-			expect(existsSync(join(appRoot, '.gkm', 'manifest'))).toBe(false);
-			const manifest = await readFile(
-				join(dir, '.gkm/manifest/aws.ts'),
-				'utf-8',
+			expect(await readdir(join(appRoot, '.gkm'))).toEqual(
+				expect.not.arrayContaining([
+					'aws-lambda',
+					'aws-apigatewayv2',
+					'manifest',
+				]),
 			);
-			expect(manifest).toContain(
-				'"handler": "apps/api/.gkm/aws/routes/testEndpoint.handler"',
-			);
-			expect(existsSync(join(appRoot, '.gkm/aws/routes/testEndpoint.ts'))).toBe(
-				true,
-			);
+			expect(await readdir(join(appRoot, '.gkm/aws/routes'))).toEqual([
+				'testEndpoint.ts',
+			]);
 		},
 	);
 
