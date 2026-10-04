@@ -834,7 +834,16 @@ export interface ProvidesByKind {
 	 * stage (`myapp.test` locally, a verified domain deployed), so it travels
 	 * beside the URL rather than being written into the construct.
 	 */
-	email: { url: string; from: string };
+	email: {
+		url: string;
+		from: string;
+		/**
+		 * Where the mail it sent can be read — Mailpit's web inbox. Local
+		 * stages only: deployed mail has no inbox, so nothing deployed supplies
+		 * it, and an app that reads it falls back to the phone's own mail app.
+		 */
+		inboxUrl?: string;
+	};
 	/**
 	 * One key, the runtime role's. The owner URL is not here by design — see
 	 * {@link DatabaseDeclaration}.
@@ -930,8 +939,11 @@ export const PUBLIC: {
 	// here and must not be: it presigns, and a presigner in a bundle is a
 	// credential in a bundle.
 	'file-server': ['url'],
-	// Carries the SMTP credentials in its userinfo.
-	email: [],
+	// Not the URL — it carries the SMTP credentials in its userinfo. The inbox
+	// is a page a browser opens, and exists only locally: it is how a site or
+	// a phone opens the sign-in link the server just sent, without fishing it
+	// out of Mailpit by hand.
+	email: ['inboxUrl'],
 	// A connection string is never shippable, whichever role it carries.
 	database: [],
 	'database-reader': [],

@@ -59,8 +59,10 @@ export interface ContainerPort {
 	key: string;
 	/** The port inside the container, fixed by the image. */
 	inside: number;
-	/** What it is for, in the one line `gkm status` prints. */
+	/** What it is for, in the one line `gkm dev` and `gkm setup` print. */
 	label: string;
+	/** A page a person opens, so it prints as a link rather than an address. */
+	web?: true;
 }
 
 /**
@@ -74,17 +76,22 @@ const PORTS: Readonly<Record<string, readonly ContainerPort[]>> = {
 	postgres: [{ key: 'postgres', inside: 5432, label: 'postgres' }],
 	minio: [
 		{ key: 'minio', inside: 9000, label: 'minio api' },
-		{ key: 'minio-console', inside: 9001, label: 'minio console' },
+		{ key: 'minio-console', inside: 9001, label: 'minio console', web: true },
 	],
 	mailpit: [
 		{ key: 'mailpit', inside: 1025, label: 'smtp' },
-		{ key: 'mailpit-web', inside: 8025, label: 'mailpit inbox' },
+		{ key: 'mailpit-web', inside: 8025, label: 'mailpit inbox', web: true },
 	],
 	redis: [{ key: 'redis', inside: 6379, label: 'redis' }],
 	'redis-http': [{ key: 'redis-http', inside: 80, label: 'cache' }],
 	rabbitmq: [
 		{ key: 'rabbitmq', inside: 5672, label: 'amqp' },
-		{ key: 'rabbitmq-management', inside: 15672, label: 'rabbitmq console' },
+		{
+			key: 'rabbitmq-management',
+			inside: 15672,
+			label: 'rabbitmq console',
+			web: true,
+		},
 	],
 	localstack: [{ key: 'localstack', inside: 4566, label: 'localstack' }],
 	// One port, and an assigned one rather than 443. The whole point of
@@ -131,6 +138,53 @@ export function portsOf(
 	}
 
 	return PORTS[container] ?? [];
+}
+
+/** One published port, as a person reads it. */
+export interface ServiceAddress {
+	container: string;
+	label: string;
+	/** `http://localhost:<port>` for a page, `localhost:<port>` otherwise. */
+	address: string;
+}
+
+/**
+ * Every port the containers publish — not only the one an app connects to.
+ *
+ * The consoles and the inbox are most of why these are real containers, and an
+ * inbox nobody can find is an inbox nobody opens: a sign-in link gets fished
+ * out of `docker ps` instead.
+ */
+export function serviceAddresses(
+	containers: readonly string[],
+	ports: Readonly<Record<string, number>>,
+	fakes: Readonly<Record<string, PlannedFake>> = {},
+): ServiceAddress[] {
+	return containers.flatMap((container) =>
+		portsOf(container, fakes).flatMap((port) => {
+			const assigned = ports[port.key];
+			if (assigned === undefined) return [];
+			return [
+				{
+					container,
+					label: port.label,
+					address: port.web
+						? `http://localhost:${assigned}`
+						: `localhost:${assigned}`,
+				},
+			];
+		}),
+	);
+}
+
+/** The lines `gkm dev` and `gkm setup` print under the services heading. */
+export function describeServices(
+	services: readonly ServiceAddress[],
+): string[] {
+	const width = Math.max(0, ...services.map(({ label }) => label.length));
+	return services.map(
+		({ label, address }) => `   ${label.padEnd(width)}  ${address}`,
+	);
 }
 
 /** The key a container's primary port is allocated under. */

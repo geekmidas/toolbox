@@ -149,3 +149,64 @@ describe('lanAddress', () => {
 		).toBeUndefined();
 	});
 });
+
+/**
+ * The inbox, shared over the same edge a surface's address is: a sign-in link
+ * the server just mailed can be opened from the app, rather than fished out of
+ * Mailpit by hand (#125).
+ */
+describe('an app that depends on mail, locally', () => {
+	const withMail = {
+		Mailer: {
+			kind: 'email',
+			id: 'Mailer',
+			provides: ['MAILER_URL', 'MAILER_FROM'],
+		},
+		App: {
+			kind: 'mobile-app',
+			id: 'App',
+			variant: 'expo',
+			app: { path: 'apps/app' },
+			dependencies: [{ target: 'Mailer', kind: 'email' }],
+			provides: ['APP_SCHEME'],
+		},
+		Web: {
+			kind: 'site',
+			id: 'Web',
+			variant: 'static',
+			app: { path: 'apps/web' },
+			dependencies: [{ target: 'Mailer', kind: 'email' }],
+			provides: ['WEB_URL'],
+		},
+	} as const satisfies ConstructManifest;
+
+	const resolve = () => {
+		const plan = planFor(withMail, 'dev', provisionOrder(withMail), {
+			localStage: 'dev',
+		});
+		const ports = Object.fromEntries(
+			portKeys(plan.containers).map((key, index) => [key, 28000 + index]),
+		);
+		return {
+			ports,
+			env: envFor(plan, { ports, project: 'shop', addresses: {} }),
+		};
+	};
+
+	it('is handed Mailpit’s inbox — on a phone and in a browser', () => {
+		const { env, ports } = resolve();
+		const inbox = `http://localhost:${ports['mailpit-web']}`;
+
+		expect(env.MAILER_INBOX_URL).toBe(inbox);
+		expect(env.EXPO_PUBLIC_MAILER_INBOX_URL).toBe(inbox);
+		expect(env.VITE_MAILER_INBOX_URL).toBe(inbox);
+	});
+
+	it('is never handed the SMTP URL, which carries the credentials', () => {
+		const { env } = resolve();
+
+		expect(env).not.toHaveProperty('EXPO_PUBLIC_MAILER_URL');
+		expect(env).not.toHaveProperty('VITE_MAILER_URL');
+		expect(env).not.toHaveProperty('EXPO_PUBLIC_MAILER_FROM');
+	});
+});
