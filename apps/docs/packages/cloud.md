@@ -128,18 +128,26 @@ const cron = new Cron(stack, 'Nightly', {
 
 ## From a `gkm build` manifest
 
-`gkm build` emits a deployment manifest enumerating your routes, functions, and
-crons (types in [`@geekmidas/manifest`](https://www.npmjs.com/package/@geekmidas/manifest)).
-Each construct has a static `fromManifest` factory that maps it straight into
-infrastructure — define handlers once, provision with one call:
+The root `gkm build` writes the application's manifest to
+`.gkm/manifest/aws.ts` — every declared construct keyed by id (types in
+[`@geekmidas/manifest`](https://www.npmjs.com/package/@geekmidas/manifest)).
+`fromManifest` maps it straight into infrastructure — define handlers once,
+provision with one call:
 
 ```ts
-import routes from './.gkm/routes-manifest.json';
+// sst.config.ts
+const { App, fromManifest, Stack } = await import('@geekmidas/cloud/sst');
+const { backends, constructs } = await import('./.gkm/manifest/aws.js');
 
-const api     = Api.fromManifest(stack, 'Api', routes, { links: [db], authorizers });
-const workers = Function.fromManifest(stack, functionsManifest, { links: [db] });
-const crons   = Cron.fromManifest(stack, cronsManifest, { links: [db] });
+fromManifest(new Stack(app, 'Shop'), constructs, { Database: { vpc } }, backends);
 ```
+
+`constructs` is every declared construct keyed by id; the overrides are keyed
+by the same ids. One call provisions the resources, each `RestApi`'s endpoints
+(each a Lambda linked only to its own dependencies, placed in the database's
+VPC when it reaches one, with the `iam` authorizer enforced by the gateway),
+queue consumers, every function (a Lambda with an IAM-authorized URL) and every
+cron (a Lambda on its schedule).
 
 ## Runtime helpers
 

@@ -147,96 +147,43 @@ gkm build --provider server
 gkm build
 ```
 
-### Legacy Commands (Deprecated)
-
-```bash
-# Still supported but deprecated
-gkm build --providers aws-lambda,aws-apigatewayv2
-```
-
-This generates:
-
-```
-.gkm/
-└── aws-lambda/
-    ├── routes/
-    │   └── [endpoint handlers]
-    ├── functions/
-    │   └── [function handlers]
-    ├── crons/
-    │   └── [cron handlers]
-    └── manifest.json
-```
-
 ## Generated Manifest
 
-### manifest.json
-```json
-{
-  "routes": [
-    {
-      "path": "/api/health",
-      "method": "GET",
-      "handler": ".gkm/aws-lambda/routes/health.handler"
-    }
-  ],
-  "functions": [
-    {
-      "name": "processOrder",
-      "handler": ".gkm/aws-lambda/functions/processOrder.handler",
-      "timeout": 300000,
-      "memorySize": 256
-    }
-  ],
-  "crons": [
-    {
-      "name": "dailyReport",
-      "handler": ".gkm/aws-lambda/crons/dailyReport.handler",
-      "schedule": "cron(0 9 * * ? *)",
-      "timeout": 600000,
-      "memorySize": 256
-    }
-  ]
-}
+The root `gkm build` writes the application's manifest once, to
+`.gkm/manifest/aws.ts` at the workspace root. Functions and crons are top-level
+declarations in its `constructs` export, keyed by id:
+
+```typescript
+export const constructs = {
+  ProcessOrder: {
+    id: 'ProcessOrder',
+    kind: 'function',
+    handler: 'apps/api/.gkm/aws/functions/processOrder.handler',
+    dependencies: [],
+  },
+  DailyReport: {
+    id: 'DailyReport',
+    kind: 'cron',
+    handler: 'apps/api/.gkm/aws/crons/dailyReport.handler',
+    schedule: 'cron(0 9 * * ? *)',
+    dependencies: [],
+  },
+  // …every other construct
+} as const satisfies ConstructManifest;
 ```
 
 ## Infrastructure Integration
 
-The generated manifests can be consumed by infrastructure tools like AWS CDK or Terraform to deploy your functions:
+`fromManifest` from `@geekmidas/cloud/sst` provisions every function (a Lambda
+with an IAM-authorized URL) and every cron (a Lambda on its schedule), each
+linked only to what it depends on:
 
 ```typescript
-// AWS CDK Example
-import { Function, Runtime, Code } from 'aws-cdk-lib/aws-lambda';
-import { Rule, Schedule } from 'aws-cdk-lib/aws-events';
-import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
-import manifest from './.gkm/aws-lambda/manifest.json';
+// sst.config.ts
+const { App, fromManifest, Stack } = await import('@geekmidas/cloud/sst');
+const { backends, constructs } = await import('./.gkm/manifest/aws.js');
 
-// Deploy functions
-for (const fn of manifest.functions) {
-  new Function(stack, fn.name, {
-    runtime: Runtime.NODEJS_20_X,
-    handler: fn.handler,
-    code: Code.fromAsset('.'),
-    timeout: Duration.millis(fn.timeout || 30000),
-    memorySize: fn.memorySize || 256
-  });
-}
-
-// Deploy crons
-for (const cron of manifest.crons) {
-  const fn = new Function(stack, cron.name, {
-    runtime: Runtime.NODEJS_20_X,
-    handler: cron.handler,
-    code: Code.fromAsset('.'),
-    timeout: Duration.millis(cron.timeout || 30000),
-    memorySize: cron.memorySize || 256
-  });
-  
-  new Rule(stack, `${cron.name}Rule`, {
-    schedule: Schedule.expression(cron.schedule),
-    targets: [new LambdaFunction(fn)]
-  });
-}
+fromManifest(new Stack(app, 'Shop'), constructs, {}, backends);
 ```
 
 ## Features

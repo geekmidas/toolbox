@@ -1,8 +1,11 @@
 import { resolveEnvKeys } from '@geekmidas/envkit/sst';
 import { NoUrlForStage, providedKeyFor, provideKey } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
+import { App } from '../App';
+import { Cron } from '../aws/Cron';
 import { Database } from '../aws/Database';
 import { DatabaseSchema } from '../aws/DerivedDatabase';
+import { Function } from '../aws/Function';
 import { ObjectStorage } from '../aws/ObjectStorage';
 import { RestApiSurface } from '../aws/RestApiSurface';
 import { type ProvidesMismatch, UnknownDeclarationKind } from '../errors';
@@ -11,6 +14,7 @@ import {
 	mountRoutes,
 	PROVISIONED_ELSEWHERE,
 	type ProvisionedManifest,
+	provisionCompute,
 	provisionerFor,
 	resolveEdges,
 	subscribeConsumers,
@@ -481,6 +485,74 @@ describe('a surface’s endpoints', () => {
 		// A schema tenant lives in its parent's cluster, so in its network too.
 		expect(vpcFor([{ _id: 'Uploads' } as never, tenant as never])).toBe(vpc);
 		expect(vpcFor([{ _id: 'Uploads' } as never])).toBeUndefined();
+	});
+});
+
+describe('functions and crons', () => {
+	const stack = new App({
+		name: 'shop',
+		stage: 'prod',
+		domain: 'example.com',
+		hostedZoneId: 'Z',
+		region: 'eu-west-1',
+	}).stack('jobs');
+	const argsOf = (component: unknown) =>
+		(component as { args: Record<string, any> }).args;
+
+	it('are deployed from the declarations, each linked to its own edges', () => {
+		// The `manifest.crons` / `manifest.functions` tables they were built from
+		// are gone: the declarations carry the handler, schedule and edges.
+		const vpc = { id: 'stub-vpc' } as never;
+		const orders = new Database({} as never, 'Orders', { vpc });
+		const uploads = { _id: 'Uploads', _type: 'sst.aws.Bucket' };
+		const provisioned = {
+			Orders: orders,
+			Uploads: uploads,
+		} as unknown as ProvisionedManifest;
+
+		const [digest] = provisionCompute(
+			stack,
+			{
+				Orders: { kind: 'database', id: 'Orders' },
+				Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+				Invoice: {
+					kind: 'function',
+					id: 'Invoice',
+					handler: 'apps/api/.gkm/aws/functions/invoice.handler',
+					dependencies: [{ target: 'Uploads', kind: 'objects' }],
+					provides: ['INVOICE_URL'],
+				},
+				Digest: {
+					kind: 'cron',
+					id: 'Digest',
+					handler: 'apps/api/.gkm/aws/crons/digest.handler',
+					schedule: 'rate(1 day)',
+					dependencies: [{ target: 'Orders', kind: 'database' }],
+				},
+			} as never,
+			provisioned,
+		);
+
+		const invoice = provisioned.Invoice as unknown as Function;
+		expect(invoice).toBeInstanceOf(Function);
+		expect(argsOf(invoice)).toMatchObject({
+			name: stack.logicalPrefixedName('Invoice'),
+			handler: 'apps/api/.gkm/aws/functions/invoice.handler',
+			link: [uploads],
+			url: { authorization: 'iam' },
+		});
+		expect(argsOf(invoice).vpc).toBeUndefined();
+
+		// A cron is a schedule, not something to link to; its Lambda reaches
+		// the database, so it runs in the database's network.
+		expect(provisioned.Digest).toBeUndefined();
+		expect(digest).toBeInstanceOf(Cron);
+		expect(argsOf(digest).schedule).toBe('rate(1 day)');
+		expect(argsOf(digest!.processor)).toMatchObject({
+			handler: 'apps/api/.gkm/aws/crons/digest.handler',
+			link: [orders],
+			vpc,
+		});
 	});
 });
 

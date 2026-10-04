@@ -1,10 +1,5 @@
 import path from 'node:path';
 import { EnvValidationError } from '@geekmidas/envkit/sst';
-import {
-	flattenManifestField,
-	type ManifestField,
-	type RouteInfo,
-} from '@geekmidas/manifest';
 import { type GkmLinkable, ResourceType } from '../Linkable';
 import { LinkedEnvironment } from '../LinkedEnvironment';
 import type { StackType } from '../Stack';
@@ -155,44 +150,6 @@ export class Api<
 		if (failures.length) {
 			throw new RoutesMissingEnvironment(id, failures);
 		}
-	}
-
-	/**
-	 * Build an `Api` from a `gkm build` manifest's `routes` field (flat or
-	 * partitioned): each `RouteInfo` becomes a route (env vars, authorizer,
-	 * timeout/memory mapped). Supply `authorizers` (JWT/Lambda settings),
-	 * `links`, and any native args via `props`.
-	 *
-	 * ```ts
-	 * import { manifest } from './.gkm/manifest/aws';
-	 * Api.fromManifest(stack, 'Api', manifest.routes, { links: [db] });
-	 * ```
-	 */
-	static fromManifest<
-		TAuthorizers extends Record<string, unknown> = {},
-		TStage extends string = string,
-		TDomain extends string = string,
-	>(
-		stack: StackType<TStage, TDomain>,
-		id: string,
-		routes: ManifestField<RouteInfo>,
-		props: Omit<ApiProps<TAuthorizers>, 'routes'> = {},
-	): Api<TAuthorizers, TStage, TDomain> {
-		const routeTable = flattenManifestField(routes).map(
-			(route): Route<AuthorizerName<TAuthorizers>> => ({
-				method: route.method as Route['method'],
-				path: route.path,
-				handler: route.handler,
-				environment: route.environment,
-				authorizer: route.authorizer as AuthorizerName<TAuthorizers>,
-				timeout: route.timeout ? `${route.timeout} seconds` : undefined,
-				memory: route.memorySize ? `${route.memorySize} MB` : undefined,
-			}),
-		);
-		return new Api(stack, id, {
-			...props,
-			routes: routeTable,
-		} as ApiProps<TAuthorizers>);
 	}
 
 	/** Resolves a route's `authorizer` name to the SST `auth` option. */

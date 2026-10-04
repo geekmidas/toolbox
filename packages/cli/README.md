@@ -1038,21 +1038,16 @@ The following commands are planned for future releases:
 The `gkm.config.ts` file defines how the CLI discovers and processes your endpoints:
 
 ```typescript
-// Construct types accept a string, string[], or partitioned config
-type Routes = string | string[] | PartitionedRoutes;
-
-interface PartitionedRoutes {
-  paths: string | string[];
-  partition: (filepath: string) => string;
-}
+// Construct types accept a glob string or an array of them
+type Routes = string | string[];
 
 interface GkmConfig {
-  routes: Routes;                // Glob patterns or partitioned config
+  routes: Routes;                // Glob patterns
   envParser: string;             // Path to environment parser
   logger: string;                // Path to logger configuration
-  functions?: Routes;            // Glob patterns or partitioned config
-  crons?: Routes;                // Glob patterns or partitioned config
-  subscribers?: Routes;          // Glob patterns or partitioned config
+  functions?: Routes;            // Glob patterns
+  crons?: Routes;                // Glob patterns
+  subscribers?: Routes;          // Glob patterns
   runtime?: 'node' | 'bun';     // Runtime environment (default: 'node')
   telescope?: boolean | TelescopeConfig; // Telescope debugging config
 }
@@ -1071,7 +1066,7 @@ interface TelescopeConfig {
 
 #### `routes`
 
-Glob pattern(s) to discover endpoint files. Can be a single pattern, array of patterns, or a partitioned config:
+Glob pattern(s) to discover endpoint files. Can be a single pattern or an array of patterns:
 
 ```typescript
 // Single pattern
@@ -1083,18 +1078,7 @@ routes: [
   'src/api/**/*.ts',
   'src/handlers/**/*.ts'
 ]
-
-// Partitioned — groups constructs in the generated manifest
-routes: {
-  paths: './src/endpoints/**/*.ts',
-  partition: (filepath) => {
-    const match = filepath.match(/endpoints\/([^/]+)\//);
-    return match?.[1] ?? 'default';
-  },
-}
 ```
-
-The same partitioned format works for `functions`, `crons`, and `subscribers`. When a `partition` callback is provided, the generated manifest groups constructs by partition name (e.g., `manifest.routes.admin`). Without it, manifest fields remain flat arrays.
 
 #### `envParser`
 
@@ -1431,121 +1415,119 @@ at the workspace root, where `sst.config.ts` runs:
 
 ### Build Manifest
 
-The CLI generates TypeScript manifests with full type information in the root `.gkm/manifest/` directory. These manifests export both the data and derived types for type-safe usage. Every handler path in them is relative to the workspace root. `gkm init` adds a root tsconfig alias for the manifest, `@<project>/manifest`.
+The manifest is the application's, not an app's: the root `gkm build` builds
+every backend and writes it once, to `.gkm/manifest/aws.ts` or
+`.gkm/manifest/server.ts` at the workspace root. An app's own build writes no
+manifest. Every handler path in it is relative to the workspace root. `gkm init`
+adds a root tsconfig alias for the manifest, `@<project>/manifest`.
 
-#### AWS Manifest (`.gkm/manifest/aws.ts`)
+It exports two values — every declared construct keyed by id, and the backends
+the build resolved — and the types derived from them:
 
 ```typescript
-export const manifest = {
-  routes: [
-    {
-      path: '/users',
-      method: 'GET',
-      handler: 'apps/api/.gkm/aws/routes/getUsers.handler',
-      authorizer: 'jwt',
+export const constructs = {
+  Database: { id: 'Database', kind: 'database' },
+  Api: {
+    id: 'Api',
+    kind: 'rest-api',
+    path: 'apps/api',
+    endpoints: [
+      {
+        id: 'ApiGET/users',
+        method: 'GET',
+        path: '/users',
+        handler: 'apps/api/.gkm/aws/routes/getUsers.handler',
+        dependencies: [{ target: 'Database', kind: 'database' }],
+        authorizer: 'iam',
+      },
+    ],
+  },
+  ProcessData: {
+    id: 'ProcessData',
+    kind: 'function',
+    handler: 'apps/api/.gkm/aws/functions/processData.handler',
+    dependencies: [],
+  },
+  DailyCleanup: {
+    id: 'DailyCleanup',
+    kind: 'cron',
+    handler: 'apps/api/.gkm/aws/crons/dailyCleanup.handler',
+    schedule: 'rate(1 day)',
+    dependencies: [{ target: 'Database', kind: 'database' }],
+  },
+  Emails: {
+    id: 'Emails',
+    kind: 'queue',
+    // The queue's consumer is nested in it
+    worker: {
+      id: 'emails',
+      handler: 'apps/api/.gkm/aws/queues/emails.handler',
+      dependencies: [],
     },
-    {
-      path: '/users',
-      method: 'POST',
-      handler: 'apps/api/.gkm/aws/routes/createUser.handler',
-      authorizer: 'jwt',
-    },
-  ],
-  functions: [
-    {
-      name: 'processData',
-      handler: 'apps/api/.gkm/aws/functions/processData.handler',
-      timeout: 60,
-      memorySize: 256,
-    },
-  ],
-  crons: [
-    {
-      name: 'dailyCleanup',
-      handler: 'apps/api/.gkm/aws/crons/dailyCleanup.handler',
-      schedule: 'rate(1 day)',
-      timeout: 300,
-      memorySize: 512,
-    },
-  ],
-  subscribers: [],
-} as const;
+  },
+  Users: {
+    id: 'Users',
+    kind: 'topic',
+    events: ['user.created'],
+    // As are a topic's subscribers
+    subscribers: [
+      {
+        id: 'onUser',
+        handler: 'apps/api/.gkm/aws/subscribers/onUser.handler',
+        events: ['user.created'],
+        dependencies: [],
+      },
+    ],
+  },
+} as const satisfies ConstructManifest;
+
+export const backends = { cache: 'upstash', email: 'ses' } as const;
 
 // Derived types
-export type Route = (typeof manifest.routes)[number];
-export type Function = (typeof manifest.functions)[number];
-export type Cron = (typeof manifest.crons)[number];
-export type Subscriber = (typeof manifest.subscribers)[number];
+export type Ids = IdsOf<typeof constructs>;
+export type Construct<Id extends Ids> = DeclarationOf<typeof constructs, Id>;
+export type Kind = Construct<Ids>['kind'];
 
 // Useful union types
-export type Authorizer = Route['authorizer'];
-export type HttpMethod = Route['method'];
-export type RoutePath = Route['path'];
+export type ProvidedKeys = AllProvidedKeys<typeof constructs>;
+export type Surfaces = IdsOfKind<typeof constructs, 'rest-api'>;
+export type CacheBackend = (typeof backends)['cache'];
+export type EmailBackend = (typeof backends)['email'];
 ```
 
-When routes are partitioned, the manifest groups them by partition name and generates partition-aware types:
+A `RestApi` carries its endpoints, each with its method, path, handler, the
+dependencies it declared and its authorizer. On AWS the handler is the
+endpoint's own Lambda (`apps/api/.gkm/aws/routes/<export>.handler`); in the
+server manifest every endpoint's handler is the app entry
+(`apps/api/.gkm/server/app.ts`). Functions and crons are top-level
+declarations; a queue's worker and a topic's subscribers are nested in the
+queue or topic.
+
+#### Using the Manifest
+
+On AWS, `fromManifest` from `@geekmidas/cloud/sst` provisions all of it —
+resources, each API's endpoints, queue consumers, functions and crons:
 
 ```typescript
-export const manifest = {
-  routes: {
-    "admin": [{ path: '/admin/users', method: 'GET', handler: '...', authorizer: 'jwt' }],
-    "default": [{ path: '/users', method: 'GET', handler: '...', authorizer: 'jwt' }],
-  },
-  functions: [...], // flat if not partitioned
-} as const;
+// sst.config.ts
+const { App, fromManifest, Stack } = await import('@geekmidas/cloud/sst');
+const { backends, constructs } = await import('./.gkm/manifest/aws.js');
 
-// Partition-aware derived types
-export type RoutePartition = keyof typeof manifest.routes;
-export type Route<P extends RoutePartition = RoutePartition> =
-  (typeof manifest.routes)[P][number];
+fromManifest(new Stack(app, 'Shop'), constructs, { Database: { vpc } }, backends);
 ```
 
-#### Server Manifest (`.gkm/manifest/server.ts`)
+The types narrow to what was declared:
 
 ```typescript
-export const manifest = {
-  app: {
-    handler: 'apps/api/.gkm/server/app.ts',
-    endpoints: 'apps/api/.gkm/server/endpoints.ts',
-  },
-  routes: [
-    { path: '/users', method: 'GET', authorizer: 'jwt' },
-    { path: '/users', method: 'POST', authorizer: 'jwt' },
-  ],
-  subscribers: [
-    { name: 'orderHandler', subscribedEvents: ['order.created'] },
-  ],
-} as const;
+import { constructs, type Construct, type Surfaces } from './.gkm/manifest/aws';
 
-// Derived types
-export type Route = (typeof manifest.routes)[number];
-export type Subscriber = (typeof manifest.subscribers)[number];
+const api: Construct<'Api'> = constructs.Api;
 
-// Useful union types
-export type Authorizer = Route['authorizer'];
-export type HttpMethod = Route['method'];
-export type RoutePath = Route['path'];
-```
-
-#### Using Manifest Types
-
-Import the manifest types for type-safe infrastructure configuration:
-
-```typescript
-import { manifest, type Route, type Authorizer } from './.gkm/manifest/aws';
-
-// Type-safe route iteration
-for (const route of manifest.routes) {
-  console.log(`${route.method} ${route.path} -> ${route.handler}`);
+for (const endpoint of api.endpoints) {
+  console.log(`${endpoint.method} ${endpoint.path} -> ${endpoint.handler}`);
 }
 
-// Use union types for validation
-function isValidMethod(method: string): method is HttpMethod {
-  return manifest.routes.some((r) => r.method === method);
-}
-
-// Access authorizer names
-const authorizers = new Set(manifest.routes.map((r) => r.authorizer));
+const surface: Surfaces = 'Api'; // any other id is a type error
 ```
 
 ## OpenAPI Generation

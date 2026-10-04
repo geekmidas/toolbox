@@ -567,46 +567,55 @@ constructs land.
    schedule.
 6. **`Api`** ✓ (first cut) — routes, per-route validation, least-privilege
    linking, native `ApiGatewayV2Args` passthrough.
-7. **Manifest integrators** ✓ — `Api`/`Function`/`Cron` `fromManifest` factories
-   (§13).
+7. **Manifest integration** ✓ — one `fromManifest` provisions every declared
+   construct (§13).
 8. **Testing** — capture real Pulumi state via `@geekmidas/testkit/pulumi` +
    `/sst`. Design deferred; see [`sst-testing.md`](./sst-testing.md).
 9. **Docs/example** — usage snippets; user-facing docs in `apps/docs`.
 
 ---
 
-## 13. Manifest integrators
+## 13. Manifest integration
 
-`gkm build` emits a deployment manifest enumerating a project's routes,
-functions, and crons. Those types live in the dependency-free
+The root `gkm build` writes the application's manifest once, as a TS module at
+`.gkm/manifest/aws.ts`. Its types live in the dependency-free
 **`@geekmidas/manifest`** package (re-exported by `@geekmidas/cli`), so it is a
-stable JSON contract shared by the producer and these constructs.
+stable contract shared by the producer and these constructs. It exports
+`constructs` — every declared construct keyed by id, `as const satisfies
+ConstructManifest` — and `backends`, the cache and email backends the build
+resolved.
 
-Each construct has a static `fromManifest` factory that maps the manifest
-straight into infrastructure — define handlers once, provision with one call:
+A `RestApi` declaration carries its `endpoints` (method, path, handler,
+dependencies, authorizer), each handler the endpoint's own Lambda
+(`apps/api/.gkm/aws/routes/<export>.handler`). Functions and crons are top-level
+declarations (`kind: 'function'` with a handler; `kind: 'cron'` with a handler
+and a schedule). A queue's worker and a topic's subscribers are nested in the
+queue or topic.
 
-`gkm build` writes a single TS module per provider — `export const manifest = {
-routes, functions, crons, subscribers, queues } as const` (item/`Manifest`/
-`ManifestField` types in `@geekmidas/manifest`). Each integrator takes the
-relevant **field** (flat array or partitioned `Record`):
+`fromManifest` maps all of it straight into infrastructure — define handlers
+once, provision with one call:
 
 ```ts
-import { manifest } from './.gkm/manifest/aws';
+const { App, fromManifest, Stack } = await import('@geekmidas/cloud/sst');
+const { backends, constructs } = await import('./.gkm/manifest/aws.js');
 
-const api = Api.fromManifest(stack, 'Api', manifest.routes, {
-  links: [db],
-  authorizers: { jwt: { issuer, audiences } }, // jwt/custom settings supplied here
-});
-
-const workers = Function.fromManifest(stack, manifest.functions, { links: [db] });
-const crons   = Cron.fromManifest(stack, manifest.crons, { links: [db] });
+fromManifest(new Stack(app, 'Shop'), constructs, { Database: { vpc } }, backends);
 ```
 
-Mapping: `RouteInfo` → `Route` (`environment` → `envVars`, `authorizer` →
-authorizer name, `timeout`/`memorySize` → per-route `timeout`/`memory`);
-`FunctionInfo` → `Function`; `CronInfo` → a validated `Function` the `Cron`
-triggers. The `links`/`authorizers` not present in the manifest are supplied via
-`props`. Validated by `src/sst/__type-tests__/manifest.type-test.ts`.
+Overrides are keyed by construct id. In order, it provisions every resource
+(`provisionOrder`, parents before children), then:
+
+- **Functions and crons** (`provisionCompute`) — a `Function` per declaration,
+  linked only to its own dependencies and placed in the database's VPC when it
+  reaches one. A function gets an IAM-authorized URL; a cron is that Lambda on
+  its `schedule`.
+- **Queue consumers** (`subscribeConsumers`) — each queue's one `worker`.
+- **Endpoints** (`mountRoutes`) — each endpoint mounted on its surface as its
+  own Lambda, linked only to its own dependencies, in the database's VPC when it
+  reaches one; an `iam` authorizer is enforced by the gateway.
+
+Nothing in `sst.config.ts` names a route, a link or an IAM grant: the edges in
+the manifest are the grants.
 
 ---
 
@@ -614,8 +623,8 @@ triggers. The `links`/`authorizers` not present in the manifest are supplied via
 
 The guiding aim: **the application drives the infrastructure.** Handlers and the
 resources they consume are declared in the app (`@geekmidas/constructs` /
-`@geekmidas/services`); `gkm build` captures them in the manifest; the
-`fromManifest` factories provision and wire the infra. Anything infra needs to
+`@geekmidas/services`); `gkm build` captures them in the manifest;
+`fromManifest` provisions and wires the infra. Anything infra needs to
 know must therefore flow through the manifest — it can't be invented in
 `sst.config.ts`.
 
@@ -667,9 +676,8 @@ edge is in the manifest, so only producers are linked to the resource.
   subscribes a Lambda (`nodejs24.x`) with the queue itself always linked.
 - Every `topic` is provisioned as `Topic`.
 - `worker`, `cron` and `function` are in `PROVISIONED_ELSEWHERE`: a worker is a
-  process rather than a resource, and crons and functions are Lambdas built
-  from `manifest.crons` / `manifest.functions` (`Cron.fromManifest`,
-  `Function.fromManifest`).
+  process rather than a resource, and crons and functions are Lambdas that
+  `provisionCompute` builds once everything they link to exists.
 - **Pending**: SNS subscriptions for topic subscribers. The binding is in the
   manifest; nothing in `fromManifest` turns it into a subscription yet.
 

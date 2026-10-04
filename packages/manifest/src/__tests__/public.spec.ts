@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ConstructManifest, SiteDeclaration } from '../declaration';
 import { dependenciesOf, provisionOrder, publicEnvFor } from '../derive';
-import { flattenManifestField } from '../index';
 import { cloudName, cookieDomain, providedKeyFor } from '../naming';
 
 const manifest = {
@@ -96,16 +95,5 @@ describe('naming helpers', () => {
 	it('scopes no cookie for nothing, or for something that is not an address', () => {
 		expect(cookieDomain([])).toBeUndefined();
 		expect(cookieDomain(['not a url', 'https://a.shop.test'])).toBeUndefined();
-	});
-});
-
-describe('flattenManifestField', () => {
-	it('flattens a partitioned field, copies a list, and treats absence as empty', () => {
-		expect(flattenManifestField({ a: [1, 2], b: [3] })).toEqual([1, 2, 3]);
-		const list = [1, 2] as const;
-		const flat = flattenManifestField(list);
-		expect(flat).toEqual([1, 2]);
-		expect(flat).not.toBe(list);
-		expect(flattenManifestField(undefined)).toEqual([]);
 	});
 });

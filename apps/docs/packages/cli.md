@@ -192,11 +192,56 @@ When using `--production`, the build:
 
 Handlers are written beside the app — `<app>/.gkm/server/`, or for AWS
 `<app>/.gkm/aws/routes/` (one API Gateway v2 handler per endpoint) plus
-`functions/`, `crons/`, `queues/` and `subscribers/`. The manifest is written
-at the workspace root, `.gkm/manifest/aws.ts` or `.gkm/manifest/server.ts`,
-with every handler path relative to the root
+`functions/`, `crons/`, `queues/` and `subscribers/`. The manifest is the
+application's, not an app's: the root `gkm build` builds every backend and
+writes it once, at `.gkm/manifest/aws.ts` or `.gkm/manifest/server.ts`; an
+app's own build writes none. Every handler path in it is relative to the root
 (`apps/api/.gkm/aws/routes/getUser.handler`), because `sst.config.ts` runs
 there. `gkm init` adds a root tsconfig alias for it, `@<project>/manifest`.
+
+It exports every declared construct keyed by id, and the backends the build
+resolved:
+
+```typescript
+export const constructs = {
+  Api: {
+    id: 'Api',
+    kind: 'rest-api',
+    path: 'apps/api',
+    endpoints: [
+      {
+        id: 'ApiGET/users',
+        method: 'GET',
+        path: '/users',
+        // On a server, every endpoint's handler is the app entry:
+        // 'apps/api/.gkm/server/app.ts'
+        handler: 'apps/api/.gkm/aws/routes/getUsers.handler',
+        dependencies: [{ target: 'Database', kind: 'database' }],
+        authorizer: 'iam',
+      },
+    ],
+  },
+  Cleanup: {
+    id: 'Cleanup',
+    kind: 'cron',
+    handler: 'apps/api/.gkm/aws/crons/cleanup.handler',
+    schedule: 'rate(1 day)',
+    dependencies: [{ target: 'Database', kind: 'database' }],
+  },
+  // …every other construct: databases, buckets, queues (with their worker),
+  // topics (with their subscribers), functions
+} as const satisfies ConstructManifest;
+
+export const backends = { cache: 'upstash', email: 'smtp' } as const;
+
+export type Ids = IdsOf<typeof constructs>;
+export type Construct<Id extends Ids> = DeclarationOf<typeof constructs, Id>;
+export type Kind = Construct<Ids>['kind'];
+export type ProvidedKeys = AllProvidedKeys<typeof constructs>;
+export type Surfaces = IdsOfKind<typeof constructs, 'rest-api'>;
+export type CacheBackend = (typeof backends)['cache'];
+export type EmailBackend = (typeof backends)['email'];
+```
 
 ### Docker
 
@@ -586,7 +631,7 @@ export default defineConfig({
   // to be listed under.
   constructs: './src/constructs/**/*.ts',
 
-  // Route files (glob pattern or partitioned config)
+  // Route files (glob pattern or array of patterns)
   routes: './src/endpoints/**/*.ts',
 
   // Environment parser module (named export)
@@ -660,59 +705,6 @@ gkm build
 gkm openapi
 gkm dev
 ```
-
-### Partitioned Routes
-
-By default, construct types (`routes`, `functions`, `crons`, `subscribers`) accept a glob string or array of glob strings. To organize constructs into named partitions in the generated manifest, use the object form with a `partition` callback:
-
-```typescript
-import { defineConfig } from '@geekmidas/cli/config';
-
-export default defineConfig({
-  stages: { local: 'dev', deployed: ['prod'] },
-  // Partitioned routes — groups by directory name
-  routes: {
-    paths: './src/endpoints/**/*.ts',
-    partition: (filepath) => {
-      const match = filepath.match(/endpoints\/([^/]+)\//);
-      return match?.[1] ?? 'default';
-    },
-  },
-
-  // Partitioned functions
-  functions: {
-    paths: ['./src/functions/**/*.ts'],
-    partition: (filepath) =>
-      filepath.includes('/admin/') ? 'admin' : 'default',
-  },
-
-  // Non-partitioned (legacy format still works)
-  subscribers: './src/subscribers/**/*.ts',
-
-  envParser: './src/config/env#envParser',
-  logger: './src/config/logger#logger',
-});
-```
-
-The `partition` function receives the absolute file path and returns the partition name. The generated manifest will group constructs by partition:
-
-```typescript
-// .gkm/manifest/aws.ts (partitioned)
-export const manifest = {
-  routes: {
-    "admin": [{ path: '/admin/users', method: 'GET', ... }],
-    "default": [{ path: '/users', method: 'GET', ... }],
-  },
-  subscribers: [{ name: 'orderHandler', ... }], // flat (no partition)
-} as const;
-
-// Derived types for partitioned fields
-export type RoutePartition = keyof typeof manifest.routes;
-export type Route<P extends RoutePartition = RoutePartition> =
-  (typeof manifest.routes)[P][number];
-```
-
-When no partition function is provided, the manifest field remains a flat array for backward compatibility.
 
 ### Production Configuration
 

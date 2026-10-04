@@ -1,9 +1,4 @@
 import type { EnvValidator, ValidationResult } from '@geekmidas/envkit/sst';
-import {
-	type FunctionInfo,
-	flattenManifestField,
-	type ManifestField,
-} from '@geekmidas/manifest';
 import { type GkmLinkable, ResourceType } from '../Linkable';
 import { LinkedEnvironment } from '../LinkedEnvironment';
 import type { StackType } from '../Stack';
@@ -66,9 +61,10 @@ export class Function<
 		super(id, {
 			...fnArgs,
 			environment: mergedEnvironment,
-			// Linking is managed via the `links`/`envVars` flow, so this overrides
-			// any native `link` passed through `fnArgs`.
-			link: linked.resolveLink(envVars),
+			// Resolved from `links` when `envVars` names what it needs; otherwise
+			// the `link` it was given — the edges a manifest declared.
+			link:
+				envVars.length > 0 ? linked.resolveLink(envVars) : (fnArgs.link ?? []),
 			runtime: runtime ?? 'nodejs24.x',
 			logging: logging ?? { format: 'json' },
 		});
@@ -78,39 +74,14 @@ export class Function<
 		this.envVars = envVars;
 	}
 
+	/** Its address, for whatever declared an edge to it. */
+	provides(): Record<string, $util.Input<string>> {
+		return { url: this.url };
+	}
+
 	/** Re-runs validation and returns the result (does not throw). */
 	validate(): ValidationResult {
 		return this.validator.validate(this.envVars);
-	}
-
-	/**
-	 * Build one `Function` per entry in a `gkm build` manifest's `functions`
-	 * field (flat or partitioned). Shared `props` (e.g. `links`) apply to every
-	 * function.
-	 *
-	 * ```ts
-	 * Function.fromManifest(stack, manifest.functions, { links: [db] });
-	 * ```
-	 */
-	static fromManifest<
-		TStage extends string = string,
-		TDomain extends string = string,
-	>(
-		stack: StackType<TStage, TDomain>,
-		functions: ManifestField<FunctionInfo>,
-		props: Omit<FunctionProps, 'handler'> = {},
-	): Function<TStage, TDomain>[] {
-		return flattenManifestField(functions).map(
-			(fn) =>
-				new Function(stack, fn.name, {
-					...props,
-					name: stack.logicalPrefixedName(fn.name),
-					handler: fn.handler,
-					envVars: fn.environment,
-					timeout: fn.timeout ? `${fn.timeout} seconds` : undefined,
-					memory: fn.memorySize ? `${fn.memorySize} MB` : undefined,
-				}),
-		);
 	}
 }
 

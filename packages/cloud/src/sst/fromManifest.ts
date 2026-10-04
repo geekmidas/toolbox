@@ -41,12 +41,14 @@ import {
 	withCacheTable,
 } from './aws/Cache';
 import { Credential } from './aws/Credential';
+import { Cron, type CronSchedule } from './aws/Cron';
 import { Database, DatabaseNeedsVpc, type DatabaseProps } from './aws/Database';
 import { DatabaseBootstrap } from './aws/DatabaseBootstrap';
 import { DatabaseReader, DatabaseSchema } from './aws/DerivedDatabase';
 import { Email, EmailNeedsSender } from './aws/Email';
 import { ExternalApi, type ExternalApiProps } from './aws/ExternalApi';
 import { FileServer } from './aws/FileServer';
+import { Function } from './aws/Function';
 import { ObjectStorage } from './aws/ObjectStorage';
 import { Queue } from './aws/Queue';
 import { RestApiSurface } from './aws/RestApiSurface';
@@ -744,17 +746,77 @@ export function isServed(id: string, manifest: ConstructManifest): boolean {
 }
 
 /**
- * Kinds this stack provisions nothing for of their own.
+ * Kinds the in-order pass skips.
  *
  * - `mobile-app` ships through EAS and the stores. It is in the manifest for
  *   what it makes the surfaces trust, which `callersOf` reads off the graph.
  * - `worker` is a process, not a resource: what it runs is provisioned as
  *   what it is — a queue's consumer by {@link subscribeConsumers}.
- * - `cron` and `function` are Lambdas built from `manifest.crons` and
- *   `manifest.functions` (`Cron.fromManifest`, `Function.fromManifest`).
+ * - `cron` and `function` are Lambdas linked to what they depend on, so they
+ *   are provisioned once all of it exists, by {@link provisionCompute}.
  */
 export const PROVISIONED_ELSEWHERE: ReadonlySet<DeclarationKind> =
 	new Set<DeclarationKind>(['mobile-app', 'worker', 'cron', 'function']);
+
+/**
+ * Every function and cron: a Lambda running the handler the build wrote,
+ * linked to exactly what it depends on, in the database's network when it
+ * reaches one. A cron is that Lambda on its schedule; a function is reached
+ * at its URL, which only callers granted IAM access can invoke.
+ *
+ * After everything else is provisioned, because each links to things
+ * `provisionOrder` does not order before it.
+ */
+export function provisionCompute(
+	stack: StackType,
+	manifest: ConstructManifest,
+	provisioned: ProvisionedManifest,
+): Cron[] {
+	const crons: Cron[] = [];
+
+	for (const [id, declaration] of Object.entries(manifest)) {
+		if (declaration?.kind !== 'function' && declaration?.kind !== 'cron') {
+			continue;
+		}
+
+		const { link } = resolveEdges(declaration.dependencies, provisioned);
+		const vpc = vpcFor(link);
+		const lambda = new Function(
+			stack,
+			declaration.kind === 'cron' ? `${id}Function` : id,
+			{
+				name: stack.logicalPrefixedName(id),
+				handler: declaration.handler,
+				link,
+				...(vpc ? { vpc } : {}),
+				...(declaration.kind === 'function'
+					? { url: { authorization: 'iam' } }
+					: {}),
+			},
+		);
+
+		if (declaration.kind === 'cron') {
+			crons.push(
+				new Cron(stack, id, {
+					processor: lambda,
+					schedule: declaration.schedule as CronSchedule,
+				}),
+			);
+			continue;
+		}
+
+		assertProvides(
+			id,
+			declaration.provides,
+			Object.keys(lambda.provides()).map((role) =>
+				providedKeyFor(id, declaration.kind, role),
+			),
+		);
+		provisioned[id] = lambda;
+	}
+
+	return crons;
+}
 
 /** A provisioned queue: what {@link subscribeConsumers} subscribes through. */
 interface Consumable {
@@ -951,8 +1013,9 @@ export function fromManifest(
 		provisioned[id] = component;
 	}
 
-	// Each queue's one consumer and each surface's endpoints, once everything
-	// they link to exists.
+	// The functions and crons, each queue's one consumer and each surface's
+	// endpoints, once everything they link to exists.
+	provisionCompute(stack, manifest, provisioned);
 	subscribeConsumers(manifest, provisioned);
 	mountRoutes(manifest, provisioned);
 

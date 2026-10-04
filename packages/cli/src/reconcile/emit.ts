@@ -18,8 +18,6 @@
  * can select out of it. `JSON.parse` returns `any` and gives all of that up.
  */
 
-import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
 import type {
 	ConstructManifest,
 	CronInfo,
@@ -33,9 +31,6 @@ import type {
 } from '@geekmidas/manifest';
 import { canonicalId, provideKey } from '@geekmidas/manifest';
 import type { CacheBackend, EmailBackend } from '../types.js';
-
-/** Where the build writes it, relative to the app root. */
-export const MANIFEST_PATH = '.gkm/manifest.ts';
 
 /**
  * Fold the build's generated routes into the surface that serves them.
@@ -229,7 +224,7 @@ export function manifestModule(
 	backends: Backends = {},
 ): string {
 	return `${HEADER}
-export const manifest = ${serialise(manifest)} as const satisfies ConstructManifest;
+export const constructs = ${serialise(manifest)} as const satisfies ConstructManifest;
 
 /**
  * Where the backends that are *config* rather than declaration resolved to.
@@ -243,30 +238,16 @@ export const manifest = ${serialise(manifest)} as const satisfies ConstructManif
 export const backends = ${serialise(backends)} as const;
 
 // Derived types
-export type Ids = IdsOf<typeof manifest>;
-export type Construct<Id extends Ids> = DeclarationOf<typeof manifest, Id>;
+export type Ids = IdsOf<typeof constructs>;
+export type Construct<Id extends Ids> = DeclarationOf<typeof constructs, Id>;
 export type Kind = Construct<Ids>['kind'];
 
 // Useful union types
-export type ProvidedKeys = AllProvidedKeys<typeof manifest>;
-export type Surfaces = IdsOfKind<typeof manifest, 'rest-api'>;
+export type ProvidedKeys = AllProvidedKeys<typeof constructs>;
+export type Surfaces = IdsOfKind<typeof constructs, 'rest-api'>;
 export type CacheBackend = (typeof backends)['cache'];
 export type EmailBackend = (typeof backends)['email'];
 `;
-}
-
-/** Write it where the deploy config expects to import it from. */
-export async function writeManifestModule(
-	manifest: ConstructManifest,
-	appRoot: string,
-	backends: Backends = {},
-): Promise<string> {
-	const path = join(appRoot, MANIFEST_PATH);
-
-	await mkdir(dirname(path), { recursive: true });
-	await writeFile(path, manifestModule(manifest, backends), 'utf8');
-
-	return path;
 }
 
 /** The choices that are deployment config rather than declaration. */

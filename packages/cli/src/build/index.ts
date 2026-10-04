@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import type { Cron } from '@geekmidas/constructs/crons';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
@@ -29,6 +29,12 @@ import {
 } from '../generators';
 import { generateOpenApi } from '../openapi.js';
 import { type ConstructSource, discover } from '../reconcile/discover.js';
+import {
+	type Backends,
+	manifestModule,
+	withCompute,
+	withRoutes,
+} from '../reconcile/emit.js';
 import type { CacheBackend, GkmConfig, MainProvider } from '../types';
 import {
 	type BuildOptions,
@@ -40,7 +46,6 @@ import {
 	type RouteInfo,
 	type Routes,
 	type SubscriberInfo,
-	type TopicInfo,
 } from '../types';
 import { DEFAULT_EMAIL } from '../types.js';
 import { cacheBackendFor, providerOf } from '../workspace/backends.js';
@@ -51,15 +56,7 @@ import {
 	type NormalizedAppConfig,
 	type NormalizedWorkspace,
 } from '../workspace/index.js';
-import {
-	generateAwsManifest,
-	generateServerManifest,
-	type ManifestField,
-	mergeFields,
-	type ServerAppInfo,
-} from './manifests';
 import { ownersContext, servedBy } from './owners';
-import { groupInfosByPartition, hasPartitions } from './partitions';
 import { selfServingSurface, writeSurfaceEntry } from './surfaceEntry';
 import type {
 	BuildContext,
@@ -314,14 +311,11 @@ export interface AppBuildOutput extends BuildResult {
 export interface AppBuild {
 	/** The surface its endpoints are served on. */
 	surface?: string;
-	/** Its server entry, on the server target. */
-	app?: ServerAppInfo;
-	routes: ManifestField<RouteInfo>;
-	functions: ManifestField<FunctionInfo>;
-	crons: ManifestField<CronInfo>;
-	subscribers: ManifestField<SubscriberInfo>;
-	queues: ManifestField<QueueInfo>;
-	topics: ManifestField<TopicInfo>;
+	routes: RouteInfo[];
+	functions: FunctionInfo[];
+	crons: CronInfo[];
+	subscribers: SubscriberInfo[];
+	queues: QueueInfo[];
 }
 
 /**
@@ -337,49 +331,42 @@ export async function writeManifest(input: {
 	target: MainProvider;
 	builds: readonly AppBuild[];
 	constructs: ConstructManifest;
-	backends: { cache?: string; email?: string };
+	backends: Backends;
 }): Promise<void> {
 	const { workspaceRoot, target, builds, constructs, backends } = input;
-	const outputDir = join(workspaceRoot, '.gkm');
+	const manifestDir = join(workspaceRoot, '.gkm', 'manifest');
+	await mkdir(manifestDir, { recursive: true });
 
 	// One manifest, for the target this build is for. The other target's,
 	// left by an earlier build, would describe an application that is not
 	// being deployed.
 	const other = target === 'aws' ? 'server' : 'aws';
-	await rm(join(outputDir, 'manifest', `${other}.ts`), { force: true });
+	await rm(join(manifestDir, `${other}.ts`), { force: true });
 
-	const merged = <K extends keyof AppBuild>(key: K) =>
-		mergeFields(builds.map((build) => build[key] as ManifestField<never>));
-
-	if (target === 'server') {
-		await generateServerManifest(
-			outputDir,
-			builds.flatMap((build) => (build.app ? [build.app] : [])),
-			merged('routes'),
-			merged('subscribers'),
-			merged('queues'),
-			merged('topics'),
-			constructs,
-			backends,
-		);
-		return;
-	}
-
-	await generateAwsManifest(
-		outputDir,
-		merged('routes'),
-		merged('functions'),
-		merged('crons'),
-		merged('subscribers'),
-		merged('queues'),
-		merged('topics'),
+	// Each app's routes go to the surface it serves; then the compute every
+	// app generated, which nests in the queue or topic that triggers it.
+	const withServed = builds.reduce(
+		(manifest, build) =>
+			withRoutes(
+				manifest,
+				build.routes.filter((route) => route.method !== 'ALL'),
+				{
+					perRoute: true,
+					...(build.surface ? { surface: build.surface } : {}),
+				},
+			),
 		constructs,
-		backends,
-		builds.map(({ surface, routes }) => ({
-			...(surface ? { surface } : {}),
-			routes,
-		})),
 	);
+	const folded = withCompute(withServed, {
+		functions: builds.flatMap((build) => build.functions),
+		crons: builds.flatMap((build) => build.crons),
+		queues: builds.flatMap((build) => build.queues),
+		subscribers: builds.flatMap((build) => build.subscribers),
+	});
+
+	const path = join(manifestDir, `${target}.ts`);
+	await writeFile(path, manifestModule(folded, backends));
+	logger.log(`Manifest: ${relative(process.cwd(), path)}`);
 }
 
 /**
@@ -638,34 +625,33 @@ async function buildForTarget(
 		`Generated ${routes.length} routes, ${functionInfos.length} functions, ${cronInfos.length} crons, ${subscriberInfos.length} subscribers, ${queueInfos.length} queues, ${topicInfos.length} topics for ${target}`,
 	);
 
-	// Flat or partitioned per construct type, as the manifest carries them.
+	// What the manifest folds into the declarations they belong to.
 	const fields = {
 		...(context.surface ? { surface: context.surface.id } : {}),
-		functions: assembleManifestField(functionInfos, functions),
-		crons: assembleManifestField(cronInfos, crons),
-		queues: assembleManifestField(queueInfos, queues),
-		topics: assembleManifestField(topicInfos, topics),
-		subscribers: assembleManifestField(subscriberInfos, subscribers),
+		functions: functionInfos,
+		crons: cronInfos,
+		queues: queueInfos,
+		subscribers: subscriberInfos,
 	};
 
 	if (target === 'server') {
-		// For server, collect actual route metadata from endpoint constructs
-		const routeMetadata: RouteInfo[] = await Promise.all(
-			endpoints.map(async ({ construct }) => ({
-				path: construct._path,
-				method: construct.method,
-				handler: '', // Not needed for server manifest
-				authorizer: construct.authorizer?.name ?? 'none',
-			})),
-		);
-
+		// Every endpoint, as on AWS — its method, path, edges and authorizer —
+		// served by the one process: the app's entry is each one's handler.
+		const handler = relative(workspaceRoot, join(outputDir, 'app.ts'));
 		const built: AppBuild = {
 			...fields,
-			routes: assembleManifestField(routeMetadata, endpoints),
-			app: {
-				handler: relative(workspaceRoot, join(outputDir, 'app.ts')),
-				endpoints: relative(workspaceRoot, join(outputDir, 'endpoints.ts')),
-			},
+			routes: await Promise.all(
+				endpoints.map(async ({ construct }) => ({
+					path: construct._path,
+					method: construct.method,
+					handler,
+					environment: await construct.getEnvironment({
+						markOptional: context.markOptional,
+					}),
+					dependencies: construct.constructs,
+					authorizer: construct.authorizer?.name ?? 'none',
+				})),
+			),
 		};
 
 		// Bundle for production if enabled
@@ -706,7 +692,7 @@ async function buildForTarget(
 	}
 
 	return {
-		built: { ...fields, routes: assembleManifestField(routes, endpoints) },
+		built: { ...fields, routes },
 	};
 }
 
@@ -1020,19 +1006,4 @@ function formatRoutes(routes: Routes): string {
 		return `${paths} (partitioned)`;
 	}
 	return Array.isArray(routes) ? routes.join(', ') : routes;
-}
-
-/**
- * Assemble a ManifestField from build infos and constructs.
- * If any construct has a partition, returns a Record<string, T[]>.
- * Otherwise, returns a flat T[].
- */
-function assembleManifestField<T>(
-	infos: T[],
-	constructs: GeneratedConstruct<any>[],
-): ManifestField<T> {
-	if (!hasPartitions(constructs)) {
-		return infos;
-	}
-	return groupInfosByPartition(infos, constructs);
 }

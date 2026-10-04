@@ -88,8 +88,9 @@ handler, as `.dependsOn([orders])` would, for an event the handler decides on.
 ## 2. What `gkm build` emits (manifest)
 
 A **single TypeScript module** at the workspace root — `.gkm/manifest/aws.ts`,
-its handler paths relative to the root, where `sst.config.ts` runs — whose
-`constructs` export is every declaration keyed by id. Each queue nests its one
+written once by the root `gkm build`, its handler paths relative to the root,
+where `sst.config.ts` runs — whose `constructs` export is every declaration
+keyed by id. Each `RestApi` carries its endpoints; each queue nests its one
 consumer; each topic lists the subscribers bound to it:
 
 ```ts
@@ -119,8 +120,24 @@ export const constructs = {
       },
     ],
   },
-  // … the route's entry records its edges to Fulfilment and Orders
-} as const;
+  Api: {
+    kind: 'rest-api',
+    id: 'Api',
+    path: 'apps/api',
+    endpoints: [
+      {
+        id: 'ApiPOST/orders',
+        method: 'POST',
+        path: '/orders',
+        handler: 'apps/api/.gkm/aws/routes/createOrder.handler',
+        dependencies: [
+          { target: 'Fulfilment', kind: 'queue' },
+          { target: 'Orders', kind: 'topic' },
+        ],
+      },
+    ],
+  },
+} as const satisfies ConstructManifest;
 ```
 
 The endpoint's required env (`FULFILMENT_PUBLISHER_CONNECTION_STRING`,
@@ -149,9 +166,11 @@ No queue, topic, link or IAM is written here. `fromManifest`:
   `queue.consume({ handler, link })` — the handler the build wrote, linked to
   what the consumer declared (`Database`); the queue itself is always linked.
   `Queue.consume` also takes `timeout` and `batchSize`;
-- skips `worker`, `cron` and `function` (`PROVISIONED_ELSEWHERE`): a worker is a
-  process, not a resource, and crons and functions are built from
-  `manifest.crons` / `manifest.functions`.
+- mounts `POST /orders` on the `Api` as its own Lambda, linked only to what
+  the endpoint depends on (`Fulfilment`, `Orders`);
+- skips `worker` (`PROVISIONED_ELSEWHERE`): a worker is a process, not a
+  resource. Any function or cron would be built as its own Lambda, once
+  everything it links to exists.
 
 ## 4. Resolving connection strings with multiple resources
 

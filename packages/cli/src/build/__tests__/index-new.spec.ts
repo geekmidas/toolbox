@@ -12,6 +12,20 @@ import {
 } from '../../__tests__/test-helpers';
 import { buildApp, buildCommand, writeManifest } from '../index';
 
+/** The generated manifest, imported the way `sst.config.ts` imports it. */
+async function readManifest(path: string) {
+	const source = await readFile(path, 'utf-8');
+	const module = await import(`${path}?t=${Date.now()}`);
+	return {
+		source,
+		constructs: module.constructs as Record<string, any>,
+		backends: module.backends as Record<string, string>,
+	};
+}
+
+const ofKind = (constructs: Record<string, any>, kind: string) =>
+	Object.values(constructs).filter((d) => d.kind === kind);
+
 describe('buildCommand', () => {
 	itWithDir(
 		'should build endpoints, functions, and crons for multiple providers',
@@ -83,18 +97,18 @@ export default {
 				expect(endpointsContent).toContain('HonoEndpoint');
 
 				// Verify server manifest was created at .gkm/manifest/server.ts
-				const manifestPath = join(dir, '.gkm', 'manifest', 'server.ts');
-				const manifestContent = await readFile(manifestPath, 'utf-8');
-
-				// Verify manifest structure
-				expect(manifestContent).toContain('export const manifest = {');
-				expect(manifestContent).toContain('} as const;');
-				expect(manifestContent).toContain('apps:');
-				expect(manifestContent).toContain('routes:');
-
-				// Verify derived types are exported
-				expect(manifestContent).toContain('export type Route =');
-				expect(manifestContent).toContain('export type Authorizer =');
+				// The application's declarations, with no route table beside them.
+				// Its endpoints are on its surface, as on AWS, each served by the
+				// one process.
+				const { source, constructs } = await readManifest(
+					join(dir, '.gkm', 'manifest', 'server.ts'),
+				);
+				expect(source).not.toContain('export const manifest');
+				const [api] = ofKind(constructs, 'rest-api');
+				expect(api.endpoints.length).toBeGreaterThan(0);
+				expect(
+					api.endpoints.every((e: any) => e.handler === '.gkm/server/app.ts'),
+				).toBe(true);
 			} finally {
 				process.chdir(originalCwd);
 			}
@@ -213,34 +227,28 @@ export default {
 				).toContain('AmazonApiGatewayV2Endpoint');
 
 				// Verify AWS manifest was created at .gkm/manifest/aws.ts
-				const manifestPath = join(dir, '.gkm', 'manifest', 'aws.ts');
-				const manifestContent = await readFile(manifestPath, 'utf-8');
+				// Every route, function and cron is in the declarations, folded
+				// where it belongs — there is no route table beside them.
+				const { source, constructs } = await readManifest(
+					join(dir, '.gkm', 'manifest', 'aws.ts'),
+				);
+				expect(source).not.toContain('export const manifest');
 
-				// Verify manifest is TypeScript with as const
-				expect(manifestContent).toContain('export const manifest = {');
-				expect(manifestContent).toContain('} as const;');
+				const [api] = ofKind(constructs, 'rest-api');
+				expect(api.endpoints.map((e: any) => `${e.method} ${e.path}`)).toEqual(
+					expect.arrayContaining(['GET /users', 'POST /posts']),
+				);
 
-				// Verify derived types are exported
-				expect(manifestContent).toContain('export type Route =');
-				expect(manifestContent).toContain('export type Function =');
-				expect(manifestContent).toContain('export type Cron =');
-				expect(manifestContent).toContain('export type Authorizer =');
-
-				// Verify routes are included (JSON.stringify output uses quoted keys/values)
-				expect(manifestContent).toContain('/users');
-				expect(manifestContent).toContain('/posts');
-				expect(manifestContent).toContain('GET');
-				expect(manifestContent).toContain('POST');
-
-				// Verify functions are included
-				expect(manifestContent).toContain('processDataFunction');
-				expect(manifestContent).toContain('sendEmailFunction');
-
-				// Verify crons are included
-				expect(manifestContent).toContain('dailyCleanupCron');
-				expect(manifestContent).toContain('hourlyReportCron');
-				expect(manifestContent).toContain('rate(1 day)');
-				expect(manifestContent).toContain('cron(0 * * * ? *)');
+				expect(constructs.processDataFunction).toMatchObject({
+					kind: 'function',
+					handler: '.gkm/aws/functions/processDataFunction.handler',
+				});
+				expect(constructs.sendEmailFunction?.kind).toBe('function');
+				expect(constructs.dailyCleanupCron).toMatchObject({
+					kind: 'cron',
+					schedule: 'rate(1 day)',
+				});
+				expect(constructs.hourlyReportCron?.schedule).toBe('cron(0 * * * ? *)');
 			} finally {
 				process.chdir(originalCwd);
 			}
@@ -550,12 +558,12 @@ export default {
 					]),
 				);
 
-				const manifest = await readFile(
+				const { constructs } = await readManifest(
 					join(dir, '.gkm/manifest/aws.ts'),
-					'utf-8',
 				);
-				expect(manifest).toContain(
-					'"handler": ".gkm/aws/routes/testEndpoint.handler"',
+				const [api] = ofKind(constructs, 'rest-api');
+				expect(api.endpoints[0].handler).toBe(
+					'.gkm/aws/routes/testEndpoint.handler',
 				);
 			} finally {
 				process.chdir(originalCwd);
@@ -631,14 +639,8 @@ export default {
 				backends: {},
 			});
 
-			const manifest = await readFile(
+			const { constructs } = await readManifest(
 				join(dir, '.gkm/manifest/aws.ts'),
-				'utf-8',
-			);
-			const constructs = JSON.parse(
-				manifest
-					.split('export const constructs = ')[1]!
-					.split(' as const;')[0]!,
 			);
 			expect(constructs.Api.endpoints[0].handler).toBe(
 				'apps/api/.gkm/aws/routes/x.handler',
