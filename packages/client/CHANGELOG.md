@@ -1,5 +1,13 @@
 # @geekmidas/client
 
+## 10.0.0-alpha.47
+
+### Patch Changes
+
+- Updated dependencies [[`10ef53d`](https://github.com/geekmidas/toolbox/commit/10ef53d921d519afa62c773a6682581e19c06b1e)]:
+  - @geekmidas/constructs@10.0.0-alpha.47
+  - @geekmidas/schema@10.0.0-alpha.47
+
 ## 10.0.0-alpha.46
 
 ### Patch Changes
