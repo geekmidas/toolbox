@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { cacheBackendsIn, driversFor } from '../drivers';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { cacheBackendsIn, driversFor, storageDriversFor } from '../drivers';
 
 /** A manifest as `cacheBackendsIn` reads it — kind and parent, nothing else. */
 const manifest = (
@@ -80,5 +83,50 @@ describe('driversFor', () => {
 			'@geekmidas/cache',
 		);
 		expect(driversFor({ appRoot }).imports).not.toContain('@geekmidas/cache');
+	});
+});
+
+describe('storageDriversFor', () => {
+	let root: string;
+	let app: string;
+
+	const pkg = (dir: string, dependencies: Record<string, string> = {}) =>
+		writeFile(
+			join(dir, 'package.json'),
+			JSON.stringify({ name: 'x', dependencies }),
+		);
+
+	beforeEach(async () => {
+		root = await mkdtemp(join(tmpdir(), 'gkm-drivers-'));
+		app = join(root, 'apps', 'api');
+		await mkdir(app, { recursive: true });
+		await pkg(app);
+	});
+
+	afterEach(async () => {
+		await rm(root, { recursive: true, force: true });
+	});
+
+	it('registers S3 for a workspace that lists storage once, at its root', async () => {
+		// Where Node resolves it from, and where a workspace with one copy of
+		// every dependency keeps it. Reading only the app's file left the entry
+		// without a driver, and every bucket service threw on injection.
+		await pkg(root, { '@geekmidas/storage': '~10.0.0' });
+
+		expect(storageDriversFor(app).setup).toBe(
+			'registerStorageDriver(s3Driver);',
+		);
+	});
+
+	it('registers S3 for an app that lists it itself', async () => {
+		await pkg(app, { '@geekmidas/storage': '~10.0.0' });
+
+		expect(storageDriversFor(app).imports).toContain('@geekmidas/storage/aws');
+	});
+
+	it('registers nothing where storage is not installed', async () => {
+		await pkg(root);
+
+		expect(storageDriversFor(app)).toEqual({ imports: '', setup: '' });
 	});
 });

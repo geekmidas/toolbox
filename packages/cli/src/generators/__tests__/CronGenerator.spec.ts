@@ -322,6 +322,80 @@ describe('CronGenerator', () => {
 			);
 		});
 
+		describe('server provider under gkm dev', () => {
+			afterEach(() => {
+				vi.useRealTimers();
+			});
+
+			itWithDir(
+				'runs each cron in the dev process when there is no pg-boss to schedule through',
+				async ({ dir }) => {
+					// The AWS target: crons are EventBridge rules once deployed, and
+					// locally there is no broker. `gkm dev` marks the server it starts
+					// with GKM_DEV_PID, so this is one process and a timer is safe.
+					const outputDir = join(dir, 'output');
+					const cronsDir = join(dir, 'crons');
+					await mkdir(outputDir, { recursive: true });
+					await createMockCronFile(
+						cronsDir,
+						'cleanup.ts',
+						'cleanup',
+						'rate(1 minute)',
+					);
+
+					const constructs = await generator.load('**/crons/*.ts', dir);
+					await generator.build(context, constructs, outputDir, {
+						target: 'server',
+					});
+
+					vi.useFakeTimers();
+					vi.setSystemTime(new Date('2026-10-04T10:00:30Z'));
+					const ran = vi.spyOn(console, 'log').mockImplementation(() => {});
+					const logger = { info: vi.fn(), error: vi.fn() };
+
+					const { setupCrons, stopCrons } = await import(
+						join(outputDir, 'crons.ts')
+					);
+					const { EnvironmentParser } = await import('@geekmidas/envkit');
+					await setupCrons(
+						new EnvironmentParser({ GKM_DEV_PID: '4242' }),
+						logger,
+					);
+
+					await vi.advanceTimersByTimeAsync(30_000);
+					expect(ran).toHaveBeenCalledWith('Running cron job: cleanup');
+					expect(logger.error).not.toHaveBeenCalled();
+
+					await stopCrons();
+				},
+			);
+
+			itWithDir(
+				'still refuses outside gkm dev, where a timer would fire once per replica',
+				async ({ dir }) => {
+					const outputDir = join(dir, 'output');
+					const cronsDir = join(dir, 'crons');
+					await mkdir(outputDir, { recursive: true });
+					await createMockCronFile(cronsDir, 'cleanup.ts', 'cleanup');
+
+					const constructs = await generator.load('**/crons/*.ts', dir);
+					await generator.build(context, constructs, outputDir, {
+						target: 'server',
+					});
+
+					const logger = { info: vi.fn(), error: vi.fn() };
+					const { setupCrons } = await import(join(outputDir, 'crons.ts'));
+					const { EnvironmentParser } = await import('@geekmidas/envkit');
+					await setupCrons(new EnvironmentParser({}), logger);
+
+					expect(logger.error).toHaveBeenCalledWith(
+						{ crons: ['cleanup'] },
+						expect.stringContaining('nowhere to keep their schedule'),
+					);
+				},
+			);
+		});
+
 		describe('non aws-lambda provider', () => {
 			itWithDir(
 				'should return empty array for server provider',

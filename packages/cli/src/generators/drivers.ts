@@ -15,7 +15,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { type CacheBackend, DEFAULT_CACHE } from '../types.js';
 
 /** The `s3://` driver, which serves MinIO locally and S3 deployed. */
@@ -134,13 +134,26 @@ export function cacheBackendsIn(
  * is generated before discovery has run on the watcher's rebuild path — and an
  * app that installed `@geekmidas/storage` has already paid for the SDK it would
  * otherwise resolve lazily.
+ *
+ * "Installed" the way Node resolves it: the app's own `package.json`, or any
+ * directory above it. A workspace that lists `@geekmidas/storage` once, at its
+ * root, is the common case — and reading only the app's file registered no S3
+ * driver there, so the first service to inject a bucket threw
+ * `UnregisteredStorageScheme`. A queue whose consumer depended on one logged
+ * that once and was never polled.
  */
 export function storageDriversFor(appRoot: string): RuntimeDrivers {
 	return dependsOnStorage(appRoot) ? S3 : NONE;
 }
 
 function dependsOnStorage(appRoot: string): boolean {
-	const manifest = join(appRoot, 'package.json');
+	for (let dir = resolve(appRoot); ; dir = dirname(dir)) {
+		if (listsStorage(join(dir, 'package.json'))) return true;
+		if (dirname(dir) === dir) return false;
+	}
+}
+
+function listsStorage(manifest: string): boolean {
 	if (!existsSync(manifest)) return false;
 
 	try {
