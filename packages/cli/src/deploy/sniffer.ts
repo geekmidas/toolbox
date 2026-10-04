@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { SniffResult } from '@geekmidas/envkit/sniffer';
+import { withOwningTsconfigJsx } from '../owningTsconfigJsx.js';
 import { normalizeRoutes } from '../workspace/client-generator.js';
 import { getPublicEnvPrefix } from '../workspace/publicEnv.js';
 import type { NormalizedAppConfig } from '../workspace/types.js';
@@ -309,8 +310,10 @@ async function sniffEntryFile(
 				stdio: ['ignore', 'pipe', 'pipe'],
 				env: {
 					...process.env,
-					// Ensure tsx is available for TypeScript entry files
-					NODE_OPTIONS: '--import=tsx',
+					// Ensure tsx is available for TypeScript entry files, with each
+					// `.tsx` compiled by its own tsconfig's JSX settings rather than
+					// whatever the app's tsconfig includes.
+					NODE_OPTIONS: withOwningTsconfigJsx('--import=tsx'),
 				},
 			},
 		);

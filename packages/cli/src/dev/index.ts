@@ -28,6 +28,7 @@ import {
 	prepareEntryCredentials,
 } from '../credentials';
 import { resolveOpenApiConfig } from '../openapi';
+import { withOwningTsconfigJsx } from '../owningTsconfigJsx.js';
 import { describeServices } from '../reconcile/containers.js';
 import { FAKE_ENV, reconcileWorkspace } from '../reconcile/workspace.js';
 import { toEmbeddableSecrets } from '../secrets/storage.js';
@@ -1254,7 +1255,11 @@ class EntryRunner {
 
 	private async runProcess(): Promise<void> {
 		// Pass PORT as environment variable
-		const env = { ...process.env, PORT: String(this.port) };
+		const env = {
+			...process.env,
+			PORT: String(this.port),
+			NODE_OPTIONS: withOwningTsconfigJsx(process.env.NODE_OPTIONS),
+		};
 
 		this.childProcess = spawn(
 			...tsxCommand(dirname(this.wrapperPath), [this.wrapperPath]),
@@ -1603,6 +1608,11 @@ class DevServer {
 					NODE_ENV: 'development',
 					// So the server can exit with this process — see the entry.
 					GKM_DEV_PID: String(process.pid),
+					// The app runs from its own directory, and tsx compiles only
+					// what that tsconfig includes with its options — so a
+					// construct's `.tsx` in the workspace would lose its JSX
+					// settings. See `bin/owning-tsconfig-jsx.mjs`.
+					NODE_OPTIONS: withOwningTsconfigJsx(process.env.NODE_OPTIONS),
 				},
 				detached: true,
 			},

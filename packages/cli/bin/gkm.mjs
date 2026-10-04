@@ -19,6 +19,10 @@ if (
 	const { createRequire } = await import('node:module');
 	const require = createRequire(import.meta.url);
 	const tsxPath = pathToFileURL(require.resolve('tsx')).href;
+	// Before tsx, so tsx reads each `.tsx` through it and compiles its JSX the
+	// way the file's own tsconfig says. See `owning-tsconfig-jsx.mjs`.
+	const jsxPath = new URL('./owning-tsconfig-jsx-register.mjs', import.meta.url)
+		.href;
 
 	const { execFileSync } = await import('node:child_process');
 	try {
@@ -26,7 +30,8 @@ if (
 			stdio: 'inherit',
 			env: {
 				...process.env,
-				NODE_OPTIONS: `${nodeOptions} --import ${tsxPath}`.trim(),
+				NODE_OPTIONS:
+					`${nodeOptions} --import ${jsxPath} --import ${tsxPath}`.trim(),
 			},
 		});
 	} catch (e) {
