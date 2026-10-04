@@ -1,3 +1,4 @@
+import { type ChildProcess, fork } from 'node:child_process';
 import type { EventEmitter } from 'node:events';
 import {
 	existsSync,
@@ -20,6 +21,7 @@ import {
 } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { FileSecretsStore } from '../../secrets/file';
+import { APP_TAG_ENV, appTag } from '../appPorts';
 
 /**
  * What `gkm dev` does between reading the config and handing a process to the
@@ -84,9 +86,7 @@ vi.mock('chokidar', async () => {
 	};
 });
 
-const { devCommand, DevPortInUse, WorkspacePortsInUse } = await import(
-	'../index'
-);
+const { devCommand, WorkspacePortsInUse } = await import('../index');
 
 /** Resolves once `check` holds, polling — dev mode's steps are all async. */
 async function until(check: () => boolean, timeout = 15_000): Promise<void> {
@@ -106,6 +106,33 @@ async function occupiedPort(): Promise<{ port: number; server: Server }> {
 	if (!address || typeof address === 'string') throw new Error('no port');
 	return { port: address.port, server };
 }
+
+/**
+ * A port held by this workspace's own app, as a previous `gkm dev` leaves it:
+ * a real process, tagged the way gkm tags what it starts, so the lookup that
+ * tells a leftover from another project's server reads it for real.
+ */
+async function occupiedByApp(
+	root: string,
+	app: string,
+): Promise<{ port: number; holder: ChildProcess }> {
+	const script = join(root, `.listen-${app}.mjs`);
+	writeFileSync(
+		script,
+		"import { createServer } from 'node:net';\n" +
+			'const s = createServer().listen(0, () => process.send(s.address().port));\n',
+	);
+	const holder = fork(script, [], {
+		env: { ...process.env, [APP_TAG_ENV]: appTag(root, app) },
+		stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
+	});
+	const port = await new Promise<number>((r) => holder.once('message', r));
+	return { port, holder };
+}
+
+/** The ports apps were given locally, as `.gkm/app-ports.json` keeps them. */
+const appPortsIn = (root: string): Record<string, number> =>
+	JSON.parse(readFileSync(join(root, '.gkm', 'app-ports.json'), 'utf-8'));
 
 /**
  * A port nothing holds. A test that starts the dev server takes one rather than
@@ -420,8 +447,9 @@ ${apps}
 
 		// Checked before turbo starts anything: a port held by a server a
 		// previous run left behind failed one app while the others ran.
-		it("starts nothing when an app's provisioned port is taken", async () => {
-			const { port, server } = await occupiedPort();
+		it('starts nothing when this workspace already has the app running', async () => {
+			// A previous `gkm dev` left it: moving would start a second copy.
+			const { port, holder } = await occupiedByApp(dir, 'api');
 
 			try {
 				workspace(
@@ -434,6 +462,31 @@ ${apps}
 					(error as InstanceType<typeof WorkspacePortsInUse>).held,
 				).toEqual([expect.objectContaining({ app: 'api', port })]);
 				expect(fakes.spawned).toEqual([]);
+			} finally {
+				holder.kill();
+			}
+		});
+
+		it('moves an app off a port another project holds, and keeps the move', async () => {
+			// Another project's dev server — untagged, so not ours. Two projects
+			// that both default to 3000 must be able to run at once.
+			const { port, server } = await occupiedPort();
+
+			try {
+				workspace(
+					`    api: { type: 'backend', path: 'apps/api', port: ${port} },`,
+				);
+
+				const running = devCommand({});
+				await until(() => fakes.spawned.length === 1);
+
+				const moved = appPortsIn(dir).api!;
+				expect(moved).not.toBe(port);
+				expect(output(log)).toContain(`api: ${port} is held by`);
+				expect(output(log)).toContain(`using ${moved}`);
+
+				fakes.spawned[0]!.emit('exit', 0);
+				await running;
 			} finally {
 				server.close();
 			}
@@ -631,10 +684,10 @@ ${apps}
 			);
 		});
 
-		// Every other app's URL, CORS list and cookie domain names this port. A
-		// run that found it held moved to the next free one — in a workspace,
-		// usually another app's — and two servers fought over it.
-		it('refuses a provisioned port that is taken, rather than moving off it', async () => {
+		// Run on its own, an app follows the same rule the workspace start does:
+		// off another project's port, never onto a sibling's — every address an
+		// app is handed is derived from where it landed, so nothing else moves.
+		it('moves off a port another project holds, and serves there', async () => {
 			const { port, server } = await occupiedPort();
 
 			try {
@@ -644,12 +697,32 @@ ${apps}
 				);
 				process.chdir(api);
 
-				const error = await devCommand({}).catch((e: unknown) => e);
-				expect(error).toBeInstanceOf(DevPortInUse);
-				expect((error as InstanceType<typeof DevPortInUse>).port).toBe(port);
-				expect(fakes.spawned).toEqual([]);
+				await devCommand({});
+
+				const moved = appPortsIn(dir).api!;
+				expect(moved).not.toBe(port);
+				const args = fakes.spawned[0]!.args;
+				expect(args[args.indexOf('--port') + 1]).toBe(String(moved));
 			} finally {
 				server.close();
+			}
+		});
+
+		it('refuses when this app is already running, rather than starting a second copy', async () => {
+			const { port, holder } = await occupiedByApp(dir, 'api');
+
+			try {
+				const api = workspaceWithApp(
+					`    api: { type: 'backend', path: 'apps/api', port: ${port} },`,
+					'api',
+				);
+				process.chdir(api);
+
+				const error = await devCommand({}).catch((e: unknown) => e);
+				expect(error).toBeInstanceOf(WorkspacePortsInUse);
+				expect(fakes.spawned).toEqual([]);
+			} finally {
+				holder.kill();
 			}
 		});
 

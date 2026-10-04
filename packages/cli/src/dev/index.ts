@@ -48,6 +48,15 @@ import {
 	type MobileFramework,
 	type NormalizedWorkspace,
 } from '../workspace/index.js';
+import {
+	APP_TAG_ENV,
+	type AppRunning,
+	appTag,
+	assignAppPorts,
+	describeHolder,
+	holderOf,
+	withAppPorts,
+} from './appPorts.js';
 import { closeFakes, serveFakes } from './fakes.js';
 
 // Re-export shared utilities from credentials module so existing imports
@@ -284,8 +293,35 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	const appRoot = appConfig.appRoot;
 	const secretsRoot = appConfig.workspaceRoot; // Where .gkm/secrets/ lives
 	const workspaceAppName = appConfig.appName;
-	const workspaceAppPort = appConfig.app.port;
-	const workspace: NormalizedWorkspace = appConfig.workspace;
+	// The same rule the workspace start applies, for this app alone — run on
+	// its own, it moves off another project's port too. Under the workspace
+	// start its port was just checked free, so it stays put.
+	const assigned = await assignAppPorts(
+		appConfig.workspace,
+		[workspaceAppName],
+		{
+			free: isPortAvailable,
+			holder: holderOf,
+		},
+	);
+	if (assigned.running.length > 0) {
+		throw new WorkspacePortsInUse(assigned.running);
+	}
+	for (const { app, from, to, holder } of assigned.moved) {
+		logger.log(
+			`↪️  ${app}: ${from} is held by ${describeHolder(holder)}, which is not this workspace's — using ${to}`,
+		);
+	}
+	const workspace: NormalizedWorkspace = withAppPorts(
+		appConfig.workspace,
+		assigned.ports,
+	);
+	const workspaceAppPort =
+		assigned.ports[workspaceAppName] ?? appConfig.app.port;
+	// Tagged, so a later start can tell this app's server from another
+	// project's on the same port. The server is spawned from this process and
+	// inherits it, and so does anything it forks.
+	process.env[APP_TAG_ENV] = appTag(appConfig.workspaceRoot, workspaceAppName);
 
 	// An app with an entry point (a non-gkm app like better-auth) runs it.
 	if (appConfig.app.entry) {
@@ -834,9 +870,31 @@ export async function loadDevSecrets(
  * 4. Spawn turbo run dev with injected env vars
  */
 async function workspaceDevCommand(
-	workspace: NormalizedWorkspace,
+	configured: NormalizedWorkspace,
 	options: DevOptions,
 ): Promise<void> {
+	// Each app's local port, before anything reads one: the edge routes, every
+	// address an app is handed, and the ready lines all follow it. An app whose
+	// port another project holds moves; one this workspace already has running
+	// is refused, since moving would start a second copy beside it.
+	const scoped = options.app
+		? [options.app]
+		: options.filter
+			? []
+			: Object.keys(configured.apps);
+	const assigned = await assignAppPorts(configured, scoped, {
+		free: isPortAvailable,
+		holder: holderOf,
+	});
+	if (assigned.running.length > 0) {
+		throw new WorkspacePortsInUse(assigned.running);
+	}
+	for (const { app, from, to, holder } of assigned.moved) {
+		logger.log(
+			`↪️  ${app}: ${from} is held by ${describeHolder(holder)}, which is not this workspace's — using ${to}`,
+		);
+	}
+	const workspace = withAppPorts(configured, assigned.ports);
 	const appCount = Object.keys(workspace.apps).length;
 	const frontendApps = Object.entries(workspace.apps).filter(
 		([_, app]) => app.type === 'web',
@@ -1045,23 +1103,6 @@ async function workspaceDevCommand(
 		// Each app reconciles again, and must point at the same fakes.
 		...(options.fake ? { [FAKE_ENV]: '1' } : {}),
 	};
-
-	// Every app's port, before anything starts. Each app checks its own as it
-	// starts too, but by then turbo has launched the rest, and a port held by a
-	// server a previous run left behind fails one app while the others run.
-	const scoped = options.app
-		? [options.app]
-		: options.filter
-			? []
-			: Object.keys(workspace.apps);
-	const held: { app: string; port: number; holder: string | undefined }[] = [];
-	for (const appName of scoped) {
-		const port = workspace.apps[appName]?.port;
-		if (port && !(await isPortAvailable(port))) {
-			held.push({ app: appName, port, holder: listenerOn(port) });
-		}
-	}
-	if (held.length > 0) throw new WorkspacePortsInUse(held);
 
 	// Spawn turbo run dev
 
@@ -1493,23 +1534,23 @@ export class DevPortInUse extends Error {
 }
 
 /** Apps whose provisioned ports are held before the workspace starts. */
+/**
+ * This workspace's own apps are already running — left by a previous start.
+ *
+ * Only these are refused: a port another project holds is moved off instead
+ * (see `assignAppPorts`), but moving off our own would start a second copy.
+ */
 export class WorkspacePortsInUse extends Error {
-	constructor(
-		readonly held: readonly {
-			app: string;
-			port: number;
-			holder: string | undefined;
-		}[],
-	) {
+	constructor(readonly held: readonly AppRunning[]) {
 		super(
-			`Ports this workspace's apps are provisioned on are already in use:\n${held
+			`This workspace's apps are already running:\n${held
 				.map(
 					({ app, port, holder }) =>
-						`   ${app}: ${port}${holder ? ` — held by ${holder}` : ''}`,
+						`   ${app}: ${port} — ${describeHolder(holder)}`,
 				)
 				.join('\n')}\n` +
-				'Stop what is holding them (often dev servers a previous run left ' +
-				'behind) and start again. Nothing was started.',
+				'A previous `gkm dev` left them behind. Stop them (kill the pids above) ' +
+				'and start again. Nothing was started.',
 		);
 		this.name = 'WorkspacePortsInUse';
 	}

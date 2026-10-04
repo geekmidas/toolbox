@@ -77,11 +77,21 @@ directory — which is what turbo does — it starts that one.
 ### 3. Validate Apps
 
 - **Port conflicts** — no two apps may share a port.
-- **Ports free** — every app's provisioned port is checked before anything
-  starts. If one is held (usually a dev server a previous run left behind), dev
-  stops with `WorkspacePortsInUse`, naming each port and what holds it. It never
-  moves an app to another port: every other app's URL, CORS origins and cookie
-  domain name that one.
+- **Ports** — every app's port is settled before anything starts, by asking
+  what holds it. Each process gkm starts is tagged with the workspace and the
+  app (`GKM_DEV_APP`), and whatever binds the port inherits the tag:
+  - **held by this same app** — a dev server a previous run left behind — dev
+    stops with `WorkspacePortsInUse`, naming the pid. Moving would start a second
+    copy beside it.
+  - **held by anything else** — another project's dev server on 3000 — the app
+    moves to the next free port, says so (`↪️ api: 3000 is held by next-server
+    (pid 81245), which is not this workspace's — using 3004`), and keeps it in
+    `.gkm/app-ports.json`. Nothing else has to follow: the edge's URLs carry no
+    app port, and every address an app or a phone is handed is derived from
+    where it landed.
+
+  `gkm exec` follows the same rule but never refuses, since the command it runs
+  may bind nothing. Deploys never read `.gkm/app-ports.json`.
 - **Frontend validation** — verifies Next.js apps have the expected setup
   (package.json, next.config.ts, etc.).
 

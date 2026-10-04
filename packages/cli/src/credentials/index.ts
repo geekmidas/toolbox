@@ -381,7 +381,34 @@ export async function prepareEntryCredentials(options: {
 		secretsRoot = workspace?.root ?? findSecretsRoot(cwd);
 	}
 
-	// Determine port: explicit --port > workspace config > default 3000
+	// The app's local port, by the rule `gkm dev` applies: moved off a port
+	// another project holds, and kept. Never refused here — the command may be
+	// a build or a script that binds nothing, so this app's own dev server
+	// holding the port is no reason to stop it.
+	if (appName && workspace && options.explicitPort === undefined) {
+		const { assignAppPorts, describeHolder, holderOf, withAppPorts } =
+			await import('../dev/appPorts.js');
+		const assigned = await assignAppPorts(workspace, [appName], {
+			free: isPortAvailable,
+			holder: holderOf,
+		});
+		for (const { app, from, to, holder } of assigned.moved) {
+			logger.log(
+				`↪️  ${app}: ${from} is held by ${describeHolder(holder)}, which is not this workspace's — using ${to}`,
+			);
+		}
+		workspace = withAppPorts(workspace, assigned.ports);
+		workspaceAppPort = assigned.ports[appName] ?? workspaceAppPort;
+	}
+
+	// Tagged, so a later `gkm dev` can tell what this starts from another
+	// project's process on the same port; the command inherits it.
+	if (appName) {
+		const { APP_TAG_ENV, appTag } = await import('../dev/appPorts.js');
+		process.env[APP_TAG_ENV] = appTag(secretsRoot, appName);
+	}
+
+	// Determine port: explicit --port > the app's local port > default 3000
 	const resolvedPort = options.explicitPort ?? workspaceAppPort ?? 3000;
 
 	// Load secrets and inject PORT. Outside a workspace there are no declared
