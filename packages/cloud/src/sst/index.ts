@@ -34,6 +34,7 @@ export {
 } from './aws/DatabaseBootstrap';
 export { DatabaseReader, DatabaseSchema } from './aws/DerivedDatabase';
 export { Email, EmailNeedsUrl, type EmailProps } from './aws/Email';
+export { Encryption, type EncryptionProps } from './aws/Encryption';
 export { FileServer, type FileServerProps } from './aws/FileServer';
 export { Function, type FunctionProps } from './aws/Function';
 export {

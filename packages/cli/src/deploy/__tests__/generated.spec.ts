@@ -1,3 +1,4 @@
+import { parseKeyring } from '@geekmidas/constructs/encryption';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import { initStageSecrets } from '../../secrets/storage';
@@ -10,6 +11,7 @@ const manifest = {
 		id: 'Stripe',
 		provides: ['STRIPE_CREDENTIALS'],
 	},
+	Pii: { kind: 'encryption', id: 'Pii', provides: ['PII_URL'] },
 } as unknown as ConstructManifest;
 
 describe('withGeneratedSecrets', () => {
@@ -19,7 +21,11 @@ describe('withGeneratedSecrets', () => {
 			manifest,
 		);
 
-		expect(generated.sort()).toEqual(['AUTH_SECRET', 'seed']);
+		expect(generated.sort()).toEqual(['AUTH_SECRET', 'PII_URL', 'seed']);
+		// One random key to start with; later keys come from a rotate.
+		expect(
+			parseKeyring('Pii', secrets.custom.PII_URL!).keys.map(({ id }) => id),
+		).toEqual(['k1']);
 		expect(secrets.seed).toMatch(/^[\w-]{43}$/);
 		expect(secrets.custom.AUTH_SECRET).toMatch(/^[\w-]{43}$/);
 		// A credential is issued by somebody else; it is never generated.
@@ -40,7 +46,9 @@ describe('withGeneratedSecrets', () => {
 		const held = {
 			...initStageSecrets('prod'),
 			seed: 'existing-seed',
-			custom: { AUTH_SECRET: 'set-by-hand' },
+			// A rotated keyring included: a redeploy must never replace it, or
+			// everything its older keys wrote stops opening.
+			custom: { AUTH_SECRET: 'set-by-hand', PII_URL: 'a-rotated-keyring' },
 		};
 
 		const { secrets, generated } = withGeneratedSecrets(held, manifest);

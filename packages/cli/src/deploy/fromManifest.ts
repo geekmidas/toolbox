@@ -528,6 +528,23 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	},
 
 	/**
+	 * The keyring the stage keeps in its secrets.
+	 *
+	 * Generated on the first deploy (`withGeneratedSecrets`) and rotated only
+	 * by `gkm encryption:rotate`, so a redeploy never changes a key and nothing
+	 * written becomes unreadable. Nothing is created in Dokploy: the process
+	 * holds the keyring.
+	 */
+	encryption: async (declaration, context) => {
+		if (declaration.kind !== 'encryption') {
+			throw new WrongKind(declaration.kind);
+		}
+
+		const key = provideKey(declaration.id, 'url');
+		return { provides: { [key]: supplied(declaration.id, key, context) } };
+	},
+
+	/**
 	 * A third party's credentials, as the stage was given them.
 	 *
 	 * Nothing is created and nothing derived: the value was issued by somebody

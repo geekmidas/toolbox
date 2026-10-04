@@ -145,6 +145,8 @@ Object.assign(globalThis, {
 			StaticSite: StubComponent,
 			Router: StubRouter,
 			Postgres: StubPostgres,
+			/** A grant, recorded as given, so a link's IAM is assertable. */
+			permission: (args: unknown) => ({ permission: args }),
 		},
 	},
 	$util: util,

@@ -85,6 +85,9 @@ const CONTAINERLESS: Partial<Record<DeclarationKind, true>> = {
 	// A credential has no address either — and unlike a secret it has no value
 	// this target can derive, because it was issued by somebody else.
 	credential: true,
+	// An encryption key is a value too: a keyring the target derives, the way
+	// it derives a secret.
+	encryption: true,
 	// A surface answers on the app's own port. It is the first kind whose
 	// address belongs to something gkm starts rather than something Docker does.
 	'rest-api': true,

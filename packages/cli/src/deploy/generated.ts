@@ -8,6 +8,8 @@
  *   who could read the repo.
  * - **Each `secret` construct's value** — an auth server's signing secret —
  *   random, rather than derived.
+ * - **Each `encryption` construct's keyring** — one random key and an index
+ *   key. Later keys are added by `gkm encryption:rotate`, never by a deploy.
  *
  * Both are generated on the first deploy that needs them and written to the
  * stage's store, so every later deploy reads the same values: sessions survive
@@ -16,6 +18,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
+import { generateKeyring } from '@geekmidas/constructs/encryption';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import type { StageSecrets } from '../secrets/types.js';
 
@@ -39,12 +42,15 @@ export function withGeneratedSecrets(
 	const custom = { ...secrets.custom };
 
 	for (const declaration of Object.values(manifest)) {
-		if (declaration?.kind !== 'secret') continue;
+		if (declaration?.kind !== 'secret' && declaration?.kind !== 'encryption') {
+			continue;
+		}
 
 		const key = declaration.provides?.[0];
 		if (!key || custom[key]) continue;
 
-		custom[key] = random();
+		custom[key] =
+			declaration.kind === 'encryption' ? generateKeyring() : random();
 		generated.push(key);
 	}
 

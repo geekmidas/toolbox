@@ -51,6 +51,7 @@ pnpm add @geekmidas/constructs
 | `/file-server` | `FileServer` — a domain that serves a bucket's objects |
 | `/cache` | `Cache` — a declared cache |
 | `/credential` | `Credential` — a third-party credential with a shape |
+| `/encryption` | `Encryption` — a key that encrypts what the application stores |
 | `/external-api` | `ExternalApi` — an HTTP API somebody else runs, faked in tests |
 | `/email` | `Email` — declared outbound mail |
 | `/rest-api` | `RestApi` — an API surface |
@@ -111,6 +112,7 @@ drift.
 | `FileServer` | `/file-server` | a `StorageClient` **superset** — plus `url()` and `signedUrl()` |
 | `Cache` | `/cache` | `CacheClient` |
 | `Credential` | `/credential` | the parsed, validated value — no `await` at the call site |
+| `Encryption` | `/encryption` | a `Cipher` — `encrypt`, `decrypt`, `index`, `reencrypt` |
 | `ExternalApi` | `/external-api` | whatever its `client` builds — the real API, or its fake in tests and `gkm dev --fake` |
 | `Email` | `/email` | an `EmailClient` typed by your templates |
 | `Topic` | `/topic` | an `EventPublisher` typed to its events |
@@ -238,6 +240,59 @@ An external API with no fake fails `gkm test` and `gkm dev --fake` with
 `NoFake`, naming the file to create. Writing a fake, asserting on what it
 received, and how long its state lives are in the
 [testing guide](/guide/testing#fakes).
+
+### Encrypting what you store
+
+```typescript
+import { Encryption } from '@geekmidas/constructs/encryption';
+
+export const pii = new Encryption('Pii');
+
+export const createUser = router
+  .post('/users')
+  .dependsOn([pii])
+  .body(z.object({ email: z.email() }))
+  .handle(async ({ body, db, services }) => {
+    await db
+      .insertInto('users')
+      .values({
+        email: await services.pii.encrypt(body.email),
+        // A blind index: the same email always gives the same string, so the
+        // encrypted column can still be found without decrypting it.
+        emailIndex: await services.pii.index(body.email),
+      })
+      .execute();
+  });
+
+// …and to look one up
+db.selectFrom('users').where('emailIndex', '=', await services.pii.index(email));
+```
+
+The app names no cipher and holds no key. `Pii` provides one value, `PII_URL`,
+and its scheme picks the backend:
+
+| Where | What holds the key |
+|---|---|
+| `gkm dev`, `gkm test` | an `aes256gcm://` keyring derived from the project and stage — nothing to set |
+| A server stage (Dokploy) | an `aes256gcm://` keyring generated into the stage's secrets on its first deploy |
+| AWS | a KMS key (envelope encryption, rotated yearly by KMS) and a KMS HMAC key for the index — granted only to functions that `.dependsOn([pii])` |
+
+Every ciphertext names the key that wrote it (`gkm1.k2.…`), and is bound to the
+construct that wrote it — a value copied into another `Encryption`'s column does
+not decrypt. On a server stage, rotation is three steps:
+
+```bash
+gkm encryption:rotate Pii --stage production   # new writes use k2; k1 still opens
+# redeploy, then move what is stored onto k2:
+#   for each row: row.email = await services.pii.reencrypt(row.email)
+gkm encryption:retire Pii k1 --stage production
+```
+
+Retiring is never automatic — nothing but the sweep knows a key is unused — and
+a value still under an old key logs a warning the first time a process decrypts
+it. The index key does not rotate: a rotated index key would make every stored
+index miss. On AWS neither command applies; KMS keeps every version it rotated
+through, so nothing is ever stranded.
 
 ### The database, and what comes off it
 

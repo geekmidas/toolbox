@@ -410,6 +410,20 @@ gkm secrets:rotate --stage production --service postgres
 gkm secrets:import --stage production --file secrets.json
 ```
 
+An `Encryption` construct's keyring on a server stage is rotated and retired on
+its own, because retiring a key is a decision made against stored data:
+
+```bash
+# Add a new current key; older keys still decrypt what they wrote
+gkm encryption:rotate Pii --stage production
+
+# Remove a key once every value has been reencrypted off it
+gkm encryption:retire Pii k1 --stage production
+```
+
+Neither runs on the local stage (its keyring is derived) or on AWS (KMS rotates
+the key itself).
+
 Every `secrets:*` command reads and writes the stage's own store: for a
 deployed stage kept in SSM, `secrets:set` writes to SSM and `secrets:show`
 reads from it, with the default AWS credentials (`AWS_PROFILE`, or a deploy

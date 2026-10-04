@@ -753,6 +753,19 @@ describe('a third party’s credentials', () => {
 	});
 });
 
+describe('an encryption key on a server', () => {
+	const pii = {
+		Pii: { kind: 'encryption', id: 'Pii', provides: ['PII_URL'] },
+	} as unknown as ConstructManifest;
+
+	it('is the keyring the stage keeps, rotated keys and all', async () => {
+		const keyring = 'aes256gcm://local?keys=k2.a,k1.b&index=c';
+		const { env } = await provision({ supplied: { PII_URL: keyring } }, pii);
+
+		expect(env.PII_URL).toBe(keyring);
+	});
+});
+
 describe('an external API', () => {
 	const payfast = {
 		PayFast: {

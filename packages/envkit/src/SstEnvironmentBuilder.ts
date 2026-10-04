@@ -46,6 +46,8 @@ export enum ResourceType {
 	// A third party's credentials: stored as an SST secret, read under its own
 	// key rather than the secret's bare name.
 	Credential = 'gkm:aws:Credential',
+	// A KMS key and its HMAC key, handed over as one `kms://` URL.
+	Encryption = 'gkm:aws:Encryption',
 }
 
 /**
@@ -152,6 +154,7 @@ export type SstResource =
 type SecretValue = Omit<Secret, 'type'>;
 type ExternalApiValue = { url: string; credentials: string };
 type CredentialValue = { credentials: string };
+type EncryptionValue = { url: string };
 type PostgresValue = Omit<Postgres, 'type'>;
 type BucketValue = Omit<Bucket, 'type'>;
 type SnsTopicValue = Omit<SnsTopic, 'type'>;
@@ -220,6 +223,10 @@ const credentialResolver = (name: string, value: CredentialValue) => ({
 	[`${name}Credentials`]: value.credentials,
 });
 
+const encryptionResolver = (name: string, value: EncryptionValue) => ({
+	[`${name}Url`]: value.url,
+});
+
 const noopResolver = () => ({});
 
 /**
@@ -247,6 +254,7 @@ export const sstResolvers: Resolvers = {
 	[ResourceType.SSTQueue]: queueResolver,
 	[ResourceType.ExternalApi]: externalApiResolver,
 	[ResourceType.Credential]: credentialResolver,
+	[ResourceType.Encryption]: encryptionResolver,
 };
 
 /**
