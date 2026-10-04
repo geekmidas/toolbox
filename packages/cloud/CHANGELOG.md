@@ -1,5 +1,28 @@
 # @geekmidas/cloud
 
+## 10.0.0-alpha.51
+
+### Minor Changes
+
+- [#134](https://github.com/geekmidas/toolbox/pull/134) [`c0279b9`](https://github.com/geekmidas/toolbox/commit/c0279b98545445b1eceedc314d92d0fbd91953e3) Thanks [@geekmidas](https://github.com/geekmidas)! - :boom: `fromManifest`'s overrides are typed from the manifest
+
+  The overrides were `Record<string, Record<string, unknown>>`, so a misspelt id or a prop nothing reads went through without complaint, and a missing database `vpc` or mail `from` only showed up at synth, partway through a deploy. They are now `ManifestOverrides<typeof constructs, typeof backends>`:
+  - **Keys:** only the manifest's own construct ids.
+  - **Values:** what each construct's kind actually takes. Props the declaration already decides are left out, such as a database's `schema`, a queue's `fifo` or a site's `path`.
+  - **Required:** what the synth won't guess. That means a database's `vpc` and mail's `from`. Some depend on the backend: ElastiCache needs `vpc`, and Resend or SMTP mail needs `url`.
+  - **No key:** kinds with nothing to override, such as a database's reader or schema, a cache that lives in a database, functions and crons.
+
+  `ComponentOverrides` is removed, and `overrides` is now a required argument (pass `{}` when there is nothing to say). A manifest typed only as `ConstructManifest` still accepts the untyped record. The synth-time checks stay for anything that isn't typed.
+
+### Patch Changes
+
+- Updated dependencies [[`1aa7b43`](https://github.com/geekmidas/toolbox/commit/1aa7b434e28ef24e4bdf057847b510fa9cfa1fcf)]:
+  - @geekmidas/manifest@10.0.0-alpha.51
+  - @geekmidas/db@10.0.0-alpha.51
+  - @geekmidas/envkit@10.0.0-alpha.51
+  - @geekmidas/events@10.0.0-alpha.51
+  - @geekmidas/storage@10.0.0-alpha.51
+
 ## 10.0.0-alpha.50
 
 ### Patch Changes

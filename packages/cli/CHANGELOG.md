@@ -1,5 +1,38 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.51
+
+### Minor Changes
+
+- [#133](https://github.com/geekmidas/toolbox/pull/133) [`1aa7b43`](https://github.com/geekmidas/toolbox/commit/1aa7b434e28ef24e4bdf057847b510fa9cfa1fcf) Thanks [@geekmidas](https://github.com/geekmidas)! - :boom: `deploy.domains` for every target, a `subdomain` on each surface, and each `RestApi` on its own host
+  - ✨ **`deploy.dokploy.domains` is now `deploy.domains`.** A stage's base domain is a fact about the deployment, not about Dokploy, so every target reads it. Move the block up one level: `deploy: { domains: { production: 'myapp.com' }, dokploy: { endpoint, registry } }`. A stage with no domain fails with `NoDomainForStage`, naming the stage and where to add it.
+  - ✨ **`subdomain` on `RestApi`, `BetterAuth` and `StaticSite`.** A surface answers on `{subdomain}.{domain}` — `new RestApi('Api', { path: 'apps/api', subdomain: 'v1' })` is `v1.myapp.com` — and on the same label locally, `v1.shop.localhost`. Absent, the id kebab-cased, as before.
+  - **Each `RestApi` on its own host.** A deploy handed every surface the first backend's address, so a workspace with two APIs pointed both at one. Each now gets its own app's URL.
+
+### Patch Changes
+
+- [#134](https://github.com/geekmidas/toolbox/pull/134) [`c0279b9`](https://github.com/geekmidas/toolbox/commit/c0279b98545445b1eceedc314d92d0fbd91953e3) Thanks [@geekmidas](https://github.com/geekmidas)! - :boom: `fromManifest`'s overrides are typed from the manifest
+
+  The overrides were `Record<string, Record<string, unknown>>`, so a misspelt id or a prop nothing reads went through without complaint, and a missing database `vpc` or mail `from` only showed up at synth, partway through a deploy. They are now `ManifestOverrides<typeof constructs, typeof backends>`:
+  - **Keys:** only the manifest's own construct ids.
+  - **Values:** what each construct's kind actually takes. Props the declaration already decides are left out, such as a database's `schema`, a queue's `fifo` or a site's `path`.
+  - **Required:** what the synth won't guess. That means a database's `vpc` and mail's `from`. Some depend on the backend: ElastiCache needs `vpc`, and Resend or SMTP mail needs `url`.
+  - **No key:** kinds with nothing to override, such as a database's reader or schema, a cache that lives in a database, functions and crons.
+
+  `ComponentOverrides` is removed, and `overrides` is now a required argument (pass `{}` when there is nothing to say). A manifest typed only as `ConstructManifest` still accepts the untyped record. The synth-time checks stay for anything that isn't typed.
+
+- Updated dependencies [[`1aa7b43`](https://github.com/geekmidas/toolbox/commit/1aa7b434e28ef24e4bdf057847b510fa9cfa1fcf)]:
+  - @geekmidas/constructs@10.0.0-alpha.51
+  - @geekmidas/manifest@10.0.0-alpha.51
+  - @geekmidas/cache@10.0.0-alpha.51
+  - @geekmidas/db@10.0.0-alpha.51
+  - @geekmidas/envkit@10.0.0-alpha.51
+  - @geekmidas/errors@10.0.0-alpha.51
+  - @geekmidas/logger@10.0.0-alpha.51
+  - @geekmidas/schema@10.0.0-alpha.51
+  - @geekmidas/services@10.0.0-alpha.51
+  - @geekmidas/telescope@10.0.0-alpha.51
+
 ## 10.0.0-alpha.50
 
 ### Minor Changes
