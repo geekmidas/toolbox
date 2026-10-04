@@ -650,9 +650,9 @@ export default $config({
 });
 ```
 
-The two inputs are the ones the synth refuses to guess: a database without a
-VPC stops with `DatabaseNeedsVpc`, a mailer without a sender with
-`EmailNeedsSender`. Replace the created VPC with `sst.aws.Vpc.get(…)` if the
+The two inputs are the ones the synth refuses to guess, and the overrides are
+typed from the manifest, so leaving one out is a type error in
+`sst.config.ts` rather than a failed deploy. Replace the created VPC with `sst.aws.Vpc.get(…)` if the
 account already has one. Protected stages keep their resources when the stack
 is removed.
 

@@ -143,7 +143,29 @@ fromManifest(new Stack(app, 'Shop'), constructs, { Database: { vpc } }, backends
 ```
 
 `constructs` is every declared construct keyed by id; the overrides are keyed
-by the same ids. One call provisions the resources, each `RestApi`'s endpoints
+by the same ids, and typed from the manifest — each construct's kind decides
+what it takes:
+
+| Kind | Takes | Required |
+| --- | --- | --- |
+| `database` | `sst.aws.Postgres` args | `vpc` |
+| `email` | `from`, `url`, `region` | `from`; `url` unless the backend is SES |
+| `cache` | `url`, `region` (Upstash) · `vpc` (ElastiCache) | `vpc` on ElastiCache |
+| `objects` | `sst.aws.Bucket` args | — |
+| `queue` / `topic` | `sst.aws.Queue` / `SnsTopic` args | — |
+| `rest-api` | `sst.aws.ApiGatewayV2` args | — |
+| `site` | `sst.aws.StaticSite` args, less `path` | — |
+| `file-server` | `sst.aws.Router` args, less `origin` | — |
+| `secret` / `credential` / `external-api` | `placeholder` | — |
+| `encryption` | `region`, `deletionWindowInDays` | — |
+
+Anything else — a reader or schema of a database, a cache inside one,
+functions and crons — takes nothing, and naming it is an error, as is an id the
+manifest does not have or a prop the declaration already decides (a
+database's `schema`, a queue's `fifo`). The backend counts: pass the emitted
+`backends`, and switching mail to Resend makes its `url` required.
+
+One call provisions the resources, each `RestApi`'s endpoints
 (each a Lambda linked only to its own dependencies, placed in the database's
 VPC when it reaches one, with the `iam` authorizer enforced by the gateway),
 queue consumers, every function (a Lambda with an IAM-authorized URL) and every
