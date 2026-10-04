@@ -582,6 +582,53 @@ program
 	);
 
 program
+	.command('encryption:rotate')
+	.description(
+		"Add a new current key to an Encryption construct's keyring on a server stage",
+	)
+	.argument('<construct>', 'The Encryption construct (e.g. Pii)')
+	.requiredOption('--stage <stage>', 'A deployed stage')
+	.action(async (construct: string, options: { stage: string }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			const { encryptionRotateCommand } = await import('./encryption/index.js');
+			await encryptionRotateCommand(construct, options);
+		} catch (error) {
+			console.error(formatError(error));
+			process.exit(1);
+		}
+	});
+
+program
+	.command('encryption:retire')
+	.description(
+		"Remove an old key from an Encryption construct's keyring, once nothing is under it",
+	)
+	.argument('<construct>', 'The Encryption construct (e.g. Pii)')
+	.argument('<key>', 'The key to retire (e.g. k1)')
+	.requiredOption('--stage <stage>', 'A deployed stage')
+	.action(
+		async (construct: string, key: string, options: { stage: string }) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+				const { encryptionRetireCommand } = await import(
+					'./encryption/index.js'
+				);
+				await encryptionRetireCommand(construct, key, options);
+			} catch (error) {
+				console.error(formatError(error));
+				process.exit(1);
+			}
+		},
+	);
+
+program
 	.command('secrets:show')
 	.description('Show secrets for a stage')
 	.requiredOption('--stage <stage>', 'Stage name')

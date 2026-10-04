@@ -13,6 +13,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { formatKeyring } from '@geekmidas/constructs/encryption';
 import { ownerRole, readerRole } from '@geekmidas/db/pg/roles';
 import * as snsUrl from '@geekmidas/events/sns/url';
 import * as sqsUrl from '@geekmidas/events/sqs/url';
@@ -474,6 +475,11 @@ function urlFor(
 	// A secret has no address, so there is no port to wait for.
 	if (resource.kind === 'secret') return localSecret(project, plan, resource);
 
+	// Nor has an encryption key: a keyring derived the way a secret is.
+	if (resource.kind === 'encryption') {
+		return localKeyring(project, plan, resource);
+	}
+
 	// A mobile app resolves its scheme — the same on every stage.
 	if (resource.kind === 'mobile-app') {
 		return schemeBase(project, resource.scheme);
@@ -814,6 +820,30 @@ export class UnprovisionedEventsBackend extends Error {
 		);
 		this.name = 'UnprovisionedEventsBackend';
 	}
+}
+
+/**
+ * The keyring an `Encryption` construct resolves to locally.
+ *
+ * Derived like a secret — stable across restarts, distinct per project, stage
+ * and construct, never written to disk — so what `gkm dev` encrypted yesterday
+ * still opens today. One key, because nothing local is worth rotating: a
+ * server stage's keyring is generated and rotated in its secrets instead.
+ */
+function localKeyring(
+	project: string,
+	plan: Plan,
+	resource: PlannedResource,
+): string {
+	const derive = (purpose: string) =>
+		createHash('sha256')
+			.update(`${project}:${plan.stage}:${resource.id}:${purpose}`)
+			.digest();
+
+	return formatKeyring({
+		keys: [{ id: 'k1', key: derive('k1') }],
+		index: derive('index'),
+	});
 }
 
 /**

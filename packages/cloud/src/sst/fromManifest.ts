@@ -45,6 +45,7 @@ import { Database, DatabaseNeedsVpc, type DatabaseProps } from './aws/Database';
 import { DatabaseBootstrap } from './aws/DatabaseBootstrap';
 import { DatabaseReader, DatabaseSchema } from './aws/DerivedDatabase';
 import { Email, EmailNeedsSender } from './aws/Email';
+import { Encryption, type EncryptionProps } from './aws/Encryption';
 import { ExternalApi, type ExternalApiProps } from './aws/ExternalApi';
 import { FileServer } from './aws/FileServer';
 import { ObjectStorage } from './aws/ObjectStorage';
@@ -400,6 +401,17 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 
 	// The same storage as a secret, under a different role — see the component.
 	credential: (stack, d, props) => new Credential(stack, d.id, props),
+
+	// In the stage's region, as mail is: a key in another region is a key
+	// every call crosses the world to reach.
+	encryption: (stack, d, props) =>
+		new Encryption(stack, d.id, {
+			...(props as Partial<EncryptionProps>),
+			region:
+				(props as Partial<EncryptionProps>).region ??
+				$app.providers?.aws?.region ??
+				'us-east-1',
+		}),
 
 	// Nothing to provision: the URL this stage calls, and the credentials kept
 	// as a secret.

@@ -273,6 +273,22 @@ export interface CredentialDeclaration extends Node {
 }
 
 /**
+ * A key that encrypts what the application stores.
+ *
+ * It provides one URL, and the scheme picks the cipher the way a queue's
+ * connection string picks its broker: a keyring the process holds
+ * (`aes256gcm://`) locally and on a server, a KMS key (`kms://`) on AWS. The
+ * value is the platform's to generate and the app never names a cipher.
+ *
+ * A node rather than a field on whatever encrypts, for the reason a secret is:
+ * what holds the key, what grants access to it, and what uses it are three
+ * systems deployed — and an edge to it is what grants a function the key.
+ */
+export interface EncryptionDeclaration extends Node {
+	kind: 'encryption';
+}
+
+/**
  * An HTTP API somebody else runs — Polar, Stripe, a payment gateway.
  *
  * Provisions nothing, like {@link OidcDeclaration}: the API already exists. What
@@ -684,6 +700,7 @@ export type Declaration =
 	| CacheDeclaration
 	| SecretDeclaration
 	| CredentialDeclaration
+	| EncryptionDeclaration
 	| RestApiDeclaration
 	| SiteDeclaration
 	| MobileAppDeclaration
@@ -857,6 +874,8 @@ export interface ProvidesByKind {
 	 * that declared the schema.
 	 */
 	credential: { credentials: string };
+	/** Where the key is: a keyring, or a KMS key and its HMAC key. */
+	encryption: { url: string };
 	/**
 	 * The producer's connection string. One key, not two: the consumer is
 	 * reached through the queue rather than by an address of its own.
@@ -925,6 +944,8 @@ export const PUBLIC: {
 	// A credential a browser can read is a credential anyone can read. A
 	// publishable key belongs in the site's own config, not in this.
 	credential: [],
+	// A keyring in a bundle is a key anyone can read.
+	encryption: [],
 	// A URL a browser calls is a URL a browser may hold. The other two are not
 	// secret either — they are simply server-side facts, and prefixing a value
 	// into a bundle that nothing there reads is how a bundle grows keys nobody

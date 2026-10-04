@@ -164,6 +164,16 @@
 				"default": "./dist/cache.cjs"
 			}
 		},
+		"./encryption": {
+			"import": {
+				"types": "./dist/encryption.d.mts",
+				"default": "./dist/encryption.mjs"
+			},
+			"require": {
+				"types": "./dist/encryption.d.cts",
+				"default": "./dist/encryption.cjs"
+			}
+		},
 		"./credential": {
 			"import": {
 				"types": "./dist/credential.d.mts",
@@ -277,6 +287,7 @@
 		"qs": "~6.16.0"
 	},
 	"devDependencies": {
+		"@aws-sdk/client-kms": "~3.1136.0",
 		"@better-auth/expo": "~1.7.6",
 		"@geekmidas/audit": "workspace:^",
 		"@geekmidas/auth": "workspace:*",
@@ -306,6 +317,7 @@
 		"zod": "~4.6.5"
 	},
 	"peerDependencies": {
+		"@aws-sdk/client-kms": ">=3.1136.0",
 		"@geekmidas/audit": "workspace:^",
 		"@geekmidas/auth": "workspace:*",
 		"@geekmidas/cache": "workspace:^",
@@ -324,6 +336,9 @@
 		"pg": ">=8.23.0"
 	},
 	"peerDependenciesMeta": {
+		"@aws-sdk/client-kms": {
+			"optional": true
+		},
 		"@geekmidas/audit": {
 			"optional": true
 		},

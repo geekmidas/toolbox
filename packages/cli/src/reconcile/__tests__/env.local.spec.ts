@@ -1,3 +1,4 @@
+import { keyringCipher, parseKeyring } from '@geekmidas/constructs/encryption';
 import * as snsUrl from '@geekmidas/events/sns/url';
 import * as sqsUrl from '@geekmidas/events/sqs/url';
 import type { ConstructManifest } from '@geekmidas/manifest';
@@ -45,6 +46,30 @@ describe('a declared secret, locally', () => {
 			one,
 		);
 		expect(resolve(manifest, 'dev', { project: 'blog' }).SIGNING).not.toBe(one);
+	});
+});
+
+describe('a declared encryption key, locally', () => {
+	const manifest = {
+		Pii: { kind: 'encryption', id: 'Pii', provides: ['PII_URL'] },
+	} as const satisfies ConstructManifest;
+
+	it('is a keyring derived like a secret: stable, and never shared across stages or projects', async () => {
+		const one = resolve(manifest, 'dev', { project: 'shop' }).PII_URL!;
+
+		expect(parseKeyring('Pii', one).keys.map(({ id }) => id)).toEqual(['k1']);
+		expect(resolve(manifest, 'dev', { project: 'shop' }).PII_URL).toBe(one);
+		expect(resolve(manifest, 'test', { project: 'shop' }).PII_URL).not.toBe(
+			one,
+		);
+		expect(resolve(manifest, 'dev', { project: 'blog' }).PII_URL).not.toBe(one);
+	});
+
+	it('opens tomorrow what it encrypted today', async () => {
+		const url = () => resolve(manifest, 'dev', { project: 'shop' }).PII_URL!;
+		const written = await keyringCipher('Pii', url()).encrypt('kept');
+
+		expect(await keyringCipher('Pii', url()).decrypt(written)).toBe('kept');
 	});
 });
 

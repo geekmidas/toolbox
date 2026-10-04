@@ -437,6 +437,7 @@ const SERVICE_KINDS = new Set([
 	'database-schema',
 	'database-reader',
 	'email',
+	'encryption',
 	'external-api',
 	'file-server',
 	'objects',

@@ -40,6 +40,7 @@ export type {
 	DerivedDeclaration,
 	DerivedKind,
 	EmailDeclaration,
+	EncryptionDeclaration,
 	ExternalApiDeclaration,
 	FileServerDeclaration,
 	Fn,
@@ -77,6 +78,7 @@ export {
 	provisionOrder,
 	publicEnvFor,
 } from './derive';
+export { KMS_SCHEME, kmsUrl } from './encryption';
 export {
 	IllegalDerivation,
 	InvalidConstructId,
