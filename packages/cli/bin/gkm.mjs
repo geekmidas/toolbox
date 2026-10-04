@@ -30,8 +30,11 @@ if (
 			stdio: 'inherit',
 			env: {
 				...process.env,
+				// `--import=<url>`, never `--import <url>`: Next.js re-parses
+				// NODE_OPTIONS for its workers, and with two space-separated imports
+				// its parser glued them into one specifier `next build` could not find.
 				NODE_OPTIONS:
-					`${nodeOptions} --import ${jsxPath} --import ${tsxPath}`.trim(),
+					`${nodeOptions} --import=${jsxPath} --import=${tsxPath}`.trim(),
 			},
 		});
 	} catch (e) {
