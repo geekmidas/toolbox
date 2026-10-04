@@ -3,7 +3,11 @@
 import { Command } from 'commander';
 import pkg from '../package.json';
 import { loginCommand, logoutCommand, whoamiCommand } from './auth';
-import { buildCommand } from './build/index';
+import {
+	buildCommand,
+	isMainProvider,
+	UnknownBuildProvider,
+} from './build/index';
 import { enableDebug, formatError } from './debug';
 import { type DeployProvider, deployCommand } from './deploy/index';
 import { deployInitCommand, deployListCommand } from './deploy/init';
@@ -28,7 +32,6 @@ import type { SecretServiceName } from './secrets/types';
 import { type SetupOptions, setupCommand } from './setup/index';
 import { type TestOptions, testCommand } from './test/index';
 import { trustCommand } from './trust/index';
-import type { LegacyProvider, MainProvider } from './types';
 import { type UpgradeOptions, upgradeCommand } from './upgrade/index';
 
 const program = new Command();
@@ -124,11 +127,7 @@ program
 	.description('Build handlers and the manifest from declared constructs')
 	.option(
 		'--provider <provider>',
-		'Target provider for generated handlers (aws, server)',
-	)
-	.option(
-		'--providers <providers>',
-		'[DEPRECATED] Use --provider instead. Target providers for generated handlers (comma-separated)',
+		'Build for aws or server (default: where gkm.config.ts deploys)',
 	)
 	.option(
 		'--enable-openapi',
@@ -144,7 +143,6 @@ program
 	.action(
 		async (options: {
 			provider?: string;
-			providers?: string;
 			enableOpenapi?: boolean;
 			production?: boolean;
 			skipBundle?: boolean;
@@ -157,44 +155,21 @@ program
 					process.chdir(globalOptions.cwd);
 				}
 
-				// Handle new single provider option
-				if (options.provider) {
-					if (!['aws', 'server'].includes(options.provider)) {
-						process.exit(1);
-					}
-					await buildCommand({
-						provider: options.provider as MainProvider,
-						enableOpenApi: options.enableOpenapi || false,
-						production: options.production || false,
-						skipBundle: options.skipBundle || false,
-						stage: options.stage,
-						markOptional: options.markOptional || false,
-					});
+				if (
+					options.provider !== undefined &&
+					!isMainProvider(options.provider)
+				) {
+					throw new UnknownBuildProvider(options.provider);
 				}
-				// Handle legacy providers option
-				else if (options.providers) {
-					const providerList = [
-						...new Set(options.providers.split(',').map((p) => p.trim())),
-					] as LegacyProvider[];
-					await buildCommand({
-						providers: providerList,
-						enableOpenApi: options.enableOpenapi || false,
-						production: options.production || false,
-						skipBundle: options.skipBundle || false,
-						stage: options.stage,
-						markOptional: options.markOptional || false,
-					});
-				}
-				// Default to config-driven build
-				else {
-					await buildCommand({
-						enableOpenApi: options.enableOpenapi || false,
-						production: options.production || false,
-						skipBundle: options.skipBundle || false,
-						stage: options.stage,
-						markOptional: options.markOptional || false,
-					});
-				}
+
+				await buildCommand({
+					...(options.provider ? { provider: options.provider } : {}),
+					enableOpenApi: options.enableOpenapi || false,
+					production: options.production || false,
+					skipBundle: options.skipBundle || false,
+					stage: options.stage,
+					markOptional: options.markOptional || false,
+				});
 			} catch (error) {
 				console.error(formatError(error));
 				process.exit(1);

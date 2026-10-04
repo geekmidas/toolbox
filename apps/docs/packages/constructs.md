@@ -1786,7 +1786,7 @@ Crons are found by the same `constructs` glob as everything else in
 
 ### AWS Lambda Deployment
 
-When building with `gkm build --provider aws-lambda`, each cron is compiled into a separate Lambda handler with its schedule expression included in the build manifest. Use the manifest to configure EventBridge rules in your IaC tool (SST, CDK, Terraform, etc.).
+When the project deploys with SST (`deploy: { default: 'sst' }`), `gkm build` compiles each cron into its own Lambda handler under `<app>/.gkm/aws/crons/`, with its schedule expression in the manifest at `.gkm/manifest/aws.ts`. `fromManifest` from `@geekmidas/cloud/sst` turns it into an EventBridge rule; another IaC tool can read the same manifest.
 
 ## Deployment
 

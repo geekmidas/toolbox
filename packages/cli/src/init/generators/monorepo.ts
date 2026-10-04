@@ -1,11 +1,10 @@
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import {
 	cacheFor,
 	databaseFor,
 	emailFor,
 	storageFor,
 	usersMigration,
-	WORKSPACE_CONSTRUCTS_GLOB,
 	workspaceConstructsGlobs,
 } from '../constructs.js';
 import {
@@ -292,12 +291,18 @@ ${isSst ? '\n# SST\n.sst/\n' : ''}`;
 	const tsConfig = {
 		compilerOptions: {
 			// How an app reaches the workspace's constructs without climbing out
-			// of its own directory with `../../`.
+			// of its own directory with `../../` — and the manifest `gkm build`
+			// writes at the root, for whatever reads what was built.
+			paths: {
+				...(isFullstack
+					? { [`@${options.name}/constructs/*`]: ['./constructs/*'] }
+					: {}),
+				[`@${options.name}/manifest`]: [
+					`./.gkm/manifest/${isSst ? 'aws' : 'server'}.ts`,
+				],
+			},
 			...(isFullstack
 				? {
-						paths: {
-							[`@${options.name}/constructs/*`]: ['./constructs/*'],
-						},
 						// The constructs import each other with `.ts` extensions.
 						allowImportingTsExtensions: true,
 						noEmit: true,
@@ -466,7 +471,7 @@ export default defineWorkspace({
   // \`production-${options.name}-database\` on Dokploy and on AWS alike.
   name: '${options.name}',
 ${stagesBlock(options.stages)}
-
+${deployBlock(options)}
   // Every kind, in every app. A declared database is why a Postgres exists, a
   // declared bucket is why MinIO does, a declared topic is why a broker does —
   // none of it listed here. It is also where the apps come from: a
@@ -486,6 +491,19 @@ ${workspaceConstructsGlobs(options.routesStructure, dirname(options.apiPath))
 `;
 
 	return config;
+}
+
+/**
+ * Where it deploys, when that is not the default Dokploy: what a bare
+ * `gkm build` builds for, and which backends a cache or a broker resolves to.
+ */
+function deployBlock(options: TemplateOptions): string {
+	if (options.deployTarget !== 'sst') return '';
+	return `
+  // Deployed with \`sst deploy\`, from the manifest \`gkm build\` writes to
+  // \`.gkm/manifest/aws.ts\`. Each construct becomes a managed AWS resource.
+  deploy: { default: 'sst' },
+`;
 }
 
 /**
@@ -518,7 +536,7 @@ export function generateRootConstructs(
 ): GeneratedFile[] {
 	if (!options.monorepo || options.template !== 'fullstack') return [];
 
-	const { name, frontendFramework } = options;
+	const { frontendFramework } = options;
 	const { cache, uploads, mail } = options.constructs;
 	const db = databaseFor();
 	const files: GeneratedFile[] = [];

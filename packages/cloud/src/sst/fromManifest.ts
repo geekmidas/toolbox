@@ -378,17 +378,12 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	},
 
 	/**
-	 * The surface, without its routes.
+	 * The surface, without its routes yet.
 	 *
-	 * An API Gateway with no routes 404s everything, and that is the honest
-	 * state: the *surface* is what this kind declares, and mounting handlers on
-	 * it is the endpoint merge that has not landed — routes still reach the
-	 * deploy target through the separate `RouteInfo[]` pipeline.
-	 *
-	 * Provisioning it anyway is not ceremony. Its address is what a site inlines
-	 * as `VITE_API_URL`, what an auth server puts on its trusted-origin list, and
-	 * what the cookie domain derives from — so everything downstream of the API
-	 * is blocked on the API *existing*, not on it answering.
+	 * Its address is what a site inlines as `VITE_API_URL`, what an auth server
+	 * puts on its trusted-origin list, and what the cookie domain derives from —
+	 * so it is provisioned in order, and its endpoints are mounted by
+	 * {@link mountRoutes} once everything they link to exists.
 	 */
 	'rest-api': (stack, d, props, context) =>
 		new RestApiSurface(stack, d.id, {
@@ -593,9 +588,7 @@ function rootCluster(component: Provisioned): Database {
  * printed: one line per route, naming what it can reach.
  *
  * A surface with no routes says so rather than printing nothing, because "no
- * routes yet" and "this printed nothing" look identical otherwise — and for an
- * application's own API that is currently the true state, pending the endpoint
- * merge.
+ * routes" and "this printed nothing" look identical otherwise.
  *
  * Pure, so what gets printed can be asserted without a deploy.
  */
@@ -765,7 +758,58 @@ export const PROVISIONED_ELSEWHERE: ReadonlySet<DeclarationKind> =
 
 /** A provisioned queue: what {@link subscribeConsumers} subscribes through. */
 interface Consumable {
-	consume(consumer: { handler: string; link?: unknown[] }): unknown;
+	consume(consumer: {
+		handler: string;
+		link?: unknown[];
+		vpc?: sst.aws.Vpc;
+	}): unknown;
+}
+
+/**
+ * The network a function has to run in to reach what it links to.
+ *
+ * A database is private to its VPC, so a handler linked to one — or to a
+ * schema tenant or reader of one — runs inside it, or its connection times out.
+ */
+export function vpcFor(link: readonly Provisioned[]): sst.aws.Vpc | undefined {
+	for (const component of link) {
+		const cluster = rootCluster(component);
+		if (cluster instanceof Database) return cluster.vpc;
+	}
+
+	return undefined;
+}
+
+/**
+ * Mount every surface's endpoints — the handlers the build wrote, each linked
+ * to exactly what that endpoint depends on.
+ *
+ * After every construct is provisioned, for the reason consumers are: an
+ * endpoint links to things `provisionOrder` does not order before its surface.
+ */
+export function mountRoutes(
+	manifest: ConstructManifest,
+	provisioned: ProvisionedManifest,
+): void {
+	for (const [id, declaration] of Object.entries(manifest)) {
+		if (declaration?.kind !== 'rest-api') continue;
+
+		const surface = provisioned[id];
+		if (!(surface instanceof RestApiSurface)) continue;
+
+		for (const endpoint of declaration.endpoints) {
+			const { link } = resolveEdges(endpoint.dependencies, provisioned);
+			const vpc = vpcFor(link);
+			surface.mount({
+				method: endpoint.method,
+				path: endpoint.path,
+				handler: endpoint.handler,
+				link,
+				...(vpc ? { vpc } : {}),
+				...(endpoint.authorizer ? { authorizer: endpoint.authorizer } : {}),
+			});
+		}
+	}
 }
 
 /**
@@ -786,7 +830,12 @@ export function subscribeConsumers(
 		if (!queue) continue;
 
 		const { link } = resolveEdges(declaration.worker.dependencies, provisioned);
-		queue.consume({ handler: declaration.worker.handler, link });
+		const vpc = vpcFor(link);
+		queue.consume({
+			handler: declaration.worker.handler,
+			link,
+			...(vpc ? { vpc } : {}),
+		});
 	}
 }
 
@@ -902,8 +951,10 @@ export function fromManifest(
 		provisioned[id] = component;
 	}
 
-	// Each queue's one consumer, once everything it links to exists.
+	// Each queue's one consumer and each surface's endpoints, once everything
+	// they link to exists.
 	subscribeConsumers(manifest, provisioned);
+	mountRoutes(manifest, provisioned);
 
 	for (const line of describeRoutes(manifest)) console.log(line);
 

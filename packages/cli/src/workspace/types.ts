@@ -7,7 +7,6 @@ import type {
 	GkmConfig,
 	HooksConfig,
 	OpenApiConfig,
-	ProvidersConfig,
 	Routes,
 	Runtime,
 	StudioConfig,
@@ -48,7 +47,7 @@ export type {
  * deploy: 'cloudflare'
  * ```
  */
-export type DeployTarget = 'dokploy' | 'vercel' | 'cloudflare';
+export type DeployTarget = 'dokploy' | 'sst' | 'vercel' | 'cloudflare';
 
 /**
  * Stage-based domain configuration.
@@ -433,9 +432,6 @@ interface AppConfigBase {
 	 * @example './src/config/logger'
 	 */
 	logger?: string;
-
-	/** Provider configuration (AWS, Docker, etc.) */
-	providers?: ProvidersConfig;
 
 	/**
 	 * Server lifecycle hooks.
@@ -965,7 +961,7 @@ export function isWorkspaceConfig(
 	if ('apps' in config && typeof config.apps === 'object') return true;
 
 	// Only when nothing else says it is one app. `openapi`, `telescope`,
-	// `providers` and the rest configure a single process, so a config that
+	// `hooks` and the rest configure a single process, so a config that
 	// sets any of them is that process's — the workspace schema is strict,
 	// and reading one of these as a workspace would reject what it was never
 	// meant to accept.

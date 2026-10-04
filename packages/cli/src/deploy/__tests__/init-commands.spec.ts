@@ -7,6 +7,7 @@
  */
 
 import {
+	existsSync,
 	mkdtempSync,
 	readFileSync,
 	realpathSync,
@@ -37,7 +38,6 @@ import {
 	deployListCommand,
 	registrySetupCommand,
 	registryUseCommand,
-	updateConfig,
 } from '../init';
 
 const ENDPOINT = 'https://dokploy.test';
@@ -134,8 +134,8 @@ describe('deploy and registry commands', () => {
 				{ applicationId: 'a1', registryId: 'reg1' },
 			]);
 			expect(calls.some((c) => c.endpoint === 'project.all')).toBe(false);
-			// No gkm.config.ts: it says what to add rather than guessing.
-			expect(said()).toContain('gkm.config.ts not found');
+			// The ids live in the state file, not in a config it would invent.
+			expect(existsSync(join(root, 'gkm.config.ts'))).toBe(false);
 		});
 
 		it('finds a project by name, whatever its case', async () => {
@@ -186,8 +186,9 @@ describe('deploy and registry commands', () => {
 			]);
 			// Registries are listed so one can be chosen next time.
 			expect(said()).toContain('- GHCR: ghcr.io (reg1)');
-			expect(readFileSync(join(root, 'gkm.config.ts'), 'utf8')).toContain(
-				"applicationId: 'a2'",
+			// Rediscovered by name next time; nothing is written into the config.
+			expect(readFileSync(join(root, 'gkm.config.ts'), 'utf8')).toBe(
+				"export default defineConfig({\n\troutes: './src/**/*.ts',\n});\n",
 			);
 		});
 
@@ -379,34 +380,6 @@ describe('deploy and registry commands', () => {
 				'Registry not found: nope',
 			);
 			expect(await getDokployRegistryId()).toBeUndefined();
-		});
-	});
-
-	describe('updateConfig', () => {
-		it('leaves a dokploy block it cannot rewrite, naming the registry too', async () => {
-			const original = `export default defineConfig({
-	providers: {
-		dokploy: {
-			...shared,
-			endpoint: process.env.DOKPLOY_URL,
-		},
-	},
-});
-`;
-			writeFileSync(join(root, 'gkm.config.ts'), original);
-
-			await updateConfig(
-				{
-					endpoint: ENDPOINT,
-					projectId: 'p1',
-					applicationId: 'a1',
-					registryId: 'reg1',
-				},
-				root,
-			);
-
-			expect(readFileSync(join(root, 'gkm.config.ts'), 'utf8')).toBe(original);
-			expect(said()).toContain("registryId: 'reg1'");
 		});
 	});
 });

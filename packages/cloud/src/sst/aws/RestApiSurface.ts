@@ -4,20 +4,10 @@ import type { StackType } from '../Stack';
 /**
  * `RestApiSurface` — an HTTP API, and the infra half of the `rest-api` kind.
  *
- * Deliberately *not* `Api`, which takes a route table and validates each
- * route's environment at synth. That component is the endpoint pipeline's, and
- * it needs routes; this one is the manifest's, and the manifest's `rest-api`
- * node currently carries `endpoints: []` for an application's own API.
- *
- * So what this provisions is the surface and nothing on it. An API Gateway with
- * no routes 404s everything, which is the honest state of things — and it is
- * still worth provisioning, because the *address* is what everything downstream
- * needs: a site inlines it as `VITE_API_URL`, an auth server puts it on its
- * trusted-origin list, and the cookie domain derives from it. Those are blocked
- * on the API existing, not on it answering.
- *
- * The two collapse into one component when the endpoint merge lands and the
- * surface node carries its routes.
+ * Provisioned before its routes, because its *address* is what everything
+ * downstream needs: a site inlines it as `VITE_API_URL`, an auth server puts it
+ * on its trusted-origin list, and the cookie domain derives from it. The routes
+ * are mounted once everything they link to exists — see {@link mount}.
  */
 
 export interface RestApiSurfaceProps extends sst.aws.ApiGatewayV2Args {
@@ -82,6 +72,25 @@ export class RestApiSurface<
 		};
 	}
 
+	/**
+	 * Mount one endpoint: a Lambda running the handler the build wrote for it,
+	 * linked to exactly what that endpoint depends on.
+	 */
+	mount(endpoint: SurfaceRoute) {
+		return this.route(
+			`${endpoint.method} ${endpoint.path}`,
+			{
+				handler: endpoint.handler,
+				link: endpoint.link ?? [],
+				runtime: 'nodejs24.x',
+				...(endpoint.vpc ? { vpc: endpoint.vpc } : {}),
+			},
+			// `iam` is the one authorizer the gateway enforces itself; every other
+			// is the endpoint's own, checked in the handler.
+			endpoint.authorizer === 'iam' ? { auth: { iam: true } } : {},
+		);
+	}
+
 	override getSSTLink() {
 		const link = super.getSSTLink();
 		return {
@@ -89,4 +98,17 @@ export class RestApiSurface<
 			properties: { ...link.properties, ...this.provides() },
 		};
 	}
+}
+
+/** One endpoint, as {@link RestApiSurface.mount} mounts it. */
+export interface SurfaceRoute {
+	method: string;
+	path: string;
+	/** The built handler — `apps/api/.gkm/aws/routes/getUser.handler`. */
+	handler: string;
+	/** What the endpoint depends on, and nothing else. */
+	link?: unknown[];
+	/** The database's network, when the endpoint reaches one. */
+	vpc?: sst.aws.Vpc;
+	authorizer?: string;
 }

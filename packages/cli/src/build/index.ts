@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import { dirname, join, relative, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import type { Cron } from '@geekmidas/constructs/crons';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { Function } from '@geekmidas/constructs/functions';
@@ -9,14 +9,8 @@ import type { Queue } from '@geekmidas/constructs/queue';
 import type { Subscriber } from '@geekmidas/constructs/subscribers';
 import type { Topic } from '@geekmidas/constructs/topic';
 import type { ConstructManifest } from '@geekmidas/manifest';
+import { loadAppConfig, loadConfig, loadWorkspaceConfig } from '../config';
 import {
-	loadAppConfig,
-	loadConfig,
-	loadWorkspaceConfig,
-	parseModuleConfig,
-} from '../config';
-import {
-	getProductionConfigFromGkm,
 	normalizeHooksConfig,
 	normalizeProductionConfig,
 	normalizeStudioConfig,
@@ -35,12 +29,11 @@ import {
 } from '../generators';
 import { generateOpenApi } from '../openapi.js';
 import { type ConstructSource, discover } from '../reconcile/discover.js';
-import type { CacheBackend, GkmConfig } from '../types';
+import type { CacheBackend, GkmConfig, MainProvider } from '../types';
 import {
 	type BuildOptions,
 	type BuildResult,
 	isPartitionedRoutes,
-	type LegacyProvider,
 	type RouteInfo,
 	type Routes,
 } from '../types';
@@ -61,7 +54,6 @@ import {
 } from './manifests';
 import { ownersContext, servedBy } from './owners';
 import { groupInfosByPartition, hasPartitions } from './partitions';
-import { resolveProviders } from './providerResolver';
 import { selfServingSurface, writeSurfaceEntry } from './surfaceEntry';
 import type {
 	BuildContext,
@@ -94,6 +86,20 @@ function rootGkmConfig(workspace: NormalizedWorkspace): GkmConfig {
 			constructs: allConstructGlobs(workspace),
 		}
 	);
+}
+
+/** Whether `--provider` named something a build can target. */
+export function isMainProvider(value: string): value is MainProvider {
+	return value === 'aws' || value === 'server';
+}
+
+export class UnknownBuildProvider extends Error {
+	constructor(readonly provider: string) {
+		super(
+			`'${provider}' is not a build target. Pass --provider aws or --provider server, or leave it out to build for where gkm.config.ts deploys.`,
+		);
+		this.name = 'UnknownBuildProvider';
+	}
 }
 
 export async function buildCommand(
@@ -134,8 +140,10 @@ export async function buildCommand(
 				? rootGkmConfig(loadedConfig.workspace)
 				: (await loadAppConfig()).gkmConfig;
 
-	// Resolve providers from new config format
-	const resolved = resolveProviders(config, options);
+	// Where it deploys decides what it builds: one Lambda per construct for
+	// AWS, one process for a server. `--provider` overrides it for a Dockerfile,
+	// which builds a server whatever the project deploys to.
+	const target = options.provider ?? providerOf(loadedConfig.workspace);
 
 	// One answer for which backends this app uses, read once — from the
 	// deploy target, which is the same place reconcile reads it. The build
@@ -145,17 +153,13 @@ export async function buildCommand(
 	const cacheBackend = cacheBackendFor(providerOf(loadedConfig.workspace));
 
 	// Normalize production configuration
-	const productionConfigFromGkm = getProductionConfigFromGkm(config);
-	const production = normalizeProductionConfig(
-		options.production ?? false,
-		productionConfigFromGkm,
-	);
+	const production = normalizeProductionConfig(options.production ?? false);
 
 	if (production) {
 		logger.log(`🏭 Building for PRODUCTION`);
 	}
 
-	logger.log(`Building with providers: ${resolved.providers.join(', ')}`);
+	logger.log(`Building for ${target}`);
 	logger.log(`Loading constructs from: ${formatRoutes(config.constructs)}`);
 
 	// Normalize telescope configuration (disabled in production)
@@ -182,8 +186,8 @@ export async function buildCommand(
 		config,
 		workspaceRoot: loadedConfig.workspace.root,
 		appRoot: process.cwd(),
-		providers: resolved.providers,
-		enableOpenApi: resolved.enableOpenApi,
+		target,
+		enableOpenApi: options.enableOpenApi ?? false,
 		cacheBackend,
 		production,
 		telescope,
@@ -201,7 +205,8 @@ export interface BuildAppInput {
 	workspaceRoot: string;
 	/** The app being built — the directory a surface's `path` names. */
 	appRoot: string;
-	providers: LegacyProvider[];
+	/** Where the build deploys: one Lambda per construct, or one process. */
+	target: MainProvider;
 	enableOpenApi: boolean;
 	cacheBackend: CacheBackend;
 	production?: NormalizedProductionConfig;
@@ -244,7 +249,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		config,
 		workspaceRoot,
 		appRoot,
-		providers,
+		target,
 		enableOpenApi,
 		cacheBackend,
 		production,
@@ -383,39 +388,28 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		return {};
 	}
 
-	// Ensure .gkm directory exists
-	const rootOutputDir = join(appRoot, '.gkm');
-	await mkdir(rootOutputDir, { recursive: true });
-
-	// Build for each provider and generate per-provider manifests
-	let result: BuildResult = {};
-	for (const provider of providers) {
-		const providerResult = await buildForProvider(
-			provider,
-			buildContext,
-			appRoot,
-			declared,
-			endpointGenerator,
-			functionGenerator,
-			cronGenerator,
-			subscriberGenerator,
-			queueGenerator,
-			topicGenerator,
-			allEndpoints,
-			allFunctions,
-			allCrons,
-			allSubscribers,
-			allQueues,
-			allTopics,
-			enableOpenApi,
-			input.skipBundle ?? false,
-			input.stage,
-		);
-		// Keep the master key from the server provider
-		if (providerResult.masterKey) {
-			result = providerResult;
-		}
-	}
+	const result = await buildForTarget(
+		target,
+		buildContext,
+		appRoot,
+		workspaceRoot,
+		declared,
+		endpointGenerator,
+		functionGenerator,
+		cronGenerator,
+		subscriberGenerator,
+		queueGenerator,
+		topicGenerator,
+		allEndpoints,
+		allFunctions,
+		allCrons,
+		allSubscribers,
+		allQueues,
+		allTopics,
+		enableOpenApi,
+		input.skipBundle ?? false,
+		input.stage,
+	);
 
 	// One spec per surface, from the endpoints the build already loaded rather
 	// than from a second discovery pass over the same files.
@@ -427,10 +421,11 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 	return result;
 }
 
-async function buildForProvider(
-	provider: LegacyProvider,
+async function buildForTarget(
+	target: MainProvider,
 	context: BuildContext,
 	appRoot: string,
+	workspaceRoot: string,
 	discovered: ConstructManifest,
 	endpointGenerator: EndpointGenerator,
 	functionGenerator: FunctionGenerator,
@@ -450,13 +445,15 @@ async function buildForProvider(
 	skipBundle: boolean,
 	stage?: string,
 ): Promise<BuildResult> {
-	const rootOutputDir = join(appRoot, '.gkm');
-	const outputDir = join(rootOutputDir, provider);
-
-	// Ensure output directory exists
+	// The handlers live beside the app they import; the manifest lives at the
+	// workspace root, where `sst.config.ts` runs and imports it, so every path
+	// in it is measured from there.
+	const outputDir = join(appRoot, '.gkm', target);
+	const manifestRoot = join(workspaceRoot, '.gkm');
 	await mkdir(outputDir, { recursive: true });
 
-	logger.log(`\nGenerating handlers for provider: ${provider}`);
+	logger.log(`\nGenerating handlers for ${target}`);
+	const options = { target, root: workspaceRoot };
 
 	// Build all constructs in parallel.
 	// context.markOptional is forwarded to each generator so that
@@ -470,18 +467,18 @@ async function buildForProvider(
 		topicInfos,
 	] = await Promise.all([
 		endpointGenerator.build(context, endpoints, outputDir, {
-			provider,
+			...options,
 			enableOpenApi,
 		}),
-		functionGenerator.build(context, functions, outputDir, { provider }),
-		cronGenerator.build(context, crons, outputDir, { provider }),
-		subscriberGenerator.build(context, subscribers, outputDir, { provider }),
-		queueGenerator.build(context, queues, outputDir, { provider }),
-		topicGenerator.build(context, topics, outputDir, { provider }),
+		functionGenerator.build(context, functions, outputDir, options),
+		cronGenerator.build(context, crons, outputDir, options),
+		subscriberGenerator.build(context, subscribers, outputDir, options),
+		queueGenerator.build(context, queues, outputDir, options),
+		topicGenerator.build(context, topics, outputDir, options),
 	]);
 
 	logger.log(
-		`Generated ${routes.length} routes, ${functionInfos.length} functions, ${cronInfos.length} crons, ${subscriberInfos.length} subscribers, ${queueInfos.length} queues, ${topicInfos.length} topics for ${provider}`,
+		`Generated ${routes.length} routes, ${functionInfos.length} functions, ${cronInfos.length} crons, ${subscriberInfos.length} subscribers, ${queueInfos.length} queues, ${topicInfos.length} topics for ${target}`,
 	);
 
 	// Assemble manifest fields (flat or partitioned per construct type)
@@ -496,8 +493,7 @@ async function buildForProvider(
 		subscribers,
 	);
 
-	// Generate provider-specific manifest
-	if (provider === 'server') {
+	if (target === 'server') {
 		// For server, collect actual route metadata from endpoint constructs
 		const routeMetadata: RouteInfo[] = await Promise.all(
 			endpoints.map(async ({ construct }) => ({
@@ -511,12 +507,12 @@ async function buildForProvider(
 		const serverRouteField = assembleManifestField(routeMetadata, endpoints);
 
 		const appInfo: ServerAppInfo = {
-			handler: relative(appRoot, join(outputDir, 'app.ts')),
-			endpoints: relative(appRoot, join(outputDir, 'endpoints.ts')),
+			handler: relative(workspaceRoot, join(outputDir, 'app.ts')),
+			endpoints: relative(workspaceRoot, join(outputDir, 'endpoints.ts')),
 		};
 
 		await generateServerManifest(
-			rootOutputDir,
+			manifestRoot,
 			appInfo,
 			serverRouteField,
 			manifestSubscribers,
@@ -560,9 +556,8 @@ async function buildForProvider(
 
 		return { masterKey };
 	} else {
-		// For AWS providers, generate AWS manifest
 		await generateAwsManifest(
-			rootOutputDir,
+			manifestRoot,
 			manifestRoutes,
 			manifestFunctions,
 			manifestCrons,
@@ -571,6 +566,7 @@ async function buildForProvider(
 			manifestTopics,
 			discovered,
 			{ cache: context.cacheBackend, email: context.emailBackend },
+			context.surface?.id,
 		);
 	}
 

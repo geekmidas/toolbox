@@ -87,6 +87,7 @@ export class Queue<
 				handler: consumer.handler,
 				link: [this, ...(consumer.link ?? [])],
 				runtime: 'nodejs24.x',
+				...(consumer.vpc ? { vpc: consumer.vpc } : {}),
 				...(consumer.timeout ? { timeout: consumer.timeout } : {}),
 			},
 			consumer.batchSize ? { batch: { size: consumer.batchSize } } : {},
@@ -104,10 +105,12 @@ export class Queue<
 
 /** The queue's one consumer, as {@link Queue.consume} subscribes it. */
 export interface QueueConsumer {
-	/** The built handler — `.gkm/aws-lambda/queues/emails.handler`. */
+	/** The built handler — `apps/api/.gkm/aws/queues/emails.handler`. */
 	handler: string;
 	/** What the consumer depends on; the queue itself is always linked. */
 	link?: unknown[];
+	/** The database's network, when the consumer reaches one. */
+	vpc?: sst.aws.Vpc;
 	timeout?: `${number} seconds` | `${number} minutes`;
 	batchSize?: number;
 }

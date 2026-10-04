@@ -682,24 +682,6 @@ describe('a single-app config as a workspace', () => {
 		expect(result.apps.api?.resolvedDeployTarget).toBe('vercel');
 	});
 
-	it('serves on the port the config names', () => {
-		const result = wrapSingleAppAsWorkspace(
-			{ ...base, providers: { server: { port: 4000 } } } as GkmConfig,
-			'/project',
-		);
-
-		expect(result.apps.api?.port).toBe(4000);
-	});
-
-	it('still has a port when `server: true` names none', () => {
-		const result = wrapSingleAppAsWorkspace(
-			{ ...base, providers: { server: true } } as GkmConfig,
-			'/project',
-		);
-
-		expect(result.apps.api?.port).toBe(3000);
-	});
-
 	it('takes its name from the config, the way a workspace does', () => {
 		expect(
 			wrapSingleAppAsWorkspace({ ...base, name: 'acme' } as GkmConfig, '/p')

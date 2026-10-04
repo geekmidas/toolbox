@@ -3,11 +3,7 @@ import type { Construct } from '@geekmidas/constructs';
 import fg from 'fast-glob';
 import kebabCase from 'lodash.kebabcase';
 import type { BuildContext } from '../build/types';
-import {
-	isPartitionedRoutes,
-	type LegacyProvider,
-	type Routes,
-} from '../types';
+import { isPartitionedRoutes, type MainProvider, type Routes } from '../types';
 
 /**
  * Zod v4 maintains a process-wide registry of schemas registered via
@@ -30,7 +26,13 @@ export function clearZodGlobalRegistry(): void {
 }
 
 export interface GeneratorOptions {
-	provider?: LegacyProvider;
+	/** Where the build deploys: one Lambda per construct, or one process. */
+	target?: MainProvider;
+	/**
+	 * What a handler path in the manifest is relative to — the workspace root,
+	 * which is where `sst.config.ts` runs and resolves it from.
+	 */
+	root?: string;
 	[key: string]: any;
 }
 

@@ -89,7 +89,7 @@ describe('SubscriberGenerator', () => {
 				context,
 				constructs,
 				outputDir,
-				{ provider: 'aws-lambda' },
+				{ target: 'aws' },
 			);
 
 			expect(subscriberInfos).toHaveLength(2);
@@ -252,7 +252,7 @@ describe('SubscriberGenerator', () => {
 
 		it('should generate subscribers.ts file for server provider even with no subscribers', async () => {
 			const subscriberInfos = await generator.build(context, [], outputDir, {
-				provider: 'server',
+				target: 'server',
 			});
 
 			expect(subscriberInfos).toEqual([]);
@@ -282,7 +282,7 @@ describe('SubscriberGenerator', () => {
 				context,
 				constructs,
 				outputDir,
-				{ provider: 'server' },
+				{ target: 'server' },
 			);
 
 			expect(subscriberInfos).toEqual([]);
@@ -328,7 +328,7 @@ describe('SubscriberGenerator', () => {
 					},
 				],
 				outputDir,
-				{ provider: 'server' },
+				{ target: 'server' },
 			);
 
 			const content = await readFile(
@@ -366,7 +366,7 @@ describe('SubscriberGenerator', () => {
 			};
 
 			await generator.build(context, [construct], outputDir, {
-				provider: 'server',
+				target: 'server',
 			});
 			const content = await readFile(
 				join(outputDir, 'subscribers.ts'),
@@ -382,7 +382,7 @@ describe('SubscriberGenerator', () => {
 			// On Lambda the subscriber runs alone, so the database is its own env
 			// and edge.
 			const [info] = await generator.build(context, [construct], outputDir, {
-				provider: 'aws-lambda',
+				target: 'aws',
 			});
 			expect(info?.environment).toContain('ORDERS_URL');
 			expect(info?.dependencies).toEqual(['Orders']);
@@ -458,21 +458,6 @@ describe('SubscriberGenerator', () => {
 			expect(handlerContent).toContain(
 				'new AWSLambdaSubscriber(envParser, myCustomSubscriberName)',
 			);
-		});
-
-		it('should return empty array for unsupported provider', async () => {
-			const constructs = [
-				createSubscriberConstruct('testSubscriber', ['test.event']),
-			];
-
-			const subscriberInfos = await generator.build(
-				context,
-				constructs,
-				outputDir,
-				{ provider: 'unsupported' as any },
-			);
-
-			expect(subscriberInfos).toEqual([]);
 		});
 
 		it('should generate handler files that can be imported', async () => {

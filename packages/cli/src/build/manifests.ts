@@ -102,6 +102,8 @@ export async function generateAwsManifest(
 	 */
 	constructs: ConstructManifest = {},
 	backends: { cache?: string; email?: string } = {},
+	/** The surface these routes are served on — the app's own API. */
+	surface?: string,
 ): Promise<void> {
 	const manifestDir = join(outputDir, 'manifest');
 	await mkdir(manifestDir, { recursive: true });
@@ -124,7 +126,7 @@ export async function generateAwsManifest(
 	// topic's subscriber nest inside the resource that triggers them, so the
 	// resource has to be there before they can be folded in.
 	const awsConstructs = withCompute(
-		withRoutes(constructs, flatten(awsRoutes), { perRoute: true }),
+		withRoutes(constructs, flatten(awsRoutes), { perRoute: true, surface }),
 		{
 			functions: flatten(functions),
 			crons: flatten(crons),

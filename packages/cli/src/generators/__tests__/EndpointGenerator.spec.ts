@@ -1,7 +1,5 @@
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { HttpMethod } from '@geekmidas/constructs';
-import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import { itWithDir } from '@geekmidas/testkit/os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -10,7 +8,6 @@ import {
 	createTestEndpoint,
 } from '../../__tests__/test-helpers';
 import { EndpointGenerator } from '../EndpointGenerator';
-import type { GeneratedConstruct } from '../Generator';
 
 describe('EndpointGenerator', () => {
 	let _tempDir: string;
@@ -34,21 +31,6 @@ describe('EndpointGenerator', () => {
 		expect(generator.isConstruct({})).toBe(false);
 		expect(generator.isConstruct('string')).toBe(false);
 		expect(generator.isConstruct(null)).toBe(false);
-	});
-
-	const createTestEndpointConstruct = (
-		key: string,
-		path: string,
-		method: HttpMethod,
-		dir: string,
-	): GeneratedConstruct<Endpoint<any, any, any, any, any, any>> => ({
-		key,
-		name: key.toLowerCase(),
-		construct: createTestEndpoint(path, method),
-		path: {
-			absolute: join(dir, `${key}.ts`),
-			relative: `./${key}.ts`,
-		},
 	});
 
 	itWithDir('should generate a single server app file', async ({ dir }) => {
@@ -76,7 +58,7 @@ describe('EndpointGenerator', () => {
 		const constructs = await generator.load('**/routes/*.ts', dir);
 
 		const routes = await generator.build(context, constructs, outputDir, {
-			provider: 'server',
+			target: 'server',
 			enableOpenApi: true,
 		});
 
@@ -131,7 +113,7 @@ describe('EndpointGenerator', () => {
 			const constructs = await generator.load('**/routes/*.ts', dir);
 
 			await generator.build(context, constructs, outputDir, {
-				provider: 'server',
+				target: 'server',
 				enableOpenApi: false,
 			});
 
@@ -178,7 +160,7 @@ describe('EndpointGenerator', () => {
 			const constructs = await generator.load('**/routes/*.ts', dir);
 
 			const routes = await generator.build(context, constructs, outputDir, {
-				provider: 'aws-lambda',
+				target: 'aws',
 			});
 
 			expect(routes).toHaveLength(2);
@@ -216,36 +198,6 @@ describe('EndpointGenerator', () => {
 	);
 
 	itWithDir(
-		'should generate individual handlers with v1 adapter',
-		async ({ dir }) => {
-			const outputDir = join(dir, 'output');
-			const routesDir = join(dir, 'routes');
-			await mkdir(outputDir, { recursive: true });
-
-			await createMockEndpointFile(
-				routesDir,
-				'testEndpoint.ts',
-				'testEndpoint',
-				'/test',
-				'GET',
-			);
-
-			const constructs = await generator.load('**/routes/*.ts', dir);
-
-			const routes = await generator.build(context, constructs, outputDir, {
-				provider: 'aws-apigatewayv1',
-			});
-
-			expect(routes).toHaveLength(1);
-
-			const handlerPath = join(outputDir, 'testEndpoint.ts');
-			const handlerContent = await readFile(handlerPath, 'utf-8');
-			expect(handlerContent).toContain('AmazonApiGatewayV1Endpoint');
-			expect(handlerContent).toContain('import { testEndpoint }');
-		},
-	);
-
-	itWithDir(
 		'should generate individual handlers with v2 adapter',
 		async ({ dir }) => {
 			const outputDir = join(dir, 'output');
@@ -263,12 +215,12 @@ describe('EndpointGenerator', () => {
 			const constructs = await generator.load('**/routes/*.ts', dir);
 
 			const routes = await generator.build(context, constructs, outputDir, {
-				provider: 'aws-apigatewayv2',
+				target: 'aws',
 			});
 
 			expect(routes).toHaveLength(1);
 
-			const handlerPath = join(outputDir, 'testEndpoint.ts');
+			const handlerPath = join(outputDir, 'routes', 'testEndpoint.ts');
 			const handlerContent = await readFile(handlerPath, 'utf-8');
 			expect(handlerContent).toContain('AmazonApiGatewayV2Endpoint');
 			expect(handlerContent).toContain('import { testEndpoint }');
@@ -284,45 +236,29 @@ describe('EndpointGenerator', () => {
 		},
 	);
 
-	itWithDir(
-		'should use default provider when none specified',
-		async ({ dir }) => {
-			const outputDir = join(dir, 'output');
-			const routesDir = join(dir, 'routes');
-			await mkdir(outputDir, { recursive: true });
-
-			await createMockEndpointFile(
-				routesDir,
-				'testEndpoint.ts',
-				'testEndpoint',
-				'/test',
-				'GET',
-			);
-
-			const constructs = await generator.load('**/routes/*.ts', dir);
-
-			const routes = await generator.build(context, constructs, outputDir);
-
-			expect(routes).toHaveLength(1);
-
-			// Should use default aws-apigatewayv2
-			const handlerPath = join(outputDir, 'testEndpoint.ts');
-			const handlerContent = await readFile(handlerPath, 'utf-8');
-			expect(handlerContent).toContain('AmazonApiGatewayV2Endpoint');
-		},
-	);
-
-	itWithDir('should throw error for unsupported provider', async ({ dir }) => {
+	itWithDir('builds for aws when no target is given', async ({ dir }) => {
 		const outputDir = join(dir, 'output');
-		const constructs = [
-			createTestEndpointConstruct('testEndpoint', '/test', 'GET', dir),
-		];
+		const routesDir = join(dir, 'routes');
+		await mkdir(outputDir, { recursive: true });
 
-		await expect(
-			generator.build(context, constructs, outputDir, {
-				provider: 'unsupported' as any,
-			}),
-		).rejects.toThrow('Unsupported provider: unsupported');
+		await createMockEndpointFile(
+			routesDir,
+			'testEndpoint.ts',
+			'testEndpoint',
+			'/test',
+			'GET',
+		);
+
+		const constructs = await generator.load('**/routes/*.ts', dir);
+
+		const routes = await generator.build(context, constructs, outputDir);
+
+		expect(routes).toHaveLength(1);
+
+		// One Lambda per endpoint, behind an HTTP API
+		const handlerPath = join(outputDir, 'routes', 'testEndpoint.ts');
+		const handlerContent = await readFile(handlerPath, 'utf-8');
+		expect(handlerContent).toContain('AmazonApiGatewayV2Endpoint');
 	});
 
 	itWithDir(
@@ -343,15 +279,15 @@ describe('EndpointGenerator', () => {
 			const constructs = await generator.load('**/src/api/endpoints/*.ts', dir);
 
 			await generator.build(context, constructs, outputDir, {
-				provider: 'aws-apigatewayv2',
+				target: 'aws',
 			});
 
-			const handlerPath = join(outputDir, 'deepEndpoint.ts');
+			const handlerPath = join(outputDir, 'routes', 'deepEndpoint.ts');
 			const handlerContent = await readFile(handlerPath, 'utf-8');
 
 			// Check that relative imports are correct
 			expect(handlerContent).toContain(
-				"from '../src/api/endpoints/deepEndpoint.js'",
+				"from '../../src/api/endpoints/deepEndpoint.js'",
 			);
 
 			// And that it is the only relative import. The handler used to carry a
@@ -359,7 +295,9 @@ describe('EndpointGenerator', () => {
 			// why a module path had to be named in config; an endpoint built from
 			// its surface already carries the parser.
 			const relative = handlerContent.match(/from '\.[^']*'/g) ?? [];
-			expect(relative).toEqual(["from '../src/api/endpoints/deepEndpoint.js'"]);
+			expect(relative).toEqual([
+				"from '../../src/api/endpoints/deepEndpoint.js'",
+			]);
 		},
 	);
 
@@ -389,7 +327,7 @@ describe('EndpointGenerator', () => {
 		const constructs = await generator.load('**/routes/*.ts', dir);
 
 		await generator.build(context, constructs, outputDir, {
-			provider: 'server',
+			target: 'server',
 		});
 
 		expect(logSpy).toHaveBeenCalledWith('Generated server with 2 endpoints');
@@ -427,7 +365,7 @@ describe('EndpointGenerator', () => {
 			};
 
 			await generator.build(productionContext, constructs, outputDir, {
-				provider: 'server',
+				target: 'server',
 			});
 
 			const appPath = join(outputDir, 'app.ts');
@@ -478,7 +416,7 @@ describe('EndpointGenerator', () => {
 			};
 
 			await generator.build(productionContext, constructs, outputDir, {
-				provider: 'server',
+				target: 'server',
 			});
 
 			const appPath = join(outputDir, 'app.ts');
@@ -497,32 +435,29 @@ describe('EndpointGenerator', () => {
 		},
 	);
 
-	itWithDir(
-		'should log aws-lambda handler generation for each route',
-		async ({ dir }) => {
-			const logSpy = vi.spyOn(console, 'log');
-			const outputDir = join(dir, 'output');
-			const routesDir = join(dir, 'routes');
-			await mkdir(outputDir, { recursive: true });
+	itWithDir('should log handler generation for each route', async ({ dir }) => {
+		const logSpy = vi.spyOn(console, 'log');
+		const outputDir = join(dir, 'output');
+		const routesDir = join(dir, 'routes');
+		await mkdir(outputDir, { recursive: true });
 
-			await createMockEndpointFile(
-				routesDir,
-				'testEndpoint.ts',
-				'testEndpoint',
-				'/test',
-				'GET',
-			);
+		await createMockEndpointFile(
+			routesDir,
+			'testEndpoint.ts',
+			'testEndpoint',
+			'/test',
+			'GET',
+		);
 
-			const constructs = await generator.load('**/routes/*.ts', dir);
+		const constructs = await generator.load('**/routes/*.ts', dir);
 
-			await generator.build(context, constructs, outputDir, {
-				provider: 'aws-lambda',
-			});
+		await generator.build(context, constructs, outputDir, {
+			target: 'aws',
+		});
 
-			expect(logSpy).toHaveBeenCalledWith('Generated handler for GET /test');
-			logSpy.mockRestore();
-		},
-	);
+		expect(logSpy).toHaveBeenCalledWith('Generated handler for GET /test');
+		logSpy.mockRestore();
+	});
 
 	itWithDir(
 		'should log apigatewayv2 handler generation for each route',
@@ -543,7 +478,7 @@ describe('EndpointGenerator', () => {
 			const constructs = await generator.load('**/routes/*.ts', dir);
 
 			await generator.build(context, constructs, outputDir, {
-				provider: 'aws-apigatewayv2',
+				target: 'aws',
 			});
 
 			expect(logSpy).toHaveBeenCalledWith(

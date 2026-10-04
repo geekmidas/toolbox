@@ -20,11 +20,11 @@ export class CronGenerator extends ConstructGenerator<
 		outputDir: string,
 		options?: GeneratorOptions,
 	): Promise<CronInfo[]> {
-		const provider = options?.provider || 'aws-lambda';
+		const target = options?.target ?? 'aws';
 		const logger = console;
 		const cronInfos: CronInfo[] = [];
 
-		if (provider === 'server') {
+		if (target === 'server') {
 			// A server runs its crons itself, the way it already runs its
 			// subscribers: one file, wired into the generated entry. Written even
 			// when there are none, so the entry can import it unconditionally.
@@ -37,7 +37,7 @@ export class CronGenerator extends ConstructGenerator<
 			return cronInfos;
 		}
 
-		if (constructs.length === 0 || provider !== 'aws-lambda') {
+		if (constructs.length === 0) {
 			return cronInfos;
 		}
 
@@ -57,7 +57,7 @@ export class CronGenerator extends ConstructGenerator<
 
 			cronInfos.push({
 				name: key,
-				handler: relative(process.cwd(), handlerFile).replace(
+				handler: relative(options?.root ?? process.cwd(), handlerFile).replace(
 					/\.ts$/,
 					'.handler',
 				),

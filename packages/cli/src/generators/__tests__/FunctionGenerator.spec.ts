@@ -80,7 +80,7 @@ describe('FunctionGenerator', () => {
 					context,
 					constructs,
 					outputDir,
-					{ provider: 'aws-lambda' },
+					{ target: 'aws' },
 				);
 
 				expect(functionInfos).toHaveLength(2);
@@ -136,7 +136,7 @@ describe('FunctionGenerator', () => {
 				};
 
 				await generator.build(context, [construct], outputDir, {
-					provider: 'aws-lambda',
+					target: 'aws',
 				});
 
 				const handlerPath = join(outputDir, 'functions', 'deepFunction.ts');
@@ -156,7 +156,7 @@ describe('FunctionGenerator', () => {
 				const constructs = [createTestFunctionConstruct('testFunction', 30)];
 
 				await generator.build(context, constructs, outputDir, {
-					provider: 'aws-lambda',
+					target: 'aws',
 				});
 
 				expect(logSpy).toHaveBeenCalledWith(
@@ -175,20 +175,7 @@ describe('FunctionGenerator', () => {
 					context,
 					constructs,
 					outputDir,
-					{ provider: 'server' },
-				);
-
-				expect(functionInfos).toEqual([]);
-			});
-
-			it('should return empty array for aws-apigatewayv1 provider', async () => {
-				const constructs = [createTestFunctionConstruct('testFunction', 30)];
-
-				const functionInfos = await generator.build(
-					context,
-					constructs,
-					outputDir,
-					{ provider: 'aws-apigatewayv1' },
+					{ target: 'server' },
 				);
 
 				expect(functionInfos).toEqual([]);
@@ -197,7 +184,7 @@ describe('FunctionGenerator', () => {
 
 		it('should return empty array for empty constructs', async () => {
 			const functionInfos = await generator.build(context, [], outputDir, {
-				provider: 'aws-lambda',
+				target: 'aws',
 			});
 			expect(functionInfos).toEqual([]);
 		});
@@ -230,7 +217,7 @@ describe('FunctionGenerator', () => {
 				context,
 				constructs,
 				outputDir,
-				{ provider: 'aws-lambda' },
+				{ target: 'aws' },
 			);
 
 			expect(functionInfos[0].timeout).toBe(15);
@@ -247,7 +234,7 @@ describe('FunctionGenerator', () => {
 			const constructs = [createTestFunctionConstruct('customFunction', 30)];
 
 			await generator.build(customContext, constructs, outputDir, {
-				provider: 'aws-lambda',
+				target: 'aws',
 			});
 
 			const handlerPath = join(outputDir, 'functions', 'customFunction.ts');

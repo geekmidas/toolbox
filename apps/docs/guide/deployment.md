@@ -93,65 +93,45 @@ gkm deploy --provider dokploy --stage production
 from it does. Two cells are red because they have no Dokploy provisioner yet — a
 file server's edge rule, and email.
 
-## Build Providers
+## Build Targets
 
-### Server Provider
+`gkm build` builds for where the project deploys. `deploy: { default: 'sst' }`
+in `gkm.config.ts` builds for AWS; `dokploy` — the default when nothing is
+declared — builds a server. `--provider aws|server` overrides it, which is how a
+Dockerfile builds a server whatever the project deploys to.
+
+Either way the manifest is written at the workspace root —
+`.gkm/manifest/aws.ts` or `.gkm/manifest/server.ts` — with every handler path
+relative to the root, since `sst.config.ts` runs there.
+
+### Server
 
 Generates a standalone Node.js server application using Hono.
 
 ```bash
-gkm build --provider server
+gkm build --provider server --production
 ```
 
-**Output:** `.gkm/server/`
+**Output:** `<app>/.gkm/server/`
 - `app.ts` - Hono application entry point
-- `dist/` - Production bundle (when bundling enabled)
+- `dist/` - Production bundle (with `--production`)
 
-**Production Options:**
+A `--production` build bundles and minifies the server into a single file,
+serves a health check at `/health`, shuts down gracefully, and leaves out the
+dev tools (Telescope, Studio) and the OpenAPI spec. It runs the worker's
+background work itself: queues polled, crons scheduled, subscribers drained.
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `bundle` | `true` | Bundle server into single file |
-| `minify` | `true` | Minify bundled output |
-| `healthCheck` | `'/health'` | Health check endpoint path |
-| `gracefulShutdown` | `true` | Enable graceful shutdown handling |
-| `external` | `[]` | Packages to exclude from bundling |
-| `openapi` | `false` | Include OpenAPI spec in production |
+### AWS
 
-```typescript
-// gkm.config.ts
-import { defineWorkspace } from '@geekmidas/cli/config';
-
-export default defineWorkspace({
-  name: 'my-saas',
-  stages: { local: 'dev', deployed: ['prod'] },
-  constructs: './constructs/**/*.ts',
-
-  providers: {
-    server: {
-      enableOpenApi: true,
-      production: {
-        bundle: true,
-        minify: true,
-        healthCheck: '/health',
-        external: ['@prisma/client'],
-      },
-    },
-  },
-});
-```
-
-### AWS Lambda Provider
-
-Generates handlers compatible with AWS API Gateway.
+One Lambda per construct.
 
 ```bash
-# API Gateway v2 (HTTP API)
-gkm build --provider aws-apigatewayv2
-
-# API Gateway v1 (REST API)
-gkm build --provider aws-apigatewayv1
+gkm build                  # with deploy: { default: 'sst' }
 ```
+
+**Output:** `<app>/.gkm/aws/`
+- `routes/` - one handler per endpoint (API Gateway v2)
+- `functions/`, `crons/`, `queues/`, `subscribers/`
 
 ---
 
@@ -632,11 +612,14 @@ and the packages `@geekmidas/cloud/sst` needs.
 
 ```bash
 pnpm run deploy:staging
-# = gkm build --provider aws && sst deploy --stage staging
+# = gkm build && sst deploy --stage staging
 ```
 
-`gkm build --provider aws` writes `.gkm/manifest/aws.ts` — every construct the
-app declares — and `sst.config.ts` hands it to `fromManifest`. So the config
+The scaffold sets `deploy: { default: 'sst' }` in `gkm.config.ts`, so
+`gkm build` builds for AWS and writes `.gkm/manifest/aws.ts` at the root —
+every construct the app declares — and `sst.config.ts` hands it to
+`fromManifest`. `gkm init` also adds a root tsconfig alias for it,
+`@<project>/manifest`. So the config
 lists no bucket, queue or IAM; what it holds is what a declaration cannot say:
 
 ```typescript
@@ -672,6 +655,11 @@ VPC stops with `DatabaseNeedsVpc`, a mailer without a sender with
 `EmailNeedsSender`. Replace the created VPC with `sst.aws.Vpc.get(…)` if the
 account already has one. Protected stages keep their resources when the stack
 is removed.
+
+Each `RestApi`'s endpoints are mounted on its API Gateway, one Lambda per
+route. A Lambda is linked only to what its own endpoint depends on, and is
+placed in the database's VPC when it reaches a database. An `iam` authorizer is
+enforced by the gateway; any other is checked in the handler.
 
 ---
 

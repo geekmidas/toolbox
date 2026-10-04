@@ -11,7 +11,7 @@ import {
 	generateEndpointFilesNested,
 } from '../build/handler-templates';
 import type { BuildContext } from '../build/types';
-import type { LegacyProvider, RouteInfo } from '../types';
+import type { RouteInfo } from '../types';
 import type { StorageDrivers } from './drivers';
 import {
 	ConstructGenerator,
@@ -170,7 +170,8 @@ export class EndpointGenerator extends ConstructGenerator<
 		outputDir: string,
 		options?: GeneratorOptions,
 	): Promise<RouteInfo[]> {
-		const provider = options?.provider || 'aws-apigatewayv2';
+		const target = options?.target ?? 'aws';
+		const root = options?.root ?? process.cwd();
 		const enableOpenApi = options?.enableOpenApi || false;
 		const logger = console;
 		const routes: RouteInfo[] = [];
@@ -179,7 +180,7 @@ export class EndpointGenerator extends ConstructGenerator<
 			return routes;
 		}
 
-		if (provider === 'server') {
+		if (target === 'server') {
 			// Generate endpoints.ts and app.ts
 			await this.generateEndpointsFile(outputDir, constructs, context);
 			const appFile = await this.generateAppFile(outputDir, context);
@@ -187,83 +188,44 @@ export class EndpointGenerator extends ConstructGenerator<
 			routes.push({
 				path: '*',
 				method: 'ALL',
-				handler: relative(process.cwd(), appFile),
+				handler: relative(root, appFile),
 				authorizer: 'none',
 			});
 
 			logger.log(
 				`Generated server with ${constructs.length} endpoints${enableOpenApi ? ' (OpenAPI enabled)' : ''}`,
 			);
-		} else if (provider === 'aws-lambda') {
-			// For aws-lambda, create routes subdirectory
-			const routesDir = join(outputDir, 'routes');
-			await mkdir(routesDir, { recursive: true });
 
-			// Generate individual handlers for API Gateway routes
-			for (const { key, construct, path } of constructs) {
-				const handlerFile = await this.generateHandlerFile(
-					routesDir,
-					path.relative,
-					key,
-					'aws-apigatewayv2',
-					construct,
-					context,
-				);
+			return routes;
+		}
 
-				const routeInfo: RouteInfo = {
-					path: construct._path,
-					method: construct.method,
-					handler: relative(process.cwd(), handlerFile).replace(
-						/\.ts$/,
-						'.handler',
-					),
-					timeout: construct.timeout,
-					memorySize: construct.memorySize,
-					environment: await construct.getEnvironment({
-						markOptional: context.markOptional,
-					}),
-					dependencies: construct.constructs,
-					authorizer: construct.authorizer?.name ?? 'none',
-				};
+		// One Lambda per endpoint, behind an HTTP API.
+		const routesDir = join(outputDir, 'routes');
+		await mkdir(routesDir, { recursive: true });
 
-				routes.push(routeInfo);
-				logger.log(
-					`Generated handler for ${routeInfo.method} ${routeInfo.path}`,
-				);
-			}
-		} else {
-			// Generate individual handler files for AWS API Gateway providers
-			for (const { key, construct, path } of constructs) {
-				const handlerFile = await this.generateHandlerFile(
-					outputDir,
-					path.relative,
-					key,
-					provider,
-					construct,
-					context,
-				);
+		for (const { key, construct, path } of constructs) {
+			const handlerFile = await this.generateHandlerFile(
+				routesDir,
+				path.relative,
+				key,
+				context,
+			);
 
-				const routeInfo: RouteInfo = {
-					path: construct._path,
-					method: construct.method,
-					handler: relative(process.cwd(), handlerFile).replace(
-						/\.ts$/,
-						'.handler',
-					),
-					timeout: construct.timeout,
-					memorySize: construct.memorySize,
-					environment: await construct.getEnvironment({
-						markOptional: context.markOptional,
-					}),
-					dependencies: construct.constructs,
-					authorizer: construct.authorizer?.name ?? 'none',
-				};
+			const routeInfo: RouteInfo = {
+				path: construct._path,
+				method: construct.method,
+				handler: relative(root, handlerFile).replace(/\.ts$/, '.handler'),
+				timeout: construct.timeout,
+				memorySize: construct.memorySize,
+				environment: await construct.getEnvironment({
+					markOptional: context.markOptional,
+				}),
+				dependencies: construct.constructs,
+				authorizer: construct.authorizer?.name ?? 'none',
+			};
 
-				routes.push(routeInfo);
-				logger.log(
-					`Generated handler for ${routeInfo.method} ${routeInfo.path}`,
-				);
-			}
+			routes.push(routeInfo);
+			logger.log(`Generated handler for ${routeInfo.method} ${routeInfo.path}`);
 		}
 
 		return routes;
@@ -273,54 +235,21 @@ export class EndpointGenerator extends ConstructGenerator<
 		outputDir: string,
 		sourceFile: string,
 		exportName: string,
-		provider: LegacyProvider,
-		_endpoint: Endpoint<
-			any,
-			any,
-			any,
-			any,
-			any,
-			any,
-			any,
-			any,
-			any,
-			any,
-			any,
-			any
-		>,
 		context: BuildContext,
 	): Promise<string> {
-		const handlerFileName = `${exportName}.ts`;
-		const handlerPath = join(outputDir, handlerFileName);
+		const handlerPath = join(outputDir, `${exportName}.ts`);
 
 		const relativePath = relative(dirname(handlerPath), sourceFile);
 		const importPath = relativePath.replace(/\.ts$/, '.js');
 
-		let content: string;
-
-		switch (provider) {
-			case 'aws-apigatewayv1':
-				content = this.generateAWSApiGatewayV1Handler(
-					importPath,
-					exportName,
-					context.storageDrivers,
-				);
-				break;
-			case 'aws-apigatewayv2':
-				content = this.generateAWSApiGatewayV2Handler(
-					importPath,
-					exportName,
-					context.storageDrivers,
-				);
-				break;
-			case 'server':
-				content = this.generateServerHandler(importPath, exportName);
-				break;
-			default:
-				throw new Error(`Unsupported provider: ${provider}`);
-		}
-
-		await writeFile(handlerPath, content);
+		await writeFile(
+			handlerPath,
+			this.generateAWSApiGatewayV2Handler(
+				importPath,
+				exportName,
+				context.storageDrivers,
+			),
+		);
 		return handlerPath;
 	}
 
@@ -850,31 +779,6 @@ export default createApp;
 	 * object. Nothing has to be printed now, which is also why nothing has to be
 	 * named in config.
 	 */
-	private generateAWSApiGatewayV1Handler(
-		importPath: string,
-		exportName: string,
-		drivers?: StorageDrivers,
-	): string {
-		return `import { AmazonApiGatewayV1Endpoint } from '@geekmidas/constructs/aws';
-import { ${exportName} } from '${importPath}';
-${drivers?.imports ?? ''}
-${drivers?.setup ? `\n// The handler registers the drivers its target needs.\n${drivers.setup}\n` : ''}
-const adapter = new AmazonApiGatewayV1Endpoint(${exportName});
-
-export const handler = adapter.handler;
-`;
-	}
-
-	/**
-	 * One Lambda, one endpoint — and no environment import.
-	 *
-	 * The endpoint was built from its surface, so it carries the parser the
-	 * adaptor needs. This used to read
-	 * `import { envParser } from '../../config/env'`, a line the build wrote
-	 * because a generator can print a module specifier and cannot print an
-	 * object. Nothing has to be printed now, which is also why nothing has to be
-	 * named in config.
-	 */
 	private generateAWSApiGatewayV2Handler(
 		importPath: string,
 		exportName: string,
@@ -887,17 +791,6 @@ ${drivers?.setup ? `\n// The handler registers the drivers its target needs.\n${
 const adapter = new AmazonApiGatewayV2Endpoint(${exportName});
 
 export const handler = adapter.handler;
-`;
-	}
-
-	private generateServerHandler(
-		importPath: string,
-		exportName: string,
-	): string {
-		return `import { ${exportName} } from '${importPath}';
-
-// Server handler - implement based on your server framework
-export const handler = ${exportName};
 `;
 	}
 
@@ -1093,7 +986,7 @@ export default createApp;
 		const content = `#!/usr/bin/env node
 /**
  * Production server entry point
- * Generated by 'gkm build --provider server --production'
+ * Generated by 'gkm build --production'
  */
 import { serve } from '@hono/node-server';
 import { createApp } from './app.js';

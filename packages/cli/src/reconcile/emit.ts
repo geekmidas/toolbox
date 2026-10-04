@@ -51,11 +51,10 @@ export const MANIFEST_PATH = '.gkm/manifest.ts';
  * already knows where it wrote each handler. Asking the declaration to restate
  * any of that is how the two come to disagree.
  *
- * Attribution is by exclusion — routes go to the surface that declared none of
- * its own. A surface with static endpoints (an auth server's single wildcard)
- * keeps them. That is exact while an app has one API of its own, and needs a
- * real answer the day it has two; the alternative today would be inventing one
- * before anything needs it.
+ * Attribution is to the surface the build served — the one whose `path` is
+ * the app being built. Without one, routes go to the surface that declared none
+ * of its own; a surface with static endpoints (an auth server's single
+ * wildcard) keeps them.
  *
  * **Only from a provider that generates one handler per route.** The `server`
  * provider generates a single catch-all — `ALL *` pointing at the Hono app that
@@ -68,13 +67,14 @@ export const MANIFEST_PATH = '.gkm/manifest.ts';
 export function withRoutes(
 	manifest: ConstructManifest,
 	routes: readonly RouteInfo[],
-	options: { perRoute: boolean },
+	options: { perRoute: boolean; surface?: string },
 ): ConstructManifest {
 	if (routes.length === 0 || !options.perRoute) return manifest;
 
-	const target = Object.entries(manifest).find(
-		([, declaration]) =>
-			declaration.kind === 'rest-api' && declaration.endpoints.length === 0,
+	const target = Object.entries(manifest).find(([id, declaration]) =>
+		options.surface
+			? id === options.surface
+			: declaration.kind === 'rest-api' && declaration.endpoints.length === 0,
 	);
 
 	if (!target) return manifest;

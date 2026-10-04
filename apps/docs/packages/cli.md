@@ -147,12 +147,15 @@ Secrets are stored encrypted at `.gkm/secrets/{stage}.json` with decryption keys
 ### Build
 
 Generate Lambda handlers or server applications from endpoint definitions.
+`gkm build` builds for where the project deploys: `deploy: { default: 'sst' }`
+builds for AWS, one Lambda per construct; `dokploy` — the default when nothing
+is declared — builds a server. `--provider` overrides it.
 
 ```bash
-# Build for AWS (uses config)
-gkm build --provider aws
+# Build for where gkm.config.ts deploys
+gkm build
 
-# Build server application
+# Build a server whatever the deploy target (what a Dockerfile runs)
 gkm build --provider server
 
 # Build for production (no dev tools, bundled)
@@ -163,7 +166,7 @@ gkm build --provider server --production
 
 | Option | Description |
 |--------|-------------|
-| `--provider` | Target provider (aws, server) |
+| `--provider` | Override the deploy target (aws, server) |
 | `--production` | Build for production (no dev tools, bundled output) |
 | `--skip-bundle` | Skip bundling step in production build |
 | `--enable-openapi` | Enable OpenAPI documentation generation |
@@ -184,6 +187,16 @@ When using `--production`, the build:
 # .gkm/server/server.ts     (entry point)
 # .gkm/server/dist/server.mjs (bundled output)
 ```
+
+**Output:**
+
+Handlers are written beside the app — `<app>/.gkm/server/`, or for AWS
+`<app>/.gkm/aws/routes/` (one API Gateway v2 handler per endpoint) plus
+`functions/`, `crons/`, `queues/` and `subscribers/`. The manifest is written
+at the workspace root, `.gkm/manifest/aws.ts` or `.gkm/manifest/server.ts`,
+with every handler path relative to the root
+(`apps/api/.gkm/aws/routes/getUser.handler`), because `sst.config.ts` runs
+there. `gkm init` adds a root tsconfig alias for it, `@<project>/manifest`.
 
 ### Docker
 
@@ -597,21 +610,6 @@ export default defineConfig({
     description: 'API for my application',
   },
 
-  // Production build configuration (optional)
-  providers: {
-    server: {
-      production: {
-        bundle: true,           // Bundle to single file
-        minify: true,           // Minify output
-        healthCheck: '/health', // Health check endpoint
-        gracefulShutdown: true, // Enable graceful shutdown
-        external: [],           // Packages to exclude from bundle
-        subscribers: 'exclude', // 'include' or 'exclude'
-        openapi: false,         // Include OpenAPI in production
-      },
-    },
-  },
-
   // Docker configuration (optional)
   docker: {
     registry: 'ghcr.io/myorg',
@@ -718,21 +716,10 @@ When no partition function is provided, the manifest field remains a flat array 
 
 ### Production Configuration
 
-The `providers.server.production` configuration controls production build behavior:
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `bundle` | `boolean` | `true` | Bundle output to single file |
-| `minify` | `boolean` | `true` | Minify bundled output |
-| `healthCheck` | `string` | `/health` | Health check endpoint path |
-| `gracefulShutdown` | `boolean` | `true` | Enable graceful shutdown handling |
-| `external` | `string[]` | `[]` | Packages to exclude from bundling |
-| `subscribers` | `'include' \| 'exclude'` | `'exclude'` | Include subscribers in production |
-| `openapi` | `boolean` | `false` | Include OpenAPI docs in production |
-
-::: tip
-When deploying with pg-boss or RabbitMQ via Docker, set `subscribers: 'include'` so the server process polls for events. On Lambda, leave it as `'exclude'`: SNS invokes each subscriber's function and SQS each queue's.
-:::
+A `--production` server build uses fixed settings: bundled and minified into a
+single file, a health check at `/health`, graceful shutdown, no packages left
+external, and no OpenAPI spec. The worker's queues, crons and subscribers run
+in the same process.
 
 **Production vs Development:**
 

@@ -6,7 +6,6 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import chokidar from 'chokidar';
 import fg from 'fast-glob';
 import { appPackageName, buildApp, turboFilters } from '../build/index';
-import { resolveProviders } from '../build/providerResolver';
 import type {
 	NormalizedHooksConfig,
 	NormalizedProductionConfig,
@@ -35,10 +34,7 @@ import { FileSecretsStore, secretsStoreFor } from '../secrets/store.js';
 import { ensureTrusted } from '../trust/index.js';
 import type {
 	GkmConfig,
-	LegacyProvider,
-	ProductionConfig,
 	Runtime,
-	ServerConfig,
 	StudioConfig,
 	TelescopeConfig,
 } from '../types';
@@ -190,46 +186,33 @@ export function normalizeHooksConfig(
 }
 
 /**
- * Normalize production configuration
+ * What a `--production` build is.
+ *
+ * A server runs its worker's background work itself — queues polled, crons
+ * scheduled, subscribers drained — so the production entry wires all three.
+ * The build writes their files on every server build, empty when there is
+ * nothing, so including them costs an app without any nothing.
+ *
  * @internal Exported for testing
  */
 export function normalizeProductionConfig(
 	cliProduction: boolean,
-	configProduction?: ProductionConfig,
 ): NormalizedProductionConfig | undefined {
-	// Production mode is only enabled if --production CLI flag is passed
 	if (!cliProduction) {
 		return undefined;
 	}
 
-	// Merge CLI flag with config options
-	const config = configProduction ?? {};
-
 	return {
 		enabled: true,
-		bundle: config.bundle ?? true,
-		minify: config.minify ?? true,
-		healthCheck: config.healthCheck ?? '/health',
-		gracefulShutdown: config.gracefulShutdown ?? true,
-		external: config.external ?? [],
-		subscribers: config.subscribers ?? 'exclude',
-		openapi: config.openapi ?? false,
-		optimizedHandlers: config.optimizedHandlers ?? true, // Default to optimized handlers in production
+		bundle: true,
+		minify: true,
+		healthCheck: '/health',
+		gracefulShutdown: true,
+		external: [],
+		subscribers: 'include',
+		openapi: false,
+		optimizedHandlers: true,
 	};
-}
-
-/**
- * Get production config from GkmConfig
- * @internal
- */
-export function getProductionConfigFromGkm(
-	config: GkmConfig,
-): ProductionConfig | undefined {
-	const serverConfig = config.providers?.server;
-	if (typeof serverConfig === 'object') {
-		return (serverConfig as ServerConfig).production;
-	}
-	return undefined;
 }
 
 export interface DevOptions {
@@ -324,9 +307,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		}
 	}
 
-	// Force server provider for dev mode
-	const resolved = resolveProviders(config, { provider: 'server' });
-
 	// Normalize telescope configuration
 	const telescope = normalizeTelescopeConfig(config.telescope);
 
@@ -338,8 +318,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
 	// Resolve OpenAPI configuration
 	const openApiConfig = resolveOpenApiConfig(config);
-	// Enable OpenAPI docs endpoint if either root config or provider config enables it
-	const enableOpenApi = openApiConfig.enabled || resolved.enableOpenApi;
+	const enableOpenApi = openApiConfig.enabled;
 
 	// The build's own pipeline, for the server target: what dev runs is what
 	// `gkm build` would have generated, never a second reading of the same
@@ -355,7 +334,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 				// which surface this app serves.
 				workspaceRoot: workspace?.root ?? secretsRoot,
 				appRoot,
-				providers: ['server'],
+				target: 'server',
 				enableOpenApi,
 				cacheBackend: cacheBackendFor(providerOf(workspace ?? config)),
 				telescope,
@@ -428,7 +407,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	// Start the dev server
 	// Priority: explicit --port option > workspace app port > default 3000
 	const devServer = new DevServer(
-		resolved.providers[0] as LegacyProvider,
 		options.port ?? workspaceAppPort ?? 3000,
 		// A workspace's port is as fixed as one passed with --port: every other
 		// app's URL, CORS list and cookie domain names it. Drifting to the next
@@ -1549,7 +1527,6 @@ class DevServer {
 	private startTime = Date.now();
 
 	constructor(
-		private provider: LegacyProvider,
 		private requestedPort: number,
 		private portExplicit: boolean,
 		private enableOpenApi: boolean,
@@ -1601,12 +1578,7 @@ class DevServer {
 			}
 		}
 
-		const serverEntryPath = join(
-			this.appRoot,
-			'.gkm',
-			this.provider,
-			'server.ts',
-		);
+		const serverEntryPath = join(this.appRoot, '.gkm', 'server', 'server.ts');
 
 		// Create server entry file
 		await this.createServerEntry();
@@ -1732,7 +1704,7 @@ class DevServer {
 	private async createServerEntry(): Promise<void> {
 		const { writeFile: fsWriteFile } = await import('node:fs/promises');
 
-		const serverPath = join(this.appRoot, '.gkm', this.provider, 'server.ts');
+		const serverPath = join(this.appRoot, '.gkm', 'server', 'server.ts');
 
 		const content = generateServerEntryContent({
 			secretsJsonPath: this.secretsJsonPath,

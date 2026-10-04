@@ -186,8 +186,8 @@ topic is what puts a broker in the local plan and resolves
 ### 6. Build Handlers
 
 ```bash
-# Generate AWS Lambda handlers
-npx gkm build --provider aws-apigatewayv1
+# Build for where gkm.config.ts deploys (AWS for `deploy: { default: 'sst' }`)
+npx gkm build
 
 # Generate server application
 npx gkm build --provider server
@@ -311,17 +311,20 @@ Generate handlers from your endpoints.
 gkm build [options]
 ```
 
+By default it builds for where the project deploys: `deploy: { default: 'sst' }`
+builds for AWS, one Lambda per construct; `dokploy` (the default when nothing
+is declared) builds a server.
+
 **Options:**
-- `--provider <provider>`: Target provider (default: `aws-apigatewayv1`)
-  - `aws-apigatewayv1`: AWS API Gateway v1 Lambda handlers
-  - `aws-apigatewayv2`: AWS API Gateway v2 Lambda handlers
+- `--provider <provider>`: Override the deploy target
+  - `aws`: One Lambda handler per construct (API Gateway v2 for endpoints)
   - `server`: Server application with Hono
 - `--production`: Generate production-optimized bundle (server provider only)
 
 **Example:**
 ```bash
-# Generate AWS Lambda handlers
-gkm build --provider aws-apigatewayv1
+# Build for where gkm.config.ts deploys
+gkm build
 
 # Generate server application
 gkm build --provider server
@@ -923,15 +926,6 @@ export default defineConfig({
     registry: 'ghcr.io/myorg',
     imageName: 'my-api',
   },
-
-  // For Dokploy deployments
-  providers: {
-    dokploy: {
-      endpoint: 'https://dokploy.example.com',
-      projectId: 'proj_xxx',
-      applicationId: 'app_xxx',
-    },
-  },
 });
 ```
 
@@ -941,7 +935,7 @@ export default defineConfig({
 
 ### `gkm deploy:init`
 
-Initialize a new Dokploy deployment by creating a project and application via the Dokploy API. Automatically updates `gkm.config.ts` with the configuration.
+Initialize a new Dokploy deployment by creating a project and application via the Dokploy API. Nothing is written to `gkm.config.ts`: the ids are rediscovered by name on each run and kept in the deploy state file.
 
 ```bash
 gkm deploy:init --project <name> --app <name> [options]
@@ -976,8 +970,7 @@ gkm deploy:init \
 1. Searches for existing project by name, or creates a new one
 2. Creates a new application in the project
 3. Configures registry if `--registry-id` is provided
-4. Updates `gkm.config.ts` with the Dokploy configuration
-5. Shows next steps for secrets and deployment
+4. Shows next steps for secrets and deployment
 
 ### `gkm deploy:list`
 
@@ -1357,42 +1350,24 @@ interface AppSpec {
 }
 ```
 
-## Providers
+## Build Targets
 
-### AWS API Gateway v1
+### AWS
 
-Generates Lambda handlers compatible with AWS API Gateway v1 (REST API).
-
-```bash
-gkm build --provider aws-apigatewayv1
-```
-
-**Generated Handler:**
-```typescript
-import { AmazonApiGatewayV1Endpoint } from '@geekmidas/constructs/aws';
-import { myEndpoint } from '../src/routes/example.js';
-import { envParser } from '../src/env.js';
-
-const adapter = new AmazonApiGatewayV1Endpoint(envParser, myEndpoint);
-
-export const handler = adapter.handler;
-```
-
-### AWS API Gateway v2
-
-Generates Lambda handlers compatible with AWS API Gateway v2 (HTTP API).
+Generates one Lambda handler per construct. Endpoints get an API Gateway v2
+(HTTP API) adapter.
 
 ```bash
-gkm build --provider aws-apigatewayv2
+gkm build                  # with deploy: { default: 'sst' }
+gkm build --provider aws   # whatever the deploy target
 ```
 
 **Generated Handler:**
 ```typescript
 import { AmazonApiGatewayV2Endpoint } from '@geekmidas/constructs/aws';
-import { myEndpoint } from '../src/routes/example.js';
-import { envParser } from '../src/env.js';
+import { myEndpoint } from '../../../src/routes/example.js';
 
-const adapter = new AmazonApiGatewayV2Endpoint(envParser, myEndpoint);
+const adapter = new AmazonApiGatewayV2Endpoint(myEndpoint);
 
 export const handler = adapter.handler;
 ```
@@ -1434,25 +1409,29 @@ export default createApp;
 
 ## Output Structure
 
-The CLI generates files in the `.gkm/<provider>` directory:
+Handlers are generated beside the app, in `<app>/.gkm/<target>`; the manifest
+at the workspace root, where `sst.config.ts` runs:
 
 ```
-.gkm/
-├── aws-apigatewayv1/
-│   ├── getUsers.ts          # Individual Lambda handler
-│   ├── createUser.ts        # Individual Lambda handler
-├── server/
-│   ├── app.ts               # Server application
-│   ├── endpoints.ts         # Endpoint exports
-├── manifest/
-│   ├── aws.ts               # AWS manifest with types
-│   └── server.ts            # Server manifest with types
-└── openapi.json             # OpenAPI specification
+<root>/
+├── .gkm/manifest/
+│   ├── aws.ts                   # AWS manifest with types
+│   └── server.ts                # Server manifest with types
+└── apps/api/.gkm/
+    ├── aws/
+    │   ├── routes/getUsers.ts   # One Lambda handler per endpoint
+    │   ├── functions/
+    │   ├── crons/
+    │   ├── queues/
+    │   └── subscribers/
+    └── server/
+        ├── app.ts               # Server application
+        └── endpoints.ts         # Endpoint exports
 ```
 
 ### Build Manifest
 
-The CLI generates TypeScript manifests with full type information in the `.gkm/manifest/` directory. These manifests export both the data and derived types for type-safe usage.
+The CLI generates TypeScript manifests with full type information in the root `.gkm/manifest/` directory. These manifests export both the data and derived types for type-safe usage. Every handler path in them is relative to the workspace root. `gkm init` adds a root tsconfig alias for the manifest, `@<project>/manifest`.
 
 #### AWS Manifest (`.gkm/manifest/aws.ts`)
 
@@ -1462,20 +1441,20 @@ export const manifest = {
     {
       path: '/users',
       method: 'GET',
-      handler: '.gkm/aws-apigatewayv1/getUsers.handler',
+      handler: 'apps/api/.gkm/aws/routes/getUsers.handler',
       authorizer: 'jwt',
     },
     {
       path: '/users',
       method: 'POST',
-      handler: '.gkm/aws-apigatewayv1/createUser.handler',
+      handler: 'apps/api/.gkm/aws/routes/createUser.handler',
       authorizer: 'jwt',
     },
   ],
   functions: [
     {
       name: 'processData',
-      handler: '.gkm/aws-lambda/functions/processData.handler',
+      handler: 'apps/api/.gkm/aws/functions/processData.handler',
       timeout: 60,
       memorySize: 256,
     },
@@ -1483,7 +1462,7 @@ export const manifest = {
   crons: [
     {
       name: 'dailyCleanup',
-      handler: '.gkm/aws-lambda/crons/dailyCleanup.handler',
+      handler: 'apps/api/.gkm/aws/crons/dailyCleanup.handler',
       schedule: 'rate(1 day)',
       timeout: 300,
       memorySize: 512,
@@ -1526,8 +1505,8 @@ export type Route<P extends RoutePartition = RoutePartition> =
 ```typescript
 export const manifest = {
   app: {
-    handler: '.gkm/server/app.ts',
-    endpoints: '.gkm/server/endpoints.ts',
+    handler: 'apps/api/.gkm/server/app.ts',
+    endpoints: 'apps/api/.gkm/server/endpoints.ts',
   },
   routes: [
     { path: '/users', method: 'GET', authorizer: 'jwt' },
@@ -1661,17 +1640,17 @@ provider:
 
 functions:
   getUsers:
-    handler: .gkm/aws-apigatewayv1/getUsers.handler
+    handler: .gkm/aws/routes/getUsers.handler
     events:
-      - http:
-          path: users
+      - httpApi:
+          path: /users
           method: get
-  
+
   createUser:
-    handler: .gkm/aws-apigatewayv1/createUser.handler
+    handler: .gkm/aws/routes/createUser.handler
     events:
-      - http:
-          path: users
+      - httpApi:
+          path: /users
           method: post
 ```
 
@@ -1922,7 +1901,7 @@ Error: OpenAPI generation failed: Invalid endpoint schema
     "dev": "gkm dev",
     "dev:port": "gkm dev --port 8080",
     "build": "gkm build",
-    "build:lambda": "gkm build --provider aws-apigatewayv1",
+    "build:lambda": "gkm build --provider aws",
     "build:server": "gkm build --provider server",
     "docs": "gkm openapi --output src/api.ts"
   }
@@ -2016,8 +1995,8 @@ DEBUG=gkm:* npx gkm build
 ### Types
 
 ```typescript
-// Provider options
-type Provider = 'server' | 'aws-apigatewayv1' | 'aws-apigatewayv2';
+// Build targets
+type Provider = 'aws' | 'server';
 
 // Runtime options
 type Runtime = 'node' | 'bun';
@@ -2055,7 +2034,7 @@ interface TelescopeConfig {
 
 // Build options
 interface BuildOptions {
-  provider: Provider;
+  provider?: Provider; // default: where gkm.config.ts deploys
 }
 
 // Dev options

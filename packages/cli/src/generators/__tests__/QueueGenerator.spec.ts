@@ -89,7 +89,7 @@ describe('QueueGenerator', () => {
 			];
 
 			const infos = await generator.build(context, constructs, outputDir, {
-				provider: 'aws-lambda',
+				target: 'aws',
 			});
 
 			expect(infos).toHaveLength(2);
@@ -119,7 +119,7 @@ describe('QueueGenerator', () => {
 				context,
 				[withDatabase('ordersQueue')],
 				outputDir,
-				{ provider: 'aws-lambda' },
+				{ target: 'aws' },
 			);
 
 			// The Lambda runs the queue alone, so the database has to be in its
@@ -130,7 +130,7 @@ describe('QueueGenerator', () => {
 
 		it('returns an empty array for no queues', async () => {
 			const infos = await generator.build(context, [], outputDir, {
-				provider: 'aws-lambda',
+				target: 'aws',
 			});
 			expect(infos).toEqual([]);
 		});
@@ -141,7 +141,7 @@ describe('QueueGenerator', () => {
 		// with no Queue has no reason to install `@geekmidas/events`.
 		it('generates a setupQueues that imports nothing at runtime when empty', async () => {
 			const infos = await generator.build(context, [], outputDir, {
-				provider: 'server',
+				target: 'server',
 			});
 
 			expect(infos).toEqual([]);
@@ -159,7 +159,7 @@ describe('QueueGenerator', () => {
 			];
 
 			await generator.build(context, constructs, outputDir, {
-				provider: 'server',
+				target: 'server',
 			});
 
 			const content = await readFile(join(outputDir, 'queues.ts'), 'utf-8');
@@ -173,7 +173,7 @@ describe('QueueGenerator', () => {
 
 		it('registers each queue’s database and hands it to the handler as db', async () => {
 			await generator.build(context, [withDatabase('ordersQueue')], outputDir, {
-				provider: 'server',
+				target: 'server',
 			});
 
 			const content = await readFile(join(outputDir, 'queues.ts'), 'utf-8');

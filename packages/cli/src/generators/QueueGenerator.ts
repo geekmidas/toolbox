@@ -34,11 +34,11 @@ export class QueueGenerator extends ConstructGenerator<
 		outputDir: string,
 		options?: GeneratorOptions,
 	): Promise<QueueInfo[]> {
-		const provider = options?.provider || 'aws-lambda';
+		const target = options?.target ?? 'aws';
 		const logger = console;
 		const queueInfos: QueueInfo[] = [];
 
-		if (provider === 'server') {
+		if (target === 'server') {
 			// Generate queues.ts for in-process polling (even if empty, so the
 			// server entry can always import setupQueues).
 			await this.generateServerQueuesFile(outputDir, constructs);
@@ -48,7 +48,7 @@ export class QueueGenerator extends ConstructGenerator<
 			return queueInfos;
 		}
 
-		if (constructs.length === 0 || provider !== 'aws-lambda') {
+		if (constructs.length === 0) {
 			return queueInfos;
 		}
 
@@ -66,7 +66,7 @@ export class QueueGenerator extends ConstructGenerator<
 
 			queueInfos.push({
 				name: construct.name,
-				handler: relative(process.cwd(), handlerFile).replace(
+				handler: relative(options?.root ?? process.cwd(), handlerFile).replace(
 					/\.ts$/,
 					'.handler',
 				),

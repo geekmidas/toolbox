@@ -223,14 +223,10 @@ export function wrapSingleAppAsWorkspace(
 	const app: NormalizedAppConfig = {
 		type: 'backend',
 		path: '.',
-		port:
-			(typeof config.providers?.server === 'object'
-				? config.providers.server.port
-				: undefined) ?? 3000,
+		port: 3000,
 		dependencies: [],
 		resolvedDeployTarget: config.deploy?.default ?? 'dokploy',
 		constructs: config.constructs,
-		providers: config.providers,
 		hooks: config.hooks,
 		telescope: config.telescope,
 		studio: config.studio,
@@ -394,7 +390,6 @@ export function getAppGkmConfig(
 		// as the constructs. Which surface an endpoint belongs to is the
 		// endpoint's to say, not its file's, so the build sorts them there.
 		constructs: appConstructGlobs(workspace, appName),
-		providers: app.providers,
 		hooks: app.hooks,
 		telescope: app.telescope,
 		studio: app.studio,

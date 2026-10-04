@@ -87,7 +87,8 @@ handler, as `.dependsOn([orders])` would, for an event the handler decides on.
 
 ## 2. What `gkm build` emits (manifest)
 
-A **single TypeScript module** per provider — `.gkm/manifest/aws.ts` — whose
+A **single TypeScript module** at the workspace root — `.gkm/manifest/aws.ts`,
+its handler paths relative to the root, where `sst.config.ts` runs — whose
 `constructs` export is every declaration keyed by id. Each queue nests its one
 consumer; each topic lists the subscribers bound to it:
 
@@ -100,7 +101,7 @@ export const constructs = {
     provides: ['FULFILMENT_PUBLISHER_CONNECTION_STRING'],
     worker: {
       id: 'FulfilmentWorker',
-      handler: '.gkm/aws-lambda/queues/fulfilment.handler',
+      handler: 'apps/api/.gkm/aws/queues/fulfilment.handler',
       dependencies: [{ target: 'Database', kind: 'database' }],
     },
   },
@@ -112,7 +113,7 @@ export const constructs = {
     subscribers: [
       {
         id: 'notify',
-        handler: '.gkm/aws-lambda/subscribers/notify.handler',
+        handler: 'apps/api/.gkm/aws/subscribers/notify.handler',
         events: ['order.created'],
         dependencies: [],
       },

@@ -622,6 +622,15 @@ describe('initCommand', () => {
 				'gkm deploy --provider dokploy --stage production',
 			);
 			expect(existsSync(join(root, 'sst.config.ts'))).toBe(false);
+			await expect(
+				readFile(join(root, 'gkm.config.ts'), 'utf-8'),
+			).resolves.not.toContain('deploy:');
+			const tsconfig = JSON.parse(
+				await readFile(join(root, 'tsconfig.json'), 'utf-8'),
+			);
+			expect(tsconfig.compilerOptions.paths['@my-fullstack/manifest']).toEqual([
+				'./.gkm/manifest/server.ts',
+			]);
 		});
 
 		it('scaffolds an SST deploy with --deploy sst', async () => {
@@ -640,8 +649,17 @@ describe('initCommand', () => {
 
 			// The build writes the manifest SST reads; SST never imports the app.
 			expect(pkg.scripts['deploy:production']).toBe(
-				'gkm build --provider aws && sst deploy --stage production',
+				'gkm build && sst deploy --stage production',
 			);
+			// What a bare `gkm build` builds for, and what backends resolve to.
+			await expect(
+				readFile(join(root, 'gkm.config.ts'), 'utf-8'),
+			).resolves.toContain("deploy: { default: 'sst' },");
+			// No export of a server build an AWS build never writes.
+			const api = JSON.parse(
+				await readFile(join(root, 'apps/api/package.json'), 'utf-8'),
+			);
+			expect(api.exports['./endpoints']).toBeUndefined();
 			expect(pkg.devDependencies.sst).toMatch(/^~4\./);
 			// What \`@geekmidas/cloud/sst\` imports: optional peers of the cloud
 			// package, so the scaffold installs them itself.
@@ -674,6 +692,10 @@ describe('initCommand', () => {
 				await readFile(join(root, 'tsconfig.json'), 'utf-8'),
 			);
 			expect(tsconfig.exclude).toContain('sst.config.ts');
+			// The manifest is the workspace's, at its root, by name.
+			expect(tsconfig.compilerOptions.paths['@my-fullstack/manifest']).toEqual([
+				'./.gkm/manifest/aws.ts',
+			]);
 		});
 
 		it('takes eu-west-1 for an unattended SST deploy', async () => {
