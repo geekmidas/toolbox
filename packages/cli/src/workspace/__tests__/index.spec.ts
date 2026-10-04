@@ -439,16 +439,14 @@ describe('getAppGkmConfig', () => {
 				routes: './src/**/*.ts',
 				deploy: {
 					default: 'dokploy',
-					dokploy: {
-						endpoint: 'http://example:3000',
-						domains: { production: 'example.test' },
-					},
+					domains: { production: 'example.test' },
+					dokploy: { endpoint: 'http://example:3000' },
 				},
 			} as never,
 			'/project',
 		);
 
-		expect(wrapped.deploy.dokploy?.domains?.production).toBe('example.test');
+		expect(wrapped.deploy.domains?.production).toBe('example.test');
 		expect(wrapped.deploy.default).toBe('dokploy');
 	});
 

@@ -47,6 +47,12 @@ export interface StaticSiteConfig {
 	 */
 	path: string;
 	/**
+	 * The label it answers on under a stage's domain — `api` for
+	 * `api.myapp.com`, from `deploy.domains` — and under the project locally,
+	 * `api.myapp.localhost`. Absent, its id kebab-cased.
+	 */
+	subdomain?: string;
+	/**
 	 * The port it answers on locally.
 	 *
 	 * Normally omitted: ports are assigned in a stable order, so adding a site
@@ -125,6 +131,7 @@ export class StaticSite<TName extends string = string>
 				kind: 'site',
 				id: this.id,
 				variant: this.config.variant ?? 'static',
+				...(this.config.subdomain ? { subdomain: this.config.subdomain } : {}),
 				app: {
 					path: this.config.path,
 					...(this.config.port ? { port: this.config.port } : {}),

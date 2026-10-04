@@ -218,6 +218,11 @@ export interface PlannedResource {
 	 * shape production serves, rather than a subdomain of it.
 	 */
 	root?: true;
+	/**
+	 * The label a surface or site answers on, its declaration's `subdomain` —
+	 * the same one a deploy puts under the stage's domain.
+	 */
+	subdomain?: string;
 	/** The schema a tenant pins on its roles' `search_path`. */
 	schema?: string;
 	/** For a cache in a database: the table entries are kept in. */
@@ -519,6 +524,10 @@ export function planFor(
 				: {}),
 			...(declaration.kind === 'file-server' && declaration.open?.length
 				? { open: declaration.open }
+				: {}),
+			...((declaration.kind === 'rest-api' || declaration.kind === 'site') &&
+			declaration.subdomain
+				? { subdomain: declaration.subdomain }
 				: {}),
 			...(fake
 				? { fake: { key: fake.key, credentials: fake.credentials } }

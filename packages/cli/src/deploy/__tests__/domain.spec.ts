@@ -5,18 +5,15 @@ import {
 	generatePublicUrlBuildArgs,
 	getPublicUrlArgNames,
 	isMainFrontendApp,
+	NoDomainForStage,
 	resolveHost,
 } from '../domain';
 
 describe('resolveHost', () => {
-	const dokployConfig = {
-		endpoint: 'https://dokploy.example.com',
-		projectId: 'test-project',
-		domains: {
-			development: 'dev.myapp.com',
-			staging: 'staging.myapp.com',
-			production: 'myapp.com',
-		},
+	const domains = {
+		development: 'dev.myapp.com',
+		staging: 'staging.myapp.com',
+		production: 'myapp.com',
 	};
 
 	const createApp = (
@@ -32,7 +29,7 @@ describe('resolveHost', () => {
 
 	it('should return explicit app domain override (string)', () => {
 		const app = createApp({ domain: 'api.custom.com' });
-		const host = resolveHost('api', app, 'production', dokployConfig, false);
+		const host = resolveHost('api', app, 'production', domains, false);
 		expect(host).toBe('api.custom.com');
 	});
 
@@ -43,7 +40,7 @@ describe('resolveHost', () => {
 				staging: 'login.staging.myapp.com',
 			},
 		});
-		const host = resolveHost('auth', app, 'production', dokployConfig, false);
+		const host = resolveHost('auth', app, 'production', domains, false);
 		expect(host).toBe('login.myapp.com');
 	});
 
@@ -51,52 +48,57 @@ describe('resolveHost', () => {
 		const app = createApp({
 			domain: { production: 'custom.myapp.com' },
 		});
-		const host = resolveHost('api', app, 'development', dokployConfig, false);
+		const host = resolveHost('api', app, 'development', domains, false);
 		expect(host).toBe('api.dev.myapp.com');
 	});
 
 	it('should return base domain for main frontend app', () => {
 		const app = createApp({ type: 'web' });
-		const host = resolveHost('web', app, 'production', dokployConfig, true);
+		const host = resolveHost('web', app, 'production', domains, true);
 		expect(host).toBe('myapp.com');
 	});
 
 	it('should return prefixed domain for non-main apps', () => {
 		const app = createApp();
-		const host = resolveHost('api', app, 'production', dokployConfig, false);
+		const host = resolveHost('api', app, 'production', domains, false);
 		expect(host).toBe('api.myapp.com');
 	});
 
 	it('should use correct base domain for each stage', () => {
 		const app = createApp();
 
-		expect(resolveHost('api', app, 'development', dokployConfig, false)).toBe(
+		expect(resolveHost('api', app, 'development', domains, false)).toBe(
 			'api.dev.myapp.com',
 		);
-		expect(resolveHost('api', app, 'staging', dokployConfig, false)).toBe(
+		expect(resolveHost('api', app, 'staging', domains, false)).toBe(
 			'api.staging.myapp.com',
 		);
-		expect(resolveHost('api', app, 'production', dokployConfig, false)).toBe(
+		expect(resolveHost('api', app, 'production', domains, false)).toBe(
 			'api.myapp.com',
 		);
 	});
 
-	it('should throw error when no domain configured for stage', () => {
+	it('names the stage, and where to give it a domain, when it has none', () => {
 		const app = createApp();
 		expect(() =>
-			resolveHost('api', app, 'unknown-stage', dokployConfig, false),
-		).toThrow('No domain configured for stage "unknown-stage"');
+			resolveHost('api', app, 'unknown-stage', domains, false),
+		).toThrow(NoDomainForStage);
+		expect(() =>
+			resolveHost('api', app, 'unknown-stage', domains, false),
+		).toThrow("deploy: { domains: { unknown-stage: 'example.com' } }");
 	});
 
-	it('should throw error when dokployConfig has no domains', () => {
-		const app = createApp();
-		const configWithoutDomains = {
-			endpoint: 'https://dokploy.example.com',
-			projectId: 'test-project',
-		};
+	it('refuses when no domains are configured at all', () => {
 		expect(() =>
-			resolveHost('api', app, 'production', configWithoutDomains, false),
-		).toThrow('No domain configured for stage "production"');
+			resolveHost('api', createApp(), 'production', undefined, false),
+		).toThrow(NoDomainForStage);
+	});
+
+	it('answers a surface on its own subdomain when it names one', () => {
+		const app = createApp({ subdomain: 'v1' });
+		expect(resolveHost('api', app, 'production', domains, false)).toBe(
+			'v1.myapp.com',
+		);
 	});
 });
 

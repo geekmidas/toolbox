@@ -1,35 +1,34 @@
 import { getPublicEnvPrefix } from '../workspace/index.js';
 import { rootSite } from '../workspace/rootSite.js';
-import type {
-	DokployWorkspaceConfig,
-	NormalizedAppConfig,
-} from '../workspace/types.js';
+import type { DomainsConfig, NormalizedAppConfig } from '../workspace/types.js';
+
+/** A stage was deployed that `deploy.domains` gives no domain. */
+export class NoDomainForStage extends Error {
+	constructor(readonly stage: string) {
+		super(
+			`No domain for stage "${stage}". Add it to gkm.config.ts: deploy: { domains: { ${stage}: 'example.com' } }.`,
+		);
+		this.name = 'NoDomainForStage';
+	}
+}
 
 /**
- * Resolve the hostname for an app based on stage configuration.
+ * The hostname an app answers on for a stage.
  *
- * Domain resolution priority:
- * 1. Explicit app.domain override (string or stage-specific)
- * 2. Default pattern based on app type:
- *    - Main frontend app gets base domain (e.g., 'myapp.com')
- *    - Other apps get prefixed domain (e.g., 'api.myapp.com')
+ * 1. An explicit `app.domain` — a string, or one per stage — wins.
+ * 2. Otherwise from the stage's base domain in `deploy.domains`: the root site
+ *    answers on the domain itself, and every other app on
+ *    `{subdomain}.{domain}` — its declaration's `subdomain`, or its own name.
  *
- * @param appName - The name of the app
- * @param app - The normalized app configuration
- * @param stage - The deployment stage (e.g., 'production', 'development')
- * @param dokployConfig - Dokploy workspace configuration with domain mappings
- * @param isMainFrontend - Whether this is the main frontend app
- * @returns The resolved hostname for the app
- * @throws Error if no domain configuration is found for the stage
+ * @throws {NoDomainForStage} when `deploy.domains` names no domain for it
  */
 export function resolveHost(
 	appName: string,
 	app: NormalizedAppConfig,
 	stage: string,
-	dokployConfig: DokployWorkspaceConfig | undefined,
+	domains: DomainsConfig | undefined,
 	isMainFrontend: boolean,
 ): string {
-	// 1. Check for explicit app domain override
 	if (app.domain) {
 		if (typeof app.domain === 'string') {
 			return app.domain;
@@ -39,21 +38,12 @@ export function resolveHost(
 		}
 	}
 
-	// 2. Get base domain for this stage
-	const baseDomain = dokployConfig?.domains?.[stage];
-	if (!baseDomain) {
-		throw new Error(
-			`No domain configured for stage "${stage}". ` +
-				`Add deploy.dokploy.domains.${stage} to gkm.config.ts`,
-		);
-	}
+	const baseDomain = domains?.[stage];
+	if (!baseDomain) throw new NoDomainForStage(stage);
 
-	// 3. Main frontend app gets base domain, others get prefix
-	if (isMainFrontend) {
-		return baseDomain;
-	}
+	if (isMainFrontend) return baseDomain;
 
-	return `${appName}.${baseDomain}`;
+	return `${app.subdomain ?? appName}.${baseDomain}`;
 }
 
 /**

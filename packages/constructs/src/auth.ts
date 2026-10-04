@@ -94,6 +94,12 @@ export interface BetterAuthConfig<
 	 */
 	path: string;
 	/**
+	 * The label it answers on under a stage's domain — `api` for
+	 * `api.myapp.com`, from `deploy.domains` — and under the project locally,
+	 * `api.myapp.localhost`. Absent, its id kebab-cased.
+	 */
+	subdomain?: string;
+	/**
 	 * Where the auth routes are mounted, e.g. `/api/auth`.
 	 *
 	 * Structural — it is part of the URL every client calls, so it cannot differ
@@ -202,6 +208,7 @@ export class BetterAuth<
 				kind: 'rest-api',
 				id: this.id,
 				path: this.config.path,
+				...(this.config.subdomain ? { subdomain: this.config.subdomain } : {}),
 				provides: [
 					this.keys.url,
 					this.keys.trustedOrigins,

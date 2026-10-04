@@ -29,7 +29,7 @@ const workspace = {
 	},
 	deploy: {
 		default: 'dokploy',
-		dokploy: { domains: { production: 'acme.com' } },
+		domains: { production: 'acme.com' },
 	},
 	shared: { packages: [] },
 	secrets: {},
@@ -73,7 +73,7 @@ describe('two sites of different variants', () => {
 				name,
 				units[name]!,
 				'production',
-				workspace.deploy?.dokploy,
+				workspace.deploy?.domains,
 				isMainFrontendApp(name, units[name]!, units),
 			);
 

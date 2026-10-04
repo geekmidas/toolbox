@@ -50,26 +50,26 @@ export type {
 export type DeployTarget = 'dokploy' | 'sst' | 'vercel' | 'cloudflare';
 
 /**
- * Stage-based domain configuration.
+ * Each deployed stage's base domain — `deploy.domains`.
  *
- * Maps deployment stages to base domains. The main frontend app
- * gets the base domain, other apps get `{appName}.{baseDomain}`.
+ * A fact about the deployment rather than the platform, so every target reads
+ * it. The root site answers on the base domain; every other surface on
+ * `{subdomain}.{domain}`, where the subdomain is the construct's own
+ * `subdomain`, or its id kebab-cased.
  *
  * @example
  * ```ts
- * domains: {
- *   development: 'dev.myapp.com',
- *   staging: 'staging.myapp.com',
- *   production: 'myapp.com',
+ * deploy: {
+ *   domains: { production: 'myapp.com', staging: 'staging.myapp.com' },
  * }
  *
- * // Result for production stage:
- * // - web (main frontend): myapp.com
- * // - api: api.myapp.com
- * // - auth: auth.myapp.com
+ * // production:
+ * // - new StaticSite('Web', { root: true })        → myapp.com
+ * // - new RestApi('Api', { subdomain: 'api' })    → api.myapp.com
+ * // - new RestApi('Webhooks', { … })              → webhooks.myapp.com
  * ```
  */
-export type DokployDomainsConfig = Record<string, string>;
+export type DomainsConfig = Record<string, string>;
 
 /**
  * Per-app domain override configuration.
@@ -133,12 +133,6 @@ export interface DokployWorkspaceConfig {
 	registry?: string;
 	/** Registry ID in Dokploy (auto-configured) */
 	registryId?: string;
-	/**
-	 * Stage-based domain configuration.
-	 * The main frontend app gets the base domain.
-	 * Other apps get {appName}.{baseDomain} by default.
-	 */
-	domains?: DokployDomainsConfig;
 }
 
 /**
@@ -181,6 +175,8 @@ export type DnsProviderType = 'hostinger' | 'route53' | 'cloudflare' | 'manual';
 export interface DeployConfig {
 	/** Default deploy target for all apps (default: 'dokploy') */
 	default?: DeployTarget;
+	/** Each deployed stage's base domain — see {@link DomainsConfig}. */
+	domains?: DomainsConfig;
 	/** Dokploy-specific configuration */
 	dokploy?: DokployWorkspaceConfig;
 	/** DNS configuration for automatic record creation */
@@ -792,14 +788,14 @@ export type WorkspaceConfigInput<
  *   // Deployment configuration
  *   deploy: {
  *     default: 'dokploy',
+ *     domains: {
+ *       production: 'myapp.com',
+ *       staging: 'staging.myapp.com',
+ *     },
  *     dokploy: {
  *       endpoint: 'https://dokploy.myserver.com',
  *       projectId: 'proj_abc123',
  *       registry: 'ghcr.io/myorg',
- *       domains: {
- *         production: 'myapp.com',
- *         staging: 'staging.myapp.com',
- *       },
  *     },
  *   },
  *
@@ -861,6 +857,12 @@ export interface NormalizedAppConfig extends Omit<AppConfigBase, 'type'> {
 	 * and that is `domain`.
 	 */
 	root?: boolean;
+
+	/**
+	 * The label this app answers on under a stage's domain, carried from its
+	 * declaration — `api` for `api.myapp.com`. Absent, the app's own name.
+	 */
+	subdomain?: string;
 
 	/** App type (always defined after normalization) */
 	type: 'backend' | 'web' | 'mobile';

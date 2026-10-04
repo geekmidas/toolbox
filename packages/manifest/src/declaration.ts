@@ -384,6 +384,12 @@ export interface CacheDeclaration extends Node {
 export interface RestApiDeclaration extends Node {
 	kind: 'rest-api';
 	/**
+	 * The label it answers on under a stage's domain — `api` for
+	 * `api.myapp.com`, from `deploy.domains` — and under the project locally,
+	 * `api.myapp.localhost`. Absent, its id kebab-cased.
+	 */
+	subdomain?: string;
+	/**
 	 * The app that serves this surface, relative to the workspace root.
 	 *
 	 * Required, and the only thing about its process a surface says: its code
@@ -525,6 +531,12 @@ export interface AppSpec {
 export interface SiteDeclaration extends Node {
 	kind: 'site';
 	variant: 'static' | 'next' | 'tanstack';
+	/**
+	 * The label it answers on under a stage's domain — `api` for
+	 * `api.myapp.com`, from `deploy.domains` — and under the project locally,
+	 * `api.myapp.localhost`. Absent, its id kebab-cased.
+	 */
+	subdomain?: string;
 	/**
 	 * How it is built and run, `path` included.
 	 *

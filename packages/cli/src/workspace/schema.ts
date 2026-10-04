@@ -229,8 +229,6 @@ const DokployWorkspaceConfigSchema = z
 			.optional(),
 		registry: z.string().optional(),
 		registryId: z.string().optional(),
-		/** Per-stage domain configuration (stage name -> base domain) */
-		domains: z.record(z.string(), z.string()).optional(),
 	})
 	.refine((data) => data.endpoint || data.endpoints, {
 		message: 'Either endpoint or endpoints must be provided',
@@ -504,6 +502,8 @@ export type BackupsConfig = z.infer<typeof BackupsConfigSchema>;
  */
 const DeployConfigSchema = z.object({
 	default: DeployTargetSchema.optional(),
+	/** Each deployed stage's base domain (stage name -> domain). */
+	domains: z.record(z.string(), z.string()).optional(),
 	dokploy: DokployWorkspaceConfigSchema.optional(),
 	dns: DnsConfigWithLegacySchema.optional(),
 	backups: BackupsConfigSchema.optional(),

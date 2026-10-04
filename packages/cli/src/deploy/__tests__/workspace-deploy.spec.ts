@@ -338,10 +338,10 @@ export default defineWorkspace({
 	},
   deploy: {
     default: 'dokploy',
+    domains: { ${STAGE}: 'shop.example.com', staging: 'staging.shop.example.com' },
     dokploy: {
       endpoint: '${ENDPOINT}',
       ${registry}
-      domains: { ${STAGE}: 'shop.example.com', staging: 'staging.shop.example.com' },
     },
   },
 });

@@ -69,6 +69,12 @@ export interface RestApiConfig<
 	 */
 	path: string;
 	/**
+	 * The label it answers on under a stage's domain — `api` for
+	 * `api.myapp.com`, from `deploy.domains` — and under the project locally,
+	 * `api.myapp.localhost`. Absent, its id kebab-cased.
+	 */
+	subdomain?: string;
+	/**
 	 * CORS tunables. The *origins* are never here — they are read off the
 	 * constructs that declared an edge to this surface, which is the whole point
 	 * of declaring one. These are the parts a graph cannot answer.
@@ -363,6 +369,7 @@ export class RestApi<
 				kind: 'rest-api',
 				id: this.id,
 				path: this.config.path,
+				...(this.config.subdomain ? { subdomain: this.config.subdomain } : {}),
 				...(this.config.telescope ? { telescope: true } : {}),
 				...(this.config.cors ? { cors: this.config.cors } : {}),
 				...(this.authenticator ? { auth: this.authenticator.id } : {}),

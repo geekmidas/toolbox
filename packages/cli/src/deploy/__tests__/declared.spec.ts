@@ -86,6 +86,44 @@ const run = (workspace: NormalizedWorkspace) =>
 	});
 
 describe('provisionDeclared', () => {
+	it('gives each surface its own app’s address, not the first one’s', async () => {
+		// Two APIs: each is an app of its own and answers on its own host. Both
+		// used to be handed the first backend's address.
+		const twoApis = {
+			Api: {
+				kind: 'rest-api',
+				id: 'Api',
+				path: 'apps/api',
+				endpoints: [],
+				provides: ['API_URL'],
+			},
+			Webhooks: {
+				kind: 'rest-api',
+				id: 'Webhooks',
+				path: 'apps/webhooks',
+				endpoints: [],
+				provides: ['WEBHOOKS_URL'],
+			},
+		} as unknown as ConstructManifest;
+
+		const { env } = await provisionDeclared({
+			api,
+			workspace: workspaceWith(),
+			projectId: 'project',
+			environmentId: 'environment',
+			stage: 'production',
+			appUrls: {
+				api: 'https://api.example.com',
+				webhooks: 'https://hooks.example.com',
+			},
+			seed: 'stage-seed',
+			manifest: twoApis,
+		});
+
+		expect(env.API_URL).toBe('https://api.example.com');
+		expect(env.WEBHOOKS_URL).toBe('https://hooks.example.com');
+	});
+
 	it('resolves the URLs the sniffer cannot see', async () => {
 		// The gap this closes: a construct reads its own key inside
 		// `@geekmidas/constructs`, so a walk of application code finds no
