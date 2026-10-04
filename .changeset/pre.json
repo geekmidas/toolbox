@@ -40,6 +40,7 @@
     "auth-pending-migration",
     "branch-from-the-surface",
     "browser-client-address",
+    "build-follows-deploy-target",
     "claude-md-imports-agents",
     "cli-starts-again",
     "client-coercion-types",
