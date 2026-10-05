@@ -13,7 +13,8 @@
  * So the holder is asked who it is. Every app process gkm starts is tagged with
  * {@link APP_TAG_ENV} — the workspace and the app — and children inherit it, so
  * whatever actually binds the port (`next-server`, a Metro worker, the tsx
- * server) carries it. A held port whose holder carries this app's tag is a
+ * server) carries it — or, when its own can't be read, one of its parents does.
+ * A held port whose holder carries this app's tag is a
  * leftover, and is refused; anything else — untagged, another workspace's,
  * unreadable — is not ours, and the app moves to the next free port.
  *
@@ -73,13 +74,35 @@ export function holderOf(port: number): PortHolder | undefined {
 	const pid = Number(out.match(/^p(\d+)/m)?.[1]);
 	if (!pid) return undefined;
 	const command = out.match(/^c(.+)$/m)?.[1];
-	const tag = tagOf(pid);
+	const tag = lineageTagOf(pid);
 
 	return {
 		pid,
 		...(command ? { command } : {}),
 		...(tag ? { tag } : {}),
 	};
+}
+
+/** How far up a holder's parents to look before calling it untagged. */
+const MAX_ANCESTORS = 8;
+
+/**
+ * The tag of `pid`, or of its nearest parent that has one.
+ *
+ * A process can hide the tag it inherited: `next-server` renames itself, which
+ * on macOS overwrites the memory `ps eww` reads its environment from, so `ps`
+ * shows only its title. Its parent, the `next dev` gkm started, still carries
+ * the tag. A child is only ever started by its parent, so a tagged parent makes
+ * the holder this app's.
+ */
+function lineageTagOf(pid: number): string | undefined {
+	let current: number | undefined = pid;
+	for (let depth = 0; current && current > 1; depth += 1) {
+		const tag = tagOf(current);
+		if (tag || depth === MAX_ANCESTORS) return tag;
+		current = parentOf(current);
+	}
+	return undefined;
 }
 
 function tagOf(pid: number): string | undefined {
@@ -95,6 +118,20 @@ function tagOf(pid: number): string | undefined {
 		return entries
 			.find((entry) => entry.startsWith(prefix))
 			?.slice(prefix.length);
+	} catch {
+		return undefined;
+	}
+}
+
+function parentOf(pid: number): number | undefined {
+	try {
+		const ppid = Number(
+			execFileSync('ps', ['-o', 'ppid=', '-p', String(pid)], {
+				encoding: 'utf8',
+				stdio: ['ignore', 'pipe', 'ignore'],
+			}).trim(),
+		);
+		return ppid > 0 ? ppid : undefined;
 	} catch {
 		return undefined;
 	}
