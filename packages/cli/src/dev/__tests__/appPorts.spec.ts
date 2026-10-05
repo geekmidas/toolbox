@@ -162,8 +162,15 @@ describe.runIf(hasLsof)('holderOf, against a real process', () => {
 		await rm(dir, { recursive: true, force: true });
 	});
 
-	/** A tagged parent whose forked child is what listens, as `next dev` does. */
-	async function listenTagged(tag: string): Promise<number> {
+	/**
+	 * A tagged parent whose forked child is what listens, as `next dev` does.
+	 * `hidden`: the child's own environment shows no tag — what `ps` reads of a
+	 * `next-server` on macOS, once it has renamed itself.
+	 */
+	async function listenTagged(
+		tag: string | undefined,
+		{ hidden = false } = {},
+	): Promise<number> {
 		const parent = join(dir, 'parent.mjs');
 		const server = join(dir, 'server.mjs');
 		await writeFile(
@@ -174,10 +181,14 @@ describe.runIf(hasLsof)('holderOf, against a real process', () => {
 		await writeFile(
 			parent,
 			"import { fork } from 'node:child_process';\n" +
-				`fork(${JSON.stringify(server)}).on('message', (port) => process.send(port));\n`,
+				`const env = { ...process.env };\n` +
+				(hidden ? `delete env.${APP_TAG_ENV};\n` : '') +
+				`fork(${JSON.stringify(server)}, { env }).on('message', (port) => process.send(port));\n`,
 		);
+		const env = { ...process.env };
+		delete env[APP_TAG_ENV];
 		child = spawn(process.execPath, [parent], {
-			env: { ...process.env, [APP_TAG_ENV]: tag },
+			env: tag ? { ...env, [APP_TAG_ENV]: tag } : env,
 			stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
 			detached: true,
 		});
@@ -192,6 +203,22 @@ describe.runIf(hasLsof)('holderOf, against a real process', () => {
 
 		expect(holder?.pid).toBeGreaterThan(0);
 		expect(holder?.tag).toBe(tag);
+	});
+
+	it("reads the tag from the holder's parent when its own is hidden", async () => {
+		const tag = appTag('/work/shop', 'web');
+		const port = await listenTagged(tag, { hidden: true });
+
+		expect(holderOf(port)?.tag).toBe(tag);
+	});
+
+	it('finds no tag when neither the holder nor its parents carry one', async () => {
+		const port = await listenTagged(undefined);
+
+		const holder = holderOf(port);
+
+		expect(holder?.pid).toBeGreaterThan(0);
+		expect(holder?.tag).toBeUndefined();
 	});
 
 	it('finds nothing on a free port', () => {
