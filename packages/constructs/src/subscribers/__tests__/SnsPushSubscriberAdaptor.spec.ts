@@ -2,11 +2,17 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import type { SnsHttpMessage } from '@geekmidas/events/sns';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
 import { Topic } from '../../topic/Topic';
 import { Worker } from '../../worker';
 import { SnsPushSubscriberAdaptor } from '../SnsPushSubscriberAdaptor';
+
+// middy is Lambda's: a server pushing to this adaptor has no reason to install
+// it, so this whole file fails to load if anything here imports it.
+vi.mock('@middy/core', () => {
+	throw new TypeError('SnsPushSubscriberAdaptor must not need @middy/core');
+});
 
 const TOPIC_ARN = 'arn:aws:sns:us-east-1:000000000000:users';
 

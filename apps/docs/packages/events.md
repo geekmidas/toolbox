@@ -346,9 +346,9 @@ How each consumer is fed:
   `POST /__gkm/subscribers/<exportName>` per subscriber and, once listening,
   subscribes it to the topic with a filter policy on the `type` attribute from
   `.subscribe([...])` — SNS does the fan-out, one subscription per subscriber.
-  The route hands the notification to the same `AWSLambdaSubscriber` adaptor a
-  Lambda subscription uses (`SnsPushSubscriberAdaptor` from
-  `@geekmidas/constructs/aws`). Confirmations are confirmed automatically and
+  The route runs the notification through the same parsing and handler a
+  Lambda subscription uses, minus middy (`SnsPushSubscriberAdaptor` from
+  `@geekmidas/constructs/subscribers`). Confirmations are confirmed automatically and
   signatures verified, except against an emulator, which signs nothing —
   decided by the `endpoint` in the connection string. Startup converges, so a
   stale pending subscription is replaced and a changed event list updates the
