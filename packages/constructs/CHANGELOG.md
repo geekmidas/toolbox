@@ -1,5 +1,36 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.53
+
+### Minor Changes
+
+- [#139](https://github.com/geekmidas/toolbox/pull/139) [`6fb1ce4`](https://github.com/geekmidas/toolbox/commit/6fb1ce4406c4dc8517b65923190af169c2aa70a7) Thanks [@geekmidas](https://github.com/geekmidas)! - SNS topic subscribers start under `gkm dev` without `@middy/core`
+
+  `SnsPushSubscriberAdaptor` handed each pushed notification to `AWSLambdaSubscriber`, which imports `@middy/core`. middy is an optional peer that only Lambda needs, so a project that doesn't deploy to Lambda didn't install it, and every SNS subscriber logged `Failed to set up subscriber` with `ERR_MODULE_NOT_FOUND`. The push adaptor now runs the subscriber directly, with the same parsing, services, database and error handling as the Lambda adaptor. middy stays in the Lambda wrapper only.
+  - 💥 **Breaking (alpha):** `SnsPushSubscriberAdaptor` moved from `@geekmidas/constructs/aws` to `@geekmidas/constructs/subscribers`. Every other export of `/aws` loads middy.
+  - A subscriber that fails to set up now logs the error's message, which names the missing module.
+  - A subscriber whose output fails its `.output()` schema throws `SubscriberOutputInvalid` instead of a bare `Error`.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/audit@10.0.0-alpha.53
+  - @geekmidas/auth@10.0.0-alpha.53
+  - @geekmidas/cache@10.0.0-alpha.53
+  - @geekmidas/db@10.0.0-alpha.53
+  - @geekmidas/emailkit@10.0.0-alpha.53
+  - @geekmidas/envkit@10.0.0-alpha.53
+  - @geekmidas/errors@10.0.0-alpha.53
+  - @geekmidas/events@10.0.0-alpha.53
+  - @geekmidas/logger@10.0.0-alpha.53
+  - @geekmidas/manifest@10.0.0-alpha.53
+  - @geekmidas/rate-limit@10.0.0-alpha.53
+  - @geekmidas/schema@10.0.0-alpha.53
+  - @geekmidas/services@10.0.0-alpha.53
+  - @geekmidas/storage@10.0.0-alpha.53
+  - @geekmidas/telescope@10.0.0-alpha.53
+  - @geekmidas/testkit@10.0.0-alpha.53
+
 ## 10.0.0-alpha.52
 
 ### Minor Changes

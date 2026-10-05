@@ -1,5 +1,7 @@
 # @geekmidas/schema
 
+## 10.0.0-alpha.53
+
 ## 10.0.0-alpha.52
 
 ## 10.0.0-alpha.51

@@ -1,5 +1,32 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.53
+
+### Patch Changes
+
+- [#140](https://github.com/geekmidas/toolbox/pull/140) [`eaab95a`](https://github.com/geekmidas/toolbox/commit/eaab95a905751f609be96d5bd742c77b1558c577) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm dev` on macOS no longer moves a Next.js app off its port because of its own leftover server
+
+  The process that holds a Next.js app's port is `next-server`, which renames itself. On macOS that overwrites what `ps eww` reads, so gkm couldn't see the app tag it inherited, treated the holder as another project's, and moved the app to a new port for good in `.gkm/app-ports.json`. When the holder's own tag can't be read, gkm now uses the tag of its nearest parent (here the `next dev` it started), so a leftover server is refused as running rather than moved around.
+
+- [#139](https://github.com/geekmidas/toolbox/pull/139) [`6fb1ce4`](https://github.com/geekmidas/toolbox/commit/6fb1ce4406c4dc8517b65923190af169c2aa70a7) Thanks [@geekmidas](https://github.com/geekmidas)! - SNS topic subscribers start under `gkm dev` without `@middy/core`
+
+  `SnsPushSubscriberAdaptor` handed each pushed notification to `AWSLambdaSubscriber`, which imports `@middy/core`. middy is an optional peer that only Lambda needs, so a project that doesn't deploy to Lambda didn't install it, and every SNS subscriber logged `Failed to set up subscriber` with `ERR_MODULE_NOT_FOUND`. The push adaptor now runs the subscriber directly, with the same parsing, services, database and error handling as the Lambda adaptor. middy stays in the Lambda wrapper only.
+  - 💥 **Breaking (alpha):** `SnsPushSubscriberAdaptor` moved from `@geekmidas/constructs/aws` to `@geekmidas/constructs/subscribers`. Every other export of `/aws` loads middy.
+  - A subscriber that fails to set up now logs the error's message, which names the missing module.
+  - A subscriber whose output fails its `.output()` schema throws `SubscriberOutputInvalid` instead of a bare `Error`.
+
+- Updated dependencies [[`6fb1ce4`](https://github.com/geekmidas/toolbox/commit/6fb1ce4406c4dc8517b65923190af169c2aa70a7)]:
+  - @geekmidas/constructs@10.0.0-alpha.53
+  - @geekmidas/cache@10.0.0-alpha.53
+  - @geekmidas/db@10.0.0-alpha.53
+  - @geekmidas/envkit@10.0.0-alpha.53
+  - @geekmidas/errors@10.0.0-alpha.53
+  - @geekmidas/logger@10.0.0-alpha.53
+  - @geekmidas/manifest@10.0.0-alpha.53
+  - @geekmidas/schema@10.0.0-alpha.53
+  - @geekmidas/services@10.0.0-alpha.53
+  - @geekmidas/telescope@10.0.0-alpha.53
+
 ## 10.0.0-alpha.52
 
 ### Patch Changes
