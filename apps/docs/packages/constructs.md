@@ -1422,9 +1422,10 @@ shared subscriber string. How a subscriber is fed follows that string:
   `POST /__gkm/subscribers/<exportName>` and, once listening, subscribes it to
   the topic with a filter policy on the `type` attribute listing the events
   from `.subscribe([...])`. SNS fans out, one subscription per subscriber. The
-  route is `SnsPushSubscriberAdaptor` (from `@geekmidas/constructs/aws`), which
-  hands each notification to `AWSLambdaSubscriber` as an SNS Lambda event — the
-  same parsing, services and error handling as deployed. Confirmations are
+  route is `SnsPushSubscriberAdaptor` (from `@geekmidas/constructs/subscribers`),
+  which reads each notification as an SNS Lambda event — the same parsing,
+  services and error handling as deployed, without Lambda's middy wrapper, so a
+  server needs no `@middy/core`. Confirmations are
   confirmed automatically; signatures are verified except against an emulator.
   `GKM_SUBSCRIBER_PUSH_URL` is the public base SNS pushes to (locally it
   defaults to `http://host.docker.internal:<port>`).

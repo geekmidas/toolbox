@@ -276,7 +276,7 @@ export async function setupSubscribers(
     try {
       if (connectionString.startsWith('sns:')) {
         const { SNSConnection, snsUrl, subscribeHttpEndpoint } = await import('@geekmidas/events/sns');
-        const { SnsPushSubscriberAdaptor } = await import('@geekmidas/constructs/aws');
+        const { SnsPushSubscriberAdaptor } = await import('@geekmidas/constructs/subscribers');
         const address = snsUrl.parse(connectionString);
         const route = SUBSCRIBER_ROUTE(id);
         const adaptor = new SnsPushSubscriberAdaptor(envParser, subscriber, {
@@ -353,7 +353,11 @@ export async function setupSubscribers(
       });
       logger.info({ subscriber: id, events }, 'Subscriber started polling');
     } catch (error) {
-      logger.error({ error, subscriber: id }, 'Failed to set up subscriber');
+      // The message too: a missing module's code alone does not say which.
+      logger.error(
+        { error, message: (error as Error)?.message, subscriber: id },
+        'Failed to set up subscriber',
+      );
     }
   }
 

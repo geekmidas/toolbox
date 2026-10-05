@@ -1,12 +1,17 @@
 import type { EnvironmentParser } from '@geekmidas/envkit';
+import { wrapError } from '@geekmidas/errors';
 import {
 	confirmSnsSubscription,
 	type SnsHttpMessage,
 	toSnsEvent,
 	verifySnsMessage,
 } from '@geekmidas/events/sns';
-import type { Context } from 'aws-lambda';
-import { AWSLambdaSubscriber } from './AWSLambdaSubscriberAdaptor';
+import { runWithRequestContext } from '@geekmidas/services';
+import {
+	runSubscriber,
+	subscribedEvents,
+	subscriberContext,
+} from './runSubscriber';
 import type { Subscriber } from './Subscriber';
 
 export interface SnsPushOptions {
@@ -38,29 +43,17 @@ export interface SnsPushResponse {
  * A topic subscriber run by SNS pushing to an HTTP endpoint, rather than by a
  * poller.
  *
- * The notification is handed to {@link AWSLambdaSubscriber} as the Lambda
- * event SNS would have invoked a function with, so the parsing, the services
- * and the error handling are the ones that run deployed on Lambda — the
- * endpoint is only a different way for the event to arrive.
+ * The notification is read as the Lambda event SNS would have invoked a
+ * function with, and run through the same parsing, services and handler as the
+ * Lambda adaptor — without its middy wrapper, which is Lambda's alone: a
+ * server serving this route has no reason to install `@middy/core`.
  */
 export class SnsPushSubscriberAdaptor {
-	private readonly lambda: AWSLambdaSubscriber<
-		any,
-		any,
-		any,
-		any,
-		any,
-		any,
-		any
-	>;
-
 	constructor(
-		envParser: EnvironmentParser<{}>,
+		private readonly envParser: EnvironmentParser<{}>,
 		readonly subscriber: Subscriber<any, any, any, any, any, any, any>,
 		private readonly options: SnsPushOptions,
-	) {
-		this.lambda = new AWSLambdaSubscriber(envParser, subscriber);
-	}
+	) {}
 
 	async handle(body: unknown): Promise<SnsPushResponse> {
 		const message = body as SnsHttpMessage;
@@ -105,24 +98,47 @@ export class SnsPushSubscriberAdaptor {
 				return { status: 200, body: { status: 'confirmed' } };
 			case 'Notification':
 				try {
-					// The wrapped handler returns a promise; Lambda's callback is unused.
-					await this.lambda.handler(
-						toSnsEvent(message),
-						{
-							awsRequestId: message.MessageId,
-							functionName: this.subscriber.topicName ?? 'subscriber',
-						} as Context,
-						() => {},
-					);
+					await this.notify(message);
 					return { status: 200, body: { status: 'ok' } };
 				} catch (error) {
-					// Already logged by the adaptor. A 500 makes SNS retry, which is
-					// the point of answering at all.
+					// Already logged. A 500 makes SNS retry, which is the point of
+					// answering at all.
 					return refuse(500, (error as Error).name);
 				}
 			default:
 				return { status: 200, body: { status: 'ignored' } };
 		}
+	}
+
+	private async notify(message: SnsHttpMessage): Promise<void> {
+		const requestId = message.MessageId;
+		const logger = this.subscriber.logger.child({ requestId });
+
+		await runWithRequestContext(
+			{ logger, requestId, startTime: Date.now() },
+			async () => {
+				try {
+					const { services, db } = await subscriberContext(
+						this.subscriber,
+						this.envParser,
+					);
+					const events = subscribedEvents(
+						this.subscriber,
+						toSnsEvent(message),
+						logger,
+					);
+					await runSubscriber(this.subscriber, {
+						events,
+						services,
+						logger,
+						db,
+					});
+				} catch (error) {
+					logger.error(error as object, 'Error processing subscriber');
+					throw wrapError(error);
+				}
+			},
+		);
 	}
 }
 
