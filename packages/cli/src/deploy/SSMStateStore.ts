@@ -182,6 +182,14 @@ export class SSMStateStore extends DocumentStateStore {
 			}
 			throw error;
 		}
+
+		// Read back, for the same reason a state write is: two creates that
+		// race can both be answered as successful (the local AWS emulator does
+		// this under load). Only the holder whose lock is actually stored has it.
+		const stored = await this.readLock(stage);
+		if (stored && stored.id !== holder.id) {
+			throw new StateLocked(stage, stored, `ssm:${Name}`);
+		}
 	}
 
 	protected async readLock(stage: string): Promise<LockHolder | null> {
