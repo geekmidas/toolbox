@@ -85,6 +85,9 @@ function start(
 		...process.env,
 		OTEL_EXPORTER_OTLP_ENDPOINT: undefined,
 		STAGE: undefined,
+		// The suite runs under NODE_OPTIONS="--import tsx", which a child in a
+		// bare directory cannot resolve; it gets tsx by path below instead.
+		NODE_OPTIONS: undefined,
 		MARKER: join(dir, 'marker'),
 		...env,
 	})) {
