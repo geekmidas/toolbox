@@ -1,6 +1,12 @@
 # @geekmidas/telescope
 
-Laravel Telescope-style debugging and monitoring dashboard for web applications. Captures requests, logs, and exceptions in real-time with a beautiful dashboard UI.
+Laravel Telescope-style debugging and monitoring for web applications. Captures requests, logs and exceptions, and serves them as a JSON API with a WebSocket feed for live updates.
+
+::: info Headless
+Telescope ships no dashboard. It records, stores and serves data; any UI —
+your own, a script, an agent — is built on the JSON API below. (The embedded
+React dashboard was removed in v10.)
+:::
 
 ## Installation
 
@@ -26,8 +32,8 @@ pnpm add @geekmidas/telescope
 | Export | Description |
 |--------|-------------|
 | `/` | Core `Telescope` class and `InMemoryStorage` |
-| `/hono` | Hono middleware and dashboard UI (alias for `/server/hono`) |
-| `/server/hono` | Hono middleware (`createMiddleware`, `createUI`) |
+| `/hono` | Hono middleware and JSON API (alias for `/server/hono`) |
+| `/server/hono` | Hono middleware and JSON API (`createMiddleware`, `createApi`, `setupWebSocket`) |
 | `/storage/memory` | In-memory storage (development) |
 | `/storage/kysely` | Kysely storage (PostgreSQL, MySQL, SQLite) |
 | `/logger/pino` | Pino transport for log capture (`createPinoTransport`) |
@@ -45,7 +51,7 @@ pnpm add @geekmidas/telescope
 ```typescript
 import { Hono } from 'hono';
 import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
-import { createMiddleware, createUI } from '@geekmidas/telescope/hono';
+import { createApi, createMiddleware } from '@geekmidas/telescope/hono';
 
 // Create Telescope instance
 const telescope = new Telescope({
@@ -58,15 +64,15 @@ const app = new Hono();
 // Add middleware to capture requests
 app.use('*', createMiddleware(telescope));
 
-// Mount the dashboard
-app.route('/__telescope', createUI(telescope));
+// Mount the JSON API
+app.route('/__telescope', createApi(telescope));
 
 // Your routes
 app.get('/api/users', (c) => c.json({ users: [] }));
 
 export default app;
 
-// Access dashboard at http://localhost:3000/__telescope
+// GET http://localhost:3000/__telescope/api/requests
 ```
 
 ## Using with `gkm dev`
@@ -86,7 +92,25 @@ export default {
 };
 ```
 
-Run `gkm dev` and access the dashboard at `http://localhost:3000/__telescope`.
+Run `gkm dev` and read the data from `http://localhost:3000/__telescope/api/*`.
+
+## JSON API
+
+| Route | Returns |
+|-------|---------|
+| `GET /api/requests` | Recorded requests (`limit`, `offset`, `search`, `method`, `status`, `before`, `after`, `tags`) |
+| `GET /api/requests/:id` | One request |
+| `GET /api/exceptions` | Recorded exceptions |
+| `GET /api/exceptions/:id` | One exception |
+| `GET /api/logs` | Log entries (`level`, …) |
+| `GET /api/stats` | Counts per kind |
+| `GET /api/metrics` | Aggregated request metrics (`start`, `end`, `bucketSize`) |
+| `GET /api/metrics/endpoints` | Metrics per endpoint |
+| `GET /api/metrics/endpoint?method=&path=` | One endpoint's metrics |
+| `GET /api/metrics/status` | Status code distribution |
+| `DELETE /api/metrics` | Reset metrics |
+
+Paths are relative to where `createApi` is mounted (`/__telescope` under `gkm dev`).
 
 ## Storage Backends
 
@@ -197,7 +221,7 @@ const logger = pino(
   ])
 );
 
-// Logs appear in both console and Telescope dashboard
+// Logs appear in both the console and Telescope
 logger.info({ userId: '123' }, 'User logged in');
 ```
 
@@ -435,7 +459,7 @@ const metrics = await telescope.getEndpointMetrics({
 
 ## Real-Time WebSocket Updates
 
-The dashboard uses WebSocket for real-time updates. You can also subscribe programmatically:
+Live updates come over a WebSocket. Subscribe programmatically:
 
 ```typescript
 // Add WebSocket client for broadcasts

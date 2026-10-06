@@ -11,7 +11,6 @@ import { generateExpoAppFiles } from '../generators/mobile-expo';
 import { generateModelsPackage } from '../generators/models';
 import { generateMonorepoFiles } from '../generators/monorepo';
 import { generatePackageJson } from '../generators/package';
-import { generateUiPackageFiles } from '../generators/ui';
 import { generateWebAppFiles } from '../generators/web';
 import { generateTanStackWebFiles } from '../generators/web-tanstack';
 import {
@@ -25,7 +24,6 @@ const base: TemplateOptions = {
 	name: 'shop',
 	template: 'api',
 	telescope: true,
-	studio: true,
 	loggerType: 'pino',
 	routesStructure: 'centralized-endpoints',
 	monorepo: false,
@@ -46,7 +44,6 @@ function scaffold(options: Partial<TemplateOptions>): GeneratedFile[] {
 		...generateMonorepoFiles(o, template),
 		...generateModelsPackage(o),
 		...generateAuthAppFiles(o),
-		...generateUiPackageFiles(o),
 		...generateWebAppFiles(o),
 		...generateTanStackWebFiles(o),
 		...generateExpoAppFiles(o),

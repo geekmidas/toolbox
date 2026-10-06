@@ -1,5 +1,9 @@
 # @geekmidas/schema
 
+## 10.0.0-alpha.56
+
+## 10.0.0-alpha.55
+
 ## 10.0.0-alpha.54
 
 ## 10.0.0-alpha.53
@@ -87,6 +91,7 @@
 - [#65](https://github.com/geekmidas/toolbox/pull/65) [`9602a19`](https://github.com/geekmidas/toolbox/commit/9602a19a9b4fb9cecd2641d108976f73272df55e) Thanks [@geekmidas](https://github.com/geekmidas)! - The OpenAPI document validates, and says who may call what
 
   Checked against kitchen-sink with Redocly, swagger-parser and openapi-typescript:
+
   - **A registered schema kept its definition.** A schema with `.meta({ id })`
     came out as `User: { $ref: '#/components/schemas/User' }` — a pointer to
     itself, so the document had no `User` and validators refused it. Zod 4.6

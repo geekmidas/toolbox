@@ -9,6 +9,7 @@ Database utilities for Kysely with flexible transaction management. Provides hel
 - ✅ **Type-Safe**: Full TypeScript support with generic database schemas
 - ✅ **Connection Abstraction**: Single helper for all database connection types
 - ✅ **Zero Dependencies**: Only peer dependency on Kysely
+- ✅ **Introspection** (`@geekmidas/db/introspect`): schemas, tables and rows as functions and a read-only JSON API
 
 ## Installation
 
@@ -69,6 +70,22 @@ async function createUserWithPost(
   });
 }
 ```
+
+## Introspection
+
+`@geekmidas/db/introspect` reads a Postgres database's structure and pages
+through its rows, read-only — as functions, and as a fetch-style JSON handler
+with no HTTP framework behind it. `gkm dev` serves it at `/__gkm/db`.
+
+```typescript
+import { createIntrospectionHandler } from '@geekmidas/db/introspect';
+
+const handler = createIntrospectionHandler({ db, basePath: '/__db' });
+app.all('/__db/*', (c) => handler(c.req.raw));
+// GET /__db/schemas, /__db/tables, /__db/tables/users/rows?pageSize=20
+```
+
+It returns every row to whoever can reach it, so mount it only in development.
 
 ## API Reference
 

@@ -166,44 +166,6 @@ export const telescope = new Telescope({
 			});
 		}
 
-		// Add Studio config if enabled (requires database)
-		if (options.studio && options.constructs.database) {
-			files.push({
-				path: 'src/config/studio.ts',
-				content: `import { Direction, InMemoryMonitoringStorage, Studio } from '@geekmidas/studio';
-import { Kysely, PostgresDialect } from 'kysely';
-import pg from 'pg';
-import type { Database } from '~/constructs/database.ts';
-import { envParser } from '~/config/env.ts';
-
-// The key the database construct publishes — not a hand-written DATABASE_URL.
-const studioConfig = envParser
-  .create((get) => ({
-    databaseUrl: get('${db.urlKey}').string(),
-  }))
-  .parse();
-
-// Create a Kysely instance for Studio
-const db = new Kysely<Database>({
-  dialect: new PostgresDialect({
-    pool: new pg.Pool({ connectionString: studioConfig.databaseUrl }),
-  }),
-});
-
-export const studio = new Studio<Database>({
-  monitoring: {
-    storage: new InMemoryMonitoringStorage({ maxEntries: 100 }),
-  },
-  data: {
-    db,
-    cursor: { field: 'id', direction: Direction.Desc },
-  },
-  enabled: process.env.NODE_ENV === 'development',
-});
-`,
-			});
-		}
-
 		return files;
 	},
 };

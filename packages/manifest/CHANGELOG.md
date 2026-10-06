@@ -1,5 +1,9 @@
 # @geekmidas/manifest
 
+## 10.0.0-alpha.56
+
+## 10.0.0-alpha.55
+
 ## 10.0.0-alpha.54
 
 ## 10.0.0-alpha.53
@@ -26,12 +30,14 @@
 ### Minor Changes
 
 - [#126](https://github.com/geekmidas/toolbox/pull/126) [`f1fc3e7`](https://github.com/geekmidas/toolbox/commit/f1fc3e7e9a8fdc995e3a4b957e29ce451f6fd959) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: `gkm dev` says where every service is, and an app can open Mailpit's inbox
+
   - **`gkm dev` lists every published port on every start**, labelled — `postgres`, `smtp`, `mailpit inbox`, `minio console`, … — with the pages as `http://` links. It used to print only on the start that changed a container, and only each container's primary port, so Mailpit's inbox was never shown at all. `gkm setup` lists the same when it converges.
   - **An `Email`'s inbox is a public role.** A `MobileApp` or `StaticSite` that `.dependsOn([mailer])` is built with `EXPO_PUBLIC_MAILER_INBOX_URL` (`VITE_`/`NEXT_PUBLIC_`) on a local stage — Mailpit's web inbox, so an "Open email app" button can open a sign-in link from the app. Deployed mail has no inbox and nothing sets it; the SMTP URL, which carries credentials, is never public. Closes #125.
 
 - [#124](https://github.com/geekmidas/toolbox/pull/124) [`10ef53d`](https://github.com/geekmidas/toolbox/commit/10ef53d921d519afa62c773a6682581e19c06b1e) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: `Encryption` — a key that encrypts what the application stores
 
   `new Encryption('Pii')` gives a handler that `.dependsOn([pii])` `services.pii.encrypt`, `decrypt`, `index` (a blind index, so an encrypted column can still be looked up) and `reencrypt`. The app names no cipher: the construct provides one `PII_URL` whose scheme picks the backend.
+
   - **Locally and in tests**, an `aes256gcm://` keyring derived from the project and stage, like a secret — nothing to set.
   - **On a server stage**, a keyring generated into the stage's secrets on its first deploy and never replaced by a redeploy.
   - **On AWS**, envelope encryption under a KMS key that rotates yearly, and a KMS HMAC key for the index, each granted to exactly the functions that depend on the construct (`kms:GenerateDataKey`/`kms:Decrypt`, `kms:GenerateMac`). `@aws-sdk/client-kms` is an optional peer, loaded only for a `kms://` URL.
@@ -81,6 +87,7 @@
 ### Patch Changes
 
 - [#107](https://github.com/geekmidas/toolbox/pull/107) [`5475a96`](https://github.com/geekmidas/toolbox/commit/5475a96d1d8ee0c99109c65cba76f7e269f42265) Thanks [@geekmidas](https://github.com/geekmidas)! - `ExternalApi` for third-party HTTP APIs, `<ID>_CREDENTIALS`, and `faker` and `signIn()` in feature tests
+
   - **`ExternalApi`** (`@geekmidas/constructs/external-api`) declares an API
     somebody else runs: a `url`, one string or one per stage name with a
     `default`, a `credentials` schema, and the `client` a handler is given. It
@@ -146,6 +153,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
     - 🔥 **Removed:** `getAppNameFromCwd` and `getAppNameFromPackageJson`.
 
   **Moving an existing app:**
+
   - Rename every `<ID>_CREDENTIAL` secret to `<ID>_CREDENTIALS` and set it on
     each deployed stage: `gkm secrets:set STRIPE_CREDENTIALS '{…}' --stage production`.
   - A custom `secrets.store` provider renames `pull` to `read` and `push` to
@@ -164,6 +172,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
 ### Patch Changes
 
 - ✨ [#103](https://github.com/geekmidas/toolbox/pull/103) [`95cef66`](https://github.com/geekmidas/toolbox/commit/95cef66e07893be917b5d560a06618c60504b94e) Thanks [@geekmidas](https://github.com/geekmidas)! - `MobileApp`: one scheme for every stage, and the app adds `expo()` itself
+
   - **One scheme.** A mobile app's scheme is the project's name (`shop`), or the
     one its construct gives, on every stage: local, test and deployed. It was
     suffixed locally (`shop-dev`). `appScheme` is gone from `@geekmidas/manifest`,
@@ -182,6 +191,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
     checked. `gkm init` with Expo writes `expo()` into `constructs/auth.ts`.
 
   **Moving an existing app:**
+
   - ✨ add `import { expo } from '@better-auth/expo'` and `options: { plugins: [expo()] }`
     to the auth construct;
   - 🐛 install `@better-auth/expo` where that file resolves its imports;
@@ -203,6 +213,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
 
   Like a `StaticSite`, its `.dependsOn()` is the single fact everything a mobile
   app otherwise writes down by hand is derived from:
+
   - **Shaped like `StaticSite`:** `path`, `port?`, `config?` and
     `variant?` (`'expo'`), plus `scheme?`. A mobile app is given a port in the
     same stable order, and `gkm exec` hands it to Expo as `RCT_METRO_PORT`.
@@ -267,6 +278,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
   re-runs. A file left at the old level is refused with `MigrationsOutsideFolder`
   rather than silently never running, and any other folder beside the two with
   `UnknownDatabaseFolder`.
+
   - **Seeds are reference data:** a permission catalogue, roles and their grants,
     lookup tables. A `.ts` exporting `seed(db, { stage })`, or `.sql`, run in name order,
     each in its own transaction, as the construct's owner. There is no history:
@@ -304,6 +316,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
   `db/auth-database/`. Which constructs those are, in what order, from which
   folder, is `migrationTargets(manifest)` in `@geekmidas/manifest`, and nothing
   else decides it.
+
   - `gkm migrate [construct] [--stage test]` reconciles the stage (containers,
     roles, grants) and applies each folder as that construct's **owner** role —
     never the runtime one, never a fallback — parents before tenants. Each
@@ -399,6 +412,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
   `apps/web`'s `~` — silently, to the wrong file — when the command ran there.
 
   The fullstack scaffold did not build. What it gets now:
+
   - **The root `constructs/` folder's dependencies at the root**, where it
     resolves them: `@geekmidas/constructs` and the peers each declared construct
     needs. The root tsconfig allows the `.ts` imports they use.
@@ -532,6 +546,7 @@ auth_token=…` yielded the attacker's value; `@geekmidas/client` and
 
   `@geekmidas/cloud/sst` constructs gain static `fromManifest` factories that map
   a manifest straight into infrastructure:
+
   - `Api.fromManifest(stack, id, routesManifest, props)` — one route per
     `RouteInfo` (env vars, authorizer, timeout/memory mapped); supply
     `authorizers`/`links`/native args via `props`.
@@ -547,6 +562,7 @@ auth_token=…` yielded the attacker's value; `@geekmidas/client` and
   `gkm build` emits a single TypeScript module per provider
   (`export const manifest = { routes, functions, crons, subscribers } as const`),
   not separate JSON files. `@geekmidas/manifest` now models that:
+
   - a unified `Manifest` type plus `ManifestField<T>` (a field is a flat
     `readonly T[]` or a partitioned `Record<string, readonly T[]>`) and a
     `flattenManifestField` helper;

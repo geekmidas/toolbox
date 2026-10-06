@@ -15,7 +15,6 @@ import {
 	generateTestFactoryFiles,
 	generateTestFiles,
 } from '../generators/test.js';
-import { generateUiPackageFiles } from '../generators/ui.js';
 import { generateWebAppFiles } from '../generators/web.js';
 import { generateTanStackWebFiles } from '../generators/web-tanstack.js';
 import { apiTemplate } from '../templates/api.js';
@@ -29,7 +28,6 @@ const baseOptions: TemplateOptions = {
 	name: 'test-project',
 	template: 'minimal',
 	telescope: true,
-	studio: true,
 	loggerType: 'pino',
 	routesStructure: 'centralized-endpoints',
 	monorepo: false,
@@ -815,7 +813,7 @@ describe('what a workspace runs its tools with', () => {
 	// constructs. A hand-rolled service beside them was a second client — its
 	// own pool, its own copy of the schema — that nothing kept in step.
 	it('gives the API no hand-rolled services', () => {
-		const files = apiTemplate.files({ ...options, studio: true });
+		const files = apiTemplate.files(options);
 
 		expect(files.map((f) => f.path)).not.toContainEqual(
 			expect.stringMatching(/^src\/services\//),
@@ -823,9 +821,9 @@ describe('what a workspace runs its tools with', () => {
 		expect(file(files, 'src/router.ts')).toContain(
 			'router.session(async ({ auth })',
 		);
-		expect(file(files, 'src/config/studio.ts')).toContain(
-			'...database.clientConfig',
-		);
+		// No hand-written database browser either: `gkm dev` serves the declared
+		// database's JSON API itself.
+		expect(files.map((f) => f.path)).not.toContain('src/config/studio.ts');
 	});
 
 	it('ships the migration its endpoints and tests expect, at the root', () => {
@@ -1053,7 +1051,7 @@ describe('generateModelsPackage', () => {
 	});
 });
 
-describe('generateUiPackageFiles', () => {
+describe('shadcn components in the web app', () => {
 	const fullstackOptions: TemplateOptions = {
 		...baseOptions,
 		template: 'fullstack',
@@ -1061,305 +1059,98 @@ describe('generateUiPackageFiles', () => {
 		apiPath: 'apps/api',
 	};
 
-	it('should return empty array for non-monorepo', () => {
-		const files = generateUiPackageFiles(baseOptions);
-		expect(files).toHaveLength(0);
-	});
+	const COMPONENTS = [
+		'button',
+		'input',
+		'card',
+		'label',
+		'badge',
+		'separator',
+		'tabs',
+		'tooltip',
+		'dialog',
+	];
 
-	it('should return empty array for non-fullstack template', () => {
-		const options: TemplateOptions = {
-			...baseOptions,
-			template: 'minimal',
-			monorepo: true,
-			apiPath: 'apps/api',
-		};
-		const files = generateUiPackageFiles(options);
-		expect(files).toHaveLength(0);
-	});
+	describe.each([
+		{
+			framework: 'Next.js',
+			generate: generateWebAppFiles,
+			css: 'src/app/globals.css',
+			rsc: true,
+		},
+		{
+			framework: 'TanStack Start',
+			generate: generateTanStackWebFiles,
+			css: 'src/styles/globals.css',
+			rsc: false,
+		},
+	])('$framework', ({ generate, css, rsc }) => {
+		const files = () => generate(fullstackOptions);
+		const content = (path: string) =>
+			files().find((f) => f.path === path)?.content;
 
-	it('should generate UI package files for fullstack template', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const paths = files.map((f) => f.path);
-		expect(paths).toContain('packages/ui/package.json');
-		expect(paths).toContain('packages/ui/tsconfig.json');
-		expect(paths).toContain('packages/ui/components.json');
-		expect(paths).toContain('packages/ui/.storybook/main.ts');
-		expect(paths).toContain('packages/ui/.storybook/preview.ts');
-		expect(paths).toContain('packages/ui/src/styles/globals.css');
-		expect(paths).toContain('packages/ui/src/lib/utils.ts');
-		expect(paths).toContain('packages/ui/src/index.ts');
-	});
+		it('writes the components into the app, not a workspace package', () => {
+			const paths = files().map((f) => f.path);
 
-	it('should use correct package name', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const pkgJson = files.find((f) => f.path === 'packages/ui/package.json');
-		expect(pkgJson).toBeDefined();
-		const pkg = JSON.parse(pkgJson!.content);
-		expect(pkg.name).toBe('@test-project/ui');
-	});
+			for (const name of COMPONENTS) {
+				expect(paths).toContain(`apps/web/src/components/ui/${name}.tsx`);
+			}
+			expect(paths).toContain('apps/web/src/lib/utils.ts');
+			expect(paths.some((p) => p.startsWith('packages/ui/'))).toBe(false);
+		});
 
-	it('should have typescript source exports (not dist)', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const pkgJson = files.find((f) => f.path === 'packages/ui/package.json');
-		expect(pkgJson).toBeDefined();
-		const pkg = JSON.parse(pkgJson!.content);
-		expect(pkg.exports['.']).toBe('./src/index.ts');
-		expect(pkg.exports['./components']).toBe('./src/components/index.ts');
-		expect(pkg.exports['./lib/utils']).toBe('./src/lib/utils.ts');
-		expect(pkg.exports['./styles']).toBe('./src/styles/globals.css');
-	});
+		it('installs what the components import, and no ui package', () => {
+			const pkg = JSON.parse(content('apps/web/package.json')!);
 
-	it('should not have build script (private packages are not built)', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const pkgJson = files.find((f) => f.path === 'packages/ui/package.json');
-		expect(pkgJson).toBeDefined();
-		const pkg = JSON.parse(pkgJson!.content);
-		expect(pkg.scripts.build).toBeUndefined();
-		expect(pkg.scripts.storybook).toBeDefined();
-		expect(pkg.scripts['build:storybook']).toBeDefined();
-	});
+			expect(pkg.dependencies['@test-project/ui']).toBeUndefined();
+			expect(pkg.dependencies['@radix-ui/react-slot']).toBeDefined();
+			expect(pkg.dependencies['class-variance-authority']).toBeDefined();
+			expect(pkg.dependencies['tailwind-merge']).toBeDefined();
+		});
 
-	it('should include Radix UI dependencies', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const pkgJson = files.find((f) => f.path === 'packages/ui/package.json');
-		expect(pkgJson).toBeDefined();
-		const pkg = JSON.parse(pkgJson!.content);
-		expect(pkg.dependencies['@radix-ui/react-slot']).toBeDefined();
-		expect(pkg.dependencies['@radix-ui/react-dialog']).toBeDefined();
-		expect(pkg.dependencies['@radix-ui/react-label']).toBeDefined();
-		expect(pkg.dependencies['@radix-ui/react-separator']).toBeDefined();
-		expect(pkg.dependencies['@radix-ui/react-tabs']).toBeDefined();
-		expect(pkg.dependencies['@radix-ui/react-tooltip']).toBeDefined();
-	});
+		it('points the shadcn CLI at the app', () => {
+			const config = JSON.parse(content('apps/web/components.json')!);
 
-	it('should include Storybook dependencies', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const pkgJson = files.find((f) => f.path === 'packages/ui/package.json');
-		expect(pkgJson).toBeDefined();
-		const pkg = JSON.parse(pkgJson!.content);
-		expect(pkg.devDependencies['@storybook/react-vite']).toBeDefined();
-		expect(pkg.devDependencies['@storybook/addon-docs']).toBeDefined();
-		expect(pkg.devDependencies.storybook).toBeDefined();
-		// Storybook 9 folded these into `storybook` itself.
-		expect(pkg.devDependencies['@storybook/react']).toBeUndefined();
-		expect(pkg.devDependencies['@storybook/addon-essentials']).toBeUndefined();
-		expect(
-			pkg.devDependencies['@storybook/addon-interactions'],
-		).toBeUndefined();
-	});
+			expect(config.tailwind.css).toBe(css);
+			expect(config.rsc).toBe(rsc);
+			expect(config.aliases.ui).toBe('~/components/ui');
+		});
 
-	it('parses components without TypeScript, which TypeScript 7 cannot serve', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const main = files.find((f) => f.path === 'packages/ui/.storybook/main.ts');
-		expect(main!.content).toContain("reactDocgen: 'react-docgen'");
-		for (const story of files.filter((f) => f.path.endsWith('.stories.tsx'))) {
-			expect(story.content).toContain("from '@storybook/react-vite'");
-		}
-	});
+		it('carries the theme in the stylesheet the app imports', () => {
+			const styles = content(`apps/web/${css}`)!;
 
-	it('writes no baseUrl, which TypeScript 7 removed', () => {
-		for (const file of [
-			...generateUiPackageFiles(fullstackOptions),
-			...generateMonorepoFiles(fullstackOptions, minimalTemplate),
-			...generateAuthAppFiles(fullstackOptions),
-			...generateWebAppFiles(fullstackOptions),
-			...generateTanStackWebFiles(fullstackOptions),
-			...generateConfigFiles(fullstackOptions, apiTemplate),
-			...generateConfigFiles(baseOptions, apiTemplate),
-		].filter((f) => f.path.endsWith('tsconfig.json'))) {
-			expect(file.content, file.path).not.toContain('baseUrl');
-		}
-	});
+			expect(styles).toContain('@import "tailwindcss"');
+			expect(styles).toContain('--color-primary');
+			expect(styles).not.toContain('/ui/styles');
+		});
 
-	it('should include Tailwind CSS dependencies', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const pkgJson = files.find((f) => f.path === 'packages/ui/package.json');
-		expect(pkgJson).toBeDefined();
-		const pkg = JSON.parse(pkgJson!.content);
-		expect(pkg.devDependencies.tailwindcss).toBeDefined();
-		expect(pkg.devDependencies['@tailwindcss/vite']).toBeDefined();
-		expect(pkg.peerDependencies.tailwindcss).toBeDefined();
-	});
+		it('resolves `~` to the app alone', () => {
+			const tsconfig = JSON.parse(content('apps/web/tsconfig.json')!);
 
-	it('should extend root tsconfig with noEmit', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const tsConfig = files.find((f) => f.path === 'packages/ui/tsconfig.json');
-		expect(tsConfig).toBeDefined();
-		const config = JSON.parse(tsConfig!.content);
-		expect(config.extends).toBe('../../tsconfig.json');
-		expect(config.compilerOptions.noEmit).toBe(true);
-		expect(config.compilerOptions.jsx).toBe('react-jsx');
-	});
-
-	it('should not include tsdown.config.ts', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const paths = files.map((f) => f.path);
-		expect(paths).not.toContain('packages/ui/tsdown.config.ts');
-	});
-
-	it('should generate all component files in folder structure', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const paths = files.map((f) => f.path);
-
-		// Button
-		expect(paths).toContain('packages/ui/src/components/ui/button/index.tsx');
-		expect(paths).toContain(
-			'packages/ui/src/components/ui/button/button.stories.tsx',
-		);
-
-		// Input
-		expect(paths).toContain('packages/ui/src/components/ui/input/index.tsx');
-		expect(paths).toContain(
-			'packages/ui/src/components/ui/input/input.stories.tsx',
-		);
-
-		// Card
-		expect(paths).toContain('packages/ui/src/components/ui/card/index.tsx');
-		expect(paths).toContain(
-			'packages/ui/src/components/ui/card/card.stories.tsx',
-		);
-
-		// Label
-		expect(paths).toContain('packages/ui/src/components/ui/label/index.tsx');
-		expect(paths).toContain(
-			'packages/ui/src/components/ui/label/label.stories.tsx',
-		);
-
-		// Badge
-		expect(paths).toContain('packages/ui/src/components/ui/badge/index.tsx');
-		expect(paths).toContain(
-			'packages/ui/src/components/ui/badge/badge.stories.tsx',
-		);
-
-		// Separator
-		expect(paths).toContain(
-			'packages/ui/src/components/ui/separator/index.tsx',
-		);
-		expect(paths).toContain(
-			'packages/ui/src/components/ui/separator/separator.stories.tsx',
-		);
-
-		// Tabs
-		expect(paths).toContain('packages/ui/src/components/ui/tabs/index.tsx');
-		expect(paths).toContain(
-			'packages/ui/src/components/ui/tabs/tabs.stories.tsx',
-		);
-
-		// Tooltip
-		expect(paths).toContain('packages/ui/src/components/ui/tooltip/index.tsx');
-		expect(paths).toContain(
-			'packages/ui/src/components/ui/tooltip/tooltip.stories.tsx',
-		);
-
-		// Dialog
-		expect(paths).toContain('packages/ui/src/components/ui/dialog/index.tsx');
-		expect(paths).toContain(
-			'packages/ui/src/components/ui/dialog/dialog.stories.tsx',
-		);
-	});
-
-	it('should export all components from index', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const indexFile = files.find(
-			(f) => f.path === 'packages/ui/src/components/ui/index.ts',
-		);
-		expect(indexFile).toBeDefined();
-		expect(indexFile!.content).toContain("from './button/index.tsx'");
-		expect(indexFile!.content).toContain("from './input/index.tsx'");
-		expect(indexFile!.content).toContain("from './card/index.tsx'");
-		expect(indexFile!.content).toContain("from './label/index.tsx'");
-		expect(indexFile!.content).toContain("from './badge/index.tsx'");
-		expect(indexFile!.content).toContain("from './separator/index.tsx'");
-		expect(indexFile!.content).toContain("from './tabs/index.tsx'");
-		expect(indexFile!.content).toContain("from './tooltip/index.tsx'");
-		expect(indexFile!.content).toContain("from './dialog/index.tsx'");
-		// Each one resolves: the components are generated as `<name>/index.tsx`.
-		const paths = new Set(files.map((f) => f.path));
-		for (const [, name] of indexFile!.content.matchAll(
-			/from '\.\/([a-z-]+)\/index\.tsx'/g,
-		)) {
+			expect(tsconfig.compilerOptions.paths['~/*']).toEqual(['./src/*']);
 			expect(
-				paths.has(`packages/ui/src/components/ui/${name}/index.tsx`),
-				name,
-			).toBe(true);
-		}
+				Object.keys(tsconfig.compilerOptions.paths).some((k) =>
+					k.includes('/ui'),
+				),
+			).toBe(false);
+		});
 	});
 
-	it('should include cn utility function', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const utilsFile = files.find(
-			(f) => f.path === 'packages/ui/src/lib/utils.ts',
-		);
-		expect(utilsFile).toBeDefined();
-		expect(utilsFile!.content).toContain('export function cn');
-		expect(utilsFile!.content).toContain('clsx');
-		expect(utilsFile!.content).toContain('twMerge');
+	it("builds the Next.js home page from the app's own components", () => {
+		const page = generateWebAppFiles(fullstackOptions).find(
+			(f) => f.path === 'apps/web/src/app/page.tsx',
+		)!.content;
+
+		expect(page).toContain("from '~/components/ui/button.tsx'");
+		expect(page).toContain("from '~/components/ui/card.tsx'");
 	});
 
-	it('should include Tailwind v4 CSS with theme variables', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const globalsCss = files.find(
-			(f) => f.path === 'packages/ui/src/styles/globals.css',
-		);
-		expect(globalsCss).toBeDefined();
-		expect(globalsCss!.content).toContain('@import "tailwindcss"');
-		expect(globalsCss!.content).toContain('@theme');
-		expect(globalsCss!.content).toContain('--color-background');
-		expect(globalsCss!.content).toContain('--color-primary');
-		expect(globalsCss!.content).toContain('.dark');
-	});
+	it('marks the radix-based components as client components', () => {
+		const dialog = generateWebAppFiles(fullstackOptions).find(
+			(f) => f.path === 'apps/web/src/components/ui/dialog.tsx',
+		)!.content;
 
-	it('should configure Storybook with Tailwind v4 plugin', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const storybookMain = files.find(
-			(f) => f.path === 'packages/ui/.storybook/main.ts',
-		);
-		expect(storybookMain).toBeDefined();
-		expect(storybookMain!.content).toContain('@storybook/react-vite');
-		expect(storybookMain!.content).toContain('@tailwindcss/vite');
-		expect(storybookMain!.content).toContain('viteFinal');
-	});
-
-	it('should import globals.css in Storybook preview', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const storybookPreview = files.find(
-			(f) => f.path === 'packages/ui/.storybook/preview.ts',
-		);
-		expect(storybookPreview).toBeDefined();
-		expect(storybookPreview!.content).toContain(
-			"import '../src/styles/globals.css'",
-		);
-	});
-
-	it('should include shadcn components.json config', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const componentsJson = files.find(
-			(f) => f.path === 'packages/ui/components.json',
-		);
-		expect(componentsJson).toBeDefined();
-		const config = JSON.parse(componentsJson!.content);
-		expect(config.$schema).toContain('ui.shadcn.com');
-		expect(config.style).toBe('new-york');
-		expect(config.tailwind.cssVariables).toBe(true);
-		expect(config.aliases.components).toBe('~/components');
-		expect(config.aliases.utils).toBe('~/lib/utils');
-	});
-
-	it('should use ~/* path alias in components', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const buttonFile = files.find(
-			(f) => f.path === 'packages/ui/src/components/ui/button/index.tsx',
-		);
-		expect(buttonFile).toBeDefined();
-		expect(buttonFile!.content).toContain("from '~/lib/utils'");
-	});
-
-	it('should configure ~/* path in tsconfig', () => {
-		const files = generateUiPackageFiles(fullstackOptions);
-		const tsConfig = files.find((f) => f.path === 'packages/ui/tsconfig.json');
-		expect(tsConfig).toBeDefined();
-		const config = JSON.parse(tsConfig!.content);
-		expect(config.compilerOptions.paths['~/*']).toEqual(['./src/*']);
+		expect(dialog.startsWith("'use client';")).toBe(true);
 	});
 });
 

@@ -9,7 +9,6 @@ const workspace: TemplateOptions = {
 	monorepo: true,
 	apiPath: 'apps/api',
 	telescope: true,
-	studio: true,
 	loggerType: 'pino',
 	routesStructure: 'centralized-endpoints',
 	packageManager: 'pnpm',

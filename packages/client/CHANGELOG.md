@@ -1,5 +1,21 @@
 # @geekmidas/client
 
+## 10.0.0-alpha.56
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/constructs@10.0.0-alpha.56
+  - @geekmidas/schema@10.0.0-alpha.56
+
+## 10.0.0-alpha.55
+
+### Patch Changes
+
+- Updated dependencies [[`eedac53`](https://github.com/geekmidas/toolbox/commit/eedac53aeec2d88d46a74ec9f3d4a55e2845b2b2)]:
+  - @geekmidas/constructs@10.0.0-alpha.55
+  - @geekmidas/schema@10.0.0-alpha.55
+
 ## 10.0.0-alpha.54
 
 ### Patch Changes
@@ -265,6 +281,7 @@
   `gkm test` already discovered an app's constructs and resolved its test stage —
   then threw both away and left a test to declare them again, environment keys
   included. It now writes `.gkm/test/` into each app:
+
   - `manifest.json` — every construct and endpoint's source (file and export) and
     the test stage's environment, keyed as the constructs derive their keys;
   - `clients/<surface>.ts` — each surface's typed client, from the generator
@@ -319,6 +336,7 @@ from '#test'` — no construct, environment key or client written by hand.
   is required exactly when something in it is.
 
   Three typing fixes came out of testing it, and apply to `api('…')` too:
+
   - **Routes declared with `:param` were uncallable.** `InferOpenApi` keyed them by
     the declared form (`/users/:id`) instead of the served one (`/users/{id}`), so
     no path parameter was inferred and the documented `api('GET /users/{id}')` did

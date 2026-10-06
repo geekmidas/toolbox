@@ -57,8 +57,9 @@ is needed.
 
 ### Dev tooling
 
-- **Telescope** — requests/logs/exceptions at `/telescope`
-- **Studio** — DB browser at `/__studio`
+- **Telescope** — requests/logs/exceptions as JSON at `/__telescope/api/*`
+- **Database API** — the declared database, read-only, as JSON at `/__gkm/db`
+  (`gkm dev` only)
 - **OpenAPI** — generated on startup (`openapi: true`)
 - **envkit** + `Credentials` — `src/config/env.ts`
 - **Server hooks** — CORS + error handlers in `src/config/hooks.ts`
@@ -97,7 +98,7 @@ Then:
 curl -XPOST localhost:3000/users -H 'content-type: application/json' \
   -d '{"name":"Ada","email":"ada@example.com"}'
 
-# watch the subscriber + queue worker logs in the console / at /telescope
+# watch the subscriber + queue worker logs in the console / at /__telescope/api/logs
 curl localhost:3000/users               # served from cache when warm
 
 # sign in by magic link — this sends real mail, to Mailpit

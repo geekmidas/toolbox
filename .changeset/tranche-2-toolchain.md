@@ -1,7 +1,6 @@
 ---
 '@geekmidas/cli': patch
 '@geekmidas/db': patch
-'@geekmidas/studio': patch
 '@geekmidas/telescope': patch
 '@geekmidas/testkit': patch
 ---

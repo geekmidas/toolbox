@@ -44,6 +44,22 @@ export function decodeCursor(cursor: string): unknown {
 
 		return payload.v;
 	} catch {
-		throw new Error('Invalid cursor format');
+		throw new InvalidCursor(cursor);
+	}
+}
+
+/**
+ * A cursor that did not come from `encodeCursor`.
+ *
+ * Usually a cursor from a different page size or sort that was edited by hand,
+ * or truncated on its way through a URL. The fix is the same either way: start
+ * again from the first page.
+ */
+export class InvalidCursor extends Error {
+	constructor(readonly cursor: string) {
+		super(
+			'This cursor was not produced by encodeCursor. Drop it and request the first page again.',
+		);
+		this.name = 'InvalidCursor';
 	}
 }

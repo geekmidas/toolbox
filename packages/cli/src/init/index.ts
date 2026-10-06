@@ -28,7 +28,6 @@ import {
 	generateTestFactoryFiles,
 	generateTestFiles,
 } from './generators/test.js';
-import { generateUiPackageFiles } from './generators/ui.js';
 import { generateWebAppFiles } from './generators/web.js';
 import { generateTanStackWebFiles } from './generators/web-tanstack.js';
 import {
@@ -245,7 +244,7 @@ export async function initCommand(
 			{
 				type: options.yes ? null : 'confirm',
 				name: 'telescope',
-				message: 'Include Telescope (debugging dashboard)?',
+				message: 'Include Telescope (request, exception and log recording)?',
 				initial: true,
 			},
 			{
@@ -332,7 +331,6 @@ export async function initCommand(
 	const deployTarget: DeployTarget =
 		options.deploy ?? (options.yes ? 'none' : (answers.deployTarget ?? 'none'));
 
-	const database = constructs.database;
 	const frontendFramework: FullstackFrontendFramework | undefined = isFullstack
 		? options.yes
 			? 'nextjs'
@@ -342,7 +340,6 @@ export async function initCommand(
 		name,
 		template,
 		telescope: options.yes ? true : (answers.telescope ?? true),
-		studio: database,
 		loggerType: options.yes ? 'pino' : (answers.loggerType ?? 'pino'),
 		routesStructure: options.yes
 			? 'centralized-endpoints'
@@ -421,11 +418,6 @@ export async function initCommand(
 	// Collect auth app files for fullstack template
 	const authAppFiles = isFullstack ? generateAuthAppFiles(templateOptions) : [];
 
-	// Collect UI package files for fullstack template
-	const uiPackageFiles = isFullstack
-		? generateUiPackageFiles(templateOptions)
-		: [];
-
 	// Write root files (for monorepo)
 	for (const { path, content } of rootFiles) {
 		const fullPath = join(targetDir, path);
@@ -449,13 +441,6 @@ export async function initCommand(
 
 	// Write auth app files (authentication service)
 	for (const { path, content } of authAppFiles) {
-		const fullPath = join(targetDir, path);
-		await mkdir(dirname(fullPath), { recursive: true });
-		await writeFile(fullPath, content);
-	}
-
-	// Write UI package files (shared components)
-	for (const { path, content } of uiPackageFiles) {
 		const fullPath = join(targetDir, path);
 		await mkdir(dirname(fullPath), { recursive: true });
 		await writeFile(fullPath, content);
@@ -599,10 +584,7 @@ function printNextSteps(
 			}
 		}
 		console.log(`  ├── packages/`);
-		console.log(`  │   ├── models/       # Shared Zod schemas`);
-		if (isFullstackTemplate(options.template)) {
-			console.log(`  │   └── ui/           # Shared UI components`);
-		}
+		console.log(`  │   └── models/       # Shared Zod schemas`);
 		console.log(`  ├── .gkm/secrets/     # Encrypted secrets`);
 		console.log(`  ├── gkm.config.ts     # Workspace config`);
 		console.log(`  └── turbo.json        # Turbo config`);

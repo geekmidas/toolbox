@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/cli",
-	"version": "10.0.0-alpha.54",
+	"version": "10.0.0-alpha.56",
 	"description": "CLI tools for building Lambda handlers, server applications, and generating OpenAPI specs",
 	"private": false,
 	"type": "module",
@@ -118,7 +118,6 @@
 	},
 	"devDependencies": {
 		"@geekmidas/events": "workspace:~",
-		"@geekmidas/studio": "workspace:~",
 		"@geekmidas/testkit": "workspace:*",
 		"@hono/node-server": "~1.19.5",
 		"@types/lodash.kebabcase": "~4.1.9",

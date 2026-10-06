@@ -1,5 +1,9 @@
 # @geekmidas/envkit
 
+## 10.0.0-alpha.56
+
+## 10.0.0-alpha.55
+
 ## 10.0.0-alpha.54
 
 ## 10.0.0-alpha.53
@@ -21,6 +25,7 @@
 - [#124](https://github.com/geekmidas/toolbox/pull/124) [`10ef53d`](https://github.com/geekmidas/toolbox/commit/10ef53d921d519afa62c773a6682581e19c06b1e) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: `Encryption` — a key that encrypts what the application stores
 
   `new Encryption('Pii')` gives a handler that `.dependsOn([pii])` `services.pii.encrypt`, `decrypt`, `index` (a blind index, so an encrypted column can still be looked up) and `reencrypt`. The app names no cipher: the construct provides one `PII_URL` whose scheme picks the backend.
+
   - **Locally and in tests**, an `aes256gcm://` keyring derived from the project and stage, like a secret — nothing to set.
   - **On a server stage**, a keyring generated into the stage's secrets on its first deploy and never replaced by a redeploy.
   - **On AWS**, envelope encryption under a KMS key that rotates yearly, and a KMS HMAC key for the index, each granted to exactly the functions that depend on the construct (`kms:GenerateDataKey`/`kms:Decrypt`, `kms:GenerateMac`). `@aws-sdk/client-kms` is an optional peer, loaded only for a `kms://` URL.
@@ -48,6 +53,7 @@
 ### Patch Changes
 
 - [#107](https://github.com/geekmidas/toolbox/pull/107) [`5475a96`](https://github.com/geekmidas/toolbox/commit/5475a96d1d8ee0c99109c65cba76f7e269f42265) Thanks [@geekmidas](https://github.com/geekmidas)! - `ExternalApi` for third-party HTTP APIs, `<ID>_CREDENTIALS`, and `faker` and `signIn()` in feature tests
+
   - **`ExternalApi`** (`@geekmidas/constructs/external-api`) declares an API
     somebody else runs: a `url`, one string or one per stage name with a
     `default`, a `credentials` schema, and the `client` a handler is given. It
@@ -113,6 +119,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
     - 🔥 **Removed:** `getAppNameFromCwd` and `getAppNameFromPackageJson`.
 
   **Moving an existing app:**
+
   - Rename every `<ID>_CREDENTIAL` secret to `<ID>_CREDENTIALS` and set it on
     each deployed stage: `gkm secrets:set STRIPE_CREDENTIALS '{…}' --stage production`.
   - A custom `secrets.store` provider renames `pull` to `read` and `push` to
@@ -290,6 +297,7 @@ auth_token=…` yielded the attacker's value; `@geekmidas/client` and
   Adds `EnvValidator`, `resolveEnvKeys`, and `EnvValidationError` alongside
   `SstEnvironmentBuilder`, so a deployable unit's required environment variables
   can be validated **before** deploy — at `sst.config.ts` synth time.
+
   - `resolveEnvKeys` derives the env-var keys a set of linked resources will
     produce by replaying the **same** `sstResolvers` used at runtime (reduced to
     the resource `type`, so no SST `Output` value is ever read). The infra-time

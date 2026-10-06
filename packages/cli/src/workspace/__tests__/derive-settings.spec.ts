@@ -32,7 +32,6 @@ describe('derivedApps, what an app carries over', () => {
 				Web: site('Web', {
 					path: 'apps/web',
 					config: { client: './src/config/client.ts' },
-					studio: true,
 					openapi: false,
 					runtime: 'bun',
 					env: ['.env.web'],
@@ -44,7 +43,6 @@ describe('derivedApps, what an app carries over', () => {
 
 		expect(apps.web).toMatchObject({
 			config: { client: './src/config/client.ts' },
-			studio: true,
 			openapi: false,
 			runtime: 'bun',
 			env: ['.env.web'],

@@ -1,6 +1,6 @@
 # @geekmidas/telescope
 
-Laravel Telescope-style debugging and monitoring for web applications. Capture and inspect HTTP requests, exceptions, and logs in real-time.
+Laravel Telescope-style debugging and monitoring for web applications. Capture HTTP requests, exceptions and logs, and read them back as a JSON API with a WebSocket feed. Headless: there is no dashboard — build whatever UI you want on the JSON.
 
 **Framework-agnostic core** with adapters for Hono, AWS Lambda, and more.
 
@@ -17,7 +17,7 @@ pnpm add @geekmidas/telescope
 ```typescript
 import { Hono } from 'hono';
 import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
-import { createMiddleware, createUI } from '@geekmidas/telescope/server/hono';
+import { createApi, createMiddleware } from '@geekmidas/telescope/server/hono';
 
 const telescope = new Telescope({
   storage: new InMemoryStorage(),
@@ -28,8 +28,8 @@ const app = new Hono();
 // Add middleware to capture requests
 app.use('*', createMiddleware(telescope));
 
-// Mount the dashboard
-app.route('/__telescope', createUI(telescope));
+// Mount the JSON API
+app.route('/__telescope', createApi(telescope));
 
 // Your routes
 app.get('/users', (c) => c.json({ users: [] }));
@@ -37,7 +37,7 @@ app.get('/users', (c) => c.json({ users: [] }));
 export default app;
 ```
 
-Visit `http://localhost:3000/__telescope` to view the dashboard.
+Read the data at `http://localhost:3000/__telescope/api/requests` (and `/api/exceptions`, `/api/logs`, …).
 
 ### Framework-Agnostic Core
 
@@ -80,7 +80,7 @@ try {
 - **Request Recording**: Capture HTTP requests with headers, body, query params, and response
 - **Exception Tracking**: Record exceptions with stack traces and source context
 - **Log Aggregation**: Collect application logs with context
-- **Real-time Updates**: WebSocket-powered live dashboard
+- **Real-time Updates**: a WebSocket feed of new entries
 - **Storage Agnostic**: Use in-memory for dev, database for production
 - **Hono Integration**: First-class middleware and route mounting
 - **Lambda Integration**: Wrapper and Middy middleware for AWS Lambda with auto-flush
@@ -95,7 +95,7 @@ const telescope = new Telescope({
   // Optional: Enable/disable telescope (default: true)
   enabled: true,
 
-  // Optional: Dashboard path (default: '/__telescope')
+  // Optional: where the JSON API is mounted (default: '/__telescope')
   path: '/__telescope',
 
   // Optional: Record request/response bodies (default: true)
@@ -344,7 +344,7 @@ telescope.destroy();
 Import from `@geekmidas/telescope/server/hono`:
 
 ```typescript
-import { createMiddleware, createUI, setupWebSocket, getRequestId } from '@geekmidas/telescope/server/hono';
+import { createApi, createMiddleware, setupWebSocket, getRequestId } from '@geekmidas/telescope/server/hono';
 ```
 
 #### `createMiddleware(telescope)`
@@ -355,12 +355,12 @@ Returns Hono middleware that captures requests and responses.
 app.use('*', createMiddleware(telescope));
 ```
 
-#### `createUI(telescope)`
+#### `createApi(telescope)`
 
-Returns a Hono app with dashboard UI and API routes.
+Returns a Hono app serving the JSON API under `/api`.
 
 ```typescript
-app.route('/__telescope', createUI(telescope));
+app.route('/__telescope', createApi(telescope));
 ```
 
 #### `setupWebSocket(app, telescope, upgradeWebSocket)`
@@ -371,7 +371,7 @@ Set up WebSocket routes for real-time updates.
 import { createNodeWebSocket } from '@hono/node-ws';
 
 const { upgradeWebSocket } = createNodeWebSocket({ app });
-setupWebSocket(createUI(telescope), telescope, upgradeWebSocket);
+setupWebSocket(createApi(telescope), telescope, upgradeWebSocket);
 ```
 
 #### `getRequestId(c)`
@@ -542,9 +542,9 @@ const requestLogger = logger.withRequestId('req-abc123');
 requestLogger.info('Processing request');
 ```
 
-## Dashboard API
+## JSON API
 
-The dashboard UI is served at the configured path. It also exposes a REST API:
+`createApi` serves a read API at the path it is mounted on:
 
 | Endpoint | Description |
 |----------|-------------|
