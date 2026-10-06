@@ -185,8 +185,9 @@ export class AWSLambdaQueue<
 			const requestId = context.awsRequestId;
 			const logger = this.queue.logger.child({ requestId }) as TLogger;
 
-			return runWithRequestContext({ logger, requestId, startTime }, () =>
-				handler(event, context),
+			return runWithRequestContext(
+				{ logger, requestId, startTime, operation: `queue ${this.queue.name}` },
+				() => handler(event, context),
 			);
 		}) as unknown as AWSLambdaHandler<SQSEvent, SQSBatchResponse>;
 	}

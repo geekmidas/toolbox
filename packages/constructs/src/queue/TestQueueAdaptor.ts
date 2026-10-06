@@ -56,13 +56,16 @@ export class TestQueueAdaptor<
 		const requestId = `test-${Date.now()}`;
 		const startTime = Date.now();
 
-		return runWithRequestContext({ logger, requestId, startTime }, () =>
-			this.queue.handler({
-				messages: request.messages,
-				services,
-				logger,
-				db,
-			} as unknown as QueueContext<TMessage, TServices, TLogger, TDatabase>),
+		const operation = `queue ${this.queue.name}`;
+		return runWithRequestContext(
+			{ logger, requestId, startTime, operation },
+			() =>
+				this.queue.handler({
+					messages: request.messages,
+					services,
+					logger,
+					db,
+				} as unknown as QueueContext<TMessage, TServices, TLogger, TDatabase>),
 		);
 	}
 
