@@ -1,5 +1,71 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.55
+
+### Minor Changes
+
+- [#162](https://github.com/geekmidas/toolbox/pull/162) [`6cdaa36`](https://github.com/geekmidas/toolbox/commit/6cdaa36e0a9263f4b249ef2276d47375802c9707) Thanks [@geekmidas](https://github.com/geekmidas)! - A RestApi's production server serves HTTP only
+
+  `gkm build --production` (what `gkm docker`'s images run) wired every queue consumer, cron and topic subscriber into the server it built, because they sat in the API's directory. They belong to a `Worker`, so a production server that serves a RestApi now leaves them out, SNS push routes included, and the build says what it left out (`Serving Api only: leaving out 1 cron, 1 queue consumer, 1 subscriber`). Publishing (`.event(...)`, sending to a queue) is unchanged. `gkm dev` still runs everything in one process. Workers get their own deploy unit separately; until then, background work does not run in a server deploy.
+
+- ✨ [#168](https://github.com/geekmidas/toolbox/pull/168) [`5b13af5`](https://github.com/geekmidas/toolbox/commit/5b13af5996c3e9883f02368804b2f6c8f7ed6b68) Thanks [@geekmidas](https://github.com/geekmidas)! - ✨ A deploy state store with locks, versions and per-resource records: `createStateStore` returns a `LocalStateStore` (atomic temp-file writes, `open('wx')` lock), `SSMStateStore` (create-if-absent lock, parameter-version checks) or the new `S3StateStore` (`state: { provider: 's3', bucket, region }`, `If-Match` / `If-None-Match` writes). A second run of a stage gets `StateLocked`; a write based on a stale version gets `StateVersionConflict`.
+
+  State is now stored as schema version 2. A version 1 state is migrated the first time a store reads it, and the original is kept as `.gkm/deploy-<stage>.v1.json` (`state.v1` beside the SSM parameter, `state.v1.json` beside the S3 object). Local state files are mode 0600, `gkm state:show` masks database passwords, generated secrets and IAM keys, and `gkm state:unlock --stage <stage>` releases a lock a crashed run left behind. A custom `StateProvider` keeps working but warns `StateStoreWithoutLocking`; `CachedStateProvider` is deprecated for deploys.
+
+### Patch Changes
+
+- [#142](https://github.com/geekmidas/toolbox/pull/142) [`eedac53`](https://github.com/geekmidas/toolbox/commit/eedac53aeec2d88d46a74ec9f3d4a55e2845b2b2) Thanks [@geekmidas](https://github.com/geekmidas)! - Database connections say who holds them, and queries say what ran them
+  - **`application_name` on every connection** — the Lambda function's name, or the surface's id on a server (`GKM_APP_NAME`, set by the generated entry), or the app under `gkm dev`. A fallback: `PGAPPNAME` or `?application_name=` in the URL still win. `pg_stat_activity` can now say which function or app is holding connections.
+  - ✨ **Query tags.** A query run inside an endpoint, subscriber, queue or cron ends in a sqlcommenter comment, `/*operation='POST /orders',request_id='…'*/`, visible in `pg_stat_activity` and the server's logs. `pg_stat_statements` ignores it. Off with `new KyselyDatabase(id, { queryTags: false })`.
+  - **An idle connection ended by the server no longer crashes the process.** Pools had no `'error'` listener, so `idle_session_timeout` or a failover surfaced as an uncaught exception.
+  - ✨ **Production servers close their pools on shutdown.** On `SIGTERM` the server stops taking requests, lets in-flight ones finish, and runs `runShutdownHooks()` (new, from `@geekmidas/constructs`) before exiting, instead of waiting 30s with every connection still open. It exits by `GKM_SHUTDOWN_TIMEOUT_MS` (8s by default, under Docker's 10s stop timeout), with code 1 if it had to cut a request off.
+  - `@geekmidas/services`: the request context carries the `operation` it is for; `currentRequestContext()` reads it without throwing outside a request.
+
+- [#165](https://github.com/geekmidas/toolbox/pull/165) [`d4b5c78`](https://github.com/geekmidas/toolbox/commit/d4b5c786419665d03b8c6ea7d42bfd59db1373ba) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm build`, `gkm docker` and `gkm deploy` run commands as argument arrays and never print the master key
+
+  `docker build`, `docker push` and the workspace's turbo build are started with
+  an argument array and no shell, so a package name, image ref or tag holding
+  `;`, `$()` or spaces stays one argument. Image refs are checked against
+  Docker's grammar first and refused as `ImageRefInvalid`; a failing or hung
+  command raises `CommandFailed` or `CommandTimedOut`.
+
+  The master key is no longer printed. Output names it by fingerprint (the first
+  8 hex characters of its SHA-256). If you copied `GKM_MASTER_KEY` from
+  `gkm build --stage` output, read it from `.gkm/server/master.key` instead
+  (owner-only, kept out of the Docker build context); `gkm deploy` still sets it
+  in the container's runtime environment. `DeployResult.masterKey` is deprecated.
+
+  Encrypted credentials reach the image build as a BuildKit secret
+  (`--secret id=gkm_credentials`) rather than the `GKM_ENCRYPTED_CREDENTIALS` /
+  `GKM_CREDENTIALS_IV` build args, which `ps` and `docker history` recorded. The
+  generated multi-stage Dockerfiles read them with
+  `RUN --mount=type=secret,id=gkm_credentials`; regenerate yours with `gkm docker`.
+
+- [#164](https://github.com/geekmidas/toolbox/pull/164) [`c66fe5c`](https://github.com/geekmidas/toolbox/commit/c66fe5ce466d13990dd13eb883773f6ed59df46a) Thanks [@geekmidas](https://github.com/geekmidas)! - Dokploy requests time out instead of hanging
+
+  A Dokploy server that accepted the connection and never answered held
+  `gkm deploy` until the CI runner's own limit. Each `DokployApi` request now
+  has a deadline — `timeoutMs`, 30 seconds by default — and rejects with
+  `DokployRequestTimedOut`, which is not retried, since the request may have
+  arrived. A `signal` option aborts every request and any retry still waiting,
+  rejecting with the caller's own reason.
+
+- [#161](https://github.com/geekmidas/toolbox/pull/161) [`2cd7b8c`](https://github.com/geekmidas/toolbox/commit/2cd7b8c2366960a4dab6ecce62831b9c47b28195) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm trust` asks for your password once on macOS, not twice
+
+  It ran `sudo security add-trusted-cert -d … -k /Library/Keychains/System.keychain`. `sudo` asked for the password in the terminal to write the System keychain, and then macOS asked again in a dialog, because changing trust settings needs its own authorization that `sudo` does not cover. The local authority is now trusted in your login keychain for your user, without `sudo`, so macOS asks once (your password or Touch ID). Browsers and Node's system store both honour a user's trust settings. Linux is unchanged: its trust store is system-wide and needs `sudo`.
+
+- Updated dependencies [[`eedac53`](https://github.com/geekmidas/toolbox/commit/eedac53aeec2d88d46a74ec9f3d4a55e2845b2b2)]:
+  - @geekmidas/constructs@10.0.0-alpha.55
+  - @geekmidas/services@10.0.0-alpha.55
+  - @geekmidas/cache@10.0.0-alpha.55
+  - @geekmidas/db@10.0.0-alpha.55
+  - @geekmidas/envkit@10.0.0-alpha.55
+  - @geekmidas/errors@10.0.0-alpha.55
+  - @geekmidas/logger@10.0.0-alpha.55
+  - @geekmidas/manifest@10.0.0-alpha.55
+  - @geekmidas/schema@10.0.0-alpha.55
+  - @geekmidas/telescope@10.0.0-alpha.55
+
 ## 10.0.0-alpha.54
 
 ### Patch Changes
