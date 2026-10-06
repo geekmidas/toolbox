@@ -59,7 +59,11 @@ import {
 	type NormalizedWorkspace,
 } from '../workspace/index.js';
 import { ownersContext, servedBy } from './owners';
-import { selfServingSurface, writeSurfaceEntry } from './surfaceEntry';
+import {
+	selfServingSurface,
+	writeSurfaceEntry,
+	writeSurfaceServer,
+} from './surfaceEntry';
 import type {
 	BuildContext,
 	NormalizedHooksConfig,
@@ -430,6 +434,22 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		logger.log(
 			`Generated a server for ${selfServing.id} from its own declaration`,
 		);
+
+		// An image needs a process that listens, which the dev entry is not.
+		if (production?.bundle && !input.skipBundle) {
+			const outputDir = join(appRoot, '.gkm', 'server');
+			const entryPoint = await writeSurfaceServer(outputDir, production);
+			const { bundleServer } = await import('./bundler');
+			await bundleServer({
+				entryPoint,
+				outputDir: join(outputDir, 'dist'),
+				minify: production.minify,
+				sourcemap: false,
+				external: production.external,
+				...(input.stage ? { stage: input.stage } : {}),
+			});
+			logger.log(`✅ Bundle complete: .gkm/server/dist/server.mjs`);
+		}
 
 		return { selfServing: selfServing.id };
 	}

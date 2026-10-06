@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { ConstructType } from '../../Construct';
 import { Endpoint } from '../Endpoint';
 import { EndpointBuilder } from '../EndpointBuilder';
+import { EndpointFactory } from '../EndpointFactory';
 
 /**
  * Run an endpoint's session callback the way an adaptor does. The endpoint
@@ -382,11 +383,28 @@ describe('EndpointBuilder', () => {
 			expect(defaultAuth()).toBe(true);
 		});
 
-		it('should have default session that returns empty object', () => {
-			const builder = new EndpointBuilder('/test', 'GET');
-			const defaultSession = (builder as any)._getSession;
+		it('should have default session that returns empty object', async () => {
+			const endpoint = new EndpointBuilder('/test', 'GET').handle(
+				async () => ({}),
+			);
 
-			expect(defaultSession()).toEqual({});
+			expect(await endpoint.getSession({} as any)).toEqual({});
+			// No callback was given, so a generated handler need not ask for one.
+			expect(endpoint.hasSession).toBe(false);
+		});
+
+		it('says it has a session when its factory was given one', async () => {
+			const endpoint = new EndpointFactory({})
+				.session(async () => ({ userId: 'u1' }))
+				.get('/me')
+				.handle(async () => ({}));
+
+			expect(endpoint.hasSession).toBe(true);
+			expect(
+				await endpoint.getSession({ header: () => undefined } as any),
+			).toEqual({
+				userId: 'u1',
+			});
 		});
 
 		it('should allow setting custom authorization', () => {

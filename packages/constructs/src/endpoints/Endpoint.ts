@@ -122,6 +122,13 @@ export class Endpoint<
 	/** Function to extract session data from the request context */
 	public getSession: SessionFn<TServices, TLogger, TSession, TDatabase> = () =>
 		({}) as TSession;
+	/**
+	 * Whether a session callback was given — `.session()` on the factory it was
+	 * built from. A generated handler reads the session only when it is, so
+	 * an endpoint with a session and no authorizer must say so: it used to be
+	 * handed `undefined` in a production build and its session in `gkm dev`.
+	 */
+	public readonly hasSession: boolean = false;
 	/** Function to determine if the request is authorized */
 	public authorize: AuthorizeFn<
 		TServices,
@@ -672,6 +679,7 @@ export class Endpoint<
 		this.endpointFn = fn;
 
 		if (getSession) {
+			this.hasSession = true;
 			// `auth` is added here, once, rather than by each adaptor: every
 			// adaptor calls this, so every one of them hands a session callback
 			// the surface's authenticator bound to the request it is handling.
