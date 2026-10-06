@@ -51,11 +51,9 @@ import type { ConstructManifest } from '@geekmidas/manifest';
 import { Client as PgClient } from 'pg';
 import {
 	getDokployCredentials,
-	getDokployRegistryId,
 	storeDokployCredentials,
 	validateDokployToken,
 } from '../auth';
-import { storeDokployRegistryId } from '../auth/credentials';
 import { loadWorkspaceConfig } from '../config';
 import { discover } from '../reconcile/discover.js';
 import type { SqlClient, Statement } from '../reconcile/provision.js';
@@ -76,7 +74,7 @@ import type {
 } from '../workspace/types.js';
 import { applyDeclared, provisionDeclared } from './declared';
 import { orchestrateDns, verifyDnsRecords } from './dns/index.js';
-import { applicationName, deployDocker } from './docker';
+import { deployDocker } from './docker';
 import { DokployApi, type DokployApplication } from './dokploy-api';
 import { isMainFrontendApp, resolveHost } from './domain.js';
 import {
@@ -86,6 +84,14 @@ import {
 } from './env-resolver.js';
 import type { DokployCluster } from './fromManifest';
 import { withGeneratedSecrets } from './generated.js';
+import {
+	applicationName,
+	deployIdentity,
+	imageName,
+	imageRef as imageRefFor,
+} from './identity.js';
+import { resolveProject } from './ownership.js';
+import { resolveRegistry } from './registry.js';
 import { createStateProvider } from './StateProvider.js';
 import { generateSecretsReport, prepareSecretsForAllApps } from './secrets.js';
 import { sniffAllApps } from './sniffer.js';
@@ -95,6 +101,7 @@ import {
 	getBackupState,
 	setApplicationId,
 	setBackupState,
+	setDeployedImage,
 	setPostgresBackupId,
 } from './state.js';
 import type {
@@ -539,6 +546,11 @@ export async function workspaceDeployCommand(
 		);
 	}
 
+	// What every project, image and application this deploy touches is named
+	// and claimed by — resolved first, so a namespace that cannot be a name
+	// fails before anything is built.
+	const identity = deployIdentity(workspace, stage);
+
 	logger.log(`\n🚀 Deploying workspace "${workspace.name}" to Dokploy...`);
 	logger.log(`   Stage: ${stage}`);
 
@@ -680,49 +692,11 @@ export async function workspaceDeployCommand(
 
 	const api = new DokployApi({ baseUrl: creds.endpoint, token: creds.token });
 
-	// Find or create project for the workspace
-	logger.log('\n📁 Setting up Dokploy project...');
-	const projectName = workspace.name;
-	const projects = await api.listProjects();
-	let project = projects.find(
-		(p) => p.name.toLowerCase() === projectName.toLowerCase(),
-	);
-
-	let environmentId: string;
-
-	if (project) {
-		logger.log(`   Found existing project: ${project.name}`);
-		const projectDetails = await api.getProject(project.projectId);
-		const environments = projectDetails.environments ?? [];
-		const matchingEnv = environments.find(
-			(e) => e.name.toLowerCase() === stage.toLowerCase(),
-		);
-		if (matchingEnv) {
-			environmentId = matchingEnv.environmentId;
-			logger.log(`   Using environment: ${matchingEnv.name}`);
-		} else {
-			logger.log(`   Creating "${stage}" environment...`);
-			const env = await api.createEnvironment(project.projectId, stage);
-			environmentId = env.environmentId;
-			logger.log(`   ✓ Created environment: ${stage}`);
-		}
-	} else {
-		logger.log(`   Creating project: ${projectName}`);
-		const result = await api.createProject(projectName);
-		project = result.project;
-		if (result.environment.name.toLowerCase() !== stage.toLowerCase()) {
-			logger.log(`   Creating "${stage}" environment...`);
-			const env = await api.createEnvironment(project.projectId, stage);
-			environmentId = env.environmentId;
-		} else {
-			environmentId = result.environment.environmentId;
-		}
-		logger.log(`   ✓ Created project: ${project.projectId}`);
-	}
-
 	// ==================================================================
 	// STATE: Create state provider and load deploy state
 	// ==================================================================
+	// Before the project: the id it recorded is the first place the project is
+	// looked for, and the only one that needs no ownership marker.
 	logger.log('\n📋 Loading deploy state...');
 
 	// Create state provider based on workspace config
@@ -732,8 +706,39 @@ export async function workspaceDeployCommand(
 		workspaceName: workspace.name,
 	});
 
-	let state = await stateProvider.read(stage);
+	const previous = await stateProvider.read(stage);
 
+	// Find or create the project this identity owns
+	logger.log('\n📁 Setting up Dokploy project...');
+	logger.log(`   Identity: ${identity.key}`);
+	const project = await resolveProject(
+		api,
+		identity,
+		previous?.projectId,
+		(message) => logger.log(message),
+	);
+
+	if (project.via === 'created') {
+		logger.log(`   ✓ Created project: ${project.projectId}`);
+	} else {
+		logger.log(`   Found existing project: ${project.name}`);
+	}
+
+	let environmentId: string;
+	const matchingEnv = project.environments.find(
+		(e) => e.name.toLowerCase() === stage.toLowerCase(),
+	);
+	if (matchingEnv) {
+		environmentId = matchingEnv.environmentId;
+		logger.log(`   Using environment: ${matchingEnv.name}`);
+	} else {
+		logger.log(`   Creating "${stage}" environment...`);
+		const env = await api.createEnvironment(project.projectId, stage);
+		environmentId = env.environmentId;
+		logger.log(`   ✓ Created environment: ${stage}`);
+	}
+
+	let state = previous;
 	if (state) {
 		logger.log(`   Found existing state for stage "${stage}"`);
 		// Verify project ID matches (in case of recreation)
@@ -750,51 +755,36 @@ export async function workspaceDeployCommand(
 		logger.log(`   Creating new state for stage "${stage}"`);
 		state = createEmptyState(stage, project.projectId, environmentId);
 	}
+	state.identity = identity.key;
 
-	// Get or set up registry
+	// The registry Dokploy pulls through, kept with the stage
 	logger.log('\n🐳 Checking registry...');
-	let registryId = await getDokployRegistryId();
 	const registry = workspace.deploy.dokploy?.registry;
-
-	if (registryId) {
-		try {
-			const reg = await api.getRegistry(registryId);
-			logger.log(`   Using registry: ${reg.registryName}`);
-		} catch {
-			logger.log('   ⚠ Stored registry not found, clearing...');
-			registryId = undefined;
-			await storeDokployRegistryId('');
-		}
-	}
-
-	if (!registryId) {
-		const registries = await api.listRegistries();
-		if (registries.length > 0) {
-			registryId = registries[0]!.registryId;
-			await storeDokployRegistryId(registryId);
-			logger.log(`   Using registry: ${registries[0]!.registryName}`);
-		} else if (registry) {
-			logger.log("   No registries found in Dokploy. Let's create one.");
-			logger.log(`   Registry URL: ${registry}`);
+	const dokployRegistry = await resolveRegistry(api, {
+		stage,
+		registry,
+		configuredId: workspace.deploy.dokploy?.registryId,
+		stateId: state.registryId,
+		log: (message) => logger.log(message),
+		create: async (url) => {
+			logger.log(`   Dokploy has no registry for ${url}. Let's create one.`);
 
 			const username = await prompt('Registry username: ');
 			const password = await prompt('Registry password/token: ', true);
 
-			const reg = await api.createRegistry(
+			const created = await api.createRegistry(
 				'Default Registry',
-				registry,
+				url,
 				username,
 				password,
 			);
-			registryId = reg.registryId;
-			await storeDokployRegistryId(registryId);
-			logger.log(`   ✓ Registry created: ${registryId}`);
-		} else {
-			logger.log(
-				'   ⚠ No registry configured. Set deploy.dokploy.registry in workspace config',
-			);
-		}
-	}
+			logger.log(`   ✓ Registry created: ${created.registryId}`);
+			return created;
+		},
+	});
+	const registryId = dokployRegistry.registryId;
+	state.registryId = registryId;
+	logger.log(`   Using registry: ${dokployRegistry.registryName}`);
 
 	// ==================================================================
 	// Separate apps by type for two-phase deployment
@@ -863,6 +853,7 @@ export async function workspaceDeployCommand(
 			projectId: project.projectId,
 			environmentId: environmentId as string,
 			stage,
+			scope: identity.scope,
 			appUrls,
 			// What the stage holds by key — a third party's credentials, and what
 			// it generated — which a construct reads itself and the sniffer
@@ -932,7 +923,7 @@ export async function workspaceDeployCommand(
 		const backupState = await provisionBackupDestination({
 			api,
 			projectId: project.projectId,
-			projectName: workspace.name,
+			projectName: identity.scope,
 			stage,
 			config: workspace.deploy.backups,
 			existingState: getBackupState(state),
@@ -1001,11 +992,11 @@ export async function workspaceDeployCommand(
 			logger.log(`\n   ⚙️  Deploying ${appName}...`);
 
 			try {
-				// Use simple app name - project already provides namespace
-				// Scoped exactly as a construct is, and by the same function. It
-				// used to be the bare app key, so a project held an `api` and a
-				// `web` that every stage would collide on.
-				const dokployAppName = applicationName(stage, workspace.name, appName);
+				// Scoped exactly as a construct is, by the stage and the deploy
+				// identity: an application's name is also its Docker service name,
+				// unique on the whole server, so two workspaces called `shop`
+				// cannot both run `production-shop-api`.
+				const dokployAppName = applicationName(identity, appName);
 
 				// Check state for cached application ID
 				let application: DokployApplication | null = null;
@@ -1063,23 +1054,24 @@ export async function workspaceDeployCommand(
 				}
 
 				// Build Docker image with encrypted secrets
-				const imageName = `${workspace.name}-${appName}`;
-				const imageRef = registry
-					? `${registry}/${imageName}:${imageTag}`
-					: `${imageName}:${imageTag}`;
+				const imageRef = imageRefFor(identity, appName, registry, imageTag);
 
 				logger.log(`      Building Docker image: ${imageRef}`);
 
-				await deployDocker({
+				const built = await deployDocker({
 					stage,
 					tag: imageTag,
 					skipPush: false,
 					config: {
 						registry,
-						imageName,
+						imageName: imageName(identity, appName),
 						appName,
 					},
 					credentials,
+				});
+				setDeployedImage(state, appName, {
+					ref: built.imageRef ?? imageRef,
+					...(built.digest ? { digest: built.digest } : {}),
 				});
 
 				// Compute hostname first (needed for BETTER_AUTH_URL)
@@ -1211,6 +1203,7 @@ export async function workspaceDeployCommand(
 					success: true,
 					applicationId: application.applicationId,
 					imageRef,
+					...(built.digest ? { digest: built.digest } : {}),
 				});
 
 				logger.log(`      ✓ ${appName} deployed successfully`);
@@ -1246,11 +1239,11 @@ export async function workspaceDeployCommand(
 			logger.log(`\n   🌐 Deploying ${appName}...`);
 
 			try {
-				// Use simple app name - project already provides namespace
-				// Scoped exactly as a construct is, and by the same function. It
-				// used to be the bare app key, so a project held an `api` and a
-				// `web` that every stage would collide on.
-				const dokployAppName = applicationName(stage, workspace.name, appName);
+				// Scoped exactly as a construct is, by the stage and the deploy
+				// identity: an application's name is also its Docker service name,
+				// unique on the whole server, so two workspaces called `shop`
+				// cannot both run `production-shop-api`.
+				const dokployAppName = applicationName(identity, appName);
 
 				// Check state for cached application ID
 				let application: DokployApplication | null = null;
@@ -1361,25 +1354,26 @@ export async function workspaceDeployCommand(
 				}
 
 				// Build Docker image with public-prefixed vars as build args
-				const imageName = `${workspace.name}-${appName}`;
-				const imageRef = registry
-					? `${registry}/${imageName}:${imageTag}`
-					: `${imageName}:${imageTag}`;
+				const imageRef = imageRefFor(identity, appName, registry, imageTag);
 
 				logger.log(`      Building Docker image: ${imageRef}`);
 
-				await deployDocker({
+				const built = await deployDocker({
 					stage,
 					tag: imageTag,
 					skipPush: false,
 					config: {
 						registry,
-						imageName,
+						imageName: imageName(identity, appName),
 						appName,
 					},
 					buildArgs,
 					// Pass arg names for Dockerfile ARG generation
 					publicUrlArgs: publicUrlArgNames,
+				});
+				setDeployedImage(state, appName, {
+					ref: built.imageRef ?? imageRef,
+					...(built.digest ? { digest: built.digest } : {}),
 				});
 
 				// Prepare runtime environment variables
@@ -1453,6 +1447,7 @@ export async function workspaceDeployCommand(
 					success: true,
 					applicationId: application.applicationId,
 					imageRef,
+					...(built.digest ? { digest: built.digest } : {}),
 				});
 
 				logger.log(`      ✓ ${appName} deployed successfully`);

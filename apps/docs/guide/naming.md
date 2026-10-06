@@ -11,7 +11,9 @@ nothing differs between providers.
 ```
 
 `name` is the `name` in your gkm config — the same statement `sst.config.ts`
-makes. So a `KyselyDatabase('Database')` in the `production` stage of an app
+makes. On Dokploy, a workspace that sets `deploy.namespace` has it in front:
+`{stage}-{namespace}-{name}-{construct id}`, because a Docker service name is
+unique on the whole server (see [Identity](./deployment.md#identity-namespace-project-stage)). So a `KyselyDatabase('Database')` in the `production` stage of an app
 called `kitchen-sink` is:
 
 ```
@@ -58,17 +60,18 @@ Postgres one: `uploads-production`, never `uploads_production`.
 database already does — two stages sharing one cluster cannot share a
 credential.
 
-## Images are not scoped
+## Images are scoped by namespace, not stage
 
-A Docker image keeps the project's plain name:
+An image is `{registry}/{namespace}/{name}-{app}`:
 
 ```
-ghcr.io/acme/kitchen-sink:production-2026-09-06T10-39-02
+ghcr.io/acme/kitchen-sink/kitchen-sink-api:production-2026-09-06T10-39-02
 ```
 
-One image is deployed to several stages, the registry path already scopes it,
-and it is what somebody types after `docker pull`. The *tag* carries the stage;
-the name does not.
+The namespace is a path segment of its own, so two workspaces with one name
+never push over each other's images, and a registry that grants access by path
+can grant it per namespace. One image is still deployed to several stages, so
+the *tag* carries the stage; the name does not.
 
 ## Hostnames are the exception
 

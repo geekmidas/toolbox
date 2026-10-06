@@ -1,10 +1,9 @@
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { scopedName } from '@geekmidas/manifest';
 import { DockerBuildFailed, DockerPushFailed, dockerCommand } from '../docker';
 import { validateImageRef } from '../docker/imageRef';
-import { run } from '../run';
+import { run, runOutput } from '../run';
 import { keyFingerprint } from '../secrets/encryption';
 import type { DeployResult, DockerDeployConfig } from './types';
 
@@ -207,6 +206,41 @@ async function pushImage(imageRef: string): Promise<void> {
 }
 
 /**
+ * The digest the registry gave a pushed image, `sha256:…`.
+ *
+ * A tag can be pushed over — by the next deploy, or by anything else that
+ * shares the repository — and the digest is what says which image a stage
+ * actually ran. `RepoDigests` has one entry per repository the image was
+ * pushed to, so the one for this ref's repository is picked by name.
+ *
+ * @internal Exported for testing
+ */
+export async function pushedDigest(
+	imageRef: string,
+): Promise<string | undefined> {
+	const repository = imageRef.split('@')[0]!.replace(/:[\w][\w.-]*$/, '');
+	const output = await runOutput(
+		'docker',
+		['image', 'inspect', '--format={{json .RepoDigests}}', imageRef],
+		{ cwd: process.cwd() },
+	);
+
+	let digests: unknown;
+	try {
+		digests = JSON.parse(output.trim() || '[]');
+	} catch {
+		return undefined;
+	}
+	if (!Array.isArray(digests)) return undefined;
+
+	const match = digests.find(
+		(entry): entry is string =>
+			typeof entry === 'string' && entry.startsWith(`${repository}@`),
+	);
+	return match?.slice(repository.length + 1);
+}
+
+/**
  * Deploy using Docker (build and optionally push image)
  */
 export async function deployDocker(
@@ -225,6 +259,7 @@ export async function deployDocker(
 	await buildImage(imageRef, buildArgs, credentials);
 
 	// Push to registry if not skipped
+	let digest: string | undefined;
 	if (!skipPush) {
 		if (!config.registry) {
 			logger.warn(
@@ -232,6 +267,7 @@ export async function deployDocker(
 			);
 		} else {
 			await pushImage(imageRef);
+			digest = await pushedDigest(imageRef);
 		}
 	}
 
@@ -251,29 +287,7 @@ export async function deployDocker(
 
 	return {
 		imageRef,
+		...(digest ? { digest } : {}),
 		masterKey,
 	};
-}
-
-/**
- * What one application is called on a provider.
- *
- * The same rule the constructs use, through the same `scopedName`: the
- * application beside `production-kitchen-sink-database` is
- * `production-kitchen-sink-api`, not `api`. Both deploy paths call this — the
- * workspace one named its applications by the bare app key, so a project held
- * an `api` and a `web` that every stage would collide on.
- *
- * The app id is dropped when it repeats the project, so a project named for its
- * one application is `production-kitchen-sink` rather than
- * `production-kitchen-sink-kitchen-sink`.
- */
-export function applicationName(
-	stage: string,
-	project: string,
-	app: string,
-): string {
-	return app === project
-		? `${stage}-${project}`.toLowerCase()
-		: scopedName([stage, project], app);
 }

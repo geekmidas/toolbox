@@ -85,6 +85,13 @@ export interface DokployProvisionContext {
 	 * share a credential.
 	 */
 	project: string;
+	/**
+	 * The prefix every Dokploy name carries: the deploy identity's scope, so two
+	 * workspaces with one name in different namespaces never share a service.
+	 * Separate from `project` because that one salts passwords, and a change to
+	 * it would lock a running app out of its database. Defaults to `project`.
+	 */
+	scope?: string;
 	/** Where a declared cache lives — the same config the other targets read. */
 	cache?: 'upstash' | 'elasticache' | 'db';
 	/** Where a declared bucket lives. Only `minio` has a Dokploy primitive. */
@@ -189,7 +196,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 		const name = resourceName(declaration.id, declaration.kind, context.stage);
 		const { postgres } = await context.api.findOrCreatePostgres(
 			serviceName(
-				{ stage: context.stage, app: context.project },
+				{ stage: context.stage, app: context.scope ?? context.project },
 				declaration.id,
 			),
 			context.projectId,
@@ -415,7 +422,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 			throw new UnprovisionableBucket(declaration.id, backend);
 
 		const service = serviceName(
-			{ stage: context.stage, app: context.project },
+			{ stage: context.stage, app: context.scope ?? context.project },
 			declaration.id,
 		);
 		const bucket = resourceName(

@@ -33,20 +33,19 @@ import {
 	it,
 	vi,
 } from 'vitest';
-import {
-	getDokployRegistryId,
-	storeDokployCredentials,
-	storeDokployRegistryId,
-} from '../../auth/credentials';
+import { storeDokployCredentials } from '../../auth/credentials';
 import { loadWorkspaceConfig } from '../../config';
-import { run } from '../../run';
+import { run, runOutput } from '../../run';
 import { FileSecretsStore } from '../../secrets/file';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { deployCommand, workspaceDeployCommand } from '../index';
+import { ProjectNotOwned } from '../ownership';
+import { RegistryNotConfigured } from '../registry';
 
 vi.mock('../../run', async (importOriginal) => ({
 	...(await importOriginal<typeof import('../../run')>()),
 	run: vi.fn(),
+	runOutput: vi.fn(),
 }));
 
 // Local, so the server's address resolves without a network: DNS records
@@ -59,6 +58,7 @@ interface Dokploy {
 	projects: {
 		projectId: string;
 		name: string;
+		description: string | null;
 		environments: {
 			environmentId: string;
 			name: string;
@@ -70,7 +70,12 @@ interface Dokploy {
 			postgres: Postgres[];
 		}[];
 	}[];
-	registries: { registryId: string; registryName: string; username?: string }[];
+	registries: {
+		registryId: string;
+		registryName: string;
+		registryUrl: string;
+		username?: string;
+	}[];
 	domains: { domainId: string; host: string; applicationId: string }[];
 	env: Record<string, string>;
 	images: Record<string, string>;
@@ -118,17 +123,29 @@ function serve() {
 	server.use(
 		http.get(`${ENDPOINT}/api/project.all`, () =>
 			HttpResponse.json(
-				dokploy.projects.map(({ projectId, name }) => ({ projectId, name })),
+				dokploy.projects.map(({ projectId, name, description }) => ({
+					projectId,
+					name,
+					description,
+				})),
 			),
 		),
 		http.get(`${ENDPOINT}/api/project.one`, ({ request }) => {
 			const projectId = new URL(request.url).searchParams.get('projectId');
-			return HttpResponse.json(
-				dokploy.projects.find((p) => p.projectId === projectId),
-			);
+			const found = dokploy.projects.find((p) => p.projectId === projectId);
+			return found
+				? HttpResponse.json(found)
+				: HttpResponse.json({ message: 'Project not found' }, { status: 404 });
+		}),
+		http.post(`${ENDPOINT}/api/project.update`, async ({ request }) => {
+			const { projectId, name, description } = await body(request);
+			const found = dokploy.projects.find((p) => p.projectId === projectId)!;
+			found.name = name!;
+			found.description = description!;
+			return HttpResponse.json(found);
 		}),
 		http.post(`${ENDPOINT}/api/project.create`, async ({ request }) => {
-			const { name } = await body(request);
+			const { name, description } = await body(request);
 			const environment = {
 				environmentId: id('env'),
 				name: dokploy.defaultEnvironment,
@@ -138,6 +155,7 @@ function serve() {
 			const project = {
 				projectId: id('proj'),
 				name: name!,
+				description: description ?? null,
 				environments: [environment],
 			};
 			dokploy.projects.push(project);
@@ -160,10 +178,11 @@ function serve() {
 			HttpResponse.json(dokploy.registries),
 		),
 		http.post(`${ENDPOINT}/api/registry.create`, async ({ request }) => {
-			const { registryName, username } = await body(request);
+			const { registryName, registryUrl, username } = await body(request);
 			const created = {
 				registryId: id('reg'),
 				registryName: registryName!,
+				registryUrl: registryUrl!,
 				username: username!,
 			};
 			dokploy.registries.push(created);
@@ -290,6 +309,10 @@ function serve() {
 const docker = () =>
 	vi.mocked(run).mock.calls.map(([command, args]) => [command, ...args]);
 
+/** The digest the stand-in registry gives a pushed ref: stable per ref. */
+const digestOf = (ref: string) =>
+	`sha256:${Buffer.from(ref).toString('hex').padEnd(64, '0').slice(0, 64)}`;
+
 describe('workspaceDeployCommand', () => {
 	let root: string;
 	let home: string;
@@ -390,7 +413,9 @@ export default defineWorkspace({
 		process.chdir(root);
 		dokploy = {
 			projects: [],
-			registries: [{ registryId: 'reg_1', registryName: 'GHCR' }],
+			registries: [
+				{ registryId: 'reg_1', registryName: 'GHCR', registryUrl: 'ghcr.io' },
+			],
 			domains: [],
 			env: {},
 			images: {},
@@ -411,6 +436,13 @@ export default defineWorkspace({
 		});
 		vi.mocked(run).mockReset();
 		vi.mocked(run).mockResolvedValue();
+		// What `docker image inspect` says a pushed image's digests are.
+		vi.mocked(runOutput).mockReset();
+		vi.mocked(runOutput).mockImplementation(async (_, args) => {
+			const ref = args.at(-1)!;
+			const repository = ref.replace(/:[\w][\w.-]*$/, '');
+			return JSON.stringify([`${repository}@${digestOf(ref)}`]);
+		});
 		await storeDokployCredentials('token', ENDPOINT);
 		workspace();
 	});
@@ -436,15 +468,15 @@ export default defineWorkspace({
 			expect.arrayContaining([
 				'docker',
 				'build',
-				'--tag=ghcr.io/acme/shop-api:v1',
+				'--tag=ghcr.io/acme/shop/shop-api:v1',
 			]),
-			['docker', 'push', 'ghcr.io/acme/shop-api:v1'],
+			['docker', 'push', 'ghcr.io/acme/shop/shop-api:v1'],
 			expect.arrayContaining([
 				'docker',
 				'build',
-				'--tag=ghcr.io/acme/shop-web:v1',
+				'--tag=ghcr.io/acme/shop/shop-web:v1',
 			]),
-			['docker', 'push', 'ghcr.io/acme/shop-web:v1'],
+			['docker', 'push', 'ghcr.io/acme/shop/shop-web:v1'],
 		]);
 		expect(docker()[0]).toContain('--platform=linux/amd64');
 
@@ -472,11 +504,28 @@ export default defineWorkspace({
 				api: api!.applicationId,
 				web: web!.applicationId,
 			},
+			identity: 'shop/shop',
+			// The registry Dokploy has for the configured URL, kept with the
+			// stage for the next deploy.
+			registryId: 'reg_1',
+			// Each image with the digest the registry gave it.
+			images: {
+				api: {
+					ref: 'ghcr.io/acme/shop/shop-api:v1',
+					digest: digestOf('ghcr.io/acme/shop/shop-api:v1'),
+				},
+				web: {
+					ref: 'ghcr.io/acme/shop/shop-web:v1',
+					digest: digestOf('ghcr.io/acme/shop/shop-web:v1'),
+				},
+			},
 		});
+		// The project says who made it, so nobody else's deploy adopts it.
+		expect(project.description).toContain('gkm:shop/shop');
+		// Applications are scoped by stage and identity.
+		expect(api!.name).toBe('production-shop-api');
 		// The mobile app ships through its own toolchain.
 		expect(said()).toContain('Skipping 1 mobile app(s)');
-		// The registry Dokploy already had is remembered for the next deploy.
-		expect(await getDokployRegistryId()).toBe('reg_1');
 	});
 
 	it('reuses what the first deploy made', async () => {
@@ -495,7 +544,9 @@ export default defineWorkspace({
 		expect(said()).toContain('Using registry: GHCR');
 		expect(said()).toContain(`Using cached ID: ${applications.api}`);
 		expect(said()).toContain('(existing)');
-		expect(dokploy.images[applications.api]).toBe('ghcr.io/acme/shop-api:v2');
+		expect(dokploy.images[applications.api]).toBe(
+			'ghcr.io/acme/shop/shop-api:v2',
+		);
 	});
 
 	it('adds the stage as an environment of an existing project', async () => {
@@ -549,25 +600,45 @@ export default defineWorkspace({
 		expect(state().applications.api).not.toBe('app_gone');
 	});
 
-	it('forgets a stored registry Dokploy no longer has', async () => {
-		await storeDokployRegistryId('reg_gone');
+	it('forgets a stage registry Dokploy no longer has', async () => {
+		await deploy();
+		const stale = { ...state(), registryId: 'reg_gone' };
+		writeFileSync(
+			join(root, '.gkm', `deploy-${STAGE}.json`),
+			JSON.stringify(stale),
+		);
+
+		await deploy({ tag: 'v2' });
+
+		expect(said()).toContain(
+			"The stage's registry reg_gone no longer exists in Dokploy",
+		);
+		expect(state().registryId).toBe('reg_1');
+	});
+
+	it('never pushes through a registry nobody configured', async () => {
+		// Dokploy has one, and it used to be taken because it was first.
+		workspace({ registry: false });
+
+		await expect(deploy()).rejects.toBeInstanceOf(RegistryNotConfigured);
+		expect(docker()).toEqual([]);
+		expect(dokploy.images).toEqual({});
+	});
+
+	it('picks the registry for the configured URL, not the first one listed', async () => {
+		dokploy.registries = [
+			{ registryId: 'reg_hub', registryName: 'Hub', registryUrl: 'docker.io' },
+			{
+				registryId: 'reg_gh',
+				registryName: 'GHCR',
+				registryUrl: 'https://ghcr.io/',
+			},
+		];
 
 		await deploy();
 
-		expect(said()).toContain('Stored registry not found, clearing...');
-		expect(await getDokployRegistryId()).toBe('reg_1');
-	});
-
-	it('deploys without a registry when none exists or is configured', async () => {
-		dokploy.registries = [];
-		workspace({ registry: false });
-
-		const result = await deploy();
-
-		expect(result.successCount).toBe(2);
-		expect(said()).toContain('No registry configured');
-		// Nothing to push to.
-		expect(docker().some((c) => c[1] === 'push')).toBe(false);
+		expect(state().registryId).toBe('reg_gh');
+		expect(said()).toContain('Using registry: GHCR');
 	});
 
 	it('asks for registry credentials it cannot prompt for without a terminal', async () => {
@@ -992,12 +1063,11 @@ export const config = new EnvironmentParser(process.env)
 			expect(dokploy.registries).toEqual([
 				expect.objectContaining({
 					registryName: 'Default Registry',
+					registryUrl: 'ghcr.io/acme',
 					username: 'acme-bot',
 				}),
 			]);
-			expect(await getDokployRegistryId()).toBe(
-				dokploy.registries[0]!.registryId,
-			);
+			expect(state().registryId).toBe(dokploy.registries[0]!.registryId);
 		});
 
 		it('exits on Ctrl+C at the token prompt', async () => {
@@ -1019,6 +1089,147 @@ export const config = new EnvironmentParser(process.env)
 		rmSync(join(home, '.gkm'), { recursive: true, force: true });
 
 		await expect(deploy()).rejects.toThrow('Interactive input required');
+	});
+
+	describe('on a server other workspaces deploy to', () => {
+		const inNamespace = (namespace: string) => (ws: NormalizedWorkspace) => {
+			ws.deploy.namespace = namespace;
+		};
+		/** Another checkout: the same config, none of this one's state. */
+		const elsewhere = () =>
+			rmSync(join(root, '.gkm'), { recursive: true, force: true });
+
+		it('keeps two workspaces with one name in different namespaces apart', async () => {
+			await deploy({ adjust: inNamespace('acme') });
+			const acme = { ...state() };
+			elsewhere();
+
+			await deploy({ adjust: inNamespace('globex') });
+			const globex = state();
+
+			expect(dokploy.projects.map((p) => p.name)).toEqual([
+				'acme-shop',
+				'globex-shop',
+			]);
+			expect(globex.projectId).not.toBe(acme.projectId);
+			expect(dokploy.projects.map((p) => p.description)).toEqual([
+				expect.stringContaining('gkm:acme/shop'),
+				expect.stringContaining('gkm:globex/shop'),
+			]);
+
+			// Their own images, never pushed over each other.
+			expect(acme.images.api.ref).toBe('ghcr.io/acme/acme/shop-api:v1');
+			expect(globex.images.api.ref).toBe('ghcr.io/acme/globex/shop-api:v1');
+			expect(dokploy.images[acme.applications.api]).toBe(
+				'ghcr.io/acme/acme/shop-api:v1',
+			);
+			expect(dokploy.images[globex.applications.api]).toBe(
+				'ghcr.io/acme/globex/shop-api:v1',
+			);
+
+			// And their own applications, whose names are server-wide.
+			const names = dokploy.projects.flatMap((p) =>
+				p.environments.flatMap((e) => e.applications.map((a) => a.appName)),
+			);
+			expect(names).toEqual([
+				'production-acme-shop-api',
+				'production-acme-shop-web',
+				'production-globex-shop-api',
+				'production-globex-shop-web',
+			]);
+		});
+
+		it('refuses a project with its name in another case that it did not create', async () => {
+			dokploy.projects.push({
+				projectId: 'proj_theirs',
+				name: 'Shop',
+				description: 'Their storefront',
+				environments: [],
+			});
+
+			const error = await deploy().catch((e: unknown) => e);
+
+			expect(error).toBeInstanceOf(ProjectNotOwned);
+			expect(error).toMatchObject({
+				projectName: 'Shop',
+				projectId: 'proj_theirs',
+				identity: 'shop/shop',
+			});
+			// Nothing of theirs touched, nothing of ours built.
+			expect(dokploy.projects).toHaveLength(1);
+			expect(dokploy.projects[0]!.description).toBe('Their storefront');
+			expect(docker()).toEqual([]);
+		});
+
+		it('refuses a project another identity marked, even through its own state', async () => {
+			await deploy({ adjust: inNamespace('acme') });
+
+			// Same checkout, namespace changed: the state still names acme's.
+			await expect(
+				deploy({ adjust: inNamespace('globex') }),
+			).rejects.toMatchObject({
+				name: 'ProjectNotOwned',
+				ownedBy: 'gkm:acme/shop',
+			});
+			expect(dokploy.projects).toHaveLength(1);
+		});
+
+		it('trusts the project a pre-identity state names, and claims it', async () => {
+			// Deployed before identities: no marker, named by the raw workspace
+			// name, and a v1 state file holding its id.
+			dokploy.projects.push({
+				projectId: 'proj_legacy',
+				name: 'Shop',
+				description: 'Created by gkm CLI',
+				environments: [
+					{
+						environmentId: 'env_legacy',
+						name: STAGE,
+						applications: [
+							{
+								applicationId: 'app_legacy',
+								name: 'production-shop-api',
+								appName: 'production-shop-api',
+							},
+						],
+						postgres: [],
+					},
+				],
+			});
+			mkdirSync(join(root, '.gkm'), { recursive: true });
+			writeFileSync(
+				join(root, '.gkm', `deploy-${STAGE}.json`),
+				JSON.stringify({
+					provider: 'dokploy',
+					stage: STAGE,
+					projectId: 'proj_legacy',
+					environmentId: 'env_legacy',
+					applications: { api: 'app_legacy' },
+					services: {},
+					lastDeployedAt: '2026-01-01T00:00:00.000Z',
+				}),
+			);
+
+			await deploy();
+
+			const [legacy] = dokploy.projects;
+			expect(dokploy.projects).toHaveLength(1);
+			expect(legacy!.description).toBe('Created by gkm CLI\ngkm:shop/shop');
+			expect(said()).toContain('Claimed project Shop for shop/shop');
+			expect(state()).toMatchObject({
+				projectId: 'proj_legacy',
+				environmentId: 'env_legacy',
+				applications: { api: 'app_legacy' },
+				identity: 'shop/shop',
+			});
+
+			// Claimed, it is found by its marker once the state is gone.
+			elsewhere();
+			await deploy({ tag: 'v2' });
+
+			expect(dokploy.projects).toHaveLength(1);
+			expect(state().projectId).toBe('proj_legacy');
+		});
 	});
 
 	describe('deployCommand', () => {
