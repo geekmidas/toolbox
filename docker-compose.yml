@@ -110,7 +110,9 @@ services:
     # floci speaks the same wire protocol on the same port, in a third of the
     # memory and a quarter of the image. It enables every service rather than a
     # list, so there is no SERVICES to keep in step with what the tests use.
-    image: floci/floci:latest
+    # Pinned: 2.2.0 answers a KMS decrypt under the wrong context with
+    # UnknownError instead of InvalidCiphertextException.
+    image: floci/floci:2.1.0
     ports:
       - "${LOCALSTACK_HOST_PORT:-4566}:4566" # AWS emulator gateway
     # SNS push tests deliver to a server on the host. Docker Desktop resolves
