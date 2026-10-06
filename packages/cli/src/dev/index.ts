@@ -199,10 +199,10 @@ export function normalizeHooksConfig(
 /**
  * What a `--production` build is.
  *
- * A server runs its worker's background work itself — queues polled, crons
- * scheduled, subscribers drained — so the production entry wires all three.
- * The build writes their files on every server build, empty when there is
- * nothing, so including them costs an app without any nothing.
+ * Background work — queues polled, crons scheduled, subscribers drained — is
+ * included here, and `buildApp` takes it back out when the app serves a
+ * RestApi: an API's image answers HTTP and nothing else, and that work belongs
+ * to a Worker. The build still writes their files on every server build.
  *
  * @internal Exported for testing
  */
