@@ -86,18 +86,25 @@ import type { DokployCluster } from './fromManifest';
 import { withGeneratedSecrets } from './generated.js';
 import {
 	applicationName,
+	type DeployIdentity,
 	deployIdentity,
 	imageName,
 	imageRef as imageRefFor,
+	projectName,
 } from './identity.js';
+import { DeployJournal } from './journal.js';
 import { resolveProject } from './ownership.js';
 import { resolveRegistry } from './registry.js';
-import { createStateProvider } from './StateProvider.js';
+import {
+	createStateStore,
+	type StateStore,
+	StateStoreBusy,
+	StateVersionConflict,
+} from './StateStore.js';
 import { generateSecretsReport, prepareSecretsForAllApps } from './secrets.js';
 import { sniffAllApps } from './sniffer.js';
 import {
 	createEmptyState,
-	getApplicationId,
 	getBackupState,
 	setApplicationId,
 	setBackupState,
@@ -609,6 +616,56 @@ export async function workspaceDeployCommand(
 	appsToDeployNames = dokployApps;
 
 	// ==================================================================
+	// LOCK: one deploy of a stage at a time
+	// ==================================================================
+	// Taken before anything is generated, provisioned or recorded, and held
+	// until the run ends however it ends. A second run of the stage — another
+	// CI job, a laptop — gets `StateLocked` naming this one instead of racing
+	// it; a run killed with the lock held is released with `gkm state:unlock`.
+	const store = await createStateStore({
+		config: workspace.state,
+		workspaceRoot: workspace.root,
+		workspaceName: workspace.name,
+	});
+	const lock = await store.lock(stage, { operation: 'deploy' });
+
+	try {
+		return await deployLocked({
+			workspace,
+			manifest,
+			stage,
+			imageTag,
+			appsToDeployNames,
+			identity,
+			store,
+		});
+	} finally {
+		await lock.release();
+	}
+}
+
+/** What the locked half of a deploy is handed by the half that validated. */
+interface LockedDeploy {
+	workspace: NormalizedWorkspace;
+	manifest: ConstructManifest;
+	stage: string;
+	imageTag: string;
+	appsToDeployNames: string[];
+	identity: DeployIdentity;
+	store: StateStore;
+}
+
+/** Everything a deploy does while it holds the stage's lock. */
+async function deployLocked({
+	workspace,
+	manifest,
+	stage,
+	imageTag,
+	appsToDeployNames,
+	identity,
+	store,
+}: LockedDeploy): Promise<WorkspaceDeployResult> {
+	// ==================================================================
 	// PREFLIGHT: Load secrets and sniff environment requirements
 	// ==================================================================
 	logger.log('\n🔐 Loading secrets and analyzing environment requirements...');
@@ -693,30 +750,46 @@ export async function workspaceDeployCommand(
 	const api = new DokployApi({ baseUrl: creds.endpoint, token: creds.token });
 
 	// ==================================================================
-	// STATE: Create state provider and load deploy state
+	// STATE: the stage's journal, written after every resource
 	// ==================================================================
 	// Before the project: the id it recorded is the first place the project is
-	// looked for, and the only one that needs no ownership marker.
+	// looked for, and the only one that needs no ownership marker. A first
+	// deploy writes an empty state now, so there is somewhere to record the
+	// project before it is created.
 	logger.log('\n📋 Loading deploy state...');
 
-	// Create state provider based on workspace config
-	const stateProvider = await createStateProvider({
-		config: workspace.state,
-		workspaceRoot: workspace.root,
-		workspaceName: workspace.name,
-	});
-
-	const previous = await stateProvider.read(stage);
+	const journal = await DeployJournal.open(store, stage, () =>
+		createEmptyState(stage, '', ''),
+	);
+	const state = journal.state;
+	if (journal.existed) {
+		logger.log(`   Found existing state for stage "${stage}"`);
+	} else {
+		logger.log(`   Creating new state for stage "${stage}"`);
+	}
+	const unfinished = journal.unfinished();
+	if (unfinished.length > 0) {
+		logger.log(
+			`   ⚠ A previous run stopped while creating: ${unfinished.join(', ')} — looking for them before creating anything`,
+		);
+	}
 
 	// Find or create the project this identity owns
 	logger.log('\n📁 Setting up Dokploy project...');
 	logger.log(`   Identity: ${identity.key}`);
+	const projectEntry = {
+		key: 'project',
+		type: 'project',
+		data: { name: projectName(identity), identity: identity.key },
+	};
 	const project = await resolveProject(
 		api,
 		identity,
-		previous?.projectId,
+		state.projectId || undefined,
 		(message) => logger.log(message),
+		{ beforeCreate: () => journal.pending(projectEntry) },
 	);
+	await journal.ready(projectEntry, project.projectId);
 
 	if (project.via === 'created') {
 		logger.log(`   ✓ Created project: ${project.projectId}`);
@@ -724,37 +797,43 @@ export async function workspaceDeployCommand(
 		logger.log(`   Found existing project: ${project.name}`);
 	}
 
-	let environmentId: string;
-	const matchingEnv = project.environments.find(
-		(e) => e.name.toLowerCase() === stage.toLowerCase(),
-	);
-	if (matchingEnv) {
-		environmentId = matchingEnv.environmentId;
-		logger.log(`   Using environment: ${matchingEnv.name}`);
-	} else {
-		logger.log(`   Creating "${stage}" environment...`);
-		const env = await api.createEnvironment(project.projectId, stage);
-		environmentId = env.environmentId;
+	const environmentEntry = {
+		key: 'environment',
+		type: 'environment',
+		data: { name: stage },
+	};
+	const environment = await journal.ensure(environmentEntry, {
+		// By name, in the project just resolved: an environment id from state
+		// may belong to a project this deploy no longer uses.
+		find: async () =>
+			project.environments.find(
+				(e) => e.name.toLowerCase() === stage.toLowerCase(),
+			),
+		create: () => {
+			logger.log(`   Creating "${stage}" environment...`);
+			return api.createEnvironment(project.projectId, stage);
+		},
+		id: (e) => e.environmentId,
+	});
+	const environmentId = environment.resource.environmentId;
+	if (environment.via === 'created') {
 		logger.log(`   ✓ Created environment: ${stage}`);
+	} else {
+		logger.log(`   Using environment: ${environment.resource.name}`);
 	}
 
-	let state = previous;
-	if (state) {
-		logger.log(`   Found existing state for stage "${stage}"`);
+	if (journal.existed) {
 		// Verify project ID matches (in case of recreation)
-		if (state.projectId !== project.projectId) {
+		if (state.projectId && state.projectId !== project.projectId) {
 			logger.log(`   ⚠ Project ID changed, updating state`);
-			state.projectId = project.projectId;
 		}
 		// Verify environment ID matches (in case of recreation)
-		if (state.environmentId !== environmentId) {
+		if (state.environmentId && state.environmentId !== environmentId) {
 			logger.log(`   ⚠ Environment ID changed, updating state`);
-			state.environmentId = environmentId;
 		}
-	} else {
-		logger.log(`   Creating new state for stage "${stage}"`);
-		state = createEmptyState(stage, project.projectId, environmentId);
 	}
+	state.projectId = project.projectId;
+	state.environmentId = environmentId;
 	state.identity = identity.key;
 
 	// The registry Dokploy pulls through, kept with the stage
@@ -785,6 +864,7 @@ export async function workspaceDeployCommand(
 	const registryId = dokployRegistry.registryId;
 	state.registryId = registryId;
 	logger.log(`   Using registry: ${dokployRegistry.registryName}`);
+	await journal.save();
 
 	// ==================================================================
 	// Separate apps by type for two-phase deployment
@@ -998,44 +1078,14 @@ export async function workspaceDeployCommand(
 				// cannot both run `production-shop-api`.
 				const dokployAppName = applicationName(identity, appName);
 
-				// Check state for cached application ID
-				let application: DokployApplication | null = null;
-				const cachedAppId = getApplicationId(state, appName);
-
-				if (cachedAppId) {
-					logger.log(`      Using cached ID: ${cachedAppId}`);
-					application = await api.getApplication(cachedAppId);
-					if (application) {
-						logger.log(
-							`      ✓ Application found: ${application.applicationId}`,
-						);
-					} else {
-						logger.log(`      ⚠ Cached ID invalid, will create new`);
-					}
-				}
-
-				// If not found by ID, use findOrCreate
-				if (!application) {
-					const result = await api.findOrCreateApplication(
-						dokployAppName,
-						project.projectId,
-						environmentId,
-					);
-					application = result.application;
-
-					if (result.created) {
-						logger.log(
-							`      Created application: ${application.applicationId}`,
-						);
-					} else {
-						logger.log(
-							`      Found existing application: ${application.applicationId}`,
-						);
-					}
-				}
-
-				// Store application ID in state
-				setApplicationId(state, appName, application.applicationId);
+				const application = await ensureApplication(
+					api,
+					journal,
+					appName,
+					dokployAppName,
+					project.projectId,
+					environmentId,
+				);
 
 				// Get encrypted secrets for this app
 				const appSecrets = encryptedSecrets.get(appName);
@@ -1073,6 +1123,8 @@ export async function workspaceDeployCommand(
 					ref: built.imageRef ?? imageRef,
 					...(built.digest ? { digest: built.digest } : {}),
 				});
+				// The image is pushed: worth keeping even if what follows fails.
+				await journal.save();
 
 				// Compute hostname first (needed for BETTER_AUTH_URL)
 				const backendHost = resolveHost(
@@ -1157,45 +1209,16 @@ export async function workspaceDeployCommand(
 				logger.log(`      Deploying to Dokploy...`);
 				await api.deployApplication(application.applicationId);
 
-				// Check if domain already exists (backendHost computed above)
-				const existingDomains = await api.getDomainsByApplicationId(
+				const domainId = await ensureDomain(
+					api,
+					journal,
+					backendHost,
+					app.port,
 					application.applicationId,
 				);
-				const existingDomain = existingDomains.find(
-					(d) => d.host === backendHost,
-				);
-
-				if (existingDomain) {
-					// Domain already exists
-					appHostnames.set(appName, backendHost);
-					appDomainIds.set(appName, existingDomain.domainId);
-					publicUrls[appName] = `https://${backendHost}`;
-					logger.log(`      ✓ Domain: https://${backendHost} (existing)`);
-				} else {
-					// Create new domain
-					try {
-						const domain = await api.createDomain({
-							host: backendHost,
-							port: app.port,
-							https: true,
-							certificateType: 'letsencrypt',
-							applicationId: application.applicationId,
-						});
-
-						appHostnames.set(appName, backendHost);
-						appDomainIds.set(appName, domain.domainId);
-						publicUrls[appName] = `https://${backendHost}`;
-						logger.log(`      ✓ Domain: https://${backendHost} (created)`);
-					} catch (domainError) {
-						const message =
-							domainError instanceof Error
-								? domainError.message
-								: 'Unknown error';
-						logger.log(`      ⚠ Domain creation failed: ${message}`);
-						appHostnames.set(appName, backendHost);
-						publicUrls[appName] = `https://${backendHost}`;
-					}
-				}
+				appHostnames.set(appName, backendHost);
+				if (domainId) appDomainIds.set(appName, domainId);
+				publicUrls[appName] = `https://${backendHost}`;
 
 				results.push({
 					appName,
@@ -1245,44 +1268,14 @@ export async function workspaceDeployCommand(
 				// cannot both run `production-shop-api`.
 				const dokployAppName = applicationName(identity, appName);
 
-				// Check state for cached application ID
-				let application: DokployApplication | null = null;
-				const cachedAppId = getApplicationId(state, appName);
-
-				if (cachedAppId) {
-					logger.log(`      Using cached ID: ${cachedAppId}`);
-					application = await api.getApplication(cachedAppId);
-					if (application) {
-						logger.log(
-							`      ✓ Application found: ${application.applicationId}`,
-						);
-					} else {
-						logger.log(`      ⚠ Cached ID invalid, will create new`);
-					}
-				}
-
-				// If not found by ID, use findOrCreate
-				if (!application) {
-					const result = await api.findOrCreateApplication(
-						dokployAppName,
-						project.projectId,
-						environmentId,
-					);
-					application = result.application;
-
-					if (result.created) {
-						logger.log(
-							`      Created application: ${application.applicationId}`,
-						);
-					} else {
-						logger.log(
-							`      Found existing application: ${application.applicationId}`,
-						);
-					}
-				}
-
-				// Store application ID in state
-				setApplicationId(state, appName, application.applicationId);
+				const application = await ensureApplication(
+					api,
+					journal,
+					appName,
+					dokployAppName,
+					project.projectId,
+					environmentId,
+				);
 
 				// Build dependency URLs for frontend (same pattern as backend)
 				const dependencyUrls: Record<string, string> = {};
@@ -1375,6 +1368,8 @@ export async function workspaceDeployCommand(
 					ref: built.imageRef ?? imageRef,
 					...(built.digest ? { digest: built.digest } : {}),
 				});
+				// The image is pushed: worth keeping even if what follows fails.
+				await journal.save();
 
 				// Prepare runtime environment variables
 				const envVars: string[] = [
@@ -1401,45 +1396,16 @@ export async function workspaceDeployCommand(
 				logger.log(`      Deploying to Dokploy...`);
 				await api.deployApplication(application.applicationId);
 
-				// Check if domain already exists (frontendHost computed earlier for env context)
-				const existingFrontendDomains = await api.getDomainsByApplicationId(
+				const domainId = await ensureDomain(
+					api,
+					journal,
+					frontendHost,
+					app.port,
 					application.applicationId,
 				);
-				const existingFrontendDomain = existingFrontendDomains.find(
-					(d) => d.host === frontendHost,
-				);
-
-				if (existingFrontendDomain) {
-					// Domain already exists
-					appHostnames.set(appName, frontendHost);
-					appDomainIds.set(appName, existingFrontendDomain.domainId);
-					publicUrls[appName] = `https://${frontendHost}`;
-					logger.log(`      ✓ Domain: https://${frontendHost} (existing)`);
-				} else {
-					// Create new domain
-					try {
-						const domain = await api.createDomain({
-							host: frontendHost,
-							port: app.port,
-							https: true,
-							certificateType: 'letsencrypt',
-							applicationId: application.applicationId,
-						});
-
-						appHostnames.set(appName, frontendHost);
-						appDomainIds.set(appName, domain.domainId);
-						publicUrls[appName] = `https://${frontendHost}`;
-						logger.log(`      ✓ Domain: https://${frontendHost} (created)`);
-					} catch (domainError) {
-						const message =
-							domainError instanceof Error
-								? domainError.message
-								: 'Unknown error';
-						logger.log(`      ⚠ Domain creation failed: ${message}`);
-						appHostnames.set(appName, frontendHost);
-						publicUrls[appName] = `https://${frontendHost}`;
-					}
-				}
+				appHostnames.set(appName, frontendHost);
+				if (domainId) appDomainIds.set(appName, domainId);
+				publicUrls[appName] = `https://${frontendHost}`;
 
 				results.push({
 					appName,
@@ -1471,7 +1437,7 @@ export async function workspaceDeployCommand(
 	// STATE: Save deploy state
 	// ==================================================================
 	logger.log('\n📋 Saving deploy state...');
-	await stateProvider.write(stage, state);
+	await journal.save();
 	logger.log('   ✓ State saved');
 
 	// ==================================================================
@@ -1490,7 +1456,7 @@ export async function workspaceDeployCommand(
 			await verifyDnsRecords(appHostnames, dnsResult.serverIp, state);
 
 			// Save state again to persist DNS verification results
-			await stateProvider.write(stage, state);
+			await journal.save();
 		}
 
 		// Validate domains to trigger SSL certificate generation
@@ -1543,6 +1509,107 @@ export async function workspaceDeployCommand(
 		successCount,
 		failedCount,
 	};
+}
+
+/**
+ * An app's Dokploy application, through the journal: by the id recorded for
+ * it, else by its name in the stage's environment, else created. Its id goes
+ * into `state.applications` too, which the env resolver and `state:show` read.
+ */
+async function ensureApplication(
+	api: DokployApi,
+	journal: DeployJournal,
+	appName: string,
+	dokployAppName: string,
+	projectId: string,
+	environmentId: string,
+): Promise<DokployApplication> {
+	const recorded = journal.record(`application:${appName}`);
+	if (recorded?.status === 'ready' && recorded.id) {
+		logger.log(`      Using cached ID: ${recorded.id}`);
+	}
+
+	const { resource, via, staleId } = await journal.ensure(
+		{
+			key: `application:${appName}`,
+			type: 'application',
+			data: { name: dokployAppName },
+		},
+		{
+			get: (id) => api.getApplication(id),
+			find: () =>
+				api.findApplicationByName(projectId, dokployAppName, environmentId),
+			create: () =>
+				api.createApplication(dokployAppName, projectId, environmentId),
+			id: (application) => application.applicationId,
+		},
+	);
+
+	if (staleId) logger.log(`      ⚠ Cached ID invalid, will create new`);
+	const said: Record<typeof via, string> = {
+		recorded: '✓ Application found',
+		resumed: 'Resumed application a stopped run created',
+		found: 'Found existing application',
+		created: 'Created application',
+	};
+	logger.log(`      ${said[via]}: ${resource.applicationId}`);
+
+	setApplicationId(journal.state, appName, resource.applicationId);
+	return resource;
+}
+
+/**
+ * The domain `host` routes to an application, through the journal — found on
+ * the application before it is created, so a re-run never adds a second.
+ *
+ * A domain that cannot be created is reported and skipped rather than
+ * failing the app: the application is deployed and reachable on Dokploy's
+ * own address, and DNS is fixed by hand more easily than a half deploy.
+ */
+async function ensureDomain(
+	api: DokployApi,
+	journal: DeployJournal,
+	host: string,
+	port: number,
+	applicationId: string,
+): Promise<string | undefined> {
+	try {
+		const { resource, via } = await journal.ensure(
+			{ key: `domain:${host}`, type: 'domain', data: { host, applicationId } },
+			{
+				find: async () =>
+					(await api.getDomainsByApplicationId(applicationId)).find(
+						(d) => d.host === host,
+					),
+				create: () =>
+					api.createDomain({
+						host,
+						port,
+						https: true,
+						certificateType: 'letsencrypt',
+						applicationId,
+					}),
+				id: (domain) => domain.domainId,
+			},
+		);
+		logger.log(
+			`      ✓ Domain: https://${host} (${via === 'created' ? 'created' : 'existing'})`,
+		);
+		return resource.domainId;
+	} catch (domainError) {
+		// The state store failing is not a domain failing: a conflict means
+		// another run wrote the stage, and carrying on would overwrite it.
+		if (
+			domainError instanceof StateVersionConflict ||
+			domainError instanceof StateStoreBusy
+		) {
+			throw domainError;
+		}
+		const message =
+			domainError instanceof Error ? domainError.message : 'Unknown error';
+		logger.log(`      ⚠ Domain creation failed: ${message}`);
+		return undefined;
+	}
 }
 
 /**

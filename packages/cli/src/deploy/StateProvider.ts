@@ -1,9 +1,11 @@
 /**
- * State Provider Interface
+ * State configuration, and the `StateProvider` interface a custom backend can
+ * implement.
  *
- * Abstracts the storage backend for deployment state.
- * Built-in providers: LocalStateProvider, SSMStateProvider
- * Users can also supply custom implementations.
+ * Deploy state is read and written through a `StateStore` (`StateStore.ts`):
+ * locks, versions and resource records. A custom `StateProvider` — read and
+ * write a whole state, nothing else — still works behind `LegacyStateStore`,
+ * which warns that it cannot lock.
  */
 
 import type { StateStore } from './StateStore';
@@ -134,87 +136,11 @@ export function isStateProvider(value: unknown): value is StateProvider {
 	);
 }
 
-export interface CreateStateProviderOptions {
+export interface CreateStateStoreConfig {
 	/** State config from workspace */
 	config?: StateConfig;
 	/** Workspace root directory (for local provider) */
 	workspaceRoot: string;
 	/** Workspace name (for SSM parameter path) */
 	workspaceName: string;
-}
-
-/**
- * Create a state provider based on configuration.
- *
- * - 'local': LocalStateProvider (default)
- * - 'ssm': CachedStateProvider with SSM as source of truth
- * - 's3': S3StateStore behind the provider interface
- * - Custom: Use provided StateProvider implementation
- *
- * Deploy moves to `createStateStore` (locks, versions, per-resource records);
- * this stays for the call sites that read and write whole states.
- */
-export async function createStateProvider(
-	options: CreateStateProviderOptions,
-): Promise<StateProvider> {
-	const { config, workspaceRoot, workspaceName } = options;
-
-	// Default to local provider if no config
-	if (!config) {
-		const { LocalStateProvider } = await import('./LocalStateProvider');
-		return new LocalStateProvider(workspaceRoot);
-	}
-
-	// A custom StateStore, read and written through its versions
-	const { isStateStore } = await import('./StateStore');
-	if (isStateStore(config.provider)) {
-		const { StateStoreProvider } = await import('./StateStore');
-		return new StateStoreProvider(config.provider);
-	}
-
-	// Custom provider implementation
-	if (isStateProvider(config.provider)) {
-		return config.provider;
-	}
-
-	// Built-in providers (discriminated by provider string)
-	const provider = config.provider;
-
-	if (provider === 'local') {
-		const { LocalStateProvider } = await import('./LocalStateProvider');
-		return new LocalStateProvider(workspaceRoot);
-	}
-
-	if (provider === 'ssm') {
-		if (!workspaceName) {
-			const { StateStoreNeedsWorkspaceName } = await import('./StateStore');
-			throw new StateStoreNeedsWorkspaceName('ssm');
-		}
-
-		const { LocalStateProvider } = await import('./LocalStateProvider');
-		const { SSMStateProvider } = await import('./SSMStateProvider');
-		const { CachedStateProvider } = await import('./CachedStateProvider');
-
-		const ssmConfig = config as SSMStateConfig;
-		const local = new LocalStateProvider(workspaceRoot);
-		const ssm = SSMStateProvider.create({
-			workspaceName,
-			region: ssmConfig.region,
-			profile: ssmConfig.profile,
-		});
-
-		return new CachedStateProvider(ssm, local);
-	}
-
-	// S3 exists only as a store; it is read and written through its versions
-	if (provider === 's3') {
-		const { createStateStore, StateStoreProvider } = await import(
-			'./StateStore'
-		);
-		return new StateStoreProvider(await createStateStore(options));
-	}
-
-	// Should never reach here - custom providers handled above
-	const { UnknownStateProvider } = await import('./StateStore');
-	throw new UnknownStateProvider(config);
 }

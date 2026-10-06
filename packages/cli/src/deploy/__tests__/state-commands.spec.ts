@@ -4,12 +4,12 @@
  * The workspace is a temp directory with its own gkm.config.ts. Local state is
  * the file under `.gkm/`; remote state is SSM on the AWS emulator, reached the
  * way any SDK client would reach it — `AWS_ENDPOINT_URL_SSM` — since
- * `createStateProvider` builds its own client from the config.
+ * `createStateStore` builds its own client from the config.
  *
  * Requires the emulator: docker compose up -d localstack
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -23,9 +23,9 @@ import {
 	vi,
 } from 'vitest';
 import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
-import { LocalStateProvider } from '../LocalStateProvider';
 import { LocalStateStore } from '../LocalStateStore';
-import { SSMStateProvider } from '../SSMStateProvider';
+import { SSMStateStore } from '../SSMStateStore';
+import { StateLocked, type StateStore } from '../StateStore';
 import type { DokployStageState } from '../state';
 import {
 	stateDiffCommand,
@@ -97,9 +97,20 @@ export default defineWorkspace({
 		);
 	}
 
-	const local = () => new LocalStateProvider(root);
+	/** A store seen as whole states, the way these tests set them up. */
+	const view = (store: StateStore) => ({
+		store,
+		read: async (stage: string) => (await store.read(stage))?.state ?? null,
+		write: async (stage: string, value: DokployStageState) => {
+			const current = await store.read(stage);
+			await store.write(stage, value, {
+				expectedVersion: current?.version ?? null,
+			});
+		},
+	});
+	const local = () => view(new LocalStateStore(root));
 	const remote = () =>
-		SSMStateProvider.create({ workspaceName: name, region: 'us-east-1' });
+		view(SSMStateStore.create({ workspaceName: name, region: 'us-east-1' }));
 	const said = () => out.join('\n');
 
 	beforeEach(() => {
@@ -143,6 +154,36 @@ export default defineWorkspace({
 			expect(said()).toContain('Redis: configured');
 		});
 
+		it('brings the resource records down with the state', async () => {
+			workspace('ssm');
+			const ssm = remote();
+			await ssm.write(STAGE, state());
+			await ssm.store.putResource(STAGE, {
+				key: 'application:api',
+				type: 'application',
+				status: 'pending',
+				data: { name: 'production-shop-api' },
+			});
+			// A record only the local copy has is not the remote's.
+			const mine = local();
+			await mine.write(STAGE, state());
+			await mine.store.putResource(STAGE, {
+				key: 'application:old',
+				type: 'application',
+				id: 'app_old',
+				status: 'ready',
+			});
+
+			await statePullCommand({ stage: STAGE });
+
+			const pulled = await mine.store.read(STAGE);
+			expect(Object.keys(pulled!.resources)).toEqual(['application:api']);
+			expect(pulled!.resources['application:api']).toMatchObject({
+				status: 'pending',
+				data: { name: 'production-shop-api' },
+			});
+		});
+
 		it('says so when the stage has no remote state', async () => {
 			workspace('ssm');
 
@@ -175,6 +216,43 @@ export default defineWorkspace({
 			expect(said()).toContain('State pushed successfully.');
 			expect(said()).toContain('Postgres: none');
 			expect(said()).toContain('Redis: none');
+		});
+
+		it('migrates a v1 state file on the way up', async () => {
+			workspace('ssm');
+			mkdirSync(join(root, '.gkm'), { recursive: true });
+			writeFileSync(
+				join(root, '.gkm', `deploy-${STAGE}.json`),
+				JSON.stringify(state()),
+			);
+
+			await statePushCommand({ stage: STAGE });
+
+			const pushed = await remote().store.read(STAGE);
+			expect(pushed?.state).toMatchObject({ projectId: 'proj_1' });
+			// v1's ids arrive as records, so a deploy reading the remote adopts
+			// them rather than treating them as unknown.
+			expect(pushed?.resources['application:api']).toMatchObject({
+				status: 'ready',
+				id: 'app_api',
+			});
+		});
+
+		it('refuses while a deploy holds the remote stage, and changes nothing', async () => {
+			workspace('ssm');
+			const ssm = remote();
+			await ssm.write(STAGE, state({ projectId: 'proj_remote' }));
+			await local().write(STAGE, state({ projectId: 'proj_local' }));
+			const deploying = await ssm.store.lock(STAGE, { operation: 'deploy' });
+
+			await expect(statePushCommand({ stage: STAGE })).rejects.toBeInstanceOf(
+				StateLocked,
+			);
+
+			expect(await ssm.read(STAGE)).toMatchObject({
+				projectId: 'proj_remote',
+			});
+			await deploying.release();
 		});
 
 		it('says so when the stage has no local state', async () => {
@@ -318,6 +396,36 @@ export default defineWorkspace({
 			});
 		});
 
+		it('lists what a deploy stopped while creating', async () => {
+			workspace('local');
+			const mine = local();
+			await mine.write(STAGE, state());
+			await mine.store.putResource(STAGE, {
+				key: 'domain:api.example.com',
+				type: 'domain',
+				status: 'pending',
+			});
+
+			await stateShowCommand({ stage: STAGE });
+
+			expect(out).toEqual(
+				expect.arrayContaining([
+					'Unfinished (a deploy stopped while creating these):',
+					'  domain:api.example.com',
+				]),
+			);
+		});
+
+		it('reads the remote store directly, never a stale local copy', async () => {
+			workspace('ssm');
+			await local().write(STAGE, state({ environmentId: 'env_stale' }));
+			await remote().write(STAGE, state({ environmentId: 'env_remote' }));
+
+			await stateShowCommand({ stage: STAGE });
+
+			expect(out).toContain('Environment ID: env_remote');
+		});
+
 		it('says so when the stage has no state', async () => {
 			workspace(undefined);
 
@@ -383,6 +491,41 @@ export default defineWorkspace({
 					'  redisId: redis_local (local) != (none) (remote)',
 				]),
 			);
+		});
+
+		it('names resource records the two sides disagree on', async () => {
+			workspace('ssm');
+			const mine = local();
+			const theirs = remote();
+			await mine.write(STAGE, state());
+			await theirs.write(STAGE, state());
+			for (const side of [mine, theirs]) {
+				await side.store.putResource(STAGE, {
+					key: 'application:api',
+					type: 'application',
+					id: 'app_api',
+					status: 'ready',
+				});
+			}
+			await mine.store.putResource(STAGE, {
+				key: 'application:web',
+				type: 'application',
+				status: 'pending',
+			});
+			await theirs.store.putResource(STAGE, {
+				key: 'application:web',
+				type: 'application',
+				id: 'app_web',
+				status: 'ready',
+			});
+
+			await stateDiffCommand({ stage: STAGE });
+
+			expect(out).toContain(
+				'  application:web: pending (local) != ready app_web (remote)',
+			);
+			// Records both sides agree on are not repeated.
+			expect(said()).not.toContain('application:api:');
 		});
 
 		it('shows a side that has no state as "(none)"', async () => {

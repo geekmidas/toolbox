@@ -998,17 +998,17 @@ Manage deployment state across local and remote storage.
 # Show current state
 gkm state:show --stage production
 
-# Pull remote state to local
+# Pull remote state (and its resource records) to local
 gkm state:pull --stage production
 
-# Push local state to remote
+# Push local state to remote — refused while a deploy holds the stage's lock
 gkm state:push --stage production
 
-# Compare local vs remote
+# Compare local vs remote, resource records included
 gkm state:diff --stage production
 
-# Force push (overwrite remote)
-gkm state:push --stage production --force
+# Release the lock of a deploy that was killed
+gkm state:unlock --stage production
 ```
 
 **State Contents:**

@@ -6,11 +6,10 @@ import { LegacyStateStore } from '../LegacyStateStore';
 import { LocalStateStore } from '../LocalStateStore';
 import { S3StateStore } from '../S3StateStore';
 import { SSMStateStore } from '../SSMStateStore';
-import { createStateProvider, type StateProvider } from '../StateProvider';
+import type { StateProvider } from '../StateProvider';
 import {
 	createStateStore,
 	StateStoreNeedsWorkspaceName,
-	StateStoreProvider,
 	StateStoreWithoutLocking,
 	StateVersionConflict,
 	UnknownStateProvider,
@@ -213,43 +212,6 @@ describe('LegacyStateStore', () => {
 		expect(stored?.state).not.toHaveProperty('resources');
 		expect(JSON.parse(provider.states.get(STAGE)!).resources.redis.id).toBe(
 			'redis_1',
-		);
-	});
-});
-
-describe('createStateProvider with a store behind it', () => {
-	it('reads and writes provider: s3 through the store, conditionally', async () => {
-		const provider = await createStateProvider({
-			config: { provider: 's3', bucket: 'state', region: 'us-east-1' },
-			workspaceRoot: '/unused',
-			workspaceName: 'app',
-		});
-
-		expect(provider).toBeInstanceOf(StateStoreProvider);
-		expect((provider as StateStoreProvider).store).toBeInstanceOf(S3StateStore);
-	});
-
-	it('writes on top of the version it last read', async () => {
-		const root = await mkdtemp(join(tmpdir(), 'gkm-store-provider-'));
-		const store = new LocalStateStore(root);
-		const provider = await createStateProvider({
-			config: { provider: store },
-			workspaceRoot: root,
-			workspaceName: 'app',
-		});
-
-		expect(await provider.read(STAGE)).toBeNull();
-		await provider.write(STAGE, dokployState(STAGE));
-		const state = (await provider.read(STAGE))!;
-
-		// Someone else writes after this provider read.
-		const current = await store.read(STAGE);
-		await store.write(STAGE, dokployState(STAGE, { projectId: 'theirs' }), {
-			expectedVersion: current!.version,
-		});
-
-		await expect(provider.write(STAGE, state)).rejects.toBeInstanceOf(
-			StateVersionConflict,
 		);
 	});
 });

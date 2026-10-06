@@ -39,8 +39,10 @@ import { run, runOutput } from '../../run';
 import { FileSecretsStore } from '../../secrets/file';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { deployCommand, workspaceDeployCommand } from '../index';
+import { LocalStateStore } from '../LocalStateStore';
 import { ProjectNotOwned } from '../ownership';
 import { RegistryNotConfigured } from '../registry';
+import { StateLocked } from '../StateStore';
 
 vi.mock('../../run', async (importOriginal) => ({
 	...(await importOriginal<typeof import('../../run')>()),
@@ -90,6 +92,13 @@ interface Dokploy {
 	portRefusal: (port: number) => string;
 	/** Every external port a publish was attempted on, in order. */
 	savedPorts: number[];
+	/** Every create Dokploy carried out, in order — `application:<name>`. */
+	created: string[];
+	/**
+	 * The create after which the deploy's connection dies: Dokploy has made
+	 * the resource, and the deploy never hears back.
+	 */
+	dieAfterCreate?: number;
 }
 
 interface Postgres {
@@ -119,6 +128,14 @@ function serve() {
 		environments()
 			.flatMap((e) => e.applications)
 			.find((a) => a.applicationId === applicationId);
+
+	/** Records a create; a response that never arrives when it is the fatal one. */
+	const made = (what: string) => {
+		dokploy.created.push(what);
+		return dokploy.created.length === dokploy.dieAfterCreate
+			? HttpResponse.json({ message: 'connection reset' }, { status: 502 })
+			: undefined;
+	};
 
 	server.use(
 		http.get(`${ENDPOINT}/api/project.all`, () =>
@@ -159,7 +176,10 @@ function serve() {
 				environments: [environment],
 			};
 			dokploy.projects.push(project);
-			return HttpResponse.json({ project, environment });
+			return (
+				made(`project:${project.name}`) ??
+				HttpResponse.json({ project, environment })
+			);
 		}),
 		http.post(`${ENDPOINT}/api/environment.create`, async ({ request }) => {
 			const { projectId, name } = await body(request);
@@ -172,7 +192,10 @@ function serve() {
 			dokploy.projects
 				.find((p) => p.projectId === projectId)!
 				.environments.push(environment);
-			return HttpResponse.json(environment);
+			return (
+				made(`environment:${environment.name}`) ??
+				HttpResponse.json(environment)
+			);
 		}),
 		http.get(`${ENDPOINT}/api/registry.all`, () =>
 			HttpResponse.json(dokploy.registries),
@@ -186,7 +209,9 @@ function serve() {
 				username: username!,
 			};
 			dokploy.registries.push(created);
-			return HttpResponse.json(created);
+			return (
+				made(`registry:${created.registryName}`) ?? HttpResponse.json(created)
+			);
 		}),
 		http.get(`${ENDPOINT}/api/registry.one`, ({ request }) => {
 			const registryId = new URL(request.url).searchParams.get('registryId');
@@ -205,7 +230,7 @@ function serve() {
 			environments()
 				.find((e) => e.environmentId === environmentId)!
 				.applications.push(created);
-			return HttpResponse.json(created);
+			return made(`application:${created.name}`) ?? HttpResponse.json(created);
 		}),
 		http.get(`${ENDPOINT}/api/application.one`, ({ request }) => {
 			const found = application(
@@ -257,7 +282,7 @@ function serve() {
 				applicationId: applicationId!,
 			};
 			dokploy.domains.push(domain);
-			return HttpResponse.json(domain);
+			return made(`domain:${domain.host}`) ?? HttpResponse.json(domain);
 		}),
 		http.post(`${ENDPOINT}/api/domain.validateDomain`, async ({ request }) => {
 			const { domain } = await body(request);
@@ -393,10 +418,13 @@ export default defineWorkspace({
 		});
 	};
 
-	const state = (stage = STAGE) =>
+	/** The stage's state document, as the store wrote it (schema v2). */
+	const document = (stage = STAGE) =>
 		JSON.parse(
 			readFileSync(join(root, '.gkm', `deploy-${stage}.json`), 'utf8'),
 		);
+	const state = (stage = STAGE) => document(stage).state;
+	const resources = (stage = STAGE) => document(stage).resources;
 
 	const said = () => out.join('\n');
 
@@ -425,6 +453,7 @@ export default defineWorkspace({
 			portRefusal: (port) => `Port ${port} is already in use`,
 			validity: {},
 			savedPorts: [],
+			created: [],
 		};
 		serve();
 		out = [];
@@ -1222,6 +1251,17 @@ export const config = new EnvironmentParser(process.env)
 				applications: { api: 'app_legacy' },
 				identity: 'shop/shop',
 			});
+			// Migrated to v2 on the way, with the v1 file kept beside it and its
+			// ids seeded as records, so the application is used by id.
+			expect(document().schemaVersion).toBe(2);
+			expect(existsSync(join(root, '.gkm', `deploy-${STAGE}.v1.json`))).toBe(
+				true,
+			);
+			expect(resources()['application:api']).toMatchObject({
+				status: 'ready',
+				id: 'app_legacy',
+			});
+			expect(said()).toContain('Using cached ID: app_legacy');
 
 			// Claimed, it is found by its marker once the state is gone.
 			elsewhere();
@@ -1229,6 +1269,139 @@ export const config = new EnvironmentParser(process.env)
 
 			expect(dokploy.projects).toHaveLength(1);
 			expect(state().projectId).toBe('proj_legacy');
+		});
+	});
+
+	describe('a run that dies part way', () => {
+		/** Everything on the server, which a re-run must not have added to. */
+		const inventory = () => ({
+			projects: dokploy.projects.map((p) => p.name),
+			environments: dokploy.projects.flatMap((p) =>
+				p.environments.map((e) => `${p.name}/${e.name}`),
+			),
+			applications: dokploy.projects.flatMap((p) =>
+				p.environments.flatMap((e) => e.applications.map((a) => a.name)),
+			),
+			domains: dokploy.domains.map((d) => d.host),
+		});
+
+		// A first deploy creates five things: the project (with the stage as
+		// its first environment), then each app's application and domain.
+		it.each([
+			1, 2, 3, 4, 5,
+		])('creates nothing twice when the run dies after create %i', async (fatal) => {
+			dokploy.dieAfterCreate = fatal;
+			await deploy().catch(() => {});
+			dokploy.dieAfterCreate = undefined;
+
+			const result = await deploy({ tag: 'v2' });
+
+			expect(result).toMatchObject({ successCount: 2, failedCount: 0 });
+			expect(inventory()).toEqual({
+				projects: ['shop'],
+				environments: [`shop/${STAGE}`],
+				applications: ['production-shop-api', 'production-shop-web'],
+				domains: ['api.shop.example.com', 'shop.example.com'],
+			});
+			// Across both runs, nothing was created twice.
+			expect(new Set(dokploy.created).size).toBe(dokploy.created.length);
+			// Everything it knows of is recorded, and nothing is left pending.
+			expect(
+				Object.values(resources()).map((r) => (r as { status: string }).status),
+			).not.toContain('pending');
+			expect(state().applications).toEqual({
+				api: dokploy.projects[0]!.environments[0]!.applications[0]!
+					.applicationId,
+				web: dokploy.projects[0]!.environments[0]!.applications[1]!
+					.applicationId,
+			});
+		});
+
+		it('leaves a pending record that the next run resolves by looking it up', async () => {
+			// Dies after Dokploy created the API's application.
+			dokploy.dieAfterCreate = 2;
+			await expect(deploy()).rejects.toThrow(
+				'Backend deployment failed for api',
+			);
+			expect(resources()['application:api']).toMatchObject({
+				type: 'application',
+				status: 'pending',
+				data: { name: 'production-shop-api' },
+			});
+			// The project it had finished is recorded with its id.
+			expect(resources().project).toMatchObject({
+				status: 'ready',
+				id: dokploy.projects[0]!.projectId,
+			});
+			dokploy.dieAfterCreate = undefined;
+			out.length = 0;
+
+			await deploy({ tag: 'v2' });
+
+			const [api] = dokploy.projects[0]!.environments[0]!.applications;
+			expect(said()).toContain(
+				'A previous run stopped while creating: application:api',
+			);
+			expect(said()).toContain(
+				`Resumed application a stopped run created: ${api!.applicationId}`,
+			);
+			expect(resources()['application:api']).toMatchObject({
+				status: 'ready',
+				id: api!.applicationId,
+			});
+		});
+
+		it('keeps the ids it created before it died', async () => {
+			dokploy.dieAfterCreate = 4; // the site's application
+
+			const result = await deploy();
+
+			// A site failing does not abort, so the run ends and says so.
+			expect(result).toMatchObject({ successCount: 1, failedCount: 1 });
+			expect(state().applications.api).toBe(
+				dokploy.projects[0]!.environments[0]!.applications[0]!.applicationId,
+			);
+			expect(state().images.api.ref).toBe('ghcr.io/acme/shop/shop-api:v1');
+			expect(resources()['application:web'].status).toBe('pending');
+		});
+	});
+
+	describe('the stage lock', () => {
+		const lockFile = () => join(root, '.gkm', `deploy-${STAGE}.lock`);
+
+		it('refuses to deploy a stage another run holds, and touches nothing', async () => {
+			const store = new LocalStateStore(root);
+			const held = await store.lock(STAGE, { operation: 'deploy' });
+
+			const error = await deploy().catch((e: unknown) => e);
+
+			expect(error).toBeInstanceOf(StateLocked);
+			expect((error as StateLocked).holder?.id).toBe(held.holder.id);
+			expect(dokploy.projects).toEqual([]);
+			expect(docker()).toEqual([]);
+			// Still the other run's.
+			expect(existsSync(lockFile())).toBe(true);
+			await held.release();
+		});
+
+		it('lets exactly one of two concurrent deploys of a stage run', async () => {
+			const results = await Promise.allSettled([deploy(), deploy()]);
+
+			const failed = results.filter((r) => r.status === 'rejected');
+			expect(failed).toHaveLength(1);
+			expect((failed[0] as PromiseRejectedResult).reason).toBeInstanceOf(
+				StateLocked,
+			);
+			expect(dokploy.projects).toHaveLength(1);
+		});
+
+		it('releases the lock when the run ends, and when it fails', async () => {
+			await deploy();
+			expect(existsSync(lockFile())).toBe(false);
+
+			vi.mocked(run).mockRejectedValue(new Error('no space'));
+			await expect(deploy({ tag: 'v2' })).rejects.toThrow();
+			expect(existsSync(lockFile())).toBe(false);
 		});
 	});
 
