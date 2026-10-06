@@ -7,10 +7,14 @@
  * both what a method returns and exactly what it sent.
  */
 
-import { HttpResponse, http } from 'msw';
+import { delay, HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { DokployApi, DokployApiError } from '../dokploy-api';
+import {
+	DokployApi,
+	DokployApiError,
+	DokployRequestTimedOut,
+} from '../dokploy-api';
 
 const BASE = 'https://dokploy.test';
 
@@ -117,6 +121,100 @@ describe('the request layer', () => {
 		expect((error as Error).message).toContain(
 			`Could not reach Dokploy at ${BASE} (project.all)`,
 		);
+	});
+
+	it('gives up on a server that never answers', async () => {
+		let attempts = 0;
+		server.use(
+			http.get(`${BASE}/api/project.all`, async () => {
+				attempts += 1;
+				await delay('infinite');
+			}),
+		);
+
+		const error = await new DokployApi({
+			baseUrl: BASE,
+			token: 't',
+			timeoutMs: 50,
+		})
+			.listProjects()
+			.catch((e: unknown) => e);
+
+		expect(error).toBeInstanceOf(DokployRequestTimedOut);
+		expect(error).toMatchObject({
+			baseUrl: BASE,
+			endpoint: 'project.all',
+			timeoutMs: 50,
+		});
+		// It may have arrived: sending it again could repeat what it asked for.
+		expect(attempts).toBe(1);
+	});
+
+	it("rejects with the caller's reason when they abort", async () => {
+		const controller = new AbortController();
+		const reason = new Error('deploy cancelled');
+		server.use(
+			http.get(`${BASE}/api/project.all`, async () => {
+				controller.abort(reason);
+				await delay('infinite');
+			}),
+		);
+
+		const error = await new DokployApi({
+			baseUrl: BASE,
+			token: 't',
+			signal: controller.signal,
+		})
+			.listProjects()
+			.catch((e: unknown) => e);
+
+		expect(error).toBe(reason);
+	});
+
+	it('stops retrying once the caller aborts', async () => {
+		const controller = new AbortController();
+		const reason = new Error('deploy cancelled');
+		let attempts = 0;
+		server.use(
+			http.get(`${BASE}/api/project.all`, () => {
+				attempts += 1;
+				// Lands in the backoff before the second attempt.
+				setTimeout(() => controller.abort(reason), 20);
+				return HttpResponse.error();
+			}),
+		);
+
+		const started = Date.now();
+		const error = await new DokployApi({
+			baseUrl: BASE,
+			token: 't',
+			signal: controller.signal,
+		})
+			.listProjects()
+			.catch((e: unknown) => e);
+
+		expect(error).toBe(reason);
+		expect(attempts).toBe(1);
+		// Did not sit out the 750ms backoff.
+		expect(Date.now() - started).toBeLessThan(500);
+	});
+
+	it('sends nothing when the caller has already aborted', async () => {
+		const controller = new AbortController();
+		const reason = new Error('deploy cancelled');
+		controller.abort(reason);
+		dokploy({ 'project.all': [] });
+
+		const error = await new DokployApi({
+			baseUrl: BASE,
+			token: 't',
+			signal: controller.signal,
+		})
+			.listProjects()
+			.catch((e: unknown) => e);
+
+		expect(error).toBe(reason);
+		expect(calls).toHaveLength(0);
 	});
 
 	it('keeps the status line when the error body is not JSON', async () => {

@@ -9,6 +9,62 @@ export interface DokployApiOptions {
 	baseUrl: string;
 	/** API token for authentication */
 	token: string;
+	/**
+	 * How long one request may take, in milliseconds, before it is abandoned
+	 * with `DokployRequestTimedOut`. Defaults to 30 seconds.
+	 */
+	timeoutMs?: number;
+	/**
+	 * Aborts every request, and any retry still waiting to run. A request it
+	 * stops rejects with the signal's reason.
+	 */
+	signal?: AbortSignal;
+}
+
+/** Per request, so a stalled server fails the deploy, not the CI job. */
+export const DEFAULT_DOKPLOY_TIMEOUT_MS = 30_000;
+
+/**
+ * Dokploy accepted the connection but did not answer in time.
+ *
+ * Not retried: a request that arrived and stalled may still be acted on, and
+ * sending it again could repeat a deploy or a create the server is already
+ * doing.
+ */
+export class DokployRequestTimedOut extends Error {
+	constructor(
+		readonly baseUrl: string,
+		readonly endpoint: string,
+		readonly timeoutMs: number,
+	) {
+		super(
+			`Dokploy at ${baseUrl} did not answer ${endpoint} within ${timeoutMs}ms. ` +
+				'Check that the Dokploy server is healthy, or raise `timeoutMs` if this call is known to be slow.',
+		);
+		this.name = 'DokployRequestTimedOut';
+	}
+}
+
+/**
+ * Waits `ms` between retries, or rejects with the signal's reason the moment
+ * it aborts — a caller who gave up should not sit through the backoff.
+ */
+function pause(ms: number, signal?: AbortSignal): Promise<void> {
+	return new Promise((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(signal.reason);
+			return;
+		}
+		const onAbort = () => {
+			clearTimeout(timer);
+			reject(signal?.reason);
+		};
+		const timer = setTimeout(() => {
+			signal?.removeEventListener('abort', onAbort);
+			resolve();
+		}, ms);
+		signal?.addEventListener('abort', onAbort, { once: true });
+	});
 }
 
 export interface DokployErrorResponse {
@@ -34,10 +90,14 @@ export class DokployApiError extends Error {
 export class DokployApi {
 	private baseUrl: string;
 	private token: string;
+	private timeoutMs: number;
+	private signal: AbortSignal | undefined;
 
 	constructor(options: DokployApiOptions) {
 		this.baseUrl = options.baseUrl.replace(/\/$/, ''); // Remove trailing slash
 		this.token = options.token;
+		this.timeoutMs = options.timeoutMs ?? DEFAULT_DOKPLOY_TIMEOUT_MS;
+		this.signal = options.signal;
 	}
 
 	/**
@@ -73,10 +133,17 @@ export class DokployApi {
 		// Only connection failures. A response — including a 4xx — means the
 		// request arrived, and repeating it would be repeating a decision the
 		// server already made.
+		//
+		// Each attempt gets its own deadline: a server that accepts the
+		// connection and never answers would otherwise hold the deploy — and a
+		// CI job — until the runner's own limit.
 		let response: Response | undefined;
+		let timeout: AbortSignal | undefined;
 		let lastError: unknown;
 
 		for (let attempt = 1; attempt <= 3; attempt++) {
+			this.signal?.throwIfAborted();
+			timeout = AbortSignal.timeout(this.timeoutMs);
 			try {
 				response = await fetch(url, {
 					method,
@@ -85,16 +152,22 @@ export class DokployApi {
 						'x-api-key': this.token,
 					},
 					body: body ? JSON.stringify(body) : undefined,
+					signal: this.signal
+						? AbortSignal.any([this.signal, timeout])
+						: timeout,
 				});
 				break;
 			} catch (error) {
+				// An abort is a decision, not a dropped connection: never retried.
+				const stopped = this.stopped(timeout, endpoint);
+				if (stopped) throw stopped;
 				lastError = error;
 				if (attempt === 3) break;
-				await new Promise((resolve) => setTimeout(resolve, attempt * 750));
+				await pause(attempt * 750, this.signal);
 			}
 		}
 
-		if (!response) {
+		if (!response || !timeout) {
 			const detail =
 				lastError instanceof Error ? lastError.message : String(lastError);
 			throw new DokployApiError(
@@ -104,6 +177,30 @@ export class DokployApi {
 			);
 		}
 
+		try {
+			return await this.read<T>(response);
+		} catch (error) {
+			// The deadline covers the body too: headers can arrive and the body
+			// stall just the same.
+			throw this.stopped(timeout, endpoint) ?? error;
+		}
+	}
+
+	/**
+	 * What a request cut short should reject with: the caller's own reason
+	 * when they aborted, `DokployRequestTimedOut` when the deadline passed,
+	 * nothing when it was neither.
+	 */
+	private stopped(timeout: AbortSignal, endpoint: string): unknown {
+		if (this.signal?.aborted) return this.signal.reason;
+		if (timeout.aborted) {
+			return new DokployRequestTimedOut(this.baseUrl, endpoint, this.timeoutMs);
+		}
+		return undefined;
+	}
+
+	/** Turns a response into its JSON body, or a `DokployApiError`. */
+	private async read<T>(response: Response): Promise<T> {
 		if (!response.ok) {
 			let errorMessage = `Dokploy API error: ${response.status} ${response.statusText}`;
 			let issues: Array<{ message: string }> | undefined;
