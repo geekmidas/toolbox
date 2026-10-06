@@ -105,8 +105,9 @@ function resolveRedactConfig(
  * ```
  */
 export function createLogger(options: CreateLoggerOptions = {}) {
-	// @ts-expect-error
-	const pretty = options?.pretty && process.NODE_ENV !== 'production';
+	// Pretty printing spawns a transport worker and writes for humans; in
+	// production the output is for a log pipeline, so `pretty` is ignored there.
+	const pretty = options?.pretty && process.env.NODE_ENV !== 'production';
 	const baseOptions = pretty
 		? {
 				transport: {
