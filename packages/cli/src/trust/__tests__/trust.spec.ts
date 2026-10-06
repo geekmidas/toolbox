@@ -1,3 +1,4 @@
+import { homedir } from 'node:os';
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -127,27 +128,28 @@ describe('gkm trust', () => {
 	});
 
 	describe('trustCommand', () => {
-		it('adds the root to the System keychain on macOS', async () => {
+		it('trusts the root in the login keychain on macOS, without sudo', async () => {
 			on('darwin');
 
 			await trustCommand();
 
+			// No sudo: sudo plus macOS's own trust-settings authorization asked
+			// for the password twice. One prompt, from macOS.
 			expect(boundary.calls).toEqual([
 				[
-					'sudo',
+					'security',
 					[
-						'security',
 						'add-trusted-cert',
-						'-d',
 						'-r',
 						'trustRoot',
 						'-k',
-						'/Library/Keychains/System.keychain',
+						join(homedir(), 'Library/Keychains/login.keychain-db'),
 						certificate(),
 					],
 				],
 			]);
-			expect(output()).toContain('the System keychain');
+			expect(output()).toContain('your login keychain');
+			expect(output()).toContain('macOS asks once');
 			expect(output()).toContain('Restart your browser');
 		});
 
@@ -189,9 +191,8 @@ describe('gkm trust', () => {
 			await trustCommand({ dryRun: true });
 
 			expect(boundary.calls).toEqual([]);
-			expect(output()).toContain(
-				'sudo security add-trusted-cert -d -r trustRoot',
-			);
+			expect(output()).toContain('security add-trusted-cert -r trustRoot');
+			expect(output()).not.toContain('sudo');
 		});
 
 		it('refuses a platform it has no trust store for', async () => {
@@ -254,7 +255,7 @@ describe('gkm trust', () => {
 
 			await ensureTrusted(dir, 'https://shop.localhost');
 
-			expect(boundary.calls.some(([c]) => c === 'sudo')).toBe(true);
+			expect(boundary.calls.some(([c]) => c === 'security')).toBe(true);
 		});
 
 		it('installs without asking under --yes', async () => {
@@ -266,7 +267,7 @@ describe('gkm trust', () => {
 			await ensureTrusted(dir, 'https://shop.localhost', { assumeYes: true });
 
 			expect(prompts).not.toHaveBeenCalled();
-			expect(boundary.calls.some(([c]) => c === 'sudo')).toBe(true);
+			expect(boundary.calls.some(([c]) => c === 'security')).toBe(true);
 		});
 	});
 
