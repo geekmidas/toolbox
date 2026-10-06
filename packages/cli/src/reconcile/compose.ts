@@ -25,7 +25,12 @@ import type { PortAssignments } from './ports';
 export interface ComposeService {
 	image: string;
 	/** An app is built from its generated Dockerfile; a container is pulled. */
-	build?: { context: string; dockerfile: string };
+	build?: {
+		context: string;
+		dockerfile: string;
+		/** A site's public URLs, which its bundler inlines at build time. */
+		args?: Record<string, string>;
+	};
 	/** Behind a profile, so starting the containers does not start the apps. */
 	profiles?: string[];
 	restart?: string;
