@@ -6,6 +6,7 @@
  * Users can also supply custom implementations.
  */
 
+import type { StateStore } from './StateStore';
 import type { DokployStageState } from './state';
 
 /**
@@ -84,17 +85,42 @@ export interface SSMStateConfig {
 }
 
 /**
+ * S3 state config: one object per stage, written with conditional puts
+ * (`If-Match` / `If-None-Match`), and a lock object beside it.
+ *
+ * Keys: `<prefix>/<workspace name>/<stage>/state.json` and `lock.json`.
+ */
+export interface S3StateConfig {
+	provider: 's3';
+	/** Bucket the state lives in. It must already exist. */
+	bucket: string;
+	/** AWS region of the bucket */
+	region: AwsRegion;
+	/** Key prefix inside the bucket (default: `gkm`) */
+	prefix?: string;
+	/** AWS profile name (optional - uses default credential chain if not provided) */
+	profile?: string;
+}
+
+/**
  * Custom state provider config.
  */
 export interface CustomStateConfig {
-	/** Custom StateProvider implementation */
-	provider: StateProvider;
+	/**
+	 * Custom implementation. A `StateStore` is used as is; a `StateProvider`
+	 * still works, but cannot lock — deploy warns `StateStoreWithoutLocking`.
+	 */
+	provider: StateProvider | StateStore;
 }
 
 /**
  * State configuration types.
  */
-export type StateConfig = LocalStateConfig | SSMStateConfig | CustomStateConfig;
+export type StateConfig =
+	| LocalStateConfig
+	| SSMStateConfig
+	| S3StateConfig
+	| CustomStateConfig;
 
 /**
  * Check if value is a StateProvider implementation.
@@ -122,7 +148,11 @@ export interface CreateStateProviderOptions {
  *
  * - 'local': LocalStateProvider (default)
  * - 'ssm': CachedStateProvider with SSM as source of truth
+ * - 's3': S3StateStore behind the provider interface
  * - Custom: Use provided StateProvider implementation
+ *
+ * Deploy moves to `createStateStore` (locks, versions, per-resource records);
+ * this stays for the call sites that read and write whole states.
  */
 export async function createStateProvider(
 	options: CreateStateProviderOptions,
@@ -133,6 +163,13 @@ export async function createStateProvider(
 	if (!config) {
 		const { LocalStateProvider } = await import('./LocalStateProvider');
 		return new LocalStateProvider(workspaceRoot);
+	}
+
+	// A custom StateStore, read and written through its versions
+	const { isStateStore } = await import('./StateStore');
+	if (isStateStore(config.provider)) {
+		const { StateStoreProvider } = await import('./StateStore');
+		return new StateStoreProvider(config.provider);
 	}
 
 	// Custom provider implementation
@@ -150,9 +187,8 @@ export async function createStateProvider(
 
 	if (provider === 'ssm') {
 		if (!workspaceName) {
-			throw new Error(
-				'Workspace name is required for SSM state provider. Set "name" in gkm.config.ts.',
-			);
+			const { StateStoreNeedsWorkspaceName } = await import('./StateStore');
+			throw new StateStoreNeedsWorkspaceName('ssm');
 		}
 
 		const { LocalStateProvider } = await import('./LocalStateProvider');
@@ -170,6 +206,15 @@ export async function createStateProvider(
 		return new CachedStateProvider(ssm, local);
 	}
 
+	// S3 exists only as a store; it is read and written through its versions
+	if (provider === 's3') {
+		const { createStateStore, StateStoreProvider } = await import(
+			'./StateStore'
+		);
+		return new StateStoreProvider(await createStateStore(options));
+	}
+
 	// Should never reach here - custom providers handled above
-	throw new Error(`Unknown state provider: ${JSON.stringify(config)}`);
+	const { UnknownStateProvider } = await import('./StateStore');
+	throw new UnknownStateProvider(config);
 }

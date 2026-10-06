@@ -8,14 +8,15 @@
  * unhelpful.
  *
  * A separate command rather than part of `gkm setup`, for one reason: this
- * needs `sudo`, and a setup that silently escalates on every run is a worse
- * trade than one that tells you what to type. Caddy's own `caddy trust` draws
- * the line in the same place.
+ * asks for a password, and a setup that silently escalates on every run is a
+ * worse trade than one that tells you what to type. Caddy's own `caddy trust`
+ * draws the line in the same place.
  */
 
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import prompts from 'prompts';
@@ -42,21 +43,26 @@ export interface TrustOptions {
 function installation(
 	platform: NodeJS.Platform,
 	certificate: string,
-): { describe: string; steps: [string, string[]][] } {
+): { describe: string; asks: string; steps: [string, string[]][] } {
 	if (platform === 'darwin') {
+		// The login keychain, trusted for this user, and no sudo. The System
+		// keychain needs both: sudo to write the file, then macOS's own
+		// authorization to change trust settings, which sudo does not cover — so
+		// it asked for the password twice. A local CA is one developer's
+		// business anyway, and browsers and Node's system store honour a
+		// user's trust settings.
 		return {
-			describe: 'the System keychain',
+			describe: 'your login keychain',
+			asks: 'macOS asks once — your password or Touch ID — to change trust settings.',
 			steps: [
 				[
-					'sudo',
+					'security',
 					[
-						'security',
 						'add-trusted-cert',
-						'-d',
 						'-r',
 						'trustRoot',
 						'-k',
-						'/Library/Keychains/System.keychain',
+						join(homedir(), 'Library/Keychains/login.keychain-db'),
 						certificate,
 					],
 				],
@@ -71,6 +77,7 @@ function installation(
 
 		return {
 			describe: debian ? 'the system CA bundle' : 'the system trust anchors',
+			asks: 'This needs sudo: the system trust store is the only one.',
 			steps: debian
 				? [
 						[
@@ -114,7 +121,7 @@ export async function trustCommand(options: TrustOptions = {}): Promise<void> {
 		throw new NoLocalAuthority(certificate);
 	}
 
-	const { describe, steps } = installation(process.platform, certificate);
+	const { describe, asks, steps } = installation(process.platform, certificate);
 
 	logger.log(`\n🔐 Trusting the local authority in ${describe}`);
 	logger.log(`   ${certificate}\n`);
@@ -126,7 +133,7 @@ export async function trustCommand(options: TrustOptions = {}): Promise<void> {
 		return;
 	}
 
-	logger.log('   This needs an admin password.\n');
+	logger.log(`   ${asks}\n`);
 
 	for (const [command, args] of steps) {
 		// Inherited stdio, because sudo prompts on the terminal and a captured
@@ -142,7 +149,7 @@ export async function trustCommand(options: TrustOptions = {}): Promise<void> {
  *
  * A machine's answer, not the project's: whether a laptop installs a root
  * certificate is its owner's call, so the decision is `--yes`, then what this
- * machine previously answered, then a prompt. Never a silent `sudo` — that is
+ * machine previously answered, then a prompt. Never a silent escalation — that is
  * the one thing a setup command should not do on somebody's behalf.
  *
  * Silent and free when the machine already trusts it, which is what makes it
@@ -178,7 +185,7 @@ export async function ensureTrusted(
 			name: 'install',
 			message:
 				"Trust this project's local certificate authority, so a browser " +
-				'accepts its https addresses? (needs sudo)',
+				'accepts its https addresses? (asks for your password)',
 			initial: false,
 		});
 

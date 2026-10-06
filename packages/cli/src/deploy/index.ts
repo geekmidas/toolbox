@@ -1048,13 +1048,17 @@ export async function workspaceDeployCommand(
 
 				// Get encrypted secrets for this app
 				const appSecrets = encryptedSecrets.get(appName);
-				const buildArgs: string[] = [];
+				// A build secret, not build args: those are visible in `ps` and
+				// recorded in the image history.
+				const credentials =
+					appSecrets && appSecrets.secretCount > 0
+						? {
+								encrypted: appSecrets.payload.encrypted,
+								iv: appSecrets.payload.iv,
+							}
+						: undefined;
 
-				if (appSecrets && appSecrets.secretCount > 0) {
-					buildArgs.push(
-						`GKM_ENCRYPTED_CREDENTIALS=${appSecrets.payload.encrypted}`,
-					);
-					buildArgs.push(`GKM_CREDENTIALS_IV=${appSecrets.payload.iv}`);
+				if (appSecrets && credentials) {
 					logger.log(`      Encrypted ${appSecrets.secretCount} secrets`);
 				}
 
@@ -1075,7 +1079,7 @@ export async function workspaceDeployCommand(
 						imageName,
 						appName,
 					},
-					buildArgs,
+					credentials,
 				});
 
 				// Compute hostname first (needed for BETTER_AUTH_URL)

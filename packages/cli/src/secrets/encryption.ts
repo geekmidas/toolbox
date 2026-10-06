@@ -1,4 +1,9 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import {
+	createCipheriv,
+	createDecipheriv,
+	createHash,
+	randomBytes,
+} from 'node:crypto';
 import type { EmbeddableSecrets, EncryptedPayload } from './types';
 
 /** AES-256-GCM configuration */
@@ -88,4 +93,16 @@ export function generateDefineOptions(
 		__GKM_ENCRYPTED_CREDENTIALS__: JSON.stringify(payload.encrypted),
 		__GKM_CREDENTIALS_IV__: JSON.stringify(payload.iv),
 	};
+}
+
+/**
+ * A short, one-way name for a master key: the first 8 hex characters of its
+ * SHA-256.
+ *
+ * Printed where the key itself used to be, so a person can tell which key a
+ * build used — and match it against the one they hold — without the output
+ * carrying a value that decrypts every secret of the stage.
+ */
+export function keyFingerprint(masterKey: string): string {
+	return createHash('sha256').update(masterKey).digest('hex').slice(0, 8);
 }

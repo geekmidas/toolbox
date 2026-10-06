@@ -608,8 +608,10 @@ export abstract class AmazonApiGatewayEndpoint<
 
 			// Cast event to any since Middy middlewares enrich the event with
 			// services, logger, session, etc. during the middleware chain execution
-			return runWithRequestContext({ logger, requestId, startTime }, () =>
-				chain(event as unknown as Parameters<typeof chain>[0], context),
+			const operation = `${this.endpoint.method} ${this.endpoint.route}`;
+			return runWithRequestContext(
+				{ logger, requestId, startTime, operation },
+				() => chain(event as unknown as Parameters<typeof chain>[0], context),
 			);
 		};
 

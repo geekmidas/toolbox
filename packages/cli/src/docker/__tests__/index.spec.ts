@@ -1,27 +1,36 @@
-import { execSync } from 'node:child_process';
 import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { run } from '../../run';
 import type {
 	NormalizedAppConfig,
 	NormalizedWorkspace,
 } from '../../workspace/types';
-import { dockerCommand, workspaceDockerCommand } from '../index';
+import {
+	dockerCommand,
+	ImageRefInvalid,
+	workspaceDockerCommand,
+} from '../index';
 
-// `docker build` / `docker push` are the only commands this module runs;
-// everything else in child_process stays real.
-vi.mock('node:child_process', async (importOriginal) => ({
-	...(await importOriginal<typeof import('node:child_process')>()),
-	execSync: vi.fn(),
+// `docker build` / `docker push` are the only commands this module runs, and
+// both go through `run` — recorded here as the argv docker would receive.
+vi.mock('../../run', async (importOriginal) => ({
+	...(await importOriginal<typeof import('../../run')>()),
+	run: vi.fn(),
 }));
+
+/** Every `docker …` invocation, as [program, ...argv]. */
+const commands = () =>
+	vi.mocked(run).mock.calls.map(([command, args]) => [command, ...args]);
 
 const STAGES = { local: 'dev', deployed: ['prod'] };
 
@@ -36,7 +45,8 @@ describe('gkm docker', () => {
 		cwd = process.cwd();
 		log = vi.spyOn(console, 'log').mockImplementation(() => {});
 		vi.spyOn(console, 'warn').mockImplementation(() => {});
-		vi.mocked(execSync).mockReset();
+		vi.mocked(run).mockReset();
+		vi.mocked(run).mockResolvedValue();
 	});
 
 	afterEach(() => {
@@ -166,7 +176,7 @@ export default defineConfig({
 			expect(existsSync(result.entrypoint)).toBe(true);
 			expect(existsSync(result.dockerignore)).toBe(true);
 			expect(printed()).toContain('multi-stage, pnpm');
-			expect(execSync).not.toHaveBeenCalled();
+			expect(run).not.toHaveBeenCalled();
 		});
 
 		it('refuses --slim without a built bundle, and uses one that exists', async () => {
@@ -192,12 +202,37 @@ export default defineConfig({
 				tag: 'v1',
 			});
 
-			const commands = vi.mocked(execSync).mock.calls.map((c) => c[0]);
-			expect(commands).toEqual([
-				expect.stringContaining('docker build'),
-				'docker push ghcr.io/acme/api:v1',
+			expect(commands()).toEqual([
+				[
+					'docker',
+					'build',
+					'--file=.gkm/docker/Dockerfile',
+					'--tag=ghcr.io/acme/api:v1',
+					'.',
+				],
+				['docker', 'push', 'ghcr.io/acme/api:v1'],
 			]);
-			expect(commands[0]).toContain('-t ghcr.io/acme/api:v1');
+			expect(vi.mocked(run).mock.calls[0]![2]).toMatchObject({
+				cwd: realpathSync(root),
+				env: expect.objectContaining({ DOCKER_BUILDKIT: '1' }),
+			});
+		});
+
+		it.each([
+			['a shell separator', 'v1;id'],
+			['a command substitution', '$(id)'],
+			['a space', 'v1 --push'],
+			['a leading dash', '-v1'],
+		])('refuses a tag holding %s before running docker', async (_, tag) => {
+			project();
+
+			await expect(
+				dockerCommand({ build: true, registry: 'ghcr.io/acme', tag }),
+			).rejects.toBeInstanceOf(ImageRefInvalid);
+			await expect(
+				dockerCommand({ push: true, registry: 'ghcr.io/acme', tag }),
+			).rejects.toBeInstanceOf(ImageRefInvalid);
+			expect(run).not.toHaveBeenCalled();
 		});
 
 		it('refuses to push without a registry', async () => {
@@ -210,9 +245,7 @@ export default defineConfig({
 
 		it('names the step that failed when docker does', async () => {
 			project();
-			vi.mocked(execSync).mockImplementation(() => {
-				throw new Error('daemon down');
-			});
+			vi.mocked(run).mockRejectedValue(new Error('daemon down'));
 
 			await expect(dockerCommand({ build: true })).rejects.toThrow(
 				'Failed to build Docker image: daemon down',
@@ -259,9 +292,8 @@ export default defineConfig({
 			it('prunes with turbo, and copies the root lockfile in for the build', async () => {
 				const app = nested(true);
 				let lockfileDuringBuild = false;
-				vi.mocked(execSync).mockImplementation(() => {
+				vi.mocked(run).mockImplementation(async () => {
 					lockfileDuringBuild = existsSync(join(app, 'pnpm-lock.yaml'));
-					return Buffer.from('');
 				});
 
 				await dockerCommand({ build: true });

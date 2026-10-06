@@ -578,6 +578,21 @@ const SSMStateConfigSchema = z.object({
 });
 
 /**
+ * S3 state provider config: conditional writes and a lock object in a bucket.
+ */
+const S3StateConfigSchema = z.object({
+	provider: z.literal('s3'),
+	/** Bucket the state lives in (must already exist) */
+	bucket: z.string().min(1),
+	/** AWS region of the bucket */
+	region: AwsRegionSchema,
+	/** Key prefix inside the bucket (default: 'gkm') */
+	prefix: z.string().optional(),
+	/** AWS profile name (optional - uses default credential chain if not provided) */
+	profile: z.string().optional(),
+});
+
+/**
  * Custom state provider config (user-provided implementation).
  */
 const CustomStateConfigSchema = z.object({
@@ -598,6 +613,7 @@ const CustomStateConfigSchema = z.object({
 const BuiltInStateConfigSchema = z.discriminatedUnion('provider', [
 	LocalStateConfigSchema,
 	SSMStateConfigSchema,
+	S3StateConfigSchema,
 ]);
 
 /**
@@ -606,7 +622,8 @@ const BuiltInStateConfigSchema = z.discriminatedUnion('provider', [
  * Configures how deployment state is stored.
  * - 'local': Store in .gkm/deploy-{stage}.json (default)
  * - 'ssm': Store in AWS SSM Parameter Store (requires region)
- * - Custom: Provide a StateProvider implementation with read/write methods
+ * - 's3': Store in an S3 bucket with conditional writes (requires bucket, region)
+ * - Custom: Provide a StateStore, or a StateProvider with read/write methods
  */
 const StateConfigSchema = z.union([
 	BuiltInStateConfigSchema,

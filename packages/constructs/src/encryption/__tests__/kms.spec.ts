@@ -6,6 +6,7 @@ import {
 } from '@aws-sdk/client-kms';
 import { kmsUrl } from '@geekmidas/manifest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import { CiphertextNotAuthentic } from '../cipher';
 import { kmsCipher } from '../kms';
 
@@ -14,7 +15,7 @@ import { kmsCipher } from '../kms';
  * SQS — so every call is a real KMS call: a data key it wrapped, a context it
  * checks, a MAC it computed.
  */
-const endpoint = `http://localhost:${process.env.LOCALSTACK_HOST_PORT || 4566}`;
+const endpoint = LOCALSTACK_URL;
 const region = 'eu-west-1';
 
 const kms = new KMSClient({

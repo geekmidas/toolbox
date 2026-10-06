@@ -358,6 +358,43 @@ it `declare()`?
 
 ## Basic Usage
 
+#### Connections you can trace
+
+Every connection a database opens says who it is, and every query run inside
+a request says what ran it — so a database at `max_connections`, or a slow
+query in the log, points at the code responsible.
+
+- **`application_name`** is the process: the Lambda function's name, or the
+  surface's id on a server (`Api`). It is a fallback, so `PGAPPNAME` or
+  `?application_name=` in the URL still win.
+
+  ```sql
+  select application_name, count(*) from pg_stat_activity group by 1;
+  ```
+
+- **Query tags.** Inside an endpoint, subscriber, queue or cron, each query
+  ends in a [sqlcommenter](https://google.github.io/sqlcommenter/) comment:
+
+  ```sql
+  select … from "orders" where "id" = $1 /*operation='GET /orders/{id}',request_id='7f2a…'*/
+  ```
+
+  It appears in `pg_stat_activity.query` and in the server's slow-query and
+  `auto_explain` logs, and costs no round trip; `pg_stat_statements` ignores
+  comments, so its grouping is unchanged. Turn it off with
+  `new KyselyDatabase('Orders', { queryTags: false })`.
+
+- **An idle connection the server ends** — `idle_session_timeout`, a failover
+  — is logged and replaced, never an uncaught error that takes the process
+  down.
+
+- **Shutdown.** A production server stops taking requests on `SIGTERM`, lets
+  in-flight ones finish, then closes every pool (`runShutdownHooks` from
+  `@geekmidas/constructs`), so a rolling deploy does not leave the old task
+  holding connections. It exits by `GKM_SHUTDOWN_TIMEOUT_MS` (8000 by
+  default — under Docker's 10s stop timeout) even if a request has not
+  finished, with exit code 1 so the forced stop is visible.
+
 ### Creating an Endpoint
 
 ```typescript

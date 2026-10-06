@@ -4,18 +4,19 @@
  * The stand-in keeps state — projects, environments, applications, registries,
  * domains — so a second deploy meets what the first one created, the way a
  * real redeploy does. Docker is the one thing not run: `docker build` and
- * `docker push` go through `execSync`, which records the commands instead.
+ * `docker push` go through `run`, which records the argv instead.
  * Everything else is real: the workspace on disk, the Dockerfile generation,
  * the deploy state file, the credentials under a temp HOME.
  */
 
-import { execSync } from 'node:child_process';
 import {
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	realpathSync,
 	rmSync,
+	statSync,
 	writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -38,13 +39,14 @@ import {
 	storeDokployRegistryId,
 } from '../../auth/credentials';
 import { loadWorkspaceConfig } from '../../config';
+import { run } from '../../run';
 import { FileSecretsStore } from '../../secrets/file';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { deployCommand, workspaceDeployCommand } from '../index';
 
-vi.mock('node:child_process', async (importOriginal) => ({
-	...(await importOriginal<typeof import('node:child_process')>()),
-	execSync: vi.fn(),
+vi.mock('../../run', async (importOriginal) => ({
+	...(await importOriginal<typeof import('../../run')>()),
+	run: vi.fn(),
 }));
 
 // Local, so the server's address resolves without a network: DNS records
@@ -286,7 +288,7 @@ function serve() {
 
 /** Every `docker …` command the deploy ran, in order. */
 const docker = () =>
-	vi.mocked(execSync).mock.calls.map(([command]) => String(command));
+	vi.mocked(run).mock.calls.map(([command, args]) => [command, ...args]);
 
 describe('workspaceDeployCommand', () => {
 	let root: string;
@@ -407,7 +409,8 @@ export default defineWorkspace({
 		vi.spyOn(console, 'warn').mockImplementation((...a) => {
 			out.push(`WARN ${a.join(' ')}`);
 		});
-		vi.mocked(execSync).mockReset();
+		vi.mocked(run).mockReset();
+		vi.mocked(run).mockResolvedValue();
 		await storeDokployCredentials('token', ENDPOINT);
 		workspace();
 	});
@@ -430,16 +433,24 @@ export default defineWorkspace({
 
 		// Backends first, each image built for the server and pushed.
 		expect(docker()).toEqual([
-			expect.stringContaining('-t ghcr.io/acme/shop-api:v1'),
-			'docker push ghcr.io/acme/shop-api:v1',
-			expect.stringContaining('-t ghcr.io/acme/shop-web:v1'),
-			'docker push ghcr.io/acme/shop-web:v1',
+			expect.arrayContaining([
+				'docker',
+				'build',
+				'--tag=ghcr.io/acme/shop-api:v1',
+			]),
+			['docker', 'push', 'ghcr.io/acme/shop-api:v1'],
+			expect.arrayContaining([
+				'docker',
+				'build',
+				'--tag=ghcr.io/acme/shop-web:v1',
+			]),
+			['docker', 'push', 'ghcr.io/acme/shop-web:v1'],
 		]);
-		expect(docker()[0]).toContain('--platform linux/amd64');
+		expect(docker()[0]).toContain('--platform=linux/amd64');
 
 		// The site's build knows where the API answers, before it is built.
 		expect(docker()[2]).toContain(
-			'--build-arg "NEXT_PUBLIC_API_URL=https://api.shop.example.com"',
+			'--build-arg=NEXT_PUBLIC_API_URL=https://api.shop.example.com',
 		);
 
 		const [api, web] = project.environments[0]!.applications;
@@ -556,7 +567,7 @@ export default defineWorkspace({
 		expect(result.successCount).toBe(2);
 		expect(said()).toContain('No registry configured');
 		// Nothing to push to.
-		expect(docker().some((c) => c.startsWith('docker push'))).toBe(false);
+		expect(docker().some((c) => c[1] === 'push')).toBe(false);
 	});
 
 	it('asks for registry credentials it cannot prompt for without a terminal', async () => {
@@ -577,21 +588,21 @@ export default defineWorkspace({
 	});
 
 	it('aborts when a backend fails, before any site is built', async () => {
-		vi.mocked(execSync).mockImplementation((command) => {
-			if (String(command).includes('shop-api')) throw new Error('no space');
-			return Buffer.from('');
+		vi.mocked(run).mockImplementation(async (_, args) => {
+			if (args.some((a) => a.includes('shop-api'))) throw new Error('no space');
 		});
 
 		await expect(deploy()).rejects.toThrow(
 			'Backend deployment failed for api. Aborting to prevent partial deployment.',
 		);
-		expect(docker().some((c) => c.includes('shop-web'))).toBe(false);
+		expect(docker().some((c) => c.some((a) => a.includes('shop-web')))).toBe(
+			false,
+		);
 	});
 
 	it('reports a site that fails and still saves state', async () => {
-		vi.mocked(execSync).mockImplementation((command) => {
-			if (String(command).includes('shop-web')) throw new Error('OOM');
-			return Buffer.from('');
+		vi.mocked(run).mockImplementation(async (_, args) => {
+			if (args.some((a) => a.includes('shop-web'))) throw new Error('OOM');
 		});
 
 		const result = await deploy();
@@ -671,14 +682,45 @@ export const config = new EnvironmentParser(process.env)
 			readsSecrets();
 			await secrets({ STRIPE_KEY: 'sk_live_x', SENTRY_DSN: 'https://s' });
 
+			// What the build was handed, read while it runs: the file is the
+			// deploy's to remove once the build is done.
+			let secret: { path: string; content: string; mode: number } | undefined;
+			vi.mocked(run).mockImplementation(async (_, args) => {
+				const flag = args.find((a) => a.startsWith('--secret='));
+				if (!flag) return;
+				const path = flag.split(',src=')[1]!;
+				secret = {
+					path,
+					content: readFileSync(path, 'utf8'),
+					mode: statSync(path).mode & 0o777,
+				};
+			});
+
 			const result = await deploy();
 
 			expect(result.successCount).toBe(1);
 			expect(said()).toContain('Encrypted secrets for: api');
-			expect(docker()[0]).toContain('--build-arg "GKM_ENCRYPTED_CREDENTIALS=');
-			expect(docker()[0]).toContain('--build-arg "GKM_CREDENTIALS_IV=');
-			// The plaintext never reaches the build command.
-			expect(docker()[0]).not.toContain('sk_live_x');
+
+			// A build secret, not build args: those show in `ps` and in
+			// `docker history`.
+			const build = docker()[0]!;
+			expect(build).toContain(
+				`--secret=id=gkm_credentials,src=${secret!.path}`,
+			);
+			expect(build.some((a) => a.includes('GKM_'))).toBe(false);
+			// Ciphertext then IV, owner-only, and gone after the build.
+			const [encrypted, iv] = secret!.content.trimEnd().split('\n');
+			expect(encrypted).toMatch(/^[A-Za-z0-9+/]+=*$/);
+			expect(iv).toMatch(/^[0-9a-f]{24}$/);
+			expect(secret!.mode).toBe(0o600);
+			expect(existsSync(secret!.path)).toBe(false);
+			// The plaintext never reaches the build.
+			expect(secret!.content).not.toContain('sk_live_x');
+			expect(build.join(' ')).not.toContain('sk_live_x');
+
+			// Nothing key-shaped (32 bytes of hex) in this deploy's output, which
+			// ends up in CI logs.
+			expect(said()).not.toMatch(/[0-9a-f]{64}/);
 		});
 
 		it('names a secret the stage lacks, and refuses to deploy without it', async () => {

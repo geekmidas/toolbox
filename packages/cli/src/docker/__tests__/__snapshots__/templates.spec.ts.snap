@@ -1,0 +1,205 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`docker templates > generateBackendDockerfile > reads the credentials from a build secret, never a build arg 1`] = `
+"# syntax=docker/dockerfile:1
+# Backend Dockerfile with turbo prune optimization
+
+# Stage 1: Prune monorepo
+FROM node:22-alpine AS pruner
+
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+COPY . .
+
+# Prune to only include necessary packages
+RUN pnpm dlx turbo prune @myapp/api --docker
+
+# Stage 2: Install dependencies
+FROM node:22-alpine AS deps
+
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# Copy pruned lockfile and package.jsons
+COPY --from=pruner /app/out/pnpm-lock.yaml ./
+COPY --from=pruner /app/out/json/ ./
+
+# Install dependencies
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \\
+    pnpm install
+
+# Stage 3: Build
+FROM deps AS builder
+
+WORKDIR /app
+
+# Copy pruned source
+COPY --from=pruner /app/out/full/ ./
+
+# Copy workspace root configs for turbo builds (turbo prune doesn't include root configs)
+# Using wildcard to make it optional for single-app projects
+COPY --from=pruner /app/gkm.config.* ./
+COPY --from=pruner /app/tsconfig.* ./
+
+# Write encrypted credentials for gkm build to embed.
+# A build secret (\`docker build --secret id=gkm_credentials,src=…\`), not an
+# ARG: an ARG is recorded in the image history. Two lines, ciphertext then IV;
+# absent when the app has no secrets.
+RUN --mount=type=secret,id=gkm_credentials,required=false     if [ -s /run/secrets/gkm_credentials ]; then       mkdir -p apps/api/.gkm &&       sed -n 1p /run/secrets/gkm_credentials > apps/api/.gkm/credentials.enc &&       sed -n 2p /run/secrets/gkm_credentials > apps/api/.gkm/credentials.iv;     fi
+
+# Build any workspace packages the app depends on.
+#
+# A no-op for a project whose dependencies come from a registry, and required
+# for one whose CLI is a sibling package: \`turbo prune\` honours .gitignore, so a
+# workspace package's \`dist\` never reaches the image and its bin has nothing to
+# import. \`--if-present\` is what makes the same Dockerfile correct for both.
+RUN pnpm --if-present build
+
+# Build production server using gkm
+RUN cd apps/api && pnpm exec gkm build --provider server --production
+
+# Stage 4: Production
+FROM node:22-alpine AS runner
+
+WORKDIR /app
+
+RUN apk add --no-cache tini
+
+RUN addgroup --system --gid 1001 nodejs && \\
+    adduser --system --uid 1001 hono
+
+# Copy bundled server
+COPY --from=builder --chown=hono:nodejs /app/apps/api/.gkm/server/dist/server.mjs ./
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \\
+  CMD wget -qO- http://localhost:3000/health > /dev/null 2>&1 || exit 1
+
+USER hono
+
+EXPOSE 3000
+
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "server.mjs"]
+"
+`;
+
+exports[`docker templates > generateEntryDockerfile > embeds the credentials from a build secret, never a build arg 1`] = `
+"# syntax=docker/dockerfile:1
+# Entry-based Dockerfile with turbo prune + tsdown bundling
+
+# Stage 1: Prune monorepo
+FROM node:22-alpine AS pruner
+
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+COPY . .
+
+# Prune to only include necessary packages
+RUN pnpm dlx turbo prune @myapp/auth --docker
+
+# Stage 2: Install dependencies
+FROM node:22-alpine AS deps
+
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# Copy pruned lockfile and package.jsons
+COPY --from=pruner /app/out/pnpm-lock.yaml ./
+COPY --from=pruner /app/out/json/ ./
+
+# Install dependencies
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \\
+    pnpm install
+
+# Stage 3: Build with tsdown
+FROM deps AS builder
+
+WORKDIR /app
+
+# Copy pruned source
+COPY --from=pruner /app/out/full/ ./
+
+# Copy workspace root configs for turbo builds (turbo prune doesn't include root configs)
+# Using wildcard to make it optional for single-app projects
+COPY --from=pruner /app/tsconfig.* ./
+
+# Bundle entry point with esbuild (outputs to dist/index.mjs)
+# Creates a fully standalone bundle with all dependencies included
+# Use define to embed credentials if present.
+# They arrive as a build secret (\`docker build --secret id=gkm_credentials,src=…\`),
+# not an ARG: an ARG is recorded in the image history. Two lines, ciphertext
+# then IV; absent when the app has no secrets.
+RUN --mount=type=secret,id=gkm_credentials,required=false     cd apps/auth &&     if [ -s /run/secrets/gkm_credentials ]; then       CREDS=$(sed -n 1p /run/secrets/gkm_credentials) &&       IV=$(sed -n 2p /run/secrets/gkm_credentials) &&       npx esbuild ./src/index.ts --bundle --platform=node --target=node22 --format=esm         --outfile=dist/index.mjs --packages=bundle         --banner:js='import { createRequire } from "module"; const require = createRequire(import.meta.url);'         --define:__GKM_ENCRYPTED_CREDENTIALS__="'\\"$CREDS\\"'"         --define:__GKM_CREDENTIALS_IV__="'\\"$IV\\"'";     else       npx esbuild ./src/index.ts --bundle --platform=node --target=node22 --format=esm         --outfile=dist/index.mjs --packages=bundle         --banner:js='import { createRequire } from "module"; const require = createRequire(import.meta.url);';     fi
+
+# Stage 4: Production
+FROM node:22-alpine AS runner
+
+WORKDIR /app
+
+RUN apk add --no-cache tini
+
+RUN addgroup --system --gid 1001 nodejs && \\
+    adduser --system --uid 1001 app
+
+# Copy bundled output only (no node_modules needed - fully bundled)
+COPY --from=builder --chown=app:nodejs /app/apps/auth/dist/index.mjs ./
+
+ENV NODE_ENV=production
+ENV PORT=3002
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \\
+  CMD wget -qO- http://localhost:3002/health > /dev/null 2>&1 || exit 1
+
+USER app
+
+EXPOSE 3002
+
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "index.mjs"]
+"
+`;
+
+exports[`docker templates > generateSlimDockerfile > declares no GKM build args: the bundle already holds its credentials 1`] = `
+"# Slim Dockerfile for pre-built production bundle
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Install tini for proper signal handling as PID 1
+# Handles SIGTERM propagation and zombie process reaping
+RUN apk add --no-cache tini
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs && \\
+    adduser --system --uid 1001 hono
+
+# Copy pre-built bundle
+COPY .gkm/server/dist/server.mjs ./
+
+# Environment
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \\
+  CMD wget -qO- http://localhost:3000/health > /dev/null 2>&1 || exit 1
+
+# Switch to non-root user
+USER hono
+
+EXPOSE 3000
+
+# Use tini as entrypoint to handle PID 1 responsibilities
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "server.mjs"]
+"
+`;

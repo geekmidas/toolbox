@@ -13,6 +13,7 @@ import {
 	expect,
 	it,
 } from 'vitest';
+import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import { SSMStateProvider } from '../SSMStateProvider';
 import type { DokployStageState } from '../state';
 
@@ -23,7 +24,7 @@ import type { DokployStageState } from '../state';
  * Run: docker compose up -d localstack
  */
 describe('SSMStateProvider', () => {
-	const LOCALSTACK_ENDPOINT = 'http://localhost:4566';
+	const LOCALSTACK_ENDPOINT = LOCALSTACK_URL;
 	let client: SSMClient;
 	let provider: SSMStateProvider;
 	const workspaceName = 'test-workspace';

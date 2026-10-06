@@ -26,7 +26,14 @@ services:
     image: postgres:18
     volumes:
       - "dbdata18:/var/lib/postgresql"
-      - "./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql"
+    # Inline rather than bind-mounted from ./docker/postgres. A bind mount's
+    # source is an absolute path, so every worktree computed a different config
+    # hash for this service, and each one's `docker compose up` recreated the
+    # shared container — killing the connections of whichever suite another
+    # worktree was running at the time.
+    configs:
+      - source: postgres-init
+        target: /docker-entrypoint-initdb.d/init.sql
     ports:
       # Overridable, because a developer with another project's Postgres on
       # 5432 otherwise cannot run this stack at all.
@@ -64,10 +71,16 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq/mnesia/ # Persist RabbitMQ data
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"] # Basic health check
-      interval: 30s
-      timeout: 30s
-      retries: 3
+      # Its listeners accepting connections, not just the node answering a
+      # ping: the node answers first, and a suite that connected on that
+      # signal was refused.
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      # Short, because the events suite's setup waits on it: at 30s a cold
+      # start held every run for half a minute before the first check.
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 10s
     restart: always # Ensure the container restarts automatically
   minio:
     # pgsty's community build, and pinned. MinIO took their images off Docker
@@ -136,3 +149,13 @@ volumes:
   cache:
   rabbitmq_data:
   localstack-data:
+
+configs:
+  # Postgres runs this once, on an empty data directory.
+  postgres-init:
+    content: |
+      -- Create additional databases for development
+      CREATE DATABASE examples;
+
+      -- Grant privileges
+      GRANT ALL PRIVILEGES ON DATABASE examples TO geekmidas;

@@ -8,6 +8,7 @@ export {
 	snifferContext,
 	sniffService,
 } from './Construct';
+export { onShutdown, runShutdownHooks } from './shutdown';
 // Telemetry interface
 export type {
 	Telemetry,

@@ -932,7 +932,7 @@ export default defineConfig({
 
 **Environment Variables:**
 - `DOKPLOY_API_TOKEN`: API token for Dokploy (not needed if logged in via `gkm login`)
-- `GKM_MASTER_KEY`: Automatically set by Dokploy, or manually for Docker deployments
+- `GKM_MASTER_KEY`: Automatically set by Dokploy, or manually for Docker deployments — from `.gkm/server/master.key`, which `gkm build --stage` writes (the key is never printed; output shows its fingerprint)
 
 ### `gkm deploy:init`
 
@@ -1020,7 +1020,7 @@ export const envParser = new EnvironmentParser({...process.env, ...Credentials})
 
 **How it works:**
 - At build time, secrets are encrypted with AES-256-GCM and embedded in the bundle
-- An ephemeral master key is generated per build
+- An ephemeral master key is generated per build and written to `.gkm/server/master.key` (mode `0600`); the build prints its path and fingerprint, never the key
 - At runtime, `Credentials` decrypts using `GKM_MASTER_KEY` environment variable
 - In development (no embedded secrets), `Credentials` returns `{}`
 

@@ -81,30 +81,34 @@ export class TestSubscriberAdaptor<
 		const requestId = `test-${Date.now()}`;
 		const startTime = Date.now();
 
-		return runWithRequestContext({ logger, requestId, startTime }, async () => {
-			// Execute the subscriber handler
-			const result = await this.subscriber.handler({
-				events: filteredEvents,
-				services,
-				logger,
-				db,
-			} as unknown as Parameters<typeof this.subscriber.handler>[0]);
+		const operation = `subscriber ${this.subscriber.topicName ?? 'test'}`;
+		return runWithRequestContext(
+			{ logger, requestId, startTime, operation },
+			async () => {
+				// Execute the subscriber handler
+				const result = await this.subscriber.handler({
+					events: filteredEvents,
+					services,
+					logger,
+					db,
+				} as unknown as Parameters<typeof this.subscriber.handler>[0]);
 
-			// Validate output if schema is provided
-			let output: any = result;
-			if (this.subscriber.outputSchema && result) {
-				const validationResult =
-					await this.subscriber.outputSchema['~standard'].validate(result);
+				// Validate output if schema is provided
+				let output: any = result;
+				if (this.subscriber.outputSchema && result) {
+					const validationResult =
+						await this.subscriber.outputSchema['~standard'].validate(result);
 
-				if (validationResult.issues) {
-					throw new Error('Subscriber output validation failed');
+					if (validationResult.issues) {
+						throw new Error('Subscriber output validation failed');
+					}
+
+					output = validationResult.value;
 				}
 
-				output = validationResult.value;
-			}
-
-			return output;
-		}) as Promise<InferStandardSchema<OutSchema>>;
+				return output;
+			},
+		) as Promise<InferStandardSchema<OutSchema>>;
 	}
 
 	private async getDatabase(): Promise<TDatabase | undefined> {

@@ -22,7 +22,9 @@ import {
 	it,
 	vi,
 } from 'vitest';
+import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import { LocalStateProvider } from '../LocalStateProvider';
+import { LocalStateStore } from '../LocalStateStore';
 import { SSMStateProvider } from '../SSMStateProvider';
 import type { DokployStageState } from '../state';
 import {
@@ -30,6 +32,7 @@ import {
 	statePullCommand,
 	statePushCommand,
 	stateShowCommand,
+	stateUnlockCommand,
 } from '../state-commands';
 
 const STAGE = 'production';
@@ -63,7 +66,7 @@ describe('state commands', () => {
 	let err: string[];
 
 	beforeAll(() => {
-		vi.stubEnv('AWS_ENDPOINT_URL_SSM', 'http://localhost:4566');
+		vi.stubEnv('AWS_ENDPOINT_URL_SSM', LOCALSTACK_URL);
 		vi.stubEnv('AWS_ACCESS_KEY_ID', 'test');
 		vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'test');
 	});
@@ -252,12 +255,98 @@ export default defineWorkspace({
 			expect(JSON.parse(out[0]!)).toMatchObject({ environmentId: 'env_1' });
 		});
 
+		/** A stage holding every kind of secret deploy keeps. */
+		const withSecrets = () =>
+			state({
+				appCredentials: {
+					api: { dbUser: 'api_user', dbPassword: 'pg-password-api' },
+				},
+				generatedSecrets: { api: { BETTER_AUTH_SECRET: 'auth-secret-api' } },
+				backups: {
+					bucketName: 'backups-bucket',
+					bucketArn: 'arn:aws:s3:::backups-bucket',
+					iamUserName: 'backup-user',
+					iamAccessKeyId: 'AKIAEXAMPLEKEYID',
+					iamSecretAccessKey: 'iam-secret-access-key',
+					destinationId: 'dest_1',
+					region: 'us-east-1',
+					createdAt: '2026-01-01T00:00:00.000Z',
+				},
+			});
+		const secrets = [
+			'pg-password-api',
+			'auth-secret-api',
+			'AKIAEXAMPLEKEYID',
+			'iam-secret-access-key',
+		];
+
+		it('masks database passwords, generated secrets and IAM keys', async () => {
+			workspace('local');
+			await local().write(STAGE, withSecrets());
+
+			await stateShowCommand({ stage: STAGE });
+
+			for (const secret of secrets) {
+				expect(said()).not.toContain(secret);
+			}
+			expect(out).toEqual(
+				expect.arrayContaining([
+					'  api: api_user / ********',
+					'  api.BETTER_AUTH_SECRET: ********',
+					'  Bucket: backups-bucket',
+					'  IAM Access Key: ********',
+					'  IAM Secret Key: ********',
+				]),
+			);
+		});
+
+		it('masks the same secrets in --json', async () => {
+			workspace('local');
+			await local().write(STAGE, withSecrets());
+
+			await stateShowCommand({ stage: STAGE, json: true });
+
+			for (const secret of secrets) {
+				expect(said()).not.toContain(secret);
+			}
+			expect(JSON.parse(out[0]!)).toMatchObject({
+				appCredentials: { api: { dbUser: 'api_user', dbPassword: '********' } },
+				backups: {
+					bucketName: 'backups-bucket',
+					iamSecretAccessKey: '********',
+				},
+			});
+		});
+
 		it('says so when the stage has no state', async () => {
 			workspace(undefined);
 
 			await stateShowCommand({ stage: STAGE });
 
 			expect(said()).toBe(`No state found for stage: ${STAGE}`);
+		});
+	});
+
+	describe('state:unlock', () => {
+		it('releases a lock left behind and names who held it', async () => {
+			workspace('local');
+			const abandoned = await new LocalStateStore(root).lock(STAGE);
+
+			await stateUnlockCommand({ stage: STAGE });
+
+			expect(said()).toContain(
+				`Released the lock on stage ${STAGE}, held by ${abandoned.holder.owner}@${abandoned.holder.host} (pid ${process.pid})`,
+			);
+			const next = await new LocalStateStore(root).lock(STAGE);
+			await next.release();
+		});
+
+		it('says so when the stage was not locked', async () => {
+			workspace('local');
+
+			await stateUnlockCommand({ stage: STAGE });
+
+			expect(said()).toBe(`Stage ${STAGE} was not locked.`);
 		});
 	});
 

@@ -30,9 +30,10 @@ import {
 	it,
 	vi,
 } from 'vitest';
+import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import { Route53Provider } from '../dns/Route53Provider';
 
-const ENDPOINT = 'http://localhost:4566';
+const ENDPOINT = LOCALSTACK_URL;
 const DOMAIN = 'route53-zone.test';
 
 describe('Route53Provider against a hosted zone', () => {
