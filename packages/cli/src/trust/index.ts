@@ -121,10 +121,7 @@ export async function trustCommand(options: TrustOptions = {}): Promise<void> {
 		throw new NoLocalAuthority(certificate);
 	}
 
-	const { describe, asks, steps } = installation(
-		process.platform,
-		certificate,
-	);
+	const { describe, asks, steps } = installation(process.platform, certificate);
 
 	logger.log(`\n🔐 Trusting the local authority in ${describe}`);
 	logger.log(`   ${certificate}\n`);
