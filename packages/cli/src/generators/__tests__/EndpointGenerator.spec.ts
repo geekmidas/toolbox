@@ -387,6 +387,119 @@ describe('EndpointGenerator', () => {
 	);
 
 	itWithDir(
+		'should start telemetry in the production entry before importing the app',
+		async ({ dir }) => {
+			const outputDir = join(dir, 'output');
+			const routesDir = join(dir, 'routes');
+			await mkdir(outputDir, { recursive: true });
+
+			await createMockEndpointFile(
+				routesDir,
+				'testEndpoint.ts',
+				'testEndpoint',
+				'/test',
+				'GET',
+			);
+
+			const constructs = await generator.load('**/routes/*.ts', dir);
+
+			await generator.build(
+				{
+					...context,
+					production: {
+						enabled: true,
+						healthCheck: '/health',
+						gracefulShutdown: true,
+						openapi: false,
+						subscribers: 'exclude' as const,
+						optimizedHandlers: false,
+					},
+					telemetry: {
+						serviceName: 'Api',
+						serviceNamespace: 'shop',
+						available: true,
+					},
+				},
+				constructs,
+				outputDir,
+				{ target: 'server' },
+			);
+
+			const server = await readFile(join(outputDir, 'server.ts'), 'utf-8');
+			// The app is imported only once telemetry has started, so the
+			// libraries it loads are the instrumented ones.
+			expect(server).toContain(
+				"import { startTelemetry } from './telemetry.js';",
+			);
+			expect(server).not.toContain("import { createApp } from './app.js'");
+			expect(server.indexOf('await startTelemetry();')).toBeLessThan(
+				server.indexOf("await import('./app.js')"),
+			);
+
+			const telemetry = await readFile(
+				join(outputDir, 'telemetry.ts'),
+				'utf-8',
+			);
+			expect(telemetry).toContain(
+				'if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) return;',
+			);
+			expect(telemetry).toContain(
+				"await import('@geekmidas/telescope/instrumentation')",
+			);
+			expect(telemetry).toContain('serviceName: "Api",');
+			expect(telemetry).toContain('serviceNamespace: "shop",');
+			expect(telemetry).toContain('deploymentEnvironment: process.env.STAGE,');
+			expect(telemetry).toContain('handleSignals: false,');
+			expect(telemetry).toContain('class TelemetryUnavailable extends Error');
+		},
+	);
+
+	itWithDir(
+		'should not import telemetry packages in an entry built without them',
+		async ({ dir }) => {
+			const outputDir = join(dir, 'output');
+			const routesDir = join(dir, 'routes');
+			await mkdir(outputDir, { recursive: true });
+
+			await createMockEndpointFile(
+				routesDir,
+				'testEndpoint.ts',
+				'testEndpoint',
+				'/test',
+				'GET',
+			);
+
+			const constructs = await generator.load('**/routes/*.ts', dir);
+
+			await generator.build(
+				{
+					...context,
+					production: {
+						enabled: true,
+						healthCheck: '/health',
+						gracefulShutdown: true,
+						openapi: false,
+						subscribers: 'exclude' as const,
+						optimizedHandlers: false,
+					},
+					telemetry: { serviceName: 'Api', available: false },
+				},
+				constructs,
+				outputDir,
+				{ target: 'server' },
+			);
+
+			const telemetry = await readFile(
+				join(outputDir, 'telemetry.ts'),
+				'utf-8',
+			);
+			expect(telemetry).not.toContain("@geekmidas/telescope/instrumentation')");
+			expect(telemetry).not.toMatch(/import\(['"]@/);
+			expect(telemetry).toContain('TelemetryUnavailable');
+		},
+	);
+
+	itWithDir(
 		'should generate production app with subscribers when include option is set',
 		async ({ dir }) => {
 			const outputDir = join(dir, 'output');

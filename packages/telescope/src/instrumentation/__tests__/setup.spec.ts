@@ -1,6 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { context, diag, propagation, trace } from '@opentelemetry/api';
+import { logs } from '@opentelemetry/api-logs';
 import {
 	afterAll,
 	afterEach,
@@ -14,7 +15,11 @@ import {
 	flushTelemetry,
 	shutdownTelemetry as shutdownProcessors,
 } from '../core';
-import { setupTelemetry, shutdownTelemetry } from '../setup';
+import {
+	InvalidSampleRatio,
+	setupTelemetry,
+	shutdownTelemetry,
+} from '../setup';
 
 /** Every OTLP export the collector received, by path. */
 const received: { path: string; body: string }[] = [];
@@ -51,8 +56,10 @@ describe('setupTelemetry', () => {
 		trace.disable();
 		context.disable();
 		propagation.disable();
+		logs.disable();
 		received.length = 0;
 		vi.restoreAllMocks();
+		vi.unstubAllEnvs();
 	});
 
 	it(
@@ -147,4 +154,186 @@ describe('setupTelemetry', () => {
 		await shutdownTelemetry();
 		await expect(shutdownTelemetry()).resolves.toBeUndefined();
 	});
+
+	it(
+		'labels the resource with its namespace and stage',
+		{ timeout: 20_000 },
+		async () => {
+			setupTelemetry({
+				serviceName: 'Api',
+				serviceNamespace: 'shop',
+				deploymentEnvironment: 'production',
+				endpoint: ENDPOINT,
+				autoInstrument: false,
+				instrumentPino: false,
+				spanProcessorStrategy: 'simple',
+			});
+
+			trace.getTracer('test').startSpan('labelled').end();
+			await flushTelemetry(5000);
+
+			const body = received
+				.filter((r) => r.path.endsWith('/traces'))
+				.map((t) => t.body)
+				.join('');
+			const attributes = resourceAttributes(body);
+			expect(attributes['service.name']).toBe('Api');
+			expect(attributes['service.namespace']).toBe('shop');
+			expect(attributes['deployment.environment.name']).toBe('production');
+			expect(attributes['deployment.environment']).toBe('production');
+		},
+	);
+
+	it(
+		'reads the collector from OTEL_EXPORTER_OTLP_ENDPOINT when no endpoint is passed',
+		{ timeout: 20_000 },
+		async () => {
+			vi.stubEnv(
+				'OTEL_EXPORTER_OTLP_ENDPOINT',
+				ENDPOINT.replace(/\/__telescope\/v1$/, ''),
+			);
+
+			setupTelemetry({
+				serviceName: 'from-env',
+				autoInstrument: false,
+				instrumentPino: false,
+				spanProcessorStrategy: 'simple',
+			});
+
+			trace.getTracer('test').startSpan('env-span').end();
+			logs.getLogger('test').emit({ body: 'env-log' });
+			await flushTelemetry(5000);
+
+			// The spec's paths, not telescope's own `/traces` and `/logs`.
+			const traces = received.filter((r) => r.path === '/v1/traces');
+			const logRecords = received.filter((r) => r.path === '/v1/logs');
+			expect(traces.map((t) => t.body).join('')).toContain('env-span');
+			expect(logRecords.map((l) => l.body).join('')).toContain('env-log');
+		},
+	);
+
+	it('exports log records to the endpoint', { timeout: 20_000 }, async () => {
+		setupTelemetry({
+			serviceName: 'logs-api',
+			endpoint: ENDPOINT,
+			autoInstrument: false,
+			instrumentPino: false,
+			spanProcessorStrategy: 'simple',
+		});
+
+		logs.getLogger('test').emit({ body: 'a log line' });
+		await flushTelemetry(5000);
+
+		const body = received
+			.filter((r) => r.path.endsWith('/logs'))
+			.map((l) => l.body)
+			.join('');
+		expect(body).toContain('a log line');
+		expect(body).toContain('logs-api');
+	});
+
+	it('samples no traces with a sampleRatio of 0', async () => {
+		setupTelemetry({
+			serviceName: 'sampled',
+			endpoint: ENDPOINT,
+			autoInstrument: false,
+			instrumentPino: false,
+			spanProcessorStrategy: 'simple',
+			sampleRatio: 0,
+		});
+
+		const span = trace.getTracer('test').startSpan('dropped');
+		span.end();
+		await flushTelemetry(5000);
+
+		expect(span.isRecording()).toBe(false);
+		expect(received.filter((r) => r.path.endsWith('/traces'))).toEqual([]);
+	});
+
+	it('samples every trace with a sampleRatio of 1', async () => {
+		setupTelemetry({
+			serviceName: 'sampled',
+			endpoint: ENDPOINT,
+			autoInstrument: false,
+			instrumentPino: false,
+			spanProcessorStrategy: 'simple',
+			sampleRatio: 1,
+		});
+
+		trace.getTracer('test').startSpan('kept').end();
+		await flushTelemetry(5000);
+
+		const body = received.map((r) => r.body).join('');
+		expect(body).toContain('kept');
+	});
+
+	it('follows OTEL_TRACES_SAMPLER when no sampleRatio is passed', async () => {
+		vi.stubEnv('OTEL_TRACES_SAMPLER', 'traceidratio');
+		vi.stubEnv('OTEL_TRACES_SAMPLER_ARG', '0');
+
+		setupTelemetry({
+			serviceName: 'env-sampled',
+			endpoint: ENDPOINT,
+			autoInstrument: false,
+			instrumentPino: false,
+			spanProcessorStrategy: 'simple',
+		});
+
+		const span = trace.getTracer('test').startSpan('dropped-by-env');
+		span.end();
+		await flushTelemetry(5000);
+
+		expect(span.isRecording()).toBe(false);
+		expect(received.filter((r) => r.path.endsWith('/traces'))).toEqual([]);
+	});
+
+	it('refuses a sampleRatio outside 0 to 1, before starting anything', () => {
+		expect(() =>
+			setupTelemetry({
+				serviceName: 'bad',
+				autoInstrument: false,
+				instrumentPino: false,
+				sampleRatio: 1.5,
+			}),
+		).toThrow(InvalidSampleRatio);
+
+		// Nothing was set up, so a corrected call still takes effect.
+		expect(() =>
+			setupTelemetry({
+				serviceName: 'good',
+				autoInstrument: false,
+				instrumentPino: false,
+				sampleRatio: 0.5,
+			}),
+		).not.toThrow();
+	});
+
+	it('leaves SIGTERM to the process when handleSignals is false', () => {
+		const before = process.listenerCount('SIGTERM');
+
+		setupTelemetry({
+			serviceName: 'quiet',
+			autoInstrument: false,
+			instrumentPino: false,
+			handleSignals: false,
+		});
+
+		expect(process.listenerCount('SIGTERM')).toBe(before);
+	});
 });
+
+/** The resource attributes in an OTLP/JSON export body, as strings. */
+function resourceAttributes(body: string): Record<string, string> {
+	const out: Record<string, string> = {};
+	const parsed = JSON.parse(body) as {
+		resourceSpans: {
+			resource: {
+				attributes: { key: string; value: { stringValue?: string } }[];
+			};
+		}[];
+	};
+	for (const { key, value } of parsed.resourceSpans[0]!.resource.attributes) {
+		if (value.stringValue !== undefined) out[key] = value.stringValue;
+	}
+	return out;
+}

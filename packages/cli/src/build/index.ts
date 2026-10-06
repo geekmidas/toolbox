@@ -27,6 +27,7 @@ import {
 	SubscriberGenerator,
 	TopicGenerator,
 } from '../generators';
+import { telemetryFor } from '../generators/telemetry';
 import { generateOpenApi } from '../openapi.js';
 import { type ConstructSource, discover } from '../reconcile/discover.js';
 import {
@@ -261,6 +262,7 @@ async function buildOneApp(input: {
 		markOptional: options.markOptional ?? false,
 		skipBundle: options.skipBundle ?? false,
 		stage: options.stage,
+		workspaceName: workspace.name,
 	});
 }
 
@@ -283,6 +285,8 @@ export interface BuildAppInput {
 	stage?: string;
 	/** Re-import changed modules — `gkm dev` rebuilding after an edit. */
 	bustCache?: boolean;
+	/** The workspace's name — telemetry's `service.namespace`. */
+	workspaceName?: string;
 	/**
 	 * Generate a server even when the globs find nothing.
 	 *
@@ -453,6 +457,13 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 			cache: cacheBackendsIn(declared, cacheBackend),
 		}),
 		markOptional: input.markOptional ?? false,
+		...(production && {
+			telemetry: telemetryFor({
+				appRoot,
+				surfaceId: derived.surface?.id,
+				workspaceName: input.workspaceName,
+			}),
+		}),
 	};
 
 	// Initialize generators

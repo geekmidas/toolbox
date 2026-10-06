@@ -76,7 +76,11 @@ export type { OTelTelemetryOptions } from './otel';
 // OTelTelemetry - Telemetry interface implementation using OpenTelemetry
 export { OTelTelemetry } from './otel';
 export type { TelemetryOptions } from './setup';
-export { setupTelemetry, shutdownTelemetry } from './setup';
+export {
+	InvalidSampleRatio,
+	setupTelemetry,
+	shutdownTelemetry,
+} from './setup';
 export {
 	addSpanEvent,
 	createSpan,

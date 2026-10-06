@@ -152,6 +152,11 @@ export interface BuildContext {
 	 * logger path from config.
 	 */
 	owners?: Record<string, { specifier: string; exportName: string }>;
+	/**
+	 * What the production entry starts OpenTelemetry with, when
+	 * `OTEL_EXPORTER_OTLP_ENDPOINT` asks for it — see `generators/telemetry.ts`.
+	 */
+	telemetry?: import('../generators/telemetry.js').TelemetryContext;
 }
 
 export interface ProviderBuildResult {
