@@ -21,24 +21,27 @@ toolbox/
 │   ├── client/       # API client + React Query
 │   ├── cloud/        # SST integration
 │   ├── constructs/   # Endpoints, functions, crons, subscribers
-│   ├── db/           # Kysely utilities
+│   ├── db/           # Kysely utilities + read-only introspection API
 │   ├── emailkit/     # Email with React templates
 │   ├── envkit/       # Environment config parser
 │   ├── errors/       # HTTP error classes
 │   ├── events/       # Event messaging (pgboss, SNS, RabbitMQ)
 │   ├── logger/       # Structured logging
+│   ├── manifest/     # Construct manifest types
 │   ├── rate-limit/   # Rate limiting
 │   ├── schema/       # StandardSchema utilities
 │   ├── services/     # Service discovery / DI
 │   ├── storage/      # S3 abstraction
-│   ├── studio/       # Dev dashboard + DB browser
-│   ├── telescope/    # Request/exception monitoring
-│   ├── testkit/      # Test factories + utilities
-│   └── ui/           # React components (shadcn/ui)
+│   ├── telescope/    # Request/exception/log recording (JSON API, OTLP)
+│   └── testkit/      # Test factories + utilities
 ├── apps/
 │   ├── docs/         # VitePress documentation
-│   └── example/      # Example API
+│   └── kitchen-sink/ # A workspace using every construct
 ```
+
+Toolbox is headless: it ships no UI. Data is exposed as JSON, OTLP and
+WebSocket APIs (Telescope, `gkm dev`'s `/__gkm/db`), and dashboards are built
+on top of them outside this repo.
 
 ## Code Style (Biome)
 
