@@ -680,7 +680,29 @@ export type WorkspaceInput<TApps extends AppsRecord> = {
 	secrets?: SecretsConfig;
 	/** State provider configuration (local filesystem by default, or SSM for team collaboration) */
 	state?: StateConfig;
+	/** How `gkm dev` is reached: the discovery endpoint's port and origins */
+	dev?: DevConfig;
 };
+
+/**
+ * How `gkm dev` is reached from outside the apps it runs.
+ */
+export interface DevConfig {
+	/**
+	 * Browser origins allowed to read the discovery endpoint — and this
+	 * workspace in it — e.g. `['https://console.example.com']`.
+	 *
+	 * Empty by default: any page the developer visits can send requests to a
+	 * loopback port, so none is answered unless it is listed here. A request
+	 * with no `Origin` (curl, a local process) still needs the session token.
+	 */
+	allowedOrigins?: string[];
+	/**
+	 * The loopback port the discovery endpoint listens on. Defaults to 4983;
+	 * `GKM_DISCOVERY_PORT` overrides it.
+	 */
+	discoveryPort?: number;
+}
 
 /**
  * How `gkm test` builds what a feature test is handed.
@@ -726,6 +748,7 @@ export type InferredWorkspaceConfig<TApps extends AppsRecord> = {
 	secrets?: SecretsConfig;
 	state?: StateConfig;
 	test?: TestConfig;
+	dev?: DevConfig;
 };
 
 // Legacy types for backwards compatibility
@@ -844,6 +867,9 @@ export interface WorkspaceConfig {
 
 	/** What `gkm test` hands a feature test: where the factories are. */
 	test?: TestConfig;
+
+	/** How `gkm dev` is reached: the discovery endpoint's port and origins. */
+	dev?: DevConfig;
 }
 
 /**
@@ -920,6 +946,8 @@ export interface NormalizedWorkspace {
 	state?: StateConfig;
 	/** What `gkm test` hands a feature test (empty object if not specified) */
 	test: TestConfig;
+	/** How `gkm dev` is reached, when configured */
+	dev?: DevConfig;
 }
 
 /**

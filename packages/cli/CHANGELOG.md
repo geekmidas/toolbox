@@ -1,5 +1,48 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.59
+
+### Minor Changes
+
+- [#172](https://github.com/geekmidas/toolbox/pull/172) [`7888702`](https://github.com/geekmidas/toolbox/commit/78887029e5510c1a8bf69a43b3a1b65864a4a5e0) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm deploy` holds the stage's lock for the whole run and journals every resource it creates
+
+  - **One deploy per stage at a time.** Deploy reads and writes state through `createStateStore` and takes `lock(stage, { operation: 'deploy' })` before it generates or provisions anything, releasing it when the run ends, however it ends. A second run gets `StateLocked`, naming the holder; a killed run's lock is released with `gkm state:unlock --stage <stage>`.
+  - **A journal instead of one write at the end.** The project, the stage's environment, each application and each domain are recorded `pending` before the create call and `ready` with their id after, and the state is written after every app. A run that dies part way keeps the ids it got back; the next one looks up anything left `pending` before creating it, so nothing is created twice. `gkm state:show` lists what a deploy stopped while creating.
+  - **Every write is conditional** on the version the run last wrote, so a writer that skipped the lock raises `StateVersionConflict` instead of being overwritten.
+  - **`state:pull`, `state:push` and `state:diff` go through the stores.** They copy and compare resource records as well as the state, migrate v1 on the way, and a push takes the remote stage's lock, so it cannot replace state a running deploy is writing.
+  - 🔥 **Removed:** `CachedStateProvider`, `LocalStateProvider`, `SSMStateProvider`, `createStateProvider` and the `StateStoreProvider` bridge — nothing reads state through them any more. SSM state is read from SSM directly; a custom `StateProvider` in `state.provider` still works behind `LegacyStateStore`.
+
+- [#175](https://github.com/geekmidas/toolbox/pull/175) [`ebed122`](https://github.com/geekmidas/toolbox/commit/ebed122350c6462aac8a14173f10f938f373671b) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm dev` serves a discovery endpoint on `127.0.0.1:4983`
+
+  A tool can now find what `gkm dev` is running without being told any ports.
+  `GET /__gkm` lists every running workspace on the machine — name, stage,
+  construct manifest, and each app with its port, URL, status and data APIs
+  (Telescope's JSON API, `/__gkm/db`, `/__docs`). `GET /__gkm/events` streams
+  apps starting, stopping and reloading as server-sent events, and
+  `/__gkm/workspaces/<id>/apps/<app>/…` forwards to an app's data APIs so a
+  client needs one origin. `gkm dev` prints a connect URL carrying the token.
+
+  Every `gkm dev` registers in `~/.gkm/dev`; the first to bind the port serves
+  it, and another takes over when it exits. It is loopback-only, needs the token
+  on every request, checks the `Host` header against DNS rebinding, answers only
+  browser origins listed in the new `dev.allowedOrigins` (empty by default), and
+  is read-only. `dev.discoveryPort` or `GKM_DISCOVERY_PORT` moves it. The
+  response types are exported from `@geekmidas/cli/config`.
+
+### Patch Changes
+
+- Updated dependencies [[`57eea44`](https://github.com/geekmidas/toolbox/commit/57eea445c114acbb398d4dfedc86f1c22dab3f10)]:
+  - @geekmidas/logger@10.0.0-alpha.59
+  - @geekmidas/cache@10.0.0-alpha.59
+  - @geekmidas/constructs@10.0.0-alpha.59
+  - @geekmidas/db@10.0.0-alpha.59
+  - @geekmidas/envkit@10.0.0-alpha.59
+  - @geekmidas/errors@10.0.0-alpha.59
+  - @geekmidas/manifest@10.0.0-alpha.59
+  - @geekmidas/schema@10.0.0-alpha.59
+  - @geekmidas/services@10.0.0-alpha.59
+  - @geekmidas/telescope@10.0.0-alpha.59
+
 ## 10.0.0-alpha.58
 
 ### Minor Changes

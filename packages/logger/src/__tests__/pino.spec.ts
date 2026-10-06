@@ -53,6 +53,20 @@ describe('Pino Logger', () => {
 			process.env.NODE_ENV = originalEnv;
 		});
 
+		it('should not pretty-print in production, even when asked', async () => {
+			const { createLogger } = await import('../pino');
+			vi.stubEnv('NODE_ENV', 'production');
+
+			try {
+				createLogger({ pretty: true });
+
+				const callArgs = pinoMock.mock.calls[pinoMock.mock.calls.length - 1][0];
+				expect(callArgs.transport).toBeUndefined();
+			} finally {
+				vi.unstubAllEnvs();
+			}
+		});
+
 		it('should not use pretty formatting when pretty is false', async () => {
 			const { createLogger } = await import('../pino');
 

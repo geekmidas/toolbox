@@ -45,7 +45,16 @@ export default defineProject({
 		// directory lands in `scratch` without any of them knowing. GKM_HOME
 		// does the same for stage keys and stored logins: a suite that writes
 		// one never writes it into the home of whoever runs the tests.
-		env: { TMPDIR: scratch, GKM_HOME: join(scratch, 'gkm-home') },
+		//
+		// Every `gkm dev` a suite starts joins discovery: on a port of its own
+		// rather than the machine's 4983, which a developer's own `gkm dev` holds,
+		// and registered in the scratch directory rather than `~/.gkm/dev`.
+		env: {
+			TMPDIR: scratch,
+			GKM_HOME: join(scratch, 'gkm-home'),
+			GKM_DISCOVERY_PORT: '0',
+			GKM_DEV_REGISTRY: join(scratch, 'gkm-dev'),
+		},
 		// The `deploy/` suites drive real AWS SDK clients against the local
 		// emulator — SSM for deploy state, S3 and IAM for backup destinations.
 		// They were the only failing suites in the repo, and they were failing

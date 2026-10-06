@@ -1,4 +1,5 @@
 import type {
+	DevConfig,
 	SecretsConfig,
 	StagesConfig,
 	TestConfig,
@@ -242,6 +243,8 @@ export interface GkmConfig {
 	secrets?: SecretsConfig;
 	/** What `gkm test` hands a feature test: where the factories are. */
 	test?: TestConfig;
+	/** How `gkm dev` is reached: the discovery endpoint's port and origins. */
+	dev?: DevConfig;
 	/**
 	 * Constructs glob pattern — one glob, every kind.
 	 *
