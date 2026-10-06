@@ -109,6 +109,7 @@
     "single-app-paths",
     "sns-push-subscribers",
     "sns-push-without-middy",
+    "ssm-lock-readback",
     "surface-has-no-app",
     "test-client-config",
     "test-db-teardown",

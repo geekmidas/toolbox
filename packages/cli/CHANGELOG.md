@@ -1,5 +1,25 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.57
+
+### Patch Changes
+
+- [#171](https://github.com/geekmidas/toolbox/pull/171) [`9a0ee0b`](https://github.com/geekmidas/toolbox/commit/9a0ee0b78cfa8b57aa6047e78c1f03142fe2d6ae) Thanks [@geekmidas](https://github.com/geekmidas)! - The SSM deploy lock is verified after it is taken
+
+  After creating the lock parameter, the SSM state store reads it back and holds the lock only if it is at version 1 with its own holder recorded. SSM's create-only put is atomic, so on AWS this changes nothing. On a backend where two racing creates can both succeed (the local AWS emulator does), the later one no longer gives a stage two concurrent deploys: both runners see `StateLocked`.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.57
+  - @geekmidas/constructs@10.0.0-alpha.57
+  - @geekmidas/db@10.0.0-alpha.57
+  - @geekmidas/envkit@10.0.0-alpha.57
+  - @geekmidas/errors@10.0.0-alpha.57
+  - @geekmidas/logger@10.0.0-alpha.57
+  - @geekmidas/manifest@10.0.0-alpha.57
+  - @geekmidas/schema@10.0.0-alpha.57
+  - @geekmidas/services@10.0.0-alpha.57
+  - @geekmidas/telescope@10.0.0-alpha.57
+
 ## 10.0.0-alpha.56
 
 ### Minor Changes
