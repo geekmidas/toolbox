@@ -23,6 +23,14 @@ export interface StateStoreHarness {
 	seedV1(stage: string, body: string): Promise<void>;
 	/** The v1 backup the store kept on migration, or null. */
 	readV1Backup(stage: string): Promise<string | null>;
+	/**
+	 * False where the backend's create-if-absent is not atomic under a race,
+	 * so two racing lock attempts may both lose. The local emulator's SSM is
+	 * such a backend (both of two racing creates succeed a few times in a
+	 * hundred); AWS's is not. The safety property — never two holders — is
+	 * asserted either way.
+	 */
+	atomicCreate?: boolean;
 }
 
 export function dokployState(
@@ -286,6 +294,15 @@ export function stateStoreConformance(
 
 				const won = results.filter((r) => r.status === 'fulfilled');
 				const lost = results.filter((r) => r.status === 'rejected');
+				// Never two holders, on any backend.
+				expect(won.length).toBeLessThanOrEqual(1);
+				for (const loss of lost) {
+					expect((loss as PromiseRejectedResult).reason).toBeInstanceOf(
+						StateLocked,
+					);
+				}
+				// Where creating is not atomic, both may have lost the race.
+				if (harness.atomicCreate === false && won.length === 0) return;
 				expect(won).toHaveLength(1);
 				expect(lost).toHaveLength(1);
 
