@@ -719,6 +719,27 @@ const TestConfigSchema = z
 	})
 	.strict();
 
+/** How `gkm dev` is reached from outside the apps it runs. */
+const DevConfigSchema = z
+	.object({
+		/** Browser origins that may read the discovery endpoint. */
+		allowedOrigins: z
+			.array(
+				z.url().refine(
+					// Checked even when `z.url()` has already failed it.
+					(value) => URL.canParse(value) && new URL(value).origin === value,
+					{
+						message:
+							'An origin is a scheme, host and port only, e.g. https://console.example.com — no path or trailing slash',
+					},
+				),
+			)
+			.optional(),
+		/** The discovery endpoint's loopback port; 4983 by default. */
+		discoveryPort: z.number().int().min(0).max(65535).optional(),
+	})
+	.strict();
+
 /**
  * Workspace configuration schema.
  */
@@ -750,6 +771,7 @@ export const WorkspaceConfigSchema = z
 		secrets: SecretsConfigSchema.optional(),
 		state: StateConfigSchema.optional(),
 		test: TestConfigSchema.optional(),
+		dev: DevConfigSchema.optional(),
 	})
 	// Strict, so a key this schema no longer has fails instead of being
 	// dropped: a leftover `services:` block is a question the config used to

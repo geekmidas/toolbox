@@ -494,6 +494,108 @@ curl 'localhost:3000/__gkm/db/tables/users/rows?pageSize=20&sort=created_at:desc
 The app needs `@geekmidas/db` installed, which a project scaffolded with a
 database already has.
 
+## Discovery Endpoint
+
+Each app's tools are on its own port, so a tool would have to be told every
+port. Instead, `gkm dev` serves one endpoint on a fixed loopback port —
+`127.0.0.1:4983` — that lists everything running with `gkm dev` on the machine,
+and prints a connect URL for it:
+
+```
+🧭 Discovery: http://127.0.0.1:4983/__gkm?token=Qm9i…
+```
+
+| Route | What it answers |
+|-------|-----------------|
+| `GET /__gkm` | Every running workspace: name, stage, construct manifest, and each app with its port, URL, status and data APIs |
+| `GET /__gkm/events` | Server-sent events: a `snapshot`, then `workspace.started`/`stopped` and `app.started`/`stopped`/`reloaded`/`status` |
+| `GET /__gkm/workspaces/<id>/apps/<app>/<path>` | That app's data API at `<path>` — Telescope's `/__telescope/api/*`, `/__gkm/db/*`, `/__docs` — so a client needs one origin |
+
+```bash
+TOKEN=…  # from the connect URL
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:4983/__gkm
+curl -N "http://127.0.0.1:4983/__gkm/events?token=$TOKEN"
+curl -H "Authorization: Bearer $TOKEN" \
+  http://127.0.0.1:4983/__gkm/workspaces/shop-1a2b3c4d/apps/api/__gkm/db/tables
+```
+
+The response types (`DiscoveryResponse`, `DiscoveredWorkspace`,
+`DiscoveredApp`, `DiscoveryEvent`) are exported from `@geekmidas/cli/config`.
+Each data API comes with its `url` on the app and its `proxy` path here.
+
+The events are server-sent events rather than a WebSocket: the stream only
+ever flows one way, `EventSource` reconnects on its own — to whichever
+`gkm dev` hosts the endpoint by then — and, unlike a WebSocket handshake, a
+cross-origin `EventSource` is subject to CORS like every other request here.
+
+### Several `gkm dev`s at once
+
+Every `gkm dev` — a workspace's, each app's under it, another project's —
+registers what it runs in `~/.gkm/dev/sessions/` and removes it when it stops.
+The first to bind the port serves the endpoint, reading that registry; the
+others keep trying, so when it exits the next one takes over within a second.
+A session killed outright is recognised by its pid and dropped. The token is
+shared through the registry (`~/.gkm/dev/token`, readable only by you), so a
+connect URL keeps working across a handover, and a new one is made once every
+session has stopped.
+
+### Configuration
+
+```ts
+// gkm.config.ts
+export default defineWorkspace({
+  dev: {
+    // Browser origins that may read this workspace through discovery.
+    allowedOrigins: ['https://console.example.com'],
+    // 4983 by default; GKM_DISCOVERY_PORT overrides it.
+    discoveryPort: 4983,
+  },
+  // …
+});
+```
+
+### Security
+
+Any web page you visit can send requests to a loopback port, so the endpoint
+does not trust being on loopback:
+
+- **Loopback only.** It binds `127.0.0.1`, never `0.0.0.0`.
+- **Token on every request.** As `Authorization: Bearer <token>` or
+  `?token=<token>` (for `EventSource`, which cannot set headers). A preflight is
+  the one exception — browsers send it without credentials.
+- **Origin allowlist, empty by default.** A request carrying an `Origin` is
+  refused unless a running workspace lists it in `dev.allowedOrigins`; CORS
+  headers are sent only to listed origins, and an origin sees only the
+  workspaces that listed it. A request with no `Origin` — curl, a local
+  process — still needs the token.
+- **`Host` check.** Only `127.0.0.1:<port>` and `localhost:<port>` are
+  answered, which defeats DNS rebinding: a page on `attacker.example` whose DNS
+  is switched to `127.0.0.1` still sends `Host: attacker.example`.
+- **Read-only.** `GET` and `HEAD` only, and the forwarder reaches an app's data
+  APIs and nothing else of it — not its endpoints, not cookies, not the token.
+
+### Calling it from a web page
+
+A page served from a public origin (say `https://console.example.com`) can call
+the endpoint once that origin is in `dev.allowedOrigins` and it has the token.
+Browsers treat a public page reaching loopback specially:
+
+- **Chrome** (and other Chromium browsers) gate it behind **Local Network
+  Access**: the first such request shows the user a permission prompt for the
+  site, and the request fails if it is denied. The page should be served over
+  HTTPS; `http://127.0.0.1` itself counts as a secure context, so it is not
+  blocked as mixed content. The endpoint also answers the older Private Network
+  Access preflight (`Access-Control-Allow-Private-Network: true`) for listed
+  origins.
+- **Firefox** — *as best known, verify on your version*: treats `localhost` and
+  `127.0.0.1` as secure contexts, so an HTTPS page may fetch them; it has been
+  rolling out its own local network access restrictions, which may add a prompt
+  like Chrome's.
+- **Safari** — *as best known, verify on your version*: has blocked requests
+  from HTTPS pages to `http://127.0.0.1` as mixed content in some versions, and
+  has no permission prompt; a console that must support Safari may need to run
+  as a local page or desktop app instead.
+
 ## Troubleshooting
 
 ### "Secrets enabled but no \"dev\" secrets found"

@@ -14,9 +14,20 @@ import {
 	type WorkspaceConfig,
 } from './workspace/index.js';
 
+// What `gkm dev`'s discovery endpoint answers, for the tools that read it.
+export type {
+	AppStatus,
+	DataApiKind,
+	DiscoveredApp,
+	DiscoveredDataApi,
+	DiscoveredWorkspace,
+	DiscoveryEvent,
+	DiscoveryResponse,
+} from './dev/discovery.js';
 export type { GkmConfig } from './types.js';
 export type { LoadedConfig, WorkspaceConfig } from './workspace/index.js';
 export { defineWorkspace } from './workspace/index.js';
+export type { DevConfig } from './workspace/types.js';
 /**
  * Define GKM configuration with full TypeScript support.
  * This is an identity function that provides type safety and autocomplete.

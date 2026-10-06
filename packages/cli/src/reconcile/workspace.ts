@@ -117,7 +117,7 @@ export function fakesApply(
 export async function reconcileWorkspace(
 	workspace: NormalizedWorkspace,
 	options: WorkspaceReconcileOptions,
-): Promise<ReconcileResult> {
+): Promise<ReconcileResult & { manifest: ConstructManifest }> {
 	// Discovered here even when a manifest was handed in: the apps' services
 	// are given the keys their runnables reach, and only discovery sees those.
 	const runnables: Record<string, string[]> = {};
@@ -150,7 +150,9 @@ export async function reconcileWorkspace(
 
 	await savePortState(workspace.root, { ...result.ports });
 
-	return result;
+	// With the manifest, so `gkm dev` can say what the workspace declares
+	// without discovering it a second time.
+	return { ...result, manifest };
 }
 
 /**
