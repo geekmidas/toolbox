@@ -81,6 +81,7 @@ Options:
 - Telescope's JSON API at `/__telescope/api`
 - The declared database, read-only, as JSON at `/__gkm/db` (see [Development Tools](/guide/dev-server#development-tools))
 - OpenAPI docs at `/__docs`
+- A discovery endpoint on `127.0.0.1:4983` listing every running app and its data APIs, with a printed connect URL (see [Discovery Endpoint](/guide/dev-server#discovery-endpoint))
 - Automatic endpoint discovery
 - Dynamic Docker service port resolution (avoids conflicts between projects)
 
@@ -498,6 +499,8 @@ The CLI respects these environment variables:
 | `GKM_CONFIG_PATH` | Custom config file path |
 | `GKM_PORT` | Default port for dev server |
 | `GKM_HOST` | Default host for dev server |
+| `GKM_DISCOVERY_PORT` | The discovery endpoint's port (overrides `dev.discoveryPort`; `0` serves on a free port of its own) |
+| `GKM_DEV_REGISTRY` | Where `gkm dev` sessions register (default `~/.gkm/dev`) |
 | `NODE_ENV` | Environment mode |
 
 ## Module Path Syntax

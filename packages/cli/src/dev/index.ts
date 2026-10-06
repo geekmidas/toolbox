@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import type { ConstructManifest } from '@geekmidas/manifest';
 import chokidar from 'chokidar';
 import fg from 'fast-glob';
 import { appPackageName, buildApp, turboFilters } from '../build/index';
@@ -51,6 +52,14 @@ import {
 	holderOf,
 	withAppPorts,
 } from './appPorts.js';
+import {
+	type AppStatus,
+	DISCOVERY_QUIET_ENV,
+	type DiscoverySession,
+	dataApisOf,
+	discoveryPort,
+	joinDiscovery,
+} from './discovery.js';
 import { closeFakes, serveFakes } from './fakes.js';
 
 // Re-export shared utilities from credentials module so existing imports
@@ -347,6 +356,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	// JSON file
 	let secretsJsonPath: string | undefined;
 	let publicUrl: string | undefined;
+	let manifest: ConstructManifest | undefined;
 	// The local stage's store, which is always the file.
 	const appSecrets = await loadSecretsForApp(
 		workspace
@@ -386,6 +396,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 				appKey(r.id) === workspaceAppName,
 		);
 		publicUrl = own ? reconciled.env[own.envKey] : undefined;
+		manifest = reconciled.manifest;
 	}
 
 	if (Object.keys(appSecrets).length > 0) {
@@ -419,6 +430,48 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	devServer.label = workspaceAppName ?? 'server';
 	devServer.publicUrl = publicUrl;
 	await devServer.start();
+
+	// Said to the machine's discovery endpoint, so a console can find this app
+	// and read its data APIs without being told the port.
+	const discovery = await joinDiscovery({
+		role: 'app',
+		port: discoveryPort(workspace.dev),
+		workspace: {
+			name: workspace.name,
+			root: workspace.root,
+			stage: workspace.stages.local,
+		},
+		allowedOrigins: workspace.dev?.allowedOrigins ?? [],
+		...(manifest ? { manifest } : {}),
+		apps: [
+			{
+				name: workspaceAppName,
+				type: 'backend',
+				port: devServer.port,
+				...(publicUrl ? { publicUrl } : {}),
+				status: 'ready',
+				reloads: 0,
+				dataApis: dataApisOf({
+					selfServing: devServer.selfServing,
+					telescopePath: telescope?.path,
+					databaseApi: initial.databaseApi,
+					openApi: enableOpenApi,
+				}),
+			},
+		],
+	});
+	// Under a workspace's `gkm dev`, which printed it once for every app.
+	if (!process.env[DISCOVERY_QUIET_ENV]) announce(discovery);
+	devServer.onStatus = (status) =>
+		discovery.updateApp(workspaceAppName, (app) => ({
+			...app,
+			status,
+			port: devServer.port,
+			reloads:
+				app.status === 'reloading' && status === 'ready'
+					? app.reloads + 1
+					: app.reloads,
+		}));
 
 	// Watch for file changes
 	// Get hooks file path for watching
@@ -509,7 +562,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		logger.log('\n🛑 Shutting down...');
 
 		// Use sync-style shutdown to ensure it completes before exit
-		Promise.all([watcher.close(), devServer.stop()])
+		Promise.all([watcher.close(), devServer.stop(), discovery.leave()])
 			.catch((err) => {
 				logger.error('Error during shutdown:', err);
 			})
@@ -1052,6 +1105,39 @@ async function workspaceDevCommand(
 		}
 	}
 
+	// Every app turbo starts, as this workspace lists them. Each backend app's
+	// own `gkm dev` registers too, with its status and its data APIs.
+	const discovery = await joinDiscovery({
+		role: 'workspace',
+		port: discoveryPort(workspace.dev),
+		workspace: {
+			name: workspace.name,
+			root: workspace.root,
+			stage: workspace.stages.local,
+		},
+		allowedOrigins: workspace.dev?.allowedOrigins ?? [],
+		...(reconciled.manifest ? { manifest: reconciled.manifest } : {}),
+		apps: buildOrder.flatMap((name) => {
+			const app = workspace.apps[name];
+			if (!app) return [];
+			const publicUrl = Object.entries(appUrls).find(
+				([id]) => appKey(id) === name,
+			)?.[1];
+			return [
+				{
+					name,
+					type: app.type,
+					port: app.port,
+					...(publicUrl ? { publicUrl } : {}),
+					status: 'starting' as const,
+					reloads: 0,
+					dataApis: [],
+				},
+			];
+		}),
+	});
+	announce(discovery);
+
 	// Prepare environment variables
 	// Order matters: secrets first, then dependencies (dependencies can override)
 	const turboEnv: Record<string, string> = {
@@ -1062,6 +1148,8 @@ async function workspaceDevCommand(
 		...(configPath ? { GKM_CONFIG_PATH: configPath } : {}),
 		// Each app reconciles again, and must point at the same fakes.
 		...(options.fake ? { [FAKE_ENV]: '1' } : {}),
+		// The connect URL was printed above; the apps need not repeat it.
+		[DISCOVERY_QUIET_ENV]: '1',
 	};
 
 	// Spawn turbo run dev
@@ -1087,6 +1175,7 @@ async function workspaceDevCommand(
 
 		logger.log('\n🛑 Shutting down workspace...');
 		closeFakes(fakes);
+		void discovery.leave();
 
 		// Kill turbo process group
 		const pid = turboProcess.pid;
@@ -1451,6 +1540,14 @@ start({
 `;
 }
 
+/**
+ * The discovery endpoint's connect URL, Jupyter-style: the token in it is what
+ * lets a console read what this machine is running.
+ */
+function announce(discovery: DiscoverySession): void {
+	logger.log(`🧭 Discovery: ${discovery.connectUrl}`);
+}
+
 /** Run `fn` with `console.log` muted — warnings and errors still print. */
 async function quietly<T>(fn: () => Promise<T>): Promise<T> {
 	const log = console.log;
@@ -1559,6 +1656,14 @@ class DevServer {
 	/** What the ready line calls this app. */
 	label = 'server';
 
+	/** Told when the server is ready, reloading, or exits on its own. */
+	onStatus: ((status: AppStatus) => void) | undefined;
+
+	/** The port it is serving on. */
+	get port(): number {
+		return this.actualPort;
+	}
+
 	/**
 	 * Where the app is reached — its HTTPS address behind the edge, when it has
 	 * one. The local port is only what the edge forwards to.
@@ -1629,11 +1734,15 @@ class DevServer {
 			logger.error('❌ Server error:', error);
 		});
 
-		this.serverProcess.on('exit', (code, signal) => {
+		const child = this.serverProcess;
+		child.on('exit', (code, signal) => {
 			if (code !== null && code !== 0 && signal !== 'SIGTERM') {
 				logger.error(`❌ Server exited with code ${code}`);
 			}
 			this.isRunning = false;
+			// Still the current server, so nothing here stopped it: it exited on
+			// its own. `stop()` lets go of the one it kills before it dies.
+			if (this.serverProcess === child) this.onStatus?.('stopped');
 		});
 
 		// Give the server a moment to start
@@ -1657,6 +1766,7 @@ class DevServer {
 						...(this.databaseApi ? [`db ${this.databaseApi}`] : []),
 					];
 			if (tools.length > 0) logger.log(`  ${tools.join(' · ')}`);
+			this.onStatus?.('ready');
 		}
 	}
 
@@ -1704,6 +1814,7 @@ class DevServer {
 
 	async restart(): Promise<void> {
 		const portToReuse = this.actualPort;
+		this.onStatus?.('reloading');
 		await this.stop();
 
 		// Wait for port to be released (up to 3 seconds)

@@ -25,6 +25,7 @@ import {
 } from 'vitest';
 import { TEST_DATABASE_CONFIG } from '../../../../testkit/test/globalSetup';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
+import type { DiscoveryResponse } from '../discovery';
 import { auth } from './__fixtures__/constructs-app/constructs/auth';
 
 /**
@@ -297,6 +298,39 @@ export default defineWorkspace({
 				tables: expect.any(Array),
 			});
 			expect(output(log)).toContain('db /__gkm/db');
+
+			// Found through discovery, from the connect URL dev printed — the
+			// suite runs it on a port of its own — and read through it.
+			const connect = output(log).match(
+				/🧭 Discovery: (http:\/\/127\.0\.0\.1:\d+\/__gkm\?token=\S+)/,
+			)?.[1];
+			expect(connect).toBeDefined();
+			const discovered = await fetch(connect!);
+			expect(discovered.status).toBe(200);
+			const { workspaces } = (await discovered.json()) as DiscoveryResponse;
+			// This workspace's: the suite's other `gkm dev`s share the registry.
+			const api = workspaces
+				.find((w) => w.root === dir)
+				?.apps.find((a) => a.name === 'api');
+			expect(api).toMatchObject({
+				status: 'ready',
+				dataApis: expect.arrayContaining([
+					expect.objectContaining({ kind: 'database', path: '/__gkm/db' }),
+					expect.objectContaining({
+						kind: 'telescope',
+						path: '/__telescope/api',
+					}),
+				]),
+			});
+			const database = api?.dataApis.find((a) => a.kind === 'database');
+			const { origin, searchParams } = new URL(connect!);
+			const proxied = await fetch(`${origin}${database?.proxy}/tables`, {
+				headers: { authorization: `Bearer ${searchParams.get('token')}` },
+			});
+			expect(proxied.status).toBe(200);
+			expect(await proxied.json()).toMatchObject({
+				tables: expect.any(Array),
+			});
 
 			// CORS from the graph: the web origin may call it, nothing else.
 			const preflight = await request('/health', {
