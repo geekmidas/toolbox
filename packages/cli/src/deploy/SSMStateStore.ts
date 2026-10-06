@@ -136,6 +136,16 @@ export class SSMStateStore extends DocumentStateStore {
 				String((Version ?? 1) - 1),
 			);
 		}
+
+		// The version alone is not enough under an emulator, and need not be
+		// on SSM either: two overwrites that raced can both be answered with
+		// the same version, and both would report success. If the parameter is
+		// still at the version this put returned, it has to hold this body —
+		// otherwise the other put is the one that stuck.
+		const landed = await this.get(Name);
+		if (landed && landed.version === Version && landed.value !== body) {
+			throw new StateVersionConflict(stage, expectedVersion, String(Version));
+		}
 		return String(Version);
 	}
 
