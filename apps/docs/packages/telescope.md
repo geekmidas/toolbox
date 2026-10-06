@@ -1,6 +1,12 @@
 # @geekmidas/telescope
 
-Laravel Telescope-style debugging and monitoring dashboard for web applications. Captures requests, logs, and exceptions in real-time with a beautiful dashboard UI.
+Laravel Telescope-style debugging and monitoring for web applications. Captures requests, logs and exceptions, and serves them as a JSON API with a WebSocket feed for live updates.
+
+::: info Headless
+Telescope ships no dashboard. It records, stores and serves data; any UI —
+your own, a script, an agent — is built on the JSON API below. (The embedded
+React dashboard was removed in v10.)
+:::
 
 ## Installation
 
@@ -26,8 +32,8 @@ pnpm add @geekmidas/telescope
 | Export | Description |
 |--------|-------------|
 | `/` | Core `Telescope` class and `InMemoryStorage` |
-| `/hono` | Hono middleware and dashboard UI (alias for `/server/hono`) |
-| `/server/hono` | Hono middleware (`createMiddleware`, `createUI`) |
+| `/hono` | Hono middleware and JSON API (alias for `/server/hono`) |
+| `/server/hono` | Hono middleware and JSON API (`createMiddleware`, `createApi`, `setupWebSocket`) |
 | `/storage/memory` | In-memory storage (development) |
 | `/storage/kysely` | Kysely storage (PostgreSQL, MySQL, SQLite) |
 | `/logger/pino` | Pino transport for log capture (`createPinoTransport`) |
@@ -45,7 +51,7 @@ pnpm add @geekmidas/telescope
 ```typescript
 import { Hono } from 'hono';
 import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
-import { createMiddleware, createUI } from '@geekmidas/telescope/hono';
+import { createApi, createMiddleware } from '@geekmidas/telescope/hono';
 
 // Create Telescope instance
 const telescope = new Telescope({
@@ -58,15 +64,15 @@ const app = new Hono();
 // Add middleware to capture requests
 app.use('*', createMiddleware(telescope));
 
-// Mount the dashboard
-app.route('/__telescope', createUI(telescope));
+// Mount the JSON API
+app.route('/__telescope', createApi(telescope));
 
 // Your routes
 app.get('/api/users', (c) => c.json({ users: [] }));
 
 export default app;
 
-// Access dashboard at http://localhost:3000/__telescope
+// GET http://localhost:3000/__telescope/api/requests
 ```
 
 ## Using with `gkm dev`
@@ -86,7 +92,25 @@ export default {
 };
 ```
 
-Run `gkm dev` and access the dashboard at `http://localhost:3000/__telescope`.
+Run `gkm dev` and read the data from `http://localhost:3000/__telescope/api/*`.
+
+## JSON API
+
+| Route | Returns |
+|-------|---------|
+| `GET /api/requests` | Recorded requests (`limit`, `offset`, `search`, `method`, `status`, `before`, `after`, `tags`) |
+| `GET /api/requests/:id` | One request |
+| `GET /api/exceptions` | Recorded exceptions |
+| `GET /api/exceptions/:id` | One exception |
+| `GET /api/logs` | Log entries (`level`, …) |
+| `GET /api/stats` | Counts per kind |
+| `GET /api/metrics` | Aggregated request metrics (`start`, `end`, `bucketSize`) |
+| `GET /api/metrics/endpoints` | Metrics per endpoint |
+| `GET /api/metrics/endpoint?method=&path=` | One endpoint's metrics |
+| `GET /api/metrics/status` | Status code distribution |
+| `DELETE /api/metrics` | Reset metrics |
+
+Paths are relative to where `createApi` is mounted (`/__telescope` under `gkm dev`).
 
 ## Storage Backends
 
@@ -197,7 +221,7 @@ const logger = pino(
   ])
 );
 
-// Logs appear in both console and Telescope dashboard
+// Logs appear in both the console and Telescope
 logger.info({ userId: '123' }, 'User logged in');
 ```
 
@@ -435,7 +459,7 @@ const metrics = await telescope.getEndpointMetrics({
 
 ## Real-Time WebSocket Updates
 
-The dashboard uses WebSocket for real-time updates. You can also subscribe programmatically:
+Live updates come over a WebSocket. Subscribe programmatically:
 
 ```typescript
 // Add WebSocket client for broadcasts
@@ -464,6 +488,69 @@ const telescope = new Telescope({
   pruneAfterHours: 24, // Auto-prune entries older than 24 hours
 });
 ```
+
+## Production: OpenTelemetry
+
+Production builds (`gkm build --production`, which `gkm docker` images run)
+leave the Telescope dashboard out. In its place, the generated server entry
+starts OpenTelemetry when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, before the app
+is imported, so traces and logs go to your collector with no code in the app.
+
+Install the instrumentation's optional peers in the app, then rebuild:
+
+```bash
+pnpm add @geekmidas/telescope @opentelemetry/api @opentelemetry/auto-instrumentations-node \
+  @opentelemetry/exporter-logs-otlp-http @opentelemetry/exporter-trace-otlp-http \
+  @opentelemetry/instrumentation-pino @opentelemetry/resources @opentelemetry/sdk-logs \
+  @opentelemetry/sdk-node @opentelemetry/sdk-trace-base @opentelemetry/sdk-trace-node \
+  @opentelemetry/semantic-conventions
+```
+
+| Variable | Effect |
+| --- | --- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Turns telemetry on. The collector's base URL; traces go to `/v1/traces`, logs to `/v1/logs`. Unset, the entry never loads the packages. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Headers for the collector, e.g. `authorization=Bearer …`. |
+| `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG` | Sampling, e.g. `parentbased_traceidratio` and `0.1` to keep one trace in ten. Every trace is kept by default. |
+| `OTEL_RESOURCE_ATTRIBUTES` | Extra resource attributes, and overrides — e.g. `service.version=1.4.2` for the release. |
+| `OTEL_SERVICE_NAME` | Overrides `service.name`. |
+| `STAGE` | Sent as `deployment.environment.name` (and `deployment.environment`). `gkm deploy` sets it. |
+
+The entry names the resource for you:
+
+- `service.name`: the `RestApi` the server serves (its id), or the app's directory without one.
+- `service.namespace`: the workspace's name.
+- `deployment.environment.name`: `STAGE`.
+
+An app built without the packages still builds and starts: its entry imports
+none of them, and if `OTEL_EXPORTER_OTLP_ENDPOINT` is set it prints a
+`TelemetryUnavailable` warning saying so. The same warning, and no crash, if the
+packages fail to load at runtime.
+
+::: tip Bundled builds
+The production bundle inlines the app's dependencies, and OpenTelemetry's
+auto-instrumentation patches modules as Node loads them — so in a bundle it
+reaches Node built-ins (`http`, `fetch`), not the inlined libraries. Spans for
+incoming and outgoing HTTP are there; library spans and Pino's `trace_id` /
+`span_id` correlation are not guaranteed.
+:::
+
+### Calling `setupTelemetry` yourself
+
+```typescript
+import { setupTelemetry } from '@geekmidas/telescope/instrumentation';
+
+setupTelemetry({
+  serviceName: 'orders-api',
+  serviceNamespace: 'shop',
+  deploymentEnvironment: process.env.STAGE,
+  // Omit `endpoint` to use the OTEL_EXPORTER_OTLP_* variables.
+  sampleRatio: 0.1, // overrides OTEL_TRACES_SAMPLER; must be 0–1
+  handleSignals: false, // leave SIGTERM to your own graceful shutdown
+});
+```
+
+`sampleRatio` keeps that fraction of new traces and makes child spans follow
+their parent. A value outside 0–1 throws `InvalidSampleRatio`.
 
 ## Cleanup
 

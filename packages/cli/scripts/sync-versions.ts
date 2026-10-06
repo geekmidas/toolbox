@@ -30,7 +30,6 @@ const PACKAGES = [
 	'schema',
 	'services',
 	'storage',
-	'studio',
 	'telescope',
 	'testkit',
 ] as const;

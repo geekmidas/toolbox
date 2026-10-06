@@ -1,5 +1,53 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.57
+
+### Patch Changes
+
+- [#171](https://github.com/geekmidas/toolbox/pull/171) [`9a0ee0b`](https://github.com/geekmidas/toolbox/commit/9a0ee0b78cfa8b57aa6047e78c1f03142fe2d6ae) Thanks [@geekmidas](https://github.com/geekmidas)! - The SSM deploy lock is verified after it is taken
+
+  After creating the lock parameter, the SSM state store reads it back and holds the lock only if it is at version 1 with its own holder recorded. SSM's create-only put is atomic, so on AWS this changes nothing. On a backend where two racing creates can both succeed (the local AWS emulator does), the later one no longer gives a stage two concurrent deploys: both runners see `StateLocked`.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.57
+  - @geekmidas/constructs@10.0.0-alpha.57
+  - @geekmidas/db@10.0.0-alpha.57
+  - @geekmidas/envkit@10.0.0-alpha.57
+  - @geekmidas/errors@10.0.0-alpha.57
+  - @geekmidas/logger@10.0.0-alpha.57
+  - @geekmidas/manifest@10.0.0-alpha.57
+  - @geekmidas/schema@10.0.0-alpha.57
+  - @geekmidas/services@10.0.0-alpha.57
+  - @geekmidas/telescope@10.0.0-alpha.57
+
+## 10.0.0-alpha.56
+
+### Minor Changes
+
+- 🔥 [#169](https://github.com/geekmidas/toolbox/pull/169) [`efd9019`](https://github.com/geekmidas/toolbox/commit/efd9019cd2d8ec93dea462675da3ded175e732ee) Thanks [@geekmidas](https://github.com/geekmidas)! - :boom: Toolbox is headless: `@geekmidas/ui` and `@geekmidas/studio` are removed, Telescope serves JSON only, and `gkm dev` serves the declared database as a read-only JSON API
+
+  - ✨ **`@geekmidas/ui` and `@geekmidas/studio` are deprecated and no longer published.** Their last versions are `@geekmidas/ui@9.0.2` and `@geekmidas/studio@9.0.2` (`latest`), and `@geekmidas/ui@10.0.0-alpha.55` and `@geekmidas/studio@10.0.0-alpha.55` on `alpha`. Pin those to keep using them; nothing in toolbox depends on them any more. Studio's data layer lives on in `@geekmidas/db/introspect`; for components, run `npx shadcn@latest add` in your app.
+  - **Telescope has no dashboard.** The embedded React UI and its assets are gone, and `createUI` is renamed `createApi`: it serves the same JSON routes under `/api/*` (requests, exceptions, logs, stats, metrics) and nothing else, so the mount point's root and the old dashboard routes now 404. Recorders, storage adapters, the OTLP receiver and the WebSocket feed are unchanged. Replace `createUI(telescope)` with `createApi(telescope)`.
+  - ✨ **`@geekmidas/db/introspect`** (new): `listSchemas`, `introspectSchema`, `introspectTable`, a `DataBrowser` for cursor-paged, filtered and sorted rows, and `createIntrospectionHandler`, a fetch-style `(Request) => Promise<Response>` JSON API over them (`/schemas`, `/tables`, `/tables/:name`, `/tables/:name/rows`), read-only and with no HTTP framework dependency. A table with no configured cursor pages by its single-column primary key. Mistakes are named errors: `TableNotFound`, `ColumnNotFound`, `UnsupportedFilterOperator`, `InvalidCursor`.
+  - **`decodeCursor` throws `InvalidCursor`** (exported from `@geekmidas/db/pagination`, `/kysely/pagination` and `/objection/pagination`) instead of a plain `Error`; match on the class rather than the message.
+  - **`gkm dev` serves the database API at `/__gkm/db`** for the app's declared database, through the client its handlers use, and prints `db /__gkm/db` on the ready line. It replaces the Studio mount at `/__studio`. `gkm build` never includes it. The app needs `@geekmidas/db` installed, which a scaffold with a database already has.
+  - 🔥 **The `studio` config option is removed** from `gkm.config.ts` and workspace app config, along with `StudioConfig`. Delete it; there is nothing to configure.
+  - **`gkm init` scaffolds no UI package.** Fullstack projects get shadcn/ui components written into the web app (`apps/web/src/components/ui/`, `components.json`, `src/lib/utils.ts`, the theme in its global stylesheet) instead of a `packages/ui` workspace package with Storybook. No template writes `src/config/studio.ts` or depends on `@geekmidas/studio`.
+
+### Patch Changes
+
+- Updated dependencies [[`efd9019`](https://github.com/geekmidas/toolbox/commit/efd9019cd2d8ec93dea462675da3ded175e732ee)]:
+  - @geekmidas/telescope@10.0.0-alpha.56
+  - @geekmidas/db@10.0.0-alpha.56
+  - @geekmidas/constructs@10.0.0-alpha.56
+  - @geekmidas/cache@10.0.0-alpha.56
+  - @geekmidas/envkit@10.0.0-alpha.56
+  - @geekmidas/errors@10.0.0-alpha.56
+  - @geekmidas/logger@10.0.0-alpha.56
+  - @geekmidas/manifest@10.0.0-alpha.56
+  - @geekmidas/schema@10.0.0-alpha.56
+  - @geekmidas/services@10.0.0-alpha.56
+
 ## 10.0.0-alpha.55
 
 ### Minor Changes
@@ -15,6 +63,7 @@
 ### Patch Changes
 
 - [#142](https://github.com/geekmidas/toolbox/pull/142) [`eedac53`](https://github.com/geekmidas/toolbox/commit/eedac53aeec2d88d46a74ec9f3d4a55e2845b2b2) Thanks [@geekmidas](https://github.com/geekmidas)! - Database connections say who holds them, and queries say what ran them
+
   - **`application_name` on every connection** — the Lambda function's name, or the surface's id on a server (`GKM_APP_NAME`, set by the generated entry), or the app under `gkm dev`. A fallback: `PGAPPNAME` or `?application_name=` in the URL still win. `pg_stat_activity` can now say which function or app is holding connections.
   - ✨ **Query tags.** A query run inside an endpoint, subscriber, queue or cron ends in a sqlcommenter comment, `/*operation='POST /orders',request_id='…'*/`, visible in `pg_stat_activity` and the server's logs. `pg_stat_statements` ignores it. Off with `new KyselyDatabase(id, { queryTags: false })`.
   - **An idle connection ended by the server no longer crashes the process.** Pools had no `'error'` listener, so `idle_session_timeout` or a failover surfaced as an uncaught exception.
@@ -97,6 +146,7 @@
 - [#139](https://github.com/geekmidas/toolbox/pull/139) [`6fb1ce4`](https://github.com/geekmidas/toolbox/commit/6fb1ce4406c4dc8517b65923190af169c2aa70a7) Thanks [@geekmidas](https://github.com/geekmidas)! - SNS topic subscribers start under `gkm dev` without `@middy/core`
 
   `SnsPushSubscriberAdaptor` handed each pushed notification to `AWSLambdaSubscriber`, which imports `@middy/core`. middy is an optional peer that only Lambda needs, so a project that doesn't deploy to Lambda didn't install it, and every SNS subscriber logged `Failed to set up subscriber` with `ERR_MODULE_NOT_FOUND`. The push adaptor now runs the subscriber directly, with the same parsing, services, database and error handling as the Lambda adaptor. middy stays in the Lambda wrapper only.
+
   - 💥 **Breaking (alpha):** `SnsPushSubscriberAdaptor` moved from `@geekmidas/constructs/aws` to `@geekmidas/constructs/subscribers`. Every other export of `/aws` loads middy.
   - A subscriber that fails to set up now logs the error's message, which names the missing module.
   - A subscriber whose output fails its `.output()` schema throws `SubscriberOutputInvalid` instead of a bare `Error`.
@@ -118,6 +168,7 @@
 ### Patch Changes
 
 - [#136](https://github.com/geekmidas/toolbox/pull/136) [`0eb2628`](https://github.com/geekmidas/toolbox/commit/0eb2628f0fc00dc65543f6c6fe64400cd3bbd6b5) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm dev` runs crons and queue consumers it was silently skipping
+
   - ✨ **Crons under `gkm dev` on the SST target.** Server crons are scheduled through pg-boss. A project that deploys to AWS has no pg-boss locally, so `setupCrons` logged one error and scheduled nothing. Under `gkm dev`, which is one process, crons now run in-process on their schedule, in UTC, via the new `scheduleInProcess` in `@geekmidas/constructs/crons`. Outside `gkm dev` it is still an error, because a timer in each deployed replica would fire every job once per replica.
   - ✨ **Server-target crons never ran their handler.** The generated `run` called `cron.handler()`, which a `Cron` doesn't have, so every firing logged "Cron failed", on pg-boss too. Crons now run through the new `runCron`, with the same steps as the Lambda adaptor: services, the worker's database as `db`, an auditor if declared, parsed output, and published events.
   - 🐛 **The S3 driver for a workspace that installs `@geekmidas/storage` at its root.** The entry registered the S3 driver only when the app's own `package.json` listed storage. In a workspace that lists it once at the root, any service that injected a bucket threw `UnregisteredStorageScheme`. A queue consumer that depended on a bucket logged that once and was never polled, so its messages sat on the queue. The dependency is now found the way Node resolves it: the app's `package.json` or any directory above it.
@@ -148,6 +199,7 @@
 - [#134](https://github.com/geekmidas/toolbox/pull/134) [`c0279b9`](https://github.com/geekmidas/toolbox/commit/c0279b98545445b1eceedc314d92d0fbd91953e3) Thanks [@geekmidas](https://github.com/geekmidas)! - :boom: `fromManifest`'s overrides are typed from the manifest
 
   The overrides were `Record<string, Record<string, unknown>>`, so a misspelt id or a prop nothing reads went through without complaint, and a missing database `vpc` or mail `from` only showed up at synth, partway through a deploy. They are now `ManifestOverrides<typeof constructs, typeof backends>`:
+
   - **Keys:** only the manifest's own construct ids.
   - **Values:** what each construct's kind actually takes. Props the declaration already decides are left out, such as a database's `schema`, a queue's `fifo` or a site's `path`.
   - **Required:** what the synth won't guess. That means a database's `vpc` and mail's `from`. Some depend on the backend: ElastiCache needs `vpc`, and Resend or SMTP mail needs `url`.
@@ -174,6 +226,7 @@
 - [#132](https://github.com/geekmidas/toolbox/pull/132) [`1e2a05c`](https://github.com/geekmidas/toolbox/commit/1e2a05caa63b9ef83ffab8f57c807b6975b5d517) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: `gkm dev` moves an app off a port another project holds, and refuses only when the holder is the same app
 
   An app's port was fixed (3000, 3001, …) and `gkm dev` refused to start if anything held one — so two projects that both default to 3000 could not run at once. Now the holder is asked who it is: every process gkm starts is tagged with `GKM_DEV_APP=<workspace>#<app>`, inherited by whatever binds the port, and read back from the holder (`lsof`, then `ps eww` / `/proc/<pid>/environ`).
+
   - **Held by this same app** — left by a previous `gkm dev` — it still refuses, naming the pid (`WorkspacePortsInUse`), since moving would start a second copy.
   - **Held by anything else** — untagged, another workspace's, or unreadable — the app moves to the next free port past its siblings', says so, and keeps it in `.gkm/app-ports.json`. The edge routes, every address an app or a phone is handed, and the ready lines follow it.
 
@@ -265,6 +318,7 @@
 - [#124](https://github.com/geekmidas/toolbox/pull/124) [`10ef53d`](https://github.com/geekmidas/toolbox/commit/10ef53d921d519afa62c773a6682581e19c06b1e) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: `Encryption` — a key that encrypts what the application stores
 
   `new Encryption('Pii')` gives a handler that `.dependsOn([pii])` `services.pii.encrypt`, `decrypt`, `index` (a blind index, so an encrypted column can still be looked up) and `reencrypt`. The app names no cipher: the construct provides one `PII_URL` whose scheme picks the backend.
+
   - **Locally and in tests**, an `aes256gcm://` keyring derived from the project and stage, like a secret — nothing to set.
   - **On a server stage**, a keyring generated into the stage's secrets on its first deploy and never replaced by a redeploy.
   - **On AWS**, envelope encryption under a KMS key that rotates yearly, and a KMS HMAC key for the index, each granted to exactly the functions that depend on the construct (`kms:GenerateDataKey`/`kms:Decrypt`, `kms:GenerateMac`). `@aws-sdk/client-kms` is an optional peer, loaded only for a `kms://` URL.
@@ -274,6 +328,7 @@
 ### Patch Changes
 
 - [#126](https://github.com/geekmidas/toolbox/pull/126) [`f1fc3e7`](https://github.com/geekmidas/toolbox/commit/f1fc3e7e9a8fdc995e3a4b957e29ce451f6fd959) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: `gkm dev` says where every service is, and an app can open Mailpit's inbox
+
   - **`gkm dev` lists every published port on every start**, labelled — `postgres`, `smtp`, `mailpit inbox`, `minio console`, … — with the pages as `http://` links. It used to print only on the start that changed a container, and only each container's primary port, so Mailpit's inbox was never shown at all. `gkm setup` lists the same when it converges.
   - **An `Email`'s inbox is a public role.** A `MobileApp` or `StaticSite` that `.dependsOn([mailer])` is built with `EXPO_PUBLIC_MAILER_INBOX_URL` (`VITE_`/`NEXT_PUBLIC_`) on a local stage — Mailpit's web inbox, so an "Open email app" button can open a sign-in link from the app. Deployed mail has no inbox and nothing sets it; the SMTP URL, which carries credentials, is never public. Closes #125.
 
@@ -362,6 +417,7 @@
 ### Patch Changes
 
 - 🐛 [#118](https://github.com/geekmidas/toolbox/pull/118) [`5aa1b52`](https://github.com/geekmidas/toolbox/commit/5aa1b52be04d6479d77c06da227e5700c00877be) Thanks [@geekmidas](https://github.com/geekmidas)! - :bug: `gkm test` reliability: subscribers load in the harness, a dropped test database is recreated, and no two services share a port
+
   - The generated harness imports every topic subscriber module itself. Delivery loads subscribers, and left to Node's own `import()` one importing a tsconfig alias (`~/…`) failed every test file that delivered.
   - Reconcile's fast path checks the plan's Postgres databases still exist. Every checkout shares one Postgres, so another checkout's test teardown could drop `<name>_test` while this one's recorded state still claimed it — and the suite started with no database.
   - Saved and observed ports are merged without collisions (`keptPorts`). An observed port overrode its own key but left a different saved key on the same number, so two services shared a port — Mailpit's inbox answered by an external API's fake.
@@ -450,6 +506,7 @@
 ### Patch Changes
 
 - [#111](https://github.com/geekmidas/toolbox/pull/111) [`087444c`](https://github.com/geekmidas/toolbox/commit/087444c16591656ab7d85b7713939982231cb1f2) Thanks [@geekmidas](https://github.com/geekmidas)! - :boom: Queues and topics are constructs, and events name their topic (#110)
+
   - A queue is built from a worker, `worker.queue('Emails').message(schema).handle(…)`: the queue and its one consumer, one construct. `q` and the public `QueueBuilder` export are gone. A producer depends on it, `.dependsOn([emails])`, and sends through `services.emails`.
   - ✨ A topic is `new Topic('Users', { events })`. `t` and `TopicBuilder` are gone.
   - 🔥 `.publisher(service)` is gone everywhere: from `RestApi`, endpoint, function, cron and subscriber builders, and `Worker`. A construct publishes with `.event(users, { type, payload, when? })`, repeatable across topics; each event goes through its own topic's publisher, and the topic lands in `services` exactly as `.dependsOn([users])` would put it. `Topic.publisher`, `Queue.publisher`, `derivedFrom` and `edgesWith` are deleted.
@@ -474,6 +531,7 @@
 ### Patch Changes
 
 - [#107](https://github.com/geekmidas/toolbox/pull/107) [`5475a96`](https://github.com/geekmidas/toolbox/commit/5475a96d1d8ee0c99109c65cba76f7e269f42265) Thanks [@geekmidas](https://github.com/geekmidas)! - `ExternalApi` for third-party HTTP APIs, `<ID>_CREDENTIALS`, and `faker` and `signIn()` in feature tests
+
   - **`ExternalApi`** (`@geekmidas/constructs/external-api`) declares an API
     somebody else runs: a `url`, one string or one per stage name with a
     `default`, a `credentials` schema, and the `client` a handler is given. It
@@ -539,6 +597,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
     - 🔥 **Removed:** `getAppNameFromCwd` and `getAppNameFromPackageJson`.
 
   **Moving an existing app:**
+
   - Rename every `<ID>_CREDENTIAL` secret to `<ID>_CREDENTIALS` and set it on
     each deployed stage: `gkm secrets:set STRIPE_CREDENTIALS '{…}' --stage production`.
   - A custom `secrets.store` provider renames `pull` to `read` and `push` to
@@ -574,6 +633,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
   forgets the test stage's reconcile state. The next run then creates, migrates
   and seeds them from nothing, so an edited migration is applied again instead of
   being skipped because it already ran.
+
   - **What gets dropped:** setup records the databases it provisioned, and the
     Postgres port, in `.gkm/test-ready.json`. Only those are dropped, and any name
     without the `_test` suffix is refused (`NotATestDatabase`), because the
@@ -601,6 +661,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
 ### Patch Changes
 
 - ✨ [#103](https://github.com/geekmidas/toolbox/pull/103) [`95cef66`](https://github.com/geekmidas/toolbox/commit/95cef66e07893be917b5d560a06618c60504b94e) Thanks [@geekmidas](https://github.com/geekmidas)! - `MobileApp`: one scheme for every stage, and the app adds `expo()` itself
+
   - **One scheme.** A mobile app's scheme is the project's name (`shop`), or the
     one its construct gives, on every stage: local, test and deployed. It was
     suffixed locally (`shop-dev`). `appScheme` is gone from `@geekmidas/manifest`,
@@ -619,6 +680,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
     checked. `gkm init` with Expo writes `expo()` into `constructs/auth.ts`.
 
   **Moving an existing app:**
+
   - ✨ add `import { expo } from '@better-auth/expo'` and `options: { plugins: [expo()] }`
     to the auth construct;
   - 🐛 install `@better-auth/expo` where that file resolves its imports;
@@ -652,6 +714,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
 
   Like a `StaticSite`, its `.dependsOn()` is the single fact everything a mobile
   app otherwise writes down by hand is derived from:
+
   - **Shaped like `StaticSite`:** `path`, `port?`, `config?` and
     `variant?` (`'expo'`), plus `scheme?`. A mobile app is given a port in the
     same stable order, and `gkm exec` hands it to Expo as `RCT_METRO_PORT`.
@@ -728,6 +791,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
   resolves its imports from the root `node_modules`, but testkit and faker were
   only installed for the API app, so a freshly scaffolded monorepo's tests failed
   with `Cannot find package '@geekmidas/testkit'`.
+
   - ✨ **Root dependencies:** with a database, the root `package.json` now adds
     `@geekmidas/testkit` and `@faker-js/faker`, plus `kysely` in an API
     monorepo, whose root installs nothing for constructs.
@@ -749,6 +813,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
   `roleStatements` now takes `database` for a database construct's roles and
   adds `GRANT CREATE ON DATABASE <database> TO <owner>`. All three provisioners
   pass it for a database, and only for a database:
+
   - reconcile (`gkm dev`, `gkm test`, `gkm migrate`);
   - the Dokploy deploy;
   - the AWS bootstrap Lambda.
@@ -828,6 +893,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
   now, and nothing opens before it's used. `featureTest({ database })` is gone.
 
   **Moving an existing project:**
+
   - move the factory to `test/factories/database.ts` at the root, keeping its
     `createFactory(db)` export;
   - replace `createFactory(db)` with `await factories.get('database')`;
@@ -866,6 +932,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
   re-runs. A file left at the old level is refused with `MigrationsOutsideFolder`
   rather than silently never running, and any other folder beside the two with
   `UnknownDatabaseFolder`.
+
   - **Seeds are reference data:** a permission catalogue, roles and their grants,
     lookup tables. A `.ts` exporting `seed(db, { stage })`, or `.sql`, run in name order,
     each in its own transaction, as the construct's owner. There is no history:
@@ -938,6 +1005,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
   `db/auth-database/`. Which constructs those are, in what order, from which
   folder, is `migrationTargets(manifest)` in `@geekmidas/manifest`, and nothing
   else decides it.
+
   - `gkm migrate [construct] [--stage test]` reconciles the stage (containers,
     roles, grants) and applies each folder as that construct's **owner** role —
     never the runtime one, never a fallback — parents before tenants. Each
@@ -990,6 +1058,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
   use the same plugins the app does.
 
 - [#92](https://github.com/geekmidas/toolbox/pull/92) [`0bad964`](https://github.com/geekmidas/toolbox/commit/0bad9649b6316fbaf40e7fb5ea46c64de2509e72) Thanks [@geekmidas](https://github.com/geekmidas)! - The scaffold writes no hand-rolled services
+
   - A workspace API's `src/services/database.ts` (its own pool, its own snake_case
     copy of the schema) is gone. Its tests connect through the root database
     construct, and Studio builds its client from `database.clientConfig`.
@@ -1038,6 +1107,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
   runs.
 
   Found with it, in `@geekmidas/constructs`:
+
   - `api.database(db)` (and a function's or cron's `.database(db)`) wired the
     database's service but never recorded the edge, so nothing composed from the
     edges — a container's environment, a deploy's grants — knew the endpoint
@@ -1050,6 +1120,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
     endpoint's are — `options: async ({ services }) => …services.mail…`.
 
 - [#89](https://github.com/geekmidas/toolbox/pull/89) [`6b7d566`](https://github.com/geekmidas/toolbox/commit/6b7d566e5ea9da2cbe94180aa2991a9892cc3515) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm dev` says each thing once, at the address you use
+
   - Each app is listed once: `api  https://api.shop.localhost:28006 -> http://localhost:3000` — the address it is reached at behind the edge, and the local port the edge forwards to. The per-app banner that printed `Local: http://localhost:3000` as if that were the address is one line now: `✓ api ready in 1.0s  https://… -> http://localhost:3000`, followed by the dev tools it actually mounts (none, for an auth server).
   - The build dev runs is quiet — its counts, generated files, manifest and OpenAPI output are `gkm build`'s. So are the watcher's globs and file counts, the secrets count (mostly addresses), and the warning that no local-stage secrets exist: reconcile derives them.
   - Servers start through the app's own tsx rather than `npx tsx`, which printed the developer's npm config warnings on every start.
@@ -1113,6 +1184,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
 ### Patch Changes
 
 - [#87](https://github.com/geekmidas/toolbox/pull/87) [`ff05e7c`](https://github.com/geekmidas/toolbox/commit/ff05e7c99720e80996ca0ae4caa7f86dd0305f0c) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm dev` keeps every app on its provisioned port, on its HTTPS address
+
   - An app in a workspace no longer drifts to the next free port when its own
     is taken. Every other app's URL, CORS origins and cookie domain name that
     port, and the next free one was usually another app's — two backends ended
@@ -1156,6 +1228,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
   `server()`), not inferred from a glob that found nothing.
 
   Also fixed on the way, each found by running `gkm dev` against a real app:
+
   - The generated `subscribers.ts` and `queues.ts` imported `@geekmidas/events`
     even when the app declared no Topic or Queue, so any app without that package
     installed crashed in dev.
@@ -1257,6 +1330,7 @@ from`. The generated entry reads its logger and env parser off the `RestApi` it
   `gkm test` already discovered an app's constructs and resolved its test stage —
   then threw both away and left a test to declare them again, environment keys
   included. It now writes `.gkm/test/` into each app:
+
   - `manifest.json` — every construct and endpoint's source (file and export) and
     the test stage's environment, keyed as the constructs derive their keys;
   - `clients/<surface>.ts` — each surface's typed client, from the generator
@@ -1308,6 +1382,7 @@ from '#test'` — no construct, environment key or client written by hand.
   `@geekmidas/constructs/testing` gains `featureTest`: a browser signs in and calls
   the API, the API asks the auth server who is calling, each over its URL, and
   every database is in its own transaction, rolled back after the test.
+
   - Each surface's endpoints and each `BetterAuth` server are served in-process
     through MSW, from the real handler, for the test a request was made for —
     found from the `x-test-context-id` header, including on a request the code
@@ -1494,6 +1569,7 @@ from '#test'` — no construct, environment key or client written by hand.
   `.gkm/` is gitignored, so the encrypted secrets file a deploy decrypts was
   never on a CI runner. `secrets.store` says where a deployed stage's secrets
   live instead:
+
   - `'file'` (default) — the encrypted `.gkm/secrets/<stage>.json`, as before.
   - `{ provider: 'ssm', region }` — one `SecureString` per stage,
     `/gkm/<name>/<stage>/secrets`, in the AWS account of the active credentials.
@@ -1598,6 +1674,7 @@ from '#test'` — no construct, environment key or client written by hand.
 ### Patch Changes
 
 - [#58](https://github.com/geekmidas/toolbox/pull/58) [`07d1827`](https://github.com/geekmidas/toolbox/commit/07d1827bb0a2a76d04a0fc25a7517df282004137) Thanks [@geekmidas](https://github.com/geekmidas)! - The build and test toolchain moves to its latest versions (tranche 2)
+
   - **tsx 4.23, tsdown 0.23.** The CLI runs TypeScript through tsx, so its
     `tsx` dependency moves with it.
   - **Vite 8, `@vitejs/plugin-react` 6** for the Studio and Telescope UIs, which
@@ -1855,6 +1932,7 @@ dev`, `exec`, `setup` and `test` run as `stages.local` (it was `development`,
   `apps/web`'s `~` — silently, to the wrong file — when the command ran there.
 
   The fullstack scaffold did not build. What it gets now:
+
   - **The root `constructs/` folder's dependencies at the root**, where it
     resolves them: `@geekmidas/constructs` and the peers each declared construct
     needs. The root tsconfig allows the `.ts` imports they use.
@@ -2359,6 +2437,7 @@ auth_token=…` yielded the attacker's value; `@geekmidas/client` and
 
   Unlike `s` (topic fan-out, filtered by `subscribedEvents`), a queue drains
   _every_ message of its one typed `message`.
+
   - **Producer side** — `orders.publisher`, a ready-to-inject `Service` typed to
     the queue's message. Drop it into any `.services([...])` and call
     `services.ordersPublisher.publish([{ type: 'orders', payload }])`. It reads
@@ -2371,6 +2450,7 @@ auth_token=…` yielded the attacker's value; `@geekmidas/client` and
     (`@geekmidas/constructs/testing`).
 
   **`@geekmidas/cli`** — `gkm build`/`gkm dev` discover `q` definitions:
+
   - ✨ New `queues: './src/queues/**/*.ts'` config glob.
   - Server / `gkm dev`: an in-process pg-boss poller (`setupQueues()`) runs
     alongside the Hono server — each queue subscribes by its name on the shared
@@ -2433,6 +2513,7 @@ auth_token=…` yielded the attacker's value; `@geekmidas/client` and
 
   `@geekmidas/cloud/sst` constructs gain static `fromManifest` factories that map
   a manifest straight into infrastructure:
+
   - `Api.fromManifest(stack, id, routesManifest, props)` — one route per
     `RouteInfo` (env vars, authorizer, timeout/memory mapped); supply
     `authorizers`/`links`/native args via `props`.
@@ -2448,6 +2529,7 @@ auth_token=…` yielded the attacker's value; `@geekmidas/client` and
   `gkm build` emits a single TypeScript module per provider
   (`export const manifest = { routes, functions, crons, subscribers } as const`),
   not separate JSON files. `@geekmidas/manifest` now models that:
+
   - a unified `Manifest` type plus `ManifestField<T>` (a field is a flat
     `readonly T[]` or a partitioned `Record<string, readonly T[]>`) and a
     `flattenManifestField` helper;

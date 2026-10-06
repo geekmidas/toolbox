@@ -26,12 +26,8 @@
     "@geekmidas/schema": "9.0.2",
     "@geekmidas/services": "9.0.2",
     "@geekmidas/storage": "9.0.2",
-    "@geekmidas/studio": "9.0.2",
-    "@geekmidas/studio-ui": "1.0.2",
     "@geekmidas/telescope": "9.0.2",
-    "@geekmidas/telescope-ui": "1.0.0",
-    "@geekmidas/testkit": "9.0.2",
-    "@geekmidas/ui": "9.0.2"
+    "@geekmidas/testkit": "9.0.2"
   },
   "changesets": [
     "align-deps-tranche-1",
@@ -81,6 +77,7 @@
     "gkm-seed",
     "gkm-test-reliability",
     "harness-static-imports",
+    "headless-toolbox",
     "init-deploy-target",
     "init-github-actions",
     "init-logger-deps",
@@ -112,6 +109,7 @@
     "single-app-paths",
     "sns-push-subscribers",
     "sns-push-without-middy",
+    "ssm-lock-readback",
     "surface-has-no-app",
     "test-client-config",
     "test-db-teardown",

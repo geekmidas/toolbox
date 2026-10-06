@@ -1,46 +1,7 @@
 import { Writable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_REDACT_PATHS } from '../pino';
+import { createLogger } from '../pino';
 import type { RedactOptions } from '../types';
-
-/**
- * Type for the resolved pino redact config.
- */
-type PinoRedactConfig =
-	| string[]
-	| {
-			paths: string[];
-			censor?: string | ((value: unknown, path: string[]) => unknown);
-			remove?: boolean;
-	  };
-
-/**
- * Resolves redact options to pino-compatible config, applying merge logic.
- */
-function resolveRedactConfig(
-	redact: RedactOptions | undefined,
-): PinoRedactConfig | undefined {
-	if (redact === undefined) {
-		return undefined;
-	}
-
-	// Array syntax - merge with defaults
-	if (Array.isArray(redact)) {
-		return [...DEFAULT_REDACT_PATHS, ...redact];
-	}
-
-	// Object syntax - check resolution mode
-	const { resolution = 'merge', paths, censor, remove } = redact;
-
-	const resolvedPaths =
-		resolution === 'override' ? paths : [...DEFAULT_REDACT_PATHS, ...paths];
-
-	const config: PinoRedactConfig = { paths: resolvedPaths };
-	if (censor !== undefined) config.censor = censor;
-	if (remove !== undefined) config.remove = remove;
-
-	return config;
-}
 
 /**
  * Creates a writable stream that captures pino output as parsed JSON objects.
@@ -66,28 +27,16 @@ function createCaptureStream() {
 }
 
 /**
- * Creates a logger that writes to a capture stream for testing.
- * Note: We can't use pretty mode here as it's not JSON parseable.
+ * The real `createLogger`, writing to a capture stream so its output can be
+ * read back. Pretty mode is not JSON, so it is never used here.
  */
-function createTestLogger(redact: RedactOptions | undefined) {
+function createTestLogger(redact?: boolean | RedactOptions) {
 	const { stream, logs } = createCaptureStream();
 
-	// Import pino directly to create with custom destination
-	const { pino } = require('pino');
-
-	// Apply our merge logic before passing to pino
-	const resolvedRedact = resolveRedactConfig(redact);
-
-	const logger = pino(
-		{
-			redact: resolvedRedact,
-			// Disable pretty for JSON parsing
-			formatters: {
-				level: (label: string) => ({ level: label }),
-			},
-		},
-		stream,
-	);
+	const logger = createLogger({
+		...(redact !== undefined && { redact }),
+		destination: stream,
+	});
 
 	return { logger, logs };
 }
@@ -95,10 +44,9 @@ function createTestLogger(redact: RedactOptions | undefined) {
 describe('Pino Redaction Integration', () => {
 	describe('with redact: true (default paths)', () => {
 		it('should redact password field', () => {
-			const { logger, logs } = createTestLogger(DEFAULT_REDACT_PATHS);
+			const { logger, logs } = createTestLogger(true);
 
 			logger.info({ password: 'secret123', username: 'john' }, 'Login attempt');
-			logger.flush?.();
 
 			expect(logs).toHaveLength(1);
 			expect(logs[0].password).toBe('[Redacted]');
@@ -106,10 +54,9 @@ describe('Pino Redaction Integration', () => {
 		});
 
 		it('should redact token field', () => {
-			const { logger, logs } = createTestLogger(DEFAULT_REDACT_PATHS);
+			const { logger, logs } = createTestLogger(true);
 
 			logger.info({ token: 'jwt.token.here', userId: 123 }, 'Auth check');
-			logger.flush?.();
 
 			expect(logs).toHaveLength(1);
 			expect(logs[0].token).toBe('[Redacted]');
@@ -117,10 +64,9 @@ describe('Pino Redaction Integration', () => {
 		});
 
 		it('should redact apiKey field', () => {
-			const { logger, logs } = createTestLogger(DEFAULT_REDACT_PATHS);
+			const { logger, logs } = createTestLogger(true);
 
 			logger.info({ apiKey: 'sk-1234567890', service: 'openai' }, 'API call');
-			logger.flush?.();
 
 			expect(logs).toHaveLength(1);
 			expect(logs[0].apiKey).toBe('[Redacted]');
@@ -128,7 +74,7 @@ describe('Pino Redaction Integration', () => {
 		});
 
 		it('should redact nested sensitive fields with wildcards', () => {
-			const { logger, logs } = createTestLogger(DEFAULT_REDACT_PATHS);
+			const { logger, logs } = createTestLogger(true);
 
 			logger.info(
 				{
@@ -137,7 +83,6 @@ describe('Pino Redaction Integration', () => {
 				},
 				'Nested data',
 			);
-			logger.flush?.();
 
 			expect(logs).toHaveLength(1);
 			expect(logs[0].user).toEqual({ password: '[Redacted]', name: 'John' });
@@ -145,7 +90,7 @@ describe('Pino Redaction Integration', () => {
 		});
 
 		it('should redact authorization headers', () => {
-			const { logger, logs } = createTestLogger(DEFAULT_REDACT_PATHS);
+			const { logger, logs } = createTestLogger(true);
 
 			logger.info(
 				{
@@ -156,7 +101,6 @@ describe('Pino Redaction Integration', () => {
 				},
 				'Request headers',
 			);
-			logger.flush?.();
 
 			expect(logs).toHaveLength(1);
 			expect(logs[0].headers).toEqual({
@@ -166,7 +110,7 @@ describe('Pino Redaction Integration', () => {
 		});
 
 		it('should redact credit card fields', () => {
-			const { logger, logs } = createTestLogger(DEFAULT_REDACT_PATHS);
+			const { logger, logs } = createTestLogger(true);
 
 			logger.info(
 				{
@@ -176,7 +120,6 @@ describe('Pino Redaction Integration', () => {
 				},
 				'Payment info',
 			);
-			logger.flush?.();
 
 			expect(logs).toHaveLength(1);
 			expect(logs[0].creditCard).toBe('[Redacted]');
@@ -197,7 +140,6 @@ describe('Pino Redaction Integration', () => {
 				},
 				'Merged redaction',
 			);
-			logger.flush?.();
 
 			expect(logs).toHaveLength(1);
 			expect(logs[0].customSecret).toBe('[Redacted]');
@@ -219,7 +161,6 @@ describe('Pino Redaction Integration', () => {
 				},
 				'Array redaction',
 			);
-			logger.flush?.();
 
 			expect(logs).toHaveLength(1);
 			expect(logs[0].password).toBe('[Redacted]');
@@ -245,7 +186,6 @@ describe('Pino Redaction Integration', () => {
 				},
 				'Override redaction',
 			);
-			logger.flush?.();
 
 			expect(logs).toHaveLength(1);
 			expect(logs[0].customSecret).toBe('[Redacted]');
@@ -263,7 +203,6 @@ describe('Pino Redaction Integration', () => {
 			});
 
 			logger.info({ password: 'secret', user: 'john' }, 'Custom censor');
-			logger.flush?.();
 
 			expect(logs).toHaveLength(1);
 			expect(logs[0].password).toBe('***HIDDEN***');
@@ -280,7 +219,6 @@ describe('Pino Redaction Integration', () => {
 				{ password: 'secret', secret: 'shh', username: 'john' },
 				'Remove mode',
 			);
-			logger.flush?.();
 
 			expect(logs).toHaveLength(1);
 			expect(logs[0]).not.toHaveProperty('password');
@@ -289,15 +227,48 @@ describe('Pino Redaction Integration', () => {
 		});
 	});
 
+	describe('by default', () => {
+		it('should redact sensitive fields when redact is not set', () => {
+			const { logger, logs } = createTestLogger();
+
+			logger.info(
+				{
+					password: 'secret123',
+					token: 'jwt.token.here',
+					headers: { authorization: 'Bearer xyz123' },
+					username: 'john',
+				},
+				'Login attempt',
+			);
+
+			expect(logs).toHaveLength(1);
+			expect(logs[0].password).toBe('[Redacted]');
+			expect(logs[0].token).toBe('[Redacted]');
+			expect(logs[0].headers).toEqual({ authorization: '[Redacted]' });
+			expect(logs[0].username).toBe('john');
+		});
+
+		it('should redact every default path when redact is not set', () => {
+			const { logger, logs } = createTestLogger();
+
+			logger.info(
+				{ apiKey: 'sk-1234567890', creditCard: '4111-1111-1111-1111' },
+				'Defaults',
+			);
+
+			expect(logs[0].apiKey).toBe('[Redacted]');
+			expect(logs[0].creditCard).toBe('[Redacted]');
+		});
+	});
+
 	describe('without redaction', () => {
-		it('should not redact when redact is undefined', () => {
-			const { logger, logs } = createTestLogger(undefined);
+		it('should not redact when redact is false', () => {
+			const { logger, logs } = createTestLogger(false);
 
 			logger.info(
 				{ password: 'visible', token: 'also-visible' },
 				'No redaction',
 			);
-			logger.flush?.();
 
 			expect(logs).toHaveLength(1);
 			expect(logs[0].password).toBe('visible');

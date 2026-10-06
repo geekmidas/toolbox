@@ -1,7 +1,26 @@
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { defineConfig } from 'tsdown';
 
+/**
+ * The packages to build: every directory under `packages/` that is one.
+ *
+ * Not the bare `packages/*` glob: a package removed from git leaves its
+ * untracked `dist` and `node_modules` behind in every existing checkout, and
+ * tsdown resolves such a directory to the root package and stops with
+ * "Cannot find entry".
+ */
+const root = import.meta.dirname;
+const packages = readdirSync(join(root, 'packages'), { withFileTypes: true })
+	.filter(
+		(entry) =>
+			entry.isDirectory() &&
+			existsSync(join(root, 'packages', entry.name, 'package.json')),
+	)
+	.map((entry) => `packages/${entry.name}`);
+
 export default defineConfig({
-	workspace: ['packages/*'],
+	workspace: packages,
 	clean: true,
 	outDir: 'dist',
 	// Every file under `src/`, as `'src/'` meant before tsdown 0.23 stopped

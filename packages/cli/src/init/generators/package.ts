@@ -13,7 +13,7 @@ export function generatePackageJson(
 	options: TemplateOptions,
 	template: TemplateConfig,
 ): GeneratedFile[] {
-	const { name, telescope, studio, monorepo } = options;
+	const { name, telescope, monorepo } = options;
 	const { database, cache, uploads, mail } = options.constructs;
 
 	// Start with template dependencies
@@ -31,10 +31,6 @@ export function generatePackageJson(
 	if (telescope) {
 		dependencies['@geekmidas/telescope'] =
 			GEEKMIDAS_VERSIONS['@geekmidas/telescope'];
-	}
-
-	if (studio) {
-		dependencies['@geekmidas/studio'] = GEEKMIDAS_VERSIONS['@geekmidas/studio'];
 	}
 
 	// Only a project that declares constructs needs them. The workspace path

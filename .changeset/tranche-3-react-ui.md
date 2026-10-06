@@ -1,5 +1,4 @@
 ---
-'@geekmidas/ui': patch
 '@geekmidas/client': patch
 '@geekmidas/cli': patch
 ---

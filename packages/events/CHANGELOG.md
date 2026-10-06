@@ -1,5 +1,19 @@
 # @geekmidas/events
 
+## 10.0.0-alpha.57
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/schema@10.0.0-alpha.57
+
+## 10.0.0-alpha.56
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/schema@10.0.0-alpha.56
+
 ## 10.0.0-alpha.55
 
 ### Patch Changes
@@ -306,6 +320,7 @@
 
   Every bare `throw new Error` in `@geekmidas/cloud` and `@geekmidas/events` is a
   named class now, matched by class rather than message text:
+
   - `@geekmidas/cloud`: `DokployCallFailed` (a Dokploy API call answered with an
     error status: `path`, `status`, `statusText`, `detail`) and
     `RoutesMissingEnvironment` (routes reading variables nothing links).
@@ -506,6 +521,7 @@ auth_token=…` yielded the attacker's value; `@geekmidas/client` and
   `gkm build` emits a single TypeScript module per provider
   (`export const manifest = { routes, functions, crons, subscribers } as const`),
   not separate JSON files. `@geekmidas/manifest` now models that:
+
   - a unified `Manifest` type plus `ManifestField<T>` (a field is a flat
     `readonly T[]` or a partitioned `Record<string, readonly T[]>`) and a
     `flattenManifestField` helper;

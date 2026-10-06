@@ -156,13 +156,13 @@ describe('Pino Logger', () => {
 	});
 
 	describe('Redaction', () => {
-		it('should not configure redaction when redact is undefined', async () => {
+		it('should use default redact paths when redact is undefined', async () => {
 			const { createLogger } = await import('../pino');
 
 			createLogger({});
 
 			const callArgs = pinoMock.mock.calls[pinoMock.mock.calls.length - 1][0];
-			expect(callArgs.redact).toBeUndefined();
+			expect(callArgs.redact).toEqual(DEFAULT_REDACT_PATHS);
 		});
 
 		it('should not configure redaction when redact is false', async () => {

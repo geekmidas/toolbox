@@ -6,7 +6,6 @@ import type {
 } from '../adapters/types';
 import type { Telescope } from '../Telescope';
 import type { MetricsQueryOptions, QueryOptions } from '../types';
-import { getAsset, getIndexHtml } from '../ui-assets';
 
 // Lazy-loaded telemetry flush function (only loads @opentelemetry/* when actually used)
 let _flushTelemetry: (() => Promise<void>) | null = null;
@@ -223,9 +222,17 @@ function parseMetricsQueryOptions(c: Context): MetricsQueryOptions {
 }
 
 /**
- * Create Hono app with dashboard UI and API routes
+ * Telescope's JSON API: requests, exceptions, logs, stats and metrics under
+ * `/api/*`. Headless — there is no dashboard; anything can be built on the
+ * JSON, and live updates come from the WebSocket feed (`setupWebSocket`).
+ *
+ * @example
+ * ```typescript
+ * app.route('/__telescope', createApi(telescope));
+ * // GET /__telescope/api/requests
+ * ```
  */
-export function createUI(telescope: Telescope): Hono {
+export function createApi(telescope: Telescope): Hono {
 	const app = new Hono();
 
 	// API routes
@@ -309,44 +316,6 @@ export function createUI(telescope: Telescope): Hono {
 	app.delete('/api/metrics', (c) => {
 		telescope.resetMetrics();
 		return c.json({ success: true });
-	});
-
-	// Static assets
-	app.get('/assets/:filename', (c) => {
-		const filename = c.req.param('filename');
-		const assetPath = `assets/${filename}`;
-		const asset = getAsset(assetPath);
-		if (asset) {
-			return c.body(asset.content, 200, {
-				'Content-Type': asset.contentType,
-				'Cache-Control': 'public, max-age=31536000, immutable',
-			});
-		}
-		return c.notFound();
-	});
-
-	// Dashboard UI - serve React app
-	app.get('/', (c) => {
-		const html = getIndexHtml();
-		if (!html) {
-			return c.text(
-				'Telescope UI not available. Run "pnpm build:ui" first.',
-				500,
-			);
-		}
-		return c.html(html);
-	});
-
-	app.get('/*', (c) => {
-		// SPA fallback - serve index.html for client-side routing
-		const html = getIndexHtml();
-		if (!html) {
-			return c.text(
-				'Telescope UI not available. Run "pnpm build:ui" first.',
-				500,
-			);
-		}
-		return c.html(html);
 	});
 
 	return app;

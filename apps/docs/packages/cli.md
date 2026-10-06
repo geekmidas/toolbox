@@ -50,7 +50,7 @@ gkm init my-project --monorepo --api-path apps/api
     Serverless - AWS Lambda handlers
     Worker - Background job processing
 
-? Include Telescope (debugging dashboard)? › Yes
+? Include Telescope (request, exception and log recording)? › Yes
 ? Include database support (Kysely)? › Yes
 ? Logger: ›
   ❯ Pino - Fast JSON logger for production (recommended)
@@ -174,8 +174,8 @@ gkm build --provider server --production
 **Production Build:**
 
 When using `--production`, the build:
-- Excludes Telescope debugging dashboard
-- Excludes Studio database browser
+- Excludes Telescope
+- Excludes the database API
 - Excludes WebSocket setup
 - Adds health check endpoints (`/health`, `/ready`)
 - Adds graceful shutdown handling
@@ -404,7 +404,7 @@ gkm dev --source "./src/endpoints/**/*.ts" --port 3000
 
 **Features:**
 - Hot reload on file changes
-- Telescope debugging dashboard integration
+- Telescope JSON API at `/__telescope/api`, and the declared database's read-only JSON API at `/__gkm/db`
 - **Automatic OpenAPI generation** on startup and file changes (when enabled in config)
 - **Dynamic Docker port resolution** — automatically avoids port conflicts between projects
 - **Automatic subscriber startup** — discovers and starts topic subscribers and queue consumers
@@ -640,7 +640,7 @@ export default defineConfig({
   // Logger module (named export)
   logger: './src/config/logger#logger',
 
-  // Telescope debugging dashboard (optional)
+  // Telescope request recording (optional)
   telescope: {
     enabled: true,
     path: '/__telescope',
@@ -718,7 +718,7 @@ in the same process.
 | Feature | Development | Production |
 |---------|-------------|------------|
 | Telescope | ✓ | ✗ |
-| Studio | ✓ | ✗ |
+| Database API | ✓ | ✗ |
 | WebSocket | ✓ | ✗ |
 | Health Check | ✗ | ✓ |
 | Graceful Shutdown | ✗ | ✓ |
@@ -914,7 +914,7 @@ export async function afterSetup(app: Hono, ctx: HookContext) {
 1. Create Hono app
 2. Telescope middleware (captures all requests)
 3. → beforeSetup() hook
-4. Studio UI (if enabled)
+4. Database API at /__gkm/db (if a database is declared)
 5. gkm endpoints
 6. → afterSetup() hook
 ```

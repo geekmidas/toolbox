@@ -1,12 +1,15 @@
 /**
  * Pino logger with built-in redaction support for sensitive data.
  *
+ * Redaction is on by default: a logger that was never told about passwords
+ * and tokens still masks them. `redact: false` is the explicit opt-out.
+ *
  * @example
  * ```typescript
  * import { createLogger, DEFAULT_REDACT_PATHS } from '@geekmidas/logger/pino';
  *
- * // Enable redaction with sensible defaults
- * const logger = createLogger({ redact: true });
+ * // Redaction with sensible defaults — the same as `redact: true`
+ * const logger = createLogger();
  *
  * // Sensitive data is automatically masked
  * logger.info({ password: 'secret123', user: 'john' }, 'Login');
@@ -46,7 +49,9 @@ type PinoRedactConfig =
 
 /**
  * Resolves redaction configuration from options.
- * Returns undefined if redaction is disabled, or a pino-compatible redact config.
+ * Returns undefined only when redaction is turned off with `false`; leaving it
+ * unset is the same as `true`, so sensitive paths are masked unless someone
+ * decides they should not be.
  *
  * By default (resolution: 'merge'), custom paths are merged with DEFAULT_REDACT_PATHS.
  * With resolution: 'override', only the custom paths are used.
@@ -54,11 +59,11 @@ type PinoRedactConfig =
 function resolveRedactConfig(
 	redact: boolean | RedactOptions | undefined,
 ): PinoRedactConfig | undefined {
-	if (redact === undefined || redact === false) {
+	if (redact === false) {
 		return undefined;
 	}
 
-	if (redact === true) {
+	if (redact === undefined || redact === true) {
 		return DEFAULT_REDACT_PATHS;
 	}
 
@@ -89,14 +94,14 @@ function resolveRedactConfig(
  *
  * @example
  * ```typescript
- * // Basic logger
+ * // Basic logger — sensitive paths are redacted by default
  * const logger = createLogger({ level: 'debug' });
  *
- * // With redaction enabled
- * const secureLogger = createLogger({ redact: true });
+ * // Opt out of redaction
+ * const rawLogger = createLogger({ redact: false });
  *
  * // Pretty printing in development
- * const devLogger = createLogger({ pretty: true, redact: true });
+ * const devLogger = createLogger({ pretty: true });
  * ```
  */
 export function createLogger(options: CreateLoggerOptions = {}) {
@@ -113,7 +118,7 @@ export function createLogger(options: CreateLoggerOptions = {}) {
 
 	const redact = resolveRedactConfig(options.redact);
 
-	return pino({
+	const pinoOptions = {
 		...baseOptions,
 		...(options.level && { level: options.level }),
 		...(redact && { redact }),
@@ -121,9 +126,15 @@ export function createLogger(options: CreateLoggerOptions = {}) {
 			bindings() {
 				return { nodeVersion: process.version };
 			},
-			level: (label) => {
+			level: (label: string) => {
 				return { level: label.toUpperCase() };
 			},
 		},
-	});
+	};
+
+	// A transport writes on its own worker, so a destination only applies when
+	// the logger is not pretty-printing.
+	return options.destination && !pretty
+		? pino(pinoOptions, options.destination)
+		: pino(pinoOptions);
 }

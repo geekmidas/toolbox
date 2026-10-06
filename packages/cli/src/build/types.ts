@@ -38,27 +38,24 @@ export interface NormalizedTelescopeConfig {
 	websocket: boolean;
 }
 
-export interface NormalizedStudioConfig {
-	enabled: boolean;
-	/** Path to user's studio module (if provided) */
-	studioPath?: string;
-	/** Import pattern for studio (e.g., '{ studio }' or 'studio') */
-	studioImportPattern?: string;
-	/** UI path for studio dashboard */
+/**
+ * Where `gkm dev` serves the database's read-only JSON API
+ * (`@geekmidas/db/introspect`). Under `/__gkm` with the rest of what the dev
+ * server adds, so it cannot collide with an application route.
+ */
+export const DEV_DATABASE_API_PATH = '/__gkm/db';
+
+/**
+ * The database the dev server's JSON API reads, and where it is declared.
+ *
+ * The API needs a client, and a client comes from a construct — so the entry
+ * imports the declaration discovery already found and resolves it there. One
+ * declared database is one browsable database; a project with none gets no
+ * API, which is the correct answer rather than a stub.
+ */
+export interface DevDatabaseApi {
 	path: string;
-	/** Database schema to introspect */
-	schema: string;
-	/**
-	 * The database Studio browses, and where it is declared.
-	 *
-	 * Studio needs a client, and a client comes from a construct — so rather
-	 * than a hand-written module that resolves one and a config string naming
-	 * that module, the entry imports the declaration discovery already found and
-	 * resolves it there. One declared database is one browsable database; a
-	 * project with none gets no Studio, which is the correct answer rather than
-	 * a stub.
-	 */
-	database?: { specifier: string; exportName: string };
+	database: { specifier: string; exportName: string };
 }
 
 export interface NormalizedHooksConfig {
@@ -115,7 +112,8 @@ export interface BuildContext {
 	};
 
 	telescope?: NormalizedTelescopeConfig;
-	studio?: NormalizedStudioConfig;
+	/** The dev server's database JSON API. Never set for `gkm build`. */
+	databaseApi?: DevDatabaseApi;
 	hooks?: NormalizedHooksConfig;
 	/** Production build configuration */
 	production?: NormalizedProductionConfig;
@@ -152,6 +150,11 @@ export interface BuildContext {
 	 * logger path from config.
 	 */
 	owners?: Record<string, { specifier: string; exportName: string }>;
+	/**
+	 * What the production entry starts OpenTelemetry with, when
+	 * `OTEL_EXPORTER_OTLP_ENDPOINT` asks for it — see `generators/telemetry.ts`.
+	 */
+	telemetry?: import('../generators/telemetry.js').TelemetryContext;
 }
 
 export interface ProviderBuildResult {

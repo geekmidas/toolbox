@@ -1,5 +1,49 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.57
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/audit@10.0.0-alpha.57
+  - @geekmidas/auth@10.0.0-alpha.57
+  - @geekmidas/cache@10.0.0-alpha.57
+  - @geekmidas/db@10.0.0-alpha.57
+  - @geekmidas/emailkit@10.0.0-alpha.57
+  - @geekmidas/envkit@10.0.0-alpha.57
+  - @geekmidas/errors@10.0.0-alpha.57
+  - @geekmidas/events@10.0.0-alpha.57
+  - @geekmidas/logger@10.0.0-alpha.57
+  - @geekmidas/manifest@10.0.0-alpha.57
+  - @geekmidas/rate-limit@10.0.0-alpha.57
+  - @geekmidas/schema@10.0.0-alpha.57
+  - @geekmidas/services@10.0.0-alpha.57
+  - @geekmidas/storage@10.0.0-alpha.57
+  - @geekmidas/telescope@10.0.0-alpha.57
+  - @geekmidas/testkit@10.0.0-alpha.57
+
+## 10.0.0-alpha.56
+
+### Patch Changes
+
+- Updated dependencies [[`efd9019`](https://github.com/geekmidas/toolbox/commit/efd9019cd2d8ec93dea462675da3ded175e732ee)]:
+  - @geekmidas/telescope@10.0.0-alpha.56
+  - @geekmidas/db@10.0.0-alpha.56
+  - @geekmidas/audit@10.0.0-alpha.56
+  - @geekmidas/auth@10.0.0-alpha.56
+  - @geekmidas/cache@10.0.0-alpha.56
+  - @geekmidas/emailkit@10.0.0-alpha.56
+  - @geekmidas/envkit@10.0.0-alpha.56
+  - @geekmidas/errors@10.0.0-alpha.56
+  - @geekmidas/events@10.0.0-alpha.56
+  - @geekmidas/logger@10.0.0-alpha.56
+  - @geekmidas/manifest@10.0.0-alpha.56
+  - @geekmidas/rate-limit@10.0.0-alpha.56
+  - @geekmidas/schema@10.0.0-alpha.56
+  - @geekmidas/services@10.0.0-alpha.56
+  - @geekmidas/storage@10.0.0-alpha.56
+  - @geekmidas/testkit@10.0.0-alpha.56
+
 ## 10.0.0-alpha.55
 
 ### Minor Changes
@@ -60,6 +104,7 @@
 - [#139](https://github.com/geekmidas/toolbox/pull/139) [`6fb1ce4`](https://github.com/geekmidas/toolbox/commit/6fb1ce4406c4dc8517b65923190af169c2aa70a7) Thanks [@geekmidas](https://github.com/geekmidas)! - SNS topic subscribers start under `gkm dev` without `@middy/core`
 
   `SnsPushSubscriberAdaptor` handed each pushed notification to `AWSLambdaSubscriber`, which imports `@middy/core`. middy is an optional peer that only Lambda needs, so a project that doesn't deploy to Lambda didn't install it, and every SNS subscriber logged `Failed to set up subscriber` with `ERR_MODULE_NOT_FOUND`. The push adaptor now runs the subscriber directly, with the same parsing, services, database and error handling as the Lambda adaptor. middy stays in the Lambda wrapper only.
+
   - 💥 **Breaking (alpha):** `SnsPushSubscriberAdaptor` moved from `@geekmidas/constructs/aws` to `@geekmidas/constructs/subscribers`. Every other export of `/aws` loads middy.
   - A subscriber that fails to set up now logs the error's message, which names the missing module.
   - A subscriber whose output fails its `.output()` schema throws `SubscriberOutputInvalid` instead of a bare `Error`.
@@ -215,6 +260,7 @@
 - [#124](https://github.com/geekmidas/toolbox/pull/124) [`10ef53d`](https://github.com/geekmidas/toolbox/commit/10ef53d921d519afa62c773a6682581e19c06b1e) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: `Encryption` — a key that encrypts what the application stores
 
   `new Encryption('Pii')` gives a handler that `.dependsOn([pii])` `services.pii.encrypt`, `decrypt`, `index` (a blind index, so an encrypted column can still be looked up) and `reencrypt`. The app names no cipher: the construct provides one `PII_URL` whose scheme picks the backend.
+
   - **Locally and in tests**, an `aes256gcm://` keyring derived from the project and stage, like a secret — nothing to set.
   - **On a server stage**, a keyring generated into the stage's secrets on its first deploy and never replaced by a redeploy.
   - **On AWS**, envelope encryption under a KMS key that rotates yearly, and a KMS HMAC key for the index, each granted to exactly the functions that depend on the construct (`kms:GenerateDataKey`/`kms:Decrypt`, `kms:GenerateMac`). `@aws-sdk/client-kms` is an optional peer, loaded only for a `kms://` URL.
@@ -268,6 +314,7 @@
 ### Patch Changes
 
 - 🐛 [#121](https://github.com/geekmidas/toolbox/pull/121) [`8dbf325`](https://github.com/geekmidas/toolbox/commit/8dbf325495de962ea5889459b31e2700dc4d6726) Thanks [@geekmidas](https://github.com/geekmidas)! - :bug: Each test's browser connects from its own address, and a session check carries the client's
+
   - ✨ **`Browser` has an `address`** — a fresh private one by default, or `new Browser({ address })` — sent as `x-forwarded-for` on its requests, the way a proxy in front of the app adds it. Each browser is a different person on a different connection. Without it every test was the same client to Better Auth (`127.0.0.1` in tests), so its rate limit counted every test in one row: concurrent tests queued on each other's uncommitted inserts into `rateLimit` until they ended — sign-ins refused and timeouts, more of them the bigger the suite. A request that sets the header itself keeps its own.
   - **A surface's session check forwards `x-forwarded-for`** with the session headers. Better Auth rate-limits `/get-session` too, by client; without the address every user's session check came from the surface itself — one shared bucket, so enough traffic from anyone turned session checks into 429s (`SessionCheckFailed`).
 
@@ -467,6 +514,7 @@
 ### Patch Changes
 
 - [#107](https://github.com/geekmidas/toolbox/pull/107) [`5475a96`](https://github.com/geekmidas/toolbox/commit/5475a96d1d8ee0c99109c65cba76f7e269f42265) Thanks [@geekmidas](https://github.com/geekmidas)! - `ExternalApi` for third-party HTTP APIs, `<ID>_CREDENTIALS`, and `faker` and `signIn()` in feature tests
+
   - **`ExternalApi`** (`@geekmidas/constructs/external-api`) declares an API
     somebody else runs: a `url`, one string or one per stage name with a
     `default`, a `credentials` schema, and the `client` a handler is given. It
@@ -532,6 +580,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
     - 🔥 **Removed:** `getAppNameFromCwd` and `getAppNameFromPackageJson`.
 
   **Moving an existing app:**
+
   - Rename every `<ID>_CREDENTIAL` secret to `<ID>_CREDENTIALS` and set it on
     each deployed stage: `gkm secrets:set STRIPE_CREDENTIALS '{…}' --stage production`.
   - A custom `secrets.store` provider renames `pull` to `read` and `push` to
@@ -588,6 +637,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
 ### Patch Changes
 
 - ✨ [#103](https://github.com/geekmidas/toolbox/pull/103) [`95cef66`](https://github.com/geekmidas/toolbox/commit/95cef66e07893be917b5d560a06618c60504b94e) Thanks [@geekmidas](https://github.com/geekmidas)! - `MobileApp`: one scheme for every stage, and the app adds `expo()` itself
+
   - **One scheme.** A mobile app's scheme is the project's name (`shop`), or the
     one its construct gives, on every stage: local, test and deployed. It was
     suffixed locally (`shop-dev`). `appScheme` is gone from `@geekmidas/manifest`,
@@ -606,6 +656,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
     checked. `gkm init` with Expo writes `expo()` into `constructs/auth.ts`.
 
   **Moving an existing app:**
+
   - ✨ add `import { expo } from '@better-auth/expo'` and `options: { plugins: [expo()] }`
     to the auth construct;
   - 🐛 install `@better-auth/expo` where that file resolves its imports;
@@ -645,6 +696,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
 
   Like a `StaticSite`, its `.dependsOn()` is the single fact everything a mobile
   app otherwise writes down by hand is derived from:
+
   - **Shaped like `StaticSite`:** `path`, `port?`, `config?` and
     `variant?` (`'expo'`), plus `scheme?`. A mobile app is given a port in the
     same stable order, and `gkm exec` hands it to Expo as `RCT_METRO_PORT`.
@@ -783,6 +835,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
   now, and nothing opens before it's used. `featureTest({ database })` is gone.
 
   **Moving an existing project:**
+
   - move the factory to `test/factories/database.ts` at the root, keeping its
     `createFactory(db)` export;
   - replace `createFactory(db)` with `await factories.get('database')`;
@@ -950,6 +1003,7 @@ config)` take it, and `featureTest` passes it for every test transaction.
   runs.
 
   Found with it, in `@geekmidas/constructs`:
+
   - `api.database(db)` (and a function's or cron's `.database(db)`) wired the
     database's service but never recorded the edge, so nothing composed from the
     edges — a container's environment, a deploy's grants — knew the endpoint
@@ -1039,6 +1093,7 @@ config)` take it, and `featureTest` passes it for every test transaction.
   `server()`), not inferred from a glob that found nothing.
 
   Also fixed on the way, each found by running `gkm dev` against a real app:
+
   - The generated `subscribers.ts` and `queues.ts` imported `@geekmidas/events`
     even when the app declared no Topic or Queue, so any app without that package
     installed crashed in dev.
@@ -1155,6 +1210,7 @@ Missing tables user, session, account, verification`, about the very tables it
   `gkm test` already discovered an app's constructs and resolved its test stage —
   then threw both away and left a test to declare them again, environment keys
   included. It now writes `.gkm/test/` into each app:
+
   - `manifest.json` — every construct and endpoint's source (file and export) and
     the test stage's environment, keyed as the constructs derive their keys;
   - `clients/<surface>.ts` — each surface's typed client, from the generator
@@ -1212,6 +1268,7 @@ from '#test'` — no construct, environment key or client written by hand.
   `@geekmidas/constructs/testing` gains `featureTest`: a browser signs in and calls
   the API, the API asks the auth server who is calling, each over its URL, and
   every database is in its own transaction, rolled back after the test.
+
   - Each surface's endpoints and each `BetterAuth` server are served in-process
     through MSW, from the real handler, for the test a request was made for —
     found from the `x-test-context-id` header, including on a request the code
@@ -1269,6 +1326,7 @@ from '#test'` — no construct, environment key or client written by hand.
 
   Handlers still get whatever `.session()` returned. Only a `.session()` branch
   asks the authenticator anything, so public routes pay nothing.
+
   - `RestApi.auth()` takes an `Authenticator` — a construct with
     `verify(headers, envParser) → session | null` — and keeps it.
   - `BetterAuth` implements it: `verify` asks the auth server for the session at
@@ -1291,6 +1349,7 @@ from '#test'` — no construct, environment key or client written by hand.
   is required exactly when something in it is.
 
   Three typing fixes came out of testing it, and apply to `api('…')` too:
+
   - **Routes declared with `:param` were uncallable.** `InferOpenApi` keyed them by
     the declared form (`/users/:id`) instead of the served one (`/users/{id}`), so
     no path parameter was inferred and the documented `api('GET /users/{id}')` did
@@ -1458,6 +1517,7 @@ from '#test'` — no construct, environment key or client written by hand.
 - [#65](https://github.com/geekmidas/toolbox/pull/65) [`9602a19`](https://github.com/geekmidas/toolbox/commit/9602a19a9b4fb9cecd2641d108976f73272df55e) Thanks [@geekmidas](https://github.com/geekmidas)! - The OpenAPI document validates, and says who may call what
 
   Checked against kitchen-sink with Redocly, swagger-parser and openapi-typescript:
+
   - **A registered schema kept its definition.** A schema with `.meta({ id })`
     came out as `User: { $ref: '#/components/schemas/User' }` — a pointer to
     itself, so the document had no `User` and validators refused it. Zod 4.6
@@ -1650,6 +1710,7 @@ from '#test'` — no construct, environment key or client written by hand.
   `apps/web`'s `~` — silently, to the wrong file — when the command ran there.
 
   The fullstack scaffold did not build. What it gets now:
+
   - **The root `constructs/` folder's dependencies at the root**, where it
     resolves them: `@geekmidas/constructs` and the peers each declared construct
     needs. The root tsconfig allows the `.ts` imports they use.
@@ -2085,6 +2146,7 @@ auth_token=…` yielded the attacker's value; `@geekmidas/client` and
 
   Unlike `s` (topic fan-out, filtered by `subscribedEvents`), a queue drains
   _every_ message of its one typed `message`.
+
   - **Producer side** — `orders.publisher`, a ready-to-inject `Service` typed to
     the queue's message. Drop it into any `.services([...])` and call
     `services.ordersPublisher.publish([{ type: 'orders', payload }])`. It reads
@@ -2097,6 +2159,7 @@ auth_token=…` yielded the attacker's value; `@geekmidas/client` and
     (`@geekmidas/constructs/testing`).
 
   **`@geekmidas/cli`** — `gkm build`/`gkm dev` discover `q` definitions:
+
   - ✨ New `queues: './src/queues/**/*.ts'` config glob.
   - Server / `gkm dev`: an in-process pg-boss poller (`setupQueues()`) runs
     alongside the Hono server — each queue subscribes by its name on the shared
@@ -2180,10 +2243,12 @@ auth_token=…` yielded the attacker's value; `@geekmidas/client` and
 ### Minor Changes
 
 - [#5](https://github.com/geekmidas/toolbox/pull/5) [`811d740`](https://github.com/geekmidas/toolbox/commit/811d740ae3875d59ad1b0dc50261266963c8cb76) Thanks [@geekmidas](https://github.com/geekmidas)! - Move the tRPC and Middy service integrations from `@geekmidas/constructs` to `@geekmidas/services`, where they belong — they depend only on `@geekmidas/services`, not on any construct.
+
   - ✨ **`@geekmidas/constructs`:** the `@geekmidas/constructs/trpc` and `@geekmidas/constructs/middy` entry points are removed (they were only just added). Import from `@geekmidas/services/trpc` and `@geekmidas/services/middy` instead. (`@trpc/server` is no longer a peer dependency of `@geekmidas/constructs`.)
   - ✨ **`@geekmidas/services`:** adds `/trpc` (`createServicesMiddleware`, `createRequestContextMiddleware`) and `/middy` (`requestContext`, `addServices`, `withServices`, `EventServices`) exports.
 
   The Middy middlewares were also tightened:
+
   - `requestContext` / `withServices` now require an explicit `logger` (no `ConsoleLogger` default) and are generic over `TLogger extends Logger`, so a custom logger type is preserved.
   - `addServices` / `withServices` now require an `envParser` (no implicit `process.env` default).
   - 🐛 Resolved services are attached to `event.services` (matching the `Function`/`Cron` constructs).
@@ -2199,6 +2264,7 @@ auth_token=…` yielded the attacker's value; `@geekmidas/client` and
 ### Minor Changes
 
 - ✨ [#4](https://github.com/geekmidas/toolbox/pull/4) [`07093f5`](https://github.com/geekmidas/toolbox/commit/07093f5f911bf1ee48e53275da3cce398cc78ff6) Thanks [@geekmidas](https://github.com/geekmidas)! - Add `@geekmidas/constructs/middy` — Middy middlewares that bring request context and service discovery to standalone Lambda handlers:
+
   - `requestContext(options?)` establishes a request context so `serviceContext.getLogger()` / `getRequestId()` / `getRequestStartTime()` work inside the handler and any service it calls.
   - 🐛 `addServices([...], options?)` resolves services via `ServiceDiscovery` and attaches the typed record to `event.services` (pair with `requestContext`, or use `withServices`, if your services read `serviceContext`).
   - `withServices([...], options?)` bundles both in a single `.use(...)`.
@@ -2332,6 +2398,7 @@ auth_token=…` yielded the attacker's value; `@geekmidas/client` and
 ### Patch Changes
 
 - ✨ [`83a24de`](https://github.com/geekmidas/toolbox/commit/83a24de902b3fadd98444cab552ecd84f32b6661) Thanks [@geekmidas](https://github.com/geekmidas)! - Add pg-boss event publisher/subscriber, CLI setup and upgrade commands, and secrets sync via AWS SSM
+
   - ✨ **@geekmidas/events**: Add pg-boss backend for event publishing and subscribing with connection string support
   - ✨ **@geekmidas/cli**: Add `gkm setup` command for dev environment initialization, `gkm upgrade` command with workspace detection, and secrets push/pull via AWS SSM Parameter Store
   - 🐛 **@geekmidas/testkit**: Fix database creation race condition in PostgresMigrator

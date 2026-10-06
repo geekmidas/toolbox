@@ -18,6 +18,7 @@ import {
 	type GeneratedConstruct,
 	type GeneratorOptions,
 } from './Generator';
+import { generateTelemetryModule } from './telemetry';
 
 /**
  * How a generated entry gets its logger and environment parser.
@@ -443,15 +444,6 @@ export async function setupEndpoints(
 		const telescopeWebSocketEnabled = context.telescope?.websocket;
 		const usesExternalTelescope = !!context.telescope?.telescopePath;
 
-		// Generate studio imports and setup if enabled
-		const studioEnabled = context.studio?.enabled;
-		const usesExternalStudio = !!context.studio?.studioPath;
-		// Studio from the declared database rather than from a module someone
-		// wrote to resolve one. Every input it takes is derivable: the client
-		// from the construct, the rest defaults.
-		const studioFromDatabase =
-			!usesExternalStudio && !!context.studio?.database;
-
 		// Generate imports based on whether telescope is external or inline
 		const telescopeFromSurface =
 			!!context.surface?.module && !usesExternalTelescope;
@@ -463,43 +455,29 @@ export async function setupEndpoints(
 				// been given a Telescope — an object, so only the running entry can
 				// tell. The inline one stands in when it was not.
 				telescopeImports = `import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
-import { createMiddleware, createUI } from '@geekmidas/telescope/hono';`;
+import { createApi, createMiddleware } from '@geekmidas/telescope/hono';`;
 			} else if (usesExternalTelescope) {
 				const relativeTelescopePath = relative(
 					dirname(appPath),
 					context.telescope?.telescopePath!,
 				);
 				telescopeImports = `import ${context.telescope?.telescopeImportPattern} from '${relativeTelescopePath}';
-import { createMiddleware, createUI } from '@geekmidas/telescope/hono';`;
+import { createApi, createMiddleware } from '@geekmidas/telescope/hono';`;
 			} else {
 				telescopeImports = `import { Telescope, InMemoryStorage } from '@geekmidas/telescope';
-import { createMiddleware, createUI } from '@geekmidas/telescope/hono';`;
+import { createApi, createMiddleware } from '@geekmidas/telescope/hono';`;
 			}
 		}
 
-		// Generate imports for studio
-		let studioImports = '';
-		if (studioEnabled) {
-			if (usesExternalStudio) {
-				const relativeStudioPath = relative(
-					dirname(appPath),
-					context.studio?.studioPath!,
-				);
-				studioImports = `import ${context.studio?.studioImportPattern} from '${relativeStudioPath}';
-import { createStudioApp } from '@geekmidas/studio/server/hono';`;
-			} else if (studioFromDatabase) {
-				const dbSpecifier = importSpecifier(
-					dirname(appPath),
-					context.studio!.database!.specifier,
-				);
-				studioImports = `import { snifferContext } from '@geekmidas/constructs';
-import { Direction, InMemoryMonitoringStorage, Studio } from '@geekmidas/studio';
-import { ${context.studio!.database!.exportName} as __studioDb } from '${dbSpecifier}';
-import { createStudioApp } from '@geekmidas/studio/server/hono';`;
-			} else {
-				studioImports = '';
-			}
-		}
+		// The database's read-only JSON API, from the declared database. The
+		// client comes from the construct, so what it reads is by definition what
+		// the handlers write to.
+		const databaseApi = context.databaseApi;
+		const databaseApiImports = databaseApi
+			? `import { snifferContext } from '@geekmidas/constructs';
+import { createIntrospectionHandler } from '@geekmidas/db/introspect';
+import { ${databaseApi.database.exportName} as __introspectedDb } from '${importSpecifier(dirname(appPath), databaseApi.database.specifier)}';`
+			: '';
 
 		// Generate imports for server hooks
 		const cors = corsFor(context.surface);
@@ -570,9 +548,9 @@ ${telescopeWebSocketSetupCode}
   // Add telescope middleware (before endpoints to capture all requests)
   honoApp.use('*', createMiddleware(telescope));
 
-  // Mount telescope UI
-  const telescopeUI = createUI(telescope);
-  honoApp.route('${context.telescope?.path}', telescopeUI);
+  // Mount Telescope's JSON API
+  const telescopeApi = createApi(telescope);
+  honoApp.route('${context.telescope?.path}', telescopeApi);
 `;
 			} else {
 				// Create inline telescope instance
@@ -590,38 +568,25 @@ ${telescopeWebSocketSetupCode}
   // Add telescope middleware (before endpoints to capture all requests)
   honoApp.use('*', createMiddleware(telescope));
 
-  // Mount telescope UI
-  const telescopeUI = createUI(telescope);
-  honoApp.route('${context.telescope?.path}', telescopeUI);
+  // Mount Telescope's JSON API
+  const telescopeApi = createApi(telescope);
+  honoApp.route('${context.telescope?.path}', telescopeApi);
 `;
 			}
 		}
 
-		// Generate studio setup - requires external instance
-		let studioSetup = '';
-		if (studioEnabled && studioFromDatabase) {
-			studioSetup = `
-  // Studio, built from the declared database. The client comes from the
-  // construct, so what you inspect is by definition what the handlers write to.
-  const studio = new Studio({
-    monitoring: { storage: new InMemoryMonitoringStorage({ maxEntries: 100 }) },
-    data: {
-      db: await __studioDb.service.register({ envParser, context: snifferContext }),
-      cursor: { field: 'id', direction: Direction.Desc },
-    },
-    enabled: true,
+		const databaseApiSetup = databaseApi
+			? `
+  // The database's structure and rows as JSON, read-only, for whatever tool
+  // the developer points at it. Dev only: it answers anyone who can reach the
+  // port.
+  const databaseApi = createIntrospectionHandler({
+    db: await __introspectedDb.service.register({ envParser, context: snifferContext }),
+    basePath: '${databaseApi.path}',
   });
-
-  const studioApp = createStudioApp(studio);
-  honoApp.route('${context.studio?.path}', studioApp);
-`;
-		} else if (studioEnabled && usesExternalStudio) {
-			studioSetup = `
-  // Mount Studio data browser UI
-  const studioApp = createStudioApp(studio);
-  honoApp.route('${context.studio?.path}', studioApp);
-`;
-		}
+  honoApp.all('${databaseApi.path}/*', (c) => databaseApi(c.req.raw));
+`
+			: '';
 
 		const content = `/**
  * Generated server application
@@ -638,7 +603,7 @@ import { setupQueues } from './queues.js';
 import { setupCrons } from './crons.js';
 ${runtime.imports}
 ${telescopeImports}
-${studioImports}
+${databaseApiImports}
 ${hooksImports}
 ${cors.imports}
 ${context.storageDrivers?.imports ?? ''}
@@ -720,7 +685,7 @@ process.env.GKM_APP_NAME ??= ${JSON.stringify(context.surface.id)};
  */
 export async function createApp(app?: HonoType, enableOpenApi: boolean = true): Promise<ServerApp> {
   const honoApp = app || new Hono();
-${telescopeSetup}${cors.setup}${beforeSetupCall}${studioSetup}
+${telescopeSetup}${cors.setup}${beforeSetupCall}${databaseApiSetup}
   // Setup HTTP endpoints
   await setupEndpoints(honoApp, envParser, logger, enableOpenApi);
 ${afterSetupCall}
@@ -1000,7 +965,7 @@ export default createApp;
 		await writeFile(appPath, content);
 
 		// Also generate the production server entry point
-		await this.generateProductionServerEntry(outputDir);
+		await this.generateProductionServerEntry(outputDir, context);
 
 		return appPath;
 	}
@@ -1010,8 +975,14 @@ export default createApp;
 	 */
 	private async generateProductionServerEntry(
 		outputDir: string,
+		context: BuildContext,
 	): Promise<void> {
 		const serverPath = join(outputDir, 'server.ts');
+
+		await writeFile(
+			join(outputDir, 'telemetry.ts'),
+			generateTelemetryModule(context.telemetry),
+		);
 
 		const content = `#!/usr/bin/env node
 /**
@@ -1019,7 +990,12 @@ export default createApp;
  * Generated by 'gkm build --production'
  */
 import { serve } from '@hono/node-server';
-import { createApp } from './app.js';
+import { startTelemetry } from './telemetry.js';
+
+// Before the app is imported, so the libraries it loads are instrumented.
+await startTelemetry();
+
+const { createApp } = await import('./app.js');
 
 const port = Number(process.env.PORT) || 3000;
 

@@ -113,6 +113,33 @@ interface Logger {
 
 ## Log Redaction
 
+`createLogger` from `@geekmidas/logger/pino` redacts sensitive fields **by
+default**: a logger that was never told about passwords and tokens still masks
+them. `redact: false` is the explicit opt-out.
+
+```typescript
+import { createLogger } from '@geekmidas/logger/pino';
+
+const logger = createLogger();
+logger.info({ password: 'secret123', user: 'john' }, 'Login');
+// { "password": "[Redacted]", "user": "john", ... }
+
+// Add paths (merged with the defaults)
+createLogger({ redact: ['user.ssn'] });
+
+// Only your paths
+createLogger({ redact: { paths: ['only.this'], resolution: 'override' } });
+
+// Opt out: nothing is redacted
+createLogger({ redact: false });
+```
+
+::: warning Changed in 10.0
+Before 10.0, leaving `redact` out meant no redaction. If you relied on seeing a
+default-redacted field in logs (tests asserting on log output, for example),
+pass `redact: false`.
+:::
+
 The `/redact` export provides a standard list of sensitive field paths for use with Pino's redaction feature:
 
 ```typescript
