@@ -64,7 +64,10 @@ export default {
 					skipBundle: true,
 				});
 
-				const app = await readFile(join(dir, '.gkm', 'server', 'app.ts'), 'utf-8');
+				const app = await readFile(
+					join(dir, '.gkm', 'server', 'app.ts'),
+					'utf-8',
+				);
 				// The routes, and nothing that runs beside them.
 				expect(app).toContain('await setupEndpoints(');
 				expect(app).not.toContain('setupCrons');
