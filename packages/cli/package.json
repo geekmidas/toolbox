@@ -118,7 +118,6 @@
 	},
 	"devDependencies": {
 		"@geekmidas/events": "workspace:~",
-		"@geekmidas/studio": "workspace:~",
 		"@geekmidas/testkit": "workspace:*",
 		"@hono/node-server": "~1.19.5",
 		"@types/lodash.kebabcase": "~4.1.9",

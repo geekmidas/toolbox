@@ -187,7 +187,6 @@ export function derivedApps(
 			// already inspects every export and keeps what it recognises. A
 			// per-kind field still wins where one was given.
 			...(spec.telescope !== undefined ? { telescope: spec.telescope } : {}),
-			...(spec.studio !== undefined ? { studio: spec.studio } : {}),
 			...(spec.openapi !== undefined ? { openapi: spec.openapi } : {}),
 			...(spec.runtime !== undefined ? { runtime: spec.runtime } : {}),
 			...(spec.env !== undefined ? { env: spec.env } : {}),

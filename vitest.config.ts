@@ -16,8 +16,6 @@ export default defineConfig({
 				'**/exports/**',
 				'**/.gkm/**',
 				'**/__benchmarks__/**',
-				'**/packages/ui/**',
-				'**/*.stories.tsx',
 				// Subprocess files - can't be instrumented as they run in child processes
 				'**/sniffer-loader.ts',
 				'**/sniffer-hooks.ts',

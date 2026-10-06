@@ -37,8 +37,7 @@ Detailed API documentation is available in the individual package documentation 
 
 | Package | Description |
 |---------|-------------|
-| [@geekmidas/telescope](/packages/telescope) | Debugging dashboard |
-| [@geekmidas/studio](/packages/studio) | Database browser |
+| [@geekmidas/telescope](/packages/telescope) | Request, exception and log recording, as a JSON API |
 | [@geekmidas/logger](/packages/logger) | Structured logging |
 | [@geekmidas/testkit](/packages/testkit) | Testing utilities and factories |
 
@@ -47,7 +46,6 @@ Detailed API documentation is available in the individual package documentation 
 | Package | Description |
 |---------|-------------|
 | [@geekmidas/client](/packages/client) | Type-safe API client with React Query |
-| [@geekmidas/ui](/packages/ui) | React components (shadcn/ui based) |
 | [@geekmidas/emailkit](/packages/emailkit) | Email templates with React |
 
 ### Infrastructure

@@ -17,10 +17,8 @@
 '@geekmidas/schema': major
 '@geekmidas/services': major
 '@geekmidas/storage': major
-'@geekmidas/studio': major
 '@geekmidas/telescope': major
 '@geekmidas/testkit': major
-'@geekmidas/ui': major
 ---
 
 v10: the manifest is the single source of truth

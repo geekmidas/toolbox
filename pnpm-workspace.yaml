@@ -5,8 +5,6 @@ packages:
   # here or pnpm only sees the outer directory.
   - "apps/kitchen-sink/apps/*"
   - "packages/*"
-  - "packages/telescope/ui"
-  - "packages/studio/ui"
 
 # One @types/react for the whole workspace. VitePress's @docsearch/react
 # declares an optional `@types/react <19` peer, which pnpm auto-installed as 18

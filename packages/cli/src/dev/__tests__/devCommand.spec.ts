@@ -222,7 +222,6 @@ export default defineConfig({
 	describe('a single app', () => {
 		it('builds, starts the server entry, rebuilds on a change, and stops on a signal', async () => {
 			singleApp(`telescope: true,
-  studio: true,
   hooks: { server: './src/hooks' },`);
 			writeFileSync(
 				join(dir, 'src', 'hooks.ts'),
@@ -249,9 +248,9 @@ export default defineConfig({
 			// build's progress, which is `gkm build`'s to print.
 			// Named for the app the config puts here.
 			expect(said).toMatch(/api ready in [\d.]+s {2}http:\/\/localhost:\d+/);
-			expect(said).toContain(
-				'docs /__docs · telescope /__telescope · studio /__studio',
-			);
+			expect(said).toContain('docs /__docs · telescope /__telescope');
+			// No database declared, so no database API to advertise.
+			expect(said).not.toContain('/__gkm/db');
 			expect(said).not.toContain('Found 0 functions');
 			expect(said).not.toContain('Loading constructs from');
 
@@ -755,7 +754,6 @@ export default defineConfig({
   constructs: ['./src/constructs/**/*.ts'],
   runtime: 'bun',
   telescope: false,
-  studio: false,
   openapi: false,
   hooks: { server: './src/hooks.ts' },
 });

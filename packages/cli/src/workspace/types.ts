@@ -9,7 +9,6 @@ import type {
 	OpenApiConfig,
 	Routes,
 	Runtime,
-	StudioConfig,
 	TelescopeConfig,
 } from '../types.js';
 import type {
@@ -436,16 +435,10 @@ interface AppConfigBase {
 	hooks?: HooksConfig;
 
 	/**
-	 * Telescope debugging dashboard configuration.
+	 * Telescope request recording configuration.
 	 * @example true, './src/config/telescope', { enabled: true, path: '/__telescope' }
 	 */
 	telescope?: string | boolean | TelescopeConfig;
-
-	/**
-	 * Studio admin panel configuration.
-	 * @example true, './src/config/studio'
-	 */
-	studio?: string | boolean | StudioConfig;
 
 	/**
 	 * OpenAPI documentation configuration.

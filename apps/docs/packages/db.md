@@ -30,6 +30,7 @@ pnpm add @geekmidas/db
 - Automatic transaction detection and reuse
 - Type-safe database operations
 - **Row Level Security (RLS)** context management for PostgreSQL
+- **Introspection**: schemas, tables and rows as functions and a read-only JSON API
 
 ## Package Exports
 
@@ -40,6 +41,7 @@ pnpm add @geekmidas/db
 | `/objection/pagination` | Cursor-based pagination for Objection.js models (`paginatedSearch`, `encodeCursor`, `decodeCursor`) |
 | `/pagination` | Shared pagination types and utilities (`Direction`, `PaginationResult`, `encodeCursor`, `decodeCursor`) |
 | `/rls` | Row Level Security types and utilities |
+| `/introspect` | Headless database introspection and a read-only JSON API (`createIntrospectionHandler`, `DataBrowser`, `introspectSchema`) |
 
 ## Basic Usage
 
@@ -230,6 +232,84 @@ import { encodeCursor, decodeCursor } from '@geekmidas/db/pagination';
 const encoded = encodeCursor(new Date('2024-01-15'));  // base64url string
 const decoded = decodeCursor(encoded);                  // Date object
 ```
+
+## Database Introspection
+
+`@geekmidas/db/introspect` reads what a Postgres database holds — schemas,
+tables, columns, primary and foreign keys — and pages through its rows,
+read-only. It has no UI: the same data is available as functions and as a JSON
+API, for whatever tool you build on it. `gkm dev` mounts the JSON API at
+`/__gkm/db` for the declared database.
+
+### Functions
+
+```typescript
+import {
+  DataBrowser,
+  Direction,
+  FilterOperator,
+  introspectSchema,
+  introspectTable,
+  listSchemas,
+} from '@geekmidas/db/introspect';
+
+await listSchemas(db); // ['public', 'auth', ...]
+
+const { tables } = await introspectSchema(db, {
+  schemas: ['public'],
+  excludeTables: ['kysely_migration'],
+});
+
+const users = await introspectTable(db, 'users', 'public');
+// { name, schema, primaryKey: ['id'], columns: [{ name, type, rawType,
+//   nullable, isPrimaryKey, isForeignKey, foreignKeyTable, ... }] }
+
+const browser = new DataBrowser({ db });
+const page = await browser.query({
+  table: 'users',
+  pageSize: 20,
+  filters: [{ column: 'email', operator: FilterOperator.Ilike, value: '%@example.com' }],
+  sort: [{ column: 'created_at', direction: Direction.Desc }],
+});
+const next = await browser.query({ table: 'users', cursor: page.nextCursor });
+```
+
+A table pages by its single-column primary key unless you configure a cursor
+(`cursor`, or `tableCursors` per table). Mistakes are named errors:
+`TableNotFound`, `ColumnNotFound`, `UnsupportedFilterOperator`, `InvalidCursor`.
+
+### JSON API
+
+`createIntrospectionHandler` returns a plain fetch-style handler —
+`(request: Request) => Promise<Response>` — so it mounts in Hono, Bun, Deno or
+anything else that speaks web `Request`s, and `@geekmidas/db` depends on no
+HTTP framework.
+
+```typescript
+import { createIntrospectionHandler } from '@geekmidas/db/introspect';
+
+const handler = createIntrospectionHandler({ db, basePath: '/__gkm/db' });
+app.all('/__gkm/db/*', (c) => handler(c.req.raw));
+```
+
+| Route | Returns |
+|-------|---------|
+| `GET /schemas` | `{ schemas, browsable }` |
+| `GET /tables?schema=&refresh=true` | `{ tables, updatedAt }`, each table with its columns and keys |
+| `GET /tables/:name?schema=` | One table |
+| `GET /tables/:name/rows` | `{ rows, hasMore, nextCursor, prevCursor }` |
+
+Rows take `pageSize` (at most 100), `cursor`, `sort=col:asc,col2:desc` and
+filters as `filter[column][operator]=value` — operators `eq`, `neq`, `gt`,
+`gte`, `lt`, `lte`, `like`, `ilike`, `in`, `nin` (comma-separated), `is_null`,
+`is_not_null`. A caller's mistake is a 4xx whose `error` is the error class
+name; only `GET` is served.
+
+::: warning Development only
+The handler returns every row of every browsable table to whoever can reach it.
+`gkm dev` mounts it; `gkm build` never does. Mount it yourself only behind
+something that decides who that is.
+:::
 
 ## Row Level Security (RLS)
 

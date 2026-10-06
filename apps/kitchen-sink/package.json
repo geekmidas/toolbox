@@ -3,7 +3,7 @@
 	"version": "0.0.4",
 	"private": true,
 	"type": "module",
-	"description": "Kitchen-sink example exercising every @geekmidas/toolbox integration point: endpoints, functions, crons, subscribers, queues, services/DI, storage, cache, audit, events, telescope, studio and OpenAPI.",
+	"description": "Kitchen-sink example exercising every @geekmidas/toolbox integration point: endpoints, functions, crons, subscribers, queues, services/DI, storage, cache, audit, events, telescope, the dev database API and OpenAPI.",
 	"scripts": {
 		"dev": "gkm dev",
 		"build": "gkm build",
@@ -30,7 +30,6 @@
 		"@geekmidas/manifest": "workspace:*",
 		"@geekmidas/services": "workspace:*",
 		"@geekmidas/storage": "workspace:*",
-		"@geekmidas/studio": "workspace:*",
 		"@geekmidas/telescope": "workspace:*",
 		"@hono/node-server": "~1.19.5",
 		"@react-email/components": "~1.0.12",

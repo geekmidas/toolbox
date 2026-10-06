@@ -75,12 +75,6 @@ export const TOOLCHAIN_VERSIONS = {
 	vitest: '~5.0.2',
 	vite: '~8.3.1',
 	'@vitejs/plugin-react': '^6.1.1',
-	storybook: '^10.6.0',
-	// Controls, actions, backgrounds, viewport and interactions are part of
-	// `storybook` itself since 9; docs and a11y are still add-ons.
-	'@storybook/addon-docs': '^10.6.0',
-	'@storybook/addon-a11y': '^10.6.0',
-	'@storybook/react-vite': '^10.6.0',
 } as const;
 
 /**

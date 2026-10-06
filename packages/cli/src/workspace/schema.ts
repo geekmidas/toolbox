@@ -18,15 +18,6 @@ const TelescopeConfigSchema = z.object({
 });
 
 /**
- * Studio configuration schema.
- */
-const StudioConfigSchema = z.object({
-	enabled: z.boolean().optional(),
-	path: z.string().optional(),
-	schema: z.string().optional(),
-});
-
-/**
  * OpenAPI configuration schema.
  */
 const OpenApiConfigSchema = z.object({
@@ -665,7 +656,6 @@ const AppConfigSchema = z
 		telescope: z
 			.union([z.string(), z.boolean(), TelescopeConfigSchema])
 			.optional(),
-		studio: z.union([z.string(), z.boolean(), StudioConfigSchema]).optional(),
 		openapi: z.union([z.boolean(), OpenApiConfigSchema]).optional(),
 		runtime: z.enum(['node', 'bun']).optional(),
 		env: z.union([z.string(), z.array(z.string())]).optional(),

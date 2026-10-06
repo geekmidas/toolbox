@@ -83,6 +83,16 @@
 				"types": "./dist/errors.d.cts",
 				"default": "./dist/errors.cjs"
 			}
+		},
+		"./introspect": {
+			"import": {
+				"types": "./dist/introspect/index.d.mts",
+				"default": "./dist/introspect/index.mjs"
+			},
+			"require": {
+				"types": "./dist/introspect/index.d.cts",
+				"default": "./dist/introspect/index.cjs"
+			}
 		}
 	},
 	"files": [

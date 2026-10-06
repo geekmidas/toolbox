@@ -3,8 +3,8 @@ import pino from 'pino';
 import { telescope } from './telescope.js';
 
 /**
- * Pino logger with Telescope integration. Logs stream to stdout AND to the
- * Telescope dashboard (visit `/telescope` while `gkm dev` is running).
+ * Pino logger with Telescope integration. Logs stream to stdout AND to
+ * Telescope (`/__telescope/api/logs` while `gkm dev` is running).
  */
 export const logger = pino(
 	{

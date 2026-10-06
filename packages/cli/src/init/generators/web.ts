@@ -1,6 +1,11 @@
 import { DEPENDENCY_VERSIONS, TOOLCHAIN_VERSIONS } from '../dependencies.js';
 import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
+import {
+	SHADCN_DEPENDENCIES,
+	SHADCN_GLOBALS_CSS,
+	shadcnFiles,
+} from './shadcn.js';
 
 /**
  * Generate Next.js web app files for fullstack template
@@ -12,7 +17,6 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 
 	const packageName = `@${options.name}/web`;
 	const modelsPackage = `@${options.name}/models`;
-	const uiPackage = `@${options.name}/ui`;
 
 	// package.json for web app
 	const packageJson = {
@@ -28,7 +32,7 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 		},
 		dependencies: {
 			[modelsPackage]: 'workspace:*',
-			[uiPackage]: 'workspace:*',
+			...SHADCN_DEPENDENCIES,
 			'@geekmidas/client': GEEKMIDAS_VERSIONS['@geekmidas/client'],
 			'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
 			'@tanstack/react-query': DEPENDENCY_VERSIONS['@tanstack/react-query'],
@@ -55,7 +59,7 @@ export function generateWebAppFiles(options: TemplateOptions): GeneratedFile[] {
 const nextConfig: NextConfig = {
   output: 'standalone',
   reactStrictMode: true,
-  transpilePackages: ['${modelsPackage}', '${uiPackage}'],
+  transpilePackages: ['${modelsPackage}'],
 };
 
 export default nextConfig;
@@ -93,13 +97,11 @@ export default nextConfig;
 				},
 			],
 			paths: {
-				'~/*': ['./src/*', '../../packages/ui/src/*'],
+				'~/*': ['./src/*'],
 				// Every API's client, generated at the workspace root.
 				[`@${options.name}/client/*`]: ['../../.gkm/client/*'],
 				[`${modelsPackage}`]: ['../../packages/models/src'],
 				[`${modelsPackage}/*`]: ['../../packages/models/src/*'],
-				[`${uiPackage}`]: ['../../packages/ui/src'],
-				[`${uiPackage}/*`]: ['../../packages/ui/src/*'],
 			},
 		},
 		include: ['next-env.d.ts', '**/*.ts', '**/*.tsx', '.next/types/**/*.ts'],
@@ -207,10 +209,6 @@ export const api = createApi({
 });
 `;
 
-	// globals.css that imports UI package styles
-	const globalsCss = `@import '${uiPackage}/styles';
-`;
-
 	// App layout
 	const layoutTsx = `import type { Metadata } from 'next';
 import { Providers } from './providers.tsx';
@@ -236,9 +234,16 @@ export default function RootLayout({
 }
 `;
 
-	// Home page with API example using UI components
+	// Home page with API example using the app's own shadcn components
 	const pageTsx = `import { api } from '~/api/index.ts';
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '${uiPackage}/components';
+import { Button } from '~/components/ui/button.tsx';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '~/components/ui/card.tsx';
 
 export default async function Home() {
   // Type-safe API call using the generated client
@@ -278,7 +283,7 @@ export default async function Home() {
               <li>Run <code className="rounded bg-muted px-1">gkm openapi</code> to generate typed API client</li>
               <li>Edit <code className="rounded bg-muted px-1">apps/web/src/app/page.tsx</code> to customize this page</li>
               <li>Add API routes in <code className="rounded bg-muted px-1">apps/api/src/endpoints/</code></li>
-              <li>Add UI components with <code className="rounded bg-muted px-1">npx shadcn@latest add</code> in packages/ui</li>
+              <li>Add UI components with <code className="rounded bg-muted px-1">npx shadcn@latest add</code> in apps/web</li>
             </ul>
             <div className="flex gap-4">
               <Button>Get Started</Button>
@@ -318,8 +323,9 @@ node_modules/
 		},
 		{
 			path: 'apps/web/src/app/globals.css',
-			content: globalsCss,
+			content: SHADCN_GLOBALS_CSS,
 		},
+		...shadcnFiles('apps/web', 'src/app/globals.css', { rsc: true }),
 		{
 			path: 'apps/web/src/app/layout.tsx',
 			content: layoutTsx,
