@@ -1,5 +1,16 @@
 # @geekmidas/cloud
 
+## 10.0.0-alpha.56
+
+### Patch Changes
+
+- Updated dependencies [[`efd9019`](https://github.com/geekmidas/toolbox/commit/efd9019cd2d8ec93dea462675da3ded175e732ee)]:
+  - @geekmidas/db@10.0.0-alpha.56
+  - @geekmidas/envkit@10.0.0-alpha.56
+  - @geekmidas/events@10.0.0-alpha.56
+  - @geekmidas/manifest@10.0.0-alpha.56
+  - @geekmidas/storage@10.0.0-alpha.56
+
 ## 10.0.0-alpha.55
 
 ### Patch Changes
@@ -51,6 +62,7 @@
 - [#134](https://github.com/geekmidas/toolbox/pull/134) [`c0279b9`](https://github.com/geekmidas/toolbox/commit/c0279b98545445b1eceedc314d92d0fbd91953e3) Thanks [@geekmidas](https://github.com/geekmidas)! - :boom: `fromManifest`'s overrides are typed from the manifest
 
   The overrides were `Record<string, Record<string, unknown>>`, so a misspelt id or a prop nothing reads went through without complaint, and a missing database `vpc` or mail `from` only showed up at synth, partway through a deploy. They are now `ManifestOverrides<typeof constructs, typeof backends>`:
+
   - **Keys:** only the manifest's own construct ids.
   - **Values:** what each construct's kind actually takes. Props the declaration already decides are left out, such as a database's `schema`, a queue's `fifo` or a site's `path`.
   - **Required:** what the synth won't guess. That means a database's `vpc` and mail's `from`. Some depend on the backend: ElastiCache needs `vpc`, and Resend or SMTP mail needs `url`.
@@ -107,6 +119,7 @@
 - [#124](https://github.com/geekmidas/toolbox/pull/124) [`10ef53d`](https://github.com/geekmidas/toolbox/commit/10ef53d921d519afa62c773a6682581e19c06b1e) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: `Encryption` — a key that encrypts what the application stores
 
   `new Encryption('Pii')` gives a handler that `.dependsOn([pii])` `services.pii.encrypt`, `decrypt`, `index` (a blind index, so an encrypted column can still be looked up) and `reencrypt`. The app names no cipher: the construct provides one `PII_URL` whose scheme picks the backend.
+
   - **Locally and in tests**, an `aes256gcm://` keyring derived from the project and stage, like a secret — nothing to set.
   - **On a server stage**, a keyring generated into the stage's secrets on its first deploy and never replaced by a redeploy.
   - **On AWS**, envelope encryption under a KMS key that rotates yearly, and a KMS HMAC key for the index, each granted to exactly the functions that depend on the construct (`kms:GenerateDataKey`/`kms:Decrypt`, `kms:GenerateMac`). `@aws-sdk/client-kms` is an optional peer, loaded only for a `kms://` URL.
@@ -237,6 +250,7 @@
 ### Patch Changes
 
 - [#107](https://github.com/geekmidas/toolbox/pull/107) [`5475a96`](https://github.com/geekmidas/toolbox/commit/5475a96d1d8ee0c99109c65cba76f7e269f42265) Thanks [@geekmidas](https://github.com/geekmidas)! - `ExternalApi` for third-party HTTP APIs, `<ID>_CREDENTIALS`, and `faker` and `signIn()` in feature tests
+
   - **`ExternalApi`** (`@geekmidas/constructs/external-api`) declares an API
     somebody else runs: a `url`, one string or one per stage name with a
     `default`, a `credentials` schema, and the `client` a handler is given. It
@@ -302,6 +316,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
     - 🔥 **Removed:** `getAppNameFromCwd` and `getAppNameFromPackageJson`.
 
   **Moving an existing app:**
+
   - Rename every `<ID>_CREDENTIAL` secret to `<ID>_CREDENTIALS` and set it on
     each deployed stage: `gkm secrets:set STRIPE_CREDENTIALS '{…}' --stage production`.
   - A custom `secrets.store` provider renames `pull` to `read` and `push` to
@@ -358,6 +373,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
 
   Like a `StaticSite`, its `.dependsOn()` is the single fact everything a mobile
   app otherwise writes down by hand is derived from:
+
   - **Shaped like `StaticSite`:** `path`, `port?`, `config?` and
     `variant?` (`'expo'`), plus `scheme?`. A mobile app is given a port in the
     same stable order, and `gkm exec` hands it to Expo as `RCT_METRO_PORT`.
@@ -421,6 +437,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
   `roleStatements` now takes `database` for a database construct's roles and
   adds `GRANT CREATE ON DATABASE <database> TO <owner>`. All three provisioners
   pass it for a database, and only for a database:
+
   - reconcile (`gkm dev`, `gkm test`, `gkm migrate`);
   - the Dokploy deploy;
   - the AWS bootstrap Lambda.
@@ -667,6 +684,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
 
   Every bare `throw new Error` in `@geekmidas/cloud` and `@geekmidas/events` is a
   named class now, matched by class rather than message text:
+
   - `@geekmidas/cloud`: `DokployCallFailed` (a Dokploy API call answered with an
     error status: `path`, `status`, `statusText`, `detail`) and
     `RoutesMissingEnvironment` (routes reading variables nothing links).
@@ -959,6 +977,7 @@ auth_token=…` yielded the attacker's value; `@geekmidas/client` and
 
   `@geekmidas/cloud/sst` constructs gain static `fromManifest` factories that map
   a manifest straight into infrastructure:
+
   - `Api.fromManifest(stack, id, routesManifest, props)` — one route per
     `RouteInfo` (env vars, authorizer, timeout/memory mapped); supply
     `authorizers`/`links`/native args via `props`.
@@ -982,6 +1001,7 @@ auth_token=…` yielded the attacker's value; `@geekmidas/client` and
 
   Introduces a source-only `./sst` subpath for SST v4 (ion) constructs that map
   1:1 to deployable units and validate their environment before deploy.
+
   - 🔌 **`Api`** wraps `sst.aws.ApiGatewayV2`: `ApiProps` extends the native
     `ApiGatewayV2Args` (CORS/domain/etc. pass through untouched), with a typed
     route table, per-route env validation via `@geekmidas/envkit/sst`'s
@@ -1008,6 +1028,7 @@ auth_token=…` yielded the attacker's value; `@geekmidas/client` and
   `gkm build` emits a single TypeScript module per provider
   (`export const manifest = { routes, functions, crons, subscribers } as const`),
   not separate JSON files. `@geekmidas/manifest` now models that:
+
   - a unified `Manifest` type plus `ManifestField<T>` (a field is a flat
     `readonly T[]` or a partitioned `Record<string, readonly T[]>`) and a
     `flattenManifestField` helper;
