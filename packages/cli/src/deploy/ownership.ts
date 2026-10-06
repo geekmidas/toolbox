@@ -89,6 +89,10 @@ export async function resolveProject(
 	identity: DeployIdentity,
 	stateProjectId: string | undefined,
 	log: (message: string) => void = () => {},
+	hooks: {
+		/** Runs just before a project is created — where a journal says so. */
+		beforeCreate?: () => Promise<void>;
+	} = {},
 ): Promise<ResolvedProject> {
 	const name = projectName(identity);
 	const marker = ownershipMarker(identity);
@@ -155,6 +159,7 @@ export async function resolveProject(
 		);
 	}
 
+	await hooks.beforeCreate?.();
 	const created = await api.createProject(
 		name,
 		withMarker('Deployed by gkm.', marker),

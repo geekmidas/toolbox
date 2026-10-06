@@ -1,13 +1,23 @@
 /**
  * State Management CLI Commands
  *
- * Commands for managing deployment state across local and remote providers.
+ * Commands for managing deployment state across local and remote stores.
+ *
+ * Every command goes through a `StateStore`, the same one deploy writes
+ * through: a v1 state is migrated on the way, resource records travel with
+ * the state, and a copy is a conditional write — so `state:push` cannot
+ * silently replace what a deploy wrote a moment earlier.
  */
 
 import { loadWorkspaceConfig } from '../config';
-import { CachedStateProvider } from './CachedStateProvider';
-import { createStateProvider } from './StateProvider';
-import { createStateStore } from './StateStore';
+import type { NormalizedWorkspace } from '../workspace/types';
+import { LocalStateStore } from './LocalStateStore';
+import {
+	createStateStore,
+	type ResourceRecord,
+	type StateStore,
+	type StoredStageState,
+} from './StateStore';
 import type { DokployStageState } from './state';
 
 /** What `state:show` prints in place of a secret. */
@@ -50,31 +60,20 @@ export async function statePullCommand(
 	options: StateCommandOptions,
 ): Promise<void> {
 	const { workspace } = await loadWorkspaceConfig();
-
-	if (!workspace.state || workspace.state.provider === 'local') {
-		console.error('No remote state provider configured.');
-		console.error('Add a remote provider in gkm.config.ts:');
-		console.error('  state: { provider: "ssm", region: "us-east-1" }');
-		process.exit(1);
-	}
-
-	const provider = await createStateProvider({
-		config: workspace.state,
-		workspaceRoot: workspace.root,
-		workspaceName: workspace.name,
-	});
-
-	if (!(provider instanceof CachedStateProvider)) {
-		console.error('State provider does not support pull operation.');
-		process.exit(1);
-	}
+	const { local, remote } = await remoteAndLocal(workspace);
 
 	console.log(`Pulling state for stage: ${options.stage}...`);
-	const state = await provider.pull(options.stage);
+	const pulled = await copyUnderLock(
+		remote,
+		local,
+		local,
+		options.stage,
+		'state:pull',
+	);
 
-	if (state) {
+	if (pulled) {
 		console.log('State pulled successfully.');
-		printStateSummary(state);
+		printStateSummary(pulled.state);
 	} else {
 		console.log('No remote state found for this stage.');
 	}
@@ -88,31 +87,23 @@ export async function statePushCommand(
 	options: StateCommandOptions,
 ): Promise<void> {
 	const { workspace } = await loadWorkspaceConfig();
-
-	if (!workspace.state || workspace.state.provider === 'local') {
-		console.error('No remote state provider configured.');
-		console.error('Add a remote provider in gkm.config.ts:');
-		console.error('  state: { provider: "ssm", region: "us-east-1" }');
-		process.exit(1);
-	}
-
-	const provider = await createStateProvider({
-		config: workspace.state,
-		workspaceRoot: workspace.root,
-		workspaceName: workspace.name,
-	});
-
-	if (!(provider instanceof CachedStateProvider)) {
-		console.error('State provider does not support push operation.');
-		process.exit(1);
-	}
+	const { local, remote } = await remoteAndLocal(workspace);
 
 	console.log(`Pushing state for stage: ${options.stage}...`);
-	const state = await provider.push(options.stage);
+	// Under the remote stage's lock: a push while a deploy of the stage runs
+	// would replace the state that deploy is journaling into. It gets
+	// `StateLocked` naming the deploy instead.
+	const pushed = await copyUnderLock(
+		local,
+		remote,
+		remote,
+		options.stage,
+		'state:push',
+	);
 
-	if (state) {
+	if (pushed) {
 		console.log('State pushed successfully.');
-		printStateSummary(state);
+		printStateSummary(pushed.state);
 	} else {
 		console.log('No local state found for this stage.');
 	}
@@ -127,25 +118,28 @@ export async function stateShowCommand(
 ): Promise<void> {
 	const { workspace } = await loadWorkspaceConfig();
 
-	const provider = await createStateProvider({
+	// The store deploy writes through — the remote one when there is one, read
+	// directly, so a stale local copy is never what this shows.
+	const store = await createStateStore({
 		config: workspace.state,
 		workspaceRoot: workspace.root,
 		workspaceName: workspace.name,
 	});
 
-	const stored = await provider.read(options.stage);
+	const stored = await store.read(options.stage);
 
 	if (!stored) {
 		console.log(`No state found for stage: ${options.stage}`);
 		return;
 	}
 
-	const state = maskStateSecrets(stored);
+	const state = maskStateSecrets(stored.state);
 
 	if (options.json) {
 		console.log(JSON.stringify(state, null, 2));
 	} else {
 		printStateDetails(state);
+		printUnfinished(stored.resources);
 	}
 }
 
@@ -188,26 +182,17 @@ export async function stateDiffCommand(
 	options: StateCommandOptions,
 ): Promise<void> {
 	const { workspace } = await loadWorkspaceConfig();
-
-	if (!workspace.state || workspace.state.provider === 'local') {
-		console.error('No remote state provider configured.');
-		console.error('Diff requires a remote provider to compare against.');
-		process.exit(1);
-	}
-
-	const provider = await createStateProvider({
-		config: workspace.state,
-		workspaceRoot: workspace.root,
-		workspaceName: workspace.name,
-	});
-
-	if (!(provider instanceof CachedStateProvider)) {
-		console.error('State provider does not support diff operation.');
-		process.exit(1);
-	}
+	const stores = await remoteAndLocal(workspace, [
+		'Diff requires a remote provider to compare against.',
+	]);
 
 	console.log(`Comparing state for stage: ${options.stage}...\n`);
-	const { local, remote } = await provider.diff(options.stage);
+	const [localStored, remoteStored] = await Promise.all([
+		stores.local.read(options.stage),
+		stores.remote.read(options.stage),
+	]);
+	const local = localStored?.state ?? null;
+	const remote = remoteStored?.state ?? null;
 
 	if (!local && !remote) {
 		console.log('No state found (local or remote).');
@@ -282,6 +267,127 @@ export async function stateDiffCommand(
 				);
 			}
 		}
+	}
+
+	// Resource records: only where the two disagree, since agreeing records
+	// repeat the applications and services above.
+	const localRecords = localStored?.resources ?? {};
+	const remoteRecords = remoteStored?.resources ?? {};
+	const differing = [
+		...new Set([...Object.keys(localRecords), ...Object.keys(remoteRecords)]),
+	].filter(
+		(key) =>
+			describeRecord(localRecords[key]) !== describeRecord(remoteRecords[key]),
+	);
+
+	if (differing.length > 0) {
+		console.log('\nResources:');
+		for (const key of differing) {
+			console.log(
+				`  ${key}: ${describeRecord(localRecords[key])} (local) != ${describeRecord(remoteRecords[key])} (remote)`,
+			);
+		}
+	}
+}
+
+/**
+ * The stage's local store and its remote one — or, for a workspace that keeps
+ * state only locally, the reason there is nothing to move it between.
+ */
+async function remoteAndLocal(
+	workspace: NormalizedWorkspace,
+	hint: readonly string[] = [
+		'Add a remote provider in gkm.config.ts:',
+		'  state: { provider: "ssm", region: "us-east-1" }',
+	],
+): Promise<{ local: LocalStateStore; remote: StateStore }> {
+	if (!workspace.state || workspace.state.provider === 'local') {
+		console.error('No remote state provider configured.');
+		for (const line of hint) console.error(line);
+		process.exit(1);
+	}
+
+	return {
+		local: new LocalStateStore(workspace.root),
+		remote: await createStateStore({
+			config: workspace.state,
+			workspaceRoot: workspace.root,
+			workspaceName: workspace.name,
+		}),
+	};
+}
+
+/**
+ * Makes `to` hold exactly what `from` holds for `stage` — its state and its
+ * resource records — while holding `locked`'s lock for the stage. Every
+ * write is conditional on the version just read, so anything that changes
+ * `to` mid-copy raises `StateVersionConflict` rather than being overwritten.
+ */
+async function copyUnderLock(
+	from: StateStore,
+	to: StateStore,
+	locked: StateStore,
+	stage: string,
+	operation: string,
+): Promise<StoredStageState | null> {
+	const lock = await locked.lock(stage, { operation });
+	try {
+		return await copyStage(from, to, stage);
+	} finally {
+		await lock.release();
+	}
+}
+
+/** @internal Exported for testing */
+export async function copyStage(
+	from: StateStore,
+	to: StateStore,
+	stage: string,
+): Promise<StoredStageState | null> {
+	const source = await from.read(stage);
+	if (!source) return null;
+
+	const target = await to.read(stage);
+	let version = await to.write(stage, source.state, {
+		expectedVersion: target?.version ?? null,
+	});
+
+	// The source's records, exactly: one only the target has describes a
+	// resource the source does not know about, and keeping it would make the
+	// copy something neither side wrote.
+	for (const key of Object.keys(target?.resources ?? {})) {
+		if (key in source.resources) continue;
+		version = await to.deleteResource(stage, key, {
+			expectedVersion: version,
+		});
+	}
+	for (const { updatedAt: _stamped, ...record } of Object.values(
+		source.resources,
+	)) {
+		version = await to.putResource(stage, record, {
+			expectedVersion: version,
+		});
+	}
+
+	return source;
+}
+
+function describeRecord(record: ResourceRecord | undefined): string {
+	if (!record) return '(none)';
+	return record.id ? `${record.status} ${record.id}` : record.status;
+}
+
+/** Resources a run marked `pending` and never saw created. */
+function printUnfinished(resources: Record<string, ResourceRecord>): void {
+	const pending = Object.values(resources).filter(
+		(record) => record.status === 'pending',
+	);
+	if (pending.length === 0) return;
+
+	console.log('');
+	console.log('Unfinished (a deploy stopped while creating these):');
+	for (const record of pending) {
+		console.log(`  ${record.key}`);
 	}
 }
 

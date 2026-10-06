@@ -307,18 +307,21 @@ declared database, which is the construct that causes the Postgres to exist.
 
 ## State Providers
 
-State providers track deployment resources (application IDs, service IDs, credentials) across deployments.
+Deploy state tracks what a stage's deploys created (project, environment,
+application and domain ids, credentials) so the next deploy finds them again.
+`state.provider` picks where it lives.
 
-### LocalStateProvider (Default)
+### Local (default)
 
 Stores state in the local filesystem.
 
 - **Location:** `.gkm/deploy-{stage}.json`
 - **Use case:** Single developer, local development
 
-### SSMStateProvider
+### SSM
 
-Stores state in AWS Systems Manager Parameter Store.
+Stores state in AWS Systems Manager Parameter Store, read and written there
+directly — there is no local cache to go stale.
 
 - **Location:** `/gkm/{workspaceName}/{stage}/state`
 - **Encryption:** AWS-managed KMS key
@@ -360,17 +363,24 @@ state: {
 
 ### Locks, versions and resource records
 
-Every provider is also available as a `StateStore` (`createStateStore`), which
-deploy is moving to:
+Every provider is a `StateStore`, and `gkm deploy` and the `state:*` commands
+all go through it:
 
-- **Lock:** one run per stage. A second run fails with `StateLocked`, naming
-  who holds it. A run that crashed with the lock held is released with
-  `gkm state:unlock --stage <stage>`.
+- **Lock:** a deploy holds the stage's lock from before it generates anything
+  until it ends, however it ends. A second run fails with `StateLocked`,
+  naming who holds it. A run that was killed with the lock held is released
+  with `gkm state:unlock --stage <stage>`.
 - **Versioned writes:** a write names the version it read and fails with
   `StateVersionConflict` if the state changed since. Local files are replaced
   atomically (temp file + rename), SSM checks the parameter version before and
   after each put, S3 uses conditional puts.
-- **Resource records:** `putResource` records one resource at a time.
+- **Resource records — a journal:** deploy records each resource it creates
+  (project, environment, each application and domain) as `pending` before the
+  create call and `ready` with its id after, and writes the state after each
+  app. A run that dies part way keeps every id it got back, and the next run
+  looks up anything left `pending` before creating it — it adopts what the
+  dead run made rather than making a second one. `gkm state:show` lists
+  resources still pending.
 - **Format:** state is stored as schema version 2. A version 1 file is
   migrated the first time a store reads it, and the original is kept as
   `.gkm/deploy-{stage}.v1.json` (`state.v1` beside the SSM parameter,
@@ -381,21 +391,22 @@ A custom `StateProvider` (an object with `read`/`write`) keeps working, but
 cannot lock: it warns `StateStoreWithoutLocking`. Implement `StateStore` to
 make it safe for concurrent runs.
 
-### CachedStateProvider
-
-Wraps remote storage with local caching for faster reads. Deprecated for
-deploys: a stale local copy wins over the remote without warning.
+### Moving state between local and remote
 
 ```bash
-# Sync remote state to local
+# Copy the remote stage (state and resource records) to .gkm/
 gkm state:pull --stage production
 
-# Push local changes to remote
+# Copy the local stage to the remote, under the remote stage's lock
 gkm state:push --stage production
 
-# Compare local vs remote
+# Compare local and remote, resource records included
 gkm state:diff --stage production
 ```
+
+A push takes the remote stage's lock, so it fails with `StateLocked` while a
+deploy of that stage is running rather than replacing the state the deploy is
+writing. A v1 file is migrated on the way.
 
 ### State Contents
 
@@ -931,8 +942,11 @@ gkm state:pull --stage production
 # Compare local vs remote
 gkm state:diff --stage production
 
-# Force push local state
-gkm state:push --stage production --force
+# Replace remote state with the local copy
+gkm state:push --stage production
+
+# Release the lock of a deploy that was killed
+gkm state:unlock --stage production
 ```
 
 ### Database Connection Issues

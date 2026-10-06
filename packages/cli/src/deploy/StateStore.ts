@@ -22,11 +22,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { hostname, userInfo } from 'node:os';
 import {
-	type CreateStateProviderOptions,
+	type CreateStateStoreConfig,
 	isStateProvider,
 	type S3StateConfig,
 	type SSMStateConfig,
-	type StateProvider,
 } from './StateProvider';
 import type { DokployStageState } from './state';
 
@@ -563,14 +562,13 @@ export function isStateStore(value: unknown): value is StateStore {
 	);
 }
 
-export interface CreateStateStoreOptions extends CreateStateProviderOptions {
+export interface CreateStateStoreOptions extends CreateStateStoreConfig {
 	/** Where `StateStoreWithoutLocking` goes; `process.emitWarning` by default. */
 	warn?: (warning: StateStoreWithoutLocking) => void;
 }
 
 /**
- * The store for a workspace's `state` config — the same config
- * `createStateProvider` reads:
+ * The store for a workspace's `state` config:
  *
  * - none / `'local'`: `LocalStateStore` under `.gkm/`
  * - `'ssm'`: `SSMStateStore`, with no local cache — SSM is read directly, so
@@ -623,30 +621,4 @@ export async function createStateStore(
 	}
 
 	throw new UnknownStateProvider(config);
-}
-
-/**
- * A store behind the `StateProvider` interface, for the call sites that still
- * read and write whole states (deploy, until it journals). A write is still
- * conditional on the version this provider last read.
- */
-export class StateStoreProvider implements StateProvider {
-	private readonly versions = new Map<string, StateVersion | null>();
-
-	constructor(readonly store: StateStore) {}
-
-	async read(stage: string): Promise<DokployStageState | null> {
-		const stored = await this.store.read(stage);
-		this.versions.set(stage, stored?.version ?? null);
-		return stored?.state ?? null;
-	}
-
-	async write(stage: string, state: DokployStageState): Promise<void> {
-		const expectedVersion = this.versions.has(stage)
-			? (this.versions.get(stage) ?? null)
-			: ((await this.store.read(stage))?.version ?? null);
-		state.lastDeployedAt = new Date().toISOString();
-		const version = await this.store.write(stage, state, { expectedVersion });
-		this.versions.set(stage, version);
-	}
 }
