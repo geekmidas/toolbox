@@ -9,6 +9,7 @@ import {
 	isStateProvider,
 	type StateProvider,
 } from '../StateProvider';
+import { StateStoreNeedsWorkspaceName } from '../StateStore';
 
 describe('createStateProvider', () => {
 	let testDir: string;
@@ -81,7 +82,7 @@ describe('createStateProvider', () => {
 					workspaceRoot: testDir,
 					workspaceName: '',
 				}),
-			).rejects.toThrow('Workspace name is required');
+			).rejects.toBeInstanceOf(StateStoreNeedsWorkspaceName);
 		});
 
 		it('should create CachedStateProvider for ssm config', async () => {
