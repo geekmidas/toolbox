@@ -26,6 +26,7 @@ import {
 	expect,
 	it,
 } from 'vitest';
+import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import { normalizeWorkspace } from '../../workspace/index';
 import type { WorkspaceConfig } from '../../workspace/types';
 import { CachedStateProvider } from '../CachedStateProvider';
@@ -195,7 +196,7 @@ describe('State Provider E2E', () => {
 	});
 
 	describe('SSM State Provider', () => {
-		const LOCALSTACK_ENDPOINT = 'http://localhost:4566';
+		const LOCALSTACK_ENDPOINT = LOCALSTACK_URL;
 		const workspaceName = 'e2e-ssm-test';
 		let ssmClient: SSMClient;
 		let testDir: string;

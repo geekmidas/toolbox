@@ -22,6 +22,7 @@ import {
 	it,
 	vi,
 } from 'vitest';
+import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import { LocalStateProvider } from '../LocalStateProvider';
 import { SSMStateProvider } from '../SSMStateProvider';
 import type { DokployStageState } from '../state';
@@ -63,7 +64,7 @@ describe('state commands', () => {
 	let err: string[];
 
 	beforeAll(() => {
-		vi.stubEnv('AWS_ENDPOINT_URL_SSM', 'http://localhost:4566');
+		vi.stubEnv('AWS_ENDPOINT_URL_SSM', LOCALSTACK_URL);
 		vi.stubEnv('AWS_ACCESS_KEY_ID', 'test');
 		vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'test');
 	});
