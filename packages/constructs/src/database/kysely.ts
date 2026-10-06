@@ -22,9 +22,9 @@ import {
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { Kysely, type KyselyConfig, PostgresDialect } from 'kysely';
-import pg from 'pg';
 import { Cache } from '../cache';
 import type { Construct } from '../construct-interface';
+import { openPool } from './pool';
 
 /** The schema a database uses when it does not say otherwise. */
 const DEFAULT_SCHEMA = 'app';
@@ -66,6 +66,12 @@ export interface KyselyDatabaseOptions extends Omit<KyselyConfig, 'dialect'> {
 	 * Defaults to {@link DEFAULT_POSTGRES_VERSION}.
 	 */
 	version?: PostgresVersion;
+	/**
+	 * End each query run inside a request with a comment naming what ran it —
+	 * `/*operation='POST /orders',request_id='…'*\/` — so `pg_stat_activity`
+	 * and the server's logs can tie a query to its endpoint. Defaults to on.
+	 */
+	queryTags?: boolean;
 }
 
 /** What makes a construct derived rather than a database in its own right. */
@@ -269,6 +275,7 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 			schema: _schema,
 			roles: _roles,
 			version: _version,
+			queryTags: _queryTags,
 			...kysely
 		} = this.options;
 		return kysely;
@@ -288,34 +295,12 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 		return new Kysely<DB>({
 			...this.clientConfig,
 			dialect: new PostgresDialect({
-				pool: pool(as.owner ? (ownerUrl ?? url) : url),
+				pool: openPool(as.owner ? (ownerUrl ?? url) : url, {
+					queryTags: this.options.queryTags,
+				}),
 			}),
 		});
 	}
-}
-
-/**
- * A pool for one URL, with its schema actually on the search path.
- *
- * `?search_path=` is not a libpq parameter — a URL carrying it connects
- * happily and then resolves every unqualified name against `public`, which is
- * how a schema tenant silently writes its tables into the database it was
- * separated from. Postgres takes it as a startup option instead, so the URL
- * keeps the readable form the target derives and this turns it into the thing
- * the server understands.
- */
-function pool(url: string): pg.Pool {
-	const parsed = new URL(url);
-	const searchPath = parsed.searchParams.get('search_path');
-
-	if (!searchPath) return new pg.Pool({ connectionString: url });
-
-	parsed.searchParams.delete('search_path');
-
-	return new pg.Pool({
-		connectionString: parsed.toString(),
-		options: `-c search_path=${searchPath}`,
-	});
 }
 
 /**
@@ -339,3 +324,4 @@ export type ReadOnlyDatabase<DB, TName extends string> = Omit<
 	KyselyDatabase<DB, TName>,
 	'reader' | 'cache' | 'schema'
 >;
+export { closeDatabasePools } from './pool';

@@ -668,11 +668,19 @@ ${context.storageDrivers.setup}
 `
 		: ''
 }
-export interface ServerApp {
+${
+	context.surface
+		? `// Who this server is to Postgres: application_name on every connection.
+process.env.GKM_APP_NAME ??= ${JSON.stringify(context.surface.id)};
+
+`
+		: ''
+}export interface ServerApp {
   app: HonoType;
   start: (options?: {
     port?: number;
-    serve: (app: HonoType, port: number) => void | Promise<void>;
+    /** Returns the server, so a shutdown can stop it taking requests. */
+    serve: (app: HonoType, port: number) => unknown;
   }) => Promise<void>;
 }
 
@@ -871,15 +879,23 @@ import { setupCrons } from './crons.js';`
 		// Graceful shutdown code
 		const gracefulShutdownCode = enableGracefulShutdown
 			? `
-  // Graceful shutdown handling
+  // Graceful shutdown: stop taking requests, let in-flight ones finish, then
+  // close what constructs opened (database pools) — so a rolling deploy does
+  // not leave the old task holding connections. 30s at most, then exit anyway.
   let isShuttingDown = false;
 
   const shutdown = async () => {
     if (isShuttingDown) return;
     isShuttingDown = true;
     logger.info('Graceful shutdown initiated');
-    // Allow in-flight requests to complete (30s timeout)
-    setTimeout(() => process.exit(0), 30000);
+    setTimeout(() => process.exit(0), 30000).unref();
+    await new Promise<void>((resolve) => {
+      const close = (server as { close?: (done: () => void) => void } | undefined)?.close;
+      if (typeof close === 'function') close.call(server, () => resolve());
+      else resolve();
+    });
+    await runShutdownHooks((error) => logger.error({ error }, 'Shutdown hook failed'));
+    process.exit(0);
   };
 
   process.on('SIGTERM', shutdown);
@@ -903,7 +919,7 @@ import { setupCrons } from './crons.js';`
  */
 import { Hono } from 'hono';
 import type { Hono as HonoType } from 'hono';
-import { setupEndpoints } from '${endpointsImportPath}';
+${enableGracefulShutdown ? "import { runShutdownHooks } from '@geekmidas/constructs';\n" : ''}import { setupEndpoints } from '${endpointsImportPath}';
 ${subscriberImport}
 ${runtime.imports}
 ${runtime.bindings}
@@ -918,7 +934,14 @@ ${context.storageDrivers.setup}
 `
 		: ''
 }
-export interface ServerApp {
+${
+	context.surface
+		? `// Who this server is to Postgres: application_name on every connection.
+process.env.GKM_APP_NAME ??= ${JSON.stringify(context.surface.id)};
+
+`
+		: ''
+}export interface ServerApp {
   app: HonoType;
   start: (options?: {
     port?: number;
@@ -951,11 +974,12 @@ ${afterSetupCall}
       }
 
       const port = options.port ?? Number(process.env.PORT) ?? 3000;
+      let server: unknown;
 ${gracefulShutdownCode}${subscriberSetup}
       logger.info({ port }, 'Starting production server');
 
       // Start HTTP server using provided serve function
-      await options.serve(honoApp, port);
+      server = await options.serve(honoApp, port);
 
       logger.info({ port }, 'Production server started');
 ${includeSubscribers ? '\n      await subscribeForPush(port);' : ''}
@@ -997,7 +1021,7 @@ const { start } = await createApp();
 
 await start({
   port,
-  serve: (app, port) => { serve({ fetch: app.fetch, port }); },
+  serve: (app, port) => serve({ fetch: app.fetch, port }),
 });
 `;
 

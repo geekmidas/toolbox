@@ -332,8 +332,9 @@ export class AWSLambdaFunction<
 			const requestId = context.awsRequestId;
 			const logger = this.fn.logger.child({ requestId }) as TLogger;
 
-			return runWithRequestContext({ logger, requestId, startTime }, () =>
-				chain(event as Parameters<typeof chain>[0], context),
+			return runWithRequestContext(
+				{ logger, requestId, startTime, operation: context.functionName },
+				() => chain(event as Parameters<typeof chain>[0], context),
 			);
 		};
 

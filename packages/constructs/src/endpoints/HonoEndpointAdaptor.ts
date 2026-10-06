@@ -354,7 +354,12 @@ export class HonoEndpoint<
 
 			// Wrap entire handler in request context for services to access
 			return runWithRequestContext(
-				{ logger, requestId, startTime },
+				{
+					logger,
+					requestId,
+					startTime,
+					operation: `${endpoint.method} ${endpoint.route}`,
+				},
 				async () => {
 					try {
 						// Lazy accessors - no upfront parsing, use native Hono methods

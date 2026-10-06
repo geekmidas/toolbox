@@ -115,7 +115,12 @@ export class SnsPushSubscriberAdaptor {
 		const logger = this.subscriber.logger.child({ requestId });
 
 		await runWithRequestContext(
-			{ logger, requestId, startTime: Date.now() },
+			{
+				logger,
+				requestId,
+				startTime: Date.now(),
+				operation: `subscriber ${this.subscriber.topicName ?? 'sns'}`,
+			},
 			async () => {
 				try {
 					const { services, db } = await subscriberContext(

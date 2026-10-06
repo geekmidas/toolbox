@@ -10,6 +10,12 @@ export interface RequestContextData {
 	logger: Logger;
 	requestId: string;
 	startTime: number;
+	/**
+	 * What is running: `POST /orders`, `queue Emails`, `cron rate(1 day)`.
+	 * Carried so that work done on the request's behalf — a database query —
+	 * can say what it was done for.
+	 */
+	operation?: string;
 }
 
 /**
@@ -164,6 +170,19 @@ export const serviceContext: ServiceContext = {
 		return requestContextStorage.getStore() !== undefined;
 	},
 };
+
+/**
+ * The current request's context, or undefined outside one.
+ *
+ * For code that annotates work when there is a request and carries on when
+ * there is not — tagging a query, say — where {@link serviceContext}'s
+ * accessors would throw.
+ */
+export function currentRequestContext():
+	| Readonly<RequestContextData>
+	| undefined {
+	return requestContextStorage.getStore();
+}
 
 /**
  * Run a function with request context.
