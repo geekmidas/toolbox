@@ -95,6 +95,7 @@
     "no-rabbitmq-url",
     "openapi-document-fixes",
     "owner-creates-extensions",
+    "pin-floci",
     "publisher-edge",
     "queues-topics-constructs",
     "reconcile-reprovisions",

@@ -1,5 +1,25 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.54
+
+### Patch Changes
+
+- [#163](https://github.com/geekmidas/toolbox/pull/163) [`dc4187f`](https://github.com/geekmidas/toolbox/commit/dc4187fff4e9120eb02178583bf41c156cfbdf34) Thanks [@geekmidas](https://github.com/geekmidas)! - Pin the local AWS emulator to floci 2.1.0
+
+  The compose file `gkm dev` and `gkm test` generate ran `floci/floci:latest`. floci 2.2.0 (published under `latest` on 2026-10-06) answers a KMS decrypt under the wrong encryption context with `UnknownError` instead of `InvalidCiphertextException`, so a project's KMS behaviour locally changed under it. It is pinned to 2.1.0, as MinIO already is.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.54
+  - @geekmidas/constructs@10.0.0-alpha.54
+  - @geekmidas/db@10.0.0-alpha.54
+  - @geekmidas/envkit@10.0.0-alpha.54
+  - @geekmidas/errors@10.0.0-alpha.54
+  - @geekmidas/logger@10.0.0-alpha.54
+  - @geekmidas/manifest@10.0.0-alpha.54
+  - @geekmidas/schema@10.0.0-alpha.54
+  - @geekmidas/services@10.0.0-alpha.54
+  - @geekmidas/telescope@10.0.0-alpha.54
+
 ## 10.0.0-alpha.53
 
 ### Patch Changes
