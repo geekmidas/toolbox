@@ -10,6 +10,7 @@
  */
 
 import {
+	cpSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -120,6 +121,8 @@ describe('workspaceDeployCommand', () => {
 		root = realpathSync(mkdtempSync(join(tmpdir(), 'gkm-deploy-ws-')));
 		home = mkdtempSync(join(tmpdir(), 'gkm-deploy-home-'));
 		vi.stubEnv('HOME', home);
+		// The CLI's home under that HOME, not the suite's shared GKM_HOME.
+		vi.stubEnv('GKM_HOME', undefined);
 		vi.stubEnv('DOKPLOY_API_TOKEN', undefined);
 		vi.stubEnv('DOKPLOY_ENDPOINT', undefined);
 		cwd = process.cwd();
@@ -340,10 +343,15 @@ describe('workspaceDeployCommand', () => {
 		expect(said()).toContain('Using registry: GHCR');
 	});
 
-	it('asks for registry credentials it cannot prompt for without a terminal', async () => {
+	it('names the registry login it needs when there is no terminal to ask at', async () => {
 		dokploy.registries = [];
 
-		await expect(deploy()).rejects.toThrow('Interactive input required');
+		await expect(deploy()).rejects.toMatchObject({
+			name: 'MissingCredential',
+			kind: 'registry',
+			target: 'ghcr.io/acme',
+		});
+		expect(dokploy.registries).toEqual([]);
 	});
 
 	it('keeps going when a domain cannot be created', async () => {
@@ -784,10 +792,14 @@ export const config = new EnvironmentParser(process.env)
 		});
 	});
 
-	it('asks for Dokploy credentials when none are stored, and needs a terminal', async () => {
+	it('names the Dokploy login it needs when none is stored and there is no terminal', async () => {
 		rmSync(join(home, '.gkm'), { recursive: true, force: true });
 
-		await expect(deploy()).rejects.toThrow('Interactive input required');
+		await expect(deploy()).rejects.toMatchObject({
+			name: 'MissingCredential',
+			kind: 'dokploy',
+			target: ENDPOINT,
+		});
 	});
 
 	describe('on a server other workspaces deploy to', () => {
@@ -862,6 +874,13 @@ export const config = new EnvironmentParser(process.env)
 
 		it('refuses a project another identity marked, even through its own state', async () => {
 			await deploy({ adjust: inNamespace('acme') });
+			// The stage's key belongs to the identity; one that changes its
+			// namespace takes its key along.
+			cpSync(
+				join(home, '.gkm', 'keys', 'acme'),
+				join(home, '.gkm', 'keys', 'globex'),
+				{ recursive: true },
+			);
 
 			// Same checkout, namespace changed: the state still names acme's.
 			await expect(

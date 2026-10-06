@@ -75,6 +75,8 @@ describe('Hostinger zone', () => {
 		validated = [];
 		home = mkdtempSync(join(tmpdir(), 'gkm-hostinger-home-'));
 		vi.stubEnv('HOME', home);
+		// The CLI's home under that HOME, not the suite's shared GKM_HOME.
+		vi.stubEnv('GKM_HOME', undefined);
 		vi.stubEnv('HOSTINGER_API_TOKEN', TOKEN);
 	});
 

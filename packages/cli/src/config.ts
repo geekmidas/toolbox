@@ -1,5 +1,6 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join, parse, resolve, sep } from 'node:path';
+import { output } from './output.js';
 import { discover } from './reconcile/discover.js';
 import type { GkmConfig } from './types.js';
 import { derivedApps } from './workspace/derive.js';
@@ -254,7 +255,7 @@ async function withDerivedApps(loaded: LoadedConfig): Promise<LoadedConfig> {
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		console.warn(
+		output.warn(
 			`⚠️  Could not read constructs, so apps come from config alone: ${message}`,
 		);
 		return loaded;

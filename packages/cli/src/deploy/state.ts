@@ -7,6 +7,7 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { output } from '../output';
 
 /**
  * Per-app database credentials
@@ -139,7 +140,7 @@ export async function readStageState(
 			return null;
 		}
 		// Log other errors but don't fail
-		console.warn(`Warning: Could not read deploy state: ${error}`);
+		output.warn(`Warning: Could not read deploy state: ${error}`);
 		return null;
 	}
 }

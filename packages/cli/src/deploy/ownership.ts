@@ -71,29 +71,38 @@ async function projectById(
 	}
 }
 
+/** A project this identity may deploy into, as found without changing it. */
+export interface FoundProject {
+	projectId: string;
+	name: string;
+	description: string | null;
+	environments: DokployEnvironment[];
+	/** By the id the stage's state recorded, or by name and marker. */
+	via: 'state' | 'marker';
+	/**
+	 * Found through state but carrying no marker yet: a deploy writes the
+	 * marker; a dry run says it would.
+	 */
+	needsClaim: boolean;
+}
+
 /**
- * The project this deploy deploys into:
+ * The project this identity owns, if there is one — read only, so a dry run
+ * asks the same question a deploy does:
  *
  * 1. The one the stage's state names, if Dokploy still has it. State written
  *    before markers existed is trusted — it holds an id this workspace was
- *    given when it created the project — and the marker is written now, so
- *    the project is claimed for the next deploy that has no state.
+ *    given when it created the project.
  * 2. One with this name *and* this identity's marker.
- * 3. A new one, marked.
  *
  * A project that matches by name (in any case) but carries no marker, or
  * another identity's, raises `ProjectNotOwned` — it is never adopted.
  */
-export async function resolveProject(
+export async function findProject(
 	api: DokployApi,
 	identity: DeployIdentity,
 	stateProjectId: string | undefined,
-	log: (message: string) => void = () => {},
-	hooks: {
-		/** Runs just before a project is created — where a journal says so. */
-		beforeCreate?: () => Promise<void>;
-	} = {},
-): Promise<ResolvedProject> {
+): Promise<FoundProject | null> {
 	const name = projectName(identity);
 	const marker = ownershipMarker(identity);
 
@@ -109,18 +118,13 @@ export async function resolveProject(
 					claimed,
 				);
 			}
-			if (!claimed) {
-				await api.updateProject(known.projectId, {
-					name: known.name,
-					description: withMarker(known.description, marker),
-				});
-				log(`   Claimed project ${known.name} for ${identity.key}`);
-			}
 			return {
 				projectId: known.projectId,
 				name: known.name,
+				description: known.description ?? null,
 				environments: known.environments ?? [],
 				via: 'state',
+				needsClaim: !claimed,
 			};
 		}
 	}
@@ -140,8 +144,10 @@ export async function resolveProject(
 		return {
 			projectId: owned.projectId,
 			name: owned.name,
+			description: owned.description ?? null,
 			environments: details.environments ?? [],
 			via: 'marker',
+			needsClaim: false,
 		};
 	}
 
@@ -159,9 +165,46 @@ export async function resolveProject(
 		);
 	}
 
+	return null;
+}
+
+/**
+ * The project this deploy deploys into: the one {@link findProject} finds —
+ * claimed with this identity's marker if it carries none yet, so the next
+ * deploy without state still finds it — or a new one, marked.
+ */
+export async function resolveProject(
+	api: DokployApi,
+	identity: DeployIdentity,
+	stateProjectId: string | undefined,
+	log: (message: string) => void = () => {},
+	hooks: {
+		/** Runs just before a project is created — where a journal says so. */
+		beforeCreate?: () => Promise<void>;
+	} = {},
+): Promise<ResolvedProject> {
+	const marker = ownershipMarker(identity);
+	const found = await findProject(api, identity, stateProjectId);
+
+	if (found) {
+		if (found.needsClaim) {
+			await api.updateProject(found.projectId, {
+				name: found.name,
+				description: withMarker(found.description, marker),
+			});
+			log(`   Claimed project ${found.name} for ${identity.key}`);
+		}
+		return {
+			projectId: found.projectId,
+			name: found.name,
+			environments: found.environments,
+			via: found.via,
+		};
+	}
+
 	await hooks.beforeCreate?.();
 	const created = await api.createProject(
-		name,
+		projectName(identity),
 		withMarker('Deployed by gkm.', marker),
 	);
 	return {

@@ -24,6 +24,11 @@ export interface RunOptions {
 	stdio?: SpawnOptions['stdio'];
 	/** Kill the child after this long. Defaults to {@link DEFAULT_TIMEOUT_MS}. */
 	timeoutMs?: number;
+	/**
+	 * Kills the child when aborted, and rejects with the signal's reason — the
+	 * same as a stopped deploy's other calls.
+	 */
+	signal?: AbortSignal;
 }
 
 /** The command line as a person would read it — for messages, never to run. */
@@ -127,12 +132,15 @@ function spawnChild(
 
 		child.on('error', (error) => {
 			settle();
-			reject(error);
+			// Node reports an abort as its own `AbortError`; the caller asked
+			// with a reason, and that is what it should get back.
+			reject(spawnOptions.signal?.aborted ? spawnOptions.signal.reason : error);
 		});
 
 		child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
 			settle();
-			if (timedOut) reject(new CommandTimedOut(command, args, timeoutMs));
+			if (spawnOptions.signal?.aborted) reject(spawnOptions.signal.reason);
+			else if (timedOut) reject(new CommandTimedOut(command, args, timeoutMs));
 			else if (code === 0) resolve(stdout);
 			else reject(new CommandFailed(command, args, code, signal));
 		});

@@ -1,9 +1,10 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FileSecretsStore } from '../../secrets/file.js';
+import { keystoreProject } from '../../secrets/keystore.js';
 import type { NormalizedWorkspace } from '../../workspace/types.js';
 import { createFreshWorkspaceSecrets, ensureStageSecrets } from '../index.js';
 
@@ -133,6 +134,8 @@ export default defineWorkspace({
 		);
 
 		process.env.GKM_CONFIG_PATH = join(testDir, 'gkm.config.ts');
+		// Stage keys land in the CLI's home; never the real one.
+		vi.stubEnv('GKM_HOME', join(testDir, '.gkm-home'));
 	});
 
 	afterEach(async () => {
@@ -142,13 +145,16 @@ export default defineWorkspace({
 			process.env.GKM_CONFIG_PATH = originalGkmConfigPath;
 		}
 
+		vi.unstubAllEnvs();
 		await rm(testDir, { recursive: true, force: true });
-		// FileSecretsStore.write mints a key at ~/.gkm/{basename(root)}
-		await rm(join(homedir(), '.gkm', basename(testDir)), {
-			recursive: true,
-			force: true,
-		});
 	});
+
+	/** The stage file, keyed as the workspace's identity keys it. */
+	const secretsOf = (root: string) =>
+		new FileSecretsStore(
+			root,
+			keystoreProject({ name: 'test-workspace', root }),
+		);
 
 	it('generates a decryptable stage when none exists', async () => {
 		expect(existsSync(new FileSecretsStore(testDir).path('development'))).toBe(
@@ -168,19 +174,19 @@ export default defineWorkspace({
 		// project's constructs glob matches nothing, so there is no database and
 		// correctly no credential for one. It used to get one from `services: { db: true }`,
 		// which is the config-says-so path this no longer has.
-		const read = await new FileSecretsStore(testDir).read('development');
+		const read = await secretsOf(testDir).read('development');
 		expect(read?.custom.LOG_LEVEL).toBe('debug');
 		expect(read?.services.postgres).toBeUndefined();
 	});
 
 	it('is a no-op when secrets already exist', async () => {
 		await ensureStageSecrets('development', testDir);
-		const before = await new FileSecretsStore(testDir).read('development');
+		const before = await secretsOf(testDir).read('development');
 
 		const generated = await ensureStageSecrets('development', testDir);
 
 		expect(generated).toBe(false);
-		const after = await new FileSecretsStore(testDir).read('development');
+		const after = await secretsOf(testDir).read('development');
 		expect(after).toEqual(before);
 	});
 });

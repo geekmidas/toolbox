@@ -619,11 +619,70 @@ gkm login --provider dokploy
 
 ```bash
 # Deploy to production
-gkm deploy --stage production
+gkm deploy --provider dokploy --stage production
 
-# Skip building (use existing image)
-gkm deploy --stage production --skip-build
+# See what it would create or reuse, and change nothing
+gkm deploy --provider dokploy --stage production --dry-run
+
+# Events as JSON lines on stdout, for CI or another program
+gkm deploy --provider dokploy --stage production --json
 ```
+
+At a terminal, `gkm deploy` asks for a Dokploy login (and stores it) or a
+registry login when nothing else supplies one. With `--json`, or without a
+terminal, it never asks: a missing credential stops the deploy with
+`MissingCredential`, naming what was missing and how to supply it, and the
+command exits 1.
+
+`--dry-run` takes no lock, writes no state, generates no secrets, makes only
+read calls to Dokploy, and builds and pushes nothing. It lists what a deploy
+would create (`+`) and what it would reuse (`=`).
+
+### Deploying from a program
+
+`gkm deploy` is a thin wrapper around `deploy()` from `@geekmidas/cli/deploy`,
+which a host — a CI runner, a platform, a script — can call directly. It
+never prompts, prints or exits the process:
+
+```ts
+import { deploy, MissingCredential } from '@geekmidas/cli/deploy';
+
+const run = deploy({
+  cwd: '/srv/checkouts/shop', // the project; never assumed to be process.cwd()
+  stage: 'production',
+  credentials: {
+    async get(request) {
+      if (request.kind === 'dokploy') {
+        return { endpoint: 'https://dokploy.example.com', token: vault.dokploy };
+      }
+      // `registry`: only asked for when Dokploy has no registry to pull with
+    },
+  },
+  signal: AbortSignal.timeout(30 * 60_000),
+});
+
+for await (const event of run) {
+  // plain JSON: phase.started/finished, log, resource.applied, artifact.built,
+  // app.deployed, app.failed, deploy.finished, deploy.failed …
+  forward(event);
+}
+
+const result = await run.result; // or a rejection: MissingCredential, StateLocked, …
+```
+
+- `credentials` defaults to the environment (`DOKPLOY_API_TOKEN`,
+  `DOKPLOY_ENDPOINT`, `DOCKER_REGISTRY_USERNAME`, `DOCKER_REGISTRY_PASSWORD`),
+  then the login `gkm login` stored, then `deploy.dokploy.endpoint` for the
+  endpoint.
+- `logger` receives each progress line as `gkm deploy` would print it.
+- `signal` cancels in-flight Dokploy requests and docker children and releases
+  the stage's lock; `result` rejects with the signal's reason.
+- `dryRun: true` is `--dry-run`: `resource.planned` events instead of
+  `resource.applied`.
+- Each app's image is built from the app's own directory.
+
+`deploy()` loads `gkm.config.ts` with `import()`, so the host runs with a
+TypeScript loader (`tsx`) for now, as the CLI does.
 
 ![Local and deployed side by side, converging on one unchanged call site](/architecture/local-and-deployed.png)
 
@@ -877,7 +936,7 @@ the gitignored `.gkm/` — set `secrets.store` to a store CI can reach (SSM, or 
 custom one) before deploying a Dokploy stage from GitHub:
 
 ```bash
-gh secret set GKM_SECRETS_KEY --env prod < ~/.gkm/<project>/prod.key
+gh secret set GKM_SECRETS_KEY --env prod < ~/.gkm/keys/<namespace>/<project>/prod.key
 gh secret set DOKPLOY_API_TOKEN --env prod
 gh variable set DOKPLOY_ENDPOINT --env prod --body https://dokploy.example.com
 ```

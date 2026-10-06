@@ -269,7 +269,7 @@ The generated `.gitignore` excludes these files:
 
 | File | Location | Why Not Committed |
 |------|----------|-------------------|
-| Decryption key | `~/.gkm/{project-name}/development.key` | Security — stored in user's home directory |
+| Decryption key | `~/.gkm/keys/{namespace}/{project}/development.key` (`$GKM_HOME/keys/…` when `GKM_HOME` is set) | Security — stored in the user's home directory |
 
 ### The `docker/.env` File
 
@@ -318,7 +318,7 @@ export default defineWorkspace({
 
 | `store` | Where a deployed stage's secrets live |
 |---|---|
-| `'file'` (default) | the encrypted `.gkm/secrets/<stage>.json` on this machine, with its key in `~/.gkm/`. It cannot serve a deploy from CI while `.gkm/` is gitignored |
+| `'file'` (default) | the encrypted `.gkm/secrets/<stage>.json` on this machine, with its key in `~/.gkm/keys/` (or `$GKM_HOME/keys/`). It cannot serve a deploy from CI while `.gkm/` is gitignored |
 | `{ provider: 'ssm', region }` | one `SecureString` parameter per stage, `/gkm/<name>/<stage>/secrets`, in the AWS account of the active credentials — so with staging and production in different accounts, each stage's secrets sit beside its infrastructure |
 | `{ provider: store }` | any object with a `name`, `read(stage)` and `write(stage, secrets)` |
 
@@ -351,13 +351,15 @@ Only `gkm setup --force` regenerates secrets from scratch, which could lose manu
 **Share the decryption key** (the local stage)
 
 ```bash
-# Original developer exports the key location:
-# ~/.gkm/{project-name}/development.key
+# Original developer exports the key location — {namespace} is
+# deploy.namespace, else the kebab-cased workspace name; {project} is the
+# workspace name, lowercased:
+# ~/.gkm/keys/{namespace}/{project}/development.key
 
 # New team member places the key file:
-mkdir -p ~/.gkm/{project-name}
-cp /path/to/shared/development.key ~/.gkm/{project-name}/development.key
-chmod 600 ~/.gkm/{project-name}/development.key
+mkdir -p -m 700 ~/.gkm/keys/{namespace}/{project}
+cp /path/to/shared/development.key ~/.gkm/keys/{namespace}/{project}/development.key
+chmod 600 ~/.gkm/keys/{namespace}/{project}/development.key
 
 # Then run setup to generate docker/.env and start services:
 gkm setup
@@ -510,7 +512,7 @@ gkm secrets:init --stage dev
 
 ### "Decryption key not found for stage"
 
-The key at `~/.gkm/{project-name}/development.key` is missing. Either:
+The key at `~/.gkm/keys/{namespace}/{project}/development.key` is missing (the error names the exact path). Either:
 - Run `gkm setup` (generates fresh secrets with a new key)
 - Get the key file from a team member
 - Regenerate: `gkm setup --force`

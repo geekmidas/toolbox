@@ -282,7 +282,7 @@ export interface StagesConfig {
  *
  * Configures how secrets are encrypted for deployment.
  * Secrets are stored encrypted in `.gkm/secrets/{stage}.json`
- * with keys stored separately in `~/.gkm/{project}/{stage}.key`.
+ * with keys stored separately in `~/.gkm/keys/{namespace}/{project}/{stage}.key`.
  *
  * @example
  * ```ts

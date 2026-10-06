@@ -126,7 +126,8 @@ describe('generateGithubFiles', () => {
 			(s: { name?: string }) => s.name === 'Stage secrets key',
 		);
 
-		expect(key.run).toContain('~/.gkm/shop/"$STAGE".key');
+		// Under the project's identity, wherever the runner checks it out.
+		expect(key.run).toContain('~/.gkm/keys/shop/shop/"$STAGE".key');
 		expect(key.env.KEY).toBe('${{ secrets.GKM_SECRETS_KEY }}');
 		expect(deployYml).toContain('.gkm/ is\n      # gitignored');
 		expect(deployYml).toContain('secrets.store');

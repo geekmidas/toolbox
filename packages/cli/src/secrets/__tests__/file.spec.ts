@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FileSecretsStore, MissingSecretsKey } from '../file';
-import { getKeyPath } from '../keystore';
+import { getKeyPath, projectKey } from '../keystore';
 import type { StageSecrets } from '../types';
 
 describe('FileSecretsStore', () => {
@@ -81,7 +81,13 @@ describe('FileSecretsStore', () => {
 
 		expect(existsSync(join(root, '.gkm/secrets'))).toBe(true);
 		expect(existsSync(store.path('staging'))).toBe(true);
-		expect(existsSync(getKeyPath('staging', basename(root)))).toBe(true);
+		// Outside a workspace the project is named the way a workspace without
+		// a name is: by its folder, here.
+		expect(
+			existsSync(
+				getKeyPath('staging', { key: projectKey({ name: basename(root) }) }),
+			),
+		).toBe(true);
 	});
 
 	it('holds nothing for a stage never written', async () => {
@@ -100,6 +106,11 @@ describe('FileSecretsStore', () => {
 			.catch((e: unknown) => e);
 
 		expect(error).toBeInstanceOf(MissingSecretsKey);
-		expect(error).toMatchObject({ stage: 'prod', project: basename(root) });
+		const project = { key: projectKey({ name: basename(root) }) };
+		expect(error).toMatchObject({
+			stage: 'prod',
+			project: project.key,
+			path: getKeyPath('prod', project),
+		});
 	});
 });

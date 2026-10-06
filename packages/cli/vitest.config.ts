@@ -42,8 +42,10 @@ export default defineProject({
 	test: {
 		name: 'cli',
 		// `os.tmpdir()` reads TMPDIR, so every way the suites make a temp
-		// directory lands in `scratch` without any of them knowing.
-		env: { TMPDIR: scratch },
+		// directory lands in `scratch` without any of them knowing. GKM_HOME
+		// does the same for stage keys and stored logins: a suite that writes
+		// one never writes it into the home of whoever runs the tests.
+		env: { TMPDIR: scratch, GKM_HOME: join(scratch, 'gkm-home') },
 		// The `deploy/` suites drive real AWS SDK clients against the local
 		// emulator — SSM for deploy state, S3 and IAM for backup destinations.
 		// They were the only failing suites in the repo, and they were failing

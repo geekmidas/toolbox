@@ -1,6 +1,6 @@
 import { getDokployRegistryId, getDokployToken } from '../auth';
 import { DokployApi } from './dokploy-api';
-import type { DeployResult, DokployDeployConfig } from './types';
+import type { DockerDeployResult, DokployDeployConfig } from './types';
 
 const logger = console;
 
@@ -44,7 +44,7 @@ async function createApi(endpoint: string): Promise<DokployApi> {
  */
 export async function deployDokploy(
 	options: DokployDeployOptions,
-): Promise<DeployResult> {
+): Promise<DockerDeployResult> {
 	const { stage, imageRef, masterKey, config } = options;
 
 	logger.log(`\n🎯 Deploying to Dokploy...`);

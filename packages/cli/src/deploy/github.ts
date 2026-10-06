@@ -18,7 +18,6 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
 import {
 	AttachRolePolicyCommand,
 	CreateOpenIDConnectProviderCommand,
@@ -30,7 +29,7 @@ import {
 	UpdateAssumeRolePolicyCommand,
 } from '@aws-sdk/client-iam';
 import { loadWorkspaceConfig } from '../config.js';
-import { getKeyPath } from '../secrets/keystore.js';
+import { getKeyPath, keystoreProject, readKey } from '../secrets/keystore.js';
 import { isRemoteStore, secretsStoreFor } from '../secrets/store.js';
 import { assertDeployedStage } from '../workspace/stages.js';
 
@@ -202,8 +201,11 @@ export async function deployGithubCommand(
 		gh(['repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner']);
 	const role = roleName(workspace.name, options.stage);
 	const policyArn = options.policyArn ?? DEFAULT_POLICY_ARN;
-	const keyPath = getKeyPath(options.stage, workspace.name);
-	const hasKey = existsSync(keyPath);
+	// Read through the keystore so a key still at the place keys used to be kept
+	// is found, and copied to where it is kept now.
+	const key = await readKey(options.stage, keystoreProject(workspace));
+	const keyPath = getKeyPath(options.stage, keystoreProject(workspace));
+	const hasKey = key !== null;
 	// A stage whose secrets are in a store is read from there by the deploy job,
 	// with the role; it needs no key on GitHub.
 	const remote = isRemoteStore(workspace, options.stage);
@@ -291,7 +293,7 @@ export async function deployGithubCommand(
 				'--repo',
 				repo,
 			],
-			readFileSync(keyPath, 'utf-8').trim(),
+			key!,
 		);
 		logger.log('  ✓ GitHub: GKM_SECRETS_KEY');
 	} else {

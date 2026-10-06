@@ -35,6 +35,16 @@
 				"default": "./dist/reconcile/public.cjs"
 			}
 		},
+		"./deploy": {
+			"import": {
+				"types": "./dist/deploy/public.d.mts",
+				"default": "./dist/deploy/public.mjs"
+			},
+			"require": {
+				"types": "./dist/deploy/public.d.cts",
+				"default": "./dist/deploy/public.cjs"
+			}
+		},
 		"./workspace": {
 			"import": {
 				"types": "./dist/workspace/index.d.mts",

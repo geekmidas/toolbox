@@ -1,5 +1,6 @@
 #!/usr/bin/env -S npx tsx
 
+import { resolve } from 'node:path';
 import { Command } from 'commander';
 import pkg from '../package.json';
 import { loginCommand, logoutCommand, whoamiCommand } from './auth';
@@ -9,7 +10,6 @@ import {
 	UnknownBuildProvider,
 } from './build/index';
 import { enableDebug, formatError } from './debug';
-import { type DeployProvider, deployCommand } from './deploy/index';
 import { deployInitCommand, deployListCommand } from './deploy/init';
 import {
 	stateDiffCommand,
@@ -714,7 +714,8 @@ program
 		}
 	});
 
-// Deploy command
+// Deploy command — the terminal around `deploy()`: it prompts, prints and
+// sets the exit code; the deploy itself does none of the three.
 program
 	.command('deploy')
 	.description('Deploy application to a provider')
@@ -729,40 +730,35 @@ program
 	.option('--tag <tag>', 'Image tag (default: stage-timestamp)')
 	.option('--skip-push', 'Skip pushing image to registry')
 	.option('--skip-build', 'Skip build step (use existing build)')
+	.option(
+		'--json',
+		'Write events as JSON lines instead of progress; never prompts',
+	)
+	.option(
+		'--dry-run',
+		'Show what would be created or reused; change, build and push nothing',
+	)
 	.action(
 		async (options: {
 			provider: string;
 			stage: string;
 			tag?: string;
-			skipPush?: boolean;
-			skipBuild?: boolean;
+			json?: boolean;
+			dryRun?: boolean;
 		}) => {
-			try {
-				const globalOptions = program.opts();
-				if (globalOptions.cwd) {
-					process.chdir(globalOptions.cwd);
-				}
-
-				const validProviders = ['docker', 'dokploy', 'aws-lambda'];
-				if (!validProviders.includes(options.provider)) {
-					console.error(
-						`Invalid provider: ${options.provider}\n` +
-							`Valid providers: ${validProviders.join(', ')}`,
-					);
-					process.exit(1);
-				}
-
-				await deployCommand({
-					provider: options.provider as DeployProvider,
-					stage: options.stage,
-					tag: options.tag,
-					skipPush: options.skipPush,
-					skipBuild: options.skipBuild,
-				});
-			} catch (error) {
-				console.error(formatError(error));
-				process.exit(1);
-			}
+			const { deployCli } = await import('./deploy/cli');
+			const globalOptions = program.opts();
+			// Passed down, not `process.chdir`ed into: the deploy is told which
+			// project it is deploying.
+			const code = await deployCli({
+				cwd: resolve(globalOptions.cwd ?? process.cwd()),
+				provider: options.provider,
+				stage: options.stage,
+				...(options.tag ? { tag: options.tag } : {}),
+				...(options.json ? { json: true } : {}),
+				...(options.dryRun ? { dryRun: true } : {}),
+			});
+			if (code !== 0) process.exit(code);
 		},
 	);
 

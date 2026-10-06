@@ -40,6 +40,8 @@ describe('createDokployApi', () => {
 		seen.length = 0;
 		home = mkdtempSync(join(tmpdir(), 'gkm-api-home-'));
 		vi.stubEnv('HOME', home);
+		// The CLI's home under that HOME, not the suite's shared GKM_HOME.
+		vi.stubEnv('GKM_HOME', undefined);
 		vi.stubEnv('DOKPLOY_API_TOKEN', undefined);
 		vi.stubEnv('DOKPLOY_ENDPOINT', undefined);
 	});

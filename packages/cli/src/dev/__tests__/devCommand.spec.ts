@@ -21,6 +21,7 @@ import {
 } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { FileSecretsStore } from '../../secrets/file';
+import { keystoreProject } from '../../secrets/keystore';
 import { APP_TAG_ENV, appTag } from '../appPorts';
 
 /**
@@ -585,9 +586,13 @@ ${apps}
 		});
 	});
 
-	/** Local secrets for the \`dev\` stage, written the way \`gkm setup\` does. */
+	/**
+	 * Local secrets for the \`dev\` stage, written the way \`gkm setup\` does
+	 * for the workspace called \`shop\`: its key under that identity.
+	 */
 	async function secrets(root: string, custom: Record<string, string>) {
-		await new FileSecretsStore(root).write('dev', {
+		const keys = keystoreProject({ name: 'shop', root });
+		await new FileSecretsStore(root, keys).write('dev', {
 			stage: 'dev',
 			createdAt: '2026-01-01T00:00:00.000Z',
 			updatedAt: '2026-01-01T00:00:00.000Z',

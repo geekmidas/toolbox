@@ -13,6 +13,7 @@
  * workflow cannot fall out of step with it.
  */
 
+import { projectKey } from '../../secrets/keystore.js';
 import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
 
 /** How each package manager is set up, installs, and runs a script. */
@@ -234,6 +235,9 @@ function deploy(options: TemplateOptions): string {
 	// nothing but the role the job already assumed; the local file needs its
 	// key, and the encrypted file itself, which a checkout of an ignored
 	// `.gkm/` lacks.
+	// Where the CLI looks for the stage's key: under the project's identity,
+	// not under the checkout's folder name, which on a runner is the repo's.
+	const keyDir = `~/.gkm/keys/${projectKey({ name: options.name })}`;
 	const stageSecrets = sst
 		? credentials
 		: `
@@ -247,8 +251,8 @@ function deploy(options: TemplateOptions): string {
       # whatever was typed.
       - name: Stage secrets key
         run: |
-          mkdir -p -m 700 ~/.gkm/${options.name}
-          (umask 077 && printf '%s' "$KEY" > ~/.gkm/${options.name}/"$STAGE".key)
+          mkdir -p -m 700 ${keyDir}
+          (umask 077 && printf '%s' "$KEY" > ${keyDir}/"$STAGE".key)
         env:
           KEY: \${{ secrets.GKM_SECRETS_KEY }}
           STAGE: \${{ matrix.stage }}
