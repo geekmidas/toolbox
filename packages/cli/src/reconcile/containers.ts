@@ -40,7 +40,9 @@ export const DEFAULT_IMAGES: Readonly<Record<string, string>> = {
 	redis: 'redis:8-alpine',
 	'redis-http': 'hiett/serverless-redis-http:latest',
 	rabbitmq: 'rabbitmq:4-management-alpine',
-	localstack: 'floci/floci:latest',
+	// Pinned: 2.2.0 answers a KMS decrypt under the wrong encryption context
+	// with UnknownError instead of InvalidCiphertextException.
+	localstack: 'floci/floci:2.1.0',
 	// The local edge: TLS with its own CA, and host-based routing onto the
 	// bucket behind it. Not a CDN — what is missing locally is the *mapping*
 	// and the certificate, not caching, and a caching proxy would add an
