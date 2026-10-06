@@ -1,5 +1,27 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.58
+
+### Patch Changes
+
+- Updated dependencies [[`476aeda`](https://github.com/geekmidas/toolbox/commit/476aedab3128ec29948df93f9776dae4e42d3488)]:
+  - @geekmidas/telescope@10.0.0-alpha.58
+  - @geekmidas/logger@10.0.0-alpha.58
+  - @geekmidas/audit@10.0.0-alpha.58
+  - @geekmidas/auth@10.0.0-alpha.58
+  - @geekmidas/cache@10.0.0-alpha.58
+  - @geekmidas/db@10.0.0-alpha.58
+  - @geekmidas/emailkit@10.0.0-alpha.58
+  - @geekmidas/envkit@10.0.0-alpha.58
+  - @geekmidas/errors@10.0.0-alpha.58
+  - @geekmidas/events@10.0.0-alpha.58
+  - @geekmidas/manifest@10.0.0-alpha.58
+  - @geekmidas/rate-limit@10.0.0-alpha.58
+  - @geekmidas/schema@10.0.0-alpha.58
+  - @geekmidas/services@10.0.0-alpha.58
+  - @geekmidas/storage@10.0.0-alpha.58
+  - @geekmidas/testkit@10.0.0-alpha.58
+
 ## 10.0.0-alpha.57
 
 ### Patch Changes

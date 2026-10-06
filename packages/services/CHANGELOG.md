@@ -1,5 +1,13 @@
 # @geekmidas/services
 
+## 10.0.0-alpha.58
+
+### Patch Changes
+
+- Updated dependencies [[`476aeda`](https://github.com/geekmidas/toolbox/commit/476aedab3128ec29948df93f9776dae4e42d3488)]:
+  - @geekmidas/logger@10.0.0-alpha.58
+  - @geekmidas/envkit@10.0.0-alpha.58
+
 ## 10.0.0-alpha.57
 
 ### Patch Changes

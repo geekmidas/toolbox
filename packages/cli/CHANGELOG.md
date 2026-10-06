@@ -1,5 +1,37 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.58
+
+### Minor Changes
+
+- [#170](https://github.com/geekmidas/toolbox/pull/170) [`d0bfbfd`](https://github.com/geekmidas/toolbox/commit/d0bfbfd78e56d65e0f2ba5442e904b311b7df96f) Thanks [@geekmidas](https://github.com/geekmidas)! - :boom: Dokploy deploys are identified by namespace, project and stage, and never adopt a project they did not create
+
+  - ✨ **`deploy.namespace`.** A deploy's identity is `<namespace>/<project>` plus its stage. The namespace defaults to the kebab-cased workspace name; set it when two workspaces with one name deploy to one server. A chosen namespace is in the Dokploy project name (`acme-shop`), every application and service name (`production-acme-shop-api`) and the image path. The default adds nothing to the names a workspace was already deployed under.
+  - **Projects are claimed, not matched by name.** A project created by a deploy carries `gkm:<namespace>/<project>` in its description. Deploy uses the project its stage state names, then one with its name and its marker, then creates one. A project with the same name in any case and no marker (or another identity's) raises `ProjectNotOwned` and is never deployed into. Existing stages: the project id in state is trusted and the marker is written on the next deploy.
+  - ✨ **Images are `<registry>/<namespace>/<project>-<app>:<tag>`** (was `<registry>/<name>-<app>:<tag>`), and each app's ref and pushed digest are recorded in the stage state (`images`). Registry permissions scoped to the old repository names need the new path.
+  - **The registry is the one configured.** `deploy.dokploy.registry` is required (`RegistryNotConfigured`); Dokploy's registry is `deploy.dokploy.registryId`, else the one in the stage state, else the one Dokploy has for that registry's host and path (`RegistryAmbiguous` when several match, `RegistryNotFound` for a wrong id). It is never "the first registry Dokploy lists", and its id is kept in the stage state (`registryId`) rather than once per machine in `~/.gkm/credentials.json`.
+
+- [#167](https://github.com/geekmidas/toolbox/pull/167) [`476aeda`](https://github.com/geekmidas/toolbox/commit/476aedab3128ec29948df93f9776dae4e42d3488) Thanks [@geekmidas](https://github.com/geekmidas)! - Production defaults: OpenTelemetry wired into the production entry, and logger redaction on
+
+  - :boom: `createLogger` from `@geekmidas/logger/pino` now redacts `DEFAULT_REDACT_PATHS` when `redact` is left out. Pass `redact: false` for the old behaviour. It also takes a `destination` to write to.
+  - `gkm build --production` writes a `telemetry.ts` beside `server.ts`, and the entry awaits it before importing the app. When `OTEL_EXPORTER_OTLP_ENDPOINT` is set it calls `setupTelemetry` with `service.name` (the surface id), `service.namespace` (the workspace) and `deployment.environment` (`STAGE`). Unset, nothing is imported. An app without `@geekmidas/telescope` and the `@opentelemetry/*` peers still builds and starts, and warns `TelemetryUnavailable` if the endpoint is set.
+  - `setupTelemetry` gains `sampleRatio` (parent-based ratio sampling, `InvalidSampleRatio` outside 0–1), `serviceNamespace`, `deploymentEnvironment` and `handleSignals`. Without an `endpoint` it now follows the standard `OTEL_EXPORTER_OTLP_*` variables instead of writing to the console, and `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG` apply when no ratio is passed.
+  - 🐛 Fixed: OTLP log export never sent anything — the log processor went to a `LoggerProvider` nothing registered. It is now handed to the SDK. `shutdownTelemetry` also removes its `SIGTERM` listener.
+
+### Patch Changes
+
+- Updated dependencies [[`476aeda`](https://github.com/geekmidas/toolbox/commit/476aedab3128ec29948df93f9776dae4e42d3488)]:
+  - @geekmidas/telescope@10.0.0-alpha.58
+  - @geekmidas/logger@10.0.0-alpha.58
+  - @geekmidas/constructs@10.0.0-alpha.58
+  - @geekmidas/cache@10.0.0-alpha.58
+  - @geekmidas/db@10.0.0-alpha.58
+  - @geekmidas/envkit@10.0.0-alpha.58
+  - @geekmidas/errors@10.0.0-alpha.58
+  - @geekmidas/manifest@10.0.0-alpha.58
+  - @geekmidas/schema@10.0.0-alpha.58
+  - @geekmidas/services@10.0.0-alpha.58
+
 ## 10.0.0-alpha.57
 
 ### Patch Changes
