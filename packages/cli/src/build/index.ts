@@ -512,6 +512,26 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		return {};
 	}
 
+	// A RestApi's production image answers HTTP and nothing else. Queues,
+	// crons and subscribers belong to a Worker — the process with no port —
+	// even when they sit in the API's directory, so the server it builds leaves
+	// them out rather than running them beside the routes.
+	if (production?.subscribers === 'include' && derived.surface) {
+		buildContext.production = { ...production, subscribers: 'exclude' };
+		const left = [
+			[allCrons.length, 'cron'],
+			[allQueues.length, 'queue consumer'],
+			[allSubscribers.length, 'subscriber'],
+		]
+			.filter(([n]) => (n as number) > 0)
+			.map(([n, what]) => `${n} ${what}${n === 1 ? '' : 's'}`);
+		if (left.length > 0) {
+			logger.log(
+				`Serving ${derived.surface.id} only: leaving out ${left.join(', ')} — they run in a Worker's image`,
+			);
+		}
+	}
+
 	const result = await buildForTarget(
 		target,
 		buildContext,

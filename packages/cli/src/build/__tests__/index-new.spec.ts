@@ -28,6 +28,60 @@ const ofKind = (constructs: Record<string, any>, kind: string) =>
 
 describe('buildCommand', () => {
 	itWithDir(
+		"builds a RestApi's production server without its worker's background work",
+		async ({ dir }) => {
+			await createMockEndpointFile(
+				dir,
+				'src/endpoints/users.ts',
+				'getUsersEndpoint',
+				'/users',
+				'GET',
+			);
+			await createMockCronFile(
+				dir,
+				'src/crons/cleanup.ts',
+				'cleanupCron',
+				'rate(1 day)',
+			);
+			await createTestFile(
+				dir,
+				'gkm.config.ts',
+				`
+export default {
+  stages: { local: 'development', deployed: ['production'] },
+  constructs: './src/**/*.ts',
+};
+`,
+			);
+			const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+			const originalCwd = process.cwd();
+			process.chdir(dir);
+
+			try {
+				await buildCommand({
+					provider: 'server',
+					production: true,
+					skipBundle: true,
+				});
+
+				const app = await readFile(join(dir, '.gkm', 'server', 'app.ts'), 'utf-8');
+				// The routes, and nothing that runs beside them.
+				expect(app).toContain('await setupEndpoints(');
+				expect(app).not.toContain('setupCrons');
+				expect(app).not.toContain('setupQueues');
+				expect(app).not.toContain('setupSubscribers');
+				// Says so, rather than dropping the cron silently.
+				expect(log.mock.calls.flat().join('\n')).toMatch(
+					/Serving Test only: leaving out 1 cron/,
+				);
+			} finally {
+				process.chdir(originalCwd);
+				log.mockRestore();
+			}
+		},
+	);
+
+	itWithDir(
 		'should build endpoints, functions, and crons for multiple providers',
 		async ({ dir }) => {
 			// Create test files that will be discovered
