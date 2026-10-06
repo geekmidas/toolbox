@@ -338,9 +338,52 @@ export default defineWorkspace({
 });
 ```
 
+### S3
+
+Stores state as an object in an existing S3 bucket. Every write is
+conditional (`If-None-Match: *` to create, `If-Match: <etag>` to replace), so
+two runs can never overwrite each other's state.
+
+- **Location:** `s3://{bucket}/{prefix}/{workspaceName}/{stage}/state.json`
+  (`prefix` defaults to `gkm`), with the lock beside it in `lock.json`
+
+```typescript
+state: {
+  provider: 's3',
+  bucket: 'my-app-deploy-state',
+  region: 'us-east-1',
+  prefix: 'gkm',          // optional
+  profile: 'production',  // optional
+},
+```
+
+### Locks, versions and resource records
+
+Every provider is also available as a `StateStore` (`createStateStore`), which
+deploy is moving to:
+
+- **Lock:** one run per stage. A second run fails with `StateLocked`, naming
+  who holds it. A run that crashed with the lock held is released with
+  `gkm state:unlock --stage <stage>`.
+- **Versioned writes:** a write names the version it read and fails with
+  `StateVersionConflict` if the state changed since. Local files are replaced
+  atomically (temp file + rename), SSM checks the parameter version before and
+  after each put, S3 uses conditional puts.
+- **Resource records:** `putResource` records one resource at a time.
+- **Format:** state is stored as schema version 2. A version 1 file is
+  migrated the first time a store reads it, and the original is kept as
+  `.gkm/deploy-{stage}.v1.json` (`state.v1` beside the SSM parameter,
+  `state.v1.json` beside the S3 object).
+- **Permissions:** local state, lock and backup files are mode `0600`.
+
+A custom `StateProvider` (an object with `read`/`write`) keeps working, but
+cannot lock: it warns `StateStoreWithoutLocking`. Implement `StateStore` to
+make it safe for concurrent runs.
+
 ### CachedStateProvider
 
-Wraps remote storage with local caching for faster reads.
+Wraps remote storage with local caching for faster reads. Deprecated for
+deploys: a stale local copy wins over the remote without warning.
 
 ```bash
 # Sync remote state to local
@@ -377,6 +420,9 @@ interface DokployStageState {
   lastDeployedAt: string;
 }
 ```
+
+`gkm state:show` masks database passwords, generated secrets and IAM keys,
+in both its table and `--json` output.
 
 ---
 

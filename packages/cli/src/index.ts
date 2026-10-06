@@ -16,6 +16,7 @@ import {
 	statePullCommand,
 	statePushCommand,
 	stateShowCommand,
+	stateUnlockCommand,
 } from './deploy/state-commands';
 import { devCommand, execCommand } from './dev/index';
 import { type DockerOptions, dockerCommand } from './docker/index';
@@ -1038,6 +1039,26 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await stateShowCommand(options);
+		} catch (error) {
+			console.error(formatError(error));
+			process.exit(1);
+		}
+	});
+
+program
+	.command('state:unlock')
+	.description('Release a stage deploy lock left behind by a run that crashed')
+	.requiredOption(
+		'--stage <stage>',
+		'Deployment stage (e.g., production, staging)',
+	)
+	.action(async (options: { stage: string }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await stateUnlockCommand(options);
 		} catch (error) {
 			console.error(formatError(error));
 			process.exit(1);

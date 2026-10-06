@@ -7,7 +7,36 @@
 import { loadWorkspaceConfig } from '../config';
 import { CachedStateProvider } from './CachedStateProvider';
 import { createStateProvider } from './StateProvider';
+import { createStateStore } from './StateStore';
 import type { DokployStageState } from './state';
+
+/** What `state:show` prints in place of a secret. */
+export const MASKED = '********';
+
+/**
+ * A copy of `state` with every secret replaced by `MASKED`: database
+ * passwords, generated secrets and the backup IAM keys. `state:show` is run
+ * to look up ids, in terminals and CI logs; nothing it prints should be
+ * usable as a credential.
+ */
+export function maskStateSecrets(state: DokployStageState): DokployStageState {
+	const masked: DokployStageState = structuredClone(state);
+
+	for (const credentials of Object.values(masked.appCredentials ?? {})) {
+		credentials.dbPassword = MASKED;
+	}
+	for (const secrets of Object.values(masked.generatedSecrets ?? {})) {
+		for (const name of Object.keys(secrets)) {
+			secrets[name] = MASKED;
+		}
+	}
+	if (masked.backups) {
+		masked.backups.iamAccessKeyId = MASKED;
+		masked.backups.iamSecretAccessKey = MASKED;
+	}
+
+	return masked;
+}
 
 export interface StateCommandOptions {
 	stage: string;
@@ -104,18 +133,51 @@ export async function stateShowCommand(
 		workspaceName: workspace.name,
 	});
 
-	const state = await provider.read(options.stage);
+	const stored = await provider.read(options.stage);
 
-	if (!state) {
+	if (!stored) {
 		console.log(`No state found for stage: ${options.stage}`);
 		return;
 	}
+
+	const state = maskStateSecrets(stored);
 
 	if (options.json) {
 		console.log(JSON.stringify(state, null, 2));
 	} else {
 		printStateDetails(state);
 	}
+}
+
+/**
+ * Release a stage's deploy lock, whoever holds it.
+ * `gkm state:unlock --stage=<stage>`
+ *
+ * For a run that crashed with the lock held. Releasing a lock a live run
+ * holds lets a second run race it, so the holder is printed for the caller
+ * to check.
+ */
+export async function stateUnlockCommand(
+	options: StateCommandOptions,
+): Promise<void> {
+	const { workspace } = await loadWorkspaceConfig();
+
+	const store = await createStateStore({
+		config: workspace.state,
+		workspaceRoot: workspace.root,
+		workspaceName: workspace.name,
+	});
+
+	const holder = await store.forceUnlock(options.stage);
+
+	if (!holder) {
+		console.log(`Stage ${options.stage} was not locked.`);
+		return;
+	}
+
+	console.log(
+		`Released the lock on stage ${options.stage}, held by ${holder.owner}@${holder.host} (pid ${holder.pid}) since ${holder.acquiredAt}.`,
+	);
 }
 
 /**
@@ -262,6 +324,35 @@ function printStateDetails(state: DokployStageState): void {
 		if (state.services.redisId) {
 			console.log(`  Redis: ${state.services.redisId}`);
 		}
+	}
+
+	const credentials = Object.entries(state.appCredentials ?? {});
+	if (credentials.length > 0) {
+		console.log('');
+		console.log('Database Credentials:');
+		for (const [app, { dbUser, dbPassword }] of credentials) {
+			console.log(`  ${app}: ${dbUser} / ${dbPassword}`);
+		}
+	}
+
+	const generated = Object.entries(state.generatedSecrets ?? {});
+	if (generated.length > 0) {
+		console.log('');
+		console.log('Generated Secrets:');
+		for (const [app, secrets] of generated) {
+			for (const [name, value] of Object.entries(secrets)) {
+				console.log(`  ${app}.${name}: ${value}`);
+			}
+		}
+	}
+
+	if (state.backups) {
+		console.log('');
+		console.log('Backups:');
+		console.log(`  Bucket: ${state.backups.bucketName}`);
+		console.log(`  IAM User: ${state.backups.iamUserName}`);
+		console.log(`  IAM Access Key: ${state.backups.iamAccessKeyId}`);
+		console.log(`  IAM Secret Key: ${state.backups.iamSecretAccessKey}`);
 	}
 
 	if (state.dnsVerified && Object.keys(state.dnsVerified).length > 0) {

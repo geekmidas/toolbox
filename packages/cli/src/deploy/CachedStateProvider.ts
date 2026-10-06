@@ -13,6 +13,11 @@ import type { DokployStageState } from './state';
 
 /**
  * Cached state provider that wraps a remote provider with local cache.
+ *
+ * @deprecated for deploys: a read prefers the local copy, so a stale one wins
+ * over the remote without warning, and a write overwrites the remote blindly.
+ * Deploy uses `createStateStore`, which reads SSM directly and writes
+ * conditionally. Kept for `gkm state:pull | push | diff`.
  */
 export class CachedStateProvider implements StateProvider {
 	constructor(
