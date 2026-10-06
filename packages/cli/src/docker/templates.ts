@@ -483,6 +483,10 @@ node_modules
 .gkm/server/*.ts
 !.gkm/server/dist
 
+# The key gkm build --stage encrypted secrets with: runtime env only, never
+# the build context
+.gkm/server/master.key
+
 # IDE and editor
 .idea
 .vscode
@@ -738,10 +742,6 @@ FROM deps AS builder
 
 WORKDIR /app
 
-# Build-time args for encrypted secrets
-ARG GKM_ENCRYPTED_CREDENTIALS=""
-ARG GKM_CREDENTIALS_IV=""
-
 # Copy pruned source
 COPY --from=pruner /app/out/full/ ./
 
@@ -750,11 +750,15 @@ COPY --from=pruner /app/out/full/ ./
 COPY --from=pruner /app/gkm.config.* ./
 COPY --from=pruner /app/tsconfig.* ./
 
-# Write encrypted credentials for gkm build to embed
-RUN if [ -n "$GKM_ENCRYPTED_CREDENTIALS" ]; then \
+# Write encrypted credentials for gkm build to embed.
+# A build secret (\`docker build --secret id=gkm_credentials,src=…\`), not an
+# ARG: an ARG is recorded in the image history. Two lines, ciphertext then IV;
+# absent when the app has no secrets.
+RUN --mount=type=secret,id=gkm_credentials,required=false \
+    if [ -s /run/secrets/gkm_credentials ]; then \
       mkdir -p ${appPath}/.gkm && \
-      echo "$GKM_ENCRYPTED_CREDENTIALS" > ${appPath}/.gkm/credentials.enc && \
-      echo "$GKM_CREDENTIALS_IV" > ${appPath}/.gkm/credentials.iv; \
+      sed -n 1p /run/secrets/gkm_credentials > ${appPath}/.gkm/credentials.enc && \
+      sed -n 2p /run/secrets/gkm_credentials > ${appPath}/.gkm/credentials.iv; \
     fi
 
 # Build any workspace packages the app depends on.
@@ -874,10 +878,6 @@ FROM deps AS builder
 
 WORKDIR /app
 
-# Build-time args for encrypted secrets
-ARG GKM_ENCRYPTED_CREDENTIALS=""
-ARG GKM_CREDENTIALS_IV=""
-
 # Copy pruned source
 COPY --from=pruner /app/out/full/ ./
 
@@ -885,20 +885,17 @@ COPY --from=pruner /app/out/full/ ./
 # Using wildcard to make it optional for single-app projects
 COPY --from=pruner /app/tsconfig.* ./
 
-# Write encrypted credentials for tsdown to embed via define
-RUN if [ -n "$GKM_ENCRYPTED_CREDENTIALS" ]; then \
-      mkdir -p ${appPath}/.gkm && \
-      echo "$GKM_ENCRYPTED_CREDENTIALS" > ${appPath}/.gkm/credentials.enc && \
-      echo "$GKM_CREDENTIALS_IV" > ${appPath}/.gkm/credentials.iv; \
-    fi
-
 # Bundle entry point with esbuild (outputs to dist/index.mjs)
 # Creates a fully standalone bundle with all dependencies included
-# Use define to embed credentials if present
-RUN cd ${appPath} && \
-    if [ -f .gkm/credentials.enc ]; then \
-      CREDS=$(cat .gkm/credentials.enc) && \
-      IV=$(cat .gkm/credentials.iv) && \
+# Use define to embed credentials if present.
+# They arrive as a build secret (\`docker build --secret id=gkm_credentials,src=…\`),
+# not an ARG: an ARG is recorded in the image history. Two lines, ciphertext
+# then IV; absent when the app has no secrets.
+RUN --mount=type=secret,id=gkm_credentials,required=false \
+    cd ${appPath} && \
+    if [ -s /run/secrets/gkm_credentials ]; then \
+      CREDS=$(sed -n 1p /run/secrets/gkm_credentials) && \
+      IV=$(sed -n 2p /run/secrets/gkm_credentials) && \
       npx esbuild ${entry} --bundle --platform=node --target=node22 --format=esm \
         --outfile=dist/index.mjs --packages=bundle \
         --banner:js='import { createRequire } from "module"; const require = createRequire(import.meta.url);' \

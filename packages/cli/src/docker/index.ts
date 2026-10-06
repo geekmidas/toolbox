@@ -1,4 +1,3 @@
-import { execSync } from 'node:child_process';
 import { copyFileSync, existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
@@ -6,7 +5,9 @@ import { loadConfig, loadWorkspaceConfig } from '../config';
 import { getPublicUrlArgNames } from '../deploy/domain.js';
 import { COMPOSE_PATH } from '../reconcile/index.js';
 import { reconcileWorkspace } from '../reconcile/workspace.js';
+import { run } from '../run';
 import type { NormalizedWorkspace } from '../workspace/types.js';
+import { validateImageRef } from './imageRef';
 import {
 	detectPackageManager,
 	findLockfilePath,
@@ -24,6 +25,7 @@ import {
 	resolveDockerConfig,
 } from './templates';
 
+export { ImageRefInvalid, validateImageRef } from './imageRef';
 export {
 	detectPackageManager,
 	findLockfilePath,
@@ -32,6 +34,44 @@ export {
 } from './templates';
 
 const logger = console;
+
+/** `docker build` failed; what docker printed above says why. */
+export class DockerBuildFailed extends Error {
+	constructor(
+		readonly imageRef: string,
+		cause: unknown,
+	) {
+		super(
+			`Failed to build Docker image: ${cause instanceof Error ? cause.message : String(cause)}`,
+			{ cause },
+		);
+		this.name = 'DockerBuildFailed';
+	}
+}
+
+/** `docker push` failed — usually the registry login or its permissions. */
+export class DockerPushFailed extends Error {
+	constructor(
+		readonly imageRef: string,
+		cause: unknown,
+	) {
+		super(
+			`Failed to push Docker image: ${cause instanceof Error ? cause.message : String(cause)}`,
+			{ cause },
+		);
+		this.name = 'DockerPushFailed';
+	}
+}
+
+/** `gkm docker --push` was asked for with nowhere to push to. */
+export class PushNeedsRegistry extends Error {
+	constructor(readonly imageName: string) {
+		super(
+			`Registry is required to push Docker image '${imageName}'. Use --registry or configure docker.registry in gkm.config.ts`,
+		);
+		this.name = 'PushNeedsRegistry';
+	}
+}
 
 export interface DockerOptions {
 	/** Build Docker image after generating files */
@@ -247,9 +287,10 @@ async function buildDockerImage(
 	const tag = options.tag ?? 'latest';
 	const registry = options.registry;
 
-	const fullImageName = registry
-		? `${registry}/${imageName}:${tag}`
-		: `${imageName}:${tag}`;
+	// Before anything runs: a ref docker would misread is refused by name.
+	const fullImageName = validateImageRef(
+		registry ? `${registry}/${imageName}:${tag}` : `${imageName}:${tag}`,
+	);
 
 	logger.log(`\n🐳 Building Docker image: ${fullImageName}`);
 
@@ -259,20 +300,20 @@ async function buildDockerImage(
 	const cleanup = ensureLockfile(cwd);
 
 	try {
-		// Use BuildKit for cache mount support (required for --mount=type=cache)
-		execSync(
-			`DOCKER_BUILDKIT=1 docker build -f .gkm/docker/Dockerfile -t ${fullImageName} .`,
+		// An argument array, so nothing in the ref is read by a shell, and
+		// `--tag=` so it cannot be read as a flag.
+		await run(
+			'docker',
+			['build', '--file=.gkm/docker/Dockerfile', `--tag=${fullImageName}`, '.'],
 			{
 				cwd,
-				stdio: 'inherit',
+				// BuildKit, for the templates' `RUN --mount=type=cache`.
 				env: { ...process.env, DOCKER_BUILDKIT: '1' },
 			},
 		);
 		logger.log(`✅ Docker image built: ${fullImageName}`);
 	} catch (error) {
-		throw new Error(
-			`Failed to build Docker image: ${error instanceof Error ? error.message : 'Unknown error'}`,
-		);
+		throw new DockerBuildFailed(fullImageName, error);
 	} finally {
 		// Clean up copied lockfile
 		cleanup?.();
@@ -290,25 +331,18 @@ async function pushDockerImage(
 	const registry = options.registry;
 
 	if (!registry) {
-		throw new Error(
-			'Registry is required to push Docker image. Use --registry or configure docker.registry in gkm.config.ts',
-		);
+		throw new PushNeedsRegistry(imageName);
 	}
 
-	const fullImageName = `${registry}/${imageName}:${tag}`;
+	const fullImageName = validateImageRef(`${registry}/${imageName}:${tag}`);
 
 	logger.log(`\n🚀 Pushing Docker image: ${fullImageName}`);
 
 	try {
-		execSync(`docker push ${fullImageName}`, {
-			cwd: process.cwd(),
-			stdio: 'inherit',
-		});
+		await run('docker', ['push', fullImageName], { cwd: process.cwd() });
 		logger.log(`✅ Docker image pushed: ${fullImageName}`);
 	} catch (error) {
-		throw new Error(
-			`Failed to push Docker image: ${error instanceof Error ? error.message : 'Unknown error'}`,
-		);
+		throw new DockerPushFailed(fullImageName, error);
 	}
 }
 

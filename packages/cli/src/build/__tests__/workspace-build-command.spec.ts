@@ -118,14 +118,24 @@ describe('workspaceBuildCommand', () => {
 		});
 		expect(result.apps.every((a) => a.success)).toBe(true);
 
-		const [command, spawnOptions] = vi.mocked(spawn).mock.calls[0]!;
-		expect(command).toContain('turbo run build');
-		expect(command).toContain('--filter=@shop/web');
-		// The backend is the root's to build, and nothing pulls it back in.
-		expect(command).not.toContain('--filter=@shop/api');
-		expect(command).toContain('--only');
+		const [, args, spawnOptions] = vi.mocked(spawn).mock.calls[0]!;
+		// From `turbo` on: what runs it depends on the lockfile found.
+		expect(args!.slice(args!.indexOf('turbo'))).toEqual([
+			'turbo',
+			'run',
+			'build',
+			// The backend is the root's to build, and nothing pulls it back in.
+			'--filter=@shop/web',
+			'--filter=@shop/site',
+			'--filter=@shop/store',
+			'--filter=@shop/remix',
+			'--filter=@shop/mobile',
+			'--only',
+		]);
 		expect(spawnOptions).toMatchObject({
 			cwd: root,
+			// Each package name is one argument; no shell reads the line.
+			shell: false,
 			env: expect.objectContaining({ NODE_ENV: 'production' }),
 		});
 		expect(printed()).toContain('Production mode enabled');
@@ -141,7 +151,7 @@ describe('workspaceBuildCommand', () => {
 			{},
 		);
 
-		expect(vi.mocked(spawn).mock.calls[0]![1]).toMatchObject({
+		expect(vi.mocked(spawn).mock.calls[0]![2]).toMatchObject({
 			env: expect.objectContaining({ NODE_ENV: 'development' }),
 		});
 		expect(printed()).toContain('Backend apps: none');
@@ -174,8 +184,10 @@ describe('workspaceBuildCommand', () => {
 				workspace({ web: app('web', 'apps/web', { framework: 'vite' }) }),
 				{},
 			),
-		).rejects.toThrow('Turbo build failed with exit code 2');
-		expect(printed()).toContain('Build failed: Turbo build failed');
+		).rejects.toMatchObject({ name: 'CommandFailed', exitCode: 2 });
+		expect(printed()).toMatch(
+			/Build failed: `\S+ .*turbo run build .*` exited with code 2/,
+		);
 	});
 
 	it('fails when turbo cannot be started', async () => {
