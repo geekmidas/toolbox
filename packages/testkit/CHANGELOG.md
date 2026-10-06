@@ -1,5 +1,14 @@
 # @geekmidas/testkit
 
+## 10.0.0-alpha.59
+
+### Patch Changes
+
+- Updated dependencies [[`57eea44`](https://github.com/geekmidas/toolbox/commit/57eea445c114acbb398d4dfedc86f1c22dab3f10)]:
+  - @geekmidas/logger@10.0.0-alpha.59
+  - @geekmidas/envkit@10.0.0-alpha.59
+  - @geekmidas/services@10.0.0-alpha.59
+
 ## 10.0.0-alpha.58
 
 ### Patch Changes
