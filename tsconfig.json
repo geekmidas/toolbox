@@ -19,9 +19,7 @@
     { "path": "./packages/schema" },
     { "path": "./packages/services" },
     { "path": "./packages/storage" },
-    { "path": "./packages/studio" },
     { "path": "./packages/telescope" },
-    { "path": "./packages/testkit" },
-    { "path": "./packages/ui" }
+    { "path": "./packages/testkit" }
   ]
 }

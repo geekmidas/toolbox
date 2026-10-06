@@ -205,7 +205,7 @@ for the next run to find taken.
 When running inside an app directory (e.g., `apps/api`) or in a project without workspace config, `gkm dev` runs in single-app mode:
 
 1. Load `.env` and config env files
-2. Parse `gkm.config.ts` for routes, envParser, logger, telescope, studio, hooks
+2. Parse `gkm.config.ts` for routes, envParser, logger, telescope, hooks
 3. Build server — compile endpoints, functions, crons, subscribers
 4. Generate OpenAPI spec (if enabled)
 5. Load and inject secrets from `.gkm/secrets/`
@@ -217,7 +217,6 @@ When running inside an app directory (e.g., `apps/api`) or in a project without 
 Loading routes from: src/endpoints/**/*.ts
 Using envParser: ./src/config/env
 🔭 Telescope enabled at /__telescope
-🗄️  Studio enabled at /__studio
 📄 OpenAPI client generated: .gkm/client/api.ts
 🔐 Loaded 12 secret(s)
 Server running on http://localhost:3000
@@ -467,13 +466,31 @@ Injected:  DATABASE_URL=postgresql://api:pass@localhost:5432/app   (mapped)
 
 ## Development Tools
 
-When enabled, these dashboards are available during development:
+`gkm dev` serves these alongside the app. They are headless — JSON for
+whatever tool you point at them; toolbox ships no dashboard.
 
 | Tool | URL | Description |
 |------|-----|-------------|
-| Telescope | `http://localhost:3000/__telescope` | Request/exception monitoring, log aggregation |
-| Studio | `http://localhost:3000/__studio` | Database browser with filtering and pagination |
+| Telescope | `http://localhost:3000/__telescope/api/*` | Requests, exceptions, logs and metrics |
+| Database API | `http://localhost:3000/__gkm/db` | The declared database's schemas, tables and rows, read-only |
 | OpenAPI | `http://localhost:3000/__docs` | Auto-generated API documentation |
+
+### Database API
+
+When the app declares a database, `gkm dev` mounts
+[`@geekmidas/db/introspect`](/packages/db#database-introspection) at
+`/__gkm/db`, reading through the same client the handlers use. It is never part
+of `gkm build`, since it answers anyone who can reach the port.
+
+```bash
+curl localhost:3000/__gkm/db/schemas
+curl localhost:3000/__gkm/db/tables
+curl localhost:3000/__gkm/db/tables/users
+curl 'localhost:3000/__gkm/db/tables/users/rows?pageSize=20&sort=created_at:desc&filter[email][ilike]=%25@example.com'
+```
+
+The app needs `@geekmidas/db` installed, which a project scaffolded with a
+database already has.
 
 ## Troubleshooting
 

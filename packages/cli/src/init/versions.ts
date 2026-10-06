@@ -44,7 +44,6 @@ export const GEEKMIDAS_VERSIONS = {
 	'@geekmidas/schema': '~10.0.0-alpha.54',
 	'@geekmidas/services': '~10.0.0-alpha.54',
 	'@geekmidas/storage': '~10.0.0-alpha.54',
-	'@geekmidas/studio': '~10.0.0-alpha.54',
 	'@geekmidas/telescope': '~10.0.0-alpha.54',
 	'@geekmidas/testkit': '~10.0.0-alpha.54',
 	'@geekmidas/cli': CLI_VERSION,

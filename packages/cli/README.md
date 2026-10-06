@@ -7,7 +7,7 @@ A powerful CLI tool for building and managing TypeScript-based backend APIs with
 - **Project Scaffolding**: Interactive `init` command to bootstrap new projects with templates
 - **Multi-Provider Support**: Generate handlers for AWS Lambda (API Gateway v1/v2) and server applications
 - **Development Server**: Hot-reload development server with file watching
-- **Telescope Integration**: Laravel-style debugging dashboard for inspecting requests, logs, and exceptions
+- **Telescope Integration**: Laravel-style recording of requests, logs and exceptions, served as JSON
 - **OpenAPI Generation**: Auto-generate OpenAPI 3.0 specifications from your endpoints
 - **Docker Support**: Generate optimized Dockerfiles with multi-stage builds, turbo prune for monorepos
 - **Secrets Management**: Secure credential generation, encryption, and stage-based secrets storage
@@ -73,7 +73,7 @@ export default defineConfig({
   // Logger configuration
   logger: './src/logger.ts#logger',
 
-  // Optional: Telescope debugging dashboard (enabled by default in dev)
+  // Optional: Telescope request recording (enabled by default in dev)
   telescope: {
     enabled: true,
     path: '/__telescope',
@@ -226,7 +226,7 @@ When run without `--yes`, the command will ask:
    - `api` - Full API with auth, database, services
    - `serverless` - AWS Lambda handlers
    - `worker` - Background job processing
-3. **Telescope** - Include debugging dashboard (default: yes)
+3. **Telescope** - Include request, exception and log recording (default: yes)
 4. **Database** - Include Kysely database support (default: yes)
 5. **Logger** - Choose logger implementation:
    - `pino` - Fast JSON logger for production (recommended)
@@ -545,7 +545,7 @@ services:
 
 ### `gkm dev`
 
-Start a development server with hot-reload and optional Telescope debugging dashboard.
+Start a development server with hot-reload and optional Telescope recording.
 
 ```bash
 gkm dev [options]
@@ -557,7 +557,8 @@ gkm dev [options]
 **Features:**
 - Hot-reload on file changes (endpoints, functions, crons, subscribers)
 - Automatic port switching if requested port is in use
-- Telescope debugging dashboard (enabled by default)
+- Telescope JSON API at `/__telescope/api` (enabled by default)
+- The declared database, read-only, as JSON at `/__gkm/db`
 - Real-time WebSocket updates in Telescope
 
 **Example:**
@@ -1054,7 +1055,7 @@ interface GkmConfig {
 
 interface TelescopeConfig {
   enabled?: boolean;       // Enable/disable (default: true in dev)
-  path?: string;           // Dashboard path (default: '/__telescope')
+  path?: string;           // Where the JSON API is mounted (default: '/__telescope')
   ignore?: string[];       // URL patterns to ignore
   recordBody?: boolean;    // Record request/response bodies (default: true)
   maxEntries?: number;     // Max entries to keep (default: 1000)
@@ -1112,7 +1113,7 @@ logger: './src/utils.ts#appLogger'
 
 #### `telescope`
 
-Configuration for the Telescope debugging dashboard. Telescope is enabled by default when using `gkm dev`.
+Configuration for Telescope, which records requests, logs and exceptions and serves them as JSON. Telescope is enabled by default when using `gkm dev`.
 
 ```typescript
 // Disable telescope
@@ -1137,7 +1138,7 @@ telescope: {
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `enabled` | `boolean` | `true` | Enable/disable Telescope |
-| `path` | `string` | `/__telescope` | Dashboard URL path |
+| `path` | `string` | `/__telescope` | Where the JSON API is mounted |
 | `ignore` | `string[]` | `[]` | URL patterns to exclude from recording |
 | `recordBody` | `boolean` | `true` | Record request/response bodies |
 | `maxEntries` | `number` | `1000` | Maximum entries per type to keep |

@@ -18,7 +18,6 @@ const base: TemplateOptions = {
 	name: 'shop',
 	template: 'api',
 	telescope: true,
-	studio: true,
 	loggerType: 'pino',
 	routesStructure: 'centralized-endpoints',
 	monorepo: false,

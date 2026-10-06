@@ -18,7 +18,6 @@ import {
 	loadSecretsForApp,
 	normalizeHooksConfig,
 	normalizeProductionConfig,
-	normalizeStudioConfig,
 	normalizeTelescopeConfig,
 	savePortState,
 	validateFrontendApp,
@@ -316,48 +315,6 @@ describe('normalizeTelescopeConfig', () => {
 			recordBody: true,
 			maxEntries: 1000,
 			websocket: false,
-		});
-	});
-});
-
-describe('normalizeStudioConfig', () => {
-	it('should return undefined when config is false', () => {
-		const result = normalizeStudioConfig(false);
-		expect(result).toBeUndefined();
-	});
-
-	it('should return default config when config is true', () => {
-		const result = normalizeStudioConfig(true);
-		expect(result).toEqual({
-			enabled: true,
-			path: '/__studio',
-			schema: 'public',
-		});
-	});
-
-	it('should return default config when config is undefined', () => {
-		const result = normalizeStudioConfig(undefined);
-		expect(result).toEqual({
-			enabled: true,
-			path: '/__studio',
-			schema: 'public',
-		});
-	});
-
-	it('should return undefined when config.enabled is false', () => {
-		const result = normalizeStudioConfig({ enabled: false });
-		expect(result).toBeUndefined();
-	});
-
-	it('should merge custom config with defaults', () => {
-		const result = normalizeStudioConfig({
-			path: '/__db',
-			schema: 'custom_schema',
-		});
-		expect(result).toEqual({
-			enabled: true,
-			path: '/__db',
-			schema: 'custom_schema',
 		});
 	});
 });

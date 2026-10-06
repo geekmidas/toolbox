@@ -48,10 +48,6 @@ export default defineConfig({
     enabled: true,
     path: '/__telescope',
   },
-  studio: {
-    enabled: true,
-    path: '/__studio',
-  },
 
   // Server hooks
   hooks: {
@@ -82,8 +78,8 @@ Options:
 
 **Features:**
 - Hot-reload on file changes
-- Telescope debugging dashboard at `/__telescope`
-- Studio database browser at `/__studio`
+- Telescope's JSON API at `/__telescope/api`
+- The declared database, read-only, as JSON at `/__gkm/db` (see [Development Tools](/guide/dev-server#development-tools))
 - OpenAPI docs at `/__docs`
 - Automatic endpoint discovery
 - Dynamic Docker service port resolution (avoids conflicts between projects)

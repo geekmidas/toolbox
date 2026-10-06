@@ -20,6 +20,7 @@ import {
 	Direction,
 	decodeCursor,
 	encodeCursor,
+	InvalidCursor,
 	paginatedSearch,
 } from '../pagination';
 
@@ -325,17 +326,13 @@ describe('Pagination Integration Tests', () => {
 		});
 
 		it('should throw error for invalid cursor format', () => {
-			expect(() => decodeCursor('invalid-cursor')).toThrow(
-				'Invalid cursor format',
-			);
+			expect(() => decodeCursor('invalid-cursor')).toThrow(InvalidCursor);
 		});
 
 		it('should throw error for malformed JSON', () => {
 			// Create valid base64url but with invalid JSON content
 			const malformedCursor = Buffer.from('not-json').toString('base64url');
-			expect(() => decodeCursor(malformedCursor)).toThrow(
-				'Invalid cursor format',
-			);
+			expect(() => decodeCursor(malformedCursor)).toThrow(InvalidCursor);
 		});
 	});
 });

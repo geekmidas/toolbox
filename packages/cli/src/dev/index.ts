@@ -9,7 +9,6 @@ import { appPackageName, buildApp, turboFilters } from '../build/index';
 import type {
 	NormalizedHooksConfig,
 	NormalizedProductionConfig,
-	NormalizedStudioConfig,
 	NormalizedTelescopeConfig,
 } from '../build/types';
 import {
@@ -34,12 +33,7 @@ import { FAKE_ENV, reconcileWorkspace } from '../reconcile/workspace.js';
 import { toEmbeddableSecrets } from '../secrets/storage.js';
 import { FileSecretsStore, secretsStoreFor } from '../secrets/store.js';
 import { ensureTrusted } from '../trust/index.js';
-import type {
-	GkmConfig,
-	Runtime,
-	StudioConfig,
-	TelescopeConfig,
-} from '../types';
+import type { GkmConfig, Runtime, TelescopeConfig } from '../types';
 import { cacheBackendFor, providerOf } from '../workspace/backends.js';
 import { appKey } from '../workspace/derive.js';
 import {
@@ -127,48 +121,6 @@ export function normalizeTelescopeConfig(
 		recordBody: telescopeConfig.recordBody ?? true,
 		maxEntries: telescopeConfig.maxEntries ?? 1000,
 		websocket: telescopeConfig.websocket ?? true,
-	};
-}
-
-/**
- * Normalize studio configuration
- * @internal Exported for testing
- */
-export function normalizeStudioConfig(
-	config: GkmConfig['studio'],
-): NormalizedStudioConfig | undefined {
-	if (config === false) {
-		return undefined;
-	}
-
-	// Handle string path (e.g., './src/config/studio')
-	if (typeof config === 'string') {
-		const { path: studioPath, importPattern: studioImportPattern } =
-			parseModuleConfig(config, 'studio');
-
-		return {
-			enabled: true,
-			studioPath,
-			studioImportPattern,
-			path: '/__studio',
-			schema: 'public',
-		};
-	}
-
-	// Default to enabled in development mode
-	const isEnabled =
-		config === true || config === undefined || config.enabled !== false;
-
-	if (!isEnabled) {
-		return undefined;
-	}
-
-	const studioConfig: StudioConfig = typeof config === 'object' ? config : {};
-
-	return {
-		enabled: true,
-		path: studioConfig.path ?? '/__studio',
-		schema: studioConfig.schema ?? 'public',
 	};
 }
 
@@ -351,9 +303,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	// Normalize telescope configuration
 	const telescope = normalizeTelescopeConfig(config.telescope);
 
-	// Normalize studio configuration
-	const studio = normalizeStudioConfig(config.studio);
-
 	// Normalize hooks configuration
 	const hooks = normalizeHooksConfig(config.hooks, appRoot);
 
@@ -379,7 +328,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 				enableOpenApi,
 				cacheBackend: cacheBackendFor(providerOf(workspace ?? config)),
 				telescope,
-				studio,
+				databaseApi: true,
 				hooks,
 				skipBundle: true,
 				bustCache,
@@ -460,7 +409,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		options.portExplicit ?? workspaceAppPort !== undefined,
 		enableOpenApi,
 		telescope,
-		studio,
+		initial.databaseApi,
 		runtime,
 		appRoot,
 		secretsJsonPath,
@@ -1596,7 +1545,8 @@ class DevServer {
 		private portExplicit: boolean,
 		private enableOpenApi: boolean,
 		private telescope: NormalizedTelescopeConfig | undefined,
-		private studio: NormalizedStudioConfig | undefined,
+		/** Where the database's JSON API is served, when one is declared. */
+		private databaseApi: string | undefined,
 		private runtime: Runtime = 'node',
 		private appRoot: string = process.cwd(),
 		private secretsJsonPath?: string,
@@ -1704,7 +1654,7 @@ class DevServer {
 				: [
 						...(this.enableOpenApi ? ['docs /__docs'] : []),
 						...(this.telescope ? [`telescope ${this.telescope.path}`] : []),
-						...(this.studio ? [`studio ${this.studio.path}`] : []),
+						...(this.databaseApi ? [`db ${this.databaseApi}`] : []),
 					];
 			if (tools.length > 0) logger.log(`  ${tools.join(' · ')}`);
 		}

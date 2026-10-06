@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InMemoryStorage } from '../../storage/memory';
 import { Telescope } from '../../Telescope';
 import {
+	createApi,
 	createMiddleware,
-	createUI,
 	getRequestId,
 	getTelescopeContext,
 	setupWebSocket,
@@ -235,7 +235,7 @@ describe('Hono Adapter', () => {
 		});
 	});
 
-	describe('createUI', () => {
+	describe('createApi', () => {
 		it('should return requests list', async () => {
 			// Add a request first
 			await telescope.recordRequest({
@@ -249,7 +249,7 @@ describe('Hono Adapter', () => {
 				duration: 10,
 			});
 
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request('/api/requests');
 			const data = await res.json();
 
@@ -269,7 +269,7 @@ describe('Hono Adapter', () => {
 				duration: 10,
 			});
 
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request(`/api/requests/${requestId}`);
 			const data = await res.json();
 
@@ -278,7 +278,7 @@ describe('Hono Adapter', () => {
 		});
 
 		it('should return 404 for non-existent request', async () => {
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request('/api/requests/non-existent');
 
 			expect(res.status).toBe(404);
@@ -287,7 +287,7 @@ describe('Hono Adapter', () => {
 		it('should return exceptions list', async () => {
 			await telescope.exception(new Error('Test error'));
 
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request('/api/exceptions');
 			const data = await res.json();
 
@@ -299,7 +299,7 @@ describe('Hono Adapter', () => {
 		it('should return logs list', async () => {
 			await telescope.info('Test log', { key: 'value' });
 
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request('/api/logs');
 			const data = await res.json();
 
@@ -322,7 +322,7 @@ describe('Hono Adapter', () => {
 			await telescope.info('Test');
 			await telescope.exception(new Error('Test'));
 
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request('/api/stats');
 			const data = await res.json();
 
@@ -331,13 +331,11 @@ describe('Hono Adapter', () => {
 			expect(data.exceptions).toBe(1);
 		});
 
-		it('should return dashboard HTML on root', async () => {
-			const ui = createUI(telescope);
-			const res = await ui.request('/');
+		it('serves no dashboard: the root is not found', async () => {
+			const api = createApi(telescope);
+			const res = await api.request('/');
 
-			expect(res.headers.get('content-type')).toContain('text/html');
-			const html = await res.text();
-			expect(html).toContain('<!DOCTYPE html>');
+			expect(res.status).toBe(404);
 		});
 
 		it('should support pagination query params', async () => {
@@ -354,7 +352,7 @@ describe('Hono Adapter', () => {
 				});
 			}
 
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request('/api/requests?limit=3&offset=0');
 			const data = await res.json();
 
@@ -535,7 +533,7 @@ describe('Hono Adapter', () => {
 		});
 	});
 
-	describe('createUI - metrics endpoints', () => {
+	describe('createApi - metrics endpoints', () => {
 		it('should return metrics', async () => {
 			await telescope.recordRequest({
 				method: 'GET',
@@ -548,7 +546,7 @@ describe('Hono Adapter', () => {
 				duration: 100,
 			});
 
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request('/api/metrics');
 			const data = await res.json();
 
@@ -567,7 +565,7 @@ describe('Hono Adapter', () => {
 				duration: 50,
 			});
 
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request('/api/metrics/endpoints');
 			const data = await res.json();
 
@@ -586,7 +584,7 @@ describe('Hono Adapter', () => {
 				duration: 10,
 			});
 
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request('/api/metrics/status');
 			const data = await res.json();
 
@@ -605,7 +603,7 @@ describe('Hono Adapter', () => {
 				duration: 50,
 			});
 
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request(
 				'/api/metrics/endpoint?method=GET&path=/api/users',
 			);
@@ -616,7 +614,7 @@ describe('Hono Adapter', () => {
 		});
 
 		it('should return 400 for endpoint details without method/path', async () => {
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request('/api/metrics/endpoint');
 
 			expect(res.status).toBe(400);
@@ -636,7 +634,7 @@ describe('Hono Adapter', () => {
 				duration: 10,
 			});
 
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request('/api/metrics', { method: 'DELETE' });
 
 			expect(res.status).toBe(200);
@@ -645,14 +643,14 @@ describe('Hono Adapter', () => {
 		});
 	});
 
-	describe('createUI - exception by ID', () => {
+	describe('createApi - exception by ID', () => {
 		it('should return single exception by ID', async () => {
 			await telescope.exception(new Error('Test exception'));
 
 			const exceptions = await telescope.getExceptions();
 			const exceptionId = exceptions[0].id;
 
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request(`/api/exceptions/${exceptionId}`);
 			const data = await res.json();
 
@@ -661,23 +659,24 @@ describe('Hono Adapter', () => {
 		});
 
 		it('should return 404 for non-existent exception', async () => {
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request('/api/exceptions/non-existent');
 
 			expect(res.status).toBe(404);
 		});
 	});
 
-	describe('createUI - SPA fallback', () => {
-		it('should serve HTML for SPA routes', async () => {
-			const ui = createUI(telescope);
-			const res = await ui.request('/requests/some-id');
+	describe('createApi - headless', () => {
+		it('serves no HTML for what used to be dashboard routes', async () => {
+			const api = createApi(telescope);
+			const res = await api.request('/requests/some-id');
 
-			expect(res.headers.get('content-type')).toContain('text/html');
+			expect(res.status).toBe(404);
+			expect(res.headers.get('content-type')).not.toContain('text/html');
 		});
 	});
 
-	describe('createUI - query parsing', () => {
+	describe('createApi - query parsing', () => {
 		it('should parse search query', async () => {
 			await telescope.recordRequest({
 				method: 'GET',
@@ -690,7 +689,7 @@ describe('Hono Adapter', () => {
 				duration: 10,
 			});
 
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request('/api/requests?search=users');
 			const data = await res.json();
 
@@ -698,7 +697,7 @@ describe('Hono Adapter', () => {
 		});
 
 		it('should parse date range queries', async () => {
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request(
 				'/api/requests?before=2024-01-01&after=2023-01-01',
 			);
@@ -708,7 +707,7 @@ describe('Hono Adapter', () => {
 		});
 
 		it('should parse tags query', async () => {
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request('/api/requests?tags=api,users');
 			const data = await res.json();
 
@@ -727,7 +726,7 @@ describe('Hono Adapter', () => {
 				duration: 10,
 			});
 
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request('/api/requests?method=GET');
 			const data = await res.json();
 
@@ -735,7 +734,7 @@ describe('Hono Adapter', () => {
 		});
 
 		it('should parse status filter', async () => {
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request('/api/requests?status=200');
 			const data = await res.json();
 
@@ -746,7 +745,7 @@ describe('Hono Adapter', () => {
 			await telescope.info('Test info');
 			await telescope.error('Test error');
 
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request('/api/logs?level=error');
 			const data = await res.json();
 
@@ -754,7 +753,7 @@ describe('Hono Adapter', () => {
 		});
 
 		it('should parse metrics query options', async () => {
-			const ui = createUI(telescope);
+			const ui = createApi(telescope);
 			const res = await ui.request(
 				'/api/metrics?start=2024-01-01&end=2024-12-31&bucketSize=3600000&limit=10',
 			);

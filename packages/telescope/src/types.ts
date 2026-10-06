@@ -152,7 +152,7 @@ export interface TelescopeOptions {
 	storage: TelescopeStorage;
 	/** Whether telescope is enabled (default: true) */
 	enabled?: boolean;
-	/** Dashboard path (default: '/__telescope') */
+	/** Where the JSON API is mounted (default: '/__telescope') */
 	path?: string;
 	/** Whether to record request/response bodies (default: true) */
 	recordBody?: boolean;
