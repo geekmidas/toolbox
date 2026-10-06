@@ -98,6 +98,22 @@ describe('WorkspaceConfigSchema', () => {
 			);
 		});
 
+		it('takes a deploy namespace only as a name a target can use', () => {
+			const withNamespace = (namespace: string) => ({
+				stages: { local: 'development', deployed: ['production'] },
+				deploy: { namespace },
+			});
+
+			expect(
+				validateWorkspaceConfig(withNamespace('acme-platform')).deploy,
+			).toMatchObject({ namespace: 'acme-platform' });
+			for (const bad of ['Acme', 'acme corp', '-acme', 'acme/shop']) {
+				expect(safeValidateWorkspaceConfig(withNamespace(bad)).success).toBe(
+					false,
+				);
+			}
+		});
+
 		it('should default app type to backend', () => {
 			const config = {
 				stages: { local: 'development', deployed: ['production'] },

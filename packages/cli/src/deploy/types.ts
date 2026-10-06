@@ -21,6 +21,8 @@ export interface DeployOptions {
 export interface DeployResult {
 	/** Docker image reference (if applicable) */
 	imageRef?: string;
+	/** The registry's digest for the pushed image, `sha256:…`. */
+	digest?: string;
 	/**
 	 * Ephemeral master key for GKM_MASTER_KEY.
 	 *
@@ -49,6 +51,8 @@ export interface AppDeployResult {
 	applicationId?: string;
 	/** Docker image reference */
 	imageRef?: string;
+	/** The registry's digest for the image, `sha256:…`, once pushed */
+	digest?: string;
 	/** Deployment URL */
 	url?: string;
 	/** Error message if failed */

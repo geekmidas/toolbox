@@ -63,9 +63,10 @@ export default defineWorkspace({
       production: 'myapp.com',
       staging: 'staging.myapp.com',
     },
+    // Whose deploy this is, on a server other workspaces share (optional).
+    namespace: 'myorg',
     dokploy: {
       endpoint: 'https://dokploy.myserver.com',
-      projectId: 'proj_abc123',
       registry: 'ghcr.io/myorg',
     },
     dns: {
@@ -417,6 +418,12 @@ interface DokployStageState {
     serverIp: string;
     verifiedAt: string;
   }>;
+  identity?: string;                        // '<namespace>/<project>'
+  registryId?: string;                      // the Dokploy registry pulled through
+  images?: Record<string, {                 // appName -> what it runs
+    ref: string;
+    digest?: string;                        // 'sha256:…'
+  }>;
   lastDeployedAt: string;
 }
 ```
@@ -611,6 +618,51 @@ gkm deploy --stage production --skip-build
 
 *Click to zoom.* Locally Caddy is the edge because nothing else is; on Dokploy
 Traefik already is one. Only the URL differs — the call site does not.
+
+### Identity: namespace, project, stage
+
+A deploy names and claims everything it makes by its **identity**:
+
+- `namespace` — `deploy.namespace` in `gkm.config.ts`; defaults to the
+  kebab-cased workspace name
+- `project` — the workspace name, lowercased
+- `stage` — `--stage`
+
+Its key, `<namespace>/<project>`, is the same from every stage, because one
+Dokploy project holds every stage as an environment. Two workspaces called
+`shop` deploying to one server stay apart as long as their namespaces differ:
+
+| | `namespace: 'acme'` | `namespace: 'globex'` |
+|---|---|---|
+| Dokploy project | `acme-shop` | `globex-shop` |
+| application | `production-acme-shop-api` | `production-globex-shop-api` |
+| image | `ghcr.io/x/acme/shop-api:<tag>` | `ghcr.io/x/globex/shop-api:<tag>` |
+
+In the default namespace nothing is added: the project is `shop` and the
+application `production-shop-api`, the names a workspace was already deployed
+under.
+
+**A project is claimed, not matched.** The project's description carries
+`gkm:<namespace>/<project>`. A deploy uses, in order: the project its stage
+state names; a project with its name and its marker; a new one, marked. A
+project with the same name in any case but no marker — or someone else's — is
+never adopted: the deploy stops with `ProjectNotOwned` before building anything.
+Set `deploy.namespace`, or add the marker to the project's description in
+Dokploy if it really is yours.
+
+**The registry is the one you configured.** `deploy.dokploy.registry` is where
+images are pushed (a deploy without one stops with `RegistryNotConfigured`).
+Dokploy's registry for it is, in order: `deploy.dokploy.registryId`, the one
+the stage's state recorded, and the one Dokploy holds for that registry's host
+and path — never simply the first one listed. Its id is kept in the stage's
+state, along with each app's image ref and the digest the push resolved to.
+
+::: tip Upgrading an existing deployment
+A stage deployed before identities has state holding its project id. That id is
+trusted, and the next deploy writes the marker into the project's description,
+so the project stays found even if the state is later lost. Images move to
+`<registry>/<namespace>/<project>-<app>`; nothing else is renamed.
+:::
 
 ### What a deploy does
 

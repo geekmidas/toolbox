@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CommandFailed, CommandTimedOut, run } from '../run';
+import { CommandFailed, CommandTimedOut, run, runOutput } from '../run';
 
 /** Node itself, so the tests need no other program on the machine. */
 const node = process.execPath;
@@ -83,5 +83,21 @@ describe('run', () => {
 		await expect(
 			run(join(dir, 'no-such-program'), [], { stdio: 'ignore' }),
 		).rejects.toMatchObject({ code: 'ENOENT' });
+	});
+
+	it('resolves with what the program wrote to stdout, through runOutput', async () => {
+		const output = await runOutput(node, [
+			'-e',
+			'process.stdout.write(JSON.stringify(process.argv.slice(1)))',
+			'$(id)',
+		]);
+
+		expect(JSON.parse(output)).toEqual(['$(id)']);
+	});
+
+	it('raises CommandFailed from runOutput too', async () => {
+		await expect(
+			runOutput(node, ['-e', 'process.exit(4)']),
+		).rejects.toMatchObject({ name: 'CommandFailed', exitCode: 4 });
 	});
 });

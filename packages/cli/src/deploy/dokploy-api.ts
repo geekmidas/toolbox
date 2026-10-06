@@ -319,6 +319,19 @@ export class DokployApi {
 	}
 
 	/**
+	 * Change a project's name or description.
+	 *
+	 * The name is sent with the description because `project.update` validates
+	 * the whole project on some Dokploy versions, and a missing name fails it.
+	 */
+	async updateProject(
+		projectId: string,
+		updates: { name: string; description: string },
+	): Promise<void> {
+		await this.post('project.update', { projectId, ...updates });
+	}
+
+	/**
 	 * Delete a project and all its resources
 	 */
 	async deleteProject(projectId: string): Promise<void> {

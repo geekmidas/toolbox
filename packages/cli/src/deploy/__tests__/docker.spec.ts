@@ -11,13 +11,13 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DockerBuildFailed, ImageRefInvalid } from '../../docker';
-import { CommandFailed, run } from '../../run';
+import { CommandFailed, run, runOutput } from '../../run';
 import { keyFingerprint } from '../../secrets/encryption';
 import {
-	applicationName,
 	deployDocker,
 	dockerBuildArgs,
 	getImageRef,
+	pushedDigest,
 	writeCredentialsFile,
 } from '../docker';
 
@@ -25,7 +25,38 @@ import {
 vi.mock('../../run', async (importOriginal) => ({
 	...(await importOriginal<typeof import('../../run')>()),
 	run: vi.fn(),
+	runOutput: vi.fn(),
 }));
+
+const DIGEST = `sha256:${'ab'.repeat(32)}`;
+
+describe('pushedDigest', () => {
+	beforeEach(() => vi.mocked(runOutput).mockReset());
+
+	it("reads the digest for the ref's own repository", async () => {
+		// The same image pushed to two repositories has a digest for each.
+		vi.mocked(runOutput).mockResolvedValue(
+			`${JSON.stringify([
+				`docker.io/other/api@sha256:${'cd'.repeat(32)}`,
+				`ghcr.io/acme/shop/shop-api@${DIGEST}`,
+			])}\n`,
+		);
+
+		expect(await pushedDigest('ghcr.io/acme/shop/shop-api:v1')).toBe(DIGEST);
+		expect(vi.mocked(runOutput).mock.calls[0]![1]).toEqual([
+			'image',
+			'inspect',
+			'--format={{json .RepoDigests}}',
+			'ghcr.io/acme/shop/shop-api:v1',
+		]);
+	});
+
+	it('has no digest for an image that was never pushed', async () => {
+		vi.mocked(runOutput).mockResolvedValue('[]\n');
+
+		expect(await pushedDigest('ghcr.io/acme/shop/shop-api:v1')).toBe(undefined);
+	});
+});
 
 describe('getImageRef', () => {
 	it('should return image with registry prefix', () => {
@@ -58,38 +89,6 @@ describe('getImageRef', () => {
 	it('should handle nested registry paths', () => {
 		const result = getImageRef('gcr.io/my-project/images', 'api', 'prod');
 		expect(result).toBe('gcr.io/my-project/images/api:prod');
-	});
-});
-
-describe('the name that scopes a deploy', () => {
-	it('scopes the application by stage, so two stages cannot collide', () => {
-		// The bug this closes: the application name carried no stage, so
-		// deploying `staging` into the same project matched the production
-		// application by name and redeployed it.
-		expect(applicationName('production', 'shop', 'api')).not.toBe(
-			applicationName('staging', 'shop', 'api'),
-		);
-	});
-
-	it('names an application the way it names a construct', () => {
-		// The application beside `production-shop-database` is
-		// `production-shop-api`, through the same `scopedName`. It used to be the
-		// bare app key on the workspace path — a project holding an `api` and a
-		// `web` that every stage would collide on.
-		expect(applicationName('production', 'shop', 'api')).toBe(
-			'production-shop-api',
-		);
-		expect(applicationName('production', 'shop', 'web')).toBe(
-			'production-shop-web',
-		);
-	});
-
-	it('does not repeat a project name the app already is', () => {
-		// A project named for its one application would otherwise be
-		// `production-shop-shop`.
-		expect(applicationName('production', 'shop', 'shop')).toBe(
-			'production-shop',
-		);
 	});
 });
 
@@ -194,6 +193,10 @@ export default defineConfig({
 		}
 		vi.mocked(run).mockReset();
 		vi.mocked(run).mockResolvedValue();
+		vi.mocked(runOutput).mockReset();
+		vi.mocked(runOutput).mockResolvedValue(
+			JSON.stringify([`ghcr.io/acme/api@${DIGEST}`]),
+		);
 	});
 
 	afterEach(() => {
@@ -216,8 +219,13 @@ export default defineConfig({
 		expect(said).not.toContain(masterKey);
 		expect(keyFingerprint(masterKey)).toMatch(/^[0-9a-f]{8}$/);
 		expect(said).toContain(keyFingerprint(masterKey));
-		// Still returned, deprecated, for callers that read it today.
-		expect(result).toEqual({ imageRef: 'ghcr.io/acme/api:v1', masterKey });
+		// Still returned, deprecated, for callers that read it today — beside
+		// the digest the push resolved to.
+		expect(result).toEqual({
+			imageRef: 'ghcr.io/acme/api:v1',
+			digest: DIGEST,
+			masterKey,
+		});
 		expect(vi.mocked(run).mock.calls.map(([c, a]) => [c, a[0]])).toEqual([
 			['docker', 'build'],
 			['docker', 'push'],

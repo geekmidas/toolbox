@@ -493,6 +493,14 @@ export type BackupsConfig = z.infer<typeof BackupsConfigSchema>;
  */
 const DeployConfigSchema = z.object({
 	default: DeployTargetSchema.optional(),
+	/** Whose deploy this is, on a target shared with other workspaces. */
+	namespace: z
+		.string()
+		.regex(
+			/^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+			"deploy.namespace must be lowercase letters and digits with single '-' between them",
+		)
+		.optional(),
 	/** Each deployed stage's base domain (stage name -> domain). */
 	domains: z.record(z.string(), z.string()).optional(),
 	dokploy: DokployWorkspaceConfigSchema.optional(),

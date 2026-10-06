@@ -90,7 +90,27 @@ export interface DokployStageState {
 	dnsRecords?: Record<string, CreatedDnsRecord>;
 	/** Backup destination state */
 	backups?: BackupState;
+	/**
+	 * The deploy identity's key (`<namespace>/<project>`) that last deployed
+	 * this stage — what the project's ownership marker says.
+	 */
+	identity?: string;
+	/**
+	 * The Dokploy registry the stage's images are pulled through. Kept per
+	 * stage rather than once per machine, so a stage keeps the registry it was
+	 * deployed with whoever deploys it next.
+	 */
+	registryId?: string;
+	/** Each app's image as last deployed, keyed by app name. */
+	images?: Record<string, DeployedImage>;
 	lastDeployedAt: string;
+}
+
+/** An image a stage runs: the ref it was pushed as, and what it resolved to. */
+export interface DeployedImage {
+	ref: string;
+	/** The registry's digest, `sha256:…` — absent if it could not be read. */
+	digest?: string;
 }
 
 /**
@@ -182,6 +202,17 @@ export function setApplicationId(
 	applicationId: string,
 ): void {
 	state.applications[appName] = applicationId;
+}
+
+/**
+ * Record the image an app was deployed with (mutates state)
+ */
+export function setDeployedImage(
+	state: DokployStageState,
+	appName: string,
+	image: DeployedImage,
+): void {
+	state.images = { ...state.images, [appName]: image };
 }
 
 /**

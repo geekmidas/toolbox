@@ -60,6 +60,11 @@ export interface DeclaredOptions {
 	environmentId: string;
 	stage: string;
 	/**
+	 * The prefix every provisioned name carries — the deploy identity's
+	 * `scope`. Defaults to the workspace name, as before identities.
+	 */
+	scope?: string;
+	/**
 	 * Where each app answers, keyed by *app* name — `https://api.example.com`.
 	 *
 	 * Computed by the engine before it saves any environment, which is what
@@ -105,6 +110,7 @@ export async function provisionDeclared(
 		environmentId: options.environmentId,
 		stage: options.stage,
 		project: workspace.name,
+		scope: options.scope ?? workspace.name,
 		// Every backend from the target this deploy goes to, and from nothing
 		// else — the same answer reconcile gave locally.
 		cache: cacheBackendFor(providerOf(workspace)),

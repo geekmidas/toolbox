@@ -174,6 +174,17 @@ export type DnsProviderType = 'hostinger' | 'route53' | 'cloudflare' | 'manual';
 export interface DeployConfig {
 	/** Default deploy target for all apps (default: 'dokploy') */
 	default?: DeployTarget;
+	/**
+	 * Whose deploy this is, on a target shared with other workspaces — an
+	 * organisation or a team, lowercase `[a-z0-9-]`. Two workspaces with the
+	 * same name deploying to one Dokploy are kept apart by it: it is in the
+	 * project's ownership marker, the image path
+	 * (`<registry>/<namespace>/<project>-<app>`) and every resource name.
+	 *
+	 * Defaults to the kebab-cased workspace name, which adds nothing to the
+	 * names a workspace was already deployed under.
+	 */
+	namespace?: string;
 	/** Each deployed stage's base domain — see {@link DomainsConfig}. */
 	domains?: DomainsConfig;
 	/** Dokploy-specific configuration */

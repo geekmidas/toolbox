@@ -67,18 +67,46 @@ export class CommandTimedOut extends Error {
  * once `timeoutMs` passes (after the child is gone), and with the spawn error
  * itself when the program cannot be started at all — `ENOENT` already names it.
  */
-export function run(
+export async function run(
 	command: string,
 	args: readonly string[],
 	options: RunOptions = {},
 ): Promise<void> {
+	await spawnChild(command, args, options, false);
+}
+
+/**
+ * {@link run}, resolving with what the program wrote to stdout — for a value
+ * the CLI reads back, such as the digest `docker inspect` reports. stderr still
+ * reaches the terminal, so a failure explains itself the same way.
+ */
+export function runOutput(
+	command: string,
+	args: readonly string[],
+	options: Omit<RunOptions, 'stdio'> = {},
+): Promise<string> {
+	return spawnChild(command, args, options, true);
+}
+
+function spawnChild(
+	command: string,
+	args: readonly string[],
+	options: RunOptions,
+	capture: boolean,
+): Promise<string> {
 	const { timeoutMs = DEFAULT_TIMEOUT_MS, ...spawnOptions } = options;
 
-	return new Promise<void>((resolve, reject) => {
+	return new Promise<string>((resolve, reject) => {
 		const child = spawn(command, [...args], {
 			stdio: 'inherit',
 			...spawnOptions,
+			...(capture ? { stdio: ['ignore', 'pipe', 'inherit'] } : {}),
 			shell: false,
+		});
+
+		let stdout = '';
+		child.stdout?.on('data', (chunk: Buffer) => {
+			stdout += chunk.toString();
 		});
 
 		let timedOut = false;
@@ -105,7 +133,7 @@ export function run(
 		child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
 			settle();
 			if (timedOut) reject(new CommandTimedOut(command, args, timeoutMs));
-			else if (code === 0) resolve();
+			else if (code === 0) resolve(stdout);
 			else reject(new CommandFailed(command, args, code, signal));
 		});
 	});
