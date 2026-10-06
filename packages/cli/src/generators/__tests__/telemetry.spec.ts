@@ -91,29 +91,33 @@ function start(
 		if (value !== undefined) childEnv[key] = value;
 	}
 
-	return new Promise((resolve) => {
-		const child = spawn(
-			process.execPath,
-			[
-				'--import',
-				TSX,
-				'-e',
-				`const { startTelemetry } = await import('./telemetry.ts');
+	// A module file rather than -e: Node 22 evaluates -e as CommonJS,
+	// where the entry's top-level await is a syntax error.
+	const runner = join(dir, 'run.mjs');
+	return writeFile(
+		runner,
+		`const { startTelemetry } = await import('./telemetry.ts');
 await startTelemetry();
-console.log('server started');`,
-			],
-			{ cwd: dir, env: childEnv },
-		);
-		let stderr = '';
-		let stdout = '';
-		child.stderr.on('data', (chunk) => {
-			stderr += chunk;
-		});
-		child.stdout.on('data', (chunk) => {
-			stdout += chunk;
-		});
-		child.on('close', (code) => resolve({ code, stderr, stdout }));
-	});
+console.log('server started');
+`,
+	).then(
+		() =>
+			new Promise((resolve) => {
+				const child = spawn(process.execPath, ['--import', TSX, runner], {
+					cwd: dir,
+					env: childEnv,
+				});
+				let stderr = '';
+				let stdout = '';
+				child.stderr.on('data', (chunk) => {
+					stderr += chunk;
+				});
+				child.stdout.on('data', (chunk) => {
+					stdout += chunk;
+				});
+				child.on('close', (code) => resolve({ code, stderr, stdout }));
+			}),
+	);
 }
 
 describe('production entry telemetry', { timeout: 30_000 }, () => {
@@ -190,19 +194,19 @@ describe('production entry telemetry', { timeout: 30_000 }, () => {
 		it('does not import the telemetry packages without OTEL_EXPORTER_OTLP_ENDPOINT', async () => {
 			const { code, stdout, stderr } = await start(dir, {});
 
-			expect(code).toBe(0);
+			expect(code, stderr).toBe(0);
 			expect(stdout).toContain('server started');
 			expect(existsSync(join(dir, 'marker'))).toBe(false);
 			expect(stderr).not.toContain('TelemetryUnavailable');
 		});
 
 		it('sets telemetry up, named for the app and its stage, when the endpoint is set', async () => {
-			const { code, stdout } = await start(dir, {
+			const { code, stdout, stderr } = await start(dir, {
 				OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4318',
 				STAGE: 'production',
 			});
 
-			expect(code).toBe(0);
+			expect(code, stderr).toBe(0);
 			expect(stdout).toContain('server started');
 			expect(JSON.parse(await readFile(join(dir, 'marker'), 'utf-8'))).toEqual({
 				serviceName: 'Api',
@@ -219,7 +223,7 @@ describe('production entry telemetry', { timeout: 30_000 }, () => {
 				OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4318',
 			});
 
-			expect(code).toBe(0);
+			expect(code, stderr).toBe(0);
 			expect(stdout).toContain('server started');
 			expect(stderr).toContain('TelemetryUnavailable');
 			expect(stderr).toContain('Install them in the app and rebuild');
@@ -247,7 +251,7 @@ describe('production entry telemetry', { timeout: 30_000 }, () => {
 				OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4318',
 			});
 
-			expect(code).toBe(0);
+			expect(code, stderr).toBe(0);
 			expect(stdout).toContain('server started');
 			expect(stderr).toContain('TelemetryUnavailable');
 			expect(stderr).toContain('built without @geekmidas/telescope');
@@ -259,7 +263,7 @@ describe('production entry telemetry', { timeout: 30_000 }, () => {
 
 			const { code, stderr } = await start(dir, {});
 
-			expect(code).toBe(0);
+			expect(code, stderr).toBe(0);
 			expect(stderr).not.toContain('TelemetryUnavailable');
 		});
 	});
