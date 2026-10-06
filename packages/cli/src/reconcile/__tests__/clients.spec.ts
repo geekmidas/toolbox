@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { LOCALSTACK_PORT, POSTGRES_PORT } from '../../../../testkit/test/ports';
 import { bucketClient, pgClient } from '../clients';
-
-// The same variables, and defaults, as testkit's `test/ports.ts` — read here
-// because this package's tests compile from its own `src`.
-const POSTGRES_PORT = Number(process.env.POSTGRES_HOST_PORT || 5432);
-const LOCALSTACK_PORT = Number(process.env.LOCALSTACK_HOST_PORT || 4566);
 
 /**
  * The drivers reconcile's applier runs against, against the real thing: the

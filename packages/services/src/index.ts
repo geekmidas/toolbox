@@ -2,6 +2,7 @@
 
 // Re-export context utilities
 export {
+	currentRequestContext,
 	enterRequestContext,
 	exitRequestContext,
 	type RequestContextData,

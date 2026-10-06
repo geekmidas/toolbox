@@ -160,8 +160,10 @@ export class AWSLambdaSubscriber<
 				requestId,
 			}) as TLogger;
 
-			return runWithRequestContext({ logger, requestId, startTime }, () =>
-				chain(event as Parameters<typeof chain>[0], context),
+			const operation = `subscriber ${this.subscriber.topicName ?? context.functionName}`;
+			return runWithRequestContext(
+				{ logger, requestId, startTime, operation },
+				() => chain(event as Parameters<typeof chain>[0], context),
 			);
 		};
 

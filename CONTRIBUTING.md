@@ -123,15 +123,39 @@ so Docker must be running. The stack has a fixed project name,
 containers rather than competing for the same ports.
 
 If another project already holds a default port, move ours with the matching
-variable — the suites read the same ones (`packages/testkit/test/ports.ts`):
+variable. `docker-compose.yml` publishes on it and the suites connect through
+it (`packages/testkit/test/ports.ts`, which also exports URLs such as
+`LOCALSTACK_URL` and `RABBITMQ_URL` — import those in a spec rather than
+writing `localhost:4566`):
 
 ```bash
-POSTGRES_HOST_PORT=5446 REDIS_HOST_PORT=6389 pnpm test
+POSTGRES_HOST_PORT=25432 REDIS_HOST_PORT=26379 pnpm test
 ```
 
-Variables: `POSTGRES_HOST_PORT`, `REDIS_HOST_PORT`, `SRH_HOST_PORT`,
-`LOCALSTACK_HOST_PORT`, `MINIO_API_HOST_PORT`, `MINIO_CONSOLE_HOST_PORT`,
-`RABBITMQ_HOST_PORT`, `RABBITMQ_MGMT_HOST_PORT`.
+| Variable                  | Default | Service                     |
+| ------------------------- | ------- | --------------------------- |
+| `POSTGRES_HOST_PORT`      | 5432    | postgres                    |
+| `REDIS_HOST_PORT`         | 6379    | redis                       |
+| `SRH_HOST_PORT`           | 8079    | cache (Upstash HTTP proxy)  |
+| `LOCALSTACK_HOST_PORT`    | 4566    | localstack (AWS emulator)   |
+| `MINIO_API_HOST_PORT`     | 9000    | minio                       |
+| `MINIO_CONSOLE_HOST_PORT` | 9001    | minio console               |
+| `RABBITMQ_HOST_PORT`      | 5672    | rabbitmq                    |
+| `RABBITMQ_MGMT_HOST_PORT` | 15672   | rabbitmq management UI      |
+| `MAILPIT_SMTP_HOST_PORT`  | 1025    | mailpit SMTP                |
+| `MAILPIT_HOST_PORT`       | 8025    | mailpit API/UI              |
+
+A taken port stops the run with `HostPortTaken`, naming the variable to set:
+
+```
+HostPortTaken: Could not start mailpit: host port 1025 is already taken by
+another process. Set MAILPIT_SMTP_HOST_PORT to a free port (e.g.
+MAILPIT_SMTP_HOST_PORT=21025) and run again …
+```
+
+Set the same overrides on every run — export them in your shell profile. A
+run without them asks Compose to publish the shared containers on the
+defaults again, which recreates them.
 
 ### 4. Lint and Format
 

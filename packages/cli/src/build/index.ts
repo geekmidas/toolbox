@@ -1,6 +1,5 @@
-import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import type { Cron } from '@geekmidas/constructs/crons';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
@@ -36,6 +35,8 @@ import {
 	withCompute,
 	withRoutes,
 } from '../reconcile/emit.js';
+import { run } from '../run';
+import { keyFingerprint } from '../secrets/encryption';
 import type {
 	BuildOptions,
 	BuildResult,
@@ -69,6 +70,12 @@ import type {
 } from './types';
 
 const logger = console;
+
+/**
+ * Where `gkm build --stage` leaves the key its bundle's secrets were encrypted
+ * with, beside the bundle in `.gkm/server/` and readable by its owner alone.
+ */
+export const MASTER_KEY_FILE = 'master.key';
 
 /**
  * What a build run at the workspace root reads.
@@ -523,6 +530,26 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		return {};
 	}
 
+	// A RestApi's production image answers HTTP and nothing else. Queues,
+	// crons and subscribers belong to a Worker — the process with no port —
+	// even when they sit in the API's directory, so the server it builds leaves
+	// them out rather than running them beside the routes.
+	if (production?.subscribers === 'include' && derived.surface) {
+		buildContext.production = { ...production, subscribers: 'exclude' };
+		const left = [
+			[allCrons.length, 'cron'],
+			[allQueues.length, 'queue consumer'],
+			[allSubscribers.length, 'subscriber'],
+		]
+			.filter(([n]) => (n as number) > 0)
+			.map(([n, what]) => `${n} ${what}${n === 1 ? '' : 's'}`);
+		if (left.length > 0) {
+			logger.log(
+				`Serving ${derived.surface.id} only: leaving out ${left.join(', ')} — they run in a Worker's image`,
+			);
+		}
+	}
+
 	const result = await buildForTarget(
 		target,
 		buildContext,
@@ -683,10 +710,17 @@ async function buildForTarget(
 			masterKey = bundleResult.masterKey;
 			logger.log(`✅ Bundle complete: .gkm/server/dist/server.mjs`);
 
-			// Display master key if secrets were injected
+			// The key is written, not printed: it decrypts every secret of the
+			// stage, and build output lands in CI logs and scrollback. The
+			// fingerprint is enough to tell which key a build used.
 			if (masterKey) {
+				const keyPath = join(outputDir, MASTER_KEY_FILE);
+				await writeFile(keyPath, `${masterKey}\n`, { mode: 0o600 });
+				await chmod(keyPath, 0o600);
 				logger.log(`\n🔐 Secrets encrypted for deployment`);
-				logger.log(`   Deploy with: GKM_MASTER_KEY=${masterKey}`);
+				logger.log(
+					`   Run with GKM_MASTER_KEY set to the key in ${relative(appRoot, keyPath)} (fingerprint ${keyFingerprint(masterKey)})`,
+				);
 			}
 		}
 
@@ -727,7 +761,7 @@ export function detectPackageManager(): 'pnpm' | 'npm' | 'yarn' {
 }
 
 /**
- * Get the turbo command for running builds.
+ * The program and argv that run turbo's build.
  *
  * `filters` names the packages to build. Passing none lets turbo infer its own
  * scope from the working directory, which for a workspace root means the
@@ -735,24 +769,33 @@ export function detectPackageManager(): 'pnpm' | 'npm' | 'yarn' {
  * `gkm build`, inferring is how you get a build that runs itself forever.
  * `workspaceBuildCommand` always names the apps.
  *
+ * An array, not a command string: the filters are package names read from the
+ * workspace, and each must reach turbo as one argument whatever it holds. Each
+ * is `--filter=<name>`, so even a name starting with `-` stays a filter value.
+ *
  * @internal Exported for testing
  */
-export function getTurboCommand(
+export function getTurboArgs(
 	pm: 'pnpm' | 'npm' | 'yarn',
 	filters: string | readonly string[] = [],
 	/** Build only the named packages, not what they depend on. */
 	{ only = false }: { only?: boolean } = {},
-): string {
+): [bin: string, args: string[]] {
 	const list = typeof filters === 'string' ? [filters] : filters;
-	const filterArgs =
-		list.map((f) => ` --filter=${f}`).join('') + (only ? ' --only' : '');
+	const turbo = [
+		'turbo',
+		'run',
+		'build',
+		...list.map((f) => `--filter=${f}`),
+		...(only ? ['--only'] : []),
+	];
 	switch (pm) {
 		case 'pnpm':
-			return `pnpm exec turbo run build${filterArgs}`;
+			return ['pnpm', ['exec', ...turbo]];
 		case 'yarn':
-			return `yarn turbo run build${filterArgs}`;
+			return ['yarn', turbo];
 		case 'npm':
-			return `npx turbo run build${filterArgs}`;
+			return ['npx', turbo];
 	}
 }
 
@@ -883,35 +926,19 @@ export async function workspaceBuildCommand(
 			);
 		}
 		const pm = detectPackageManager();
-		const turboCommand = getTurboCommand(pm, filters, { only: true });
+		const [turboBin, turboArgs] = getTurboArgs(pm, filters, { only: true });
 
 		if (filters.length > 0) {
 			logger.log(`\n📦 Using ${pm} with Turbo for the other apps...\n`);
-			logger.log(`Running: ${turboCommand}`);
+			logger.log(`Running: ${[turboBin, ...turboArgs].join(' ')}`);
 
-			await new Promise<void>((resolve, reject) => {
-				const child = spawn(turboCommand, {
-					shell: true,
-					cwd: workspace.root,
-					stdio: 'inherit',
-					env: {
-						...process.env,
-						// Pass production flag to builds
-						NODE_ENV: options.production ? 'production' : 'development',
-					},
-				});
-
-				child.on('close', (code) => {
-					if (code === 0) {
-						resolve();
-					} else {
-						reject(new Error(`Turbo build failed with exit code ${code}`));
-					}
-				});
-
-				child.on('error', (err) => {
-					reject(err);
-				});
+			await run(turboBin, turboArgs, {
+				cwd: workspace.root,
+				env: {
+					...process.env,
+					// Pass production flag to builds
+					NODE_ENV: options.production ? 'production' : 'development',
+				},
 			});
 		}
 

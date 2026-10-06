@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import {
+	RABBITMQ_AUTHORITY,
+	RABBITMQ_PORT,
+	RABBITMQ_URL,
+} from '../../../../testkit/test/ports';
 import type { PublishableMessage } from '../../types';
 import { RabbitMQConnection } from '../RabbitMQConnection';
 import { RabbitMQPublisher } from '../RabbitMQPublisher';
 
 type TestMessage = PublishableMessage<'user.created' | 'user.updated', any>;
-
-const RABBITMQ_URL = 'amqp://geekmidas:geekmidas@localhost:5672';
 
 // Helper to generate unique exchange names
 const uniqueExchange = () =>
@@ -77,7 +80,7 @@ describe('RabbitMQPublisher - Integration Tests', () => {
 			const testExchange = uniqueExchange();
 			const publisher =
 				await RabbitMQPublisher.fromConnectionString<TestMessage>(
-					`rabbitmq://geekmidas:geekmidas@localhost:5672?exchange=${testExchange}&autoConnect=true`,
+					`rabbitmq://${RABBITMQ_AUTHORITY}?exchange=${testExchange}&autoConnect=true`,
 				);
 
 			// Should already be connected
@@ -92,7 +95,7 @@ describe('RabbitMQPublisher - Integration Tests', () => {
 			const testExchange = uniqueExchange();
 			const publisher =
 				await RabbitMQPublisher.fromConnectionString<TestMessage>(
-					`rabbitmq://geekmidas:geekmidas@localhost:5672?exchange=${testExchange}&autoConnect=true`,
+					`rabbitmq://${RABBITMQ_AUTHORITY}?exchange=${testExchange}&autoConnect=true`,
 				);
 
 			await publisher.publish([
@@ -106,7 +109,7 @@ describe('RabbitMQPublisher - Integration Tests', () => {
 			const testExchange = uniqueExchange();
 			const publisher =
 				await RabbitMQPublisher.fromConnectionString<TestMessage>(
-					`rabbitmq://geekmidas:geekmidas@localhost:5672?exchange=${testExchange}&type=fanout&autoConnect=true`,
+					`rabbitmq://${RABBITMQ_AUTHORITY}?exchange=${testExchange}&type=fanout&autoConnect=true`,
 				);
 
 			await publisher.publish([
@@ -120,7 +123,7 @@ describe('RabbitMQPublisher - Integration Tests', () => {
 			const testExchange = uniqueExchange();
 			const publisher =
 				await RabbitMQPublisher.fromConnectionString<TestMessage>(
-					`rabbitmq://geekmidas:geekmidas@localhost:5672?exchange=${testExchange}&autoConnect=true&timeout=10000`,
+					`rabbitmq://${RABBITMQ_AUTHORITY}?exchange=${testExchange}&autoConnect=true&timeout=10000`,
 				);
 
 			await publisher.publish([
@@ -134,7 +137,7 @@ describe('RabbitMQPublisher - Integration Tests', () => {
 			const testExchange = uniqueExchange();
 			const publisher =
 				await RabbitMQPublisher.fromConnectionString<TestMessage>(
-					`rabbitmq://geekmidas:geekmidas@localhost:5672?exchange=${testExchange}`,
+					`rabbitmq://${RABBITMQ_AUTHORITY}?exchange=${testExchange}`,
 				);
 
 			// Should connect lazily on publish
@@ -149,7 +152,7 @@ describe('RabbitMQPublisher - Integration Tests', () => {
 			const testExchange = uniqueExchange();
 			const publisher =
 				await RabbitMQPublisher.fromConnectionString<TestMessage>(
-					`rabbitmq://geekmidas:geekmidas@localhost:5672?exchange=${testExchange}&autoConnect=false`,
+					`rabbitmq://${RABBITMQ_AUTHORITY}?exchange=${testExchange}&autoConnect=false`,
 				);
 
 			// Should connect lazily on publish
@@ -346,7 +349,7 @@ describe('RabbitMQPublisher - Integration Tests', () => {
 		it('should throw error for invalid credentials', async () => {
 			const testExchange = uniqueExchange();
 			const connection = new RabbitMQConnection({
-				url: 'amqp://wrong:wrong@localhost:5672',
+				url: `amqp://wrong:wrong@localhost:${RABBITMQ_PORT}`,
 				exchange: testExchange,
 				timeout: 1000, // Short timeout for faster test
 			});

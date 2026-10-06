@@ -9,6 +9,7 @@ import {
 	SQSClient,
 } from '@aws-sdk/client-sqs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import type { PublishableMessage } from '../../types';
 import { SNSConnection } from '../SNSConnection';
 import { SNSPublisher } from '../SNSPublisher';
@@ -19,7 +20,7 @@ type TestMessage = PublishableMessage<
 	any
 >;
 
-const LOCALSTACK_ENDPOINT = 'http://localhost:4566';
+const LOCALSTACK_ENDPOINT = LOCALSTACK_URL;
 const AWS_REGION = 'us-east-1';
 const AWS_CREDENTIALS = {
 	accessKeyId: 'test',

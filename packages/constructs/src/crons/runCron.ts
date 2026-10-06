@@ -53,7 +53,12 @@ export async function runCron(
 	const requestId = `cron-${Date.now()}`;
 
 	return runWithRequestContext(
-		{ logger, requestId, startTime: Date.now() },
+		{
+			logger,
+			requestId,
+			startTime: Date.now(),
+			operation: `cron ${cron.schedule ?? 'manual'}`,
+		},
 		async () => {
 			const response = await cron.fn({
 				input: undefined,

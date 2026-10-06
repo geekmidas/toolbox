@@ -24,6 +24,7 @@ import {
 	expect,
 	it,
 } from 'vitest';
+import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import {
 	type ProvisionBackupOptions,
 	provisionBackupDestination,
@@ -38,7 +39,7 @@ import type { BackupState } from '../state';
  * Run: docker compose up -d localstack
  */
 describe('backup-provisioner', () => {
-	const LOCALSTACK_ENDPOINT = 'http://localhost:4566';
+	const LOCALSTACK_ENDPOINT = LOCALSTACK_URL;
 	const DOKPLOY_BASE_URL = 'https://dokploy.example.com';
 
 	let s3Client: S3Client;

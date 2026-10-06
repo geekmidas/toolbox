@@ -375,6 +375,16 @@ describe('EndpointGenerator', () => {
 			expect(appContent).toContain("honoApp.get('/health'");
 			expect(appContent).toContain("honoApp.get('/ready'");
 			expect(appContent).toContain('Graceful shutdown initiated');
+			// Stops taking requests, then closes what constructs opened (the
+			// database pools) before exiting.
+			expect(appContent).toContain(
+				"import { runShutdownHooks } from '@geekmidas/constructs'",
+			);
+			expect(appContent).toContain(
+				'server = await options.serve(honoApp, port)',
+			);
+			expect(appContent).toContain('close.call(server, () => resolve())');
+			expect(appContent).toContain('await runShutdownHooks(');
 
 			// Check server.ts entry point was generated
 			const serverPath = join(outputDir, 'server.ts');
@@ -496,6 +506,45 @@ describe('EndpointGenerator', () => {
 			expect(telemetry).not.toContain("@geekmidas/telescope/instrumentation')");
 			expect(telemetry).not.toMatch(/import\(['"]@/);
 			expect(telemetry).toContain('TelemetryUnavailable');
+		},
+	);
+
+	itWithDir(
+		'names a production server to Postgres after its surface',
+		async ({ dir }) => {
+			const outputDir = join(dir, 'output');
+			const routesDir = join(dir, 'routes');
+			await mkdir(outputDir, { recursive: true });
+			await createMockEndpointFile(
+				routesDir,
+				'testEndpoint.ts',
+				'testEndpoint',
+				'/test',
+				'GET',
+			);
+			const constructs = await generator.load('**/routes/*.ts', dir);
+
+			await generator.build(
+				{
+					...context,
+					...createMockBuildContext(),
+					production: {
+						enabled: true,
+						healthCheck: '/health',
+						gracefulShutdown: true,
+						openapi: false,
+						subscribers: 'exclude' as const,
+						optimizedHandlers: false,
+					},
+				},
+				constructs,
+				outputDir,
+				{ target: 'server' },
+			);
+
+			const appContent = await readFile(join(outputDir, 'app.ts'), 'utf-8');
+			// A fallback: an operator's GKM_APP_NAME still wins.
+			expect(appContent).toContain('process.env.GKM_APP_NAME ??= "Api";');
 		},
 	);
 

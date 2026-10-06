@@ -11,6 +11,7 @@ import {
 	expect,
 	it,
 } from 'vitest';
+import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import { loadWorkspaceConfig } from '../../config';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { AwsSecretsStore, secretsParameterName } from '../aws';
@@ -25,12 +26,12 @@ import {
 import type { StageSecrets } from '../types';
 
 /**
- * Against the AWS emulator on 4566 (`docker compose up`). The store takes a
+ * Against the AWS emulator (`docker compose up`, on `LOCALSTACK_HOST_PORT`). The store takes a
  * region like a real project's config; the SDK's standard endpoint variable
  * points it at the emulator.
  */
 const EMULATOR = {
-	AWS_ENDPOINT_URL: 'http://localhost:4566',
+	AWS_ENDPOINT_URL: LOCALSTACK_URL,
 	AWS_ACCESS_KEY_ID: 'test',
 	AWS_SECRET_ACCESS_KEY: 'test',
 };

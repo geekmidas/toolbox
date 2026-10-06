@@ -16,6 +16,7 @@ import {
 	type MockInstance,
 	vi,
 } from 'vitest';
+import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { loadWorkspaceConfig } from '../../config';
 import { FileSecretsStore } from '../../secrets/file';
@@ -188,7 +189,7 @@ export const database = new KyselyDatabase('Database');
 		}
 
 		beforeEach(() => {
-			vi.stubEnv('AWS_ENDPOINT_URL', 'http://localhost:4566');
+			vi.stubEnv('AWS_ENDPOINT_URL', LOCALSTACK_URL);
 			vi.stubEnv('AWS_ACCESS_KEY_ID', 'test');
 			vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'test');
 			vi.stubEnv('AWS_REGION', 'us-east-1');
