@@ -881,14 +881,20 @@ import { setupCrons } from './crons.js';`
 			? `
   // Graceful shutdown: stop taking requests, let in-flight ones finish, then
   // close what constructs opened (database pools) — so a rolling deploy does
-  // not leave the old task holding connections. 30s at most, then exit anyway.
+  // not leave the old task holding connections. Bounded by
+  // GKM_SHUTDOWN_TIMEOUT_MS, 8s by default: under Docker's 10s stop timeout,
+  // so the process exits on its own terms rather than being killed mid-drain.
   let isShuttingDown = false;
 
   const shutdown = async () => {
     if (isShuttingDown) return;
     isShuttingDown = true;
-    logger.info('Graceful shutdown initiated');
-    setTimeout(() => process.exit(0), 30000).unref();
+    const deadline = Number(process.env.GKM_SHUTDOWN_TIMEOUT_MS) || 8000;
+    logger.info({ deadline }, 'Graceful shutdown initiated');
+    setTimeout(() => {
+      logger.warn({ deadline }, 'Shutdown deadline reached, exiting');
+      process.exit(1);
+    }, deadline).unref();
     await new Promise<void>((resolve) => {
       const close = (server as { close?: (done: () => void) => void } | undefined)?.close;
       if (typeof close === 'function') close.call(server, () => resolve());

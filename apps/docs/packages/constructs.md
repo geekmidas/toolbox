@@ -391,7 +391,9 @@ query in the log, points at the code responsible.
 - **Shutdown.** A production server stops taking requests on `SIGTERM`, lets
   in-flight ones finish, then closes every pool (`runShutdownHooks` from
   `@geekmidas/constructs`), so a rolling deploy does not leave the old task
-  holding connections.
+  holding connections. It exits by `GKM_SHUTDOWN_TIMEOUT_MS` (8000 by
+  default — under Docker's 10s stop timeout) even if a request has not
+  finished, with exit code 1 so the forced stop is visible.
 
 ### Creating an Endpoint
 
