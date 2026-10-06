@@ -45,14 +45,21 @@ const LOCAL_USER = 'geekmidas';
  * and a schema must be created from inside its own database — so the database is
  * part of each query rather than fixed when the client is built.
  */
-export function pgClient(port: number): SqlClient {
+export function pgClient(
+	port: number,
+	/**
+	 * The master's password, where the cluster is not a local one — a
+	 * `gkm compose` stack serving a deployed stage derives its own.
+	 */
+	password: string = LOCAL_USER,
+): SqlClient {
 	return {
 		async query(database, sql, values) {
 			const client = new Client({
 				host: 'localhost',
 				port,
 				user: LOCAL_USER,
-				password: LOCAL_USER,
+				password,
 				// The cluster's own database, which the image creates. Connecting to
 				// it is what makes `CREATE DATABASE` possible at all.
 				database: database ?? LOCAL_USER,

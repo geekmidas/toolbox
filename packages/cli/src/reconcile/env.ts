@@ -117,6 +117,40 @@ export interface EnvOptions {
 	 * nobody had to verify it.
 	 */
 	mailFrom?: string;
+	/**
+	 * The stage's random seed, salting every derived role password.
+	 *
+	 * Absent locally, where the cluster is on loopback and a password derived
+	 * from the project and stage alone is the convenience the local stage
+	 * wants. A stack that serves a deployed stage passes the seed its store
+	 * keeps, so its passwords are the ones a deploy derives — and are not
+	 * computable from the repo.
+	 */
+	seed?: string;
+	/**
+	 * The cluster master's password, where it is not the local one.
+	 *
+	 * pg-boss and a `roles: false` database connect as the master, so its
+	 * password is in their URLs; a deployed stage's is derived from its seed.
+	 */
+	master?: string;
+}
+
+/**
+ * The credentials a stage's URLs carry: the master's password and the seed
+ * role passwords are salted with. Locally both are the fixed defaults.
+ */
+interface StageCredential {
+	master: string;
+	seed?: string;
+}
+
+/** The credential `options` describe, defaulting to the local one. */
+function credentialOf(options: { seed?: string; master?: string }) {
+	return {
+		master: options.master ?? LOCAL_USER,
+		...(options.seed ? { seed: options.seed } : {}),
+	} satisfies StageCredential;
 }
 
 /**
@@ -130,6 +164,7 @@ export function envFor(
 	options: EnvOptions,
 ): Record<string, string> {
 	const env: Record<string, string> = {};
+	const credential = credentialOf(options);
 
 	// Resolved once, up front, because a surface's cookie domain and origin list
 	// are derived from *other constructs'* addresses — and reading them as the
@@ -143,6 +178,7 @@ export function envFor(
 			options.ports,
 			options.project ?? '',
 			options.addresses,
+			credential,
 		);
 		if (url) resolved[resource.id] = url;
 	}
@@ -179,6 +215,7 @@ export function envFor(
 				plan,
 				options.ports,
 				options.project ?? '',
+				credential,
 			);
 			if (owner) env[provideKey(resource.id, 'ownerUrl')] = owner;
 		}
@@ -215,7 +252,7 @@ export function envFor(
 	// order the manifest happened to be keyed in.
 	Object.assign(env, publicEnv(plan, env, options.addresses));
 
-	Object.assign(env, brokerEnv(plan, options.ports));
+	Object.assign(env, brokerEnv(plan, options.ports, credential));
 
 	// Only once a bucket actually resolved: an unresolvable plan resolves
 	// nothing, and credentials for a container that is not running are noise.
@@ -405,6 +442,7 @@ function ownerUrl(
 	plan: Plan,
 	ports: PortAssignments,
 	project: string,
+	credential: StageCredential,
 ): string | undefined {
 	if (!resource.container) return undefined;
 
@@ -415,7 +453,7 @@ function ownerUrl(
 
 	return postgres(port, rootDatabase(resource, plan), {
 		user: owner,
-		password: localRolePassword(project, plan, owner),
+		password: localRolePassword(project, plan, owner, credential.seed),
 	});
 }
 
@@ -428,15 +466,19 @@ function ownerUrl(
  * on it. Deployed there is no such thing — a Lambda is handed its own event
  * source — so this pair exists for the local target and says so.
  */
-function brokerEnv(plan: Plan, ports: PortAssignments): Record<string, string> {
+function brokerEnv(
+	plan: Plan,
+	ports: PortAssignments,
+	credential: StageCredential,
+): Record<string, string> {
 	const carrier = plan.resources.find(
 		(r) => r.kind === 'queue' || r.kind === 'topic',
 	);
 
 	const publisher = carrier
-		? urlFor(carrier, plan, ports, '')
+		? urlFor(carrier, plan, ports, '', {}, credential)
 		: plan.workerBroker
-			? workerBroker(plan, ports)
+			? workerBroker(plan, ports, credential)
 			: undefined;
 	if (!publisher) return {};
 
@@ -452,12 +494,16 @@ function brokerEnv(plan: Plan, ports: PortAssignments): Record<string, string> {
  * The broker a worker schedules its crons through, when nothing else declared
  * one — pg-boss in the declared database, on that database's port.
  */
-function workerBroker(plan: Plan, ports: PortAssignments): string | undefined {
+function workerBroker(
+	plan: Plan,
+	ports: PortAssignments,
+	credential: StageCredential,
+): string | undefined {
 	const database = plan.resources.find((r) => r.kind === 'database');
 	if (!database?.container) return undefined;
 
 	const port = ports[primaryPortKey(database.container)];
-	return port === undefined ? undefined : broker(plan, port);
+	return port === undefined ? undefined : broker(plan, port, credential);
 }
 
 /**
@@ -471,6 +517,7 @@ function urlFor(
 	ports: PortAssignments,
 	project: string,
 	addresses: Readonly<Record<string, string>> = {},
+	credential: StageCredential = { master: LOCAL_USER },
 ): string | undefined {
 	// A secret has no address, so there is no port to wait for.
 	if (resource.kind === 'secret') return localSecret(project, plan, resource);
@@ -549,9 +596,10 @@ function urlFor(
 			if (resource.roles === false) {
 				const schema = schemaOf(resource, plan);
 
+				const master = { user: LOCAL_USER, password: credential.master };
 				return schema
-					? `${postgres(port, database)}?search_path=${schema}`
-					: postgres(port, database);
+					? `${postgres(port, database, master)}?search_path=${schema}`
+					: postgres(port, database, master);
 			}
 
 			// A reader connects as the read-only role on its parent, not as a role
@@ -564,7 +612,7 @@ function urlFor(
 
 			return postgres(port, database, {
 				user: role,
-				password: localRolePassword(project, plan, role),
+				password: localRolePassword(project, plan, role, credential.seed),
 			});
 		}
 
@@ -617,7 +665,7 @@ function urlFor(
 			if (resource.of) {
 				const parent = plan.resources.find((r) => r.id === resource.of);
 				const url = parent
-					? urlFor(parent, plan, ports, project, addresses)
+					? urlFor(parent, plan, ports, project, addresses, credential)
 					: undefined;
 
 				// The parent's address plus the one thing that distinguishes this
@@ -644,7 +692,7 @@ function urlFor(
 
 		case 'queue':
 		case 'topic':
-			return broker(plan, port, resource);
+			return broker(plan, port, credential, resource);
 
 		default:
 			return undefined;
@@ -661,6 +709,7 @@ function urlFor(
 function broker(
 	plan: Plan,
 	port: number,
+	credential: StageCredential,
 	/** The topic or queue — needed where each is its own address (SNS/SQS). */
 	resource?: PlannedResource,
 ): string {
@@ -671,7 +720,7 @@ function broker(
 			const database = plan.resources.find((r) => r.kind === 'database');
 			if (!database) throw new PgBossNeedsDatabase([]);
 
-			return `pgboss://${LOCAL_USER}:${LOCAL_USER}@${LOCAL_HOST}:${port}/${database.name}?schema=${PGBOSS_SCHEMA}`;
+			return `pgboss://${LOCAL_USER}:${encodeURIComponent(credential.master)}@${LOCAL_HOST}:${port}/${database.name}?schema=${PGBOSS_SCHEMA}`;
 		}
 
 		case 'rabbitmq':
@@ -719,7 +768,7 @@ function postgres(
 		password: LOCAL_USER,
 	},
 ): string {
-	return `postgres://${credential.user}:${credential.password}@${LOCAL_HOST}:${port}/${database}`;
+	return `postgres://${credential.user}:${encodeURIComponent(credential.password)}@${LOCAL_HOST}:${port}/${database}`;
 }
 
 /**
@@ -743,16 +792,24 @@ export function localRole(resource: PlannedResource): string {
  * data they had a moment ago. Seeded by the project so two checkouts do not
  * share one, and by the stage so `test` and `development` do not.
  *
- * It is a *local* credential by construction — the cluster is on loopback and
- * the seed is a checkout path — and no deployed target uses this function.
+ * Without a seed it is a *local* credential by construction — the cluster is
+ * on loopback and everything it is derived from is in the repo. `gkm compose`
+ * serving a deployed stage passes that stage's random seed, which is what
+ * makes the same derivation a secret.
  */
 export function localRolePassword(
 	project: string,
 	plan: Plan,
 	role: string,
+	/**
+	 * A deployed stage's random seed. Given, the derivation is the one a
+	 * deploy makes — the seed first — so a stack serving that stage connects
+	 * with the passwords its roles were created with.
+	 */
+	seed?: string,
 ): string {
 	return createHash('sha256')
-		.update(`${project}:${plan.stage}:role:${role}`)
+		.update(`${seed ? `${seed}:` : ''}${project}:${plan.stage}:role:${role}`)
 		.digest('base64url')
 		.slice(0, 32);
 }

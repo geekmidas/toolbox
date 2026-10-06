@@ -49,6 +49,7 @@ export default defineConfig({
           { text: 'Workspaces', link: '/guide/workspaces' },
           { text: 'Testing', link: '/guide/testing' },
           { text: 'Deployment', link: '/guide/deployment' },
+          { text: 'Deploy with Docker Compose', link: '/guide/compose' },
         ],
       },
       {

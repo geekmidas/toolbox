@@ -62,6 +62,11 @@ export function postgresStatements(
 	 * and two checkouts do not share a credential.
 	 */
 	project = '',
+	/**
+	 * A deployed stage's random seed, salting the role passwords the way a
+	 * deploy does — see `localRolePassword`. Absent for the local stages.
+	 */
+	seed?: string,
 ): Statement[] {
 	const statements: Statement[] = [];
 
@@ -85,7 +90,9 @@ export function postgresStatements(
 			// grants are not, so every statement after the first two has to run
 			// against a database that exists.
 			if (resource.schema) {
-				statements.push(...rolesFor(resource, resource.schema, plan, project));
+				statements.push(
+					...rolesFor(resource, resource.schema, plan, project, seed),
+				);
 			}
 			continue;
 		}
@@ -95,7 +102,9 @@ export function postgresStatements(
 			// with the deploy target — the same DDL has to run in-process here and
 			// from a provisioner in a VPC, and one implementation is what stops
 			// "works locally, fails deployed".
-			statements.push(...rolesFor(resource, resource.schema, plan, project));
+			statements.push(
+				...rolesFor(resource, resource.schema, plan, project, seed),
+			);
 		}
 
 		// A cache that lives in a database is a table in it, and a table is DDL —
@@ -202,6 +211,7 @@ function rolesFor(
 	schema: string,
 	plan: Plan,
 	project: string,
+	seed?: string,
 ): Statement[] {
 	if (resource.roles === false) return [];
 
@@ -227,9 +237,11 @@ function rolesFor(
 			? { database: rootDatabase(resource, plan) }
 			: {}),
 		passwords: {
-			runtime: localRolePassword(project, plan, runtime),
-			owner: localRolePassword(project, plan, owner),
-			...(reader ? { reader: localRolePassword(project, plan, reader) } : {}),
+			runtime: localRolePassword(project, plan, runtime, seed),
+			owner: localRolePassword(project, plan, owner, seed),
+			...(reader
+				? { reader: localRolePassword(project, plan, reader, seed) }
+				: {}),
 		},
 	}).map((statement) => ({
 		id: resource.id,

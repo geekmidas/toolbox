@@ -332,6 +332,28 @@ The profile needs rights to manage IAM in that account; if it lacks them, AWS's
 error names the action. An expired SSO login says to run
 `aws sso login --profile <name>`.
 
+### `gkm compose`
+
+Run the workspace's APIs and sites for a stage as one Docker Compose stack
+behind Caddy, over HTTPS. See [Deploy with Docker Compose](./compose.md).
+
+```bash
+gkm compose [options]
+
+Options:
+  --stage <stage>  Stage to run (default: the local stage)
+  --tag <tag>      Run the images CI pushed at this tag (sites: <tag>-<stage>);
+                   every image is checked in the registry first, nothing is built
+  --build          Build images from this checkout, tagged with the commit
+  --pull           Pull images (at --tag, or latest) rather than build them
+  --dry-run        Write the files and print the plan; start nothing
+  --down           Stop the stage's stack (its volumes are kept)
+
+Environment:
+  GKM_COMPOSE_HTTPS_PORT  Where the edge publishes HTTPS (default 443)
+  GKM_COMPOSE_HTTP_PORT   Where the edge publishes HTTP (default 80)
+```
+
 ### `gkm docker`
 
 Generate Docker files.
