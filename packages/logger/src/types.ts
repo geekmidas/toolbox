@@ -130,8 +130,9 @@ export type CreateLoggerOptions = {
 	/**
 	 * Redaction configuration for masking sensitive data.
 	 *
-	 * - `true`: Uses default sensitive paths (password, token, secret, etc.)
-	 * - `false` or `undefined`: No redaction applied
+	 * - `true` or `undefined` (the default): Uses default sensitive paths
+	 *   (password, token, secret, etc.)
+	 * - `false`: No redaction applied — the explicit opt-out
 	 * - `string[]`: Custom paths merged with defaults
 	 * - `object`: Advanced config with paths, censor, remove, and resolution options
 	 *
@@ -140,8 +141,11 @@ export type CreateLoggerOptions = {
 	 *
 	 * @example
 	 * ```typescript
-	 * // Use defaults only
+	 * // Use defaults only (the same as leaving `redact` out)
 	 * createLogger({ redact: true });
+	 *
+	 * // Opt out
+	 * createLogger({ redact: false });
 	 *
 	 * // Add custom paths (merged with defaults)
 	 * createLogger({ redact: ['user.ssn', 'custom.field'] });
@@ -164,4 +168,9 @@ export type CreateLoggerOptions = {
 	 * ```
 	 */
 	redact?: boolean | RedactOptions;
+	/**
+	 * Where log lines are written (pino logger only). Defaults to stdout.
+	 * Ignored when `pretty` is on, since the pretty transport owns its output.
+	 */
+	destination?: { write(line: string): unknown };
 };

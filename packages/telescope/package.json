@@ -233,6 +233,7 @@
 		"@geekmidas/logger": "workspace:^",
 		"@middy/core": "~7.9.2",
 		"@opentelemetry/api": "~1.9.1",
+		"@opentelemetry/api-logs": "~0.222.0",
 		"@opentelemetry/auto-instrumentations-node": "~0.80.0",
 		"@opentelemetry/exporter-logs-otlp-http": "~0.222.0",
 		"@opentelemetry/exporter-trace-otlp-http": "~0.222.0",
