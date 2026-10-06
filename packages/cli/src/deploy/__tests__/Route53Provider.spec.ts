@@ -14,6 +14,7 @@ import {
 	expect,
 	it,
 } from 'vitest';
+import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import { Route53Provider } from '../dns/Route53Provider';
 
 /**
@@ -23,7 +24,7 @@ import { Route53Provider } from '../dns/Route53Provider';
  * Run: docker compose up -d localstack
  */
 describe('Route53Provider', () => {
-	const LOCALSTACK_ENDPOINT = 'http://localhost:4566';
+	const LOCALSTACK_ENDPOINT = LOCALSTACK_URL;
 	const TEST_DOMAIN = 'test-example.com';
 	let client: Route53Client;
 	let provider: Route53Provider;

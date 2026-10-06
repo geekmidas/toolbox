@@ -3,6 +3,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { CreateTopicCommand } from '@aws-sdk/client-sns';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import {
 	confirmSnsSubscription,
 	SnsCertificateUntrusted,
@@ -125,7 +126,7 @@ describe('toSnsEvent', () => {
 });
 
 /**
- * Against the AWS emulator (floci on 4566), which pushes to the host through
+ * Against the AWS emulator (floci, on `LOCALSTACK_HOST_PORT`), which pushes to the host through
  * `host.docker.internal` — the same arrangement `gkm dev` uses.
  */
 describe('HTTP push through the emulator', () => {
@@ -153,7 +154,7 @@ describe('HTTP push through the emulator', () => {
 		const probe = new SNSConnection({
 			topicArn: '',
 			region: 'us-east-1',
-			endpoint: 'http://localhost:4566',
+			endpoint: LOCALSTACK_URL,
 			credentials: { accessKeyId: 'LSIAtest', secretAccessKey: 'test' },
 		});
 		const { TopicArn } = await probe.snsClient.send(
@@ -162,7 +163,7 @@ describe('HTTP push through the emulator', () => {
 		connection = new SNSConnection({
 			topicArn: TopicArn as string,
 			region: 'us-east-1',
-			endpoint: 'http://localhost:4566',
+			endpoint: LOCALSTACK_URL,
 			credentials: { accessKeyId: 'LSIAtest', secretAccessKey: 'test' },
 		});
 	});
@@ -171,6 +172,19 @@ describe('HTTP push through the emulator', () => {
 		await new Promise((resolve) => server.close(resolve));
 		connection?.close();
 	});
+
+	/**
+	 * The emulator names itself in `SubscribeURL` by the port it listens on
+	 * inside its container, which is not the one published to the host when
+	 * `LOCALSTACK_HOST_PORT` moved it — so confirm through the published one,
+	 * as the push adaptor does with its configured emulator endpoint.
+	 */
+	const confirm = (message: SnsHttpMessage) =>
+		confirmSnsSubscription(message, (url) => {
+			const target = new URL(url);
+			target.host = new URL(LOCALSTACK_URL).host;
+			return fetch(target);
+		});
 
 	const until = async (check: () => boolean) => {
 		for (let i = 0; i < 50 && !check(); i++) {
@@ -195,7 +209,7 @@ describe('HTTP push through the emulator', () => {
 					.length === 2,
 		);
 		for (const { message } of received) {
-			await confirmSnsSubscription(message);
+			await confirm(message);
 		}
 		received.length = 0;
 
@@ -237,7 +251,7 @@ describe('HTTP push through the emulator', () => {
 		await until(() => confirmations().length === 2);
 
 		expect(confirmations()).toHaveLength(2);
-		await confirmSnsSubscription(confirmations()[1]!.message);
+		await confirm(confirmations()[1]!.message);
 		await new SNSPublisher(connection).publish([
 			{ type: 'user.created', payload: { id: '3' } },
 		]);
@@ -260,9 +274,7 @@ describe('HTTP push through the emulator', () => {
 			events: ['user.created'],
 		});
 		await until(() => received.some((r) => r.path === '/grows'));
-		await confirmSnsSubscription(
-			received.find((r) => r.path === '/grows')!.message,
-		);
+		await confirm(received.find((r) => r.path === '/grows')!.message);
 
 		// The subscriber now names a second event.
 		await subscribeHttpEndpoint(connection, {

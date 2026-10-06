@@ -24,6 +24,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { HOST_PORT_DEFAULTS, type HostPortVariable, hostPort } from './ports';
 
 const run = promisify(execFile);
 
@@ -58,6 +59,11 @@ export async function ensureServices(
 
 	const cwd = repoRoot();
 
+	// Several checkouts share these containers, and `up` recreates one whose
+	// definition differs in anything at all — so it is only asked when a
+	// service is down, unhealthy, or not on the ports this run expects.
+	if (await alreadyUp(cwd, services)) return;
+
 	try {
 		await run('docker', ['compose', 'up', '-d', '--wait', ...services], {
 			cwd,
@@ -66,11 +72,138 @@ export async function ensureServices(
 			timeout: 300_000,
 		});
 	} catch (error) {
+		const detail = error instanceof Error ? error.message : String(error);
+		const taken = takenHostPort(detail);
+
+		if (taken !== undefined) {
+			throw new HostPortTaken(
+				services,
+				taken,
+				variableForHostPort(taken),
+				detail,
+			);
+		}
+
 		throw new ServicesDidNotStart(
 			services,
 			resolve(cwd, 'docker-compose.yml'),
-			error instanceof Error ? error.message : String(error),
+			detail,
 		);
+	}
+}
+
+interface ComposeContainer {
+	Service: string;
+	State: string;
+	Health: string;
+	Publishers?: { PublishedPort: number }[] | null;
+}
+
+/**
+ * Whether every service is running, healthy where it has a healthcheck, and
+ * published on the host ports the `*_HOST_PORT` variables resolve to now.
+ *
+ * The ports are the one part of a container's definition this checks, and
+ * deliberately: they are what a suite connects through, so a container on the
+ * wrong ones has to be recreated. Anything else that differs — another
+ * checkout's absolute paths, say — is not worth killing the connections of
+ * whatever suite that checkout is running.
+ */
+async function alreadyUp(
+	cwd: string,
+	services: readonly string[],
+): Promise<boolean> {
+	try {
+		const [config, ps] = await Promise.all([
+			run('docker', ['compose', 'config', '--format', 'json', ...services], {
+				cwd,
+			}),
+			run('docker', ['compose', 'ps', '--format', 'json', ...services], {
+				cwd,
+			}),
+		]);
+		const declared: Record<
+			string,
+			{ ports?: { published?: string | number }[] }
+		> = JSON.parse(config.stdout).services ?? {};
+		const containers = parseComposePs(ps.stdout);
+
+		return services.every((service) => {
+			const container = containers.find((c) => c.Service === service);
+			if (!container || container.State !== 'running') return false;
+			if (container.Health !== '' && container.Health !== 'healthy') {
+				return false;
+			}
+			const published = new Set(
+				(container.Publishers ?? []).map((p) => p.PublishedPort),
+			);
+			return (declared[service]?.ports ?? []).every(
+				(port) =>
+					port.published === undefined || published.has(Number(port.published)),
+			);
+		});
+	} catch {
+		// Whatever went wrong, `up` will say it better.
+		return false;
+	}
+}
+
+/** `docker compose ps --format json`: one object per line, or one array. */
+function parseComposePs(output: string): ComposeContainer[] {
+	const trimmed = output.trim();
+	if (trimmed === '') return [];
+	if (trimmed.startsWith('[')) return JSON.parse(trimmed);
+	return trimmed.split('\n').map((line) => JSON.parse(line));
+}
+
+/**
+ * The host port Docker refused to bind, read from `docker compose`'s output.
+ *
+ * Docker words it two ways depending on who noticed: the daemon itself
+ * (`Bind for 0.0.0.0:5432 failed: port is already allocated`) or the kernel
+ * underneath it (`listen tcp 0.0.0.0:5432: bind: address already in use`).
+ */
+export function takenHostPort(output: string): number | undefined {
+	const match =
+		/:(\d+) failed: port is already allocated/.exec(output) ??
+		/:(\d+): bind: address already in use/.exec(output);
+
+	return match ? Number(match[1]) : undefined;
+}
+
+/** Which `*_HOST_PORT` variable currently resolves to `port`, if any does. */
+export function variableForHostPort(
+	port: number,
+): HostPortVariable | undefined {
+	return (Object.keys(HOST_PORT_DEFAULTS) as HostPortVariable[]).find(
+		(variable) => hostPort(variable) === port,
+	);
+}
+
+/**
+ * Another process holds a host port the compose stack publishes on — another
+ * project's Postgres on 5432 is the usual one. Names the variable that moves
+ * it, because the alternative is an `ECONNREFUSED` several frames later that
+ * says nothing about ports at all.
+ */
+export class HostPortTaken extends Error {
+	constructor(
+		readonly services: readonly string[],
+		readonly port: number,
+		readonly variable: HostPortVariable | undefined,
+		readonly detail: string,
+	) {
+		const example =
+			port + 20_000 <= 65_535 ? ` (e.g. ${variable}=${port + 20_000})` : '';
+		const fix = variable
+			? `Set ${variable} to a free port${example} and run again`
+			: 'Move it with the matching *_HOST_PORT variable (see packages/testkit/test/ports.ts) and run again';
+
+		super(
+			`Could not start ${services.join(', ')}: host port ${port} is already taken by another process. ` +
+				`${fix} — the suites read the same variable, so they follow the container. ${detail}`,
+		);
+		this.name = 'HostPortTaken';
 	}
 }
 

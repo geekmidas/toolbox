@@ -22,12 +22,13 @@ import {
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import type { DnsProvider } from '../dns/DnsProvider';
 import { DokployApi } from '../dokploy-api';
 import { createEmptyState, type DokployStageState } from '../state';
 import { undeploy } from '../undeploy';
 
-const ENDPOINT = 'http://localhost:4566';
+const ENDPOINT = LOCALSTACK_URL;
 const DOKPLOY = 'https://dokploy.test';
 const aws = {
 	region: 'us-east-1',

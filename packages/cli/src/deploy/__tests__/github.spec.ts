@@ -8,6 +8,7 @@ import {
 	ListOpenIDConnectProvidersCommand,
 } from '@aws-sdk/client-iam';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import { initStageSecrets } from '../../secrets/storage';
 import type { StageSecrets } from '../../secrets/types';
 import {
@@ -233,7 +234,7 @@ describe('deployGithubCommand', () => {
 
 describe('iamFor', () => {
 	it("points at the endpoint it is given, with the emulator's keys", async () => {
-		const iam = await iamFor(undefined, 'http://localhost:4566');
+		const iam = await iamFor(undefined, LOCALSTACK_URL);
 		const endpoint = await iam.config.endpoint!();
 
 		expect(endpoint.hostname).toBe('localhost');
@@ -283,7 +284,7 @@ describe('an expired SSO login', () => {
 describe('against IAM', () => {
 	const iam = new IAMClient({
 		region: 'us-east-1',
-		endpoint: 'http://localhost:4566',
+		endpoint: LOCALSTACK_URL,
 		credentials: { accessKeyId: 'test', secretAccessKey: 'test' },
 	});
 

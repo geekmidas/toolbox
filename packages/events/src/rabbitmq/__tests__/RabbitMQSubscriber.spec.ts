@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import {
+	RABBITMQ_AUTHORITY,
+	RABBITMQ_URL,
+} from '../../../../testkit/test/ports';
 import type { PublishableMessage } from '../../types';
 import { RabbitMQConnection } from '../RabbitMQConnection';
 import { RabbitMQPublisher } from '../RabbitMQPublisher';
 import { RabbitMQSubscriber } from '../RabbitMQSubscriber';
 
 type TestMessage = PublishableMessage<'user.created' | 'user.updated', any>;
-
-const RABBITMQ_URL = 'amqp://geekmidas:geekmidas@localhost:5672';
 
 // Helper to generate unique exchange names
 const uniqueExchange = () =>
@@ -260,7 +262,7 @@ describe('RabbitMQSubscriber - Integration Tests', () => {
 		const testExchange = uniqueExchange();
 		const subscriber =
 			await RabbitMQSubscriber.fromConnectionString<TestMessage>(
-				`rabbitmq://geekmidas:geekmidas@localhost:5672?exchange=${testExchange}`,
+				`rabbitmq://${RABBITMQ_AUTHORITY}?exchange=${testExchange}`,
 			);
 
 		const connection = new RabbitMQConnection({

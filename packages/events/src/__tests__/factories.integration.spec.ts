@@ -1,5 +1,10 @@
 import { afterAll, describe, expect, it, vi } from 'vitest';
-import { LOCALSTACK_URL, POSTGRES_PORT } from '../../../testkit/test/ports';
+import {
+	LOCALSTACK_URL,
+	POSTGRES_PORT,
+	RABBITMQ_AUTHORITY,
+	RABBITMQ_URL,
+} from '../../../testkit/test/ports';
 import { EventConnectionFactory } from '../EventConnection';
 import { Publisher } from '../Publisher';
 import { dropSchemas } from '../pgboss/__tests__/setup';
@@ -36,7 +41,7 @@ afterAll(async () => {
 
 describe('rabbitmq://', () => {
 	const exchange = `factory-${unique()}`;
-	const url = `rabbitmq://geekmidas:geekmidas@localhost:5672?exchange=${exchange}&type=topic&timeout=3000`;
+	const url = `rabbitmq://${RABBITMQ_AUTHORITY}?exchange=${exchange}&type=topic&timeout=3000`;
 
 	it('builds a connection with the exchange the string names', async () => {
 		const connection = track(
@@ -85,7 +90,7 @@ describe('rabbitmq://', () => {
 	it('shares one connection between a publisher and a subscriber', async () => {
 		const connection = track(
 			new RabbitMQConnection({
-				url: 'amqp://geekmidas:geekmidas@localhost:5672',
+				url: RABBITMQ_URL,
 				exchange,
 			}),
 		);
@@ -101,7 +106,7 @@ describe('rabbitmq://', () => {
 	it('opens one socket when two callers connect at once', async () => {
 		const connection = track(
 			new RabbitMQConnection({
-				url: 'amqp://geekmidas:geekmidas@localhost:5672',
+				url: RABBITMQ_URL,
 				exchange,
 			}),
 		);
@@ -116,7 +121,7 @@ describe('rabbitmq://', () => {
 	it('notices the broker closing the connection', async () => {
 		const connection = track(
 			new RabbitMQConnection({
-				url: 'amqp://geekmidas:geekmidas@localhost:5672',
+				url: RABBITMQ_URL,
 				exchange,
 			}),
 		);
