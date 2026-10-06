@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/db",
-	"version": "10.0.0-alpha.55",
+	"version": "10.0.0-alpha.56",
 	"private": false,
 	"type": "module",
 	"exports": {
@@ -82,6 +82,16 @@
 			"require": {
 				"types": "./dist/errors.d.cts",
 				"default": "./dist/errors.cjs"
+			}
+		},
+		"./introspect": {
+			"import": {
+				"types": "./dist/introspect/index.d.mts",
+				"default": "./dist/introspect/index.mjs"
+			},
+			"require": {
+				"types": "./dist/introspect/index.d.cts",
+				"default": "./dist/introspect/index.cjs"
 			}
 		}
 	},

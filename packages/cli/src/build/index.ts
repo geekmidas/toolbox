@@ -12,7 +12,6 @@ import { loadAppConfig, loadConfig, loadWorkspaceConfig } from '../config';
 import {
 	normalizeHooksConfig,
 	normalizeProductionConfig,
-	normalizeStudioConfig,
 	normalizeTelescopeConfig,
 } from '../dev';
 import {
@@ -64,7 +63,6 @@ import type {
 	BuildContext,
 	NormalizedHooksConfig,
 	NormalizedProductionConfig,
-	NormalizedStudioConfig,
 	NormalizedTelescopeConfig,
 } from './types';
 
@@ -243,12 +241,6 @@ async function buildOneApp(input: {
 		logger.log(`🔭 Telescope enabled at ${telescope.path}`);
 	}
 
-	// Normalize studio configuration (disabled in production)
-	const studio = production ? undefined : normalizeStudioConfig(config.studio);
-	if (studio) {
-		logger.log(`🗄️  Studio enabled at ${studio.path}`);
-	}
-
 	const hooks = normalizeHooksConfig(config.hooks, appRoot);
 	if (hooks) {
 		logger.log(`🪝 Server hooks enabled`);
@@ -263,7 +255,6 @@ async function buildOneApp(input: {
 		cacheBackend,
 		production,
 		telescope,
-		studio,
 		hooks,
 		markOptional: options.markOptional ?? false,
 		skipBundle: options.skipBundle ?? false,
@@ -283,7 +274,11 @@ export interface BuildAppInput {
 	cacheBackend: CacheBackend;
 	production?: NormalizedProductionConfig;
 	telescope?: NormalizedTelescopeConfig;
-	studio?: NormalizedStudioConfig;
+	/**
+	 * Serve the declared database's read-only JSON API at `/__gkm/db`. Only
+	 * `gkm dev` asks: it hands every row to whoever can reach the port.
+	 */
+	databaseApi?: boolean;
 	hooks?: NormalizedHooksConfig;
 	markOptional?: boolean;
 	skipBundle?: boolean;
@@ -306,6 +301,8 @@ export interface AppBuildOutput extends BuildResult {
 	 * `app.ts` exports the construct's own `app`, with no `createApp` to call.
 	 */
 	selfServing?: string;
+	/** Where the generated server serves the database's JSON API, if it does. */
+	databaseApi?: string;
 	/** What it generated, for the application's manifest. */
 	built?: AppBuild;
 }
@@ -390,7 +387,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		cacheBackend,
 		production,
 		telescope,
-		studio,
+		databaseApi,
 		hooks,
 		bustCache = false,
 	} = input;
@@ -438,7 +435,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		sources: constructSources,
 		workspaceRoot,
 		appRoot,
-		studio,
+		databaseApi,
 	});
 
 	const buildContext: BuildContext = {
@@ -568,7 +565,12 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		{ openapi: config.openapi, root: workspaceRoot },
 	);
 
-	return result;
+	return {
+		...result,
+		...(buildContext.databaseApi
+			? { databaseApi: buildContext.databaseApi.path }
+			: {}),
+	};
 }
 
 async function buildForTarget(

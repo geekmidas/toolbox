@@ -182,16 +182,22 @@ export class SSMStateStore extends DocumentStateStore {
 			}
 			throw error;
 		}
+
+		// A create-only put is atomic on SSM, so the lock is ours. Read it back
+		// anyway: on a store where two racing creates can both succeed (the
+		// local emulator does, a few times in a hundred) the later one has
+		// overwritten the earlier — version 2, someone else's holder — and
+		// taking the lock regardless would give the stage two deploys.
+		const created = await this.get(Name);
+		const recorded = created ? parseHolder(created.value) : null;
+		if (created?.version !== 1 || recorded?.id !== holder.id) {
+			throw new StateLocked(stage, recorded, `ssm:${Name}`);
+		}
 	}
 
 	protected async readLock(stage: string): Promise<LockHolder | null> {
 		const parameter = await this.get(this.name(stage, 'lock'));
-		if (!parameter) return null;
-		try {
-			return JSON.parse(parameter.value) as LockHolder;
-		} catch {
-			return null;
-		}
+		return parameter ? parseHolder(parameter.value) : null;
 	}
 
 	protected async removeLock(
@@ -224,5 +230,13 @@ export class SSMStateStore extends DocumentStateStore {
 			if (error instanceof ParameterNotFound) return null;
 			throw error;
 		}
+	}
+}
+
+function parseHolder(value: string): LockHolder | null {
+	try {
+		return JSON.parse(value) as LockHolder;
+	} catch {
+		return null;
 	}
 }

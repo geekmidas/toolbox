@@ -65,7 +65,6 @@ export interface TemplateOptions {
 	name: string;
 	template: TemplateName;
 	telescope: boolean;
-	studio: boolean;
 	loggerType: LoggerType;
 	routesStructure: RoutesStructure;
 	monorepo: boolean;

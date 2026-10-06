@@ -80,8 +80,7 @@ my-app/
 │   │   │   ├── config/
 │   │   │   │   ├── env.ts       # EnvironmentParser singleton
 │   │   │   │   ├── logger.ts    # Logger instance (Pino or Console)
-│   │   │   │   ├── telescope.ts # Telescope dashboard setup
-│   │   │   │   └── studio.ts    # Studio data browser setup
+│   │   │   │   └── telescope.ts # Telescope setup
 │   │   │   ├── services/
 │   │   │   │   ├── database.ts  # Kysely database service
 │   │   │   │   └── auth.ts      # Auth client service
@@ -112,12 +111,15 @@ my-app/
 │       │   ├── app/             # (Next.js) Root layout, page, providers
 │       │   ├── routes/          # (TanStack Start) __root.tsx, index.tsx, …
 │       │   ├── api/index.ts     # Typed API client
+│       │   ├── components/ui/   # shadcn/ui components — the app's own source
 │       │   ├── config/
 │       │   │   ├── client.ts    # NEXT_PUBLIC_* / VITE_* config
 │       │   │   └── server.ts    # Server-side secrets
 │       │   └── lib/
 │       │       ├── query-client.ts
-│       │       └── auth-client.ts
+│       │       ├── auth-client.ts
+│       │       └── utils.ts     # cn() class merging
+│       ├── components.json      # shadcn/ui config
 │       ├── next.config.ts       # (Next.js)
 │       ├── vite.config.ts       # (TanStack Start)
 │       ├── tsconfig.json
@@ -136,25 +138,12 @@ my-app/
 │       ├── tsconfig.json
 │       └── package.json
 ├── packages/
-│   ├── models/                  # Shared Zod schemas
+│   └── models/                  # Shared Zod schemas
 │   │   ├── src/
 │   │   │   ├── common.ts       # Id, Timestamps, Pagination
 │   │   │   └── user.ts         # User, CreateUser, UpdateUser
 │   │   ├── package.json
 │   │   └── tsconfig.json
-│   └── ui/                      # Shared React UI components
-│       ├── src/
-│       │   ├── components/      # shadcn/ui components
-│       │   ├── lib/utils.ts     # cn() class merging
-│       │   ├── styles/
-│       │   │   └── globals.css  # Tailwind + CSS variables
-│       │   └── index.ts
-│       ├── .storybook/
-│       ├── stories/
-│       ├── components.json      # shadcn/ui config
-│       ├── tailwind.config.ts
-│       ├── postcss.config.mjs
-│       └── package.json
 ├── docker-compose.constructs.yml # written by gkm from the constructs (gitignored)
 ├── .gkm/
 │   └── secrets/
@@ -275,15 +264,14 @@ schemas each needs. Put an image pin or an extra service in your own
 The API app is built on `@geekmidas/constructs` with the Hono framework.
 
 **Configuration files:**
-- `gkm.config.ts` — endpoint routes, env parser, logger, Telescope, Studio
+- `gkm.config.ts` — endpoint routes, env parser, logger, Telescope
 - `tsconfig.json` — inherits root config
 - `package.json` — deps, scripts, exports
 
 **Source files:**
 - `config/env.ts` — `EnvironmentParser` singleton with database, cache, and auth config
 - `config/logger.ts` — Pino or Console logger based on prompt selection
-- `config/telescope.ts` — Telescope debugging dashboard (if enabled)
-- `config/studio.ts` — Studio database browser (if database enabled)
+- `config/telescope.ts` — Telescope request recording (if enabled)
 - `services/database.ts` — Kysely database service with PostgreSQL dialect
 - `services/auth.ts` — Auth client for calling the auth service
 - `router.ts` — a branch of `api` with a default JWT authorizer and session support
@@ -304,7 +292,6 @@ The API app is built on `@geekmidas/constructs` with the Hono framework.
 | `@geekmidas/envkit` | Environment parsing |
 | `@geekmidas/auth` | JWT verification |
 | `@geekmidas/telescope` | Request debugging |
-| `@geekmidas/studio` | Database browser |
 | `@geekmidas/audit` | Audit logging |
 | `@geekmidas/rate-limit` | Rate limiting |
 | `hono` | HTTP framework |
@@ -351,7 +338,7 @@ The frontend scaffold depends on which `frontendFramework` you picked. All three
 
 A Next.js 16 frontend with React 19, React Query, and better-auth client.
 
-- Path aliases: `~/*` → `./src/*`, `@{name}/ui`, `@{name}/models`
+- Path aliases: `~/*` → `./src/*`, `@{name}/models`
 - Tailwind CSS v4 via PostCSS plugin
 - React Query with 60s stale time
 - better-auth client with magic link plugin
@@ -385,19 +372,28 @@ A React Native mobile app on Expo SDK 57 with expo-router and NativeWind.
 
 **Key dependencies:** `expo`, `expo-router`, `expo-secure-store`, `@better-auth/expo`, `nativewind`, `react-native`, `@tanstack/react-query`, `@geekmidas/client`
 
-### 9. Generate UI Package (`packages/ui`)
+### 9. shadcn/ui Components in the Web App
 
-A shared React component library with Tailwind CSS v4 and Storybook.
+The web app (Next.js or TanStack Start) gets shadcn/ui components written into
+its own source — `apps/web/src/components/ui/` — rather than a shared package.
+shadcn is copy-in by design: the components are yours to edit, and more come
+from `npx shadcn@latest add <component>` run in `apps/web`, which reads the
+generated `components.json`.
 
 **Includes:**
-- shadcn/ui components (Button, Card, Input, Dialog, etc.)
-- Radix UI primitives for accessibility
-- Lucide React icons
-- `cn()` utility for class merging (clsx + tailwind-merge)
-- CSS variables for theming (light/dark mode)
-- Storybook for component development
+- Button, Card, Input, Label, Badge, Separator, Tabs, Tooltip, Dialog
+- Radix UI primitives for accessibility, Lucide React icons
+- `cn()` in `src/lib/utils.ts` (clsx + tailwind-merge)
+- Tailwind v4 with the theme's CSS variables in the app's global stylesheet
+  (`src/app/globals.css` for Next.js, `src/styles/globals.css` for TanStack Start)
 
 **Key dependencies:** `@radix-ui/*`, `tailwindcss`, `lucide-react`, `class-variance-authority`
+
+::: info `@geekmidas/ui` is gone
+Toolbox no longer publishes a component library. Projects scaffolded before
+v10 that import `@geekmidas/ui` can stay on its last published version, or run
+`npx shadcn@latest add` for the components they use.
+:::
 
 ### 10. Initialize Encrypted Secrets
 
@@ -473,8 +469,7 @@ Next steps:
   │   ├── auth/         # Auth service (better-auth)
   │   └── web/          # Next.js frontend
   ├── packages/
-  │   ├── models/       # Shared Zod schemas
-  │   └── ui/           # Shared UI components
+  │   └── models/       # Shared Zod schemas
   ├── .gkm/secrets/     # Encrypted secrets
   ├── gkm.config.ts     # Workspace config
   └── turbo.json        # Turbo config

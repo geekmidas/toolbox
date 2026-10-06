@@ -3,10 +3,17 @@ import {
 	Direction,
 	decodeCursor,
 	encodeCursor,
+	InvalidCursor,
 	type PaginationResult,
 } from '../pagination';
 
-export { Direction, decodeCursor, encodeCursor, type PaginationResult };
+export {
+	Direction,
+	decodeCursor,
+	encodeCursor,
+	InvalidCursor,
+	type PaginationResult,
+};
 
 /**
  * Options for paginated search with Objection.js models.

@@ -43,7 +43,7 @@ export function generateConfigFiles(
 	options: TemplateOptions,
 	template: TemplateConfig,
 ): GeneratedFile[] {
-	const { telescope, studio, routesStructure } = options;
+	const { telescope, routesStructure } = options;
 	const isServerless = template.name === 'serverless';
 	const hasWorker = template.name === 'worker';
 	const isFullstack = options.template === 'fullstack';
@@ -56,7 +56,6 @@ export function generateConfigFiles(
 		// Workspace config is generated in monorepo.ts for fullstack
 		return generateSingleAppConfigFiles(options, template, {
 			telescope,
-			studio,
 			routesStructure,
 			isServerless,
 			hasWorker,
@@ -97,11 +96,6 @@ export default defineConfig({${stagesBlock(options.stages)}${
     enabled: true,
     path: '/__telescope',
   },`;
-	}
-
-	if (studio) {
-		gkmConfig += `
-  studio: './src/config/studio#studio',`;
 	}
 
 	// Always add openapi config: each surface's client is written to the
@@ -286,7 +280,6 @@ export default defineConfig({${stagesBlock(options.stages)}${
  */
 interface ConfigHelperOptions {
 	telescope: boolean;
-	studio: boolean;
 	routesStructure: string;
 	isServerless: boolean;
 	hasWorker: boolean;

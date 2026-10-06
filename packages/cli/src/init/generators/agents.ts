@@ -63,7 +63,7 @@ function agentsContent(
 	options: TemplateOptions,
 	template: TemplateConfig,
 ): string {
-	const { name, monorepo, telescope, studio, packageManager } = options;
+	const { name, monorepo, telescope, packageManager } = options;
 	const { database } = options.constructs;
 	// A workspace keeps its constructs at the root, beside the apps that share
 	// them; a single app keeps them under its own `src/`. Writing the wrong one
@@ -172,17 +172,19 @@ as \`undefined\` in exactly the environments that matter.`);
 	sections.push(conventionsSection());
 	sections.push(testingSection(database));
 
-	if (telescope || studio) {
+	if (telescope || database) {
 		const tools = [
-			telescope && '**Telescope** — request and exception monitoring',
-			studio && '**Studio** — dev dashboard and database browser',
+			telescope &&
+				'**Telescope** — requests, exceptions and logs as JSON at `/__telescope/api`',
+			database &&
+				'**Database API** — `gkm dev` serves the declared database, read-only, as JSON at `/__gkm/db`',
 		].filter(Boolean);
 
 		sections.push(`## Dev tools
 
 ${tools.map((t) => `- ${t}`).join('\n')}
 
-Both are derived from declared constructs. Neither needs wiring up by hand.`);
+Derived from declared constructs and served only by \`gkm dev\`: nothing to wire up by hand, and no UI — JSON for whatever tool you point at it.`);
 	}
 
 	sections.push(`## Before you say it works

@@ -1,5 +1,14 @@
 # @geekmidas/testkit
 
+## 10.0.0-alpha.56
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/envkit@10.0.0-alpha.56
+  - @geekmidas/logger@10.0.0-alpha.56
+  - @geekmidas/services@10.0.0-alpha.56
+
 ## 10.0.0-alpha.55
 
 ### Patch Changes
@@ -179,6 +188,7 @@
 ### Patch Changes
 
 - [#107](https://github.com/geekmidas/toolbox/pull/107) [`5475a96`](https://github.com/geekmidas/toolbox/commit/5475a96d1d8ee0c99109c65cba76f7e269f42265) Thanks [@geekmidas](https://github.com/geekmidas)! - `ExternalApi` for third-party HTTP APIs, `<ID>_CREDENTIALS`, and `faker` and `signIn()` in feature tests
+
   - **`ExternalApi`** (`@geekmidas/constructs/external-api`) declares an API
     somebody else runs: a `url`, one string or one per stage name with a
     `default`, a `credentials` schema, and the `client` a handler is given. It
@@ -244,6 +254,7 @@ deploy`, `build`, `dev`, `test`, `exec`, `setup` and `secrets:*` resolve the
     - 🔥 **Removed:** `getAppNameFromCwd` and `getAppNameFromPackageJson`.
 
   **Moving an existing app:**
+
   - Rename every `<ID>_CREDENTIAL` secret to `<ID>_CREDENTIALS` and set it on
     each deployed stage: `gkm secrets:set STRIPE_CREDENTIALS '{…}' --stage production`.
   - A custom `secrets.store` provider renames `pull` to `read` and `push` to
@@ -425,6 +436,7 @@ config)` take it, and `featureTest` passes it for every test transaction.
 
   The pieces a feature test is built from, none of which knows about constructs
   (the wiring that does lives in `@geekmidas/constructs/testing`):
+
   - `@geekmidas/testkit/browser` — `Browser`: a `fetch` with a cookie jar that
     follows the browser's rules, following redirects hop by hop, installable as
     the global `fetch`. On the server side of a test it never lends its cookies,
@@ -543,6 +555,7 @@ config)` take it, and `featureTest` passes it for every test transaction.
 ### Patch Changes
 
 - [#58](https://github.com/geekmidas/toolbox/pull/58) [`07d1827`](https://github.com/geekmidas/toolbox/commit/07d1827bb0a2a76d04a0fc25a7517df282004137) Thanks [@geekmidas](https://github.com/geekmidas)! - The build and test toolchain moves to its latest versions (tranche 2)
+
   - **tsx 4.23, tsdown 0.23.** The CLI runs TypeScript through tsx, so its
     `tsx` dependency moves with it.
   - **Vite 8, `@vitejs/plugin-react` 6** for the Studio and Telescope UIs, which
@@ -568,6 +581,7 @@ config)` take it, and `featureTest` passes it for every test transaction.
   session-from-cookie check through `auth.handler`.
 
   The suites found two gaps, both fixed:
+
   - **`mode: 'insensitive'` was ignored.** `eq`, `ne`, `in`, `not_in`,
     `contains`, `starts_with` and `ends_with` now compare case-folded strings when
     asked to, as the SQL adapters do.

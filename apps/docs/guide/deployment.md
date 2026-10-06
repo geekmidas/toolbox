@@ -122,7 +122,7 @@ gkm build --provider server --production
 
 A `--production` build bundles and minifies the server into a single file,
 serves a health check at `/health`, shuts down gracefully, and leaves out the
-dev tools (Telescope, Studio) and the OpenAPI spec. It runs the worker's
+dev tools (Telescope, the database API) and the OpenAPI spec. It runs the worker's
 background work itself: queues polled, crons scheduled, subscribers drained.
 
 ### AWS

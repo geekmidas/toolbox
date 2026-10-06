@@ -284,9 +284,19 @@ export default defineWorkspace({
 				}
 			});
 
-			// The surface declared no Telescope; the entry supplies one.
-			expect((await request('/__telescope')).status).toBe(200);
-			expect((await request('/__studio')).status).toBe(200);
+			// The surface declared no Telescope; the entry supplies one. Headless:
+			// its JSON API, no dashboard.
+			expect((await request('/__telescope/api/stats')).status).toBe(200);
+			expect((await request('/__telescope')).status).toBe(404);
+
+			// The declared database, read through its JSON API with the client the
+			// handlers use.
+			const tables = await request('/__gkm/db/tables');
+			expect(tables.status).toBe(200);
+			expect(await tables.json()).toMatchObject({
+				tables: expect.any(Array),
+			});
+			expect(output(log)).toContain('db /__gkm/db');
 
 			// CORS from the graph: the web origin may call it, nothing else.
 			const preflight = await request('/health', {
@@ -311,9 +321,10 @@ export default defineWorkspace({
 				fetch(`http://localhost:${authPort}${path}`, init);
 
 			// Started from its own declaration, and advertising nothing it does not
-			// mount: an auth server has no docs, Telescope or Studio.
+			// mount: an auth server has no docs, Telescope or database API.
 			expect(output(log)).toMatch(/auth ready in [\d.]+s/);
 			expect(output(log)).not.toContain('docs /__docs');
+			expect(output(log)).not.toContain('db /__gkm/db');
 
 			// Signed out is an answer, not a failure.
 			const signedOut = await request('/api/auth/get-session');

@@ -1,6 +1,11 @@
 import { DEPENDENCY_VERSIONS, TOOLCHAIN_VERSIONS } from '../dependencies.js';
 import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
+import {
+	SHADCN_DEPENDENCIES,
+	SHADCN_GLOBALS_CSS,
+	shadcnFiles,
+} from './shadcn.js';
 
 /**
  * Generate TanStack Start web app files for the fullstack template.
@@ -17,7 +22,6 @@ export function generateTanStackWebFiles(
 
 	const packageName = `@${options.name}/web`;
 	const modelsPackage = `@${options.name}/models`;
-	const uiPackage = `@${options.name}/ui`;
 
 	const packageJson = {
 		name: packageName,
@@ -32,7 +36,7 @@ export function generateTanStackWebFiles(
 		},
 		dependencies: {
 			[modelsPackage]: 'workspace:*',
-			[uiPackage]: 'workspace:*',
+			...SHADCN_DEPENDENCIES,
 			'@geekmidas/client': GEEKMIDAS_VERSIONS['@geekmidas/client'],
 			'@geekmidas/envkit': GEEKMIDAS_VERSIONS['@geekmidas/envkit'],
 			'@tanstack/react-query': DEPENDENCY_VERSIONS['@tanstack/react-query'],
@@ -97,11 +101,9 @@ export default defineConfig({
 			incremental: true,
 			types: ['vite/client'],
 			paths: {
-				'~/*': ['./src/*', '../../packages/ui/src/*'],
+				'~/*': ['./src/*'],
 				[modelsPackage]: ['../../packages/models/src'],
 				[`${modelsPackage}/*`]: ['../../packages/models/src/*'],
-				[uiPackage]: ['../../packages/ui/src'],
-				[`${uiPackage}/*`]: ['../../packages/ui/src/*'],
 				// Every API's client, generated at the workspace root.
 				[`@${options.name}/client/*`]: ['../../.gkm/client/*'],
 			},
@@ -307,10 +309,8 @@ function HomeComponent() {
 }
 `;
 
-	const globalsCss = `@import '${uiPackage}/styles';
-
+	const globalsCss = `${SHADCN_GLOBALS_CSS}
 @source "../..";
-@source "../../../../packages/ui/src";
 `;
 
 	const gitignore = `.output/
@@ -341,6 +341,7 @@ src/routeTree.gen.ts
 		{ path: 'apps/web/src/routes/__root.tsx', content: rootRouteTsx },
 		{ path: 'apps/web/src/routes/index.tsx', content: indexRouteTsx },
 		{ path: 'apps/web/src/styles/globals.css', content: globalsCss },
+		...shadcnFiles('apps/web', 'src/styles/globals.css', { rsc: false }),
 		{ path: 'apps/web/.gitignore', content: gitignore },
 	];
 }

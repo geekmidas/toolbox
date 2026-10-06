@@ -76,7 +76,6 @@ export default defineConfig({
         text: 'Development Tools',
         items: [
           { text: '@geekmidas/telescope', link: '/packages/telescope' },
-          { text: '@geekmidas/studio', link: '/packages/studio' },
           { text: '@geekmidas/testkit', link: '/packages/testkit' },
         ],
       },
@@ -90,12 +89,6 @@ export default defineConfig({
           { text: '@geekmidas/schema', link: '/packages/schema' },
           { text: '@geekmidas/services', link: '/packages/services' },
           { text: '@geekmidas/emailkit', link: '/packages/emailkit' },
-        ],
-      },
-      {
-        text: 'UI',
-        items: [
-          { text: '@geekmidas/ui', link: '/packages/ui' },
         ],
       },
     ],

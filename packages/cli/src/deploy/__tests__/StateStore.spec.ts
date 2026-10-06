@@ -58,6 +58,8 @@ stateStoreConformance('SSMStateStore', async () => {
 	const name = (stage: string, leaf: string) =>
 		`/gkm/${workspaceName}/${stage}/${leaf}`;
 	return {
+		// The emulator, not AWS: its create-only put is not atomic under a race.
+		atomicCreate: false,
 		open: () => new SSMStateStore(workspaceName, new SSMClient(aws)),
 		seedV1: async (stage, body) => {
 			await client.send(

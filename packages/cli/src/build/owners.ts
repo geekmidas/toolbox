@@ -1,12 +1,12 @@
 import { resolve } from 'node:path';
 import { type ConstructManifest, provideKey } from '@geekmidas/manifest';
 import type { ConstructSource } from '../reconcile/discover.js';
-import type { BuildContext, NormalizedStudioConfig } from './types';
+import { type BuildContext, DEV_DATABASE_API_PATH } from './types';
 
 /**
  * What a generated entry imports its runtime from, read off the discovered
  * constructs: the surface it serves, every construct a runnable can be built
- * from, and the database Studio browses.
+ * from, and the database the dev server's JSON API reads.
  *
  * `gkm build` and `gkm dev` both write entries that import the surface for its
  * logger and environment parser, so both ask here. A dev server that skipped it
@@ -18,9 +18,10 @@ export function ownersContext(options: {
 	workspaceRoot: string;
 	/** The directory being built — the app a surface's `path` names. */
 	appRoot: string;
-	studio?: NormalizedStudioConfig;
-}): Pick<BuildContext, 'owners' | 'surface' | 'studio'> {
-	const { declared, sources, workspaceRoot, appRoot, studio } = options;
+	/** Whether to serve the database's JSON API — `gkm dev` only. */
+	databaseApi?: boolean;
+}): Pick<BuildContext, 'owners' | 'surface' | 'databaseApi'> {
+	const { declared, sources, workspaceRoot, appRoot, databaseApi } = options;
 
 	// Which surface this server answers on, so the entry can derive its CORS.
 	//
@@ -32,9 +33,9 @@ export function ownersContext(options: {
 	const primary =
 		served ?? surfaces.find((d) => d.endpoints.length === 0) ?? surfaces[0];
 
-	// Which database Studio browses: the one the app declared. A reader is not a
-	// candidate — it is the same data through a role that cannot write, so
-	// browsing it would be the same rows under a second name.
+	// Which database the JSON API reads: the one the app declared. A reader is
+	// not a candidate — it is the same data through a role that cannot write,
+	// so browsing it would be the same rows under a second name.
 	const browsable = Object.entries(declared).find(
 		([, d]) => d.kind === 'database',
 	);
@@ -72,16 +73,17 @@ export function ownersContext(options: {
 					},
 				}
 			: {}),
-		studio:
-			studio && browsableSource
-				? {
-						...studio,
+		...(databaseApi && browsableSource
+			? {
+					databaseApi: {
+						path: DEV_DATABASE_API_PATH,
 						database: {
 							specifier: browsableSource.file,
 							exportName: browsableSource.exportName,
 						},
-					}
-				: studio,
+					},
+				}
+			: {}),
 	};
 }
 
