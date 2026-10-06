@@ -21,7 +21,15 @@ export interface DeployOptions {
 export interface DeployResult {
 	/** Docker image reference (if applicable) */
 	imageRef?: string;
-	/** Ephemeral master key for GKM_MASTER_KEY */
+	/**
+	 * Ephemeral master key for GKM_MASTER_KEY.
+	 *
+	 * @deprecated The key decrypts every secret of the stage, and a result is
+	 * easily logged or serialised. A deploy already sets it in the container's
+	 * runtime environment; read it from there (or from the `master.key` that
+	 * `gkm build --stage` writes beside the bundle) rather than from here. It
+	 * will be removed.
+	 */
 	masterKey?: string;
 	/** Deployment ID (for Dokploy) */
 	deploymentId?: string;

@@ -570,9 +570,15 @@ gkm secrets:rotate --stage production --service redis
 During deployment:
 1. Secrets are filtered to only required variables per app
 2. Encrypted with an ephemeral master key
-3. Passed as Docker build args (`GKM_ENCRYPTED_CREDENTIALS`, `GKM_CREDENTIALS_IV`)
-4. Master key injected as `GKM_MASTER_KEY` environment variable
+3. Passed to `docker build` as a BuildKit secret (`--secret id=gkm_credentials`), read by the Dockerfile with `RUN --mount=type=secret,id=gkm_credentials` — never as build args, which `ps`, shell history and `docker history` keep. The file is owner-only and removed after the build.
+4. Master key injected as `GKM_MASTER_KEY` in the container's runtime environment — never printed. Output names it by fingerprint (the first 8 hex characters of its SHA-256), so you can tell which key a build used.
 5. Decrypted at runtime by the application
+
+`gkm build --stage <stage>` on its own writes the key to `.gkm/server/master.key` (mode `0600`, kept out of the Docker build context) and prints only its path and fingerprint. Set `GKM_MASTER_KEY` from that file when you run the image yourself:
+
+```bash
+docker run -e GKM_MASTER_KEY="$(cat .gkm/server/master.key)" my-api:latest
+```
 
 ---
 
