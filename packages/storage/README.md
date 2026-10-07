@@ -85,6 +85,49 @@ const storage = AmazonStorageClient.create({
 });
 ```
 
+## Storage URLs and credentials
+
+A declared bucket reaches an app as one URL, `<ID>_URL`, and
+`createStorageClient(url)` picks the driver by its scheme. An `s3://` URL
+names the bucket as its host and the rest as query parameters:
+
+```
+s3://uploads?region=eu-west-1
+s3://uploads?region=auto&endpoint=https://<account>.r2.cloudflarestorage.com
+```
+
+Credentials are optional, and come from one of two places:
+
+- **The URL's userinfo** — `s3://KEY:SECRET@uploads?region=eu-west-1`. A key
+  here signs for this bucket only and wins over anything in the environment.
+  Percent-encode both halves: AWS secrets often contain `/` (`%2F`) and `+`
+  (`%2B`). `s3Url.build` does this for you, and `s3Url.parse` decodes them.
+- **The SDK's default chain** — for a URL with no userinfo: the shared
+  `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, a profile, or an execution role.
+
+```typescript
+import { s3Url } from '@geekmidas/storage/aws';
+
+s3Url.build({
+  bucket: 'uploads',
+  region: 'eu-west-1',
+  accessKeyId: 'AKIA…',
+  secretAccessKey: 'wJal/rXUt+nFEMI…',
+});
+// 's3://AKIA…:wJal%2FrXUt%2BnFEMI…@uploads?region=eu-west-1'
+```
+
+Prefer a key per bucket, scoped to that bucket, over one shared pair: an app
+that reads two buckets then holds two narrow keys rather than one that opens
+both. A URL with only one half of a pair (`s3://KEY@uploads`) is refused with
+`IncompleteStorageCredentials` — it is never completed from the environment.
+
+Every storage error that carries a URL (`MalformedStorageUrl`,
+`UnexpectedStorageScheme`, `MissingStorageBucket`,
+`UnregisteredStorageScheme`, `IncompleteStorageCredentials`) holds it with the
+userinfo replaced by `REDACTED`, and its message never includes the URL.
+`redactStorageUrl(url)` does the same for your own log lines.
+
 ## API Reference
 
 ### StorageClient Interface
@@ -400,20 +443,13 @@ npm run test:once
 
 ### Local Development with MinIO
 
-1. Start MinIO using Docker Compose:
-   ```bash
-   docker-compose up -d minio
-   ```
+The suite starts the repo compose stack's MinIO itself (`geekmidas` /
+`geekmidas`, with a `geekmidas` bucket). It publishes on port 9000; when
+another project holds that port, move it:
 
-2. MinIO will be available at:
-   - API: http://localhost:9000
-   - Console: http://localhost:9001
-   - Credentials: minioadmin/minioadmin
-
-3. Run integration tests:
-   ```bash
-   npm run test:integration
-   ```
+```bash
+MINIO_API_HOST_PORT=29000 MINIO_CONSOLE_HOST_PORT=29001 pnpm vitest run --project storage
+```
 
 ### Project Structure
 

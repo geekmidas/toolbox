@@ -420,10 +420,10 @@ describe('mail and storage on a deployed stage', () => {
 			'MAIL_URL',
 			'MAIL_FROM',
 			'UPLOADS_URL',
-			'AWS_ACCESS_KEY_ID',
-			'AWS_SECRET_ACCESS_KEY',
 			'UPLOADS_SERVER_URL',
 		]);
+		// A bucket's credentials are optional, so neither half is asked for.
+		expect(missing.map((m) => m.key)).not.toContain('AWS_ACCESS_KEY_ID');
 		const message = (error as Error).message;
 		for (const { key } of missing) {
 			expect(message).toContain(`gkm secrets:set ${key} '`);
@@ -451,6 +451,29 @@ describe('mail and storage on a deployed stage', () => {
 		expect(app(s, 'web').build).toBeUndefined();
 		expect(s.caddyfile).not.toContain('minio');
 		expect(s.devServices).toEqual([]);
+	});
+
+	it("signs with the bucket URL's own key, and hands the app no shared pair", () => {
+		const { AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, ...rest } = EXTERNAL;
+		const UPLOADS_URL =
+			's3://AKIAUPLOADS:a%2Fsecret%2Bvalue@acme-uploads?region=eu-west-1';
+		const s = deployed({ secrets: production({ ...rest, UPLOADS_URL }) });
+		const api = app(s, 'api').env!;
+
+		expect(s.infra).toEqual(['postgres']);
+		expect(api.UPLOADS_URL).toBe(UPLOADS_URL);
+		expect(api).not.toHaveProperty('AWS_ACCESS_KEY_ID');
+		expect(api).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
+	});
+
+	it('deploys a bucket with no credentials at all, for a role to sign', () => {
+		const { AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, ...rest } = EXTERNAL;
+		const s = deployed({ secrets: production(rest) });
+		const api = app(s, 'api').env!;
+
+		expect(api.UPLOADS_URL).toBe(EXTERNAL.UPLOADS_URL);
+		expect(api).not.toHaveProperty('AWS_ACCESS_KEY_ID');
+		expect(api).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
 	});
 
 	it('runs MinIO and Mailpit where allowed, with keys derived from them', () => {

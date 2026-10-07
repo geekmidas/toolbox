@@ -524,7 +524,7 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 
 		await expect(run).rejects.toBeInstanceOf(ExternalServicesNotConfigured);
 		await expect(run).rejects.toThrow(
-			/MAIL_URL[\s\S]*MAIL_FROM[\s\S]*UPLOADS_URL[\s\S]*AWS_ACCESS_KEY_ID[\s\S]*AWS_SECRET_ACCESS_KEY/,
+			/MAIL_URL[\s\S]*MAIL_FROM[\s\S]*UPLOADS_URL/,
 		);
 		expect(fake.ops()).toEqual([]);
 		expect(existsSync(join(dir, '.gkm', 'compose', 'production'))).toBe(false);

@@ -58,8 +58,12 @@ The keys, per construct:
 
 - an `Email`: `<ID>_URL` (an SMTP URL) and `<ID>_FROM`;
 - a bucket: `<ID>_URL` (`s3://bucket?region=…`, plus `&endpoint=…` for R2 or
-  any S3-compatible store), and one `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`
-  pair for every bucket, since a server has no IAM role to sign with;
+  any S3-compatible store). Credentials are optional, from either of two
+  places: a key for that bucket alone in the URL's userinfo
+  (`s3://KEY:SECRET@bucket?…`, the secret percent-encoded), which wins; or the
+  stage's shared `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, handed to every
+  app that reads a bucket when set, and used for each bucket whose URL has no
+  key. Per-bucket keys are the least-privilege choice;
 - a file server: `<ID>_URL`, its public address — unless its bucket is on a
   dev MinIO, which serves it.
 

@@ -479,6 +479,25 @@ describe('a bucket', () => {
 		expect(created).not.toContain('production-shop-uploads');
 	});
 
+	it("passes a bucket URL's own key through, with no shared pair beside it", async () => {
+		const UPLOADS_URL =
+			's3://AKIAUPLOADS:a%2Fsecret%2Bvalue@acme-uploads?region=eu-west-1';
+		const { env } = await provision(
+			{
+				storage: 'minio',
+				supplied: {
+					UPLOADS_URL,
+					UPLOADS_SERVER_URL: 'https://files.example.com',
+				},
+			},
+			storing,
+		);
+
+		expect(env.UPLOADS_URL).toBe(UPLOADS_URL);
+		expect(env).not.toHaveProperty('AWS_ACCESS_KEY_ID');
+		expect(env).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
+	});
+
 	it("signs MinIO with the stage's own key pair, where it set one", async () => {
 		const { env, composeFiles } = await provision(
 			{

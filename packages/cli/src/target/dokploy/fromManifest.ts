@@ -428,11 +428,11 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	 * service name, so the name is the address. Calling it `minio` would work
 	 * for exactly one project on the box and then collide.
 	 *
-	 * `s3://` carries no credentials, deliberately — deployed on AWS the SDK
-	 * reads them from an execution role, so a URL that embedded a key would be
-	 * one more thing to rotate and leak. There is no role here, so the same
-	 * chain reads `AWS_ACCESS_KEY_ID` beside the URL, exactly as it does
-	 * locally.
+	 * A stage's own bucket URL may carry a key scoped to that bucket
+	 * (`s3://KEY:SECRET@bucket`), which the client signs with; the shared
+	 * `AWS_ACCESS_KEY_ID` pair is passed beside it when the stage set one, for
+	 * a bucket whose URL has none. The MinIO this provisions uses that pair —
+	 * the stage's, or one derived for it.
 	 */
 	objects: async (declaration, context) => {
 		if (declaration.kind !== 'objects') throw new WrongKind(declaration.kind);
@@ -955,7 +955,10 @@ function mailpitCompose(service: string): string {
 	].join('\n');
 }
 
-/** The S3 client's keys the stage set, for a bucket that is its own. */
+/**
+ * The S3 client's shared keys the stage set, for a bucket that is its own —
+ * none when it set none, since a bucket's URL may carry its own key.
+ */
 function storageKeys(
 	values: Readonly<Record<string, string>> | undefined,
 ): Record<string, string> {

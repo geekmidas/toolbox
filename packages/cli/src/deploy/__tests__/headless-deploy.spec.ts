@@ -790,13 +790,7 @@ export const Mail = {
 			expect(error).toBeInstanceOf(ExternalServicesNotConfigured);
 			expect(
 				(error as ExternalServicesNotConfigured).missing.map((m) => m.key),
-			).toEqual([
-				'MAIL_URL',
-				'MAIL_FROM',
-				'UPLOADS_URL',
-				'AWS_ACCESS_KEY_ID',
-				'AWS_SECRET_ACCESS_KEY',
-			]);
+			).toEqual(['MAIL_URL', 'MAIL_FROM', 'UPLOADS_URL']);
 			expect((error as Error).message).toContain(
 				"gkm secrets:set UPLOADS_URL 's3://uploads?region=eu-west-1' --stage production",
 			);

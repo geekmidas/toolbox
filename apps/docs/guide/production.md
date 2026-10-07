@@ -98,9 +98,7 @@ come from its secrets. gkm runs no Mailpit or MinIO for it unless told to:
 ```bash
 gkm secrets:set MAIL_URL 'smtp://user:password@smtp.example.com:587' --stage production
 gkm secrets:set MAIL_FROM 'noreply@example.com' --stage production
-gkm secrets:set UPLOADS_URL 's3://acme-uploads?region=eu-west-1' --stage production
-gkm secrets:set AWS_ACCESS_KEY_ID 'AKIA…' --stage production
-gkm secrets:set AWS_SECRET_ACCESS_KEY '…' --stage production
+gkm secrets:set UPLOADS_URL 's3://AKIA…:…@acme-uploads?region=eu-west-1' --stage production
 gkm secrets:set UPLOADS_SERVER_URL 'https://files.example.com' --stage production
 ```
 
@@ -110,6 +108,25 @@ The names follow the constructs: `Email('Mail')` reads `MAIL_URL` and
 add `&endpoint=https://…` to the URL for one that is not S3. A deploy missing
 any of them fails before it builds, provisions or writes anything, with
 `ExternalServicesNotConfigured` listing every key it lacks.
+
+A bucket's credentials are optional, and come from one of two places:
+
+- **The bucket's URL** — `s3://KEY:SECRET@bucket?region=…`. Percent-encode the
+  secret (`/` is `%2F`, `+` is `%2B`). A key here is used for this bucket
+  only, and wins over anything else.
+- **The stage's shared pair** — `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`,
+  set once, used by every bucket whose URL carries no key. With neither, the
+  S3 client's default chain applies, which is how a host with a role signs.
+
+```bash
+gkm secrets:set AWS_ACCESS_KEY_ID 'AKIA…' --stage production
+gkm secrets:set AWS_SECRET_ACCESS_KEY '…' --stage production
+```
+
+Prefer a key per bucket, scoped to that bucket: an app that reads two buckets
+then holds two narrow keys rather than one that opens both. The keys are never
+printed — storage errors and the logger replace a URL's userinfo with
+`REDACTED`.
 
 `--allow-dev-services minio,mailpit` runs MinIO and Mailpit instead — for a
 preview or a demo, never for production: **Mailpit delivers no mail**, and

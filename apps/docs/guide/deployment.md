@@ -611,8 +611,9 @@ if something declared it.
 **Provision what the manifest declares**
 - a Postgres per declared database, and the role DDL for it — a runtime role, an
   owner, and a reader where anything reads through one
-- each declared bucket and `Email` from the stage's secrets (`<ID>_URL`, the
-  S3 key pair, `<ID>_FROM`) — a stage missing any fails `validate` with
+- each declared bucket and `Email` from the stage's secrets (`<ID>_URL`,
+  `<ID>_FROM`; a bucket's key in its URL or the shared S3 key pair, both
+  optional) — a stage missing any fails `validate` with
   `ExternalServicesNotConfigured`. Only with `--allow-dev-services minio`
   is a bucket a MinIO compose stack, and only with `mailpit` is mail a
   Mailpit one ([Mail and object storage](./deploy-targets.md#mail-and-object-storage))

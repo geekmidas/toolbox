@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	IncompleteStorageCredentials,
 	MalformedStorageUrl,
 	MissingStorageBucket,
 	UnexpectedStorageScheme,
@@ -18,6 +19,15 @@ describe('s3Url', () => {
 			},
 		],
 		['bucket only', { bucket: 'uploads' }],
+		[
+			'credentials whose secret has / and +',
+			{
+				bucket: 'uploads',
+				region: 'eu-west-1',
+				accessKeyId: 'AKIAEXAMPLE',
+				secretAccessKey: 'wJal/rXUtnFEMI+K7MDENG/bPxRfi+CYEXAMPLE=',
+			},
+		],
 	];
 
 	it.each(cases)('round-trips %s', (_name, address) => {
@@ -34,9 +44,54 @@ describe('s3Url', () => {
 		);
 	});
 
-	it('never carries credentials', () => {
+	it('carries no credentials unless the address has them', () => {
 		const url = build({ bucket: 'uploads', endpoint: 'http://localhost:9000' });
 		expect(url).not.toMatch(/@|accessKey|secret/i);
+	});
+
+	it('writes credentials as percent-encoded userinfo', () => {
+		const url = build({
+			bucket: 'uploads',
+			accessKeyId: 'AKIAEXAMPLE',
+			secretAccessKey: 'a/b+c',
+		});
+		expect(url).toBe('s3://AKIAEXAMPLE:a%2Fb%2Bc@uploads');
+	});
+
+	it('reads credentials from the userinfo, percent-decoded', () => {
+		expect(
+			parse('s3://AKIAEXAMPLE:a%2Fb%2Bc%40d@uploads?region=eu-west-1'),
+		).toEqual({
+			bucket: 'uploads',
+			region: 'eu-west-1',
+			accessKeyId: 'AKIAEXAMPLE',
+			secretAccessKey: 'a/b+c@d',
+		});
+	});
+
+	it.each([
+		['s3://AKIAEXAMPLE@uploads', 'secretAccessKey'],
+		['s3://AKIAEXAMPLE:@uploads', 'secretAccessKey'],
+		['s3://:secret@uploads', 'accessKeyId'],
+	])('rejects half a key pair in %s', (url, missing) => {
+		expect.assertions(3);
+		try {
+			parse(url);
+		} catch (error) {
+			const e = error as IncompleteStorageCredentials;
+			expect(e).toBeInstanceOf(IncompleteStorageCredentials);
+			expect(e.missing).toBe(missing);
+			expect(e.url).not.toContain('secret');
+		}
+	});
+
+	it('rejects a build with half a key pair', () => {
+		expect(() =>
+			build({ bucket: 'uploads', accessKeyId: 'AKIAEXAMPLE' }),
+		).toThrow(IncompleteStorageCredentials);
+		expect(() => build({ bucket: 'uploads', secretAccessKey: 'shh' })).toThrow(
+			IncompleteStorageCredentials,
+		);
 	});
 
 	it.each([

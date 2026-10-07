@@ -231,7 +231,7 @@ secrets — the stack runs no Mailpit or MinIO for it:
 | Declared | Keys the stage sets |
 |---|---|
 | `Email('Mail')` | `MAIL_URL` (any SMTP server: `smtp://user:pass@host:587`) and `MAIL_FROM` |
-| a bucket, `ObjectStorage('Uploads')` | `UPLOADS_URL` (`s3://bucket?region=…`, with `&endpoint=…` for R2 or any S3-compatible store), and `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` — one pair, read beside every bucket's URL |
+| a bucket, `ObjectStorage('Uploads')` | `UPLOADS_URL` (`s3://bucket?region=…`, with `&endpoint=…` for R2 or any S3-compatible store). Its credentials are optional: a key for this bucket alone in the URL (`s3://KEY:SECRET@bucket?…`), or the shared `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` for every bucket whose URL has none |
 | its file server, `UploadsServer` | `UPLOADS_SERVER_URL` — the public address its objects are served on |
 
 Only the keys an app reads count. A stage missing any of them stops in
@@ -251,6 +251,18 @@ For a stage that is not production — a preview, a demo — the dev services ca
 
 A third party's credentials (`<ID>_CREDENTIALS`) are checked as before, one at
 a time, with `StageSecretMissing`.
+
+A bucket's credentials are not checked. The URL's own key wins
+(`s3://KEY:SECRET@bucket`, secret percent-encoded); a URL without one signs
+with the shared pair, which every app that reads a bucket is handed when the
+stage set it. Prefer a key per bucket, scoped to it, over one shared pair:
+
+```bash
+gkm secrets:set UPLOADS_URL 's3://AKIA…:…@acme-uploads?region=eu-west-1' --stage production
+# or, for every bucket whose URL carries no key:
+gkm secrets:set AWS_ACCESS_KEY_ID 'AKIA…' --stage production
+gkm secrets:set AWS_SECRET_ACCESS_KEY '…' --stage production
+```
 
 ### `--allow-dev-services`
 

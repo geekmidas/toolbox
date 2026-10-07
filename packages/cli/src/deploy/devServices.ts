@@ -6,10 +6,15 @@
  * nobody has to configure either. Deployed, the same two containers would be
  * a stage that silently delivers no mail and keeps its files on one
  * container's disk. So a deployed stage on a server target takes both from
- * its secrets — the mail server's URL and sending address, each bucket's URL
- * and the key pair the S3 client signs with — and a stage missing any of them
- * fails before anything is built, provisioned or written, naming every key at
- * once.
+ * its secrets — the mail server's URL and sending address, and each bucket's
+ * URL — and a stage missing any of them fails before anything is built,
+ * provisioned or written, naming every key at once.
+ *
+ * A bucket's credentials are not checked: they are optional, and come from
+ * either of two places. The bucket's URL may carry a key of its own
+ * (`s3://KEY:SECRET@uploads`), which wins; otherwise the S3 client's default
+ * chain applies — the stage's shared `AWS_ACCESS_KEY_ID`/
+ * `AWS_SECRET_ACCESS_KEY` when it set them, or a role.
  *
  * `--allow-dev-services minio,mailpit` is the way out for a stage that is
  * not production — a preview, a demo: the target runs the dev service and
@@ -32,7 +37,12 @@ export const DEV_SERVICES = ['minio', 'mailpit'] as const;
 
 export type DevService = (typeof DEV_SERVICES)[number];
 
-/** The S3 client's key pair, which a bucket on a server target signs with. */
+/**
+ * The S3 client's shared key pair. Optional: a bucket whose URL carries its own
+ * key (`s3://KEY:SECRET@bucket`) signs with that, and one without signs with
+ * this pair when the stage set it, or with whatever else the SDK's default
+ * chain finds — a role.
+ */
 export const STORAGE_KEY_PAIR = [
 	'AWS_ACCESS_KEY_ID',
 	'AWS_SECRET_ACCESS_KEY',
@@ -68,10 +78,12 @@ export class DevServicesNeedServerTarget extends Error {
 /** One key a deployed stage needs and its secrets do not hold. */
 export interface MissingServiceKey {
 	key: string;
-	/** The construct that reads it, or the buckets for the S3 key pair. */
+	/** The construct that reads it. */
 	id: string;
 	/** What it is, for the line that names it. */
 	what: string;
+	/** A line after `what`, for what else there is to know about it. */
+	note?: string;
 	/** A placeholder value to show in the `gkm secrets:set` line. */
 	example: string;
 	/** The dev service that would stand in for it. */
@@ -94,7 +106,8 @@ export class ExternalServicesNotConfigured extends Error {
 			const by = m.apps?.length ? `, read by ${m.apps.join(', ')}` : '';
 			return (
 				`  gkm secrets:set ${m.key} '${m.example}' --stage ${stage}\n` +
-				`      ${m.what}${by}`
+				`      ${m.what}${by}` +
+				(m.note ? `\n      ${m.note}` : '')
 			);
 		});
 		super(
@@ -210,8 +223,9 @@ export interface DevServiceUse {
  * - Mail is external once its URL is set, and then needs its sending
  *   address too. Unset, it is Mailpit where allowed — the address derived
  *   unless set — and missing otherwise.
- * - A bucket is external once its URL is set, and then needs the S3 key
- *   pair. Unset, it is MinIO where allowed, and missing otherwise.
+ * - A bucket is external once its URL is set; its credentials, in the URL or
+ *   the shared pair, are optional. Unset, it is MinIO where allowed, and
+ *   missing otherwise.
  * - A file server's URL is derived where its bucket is MinIO, unless set;
  *   over an external bucket the stage must set it.
  */
@@ -264,49 +278,22 @@ export function externalServices(
 		}
 	}
 
-	const external: ServiceDeclaration[] = [];
 	for (const d of declarations.filter((d) => d.kind === 'objects')) {
 		const url = provideKey(d.id, 'url');
-		if (has(url)) {
-			external.push(d);
-			continue;
-		}
+		if (has(url)) continue;
 		if (allow.includes('minio')) {
 			minio.push(d.id);
 			continue;
 		}
-		external.push(d);
 		add({
 			key: url,
 			id: d.id,
 			what: `the bucket '${d.id}' — S3, R2, or any S3-compatible store (add &endpoint=… for one that is not S3)`,
+			note: `credentials are optional: a key for this bucket alone in the URL (s3://KEY:SECRET@${appKey(d.id)}?…) wins; without one, the shared AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or a role signs`,
 			example: `s3://${appKey(d.id)}?region=eu-west-1`,
 			service: 'minio',
 			...apps(d),
 		});
-	}
-
-	// One key pair, whichever bucket needs it: the S3 client reads them from
-	// the environment, beside every bucket's URL.
-	if (external.length > 0) {
-		const ids = external.map((d) => d.id);
-		const readers = [...new Set(external.flatMap((d) => d.apps ?? []))];
-		const pair: Record<(typeof STORAGE_KEY_PAIR)[number], [string, string]> = {
-			AWS_ACCESS_KEY_ID: ['the key id the S3 client signs with', 'AKIA…'],
-			AWS_SECRET_ACCESS_KEY: ['the secret the S3 client signs with', '…'],
-		};
-		for (const key of STORAGE_KEY_PAIR) {
-			if (has(key)) continue;
-			const [what, example] = pair[key];
-			add({
-				key,
-				id: ids.join(', '),
-				what: `${what}, for ${ids.join(', ')}`,
-				example,
-				service: 'minio',
-				...(readers.length ? { apps: readers.sort() } : {}),
-			});
-		}
 	}
 
 	for (const d of declarations.filter((d) => d.kind === 'file-server')) {

@@ -261,6 +261,60 @@ describe('Pino Redaction Integration', () => {
 		});
 	});
 
+	describe('URL credentials', () => {
+		const url = 's3://AKIAEXAMPLE:wJal%2FrXUt%2BnFEMI@uploads?region=eu-west-1';
+
+		it('masks the userinfo of a URL in any field, at any depth', () => {
+			const { logger, logs } = createTestLogger();
+
+			logger.info(
+				{ url, bucket: { origin: url }, urls: [url], name: 'uploads' },
+				'Connecting',
+			);
+
+			const line = JSON.stringify(logs[0]);
+			expect(line).not.toContain('wJal');
+			expect(line).not.toContain('AKIAEXAMPLE');
+			expect(logs[0].url).toBe('s3://REDACTED@uploads?region=eu-west-1');
+			expect(logs[0].urls).toEqual(['s3://REDACTED@uploads?region=eu-west-1']);
+			expect(logs[0].name).toBe('uploads');
+		});
+
+		it('masks the userinfo of a URL in the message', () => {
+			const { logger, logs } = createTestLogger();
+
+			logger.info(`Connecting to ${url}`);
+
+			expect(logs[0].msg).toBe(
+				'Connecting to s3://REDACTED@uploads?region=eu-west-1',
+			);
+		});
+
+		it('still blanks a connection string by path', () => {
+			const { logger, logs } = createTestLogger();
+
+			logger.info({ connectionString: url });
+
+			expect(logs[0].connectionString).toBe('[Redacted]');
+		});
+
+		it('leaves a URL without a password alone', () => {
+			const { logger, logs } = createTestLogger();
+
+			logger.info({ url: 'ssh://git@github.com/x.git' });
+
+			expect(logs[0].url).toBe('ssh://git@github.com/x.git');
+		});
+
+		it('is off with redaction', () => {
+			const { logger, logs } = createTestLogger(false);
+
+			logger.info({ url });
+
+			expect(logs[0].url).toBe(url);
+		});
+	});
+
 	describe('without redaction', () => {
 		it('should not redact when redact is false', () => {
 			const { logger, logs } = createTestLogger(false);

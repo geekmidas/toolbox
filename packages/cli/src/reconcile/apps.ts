@@ -249,8 +249,9 @@ export function appEnvKeys(
 		if (target.kind === 'queue' || target.kind === 'topic') {
 			keys.add('EVENT_PUBLISHER_CONNECTION_STRING');
 		}
-		// The S3 client reads its credentials beside the URL, not in it. A file
-		// server is reached by its URL alone.
+		// The S3 client's shared key pair, for a bucket whose URL carries no key
+		// of its own — handed over only where the stage has one. A file server
+		// is reached by its URL alone.
 		if (target.kind === 'objects') {
 			keys.add('AWS_ACCESS_KEY_ID');
 			keys.add('AWS_SECRET_ACCESS_KEY');
