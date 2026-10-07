@@ -1,5 +1,7 @@
 # @geekmidas/schema
 
+## 10.0.0-alpha.64
+
 ## 10.0.0-alpha.63
 
 ## 10.0.0-alpha.62
