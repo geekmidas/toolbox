@@ -338,7 +338,7 @@ gkm build --provider server --production
 When using `--production` with the server provider, the CLI generates an optimized bundle at `.gkm/server/dist/server.mjs`. This bundle:
 - Is minified and tree-shaken for smaller size
 - Includes all dependencies (single-file deployment)
-- Can be used with `gkm docker --slim` for minimal Docker images
+- Is what `gkm docker`'s images run — built inside the image, never copied in from the host
 
 ### `gkm openapi`
 
@@ -438,54 +438,44 @@ gkm docker [options]
 ```
 
 **Options:**
-- `--build`: Build Docker image after generating files
-- `--push`: Push image to registry after building
+- `--build`: Build each app's image after generating files
+- `--push`: Push the images to the registry after building
 - `--tag <tag>`: Image tag (default: `latest`)
 - `--registry <url>`: Container registry URL
-- `--slim`: Use slim Dockerfile (requires pre-built bundle from `gkm build --production`)
-- `--turbo`: Enable turbo prune for monorepo optimization
-- `--turbo-package <name>`: Package name for turbo prune (defaults to package.json name)
 
 **Generated Files:**
-- `.gkm/docker/Dockerfile` - Multi-stage or slim Dockerfile
-- `docker-compose.constructs.yml` - the containers the constructs imply, and the app (project root)
-- `.gkm/docker/docker-entrypoint.sh` - Entrypoint script
-- `.dockerignore` - Docker ignore file (project root)
+- `.gkm/docker/Dockerfile.<app>` - one per app (`Dockerfile` for an app at the root)
+- `docker-compose.constructs.yml` - the containers the constructs imply, and the apps (project root)
+- `.dockerignore` - at the build root, created or completed
 
-**Dockerfile Types:**
+**How an image is built:**
 
-| Type | Flag | Description |
-|------|------|-------------|
-| Multi-stage | (default) | Builds from source inside Docker, most reproducible |
-| Turbo | `--turbo` | Optimized for monorepos with turbo prune |
-| Slim | `--slim` | Uses pre-built bundle, requires prior `gkm build --production` |
+Every image is built inside Docker — `docker build` on a clean checkout is all
+it takes. The context is the build root (the directory holding the lockfile or
+`pnpm-workspace.yaml`, at or above the workspace); `turbo prune` cuts the app's
+slice of it; the image installs it, builds the workspace packages the app
+depends on, and builds the app (`gkm build --provider server --production` for
+a backend, the framework's build for a site). The runner holds `server.mjs`, a
+Next.js standalone server, or a Vite site's files served by Caddy.
 
 **Example:**
 ```bash
-# Generate multi-stage Dockerfile (default, recommended)
+# Generate the Dockerfiles
 gkm docker
 
-# Generate and build image
+# Generate and build the images
 gkm docker --build --tag v1.0.0
 
 # Build and push to registry
 gkm docker --build --push --registry ghcr.io/myorg --tag v1.0.0
-
-# Use turbo prune for monorepo
-gkm docker --turbo --turbo-package my-api
-
-# Use slim Dockerfile (after running gkm build --production)
-gkm build --provider server --production
-gkm docker --slim
 ```
 
 **Package Manager Support:**
 
-The CLI auto-detects your package manager from lockfiles and generates optimized Dockerfiles:
-- **pnpm**: Uses `pnpm fetch` for better layer caching
-- **npm**: Uses `npm ci` with cache mounts
-- **yarn**: Uses `yarn install --frozen-lockfile`
-- **bun**: Uses `bun install --frozen-lockfile`
+The package manager is detected from the lockfile and pinned to the build
+root's `packageManager` field; turbo is pinned to the version the build root
+resolves. Dependencies install with a BuildKit cache mount for the package
+manager's store.
 
 **Configuration:**
 

@@ -14,6 +14,7 @@
  * service reach the same API by different names.
  */
 
+import { join } from 'node:path';
 import {
 	type ConstructManifest,
 	provideKey,
@@ -23,11 +24,9 @@ import {
 import { isMainFrontendApp, resolveHost } from '../deploy/domain.js';
 import { type DeployIdentity, imageRef } from '../deploy/identity.js';
 import { validateImageRef } from '../docker/imageRef.js';
-import { siteDockerfile } from '../docker/index.js';
-import {
-	generateSlimDockerfile,
-	type PackageManager,
-} from '../docker/templates.js';
+import { appDockerfile } from '../docker/index.js';
+import { composeBuildPaths, type ImageLayout } from '../docker/layout.js';
+import { TURBO_VERSION } from '../docker/templates.js';
 import { appEnvKeys, networkEnv } from '../reconcile/apps.js';
 import { hostFor } from '../reconcile/caddyfile.js';
 import { type ComposeService, composeFor } from '../reconcile/compose.js';
@@ -95,7 +94,7 @@ const STORAGE_KEYS = [
 
 /** Each image's build, where the stack builds rather than pulls. */
 export interface AppBuild {
-	/** Relative to the workspace root, which is the build context. */
+	/** Where the Dockerfile is written, relative to the workspace root. */
 	dockerfile: string;
 	/** A site's public URLs, inlined by its bundler. */
 	args?: Record<string, string>;
@@ -127,6 +126,8 @@ export interface StackService {
 		context: string;
 		dockerfile: string;
 		args?: Record<string, string>;
+		/** BuildKit secrets, by the id the Dockerfile mounts them under. */
+		secrets?: { source: string; target: string }[];
 	};
 	restart?: string;
 	command?: string;
@@ -142,6 +143,8 @@ export interface StackFile {
 	name: string;
 	services: Record<string, StackService>;
 	volumes: Record<string, Record<string, never>>;
+	/** Build secrets, each a file beside the compose file. */
+	secrets?: Record<string, { file: string }>;
 }
 
 export interface ComposeStack {
@@ -179,10 +182,12 @@ export interface StackInput {
 	secrets?: StageSecrets | null;
 	/** The edge's published ports. 443 and 80 by default. */
 	ports?: { https?: number; http?: number };
-	/** For builds: the package manager the site Dockerfiles install with. */
-	packageManager?: PackageManager;
-	/** For builds: each app's package name, which turbo prunes by. */
-	packages?: Readonly<Record<string, string>>;
+	/**
+	 * For builds: where the images are built from and with what — the build
+	 * root, its package manager and turbo. The workspace's root, with pnpm,
+	 * when not given.
+	 */
+	layout?: ImageLayout;
 }
 
 /** A bucket the stack needs and the stage was not given. */
@@ -469,6 +474,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		}
 	}
 
+	const layout = input.layout ?? defaultLayout(workspace.root);
 	const compose = stackFile({
 		project,
 		plan,
@@ -477,6 +483,9 @@ export function composeStack(input: StackInput): ComposeStack {
 		master: credential.master,
 		https,
 		http,
+		composeDir: join(workspace.root, stackDir(stage)),
+		buildRoot: layout.buildRoot,
+		workspaceRoot: workspace.root,
 	});
 
 	const caddyfile = edgeCaddyfile(
@@ -490,22 +499,14 @@ export function composeStack(input: StackInput): ComposeStack {
 	const dockerfiles: Record<string, string> = {};
 	for (const app of apps) {
 		if (!app.build) continue;
-		dockerfiles[app.build.dockerfile] =
-			app.kind === 'site'
-				? siteDockerfile(app.name, workspace.apps[app.name]!, {
-						turboPackage: input.packages?.[app.name] ?? app.name,
-						packageManager: input.packageManager ?? 'pnpm',
-						manifest,
-					})
-				: generateSlimDockerfile({
-						imageName: app.name,
-						baseImage: 'node:22-alpine',
-						port: app.port,
-						healthCheckPath: '/health',
-						prebuilt: true,
-						packageManager: input.packageManager ?? 'pnpm',
-						bundle: `${app.path}/.gkm/server/dist/server.mjs`,
-					});
+		// The same Dockerfile `gkm docker` writes: the image is built inside
+		// Docker from a pruned slice of the build root, and nothing is built
+		// here first.
+		dockerfiles[app.build.dockerfile] = appDockerfile(
+			app.name,
+			workspace.apps[app.name]!,
+			{ layout, workspaceRoot: workspace.root, manifest },
+		);
 	}
 
 	return {
@@ -634,6 +635,9 @@ function stackFile(options: {
 	master: string;
 	https: number;
 	http: number;
+	composeDir: string;
+	buildRoot: string;
+	workspaceRoot: string;
 }): StackFile {
 	const { project, plan, infra, apps } = options;
 
@@ -694,8 +698,12 @@ function stackFile(options: {
 			...(app.build
 				? {
 						build: {
-							context: '../../..',
-							dockerfile: app.build.dockerfile,
+							...composeBuildPaths({
+								composeDir: options.composeDir,
+								buildRoot: options.buildRoot,
+								workspaceRoot: options.workspaceRoot,
+								dockerfile: app.build.dockerfile,
+							}),
 							...(app.build.args ? { args: app.build.args } : {}),
 						},
 					}
@@ -738,6 +746,88 @@ function stackFile(options: {
 	};
 
 	return { name: project, services, volumes };
+}
+
+/**
+ * A build without a layout: the workspace is the build root, with pnpm.
+ * What a caller that never looked at the filesystem gets.
+ */
+function defaultLayout(root: string): ImageLayout {
+	return {
+		buildRoot: root,
+		gkmRoot: '.',
+		tools: {
+			packageManager: 'pnpm',
+			turboVersion: TURBO_VERSION,
+			monorepo: true,
+		},
+		gkmPaths: ['gkm.config.*'],
+	};
+}
+
+/** The id the stack's compose file names an app's build credentials by. */
+export function credentialsSecret(app: string): string {
+	return `${app}_credentials`;
+}
+
+/** The file beside the compose file an app's build credentials are read from. */
+export function credentialsFile(app: string): string {
+	return `${app}.credentials`;
+}
+
+/**
+ * The stack with each backend's image built with its encrypted credentials:
+ * a BuildKit secret per app — the file `credentialsFile` names, mounted as
+ * `gkm_credentials` — and the hash naming them as a build arg, so a new key
+ * rebuilds the layer that embeds them. Each backend's env file gains the
+ * `GKM_MASTER_KEY` that decrypts them, the way a Dokploy deploy injects it.
+ *
+ * Pure: the caller encrypted them.
+ */
+export function withBuildCredentials(
+	stack: ComposeStack,
+	credentials: Readonly<
+		Record<string, { masterKey: string; buildArg: string }>
+	>,
+): ComposeStack {
+	const services = { ...stack.compose.services };
+	const secrets: Record<string, { file: string }> = {
+		...stack.compose.secrets,
+	};
+	const apps = stack.apps.map((app) => {
+		const own = credentials[app.name];
+		const service = services[app.name];
+		if (!own || !service?.build) return app;
+
+		const [key, value] = own.buildArg.split('=') as [string, string];
+		services[app.name] = {
+			...service,
+			build: {
+				...service.build,
+				args: { ...service.build.args, [key]: value },
+				secrets: [
+					{ source: credentialsSecret(app.name), target: 'gkm_credentials' },
+				],
+			},
+		};
+		secrets[credentialsSecret(app.name)] = {
+			file: `./${credentialsFile(app.name)}`,
+		};
+		return {
+			...app,
+			env: { ...app.env, GKM_MASTER_KEY: own.masterKey },
+		};
+	});
+
+	return {
+		...stack,
+		apps,
+		compose: {
+			...stack.compose,
+			services,
+			...(Object.keys(secrets).length ? { secrets } : {}),
+		},
+	};
 }
 
 /** Render an app's env file: one `KEY=value` per line, read raw by compose. */

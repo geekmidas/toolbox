@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { DockerBuildFailed, DockerPushFailed, dockerCommand } from '../docker';
 import { validateImageRef } from '../docker/imageRef';
 import { output } from '../output';
@@ -132,6 +133,25 @@ export function dockerBuildArgs(options: {
 }
 
 /**
+ * The build arg that names which credentials an image embeds: a hash of the
+ * ciphertext, which is not a secret. A BuildKit secret is no part of the
+ * build cache's key, so without it a rebuild with credentials encrypted under
+ * a new key would reuse the layer that embedded the old ones.
+ */
+export function credentialsBuildArg(credentials: BuildCredentials): string {
+	const id = createHash('sha256')
+		.update(`${credentials.encrypted}\n${credentials.iv}`)
+		.digest('hex')
+		.slice(0, 16);
+	return `GKM_CIPHERTEXT_HASH=${id}`;
+}
+
+/** The secret file's content: ciphertext, then IV, one per line. */
+export function credentialsFileContent(credentials: BuildCredentials): string {
+	return `${credentials.encrypted}\n${credentials.iv}\n`;
+}
+
+/**
  * Write the encrypted credentials where `docker build --secret` reads them.
  *
  * Two lines — ciphertext, then IV — so a template can split them with `sed`
@@ -145,7 +165,7 @@ export async function writeCredentialsFile(
 ): Promise<{ path: string; cleanup: () => Promise<void> }> {
 	const dir = await mkdtemp(join(tmpdir(), 'gkm-credentials-'));
 	const path = join(dir, CREDENTIALS_SECRET_ID);
-	await writeFile(path, `${credentials.encrypted}\n${credentials.iv}\n`, {
+	await writeFile(path, credentialsFileContent(credentials), {
 		mode: 0o600,
 	});
 	// `mode` above passes through the umask; this does not.
@@ -170,46 +190,37 @@ async function buildImage(
 ): Promise<void> {
 	logger.log(`\n🔨 Building Docker image: ${imageRef}`);
 
-	// Where the lockfile is no longer decides anything here: the image copies a
-	// bundle that is already built, so a monorepo and a standalone app produce
-	// the same Dockerfile and the same one-directory build context — the app's.
-
-	// Generate appropriate Dockerfile
-	// The bundle already exists: `gkm build` ran before this and produced a
-	// self-contained `server.mjs`. So the image copies it rather than rebuilding
-	// it, which is both faster and the only version that works from inside the
-	// source monorepo — `turbo prune` honours .gitignore, so a sibling package's
-	// `dist` never arrives, and rebuilding it in the image means bootstrapping
-	// the whole workspace to produce a bundle we are holding.
+	// Every app's Dockerfile, as `gkm docker` writes it: the image prunes the
+	// build root to the app's slice, installs it and builds it — workspace
+	// packages, the bundle, a site's assets — inside Docker. Nothing the host
+	// built reaches it.
 	logger.log('   Generating Dockerfile...');
-	await dockerCommand({ slim: true, cwd });
+	const { buildRoot } = await dockerCommand({ cwd });
 
-	// Whatever `gkm docker` just wrote for this app, by the rule it writes by.
-	// A workspace's generator writes every app's at the root, and the build
-	// once looked for one under the app instead — a file nothing wrote.
-	//
-	// Absolute, because the build may run from elsewhere — where a relative
-	// `.gkm/docker/Dockerfile` resolves to a path that does not exist, and
-	// `docker build` says only `lstat .gkm: no such file or directory`.
-	const dockerfilePath = dockerfile;
+	// Relative to the build root, which is the context: absolute paths resolve
+	// wherever the deploy was started, and the build runs from the root.
+	const dockerfilePath = relative(buildRoot, dockerfile);
 
 	const secret = credentials
 		? await writeCredentialsFile(credentials)
 		: undefined;
 
 	try {
-		// The project root is the context, as `gkm docker` writes it for: a
-		// workspace's Dockerfiles prune the monorepo from there.
+		// The build root is the context: the package manager's root, which a
+		// workspace's Dockerfiles prune from.
 		await run(
 			'docker',
 			dockerBuildArgs({
 				dockerfilePath,
 				imageRef,
-				buildArgs,
+				buildArgs: [
+					...(buildArgs ?? []),
+					...(credentials ? [credentialsBuildArg(credentials)] : []),
+				],
 				credentialsFile: secret?.path,
 			}),
 			{
-				cwd,
+				cwd: buildRoot,
 				// BuildKit, for `--secret` and `RUN --mount`.
 				env: { ...process.env, DOCKER_BUILDKIT: '1' },
 				...(signal ? { signal } : {}),

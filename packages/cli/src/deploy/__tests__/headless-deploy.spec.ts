@@ -297,12 +297,13 @@ describe('deploy()', { timeout: 30_000 }, () => {
 		const dockerfiles = builds.map(([, args]) =>
 			args.find((a) => a.startsWith('--file='))!.slice('--file='.length),
 		);
+		// Relative to the build root, which is the context.
 		expect(dockerfiles).toEqual([
-			join(root, '.gkm/docker/Dockerfile.api'),
-			join(root, '.gkm/docker/Dockerfile.web'),
+			'.gkm/docker/Dockerfile.api',
+			'.gkm/docker/Dockerfile.web',
 		]);
 		for (const dockerfile of dockerfiles) {
-			expect(existsSync(dockerfile)).toBe(true);
+			expect(existsSync(join(root, dockerfile))).toBe(true);
 		}
 		expect(readdirSync(elsewhere)).toEqual([]);
 		// Headless: nothing was printed.

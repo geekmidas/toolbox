@@ -310,7 +310,8 @@ describe('deployDocker in a workspace', () => {
 			.mocked(run)
 			.mock.calls.find(([, a]) => a[0] === 'build')!;
 		const dockerfile = join(root, '.gkm/docker/Dockerfile.api');
-		expect(args).toContain(`--file=${dockerfile}`);
+		// Relative to the build root, which is the context.
+		expect(args).toContain('--file=.gkm/docker/Dockerfile.api');
 		expect(existsSync(dockerfile)).toBe(true);
 		expect(existsSync(join(root, 'apps/api/.gkm/docker/Dockerfile'))).toBe(
 			false,

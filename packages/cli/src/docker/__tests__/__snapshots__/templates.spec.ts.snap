@@ -2,66 +2,56 @@
 
 exports[`docker templates > generateBackendDockerfile > reads the credentials from a build secret, never a build arg 1`] = `
 "# syntax=docker/dockerfile:1
-# Backend Dockerfile with turbo prune optimization
+# Backend Dockerfile: a turbo-pruned slice, bundled by gkm build in the image
 
-# Stage 1: Prune monorepo
+# Stage 1: Prune the monorepo to the app's slice
 FROM node:22-alpine AS pruner
-
 WORKDIR /app
-
 RUN corepack enable && corepack prepare pnpm@latest --activate
-
 COPY . .
+RUN pnpm dlx turbo@2.5.4 prune @myapp/api --docker
 
-# Prune to only include necessary packages
-RUN pnpm dlx turbo prune @myapp/api --docker
+# The root's own files — the tsconfig the packages extend, the config their
+# build reads — which turbo prune leaves out. What the install itself reads
+# (registry config, local tarballs) goes beside the manifests too.
+RUN find . -maxdepth 1 -type f ! -name 'pnpm-lock.yaml' ! -name package.json \\
+      -exec cp -n {} out/full/ \\; && \\
+    for file in .npmrc .yarnrc.yml .pnpmfile.cjs bunfig.toml *.tgz; do \\
+      if [ -f "$file" ]; then cp "$file" out/json/; fi; \\
+    done
 
 # Stage 2: Install dependencies
 FROM node:22-alpine AS deps
-
 WORKDIR /app
-
 RUN corepack enable && corepack prepare pnpm@latest --activate
-
-# Copy pruned lockfile and package.jsons
 COPY --from=pruner /app/out/pnpm-lock.yaml ./
 COPY --from=pruner /app/out/json/ ./
-
-# Install dependencies
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \\
     pnpm install
 
 # Stage 3: Build
 FROM deps AS builder
-
 WORKDIR /app
 
-# Copy pruned source
 COPY --from=pruner /app/out/full/ ./
 
-# Copy workspace root configs for turbo builds (turbo prune doesn't include root configs)
-# Using wildcard to make it optional for single-app projects
-COPY --from=pruner /app/gkm.config.* ./
-COPY --from=pruner /app/tsconfig.* ./
+# The workspace packages the app depends on, built from source.
+RUN pnpm run --if-present build
+RUN pnpm dlx turbo@2.5.4 run build --filter='@myapp/api^...'
 
-# Write encrypted credentials for gkm build to embed.
-# A build secret (\`docker build --secret id=gkm_credentials,src=…\`), not an
-# ARG: an ARG is recorded in the image history. Two lines, ciphertext then IV;
-# absent when the app has no secrets.
-RUN --mount=type=secret,id=gkm_credentials,required=false     if [ -s /run/secrets/gkm_credentials ]; then       mkdir -p apps/api/.gkm &&       sed -n 1p /run/secrets/gkm_credentials > apps/api/.gkm/credentials.enc &&       sed -n 2p /run/secrets/gkm_credentials > apps/api/.gkm/credentials.iv;     fi
+# Bundle the production server, with the encrypted credentials embedded
+ARG GKM_CIPHERTEXT_HASH=""
+RUN --mount=type=secret,id=gkm_credentials,required=false \\
+    echo "credentials: \${GKM_CIPHERTEXT_HASH:-none}" && \\
+    if [ -s /run/secrets/gkm_credentials ]; then \\
+      mkdir -p /app/apps/api/.gkm && \\
+      sed -n 1p /run/secrets/gkm_credentials > /app/apps/api/.gkm/credentials.enc && \\
+      sed -n 2p /run/secrets/gkm_credentials > /app/apps/api/.gkm/credentials.iv; \\
+    fi && \\
+    cd /app/apps/api && GKM_BIN="$(node -e 'let d=process.cwd();const{existsSync:e}=require("fs"),{dirname:u,join:j}=require("path");for(;;){const p=j(d,"node_modules/@geekmidas/cli/bin/gkm.mjs");if(e(p)){console.log(p);break}if(u(d)===d){console.error("@geekmidas/cli is not installed where the app can resolve it");process.exit(1)}d=u(d)}')" && node "$GKM_BIN" build --provider server --production && \\
+    rm -f /app/apps/api/.gkm/credentials.enc /app/apps/api/.gkm/credentials.iv
 
-# Build any workspace packages the app depends on.
-#
-# A no-op for a project whose dependencies come from a registry, and required
-# for one whose CLI is a sibling package: \`turbo prune\` honours .gitignore, so a
-# workspace package's \`dist\` never reaches the image and its bin has nothing to
-# import. \`--if-present\` is what makes the same Dockerfile correct for both.
-RUN pnpm --if-present build
-
-# Build production server using gkm
-RUN cd apps/api && pnpm exec gkm build --provider server --production
-
-# Stage 4: Production
+# Production
 FROM node:22-alpine AS runner
 
 WORKDIR /app
@@ -71,7 +61,7 @@ RUN apk add --no-cache tini
 RUN addgroup --system --gid 1001 nodejs && \\
     adduser --system --uid 1001 hono
 
-# Copy bundled server
+# The bundled server
 COPY --from=builder --chown=hono:nodejs /app/apps/api/.gkm/server/dist/server.mjs ./
 
 ENV NODE_ENV=production
@@ -91,56 +81,64 @@ CMD ["node", "server.mjs"]
 
 exports[`docker templates > generateEntryDockerfile > embeds the credentials from a build secret, never a build arg 1`] = `
 "# syntax=docker/dockerfile:1
-# Entry-based Dockerfile with turbo prune + tsdown bundling
+# Entry-based Dockerfile: a turbo-pruned slice, bundled by esbuild in the image
 
-# Stage 1: Prune monorepo
+# Stage 1: Prune the monorepo to the app's slice
 FROM node:22-alpine AS pruner
-
 WORKDIR /app
-
 RUN corepack enable && corepack prepare pnpm@latest --activate
-
 COPY . .
+RUN pnpm dlx turbo@2.5.4 prune @myapp/auth --docker
 
-# Prune to only include necessary packages
-RUN pnpm dlx turbo prune @myapp/auth --docker
+# The root's own files — the tsconfig the packages extend, the config their
+# build reads — which turbo prune leaves out. What the install itself reads
+# (registry config, local tarballs) goes beside the manifests too.
+RUN find . -maxdepth 1 -type f ! -name 'pnpm-lock.yaml' ! -name package.json \\
+      -exec cp -n {} out/full/ \\; && \\
+    for file in .npmrc .yarnrc.yml .pnpmfile.cjs bunfig.toml *.tgz; do \\
+      if [ -f "$file" ]; then cp "$file" out/json/; fi; \\
+    done
 
 # Stage 2: Install dependencies
 FROM node:22-alpine AS deps
-
 WORKDIR /app
-
 RUN corepack enable && corepack prepare pnpm@latest --activate
-
-# Copy pruned lockfile and package.jsons
 COPY --from=pruner /app/out/pnpm-lock.yaml ./
 COPY --from=pruner /app/out/json/ ./
-
-# Install dependencies
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \\
     pnpm install
 
-# Stage 3: Build with tsdown
+# Stage 3: Build
 FROM deps AS builder
-
 WORKDIR /app
 
-# Copy pruned source
 COPY --from=pruner /app/out/full/ ./
 
-# Copy workspace root configs for turbo builds (turbo prune doesn't include root configs)
-# Using wildcard to make it optional for single-app projects
-COPY --from=pruner /app/tsconfig.* ./
+# The workspace packages the app depends on, built from source.
+RUN pnpm run --if-present build
+RUN pnpm dlx turbo@2.5.4 run build --filter='@myapp/auth^...'
 
-# Bundle entry point with esbuild (outputs to dist/index.mjs)
-# Creates a fully standalone bundle with all dependencies included
-# Use define to embed credentials if present.
-# They arrive as a build secret (\`docker build --secret id=gkm_credentials,src=…\`),
-# not an ARG: an ARG is recorded in the image history. Two lines, ciphertext
-# then IV; absent when the app has no secrets.
-RUN --mount=type=secret,id=gkm_credentials,required=false     cd apps/auth &&     if [ -s /run/secrets/gkm_credentials ]; then       CREDS=$(sed -n 1p /run/secrets/gkm_credentials) &&       IV=$(sed -n 2p /run/secrets/gkm_credentials) &&       npx esbuild ./src/index.ts --bundle --platform=node --target=node22 --format=esm         --outfile=dist/index.mjs --packages=bundle         --banner:js='import { createRequire } from "module"; const require = createRequire(import.meta.url);'         --define:__GKM_ENCRYPTED_CREDENTIALS__="'\\"$CREDS\\"'"         --define:__GKM_CREDENTIALS_IV__="'\\"$IV\\"'";     else       npx esbuild ./src/index.ts --bundle --platform=node --target=node22 --format=esm         --outfile=dist/index.mjs --packages=bundle         --banner:js='import { createRequire } from "module"; const require = createRequire(import.meta.url);';     fi
+# Bundle the entry point with every dependency (dist/index.mjs), embedding the
+# encrypted credentials when there are any.
+ARG GKM_CIPHERTEXT_HASH=""
+RUN --mount=type=secret,id=gkm_credentials,required=false \\
+    echo "credentials: \${GKM_CIPHERTEXT_HASH:-none}" && \\
+    cd /app/apps/auth && export PATH="/app/apps/auth/node_modules/.bin:/app/node_modules/.bin:$PATH" && \\
+    if [ -s /run/secrets/gkm_credentials ]; then \\
+      CREDS=$(sed -n 1p /run/secrets/gkm_credentials) && \\
+      IV=$(sed -n 2p /run/secrets/gkm_credentials) && \\
+      esbuild ./src/index.ts --bundle --platform=node --target=node22 --format=esm \\
+        --outfile=dist/index.mjs --packages=bundle \\
+        --banner:js='import { createRequire } from "module"; const require = createRequire(import.meta.url);' \\
+        --define:__GKM_ENCRYPTED_CREDENTIALS__="\\"$CREDS\\"" \\
+        --define:__GKM_CREDENTIALS_IV__="\\"$IV\\""; \\
+    else \\
+      esbuild ./src/index.ts --bundle --platform=node --target=node22 --format=esm \\
+        --outfile=dist/index.mjs --packages=bundle \\
+        --banner:js='import { createRequire } from "module"; const require = createRequire(import.meta.url);'; \\
+    fi
 
-# Stage 4: Production
+# Production
 FROM node:22-alpine AS runner
 
 WORKDIR /app
@@ -165,41 +163,5 @@ EXPOSE 3002
 
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "index.mjs"]
-"
-`;
-
-exports[`docker templates > generateSlimDockerfile > declares no GKM build args: the bundle already holds its credentials 1`] = `
-"# Slim Dockerfile for pre-built production bundle
-FROM node:22-alpine
-
-WORKDIR /app
-
-# Install tini for proper signal handling as PID 1
-# Handles SIGTERM propagation and zombie process reaping
-RUN apk add --no-cache tini
-
-# Create non-root user
-RUN addgroup --system --gid 1001 nodejs && \\
-    adduser --system --uid 1001 hono
-
-# Copy pre-built bundle
-COPY .gkm/server/dist/server.mjs ./
-
-# Environment
-ENV NODE_ENV=production
-ENV PORT=3000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \\
-  CMD wget -qO- http://localhost:3000/health > /dev/null 2>&1 || exit 1
-
-# Switch to non-root user
-USER hono
-
-EXPOSE 3000
-
-# Use tini as entrypoint to handle PID 1 responsibilities
-ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["node", "server.mjs"]
 "
 `;

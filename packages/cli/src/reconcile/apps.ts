@@ -24,6 +24,8 @@ import {
 	provisionOrder,
 	publicEnvFor,
 } from '@geekmidas/manifest';
+import { composeBuildPaths } from '../docker/layout.js';
+import { findBuildRoot } from '../docker/templates.js';
 import { appKey } from '../workspace/derive.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import type { ComposeService } from './compose.js';
@@ -288,6 +290,7 @@ export function appServices(
 		addresses: surfaceAddresses(workspace, manifest),
 	});
 	const services: Record<string, ComposeService> = {};
+	const buildRoot = findBuildRoot(workspace.root);
 
 	for (const [name, app] of Object.entries(workspace.apps)) {
 		// A mobile app ships through its own toolchain; nothing here runs it.
@@ -295,7 +298,15 @@ export function appServices(
 
 		const key = appKey(name);
 		const health = app.type === 'web' ? '/' : '/health';
-		const dockerfile = dockerfileOf(name, app.path);
+		// Built from the build root — the package manager's, which is above the
+		// workspace when it is nested in a monorepo — by the Dockerfile `gkm
+		// docker` writes under the workspace.
+		const build = composeBuildPaths({
+			composeDir: workspace.root,
+			buildRoot,
+			workspaceRoot: workspace.root,
+			dockerfile: dockerfileOf(name, app.path),
+		});
 		const ports = [`${app.port}:${app.port}`];
 
 		// A site is a bundle: its public URLs are inlined when it is built, so
@@ -306,8 +317,7 @@ export function appServices(
 			services[key] = {
 				image: `${key}:\${TAG:-latest}`,
 				build: {
-					context: '.',
-					dockerfile,
+					...build,
 					...(Object.keys(args).length ? { args } : {}),
 				},
 				profiles: [APPS_PROFILE],
@@ -324,7 +334,7 @@ export function appServices(
 
 		services[key] = {
 			image: `${key}:\${TAG:-latest}`,
-			build: { context: '.', dockerfile },
+			build,
 			profiles: [APPS_PROFILE],
 			ports,
 			environment: {

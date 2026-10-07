@@ -2,7 +2,7 @@
 	"name": "@geekmidas/toolbox",
 	"private": true,
 	"scripts": {
-		"build": "tsdown",
+		"build": "node -e \"process.exit(require('fs').existsSync('packages') ? 1 : 0)\" || tsdown",
 		"check:cli": "node scripts/check-cli.mjs",
 		"check:deps": "node scripts/align-deps.mjs",
 		"check:dev": "node scripts/check-dev.mjs apps/kitchen-sink api:/__docs auth:/api/auth/get-session web:/ admin:/",

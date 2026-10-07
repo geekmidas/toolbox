@@ -48,10 +48,10 @@ WARN
    Patterns: <root>/src/constructs/**/*.ts
    Nothing will be provisioned — no containers, no env keys, no resources.
    A common cause is depth: '*.ts' matches one level, '**/*.ts' matches any.
-📦 Detected workspace configuration
 
 🐳 Generating Dockerfiles for workspace: shop
-   Package manager: pnpm
+   Build root: <root>
+   Package manager: pnpm, turbo@2.5.4
 
    📄 Generating Dockerfile for api (backend)
       Generated: .gkm/docker/Dockerfile.api
@@ -61,7 +61,7 @@ WARN
 
    📱 Skipping Docker for app (mobile app — deploy via framework toolchain)
 
-   Generated: .dockerignore (workspace root)
+   Ensured: <root>/.dockerignore
 WARN 
 ⚠️  The constructs glob matched no files, so nothing was declared.
    Patterns: <root>/src/constructs/**/*.ts
@@ -71,7 +71,7 @@ WARN
 
 ✅ Generated 2 Dockerfile(s) + docker-compose.constructs.yml
 
-📋 Build commands:
+📋 Build commands (from <root>):
    ⚙️ docker build -f .gkm/docker/Dockerfile.api -t api .
    🌐 docker build -f .gkm/docker/Dockerfile.web -t web .
 
@@ -112,10 +112,10 @@ WARN
    Patterns: <root>/src/constructs/**/*.ts
    Nothing will be provisioned — no containers, no env keys, no resources.
    A common cause is depth: '*.ts' matches one level, '**/*.ts' matches any.
-📦 Detected workspace configuration
 
 🐳 Generating Dockerfiles for workspace: shop
-   Package manager: pnpm
+   Build root: <root>
+   Package manager: pnpm, turbo@2.5.4
 
    📄 Generating Dockerfile for api (backend)
       Generated: .gkm/docker/Dockerfile.api
@@ -125,7 +125,7 @@ WARN
 
    📱 Skipping Docker for app (mobile app — deploy via framework toolchain)
 
-   Generated: .dockerignore (workspace root)
+   Ensured: <root>/.dockerignore
 WARN 
 ⚠️  The constructs glob matched no files, so nothing was declared.
    Patterns: <root>/src/constructs/**/*.ts
@@ -135,7 +135,7 @@ WARN
 
 ✅ Generated 2 Dockerfile(s) + docker-compose.constructs.yml
 
-📋 Build commands:
+📋 Build commands (from <root>):
    ⚙️ docker build -f .gkm/docker/Dockerfile.api -t api .
    🌐 docker build -f .gkm/docker/Dockerfile.web -t web .
 

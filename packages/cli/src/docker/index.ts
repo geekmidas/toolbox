@@ -1,40 +1,44 @@
-import { copyFileSync, existsSync, readFileSync, unlinkSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join, relative } from 'node:path';
 import { type ConstructManifest, publicEnvFor } from '@geekmidas/manifest';
-import { loadConfig, loadWorkspaceConfig } from '../config';
+import { loadWorkspaceConfig } from '../config';
 import { output } from '../output';
+import { dockerfileOf } from '../reconcile/apps.js';
 import { COMPOSE_PATH } from '../reconcile/index.js';
 import { reconcileWorkspace } from '../reconcile/workspace.js';
 import { run } from '../run';
 import { getPublicUrlArgNames } from '../target/dokploy/domain.js';
+import type { GkmConfig } from '../types';
 import { appKey } from '../workspace/derive.js';
 import type {
 	NormalizedAppConfig,
 	NormalizedWorkspace,
 } from '../workspace/types.js';
 import { validateImageRef } from './imageRef';
+import { appImageOptions, type ImageLayout, imageLayout } from './layout';
 import {
-	detectPackageManager,
-	findLockfilePath,
 	generateBackendDockerfile,
-	generateDockerEntrypoint,
 	generateDockerignore,
 	generateEntryDockerfile,
-	generateMultiStageDockerfile,
 	generateNextjsDockerfile,
 	generateNodeWebDockerfile,
-	generateSlimDockerfile,
 	generateViteStaticDockerfile,
-	hasTurboConfig,
-	isMonorepo,
-	type PackageManager,
 	resolveDockerConfig,
 } from './templates';
 
 export { ImageRefInvalid, validateImageRef } from './imageRef';
 export {
+	appImageOptions,
+	composeBuildPaths,
+	fromBuildRoot,
+	type ImageLayout,
+	imageLayout,
+	MonorepoNeedsTurbo,
+} from './layout';
+export {
 	detectPackageManager,
+	findBuildRoot,
 	findLockfilePath,
 	hasTurboConfig,
 	isMonorepo,
@@ -82,20 +86,14 @@ export class PushNeedsRegistry extends Error {
 }
 
 export interface DockerOptions {
-	/** Build Docker image after generating files */
+	/** Build each app's image after generating files */
 	build?: boolean;
-	/** Push image to registry after building */
+	/** Push the images to the registry after building */
 	push?: boolean;
 	/** Image tag (default: 'latest') */
 	tag?: string;
 	/** Container registry URL */
 	registry?: string;
-	/** Use slim Dockerfile (requires pre-built bundle from `gkm build --production`) */
-	slim?: boolean;
-	/** Enable turbo prune for monorepo optimization */
-	turbo?: boolean;
-	/** Package name for turbo prune (defaults to package.json name) */
-	turboPackage?: string;
 	/**
 	 * The directory to generate for — an app's own, when a deploy builds it.
 	 * Defaults to the process's working directory.
@@ -103,227 +101,84 @@ export interface DockerOptions {
 	cwd?: string;
 }
 
-export interface DockerGeneratedFiles {
-	dockerfile: string;
-	dockerCompose: string;
-	dockerignore: string;
-	entrypoint: string;
-}
-
 /**
- * Docker command implementation
- * Generates Dockerfile, docker-compose.yml, and related files
- *
- * Default: Multi-stage Dockerfile that builds from source inside Docker
- * --slim: Slim Dockerfile that copies pre-built bundle (requires prior build)
+ * Docker command implementation: one Dockerfile per deployable app, each
+ * building its image inside Docker from a turbo-pruned slice of the build
+ * root — nothing is built on the host — plus the build root's
+ * `.dockerignore` and `docker-compose.constructs.yml`.
  */
 export async function dockerCommand(
 	options: DockerOptions,
-): Promise<DockerGeneratedFiles | WorkspaceDockerResult> {
+): Promise<WorkspaceDockerResult> {
 	const cwd = options.cwd ?? process.cwd();
+	const loaded = await loadWorkspaceConfig(cwd);
 
-	// Load config with workspace detection
-	const loadedConfig = await loadWorkspaceConfig(cwd);
+	// A single-app config is a workspace of one app at its root; the image is
+	// named the way its `docker` block says.
+	const names: Record<string, string> =
+		loaded.type === 'single'
+			? Object.fromEntries(
+					Object.keys(loaded.workspace.apps).map((name) => [
+						name,
+						resolveDockerConfig(loaded.raw as GkmConfig).imageName,
+					]),
+				)
+			: {};
 
-	// Route to workspace docker mode for multi-app workspaces
-	if (loadedConfig.type === 'workspace') {
-		logger.log('📦 Detected workspace configuration');
-		return workspaceDockerCommand(
-			loadedConfig.workspace,
-			loadedConfig.manifest,
-		);
-	}
-
-	// Single-app mode - use existing logic
-	const config = await loadConfig(cwd);
-	const dockerConfig = resolveDockerConfig(config);
-
-	const healthCheckPath = '/health';
-
-	// Determine Dockerfile type
-	// Default: Multi-stage (builds inside Docker for reproducibility)
-	// --slim: Requires pre-built bundle
-	const useSlim = options.slim === true;
-
-	if (useSlim) {
-		// Verify pre-built bundle exists for slim mode
-		const distDir = join(cwd, '.gkm', 'server', 'dist');
-		const hasBuild = existsSync(join(distDir, 'server.mjs'));
-
-		if (!hasBuild) {
-			throw new Error(
-				'Slim Dockerfile requires a pre-built bundle. Run `gkm build --provider server --production` first, or omit --slim to use multi-stage build.',
-			);
-		}
-	}
-
-	// Generate Docker files
-	const dockerDir = join(cwd, '.gkm', 'docker');
-	await mkdir(dockerDir, { recursive: true });
-
-	// Detect package manager from lockfiles
-	const packageManager = detectPackageManager(cwd);
-	const inMonorepo = isMonorepo(cwd);
-	const hasTurbo = hasTurboConfig(cwd);
-
-	// Auto-enable turbo for monorepos with turbo.json
-	let useTurbo = options.turbo ?? false;
-	if (inMonorepo && !useSlim) {
-		if (hasTurbo) {
-			useTurbo = true;
-			logger.log('   Detected monorepo with turbo.json - using turbo prune');
-		} else {
-			throw new Error(
-				'Monorepo detected but turbo.json not found.\n\n' +
-					'Docker builds in monorepos require Turborepo for proper dependency isolation.\n\n' +
-					'To fix this:\n' +
-					'  1. Install turbo: pnpm add -Dw turbo\n' +
-					'  2. Create turbo.json in your monorepo root\n' +
-					'  3. Run this command again\n\n' +
-					'See: https://turbo.build/repo/docs/guides/tools/docker',
-			);
-		}
-	}
-
-	// Get the actual package name from package.json for turbo prune
-	let turboPackage = options.turboPackage ?? dockerConfig.imageName;
-	if (useTurbo && !options.turboPackage) {
-		try {
-			// eslint-disable-next-line @typescript-eslint/no-require-imports
-			const pkg = require(`${cwd}/package.json`);
-			if (pkg.name) {
-				turboPackage = pkg.name;
-				logger.log(`   Turbo package: ${turboPackage}`);
-			}
-		} catch {
-			// Fall back to imageName
-		}
-	}
-
-	const templateOptions = {
-		imageName: dockerConfig.imageName,
-		baseImage: dockerConfig.baseImage,
-		port: dockerConfig.port,
-		healthCheckPath,
-		prebuilt: useSlim,
-		turbo: useTurbo,
-		turboPackage,
-		packageManager,
-	};
-
-	// Generate Dockerfile
-	const dockerfile = useSlim
-		? generateSlimDockerfile(templateOptions)
-		: generateMultiStageDockerfile(templateOptions);
-
-	const dockerMode = useSlim ? 'slim' : useTurbo ? 'turbo' : 'multi-stage';
-
-	const dockerfilePath = join(dockerDir, 'Dockerfile');
-	await writeFile(dockerfilePath, dockerfile);
-	logger.log(
-		`Generated: .gkm/docker/Dockerfile (${dockerMode}, ${packageManager})`,
+	const result = await workspaceDockerCommand(
+		loaded.workspace,
+		loaded.manifest,
+		names,
 	);
 
-	const composePath = await writeConstructsCompose(loadedConfig.workspace);
-
-	// Generate .dockerignore in project root (Docker looks for it there)
-	const dockerignore = generateDockerignore();
-	const dockerignorePath = join(cwd, '.dockerignore');
-	await writeFile(dockerignorePath, dockerignore);
-	logger.log('Generated: .dockerignore (project root)');
-
-	// Generate docker-entrypoint.sh
-	const entrypoint = generateDockerEntrypoint();
-	const entrypointPath = join(dockerDir, 'docker-entrypoint.sh');
-	await writeFile(entrypointPath, entrypoint);
-	logger.log('Generated: .gkm/docker/docker-entrypoint.sh');
-
-	const result: DockerGeneratedFiles = {
-		dockerfile: dockerfilePath,
-		dockerCompose: composePath,
-		dockerignore: dockerignorePath,
-		entrypoint: entrypointPath,
-	};
-
-	// Build Docker image if requested
 	if (options.build) {
-		await buildDockerImage(dockerConfig.imageName, options, cwd);
+		for (const app of result.apps) {
+			await buildDockerImage(app, result.buildRoot, options);
+		}
 	}
-
-	// Push Docker image if requested
 	if (options.push) {
-		await pushDockerImage(dockerConfig.imageName, options, cwd);
+		for (const app of result.apps) {
+			await pushDockerImage(app.imageName, options, result.buildRoot);
+		}
 	}
 
 	return result;
 }
 
 /**
- * Ensure lockfile exists in the build context
- * For monorepos, copies from workspace root if needed
- * Returns cleanup function if file was copied
- */
-function ensureLockfile(cwd: string): (() => void) | null {
-	const lockfilePath = findLockfilePath(cwd);
-
-	if (!lockfilePath) {
-		logger.warn(
-			'\n⚠️  No lockfile found. Docker build may fail or use stale dependencies.',
-		);
-		return null;
-	}
-
-	const lockfileName = basename(lockfilePath);
-	const localLockfile = join(cwd, lockfileName);
-
-	// If lockfile exists locally (same directory), nothing to do
-	if (lockfilePath === localLockfile) {
-		return null;
-	}
-
-	logger.log(`   Copying ${lockfileName} from monorepo root...`);
-	copyFileSync(lockfilePath, localLockfile);
-
-	// Return cleanup function
-	return () => {
-		try {
-			unlinkSync(localLockfile);
-		} catch {
-			// Ignore cleanup errors
-		}
-	};
-}
-
-/**
- * Build Docker image
+ * Build one app's image, from the build root.
  * Uses BuildKit for cache mount support
  */
 async function buildDockerImage(
-	imageName: string,
+	app: AppDockerResult,
+	buildRoot: string,
 	options: DockerOptions,
-	cwd: string,
 ): Promise<void> {
 	const tag = options.tag ?? 'latest';
 	const registry = options.registry;
 
 	// Before anything runs: a ref docker would misread is refused by name.
 	const fullImageName = validateImageRef(
-		registry ? `${registry}/${imageName}:${tag}` : `${imageName}:${tag}`,
+		registry
+			? `${registry}/${app.imageName}:${tag}`
+			: `${app.imageName}:${tag}`,
 	);
 
 	logger.log(`\n🐳 Building Docker image: ${fullImageName}`);
-
-	// Ensure lockfile exists (copy from monorepo root if needed)
-	const cleanup = ensureLockfile(cwd);
 
 	try {
 		// An argument array, so nothing in the ref is read by a shell, and
 		// `--tag=` so it cannot be read as a flag.
 		await run(
 			'docker',
-			['build', '--file=.gkm/docker/Dockerfile', `--tag=${fullImageName}`, '.'],
+			[
+				'build',
+				`--file=${relative(buildRoot, app.dockerfile)}`,
+				`--tag=${fullImageName}`,
+				'.',
+			],
 			{
-				cwd,
+				cwd: buildRoot,
 				// BuildKit, for the templates' `RUN --mount=type=cache`.
 				env: { ...process.env, DOCKER_BUILDKIT: '1' },
 			},
@@ -331,9 +186,6 @@ async function buildDockerImage(
 		logger.log(`✅ Docker image built: ${fullImageName}`);
 	} catch (error) {
 		throw new DockerBuildFailed(fullImageName, error);
-	} finally {
-		// Clean up copied lockfile
-		cleanup?.();
 	}
 }
 
@@ -370,6 +222,7 @@ async function pushDockerImage(
 export interface AppDockerResult {
 	appName: string;
 	type: 'backend' | 'web' | 'mobile';
+	/** The Dockerfile, absolute. */
 	dockerfile: string;
 	imageName: string;
 }
@@ -381,23 +234,8 @@ export interface WorkspaceDockerResult {
 	apps: AppDockerResult[];
 	dockerCompose: string;
 	dockerignore: string;
-}
-
-/**
- * Get the package name from package.json in an app directory.
- */
-function getAppPackageName(appPath: string): string | undefined {
-	try {
-		const pkgPath = join(appPath, 'package.json');
-		if (!existsSync(pkgPath)) {
-			return undefined;
-		}
-		const content = readFileSync(pkgPath, 'utf-8');
-		const pkg = JSON.parse(content);
-		return pkg.name;
-	} catch {
-		return undefined;
-	}
+	/** Every image's build context, absolute. */
+	buildRoot: string;
 }
 
 /**
@@ -408,22 +246,19 @@ export async function workspaceDockerCommand(
 	workspace: NormalizedWorkspace,
 	/** What the workspace declares — where a site's public keys come from. */
 	manifest?: ConstructManifest,
+	/** Image names other than the app's own. */
+	imageNames: Readonly<Record<string, string>> = {},
 ): Promise<WorkspaceDockerResult> {
 	const results: AppDockerResult[] = [];
-	const apps = Object.entries(workspace.apps);
+	const layout = imageLayout(workspace);
 
 	logger.log(`\n🐳 Generating Dockerfiles for workspace: ${workspace.name}`);
+	logger.log(`   Build root: ${layout.buildRoot}`);
+	logger.log(
+		`   Package manager: ${layout.tools.packageManager}${layout.tools.packageManagerVersion ? `@${layout.tools.packageManagerVersion}` : ''}, turbo@${layout.tools.turboVersion}`,
+	);
 
-	// Create docker output directory
-	const dockerDir = join(workspace.root, '.gkm', 'docker');
-	await mkdir(dockerDir, { recursive: true });
-
-	// Detect package manager
-	const packageManager = detectPackageManager(workspace.root);
-	logger.log(`   Package manager: ${packageManager}`);
-
-	// Generate Dockerfile for each app
-	for (const [appName, app] of apps) {
+	for (const [appName, app] of Object.entries(workspace.apps)) {
 		// Mobile apps deploy via their own toolchain (e.g. EAS Build for Expo)
 		// — no Docker image is produced.
 		if (app.type === 'mobile') {
@@ -433,70 +268,31 @@ export async function workspaceDockerCommand(
 			continue;
 		}
 
-		const appPath = app.path;
-		const fullAppPath = join(workspace.root, appPath);
-
-		// Get package name for turbo prune (use package.json name or app name)
-		const turboPackage = getAppPackageName(fullAppPath) ?? appName;
-
-		// Determine image name
-		const imageName = appName;
-
-		const hasEntry = !!app.entry;
-		const buildType = hasEntry ? 'entry' : app.type;
+		const buildType = app.entry ? 'entry' : app.type;
 		logger.log(`\n   📄 Generating Dockerfile for ${appName} (${buildType})`);
 
-		let dockerfile: string;
+		const dockerfile = appDockerfile(appName, app, {
+			layout,
+			workspaceRoot: workspace.root,
+			...(manifest ? { manifest } : {}),
+		});
 
-		if (app.type === 'web') {
-			dockerfile = siteDockerfile(appName, app, {
-				turboPackage,
-				packageManager,
-				...(manifest ? { manifest } : {}),
-			});
-		} else if (app.entry) {
-			// Backend with custom entry point - use tsdown bundling
-			dockerfile = generateEntryDockerfile({
-				imageName,
-				baseImage: 'node:22-alpine',
-				port: app.port,
-				appPath,
-				entry: app.entry,
-				turboPackage,
-				packageManager,
-				healthCheckPath: '/health',
-			});
-		} else {
-			// Backend with gkm routes - use gkm build
-			dockerfile = generateBackendDockerfile({
-				imageName,
-				baseImage: 'node:22-alpine',
-				port: app.port,
-				appPath,
-				turboPackage,
-				packageManager,
-				healthCheckPath: '/health',
-			});
-		}
-
-		// Write Dockerfile with app-specific name
-		const dockerfilePath = join(dockerDir, `Dockerfile.${appName}`);
+		const path = dockerfileOf(appName, app.path);
+		const dockerfilePath = join(workspace.root, path);
+		await mkdir(dirname(dockerfilePath), { recursive: true });
 		await writeFile(dockerfilePath, dockerfile);
-		logger.log(`      Generated: .gkm/docker/Dockerfile.${appName}`);
+		logger.log(`      Generated: ${path}`);
 
 		results.push({
 			appName,
 			type: app.type,
 			dockerfile: dockerfilePath,
-			imageName,
+			imageName: imageNames[appName] ?? appName,
 		});
 	}
 
-	// Generate shared .dockerignore
-	const dockerignore = generateDockerignore();
-	const dockerignorePath = join(workspace.root, '.dockerignore');
-	await writeFile(dockerignorePath, dockerignore);
-	logger.log(`\n   Generated: .dockerignore (workspace root)`);
+	const dockerignorePath = await ensureDockerignore(layout.buildRoot);
+	logger.log(`\n   Ensured: ${dockerignorePath}`);
 
 	const composePath = await writeConstructsCompose(workspace);
 
@@ -504,12 +300,12 @@ export async function workspaceDockerCommand(
 	logger.log(
 		`\n✅ Generated ${results.length} Dockerfile(s) + ${COMPOSE_PATH}`,
 	);
-	logger.log('\n📋 Build commands:');
+	logger.log(`\n📋 Build commands (from ${layout.buildRoot}):`);
 	for (const result of results) {
 		const icon =
 			result.type === 'backend' ? '⚙️' : result.type === 'mobile' ? '📱' : '🌐';
 		logger.log(
-			`   ${icon} docker build -f .gkm/docker/Dockerfile.${result.appName} -t ${result.imageName} .`,
+			`   ${icon} docker build -f ${relative(layout.buildRoot, result.dockerfile)} -t ${result.imageName} .`,
 		);
 	}
 	printRunInstructions(workspace);
@@ -518,7 +314,50 @@ export async function workspaceDockerCommand(
 		apps: results,
 		dockerCompose: composePath,
 		dockerignore: dockerignorePath,
+		buildRoot: layout.buildRoot,
 	};
+}
+
+/**
+ * One app's Dockerfile, by what it is: a gkm backend bundled by `gkm build`,
+ * a backend with its own entry bundled by esbuild, or a site by its
+ * framework. The one choice every builder of images makes.
+ */
+export function appDockerfile(
+	appName: string,
+	app: NormalizedAppConfig,
+	options: {
+		layout: ImageLayout;
+		workspaceRoot: string;
+		manifest?: ConstructManifest;
+		/** A site's public keys, when the caller resolved them itself. */
+		publicUrlArgs?: string[];
+	},
+): string {
+	const image = appImageOptions(
+		options.layout,
+		appName,
+		app,
+		options.workspaceRoot,
+	);
+
+	if (app.type === 'web') {
+		return siteDockerfile(appName, app, {
+			image,
+			...(options.manifest ? { manifest: options.manifest } : {}),
+			...(options.publicUrlArgs
+				? { publicUrlArgs: options.publicUrlArgs }
+				: {}),
+		});
+	}
+	if (app.entry) {
+		return generateEntryDockerfile({
+			...image,
+			entry: app.entry,
+			healthCheckPath: '/health',
+		});
+	}
+	return generateBackendDockerfile({ ...image, healthCheckPath: '/health' });
 }
 
 /**
@@ -533,9 +372,9 @@ export function siteDockerfile(
 	appName: string,
 	app: NormalizedAppConfig,
 	options: {
-		turboPackage: string;
-		packageManager: PackageManager;
+		image: ReturnType<typeof appImageOptions>;
 		manifest?: ConstructManifest;
+		publicUrlArgs?: string[];
 	},
 ): string {
 	const declared = options.manifest
@@ -544,19 +383,12 @@ export function siteDockerfile(
 			)?.[1]
 		: undefined;
 	const publicUrlArgs =
-		declared?.kind === 'site' && options.manifest
+		options.publicUrlArgs ??
+		(declared?.kind === 'site' && options.manifest
 			? Object.keys(publicEnvFor(declared, options.manifest))
-			: getPublicUrlArgNames(app);
+			: getPublicUrlArgNames(app));
 
-	const webOpts = {
-		imageName: appName,
-		baseImage: 'node:22-alpine',
-		port: app.port,
-		appPath: app.path,
-		turboPackage: options.turboPackage,
-		packageManager: options.packageManager,
-		publicUrlArgs,
-	};
+	const webOpts = { ...options.image, publicUrlArgs };
 
 	switch (app.framework) {
 		case 'vite':
@@ -572,10 +404,43 @@ export function siteDockerfile(
 }
 
 /**
- * The package name turbo prunes an app by: its package.json's, or its name.
+ * What a build root's `.dockerignore` must leave out of every image's
+ * context: dependencies installed for another platform, anything built on the
+ * host (every image builds from source), git, and gkm's own output —
+ * `.gkm/compose`'s env files hold a stage's secrets.
  */
-export function appPackageName(root: string, appName: string, path: string) {
-	return getAppPackageName(join(root, path)) ?? appName;
+const REQUIRED_IGNORES = [
+	'**/node_modules',
+	'.git',
+	'**/dist',
+	'**/.next',
+	'**/.turbo',
+	'**/.gkm',
+	'**/.gkm/compose',
+];
+
+/**
+ * Make sure the build root's `.dockerignore` leaves out what no image may
+ * hold: written whole where there is none, and each missing line appended to
+ * one the project keeps.
+ */
+export async function ensureDockerignore(buildRoot: string): Promise<string> {
+	const path = join(buildRoot, '.dockerignore');
+	if (!existsSync(path)) {
+		await writeFile(path, generateDockerignore());
+		return path;
+	}
+
+	const current = await readFile(path, 'utf-8');
+	const lines = new Set(current.split(/\r?\n/).map((line) => line.trim()));
+	const missing = REQUIRED_IGNORES.filter((line) => !lines.has(line));
+	if (missing.length === 0) return path;
+
+	await appendFile(
+		path,
+		`${current.endsWith('\n') || current === '' ? '' : '\n'}\n# gkm: images build from source, and a stack's env files hold its secrets\n${missing.join('\n')}\n`,
+	);
+	return path;
 }
 
 /**

@@ -95,15 +95,26 @@ built by `gkm compose` without a tag is tagged `<commit>-<stage>` the same way.
 
 ## Building
 
-A backend is bundled on this machine by the same `gkm build --provider server
---production` a deploy runs — one file, no dependencies — and packaged by a
-small Dockerfile. A site is built inside Docker from the Dockerfile `gkm docker`
-writes for its framework, with its public URLs passed as **build args**. A
-site's container gets no server environment and waits on no database.
+Every image is built inside Docker, from the same Dockerfiles `gkm docker`
+writes, and nothing is built on this machine first. Each prunes the build root
+to its app's slice with `turbo prune`, installs it, builds the workspace
+packages the app depends on, and then the app: a backend by `gkm build
+--provider server --production` — one file, no dependencies, in a slim
+runner — and a site by its framework, with its public URLs passed as **build
+args**. A site's container gets no server environment and waits on no
+database.
+
+A backend's environment is embedded in its image encrypted: handed to the
+build as the `gkm_credentials` BuildKit secret (`<app>.credentials`, mode
+`0600`, beside the stack) and decrypted at runtime with the `GKM_MASTER_KEY`
+its env file holds — the way a Dokploy deploy builds one.
 
 The generated Dockerfiles are written beside the stack, in
-`.gkm/compose/<stage>/`. The build context is the workspace root; `.gkm/compose`
-is added to `.dockerignore` so no stage's env file is ever sent to a build.
+`.gkm/compose/<stage>/`. The build context is the build root — the directory
+holding the lockfile or `pnpm-workspace.yaml`, at or above the workspace, so a
+workspace nested in a monorepo is built from the monorepo's root — and its
+`.dockerignore` is made to leave out `.gkm/compose`, so no stage's env file is
+ever sent to a build.
 
 ## The files
 
@@ -114,6 +125,7 @@ docker-compose.yml   the stack — compose project <scope>-<stage>
 Caddyfile            one host per app
 api.env              one env file per backend, mode 0600
 auth.env
+api.credentials      when building: a backend's encrypted environment, mode 0600
 Dockerfile.api       when building
 caddy-root.crt       the local stage's CA root
 ```
@@ -187,7 +199,7 @@ The local CA's root is copied to `.gkm/compose/<stage>/caddy-root.crt`; point
 | `validate` | the stack, worked out from the manifest; with a tag, every image looked up in the registry |
 | `plan` (`--dry-run`) | the files written, and what a run would build, pull and start — nothing else |
 | `provision` | the stage's generated secrets kept, the files written, the infrastructure started, its databases, roles, grants and migrations applied |
-| `build` | each backend bundled (in the deploy's sandbox, since it imports the project's code) and every image built — or, with a tag, pulled |
+| `build` | every image built inside Docker — or, with a tag, pulled |
 | `release` | `docker compose up --wait --remove-orphans`, and each app's image recorded |
 | `verify` | each app asked through Caddy over HTTPS — an API at `/health`, a site at `/` — with the certificate verified |
 

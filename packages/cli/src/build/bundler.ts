@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
@@ -233,10 +234,31 @@ export async function bundleServer(
 		// Add define options for build-time injection using esbuild's --define:KEY=VALUE format
 		const defines = generateDefineOptions(encrypted);
 		for (const [key, value] of Object.entries(defines)) {
-			args.push(`--define:${key}=${JSON.stringify(value)}`);
+			// `value` is already a JS string literal; quoting it again would
+			// embed the quotes, and the IV would not parse as hex.
+			args.push(`--define:${key}=${value}`);
 		}
 
 		console.log(`  Secrets encrypted for stage "${stage}"`);
+	} else {
+		// Credentials encrypted elsewhere — an image build hands them in as a
+		// BuildKit secret and writes them beside the app's `.gkm/server` — are
+		// embedded as they are; whoever encrypted them holds the key.
+		const gkmDir = join(outputDir, '..', '..');
+		const encryptedPath = join(gkmDir, 'credentials.enc');
+		const ivPath = join(gkmDir, 'credentials.iv');
+		if (existsSync(encryptedPath) && existsSync(ivPath)) {
+			const { generateDefineOptions } = await import('../secrets/encryption');
+			const defines = generateDefineOptions({
+				encrypted: readFileSync(encryptedPath, 'utf-8').trim(),
+				iv: readFileSync(ivPath, 'utf-8').trim(),
+				masterKey: '',
+			});
+			for (const [key, value] of Object.entries(defines)) {
+				args.push(`--define:${key}=${value}`);
+			}
+			console.log('  Embedded the encrypted credentials the build was given');
+		}
 	}
 
 	try {

@@ -9,10 +9,8 @@ import {
 	generateDockerEntrypoint,
 	generateDockerignore,
 	generateEntryDockerfile,
-	generateMultiStageDockerfile,
 	generateNextjsDockerfile,
 	generateNodeWebDockerfile,
-	generateSlimDockerfile,
 	generateViteStaticDockerfile,
 	getLockfileName,
 	hasTurboConfig,
@@ -89,141 +87,6 @@ describe('docker templates', () => {
 		});
 	});
 
-	describe('generateMultiStageDockerfile', () => {
-		const baseOptions = {
-			imageName: 'my-app',
-			baseImage: 'node:22-alpine',
-			port: 3000,
-			healthCheckPath: '/health',
-			prebuilt: false,
-			packageManager: 'pnpm' as const,
-		};
-
-		it('should generate Dockerfile with BuildKit syntax', () => {
-			const dockerfile = generateMultiStageDockerfile(baseOptions);
-
-			expect(dockerfile).toContain('# syntax=docker/dockerfile:1');
-		});
-
-		it('should include three stages: deps, builder, runner', () => {
-			const dockerfile = generateMultiStageDockerfile(baseOptions);
-
-			expect(dockerfile).toContain('FROM node:22-alpine AS deps');
-			expect(dockerfile).toContain('FROM deps AS builder');
-			expect(dockerfile).toContain('FROM node:22-alpine AS runner');
-		});
-
-		it('should use pnpm fetch for better caching', () => {
-			const dockerfile = generateMultiStageDockerfile(baseOptions);
-
-			expect(dockerfile).toContain('pnpm fetch');
-		});
-
-		it('should install tini for signal handling', () => {
-			const dockerfile = generateMultiStageDockerfile(baseOptions);
-
-			expect(dockerfile).toContain('apk add --no-cache tini');
-			expect(dockerfile).toContain('ENTRYPOINT ["/sbin/tini", "--"]');
-		});
-
-		it('should create non-root user', () => {
-			const dockerfile = generateMultiStageDockerfile(baseOptions);
-
-			expect(dockerfile).toContain('addgroup --system --gid 1001 nodejs');
-			expect(dockerfile).toContain('adduser --system --uid 1001 hono');
-			expect(dockerfile).toContain('USER hono');
-		});
-
-		it('should include health check', () => {
-			const dockerfile = generateMultiStageDockerfile(baseOptions);
-
-			expect(dockerfile).toContain('HEALTHCHECK');
-			expect(dockerfile).toContain('/health');
-		});
-
-		it('should expose configured port', () => {
-			const dockerfile = generateMultiStageDockerfile(baseOptions);
-
-			expect(dockerfile).toContain('EXPOSE 3000');
-			expect(dockerfile).toContain('ENV PORT=3000');
-		});
-
-		it('should use npm when specified', () => {
-			const dockerfile = generateMultiStageDockerfile({
-				...baseOptions,
-				packageManager: 'npm',
-			});
-
-			expect(dockerfile).toContain('npm ci');
-			expect(dockerfile).not.toContain('pnpm');
-		});
-
-		it('should use yarn when specified', () => {
-			const dockerfile = generateMultiStageDockerfile({
-				...baseOptions,
-				packageManager: 'yarn',
-			});
-
-			expect(dockerfile).toContain('yarn install --frozen-lockfile');
-			expect(dockerfile).toContain('yarn.lock');
-		});
-
-		it('should generate turbo Dockerfile when turbo option is set', () => {
-			const dockerfile = generateMultiStageDockerfile({
-				...baseOptions,
-				turbo: true,
-				turboPackage: 'api',
-			});
-
-			expect(dockerfile).toContain('turbo');
-			expect(dockerfile).toContain('pruner');
-		});
-	});
-
-	describe('generateSlimDockerfile', () => {
-		const baseOptions = {
-			imageName: 'my-app',
-			baseImage: 'node:22-alpine',
-			port: 3000,
-			healthCheckPath: '/health',
-			prebuilt: true,
-			packageManager: 'pnpm' as const,
-		};
-
-		it('should generate single-stage Dockerfile', () => {
-			const dockerfile = generateSlimDockerfile(baseOptions);
-
-			// Should not have multiple FROM statements
-			const fromMatches = dockerfile.match(/FROM\s+/g);
-			expect(fromMatches?.length).toBe(1);
-		});
-
-		it('should copy pre-built bundle', () => {
-			const dockerfile = generateSlimDockerfile(baseOptions);
-
-			expect(dockerfile).toContain('COPY .gkm/server/dist/server.mjs');
-		});
-
-		it('should install tini', () => {
-			const dockerfile = generateSlimDockerfile(baseOptions);
-
-			expect(dockerfile).toContain('tini');
-		});
-
-		it('should include health check', () => {
-			const dockerfile = generateSlimDockerfile(baseOptions);
-
-			expect(dockerfile).toContain('HEALTHCHECK');
-		});
-
-		it('declares no GKM build args: the bundle already holds its credentials', () => {
-			const dockerfile = generateSlimDockerfile(baseOptions);
-
-			expect(dockerfile).not.toMatch(/ARG GKM_/);
-			expect(dockerfile).toMatchSnapshot();
-		});
-	});
-
 	describe('generateDockerignore', () => {
 		it('should include common ignores', () => {
 			const ignore = generateDockerignore();
@@ -233,14 +96,25 @@ describe('docker templates', () => {
 			expect(ignore).toContain('.env');
 		});
 
-		it('should not ignore .gkm/server/dist for slim builds', () => {
-			const ignore = generateDockerignore();
+		it('keeps everything built on the host out: every image builds from source', () => {
+			const ignore = generateDockerignore().split('\n');
 
-			expect(ignore).toContain('!.gkm/server/dist');
+			for (const line of [
+				'**/node_modules',
+				'**/dist',
+				'**/.next',
+				'**/.gkm',
+			]) {
+				expect(ignore).toContain(line);
+			}
+			expect(generateDockerignore()).not.toContain('!.gkm/server/dist');
 		});
 
-		it('keeps the master key gkm build wrote out of the build context', () => {
-			expect(generateDockerignore()).toContain('.gkm/server/master.key');
+		it("keeps a stack's env files and the master key out of the build context", () => {
+			const ignore = generateDockerignore().split('\n');
+
+			expect(ignore).toContain('**/.gkm/compose');
+			expect(ignore).toContain('**/master.key');
 		});
 	});
 
@@ -499,7 +373,7 @@ describe('docker templates', () => {
 		it('should use turbo prune for monorepo optimization', () => {
 			const dockerfile = generateNextjsDockerfile(baseOptions);
 
-			expect(dockerfile).toContain('turbo prune @myapp/web --docker');
+			expect(dockerfile).toContain('prune @myapp/web --docker');
 		});
 
 		it('should copy standalone output', () => {
@@ -535,7 +409,7 @@ describe('docker templates', () => {
 				packageManager: 'npm',
 			});
 
-			expect(dockerfile).toContain('npx turbo');
+			expect(dockerfile).toContain('npx --yes turbo@');
 			expect(dockerfile).toContain('package-lock.json');
 		});
 	});
@@ -553,7 +427,9 @@ describe('docker templates', () => {
 		it('should generate backend Dockerfile with turbo prune', () => {
 			const dockerfile = generateBackendDockerfile(baseOptions);
 
-			expect(dockerfile).toContain('# Backend Dockerfile with turbo prune');
+			expect(dockerfile).toContain(
+				'# Backend Dockerfile: a turbo-pruned slice',
+			);
 		});
 
 		it('should include four stages: pruner, deps, builder, runner', () => {
@@ -568,13 +444,15 @@ describe('docker templates', () => {
 		it('should use turbo prune for the package', () => {
 			const dockerfile = generateBackendDockerfile(baseOptions);
 
-			expect(dockerfile).toContain('turbo prune @myapp/api --docker');
+			expect(dockerfile).toContain('prune @myapp/api --docker');
 		});
 
 		it('should build using gkm', () => {
 			const dockerfile = generateBackendDockerfile(baseOptions);
 
-			expect(dockerfile).toContain('gkm build --provider server --production');
+			expect(dockerfile).toContain(
+				'node "$GKM_BIN" build --provider server --production',
+			);
 		});
 
 		it('should copy bundled server.mjs', () => {
@@ -616,11 +494,14 @@ describe('docker templates', () => {
 		it('reads the credentials from a build secret, never a build arg', () => {
 			const dockerfile = generateBackendDockerfile(baseOptions);
 
-			// An ARG is recorded in `docker history`; a secret mount is not.
+			// An ARG is recorded in `docker history`; a secret mount is not. The
+			// one ARG is the ciphertext's hash, which busts the layer's cache.
 			expect(dockerfile).toContain(
 				'RUN --mount=type=secret,id=gkm_credentials,required=false',
 			);
-			expect(dockerfile).not.toMatch(/ARG GKM_/);
+			expect(dockerfile.match(/^ARG .*$/gm)).toEqual([
+				'ARG GKM_CIPHERTEXT_HASH=""',
+			]);
 			expect(dockerfile).toMatchSnapshot();
 		});
 	});
@@ -653,13 +534,13 @@ describe('docker templates', () => {
 		it('should use turbo prune for the package', () => {
 			const dockerfile = generateEntryDockerfile(baseOptions);
 
-			expect(dockerfile).toContain('turbo prune @myapp/auth --docker');
+			expect(dockerfile).toContain('prune @myapp/auth --docker');
 		});
 
 		it('should bundle with esbuild and packages=bundle flag', () => {
 			const dockerfile = generateEntryDockerfile(baseOptions);
 
-			expect(dockerfile).toContain('npx esbuild ./src/index.ts');
+			expect(dockerfile).toContain('esbuild ./src/index.ts');
 			expect(dockerfile).toContain('--packages=bundle');
 			expect(dockerfile).toContain('--bundle');
 			expect(dockerfile).toContain('--platform=node');
@@ -698,9 +579,17 @@ describe('docker templates', () => {
 			expect(dockerfile).toContain(
 				'RUN --mount=type=secret,id=gkm_credentials,required=false',
 			);
-			expect(dockerfile).toContain('--define:__GKM_ENCRYPTED_CREDENTIALS__');
-			expect(dockerfile).toContain('--define:__GKM_CREDENTIALS_IV__');
-			expect(dockerfile).not.toMatch(/ARG GKM_/);
+			// Each a JS string literal, quoted once: quoted twice, the IV would
+			// carry its quotes into the bundle and never parse as hex.
+			expect(dockerfile).toContain(
+				'--define:__GKM_ENCRYPTED_CREDENTIALS__="\\"$CREDS\\""',
+			);
+			expect(dockerfile).toContain(
+				'--define:__GKM_CREDENTIALS_IV__="\\"$IV\\""',
+			);
+			expect(dockerfile.match(/^ARG .*$/gm)).toEqual([
+				'ARG GKM_CIPHERTEXT_HASH=""',
+			]);
 			expect(dockerfile).toMatchSnapshot();
 		});
 
@@ -740,7 +629,7 @@ describe('docker templates', () => {
 				packageManager: 'npm',
 			});
 
-			expect(dockerfile).toContain('npx turbo');
+			expect(dockerfile).toContain('npx --yes turbo@');
 			expect(dockerfile).toContain('package-lock.json');
 		});
 

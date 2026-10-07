@@ -7,6 +7,13 @@
 		"build": "gkm build",
 		"dev": "gkm dev"
 	},
+	"dependencies": {
+		"@geekmidas/audit": "workspace:*",
+		"@geekmidas/errors": "workspace:*",
+		"@geekmidas/services": "workspace:*",
+		"kysely": "~0.29.6",
+		"zod": "~4.6.5"
+	},
 	"imports": {
 		"#test": "./.gkm/test/index.ts"
 	}

@@ -248,125 +248,90 @@ export type EmailBackend = (typeof backends)['email'];
 Generate Docker deployment files for production.
 
 ```bash
-# Generate multi-stage Dockerfile (builds from source inside Docker)
+# One Dockerfile per app, each building the app inside Docker
 gkm docker
 
-# Generate and build Docker image
+# Generate and build the images
 gkm docker --build
 
 # Build and push to registry
 gkm docker --build --push --registry ghcr.io/myorg --tag v1.0.0
-
-# Use slim Dockerfile (requires pre-built bundle)
-gkm build --provider server --production
-gkm docker --slim
 ```
 
 **Options:**
 
 | Option | Description |
 |--------|-------------|
-| `--build` | Build Docker image after generating files |
-| `--push` | Push image to registry after building |
+| `--build` | Build each image after generating files |
+| `--push` | Push the images to the registry after building |
 | `--tag <tag>` | Image tag (default: latest) |
 | `--registry <url>` | Container registry URL |
-| `--slim` | Use slim Dockerfile (requires pre-built bundle) |
-| `--turbo` | Use turbo prune for monorepo optimization |
-| `--turbo-package <name>` | Package name for turbo prune |
 
 **Generated Files:**
 
 ```
 .gkm/docker/
-├── Dockerfile           # Multi-stage (default), slim, or turbo build
-├── .dockerignore
-└── docker-entrypoint.sh
+└── Dockerfile.<app>     # one per app (Dockerfile for an app at the root)
+<build root>/.dockerignore
+docker-compose.constructs.yml
 ```
 
-**Dockerfile Types:**
+**How an image is built:**
 
-| Type | Description | When Used |
-|------|-------------|-----------|
-| Multi-stage | Builds from source inside Docker | Default (recommended) |
-| Slim | Copies pre-built bundle | `--slim` flag (requires prior build) |
-| Turbo | Prunes monorepo before building | `--turbo` flag (for monorepos) |
+Every image — from `gkm docker`, `gkm compose` and a Dokploy deploy alike —
+is built inside Docker, and nothing is built on the host first: `docker build`
+on a clean checkout is all it takes.
 
-**Build Speed Optimizations:**
+1. **The build root is the context.** It is the directory holding the lockfile
+   or `pnpm-workspace.yaml`, at or above the gkm workspace: the workspace's own
+   root in a project of its own, the monorepo's root for a workspace nested in
+   one. Build from there: `docker build -f <path>/.gkm/docker/Dockerfile.api .`
+2. **`turbo prune`** cuts the app's slice of it (a single-package project is
+   copied whole), and the image installs the slice's dependencies.
+3. **The workspace packages the app depends on are built** in the image — the
+   root's `build` script, then turbo's `^build` — and then the app:
+   `gkm build --provider server --production` for a backend, the framework's
+   build for a site.
+4. **The runner holds the result only**: `server.mjs` for a backend (plus any
+   package the bundle leaves external), Next's standalone server, or a Vite
+   site's files served by Caddy.
 
-The generated Dockerfiles are optimized for fast rebuilds:
-
-1. **BuildKit cache mounts** - The pnpm store is cached between builds:
-   ```dockerfile
-   RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
-       pnpm fetch
-   ```
-
-2. **pnpm fetch + offline install** - Dependencies are fetched first (cacheable), then installed offline:
-   ```dockerfile
-   COPY pnpm-lock.yaml ./
-   RUN pnpm fetch
-   COPY package.json ./
-   RUN pnpm install --frozen-lockfile --offline
-   ```
-
-3. **Turbo prune for monorepos** - Only copies necessary packages:
-   ```bash
-   gkm docker --turbo --turbo-package my-api
-   ```
-
-**Rebuild Performance:**
-
-| Scenario | Without Optimization | With Optimization |
-|----------|---------------------|-------------------|
-| Code change only | ~2-3 min | ~30s |
-| New dependency | ~3-4 min | ~1 min |
-| Fresh build | ~4-5 min | ~3-4 min |
+The package manager is pinned to the build root's `packageManager`, and turbo
+to the version the build root resolves. The build root's `.dockerignore` is
+created, or completed, so no context holds `node_modules`, `.git`, anything
+built on the host, or a stack's env files under `.gkm/compose`. A backend's
+encrypted credentials arrive as the `gkm_credentials` BuildKit secret, never a
+build arg.
 
 **Container Best Practices:**
 
-All Dockerfile types include:
-- **tini** as the init process (handles SIGTERM propagation and zombie reaping)
-- Non-root user (`hono`) for security
-- Health check endpoint for container orchestration
-- Minimal Alpine base image
+Every image:
+- runs as a non-root user, with **tini** as the init process for a Node server
+- has a health check: `/health` for a backend, `/` for a site
+- is built from a minimal Alpine base image
+
+A Vite site is served by Caddy: Vite's hashed `/assets/*` are cached for a year
+(`immutable`), and `index.html` — with every client-side route that falls back
+to it — is revalidated on each request (`no-cache`).
 
 ### Prepack
 
-Generate Docker files for production deployment.
+Generate Docker files for production deployment — the same files `gkm docker`
+writes.
 
 ```bash
-# Generate multi-stage Dockerfile (recommended for CI/CD)
 gkm prepack
-
-# Generate and build Docker image
-gkm prepack --build
-
-# Full deployment workflow
 gkm prepack --build --push --registry ghcr.io/myorg --tag v1.0.0
-
-# Local development: build locally first, then slim Dockerfile
-gkm prepack --slim
 ```
 
 **Options:**
 
 | Option | Description |
 |--------|-------------|
-| `--build` | Build Docker image after generating files |
-| `--push` | Push image to registry after building |
+| `--build` | Build each image after generating files |
+| `--push` | Push the images to the registry after building |
 | `--tag <tag>` | Image tag (default: latest) |
 | `--registry <url>` | Container registry URL |
-| `--slim` | Build locally first, then use slim Dockerfile |
-| `--skip-bundle` | Skip bundling step (only with --slim) |
-| `--turbo` | Use turbo prune for monorepo optimization |
-| `--turbo-package <name>` | Package name for turbo prune |
-
-**Workflow Comparison:**
-
-| Command | What it does |
-|---------|--------------|
-| `gkm prepack --build` | Generates multi-stage Dockerfile, builds inside Docker |
-| `gkm prepack --slim --build` | Builds locally, then creates slim Docker image |
 
 ### OpenAPI
 

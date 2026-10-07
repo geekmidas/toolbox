@@ -496,7 +496,11 @@ export const config = new EnvironmentParser(process.env)
 			expect(build).toContain(
 				`--secret=id=gkm_credentials,src=${secret!.path}`,
 			);
-			expect(build.some((a) => a.includes('GKM_'))).toBe(false);
+			// The only GKM_ build arg names the ciphertext by its hash, so a new
+			// key rebuilds the layer; the credentials are not in it.
+			expect(build.filter((a) => a.includes('GKM_'))).toEqual([
+				expect.stringMatching(/^--build-arg=GKM_CIPHERTEXT_HASH=[0-9a-f]{16}$/),
+			]);
 			// Ciphertext then IV, owner-only, and gone after the build.
 			const [encrypted, iv] = secret!.content.trimEnd().split('\n');
 			expect(encrypted).toMatch(/^[A-Za-z0-9+/]+=*$/);

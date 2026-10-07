@@ -110,9 +110,16 @@ describe('the local stage', () => {
 			context: '../../..',
 			dockerfile: '.gkm/compose/development/Dockerfile.api',
 		});
-		expect(s.dockerfiles['.gkm/compose/development/Dockerfile.api']).toContain(
-			'COPY apps/api/.gkm/server/dist/server.mjs ./',
+		// Bundled in the image, by the template `gkm docker` writes — never
+		// copied in from a bundle built on the host.
+		const api = s.dockerfiles['.gkm/compose/development/Dockerfile.api'];
+		expect(api).toContain(
+			'node "$GKM_BIN" build --provider server --production',
 		);
+		expect(api).toContain(
+			'COPY --from=builder --chown=hono:nodejs /app/apps/api/.gkm/server/dist/server.mjs ./',
+		);
+		expect(api).not.toMatch(/^COPY apps\//m);
 	});
 });
 
