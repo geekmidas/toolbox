@@ -52,6 +52,7 @@
     "deploy-domains-subdomains",
     "deploy-github-oidc",
     "deploy-identity",
+    "deploy-sandbox",
     "deploy-shell-and-secrets",
     "deploy-state-journal",
     "deploy-state-store",

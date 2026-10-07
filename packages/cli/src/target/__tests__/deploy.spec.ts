@@ -159,9 +159,11 @@ describe('deploy() through a target package', () => {
 			root,
 			'production-shop-api',
 		]);
-		// The SST app was left to SST, with what to run instead.
+		// The SST app was left to its own run, with the command for it.
 		expect(events.find((e) => e.type === 'app.skipped')).toMatchObject({
-			reason: expect.stringContaining('sst deploy --stage production'),
+			reason: expect.stringContaining(
+				'gkm deploy --target sst --stage production',
+			),
 		});
 	});
 

@@ -173,9 +173,9 @@ const MOBILE_FRAMEWORKS = ['expo'] as const;
 const DeployTargetSchema = z.string().min(1);
 
 /**
- * The built-in targets a config may name: `dokploy`, deployed by
- * `gkm deploy`, and `sst`, deployed by `sst deploy` from the manifest
- * `gkm build` writes.
+ * The built-in targets a config may name, both deployed by `gkm deploy`:
+ * `dokploy`, and `sst`, which runs `sst deploy` on the manifest `gkm build`
+ * writes.
  */
 const SUPPORTED_DEPLOY_TARGETS = configurableBuiltins();
 

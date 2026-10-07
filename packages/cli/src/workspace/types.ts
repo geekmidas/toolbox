@@ -34,7 +34,7 @@ export type {
 
 /**
  * Where a stage — or one app — deploys, by target name: a built-in
- * (`dokploy`; `sst`, deployed by SST itself) or a key of `deploy.targets`.
+ * (`dokploy`, `sst`) or a key of `deploy.targets`.
  *
  * @example
  * ```ts

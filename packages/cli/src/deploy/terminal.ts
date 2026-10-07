@@ -79,6 +79,10 @@ function asking(): CredentialProvider {
 				return { endpoint, token } as never;
 			}
 
+			// AWS is a profile or a role, set up with the AWS CLI — not keys
+			// typed into a deploy.
+			if (request.kind !== 'registry') return undefined;
+
 			logger.log(
 				`   Dokploy has no registry for ${request.url}. Let's create one.`,
 			);

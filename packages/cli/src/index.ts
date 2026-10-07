@@ -749,7 +749,7 @@ program
 	.description('Deploy a stage through its target')
 	.option(
 		'--target <name>',
-		'Deploy target: dokploy, compose, or one named in deploy.targets (default: deploy.default)',
+		'Deploy target: dokploy, compose, sst, or one named in deploy.targets (default: deploy.default)',
 	)
 	.option('--provider <provider>', '[DEPRECATED] Use --target instead')
 	.requiredOption(

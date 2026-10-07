@@ -4,7 +4,7 @@
  * In this order, the first that has the name wins:
  *
  * 1. the host's own targets — what a program calling `deploy()` passes
- * 2. the built-ins — `dokploy`, `compose`
+ * 2. the built-ins — `dokploy`, `compose`, `sst`
  * 3. `deploy.targets` in gkm.config.ts — a package, an object, or either
  *    with options
  *
@@ -120,6 +120,7 @@ export class InvalidTargetOptions extends Error {
 const BUILTIN_LOADERS: Record<string, () => Promise<AnyDeployTarget>> = {
 	dokploy: async () => (await import('./dokploy')).dokployTarget,
 	compose: async () => (await import('./compose/index')).composeTarget(),
+	sst: async () => (await import('./sst/index')).sstTarget,
 };
 
 /** The target `name` means, in this workspace, for this host. */

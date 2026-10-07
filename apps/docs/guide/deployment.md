@@ -604,12 +604,10 @@ docker run -e GKM_MASTER_KEY="$(cat .gkm/server/master.key)" my-api:latest
 ## Deploy targets
 
 `gkm deploy` deploys a stage through a *target*: `deploy.default`, or
-`--target <name>`. `dokploy` and `compose` (one Docker Compose stack behind
-Caddy, on the machine that deploys — see [Deploy with Docker
-Compose](./compose.md)) ship with the CLI. `sst` is a valid default for
-building and `gkm dev`, but is deployed by `sst deploy` for now, and `gkm
-deploy` says so. Any other target is a package the project installs and
-names:
+`--target <name>`. `dokploy`, `sst` and `compose` (one Docker Compose stack
+behind Caddy, on the machine that deploys — see [Deploy with Docker
+Compose](./compose.md)) ship with the CLI. Any other target is a package the
+project installs and names:
 
 ```ts
 // gkm.config.ts
@@ -917,8 +915,27 @@ and the packages `@geekmidas/cloud/sst` needs.
 
 ```bash
 pnpm run deploy:staging
-# = gkm build && sst deploy --stage staging
+# = gkm deploy --stage staging
 ```
+
+`gkm deploy` through the `sst` target runs, in the deploy's sandbox:
+
+1. `gkm build --provider aws --stage <stage>` — with no AWS credentials, since
+   the build runs the project's code and needs none;
+2. `sst deploy --stage <stage>` — the one command handed AWS credentials, in
+   its own environment;
+3. a health check of each surface whose URL `run()` returns: an API's
+   `/health`, a site's `/`. SST writes those outputs to `.sst/outputs.json`;
+   a surface that never answers 2xx fails the deploy with `SurfacesUnhealthy`.
+
+The AWS credentials come from the deploy's `CredentialProvider` (kind `aws`).
+From the environment that is `AWS_PROFILE` when set — alone, over any exported
+keys, so leftover staging keys cannot redirect a production deploy — otherwise
+`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN`, which is what
+the scaffolded workflow's `aws-actions/configure-aws-credentials` step exports.
+Without either, the deploy stops with `MissingCredential` before anything runs.
+SST keeps no previous release, so a failed verify is not rolled back: fix and
+deploy again.
 
 The scaffold sets `deploy: { default: 'sst' }` in `gkm.config.ts`, so
 `gkm build` builds for AWS and writes `.gkm/manifest/aws.ts` at the root —
@@ -947,10 +964,16 @@ export default $config({
     const { backends, constructs } = await import('./.gkm/manifest/aws.js');
     const vpc = new sst.aws.Vpc('Vpc', { nat: 'ec2' });
     // …
-    return fromManifest(new Stack(app, 'Shop'), constructs, {
+    const provisioned = fromManifest(new Stack(app, 'Shop'), constructs, {
       Database: { vpc },                                      // RDS needs a network
       Mail: { from: process.env.MAIL_FROM as string },        // a verified SES sender
     }, backends);
+    // Each surface's URL, for `gkm deploy` to health-check.
+    return Object.fromEntries(
+      Object.entries(constructs)
+        .filter(([, c]) => c.kind === 'rest-api' || c.kind === 'site')
+        .map(([id]) => [id, provisioned[id]!.provides().url]),
+    );
   },
 });
 ```
