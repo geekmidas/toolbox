@@ -1,5 +1,12 @@
 # @geekmidas/telescope
 
+## 10.0.0-alpha.71
+
+### Patch Changes
+
+- Updated dependencies [[`20264e6`](https://github.com/geekmidas/toolbox/commit/20264e62b0fcd1f9e3c523197cf4bf9828c8ced1)]:
+  - @geekmidas/logger@10.0.0-alpha.71
+
 ## 10.0.0-alpha.70
 
 ### Minor Changes

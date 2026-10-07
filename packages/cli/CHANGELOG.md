@@ -1,5 +1,32 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.71
+
+### Minor Changes
+
+- [#191](https://github.com/geekmidas/toolbox/pull/191) [`6a7258d`](https://github.com/geekmidas/toolbox/commit/6a7258dec09b7faea6550f6c9e4ac4d0f5b0b744) Thanks [@geekmidas](https://github.com/geekmidas)! - A production server serves endpoints the way `gkm dev` does
+
+  - **One handler path.** `gkm build --production` generated its own per-tier handlers (`minimal`, `standard`, `full`), hand copies of the adaptor that had drifted from it: an endpoint from an `.auditor(...)` router was handed `auditor: undefined`, so `auditor.audit(...)` threw; cookies and headers a handler set were dropped; `res.status(...)` threw on a minimal endpoint; query arrays and output-validation status differed. Every endpoint is now registered with `HonoEndpoint`, as under `gkm dev` and in a feature test. The tier analyzer, the templates and the internal `optimizedHandlers` flag are gone.
+  - 🤕 **Errors are logged with their message and stack.** The generated entries (server, crons, queues, subscribers, shutdown hooks) logged `{ error }`, which pino writes as `"error":{}`; they log `{ err: error }`.
+  - **An app that calls a surface is given its URL and nothing else.** The API's environment held the auth server's `AUTH_TRUSTED_ORIGINS` and `AUTH_COOKIE_DOMAIN` along with `AUTH_URL`; those are the surface's own settings. Its secret, tenant URL and mail keys were already the auth app's alone.
+  - **An app that uses a file server's bucket is given the file server's URL.** `.dependsOn([uploads])` points at the bucket node, so the API got `UPLOADS_URL` but not `UPLOADS_SERVER_URL`, which the client reads: every `POST /uploads` in a `gkm compose` stack answered 500.
+  - **A minified bundle keeps its names** (`--keep-names`), so an error's `type` in a log line and `name` in a response read `UnauthorizedError` rather than `_6`.
+
+### Patch Changes
+
+- Updated dependencies [[`5b5cc7b`](https://github.com/geekmidas/toolbox/commit/5b5cc7bf2141558b03418d4338de4f5ac6b4be6c), [`20264e6`](https://github.com/geekmidas/toolbox/commit/20264e62b0fcd1f9e3c523197cf4bf9828c8ced1)]:
+  - @geekmidas/constructs@10.0.0-alpha.71
+  - @geekmidas/logger@10.0.0-alpha.71
+  - @geekmidas/cache@10.0.0-alpha.71
+  - @geekmidas/db@10.0.0-alpha.71
+  - @geekmidas/envkit@10.0.0-alpha.71
+  - @geekmidas/errors@10.0.0-alpha.71
+  - @geekmidas/manifest@10.0.0-alpha.71
+  - @geekmidas/schema@10.0.0-alpha.71
+  - @geekmidas/services@10.0.0-alpha.71
+  - @geekmidas/storage@10.0.0-alpha.71
+  - @geekmidas/telescope@10.0.0-alpha.71
+
 ## 10.0.0-alpha.70
 
 ### Minor Changes

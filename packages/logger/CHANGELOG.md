@@ -1,5 +1,11 @@
 # @geekmidas/logger
 
+## 10.0.0-alpha.71
+
+### Patch Changes
+
+- [#191](https://github.com/geekmidas/toolbox/pull/191) [`20264e6`](https://github.com/geekmidas/toolbox/commit/20264e62b0fcd1f9e3c523197cf4bf9828c8ced1) Thanks [@geekmidas](https://github.com/geekmidas)! - `createLogger` serializes an `Error` under `error` as well as `err`, with its type, message and stack. `logger.error({ error }, …)` used to write `"error":{}`. URL credentials in the serialized message and stack are masked, and path redaction (`error.message`, `err.stack`) applies to the serialized fields.
+
 ## 10.0.0-alpha.70
 
 ### Minor Changes
