@@ -47,9 +47,26 @@ export default defineConfig({
           { text: 'Project Structure', link: '/guide/project-structure' },
           { text: 'CLI Reference', link: '/guide/cli-reference' },
           { text: 'Workspaces', link: '/guide/workspaces' },
+          { text: 'Typed API Client', link: '/guide/openapi-typescript' },
           { text: 'Testing', link: '/guide/testing' },
+          { text: 'Upgrading to 10.0.0-alpha', link: '/guide/upgrading' },
+        ],
+      },
+      {
+        text: 'Deploy',
+        items: [
           { text: 'Deployment', link: '/guide/deployment' },
+          { text: 'Deploy Targets', link: '/guide/deploy-targets' },
           { text: 'Deploy with Docker Compose', link: '/guide/compose' },
+          { text: 'Running in Production', link: '/guide/production' },
+          { text: 'Deploy State', link: '/guide/state' },
+          { text: 'Deploying from a Program', link: '/guide/deploy-api' },
+          { text: 'The Sandbox', link: '/guide/sandbox' },
+          { text: 'Writing a Target', link: '/guide/writing-a-target' },
+          {
+            text: 'Deprecated Deploy APIs',
+            link: '/guide/deploy-deprecations',
+          },
         ],
       },
       {

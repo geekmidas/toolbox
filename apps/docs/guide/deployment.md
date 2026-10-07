@@ -32,11 +32,10 @@ an edge into an IAM policy, a security group, or a link is the target adapter's
 business — which is why the same declaration deploys to a container host and to
 AWS without naming either.
 
-::: warning What is not built yet
-The AWS target provisions twelve of the thirteen declaration kinds; `rest-api`
-is outstanding. Its decisions are unit-tested as pure functions, but **a stack
-has never come up end to end**. The server/Dokploy path below is the one in use
-today.
+::: tip Where to go next
+- [Deploy targets](./deploy-targets.md): `dokploy`, `compose` and `sst`, and how to choose
+- [Running in production](./production.md): secrets, state, health checks, telemetry, rollback
+- [Deploying from a program](./deploy-api.md): `deploy()`, its events, and `gkm deploy --json`
 :::
 
 ## Quick Start
@@ -123,8 +122,12 @@ gkm build --provider server --production
 
 A `--production` build bundles and minifies the server into a single file,
 serves a health check at `/health`, shuts down gracefully, and leaves out the
-dev tools (Telescope, the database API) and the OpenAPI spec. It runs the worker's
-background work itself: queues polled, crons scheduled, subscribers drained.
+dev tools (Telescope, the database API) and the OpenAPI spec. It serves HTTP
+only: a `Worker`'s queue consumers, crons and topic subscribers are left out, and
+the build says what it left out (`Serving Api only: leaving out 1 cron, …`).
+Publishing is unchanged. Until workers get their own deploy unit, background
+work does not run in a server deploy; see
+[what is not deployed yet](./production.md#what-is-not-deployed-yet).
 
 ### AWS
 
@@ -308,140 +311,24 @@ declared database, which is the construct that causes the Postgres to exist.
 
 ## State Providers
 
-Deploy state tracks what a stage's deploys created (project, environment,
-application and domain ids, credentials) so the next deploy finds them again.
-`state.provider` picks where it lives.
-
-### Local (default)
-
-Stores state in the local filesystem.
-
-- **Location:** `.gkm/deploy-{stage}.json`
-- **Use case:** Single developer, local development
-
-### SSM
-
-Stores state in AWS Systems Manager Parameter Store, read and written there
-directly — there is no local cache to go stale.
-
-- **Location:** `/gkm/{workspaceName}/{stage}/state`
-- **Encryption:** AWS-managed KMS key
-- **Use case:** Teams, CI/CD pipelines
+Deploy state records what a stage's deploys created (project, environment,
+application and domain ids, database credentials, generated secrets, each app's
+releases) so the next deploy finds them again. `state.provider` picks where it
+lives:
 
 ```typescript
-// gkm.config.ts
-import { defineWorkspace } from '@geekmidas/cli/config';
-
-export default defineWorkspace({
-  name: 'my-app',  // Required for SSM provider
-  stages: { local: 'dev', deployed: ['prod'] },
-  constructs: './constructs/**/*.ts',
-  state: {
-    provider: 'ssm',
-    region: 'us-east-1',
-  },
-});
+state: { provider: 'local' }                                        // default: .gkm/deploy-<stage>.json
+state: { provider: 'ssm', region: 'us-east-1' }                     // /gkm/<workspace>/<stage>/state
+state: { provider: 's3', bucket: 'my-app-deploy-state', region: 'us-east-1' }
 ```
 
-### S3
+Every deploy takes the stage's lock (`StateLocked` for a second run; release a
+crashed run's lock with `gkm state:unlock --stage <stage>`), writes
+conditionally, and journals each resource as it creates it. Use SSM or S3 as
+soon as more than one machine deploys a stage.
 
-Stores state as an object in an existing S3 bucket. Every write is
-conditional (`If-None-Match: *` to create, `If-Match: <etag>` to replace), so
-two runs can never overwrite each other's state.
-
-- **Location:** `s3://{bucket}/{prefix}/{workspaceName}/{stage}/state.json`
-  (`prefix` defaults to `gkm`), with the lock beside it in `lock.json`
-
-```typescript
-state: {
-  provider: 's3',
-  bucket: 'my-app-deploy-state',
-  region: 'us-east-1',
-  prefix: 'gkm',          // optional
-  profile: 'production',  // optional
-},
-```
-
-### Locks, versions and resource records
-
-Every provider is a `StateStore`, and `gkm deploy` and the `state:*` commands
-all go through it:
-
-- **Lock:** a deploy holds the stage's lock from before it generates anything
-  until it ends, however it ends. A second run fails with `StateLocked`,
-  naming who holds it. A run that was killed with the lock held is released
-  with `gkm state:unlock --stage <stage>`.
-- **Versioned writes:** a write names the version it read and fails with
-  `StateVersionConflict` if the state changed since. Local files are replaced
-  atomically (temp file + rename), SSM checks the parameter version before and
-  after each put, S3 uses conditional puts.
-- **Resource records — a journal:** deploy records each resource it creates
-  (project, environment, each application and domain) as `pending` before the
-  create call and `ready` with its id after, and writes the state after each
-  app. A run that dies part way keeps every id it got back, and the next run
-  looks up anything left `pending` before creating it — it adopts what the
-  dead run made rather than making a second one. `gkm state:show` lists
-  resources still pending.
-- **Format:** state is stored as schema version 2. A version 1 file is
-  migrated the first time a store reads it, and the original is kept as
-  `.gkm/deploy-{stage}.v1.json` (`state.v1` beside the SSM parameter,
-  `state.v1.json` beside the S3 object).
-- **Permissions:** local state, lock and backup files are mode `0600`.
-
-A custom `StateProvider` (an object with `read`/`write`) keeps working, but
-cannot lock: it warns `StateStoreWithoutLocking`. Implement `StateStore` to
-make it safe for concurrent runs.
-
-### Moving state between local and remote
-
-```bash
-# Copy the remote stage (state and resource records) to .gkm/
-gkm state:pull --stage production
-
-# Copy the local stage to the remote, under the remote stage's lock
-gkm state:push --stage production
-
-# Compare local and remote, resource records included
-gkm state:diff --stage production
-```
-
-A push takes the remote stage's lock, so it fails with `StateLocked` while a
-deploy of that stage is running rather than replacing the state the deploy is
-writing. A v1 file is migrated on the way.
-
-### State Contents
-
-```typescript
-interface DokployStageState {
-  provider: 'dokploy';
-  stage: string;
-  environmentId: string;
-  applications: Record<string, string>;     // appName -> applicationId
-  services: {
-    postgresId?: string;
-    redisId?: string;
-  };
-  appCredentials?: Record<string, {
-    dbUser: string;
-    dbPassword: string;
-  }>;
-  generatedSecrets?: Record<string, Record<string, string>>;
-  dnsVerified?: Record<string, {
-    serverIp: string;
-    verifiedAt: string;
-  }>;
-  identity?: string;                        // '<namespace>/<project>'
-  registryId?: string;                      // the Dokploy registry pulled through
-  images?: Record<string, {                 // appName -> what it runs
-    ref: string;
-    digest?: string;                        // 'sha256:…'
-  }>;
-  lastDeployedAt: string;
-}
-```
-
-`gkm state:show` masks database passwords, generated secrets and IAM keys,
-in both its table and `--json` output.
+See [Deploy state](./state.md) for the providers, locks, the journal,
+`state:*` commands and the v1 to v2 migration.
 
 ---
 
@@ -604,74 +491,18 @@ docker run -e GKM_MASTER_KEY="$(cat .gkm/server/master.key)" my-api:latest
 ## Deploy targets
 
 `gkm deploy` deploys a stage through a *target*: `deploy.default`, or
-`--target <name>`. `dokploy`, `sst` and `compose` (one Docker Compose stack
-behind Caddy, on the machine that deploys — see [Deploy with Docker
-Compose](./compose.md)) ship with the CLI. Any other target is a package the
-project installs and names:
+`--target <name>` for one run. `dokploy`, `compose` and `sst` ship with the CLI;
+any other target is a package the project installs and names under
+`deploy.targets`.
 
-```ts
-// gkm.config.ts
-deploy: {
-  default: 'acme',
-  targets: {
-    acme: '@acme/gkm-target',                    // a package
-    fly: ['@acme/gkm-fly', { org: 'acme' }],     // a package, with options
-    local: defineTarget({ … }),                  // a target object
-  },
-}
+```bash
+gkm deploy --stage production                   # deploy.default (dokploy when unset)
+gkm deploy --stage production --target compose
 ```
 
-A name resolves to the first of: the host's own targets (`deploy({ targets })`),
-the built-ins, then `deploy.targets` — so a dependency can never take over
-`dokploy`. A name none of them has fails with `UnknownDeployTarget`. A package
-is never guessed from a name (`acme` → `@acme/gkm-target`): an unclaimed npm
-scope can be claimed by anyone, and a deploy runs its target with the stage's
-credentials.
-
-An app on the default follows `--target`; an app whose own `deploy` names
-another target is skipped, with the command that deploys it.
-
-### Writing a target
-
-A target implements the phases `validate → plan` (a dry run) or
-`validate → provision → build → release → verify`, and `rollback` when it
-can. Each phase is handed the identity, the workspace and its manifest, the
-root as `cwd`, the `CredentialProvider`, the stage's `StateStore` (locked for
-a real run), the stage's secrets (masked in every line once read), a logger,
-the `AbortSignal`, an event emitter and `name()` for namespaced resource
-names. Every phase must be safe to run again.
-
-```ts
-import { defineTarget } from '@geekmidas/cli/target';
-import { z } from 'zod';
-
-export default defineTarget({
-  name: 'acme',
-  runtime: 'server', // or 'aws': which backends `gkm dev` and `gkm build` choose
-  capabilities: { rollback: true, migrations: 'target', images: true },
-  options: z.object({ region: z.string().default('ams') }),
-  async validate(ctx) {
-    return { region: ctx.options.region }; // ctx.options is typed
-  },
-  async plan(ctx, run) {
-    ctx.emit({ type: 'resource.planned', key: 'app:api', resourceType: 'app', action: 'create' });
-  },
-  async release(ctx, run) { /* … */ },
-  async rollback(ctx, run, failure) { /* … */ },
-  result(ctx, run) { /* the DeployResult */ },
-});
-```
-
-The package declares its runtime in `package.json`, so `gkm dev` and
-`gkm build` read it without loading the target:
-
-```json
-{ "name": "@acme/gkm-target", "gkm": { "runtime": "server" } }
-```
-
-`--provider dokploy` still works as `--target dokploy`, with a warning.
-`--provider docker` and `--provider aws-lambda` are removed (`ProviderRemoved`):
-use `gkm docker` or `gkm compose`, and SST.
+See [Deploy targets](./deploy-targets.md) for choosing one, `deploy.targets`
+and how a name resolves, and [Writing a target](./writing-a-target.md) for
+`defineTarget`.
 
 ## Dokploy Deployment
 
@@ -714,101 +545,12 @@ would create (`+`) and what it would reuse (`=`).
 ### Deploying from a program
 
 `gkm deploy` is a thin wrapper around `deploy()` from `@geekmidas/cli/deploy`,
-which a host — a CI runner, a platform, a script — can call directly. It
-never prompts, prints or exits the process:
+which never prompts, prints or exits the process, and reports progress as
+events. See [Deploying from a program](./deploy-api.md).
 
-```ts
-import { deploy, MissingCredential } from '@geekmidas/cli/deploy';
-
-const run = deploy({
-  cwd: '/srv/checkouts/shop', // the project; never assumed to be process.cwd()
-  stage: 'production',
-  credentials: {
-    async get(request) {
-      if (request.kind === 'dokploy') {
-        return { endpoint: 'https://dokploy.example.com', token: vault.dokploy };
-      }
-      // `registry`: only asked for when Dokploy has no registry to pull with
-    },
-  },
-  signal: AbortSignal.timeout(30 * 60_000),
-});
-
-for await (const event of run) {
-  // plain JSON: phase.started/finished/failed, log, resource.applied,
-  // artifact.built, app.deployed, app.failed, health.checked, deploy.finished,
-  // deploy.failed …
-  forward(event);
-}
-
-const result = await run.result; // or a rejection: MissingCredential, StateLocked, …
-```
-
-- `credentials` defaults to the environment (`DOKPLOY_API_TOKEN`,
-  `DOKPLOY_ENDPOINT`, `DOCKER_REGISTRY_USERNAME`, `DOCKER_REGISTRY_PASSWORD`),
-  then the login `gkm login` stored, then `deploy.dokploy.endpoint` for the
-  endpoint.
-- `logger` receives each progress line as `gkm deploy` would print it.
-- `signal` cancels in-flight Dokploy requests and docker children and releases
-  the stage's lock; `result` rejects with the signal's reason.
-- `dryRun: true` is `--dry-run`: `resource.planned` events instead of
-  `resource.applied`.
-- Each app's image is built from the app's own directory.
-
-#### The project's code runs in a sandbox
-
-Loading `gkm.config.ts`, discovering its constructs and sniffing each app's
-environment all run the project's own code. `deploy()` runs them in a
-`Sandbox`, never in the host process: each is a child with the CLI's own
-TypeScript loader, so the host needs no `tsx`.
-
-- The default, `LocalSandbox`, is a child process on the same machine with an
-  **allowlisted environment**: `PATH`, `HOME`, `USER`, temp directories,
-  locale (`LANG`, `LC_*`, `TZ`), terminal (`TERM`, `NO_COLOR`, `CI`, …),
-  `NODE_ENV`, `NODE_EXTRA_CA_CERTS`, the package managers' homes and the
-  proxy variables. Nothing else — no `AWS_*`, `DOKPLOY_*`, `DOCKER_*`,
-  `NODE_AUTH_TOKEN`, `GITHUB_TOKEN`, and no `NODE_OPTIONS`.
-- Each step has a timeout: 30 seconds per sniff, 60 for loading the config
-  and for discovery. A step that outlives it is killed, and `cwd` must stay
-  inside the project (`SandboxCwdEscape` otherwise).
-- Credentials never enter a sandbox. They go from `credentials` to the steps
-  that provision, push and release.
-- `gkm build` runs turbo through the same sandbox, passing `TURBO_TOKEN` on for
-  a remote cache.
-
-A host that deploys repositories it does not trust passes its own sandbox — a
-container per build — whose `isolating` is `true`:
-
-```ts
-import { deploy, type Sandbox } from '@geekmidas/cli/deploy';
-
-const sandbox: Sandbox = {
-  root: checkout,
-  isolating: true,
-  env: { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: '/tmp/home' },
-  exec: (command, args, { cwd, env, timeoutMs, secrets, signal }) =>
-    runInContainer({ mount: checkout, command, args, cwd, env, timeoutMs, secrets, signal }),
-};
-
-deploy({ cwd: checkout, stage: 'production', credentials, sandbox });
-```
-
-`exec` takes an argument array, the command's whole environment, a required
-timeout and secrets to mount as files (`GKM_SECRETS_DIR` names their
-directory), and resolves with `{ exitCode, signal, stdout, stderr }`. It runs
-the CLI's worker scripts with `node`, by their paths in the checkout's
-`node_modules`, so mount the checkout at the same path.
-
-Under an isolating sandbox the config reaches the deploy only as JSON: a live
-object in it — a custom state store, a function — fails with
-`ConfigObjectNotSerializable`, naming where it is. Under the default sandbox
-such a config is imported in the host as well, as before, which then needs
-`tsx`.
-
-To install an untrusted checkout's dependencies without their lifecycle
-scripts, `installDependencies(sandbox, { ignoreScripts: true, allowScripts:
-['esbuild'] })` installs with `--ignore-scripts` and rebuilds only the
-packages named (pnpm, npm and Yarn 2+).
+The project's own code (its config, its constructs, each app's entry, its
+migrations) runs in a [sandbox](./sandbox.md) with an allowlisted environment.
+Credentials never enter it.
 
 ![Local and deployed side by side, converging on one unchanged call site](/architecture/local-and-deployed.png)
 
@@ -876,15 +618,58 @@ if something declared it.
   provisioned yet)
 - every URL the app needs, resolved and encrypted into the build
 
+**Apply the stage's migrations**, before any app is released. They run in the
+deploy's [sandbox](./sandbox.md), against the database's owner URL handed over
+as a secret file, through a port the deploy publishes for the purpose and closes
+again. A failed migration stops the run (`DeployMigrationsFailed`) before
+anything is released.
+
 **Deploy the backends**
 - build each image and push it to the registry
 - create the application, its domain, and its Let's Encrypt certificate
+- wait for Dokploy's deployment to finish (`DeploymentFailed`,
+  `DeploymentTimedOut`), then check the app's health: `healthyAfter`
+  consecutive 2xx answers from `https://<host>/health`
+- every backend is released and healthy before any site is; a backend that
+  fails stops the run with `BackendDeployFailed`
 
 **Then the frontends**
 - built with the backend URLs already known, so `VITE_*` / `NEXT_PUBLIC_*` are
   real values at build time rather than placeholders
+- every site is attempted; if any fails, the run fails with
+  `FrontendDeployFailed` once they all have
 
-**Then DNS**, through the configured provider.
+**Then DNS**, through the configured provider, and **verify**: each site
+answering at `/`.
+
+**Rollback.** When `release` or `verify` fails, the apps that failed are pointed
+back at the image they ran before and redeployed. `--atomic` rolls back every
+app the run released instead, for apps that must move together. Each app's
+releases are kept in the stage's state (`releases`: current, previous and a
+history of 10). `gkm deploy:rollback --stage <stage> --app <app>` (or
+`--atomic`) does the same by hand, for a release that passed its checks and
+turned out wrong anyway. A rollback restores images only: migrations are
+forward-only.
+
+How long each wait may take is `deploy.dokploy.verify`:
+
+```typescript
+deploy: {
+  dokploy: {
+    endpoint: 'https://dokploy.myserver.com',
+    verify: {
+      deploymentTimeoutMs: 10 * 60_000, // Dokploy's deployment (default 10 min)
+      healthCheckPath: '/health',       // a backend's health route (default)
+      healthyAfter: 3,                  // consecutive 2xx answers (default 3)
+      intervalMs: 2_000,                // between checks (default 2 s)
+      healthTimeoutMs: 5 * 60_000,      // to become healthy (default 5 min)
+    },
+  },
+},
+```
+
+See [Running in production](./production.md) for health checks and rollback
+across targets.
 
 ### Roles, not per-app users
 
@@ -993,42 +778,20 @@ enforced by the gateway; any other is checked in the handler.
 
 ## Docker Deployment
 
-### Generate Docker Files
+`gkm docker` writes a multi-stage Dockerfile per app (and a `.dockerignore`)
+without deploying anything. The `dokploy` and `compose` targets run the same
+generator; use it directly to build images yourself.
 
 ```bash
-gkm docker --compose --services postgres,redis
+gkm docker                                    # write the files
+gkm docker --build --tag v1.4.0               # and build the image
+gkm docker --build --push --tag v1.4.0 --registry ghcr.io/acme
+gkm docker --turbo                            # use turbo prune in a monorepo
 ```
 
-### Dockerfile Generation
-
-The CLI generates optimized multi-stage Dockerfiles:
-
-```dockerfile
-# Build stage
-FROM node:22-alpine AS builder
-WORKDIR /app
-COPY pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN corepack enable && pnpm install --frozen-lockfile
-COPY . .
-RUN pnpm build && pnpm gkm build --provider server
-
-# Production stage
-FROM node:22-alpine AS runner
-WORKDIR /app
-COPY --from=builder /app/.gkm/server/dist ./
-EXPOSE 3000
-CMD ["node", "app.js"]
-```
-
-### Build and Push
-
-```bash
-# Build image
-gkm docker build --tag my-api:latest
-
-# Push to registry
-gkm docker push --tag my-api:latest
-```
+The image reads its stage's encrypted credentials through a BuildKit secret,
+never a build argument, and needs `GKM_MASTER_KEY` at runtime. See
+[Running in production: secrets](./production.md#secrets-and-the-master-key).
 
 ---
 
@@ -1110,17 +873,16 @@ throwaway secrets for the test stage.
 
 Before deploying to production:
 
-- [ ] All tests passing (`pnpm test:once`)
-- [ ] Type checks passing (`pnpm ts:check`)
-- [ ] Linting passing (`pnpm lint`)
-- [ ] Secrets configured (`gkm secrets:show --stage <stage>`)
+- [ ] All tests passing (`pnpm test:once`), type checks and lint clean
+- [ ] Secrets set for the stage (`gkm secrets:show --stage <stage>`), in a store CI can reach
 - [ ] Each deployed stage has its GitHub environment (`gkm deploy:github --stage <stage>`)
+- [ ] A remote state provider (SSM or S3) once more than one machine deploys
 - [ ] DNS provider configured
-- [ ] State provider configured (SSM for teams)
-- [ ] Health check endpoint configured
-- [ ] Database migrations ready
-- [ ] Logging configured for production
-- [ ] Error tracking enabled (Sentry, etc.)
+- [ ] A dry run reviewed (`gkm deploy --stage <stage> --dry-run`)
+
+[Running in production](./production.md) has the full checklist: the master
+key, health checks, telemetry, graceful shutdown, rollback and database
+connections.
 
 ---
 
@@ -1131,7 +893,8 @@ Before deploying to production:
 If the sniffer misses variables:
 1. Ensure all `get()` calls happen before `.parse()`
 2. Use `requiredEnv` in config for dynamic variables
-3. Check subprocess output with `--verbose` flag
+3. A sniff that hangs is stopped after 30 seconds and reported; an entry that
+   starts a server at import time is the usual cause
 
 ### DNS Propagation Issues
 
@@ -1139,8 +902,8 @@ If the sniffer misses variables:
 # Check DNS resolution
 dig api.myapp.com
 
-# Force re-verification
-gkm deploy --stage production --force-dns
+# Re-deploying re-checks each hostname that has not been verified yet
+gkm deploy --stage production
 ```
 
 ### State Sync Issues

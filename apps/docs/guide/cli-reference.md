@@ -189,14 +189,15 @@ tsconfig alias for it, `@<project>/manifest`.
 
 ### `gkm openapi`
 
-Generate OpenAPI specification from endpoints.
+Write each `RestApi` surface's typed client to `.gkm/client/<surface>.ts` at
+the workspace root. `gkm build` and `gkm dev` do the same as part of their run.
+See [Typed API Client](./openapi-typescript.md).
 
 ```bash
 gkm openapi [options]
 
 Options:
-  --title <string>       API title
-  --version <string>     API version
+  --app <name>   Generate for one backend app only
 ```
 
 ### `gkm init`
@@ -289,28 +290,49 @@ export const web = new StaticSite('Web', { path: 'apps/web' }).dependsOn([api, a
 Deploy a stage through its target.
 
 ```bash
-gkm deploy [options]
+gkm deploy --stage <stage> [options]
 
 Options:
-  --stage, -s <name>     Deployment stage (development, staging, production)
-  --target <name>        Deploy target: dokploy, compose, or a name in
+  --stage <name>         Deployment stage (required; one of stages.deployed, or
+                         the local stage through compose)
+  --target <name>        Deploy target: dokploy, compose, sst, or a name in
                          deploy.targets (default: deploy.default)
-  --provider <name>      Deprecated: `dokploy` means --target dokploy;
-                         docker and aws-lambda are removed
   --tag <tag>            Image tag (default: stage-timestamp; compose: the
                          commit). Through compose, a given tag is pulled
-  --skip-push            Skip pushing the image to the registry
-  --skip-build           Skip the build step and use an existing one
   --json                 Write events as JSON lines on stdout; never prompts
   --dry-run              Show what would be created or reused; change nothing
+  --atomic               If the release fails, roll back every app it released,
+                         not only the failed ones
+  --provider <name>      Deprecated: `dokploy` means --target dokploy;
+                         docker and aws-lambda are removed
+  --skip-push, --skip-build
+                         Deprecated and ignored
 ```
 
-A target that does not ship with the CLI is a package the project installs and
-names in `deploy.targets` — see [Deploy targets](./deployment.md#deploy-targets).
+At a terminal, a missing Dokploy or registry login is asked for and stored.
+With `--json`, or without a terminal, nothing prompts: a missing credential
+fails the run with `MissingCredential`. Exit code 0 when the deploy finished,
+1 when anything stopped it.
 
-Exit code 0 when the deploy finished, 1 when anything stopped it. The same
-deploy is available to programs as `deploy()` from `@geekmidas/cli/deploy` —
-see [Deploying from a program](./deployment.md#deploying-from-a-program).
+See [Deploy targets](./deploy-targets.md) for targets and `deploy.targets`,
+[Deploying from a program](./deploy-api.md) for `deploy()` and the events
+`--json` writes, and [Deprecated deploy APIs](./deploy-deprecations.md) for
+when `--provider` and the ignored flags go.
+
+### `gkm deploy:rollback`
+
+Put a Dokploy stage's app back on the release before the one it runs. For a
+release that passed its checks and turned out wrong anyway; a release that fails
+its checks is rolled back by `gkm deploy` itself.
+
+```bash
+gkm deploy:rollback --stage production --app api   # one app
+gkm deploy:rollback --stage production --atomic    # every app with an earlier release
+```
+
+It holds the stage's lock, restores images only (migrations are
+forward-only), and fails with `RollbackNeedsApp` when neither `--app` nor
+`--atomic` is given, or `NothingToRollBack` when the app has no earlier release.
 
 ### `gkm deploy:github`
 
@@ -467,18 +489,23 @@ job's role). See
 ### State Management
 
 ```bash
-# Pull deployment state from remote
-gkm state:pull --stage production
-
-# Push state to remote
-gkm state:push --stage production
-
-# Show current state
+# Show the stage's state: ids, releases, pending resources (secrets masked)
 gkm state:show --stage production
+gkm state:show --stage production --json
+
+# Copy the remote stage to .gkm/, or the local stage to the remote
+gkm state:pull --stage production
+gkm state:push --stage production
 
 # Compare local vs remote
 gkm state:diff --stage production
+
+# Release the lock of a deploy that was killed
+gkm state:unlock --stage production
 ```
+
+`pull`, `push` and `diff` need a remote provider (SSM or S3). See
+[Deploy state](./state.md).
 
 ### Authentication
 
@@ -539,6 +566,10 @@ The CLI respects these environment variables:
 | `GKM_HOST` | Default host for dev server |
 | `GKM_DISCOVERY_PORT` | The discovery endpoint's port (overrides `dev.discoveryPort`; `0` serves on a free port of its own) |
 | `GKM_DEV_REGISTRY` | Where `gkm dev` sessions register (default `~/.gkm/dev`) |
+| `GKM_HOME` | The CLI's home: stage keys and stored logins (default `~/.gkm`) |
+| `DOKPLOY_API_TOKEN`, `DOKPLOY_ENDPOINT` | Dokploy credentials for `gkm deploy` |
+| `DOCKER_REGISTRY_USERNAME`, `DOCKER_REGISTRY_PASSWORD` | A registry login for Dokploy to pull with |
+| `AWS_PROFILE`, or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` | AWS credentials for the `sst` target (the profile wins when both are set) |
 | `NODE_ENV` | Environment mode |
 
 ## Module Path Syntax

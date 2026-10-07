@@ -23,6 +23,8 @@ gkm deploy --target compose --stage production --tag v1.4.0
 stage: the stack runs on the machine that deploys it. With `deploy.default:
 'compose'`, `gkm deploy --stage production` needs no `--target`.
 
+How it compares with `dokploy` and `sst` is in [Deploy targets](./deploy-targets.md).
+
 It reads the same construct manifest as `gkm dev` and `gkm deploy`. Nothing is
 configured for it: the apps, the databases they need, the keys each one reads,
 and the hosts they answer on all come from what the workspace declares.
