@@ -72,14 +72,6 @@ export interface NormalizedProductionConfig {
 	external: string[];
 	subscribers: 'include' | 'exclude';
 	openapi: boolean;
-	/**
-	 * Enable build-time optimized handler generation
-	 * When true, generates specialized handlers based on endpoint tier:
-	 * - minimal: Near-raw-Hono performance for simple endpoints
-	 * - standard: Optimized handlers for auth/services
-	 * - full: Uses HonoEndpoint.addRoutes for complex endpoints
-	 */
-	optimizedHandlers: boolean;
 }
 
 export interface BuildContext {

@@ -1,5 +1,10 @@
 # Hono Adaptor Optimization Investigation
 
+> **Superseded in part.** The build-time tiers this proposed (`endpoint-analyzer`,
+> `handler-templates`) were removed: each tier was a hand copy of the adaptor
+> that drifted from it. A production server now registers every endpoint with
+> `HonoEndpoint`, whose registration-time feature analysis is what remains.
+
 ## Executive Summary
 
 This document investigates the efficiency of the `HonoEndpointAdaptor` implementation and explores optimization strategies. We'll implement multiple approaches, benchmark them, and determine the best path forward.

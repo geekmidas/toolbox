@@ -4,13 +4,13 @@ import type {
 	Auditor,
 	AuditStorage,
 } from '@geekmidas/audit';
-import { DefaultAuditor } from '@geekmidas/audit';
 import type { Logger } from '@geekmidas/logger';
 import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceDiscovery } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { ActorExtractor, MappedAudit } from './audit';
 import type { CookieFn, Endpoint, HeaderFn } from './Endpoint';
+import { loadAudit } from './optionalPeers';
 
 /**
  * Process declarative audit definitions after successful endpoint execution.
@@ -121,6 +121,7 @@ export async function processEndpointAudits<
 				}
 			}
 
+			const { DefaultAuditor } = await loadAudit();
 			auditor = new DefaultAuditor<TAuditAction>({
 				actor,
 				storage,
@@ -271,6 +272,7 @@ export async function createAuditContext<
 		}
 	}
 
+	const { DefaultAuditor } = await loadAudit();
 	const auditor = new DefaultAuditor<TAuditAction>({
 		actor,
 		storage,

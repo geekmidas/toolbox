@@ -183,7 +183,6 @@ export function normalizeProductionConfig(
 		external: [],
 		subscribers: 'include',
 		openapi: false,
-		optimizedHandlers: true,
 	};
 }
 

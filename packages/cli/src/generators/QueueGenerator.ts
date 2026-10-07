@@ -245,14 +245,14 @@ export async function setupQueues(
             db,
           } as any);
         } catch (error) {
-          logger.error({ error, queue: queue.name }, 'Failed to process queue message');
+          logger.error({ err: error, queue: queue.name }, 'Failed to process queue message');
           // Rethrown so the transport keeps the message for a retry.
           throw error;
         }
       });
       logger.info({ queue: queue.name }, 'Queue consumer started polling');
     } catch (error) {
-      logger.error({ error, queue: queue.name }, 'Failed to set up queue consumer');
+      logger.error({ err: error, queue: queue.name }, 'Failed to set up queue consumer');
     }
   }
 

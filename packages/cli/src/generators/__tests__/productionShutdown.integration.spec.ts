@@ -71,7 +71,6 @@ export const slow = api
 				external: [],
 				subscribers: 'exclude',
 				openapi: false,
-				optimizedHandlers: false,
 			},
 		},
 		constructs,

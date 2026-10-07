@@ -171,7 +171,7 @@ export async function setupCrons(
     } catch (error) {
       // An unrepresentable schedule is a build-time mistake, and failing the
       // process for it would take the HTTP server down with it.
-      logger.error({ error, cron: name }, 'Cron has no runnable schedule, skipping');
+      logger.error({ err: error, cron: name }, 'Cron has no runnable schedule, skipping');
     }
   }
 
@@ -182,7 +182,7 @@ export async function setupCrons(
       // \`handler\` a Cron does not have, so every firing logged a failure.
       await runCron(entry.cron, serviceDiscovery);
     } catch (error) {
-      logger.error({ error, cron: entry.name }, 'Cron failed');
+      logger.error({ err: error, cron: entry.name }, 'Cron failed');
     }
   };
 

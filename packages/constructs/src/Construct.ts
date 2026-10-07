@@ -182,7 +182,7 @@ export abstract class Construct<
 			return sorted.map((v) => (optionalVars.has(v) ? `${v}?` : v));
 		} catch (error) {
 			this.logger.error(
-				{ error },
+				{ err: error },
 				'Error determining environment variables for construct',
 			);
 

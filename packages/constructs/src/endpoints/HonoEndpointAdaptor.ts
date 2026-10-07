@@ -1,10 +1,8 @@
 import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
-import { withRlsContext } from '@geekmidas/db/rls';
 import type { EnvironmentParser } from '@geekmidas/envkit';
-import { wrapError } from '@geekmidas/errors';
+import { type HttpError, wrapError } from '@geekmidas/errors';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
-import { checkRateLimit, getRateLimitHeaders } from '@geekmidas/rate-limit';
 import {
 	runWithRequestContext,
 	type Service,
@@ -29,6 +27,7 @@ import {
 } from './Endpoint';
 import { getEndpointsFromRoutes } from './helpers';
 import { createHonoCookies, createHonoHeaders } from './lazyAccessors';
+import { loadRateLimit, loadRls } from './optionalPeers';
 import { parseHonoQuery } from './parseHonoQuery';
 import {
 	createAuditContext,
@@ -418,6 +417,8 @@ export class HonoEndpoint<
 
 						// Check rate limit only if configured
 						if (features.hasRateLimit) {
+							const { checkRateLimit, getRateLimitHeaders } =
+								await loadRateLimit();
 							const rateLimitInfo = await checkRateLimit(endpoint.rateLimit!, {
 								header,
 								services,
@@ -534,6 +535,7 @@ export class HonoEndpoint<
 								};
 
 								if (features.hasRls && rlsContext && baseDb) {
+									const { withRlsContext } = await loadRls();
 									return withRlsContext(
 										baseDb as any,
 										rlsContext,
@@ -613,35 +615,43 @@ export class HonoEndpoint<
 							}
 							return c.body(output as any, status);
 						} catch (validationError: any) {
-							logger.error(validationError, 'Output validation failed');
+							logger.error(
+								{ err: validationError },
+								'Output validation failed',
+							);
 							const error = wrapError(
 								validationError,
 								422,
 								'Response validation failed',
 							);
+							const body = errorBody(error);
 							if (HonoEndpoint.isDev) {
 								logger.info(
-									{ status: error.statusCode, body: error },
+									{ status: error.statusCode, body },
 									'Outgoing response',
 								);
 							}
-							return c.json(error, error.statusCode as ContentfulStatusCode);
+							return c.json(body, error.statusCode as ContentfulStatusCode);
 						}
 					} catch (e: any) {
-						logger.error(e, 'Error processing endpoint request');
+						// Under `err`, which every pino serializes as an Error — passed bare,
+						// one pino does not recognise (a ZodError) is spread into the line
+						// with no stack.
+						logger.error({ err: e }, 'Error processing endpoint request');
 						const error = wrapError(e, 500, 'Internal Server Error');
 						// Answered here rather than rethrown, so Hono never sets it:
 						// a server failure is left on the context the way Hono
 						// leaves an uncaught one, for middleware — a request span
 						// records it as the exception. A 4xx is the client's.
 						if (error.statusCode >= 500 && e instanceof Error) c.error = e;
+						const body = errorBody(error);
 						if (HonoEndpoint.isDev) {
 							logger.info(
-								{ status: error.statusCode, body: error },
+								{ status: error.statusCode, body },
 								'Outgoing response',
 							);
 						}
-						return c.json(error, error.statusCode as ContentfulStatusCode);
+						return c.json(body, error.statusCode as ContentfulStatusCode);
 					}
 				},
 			);
@@ -692,4 +702,25 @@ export class HonoEndpoint<
 			}
 		});
 	}
+}
+
+/**
+ * What a client is told about a failed request: what went wrong, and the stack
+ * only under `gkm dev`. A server's stack is its file layout and its
+ * dependencies' versions — for the person debugging it, not for whoever sent
+ * the request. A server failure's details are the error it wrapped (an
+ * environment variable it could not read, a query that failed), so they go to
+ * the log and not the response either; a 4xx's details are the client's.
+ */
+function errorBody(error: HttpError) {
+	const internal = error.statusCode >= 500 && !HonoEndpoint.isDev;
+	return {
+		name: error.name,
+		message: error.message,
+		statusCode: error.statusCode,
+		statusMessage: error.statusMessage,
+		code: error.code,
+		...(internal ? {} : { details: error.details }),
+		...(HonoEndpoint.isDev ? { stack: error.stack } : {}),
+	};
 }

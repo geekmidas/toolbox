@@ -1422,10 +1422,13 @@ export const api = new RestApi('api', { authorizers: [auth], default: auth });
 externally, while a construct-provided one carries its implementation, its
 database dependency, its secrets, and its session typing together.
 
-`.service` is the **server** instance — `services.auth.api.getSession({ headers })`
-— matching the rule that consuming a construct gives you the client for the
-address it owns. The browser client is the out-of-app consumer, exactly parallel
-to `api.service` versus the generated OpenAPI client.
+`.service` is a **client** of the auth app — `services.auth.api.getSession({ headers })`,
+answered over HTTP at `AUTH_URL` — matching the rule that consuming a construct
+gives you the client for the address it owns. (It was once the server instance,
+which built Better Auth — secret, tenant and mailer — inside every app that
+consumed it.) The server runs only in the auth app's own entry, `auth.server()`.
+The browser client is the out-of-app consumer, exactly parallel to `api.service`
+versus the generated OpenAPI client.
 
 **Schema tenants.** `ordersDb.schema<AuthDB>('auth')` generalizes a pattern
 already in the repo: the generated docker init script gives pg-boss a dedicated

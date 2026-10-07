@@ -93,6 +93,25 @@ easily logged. Read the key from the runtime environment or from
 `.gkm/server/master.key` instead.
 :::
 
+## What each app holds
+
+An app's environment is composed from its edges, not from everything the stage
+resolves. It gets what its own surface provides and requires, and what each
+construct it depends on provides — with one rule for surfaces: an app that
+calls another surface is given that surface's **URL and nothing else**. Its
+CORS list and cookie domain are the surface's own settings.
+
+The auth server is where that matters most. `BetterAuth` runs in its own app,
+which holds `AUTH_SECRET`, the auth tenant's database URL and the mail keys its
+sign-in links go out through. An API whose endpoints `.dependsOn([auth])` holds
+`AUTH_URL` alone: the handler's `services.auth` is a client that asks the auth
+app `GET <basePath>/get-session` with the request's cookie, so the API never
+builds Better Auth, never opens its tenant and cannot sign a session. See
+[The auth server, and what its callers hold](/packages/constructs#the-auth-server-and-what-its-callers-hold).
+
+`gkm compose` writes each backend's environment to its own `<app>.env`, so
+what an app holds is a file you can read.
+
 ## Mail and object storage
 
 On a server target (`dokploy`, `compose`), a deployed stage's mail and buckets
@@ -343,6 +362,16 @@ createLogger({ redact: false });              // off: think twice
 
 `pretty: true` is ignored when `NODE_ENV` is `production`, so production logs
 stay JSON.
+
+An `Error` is serialized with its type, message and stack under either `err`
+(pino's own key) or `error` — `logger.error({ error }, 'Failed')` no longer
+logs `"error":{}` — and redaction applies to both, URL credentials in a
+message or a stack included.
+
+A production server registers every endpoint the way `gkm dev` and a feature
+test do, so a handler's context — `auditor`, `db`, `session`, `services`,
+cookies and headers it sets — is the same in all three. An error a handler
+throws is logged with its stack, and answered without it.
 
 ## Graceful shutdown
 

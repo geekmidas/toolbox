@@ -29,7 +29,7 @@
  *
  * @module
  */
-import { type LogFn, type Logger, pino } from 'pino';
+import { type LogFn, type Logger, pino, stdSerializers } from 'pino';
 import { otelStreamWrite } from './otel';
 import {
 	DEFAULT_REDACT_PATHS,
@@ -124,10 +124,25 @@ export function createLogger(options: CreateLoggerOptions = {}) {
 
 	const redact = resolveRedactConfig(options.redact);
 
+	// An Error is serialized only under a key pino has a serializer for — `err`
+	// by default — and anything else is JSON.stringify'd, which an Error survives
+	// as `{}`: no message, no stack. `logger.error({ error }, …)` is how most
+	// code writes it, so `error` gets the same serializer as `err`.
+	//
+	// The serialized copy is a plain object, so URL credentials in the message
+	// or the stack are masked like any other field; path redaction runs after
+	// serializers, so `err.message` and `error.stack` are paths it can reach.
+	const serializeError = (value: unknown) => {
+		const serialized = stdSerializers.err(value as Error);
+		if (!redact || serialized === value) return serialized;
+		return redactUrlCredentialsIn({ ...serialized });
+	};
+
 	const pinoOptions = {
 		...baseOptions,
 		...(options.level && { level: options.level }),
 		...(redact && { redact }),
+		serializers: { err: serializeError, error: serializeError },
 		hooks: {
 			// Redaction also masks the credentials of any URL, in any field or
 			// in the message: `s3://KEY:SECRET@uploads` is logged with its

@@ -40,7 +40,9 @@ import type {
 	ServiceRecord,
 	ServiceRegisterOptions,
 } from '@geekmidas/services';
-import { betterAuth } from 'better-auth';
+// Types only: the server is built in `connect()`, from a dynamic import, so a
+// process that only holds the client never loads better-auth to get it.
+import type { betterAuth } from 'better-auth';
 import type { Hono } from 'hono';
 import type { Kysely } from 'kysely';
 import {
@@ -56,6 +58,32 @@ export type AuthServer = ReturnType<typeof betterAuth>;
 
 /** A signed-in session as better-auth hands it back: `{ user, session }`. */
 export type AuthSession = AuthServer['$Infer']['Session'];
+
+/**
+ * What `.dependsOn([auth])` hands a handler: the auth server, over HTTP.
+ *
+ * The server itself — its secret, its tenant's connection, its mailer — lives
+ * in the auth app's own process and nowhere else. Every other process is a
+ * caller of it, so what it is given is an address and this, with the one
+ * call handlers make kept in Better Auth's shape: `api.getSession({ headers })`
+ * answers `{ user, session }` or `null`, as the server's own `api` does.
+ */
+export interface AuthClient {
+	readonly api: {
+		/**
+		 * The session the request's cookie or bearer token belongs to, or `null`
+		 * when there is none — asked of `<basePath>/get-session` at the auth
+		 * server's URL. Only `cookie`, `authorization` and `x-forwarded-for` are
+		 * forwarded.
+		 *
+		 * @throws {AuthServerUnreachable} when the request does not get there.
+		 * @throws {SessionCheckFailed} when the server answers with a failure.
+		 */
+		getSession(input: {
+			headers: ConstructorParameters<typeof Headers>[0];
+		}): Promise<AuthSession | null>;
+	};
+}
 
 /** Everything better-auth takes, minus what the construct owns. */
 export type BetterAuthOptions = Omit<
@@ -138,10 +166,21 @@ export class BetterAuth<
 	TName extends string = string,
 	TDatabase extends Consumable = Consumable,
 	const TUses extends readonly Consumable[] = readonly [],
-> implements Construct<TName, AuthServer>, Authenticator<AuthSession>
+> implements Construct<TName, AuthClient>, Authenticator<AuthSession>
 {
 	readonly id: TName;
-	readonly service: Service<Uncapitalize<TName>, AuthServer>;
+	/**
+	 * What `.dependsOn([auth])` injects: an {@link AuthClient}, never the server.
+	 *
+	 * Which of the two a process holds is decided by how it reaches the
+	 * construct, not by asking where it is running. The auth app's process is
+	 * its generated entry, which calls {@link server} and nothing else — a
+	 * self-serving surface has no endpoints of its own for a `dependsOn` to sit
+	 * on. Every other process reaches it through this. So the API, a worker, a
+	 * test's in-process endpoints all get the client, and none of them needs
+	 * the signing secret, the auth tenant's URL or the mailer to start.
+	 */
+	readonly service: Service<Uncapitalize<TName>, AuthClient>;
 	readonly basePath: string;
 
 	/**
@@ -179,7 +218,7 @@ export class BetterAuth<
 		// A field, not a getter: consumers cache services by object identity.
 		this.service = {
 			serviceName: serviceKey(canonical) as Uncapitalize<TName>,
-			register: (options) => this.connect(options),
+			register: (options) => this.client(options.envParser),
 		};
 	}
 
@@ -240,29 +279,34 @@ export class BetterAuth<
 	 *
 	 * Asked of the auth server over HTTP, at the URL the `.auth()` edge injects —
 	 * so it is the same call whether the server runs in this process, beside
-	 * it, or behind MSW in a test. Only the session headers are forwarded; the
-	 * surface decides which.
+	 * it, or behind MSW in a test. The same call {@link AuthClient} makes.
 	 */
 	async verify(
 		headers: Headers,
 		envParser: EnvironmentParser<{}>,
 	): Promise<AuthSession | null> {
+		return this.client(envParser).api.getSession({ headers });
+	}
+
+	/**
+	 * The client a caller of this server holds: its URL and nothing else.
+	 *
+	 * `<ID>_URL` is the one key a consumer is given for an edge to a surface —
+	 * the compose network's address between containers, the public one where
+	 * that is all there is — so this is everything it can know.
+	 */
+	client(envParser: EnvironmentParser<{}>): AuthClient {
 		const { url } = envParser
 			.create((get) => ({ url: get(this.keys.url).string() }))
 			.parse();
+		const endpoint = `${url.replace(/\/$/, '')}${this.basePath}`;
 
-		const response = await fetch(`${url}${this.basePath}/get-session`, {
-			headers,
-		});
-
-		// Better Auth answers `null` for a request with no session. Anything
-		// other than a 200 is the server failing, which is not the same thing as
-		// "signed out" and must not be read as it.
-		if (!response.ok) {
-			throw new SessionCheckFailed(this.id, response.status);
-		}
-
-		return (await response.json()) as AuthSession | null;
+		return {
+			api: {
+				getSession: ({ headers }) =>
+					fetchSession(this.id, endpoint, new Headers(headers)),
+			},
+		};
 	}
 
 	/**
@@ -335,8 +379,15 @@ export class BetterAuth<
 	 * import { auth } from '@acme/constructs/auth.js';
 	 * export const { app } = await auth.server({ envParser });
 	 * ```
+	 *
+	 * The only way to the server: it is what reads the signing secret, opens
+	 * the tenant and builds the mailer, so it is built here, in the auth app's
+	 * own process, and `.dependsOn([auth])` everywhere else gets
+	 * {@link AuthClient}. `auth` is the better-auth instance behind the app.
 	 */
-	async server(options: ServiceRegisterOptions): Promise<{ app: Hono }> {
+	async server(
+		options: ServiceRegisterOptions,
+	): Promise<{ app: Hono; auth: AuthServer }> {
 		const { Hono } = await import('hono');
 		const { cors } = await import('hono/cors');
 		const app = new Hono();
@@ -380,7 +431,7 @@ export class BetterAuth<
 			app.on([...methods], endpoint.path, (c) => server.handler(c.req.raw));
 		}
 
-		return { app };
+		return { app, auth: server };
 	}
 
 	/**
@@ -421,6 +472,7 @@ export class BetterAuth<
 		options: ServiceRegisterOptions,
 		as: { owner?: boolean } = {},
 	): Promise<AuthServer> {
+		const { betterAuth } = await import('better-auth');
 		// `Auth<O>` is invariant in its options in better-auth 1.7, so the value
 		// built from a concrete literal is not assignable to the `AuthServer`
 		// alias, which names the constraint. The runtime object is the same one
@@ -604,7 +656,46 @@ export class ExpoPluginRequired extends Error {
 	}
 }
 
-/** The auth server answered a session check with something other than 200. */
+/**
+ * What is forwarded to the auth server: the headers a session travels in, and
+ * whose request it is — the server rate-limits `/get-session` by the client's
+ * address, so without it every caller shares the API's one bucket.
+ */
+const SESSION_HEADERS = ['cookie', 'authorization', 'x-forwarded-for'] as const;
+
+/** `GET <basePath>/get-session`, read the way Better Auth answers it. */
+async function fetchSession(
+	authenticator: string,
+	endpoint: string,
+	given: Headers,
+): Promise<AuthSession | null> {
+	const headers = new Headers();
+	for (const name of SESSION_HEADERS) {
+		const value = given.get(name);
+		if (value) headers.set(name, value);
+	}
+
+	const url = `${endpoint}/get-session`;
+	let response: Response;
+	try {
+		response = await fetch(url, { headers });
+	} catch (cause) {
+		throw new AuthServerUnreachable(authenticator, url, cause);
+	}
+
+	// Better Auth answers `null` for a request with no session, and a 401 is
+	// the same answer from anything in front of it. Anything else that is not
+	// a 200 is the server failing, which is not "signed out" and must not be
+	// read as it.
+	if (response.status === 401) return null;
+	if (!response.ok) {
+		throw new SessionCheckFailed(authenticator, response.status);
+	}
+
+	return (await response.json()) as AuthSession | null;
+}
+
+/** The auth server answered a session check with a failure. */
 export class SessionCheckFailed extends Error {
 	constructor(
 		readonly authenticator: string,
@@ -612,10 +703,27 @@ export class SessionCheckFailed extends Error {
 	) {
 		super(
 			`'${authenticator}' answered a session check with ${status}. ` +
-				`A request with no session gets 200 and null; this is the server ` +
-				`failing — check that it is running and reachable at its URL.`,
+				`A request with no session gets 200 and null, or 401; this is the ` +
+				`server failing — check its logs, and that it is running at its URL.`,
 		);
 		this.name = 'SessionCheckFailed';
+	}
+}
+
+/** A session check never reached the auth server. */
+export class AuthServerUnreachable extends Error {
+	constructor(
+		readonly authenticator: string,
+		readonly url: string,
+		cause: unknown,
+	) {
+		super(
+			`'${authenticator}' could not be reached at ${url} to check a session. ` +
+				`Check that the auth app is running and that this app's ` +
+				`${provideKey(authenticator, 'url')} points at it.`,
+			{ cause },
+		);
+		this.name = 'AuthServerUnreachable';
 	}
 }
 

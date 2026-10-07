@@ -58,7 +58,7 @@ export function openPool(
 
 	pool.on('error', (error) => {
 		const logger = currentRequestContext()?.logger;
-		if (logger) logger.warn({ error }, 'Idle database connection lost');
+		if (logger) logger.warn({ err: error }, 'Idle database connection lost');
 		else console.warn('Idle database connection lost:', error.message);
 	});
 	if (options.queryTags !== false) {
