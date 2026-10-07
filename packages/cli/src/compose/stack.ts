@@ -250,8 +250,8 @@ export class StageSeedMissing extends Error {
 	constructor(readonly stage: string) {
 		super(
 			`The stage '${stage}' has no seed in its secrets, and a deployed stage's ` +
-				`database passwords are derived from it. Run gkm compose without ` +
-				`--dry-run once, or gkm deploy, to generate it.`,
+				`database passwords are derived from it. Run gkm compose --stage ${stage} ` +
+				`without --dry-run once, or gkm deploy, to generate it.`,
 		);
 		this.name = 'StageSeedMissing';
 	}

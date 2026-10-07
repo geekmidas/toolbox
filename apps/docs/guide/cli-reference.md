@@ -392,7 +392,7 @@ behind Caddy, over HTTPS. See [Deploy with Docker Compose](./compose.md).
 gkm compose [options]
 
 Options:
-  --stage <stage>  Stage to run (default: the local stage)
+  --stage <stage>  Stage to run (required)
   --tag <tag>      Run the images CI pushed at this tag (sites: <tag>-<stage>);
                    every image is checked in the registry first, nothing is built
   --build          Build images from this checkout, tagged with the commit

@@ -13,3 +13,5 @@ On a server target (`dokploy`, `compose`), a stage that is not the workspace's l
 :boom: Dokploy no longer provisions MinIO for a bucket on a deployed stage by default. A bucket is the stage's own: set its URL and the S3 key pair in the stage's secrets, or pass `--allow-dev-services minio` to keep the MinIO compose stack it ran before.
 
 :boom: A deployed stage missing a mail or storage key fails with one `ExternalServicesNotConfigured` that lists every missing key across every app, each with its `gkm secrets:set … --stage <stage>` line, and names `--allow-dev-services`. It replaces `gkm compose`'s per-key `BucketNotConfigured`, which is removed, and its `StageSecretMissing` for mail. A third party's credentials are still reported one key at a time, by `StageSecretMissing` and `MissingSuppliedSecret`.
+
+:boom: `gkm compose` requires `--stage`. It no longer defaults to the local stage, so which stage a stack is for, and whether its mail and storage must be external, is always written on the command line. The generated compose file's header names the stage in its commands for every stage.

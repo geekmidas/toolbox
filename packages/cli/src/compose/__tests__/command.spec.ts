@@ -149,7 +149,7 @@ describe(
 			const statements: string[] = [];
 			const migrations: { env: Record<string, string | undefined> }[] = [];
 			const result = await composeCommand(
-				{ cwd: dir },
+				{ cwd: dir, stage: 'development' },
 				{
 					docker: fake.docker,
 					probe: answering(fake.calls),
@@ -313,7 +313,7 @@ describe('gkm compose --dry-run', { timeout: RUN_TIMEOUT }, () => {
 		const { docker, ops } = fakeDocker();
 
 		const result = await composeCommand(
-			{ cwd: dir, dryRun: true },
+			{ cwd: dir, stage: 'development', dryRun: true },
 			{ docker, revision: async () => 'abc1234' },
 		);
 
@@ -392,7 +392,7 @@ describe('a workspace nested in a monorepo', { timeout: RUN_TIMEOUT }, () => {
 		const { docker } = fakeDocker();
 
 		await composeCommand(
-			{ cwd: dir, dryRun: true },
+			{ cwd: dir, stage: 'development', dryRun: true },
 			{ docker, revision: async () => 'abc1234' },
 		);
 
@@ -480,7 +480,7 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 		const fake = fakeDocker();
 
 		const result = await composeCommand(
-			{ cwd: dir },
+			{ cwd: dir, stage: 'development' },
 			{
 				docker: fake.docker,
 				probe: answering(fake.calls),
@@ -572,7 +572,11 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 
 	it('refuses a value that is not a dev service', async () => {
 		await expect(
-			composeCommand({ cwd: dir, allowDevServices: 'minio,redis' }),
+			composeCommand({
+				cwd: dir,
+				stage: 'production',
+				allowDevServices: 'minio,redis',
+			}),
 		).rejects.toBeInstanceOf(UnknownDevService);
 	});
 });
@@ -588,7 +592,10 @@ describe('gkm compose --down', { timeout: RUN_TIMEOUT }, () => {
 	it("stops the stage's stack by its project", async () => {
 		const { docker, calls } = fakeDocker();
 
-		await composeCommand({ cwd: dir, down: true }, { docker });
+		await composeCommand(
+			{ cwd: dir, stage: 'development', down: true },
+			{ docker },
+		);
 
 		expect(calls).toEqual([{ op: 'down', args: 'compose-app-development' }]);
 	});
@@ -596,6 +603,11 @@ describe('gkm compose --down', { timeout: RUN_TIMEOUT }, () => {
 
 it('refuses --build with --pull', async () => {
 	await expect(
-		composeCommand({ cwd: '/nowhere', build: true, pull: true }),
+		composeCommand({
+			cwd: '/nowhere',
+			stage: 'development',
+			build: true,
+			pull: true,
+		}),
 	).rejects.toBeInstanceOf(ComposeModeConflict);
 });

@@ -456,7 +456,10 @@ program
 	.description(
 		"Run the workspace's APIs and sites for a stage as one Docker Compose stack behind Caddy",
 	)
-	.option('--stage <stage>', 'Stage to run (default: the local stage)')
+	.requiredOption(
+		'--stage <stage>',
+		'Stage to run — always named, so a stack is never a deployed stage by accident',
+	)
 	.option(
 		'--tag <tag>',
 		'Run the images CI pushed at this tag (sites: <tag>-<stage>); nothing is built',

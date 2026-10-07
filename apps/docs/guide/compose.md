@@ -5,13 +5,15 @@ Docker Compose stack on one machine, with [Caddy](https://caddyserver.com) in
 front serving every app over HTTPS.
 
 ```bash
-gkm compose                              # the local stage, built from this checkout
+gkm compose --stage development         # the local stage, built from this checkout
 gkm compose --stage production --tag v1.4.0   # the images CI pushed as v1.4.0
 gkm compose --stage production --down    # stop it (volumes are kept)
 gkm compose --stage preview --allow-dev-services minio,mailpit  # a demo, on dev services
 ```
 
-`gkm compose` is the built-in `compose` deploy target with a few switches of
+`--stage` is required: a stack is always for a named stage, so a deployed
+stage — and the external mail and storage it needs — is never reached by
+leaving a flag off. `gkm compose` is the built-in `compose` deploy target with a few switches of
 its own. The same stack comes up through `gkm deploy`, with the same phases,
 events, lock and state:
 
@@ -190,7 +192,7 @@ The edge is published on 443 and 80. When those are taken — locally they often
 are — move it:
 
 ```bash
-GKM_COMPOSE_HTTPS_PORT=8443 GKM_COMPOSE_HTTP_PORT=8080 gkm compose
+GKM_COMPOSE_HTTPS_PORT=8443 GKM_COMPOSE_HTTP_PORT=8080 gkm compose --stage development
 ```
 
 For the local stage the URLs then carry the port
