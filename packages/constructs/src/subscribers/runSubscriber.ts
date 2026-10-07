@@ -47,7 +47,7 @@ export function subscribedEvents(
 			const event = parse(record);
 			if (isSubscribed(subscriber, event)) events.push(event);
 		} catch (error) {
-			logger.error({ error, record }, 'Failed to parse record');
+			logger.error({ err: error, record }, 'Failed to parse record');
 		}
 	}
 	return events;

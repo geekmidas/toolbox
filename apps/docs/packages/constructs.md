@@ -119,7 +119,7 @@ drift.
 | `Queue` | `worker.queue(…)` | an `EventPublisher` typed to its `message` |
 | `RestApi` | `/rest-api` | — a surface; it owns a URL, not a client |
 | `StaticSite` | `/site` | — a surface |
-| `BetterAuth` | `/auth` | the auth server |
+| `BetterAuth` | `/auth` | an `AuthClient` — `api.getSession({ headers })`, over HTTP to the auth app |
 
 ### `.dependsOn()` — the one primitive
 
@@ -149,6 +149,51 @@ does not match the shape, which is what keeps environment sniffing confined to
 A construct that owns no client — a `Cron`, a `Subscriber` — types its
 `service` as `never`, so depending on one is a compile error rather than a stub
 that throws at runtime. You cannot call a queue worker; you send to its queue.
+
+### The auth server, and what its callers hold
+
+`BetterAuth` declares an app of its own (`path`), and that app is the only
+process the server runs in: its generated entry calls `auth.server()`, which
+reads `AUTH_SECRET`, opens the auth tenant and builds the mailer its options
+use.
+
+Everywhere else — the API, a worker, a feature test's in-process endpoints —
+`.dependsOn([auth])` hands the handler an **`AuthClient`**: the auth app's URL
+and nothing more. Its one call keeps Better Auth's shape, so a handler written
+against the server reads the same:
+
+```typescript
+export const getUser = router
+  .get('/users/:id')
+  .dependsOn([auth])
+  .handle(async ({ services, header }) => {
+    // GET <AUTH_URL><basePath>/get-session, with this request's cookie
+    const session = await services.auth.api.getSession({
+      headers: { cookie: header('cookie') ?? '' },
+    });
+    if (!session) throw new UnauthorizedError('Not signed in');
+    // session.user, session.session — Better Auth's own types
+  });
+```
+
+- Only `cookie`, `authorization` and `x-forwarded-for` are forwarded.
+- No session — Better Auth's `null`, or a `401` — is `null`.
+- A server that answers with any other failure throws `SessionCheckFailed`
+  (with its `status`), and one that cannot be reached throws
+  `AuthServerUnreachable` (with the `url` it tried). Neither is read as
+  "signed out".
+- `getSession` is all the client does. Anything else Better Auth's server
+  `api` offers — signing in, listing sessions, an admin plugin's calls — is a
+  request to the auth app from wherever the user is (its browser client), or
+  an endpoint of the auth app itself, not a call another app makes in-process.
+
+So an app that calls the auth server is given `AUTH_URL` — on the compose
+network, `http://auth:<port>` — and never `AUTH_SECRET`, the auth tenant's
+URL or its mail keys. In a feature test the auth app is served in-process at
+its URL, so the client's request goes where it would deployed.
+
+The `.auth(auth)` a surface declares (`session(async ({ auth }) =>
+auth.getSession())`) makes the same call.
 
 ### An API somebody else runs
 

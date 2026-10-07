@@ -220,9 +220,14 @@ describe('HonoEndpoint Events', () => {
 		const response = await request(serve(endpoint), 'POST', '/users');
 
 		expect(response.status).toBe(500);
-		expect(await response.text()).toContain(
+		// Which key is missing is the log's to say, not the response's.
+		expect(await response.text()).not.toContain(
 			'USERS_PUBLISHER_CONNECTION_STRING',
 		);
+		const logged = vi
+			.mocked(mockLogger.error)
+			.mock.calls.map(([fields]) => String((fields as { err?: Error }).err));
+		expect(logged.join('\n')).toContain('USERS_PUBLISHER_CONNECTION_STRING');
 		expect(handle).not.toHaveBeenCalled();
 	});
 

@@ -141,7 +141,7 @@ export class AWSLambdaQueue<
 				messages.push(validation.value as InferStandardSchema<TMessage>);
 			} catch (error) {
 				logger.error(
-					{ error, messageId: record.messageId },
+					{ err: error, messageId: record.messageId },
 					'Failed to parse SQS record',
 				);
 				batchItemFailures.push({ itemIdentifier: record.messageId });

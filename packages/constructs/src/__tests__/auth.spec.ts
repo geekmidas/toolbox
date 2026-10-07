@@ -6,9 +6,10 @@ import { magicLink } from 'better-auth/plugins';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import pg from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { TEST_DATABASE_CONFIG } from '../../../testkit/test/globalSetup';
 import {
+	AuthServerUnreachable,
 	BetterAuth,
 	type BetterAuthOptions,
 	deviceLink,
@@ -296,12 +297,11 @@ describe('BetterAuth.server', () => {
 		expect(stranger.headers.get('access-control-allow-origin')).toBeNull();
 	});
 
-	it('trusts the derived origins plus any its options add, through service.register', async () => {
-		// What a handler gets from `.dependsOn([auth])`. Better Auth enforces
-		// the list (and relaxes it under a test runner), so what is asserted is
-		// the list this construct hands it.
+	it('trusts the derived origins plus any its options add', async () => {
+		// Better Auth enforces the list (and relaxes it under a test runner), so
+		// what is asserted is the list this construct hands it.
 		const partner = 'http://partner.test';
-		const server = await auth({ trustedOrigins: [partner] }).service.register(
+		const { auth: server } = await auth({ trustedOrigins: [partner] }).server(
 			options({
 				AUTH_TRUSTED_ORIGINS: `${WEB_ORIGIN}, http://admin.shop.localhost`,
 			}),
@@ -404,7 +404,7 @@ describe('BetterAuth with a mobile app among its callers', () => {
 		// The app signs in through it; without it every request the app makes
 		// would be refused, so the server says so when it is built instead.
 		const failure = await auth()
-			.service.register(mobile())
+			.server(mobile())
 			.catch((error: unknown) => error);
 
 		expect(failure).toBeInstanceOf(ExpoPluginRequired);
@@ -415,23 +415,23 @@ describe('BetterAuth with a mobile app among its callers', () => {
 	});
 
 	it('starts with the Expo plugin the app gave it', async () => {
-		const server = await auth({ plugins: [expo()] }).service.register(mobile());
+		const { auth: server } = await auth({ plugins: [expo()] }).server(mobile());
 		const ids = server.options.plugins?.map((plugin) => plugin.id);
 
 		expect(ids).toContain('expo');
 	});
 
 	it('needs no Expo plugin where nothing but browsers call it', async () => {
-		const server = await auth().service.register(options());
+		const { auth: server } = await auth().server(options());
 		const ids = server.options.plugins?.map((plugin) => plugin.id) ?? [];
 
 		expect(ids).not.toContain('expo');
 	});
 
 	it('needs none for a native origin the app trusts by hand, outside the graph', async () => {
-		const server = await auth({
+		const { auth: server } = await auth({
 			trustedOrigins: ['partner://'],
-		}).service.register(options());
+		}).server(options());
 
 		expect(server.options.trustedOrigins).toContain('partner://');
 	});
@@ -627,5 +627,118 @@ describe('BetterAuth.verify', () => {
 		await expect(
 			auth().verify(new Headers(), options().envParser),
 		).rejects.toBeInstanceOf(SessionCheckFailed);
+	});
+});
+
+describe('BetterAuth.service — what .dependsOn([auth]) hands a caller', () => {
+	// Another app's process: given the auth server's URL and nothing else.
+	const caller = () => ({
+		envParser: new EnvironmentParser({ AUTH_URL }),
+		context: serviceContext,
+	});
+
+	const network = setupServer();
+	beforeAll(() => network.listen({ onUnhandledRequest: 'error' }));
+	afterEach(() => network.resetHandlers());
+	afterAll(() => network.close());
+
+	/** Every request the auth server's URL receives, answered by `answer`. */
+	const record = (answer: () => Response) => {
+		const seen: Request[] = [];
+		network.use(
+			http.all(`${AUTH_URL}/*`, ({ request }) => {
+				seen.push(request);
+				return answer();
+			}),
+		);
+		return seen;
+	};
+
+	it('starts with only the URL — no secret, no tenant, no mailer', async () => {
+		const client = await auth().service.register(caller());
+
+		expect(client.api.getSession).toBeTypeOf('function');
+	});
+
+	it('answers the session a real server gives a signed-in cookie, and null without one', async () => {
+		const { app } = await auth().server(options());
+		network.use(http.all(`${AUTH_URL}/*`, ({ request }) => app.fetch(request)));
+		const who = email('ada');
+		const cookie = (await fetch(signUp(who))).headers
+			.getSetCookie()
+			.map((c) => c.split(';')[0])
+			.join('; ');
+
+		const client = await auth().service.register(caller());
+
+		const session = await client.api.getSession({
+			headers: new Headers({ cookie }),
+		});
+		expect(session?.user.email).toBe(who);
+		expect(session?.session.userId).toBe(session?.user.id);
+		expect(await client.api.getSession({ headers: new Headers() })).toBeNull();
+	});
+
+	it('asks <basePath>/get-session, forwarding only the session headers', async () => {
+		const seen = record(() => HttpResponse.json(null));
+		const client = await auth({}, '/auth').service.register(caller());
+
+		await client.api.getSession({
+			headers: {
+				cookie: 'better-auth.session_token=abc',
+				authorization: 'Bearer t0ken',
+				'x-forwarded-for': '203.0.113.7',
+				'x-internal': 'not for the auth server',
+			},
+		});
+
+		expect(seen).toHaveLength(1);
+		expect(seen[0]!.method).toBe('GET');
+		expect(seen[0]!.url).toBe(`${AUTH_URL}/auth/get-session`);
+		expect(seen[0]!.headers.get('cookie')).toBe(
+			'better-auth.session_token=abc',
+		);
+		expect(seen[0]!.headers.get('authorization')).toBe('Bearer t0ken');
+		expect(seen[0]!.headers.get('x-forwarded-for')).toBe('203.0.113.7');
+		expect(seen[0]!.headers.get('x-internal')).toBeNull();
+	});
+
+	it('reads a 401 as signed out', async () => {
+		record(() =>
+			HttpResponse.json({ message: 'Unauthorized' }, { status: 401 }),
+		);
+		const client = await auth().service.register(caller());
+
+		expect(
+			await client.api.getSession({ headers: { cookie: 'stale=1' } }),
+		).toBeNull();
+	});
+
+	it('refuses to read a 5xx as signed out', async () => {
+		record(() => new HttpResponse(null, { status: 502 }));
+		const client = await auth().service.register(caller());
+
+		const failure = await client.api
+			.getSession({ headers: {} })
+			.catch((error: unknown) => error);
+
+		expect(failure).toBeInstanceOf(SessionCheckFailed);
+		expect(failure).toMatchObject({ authenticator: 'Auth', status: 502 });
+	});
+
+	it('says which server it could not reach, and where', async () => {
+		record(() => HttpResponse.error());
+		const client = await auth().service.register(caller());
+
+		const failure = await client.api
+			.getSession({ headers: {} })
+			.catch((error: unknown) => error);
+
+		expect(failure).toBeInstanceOf(AuthServerUnreachable);
+		expect(failure).toMatchObject({
+			authenticator: 'Auth',
+			url: `${AUTH_URL}/api/auth/get-session`,
+		});
+		expect((failure as Error).message).toContain('AUTH_URL');
 	});
 });

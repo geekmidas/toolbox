@@ -1145,6 +1145,55 @@ describe('HonoEndpointAdaptor', () => {
 				found: undefined,
 			});
 		});
+
+		it('answers with what went wrong and not the stack, outside gkm dev', async () => {
+			const app = new Hono();
+			new HonoEndpoint(failing(new NotFoundError('No such order'))).addRoute(
+				serviceDiscovery,
+				app,
+			);
+
+			const response = await app.request('/fail');
+			const body = await response.json();
+
+			expect(response.status).toBe(404);
+			expect(body).toMatchObject({
+				name: 'NotFoundError',
+				message: 'No such order',
+				statusCode: 404,
+			});
+			expect(body).not.toHaveProperty('stack');
+		});
+
+		it('answers a server failure without the error it wrapped', async () => {
+			const app = new Hono();
+			new HonoEndpoint(
+				failing(new TypeError('DATABASE_URL is postgres://u:p@db/x')),
+			).addRoute(serviceDiscovery, app);
+
+			const response = await app.request('/fail');
+			const text = await response.text();
+
+			expect(response.status).toBe(500);
+			expect(JSON.parse(text)).toMatchObject({ statusCode: 500 });
+			expect(text).not.toContain('DATABASE_URL');
+			expect(JSON.parse(text)).not.toHaveProperty('details');
+		});
+
+		it('logs the failure under err, with its stack', async () => {
+			const error = vi.mocked(mockLogger.error);
+			error.mockClear();
+			const app = new Hono();
+			const thrown = new TypeError('the handler broke');
+			new HonoEndpoint(failing(thrown)).addRoute(serviceDiscovery, app);
+
+			await app.request('/fail');
+
+			expect(error).toHaveBeenCalledWith(
+				{ err: thrown },
+				'Error processing endpoint request',
+			);
+		});
 	});
 
 	describe('output validation', () => {

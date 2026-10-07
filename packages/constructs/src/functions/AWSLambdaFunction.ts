@@ -172,7 +172,7 @@ export class AWSLambdaFunction<
 					}
 				} catch (error) {
 					this.logger.error(
-						{ error, event: req.event },
+						{ err: error, event: req.event },
 						'Failed to parse input',
 					);
 					throw error;

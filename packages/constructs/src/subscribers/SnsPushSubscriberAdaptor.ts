@@ -71,7 +71,7 @@ export class SnsPushSubscriberAdaptor {
 				await verifySnsMessage(message);
 			} catch (error) {
 				this.subscriber.logger.warn(
-					{ error, topicArn: message.TopicArn },
+					{ err: error, topicArn: message.TopicArn },
 					'Refused an SNS message that did not verify',
 				);
 				return refuse(403, (error as Error).name);

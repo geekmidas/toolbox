@@ -54,6 +54,8 @@ interface SessionContext {
  * neither.
  */
 export async function requireUser(ctx: SessionContext): Promise<SessionUser> {
+	// `services.auth` is the auth app's client, not its server: this is a
+	// request to AUTH_URL, so the API holds no signing secret to answer it.
 	const session = await ctx.services.auth.api.getSession({
 		headers: new Headers({ cookie: ctx.header('cookie') ?? '' }),
 	});
