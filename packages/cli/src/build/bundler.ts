@@ -140,7 +140,9 @@ export async function bundleServer(
 	];
 
 	if (minify) {
-		args.push('--minify');
+		// Names kept: an error's class name is what a log line's `err.type` and
+		// a response's `name` say, and minified they read `_6`.
+		args.push('--minify', '--keep-names');
 	}
 
 	if (sourcemap) {

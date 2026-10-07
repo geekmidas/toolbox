@@ -162,12 +162,12 @@ describe("a backend's env file", () => {
 	it('holds exactly the keys the API reads', () => {
 		const env = app(stack(), 'api').env!;
 
+		// Of the auth server it calls, only the address: its CORS list and
+		// cookie domain are its own settings, as its secret is.
 		expect(Object.keys(env).sort()).toEqual([
 			'API_COOKIE_DOMAIN',
 			'API_TRUSTED_ORIGINS',
 			'API_URL',
-			'AUTH_COOKIE_DOMAIN',
-			'AUTH_TRUSTED_ORIGINS',
 			'AUTH_URL',
 			'NODE_ENV',
 			'PORT',
@@ -466,7 +466,10 @@ describe('mail and storage on a deployed stage', () => {
 		expect(message).toContain('--stage production');
 		expect(message).toContain('--allow-dev-services mailpit,minio');
 		expect(missing.find((m) => m.key === 'MAIL_URL')?.apps).toEqual(['api']);
+		// The API signs uploads to the bucket and hands out URLs on the domain
+		// that serves it, so it reads the file server's address as the site does.
 		expect(missing.find((m) => m.key === 'UPLOADS_SERVER_URL')?.apps).toEqual([
+			'api',
 			'web',
 		]);
 	});

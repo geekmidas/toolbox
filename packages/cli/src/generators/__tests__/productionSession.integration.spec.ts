@@ -82,7 +82,6 @@ export const missing = api
 				external: [],
 				subscribers: 'exclude',
 				openapi: false,
-				optimizedHandlers: true,
 			},
 		},
 		constructs,

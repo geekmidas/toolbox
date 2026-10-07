@@ -153,7 +153,6 @@ export const boom = api
 				external: [],
 				subscribers: 'exclude',
 				openapi: false,
-				optimizedHandlers: false,
 			},
 			telemetry: { serviceName: 'Api', available: true },
 		},

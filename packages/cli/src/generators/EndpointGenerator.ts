@@ -1,15 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { Endpoint } from '@geekmidas/constructs/endpoints';
-import {
-	analyzeEndpoint,
-	type EndpointAnalysis,
-	summarizeAnalysis,
-} from '../build/endpoint-analyzer';
-import {
-	type EndpointImportInfo,
-	generateEndpointFilesNested,
-} from '../build/handler-templates';
 import type { BuildContext } from '../build/types';
 import type { RouteInfo } from '../types';
 import type { StorageDrivers } from './drivers';
@@ -183,7 +174,7 @@ export class EndpointGenerator extends ConstructGenerator<
 
 		if (target === 'server') {
 			// Generate endpoints.ts and app.ts
-			await this.generateEndpointsFile(outputDir, constructs, context);
+			await this.generateEndpointsFile(outputDir, constructs);
 			const appFile = await this.generateAppFile(outputDir, context);
 
 			routes.push({
@@ -259,7 +250,6 @@ export class EndpointGenerator extends ConstructGenerator<
 		endpoints: GeneratedConstruct<
 			Endpoint<any, any, any, any, any, any, any, any, any, any, any, any>
 		>[],
-		context: BuildContext,
 	): Promise<string> {
 		const endpointsFileName = 'endpoints.ts';
 		const endpointsPath = join(outputDir, endpointsFileName);
@@ -287,17 +277,12 @@ export class EndpointGenerator extends ConstructGenerator<
 
 		const allExportNames = endpoints.map(({ key }) => key);
 
-		// Check if we should use optimized handler generation
-		if (context.production?.enabled && context.production.optimizedHandlers) {
-			return this.generateOptimizedEndpointsFile(
-				endpointsPath,
-				endpoints,
-				endpointImports,
-				allExportNames,
-			);
-		}
-
-		// Standard generation (development or optimizedHandlers: false)
+		// One registration for every build, production included: each endpoint
+		// is served by HonoEndpoint, which is what `gkm dev` and a feature test
+		// serve it with. Production used to generate its own handlers per
+		// "tier", and each was a hand-copy of the adaptor that drifted from it —
+		// a session left undefined, an HttpError answered 500, an auditor
+		// hard-coded to undefined, cookies a handler set never sent.
 		const content = `import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 import { HonoEndpoint } from '@geekmidas/constructs/hono';
@@ -345,83 +330,6 @@ export async function setupEndpoints(
 		await writeFile(endpointsPath, content);
 
 		return endpointsPath;
-	}
-
-	/**
-	 * Generate optimized endpoints files with nested folder structure (per-endpoint files)
-	 */
-	private async generateOptimizedEndpointsFile(
-		endpointsPath: string,
-		endpoints: GeneratedConstruct<
-			Endpoint<any, any, any, any, any, any, any, any, any, any, any, any>
-		>[],
-		_endpointImports: string,
-		_allExportNames: string[],
-	): Promise<string> {
-		const logger = console;
-		const outputDir = dirname(endpointsPath);
-
-		// Create endpoints subdirectory with tier folders
-		const endpointsDir = join(outputDir, 'endpoints');
-		await mkdir(join(endpointsDir, 'minimal'), { recursive: true });
-		await mkdir(join(endpointsDir, 'standard'), { recursive: true });
-		await mkdir(join(endpointsDir, 'full'), { recursive: true });
-
-		// Analyze each endpoint
-		const analyses: EndpointAnalysis[] = endpoints.map(({ key, construct }) =>
-			analyzeEndpoint(construct, key),
-		);
-
-		// Build endpoint import info with correct relative paths from each tier folder
-		// Use paths relative to the tier folder (e.g., endpoints/standard/)
-		const endpointImports: EndpointImportInfo[] = endpoints.map(
-			({ key, path }) => {
-				// Calculate relative path from tier folder (one level deeper than endpointsDir)
-				const tierDir = join(endpointsDir, 'standard'); // Use any tier as reference - same depth
-				const relativePath = relative(tierDir, path.relative);
-				const importPath = relativePath.replace(/\.ts$/, '.js');
-				return { exportName: key, importPath };
-			},
-		);
-
-		// Log analysis summary
-		const summary = summarizeAnalysis(analyses);
-		logger.log(`\n📊 Endpoint Analysis:`);
-		logger.log(`   Total: ${summary.total} endpoints`);
-		logger.log(
-			`   - Minimal (near-raw-Hono): ${summary.byTier.minimal} endpoints`,
-		);
-		logger.log(
-			`   - Standard (auth/services): ${summary.byTier.standard} endpoints`,
-		);
-		logger.log(
-			`   - Full (audits/rls/rate-limit): ${summary.byTier.full} endpoints`,
-		);
-
-		// Generate files with nested structure (per-endpoint files)
-		const files = generateEndpointFilesNested(analyses, endpointImports);
-
-		// Write each file, creating directories as needed
-		for (const [filename, content] of Object.entries(files)) {
-			const filePath = join(endpointsDir, filename);
-			await mkdir(dirname(filePath), { recursive: true });
-			await writeFile(filePath, content);
-		}
-
-		// Count files by type
-		const endpointFiles = Object.keys(files).filter(
-			(f) => !f.endsWith('index.ts') && !f.endsWith('validators.ts'),
-		).length;
-		const indexFiles = Object.keys(files).filter((f) =>
-			f.endsWith('index.ts'),
-		).length;
-
-		logger.log(
-			`   Generated ${endpointFiles} endpoint files + ${indexFiles} index files + validators.ts`,
-		);
-
-		// Return path to index file
-		return join(endpointsDir, 'index.ts');
 	}
 
 	private async generateAppFile(
@@ -533,7 +441,7 @@ import { ${databaseApi.database.exportName} as __introspectedDb } from '${import
     (honoApp as any).__injectWebSocket = injectWebSocket;
     logger.info('Telescope WebSocket enabled');
   } catch (e) {
-    logger.warn({ error: e }, 'WebSocket support not available - install @hono/node-ws for real-time updates');
+    logger.warn({ err: e }, 'WebSocket support not available - install @hono/node-ws for real-time updates');
   }
 `
 			: '';
@@ -706,19 +614,19 @@ ${afterSetupCall}
       // Mount pushed subscribers' routes and start polled ones. What comes
       // back subscribes the routes, once the server can answer them.
       const subscribeForPush = await setupSubscribers(honoApp, envParser, logger).catch((error) => {
-        logger.error({ error }, 'Failed to start subscribers');
+        logger.error({ err: error }, 'Failed to start subscribers');
         return async (_port: number) => {};
       });
 
       // Start queue workers in background (non-blocking, local development only)
       await setupQueues(envParser, logger).catch((error) => {
-        logger.error({ error }, 'Failed to start queue workers');
+        logger.error({ err: error }, 'Failed to start queue workers');
       });
 
       // Schedule this app's crons. Caught like the others: a scheduler that
       // cannot start is not a reason for the HTTP server not to.
       await setupCrons(envParser, logger).catch((error) => {
-        logger.error({ error }, 'Failed to schedule crons');
+        logger.error({ err: error }, 'Failed to schedule crons');
       });
 
       logger.info({ port }, 'Starting server');
@@ -818,19 +726,19 @@ export const handler = adapter.handler;
       // Mount pushed subscribers' routes and start polled ones. What comes
       // back subscribes the routes, once the server can answer them.
       const subscribeForPush = await setupSubscribers(honoApp, envParser, logger).catch((error) => {
-        logger.error({ error }, 'Failed to start subscribers');
+        logger.error({ err: error }, 'Failed to start subscribers');
         return async (_port: number) => {};
       });
 
       // Start queue workers in background
       await setupQueues(envParser, logger).catch((error) => {
-        logger.error({ error }, 'Failed to start queue workers');
+        logger.error({ err: error }, 'Failed to start queue workers');
       });
 
       // Schedule this app's crons. Caught like the others: a scheduler that
       // cannot start is not a reason for the HTTP server not to.
       await setupCrons(envParser, logger).catch((error) => {
-        logger.error({ error }, 'Failed to schedule crons');
+        logger.error({ err: error }, 'Failed to schedule crons');
       });
 `
 			: '';
@@ -865,7 +773,7 @@ import { setupCrons } from './crons.js';`
       if (typeof close === 'function') close.call(server, () => resolve());
       else resolve();
     });
-    await runShutdownHooks((error) => logger.error({ error }, 'Shutdown hook failed'));
+    await runShutdownHooks((error) => logger.error({ err: error }, 'Shutdown hook failed'));
     process.exit(0);
   };
 
@@ -873,11 +781,6 @@ import { setupCrons } from './crons.js';`
   process.on('SIGINT', shutdown);
 `
 			: '';
-
-		// Use endpoints/index.js for optimized builds, endpoints.js otherwise
-		const endpointsImportPath = production.optimizedHandlers
-			? './endpoints/index.js'
-			: './endpoints.js';
 
 		const content = `/**
  * Generated production server application
@@ -890,7 +793,7 @@ import { setupCrons } from './crons.js';`
  */
 import { Hono } from 'hono';
 import type { Hono as HonoType } from 'hono';
-${enableGracefulShutdown ? "import { runShutdownHooks } from '@geekmidas/constructs';\n" : ''}import { setupEndpoints } from '${endpointsImportPath}';
+${enableGracefulShutdown ? "import { runShutdownHooks } from '@geekmidas/constructs';\n" : ''}import { setupEndpoints } from './endpoints.js';
 ${subscriberImport}
 ${runtime.imports}
 ${runtime.bindings}
@@ -955,7 +858,7 @@ export async function createApp(app?: HonoType): Promise<ServerApp> {
         http.statusCode as 500,
       );
     }
-    logger.error({ error }, 'Unhandled error');
+    logger.error({ err: error }, 'Unhandled error');
     return c.json({ message: 'Internal Server Error' }, 500);
   });
 ${cors.setup}${beforeSetupCall}

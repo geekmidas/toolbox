@@ -360,7 +360,6 @@ describe('EndpointGenerator', () => {
 					gracefulShutdown: true,
 					openapi: false,
 					subscribers: 'exclude' as const,
-					optimizedHandlers: false,
 				},
 			};
 
@@ -422,7 +421,6 @@ describe('EndpointGenerator', () => {
 						gracefulShutdown: true,
 						openapi: false,
 						subscribers: 'exclude' as const,
-						optimizedHandlers: false,
 					},
 					telemetry: {
 						serviceName: 'Api',
@@ -501,7 +499,6 @@ describe('EndpointGenerator', () => {
 						gracefulShutdown: true,
 						openapi: false,
 						subscribers: 'exclude' as const,
-						optimizedHandlers: false,
 					},
 					telemetry: { serviceName: 'Api', available: false },
 				},
@@ -545,7 +542,6 @@ describe('EndpointGenerator', () => {
 						gracefulShutdown: true,
 						openapi: false,
 						subscribers: 'exclude' as const,
-						optimizedHandlers: false,
 					},
 				},
 				constructs,
@@ -584,7 +580,6 @@ describe('EndpointGenerator', () => {
 					gracefulShutdown: false,
 					openapi: true,
 					subscribers: 'include' as const,
-					optimizedHandlers: false,
 				},
 			};
 

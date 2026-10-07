@@ -345,7 +345,7 @@ export async function setupSubscribers(
             db,
           } as any);
         } catch (error) {
-          logger.error({ error, event, subscriber: id }, 'Failed to process event');
+          logger.error({ err: error, event, subscriber: id }, 'Failed to process event');
           // Rethrown so the transport keeps the event for a retry — as a queue
           // consumer's failure does, and as a pushed subscriber's 500 does.
           throw error;
@@ -355,7 +355,7 @@ export async function setupSubscribers(
     } catch (error) {
       // The message too: a missing module's code alone does not say which.
       logger.error(
-        { error, message: (error as Error)?.message, subscriber: id },
+        { err: error, subscriber: id },
         'Failed to set up subscriber',
       );
     }
@@ -372,7 +372,7 @@ export async function setupSubscribers(
     await listening(port);
     for (const subscribe of afterListening) {
       await subscribe(port).catch((error) => {
-        logger.error({ error }, 'Failed to subscribe for push');
+        logger.error({ err: error }, 'Failed to subscribe for push');
       });
     }
   };

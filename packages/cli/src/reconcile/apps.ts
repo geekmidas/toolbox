@@ -21,6 +21,7 @@
 import {
 	type ConstructManifest,
 	dependenciesOf,
+	provideKey,
 	provisionOrder,
 	publicEnvFor,
 } from '@geekmidas/manifest';
@@ -244,6 +245,15 @@ export function appEnvKeys(
 	for (const id of edges) {
 		const target = manifest[id];
 		if (!target) continue;
+		// A surface is reached over HTTP, so its caller is given its address
+		// and nothing else it provides: who it trusts and the domain its
+		// cookies are scoped to are the surface's own settings, read by its own
+		// process. For an auth server that is the whole point — the API gets
+		// AUTH_URL, and the auth app alone holds its secret, tenant and mailer.
+		if (target.kind === 'rest-api') {
+			keys.add(provideKey(id, 'url'));
+			continue;
+		}
 		for (const key of target.provides ?? []) keys.add(key);
 
 		if (target.kind === 'queue' || target.kind === 'topic') {
@@ -253,6 +263,15 @@ export function appEnvKeys(
 		// of its own — handed over only where the stage has one. A file server
 		// is reached by its URL alone.
 		if (target.kind === 'objects') {
+			// A FileServer is one construct declaring two nodes — the bucket,
+			// which the edge points at, and the domain that serves it — and its
+			// client reads both: a handler signs uploads to the bucket and hands
+			// out URLs on the domain. The domain's address comes with the edge.
+			for (const other of Object.values(manifest)) {
+				if (other.kind === 'file-server' && other.of === id) {
+					for (const key of other.provides ?? []) keys.add(key);
+				}
+			}
 			keys.add('AWS_ACCESS_KEY_ID');
 			keys.add('AWS_SECRET_ACCESS_KEY');
 			keys.add('AWS_REGION');

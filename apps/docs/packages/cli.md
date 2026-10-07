@@ -688,73 +688,19 @@ in the same process.
 | Health Check | ✗ | ✓ |
 | Graceful Shutdown | ✗ | ✓ |
 | Bundled | ✗ | ✓ |
-| Optimized Handlers | ✗ | ✓ |
 
-### Build-Time Optimization
+### One handler path
 
-Production builds automatically generate optimized endpoint handlers based on feature analysis. Endpoints are categorized into three tiers:
+A production server registers each endpoint with the same adaptor `gkm dev`
+and a feature test use, so what a handler is given — `auditor`, `db`,
+`session`, `services` — and what it sends back — status, headers, cookies —
+cannot differ between them. The adaptor reads each endpoint's features once,
+when the route is registered, and skips what an endpoint does not use.
 
-| Tier | Features | Performance |
-|------|----------|-------------|
-| **Minimal** | No auth, no services, no database | Near-raw-Hono (~1.2x overhead) |
-| **Standard** | Auth and/or services | Optimized (~2-3x faster than runtime) |
-| **Full** | Audits, RLS, rate-limiting | Uses HonoEndpoint.addRoutes |
-
-**How it works:**
-
-1. At build time, each endpoint is analyzed for its features
-2. Optimized inline handlers are generated for minimal and standard tiers
-3. Full-tier endpoints use runtime HonoEndpoint for transaction wrapping
-4. Reusable validator middleware is shared across endpoints
-
-**Generated File Structure:**
-
-```
-.gkm/server/endpoints/
-├── validators.ts           # Shared validator middleware
-├── minimal/
-│   ├── index.ts            # setupMinimalEndpoints()
-│   ├── ping.ts             # Individual endpoint
-│   └── version.ts
-├── standard/
-│   ├── index.ts            # setupStandardEndpoints()
-│   ├── getUsers.ts
-│   └── createUser.ts
-├── full/
-│   ├── index.ts            # setupFullEndpoints()
-│   └── deleteUser.ts       # Uses HonoEndpoint.addRoutes
-└── index.ts                # Main entry point
-```
-
-**Performance Benefits:**
-
-- **Minimal tier**: ~3x faster than runtime HonoEndpoint
-- **Standard tier**: ~2x faster than runtime HonoEndpoint
-- **Build output**: Typically 10-15KB bundled (vs 100KB+ with all dependencies)
-
-**Endpoint Classification:**
-
-```typescript
-import { api } from '../constructs/api';
-
-// Minimal tier - no auth, no services
-const ping = api
-  .get('/ping')
-  .output(z.object({ message: z.string() }))
-  .handle(async () => ({ message: 'pong' }));
-
-// Standard tier - uses auth and/or dependencies
-const getUsers = router
-  .get('/users')
-  .dependsOn([database])
-  .handle(async ({ services }) => services.orders.selectFrom('users').selectAll().execute());
-
-// Full tier - uses declarative audits
-const deleteUser = router
-  .delete('/users/:id')
-  .audit([{ type: 'user.deleted', payload: (r) => ({ userId: r.id }) }])
-  .handle(async ({ params }) => { /* ... */ });
-```
+Production builds used to generate their own per-"tier" handlers instead.
+Each was a hand copy of the adaptor, and each drifted from it: a session left
+undefined, an `HttpError` answered 500, `auditor` hard-coded to `undefined`,
+cookies a handler set never sent. They are gone.
 
 ### Docker Configuration
 
