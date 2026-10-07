@@ -193,14 +193,16 @@ export function endHttpSpan(
 			code: SpanStatusCode.ERROR,
 			message: error.message,
 		});
-	} else if (response.statusCode >= 400) {
+	} else if (response.statusCode >= 500) {
 		span.setStatus({
 			code: SpanStatusCode.ERROR,
 			message: `HTTP ${response.statusCode}`,
 		});
-	} else {
+	} else if (response.statusCode < 400) {
 		span.setStatus({ code: SpanStatusCode.OK });
 	}
+	// A 4xx leaves the status unset: on a server span it is the client's
+	// mistake, not the server's failure (HTTP semantic conventions).
 
 	span.end();
 }

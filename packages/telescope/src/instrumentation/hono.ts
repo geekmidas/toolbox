@@ -7,6 +7,7 @@ import { context, type Span, trace } from '@opentelemetry/api';
  * request/response metadata as span attributes.
  */
 import type { Context, MiddlewareHandler } from 'hono';
+import { routePath } from 'hono/route';
 import {
 	createHttpServerSpan,
 	endHttpSpan,
@@ -126,10 +127,13 @@ export function honoTelemetryMiddleware(
 		}
 
 		try {
-			// Execute the rest of the middleware chain within span context
+			// Execute the rest of the middleware chain within span context, so
+			// the handler's logs and outbound spans nest under this one.
 			await context.with(spanContext, async () => {
 				await next();
 			});
+
+			nameAfterRoute(c, span);
 
 			// Record response
 			const statusCode = c.res.status;
@@ -148,8 +152,11 @@ export function honoTelemetryMiddleware(
 				}
 			}
 
-			endHttpSpan(span, { statusCode });
+			// Hono hands a thrown error to `onError` and sets `c.error`
+			// rather than rethrowing, so that is where it is found.
+			endHttpSpan(span, { statusCode }, c.error);
 		} catch (error) {
+			nameAfterRoute(c, span);
 			endHttpSpan(
 				span,
 				{ statusCode: 500 },
@@ -158,6 +165,28 @@ export function honoTelemetryMiddleware(
 			throw error;
 		}
 	};
+}
+
+/**
+ * The route the request matched, once the handler has run — `/users/:id`,
+ * never `/users/42` — or undefined when only middleware ran (a 404).
+ *
+ * Read after `next()`: before it, the route is this middleware's own `*`.
+ */
+function matchedRoute(c: Context): string | undefined {
+	const path = routePath(c);
+	return path && !path.includes('*') ? path : undefined;
+}
+
+/** `GET /users/:id`, or the bare method when no route matched. */
+function nameAfterRoute(c: Context, span: Span): void {
+	const route = matchedRoute(c);
+	if (route) {
+		span.setAttribute('http.route', route);
+		span.updateName(`${c.req.method} ${route}`);
+	} else {
+		span.updateName(c.req.method);
+	}
 }
 
 /**
@@ -170,18 +199,11 @@ function buildHonoSpanAttributes(
 	const req = c.req;
 	const url = new URL(req.url);
 
-	// Use actual path for route unless it's a specific route pattern
-	const routePath = c.req.routePath;
-	const route =
-		routePath && routePath !== '*' && !routePath.includes('/*')
-			? routePath
-			: url.pathname;
-
+	// No `url.full`: a query string can carry a token, and the span would
+	// keep it. The route is named once the handler has run.
 	const attrs: HttpSpanAttributes = {
 		method: req.method,
-		url: req.url,
 		path: url.pathname,
-		route,
 		host: url.host,
 		scheme: url.protocol.replace(':', '') as 'http' | 'https',
 		userAgent: req.header('user-agent'),

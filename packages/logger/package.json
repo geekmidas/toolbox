@@ -35,6 +35,16 @@
 				"default": "./dist/console.cjs"
 			}
 		},
+		"./otel": {
+			"import": {
+				"types": "./dist/otel.d.mts",
+				"default": "./dist/otel.mjs"
+			},
+			"require": {
+				"types": "./dist/otel.d.cts",
+				"default": "./dist/otel.cjs"
+			}
+		},
 		"./redact": {
 			"import": {
 				"types": "./dist/redact-paths.d.mts",
@@ -57,8 +67,14 @@
 		"registry": "https://registry.npmjs.org/",
 		"access": "public"
 	},
-	"dependencies": {},
-	"devDependencies": {},
+	"dependencies": {
+		"@opentelemetry/api-logs": "~0.222.0"
+	},
+	"devDependencies": {
+		"@opentelemetry/api": "~1.9.1",
+		"@opentelemetry/sdk-logs": "~0.222.0",
+		"@opentelemetry/sdk-trace-node": "~2.11.0"
+	},
 	"peerDependencies": {
 		"pino-pretty": ">=13.1.3",
 		"pino": ">=10.3.1"

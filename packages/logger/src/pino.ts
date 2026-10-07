@@ -30,6 +30,7 @@
  * @module
  */
 import { type LogFn, type Logger, pino } from 'pino';
+import { otelStreamWrite } from './otel';
 import {
 	DEFAULT_REDACT_PATHS,
 	redactUrlCredentials,
@@ -127,19 +128,23 @@ export function createLogger(options: CreateLoggerOptions = {}) {
 		...baseOptions,
 		...(options.level && { level: options.level }),
 		...(redact && { redact }),
-		// Redaction also masks the credentials of any URL, in any field or in
-		// the message: `s3://KEY:SECRET@uploads` is logged with its secret
-		// under a name no path list can predict.
-		...(redact && {
-			hooks: {
+		hooks: {
+			// Redaction also masks the credentials of any URL, in any field or
+			// in the message: `s3://KEY:SECRET@uploads` is logged with its
+			// secret under a name no path list can predict.
+			...(redact && {
 				logMethod(this: Logger, args: Parameters<LogFn>, method: LogFn) {
 					const redacted = args.map((arg) =>
 						typeof arg === 'string' ? redactUrlCredentials(arg) : arg,
 					) as Parameters<LogFn>;
 					return method.apply(this, redacted);
 				},
-			},
-		}),
+			}),
+			// Each line, once redacted and serialized, also goes to
+			// OpenTelemetry when a LoggerProvider is registered. On the calling
+			// thread, before any transport, so the active span is the caller's.
+			streamWrite: otelStreamWrite,
+		},
 		formatters: {
 			...(redact && {
 				log: (object: Record<string, unknown>) =>

@@ -72,6 +72,7 @@
 		"peerDependencies": ">=1.9.1"
 	},
 	"@opentelemetry/api-logs": {
+		"dependencies": "~0.222.0",
 		"devDependencies": "~0.222.0"
 	},
 	"@opentelemetry/auto-instrumentations-node": {

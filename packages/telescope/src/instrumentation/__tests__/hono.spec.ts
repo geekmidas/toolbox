@@ -1,11 +1,19 @@
-import { trace } from '@opentelemetry/api';
+import { propagation, trace } from '@opentelemetry/api';
+import { core } from '@opentelemetry/sdk-node';
 import {
 	BasicTracerProvider,
 	InMemorySpanExporter,
 	SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
 import { Hono } from 'hono';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	onTestFinished,
+} from 'vitest';
 import {
 	getSpanFromContext,
 	getTraceContextFromHono,
@@ -77,8 +85,8 @@ describe('honoTelemetryMiddleware', () => {
 		});
 
 		it('should handle errors and record error status', async () => {
-			// Note: Hono catches errors internally before they propagate to middleware,
-			// so we can only detect the 500 status code, not record the actual exception
+			// Hono hands the error to onError rather than rethrowing; the
+			// middleware finds it on c.error and records it.
 			app.use('*', honoTelemetryMiddleware());
 			app.get('/api/error', () => {
 				throw new Error('Test error');
@@ -90,10 +98,11 @@ describe('honoTelemetryMiddleware', () => {
 			const spans = exporter.getFinishedSpans();
 			expect(spans).toHaveLength(1);
 			expect(spans[0].attributes['http.response.status_code']).toBe(500);
-			expect(spans[0].status.code).toBe(2); // SpanStatusCode.ERROR
+			expect(spans[0].status).toEqual({ code: 2, message: 'Test error' }); // ERROR
+			expect(spans[0].events.map((e) => e.name)).toEqual(['exception']);
 		});
 
-		it('should record 4xx status codes', async () => {
+		it('should record a 4xx status without marking the span an error', async () => {
 			app.use('*', honoTelemetryMiddleware());
 			app.get('/api/users/:id', (c) => c.json({ error: 'Not found' }, 404));
 
@@ -102,7 +111,50 @@ describe('honoTelemetryMiddleware', () => {
 			expect(response.status).toBe(404);
 			const spans = exporter.getFinishedSpans();
 			expect(spans[0].attributes['http.response.status_code']).toBe(404);
-			expect(spans[0].status.code).toBe(2); // SpanStatusCode.ERROR
+			expect(spans[0].status.code).toBe(0); // SpanStatusCode.UNSET
+		});
+
+		it('should name the span after the route pattern, not the path', async () => {
+			app.use('*', honoTelemetryMiddleware());
+			app.get('/api/users/:id', (c) => c.json({ id: c.req.param('id') }));
+
+			await app.request('/api/users/42');
+
+			const [span] = exporter.getFinishedSpans();
+			expect(span?.name).toBe('GET /api/users/:id');
+			expect(span?.attributes['http.route']).toBe('/api/users/:id');
+			expect(span?.attributes['url.path']).toBe('/api/users/42');
+		});
+
+		it('should name an unmatched request after its method alone', async () => {
+			app.use('*', honoTelemetryMiddleware());
+
+			const response = await app.request('/nowhere/42');
+
+			expect(response.status).toBe(404);
+			const [span] = exporter.getFinishedSpans();
+			expect(span?.name).toBe('GET');
+			expect(span?.attributes['http.route']).toBeUndefined();
+		});
+
+		it('should continue an incoming traceparent', async () => {
+			propagation.setGlobalPropagator(new core.W3CTraceContextPropagator());
+			onTestFinished(() => propagation.disable());
+			app.use('*', honoTelemetryMiddleware());
+			app.get('/api/users', (c) => c.json({ users: [] }));
+
+			await app.request('/api/users', {
+				headers: {
+					traceparent:
+						'00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01',
+				},
+			});
+
+			const [span] = exporter.getFinishedSpans();
+			expect(span?.spanContext().traceId).toBe(
+				'0af7651916cd43dd8448eb211c80319c',
+			);
+			expect(span?.parentSpanContext?.spanId).toBe('b7ad6b7169203331');
 		});
 	});
 
@@ -311,14 +363,15 @@ describe('honoTelemetryMiddleware', () => {
 	});
 
 	describe('URL attributes', () => {
-		it('should capture full URL and path', async () => {
+		it('should capture the path but never the query string', async () => {
 			app.use('*', honoTelemetryMiddleware());
 			app.get('/api/users', (c) => c.json({ users: [] }));
 
-			await app.request('http://localhost/api/users?page=1');
+			await app.request('http://localhost/api/users?token=secret');
 
 			const spans = exporter.getFinishedSpans();
-			expect(spans[0].attributes['url.full']).toContain('/api/users');
+			expect(spans[0].attributes['url.full']).toBeUndefined();
+			expect(JSON.stringify(spans[0].attributes)).not.toContain('secret');
 			expect(spans[0].attributes['url.path']).toBe('/api/users');
 			expect(spans[0].attributes['server.address']).toBe('localhost');
 		});

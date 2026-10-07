@@ -332,13 +332,13 @@ With it on, the stack adds:
 
 Nothing waits on it: an app whose telemetry cannot be delivered still serves.
 
-What arrives depends on what the server's OpenTelemetry can instrument. Today
-that is the runtime's metrics and the spans of what is loaded at run time —
-outbound `fetch`, DNS, TCP — each under its app's `service.name`. The
-production server is one bundled file, so pino and the HTTP server are inside
-it where the OpenTelemetry instrumentations, which hook module loading, cannot
-reach them: pino's log records and the incoming-request spans are not exported
-from a bundled server yet.
+What arrives, each under its app's `service.name`: a SERVER span per request
+(`GET /users/:id`, with its status code), every record a `createLogger` logger
+writes — in the trace of the request that wrote it, so a log line leads to its
+request and back — the spans of outbound `fetch`, DNS and TCP, and the
+runtime's metrics. Query spans do not arrive yet: `pg` is bundled into the
+server. [Telemetry → What is exported](./production.md#what-is-exported) has
+the detail.
 
 The root user is `admin@<stage domain>` on a deployed stage. Its password is
 generated on the first run and kept in the stage's secrets as

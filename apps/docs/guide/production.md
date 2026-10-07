@@ -231,7 +231,34 @@ Everything else comes from the standard variables:
 | `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` | Sampling, e.g. `parentbased_traceidratio` and `0.1`. |
 | `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` | Override or add resource attributes. |
 
-Node auto-instrumentations are on (HTTP, `pg` and the rest, without `fs`).
+### What is exported
+
+The server is one bundled file, and OpenTelemetry's auto-instrumentations work
+by hooking module loading — which sees nothing inside a bundle. So the two
+signals that matter most are sent by explicit code instead:
+
+- **A SERVER span per request.** The server mounts a Hono middleware ahead of
+  every route. Each request becomes `GET /users/:id` — the route pattern, not
+  the path — with `http.request.method`, `http.route`,
+  `http.response.status_code`, `url.path`, `url.scheme`, `server.address`,
+  `user_agent.original` and `client.address`. Never the query string, and no
+  headers. A 5xx or a thrown error marks it `ERROR`, the exception recorded; a
+  4xx does not. An incoming W3C `traceparent` is continued, and the handler
+  runs inside the span, so its logs and its outbound calls belong to it. The
+  health check and `/ready` get none.
+- **Every log record.** A logger made with `createLogger` from
+  `@geekmidas/logger/pino` sends each record through the OpenTelemetry logs
+  API as well as to stdout: the pino level as its severity, the message as its
+  body, the record's fields as attributes — redacted exactly as stdout is —
+  and the trace and span ids of the request it was logged in. A logger made
+  with `pino()` directly gets the same with
+  `hooks: { streamWrite: otelStreamWrite }` from `@geekmidas/logger/otel`.
+
+The auto-instrumentations still run (without `fs`) for what is loaded at run
+time rather than bundled: outbound `fetch`, DNS and TCP, and the runtime's
+metrics. Database queries are not among them — `pg` is inside the bundle, so
+there are no query spans yet; a query still carries its request's
+`request_id` in its SQL comment.
 
 Install `@geekmidas/telescope` and its `@opentelemetry/*` peer dependencies in
 each app that should export. The build checks they resolve. If they do not,

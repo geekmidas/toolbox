@@ -1,5 +1,7 @@
 ---
 '@geekmidas/cli': minor
+'@geekmidas/telescope': minor
+'@geekmidas/constructs': patch
 ---
 
 `gkm compose` can run a log UI, every target passes `OTEL_*` to its backends, and Docker logs are rotated
@@ -48,3 +50,22 @@ default, and a busy container filled a small server's disk.
 merged over the generated stack — on every run and on `--down` — for what the
 generated file cannot know, such as a port bound to a tailnet address or
 another `logging` block.
+
+**Request spans and logs from a bundled server.** A production server is one
+bundled file, where OpenTelemetry's load-time hooks see neither pino nor
+`node:http`, so only DNS, TCP and `fetch` spans arrived. The server now mounts
+telescope's `honoTelemetryMiddleware` ahead of every route: a SERVER span per
+request named `GET /users/:id`, with method, route, status code, `url.path`,
+`url.scheme` and user agent — never the query string or headers — `ERROR` on a
+5xx or a thrown error (the exception recorded; a 4xx is not an error), an
+incoming `traceparent` continued, and the handler run inside it. Logs come from
+`@geekmidas/logger`'s own bridge, in the request's trace. The generated setup
+turns `@opentelemetry/instrumentation-pino` and the http instrumentation's
+incoming spans off, so nothing is sent twice where they can hook. `pg` is
+bundled too, so there are no query spans yet.
+
+The middleware itself changed to fit: it names the span after the matched
+route once the handler has run (it used the raw path), drops `url.full`, sets
+`ERROR` only on a 5xx, and records the error Hono hands `onError`.
+`setupTelemetry` takes `incomingHttpSpans: false`. An endpoint whose handler
+fails with a 5xx leaves the error on `c.error` for middleware.

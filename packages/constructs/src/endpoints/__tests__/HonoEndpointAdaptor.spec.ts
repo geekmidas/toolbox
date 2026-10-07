@@ -1,4 +1,5 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
+import { NotFoundError } from '@geekmidas/errors';
 import type { Logger } from '@geekmidas/logger';
 import { ServiceDiscovery } from '@geekmidas/services';
 import { Hono } from 'hono';
@@ -1095,6 +1096,54 @@ describe('HonoEndpointAdaptor', () => {
 			});
 
 			expect(response.status).toBe(403);
+		});
+	});
+
+	describe('a failed handler', () => {
+		function failing(error: Error) {
+			return new Endpoint({
+				route: '/fail',
+				method: 'GET',
+				fn: async () => {
+					throw error;
+				},
+				input: undefined,
+				output: z.object({ ok: z.boolean() }),
+				services: [],
+				logger: mockLogger,
+				timeout: undefined,
+				memorySize: undefined,
+				status: undefined,
+				getSession: undefined,
+				authorize: undefined,
+				description: undefined,
+			});
+		}
+
+		/** What a middleware ahead of the route sees on `c.error`. */
+		async function seen(error: Error) {
+			const app = new Hono();
+			let found: Error | undefined;
+			app.use('*', async (c, next) => {
+				await next();
+				found = c.error;
+			});
+			new HonoEndpoint(failing(error)).addRoute(serviceDiscovery, app);
+			const response = await app.request('/fail');
+			return { status: response.status, found };
+		}
+
+		it('leaves a server failure on c.error for middleware', async () => {
+			const error = new TypeError('the handler broke');
+
+			expect(await seen(error)).toEqual({ status: 500, found: error });
+		});
+
+		it("leaves c.error unset for a client's error", async () => {
+			expect(await seen(new NotFoundError('No such order'))).toEqual({
+				status: 404,
+				found: undefined,
+			});
 		});
 	});
 

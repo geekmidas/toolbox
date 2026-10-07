@@ -442,8 +442,17 @@ describe('EndpointGenerator', () => {
 				"import { startTelemetry } from './telemetry.js';",
 			);
 			expect(server).not.toContain("import { createApp } from './app.js'");
-			expect(server.indexOf('await startTelemetry();')).toBeLessThan(
+			expect(server.indexOf('await startTelemetry(')).toBeLessThan(
 				server.indexOf("await import('./app.js')"),
+			);
+			// Its request-span middleware goes on ahead of every route, and the
+			// health checks open no span.
+			expect(server).toContain(
+				'const requestSpans = await startTelemetry({\n  ignorePaths: ["/health", \'/ready\'],',
+			);
+			expect(server).toContain("if (requestSpans) app.use('*', requestSpans);");
+			expect(server.indexOf("app.use('*', requestSpans)")).toBeLessThan(
+				server.indexOf('await createApp(app)'),
 			);
 
 			const telemetry = await readFile(
@@ -451,7 +460,7 @@ describe('EndpointGenerator', () => {
 				'utf-8',
 			);
 			expect(telemetry).toContain(
-				'if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) return;',
+				'if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) return undefined;',
 			);
 			expect(telemetry).toContain(
 				"await import('@geekmidas/telescope/instrumentation')",
@@ -460,6 +469,8 @@ describe('EndpointGenerator', () => {
 			expect(telemetry).toContain('serviceNamespace: "shop",');
 			expect(telemetry).toContain('deploymentEnvironment: process.env.STAGE,');
 			expect(telemetry).toContain('handleSignals: false,');
+			expect(telemetry).toContain('instrumentPino: false,');
+			expect(telemetry).toContain('incomingHttpSpans: false,');
 			expect(telemetry).toContain('class TelemetryUnavailable extends Error');
 		},
 	);

@@ -99,6 +99,13 @@ const HEADER = `/**
  * configure the rest.
  */
 
+import type { MiddlewareHandler } from 'hono';
+
+/** Requests whose spans would only be noise: health checks, by default. */
+export interface StartTelemetryOptions {
+  ignorePaths?: string[];
+}
+
 /** Telemetry was asked for and cannot start. The server runs without it. */
 export class TelemetryUnavailable extends Error {
   constructor(readonly reason: string, options?: { cause?: unknown }) {
@@ -113,7 +120,9 @@ export class TelemetryUnavailable extends Error {
 
 /**
  * The entry's `telemetry.ts`: a `startTelemetry()` the server awaits before it
- * imports the app, so the libraries the app loads are instrumented.
+ * imports the app, so the libraries the app loads are instrumented. It returns
+ * the Hono middleware that traces each request, or undefined when telemetry is
+ * off — the server mounts it ahead of every route.
  *
  * Failing to start telemetry warns (a named `TelemetryUnavailable`, through
  * `process.emitWarning`) and never stops the server: an outage in observability
@@ -124,14 +133,17 @@ export function generateTelemetryModule(
 ): string {
 	if (!telemetry?.available) {
 		return `${HEADER}
-export async function startTelemetry(): Promise<void> {
-  if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) return;
+export async function startTelemetry(
+  _options: StartTelemetryOptions = {},
+): Promise<MiddlewareHandler | undefined> {
+  if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) return undefined;
 
   process.emitWarning(
     new TelemetryUnavailable(
       'this server was built without @geekmidas/telescope and the @opentelemetry packages it needs. Add them to the app and rebuild.',
     ),
   );
+  return undefined;
 }
 `;
 	}
@@ -147,11 +159,20 @@ export async function startTelemetry(): Promise<void> {
 		// OTEL_TRACES_SAMPLER — so no endpoint and no ratio are printed here.
 		// The server's own shutdown decides when the process exits.
 		'handleSignals: false,',
+		// Neither is left to module-load hooks, which see nothing inside a
+		// bundle: @geekmidas/logger emits each record through the logs API
+		// itself, and the middleware returned below opens each request's span.
+		// Hooked as well where they can be, every record and request would be
+		// sent twice.
+		'instrumentPino: false,',
+		'incomingHttpSpans: false,',
 	];
 
 	return `${HEADER}
-export async function startTelemetry(): Promise<void> {
-  if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) return;
+export async function startTelemetry(
+  options: StartTelemetryOptions = {},
+): Promise<MiddlewareHandler | undefined> {
+  if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) return undefined;
 
   let instrumentation;
   try {
@@ -163,7 +184,7 @@ export async function startTelemetry(): Promise<void> {
         { cause },
       ),
     );
-    return;
+    return undefined;
   }
 
   instrumentation.setupTelemetry({
@@ -180,6 +201,13 @@ export async function startTelemetry(): Promise<void> {
       });
     });
   }
+
+  // A SERVER span per request, opened by the app itself rather than by
+  // hooking node:http: \`GET /users/:id\`, continuing an incoming traceparent,
+  // with the handler — its logs, fetches and queries — running inside it.
+  return instrumentation.honoTelemetryMiddleware({
+    ignorePaths: options.ignorePaths,
+  });
 }
 `;
 }

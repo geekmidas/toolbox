@@ -83,10 +83,27 @@ export interface TelemetryOptions {
 	handleSignals?: boolean;
 
 	/**
-	 * Whether to instrument Pino for log correlation
+	 * Whether to instrument Pino for log correlation.
+	 *
+	 * It hooks module loading, so it sees nothing inside a bundle. A logger
+	 * from `@geekmidas/logger`'s `createLogger` sends its records through the
+	 * logs API itself; turn this off for one, or each record is sent twice
+	 * where pino can be hooked.
 	 * @default true
 	 */
 	instrumentPino?: boolean;
+
+	/**
+	 * Whether the http auto-instrumentation opens a span for each incoming
+	 * request.
+	 *
+	 * Turn it off when the server opens its own — `honoTelemetryMiddleware`,
+	 * as a `gkm build` server does — or each request is traced twice where
+	 * `node:http` can be hooked, and not at all in a bundle, where it cannot.
+	 * Outgoing requests are traced either way.
+	 * @default true
+	 */
+	incomingHttpSpans?: boolean;
 
 	/**
 	 * Whether to enable auto-instrumentation for common libraries
@@ -195,6 +212,7 @@ export function setupTelemetry(options: TelemetryOptions): void {
 		sampleRatio,
 		handleSignals = true,
 		instrumentPino = true,
+		incomingHttpSpans = true,
 		autoInstrument = true,
 		debug = false,
 		resourceAttributes = {},
@@ -254,6 +272,7 @@ export function setupTelemetry(options: TelemetryOptions): void {
 				'@opentelemetry/instrumentation-fs': { enabled: false },
 				// Configure HTTP instrumentation
 				'@opentelemetry/instrumentation-http': {
+					disableIncomingRequestInstrumentation: !incomingHttpSpans,
 					ignoreIncomingRequestHook: (request) => {
 						// Ignore health checks and internal routes
 						const path = request.url || '';

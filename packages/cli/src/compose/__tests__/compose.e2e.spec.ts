@@ -26,8 +26,9 @@
  *
  * - (d) with `deploy.compose.logs` (the `gkm compose` run), the API's
  *   telemetry reaches the stack's OpenObserve — published on 127.0.0.1
- *   alone — signed in with the root login the stack generated, and is found
- *   there through its search API, trace id and all.
+ *   alone — signed in with the root login the stack generated: a line the
+ *   handler logged and the request's SERVER span are both found through its
+ *   search API, in one trace.
  *
  * The edge is published on free ports (443 and 80 are often taken), and the
  * stack has a compose project of its own; it is torn down, volumes and built
@@ -584,17 +585,21 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 						`${login('ZO_ROOT_USER_EMAIL')}:${login('ZO_ROOT_USER_PASSWORD')}`,
 					).toString('base64')}`;
 
-					// A request that makes the API ask the auth server for a session.
-					// Anonymous: the sign-ups above have used up Better Auth's
-					// rate limit for this address.
-					const me = await edge('api', '/me');
-					expect(me.status).toBe(401);
+					// A request whose handler logs a line. The server is one bundle,
+					// so nothing hooks pino or node:http: the line is sent by the
+					// logger itself and the request's span by the server's own
+					// middleware, and they must land in the same trace.
+					const ping = await edge('api', '/ping');
+					expect(ping.status).toBe(200);
 
-					// Exported in batches: asked until it is there.
-					const search = async () => {
+					/** OpenObserve's search API over the `default` stream of a type. */
+					const search = async (
+						type: 'logs' | 'traces',
+						where: string,
+					): Promise<Record<string, unknown>[]> => {
 						const now = Date.now() * 1000;
 						const response = await fetch(
-							`http://127.0.0.1:${logsPort}/api/default/_search?type=traces`,
+							`http://127.0.0.1:${logsPort}/api/default/_search?type=${type}`,
 							{
 								method: 'POST',
 								headers: {
@@ -603,7 +608,7 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 								},
 								body: JSON.stringify({
 									query: {
-										sql: `SELECT * FROM "default" WHERE service_name = 'api'`,
+										sql: `SELECT * FROM "default" WHERE ${where}`,
 										start_time: now - 15 * 60 * 1_000_000,
 										end_time: now + 60 * 1_000_000,
 										from: 0,
@@ -614,21 +619,40 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 						);
 						if (!response.ok) return [];
 						const body = (await response.json()) as {
-							hits?: { service_name: string; trace_id: string }[];
+							hits?: Record<string, unknown>[];
 						};
 						return body.hits ?? [];
 					};
-					let hits: Awaited<ReturnType<typeof search>> = [];
-					for (let attempt = 0; attempt < 60 && hits.length === 0; attempt++) {
-						hits = await search();
-						if (hits.length === 0) {
+					// Exported in batches: asked until it is there.
+					const eventually = async (type: 'logs' | 'traces', where: string) => {
+						for (let attempt = 0; attempt < 60; attempt++) {
+							const hits = await search(type, where);
+							if (hits.length > 0) return hits;
 							await new Promise((resolve) => setTimeout(resolve, 2_000));
 						}
-					}
+						return [];
+					};
 
-					expect(hits.length).toBeGreaterThan(0);
-					expect(hits[0]!.service_name).toBe('api');
-					expect(hits[0]!.trace_id).toMatch(/^[0-9a-f]{32}$/);
+					// The handler's line, from the api, with the trace it ran in.
+					const [line] = await eventually(
+						'logs',
+						`service_name = 'api' AND body = 'Pinged'`,
+					);
+					expect(line).toBeDefined();
+					expect(line!.severity).toBe('INFO');
+					const traceId = String(line!.trace_id);
+					expect(traceId).toMatch(/^[0-9a-f]{32}$/);
+
+					// The request's SERVER span, in that same trace.
+					const [span] = await eventually(
+						'traces',
+						`trace_id = '${traceId}' AND operation_name = 'GET /ping'`,
+					);
+					expect(span).toBeDefined();
+					expect(span!.service_name).toBe('api');
+					expect(String(span!.span_kind)).toBe('2'); // SERVER
+					expect(String(span!.http_response_status_code)).toBe('200');
+					expect(span!.span_id).toBe(line!.span_id);
 
 					// And the wrong login is refused.
 					const refused = await fetch(

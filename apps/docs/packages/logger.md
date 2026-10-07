@@ -24,6 +24,7 @@ pnpm add @geekmidas/logger
 | `/pino` | Pino logger implementation |
 | `/console` | Console logger implementation |
 | `/redact` | `DEFAULT_REDACT_PATHS` - standard sensitive field paths for log redaction |
+| `/otel` | `otelStreamWrite` - the OpenTelemetry bridge, for a logger made with `pino()` directly |
 
 ## Basic Usage
 
@@ -155,6 +156,37 @@ const logger = pino({
 // credit card numbers, SSNs, connection strings, etc.
 logger.info({ user: { password: 'secret123' } }, 'User data');
 // Output: { user: { password: '[REDACTED]' } }
+```
+
+## OpenTelemetry
+
+When an OpenTelemetry `LoggerProvider` is registered globally — as a
+production server's generated telemetry does when
+`OTEL_EXPORTER_OTLP_ENDPOINT` is set — a `createLogger` logger also emits each
+record through `@opentelemetry/api-logs`:
+
+- `severityNumber` and `severityText` from the pino level;
+- `body`: the message;
+- attributes: the record's fields, after redaction — path redaction and URL
+  credentials alike, so the exported copy is exactly as redacted as stdout;
+- the trace and span ids of the span active where it was logged.
+
+stdout is unchanged. It is done in pino's `streamWrite` hook, on the calling
+thread, so the active span is the caller's even with a transport — and it
+hooks no module loading, so it works inside a single bundled file. With no
+provider registered nothing is parsed or emitted.
+
+`@opentelemetry/api-logs` keeps its provider on `globalThis` under a
+`Symbol.for` key, so the copy the logger imports and the copy the SDK
+registers through share one provider, even when a bundle holds both.
+
+A logger made with `pino()` directly opts in with the hook:
+
+```typescript
+import pino from 'pino';
+import { otelStreamWrite } from '@geekmidas/logger/otel';
+
+const logger = pino({ hooks: { streamWrite: otelStreamWrite } });
 ```
 
 ## Usage with Endpoints

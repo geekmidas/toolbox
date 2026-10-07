@@ -630,6 +630,11 @@ export class HonoEndpoint<
 					} catch (e: any) {
 						logger.error(e, 'Error processing endpoint request');
 						const error = wrapError(e, 500, 'Internal Server Error');
+						// Answered here rather than rethrown, so Hono never sets it:
+						// a server failure is left on the context the way Hono
+						// leaves an uncaught one, for middleware — a request span
+						// records it as the exception. A 4xx is the client's.
+						if (error.statusCode >= 500 && e instanceof Error) c.error = e;
 						if (HonoEndpoint.isDev) {
 							logger.info(
 								{ status: error.statusCode, body: error },
