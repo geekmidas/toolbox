@@ -1,5 +1,13 @@
 # @geekmidas/services
 
+## 10.0.0-alpha.70
+
+### Patch Changes
+
+- Updated dependencies [[`f3114d7`](https://github.com/geekmidas/toolbox/commit/f3114d70a385d28908167d42e29cd846bb3f4fcc)]:
+  - @geekmidas/logger@10.0.0-alpha.70
+  - @geekmidas/envkit@10.0.0-alpha.70
+
 ## 10.0.0-alpha.69
 
 ### Patch Changes
