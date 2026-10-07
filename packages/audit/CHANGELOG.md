@@ -1,5 +1,13 @@
 # @geekmidas/audit
 
+## 10.0.0-alpha.66
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.66
+  - @geekmidas/schema@10.0.0-alpha.66
+
 ## 10.0.0-alpha.65
 
 ### Patch Changes

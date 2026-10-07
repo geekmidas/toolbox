@@ -70,6 +70,7 @@
     "dev-strict-ports",
     "dev-tsx-owning-tsconfig-jsx",
     "dokploy-request-timeouts",
+    "dokploy-verify-rollback-migrations",
     "drop-free-standing-builders",
     "drop-generate-react-query",
     "edge-root-site",
