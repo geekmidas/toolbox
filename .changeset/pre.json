@@ -55,6 +55,7 @@
     "deploy-shell-and-secrets",
     "deploy-state-journal",
     "deploy-state-store",
+    "deploy-targets",
     "dev-app-ports",
     "dev-background-work",
     "dev-discovery-endpoint",
