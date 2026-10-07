@@ -145,6 +145,21 @@ describe('generateGithubFiles', () => {
 		});
 	});
 
+	it('deploys an SST stage with gkm deploy, after assuming the role', () => {
+		const job = parse(files()['.github/workflows/deploy.yml']!).jobs.deploy;
+		const steps = job.steps as { uses?: string; run?: string }[];
+		const deploy = steps.at(-1)!;
+
+		expect(deploy.run).toBe('pnpm exec gkm deploy --stage "$STAGE"');
+		// The keys the role step exports are what the deploy acts with.
+		expect(
+			steps.findIndex((s) =>
+				s.uses?.startsWith('aws-actions/configure-aws-credentials'),
+			),
+		).toBeLessThan(steps.length - 1);
+		expect(JSON.stringify(job)).not.toContain('sst deploy');
+	});
+
 	it('hands Dokploy its token and endpoint', () => {
 		const job = parse(
 			files({ deployTarget: 'dokploy', region: undefined })[
@@ -153,7 +168,7 @@ describe('generateGithubFiles', () => {
 		).jobs.deploy;
 		const deploy = job.steps.at(-1);
 
-		expect(deploy.run).toBe('pnpm run "deploy:$STAGE"');
+		expect(deploy.run).toBe('pnpm exec gkm deploy --stage "$STAGE"');
 		expect(deploy.env).toEqual({
 			STAGE: '${{ matrix.stage }}',
 			DOKPLOY_API_TOKEN: '${{ secrets.DOKPLOY_API_TOKEN }}',
@@ -166,7 +181,7 @@ describe('generateGithubFiles', () => {
 		expect(files({ deployTarget: 'none' })).not.toHaveProperty(
 			'.github/workflows/deploy.yml',
 		);
-		// Only the workspace scaffold writes `deploy:<stage>` scripts.
+		// Only the workspace scaffold says where its stages deploy.
 		expect(files({ monorepo: false })).not.toHaveProperty(
 			'.github/workflows/deploy.yml',
 		);

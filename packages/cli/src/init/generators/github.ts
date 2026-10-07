@@ -343,8 +343,10 @@ ${pm.setup}
       - name: Install
         run: ${pm.install}
 ${stageSecrets}
+      # Builds, releases and health-checks the stage through deploy.default
+      # in gkm.config.ts, and fails the job if any of it fails.
       - name: Deploy
-        run: ${pm.run} "deploy:$STAGE"
+        run: ${pm.exec} gkm deploy --stage "$STAGE"
         env:
           STAGE: \${{ matrix.stage }}${deployEnv}
 `;
@@ -363,8 +365,8 @@ export function generateGithubFiles(options: TemplateOptions): GeneratedFile[] {
 		},
 	];
 
-	// The deploy scripts it runs exist only where a target was picked, and
-	// only a workspace scaffold writes them.
+	// Only where a target was picked, and only for a workspace scaffold: the
+	// one whose gkm.config.ts says where its stages deploy.
 	if (options.monorepo && options.deployTarget !== 'none') {
 		files.push({
 			path: '.github/workflows/deploy.yml',
