@@ -4,6 +4,7 @@ import {
 	createTempDir,
 	createTestFile,
 } from '../../__tests__/test-helpers';
+import { LocalSandbox } from '../../sandbox/local';
 import { discover } from '../discover';
 
 /**
@@ -113,6 +114,40 @@ export const nightly = jobs
 		expect(runnables.Jobs).toHaveLength(2);
 		expect(manifest.Receipts).toMatchObject({ kind: 'queue' });
 	});
+
+	// A child process that loads tsx and imports the project: seconds, not
+	// milliseconds, when the rest of the suite is competing for the machine.
+	it(
+		'finds the same manifest and edges when discovering in a sandbox',
+		{ timeout: 30_000 },
+		async () => {
+			const patterns = [
+				'constructs/**/*.ts',
+				'endpoints/**/*.ts',
+				'crons/**/*.ts',
+				'queues/**/*.ts',
+			];
+			const here: Record<string, string[]> = {};
+			const there: Record<string, string[]> = {};
+
+			const local = await discover({ patterns, cwd: dir, runnables: here });
+			const sandboxed = await discover({
+				patterns,
+				cwd: dir,
+				runnables: there,
+				sandbox: new LocalSandbox({ root: dir }),
+			});
+
+			expect(sandboxed).toEqual(local);
+			// The same edges, in whatever order the glob streamed their files —
+			// which is not fixed, here or there.
+			const sorted = (edges: Record<string, string[]>) =>
+				Object.fromEntries(
+					Object.entries(edges).map(([owner, ids]) => [owner, [...ids].sort()]),
+				);
+			expect(sorted(there)).toEqual(sorted(here));
+		},
+	);
 
 	it('records a queue’s and a subscriber’s own database under their worker', async () => {
 		await createTestFile(

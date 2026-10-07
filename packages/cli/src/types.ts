@@ -355,6 +355,12 @@ export interface BuildOptions {
 	 * Defaults to false.
 	 */
 	markOptional?: boolean;
+	/**
+	 * Where the apps' own build scripts (turbo) run. Defaults to a
+	 * `LocalSandbox` on the workspace: this machine, with an allowlisted
+	 * environment.
+	 */
+	sandbox?: import('./sandbox/sandbox').Sandbox;
 }
 
 /** Result from build command when secrets are injected */

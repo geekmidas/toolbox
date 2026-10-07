@@ -1,11 +1,11 @@
-import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import type { SniffResult } from '@geekmidas/envkit/sniffer';
 import { output } from '../output.js';
-import { withOwningTsconfigJsx } from '../owningTsconfigJsx.js';
+import { LocalSandbox } from '../sandbox/local.js';
+import { activeSandbox, type Sandbox } from '../sandbox/sandbox.js';
+import { nodeWithTsx } from '../sandbox/worker.js';
 import { normalizeRoutes } from '../workspace/client-generator.js';
 import { getPublicEnvPrefix } from '../workspace/publicEnv.js';
 import type { NormalizedAppConfig } from '../workspace/types.js';
@@ -14,13 +14,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
- * Resolve the tsx package path from the CLI package's dependencies.
- * This ensures tsx is available regardless of whether the target project has it installed.
+ * How long one sniff may run. Importing an entry, a config or a module of
+ * routes takes a second or two; one that is still going after this is
+ * waiting on something — a server it started, a connection, a prompt — and
+ * would otherwise hold the deploy, and its lock, until someone noticed.
  */
-function resolveTsxPath(): string {
-	const require = createRequire(import.meta.url);
-	return require.resolve('tsx');
-}
+export const SNIFF_TIMEOUT_MS = 30_000;
 
 /**
  * Resolve the path to a sniffer helper file.
@@ -88,6 +87,76 @@ export interface SniffAppOptions {
 	 * Defaults to false.
 	 */
 	markOptional?: boolean;
+	/**
+	 * Where the app's code runs while it is sniffed. Defaults to the run's
+	 * own (`withSandbox`), else a {@link LocalSandbox} on the workspace —
+	 * either way never this process, and never with its environment.
+	 */
+	sandbox?: Sandbox;
+	/** How long each sniff may run. Defaults to {@link SNIFF_TIMEOUT_MS}. */
+	timeoutMs?: number;
+}
+
+/** Where a sniff runs, and for how long. */
+interface SniffRun {
+	sandbox?: Sandbox;
+	timeoutMs?: number;
+}
+
+/**
+ * Run a sniffer worker in the sandbox, with the sandbox's environment and
+ * nothing of the deploy's: the deploy's Dokploy token, registry login and AWS
+ * keys stay where they are. A worker that outlives the timeout is killed, and
+ * comes back as the error the caller reports.
+ */
+async function runSniffer(
+	run: SniffRun,
+	workspacePath: string,
+	cwd: string,
+	nodeArgs: string[],
+): Promise<
+	{ stdout: string; stderr: string; code: number | null } | { error: Error }
+> {
+	const sandbox =
+		run.sandbox ??
+		activeSandbox() ??
+		new LocalSandbox({ root: resolve(workspacePath) });
+
+	try {
+		const result = await sandbox.exec('node', nodeArgs, {
+			cwd,
+			env: { ...sandbox.env },
+			timeoutMs: run.timeoutMs ?? SNIFF_TIMEOUT_MS,
+			output: 'capture',
+		});
+		return {
+			stdout: result.stdout,
+			stderr: result.stderr,
+			code: result.exitCode,
+		};
+	} catch (error) {
+		return {
+			error: error instanceof Error ? error : new Error(String(error)),
+		};
+	}
+}
+
+/** The worker's JSON answer: the last object on stdout naming `envVars`. */
+function snifferAnswer(stdout: string):
+	| {
+			envVars?: string[];
+			optionalEnvVars?: string[];
+			unhandledRejections?: string[];
+			warnings?: string[];
+			error?: string | null;
+	  }
+	| undefined {
+	try {
+		const jsonMatch = stdout.match(/\{[^{}]*"envVars"[^{}]*\}[^{]*$/);
+		return jsonMatch ? JSON.parse(jsonMatch[0]) : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -117,6 +186,10 @@ export async function sniffAppEnvironment(
 	options: SniffAppOptions = {},
 ): Promise<SniffedEnvironment> {
 	const { logWarnings = true, markOptional = false } = options;
+	const run: SniffRun = {
+		...(options.sandbox ? { sandbox: options.sandbox } : {}),
+		...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
+	};
 
 	// 1. Frontend apps - handle dependencies and config sniffing
 	if (app.type === 'web' || app.type === 'mobile') {
@@ -147,6 +220,7 @@ export async function sniffAppEnvironment(
 					configPath,
 					app.path,
 					workspacePath,
+					run,
 				);
 
 				if (logWarnings && result.error) {
@@ -174,7 +248,12 @@ export async function sniffAppEnvironment(
 
 	// 2. Entry apps - import entry file in subprocess to trigger config.parse()
 	if (app.entry) {
-		const result = await sniffEntryFile(app.entry, app.path, workspacePath);
+		const result = await sniffEntryFile(
+			app.entry,
+			app.path,
+			workspacePath,
+			run,
+		);
 
 		if (logWarnings && result.error) {
 			output.warn(
@@ -199,6 +278,7 @@ export async function sniffAppEnvironment(
 			normalizeRoutes(app.routes),
 			app.path,
 			workspacePath,
+			run,
 		);
 
 		if (logWarnings && result.error) {
@@ -220,7 +300,12 @@ export async function sniffAppEnvironment(
 
 	// 5. Apps with envParser but no routes - run sniffer to detect env var usage
 	if (app.envParser) {
-		const result = await sniffEnvParser(app.envParser, app.path, workspacePath);
+		const result = await sniffEnvParser(
+			app.envParser,
+			app.path,
+			workspacePath,
+			run,
+		);
 
 		// Log any issues for debugging
 		if (logWarnings) {
@@ -297,75 +382,41 @@ async function sniffEntryFile(
 	entryPath: string,
 	appPath: string,
 	workspacePath: string,
+	run: SniffRun = {},
 ): Promise<EntrySniffResult> {
 	const fullEntryPath = resolve(workspacePath, appPath, entryPath);
 	const loaderPath = resolveSnifferFile('sniffer-loader');
 	const workerPath = resolveSnifferFile('sniffer-worker');
 
-	return new Promise((resolvePromise) => {
-		const child = spawn(
-			'node',
-			['--import', loaderPath, workerPath, fullEntryPath],
-			{
-				cwd: resolve(workspacePath, appPath),
-				stdio: ['ignore', 'pipe', 'pipe'],
-				env: {
-					...process.env,
-					// Ensure tsx is available for TypeScript entry files, with each
-					// `.tsx` compiled by its own tsconfig's JSX settings rather than
-					// whatever the app's tsconfig includes.
-					NODE_OPTIONS: withOwningTsconfigJsx('--import=tsx'),
-				},
-			},
-		);
+	// tsx first — each `.tsx` compiled by its own tsconfig's JSX settings
+	// rather than whatever the app's tsconfig includes — then the loader that
+	// swaps in the sniffing EnvironmentParser.
+	const ran = await runSniffer(
+		run,
+		workspacePath,
+		resolve(workspacePath, appPath),
+		nodeWithTsx(workerPath, [fullEntryPath], [loaderPath]),
+	);
+	if ('error' in ran)
+		return { envVars: [], optionalEnvVars: [], error: ran.error };
 
-		let stdout = '';
-		let stderr = '';
+	const answer = snifferAnswer(ran.stdout);
+	if (answer) {
+		return {
+			envVars: answer.envVars || [],
+			optionalEnvVars: answer.optionalEnvVars || [],
+			error: answer.error ? new Error(answer.error) : undefined,
+		};
+	}
 
-		child.stdout.on('data', (data) => {
-			stdout += data.toString();
-		});
-
-		child.stderr.on('data', (data) => {
-			stderr += data.toString();
-		});
-
-		child.on('close', (code) => {
-			// Try to parse the JSON output from the worker
-			try {
-				// Find the last JSON object in stdout (worker may emit other output)
-				const jsonMatch = stdout.match(/\{[^{}]*"envVars"[^{}]*\}[^{]*$/);
-				if (jsonMatch) {
-					const result = JSON.parse(jsonMatch[0]);
-					resolvePromise({
-						envVars: result.envVars || [],
-						optionalEnvVars: result.optionalEnvVars || [],
-						error: result.error ? new Error(result.error) : undefined,
-					});
-					return;
-				}
-			} catch {
-				// JSON parse failed
-			}
-
-			// If we couldn't parse the output, return empty with error info
-			resolvePromise({
-				envVars: [],
-				optionalEnvVars: [],
-				error: new Error(
-					`Failed to sniff entry file (exit code ${code}): ${stderr || stdout || 'No output'}`,
-				),
-			});
-		});
-
-		child.on('error', (err) => {
-			resolvePromise({
-				envVars: [],
-				optionalEnvVars: [],
-				error: err,
-			});
-		});
-	});
+	// If we couldn't parse the output, return empty with error info
+	return {
+		envVars: [],
+		optionalEnvVars: [],
+		error: new Error(
+			`Failed to sniff entry file (exit code ${ran.code}): ${ran.stderr || ran.stdout || 'No output'}`,
+		),
+	};
 }
 
 /**
@@ -386,10 +437,10 @@ async function sniffRouteFiles(
 	routes: string | string[],
 	appPath: string,
 	workspacePath: string,
+	run: SniffRun = {},
 ): Promise<EntrySniffResult> {
 	const fullAppPath = resolve(workspacePath, appPath);
 	const workerPath = resolveSnifferFile('sniffer-routes-worker');
-	const tsxPath = resolveTsxPath();
 
 	// Convert array of patterns to first pattern (worker handles glob internally)
 	const routesArray = Array.isArray(routes) ? routes : [routes];
@@ -402,82 +453,50 @@ async function sniffRouteFiles(
 		};
 	}
 
-	return new Promise((resolvePromise) => {
-		const child = spawn(
-			'node',
-			['--import', tsxPath, workerPath, fullAppPath, pattern],
-			{
-				cwd: fullAppPath,
-				stdio: ['ignore', 'pipe', 'pipe'],
-				env: {
-					...process.env,
-				},
-			},
-		);
+	const ran = await runSniffer(
+		run,
+		workspacePath,
+		fullAppPath,
+		nodeWithTsx(workerPath, [fullAppPath, pattern]),
+	);
+	if ('error' in ran)
+		return { envVars: [], optionalEnvVars: [], error: ran.error };
 
-		let stdout = '';
-		let stderr = '';
+	// Log any stderr output (import errors, etc.)
+	if (ran.stderr) {
+		ran.stderr
+			.split('\n')
+			.filter((line) => line.trim())
+			.forEach((line) => output.warn(line));
+	}
 
-		child.stdout.on('data', (data) => {
-			stdout += data.toString();
-		});
+	const answer = snifferAnswer(ran.stdout);
+	if (answer) {
+		return {
+			envVars: answer.envVars || [],
+			optionalEnvVars: answer.optionalEnvVars || [],
+			error: answer.error ? new Error(answer.error) : undefined,
+		};
+	}
 
-		child.stderr.on('data', (data) => {
-			stderr += data.toString();
-		});
-
-		child.on('close', (code) => {
-			// Log any stderr output (import errors, etc.)
-			if (stderr) {
-				stderr
-					.split('\n')
-					.filter((line) => line.trim())
-					.forEach((line) => output.warn(line));
-			}
-
-			// Try to parse the JSON output from the worker
-			try {
-				// Find the last JSON object in stdout (worker may emit other output)
-				const jsonMatch = stdout.match(/\{[^{}]*"envVars"[^{}]*\}[^{]*$/);
-				if (jsonMatch) {
-					const result = JSON.parse(jsonMatch[0]);
-					resolvePromise({
-						envVars: result.envVars || [],
-						optionalEnvVars: result.optionalEnvVars || [],
-						error: result.error ? new Error(result.error) : undefined,
-					});
-					return;
-				}
-			} catch {
-				// JSON parse failed
-			}
-
-			// If we couldn't parse the output, return empty with error info
-			resolvePromise({
-				envVars: [],
-				optionalEnvVars: [],
-				error: new Error(
-					`Failed to sniff route files (exit code ${code}): ${stderr || stdout || 'No output'}`,
-				),
-			});
-		});
-
-		child.on('error', (err) => {
-			resolvePromise({
-				envVars: [],
-				optionalEnvVars: [],
-				error: err,
-			});
-		});
-	});
+	// If we couldn't parse the output, return empty with error info
+	return {
+		envVars: [],
+		optionalEnvVars: [],
+		error: new Error(
+			`Failed to sniff route files (exit code ${ran.code}): ${ran.stderr || ran.stdout || 'No output'}`,
+		),
+	};
 }
 
 /**
  * Run the SnifferEnvironmentParser on an envParser module to detect
  * which environment variables it accesses.
  *
- * This function handles "fire and forget" async operations by using
- * the shared sniffWithFireAndForget utility from @geekmidas/envkit.
+ * In a subprocess, like the entry and route sniffers: the module is the
+ * project's code, and it was imported into the deploy itself before — with
+ * every credential the deploy held in reach. Fire-and-forget rejections are
+ * collected there with the shared `sniffWithFireAndForget`.
  *
  * @param envParserPath - The envParser config (e.g., './src/config/env#envParser')
  * @param appPath - The app's path relative to workspace
@@ -488,6 +507,7 @@ async function sniffEnvParser(
 	envParserPath: string,
 	appPath: string,
 	workspacePath: string,
+	run: SniffRun = {},
 ): Promise<SniffResult> {
 	// Parse the envParser path: './src/config/env#envParser' or './src/config/env'
 	const [modulePath, exportName = 'default'] = envParserPath.split('#');
@@ -495,53 +515,47 @@ async function sniffEnvParser(
 		return { envVars: [], optionalEnvVars: [], unhandledRejections: [] };
 	}
 
-	// Resolve the full path to the module
-	const fullPath = resolve(workspacePath, appPath, modulePath);
+	const appRoot = resolve(workspacePath, appPath);
+	const fullPath = resolve(appRoot, modulePath);
+	const workerPath = resolveSnifferFile('sniffer-envparser-worker');
 
-	// Dynamically import the sniffer utilities
-	let SnifferEnvironmentParser: any;
-	let sniffWithFireAndForget: any;
-	try {
-		const envkitModule = await import('@geekmidas/envkit/sniffer');
-		SnifferEnvironmentParser = envkitModule.SnifferEnvironmentParser;
-		sniffWithFireAndForget = envkitModule.sniffWithFireAndForget;
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		output.warn(
-			`[sniffer] Failed to import SnifferEnvironmentParser: ${message}`,
-		);
-		return { envVars: [], optionalEnvVars: [], unhandledRejections: [] };
+	const ran = await runSniffer(
+		run,
+		workspacePath,
+		appRoot,
+		nodeWithTsx(workerPath, [fullPath, exportName]),
+	);
+	if ('error' in ran) {
+		return {
+			envVars: [],
+			optionalEnvVars: [],
+			unhandledRejections: [],
+			error: ran.error,
+		};
 	}
 
-	const sniffer = new SnifferEnvironmentParser();
+	const answer = snifferAnswer(ran.stdout);
+	if (!answer) {
+		return {
+			envVars: [],
+			optionalEnvVars: [],
+			unhandledRejections: [],
+			error: new Error(
+				`Failed to sniff envParser (exit code ${ran.code}): ${ran.stderr || ran.stdout || 'No output'}`,
+			),
+		};
+	}
 
-	return sniffWithFireAndForget(sniffer, async () => {
-		// Import the envParser module
-		const moduleUrl = pathToFileURL(fullPath).href;
-		const module = await import(moduleUrl);
+	for (const warning of answer.warnings ?? []) output.warn(warning);
 
-		// Get the envParser function
-		const envParser = module[exportName];
-		if (typeof envParser !== 'function') {
-			output.warn(
-				`[sniffer] Export "${exportName}" from "${modulePath}" is not a function`,
-			);
-			return;
-		}
-
-		// The envParser function typically creates and configures an EnvironmentParser.
-		// We pass our sniffer which implements the same interface.
-		const result = envParser(sniffer);
-
-		// If the result is a ConfigParser, call parse() to trigger env var access
-		if (result && typeof result.parse === 'function') {
-			try {
-				result.parse();
-			} catch {
-				// Parsing may fail due to mock values, that's expected
-			}
-		}
-	});
+	return {
+		envVars: answer.envVars ?? [],
+		optionalEnvVars: answer.optionalEnvVars ?? [],
+		unhandledRejections: (answer.unhandledRejections ?? []).map(
+			(message) => new Error(message),
+		),
+		...(answer.error ? { error: new Error(answer.error) } : {}),
+	};
 }
 
 /**

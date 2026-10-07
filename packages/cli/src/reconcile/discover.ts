@@ -22,8 +22,11 @@ import {
 	type Declaration,
 } from '@geekmidas/manifest';
 import fg from 'fast-glob';
+import { z } from 'zod';
 import { clearZodGlobalRegistry } from '../generators/Generator';
 import { output } from '../output';
+import { activeSandbox, type Sandbox } from '../sandbox/sandbox';
+import { runWorker } from '../sandbox/worker';
 
 /** `console`, or the deploy run discovering the manifest. */
 const logger = output;
@@ -88,6 +91,129 @@ export interface DiscoverOptions {
 	 * and discovery is already importing the files they are in.
 	 */
 	runnables?: Record<string, string[]>;
+	/**
+	 * Import the construct modules in this sandbox rather than in this
+	 * process. Defaults to the run's own (`withSandbox`), so a deploy's every
+	 * discovery — the engine's included — happens there; with neither, they
+	 * are imported here, as before.
+	 */
+	sandbox?: Sandbox;
+}
+
+/** What the discovery worker answers. Checked: the worker ran project code. */
+const DiscoverAnswer = z.discriminatedUnion('reason', [
+	z.object({
+		reason: z.literal('discovered'),
+		manifest: z.record(
+			z.string(),
+			z.object({ id: z.string(), kind: z.string() }).loose(),
+		),
+		runnables: z.record(z.string(), z.array(z.string())),
+	}),
+	z.object({ reason: z.literal('live'), paths: z.array(z.string()) }),
+	z.object({
+		reason: z.literal('failed'),
+		error: z
+			.object({
+				name: z.string(),
+				message: z.string(),
+				id: z.string().optional(),
+				sources: z.array(z.string()).optional(),
+			})
+			.loose(),
+	}),
+]);
+
+/**
+ * The manifest, discovered in `sandbox` and handed back as JSON — or
+ * `undefined` when it holds something JSON cannot carry and the sandbox is
+ * not isolating, for the caller to discover here as before.
+ */
+async function discoverInSandbox(
+	sandbox: Sandbox,
+	options: DiscoverOptions,
+): Promise<ConstructManifest | undefined> {
+	const cwd = options.cwd ?? sandbox.root;
+	const patterns =
+		typeof options.patterns === 'string'
+			? [options.patterns]
+			: [...options.patterns];
+
+	const { value, stderr } = await runWorker(sandbox, 'construct discovery', {
+		name: 'discover-worker',
+		args: [JSON.stringify({ patterns, cwd })],
+		cwd,
+		timeoutMs: DISCOVER_TIMEOUT_MS,
+		schema: DiscoverAnswer,
+	});
+
+	// Discovery's own warnings — a glob that matched nothing — are the
+	// run's, as they would be had it discovered in-process: as written, one
+	// message, less the newline the worker's `console.warn` ended it with.
+	if (stderr.trim()) logger.warn(stderr.replace(/\n$/, ''));
+
+	switch (value.reason) {
+		case 'discovered':
+			if (options.runnables) {
+				for (const [owner, edges] of Object.entries(value.runnables)) {
+					options.runnables[owner] = edges;
+				}
+			}
+			return value.manifest as unknown as ConstructManifest;
+		case 'failed':
+			if (value.error.name === 'DuplicateConstruct' && value.error.id) {
+				throw new DuplicateConstruct(value.error.id, value.error.sources ?? []);
+			}
+			throw new ConstructDiscoveryFailed(value.error.name, value.error.message);
+		case 'live':
+			if (sandbox.isolating) throw new ConstructsNotSerializable(value.paths);
+			return undefined;
+	}
+}
+
+/**
+ * A caller asked for the construct objects (`sources`) or a watcher's
+ * re-import under an isolating sandbox, where only data comes back.
+ */
+export class LiveConstructsUnavailable extends Error {
+	constructor() {
+		super(
+			'Discovery was asked for the construct objects themselves under an ' +
+				'isolating sandbox, which hands back only data. Run this step ' +
+				'without one, or ask only for the manifest.',
+		);
+		this.name = 'LiveConstructsUnavailable';
+	}
+}
+
+/** How long discovering a project's constructs may take in a sandbox. */
+const DISCOVER_TIMEOUT_MS = 60_000;
+
+/** Importing a construct module, or declaring one, threw in the sandbox. */
+export class ConstructDiscoveryFailed extends Error {
+	constructor(
+		readonly errorName: string,
+		readonly detail: string,
+	) {
+		super(`Discovering constructs failed (${errorName}): ${detail}`);
+		this.name = 'ConstructDiscoveryFailed';
+	}
+}
+
+/**
+ * The constructs' declarations hold something that is not data, and the
+ * sandbox they were discovered in hands the deploy nothing but data.
+ */
+export class ConstructsNotSerializable extends Error {
+	constructor(readonly paths: readonly string[]) {
+		super(
+			`The construct manifest holds values that are not plain data at: ` +
+				`${paths.join(', ')}. Under an isolating sandbox the deploy only ` +
+				'receives what JSON can carry; deploy with a sandbox that is not ' +
+				'isolating if the host trusts this project.',
+		);
+		this.name = 'ConstructsNotSerializable';
+	}
 }
 
 /** Where a construct was declared, and under what name. */
@@ -116,6 +242,18 @@ export interface ConstructSource {
 export async function discover(
 	options: DiscoverOptions,
 ): Promise<ConstructManifest> {
+	const sandbox = options.sandbox ?? activeSandbox();
+	if (sandbox) {
+		if (!options.sources && !options.bustCache) {
+			const sandboxed = await discoverInSandbox(sandbox, options);
+			if (sandboxed) return sandboxed;
+		} else if (sandbox.isolating) {
+			// The construct objects themselves, or a re-import for the watcher:
+			// neither can cross a sandbox that hands back only data.
+			throw new LiveConstructsUnavailable();
+		}
+	}
+
 	const {
 		patterns,
 		cwd = process.cwd(),
