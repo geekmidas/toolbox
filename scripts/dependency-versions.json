@@ -134,7 +134,8 @@
 		"peerDependencies": ">=1.0.12"
 	},
 	"@standard-schema/spec": {
-		"dependencies": "~1.1.0"
+		"dependencies": "~1.1.0",
+		"devDependencies": "~1.1.0"
 	},
 	"@tanstack/react-query": {
 		"devDependencies": "~5.104.0",
