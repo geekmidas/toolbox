@@ -1,3 +1,5 @@
+import type { ResourceChange } from './events';
+
 /** Supported deploy providers */
 export type DeployProvider = 'docker' | 'dokploy' | 'aws-lambda';
 
@@ -17,8 +19,8 @@ export interface DeployOptions {
 	apps?: string[];
 }
 
-/** Result from a deployment */
-export interface DeployResult {
+/** What building (and pushing) one image produced. */
+export interface DockerDeployResult {
 	/** Docker image reference (if applicable) */
 	imageRef?: string;
 	/** The registry's digest for the pushed image, `sha256:…`. */
@@ -69,6 +71,31 @@ export interface WorkspaceDeployResult {
 	successCount: number;
 	/** Total number of failed deployments */
 	failedCount: number;
+}
+
+/**
+ * What a deploy did — or, for a dry run, would do. Plain JSON, so it can be
+ * written out as is (`gkm deploy --json` ends with it).
+ */
+export interface DeployResult extends WorkspaceDeployResult {
+	stage: string;
+	/** `<namespace>/<project>`. */
+	identity: string;
+	/** The image tag every app was built with. */
+	tag: string;
+	/** Whether this was a dry run: nothing was created, built or pushed. */
+	dryRun: boolean;
+	/** Dokploy's environment for the stage; empty when a dry run would create it. */
+	environmentId: string;
+	/** Apps left out, and why — a mobile app, another deploy target. */
+	skipped: { app: string; reason: string }[];
+	/** Each deployed app's public URL. */
+	urls: Record<string, string>;
+	/**
+	 * Every resource the run touched, in order: what it applied, or for a dry
+	 * run, what it would.
+	 */
+	changes: ResourceChange[];
 }
 
 /** Docker provider configuration */

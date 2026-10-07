@@ -10,6 +10,7 @@
  */
 
 import {
+	cpSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -43,6 +44,14 @@ import { LocalStateStore } from '../LocalStateStore';
 import { ProjectNotOwned } from '../ownership';
 import { RegistryNotConfigured } from '../registry';
 import { StateLocked } from '../StateStore';
+import {
+	type Dokploy,
+	ENDPOINT,
+	emptyDokploy,
+	type ShopWorkspace,
+	serveDokploy,
+	writeShopWorkspace,
+} from './__helpers__/dokployStandIn';
 
 vi.mock('../../run', async (importOriginal) => ({
 	...(await importOriginal<typeof import('../../run')>()),
@@ -50,285 +59,12 @@ vi.mock('../../run', async (importOriginal) => ({
 	runOutput: vi.fn(),
 }));
 
-// Local, so the server's address resolves without a network: DNS records
-// point at it.
-const ENDPOINT = 'http://localhost:3999';
 const STAGE = 'production';
 
-/** The Dokploy this deploy talks to, as data. */
-interface Dokploy {
-	projects: {
-		projectId: string;
-		name: string;
-		description: string | null;
-		environments: {
-			environmentId: string;
-			name: string;
-			applications: {
-				applicationId: string;
-				name: string;
-				appName: string;
-			}[];
-			postgres: Postgres[];
-		}[];
-	}[];
-	registries: {
-		registryId: string;
-		registryName: string;
-		registryUrl: string;
-		username?: string;
-	}[];
-	domains: { domainId: string; host: string; applicationId: string }[];
-	env: Record<string, string>;
-	images: Record<string, string>;
-	deployed: string[];
-	/** Hosts whose domain creation fails. */
-	failDomains: string[];
-	/** The environment name `project.create` makes, as Dokploy does. */
-	defaultEnvironment: string;
-	/** How `domain.validateDomain` answers, per host; unlisted hosts fail. */
-	validity: Record<string, boolean>;
-	/** Why publishing a port is refused. */
-	portRefusal: (port: number) => string;
-	/** Every external port a publish was attempted on, in order. */
-	savedPorts: number[];
-	/** Every create Dokploy carried out, in order — `application:<name>`. */
-	created: string[];
-	/**
-	 * The create after which the deploy's connection dies: Dokploy has made
-	 * the resource, and the deploy never hears back.
-	 */
-	dieAfterCreate?: number;
-}
-
-interface Postgres {
-	postgresId: string;
-	name: string;
-	appName: string;
-	databaseName: string;
-	databaseUser: string;
-	databasePassword: string;
-	externalPort: number | null;
-}
-
 let dokploy: Dokploy;
-let ids = 0;
-const id = (prefix: string) => `${prefix}_${++ids}`;
 const server = setupServer();
 
-function serve() {
-	const body = async (request: Request) =>
-		(await request.json()) as Record<string, string>;
-	const environments = () => dokploy.projects.flatMap((p) => p.environments);
-	const postgres = (postgresId: string) =>
-		environments()
-			.flatMap((e) => e.postgres)
-			.find((p) => p.postgresId === postgresId)!;
-	const application = (applicationId: string) =>
-		environments()
-			.flatMap((e) => e.applications)
-			.find((a) => a.applicationId === applicationId);
-
-	/** Records a create; a response that never arrives when it is the fatal one. */
-	const made = (what: string) => {
-		dokploy.created.push(what);
-		return dokploy.created.length === dokploy.dieAfterCreate
-			? HttpResponse.json({ message: 'connection reset' }, { status: 502 })
-			: undefined;
-	};
-
-	server.use(
-		http.get(`${ENDPOINT}/api/project.all`, () =>
-			HttpResponse.json(
-				dokploy.projects.map(({ projectId, name, description }) => ({
-					projectId,
-					name,
-					description,
-				})),
-			),
-		),
-		http.get(`${ENDPOINT}/api/project.one`, ({ request }) => {
-			const projectId = new URL(request.url).searchParams.get('projectId');
-			const found = dokploy.projects.find((p) => p.projectId === projectId);
-			return found
-				? HttpResponse.json(found)
-				: HttpResponse.json({ message: 'Project not found' }, { status: 404 });
-		}),
-		http.post(`${ENDPOINT}/api/project.update`, async ({ request }) => {
-			const { projectId, name, description } = await body(request);
-			const found = dokploy.projects.find((p) => p.projectId === projectId)!;
-			found.name = name!;
-			found.description = description!;
-			return HttpResponse.json(found);
-		}),
-		http.post(`${ENDPOINT}/api/project.create`, async ({ request }) => {
-			const { name, description } = await body(request);
-			const environment = {
-				environmentId: id('env'),
-				name: dokploy.defaultEnvironment,
-				applications: [],
-				postgres: [],
-			};
-			const project = {
-				projectId: id('proj'),
-				name: name!,
-				description: description ?? null,
-				environments: [environment],
-			};
-			dokploy.projects.push(project);
-			return (
-				made(`project:${project.name}`) ??
-				HttpResponse.json({ project, environment })
-			);
-		}),
-		http.post(`${ENDPOINT}/api/environment.create`, async ({ request }) => {
-			const { projectId, name } = await body(request);
-			const environment = {
-				environmentId: id('env'),
-				name: name!,
-				applications: [],
-				postgres: [],
-			};
-			dokploy.projects
-				.find((p) => p.projectId === projectId)!
-				.environments.push(environment);
-			return (
-				made(`environment:${environment.name}`) ??
-				HttpResponse.json(environment)
-			);
-		}),
-		http.get(`${ENDPOINT}/api/registry.all`, () =>
-			HttpResponse.json(dokploy.registries),
-		),
-		http.post(`${ENDPOINT}/api/registry.create`, async ({ request }) => {
-			const { registryName, registryUrl, username } = await body(request);
-			const created = {
-				registryId: id('reg'),
-				registryName: registryName!,
-				registryUrl: registryUrl!,
-				username: username!,
-			};
-			dokploy.registries.push(created);
-			return (
-				made(`registry:${created.registryName}`) ?? HttpResponse.json(created)
-			);
-		}),
-		http.get(`${ENDPOINT}/api/registry.one`, ({ request }) => {
-			const registryId = new URL(request.url).searchParams.get('registryId');
-			const found = dokploy.registries.find((r) => r.registryId === registryId);
-			return found
-				? HttpResponse.json(found)
-				: HttpResponse.json({ message: 'Registry not found' }, { status: 404 });
-		}),
-		http.post(`${ENDPOINT}/api/application.create`, async ({ request }) => {
-			const { name, environmentId, appName } = await body(request);
-			const created = {
-				applicationId: id('app'),
-				name: name!,
-				appName: appName!,
-			};
-			environments()
-				.find((e) => e.environmentId === environmentId)!
-				.applications.push(created);
-			return made(`application:${created.name}`) ?? HttpResponse.json(created);
-		}),
-		http.get(`${ENDPOINT}/api/application.one`, ({ request }) => {
-			const found = application(
-				new URL(request.url).searchParams.get('applicationId')!,
-			);
-			return found
-				? HttpResponse.json(found)
-				: HttpResponse.json({ message: 'Not found' }, { status: 404 });
-		}),
-		http.post(
-			`${ENDPOINT}/api/application.saveDockerProvider`,
-			async ({ request }) => {
-				const { applicationId, dockerImage } = await body(request);
-				dokploy.images[applicationId!] = dockerImage!;
-				return HttpResponse.json({});
-			},
-		),
-		http.post(
-			`${ENDPOINT}/api/application.saveEnvironment`,
-			async ({ request }) => {
-				const { applicationId, env } = await body(request);
-				dokploy.env[applicationId!] = env!;
-				return HttpResponse.json({});
-			},
-		),
-		http.post(`${ENDPOINT}/api/application.deploy`, async ({ request }) => {
-			dokploy.deployed.push((await body(request)).applicationId!);
-			return HttpResponse.json({});
-		}),
-		http.get(`${ENDPOINT}/api/domain.byApplicationId`, ({ request }) => {
-			const applicationId = new URL(request.url).searchParams.get(
-				'applicationId',
-			);
-			return HttpResponse.json(
-				dokploy.domains.filter((d) => d.applicationId === applicationId),
-			);
-		}),
-		http.post(`${ENDPOINT}/api/domain.create`, async ({ request }) => {
-			const { host, applicationId } = await body(request);
-			if (dokploy.failDomains.includes(host!)) {
-				return HttpResponse.json(
-					{ message: 'Domain already in use' },
-					{ status: 409 },
-				);
-			}
-			const domain = {
-				domainId: id('dom'),
-				host: host!,
-				applicationId: applicationId!,
-			};
-			dokploy.domains.push(domain);
-			return made(`domain:${domain.host}`) ?? HttpResponse.json(domain);
-		}),
-		http.post(`${ENDPOINT}/api/domain.validateDomain`, async ({ request }) => {
-			const { domain } = await body(request);
-			const isValid = dokploy.validity[domain!];
-			return isValid === undefined
-				? HttpResponse.json({ message: 'Traefik unreachable' }, { status: 502 })
-				: HttpResponse.json({ isValid, resolvedIp: '127.0.0.1' });
-		}),
-		http.post(`${ENDPOINT}/api/postgres.create`, async ({ request }) => {
-			const { name, appName, databaseName, environmentId } =
-				await body(request);
-			// Unpublished, as Dokploy creates one.
-			const created = {
-				postgresId: id('pg'),
-				name: name!,
-				appName: appName!,
-				databaseName: databaseName!,
-				databaseUser: 'postgres',
-				databasePassword: 'master',
-				externalPort: null,
-			};
-			environments()
-				.find((e) => e.environmentId === environmentId)!
-				.postgres.push(created);
-			return HttpResponse.json(created);
-		}),
-		http.get(`${ENDPOINT}/api/postgres.one`, ({ request }) =>
-			HttpResponse.json(
-				postgres(new URL(request.url).searchParams.get('postgresId')!),
-			),
-		),
-		http.post(
-			`${ENDPOINT}/api/postgres.saveExternalPort`,
-			async ({ request }) => {
-				const { externalPort } = (await request.json()) as {
-					externalPort: number;
-				};
-				dokploy.savedPorts.push(externalPort);
-				return HttpResponse.json(
-					{ message: dokploy.portRefusal(externalPort) },
-					{ status: 400 },
-				);
-			},
-		),
-	);
-}
+const serve = () => serveDokploy(server, () => dokploy);
 
 /** Every `docker …` command the deploy ran, in order. */
 const docker = () =>
@@ -345,58 +81,8 @@ describe('workspaceDeployCommand', () => {
 	let out: string[];
 
 	/** A workspace with an API, a Next.js site that calls it, and an Expo app. */
-	function workspace(extra: { registry?: string | false; apps?: string } = {}) {
-		const registry =
-			extra.registry === false
-				? ''
-				: `registry: '${extra.registry ?? 'ghcr.io/acme'}',`;
-		writeFileSync(
-			join(root, 'package.json'),
-			JSON.stringify({ name: 'shop', private: true, type: 'module' }),
-		);
-		writeFileSync(join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0\n');
-		for (const app of ['api', 'web', 'app']) {
-			mkdirSync(join(root, 'apps', app), { recursive: true });
-			writeFileSync(
-				join(root, 'apps', app, 'package.json'),
-				// ES modules, as every scaffold is: the sniffer swaps envkit in
-				// through an import hook, which a CommonJS require never meets.
-				JSON.stringify({ name: `@shop/${app}`, type: 'module' }),
-			);
-		}
-		writeFileSync(
-			join(root, 'gkm.config.ts'),
-			`import { defineWorkspace } from '@geekmidas/cli/config';
-
-export default defineWorkspace({
-  name: 'shop',
-  constructs: './src/constructs/**/*.ts',
-  stages: { local: 'dev', deployed: ['${STAGE}', 'staging'] },
-  apps: ${
-		extra.apps ??
-		`{
-    api: { type: 'backend', path: 'apps/api', port: 3000 },
-    web: {
-      type: 'web',
-      path: 'apps/web',
-      port: 3001,
-      framework: 'nextjs',
-      dependencies: ['api'],
-    },
-    app: { type: 'mobile', path: 'apps/app', port: 8081, framework: 'expo' },
-  }`
-	},
-  deploy: {
-    default: 'dokploy',
-    domains: { ${STAGE}: 'shop.example.com', staging: 'staging.shop.example.com' },
-    dokploy: {
-      endpoint: '${ENDPOINT}',
-      ${registry}
-    },
-  },
-});
-`,
-		);
+	function workspace(extra: ShopWorkspace = {}) {
+		writeShopWorkspace(root, STAGE, extra);
 	}
 
 	const deploy = async (
@@ -435,26 +121,13 @@ export default defineWorkspace({
 		root = realpathSync(mkdtempSync(join(tmpdir(), 'gkm-deploy-ws-')));
 		home = mkdtempSync(join(tmpdir(), 'gkm-deploy-home-'));
 		vi.stubEnv('HOME', home);
+		// The CLI's home under that HOME, not the suite's shared GKM_HOME.
+		vi.stubEnv('GKM_HOME', undefined);
 		vi.stubEnv('DOKPLOY_API_TOKEN', undefined);
 		vi.stubEnv('DOKPLOY_ENDPOINT', undefined);
 		cwd = process.cwd();
 		process.chdir(root);
-		dokploy = {
-			projects: [],
-			registries: [
-				{ registryId: 'reg_1', registryName: 'GHCR', registryUrl: 'ghcr.io' },
-			],
-			domains: [],
-			env: {},
-			images: {},
-			deployed: [],
-			failDomains: [],
-			defaultEnvironment: STAGE,
-			portRefusal: (port) => `Port ${port} is already in use`,
-			validity: {},
-			savedPorts: [],
-			created: [],
-		};
+		dokploy = emptyDokploy(STAGE);
 		serve();
 		out = [];
 		vi.spyOn(console, 'log').mockImplementation((...a) => {
@@ -670,10 +343,15 @@ export default defineWorkspace({
 		expect(said()).toContain('Using registry: GHCR');
 	});
 
-	it('asks for registry credentials it cannot prompt for without a terminal', async () => {
+	it('names the registry login it needs when there is no terminal to ask at', async () => {
 		dokploy.registries = [];
 
-		await expect(deploy()).rejects.toThrow('Interactive input required');
+		await expect(deploy()).rejects.toMatchObject({
+			name: 'MissingCredential',
+			kind: 'registry',
+			target: 'ghcr.io/acme',
+		});
+		expect(dokploy.registries).toEqual([]);
 	});
 
 	it('keeps going when a domain cannot be created', async () => {
@@ -1114,10 +792,14 @@ export const config = new EnvironmentParser(process.env)
 		});
 	});
 
-	it('asks for Dokploy credentials when none are stored, and needs a terminal', async () => {
+	it('names the Dokploy login it needs when none is stored and there is no terminal', async () => {
 		rmSync(join(home, '.gkm'), { recursive: true, force: true });
 
-		await expect(deploy()).rejects.toThrow('Interactive input required');
+		await expect(deploy()).rejects.toMatchObject({
+			name: 'MissingCredential',
+			kind: 'dokploy',
+			target: ENDPOINT,
+		});
 	});
 
 	describe('on a server other workspaces deploy to', () => {
@@ -1192,6 +874,13 @@ export const config = new EnvironmentParser(process.env)
 
 		it('refuses a project another identity marked, even through its own state', async () => {
 			await deploy({ adjust: inNamespace('acme') });
+			// The stage's key belongs to the identity; one that changes its
+			// namespace takes its key along.
+			cpSync(
+				join(home, '.gkm', 'keys', 'acme'),
+				join(home, '.gkm', 'keys', 'globex'),
+				{ recursive: true },
+			);
 
 			// Same checkout, namespace changed: the state still names acme's.
 			await expect(

@@ -7,6 +7,8 @@ export default defineConfig({
 		// Reachable from an `sst.config.ts`, so a deploy builds the manifest the
 		// same way `gkm dev` does rather than reimplementing discovery.
 		'src/reconcile/public.ts',
+		// `deploy()` for hosts that deploy a project without a terminal.
+		'src/deploy/public.ts',
 		'src/workspace/index.ts',
 		'src/openapi.ts',
 		// A Vitest global setup: `globalSetup: ['@geekmidas/cli/vitest']`.

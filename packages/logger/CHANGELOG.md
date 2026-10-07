@@ -1,5 +1,13 @@
 # @geekmidas/logger
 
+## 10.0.0-alpha.59
+
+### Patch Changes
+
+- [#174](https://github.com/geekmidas/toolbox/pull/174) [`57eea44`](https://github.com/geekmidas/toolbox/commit/57eea445c114acbb398d4dfedc86f1c22dab3f10) Thanks [@geekmidas](https://github.com/geekmidas)! - `createLogger({ pretty: true })` no longer pretty-prints in production
+
+  The check read `process.NODE_ENV`, which is always undefined, so `pretty: true` started the `pino-pretty` transport in production too. It reads `process.env.NODE_ENV` now.
+
 ## 10.0.0-alpha.58
 
 ### Minor Changes

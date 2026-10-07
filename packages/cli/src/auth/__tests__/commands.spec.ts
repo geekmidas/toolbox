@@ -80,6 +80,8 @@ describe('login, logout, whoami', () => {
 		// Stubbed rather than assigned: `os.homedir()` reads the real
 		// environment, which a replaced `process.env` object no longer reaches.
 		vi.stubEnv('HOME', home);
+		// The CLI's home under that HOME, not the suite's shared GKM_HOME.
+		vi.stubEnv('GKM_HOME', undefined);
 		vi.stubEnv('DOKPLOY_API_TOKEN', undefined);
 		vi.stubEnv('DOKPLOY_ENDPOINT', undefined);
 		vi.stubEnv('HOSTINGER_API_TOKEN', undefined);

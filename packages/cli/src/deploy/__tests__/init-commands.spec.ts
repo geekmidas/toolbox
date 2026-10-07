@@ -82,6 +82,8 @@ describe('deploy and registry commands', () => {
 		home = mkdtempSync(join(tmpdir(), 'gkm-init-home-'));
 		root = realpathSync(mkdtempSync(join(tmpdir(), 'gkm-init-ws-')));
 		vi.stubEnv('HOME', home);
+		// The CLI's home under that HOME, not the suite's shared GKM_HOME.
+		vi.stubEnv('GKM_HOME', undefined);
 		vi.stubEnv('DOKPLOY_API_TOKEN', undefined);
 		vi.stubEnv('DOKPLOY_ENDPOINT', undefined);
 		cwd = process.cwd();

@@ -1,0 +1,68 @@
+/**
+ * `@geekmidas/cli/deploy`: deploy a project from a program rather than a
+ * terminal.
+ *
+ * ```ts
+ * import { deploy, MissingCredential } from '@geekmidas/cli/deploy';
+ *
+ * const run = deploy({
+ *   cwd: '/srv/checkouts/shop',
+ *   stage: 'production',
+ *   credentials: {
+ *     async get(request) {
+ *       if (request.kind === 'dokploy') {
+ *         return { endpoint: 'https://dokploy.example.com', token: vault.dokploy };
+ *       }
+ *     },
+ *   },
+ *   signal: AbortSignal.timeout(30 * 60_000),
+ * });
+ *
+ * for await (const event of run) publish(event);
+ * const result = await run.result;
+ * ```
+ *
+ * Nothing in here prompts, prints or exits the process.
+ */
+
+export { GKM_HOME_ENV, gkmHome } from '../home';
+export {
+	type Credential,
+	type CredentialKind,
+	type CredentialKinds,
+	type CredentialProvider,
+	type CredentialRequest,
+	chainCredentials,
+	MissingCredential,
+	type StoredCredentialsOptions,
+	storedCredentials,
+} from './credentials';
+export {
+	type DeployInput,
+	type DeployLogger,
+	type DeployRun,
+	deploy,
+} from './deploy';
+export type {
+	DeployEvent,
+	DeployEventError,
+	DeployEventType,
+	DeployPhase,
+	ResourceChange,
+	ResourceVia,
+} from './events';
+export { type DeployIdentity, deployIdentity } from './identity';
+export {
+	BackendDeployFailed,
+	MissingEnvVars,
+	NoDeployableApps,
+	UnknownDeployApps,
+} from './index';
+export { ProjectNotOwned } from './ownership';
+export {
+	RegistryAmbiguous,
+	RegistryNotConfigured,
+	RegistryNotFound,
+} from './registry';
+export { StateLocked, StateVersionConflict } from './StateStore';
+export type { AppDeployResult, DeployResult } from './types';

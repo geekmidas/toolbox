@@ -17,6 +17,7 @@ import {
 } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { FileSecretsStore } from '../../secrets/file';
+import { keystoreProject } from '../../secrets/keystore';
 import { execCommand, NoCommandSpecified } from '../index';
 
 /**
@@ -116,7 +117,10 @@ describe('execCommand', () => {
 };
 `,
 		);
-		await new FileSecretsStore(dir).write('dev', {
+		await new FileSecretsStore(
+			dir,
+			keystoreProject({ name: 'shop', root: dir }),
+		).write('dev', {
 			stage: 'dev',
 			createdAt: '2026-01-01T00:00:00.000Z',
 			updatedAt: '2026-01-01T00:00:00.000Z',

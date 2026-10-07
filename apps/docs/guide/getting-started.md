@@ -435,7 +435,7 @@ my-project/
 ```
 
 The decryption key lives outside the repo at
-`~/.gkm/my-project/development.key` and never enters source control.
+`~/.gkm/keys/my-project/my-project/development.key` and never enters source control.
 
 `gkm dev` and `gkm exec` decrypt and inject before your app code runs, via a
 preload that sets `globalThis.__gkm_credentials__`:

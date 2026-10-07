@@ -1,0 +1,166 @@
+WARN 
+⚠️  The constructs glob matched no files, so nothing was declared.
+   Patterns: <root>/src/constructs/**/*.ts
+   Nothing will be provisioned — no containers, no env keys, no resources.
+   A common cause is depth: '*.ts' matches one level, '**/*.ts' matches any.
+WARN 
+⚠️  The constructs glob matched no files, so nothing was declared.
+   Patterns: <root>/src/constructs/**/*.ts
+   Nothing will be provisioned — no containers, no env keys, no resources.
+   A common cause is depth: '*.ts' matches one level, '**/*.ts' matches any.
+
+🚀 Deploying workspace "shop" to Dokploy...
+   Stage: production
+   Tag: v1
+   Deploying all apps: api, web, app
+
+🔐 Loading secrets and analyzing environment requirements...
+   ⚠️  No secrets found for stage "production"; starting them
+   🔑 Generated for "production" (file): seed
+   ✓ Encrypted secrets for: web
+   ⚠️  web: Missing secrets: NEXT_PUBLIC_API_URL
+
+📋 Loading deploy state...
+   Creating new state for stage "production"
+
+📁 Setting up Dokploy project...
+   Identity: shop/shop
+   ✓ Created project: proj_<id>
+   Using environment: production
+
+🐳 Checking registry...
+   Using registry: GHCR
+
+📱 Skipping 1 mobile app(s) — deploy via framework toolchain: app
+
+📦 Provisioning declared constructs...
+
+📦 PHASE 1: Deploying backend applications...
+
+   ⚙️  Deploying api...
+      Created application: app_<id>
+      Building Docker image: ghcr.io/acme/shop/shop-api:v1
+
+🔨 Building Docker image: ghcr.io/acme/shop/shop-api:v1
+   Generating Dockerfile for the pre-built bundle...
+WARN 
+⚠️  The constructs glob matched no files, so nothing was declared.
+   Patterns: <root>/src/constructs/**/*.ts
+   Nothing will be provisioned — no containers, no env keys, no resources.
+   A common cause is depth: '*.ts' matches one level, '**/*.ts' matches any.
+📦 Detected workspace configuration
+
+🐳 Generating Dockerfiles for workspace: shop
+   Package manager: pnpm
+
+   📄 Generating Dockerfile for api (backend)
+      Generated: .gkm/docker/Dockerfile.api
+
+   📄 Generating Dockerfile for web (web)
+      Generated: .gkm/docker/Dockerfile.web
+
+   📱 Skipping Docker for app (mobile app — deploy via framework toolchain)
+
+   Generated: .dockerignore (workspace root)
+WARN 
+⚠️  The constructs glob matched no files, so nothing was declared.
+   Patterns: <root>/src/constructs/**/*.ts
+   Nothing will be provisioned — no containers, no env keys, no resources.
+   A common cause is depth: '*.ts' matches one level, '**/*.ts' matches any.
+   Generated: docker-compose.constructs.yml (project root)
+
+✅ Generated 2 Dockerfile(s) + docker-compose.constructs.yml
+
+📋 Build commands:
+   ⚙️ docker build -f .gkm/docker/Dockerfile.api -t api .
+   🌐 docker build -f .gkm/docker/Dockerfile.web -t web .
+
+📋 Run everything (the apps sit behind the "apps" profile):
+   gkm setup   # starts the containers and creates what they hold
+   docker compose -f docker-compose.constructs.yml --profile apps up --build
+✅ Image built: ghcr.io/acme/shop/shop-api:v1
+
+☁️  Pushing image: ghcr.io/acme/shop/shop-api:v1
+✅ Image pushed: ghcr.io/acme/shop/shop-api:v1
+
+✅ Docker deployment ready!
+
+📋 Deployment details:
+   Image: ghcr.io/acme/shop/shop-api:v1
+   Stage: production
+      Resolved 3 env vars: NODE_ENV, PORT, STAGE
+      Deploying to Dokploy...
+      ✓ Domain: https://api.shop.example.com (created)
+      ✓ api deployed successfully
+
+🌐 PHASE 2: Deploying frontend applications...
+
+   🌐 Deploying web...
+      Created application: app_<id>
+      Resolved 1 env vars: NEXT_PUBLIC_API_URL
+      Build args: NEXT_PUBLIC_API_URL
+      Building Docker image: ghcr.io/acme/shop/shop-web:v1
+
+🔨 Building Docker image: ghcr.io/acme/shop/shop-web:v1
+   Generating Dockerfile for the pre-built bundle...
+WARN 
+⚠️  The constructs glob matched no files, so nothing was declared.
+   Patterns: <root>/src/constructs/**/*.ts
+   Nothing will be provisioned — no containers, no env keys, no resources.
+   A common cause is depth: '*.ts' matches one level, '**/*.ts' matches any.
+📦 Detected workspace configuration
+
+🐳 Generating Dockerfiles for workspace: shop
+   Package manager: pnpm
+
+   📄 Generating Dockerfile for api (backend)
+      Generated: .gkm/docker/Dockerfile.api
+
+   📄 Generating Dockerfile for web (web)
+      Generated: .gkm/docker/Dockerfile.web
+
+   📱 Skipping Docker for app (mobile app — deploy via framework toolchain)
+
+   Generated: .dockerignore (workspace root)
+WARN 
+⚠️  The constructs glob matched no files, so nothing was declared.
+   Patterns: <root>/src/constructs/**/*.ts
+   Nothing will be provisioned — no containers, no env keys, no resources.
+   A common cause is depth: '*.ts' matches one level, '**/*.ts' matches any.
+   Generated: docker-compose.constructs.yml (project root)
+
+✅ Generated 2 Dockerfile(s) + docker-compose.constructs.yml
+
+📋 Build commands:
+   ⚙️ docker build -f .gkm/docker/Dockerfile.api -t api .
+   🌐 docker build -f .gkm/docker/Dockerfile.web -t web .
+
+📋 Run everything (the apps sit behind the "apps" profile):
+   gkm setup   # starts the containers and creates what they hold
+   docker compose -f docker-compose.constructs.yml --profile apps up --build
+✅ Image built: ghcr.io/acme/shop/shop-web:v1
+
+☁️  Pushing image: ghcr.io/acme/shop/shop-web:v1
+✅ Image pushed: ghcr.io/acme/shop/shop-web:v1
+
+✅ Docker deployment ready!
+
+📋 Deployment details:
+   Image: ghcr.io/acme/shop/shop-web:v1
+   Stage: production
+      Deploying to Dokploy...
+      ✓ Domain: https://shop.example.com (created)
+      ✓ web deployed successfully
+
+📋 Saving deploy state...
+   ✓ State saved
+
+──────────────────────────────────────────────────
+
+✅ Workspace deployment complete!
+   Project: proj_<id>
+   Successful: 2
+
+   📡 Deployed URLs:
+      api: https://api.shop.example.com
+      web: https://shop.example.com

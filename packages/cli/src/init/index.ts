@@ -1,10 +1,10 @@
 import { execSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import prompts from 'prompts';
 import { FileSecretsStore } from '../secrets/file.js';
 import { createStageSecrets } from '../secrets/generator.js';
-import { getKeyPath } from '../secrets/keystore.js';
+import { getKeyPath, projectKey } from '../secrets/keystore.js';
 import {
 	deployedProblems,
 	InvalidStages,
@@ -476,8 +476,11 @@ export async function initCommand(
 	devSecrets.custom = customSecrets;
 
 	// The local stage's store is always the file.
-	await new FileSecretsStore(targetDir).write(local, devSecrets);
-	const keyPath = getKeyPath(local, name);
+	// Keyed by the project's identity, which is what the generated config's
+	// `name` makes it — not the folder it happens to be created in.
+	const keys = { key: projectKey({ name }), legacy: [basename(targetDir)] };
+	await new FileSecretsStore(targetDir, keys).write(local, devSecrets);
+	const keyPath = getKeyPath(local, keys);
 	console.log(`  Secrets: .gkm/secrets/${local}.json (encrypted)`);
 	console.log(`  Key: ${keyPath}\n`);
 

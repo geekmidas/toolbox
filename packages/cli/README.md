@@ -786,7 +786,7 @@ Store credentials locally to avoid setting environment variables for every comma
 
 ### `gkm login`
 
-Authenticate with a deployment service. Credentials are stored in `~/.gkm/credentials.json`.
+Authenticate with a deployment service. Credentials are stored in `~/.gkm/credentials.json` (`$GKM_HOME/credentials.json` when `GKM_HOME` is set).
 
 ```bash
 gkm login [options]
@@ -872,6 +872,20 @@ gkm deploy --provider <provider> --stage <stage> [options]
 - `--tag <tag>`: Image tag (default: `stage-timestamp`)
 - `--skip-push`: Skip pushing image to registry
 - `--skip-build`: Skip build step (use existing build)
+- `--json`: Write the deploy's events as JSON lines on stdout instead of progress; never prompts
+- `--dry-run`: Show what would be created or reused, and change, build and push nothing
+
+At a terminal a missing Dokploy or registry login is asked for (and the Dokploy one stored). With `--json` or without a terminal nothing is asked: the deploy stops with `MissingCredential` and exits 1.
+
+**From a program:** the same deploy is `deploy()` from `@geekmidas/cli/deploy` — explicit `cwd`, an injected `CredentialProvider`, a logger and an `AbortSignal`; it returns a run you iterate for JSON events, plus a `result` promise. It never prompts, prints or exits.
+
+```typescript
+import { deploy } from '@geekmidas/cli/deploy';
+
+const run = deploy({ cwd: '/srv/shop', stage: 'production', signal });
+for await (const event of run) console.log(event.type);
+const result = await run.result;
+```
 
 **Examples:**
 ```bash
@@ -932,6 +946,9 @@ export default defineConfig({
 
 **Environment Variables:**
 - `DOKPLOY_API_TOKEN`: API token for Dokploy (not needed if logged in via `gkm login`)
+- `DOKPLOY_ENDPOINT`: Dokploy URL, if neither the stored login nor `deploy.dokploy.endpoint` gives one
+- `DOCKER_REGISTRY_USERNAME` / `DOCKER_REGISTRY_PASSWORD`: a registry login, used only when Dokploy has no registry for `deploy.dokploy.registry` and one has to be created
+- `GKM_HOME`: where stage keys and stored logins live (default `~/.gkm`)
 - `GKM_MASTER_KEY`: Automatically set by Dokploy, or manually for Docker deployments — from `.gkm/server/master.key`, which `gkm build --stage` writes (the key is never printed; output shows its fingerprint)
 
 ### `gkm deploy:init`

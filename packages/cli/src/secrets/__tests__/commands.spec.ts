@@ -12,6 +12,7 @@ import {
 	secretsSetCommand,
 	secretsShowCommand,
 } from '../index';
+import { keystoreProject } from '../keystore';
 import type { StageSecrets } from '../types';
 
 /** What `process.exit` becomes here, so a refusal can be asserted on. */
@@ -119,7 +120,12 @@ export default defineWorkspace({
 
 			await secretsInitCommand({ stage: 'dev' });
 
-			const custom = (await stored('dev'))?.custom ?? {};
+			// Keyed by the workspace's identity, `shop`, not by the folder.
+			const workspaceStore = new FileSecretsStore(
+				dir,
+				keystoreProject({ name: 'shop', root: dir }),
+			);
+			const custom = (await workspaceStore.read('dev'))?.custom ?? {};
 			expect(Object.keys(custom).length).toBeGreaterThan(0);
 			expect(printed()).toContain('generating per-app secrets');
 			expect(printed()).toContain('Custom secrets:');

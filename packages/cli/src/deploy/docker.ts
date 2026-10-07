@@ -3,11 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DockerBuildFailed, DockerPushFailed, dockerCommand } from '../docker';
 import { validateImageRef } from '../docker/imageRef';
-import { run, runOutput } from '../run';
+import { output } from '../output';
+import { type RunOptions, run, runOutput } from '../run';
 import { keyFingerprint } from '../secrets/encryption';
-import type { DeployResult, DockerDeployConfig } from './types';
+import type { DockerDeployConfig, DockerDeployResult } from './types';
 
-const logger = console;
+// Through `output`, so a deploy run hears its own build's progress.
+const logger = output;
 
 /**
  * The id the Dockerfile templates mount the encrypted credentials under:
@@ -52,6 +54,26 @@ export interface DockerDeployOptions {
 	 * Used to ensure the Dockerfile declares these as ARG/ENV.
 	 */
 	publicUrlArgs?: string[];
+	/**
+	 * The app's own directory: where its bundle is, where the Dockerfile is
+	 * generated, and the build context. Defaults to the process's working
+	 * directory, which is only the app's when the CLI was started in it.
+	 */
+	cwd?: string;
+	/** Stops the build or push: the child is killed. */
+	signal?: AbortSignal;
+	/**
+	 * Where docker's own output goes. A deploy writing JSON to stdout sends it
+	 * to stderr instead. Defaults to the terminal.
+	 */
+	stdio?: RunOptions['stdio'];
+}
+
+/** Where and how docker runs for one image. */
+interface DockerRun {
+	cwd: string;
+	signal?: AbortSignal;
+	stdio?: RunOptions['stdio'];
 }
 
 /**
@@ -132,15 +154,15 @@ export async function writeCredentialsFile(
  */
 async function buildImage(
 	imageRef: string,
-	buildArgs?: string[],
-	credentials?: BuildCredentials,
+	buildArgs: string[] | undefined,
+	credentials: BuildCredentials | undefined,
+	{ cwd, signal, stdio }: DockerRun,
 ): Promise<void> {
 	logger.log(`\n🔨 Building Docker image: ${imageRef}`);
 
 	// Where the lockfile is no longer decides anything here: the image copies a
 	// bundle that is already built, so a monorepo and a standalone app produce
-	// the same Dockerfile and the same one-directory build context.
-	const cwd = process.cwd();
+	// the same Dockerfile and the same one-directory build context — the app's.
 
 	// Generate appropriate Dockerfile
 	// The bundle already exists: `gkm build` ran before this and produced a
@@ -150,7 +172,7 @@ async function buildImage(
 	// `dist` never arrives, and rebuilding it in the image means bootstrapping
 	// the whole workspace to produce a bundle we are holding.
 	logger.log('   Generating Dockerfile for the pre-built bundle...');
-	await dockerCommand({ slim: true });
+	await dockerCommand({ slim: true, cwd });
 
 	// One file, not `Dockerfile.${appName}`: the suffix belonged to the
 	// generate-every-app-at-once path, and this generates exactly one Dockerfile
@@ -181,6 +203,8 @@ async function buildImage(
 				cwd,
 				// BuildKit, for `--secret` and `RUN --mount`.
 				env: { ...process.env, DOCKER_BUILDKIT: '1' },
+				...(signal ? { signal } : {}),
+				...(stdio ? { stdio } : {}),
 			},
 		);
 		logger.log(`✅ Image built: ${imageRef}`);
@@ -194,11 +218,18 @@ async function buildImage(
 /**
  * Push Docker image to registry
  */
-async function pushImage(imageRef: string): Promise<void> {
+async function pushImage(
+	imageRef: string,
+	{ cwd, signal, stdio }: DockerRun,
+): Promise<void> {
 	logger.log(`\n☁️  Pushing image: ${imageRef}`);
 
 	try {
-		await run('docker', ['push', imageRef], { cwd: process.cwd() });
+		await run('docker', ['push', imageRef], {
+			cwd,
+			...(signal ? { signal } : {}),
+			...(stdio ? { stdio } : {}),
+		});
 		logger.log(`✅ Image pushed: ${imageRef}`);
 	} catch (error) {
 		throw new DockerPushFailed(imageRef, error);
@@ -217,12 +248,13 @@ async function pushImage(imageRef: string): Promise<void> {
  */
 export async function pushedDigest(
 	imageRef: string,
+	{ cwd, signal }: Pick<DockerRun, 'cwd' | 'signal'> = { cwd: process.cwd() },
 ): Promise<string | undefined> {
 	const repository = imageRef.split('@')[0]!.replace(/:[\w][\w.-]*$/, '');
 	const output = await runOutput(
 		'docker',
 		['image', 'inspect', '--format={{json .RepoDigests}}', imageRef],
-		{ cwd: process.cwd() },
+		{ cwd, ...(signal ? { signal } : {}) },
 	);
 
 	let digests: unknown;
@@ -245,7 +277,7 @@ export async function pushedDigest(
  */
 export async function deployDocker(
 	options: DockerDeployOptions,
-): Promise<DeployResult> {
+): Promise<DockerDeployResult> {
 	const { stage, tag, skipPush, masterKey, config, buildArgs, credentials } =
 		options;
 
@@ -256,7 +288,13 @@ export async function deployDocker(
 		getImageRef(config.registry, imageName, tag),
 	);
 
-	await buildImage(imageRef, buildArgs, credentials);
+	const docker: DockerRun = {
+		cwd: options.cwd ?? process.cwd(),
+		...(options.signal ? { signal: options.signal } : {}),
+		...(options.stdio ? { stdio: options.stdio } : {}),
+	};
+
+	await buildImage(imageRef, buildArgs, credentials, docker);
 
 	// Push to registry if not skipped
 	let digest: string | undefined;
@@ -266,8 +304,8 @@ export async function deployDocker(
 				'\n⚠️  No registry configured. Use --skip-push or configure docker.registry in gkm.config.ts',
 			);
 		} else {
-			await pushImage(imageRef);
-			digest = await pushedDigest(imageRef);
+			await pushImage(imageRef, docker);
+			digest = await pushedDigest(imageRef, docker);
 		}
 	}
 

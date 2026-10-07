@@ -20,6 +20,7 @@ import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { loadWorkspaceConfig } from '../../config';
 import { FileSecretsStore } from '../../secrets/file';
+import { keystoreProject } from '../../secrets/keystore';
 import { secretsStoreFor } from '../../secrets/store';
 
 /**
@@ -70,6 +71,10 @@ describe('setupCommand', () => {
 		await cleanupDir(dir);
 	});
 
+	/** The local stage's file, keyed as the workspace called `name` keys it. */
+	const fileStore = (name = 'shop') =>
+		new FileSecretsStore(dir, keystoreProject({ name, root: dir }));
+
 	/** A config file; `body` goes inside `defineWorkspace({ … })`. */
 	function config(body: string, name = 'shop') {
 		writeFileSync(
@@ -108,7 +113,7 @@ export const database = new KyselyDatabase('Database');
 
 		await setupCommand();
 
-		const secrets = await new FileSecretsStore(dir).read('dev');
+		const secrets = await fileStore().read('dev');
 		expect(secrets?.stage).toBe('dev');
 		expect(secrets?.custom.JWT_SECRET).toBeTruthy();
 		expect(secrets?.custom).not.toHaveProperty('NODE_ENV');
@@ -124,7 +129,7 @@ export const database = new KyselyDatabase('Database');
 	it('keeps existing secrets, adding only what is missing', async () => {
 		config(`${apps}\n  constructs: './constructs/**/*.ts',`);
 		database();
-		await new FileSecretsStore(dir).write('dev', {
+		await fileStore().write('dev', {
 			stage: 'dev',
 			createdAt: '2026-01-01T00:00:00.000Z',
 			updatedAt: '2026-01-01T00:00:00.000Z',
@@ -135,7 +140,7 @@ export const database = new KyselyDatabase('Database');
 
 		await setupCommand({ skipDocker: true });
 
-		const secrets = await new FileSecretsStore(dir).read('dev');
+		const secrets = await fileStore().read('dev');
 		expect(secrets?.custom.STRIPE_KEY).toBe('sk_kept');
 		// The declared database brought Postgres, and with it credentials.
 		expect(secrets?.services.postgres).toBeDefined();
@@ -151,21 +156,21 @@ export const database = new KyselyDatabase('Database');
 	it('uses existing secrets unchanged when nothing is missing', async () => {
 		config(`constructs: './constructs/**/*.ts',`);
 		await setupCommand({ skipDocker: true });
-		const first = await new FileSecretsStore(dir).read('dev');
+		const first = await fileStore().read('dev');
 
 		await setupCommand({ skipDocker: true, stage: 'dev' });
 
-		expect(await new FileSecretsStore(dir).read('dev')).toEqual(first);
+		expect(await fileStore().read('dev')).toEqual(first);
 	});
 
 	it('regenerates everything on --force, and a single app gets its own set', async () => {
 		config(`constructs: './constructs/**/*.ts',`);
 		await setupCommand({ skipDocker: true });
-		const first = await new FileSecretsStore(dir).read('dev');
+		const first = await fileStore().read('dev');
 
 		await setupCommand({ skipDocker: true, force: true });
 
-		const second = await new FileSecretsStore(dir).read('dev');
+		const second = await fileStore().read('dev');
 		expect(output(log)).toContain('Generating fresh secrets (--force)');
 		expect(second?.custom.JWT_SECRET).toMatch(/^dev-/);
 		expect(second?.custom.JWT_SECRET).not.toBe(first?.custom.JWT_SECRET);
@@ -216,7 +221,8 @@ export const database = new KyselyDatabase('Database');
 		});
 
 		it('keeps the local stage on this machine', async () => {
-			config(ssm, `shop-local-${Date.now()}`);
+			const name = `shop-local-${Date.now()}`;
+			config(ssm, name);
 
 			await setupCommand({ skipDocker: true });
 
@@ -224,7 +230,7 @@ export const database = new KyselyDatabase('Database');
 				'Secrets written to the "dev" store (file)',
 			);
 			expect(output(log)).not.toContain('(ssm)');
-			expect(await new FileSecretsStore(dir).read('dev')).not.toBeNull();
+			expect(await fileStore(name).read('dev')).not.toBeNull();
 		});
 
 		it('stops when SSM cannot be reached, rather than generating secrets nobody can read', async () => {

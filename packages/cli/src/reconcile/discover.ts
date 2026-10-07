@@ -23,9 +23,10 @@ import {
 } from '@geekmidas/manifest';
 import fg from 'fast-glob';
 import { clearZodGlobalRegistry } from '../generators/Generator';
+import { output } from '../output';
 
-/** Matches the rest of the CLI, which logs through `console` directly. */
-const logger = console;
+/** `console`, or the deploy run discovering the manifest. */
+const logger = output;
 
 /** The construct face discovery needs: an id, and the ability to declare. */
 interface Declarable {

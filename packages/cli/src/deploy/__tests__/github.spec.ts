@@ -131,6 +131,14 @@ describe('roleName', () => {
 	});
 });
 
+// Keys under each test's own HOME, not the suite's shared GKM_HOME.
+beforeEach(() => {
+	vi.stubEnv('GKM_HOME', undefined);
+});
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
+
 describe('deployGithubCommand', () => {
 	let root: string;
 	let home: string;

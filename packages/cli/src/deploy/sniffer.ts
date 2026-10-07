@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { SniffResult } from '@geekmidas/envkit/sniffer';
+import { output } from '../output.js';
 import { withOwningTsconfigJsx } from '../owningTsconfigJsx.js';
 import { normalizeRoutes } from '../workspace/client-generator.js';
 import { getPublicEnvPrefix } from '../workspace/publicEnv.js';
@@ -149,7 +150,7 @@ export async function sniffAppEnvironment(
 				);
 
 				if (logWarnings && result.error) {
-					console.warn(
+					output.warn(
 						`[sniffer] ${appName}: Config file "${configPath}" threw error during sniffing (env vars still captured): ${result.error.message}`,
 					);
 				}
@@ -176,7 +177,7 @@ export async function sniffAppEnvironment(
 		const result = await sniffEntryFile(app.entry, app.path, workspacePath);
 
 		if (logWarnings && result.error) {
-			console.warn(
+			output.warn(
 				`[sniffer] ${appName}: Entry file threw error during sniffing (env vars still captured): ${result.error.message}`,
 			);
 		}
@@ -201,7 +202,7 @@ export async function sniffAppEnvironment(
 		);
 
 		if (logWarnings && result.error) {
-			console.warn(
+			output.warn(
 				`[sniffer] ${appName}: Route sniffing threw error (env vars still captured): ${result.error.message}`,
 			);
 		}
@@ -224,12 +225,12 @@ export async function sniffAppEnvironment(
 		// Log any issues for debugging
 		if (logWarnings) {
 			if (result.error) {
-				console.warn(
+				output.warn(
 					`[sniffer] ${appName}: envParser threw error during sniffing (env vars still captured): ${result.error.message}`,
 				);
 			}
 			if (result.unhandledRejections.length > 0) {
-				console.warn(
+				output.warn(
 					`[sniffer] ${appName}: Fire-and-forget rejections during sniffing (suppressed): ${result.unhandledRejections.map((e) => e.message).join(', ')}`,
 				);
 			}
@@ -431,7 +432,7 @@ async function sniffRouteFiles(
 				stderr
 					.split('\n')
 					.filter((line) => line.trim())
-					.forEach((line) => console.warn(line));
+					.forEach((line) => output.warn(line));
 			}
 
 			// Try to parse the JSON output from the worker
@@ -506,7 +507,7 @@ async function sniffEnvParser(
 		sniffWithFireAndForget = envkitModule.sniffWithFireAndForget;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		console.warn(
+		output.warn(
 			`[sniffer] Failed to import SnifferEnvironmentParser: ${message}`,
 		);
 		return { envVars: [], optionalEnvVars: [], unhandledRejections: [] };
@@ -522,7 +523,7 @@ async function sniffEnvParser(
 		// Get the envParser function
 		const envParser = module[exportName];
 		if (typeof envParser !== 'function') {
-			console.warn(
+			output.warn(
 				`[sniffer] Export "${exportName}" from "${modulePath}" is not a function`,
 			);
 			return;
