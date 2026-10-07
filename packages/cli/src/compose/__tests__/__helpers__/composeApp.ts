@@ -75,7 +75,7 @@ export default defineWorkspace({
   deploy: {
     default: 'dokploy',
     domains: { production: ${JSON.stringify(options.domain ?? 'shop.example.com')} },
-    ${options.registry ? `dokploy: { endpoint: 'https://dokploy.example.com', registry: ${JSON.stringify(options.registry)} },` : ''}
+    ${options.registry ? `registry: ${JSON.stringify(options.registry)},` : ''}
   },
 });
 `,

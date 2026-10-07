@@ -18,7 +18,6 @@ import { LocalSandbox } from '../sandbox/local';
 import { type Sandbox, withSandbox } from '../sandbox/sandbox';
 import { Redactor } from '../target/secrets';
 import type { AnyDeployTarget } from '../target/types';
-import { assertDeployedStage } from '../workspace/stages.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { type CredentialProvider, storedCredentials } from './credentials';
 import { type DeployEvent, eventError } from './events';
@@ -41,7 +40,10 @@ export interface DeployInput {
 	 * directory inside it. Never assumed to be `process.cwd()`.
 	 */
 	cwd: string;
-	/** The stage to deploy — one of the config's deployed stages. */
+	/**
+	 * The stage to deploy — one of the config's deployed stages, or its local
+	 * stage through a target that runs one (`compose`).
+	 */
 	stage: string;
 	/**
 	 * The target to deploy through, by name. Defaults to `deploy.default`,
@@ -253,7 +255,10 @@ export function deploy(input: DeployInput): DeployRun {
 	};
 }
 
-/** The workspace at `input.cwd`, refusing a stage it does not deploy. */
+/**
+ * The workspace at `input.cwd`. The stage is checked by the run, once it
+ * knows the target: one that runs on this machine may take the local stage.
+ */
 async function load(
 	input: DeployInput,
 	sandbox: Sandbox,
@@ -261,9 +266,5 @@ async function load(
 	const { workspace } = await loadWorkspaceConfig(resolve(input.cwd), {
 		sandbox,
 	});
-
-	// Before anything is provisioned: a typo'd stage would otherwise create a
-	// whole second environment under the wrong name.
-	assertDeployedStage(workspace.stages, input.stage);
 	return workspace;
 }

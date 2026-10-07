@@ -24,6 +24,7 @@ import type {
 } from '../target/types';
 import { derivedApps } from '../workspace/derive.js';
 import { getAppBuildOrder } from '../workspace/index.js';
+import { assertDeployedStage } from '../workspace/stages.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import type { CredentialProvider } from './credentials';
 import { type DeployEvent, type DeployPhase, eventError } from './events';
@@ -275,6 +276,12 @@ async function prepare(
 	const { stage } = request;
 	const configured = typeof source === 'function' ? await source() : source;
 
+	// Before anything is provisioned: a typo'd stage would otherwise create a
+	// whole second environment under the wrong name. The local stage is left
+	// to the target, which says whether it can run it.
+	const local = stage === configured.stages.local;
+	if (!local) assertDeployedStage(configured.stages, stage);
+
 	// Before anything is discovered or derived: a target that cannot be found
 	// — or a package that would not load — fails a deploy that has done
 	// nothing yet.
@@ -284,6 +291,9 @@ async function prepare(
 		stage,
 		...(ctx.targets ? { host: ctx.targets } : {}),
 	});
+	if (local && !resolved.target.capabilities.localStage) {
+		assertDeployedStage(configured.stages, stage);
+	}
 	const options = await parseTargetOptions(resolved);
 
 	// What to deploy comes from the manifest.
@@ -305,7 +315,11 @@ async function prepare(
 	// resolved first, so a namespace that cannot be a name fails before
 	// anything is built.
 	const identity = deployIdentity(workspace, stage);
-	const tag = request.tag ?? generateTag(stage);
+	const tag =
+		request.tag ??
+		(resolved.target.tag
+			? await resolved.target.tag({ cwd: workspace.root, stage })
+			: generateTag(stage));
 
 	// The apps asked for, in dependency order.
 	const buildOrder = getAppBuildOrder(workspace);
@@ -361,6 +375,7 @@ async function prepare(
 		cwd: workspace.root,
 		stage,
 		tag,
+		tagGiven: request.tag !== undefined,
 		apps,
 		skipped,
 		identity,

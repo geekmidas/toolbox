@@ -34,11 +34,11 @@ export interface CredentialKinds {
 	};
 	/**
 	 * A container registry login, for Dokploy to pull with. Asked for only when
-	 * Dokploy has no registry for `deploy.dokploy.registry` and one has to be
+	 * Dokploy has no registry for `deploy.registry` and one has to be
 	 * created.
 	 */
 	registry: {
-		/** `deploy.dokploy.registry`. */
+		/** `deploy.registry`. */
 		request: { url: string };
 		value: { username: string; password: string };
 	};

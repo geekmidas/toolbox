@@ -48,6 +48,14 @@ export interface DeployTargetCapabilities {
 	 * the deploy runs, and a registry to push to.
 	 */
 	images: boolean;
+	/**
+	 * Whether it can also run the project's local stage — `gkm deploy --stage
+	 * <local>`. Only a target that runs on this machine can: a stack started
+	 * here is the local stage's, while one on a server is shared, and the local
+	 * stage's secrets are a developer's. Absent, a deploy refuses the local
+	 * stage with `UndeclaredStage`.
+	 */
+	localStage?: boolean;
 }
 
 /** A failed validation of a target's options, issue by issue. */
@@ -133,6 +141,12 @@ export interface DeployPhaseContext<Options = undefined> {
 	readonly stage: string;
 	/** The image tag, or whatever version label the target releases under. */
 	readonly tag: string;
+	/**
+	 * Whether `tag` was asked for (`--tag`) rather than made up for this run
+	 * — by the target's own `tag()`, else `<stage>-<timestamp>`. A target that
+	 * releases what CI already pushed when given one tells the two apart here.
+	 */
+	readonly tagGiven: boolean;
 	/**
 	 * The apps this target deploys, in dependency order: those asked for that
 	 * deploy here. Apps that deploy elsewhere are already in `skipped`.
@@ -233,6 +247,16 @@ export interface DeployTarget<Options = undefined, Run = unknown> {
 	 * host or `gkm login` can collect them up front.
 	 */
 	readonly credentials?: readonly CredentialKind[];
+
+	/**
+	 * The tag a run releases under when none is asked for. Without one it is
+	 * `<stage>-<timestamp>`; a target that builds from the checkout can name
+	 * its images after the commit instead.
+	 */
+	tag?(where: {
+		readonly cwd: string;
+		readonly stage: string;
+	}): Promise<string>;
 
 	/**
 	 * Everything the deploy needs, checked before anything changes: the

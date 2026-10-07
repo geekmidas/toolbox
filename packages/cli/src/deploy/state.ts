@@ -110,6 +110,11 @@ export interface DokployStageState {
 /** An image a stage runs: the ref it was pushed as, and what it resolved to. */
 export interface DeployedImage {
 	ref: string;
+	/**
+	 * The tag it was released under — a site's carries its stage
+	 * (`v1.4.0-production`). Recorded by targets that pull a release by tag.
+	 */
+	tag?: string;
 	/** The registry's digest, `sha256:…` — absent if it could not be read. */
 	digest?: string;
 }

@@ -65,9 +65,10 @@ export default defineWorkspace({
     },
     // Whose deploy this is, on a server other workspaces share (optional).
     namespace: 'myorg',
+    // Where every target pushes and pulls the apps' images.
+    registry: 'ghcr.io/myorg',
     dokploy: {
       endpoint: 'https://dokploy.myserver.com',
-      registry: 'ghcr.io/myorg',
     },
     dns: {
       provider: 'route53',
@@ -603,7 +604,9 @@ docker run -e GKM_MASTER_KEY="$(cat .gkm/server/master.key)" my-api:latest
 ## Deploy targets
 
 `gkm deploy` deploys a stage through a *target*: `deploy.default`, or
-`--target <name>`. `dokploy` ships with the CLI. `sst` is a valid default for
+`--target <name>`. `dokploy` and `compose` (one Docker Compose stack behind
+Caddy, on the machine that deploys — see [Deploy with Docker
+Compose](./compose.md)) ship with the CLI. `sst` is a valid default for
 building and `gkm dev`, but is deployed by `sst deploy` for now, and `gkm
 deploy` says so. Any other target is a package the project installs and
 names:
@@ -845,7 +848,7 @@ never adopted: the deploy stops with `ProjectNotOwned` before building anything.
 Set `deploy.namespace`, or add the marker to the project's description in
 Dokploy if it really is yours.
 
-**The registry is the one you configured.** `deploy.dokploy.registry` is where
+**The registry is the one you configured.** `deploy.registry` is where
 images are pushed (a deploy without one stops with `RegistryNotConfigured`).
 Dokploy's registry for it is, in order: `deploy.dokploy.registryId`, the one
 the stage's state recorded, and the one Dokploy holds for that registry's host

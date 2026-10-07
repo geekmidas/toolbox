@@ -248,7 +248,6 @@ const DokployWorkspaceConfigSchema = z
 		endpoints: z
 			.record(z.string(), z.url('Endpoint must be a valid URL'))
 			.optional(),
-		registry: z.string().optional(),
 		registryId: z.string().optional(),
 	})
 	.refine((data) => data.endpoint || data.endpoints, {
@@ -549,6 +548,8 @@ const DeployConfigSchema = z.object({
 		.optional(),
 	/** Each deployed stage's base domain (stage name -> domain). */
 	domains: z.record(z.string(), z.string()).optional(),
+	/** Where every target pushes and pulls the apps' images. */
+	registry: z.string().min(1).optional(),
 	dokploy: DokployWorkspaceConfigSchema.optional(),
 	dns: DnsConfigWithLegacySchema.optional(),
 	backups: BackupsConfigSchema.optional(),

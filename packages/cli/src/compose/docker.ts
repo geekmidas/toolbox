@@ -13,7 +13,7 @@
 import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { run, runOutput } from '../run';
+import { type RunOptions, run, runOutput } from '../run';
 
 /** Where one stack lives: its compose project and the file that defines it. */
 export interface StackRef {
@@ -21,6 +21,30 @@ export interface StackRef {
 	file: string;
 	/** Where relative paths in the file resolve — the workspace root. */
 	cwd: string;
+	/**
+	 * Where docker's own output goes: the terminal (the default), stderr — so
+	 * a `--json` run's stdout carries only events — or nowhere.
+	 */
+	output?: 'inherit' | 'stderr' | 'ignore';
+	/** Stops whatever docker is doing for the stack. */
+	signal?: AbortSignal;
+}
+
+/** `output` as `spawn` reads it. */
+const STDIO: Record<NonNullable<StackRef['output']>, RunOptions['stdio']> = {
+	inherit: 'inherit',
+	stderr: ['ignore', 2, 2],
+	ignore: 'ignore',
+};
+
+/** How a stack's docker commands run: where it is, where output goes. */
+function runOptions(stack: StackRef, env?: NodeJS.ProcessEnv): RunOptions {
+	return {
+		cwd: stack.cwd,
+		stdio: STDIO[stack.output ?? 'inherit'],
+		...(env ? { env } : {}),
+		...(stack.signal ? { signal: stack.signal } : {}),
+	};
 }
 
 /** What the registry said about one image ref. */
@@ -144,16 +168,19 @@ export const dockerCompose: ComposeDocker = {
 	},
 
 	async build(stack, services) {
-		await run('docker', compose(stack, ['build', ...services]), {
-			cwd: stack.cwd,
-			env: { ...process.env, DOCKER_BUILDKIT: '1' },
-		});
+		await run(
+			'docker',
+			compose(stack, ['build', ...services]),
+			runOptions(stack, { ...process.env, DOCKER_BUILDKIT: '1' }),
+		);
 	},
 
 	async pull(stack, services) {
-		await run('docker', compose(stack, ['pull', ...services]), {
-			cwd: stack.cwd,
-		});
+		await run(
+			'docker',
+			compose(stack, ['pull', ...services]),
+			runOptions(stack),
+		);
 	},
 
 	async up(stack, services) {
@@ -169,19 +196,19 @@ export const dockerCompose: ComposeDocker = {
 				...(services ? [] : ['--remove-orphans']),
 				...(services ?? []),
 			]),
-			{ cwd: stack.cwd },
+			runOptions(stack),
 		);
 	},
 
 	async down(stack) {
-		await run('docker', compose(stack, ['down']), { cwd: stack.cwd });
+		await run('docker', compose(stack, ['down']), runOptions(stack));
 	},
 
 	async port(stack, service, inside) {
 		const output = await runOutput(
 			'docker',
 			compose(stack, ['port', service, String(inside)]),
-			{ cwd: stack.cwd },
+			{ cwd: stack.cwd, ...(stack.signal ? { signal: stack.signal } : {}) },
 		);
 		// `127.0.0.1:54321` — the part after the last colon is the host port.
 		const port = Number(output.trim().split(':').pop());
@@ -193,9 +220,11 @@ export const dockerCompose: ComposeDocker = {
 
 	async copyOut(stack, service, from, to) {
 		await mkdir(dirname(to), { recursive: true });
-		await run('docker', compose(stack, ['cp', `${service}:${from}`, to]), {
-			cwd: stack.cwd,
-		});
+		await run(
+			'docker',
+			compose(stack, ['cp', `${service}:${from}`, to]),
+			runOptions(stack),
+		);
 	},
 
 	async digest(ref) {

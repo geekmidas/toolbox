@@ -190,7 +190,7 @@ describe('resolveTarget', () => {
 			expect(error).toBeInstanceOf(UnknownDeployTarget);
 			expect(error).toMatchObject({
 				target: 'kubernetes',
-				known: ['dokploy', 'sst', 'acme'],
+				known: ['dokploy', 'compose', 'sst', 'acme'],
 			});
 			expect((error as Error).message).toContain('deploy: { targets:');
 		});
