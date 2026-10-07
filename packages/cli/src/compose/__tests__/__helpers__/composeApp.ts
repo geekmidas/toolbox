@@ -15,6 +15,8 @@ export interface ComposeAppOptions {
 	domain?: string;
 	/** Where images are pushed and pulled. */
 	registry?: string;
+	/** `deploy.compose.logs`, as it is written in the config. */
+	logs?: unknown;
 }
 
 /**
@@ -76,6 +78,7 @@ export default defineWorkspace({
     default: 'dokploy',
     domains: { production: ${JSON.stringify(options.domain ?? 'shop.example.com')} },
     ${options.registry ? `registry: ${JSON.stringify(options.registry)},` : ''}
+    ${options.logs !== undefined ? `compose: { logs: ${JSON.stringify(options.logs)} },` : ''}
   },
 });
 `,

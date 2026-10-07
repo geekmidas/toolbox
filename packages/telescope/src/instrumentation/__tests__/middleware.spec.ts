@@ -274,7 +274,7 @@ describe('telemetryMiddleware', () => {
 			expect(spans[0].status.code).toBe(1); // SpanStatusCode.OK
 		});
 
-		it('should record 4xx status as error', async () => {
+		it('should record a 4xx status without marking the span an error', async () => {
 			const event = {
 				httpMethod: 'GET',
 				path: '/api/users/999',
@@ -294,7 +294,7 @@ describe('telemetryMiddleware', () => {
 
 			const spans = exporter.getFinishedSpans();
 			expect(spans[0].attributes['http.response.status_code']).toBe(404);
-			expect(spans[0].status.code).toBe(2); // SpanStatusCode.ERROR
+			expect(spans[0].status.code).toBe(0); // SpanStatusCode.UNSET
 		});
 
 		it('should record response body when recordResponseBody is true', async () => {

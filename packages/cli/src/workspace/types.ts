@@ -155,6 +155,46 @@ export interface DokployVerifyConfig {
 }
 
 /**
+ * The `compose` target's own settings — `deploy.compose`. Read by `gkm
+ * compose` and `gkm deploy --target compose` only; the Dokploy target never
+ * consults it.
+ *
+ * @example
+ * ```ts
+ * deploy: { compose: { logs: true } }
+ * deploy: { compose: { logs: { port: 5081, retentionDays: 14 } } }
+ * deploy: { compose: { logs: { public: { allow: ['203.0.113.7', '10.0.0.0/8'] } } } }
+ * ```
+ */
+export interface ComposeWorkspaceConfig {
+	/**
+	 * Run OpenObserve in the stack and send every backend's logs and traces
+	 * to it. `true` for the defaults.
+	 */
+	logs?: boolean | ComposeLogsConfig;
+}
+
+/** How the stack's OpenObserve is run and reached — `deploy.compose.logs`. */
+export interface ComposeLogsConfig {
+	/**
+	 * The port it is published on, on 127.0.0.1 only — reached from another
+	 * machine through an SSH tunnel. Default 5080.
+	 */
+	port?: number;
+	/**
+	 * How many days of data it keeps (OpenObserve's
+	 * `ZO_COMPACT_DATA_RETENTION_DAYS`). At least 3; default 30.
+	 */
+	retentionDays?: number;
+	/**
+	 * Serve it on `logs.<stage domain>` through the stack's Caddy, to these
+	 * addresses only (IPs or CIDRs), instead of on a loopback port. Every
+	 * other address is answered 403.
+	 */
+	public?: { allow: string[] };
+}
+
+/**
  * DNS provider types for automatic DNS record creation.
  */
 export type DnsProviderType = 'hostinger' | 'route53' | 'cloudflare' | 'manual';
@@ -232,6 +272,8 @@ export interface DeployConfig {
 	registry?: string;
 	/** Dokploy-specific configuration */
 	dokploy?: DokployWorkspaceConfig;
+	/** What the `compose` target runs beside the apps — see {@link ComposeWorkspaceConfig}. */
+	compose?: ComposeWorkspaceConfig;
 	/** DNS configuration for automatic record creation */
 	dns?: DnsConfig;
 	/** Backup destination configuration for database services */

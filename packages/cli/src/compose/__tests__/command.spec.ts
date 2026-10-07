@@ -648,6 +648,149 @@ export const shipping = new ExternalApi('Shipping', {
 	});
 });
 
+describe('logs', { timeout: RUN_TIMEOUT }, () => {
+	let home: string;
+	const registry = [
+		'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
+		'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0',
+		'registry.example.com/acme/compose-app/compose-app-web:v1.4.0-production',
+	];
+
+	beforeEach(async () => {
+		dir = realpathSync(await createTempDir('gkm-compose-logs-'));
+		writeComposeApp(dir, {
+			registry: 'registry.example.com/acme',
+			logs: true,
+		});
+		home = realpathSync(await createTempDir('gkm-compose-home-'));
+		vi.stubEnv('GKM_HOME', home);
+	});
+	afterEach(async () => {
+		vi.unstubAllEnvs();
+		await cleanupDir(dir);
+		await cleanupDir(home);
+	});
+
+	const store = async () =>
+		new FileSecretsStore(
+			dir,
+			keystoreProject(await loadWorkspaceSettings(dir), home),
+		);
+
+	const release = async () => {
+		const said: string[] = [];
+		vi.spyOn(console, 'log').mockImplementation((...a) => {
+			said.push(a.join(' '));
+		});
+		const fake = fakeDocker({ registry });
+		const result = await composeCommand(
+			{ cwd: dir, stage: 'production', tag: 'v1.4.0' },
+			{
+				docker: fake.docker,
+				probe: answering(fake.calls),
+				revision: async () => 'abc1234',
+				sql: () => ({ query: async () => [] }),
+				migrate: async () => [],
+			},
+		);
+		return { ...fake, result, said: said.join('\n') };
+	};
+
+	it('generates the root password once, keeps it in the stage, and reads it back every run', async () => {
+		const first = await release();
+		const stored = (await (await store()).read('production'))?.custom
+			.ZO_ROOT_USER_PASSWORD;
+
+		expect(stored).toBeTruthy();
+		expect(first.said).toContain('ZO_ROOT_USER_PASSWORD');
+		const file = join(dir, '.gkm', 'compose', 'production', 'openobserve.env');
+		expect(statSync(file).mode & 0o777).toBe(0o600);
+		expect(readFileSync(file, 'utf-8')).toContain(
+			`ZO_ROOT_USER_PASSWORD=${stored}`,
+		);
+
+		const second = await release();
+		expect(
+			(await (await store()).read('production'))?.custom.ZO_ROOT_USER_PASSWORD,
+		).toBe(stored);
+		expect(second.result?.stack.logs?.password).toBe(stored);
+		// Never printed: the access line points at secrets:show instead.
+		expect(second.said).not.toContain(stored);
+		expect(second.said).toContain(
+			'gkm secrets:show --stage production --reveal → ZO_ROOT_USER_PASSWORD',
+		);
+	});
+
+	it('starts it with the infrastructure, checks it in verify, and says how to open it', async () => {
+		const { calls, said } = await release();
+
+		expect(calls.find((call) => call.op === 'up')?.args).toEqual([
+			'openobserve',
+			'postgres',
+		]);
+		expect(calls).toContainEqual({ op: 'health', args: 'openobserve' });
+		expect(said).toContain(
+			'📜 Logs (OpenObserve) on 127.0.0.1:5080 — from your computer:',
+		);
+		expect(said).toMatch(/ssh -N -L 5080:localhost:5080 \S+@\S+/);
+		expect(said).toContain('Docker-published ports bypass ufw');
+	});
+});
+
+describe(
+	"the project's own docker-compose.<stage>.yml",
+	{ timeout: RUN_TIMEOUT },
+	() => {
+		beforeEach(async () => {
+			dir = await project();
+			writeFileSync(
+				join(dir, 'docker-compose.development.yml'),
+				'services:\n  api:\n    logging:\n      driver: local\n',
+			);
+		});
+		afterEach(async () => {
+			await cleanupDir(dir);
+		});
+
+		it('is merged over the stack, and stopped with it', async () => {
+			const refs: unknown[] = [];
+			const fake = fakeDocker();
+			const docker = {
+				...fake.docker,
+				async up(
+					ref: Parameters<typeof fake.docker.up>[0],
+					services?: readonly string[],
+				) {
+					refs.push(ref.overrides);
+					return fake.docker.up(ref, services);
+				},
+				async down(ref: Parameters<typeof fake.docker.down>[0]) {
+					refs.push(ref.overrides);
+					return fake.docker.down(ref);
+				},
+			};
+
+			await composeCommand(
+				{ cwd: dir, stage: 'development' },
+				{
+					docker,
+					probe: answering(fake.calls),
+					revision: async () => 'abc1234',
+					sql: () => ({ query: async () => [] }),
+					migrate: async () => [],
+				},
+			);
+			await composeCommand(
+				{ cwd: dir, stage: 'development', down: true },
+				{ docker },
+			);
+
+			const override = join(dir, 'docker-compose.development.yml');
+			expect(refs).toEqual([[override], [override], [override]]);
+		});
+	},
+);
+
 describe('gkm compose --down', { timeout: RUN_TIMEOUT }, () => {
 	beforeEach(async () => {
 		dir = await project();

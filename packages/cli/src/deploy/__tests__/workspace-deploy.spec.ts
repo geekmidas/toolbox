@@ -238,6 +238,43 @@ describe('workspaceDeployCommand', () => {
 		expect(said()).toContain('Skipping 1 mobile app(s)');
 	});
 
+	it("hands every backend the stage's OTEL_* variables, and no site", async () => {
+		await new FileSecretsStore(root).write(STAGE, {
+			stage: STAGE,
+			createdAt: '2026-01-01T00:00:00.000Z',
+			updatedAt: '2026-01-01T00:00:00.000Z',
+			services: {},
+			urls: {},
+			custom: {
+				OTEL_EXPORTER_OTLP_ENDPOINT: 'https://otlp.example.com',
+				OTEL_EXPORTER_OTLP_HEADERS: 'x-api-key=hosted-key',
+				OTEL_TRACES_SAMPLER: 'parentbased_traceidratio',
+				OTEL_TRACES_SAMPLER_ARG: '0.1',
+				// Not one the server reads: never forwarded.
+				OTEL_LOG_LEVEL: 'debug',
+			},
+		});
+
+		await deploy();
+
+		const [api, web] = dokploy.projects[0]!.environments[0]!.applications;
+		const lines = (id: string) => dokploy.env[id]!.split('\n');
+		expect(lines(api!.applicationId)).toEqual(
+			expect.arrayContaining([
+				'OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.example.com',
+				'OTEL_EXPORTER_OTLP_HEADERS=x-api-key=hosted-key',
+				'OTEL_TRACES_SAMPLER=parentbased_traceidratio',
+				'OTEL_TRACES_SAMPLER_ARG=0.1',
+				// Named after the app where the stage names no service.
+				'OTEL_SERVICE_NAME=api',
+			]),
+		);
+		expect(dokploy.env[api!.applicationId]).not.toContain('OTEL_LOG_LEVEL');
+		expect(dokploy.env[web!.applicationId]).not.toContain('OTEL_');
+		// Only key names are printed, never a value.
+		expect(said()).not.toContain('hosted-key');
+	});
+
 	it('reuses what the first deploy made', async () => {
 		await deploy();
 		const applications = { ...state().applications };

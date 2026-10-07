@@ -9,6 +9,7 @@
  * `deploy()` as any other target, so there is one way a stack comes up.
  */
 
+import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { loadWorkspaceConfig } from '../config';
 import { deploy } from '../deploy/deploy';
@@ -20,6 +21,7 @@ import {
 	type ComposeImage,
 	type ComposeRun,
 	composeTarget,
+	stackOverrideFile,
 } from '../target/compose/index';
 import { dockerCompose, type StackRef } from './docker';
 import { type ComposeStack, composeProject, stackDir } from './stack';
@@ -39,8 +41,21 @@ export {
 	siteTag,
 } from './images';
 export {
+	LogsEndpointConflict,
+	LogsPasswordMissing,
+	LogsPasswordWeak,
+	OPENOBSERVE_IMAGE,
+} from './logs';
+export {
+	LogsAllowEmpty,
+	LogsAllowEntryInvalid,
+	LogsPortInvalid,
+	LogsRetentionInvalid,
+} from './logsConfig';
+export {
 	composeStack,
 	EnvValueMultiline,
+	LOG_ROTATION,
 	NothingToCompose,
 	StageSecretMissing,
 	StageSeedMissing,
@@ -104,9 +119,11 @@ export async function composeCommand(
 	const { stage } = options;
 
 	if (options.down) {
+		const override = stackOverrideFile(workspace.root, stage);
 		const ref: StackRef = {
 			project: composeProject(deployIdentity(workspace, stage)),
 			file: join(workspace.root, stackDir(stage), 'docker-compose.yml'),
+			...(existsSync(override) ? { overrides: [override] } : {}),
 			cwd: workspace.root,
 		};
 		await (deps.docker ?? dockerCompose).down(ref);

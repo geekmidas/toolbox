@@ -211,6 +211,75 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 		);
 	});
 
+	it('checks the log UI in verify and reports where it is', async () => {
+		writeComposeApp(dir, {
+			registry: 'registry.example.com/acme',
+			logs: { port: 5099 },
+		});
+		const fake = fakeDocker();
+		const run = deploy({
+			cwd: dir,
+			stage: 'development',
+			target: 'compose',
+			targets: {
+				compose: composeTarget({
+					...quiet(),
+					docker: fake.docker,
+					probe: answering(fake.calls),
+				}),
+			},
+		});
+		const seen = await events(run);
+		await run.result;
+
+		expect(seen).toContainEqual({
+			type: 'health.checked',
+			app: 'openobserve',
+			url: 'docker:openobserve',
+			healthy: true,
+			attempt: 1,
+		});
+		expect(seen).toContainEqual({
+			type: 'logs.ready',
+			service: 'openobserve',
+			access: 'tunnel',
+			url: 'http://localhost:5099',
+			port: 5099,
+			email: 'admin@gkm.localhost',
+		});
+		expect(
+			seen
+				.filter((e) => e.type === 'resource.applied')
+				.map((e) => (e as { key: string }).key),
+		).toContain('service:openobserve');
+	});
+
+	it('fails verify when the log UI never turns healthy', async () => {
+		writeComposeApp(dir, { logs: true });
+		const fake = fakeDocker();
+		const run = deploy({
+			cwd: dir,
+			stage: 'development',
+			target: 'compose',
+			targets: {
+				compose: composeTarget({
+					...quiet(),
+					docker: { ...fake.docker, health: async () => 'unhealthy' },
+					probe: answering(fake.calls),
+					healthAttempts: 2,
+				}),
+			},
+		});
+		const seen = await events(run);
+		const error = await run.result.catch((e: unknown) => e);
+
+		expect(error).toBeInstanceOf(ComposeAppsUnhealthy);
+		expect((error as ComposeAppsUnhealthy).apps).toEqual([
+			{ app: 'openobserve', url: 'docker:openobserve', last: 'unhealthy' },
+		]);
+		expect(seen.some((e) => e.type === 'logs.ready')).toBe(false);
+	});
+
 	it('leaves the local stage to targets that run it here', async () => {
 		const run = deploy({ cwd: dir, stage: 'development', target: 'dokploy' });
 

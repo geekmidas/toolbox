@@ -44,6 +44,8 @@ and the hosts they answer on all come from what the workspace declares.
   app starts. Nothing needs setting — no bucket URL, no mail server. A
   deployed stage brings its own; see
   [Mail and storage on a deployed stage](#mail-and-storage-on-a-deployed-stage).
+- **OpenObserve, when asked for** (`deploy.compose.logs`), receiving every
+  backend's logs and traces — see [Logs](#logs).
 - **One Caddy**, one host per app — and one per file server over the stack's
   MinIO (`https://uploadsserver.<project>.localhost` locally), rewriting to its
   bucket the way `gkm dev`'s edge does.
@@ -133,6 +135,7 @@ docker-compose.yml   the stack — compose project <scope>-<stage>
 Caddyfile            one host per app
 api.env              one env file per backend, mode 0600
 auth.env
+openobserve.env      with deploy.compose.logs: its root login, mode 0600
 api.credentials      when building: a backend's encrypted environment, mode 0600
 Dockerfile.api       when building
 caddy-root.crt       the local stage's CA root
@@ -152,7 +155,9 @@ provides — resolved for the stage:
 - each surface it calls, **on the compose network** (`AUTH_URL=http://auth:3001`);
 - connection strings to the stack's own Postgres;
 - `PORT`, `STAGE` and `NODE_ENV=production`;
-- its secrets and credentials, from the stage's secrets store.
+- its secrets and credentials, from the stage's secrets store;
+- the stage's `OTEL_*` telemetry settings, or the stack's OpenObserve — see
+  [Logs](#logs).
 
 A secret an app does not read is never written to its file. Images stay
 stage-agnostic: no secret is baked into one. Compose reads the files raw, so
@@ -288,6 +293,177 @@ gkm deploy --target compose --stage preview --allow-dev-services minio
 Keys the stage did set always win over the dev service. Every run that uses one
 prints a warning saying which, and emits a `dev-service.used` event. An
 unknown value fails with `UnknownDevService`.
+
+## Logs
+
+Every backend's production server exports its traces and pino logs over
+OTLP/HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (see
+[Telemetry](./production.md#telemetry)). The stack can run somewhere to send
+them: [OpenObserve](https://openobserve.ai), opted into in `gkm.config.ts`:
+
+```ts
+deploy: {
+  compose: {
+    logs: true,
+    // or:
+    // logs: { port: 5080, retentionDays: 30 },
+    // logs: { public: { allow: ['203.0.113.7', '10.0.0.0/8'] } },
+  },
+}
+```
+
+| Option | Default | |
+| --- | --- | --- |
+| `port` | `5080` | the port it is published on — on `127.0.0.1` only |
+| `retentionDays` | `30` | days of data kept (OpenObserve's `ZO_COMPACT_DATA_RETENTION_DAYS`); at least 3, which is OpenObserve's own minimum |
+| `public.allow` | — | serve it through Caddy instead, to these IPs and CIDRs only |
+
+With it on, the stack adds:
+
+- an `openobserve` service (`public.ecr.aws/zinclabs/openobserve`, a pinned
+  version), its data in the `openobserve-data` volume — kept by
+  `gkm compose --down`, as every volume is — with a health check and
+  `restart: unless-stopped`. Its anonymous usage reporting is off;
+- in every backend's env file, `OTEL_EXPORTER_OTLP_ENDPOINT=http://openobserve:5080/api/default`
+  and `OTEL_EXPORTER_OTLP_HEADERS` signing in as its root user, and
+  `OTEL_SERVICE_NAME` set to the app's name. Sites get none of it;
+- a check of its health in `verify`, beside the apps, and a `logs.ready`
+  event saying where it is.
+
+Nothing waits on it: an app whose telemetry cannot be delivered still serves.
+
+What arrives, each under its app's `service.name`: a SERVER span per request
+(`GET /users/:id`, with its status code), every record a `createLogger` logger
+writes — in the trace of the request that wrote it, so a log line leads to its
+request and back — the spans of outbound `fetch`, DNS and TCP, and the
+runtime's metrics. Query spans do not arrive yet: `pg` is bundled into the
+server. [Telemetry → What is exported](./production.md#what-is-exported) has
+the detail.
+
+The root user is `admin@<stage domain>` on a deployed stage. Its password is
+generated on the first run and kept in the stage's secrets as
+`ZO_ROOT_USER_PASSWORD`, like the stage's seed, so every later run reads it
+back; `gkm secrets:show --stage production --reveal` shows it. The local stage
+signs in as `admin@gkm.localhost` with the fixed password `Geekmidas-1`. Set
+`ZO_ROOT_USER_EMAIL` or `ZO_ROOT_USER_PASSWORD` in the stage's secrets to
+choose your own; a password OpenObserve would refuse (8–128 characters, with a
+lowercase and an uppercase letter, a digit and a symbol) fails with
+`LogsPasswordWeak`.
+
+A stage that already sets `OTEL_EXPORTER_OTLP_ENDPOINT` (or its headers, or a
+per-signal endpoint) fails with `LogsEndpointConflict`: each backend sends its
+telemetry to one place. Remove `logs`, or remove those keys from the stage.
+
+### Reaching it: an SSH tunnel
+
+By default OpenObserve is published on `127.0.0.1:5080` of the machine the
+stack runs on, and on nothing else. The run ends with how to reach it:
+
+```
+📜 Logs (OpenObserve) on 127.0.0.1:5080 — from your computer:
+     ssh -N -L 5080:localhost:5080 deploy@box-1   (user and host are guesses: this machine's)
+     then open http://localhost:5080  (login: admin@example.com, password: gkm secrets:show --stage production --reveal → ZO_ROOT_USER_PASSWORD)
+⚠️  Docker-published ports bypass ufw, so OpenObserve is bound to 127.0.0.1 only — reach it through the tunnel, not by opening the port.
+```
+
+The user and host are this machine's own, as a guess; use whatever you SSH in
+with. To make it one word, give the tunnel a name in `~/.ssh/config`:
+
+```
+Host shop-logs
+  HostName 203.0.113.10
+  User deploy
+  LocalForward 5080 localhost:5080
+```
+
+`ssh -N shop-logs`, then open `http://localhost:5080`.
+
+**Why loopback: the ufw trap.** A port Docker publishes on every interface
+(`5080:5080`) is opened by Docker's own iptables rules, ahead of ufw's — so
+`ufw deny 5080` does not close it, and `ufw status` does not show it open. A
+log UI on a public port would be readable by anyone who guessed its password.
+Bound to `127.0.0.1`, it is reachable only from the machine, and the tunnel is
+the way in.
+
+### A team: Tailscale
+
+For a team on a [Tailscale](https://tailscale.com) tailnet, bind the port to
+the machine's tailnet address instead. gkm does not do this for you: put it in
+the project's own `docker-compose.<stage>.yml` at the workspace root, which
+`gkm compose` merges over the stack it generates (and never writes):
+
+```yaml
+# docker-compose.production.yml
+services:
+  openobserve:
+    ports: !override
+      - "100.101.102.103:5080:5080"   # this machine's tailnet IP
+```
+
+`!override` replaces the generated loopback binding rather than adding to it.
+Everyone on the tailnet opens `http://<machine's tailnet name>:5080`.
+
+### Public, to some addresses
+
+```ts
+logs: { public: { allow: ['203.0.113.7', '10.0.0.0/8'] } }
+```
+
+serves it through the stack's Caddy at `https://logs.<stage domain>` (locally
+`https://logs.<project>.localhost`, from Caddy's local CA), with a certificate
+like every other host. Caddy answers only the listed addresses — matched on
+the connection's own address, never a header — and every other gets 403. No
+host port is published. `allow` must name at least one address; an empty one
+fails with `LogsAllowEmpty`, and an entry that is not an IP or a CIDR with
+`LogsAllowEntryInvalid`. Point `logs.<stage domain>` at the machine, as you
+did the apps' hosts.
+
+### A hosted OTLP backend instead
+
+To send telemetry somewhere else — Grafana Cloud, Honeycomb, your own
+collector — leave `logs` off and set the standard variables in the stage's
+secrets:
+
+```bash
+gkm secrets:set OTEL_EXPORTER_OTLP_ENDPOINT 'https://otlp.example.com' --stage production
+gkm secrets:set OTEL_EXPORTER_OTLP_HEADERS 'x-api-key=…' --stage production
+```
+
+Every backend's env file gets each of these the stage sets — the exporter's
+`OTEL_EXPORTER_OTLP_{ENDPOINT,HEADERS,PROTOCOL,TIMEOUT,COMPRESSION}`, for all
+signals or one (`OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`), `OTEL_TRACES_SAMPLER`,
+`OTEL_TRACES_SAMPLER_ARG`, `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_SERVICE_NAME`
+(the app's name, unless set) — whatever the app's constructs declare. Other
+`OTEL_*` keys are not passed. Sites get none: their environment is in a
+bundle every browser downloads. The Dokploy target hands its backends the
+same keys.
+
+### Docker's own logs are rotated
+
+Every service in the stack — apps, Caddy, Postgres, Mailpit, MinIO and
+OpenObserve — has its Docker logs rotated, whether or not `logs` is on:
+
+```yaml
+logging:
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+```
+
+Docker's `json-file` driver never rotates by default, and a container that
+logs every request fills a small server's disk in weeks. A `logging` block in
+the project's `docker-compose.<stage>.yml` wins, since it is merged over the
+generated file.
+
+## The project's own compose file
+
+`docker-compose.<stage>.yml` at the workspace root, where there is one, is
+merged over the stack `gkm compose` generates (`-f .gkm/compose/<stage>/docker-compose.yml
+-f docker-compose.<stage>.yml`) — on every run and on `--down` — and the run
+says so. It is never written by gkm: it is where what the generated file
+cannot know goes, such as a port bound to a tailnet address. Compose's merge
+rules apply: a mapping such as `logging` replaces the generated one, and a
+list such as `ports` is added to unless tagged `!override`. Relative paths in
+it resolve from `.gkm/compose/<stage>/`, the generated file's directory.
 
 ## Auth and trusted origins
 

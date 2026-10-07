@@ -412,7 +412,19 @@ and --down.
 Environment:
   GKM_COMPOSE_HTTPS_PORT  Where the edge publishes HTTPS (default 443)
   GKM_COMPOSE_HTTP_PORT   Where the edge publishes HTTP (default 80)
+
+Stage secrets passed to every backend (never a site):
+  OTEL_EXPORTER_OTLP_*    The exporter's ENDPOINT, HEADERS, PROTOCOL, TIMEOUT
+                          and COMPRESSION, for all signals or one (_LOGS_, …)
+  OTEL_TRACES_SAMPLER, OTEL_TRACES_SAMPLER_ARG, OTEL_RESOURCE_ATTRIBUTES,
+  OTEL_SERVICE_NAME       (defaults to the app's name)
 ```
+
+`deploy.compose.logs` runs OpenObserve in the stack and points every backend
+at it, on a loopback port reached through an SSH tunnel — see
+[Logs](./compose.md#logs). A `docker-compose.<stage>.yml` at the workspace
+root is merged over the generated stack. `gkm deploy --target dokploy` passes
+the same `OTEL_*` keys to its backends.
 
 ### `gkm docker`
 

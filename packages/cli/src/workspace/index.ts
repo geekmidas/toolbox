@@ -41,6 +41,8 @@ export type {
 	AppInput,
 	AppsRecord,
 	BackendFramework,
+	ComposeLogsConfig,
+	ComposeWorkspaceConfig,
 	ConstrainedApps,
 	DeployConfig,
 	DeployTargetName,

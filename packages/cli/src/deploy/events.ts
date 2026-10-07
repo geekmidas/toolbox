@@ -144,6 +144,23 @@ export type DeployEvent =
 			/** The constructs it stands in for. */
 			constructs: string[];
 	  }
+	/**
+	 * The stack's log UI (`deploy.compose.logs`) is up and answering: where
+	 * it is and how it is reached — through an SSH tunnel to a loopback
+	 * port, or publicly on a host that allows only some addresses.
+	 */
+	| {
+			type: 'logs.ready';
+			service: 'openobserve';
+			access: 'tunnel' | 'public';
+			/** Where a browser opens it: the tunnel's end, or its public host. */
+			url: string;
+			/** The loopback port it is published on, for a tunnel. */
+			port?: number;
+			/** The addresses a public host answers. */
+			allow?: string[];
+			email: string;
+	  }
 	| { type: 'deploy.finished'; result: DeployResult }
 	| { type: 'deploy.failed'; error: DeployEventError };
 

@@ -57,6 +57,10 @@ export function setupTelemetry(options) {
   writeFileSync(process.env.MARKER, JSON.stringify(options));
 }
 export async function flushTelemetry() {}
+export function honoTelemetryMiddleware(options) {
+  writeFileSync(process.env.MARKER + '.middleware', JSON.stringify(options));
+  return async (_c, next) => next();
+}
 `,
 	);
 }
@@ -100,8 +104,8 @@ function start(
 	return writeFile(
 		runner,
 		`const { startTelemetry } = await import('./telemetry.ts');
-await startTelemetry();
-console.log('server started');
+const requestSpans = await startTelemetry({ ignorePaths: ['/health'] });
+console.log('server started', typeof requestSpans);
 `,
 	).then(
 		() =>
@@ -198,25 +202,39 @@ describe('production entry telemetry', { timeout: 30_000 }, () => {
 			const { code, stdout, stderr } = await start(dir, {});
 
 			expect(code, stderr).toBe(0);
-			expect(stdout).toContain('server started');
+			expect(stdout).toContain('server started undefined');
 			expect(existsSync(join(dir, 'marker'))).toBe(false);
 			expect(stderr).not.toContain('TelemetryUnavailable');
 		});
 
 		it('sets telemetry up, named for the app and its stage, when the endpoint is set', async () => {
-			const { code, stdout, stderr } = await start(dir, {
+			const { code, stderr } = await start(dir, {
 				OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4318',
 				STAGE: 'production',
 			});
 
 			expect(code, stderr).toBe(0);
-			expect(stdout).toContain('server started');
 			expect(JSON.parse(await readFile(join(dir, 'marker'), 'utf-8'))).toEqual({
 				serviceName: 'Api',
 				serviceNamespace: 'shop',
 				deploymentEnvironment: 'production',
 				handleSignals: false,
+				// The logger and the request middleware do these explicitly.
+				instrumentPino: false,
+				incomingHttpSpans: false,
 			});
+		});
+
+		it('returns the request-span middleware, skipping the paths it is given', async () => {
+			const { code, stdout, stderr } = await start(dir, {
+				OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4318',
+			});
+
+			expect(code, stderr).toBe(0);
+			expect(stdout).toContain('server started function');
+			expect(
+				JSON.parse(await readFile(join(dir, 'marker.middleware'), 'utf-8')),
+			).toEqual({ ignorePaths: ['/health'] });
 		});
 
 		it('warns and still starts when the packages are gone at runtime', async () => {
@@ -227,7 +245,7 @@ describe('production entry telemetry', { timeout: 30_000 }, () => {
 			});
 
 			expect(code, stderr).toBe(0);
-			expect(stdout).toContain('server started');
+			expect(stdout).toContain('server started undefined');
 			expect(stderr).toContain('TelemetryUnavailable');
 			expect(stderr).toContain('Install them in the app and rebuild');
 		});

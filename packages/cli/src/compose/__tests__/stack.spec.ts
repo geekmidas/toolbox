@@ -123,6 +123,41 @@ describe('the local stage', () => {
 	});
 });
 
+describe("every service's Docker logs", () => {
+	it('are rotated, whether or not the stack runs a log UI', () => {
+		const rotation = {
+			driver: 'json-file',
+			options: { 'max-size': '10m', 'max-file': '3' },
+		};
+		const plain = stack({ manifest: withServices() });
+		const withLogs = stack({
+			workspace: {
+				...workspace,
+				deploy: { ...workspace.deploy, compose: { logs: true } },
+			},
+		});
+
+		expect(Object.keys(plain.compose.services).sort()).toEqual([
+			'api',
+			'auth',
+			'caddy',
+			'mailpit',
+			'minio',
+			'postgres',
+			'web',
+		]);
+		for (const s of [plain, withLogs]) {
+			for (const [name, service] of Object.entries(s.compose.services)) {
+				expect({ name, logging: service.logging }).toEqual({
+					name,
+					logging: rotation,
+				});
+			}
+		}
+		expect(withLogs.compose.services.openobserve?.logging).toEqual(rotation);
+	});
+});
+
 describe("a backend's env file", () => {
 	it('holds exactly the keys the API reads', () => {
 		const env = app(stack(), 'api').env!;

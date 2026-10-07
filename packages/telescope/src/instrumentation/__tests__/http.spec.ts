@@ -155,24 +155,26 @@ describe('http instrumentation', () => {
 			);
 		});
 
-		it('ends ok, errored by status, or errored by exception', () => {
+		it('ends ok, unset on a 4xx, errored by 5xx or by exception', () => {
 			endHttpSpan(createHttpServerSpan({ method: 'GET' }), {
 				statusCode: 200,
 				responseSize: 10,
 			});
 			endHttpSpan(createHttpServerSpan({ method: 'GET' }), { statusCode: 404 });
+			endHttpSpan(createHttpServerSpan({ method: 'GET' }), { statusCode: 503 });
 			endHttpSpan(
 				createHttpServerSpan({ method: 'GET' }),
 				{ statusCode: 500 },
 				new Error('boom'),
 			);
 
-			const [ok, notFound, failed] = finished();
+			const [ok, notFound, unavailable, failed] = finished();
 			expect(ok?.status.code).toBe(SpanStatusCode.OK);
 			expect(ok?.attributes['http.response.body.size']).toBe(10);
-			expect(notFound?.status).toEqual({
+			expect(notFound?.status.code).toBe(SpanStatusCode.UNSET);
+			expect(unavailable?.status).toEqual({
 				code: SpanStatusCode.ERROR,
-				message: 'HTTP 404',
+				message: 'HTTP 503',
 			});
 			expect(failed?.status).toEqual({
 				code: SpanStatusCode.ERROR,
