@@ -80,6 +80,7 @@
     "gkm-seed",
     "gkm-test-reliability",
     "harness-static-imports",
+    "headless-deploy",
     "headless-toolbox",
     "init-deploy-target",
     "init-github-actions",
