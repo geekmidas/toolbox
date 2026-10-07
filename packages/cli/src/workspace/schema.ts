@@ -173,9 +173,9 @@ const MOBILE_FRAMEWORKS = ['expo'] as const;
 const DeployTargetSchema = z.string().min(1);
 
 /**
- * The built-in targets a config may name: `dokploy`, deployed by
- * `gkm deploy`, and `sst`, deployed by `sst deploy` from the manifest
- * `gkm build` writes.
+ * The built-in targets a config may name, both deployed by `gkm deploy`:
+ * `dokploy`, and `sst`, which runs `sst deploy` on the manifest `gkm build`
+ * writes.
  */
 const SUPPORTED_DEPLOY_TARGETS = configurableBuiltins();
 
@@ -248,7 +248,6 @@ const DokployWorkspaceConfigSchema = z
 		endpoints: z
 			.record(z.string(), z.url('Endpoint must be a valid URL'))
 			.optional(),
-		registry: z.string().optional(),
 		registryId: z.string().optional(),
 		verify: z
 			.object({
@@ -561,6 +560,8 @@ const DeployConfigSchema = z.object({
 		.optional(),
 	/** Each deployed stage's base domain (stage name -> domain). */
 	domains: z.record(z.string(), z.string()).optional(),
+	/** Where every target pushes and pulls the apps' images. */
+	registry: z.string().min(1).optional(),
 	dokploy: DokployWorkspaceConfigSchema.optional(),
 	dns: DnsConfigWithLegacySchema.optional(),
 	backups: BackupsConfigSchema.optional(),

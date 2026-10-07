@@ -408,7 +408,7 @@ export function serveDokploy(
 
 /** What a spec may vary about the `shop` workspace. */
 export interface ShopWorkspace {
-	/** `deploy.dokploy.registry`; `false` leaves it out. */
+	/** `deploy.registry`; `false` leaves it out. */
 	registry?: string | false;
 	/** The `apps` block, as source. */
 	apps?: string;
@@ -468,9 +468,9 @@ export default defineWorkspace({
   deploy: {
     default: 'dokploy',
     domains: { ${stage}: 'shop.example.com', staging: 'staging.shop.example.com' },
+    ${registry}
     dokploy: {
       endpoint: '${ENDPOINT}',
-      ${registry}
       // Checked as a real deploy is, without a real deploy's patience.
       verify: { intervalMs: 1${extra.verify ? `, ${extra.verify}` : ''} },
     },

@@ -91,6 +91,12 @@ export {
 } from '../target/resolve';
 export { TargetRuntimeUndeclared } from '../target/runtime';
 export {
+	SstConfigNotFound,
+	SstOutputsUnreadable,
+	SurfacesUnhealthy,
+} from '../target/sst/index';
+export {
+	type AwsCredential,
 	type Credential,
 	type CredentialKind,
 	type CredentialKinds,

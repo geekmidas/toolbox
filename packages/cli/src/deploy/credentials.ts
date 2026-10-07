@@ -34,15 +34,46 @@ export interface CredentialKinds {
 	};
 	/**
 	 * A container registry login, for Dokploy to pull with. Asked for only when
-	 * Dokploy has no registry for `deploy.dokploy.registry` and one has to be
+	 * Dokploy has no registry for `deploy.registry` and one has to be
 	 * created.
 	 */
 	registry: {
-		/** `deploy.dokploy.registry`. */
+		/** `deploy.registry`. */
 		request: { url: string };
 		value: { username: string; password: string };
 	};
+	/**
+	 * The AWS account a stage deploys to, for the SST target's `sst deploy`.
+	 * Handed to that one command's environment and to nothing else.
+	 */
+	aws: {
+		/** The stage, for a provider that keeps one account per stage. */
+		request: { stage: string };
+		value: AwsCredential;
+	};
 }
+
+/**
+ * Who to act as on AWS: a named profile, or keys.
+ *
+ * Never both. Given both, every AWS SDK takes the keys and ignores the
+ * profile, so `--profile prod` with staging's keys still exported would deploy
+ * production's stack into staging's account — the reason `secretsStoreFor`
+ * resolves a named profile on its own, and why this cannot express the mix.
+ */
+export type AwsCredential =
+	| {
+			/** A profile in `~/.aws/config` — keys, SSO, an assumed role. */
+			profile: string;
+			region?: string;
+	  }
+	| {
+			accessKeyId: string;
+			secretAccessKey: string;
+			/** Present for temporary keys: an assumed role, GitHub's OIDC. */
+			sessionToken?: string;
+			region?: string;
+	  };
 
 export type CredentialKind = keyof CredentialKinds;
 
@@ -74,6 +105,7 @@ const HOW_TO_PROVIDE: Partial<Record<CredentialKind, string>> = {
 		"Set DOKPLOY_API_TOKEN (and DOKPLOY_ENDPOINT, or deploy.dokploy.endpoint in gkm.config.ts), run `gkm login --provider dokploy`, or pass them through the deploy's CredentialProvider.",
 	registry:
 		'Add the registry in Dokploy (Settings → Docker Registry) and set deploy.dokploy.registryId, set DOCKER_REGISTRY_USERNAME and DOCKER_REGISTRY_PASSWORD, or run `gkm deploy` at a terminal to be asked for them.',
+	aws: "Set AWS_PROFILE to the stage account's profile, or AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY (and AWS_SESSION_TOKEN) — in CI, the keys aws-actions/configure-aws-credentials exports — or pass them through the deploy's CredentialProvider.",
 };
 
 /** A deploy needed a credential, and its provider had none. */
@@ -91,7 +123,9 @@ export class MissingCredential extends Error {
 				? `No Dokploy credentials${target ? ` for ${target}` : ''}.`
 				: kind === 'registry'
 					? `Dokploy has no registry for ${target ?? 'the configured registry'}, and there are no credentials to create one with.`
-					: `No "${String(kind)}" credentials${target ? ` for ${target}` : ''}.`;
+					: kind === 'aws'
+						? `No AWS credentials${target ? ` for the "${target}" stage` : ''}.`
+						: `No "${String(kind)}" credentials${target ? ` for ${target}` : ''}.`;
 		super(`${what} ${howToProvide}`);
 		this.name = 'MissingCredential';
 	}
@@ -131,6 +165,12 @@ export interface StoredCredentialsOptions {
  *   Each half is read on its own: a token is a secret and belongs in the
  *   environment, an endpoint is configuration and belongs in the config.
  * - Registry: `DOCKER_REGISTRY_USERNAME` / `DOCKER_REGISTRY_PASSWORD`.
+ * - AWS: `AWS_PROFILE` when it is set, and then nothing else; otherwise
+ *   `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN`. The
+ *   profile winning is `secretsStoreFor`'s rule: a profile is a choice of
+ *   account someone made, exported keys may be left over from another.
+ *   Read here, by name, and handed only to the command that deploys — the
+ *   sandbox every other step runs in passes no `AWS_*` on.
  */
 export function storedCredentials(
 	options: StoredCredentialsOptions = {},
@@ -159,6 +199,24 @@ export function storedCredentials(
 					const password = env.DOCKER_REGISTRY_PASSWORD;
 					if (!username || !password) return undefined;
 					return { username, password } as never;
+				}
+				case 'aws': {
+					const region = env.AWS_REGION ?? env.AWS_DEFAULT_REGION;
+					const where = region ? { region } : {};
+					if (env.AWS_PROFILE) {
+						return { profile: env.AWS_PROFILE, ...where } as never;
+					}
+					const accessKeyId = env.AWS_ACCESS_KEY_ID;
+					const secretAccessKey = env.AWS_SECRET_ACCESS_KEY;
+					if (!accessKeyId || !secretAccessKey) return undefined;
+					return {
+						accessKeyId,
+						secretAccessKey,
+						...(env.AWS_SESSION_TOKEN
+							? { sessionToken: env.AWS_SESSION_TOKEN }
+							: {}),
+						...where,
+					} as never;
 				}
 			}
 			// A kind a target declared: nothing stored here can answer it.

@@ -529,7 +529,7 @@ ${workspaceConstructsGlobs(options.routesStructure, dirname(options.apiPath))
 function deployBlock(options: TemplateOptions): string {
 	if (options.deployTarget !== 'sst') return '';
 	return `
-  // Deployed with \`sst deploy\`, from the manifest \`gkm build\` writes to
+  // \`gkm deploy\` runs \`sst deploy\` on the manifest \`gkm build\` writes to
   // \`.gkm/manifest/aws.ts\`. Each construct becomes a managed AWS resource.
   deploy: { default: 'sst' },
 `;

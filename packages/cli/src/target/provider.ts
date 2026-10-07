@@ -14,7 +14,7 @@ const REMOVED: Record<string, string> = {
 	docker:
 		'Build images with `gkm docker`, or run the stage as one Docker Compose stack with `gkm compose`',
 	'aws-lambda':
-		"Deploy to AWS with SST: set deploy: { default: 'sst' } and run `gkm build && sst deploy --stage <stage>`",
+		"Deploy to AWS with SST: set deploy: { default: 'sst' } and run `gkm deploy --stage <stage>`, which runs `sst deploy`",
 };
 
 /** A `--provider` that no longer exists. */

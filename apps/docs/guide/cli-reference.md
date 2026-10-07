@@ -293,11 +293,12 @@ gkm deploy [options]
 
 Options:
   --stage, -s <name>     Deployment stage (development, staging, production)
-  --target <name>        Deploy target: dokploy, or a name in deploy.targets
-                         (default: deploy.default)
+  --target <name>        Deploy target: dokploy, compose, or a name in
+                         deploy.targets (default: deploy.default)
   --provider <name>      Deprecated: `dokploy` means --target dokploy;
                          docker and aws-lambda are removed
-  --tag <tag>            Image tag (default: stage-timestamp)
+  --tag <tag>            Image tag (default: stage-timestamp; compose: the
+                         commit). Through compose, a given tag is pulled
   --skip-push            Skip pushing the image to the registry
   --skip-build           Skip the build step and use an existing one
   --json                 Write events as JSON lines on stdout; never prompts
@@ -360,6 +361,9 @@ Options:
   --pull           Pull images (at --tag, or latest) rather than build them
   --dry-run        Write the files and print the plan; start nothing
   --down           Stop the stage's stack (its volumes are kept)
+
+The same as `gkm deploy --target compose --stage <stage>`, plus --build, --pull
+and --down.
 
 Environment:
   GKM_COMPOSE_HTTPS_PORT  Where the edge publishes HTTPS (default 443)

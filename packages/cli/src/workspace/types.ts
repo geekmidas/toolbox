@@ -34,7 +34,7 @@ export type {
 
 /**
  * Where a stage — or one app — deploys, by target name: a built-in
- * (`dokploy`; `sst`, deployed by SST itself) or a key of `deploy.targets`.
+ * (`dokploy`, `sst`) or a key of `deploy.targets`.
  *
  * @example
  * ```ts
@@ -42,7 +42,7 @@ export type {
  * deploy: 'acme' // deploy: { targets: { acme: '@acme/gkm-target' } }
  * ```
  */
-export type DeployTargetName = 'dokploy' | 'sst' | (string & {});
+export type DeployTargetName = 'dokploy' | 'compose' | 'sst' | (string & {});
 
 /**
  * Each deployed stage's base domain — `deploy.domains`.
@@ -98,9 +98,9 @@ export type AppDomainConfig = string | Record<string, string>;
  * ```ts
  * deploy: {
  *   default: 'dokploy',
+ *   registry: 'ghcr.io/myorg',
  *   dokploy: {
  *     endpoint: 'https://dokploy.myserver.com',
- *     registry: 'ghcr.io/myorg',
  *   },
  * }
  * ```
@@ -109,12 +109,12 @@ export type AppDomainConfig = string | Record<string, string>;
  * ```ts
  * deploy: {
  *   default: 'dokploy',
+ *   registry: 'ghcr.io/myorg',
  *   dokploy: {
  *     endpoints: {
  *       development: 'https://dev-dokploy.myserver.com',
  *       production: 'https://dokploy.myserver.com',
  *     },
- *     registry: 'ghcr.io/myorg',
  *   },
  * }
  * ```
@@ -124,8 +124,6 @@ export interface DokployWorkspaceConfig {
 	endpoint?: string;
 	/** Per-stage Dokploy API endpoints (overrides endpoint) */
 	endpoints?: Record<string, string>;
-	/** Container registry for Docker images (e.g., 'ghcr.io/myorg') */
-	registry?: string;
 	/** Registry ID in Dokploy (auto-configured) */
 	registryId?: string;
 	/** How a release is waited for and checked before it counts as live. */
@@ -174,10 +172,10 @@ export type DnsProviderType = 'hostinger' | 'route53' | 'cloudflare' | 'manual';
  * // Full configuration with DNS and backups
  * deploy: {
  *   default: 'dokploy',
+ *   registry: 'ghcr.io/myorg',
  *   dokploy: {
  *     endpoint: 'https://dokploy.myserver.com',
  *     projectId: 'proj_abc123',
- *     registry: 'ghcr.io/myorg',
  *     domains: {
  *       production: 'myapp.com',
  *     },
@@ -226,6 +224,12 @@ export interface DeployConfig {
 	namespace?: string;
 	/** Each deployed stage's base domain — see {@link DomainsConfig}. */
 	domains?: DomainsConfig;
+	/**
+	 * The container registry the apps' images are pushed to and pulled from,
+	 * whatever the target — `ghcr.io/myorg`. An image is
+	 * `<registry>/<namespace>/<project>-<app>:<tag>`.
+	 */
+	registry?: string;
 	/** Dokploy-specific configuration */
 	dokploy?: DokployWorkspaceConfig;
 	/** DNS configuration for automatic record creation */
@@ -854,6 +858,7 @@ export type WorkspaceConfigInput<
  *   // Deployment configuration
  *   deploy: {
  *     default: 'dokploy',
+ *     registry: 'ghcr.io/myorg',
  *     domains: {
  *       production: 'myapp.com',
  *       staging: 'staging.myapp.com',
@@ -861,7 +866,6 @@ export type WorkspaceConfigInput<
  *     dokploy: {
  *       endpoint: 'https://dokploy.myserver.com',
  *       projectId: 'proj_abc123',
- *       registry: 'ghcr.io/myorg',
  *     },
  *   },
  *

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { GkmConfig } from '../../types.ts';
 import {
+	DokployRegistryMoved,
 	defineWorkspace,
 	getAppBuildOrder,
 	getAppGkmConfig,
@@ -695,5 +696,66 @@ describe('a single-app config as a workspace', () => {
 
 		expect(Object.keys(result.apps)).toEqual(['api']);
 		expect(result.apps.api?.type).toBe('backend');
+	});
+});
+
+describe('deploy.registry', () => {
+	const stages = { local: 'development', deployed: ['production'] };
+
+	it('is read from deploy, for every target', () => {
+		const { workspace } = processConfig(
+			{
+				stages,
+				apps: {},
+				deploy: {
+					registry: 'ghcr.io/acme',
+					dokploy: { endpoint: 'https://dokploy.example.com' },
+				},
+			} as WorkspaceConfig,
+			'/project',
+		);
+
+		expect(workspace.deploy.registry).toBe('ghcr.io/acme');
+	});
+
+	it('refuses deploy.dokploy.registry, saying where it moved', () => {
+		const config = {
+			stages,
+			apps: {},
+			deploy: {
+				dokploy: {
+					endpoint: 'https://dokploy.example.com',
+					registry: 'ghcr.io/acme',
+				},
+			},
+		};
+
+		let error: unknown;
+		try {
+			processConfig(config as never, '/project');
+		} catch (e) {
+			error = e;
+		}
+		expect(error).toBeInstanceOf(DokployRegistryMoved);
+		expect((error as DokployRegistryMoved).registry).toBe('ghcr.io/acme');
+		expect((error as Error).message).toContain(
+			'deploy: { registry: "ghcr.io/acme"',
+		);
+		expect(() => defineWorkspace(config as never)).toThrow(
+			DokployRegistryMoved,
+		);
+	});
+
+	it('refuses it in a single-app config too', () => {
+		expect(() =>
+			processConfig(
+				{
+					stages,
+					routes: './src/**/*.ts',
+					deploy: { dokploy: { registry: 'ghcr.io/acme' } },
+				} as never,
+				'/project',
+			),
+		).toThrow(DokployRegistryMoved);
 	});
 });

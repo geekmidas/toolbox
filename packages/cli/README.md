@@ -952,7 +952,7 @@ export default defineConfig({
 **Environment Variables:**
 - `DOKPLOY_API_TOKEN`: API token for Dokploy (not needed if logged in via `gkm login`)
 - `DOKPLOY_ENDPOINT`: Dokploy URL, if neither the stored login nor `deploy.dokploy.endpoint` gives one
-- `DOCKER_REGISTRY_USERNAME` / `DOCKER_REGISTRY_PASSWORD`: a registry login, used only when Dokploy has no registry for `deploy.dokploy.registry` and one has to be created
+- `DOCKER_REGISTRY_USERNAME` / `DOCKER_REGISTRY_PASSWORD`: a registry login, used only when Dokploy has no registry for `deploy.registry` and one has to be created
 - `GKM_HOME`: where stage keys and stored logins live (default `~/.gkm`)
 - `GKM_MASTER_KEY`: Automatically set by Dokploy, or manually for Docker deployments — from `.gkm/server/master.key`, which `gkm build --stage` writes (the key is never printed; output shows its fingerprint)
 

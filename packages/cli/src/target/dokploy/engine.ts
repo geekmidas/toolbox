@@ -660,7 +660,7 @@ async function provision(run: DokployRun): Promise<void> {
 
 	// The registry Dokploy pulls through, kept with the stage
 	logger.log('\n🐳 Checking registry...');
-	const registry = workspace.deploy.dokploy?.registry;
+	const registry = workspace.deploy.registry;
 	let registryCreated = false;
 	const dokployRegistry = await resolveRegistry(api, {
 		stage,
@@ -1964,7 +1964,7 @@ export async function planDokploy(run: DokployRun): Promise<void> {
 	let registryPlanned: ResourceChange | undefined;
 	const registry = await resolveRegistry(api, {
 		stage,
-		registry: workspace.deploy.dokploy?.registry,
+		registry: workspace.deploy.registry,
 		configuredId: workspace.deploy.dokploy?.registryId,
 		stateId: state?.registryId,
 		log: (message) => logger.log(message),
@@ -2037,7 +2037,7 @@ export async function planDokploy(run: DokployRun): Promise<void> {
 		const ref = imageRefFor(
 			identity,
 			appName,
-			workspace.deploy.dokploy?.registry,
+			workspace.deploy.registry,
 			imageTag,
 		);
 		plan(

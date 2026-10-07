@@ -190,21 +190,25 @@ describe('resolveTarget', () => {
 			expect(error).toBeInstanceOf(UnknownDeployTarget);
 			expect(error).toMatchObject({
 				target: 'kubernetes',
-				known: ['dokploy', 'sst', 'acme'],
+				known: ['dokploy', 'compose', 'sst', 'acme'],
 			});
 			expect((error as Error).message).toContain('deploy: { targets:');
 		});
 
-		it('says how to deploy SST instead', async () => {
-			const error = await resolveTarget('sst', {
+		it('resolves sst to the built-in SST target', async () => {
+			const resolved = await resolveTarget('sst', {
 				workspace: workspace(),
 				stage: 'staging',
-			}).catch((e: unknown) => e);
+			});
 
-			expect(error).toBeInstanceOf(DeployTargetNotYetSupported);
-			expect((error as Error).message).toContain(
-				'gkm build && sst deploy --stage staging',
-			);
+			expect(resolved.source).toBe('builtin');
+			expect(resolved.target.name).toBe('sst');
+			expect(resolved.target.runtime).toBe('aws');
+			expect(resolved.target.capabilities).toEqual({
+				rollback: false,
+				migrations: 'target',
+				images: false,
+			});
 		});
 
 		it.each([

@@ -125,6 +125,8 @@ function validateDependencies<TApps extends AppsRecord>(apps: TApps): void {
 export function defineWorkspace<const TApps extends AppsRecord>(
 	config: WorkspaceInput<TApps>,
 ): InferredWorkspaceConfig<TApps> {
+	assertNoMovedDeployKeys(config.deploy);
+
 	// Validate dependencies at runtime
 	if (config.apps) validateDependencies(config.apps as unknown as TApps);
 
@@ -263,10 +265,37 @@ export function wrapSingleAppAsWorkspace(
  * Process a loaded configuration (either single-app or workspace).
  * Returns a normalized workspace in both cases.
  */
+/**
+ * `deploy.dokploy.registry`, which became `deploy.registry`: every target
+ * pushes and pulls through the one registry, so it is not Dokploy's to hold.
+ *
+ * Refused by name rather than dropped: the schema strips keys it does not
+ * know, and a registry silently gone would deploy images under no registry.
+ */
+export class DokployRegistryMoved extends Error {
+	constructor(readonly registry: unknown) {
+		super(
+			`deploy.dokploy.registry is now deploy.registry, read by every deploy target. ` +
+				`In gkm.config.ts, move it up one level: deploy: { registry: ${JSON.stringify(registry)}, dokploy: { … } }.`,
+		);
+		this.name = 'DokployRegistryMoved';
+	}
+}
+
+/** Refuse a deploy key that has moved, naming where it lives now. */
+export function assertNoMovedDeployKeys(deploy: unknown): void {
+	const dokploy = (deploy as { dokploy?: unknown } | undefined)?.dokploy;
+	if (dokploy && typeof dokploy === 'object' && 'registry' in dokploy) {
+		throw new DokployRegistryMoved((dokploy as { registry: unknown }).registry);
+	}
+}
+
 export function processConfig(
 	config: GkmConfig | WorkspaceConfig,
 	cwd: string,
 ): LoadedConfig {
+	assertNoMovedDeployKeys(config.deploy);
+
 	if (isWorkspaceConfig(config)) {
 		// Validate workspace config
 		const result = safeValidateWorkspaceConfig(config);
