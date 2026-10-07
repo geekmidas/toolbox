@@ -23,9 +23,41 @@
  * ```
  *
  * Nothing in here prompts, prints or exits the process.
+ *
+ * The project's own code — its config, its constructs, each app's entry —
+ * runs in a `Sandbox`: by default a `LocalSandbox`, a child process with an
+ * allowlisted environment; for repositories the host does not trust, one of
+ * the host's own that isolates (`sandbox: myContainerSandbox`).
  */
 
+export { ConfigLoadFailed, ConfigObjectNotSerializable } from '../config';
 export { GKM_HOME_ENV, gkmHome } from '../home';
+export {
+	ConstructDiscoveryFailed,
+	ConstructsNotSerializable,
+} from '../reconcile/discover';
+export {
+	allowlistedEnv,
+	CommandFailed,
+	CommandTimedOut,
+	confineCwd,
+	INSTALL_TIMEOUT_MS,
+	InstallAllowlistNameInvalid,
+	type InstallOptions,
+	InstallScriptsAllowlistUnsupported,
+	installDependencies,
+	LocalSandbox,
+	type LocalSandboxOptions,
+	SANDBOX_ENV_ALLOWLIST,
+	type Sandbox,
+	SandboxCwdEscape,
+	type SandboxExecOptions,
+	type SandboxOutput,
+	type SandboxResult,
+	SandboxWorkerFailed,
+	SECRETS_DIR_ENV,
+	SecretNameInvalid,
+} from '../sandbox';
 export {
 	type Credential,
 	type CredentialKind,

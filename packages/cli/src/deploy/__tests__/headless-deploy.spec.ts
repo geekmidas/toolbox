@@ -6,10 +6,13 @@
 
 import {
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readdirSync,
+	readFileSync,
 	realpathSync,
 	rmSync,
+	writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -25,7 +28,10 @@ import {
 	vi,
 } from 'vitest';
 import { storeDokployCredentials } from '../../auth/credentials';
+import { ConfigObjectNotSerializable } from '../../config';
 import { run, runOutput } from '../../run';
+import { LocalSandbox } from '../../sandbox/local';
+import type { Sandbox } from '../../sandbox/sandbox';
 import { deployCli } from '../cli';
 import { type CredentialProvider, MissingCredential } from '../credentials';
 import { type DeployInput, deploy } from '../deploy';
@@ -397,6 +403,107 @@ describe('deploy()', () => {
 		]);
 		// Nothing was stored on the host's behalf.
 		expect(existsSync(join(home, '.gkm', 'credentials.json'))).toBe(false);
+	});
+
+	describe('its sandbox', () => {
+		/** Every command the run started in its sandbox, with its whole env. */
+		let execs: { script: string; env: Record<string, string> }[];
+		let sandbox: Sandbox;
+
+		beforeEach(() => {
+			execs = [];
+			const local = new LocalSandbox({ root });
+			sandbox = {
+				root: local.root,
+				isolating: false,
+				env: local.env,
+				exec: (command, args, options) => {
+					execs.push({
+						script:
+							args.find((a) => /[\\/][\w-]+-worker\.[cm]?[tj]s$/.test(a)) ??
+							command,
+						env: { ...options.env },
+					});
+					return local.exec(command, args, options);
+				},
+			};
+			// An API with an entry, so its environment is sniffed by running it.
+			writeShopWorkspace(root, STAGE, {
+				apps: `{
+    api: { type: 'backend', path: 'apps/api', port: 3000, entry: './src/index.ts' },
+  }`,
+			});
+			mkdirSync(join(root, 'apps', 'api', 'src'), { recursive: true });
+			writeFileSync(
+				join(root, 'apps', 'api', 'src', 'index.ts'),
+				`import { writeFileSync } from 'node:fs';
+writeFileSync(new URL('../seen.json', import.meta.url), JSON.stringify(process.env));`,
+			);
+		});
+
+		it('runs the project’s code there, where no credential reaches', async () => {
+			vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'aws-key-of-the-deploy');
+			const credentials: CredentialProvider = {
+				async get(request) {
+					return (
+						request.kind === 'dokploy'
+							? { endpoint: ENDPOINT, token: 'dokploy-token-of-the-host' }
+							: { username: 'bot', password: 'registry-password-of-the-host' }
+					) as never;
+				},
+			};
+
+			const result = await start({ credentials, sandbox }).result;
+
+			expect(result.successCount).toBe(1);
+			const scripts = execs.map(({ script }) =>
+				script.replace(/^.*[\\/]([\w-]+)\.[cm]?[tj]s$/, '$1'),
+			);
+			// Loading the config, discovering its constructs (as often as the
+			// engine asks) and sniffing the API all ran in it.
+			expect(scripts[0]).toBe('config-worker');
+			// The engine's own reload, for the Dockerfiles, ran there too.
+			expect(
+				scripts.filter((s) => s === 'config-worker').length,
+			).toBeGreaterThan(1);
+			expect(scripts).toContain('discover-worker');
+			expect(scripts).toContain('sniffer-worker');
+
+			const handed = execs.flatMap(({ env }) => Object.entries(env));
+			expect(handed.map(([key]) => key)).not.toContain('AWS_SECRET_ACCESS_KEY');
+			expect(handed.map(([, value]) => value).join('\n')).not.toMatch(
+				/aws-key-of-the-deploy|dokploy-token-of-the-host|registry-password-of-the-host/,
+			);
+
+			// And what the API's own code saw, from inside.
+			const seen = JSON.parse(
+				readFileSync(join(root, 'apps', 'api', 'seen.json'), 'utf8'),
+			);
+			expect(seen).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
+			expect(seen).not.toHaveProperty('DOKPLOY_API_TOKEN');
+		});
+
+		it('refuses a config holding live objects when the sandbox isolates', async () => {
+			writeFileSync(
+				join(root, 'gkm.config.ts'),
+				`${readFileSync(join(root, 'gkm.config.ts'), 'utf8').replace(
+					"name: 'shop',",
+					"name: 'shop',\n  state: { provider: { read: async () => null, write: async () => {} } },",
+				)}`,
+			);
+
+			const { events, result } = await eventsOf({
+				sandbox: { ...sandbox, isolating: true },
+			});
+
+			await expect(result).rejects.toBeInstanceOf(ConfigObjectNotSerializable);
+			expect(events.at(-1)).toMatchObject({
+				type: 'deploy.failed',
+				error: { name: 'ConfigObjectNotSerializable' },
+			});
+			// Nothing was asked of Dokploy for a project it could not read.
+			expect(requests).toEqual([]);
+		});
 	});
 
 	describe('a dry run', () => {

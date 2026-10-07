@@ -4,6 +4,7 @@ import {
 	createTempDir,
 	createTestFile,
 } from '../../__tests__/test-helpers';
+import { LocalSandbox } from '../../sandbox/local';
 import { discover } from '../discover';
 
 /**
@@ -112,6 +113,28 @@ export const nightly = jobs
 		});
 		expect(runnables.Jobs).toHaveLength(2);
 		expect(manifest.Receipts).toMatchObject({ kind: 'queue' });
+	});
+
+	it('finds the same manifest and edges when discovering in a sandbox', async () => {
+		const patterns = [
+			'constructs/**/*.ts',
+			'endpoints/**/*.ts',
+			'crons/**/*.ts',
+			'queues/**/*.ts',
+		];
+		const here: Record<string, string[]> = {};
+		const there: Record<string, string[]> = {};
+
+		const local = await discover({ patterns, cwd: dir, runnables: here });
+		const sandboxed = await discover({
+			patterns,
+			cwd: dir,
+			runnables: there,
+			sandbox: new LocalSandbox({ root: dir }),
+		});
+
+		expect(sandboxed).toEqual(local);
+		expect(there).toEqual(here);
 	});
 
 	it('records a queue’s and a subscriber’s own database under their worker', async () => {

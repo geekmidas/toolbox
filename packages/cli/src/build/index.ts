@@ -34,7 +34,8 @@ import {
 	withCompute,
 	withRoutes,
 } from '../reconcile/emit.js';
-import { run } from '../run';
+import { CommandFailed, DEFAULT_TIMEOUT_MS } from '../run';
+import { LocalSandbox } from '../sandbox/local';
 import { keyFingerprint } from '../secrets/encryption';
 import type {
 	BuildOptions,
@@ -934,14 +935,32 @@ export async function workspaceBuildCommand(
 			logger.log(`\n📦 Using ${pm} with Turbo for the other apps...\n`);
 			logger.log(`Running: ${[turboBin, ...turboArgs].join(' ')}`);
 
-			await run(turboBin, turboArgs, {
+			// In the sandbox: the apps' build scripts are the project's code,
+			// and see the sandbox's environment rather than this process's —
+			// no deploy credential, no registry login. A remote cache's token
+			// is passed on only by the default sandbox, for a project the host
+			// already trusts.
+			const sandbox =
+				options.sandbox ??
+				new LocalSandbox({ root: workspace.root, passEnv: ['TURBO_TOKEN'] });
+			const built = await sandbox.exec(turboBin, turboArgs, {
 				cwd: workspace.root,
 				env: {
-					...process.env,
+					...sandbox.env,
 					// Pass production flag to builds
 					NODE_ENV: options.production ? 'production' : 'development',
 				},
+				timeoutMs: DEFAULT_TIMEOUT_MS,
+				output: 'inherit',
 			});
+			if (built.exitCode !== 0) {
+				throw new CommandFailed(
+					turboBin,
+					turboArgs,
+					built.exitCode,
+					built.signal as NodeJS.Signals | null,
+				);
+			}
 		}
 
 		// Mark all apps as successful

@@ -681,8 +681,60 @@ const result = await run.result; // or a rejection: MissingCredential, StateLock
   `resource.applied`.
 - Each app's image is built from the app's own directory.
 
-`deploy()` loads `gkm.config.ts` with `import()`, so the host runs with a
-TypeScript loader (`tsx`) for now, as the CLI does.
+#### The project's code runs in a sandbox
+
+Loading `gkm.config.ts`, discovering its constructs and sniffing each app's
+environment all run the project's own code. `deploy()` runs them in a
+`Sandbox`, never in the host process: each is a child with the CLI's own
+TypeScript loader, so the host needs no `tsx`.
+
+- The default, `LocalSandbox`, is a child process on the same machine with an
+  **allowlisted environment**: `PATH`, `HOME`, `USER`, temp directories,
+  locale (`LANG`, `LC_*`, `TZ`), terminal (`TERM`, `NO_COLOR`, `CI`, …),
+  `NODE_ENV`, `NODE_EXTRA_CA_CERTS`, the package managers' homes and the
+  proxy variables. Nothing else — no `AWS_*`, `DOKPLOY_*`, `DOCKER_*`,
+  `NODE_AUTH_TOKEN`, `GITHUB_TOKEN`, and no `NODE_OPTIONS`.
+- Each step has a timeout: 30 seconds per sniff, 60 for loading the config
+  and for discovery. A step that outlives it is killed, and `cwd` must stay
+  inside the project (`SandboxCwdEscape` otherwise).
+- Credentials never enter a sandbox. They go from `credentials` to the steps
+  that provision, push and release.
+- `gkm build` runs turbo through the same sandbox, passing `TURBO_TOKEN` on for
+  a remote cache.
+
+A host that deploys repositories it does not trust passes its own sandbox — a
+container per build — whose `isolating` is `true`:
+
+```ts
+import { deploy, type Sandbox } from '@geekmidas/cli/deploy';
+
+const sandbox: Sandbox = {
+  root: checkout,
+  isolating: true,
+  env: { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: '/tmp/home' },
+  exec: (command, args, { cwd, env, timeoutMs, secrets, signal }) =>
+    runInContainer({ mount: checkout, command, args, cwd, env, timeoutMs, secrets, signal }),
+};
+
+deploy({ cwd: checkout, stage: 'production', credentials, sandbox });
+```
+
+`exec` takes an argument array, the command's whole environment, a required
+timeout and secrets to mount as files (`GKM_SECRETS_DIR` names their
+directory), and resolves with `{ exitCode, signal, stdout, stderr }`. It runs
+the CLI's worker scripts with `node`, by their paths in the checkout's
+`node_modules`, so mount the checkout at the same path.
+
+Under an isolating sandbox the config reaches the deploy only as JSON: a live
+object in it — a custom state store, a function — fails with
+`ConfigObjectNotSerializable`, naming where it is. Under the default sandbox
+such a config is imported in the host as well, as before, which then needs
+`tsx`.
+
+To install an untrusted checkout's dependencies without their lifecycle
+scripts, `installDependencies(sandbox, { ignoreScripts: true, allowScripts:
+['esbuild'] })` installs with `--ignore-scripts` and rebuilds only the
+packages named (pnpm, npm and Yarn 2+).
 
 ![Local and deployed side by side, converging on one unchanged call site](/architecture/local-and-deployed.png)
 

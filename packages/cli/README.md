@@ -887,6 +887,8 @@ for await (const event of run) console.log(event.type);
 const result = await run.result;
 ```
 
+The project's own code — loading `gkm.config.ts`, discovering constructs, sniffing each app's environment — runs in a `Sandbox`, never in the host process and never with the deploy's credentials. The default `LocalSandbox` is a child process with an allowlisted environment and a timeout per step; a host building repositories it does not trust passes its own isolating one (`sandbox`), and a config holding live objects then fails with `ConfigObjectNotSerializable`. The deployment guide's "Deploying from a program" covers both.
+
 **Examples:**
 ```bash
 # Docker: build and push image

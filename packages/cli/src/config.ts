@@ -1,7 +1,10 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join, parse, resolve, sep } from 'node:path';
+import { z } from 'zod';
 import { output } from './output.js';
 import { discover } from './reconcile/discover.js';
+import { activeSandbox, type Sandbox } from './sandbox/sandbox.js';
+import { runWorker } from './sandbox/worker.js';
 import type { GkmConfig } from './types.js';
 import { derivedApps } from './workspace/derive.js';
 import {
@@ -132,6 +135,16 @@ function findConfigPath(cwd: string): ConfigDiscoveryResult {
 	throw new ConfigNotFound(cwd);
 }
 
+/**
+ * The directory holding the gkm config that `cwd` belongs to — the project a
+ * sandbox for it is confined to.
+ *
+ * @throws {ConfigNotFound} when neither `cwd` nor any parent has one.
+ */
+export function findWorkspaceRoot(cwd: string): string {
+	return findConfigPath(cwd).workspaceRoot;
+}
+
 /** No gkm config in a directory or any of its parents. */
 export class ConfigNotFound extends Error {
 	constructor(readonly cwd: string) {
@@ -147,21 +160,146 @@ interface RawConfigResult {
 	workspaceRoot: string;
 }
 
+export interface LoadConfigOptions {
+	/**
+	 * Load the config — and discover the constructs it names — in this
+	 * sandbox rather than in this process. The config then arrives as data;
+	 * see {@link Sandbox.isolating} for what happens to one holding live
+	 * objects. Defaults to the run's own (`withSandbox`); with neither, the
+	 * config is imported here, as `gkm` always has.
+	 */
+	sandbox?: Sandbox;
+	/**
+	 * How long the sandboxed config load may run. Defaults to
+	 * {@link CONFIG_LOAD_TIMEOUT_MS}.
+	 */
+	timeoutMs?: number;
+}
+
+/**
+ * How long loading a config, or discovering its constructs, may take in a
+ * sandbox: room for tsx to compile a large project cold, and not a deploy
+ * held open by a config that never finishes importing.
+ */
+export const CONFIG_LOAD_TIMEOUT_MS = 60_000;
+
+/** The config failed to import, or threw while it ran. */
+export class ConfigLoadFailed extends Error {
+	constructor(
+		readonly configPath: string,
+		readonly detail: string,
+	) {
+		super(`Failed to load config: ${detail}`);
+		this.name = 'ConfigLoadFailed';
+	}
+}
+
+/**
+ * The config holds something that is not data — a custom state store, an
+ * inline deploy target, a function — and the sandbox it was loaded in hands
+ * the deploy nothing but data.
+ */
+export class ConfigObjectNotSerializable extends Error {
+	constructor(
+		readonly configPath: string,
+		readonly paths: readonly string[],
+	) {
+		super(
+			`${configPath} holds values that are not plain data at: ` +
+				`${paths.join(', ')}. It was loaded in an isolating sandbox, which ` +
+				'hands the deploy the config as JSON, so a live object — a custom ' +
+				'store, an inline target, a function — cannot reach it. Configure ' +
+				'these with plain values instead, or deploy this project with a ' +
+				'sandbox that is not isolating (the default) if the host trusts it.',
+		);
+		this.name = 'ConfigObjectNotSerializable';
+	}
+}
+
+/** What the config worker answers. Checked: the worker ran project code. */
+const ConfigAnswer = z.discriminatedUnion('reason', [
+	z.object({
+		reason: z.literal('loaded'),
+		config: z.record(z.string(), z.unknown()),
+	}),
+	z.object({ reason: z.literal('live'), paths: z.array(z.string()) }),
+	z.object({
+		reason: z.literal('failed'),
+		error: z.object({ name: z.string(), message: z.string() }),
+	}),
+]);
+
+/** Import the config in this process — live objects and all. */
+async function importConfig(
+	configPath: string,
+): Promise<GkmConfig | WorkspaceConfig> {
+	try {
+		const config = await import(configPath);
+		return config.default;
+	} catch (error) {
+		throw new ConfigLoadFailed(configPath, (error as Error).message);
+	}
+}
+
+/**
+ * The config, loaded in `sandbox` and handed back as JSON.
+ *
+ * A config holding live objects cannot come back that way. An isolating
+ * sandbox refuses it with {@link ConfigObjectNotSerializable}; any other
+ * imports it here as well, as before, since the host already runs this
+ * project's code as its own.
+ */
+async function loadConfigInSandbox(
+	sandbox: Sandbox,
+	configPath: string,
+	workspaceRoot: string,
+	timeoutMs = CONFIG_LOAD_TIMEOUT_MS,
+): Promise<GkmConfig | WorkspaceConfig> {
+	const { value } = await runWorker(sandbox, 'config load', {
+		name: 'config-worker',
+		args: [configPath],
+		cwd: workspaceRoot,
+		timeoutMs,
+		schema: ConfigAnswer,
+	});
+
+	switch (value.reason) {
+		case 'loaded':
+			// Its shape is `processConfig`'s to check, against the workspace
+			// schema, exactly as for a config imported here.
+			return value.config as unknown as GkmConfig | WorkspaceConfig;
+		case 'failed':
+			throw new ConfigLoadFailed(configPath, value.error.message);
+		case 'live':
+			if (sandbox.isolating) {
+				throw new ConfigObjectNotSerializable(configPath, value.paths);
+			}
+			return importConfig(configPath);
+	}
+}
+
 /**
  * Load raw configuration from file.
  */
-async function loadRawConfig(cwd: string): Promise<RawConfigResult> {
+async function loadRawConfig(
+	cwd: string,
+	options: LoadConfigOptions = {},
+): Promise<RawConfigResult> {
 	const { configPath, workspaceRoot } = findConfigPath(cwd);
+	// The run's own sandbox when none is given: a deploy reloads the config
+	// deep in the engine (generating Dockerfiles), and that load is the
+	// project's code as much as the first.
+	const sandbox = options.sandbox ?? activeSandbox();
+	const config = sandbox
+		? await loadConfigInSandbox(
+				sandbox,
+				configPath,
+				workspaceRoot,
+				options.timeoutMs,
+			)
+		: await importConfig(configPath);
 
-	try {
-		const config = await import(configPath);
-		return {
-			config: config.default,
-			workspaceRoot,
-		};
-	} catch (error) {
-		throw new Error(`Failed to load config: ${(error as Error).message}`);
-	}
+	return { config, workspaceRoot };
 }
 
 /**
@@ -213,16 +351,18 @@ export async function loadConfig(
  */
 export async function loadWorkspaceSettings(
 	cwd: string = process.cwd(),
+	options: LoadConfigOptions = {},
 ): Promise<LoadedConfig['workspace']> {
-	const { config, workspaceRoot } = await loadRawConfig(cwd);
+	const { config, workspaceRoot } = await loadRawConfig(cwd, options);
 	return processConfig(config, workspaceRoot).workspace;
 }
 
 export async function loadWorkspaceConfig(
 	cwd: string = process.cwd(),
+	options: LoadConfigOptions = {},
 ): Promise<LoadedConfig> {
-	const { config, workspaceRoot } = await loadRawConfig(cwd);
-	return withDerivedApps(processConfig(config, workspaceRoot));
+	const { config, workspaceRoot } = await loadRawConfig(cwd, options);
+	return withDerivedApps(processConfig(config, workspaceRoot), options.sandbox);
 }
 
 /**
@@ -244,7 +384,10 @@ export async function loadWorkspaceConfig(
  * cannot be imported is a worse failure than starting with the app it does not
  * describe yet.
  */
-async function withDerivedApps(loaded: LoadedConfig): Promise<LoadedConfig> {
+async function withDerivedApps(
+	loaded: LoadedConfig,
+	sandbox?: Sandbox,
+): Promise<LoadedConfig> {
 	const globs = allConstructGlobs(loaded.workspace);
 	if (globs.length === 0) {
 		throw new WorkspaceDeclaresNoConstructs(loaded.workspace.root);
@@ -254,6 +397,7 @@ async function withDerivedApps(loaded: LoadedConfig): Promise<LoadedConfig> {
 		const manifest = await discover({
 			patterns: globs,
 			cwd: loaded.workspace.root,
+			...(sandbox ? { sandbox } : {}),
 		});
 
 		return {

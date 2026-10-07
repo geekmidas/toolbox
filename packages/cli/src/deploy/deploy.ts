@@ -11,10 +11,12 @@
  */
 
 import { resolve } from 'node:path';
-import { loadWorkspaceConfig } from '../config';
+import { findWorkspaceRoot, loadWorkspaceConfig } from '../config';
 import { gkmHome } from '../home';
 import { type OutputLevel, withOutput } from '../output';
 import type { RunOptions } from '../run';
+import { LocalSandbox } from '../sandbox/local';
+import { type Sandbox, withSandbox } from '../sandbox/sandbox';
 import { assertDeployedStage } from '../workspace/stages.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { type CredentialProvider, storedCredentials } from './credentials';
@@ -74,6 +76,18 @@ export interface DeployInput {
 	 * default), its stderr, or nowhere.
 	 */
 	childOutput?: 'inherit' | 'stderr' | 'ignore';
+	/**
+	 * Where the project's own code runs: loading `gkm.config.ts`, discovering
+	 * its constructs, sniffing each app's environment. Defaults to a
+	 * `LocalSandbox` on the project — a child process here with an
+	 * allowlisted environment, for a project the host trusts.
+	 *
+	 * A host deploying repositories it does not trust passes one that
+	 * isolates — a container per build — and the config then reaches the
+	 * deploy only as data. Credentials never enter a sandbox: they go from
+	 * `credentials` to the steps that provision, push and release.
+	 */
+	sandbox?: Sandbox;
 }
 
 /** A deploy in progress. */
@@ -185,14 +199,21 @@ export function deploy(input: DeployInput): DeployRun {
 		async () => {
 			try {
 				input.signal?.throwIfAborted();
-				const deployed = await runDeploy(
-					() => load(input),
-					{
-						stage: input.stage,
-						...(input.tag ? { tag: input.tag } : {}),
-						...(input.apps ? { apps: input.apps } : {}),
-					},
-					ctx,
+				const sandbox =
+					input.sandbox ??
+					new LocalSandbox({ root: findWorkspaceRoot(resolve(input.cwd)) });
+				// Every step of the run that executes the project's code — the
+				// engine's own discoveries and sniffs included — runs in it.
+				const deployed = await withSandbox(sandbox, () =>
+					runDeploy(
+						() => load(input, sandbox),
+						{
+							stage: input.stage,
+							...(input.tag ? { tag: input.tag } : {}),
+							...(input.apps ? { apps: input.apps } : {}),
+						},
+						ctx,
+					),
 				);
 				emit({ type: 'deploy.finished', result: deployed });
 				return deployed;
@@ -217,8 +238,13 @@ export function deploy(input: DeployInput): DeployRun {
 }
 
 /** The workspace at `input.cwd`, refusing a stage it does not deploy. */
-async function load(input: DeployInput): Promise<NormalizedWorkspace> {
-	const { workspace } = await loadWorkspaceConfig(resolve(input.cwd));
+async function load(
+	input: DeployInput,
+	sandbox: Sandbox,
+): Promise<NormalizedWorkspace> {
+	const { workspace } = await loadWorkspaceConfig(resolve(input.cwd), {
+		sandbox,
+	});
 
 	// Before anything is provisioned: a typo'd stage would otherwise create a
 	// whole second environment under the wrong name.
