@@ -48,9 +48,9 @@ export default defineWorkspace({
 					domains: {
 						production: process.env.KITCHEN_SINK_DOMAIN ?? '',
 					},
+					registry: 'ghcr.io/technanimals',
 					dokploy: {
 						endpoint: process.env.DOKPLOY_ENDPOINT,
-						registry: 'ghcr.io/technanimals',
 					},
 				}
 			: {}),
