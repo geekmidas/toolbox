@@ -138,7 +138,7 @@ describe('deploy()', () => {
 		it('prints what it always printed for a first deploy', async () => {
 			const code = await deployCli({
 				cwd: root,
-				provider: 'dokploy',
+				target: 'dokploy',
 				stage: STAGE,
 				tag: 'v1',
 			});
@@ -159,7 +159,7 @@ describe('deploy()', () => {
 			const written: string[] = [];
 
 			const code = await deployCli(
-				{ cwd: root, provider: 'dokploy', stage: STAGE, tag: 'v1', json: true },
+				{ cwd: root, target: 'dokploy', stage: STAGE, tag: 'v1', json: true },
 				{ stdout: { write: (chunk: string) => written.push(chunk) > 0 } },
 			);
 
@@ -182,7 +182,7 @@ describe('deploy()', () => {
 			const written: string[] = [];
 
 			const code = await deployCli(
-				{ cwd: root, provider: 'dokploy', stage: STAGE, json: true },
+				{ cwd: root, target: 'dokploy', stage: STAGE, json: true },
 				{ stdout: { write: (chunk: string) => written.push(chunk) > 0 } },
 			);
 
@@ -197,7 +197,7 @@ describe('deploy()', () => {
 		it('creates, changes, builds and pushes nothing with --dry-run', async () => {
 			const code = await deployCli({
 				cwd: root,
-				provider: 'dokploy',
+				target: 'dokploy',
 				stage: STAGE,
 				tag: 'v1',
 				dryRun: true,
@@ -217,7 +217,7 @@ describe('deploy()', () => {
 			expect(printed()).toContain('+ create application:api');
 		});
 
-		it('refuses a provider other than Dokploy, and exits 1', async () => {
+		it('refuses a removed provider, says what replaced it, and exits 1', async () => {
 			const code = await deployCli({
 				cwd: root,
 				provider: 'docker',
@@ -225,10 +225,33 @@ describe('deploy()', () => {
 			});
 
 			expect(code).toBe(1);
-			expect(printed()).toContain(
-				'Workspace deployment only supports Dokploy. Got: docker',
-			);
+			expect(printed()).toContain('--provider docker has been removed');
+			expect(printed()).toContain('gkm compose');
 			expect(requests).toEqual([]);
+		});
+
+		it('deploys through --provider dokploy as --target dokploy, warning once', async () => {
+			const code = await deployCli({
+				cwd: root,
+				provider: 'dokploy',
+				stage: STAGE,
+				tag: 'v1',
+			});
+
+			expect(code).toBe(0);
+			const warning = 'WARN --provider is deprecated; use --target dokploy.';
+			expect(out.filter((line) => line === warning)).toHaveLength(1);
+			// Otherwise exactly what --target prints.
+			await expect(printed().replace(`${warning}\n`, '')).toMatchFileSnapshot(
+				GOLDEN,
+			);
+		});
+
+		it('deploys through deploy.default when neither flag is given', async () => {
+			const code = await deployCli({ cwd: root, stage: STAGE, tag: 'v1' });
+
+			expect(code).toBe(0);
+			await expect(printed()).toMatchFileSnapshot(GOLDEN);
 		});
 	});
 
@@ -284,6 +307,11 @@ describe('deploy()', () => {
 				}
 			});
 		expect(sequence).toMatchSnapshot();
+		// Through the built-in target, which `deploy.default` names.
+		expect(events.find((e) => e.type === 'deploy.started')).toMatchObject({
+			target: 'dokploy',
+			apps: ['api', 'web'],
+		});
 		// Plain data all the way down.
 		expect(JSON.parse(JSON.stringify(events))).toEqual(events);
 	});

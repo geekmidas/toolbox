@@ -23,7 +23,7 @@ import {
 } from '@geekmidas/manifest';
 import type {
 	AppDomainConfig,
-	DeployTarget,
+	DeployTargetName,
 	Framework,
 	NormalizedAppConfig,
 	NormalizedWorkspace,
@@ -125,7 +125,8 @@ export function derivedApps(
 	workspace: NormalizedWorkspace,
 ): Record<string, NormalizedAppConfig> {
 	const apps: Record<string, NormalizedAppConfig> = {};
-	const defaultTarget: DeployTarget = workspace.deploy?.default ?? 'dokploy';
+	const defaultTarget: DeployTargetName =
+		workspace.deploy?.default ?? 'dokploy';
 
 	for (const [id, declaration] of Object.entries(manifest)) {
 		// Three kinds are apps: a site, a mobile app and an HTTP surface. A worker

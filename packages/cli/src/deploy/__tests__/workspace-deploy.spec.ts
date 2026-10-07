@@ -418,9 +418,9 @@ describe('workspaceDeployCommand', () => {
 		expect(result.apps.map((a) => a.appName)).toEqual(['api']);
 		expect(said()).toContain('Skipping web');
 
-		await expect(deploy({ apps: ['web'], adjust: elsewhere })).rejects.toThrow(
-			'No apps to deploy. All selected apps have unsupported deploy targets.',
-		);
+		await expect(
+			deploy({ apps: ['web'], adjust: elsewhere }),
+		).rejects.toMatchObject({ name: 'NoDeployableApps', target: 'dokploy' });
 	});
 
 	describe('an API that reads its own configuration', () => {
@@ -664,7 +664,7 @@ export const config = new EnvironmentParser(process.env)
 		expect(said()).toContain(`No secrets found for stage "${STAGE}"`);
 	});
 
-	it('refuses a provider other than Dokploy', async () => {
+	it('refuses a removed provider', async () => {
 		const { workspace: loaded } = await loadWorkspaceConfig(root);
 
 		await expect(
@@ -672,9 +672,7 @@ export const config = new EnvironmentParser(process.env)
 				provider: 'docker',
 				stage: STAGE,
 			} as never),
-		).rejects.toThrow(
-			'Workspace deployment only supports Dokploy. Got: docker',
-		);
+		).rejects.toMatchObject({ name: 'ProviderRemoved', provider: 'docker' });
 	});
 
 	describe('asking for Dokploy credentials at a terminal', () => {

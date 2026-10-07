@@ -286,20 +286,26 @@ export const web = new StaticSite('Web', { path: 'apps/web' }).dependsOn([api, a
 
 ### `gkm deploy`
 
-Deploy to providers.
+Deploy a stage through its target.
 
 ```bash
 gkm deploy [options]
 
 Options:
   --stage, -s <name>     Deployment stage (development, staging, production)
-  --provider <name>      Deploy provider: docker, dokploy, aws-lambda
+  --target <name>        Deploy target: dokploy, or a name in deploy.targets
+                         (default: deploy.default)
+  --provider <name>      Deprecated: `dokploy` means --target dokploy;
+                         docker and aws-lambda are removed
   --tag <tag>            Image tag (default: stage-timestamp)
   --skip-push            Skip pushing the image to the registry
   --skip-build           Skip the build step and use an existing one
   --json                 Write events as JSON lines on stdout; never prompts
   --dry-run              Show what would be created or reused; change nothing
 ```
+
+A target that does not ship with the CLI is a package the project installs and
+names in `deploy.targets` — see [Deploy targets](./deployment.md#deploy-targets).
 
 Exit code 0 when the deploy finished, 1 when anything stopped it. The same
 deploy is available to programs as `deploy()` from `@geekmidas/cli/deploy` —

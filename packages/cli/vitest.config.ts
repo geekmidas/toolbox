@@ -68,5 +68,12 @@ export default defineProject({
 			'../testkit/test/awsSetup.ts',
 			'../testkit/test/globalSetup.ts',
 		],
+		// `*.test-d.ts` are compiled, and a type error in one is a failure: an
+		// assertion about a type in a runtime spec compiles to nothing and
+		// passes whatever the type is.
+		typecheck: {
+			enabled: true,
+			include: ['src/**/*.test-d.ts'],
+		},
 	},
 });

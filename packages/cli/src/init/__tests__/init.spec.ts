@@ -613,7 +613,7 @@ describe('initCommand', () => {
 			);
 
 			expect(pkg.scripts['deploy:production']).toBe(
-				'gkm deploy --provider dokploy --stage production',
+				'gkm deploy --stage production',
 			);
 			expect(existsSync(join(root, 'sst.config.ts'))).toBe(false);
 			await expect(
