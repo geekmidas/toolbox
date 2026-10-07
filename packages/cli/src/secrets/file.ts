@@ -1,8 +1,14 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import { getOrCreateKey, readKey } from './keystore';
+import {
+	getKeyPath,
+	getOrCreateKey,
+	type KeystoreProject,
+	projectKey,
+	readKey,
+} from './keystore';
 import type { SecretsStore } from './store.js';
 import type { StageSecrets } from './types';
 
@@ -26,15 +32,30 @@ interface EncryptedSecretsFile {
 
 /**
  * A stage's secrets as an encrypted file on this machine:
- * `.gkm/secrets/<stage>.json`, with its key at `~/.gkm/<project>/<stage>.key`.
+ * `.gkm/secrets/<stage>.json`, with its key in the CLI's home at
+ * `keys/<namespace>/<project>/<stage>.key`.
  *
  * The local stage's store, always — its secrets belong to the machine running
  * `gkm dev` — and a deployed stage's when `secrets.store` is `'file'`.
  */
 export class FileSecretsStore implements SecretsStore {
 	readonly name = 'file';
+	private readonly project: KeystoreProject;
 
-	constructor(private readonly root: string) {}
+	/**
+	 * @param project - Whose keys: a workspace's `keystoreProject()`. Outside a
+	 *   workspace there is no config to name the project, so it is named the
+	 *   way a workspace without `name` is — its package name, else its folder.
+	 */
+	constructor(
+		private readonly root: string,
+		project?: KeystoreProject,
+	) {
+		this.project = project ?? {
+			key: projectKey({ name: packageName(root) ?? basename(root) }),
+			legacy: [basename(root)],
+		};
+	}
 
 	/** The file a stage's secrets are kept in. */
 	path(stage: string): string {
@@ -52,9 +73,14 @@ export class FileSecretsStore implements SecretsStore {
 			return data as StageSecrets;
 		}
 
-		const project = basename(this.root);
-		const key = await readKey(stage, project);
-		if (!key) throw new MissingSecretsKey(stage, project);
+		const key = await readKey(stage, this.project);
+		if (!key) {
+			throw new MissingSecretsKey(
+				stage,
+				this.project.key,
+				getKeyPath(stage, this.project),
+			);
+		}
 
 		return decrypt(data as EncryptedSecretsFile, key);
 	}
@@ -62,7 +88,7 @@ export class FileSecretsStore implements SecretsStore {
 	async write(stage: string, secrets: StageSecrets): Promise<void> {
 		await mkdir(join(this.root, SECRETS_DIR), { recursive: true });
 
-		const key = await getOrCreateKey(stage, basename(this.root));
+		const key = await getOrCreateKey(stage, this.project);
 		await writeFile(
 			this.path(stage),
 			JSON.stringify(encrypt(secrets, key), null, 2),
@@ -76,12 +102,25 @@ export class MissingSecretsKey extends Error {
 	constructor(
 		readonly stage: string,
 		readonly project: string,
+		readonly path: string,
 	) {
 		super(
 			`Decryption key not found for stage "${stage}". ` +
-				`Expected key at: ~/.gkm/${project}/${stage}.key`,
+				`Expected key at: ${path}. Copy the stage's key there from whoever created it, or set secrets.store to a store this machine can reach.`,
 		);
 		this.name = 'MissingSecretsKey';
+	}
+}
+
+/** A project's package name without its scope, as a workspace name reads it. */
+function packageName(root: string): string | undefined {
+	try {
+		const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8'));
+		return typeof pkg.name === 'string'
+			? pkg.name.replace(/^@[^/]+\//, '')
+			: undefined;
+	} catch {
+		return undefined;
 	}
 }
 

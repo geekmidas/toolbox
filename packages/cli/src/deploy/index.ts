@@ -45,21 +45,18 @@
  */
 
 import { createHash } from 'node:crypto';
-import { stdin as input, stdout as output } from 'node:process';
-import * as readline from 'node:readline/promises';
+import { resolve } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { Client as PgClient } from 'pg';
-import {
-	getDokployCredentials,
-	storeDokployCredentials,
-	validateDokployToken,
-} from '../auth';
 import { loadWorkspaceConfig } from '../config';
+import { output } from '../output';
 import { discover } from '../reconcile/discover.js';
 import type { SqlClient, Statement } from '../reconcile/provision.js';
 import { constructGlobs } from '../reconcile/workspace.js';
+import type { RunOptions } from '../run';
 import { initStageSecrets } from '../secrets/storage.js';
 import { secretsStoreFor } from '../secrets/store.js';
+import type { StageSecrets } from '../secrets/types.js';
 import { derivedApps } from '../workspace/derive.js';
 import {
 	getAppBuildOrder,
@@ -72,16 +69,27 @@ import type {
 	NormalizedAppConfig,
 	NormalizedWorkspace,
 } from '../workspace/types.js';
+import { type CredentialProvider, MissingCredential } from './credentials';
 import { applyDeclared, provisionDeclared } from './declared';
 import { orchestrateDns, verifyDnsRecords } from './dns/index.js';
 import { deployDocker } from './docker';
-import { DokployApi, type DokployApplication } from './dokploy-api';
+import {
+	DokployApi,
+	type DokployApplication,
+	type DokployRegistry,
+} from './dokploy-api';
 import { isMainFrontendApp, resolveHost } from './domain.js';
 import {
 	type EnvResolverContext,
 	formatMissingVarsError,
 	validateEnvVars,
 } from './env-resolver.js';
+import {
+	type DeployEvent,
+	eventError,
+	type ResourceChange,
+	type ResourceVia,
+} from './events';
 import type { DokployCluster } from './fromManifest';
 import { withGeneratedSecrets } from './generated.js';
 import {
@@ -93,7 +101,11 @@ import {
 	projectName,
 } from './identity.js';
 import { DeployJournal } from './journal.js';
-import { resolveProject } from './ownership.js';
+import {
+	findProject,
+	type ResolvedProject,
+	resolveProject,
+} from './ownership.js';
 import { resolveRegistry } from './registry.js';
 import {
 	createStateStore,
@@ -101,8 +113,12 @@ import {
 	StateStoreBusy,
 	StateVersionConflict,
 } from './StateStore.js';
-import { generateSecretsReport, prepareSecretsForAllApps } from './secrets.js';
-import { sniffAllApps } from './sniffer.js';
+import {
+	type EncryptedAppSecrets,
+	generateSecretsReport,
+	prepareSecretsForAllApps,
+} from './secrets.js';
+import { type SniffedEnvironment, sniffAllApps } from './sniffer.js';
 import {
 	createEmptyState,
 	getBackupState,
@@ -111,60 +127,17 @@ import {
 	setDeployedImage,
 	setPostgresBackupId,
 } from './state.js';
+import { terminalCredentials } from './terminal';
 import type {
 	AppDeployResult,
 	DeployOptions,
 	DeployProvider,
 	DeployResult,
-	WorkspaceDeployResult,
 } from './types';
 
-const logger = console;
-
-/**
- * Prompt for input
- */
-async function prompt(message: string, hidden = false): Promise<string> {
-	if (!process.stdin.isTTY) {
-		throw new Error('Interactive input required. Please configure manually.');
-	}
-
-	if (hidden) {
-		process.stdout.write(message);
-		return new Promise((resolve) => {
-			let value = '';
-			const onData = (char: Buffer) => {
-				const c = char.toString();
-				if (c === '\n' || c === '\r') {
-					process.stdin.setRawMode(false);
-					process.stdin.pause();
-					process.stdin.removeListener('data', onData);
-					process.stdout.write('\n');
-					resolve(value);
-				} else if (c === '\u0003') {
-					process.stdin.setRawMode(false);
-					process.stdin.pause();
-					process.stdout.write('\n');
-					process.exit(1);
-				} else if (c === '\u007F' || c === '\b') {
-					if (value.length > 0) value = value.slice(0, -1);
-				} else {
-					value += c;
-				}
-			};
-			process.stdin.setRawMode(true);
-			process.stdin.resume();
-			process.stdin.on('data', onData);
-		});
-	}
-
-	const rl = readline.createInterface({ input, output });
-	try {
-		return await rl.question(message);
-	} finally {
-		rl.close();
-	}
-}
+// Through `output`: the console from the terminal, the run's own events
+// inside `deploy()`.
+const logger = output;
 
 /**
  * Service URLs including both connection URLs and individual parameters
@@ -248,7 +221,36 @@ async function waitForPostgres(
 			}
 		}
 	}
-	throw new Error(`Postgres not ready after ${maxRetries} retries`);
+	throw new PostgresNotReady(host, port, maxRetries);
+}
+
+/** A Postgres published for the role DDL never accepted a connection. */
+export class PostgresNotReady extends Error {
+	constructor(
+		readonly host: string,
+		readonly port: number,
+		readonly attempts: number,
+	) {
+		super(
+			`Postgres not ready after ${attempts} retries (${host}:${port}). Check that the port is reachable from here — a firewall in front of the server drops it silently — and deploy again.`,
+		);
+		this.name = 'PostgresNotReady';
+	}
+}
+
+/** No port could be published for a cluster, so its DDL cannot reach it. */
+export class PostgresPortUnavailable extends Error {
+	constructor(
+		readonly appName: string,
+		readonly taken: readonly number[],
+	) {
+		super(
+			`Could not publish a port for ${appName}. ` +
+				`In use on this server: ${[...taken].sort((a, b) => a - b).join(', ') || 'none reported'}. ` +
+				`The role DDL needs to reach the cluster from here.`,
+		);
+		this.name = 'PostgresPortUnavailable';
+	}
 }
 
 /**
@@ -338,11 +340,7 @@ async function applyDeclaredStatements(
 		}
 
 		if (externalPort === undefined) {
-			throw new Error(
-				`Could not publish a port for ${postgres.appName}. ` +
-					`In use on this server: ${[...taken].sort((a, b) => a - b).join(', ') || 'none reported'}. ` +
-					`The role DDL needs to reach the cluster from here.`,
-			);
+			throw new PostgresPortUnavailable(postgres.appName, [...taken]);
 		}
 
 		logger.log(`   Publishing ${postgres.appName} on ${externalPort}...`);
@@ -468,20 +466,6 @@ export function generateTag(stage: string): string {
 }
 
 /**
- * Deploy all apps in a workspace to Dokploy.
- *
- * Two-phase orchestration:
- * - PHASE 1: Deploy backend apps (with encrypted secrets)
- * - PHASE 2: Deploy frontend apps (with public URLs from backends)
- *
- * Security model:
- * - Backend apps get encrypted secrets embedded at build time
- * - Only GKM_MASTER_KEY is injected as Dokploy env var
- * - Frontend apps get public URLs baked in at build time (no secrets)
- *
- * @internal Exported for testing
- */
-/**
  * The things this deploy creates a container for.
  *
  * A deploy unit is a *declaration*, not a config entry — and since that is now
@@ -522,11 +506,124 @@ function requiredOf(
 		.filter((name) => !optional.has(name));
 }
 
-export async function workspaceDeployCommand(
-	configured: NormalizedWorkspace,
-	options: DeployOptions,
-): Promise<WorkspaceDeployResult> {
-	const { provider, stage, tag, apps: selectedApps } = options;
+/** What a run deploys, once the workspace is loaded. */
+export interface DeployRequest {
+	/** Deployment stage (e.g., 'production', 'staging') */
+	stage: string;
+	/** Image tag (default: stage-timestamp) */
+	tag?: string;
+	/** Specific apps to deploy (default: all) */
+	apps?: string[];
+}
+
+/**
+ * What a run is handed by whoever started it: where its events go, where it
+ * gets credentials, and whether it may change anything. Nothing in a run
+ * reads a terminal or exits the process — that is its caller's business.
+ */
+export interface DeployContext {
+	emit: (event: DeployEvent) => void;
+	credentials: CredentialProvider;
+	signal?: AbortSignal;
+	/** Look everything up, create, build and push nothing. */
+	dryRun: boolean;
+	/** The CLI's home, for the stage's keys. Defaults to `GKM_HOME`. */
+	home?: string;
+	/** Where docker's own output goes. Defaults to the terminal. */
+	stdio?: RunOptions['stdio'];
+}
+
+/** Apps were asked for by name that the workspace does not have. */
+export class UnknownDeployApps extends Error {
+	constructor(
+		readonly apps: readonly string[],
+		readonly available: readonly string[],
+	) {
+		super(
+			`Unknown apps: ${apps.join(', ')}\n` +
+				`Available apps: ${available.join(', ')}`,
+		);
+		this.name = 'UnknownDeployApps';
+	}
+}
+
+/** Every app asked for deploys somewhere other than Dokploy. */
+export class NoDeployableApps extends Error {
+	constructor(readonly stage: string) {
+		super(
+			'No apps to deploy. All selected apps have unsupported deploy targets.',
+		);
+		this.name = 'NoDeployableApps';
+	}
+}
+
+/** A backend failed, so the run stopped before deploying anything after it. */
+export class BackendDeployFailed extends Error {
+	constructor(
+		readonly app: string,
+		cause: unknown,
+	) {
+		super(
+			`Backend deployment failed for ${app}. Aborting to prevent partial deployment.`,
+			{ cause },
+		);
+		this.name = 'BackendDeployFailed';
+	}
+}
+
+/** An app's environment needs values the stage does not have. */
+export class MissingEnvVars extends Error {
+	constructor(
+		readonly app: string,
+		readonly missing: readonly string[],
+		readonly stage: string,
+	) {
+		super(formatMissingVarsError(app, [...missing], stage));
+		this.name = 'MissingEnvVars';
+	}
+}
+
+/** Workspace deploys go to Dokploy; another provider was asked for. */
+export class DeployProviderUnsupported extends Error {
+	constructor(readonly provider: string) {
+		super(`Workspace deployment only supports Dokploy. Got: ${provider}`);
+		this.name = 'DeployProviderUnsupported';
+	}
+}
+
+/** How `resolveProject` found a project, in the journal's words. */
+const PROJECT_VIA: Record<ResolvedProject['via'], ResourceVia> = {
+	state: 'recorded',
+	marker: 'found',
+	created: 'created',
+};
+
+/**
+ * Deploy every app in a workspace to Dokploy.
+ *
+ * Two-phase orchestration:
+ * - PHASE 1: Deploy backend apps (with encrypted secrets)
+ * - PHASE 2: Deploy frontend apps (with public URLs from backends)
+ *
+ * Security model:
+ * - Backend apps get encrypted secrets embedded at build time
+ * - Only GKM_MASTER_KEY is injected as Dokploy env var
+ * - Frontend apps get public URLs baked in at build time (no secrets)
+ *
+ * The engine under `deploy()` and `gkm deploy`. It never prompts and never
+ * exits: credentials come from `ctx.credentials`, progress goes to
+ * `ctx.emit` and to `output`, and every failure is thrown.
+ *
+ * @internal
+ */
+export async function runDeploy(
+	source: NormalizedWorkspace | (() => Promise<NormalizedWorkspace>),
+	request: DeployRequest,
+	ctx: DeployContext,
+): Promise<DeployResult> {
+	const { stage, tag, apps: selectedApps } = request;
+	ctx.emit({ type: 'phase.started', phase: 'validate' });
+	const configured = typeof source === 'function' ? await source() : source;
 
 	// What to deploy comes from the manifest.
 	//
@@ -546,12 +643,6 @@ export async function workspaceDeployCommand(
 	const units = deployUnits(manifest, configured);
 	const workspace: NormalizedWorkspace =
 		Object.keys(units).length > 0 ? { ...configured, apps: units } : configured;
-
-	if (provider !== 'dokploy') {
-		throw new Error(
-			`Workspace deployment only supports Dokploy. Got: ${provider}`,
-		);
-	}
 
 	// What every project, image and application this deploy touches is named
 	// and claimed by — resolved first, so a namespace that cannot be a name
@@ -574,10 +665,7 @@ export async function workspaceDeployCommand(
 		// Validate selected apps exist
 		const invalidApps = selectedApps.filter((name) => !workspace.apps[name]);
 		if (invalidApps.length > 0) {
-			throw new Error(
-				`Unknown apps: ${invalidApps.join(', ')}\n` +
-					`Available apps: ${Object.keys(workspace.apps).join(', ')}`,
-			);
+			throw new UnknownDeployApps(invalidApps, Object.keys(workspace.apps));
 		}
 		// Keep only selected apps, but maintain dependency order
 		appsToDeployNames = buildOrder.filter((name) =>
@@ -588,32 +676,74 @@ export async function workspaceDeployCommand(
 		logger.log(`   Deploying all apps: ${appsToDeployNames.join(', ')}`);
 	}
 
+	const skipped: DeployResult['skipped'] = [];
+	const skip = (app: string, reason: string) => {
+		skipped.push({ app, reason });
+		ctx.emit({ type: 'app.skipped', app, reason });
+	};
+
 	// Filter apps by deploy target
 	const dokployApps = appsToDeployNames.filter((name) => {
 		const app = workspace.apps[name]!;
 		const target = app.resolvedDeployTarget;
 		if (target === 'sst') {
-			logger.log(
-				`   ⚠️  Skipping ${name}: it deploys with SST — run \`gkm build && sst deploy --stage ${stage}\``,
-			);
+			const reason = `it deploys with SST — run \`gkm build && sst deploy --stage ${stage}\``;
+			logger.log(`   ⚠️  Skipping ${name}: ${reason}`);
+			skip(name, reason);
 			return false;
 		}
 		if (!isDeployTargetSupported(target)) {
-			logger.log(
-				`   ⚠️  Skipping ${name}: ${getDeployTargetError(target, name)}`,
-			);
+			const reason = getDeployTargetError(target, name);
+			logger.log(`   ⚠️  Skipping ${name}: ${reason}`);
+			skip(name, reason);
 			return false;
 		}
 		return true;
 	});
 
 	if (dokployApps.length === 0) {
-		throw new Error(
-			'No apps to deploy. All selected apps have unsupported deploy targets.',
-		);
+		throw new NoDeployableApps(stage);
 	}
 
 	appsToDeployNames = dokployApps;
+
+	// Mobile apps deploy via their own toolchain (e.g. EAS Build for Expo).
+	// They stay in the list, for the line that says they were skipped.
+	for (const name of appsToDeployNames) {
+		if (workspace.apps[name]!.type === 'mobile') skip(name, MOBILE_SKIP_REASON);
+	}
+
+	ctx.emit({
+		type: 'deploy.started',
+		stage,
+		identity: identity.key,
+		tag: imageTag,
+		apps: appsToDeployNames.filter(
+			(name) => workspace.apps[name]!.type !== 'mobile',
+		),
+		dryRun: ctx.dryRun,
+	});
+
+	const store = await createStateStore({
+		config: workspace.state,
+		workspaceRoot: workspace.root,
+		workspaceName: workspace.name,
+	});
+	const run: LockedDeploy = {
+		workspace,
+		manifest,
+		stage,
+		imageTag,
+		appsToDeployNames,
+		identity,
+		store,
+		skipped,
+		ctx,
+	};
+
+	// A dry run takes no lock: it writes nothing a lock would protect, and it
+	// should not stop a real deploy that starts while it is looking.
+	if (ctx.dryRun) return planDeploy(run);
 
 	// ==================================================================
 	// LOCK: one deploy of a stage at a time
@@ -622,23 +752,10 @@ export async function workspaceDeployCommand(
 	// until the run ends however it ends. A second run of the stage — another
 	// CI job, a laptop — gets `StateLocked` naming this one instead of racing
 	// it; a run killed with the lock held is released with `gkm state:unlock`.
-	const store = await createStateStore({
-		config: workspace.state,
-		workspaceRoot: workspace.root,
-		workspaceName: workspace.name,
-	});
 	const lock = await store.lock(stage, { operation: 'deploy' });
 
 	try {
-		return await deployLocked({
-			workspace,
-			manifest,
-			stage,
-			imageTag,
-			appsToDeployNames,
-			identity,
-			store,
-		});
+		return await deployLocked(run);
 	} finally {
 		await lock.release();
 	}
@@ -653,25 +770,33 @@ interface LockedDeploy {
 	appsToDeployNames: string[];
 	identity: DeployIdentity;
 	store: StateStore;
+	skipped: DeployResult['skipped'];
+	ctx: DeployContext;
 }
 
-/** Everything a deploy does while it holds the stage's lock. */
-async function deployLocked({
+/** What the preflight found: the stage's secrets and what each app reads. */
+interface Preflight {
+	stageSecrets: StageSecrets;
+	sniffedApps: Map<string, SniffedEnvironment>;
+	encryptedSecrets: Map<string, EncryptedAppSecrets>;
+}
+
+/**
+ * The stage's secrets and every app's environment requirements. A dry run
+ * reads the secrets and generates nothing into the store.
+ */
+async function preflight({
 	workspace,
 	manifest,
 	stage,
-	imageTag,
-	appsToDeployNames,
-	identity,
-	store,
-}: LockedDeploy): Promise<WorkspaceDeployResult> {
-	// ==================================================================
-	// PREFLIGHT: Load secrets and sniff environment requirements
-	// ==================================================================
+	ctx,
+}: LockedDeploy): Promise<Preflight> {
 	logger.log('\n🔐 Loading secrets and analyzing environment requirements...');
 
 	// The stage's own store — SSM in its account, for a stage kept there.
-	const secretsStore = await secretsStoreFor(workspace, stage);
+	const secretsStore = await secretsStoreFor(workspace, stage, {
+		...(ctx.home ? { home: ctx.home } : {}),
+	});
 	const stored = await secretsStore.read(stage);
 	if (!stored) {
 		logger.log(`   ⚠️  No secrets found for stage "${stage}"; starting them`);
@@ -685,10 +810,16 @@ async function deployLocked({
 		manifest,
 	);
 	if (generated.length > 0) {
-		await secretsStore.write(stage, stageSecrets);
-		logger.log(
-			`   🔑 Generated for "${stage}" (${secretsStore.name}): ${generated.join(', ')}`,
-		);
+		if (ctx.dryRun) {
+			logger.log(
+				`   🔑 Would generate for "${stage}" (${secretsStore.name}): ${generated.join(', ')}`,
+			);
+		} else {
+			await secretsStore.write(stage, stageSecrets);
+			logger.log(
+				`   🔑 Generated for "${stage}" (${secretsStore.name}): ${generated.join(', ')}`,
+			);
+		}
 	}
 
 	// Sniff environment variables for all apps
@@ -697,7 +828,7 @@ async function deployLocked({
 	// Prepare encrypted secrets for backend apps
 	const encryptedSecrets = stageSecrets
 		? prepareSecretsForAllApps(stageSecrets, sniffedApps)
-		: new Map();
+		: new Map<string, EncryptedAppSecrets>();
 
 	// Report on secrets preparation
 	if (stageSecrets) {
@@ -714,40 +845,41 @@ async function deployLocked({
 		}
 	}
 
+	return { stageSecrets, sniffedApps, encryptedSecrets };
+}
+
+/** Everything a deploy does while it holds the stage's lock. */
+async function deployLocked(run: LockedDeploy): Promise<DeployResult> {
+	const {
+		workspace,
+		manifest,
+		stage,
+		imageTag,
+		appsToDeployNames,
+		identity,
+		store,
+		ctx,
+	} = run;
+
+	// ==================================================================
+	// PREFLIGHT: Load secrets and sniff environment requirements
+	// ==================================================================
+	const { stageSecrets, sniffedApps, encryptedSecrets } = await preflight(run);
+	ctx.emit({ type: 'phase.finished', phase: 'validate' });
+
+	const changes: ResourceChange[] = [];
+	const applied: Applied = (change, via) => {
+		changes.push(change);
+		ctx.emit({ type: 'resource.applied', ...change, via });
+	};
+
+	ctx.signal?.throwIfAborted();
+	ctx.emit({ type: 'phase.started', phase: 'provision' });
+
 	// ==================================================================
 	// SETUP: Credentials, Project, Registry
 	// ==================================================================
-	let creds = await getDokployCredentials();
-	if (!creds) {
-		logger.log("\n📋 Dokploy credentials not found. Let's set them up.");
-		const endpoint = await prompt(
-			'Dokploy URL (e.g., https://dokploy.example.com): ',
-		);
-		const normalizedEndpoint = endpoint.replace(/\/$/, '');
-
-		try {
-			new URL(normalizedEndpoint);
-		} catch {
-			throw new Error('Invalid URL format');
-		}
-
-		logger.log(
-			`\nGenerate a token at: ${normalizedEndpoint}/settings/profile\n`,
-		);
-		const token = await prompt('API Token: ', true);
-
-		logger.log('\nValidating credentials...');
-		const isValid = await validateDokployToken(normalizedEndpoint, token);
-		if (!isValid) {
-			throw new Error('Invalid credentials. Please check your token.');
-		}
-
-		await storeDokployCredentials(token, normalizedEndpoint);
-		creds = { token, endpoint: normalizedEndpoint };
-		logger.log('✓ Credentials saved');
-	}
-
-	const api = new DokployApi({ baseUrl: creds.endpoint, token: creds.token });
+	const { api, endpoint } = await dokployApi(workspace, ctx);
 
 	// ==================================================================
 	// STATE: the stage's journal, written after every resource
@@ -790,6 +922,15 @@ async function deployLocked({
 		{ beforeCreate: () => journal.pending(projectEntry) },
 	);
 	await journal.ready(projectEntry, project.projectId);
+	applied(
+		{
+			key: 'project',
+			resourceType: 'project',
+			action: project.via === 'created' ? 'create' : 'reuse',
+			id: project.projectId,
+		},
+		PROJECT_VIA[project.via],
+	);
 
 	if (project.via === 'created') {
 		logger.log(`   ✓ Created project: ${project.projectId}`);
@@ -816,6 +957,15 @@ async function deployLocked({
 		id: (e) => e.environmentId,
 	});
 	const environmentId = environment.resource.environmentId;
+	applied(
+		{
+			key: 'environment',
+			resourceType: 'environment',
+			action: environment.via === 'created' ? 'create' : 'reuse',
+			id: environmentId,
+		},
+		environment.via,
+	);
 	if (environment.via === 'created') {
 		logger.log(`   ✓ Created environment: ${stage}`);
 	} else {
@@ -839,30 +989,44 @@ async function deployLocked({
 	// The registry Dokploy pulls through, kept with the stage
 	logger.log('\n🐳 Checking registry...');
 	const registry = workspace.deploy.dokploy?.registry;
+	let registryCreated = false;
 	const dokployRegistry = await resolveRegistry(api, {
 		stage,
 		registry,
 		configuredId: workspace.deploy.dokploy?.registryId,
 		stateId: state.registryId,
 		log: (message) => logger.log(message),
+		// Dokploy has nothing for the configured registry, so it needs a login
+		// to pull with — from the run's provider, never from a prompt here.
 		create: async (url) => {
-			logger.log(`   Dokploy has no registry for ${url}. Let's create one.`);
-
-			const username = await prompt('Registry username: ');
-			const password = await prompt('Registry password/token: ', true);
+			const login = await ctx.credentials.get(
+				{ kind: 'registry', url },
+				{ signal: ctx.signal },
+			);
+			if (!login) throw new MissingCredential('registry', url);
 
 			const created = await api.createRegistry(
 				'Default Registry',
 				url,
-				username,
-				password,
+				login.username,
+				login.password,
 			);
+			registryCreated = true;
 			logger.log(`   ✓ Registry created: ${created.registryId}`);
 			return created;
 		},
 	});
 	const registryId = dokployRegistry.registryId;
 	state.registryId = registryId;
+	applied(
+		{
+			key: 'registry',
+			resourceType: 'registry',
+			action: registryCreated ? 'create' : 'reuse',
+			id: registryId,
+		},
+		registryCreated ? 'created' : 'found',
+	);
 	logger.log(`   Using registry: ${dokployRegistry.registryName}`);
 	await journal.save();
 
@@ -879,17 +1043,6 @@ async function deployLocked({
 			`\n📱 Skipping ${skippedMobileApps.length} mobile app(s) — deploy via framework toolchain: ${skippedMobileApps.join(', ')}`,
 		);
 	}
-
-	const backendApps = appsToDeployNames.filter(
-		(name) => workspace.apps[name]!.type === 'backend',
-	);
-	const frontendApps = appsToDeployNames.filter(
-		(name) => workspace.apps[name]!.type === 'web',
-	);
-
-	// ==================================================================
-	// Initialize per-app database users if Postgres is provisioned
-	// ==================================================================
 
 	// ==================================================================
 	// The declared half: everything the construct manifest says exists
@@ -914,17 +1067,9 @@ async function deployLocked({
 		// exist before the manifest is walked. Computed here rather than in the
 		// app loop, which is where it used to be decided and is too late.
 		const appUrls: Record<string, string> = {};
-		for (const appName of backendApps) {
-			const app = workspace.apps[appName];
-			if (!app) continue;
-
-			appUrls[appName] = `https://${resolveHost(
-				appName,
-				app,
-				stage,
-				workspace.deploy?.domains,
-				false,
-			)}`;
+		for (const appName of appsToDeployNames) {
+			if (workspace.apps[appName]?.type !== 'backend') continue;
+			appUrls[appName] = `https://${hostOf(workspace, appName, stage)}`;
 		}
 
 		const declared = await provisionDeclared({
@@ -963,7 +1108,7 @@ async function deployLocked({
 		// have a legacy `services.postgres`, and applying a construct's roles to
 		// that one would create them where nothing connects.
 		if (declared.statements.length > 0) {
-			const serverHostname = getServerHostname(creds.endpoint);
+			const serverHostname = getServerHostname(endpoint);
 
 			for (const [databaseName, cluster] of Object.entries(declared.clusters)) {
 				const statements = declared.statements.filter(
@@ -1035,6 +1180,18 @@ async function deployLocked({
 		}
 	}
 
+	ctx.emit({ type: 'phase.finished', phase: 'provision' });
+
+	// ==================================================================
+	// Separate apps by type for two-phase deployment
+	// ==================================================================
+	const backendApps = appsToDeployNames.filter(
+		(name) => workspace.apps[name]!.type === 'backend',
+	);
+	const frontendApps = appsToDeployNames.filter(
+		(name) => workspace.apps[name]!.type === 'web',
+	);
+
 	// Track deployed app public URLs for frontend builds
 	const publicUrls: Record<string, string> = {};
 	const results: AppDeployResult[] = [];
@@ -1043,23 +1200,73 @@ async function deployLocked({
 	const appHostnames = new Map<string, string>(); // appName -> hostname
 	const appDomainIds = new Map<string, string>(); // appName -> domainId
 
+	/** An app is up: say so, and remember where. */
+	const deployed = (
+		appName: string,
+		result: Omit<AppDeployResult, 'success'> & {
+			applicationId: string;
+			imageRef: string;
+		},
+		host: string,
+	) => {
+		const url = `https://${host}`;
+		results.push({ ...result, success: true, url });
+		ctx.emit({
+			type: 'app.deployed',
+			app: appName,
+			applicationId: result.applicationId,
+			imageRef: result.imageRef,
+			url,
+		});
+	};
+
+	/** An app failed: say so, and record it in the result. */
+	const failed = (
+		appName: string,
+		app: NormalizedAppConfig,
+		error: unknown,
+	) => {
+		const message = error instanceof Error ? error.message : 'Unknown error';
+		logger.log(`      ✗ Failed to deploy ${appName}: ${message}`);
+		results.push({ appName, type: app.type, success: false, error: message });
+		ctx.emit({ type: 'app.failed', app: appName, error: eventError(error) });
+	};
+
+	/** An image is pushed: worth keeping even if what follows fails. */
+	const built = async (
+		appName: string,
+		image: { imageRef?: string; digest?: string },
+		ref: string,
+	) => {
+		setDeployedImage(state, appName, {
+			ref: image.imageRef ?? ref,
+			...(image.digest ? { digest: image.digest } : {}),
+		});
+		await journal.save();
+		ctx.emit({
+			type: 'artifact.built',
+			app: appName,
+			imageRef: image.imageRef ?? ref,
+			...(image.digest ? { digest: image.digest } : {}),
+		});
+		changes.push({
+			key: `image:${appName}`,
+			resourceType: 'image',
+			action: 'build',
+			id: image.digest ?? image.imageRef ?? ref,
+		});
+	};
+
 	// ==================================================================
 	// PRE-COMPUTE: Frontend URLs for BETTER_AUTH_TRUSTED_ORIGINS
 	// ==================================================================
 	const frontendUrls: string[] = [];
 	for (const appName of frontendApps) {
-		const app = workspace.apps[appName]!;
-		const isMainFrontend = isMainFrontendApp(appName, app, workspace.apps);
-		const hostname = resolveHost(
-			appName,
-			app,
-			stage,
-			workspace.deploy?.domains,
-			isMainFrontend,
-		);
-		frontendUrls.push(`https://${hostname}`);
+		frontendUrls.push(`https://${hostOf(workspace, appName, stage)}`);
 	}
 
+	ctx.signal?.throwIfAborted();
+	ctx.emit({ type: 'phase.started', phase: 'release' });
 	// ==================================================================
 	// PHASE 1: Deploy backend apps (with encrypted secrets)
 	// ==================================================================
@@ -1067,6 +1274,7 @@ async function deployLocked({
 		logger.log('\n📦 PHASE 1: Deploying backend applications...');
 
 		for (const appName of backendApps) {
+			ctx.signal?.throwIfAborted();
 			const app = workspace.apps[appName]!;
 
 			logger.log(`\n   ⚙️  Deploying ${appName}...`);
@@ -1085,6 +1293,7 @@ async function deployLocked({
 					dokployAppName,
 					project.projectId,
 					environmentId,
+					applied,
 				);
 
 				// Get encrypted secrets for this app
@@ -1108,7 +1317,7 @@ async function deployLocked({
 
 				logger.log(`      Building Docker image: ${imageRef}`);
 
-				const built = await deployDocker({
+				const image = await deployDocker({
 					stage,
 					tag: imageTag,
 					skipPush: false,
@@ -1118,22 +1327,12 @@ async function deployLocked({
 						appName,
 					},
 					credentials,
+					...dockerRun(workspace, app, ctx),
 				});
-				setDeployedImage(state, appName, {
-					ref: built.imageRef ?? imageRef,
-					...(built.digest ? { digest: built.digest } : {}),
-				});
-				// The image is pushed: worth keeping even if what follows fails.
-				await journal.save();
+				await built(appName, image, imageRef);
 
 				// Compute hostname first (needed for BETTER_AUTH_URL)
-				const backendHost = resolveHost(
-					appName,
-					app,
-					stage,
-					workspace.deploy?.domains,
-					false, // Backend apps are not main frontend
-				);
+				const backendHost = hostOf(workspace, appName, stage);
 
 				// Build dependency URLs from already-deployed apps
 				const dependencyUrls: Record<string, string> = {};
@@ -1171,7 +1370,7 @@ async function deployLocked({
 				);
 
 				if (!valid) {
-					throw new Error(formatMissingVarsError(appName, missing, stage));
+					throw new MissingEnvVars(appName, missing, stage);
 				}
 
 				// Declared URLs win over anything sniffed or stored, which is the
@@ -1215,37 +1414,32 @@ async function deployLocked({
 					backendHost,
 					app.port,
 					application.applicationId,
+					applied,
 				);
 				appHostnames.set(appName, backendHost);
 				if (domainId) appDomainIds.set(appName, domainId);
 				publicUrls[appName] = `https://${backendHost}`;
 
-				results.push({
+				deployed(
 					appName,
-					type: app.type,
-					success: true,
-					applicationId: application.applicationId,
-					imageRef,
-					...(built.digest ? { digest: built.digest } : {}),
-				});
+					{
+						appName,
+						type: app.type,
+						applicationId: application.applicationId,
+						imageRef,
+						...(image.digest ? { digest: image.digest } : {}),
+					},
+					backendHost,
+				);
 
 				logger.log(`      ✓ ${appName} deployed successfully`);
 			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : 'Unknown error';
-				logger.log(`      ✗ Failed to deploy ${appName}: ${message}`);
-
-				results.push({
-					appName,
-					type: app.type,
-					success: false,
-					error: message,
-				});
+				// The caller stopping the run is not this app failing.
+				if (ctx.signal?.aborted) throw ctx.signal.reason;
+				failed(appName, app, error);
 
 				// Abort on backend failure to prevent incomplete deployment
-				throw new Error(
-					`Backend deployment failed for ${appName}. Aborting to prevent partial deployment.`,
-				);
+				throw new BackendDeployFailed(appName, error);
 			}
 		}
 	}
@@ -1257,6 +1451,7 @@ async function deployLocked({
 		logger.log('\n🌐 PHASE 2: Deploying frontend applications...');
 
 		for (const appName of frontendApps) {
+			ctx.signal?.throwIfAborted();
 			const app = workspace.apps[appName]!;
 
 			logger.log(`\n   🌐 Deploying ${appName}...`);
@@ -1275,6 +1470,7 @@ async function deployLocked({
 					dokployAppName,
 					project.projectId,
 					environmentId,
+					applied,
 				);
 
 				// Build dependency URLs for frontend (same pattern as backend)
@@ -1288,14 +1484,7 @@ async function deployLocked({
 				}
 
 				// Compute hostname for this frontend app
-				const isMainFrontend = isMainFrontendApp(appName, app, workspace.apps);
-				const frontendHost = resolveHost(
-					appName,
-					app,
-					stage,
-					workspace.deploy?.domains,
-					isMainFrontend,
-				);
+				const frontendHost = hostOf(workspace, appName, stage);
 
 				// Build env context for frontend
 				const envContext: EnvResolverContext = {
@@ -1318,7 +1507,7 @@ async function deployLocked({
 				);
 
 				if (!valid) {
-					throw new Error(formatMissingVarsError(appName, missing, stage));
+					throw new MissingEnvVars(appName, missing, stage);
 				}
 
 				if (Object.keys(resolved).length > 0) {
@@ -1351,7 +1540,7 @@ async function deployLocked({
 
 				logger.log(`      Building Docker image: ${imageRef}`);
 
-				const built = await deployDocker({
+				const image = await deployDocker({
 					stage,
 					tag: imageTag,
 					skipPush: false,
@@ -1363,13 +1552,9 @@ async function deployLocked({
 					buildArgs,
 					// Pass arg names for Dockerfile ARG generation
 					publicUrlArgs: publicUrlArgNames,
+					...dockerRun(workspace, app, ctx),
 				});
-				setDeployedImage(state, appName, {
-					ref: built.imageRef ?? imageRef,
-					...(built.digest ? { digest: built.digest } : {}),
-				});
-				// The image is pushed: worth keeping even if what follows fails.
-				await journal.save();
+				await built(appName, image, imageRef);
 
 				// Prepare runtime environment variables
 				const envVars: string[] = [
@@ -1402,32 +1587,29 @@ async function deployLocked({
 					frontendHost,
 					app.port,
 					application.applicationId,
+					applied,
 				);
 				appHostnames.set(appName, frontendHost);
 				if (domainId) appDomainIds.set(appName, domainId);
 				publicUrls[appName] = `https://${frontendHost}`;
 
-				results.push({
+				deployed(
 					appName,
-					type: app.type,
-					success: true,
-					applicationId: application.applicationId,
-					imageRef,
-					...(built.digest ? { digest: built.digest } : {}),
-				});
+					{
+						appName,
+						type: app.type,
+						applicationId: application.applicationId,
+						imageRef,
+						...(image.digest ? { digest: image.digest } : {}),
+					},
+					frontendHost,
+				);
 
 				logger.log(`      ✓ ${appName} deployed successfully`);
 			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : 'Unknown error';
-				logger.log(`      ✗ Failed to deploy ${appName}: ${message}`);
-
-				results.push({
-					appName,
-					type: app.type,
-					success: false,
-					error: message,
-				});
+				// The caller stopping the run is not this app failing.
+				if (ctx.signal?.aborted) throw ctx.signal.reason;
+				failed(appName, app, error);
 				// Don't abort on frontend failures - continue with other frontends
 			}
 		}
@@ -1439,17 +1621,16 @@ async function deployLocked({
 	logger.log('\n📋 Saving deploy state...');
 	await journal.save();
 	logger.log('   ✓ State saved');
+	ctx.emit({ type: 'phase.finished', phase: 'release' });
 
+	ctx.signal?.throwIfAborted();
+	ctx.emit({ type: 'phase.started', phase: 'verify' });
 	// ==================================================================
 	// DNS: Create DNS records, verify propagation, and validate for SSL
 	// ==================================================================
 	const dnsConfig = workspace.deploy.dns;
 	if (dnsConfig && appHostnames.size > 0) {
-		const dnsResult = await orchestrateDns(
-			appHostnames,
-			dnsConfig,
-			creds.endpoint,
-		);
+		const dnsResult = await orchestrateDns(appHostnames, dnsConfig, endpoint);
 
 		// Verify DNS records resolve correctly (with state caching)
 		if (dnsResult?.serverIp && appHostnames.size > 0) {
@@ -1480,6 +1661,7 @@ async function deployLocked({
 			}
 		}
 	}
+	ctx.emit({ type: 'phase.finished', phase: 'verify' });
 
 	// ==================================================================
 	// Summary
@@ -1506,8 +1688,16 @@ async function deployLocked({
 	return {
 		apps: results,
 		projectId: project.projectId,
+		environmentId,
 		successCount,
 		failedCount,
+		stage,
+		identity: identity.key,
+		tag: imageTag,
+		dryRun: false,
+		skipped: run.skipped,
+		urls: publicUrls,
+		changes,
 	};
 }
 
@@ -1523,6 +1713,7 @@ async function ensureApplication(
 	dokployAppName: string,
 	projectId: string,
 	environmentId: string,
+	applied: Applied,
 ): Promise<DokployApplication> {
 	const recorded = journal.record(`application:${appName}`);
 	if (recorded?.status === 'ready' && recorded.id) {
@@ -1553,6 +1744,15 @@ async function ensureApplication(
 		created: 'Created application',
 	};
 	logger.log(`      ${said[via]}: ${resource.applicationId}`);
+	applied(
+		{
+			key: `application:${appName}`,
+			resourceType: 'application',
+			action: via === 'created' ? 'create' : 'reuse',
+			id: resource.applicationId,
+		},
+		via,
+	);
 
 	setApplicationId(journal.state, appName, resource.applicationId);
 	return resource;
@@ -1572,6 +1772,7 @@ async function ensureDomain(
 	host: string,
 	port: number,
 	applicationId: string,
+	applied: Applied,
 ): Promise<string | undefined> {
 	try {
 		const { resource, via } = await journal.ensure(
@@ -1595,13 +1796,24 @@ async function ensureDomain(
 		logger.log(
 			`      ✓ Domain: https://${host} (${via === 'created' ? 'created' : 'existing'})`,
 		);
+		applied(
+			{
+				key: `domain:${host}`,
+				resourceType: 'domain',
+				action: via === 'created' ? 'create' : 'reuse',
+				id: resource.domainId,
+			},
+			via,
+		);
 		return resource.domainId;
 	} catch (domainError) {
 		// The state store failing is not a domain failing: a conflict means
-		// another run wrote the stage, and carrying on would overwrite it.
+		// another run wrote the stage, and carrying on would overwrite it. Nor
+		// is the caller stopping the run.
 		if (
 			domainError instanceof StateVersionConflict ||
-			domainError instanceof StateStoreBusy
+			domainError instanceof StateStoreBusy ||
+			isAbort(domainError)
 		) {
 			throw domainError;
 		}
@@ -1612,12 +1824,320 @@ async function ensureDomain(
 	}
 }
 
+/** Whether `error` is a run being stopped rather than something failing. */
+function isAbort(error: unknown): boolean {
+	return error instanceof Error && error.name === 'AbortError';
+}
+
+/** Records a resource the run created or found, and tells the caller. */
+type Applied = (
+	change: ResourceChange & { id: string },
+	via: ResourceVia,
+) => void;
+
+/** Where docker runs for one app: in the app's own directory. */
+function dockerRun(
+	workspace: NormalizedWorkspace,
+	app: NormalizedAppConfig,
+	ctx: DeployContext,
+): { cwd: string; signal?: AbortSignal; stdio?: RunOptions['stdio'] } {
+	return {
+		// The app's own directory, never the process's: a deploy started from
+		// the workspace root — or by a host whose working directory is its own
+		// — still builds each app from where its bundle is.
+		cwd: resolve(workspace.root, app.path),
+		...(ctx.signal ? { signal: ctx.signal } : {}),
+		...(ctx.stdio ? { stdio: ctx.stdio } : {}),
+	};
+}
+
+/** The Dokploy login, from the run's provider, or `MissingCredential`. */
+async function dokployApi(
+	workspace: NormalizedWorkspace,
+	ctx: DeployContext,
+): Promise<{ api: DokployApi; endpoint: string }> {
+	const configured = workspace.deploy.dokploy?.endpoint;
+	const creds = await ctx.credentials.get(
+		{ kind: 'dokploy', ...(configured ? { endpoint: configured } : {}) },
+		{ signal: ctx.signal },
+	);
+	if (!creds) throw new MissingCredential('dokploy', configured);
+
+	return {
+		api: new DokployApi({
+			baseUrl: creds.endpoint,
+			token: creds.token,
+			...(ctx.signal ? { signal: ctx.signal } : {}),
+		}),
+		endpoint: creds.endpoint,
+	};
+}
+
+/** Each app's public host, the same way the deploy resolves it. */
+function hostOf(
+	workspace: NormalizedWorkspace,
+	appName: string,
+	stage: string,
+): string {
+	const app = workspace.apps[appName]!;
+	return resolveHost(
+		appName,
+		app,
+		stage,
+		workspace.deploy?.domains,
+		app.type === 'web' && isMainFrontendApp(appName, app, workspace.apps),
+	);
+}
+
 /**
- * Main deploy command
+ * What a deploy would do, from the same lookups it starts with — and nothing
+ * else: no lock, no state written, no secret generated, no Dokploy resource
+ * created or changed, no image built or pushed.
+ */
+async function planDeploy(run: LockedDeploy): Promise<DeployResult> {
+	const { workspace, manifest, stage, imageTag, appsToDeployNames, identity } =
+		run;
+	const { ctx } = run;
+
+	await preflight(run);
+	ctx.emit({ type: 'phase.finished', phase: 'validate' });
+
+	ctx.signal?.throwIfAborted();
+	ctx.emit({ type: 'phase.started', phase: 'plan' });
+	logger.log(
+		'\n🔎 Dry run: nothing will be created, changed, built or pushed.',
+	);
+
+	const changes: ResourceChange[] = [];
+	const plan = (change: ResourceChange, detail: string) => {
+		changes.push(change);
+		ctx.emit({ type: 'resource.planned', ...change });
+		const sign = change.action === 'reuse' ? '=' : '+';
+		logger.log(`   ${sign} ${change.action} ${change.key} (${detail})`);
+	};
+
+	const { api } = await dokployApi(workspace, ctx);
+	const state = (await run.store.read(stage))?.state;
+
+	const project = await findProject(api, identity, state?.projectId);
+	if (project) {
+		plan(
+			{
+				key: 'project',
+				resourceType: 'project',
+				action: 'reuse',
+				id: project.projectId,
+			},
+			project.needsClaim
+				? `${project.name}, would be claimed for ${identity.key}`
+				: project.name,
+		);
+	} else {
+		plan(
+			{ key: 'project', resourceType: 'project', action: 'create' },
+			projectName(identity),
+		);
+	}
+
+	const environment = project?.environments.find(
+		(e) => e.name.toLowerCase() === stage.toLowerCase(),
+	);
+	plan(
+		environment
+			? {
+					key: 'environment',
+					resourceType: 'environment',
+					action: 'reuse',
+					id: environment.environmentId,
+				}
+			: { key: 'environment', resourceType: 'environment', action: 'create' },
+		stage,
+	);
+
+	let registryPlanned: ResourceChange | undefined;
+	const registry = await resolveRegistry(api, {
+		stage,
+		registry: workspace.deploy.dokploy?.registry,
+		configuredId: workspace.deploy.dokploy?.registryId,
+		stateId: state?.registryId,
+		log: (message) => logger.log(message),
+		// Planned, not made: what a deploy would create is recorded instead.
+		create: async (url) => {
+			registryPlanned = {
+				key: 'registry',
+				resourceType: 'registry',
+				action: 'create',
+			};
+			return { registryId: '', registryName: url } as DokployRegistry;
+		},
+	});
+	plan(
+		registryPlanned ?? {
+			key: 'registry',
+			resourceType: 'registry',
+			action: 'reuse',
+			id: registry.registryId,
+		},
+		registry.registryName,
+	);
+
+	for (const [id, declaration] of Object.entries(manifest)) {
+		plan(
+			{
+				key: `construct:${id}`,
+				resourceType: declaration.kind,
+				action: 'ensure',
+			},
+			declaration.kind,
+		);
+	}
+
+	const apps: AppDeployResult[] = [];
+	const urls: Record<string, string> = {};
+	for (const appName of appsToDeployNames) {
+		const app = workspace.apps[appName]!;
+		if (app.type === 'mobile') continue;
+
+		const dokployAppName = applicationName(identity, appName);
+		const recordedId = state?.applications?.[appName];
+		const existing =
+			project && environment
+				? ((recordedId
+						? await api.getApplication(recordedId).catch(() => null)
+						: null) ??
+					(await api.findApplicationByName(
+						project.projectId,
+						dokployAppName,
+						environment.environmentId,
+					)))
+				: null;
+		plan(
+			existing
+				? {
+						key: `application:${appName}`,
+						resourceType: 'application',
+						action: 'reuse',
+						id: existing.applicationId,
+					}
+				: {
+						key: `application:${appName}`,
+						resourceType: 'application',
+						action: 'create',
+					},
+			dokployAppName,
+		);
+
+		const ref = imageRefFor(
+			identity,
+			appName,
+			workspace.deploy.dokploy?.registry,
+			imageTag,
+		);
+		plan(
+			{ key: `image:${appName}`, resourceType: 'image', action: 'build' },
+			ref,
+		);
+
+		const host = hostOf(workspace, appName, stage);
+		const domain = existing
+			? (await api.getDomainsByApplicationId(existing.applicationId)).find(
+					(d) => d.host === host,
+				)
+			: undefined;
+		plan(
+			domain
+				? {
+						key: `domain:${host}`,
+						resourceType: 'domain',
+						action: 'reuse',
+						id: domain.domainId,
+					}
+				: { key: `domain:${host}`, resourceType: 'domain', action: 'create' },
+			`https://${host}`,
+		);
+
+		urls[appName] = `https://${host}`;
+		apps.push({
+			appName,
+			type: app.type,
+			success: true,
+			imageRef: ref,
+			url: urls[appName],
+			...(existing ? { applicationId: existing.applicationId } : {}),
+		});
+	}
+
+	const creates = changes.filter((c) => c.action !== 'reuse').length;
+	logger.log(
+		`\n✅ Dry run complete: ${creates} to create or build, ${changes.length - creates} to reuse.`,
+	);
+
+	ctx.emit({ type: 'phase.finished', phase: 'plan' });
+	return {
+		apps,
+		projectId: project?.projectId ?? '',
+		environmentId: environment?.environmentId ?? '',
+		successCount: apps.length,
+		failedCount: 0,
+		stage,
+		identity: identity.key,
+		tag: imageTag,
+		dryRun: true,
+		skipped: run.skipped,
+		urls,
+		changes,
+	};
+}
+
+/** Why a mobile app is left out of a Dokploy deploy. */
+const MOBILE_SKIP_REASON = 'deploys via its framework toolchain';
+
+// ==================================================================
+// The command, as it was called before `deploy()`
+// ==================================================================
+
+/**
+ * Deploy a loaded workspace, printing to the terminal and prompting for
+ * missing credentials there.
+ *
+ * @deprecated Use `deploy({ cwd, stage })` from `@geekmidas/cli/deploy`,
+ * which never prompts or prints and reports progress as events. This wrapper
+ * is kept for one alpha.
+ */
+export async function workspaceDeployCommand(
+	workspace: NormalizedWorkspace,
+	options: DeployOptions,
+): Promise<DeployResult> {
+	if (options.provider !== 'dokploy') {
+		throw new DeployProviderUnsupported(options.provider);
+	}
+
+	// No sink: `output` falls back to the console, which is what this always
+	// printed to.
+	return runDeploy(
+		workspace,
+		{
+			stage: options.stage,
+			...(options.tag ? { tag: options.tag } : {}),
+			...(options.apps ? { apps: options.apps } : {}),
+		},
+		{
+			emit: () => {},
+			credentials: terminalCredentials(),
+			dryRun: false,
+		},
+	);
+}
+
+/**
+ * Deploy the workspace in the current directory.
+ *
+ * @deprecated Use `deploy({ cwd: process.cwd(), stage })` from
+ * `@geekmidas/cli/deploy`. Kept for one alpha.
  */
 export async function deployCommand(
 	options: DeployOptions,
-): Promise<DeployResult | WorkspaceDeployResult> {
+): Promise<DeployResult> {
 	// Load config with workspace detection
 	const loadedConfig = await loadWorkspaceConfig();
 

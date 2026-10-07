@@ -1,0 +1,28 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`deploy() > reports a run as events, in order 1`] = `
+[
+  "phase.started validate",
+  "app.skipped app",
+  "deploy.started",
+  "phase.finished validate",
+  "phase.started provision",
+  "resource.applied project created",
+  "resource.applied environment found",
+  "resource.applied registry found",
+  "phase.finished provision",
+  "phase.started release",
+  "resource.applied application:api created",
+  "artifact.built api",
+  "resource.applied domain:api.shop.example.com created",
+  "app.deployed api",
+  "resource.applied application:web created",
+  "artifact.built web",
+  "resource.applied domain:shop.example.com created",
+  "app.deployed web",
+  "phase.finished release",
+  "phase.started verify",
+  "phase.finished verify",
+  "deploy.finished",
+]
+`;

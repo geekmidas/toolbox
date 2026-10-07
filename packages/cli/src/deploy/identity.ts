@@ -10,7 +10,6 @@
  */
 
 import { kebabCase, scopedName } from '@geekmidas/manifest';
-import type { NormalizedWorkspace } from '../workspace/types';
 
 export interface DeployIdentity {
 	/**
@@ -79,8 +78,14 @@ export function defaultNamespace(workspaceName: string): string {
 	return slug(kebabCase(workspaceName));
 }
 
+/** What an identity is derived from: a workspace's name and namespace. */
+export interface IdentitySource {
+	name: string;
+	deploy?: { namespace?: string };
+}
+
 export function deployIdentity(
-	workspace: Pick<NormalizedWorkspace, 'name' | 'deploy'>,
+	workspace: IdentitySource,
 	stage: string,
 ): DeployIdentity {
 	// Lowercased rather than kebab-cased: the names a workspace was already

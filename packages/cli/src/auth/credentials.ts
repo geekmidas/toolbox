@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { readFile, unlink, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { gkmHome } from '../home';
 
 /**
  * Stored credentials for various services
@@ -29,16 +29,21 @@ export interface StoredCredentials {
  * Options for credential operations
  */
 export interface CredentialOptions {
-	/** Root directory for credentials storage (default: user home directory) */
+	/**
+	 * A directory whose `.gkm` holds the credentials. Default: the CLI's home
+	 * (`GKM_HOME`, else `~/.gkm`).
+	 */
 	root?: string;
+	/** The CLI's home itself, holding `credentials.json`. Wins over `root`. */
+	home?: string;
 }
 
 /**
  * Get the path to the credentials directory
  */
 export function getCredentialsDir(options?: CredentialOptions): string {
-	const root = options?.root ?? homedir();
-	return join(root, '.gkm');
+	if (options?.home) return options.home;
+	return options?.root ? join(options.root, '.gkm') : gkmHome();
 }
 
 /**

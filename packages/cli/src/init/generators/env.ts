@@ -8,7 +8,7 @@ import type {
  * Generate environment-related files (.gitignore only).
  * Note: .env files are no longer generated. Use `gkm secrets:init` to initialize
  * encrypted secrets stored in `.gkm/secrets/{stage}.json` with keys stored at
- * `~/.gkm/{project-name}/{stage}.key`.
+ * `~/.gkm/keys/{namespace}/{project}/{stage}.key`.
  */
 export function generateEnvFiles(
 	options: TemplateOptions,

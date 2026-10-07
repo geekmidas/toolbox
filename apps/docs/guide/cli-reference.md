@@ -297,7 +297,13 @@ Options:
   --tag <tag>            Image tag (default: stage-timestamp)
   --skip-push            Skip pushing the image to the registry
   --skip-build           Skip the build step and use an existing one
+  --json                 Write events as JSON lines on stdout; never prompts
+  --dry-run              Show what would be created or reused; change nothing
 ```
+
+Exit code 0 when the deploy finished, 1 when anything stopped it. The same
+deploy is available to programs as `deploy()` from `@geekmidas/cli/deploy` —
+see [Deploying from a program](./deployment.md#deploying-from-a-program).
 
 ### `gkm deploy:github`
 
@@ -318,7 +324,7 @@ GitHub (through `gh`, so be logged in) it creates the `<stage>` environment and
 sets `AWS_ROLE_ARN`, which the generated deploy workflow reads. With
 `secrets.store` set to SSM it pushes the stage's local secrets to SSM in the
 same account, with the same profile, and hands GitHub no key; with the `'file'`
-store it sets `GKM_SECRETS_KEY` (from `~/.gkm/<project>/<stage>.key`).
+store it sets `GKM_SECRETS_KEY` (from `~/.gkm/keys/<namespace>/<project>/<stage>.key`).
 Re-running it converges.
 
 | Option | |

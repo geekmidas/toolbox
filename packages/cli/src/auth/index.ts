@@ -1,5 +1,4 @@
-import { stdin as input, stdout as output } from 'node:process';
-import * as readline from 'node:readline/promises';
+import { prompt as ask } from '../prompt';
 import {
 	getCredentialsPath,
 	getDokployCredentials,
@@ -36,72 +35,8 @@ export async function validateDokployToken(
 	return api.validateToken();
 }
 
-/**
- * Prompt for input (handles both TTY and non-TTY)
- */
-async function prompt(message: string, hidden = false): Promise<string> {
-	if (!process.stdin.isTTY) {
-		throw new Error(
-			'Interactive input required. Please provide --token option.',
-		);
-	}
-
-	if (hidden) {
-		// For hidden input, use raw mode directly without readline
-		process.stdout.write(message);
-
-		return new Promise((resolve, reject) => {
-			let value = '';
-
-			const cleanup = () => {
-				process.stdin.setRawMode(false);
-				process.stdin.pause();
-				process.stdin.removeListener('data', onData);
-				process.stdin.removeListener('error', onError);
-			};
-
-			const onError = (err: Error) => {
-				cleanup();
-				reject(err);
-			};
-
-			const onData = (char: Buffer) => {
-				const c = char.toString();
-
-				if (c === '\n' || c === '\r') {
-					cleanup();
-					process.stdout.write('\n');
-					resolve(value);
-				} else if (c === '\u0003') {
-					// Ctrl+C
-					cleanup();
-					process.stdout.write('\n');
-					process.exit(1);
-				} else if (c === '\u007F' || c === '\b') {
-					// Backspace
-					if (value.length > 0) {
-						value = value.slice(0, -1);
-					}
-				} else {
-					value += c;
-				}
-			};
-
-			process.stdin.setRawMode(true);
-			process.stdin.resume();
-			process.stdin.on('data', onData);
-			process.stdin.on('error', onError);
-		});
-	} else {
-		// For visible input, use readline
-		const rl = readline.createInterface({ input, output });
-		try {
-			return await rl.question(message);
-		} finally {
-			rl.close();
-		}
-	}
-}
+/** What answers a login prompt without a terminal. */
+const LOGIN_INSTEAD = 'Please provide --token option.';
 
 /**
  * Login to a service
@@ -119,8 +54,11 @@ export async function loginCommand(options: LoginOptions): Promise<void> {
 		// Get endpoint
 		let endpoint = providedEndpoint;
 		if (!endpoint) {
-			endpoint = await prompt(
+			endpoint = await ask(
 				'Dokploy URL (e.g., https://dokploy.example.com): ',
+				{
+					instead: LOGIN_INSTEAD,
+				},
 			);
 		}
 
@@ -139,7 +77,10 @@ export async function loginCommand(options: LoginOptions): Promise<void> {
 		let token = providedToken;
 		if (!token) {
 			logger.log(`\nGenerate a token at: ${endpoint}/settings/profile\n`);
-			token = await prompt('API Token: ', true);
+			token = await ask('API Token: ', {
+				hidden: true,
+				instead: LOGIN_INSTEAD,
+			});
 		}
 
 		if (!token) {
@@ -180,7 +121,10 @@ export async function loginCommand(options: LoginOptions): Promise<void> {
 			logger.log(
 				'\nGenerate a token at: https://hpanel.hostinger.com/profile/api\n',
 			);
-			token = await prompt('API Token: ', true);
+			token = await ask('API Token: ', {
+				hidden: true,
+				instead: LOGIN_INSTEAD,
+			});
 		}
 
 		if (!token) {

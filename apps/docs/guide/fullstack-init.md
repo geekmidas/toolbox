@@ -191,7 +191,7 @@ release should also need approval:
 |---|---|---|
 | variable `AWS_ROLE_ARN` | SST | an IAM role that trusts GitHub's OIDC provider for this repo |
 | the stage's secrets | SST | read from SSM in the stage's account by the deploy, with the role; written there by `gkm secrets:set … --stage <stage>` |
-| secret `GKM_SECRETS_KEY` | Dokploy | the stage's key, from `~/.gkm/<project>/<stage>.key` — the encrypted file itself is under the gitignored `.gkm/`, so set `secrets.store` to a store CI can reach |
+| secret `GKM_SECRETS_KEY` | Dokploy | the stage's key, from `~/.gkm/keys/<namespace>/<project>/<stage>.key` — the encrypted file itself is under the gitignored `.gkm/`, so set `secrets.store` to a store CI can reach |
 | secret `DOKPLOY_API_TOKEN`, variable `DOKPLOY_ENDPOINT` | Dokploy | your Dokploy API token and URL |
 
 ## Step-by-Step Execution
@@ -397,7 +397,7 @@ v10 that import `@geekmidas/ui` can stay on its last published version, or run
 
 ### 10. Initialize Encrypted Secrets
 
-Secrets are encrypted and stored at `.gkm/secrets/dev.json`. The decryption key is stored outside the project at `~/.gkm/{projectName}/development.key`.
+Secrets are encrypted and stored at `.gkm/secrets/dev.json`. The decryption key is stored outside the project at `~/.gkm/keys/{namespace}/{project}/development.key` (under `$GKM_HOME` when that is set).
 
 **Auto-generated secrets:**
 

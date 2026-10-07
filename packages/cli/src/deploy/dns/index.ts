@@ -5,6 +5,7 @@
  */
 
 import { lookup } from 'node:dns/promises';
+import { output } from '../../output';
 import type {
 	DnsConfig,
 	DnsProvider as DnsProviderConfig,
@@ -22,7 +23,7 @@ import {
 	type UpsertDnsRecord,
 } from './DnsProvider';
 
-const logger = console;
+const logger = output;
 
 /**
  * Check if DNS config is legacy format (single domain with `domain` property)

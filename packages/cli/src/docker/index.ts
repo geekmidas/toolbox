@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { loadConfig, loadWorkspaceConfig } from '../config';
 import { getPublicUrlArgNames } from '../deploy/domain.js';
+import { output } from '../output';
 import { COMPOSE_PATH } from '../reconcile/index.js';
 import { reconcileWorkspace } from '../reconcile/workspace.js';
 import { run } from '../run';
@@ -33,7 +34,8 @@ export {
 	isMonorepo,
 } from './templates';
 
-const logger = console;
+// Through `output`, so a deploy run that generates a Dockerfile hears it.
+const logger = output;
 
 /** `docker build` failed; what docker printed above says why. */
 export class DockerBuildFailed extends Error {
@@ -88,6 +90,11 @@ export interface DockerOptions {
 	turbo?: boolean;
 	/** Package name for turbo prune (defaults to package.json name) */
 	turboPackage?: string;
+	/**
+	 * The directory to generate for — an app's own, when a deploy builds it.
+	 * Defaults to the process's working directory.
+	 */
+	cwd?: string;
 }
 
 export interface DockerGeneratedFiles {
@@ -107,8 +114,10 @@ export interface DockerGeneratedFiles {
 export async function dockerCommand(
 	options: DockerOptions,
 ): Promise<DockerGeneratedFiles | WorkspaceDockerResult> {
+	const cwd = options.cwd ?? process.cwd();
+
 	// Load config with workspace detection
-	const loadedConfig = await loadWorkspaceConfig();
+	const loadedConfig = await loadWorkspaceConfig(cwd);
 
 	// Route to workspace docker mode for multi-app workspaces
 	if (loadedConfig.type === 'workspace') {
@@ -117,7 +126,7 @@ export async function dockerCommand(
 	}
 
 	// Single-app mode - use existing logic
-	const config = await loadConfig();
+	const config = await loadConfig(cwd);
 	const dockerConfig = resolveDockerConfig(config);
 
 	const healthCheckPath = '/health';
@@ -129,7 +138,7 @@ export async function dockerCommand(
 
 	if (useSlim) {
 		// Verify pre-built bundle exists for slim mode
-		const distDir = join(process.cwd(), '.gkm', 'server', 'dist');
+		const distDir = join(cwd, '.gkm', 'server', 'dist');
 		const hasBuild = existsSync(join(distDir, 'server.mjs'));
 
 		if (!hasBuild) {
@@ -140,13 +149,13 @@ export async function dockerCommand(
 	}
 
 	// Generate Docker files
-	const dockerDir = join(process.cwd(), '.gkm', 'docker');
+	const dockerDir = join(cwd, '.gkm', 'docker');
 	await mkdir(dockerDir, { recursive: true });
 
 	// Detect package manager from lockfiles
-	const packageManager = detectPackageManager();
-	const inMonorepo = isMonorepo();
-	const hasTurbo = hasTurboConfig();
+	const packageManager = detectPackageManager(cwd);
+	const inMonorepo = isMonorepo(cwd);
+	const hasTurbo = hasTurboConfig(cwd);
 
 	// Auto-enable turbo for monorepos with turbo.json
 	let useTurbo = options.turbo ?? false;
@@ -172,7 +181,7 @@ export async function dockerCommand(
 	if (useTurbo && !options.turboPackage) {
 		try {
 			// eslint-disable-next-line @typescript-eslint/no-require-imports
-			const pkg = require(`${process.cwd()}/package.json`);
+			const pkg = require(`${cwd}/package.json`);
 			if (pkg.name) {
 				turboPackage = pkg.name;
 				logger.log(`   Turbo package: ${turboPackage}`);
@@ -210,7 +219,7 @@ export async function dockerCommand(
 
 	// Generate .dockerignore in project root (Docker looks for it there)
 	const dockerignore = generateDockerignore();
-	const dockerignorePath = join(process.cwd(), '.dockerignore');
+	const dockerignorePath = join(cwd, '.dockerignore');
 	await writeFile(dockerignorePath, dockerignore);
 	logger.log('Generated: .dockerignore (project root)');
 
@@ -229,12 +238,12 @@ export async function dockerCommand(
 
 	// Build Docker image if requested
 	if (options.build) {
-		await buildDockerImage(dockerConfig.imageName, options);
+		await buildDockerImage(dockerConfig.imageName, options, cwd);
 	}
 
 	// Push Docker image if requested
 	if (options.push) {
-		await pushDockerImage(dockerConfig.imageName, options);
+		await pushDockerImage(dockerConfig.imageName, options, cwd);
 	}
 
 	return result;
@@ -283,6 +292,7 @@ function ensureLockfile(cwd: string): (() => void) | null {
 async function buildDockerImage(
 	imageName: string,
 	options: DockerOptions,
+	cwd: string,
 ): Promise<void> {
 	const tag = options.tag ?? 'latest';
 	const registry = options.registry;
@@ -293,8 +303,6 @@ async function buildDockerImage(
 	);
 
 	logger.log(`\n🐳 Building Docker image: ${fullImageName}`);
-
-	const cwd = process.cwd();
 
 	// Ensure lockfile exists (copy from monorepo root if needed)
 	const cleanup = ensureLockfile(cwd);
@@ -326,6 +334,7 @@ async function buildDockerImage(
 async function pushDockerImage(
 	imageName: string,
 	options: DockerOptions,
+	cwd: string,
 ): Promise<void> {
 	const tag = options.tag ?? 'latest';
 	const registry = options.registry;
@@ -339,7 +348,7 @@ async function pushDockerImage(
 	logger.log(`\n🚀 Pushing Docker image: ${fullImageName}`);
 
 	try {
-		await run('docker', ['push', fullImageName], { cwd: process.cwd() });
+		await run('docker', ['push', fullImageName], { cwd });
 		logger.log(`✅ Docker image pushed: ${fullImageName}`);
 	} catch (error) {
 		throw new DockerPushFailed(fullImageName, error);

@@ -13,6 +13,7 @@
 
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { FileSecretsStore } from './file.js';
+import { keystoreProject } from './keystore.js';
 import type { StageSecrets } from './types.js';
 
 export interface SecretsStore {
@@ -39,7 +40,8 @@ export interface CustomSecretsStoreConfig {
  * `secrets.store` in gkm.config.ts.
  *
  * `'file'` — the default — keeps each stage's secrets in the encrypted
- * `.gkm/secrets/<stage>.json` beside its key in `~/.gkm/`. It cannot serve a
+ * `.gkm/secrets/<stage>.json`, its key in the CLI's home (`GKM_HOME`, else
+ * `~/.gkm`). It cannot serve a
  * deploy from CI while `.gkm/` is gitignored; `ssm` or a custom store can.
  */
 export type SecretsStoreConfig =
@@ -54,6 +56,11 @@ export interface SecretsStoreOptions {
 	 * whichever account the shell was exported for.
 	 */
 	profile?: string;
+	/**
+	 * The CLI's home, where a file store's keys are kept. Defaults to
+	 * `GKM_HOME`, else `~/.gkm`.
+	 */
+	home?: string;
 }
 
 /**
@@ -71,7 +78,10 @@ export async function secretsStoreFor(
 	const configured = workspace.secrets.store ?? 'file';
 
 	if (stage === workspace.stages.local || configured === 'file') {
-		return new FileSecretsStore(workspace.root);
+		return new FileSecretsStore(
+			workspace.root,
+			keystoreProject(workspace, options.home),
+		);
 	}
 
 	if (configured.provider !== 'ssm') {

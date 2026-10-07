@@ -142,7 +142,7 @@ my-project/
 
 **Secrets Storage:**
 
-Secrets are stored encrypted at `.gkm/secrets/{stage}.json` with decryption keys at `~/.gkm/{project-name}/{stage}.key`. This separates secrets from the codebase while keeping them accessible locally.
+Secrets are stored encrypted at `.gkm/secrets/{stage}.json` with decryption keys at `~/.gkm/keys/{namespace}/{project}/{stage}.key` (`$GKM_HOME/keys/…` when `GKM_HOME` is set). This separates secrets from the codebase while keeping them accessible locally.
 
 ### Build
 
@@ -557,7 +557,7 @@ gkm secrets:import secrets.json --stage production
 
 Secrets are encrypted using AES-256-GCM:
 - Encrypted data stored at `.gkm/secrets/{stage}.json`
-- Decryption keys stored at `~/.gkm/{project-name}/{stage}.key`
+- Decryption keys stored at `~/.gkm/keys/{namespace}/{project}/{stage}.key`, keyed by the workspace's deploy identity rather than its folder
 - Keys are never committed to version control
 
 **Service Credentials:**

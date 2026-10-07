@@ -196,7 +196,7 @@ The config is checked when it loads:
 Projects created before `stages` existed ran locally as `development`. Add
 `stages: { local: 'development', deployed: [...] }` to keep using
 `.gkm/secrets/development.json`, or rename that file (and its key in
-`~/.gkm/<project>/`) to the new local stage.
+`~/.gkm/keys/<namespace>/<project>/`) to the new local stage.
 :::
 
 ### There Is One Config, at the Root
