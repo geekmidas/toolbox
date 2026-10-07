@@ -10,6 +10,19 @@ gkm compose --stage production --tag v1.4.0   # the images CI pushed as v1.4.0
 gkm compose --stage production --down    # stop it (volumes are kept)
 ```
 
+`gkm compose` is the built-in `compose` deploy target with a few switches of
+its own. The same stack comes up through `gkm deploy`, with the same phases,
+events, lock and state:
+
+```bash
+gkm deploy --target compose --stage development          # the local stage
+gkm deploy --target compose --stage production --tag v1.4.0
+```
+
+`compose` is the one built-in target that can also run the project's local
+stage: the stack runs on the machine that deploys it. With `deploy.default:
+'compose'`, `gkm deploy --stage production` needs no `--target`.
+
 It reads the same construct manifest as `gkm dev` and `gkm deploy`. Nothing is
 configured for it: the apps, the databases they need, the keys each one reads,
 and the hosts they answer on all come from what the workspace declares.
@@ -53,13 +66,14 @@ tagged with the commit (`git rev-parse --short HEAD`, with `-dirty` when the
 tree has changes). `--build` and `--pull` override the default — build when no
 tag is given, pull when one is. `--pull` without `--tag` pulls `latest`.
 
-The registry is `deploy.dokploy.registry` in `gkm.config.ts`; without one,
-image names have no registry prefix.
+The registry is `deploy.registry` in `gkm.config.ts` — the same one every
+target pushes to and pulls from; without one, image names have no registry
+prefix.
 
-Each run records, per app, the tag it ran and the digest that tag resolved to
-(for an image built here and never pushed, its image id) in the stage's
-deploy state, under `compose:<app>` — so "what is this stage running" has an
-exact answer.
+Each run records, per app, the image ref, the tag it ran and the digest that
+tag resolved to (for an image built here and never pushed, its image id) in the
+stage's deploy state, under `images` — the same record a Dokploy deploy keeps —
+so "what is this stage running" has an exact answer.
 
 ### A site's tag is `<tag>-<stage>`
 
@@ -163,6 +177,29 @@ For the local stage the URLs then carry the port
 (`https://api.shop.localhost:8443`), and the env files and site builds use them.
 The local CA's root is copied to `.gkm/compose/<stage>/caddy-root.crt`; point
 `NODE_EXTRA_CA_CERTS` at it, or trust it in a browser.
+
+## The phases
+
+| Phase | What it does |
+| --- | --- |
+| `validate` | the stack, worked out from the manifest; with a tag, every image looked up in the registry |
+| `plan` (`--dry-run`) | the files written, and what a run would build, pull and start — nothing else |
+| `provision` | the stage's generated secrets kept, the files written, the infrastructure started, its databases, roles, grants and migrations applied |
+| `build` | each backend bundled (in the deploy's sandbox, since it imports the project's code) and every image built — or, with a tag, pulled |
+| `release` | `docker compose up --wait --remove-orphans`, and each app's image recorded |
+| `verify` | each app asked through Caddy over HTTPS — an API at `/health`, a site at `/` — with the certificate verified |
+
+`verify` goes through the edge by hostname, so it proves what `up --wait`
+cannot: that Caddy routes each host and presents a certificate a client
+accepts. On the local stage it trusts the copied `caddy-root.crt` and connects
+to 127.0.0.1. Each app is asked for up to three minutes; one that never answers
+fails the deploy with `ComposeAppsUnhealthy`, naming it and what it answered.
+The target has no rollback: the previous images are still tagged, so deploying
+the previous tag again is the way back.
+
+The events are the ones every target reports: `artifact.built` per image (with
+its digest), `resource.applied` per service, `app.deployed` per app and
+`health.checked` per check — `gkm deploy --target compose --json` writes them.
 
 ## Auth and trusted origins
 

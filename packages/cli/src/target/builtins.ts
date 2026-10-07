@@ -26,6 +26,8 @@ export interface BuiltinTarget {
 
 export const BUILTIN_TARGETS = {
 	dokploy: { runtime: 'server', status: 'available' },
+	// One Docker Compose stack behind Caddy, on the machine that runs it.
+	compose: { runtime: 'server', status: 'available' },
 	sst: { runtime: 'aws', status: 'available' },
 	// Neither runs containers the project controls, so both take the managed
 	// defaults when they arrive.

@@ -20,7 +20,7 @@ export class RegistryNotConfigured extends Error {
 	constructor(readonly stage: string) {
 		super(
 			`Deploying '${stage}' needs a container registry: Dokploy pulls each app's image from one. ` +
-				`Set deploy.dokploy.registry in gkm.config.ts (e.g. 'ghcr.io/acme'), and deploy.dokploy.registryId if Dokploy already holds that registry's credentials.`,
+				`Set deploy.registry in gkm.config.ts (e.g. 'ghcr.io/acme'), and deploy.dokploy.registryId if Dokploy already holds that registry's credentials.`,
 		);
 		this.name = 'RegistryNotConfigured';
 	}
@@ -101,7 +101,7 @@ async function registryById(
 
 export interface ResolveRegistryOptions {
 	stage: string;
-	/** `deploy.dokploy.registry`: where images are pushed. */
+	/** `deploy.registry`: where images are pushed. */
 	registry: string | undefined;
 	/** `deploy.dokploy.registryId`: a registry chosen by id. */
 	configuredId: string | undefined;

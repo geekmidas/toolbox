@@ -95,272 +95,318 @@ interface Response {
 	body: string;
 }
 
-describe.runIf(RUN)('gkm compose, end to end', { timeout: 60_000 }, () => {
-	const name = `compose-e2e-${randomBytes(3).toString('hex')}`;
-	const project = `${name}-development`;
-	let dir: string;
-	let https: number;
-	let ca: string;
-	let output = '';
+/**
+ * The two ways a stack comes up — `gkm compose`, and the compose target
+ * through `gkm deploy` — each against a project and a stack of its own. They
+ * are one code path; both are run so neither entry point can drift.
+ */
+const ENTRY_POINTS = [
+	{ command: 'gkm compose', args: ['compose'] },
+	{
+		command: 'gkm deploy --target compose',
+		args: ['deploy', '--target', 'compose', '--stage', 'development'],
+	},
+] as const;
 
-	const host = (app: 'api' | 'auth' | 'web') =>
-		app === 'web' ? `${name}.localhost` : `${app}.${name}.localhost`;
-	const origin = (app: 'api' | 'auth' | 'web') =>
-		`https://${host(app)}:${https}`;
-	const file = () =>
-		join(dir, '.gkm', 'compose', 'development', 'docker-compose.yml');
+for (const entry of ENTRY_POINTS) endToEnd(entry);
 
-	/**
-	 * A request to the edge, as a browser makes one: to the app's hostname,
-	 * verified against Caddy's local CA. The hostname is sent as SNI and Host
-	 * and the connection made to loopback, so nothing depends on how this
-	 * machine resolves `*.localhost`.
-	 */
-	function edge(
-		app: 'api' | 'auth' | 'web',
-		path: string,
-		init: {
-			method?: string;
-			headers?: Record<string, string>;
-			body?: unknown;
-		} = {},
-	): Promise<Response> {
-		const body =
-			init.body === undefined ? undefined : JSON.stringify(init.body);
-		return new Promise((resolve, reject) => {
-			const req = httpsRequest(
-				{
-					host: '127.0.0.1',
-					port: https,
-					servername: host(app),
-					path,
-					method: init.method ?? 'GET',
-					ca,
-					headers: {
-						host: `${host(app)}:${https}`,
-						...(body
-							? {
-									'content-type': 'application/json',
-									'content-length': Buffer.byteLength(body),
-								}
-							: {}),
-						...init.headers,
-					},
-				},
-				(res) => {
-					let text = '';
-					res.on('data', (chunk: Buffer) => {
-						text += chunk.toString();
-					});
-					res.on('end', () =>
-						resolve({
-							status: res.statusCode ?? 0,
-							headers: res.headers,
-							body: text,
-						}),
+function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
+	describe.runIf(RUN)(
+		`${entry.command}, end to end`,
+		{ timeout: 60_000 },
+		() => {
+			const name = `compose-e2e-${randomBytes(3).toString('hex')}`;
+			const project = `${name}-development`;
+			let dir: string;
+			let https: number;
+			let ca: string;
+			let output = '';
+
+			const host = (app: 'api' | 'auth' | 'web') =>
+				app === 'web' ? `${name}.localhost` : `${app}.${name}.localhost`;
+			const origin = (app: 'api' | 'auth' | 'web') =>
+				`https://${host(app)}:${https}`;
+			const file = () =>
+				join(dir, '.gkm', 'compose', 'development', 'docker-compose.yml');
+
+			/**
+			 * A request to the edge, as a browser makes one: to the app's hostname,
+			 * verified against Caddy's local CA. The hostname is sent as SNI and Host
+			 * and the connection made to loopback, so nothing depends on how this
+			 * machine resolves `*.localhost`.
+			 */
+			function edge(
+				app: 'api' | 'auth' | 'web',
+				path: string,
+				init: {
+					method?: string;
+					headers?: Record<string, string>;
+					body?: unknown;
+				} = {},
+			): Promise<Response> {
+				const body =
+					init.body === undefined ? undefined : JSON.stringify(init.body);
+				return new Promise((resolve, reject) => {
+					const req = httpsRequest(
+						{
+							host: '127.0.0.1',
+							port: https,
+							servername: host(app),
+							path,
+							method: init.method ?? 'GET',
+							ca,
+							headers: {
+								host: `${host(app)}:${https}`,
+								...(body
+									? {
+											'content-type': 'application/json',
+											'content-length': Buffer.byteLength(body),
+										}
+									: {}),
+								...init.headers,
+							},
+						},
+						(res) => {
+							let text = '';
+							res.on('data', (chunk: Buffer) => {
+								text += chunk.toString();
+							});
+							res.on('end', () =>
+								resolve({
+									status: res.statusCode ?? 0,
+									headers: res.headers,
+									body: text,
+								}),
+							);
+						},
 					);
-				},
-			);
-			req.on('error', reject);
-			if (body) req.write(body);
-			req.end();
-		});
-	}
-
-	/** `name=value` for each cookie a response set. */
-	const cookies = (response: Response) =>
-		([] as string[])
-			.concat(response.headers['set-cookie'] ?? [])
-			.map((cookie) => cookie.split(';')[0])
-			.join('; ');
-
-	/** A request from inside the API's container, across the compose network. */
-	const fromApi = (script: string) =>
-		exec('docker', [
-			'compose',
-			'-p',
-			project,
-			'-f',
-			file(),
-			'exec',
-			'-T',
-			'api',
-			'node',
-			'-e',
-			script,
-		]);
-
-	beforeAll(async () => {
-		if (!existsSync(DIST)) {
-			throw new Error(
-				`The CLI is not built (${DIST}). Run \`npx tsdown --config ./tsdown.config.ts\` from the repo root first.`,
-			);
-		}
-
-		dir = realpathSync(await createTempDir('gkm-compose-e2e-'));
-		writeComposeApp(dir, { name });
-
-		// What a real project has: a lockfile the site's image installs from,
-		// and a commit its images are tagged with.
-		await exec('pnpm', ['install', '--lockfile-only'], { cwd: dir });
-		const git = childEnv({
-			GIT_AUTHOR_NAME: 'gkm',
-			GIT_AUTHOR_EMAIL: 'gkm@example.com',
-			GIT_COMMITTER_NAME: 'gkm',
-			GIT_COMMITTER_EMAIL: 'gkm@example.com',
-		});
-		await exec('git', ['init', '-q'], { cwd: dir, env: git });
-		await exec('git', ['add', '-A'], { cwd: dir, env: git });
-		await exec('git', ['commit', '-q', '-m', 'init'], { cwd: dir, env: git });
-
-		https = await freePort();
-		const http = await freePort();
-
-		output = await exec(process.execPath, [CLI, 'compose'], {
-			cwd: dir,
-			env: childEnv({
-				GKM_COMPOSE_HTTPS_PORT: String(https),
-				GKM_COMPOSE_HTTP_PORT: String(http),
-			}),
-		});
-
-		ca = readFileSync(
-			join(dir, '.gkm', 'compose', 'development', 'caddy-root.crt'),
-			'utf-8',
-		);
-	}, BUILD_TIMEOUT);
-
-	afterAll(async () => {
-		// GKM_E2E_KEEP=1 leaves the stack up to look at after a failure.
-		if (process.env.GKM_E2E_KEEP === '1') {
-			console.log(`Kept ${project} in ${dir}`);
-			return;
-		}
-		if (dir && existsSync(file())) {
-			await exec('docker', [
-				'compose',
-				'-p',
-				project,
-				'-f',
-				file(),
-				'down',
-				'--volumes',
-				'--remove-orphans',
-				'--rmi',
-				'local',
-			]).catch(() => {});
-			// The images this run built: named, so `--rmi local` leaves them.
-			const images = await exec('docker', [
-				'images',
-				'--quiet',
-				'--filter',
-				`reference=${name}/*`,
-			]).catch(() => '');
-			const ids = [...new Set(images.split('\n').filter(Boolean))];
-			if (ids.length > 0) {
-				await exec('docker', ['image', 'rm', '-f', ...ids]).catch(() => {});
+					req.on('error', reject);
+					if (body) req.write(body);
+					req.end();
+				});
 			}
-		}
-		if (dir) await cleanupDir(dir);
-	}, 5 * 60_000);
 
-	it('starts the stack and says where each app answers', () => {
-		expect(output).toContain(`${project} is running`);
-		expect(output).toContain(origin('api'));
-		expect(output).toContain(origin('web'));
-	});
+			/** `name=value` for each cookie a response set. */
+			const cookies = (response: Response) =>
+				([] as string[])
+					.concat(response.headers['set-cookie'] ?? [])
+					.map((cookie) => cookie.split(';')[0])
+					.join('; ');
 
-	it('serves the site, built with the public URLs it was given', async () => {
-		const page = await edge('web', '/');
-		expect(page.status).toBe(200);
+			/** A request from inside the API's container, across the compose network. */
+			const fromApi = (script: string) =>
+				exec('docker', [
+					'compose',
+					'-p',
+					project,
+					'-f',
+					file(),
+					'exec',
+					'-T',
+					'api',
+					'node',
+					'-e',
+					script,
+				]);
 
-		const script = page.body.match(/src="(\/assets\/[^"]+\.js)"/)?.[1];
-		expect(script).toBeDefined();
-		const bundle = await edge('web', script!);
-		expect(bundle.body).toContain(origin('api'));
-		expect(bundle.body).toContain(origin('auth'));
-	});
+			beforeAll(async () => {
+				if (!existsSync(DIST)) {
+					throw new Error(
+						`The CLI is not built (${DIST}). Run \`npx tsdown --config ./tsdown.config.ts\` from the repo root first.`,
+					);
+				}
 
-	it('(a) signs in from the site, setting the session on the shared cookie domain', async () => {
-		const email = `a-${randomBytes(4).toString('hex')}@example.com`;
-		const signUp = await edge('auth', '/api/auth/sign-up/email', {
-			method: 'POST',
-			headers: { origin: origin('web') },
-			body: { email, password: 'correct-horse-battery', name: 'Ada' },
-		});
-		expect(signUp.status).toBe(200);
+				dir = realpathSync(await createTempDir('gkm-compose-e2e-'));
+				writeComposeApp(dir, { name });
 
-		const signIn = await edge('auth', '/api/auth/sign-in/email', {
-			method: 'POST',
-			headers: { origin: origin('web') },
-			body: { email, password: 'correct-horse-battery' },
-		});
-		expect(signIn.status).toBe(200);
+				// What a real project has: a lockfile the site's image installs from,
+				// and a commit its images are tagged with.
+				await exec('pnpm', ['install', '--lockfile-only'], { cwd: dir });
+				const git = childEnv({
+					GIT_AUTHOR_NAME: 'gkm',
+					GIT_AUTHOR_EMAIL: 'gkm@example.com',
+					GIT_COMMITTER_NAME: 'gkm',
+					GIT_COMMITTER_EMAIL: 'gkm@example.com',
+				});
+				await exec('git', ['init', '-q'], { cwd: dir, env: git });
+				await exec('git', ['add', '-A'], { cwd: dir, env: git });
+				await exec('git', ['commit', '-q', '-m', 'init'], {
+					cwd: dir,
+					env: git,
+				});
 
-		const set = ([] as string[]).concat(signIn.headers['set-cookie'] ?? []);
-		const session = set.find((cookie) => /session_token=/.test(cookie));
-		expect(session).toBeDefined();
-		expect(session).toMatch(new RegExp(`Domain=\\.?${name}\\.localhost`, 'i'));
-		expect(session).toMatch(/Secure/i);
-	});
+				https = await freePort();
+				const http = await freePort();
 
-	it('(b) the API validates the session by asking the auth server inside the network', async () => {
-		const email = `b-${randomBytes(4).toString('hex')}@example.com`;
-		const signUp = await edge('auth', '/api/auth/sign-up/email', {
-			method: 'POST',
-			headers: { origin: origin('web') },
-			body: { email, password: 'correct-horse-battery', name: 'Grace' },
-		});
-		expect(signUp.status).toBe(200);
+				output = await exec(process.execPath, [CLI, ...entry.args], {
+					cwd: dir,
+					env: childEnv({
+						GKM_COMPOSE_HTTPS_PORT: String(https),
+						GKM_COMPOSE_HTTP_PORT: String(http),
+					}),
+				});
 
-		const me = await edge('api', '/me', {
-			headers: { cookie: cookies(signUp), origin: origin('web') },
-		});
-		expect(me.status).toBe(200);
-		expect(JSON.parse(me.body)).toEqual({ email });
+				ca = readFileSync(
+					join(dir, '.gkm', 'compose', 'development', 'caddy-root.crt'),
+					'utf-8',
+				);
+			}, BUILD_TIMEOUT);
 
-		const anonymous = await edge('api', '/me');
-		expect(anonymous.status).toBe(401);
-	});
+			afterAll(async () => {
+				// GKM_E2E_KEEP=1 leaves the stack up to look at after a failure.
+				if (process.env.GKM_E2E_KEEP === '1') {
+					console.log(`Kept ${project} in ${dir}`);
+					return;
+				}
+				if (dir && existsSync(file())) {
+					await exec('docker', [
+						'compose',
+						'-p',
+						project,
+						'-f',
+						file(),
+						'down',
+						'--volumes',
+						'--remove-orphans',
+						'--rmi',
+						'local',
+					]).catch(() => {});
+					// The images this run built: named, so `--rmi local` leaves them.
+					const images = await exec('docker', [
+						'images',
+						'--quiet',
+						'--filter',
+						`reference=${name}/*`,
+					]).catch(() => '');
+					const ids = [...new Set(images.split('\n').filter(Boolean))];
+					if (ids.length > 0) {
+						await exec('docker', ['image', 'rm', '-f', ...ids]).catch(() => {});
+					}
+				}
+				if (dir) await cleanupDir(dir);
+			}, 5 * 60_000);
 
-	it('(c) accepts sign-out from the browser origin and from a sibling service, and refuses an undeclared origin', async () => {
-		const email = `c-${randomBytes(4).toString('hex')}@example.com`;
-		const signUp = await edge('auth', '/api/auth/sign-up/email', {
-			method: 'POST',
-			headers: { origin: origin('web') },
-			body: { email, password: 'correct-horse-battery', name: 'Barbara' },
-		});
-		expect(signUp.status).toBe(200);
-		const browserSession = cookies(signUp);
+			it('starts the stack and says where each app answers', () => {
+				expect(output).toContain(`${project} is running`);
+				expect(output).toContain(origin('api'));
+				expect(output).toContain(origin('web'));
+			});
 
-		// From the browser, through the edge.
-		const signOut = await edge('auth', '/api/auth/sign-out', {
-			method: 'POST',
-			headers: { cookie: browserSession, origin: origin('web') },
-			body: {},
-		});
-		expect(signOut.status).toBe(200);
-		const after = await edge('api', '/me', {
-			headers: { cookie: browserSession },
-		});
-		expect(after.status).toBe(401);
+			it('verified each app through Caddy, and recorded what the stage runs', () => {
+				// `verify`: every app answered over HTTPS, through the edge.
+				expect(output).toContain(`✓ api`);
+				expect(output).toContain(`✓ auth`);
+				expect(output).toContain(`✓ web`);
 
-		// From the API's container, to the auth server on the compose network,
-		// carrying the API's internal origin.
-		const signIn = await edge('auth', '/api/auth/sign-in/email', {
-			method: 'POST',
-			headers: { origin: origin('web') },
-			body: { email, password: 'correct-horse-battery' },
-		});
-		expect(signIn.status).toBe(200);
-		const serviceSession = cookies(signIn);
+				const { state } = JSON.parse(
+					readFileSync(join(dir, '.gkm', 'deploy-development.json'), 'utf-8'),
+				);
+				expect(Object.keys(state.images).sort()).toEqual([
+					'api',
+					'auth',
+					'web',
+				]);
+				expect(state.images.api.ref).toMatch(
+					new RegExp(`${name}-api:[0-9a-f]+$`),
+				);
+				expect(state.images.api.digest).toMatch(/^sha256:/);
+			});
 
-		const signOutFrom = (from: string) =>
-			fromApi(
-				`fetch('http://auth:3001/api/auth/sign-out', { method: 'POST', headers: { origin: ${JSON.stringify(from)}, cookie: ${JSON.stringify(serviceSession)}, 'content-type': 'application/json' }, body: '{}' }).then((r) => console.log(r.status))`,
-			).then((said) => Number(said.trim().split('\n').pop()));
+			it('serves the site, built with the public URLs it was given', async () => {
+				const page = await edge('web', '/');
+				expect(page.status).toBe(200);
 
-		expect(await signOutFrom('http://evil.example')).toBe(403);
-		expect(await signOutFrom('http://api:3000')).toBe(200);
-	});
-});
+				const script = page.body.match(/src="(\/assets\/[^"]+\.js)"/)?.[1];
+				expect(script).toBeDefined();
+				const bundle = await edge('web', script!);
+				expect(bundle.body).toContain(origin('api'));
+				expect(bundle.body).toContain(origin('auth'));
+			});
+
+			it('(a) signs in from the site, setting the session on the shared cookie domain', async () => {
+				const email = `a-${randomBytes(4).toString('hex')}@example.com`;
+				const signUp = await edge('auth', '/api/auth/sign-up/email', {
+					method: 'POST',
+					headers: { origin: origin('web') },
+					body: { email, password: 'correct-horse-battery', name: 'Ada' },
+				});
+				expect(signUp.status).toBe(200);
+
+				const signIn = await edge('auth', '/api/auth/sign-in/email', {
+					method: 'POST',
+					headers: { origin: origin('web') },
+					body: { email, password: 'correct-horse-battery' },
+				});
+				expect(signIn.status).toBe(200);
+
+				const set = ([] as string[]).concat(signIn.headers['set-cookie'] ?? []);
+				const session = set.find((cookie) => /session_token=/.test(cookie));
+				expect(session).toBeDefined();
+				expect(session).toMatch(
+					new RegExp(`Domain=\\.?${name}\\.localhost`, 'i'),
+				);
+				expect(session).toMatch(/Secure/i);
+			});
+
+			it('(b) the API validates the session by asking the auth server inside the network', async () => {
+				const email = `b-${randomBytes(4).toString('hex')}@example.com`;
+				const signUp = await edge('auth', '/api/auth/sign-up/email', {
+					method: 'POST',
+					headers: { origin: origin('web') },
+					body: { email, password: 'correct-horse-battery', name: 'Grace' },
+				});
+				expect(signUp.status).toBe(200);
+
+				const me = await edge('api', '/me', {
+					headers: { cookie: cookies(signUp), origin: origin('web') },
+				});
+				expect(me.status).toBe(200);
+				expect(JSON.parse(me.body)).toEqual({ email });
+
+				const anonymous = await edge('api', '/me');
+				expect(anonymous.status).toBe(401);
+			});
+
+			it('(c) accepts sign-out from the browser origin and from a sibling service, and refuses an undeclared origin', async () => {
+				const email = `c-${randomBytes(4).toString('hex')}@example.com`;
+				const signUp = await edge('auth', '/api/auth/sign-up/email', {
+					method: 'POST',
+					headers: { origin: origin('web') },
+					body: { email, password: 'correct-horse-battery', name: 'Barbara' },
+				});
+				expect(signUp.status).toBe(200);
+				const browserSession = cookies(signUp);
+
+				// From the browser, through the edge.
+				const signOut = await edge('auth', '/api/auth/sign-out', {
+					method: 'POST',
+					headers: { cookie: browserSession, origin: origin('web') },
+					body: {},
+				});
+				expect(signOut.status).toBe(200);
+				const after = await edge('api', '/me', {
+					headers: { cookie: browserSession },
+				});
+				expect(after.status).toBe(401);
+
+				// From the API's container, to the auth server on the compose network,
+				// carrying the API's internal origin.
+				const signIn = await edge('auth', '/api/auth/sign-in/email', {
+					method: 'POST',
+					headers: { origin: origin('web') },
+					body: { email, password: 'correct-horse-battery' },
+				});
+				expect(signIn.status).toBe(200);
+				const serviceSession = cookies(signIn);
+
+				const signOutFrom = (from: string) =>
+					fromApi(
+						`fetch('http://auth:3001/api/auth/sign-out', { method: 'POST', headers: { origin: ${JSON.stringify(from)}, cookie: ${JSON.stringify(serviceSession)}, 'content-type': 'application/json' }, body: '{}' }).then((r) => console.log(r.status))`,
+					).then((said) => Number(said.trim().split('\n').pop()));
+
+				expect(await signOutFrom('http://evil.example')).toBe(403);
+				expect(await signOutFrom('http://api:3000')).toBe(200);
+			});
+		},
+	);
+}

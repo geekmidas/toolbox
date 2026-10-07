@@ -749,14 +749,17 @@ program
 	.description('Deploy a stage through its target')
 	.option(
 		'--target <name>',
-		'Deploy target: dokploy, sst, or one named in deploy.targets (default: deploy.default)',
+		'Deploy target: dokploy, compose, sst, or one named in deploy.targets (default: deploy.default)',
 	)
 	.option('--provider <provider>', '[DEPRECATED] Use --target instead')
 	.requiredOption(
 		'--stage <stage>',
 		'Deployment stage (e.g., production, staging)',
 	)
-	.option('--tag <tag>', 'Image tag (default: stage-timestamp)')
+	.option(
+		'--tag <tag>',
+		'Image tag (default: stage-timestamp; compose: the commit). Compose pulls a given tag',
+	)
 	.option('--skip-push', 'Skip pushing image to registry')
 	.option('--skip-build', 'Skip build step (use existing build)')
 	.option(

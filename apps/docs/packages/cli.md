@@ -1042,10 +1042,11 @@ export default defineWorkspace({
       production: 'myapp.com',
       staging: 'staging.myapp.com',
     },
+    // Where every target pushes and pulls the apps' images.
+    registry: 'ghcr.io/myorg',
     dokploy: {
       endpoint: 'https://dokploy.myserver.com',
       projectId: 'proj_abc123',
-      registry: 'ghcr.io/myorg',
     },
     dns: {
       provider: 'route53',
