@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/cloud",
-	"version": "10.0.0-alpha.67",
+	"version": "10.0.0-alpha.68",
 	"type": "module",
 	"files": [
 		"dist",

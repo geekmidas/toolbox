@@ -1,5 +1,11 @@
 # @geekmidas/logger
 
+## 10.0.0-alpha.68
+
+### Minor Changes
+
+- [#187](https://github.com/geekmidas/toolbox/pull/187) [`871ba05`](https://github.com/geekmidas/toolbox/commit/871ba057aa0a0f69cf8233366b5f4c311359a7cc) Thanks [@geekmidas](https://github.com/geekmidas)! - Redaction masks the credentials of any URL in a log line: `s3://KEY:SECRET@uploads` is written as `s3://REDACTED@uploads`, in any field at any depth and in the message. Path redaction cannot catch a URL, which turns up under any name (`url`, `origin`, `endpoint`). A URL with a user and no password is left as it is. It is on whenever redaction is, and off with `redact: false`. `redactUrlCredentials` is exported from `@geekmidas/logger/redact`.
+
 ## 10.0.0-alpha.67
 
 ## 10.0.0-alpha.66
