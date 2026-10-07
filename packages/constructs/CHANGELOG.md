@@ -1,5 +1,34 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.61
+
+### Patch Changes
+
+- [#177](https://github.com/geekmidas/toolbox/pull/177) [`7aece20`](https://github.com/geekmidas/toolbox/commit/7aece20749fef144a790a8f3077dc3de2055e0de) Thanks [@geekmidas](https://github.com/geekmidas)! - Production images: an auth server gets a server, a session reaches its endpoint, an HttpError keeps its status, and a site gets its URLs at build time
+
+  - `gkm build --production` for a surface that serves itself — a `BetterAuth` server — now writes and bundles a server that listens on `PORT`, answers `/health` and drains on SIGTERM. It wrote only the dev entry, so its image had no bundle to run.
+  - ⚡️ An endpoint built from a factory's `.session()` with no authorizer was handed `undefined` for its session in a production build, and its session under `gkm dev`. The optimized handlers now read the session whenever one is configured (`Endpoint.hasSession`).
+  - An `HttpError` thrown by a handler or a session callback answered 500 from a production server; it now answers with its own status, as under `gkm dev`, without the stack.
+  - `gkm docker`: a site's public URLs (`VITE_*`, `NEXT_PUBLIC_*`) are build args in `docker-compose.constructs.yml` rather than runtime environment, which a built bundle never reads, and its Dockerfile declares an `ARG` for every one its declaration implies. A site gets no server environment and waits on no infrastructure, and the app services address each other on the compose network rather than through the local edge's hostnames.
+
+- Updated dependencies []:
+  - @geekmidas/audit@10.0.0-alpha.61
+  - @geekmidas/auth@10.0.0-alpha.61
+  - @geekmidas/cache@10.0.0-alpha.61
+  - @geekmidas/db@10.0.0-alpha.61
+  - @geekmidas/emailkit@10.0.0-alpha.61
+  - @geekmidas/envkit@10.0.0-alpha.61
+  - @geekmidas/errors@10.0.0-alpha.61
+  - @geekmidas/events@10.0.0-alpha.61
+  - @geekmidas/logger@10.0.0-alpha.61
+  - @geekmidas/manifest@10.0.0-alpha.61
+  - @geekmidas/rate-limit@10.0.0-alpha.61
+  - @geekmidas/schema@10.0.0-alpha.61
+  - @geekmidas/services@10.0.0-alpha.61
+  - @geekmidas/storage@10.0.0-alpha.61
+  - @geekmidas/telescope@10.0.0-alpha.61
+  - @geekmidas/testkit@10.0.0-alpha.61
+
 ## 10.0.0-alpha.60
 
 ### Patch Changes
