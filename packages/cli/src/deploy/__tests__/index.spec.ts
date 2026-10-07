@@ -1,6 +1,7 @@
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { describe, expect, it, vi } from 'vitest';
+import { ProviderRemoved } from '../../target/provider';
 import { getAppBuildOrder } from '../../workspace/index.js';
 import type { NormalizedWorkspace } from '../../workspace/types.js';
 import {
@@ -8,7 +9,8 @@ import {
 	resolveEnvVar,
 	resolveEnvVars,
 } from '../env-resolver';
-import { generateTag, workspaceDeployCommand } from '../index';
+import { workspaceDeployCommand } from '../index';
+import { generateTag } from '../orchestrate';
 import { createEmptyState } from '../state';
 import type { DeployOptions } from '../types';
 
@@ -216,9 +218,9 @@ describe('workspaceDeployCommand', () => {
 				stage: 'production',
 			};
 
-			await expect(workspaceDeployCommand(workspace, options)).rejects.toThrow(
-				'Workspace deployment only supports Dokploy',
-			);
+			await expect(
+				workspaceDeployCommand(workspace, options),
+			).rejects.toBeInstanceOf(ProviderRemoved);
 		});
 
 		it('should reject aws-lambda provider', async () => {
@@ -228,9 +230,12 @@ describe('workspaceDeployCommand', () => {
 				stage: 'production',
 			};
 
-			await expect(workspaceDeployCommand(workspace, options)).rejects.toThrow(
-				'Workspace deployment only supports Dokploy',
-			);
+			await expect(
+				workspaceDeployCommand(workspace, options),
+			).rejects.toMatchObject({
+				name: 'ProviderRemoved',
+				provider: 'aws-lambda',
+			});
 		});
 	});
 

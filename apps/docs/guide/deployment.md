@@ -84,7 +84,7 @@ export default defineWorkspace({
 
 ```bash
 # Deploy to production
-gkm deploy --provider dokploy --stage production
+gkm deploy --stage production
 ```
 
 ---
@@ -600,6 +600,78 @@ docker run -e GKM_MASTER_KEY="$(cat .gkm/server/master.key)" my-api:latest
 
 ---
 
+## Deploy targets
+
+`gkm deploy` deploys a stage through a *target*: `deploy.default`, or
+`--target <name>`. `dokploy` ships with the CLI. `sst` is a valid default for
+building and `gkm dev`, but is deployed by `sst deploy` for now, and `gkm
+deploy` says so. Any other target is a package the project installs and
+names:
+
+```ts
+// gkm.config.ts
+deploy: {
+  default: 'acme',
+  targets: {
+    acme: '@acme/gkm-target',                    // a package
+    fly: ['@acme/gkm-fly', { org: 'acme' }],     // a package, with options
+    local: defineTarget({ … }),                  // a target object
+  },
+}
+```
+
+A name resolves to the first of: the host's own targets (`deploy({ targets })`),
+the built-ins, then `deploy.targets` — so a dependency can never take over
+`dokploy`. A name none of them has fails with `UnknownDeployTarget`. A package
+is never guessed from a name (`acme` → `@acme/gkm-target`): an unclaimed npm
+scope can be claimed by anyone, and a deploy runs its target with the stage's
+credentials.
+
+An app on the default follows `--target`; an app whose own `deploy` names
+another target is skipped, with the command that deploys it.
+
+### Writing a target
+
+A target implements the phases `validate → plan` (a dry run) or
+`validate → provision → build → release → verify`, and `rollback` when it
+can. Each phase is handed the identity, the workspace and its manifest, the
+root as `cwd`, the `CredentialProvider`, the stage's `StateStore` (locked for
+a real run), the stage's secrets (masked in every line once read), a logger,
+the `AbortSignal`, an event emitter and `name()` for namespaced resource
+names. Every phase must be safe to run again.
+
+```ts
+import { defineTarget } from '@geekmidas/cli/target';
+import { z } from 'zod';
+
+export default defineTarget({
+  name: 'acme',
+  runtime: 'server', // or 'aws': which backends `gkm dev` and `gkm build` choose
+  capabilities: { rollback: true, migrations: 'target', images: true },
+  options: z.object({ region: z.string().default('ams') }),
+  async validate(ctx) {
+    return { region: ctx.options.region }; // ctx.options is typed
+  },
+  async plan(ctx, run) {
+    ctx.emit({ type: 'resource.planned', key: 'app:api', resourceType: 'app', action: 'create' });
+  },
+  async release(ctx, run) { /* … */ },
+  async rollback(ctx, run, failure) { /* … */ },
+  result(ctx, run) { /* the DeployResult */ },
+});
+```
+
+The package declares its runtime in `package.json`, so `gkm dev` and
+`gkm build` read it without loading the target:
+
+```json
+{ "name": "@acme/gkm-target", "gkm": { "runtime": "server" } }
+```
+
+`--provider dokploy` still works as `--target dokploy`, with a warning.
+`--provider docker` and `--provider aws-lambda` are removed (`ProviderRemoved`):
+use `gkm docker` or `gkm compose`, and SST.
+
 ## Dokploy Deployment
 
 [Dokploy](https://dokploy.com) is a self-hosted deployment platform.
@@ -619,13 +691,13 @@ gkm login --provider dokploy
 
 ```bash
 # Deploy to production
-gkm deploy --provider dokploy --stage production
+gkm deploy --stage production
 
 # See what it would create or reuse, and change nothing
-gkm deploy --provider dokploy --stage production --dry-run
+gkm deploy --stage production --dry-run
 
 # Events as JSON lines on stdout, for CI or another program
-gkm deploy --provider dokploy --stage production --json
+gkm deploy --stage production --json
 ```
 
 At a terminal, `gkm deploy` asks for a Dokploy login (and stores it) or a
@@ -662,8 +734,9 @@ const run = deploy({
 });
 
 for await (const event of run) {
-  // plain JSON: phase.started/finished, log, resource.applied, artifact.built,
-  // app.deployed, app.failed, deploy.finished, deploy.failed …
+  // plain JSON: phase.started/finished/failed, log, resource.applied,
+  // artifact.built, app.deployed, app.failed, health.checked, deploy.finished,
+  // deploy.failed …
   forward(event);
 }
 

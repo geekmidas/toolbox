@@ -2,7 +2,7 @@ import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { deployDokploy } from '../dokploy';
-import { generateTag } from '../index';
+import { generateTag } from '../orchestrate';
 
 // Mock auth functions
 vi.mock('../../auth', () => ({

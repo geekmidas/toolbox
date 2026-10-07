@@ -13,6 +13,7 @@
  * is whichever one the stage's mail URL points at.
  */
 
+import { runtimeOf, type TargetSource } from '../target/runtime.js';
 import {
 	type CacheBackend,
 	DEFAULT_CACHE,
@@ -27,20 +28,19 @@ import {
  * Which family of defaults a workspace's deploy target belongs to.
  *
  * One question, asked once: **does this target run containers the project
- * controls?** Dokploy and a bare server do, so a bucket or a cache can live
- * beside the app; AWS, Vercel and Cloudflare do not, so the default has to be
- * something managed. That is the whole of the distinction, and it is why
- * `MainProvider` is the right axis rather than the deploy target's own name —
- * three targets share one answer.
+ * controls?** Dokploy does, so a bucket or a cache can live beside the app;
+ * AWS, Vercel and Cloudflare do not, so the default has to be something
+ * managed. That is the whole of the distinction, and it is why `MainProvider`
+ * is the right axis rather than the deploy target's own name — targets share
+ * answers.
  *
- * An AWS deploy names `deploy.default: 'sst'`, because it goes through SST.
+ * Each target declares its answer as its `runtime` — a target package in its
+ * `package.json`, so this never loads one. A workspace that names no target
+ * is on AWS: an SST project predates `deploy.default: 'sst'`.
  */
-export function providerOf(workspace: {
-	deploy?: { default?: string } | undefined;
-}): MainProvider {
+export function providerOf(workspace: TargetSource): MainProvider {
 	const target = workspace.deploy?.default;
-
-	return target === 'dokploy' || target === 'server' ? 'server' : 'aws';
+	return target ? runtimeOf(target, workspace) : 'aws';
 }
 
 /**

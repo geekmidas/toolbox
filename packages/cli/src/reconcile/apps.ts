@@ -28,8 +28,8 @@ import { appKey } from '../workspace/derive.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import type { ComposeService } from './compose.js';
 import { portKeys, portsOf } from './containers.js';
-import { envFor } from './env.js';
-import { type PlanOptions, planFor } from './plan.js';
+import { type EnvOptions, envFor } from './env.js';
+import { type Plan, type PlanOptions, planFor } from './plan.js';
 import { backendsOf, surfaceAddresses } from './workspace.js';
 
 /** The profile app services carry, so `gkm dev` starts only the containers. */
@@ -65,17 +65,78 @@ export function inNetworkEnv(
 	 */
 	fakes: PlanOptions['fakes'] = {},
 ): Record<string, string> {
-	const plan = planFor(
-		manifest,
-		workspace.stages.local,
-		provisionOrder(manifest),
-		{
-			localStage: workspace.stages.local,
-			...backendsOf(workspace),
-			fakes,
-		},
-	);
+	return networkEnv(localPlan(workspace, manifest, fakes), {
+		project: workspace.name,
+		addresses: surfaceAddresses(
+			workspace,
+			manifest,
+			(app, port) => `http://${app}:${port}`,
+		),
+	});
+}
 
+/**
+ * The local stage's plan, which the app services are always written from.
+ *
+ * Without the edge: these apps reach each other by service name and a browser
+ * reaches them on the ports this file publishes. Behind the edge every
+ * surface resolved to its `*.localhost` host on the edge's port, which the
+ * rewrite to the compose network then turned into an address nothing answers.
+ */
+function localPlan(
+	workspace: NormalizedWorkspace,
+	manifest: ConstructManifest,
+	fakes: PlanOptions['fakes'] = {},
+): Plan {
+	return planFor(manifest, workspace.stages.local, provisionOrder(manifest), {
+		localStage: workspace.stages.local,
+		...backendsOf(workspace),
+		fakes,
+		edge: false,
+	});
+}
+
+/**
+ * The values a site's bundler inlines, by the name it inlines them under —
+ * `{ VITE_API_URL: 'http://localhost:3000' }`.
+ *
+ * Build arguments, not environment: a static bundle is finished when it is
+ * built, so a value handed to its container at runtime reaches nothing. And
+ * addresses a *browser* can open, since that is where the bundle runs — the
+ * host's port for each app, never a name on the compose network.
+ */
+export function sitePublicArgs(
+	manifest: ConstructManifest,
+	appName: string,
+	/** Every key the stage resolves, with surfaces at their public addresses. */
+	env: Readonly<Record<string, string>>,
+): Record<string, string> {
+	const declaration = Object.entries(manifest).find(
+		([id, d]) => d.kind === 'site' && appKey(id) === appName,
+	)?.[1];
+	if (declaration?.kind !== 'site') return {};
+
+	const args: Record<string, string> = {};
+	for (const key of Object.keys(publicEnvFor(declaration, manifest))) {
+		const value = env[key];
+		if (value !== undefined) args[key] = value;
+	}
+	return args;
+}
+
+/**
+ * Every key a plan resolves, with each container addressed by its service
+ * name on the compose network — `postgres:5432` rather than the port
+ * published for the host.
+ *
+ * The addresses of surfaces and sites are the caller's: on the compose
+ * network for a service another service calls, public for what a browser is
+ * handed. `gkm compose` asks twice, once for each.
+ */
+export function networkEnv(
+	plan: Plan,
+	options: Omit<EnvOptions, 'ports'>,
+): Record<string, string> {
 	const placeholders: Record<string, number> = {};
 	const targets = new Map<number, string>();
 	let next = 49_152;
@@ -91,15 +152,7 @@ export function inNetworkEnv(
 		placeholders[key] ??= next++;
 	}
 
-	const env = envFor(plan, {
-		ports: placeholders,
-		project: workspace.name,
-		addresses: surfaceAddresses(
-			workspace,
-			manifest,
-			(app, port) => `http://${app}:${port}`,
-		),
-	});
+	const env = envFor(plan, { ...options, ports: placeholders });
 
 	const rewrite = (value: string) =>
 		value.replace(/(?:localhost|127\.0\.0\.1):(\d+)/g, (match, port) => {
@@ -220,7 +273,20 @@ export function appServices(
 	runnables: Readonly<Record<string, readonly string[]>> = {},
 	fakes: PlanOptions['fakes'] = {},
 ): Record<string, ComposeService> {
-	const env = inNetworkEnv(workspace, manifest, fakes);
+	const plan = localPlan(workspace, manifest, fakes);
+	const env = networkEnv(plan, {
+		project: workspace.name,
+		addresses: surfaceAddresses(
+			workspace,
+			manifest,
+			(app, port) => `http://${app}:${port}`,
+		),
+	});
+	// What a browser is handed: each app on the port this file publishes it on.
+	const browser = networkEnv(plan, {
+		project: workspace.name,
+		addresses: surfaceAddresses(workspace, manifest),
+	});
 	const services: Record<string, ComposeService> = {};
 
 	for (const [name, app] of Object.entries(workspace.apps)) {
@@ -229,6 +295,28 @@ export function appServices(
 
 		const key = appKey(name);
 		const health = app.type === 'web' ? '/' : '/health';
+		const dockerfile = dockerfileOf(name, app.path);
+		const ports = [`${app.port}:${app.port}`];
+
+		// A site is a bundle: its public URLs are inlined when it is built, so
+		// they are build arguments, and it reads nothing at runtime — no server
+		// env, and nothing to wait for but its own server.
+		if (app.type === 'web') {
+			const args = sitePublicArgs(manifest, name, browser);
+			services[key] = {
+				image: `${key}:\${TAG:-latest}`,
+				build: {
+					context: '.',
+					dockerfile,
+					...(Object.keys(args).length ? { args } : {}),
+				},
+				profiles: [APPS_PROFILE],
+				ports,
+				healthcheck: healthcheck(app.port, health),
+			};
+			continue;
+		}
+
 		const allowed = appEnvKeys(manifest, name, runnables);
 		const own = Object.fromEntries(
 			Object.entries(env).filter(([envKey]) => allowed?.has(envKey)),
@@ -236,9 +324,9 @@ export function appServices(
 
 		services[key] = {
 			image: `${key}:\${TAG:-latest}`,
-			build: { context: '.', dockerfile: dockerfileOf(name, app.path) },
+			build: { context: '.', dockerfile },
 			profiles: [APPS_PROFILE],
-			ports: [`${app.port}:${app.port}`],
+			ports,
 			environment: {
 				NODE_ENV: 'production',
 				PORT: String(app.port),
@@ -248,20 +336,22 @@ export function appServices(
 			...(containers.some((c) => c !== 'caddy')
 				? { depends_on: containers.filter((c) => c !== 'caddy') }
 				: {}),
-			healthcheck: {
-				test: [
-					'CMD',
-					'wget',
-					'-q',
-					'--spider',
-					`http://localhost:${app.port}${health}`,
-				],
-				interval: '10s',
-				timeout: '5s',
-				retries: 5,
-			},
+			healthcheck: healthcheck(app.port, health),
 		};
 	}
 
 	return services;
+}
+
+/** An app's health check: its own server answering on `path`. */
+export function healthcheck(
+	port: number,
+	path: string,
+): NonNullable<ComposeService['healthcheck']> {
+	return {
+		test: ['CMD', 'wget', '-q', '--spider', `http://localhost:${port}${path}`],
+		interval: '10s',
+		timeout: '5s',
+		retries: 5,
+	};
 }

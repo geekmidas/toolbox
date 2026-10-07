@@ -7,9 +7,14 @@
  * or a secret — an error travels as its name and message, a credential never
  * travels at all.
  *
- * This is the union a `DeployTarget` will report through (#150), which is why
- * the phases are named for the target lifecycle even though today's one target
- * builds and releases each app in turn inside `release`.
+ * Every target reports through this one union, so a UI renders a Dokploy
+ * deploy and a plugin's the same way.
+ *
+ * The union only grows: a new event is a new `type`, a new field is optional,
+ * and nothing that exists changes meaning. A consumer ignores types it does
+ * not know. That is why the events carry no version number — the CLI that
+ * writes a stream and the program that reads it agree by that rule rather
+ * than by negotiating one.
  */
 
 import type { DeployResult } from './types';
@@ -17,20 +22,28 @@ import type { DeployResult } from './types';
 /**
  * The stretch of a deploy an event belongs to.
  *
- * - `validate`: the config, the stage, the apps, the lock, the stage's secrets
- *   and what each app reads from its environment
+ * - `validate`: the config, the target, the stage, the apps, the lock, the
+ *   stage's secrets and what each app reads from its environment
  * - `plan`: a dry run's lookups — what would be created and what reused
- * - `provision`: the Dokploy project, environment and registry, and the
- *   declared constructs
- * - `release`: each app's image built, pushed and deployed
- * - `verify`: DNS records and Dokploy's domain validation
+ * - `provision`: what the apps run on — for Dokploy the project, environment
+ *   and registry — and the declared constructs
+ * - `build`: each app's artifact, built without changing anything live
+ * - `release`: the artifacts put live. Dokploy builds and pushes each image
+ *   here, beside its application, because a site's build args are resolved
+ *   per app
+ * - `verify`: what was released answers — for Dokploy, DNS records and its
+ *   domain validation
+ * - `rollback`: the previous release restored, after `release` or `verify`
+ *   failed, on a target that can
  */
 export type DeployPhase =
 	| 'validate'
 	| 'plan'
 	| 'provision'
+	| 'build'
 	| 'release'
-	| 'verify';
+	| 'verify'
+	| 'rollback';
 
 /** An error, as an event carries it. */
 export interface DeployEventError {
@@ -68,6 +81,8 @@ export type DeployEvent =
 	| {
 			type: 'deploy.started';
 			stage: string;
+			/** The target the run deploys through, by the name it was given. */
+			target: string;
 			/** `<namespace>/<project>`. */
 			identity: string;
 			tag: string;
@@ -77,6 +92,8 @@ export type DeployEvent =
 	  }
 	| { type: 'phase.started'; phase: DeployPhase }
 	| { type: 'phase.finished'; phase: DeployPhase }
+	/** A phase threw; `deploy.failed` follows (after a rollback, if any). */
+	| { type: 'phase.failed'; phase: DeployPhase; error: DeployEventError }
 	/**
 	 * A progress line, exactly as `gkm deploy` prints it — leading newline and
 	 * indentation included, so a terminal renderer prints `message` as is.
@@ -102,6 +119,18 @@ export type DeployEvent =
 			url: string;
 	  }
 	| { type: 'app.failed'; app: string; error: DeployEventError }
+	/** One check of whether a released app answers. */
+	| {
+			type: 'health.checked';
+			app: string;
+			/** What was asked: a URL, or the target's own status check. */
+			url: string;
+			healthy: boolean;
+			/** The HTTP status, when the check was a request. */
+			status?: number;
+			/** 1 for the first check of the app in this run. */
+			attempt: number;
+	  }
 	| { type: 'deploy.finished'; result: DeployResult }
 	| { type: 'deploy.failed'; error: DeployEventError };
 

@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/cli",
-	"version": "10.0.0-alpha.59",
+	"version": "10.0.0-alpha.61",
 	"description": "CLI tools for building Lambda handlers, server applications, and generating OpenAPI specs",
 	"private": false,
 	"type": "module",
@@ -43,6 +43,16 @@
 			"require": {
 				"types": "./dist/deploy/public.d.cts",
 				"default": "./dist/deploy/public.cjs"
+			}
+		},
+		"./target": {
+			"import": {
+				"types": "./dist/target/public.d.mts",
+				"default": "./dist/target/public.mjs"
+			},
+			"require": {
+				"types": "./dist/target/public.d.cts",
+				"default": "./dist/target/public.cjs"
 			}
 		},
 		"./workspace": {

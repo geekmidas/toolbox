@@ -9,6 +9,8 @@ export default defineConfig({
 		'src/reconcile/public.ts',
 		// `deploy()` for hosts that deploy a project without a terminal.
 		'src/deploy/public.ts',
+		// `defineTarget` and the target interface, for a deploy target package.
+		'src/target/public.ts',
 		'src/workspace/index.ts',
 		'src/openapi.ts',
 		// A Vitest global setup: `globalSetup: ['@geekmidas/cli/vitest']`.

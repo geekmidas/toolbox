@@ -1,13 +1,18 @@
 import { copyFileSync, existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import { type ConstructManifest, publicEnvFor } from '@geekmidas/manifest';
 import { loadConfig, loadWorkspaceConfig } from '../config';
 import { getPublicUrlArgNames } from '../deploy/domain.js';
 import { output } from '../output';
 import { COMPOSE_PATH } from '../reconcile/index.js';
 import { reconcileWorkspace } from '../reconcile/workspace.js';
 import { run } from '../run';
-import type { NormalizedWorkspace } from '../workspace/types.js';
+import { appKey } from '../workspace/derive.js';
+import type {
+	NormalizedAppConfig,
+	NormalizedWorkspace,
+} from '../workspace/types.js';
 import { validateImageRef } from './imageRef';
 import {
 	detectPackageManager,
@@ -23,6 +28,7 @@ import {
 	generateViteStaticDockerfile,
 	hasTurboConfig,
 	isMonorepo,
+	type PackageManager,
 	resolveDockerConfig,
 } from './templates';
 
@@ -122,7 +128,10 @@ export async function dockerCommand(
 	// Route to workspace docker mode for multi-app workspaces
 	if (loadedConfig.type === 'workspace') {
 		logger.log('📦 Detected workspace configuration');
-		return workspaceDockerCommand(loadedConfig.workspace);
+		return workspaceDockerCommand(
+			loadedConfig.workspace,
+			loadedConfig.manifest,
+		);
 	}
 
 	// Single-app mode - use existing logic
@@ -397,6 +406,8 @@ function getAppPackageName(appPath: string): string | undefined {
  */
 export async function workspaceDockerCommand(
 	workspace: NormalizedWorkspace,
+	/** What the workspace declares — where a site's public keys come from. */
+	manifest?: ConstructManifest,
 ): Promise<WorkspaceDockerResult> {
 	const results: AppDockerResult[] = [];
 	const apps = Object.entries(workspace.apps);
@@ -438,30 +449,11 @@ export async function workspaceDockerCommand(
 		let dockerfile: string;
 
 		if (app.type === 'web') {
-			const publicUrlArgs = getPublicUrlArgNames(app);
-			const webOpts = {
-				imageName,
-				baseImage: 'node:22-alpine',
-				port: app.port,
-				appPath,
+			dockerfile = siteDockerfile(appName, app, {
 				turboPackage,
 				packageManager,
-				publicUrlArgs,
-			};
-
-			switch (app.framework) {
-				case 'vite':
-					dockerfile = generateViteStaticDockerfile(webOpts);
-					break;
-				case 'tanstack-start':
-				case 'remix':
-					dockerfile = generateNodeWebDockerfile(webOpts);
-					break;
-				default:
-					// nextjs (and any unspecified web framework — schema requires
-					// a valid framework, so this is just a default).
-					dockerfile = generateNextjsDockerfile(webOpts);
-			}
+				...(manifest ? { manifest } : {}),
+			});
 		} else if (app.entry) {
 			// Backend with custom entry point - use tsdown bundling
 			dockerfile = generateEntryDockerfile({
@@ -527,6 +519,63 @@ export async function workspaceDockerCommand(
 		dockerCompose: composePath,
 		dockerignore: dockerignorePath,
 	};
+}
+
+/**
+ * A site's Dockerfile, with an `ARG` for every key its bundler inlines.
+ *
+ * The keys come from the site's declaration where there is one — every
+ * public key its edges give it, `VITE_UPLOADS_SERVER_URL` included — and an
+ * `ARG` the Dockerfile does not declare is a build argument the build drops,
+ * leaving the bundle with an empty URL.
+ */
+export function siteDockerfile(
+	appName: string,
+	app: NormalizedAppConfig,
+	options: {
+		turboPackage: string;
+		packageManager: PackageManager;
+		manifest?: ConstructManifest;
+	},
+): string {
+	const declared = options.manifest
+		? Object.entries(options.manifest).find(
+				([id, d]) => d.kind === 'site' && appKey(id) === appName,
+			)?.[1]
+		: undefined;
+	const publicUrlArgs =
+		declared?.kind === 'site' && options.manifest
+			? Object.keys(publicEnvFor(declared, options.manifest))
+			: getPublicUrlArgNames(app);
+
+	const webOpts = {
+		imageName: appName,
+		baseImage: 'node:22-alpine',
+		port: app.port,
+		appPath: app.path,
+		turboPackage: options.turboPackage,
+		packageManager: options.packageManager,
+		publicUrlArgs,
+	};
+
+	switch (app.framework) {
+		case 'vite':
+			return generateViteStaticDockerfile(webOpts);
+		case 'tanstack-start':
+		case 'remix':
+			return generateNodeWebDockerfile(webOpts);
+		default:
+			// nextjs (and any unspecified web framework — schema requires a valid
+			// framework, so this is just a default).
+			return generateNextjsDockerfile(webOpts);
+	}
+}
+
+/**
+ * The package name turbo prunes an app by: its package.json's, or its name.
+ */
+export function appPackageName(root: string, appName: string, path: string) {
+	return getAppPackageName(join(root, path)) ?? appName;
 }
 
 /**

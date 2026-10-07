@@ -542,6 +542,74 @@ describe('WorkspaceConfigSchema', () => {
 		});
 	});
 
+	describe('deploy.targets', () => {
+		const withDeploy = (deploy: Record<string, unknown>) => ({
+			stages: { local: 'development', deployed: ['production'] },
+			apps: {
+				api: { type: 'backend' as const, path: 'apps/api', port: 3000 },
+			},
+			deploy,
+		});
+		const target = {
+			name: 'inline',
+			runtime: 'server',
+			capabilities: { rollback: false, migrations: 'app', images: false },
+			validate: async () => {},
+			plan: async () => {},
+			release: async () => {},
+			result: () => ({}),
+		};
+
+		it('accepts a default named by a package, an object or a pair', () => {
+			for (const entry of [
+				'@acme/gkm-target',
+				target,
+				['@acme/gkm-target', { region: 'ams' }],
+				[target, { region: 'ams' }],
+			]) {
+				const result = safeValidateWorkspaceConfig(
+					withDeploy({ default: 'acme', targets: { acme: entry } }),
+				);
+				expect(result.success).toBe(true);
+			}
+		});
+
+		it('accepts an app deploying through a configured target', () => {
+			const config = withDeploy({ targets: { acme: '@acme/gkm-target' } });
+			(config.apps.api as Record<string, unknown>).deploy = 'acme';
+
+			expect(safeValidateWorkspaceConfig(config).success).toBe(true);
+		});
+
+		it('refuses a default nothing provides, saying where to name it', () => {
+			const result = safeValidateWorkspaceConfig(
+				withDeploy({ default: 'acme' }),
+			);
+
+			expect(result.success).toBe(false);
+			expect(formatValidationErrors(result.error!)).toContain('deploy.targets');
+		});
+
+		it('refuses an entry under a built-in name', () => {
+			const result = safeValidateWorkspaceConfig(
+				withDeploy({ targets: { dokploy: '@acme/gkm-target' } }),
+			);
+
+			expect(result.success).toBe(false);
+			expect(formatValidationErrors(result.error!)).toContain(
+				'"dokploy" is a built-in target',
+			);
+		});
+
+		it('refuses an entry that is no target', () => {
+			const result = safeValidateWorkspaceConfig(
+				withDeploy({ targets: { acme: { name: 'acme' } } }),
+			);
+
+			expect(result.success).toBe(false);
+		});
+	});
+
 	describe('auth app configuration', () => {
 		it('should accept auth app as backend with better-auth framework', () => {
 			const config = {

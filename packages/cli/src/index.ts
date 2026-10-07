@@ -9,6 +9,7 @@ import {
 	isMainProvider,
 	UnknownBuildProvider,
 } from './build/index';
+import { type ComposeOptions, composeCommand } from './compose/index';
 import { enableDebug, formatError } from './debug';
 import { deployInitCommand, deployListCommand } from './deploy/init';
 import {
@@ -454,6 +455,33 @@ program
 	});
 
 program
+	.command('compose')
+	.description(
+		"Run the workspace's APIs and sites for a stage as one Docker Compose stack behind Caddy",
+	)
+	.option('--stage <stage>', 'Stage to run (default: the local stage)')
+	.option(
+		'--tag <tag>',
+		'Run the images CI pushed at this tag (sites: <tag>-<stage>); nothing is built',
+	)
+	.option('--build', 'Build images from this checkout, tagged with the commit')
+	.option('--pull', 'Pull images (at --tag, or latest) rather than build them')
+	.option('--dry-run', 'Write the files and print the plan; start nothing')
+	.option('--down', "Stop the stage's stack (its volumes are kept)")
+	.action(async (options: ComposeOptions) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await composeCommand(options);
+		} catch (error) {
+			console.error(formatError(error));
+			process.exit(1);
+		}
+	});
+
+program
 	.command('prepack')
 	.description('Generate Docker files for production deployment')
 	.option('--build', 'Build Docker image after generating files')
@@ -718,11 +746,12 @@ program
 // sets the exit code; the deploy itself does none of the three.
 program
 	.command('deploy')
-	.description('Deploy application to a provider')
-	.requiredOption(
-		'--provider <provider>',
-		'Deploy provider (docker, dokploy, aws-lambda)',
+	.description('Deploy a stage through its target')
+	.option(
+		'--target <name>',
+		'Deploy target: dokploy, or one named in deploy.targets (default: deploy.default)',
 	)
+	.option('--provider <provider>', '[DEPRECATED] Use --target instead')
 	.requiredOption(
 		'--stage <stage>',
 		'Deployment stage (e.g., production, staging)',
@@ -740,7 +769,8 @@ program
 	)
 	.action(
 		async (options: {
-			provider: string;
+			target?: string;
+			provider?: string;
 			stage: string;
 			tag?: string;
 			json?: boolean;
@@ -752,7 +782,8 @@ program
 			// project it is deploying.
 			const code = await deployCli({
 				cwd: resolve(globalOptions.cwd ?? process.cwd()),
-				provider: options.provider,
+				...(options.target ? { target: options.target } : {}),
+				...(options.provider ? { provider: options.provider } : {}),
 				stage: options.stage,
 				...(options.tag ? { tag: options.tag } : {}),
 				...(options.json ? { json: true } : {}),

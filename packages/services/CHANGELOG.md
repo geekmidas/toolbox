@@ -1,5 +1,21 @@
 # @geekmidas/services
 
+## 10.0.0-alpha.61
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/envkit@10.0.0-alpha.61
+  - @geekmidas/logger@10.0.0-alpha.61
+
+## 10.0.0-alpha.60
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/envkit@10.0.0-alpha.60
+  - @geekmidas/logger@10.0.0-alpha.60
+
 ## 10.0.0-alpha.59
 
 ### Patch Changes

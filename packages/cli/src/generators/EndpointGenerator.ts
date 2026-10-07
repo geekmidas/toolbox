@@ -929,6 +929,35 @@ export async function createApp(app?: HonoType): Promise<ServerApp> {
   // Health check endpoint (always first)
   honoApp.get('${healthCheckPath}', (c) => c.json({ status: 'ok', timestamp: Date.now() }));
   honoApp.get('/ready', (c) => c.json({ ready: true }));
+
+  // An HttpError a handler or a session callback throws — a 401, a 404 —
+  // answers with its own status, as it does under gkm dev. The optimized
+  // handlers do not catch, so without this every one of them was a 500.
+  // Anything else is a 500 that says nothing about why, and is logged.
+  honoApp.onError((error, c) => {
+    const http = error as {
+      isHttpError?: boolean;
+      statusCode?: number;
+      statusMessage?: string;
+      code?: string;
+      details?: unknown;
+    };
+    if (http.isHttpError === true && typeof http.statusCode === 'number') {
+      return c.json(
+        {
+          name: error.name,
+          message: error.message,
+          statusCode: http.statusCode,
+          statusMessage: http.statusMessage,
+          code: http.code,
+          details: http.details,
+        },
+        http.statusCode as 500,
+      );
+    }
+    logger.error({ error }, 'Unhandled error');
+    return c.json({ message: 'Internal Server Error' }, 500);
+  });
 ${cors.setup}${beforeSetupCall}
   // Setup HTTP endpoints (OpenAPI: ${enableOpenApi})
   await setupEndpoints(honoApp, envParser, logger, ${enableOpenApi});

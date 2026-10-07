@@ -1,5 +1,63 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.61
+
+### Minor Changes
+
+- [#177](https://github.com/geekmidas/toolbox/pull/177) [`c40ae4b`](https://github.com/geekmidas/toolbox/commit/c40ae4b86207a8bf0982b05a57f80fcbcd8c5b79) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm compose` runs a workspace's APIs and sites for a stage as one Docker Compose stack behind Caddy
+
+  `gkm compose [--stage <stage>] [--tag <tag>] [--build | --pull] [--dry-run] [--down]` writes `.gkm/compose/<stage>/` — a compose file, a Caddyfile and one env file per backend holding only the keys that app reads (mode 0600) — and starts it: Postgres first, then its databases, roles and migrations, then the apps, with one Caddy serving every app on its own host over HTTPS (the stage's domains with Let's Encrypt; `*.localhost` with Caddy's own CA locally). An auth server trusts the internal origin of every service that calls it across the compose network as well as the public ones.
+
+  With `--tag`, every app's image is looked up in the registry first and nothing is pulled or started unless all of them exist (`ImageTagNotFound` names each missing one); a site's image is tagged `<tag>-<stage>`, since its public URLs are build args. Without a tag the stack is built from the checkout and tagged with the commit. Each run records the tag and digest per app in the stage's deploy state. Workers and object storage are not run yet; a bucket's URL comes from the stage's secrets.
+
+### Patch Changes
+
+- [#177](https://github.com/geekmidas/toolbox/pull/177) [`7aece20`](https://github.com/geekmidas/toolbox/commit/7aece20749fef144a790a8f3077dc3de2055e0de) Thanks [@geekmidas](https://github.com/geekmidas)! - Production images: an auth server gets a server, a session reaches its endpoint, an HttpError keeps its status, and a site gets its URLs at build time
+
+  - `gkm build --production` for a surface that serves itself — a `BetterAuth` server — now writes and bundles a server that listens on `PORT`, answers `/health` and drains on SIGTERM. It wrote only the dev entry, so its image had no bundle to run.
+  - ⚡️ An endpoint built from a factory's `.session()` with no authorizer was handed `undefined` for its session in a production build, and its session under `gkm dev`. The optimized handlers now read the session whenever one is configured (`Endpoint.hasSession`).
+  - An `HttpError` thrown by a handler or a session callback answered 500 from a production server; it now answers with its own status, as under `gkm dev`, without the stack.
+  - `gkm docker`: a site's public URLs (`VITE_*`, `NEXT_PUBLIC_*`) are build args in `docker-compose.constructs.yml` rather than runtime environment, which a built bundle never reads, and its Dockerfile declares an `ARG` for every one its declaration implies. A site gets no server environment and waits on no infrastructure, and the app services address each other on the compose network rather than through the local edge's hostnames.
+
+- Updated dependencies [[`7aece20`](https://github.com/geekmidas/toolbox/commit/7aece20749fef144a790a8f3077dc3de2055e0de)]:
+  - @geekmidas/constructs@10.0.0-alpha.61
+  - @geekmidas/cache@10.0.0-alpha.61
+  - @geekmidas/db@10.0.0-alpha.61
+  - @geekmidas/envkit@10.0.0-alpha.61
+  - @geekmidas/errors@10.0.0-alpha.61
+  - @geekmidas/logger@10.0.0-alpha.61
+  - @geekmidas/manifest@10.0.0-alpha.61
+  - @geekmidas/schema@10.0.0-alpha.61
+  - @geekmidas/services@10.0.0-alpha.61
+  - @geekmidas/telescope@10.0.0-alpha.61
+
+## 10.0.0-alpha.60
+
+### Minor Changes
+
+- [#176](https://github.com/geekmidas/toolbox/pull/176) [`17a5290`](https://github.com/geekmidas/toolbox/commit/17a5290fc3ed7315ebf6d07a452d860bceda03bc) Thanks [@geekmidas](https://github.com/geekmidas)! - :boom: `deploy()` from `@geekmidas/cli/deploy`: a deploy that never prompts, prints or exits, and stage keys kept by project identity
+
+  - ✨ **`deploy(input)`** (new subpath `@geekmidas/cli/deploy`) takes an explicit `cwd`, a `CredentialProvider`, a `logger` and an `AbortSignal`, and returns a run: iterate it for plain-JSON events (`phase.started`/`finished`, `log`, `resource.applied`/`planned`, `artifact.built`, `app.deployed`, `app.failed`, `deploy.finished`, `deploy.failed`), and await `result` for a structured `DeployResult`. Nothing below the CLI prompts or calls `process.exit`; a credential no provider has raises `MissingCredential`, naming it and how to supply it.
+  - ✨ **`gkm deploy` is a thin wrapper** that owns the prompts, the stored login and the exit code. Its human output is unchanged. New flags: `--json` (events as JSON lines on stdout; never prompts) and `--dry-run` (read-only Dokploy calls, no lock, no state, no generated secrets, nothing built or pushed).
+  - **Builds run in each app's own directory**, not the process's working directory.
+  - ✨ :boom: **Stage keys move** from `~/.gkm/<folder>/<stage>.key` to `~/.gkm/keys/<namespace>/<project>/<stage>.key` — the `<namespace>/<project>` a deploy claims its Dokploy project by — so two projects in folders with the same name no longer share (and overwrite) keys. An existing key is copied to the new place the first time it is read, and the old file is kept. `GKM_HOME` moves the whole home (keys and `credentials.json`). A workspace that sets `deploy.namespace` takes its default-namespace key along; changing from one namespace to another needs the key copied by hand. Generated GitHub workflows write the key to the new place.
+  - Without a terminal, a missing Dokploy or registry login is `MissingCredential` rather than `Interactive input required`. The registry login can also come from `DOCKER_REGISTRY_USERNAME` / `DOCKER_REGISTRY_PASSWORD`, and the Dokploy endpoint from `deploy.dokploy.endpoint` when only the token is in the environment.
+  - ✨ `workspaceDeployCommand` and `deployCommand` are `@deprecated` wrappers for one alpha and return the new `DeployResult` (a superset of `WorkspaceDeployResult`). The old single-image `DeployResult` type is now `DockerDeployResult`.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.60
+  - @geekmidas/constructs@10.0.0-alpha.60
+  - @geekmidas/db@10.0.0-alpha.60
+  - @geekmidas/envkit@10.0.0-alpha.60
+  - @geekmidas/errors@10.0.0-alpha.60
+  - @geekmidas/logger@10.0.0-alpha.60
+  - @geekmidas/manifest@10.0.0-alpha.60
+  - @geekmidas/schema@10.0.0-alpha.60
+  - @geekmidas/services@10.0.0-alpha.60
+  - @geekmidas/telescope@10.0.0-alpha.60
+
 ## 10.0.0-alpha.59
 
 ### Minor Changes
