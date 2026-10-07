@@ -9,6 +9,7 @@ import {
 	isMainProvider,
 	UnknownBuildProvider,
 } from './build/index';
+import { type ComposeOptions, composeCommand } from './compose/index';
 import { enableDebug, formatError } from './debug';
 import { deployInitCommand, deployListCommand } from './deploy/init';
 import {
@@ -447,6 +448,33 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await dockerCommand(options);
+		} catch (error) {
+			console.error(formatError(error));
+			process.exit(1);
+		}
+	});
+
+program
+	.command('compose')
+	.description(
+		"Run the workspace's APIs and sites for a stage as one Docker Compose stack behind Caddy",
+	)
+	.option('--stage <stage>', 'Stage to run (default: the local stage)')
+	.option(
+		'--tag <tag>',
+		'Run the images CI pushed at this tag (sites: <tag>-<stage>); nothing is built',
+	)
+	.option('--build', 'Build images from this checkout, tagged with the commit')
+	.option('--pull', 'Pull images (at --tag, or latest) rather than build them')
+	.option('--dry-run', 'Write the files and print the plan; start nothing')
+	.option('--down', "Stop the stage's stack (its volumes are kept)")
+	.action(async (options: ComposeOptions) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await composeCommand(options);
 		} catch (error) {
 			console.error(formatError(error));
 			process.exit(1);

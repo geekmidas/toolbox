@@ -66,7 +66,9 @@ export function analyzeEndpointFeatures(
 	>,
 ): EndpointFeatures {
 	return {
-		hasAuth: !!endpoint.authorizer,
+		// A session callback is read whether or not an authorizer checks it:
+		// the handler is handed what it returns.
+		hasAuth: !!endpoint.authorizer || endpoint.hasSession === true,
 		hasServices: endpoint.services.length > 0,
 		hasDatabase: !!endpoint.databaseService,
 		hasBodyValidation: !!endpoint.input?.body,

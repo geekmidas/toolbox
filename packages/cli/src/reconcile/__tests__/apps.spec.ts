@@ -166,17 +166,28 @@ describe('appServices', () => {
 			expect(env('api')).not.toHaveProperty('WEB_URL');
 		});
 
-		it('gives a site what it calls, and the public variant its bundle inlines', () => {
-			expect(env('web')).toHaveProperty('API_URL');
-			expect(env('web')).toHaveProperty('VITE_API_URL');
-			expect(env('web')).toHaveProperty('WEB_URL');
-			expect(env('web')).not.toHaveProperty('AUTH_URL');
-			expect(env('web')).not.toHaveProperty('ORDERS_URL');
-		});
-
 		it('gives a surface what its own handler requires', () => {
 			expect(env('signer')).toHaveProperty('SIGNER_SECRET');
 			expect(env('signer')).not.toHaveProperty('AUTH_URL');
+		});
+	});
+
+	// A static bundle is finished when it is built: a public URL handed to its
+	// container at runtime reaches nothing, and the site was built against an
+	// empty `VITE_API_URL`.
+	describe('a site', () => {
+		const web = () =>
+			appServices(withAppsWorkspace, withApps, ['postgres'], runnables).web;
+
+		it('is built with its public URLs as build args, at addresses a browser opens', () => {
+			expect(web()?.build?.args).toEqual({
+				VITE_API_URL: 'http://localhost:3000',
+			});
+		});
+
+		it('gets no server env and waits on no infrastructure', () => {
+			expect(web()?.environment).toBeUndefined();
+			expect(web()?.depends_on).toBeUndefined();
 		});
 	});
 

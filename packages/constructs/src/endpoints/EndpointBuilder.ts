@@ -72,8 +72,8 @@ export class EndpointBuilder<
 	protected _tags?: string[];
 	protected _memorySize?: number;
 	protected _responseType: string = 'application/json';
-	_getSession: SessionFn<TServices, TLogger, TSession, TDatabase> = () =>
-		({}) as TSession;
+	/** Set by a factory's `.session()`; absent, the endpoint reads none. */
+	_getSession?: SessionFn<TServices, TLogger, TSession, TDatabase>;
 	_authorize: AuthorizeFn<TServices, TLogger, TSession, TInput, TDatabase> =
 		() => true;
 	_rateLimit?: RateLimitConfig;

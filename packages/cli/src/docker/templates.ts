@@ -432,8 +432,21 @@ CMD ["node", "server.mjs"]
 /**
  * Generate a slim Dockerfile for pre-built bundles
  */
-export function generateSlimDockerfile(options: DockerTemplateOptions): string {
-	const { baseImage, port, healthCheckPath } = options;
+export function generateSlimDockerfile(
+	options: DockerTemplateOptions & {
+		/**
+		 * The bundle, relative to the build context. An app in a workspace keeps
+		 * it under its own directory; the default is a single app's.
+		 */
+		bundle?: string;
+	},
+): string {
+	const {
+		baseImage,
+		port,
+		healthCheckPath,
+		bundle = '.gkm/server/dist/server.mjs',
+	} = options;
 
 	return `# Slim Dockerfile for pre-built production bundle
 FROM ${baseImage}
@@ -449,7 +462,7 @@ RUN addgroup --system --gid 1001 nodejs && \\
     adduser --system --uid 1001 hono
 
 # Copy pre-built bundle
-COPY .gkm/server/dist/server.mjs ./
+COPY ${bundle} ./
 
 # Environment
 ENV NODE_ENV=production
@@ -486,6 +499,9 @@ node_modules
 # The key gkm build --stage encrypted secrets with: runtime env only, never
 # the build context
 .gkm/server/master.key
+
+# gkm compose's stacks: each app's env file holds its stage's secrets
+.gkm/compose
 
 # IDE and editor
 .idea
