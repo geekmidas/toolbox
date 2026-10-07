@@ -1,276 +1,127 @@
-# OpenAPI TypeScript Generation
+# Typed API Client
 
-Generate a TypeScript module from your API endpoints that includes type-safe paths, runtime authentication maps, and reusable schema interfaces.
+Every `RestApi` surface gets a generated TypeScript client: one module per
+surface, built from the endpoints themselves. It exports the OpenAPI path types,
+the security schemes, a runtime map of which endpoint needs which authorizer,
+and a `createApi()` that returns a typed fetcher with React Query hooks.
 
-## Why TypeScript Instead of JSON?
+There is no JSON spec in between and no second tool to run.
 
-The traditional OpenAPI workflow generates a JSON specification, which then requires a separate tool to create TypeScript types. This has limitations:
+::: tip Changed in v10
+Older docs described `gkm openapi --output`, a `--json` mode, and
+`gkm generate:react-query`, which ran `openapi-typescript` over a JSON file.
+All three are gone. The client is written to a fixed place per surface, and
+the React Query hooks are part of it.
+:::
 
-- **No runtime auth info** - Security requirements exist in the spec but aren't usable by your client code
-- **Two-step process** - Requires running `openapi-typescript` after generating the spec
-- **No schema reuse** - Generated types are isolated and can't reference shared interfaces
+## Where it is written
 
-TypeScript output is the default - it generates a single module that exports both types and runtime values.
+The client belongs to the application, like its manifest. It is written at the
+workspace root, one file per surface, named from the surface's id:
 
-## Quick Start
+| Surface | File | Import |
+|---|---|---|
+| `new RestApi('Api', …)` | `.gkm/client/api.ts` | `@<name>/client/api` |
+| `new RestApi('Webhooks', …)` | `.gkm/client/webhooks.ts` | `@<name>/client/webhooks` |
 
-```bash
-# Generate TypeScript OpenAPI module (default)
-gkm openapi --output ./src/api/openapi.ts
+`<name>` is the workspace name. `gkm init` maps the alias in the root
+`tsconfig.json` and in each frontend's own; see
+[Workspaces: auto-generated API client](./workspaces.md#auto-generated-api-client).
 
-# Generate JSON (legacy)
-gkm openapi --json --output ./openapi.json
-```
+It is written by:
 
-## What Gets Generated
+- `gkm build`, as part of the build;
+- `gkm dev`, on start and whenever endpoints change;
+- `gkm openapi`, on its own (`--app <name>` for one backend app).
 
-### Security Schemes
+`.gkm/` is gitignored. Generate the client in CI before type-checking a
+frontend that imports it.
 
-Your authorizer configurations become typed security scheme definitions:
+## What it exports
 
-```typescript
+```ts
+// .gkm/client/api.ts (abridged)
+export const apiInfo = { title: 'API Documentation', version: '1.0.0', … };
+
 export const securitySchemes = {
-  bearer: {
-    type: 'http',
-    scheme: 'bearer',
-    bearerFormat: 'JWT',
-  },
-  iam: {
-    type: 'apiKey',
-    in: 'header',
-    name: 'Authorization',
-    'x-amazon-apigateway-authtype': 'awsSigv4',
-  },
+  jwt: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
 } as const;
+export type SecuritySchemeId = 'jwt';
 
-export type SecuritySchemeId = keyof typeof securitySchemes;
-```
-
-### Endpoint Auth Map
-
-A runtime map linking each endpoint to its required authentication:
-
-```typescript
 export const endpointAuth = {
-  'POST /tenants': 'iam',
-  'GET /tenants/{id}': 'bearer',
-  'GET /health': null,  // public
+  'GET /users/{id}': 'jwt',
+  'POST /users': 'jwt',
+  'GET /health': null,            // public
 } as const;
+export type EndpointString = keyof typeof endpointAuth;
+export type AuthenticatedEndpoint = /* endpoints with a scheme */;
+export type PublicEndpoint = /* endpoints without one */;
+
+export interface User { id: string; email: string }   // from your schemas
+export interface paths { '/users/{id}': { get: { … } }; … }
+
+export function createApi(options: CreateApiOptions) { … }
 ```
 
-### Reusable Schema Interfaces
+## Using it
 
-Your Zod/Valibot schemas become TypeScript interfaces:
+```ts
+// apps/web/src/lib/api.ts
+import { createApi } from '@shop/client/api';
 
-```typescript
-export interface Tenant {
-  id: string;
-  name: string;
-  createdAt: string;
-}
-
-export interface CreateTenantInput {
-  name: string;
-}
-```
-
-### Type-Safe Paths
-
-Full OpenAPI path types for your fetcher:
-
-```typescript
-export interface paths {
-  '/tenants': {
-    post: {
-      requestBody: {
-        content: {
-          'application/json': CreateTenantInput;
-        };
-      };
-      responses: {
-        201: {
-          content: {
-            'application/json': Tenant;
-          };
-        };
-      };
-    };
-  };
-  // ... more paths
-}
-```
-
-## Using with Auth-Aware Fetcher
-
-The generated auth map enables automatic authentication per endpoint:
-
-```typescript
-import { createAuthAwareFetcher } from '@geekmidas/client/auth-fetcher';
-import { TokenClient } from '@geekmidas/auth/client';
-import { paths, endpointAuth, securitySchemes } from './openapi';
-
-const tokenClient = new TokenClient({
-  storage: new LocalStorageTokenStorage(),
-  refreshEndpoint: '/api/auth/refresh',
+export const api = createApi({
+  baseURL: import.meta.env.VITE_API_URL,
+  authStrategies: {
+    jwt: { type: 'bearer', tokenProvider },
+  },
 });
 
-const api = createAuthAwareFetcher<paths>({
-  baseURL: 'https://api.example.com',
-  endpointAuth,
-  securitySchemes,
-  tokenClient,
-});
+// Imperative
+const user = await api('GET /users/{id}', { params: { id: '123' } });
 
-// Bearer auth automatically applied
-const tenant = await api('GET /tenants/{id}', {
-  params: { id: '123' }
-});
-
-// IAM SigV4 auth automatically applied
-const newTenant = await api('POST /tenants', {
-  body: { name: 'Acme Corp' }
-});
-
-// No auth applied (public endpoint)
-const health = await api('GET /health');
+// React Query
+const { data } = api.useQuery('GET /users/{id}', { params: { id: '123' } });
+const createUser = api.useMutation('POST /users');
 ```
 
-## Authorizer Type Mapping
+`createApi` takes:
 
-Your endpoint authorizers map to OpenAPI security schemes:
+- `baseURL`, required;
+- `authStrategies`, one per security scheme the surface uses, keyed by the
+  authorizer's name: `{ type: 'bearer', tokenProvider }`,
+  `{ type: 'apiKey', apiKeyProvider, headerName? }`, `{ type: 'iam', signer }`
+  or `{ type: 'none' }`. Each request gets the strategy of its endpoint's
+  scheme, and public endpoints get none;
+- `queryClient`, `onRequest` and `fetch`, all optional.
 
-| Authorizer Type | OpenAPI Security Scheme |
-|-----------------|------------------------|
-| `jwt`, `bearer` | HTTP Bearer with JWT |
-| `iam`, `aws-sigv4` | API Key with SigV4 extension |
-| `apiKey` | API Key (header/query) |
-| `oauth2` | OAuth 2.0 flows |
-| `oidc` | OpenID Connect |
-| `none` / not set | Public (no auth) |
+A surface with no authorizers gets a `createApi` without `authStrategies`; it
+takes the plain fetcher options instead.
 
-### Example Endpoint Definitions
+## Authorizers and security schemes
 
-```typescript
-// constructs/api.ts — the names this surface exposes.
-// Names only: what verifies a request differs between local and deployed, so
-// the mechanism belongs to the target and never to portable code.
-export const api = new RestApi('Api', {
-  path: 'apps/api',
-  authorizers: ['bearer', 'iam'],
-  defaultAuthorizer: 'bearer',
-  logger,
-});
-```
+Each authorizer a surface names becomes a security scheme of the same name:
 
-```typescript
-// endpoints/tenants.ts
-import { api } from '../constructs/api';
+| Authorizer type | Security scheme |
+|---|---|
+| `jwt`, `bearer` | HTTP bearer, `bearerFormat: 'JWT'` |
+| `iam`, `aws-sigv4`, `sigv4` | API key in `Authorization`, with `x-amazon-apigateway-authtype: awsSigv4` |
+| `apikey`, `api-key` | API key in the `X-API-Key` header |
+| `oauth2` | OAuth 2.0 |
+| `oidc`, `openidconnect` | OpenID Connect |
+| anything else | HTTP bearer |
 
-// Inherits the surface's default — JWT bearer auth
-const getTenant = api
-  .get('/tenants/{id}')
-  .params(z.object({ id: z.string() }))
-  .output(TenantSchema)
-  .handle(async ({ params }) => { ... });
-
-// This endpoint requires IAM SigV4 auth
-const createTenant = api
-  .post('/tenants')
-  .authorizer('iam')
-  .body(CreateTenantSchema)
-  .output(TenantSchema)
-  .handle(async ({ body }) => { ... });
-
-// This endpoint is public (no auth)
-const healthCheck = api
-  .get('/health')
-  .authorizer('none')
-  .output(z.object({ status: z.string() }))
-  .handle(async () => ({ status: 'ok' }));
-```
-
-## Comparison with JSON Output
-
-| Feature | JSON (`openapi.json`) | TypeScript (`openapi.ts`) |
-|---------|----------------------|---------------------------|
-| Type-safe paths | Requires `openapi-typescript` | Built-in |
-| Runtime auth map | Not available | `endpointAuth` export |
-| Schema reuse | No | Yes (interfaces) |
-| Security schemes | In spec only | Typed constant |
-| Tree-shakeable | N/A | Yes |
+An endpoint with no authorizer (`.authorizer('none')`, or a surface whose
+`defaultAuthorizer` is `'none'`) maps to `null` in `endpointAuth` and is sent
+without credentials.
 
 ## Configuration
 
-Add to your `gkm.config.ts`:
+There is nothing to configure. The file's place follows from the surface's id,
+and there is no `output` option. Which endpoints a client covers follows from
+the surface each endpoint is built from.
 
-```typescript
-import { defineConfig } from '@geekmidas/cli/config';
+## See also
 
-export default defineConfig({
-  stages: { local: 'dev', deployed: ['prod'] },
-  routes: './src/endpoints/**/*.ts',
-  openapi: {
-    title: 'My API',
-    version: '1.0.0',
-    output: './src/api/openapi.ts',
-    // json: true,  // Uncomment for legacy JSON output
-  },
-});
-```
-
-Then run:
-
-```bash
-gkm openapi
-```
-
-## Type Helpers
-
-The generated module includes utility types:
-
-```typescript
-// Endpoints that require authentication
-type AuthenticatedEndpoint = 'POST /tenants' | 'GET /tenants/{id}' | ...;
-
-// Public endpoints
-type PublicEndpoint = 'GET /health' | 'GET /docs';
-
-// Get the security scheme for an endpoint
-type GetEndpointAuth<E extends keyof typeof endpointAuth> = typeof endpointAuth[E];
-```
-
-## Migration from JSON
-
-If you're currently using JSON output:
-
-1. **Update your command**:
-   ```bash
-   # Before (now requires --json flag)
-   gkm openapi --json --output ./openapi.json
-
-   # After (default behavior)
-   gkm openapi --output ./src/api/openapi.ts
-   ```
-
-2. **Update imports**:
-   ```typescript
-   // Before
-   import type { paths } from './openapi-types';
-
-   // After
-   import { paths, endpointAuth, securitySchemes } from './openapi';
-   ```
-
-3. **Switch to auth-aware fetcher**:
-   ```typescript
-   // Before
-   const api = createTypedFetcher<paths>({ ... });
-
-   // After
-   const api = createAuthAwareFetcher<paths>({
-     endpointAuth,
-     securitySchemes,
-     tokenClient,
-     ...
-   });
-   ```
+- [`@geekmidas/client`](../packages/client.md): the fetcher and hooks the
+  client is built on
+- [Workspaces: frontend integration](./workspaces.md#frontend-integration)

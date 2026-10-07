@@ -814,7 +814,7 @@ gkm login --endpoint https://dokploy.example.com
 # These commands no longer need DOKPLOY_API_TOKEN
 gkm deploy:list
 gkm deploy:init --project my-project --app api
-gkm deploy --provider dokploy --stage production
+gkm deploy --stage production
 ```
 
 ### `gkm logout`
@@ -860,21 +860,48 @@ gkm whoami
 
 ### `gkm deploy`
 
-Deploy application to a provider. Builds for production, injects encrypted secrets, and deploys.
+Deploy a stage through its **target**: `deploy.default` in `gkm.config.ts`
+(`dokploy` when unset), or `--target` for one run. `dokploy`, `compose` and
+`sst` ship with the CLI; any other target is a package the project installs and
+names in `deploy.targets`.
 
 ```bash
-gkm deploy --provider <provider> --stage <stage> [options]
+gkm deploy --stage <stage> [options]
 ```
 
 **Options:**
-- `--provider <provider>`: Deploy provider (`docker`, `dokploy`, `aws-lambda`)
-- `--stage <stage>`: Deployment stage
-- `--tag <tag>`: Image tag (default: `stage-timestamp`)
-- `--skip-push`: Skip pushing image to registry
-- `--skip-build`: Skip build step (use existing build)
+- `--stage <stage>`: Deployment stage (required): one of `stages.deployed`, or the local stage through `compose`
+- `--target <name>`: `dokploy`, `compose`, `sst`, or a name in `deploy.targets` (default: `deploy.default`)
+- `--tag <tag>`: Image tag (default: `<stage>-<timestamp>`; compose: the commit). Through compose, a given tag is pulled
 - `--json`: Write the deploy's events as JSON lines on stdout instead of progress; never prompts
 - `--dry-run`: Show what would be created or reused, and change, build and push nothing
 - `--atomic`: If the release fails, roll back every app it released, not only the ones that failed
+- `--provider <provider>`: Deprecated. `dokploy` means `--target dokploy`; `docker` and `aws-lambda` fail with `ProviderRemoved`
+- `--skip-push`, `--skip-build`: Deprecated and ignored
+
+**Examples:**
+```bash
+# deploy.default (dokploy unless configured otherwise)
+DOKPLOY_API_TOKEN=xxx gkm deploy --stage production
+
+# Plan only
+gkm deploy --stage production --dry-run
+
+# One Docker Compose stack behind Caddy, on this machine, from images CI pushed
+gkm deploy --target compose --stage production --tag v1.4.0
+
+# AWS, with deploy: { default: 'sst' }: gkm build --provider aws, then sst deploy
+AWS_PROFILE=acme-prod gkm deploy --stage production
+
+# Events for another program
+gkm deploy --stage production --json | jq -c 'select(.type == "app.deployed")'
+```
+
+**What every deploy does:** loads the config and discovers the constructs in a
+sandbox, takes the stage's lock (a second run gets `StateLocked`; a crashed
+run's lock is released with `gkm state:unlock`), checks every credential and
+secret before anything changes, then runs the target's phases
+(`provision`, `build`, `release`, `verify`) and reports each as events.
 
 **Verified, or rolled back (Dokploy).** An app counts as released once Dokploy's deployment has finished and the app has answered its health route 2xx three times in a row (`/health` for a backend, `/` for a site; an app without a domain gets the deployment check only). Backends are released and checked before any site is released, and a failed backend stops the run. Whatever fails is pointed back at the image it ran before. Pending migrations are applied before any app is switched, in the deploy's sandbox, with each database URL handed over as a secret file. Tune the checks with `deploy.dokploy.verify: { deploymentTimeoutMs, healthCheckPath, healthyAfter, intervalMs, healthTimeoutMs }`.
 
@@ -890,71 +917,27 @@ for await (const event of run) console.log(event.type);
 const result = await run.result;
 ```
 
-The project's own code — loading `gkm.config.ts`, discovering constructs, sniffing each app's environment — runs in a `Sandbox`, never in the host process and never with the deploy's credentials. The default `LocalSandbox` is a child process with an allowlisted environment and a timeout per step; a host building repositories it does not trust passes its own isolating one (`sandbox`), and a config holding live objects then fails with `ConfigObjectNotSerializable`. The deployment guide's "Deploying from a program" covers both.
+The project's own code — loading `gkm.config.ts`, discovering constructs, sniffing each app's environment, running migrations — runs in a `Sandbox`, never in the host process and never with the deploy's credentials. The default `LocalSandbox` is a child process with an allowlisted environment and a timeout per step; a host building repositories it does not trust passes its own isolating one (`sandbox`), and a config holding live objects then fails with `ConfigObjectNotSerializable`.
 
-**Examples:**
-```bash
-# Docker: build and push image
-gkm deploy --provider docker --stage production
-
-# Dokploy: build, push, and trigger deployment
-DOKPLOY_API_TOKEN=xxx gkm deploy --provider dokploy --stage production
-
-# Custom tag
-gkm deploy --provider docker --stage production --tag v1.0.0
-```
-
-**Workflow:**
-1. **Sniffs environment variables** - Automatically detects which env vars each app needs
-2. Builds production bundle with `gkm build --provider server --production --stage <stage>`
-3. Encrypts secrets from `.gkm/secrets/<stage>.json` into the bundle
-4. Generates Docker files with `gkm docker`
-5. Builds and pushes Docker image
-6. (Dokploy) Triggers deployment via API with `GKM_MASTER_KEY`
-
-**Environment Variable Detection:**
-
-The deploy command automatically detects required environment variables for each app using different strategies based on app configuration:
-
-| App Type | Detection Strategy |
-|----------|-------------------|
-| Frontend apps | Returns empty (no server secrets) |
-| Apps with `requiredEnv` | Uses explicit list from config |
-| Entry-based apps | Imports entry file in subprocess to capture `config.parse()` calls |
-| Route-based apps | Loads routes and calls `getEnvironment()` on each construct |
-| Apps with `envParser` only | Runs SnifferEnvironmentParser to detect usage |
-
-For route-based apps, the sniffer loads each endpoint/function/cron/subscriber and collects environment variables from:
-- All services attached to the construct (via `service.register()`)
-- Publisher service (if any)
-- Auditor storage service (if any)
-- Database service (if any)
-
-This allows the CLI to validate that all required secrets are configured before deployment, preventing runtime errors from missing environment variables.
-
-**Configuration:**
-
-```typescript
-// gkm.config.ts
-export default defineConfig({
-  stages: { local: 'dev', deployed: ['prod'] },
-  routes: 'src/endpoints/**/*.ts',
-  envParser: './src/env.ts',
-  logger: './src/logger.ts',
-
-  docker: {
-    registry: 'ghcr.io/myorg',
-    imageName: 'my-api',
-  },
-});
-```
+**Writing a target:** `defineTarget` from `@geekmidas/cli/target`, with the package's runtime declared in its `package.json` (`"gkm": { "runtime": "server" }`).
 
 **Environment Variables:**
 - `DOKPLOY_API_TOKEN`: API token for Dokploy (not needed if logged in via `gkm login`)
 - `DOKPLOY_ENDPOINT`: Dokploy URL, if neither the stored login nor `deploy.dokploy.endpoint` gives one
 - `DOCKER_REGISTRY_USERNAME` / `DOCKER_REGISTRY_PASSWORD`: a registry login, used only when Dokploy has no registry for `deploy.registry` and one has to be created
+- `AWS_PROFILE`, or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN`: the `sst` target's AWS credentials, handed to `sst deploy` only (the profile wins when both are set)
 - `GKM_HOME`: where stage keys and stored logins live (default `~/.gkm`)
-- `GKM_MASTER_KEY`: Automatically set by Dokploy, or manually for Docker deployments — from `.gkm/server/master.key`, which `gkm build --stage` writes (the key is never printed; output shows its fingerprint)
+- `GKM_MASTER_KEY`: set in each container's runtime environment by the deploy; for an image you run yourself, from `.gkm/server/master.key`, which `gkm build --stage` writes (the key is never printed; output shows its fingerprint)
+
+**Guides:**
+[Deploy targets](https://geekmidas.github.io/toolbox/next/guide/deploy-targets) ·
+[Writing a target](https://geekmidas.github.io/toolbox/next/guide/writing-a-target) ·
+[Deploying from a program](https://geekmidas.github.io/toolbox/next/guide/deploy-api) ·
+[The sandbox](https://geekmidas.github.io/toolbox/next/guide/sandbox) ·
+[Deploy state](https://geekmidas.github.io/toolbox/next/guide/state) ·
+[Running in production](https://geekmidas.github.io/toolbox/next/guide/production) ·
+[Upgrading to 10.0.0-alpha](https://geekmidas.github.io/toolbox/next/guide/upgrading) ·
+[Deprecated deploy APIs](https://geekmidas.github.io/toolbox/next/guide/deploy-deprecations)
 
 ### `gkm deploy:rollback`
 
@@ -1029,6 +1012,24 @@ gkm deploy:list --registries
 # With explicit endpoint
 gkm deploy:list --endpoint https://dokploy.example.com
 ```
+
+### `gkm state:*`
+
+Deploy state records what a stage's deploys created, so the next deploy finds
+it again. It lives where `state` in `gkm.config.ts` says: `.gkm/deploy-<stage>.json`
+by default, or SSM (`{ provider: 'ssm', region }`) or S3
+(`{ provider: 's3', bucket, region }`) for teams and CI. Every deploy holds the
+stage's lock and writes conditionally.
+
+```bash
+gkm state:show   --stage production [--json]  # ids, releases, pending resources; secrets masked
+gkm state:pull   --stage production           # remote → .gkm/
+gkm state:push   --stage production           # .gkm/ → remote, under the remote lock
+gkm state:diff   --stage production
+gkm state:unlock --stage production           # release a crashed deploy's lock
+```
+
+See [Deploy state](https://geekmidas.github.io/toolbox/next/guide/state).
 
 ### Using Encrypted Credentials
 
@@ -1644,62 +1645,25 @@ gkm openapi --output api-docs.json --json
 
 ## Deployment Examples
 
-### AWS Lambda with Serverless Framework
+Deploying goes through `gkm deploy` and a target, rather than through a
+hand-written server file or framework config:
 
-```yaml
-# serverless.yml
-service: my-api
+```bash
+# Dokploy (the default target)
+gkm deploy --stage production
 
-provider:
-  name: aws
-  runtime: nodejs18.x
+# One Docker Compose stack behind Caddy, on this machine
+gkm compose --stage production --tag v1.4.0
 
-functions:
-  getUsers:
-    handler: .gkm/aws/routes/getUsers.handler
-    events:
-      - httpApi:
-          path: /users
-          method: get
+# AWS through SST, with deploy: { default: 'sst' }
+gkm deploy --stage production
 
-  createUser:
-    handler: .gkm/aws/routes/createUser.handler
-    events:
-      - httpApi:
-          path: /users
-          method: post
+# Only the Docker files, to build and run images yourself
+gkm docker --build --tag v1.4.0
 ```
 
-### Server Deployment
-
-```typescript
-// server.ts
-import { createApp } from './.gkm/server/app.js';
-
-const app = createApp();
-
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
-```
-
-### Docker Deployment
-
-```dockerfile
-FROM node:18-alpine
-
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-
-COPY . .
-RUN npm run build
-
-EXPOSE 3000
-
-CMD ["node", "server.js"]
-```
+See [Deploy targets](https://geekmidas.github.io/toolbox/next/guide/deploy-targets) and the
+[deployment guide](https://geekmidas.github.io/toolbox/next/guide/deployment).
 
 ## Advanced Usage
 
@@ -1896,8 +1860,8 @@ Error: Failed to load gkm.config.ts: Invalid configuration
 # No endpoints found
 No endpoints found to process
 
-# Invalid provider
-Error: Unsupported provider: invalid-provider
+# Unknown deploy target
+Unknown deploy target "fly". Use one of dokploy, compose, sst, or name the package that provides it in gkm.config.ts: deploy: { targets: { "fly": '<package>' } }.
 ```
 
 ### OpenAPI Errors
@@ -1919,42 +1883,20 @@ Error: OpenAPI generation failed: Invalid endpoint schema
     "build": "gkm build",
     "build:lambda": "gkm build --provider aws",
     "build:server": "gkm build --provider server",
-    "docs": "gkm openapi --output src/api.ts"
+    "client": "gkm openapi"
   }
 }
 ```
 
 ### CI/CD Pipeline
 
-```yaml
-# .github/workflows/deploy.yml
-name: Deploy API
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-          
-      - name: Install dependencies
-        run: npm ci
-        
-      - name: Build handlers
-        run: npm run build:lambda
-        
-      - name: Deploy to AWS
-        run: npx serverless deploy
-```
+`gkm init` writes a GitHub Actions deploy workflow that runs
+`gkm deploy --stage "$STAGE"` for each stage. Its credentials come from the
+stage's GitHub environment: `AWS_ROLE_ARN` for SST (set by
+`gkm deploy:github --stage <stage>`), or `DOKPLOY_API_TOKEN` and
+`DOKPLOY_ENDPOINT` for Dokploy. In any CI job, `gkm deploy --json` writes the
+deploy's events as JSON lines and never prompts. See
+[Deploying from GitHub Actions](https://geekmidas.github.io/toolbox/next/guide/deployment#deploying-from-github-actions).
 
 ## Troubleshooting
 
