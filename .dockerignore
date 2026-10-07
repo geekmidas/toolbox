@@ -1,0 +1,46 @@
+# Dependencies: installed in the image, for Linux
+**/node_modules
+.pnpm-store
+
+# Build output: every image builds from source, never from the host's
+**/dist
+**/.next
+**/.turbo
+**/.gkm
+
+# The key gkm build --stage encrypted secrets with: runtime env only, never
+# the build context
+**/master.key
+
+# gkm compose's stacks: each app's env file holds its stage's secrets
+**/.gkm/compose
+
+# IDE and editor
+.idea
+.vscode
+*.swp
+*.swo
+
+# Git
+.git
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Test files
+coverage
+
+# Environment files (handle secrets separately)
+**/.env
+**/.env.*
+!**/.env.example
+
+# Docker files (don't copy recursively)
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Agent worktrees: whole checkouts of this repository, none of them an image's
+.claude

@@ -438,9 +438,6 @@ program
 	.option('--push', 'Push image to registry after building')
 	.option('--tag <tag>', 'Image tag', 'latest')
 	.option('--registry <registry>', 'Container registry URL')
-	.option('--slim', 'Use slim Dockerfile (assumes pre-built bundle exists)')
-	.option('--turbo', 'Use turbo prune for monorepo optimization')
-	.option('--turbo-package <name>', 'Package name for turbo prune')
 	.action(async (options: DockerOptions) => {
 		try {
 			const globalOptions = program.opts();
@@ -488,20 +485,12 @@ program
 	.option('--push', 'Push image to registry after building')
 	.option('--tag <tag>', 'Image tag', 'latest')
 	.option('--registry <registry>', 'Container registry URL')
-	.option('--slim', 'Build locally first, then use slim Dockerfile')
-	.option('--skip-bundle', 'Skip bundling step (only with --slim)')
-	.option('--turbo', 'Use turbo prune for monorepo optimization')
-	.option('--turbo-package <name>', 'Package name for turbo prune')
 	.action(
 		async (options: {
 			build?: boolean;
 			push?: boolean;
 			tag?: string;
 			registry?: string;
-			slim?: boolean;
-			skipBundle?: boolean;
-			turbo?: boolean;
-			turboPackage?: string;
 		}) => {
 			try {
 				const globalOptions = program.opts();
@@ -509,31 +498,12 @@ program
 					process.chdir(globalOptions.cwd);
 				}
 
-				if (options.slim) {
-					await buildCommand({
-						provider: 'server',
-						production: true,
-						skipBundle: options.skipBundle,
-					});
-				}
 				await dockerCommand({
 					build: options.build,
 					push: options.push,
 					tag: options.tag,
 					registry: options.registry,
-					slim: options.slim,
-					turbo: options.turbo,
-					turboPackage: options.turboPackage,
 				});
-				if (options.slim) {
-				} else {
-				}
-
-				if (options.build) {
-					const tag = options.tag ?? 'latest';
-					const registry = options.registry;
-					const _imageRef = registry ? `${registry}/api:${tag}` : `api:${tag}`;
-				}
 			} catch (error) {
 				console.error(formatError(error));
 				process.exit(1);

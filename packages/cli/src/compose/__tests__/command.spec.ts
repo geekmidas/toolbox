@@ -1,4 +1,12 @@
-import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import {
 	afterAll,
@@ -12,6 +20,7 @@ import {
 } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import type { SqlClient } from '../../reconcile/provision';
+import { decryptSecrets } from '../../secrets/encryption';
 import {
 	ComposeModeConflict,
 	composeCommand,
@@ -21,7 +30,7 @@ import { writeComposeApp } from './__helpers__/composeApp';
 import { answering, fakeDocker } from './__helpers__/fakeDocker';
 
 /**
- * `gkm compose` with Docker, the registry, the bundler, Postgres and the
+ * `gkm compose` with Docker, the registry, Postgres and the
  * health probe replaced by recorders — everything else real: the command runs
  * the compose target through `deploy()`, the workspace is loaded (in its
  * sandbox) and discovered, the stage's secrets and state are its real stores,
@@ -101,7 +110,6 @@ describe('gkm compose --tag', { timeout: RUN_TIMEOUT }, () => {
 				docker,
 				sql,
 				migrate,
-				bundle: vi.fn(),
 				revision: vi.fn(),
 				probe: async () => 200,
 			},
@@ -134,7 +142,6 @@ describe(
 
 		async function run() {
 			const fake = fakeDocker();
-			const bundled: string[] = [];
 			const statements: string[] = [];
 			const migrations: { env: Record<string, string | undefined> }[] = [];
 			const result = await composeCommand(
@@ -142,10 +149,6 @@ describe(
 				{
 					docker: fake.docker,
 					probe: answering(fake.calls),
-					bundle: async (appRoot) => {
-						bundled.push(appRoot);
-						fake.calls.push({ op: 'bundle' });
-					},
 					revision: async () => 'abc1234',
 					sql: (port, password) => ({
 						async query(_database, sql) {
@@ -161,7 +164,7 @@ describe(
 					},
 				},
 			);
-			return { ...fake, bundled, statements, migrations, result };
+			return { ...fake, statements, migrations, result };
 		}
 
 		it('creates the databases and migrates before any app starts', async () => {
@@ -174,7 +177,6 @@ describe(
 				'port',
 				'sql',
 				'migrate',
-				'bundle',
 				'build',
 				'up',
 				'copyOut',
@@ -185,10 +187,47 @@ describe(
 			).toEqual([['postgres'], 'all']);
 		});
 
-		it('bundles each backend in its own directory, and no site', async () => {
-			const { bundled } = ran;
+		it('builds every image inside Docker, and nothing on this machine first', async () => {
+			const stack = join(dir, '.gkm', 'compose', 'development');
+			const api = readFileSync(join(stack, 'Dockerfile.api'), 'utf-8');
+			const web = readFileSync(join(stack, 'Dockerfile.web'), 'utf-8');
 
-			expect(bundled).toEqual([join(dir, 'apps/api'), join(dir, 'apps/auth')]);
+			// The backend is bundled by gkm build in the image, from a pruned
+			// slice — the same template `gkm docker` writes.
+			expect(api).toContain('prune @compose-app/api --docker');
+			expect(api).toContain(
+				'node "$GKM_BIN" build --provider server --production',
+			);
+			expect(web).toContain("run build --filter='@compose-app/web'");
+			// No backend was bundled here, so there is no bundle to copy in.
+			expect(existsSync(join(dir, 'apps', 'api', '.gkm', 'server'))).toBe(
+				false,
+			);
+		});
+
+		it("builds each backend with its environment encrypted, as a build secret its env file's key opens", async () => {
+			const stack = join(dir, '.gkm', 'compose', 'development');
+			const compose = readFileSync(join(stack, 'docker-compose.yml'), 'utf-8');
+
+			expect(compose).toMatch(
+				/secrets:\n\s+- source: api_credentials\n\s+target: gkm_credentials/,
+			);
+			expect(compose).toMatch(
+				/api_credentials:\n\s+file: \.\/api\.credentials/,
+			);
+			expect(compose).toMatch(/GKM_CIPHERTEXT_HASH: [0-9a-f]{16}/);
+			expect(statSync(join(stack, 'api.credentials')).mode & 0o777).toBe(0o600);
+
+			const [encrypted, iv] = readFileSync(
+				join(stack, 'api.credentials'),
+				'utf-8',
+			).split('\n');
+			const env = readFileSync(join(stack, 'api.env'), 'utf-8');
+			const masterKey = /^GKM_MASTER_KEY=([0-9a-f]+)$/m.exec(env)?.[1];
+			const secrets = decryptSecrets(encrypted!, iv!, masterKey!);
+			expect(secrets.PORT).toBe(/^PORT=(.*)$/m.exec(env)?.[1]);
+			// A site embeds nothing.
+			expect(existsSync(join(stack, 'web.credentials'))).toBe(false);
 		});
 
 		it('creates the roles with the master credential on the published port', async () => {
@@ -225,7 +264,7 @@ describe(
 
 		it('keeps the stacks out of every image build context', async () => {
 			expect(readFileSync(join(dir, '.dockerignore'), 'utf-8')).toMatch(
-				/^\.gkm\/compose$/m,
+				/^\*\*\/\.gkm\/compose$/m,
 			);
 		});
 
@@ -271,7 +310,7 @@ describe('gkm compose --dry-run', { timeout: RUN_TIMEOUT }, () => {
 
 		const result = await composeCommand(
 			{ cwd: dir, dryRun: true },
-			{ docker, revision: async () => 'abc1234', bundle: vi.fn() },
+			{ docker, revision: async () => 'abc1234' },
 		);
 
 		expect(ops()).toEqual([]);
@@ -287,6 +326,97 @@ describe('gkm compose --dry-run', { timeout: RUN_TIMEOUT }, () => {
 		expect(existsSync(join(dir, '.gkm', 'deploy-development.json'))).toBe(
 			false,
 		);
+	});
+});
+
+/**
+ * Whether Docker leaves `path` (relative to the context) out of a build,
+ * by the `**`, `*` and plain patterns gkm writes: a path is out when it, or a
+ * directory above it, matches.
+ */
+function dockerIgnores(ignore: string, path: string): boolean {
+	const patterns = ignore
+		.split('\n')
+		.map((line) => line.trim())
+		.filter((line) => line && !line.startsWith('#') && !line.startsWith('!'))
+		.map(
+			(pattern) =>
+				new RegExp(
+					`^${pattern
+						.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+						.replace(/\*\*\//g, '\0')
+						.replace(/\*/g, '[^/]*')
+						.replace(/\0/g, '(?:.*/)?')}$`,
+				),
+		);
+	const parts = path.split('/');
+	return parts.some((_, i) => {
+		const prefix = parts.slice(0, i + 1).join('/');
+		return patterns.some((pattern) => pattern.test(prefix));
+	});
+}
+
+describe('a workspace nested in a monorepo', { timeout: RUN_TIMEOUT }, () => {
+	let root: string;
+
+	beforeEach(async () => {
+		root = realpathSync(await createTempDir('gkm-compose-nested-'));
+		writeFileSync(
+			join(root, 'package.json'),
+			JSON.stringify({ name: 'monorepo', private: true }),
+		);
+		writeFileSync(
+			join(root, 'pnpm-workspace.yaml'),
+			'packages:\n  - examples/*\n  - examples/shop/apps/*\n',
+		);
+		writeFileSync(join(root, 'pnpm-lock.yaml'), "lockfileVersion: '9.0'\n");
+		writeFileSync(join(root, 'turbo.json'), '{}');
+		// The project's own ignore file, which says nothing of gkm's stacks.
+		writeFileSync(join(root, '.dockerignore'), 'coverage\n');
+
+		dir = join(root, 'examples', 'shop');
+		mkdirSync(dir, { recursive: true });
+		writeComposeApp(dir);
+		// Its packages are the monorepo's: one install, at the root.
+		rmSync(join(dir, 'pnpm-workspace.yaml'));
+	});
+	afterEach(async () => {
+		await cleanupDir(root);
+	});
+
+	it("builds from the monorepo's root, and keeps the stack's env files out of its context", async () => {
+		const { docker } = fakeDocker();
+
+		await composeCommand(
+			{ cwd: dir, dryRun: true },
+			{ docker, revision: async () => 'abc1234' },
+		);
+
+		const stack = join(dir, '.gkm', 'compose', 'development');
+		const compose = readFileSync(join(stack, 'docker-compose.yml'), 'utf-8');
+		expect(compose).toContain('context: ../../../../..');
+		expect(compose).toContain(
+			'dockerfile: examples/shop/.gkm/compose/development/Dockerfile.api',
+		);
+		expect(readFileSync(join(stack, 'Dockerfile.api'), 'utf-8')).toContain(
+			'cd /app/examples/shop/apps/api && GKM_BIN=',
+		);
+
+		// The build root's ignore file is the one that applies, and it now
+		// leaves out every stack's env files and credentials.
+		const ignore = readFileSync(join(root, '.dockerignore'), 'utf-8');
+		expect(ignore.startsWith('coverage\n')).toBe(true);
+		for (const file of ['api.env', 'auth.env', 'api.credentials']) {
+			expect(existsSync(join(stack, file))).toBe(true);
+			expect(
+				dockerIgnores(ignore, `examples/shop/.gkm/compose/development/${file}`),
+			).toBe(true);
+		}
+		// What the image is built from is not.
+		expect(dockerIgnores(ignore, 'examples/shop/apps/api/package.json')).toBe(
+			false,
+		);
+		expect(existsSync(join(dir, '.dockerignore'))).toBe(false);
 	});
 });
 

@@ -9,6 +9,7 @@
 		"preview": "vite preview"
 	},
 	"devDependencies": {
+		"@geekmidas/envkit": "workspace:*",
 		"vite": "~8.3.1"
 	}
 }

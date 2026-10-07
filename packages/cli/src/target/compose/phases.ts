@@ -17,21 +17,17 @@
  * - What was started answers (`verify`): each app is asked through Caddy,
  *   over HTTPS, with the certificate verified.
  *
- * Docker, the registry, the bundler, Postgres and the health probe are
+ * Every image is built inside Docker from a pruned slice of the build root —
+ * the same Dockerfiles `gkm docker` writes — so nothing is built on this
+ * machine before `docker compose build`.
+ *
+ * Docker, the registry, Postgres and the health probe are
  * injected, so the rules are asserted without a daemon; the defaults are the
  * real ones.
  */
 
-import { existsSync } from 'node:fs';
-import {
-	appendFile,
-	chmod,
-	mkdir,
-	readFile,
-	writeFile,
-} from 'node:fs/promises';
+import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { stringify } from 'yaml';
 import {
@@ -44,11 +40,18 @@ import {
 	type ComposeStack,
 	composeProject,
 	composeStack,
+	credentialsFile,
 	EDGE_PORT_ENV,
 	envFile,
 	type StackApp,
 	stackDir,
+	withBuildCredentials,
 } from '../../compose/stack';
+import {
+	type BuildCredentials,
+	credentialsBuildArg,
+	credentialsFileContent,
+} from '../../deploy/docker.js';
 import type { ResourceChange } from '../../deploy/events';
 import { withGeneratedSecrets } from '../../deploy/generated.js';
 import { DeployJournal } from '../../deploy/journal';
@@ -58,11 +61,9 @@ import {
 	recordRelease,
 } from '../../deploy/state.js';
 import type { DeployResult } from '../../deploy/types';
-import { appPackageName } from '../../docker/index.js';
-import {
-	detectPackageManager,
-	generateDockerignore,
-} from '../../docker/templates.js';
+import { ensureDockerignore } from '../../docker/index.js';
+import { imageLayout } from '../../docker/layout.js';
+import { findBuildRoot } from '../../docker/templates.js';
 import { migrateDatabases } from '../../migrate/databases.js';
 import { pgClient } from '../../reconcile/clients.js';
 import { primaryPortKey } from '../../reconcile/containers.js';
@@ -74,8 +75,7 @@ import {
 } from '../../reconcile/provision.js';
 import { constructGlobs } from '../../reconcile/workspace.js';
 import { runOutput } from '../../run';
-import { LocalSandbox } from '../../sandbox/local';
-import { activeSandbox } from '../../sandbox/sandbox';
+import { encryptSecrets } from '../../secrets/encryption.js';
 import { initStageSecrets } from '../../secrets/storage.js';
 import type { StageSecrets } from '../../secrets/types.js';
 import type { NormalizedWorkspace } from '../../workspace/types.js';
@@ -93,12 +93,6 @@ export type ComposeContext = DeployPhaseContext<undefined>;
 /** What the target needs from outside the process, so tests can stand in. */
 export interface ComposeDeps {
 	docker: ComposeDocker;
-	/**
-	 * Bundle one backend for production, in its own directory. By default
-	 * `gkm build --provider server --production`, run in the deploy's sandbox:
-	 * it imports the project's code.
-	 */
-	bundle: (appRoot: string, ctx: ComposeContext) => Promise<void>;
 	/** The commit a build is tagged with. */
 	revision: (root: string) => Promise<string>;
 	/** The Postgres client provisioning and migrations connect through. */
@@ -138,6 +132,11 @@ export interface ComposeRun {
 	previous: Record<string, DeployedImage>;
 	/** Every file written, absolute. */
 	files: string[];
+	/**
+	 * Each backend's encrypted credentials, for a build: written beside the
+	 * compose file as the BuildKit secret its image embeds them from.
+	 */
+	credentials: Record<string, BuildCredentials>;
 	/** Each app's image, once built or pulled. */
 	images: Record<string, ComposeImage>;
 	/** Every resource the run touched, or for a dry run would. */
@@ -166,32 +165,6 @@ export class NoGitRevision extends Error {
 				`pass --tag to name the images yourself.`,
 		);
 		this.name = 'NoGitRevision';
-	}
-}
-
-/** A backend's production bundle did not build. */
-export class BundleFailed extends Error {
-	constructor(
-		readonly app: string,
-		readonly exitCode: number | null,
-		readonly stderr: string,
-	) {
-		super(
-			`Bundling '${app}' for production failed (exit code ${exitCode}).` +
-				`${stderr.trim() ? `\n${stderr.trim().slice(-4000)}` : ''}\n` +
-				`Run \`gkm build --provider server --production\` in the app's directory to see it again.`,
-		);
-		this.name = 'BundleFailed';
-	}
-}
-
-/** The CLI's own entry, which the bundle step runs, is not where it should be. */
-export class CliEntryNotFound extends Error {
-	constructor(readonly from: string) {
-		super(
-			`Could not find bin/gkm.mjs above ${from}, which bundling a backend runs. Reinstall @geekmidas/cli.`,
-		);
-		this.name = 'CliEntryNotFound';
 	}
 }
 
@@ -235,52 +208,12 @@ export function edgePorts(env: NodeJS.ProcessEnv = process.env): {
 	};
 }
 
-/** `bin/gkm.mjs` of the CLI that is running. */
-function cliEntry(): string {
-	const from = dirname(fileURLToPath(import.meta.url));
-	for (let dir = from; dirname(dir) !== dir; dir = dirname(dir)) {
-		const entry = join(dir, 'bin', 'gkm.mjs');
-		if (existsSync(entry)) return entry;
-	}
-	throw new CliEntryNotFound(from);
-}
-
-/** A cold production bundle is seconds; a hung one must not hold the lock. */
-const BUNDLE_TIMEOUT_MS = 10 * 60_000;
-
-/**
- * Bundle a backend with the gkm that is running — the same build a deploy
- * makes, so the image holds one file and no dependencies — in the run's
- * sandbox, because the build imports the project's code.
- */
-async function bundleInSandbox(
-	appRoot: string,
-	ctx: ComposeContext,
-): Promise<void> {
-	const sandbox = activeSandbox() ?? new LocalSandbox({ root: ctx.cwd });
-	const result = await sandbox.exec(
-		'node',
-		[cliEntry(), 'build', '--provider', 'server', '--production'],
-		{
-			cwd: appRoot,
-			env: sandbox.env,
-			timeoutMs: BUNDLE_TIMEOUT_MS,
-			output: ctx.childOutput,
-			signal: ctx.signal,
-		},
-	);
-	if (result.exitCode !== 0) {
-		throw new BundleFailed(appRoot, result.exitCode, result.stderr);
-	}
-}
-
 /**
  * The real ones. Each app is asked for three minutes before it counts as
  * down: a deployed stage's first ACME certificate can take that long.
  */
 export const defaultDeps: ComposeDeps = {
 	docker: dockerCompose,
-	bundle: bundleInSandbox,
 	revision: gitRevision,
 	sql: pgClient,
 	migrate: migrateDatabases,
@@ -319,7 +252,13 @@ export async function validateCompose(
 
 	const { secrets, generated } = await stageSecrets(ctx, manifest);
 
-	const stack = composeStack({
+	const masterKeys: Record<string, { masterKey: string; buildArg: string }> =
+		{};
+
+	// Where and with what the images are built — only asked when they are.
+	const layout = mode === 'build' ? imageLayout(workspace) : undefined;
+
+	const composed = composeStack({
 		workspace,
 		manifest,
 		runnables,
@@ -334,14 +273,26 @@ export async function validateCompose(
 		},
 		secrets,
 		ports: edgePorts(deps.env),
-		packageManager: detectPackageManager(root),
-		packages: Object.fromEntries(
-			Object.entries(workspace.apps).map(([name, app]) => [
-				name,
-				appPackageName(root, name, app.path),
-			]),
-		),
+		...(layout ? { layout } : {}),
 	});
+
+	// Each backend built here embeds its environment, encrypted, the way a
+	// Dokploy deploy builds one: handed to the build as a secret, decrypted at
+	// runtime with the key its env file holds.
+	const credentials: Record<string, BuildCredentials> = {};
+	if (mode === 'build') {
+		for (const app of composed.apps) {
+			if (app.kind !== 'rest-api' || !app.env || !app.build) continue;
+			const { encrypted, iv, masterKey } = encryptSecrets(app.env);
+			credentials[app.name] = { encrypted, iv };
+			ctx.secrets.mask(masterKey);
+			masterKeys[app.name] = {
+				masterKey,
+				buildArg: credentialsBuildArg({ encrypted, iv }),
+			};
+		}
+	}
+	const stack = withBuildCredentials(composed, masterKeys);
 
 	// A release is all of its images or none of them. A dry run asks nothing,
 	// so it can be run without a registry login.
@@ -379,6 +330,7 @@ export async function validateCompose(
 		generated,
 		previous,
 		files: [],
+		credentials,
 		images: {},
 		changes: [],
 	};
@@ -429,7 +381,7 @@ export async function planCompose(
 			`🔑 "${ctx.stage}" has no ${run.generated.join(', ')} yet; this dry run used values it did not keep.`,
 		);
 	}
-	run.files = await writeStack(ctx.cwd, run.dir, run.stack);
+	run.files = await writeStack(ctx.cwd, run.dir, run.stack, run.credentials);
 	printPlan(ctx, run);
 
 	const planned = (change: ResourceChange) => {
@@ -482,7 +434,7 @@ export async function provisionCompose(
 		);
 	}
 
-	run.files = await writeStack(ctx.cwd, run.dir, stack);
+	run.files = await writeStack(ctx.cwd, run.dir, stack, run.credentials);
 	printPlan(ctx, run);
 
 	if (stack.infra.length > 0) {
@@ -559,8 +511,9 @@ async function prepareDatabases(
 // ============================================================================
 
 /**
- * Each app's image: built from this checkout — every backend bundled first,
- * on the host, with this CLI — or pulled at the tag. Nothing live changes.
+ * Each app's image: built from this checkout — inside Docker, every one of
+ * them, from a pruned slice of the build root — or pulled at the tag. Nothing
+ * live changes.
  */
 export async function buildCompose(
 	ctx: ComposeContext,
@@ -571,11 +524,6 @@ export async function buildCompose(
 	const apps = stack.apps.map((app) => app.name);
 
 	if (run.mode === 'build') {
-		for (const app of stack.apps.filter((a) => a.kind === 'rest-api')) {
-			ctx.signal.throwIfAborted();
-			ctx.logger.info(`\n📦 Bundling ${app.name}…`);
-			await deps.bundle(join(ctx.cwd, app.path), ctx);
-		}
 		ctx.logger.info('\n🐳 Building images…');
 		await deps.docker.build(ref, apps);
 	} else {
@@ -833,6 +781,7 @@ async function writeStack(
 	root: string,
 	dir: string,
 	stack: ComposeStack,
+	credentials: Readonly<Record<string, BuildCredentials>> = {},
 ): Promise<string[]> {
 	await mkdir(dir, { recursive: true, mode: 0o700 });
 	await chmod(dir, 0o700);
@@ -851,30 +800,23 @@ async function writeStack(
 		if (app.env)
 			await write(join(dir, `${app.name}.env`), envFile(app.env), 0o600);
 	}
+	for (const [name, payload] of Object.entries(credentials)) {
+		await write(
+			join(dir, credentialsFile(name)),
+			credentialsFileContent(payload),
+			0o600,
+		);
+	}
 	for (const [path, content] of Object.entries(stack.dockerfiles)) {
 		await write(join(root, path), content);
 	}
 
-	// The build context is the workspace, and the env files are in it: the
-	// ignore file is what keeps a stage's secrets out of every image's context.
-	await ignoreStacks(root);
+	// The build context is the build root, and the env files are under it:
+	// its ignore file is what keeps a stage's secrets out of every image's
+	// context.
+	await ensureDockerignore(findBuildRoot(root));
 
 	return files;
-}
-
-/** Make sure the build context leaves `.gkm/compose` out. */
-async function ignoreStacks(root: string): Promise<void> {
-	const path = join(root, '.dockerignore');
-	if (!existsSync(path)) {
-		await writeFile(path, generateDockerignore());
-		return;
-	}
-	const current = await readFile(path, 'utf-8');
-	if (/^\/?\.gkm\/compose\/?$|^\/?\.gkm\/?$/m.test(current)) return;
-	await appendFile(
-		path,
-		`${current.endsWith('\n') ? '' : '\n'}\n# gkm compose's stacks: each app's env file holds its stage's secrets\n.gkm/compose\n`,
-	);
 }
 
 function composeYaml(stack: ComposeStack): string {

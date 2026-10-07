@@ -83,7 +83,7 @@ describe('two sites of different variants', () => {
 	});
 
 	it('builds a static image for one and a server image for the other', () => {
-		// The point of two variants: a Vite site is files behind nginx, a Next
+		// The point of two variants: a Vite site is files behind Caddy, a Next
 		// site is a Node process. One template could not be right for both.
 		const opts = {
 			imageName: 'x',
@@ -95,7 +95,7 @@ describe('two sites of different variants', () => {
 			publicUrlArgs: [],
 		};
 
-		expect(generateViteStaticDockerfile(opts)).toMatch(/nginx/i);
+		expect(generateViteStaticDockerfile(opts)).toMatch(/FROM caddy:/);
 		expect(generateNextjsDockerfile(opts)).toMatch(/standalone|server\.js/i);
 	});
 });

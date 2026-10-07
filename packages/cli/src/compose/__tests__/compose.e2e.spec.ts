@@ -4,9 +4,14 @@
  *
  * Gated behind GKM_E2E=1 — it builds three images and starts five containers,
  * which takes minutes, not milliseconds. It needs Docker, pnpm, git and the
- * network (the site's image installs Vite), and the packages built
+ * network (each image installs its dependencies), and the packages built
  * (`npx tsdown`), because the CLI is run as a user runs it: `gkm compose`, in
  * the project's directory.
+ *
+ * Every image is built inside Docker, the way a user's project builds: from
+ * its lockfile, with `gkm build` run in the image. The project depends on
+ * this checkout's packages as tarballs (`pnpm pack`), so the CLI that builds
+ * the backends in the image is the one under test, not the last release.
  *
  * What it proves is the part no unit test can: that the stack the files
  * describe actually works.
@@ -26,7 +31,13 @@
 
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import {
+	existsSync,
+	readdirSync,
+	readFileSync,
+	realpathSync,
+	writeFileSync,
+} from 'node:fs';
 import { request as httpsRequest } from 'node:https';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
@@ -41,6 +52,14 @@ const BUILD_TIMEOUT = 20 * 60_000;
 
 const CLI = join(import.meta.dirname, '..', '..', '..', 'bin', 'gkm.mjs');
 const DIST = join(import.meta.dirname, '..', '..', '..', 'dist', 'index.mjs');
+const PACKAGES = join(import.meta.dirname, '..', '..', '..', '..');
+const KITCHEN_SINK = join(
+	PACKAGES,
+	'..',
+	'apps',
+	'kitchen-sink',
+	'package.json',
+);
 
 /** What a child is started with: never the suite's `--import tsx`. */
 function childEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
@@ -78,6 +97,70 @@ function exec(
 					),
 		);
 	});
+}
+
+/**
+ * Depend on this checkout's packages the way a project depends on released
+ * ones: each packed into a tarball at the project's root, every
+ * `@geekmidas/*` — the packages' own dependencies on each other included —
+ * resolved to its tarball, and the rest at the ranges the kitchen sink uses.
+ */
+async function dependOnThisCheckout(dir: string, name: string): Promise<void> {
+	const tarballs: Record<string, string> = {};
+	for (const entry of readdirSync(PACKAGES, { withFileTypes: true })) {
+		const pkgDir = join(PACKAGES, entry.name);
+		const manifest = join(pkgDir, 'package.json');
+		if (!entry.isDirectory() || !existsSync(manifest)) continue;
+		const pkg = JSON.parse(readFileSync(manifest, 'utf-8'));
+		if (pkg.private) continue;
+		const packed = await exec('pnpm', ['pack', '--pack-destination', dir], {
+			cwd: pkgDir,
+		});
+		const file = packed.trim().split('\n').pop()!.split('/').pop()!;
+		tarballs[pkg.name] = `file:./${file}`;
+	}
+
+	const sink = JSON.parse(readFileSync(KITCHEN_SINK, 'utf-8'));
+	const range = (dep: string) => sink.dependencies[dep] as string;
+	writeFileSync(
+		join(dir, 'package.json'),
+		`${JSON.stringify(
+			{
+				name,
+				private: true,
+				type: 'module',
+				packageManager: 'pnpm@10.30.1',
+				dependencies: {
+					...Object.fromEntries(
+						[
+							'@geekmidas/cli',
+							'@geekmidas/constructs',
+							'@geekmidas/db',
+							'@geekmidas/envkit',
+							'@geekmidas/errors',
+							'@geekmidas/logger',
+							'@geekmidas/services',
+						].map((dep) => [dep, tarballs[dep]!]),
+					),
+					...Object.fromEntries(
+						[
+							// The server `gkm build` generates listens with it.
+							'@hono/node-server',
+							'better-auth',
+							'hono',
+							'kysely',
+							'pg',
+							'pino',
+							'zod',
+						].map((dep) => [dep, range(dep)]),
+					),
+				},
+				pnpm: { overrides: tarballs },
+			},
+			null,
+			2,
+		)}\n`,
+	);
 }
 
 async function freePort(): Promise<number> {
@@ -218,8 +301,9 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 
 				dir = realpathSync(await createTempDir('gkm-compose-e2e-'));
 				writeComposeApp(dir, { name });
+				await dependOnThisCheckout(dir, name);
 
-				// What a real project has: a lockfile the site's image installs from,
+				// What a real project has: a lockfile every image installs from,
 				// and a commit its images are tagged with.
 				await exec('pnpm', ['install', '--lockfile-only'], { cwd: dir });
 				const git = childEnv({
@@ -286,6 +370,19 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				if (dir) await cleanupDir(dir);
 			}, 5 * 60_000);
 
+			it('built every image inside Docker, and nothing on this machine', () => {
+				// The backends were bundled by `gkm build` in their images, and no
+				// bundle was made here for an image to copy in.
+				expect(output).toMatch(/#\d+ [\d.]+ 📦 Bundling production server/);
+				expect(output).not.toMatch(/📦 Bundling (api|auth)…/);
+				for (const app of ['api', 'auth']) {
+					expect(existsSync(join(dir, 'apps', app, '.gkm', 'server'))).toBe(
+						false,
+					);
+				}
+				expect(existsSync(join(dir, 'apps', 'web', 'dist'))).toBe(false);
+			});
+
 			it('starts the stack and says where each app answers', () => {
 				expect(output).toContain(`${project} is running`);
 				expect(output).toContain(origin('api'));
@@ -321,6 +418,16 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				const bundle = await edge('web', script!);
 				expect(bundle.body).toContain(origin('api'));
 				expect(bundle.body).toContain(origin('auth'));
+
+				// Caddy: hashed assets cached for good, the page revalidated, and
+				// a client-side route answered with the page.
+				expect(bundle.headers['cache-control']).toBe(
+					'public, max-age=31536000, immutable',
+				);
+				expect(page.headers['cache-control']).toBe('no-cache');
+				const deep = await edge('web', '/some/client/route');
+				expect(deep.status).toBe(200);
+				expect(deep.body).toBe(page.body);
 			});
 
 			it('(a) signs in from the site, setting the session on the shared cookie domain', async () => {

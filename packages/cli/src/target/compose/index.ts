@@ -45,8 +45,6 @@ export {
 	HealthRequestTimedOut,
 } from './health';
 export {
-	BundleFailed,
-	CliEntryNotFound,
 	type ComposeDeps,
 	type ComposeImage,
 	type ComposeRun,

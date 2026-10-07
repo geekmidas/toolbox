@@ -22,7 +22,7 @@ import {
 /**
  * `gkm deploy --target compose`: the compose target run by `deploy()`, the
  * way any target is — its phases in order, its events, its refusals. Docker,
- * the registry, the bundler, Postgres and the probe are recorders; the
+ * the registry, Postgres and the probe are recorders; the
  * workspace, its sandboxed load, the stage's secrets and its state are real.
  */
 
@@ -43,7 +43,6 @@ afterEach(async () => {
 /** Everything but docker and the probe, standing in for the real ones. */
 function quiet(): Partial<ComposeDeps> {
 	return {
-		bundle: async () => {},
 		revision: async () => 'abc1234',
 		sql: () => ({ query: async () => [] }) satisfies SqlClient,
 		migrate: async () => [],

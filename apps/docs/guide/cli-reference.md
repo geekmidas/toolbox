@@ -404,9 +404,12 @@ Options:
   --push                 Push the image to the registry after building
   --tag <tag>            Image tag (default: latest)
   --registry <registry>  Container registry URL
-  --slim                 Slim Dockerfile (needs a pre-built bundle)
-  --turbo                Use turbo prune for monorepo optimization
 ```
+
+Every image is built inside Docker from a `turbo prune`d slice of the build
+root — the directory holding the lockfile at or above the workspace — so
+nothing is built on the host first. Build from the build root:
+`docker build -f <workspace>/.gkm/docker/Dockerfile.<app> .`
 
 Writes the Dockerfiles under `.gkm/docker/`, and `docker-compose.constructs.yml`
 at the project root: the containers the constructs imply, with each app behind

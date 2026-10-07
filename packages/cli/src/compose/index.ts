@@ -24,7 +24,6 @@ import { dockerCompose, type StackRef } from './docker';
 import { type ComposeStack, composeProject, stackDir } from './stack';
 
 export {
-	BundleFailed,
 	ComposeAppsUnhealthy,
 	EdgePortInvalid,
 	edgePorts,

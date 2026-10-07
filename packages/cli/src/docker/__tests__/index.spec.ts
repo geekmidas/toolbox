@@ -18,6 +18,7 @@ import type {
 import {
 	dockerCommand,
 	ImageRefInvalid,
+	MonorepoNeedsTurbo,
 	workspaceDockerCommand,
 } from '../index';
 
@@ -84,6 +85,8 @@ describe('gkm docker', () => {
 
 		it('writes one Dockerfile per deployable app, built for its kind', async () => {
 			writeFileSync(join(root, 'pnpm-lock.yaml'), '');
+			writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages: [apps/*]\n');
+			writeFileSync(join(root, 'turbo.json'), '{}');
 			mkdirSync(join(root, 'apps/api'), { recursive: true });
 			writeFileSync(
 				join(root, 'apps/api/package.json'),
@@ -118,7 +121,7 @@ describe('gkm docker', () => {
 			expect(dockerfile('api')).toContain('@shop/api');
 			expect(dockerfile('worker')).toContain('src/main.ts');
 			expect(dockerfile('web')).toMatch(/next/i);
-			expect(dockerfile('site')).toMatch(/nginx|static/i);
+			expect(dockerfile('site')).toMatch(/FROM caddy:/);
 			expect(existsSync(join(root, '.dockerignore'))).toBe(true);
 			expect(result.dockerCompose).toBe(
 				join(root, 'docker-compose.constructs.yml'),
@@ -163,33 +166,24 @@ export default defineConfig({
 			process.chdir(root);
 		}
 
-		it('writes a multi-stage Dockerfile, the entrypoint and the ignore file', async () => {
+		it("writes the app's Dockerfile, which builds it inside Docker, and the ignore file", async () => {
 			project();
 
-			const result = (await dockerCommand({})) as {
-				dockerfile: string;
-				entrypoint: string;
-				dockerignore: string;
-			};
+			const result = await dockerCommand({});
 
-			expect(readFileSync(result.dockerfile, 'utf-8')).toContain('FROM');
-			expect(existsSync(result.entrypoint)).toBe(true);
-			expect(existsSync(result.dockerignore)).toBe(true);
-			expect(printed()).toContain('multi-stage, pnpm');
-			expect(run).not.toHaveBeenCalled();
-		});
-
-		it('refuses --slim without a built bundle, and uses one that exists', async () => {
-			project();
-
-			await expect(dockerCommand({ slim: true })).rejects.toThrow(
-				'Slim Dockerfile requires a pre-built bundle',
+			const [api] = result.apps;
+			expect(api?.dockerfile).toBe(
+				join(realpathSync(root), '.gkm/docker/Dockerfile'),
 			);
-
-			mkdirSync(join(root, '.gkm/server/dist'), { recursive: true });
-			writeFileSync(join(root, '.gkm/server/dist/server.mjs'), '');
-			await dockerCommand({ slim: true });
-			expect(printed()).toContain('(slim, pnpm)');
+			const dockerfile = readFileSync(api!.dockerfile, 'utf-8');
+			// A single package: copied whole, built in the image, no bundle from
+			// the host.
+			expect(dockerfile).toContain('cp -a . /tmp/out/full/');
+			expect(dockerfile).toContain(
+				'node "$GKM_BIN" build --provider server --production',
+			);
+			expect(existsSync(result.dockerignore)).toBe(true);
+			expect(run).not.toHaveBeenCalled();
 		});
 
 		it('builds and pushes the image to the registry', async () => {
@@ -256,11 +250,23 @@ export default defineConfig({
 		});
 
 		describe('inside a monorepo', () => {
-			/** The app one level below a root that holds the lockfile. */
+			/** The app one level below a workspace root that holds the lockfile. */
 			function nested(turbo: boolean) {
 				const app = join(root, 'apps/api');
 				mkdirSync(app, { recursive: true });
 				writeFileSync(join(root, 'pnpm-lock.yaml'), '');
+				writeFileSync(
+					join(root, 'pnpm-workspace.yaml'),
+					'packages:\n  - apps/*\n',
+				);
+				writeFileSync(
+					join(root, 'package.json'),
+					JSON.stringify({
+						name: 'shop',
+						private: true,
+						packageManager: 'pnpm@10.30.1+sha512.abc',
+					}),
+				);
 				if (turbo) writeFileSync(join(root, 'turbo.json'), '{}');
 				writeFileSync(
 					join(app, 'gkm.config.ts'),
@@ -284,25 +290,41 @@ export default defineConfig({
 			it('refuses a monorepo without turbo.json', async () => {
 				nested(false);
 
-				await expect(dockerCommand({})).rejects.toThrow(
-					'Monorepo detected but turbo.json not found',
+				await expect(dockerCommand({})).rejects.toBeInstanceOf(
+					MonorepoNeedsTurbo,
 				);
 			});
 
-			it('prunes with turbo, and copies the root lockfile in for the build', async () => {
+			it('builds from the root, pruned to the app, with the root’s pnpm', async () => {
 				const app = nested(true);
-				let lockfileDuringBuild = false;
-				vi.mocked(run).mockImplementation(async () => {
-					lockfileDuringBuild = existsSync(join(app, 'pnpm-lock.yaml'));
-				});
 
 				await dockerCommand({ build: true });
 
-				expect(printed()).toContain('Turbo package: @shop/api');
-				expect(printed()).toContain('(turbo, pnpm)');
-				expect(lockfileDuringBuild).toBe(true);
-				// Copied for the build, and cleaned up after it.
+				expect(commands()).toEqual([
+					[
+						'docker',
+						'build',
+						'--file=apps/api/.gkm/docker/Dockerfile',
+						'--tag=api:latest',
+						'.',
+					],
+				]);
+				expect(vi.mocked(run).mock.calls[0]![2]).toMatchObject({
+					cwd: realpathSync(root),
+				});
+				const dockerfile = readFileSync(
+					join(app, '.gkm/docker/Dockerfile'),
+					'utf-8',
+				);
+				expect(dockerfile).toContain('prune @shop/api --docker');
+				expect(dockerfile).toContain(
+					'corepack prepare pnpm@10.30.1 --activate',
+				);
+				expect(dockerfile).toContain('cd /app/apps/api && GKM_BIN=');
+				// Nothing is copied into the app for the build: the root is the
+				// context.
 				expect(existsSync(join(app, 'pnpm-lock.yaml'))).toBe(false);
+				expect(existsSync(join(root, '.dockerignore'))).toBe(true);
 			});
 		});
 	});

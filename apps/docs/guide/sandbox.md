@@ -23,7 +23,6 @@ and never run in one.
 | Sniffing each app's environment (its entry, routes and `envParser`) | 30 s per sniff |
 | `gkm build`'s turbo run | none of its own (`TURBO_TOKEN` is passed on for a remote cache) |
 | Dokploy target: the stage's migrations | 15 min |
-| Compose target: bundling each backend | 10 min |
 | SST target: `gkm build --provider aws` | 30 min |
 | SST target: `sst deploy` | 90 min |
 | `installDependencies()` | 15 min per command |
