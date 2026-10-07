@@ -1,5 +1,32 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.69
+
+### Minor Changes
+
+- ✨ [#188](https://github.com/geekmidas/toolbox/pull/188) [`44caa61`](https://github.com/geekmidas/toolbox/commit/44caa61ef2092127f7ee71dcfbdb6f67056cbccf) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm secrets:add --stage <stage>`: a guided builder for the keys a stage must be given, across every app in the workspace.
+
+  - It offers exactly what a deploy would refuse the stage without — each bucket's, mail server's and file server's keys on a deployed stage, and every external API's and `Credential`'s `<ID>_CREDENTIALS` on any stage — each once, with its construct, kind, the apps that read it, and whether it is set. Derived values (database URLs, generated secrets, the seed) are never offered. The list is `requiredStageKeys`, the same one `ExternalServicesNotConfigured` is built from.
+  - Each key is built by kind: a bucket from AWS S3, Cloudflare R2, an S3-compatible endpoint or a pasted URL, with an optional key of its own written percent-encoded into the URL (or the stage's shared `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`); mail as an `smtp://`/`smtps://` URL and a validated from address; a file server's `https://` address; credentials field by field from the construct's schema, re-asked with each issue's path until the schema accepts them. A set key asks before it is replaced. Values are saved through the stage's own store and never printed.
+  - `--missing --json` prints the keys (`key`, `kind`, `construct`, `apps`, `set`) and asks nothing. Without a terminal and without `--json` it fails with `SecretsAddNeedsTerminal`.
+  - `gkm secrets:set` checks a `<ID>_CREDENTIALS` value against its construct's schema and fails with `CredentialsInvalid`, saving nothing. A `dokploy` or `compose` deploy checks every stored credential the same way in `validate`, before anything is built. Neither message carries the value.
+  - ✨ `ExternalServicesNotConfigured` now ends with `Or run: gkm secrets:add --stage <stage>`.
+
+### Patch Changes
+
+- Updated dependencies [[`f209d09`](https://github.com/geekmidas/toolbox/commit/f209d09a763538fdb843833a7519f744647239e4)]:
+  - @geekmidas/constructs@10.0.0-alpha.69
+  - @geekmidas/cache@10.0.0-alpha.69
+  - @geekmidas/db@10.0.0-alpha.69
+  - @geekmidas/envkit@10.0.0-alpha.69
+  - @geekmidas/errors@10.0.0-alpha.69
+  - @geekmidas/logger@10.0.0-alpha.69
+  - @geekmidas/manifest@10.0.0-alpha.69
+  - @geekmidas/schema@10.0.0-alpha.69
+  - @geekmidas/services@10.0.0-alpha.69
+  - @geekmidas/storage@10.0.0-alpha.69
+  - @geekmidas/telescope@10.0.0-alpha.69
+
 ## 10.0.0-alpha.68
 
 ### Minor Changes

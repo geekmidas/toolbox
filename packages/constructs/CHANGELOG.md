@@ -1,5 +1,31 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.69
+
+### Minor Changes
+
+- [#188](https://github.com/geekmidas/toolbox/pull/188) [`f209d09`](https://github.com/geekmidas/toolbox/commit/f209d09a763538fdb843833a7519f744647239e4) Thanks [@geekmidas](https://github.com/geekmidas)! - `ExternalApi` and `Credential` expose their credentials schema as `credentialsSchema`, so a tool can check a value, and describe its fields, before it is stored. `decodeCredentials` — how a stored `<ID>_CREDENTIALS` value is read (JSON when it is JSON, the string otherwise, `json:` to keep a JSON string a string) — is exported from `@geekmidas/constructs/credential`.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/audit@10.0.0-alpha.69
+  - @geekmidas/auth@10.0.0-alpha.69
+  - @geekmidas/cache@10.0.0-alpha.69
+  - @geekmidas/db@10.0.0-alpha.69
+  - @geekmidas/emailkit@10.0.0-alpha.69
+  - @geekmidas/envkit@10.0.0-alpha.69
+  - @geekmidas/errors@10.0.0-alpha.69
+  - @geekmidas/events@10.0.0-alpha.69
+  - @geekmidas/logger@10.0.0-alpha.69
+  - @geekmidas/manifest@10.0.0-alpha.69
+  - @geekmidas/rate-limit@10.0.0-alpha.69
+  - @geekmidas/schema@10.0.0-alpha.69
+  - @geekmidas/services@10.0.0-alpha.69
+  - @geekmidas/storage@10.0.0-alpha.69
+  - @geekmidas/telescope@10.0.0-alpha.69
+  - @geekmidas/testkit@10.0.0-alpha.69
+
 ## 10.0.0-alpha.68
 
 ### Patch Changes
