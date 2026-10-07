@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { Credential, MalformedCredential } from '../credential';
+import {
+	Credential,
+	decodeCredentials,
+	MalformedCredential,
+} from '../credential';
 
 /** An env parser that answers from a plain record. */
 const parserFor = (values: Record<string, string>) =>
@@ -37,6 +41,23 @@ describe('Credential', () => {
 		expect(stripe.declare()).toEqual([
 			{ kind: 'credential', id: 'Stripe', provides: ['STRIPE_CREDENTIALS'] },
 		]);
+	});
+
+	it('exposes its schema, so a value can be checked before it is stored', async () => {
+		expect(stripe.credentialsSchema).toBe(schema);
+
+		const checked = await stripe.credentialsSchema['~standard'].validate(
+			decodeCredentials('{"secretKey":"sk"}'),
+		);
+		expect(checked.issues?.map((issue) => issue.path)).toEqual([
+			['webhookSecret'],
+		]);
+	});
+
+	it('decodes a stored value the way it is read: JSON when JSON, the string otherwise', () => {
+		expect(decodeCredentials('{"a":1}')).toEqual({ a: 1 });
+		expect(decodeCredentials('sk_live_123')).toBe('sk_live_123');
+		expect(decodeCredentials('json:"{}"')).toBe('{}');
 	});
 
 	it('hands a handler the parsed value, with nothing to await at the call site', async () => {

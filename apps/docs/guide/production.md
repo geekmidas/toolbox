@@ -61,9 +61,11 @@ gkm secrets:rotate --stage production    # rotate generated service passwords
 ```
 
 A construct that needs a value nobody can derive fails the deploy with
-`MissingSuppliedSecret`, naming the key and the `gkm secrets:set` command. An
-app whose environment is incomplete fails with `MissingEnvVars`. Neither waits
-for the app to crash on boot.
+`MissingSuppliedSecret`, naming the key and the `gkm secrets:set` command. A
+third party's credentials that are set but that their construct's schema
+refuses fail it with `CredentialsInvalid`, naming each key and field. An
+app whose environment is incomplete fails with `MissingEnvVars`. None of them
+waits for the app to crash on boot.
 
 **The master key** decrypts the secrets baked into a production bundle.
 `gkm build --production --stage <stage>` encrypts the stage's secrets into the
@@ -101,6 +103,12 @@ gkm secrets:set MAIL_FROM 'noreply@example.com' --stage production
 gkm secrets:set UPLOADS_URL 's3://AKIA…:…@acme-uploads?region=eu-west-1' --stage production
 gkm secrets:set UPLOADS_SERVER_URL 'https://files.example.com' --stage production
 ```
+
+Or let gkm ask for each one: `gkm secrets:add --stage production` lists every
+key the stage lacks across all its apps, builds each by kind — a bucket from
+its provider, mail from its SMTP server, a third party's credentials field by
+field from their schema — and saves them to the stage's store. See
+[Guided secrets](./deployment.md#guided-secrets).
 
 The names follow the constructs: `Email('Mail')` reads `MAIL_URL` and
 `MAIL_FROM`, `ObjectStorage('Uploads')` reads `UPLOADS_URL`, its file server

@@ -19,12 +19,17 @@ import {
 	vi,
 } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
+import { loadWorkspaceSettings } from '../../config';
 import {
 	ExternalServicesNotConfigured,
 	UnknownDevService,
 } from '../../deploy/devServices';
 import type { SqlClient } from '../../reconcile/provision';
+import { CredentialsInvalid } from '../../secrets/credentialSchemas';
 import { decryptSecrets } from '../../secrets/encryption';
+import { FileSecretsStore } from '../../secrets/file';
+import { keystoreProject } from '../../secrets/keystore';
+import { initStageSecrets } from '../../secrets/storage';
 import {
 	ComposeModeConflict,
 	composeCommand,
@@ -578,6 +583,68 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 				allowDevServices: 'minio,redis',
 			}),
 		).rejects.toBeInstanceOf(UnknownDevService);
+	});
+});
+
+describe("a stage's third-party credentials", { timeout: RUN_TIMEOUT }, () => {
+	let home: string;
+
+	beforeEach(async () => {
+		dir = await project();
+		home = realpathSync(await createTempDir('gkm-compose-home-'));
+		vi.stubEnv('GKM_HOME', home);
+		writeFileSync(
+			join(dir, 'constructs', 'shipping.ts'),
+			`import { ExternalApi } from '@geekmidas/constructs/external-api';
+import { z } from 'zod';
+
+export const shipping = new ExternalApi('Shipping', {
+  url: 'https://api.carrier.example',
+  credentials: z.object({ apiKey: z.string() }),
+  client: () => ({}),
+});
+`,
+		);
+	});
+	afterEach(async () => {
+		vi.unstubAllEnvs();
+		await cleanupDir(dir);
+		await cleanupDir(home);
+	});
+
+	it("refuses a stored value its construct's schema refuses, before anything is built", async () => {
+		await new FileSecretsStore(
+			dir,
+			keystoreProject(await loadWorkspaceSettings(dir), home),
+		).write('production', {
+			...initStageSecrets('production'),
+			custom: { SHIPPING_CREDENTIALS: '{"apikey":"wrong-field-value"}' },
+		});
+		const fake = fakeDocker();
+
+		const error = await composeCommand(
+			{ cwd: dir, stage: 'production' },
+			{ docker: fake.docker, revision: async () => 'abc1234' },
+		).catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(CredentialsInvalid);
+		expect((error as CredentialsInvalid).invalid).toEqual([
+			{
+				key: 'SHIPPING_CREDENTIALS',
+				issues: [
+					{
+						path: 'apiKey',
+						message: 'Invalid input: expected string, received undefined',
+					},
+				],
+			},
+		]);
+		expect((error as Error).message).toContain(
+			'SHIPPING_CREDENTIALS.apiKey: Invalid input',
+		);
+		expect((error as Error).message).not.toContain('wrong-field-value');
+		expect(fake.ops()).toEqual([]);
+		expect(existsSync(join(dir, '.gkm', 'compose', 'production'))).toBe(false);
 	});
 });
 

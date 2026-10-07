@@ -106,6 +106,16 @@ export class ExternalApi<
 		};
 	}
 
+	/**
+	 * What the stage's `<ID>_CREDENTIALS` must look like — the schema the value
+	 * is validated against where it is read. Public so a tool setting the value
+	 * (`gkm secrets:add`) can check it, and describe its fields, before it is
+	 * stored rather than at the first request.
+	 */
+	get credentialsSchema(): TSchema {
+		return this.options.credentials;
+	}
+
 	declare(): Declaration[] {
 		return [
 			{

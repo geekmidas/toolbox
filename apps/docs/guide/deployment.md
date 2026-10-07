@@ -436,6 +436,58 @@ gkm secrets:set --stage production --key SENDGRID_API_KEY --value "SG...."
 gkm secrets:import --stage production --file secrets.json
 ```
 
+### Guided secrets
+
+`gkm secrets:add` builds the keys a stage must be given, one at a time, for
+every app in the workspace at once. Run it from the workspace root:
+
+```bash
+gkm secrets:add --stage production
+```
+
+It offers exactly the keys a deploy would refuse the stage without — the same
+list behind `ExternalServicesNotConfigured` — each once, with the construct
+that reads it, its kind, the apps that read it, and whether it is set:
+
+| Kind | Keys | Built from |
+| --- | --- | --- |
+| Bucket | `<ID>_URL` | AWS S3 (bucket, region), Cloudflare R2 (account id or endpoint, bucket), MinIO or any S3-compatible store (endpoint, bucket, path-style), or a pasted `s3://` URL. Then, optionally, a key for that bucket alone, written into the URL percent-encoded — or the stage's shared `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`. Neither is required. |
+| Email | `<ID>_URL`, `<ID>_FROM` | SMTP host, port (587 by default), user, password and TLS mode, as `smtp://` (STARTTLS) or `smtps://` (TLS on connect); then the address it sends from. |
+| File server | `<ID>_URL` | Its public `https://` address. |
+| External API, `Credential` | `<ID>_CREDENTIALS` | The construct's own schema: one prompt per field of a zod object (hidden for a field named like a secret, key, token or password), or the JSON itself for any other schema. |
+
+A deployed stage on a server target is asked for all of them; the local stage
+only for third parties' credentials, since it runs Mailpit and MinIO itself.
+Nothing derived is ever offered: database URLs, generated secrets and the seed
+are the deploy's to make.
+
+Missing keys start selected; a set key asks before it is replaced. Every value
+is checked before it is kept — an address must be one, a URL must be
+`http(s)://` — and credentials are checked against the construct's schema,
+showing each issue's path (`SHIPPING_CREDENTIALS.apiKey: …`) and asking again
+until it passes. Everything is saved through the stage's own store, as
+`gkm secrets:set` would, and no value is ever printed.
+
+Without a terminal, list what the stage lacks as JSON, and set each key with
+`gkm secrets:set`:
+
+```bash
+gkm secrets:add --stage production --missing --json
+```
+
+```json
+[
+  { "key": "MAIL_URL", "kind": "email", "construct": "Mail", "apps": ["api", "auth"], "set": false },
+  { "key": "SHIPPING_CREDENTIALS", "kind": "external-api", "construct": "Shipping", "apps": ["api"], "set": false }
+]
+```
+
+A third party's credentials are checked against their schema wherever they
+are set. `gkm secrets:set SHIPPING_CREDENTIALS '…'` refuses a value the
+`ExternalApi`'s schema refuses, with `CredentialsInvalid`, and saves nothing;
+a deploy (`dokploy`, `compose`) refuses a stage holding one before it builds
+anything. Neither message carries the value.
+
 ### Secret Types
 
 **Custom Secrets** - User-provided key-value pairs:

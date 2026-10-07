@@ -41,6 +41,18 @@ describe('ExternalApi', () => {
 		]);
 	});
 
+	it('exposes its credentials schema, so a value can be checked before it is stored', async () => {
+		const api = polar();
+		expect(api.credentialsSchema).toBe(credentials);
+
+		const checked = await api.credentialsSchema['~standard'].validate({
+			clientId: 'id',
+		});
+		expect(checked.issues?.map((issue) => issue.path)).toEqual([
+			['clientSecret'],
+		]);
+	});
+
 	it('declares a URL per stage as written', () => {
 		const payfast = new ExternalApi('PayFast', {
 			url: {

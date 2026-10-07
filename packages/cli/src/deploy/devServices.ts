@@ -118,7 +118,8 @@ export class ExternalServicesNotConfigured extends Error {
 				`For a stage that is not production — a preview, a demo — the dev ` +
 				`services can run instead, with --allow-dev-services ` +
 				`${services.join(',')}. Mailpit delivers no mail, and MinIO keeps ` +
-				`every object on one container's disk.`,
+				`every object on one container's disk.\n\n` +
+				`Or run: gkm secrets:add --stage ${stage}`,
 		);
 		this.name = 'ExternalServicesNotConfigured';
 	}
@@ -217,6 +218,164 @@ export interface DevServiceUse {
 	ids: string[];
 }
 
+/** A third party's credentials a construct reads: an external API's, or a `Credential`. */
+export interface CredentialDeclaration {
+	id: string;
+	kind: 'external-api' | 'credential';
+	/** The apps that read it, where known. */
+	apps?: readonly string[];
+}
+
+/** What a stage-supplied key belongs to. */
+export type StageKeyKind =
+	| 'bucket'
+	| 'email'
+	| 'file-server'
+	| 'external-api'
+	| 'credential';
+
+/**
+ * One key only the stage's secrets can hold — nothing derives it — whether
+ * or not it is set.
+ */
+export interface StageKey {
+	key: string;
+	/** The construct that reads it. */
+	id: string;
+	kind: StageKeyKind;
+	/** What it is, for the line that names it. */
+	what: string;
+	/** A line after `what`, for what else there is to know about it. */
+	note?: string;
+	/** A placeholder value to show in the `gkm secrets:set` line. */
+	example: string;
+	/** The dev service that would stand in for it, where one can. */
+	service?: DevService;
+	/** A file server's bucket. */
+	of?: string;
+	/** The apps that read it, where known. */
+	apps?: readonly string[];
+}
+
+export interface StageKeysInput {
+	/** Whether the stage is the local one, which derives its mail and storage. */
+	local: boolean;
+	/** Every mail and storage construct something on the stage reads. */
+	services?: readonly ServiceDeclaration[];
+	/** Every third party's credentials something on the stage reads. */
+	credentials?: readonly CredentialDeclaration[];
+	/** The stage's base domain, for the examples. */
+	domain?: string;
+}
+
+/**
+ * Every key a stage must be given rather than derive — the one list both a
+ * deploy's checks and `gkm secrets:add` read, so what a deploy refuses and
+ * what the builder offers cannot drift.
+ *
+ * - Deployed, mail is its URL and its sending address, a bucket its URL, and
+ *   a file server its public URL. Locally all of it is Mailpit and MinIO.
+ * - On every stage, a third party's credentials: nobody but the third party
+ *   can issue them.
+ *
+ * Never a derived value: a database URL, a generated secret, the seed.
+ */
+export function requiredStageKeys(input: StageKeysInput): StageKey[] {
+	const domain = input.domain ?? 'example.com';
+	const keys: StageKey[] = [];
+	const add = (entry: StageKey) => {
+		if (!keys.some((k) => k.key === entry.key)) keys.push(entry);
+	};
+	const byId = <T extends { id: string }>(list: readonly T[] | undefined) =>
+		[...(list ?? [])].sort((a, b) => a.id.localeCompare(b.id));
+	const apps = (d: { apps?: readonly string[] }) =>
+		d.apps?.length ? { apps: [...d.apps].sort() } : {};
+
+	if (!input.local) {
+		const services = byId(input.services);
+		for (const d of services.filter((d) => d.kind === 'email')) {
+			add({
+				key: provideKey(d.id, 'url'),
+				id: d.id,
+				kind: 'email',
+				what: `where '${d.id}' sends mail — any SMTP server`,
+				example: `smtp://user:password@smtp.${domain}:587`,
+				service: 'mailpit',
+				...apps(d),
+			});
+			add({
+				key: provideKey(d.id, 'from'),
+				id: d.id,
+				kind: 'email',
+				what: `the address '${d.id}' sends from, on a domain the mail server has verified`,
+				example: `noreply@${domain}`,
+				service: 'mailpit',
+				...apps(d),
+			});
+		}
+		for (const d of services.filter((d) => d.kind === 'objects')) {
+			add({
+				key: provideKey(d.id, 'url'),
+				id: d.id,
+				kind: 'bucket',
+				what: `the bucket '${d.id}' — S3, R2, or any S3-compatible store (add &endpoint=… for one that is not S3)`,
+				note: `credentials are optional: a key for this bucket alone in the URL (s3://KEY:SECRET@${appKey(d.id)}?…) wins; without one, the shared AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or a role signs`,
+				example: `s3://${appKey(d.id)}?region=eu-west-1`,
+				service: 'minio',
+				...apps(d),
+			});
+		}
+		for (const d of services.filter((d) => d.kind === 'file-server')) {
+			add({
+				key: provideKey(d.id, 'url'),
+				id: d.id,
+				kind: 'file-server',
+				what: `the public address '${d.id}' serves its bucket on — a CDN or the bucket's own domain`,
+				example: `https://${appKey(d.id)}.${domain}`,
+				service: 'minio',
+				...(d.of ? { of: d.of } : {}),
+				...apps(d),
+			});
+		}
+	}
+
+	for (const d of byId(input.credentials)) {
+		add({
+			key: provideKey(d.id, 'credentials'),
+			id: d.id,
+			kind: d.kind,
+			what:
+				d.kind === 'external-api'
+					? `the credentials '${d.id}' was issued for this stage, as its schema describes them`
+					: `the credential '${d.id}', as its schema describes it`,
+			example: '{"apiKey":"…"}',
+			...apps(d),
+		});
+	}
+
+	return keys;
+}
+
+/**
+ * Whether only the stage's secrets can supply `key` to a construct of `kind`
+ * — what nothing on the stage derives.
+ *
+ * A third party's credentials, always. Deployed, also each generated secret
+ * and keyring: the stage generated each one once, and every run reads the
+ * same value back.
+ */
+export function suppliedOnly(
+	kind: string,
+	id: string,
+	key: string,
+	local: boolean,
+): boolean {
+	if (kind === 'credential') return true;
+	if (kind === 'external-api') return key === provideKey(id, 'credentials');
+	if (local) return false;
+	return kind === 'secret' || kind === 'encryption';
+}
+
 /**
  * Where a deployed stage's mail and storage come from, and what it lacks.
  *
@@ -228,87 +387,49 @@ export interface DevServiceUse {
  *   missing otherwise.
  * - A file server's URL is derived where its bucket is MinIO, unless set;
  *   over an external bucket the stage must set it.
+ *
+ * The keys themselves are {@link requiredStageKeys}'s.
  */
 export function externalServices(
 	input: ExternalServicesInput,
 ): ExternalServices {
 	const { supplied, allow } = input;
 	const has = (key: string) => supplied[key] !== undefined;
-	const domain = input.domain ?? 'example.com';
 
-	const missing: MissingServiceKey[] = [];
-	const minio: string[] = [];
-	const mailpit: string[] = [];
-	const add = (entry: MissingServiceKey) => {
-		if (!missing.some((m) => m.key === entry.key)) missing.push(entry);
-	};
+	const required = requiredStageKeys({
+		local: false,
+		services: input.declarations,
+		...(input.domain ? { domain: input.domain } : {}),
+	});
 
-	const declarations = [...input.declarations].sort((a, b) =>
-		a.id.localeCompare(b.id),
-	);
-	const apps = (d: ServiceDeclaration) =>
-		d.apps?.length ? { apps: [...d.apps].sort() } : {};
+	// A dev service stands in for a construct the stage configured nothing for.
+	const mailpit = required
+		.filter((k) => k.kind === 'email' && k.key === provideKey(k.id, 'url'))
+		.filter((k) => !has(k.key) && allow.includes('mailpit'))
+		.map((k) => k.id);
+	const minio = required
+		.filter((k) => k.kind === 'bucket')
+		.filter((k) => !has(k.key) && allow.includes('minio'))
+		.map((k) => k.id);
 
-	for (const d of declarations.filter((d) => d.kind === 'email')) {
-		const url = provideKey(d.id, 'url');
-		const from = provideKey(d.id, 'from');
-		if (!has(url) && allow.includes('mailpit')) {
-			mailpit.push(d.id);
-			continue;
-		}
-		if (!has(url)) {
-			add({
-				key: url,
-				id: d.id,
-				what: `where '${d.id}' sends mail — any SMTP server`,
-				example: `smtp://user:password@smtp.${domain}:587`,
-				service: 'mailpit',
-				...apps(d),
-			});
-		}
-		if (!has(from)) {
-			add({
-				key: from,
-				id: d.id,
-				what: `the address '${d.id}' sends from, on a domain the mail server has verified`,
-				example: `noreply@${domain}`,
-				service: 'mailpit',
-				...apps(d),
-			});
-		}
-	}
+	const covered = (k: StageKey) =>
+		(k.kind === 'email' && mailpit.includes(k.id)) ||
+		(k.kind === 'bucket' && minio.includes(k.id)) ||
+		(k.kind === 'file-server' && k.of !== undefined && minio.includes(k.of));
 
-	for (const d of declarations.filter((d) => d.kind === 'objects')) {
-		const url = provideKey(d.id, 'url');
-		if (has(url)) continue;
-		if (allow.includes('minio')) {
-			minio.push(d.id);
-			continue;
-		}
-		add({
-			key: url,
-			id: d.id,
-			what: `the bucket '${d.id}' — S3, R2, or any S3-compatible store (add &endpoint=… for one that is not S3)`,
-			note: `credentials are optional: a key for this bucket alone in the URL (s3://KEY:SECRET@${appKey(d.id)}?…) wins; without one, the shared AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or a role signs`,
-			example: `s3://${appKey(d.id)}?region=eu-west-1`,
-			service: 'minio',
-			...apps(d),
-		});
-	}
-
-	for (const d of declarations.filter((d) => d.kind === 'file-server')) {
-		const url = provideKey(d.id, 'url');
-		if (has(url)) continue;
-		if (d.of && minio.includes(d.of)) continue;
-		add({
-			key: url,
-			id: d.id,
-			what: `the public address '${d.id}' serves its bucket on — a CDN or the bucket's own domain`,
-			example: `https://${appKey(d.id)}.${domain}`,
-			service: 'minio',
-			...apps(d),
-		});
-	}
+	const missing = required
+		.filter((k) => !has(k.key) && !covered(k))
+		.map(
+			({ key, id, what, note, example, service, apps }): MissingServiceKey => ({
+				key,
+				id,
+				what,
+				...(note ? { note } : {}),
+				example,
+				service: service!,
+				...(apps ? { apps } : {}),
+			}),
+		);
 
 	return { missing, minio, mailpit };
 }

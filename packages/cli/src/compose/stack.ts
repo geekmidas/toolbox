@@ -28,6 +28,7 @@ import {
 	devServicesUsed,
 	type ExternalServices,
 	type ServiceDeclaration,
+	suppliedOnly,
 } from '../deploy/devServices.js';
 import { isMainFrontendApp, resolveHost } from '../deploy/domain.js';
 import { type DeployIdentity, imageRef } from '../deploy/identity.js';
@@ -505,7 +506,7 @@ export function composeStack(input: StackInput): ComposeStack {
 
 		// Supplied by somebody: a third party's credentials, and — deployed —
 		// the secrets the stage generated.
-		if (owner && suppliedBy(owner, key, local)) {
+		if (owner && suppliedOnly(owner.kind, owner.id, key, local)) {
 			const value = custom[key];
 			if (value === undefined) {
 				throw new StageSecretMissing(app.name, key, stage);
@@ -644,21 +645,6 @@ export function composeStack(input: StackInput): ComposeStack {
 		...(storage ? { storage } : {}),
 		devServices: local ? [] : devServicesUsed(services),
 	};
-
-	/** Whether only the stage's secrets can supply `key` to `owner`. */
-	function suppliedBy(
-		owner: PlannedResource,
-		key: string,
-		isLocal: boolean,
-	): boolean {
-		if (owner.kind === 'credential') return true;
-		if (owner.kind === 'external-api')
-			return key === provideKey(owner.id, 'credentials');
-		if (isLocal) return false;
-		// Deployed, nothing here derives a secret: the stage generated each one
-		// once, and every run reads the same value back.
-		return owner.kind === 'secret' || owner.kind === 'encryption';
-	}
 }
 
 /**

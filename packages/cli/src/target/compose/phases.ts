@@ -78,6 +78,7 @@ import {
 } from '../../reconcile/provision.js';
 import { constructGlobs } from '../../reconcile/workspace.js';
 import { runOutput } from '../../run';
+import { assertStageCredentials } from '../../secrets/credentialSchemas.js';
 import { encryptSecrets } from '../../secrets/encryption.js';
 import { initStageSecrets } from '../../secrets/storage.js';
 import type { StageSecrets } from '../../secrets/types.js';
@@ -257,6 +258,16 @@ export async function validateCompose(
 	});
 
 	const { secrets, generated } = await stageSecrets(ctx, manifest);
+
+	// A third party's credentials against their construct's schema, before a
+	// stack is composed with one every app reading it would refuse.
+	await assertStageCredentials({
+		root,
+		patterns: constructGlobs(workspace),
+		manifest,
+		stage,
+		supplied: secrets?.custom ?? {},
+	});
 
 	const masterKeys: Record<string, { masterKey: string; buildArg: string }> =
 		{};

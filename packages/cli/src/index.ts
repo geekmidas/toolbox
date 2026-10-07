@@ -563,6 +563,30 @@ program
 	);
 
 program
+	.command('secrets:add')
+	.description(
+		"Build the keys a stage must be given — buckets, mail, file servers, third parties' credentials — across every app",
+	)
+	.requiredOption('--stage <stage>', 'Stage name')
+	.option('--missing', 'Only the keys the stage has not set')
+	.option('--json', 'Print the keys as JSON and ask nothing')
+	.action(
+		async (options: { stage: string; missing?: boolean; json?: boolean }) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+				const { secretsAddCommand } = await import('./secrets/add');
+				await secretsAddCommand(options);
+			} catch (error) {
+				console.error(formatError(error));
+				process.exit(1);
+			}
+		},
+	);
+
+program
 	.command('encryption:rotate')
 	.description(
 		"Add a new current key to an Encryption construct's keyring on a server stage",
