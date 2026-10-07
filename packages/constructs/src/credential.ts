@@ -113,6 +113,16 @@ export class Credential<
 		};
 	}
 
+	/**
+	 * What the stage's `<ID>_CREDENTIALS` must look like — the schema the value
+	 * is validated against where it is read. Public so a tool setting the value
+	 * (`gkm secrets:add`) can check it, and describe its fields, before it is
+	 * stored rather than at the first request.
+	 */
+	get credentialsSchema(): TSchema {
+		return this.options.schema;
+	}
+
 	declare(): Declaration[] {
 		return [
 			{
@@ -161,7 +171,7 @@ export async function readCredentials<TSchema extends StandardSchemaV1>(
 		.parse();
 
 	try {
-		return await parseSchema(schema, decode(raw));
+		return await parseSchema(schema, decodeCredentials(raw));
 	} catch (issues) {
 		throw new MalformedCredential(id, key, issues);
 	}
@@ -173,8 +183,11 @@ export async function readCredentials<TSchema extends StandardSchemaV1>(
  * JSON when it is JSON, and the string itself when it is not — a credential
  * with a single opaque field is ordinary, and requiring `"…"` around it would
  * be ceremony that every operator setting one by hand would get wrong once.
+ *
+ * Exported so a tool checking a value before it is stored reads it exactly as
+ * the process that uses it will.
  */
-function decode(raw: string): unknown {
+export function decodeCredentials(raw: string): unknown {
 	const value = raw.startsWith(JSON_SCHEME)
 		? raw.slice(JSON_SCHEME.length)
 		: raw;
