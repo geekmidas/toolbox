@@ -128,6 +128,32 @@ export interface DokployWorkspaceConfig {
 	registry?: string;
 	/** Registry ID in Dokploy (auto-configured) */
 	registryId?: string;
+	/** How a release is waited for and checked before it counts as live. */
+	verify?: DokployVerifyConfig;
+}
+
+/**
+ * How a Dokploy release is waited for and checked.
+ *
+ * A release counts once Dokploy's deployment has finished and the app has
+ * answered its health route `healthyAfter` times in a row. One that does not
+ * is rolled back.
+ */
+export interface DokployVerifyConfig {
+	/** How long Dokploy may take to finish a deployment. Default 10 minutes. */
+	deploymentTimeoutMs?: number;
+	/**
+	 * The path each backend is checked on, under its domain. Default
+	 * `/health`, which every production server build serves. A site is
+	 * checked at `/`.
+	 */
+	healthCheckPath?: string;
+	/** Consecutive 2xx answers that make an app healthy. Default 3. */
+	healthyAfter?: number;
+	/** Between health checks, and the first wait between polls. Default 2s. */
+	intervalMs?: number;
+	/** How long an app may take to become healthy. Default 5 minutes. */
+	healthTimeoutMs?: number;
 }
 
 /**

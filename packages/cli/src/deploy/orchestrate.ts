@@ -41,6 +41,8 @@ export interface DeployRequest {
 	apps?: string[];
 	/** The target to deploy through. Defaults to `deploy.default`. */
 	target?: string;
+	/** On a failed release, roll back every app rather than the failed ones. */
+	atomic?: boolean;
 }
 
 /**
@@ -368,6 +370,7 @@ async function prepare(
 		manifest,
 		options,
 		dryRun: ctx.dryRun,
+		atomic: request.atomic ?? false,
 		credentials: ctx.credentials,
 		state: store,
 		secrets,

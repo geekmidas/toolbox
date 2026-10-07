@@ -32,6 +32,10 @@ import { ConfigObjectNotSerializable } from '../../config';
 import { run, runOutput } from '../../run';
 import { LocalSandbox } from '../../sandbox/local';
 import type { Sandbox } from '../../sandbox/sandbox';
+import {
+	NothingToRollBack,
+	rollbackStage,
+} from '../../target/dokploy/rollback';
 import { deployCli } from '../cli';
 import { type CredentialProvider, MissingCredential } from '../credentials';
 import { type DeployInput, deploy } from '../deploy';
@@ -266,7 +270,7 @@ describe('deploy()', { timeout: 30_000 }, () => {
 		});
 	});
 
-	it('deploys the project it is pointed at, building each app in its own directory', async () => {
+	it('deploys the project it is pointed at, building each app from what gkm docker writes', async () => {
 		const result = await start().result;
 
 		expect(result).toMatchObject({
@@ -282,14 +286,24 @@ describe('deploy()', { timeout: 30_000 }, () => {
 			},
 			skipped: [{ app: 'app', reason: 'deploys via its framework toolchain' }],
 		});
-		// Each image is built in its app's directory, never the process's.
+		// Each image is built from the project root, never the process's
+		// directory, with the Dockerfile `gkm docker` writes for the app there —
+		// one per app in a workspace. It once looked under the app instead, for
+		// a file nothing had written.
 		const builds = vi
 			.mocked(run)
 			.mock.calls.filter(([, args]) => args[0] === 'build');
-		expect(builds.map(([, , options]) => options?.cwd)).toEqual([
-			join(root, 'apps', 'api'),
-			join(root, 'apps', 'web'),
+		expect(builds.map(([, , options]) => options?.cwd)).toEqual([root, root]);
+		const dockerfiles = builds.map(([, args]) =>
+			args.find((a) => a.startsWith('--file='))!.slice('--file='.length),
+		);
+		expect(dockerfiles).toEqual([
+			join(root, '.gkm/docker/Dockerfile.api'),
+			join(root, '.gkm/docker/Dockerfile.web'),
 		]);
+		for (const dockerfile of dockerfiles) {
+			expect(existsSync(dockerfile)).toBe(true);
+		}
 		expect(readdirSync(elsewhere)).toEqual([]);
 		// Headless: nothing was printed.
 		expect(out.filter((line) => !line.startsWith('WARN '))).toEqual([]);
@@ -618,6 +632,133 @@ writeFileSync(new URL('../seen.json', import.meta.url), JSON.stringify(process.e
 			expect(existsSync(join(root, '.gkm', `deploy-${STAGE}.lock`))).toBe(
 				false,
 			);
+		});
+	});
+
+	describe('rolling back', () => {
+		const ref = (app: string, tag: string) =>
+			`ghcr.io/acme/shop/shop-${app}:${tag}`;
+		const applicationOf = (app: string) =>
+			dokploy.projects[0]!.environments[0]!.applications.find(
+				(a) => a.name === `production-shop-${app}`,
+			)!.applicationId;
+		const state = () =>
+			JSON.parse(
+				readFileSync(join(root, '.gkm', `deploy-${STAGE}.json`), 'utf8'),
+			).state;
+		const running = () => ({
+			api: dokploy.images[applicationOf('api')],
+			web: dokploy.images[applicationOf('web')],
+		});
+
+		beforeEach(() => {
+			// A digest of each image's own: two releases with one digest are the
+			// same image, and releasing it again is no new release.
+			vi.mocked(runOutput).mockImplementation(async (_, args) => {
+				const ref = args.at(-1)!;
+				const repository = ref.replace(/:[\w][\w.-]*$/, '');
+				const digest = Buffer.from(ref).toString('hex').padEnd(64, '0');
+				return JSON.stringify([`${repository}@sha256:${digest.slice(0, 64)}`]);
+			});
+		});
+
+		it('rolls back every app the run released when atomic, not only the one that failed', async () => {
+			writeShopWorkspace(root, STAGE, { verify: 'healthTimeoutMs: 30' });
+			await start().result;
+			dokploy.health['shop.example.com'] = [500];
+
+			const { events, result } = await eventsOf({ tag: 'v2', atomic: true });
+
+			await expect(result).rejects.toMatchObject({
+				name: 'FrontendDeployFailed',
+				apps: ['web'],
+			});
+			// The API was healthy, and goes back anyway: the site it was
+			// released beside did not come up.
+			expect(running()).toEqual({
+				api: ref('api', 'v1'),
+				web: ref('web', 'v1'),
+			});
+			expect(state().releases.api.current.ref).toBe(ref('api', 'v1'));
+			expect(
+				events.filter((e) => e.type.startsWith('phase.')).slice(-3),
+			).toEqual([
+				expect.objectContaining({ type: 'phase.failed', phase: 'verify' }),
+				{ type: 'phase.started', phase: 'rollback' },
+				{ type: 'phase.finished', phase: 'rollback' },
+			]);
+		});
+
+		describe('gkm deploy:rollback', () => {
+			beforeEach(async () => {
+				await start().result;
+				await start({ tag: 'v2' }).result;
+			});
+
+			it('puts one app back on its previous release', async () => {
+				const rolled = await rollbackStage({
+					cwd: root,
+					stage: STAGE,
+					app: 'api',
+				});
+
+				expect(rolled).toEqual([
+					{
+						app: 'api',
+						from: expect.objectContaining({ ref: ref('api', 'v2') }),
+						to: expect.objectContaining({ ref: ref('api', 'v1') }),
+					},
+				]);
+				expect(running()).toEqual({
+					api: ref('api', 'v1'),
+					web: ref('web', 'v2'),
+				});
+				// Deployed, and waited on, like any release.
+				expect(dokploy.deployments[applicationOf('api')]).toHaveLength(3);
+				expect(state().releases.api).toMatchObject({
+					current: { ref: ref('api', 'v1') },
+					history: [
+						{ ref: ref('api', 'v2'), rolledBack: true },
+						{ ref: ref('api', 'v1') },
+					],
+				});
+				// v1 was the first release: nothing further back to go to.
+				await expect(
+					rollbackStage({ cwd: root, stage: STAGE, app: 'api' }),
+				).rejects.toBeInstanceOf(NothingToRollBack);
+			});
+
+			it('puts every app back with --atomic', async () => {
+				const rolled = await rollbackStage({
+					cwd: root,
+					stage: STAGE,
+					atomic: true,
+				});
+
+				expect(rolled.map((r) => r.app)).toEqual(['api', 'web']);
+				expect(running()).toEqual({
+					api: ref('api', 'v1'),
+					web: ref('web', 'v1'),
+				});
+				expect(state().releases.web.current.ref).toBe(ref('web', 'v1'));
+				// The lock was held for it, and let go.
+				expect(existsSync(join(root, '.gkm', `deploy-${STAGE}.lock`))).toBe(
+					false,
+				);
+			});
+
+			it('asks which app when given neither', async () => {
+				await expect(
+					rollbackStage({ cwd: root, stage: STAGE }),
+				).rejects.toMatchObject({
+					name: 'RollbackNeedsApp',
+					apps: ['api', 'web'],
+				});
+				expect(running()).toEqual({
+					api: ref('api', 'v2'),
+					web: ref('web', 'v2'),
+				});
+			});
 		});
 	});
 });

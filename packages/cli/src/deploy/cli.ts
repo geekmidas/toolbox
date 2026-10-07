@@ -29,6 +29,8 @@ export interface DeployCliOptions {
 	json?: boolean;
 	/** Plan only: create, change, build and push nothing. */
 	dryRun?: boolean;
+	/** On a failed release, roll back every app, not only the failed ones. */
+	atomic?: boolean;
 }
 
 /** Where the command writes. The process's own streams, outside tests. */
@@ -63,6 +65,7 @@ export async function deployCli(
 		...(target ? { target } : {}),
 		...(options.tag ? { tag: options.tag } : {}),
 		...(options.dryRun ? { dryRun: true } : {}),
+		...(options.atomic ? { atomic: true } : {}),
 	};
 
 	if (options.json) {

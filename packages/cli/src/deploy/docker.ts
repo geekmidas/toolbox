@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { DockerBuildFailed, DockerPushFailed, dockerCommand } from '../docker';
 import { validateImageRef } from '../docker/imageRef';
 import { output } from '../output';
+import { dockerfileOf } from '../reconcile/apps.js';
 import { type RunOptions, run, runOutput } from '../run';
 import { keyFingerprint } from '../secrets/encryption';
 import type { DockerDeployConfig, DockerDeployResult } from './types';
@@ -55,11 +56,18 @@ export interface DockerDeployOptions {
 	 */
 	publicUrlArgs?: string[];
 	/**
-	 * The app's own directory: where its bundle is, where the Dockerfile is
-	 * generated, and the build context. Defaults to the process's working
-	 * directory, which is only the app's when the CLI was started in it.
+	 * The project root: where `gkm docker` generates, and the build context.
+	 * Defaults to the process's working directory, which is only the
+	 * project's when the CLI was started in it.
 	 */
 	cwd?: string;
+	/**
+	 * The app's path under `cwd`, as gkm.config.ts gives it. The image is
+	 * built from the Dockerfile `gkm docker` writes for it — one per app in a
+	 * workspace (`.gkm/docker/Dockerfile.<app>`), the one for a project
+	 * whose app is the root (`.gkm/docker/Dockerfile`). Defaults to `.`.
+	 */
+	appPath?: string;
 	/** Stops the build or push: the child is killed. */
 	signal?: AbortSignal;
 	/**
@@ -72,6 +80,8 @@ export interface DockerDeployOptions {
 /** Where and how docker runs for one image. */
 interface DockerRun {
 	cwd: string;
+	/** The Dockerfile, absolute. */
+	dockerfile: string;
 	signal?: AbortSignal;
 	stdio?: RunOptions['stdio'];
 }
@@ -156,7 +166,7 @@ async function buildImage(
 	imageRef: string,
 	buildArgs: string[] | undefined,
 	credentials: BuildCredentials | undefined,
-	{ cwd, signal, stdio }: DockerRun,
+	{ cwd, dockerfile, signal, stdio }: DockerRun,
 ): Promise<void> {
 	logger.log(`\n🔨 Building Docker image: ${imageRef}`);
 
@@ -171,26 +181,25 @@ async function buildImage(
 	// source monorepo — `turbo prune` honours .gitignore, so a sibling package's
 	// `dist` never arrives, and rebuilding it in the image means bootstrapping
 	// the whole workspace to produce a bundle we are holding.
-	logger.log('   Generating Dockerfile for the pre-built bundle...');
+	logger.log('   Generating Dockerfile...');
 	await dockerCommand({ slim: true, cwd });
 
-	// One file, not `Dockerfile.${appName}`: the suffix belonged to the
-	// generate-every-app-at-once path, and this generates exactly one Dockerfile
-	// for the app being built, immediately above.
+	// Whatever `gkm docker` just wrote for this app, by the rule it writes by.
+	// A workspace's generator writes every app's at the root, and the build
+	// once looked for one under the app instead — a file nothing wrote.
 	//
-	// Absolute, because it is written under the *app* while the build may run
-	// from elsewhere — where a relative `.gkm/docker/Dockerfile` resolves to a
-	// path that does not exist, and `docker build` says only
-	// `lstat .gkm: no such file or directory`.
-	const dockerfilePath = join(cwd, '.gkm', 'docker', 'Dockerfile');
+	// Absolute, because the build may run from elsewhere — where a relative
+	// `.gkm/docker/Dockerfile` resolves to a path that does not exist, and
+	// `docker build` says only `lstat .gkm: no such file or directory`.
+	const dockerfilePath = dockerfile;
 
 	const secret = credentials
 		? await writeCredentialsFile(credentials)
 		: undefined;
 
 	try {
-		// The app's own directory is the context, because the bundle is the only
-		// thing copied and it lives there.
+		// The project root is the context, as `gkm docker` writes it for: a
+		// workspace's Dockerfiles prune the monorepo from there.
 		await run(
 			'docker',
 			dockerBuildArgs({
@@ -288,8 +297,13 @@ export async function deployDocker(
 		getImageRef(config.registry, imageName, tag),
 	);
 
+	const cwd = options.cwd ?? process.cwd();
 	const docker: DockerRun = {
-		cwd: options.cwd ?? process.cwd(),
+		cwd,
+		dockerfile: join(
+			cwd,
+			dockerfileOf(config.appName ?? imageName, options.appPath ?? '.'),
+		),
 		...(options.signal ? { signal: options.signal } : {}),
 		...(options.stdio ? { stdio: options.stdio } : {}),
 	};

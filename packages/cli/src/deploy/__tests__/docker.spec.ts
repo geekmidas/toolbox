@@ -3,6 +3,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	statSync,
 	writeFileSync,
@@ -20,6 +21,7 @@ import {
 	pushedDigest,
 	writeCredentialsFile,
 } from '../docker';
+import { writeShopWorkspace } from './__helpers__/dokployStandIn';
 
 // Docker itself is not run: `run` records the argv it would have received.
 vi.mock('../../run', async (importOriginal) => ({
@@ -270,5 +272,51 @@ export default defineConfig({
 		).rejects.toBeInstanceOf(DockerBuildFailed);
 		expect(secretPath).toBeDefined();
 		expect(existsSync(secretPath!)).toBe(false);
+	});
+});
+
+describe('deployDocker in a workspace', () => {
+	let root: string;
+
+	beforeEach(() => {
+		root = realpathSync(mkdtempSync(join(tmpdir(), 'gkm-deploy-docker-ws-')));
+		writeShopWorkspace(root, 'production');
+		vi.spyOn(console, 'log').mockImplementation(() => {});
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+		vi.mocked(run).mockReset();
+		vi.mocked(run).mockResolvedValue();
+		vi.mocked(runOutput).mockReset();
+		vi.mocked(runOutput).mockResolvedValue('[]');
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it('builds from the Dockerfile gkm docker writes for the app, at the root', async () => {
+		await deployDocker({
+			stage: 'production',
+			tag: 'v1',
+			config: { registry: 'ghcr.io/acme', imageName: 'api', appName: 'api' },
+			cwd: root,
+			appPath: 'apps/api',
+		});
+
+		// `.gkm/docker/Dockerfile.api` at the workspace root — what `gkm docker`
+		// writes for a workspace — and never `apps/api/.gkm/docker/Dockerfile`,
+		// which nothing writes.
+		const [, args, options] = vi
+			.mocked(run)
+			.mock.calls.find(([, a]) => a[0] === 'build')!;
+		const dockerfile = join(root, '.gkm/docker/Dockerfile.api');
+		expect(args).toContain(`--file=${dockerfile}`);
+		expect(existsSync(dockerfile)).toBe(true);
+		expect(existsSync(join(root, 'apps/api/.gkm/docker/Dockerfile'))).toBe(
+			false,
+		);
+		// The root is the context the workspace's Dockerfiles prune from.
+		expect(options?.cwd).toBe(root);
+		expect(args.at(-1)).toBe('.');
 	});
 });

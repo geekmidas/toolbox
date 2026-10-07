@@ -11,7 +11,9 @@ import {
 	generateEntryDockerfile,
 	generateMultiStageDockerfile,
 	generateNextjsDockerfile,
+	generateNodeWebDockerfile,
 	generateSlimDockerfile,
+	generateViteStaticDockerfile,
 	getLockfileName,
 	hasTurboConfig,
 	isMonorepo,
@@ -445,6 +447,27 @@ describe('docker templates', () => {
 			mockExistsSync.mockReturnValue(false);
 
 			expect(hasTurboConfig('/test/project')).toBe(false);
+		});
+	});
+
+	describe('every site image', () => {
+		const options = {
+			imageName: 'web',
+			baseImage: 'node:22-alpine',
+			port: 3001,
+			appPath: 'apps/web',
+			turboPackage: '@myapp/web',
+			packageManager: 'pnpm' as const,
+		};
+
+		it.each([
+			['Next.js', generateNextjsDockerfile],
+			['a Node SSR framework', generateNodeWebDockerfile],
+			['Vite', generateViteStaticDockerfile],
+		])('has a HEALTHCHECK on its root (%s)', (_, generate) => {
+			expect(generate(options)).toContain(
+				'HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \\\n  CMD wget -qO- http://127.0.0.1:3001/ > /dev/null 2>&1 || exit 1',
+			);
 		});
 	});
 

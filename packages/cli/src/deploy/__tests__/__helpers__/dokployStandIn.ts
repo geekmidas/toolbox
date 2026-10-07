@@ -60,6 +60,33 @@ export interface Dokploy {
 	 * the resource, and the deploy never hears back.
 	 */
 	dieAfterCreate?: number;
+	/** Every deployment `application.deploy` started, by application id. */
+	deployments: Record<string, Deployment[]>;
+	/**
+	 * What the next deployment of an application reports, by its name
+	 * (`production-shop-api`): one status per poll, the last one for good.
+	 * Taken by that deployment, so the one after it — a rollback's — is
+	 * `done` at once. Unlisted applications deploy `done`.
+	 */
+	statuses: Record<string, DeploymentStatus[]>;
+	/**
+	 * How each host answers a health check: one status per request, the last
+	 * one for good. Unlisted hosts answer 200.
+	 */
+	health: Record<string, number[]>;
+	/** Every health check, as the URL it asked. */
+	checked: string[];
+}
+
+export type DeploymentStatus = 'running' | 'done' | 'error' | 'cancelled';
+
+export interface Deployment {
+	deploymentId: string;
+	createdAt: string;
+	/** The image the application was pointed at when it was deployed. */
+	image: string | undefined;
+	/** Its statuses still to report; the first is the current one. */
+	statuses: DeploymentStatus[];
 }
 
 export interface Postgres {
@@ -92,8 +119,23 @@ export function emptyDokploy(stage: string): Dokploy {
 		validity: {},
 		savedPorts: [],
 		created: [],
+		deployments: {},
+		statuses: {},
+		health: {},
+		checked: [],
 	};
 }
+
+/** Dokploy's clock: strictly increasing, so no two deployments tie. */
+let lastStamp = 0;
+const stamp = () => {
+	lastStamp = Math.max(Date.now(), lastStamp + 1);
+	return new Date(lastStamp).toISOString();
+};
+
+/** A queue's current value, moving it on unless it is the last. */
+const next = <T>(queue: T[]): T =>
+	(queue.length > 1 ? queue.shift() : queue[0]) as T;
 
 /** Answers Dokploy's API on `server` from whatever `current()` holds. */
 export function serveDokploy(
@@ -218,12 +260,41 @@ export function serveDokploy(
 			return made(`application:${created.name}`) ?? HttpResponse.json(created);
 		}),
 		http.get(`${ENDPOINT}/api/application.one`, ({ request }) => {
-			const found = application(
-				new URL(request.url).searchParams.get('applicationId')!,
-			);
+			const applicationId = new URL(request.url).searchParams.get(
+				'applicationId',
+			)!;
+			const found = application(applicationId);
+			// As Dokploy reports it: the latest deployment's outcome.
+			const latest = current().deployments[applicationId]?.at(-1);
+			const status = latest?.statuses[0];
 			return found
-				? HttpResponse.json(found)
+				? HttpResponse.json({
+						...found,
+						applicationStatus:
+							status === undefined
+								? 'idle'
+								: status === 'cancelled'
+									? 'error'
+									: status,
+					})
 				: HttpResponse.json({ message: 'Not found' }, { status: 404 });
+		}),
+		http.get(`${ENDPOINT}/api/deployment.all`, ({ request }) => {
+			const applicationId = new URL(request.url).searchParams.get(
+				'applicationId',
+			)!;
+			const deployments = current().deployments[applicationId] ?? [];
+			// Each poll is a moment later: a deployment moves on to its next
+			// status, newest first as Dokploy lists them.
+			return HttpResponse.json(
+				deployments
+					.map(({ deploymentId, createdAt, statuses }) => ({
+						deploymentId,
+						createdAt,
+						status: next(statuses),
+					}))
+					.reverse(),
+			);
 		}),
 		http.post(
 			`${ENDPOINT}/api/application.saveDockerProvider`,
@@ -242,8 +313,28 @@ export function serveDokploy(
 			},
 		),
 		http.post(`${ENDPOINT}/api/application.deploy`, async ({ request }) => {
-			current().deployed.push((await body(request)).applicationId!);
+			const { applicationId } = await body(request);
+			current().deployed.push(applicationId!);
+			const name = application(applicationId!)?.name ?? '';
+			const statuses = current().statuses[name] ?? ['done'];
+			delete current().statuses[name];
+			current().deployments[applicationId!] ??= [];
+			current().deployments[applicationId!]!.push({
+				deploymentId: id('dep'),
+				createdAt: stamp(),
+				image: current().images[applicationId!],
+				statuses: [...statuses],
+			});
 			return HttpResponse.json({});
+		}),
+		// Every app's health route, on whatever host it was given.
+		http.get(/^https:\/\//, ({ request }) => {
+			const url = new URL(request.url);
+			current().checked.push(request.url);
+			const statuses = current().health[url.host];
+			return new HttpResponse('ok', {
+				status: statuses ? next(statuses) : 200,
+			});
 		}),
 		http.get(`${ENDPOINT}/api/domain.byApplicationId`, ({ request }) => {
 			const applicationId = new URL(request.url).searchParams.get(
@@ -321,6 +412,8 @@ export interface ShopWorkspace {
 	registry?: string | false;
 	/** The `apps` block, as source. */
 	apps?: string;
+	/** More of `deploy.dokploy.verify`, as source: `healthTimeoutMs: 50`. */
+	verify?: string;
 }
 
 /**
@@ -378,6 +471,8 @@ export default defineWorkspace({
     dokploy: {
       endpoint: '${ENDPOINT}',
       ${registry}
+      // Checked as a real deploy is, without a real deploy's patience.
+      verify: { intervalMs: 1${extra.verify ? `, ${extra.verify}` : ''} },
     },
   },
 });

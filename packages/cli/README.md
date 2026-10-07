@@ -874,6 +874,9 @@ gkm deploy --provider <provider> --stage <stage> [options]
 - `--skip-build`: Skip build step (use existing build)
 - `--json`: Write the deploy's events as JSON lines on stdout instead of progress; never prompts
 - `--dry-run`: Show what would be created or reused, and change, build and push nothing
+- `--atomic`: If the release fails, roll back every app it released, not only the ones that failed
+
+**Verified, or rolled back (Dokploy).** An app counts as released once Dokploy's deployment has finished and the app has answered its health route 2xx three times in a row (`/health` for a backend, `/` for a site; an app without a domain gets the deployment check only). Backends are released and checked before any site is released, and a failed backend stops the run. Whatever fails is pointed back at the image it ran before. Pending migrations are applied before any app is switched, in the deploy's sandbox, with each database URL handed over as a secret file. Tune the checks with `deploy.dokploy.verify: { deploymentTimeoutMs, healthCheckPath, healthyAfter, intervalMs, healthTimeoutMs }`.
 
 At a terminal a missing Dokploy or registry login is asked for (and the Dokploy one stored). With `--json` or without a terminal nothing is asked: the deploy stops with `MissingCredential` and exits 1.
 
@@ -952,6 +955,17 @@ export default defineConfig({
 - `DOCKER_REGISTRY_USERNAME` / `DOCKER_REGISTRY_PASSWORD`: a registry login, used only when Dokploy has no registry for `deploy.dokploy.registry` and one has to be created
 - `GKM_HOME`: where stage keys and stored logins live (default `~/.gkm`)
 - `GKM_MASTER_KEY`: Automatically set by Dokploy, or manually for Docker deployments — from `.gkm/server/master.key`, which `gkm build --stage` writes (the key is never printed; output shows its fingerprint)
+
+### `gkm deploy:rollback`
+
+Put a stage's app back on the release before the one it runs (Dokploy). One app by default; `--atomic` rolls back every app that has an earlier release, for apps that only work together. It restores images only: migrations are forward-only.
+
+```bash
+gkm deploy:rollback --stage production --app api
+gkm deploy:rollback --stage production --atomic
+```
+
+From a program: `rollbackStage({ cwd, stage, app })` from `@geekmidas/cli/deploy`.
 
 ### `gkm deploy:init`
 

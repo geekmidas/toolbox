@@ -696,6 +696,12 @@ USER nextjs
 
 EXPOSE ${port}
 
+# A site answers at its root; Docker, and Dokploy, read the container's
+# health from it rather than from the process merely running. 127.0.0.1, not
+# localhost: the server listens on IPv4, and localhost can resolve to ::1.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \\
+  CMD wget -qO- http://127.0.0.1:${port}/ > /dev/null 2>&1 || exit 1
+
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "${appPath}/server.js"]
 `;
@@ -1025,6 +1031,12 @@ ENV HOSTNAME="0.0.0.0"
 USER app
 EXPOSE ${port}
 
+# A site answers at its root; Docker, and Dokploy, read the container's
+# health from it rather than from the process merely running. 127.0.0.1, not
+# localhost: the server listens on IPv4, and localhost can resolve to ::1.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \\
+  CMD wget -qO- http://127.0.0.1:${port}/ > /dev/null 2>&1 || exit 1
+
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["sh", "-c", "cd ${appPath} && ${startCmd}"]
 `;
@@ -1085,6 +1097,11 @@ COPY --from=builder /app/${appPath}/dist /usr/share/nginx/html
 RUN printf 'server {\\n  listen ${port};\\n  root /usr/share/nginx/html;\\n  index index.html;\\n  location / { try_files $uri $uri/ /index.html; }\\n}\\n' \\
     > /etc/nginx/conf.d/default.conf
 EXPOSE ${port}
+# A site answers at its root; Docker, and Dokploy, read the container's
+# health from it rather than from the process merely running. 127.0.0.1, not
+# localhost: the server listens on IPv4, and localhost can resolve to ::1.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \\
+  CMD wget -qO- http://127.0.0.1:${port}/ > /dev/null 2>&1 || exit 1
 CMD ["nginx", "-g", "daemon off;"]
 `;
 }

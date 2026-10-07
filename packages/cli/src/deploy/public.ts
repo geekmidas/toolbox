@@ -62,6 +62,25 @@ export {
 	DeployTargetNotYetSupported,
 	UnknownDeployTarget,
 } from '../target/builtins';
+export {
+	DeploymentFailed,
+	DeploymentTimedOut,
+} from '../target/dokploy/dokploy-api';
+export {
+	BackendDeployFailed,
+	FrontendDeployFailed,
+	MissingEnvVars,
+} from '../target/dokploy/engine';
+export { HealthCheckTimedOut } from '../target/dokploy/health';
+export { DeployMigrationsFailed } from '../target/dokploy/migrations';
+export {
+	NothingToRollBack,
+	type RollbackInput,
+	RollbackNeedsApp,
+	type RolledBack,
+	rollbackStage,
+	StageNeverDeployed,
+} from '../target/dokploy/rollback';
 export { TargetPackageNotFound } from '../target/package';
 export { ProviderRemoved } from '../target/provider';
 export {
@@ -97,7 +116,6 @@ export type {
 	ResourceVia,
 } from './events';
 export { type DeployIdentity, deployIdentity } from './identity';
-export { BackendDeployFailed, MissingEnvVars } from './index';
 export {
 	NoDeployableApps,
 	RollbackFailed,

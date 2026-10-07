@@ -3,11 +3,11 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { type ConstructManifest, publicEnvFor } from '@geekmidas/manifest';
 import { loadConfig, loadWorkspaceConfig } from '../config';
-import { getPublicUrlArgNames } from '../deploy/domain.js';
 import { output } from '../output';
 import { COMPOSE_PATH } from '../reconcile/index.js';
 import { reconcileWorkspace } from '../reconcile/workspace.js';
 import { run } from '../run';
+import { getPublicUrlArgNames } from '../target/dokploy/domain.js';
 import { appKey } from '../workspace/derive.js';
 import type {
 	NormalizedAppConfig,

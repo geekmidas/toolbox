@@ -102,8 +102,11 @@ export interface DokployStageState {
 	 * deployed with whoever deploys it next.
 	 */
 	registryId?: string;
-	/** Each app's image as last deployed, keyed by app name. */
-	images?: Record<string, DeployedImage>;
+	/**
+	 * Each app's releases, keyed by app name: what runs now, what ran before
+	 * it — which `gkm deploy:rollback` restores — and the history behind both.
+	 */
+	releases?: Record<string, AppReleases>;
 	lastDeployedAt: string;
 }
 
@@ -205,15 +208,99 @@ export function setApplicationId(
 	state.applications[appName] = applicationId;
 }
 
+/** An image that went live, and when. */
+export interface ReleasedImage extends DeployedImage {
+	/** The image tag the deploy released under. */
+	tag?: string;
+	releasedAt: string;
+	/** Set when a rollback replaced it: it is never rolled back *to*. */
+	rolledBack?: true;
+}
+
+/** An app's releases: what runs, what ran before it, and what ran before that. */
+export interface AppReleases {
+	current: ReleasedImage;
+	/** What a rollback restores; absent until a second release. */
+	previous?: ReleasedImage;
+	/** Every release, newest first, at most {@link RELEASE_HISTORY} of them. */
+	history: ReleasedImage[];
+}
+
+/** How many releases an app's history keeps. */
+export const RELEASE_HISTORY = 10;
+
+/** Two records naming the same image: by digest when both have one. */
+function sameImage(a: DeployedImage, b: DeployedImage): boolean {
+	return a.digest && b.digest ? a.digest === b.digest : a.ref === b.ref;
+}
+
+/** The newest release in `history` after `index` that a rollback may restore. */
+function restorable(
+	history: readonly ReleasedImage[],
+	index: number,
+	current: DeployedImage,
+): ReleasedImage | undefined {
+	return history
+		.slice(index + 1)
+		.find((entry) => !entry.rolledBack && !sameImage(entry, current));
+}
+
 /**
- * Record the image an app was deployed with (mutates state)
+ * Record that `image` went live for `appName` (mutates state): it becomes
+ * `current`, and what was current becomes `previous`. Releasing what already
+ * runs — a redeploy of the same digest — changes nothing.
  */
-export function setDeployedImage(
+export function recordRelease(
 	state: DokployStageState,
 	appName: string,
-	image: DeployedImage,
+	image: Omit<ReleasedImage, 'releasedAt' | 'rolledBack'>,
+	releasedAt: Date = new Date(),
 ): void {
-	state.images = { ...state.images, [appName]: image };
+	const releases = state.releases?.[appName];
+	if (releases && sameImage(releases.current, image)) return;
+
+	const entry: ReleasedImage = {
+		...image,
+		releasedAt: releasedAt.toISOString(),
+	};
+	const history = [entry, ...(releases?.history ?? [])].slice(
+		0,
+		RELEASE_HISTORY,
+	);
+	const previous = releases?.current;
+	state.releases = {
+		...state.releases,
+		[appName]: { current: entry, ...(previous ? { previous } : {}), history },
+	};
+}
+
+/**
+ * Record that `appName` was rolled back to `to` (mutates state): every
+ * release newer than it is marked rolled back, so neither this rollback nor
+ * a later one restores it, and `previous` moves to the release before `to`.
+ */
+export function recordRollback(
+	state: DokployStageState,
+	appName: string,
+	to: DeployedImage,
+): void {
+	const releases = state.releases?.[appName];
+	if (!releases) return;
+
+	const index = releases.history.findIndex(
+		(entry) => !entry.rolledBack && sameImage(entry, to),
+	);
+	if (index === -1) return;
+
+	const history = releases.history.map((entry, i) =>
+		i < index ? { ...entry, rolledBack: true as const } : entry,
+	);
+	const current = history[index]!;
+	const previous = restorable(history, index, current);
+	state.releases = {
+		...state.releases,
+		[appName]: { current, ...(previous ? { previous } : {}), history },
+	};
 }
 
 /**

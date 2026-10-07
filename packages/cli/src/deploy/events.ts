@@ -28,11 +28,12 @@ import type { DeployResult } from './types';
  * - `provision`: what the apps run on — for Dokploy the project, environment
  *   and registry — and the declared constructs
  * - `build`: each app's artifact, built without changing anything live
- * - `release`: the artifacts put live. Dokploy builds and pushes each image
- *   here, beside its application, because a site's build args are resolved
- *   per app
- * - `verify`: what was released answers — for Dokploy, DNS records and its
- *   domain validation
+ * - `release`: the artifacts put live. Dokploy applies the stage's
+ *   migrations, then builds and pushes each image here, beside its
+ *   application, because a site's build args are resolved per app — and
+ *   checks each backend before any site is released
+ * - `verify`: what was released answers — for Dokploy, each site's DNS
+ *   records and health
  * - `rollback`: the previous release restored, after `release` or `verify`
  *   failed, on a target that can
  */

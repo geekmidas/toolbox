@@ -153,6 +153,13 @@ export interface DeployPhaseContext<Options = undefined> {
 	 * events — without changing anything. Only `validate` and `plan` run.
 	 */
 	readonly dryRun: boolean;
+	/**
+	 * When `release` or `verify` fails, roll back every app the run released
+	 * rather than only those that failed — for apps that must move together,
+	 * an API and the site built against it. Only a target that can roll back
+	 * reads it.
+	 */
+	readonly atomic: boolean;
 	/** Where every credential comes from. Nothing prompts. */
 	readonly credentials: CredentialProvider;
 	/**
