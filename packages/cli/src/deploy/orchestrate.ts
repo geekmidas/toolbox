@@ -121,7 +121,7 @@ export function generateTag(stage: string): string {
 /** Why an app that deploys through another target is left out. */
 function elsewhere(target: string, stage: string): string {
 	const instead = builtinTarget(target)?.instead?.(stage);
-	if (target === 'sst' && instead) return `it deploys with SST — ${instead}`;
+	if (instead) return `it deploys through "${target}" — ${instead}`;
 	return `it deploys through "${target}" — run \`gkm deploy --target ${target} --stage ${stage}\``;
 }
 

@@ -641,9 +641,9 @@ describe('initCommand', () => {
 				await readFile(join(root, 'package.json'), 'utf-8'),
 			);
 
-			// The build writes the manifest SST reads; SST never imports the app.
+			// gkm deploy builds the manifest SST reads, then runs sst deploy.
 			expect(pkg.scripts['deploy:production']).toBe(
-				'gkm build && sst deploy --stage production',
+				'gkm deploy --stage production',
 			);
 			// What a bare `gkm build` builds for, and what backends resolve to.
 			await expect(

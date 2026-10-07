@@ -39,12 +39,10 @@ export function deployPackage(options: TemplateOptions): DeployPackage {
 		case 'sst': {
 			const v = GEEKMIDAS_VERSIONS;
 			return {
-				// The build writes `.gkm/manifest/aws.ts`, which is all
-				// `sst.config.ts` reads — it never imports the application.
-				scripts: perStage(
-					options,
-					(stage) => `gkm build && sst deploy --stage ${stage}`,
-				),
+				// `gkm deploy` builds `.gkm/manifest/aws.ts` — all `sst.config.ts`
+				// reads; it never imports the application — then runs
+				// `sst deploy` and checks what it released.
+				scripts: perStage(options, (stage) => `gkm deploy --stage ${stage}`),
 				// What `@geekmidas/cloud/sst` imports. They are optional peers of
 				// the cloud package, so nothing installs them unless asked.
 				dependencies: {
@@ -105,7 +103,7 @@ export function generateDeployFiles(options: TemplateOptions): GeneratedFile[] {
  * constructs the application declares, through \`fromManifest\`. What is here
  * is what varies by stage, and the inputs a declaration cannot carry.
  *
- * Deploy with \`pnpm run deploy:<stage>\`, which builds the manifest first.
+ * Deploy with \`gkm deploy --stage <stage>\`, which builds the manifest first.
  */
 const region = '${options.region}';
 
@@ -139,13 +137,22 @@ ${hasDatabase ? "    const vpc = new sst.aws.Vpc('Vpc', { nat: 'ec2' });\n\n" : 
       hostedZoneId: '',
     });
 
-    return fromManifest(
+    const provisioned = fromManifest(
       new Stack(app, '${canonicalId(options.name)}'),
       constructs,
       {
 ${inputs.join('\n')}
       },
       backends,
+    );
+
+    // Each surface's URL, by its id: SST prints these and writes them to
+    // .sst/outputs.json, where \`gkm deploy\` reads them to health-check
+    // what it released.
+    return Object.fromEntries(
+      Object.entries(constructs)
+        .filter(([, c]) => c.kind === 'rest-api' || c.kind === 'site')
+        .map(([id]) => [id, provisioned[id]!.provides().url]),
     );
   },
 });
