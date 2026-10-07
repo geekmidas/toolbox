@@ -69,6 +69,47 @@ function occupyPort(
 	});
 }
 
+/**
+ * Occupy `count` consecutive ports, with the one after them free, and return
+ * the first. A base port from the OS says nothing about its neighbours —
+ * another process may hold the next one — so a run that collides is let go
+ * and another base tried.
+ */
+async function occupyRun(count: number): Promise<number> {
+	for (let attempt = 0; attempt < 20; attempt++) {
+		const { server, port: base } = await occupyPort(0);
+		const held = [server];
+		try {
+			for (let offset = 1; offset < count; offset++) {
+				held.push((await occupyPort(base + offset)).server);
+			}
+			if (await isPortAvailable(base + count)) return base;
+		} catch {
+			// A neighbour is taken; try another base.
+		}
+		await Promise.all(
+			held.map(
+				(s) =>
+					new Promise<void>((resolve) => {
+						activeServers.splice(activeServers.indexOf(s), 1);
+						s.close(() => resolve());
+					}),
+			),
+		);
+	}
+	throw new NoFreePortRun(count);
+}
+
+/** Twenty tries and no run of free ports: the machine is out of them. */
+class NoFreePortRun extends Error {
+	constructor(readonly count: number) {
+		super(
+			`Found no ${count} consecutive free ports in twenty tries; free some ports and run again.`,
+		);
+		this.name = 'NoFreePortRun';
+	}
+}
+
 describePortTests('Port Availability Functions', () => {
 	describe('isPortAvailable', () => {
 		it('should return true for an available port', async () => {
@@ -121,30 +162,23 @@ describePortTests('Port Availability Functions', () => {
 		});
 
 		it('should return the next available port if preferred is in use', async () => {
-			const { port: preferredPort } = await occupyPort(0);
+			const preferredPort = await occupyRun(1);
 
 			const foundPort = await findAvailablePort(preferredPort);
 			expect(foundPort).toBe(preferredPort + 1);
 		});
 
 		it('should skip multiple occupied ports', async () => {
-			// Get a base port
-			const { port: basePort } = await occupyPort(0);
-			// Occupy consecutive ports
-			await occupyPort(basePort + 1);
-			await occupyPort(basePort + 2);
+			// A base port and the two after it
+			const basePort = await occupyRun(3);
 
 			const foundPort = await findAvailablePort(basePort);
 			expect(foundPort).toBe(basePort + 3);
 		});
 
 		it('should throw error if no available port found within max attempts', async () => {
-			const { port: preferredPort } = await occupyPort(0);
+			const preferredPort = await occupyRun(3);
 			const maxAttempts = 3;
-
-			// Occupy consecutive ports
-			await occupyPort(preferredPort + 1);
-			await occupyPort(preferredPort + 2);
 
 			await expect(
 				findAvailablePort(preferredPort, maxAttempts),
@@ -154,13 +188,9 @@ describePortTests('Port Availability Functions', () => {
 		});
 
 		it('should respect custom maxAttempts parameter', async () => {
-			const { port: preferredPort } = await occupyPort(0);
+			// Four consecutive ports, the base included
+			const preferredPort = await occupyRun(4);
 			const maxAttempts = 5;
-
-			// Occupy consecutive ports (4 total including base)
-			await occupyPort(preferredPort + 1);
-			await occupyPort(preferredPort + 2);
-			await occupyPort(preferredPort + 3);
 
 			const foundPort = await findAvailablePort(preferredPort, maxAttempts);
 			// Should find port at preferredPort + 4 (within 5 attempts)
