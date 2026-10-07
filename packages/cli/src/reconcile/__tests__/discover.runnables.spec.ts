@@ -115,27 +115,33 @@ export const nightly = jobs
 		expect(manifest.Receipts).toMatchObject({ kind: 'queue' });
 	});
 
-	it('finds the same manifest and edges when discovering in a sandbox', async () => {
-		const patterns = [
-			'constructs/**/*.ts',
-			'endpoints/**/*.ts',
-			'crons/**/*.ts',
-			'queues/**/*.ts',
-		];
-		const here: Record<string, string[]> = {};
-		const there: Record<string, string[]> = {};
+	// A child process that loads tsx and imports the project: seconds, not
+	// milliseconds, when the rest of the suite is competing for the machine.
+	it(
+		'finds the same manifest and edges when discovering in a sandbox',
+		{ timeout: 30_000 },
+		async () => {
+			const patterns = [
+				'constructs/**/*.ts',
+				'endpoints/**/*.ts',
+				'crons/**/*.ts',
+				'queues/**/*.ts',
+			];
+			const here: Record<string, string[]> = {};
+			const there: Record<string, string[]> = {};
 
-		const local = await discover({ patterns, cwd: dir, runnables: here });
-		const sandboxed = await discover({
-			patterns,
-			cwd: dir,
-			runnables: there,
-			sandbox: new LocalSandbox({ root: dir }),
-		});
+			const local = await discover({ patterns, cwd: dir, runnables: here });
+			const sandboxed = await discover({
+				patterns,
+				cwd: dir,
+				runnables: there,
+				sandbox: new LocalSandbox({ root: dir }),
+			});
 
-		expect(sandboxed).toEqual(local);
-		expect(there).toEqual(here);
-	});
+			expect(sandboxed).toEqual(local);
+			expect(there).toEqual(here);
+		},
+	);
 
 	it('records a queue’s and a subscriber’s own database under their worker', async () => {
 		await createTestFile(
