@@ -80,6 +80,7 @@ import type { AppDeployResult, DeployResult } from '../../deploy/types';
 import { output } from '../../output';
 import { constructGlobs } from '../../reconcile/workspace.js';
 import type { RunOptions } from '../../run';
+import { assertStageCredentials } from '../../secrets/credentialSchemas.js';
 import { initStageSecrets } from '../../secrets/storage.js';
 import type { StageSecrets } from '../../secrets/types.js';
 import { derivedApps } from '../../workspace/derive.js';
@@ -417,6 +418,16 @@ export async function validateDokploy(
 			: {}),
 	});
 	reportDevServices(phase, devServicesUsed(services));
+
+	// A third party's credentials against their construct's schema, before
+	// anything is built with one every app reading it would refuse.
+	await assertStageCredentials({
+		root: workspace.root,
+		patterns: constructGlobs(workspace),
+		manifest: phase.manifest,
+		stage,
+		supplied: stored?.custom ?? {},
+	});
 
 	return {
 		...run,

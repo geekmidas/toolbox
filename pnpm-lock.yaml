@@ -382,6 +382,9 @@ importers:
       '@geekmidas/services':
         specifier: workspace:~
         version: link:../services
+      '@geekmidas/storage':
+        specifier: workspace:~
+        version: link:../storage
       '@geekmidas/telescope':
         specifier: workspace:~
         version: link:../telescope
@@ -422,6 +425,9 @@ importers:
         specifier: ~2.9.1
         version: 2.9.1
     devDependencies:
+      '@geekmidas/emailkit':
+        specifier: workspace:~
+        version: link:../emailkit
       '@geekmidas/events':
         specifier: workspace:~
         version: link:../events
@@ -431,6 +437,9 @@ importers:
       '@hono/node-server':
         specifier: ~1.19.5
         version: 1.19.5(hono@4.13.8)
+      '@standard-schema/spec':
+        specifier: ~1.1.0
+        version: 1.1.0
       '@types/lodash.kebabcase':
         specifier: ~4.1.9
         version: 4.1.9
@@ -13113,9 +13122,7 @@ snapshots:
       metro-runtime: 0.83.1
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.5': {}
 

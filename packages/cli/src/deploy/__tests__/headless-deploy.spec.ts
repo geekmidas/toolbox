@@ -32,6 +32,7 @@ import { ConfigObjectNotSerializable } from '../../config';
 import { run, runOutput } from '../../run';
 import { LocalSandbox } from '../../sandbox/local';
 import type { Sandbox } from '../../sandbox/sandbox';
+import { CredentialsInvalid } from '../../secrets/credentialSchemas';
 import { FileSecretsStore } from '../../secrets/file';
 import {
 	NothingToRollBack,
@@ -765,6 +766,66 @@ writeFileSync(new URL('../seen.json', import.meta.url), JSON.stringify(process.e
 		});
 	});
 
+	describe("a deployed stage's third-party credentials", () => {
+		beforeEach(async () => {
+			mkdirSync(join(root, 'src', 'constructs'), { recursive: true });
+			// Structural, as discovery is: an id, a declaration — and a Standard
+			// Schema for its credentials, as an ExternalApi exposes one.
+			writeFileSync(
+				join(root, 'src', 'constructs', 'shipping.ts'),
+				`export const Shipping = {
+  id: 'Shipping',
+  credentialsSchema: {
+    '~standard': {
+      version: 1,
+      vendor: 'test',
+      validate: (value) =>
+        typeof value?.apiKey === 'string'
+          ? { value }
+          : { issues: [{ message: 'required', path: ['apiKey'] }] },
+    },
+  },
+  declare: () => [
+    {
+      kind: 'external-api',
+      id: 'Shipping',
+      url: 'https://api.carrier.example',
+      provides: ['SHIPPING_URL', 'SHIPPING_CREDENTIALS'],
+    },
+  ],
+};
+`,
+			);
+			await new FileSecretsStore(root).write(STAGE, {
+				stage: STAGE,
+				createdAt: '2026-01-01T00:00:00.000Z',
+				updatedAt: '2026-01-01T00:00:00.000Z',
+				services: {},
+				urls: {},
+				custom: { SHIPPING_CREDENTIALS: '{"apikey":"not-this-one"}' },
+			});
+		});
+
+		it('fails validate on a stored value its schema refuses, naming the key and path, and builds nothing', async () => {
+			const { events, result } = await eventsOf();
+			const error = await result.catch((caught: unknown) => caught);
+
+			expect(error).toBeInstanceOf(CredentialsInvalid);
+			expect((error as Error).message).toContain(
+				'SHIPPING_CREDENTIALS.apiKey: required',
+			);
+			expect((error as Error).message).toContain(
+				'gkm secrets:add --stage production',
+			);
+			expect((error as Error).message).not.toContain('not-this-one');
+			expect(events).toContainEqual(
+				expect.objectContaining({ type: 'phase.failed', phase: 'validate' }),
+			);
+			expect(requests.filter((r) => !r.startsWith('GET '))).toEqual([]);
+			expect(run).not.toHaveBeenCalled();
+		});
+	});
+
 	describe("a deployed stage's mail and storage", () => {
 		beforeEach(() => {
 			mkdirSync(join(root, 'src', 'constructs'), { recursive: true });
@@ -796,6 +857,9 @@ export const Mail = {
 			);
 			expect((error as Error).message).toContain(
 				'--allow-dev-services mailpit,minio',
+			);
+			expect((error as Error).message).toMatch(
+				/Or run: gkm secrets:add --stage production$/,
 			);
 			expect(events).toContainEqual(
 				expect.objectContaining({ type: 'phase.failed', phase: 'validate' }),

@@ -491,6 +491,33 @@ gkm secrets:rotate --stage production --service postgres
 gkm secrets:import --stage production --file secrets.json
 ```
 
+#### Guided secrets
+
+```bash
+# Build each key the stage must be given, for every app, interactively
+gkm secrets:add --stage production
+
+# Only the keys the stage has not set
+gkm secrets:add --stage production --missing
+
+# The same list as JSON, asking nothing — for a script or CI
+gkm secrets:add --stage production --missing --json
+```
+
+`secrets:add` offers the keys a deploy would refuse the stage without: each
+bucket's, mail server's and file server's on a deployed stage, and every
+external API's and `Credential`'s `<ID>_CREDENTIALS` on any stage. It builds
+each by kind — a bucket from its provider, mail from its SMTP server,
+credentials field by field from the construct's schema — checks it, and saves
+it through the stage's store. `--json` prints `key`, `kind`, `construct`,
+`apps` and `set` for each. Without a terminal and without `--json` it fails
+with `SecretsAddNeedsTerminal`. See
+[Guided secrets](./deployment.md#guided-secrets).
+
+`secrets:set` checks a `<ID>_CREDENTIALS` value against its construct's schema
+before saving it, and fails with `CredentialsInvalid` — listing each issue's
+path, never the value — without saving anything.
+
 An `Encryption` construct's keyring on a server stage is rotated and retired on
 its own, because retiring a key is a decision made against stored data:
 

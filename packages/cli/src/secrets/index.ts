@@ -5,7 +5,9 @@ import {
 	loadWorkspaceConfig,
 	loadWorkspaceSettings,
 } from '../config';
+import { constructGlobs } from '../reconcile/workspace';
 import { generateFullstackCustomSecrets } from '../setup/fullstack-secrets';
+import { CredentialsInvalid, loadCredentialSchemas } from './credentialSchemas';
 import { FileSecretsStore } from './file.js';
 import { createStageSecrets, rotateServicePassword } from './generator';
 import { maskPassword, withCustomSecret } from './storage';
@@ -178,8 +180,43 @@ export async function secretsSetCommand(
 		process.exit(1);
 	}
 
+	await assertCredentialValue(key, secretValue, stage);
+
 	await store.write(stage, withCustomSecret(secrets, key, secretValue));
 	logger.log(`\n✓ Secret "${key}" set for stage "${stage}" (${store.name})`);
+}
+
+/**
+ * A third party's credentials, checked against the schema of the construct
+ * that reads them before they are stored — what the app would otherwise
+ * refuse as it starts. Only a `<ID>_CREDENTIALS` key in a workspace is
+ * looked at, so setting anything else loads no construct.
+ *
+ * @throws {CredentialsInvalid} listing each issue; nothing is saved
+ */
+async function assertCredentialValue(
+	key: string,
+	value: string,
+	stage: string,
+): Promise<void> {
+	if (!key.endsWith('_CREDENTIALS')) return;
+
+	let workspace: Awaited<ReturnType<typeof loadWorkspaceSettings>>;
+	try {
+		workspace = await loadWorkspaceSettings();
+	} catch (error) {
+		if (error instanceof ConfigNotFound) return;
+		throw error;
+	}
+
+	const schemas = await loadCredentialSchemas({
+		root: workspace.root,
+		patterns: constructGlobs(workspace),
+	});
+	const check = await schemas.check(key, value);
+	if (!check.ok) {
+		throw new CredentialsInvalid(stage, [{ key, issues: check.issues }], 'set');
+	}
 }
 
 /**

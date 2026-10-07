@@ -24,6 +24,7 @@ export default defineConfig({
 		'src/deploy/sniffer-envparser-worker.ts',
 		// Run as their own processes inside a sandbox, like the sniffers.
 		'src/sandbox/config-worker.ts',
+		'src/sandbox/credentials-worker.ts',
 		'src/sandbox/discover-worker.ts',
 		'src/sandbox/migrate-worker.ts',
 	],
