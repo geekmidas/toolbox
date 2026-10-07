@@ -139,7 +139,13 @@ export const nightly = jobs
 			});
 
 			expect(sandboxed).toEqual(local);
-			expect(there).toEqual(here);
+			// The same edges, in whatever order the glob streamed their files —
+			// which is not fixed, here or there.
+			const sorted = (edges: Record<string, string[]>) =>
+				Object.fromEntries(
+					Object.entries(edges).map(([owner, ids]) => [owner, [...ids].sort()]),
+				);
+			expect(sorted(there)).toEqual(sorted(here));
 		},
 	);
 

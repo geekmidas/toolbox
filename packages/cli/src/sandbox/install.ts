@@ -14,7 +14,7 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { detectPackageManager, type PackageManager } from '../docker/templates';
 import { CommandFailed } from '../run';
-import type { Sandbox, SandboxOutput } from './sandbox';
+import type { Sandbox, SandboxOutput, SandboxResult } from './sandbox';
 
 /** Long enough for a cold install of a large monorepo. */
 export const INSTALL_TIMEOUT_MS = 15 * 60_000;
@@ -26,8 +26,9 @@ export interface InstallOptions {
 	packageManager?: PackageManager;
 	/**
 	 * Skip every lifecycle script — dependencies' and the project's own —
-	 * except those of {@link allowScripts}. Defaults to false: scripts run, as
-	 * a plain install does.
+	 * except those of {@link allowScripts}. Defaults to false: scripts run as
+	 * a plain install runs them, under the package manager's own policy —
+	 * npm 12 and pnpm 10 skip dependencies' scripts nobody approved.
 	 */
 	ignoreScripts?: boolean;
 	/**
@@ -127,8 +128,17 @@ export function installCommands(
 					'npm',
 					[locked ? 'ci' : 'install', ...(ignore ? ['--ignore-scripts'] : [])],
 				],
+				// npm 12 runs no dependency's install script its `allowScripts`
+				// policy does not approve, rebuilt by name or not, and refuses
+				// `--allow-scripts` on a project's command line. This command
+				// names exactly the packages allowed, so it may run what it names.
 				...(allow.length > 0
-					? [['npm', ['rebuild', ...allow]] as [string, string[]]]
+					? [
+							[
+								'npm',
+								['rebuild', '--dangerously-allow-all-scripts', ...allow],
+							] as [string, string[]],
+						]
 					: []),
 			];
 		}
@@ -193,6 +203,9 @@ export function installCommands(
  * });
  * ```
  *
+ * Resolves with each command's result, in order — with its output when
+ * `output` is `capture`.
+ *
  * @throws {CommandFailed} when the package manager exits unsuccessfully.
  * @throws {InstallScriptsAllowlistUnsupported} for an allowlist the package
  *   manager cannot honour, before anything is installed.
@@ -200,8 +213,9 @@ export function installCommands(
 export async function installDependencies(
 	sandbox: Sandbox,
 	options: InstallOptions = {},
-): Promise<void> {
+): Promise<SandboxResult[]> {
 	const cwd = options.cwd ?? sandbox.root;
+	const results: SandboxResult[] = [];
 	const packageManager =
 		options.packageManager ?? detectPackageManager(resolve(sandbox.root, cwd));
 
@@ -217,6 +231,7 @@ export async function installDependencies(
 			output: options.output ?? 'inherit',
 			...(options.signal ? { signal: options.signal } : {}),
 		});
+		results.push(result);
 		if (result.exitCode !== 0) {
 			throw new CommandFailed(
 				command,
@@ -226,4 +241,5 @@ export async function installDependencies(
 			);
 		}
 	}
+	return results;
 }

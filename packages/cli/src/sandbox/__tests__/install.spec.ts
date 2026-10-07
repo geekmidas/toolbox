@@ -23,6 +23,7 @@ import {
 	installCommands,
 	installDependencies,
 	LocalSandbox,
+	type SandboxResult,
 } from '../index';
 
 /**
@@ -52,11 +53,23 @@ function pack(vendor: string, name: string): string {
 	return tarball;
 }
 
+/** Every command's output, for a failed assertion to show. */
+const shown = (results: SandboxResult[]) =>
+	results
+		.map((r, i) => `[${i}] exit ${r.exitCode}\n${r.stdout}${r.stderr}`)
+		.join('\n');
+
 describe('installDependencies', () => {
 	let root: string;
 	let home: string;
 
 	const ran = (name: string) => join(root, 'node_modules', name, 'ran.json');
+
+	/** What a package's script recorded, or why there is nothing. */
+	const recorded = (name: string, output: string) =>
+		existsSync(ran(name))
+			? JSON.parse(readFileSync(ran(name), 'utf8'))
+			: `${name}'s script never ran:\n${output}`;
 
 	beforeEach(() => {
 		root = realpathSync(mkdtempSync(join(tmpdir(), 'gkm-install-')));
@@ -94,20 +107,23 @@ describe('installDependencies', () => {
 	});
 
 	it('runs only the allowed packages’ scripts, and none of the project’s', async () => {
-		await installDependencies(new LocalSandbox({ root, home }), {
-			packageManager: 'npm',
-			ignoreScripts: true,
-			allowScripts: ['alpha'],
-			output: 'capture',
-		});
-
-		expect(existsSync(join(root, 'node_modules', 'beta', 'package.json'))).toBe(
-			true,
+		const output = shown(
+			await installDependencies(new LocalSandbox({ root, home }), {
+				packageManager: 'npm',
+				ignoreScripts: true,
+				allowScripts: ['alpha'],
+				output: 'capture',
+			}),
 		);
-		expect(existsSync(ran('beta'))).toBe(false);
-		expect(existsSync(join(root, 'own-ran'))).toBe(false);
+
+		expect(
+			existsSync(join(root, 'node_modules', 'beta', 'package.json')),
+			output,
+		).toBe(true);
+		expect(existsSync(ran('beta')), output).toBe(false);
+		expect(existsSync(join(root, 'own-ran')), output).toBe(false);
 		// The one that was allowed ran — in the sandbox, without the key.
-		expect(JSON.parse(readFileSync(ran('alpha'), 'utf8'))).toEqual({
+		expect(recorded('alpha', output), output).toEqual({
 			sawAwsKey: false,
 		});
 	}, 120_000);
@@ -124,31 +140,47 @@ describe('installDependencies', () => {
 			stdio: 'ignore',
 		});
 
-		await installDependencies(new LocalSandbox({ root, home }), {
-			ignoreScripts: true,
-			allowScripts: ['alpha'],
-			output: 'capture',
-		});
-
-		expect(existsSync(join(root, 'node_modules', 'beta', 'package.json'))).toBe(
-			true,
+		const output = shown(
+			await installDependencies(new LocalSandbox({ root, home }), {
+				ignoreScripts: true,
+				allowScripts: ['alpha'],
+				output: 'capture',
+			}),
 		);
-		expect(existsSync(ran('beta'))).toBe(false);
-		expect(existsSync(join(root, 'own-ran'))).toBe(false);
-		expect(JSON.parse(readFileSync(ran('alpha'), 'utf8'))).toEqual({
+
+		expect(
+			existsSync(join(root, 'node_modules', 'beta', 'package.json')),
+			output,
+		).toBe(true);
+		expect(existsSync(ran('beta')), output).toBe(false);
+		expect(existsSync(join(root, 'own-ran')), output).toBe(false);
+		expect(recorded('alpha', output), output).toEqual({
 			sawAwsKey: false,
 		});
 	}, 120_000);
 
-	it('runs every script by default, as a plain install does', async () => {
-		await installDependencies(new LocalSandbox({ root, home }), {
-			packageManager: 'npm',
-			output: 'capture',
+	it('leaves scripts to the package manager by default, as a plain install does', async () => {
+		const sandbox = new LocalSandbox({ root, home });
+		// npm 12 blocks every dependency's install script its `allowScripts`
+		// policy has not approved; earlier npm runs them all. A plain install
+		// does whichever the installed npm does, and so does this one.
+		const { stdout } = await sandbox.exec('npm', ['--version'], {
+			cwd: '.',
+			env: { ...sandbox.env },
+			timeoutMs: 30_000,
 		});
+		const dependencyScriptsRun = Number(stdout.split('.')[0]) < 12;
 
-		expect(existsSync(ran('alpha'))).toBe(true);
-		expect(existsSync(ran('beta'))).toBe(true);
-		expect(existsSync(join(root, 'own-ran'))).toBe(true);
+		const output = shown(
+			await installDependencies(sandbox, {
+				packageManager: 'npm',
+				output: 'capture',
+			}),
+		);
+
+		expect(existsSync(join(root, 'own-ran')), output).toBe(true);
+		expect(existsSync(ran('alpha')), output).toBe(dependencyScriptsRun);
+		expect(existsSync(ran('beta')), output).toBe(dependencyScriptsRun);
 	}, 120_000);
 });
 
@@ -157,6 +189,21 @@ describe('installCommands', () => {
 		ignoreScripts: true,
 		allowScripts: ['esbuild', '@prisma/client'],
 	};
+
+	it('rebuilds the allowed packages past npm 12’s script policy', () => {
+		expect(installCommands('npm', '/p', options)).toEqual([
+			['npm', ['install', '--ignore-scripts']],
+			[
+				'npm',
+				[
+					'rebuild',
+					'--dangerously-allow-all-scripts',
+					'esbuild',
+					'@prisma/client',
+				],
+			],
+		]);
+	});
 
 	it('skips scripts and rebuilds the allowed packages with pnpm', () => {
 		expect(installCommands('pnpm', '/p', options)).toEqual([

@@ -174,7 +174,13 @@ export function assertSecretNames(
 	}
 }
 
-const active = new AsyncLocalStorage<Sandbox>();
+/** A run's sandbox, and what its workers already answered. */
+interface SandboxRun {
+	sandbox: Sandbox;
+	answers: Map<string, Promise<unknown>>;
+}
+
+const active = new AsyncLocalStorage<SandboxRun>();
 
 /**
  * Run `fn` with `sandbox` as the one its steps use.
@@ -186,10 +192,38 @@ const active = new AsyncLocalStorage<Sandbox>();
  * taking one more parameter.
  */
 export function withSandbox<T>(sandbox: Sandbox, fn: () => T): T {
-	return active.run(sandbox, fn);
+	return active.run({ sandbox, answers: new Map() }, fn);
 }
 
 /** The sandbox of the run this is part of, if it was started with one. */
 export function activeSandbox(): Sandbox | undefined {
-	return active.getStore();
+	return active.getStore()?.sandbox;
+}
+
+/**
+ * `ask()`'s answer, asked once per run.
+ *
+ * A deploy loads its config and discovers its constructs from several places
+ * — the first load, the engine, the Dockerfile generator — and in a sandbox
+ * each was a child process of its own, for the same answer: the checkout does
+ * not change while it deploys. Within a run in `sandbox`, the first answer
+ * for `key` is the one every later ask gets. Outside one, or for another
+ * sandbox, `ask()` runs each time.
+ */
+export function oncePerRun<T>(
+	sandbox: Sandbox,
+	key: string,
+	ask: () => Promise<T>,
+): Promise<T> {
+	const run = active.getStore();
+	if (!run || run.sandbox !== sandbox) return ask();
+
+	let answer = run.answers.get(key) as Promise<T> | undefined;
+	if (!answer) {
+		answer = ask();
+		run.answers.set(key, answer);
+		// A failure is not remembered: the next ask tries again.
+		answer.catch(() => run.answers.delete(key));
+	}
+	return answer;
 }

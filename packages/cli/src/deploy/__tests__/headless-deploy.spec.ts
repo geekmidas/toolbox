@@ -64,7 +64,12 @@ server.events.on('request:start', ({ request }) => {
 	requests.push(`${request.method} ${new URL(request.url).pathname}`);
 });
 
-describe('deploy()', () => {
+// Each deploy starts real children in its sandbox — loading the config,
+// discovering the constructs, sniffing each app — and each compiles the
+// project's TypeScript with tsx on start. That is a second or two here and
+// several times that on a CI runner under coverage, which a whole deploy, and
+// a test running two of them, does not fit in 5s.
+describe('deploy()', { timeout: 30_000 }, () => {
 	let root: string;
 	let home: string;
 	let elsewhere: string;
@@ -487,15 +492,15 @@ writeFileSync(new URL('../seen.json', import.meta.url), JSON.stringify(process.e
 			const scripts = execs.map(({ script }) =>
 				script.replace(/^.*[\\/]([\w-]+)\.[cm]?[tj]s$/, '$1'),
 			);
-			// Loading the config, discovering its constructs (as often as the
-			// engine asks) and sniffing the API all ran in it.
-			expect(scripts[0]).toBe('config-worker');
-			// The engine's own reload, for the Dockerfiles, ran there too.
-			expect(
-				scripts.filter((s) => s === 'config-worker').length,
-			).toBeGreaterThan(1);
-			expect(scripts).toContain('discover-worker');
-			expect(scripts).toContain('sniffer-worker');
+			// Loading the config, discovering its constructs and sniffing the
+			// API all ran in it — once each. The engine asks for the config and
+			// the constructs again (for the Dockerfiles, for provisioning), and
+			// gets the run's first answer rather than a child of its own.
+			expect(scripts).toEqual([
+				'config-worker',
+				'discover-worker',
+				'sniffer-worker',
+			]);
 
 			const handed = execs.flatMap(({ env }) => Object.entries(env));
 			expect(handed.map(([key]) => key)).not.toContain('AWS_SECRET_ACCESS_KEY');

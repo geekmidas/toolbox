@@ -15,7 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { z } from 'zod';
 import { withOwningTsconfigJsx } from '../owningTsconfigJsx';
-import type { Sandbox } from './sandbox';
+import { oncePerRun, type Sandbox } from './sandbox';
 import { WORKER_RESULT_MARKER } from './workerRuntime';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -90,19 +90,42 @@ export interface WorkerRun<T> {
  * code printed is ignored, and an answer the schema refuses is a failure
  * rather than data — a worker in an isolating sandbox runs code the host does
  * not trust.
+ *
+ * Within a run (`withSandbox`), the same worker asked the same question is
+ * started once; every ask gets its own copy of the answer, and its stderr, as
+ * though it had run again.
  */
 export async function runWorker<S extends z.ZodType>(
 	sandbox: Sandbox,
 	step: string,
-	options: {
-		name: string;
-		args: readonly string[];
-		cwd: string;
-		timeoutMs: number;
-		env?: Readonly<Record<string, string>>;
-		signal?: AbortSignal;
-		schema: S;
-	},
+	options: WorkerOptions<S>,
+): Promise<WorkerRun<z.infer<S>>> {
+	const key = JSON.stringify([
+		options.name,
+		options.cwd,
+		options.args,
+		options.env ?? {},
+	]);
+	const answer = await oncePerRun(sandbox, key, () =>
+		startWorker(sandbox, step, options),
+	);
+	return structuredClone(answer);
+}
+
+interface WorkerOptions<S extends z.ZodType> {
+	name: string;
+	args: readonly string[];
+	cwd: string;
+	timeoutMs: number;
+	env?: Readonly<Record<string, string>>;
+	signal?: AbortSignal;
+	schema: S;
+}
+
+async function startWorker<S extends z.ZodType>(
+	sandbox: Sandbox,
+	step: string,
+	options: WorkerOptions<S>,
 ): Promise<WorkerRun<z.infer<S>>> {
 	const result = await sandbox.exec(
 		'node',

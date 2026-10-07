@@ -14,7 +14,6 @@ import { resolve } from 'node:path';
 import { findWorkspaceRoot, loadWorkspaceConfig } from '../config';
 import { gkmHome } from '../home';
 import { type OutputLevel, withOutput } from '../output';
-import type { RunOptions } from '../run';
 import { LocalSandbox } from '../sandbox/local';
 import { type Sandbox, withSandbox } from '../sandbox/sandbox';
 import { Redactor } from '../target/secrets';
