@@ -49,6 +49,7 @@ import {
 	projectName,
 } from '../../deploy/identity.js';
 import { DeployJournal } from '../../deploy/journal.js';
+import { otelEnv } from '../../deploy/otel.js';
 import {
 	findProject,
 	type ResolvedProject,
@@ -1196,7 +1197,17 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 				// required list, because the sniffer cannot see them — a construct
 				// reads its own key inside `@geekmidas/constructs`, so requiring
 				// them would fail every app that declares anything.
-				const withDeclared = { ...resolved, ...declaredEnv };
+				//
+				// The stage's `OTEL_*` go to every backend, whatever it reads: they
+				// say where its telemetry goes, which no construct declares. A site
+				// never gets them — its environment ends up in a browser bundle.
+				// (`deploy.compose.logs` is the compose target's; it is not read
+				// here.)
+				const withDeclared = {
+					...resolved,
+					...declaredEnv,
+					...otelEnv(stageSecrets?.custom ?? {}, appName),
+				};
 
 				// Build env vars string for Dokploy
 				const envVars: string[] = Object.entries(withDeclared).map(

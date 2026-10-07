@@ -26,7 +26,9 @@
  * real ones.
  */
 
+import { existsSync } from 'node:fs';
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { hostname, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { stringify } from 'yaml';
@@ -36,6 +38,13 @@ import {
 	type StackRef,
 } from '../../compose/docker';
 import { assertImagesExist } from '../../compose/images';
+import {
+	LOGS_SERVICE,
+	logsAccess,
+	type StackLogs,
+	withLogsPassword,
+} from '../../compose/logs';
+import { resolveLogs } from '../../compose/logsConfig';
 import {
 	type ComposeStack,
 	composeProject,
@@ -172,6 +181,16 @@ export class NoGitRevision extends Error {
 		);
 		this.name = 'NoGitRevision';
 	}
+}
+
+/**
+ * The project's own file merged over a stage's stack: `docker-compose.<stage>.yml`
+ * at the workspace root. What the generated file cannot know — a port bound
+ * to a tailnet address, another log driver — goes there, and is never
+ * overwritten.
+ */
+export function stackOverrideFile(root: string, stage: string): string {
+	return join(root, `docker-compose.${stage}.yml`);
 }
 
 /** The commit HEAD is at, short — and `-dirty` when the tree has changes. */
@@ -322,7 +341,21 @@ export async function validateCompose(
 		await assertImagesExist(deps.docker, tag, stack.apps);
 	}
 
+	// The log UI's root login and the header every backend signs in with:
+	// secrets, unless they are the local stage's fixed ones.
+	if (stack.logs && (!stack.local || stack.logs.passwordFromSecrets)) {
+		ctx.secrets.mask(stack.logs.password);
+		ctx.secrets.mask(stack.logs.appEnv.OTEL_EXPORTER_OTLP_HEADERS);
+	}
+
 	const dir = join(root, stackDir(stage));
+	const override = stackOverrideFile(root, stage);
+	const overrides = existsSync(override) ? [override] : [];
+	if (overrides.length > 0) {
+		ctx.logger.info(
+			`🧩 Merging docker-compose.${stage}.yml over the generated stack`,
+		);
+	}
 	// What each app ran before this release: its current release, by the same
 	// record the Dokploy target keeps, so a rollback reads one shape for both.
 	const previous = Object.fromEntries(
@@ -344,6 +377,7 @@ export async function validateCompose(
 		ref: {
 			project: composeProject(identity),
 			file: join(dir, 'docker-compose.yml'),
+			...(overrides.length > 0 ? { overrides } : {}),
 			cwd: root,
 			output: ctx.childOutput,
 			signal: ctx.signal,
@@ -373,10 +407,17 @@ async function stageSecrets(
 		return { secrets: stored, generated: [] };
 	}
 
-	const { secrets, generated } = withGeneratedSecrets(
+	const withSeed = withGeneratedSecrets(
 		stored ?? initStageSecrets(ctx.stage),
 		manifest,
 	);
+	// The log UI's root password, generated once like the seed, where the
+	// workspace runs one and the stage set none.
+	const withLogs = resolveLogs(ctx.workspace.deploy?.compose?.logs)
+		? withLogsPassword(withSeed.secrets)
+		: { secrets: withSeed.secrets, generated: [] };
+	const secrets = withLogs.secrets;
+	const generated = [...withSeed.generated, ...withLogs.generated];
 	// Read through the store they are masked; made up here, they are not yet.
 	if (secrets.seed) ctx.secrets.mask(secrets.seed);
 	for (const value of Object.values(secrets.custom ?? {})) {
@@ -714,10 +755,90 @@ export async function verifyCompose(
 		),
 	);
 
+	if (stack.logs) results.push(await checkLogs(ctx, run, deps));
+
 	const down = results
 		.filter((result) => !result.healthy)
 		.map(({ app, url, last }) => ({ app, url, last }));
 	if (down.length > 0) throw new ComposeAppsUnhealthy(stack.project, down);
+
+	if (stack.logs) reportLogs(ctx, stack.logs, stack.local);
+}
+
+/**
+ * OpenObserve's own health check, as Docker reports it. It is not asked
+ * through the edge: by default it has no host there, and served publicly it
+ * answers only the addresses it allows — which need not include this one.
+ */
+async function checkLogs(
+	ctx: ComposeContext,
+	run: ComposeRun,
+	deps: ComposeDeps,
+): Promise<{ app: string; url: string; last: string; healthy: boolean }> {
+	const url = `docker:${LOGS_SERVICE}`;
+	let last = 'not asked';
+
+	for (let attempt = 1; attempt <= deps.healthAttempts; attempt++) {
+		ctx.signal.throwIfAborted();
+		const health = await deps.docker
+			.health(run.ref, LOGS_SERVICE)
+			.catch((error: unknown) =>
+				error instanceof Error ? error.message : String(error),
+			);
+		last = health ?? 'not running';
+		const healthy = health === 'healthy';
+		ctx.emit({
+			type: 'health.checked',
+			app: LOGS_SERVICE,
+			url,
+			healthy,
+			attempt,
+		});
+		if (healthy) {
+			ctx.logger.info(`   ✓ ${LOGS_SERVICE.padEnd(12)} ${url} (${last})`);
+			return { app: LOGS_SERVICE, url, last, healthy };
+		}
+		if (attempt < deps.healthAttempts) {
+			await new Promise((resolve) =>
+				setTimeout(resolve, deps.healthIntervalMs),
+			);
+		}
+	}
+
+	ctx.logger.warn(`   ✗ ${LOGS_SERVICE.padEnd(12)} ${url} (${last})`);
+	return { app: LOGS_SERVICE, url, last, healthy: false };
+}
+
+/** How to open the logs, printed — and as an event, for a headless caller. */
+function reportLogs(
+	ctx: ComposeContext,
+	logs: StackLogs,
+	local: boolean,
+): void {
+	const lines = logsAccess(logs, {
+		stage: ctx.stage,
+		local,
+		user: currentUser(),
+		hostname: hostname(),
+	});
+	ctx.logger.info(`\n${lines.join('\n')}`);
+	ctx.emit({
+		type: 'logs.ready',
+		service: LOGS_SERVICE,
+		access: logs.public ? 'public' : 'tunnel',
+		url: logs.url,
+		...(logs.public ? { allow: [...logs.public.allow] } : { port: logs.port }),
+		email: logs.email,
+	});
+}
+
+/** This machine's user — a guess at who would SSH in. */
+function currentUser(): string {
+	try {
+		return userInfo().username;
+	} catch {
+		return process.env.USER ?? 'user';
+	}
 }
 
 async function checkApp(
@@ -849,6 +970,13 @@ async function writeStack(
 	for (const app of stack.apps) {
 		if (app.env)
 			await write(join(dir, `${app.name}.env`), envFile(app.env), 0o600);
+	}
+	if (stack.logs) {
+		await write(
+			join(dir, `${LOGS_SERVICE}.env`),
+			envFile(stack.logs.env),
+			0o600,
+		);
 	}
 	for (const [name, payload] of Object.entries(credentials)) {
 		await write(

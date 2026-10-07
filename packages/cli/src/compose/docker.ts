@@ -19,6 +19,11 @@ import { type RunOptions, run, runOutput } from '../run';
 export interface StackRef {
 	project: string;
 	file: string;
+	/**
+	 * The project's own files merged over `file`, in order — its
+	 * `docker-compose.<stage>.yml`, where it has one.
+	 */
+	overrides?: readonly string[];
 	/** Where relative paths in the file resolve — the workspace root. */
 	cwd: string;
 	/**
@@ -70,6 +75,11 @@ export interface ComposeDocker {
 	down(stack: StackRef): Promise<void>;
 	/** The host port a running service publishes for `inside`. */
 	port(stack: StackRef, service: string, inside: number): Promise<number>;
+	/**
+	 * A running service's health, as its own check reports it — `healthy`,
+	 * `starting`, `unhealthy` — or undefined when it is not running.
+	 */
+	health(stack: StackRef, service: string): Promise<string | undefined>;
 	/** Copy a file out of a running service. */
 	copyOut(
 		stack: StackRef,
@@ -102,7 +112,15 @@ export class ServicePortUnknown extends Error {
 }
 
 function compose(stack: StackRef, args: readonly string[]): string[] {
-	return ['compose', '-p', stack.project, '-f', stack.file, ...args];
+	return [
+		'compose',
+		'-p',
+		stack.project,
+		'-f',
+		stack.file,
+		...(stack.overrides ?? []).flatMap((file) => ['-f', file]),
+		...args,
+	];
 }
 
 /** Run a program and keep everything it said, whatever it exits with. */
@@ -216,6 +234,14 @@ export const dockerCompose: ComposeDocker = {
 			throw new ServicePortUnknown(service, inside, output);
 		}
 		return port;
+	},
+
+	async health(stack, service) {
+		const { code, stdout } = await capture('docker', [
+			...compose(stack, ['ps', '--format', '{{.Health}}', service]),
+		]);
+		if (code !== 0) return undefined;
+		return stdout.trim().split('\n')[0] || undefined;
 	},
 
 	async copyOut(stack, service, from, to) {

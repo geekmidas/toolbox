@@ -52,6 +52,7 @@ export {
 	edgePorts,
 	gitRevision,
 	NoGitRevision,
+	stackOverrideFile,
 } from './phases';
 
 export interface ComposeTargetOptions extends Partial<ComposeDeps> {

@@ -24,6 +24,11 @@
  *   origin, and from a sibling service's internal origin, and refused from
  *   one nobody declared: the trusted origins are right for both callers.
  *
+ * - (d) with `deploy.compose.logs` (the `gkm compose` run), the API's
+ *   telemetry reaches the stack's OpenObserve — published on 127.0.0.1
+ *   alone — signed in with the root login the stack generated, and is found
+ *   there through its search API, trace id and all.
+ *
  * The edge is published on free ports (443 and 80 are often taken), and the
  * stack has a compose project of its own; it is torn down, volumes and built
  * images included, whatever happens.
@@ -60,6 +65,7 @@ const KITCHEN_SINK = join(
 	'kitchen-sink',
 	'package.json',
 );
+const TELESCOPE = join(PACKAGES, 'telescope', 'package.json');
 
 /** What a child is started with: never the suite's `--import tsx`. */
 function childEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
@@ -105,7 +111,11 @@ function exec(
  * `@geekmidas/*` — the packages' own dependencies on each other included —
  * resolved to its tarball, and the rest at the ranges the kitchen sink uses.
  */
-async function dependOnThisCheckout(dir: string, name: string): Promise<void> {
+async function dependOnThisCheckout(
+	dir: string,
+	name: string,
+	options: { telemetry?: boolean } = {},
+): Promise<void> {
 	const tarballs: Record<string, string> = {};
 	for (const entry of readdirSync(PACKAGES, { withFileTypes: true })) {
 		const pkgDir = join(PACKAGES, entry.name);
@@ -122,6 +132,19 @@ async function dependOnThisCheckout(dir: string, name: string): Promise<void> {
 
 	const sink = JSON.parse(readFileSync(KITCHEN_SINK, 'utf-8'));
 	const range = (dep: string) => sink.dependencies[dep] as string;
+	// What a production server exports telemetry with: telescope, and the
+	// OpenTelemetry packages at the ranges telescope is built against.
+	const telescope = JSON.parse(readFileSync(TELESCOPE, 'utf-8'));
+	const telemetry: Record<string, string> = options.telemetry
+		? {
+				'@geekmidas/telescope': tarballs['@geekmidas/telescope']!,
+				...Object.fromEntries(
+					Object.entries(
+						telescope.devDependencies as Record<string, string>,
+					).filter(([dep]) => dep.startsWith('@opentelemetry/')),
+				),
+			}
+		: {};
 	writeFileSync(
 		join(dir, 'package.json'),
 		`${JSON.stringify(
@@ -154,6 +177,7 @@ async function dependOnThisCheckout(dir: string, name: string): Promise<void> {
 							'zod',
 						].map((dep) => [dep, range(dep)]),
 					),
+					...telemetry,
 				},
 				pnpm: { overrides: tarballs },
 			},
@@ -187,10 +211,12 @@ const ENTRY_POINTS = [
 	{
 		command: 'gkm compose',
 		args: ['compose', '--stage', 'development'],
+		logs: true,
 	},
 	{
 		command: 'gkm deploy --target compose',
 		args: ['deploy', '--target', 'compose', '--stage', 'development'],
+		logs: false,
 	},
 ] as const;
 
@@ -205,6 +231,7 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 			const project = `${name}-development`;
 			let dir: string;
 			let https: number;
+			let logsPort: number;
 			let ca: string;
 			let output = '';
 
@@ -303,8 +330,13 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				}
 
 				dir = realpathSync(await createTempDir('gkm-compose-e2e-'));
-				writeComposeApp(dir, { name });
-				await dependOnThisCheckout(dir, name);
+				// Never 5080: a developer's own OpenObserve may be on it.
+				logsPort = await freePort();
+				writeComposeApp(dir, {
+					name,
+					...(entry.logs ? { logs: { port: logsPort } } : {}),
+				});
+				await dependOnThisCheckout(dir, name, { telemetry: entry.logs });
 
 				// What a real project has: a lockfile every image installs from,
 				// and a commit its images are tagged with.
@@ -517,6 +549,95 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				expect(await signOutFrom('http://evil.example')).toBe(403);
 				expect(await signOutFrom('http://api:3000')).toBe(200);
 			});
+
+			it.runIf(entry.logs)(
+				"(d) sends the API's telemetry to the stack's OpenObserve, on loopback alone",
+				{ timeout: 3 * 60_000 },
+				async () => {
+					// Published on 127.0.0.1 and nothing else.
+					const published = await exec('docker', [
+						'compose',
+						'-p',
+						project,
+						'-f',
+						file(),
+						'port',
+						'openobserve',
+						'5080',
+					]);
+					expect(published.trim()).toBe(`127.0.0.1:${logsPort}`);
+					expect(output).toContain(
+						`📜 Logs (OpenObserve) on 127.0.0.1:${logsPort}`,
+					);
+					expect(output).toContain(
+						`ssh -N -L ${logsPort}:localhost:${logsPort}`,
+					);
+
+					// The login the stack signs the apps in with, as written.
+					const env = readFileSync(
+						join(dir, '.gkm', 'compose', 'development', 'openobserve.env'),
+						'utf-8',
+					);
+					const login = (key: string) =>
+						new RegExp(`^${key}=(.*)$`, 'm').exec(env)![1]!;
+					const auth = `Basic ${Buffer.from(
+						`${login('ZO_ROOT_USER_EMAIL')}:${login('ZO_ROOT_USER_PASSWORD')}`,
+					).toString('base64')}`;
+
+					// A request that makes the API ask the auth server for a session.
+					// Anonymous: the sign-ups above have used up Better Auth's
+					// rate limit for this address.
+					const me = await edge('api', '/me');
+					expect(me.status).toBe(401);
+
+					// Exported in batches: asked until it is there.
+					const search = async () => {
+						const now = Date.now() * 1000;
+						const response = await fetch(
+							`http://127.0.0.1:${logsPort}/api/default/_search?type=traces`,
+							{
+								method: 'POST',
+								headers: {
+									authorization: auth,
+									'content-type': 'application/json',
+								},
+								body: JSON.stringify({
+									query: {
+										sql: `SELECT * FROM "default" WHERE service_name = 'api'`,
+										start_time: now - 15 * 60 * 1_000_000,
+										end_time: now + 60 * 1_000_000,
+										from: 0,
+										size: 10,
+									},
+								}),
+							},
+						);
+						if (!response.ok) return [];
+						const body = (await response.json()) as {
+							hits?: { service_name: string; trace_id: string }[];
+						};
+						return body.hits ?? [];
+					};
+					let hits: Awaited<ReturnType<typeof search>> = [];
+					for (let attempt = 0; attempt < 60 && hits.length === 0; attempt++) {
+						hits = await search();
+						if (hits.length === 0) {
+							await new Promise((resolve) => setTimeout(resolve, 2_000));
+						}
+					}
+
+					expect(hits.length).toBeGreaterThan(0);
+					expect(hits[0]!.service_name).toBe('api');
+					expect(hits[0]!.trace_id).toMatch(/^[0-9a-f]{32}$/);
+
+					// And the wrong login is refused.
+					const refused = await fetch(
+						`http://127.0.0.1:${logsPort}/api/default/streams`,
+						{ headers: { authorization: 'Basic eDp5' } },
+					);
+					expect(refused.status).toBe(401);
+				},
+			);
 		},
 	);
 }

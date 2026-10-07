@@ -1,4 +1,5 @@
 import { z } from 'zod/v4';
+import { resolveLogs } from '../compose/logsConfig.js';
 import {
 	BUILTIN_TARGETS,
 	builtinTarget,
@@ -530,6 +531,34 @@ export const BackupsConfigSchema = z.object({
 export type BackupsConfig = z.infer<typeof BackupsConfigSchema>;
 
 /**
+ * `deploy.compose` — what the compose target runs beside the apps. The rules
+ * past the shape are `resolveLogs`'s, so the schema and the stack refuse the
+ * same configs with the same words.
+ */
+const ComposeWorkspaceConfigSchema = z.object({
+	logs: z
+		.union([
+			z.boolean(),
+			z.object({
+				port: z.number().optional(),
+				retentionDays: z.number().optional(),
+				public: z.object({ allow: z.array(z.string()) }).optional(),
+			}),
+		])
+		.superRefine((logs, ctx) => {
+			try {
+				resolveLogs(logs);
+			} catch (error) {
+				ctx.addIssue({
+					code: 'custom',
+					message: error instanceof Error ? error.message : String(error),
+				});
+			}
+		})
+		.optional(),
+});
+
+/**
  * Deploy configuration schema.
  */
 const DeployConfigSchema = z.object({
@@ -563,6 +592,7 @@ const DeployConfigSchema = z.object({
 	/** Where every target pushes and pulls the apps' images. */
 	registry: z.string().min(1).optional(),
 	dokploy: DokployWorkspaceConfigSchema.optional(),
+	compose: ComposeWorkspaceConfigSchema.optional(),
 	dns: DnsConfigWithLegacySchema.optional(),
 	backups: BackupsConfigSchema.optional(),
 });

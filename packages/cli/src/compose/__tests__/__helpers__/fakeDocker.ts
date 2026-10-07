@@ -36,6 +36,10 @@ export function fakeDocker(options: { registry?: readonly string[] } = {}) {
 			calls.push({ op: 'port', args: [service, inside] });
 			return 55432;
 		},
+		async health(_stack, service) {
+			calls.push({ op: 'health', args: service });
+			return 'healthy';
+		},
 		async copyOut(_stack, service, from) {
 			calls.push({ op: 'copyOut', args: [service, from] });
 		},

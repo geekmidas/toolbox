@@ -32,6 +32,7 @@ import {
 } from '../deploy/devServices.js';
 import { isMainFrontendApp, resolveHost } from '../deploy/domain.js';
 import { type DeployIdentity, imageRef } from '../deploy/identity.js';
+import { otelEnv } from '../deploy/otel.js';
 import { validateImageRef } from '../docker/imageRef.js';
 import { appDockerfile } from '../docker/index.js';
 import { composeBuildPaths, type ImageLayout } from '../docker/layout.js';
@@ -53,6 +54,13 @@ import type {
 } from '../workspace/types.js';
 import { type EdgeSite, edgeCaddyfile } from './caddyfile.js';
 import { type AppImage, siteTag } from './images.js';
+import {
+	LOGS_SERVICE,
+	logsService,
+	type StackLogs,
+	stackLogs,
+} from './logs.js';
+import { LOGS_PORT, resolveLogs } from './logsConfig.js';
 
 /** Where a stack's files are written, relative to the workspace root. */
 export function stackDir(stage: string): string {
@@ -109,6 +117,18 @@ const STORAGE_KEYS = [
 	'AWS_REGION',
 ] as const;
 
+/**
+ * Every service's Docker logs, rotated. The json-file driver keeps a
+ * container's output in one file that grows until the disk is full — on a
+ * small server, in weeks. Three files of 10 MB each per container is enough
+ * to see what happened and never fills anything. A project's own override
+ * file that sets `logging` wins over it.
+ */
+export const LOG_ROTATION = {
+	driver: 'json-file',
+	options: { 'max-size': '10m', 'max-file': '3' },
+} as const;
+
 /** Each image's build, where the stack builds rather than pulls. */
 export interface AppBuild {
 	/** Where the Dockerfile is written, relative to the workspace root. */
@@ -154,6 +174,10 @@ export interface StackService {
 	volumes?: string[];
 	depends_on?: Record<string, { condition: 'service_healthy' }>;
 	healthcheck?: ComposeService['healthcheck'];
+	logging?: {
+		driver: string;
+		options: Record<string, string>;
+	};
 }
 
 export interface StackFile {
@@ -188,6 +212,11 @@ export interface ComposeStack {
 	storage?: StackStorage;
 	/** The dev services a deployed stage runs (`--allow-dev-services`). */
 	devServices: DevServiceUse[];
+	/**
+	 * The stack's OpenObserve, when `deploy.compose.logs` runs one — every
+	 * backend sends its logs and traces to it.
+	 */
+	logs?: StackLogs;
 }
 
 /** The stack's MinIO, and what is created in it. */
@@ -376,6 +405,21 @@ export function composeStack(input: StackInput): ComposeStack {
 	}
 	const domain = workspace.deploy?.domains?.[stage];
 
+	// The log UI, when the workspace asks for one: its root login, how it is
+	// reached, and what each backend is handed to send to it.
+	const logsConfig = resolveLogs(workspace.deploy?.compose?.logs);
+	const logs = logsConfig
+		? stackLogs({
+				config: logsConfig,
+				stage,
+				local,
+				project: workspace.name,
+				...(domain ? { domain } : {}),
+				custom,
+				https,
+			})
+		: undefined;
+
 	// Mail and storage: the local stage runs Mailpit and MinIO for all of it.
 	// A deployed stage takes each from its secrets — or, where allowed, from a
 	// dev service — and one missing anything stops here, naming every key.
@@ -397,11 +441,13 @@ export function composeStack(input: StackInput): ComposeStack {
 				...(domain ? { domain } : {}),
 			});
 
-	const infra = plan.containers
-		.filter((c) => !NOT_RUN[c])
-		.filter((c) => c !== 'minio' || services.minio.length > 0)
-		.filter((c) => c !== 'mailpit' || services.mailpit.length > 0)
-		.sort();
+	const infra = [
+		...plan.containers
+			.filter((c) => !NOT_RUN[c])
+			.filter((c) => c !== 'minio' || services.minio.length > 0)
+			.filter((c) => c !== 'mailpit' || services.mailpit.length > 0),
+		...(logs ? [LOGS_SERVICE] : []),
+	].sort();
 
 	// The stack's MinIO signs with the stage's own key pair where it set one,
 	// and otherwise with a credential derived like every other: the fixed
@@ -580,8 +626,10 @@ export function composeStack(input: StackInput): ComposeStack {
 			values[trusted] = [...new Set(origins)].join(',');
 		}
 
+		// Telemetry: the stage's own `OTEL_*`, or the stack's OpenObserve.
 		app.env = {
 			...values,
+			...otelEnv({ ...custom, ...logs?.appEnv }, app.name),
 			NODE_ENV: 'production',
 			PORT: String(app.port),
 			STAGE: stage,
@@ -600,6 +648,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		apps,
 		master: credential.master,
 		...(storage ? { storage } : {}),
+		...(logs ? { logs } : {}),
 		https,
 		http,
 		composeDir: join(workspace.root, stackDir(stage)),
@@ -614,6 +663,15 @@ export function composeStack(input: StackInput): ComposeStack {
 				upstream: `${app.name}:${app.port}`,
 			})),
 			...[...fileServers.values()].map(({ site }) => site),
+			...(logs?.host && logs.public
+				? [
+						{
+							host: logs.host,
+							upstream: `${LOGS_SERVICE}:${LOGS_PORT}`,
+							allow: logs.public.allow,
+						},
+					]
+				: []),
 		],
 		{ local },
 	);
@@ -644,6 +702,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		credential,
 		...(storage ? { storage } : {}),
 		devServices: local ? [] : devServicesUsed(services),
+		...(logs ? { logs } : {}),
 	};
 }
 
@@ -798,13 +857,16 @@ function stackFile(options: {
 	apps: readonly StackApp[];
 	master: string;
 	storage?: StackStorage;
+	logs?: StackLogs;
 	https: number;
 	http: number;
 	composeDir: string;
 	buildRoot: string;
 	workspaceRoot: string;
 }): StackFile {
-	const { project, plan, infra, apps } = options;
+	const { project, plan, apps } = options;
+	// What reconcile defines; OpenObserve is the stack's own.
+	const infra = options.infra.filter((name) => name !== LOGS_SERVICE);
 
 	// Reconcile's definitions — images, health checks, volumes — with nothing
 	// published to the host. Ports are allocation's business there; here the
@@ -824,6 +886,7 @@ function stackFile(options: {
 		...derived.volumes,
 		'caddy-data': {},
 		'caddy-config': {},
+		...(options.logs ? { 'openobserve-data': {} } : {}),
 	};
 
 	for (const name of infra) {
@@ -869,6 +932,10 @@ function stackFile(options: {
 		// browser through a file server's host on the edge.
 		minio.ports = ['127.0.0.1::9000'];
 	}
+
+	// Started with the infrastructure, but nothing waits on it: an app whose
+	// telemetry cannot be delivered still serves.
+	if (options.logs) services[LOGS_SERVICE] = logsService(options.logs);
 
 	for (const app of apps) {
 		services[app.name] = {
@@ -922,6 +989,13 @@ function stackFile(options: {
 			retries: 5,
 		},
 	};
+
+	for (const service of Object.values(services)) {
+		service.logging = {
+			driver: LOG_ROTATION.driver,
+			options: { ...LOG_ROTATION.options },
+		};
+	}
 
 	return { name: project, services, volumes };
 }

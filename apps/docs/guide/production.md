@@ -13,7 +13,8 @@ once it does. Each section is short; follow the links for the detail.
 - [ ] Deploy state is in a shared store (SSM or S3), not on one laptop
       ([State](#state)).
 - [ ] Every backend answers `GET /health` ([Health checks](#health-checks)).
-- [ ] `OTEL_EXPORTER_OTLP_ENDPOINT` points at a collector, and
+- [ ] `OTEL_EXPORTER_OTLP_ENDPOINT` points at a collector — or, on
+      `gkm compose`, `deploy.compose.logs` runs one ([Logs](#logs)) — and
       `@geekmidas/telescope` is installed in each app ([Telemetry](#telemetry)).
 - [ ] Logs are redacted (the default) ([Logging](#logging)).
 - [ ] The platform's stop timeout is longer than `GKM_SHUTDOWN_TIMEOUT_MS`
@@ -241,6 +242,65 @@ telemetry failure never stops the server.
 If you call `setupTelemetry` yourself, it also takes `sampleRatio` (0–1, a
 parent-based trace-id ratio; outside that range throws `InvalidSampleRatio`),
 `serviceNamespace`, `deploymentEnvironment` and `handleSignals`.
+
+### Where the telemetry goes
+
+Every deploy target hands each backend the `OTEL_*` variables the stage's
+secrets hold — the exporter's
+`OTEL_EXPORTER_OTLP_{ENDPOINT,HEADERS,PROTOCOL,TIMEOUT,COMPRESSION}` (for all
+signals, or one: `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`), `OTEL_TRACES_SAMPLER`,
+`OTEL_TRACES_SAMPLER_ARG`, `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_SERVICE_NAME`,
+which defaults to the app's name. They are matched by pattern rather than by
+the bare `OTEL_` prefix, so a stray `OTEL_LOG_LEVEL=debug` is not forwarded.
+Values are secrets, masked in output. Sites never get them: a site's
+environment ends up in a bundle every browser downloads, and an exporter's
+headers are a credential.
+
+```bash
+gkm secrets:set OTEL_EXPORTER_OTLP_ENDPOINT 'https://otlp.example.com' --stage production
+gkm secrets:set OTEL_EXPORTER_OTLP_HEADERS 'x-api-key=…' --stage production
+```
+
+That is all a hosted backend — Grafana Cloud, Honeycomb, your own collector —
+needs, on Dokploy and on `gkm compose` alike.
+
+## Logs
+
+With no hosted backend, a `gkm compose` stack can run its own log UI:
+`deploy.compose.logs: true` adds [OpenObserve](https://openobserve.ai) to the
+stack and points every backend at it. In short:
+
+- **Enable it** in `gkm.config.ts`: `deploy: { compose: { logs: true } }`, or
+  `{ port, retentionDays, public: { allow } }`. Data is kept 30 days by
+  default (`retentionDays`, at least 3).
+- **Reach it through an SSH tunnel.** It is published on `127.0.0.1:5080` of
+  the server and nowhere else; `gkm compose` prints the
+  `ssh -N -L 5080:localhost:5080 <user>@<host>` line to run, and the login.
+  A `~/.ssh/config` entry with `LocalForward 5080 localhost:5080` makes it
+  `ssh -N <name>`.
+- **Mind ufw.** A port Docker publishes on every interface is opened by
+  Docker's own iptables rules, ahead of ufw — `ufw deny` does not close it.
+  That is why it is bound to loopback.
+- **For a team, Tailscale**: bind the port to the machine's tailnet IP
+  yourself, in the project's `docker-compose.<stage>.yml`, which `gkm compose`
+  merges over the stack it generates.
+- **Public, to some addresses**: `public: { allow: ['203.0.113.7'] }` serves
+  it at `https://logs.<stage domain>` through Caddy, refusing every other
+  address with 403, and publishes no port.
+- **Or a hosted backend**: leave `logs` off and set the `OTEL_*` variables
+  above in the stage's secrets. Setting both fails with
+  `LogsEndpointConflict`.
+
+The root password is generated on the first run and kept in the stage's
+secrets as `ZO_ROOT_USER_PASSWORD`. Every detail, and the tunnel and Tailscale
+examples, is in [Deploy with Docker Compose → Logs](./compose.md#logs).
+
+Dokploy runs no log UI: `deploy.compose.logs` is the compose target's alone,
+and a Dokploy deploy never reads it. Its backends get the stage's `OTEL_*`
+variables as above, so point those at a backend you run or rent.
+
+Every `gkm compose` service's Docker logs are rotated (`json-file`, 3 × 10 MB),
+so a container's output never fills the disk.
 
 ## Logging
 
