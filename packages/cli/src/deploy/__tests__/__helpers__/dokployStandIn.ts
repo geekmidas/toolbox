@@ -31,6 +31,8 @@ export interface Dokploy {
 				appName: string;
 			}[];
 			postgres: Postgres[];
+			/** Compose stacks — MinIO and Mailpit, where a stage runs them. */
+			compose?: Compose[];
 		}[];
 	}[];
 	registries: {
@@ -87,6 +89,16 @@ export interface Deployment {
 	image: string | undefined;
 	/** Its statuses still to report; the first is the current one. */
 	statuses: DeploymentStatus[];
+}
+
+export interface Compose {
+	composeId: string;
+	name: string;
+	appName: string;
+	/** The file `compose.update` last wrote. */
+	composeFile: string;
+	/** How many times `compose.deploy` ran it. */
+	deploys: number;
 }
 
 export interface Postgres {
@@ -149,6 +161,10 @@ export function serveDokploy(
 		environments()
 			.flatMap((e) => e.postgres)
 			.find((p) => p.postgresId === postgresId)!;
+	const compose = (composeId: string) =>
+		environments()
+			.flatMap((e) => e.compose ?? [])
+			.find((c) => c.composeId === composeId);
 	const application = (applicationId: string) =>
 		environments()
 			.flatMap((e) => e.applications)
@@ -384,6 +400,40 @@ export function serveDokploy(
 				.find((e) => e.environmentId === environmentId)!
 				.postgres.push(created);
 			return HttpResponse.json(created);
+		}),
+		http.post(`${ENDPOINT}/api/compose.create`, async ({ request }) => {
+			const { name, environmentId } = await body(request);
+			const created: Compose = {
+				composeId: id('compose'),
+				name: name!,
+				appName: `${name}-compose`,
+				composeFile: '',
+				deploys: 0,
+			};
+			const environment = environments().find(
+				(e) => e.environmentId === environmentId,
+			)!;
+			environment.compose = [...(environment.compose ?? []), created];
+			return made(`compose:${created.name}`) ?? HttpResponse.json(created);
+		}),
+		http.get(`${ENDPOINT}/api/compose.one`, ({ request }) => {
+			const found = compose(
+				new URL(request.url).searchParams.get('composeId')!,
+			);
+			return found
+				? HttpResponse.json(found)
+				: HttpResponse.json({ message: 'Compose not found' }, { status: 404 });
+		}),
+		http.post(`${ENDPOINT}/api/compose.update`, async ({ request }) => {
+			const { composeId, composeFile } = await body(request);
+			const found = compose(composeId!)!;
+			found.composeFile = composeFile!;
+			return HttpResponse.json(found);
+		}),
+		http.post(`${ENDPOINT}/api/compose.deploy`, async ({ request }) => {
+			const { composeId } = await body(request);
+			compose(composeId!)!.deploys += 1;
+			return HttpResponse.json({ success: true });
 		}),
 		http.get(`${ENDPOINT}/api/postgres.one`, ({ request }) =>
 			HttpResponse.json(

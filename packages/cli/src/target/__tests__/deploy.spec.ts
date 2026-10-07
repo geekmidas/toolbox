@@ -16,6 +16,10 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { CredentialProvider } from '../../deploy/credentials';
 import { type DeployInput, deploy } from '../../deploy/deploy';
+import {
+	DevServicesNeedServerTarget,
+	UnknownDevService,
+} from '../../deploy/devServices';
 import type { DeployEvent } from '../../deploy/events';
 import { RollbackFailed } from '../../deploy/orchestrate';
 import { defineTarget } from '../define';
@@ -258,6 +262,78 @@ describe('deploy() through a target package', () => {
 		expect(globals.__gkmPlugin).toEqual([]);
 		expect(result).toBeInstanceOf(RollbackFailed);
 		expect(result).toMatchObject({ target: 'acme' });
+	});
+
+	describe('--allow-dev-services', () => {
+		/** A target that records the dev services it was handed. */
+		const recording = (runtime: 'server' | 'aws', seen: unknown[]) =>
+			defineTarget({
+				name: 'recording',
+				runtime,
+				capabilities: { rollback: false, migrations: 'app', images: false },
+				async validate(ctx) {
+					seen.push(ctx.allowDevServices);
+				},
+				async plan() {},
+				async release() {},
+				result: (ctx) => ({
+					apps: [],
+					projectId: '',
+					successCount: 0,
+					failedCount: 0,
+					stage: ctx.stage,
+					identity: ctx.identity.key,
+					tag: ctx.tag,
+					dryRun: ctx.dryRun,
+					environmentId: '',
+					skipped: [],
+					urls: {},
+					changes: [],
+				}),
+			});
+
+		it('hands a server target the dev services it allows, and none by default', async () => {
+			writeWorkspace(root, `'${PLUGIN}'`);
+			const seen: unknown[] = [];
+			const acme = recording('server', seen);
+
+			await run({ targets: { acme }, dryRun: true });
+			await run({
+				targets: { acme },
+				dryRun: true,
+				allowDevServices: ['minio', 'mailpit'],
+			});
+
+			expect(seen).toEqual([[], ['mailpit', 'minio']]);
+		});
+
+		it('refuses them on an AWS target, before any phase runs', async () => {
+			writeWorkspace(root, `'${PLUGIN}'`);
+			const seen: unknown[] = [];
+
+			const { result } = await run({
+				targets: { acme: recording('aws', seen) },
+				allowDevServices: ['minio'],
+			});
+
+			expect(result).toBeInstanceOf(DevServicesNeedServerTarget);
+			expect((result as Error).message).toContain('server targets only');
+			expect(seen).toEqual([]);
+		});
+
+		it('refuses a value that is not a dev service', async () => {
+			writeWorkspace(root, `'${PLUGIN}'`);
+			const seen: unknown[] = [];
+
+			const { result } = await run({
+				targets: { acme: recording('server', seen) },
+				allowDevServices: ['minio', 'redis' as never],
+			});
+
+			expect(result).toBeInstanceOf(UnknownDevService);
+			expect((result as Error).message).toContain("'redis'");
+			expect(seen).toEqual([]);
+		});
 	});
 
 	it('deploys through --target, moving every app on the default with it', async () => {

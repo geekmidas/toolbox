@@ -10,6 +10,7 @@
 
 import type { ConstructManifest } from '@geekmidas/manifest';
 import type { CredentialKind, CredentialProvider } from '../deploy/credentials';
+import type { DevService } from '../deploy/devServices';
 import type { DeployEvent } from '../deploy/events';
 import type { DeployIdentity } from '../deploy/identity';
 import type { StateStore } from '../deploy/StateStore';
@@ -174,6 +175,14 @@ export interface DeployPhaseContext<Options = undefined> {
 	 * reads it.
 	 */
 	readonly atomic: boolean;
+	/**
+	 * The dev services a deployed stage may run in place of real mail and
+	 * object storage (`--allow-dev-services`). Empty by default: a deployed
+	 * stage's mail and buckets come from its secrets, and a server target
+	 * refuses one whose secrets lack them. The local stage ignores it — it
+	 * always runs both.
+	 */
+	readonly allowDevServices: readonly DevService[];
 	/** Where every credential comes from. Nothing prompts. */
 	readonly credentials: CredentialProvider;
 	/**

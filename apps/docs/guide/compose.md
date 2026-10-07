@@ -8,6 +8,7 @@ front serving every app over HTTPS.
 gkm compose                              # the local stage, built from this checkout
 gkm compose --stage production --tag v1.4.0   # the images CI pushed as v1.4.0
 gkm compose --stage production --down    # stop it (volumes are kept)
+gkm compose --stage preview --allow-dev-services minio,mailpit  # a demo, on dev services
 ```
 
 `gkm compose` is the built-in `compose` deploy target with a few switches of
@@ -35,10 +36,15 @@ and the hosts they answer on all come from what the workspace declares.
 - **Every site** (`StaticSite`, Next.js, TanStack) — one container each.
 - **The infrastructure those apps declared** — Postgres with a named volume,
   holding every declared database, a database-backed cache's table and
-  pg-boss's schema. Mailpit runs for the local stage only; a deployed stage
-  sends mail through the SMTP server its `MAIL_URL` (and `MAIL_FROM`) in the
-  stage's secrets name.
-- **One Caddy**, one host per app.
+  pg-boss's schema.
+- **Mail and object storage, on the local stage**: Mailpit, and MinIO with
+  every declared bucket (and its file servers' open paths) created before any
+  app starts. Nothing needs setting — no bucket URL, no mail server. A
+  deployed stage brings its own; see
+  [Mail and storage on a deployed stage](#mail-and-storage-on-a-deployed-stage).
+- **One Caddy**, one host per app — and one per file server over the stack's
+  MinIO (`https://uploadsserver.<project>.localhost` locally), rewriting to its
+  bucket the way `gkm dev`'s edge does.
 
 The databases, roles and grants are created, and each database's migrations
 (`db/<construct>/migrations`) applied, before any app starts — so an app never
@@ -215,6 +221,60 @@ The events are the ones every target reports: `artifact.built` per image (with
 its digest), `resource.applied` per service, `app.deployed` per app and
 `health.checked` per check — `gkm deploy --target compose --json` writes them.
 
+## Mail and storage on a deployed stage
+
+A deployed stage's mail and object storage are real services, from its
+secrets — the stack runs no Mailpit or MinIO for it:
+
+| Declared | Keys the stage sets |
+|---|---|
+| `Email('Mail')` | `MAIL_URL` (any SMTP server: `smtp://user:pass@host:587`) and `MAIL_FROM` |
+| a bucket, `ObjectStorage('Uploads')` | `UPLOADS_URL` (`s3://bucket?region=…`, with `&endpoint=…` for R2 or any S3-compatible store), and `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` — one pair, read beside every bucket's URL |
+| its file server, `UploadsServer` | `UPLOADS_SERVER_URL` — the public address its objects are served on |
+
+Only the keys an app reads count. A stage missing any of them stops in
+`validate` — before a file is written, a secret generated or a container
+touched — with `ExternalServicesNotConfigured`, listing **every** missing key
+across every app at once, each with the line that sets it:
+
+```
+ExternalServicesNotConfigured: The stage 'production' is deployed, and a deployed stage's mail and object storage are real services: gkm runs no Mailpit or MinIO for it. Set these 6 keys in the stage's secrets:
+
+  gkm secrets:set MAIL_URL 'smtp://user:password@smtp.example.com:587' --stage production
+      where 'Mail' sends mail — any SMTP server, read by api, auth
+  gkm secrets:set MAIL_FROM 'noreply@example.com' --stage production
+  …
+For a stage that is not production — a preview, a demo — the dev services can run instead, with --allow-dev-services mailpit,minio. …
+```
+
+A third party's credentials (`<ID>_CREDENTIALS`) are checked as before, one at
+a time, with `StageSecretMissing`.
+
+### `--allow-dev-services`
+
+For a stage that is not production — a preview box, a demo — the stack can run
+the dev services anyway:
+
+```bash
+gkm compose --stage preview --allow-dev-services minio,mailpit
+gkm deploy --target compose --stage preview --allow-dev-services minio
+```
+
+- **`minio`** runs MinIO in the stack for each bucket whose URL the stage did
+  not set, creates the buckets from this machine on a loopback port, and hands
+  the backends its URL and key pair. Its root credential is the stage's own
+  `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` where set, and otherwise derived
+  from the stage's seed, as its database passwords are. Each file server over
+  it answers on `https://<id>.<stage domain>` through Caddy, unless its URL is
+  set.
+- **`mailpit`** runs Mailpit, unless the stage set `MAIL_URL`. `MAIL_FROM` is
+  `noreply@<stage domain>` unless set. Mailpit catches every message and
+  **delivers none** — nobody receives a sign-in link.
+
+Keys the stage did set always win over the dev service. Every run that uses one
+prints a warning saying which, and emits a `dev-service.used` event. An
+unknown value fails with `UnknownDevService`.
+
 ## Auth and trusted origins
 
 An auth server (`BetterAuth`) checks the origin of every state-changing
@@ -230,11 +290,6 @@ hosts share (`.example.com`), so the site and the APIs all see the session.
 - **Workers.** Crons, queue consumers and topic subscribers belong to a
   `Worker`, and a RestApi's production image serves HTTP only. A stack runs no
   background work yet.
-- **Object storage.** No MinIO runs. An app that uses a bucket gets it from an
-  externally hosted one: set its `<ID>_URL` (and, where its host needs them,
-  `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`) in the stage's
-  secrets; a missing URL stops the run with `BucketNotConfigured` naming the
-  key. A file server's `<ID>_SERVER_URL` is set the same way.
 - **Mobile apps** ship through their own toolchain and are skipped.
 - **A remote Docker host.** Provisioning and migrations connect to the stack's
   Postgres from this machine on a loopback port, so run `gkm compose` on the

@@ -48,6 +48,7 @@ event; awaiting `result` rejects with the error itself.
 | `apps` | all | Deploy only these apps (in dependency order). |
 | `dryRun` | `false` | Report what would happen as `resource.planned` events. Takes no lock, writes no state, generates no secrets, builds and pushes nothing. |
 | `atomic` | `false` | When a release or its verification fails, roll back every app the run released, not only the failed ones (on a target that can roll back). |
+| `allowDevServices` | `[]` | `'minio'`, `'mailpit'`: on a server target, run them for the buckets and mail a deployed stage's secrets don't configure, instead of failing with `ExternalServicesNotConfigured`. Not production-grade. `UnknownDevService` for any other value; `DevServicesNeedServerTarget` on an `aws` target. |
 | `credentials` | environment, then `gkm login` | Where credentials come from. See [Credentials](#credentials). |
 | `logger` | none | Receives each progress line, as `gkm deploy` would print it. Anything with `info` and `warn` (and optionally `error`), such as a `@geekmidas/logger` `Logger`. |
 | `signal` | none | Stops the run. See [Cancelling](#cancelling). |
@@ -74,6 +75,7 @@ lines are masked: any secret the run has read is printed as `***`.
 | `app.deployed` | `app`, `applicationId`, `imageRef`, `url` | An app is live |
 | `app.failed` | `app`, `error` | An app failed |
 | `health.checked` | `app`, `url`, `healthy`, `status?`, `attempt` | One health check of a released app |
+| `dev-service.used` | `service` (`minio`, `mailpit`), `stage`, `constructs` | A deployed stage runs a dev service in place of real storage or mail (`allowDevServices`). Every run, in `validate` |
 | `deploy.finished` | `result` | The run finished. `result` is the `DeployResult` |
 | `deploy.failed` | `error` | The run stopped. Always the last event of a failed run |
 

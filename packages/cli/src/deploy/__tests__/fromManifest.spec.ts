@@ -4,6 +4,7 @@ import {
 	provisionOrder,
 } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
+import { ExternalServicesNotConfigured } from '../devServices';
 import type { DokployApi } from '../dokploy-api';
 import {
 	BrokerNeedsADatabase,
@@ -121,8 +122,13 @@ function fakeApi() {
 async function provision(
 	overrides: Partial<DokployProvisionContext> = {},
 	source: ConstructManifest = manifest,
-): Promise<{ context: DokployProvisionContext; env: Record<string, string> }> {
-	const { api } = fakeApi();
+): Promise<{
+	context: DokployProvisionContext;
+	env: Record<string, string>;
+	created: string[];
+	composeFiles: Map<string, string>;
+}> {
+	const { api, created, composeFiles } = fakeApi();
 	const context: DokployProvisionContext = {
 		manifest: source,
 		provisioned: {} as Record<string, Provisioned>,
@@ -155,7 +161,7 @@ async function provision(
 		Object.assign(env, result.provides);
 	}
 
-	return { context, env };
+	return { context, env, created, composeFiles };
 }
 
 describe('serviceName', () => {
@@ -384,7 +390,10 @@ describe('a bucket', () => {
 		// Postgres and Redis are first-class here and object storage is not, so
 		// this is the one kind whose infrastructure the target writes rather
 		// than configures.
-		const { env } = await provision({ storage: 'minio' }, storing);
+		const { env } = await provision(
+			{ storage: 'minio', devServices: ['minio'] },
+			storing,
+		);
 
 		// Kebab, not snake: a bucket name is a DNS label, so it takes the
 		// same rule a hostname does rather than the one a Postgres role does.
@@ -396,7 +405,10 @@ describe('a bucket', () => {
 		// Not cosmetic: containers on `dokploy-network` resolve each other by
 		// service name, so the name is the address. Calling it `minio` would
 		// work for exactly one project on the box and then collide.
-		const { env } = await provision({ storage: 'minio' }, storing);
+		const { env } = await provision(
+			{ storage: 'minio', devServices: ['minio'] },
+			storing,
+		);
 
 		expect(env.UPLOADS_URL).toContain(
 			'endpoint=http://production-shop-uploads:9000',
@@ -408,7 +420,10 @@ describe('a bucket', () => {
 		// from an execution role, so a URL that embedded a key would be one more
 		// thing to rotate and leak. There is no role here, so the same chain
 		// reads these.
-		const { env } = await provision({ storage: 'minio' }, storing);
+		const { env } = await provision(
+			{ storage: 'minio', devServices: ['minio'] },
+			storing,
+		);
 
 		expect(env.UPLOADS_URL).not.toContain('@');
 		expect(env.AWS_ACCESS_KEY_ID).toBe('uploads-production-root');
@@ -424,11 +439,118 @@ describe('a bucket', () => {
 	});
 
 	it('serves the bucket at the address the bucket resolved to', async () => {
-		const { env } = await provision({ storage: 'minio' }, storing);
+		const { env } = await provision(
+			{ storage: 'minio', devServices: ['minio'] },
+			storing,
+		);
 
 		expect(env.UPLOADS_SERVER_URL).toBe(
 			'http://production-shop-uploads:9000/uploads-production',
 		);
+	});
+
+	it('runs no MinIO on a deployed stage unless it is allowed to', async () => {
+		// A bucket on one container's disk is not a deployed stage's storage.
+		// `validate` refuses this first; the provisioner refuses it too.
+		const run = provision({ storage: 'minio' }, storing);
+
+		await expect(run).rejects.toThrow(ExternalServicesNotConfigured);
+		await expect(run).rejects.toThrow(/UPLOADS_URL/);
+		await expect(run).rejects.toThrow(/--allow-dev-services minio/);
+	});
+
+	it("is the stage's own bucket when its secrets hold one, and runs nothing", async () => {
+		const external = {
+			UPLOADS_URL: 's3://acme-uploads?region=eu-west-1',
+			AWS_ACCESS_KEY_ID: 'AKIAEXAMPLE',
+			AWS_SECRET_ACCESS_KEY: 'external-secret',
+			UPLOADS_SERVER_URL: 'https://files.example.com',
+		};
+		// Allowed or not: a URL the stage set wins over the dev service.
+		const { env, created } = await provision(
+			{ storage: 'minio', devServices: ['minio'], supplied: external },
+			storing,
+		);
+
+		expect(env.UPLOADS_URL).toBe(external.UPLOADS_URL);
+		expect(env.AWS_ACCESS_KEY_ID).toBe('AKIAEXAMPLE');
+		expect(env.AWS_SECRET_ACCESS_KEY).toBe('external-secret');
+		expect(env.UPLOADS_SERVER_URL).toBe('https://files.example.com');
+		expect(created).not.toContain('production-shop-uploads');
+	});
+
+	it("signs MinIO with the stage's own key pair, where it set one", async () => {
+		const { env, composeFiles } = await provision(
+			{
+				storage: 'minio',
+				devServices: ['minio'],
+				supplied: {
+					AWS_ACCESS_KEY_ID: 'stage-key',
+					AWS_SECRET_ACCESS_KEY: 'stage-secret-value',
+				},
+			},
+			storing,
+		);
+
+		expect(env.AWS_ACCESS_KEY_ID).toBe('stage-key');
+		expect(env.AWS_SECRET_ACCESS_KEY).toBe('stage-secret-value');
+		expect(composeFiles.get('production-shop-uploads')).toContain(
+			'MINIO_ROOT_USER: stage-key',
+		);
+	});
+});
+
+describe('mail', () => {
+	const mailing = {
+		...manifest,
+		Mail: { kind: 'email', id: 'Mail', provides: ['MAIL_URL', 'MAIL_FROM'] },
+	} as ConstructManifest;
+	const smtp = 'smtp://user:password@smtp.example.com:587';
+
+	it("is the stage's own SMTP server, with the address it sends from", async () => {
+		const { env, created } = await provision(
+			{ supplied: { MAIL_URL: smtp, MAIL_FROM: 'noreply@example.com' } },
+			mailing,
+		);
+
+		expect(env.MAIL_URL).toBe(smtp);
+		expect(env.MAIL_FROM).toBe('noreply@example.com');
+		expect(created).not.toContain('production-shop-mail');
+	});
+
+	it('needs the sending address beside the URL', async () => {
+		await expect(
+			provision({ supplied: { MAIL_URL: smtp } }, mailing),
+		).rejects.toThrow(MissingSuppliedSecret);
+	});
+
+	it('runs no Mailpit on a deployed stage unless it is allowed to', async () => {
+		const run = provision({}, mailing);
+
+		await expect(run).rejects.toThrow(ExternalServicesNotConfigured);
+		await expect(run).rejects.toThrow(/MAIL_URL[\s\S]*MAIL_FROM/);
+	});
+
+	it('is a Mailpit compose service where allowed, named like every other', async () => {
+		const { env, composeFiles } = await provision(
+			{ devServices: ['mailpit'], domain: 'example.com' },
+			mailing,
+		);
+
+		expect(env.MAIL_URL).toBe('smtp://production-shop-mail:1025');
+		expect(env.MAIL_FROM).toBe('noreply@example.com');
+		const file = composeFiles.get('production-shop-mail');
+		expect(file).toContain('axllent/mailpit');
+		expect(file).toContain('dokploy-network');
+	});
+
+	it('keeps a sending address the stage set, on Mailpit too', async () => {
+		const { env } = await provision(
+			{ devServices: ['mailpit'], supplied: { MAIL_FROM: 'hi@shop.test' } },
+			mailing,
+		);
+
+		expect(env.MAIL_FROM).toBe('hi@shop.test');
 	});
 });
 

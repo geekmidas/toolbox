@@ -32,6 +32,7 @@ import { ConfigObjectNotSerializable } from '../../config';
 import { run, runOutput } from '../../run';
 import { LocalSandbox } from '../../sandbox/local';
 import type { Sandbox } from '../../sandbox/sandbox';
+import { FileSecretsStore } from '../../secrets/file';
 import {
 	NothingToRollBack,
 	rollbackStage,
@@ -39,6 +40,7 @@ import {
 import { deployCli } from '../cli';
 import { type CredentialProvider, MissingCredential } from '../credentials';
 import { type DeployInput, deploy } from '../deploy';
+import { ExternalServicesNotConfigured } from '../devServices';
 import type { DeployEvent } from '../events';
 import { deployCommand } from '../index';
 import {
@@ -760,6 +762,152 @@ writeFileSync(new URL('../seen.json', import.meta.url), JSON.stringify(process.e
 					web: ref('web', 'v2'),
 				});
 			});
+		});
+	});
+
+	describe("a deployed stage's mail and storage", () => {
+		beforeEach(() => {
+			mkdirSync(join(root, 'src', 'constructs'), { recursive: true });
+			// Discovery is structural: an id and a declaration are a construct.
+			writeFileSync(
+				join(root, 'src', 'constructs', 'services.ts'),
+				`export const Uploads = {
+  id: 'Uploads',
+  declare: () => [{ kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] }],
+};
+export const Mail = {
+  id: 'Mail',
+  declare: () => [{ kind: 'email', id: 'Mail', provides: ['MAIL_URL', 'MAIL_FROM'] }],
+};
+`,
+			);
+		});
+
+		it('fails validate naming every missing key, and creates and writes nothing', async () => {
+			const { events, result } = await eventsOf();
+			const error = await result.catch((caught: unknown) => caught);
+
+			expect(error).toBeInstanceOf(ExternalServicesNotConfigured);
+			expect(
+				(error as ExternalServicesNotConfigured).missing.map((m) => m.key),
+			).toEqual([
+				'MAIL_URL',
+				'MAIL_FROM',
+				'UPLOADS_URL',
+				'AWS_ACCESS_KEY_ID',
+				'AWS_SECRET_ACCESS_KEY',
+			]);
+			expect((error as Error).message).toContain(
+				"gkm secrets:set UPLOADS_URL 's3://uploads?region=eu-west-1' --stage production",
+			);
+			expect((error as Error).message).toContain(
+				'--allow-dev-services mailpit,minio',
+			);
+			expect(events).toContainEqual(
+				expect.objectContaining({ type: 'phase.failed', phase: 'validate' }),
+			);
+			expect(requests.filter((r) => !r.startsWith('GET '))).toEqual([]);
+			expect(run).not.toHaveBeenCalled();
+			// Not even the stage's seed, and no state: nothing is generated or
+			// recorded for a run that stops here. The lock it took is gone.
+			expect(existsSync(join(root, '.gkm', 'secrets'))).toBe(false);
+			expect(readdirSync(join(root, '.gkm'))).toEqual([]);
+		});
+
+		it('runs MinIO and Mailpit where allowed, warning that neither is production-grade', async () => {
+			const { events, result } = await eventsOf({
+				allowDevServices: ['minio', 'mailpit'],
+			});
+			const deployed = await result;
+
+			expect(deployed.successCount).toBeGreaterThan(0);
+			expect(events.filter((e) => e.type === 'dev-service.used')).toEqual([
+				{
+					type: 'dev-service.used',
+					service: 'mailpit',
+					stage: STAGE,
+					constructs: ['Mail'],
+				},
+				{
+					type: 'dev-service.used',
+					service: 'minio',
+					stage: STAGE,
+					constructs: ['Uploads'],
+				},
+			]);
+			expect(
+				events.some(
+					(e) =>
+						e.type === 'log' &&
+						e.level === 'warn' &&
+						e.message.includes('It delivers NO mail'),
+				),
+			).toBe(true);
+
+			// MinIO for the bucket, as a Dokploy compose service — as it always
+			// was — and Mailpit beside it.
+			const stacks = dokploy.projects[0]!.environments[0]!.compose ?? [];
+			expect(stacks.map((c) => c.name).sort()).toEqual([
+				'production-shop-mail',
+				'production-shop-uploads',
+			]);
+			const minio = stacks.find((c) => c.name === 'production-shop-uploads')!;
+			expect(minio.composeFile).toContain(
+				'mc mb --ignore-existing s3/uploads-production',
+			);
+			expect(minio.deploys).toBe(1);
+
+			const api = dokploy.projects[0]!.environments[0]!.applications.find((a) =>
+				a.name.endsWith('-api'),
+			)!;
+			const env = dokploy.env[api.applicationId]!;
+			expect(env).toContain(
+				'UPLOADS_URL=s3://uploads-production?region=us-east-1&endpoint=http://production-shop-uploads:9000&forcePathStyle=true',
+			);
+			expect(env).toContain('MAIL_URL=smtp://production-shop-mail:1025');
+			expect(env).toContain('MAIL_FROM=noreply@shop.example.com');
+		});
+
+		it('runs neither where the stage set its own', async () => {
+			await new FileSecretsStore(root).write(STAGE, {
+				stage: STAGE,
+				createdAt: '2026-01-01T00:00:00.000Z',
+				updatedAt: '2026-01-01T00:00:00.000Z',
+				services: {},
+				urls: {},
+				custom: {
+					MAIL_URL: 'smtp://user:password@smtp.example.com:587',
+					MAIL_FROM: 'hi@shop.example.com',
+					UPLOADS_URL: 's3://acme-uploads?region=eu-west-1',
+					AWS_ACCESS_KEY_ID: 'AKIAEXAMPLE',
+					AWS_SECRET_ACCESS_KEY: 'external-secret',
+				},
+			});
+
+			const { events, result } = await eventsOf({
+				allowDevServices: ['minio', 'mailpit'],
+			});
+			await result;
+
+			expect(events.filter((e) => e.type === 'dev-service.used')).toEqual([]);
+			expect(dokploy.projects[0]!.environments[0]!.compose ?? []).toEqual([]);
+			const api = dokploy.projects[0]!.environments[0]!.applications.find((a) =>
+				a.name.endsWith('-api'),
+			)!;
+			expect(dokploy.env[api.applicationId]).toContain(
+				'UPLOADS_URL=s3://acme-uploads?region=eu-west-1',
+			);
+		});
+
+		it('refuses a value that is not a dev service, at the terminal too', async () => {
+			const code = await deployCli(
+				{ cwd: root, stage: STAGE, allowDevServices: 'minio,redis' },
+				{ stdout: { write: () => true } },
+			);
+
+			expect(code).toBe(1);
+			expect(out.join('\n')).toContain("'redis' is not a dev service");
+			expect(requests).toEqual([]);
 		});
 	});
 });

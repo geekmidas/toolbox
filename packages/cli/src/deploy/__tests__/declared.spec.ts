@@ -20,12 +20,18 @@ const manifest = {
 		endpoints: [],
 		provides: ['API_URL'],
 	},
-	// A kind this target has no primitive for. `objects` used to be the example
-	// here and no longer is — it provisions a MinIO compose stack now — so the
-	// case is made with mail, which is a SaaS account rather than infrastructure
-	// this deploy can create.
-	Mail: { kind: 'email', id: 'Mail', provides: ['MAIL_URL'] },
-} as const satisfies ConstructManifest;
+	// Mail: the stage's own SMTP server, from its secrets.
+	Mail: { kind: 'email', id: 'Mail', provides: ['MAIL_URL', 'MAIL_FROM'] },
+	// A kind this target provisions nothing for: a site is an app, deployed
+	// by the engine, not infrastructure the manifest creates.
+	Web: {
+		kind: 'site',
+		id: 'Web',
+		path: 'apps/web',
+		variant: 'static',
+		provides: [],
+	},
+} as unknown as ConstructManifest;
 
 const api = {
 	async findOrCreatePostgres(
@@ -82,6 +88,10 @@ const run = (workspace: NormalizedWorkspace) =>
 		stage: 'production',
 		appUrls: { api: 'https://api.example.com' },
 		seed: 'stage-seed',
+		supplied: {
+			MAIL_URL: 'smtp://user:password@smtp.example.com:587',
+			MAIL_FROM: 'noreply@example.com',
+		},
 		manifest,
 	});
 
@@ -135,6 +145,10 @@ describe('provisionDeclared', () => {
 			// call it, and where its cookie is readable.
 			'API_TRUSTED_ORIGINS',
 			'API_URL',
+			// Mail, as the stage was given it — a construct reads its own key, so
+			// no sniffer would have found these either.
+			'MAIL_FROM',
+			'MAIL_URL',
 			'ORDERS_OWNER_URL',
 			'ORDERS_URL',
 			'SESSIONS_URL',
@@ -147,14 +161,18 @@ describe('provisionDeclared', () => {
 		expect(env.API_URL).toBe('https://api.example.com');
 	});
 
-	it('skips a kind this target cannot provision, rather than failing', async () => {
-		// Refusing to deploy an app because it also declares a bucket would be
-		// worse than deploying it without one. The cost is honest: the key is
-		// absent, and the construct that needs it says so on first use.
+	it('skips a kind this target provisions nothing for, rather than failing', async () => {
+		const { provisioned } = await run(workspaceWith());
+
+		expect(provisioned).not.toHaveProperty('Web');
+	});
+
+	it("takes mail from the stage's secrets, and runs nothing for it", async () => {
 		const { env, provisioned } = await run(workspaceWith());
 
-		expect(provisioned).not.toHaveProperty('Mail');
-		expect(env).not.toHaveProperty('MAIL_URL');
+		expect(provisioned).toHaveProperty('Mail');
+		expect(env.MAIL_URL).toBe('smtp://user:password@smtp.example.com:587');
+		expect(env.MAIL_FROM).toBe('noreply@example.com');
 	});
 
 	it('hands back DDL in the applier’s shape rather than running it', async () => {

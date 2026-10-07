@@ -51,6 +51,12 @@ import {
 	provideKey,
 	schemeBase,
 } from '@geekmidas/manifest';
+import {
+	type DevService,
+	ExternalServicesNotConfigured,
+	externalServices,
+	STORAGE_KEY_PAIR,
+} from '../../deploy/devServices.js';
 import { resourceName } from '../../reconcile/plan.js';
 import type { DokployApi } from './dokploy-api';
 
@@ -96,6 +102,14 @@ export interface DokployProvisionContext {
 	cache?: 'upstash' | 'elasticache' | 'db';
 	/** Where a declared bucket lives. Only `minio` has a Dokploy primitive. */
 	storage?: 'minio' | 's3' | 'r2';
+	/**
+	 * The dev services the stage may run (`--allow-dev-services`): MinIO for
+	 * a bucket whose URL the stage's secrets do not hold, Mailpit for mail.
+	 * Without them a bucket and mail are the stage's own, from `supplied`.
+	 */
+	devServices?: readonly DevService[];
+	/** The stage's base domain, which Mailpit's sending address is on. */
+	domain?: string;
 	/**
 	 * What carries a declared queue or topic — the same config the local target
 	 * reads, and for the same reason it is config rather than a declaration: the
@@ -397,11 +411,17 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	},
 
 	/**
-	 * A bucket, as a MinIO stack on the box.
+	 * A bucket: the stage's own, or — allowed — a MinIO stack on the box.
+	 *
+	 * A deployed stage's bucket is an external one — S3, R2, any S3-compatible
+	 * store — whose URL and key pair the stage's secrets hold. Only with
+	 * `--allow-dev-services minio` does this target run MinIO for one, and
+	 * then only for a bucket whose URL the stage did not set.
 	 *
 	 * Dokploy has first-class primitives for Postgres and Redis and none for
-	 * object storage, so this is the one kind whose infrastructure this target
-	 * *writes* rather than configures — a compose file with one service in it.
+	 * object storage, so MinIO is the one kind whose infrastructure this
+	 * target *writes* rather than configures — a compose file with one
+	 * service in it.
 	 *
 	 * The service is named `cloudName(...)` like everything else, which is not
 	 * cosmetic here: containers on `dokploy-network` resolve each other by
@@ -417,9 +437,23 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	objects: async (declaration, context) => {
 		if (declaration.kind !== 'objects') throw new WrongKind(declaration.kind);
 
+		const key = provideKey(declaration.id, 'url');
+		const given = context.supplied?.[key];
+		if (given !== undefined) {
+			return {
+				provides: {
+					[key]: given,
+					...storageKeys(context.supplied),
+				},
+			};
+		}
+
 		const backend = context.storage ?? 'minio';
 		if (backend !== 'minio')
 			throw new UnprovisionableBucket(declaration.id, backend);
+		if (!context.devServices?.includes('minio')) {
+			throw notConfigured(declaration.id, 'objects', context);
+		}
 
 		const service = serviceName(
 			{ stage: context.stage, app: context.scope ?? context.project },
@@ -430,8 +464,12 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 			declaration.kind,
 			context.stage,
 		);
-		const user = `${bucket}-root`;
-		const password = derivedPassword(context, `objects:${declaration.id}`);
+		// The stage's own key pair where it set one, so a second bucket that is
+		// external signs with the same keys this one does.
+		const user = context.supplied?.AWS_ACCESS_KEY_ID ?? `${bucket}-root`;
+		const password =
+			context.supplied?.AWS_SECRET_ACCESS_KEY ??
+			derivedPassword(context, `objects:${declaration.id}`);
 
 		const { compose } = await context.api.findOrCreateCompose(
 			service,
@@ -444,11 +482,11 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 
 		return {
 			provides: {
-				[provideKey(declaration.id, 'url')]: s3Url(service, bucket),
+				[key]: s3Url(service, bucket),
 				// Beside the URL rather than inside it, for the reason above.
 				AWS_ACCESS_KEY_ID: user,
 				AWS_SECRET_ACCESS_KEY: password,
-				AWS_REGION: MINIO_REGION,
+				AWS_REGION: context.supplied?.AWS_REGION ?? MINIO_REGION,
 			},
 		};
 	},
@@ -456,19 +494,25 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	/**
 	 * The address a bucket's objects are served on.
 	 *
-	 * Nothing is provisioned: Dokploy runs Traefik, so a second reverse proxy
-	 * behind the first would terminate TLS twice — which is why the local
-	 * target's Caddy has no equivalent here. What this resolves is the address,
-	 * and the `open` prefixes are applied to the bucket rather than to an edge,
-	 * so a policy is what makes them public wherever the bucket lives.
+	 * The stage's own — a CDN, the bucket's domain — when its secrets hold
+	 * one, which a bucket that is not MinIO's needs.
 	 *
-	 * Until a Traefik rule exists it answers on MinIO directly, path-style,
-	 * which is honest about the shape it has today: the bucket is in the path
-	 * rather than fronted by a host of its own.
+	 * Over MinIO nothing is provisioned: Dokploy runs Traefik, so a second
+	 * reverse proxy behind the first would terminate TLS twice — which is why
+	 * the local target's Caddy has no equivalent here. What this resolves is
+	 * the address, and the `open` prefixes are applied to the bucket rather
+	 * than to an edge, so a policy is what makes them public wherever the
+	 * bucket lives. Until a Traefik rule exists it answers on MinIO directly,
+	 * path-style, which is honest about the shape it has today: the bucket is
+	 * in the path rather than fronted by a host of its own.
 	 */
 	'file-server': async (declaration, context) => {
 		if (declaration.kind !== 'file-server')
 			throw new WrongKind(declaration.kind);
+
+		const key = provideKey(declaration.id, 'url');
+		const given = context.supplied?.[key];
+		if (given !== undefined) return { provides: { [key]: given } };
 
 		const parent = context.provisioned[declaration.of];
 		const parentUrl = parent?.provides[provideKey(declaration.of, 'url')];
@@ -480,7 +524,55 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 
 		return {
 			provides: {
-				[provideKey(declaration.id, 'url')]: `${endpoint}/${bucket}`,
+				[key]: `${endpoint}/${bucket}`,
+			},
+		};
+	},
+
+	/**
+	 * Mail: the stage's own SMTP server, or — allowed — Mailpit on the box.
+	 *
+	 * Every provider speaks SMTP, so the provider is whatever the stage's
+	 * `<ID>_URL` names, with the address it sends from beside it. Only with
+	 * `--allow-dev-services mailpit`, and only where the stage set no URL,
+	 * does this run Mailpit — which catches every message and delivers none.
+	 */
+	email: async (declaration, context) => {
+		if (declaration.kind !== 'email') throw new WrongKind(declaration.kind);
+
+		const key = provideKey(declaration.id, 'url');
+		const from = provideKey(declaration.id, 'from');
+		const given = context.supplied?.[key];
+		if (given !== undefined) {
+			return {
+				provides: {
+					[key]: given,
+					[from]: supplied(declaration.id, from, context),
+				},
+			};
+		}
+		if (!context.devServices?.includes('mailpit')) {
+			throw notConfigured(declaration.id, 'email', context);
+		}
+
+		const service = serviceName(
+			{ stage: context.stage, app: context.scope ?? context.project },
+			declaration.id,
+		);
+		const { compose } = await context.api.findOrCreateCompose(
+			service,
+			context.projectId,
+			context.environmentId,
+			mailpitCompose(service),
+		);
+		await context.api.deployCompose(compose.composeId);
+
+		return {
+			provides: {
+				[key]: `smtp://${service}:1025`,
+				[from]:
+					context.supplied?.[from] ??
+					`noreply@${context.domain ?? 'localhost'}`,
 			},
 		};
 	},
@@ -839,6 +931,59 @@ function minioCompose(options: {
 		'    external: true',
 		'',
 	].join('\n');
+}
+
+/**
+ * A one-service compose file for Mailpit, on `dokploy-network` so the apps
+ * reach it by its service name. It accepts mail from anything on the network
+ * and delivers none of it.
+ */
+function mailpitCompose(service: string): string {
+	return [
+		'services:',
+		`  ${service}:`,
+		'    image: axllent/mailpit:latest',
+		'    environment:',
+		"      MP_SMTP_AUTH_ACCEPT_ANY: '1'",
+		"      MP_SMTP_AUTH_ALLOW_INSECURE: '1'",
+		'    networks:',
+		'      - dokploy-network',
+		'networks:',
+		'  dokploy-network:',
+		'    external: true',
+		'',
+	].join('\n');
+}
+
+/** The S3 client's keys the stage set, for a bucket that is its own. */
+function storageKeys(
+	values: Readonly<Record<string, string>> | undefined,
+): Record<string, string> {
+	const keys: Record<string, string> = {};
+	for (const key of [...STORAGE_KEY_PAIR, 'AWS_REGION']) {
+		const value = values?.[key];
+		if (value !== undefined) keys[key] = value;
+	}
+	return keys;
+}
+
+/**
+ * The error for a bucket or mail the stage configured nothing for — what
+ * `validate` already refused, should a provisioner be reached without it.
+ */
+function notConfigured(
+	id: string,
+	kind: 'email' | 'objects',
+	context: DokployProvisionContext,
+): ExternalServicesNotConfigured {
+	const { missing } = externalServices({
+		stage: context.stage,
+		declarations: [{ id, kind }],
+		supplied: context.supplied ?? {},
+		allow: [],
+		...(context.domain ? { domain: context.domain } : {}),
+	});
+	return new ExternalServicesNotConfigured(context.stage, missing);
 }
 
 /** Whether anything reads through a reader on this construct. */

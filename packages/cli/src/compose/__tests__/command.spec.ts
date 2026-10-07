@@ -19,6 +19,10 @@ import {
 	vi,
 } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
+import {
+	ExternalServicesNotConfigured,
+	UnknownDevService,
+} from '../../deploy/devServices';
 import type { SqlClient } from '../../reconcile/provision';
 import { decryptSecrets } from '../../secrets/encryption';
 import {
@@ -417,6 +421,159 @@ describe('a workspace nested in a monorepo', { timeout: RUN_TIMEOUT }, () => {
 			false,
 		);
 		expect(existsSync(join(dir, '.dockerignore'))).toBe(false);
+	});
+});
+
+/** The API with an endpoint that sends mail and writes to a bucket. */
+function withMailAndStorage(root: string): void {
+	writeFileSync(
+		join(root, 'constructs', 'storage.ts'),
+		`import { Email } from '@geekmidas/constructs/email';
+import { ObjectStorage } from '@geekmidas/constructs/object-storage';
+
+export const uploads = new ObjectStorage('Uploads');
+export const mail = new Email('Mail', { templates: {} });
+`,
+	);
+	writeFileSync(
+		join(root, 'apps', 'api', 'endpoints', 'upload.ts'),
+		`import { api } from '../../../constructs/api.js';
+import { mail, uploads } from '../../../constructs/storage.js';
+
+export const upload = api
+	.post('/upload')
+	.dependsOn([uploads, mail])
+	.handle(async () => ({ ok: true }));
+`,
+	);
+}
+
+/** A bucket client that records what it was asked to create, and with what. */
+function recordingBuckets(calls: { op: string; args?: unknown }[]) {
+	return (port: number, credentials?: { user: string; password: string }) => {
+		calls.push({ op: 'buckets', args: [port, credentials?.user] });
+		return {
+			async exists() {
+				return false;
+			},
+			async create(bucket: string) {
+				calls.push({ op: 'bucket', args: bucket });
+			},
+			async policy() {
+				return undefined;
+			},
+			async setPolicy() {},
+		};
+	};
+}
+
+describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
+	beforeEach(async () => {
+		dir = await project();
+		withMailAndStorage(dir);
+	});
+	afterEach(async () => {
+		await cleanupDir(dir);
+	});
+
+	it('runs MinIO and Mailpit on the local stage with no secret, creating the bucket before any app starts', async () => {
+		const fake = fakeDocker();
+
+		const result = await composeCommand(
+			{ cwd: dir },
+			{
+				docker: fake.docker,
+				probe: answering(fake.calls),
+				revision: async () => 'abc1234',
+				sql: () => ({ query: async () => [] }),
+				migrate: async () => [],
+				buckets: recordingBuckets(fake.calls),
+			},
+		);
+
+		expect(result?.stack.infra).toEqual(['mailpit', 'minio', 'postgres']);
+		const ops = fake.calls.map((call) =>
+			call.op === 'up' || call.op === 'bucket' || call.op === 'buckets'
+				? `${call.op} ${JSON.stringify(call.args)}`
+				: call.op,
+		);
+		expect(ops.indexOf('bucket "uploads"')).toBeGreaterThan(
+			ops.indexOf('up ["mailpit","minio","postgres"]'),
+		);
+		expect(ops.indexOf('bucket "uploads"')).toBeLessThan(
+			ops.indexOf('up "all"'),
+		);
+		expect(ops).toContain('buckets [55432,"geekmidas"]');
+		const env = readFileSync(
+			join(dir, '.gkm', 'compose', 'development', 'api.env'),
+			'utf-8',
+		);
+		expect(env).toContain(
+			'UPLOADS_URL=s3://uploads?region=us-east-1&endpoint=http://minio:9000&forcePathStyle=true',
+		);
+		expect(env).toContain('MAIL_URL=smtp://mailpit:1025');
+	});
+
+	it('refuses a deployed stage with neither configured, naming every key, and writes nothing', async () => {
+		const fake = fakeDocker();
+
+		const run = composeCommand(
+			{ cwd: dir, stage: 'production' },
+			{ docker: fake.docker, revision: async () => 'abc1234' },
+		);
+
+		await expect(run).rejects.toBeInstanceOf(ExternalServicesNotConfigured);
+		await expect(run).rejects.toThrow(
+			/MAIL_URL[\s\S]*MAIL_FROM[\s\S]*UPLOADS_URL[\s\S]*AWS_ACCESS_KEY_ID[\s\S]*AWS_SECRET_ACCESS_KEY/,
+		);
+		expect(fake.ops()).toEqual([]);
+		expect(existsSync(join(dir, '.gkm', 'compose', 'production'))).toBe(false);
+		expect(existsSync(join(dir, '.gkm', 'secrets', 'production.json'))).toBe(
+			false,
+		);
+	});
+
+	it('runs both on a deployed stage with --allow-dev-services, warning loudly', async () => {
+		const warned: string[] = [];
+		vi.spyOn(console, 'warn').mockImplementation((...a) => {
+			warned.push(a.join(' '));
+		});
+		const fake = fakeDocker();
+
+		const result = await composeCommand(
+			{ cwd: dir, stage: 'production', allowDevServices: 'minio,mailpit' },
+			{
+				docker: fake.docker,
+				probe: answering(fake.calls),
+				revision: async () => 'abc1234',
+				sql: () => ({ query: async () => [] }),
+				migrate: async () => [],
+				buckets: recordingBuckets(fake.calls),
+			},
+		);
+
+		expect(result?.stack.infra).toEqual(['mailpit', 'minio', 'postgres']);
+		expect(fake.calls).toContainEqual({
+			op: 'buckets',
+			args: [55432, 'compose-app-minio'],
+		});
+		expect(fake.calls).toContainEqual({
+			op: 'bucket',
+			args: 'uploads-production',
+		});
+		expect(warned.join('\n')).toMatch(
+			/DEV SERVICE ON A DEPLOYED STAGE \(production\): Mailpit[\s\S]*delivers NO mail/,
+		);
+		expect(warned.join('\n')).toMatch(
+			/DEV SERVICE ON A DEPLOYED STAGE \(production\): MinIO/,
+		);
+		expect(result?.deploy.stage).toBe('production');
+	});
+
+	it('refuses a value that is not a dev service', async () => {
+		await expect(
+			composeCommand({ cwd: dir, allowDevServices: 'minio,redis' }),
+		).rejects.toBeInstanceOf(UnknownDevService);
 	});
 });
 

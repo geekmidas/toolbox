@@ -11,6 +11,7 @@ import { formatError } from '../debug';
 import { targetForProvider } from '../target/provider';
 import { storedCredentials } from './credentials';
 import { deploy } from './deploy';
+import { type DevService, parseDevServices } from './devServices';
 import { terminalCredentials } from './terminal';
 
 export interface DeployCliOptions {
@@ -31,6 +32,8 @@ export interface DeployCliOptions {
 	dryRun?: boolean;
 	/** On a failed release, roll back every app, not only the failed ones. */
 	atomic?: boolean;
+	/** `--allow-dev-services minio,mailpit`, as typed. */
+	allowDevServices?: string;
 }
 
 /** Where the command writes. The process's own streams, outside tests. */
@@ -59,6 +62,14 @@ export async function deployCli(
 		}
 	}
 
+	let allowDevServices: DevService[];
+	try {
+		allowDevServices = parseDevServices(options.allowDevServices);
+	} catch (error) {
+		console.error(formatError(error));
+		return 1;
+	}
+
 	const input = {
 		cwd: options.cwd,
 		stage: options.stage,
@@ -66,6 +77,7 @@ export async function deployCli(
 		...(options.tag ? { tag: options.tag } : {}),
 		...(options.dryRun ? { dryRun: true } : {}),
 		...(options.atomic ? { atomic: true } : {}),
+		...(allowDevServices.length > 0 ? { allowDevServices } : {}),
 	};
 
 	if (options.json) {

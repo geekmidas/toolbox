@@ -132,6 +132,18 @@ export type DeployEvent =
 			/** 1 for the first check of the app in this run. */
 			attempt: number;
 	  }
+	/**
+	 * A deployed stage runs a dev service — `--allow-dev-services` — in place
+	 * of real mail or object storage: Mailpit delivers no mail, MinIO keeps
+	 * every object on one container's disk. A warning, every run.
+	 */
+	| {
+			type: 'dev-service.used';
+			service: 'minio' | 'mailpit';
+			stage: string;
+			/** The constructs it stands in for. */
+			constructs: string[];
+	  }
 	| { type: 'deploy.finished'; result: DeployResult }
 	| { type: 'deploy.failed'; error: DeployEventError };
 

@@ -113,6 +113,14 @@ export {
 	type DeployRun,
 	deploy,
 } from './deploy';
+export {
+	DEV_SERVICES,
+	type DevService,
+	DevServicesNeedServerTarget,
+	ExternalServicesNotConfigured,
+	type MissingServiceKey,
+	UnknownDevService,
+} from './devServices';
 export type {
 	DeployEvent,
 	DeployEventError,
