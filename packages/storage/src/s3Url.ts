@@ -11,12 +11,21 @@
  */
 
 import {
+	IncompleteStorageCredentials,
 	MalformedStorageUrl,
 	MissingStorageBucket,
 	UnexpectedStorageScheme,
 } from './errors';
 
-/** What an S3 URL addresses. Credentials are deliberately absent — see below. */
+/**
+ * What an S3 URL addresses, and optionally who it calls as.
+ *
+ * Credentials are optional and come as a pair. With them, the URL is a key
+ * scoped to this one bucket (`s3://KEY:SECRET@uploads`); without them the AWS
+ * SDK resolves its own chain — an execution role when deployed,
+ * `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` otherwise. The URL's pair wins
+ * over that chain.
+ */
 export interface S3Address {
 	bucket: string;
 	/** Read off the bucket, never inherited: a bucket may live in another region. */
@@ -25,6 +34,10 @@ export interface S3Address {
 	endpoint?: string;
 	/** MinIO and most S3-compatible servers need path-style addressing. */
 	forcePathStyle?: boolean;
+	/** The URL's own access key; always paired with `secretAccessKey`. */
+	accessKeyId?: string;
+	/** The URL's own secret; always paired with `accessKeyId`. */
+	secretAccessKey?: string;
 }
 
 const SCHEME = 's3:';
@@ -32,23 +45,42 @@ const SCHEME = 's3:';
 /**
  * Compose an address into a URL.
  *
- * Credentials never appear. The AWS SDK resolves them from its own chain — an
- * execution role when deployed, `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`
- * locally — so the URL stays safe to log and identical across environments that
- * differ only in who is calling.
+ * Credentials appear only when the address carries them, percent-encoded —
+ * AWS secrets routinely contain `/` and `+`. An address without them builds a
+ * URL with no userinfo, which leaves the caller to the SDK's own chain.
  */
 export function build(address: S3Address): string {
-	const { bucket, region, endpoint, forcePathStyle } = address;
+	const {
+		bucket,
+		region,
+		endpoint,
+		forcePathStyle,
+		accessKeyId,
+		secretAccessKey,
+	} = address;
 	if (!bucket) throw new MissingStorageBucket('');
 
 	const url = new URL(`${SCHEME}//${bucket}`);
+	if (accessKeyId || secretAccessKey) {
+		if (!accessKeyId) {
+			throw new IncompleteStorageCredentials(url.toString(), 'accessKeyId');
+		}
+		if (!secretAccessKey) {
+			throw new IncompleteStorageCredentials(url.toString(), 'secretAccessKey');
+		}
+		url.username = encodeURIComponent(accessKeyId);
+		url.password = encodeURIComponent(secretAccessKey);
+	}
 	if (region) url.searchParams.set('region', region);
 	if (endpoint) url.searchParams.set('endpoint', endpoint);
 	if (forcePathStyle) url.searchParams.set('forcePathStyle', 'true');
 	return url.toString();
 }
 
-/** Parse a URL back into an address. Throws if it is not an `s3://` URL. */
+/**
+ * Parse a URL back into an address. Throws if it is not an `s3://` URL, or if
+ * its userinfo carries only one half of a key pair.
+ */
 export function parse(url: string): S3Address {
 	let parsed: URL;
 	try {
@@ -68,11 +100,38 @@ export function parse(url: string): S3Address {
 	const endpoint = parsed.searchParams.get('endpoint') ?? undefined;
 	const forcePathStyle =
 		parsed.searchParams.get('forcePathStyle') === 'true' ? true : undefined;
+	const credentials = credentialsOf(url, parsed);
 
 	return {
 		bucket,
 		...(region ? { region } : {}),
 		...(endpoint ? { endpoint } : {}),
 		...(forcePathStyle ? { forcePathStyle } : {}),
+		...credentials,
 	};
+}
+
+/** The URL's userinfo as a key pair: both halves, or nothing. */
+function credentialsOf(
+	url: string,
+	parsed: URL,
+): Pick<S3Address, 'accessKeyId' | 'secretAccessKey'> {
+	const accessKeyId = decode(url, parsed.username);
+	const secretAccessKey = decode(url, parsed.password);
+	if (!accessKeyId && !secretAccessKey) return {};
+	if (!accessKeyId) {
+		throw new IncompleteStorageCredentials(url, 'accessKeyId');
+	}
+	if (!secretAccessKey) {
+		throw new IncompleteStorageCredentials(url, 'secretAccessKey');
+	}
+	return { accessKeyId, secretAccessKey };
+}
+
+function decode(url: string, value: string): string {
+	try {
+		return decodeURIComponent(value);
+	} catch {
+		throw new MalformedStorageUrl(url);
+	}
 }

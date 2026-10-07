@@ -21,6 +21,14 @@ import {
 	provisionOrder,
 	publicEnvFor,
 } from '@geekmidas/manifest';
+import {
+	assertExternalServices,
+	type DevService,
+	type DevServiceUse,
+	devServicesUsed,
+	type ExternalServices,
+	type ServiceDeclaration,
+} from '../deploy/devServices.js';
 import { isMainFrontendApp, resolveHost } from '../deploy/domain.js';
 import { type DeployIdentity, imageRef } from '../deploy/identity.js';
 import { validateImageRef } from '../docker/imageRef.js';
@@ -33,14 +41,16 @@ import { type ComposeService, composeFor } from '../reconcile/compose.js';
 import { DEFAULT_IMAGES, portKeys } from '../reconcile/containers.js';
 import { localRolePassword } from '../reconcile/env.js';
 import { type Plan, type PlannedResource, planFor } from '../reconcile/plan.js';
+import { bucketPolicies } from '../reconcile/provision.js';
 import type { StageSecrets } from '../secrets/types.js';
+import { NoDomainForStage } from '../target/dokploy/domain.js';
 import { DEFAULT_CACHE, DEFAULT_EVENTS } from '../types.js';
 import { appKey } from '../workspace/derive.js';
 import type {
 	NormalizedAppConfig,
 	NormalizedWorkspace,
 } from '../workspace/types.js';
-import { edgeCaddyfile } from './caddyfile.js';
+import { type EdgeSite, edgeCaddyfile } from './caddyfile.js';
 import { type AppImage, siteTag } from './images.js';
 
 /** Where a stack's files are written, relative to the workspace root. */
@@ -68,22 +78,28 @@ export const EDGE_PORT_ENV = {
 /**
  * Containers this target does not run.
  *
- * Object storage is the stage's own — an externally hosted bucket whose URL
- * the stage's secrets hold — and so is a deployed stage's mail. The AWS
- * emulator never applies: a stack is a server target, whose events are
- * pg-boss.
+ * The AWS emulator never applies: a stack is a server target, whose events
+ * are pg-boss. Reconcile's Caddy fronts `gkm dev`'s host processes; the stack
+ * brings its own edge.
+ *
+ * MinIO and Mailpit run on the local stage always, and on a deployed stage
+ * only where `--allow-dev-services` allowed them and its secrets configure no
+ * real bucket or mail server — see `devServices.ts`.
  */
 const NOT_RUN: Readonly<Record<string, true>> = {
-	minio: true,
 	localstack: true,
 	caddy: true,
 };
 
-/** Kinds whose `<ID>_URL` a stage must be given, because nothing here runs them. */
-const EXTERNAL_KINDS: Readonly<Record<string, true>> = {
-	objects: true,
-	'file-server': true,
+/** The kinds a deployed stage takes from its secrets, or a dev service. */
+const SERVICE_KINDS: Readonly<Record<string, ServiceDeclaration['kind']>> = {
+	email: 'email',
+	objects: 'objects',
+	'file-server': 'file-server',
 };
+
+/** The region MinIO is addressed with. It has no regions; the SDK wants one. */
+const MINIO_REGION = 'us-east-1';
 
 /** The S3 client's credentials, read beside a bucket's URL when it has them. */
 const STORAGE_KEYS = [
@@ -163,6 +179,24 @@ export interface ComposeStack {
 	plan: Plan;
 	/** The Postgres master's password, and the seed role passwords take. */
 	credential: { master: string; seed?: string };
+	/**
+	 * The stack's MinIO, where it runs one: its root credential — what the
+	 * backends sign with — and the buckets and open paths provisioning
+	 * creates in it.
+	 */
+	storage?: StackStorage;
+	/** The dev services a deployed stage runs (`--allow-dev-services`). */
+	devServices: DevServiceUse[];
+}
+
+/** The stack's MinIO, and what is created in it. */
+export interface StackStorage {
+	user: string;
+	password: string;
+	/** Each bucket's stage-scoped name. */
+	buckets: string[];
+	/** The open paths of each served bucket. */
+	policies: { bucket: string; open: string[] }[];
 }
 
 export interface StackInput {
@@ -180,6 +214,11 @@ export interface StackInput {
 	};
 	/** The stage's secrets — set by hand, and what a deployed stage generated. */
 	secrets?: StageSecrets | null;
+	/**
+	 * The dev services a deployed stage may run for mail and buckets its
+	 * secrets do not configure. The local stage runs both regardless.
+	 */
+	allowDevServices?: readonly DevService[];
 	/** The edge's published ports. 443 and 80 by default. */
 	ports?: { https?: number; http?: number };
 	/**
@@ -188,23 +227,6 @@ export interface StackInput {
 	 * when not given.
 	 */
 	layout?: ImageLayout;
-}
-
-/** A bucket the stack needs and the stage was not given. */
-export class BucketNotConfigured extends Error {
-	constructor(
-		readonly app: string,
-		readonly id: string,
-		readonly key: string,
-		readonly stage: string,
-	) {
-		super(
-			`'${app}' uses the bucket '${id}', and gkm compose runs no object ` +
-				`storage: the stage needs an externally hosted bucket. Set its URL in ` +
-				`the stage's secrets: gkm secrets:set ${key} 's3://…' --stage ${stage}`,
-		);
-		this.name = 'BucketNotConfigured';
-	}
 }
 
 /** A value only the stage's secrets can hold, and they do not. */
@@ -228,8 +250,8 @@ export class StageSeedMissing extends Error {
 	constructor(readonly stage: string) {
 		super(
 			`The stage '${stage}' has no seed in its secrets, and a deployed stage's ` +
-				`database passwords are derived from it. Run gkm compose without ` +
-				`--dry-run once, or gkm deploy, to generate it.`,
+				`database passwords are derived from it. Run gkm compose --stage ${stage} ` +
+				`without --dry-run once, or gkm deploy, to generate it.`,
 		);
 		this.name = 'StageSeedMissing';
 	}
@@ -316,12 +338,6 @@ export function composeStack(input: StackInput): ComposeStack {
 		...(seed ? { seed } : {}),
 	};
 
-	const infra = plan.containers
-		.filter((c) => !NOT_RUN[c])
-		// A deployed stage sends real mail, through whatever its MAIL_URL names.
-		.filter((c) => local || c !== 'mailpit')
-		.sort();
-
 	const apps = stackApps(workspace, manifest, plan, {
 		local,
 		stage,
@@ -330,25 +346,6 @@ export function composeStack(input: StackInput): ComposeStack {
 		images: input.images,
 	});
 	if (apps.length === 0) throw new NothingToCompose(workspace.root);
-
-	// Every key the stage resolves, twice: with each app at its public address
-	// — what a browser is handed, and what an app says it is — and with each on
-	// the compose network, which is how one service reaches another.
-	const derivation = {
-		project: workspace.name,
-		master: credential.master,
-		...(credential.seed ? { seed: credential.seed } : {}),
-	};
-	const outside = networkEnv(plan, {
-		...derivation,
-		addresses: Object.fromEntries(apps.map((app) => [app.id, app.url])),
-	});
-	const inside = networkEnv(plan, {
-		...derivation,
-		addresses: Object.fromEntries(
-			apps.map((app) => [app.id, `http://${app.name}:${app.port}`]),
-		),
-	});
 
 	// Which construct each key belongs to, so a key is resolved by what it is
 	// rather than by its spelling.
@@ -363,6 +360,124 @@ export function composeStack(input: StackInput): ComposeStack {
 			owners.set(provideKey(resource.id, 'credentials'), resource);
 		}
 	}
+
+	// The keys each app reads: a backend's environment, and the keys a
+	// site's build args rename.
+	const reads = new Map<string, string[]>();
+	for (const app of apps) {
+		const site = manifest[app.id];
+		reads.set(
+			app.name,
+			site?.kind === 'site'
+				? Object.values(publicEnvFor(site, manifest))
+				: [...(appEnvKeys(manifest, app.name, input.runnables) ?? [])],
+		);
+	}
+	const domain = workspace.deploy?.domains?.[stage];
+
+	// Mail and storage: the local stage runs Mailpit and MinIO for all of it.
+	// A deployed stage takes each from its secrets — or, where allowed, from a
+	// dev service — and one missing anything stops here, naming every key.
+	const services: ExternalServices = local
+		? {
+				missing: [],
+				minio: plan.resources
+					.filter((r) => r.kind === 'objects')
+					.map((r) => r.id),
+				mailpit: plan.resources
+					.filter((r) => r.kind === 'email')
+					.map((r) => r.id),
+			}
+		: assertExternalServices({
+				stage,
+				declarations: serviceDeclarations(plan, reads, owners),
+				supplied: custom,
+				allow: input.allowDevServices ?? [],
+				...(domain ? { domain } : {}),
+			});
+
+	const infra = plan.containers
+		.filter((c) => !NOT_RUN[c])
+		.filter((c) => c !== 'minio' || services.minio.length > 0)
+		.filter((c) => c !== 'mailpit' || services.mailpit.length > 0)
+		.sort();
+
+	// The stack's MinIO signs with the stage's own key pair where it set one,
+	// and otherwise with a credential derived like every other: the fixed
+	// local one, or — deployed — from the stage's seed.
+	const storage: StackStorage | undefined = infra.includes('minio')
+		? (() => {
+				const buckets = services.minio
+					.map((id) => byId.get(id)?.name)
+					.filter((name): name is string => Boolean(name))
+					.sort();
+				return {
+					user:
+						custom.AWS_ACCESS_KEY_ID ??
+						(local ? 'geekmidas' : `${workspace.name}-minio`),
+					password:
+						custom.AWS_SECRET_ACCESS_KEY ??
+						(local
+							? 'geekmidas'
+							: localRolePassword(workspace.name, plan, 'minio', seed)),
+					buckets,
+					policies: bucketPolicies(plan).filter((p) =>
+						buckets.includes(p.bucket),
+					),
+				};
+			})()
+		: undefined;
+
+	// Every key the stage resolves, twice: with each app at its public address
+	// — what a browser is handed, and what an app says it is — and with each on
+	// the compose network, which is how one service reaches another.
+	const derivation = {
+		project: workspace.name,
+		master: credential.master,
+		...(credential.seed ? { seed: credential.seed } : {}),
+		// Mailpit on a deployed stage sends as the stage's domain.
+		...(!local && domain ? { mailFrom: `noreply@${domain}` } : {}),
+	};
+	const outside = networkEnv(plan, {
+		...derivation,
+		addresses: Object.fromEntries(apps.map((app) => [app.id, app.url])),
+	});
+	const inside = networkEnv(plan, {
+		...derivation,
+		addresses: Object.fromEntries(
+			apps.map((app) => [app.id, `http://${app.name}:${app.port}`]),
+		),
+	});
+
+	// Each file server over the stack's MinIO, at a host of its own on the
+	// edge — the shape it has deployed: a domain serving a bucket.
+	const fileServers = new Map<string, { url: string; site: EdgeSite }>();
+	if (storage) {
+		for (const resource of plan.resources) {
+			if (resource.kind !== 'file-server' || !resource.of) continue;
+			if (!services.minio.includes(resource.of)) continue;
+			if (custom[resource.envKey] !== undefined) continue;
+			const bucket = byId.get(resource.of);
+			if (!bucket) continue;
+
+			let host: string;
+			if (local) {
+				host = hostFor(resource, workspace.name);
+			} else {
+				if (!domain) throw new NoDomainForStage(stage);
+				host = `${resource.subdomain ?? appKey(resource.id)}.${domain}`;
+			}
+			fileServers.set(resource.id, {
+				url: `https://${host}${local && https !== 443 ? `:${https}` : ''}`,
+				site: {
+					host,
+					upstream: 'minio:9000',
+					rewrite: `/${bucket.name}{uri}`,
+				},
+			});
+		}
+	}
+
 	const surfaceUrls = new Map(
 		plan.resources
 			.filter((r) => r.kind === 'rest-api' || r.kind === 'site')
@@ -379,16 +494,17 @@ export function composeStack(input: StackInput): ComposeStack {
 		key: string,
 		owner: PlannedResource | undefined,
 	): string | undefined => {
-		if (owner && EXTERNAL_KINDS[owner.kind] && key === owner.envKey) {
-			const value = custom[key];
-			if (value === undefined) {
-				throw new BucketNotConfigured(app.name, owner.id, key, stage);
-			}
-			return value;
+		// Mail and storage: what the stage set — a real server, a real bucket —
+		// and otherwise the dev service it runs, which `services` has already
+		// checked it may.
+		if (owner && SERVICE_KINDS[owner.kind]) {
+			if (custom[key] !== undefined) return custom[key];
+			if (owner.kind === 'file-server') return fileServers.get(owner.id)?.url;
+			return outside[key];
 		}
 
 		// Supplied by somebody: a third party's credentials, and — deployed —
-		// the mail server a stage sends through and the secrets it generated.
+		// the secrets the stage generated.
 		if (owner && suppliedBy(owner, key, local)) {
 			const value = custom[key];
 			if (value === undefined) {
@@ -435,9 +551,10 @@ export function composeStack(input: StackInput): ComposeStack {
 			if (!local && owner?.kind === 'email' && key.endsWith('_INBOX_URL'))
 				continue;
 			if ((STORAGE_KEYS as readonly string[]).includes(key)) {
-				// The bucket is the stage's own, so its credentials are too —
-				// when it has any: on AWS an instance role may stand in for them.
-				if (custom[key] !== undefined) values[key] = custom[key];
+				// The stage's own key pair where it set one — an external bucket
+				// signs with it — and otherwise the stack's MinIO's.
+				const value = custom[key] ?? storageValue(key, storage);
+				if (value !== undefined) values[key] = value;
 				continue;
 			}
 
@@ -481,6 +598,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		infra,
 		apps,
 		master: credential.master,
+		...(storage ? { storage } : {}),
 		https,
 		http,
 		composeDir: join(workspace.root, stackDir(stage)),
@@ -489,10 +607,13 @@ export function composeStack(input: StackInput): ComposeStack {
 	});
 
 	const caddyfile = edgeCaddyfile(
-		apps.map((app) => ({
-			host: app.host,
-			upstream: `${app.name}:${app.port}`,
-		})),
+		[
+			...apps.map((app) => ({
+				host: app.host,
+				upstream: `${app.name}:${app.port}`,
+			})),
+			...[...fileServers.values()].map(({ site }) => site),
+		],
 		{ local },
 	);
 
@@ -520,6 +641,8 @@ export function composeStack(input: StackInput): ComposeStack {
 		dockerfiles,
 		plan,
 		credential,
+		...(storage ? { storage } : {}),
+		devServices: local ? [] : devServicesUsed(services),
 	};
 
 	/** Whether only the stage's secrets can supply `key` to `owner`. */
@@ -534,9 +657,64 @@ export function composeStack(input: StackInput): ComposeStack {
 		if (isLocal) return false;
 		// Deployed, nothing here derives a secret: the stage generated each one
 		// once, and every run reads the same value back.
-		if (owner.kind === 'secret' || owner.kind === 'encryption') return true;
-		return owner.kind === 'email' && !key.endsWith('_INBOX_URL');
+		return owner.kind === 'secret' || owner.kind === 'encryption';
 	}
+}
+
+/**
+ * The mail and storage constructs a deployed stage's apps read, with who
+ * reads each — and every file server's bucket, which serves it whether or
+ * not an app reads it directly.
+ */
+function serviceDeclarations(
+	plan: Plan,
+	reads: ReadonlyMap<string, readonly string[]>,
+	owners: ReadonlyMap<string, PlannedResource>,
+): ServiceDeclaration[] {
+	const byId = new Map(plan.resources.map((r) => [r.id, r]));
+	const readers = new Map<string, Set<string>>();
+	const add = (id: string, app?: string) => {
+		const set = readers.get(id) ?? new Set<string>();
+		if (app) set.add(app);
+		readers.set(id, set);
+	};
+
+	for (const [app, keys] of reads) {
+		for (const key of keys) {
+			const owner = owners.get(key);
+			if (!owner || !SERVICE_KINDS[owner.kind]) continue;
+			// The inbox is Mailpit's own, never a deployed stage's to set.
+			if (owner.kind === 'email' && key.endsWith('_INBOX_URL')) continue;
+			add(owner.id, app);
+			if (owner.kind === 'file-server' && owner.of) add(owner.of);
+		}
+	}
+
+	return [...readers].flatMap(([id, apps]) => {
+		const resource = byId.get(id);
+		const kind = resource && SERVICE_KINDS[resource.kind];
+		if (!resource || !kind) return [];
+		return [
+			{
+				id,
+				kind,
+				...(resource.of ? { of: resource.of } : {}),
+				apps: [...apps].sort(),
+			},
+		];
+	});
+}
+
+/** The stack's MinIO's value for one of the S3 client's keys. */
+function storageValue(
+	key: string,
+	storage: StackStorage | undefined,
+): string | undefined {
+	if (!storage) return undefined;
+	if (key === 'AWS_ACCESS_KEY_ID') return storage.user;
+	if (key === 'AWS_SECRET_ACCESS_KEY') return storage.password;
+	if (key === 'AWS_REGION') return MINIO_REGION;
+	return undefined;
 }
 
 /** Which bucket an S3 credential key belongs to — the first one declared. */
@@ -633,6 +811,7 @@ function stackFile(options: {
 	infra: readonly string[];
 	apps: readonly StackApp[];
 	master: string;
+	storage?: StackStorage;
 	https: number;
 	http: number;
 	composeDir: string;
@@ -690,6 +869,19 @@ function stackFile(options: {
 		// roles and runs the migrations from this machine, and nothing else
 		// should reach the database from outside the stack.
 		postgres.ports = ['127.0.0.1::5432'];
+	}
+
+	const minio = services.minio;
+	if (minio && options.storage) {
+		minio.environment = {
+			...minio.environment,
+			MINIO_ROOT_USER: options.storage.user,
+			MINIO_ROOT_PASSWORD: options.storage.password,
+		};
+		// Loopback only, like Postgres: gkm creates the buckets and their
+		// policies from this machine. The apps reach it on the network, and a
+		// browser through a file server's host on the edge.
+		minio.ports = ['127.0.0.1::9000'];
 	}
 
 	for (const app of apps) {

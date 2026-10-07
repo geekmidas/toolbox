@@ -12,12 +12,23 @@ import { parse } from './s3Url';
 export const s3Driver: StorageDriver = {
 	scheme: 's3:',
 	create(url) {
-		const { bucket, region, endpoint, forcePathStyle } = parse(url);
+		// The URL's own key pair, when it has one, wins over the SDK's default
+		// chain; without one the client resolves credentials as it always has.
+		const {
+			bucket,
+			region,
+			endpoint,
+			forcePathStyle,
+			accessKeyId,
+			secretAccessKey,
+		} = parse(url);
 		return AmazonStorageClient.create({
 			bucket,
 			region,
 			endpoint,
 			forcePathStyle,
+			accessKeyId,
+			secretAccessKey,
 		});
 	},
 };

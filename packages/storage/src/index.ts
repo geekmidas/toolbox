@@ -1,6 +1,8 @@
 export {
+	IncompleteStorageCredentials,
 	MalformedStorageUrl,
 	MissingStorageBucket,
+	redactStorageUrl,
 	StorageUrlError,
 	UnexpectedStorageScheme,
 	UnregisteredStorageScheme,

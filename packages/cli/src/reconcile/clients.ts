@@ -76,14 +76,27 @@ export function pgClient(
 	};
 }
 
-/** A bucket client pointed at the local MinIO. */
-export function bucketClient(port: number): BucketClient {
+/** A bucket client pointed at a MinIO on this machine. */
+export function bucketClient(
+	port: number,
+	/**
+	 * Its root credential, where it is not the local one — a `gkm compose`
+	 * stack serving a deployed stage derives its own.
+	 */
+	credentials: { user: string; password: string } = {
+		user: LOCAL_USER,
+		password: LOCAL_USER,
+	},
+): BucketClient {
 	const s3 = new S3Client({
 		region: 'us-east-1',
 		endpoint: `http://localhost:${port}`,
 		// MinIO serves buckets as paths, not as subdomains of the endpoint.
 		forcePathStyle: true,
-		credentials: { accessKeyId: LOCAL_USER, secretAccessKey: LOCAL_USER },
+		credentials: {
+			accessKeyId: credentials.user,
+			secretAccessKey: credentials.password,
+		},
 	});
 
 	return {

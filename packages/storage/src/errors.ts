@@ -13,13 +13,37 @@
 
 /** Base for anything wrong with a storage URL, so callers may catch broadly. */
 export abstract class StorageUrlError extends Error {
-	/** The URL that could not be used. */
+	/**
+	 * The URL that could not be used, with any credentials it carried replaced
+	 * by `REDACTED` — an error is logged, and a key in its userinfo would be
+	 * logged with it.
+	 */
 	readonly url: string;
 
 	constructor(url: string, message: string) {
 		super(message);
-		this.url = url;
+		this.url = redactStorageUrl(url);
 		this.name = new.target.name;
+	}
+}
+
+/**
+ * Replace a URL's userinfo with `REDACTED`, so `s3://KEY:SECRET@uploads` can be
+ * logged as `s3://REDACTED@uploads`. A URL without userinfo comes back as is.
+ *
+ * A string the URL parser rejects is still redacted, up to its last `@`: an
+ * unencoded `/` in a secret is the commonest way to write a malformed one, and
+ * that string is exactly the one that ends up in an error.
+ */
+export function redactStorageUrl(url: string): string {
+	try {
+		const parsed = new URL(url);
+		if (!parsed.username && !parsed.password) return url;
+		parsed.username = 'REDACTED';
+		parsed.password = '';
+		return parsed.toString();
+	} catch {
+		return url.replace(/^([a-z][a-z0-9+.-]*:\/\/).*@/i, '$1REDACTED@');
 	}
 }
 
@@ -58,6 +82,25 @@ export class UnexpectedStorageScheme extends StorageUrlError {
 export class MissingStorageBucket extends StorageUrlError {
 	constructor(url: string) {
 		super(url, 'Storage URL must address a bucket');
+	}
+}
+
+/**
+ * The URL's userinfo carries one half of a key pair: an access key with no
+ * secret, or a secret with no access key. Either both are in the URL, or
+ * neither is and the provider's default credential chain applies — half a pair
+ * is never silently completed from the environment.
+ */
+export class IncompleteStorageCredentials extends StorageUrlError {
+	/** Which half is missing: `'accessKeyId'` or `'secretAccessKey'`. */
+	readonly missing: 'accessKeyId' | 'secretAccessKey';
+
+	constructor(url: string, missing: 'accessKeyId' | 'secretAccessKey') {
+		super(
+			url,
+			'Storage URL credentials need both halves: write them as KEY:SECRET@bucket, or leave them out to use the default credential chain',
+		);
+		this.missing = missing;
 	}
 }
 

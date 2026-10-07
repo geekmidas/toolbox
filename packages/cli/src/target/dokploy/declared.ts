@@ -13,6 +13,7 @@
  */
 
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
+import type { DevService } from '../../deploy/devServices.js';
 import { discover } from '../../reconcile/discover.js';
 import {
 	applyPostgres,
@@ -77,6 +78,11 @@ export interface DeclaredOptions {
 	supplied?: Readonly<Record<string, string>>;
 	/** A manifest already in hand, for a caller that has discovered one. */
 	manifest?: ConstructManifest;
+	/**
+	 * The dev services the stage may run for mail and buckets its secrets do
+	 * not configure (`--allow-dev-services`).
+	 */
+	devServices?: readonly DevService[];
 }
 
 /**
@@ -116,6 +122,10 @@ export async function provisionDeclared(
 		cache: cacheBackendFor(providerOf(workspace)),
 		events: eventsBackendFor(providerOf(workspace)),
 		storage: storageBackendFor(providerOf(workspace)),
+		...(options.devServices ? { devServices: options.devServices } : {}),
+		...(workspace.deploy?.domains?.[options.stage]
+			? { domain: workspace.deploy.domains[options.stage] }
+			: {}),
 		addresses: surfaceAddresses(manifest, options.appUrls),
 		seed: options.seed,
 		...(options.supplied ? { supplied: options.supplied } : {}),
@@ -133,11 +143,9 @@ export async function provisionDeclared(
 
 		const provisioner = provisionerFor(declaration.kind);
 
-		// A kind this target cannot provision yet is skipped rather than fatal:
-		// storage, mail and the brokers have no Dokploy primitive, and refusing
-		// to deploy an app because it also declares a bucket would be worse than
-		// deploying it without one. What it costs is honest — the key is absent,
-		// and the construct that needs it says so on first use.
+		// A kind this target cannot provision yet is skipped rather than fatal.
+		// Mail and buckets are not among them: a deployed stage's are its own,
+		// from its secrets — and `validate` has refused one that lacks them.
 		if (!provisioner) continue;
 
 		const result = await provisioner(declaration, context);

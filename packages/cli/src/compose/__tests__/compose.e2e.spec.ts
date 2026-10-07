@@ -184,7 +184,10 @@ interface Response {
  * are one code path; both are run so neither entry point can drift.
  */
 const ENTRY_POINTS = [
-	{ command: 'gkm compose', args: ['compose'] },
+	{
+		command: 'gkm compose',
+		args: ['compose', '--stage', 'development'],
+	},
 	{
 		command: 'gkm deploy --target compose',
 		args: ['deploy', '--target', 'compose', '--stage', 'development'],

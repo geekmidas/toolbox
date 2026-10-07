@@ -456,7 +456,10 @@ program
 	.description(
 		"Run the workspace's APIs and sites for a stage as one Docker Compose stack behind Caddy",
 	)
-	.option('--stage <stage>', 'Stage to run (default: the local stage)')
+	.requiredOption(
+		'--stage <stage>',
+		'Stage to run — always named, so a stack is never a deployed stage by accident',
+	)
 	.option(
 		'--tag <tag>',
 		'Run the images CI pushed at this tag (sites: <tag>-<stage>); nothing is built',
@@ -465,6 +468,10 @@ program
 	.option('--pull', 'Pull images (at --tag, or latest) rather than build them')
 	.option('--dry-run', 'Write the files and print the plan; start nothing')
 	.option('--down', "Stop the stage's stack (its volumes are kept)")
+	.option(
+		'--allow-dev-services <list>',
+		"Deployed stage: run MinIO and/or Mailpit (minio,mailpit) for mail and buckets the stage's secrets don't configure. Not production-grade",
+	)
 	.action(async (options: ComposeOptions) => {
 		try {
 			const globalOptions = program.opts();
@@ -744,6 +751,10 @@ program
 		'--atomic',
 		'If the release fails, roll back every app it released, not only the failed ones',
 	)
+	.option(
+		'--allow-dev-services <list>',
+		"Server targets: run MinIO and/or Mailpit (minio,mailpit) for mail and buckets the stage's secrets don't configure. Not production-grade",
+	)
 	.action(
 		async (options: {
 			target?: string;
@@ -753,6 +764,7 @@ program
 			json?: boolean;
 			dryRun?: boolean;
 			atomic?: boolean;
+			allowDevServices?: string;
 		}) => {
 			const { deployCli } = await import('./deploy/cli');
 			const globalOptions = program.opts();
@@ -767,6 +779,9 @@ program
 				...(options.json ? { json: true } : {}),
 				...(options.dryRun ? { dryRun: true } : {}),
 				...(options.atomic ? { atomic: true } : {}),
+				...(options.allowDevServices
+					? { allowDevServices: options.allowDevServices }
+					: {}),
 			});
 			if (code !== 0) process.exit(code);
 		},

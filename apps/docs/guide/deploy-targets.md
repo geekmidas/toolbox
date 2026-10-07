@@ -21,7 +21,7 @@ Any other target is a package the project installs and names in
 ## Choosing a target
 
 - **`dokploy`** is the default. Use it when you run your own server (or several)
-  with Dokploy on it. It provisions Postgres, MinIO and pg-boss for what the
+  with Dokploy on it. It provisions Postgres and pg-boss for what the
   workspace declares, builds and pushes one image per app, deploys backends
   before sites, waits for each deployment, health-checks every app and rolls
   back what fails. Details: [Dokploy deployment](./deployment.md#dokploy-deployment).
@@ -41,6 +41,35 @@ choosing a target is a project decision, not just a deploy flag.
 
 `vercel` and `cloudflare` are reserved names. A deploy through either fails
 with `DeployTargetNotYetSupported`.
+
+## Mail and object storage
+
+A deployed stage's mail and buckets are real services, never a container the
+deploy invents — Mailpit delivers no mail, and MinIO keeps every object on one
+container's disk:
+
+| Target | Deployed stage, by default | With `--allow-dev-services` | Local stage |
+|---|---|---|---|
+| `dokploy` | mail and buckets from the stage's secrets; a missing key fails `validate` with `ExternalServicesNotConfigured` | `minio`: a MinIO compose service per bucket whose URL is unset (as every deploy did before); `mailpit`: a Mailpit compose service per `Email`, named like every other service | — (runs no local stage) |
+| `compose` | the same | MinIO and Mailpit in the stack, the buckets created, their keys derived from the stage's seed | MinIO and Mailpit, always, with nothing to set |
+| `sst` | S3, and mail as the stage configures it | refused: `DevServicesNeedServerTarget` | — |
+
+The keys, per construct:
+
+- an `Email`: `<ID>_URL` (an SMTP URL) and `<ID>_FROM`;
+- a bucket: `<ID>_URL` (`s3://bucket?region=…`, plus `&endpoint=…` for R2 or
+  any S3-compatible store). Credentials are optional, from either of two
+  places: a key for that bucket alone in the URL's userinfo
+  (`s3://KEY:SECRET@bucket?…`, the secret percent-encoded), which wins; or the
+  stage's shared `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, handed to every
+  app that reads a bucket when set, and used for each bucket whose URL has no
+  key. Per-bucket keys are the least-privilege choice;
+- a file server: `<ID>_URL`, its public address — unless its bucket is on a
+  dev MinIO, which serves it.
+
+Every missing key is listed at once, with the command that sets it. Keys the
+stage set always win over a dev service, and a run that uses one warns and
+emits `dev-service.used`.
 
 ## Configuring it
 

@@ -69,3 +69,59 @@ export const DEFAULT_REDACT_PATHS: string[] = [
 	'databaseUrl',
 	'database_url',
 ];
+
+/**
+ * `scheme://user:password@` — the userinfo of a URL that carries a secret.
+ * A user with no password (`ssh://git@host`) names nobody's secret and is left
+ * alone.
+ */
+const URL_CREDENTIALS = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/?#@:]*:[^\s/?#@]*@/gi;
+
+/**
+ * Replace the credentials of every URL in `text` with `REDACTED`, so
+ * `s3://KEY:SECRET@uploads` is logged as `s3://REDACTED@uploads`.
+ *
+ * Path redaction cannot catch these: a URL turns up under any field name —
+ * `url`, `origin`, `endpoint` — or inside a message, and blanking every such
+ * field would hide the half of it that is useful.
+ */
+export function redactUrlCredentials(text: string): string {
+	return text.replace(URL_CREDENTIALS, '$1REDACTED@');
+}
+
+/** Deep enough for a log object; past it, values are logged as they are. */
+const MAX_DEPTH = 6;
+
+/**
+ * A copy of `value` with {@link redactUrlCredentials} applied to every string
+ * in it. Objects and arrays without such a string are returned as they were.
+ */
+export function redactUrlCredentialsIn<T>(value: T, depth = 0): T {
+	if (typeof value === 'string') {
+		return redactUrlCredentials(value) as T;
+	}
+	if (depth >= MAX_DEPTH || value === null || typeof value !== 'object') {
+		return value;
+	}
+	if (Array.isArray(value)) {
+		let changed = false;
+		const next = value.map((item) => {
+			const redacted = redactUrlCredentialsIn(item, depth + 1);
+			if (redacted !== item) changed = true;
+			return redacted;
+		});
+		return (changed ? next : value) as T;
+	}
+	const proto = Object.getPrototypeOf(value);
+	if (proto !== Object.prototype && proto !== null) return value;
+
+	let next: Record<string, unknown> | undefined;
+	for (const [key, item] of Object.entries(value)) {
+		const redacted = redactUrlCredentialsIn(item, depth + 1);
+		if (redacted !== item) {
+			next ??= { ...(value as Record<string, unknown>) };
+			next[key] = redacted;
+		}
+	}
+	return (next ?? value) as T;
+}

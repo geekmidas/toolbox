@@ -27,6 +27,7 @@ import { getAppBuildOrder } from '../workspace/index.js';
 import { assertDeployedStage } from '../workspace/stages.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import type { CredentialProvider } from './credentials';
+import { DevServicesNeedServerTarget, parseDevServices } from './devServices';
 import { type DeployEvent, type DeployPhase, eventError } from './events';
 import { applicationName, deployIdentity } from './identity.js';
 import { createStateStore } from './StateStore.js';
@@ -44,6 +45,11 @@ export interface DeployRequest {
 	target?: string;
 	/** On a failed release, roll back every app rather than the failed ones. */
 	atomic?: boolean;
+	/**
+	 * Dev services a deployed stage may run in place of real mail and object
+	 * storage — `minio`, `mailpit`. Server targets only.
+	 */
+	allowDevServices?: readonly string[];
 }
 
 /**
@@ -298,6 +304,13 @@ async function prepare(
 	}
 	const options = await parseTargetOptions(resolved);
 
+	// Before anything is discovered: a misspelt service, or one asked of a
+	// target that runs no containers, fails a deploy that has done nothing.
+	const allowDevServices = parseDevServices(request.allowDevServices);
+	if (allowDevServices.length > 0 && resolved.target.runtime === 'aws') {
+		throw new DevServicesNeedServerTarget(targetName, allowDevServices);
+	}
+
 	// What to deploy comes from the manifest.
 	//
 	// Discovered here rather than by the target, because the list of things
@@ -386,6 +399,7 @@ async function prepare(
 		options,
 		dryRun: ctx.dryRun,
 		atomic: request.atomic ?? false,
+		allowDevServices,
 		credentials: ctx.credentials,
 		state: store,
 		secrets,

@@ -27,6 +27,13 @@ import {
 	type CredentialProvider,
 	MissingCredential,
 } from '../../deploy/credentials';
+import {
+	assertExternalServices,
+	type DevService,
+	devServicesUsed,
+	manifestServiceDeclarations,
+	reportDevServices,
+} from '../../deploy/devServices.js';
 import { deployDocker } from '../../deploy/docker';
 import {
 	eventError,
@@ -278,6 +285,8 @@ export interface DokployRun {
 	verify: VerifySettings;
 	/** Roll back every app the run released, not only the failed ones. */
 	atomic: boolean;
+	/** The dev services the stage may run for mail and buckets. */
+	allowDevServices: readonly DevService[];
 	provisioned?: Provisioned;
 	released?: Released;
 	/** What the run changed live, for `rollback` to undo. */
@@ -393,8 +402,25 @@ export async function validateDokploy(
 		secrets: phase.secrets,
 		ctx,
 	};
+
+	// Mail and storage before anything else is read or written: a deployed
+	// stage's are its own, from its secrets, unless a dev service is allowed
+	// to stand in — and one missing any key stops here, naming every one.
+	const stored = await phase.secrets.read();
+	const services = assertExternalServices({
+		stage,
+		declarations: manifestServiceDeclarations(phase.manifest),
+		supplied: stored?.custom ?? {},
+		allow: phase.allowDevServices,
+		...(workspace.deploy?.domains?.[stage]
+			? { domain: workspace.deploy.domains[stage] }
+			: {}),
+	});
+	reportDevServices(phase, devServicesUsed(services));
+
 	return {
 		...run,
+		allowDevServices: phase.allowDevServices,
 		preflight: await preflight(run),
 		verify: verifySettings(workspace.deploy.dokploy?.verify),
 		atomic: phase.atomic,
@@ -762,6 +788,7 @@ async function provision(run: DokployRun): Promise<void> {
 			// The one already discovered above, so a deploy reads the manifest once
 			// and cannot act on two different versions of it.
 			manifest,
+			devServices: run.allowDevServices,
 		});
 
 		declaredEnv = declared.env;

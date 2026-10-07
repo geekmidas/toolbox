@@ -303,6 +303,11 @@ Options:
   --dry-run              Show what would be created or reused; change nothing
   --atomic               If the release fails, roll back every app it released,
                          not only the failed ones
+  --allow-dev-services <list>
+                         Server targets only (dokploy, compose): run MinIO
+                         and/or Mailpit (minio,mailpit) for the buckets and mail
+                         a deployed stage's secrets don't configure. Not
+                         production-grade: Mailpit delivers no mail
   --provider <name>      Deprecated: `dokploy` means --target dokploy;
                          docker and aws-lambda are removed
   --skip-push, --skip-build
@@ -313,6 +318,19 @@ At a terminal, a missing Dokploy or registry login is asked for and stored.
 With `--json`, or without a terminal, nothing prompts: a missing credential
 fails the run with `MissingCredential`. Exit code 0 when the deploy finished,
 1 when anything stopped it.
+
+On a server target (`dokploy`, `compose`), a deployed stage's mail and object
+storage come from its secrets: each `Email`'s `<ID>_URL` and `<ID>_FROM`, each
+bucket's `<ID>_URL`, and each file server's `<ID>_URL`. A bucket's credentials
+are optional: a key in its URL (`s3://KEY:SECRET@bucket?…`) wins, and the
+shared `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, when set, serves every
+bucket whose URL has none. A stage missing any fails before anything is built,
+provisioned or written, with `ExternalServicesNotConfigured` listing every
+missing key and the `gkm secrets:set` line for each. `--allow-dev-services`
+runs MinIO and/or Mailpit in their place, with a warning (and a
+`dev-service.used` event) every run; keys the stage set still win. An unknown
+value fails with `UnknownDevService`; on `sst` the flag fails with
+`DevServicesNeedServerTarget`.
 
 See [Deploy targets](./deploy-targets.md) for targets and `deploy.targets`,
 [Deploying from a program](./deploy-api.md) for `deploy()` and the events
@@ -376,13 +394,17 @@ behind Caddy, over HTTPS. See [Deploy with Docker Compose](./compose.md).
 gkm compose [options]
 
 Options:
-  --stage <stage>  Stage to run (default: the local stage)
+  --stage <stage>  Stage to run (required)
   --tag <tag>      Run the images CI pushed at this tag (sites: <tag>-<stage>);
                    every image is checked in the registry first, nothing is built
   --build          Build images from this checkout, tagged with the commit
   --pull           Pull images (at --tag, or latest) rather than build them
   --dry-run        Write the files and print the plan; start nothing
   --down           Stop the stage's stack (its volumes are kept)
+  --allow-dev-services <list>
+                   Deployed stage: run MinIO and/or Mailpit (minio,mailpit)
+                   for the buckets and mail its secrets don't configure. The
+                   local stage always runs both
 
 The same as `gkm deploy --target compose --stage <stage>`, plus --build, --pull
 and --down.

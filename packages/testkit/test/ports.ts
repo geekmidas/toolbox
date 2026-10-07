@@ -58,6 +58,7 @@ export const REDIS_PORT = hostPort('REDIS_HOST_PORT');
 export const SRH_PORT = hostPort('SRH_HOST_PORT');
 export const SRH_URL = `http://localhost:${SRH_PORT}`;
 export const MINIO_PORT = hostPort('MINIO_API_HOST_PORT');
+export const MINIO_URL = `http://localhost:${MINIO_PORT}`;
 export const RABBITMQ_PORT = hostPort('RABBITMQ_HOST_PORT');
 /** Credentials and host, for building `amqp://` and `rabbitmq://` strings. */
 export const RABBITMQ_AUTHORITY = `geekmidas:geekmidas@localhost:${RABBITMQ_PORT}`;

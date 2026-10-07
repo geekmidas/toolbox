@@ -29,8 +29,12 @@
  *
  * @module
  */
-import { pino } from 'pino';
-import { DEFAULT_REDACT_PATHS } from './redact-paths';
+import { type LogFn, type Logger, pino } from 'pino';
+import {
+	DEFAULT_REDACT_PATHS,
+	redactUrlCredentials,
+	redactUrlCredentialsIn,
+} from './redact-paths';
 import type { CreateLoggerOptions, RedactOptions } from './types';
 
 // Re-export for backwards compatibility
@@ -123,7 +127,24 @@ export function createLogger(options: CreateLoggerOptions = {}) {
 		...baseOptions,
 		...(options.level && { level: options.level }),
 		...(redact && { redact }),
+		// Redaction also masks the credentials of any URL, in any field or in
+		// the message: `s3://KEY:SECRET@uploads` is logged with its secret
+		// under a name no path list can predict.
+		...(redact && {
+			hooks: {
+				logMethod(this: Logger, args: Parameters<LogFn>, method: LogFn) {
+					const redacted = args.map((arg) =>
+						typeof arg === 'string' ? redactUrlCredentials(arg) : arg,
+					) as Parameters<LogFn>;
+					return method.apply(this, redacted);
+				},
+			},
+		}),
 		formatters: {
+			...(redact && {
+				log: (object: Record<string, unknown>) =>
+					redactUrlCredentialsIn(object),
+			}),
 			bindings() {
 				return { nodeVersion: process.version };
 			},

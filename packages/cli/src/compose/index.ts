@@ -12,6 +12,7 @@
 import { join, resolve } from 'node:path';
 import { loadWorkspaceConfig } from '../config';
 import { deploy } from '../deploy/deploy';
+import { parseDevServices } from '../deploy/devServices';
 import { deployIdentity } from '../deploy/identity.js';
 import type { DeployResult } from '../deploy/types';
 import {
@@ -38,7 +39,6 @@ export {
 	siteTag,
 } from './images';
 export {
-	BucketNotConfigured,
 	composeStack,
 	EnvValueMultiline,
 	NothingToCompose,
@@ -47,8 +47,8 @@ export {
 } from './stack';
 
 export interface ComposeOptions {
-	/** The stage to run. The project's local stage when absent. */
-	stage?: string;
+	/** The stage to run. Always named: nothing defaults to the local stage. */
+	stage: string;
 	/** A release tag: pull every app's image at it, build nothing. */
 	tag?: string;
 	/** Build images here, whatever `--tag` says. */
@@ -61,6 +61,11 @@ export interface ComposeOptions {
 	down?: boolean;
 	/** The workspace — the current directory when absent. */
 	cwd?: string;
+	/**
+	 * `--allow-dev-services minio,mailpit`: on a deployed stage, run MinIO
+	 * and Mailpit for the buckets and mail its secrets do not configure.
+	 */
+	allowDevServices?: string | readonly string[];
 }
 
 export interface ComposeResult {
@@ -86,17 +91,17 @@ export class ComposeModeConflict extends Error {
 
 /** `gkm compose`. */
 export async function composeCommand(
-	options: ComposeOptions = {},
+	options: ComposeOptions,
 	deps: Partial<ComposeDeps> = {},
 ): Promise<ComposeResult | undefined> {
 	if (options.build && options.pull) throw new ComposeModeConflict();
+	const allowDevServices = parseDevServices(options.allowDevServices);
 
 	const cwd = resolve(options.cwd ?? process.cwd());
-	// Read here only for what the command adds: the local stage it defaults
-	// to, and the project `--down` stops. The deploy loads it again, as it
+	// Read here only for what the command adds: the project `--down` stops. The deploy loads it again, as it
 	// loads every project, in its sandbox.
 	const { workspace } = await loadWorkspaceConfig(cwd);
-	const stage = options.stage ?? workspace.stages.local;
+	const { stage } = options;
 
 	if (options.down) {
 		const ref: StackRef = {
@@ -129,6 +134,7 @@ export async function composeCommand(
 		},
 		...(tag ? { tag } : {}),
 		...(options.dryRun ? { dryRun: true } : {}),
+		...(allowDevServices.length > 0 ? { allowDevServices } : {}),
 		logger: {
 			info: (message) => console.log(message),
 			warn: (message) => console.warn(message),

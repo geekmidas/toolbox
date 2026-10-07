@@ -2,13 +2,13 @@ import { realpathSync } from 'node:fs';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
+import { ExternalServicesNotConfigured } from '../../deploy/devServices';
 import { deployIdentity } from '../../deploy/identity';
 import { localRolePassword } from '../../reconcile/env';
 import { initStageSecrets } from '../../secrets/storage';
 import type { StageSecrets } from '../../secrets/types';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import {
-	BucketNotConfigured,
 	type ComposeStack,
 	composeStack,
 	envFile,
@@ -306,47 +306,241 @@ describe('a deployed stage', () => {
 	});
 });
 
-describe('a bucket', () => {
-	/** The API's endpoints write to a bucket the workspace declares. */
-	const withBucket = () =>
-		({
-			...manifest,
-			Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
-			Api: {
-				...manifest.Api,
-				endpoints: [
-					{
-						id: 'Upload',
-						handler: 'upload.handler',
-						method: 'POST',
-						path: '/upload',
-						dependencies: [{ target: 'Uploads', kind: 'objects' }],
-					},
-				],
-			},
-		}) as unknown as ConstructManifest;
+/**
+ * The workspace with mail and a bucket: the API sends mail and writes to the
+ * bucket, and the site links to the bucket's file server.
+ */
+function withServices(): ConstructManifest {
+	const web = manifest.Web as unknown as {
+		dependencies: { target: string; kind: string }[];
+	};
+	return {
+		...manifest,
+		Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+		UploadsServer: {
+			kind: 'file-server',
+			id: 'UploadsServer',
+			of: 'Uploads',
+			open: ['brand/**'],
+			provides: ['UPLOADS_SERVER_URL'],
+		},
+		Mail: { kind: 'email', id: 'Mail', provides: ['MAIL_URL', 'MAIL_FROM'] },
+		Api: {
+			...manifest.Api,
+			endpoints: [
+				{
+					id: 'Upload',
+					handler: 'upload.handler',
+					method: 'POST',
+					path: '/upload',
+					dependencies: [
+						{ target: 'Uploads', kind: 'objects' },
+						{ target: 'Mail', kind: 'email' },
+					],
+				},
+			],
+		},
+		Web: {
+			...manifest.Web,
+			dependencies: [
+				...web.dependencies,
+				{ target: 'UploadsServer', kind: 'file-server' },
+			],
+		},
+	} as unknown as ConstructManifest;
+}
 
-	it('runs no object storage, and refuses a stage with no bucket URL', () => {
-		const run = () => stack({ manifest: withBucket() });
+/** What a stage that brings its own mail server and bucket sets. */
+const EXTERNAL = {
+	MAIL_URL: 'smtp://user:password@smtp.example.com:587',
+	MAIL_FROM: 'noreply@shop.example.com',
+	UPLOADS_URL: 's3://acme-uploads?region=eu-west-1',
+	AWS_ACCESS_KEY_ID: 'AKIAEXAMPLE',
+	AWS_SECRET_ACCESS_KEY: 'external-secret',
+	UPLOADS_SERVER_URL: 'https://files.shop.example.com',
+};
 
-		expect(run).toThrow(BucketNotConfigured);
-		expect(run).toThrow(/UPLOADS_URL/);
+describe('mail and storage on the local stage', () => {
+	it('runs MinIO and Mailpit with no secret, and creates the bucket', () => {
+		const s = stack({ manifest: withServices() });
+		const api = app(s, 'api').env!;
+
+		expect(s.infra).toEqual(['mailpit', 'minio', 'postgres']);
+		expect(api.UPLOADS_URL).toBe(
+			's3://uploads?region=us-east-1&endpoint=http://minio:9000&forcePathStyle=true',
+		);
+		expect(api.AWS_ACCESS_KEY_ID).toBe('geekmidas');
+		expect(api.AWS_SECRET_ACCESS_KEY).toBe('geekmidas');
+		expect(api.MAIL_URL).toBe('smtp://mailpit:1025');
+		expect(s.storage).toMatchObject({
+			buckets: ['uploads'],
+			policies: [{ bucket: 'uploads', open: ['brand/**'] }],
+		});
+		// Published on loopback only, for the buckets to be created from here.
+		expect(s.compose.services.minio?.ports).toEqual(['127.0.0.1::9000']);
+		expect(s.devServices).toEqual([]);
 	});
 
-	it("reads the bucket's URL from the stage's secrets", () => {
-		const s = stack({
-			manifest: withBucket(),
-			secrets: {
-				...initStageSecrets('development'),
-				custom: { UPLOADS_URL: 's3://uploads?region=eu-west-1' },
-			},
+	it("serves the file server on the edge, at gkm dev's host for it", () => {
+		const s = stack({ manifest: withServices() });
+
+		expect(app(s, 'web').build?.args?.VITE_UPLOADS_SERVER_URL).toBe(
+			'https://uploadsserver.compose-app.localhost:8443',
+		);
+		expect(s.caddyfile).toContain(
+			'https://uploadsserver.compose-app.localhost {',
+		);
+		expect(s.caddyfile).toContain('reverse_proxy minio:9000');
+		expect(s.caddyfile).toContain('rewrite /uploads{uri}');
+	});
+});
+
+describe('mail and storage on a deployed stage', () => {
+	const deployed = (overrides: Partial<StackInput> = {}) =>
+		stack({
+			stage: 'production',
+			manifest: withServices(),
+			images: { mode: 'pull', tag: 'v1.4.0' },
+			secrets: production(),
+			ports: {},
+			...overrides,
 		});
 
-		expect(app(s, 'api').env!.UPLOADS_URL).toBe(
-			's3://uploads?region=eu-west-1',
-		);
+	it('refuses a stage whose secrets configure neither, naming every key at once', () => {
+		let error: unknown;
+		try {
+			deployed();
+		} catch (caught) {
+			error = caught;
+		}
+
+		expect(error).toBeInstanceOf(ExternalServicesNotConfigured);
+		const missing = (error as ExternalServicesNotConfigured).missing;
+		expect(missing.map((m) => m.key)).toEqual([
+			'MAIL_URL',
+			'MAIL_FROM',
+			'UPLOADS_URL',
+			'UPLOADS_SERVER_URL',
+		]);
+		// A bucket's credentials are optional, so neither half is asked for.
+		expect(missing.map((m) => m.key)).not.toContain('AWS_ACCESS_KEY_ID');
+		const message = (error as Error).message;
+		for (const { key } of missing) {
+			expect(message).toContain(`gkm secrets:set ${key} '`);
+		}
+		expect(message).toContain('--stage production');
+		expect(message).toContain('--allow-dev-services mailpit,minio');
+		expect(missing.find((m) => m.key === 'MAIL_URL')?.apps).toEqual(['api']);
+		expect(missing.find((m) => m.key === 'UPLOADS_SERVER_URL')?.apps).toEqual([
+			'web',
+		]);
+	});
+
+	it("runs neither where the stage's secrets configure both", () => {
+		const s = deployed({ secrets: production(EXTERNAL) });
+		const api = app(s, 'api').env!;
+
+		expect(s.infra).toEqual(['postgres']);
 		expect(s.compose.services).not.toHaveProperty('minio');
-		// The S3 client's credentials only when the stage holds them.
-		expect(app(s, 'api').env).not.toHaveProperty('AWS_ACCESS_KEY_ID');
+		expect(s.compose.services).not.toHaveProperty('mailpit');
+		expect(api.MAIL_URL).toBe(EXTERNAL.MAIL_URL);
+		expect(api.MAIL_FROM).toBe(EXTERNAL.MAIL_FROM);
+		expect(api.UPLOADS_URL).toBe(EXTERNAL.UPLOADS_URL);
+		expect(api.AWS_ACCESS_KEY_ID).toBe(EXTERNAL.AWS_ACCESS_KEY_ID);
+		expect(api.AWS_SECRET_ACCESS_KEY).toBe(EXTERNAL.AWS_SECRET_ACCESS_KEY);
+		expect(app(s, 'web').build).toBeUndefined();
+		expect(s.caddyfile).not.toContain('minio');
+		expect(s.devServices).toEqual([]);
+	});
+
+	it("signs with the bucket URL's own key, and hands the app no shared pair", () => {
+		const { AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, ...rest } = EXTERNAL;
+		const UPLOADS_URL =
+			's3://AKIAUPLOADS:a%2Fsecret%2Bvalue@acme-uploads?region=eu-west-1';
+		const s = deployed({ secrets: production({ ...rest, UPLOADS_URL }) });
+		const api = app(s, 'api').env!;
+
+		expect(s.infra).toEqual(['postgres']);
+		expect(api.UPLOADS_URL).toBe(UPLOADS_URL);
+		expect(api).not.toHaveProperty('AWS_ACCESS_KEY_ID');
+		expect(api).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
+	});
+
+	it('deploys a bucket with no credentials at all, for a role to sign', () => {
+		const { AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, ...rest } = EXTERNAL;
+		const s = deployed({ secrets: production(rest) });
+		const api = app(s, 'api').env!;
+
+		expect(api.UPLOADS_URL).toBe(EXTERNAL.UPLOADS_URL);
+		expect(api).not.toHaveProperty('AWS_ACCESS_KEY_ID');
+		expect(api).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
+	});
+
+	it('runs MinIO and Mailpit where allowed, with keys derived from them', () => {
+		const s = deployed({ allowDevServices: ['minio', 'mailpit'] });
+		const api = app(s, 'api').env!;
+		const password = localRolePassword(
+			'compose-app',
+			s.plan,
+			'minio',
+			'a-random-seed',
+		);
+
+		expect(s.infra).toEqual(['mailpit', 'minio', 'postgres']);
+		expect(s.compose.services.minio?.environment).toMatchObject({
+			MINIO_ROOT_USER: 'compose-app-minio',
+			MINIO_ROOT_PASSWORD: password,
+		});
+		expect(api.UPLOADS_URL).toBe(
+			's3://uploads-production?region=us-east-1&endpoint=http://minio:9000&forcePathStyle=true',
+		);
+		expect(api.AWS_ACCESS_KEY_ID).toBe('compose-app-minio');
+		expect(api.AWS_SECRET_ACCESS_KEY).toBe(password);
+		expect(api.MAIL_URL).toBe('smtp://mailpit:1025');
+		expect(api.MAIL_FROM).toBe('noreply@shop.example.com');
+		// Mailpit's inbox is not a deployed stage's to hand out.
+		expect(api).not.toHaveProperty('MAIL_INBOX_URL');
+		expect(s.storage?.buckets).toEqual(['uploads-production']);
+		expect(s.caddyfile).toContain('https://uploads-server.shop.example.com {');
+		expect(s.devServices).toEqual([
+			{ service: 'mailpit', ids: ['Mail'] },
+			{ service: 'minio', ids: ['Uploads'] },
+		]);
+	});
+
+	it('keeps every key the stage did set over the dev service', () => {
+		const s = deployed({
+			allowDevServices: ['minio', 'mailpit'],
+			secrets: production({
+				MAIL_URL: EXTERNAL.MAIL_URL,
+				MAIL_FROM: EXTERNAL.MAIL_FROM,
+				AWS_ACCESS_KEY_ID: 'stage-key',
+				AWS_SECRET_ACCESS_KEY: 'stage-secret-value',
+				UPLOADS_SERVER_URL: EXTERNAL.UPLOADS_SERVER_URL,
+			}),
+		});
+		const api = app(s, 'api').env!;
+
+		// Mail is the stage's own, so no Mailpit runs.
+		expect(s.infra).toEqual(['minio', 'postgres']);
+		expect(api.MAIL_URL).toBe(EXTERNAL.MAIL_URL);
+		expect(api.MAIL_FROM).toBe(EXTERNAL.MAIL_FROM);
+		// The bucket is MinIO's, signed with the key pair the stage chose.
+		expect(api.AWS_ACCESS_KEY_ID).toBe('stage-key');
+		expect(s.compose.services.minio?.environment).toMatchObject({
+			MINIO_ROOT_USER: 'stage-key',
+			MINIO_ROOT_PASSWORD: 'stage-secret-value',
+		});
+		expect(app(s, 'web').build).toBeUndefined();
+		expect(s.caddyfile).not.toContain('uploads-server');
+		expect(s.devServices).toEqual([{ service: 'minio', ids: ['Uploads'] }]);
+	});
+
+	it('allowing one dev service does not excuse the other', () => {
+		const run = () => deployed({ allowDevServices: ['mailpit'] });
+
+		expect(run).toThrow(ExternalServicesNotConfigured);
+		expect(run).toThrow(/UPLOADS_URL/);
+		expect(run).not.toThrow(/MAIL_URL/);
 	});
 });
