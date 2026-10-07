@@ -27,6 +27,19 @@
 
 export { GKM_HOME_ENV, gkmHome } from '../home';
 export {
+	DeployTargetNotYetSupported,
+	UnknownDeployTarget,
+} from '../target/builtins';
+export { TargetPackageNotFound } from '../target/package';
+export { ProviderRemoved } from '../target/provider';
+export {
+	InvalidTargetOptions,
+	TargetEntryInvalid,
+	TargetPackageInvalid,
+	TargetRuntimeMismatch,
+} from '../target/resolve';
+export { TargetRuntimeUndeclared } from '../target/runtime';
+export {
 	type Credential,
 	type CredentialKind,
 	type CredentialKinds,
@@ -52,12 +65,12 @@ export type {
 	ResourceVia,
 } from './events';
 export { type DeployIdentity, deployIdentity } from './identity';
+export { BackendDeployFailed, MissingEnvVars } from './index';
 export {
-	BackendDeployFailed,
-	MissingEnvVars,
 	NoDeployableApps,
+	RollbackFailed,
 	UnknownDeployApps,
-} from './index';
+} from './orchestrate';
 export { ProjectNotOwned } from './ownership';
 export {
 	RegistryAmbiguous,

@@ -8,18 +8,18 @@
  */
 
 import { formatError } from '../debug';
+import { targetForProvider } from '../target/provider';
 import { storedCredentials } from './credentials';
 import { deploy } from './deploy';
-import { DeployProviderUnsupported } from './index';
 import { terminalCredentials } from './terminal';
-
-/** The providers `--provider` has ever accepted. */
-const PROVIDERS = ['docker', 'dokploy', 'aws-lambda'];
 
 export interface DeployCliOptions {
 	/** The project directory: `--cwd`, else where the command was run. */
 	cwd: string;
-	provider: string;
+	/** `--target`: where to deploy. Defaults to `deploy.default`. */
+	target?: string;
+	/** `--provider`, deprecated: `dokploy` means `--target dokploy`. */
+	provider?: string;
 	stage: string;
 	tag?: string;
 	/**
@@ -44,21 +44,23 @@ export async function deployCli(
 	options: DeployCliOptions,
 	streams: DeployCliStreams = { stdout: process.stdout },
 ): Promise<number> {
-	if (!PROVIDERS.includes(options.provider)) {
-		console.error(
-			`Invalid provider: ${options.provider}\n` +
-				`Valid providers: ${PROVIDERS.join(', ')}`,
-		);
-		return 1;
-	}
-	if (options.provider !== 'dokploy') {
-		console.error(formatError(new DeployProviderUnsupported(options.provider)));
-		return 1;
+	let target = options.target;
+	if (options.provider !== undefined && target === undefined) {
+		try {
+			// On stderr, so a `--json` run's stdout still carries only events.
+			target = targetForProvider(options.provider, (message) =>
+				console.warn(message),
+			);
+		} catch (error) {
+			console.error(formatError(error));
+			return 1;
+		}
 	}
 
 	const input = {
 		cwd: options.cwd,
 		stage: options.stage,
+		...(target ? { target } : {}),
 		...(options.tag ? { tag: options.tag } : {}),
 		...(options.dryRun ? { dryRun: true } : {}),
 	};

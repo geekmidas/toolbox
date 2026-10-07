@@ -8,7 +8,7 @@ import { validateStages } from './stages.js';
 import type {
 	AppConfig,
 	AppsRecord,
-	DeployTarget,
+	DeployTargetName,
 	InferredWorkspaceConfig,
 	LoadedConfig,
 	NormalizedAppConfig,
@@ -43,7 +43,7 @@ export type {
 	BackendFramework,
 	ConstrainedApps,
 	DeployConfig,
-	DeployTarget,
+	DeployTargetName,
 	DokployWorkspaceConfig,
 	FrontendFramework,
 	InferAppNames,
@@ -189,7 +189,7 @@ export function normalizeWorkspace(
  */
 function normalizeAppConfig(
 	app: AppConfig,
-	defaultTarget: DeployTarget,
+	defaultTarget: DeployTargetName,
 ): NormalizedAppConfig {
 	return {
 		...app,

@@ -746,11 +746,12 @@ program
 // sets the exit code; the deploy itself does none of the three.
 program
 	.command('deploy')
-	.description('Deploy application to a provider')
-	.requiredOption(
-		'--provider <provider>',
-		'Deploy provider (docker, dokploy, aws-lambda)',
+	.description('Deploy a stage through its target')
+	.option(
+		'--target <name>',
+		'Deploy target: dokploy, or one named in deploy.targets (default: deploy.default)',
 	)
+	.option('--provider <provider>', '[DEPRECATED] Use --target instead')
 	.requiredOption(
 		'--stage <stage>',
 		'Deployment stage (e.g., production, staging)',
@@ -768,7 +769,8 @@ program
 	)
 	.action(
 		async (options: {
-			provider: string;
+			target?: string;
+			provider?: string;
 			stage: string;
 			tag?: string;
 			json?: boolean;
@@ -780,7 +782,8 @@ program
 			// project it is deploying.
 			const code = await deployCli({
 				cwd: resolve(globalOptions.cwd ?? process.cwd()),
-				provider: options.provider,
+				...(options.target ? { target: options.target } : {}),
+				...(options.provider ? { provider: options.provider } : {}),
 				stage: options.stage,
 				...(options.tag ? { tag: options.tag } : {}),
 				...(options.json ? { json: true } : {}),

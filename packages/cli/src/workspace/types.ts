@@ -1,5 +1,6 @@
 import type { ConstructManifest } from '@geekmidas/manifest';
 import type { AwsRegion, StateConfig } from '../deploy/StateProvider.js';
+import type { DeployTargetEntry } from '../target/types';
 
 export type { AwsRegion };
 
@@ -32,21 +33,16 @@ export type {
 };
 
 /**
- * Deploy target for an app.
- *
- * Specifies where the app will be deployed.
+ * Where a stage — or one app — deploys, by target name: a built-in
+ * (`dokploy`; `sst`, deployed by SST itself) or a key of `deploy.targets`.
  *
  * @example
  * ```ts
- * // Currently supported
  * deploy: 'dokploy'
- *
- * // Future support (not yet implemented)
- * deploy: 'vercel'
- * deploy: 'cloudflare'
+ * deploy: 'acme' // deploy: { targets: { acme: '@acme/gkm-target' } }
  * ```
  */
-export type DeployTarget = 'dokploy' | 'sst' | 'vercel' | 'cloudflare';
+export type DeployTargetName = 'dokploy' | 'sst' | (string & {});
 
 /**
  * Each deployed stage's base domain — `deploy.domains`.
@@ -173,7 +169,24 @@ export type DnsProviderType = 'hostinger' | 'route53' | 'cloudflare' | 'manual';
  */
 export interface DeployConfig {
 	/** Default deploy target for all apps (default: 'dokploy') */
-	default?: DeployTarget;
+	default?: DeployTargetName;
+	/**
+	 * Targets that do not ship with the CLI, by the name `default` (or an
+	 * app's `deploy`) uses: a package whose default export is the target, a
+	 * target object, or either with its options.
+	 *
+	 * ```ts
+	 * targets: {
+	 *   acme: '@acme/gkm-target',
+	 *   fly: ['@acme/gkm-fly', { org: 'acme' }],
+	 *   local: defineTarget({ … }),
+	 * }
+	 * ```
+	 *
+	 * A package is never guessed from a name: it is installed and listed here.
+	 * A built-in's name cannot be taken.
+	 */
+	targets?: Record<string, DeployTargetEntry>;
 	/**
 	 * Whose deploy this is, on a target shared with other workspaces — an
 	 * organisation or a team, lowercase `[a-z0-9-]`. Two workspaces with the
@@ -374,7 +387,7 @@ interface AppConfigBase {
 	 * Overrides `deploy.default` for this specific app.
 	 * @example 'dokploy', 'vercel'
 	 */
-	deploy?: DeployTarget;
+	deploy?: DeployTargetName;
 
 	// ─────────────────────────────────────────────────────────────────
 	// Backend-specific (gkm routes mode)
@@ -903,7 +916,7 @@ export interface NormalizedAppConfig extends Omit<AppConfigBase, 'type'> {
 	/** Resolved dependencies array (empty array if none) */
 	dependencies: string[];
 	/** Resolved deploy target (app.deploy > deploy.default > 'dokploy') */
-	resolvedDeployTarget: DeployTarget;
+	resolvedDeployTarget: DeployTargetName;
 	/** Entry file path for non-gkm apps */
 	entry?: string;
 	/** Framework for the app */

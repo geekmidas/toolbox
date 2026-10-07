@@ -45,6 +45,16 @@
 				"default": "./dist/deploy/public.cjs"
 			}
 		},
+		"./target": {
+			"import": {
+				"types": "./dist/target/public.d.mts",
+				"default": "./dist/target/public.mjs"
+			},
+			"require": {
+				"types": "./dist/target/public.d.cts",
+				"default": "./dist/target/public.cjs"
+			}
+		},
 		"./workspace": {
 			"import": {
 				"types": "./dist/workspace/index.d.mts",

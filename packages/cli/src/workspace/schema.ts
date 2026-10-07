@@ -1,4 +1,10 @@
 import { z } from 'zod/v4';
+import {
+	BUILTIN_TARGETS,
+	builtinTarget,
+	configurableBuiltins,
+} from '../target/builtins.js';
+import { isDeployTarget } from '../target/define.js';
 import { stageProblems } from './stages.js';
 
 /** Routes are a glob, or a list of them. */
@@ -160,29 +166,34 @@ const FRONTEND_FRAMEWORKS = [
 const MOBILE_FRAMEWORKS = ['expo'] as const;
 
 /**
- * Deploy target schema.
- * 'dokploy' is deployed by `gkm deploy`; 'sst' by `sst deploy`, from the
- * manifest `gkm build` writes.
- * 'vercel' and 'cloudflare' are planned for Phase 2.
+ * A deploy target's name. Which names exist is the workspace's to say — the
+ * built-ins and its own `deploy.targets` — so it is checked against both
+ * once the whole config is read.
  */
-const DeployTargetSchema = z.enum(['dokploy', 'sst', 'vercel', 'cloudflare']);
+const DeployTargetSchema = z.string().min(1);
 
 /**
- * Supported deploy targets (Phase 1).
+ * The built-in targets a config may name: `dokploy`, deployed by
+ * `gkm deploy`, and `sst`, deployed by `sst deploy` from the manifest
+ * `gkm build` writes.
  */
-const SUPPORTED_DEPLOY_TARGETS = ['dokploy', 'sst'] as const;
+const SUPPORTED_DEPLOY_TARGETS = configurableBuiltins();
+
+/** Built-in names reserved for targets that do not exist yet. */
+const PHASE_2_DEPLOY_TARGETS = Object.entries(BUILTIN_TARGETS)
+	.filter(([, target]) => target.status === 'planned')
+	.map(([name]) => name);
 
 /**
- * Phase 2 deploy targets (not yet implemented).
+ * Whether a config may name `target`: a usable built-in, or one of its own
+ * `deploy.targets`.
  */
-const PHASE_2_DEPLOY_TARGETS = ['vercel', 'cloudflare'] as const;
-
-/**
- * Check if a deploy target is supported.
- */
-export function isDeployTargetSupported(target: string): boolean {
-	return SUPPORTED_DEPLOY_TARGETS.includes(
-		target as (typeof SUPPORTED_DEPLOY_TARGETS)[number],
+export function isDeployTargetSupported(
+	target: string,
+	targets: Record<string, unknown> = {},
+): boolean {
+	return (
+		SUPPORTED_DEPLOY_TARGETS.includes(target) || Object.hasOwn(targets, target)
 	);
 }
 
@@ -190,9 +201,7 @@ export function isDeployTargetSupported(target: string): boolean {
  * Check if a deploy target is planned for Phase 2.
  */
 export function isPhase2DeployTarget(target: string): boolean {
-	return PHASE_2_DEPLOY_TARGETS.includes(
-		target as (typeof PHASE_2_DEPLOY_TARGETS)[number],
-	);
+	return PHASE_2_DEPLOY_TARGETS.includes(target);
 }
 
 /**
@@ -203,8 +212,29 @@ export function getDeployTargetError(target: string, appName?: string): string {
 		const context = appName ? ` for app "${appName}"` : '';
 		return `Deploy target "${target}"${context} is coming in Phase 2. Currently "dokploy" and "sst" are supported.`;
 	}
-	return `Unknown deploy target: ${target}. Supported: dokploy, sst. Coming in Phase 2: vercel, cloudflare.`;
+	return `Unknown deploy target: ${target}. Built in: ${SUPPORTED_DEPLOY_TARGETS.join(', ')}; any other is named in deploy.targets with the package that provides it. Coming in Phase 2: ${PHASE_2_DEPLOY_TARGETS.join(', ')}.`;
 }
+
+/**
+ * One `deploy.targets` entry: a package name, a target object, or either
+ * with options.
+ */
+const DeployTargetEntrySchema = z.union([
+	z.string().min(1, 'A target package name cannot be empty'),
+	z.custom((value) => isDeployTarget(value), {
+		message:
+			'Expected a package name, a target (defineTarget), or [package or target, options]',
+	}),
+	z.tuple([
+		z.union([
+			z.string().min(1),
+			z.custom((value) => isDeployTarget(value), {
+				message: 'Expected a package name or a target (defineTarget)',
+			}),
+		]),
+		z.unknown(),
+	]),
+]);
 
 /**
  * Dokploy workspace configuration schema.
@@ -493,6 +523,22 @@ export type BackupsConfig = z.infer<typeof BackupsConfigSchema>;
  */
 const DeployConfigSchema = z.object({
 	default: DeployTargetSchema.optional(),
+	targets: z
+		.record(z.string(), DeployTargetEntrySchema)
+		.superRefine((targets, ctx) => {
+			for (const name of Object.keys(targets)) {
+				// The built-ins resolve first, so an entry under one of their
+				// names would never be used — say so rather than ignore it.
+				if (builtinTarget(name)) {
+					ctx.addIssue({
+						code: 'custom',
+						message: `"${name}" is a built-in target; give this one a name of its own`,
+						path: [name],
+					});
+				}
+			}
+		})
+		.optional(),
 	/** Whose deploy this is, on a target shared with other workspaces. */
 	namespace: z
 		.string()
@@ -844,7 +890,8 @@ export const WorkspaceConfigSchema = z
 	.superRefine((data, ctx) => {
 		// Validate deploy targets are supported
 		const defaultTarget = data.deploy?.default;
-		if (defaultTarget && !isDeployTargetSupported(defaultTarget)) {
+		const ownTargets = data.deploy?.targets ?? {};
+		if (defaultTarget && !isDeployTargetSupported(defaultTarget, ownTargets)) {
 			ctx.addIssue({
 				code: 'custom',
 				message: getDeployTargetError(defaultTarget),
@@ -854,7 +901,7 @@ export const WorkspaceConfigSchema = z
 		}
 
 		for (const [appName, app] of Object.entries(data.apps ?? {})) {
-			if (app.deploy && !isDeployTargetSupported(app.deploy)) {
+			if (app.deploy && !isDeployTargetSupported(app.deploy, ownTargets)) {
 				ctx.addIssue({
 					code: 'custom',
 					message: getDeployTargetError(app.deploy, appName),

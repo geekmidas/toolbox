@@ -15,9 +15,8 @@ import {
  * the cases where the two families disagree.
  */
 describe('providerOf', () => {
-	it('puts Dokploy and a bare server in the family that runs its own containers', () => {
+	it('puts Dokploy in the family that runs its own containers', () => {
 		expect(providerOf({ deploy: { default: 'dokploy' } })).toBe('server');
-		expect(providerOf({ deploy: { default: 'server' } })).toBe('server');
 	});
 
 	it('puts everything else — and no deploy target at all — on AWS', () => {

@@ -11,7 +11,20 @@
 
 import { readCredentials } from '../auth/credentials';
 
-/** What each kind of credential is asked for with, and what it is. */
+/**
+ * What each kind of credential is asked for with, and what it is.
+ *
+ * A target that needs a kind the CLI does not know declares it by augmenting
+ * this interface, and lists it in its `credentials`:
+ *
+ * ```ts
+ * declare module '@geekmidas/cli/target' {
+ *   interface CredentialKinds {
+ *     fly: { request: { org: string }; value: { token: string } };
+ *   }
+ * }
+ * ```
+ */
 export interface CredentialKinds {
 	/** The Dokploy API a stage deploys through. */
 	dokploy: {
@@ -52,8 +65,11 @@ export interface CredentialProvider {
 	): Promise<Credential<K> | undefined>;
 }
 
-/** How to supply each kind, for the error that says it is missing. */
-const HOW_TO_PROVIDE: Record<CredentialKind, string> = {
+/**
+ * How to supply each kind the CLI knows, for the error that says it is
+ * missing. A target's own kinds are its to explain.
+ */
+const HOW_TO_PROVIDE: Partial<Record<CredentialKind, string>> = {
 	dokploy:
 		"Set DOKPLOY_API_TOKEN (and DOKPLOY_ENDPOINT, or deploy.dokploy.endpoint in gkm.config.ts), run `gkm login --provider dokploy`, or pass them through the deploy's CredentialProvider.",
 	registry:
@@ -67,12 +83,15 @@ export class MissingCredential extends Error {
 		/** What it was for: the Dokploy endpoint or the registry URL. */
 		readonly target: string | undefined,
 		/** How to supply it. */
-		readonly howToProvide: string = HOW_TO_PROVIDE[kind],
+		readonly howToProvide: string = HOW_TO_PROVIDE[kind] ??
+			"Pass it through the deploy's CredentialProvider.",
 	) {
 		const what =
 			kind === 'dokploy'
 				? `No Dokploy credentials${target ? ` for ${target}` : ''}.`
-				: `Dokploy has no registry for ${target ?? 'the configured registry'}, and there are no credentials to create one with.`;
+				: kind === 'registry'
+					? `Dokploy has no registry for ${target ?? 'the configured registry'}, and there are no credentials to create one with.`
+					: `No "${String(kind)}" credentials${target ? ` for ${target}` : ''}.`;
 		super(`${what} ${howToProvide}`);
 		this.name = 'MissingCredential';
 	}
@@ -142,6 +161,8 @@ export function storedCredentials(
 					return { username, password } as never;
 				}
 			}
+			// A kind a target declared: nothing stored here can answer it.
+			return undefined;
 		},
 	};
 }

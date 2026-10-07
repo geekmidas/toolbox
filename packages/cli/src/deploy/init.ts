@@ -184,7 +184,7 @@ export async function deployInitCommand(
 	logger.log(`\n🔗 View in Dokploy: ${endpoint}/project/${projectId}`);
 	logger.log(`\n📝 Next steps:`);
 	logger.log(`   1. Initialize secrets: gkm secrets:init --stage production`);
-	logger.log(`   2. Deploy: gkm deploy --provider dokploy --stage production`);
+	logger.log(`   2. Deploy: gkm deploy --stage production`);
 
 	return config;
 }
@@ -313,7 +313,7 @@ export async function registrySetupCommand(
 	logger.log(
 		`\n📝 The registry ID is now stored and will be used automatically`,
 	);
-	logger.log(`   when deploying with "gkm deploy --provider dokploy"`);
+	logger.log(`   when deploying with "gkm deploy --target dokploy"`);
 
 	return registryId;
 }

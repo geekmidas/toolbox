@@ -32,10 +32,7 @@ export function deployPackage(options: TemplateOptions): DeployPackage {
 	switch (options.deployTarget) {
 		case 'dokploy':
 			return {
-				scripts: perStage(
-					options,
-					(stage) => `gkm deploy --provider dokploy --stage ${stage}`,
-				),
+				scripts: perStage(options, (stage) => `gkm deploy --stage ${stage}`),
 				dependencies: {},
 				devDependencies: {},
 			};

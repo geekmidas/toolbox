@@ -14,12 +14,13 @@ import { resolve } from 'node:path';
 import { loadWorkspaceConfig } from '../config';
 import { gkmHome } from '../home';
 import { type OutputLevel, withOutput } from '../output';
-import type { RunOptions } from '../run';
+import { Redactor } from '../target/secrets';
+import type { AnyDeployTarget } from '../target/types';
 import { assertDeployedStage } from '../workspace/stages.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { type CredentialProvider, storedCredentials } from './credentials';
 import { type DeployEvent, eventError } from './events';
-import { type DeployContext, runDeploy } from './index';
+import { type DeployContext, runDeploy } from './orchestrate';
 import type { DeployResult } from './types';
 
 /**
@@ -40,6 +41,17 @@ export interface DeployInput {
 	cwd: string;
 	/** The stage to deploy — one of the config's deployed stages. */
 	stage: string;
+	/**
+	 * The target to deploy through, by name. Defaults to `deploy.default`,
+	 * else `dokploy`.
+	 */
+	target?: string;
+	/**
+	 * The host's own targets, by name. Consulted before the built-ins and the
+	 * config's `deploy.targets`, so a host can deploy through an
+	 * implementation of its own — `{ dokploy: myDokploy }` included.
+	 */
+	targets?: Record<string, AnyDeployTarget>;
 	/** The image tag. Defaults to `<stage>-<timestamp>`. */
 	tag?: string;
 	/** Deploy only these apps (in dependency order). Defaults to all. */
@@ -125,12 +137,6 @@ class EventLog {
 	}
 }
 
-/** `childOutput` as `spawn` reads it, where it is not the default. */
-const CHILD_STDIO: Record<'stderr' | 'ignore', RunOptions['stdio']> = {
-	stderr: ['ignore', 2, 2],
-	ignore: 'ignore',
-};
-
 function forward(
 	logger: DeployLogger | undefined,
 	level: OutputLevel,
@@ -160,9 +166,18 @@ function forward(
  */
 export function deploy(input: DeployInput): DeployRun {
 	const log = new EventLog();
+	// Every secret the run reads is masked in every line it reports — in the
+	// events and in what the logger is handed.
+	const redactor = new Redactor();
 	const emit = (event: DeployEvent) => {
-		log.push(event);
-		if (event.type === 'log') forward(input.logger, event.level, event.message);
+		const masked =
+			event.type === 'log'
+				? { ...event, message: redactor.redact(event.message) }
+				: event;
+		log.push(masked);
+		if (masked.type === 'log') {
+			forward(input.logger, masked.level, masked.message);
+		}
 	};
 
 	const ctx: DeployContext = {
@@ -171,10 +186,10 @@ export function deploy(input: DeployInput): DeployRun {
 			input.credentials ?? storedCredentials({ home: input.home ?? gkmHome() }),
 		dryRun: input.dryRun ?? false,
 		home: input.home ?? gkmHome(),
+		redactor,
 		...(input.signal ? { signal: input.signal } : {}),
-		...(input.childOutput && input.childOutput !== 'inherit'
-			? { stdio: CHILD_STDIO[input.childOutput] }
-			: {}),
+		...(input.childOutput ? { childOutput: input.childOutput } : {}),
+		...(input.targets ? { targets: input.targets } : {}),
 	};
 
 	// Every line anything in the run writes through `output` — the deploy's
@@ -189,6 +204,7 @@ export function deploy(input: DeployInput): DeployRun {
 					() => load(input),
 					{
 						stage: input.stage,
+						...(input.target ? { target: input.target } : {}),
 						...(input.tag ? { tag: input.tag } : {}),
 						...(input.apps ? { apps: input.apps } : {}),
 					},
