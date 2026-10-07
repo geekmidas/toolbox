@@ -249,6 +249,18 @@ const DokployWorkspaceConfigSchema = z
 			.record(z.string(), z.url('Endpoint must be a valid URL'))
 			.optional(),
 		registryId: z.string().optional(),
+		verify: z
+			.object({
+				deploymentTimeoutMs: z.number().int().positive().optional(),
+				healthCheckPath: z
+					.string()
+					.startsWith('/', 'healthCheckPath must start with /')
+					.optional(),
+				healthyAfter: z.number().int().positive().optional(),
+				intervalMs: z.number().int().positive().optional(),
+				healthTimeoutMs: z.number().int().positive().optional(),
+			})
+			.optional(),
 	})
 	.refine((data) => data.endpoint || data.endpoints, {
 		message: 'Either endpoint or endpoints must be provided',

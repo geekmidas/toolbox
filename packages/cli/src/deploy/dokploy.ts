@@ -1,5 +1,5 @@
 import { getDokployRegistryId, getDokployToken } from '../auth';
-import { DokployApi } from './dokploy-api';
+import { DokployApi } from '../target/dokploy/dokploy-api';
 import type { DockerDeployResult, DokployDeployConfig } from './types';
 
 const logger = console;

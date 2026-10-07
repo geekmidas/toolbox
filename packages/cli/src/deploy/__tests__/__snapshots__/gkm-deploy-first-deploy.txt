@@ -42,7 +42,7 @@ WARN
       Building Docker image: ghcr.io/acme/shop/shop-api:v1
 
 🔨 Building Docker image: ghcr.io/acme/shop/shop-api:v1
-   Generating Dockerfile for the pre-built bundle...
+   Generating Dockerfile...
 WARN 
 ⚠️  The constructs glob matched no files, so nothing was declared.
    Patterns: <root>/src/constructs/**/*.ts
@@ -91,7 +91,11 @@ WARN
       Resolved 3 env vars: NODE_ENV, PORT, STAGE
       Deploying to Dokploy...
       ✓ Domain: https://api.shop.example.com (created)
+      Waiting for the deployment to finish...
       ✓ api deployed successfully
+
+🩺 Checking api at https://api.shop.example.com/health...
+   ✓ api healthy (3 in a row)
 
 🌐 PHASE 2: Deploying frontend applications...
 
@@ -102,7 +106,7 @@ WARN
       Building Docker image: ghcr.io/acme/shop/shop-web:v1
 
 🔨 Building Docker image: ghcr.io/acme/shop/shop-web:v1
-   Generating Dockerfile for the pre-built bundle...
+   Generating Dockerfile...
 WARN 
 ⚠️  The constructs glob matched no files, so nothing was declared.
    Patterns: <root>/src/constructs/**/*.ts
@@ -150,10 +154,14 @@ WARN
    Stage: production
       Deploying to Dokploy...
       ✓ Domain: https://shop.example.com (created)
+      Waiting for the deployment to finish...
       ✓ web deployed successfully
 
 📋 Saving deploy state...
    ✓ State saved
+
+🩺 Checking web at https://shop.example.com/...
+   ✓ web healthy (3 in a row)
 
 ──────────────────────────────────────────────────
 

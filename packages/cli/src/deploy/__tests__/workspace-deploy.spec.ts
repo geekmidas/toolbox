@@ -210,18 +210,26 @@ describe('workspaceDeployCommand', () => {
 			// The registry Dokploy has for the configured URL, kept with the
 			// stage for the next deploy.
 			registryId: 'reg_1',
-			// Each image with the digest the registry gave it.
-			images: {
+			// Each image released with the digest the registry gave it — the
+			// first release, so there is nothing before it to roll back to.
+			releases: {
 				api: {
-					ref: 'ghcr.io/acme/shop/shop-api:v1',
-					digest: digestOf('ghcr.io/acme/shop/shop-api:v1'),
+					current: {
+						ref: 'ghcr.io/acme/shop/shop-api:v1',
+						digest: digestOf('ghcr.io/acme/shop/shop-api:v1'),
+						tag: 'v1',
+					},
+					history: [{ ref: 'ghcr.io/acme/shop/shop-api:v1' }],
 				},
 				web: {
-					ref: 'ghcr.io/acme/shop/shop-web:v1',
-					digest: digestOf('ghcr.io/acme/shop/shop-web:v1'),
+					current: {
+						ref: 'ghcr.io/acme/shop/shop-web:v1',
+						digest: digestOf('ghcr.io/acme/shop/shop-web:v1'),
+					},
 				},
 			},
 		});
+		expect(state().releases.api.previous).toBeUndefined();
 		// The project says who made it, so nobody else's deploy adopts it.
 		expect(project.description).toContain('gkm:shop/shop');
 		// Applications are scoped by stage and identity.
@@ -378,19 +386,22 @@ describe('workspaceDeployCommand', () => {
 		);
 	});
 
-	it('reports a site that fails and still saves state', async () => {
+	it('fails the run when a site fails, after saving state', async () => {
 		vi.mocked(run).mockImplementation(async (_, args) => {
 			if (args.some((a) => a.includes('shop-web'))) throw new Error('OOM');
 		});
 
-		const result = await deploy();
-
-		expect(result).toMatchObject({ successCount: 1, failedCount: 1 });
-		expect(result.apps.find((a) => a.appName === 'web')).toMatchObject({
-			success: false,
-			error: expect.stringContaining('Failed to build Docker image: OOM'),
+		await expect(deploy()).rejects.toMatchObject({
+			name: 'FrontendDeployFailed',
+			apps: ['web'],
+			message: expect.stringContaining('Failed to build Docker image: OOM'),
 		});
-		expect(said()).toContain('Failed: 1');
+
+		// The API went out and stays out: it was not what failed.
+		expect(state().releases.api.current.ref).toBe(
+			'ghcr.io/acme/shop/shop-api:v1',
+		);
+		expect(state().releases.web).toBeUndefined();
 		expect(state().applications.web).toBeDefined();
 	});
 
@@ -612,8 +623,11 @@ export const config = new EnvironmentParser(process.env)
 				},
 			});
 
+			// The API's host before the site is released — the API is checked by
+			// name first — and then the site's.
 			expect(written).toEqual([
-				{ domain: 'shop.example.com', names: ['api', '@'] },
+				{ domain: 'shop.example.com', names: ['api'] },
+				{ domain: 'shop.example.com', names: ['@'] },
 			]);
 			expect(said()).toContain('api.shop.example.com (previously verified)');
 			expect(said()).toContain('✓ api: api.shop.example.com → 127.0.0.1');
@@ -827,8 +841,12 @@ export const config = new EnvironmentParser(process.env)
 			]);
 
 			// Their own images, never pushed over each other.
-			expect(acme.images.api.ref).toBe('ghcr.io/acme/acme/shop-api:v1');
-			expect(globex.images.api.ref).toBe('ghcr.io/acme/globex/shop-api:v1');
+			expect(acme.releases.api.current.ref).toBe(
+				'ghcr.io/acme/acme/shop-api:v1',
+			);
+			expect(globex.releases.api.current.ref).toBe(
+				'ghcr.io/acme/globex/shop-api:v1',
+			);
 			expect(dokploy.images[acme.applications.api]).toBe(
 				'ghcr.io/acme/acme/shop-api:v1',
 			);
@@ -1041,15 +1059,150 @@ export const config = new EnvironmentParser(process.env)
 		it('keeps the ids it created before it died', async () => {
 			dokploy.dieAfterCreate = 4; // the site's application
 
-			const result = await deploy();
-
-			// A site failing does not abort, so the run ends and says so.
-			expect(result).toMatchObject({ successCount: 1, failedCount: 1 });
+			// The site failing fails the run — once its state is saved.
+			await expect(deploy()).rejects.toMatchObject({
+				name: 'FrontendDeployFailed',
+			});
 			expect(state().applications.api).toBe(
 				dokploy.projects[0]!.environments[0]!.applications[0]!.applicationId,
 			);
-			expect(state().images.api.ref).toBe('ghcr.io/acme/shop/shop-api:v1');
+			expect(state().releases.api.current.ref).toBe(
+				'ghcr.io/acme/shop/shop-api:v1',
+			);
 			expect(resources()['application:web'].status).toBe('pending');
+		});
+	});
+
+	describe('a release that does not come up', () => {
+		const API = 'production-shop-api';
+		const ref = (app: string, tag: string) =>
+			`ghcr.io/acme/shop/shop-${app}:${tag}`;
+		/** The application Dokploy has for `app`, by its name. */
+		const applicationOf = (app: string) =>
+			dokploy.projects[0]!.environments[0]!.applications.find(
+				(a) => a.name === `production-shop-${app}`,
+			)!.applicationId;
+
+		it('waits for each deployment, then checks every backend before any site', async () => {
+			await deploy();
+
+			const api = applicationOf('api');
+			const web = applicationOf('web');
+			expect(dokploy.deployments[api]).toHaveLength(1);
+			// Three healthy answers in a row each: the API's, from its health
+			// route, before the site was deployed at all; then the site's.
+			expect(dokploy.checked).toEqual([
+				...Array(3).fill('https://api.shop.example.com/health'),
+				...Array(3).fill('https://shop.example.com/'),
+			]);
+			expect(
+				dokploy.deployments[web]![0]!.createdAt >
+					dokploy.deployments[api]![0]!.createdAt,
+			).toBe(true);
+			expect(said()).toContain('✓ api healthy (3 in a row)');
+		});
+
+		it('rolls a deployment that goes running → error back to the previous ref', async () => {
+			await deploy();
+			const api = applicationOf('api');
+			dokploy.statuses[API] = ['running', 'error'];
+
+			await expect(deploy({ tag: 'v2' })).rejects.toMatchObject({
+				name: 'BackendDeployFailed',
+				app: 'api',
+				cause: expect.objectContaining({ name: 'DeploymentFailed' }),
+			});
+
+			// Pointed back at v1 and deployed again, and that deployment waited on.
+			expect(dokploy.deployments[api]!.map((d) => d.image)).toEqual([
+				ref('api', 'v1'),
+				ref('api', 'v2'),
+				ref('api', 'v1'),
+			]);
+			expect(dokploy.images[api]).toBe(ref('api', 'v1'));
+			// v2 never went live, so the stage still runs v1 and has nothing new.
+			expect(state().releases.api.current.ref).toBe(ref('api', 'v1'));
+			expect(
+				state().releases.api.history.map((r: { ref: string }) => r.ref),
+			).toEqual([ref('api', 'v1')]);
+			// The backend failing stopped the site's release: not even built.
+			expect(
+				docker().some((c) => c.some((a) => a.includes(ref('web', 'v2')))),
+			).toBe(false);
+			expect(said()).toContain(`✓ api rolled back to ${ref('api', 'v1')}`);
+		});
+
+		it('fails the deploy when an app never answers healthy, and rolls it back', async () => {
+			workspace({ verify: 'healthTimeoutMs: 30' });
+			await deploy();
+			const api = applicationOf('api');
+			dokploy.health['api.shop.example.com'] = [503];
+
+			await expect(deploy({ tag: 'v2' })).rejects.toMatchObject({
+				name: 'BackendDeployFailed',
+				cause: expect.objectContaining({
+					name: 'HealthCheckTimedOut',
+					url: 'https://api.shop.example.com/health',
+					lastStatus: 503,
+				}),
+			});
+
+			expect(dokploy.images[api]).toBe(ref('api', 'v1'));
+			// v2 went live and was rolled back: it is in the history, marked, and
+			// never restored by a later rollback.
+			expect(state().releases.api).toMatchObject({
+				current: { ref: ref('api', 'v1') },
+				history: [
+					{ ref: ref('api', 'v2'), rolledBack: true },
+					{ ref: ref('api', 'v1') },
+				],
+			});
+			expect(state().releases.api.previous).toBeUndefined();
+			// No site was released against an API that was not answering.
+			expect(dokploy.deployments[applicationOf('web')]).toHaveLength(1);
+		});
+
+		it('fails the deploy when Dokploy does not finish in time', async () => {
+			workspace({ verify: 'deploymentTimeoutMs: 30' });
+			await deploy();
+			dokploy.statuses[API] = ['running'];
+
+			await expect(deploy({ tag: 'v2' })).rejects.toMatchObject({
+				cause: expect.objectContaining({
+					name: 'DeploymentTimedOut',
+					lastStatus: 'running',
+				}),
+			});
+			expect(dokploy.images[applicationOf('api')]).toBe(ref('api', 'v1'));
+		});
+
+		it('rolls back only the site that failed, leaving the API on its new release', async () => {
+			workspace({ verify: 'healthTimeoutMs: 30' });
+			await deploy();
+			dokploy.health['shop.example.com'] = [500];
+
+			await expect(deploy({ tag: 'v2' })).rejects.toMatchObject({
+				name: 'FrontendDeployFailed',
+				apps: ['web'],
+			});
+
+			expect(dokploy.images[applicationOf('web')]).toBe(ref('web', 'v1'));
+			expect(dokploy.images[applicationOf('api')]).toBe(ref('api', 'v2'));
+			expect(state().releases.api.current.ref).toBe(ref('api', 'v2'));
+			expect(state().releases.web.current.ref).toBe(ref('web', 'v1'));
+		});
+
+		it('leaves an app released for the first time as it is: there is nothing before it', async () => {
+			dokploy.statuses[API] = ['error'];
+
+			await expect(deploy()).rejects.toMatchObject({
+				name: 'BackendDeployFailed',
+			});
+
+			expect(dokploy.deployments[applicationOf('api')]).toHaveLength(1);
+			expect(said()).toContain(
+				'api: this was its first release, so there is nothing to restore',
+			);
 		});
 	});
 

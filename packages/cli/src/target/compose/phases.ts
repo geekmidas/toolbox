@@ -55,7 +55,7 @@ import { DeployJournal } from '../../deploy/journal';
 import {
 	createEmptyState,
 	type DeployedImage,
-	setDeployedImage,
+	recordRelease,
 } from '../../deploy/state.js';
 import type { DeployResult } from '../../deploy/types';
 import { appPackageName } from '../../docker/index.js';
@@ -350,7 +350,19 @@ export async function validateCompose(
 	}
 
 	const dir = join(root, stackDir(stage));
-	const previous = (await ctx.state.read(stage))?.state.images ?? {};
+	// What each app ran before this release: its current release, by the same
+	// record the Dokploy target keeps, so a rollback reads one shape for both.
+	const previous = Object.fromEntries(
+		Object.entries((await ctx.state.read(stage))?.state.releases ?? {}).map(
+			([name, releases]): [string, DeployedImage] => {
+				const { ref, tag, digest } = releases.current;
+				return [
+					name,
+					{ ref, ...(tag ? { tag } : {}), ...(digest ? { digest } : {}) },
+				];
+			},
+		),
+	);
 
 	return {
 		mode,
@@ -671,7 +683,7 @@ async function recordImages(
 	);
 	for (const app of run.stack.apps) {
 		const image = run.images[app.name] ?? { ref: app.ref, tag: app.tag };
-		setDeployedImage(journal.state, app.name, image);
+		recordRelease(journal.state, app.name, image);
 	}
 	journal.state.identity = ctx.identity.key;
 	await journal.save();

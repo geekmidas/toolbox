@@ -4,7 +4,7 @@ import {
 	getDokployToken,
 	storeDokployRegistryId,
 } from '../auth';
-import { DokployApi } from './dokploy-api';
+import { DokployApi } from '../target/dokploy/dokploy-api';
 import type { DokployDeployConfig } from './types';
 
 const logger = console;

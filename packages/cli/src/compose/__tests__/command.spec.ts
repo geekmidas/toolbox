@@ -235,12 +235,12 @@ describe(
 				readFileSync(join(dir, '.gkm', 'deploy-development.json'), 'utf-8'),
 			);
 
-			expect(state.images.api).toEqual({
+			expect(state.releases.api.current).toMatchObject({
 				ref: 'registry.example.com/acme/compose-app/compose-app-api:abc1234',
 				tag: 'abc1234',
 				digest: result?.images?.api?.digest,
 			});
-			expect(state.images.web.tag).toBe('abc1234-development');
+			expect(state.releases.web.current.tag).toBe('abc1234-development');
 			expect(state.identity).toBe(result?.deploy.identity);
 		});
 

@@ -13,7 +13,7 @@ import {
 	DokployApiError,
 	type DokployEnvironment,
 	type DokployProjectDetails,
-} from './dokploy-api';
+} from '../target/dokploy/dokploy-api';
 import {
 	type DeployIdentity,
 	isOwnedBy,

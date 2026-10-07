@@ -100,6 +100,11 @@ export async function runWorker<S extends z.ZodType>(
 	step: string,
 	options: WorkerOptions<S>,
 ): Promise<WorkerRun<z.infer<S>>> {
+	// A step handed secrets acts on something — a database it migrates — and
+	// is not a question whose answer can be reused; nor do its secrets belong
+	// in a cache key.
+	if (options.secrets) return startWorker(sandbox, step, options);
+
 	const key = JSON.stringify([
 		options.name,
 		options.cwd,
@@ -118,6 +123,8 @@ interface WorkerOptions<S extends z.ZodType> {
 	cwd: string;
 	timeoutMs: number;
 	env?: Readonly<Record<string, string>>;
+	/** Mounted as files, named by `GKM_SECRETS_DIR` — never variables. */
+	secrets?: Readonly<Record<string, string>>;
 	signal?: AbortSignal;
 	schema: S;
 }
@@ -135,6 +142,7 @@ async function startWorker<S extends z.ZodType>(
 			env: { ...sandbox.env, ...options.env },
 			timeoutMs: options.timeoutMs,
 			output: 'capture',
+			...(options.secrets ? { secrets: options.secrets } : {}),
 			...(options.signal ? { signal: options.signal } : {}),
 		},
 	);

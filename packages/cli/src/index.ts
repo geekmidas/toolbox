@@ -770,6 +770,10 @@ program
 		'--dry-run',
 		'Show what would be created or reused; change, build and push nothing',
 	)
+	.option(
+		'--atomic',
+		'If the release fails, roll back every app it released, not only the failed ones',
+	)
 	.action(
 		async (options: {
 			target?: string;
@@ -778,6 +782,7 @@ program
 			tag?: string;
 			json?: boolean;
 			dryRun?: boolean;
+			atomic?: boolean;
 		}) => {
 			const { deployCli } = await import('./deploy/cli');
 			const globalOptions = program.opts();
@@ -791,8 +796,39 @@ program
 				...(options.tag ? { tag: options.tag } : {}),
 				...(options.json ? { json: true } : {}),
 				...(options.dryRun ? { dryRun: true } : {}),
+				...(options.atomic ? { atomic: true } : {}),
 			});
 			if (code !== 0) process.exit(code);
+		},
+	);
+
+// Rollback — a stage's apps back on the release before the one they run.
+program
+	.command('deploy:rollback')
+	.description(
+		"Put a stage's app back on its previous release (Dokploy): one app with --app, every app with --atomic",
+	)
+	.requiredOption('--stage <stage>', 'A deployed stage')
+	.option('--app <app>', 'The app to roll back')
+	.option('--atomic', 'Roll back every app that has an earlier release')
+	.action(
+		async (options: { stage: string; app?: string; atomic?: boolean }) => {
+			try {
+				const { rollbackStage } = await import('./target/dokploy/rollback');
+				const { terminalCredentials } = await import('./deploy/terminal');
+				const globalOptions = program.opts();
+				await rollbackStage({
+					cwd: resolve(globalOptions.cwd ?? process.cwd()),
+					stage: options.stage,
+					...(options.app ? { app: options.app } : {}),
+					...(options.atomic ? { atomic: true } : {}),
+					credentials: terminalCredentials(),
+					log: (line) => console.log(line),
+				});
+			} catch (error) {
+				console.error(formatError(error));
+				process.exit(1);
+			}
 		},
 	);
 

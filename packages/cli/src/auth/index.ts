@@ -30,7 +30,7 @@ export async function validateDokployToken(
 	endpoint: string,
 	token: string,
 ): Promise<boolean> {
-	const { DokployApi } = await import('../deploy/dokploy-api');
+	const { DokployApi } = await import('../target/dokploy/dokploy-api');
 	const api = new DokployApi({ baseUrl: endpoint, token });
 	return api.validateToken();
 }

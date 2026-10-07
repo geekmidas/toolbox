@@ -67,6 +67,12 @@ export interface DeployInput {
 	 */
 	dryRun?: boolean;
 	/**
+	 * When a release or its verification fails, roll back every app the run
+	 * released rather than only the ones that failed — on a target that can
+	 * roll back. For apps that must move together.
+	 */
+	atomic?: boolean;
+	/**
 	 * Where credentials come from. Defaults to the environment, then the
 	 * logins `gkm login` stored. A credential no provider has stops the run
 	 * with `MissingCredential`; nothing prompts.
@@ -229,6 +235,7 @@ export function deploy(input: DeployInput): DeployRun {
 							...(input.target ? { target: input.target } : {}),
 							...(input.tag ? { tag: input.tag } : {}),
 							...(input.apps ? { apps: input.apps } : {}),
+							...(input.atomic ? { atomic: true } : {}),
 						},
 						ctx,
 					),

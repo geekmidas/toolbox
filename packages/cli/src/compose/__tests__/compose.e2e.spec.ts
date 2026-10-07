@@ -301,15 +301,15 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				const { state } = JSON.parse(
 					readFileSync(join(dir, '.gkm', 'deploy-development.json'), 'utf-8'),
 				);
-				expect(Object.keys(state.images).sort()).toEqual([
+				expect(Object.keys(state.releases).sort()).toEqual([
 					'api',
 					'auth',
 					'web',
 				]);
-				expect(state.images.api.ref).toMatch(
+				expect(state.releases.api.current.ref).toMatch(
 					new RegExp(`${name}-api:[0-9a-f]+$`),
 				);
-				expect(state.images.api.digest).toMatch(/^sha256:/);
+				expect(state.releases.api.current.digest).toMatch(/^sha256:/);
 			});
 
 			it('serves the site, built with the public URLs it was given', async () => {
