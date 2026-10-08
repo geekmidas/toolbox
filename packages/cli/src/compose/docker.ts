@@ -58,6 +58,15 @@ export type ImageLookup =
 	| { ref: string; status: 'missing' }
 	| { ref: string; status: 'unreachable'; detail: string };
 
+/** A running container that publishes a host port. */
+export interface PortHolder {
+	/** The container's name. */
+	container: string;
+	/** Its compose project and service, when compose started it. */
+	project?: string;
+	service?: string;
+}
+
 export interface ComposeDocker {
 	/** Ask the registry whether `ref` exists, without pulling it. */
 	lookup(ref: string): Promise<ImageLookup>;
@@ -97,6 +106,40 @@ export interface ComposeDocker {
 	 * the content id of one built here and never pushed.
 	 */
 	digest(ref: string): Promise<string | undefined>;
+	/** Create a network, unless one by that name is there. */
+	ensureNetwork(name: string): Promise<void>;
+	/** Every running container publishing `port` on the host. */
+	publishers(port: number): Promise<PortHolder[]>;
+}
+
+/**
+ * The host ports a `docker ps` Ports column publishes: `0.0.0.0:443->443/tcp,
+ * [::]:443->443/tcp, 0.0.0.0:9000-9001->9000-9001/tcp`.
+ */
+export function publishedPorts(column: string): number[] {
+	const ports = new Set<number>();
+	for (const match of column.matchAll(
+		/(?:[\d.]+|\[[^\]]*\]):(\d+)(?:-(\d+))?->/g,
+	)) {
+		const first = Number(match[1]);
+		const last = match[2] ? Number(match[2]) : first;
+		for (let port = first; port <= last; port++) ports.add(port);
+	}
+	return [...ports];
+}
+
+/** Each line `docker ps` printed, as the containers holding `port`. */
+export function portHolders(output: string, port: number): PortHolder[] {
+	return output
+		.split('\n')
+		.filter(Boolean)
+		.map((line) => line.split('\t'))
+		.filter(([, , , column = '']) => publishedPorts(column).includes(port))
+		.map(([container = '', project, service]) => ({
+			container,
+			...(project ? { project } : {}),
+			...(service ? { service } : {}),
+		}));
 }
 
 /** How long a stack has to pass its health checks. */
@@ -330,4 +373,36 @@ export const dockerCompose: ComposeDocker = {
 		}
 		return id || undefined;
 	},
+
+	async ensureNetwork(name) {
+		const { code } = await capture('docker', ['network', 'inspect', name]);
+		if (code === 0) return;
+		const created = await capture('docker', ['network', 'create', name]);
+		// Another run may have created it between the two calls.
+		if (created.code !== 0 && !/already exists/.test(created.stderr)) {
+			throw new NetworkCreateFailed(name, created.stderr);
+		}
+	},
+
+	async publishers(port) {
+		const { stdout } = await capture('docker', [
+			'ps',
+			'--format',
+			'{{.Names}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}\t{{.Ports}}',
+		]);
+		return portHolders(stdout, port);
+	},
 };
+
+/** `docker network create` failed. */
+export class NetworkCreateFailed extends Error {
+	constructor(
+		readonly network: string,
+		readonly output: string,
+	) {
+		super(
+			`Could not create the Docker network '${network}' (docker said: ${output.trim() || 'nothing'}). Create it by hand with \`docker network create ${network}\` and run again.`,
+		);
+		this.name = 'NetworkCreateFailed';
+	}
+}

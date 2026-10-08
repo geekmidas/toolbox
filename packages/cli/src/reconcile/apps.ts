@@ -139,6 +139,12 @@ export function sitePublicArgs(
 export function networkEnv(
 	plan: Plan,
 	options: Omit<EnvOptions, 'ports'>,
+	/**
+	 * The name a container is reached by, where it is not its service name —
+	 * a stack behind a shared edge reaches its public services by an alias
+	 * unique on the network the edge shares.
+	 */
+	hostOf: (container: string) => string = (container) => container,
 ): Record<string, string> {
 	const placeholders: Record<string, number> = {};
 	const targets = new Map<number, string>();
@@ -146,7 +152,7 @@ export function networkEnv(
 	for (const container of [...plan.containers].sort()) {
 		for (const port of portsOf(container, plan.fakes)) {
 			placeholders[port.key] = next;
-			targets.set(next, `${container}:${port.inside}`);
+			targets.set(next, `${hostOf(container)}:${port.inside}`);
 			next += 1;
 		}
 	}

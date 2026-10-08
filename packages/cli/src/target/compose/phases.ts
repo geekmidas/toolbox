@@ -45,6 +45,13 @@ import {
 	type StackRef,
 } from '../../compose/docker';
 import {
+	assertEdgePorts,
+	edgeDir,
+	ensureEdge,
+	removeEdgeRoutes,
+	writeEdgeRoutes,
+} from '../../compose/edge';
+import {
 	assertImagesExist,
 	type ImageDigests,
 	pinImages,
@@ -57,6 +64,7 @@ import {
 	withLogsPassword,
 } from '../../compose/logs';
 import { resolveLogs } from '../../compose/logsConfig';
+import { ComposeTlsFileMissing } from '../../compose/proxy';
 import {
 	REDIS_SERVICE,
 	runsRedis,
@@ -68,9 +76,11 @@ import {
 	composeStack,
 	EDGE_PORT_ENV,
 	envFile,
+	LOG_ROTATION,
 	type StackApp,
 	stackDir,
 } from '../../compose/stack';
+import { EDGE_PROJECT, EDGE_SERVICE } from '../../compose/traefik';
 import { reportDevServices } from '../../deploy/devServices';
 import type { ResourceChange } from '../../deploy/events';
 import { withGeneratedSecrets } from '../../deploy/generated.js';
@@ -408,6 +418,14 @@ export async function validateCompose(
 		]);
 	}
 
+	// The stage's own certificate is read when the stack starts; one that is
+	// not there stops the run here, before anything is written or started.
+	if (stack.tls && !push) {
+		for (const file of [stack.tls.certFile, stack.tls.keyFile]) {
+			if (!existsSync(file)) throw new ComposeTlsFileMissing(stage, file);
+		}
+	}
+
 	if (stack.redis && !stack.local) ctx.secrets.mask(stack.redis.password);
 
 	// The log UI's root login and the header every backend signs in with:
@@ -628,7 +646,10 @@ export async function planCompose(
 	}
 	if (!run.push) {
 		planned({
-			key: 'service:caddy',
+			key:
+				run.stack.proxy === 'caddy'
+					? 'service:caddy'
+					: `service:${EDGE_PROJECT}/${EDGE_SERVICE}`,
 			resourceType: 'service',
 			action: 'ensure',
 		});
@@ -660,8 +681,45 @@ export async function provisionCompose(
 		);
 	}
 
+	// Nothing but the stack's own proxy may hold the edge's ports — checked
+	// before a file is written or a container started.
+	const ports = edgePorts(deps.env);
+	await assertEdgePorts(deps.docker, {
+		project: stack.project,
+		proxy: stack.proxy,
+		ports,
+	});
+
 	run.files = await writeStack(ctx.cwd, run.dir, stack);
 	printPlan(ctx, run);
+
+	// The shared edge, and the network the stack's public services join —
+	// before any of them, MinIO among them, is started.
+	if (stack.proxy === 'traefik') {
+		const dir = edgeDir(deps.env);
+		ctx.logger.info(
+			`\n🌐 Starting the shared edge (${EDGE_PROJECT}) from ${dir}…`,
+		);
+		run.files.push(
+			...(await ensureEdge(deps.docker, {
+				dir,
+				ports,
+				logging: {
+					driver: LOG_ROTATION.driver,
+					options: { ...LOG_ROTATION.options },
+				},
+				...(ref.output ? { output: ref.output } : {}),
+				...(ref.signal ? { signal: ref.signal } : {}),
+			})),
+		);
+		applied(ctx, run, {
+			key: `service:${EDGE_PROJECT}/${EDGE_SERVICE}`,
+			resourceType: 'service',
+			action: 'ensure',
+			id: `${EDGE_PROJECT}/${EDGE_SERVICE}`,
+			via: 'found',
+		});
+	}
 
 	if (stack.infra.length > 0) {
 		ctx.logger.info(`\n🗄️  Starting ${stack.infra.join(', ')}…`);
@@ -843,6 +901,25 @@ export async function releaseCompose(
 	ctx.logger.info('\n🚀 Starting the stack…');
 	await deps.docker.up(ref);
 
+	// Registered with the shared edge once its services are up, so the edge
+	// never routes to a container that is not there yet. A stack on its own
+	// Caddy leaves nothing behind there from a run on the edge.
+	const edge = edgeDir(deps.env);
+	if (stack.proxy === 'traefik' && stack.traefik) {
+		const written = await writeEdgeRoutes(
+			edge,
+			stack.project,
+			stack.traefik,
+			stack.tls,
+		);
+		run.files.push(...written);
+		ctx.logger.info(
+			`🌐 Registered ${stack.routes.length} route(s) with ${EDGE_PROJECT}: ${written.at(-1)}`,
+		);
+	} else {
+		await removeEdgeRoutes(edge, stack.project);
+	}
+
 	if (stack.local) {
 		// Caddy's CA is generated on its first start. Copied out so a process —
 		// `verify` among them — can trust it without installing anything.
@@ -942,11 +1019,23 @@ export async function verifyCompose(
 		? await readFile(caFile(run), 'utf-8').catch(() => undefined)
 		: undefined;
 
-	ctx.logger.info('\n🩺 Checking each app through Caddy…');
+	ctx.logger.info(
+		`\n🩺 Checking each app through ${stack.proxy === 'caddy' ? 'Caddy' : 'the shared edge'}…`,
+	);
+	// The local stage's edge is this machine. So is the shared edge, by
+	// construction — compose starts it here — so it is asked directly, on
+	// its published port, with each host as SNI and Host: what is checked is
+	// its routing and its certificate, whatever DNS or a NAT in front of
+	// the server does with a request from the server to itself.
+	const edge =
+		stack.local || stack.proxy === 'traefik'
+			? {
+					connectTo: '127.0.0.1',
+					...(stack.local ? {} : { connectPort: edgePorts(deps.env).https }),
+				}
+			: undefined;
 	const results = await Promise.all(
-		stack.apps.map((app) =>
-			checkApp(ctx, app, deps, { ca, local: stack.local }),
-		),
+		stack.apps.map((app) => checkApp(ctx, app, deps, { ca, edge })),
 	);
 
 	// A worker has no route through the edge: its own health check, as Docker
@@ -965,7 +1054,9 @@ export async function verifyCompose(
 	const down = results
 		.filter((result) => !result.healthy)
 		.map(({ app, url, last }) => ({ app, url, last }));
-	if (down.length > 0) throw new ComposeAppsUnhealthy(stack.project, down);
+	if (down.length > 0) {
+		throw new ComposeAppsUnhealthy(stack.project, down, stack.proxy);
+	}
 
 	if (stack.logs) reportLogs(ctx, stack.logs, stack.local);
 }
@@ -1052,7 +1143,10 @@ async function checkApp(
 	ctx: ComposeContext,
 	app: StackApp,
 	deps: ComposeDeps,
-	options: { ca: string | undefined; local: boolean },
+	options: {
+		ca: string | undefined;
+		edge?: { connectTo: string; connectPort?: number };
+	},
 ): Promise<{ app: string; url: string; last: string; healthy: boolean }> {
 	const url = `${app.url}${app.kind === 'site' ? '/' : '/health'}`;
 	let last = 'not asked';
@@ -1064,7 +1158,7 @@ async function checkApp(
 			status = await deps.probe({
 				url,
 				...(options.ca ? { ca: options.ca } : {}),
-				...(options.local ? { connectTo: '127.0.0.1' } : {}),
+				...options.edge,
 				timeoutMs: 10_000,
 				signal: ctx.signal,
 			});
@@ -1185,7 +1279,33 @@ async function writeStack(
 	};
 
 	await write(join(dir, 'docker-compose.yml'), composeYaml(stack));
-	await write(join(dir, 'Caddyfile'), stack.caddyfile);
+	// The proxy's configuration: the stack's own Caddy's, or — for reading —
+	// a copy of what the stack registers with the shared edge. The other is
+	// removed, so the directory never shows a proxy the stack does not use.
+	if (stack.caddyfile !== undefined) {
+		await write(join(dir, 'Caddyfile'), stack.caddyfile);
+		await rm(join(dir, 'traefik.yml'), { force: true });
+	} else {
+		await rm(join(dir, 'Caddyfile'), { force: true });
+	}
+	if (stack.traefik !== undefined) {
+		await write(join(dir, 'traefik.yml'), stack.traefik);
+	}
+	// The stage's own certificate, where Caddy mounts it.
+	if (stack.proxy === 'caddy' && stack.tls) {
+		await mkdir(join(dir, 'tls'), { recursive: true, mode: 0o700 });
+		await write(
+			join(dir, 'tls', 'cert.pem'),
+			await readFile(stack.tls.certFile, 'utf-8'),
+		);
+		await write(
+			join(dir, 'tls', 'key.pem'),
+			await readFile(stack.tls.keyFile, 'utf-8'),
+			0o600,
+		);
+	} else {
+		await rm(join(dir, 'tls'), { recursive: true, force: true });
+	}
 	for (const app of [...stack.apps, ...stack.workers]) {
 		if (app.env)
 			await write(join(dir, `${app.name}.env`), envFile(app.env), 0o600);
@@ -1225,7 +1345,7 @@ async function writeStack(
 function composeYaml(stack: ComposeStack): string {
 	const stage = ` --stage ${stack.stage}`;
 	return `# Generated by gkm compose from the construct manifest — do not edit.
-# The ${stack.stage} stage's APIs and sites behind one Caddy, and its workers.
+# The ${stack.stage} stage's APIs and sites behind ${stack.proxy === 'caddy' ? 'one Caddy' : `the shared Traefik edge (${EDGE_PROJECT})`}, and its workers.
 # Each backend and worker reads exactly the keys in its own env file beside
 # this one.
 #

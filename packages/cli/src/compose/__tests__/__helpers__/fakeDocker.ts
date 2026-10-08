@@ -1,5 +1,10 @@
 import { createHash } from 'node:crypto';
-import type { ComposeDocker, ImageLookup, StackRef } from '../../docker';
+import type {
+	ComposeDocker,
+	ImageLookup,
+	PortHolder,
+	StackRef,
+} from '../../docker';
 
 /**
  * Docker, the registry and the health probe as recorders, for asserting the
@@ -9,9 +14,17 @@ import type { ComposeDocker, ImageLookup, StackRef } from '../../docker';
 export interface Call {
 	op: string;
 	args?: unknown;
+	/** An `up` of the shared edge rather than the stack. */
+	edge?: boolean;
 }
 
-export function fakeDocker(options: { registry?: readonly string[] } = {}) {
+export function fakeDocker(
+	options: {
+		registry?: readonly string[];
+		/** What holds each host port, as `docker ps` would say. */
+		holders?: Readonly<Record<number, readonly PortHolder[]>>;
+	} = {},
+) {
 	const calls: Call[] = [];
 	const docker: ComposeDocker = {
 		async lookup(ref): Promise<ImageLookup> {
@@ -27,8 +40,11 @@ export function fakeDocker(options: { registry?: readonly string[] } = {}) {
 			calls.push({ op: 'pull', args: [...services] });
 		},
 		async up(stack, services) {
-			calls.push({ op: 'up', args: services ? [...services] : 'all' });
-			void stack;
+			calls.push({
+				op: 'up',
+				args: services ? [...services] : 'all',
+				...(stack.project === 'gkm-edge' ? { edge: true } : {}),
+			});
 		},
 		async down(stack) {
 			calls.push({ op: 'down', args: stack.project });
@@ -50,6 +66,12 @@ export function fakeDocker(options: { registry?: readonly string[] } = {}) {
 		},
 		async digest(ref) {
 			return `sha256:${ref.length.toString(16).padStart(4, '0')}`;
+		},
+		async ensureNetwork(name) {
+			calls.push({ op: 'network', args: name });
+		},
+		async publishers(port) {
+			return [...(options.holders?.[port] ?? [])];
 		},
 	};
 	return { docker, calls, ops: () => calls.map((call) => call.op) };

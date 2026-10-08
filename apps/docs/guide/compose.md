@@ -2,7 +2,9 @@
 
 `gkm compose` runs a workspace's APIs and sites for one stage as a single
 Docker Compose stack on one machine, with [Caddy](https://caddyserver.com) in
-front serving every app over HTTPS.
+front serving every app over HTTPS — or, on a server that runs several stacks,
+registered with one shared [Traefik](https://traefik.io) edge (see
+[Proxy: Caddy or Traefik](#proxy-caddy-or-traefik)).
 
 ```bash
 gkm compose --stage development         # the local stage, built from this checkout
@@ -56,7 +58,8 @@ and the hosts they answer on all come from what the workspace declares.
   backend's logs and traces — see [Logs](#logs).
 - **One Caddy**, one host per app — and one per file server over the stack's
   MinIO (`https://uploadsserver.<project>.localhost` locally), rewriting to its
-  bucket the way `gkm dev`'s edge does.
+  bucket the way `gkm dev`'s edge does. With `proxy: 'traefik'` the stack runs
+  no Caddy: it registers the same hosts with the server's shared edge.
 
 The databases, roles and grants are created, and each database's migrations
 (`db/<construct>/migrations`) applied, before any app starts — so an app never
@@ -279,7 +282,9 @@ Everything for a stage is in `.gkm/compose/<stage>/` (directory `0700`):
 
 ```
 docker-compose.yml   the stack — compose project <scope>-<stage>
-Caddyfile            one host per app
+Caddyfile            one host per app (proxy: 'caddy')
+traefik.yml          a copy of what the stack registers with the edge (proxy: 'traefik')
+tls/                 the stage's own certificate, where it sets one (proxy: 'caddy')
 api.env              one env file per backend, mode 0600
 auth.env
 openobserve.env      with deploy.compose.logs: its root login, mode 0600
@@ -353,6 +358,124 @@ For the local stage the URLs then carry the port
 The local CA's root is copied to `.gkm/compose/<stage>/caddy-root.crt`; point
 `NODE_EXTRA_CA_CERTS` at it, or trust it in a browser.
 
+## Proxy: Caddy or Traefik
+
+What sits in front of a deployed stage's stack is `deploy.compose.proxy`:
+
+```ts
+deploy: {
+  compose: {
+    proxy: 'traefik',                                  // every deployed stage
+    // proxy: { staging: 'traefik', production: 'caddy' }  // or one per stage
+  },
+},
+```
+
+| `proxy` | What serves the stack | Pick it when |
+| --- | --- | --- |
+| `'caddy'` (default) | the stack's own Caddy, on 80 and 443 | the server runs one stack |
+| `'traefik'` | the server's shared Traefik edge, which every stack registers with | the server runs several — two stages, or two projects |
+
+Two stacks with their own Caddy cannot share a server: both want 80 and 443.
+With `'traefik'`, one edge owns those ports, the ACME state and the redirect to
+HTTPS, and each stack adds its hosts to it.
+
+**The local stage always uses Caddy**, whatever is configured: its internal CA
+is the one `gkm trust` installs. A site's image keeps Caddy inside it as its
+file server either way.
+
+Both proxies serve the same routes. A stack's routes are worked out once — each
+host, the service and port behind it, whether it streams, its allowlist and its
+health path — and rendered as a Caddyfile or as Traefik configuration, so the
+two never drift. Either way `Host` and `X-Forwarded-*` reach the app as the
+caller sent them, a streamed response is never buffered, and the log UI's
+public mode answers only its `allow` list (Traefik's `ipAllowList`, matched on
+the connection's own address).
+
+### The shared edge
+
+`gkm compose` starts the edge when a stack needs it and it is not running, and
+leaves it running on `--down`. There is no Docker socket: the edge is
+configured through Traefik's file provider alone. Everything lives in the
+deploy user's gkm home, so nothing needs root:
+
+```
+~/.gkm/edge/                      ($GKM_HOME/edge when GKM_HOME is set)
+  docker-compose.yml              compose project gkm-edge, traefik:v3.7.13 pinned
+  traefik.yml                     entrypoints web (80 → HTTPS) and websecure (443),
+                                  ACME over HTTP-01, no dashboard and no API
+  dynamic/<project>.yml           one per stack: its routers, services, middlewares
+  certs/<project>.crt, .key       a stack's own certificate, where it sets one
+```
+
+- **The network.** The edge and the stacks meet on the external Docker
+  network `gkm-edge`. Only a stack's public services join it — its APIs, its
+  sites, MinIO when a file server routes to it, and OpenObserve when its logs
+  are public. Postgres, Redis and the workers stay on the stack's own network.
+- **Names.** On a shared network every stack's `api` would answer to `api`,
+  so each public service is reached by an alias prefixed with its project —
+  `shop-production-api` — by the edge and by the rest of its own stack alike:
+  an API calls its auth server at `http://shop-production-auth:3001`, and the
+  auth server trusts that origin. Every router, service and middleware in a
+  stack's file is prefixed the same way, so stacks never collide.
+- **A stack's file** is written after its services are up, whole — a
+  temporary file, then a rename the edge picks up — and removed by
+  `gkm compose --down`, which leaves every other stack served.
+- **The edge's ports** are 443 and 80; `GKM_COMPOSE_HTTPS_PORT` and
+  `GKM_COMPOSE_HTTP_PORT` move them, as they move a stack's own Caddy.
+- **`verify`** asks the edge on this machine, on its published port, with each
+  host as SNI and `Host`: it checks the edge routes the host and presents a
+  certificate a client accepts.
+- **Stop the edge**, once no stack uses it:
+  `docker compose -p gkm-edge -f ~/.gkm/edge/docker-compose.yml down`.
+
+### Certificates
+
+A deployed stage gets its certificates from Let's Encrypt on either proxy —
+Traefik over the HTTP-01 challenge on port 80, keeping its account and
+certificates in the edge's `acme` volume. Point the stage's names at the server
+and leave 80 and 443 open.
+
+A stage can bring its own certificate instead — an origin certificate from a
+CDN, one from an internal CA, a wildcard you already have:
+
+```ts
+deploy: {
+  compose: {
+    tls: {
+      production: { certFile: 'certs/origin.pem', keyFile: 'certs/origin.key' },
+    },
+  },
+},
+```
+
+Paths are relative to the workspace root, or absolute; the certificate is PEM
+with its chain. Caddy reads a copy beside its Caddyfile; Traefik gets a copy in
+the edge's `certs/` (the key `0600`) and the stack's file names it. A file that
+is not there fails the run with `ComposeTlsFileMissing` before anything starts,
+a certificate for the local stage with `ComposeTlsOnLocalStage`, and a stage the
+workspace does not have — in `tls` or a per-stage `proxy` — with
+`ComposeStageUnknown`.
+
+### Switching a server from Caddy to the shared edge
+
+A stack that ran with its own Caddy still holds 80 and 443. Moving it is a
+one-time step:
+
+1. Set `proxy: 'traefik'` for the stage.
+2. Stop the stack's Caddy: `docker compose -p <project> stop caddy` (or
+   `gkm compose --stage <stage> --down`, which stops the whole stack).
+3. Run `gkm compose --stage <stage>` again. It starts the edge, which takes
+   80 and 443, and registers the stack; the stack's old Caddy container is
+   removed with it.
+
+Run with Caddy still holding the ports, `gkm compose` refuses before it writes
+or starts anything, with `ComposeProxyClash` naming the container and the
+command that stops it. The reverse is refused the same way: a stage with
+`proxy: 'caddy'` on a server where the shared edge holds 80 and 443. The
+certificates do not move — Traefik obtains its own — so expect each host's
+first request after the switch to wait for one.
+
 ## The phases
 
 | Phase | What it does |
@@ -362,7 +485,7 @@ The local CA's root is copied to `.gkm/compose/<stage>/caddy-root.crt`; point
 | `provision` | the stage's generated secrets kept, the files written, the infrastructure started, its databases, roles, grants and migrations applied |
 | `build` | every image built inside Docker — or, with a tag, pulled. With `--push`, each built image pushed, and the run ends here |
 | `release` | `docker compose up --wait --remove-orphans`, and each app's image recorded |
-| `verify` | each app asked through Caddy over HTTPS — an API at `/health`, a site at `/` — with the certificate verified |
+| `verify` | each app asked through the edge — its own Caddy, or the shared Traefik — over HTTPS: an API at `/health`, a site at `/`, with the certificate verified |
 
 `verify` goes through the edge by hostname, so it proves what `up --wait`
 cannot: that Caddy routes each host and presents a certificate a client
@@ -614,7 +737,7 @@ Everyone on the tailnet opens `http://<machine's tailnet name>:5080`.
 logs: { public: { allow: ['203.0.113.7', '10.0.0.0/8'] } }
 ```
 
-serves it through the stack's Caddy at `https://logs.<stage domain>` (locally
+serves it through the stack's edge at `https://logs.<stage domain>` (locally
 `https://logs.<project>.localhost`, from Caddy's local CA), with a certificate
 like every other host. Caddy answers only the listed addresses — matched on
 the connection's own address, never a header — and every other gets 403. No
@@ -676,7 +799,8 @@ An auth server (`BetterAuth`) checks the origin of every state-changing
 request — a sibling service's included, not only a browser's. Its
 `<ID>_TRUSTED_ORIGINS` lists the public origin of every app that declared an
 edge to it and, for each API among them, that API's **internal** origin on the
-compose network (`http://api:3000`), so a service calling it across the
+compose network (`http://api:3000`, or `http://<project>-api:3000` behind the
+[shared edge](#the-shared-edge)), so a service calling it across the
 network is not rejected. The session cookie's domain is the parent the public
 hosts share (`.example.com`), so the site and the APIs all see the session.
 

@@ -441,7 +441,15 @@ release and `gkm compose --stage <stage> --tag <tag>` the server's — see
 `deploy.compose.logs` runs OpenObserve in the stack and points every backend
 at it, on a loopback port reached through an SSH tunnel — see
 [Logs](./compose.md#logs). A `docker-compose.<stage>.yml` at the workspace
-root is merged over the generated stack. `gkm deploy --target dokploy` passes
+root is merged over the generated stack.
+
+`deploy.compose.proxy` (`'caddy'`, the default, or `'traefik'`, for every
+deployed stage or per stage) chooses what serves a deployed stage: the stack's
+own Caddy, or the server's shared Traefik edge (compose project and network
+`gkm-edge`, configured from `$GKM_HOME/edge`), which `gkm compose` starts when
+needed and `--down` unregisters from. `deploy.compose.tls.<stage>` gives a
+stage its own certificate in place of Let's Encrypt. See
+[Proxy: Caddy or Traefik](./compose.md#proxy-caddy-or-traefik). `gkm deploy --target dokploy` passes
 the same `OTEL_*` keys to its backends.
 
 ### `gkm docker`

@@ -172,6 +172,38 @@ export interface ComposeWorkspaceConfig {
 	 * to it. `true` for the defaults.
 	 */
 	logs?: boolean | ComposeLogsConfig;
+	/**
+	 * What serves a deployed stage's stack: `'caddy'` (the default) — the
+	 * stack's own Caddy on 80/443 — or `'traefik'`, the server's shared
+	 * Traefik edge, which every stack registers its routes with. One value
+	 * for every deployed stage, or one per stage. The local stage is always
+	 * Caddy.
+	 *
+	 * ```ts
+	 * proxy: 'traefik'
+	 * proxy: { staging: 'traefik', production: 'caddy' }
+	 * ```
+	 */
+	proxy?: ComposeProxy | Record<string, ComposeProxy>;
+	/**
+	 * A deployed stage's own certificate, by stage, instead of one from
+	 * Let's Encrypt: a PEM certificate (with its chain) and its key, relative
+	 * to the workspace root or absolute. Either proxy serves it.
+	 *
+	 * ```ts
+	 * tls: { production: { certFile: 'certs/origin.pem', keyFile: 'certs/origin.key' } }
+	 * ```
+	 */
+	tls?: Record<string, ComposeTlsConfig>;
+}
+
+/** The proxies a compose stack can be served by — `deploy.compose.proxy`. */
+export type ComposeProxy = 'caddy' | 'traefik';
+
+/** A stage's own certificate — `deploy.compose.tls.<stage>`. */
+export interface ComposeTlsConfig {
+	certFile: string;
+	keyFile: string;
 }
 
 /** How the stack's OpenObserve is run and reached — `deploy.compose.logs`. */
