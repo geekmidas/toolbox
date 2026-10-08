@@ -1,4 +1,5 @@
 import type amqplib from 'amqplib';
+import { carrierFromAttributes, consumeTraced } from '../telemetry';
 import type { EventSubscriber, PublishableMessage } from '../types';
 import { RabbitMQChannelUnavailable } from './errors';
 import type { RabbitMQConnection } from './RabbitMQConnection';
@@ -97,8 +98,17 @@ export class RabbitMQSubscriber<
 						payload,
 					} as TMessage;
 
-					// Call listener
-					await listener(fullMessage);
+					// Call listener, as a child of the publisher's span
+					await consumeTraced(
+						{
+							system: 'rabbitmq',
+							destination: queue,
+							type: messageType,
+							messageId: msg.properties.messageId,
+						},
+						carrierFromAttributes(msg.properties.headers),
+						() => listener(fullMessage),
+					);
 
 					// Ack message
 					channel.ack(msg);

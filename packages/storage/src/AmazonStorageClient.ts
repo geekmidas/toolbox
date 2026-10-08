@@ -9,6 +9,7 @@ import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import type { Cache } from '@geekmidas/cache';
+import type { Attributes } from '@opentelemetry/api';
 import {
 	type DocumentVersion,
 	type File,
@@ -17,6 +18,7 @@ import {
 	type StorageClient,
 	StorageProvider,
 } from './StorageClient';
+import { type StorageOperation, traceStorage } from './telemetry';
 
 export class AmazonStorageClient implements StorageClient {
 	readonly provider = StorageProvider.AWSS3;
@@ -55,6 +57,19 @@ export class AmazonStorageClient implements StorageClient {
 		readonly cache?: Cache,
 	) {}
 
+	/** A storage span on this bucket. */
+	private traced<T>(
+		operation: StorageOperation,
+		fn: () => Promise<T>,
+		attributes: Attributes = {},
+	): Promise<T> {
+		return traceStorage(
+			operation,
+			{ 'storage.system': 's3', 'storage.bucket': this.bucket, ...attributes },
+			fn,
+		);
+	}
+
 	private createGetObjectCommand(
 		file: File,
 		overrides?: { VersionId?: string },
@@ -78,7 +93,11 @@ export class AmazonStorageClient implements StorageClient {
 
 	getVersionDownloadURL(file: File, versionId: string): Promise<string> {
 		const command = this.createGetObjectCommand(file, { VersionId: versionId });
-		return getSignedUrl(this.client, command, { expiresIn: 60 * 60 * 24 });
+		return this.traced(
+			'presign',
+			() => getSignedUrl(this.client, command, { expiresIn: 60 * 60 * 24 }),
+			{ 'storage.presign.method': 'GET' },
+		);
 	}
 
 	async getVersions(key: string): Promise<DocumentVersion[]> {
@@ -87,7 +106,9 @@ export class AmazonStorageClient implements StorageClient {
 			Prefix: key,
 		});
 
-		const { Versions = [] } = await this.client.send(command);
+		const { Versions = [] } = await this.traced('list', () =>
+			this.client.send(command),
+		);
 
 		return Versions.map((version) => ({
 			id: version.VersionId || '',
@@ -104,7 +125,11 @@ export class AmazonStorageClient implements StorageClient {
 		}
 
 		const command = this.createGetObjectCommand(file);
-		const url = await getSignedUrl(this.client, command, { expiresIn });
+		const url = await this.traced(
+			'presign',
+			() => getSignedUrl(this.client, command, { expiresIn }),
+			{ 'storage.presign.method': 'GET' },
+		);
 		const cacheExpiration = Math.max(expiresIn - 60, 0);
 
 		if (cacheExpiration) {
@@ -125,7 +150,11 @@ export class AmazonStorageClient implements StorageClient {
 			ContentLength: params.contentLength,
 		});
 
-		return getSignedUrl(this.client, command, { expiresIn });
+		return this.traced(
+			'presign',
+			() => getSignedUrl(this.client, command, { expiresIn }),
+			{ 'storage.presign.method': 'PUT' },
+		);
 	}
 
 	async getUpload(
@@ -133,21 +162,26 @@ export class AmazonStorageClient implements StorageClient {
 		expiresIn = 5,
 	): Promise<GetUploadResponse> {
 		const { path } = params;
-		const { fields: values, url } = await createPresignedPost(this.client, {
-			Expires: expiresIn * 60,
-			Bucket: this.bucket,
-			Fields: {
-				acl: this.acl,
-			},
-			Conditions: [
-				// content length restrictions: 0-1MB]
-				// ['content-length-range', 0, contentLength],
-				// specify content-type to be more generic- images only
-				// ['starts-with', '$Content-Type', 'image/'],
-				// ['starts-with', '$Content-Type', contentType],
-			],
-			Key: path,
-		});
+		const { fields: values, url } = await this.traced(
+			'presign',
+			() =>
+				createPresignedPost(this.client, {
+					Expires: expiresIn * 60,
+					Bucket: this.bucket,
+					Fields: {
+						acl: this.acl,
+					},
+					Conditions: [
+						// content length restrictions: 0-1MB]
+						// ['content-length-range', 0, contentLength],
+						// specify content-type to be more generic- images only
+						// ['starts-with', '$Content-Type', 'image/'],
+						// ['starts-with', '$Content-Type', contentType],
+					],
+					Key: path,
+				}),
+			{ 'storage.presign.method': 'POST' },
+		);
 
 		const keys = Object.keys(values);
 		const fields = keys.map((key) => ({ key, value: values[key] || '' }));
@@ -171,7 +205,10 @@ export class AmazonStorageClient implements StorageClient {
 
 		const command = new PutObjectCommand(params);
 
-		await this.client.send(command);
+		await this.traced('put', () => this.client.send(command), {
+			'storage.object.size': Body.length,
+			'storage.object.content_type': contentType,
+		});
 	}
 
 	async delete(key: string): Promise<void> {
@@ -180,7 +217,7 @@ export class AmazonStorageClient implements StorageClient {
 			Key: key,
 		});
 
-		await this.client.send(command);
+		await this.traced('delete', () => this.client.send(command));
 	}
 }
 

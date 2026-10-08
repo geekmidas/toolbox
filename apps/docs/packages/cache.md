@@ -122,6 +122,20 @@ await cache.set('auth_token', 'secret-token');
 const token = await cache.get('auth_token');
 ```
 
+## Tracing
+
+The Redis (`redis://`, `rediss://`) and Postgres (`postgres://`) drivers record
+a CLIENT span per call through the global OpenTelemetry tracer — a no-op
+unless a provider is registered:
+
+| Span | Attributes |
+| --- | --- |
+| `cache.get` | `db.system` (`redis` or `postgresql`), `cache.operation`, `cache.hit` |
+| `cache.set` | `db.system`, `cache.operation` |
+| `cache.delete` | `db.system`, `cache.operation` |
+
+Never the key or the value: a key often names a user.
+
 ## Usage with Rate Limiting
 
 ```typescript

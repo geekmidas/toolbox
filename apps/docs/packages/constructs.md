@@ -1926,6 +1926,33 @@ Crons are found by the same `constructs` glob as everything else in
 
 When the project deploys with SST (`deploy: { default: 'sst' }`), `gkm build` compiles each cron into its own Lambda handler under `<app>/.gkm/aws/crons/`, with its schedule expression in the manifest at `.gkm/manifest/aws.ts`. `fromManifest` from `@geekmidas/cloud/sst` turns it into an EventBridge rule; another IaC tool can read the same manifest.
 
+## Tracing
+
+The constructs record their own spans through the global OpenTelemetry tracer,
+so they are a no-op unless a provider is registered (a production entry
+registers one when `OTEL_EXPORTER_OTLP_ENDPOINT` is set):
+
+| Span | Kind | Attributes |
+| --- | --- | --- |
+| `<operation> <table>` (e.g. `select orders`), or `db.query` | CLIENT | `db.system` (`postgresql`), `db.name`, `db.operation`, `db.sql.table`, `server.address`, `server.port`, and `db.statement` |
+| `cron <name>` | INTERNAL, a root | `gkm.cron.name`, `gkm.cron.schedule` |
+| `<Api>.<method>` for an `ExternalApi` client | INTERNAL | `gkm.external_api.name`, `gkm.external_api.method`, `server.address` |
+| `<queue> process`, `<topic> process` | CONSUMER | see [`@geekmidas/events`](./events.md#trace-context) |
+
+- **Database queries** get a span each from the pool a `KyselyDatabase` opens:
+  `pg` is bundled into a production entry, where instrumentation cannot hook
+  it, so the client is wrapped explicitly, as the query tags are. The
+  statement text is recorded only for a parameterized query — values passed
+  separately, as Kysely always does — and truncated to 2048 characters.
+  Parameter values never are.
+- **Each worker job** — a queue message, a subscriber's event — runs inside a
+  CONSUMER span that continues the trace of the request that published it, on
+  a server and in a Lambda alike.
+- **Each cron run** is a trace of its own.
+- **`ExternalApi`** hands handlers its client wrapped so each method call is a
+  span named for the API. The outbound `fetch` it makes is traced already, and
+  becomes that span's child.
+
 ## Deployment
 
 ### Hono Integration

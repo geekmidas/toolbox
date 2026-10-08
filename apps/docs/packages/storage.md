@@ -165,6 +165,21 @@ Every storage error that carries a URL (`MalformedStorageUrl`,
 userinfo replaced by `REDACTED`, and its message never includes the URL.
 `redactStorageUrl(url)` does the same for your own log lines.
 
+## Tracing
+
+`AmazonStorageClient` records a CLIENT span per call through the global
+OpenTelemetry tracer — a no-op unless a provider is registered:
+
+| Span | From | Attributes beyond `storage.system` (`s3`) and `storage.bucket` |
+| --- | --- | --- |
+| `storage.presign` | `getUploadURL`, `getUpload`, `getDownloadURL`, `getVersionDownloadURL` | `storage.presign.method` (`PUT`, `POST`, `GET`) |
+| `storage.put` | `upload` | `storage.object.size`, `storage.object.content_type` |
+| `storage.delete` | `delete` | |
+| `storage.list` | `getVersions` | |
+
+Never the object's key. A download URL served from the cache records no
+presign span.
+
 ## URL Caching
 
 Presigned download URLs can be cached to avoid regenerating them on every request. Pass a cache instance when creating the storage client:

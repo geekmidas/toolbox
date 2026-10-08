@@ -190,6 +190,14 @@ export function WelcomeEmail({ name, confirmationUrl }: WelcomeEmailProps) {
 
 Templates are rendered to HTML via `@react-email/components`'s `render()` function before sending.
 
+## Tracing
+
+`send` and `sendTemplate` record an `email.send` CLIENT span through the global
+OpenTelemetry tracer — a no-op unless a provider is registered — with
+`email.transport` (`smtp`), `email.recipients` (to, cc and bcc together),
+`email.template` for a template, and `email.accepted`/`email.rejected` when the
+transport reports them. Never an address, a subject or a body.
+
 ## Advanced Configuration
 
 ### DKIM Signing

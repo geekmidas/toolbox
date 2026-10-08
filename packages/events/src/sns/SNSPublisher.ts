@@ -1,4 +1,5 @@
 import { PublishCommand } from '@aws-sdk/client-sns';
+import { carrierAsAttributes, publishTraced } from '../telemetry';
 import type { EventPublisher, PublishableMessage } from '../types';
 import type { SNSConnection } from './SNSConnection';
 
@@ -33,11 +34,24 @@ export class SNSPublisher<TMessage extends PublishableMessage<string, any>>
 			await this.connection.connect();
 		}
 
-		// Publish all messages
-		await Promise.all(messages.map((message) => this.publishMessage(message)));
+		const topicArn = this.connection.topicArn;
+		const destination = topicArn.split(':').pop() ?? topicArn;
+		await publishTraced(
+			messages,
+			(message) => ({ system: 'aws_sns', destination, type: message.type }),
+			(carriers) =>
+				Promise.all(
+					messages.map((message, i) =>
+						this.publishMessage(message, carriers[i]),
+					),
+				),
+		);
 	}
 
-	private async publishMessage(message: TMessage): Promise<void> {
+	private async publishMessage(
+		message: TMessage,
+		carrier: Record<string, string> | undefined,
+	): Promise<void> {
 		const command = new PublishCommand({
 			TopicArn: this.connection.topicArn,
 			Message: JSON.stringify({
@@ -49,6 +63,9 @@ export class SNSPublisher<TMessage extends PublishableMessage<string, any>>
 					DataType: 'String',
 					StringValue: message.type,
 				},
+				// The trace context as message attributes: SNS hands them on to
+				// an SQS subscription's envelope, an HTTP push and a Lambda record.
+				...carrierAsAttributes(carrier),
 			},
 		});
 

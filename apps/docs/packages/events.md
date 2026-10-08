@@ -343,6 +343,51 @@ by the queue.
 through the `<ID>_PUBLISHER_CONNECTION_STRING` of the topic or queue it
 consumes — no manual configuration needed. See [Dev Server](#dev-server).
 
+## Trace context
+
+Every driver carries the OpenTelemetry trace context across the broker, so a
+request, the message it publishes and the job that handles it are one trace.
+It works whenever an OpenTelemetry provider is registered — as a production
+entry does when `OTEL_EXPORTER_OTLP_ENDPOINT` is set — and is a no-op
+otherwise: without a provider and propagator nothing is added to a message.
+
+- **On publish**, each message gets a PRODUCER span, `<destination> publish`,
+  as a child of whatever span is active, and that span's context is injected
+  through the global propagator (W3C `traceparent`/`tracestate`).
+- **On consume**, the context is extracted and the handler runs inside a
+  CONSUMER span, `<destination> process`, that is its child. A message with no
+  context, or one that cannot be read, starts a new trace. The context of the
+  poll loop that received the message is never the parent.
+- **Sampling follows the parent.** A sampled publish yields sampled consumer
+  spans; an unsampled one carries the unsampled flag, and the consumer records
+  nothing either.
+
+Spans carry `messaging.system` (`pgboss`, `aws_sqs`, `aws_sns`, `rabbitmq`,
+`basic`), `messaging.destination.name`, `messaging.operation`
+(`publish`/`process`), `messaging.message.id` where the broker has one, and
+`gkm.event.type`.
+
+Where the context travels:
+
+| Broker | Carrier |
+| --- | --- |
+| SQS | Message attributes `traceparent`, `tracestate` |
+| SNS | Message attributes — handed on to an SQS subscription's envelope, an HTTP push and a Lambda record |
+| RabbitMQ | Message headers |
+| pg-boss | The job's data, under the reserved key `__gkmTrace` |
+| basic | Beside the message, as the emitter's second argument |
+
+pg-boss jobs have no header field, so the context goes in the job's data under
+`__gkmTrace` — and only when the payload is a plain object; any other payload
+is sent as it is and starts its own trace when consumed. The subscriber removes
+the key before the handler sees the payload, so a handler never sees it. Don't
+use `__gkmTrace` as a field of your own messages.
+
+A Lambda consumer (`AWSLambdaQueue`, `AWSLambdaSubscriber`) reads the same
+attributes from its records. A batch of one record continues its producer; a
+larger batch is one CONSUMER span that starts its own trace and links to each
+record's producer.
+
 ## CLI Integration
 
 ### Event Backend Setup

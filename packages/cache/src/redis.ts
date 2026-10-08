@@ -16,37 +16,44 @@
 import { Redis } from 'ioredis';
 import type { Cache } from './index';
 import type { CacheDriver } from './registry';
+import { traceCache } from './telemetry';
 
 export class RedisCache implements Cache {
 	constructor(private readonly client: Redis) {}
 
 	async get<T>(key: string): Promise<T | undefined> {
-		const value = await this.client.get(key);
-		if (value === null) return undefined;
+		return traceCache('redis', 'get', async () => {
+			const value = await this.client.get(key);
+			if (value === null) return undefined;
 
-		try {
-			return JSON.parse(value) as T;
-		} catch {
-			// Written by something that did not go through `set`. Returning the
-			// raw string is more useful than throwing on a value somebody put
-			// there on purpose.
-			return value as unknown as T;
-		}
+			try {
+				return JSON.parse(value) as T;
+			} catch {
+				// Written by something that did not go through `set`. Returning the
+				// raw string is more useful than throwing on a value somebody put
+				// there on purpose.
+				return value as unknown as T;
+			}
+		});
 	}
 
 	async set<T>(key: string, value: T, ttl?: number): Promise<void> {
-		const encoded = JSON.stringify(value);
+		return traceCache('redis', 'set', async () => {
+			const encoded = JSON.stringify(value);
 
-		if (ttl === undefined) {
-			await this.client.set(key, encoded);
-			return;
-		}
+			if (ttl === undefined) {
+				await this.client.set(key, encoded);
+				return;
+			}
 
-		await this.client.set(key, encoded, 'EX', ttl);
+			await this.client.set(key, encoded, 'EX', ttl);
+		});
 	}
 
 	async delete(key: string): Promise<void> {
-		await this.client.del(key);
+		return traceCache('redis', 'delete', async () => {
+			await this.client.del(key);
+		});
 	}
 
 	async ttl(key: string): Promise<number> {

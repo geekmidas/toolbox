@@ -38,9 +38,11 @@
 		"access": "public"
 	},
 	"dependencies": {
+		"@opentelemetry/api": "~1.9.1",
 		"nodemailer": "~10.0.10"
 	},
 	"devDependencies": {
+		"@opentelemetry/sdk-trace-node": "~2.11.0",
 		"@types/nodemailer": "~8.0.2",
 		"@types/react": "~19.3.0",
 		"@types/react-dom": "~19.3.0",

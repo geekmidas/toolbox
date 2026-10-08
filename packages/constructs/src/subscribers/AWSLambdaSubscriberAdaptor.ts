@@ -1,6 +1,6 @@
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import { wrapError } from '@geekmidas/errors';
-import type { EventPublisher } from '@geekmidas/events';
+import { consumeBatchTraced, type EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceRecord } from '@geekmidas/services';
@@ -8,6 +8,7 @@ import { runWithRequestContext } from '@geekmidas/services';
 import middy, { type MiddlewareObj } from '@middy/core';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Context, Handler, SNSEvent, SQSEvent } from 'aws-lambda';
+import { recordCarrier } from '../tracing';
 import {
 	runSubscriber,
 	subscribedEvents,
@@ -161,9 +162,23 @@ export class AWSLambdaSubscriber<
 			}) as TLogger;
 
 			const operation = `subscriber ${this.subscriber.topicName ?? context.functionName}`;
+			// One CONSUMER span for the batch: a child of the publisher's span
+			// when it is one record, linked to each when it is several.
+			const records = ((event as { Records?: unknown[] })?.Records ??
+				[]) as unknown[];
 			return runWithRequestContext(
 				{ logger, requestId, startTime, operation },
-				() => chain(event as Parameters<typeof chain>[0], context),
+				() =>
+					consumeBatchTraced(
+						{
+							system: (records[0] as { Sns?: unknown })?.Sns
+								? 'aws_sns'
+								: 'aws_sqs',
+							destination: this.subscriber.topicName ?? context.functionName,
+						},
+						records.map(recordCarrier),
+						() => chain(event as Parameters<typeof chain>[0], context),
+					),
 			);
 		};
 

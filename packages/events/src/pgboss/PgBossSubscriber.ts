@@ -1,3 +1,4 @@
+import { consumeTraced, withoutTraceKey } from '../telemetry';
 import type { EventSubscriber, PublishableMessage } from '../types';
 import { PgBossNotStarted, PgBossSubscriptionNeedsName } from './errors';
 import type { PgBossConnection } from './PgBossConnection';
@@ -86,10 +87,21 @@ export class PgBossSubscriber<TMessage extends PublishableMessage<string, any>>
 				work,
 				async (jobs) => {
 					for (const job of jobs) {
-						await listener({
-							type: job.data.type,
-							payload: job.data.payload,
-						} as TMessage);
+						const { data, carrier } = withoutTraceKey(job.data);
+						await consumeTraced(
+							{
+								system: 'pgboss',
+								destination: topic,
+								type: data.type,
+								messageId: job.id,
+							},
+							carrier,
+							() =>
+								listener({
+									type: data.type,
+									payload: data.payload,
+								} as TMessage),
+						);
 					}
 				},
 			);
@@ -100,12 +112,19 @@ export class PgBossSubscriber<TMessage extends PublishableMessage<string, any>>
 			await boss.createQueue(messageType);
 			await boss.work(messageType, work, async (jobs) => {
 				for (const job of jobs) {
-					const fullMessage = {
-						type: job.name,
-						payload: job.data,
-					} as TMessage;
-
-					await listener(fullMessage);
+					// The trace context is taken out of the data here, so the
+					// handler's payload is exactly what was published.
+					const { data, carrier } = withoutTraceKey(job.data);
+					await consumeTraced(
+						{
+							system: 'pgboss',
+							destination: messageType,
+							type: job.name,
+							messageId: job.id,
+						},
+						carrier,
+						() => listener({ type: job.name, payload: data } as TMessage),
+					);
 				}
 			});
 		}

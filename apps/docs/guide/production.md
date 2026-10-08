@@ -390,11 +390,22 @@ signals that matter most are sent by explicit code instead:
   with `pino()` directly gets the same with
   `hooks: { streamWrite: otelStreamWrite }` from `@geekmidas/logger/otel`.
 
+- **The constructs' own spans.** Each construct records spans through the
+  global tracer, so they reach the bundle's provider like the request's do: a
+  CLIENT span per database query (`select orders`, with `db.system`, `db.name`,
+  `db.operation` and `db.sql.table` — never a parameter value), cache and
+  storage calls, email sends and `ExternalApi` calls. Each package's page lists
+  its spans.
+- **One trace across a queue.** A publish is a PRODUCER span whose context
+  travels in the message; the worker's job is a CONSUMER span that continues
+  it, so a request, the job it enqueued and that job's queries are one trace —
+  on pg-boss, SNS, SQS and RabbitMQ. Crons start a trace of their own. See
+  [Trace context](../packages/events.md#trace-context).
+
 The auto-instrumentations still run (without `fs`) for what is loaded at run
 time rather than bundled: outbound `fetch`, DNS and TCP, and the runtime's
-metrics. Database queries are not among them — `pg` is inside the bundle, so
-there are no query spans yet; a query still carries its request's
-`request_id` in its SQL comment.
+metrics. A query also still carries its request's `request_id` in its SQL
+comment.
 
 Install `@geekmidas/telescope` and its `@opentelemetry/*` peer dependencies in
 each app that should export. The build checks they resolve. If they do not,
