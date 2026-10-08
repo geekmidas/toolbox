@@ -82,6 +82,7 @@ import {
 import type { AppDeployResult, DeployResult } from '../../deploy/types';
 import { workerDockerfileOf } from '../../docker/index.js';
 import { WORKER_PORT } from '../../docker/templates.js';
+import { plannedSeeds } from '../../migrate/databases';
 import { output } from '../../output';
 import { workerEnvKeys } from '../../reconcile/apps.js';
 import { constructGlobs } from '../../reconcile/workspace.js';
@@ -97,6 +98,7 @@ import type {
 	NormalizedAppConfig,
 	NormalizedWorkspace,
 } from '../../workspace/types.js';
+import { reportDatabaseRuns, reportPlannedSeeds } from '../seeds';
 import type {
 	DeployFailure,
 	DeployPhaseContext,
@@ -1637,16 +1639,16 @@ function failed(run: DokployRun, appName: string, error: unknown): void {
 }
 
 /**
- * The stage's pending migrations, applied in the deploy's sandbox against
- * each cluster published for them. Nothing is published, and nothing runs,
- * for a project with no migration to apply.
+ * The stage's pending migrations applied, then every seed run, in the
+ * deploy's sandbox against each cluster published for them. Nothing is
+ * published, and nothing runs, for a project with neither.
  */
 async function migrate(run: DokployRun): Promise<void> {
 	const { workspace, manifest, stage, ctx } = run;
 	const { api, endpoint, migrations, declaredClusters } = run.provisioned!;
 	if (migrations.size === 0) return;
 
-	logger.log('\n🗄️  Applying migrations...');
+	logger.log('\n🗄️  Applying migrations and seeds...');
 	const host = serverHostname(endpoint);
 	const urls: Record<string, string> = {};
 	for (const [database, keys] of migrations) {
@@ -1663,7 +1665,7 @@ async function migrate(run: DokployRun): Promise<void> {
 		}
 	}
 
-	const runs = await runMigrations({
+	const ran = await runMigrations({
 		root: workspace.root,
 		stage,
 		manifest,
@@ -1671,13 +1673,23 @@ async function migrate(run: DokployRun): Promise<void> {
 		urls,
 		signal: ctx.signal,
 	});
-	for (const { migrations: folder, applied } of runs) {
-		logger.log(
-			applied.length === 0
-				? `   ✓ ${folder}: up to date`
-				: `   ✓ ${folder}: applied ${applied.join(', ')}`,
-		);
+	for (const { migrations: folder, applied } of ran.migrations) {
+		if (applied.length === 0) logger.log(`   ✓ ${folder}: up to date`);
 	}
+	reportDatabaseRuns(
+		ran.migrations.map(({ construct, migrations: folder, applied }) => ({
+			construct,
+			folder,
+			applied,
+		})),
+		ran.seeds.map(({ construct, seeds: folder, seeded }) => ({
+			construct,
+			folder,
+			seeded,
+		})),
+		(line) => logger.log(`   ${line}`),
+		(event) => ctx.emit(event),
+	);
 }
 
 /**
@@ -2190,6 +2202,15 @@ export async function planDokploy(run: DokployRun): Promise<void> {
 			declaration.kind,
 		);
 	}
+
+	// Every seed runs on every deploy, so what a release would run is what
+	// the folders hold, whatever the database does.
+	reportPlannedSeeds(
+		(await plannedSeeds({ root: workspace.root, manifest })).map(
+			({ target, seeds }) => ({ folder: target.seeds, seeds }),
+		),
+		(line) => logger.log(`   ${line}`),
+	);
 
 	const apps: AppDeployResult[] = [];
 	const urls: Record<string, string> = {};

@@ -1,5 +1,6 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
+import { migrationTargets } from '@geekmidas/manifest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanupDir, createTempDir } from '../../../__tests__/test-helpers';
 import { writeComposeApp } from '../../../compose/__tests__/__helpers__/composeApp';
@@ -10,6 +11,7 @@ import {
 import { ImageTagNotFound } from '../../../compose/images';
 import { deploy } from '../../../deploy/deploy';
 import type { DeployEvent } from '../../../deploy/events';
+import { SeedFailed } from '../../../migrate/databases';
 import type { SqlClient } from '../../../reconcile/provision';
 import { UndeclaredStage } from '../../../workspace/stages';
 import { resolveTarget } from '../../resolve';
@@ -46,6 +48,7 @@ function quiet(): Partial<ComposeDeps> {
 		revision: async () => 'abc1234',
 		sql: () => ({ query: async () => [] }) satisfies SqlClient,
 		migrate: async () => [],
+		seed: async () => [],
 		healthIntervalMs: 0,
 	};
 }
@@ -55,6 +58,98 @@ async function events(run: ReturnType<typeof deploy>): Promise<DeployEvent[]> {
 	for await (const event of run) seen.push(event);
 	return seen;
 }
+
+describe("the stage's migrations and seeds", { timeout: RUN_TIMEOUT }, () => {
+	/** The run's events, with Postgres migrated and seeded by `migrate` and `seed`. */
+	async function deployWith(
+		deps: Partial<ComposeDeps>,
+	): Promise<{ seen: DeployEvent[]; ops: string[] }> {
+		const fake = fakeDocker();
+		const run = deploy({
+			cwd: dir,
+			stage: 'development',
+			target: 'compose',
+			targets: {
+				compose: composeTarget({
+					...quiet(),
+					docker: fake.docker,
+					probe: answering(fake.calls),
+					...deps,
+				}),
+			},
+		});
+		const seen = await events(run);
+		await run.result.catch(() => {});
+		return { seen, ops: fake.ops() };
+	}
+
+	const target = (manifest: Parameters<typeof migrationTargets>[0]) =>
+		migrationTargets(manifest).find((t) => t.id === 'Database')!;
+
+	it('reports what was applied and seeded, before any app is built or started', async () => {
+		const { seen, ops } = await deployWith({
+			migrate: async ({ manifest }) => [
+				{ target: target(manifest), applied: ['20261008120000_notes'] },
+			],
+			seed: async ({ manifest, stage }) => {
+				expect(stage).toBe('development');
+				return [{ target: target(manifest), seeded: ['001_welcome_note'] }];
+			},
+		});
+
+		const types = seen.map((e) => e.type);
+		expect(seen).toContainEqual({
+			type: 'migration.applied',
+			construct: 'Database',
+			folder: 'db/database/migrations',
+			applied: ['20261008120000_notes'],
+		});
+		expect(seen).toContainEqual({
+			type: 'seed.ran',
+			construct: 'Database',
+			folder: 'db/database/seeds',
+			seeded: ['001_welcome_note'],
+		});
+		expect(types.indexOf('migration.applied')).toBeLessThan(
+			types.indexOf('seed.ran'),
+		);
+		expect(types.indexOf('seed.ran')).toBeLessThan(
+			types.indexOf('artifact.built'),
+		);
+		expect(seen).toContainEqual({
+			type: 'log',
+			level: 'info',
+			message: '🌱 db/database/seeds: ran 1',
+		});
+		expect(ops).toContain('probe');
+	});
+
+	it('fails provision on a failing seed, and releases nothing', async () => {
+		const { seen, ops } = await deployWith({
+			seed: async () => {
+				throw new SeedFailed(
+					'Database',
+					'001_welcome_note',
+					new Error('duplicate key value violates unique constraint'),
+				);
+			},
+		});
+
+		expect(seen).toContainEqual({
+			type: 'phase.failed',
+			phase: 'provision',
+			error: {
+				name: 'DeploySeedsFailed',
+				message: expect.stringContaining(
+					"Database's seed '001_welcome_note' failed — duplicate key value",
+				),
+			},
+		});
+		expect(seen.some((e) => e.type === 'artifact.built')).toBe(false);
+		expect(ops).not.toContain('build');
+		expect(ops).not.toContain('probe');
+	});
+});
 
 describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 	it('is built in, runs on a server, migrates, and can run the local stage', async () => {

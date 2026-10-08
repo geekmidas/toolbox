@@ -8,8 +8,9 @@
  *   is asked of the registry first; one missing image stops the run naming
  *   them all, and nothing is written, pulled or started.
  * - The databases exist before the apps do (`provision`). Postgres comes up
- *   alone, its databases, roles and grants are created and its migrations
- *   applied from this machine, and only then do the apps start — so an app
+ *   alone, its databases, roles and grants are created, its migrations
+ *   applied and its seeds run from this machine, and only then do the apps
+ *   start — so an app
  *   never boots against a schema that is not there yet.
  * - What a stage runs is recorded (`release`). Each app's image, the tag it
  *   was released under and the digest it resolved to are written to the
@@ -96,7 +97,12 @@ import { ensureDockerignore } from '../../docker/index.js';
 import { imageLayout } from '../../docker/layout.js';
 import { findBuildRoot } from '../../docker/templates.js';
 import { installedFrom } from '../../generators/drivers.js';
-import { migrateDatabases } from '../../migrate/databases.js';
+import {
+	migrateDatabases,
+	plannedSeeds,
+	SeedFailed,
+	seedDatabases,
+} from '../../migrate/databases.js';
 import { bucketClient, pgClient } from '../../reconcile/clients.js';
 import { primaryPortKey } from '../../reconcile/containers.js';
 import { type ConstructSource, discover } from '../../reconcile/discover.js';
@@ -114,6 +120,11 @@ import { assertNoStaleSecrets } from '../../secrets/stale.js';
 import { initStageSecrets } from '../../secrets/storage.js';
 import type { StageSecrets } from '../../secrets/types.js';
 import type { NormalizedWorkspace } from '../../workspace/types.js';
+import {
+	DeploySeedsFailed,
+	reportDatabaseRuns,
+	reportPlannedSeeds,
+} from '../seeds';
 import type { DeployPhaseContext } from '../types';
 import {
 	ComposeAppsUnhealthy,
@@ -136,6 +147,8 @@ export interface ComposeDeps {
 	buckets: typeof bucketClient;
 	/** Apply the stage's migrations — `migrateDatabases` by default. */
 	migrate: typeof migrateDatabases;
+	/** Run the stage's seeds, after its migrations — `seedDatabases` by default. */
+	seed: typeof seedDatabases;
 	/** Ask one app, through the edge, whether it answers. */
 	probe: HealthProbe;
 	/** How many times each app is asked before it counts as down. */
@@ -301,6 +314,7 @@ export const defaultDeps: ComposeDeps = {
 	sql: pgClient,
 	buckets: bucketClient,
 	migrate: migrateDatabases,
+	seed: seedDatabases,
 	probe: httpsProbe,
 	healthAttempts: 90,
 	healthIntervalMs: 2_000,
@@ -605,6 +619,17 @@ export async function planCompose(
 	run.files = await writeStack(ctx.cwd, run.dir, run.stack);
 	printPlan(ctx, run);
 
+	// A push migrates and seeds nothing; a release runs every seed, every
+	// time, so the list is the same whatever the database holds.
+	if (!run.push && run.stack.infra.includes('postgres')) {
+		reportPlannedSeeds(
+			(
+				await plannedSeeds({ root: ctx.workspace.root, manifest: ctx.manifest })
+			).map(({ target, seeds }) => ({ folder: target.seeds, seeds })),
+			(line) => ctx.logger.info(line),
+		);
+	}
+
 	const planned = (change: ResourceChange) => {
 		run.changes.push(change);
 		ctx.emit({ type: 'resource.planned', ...change });
@@ -768,7 +793,10 @@ async function prepareBuckets(
 	);
 }
 
-/** Create what the plan names in the stack's Postgres, then migrate it. */
+/**
+ * Create what the plan names in the stack's Postgres, migrate it, then run
+ * its seeds — every one, every time, as each construct's owner.
+ */
 async function prepareDatabases(
 	ctx: ComposeContext,
 	run: ComposeRun,
@@ -805,17 +833,39 @@ async function prepareDatabases(
 		master: stack.credential.master,
 		...(stack.credential.seed ? { seed: stack.credential.seed } : {}),
 	});
-	const runs = await deps.migrate({
-		root: workspace.root,
-		manifest,
-		sources,
-		env,
-	});
-	for (const { target, applied } of runs) {
-		if (applied.length > 0) {
-			ctx.logger.info(`🗄️  ${target.migrations}: applied ${applied.length}`);
-		}
-	}
+	const options = { root: workspace.root, manifest, sources, env };
+	const runs = await deps.migrate(options);
+
+	// Seeds after migrations, before any app starts: an app that boots with
+	// its reference data missing fails on the first request that needs it.
+	const seeds = await deps
+		.seed({ ...options, stage: ctx.stage })
+		.catch((error: unknown) => {
+			if (error instanceof SeedFailed) {
+				throw new DeploySeedsFailed(
+					ctx.stage,
+					error.construct,
+					error.seed,
+					error,
+				);
+			}
+			throw error;
+		});
+
+	reportDatabaseRuns(
+		runs.map(({ target, applied }) => ({
+			construct: target.id,
+			folder: target.migrations,
+			applied,
+		})),
+		seeds.map(({ target, seeded }) => ({
+			construct: target.id,
+			folder: target.seeds,
+			seeded,
+		})),
+		(line) => ctx.logger.info(line),
+		(event) => ctx.emit(event),
+	);
 }
 
 // ============================================================================
