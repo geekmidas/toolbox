@@ -149,6 +149,37 @@ export const nightly = jobs
 		},
 	);
 
+	it(
+		'records where each worker’s crons, queues and subscribers are declared, here and in a sandbox',
+		{ timeout: 30_000 },
+		async () => {
+			const patterns = [
+				'constructs/**/*.ts',
+				'endpoints/**/*.ts',
+				'crons/**/*.ts',
+				'queues/**/*.ts',
+			];
+			const here: Record<string, string[]> = {};
+			const there: Record<string, string[]> = {};
+
+			await discover({ patterns, cwd: dir, background: here });
+			await discover({
+				patterns,
+				cwd: dir,
+				background: there,
+				sandbox: new LocalSandbox({ root: dir }),
+			});
+
+			// Each file once, under the worker that runs it — endpoints are no
+			// worker's.
+			expect(Object.keys(here)).toEqual(['Jobs']);
+			expect([...here.Jobs!].sort()).toEqual(
+				[`${dir}/crons/nightly.ts`, `${dir}/queues/receipts.ts`].sort(),
+			);
+			expect([...there.Jobs!].sort()).toEqual([...here.Jobs!].sort());
+		},
+	);
+
 	it('records a queue’s and a subscriber’s own database under their worker', async () => {
 		await createTestFile(
 			dir,

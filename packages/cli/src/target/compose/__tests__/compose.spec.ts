@@ -104,9 +104,11 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 		});
 
 		const built = seen.filter((e) => e.type === 'artifact.built');
+		// The worker's image is built beside the apps'.
 		expect(built.map((e) => (e as { app: string }).app).sort()).toEqual([
 			'api',
 			'auth',
+			'jobs',
 			'web',
 		]);
 		expect(built[0]).toMatchObject({
@@ -121,12 +123,13 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 				'service:postgres',
 				'service:api',
 				'service:auth',
+				'service:jobs',
 				'service:web',
 			]),
 		);
 
 		const checked = seen.filter((e) => e.type === 'health.checked');
-		expect(checked).toHaveLength(3);
+		expect(checked).toHaveLength(4);
 		expect(checked).toContainEqual({
 			type: 'health.checked',
 			app: 'api',
@@ -135,12 +138,20 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 			status: 200,
 			attempt: 1,
 		});
+		// The worker, by its container's own health check.
+		expect(checked).toContainEqual({
+			type: 'health.checked',
+			app: 'jobs',
+			url: 'docker:jobs',
+			healthy: true,
+			attempt: 1,
+		});
 
 		expect(result).toMatchObject({
 			stage: 'development',
 			tag: 'abc1234',
 			dryRun: false,
-			successCount: 3,
+			successCount: 4,
 			urls: { web: 'https://compose-app.localhost' },
 		});
 	});
@@ -254,6 +265,33 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 		).toContain('service:openobserve');
 	});
 
+	it('fails verify when a worker never turns healthy, naming it', async () => {
+		const fake = fakeDocker();
+		const run = deploy({
+			cwd: dir,
+			stage: 'development',
+			target: 'compose',
+			targets: {
+				compose: composeTarget({
+					...quiet(),
+					docker: {
+						...fake.docker,
+						health: async (_stack, service) =>
+							service === 'jobs' ? 'unhealthy' : 'healthy',
+					},
+					probe: answering(fake.calls),
+					healthAttempts: 2,
+				}),
+			},
+		});
+		const error = await run.result.catch((e: unknown) => e);
+
+		expect(error).toBeInstanceOf(ComposeAppsUnhealthy);
+		expect((error as ComposeAppsUnhealthy).apps).toEqual([
+			{ app: 'jobs', url: 'docker:jobs', last: 'unhealthy' },
+		]);
+	});
+
 	it('fails verify when the log UI never turns healthy', async () => {
 		writeComposeApp(dir, { logs: true });
 		const fake = fakeDocker();
@@ -264,7 +302,11 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 			targets: {
 				compose: composeTarget({
 					...quiet(),
-					docker: { ...fake.docker, health: async () => 'unhealthy' },
+					docker: {
+						...fake.docker,
+						health: async (_stack, service) =>
+							service === 'openobserve' ? 'unhealthy' : 'healthy',
+					},
 					probe: answering(fake.calls),
 					healthAttempts: 2,
 				}),

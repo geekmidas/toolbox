@@ -2,7 +2,9 @@ import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { type ConstructManifest, publicEnvFor } from '@geekmidas/manifest';
+import { type WorkerUnit, workerUnits } from '../build/workers.js';
 import { loadWorkspaceConfig } from '../config';
+import { workerBundleName } from '../generators/WorkerGenerator.js';
 import { output } from '../output';
 import { dockerfileOf } from '../reconcile/apps.js';
 import { COMPOSE_PATH } from '../reconcile/index.js';
@@ -24,7 +26,9 @@ import {
 	generateNextjsDockerfile,
 	generateNodeWebDockerfile,
 	generateViteStaticDockerfile,
+	generateWorkerDockerfile,
 	resolveDockerConfig,
+	WORKER_PORT,
 } from './templates';
 
 export { ImageRefInvalid, validateImageRef } from './imageRef';
@@ -129,6 +133,7 @@ export async function dockerCommand(
 		loaded.workspace,
 		loaded.manifest,
 		names,
+		loaded.background,
 	);
 
 	if (options.build) {
@@ -248,6 +253,8 @@ export async function workspaceDockerCommand(
 	manifest?: ConstructManifest,
 	/** Image names other than the app's own. */
 	imageNames: Readonly<Record<string, string>> = {},
+	/** Each Worker's files, from discovery — which app each is built from. */
+	background: Readonly<Record<string, readonly string[]>> = {},
 ): Promise<WorkspaceDockerResult> {
 	const results: AppDockerResult[] = [];
 	const layout = imageLayout(workspace);
@@ -288,6 +295,34 @@ export async function workspaceDockerCommand(
 			type: app.type,
 			dockerfile: dockerfilePath,
 			imageName: imageNames[appName] ?? appName,
+		});
+	}
+
+	// Each Worker with background work: an image of its own, built from the
+	// app whose build writes its entry.
+	for (const worker of manifest
+		? workerUnits(workspace, manifest, background)
+		: []) {
+		logger.log(
+			`\n   📄 Generating Dockerfile for ${worker.name} (worker ${worker.id}, built from ${worker.app})`,
+		);
+		const dockerfile = workerDockerfile(worker, workspace.apps[worker.app]!, {
+			layout,
+			workspaceRoot: workspace.root,
+		});
+		// Always named for the worker: an app at the root has the bare
+		// `Dockerfile`, which this must not overwrite.
+		const path = workerDockerfileOf(worker.name);
+		const dockerfilePath = join(workspace.root, path);
+		await mkdir(dirname(dockerfilePath), { recursive: true });
+		await writeFile(dockerfilePath, dockerfile);
+		logger.log(`      Generated: ${path}`);
+
+		results.push({
+			appName: worker.name,
+			type: 'backend',
+			dockerfile: dockerfilePath,
+			imageName: imageNames[worker.name] ?? worker.name,
 		});
 	}
 
@@ -358,6 +393,36 @@ export function appDockerfile(
 		});
 	}
 	return generateBackendDockerfile({ ...image, healthCheckPath: '/health' });
+}
+
+/** Where `gkm docker` writes a worker's Dockerfile. */
+export function workerDockerfileOf(worker: string): string {
+	return `.gkm/docker/Dockerfile.${worker}`;
+}
+
+/**
+ * A Worker's Dockerfile: its host app's build, and the worker's bundle as the
+ * runner — see `generateWorkerDockerfile`.
+ */
+export function workerDockerfile(
+	worker: WorkerUnit,
+	host: NormalizedAppConfig,
+	options: { layout: ImageLayout; workspaceRoot: string },
+): string {
+	const image = appImageOptions(
+		options.layout,
+		worker.app,
+		host,
+		options.workspaceRoot,
+	);
+	return generateWorkerDockerfile({
+		...image,
+		imageName: worker.name,
+		port: WORKER_PORT,
+		worker: worker.id,
+		bundle: workerBundleName(worker.id),
+		healthCheckPath: '/health',
+	});
 }
 
 /**

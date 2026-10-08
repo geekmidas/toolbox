@@ -21,6 +21,7 @@ import {
 	provisionOrder,
 	publicEnvFor,
 } from '@geekmidas/manifest';
+import { type WorkerUnit, workerUnits } from '../build/workers.js';
 import {
 	assertExternalServices,
 	type DevService,
@@ -34,10 +35,10 @@ import { isMainFrontendApp, resolveHost } from '../deploy/domain.js';
 import { type DeployIdentity, imageRef } from '../deploy/identity.js';
 import { otelEnv } from '../deploy/otel.js';
 import { validateImageRef } from '../docker/imageRef.js';
-import { appDockerfile } from '../docker/index.js';
+import { appDockerfile, workerDockerfile } from '../docker/index.js';
 import { composeBuildPaths, type ImageLayout } from '../docker/layout.js';
-import { TURBO_VERSION } from '../docker/templates.js';
-import { appEnvKeys, networkEnv } from '../reconcile/apps.js';
+import { TURBO_VERSION, WORKER_PORT } from '../docker/templates.js';
+import { appEnvKeys, networkEnv, workerEnvKeys } from '../reconcile/apps.js';
 import { hostFor } from '../reconcile/caddyfile.js';
 import { type ComposeService, composeFor } from '../reconcile/compose.js';
 import { DEFAULT_IMAGES, portKeys } from '../reconcile/containers.js';
@@ -156,6 +157,25 @@ export interface StackApp extends AppImage {
 	env?: Record<string, string>;
 }
 
+/**
+ * A Worker in the stack: its crons, queue consumers and subscribers in a
+ * container of their own. Nothing routes to it and nothing is published —
+ * its one route is the health check Docker asks.
+ */
+export interface StackWorker extends AppImage {
+	/** Its compose service name — `jobs`. */
+	name: string;
+	/** The Worker construct. */
+	id: string;
+	/** The app whose build writes its entry, which its image is built from. */
+	host: string;
+	/** Where its health check answers, inside the container. */
+	port: number;
+	build?: AppBuild;
+	/** Exactly the keys the worker's constructs read. */
+	env?: Record<string, string>;
+}
+
 /** A service as the stack's compose file defines it. */
 export interface StackService {
 	image: string;
@@ -194,6 +214,8 @@ export interface ComposeStack {
 	/** The project's local stage, served with Caddy's internal CA. */
 	local: boolean;
 	apps: StackApp[];
+	/** Each Worker with background work, in a container of its own. */
+	workers: StackWorker[];
 	/** The infrastructure containers, by compose service name. */
 	infra: string[];
 	compose: StackFile;
@@ -234,6 +256,11 @@ export interface StackInput {
 	manifest: ConstructManifest;
 	/** Each owner's runnables' edges, from discovery. */
 	runnables?: Readonly<Record<string, readonly string[]>>;
+	/**
+	 * Each Worker's crons', queues' and subscribers' files, from discovery —
+	 * which workers run, and which app each is built from.
+	 */
+	background?: Readonly<Record<string, readonly string[]>>;
 	stage: string;
 	identity: DeployIdentity;
 	images: {
@@ -291,8 +318,9 @@ export class StageSeedMissing extends Error {
 export class NothingToCompose extends Error {
 	constructor(readonly root: string) {
 		super(
-			`${root} declares no RestApi and no site, so a stack would run nothing. ` +
-				`Workers and mobile apps are not run by gkm compose yet.`,
+			`${root} declares no RestApi, no site and no Worker with work to do, ` +
+				`so a stack would run nothing. Mobile apps ship through their own ` +
+				`toolchain.`,
 		);
 		this.name = 'NothingToCompose';
 	}
@@ -375,7 +403,13 @@ export function composeStack(input: StackInput): ComposeStack {
 		identity,
 		images: input.images,
 	});
-	if (apps.length === 0) throw new NothingToCompose(workspace.root);
+	const workers = stackWorkers(
+		workerUnits(workspace, manifest, input.background ?? {}),
+		{ stage, identity, images: input.images },
+	);
+	if (apps.length === 0 && workers.length === 0) {
+		throw new NothingToCompose(workspace.root);
+	}
 
 	// Which construct each key belongs to, so a key is resolved by what it is
 	// rather than by its spelling.
@@ -402,6 +436,11 @@ export function composeStack(input: StackInput): ComposeStack {
 				? Object.values(publicEnvFor(site, manifest))
 				: [...(appEnvKeys(manifest, app.name, input.runnables) ?? [])],
 		);
+	}
+	for (const worker of workers) {
+		reads.set(worker.name, [
+			...(workerEnvKeys(manifest, worker.id, input.runnables) ?? []),
+		]);
 	}
 	const domain = workspace.deploy?.domains?.[stage];
 
@@ -537,7 +576,7 @@ export function composeStack(input: StackInput): ComposeStack {
 	 * they can hold it, and the derivations otherwise.
 	 */
 	const valueFor = (
-		app: StackApp,
+		app: Pick<StackApp, 'name' | 'id' | 'kind'>,
 		key: string,
 		owner: PlannedResource | undefined,
 	): string | undefined => {
@@ -574,23 +613,11 @@ export function composeStack(input: StackInput): ComposeStack {
 		return outside[key];
 	};
 
-	for (const app of apps) {
-		if (app.kind === 'site') {
-			const site = manifest[app.id];
-			if (site?.kind !== 'site') continue;
-
-			const args: Record<string, string> = {};
-			for (const [key, source] of Object.entries(
-				publicEnvFor(site, manifest),
-			)) {
-				const value = valueFor(app, source, owners.get(source));
-				if (value !== undefined) args[key] = value;
-			}
-			if (app.build && Object.keys(args).length > 0) app.build.args = args;
-			continue;
-		}
-
-		const keys = appEnvKeys(manifest, app.name, input.runnables) ?? new Set();
+	/** Each key one backend process reads, resolved for this stage. */
+	const valuesFor = (
+		app: Pick<StackApp, 'name' | 'id' | 'kind'>,
+		keys: ReadonlySet<string>,
+	): Record<string, string> => {
 		const values: Record<string, string> = {};
 		for (const key of [...keys].sort()) {
 			const owner = owners.get(key) ?? storageOwner(key, plan);
@@ -608,6 +635,27 @@ export function composeStack(input: StackInput): ComposeStack {
 			const value = valueFor(app, key, owner);
 			if (value !== undefined) values[key] = value;
 		}
+		return values;
+	};
+
+	for (const app of apps) {
+		if (app.kind === 'site') {
+			const site = manifest[app.id];
+			if (site?.kind !== 'site') continue;
+
+			const args: Record<string, string> = {};
+			for (const [key, source] of Object.entries(
+				publicEnvFor(site, manifest),
+			)) {
+				const value = valueFor(app, source, owners.get(source));
+				if (value !== undefined) args[key] = value;
+			}
+			if (app.build && Object.keys(args).length > 0) app.build.args = args;
+			continue;
+		}
+
+		const keys = appEnvKeys(manifest, app.name, input.runnables) ?? new Set();
+		const values = valuesFor(app, keys);
 
 		// The origins Better Auth trusts are the browser's and, now, each
 		// service that calls this surface across the compose network: its CSRF
@@ -640,12 +688,33 @@ export function composeStack(input: StackInput): ComposeStack {
 		}
 	}
 
+	// A worker reaches every surface across the compose network: it is never
+	// one, so no address is its own.
+	for (const worker of workers) {
+		const keys =
+			workerEnvKeys(manifest, worker.id, input.runnables) ?? new Set();
+		worker.env = {
+			...valuesFor(
+				{ name: worker.name, id: worker.id, kind: 'rest-api' },
+				keys,
+			),
+			...otelEnv({ ...custom, ...logs?.appEnv }, worker.name),
+			NODE_ENV: 'production',
+			PORT: String(worker.port),
+			STAGE: stage,
+		};
+		for (const [key, value] of Object.entries(worker.env)) {
+			if (/[\r\n]/.test(value)) throw new EnvValueMultiline(worker.name, key);
+		}
+	}
+
 	const layout = input.layout ?? defaultLayout(workspace.root);
 	const compose = stackFile({
 		project,
 		plan,
 		infra,
 		apps,
+		workers,
 		master: credential.master,
 		...(storage ? { storage } : {}),
 		...(logs ? { logs } : {}),
@@ -688,12 +757,21 @@ export function composeStack(input: StackInput): ComposeStack {
 			{ layout, workspaceRoot: workspace.root, manifest },
 		);
 	}
+	for (const worker of workers) {
+		if (!worker.build) continue;
+		dockerfiles[worker.build.dockerfile] = workerDockerfile(
+			{ id: worker.id, name: worker.name, app: worker.host },
+			workspace.apps[worker.host]!,
+			{ layout, workspaceRoot: workspace.root },
+		);
+	}
 
 	return {
 		project,
 		stage,
 		local,
 		apps,
+		workers,
 		infra,
 		compose,
 		caddyfile,
@@ -826,6 +904,40 @@ function stackApps(
 	return apps.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Each worker's image, and where it is built from. */
+function stackWorkers(
+	units: readonly WorkerUnit[],
+	options: {
+		stage: string;
+		identity: DeployIdentity;
+		images: StackInput['images'];
+	},
+): StackWorker[] {
+	return units.map((unit) => ({
+		app: unit.name,
+		name: unit.name,
+		id: unit.id,
+		host: unit.app,
+		port: WORKER_PORT,
+		ref: validateImageRef(
+			imageRef(
+				options.identity,
+				unit.name,
+				options.images.registry,
+				options.images.tag,
+			),
+		),
+		tag: options.images.tag,
+		...(options.images.mode === 'build'
+			? {
+					build: {
+						dockerfile: `${stackDir(options.stage)}/Dockerfile.${unit.name}`,
+					},
+				}
+			: {}),
+	}));
+}
+
 /**
  * The host an app answers on for a stage: the `gkm dev` edge's
  * `*.localhost` names for the local stage, and the stage's domain — by the
@@ -855,6 +967,7 @@ function stackFile(options: {
 	plan: Plan;
 	infra: readonly string[];
 	apps: readonly StackApp[];
+	workers: readonly StackWorker[];
 	master: string;
 	storage?: StackStorage;
 	logs?: StackLogs;
@@ -972,6 +1085,33 @@ function stackFile(options: {
 		};
 	}
 
+	// A worker: no route, no published port — its health check is Docker's.
+	for (const worker of options.workers) {
+		services[worker.name] = {
+			image: worker.ref,
+			...(worker.build
+				? {
+						build: composeBuildPaths({
+							composeDir: options.composeDir,
+							buildRoot: options.buildRoot,
+							workspaceRoot: options.workspaceRoot,
+							dockerfile: worker.build.dockerfile,
+						}),
+					}
+				: {}),
+			restart: 'unless-stopped',
+			env_file: [{ path: `./${worker.name}.env`, format: 'raw' as const }],
+			...(infra.length
+				? {
+						depends_on: Object.fromEntries(
+							infra.map((name) => [name, HEALTHY]),
+						),
+					}
+				: {}),
+			healthcheck: probe(worker.port, '/health'),
+		};
+	}
+
 	services.caddy = {
 		image: DEFAULT_IMAGES.caddy!,
 		restart: 'unless-stopped',
@@ -1071,9 +1211,38 @@ export function withBuildCredentials(
 		};
 	});
 
+	const workers = stack.workers.map((worker) => {
+		const own = credentials[worker.name];
+		const service = services[worker.name];
+		if (!own || !service?.build) return worker;
+
+		const [key, value] = own.buildArg.split('=') as [string, string];
+		services[worker.name] = {
+			...service,
+			build: {
+				...service.build,
+				args: { ...service.build.args, [key]: value },
+				secrets: [
+					{
+						source: credentialsSecret(worker.name),
+						target: 'gkm_credentials',
+					},
+				],
+			},
+		};
+		secrets[credentialsSecret(worker.name)] = {
+			file: `./${credentialsFile(worker.name)}`,
+		};
+		return {
+			...worker,
+			env: { ...worker.env, GKM_MASTER_KEY: own.masterKey },
+		};
+	});
+
 	return {
 		...stack,
 		apps,
+		workers,
 		compose: {
 			...stack.compose,
 			services,

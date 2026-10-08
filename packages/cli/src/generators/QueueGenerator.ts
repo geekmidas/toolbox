@@ -142,6 +142,12 @@ export async function setupQueues(
   _envParser: EnvironmentParser<any>,
   _logger: Logger,
 ): Promise<void> {}
+
+export function queuesStatus(): { failed: string[]; connections: unknown[] } {
+  return { failed: [], connections: [] };
+}
+
+export async function stopQueues(): Promise<void> {}
 `,
 			);
 			return queuesPath;
@@ -199,17 +205,22 @@ const queues = [
 ${entries}
 ];
 
+// What was opened, and what could not be: a worker's health check reads both,
+// and its shutdown closes what was opened.
+const connections = new Map<string, EventConnection>();
+const failed: string[] = [];
+
 export async function setupQueues(
   envParser: EnvironmentParser<any>,
   logger: Logger,
 ): Promise<void> {
   const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
-  const connections = new Map<string, EventConnection>();
 
   for (const { queue, connectionKey } of queues) {
     const connectionString = process.env[connectionKey];
     if (!connectionString) {
       logger.error({ queue: queue.name, connectionKey }, 'No connection string for this queue');
+      failed.push(queue.name);
       continue;
     }
 
@@ -254,14 +265,24 @@ export async function setupQueues(
       logger.info({ queue: queue.name }, 'Queue consumer started polling');
     } catch (error) {
       logger.error({ err: error, queue: queue.name }, 'Failed to set up queue consumer');
+      failed.push(queue.name);
     }
   }
+}
 
-  const shutdown = () => {
-    for (const connection of connections.values()) void connection.close();
-  };
-  process.once('SIGTERM', shutdown);
-  process.once('SIGINT', shutdown);
+/** The consumers that could not start, and the connections that did. */
+export function queuesStatus(): { failed: string[]; connections: EventConnection[] } {
+  return { failed: [...failed], connections: [...connections.values()] };
+}
+
+/**
+ * Stop polling, let the messages in flight finish, and close each broker
+ * connection — pg-boss's graceful stop does all three. The caller bounds it.
+ */
+export async function stopQueues(): Promise<void> {
+  const open = [...connections.values()];
+  connections.clear();
+  await Promise.all(open.map((connection) => connection.close()));
 }
 `;
 

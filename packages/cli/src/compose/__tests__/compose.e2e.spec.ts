@@ -24,6 +24,11 @@
  *   origin, and from a sibling service's internal origin, and refused from
  *   one nobody declared: the trusted origins are right for both callers.
  *
+ * - (e) a request to the API sends a message to a queue, and the Worker's
+ *   own container — no route, no published port, healthy by its own check —
+ *   consumes it and writes the row the API then reads back; stopped, it
+ *   drains and exits 0 within Docker's timeout.
+ *
  * - (d) with `deploy.compose.logs` (the `gkm compose` run), the API's
  *   telemetry reaches the stack's OpenObserve — published on 127.0.0.1
  *   alone — signed in with the root login the stack generated: a line the
@@ -162,6 +167,8 @@ async function dependOnThisCheckout(
 							'@geekmidas/db',
 							'@geekmidas/envkit',
 							'@geekmidas/errors',
+							// The worker's queue, on pg-boss.
+							'@geekmidas/events',
 							'@geekmidas/logger',
 							'@geekmidas/services',
 						].map((dep) => [dep, tarballs[dep]!]),
@@ -174,6 +181,7 @@ async function dependOnThisCheckout(
 							'hono',
 							'kysely',
 							'pg',
+							'pg-boss',
 							'pino',
 							'zod',
 						].map((dep) => [dep, range(dep)]),
@@ -430,6 +438,7 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				expect(output).toContain(`✓ api`);
 				expect(output).toContain(`✓ auth`);
 				expect(output).toContain(`✓ web`);
+				expect(output).toContain(`✓ jobs`);
 
 				const { state } = JSON.parse(
 					readFileSync(join(dir, '.gkm', 'deploy-development.json'), 'utf-8'),
@@ -437,6 +446,7 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				expect(Object.keys(state.releases).sort()).toEqual([
 					'api',
 					'auth',
+					'jobs',
 					'web',
 				]);
 				expect(state.releases.api.current.ref).toMatch(
@@ -549,6 +559,64 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 
 				expect(await signOutFrom('http://evil.example')).toBe(403);
 				expect(await signOutFrom('http://api:3000')).toBe(200);
+			});
+
+			/** `docker compose <args>` against this stack. */
+			const compose = (...args: string[]) =>
+				exec('docker', ['compose', '-p', project, '-f', file(), ...args]);
+
+			it("(e) the worker's container consumes what the API sends, and the API reads back what it wrote", async () => {
+				// Running and healthy by its own check, with nothing published.
+				const [ps] = (await compose('ps', '--format', 'json', 'jobs'))
+					.trim()
+					.split('\n')
+					.map((line) => JSON.parse(line));
+				expect(ps.State).toBe('running');
+				expect(ps.Health).toBe('healthy');
+				expect(
+					(ps.Publishers ?? []).filter(
+						(p: { PublishedPort: number }) => p.PublishedPort > 0,
+					),
+				).toEqual([]);
+
+				const id = `note-${randomBytes(4).toString('hex')}`;
+				const sent = await edge('api', '/notes', {
+					method: 'POST',
+					body: { id, body: 'from the API' },
+				});
+				expect(sent.status).toBeLessThan(300);
+
+				let read: Response | undefined;
+				for (let attempt = 0; attempt < 60; attempt++) {
+					read = await edge('api', `/notes/${id}`);
+					if (read.status === 200) break;
+					await new Promise((resolve) => setTimeout(resolve, 500));
+				}
+				expect(read?.status).toBe(200);
+				expect(JSON.parse(read!.body)).toEqual({ id, body: 'from the API' });
+
+				// Written in the worker's container, not the API's.
+				expect(await compose('logs', 'jobs')).toContain('Wrote a note');
+				expect(await compose('logs', 'api')).not.toContain('Wrote a note');
+			});
+
+			it('(e) a stopped worker drains and exits 0, inside the stop timeout', async () => {
+				const started = Date.now();
+				await compose('stop', '--timeout', '10', 'jobs');
+				const took = Date.now() - started;
+
+				const container = (await compose('ps', '-a', '-q', 'jobs')).trim();
+				const exitCode = (
+					await exec('docker', [
+						'inspect',
+						'--format',
+						'{{.State.ExitCode}}',
+						container,
+					])
+				).trim();
+				expect(exitCode).toBe('0');
+				expect(took).toBeLessThan(10_000);
+				expect(await compose('logs', 'jobs')).toContain('Worker stopped');
 			});
 
 			it.runIf(entry.logs)(

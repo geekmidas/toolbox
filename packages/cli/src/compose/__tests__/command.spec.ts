@@ -79,6 +79,7 @@ describe('gkm compose --tag', { timeout: RUN_TIMEOUT }, () => {
 		const refs = {
 			api: 'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
 			auth: 'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0',
+			jobs: 'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0',
 			web: 'registry.example.com/acme/compose-app/compose-app-web:v1.4.0-production',
 		};
 		const { docker, ops } = fakeDocker({ registry: [refs.api] });
@@ -90,11 +91,12 @@ describe('gkm compose --tag', { timeout: RUN_TIMEOUT }, () => {
 
 		expect(error).toBeInstanceOf(ImageTagNotFound);
 		expect((error as ImageTagNotFound).refs.sort()).toEqual(
-			[refs.auth, refs.web].sort(),
+			[refs.auth, refs.jobs, refs.web].sort(),
 		);
 		// Asked, and nothing more: no pull, no build, no container touched.
 		expect(new Set(ops())).toEqual(new Set(['lookup']));
-		expect(ops()).toHaveLength(3);
+		// The worker's image is a release's too.
+		expect(ops()).toHaveLength(4);
 		// Nor a file written, nor the stage's secrets generated.
 		expect(existsSync(join(dir, '.gkm', 'compose'))).toBe(false);
 		expect(existsSync(join(dir, '.gkm', 'secrets', 'production.json'))).toBe(
@@ -107,6 +109,7 @@ describe('gkm compose --tag', { timeout: RUN_TIMEOUT }, () => {
 			registry: [
 				'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
 				'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0',
+				'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0',
 				'registry.example.com/acme/compose-app/compose-app-web:v1.4.0-production',
 			],
 		});
@@ -190,6 +193,8 @@ describe(
 				'up',
 				'copyOut',
 				'probe',
+				// The worker has no route: Docker's health check is asked.
+				'health',
 			]);
 			expect(
 				calls.filter((call) => call.op === 'up').map((c) => c.args),
@@ -653,6 +658,7 @@ describe('logs', { timeout: RUN_TIMEOUT }, () => {
 	const registry = [
 		'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
 		'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0',
+		'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0',
 		'registry.example.com/acme/compose-app/compose-app-web:v1.4.0-production',
 	];
 

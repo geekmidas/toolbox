@@ -163,6 +163,12 @@ export async function setupSubscribers(
 ): Promise<(port: number) => Promise<void>> {
   return async () => {};
 }
+
+export function subscribersStatus(): { failed: string[]; connections: unknown[] } {
+  return { failed: [], connections: [] };
+}
+
+export async function stopSubscribers(): Promise<void> {}
 `,
 			);
 			return subscribersPath;
@@ -234,6 +240,11 @@ const subscribers = [
 ${entries}
 ];
 
+// What was opened, and what could not be: a worker's health check reads both,
+// and its shutdown closes what was opened.
+const connections = new Map<string, EventConnection>();
+const failed: string[] = [];
+
 /** The route a subscriber's pushes arrive on. */
 export const SUBSCRIBER_ROUTE = (id: string) => \`/__gkm/subscribers/\${id}\`;
 
@@ -266,7 +277,6 @@ export async function setupSubscribers(
   }
 
   const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
-  const connections = new Map<string, EventConnection>();
   const afterListening: ((port: number) => Promise<void>)[] = [];
 
   for (const { id, subscriber, topic, connectionKey } of subscribers) {
@@ -281,6 +291,7 @@ export async function setupSubscribers(
         { subscriber: id, connectionKey },
         'No connection string for the topic this subscriber is bound to',
       );
+      failed.push(id);
       continue;
     }
 
@@ -334,6 +345,7 @@ ${
           { subscriber: id, connectionKey },
           'This build has no SNS driver: it was built for a target whose broker is not SNS',
         );
+        failed.push(id);
         continue;
       }
 `
@@ -383,14 +395,9 @@ ${
         { err: error, subscriber: id },
         'Failed to set up subscriber',
       );
+      failed.push(id);
     }
   }
-
-  const shutdown = () => {
-    for (const connection of connections.values()) void connection.close();
-  };
-  process.once('SIGTERM', shutdown);
-  process.once('SIGINT', shutdown);
 
   return async (port) => {
     if (afterListening.length === 0) return;
@@ -401,6 +408,21 @@ ${
       });
     }
   };
+}
+
+/** The subscribers that could not start, and the connections that did. */
+export function subscribersStatus(): { failed: string[]; connections: EventConnection[] } {
+  return { failed: [...failed], connections: [...connections.values()] };
+}
+
+/**
+ * Stop polling, let the events in flight finish, and close each broker
+ * connection — pg-boss's graceful stop does all three. The caller bounds it.
+ */
+export async function stopSubscribers(): Promise<void> {
+  const open = [...connections.values()];
+  connections.clear();
+  await Promise.all(open.map((connection) => connection.close()));
 }
 `;
 

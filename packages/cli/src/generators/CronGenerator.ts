@@ -117,6 +117,10 @@ export async function setupCrons(
   _logger: Logger,
 ): Promise<void> {}
 
+export function cronsStatus(): { failed: string[]; connections: unknown[] } {
+  return { failed: [], connections: [] };
+}
+
 export async function stopCrons(): Promise<void> {}
 `,
 			);
@@ -169,6 +173,10 @@ ${entries}
 
 type Stoppable = { stop: () => Promise<void> | void };
 const running: Stoppable[] = [];
+// What a worker's health check reads: the crons that cannot be scheduled, and
+// the broker connection the schedule is kept through.
+const failed: string[] = [];
+const connections: import('@geekmidas/events').EventConnection[] = [];
 
 export async function setupCrons(
   envParser: EnvironmentParser<any>,
@@ -195,6 +203,7 @@ export async function setupCrons(
       // An unrepresentable schedule is a build-time mistake, and failing the
       // process for it would take the HTTP server down with it.
       logger.error({ err: error, cron: name }, 'Cron has no runnable schedule, skipping');
+      failed.push(name);
     }
   }
 
@@ -243,6 +252,7 @@ export async function setupCrons(
         '(EVENT_PUBLISHER_CONNECTION_STRING), and ' +
         (url ? 'the broker configured is not pg-boss.' : 'none is configured.'),
     );
+    failed.push(...prepared.map(({ name }) => name));
     return;
   }
 
@@ -281,12 +291,27 @@ export async function setupCrons(
   }
 
   running.push({ stop: () => connection.close() });
+  connections.push(connection);
   logger.info({ count: prepared.length }, 'Crons scheduled');
 }
 
+/** The crons that cannot be scheduled, and the connection that schedules the rest. */
+export function cronsStatus(): {
+  failed: string[];
+  connections: import('@geekmidas/events').EventConnection[];
+} {
+  return { failed: [...failed], connections: [...connections] };
+}
+
+/**
+ * Stop scheduling, let a firing in flight finish, and close the broker
+ * connection — pg-boss's graceful stop does all three. The caller bounds it.
+ */
 export async function stopCrons(): Promise<void> {
-  await Promise.all(running.map((r) => r.stop()));
+  const open = [...running];
   running.length = 0;
+  connections.length = 0;
+  await Promise.all(open.map((r) => r.stop()));
 }
 `;
 

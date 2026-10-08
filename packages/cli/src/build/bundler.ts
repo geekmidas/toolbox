@@ -18,6 +18,8 @@ export interface BundleOptions {
 	entryPoint: string;
 	/** Output directory for bundled files */
 	outputDir: string;
+	/** The bundle's file name in `outputDir`. Defaults to `server.mjs`. */
+	outfile?: string;
 	/** Minify the output (default: true) */
 	minify: boolean;
 	/** Generate sourcemaps (default: false) */
@@ -124,7 +126,7 @@ export async function bundleServer(
 	// Ensure output directory exists
 	await mkdir(outputDir, { recursive: true });
 
-	const mjsOutput = join(outputDir, 'server.mjs');
+	const mjsOutput = join(outputDir, options.outfile ?? 'server.mjs');
 
 	// Build command-line arguments for esbuild
 	const args = [

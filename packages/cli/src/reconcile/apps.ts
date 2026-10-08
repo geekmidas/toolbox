@@ -242,6 +242,62 @@ export function appEnvKeys(
 		}
 	}
 
+	addEdgeKeys(manifest, edges, keys);
+
+	if (declaration.kind === 'site' || declaration.kind === 'mobile-app') {
+		for (const key of Object.keys(publicEnvFor(declaration, manifest))) {
+			keys.add(key);
+		}
+	}
+
+	return keys;
+}
+
+/**
+ * The keys a Worker's own process reads: what the worker and everything built
+ * from it declared an edge to, the broker its crons schedule through, and the
+ * address of every queue and topic — which of them its consumers and
+ * subscribers are bound to is only known once a build has found them, so a
+ * process that runs them is handed each carrier's.
+ *
+ * `undefined` when no worker has that id.
+ */
+export function workerEnvKeys(
+	manifest: ConstructManifest,
+	workerId: string,
+	/** Each owner's runnables' edges, from discovery — see `DiscoverOptions`. */
+	runnables: Readonly<Record<string, readonly string[]>> = {},
+): Set<string> | undefined {
+	const declaration = manifest[workerId];
+	if (declaration?.kind !== 'worker') return undefined;
+
+	const keys = new Set<string>([
+		...(declaration.provides ?? []),
+		...(declaration.requires ?? []),
+		// A server schedules its crons through the broker.
+		'EVENT_PUBLISHER_CONNECTION_STRING',
+	]);
+	for (const other of Object.values(manifest)) {
+		if (other.kind !== 'queue' && other.kind !== 'topic') continue;
+		for (const key of other.provides ?? []) keys.add(key);
+	}
+	addEdgeKeys(
+		manifest,
+		[
+			...dependenciesOf(declaration).map((edge) => edge.target),
+			...(runnables[workerId] ?? []),
+		],
+		keys,
+	);
+	return keys;
+}
+
+/** What each construct an edge reaches hands the process that reaches it. */
+function addEdgeKeys(
+	manifest: ConstructManifest,
+	edges: readonly string[],
+	keys: Set<string>,
+): void {
 	for (const id of edges) {
 		const target = manifest[id];
 		if (!target) continue;
@@ -277,14 +333,6 @@ export function appEnvKeys(
 			keys.add('AWS_REGION');
 		}
 	}
-
-	if (declaration.kind === 'site' || declaration.kind === 'mobile-app') {
-		for (const key of Object.keys(publicEnvFor(declaration, manifest))) {
-			keys.add(key);
-		}
-	}
-
-	return keys;
 }
 
 /** One compose service per app the workspace runs, behind the apps profile. */
