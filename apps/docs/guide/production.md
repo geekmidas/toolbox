@@ -162,6 +162,30 @@ MinIO keeps every object on one container's disk with no backup. Each run that
 uses one prints a warning and emits a `dev-service.used` event, which a CI
 pipeline can fail on. See [Deploy targets](./deploy-targets.md#mail-and-object-storage).
 
+## The cache
+
+On `gkm compose`, every declared cache — `new Cache('Sessions')` and
+`database.cache('Sessions')` alike — lives in a Redis the stack runs beside
+the apps, on every stage, local and deployed. It is a production service, not
+a dev stand-in: on the compose network only with no published port, bounded at
+256 MB with `allkeys-lru` eviction, persisted to an append-only file on the
+`redis-data` volume, and password protected. A deployed stage's password is
+generated on the first run and kept in its secrets as `REDIS_PASSWORD`; the
+local stage uses a fixed one. Each backend and worker that reads a cache gets
+its URL (`SESSIONS_URL=redis://:…@redis:6379/0`) in its env file, and its image
+registers the Redis cache driver.
+
+To use a managed Redis instead, set the cache's URL in the stage's secrets —
+the stack then runs no Redis for it:
+
+```bash
+gkm secrets:set SESSIONS_URL 'rediss://default:…@cache.example.com:6380' --stage production
+```
+
+Everything in a cache can be rebuilt, so losing the volume loses nothing but
+warm entries. Dokploy keeps today's default — a table in the declared
+database. See [Deploy with Docker Compose → The cache](./compose.md#the-cache).
+
 ## State
 
 A deploy records what it created for each stage: the project and application
