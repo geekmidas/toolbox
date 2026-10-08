@@ -8,10 +8,8 @@ import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import {
 	ConsoleSpanExporter,
-	ParentBasedSampler,
 	type Sampler,
 	type SpanExporter,
-	TraceIdRatioBasedSampler,
 } from '@opentelemetry/sdk-trace-node';
 import {
 	ATTR_SERVICE_NAME,
@@ -24,6 +22,7 @@ import {
 	setGlobalLogProcessor,
 	setGlobalSpanProcessor,
 } from './core';
+import { traceSampler, traceSamplerFromEnv } from './sampler';
 
 /**
  * Options for configuring telemetry
@@ -65,11 +64,13 @@ export interface TelemetryOptions {
 
 	/**
 	 * The fraction of new traces to sample, from 0 to 1. A span whose parent
-	 * was sampled (or not) follows its parent, so a trace is never cut in half.
+	 * in this process was sampled (or not) follows its parent, so a trace is
+	 * never cut in half; a caller's sampled flag is capped at this rate, so a
+	 * request cannot force a trace the stage would not keep (`traceSampler`).
 	 *
 	 * When left out, the standard `OTEL_TRACES_SAMPLER` and
-	 * `OTEL_TRACES_SAMPLER_ARG` decide (e.g. `parentbased_traceidratio` and
-	 * `0.1`); with neither, every trace is sampled.
+	 * `OTEL_TRACES_SAMPLER_ARG` decide — `parentbased_traceidratio` with `0.1`
+	 * is the same capped sampler at 0.1; with neither, every trace is sampled.
 	 */
 	sampleRatio?: number;
 
@@ -166,17 +167,16 @@ function otlpEndpointFromEnv(signal: 'TRACES' | 'LOGS'): boolean {
 }
 
 /**
- * The sampler for an explicit ratio, or undefined to let the SDK read
- * `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG`.
+ * The sampler for an explicit ratio, or for the stage's rate in
+ * `OTEL_TRACES_SAMPLER_ARG` — or undefined to let the SDK read any other
+ * `OTEL_TRACES_SAMPLER` itself.
  */
 function samplerFor(sampleRatio: number | undefined): Sampler | undefined {
-	if (sampleRatio === undefined) return undefined;
+	if (sampleRatio === undefined) return traceSamplerFromEnv();
 	if (!Number.isFinite(sampleRatio) || sampleRatio < 0 || sampleRatio > 1) {
 		throw new InvalidSampleRatio(sampleRatio);
 	}
-	return new ParentBasedSampler({
-		root: new TraceIdRatioBasedSampler(sampleRatio),
-	});
+	return traceSampler(sampleRatio);
 }
 
 /**

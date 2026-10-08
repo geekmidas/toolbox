@@ -23,7 +23,7 @@ import {
 import { devCommand, execCommand } from './dev/index';
 import { type DockerOptions, dockerCommand } from './docker/index';
 import { type InitOptions, initCommand } from './init/index';
-import { openapiCommand } from './openapi';
+import { openapiCommand, parseTelemetryFlag } from './openapi';
 import {
 	secretsImportCommand,
 	secretsInitCommand,
@@ -454,13 +454,21 @@ program
 		'--app <name>',
 		'Workspace mode: generate for a single named backend app',
 	)
-	.action(async (options: { app?: string }) => {
+	.option(
+		'--telemetry [sampleRate]',
+		"Generated clients send W3C trace context to their API by default, at the stage's sample rate (0-1, default 1)",
+	)
+	.action(async (options: { app?: string; telemetry?: boolean | string }) => {
 		try {
 			const globalOptions = program.opts();
 			if (globalOptions.cwd) {
 				process.chdir(globalOptions.cwd);
 			}
-			await openapiCommand({ app: options.app });
+			const telemetry = parseTelemetryFlag(options.telemetry);
+			await openapiCommand({
+				app: options.app,
+				...(telemetry !== undefined ? { telemetry } : {}),
+			});
 		} catch (error) {
 			console.error(formatError(error));
 			process.exit(1);

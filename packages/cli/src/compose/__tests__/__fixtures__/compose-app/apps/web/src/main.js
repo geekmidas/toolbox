@@ -11,8 +11,14 @@ const config = {
 const app = document.querySelector('#app');
 if (app) app.textContent = JSON.stringify(config);
 
-// Every route this page calls is public.
-const api = createApi({ baseURL: config.api, authStrategies: {} });
+// Every route this page calls is public. Trace context on, said here: a
+// page view's trace id goes to the API on every request, so the API's span
+// continues the page's trace.
+const api = createApi({
+	baseURL: config.api,
+	authStrategies: {},
+	telemetry: true,
+});
 
 const ping = document.querySelector('#ping');
 api('GET /ping').then(

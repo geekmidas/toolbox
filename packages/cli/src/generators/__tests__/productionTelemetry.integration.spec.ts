@@ -34,6 +34,7 @@ interface OtlpSpan {
 	status?: { code?: number };
 	attributes: { key: string; value: Record<string, unknown> }[];
 	events?: { name: string }[];
+	links?: { traceId: string; spanId: string }[];
 }
 
 interface OtlpLog {
@@ -176,6 +177,9 @@ afterAll(async () => {
 	await new Promise((resolve) => receiver.close(resolve));
 });
 
+/** The API's one site. */
+const SITE = 'https://web.example.com';
+
 const freePort = () =>
 	new Promise<number>((resolve) => {
 		const server = createServer().listen(0, () => {
@@ -185,7 +189,9 @@ const freePort = () =>
 	});
 
 /** The bundle, started with node alone; resolves once /health answers. */
-async function start(): Promise<{ port: number; child: ChildProcess }> {
+async function start(
+	env: Record<string, string> = {},
+): Promise<{ port: number; child: ChildProcess }> {
 	const port = await freePort();
 	const child = spawn(process.execPath, [bundle], {
 		// Somewhere with no node_modules: everything comes from the bundle.
@@ -196,6 +202,9 @@ async function start(): Promise<{ port: number; child: ChildProcess }> {
 			OTEL_EXPORTER_OTLP_ENDPOINT: collector,
 			// Nothing else configures the app; it is told so.
 			NODE_ENV: 'production',
+			// Its site, as the graph composes it: CORS and trace trust.
+			API_TRUSTED_ORIGINS: SITE,
+			...env,
 		},
 		stdio: ['ignore', 'pipe', 'pipe'],
 	});
@@ -317,6 +326,45 @@ describe(
 			expect(log.traceId).toBe(traceId);
 		});
 
+		it("continues a trace from the API's own site", async () => {
+			const traceId = '5bf92f3577b34da6a3ce929d0e0e4736';
+			const parent = '10f067aa0ba902b7';
+
+			await fetch(`http://localhost:${server.port}/orders/ord_site`, {
+				headers: { origin: SITE, traceparent: `00-${traceId}-${parent}-01` },
+			});
+
+			const span = await until(() =>
+				spans.find(
+					(s) => attr(s.attributes, 'url.path') === '/orders/ord_site',
+				),
+			);
+			expect(span.traceId).toBe(traceId);
+			expect(span.parentSpanId).toBe(parent);
+		});
+
+		it('starts a linked trace for an origin that is not its own', async () => {
+			const traceId = '6bf92f3577b34da6a3ce929d0e0e4736';
+			const parent = '20f067aa0ba902b7';
+
+			await fetch(`http://localhost:${server.port}/orders/ord_other`, {
+				headers: {
+					origin: 'https://evil.example.net',
+					traceparent: `00-${traceId}-${parent}-01`,
+				},
+			});
+
+			const span = await until(() =>
+				spans.find(
+					(s) => attr(s.attributes, 'url.path') === '/orders/ord_other',
+				),
+			);
+			expect(span.traceId).not.toBe(traceId);
+			expect(span.parentSpanId ?? '').toBe('');
+			expect(span.links?.[0]?.traceId).toBe(traceId);
+			expect(span.links?.[0]?.spanId).toBe(parent);
+		});
+
 		it('marks a thrown error as an ERROR span with the exception', async () => {
 			const response = await fetch(`http://localhost:${server.port}/boom`);
 			expect(response.status).toBe(500);
@@ -338,6 +386,56 @@ describe(
 			).not.toContain('GET /health');
 			expect(
 				spans.filter((s) => attr(s.attributes, 'url.path') === '/health'),
+			).toEqual([]);
+		});
+	},
+);
+
+describe(
+	"a bundled production server at the stage's sample rate",
+	{ timeout: 60_000 },
+	() => {
+		let server: { port: number; child: ChildProcess };
+
+		beforeAll(async () => {
+			server = await start({
+				OTEL_TRACES_SAMPLER: 'parentbased_traceidratio',
+				OTEL_TRACES_SAMPLER_ARG: '0',
+			});
+		}, 40_000);
+
+		afterAll(() => {
+			server?.child.kill('SIGKILL');
+		});
+
+		it("does not let a site's sampled flag force a trace the stage would not keep", async () => {
+			const traceId = '7bf92f3577b34da6a3ce929d0e0e4736';
+
+			const response = await fetch(
+				`http://localhost:${server.port}/orders/ord_capped`,
+				{
+					headers: {
+						origin: SITE,
+						traceparent: `00-${traceId}-30f067aa0ba902b7-01`,
+					},
+				},
+			);
+			expect(response.status).toBe(200);
+
+			// Logs are not sampled: the handler's arrives, in the site's trace.
+			const log = await until(() =>
+				logs.find((l) => attr(l.attributes, 'orderId') === 'ord_capped'),
+			);
+			expect(log.traceId).toBe(traceId);
+			// Spans are batched every 5s: wait out one whole interval, after
+			// which nothing of this request may have been exported.
+			await new Promise((r) => setTimeout(r, 6000));
+			expect(
+				spans.filter(
+					(s) =>
+						s.traceId === traceId ||
+						attr(s.attributes, 'url.path') === '/orders/ord_capped',
+				),
 			).toEqual([]);
 		});
 	},

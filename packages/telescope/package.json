@@ -231,6 +231,7 @@
 	},
 	"devDependencies": {
 		"@geekmidas/logger": "workspace:^",
+		"@hono/node-server": "~1.19.5",
 		"@middy/core": "~7.9.2",
 		"@opentelemetry/api": "~1.9.1",
 		"@opentelemetry/api-logs": "~0.222.0",

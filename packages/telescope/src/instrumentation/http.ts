@@ -2,6 +2,8 @@ import {
 	type Attributes,
 	type Context,
 	context,
+	isSpanContextValid,
+	type Link,
 	propagation,
 	type Span,
 	SpanKind,
@@ -137,6 +139,44 @@ export function extractTraceContext(
 	return propagation.extract(context.active(), normalizedHeaders);
 }
 
+/** Where a request's span goes: under a parent, or a new root with links. */
+export interface IncomingTraceContext {
+	/** The context the request span starts in. */
+	parent: Context;
+	/** The untrusted caller's context, linked rather than continued. */
+	links: Link[];
+}
+
+/**
+ * The trace a request's span belongs to.
+ *
+ * From a trusted caller (see `./trust`) its `traceparent` is continued, and
+ * the span is its child. From anyone else the span starts a new trace — no
+ * parent, no baggage — with a link to the context the caller claimed, so the
+ * hop can still be followed without the caller choosing this trace.
+ */
+export function incomingTraceContext(
+	headers: Record<string, string | string[] | undefined>,
+	trusted: boolean,
+): IncomingTraceContext {
+	const extracted = extractTraceContext(headers);
+	if (trusted) return { parent: extracted, links: [] };
+
+	const claimed = trace.getSpanContext(extracted);
+	return {
+		parent: trace.deleteSpan(context.active()),
+		links:
+			claimed && isSpanContextValid(claimed)
+				? [
+						{
+							context: claimed,
+							attributes: { 'gkm.trace.untrusted_parent': true },
+						},
+					]
+				: [],
+	};
+}
+
 /**
  * Inject trace context into HTTP headers
  */
@@ -155,6 +195,7 @@ export function injectTraceContext(
 export function createHttpServerSpan(
 	attrs: HttpSpanAttributes,
 	parentContext?: Context,
+	links?: Link[],
 ): Span {
 	const tracer = getConstructsTracer();
 	const spanName = attrs.route
@@ -168,6 +209,7 @@ export function createHttpServerSpan(
 		{
 			kind: SpanKind.SERVER,
 			attributes: toOtelAttributes(attrs),
+			...(links?.length ? { links } : {}),
 		},
 		ctx,
 	);

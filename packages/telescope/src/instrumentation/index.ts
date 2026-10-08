@@ -47,6 +47,7 @@ export type {
 	HttpRequestAttributes,
 	HttpResponseAttributes,
 	HttpSpanAttributes,
+	IncomingTraceContext,
 	UserAttributes,
 } from './http';
 
@@ -57,6 +58,7 @@ export {
 	endHttpSpan,
 	extractTraceContext,
 	getConstructsTracer,
+	incomingTraceContext,
 	injectTraceContext,
 	isTracingEnabled,
 	toOtelAttributes,
@@ -75,6 +77,8 @@ export {
 export type { OTelTelemetryOptions } from './otel';
 // OTelTelemetry - Telemetry interface implementation using OpenTelemetry
 export { OTelTelemetry } from './otel';
+// Sampling: parent-based, with the stage's rate capping a caller's flag
+export { traceSampler, traceSamplerFromEnv } from './sampler';
 export type { TelemetryOptions } from './setup';
 export {
 	InvalidSampleRatio,
@@ -92,3 +96,10 @@ export {
 	withSpan,
 	withSpanSync,
 } from './tracing';
+export type { IncomingRequestFacts } from './trust';
+// Whose traceparent is continued
+export {
+	isInternalCaller,
+	isPrivateAddress,
+	isTrustedOrigin,
+} from './trust';

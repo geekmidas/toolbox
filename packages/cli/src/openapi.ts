@@ -7,8 +7,13 @@ import { fileURLToPath } from 'node:url';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import { kebabCase } from '@geekmidas/manifest';
 import { loadWorkspaceConfig } from './config.js';
+import type { ClientTelemetryDefault } from './generators/clientTelemetry.js';
+import { telemetryArgs } from './generators/clientTelemetry.js';
 import { EndpointGenerator } from './generators/EndpointGenerator.js';
 import { OpenApiTsGenerator } from './generators/OpenApiTsGenerator.js';
+
+export { parseTelemetryFlag } from './generators/clientTelemetry.js';
+
 import type { GkmConfig, OpenApiConfig, Routes } from './types.js';
 import { appKey } from './workspace/derive.js';
 import { appConstructGlobs } from './workspace/index.js';
@@ -26,6 +31,11 @@ interface OpenAPIOptions {
 	 * fresh tsx that loads the app's own tsconfig (path aliases included).
 	 */
 	app?: string;
+	/**
+	 * Trace propagation in the clients written, off when absent — see
+	 * {@link ClientTelemetryDefault}. `gkm openapi --telemetry [rate]`.
+	 */
+	telemetry?: ClientTelemetryDefault;
 }
 
 /**
@@ -94,6 +104,7 @@ export async function generateOpenApiFrom(
 		silent?: boolean;
 		bustCache?: boolean;
 		root?: string;
+		telemetry?: ClientTelemetryDefault;
 	} = {},
 ): Promise<OpenApiResult | null> {
 	const loaded = await new EndpointGenerator().load(
@@ -131,6 +142,12 @@ export async function generateOpenApi(
 		 * directory the build happened to run in.
 		 */
 		root?: string;
+		/**
+		 * Whether the clients written propagate trace context by default. Off
+		 * when absent: the integration point for a site's edge to a
+		 * `Telemetry` construct, which decides it for the clients it imports.
+		 */
+		telemetry?: ClientTelemetryDefault;
 	} = {},
 ): Promise<OpenApiResult | null> {
 	const root = options.root ?? process.cwd();
@@ -183,6 +200,9 @@ export async function generateOpenApi(
 			title: openApiConfig.title ?? surfaceId,
 			version: openApiConfig.version!,
 			description: openApiConfig.description!,
+			...(options.telemetry !== undefined
+				? { telemetry: options.telemetry }
+				: {}),
 		});
 
 		await writeFile(outputPath, tsContent);
@@ -220,6 +240,9 @@ export async function openapiCommand(
 			const result = await generateOpenApiFrom(config.constructs, {
 				openapi: config.openapi,
 				root: loadedConfig.workspace.root,
+				...(options.telemetry !== undefined
+					? { telemetry: options.telemetry }
+					: {}),
 			});
 
 			if (result) {
@@ -266,7 +289,13 @@ export async function openapiCommand(
 					);
 				}
 				const [appName, app] = entry;
-				const result = await generateOpenApiForApp(workspace, appName, app);
+				const result = await generateOpenApiForApp(
+					workspace,
+					appName,
+					app,
+					true,
+					options.telemetry,
+				);
 				if (result) {
 					logger.log(
 						`📄 [${appName}] Generated OpenAPI (${result.endpointCount} endpoints)`,
@@ -302,6 +331,7 @@ export async function openapiCommand(
 						appName,
 						app,
 						false,
+						options.telemetry,
 					);
 					if (result) {
 						logger.log(`Found ${result.endpointCount} endpoints`);
@@ -309,7 +339,7 @@ export async function openapiCommand(
 					continue;
 				}
 
-				await runOpenApiInSubprocess(appPath, appName);
+				await runOpenApiInSubprocess(appPath, appName, options.telemetry);
 			}
 		}
 	} catch (error) {
@@ -336,6 +366,7 @@ async function generateOpenApiForApp(
 	 * and silence would swallow the only report of what happened.
 	 */
 	silent = true,
+	telemetry?: ClientTelemetryDefault,
 ): Promise<{ outputPath: string; endpointCount: number } | null> {
 	if (app.type !== 'backend') {
 		return null;
@@ -367,6 +398,7 @@ async function generateOpenApiForApp(
 		openapi: app.openapi ?? { enabled: true },
 		silent,
 		root: workspace.root,
+		...(telemetry !== undefined ? { telemetry } : {}),
 	});
 }
 
@@ -390,13 +422,14 @@ function resolveGkmBinPath(): string {
 async function runOpenApiInSubprocess(
 	appCwd: string,
 	appName: string,
+	telemetry?: ClientTelemetryDefault,
 ): Promise<void> {
 	const binPath = resolveGkmBinPath();
 
 	await new Promise<void>((resolve, reject) => {
 		const child = spawn(
 			process.execPath,
-			[binPath, 'openapi', '--app', appName],
+			[binPath, 'openapi', '--app', appName, ...telemetryArgs(telemetry)],
 			{
 				cwd: appCwd,
 				stdio: 'inherit',

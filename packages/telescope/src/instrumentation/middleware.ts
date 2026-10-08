@@ -11,9 +11,10 @@ import type { Context as LambdaContext } from 'aws-lambda';
 import {
 	createHttpServerSpan,
 	endHttpSpan,
-	extractTraceContext,
 	type HttpSpanAttributes,
+	incomingTraceContext,
 } from './http';
+import { isTrustedOrigin } from './trust';
 
 /**
  * Options for the telemetry middleware
@@ -50,6 +51,21 @@ export interface TelemetryMiddlewareOptions {
 	 * Whether to skip tracing for this request
 	 */
 	shouldSkip?: (event: any) => boolean;
+
+	/**
+	 * The origins whose `traceparent` is continued: the API's own sites, the
+	 * same list its CORS allows. Any other caller starts a new trace linked to
+	 * the one it claimed.
+	 */
+	trustedOrigins?: readonly string[];
+
+	/**
+	 * Trust a request with no trusted origin anyway — a caller the function
+	 * can vouch for, such as one that passed IAM auth. A Lambda behind API
+	 * Gateway has no private network to tell an internal caller by, so none
+	 * is trusted unless this says so.
+	 */
+	trustRequest?: (event: any) => boolean;
 }
 
 // Symbol for storing span on event
@@ -97,13 +113,21 @@ export function telemetryMiddleware(
 
 			// Extract trace context from headers
 			const headers = normalizeHeaders(event.headers || {});
-			const parentContext = extractTraceContext(headers);
+			const trusted =
+				isTrustedOrigin(
+					typeof headers.origin === 'string' ? headers.origin : undefined,
+					options.trustedOrigins,
+				) || Boolean(options.trustRequest?.(event));
+			const { parent: parentContext, links } = incomingTraceContext(
+				headers,
+				trusted,
+			);
 
 			// Build span attributes from event
 			const attrs = buildSpanAttributes(event, lambdaContext, options);
 
 			// Create the span
-			const span = createHttpServerSpan(attrs, parentContext);
+			const span = createHttpServerSpan(attrs, parentContext, links);
 
 			// Store span and context on event for access in handler
 			event[SPAN_SYMBOL] = span;

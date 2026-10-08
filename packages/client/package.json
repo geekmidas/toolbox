@@ -83,6 +83,16 @@
 				"types": "./dist/endpoint-hooks.d.cts",
 				"default": "./dist/endpoint-hooks.cjs"
 			}
+		},
+		"./telemetry": {
+			"import": {
+				"types": "./dist/telemetry.d.mts",
+				"default": "./dist/telemetry.mjs"
+			},
+			"require": {
+				"types": "./dist/telemetry.d.cts",
+				"default": "./dist/telemetry.cjs"
+			}
 		}
 	},
 	"files": [
@@ -107,6 +117,8 @@
 	"devDependencies": {
 		"@geekmidas/constructs": "workspace:^",
 		"@geekmidas/schema": "workspace:^",
+		"@opentelemetry/api": "~1.9.1",
+		"@opentelemetry/sdk-trace-node": "~2.11.0",
 		"@tanstack/react-query": "~5.104.0",
 		"@testing-library/dom": "~10.4.2",
 		"@testing-library/jest-dom": "~6.6.3",
