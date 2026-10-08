@@ -166,6 +166,11 @@ export async function reconcileWorkspace(
 	});
 
 	await savePortState(workspace.root, { ...result.ports });
+	for (const { key, from, to } of result.moved) {
+		console.log(
+			`⚠️  Port ${from} (${key}) is held by another process; moved to ${to}.`,
+		);
+	}
 
 	// A container that could not be moved to its generated login keeps the
 	// one it takes, and that is what later runs use.

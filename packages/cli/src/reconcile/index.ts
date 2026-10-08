@@ -61,9 +61,11 @@ import {
 } from './plan';
 import {
 	allocate,
+	heldElsewhere,
 	isPortFree,
 	keptPorts,
 	type PortAssignments,
+	type PortMove,
 	type PortProbe,
 } from './ports';
 import {
@@ -86,7 +88,7 @@ import { loadState, planHash, saveState } from './state';
 
 export type { ComposeFile } from './compose';
 export type { Plan, PlannedResource } from './plan';
-export type { PortAssignments } from './ports';
+export type { PortAssignments, PortMove } from './ports';
 
 /**
  * Where the generated compose file is written, relative to the project root.
@@ -153,6 +155,12 @@ export interface Docker {
 		service: string,
 		inside: number,
 	): Promise<number | undefined>;
+	/**
+	 * The compose project of the running container publishing a host port, or
+	 * `undefined` when no container does — the port is held by something
+	 * outside Docker, or by nothing. Absent, nothing is known to be ours.
+	 */
+	publisher?(port: number): Promise<string | undefined>;
 	/**
 	 * Bring the named services up, detached, and wait for their health checks.
 	 *
@@ -292,6 +300,11 @@ export interface ReconcileResult {
 	compose: ComposeFile;
 	/** Every assigned port, keyed by port key. Persist this. */
 	ports: PortAssignments;
+	/**
+	 * Saved ports something outside this project had bound, each moved to a
+	 * free one. Say so: a connection string copied before now is stale.
+	 */
+	moved: readonly PortMove[];
 	/** Every port the containers publish, labelled — consoles and inbox too. */
 	services: readonly ServiceAddress[];
 	/** The `<NAME>_URL` values this stage resolves. */
@@ -375,12 +388,32 @@ export async function reconcile(
 		plan.containers,
 		plan.fakes,
 	);
+	const keys = portKeys(plan.containers, plan.fakes);
+	const kept = keptPorts(options.saved, observed);
+	// A saved port another stack has bound since is given up rather than handed
+	// to `docker compose up` to fail on. Compose's own project name decides
+	// what is ours, and `COMPOSE_PROJECT_NAME` overrides the file's.
+	const composeProject = process.env.COMPOSE_PROJECT_NAME || project;
+	const held = await heldElsewhere(
+		kept,
+		keys,
+		observed,
+		probe,
+		async (port) => (await docker.publisher?.(port)) === composeProject,
+	);
 	const ports = await allocate(
 		project,
-		portKeys(plan.containers, plan.fakes),
-		keptPorts(options.saved, observed),
+		keys,
+		Object.fromEntries(
+			Object.entries(kept).filter(([key]) => !held.includes(key)),
+		),
 		probe,
 	);
+	const moved = held.map((key) => ({
+		key,
+		from: kept[key] as number,
+		to: ports[key] as number,
+	}));
 
 	const compose = composeFor(plan, {
 		project,
@@ -436,6 +469,7 @@ export async function reconcile(
 		plan,
 		compose,
 		ports,
+		moved,
 		services,
 		env,
 		credentials: options.credentials,

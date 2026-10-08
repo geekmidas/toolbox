@@ -6,14 +6,16 @@ import {
 	rm,
 	writeFile,
 } from 'node:fs/promises';
+import { createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sitesFor, toCaddyfile } from '../caddyfile';
 import type { Docker } from '../index';
 import { COMPOSE_PATH, reconcile } from '../index';
 import { LEGACY_LOCAL_LOGIN } from '../logins';
+import { isPortFree } from '../ports';
 import { planHash, saveState } from '../state';
 import { TEST_CREDENTIALS } from './__helpers__/credentials';
 
@@ -30,7 +32,12 @@ const manifest = {
 
 /** Records what was asked of Docker, and reports whatever it is told to. */
 function fakeDocker(
-	options: { running?: Record<string, number>; healthy?: boolean } = {},
+	options: {
+		running?: Record<string, number>;
+		healthy?: boolean;
+		/** The compose project publishing each host port. */
+		publishers?: Record<number, string>;
+	} = {},
 ) {
 	const calls = {
 		up: [] as string[][],
@@ -41,6 +48,9 @@ function fakeDocker(
 	const docker: Docker = {
 		async publishedPort(_path, service, inside) {
 			return options.running?.[`${service}:${inside}`];
+		},
+		async publisher(port) {
+			return options.publishers?.[port];
 		},
 		async up(_path, services, upOptions = {}) {
 			calls.up.push([...services]);
@@ -430,6 +440,60 @@ describe('reconcile', () => {
 		const { ports } = await run({ saved: { postgres: 21111 } });
 
 		expect(ports.postgres).toBe(21111);
+	});
+
+	describe('a saved port something is bound to', () => {
+		let server: Server;
+		let occupied: number;
+
+		beforeEach(async () => {
+			// Another stack, standing in as a real listener on a port the OS
+			// picked.
+			server = createServer();
+			occupied = await new Promise<number>((resolve) => {
+				server.listen(0, '0.0.0.0', () => {
+					const address = server.address();
+					resolve(typeof address === 'object' && address ? address.port : 0);
+				});
+			});
+		});
+
+		afterEach(async () => {
+			vi.unstubAllEnvs();
+			await new Promise((resolve) => server.close(resolve));
+		});
+
+		it('moves off one another project holds, and says so', async () => {
+			// What a second checkout hit: its saved ports were the ones the first
+			// checkout's stack had since bound, and `compose up` failed on them.
+			const { docker } = fakeDocker({ publishers: { [occupied]: 'other' } });
+			const { ports, moved } = await run({
+				docker,
+				probe: isPortFree,
+				saved: { postgres: occupied },
+			});
+
+			expect(ports.postgres).not.toBe(occupied);
+			expect(moved).toEqual([
+				{ key: 'postgres', from: occupied, to: ports.postgres },
+			]);
+		});
+
+		it('keeps one this project’s own container holds', async () => {
+			// Compose's own name for the project, unless the environment renames it.
+			vi.stubEnv('COMPOSE_PROJECT_NAME', '');
+			const { docker } = fakeDocker({
+				publishers: { [occupied]: 'toolbox' },
+			});
+			const { ports, moved } = await run({
+				docker,
+				probe: isPortFree,
+				saved: { postgres: occupied },
+			});
+
+			expect(ports.postgres).toBe(occupied);
+			expect(moved).toEqual([]);
+		});
 	});
 
 	it('publishes no container on a fixed default port', async () => {
