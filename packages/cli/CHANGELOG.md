@@ -1,5 +1,28 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.78
+
+### Minor Changes
+
+- [#204](https://github.com/geekmidas/toolbox/pull/204) [`6552c85`](https://github.com/geekmidas/toolbox/commit/6552c85bbed04ee8e1be04930dd7621aeec1c151) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm compose` can register a deployed stage with a shared Traefik edge
+
+  `gkm compose` can serve a deployed stage through a shared Traefik edge: `deploy.compose.proxy: 'traefik'` (for every deployed stage, or per stage) registers the stack's hosts with one Traefik per server — compose project and network `gkm-edge`, configured through its file provider from `$GKM_HOME/edge`, no Docker socket — which owns 80/443, Let's Encrypt and the redirect to HTTPS, so several stacks can share a server. `'caddy'` stays the default, and the local stage always uses Caddy. Both proxies render one route model. Only a stack's public services join the edge's network, each under a project-prefixed alias. `--down` unregisters a stack and leaves the edge and other stacks running. `deploy.compose.tls.<stage>` gives a stage its own certificate on either proxy. A clash over 80/443 between a stack's own Caddy and the edge is refused with `ComposeProxyClash`.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.78
+  - @geekmidas/constructs@10.0.0-alpha.78
+  - @geekmidas/db@10.0.0-alpha.78
+  - @geekmidas/envkit@10.0.0-alpha.78
+  - @geekmidas/errors@10.0.0-alpha.78
+  - @geekmidas/logger@10.0.0-alpha.78
+  - @geekmidas/manifest@10.0.0-alpha.78
+  - @geekmidas/schema@10.0.0-alpha.78
+  - @geekmidas/services@10.0.0-alpha.78
+  - @geekmidas/storage@10.0.0-alpha.78
+  - @geekmidas/telescope@10.0.0-alpha.78
+
 ## 10.0.0-alpha.77
 
 ### Patch Changes

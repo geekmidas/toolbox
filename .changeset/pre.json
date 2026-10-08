@@ -49,6 +49,7 @@
     "compose-logs",
     "compose-redis-cache",
     "compose-target",
+    "compose-traefik-edge",
     "constructs-feature-test",
     "constructs-only-compose",
     "constructs-only-workspaces",
