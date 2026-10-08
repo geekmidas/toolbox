@@ -139,6 +139,92 @@ describe('openBoundTransaction', () => {
 		await tx.rollback();
 	});
 
+	// A test that expects a statement to fail wraps it in a savepoint of its
+	// own and rolls back to it. The wrapper's own savepoint around each
+	// statement must not release it in between.
+	it('keeps a savepoint the test opened, to roll back to', async () => {
+		await committed(`CREATE TABLE "${schema}".refusals (key text PRIMARY KEY)`);
+		const tx = await openBoundTransaction(tenantUrl);
+		await sql`INSERT INTO refusals VALUES ('kept')`.execute(tx.db);
+
+		await sql`savepoint refused`.execute(tx.db);
+		await expect(
+			sql`INSERT INTO refusals VALUES ('kept')`.execute(tx.db),
+		).rejects.toMatchObject({ code: '23505' });
+		await sql`rollback to savepoint refused`.execute(tx.db);
+
+		await sql`INSERT INTO refusals VALUES ('after')`.execute(tx.db);
+		const rows = await sql<{
+			key: string;
+		}>`SELECT key FROM refusals ORDER BY key`.execute(tx.db);
+		expect(rows.rows.map((r) => r.key)).toEqual(['after', 'kept']);
+		await tx.rollback();
+	});
+
+	// Breaking the transaction on purpose — so the code under test answers 500
+	// — needs the failure to abort it, as inside a `begin`.
+	it('lets a failure abort the transaction inside a savepoint the test opened', async () => {
+		const tx = await openBoundTransaction(tenantUrl);
+		await sql`INSERT INTO users VALUES ('ada@shop.test')`.execute(tx.db);
+
+		await sql`savepoint broken`.execute(tx.db);
+		await expect(sql`select 1 / 0`.execute(tx.db)).rejects.toMatchObject({
+			code: '22012',
+		});
+		await expect(sql`SELECT 1`.execute(tx.db)).rejects.toMatchObject({
+			code: '25P02',
+		});
+		await sql`rollback to savepoint broken`.execute(tx.db);
+
+		const rows = await sql<{ email: string }>`SELECT email FROM users`.execute(
+			tx.db,
+		);
+		expect(rows.rows).toEqual([{ email: 'ada@shop.test' }]);
+		await tx.rollback();
+	});
+
+	it('nests savepoints the test opened as Postgres does', async () => {
+		const tx = await openBoundTransaction(tenantUrl);
+		const emails = async () =>
+			(
+				await sql<{
+					email: string;
+				}>`SELECT email FROM users ORDER BY email`.execute(tx.db)
+			).rows.map((r) => r.email);
+
+		// ROLLBACK TO keeps the savepoint open: it can be rolled back to again.
+		await sql`SAVEPOINT a`.execute(tx.db);
+		await sql`INSERT INTO users VALUES ('a@shop.test')`.execute(tx.db);
+		await sql`savepoint "B"`.execute(tx.db);
+		await sql`INSERT INTO users VALUES ('b@shop.test')`.execute(tx.db);
+		await sql`ROLLBACK TO a`.execute(tx.db);
+		expect(await emails()).toEqual([]);
+		await sql`INSERT INTO users VALUES ('again@shop.test')`.execute(tx.db);
+		await sql`rollback to savepoint a`.execute(tx.db);
+		expect(await emails()).toEqual([]);
+
+		// RELEASE a ends b with it. Rolling back to b then fails, and aborts
+		// the transaction; `guard` is what recovers from that.
+		await sql`release a`.execute(tx.db);
+		await sql`savepoint guard`.execute(tx.db);
+		await sql`savepoint a`.execute(tx.db);
+		await sql`savepoint b`.execute(tx.db);
+		await sql`release savepoint a`.execute(tx.db);
+		await expect(
+			sql`rollback to savepoint b`.execute(tx.db),
+		).rejects.toMatchObject({ code: '3B001' });
+		await sql`rollback to savepoint guard`.execute(tx.db);
+		await sql`release savepoint guard`.execute(tx.db);
+
+		// With none left open, a failing statement fails alone again.
+		await sql`INSERT INTO users VALUES ('c@shop.test')`.execute(tx.db);
+		await expect(sql`select 1 / 0`.execute(tx.db)).rejects.toMatchObject({
+			code: '22012',
+		});
+		expect(await emails()).toEqual(['c@shop.test']);
+		await tx.rollback();
+	});
+
 	// The code under test is handed this Kysely in place of its own. Built
 	// without the database's plugins, it wrote `signedUpAt` to a table whose
 	// column is `signed_up_at`, and a test failed on code production ran fine.

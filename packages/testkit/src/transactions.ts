@@ -18,6 +18,12 @@
  * too, so a failure — a duplicate key two concurrent requests raced to insert —
  * fails that statement alone, as it would deployed, rather than every request
  * the test makes after it.
+ *
+ * A savepoint the test or the code opens by name — `savepoint refused`, a
+ * statement expected to fail, `rollback to savepoint refused` — is its own
+ * transaction control, and passes through untouched. While one is open,
+ * statements run in it as they would inside a `begin`: unwrapped, so a failure
+ * aborts the transaction until the matching `rollback to savepoint`.
  */
 
 import { Kysely, type KyselyConfig, PostgresDialect } from 'kysely';
@@ -73,6 +79,9 @@ export async function openBoundTransaction(
 	// Shared by every checkout of the connection: concurrent requests in one
 	// test each check it out, and all of them take turns on it.
 	const inTurn = turns();
+	// The savepoints opened by name, shared by every checkout as the
+	// connection's transaction is.
+	const named: NamedSavepoint[] = [];
 
 	return {
 		db: new Kysely({
@@ -81,7 +90,7 @@ export async function openBoundTransaction(
 				// A "pool" of the one connection. Released never, ended never: the
 				// test owns it, and it closes in `rollback`.
 				pool: {
-					connect: async () => savepointing(client, inTurn),
+					connect: async () => savepointing(client, inTurn, named),
 					end: async () => {},
 				} as unknown as pg.Pool,
 			}),
@@ -103,13 +112,27 @@ export async function openBoundTransaction(
  * one place they can be caught. A depth counter names the savepoints, so
  * nested transactions nest.
  */
-function savepointing(client: pg.Client, inTurn: Turns): pg.PoolClient {
+function savepointing(
+	client: pg.Client,
+	inTurn: Turns,
+	named: NamedSavepoint[],
+): pg.PoolClient {
 	let depth = 0;
 	const query = client.query.bind(client) as (
 		...args: unknown[]
 	) => Promise<unknown>;
-
 	const wrapped = Object.create(client) as pg.PoolClient;
+
+	// Ending one of the code's transactions ends every savepoint opened in it.
+	const closeTransaction = (level: number) => {
+		for (let i = named.length - 1; i >= 0; i--) {
+			const savepoint = named[i]!;
+			if (savepoint.checkout === wrapped && savepoint.depth >= level) {
+				named.splice(i, 1);
+			}
+		}
+	};
+
 	Object.assign(wrapped, {
 		query: (text: unknown, ...rest: unknown[]) => {
 			// A cursor, a query config, a callback: not what Kysely sends for a
@@ -124,19 +147,104 @@ function savepointing(client: pg.Client, inTurn: Turns): pg.PoolClient {
 				return inTurn(() => query(`SAVEPOINT ${savepoint}`));
 			}
 			if (statement === 'commit') {
-				const savepoint = `test_sp_${depth--}`;
-				return inTurn(() => query(`RELEASE SAVEPOINT ${savepoint}`));
+				const level = depth--;
+				closeTransaction(level);
+				return inTurn(() => query(`RELEASE SAVEPOINT test_sp_${level}`));
 			}
 			if (statement === 'rollback') {
-				const savepoint = `test_sp_${depth--}`;
-				return inTurn(() => query(`ROLLBACK TO SAVEPOINT ${savepoint}`));
+				const level = depth--;
+				closeTransaction(level);
+				return inTurn(() => query(`ROLLBACK TO SAVEPOINT test_sp_${level}`));
 			}
-			if (depth > 0) return inTurn(() => query(text, ...rest));
+
+			const control = savepointControl(text);
+			if (control) {
+				return inTurn(async () => {
+					const result = await query(text, ...rest);
+					track(named, control, { checkout: wrapped, depth });
+					return result;
+				});
+			}
+			if (depth > 0 || named.length > 0) {
+				return inTurn(() => query(text, ...rest));
+			}
 			return inTurn(() => autocommitted(query, text, rest));
 		},
 		release: () => {},
 	});
 	return wrapped;
+}
+
+/** A savepoint the test or the code opened by name, and where it opened it. */
+interface NamedSavepoint {
+	name: string;
+	/** The checkout, and its transaction depth, the savepoint was opened at. */
+	checkout: pg.PoolClient;
+	depth: number;
+}
+
+/** `SAVEPOINT x`, `RELEASE [SAVEPOINT] x`, `ROLLBACK [WORK] TO [SAVEPOINT] x`. */
+interface SavepointControl {
+	action: 'savepoint' | 'release' | 'rollback to';
+	name: string;
+}
+
+const IDENTIFIER = String.raw`("(?:[^"]|"")+"|[^\s;"]+)`;
+const SAVEPOINT_CONTROL: [SavepointControl['action'], RegExp][] = [
+	['savepoint', new RegExp(String.raw`^savepoint\s+${IDENTIFIER}\s*;?$`, 'i')],
+	[
+		'release',
+		new RegExp(
+			String.raw`^release\s+(?:savepoint\s+)?${IDENTIFIER}\s*;?$`,
+			'i',
+		),
+	],
+	[
+		'rollback to',
+		new RegExp(
+			String.raw`^rollback\s+(?:(?:work|transaction)\s+)?to\s+(?:savepoint\s+)?${IDENTIFIER}\s*;?$`,
+			'i',
+		),
+	],
+];
+
+/**
+ * The savepoint a statement opens, releases or rolls back to, named as
+ * Postgres names it: an unquoted name folded to lower case, a quoted one as
+ * written.
+ */
+function savepointControl(text: string): SavepointControl | undefined {
+	const statement = text.trim();
+	for (const [action, pattern] of SAVEPOINT_CONTROL) {
+		const match = pattern.exec(statement);
+		if (!match) continue;
+		const identifier = match[1]!;
+		const name = identifier.startsWith('"')
+			? identifier.slice(1, -1).replaceAll('""', '"')
+			: identifier.toLowerCase();
+		return { action, name };
+	}
+	return undefined;
+}
+
+/**
+ * Keep the named savepoints as Postgres does: `RELEASE x` ends x and every
+ * savepoint after it; `ROLLBACK TO x` ends those after it and keeps x open.
+ */
+function track(
+	named: NamedSavepoint[],
+	control: SavepointControl,
+	at: Omit<NamedSavepoint, 'name'>,
+): void {
+	if (control.action === 'savepoint') {
+		named.push({ name: control.name, ...at });
+		return;
+	}
+	const index = named.findLastIndex((s) => s.name === control.name);
+	// One opened before this connection was handed over, or by a name the
+	// wrapper uses itself: nothing tracked to end.
+	if (index === -1) return;
+	named.splice(control.action === 'release' ? index : index + 1);
 }
 
 /** Runs work in the order it was asked for, each after the last has settled. */

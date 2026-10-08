@@ -31,7 +31,7 @@ import { secretsStoreFor } from '../../secrets/store';
  * SDK's own `AWS_ENDPOINT_URL`, so reads and writes are the real calls.
  */
 
-const { setupCommand } = await import('../index');
+const { setupCommand, StageSecretsUnreadable } = await import('../index');
 
 class Exited extends Error {
 	constructor(readonly code: number | undefined) {
@@ -299,10 +299,70 @@ export const uploads = new ObjectStorage('Uploads');
 			vi.stubEnv('AWS_ENDPOINT_URL', 'http://127.0.0.1:1');
 			config(ssm);
 
-			await expect(
-				setupCommand({ stage: 'prod', skipDocker: true, yes: true }),
-			).rejects.toThrow();
+			const result = setupCommand({
+				stage: 'prod',
+				skipDocker: true,
+				yes: true,
+			});
+			await expect(result).rejects.toThrow();
+			// Unreachable is not unauthenticated: the SDK's own error passes through.
+			await expect(result).rejects.not.toBeInstanceOf(StageSecretsUnreadable);
 			expect(existsSync(join(dir, '.gkm', 'secrets', 'prod.json'))).toBe(false);
+		});
+
+		describe('with no AWS credentials on this machine', () => {
+			beforeEach(() => {
+				// Nothing for the SDK's chain to find, and no instance metadata
+				// endpoint to ask: it gives up without a network call.
+				vi.stubEnv('AWS_ACCESS_KEY_ID', undefined);
+				vi.stubEnv('AWS_SECRET_ACCESS_KEY', undefined);
+				vi.stubEnv('AWS_SESSION_TOKEN', undefined);
+				vi.stubEnv('AWS_PROFILE', undefined);
+				vi.stubEnv('AWS_CONFIG_FILE', join(dir, 'no-aws-config'));
+				vi.stubEnv('AWS_SHARED_CREDENTIALS_FILE', join(dir, 'no-aws-creds'));
+				vi.stubEnv('AWS_CONTAINER_CREDENTIALS_RELATIVE_URI', undefined);
+				vi.stubEnv('AWS_CONTAINER_CREDENTIALS_FULL_URI', undefined);
+				vi.stubEnv('AWS_WEB_IDENTITY_TOKEN_FILE', undefined);
+				vi.stubEnv('AWS_EC2_METADATA_DISABLED', 'true');
+				vi.stubEnv('AWS_ENDPOINT_URL', 'http://127.0.0.1:1');
+			});
+
+			it('refuses a dry run by name, before any provider runs', async () => {
+				config(ssm);
+
+				const result = setupCommand({ stage: 'prod', dryRun: true });
+
+				await expect(result).rejects.toBeInstanceOf(StageSecretsUnreadable);
+				await expect(result).rejects.toMatchObject({
+					stage: 'prod',
+					store: 'ssm',
+					message: expect.stringContaining(
+						'AWS_PROFILE=<profile> gkm setup --stage prod --dry-run',
+					),
+				});
+				await expect(result).rejects.toThrow(/SSM Parameter Store/);
+				await expect(result).rejects.toThrow(/A dry run still reads them/);
+				expect(output(log)).not.toContain('Providers for');
+			});
+
+			it('names the profile that has no credentials', async () => {
+				config(ssm);
+
+				const result = setupCommand({
+					stage: 'prod',
+					dryRun: true,
+					profile: 'prod-account',
+				});
+
+				await expect(result).rejects.toMatchObject({
+					name: 'StageSecretsUnreadable',
+					profile: 'prod-account',
+					message: expect.stringContaining(
+						"the AWS profile 'prod-account' has no credentials",
+					),
+				});
+				expect(output(log)).not.toContain('Providers for');
+			});
 		});
 	});
 });
