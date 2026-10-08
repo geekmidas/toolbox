@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/manifest",
-	"version": "10.0.0-alpha.73",
+	"version": "10.0.0-alpha.74",
 	"type": "module",
 	"exports": {
 		".": {

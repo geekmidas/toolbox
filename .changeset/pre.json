@@ -46,6 +46,7 @@
     "client-method-calls",
     "compose-env-follows-edges",
     "compose-logs",
+    "compose-redis-cache",
     "compose-target",
     "constructs-feature-test",
     "constructs-only-compose",
