@@ -35,7 +35,11 @@ import { toEmbeddableSecrets } from '../secrets/storage.js';
 import { FileSecretsStore, secretsStoreFor } from '../secrets/store.js';
 import { ensureTrusted } from '../trust/index.js';
 import type { GkmConfig, Runtime, TelescopeConfig } from '../types';
-import { cacheBackendFor, providerOf } from '../workspace/backends.js';
+import {
+	cacheBackendFor,
+	eventsBackendFor,
+	providerOf,
+} from '../workspace/backends.js';
 import { appKey } from '../workspace/derive.js';
 import {
 	type FrontendFramework,
@@ -335,6 +339,8 @@ export async function devCommand(options: DevOptions): Promise<void> {
 				target: 'server',
 				enableOpenApi,
 				cacheBackend: cacheBackendFor(providerOf(workspace ?? config)),
+				// The local stage's broker: the target's, which the dev stack runs.
+				eventsBackend: eventsBackendFor(providerOf(workspace ?? config)),
 				telescope,
 				databaseApi: true,
 				hooks,

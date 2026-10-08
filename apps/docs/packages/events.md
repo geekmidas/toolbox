@@ -39,12 +39,55 @@ pnpm add @geekmidas/events
 
 ## Package Exports
 
-- `/` - Core interfaces and factory functions
-- `/basic` - Basic (in-memory) implementation
-- `/rabbitmq` - RabbitMQ implementation
-- `/sqs` - AWS SQS implementation
-- `/sns` - AWS SNS implementation
-- `/pgboss` - pg-boss (PostgreSQL) implementation
+| Subpath | Driver | Peer dependency |
+| --- | --- | --- |
+| `/` | Interfaces, factories, `registerEventsDriver` | — |
+| `/basic` | `basicEventsDriver` (in-memory) | — |
+| `/pgboss` | `pgbossEventsDriver` (PostgreSQL) | `pg-boss` |
+| `/rabbitmq` | `rabbitmqEventsDriver` | `amqplib` |
+| `/sns` | `snsEventsDriver` | `@aws-sdk/client-sns`, `@aws-sdk/client-sqs` |
+| `/sqs` | `sqsEventsDriver` | `@aws-sdk/client-sqs` |
+
+Each subpath also exports its broker's classes (`PgBossPublisher`,
+`SNSConnection`, …), and is the only module that imports its peer dependency.
+
+## Registering a Broker
+
+The core never loads a broker itself. The scheme of a connection string
+(`pgboss://`, `sns://`, …) picks a **driver**, and which drivers exist is the
+decision of whoever starts the process. That is what keeps a bundle to the one
+broker it uses: a server bundled for pg-boss never has to resolve the AWS SDK,
+and an SNS one never resolves `pg-boss` or `amqplib`.
+
+Everything `gkm` generates registers its target's broker for you, when the app
+declares a `Topic` or a `Queue`:
+
+| Target | Registers |
+| --- | --- |
+| server (Dokploy) | `pgbossEventsDriver` |
+| AWS | `snsEventsDriver`, `sqsEventsDriver` |
+| `gkm dev`, `gkm test` | the local stage's broker — the target's |
+
+A script that builds a publisher or subscriber itself registers once, before the
+first call:
+
+```typescript
+import { Publisher, registerEventsDriver } from '@geekmidas/events';
+import { pgbossEventsDriver } from '@geekmidas/events/pgboss';
+
+registerEventsDriver(pgbossEventsDriver);
+
+const publisher = await Publisher.fromConnectionString(process.env.URL!);
+```
+
+A scheme whose driver nothing registered throws `UnregisteredEventsScheme`,
+carrying the `scheme`, the `subpath` and `driver` to register, and what is
+`registered`. A scheme no broker here implements still throws
+`UnsupportedEventTransport`.
+
+A driver is an `EventsDriver`: its `scheme`, and the connections, publishers and
+subscribers for it. `eventsDriverFor(scheme)` looks one up, and
+`registeredEventsSchemes()` lists what is registered.
 
 ## Basic Usage
 
@@ -62,7 +105,15 @@ type AppEvents =
 ### Create Publisher and Subscriber
 
 ```typescript
-import { Publisher, Subscriber } from '@geekmidas/events';
+import {
+  Publisher,
+  registerEventsDriver,
+  Subscriber,
+} from '@geekmidas/events';
+import { rabbitmqEventsDriver } from '@geekmidas/events/rabbitmq';
+
+// Once, where the process starts — see "Registering a Broker".
+registerEventsDriver(rabbitmqEventsDriver);
 
 // Create from connection string
 const publisher = await Publisher.fromConnectionString<AppEvents>(
@@ -390,6 +441,7 @@ The event map is the contract: it types every `.event(users, …)` that publishe
 to the topic and every subscriber that binds to it. The topic's `service` reads
 `USERS_PUBLISHER_CONNECTION_STRING` and calls `Publisher.fromConnectionString`
 with it — the hand-written publisher service this page used to show, derived.
+The generated entry registers the target's broker before any of that runs.
 
 ### Publishing from Endpoints
 

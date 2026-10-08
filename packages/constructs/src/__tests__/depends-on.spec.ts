@@ -1,4 +1,6 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
+import { registerEventsDriver } from '@geekmidas/events';
+import { basicEventsDriver } from '@geekmidas/events/basic';
 import { ServiceDiscovery } from '@geekmidas/services';
 import { registerStorageDriver, type StorageClient } from '@geekmidas/storage';
 import { describe, expect, it } from 'vitest';
@@ -10,6 +12,9 @@ import { ObjectStorage } from '../object-storage';
 import { RestApi } from '../rest-api';
 import { Topic } from '../topic';
 import { Worker } from '../worker';
+
+// What an entry point does for the broker its target uses.
+registerEventsDriver(basicEventsDriver);
 
 /** Endpoints come from a surface now, so the tests build one. */
 const api = new RestApi('Test', { path: '.', defaultAuthorizer: 'none' });

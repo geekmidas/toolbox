@@ -51,13 +51,13 @@ are built from the `RestApi` that serves them; background work belongs to a
 | [`@geekmidas/cloud`](#cloud) | 3 |
 | [`@geekmidas/manifest`](#manifest) | 2 |
 | [`@geekmidas/db`](#db) | 1 |
-| [`@geekmidas/events`](#events) | 2 |
+| [`@geekmidas/events`](#events) | 3 |
 | [`@geekmidas/logger`](#logger) | 2 |
 | [`@geekmidas/telescope`](#telescope) | 2 |
 | [`@geekmidas/testkit`](#testkit) | 2 |
 | [Removed packages: `ui`, `studio`](#removed-packages) | 1 |
 | [Third-party majors](#third-party) | 1 |
-| **Total** | **57** |
+| **Total** | **58** |
 
 ## `@geekmidas/cli` — `gkm.config.ts` {#cli-config}
 
@@ -770,9 +770,27 @@ options.
 `UnsupportedEventTransport`, `SnsQueueMissing`, `SqsBatchPartlyFailed`,
 `RabbitMQChannelUnavailable` and `PgBossNotStarted` replace plain `Error`s.
 
+### 50. Brokers are drivers, registered by the entry point
+
+`Publisher`, `Subscriber` and `EventConnectionFactory` no longer load a broker
+by its scheme on their own: each broker is a driver on its own subpath, and a
+process registers the ones it uses. Code `gkm` generates — `gkm dev`, `gkm
+build`, `gkm test` and every Lambda handler — registers its target's broker for
+you. A script that builds a publisher itself registers it once, before the
+first call; without it the call throws `UnregisteredEventsScheme`, which names
+the subpath and the call to add.
+
+```ts
+import { Publisher, registerEventsDriver } from '@geekmidas/events';
+import { pgbossEventsDriver } from '@geekmidas/events/pgboss';
+
+registerEventsDriver(pgbossEventsDriver);
+const publisher = await Publisher.fromConnectionString(url);
+```
+
 ## `@geekmidas/logger` {#logger}
 
-### 50. `createLogger` redacts by default
+### 51. `createLogger` redacts by default
 
 `createLogger` from `@geekmidas/logger/pino` redacts `DEFAULT_REDACT_PATHS`
 when `redact` is left out. Pass `redact: false` for the old behaviour.
@@ -784,7 +802,7 @@ const logger = createLogger();                  // redacted
 const raw = createLogger({ redact: false });    // as in 9.x
 ```
 
-### 51. pino is an optional peer
+### 52. pino is an optional peer
 
 `Logger` is a structural interface and `ConsoleLogger` needs no pino. Installing
 `@geekmidas/logger` no longer installs pino or pino-pretty; a project importing
@@ -792,7 +810,7 @@ const raw = createLogger({ redact: false });    // as in 9.x
 
 ## `@geekmidas/telescope` {#telescope}
 
-### 52. No dashboard: `createUI` is `createApi`
+### 53. No dashboard: `createUI` is `createApi`
 
 The embedded React UI is gone. `createApi` serves the same JSON routes under
 `/api/*`; the mount point's root and the old dashboard routes now 404.
@@ -806,7 +824,7 @@ import { createApi } from '@geekmidas/telescope/hono';
 app.route('/__telescope', createApi(telescope));
 ```
 
-### 53. Tables moved into a schema and dropped their prefix
+### 54. Tables moved into a schema and dropped their prefix
 
 `telescope_requests`, `telescope_exceptions` and `telescope_logs` are
 `requests`, `exceptions` and `logs` in a schema of their own. Pass
@@ -815,18 +833,18 @@ already pinned to it.
 
 ## `@geekmidas/testkit` {#testkit}
 
-### 54. `faker.internet.email()` is lowercase
+### 55. `faker.internet.email()` is lowercase
 
 `email()` and `exampleEmail()` return lowercase addresses, as Better Auth stores
 them. A test that compared a mixed-case address it generated needs updating.
 
-### 55. Vitest 5 is required
+### 56. Vitest 5 is required
 
 `@geekmidas/testkit` and `@geekmidas/db` declare `vitest ~5.0.2`.
 
 ## Removed packages {#removed-packages}
 
-### 56. `@geekmidas/ui` and `@geekmidas/studio` are no longer published
+### 57. `@geekmidas/ui` and `@geekmidas/studio` are no longer published
 
 Their last versions are `9.0.2` (`latest`) and `10.0.0-alpha.55` (`alpha`); pin
 those to keep using them. Studio's data layer lives on in
@@ -836,7 +854,7 @@ app. `gkm init` writes shadcn/ui components into the web app instead of a
 
 ## Third-party majors {#third-party}
 
-### 57. OpenTelemetry 2, Zod 4.6, Better Auth 1.7
+### 58. OpenTelemetry 2, Zod 4.6, Better Auth 1.7
 
 Dependency ranges were realigned across the repository. The ones that change
 code you may own:

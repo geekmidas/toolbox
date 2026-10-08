@@ -10,6 +10,7 @@ import {
 	createMockBuildContext,
 	createTempDir,
 } from '../../__tests__/test-helpers';
+import { driversFor } from '../drivers';
 import type { GeneratedConstruct } from '../Generator';
 import { QueueGenerator } from '../QueueGenerator';
 
@@ -112,6 +113,35 @@ describe('QueueGenerator', () => {
 			expect(handler).toContain('import { ordersQueue }');
 			expect(handler).toContain('new AWSLambdaQueue(envParser, ordersQueue)');
 			expect(handler).toContain('export const handler = adapter.handler');
+		});
+
+		it('registers the drivers its target needs in each handler', async () => {
+			await generator.build(
+				{
+					...context,
+					storageDrivers: driversFor({
+						appRoot: tempDir,
+						events: ['sns'],
+					}),
+				},
+				[createQueueConstruct('ordersQueue', 'orders')],
+				outputDir,
+				{ target: 'aws' },
+			);
+
+			const handler = await readFile(
+				join(outputDir, 'queues', 'ordersQueue.ts'),
+				'utf-8',
+			);
+			expect(handler).toContain(
+				"import { sqsEventsDriver } from '@geekmidas/events/sqs';",
+			);
+			expect(handler).toContain('registerEventsDriver(snsEventsDriver);');
+			expect(handler).toContain('registerEventsDriver(sqsEventsDriver);');
+			// Before the adapter exists, so its first message finds them.
+			expect(handler.indexOf('registerEventsDriver(')).toBeLessThan(
+				handler.indexOf('new AWSLambdaQueue('),
+			);
 		});
 
 		it('carries the worker’s database as the queue’s env and edge', async () => {

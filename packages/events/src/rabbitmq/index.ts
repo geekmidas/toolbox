@@ -1,3 +1,4 @@
+export { rabbitmqEventsDriver } from './driver';
 export { RabbitMQChannelUnavailable } from './errors';
 export type { RabbitMQConnectionConfig } from './RabbitMQConnection';
 export { RabbitMQConnection } from './RabbitMQConnection';

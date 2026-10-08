@@ -92,8 +92,9 @@ export class FunctionGenerator extends ConstructGenerator<
 		const content = `import { AWSLambdaFunction } from '@geekmidas/constructs/aws';
 import { ${exportName} } from '${importPath}';
 ${runtime.imports}
+${context.storageDrivers?.imports ?? ''}
 ${runtime.bindings}
-
+${context.storageDrivers?.setup ? `\n// The handler registers the drivers its target needs.\n${context.storageDrivers.setup}\n` : ''}
 const adapter = new AWSLambdaFunction(envParser, ${exportName});
 
 export const handler = adapter.handler;

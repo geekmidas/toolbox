@@ -190,6 +190,7 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 				],
 				patterns: constructGlobs(workspace),
 				cacheBackend: backendsOf(workspace).cache,
+				eventsBackend: backendsOf(workspace).events,
 				stage: TEST_STAGE,
 				env: finalCredentials,
 				factories: join(

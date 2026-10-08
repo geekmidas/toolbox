@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { EventConnectionFactory, EventPublisherType } from '../EventConnection';
 import { UnsupportedEventTransport } from '../types';
+import { registerAllEventsDrivers } from './__helpers__/drivers';
+
+registerAllEventsDrivers();
 
 describe('EventConnectionFactory', () => {
 	describe('fromConnectionString', () => {

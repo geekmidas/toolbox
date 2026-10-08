@@ -100,6 +100,29 @@ export class CronGenerator extends ConstructGenerator<
 
 		const cronsPath = join(outputDir, 'crons.ts');
 
+		// Nothing to schedule, so nothing to import — the entry imports this file
+		// whatever the app declares, and a project with no events must not have
+		// to resolve `@geekmidas/events`.
+		if (crons.length === 0) {
+			await writeFile(
+				cronsPath,
+				`/**
+ * Generated cron setup — this app declares none.
+ */
+import type { EnvironmentParser } from '@geekmidas/envkit';
+import type { Logger } from '@geekmidas/logger';
+
+export async function setupCrons(
+  _envParser: EnvironmentParser<any>,
+  _logger: Logger,
+): Promise<void> {}
+
+export async function stopCrons(): Promise<void> {}
+`,
+			);
+			return cronsPath;
+		}
+
 		const importsByFile = new Map<string, string[]>();
 		for (const { path, key } of crons) {
 			const relativePath = relative(dirname(cronsPath), path.relative);
@@ -223,8 +246,13 @@ export async function setupCrons(
     return;
   }
 
-  const { PgBossConnection } = await import('@geekmidas/events/pgboss');
-  const connection = await PgBossConnection.fromConnectionString(url);
+  // Through the registered pg-boss driver, which the entry registers for a
+  // server whose broker is pg-boss. Naming \`@geekmidas/events/pgboss\` here
+  // made every bundle with a cron resolve pg-boss, whatever its broker.
+  const { EventConnectionFactory } = await import('@geekmidas/events');
+  const connection = (await EventConnectionFactory.fromConnectionString(
+    url,
+  )) as import('@geekmidas/events').EventConnection & { instance?: any };
   const boss = connection.instance!;
 
   // What this app declares now. Anything else under the prefix belonged to a
@@ -289,8 +317,9 @@ export async function stopCrons(): Promise<void> {
 		const content = `import { AWSScheduledFunction } from '@geekmidas/constructs/aws';
 import { ${exportName} } from '${importPath}';
 ${runtime.imports}
+${context.storageDrivers?.imports ?? ''}
 ${runtime.bindings}
-
+${context.storageDrivers?.setup ? `\n// The handler registers the drivers its target needs.\n${context.storageDrivers.setup}\n` : ''}
 const adapter = new AWSScheduledFunction(envParser, ${exportName});
 
 export const handler = adapter.handler;

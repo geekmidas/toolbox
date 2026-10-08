@@ -32,6 +32,7 @@ import { serviceContext } from '@geekmidas/services';
 import {
 	cacheBackendsIn,
 	driversFor,
+	eventsBackendsIn,
 	type RuntimeDrivers,
 } from '../generators/drivers.js';
 import { EndpointGenerator } from '../generators/EndpointGenerator.js';
@@ -39,7 +40,7 @@ import { OpenApiTsGenerator } from '../generators/OpenApiTsGenerator.js';
 import { SubscriberGenerator } from '../generators/SubscriberGenerator.js';
 import { type ConstructSource, discover } from '../reconcile/discover.js';
 import { readFakes } from '../reconcile/fakes.js';
-import type { CacheBackend } from '../types.js';
+import type { CacheBackend, EventsBackend } from '../types.js';
 
 /**
  * The variable the manifest's path travels in — what
@@ -101,6 +102,11 @@ export interface WriteTestHarnessOptions {
 	 * the build's server entry registers a driver for.
 	 */
 	cacheBackend: CacheBackend;
+	/**
+	 * The broker the target puts topics and queues on, which the server entry
+	 * registers a driver for when the app declares one.
+	 */
+	eventsBackend: EventsBackend;
 	/**
 	 * The folder of test factories, absolute: `test/factories` at the root, or
 	 * where `test.factories` in the config points. Absent or empty, a test is
@@ -270,6 +276,7 @@ export async function writeTestHarness(
 	const drivers = driversFor({
 		appRoot: options.root,
 		cache: cacheBackendsIn(declared, options.cacheBackend),
+		events: eventsBackendsIn(declared, options.eventsBackend),
 	});
 
 	// The app's own databases: not a tenant an auth server owns — reached

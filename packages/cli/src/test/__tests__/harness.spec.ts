@@ -59,6 +59,7 @@ describe('writeTestHarness', () => {
 			stage: 'test',
 			env,
 			cacheBackend: 'db',
+			eventsBackend: 'pgboss',
 			...(factories ? { factories } : {}),
 		});
 
