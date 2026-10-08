@@ -1,0 +1,109 @@
+name: gkm stages
+description: >-
+  The stages a gkm workspace declares in gkm.config.ts, and which of them this
+  workflow run builds and deploys, as JSON for strategy.matrix.
+author: geekmidas
+
+# Thin on purpose: the rules are in the project's own `gkm stages
+# --github-output`, so they are tested code, and they are the version of gkm
+# the project installed. Check out the project and install its dependencies
+# before this step.
+
+inputs:
+  event:
+    description: The event to plan for (push, release, workflow_dispatch, …).
+    required: false
+    default: ${{ github.event_name }}
+  stage:
+    description: >-
+      The stage a workflow_dispatch deploys; it must be one of the deployed
+      stages. Ignored for every other event.
+    required: false
+    default: ''
+  working-directory:
+    description: The directory holding gkm.config.ts.
+    required: false
+    default: .
+  package-manager:
+    description: >-
+      pnpm, npm, yarn or bun. Detected from the lockfile in working-directory
+      or the nearest directory above it when not given.
+    required: false
+    default: ''
+
+outputs:
+  local:
+    description: The local stage, as a JSON string, e.g. "dev".
+    value: ${{ steps.stages.outputs.local }}
+  deployed:
+    description: The deployed stages, as a JSON array.
+    value: ${{ steps.stages.outputs.deployed }}
+  protected:
+    description: The protected stages, as a JSON array.
+    value: ${{ steps.stages.outputs.protected }}
+  build:
+    description: >-
+      The stages whose images this run builds and pushes, as a JSON array:
+      every deployed stage on a push, none otherwise.
+    value: ${{ steps.stages.outputs.build }}
+  deploy:
+    description: >-
+      The stages this run deploys, as a JSON array: on a push the deployed
+      stages that are not protected, on a release the protected ones, on a
+      workflow_dispatch the one named, none otherwise.
+    value: ${{ steps.stages.outputs.deploy }}
+  has-build:
+    description: "'true' when build is not empty. A matrix over [] is an error."
+    value: ${{ steps.stages.outputs.has-build }}
+  has-deploy:
+    description: "'true' when deploy is not empty. A matrix over [] is an error."
+    value: ${{ steps.stages.outputs.has-deploy }}
+  aws-region:
+    description: >-
+      The region of the workspace's AWS secrets store (ssm or
+      secrets-manager), or '' when the stages keep their secrets elsewhere.
+    value: ${{ steps.stages.outputs.aws-region }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read stages from gkm.config.ts
+      id: stages
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        EVENT: ${{ inputs.event }}
+        STAGE: ${{ inputs.stage }}
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
+      run: |
+        set -euo pipefail
+
+        # As the CLI's own detectPackageManager: the nearest lockfile wins.
+        pm="$PACKAGE_MANAGER"
+        dir="$PWD"
+        while [ -z "$pm" ]; do
+          if [ -f "$dir/pnpm-lock.yaml" ]; then pm=pnpm
+          elif [ -f "$dir/yarn.lock" ]; then pm=yarn
+          elif [ -f "$dir/bun.lock" ] || [ -f "$dir/bun.lockb" ]; then pm=bun
+          elif [ -f "$dir/package-lock.json" ]; then pm=npm
+          elif [ "$dir" = / ]; then
+            echo "::error title=gkm stages::No lockfile in $PWD or above it. Install the project's dependencies before this step, or set package-manager."
+            exit 1
+          else dir=$(dirname "$dir")
+          fi
+        done
+
+        case "$pm" in
+          pnpm) gkm=(pnpm exec gkm) ;;
+          npm) gkm=(npx --no-install gkm) ;;
+          yarn) gkm=(yarn gkm) ;;
+          bun) gkm=(bun x gkm) ;;
+          *)
+            echo "::error title=gkm stages::package-manager is '$pm'; it takes pnpm, npm, yarn or bun."
+            exit 1
+            ;;
+        esac
+
+        args=(stages --github-output --event "$EVENT")
+        if [ -n "$STAGE" ]; then args+=(--stage "$STAGE"); fi
+        "${gkm[@]}" "${args[@]}"

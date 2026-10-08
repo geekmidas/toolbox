@@ -30,6 +30,14 @@ const perStage = (
 
 export function deployPackage(options: TemplateOptions): DeployPackage {
 	switch (options.deployTarget) {
+		case 'compose':
+			// On the server: built from its checkout. CI deploys by tag instead,
+			// through .github/workflows/deploy.yml.
+			return {
+				scripts: perStage(options, (stage) => `gkm compose --stage ${stage}`),
+				dependencies: {},
+				devDependencies: {},
+			};
 		case 'dokploy':
 			return {
 				scripts: perStage(options, (stage) => `gkm deploy --stage ${stage}`),

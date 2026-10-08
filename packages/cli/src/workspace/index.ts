@@ -5,7 +5,7 @@ import {
 	formatValidationErrors,
 	safeValidateWorkspaceConfig,
 } from './schema.js';
-import { validateStages } from './stages.js';
+import { InvalidStages, stageProblems, validateStages } from './stages.js';
 import type {
 	AppConfig,
 	AppsRecord,
@@ -302,10 +302,16 @@ export function processConfig(
 
 	if (isWorkspaceConfig(config)) {
 		assertKnownSecretsStore(config.secrets?.store);
+		// Every command needs the stages, so a config without them is refused
+		// by the error that says so and shows the shape, not as one schema
+		// issue among others.
+		if (config.stages === undefined) {
+			throw new InvalidStages(stageProblems(undefined));
+		}
 		// Validate workspace config
 		const result = safeValidateWorkspaceConfig(config);
 		if (!result.success && result.error) {
-			throw new Error(formatValidationErrors(result.error));
+			throw new InvalidWorkspaceConfig(formatValidationErrors(result.error));
 		}
 
 		return {
@@ -321,6 +327,14 @@ export function processConfig(
 		raw: config,
 		workspace: wrapSingleAppAsWorkspace(config, cwd),
 	};
+}
+
+/** A workspace config the schema refuses; the message lists every issue. */
+export class InvalidWorkspaceConfig extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'InvalidWorkspaceConfig';
+	}
 }
 
 /**

@@ -33,7 +33,7 @@ export type PackageManager = 'pnpm' | 'npm' | 'yarn' | 'bun';
 /**
  * Deploy target type
  */
-export type DeployTarget = 'dokploy' | 'sst' | 'none';
+export type DeployTarget = 'compose' | 'dokploy' | 'sst' | 'none';
 
 /**
  * The constructs a scaffold declares.
@@ -76,6 +76,8 @@ export interface TemplateOptions {
 	deployTarget: DeployTarget;
 	/** The AWS region, when `deployTarget` is `sst` */
 	region?: string;
+	/** The container registry, when `deployTarget` is `compose`, e.g. `ghcr.io/acme` */
+	registry?: string;
 	/** The project's stages, written to gkm.config.ts and read from it */
 	stages: StagesConfig;
 	/** The constructs this scaffold declares */
@@ -263,6 +265,12 @@ export const deployTargetChoices = [
 		title: 'Dokploy',
 		value: 'dokploy' as DeployTarget,
 		description: 'Deploy to Dokploy (Docker-based hosting)',
+	},
+	{
+		title: 'Server (Docker Compose)',
+		value: 'compose' as DeployTarget,
+		description:
+			'One Docker Compose stack per stage on your own server; CI builds the images',
 	},
 	{
 		title: 'AWS (SST)',

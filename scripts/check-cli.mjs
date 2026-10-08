@@ -51,4 +51,26 @@ if (failures.length) {
 	process.exit(1);
 }
 
-console.log(`gkm starts, and all ${commands.length} commands answer --help.`);
+// `gkm stages --json` is read by a machine — the stages action, a workflow's
+// `fromJSON` — so its stdout is checked to be the JSON and nothing else, from a
+// real workspace.
+const stages = gkm('--cwd', 'apps/kitchen-sink', 'stages', '--json');
+let parsed;
+try {
+	parsed = stages.ok ? JSON.parse(stages.output) : undefined;
+} catch {}
+if (
+	!parsed ||
+	typeof parsed.local !== 'string' ||
+	!Array.isArray(parsed.deployed) ||
+	!Array.isArray(parsed.protected)
+) {
+	console.error(
+		`gkm stages --json did not print the stages as JSON:\n\n${stages.output}`,
+	);
+	process.exit(1);
+}
+
+console.log(
+	`gkm starts, all ${commands.length} commands answer --help, and gkm stages --json prints JSON.`,
+);

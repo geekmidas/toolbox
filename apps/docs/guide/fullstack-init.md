@@ -174,14 +174,21 @@ Every scaffold ships `.github/`:
 Tests need no shared key: `gkm test` starts the containers the constructs
 declare and, with `GKM_AUTO_SETUP=1`, generates throwaway test-stage secrets.
 
-**Deploy** names no stage — it reads [`stages`](./workspaces.md#stages) from
-`gkm.config.ts` when it runs:
+**Deploy** names no stage. Its first job runs the
+[stages action](./deployment.md#deploying-from-github-actions)
+(`geekmidas/toolbox/actions/stages`), which asks the project's own
+`gkm stages --github-output` which stages this run builds and deploys:
 
-| Event | Deploys |
-|---|---|
-| push to `main` | every deployed stage **not** in `protected` |
-| publishing the drafted release | the `protected` stages |
-| *Run workflow* | the one stage you type (refused if it is not deployed) |
+| Event | Builds (compose) | Deploys |
+|---|---|---|
+| push to `main` | every deployed stage | every deployed stage **not** in `protected` |
+| publishing the drafted release | — | the `protected` stages |
+| *Run workflow* | — | the one stage you type, at the `ref` you type (refused if it is not deployed) |
+
+With `--deploy compose` the runner builds and pushes each stage's images and
+the server pulls them over SSH; Dokploy and SST deploy with `gkm deploy` from a
+checkout. The whole workflow for each is in
+[Deploying from GitHub Actions](./deployment.md#deploying-from-github-actions).
 
 Each stage deploys in the GitHub **environment** of the same name, so give
 each one what it needs — and put a required reviewer on protected ones if a
@@ -189,8 +196,9 @@ release should also need approval:
 
 | Environment setting | Target | Value |
 |---|---|---|
-| variable `AWS_ROLE_ARN` | SST | an IAM role that trusts GitHub's OIDC provider for this repo |
+| variable `AWS_ROLE_ARN` | SST; compose with an AWS `secrets.store` | an IAM role that trusts GitHub's OIDC provider for this repo (`gkm deploy:github`) |
 | the stage's secrets | SST | read from SSM in the stage's account by the deploy, with the role; written there by `gkm secrets:set … --stage <stage>` |
+| secret `DEPLOY_SSH_KEY`; variables `DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH` | compose | how the deploy job reaches the server, with its host key pinned |
 | secret `GKM_SECRETS_KEY` | Dokploy | the stage's key, from `~/.gkm/keys/<namespace>/<project>/<stage>.key` — the encrypted file itself is under the gitignored `.gkm/`, so set `secrets.store` to a store CI can reach |
 | secret `DOKPLOY_API_TOKEN`, variable `DOKPLOY_ENDPOINT` | Dokploy | your Dokploy API token and URL |
 

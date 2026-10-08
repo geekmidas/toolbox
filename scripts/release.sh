@@ -75,6 +75,10 @@ case "${1:-}" in
 		fi
 		;;
 	publish)
+		# The commit being released, pushed by `version` (or already on main):
+		# `gkm init` pins the stages action it scaffolds to it.
+		GKM_RELEASE_COMMIT=$(git rev-parse HEAD)
+		export GKM_RELEASE_COMMIT
 		build
 		pnpm changeset publish
 		;;
