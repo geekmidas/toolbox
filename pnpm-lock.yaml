@@ -306,6 +306,9 @@ importers:
 
   packages/cache:
     dependencies:
+      '@opentelemetry/api':
+        specifier: ~1.9.1
+        version: 1.9.1
       '@upstash/redis':
         specifier: '>=1.39.0'
         version: 1.39.0
@@ -319,6 +322,9 @@ importers:
         specifier: ~4.1.2
         version: 4.1.2
     devDependencies:
+      '@opentelemetry/sdk-trace-node':
+        specifier: ~2.11.0
+        version: 2.11.0(@opentelemetry/api@1.9.1)
       '@types/pg':
         specifier: ~8.23.1
         version: 8.23.1
@@ -613,6 +619,9 @@ importers:
       '@middy/core':
         specifier: '>=7.9.2'
         version: 7.9.2
+      '@opentelemetry/api':
+        specifier: ~1.9.1
+        version: 1.9.1
       '@types/aws-lambda':
         specifier: '>=8.10.163'
         version: 8.10.163
@@ -677,6 +686,9 @@ importers:
       '@geekmidas/testkit':
         specifier: workspace:^
         version: link:../testkit
+      '@opentelemetry/sdk-trace-node':
+        specifier: ~2.11.0
+        version: 2.11.0(@opentelemetry/api@1.9.1)
       '@types/lodash.compact':
         specifier: ~3.0.9
         version: 3.0.9
@@ -744,6 +756,9 @@ importers:
 
   packages/emailkit:
     dependencies:
+      '@opentelemetry/api':
+        specifier: ~1.9.1
+        version: 1.9.1
       '@react-email/components':
         specifier: '>=1.0.12'
         version: 1.0.12(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -757,6 +772,9 @@ importers:
         specifier: '>=18.0.0'
         version: 19.1.0(react@19.1.0)
     devDependencies:
+      '@opentelemetry/sdk-trace-node':
+        specifier: ~2.11.0
+        version: 2.11.0(@opentelemetry/api@1.9.1)
       '@types/nodemailer':
         specifier: ~8.0.2
         version: 8.0.2
@@ -808,6 +826,9 @@ importers:
       '@aws-sdk/client-sqs':
         specifier: '>=3.1136.0'
         version: 3.1137.0
+      '@opentelemetry/api':
+        specifier: ~1.9.1
+        version: 1.9.1
       amqplib:
         specifier: '>=2.0.1'
         version: 2.0.1
@@ -818,6 +839,9 @@ importers:
       '@geekmidas/schema':
         specifier: workspace:^
         version: link:../schema
+      '@opentelemetry/sdk-trace-node':
+        specifier: ~2.11.0
+        version: 2.11.0(@opentelemetry/api@1.9.1)
       '@types/amqplib':
         specifier: ~0.10.8
         version: 0.10.8
@@ -932,6 +956,9 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: '>=3.1136.0'
         version: 3.1137.0
+      '@opentelemetry/api':
+        specifier: ~1.9.1
+        version: 1.9.1
       zod:
         specifier: '>=4.6.5'
         version: 4.6.5
@@ -939,6 +966,9 @@ importers:
       '@geekmidas/cache':
         specifier: workspace:^
         version: link:../cache
+      '@opentelemetry/sdk-trace-node':
+        specifier: ~2.11.0
+        version: 2.11.0(@opentelemetry/api@1.9.1)
 
   packages/telescope:
     dependencies:

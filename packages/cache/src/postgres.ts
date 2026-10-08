@@ -23,6 +23,7 @@
 import pg, { type Pool } from 'pg';
 import type { Cache } from './index';
 import type { CacheDriver } from './registry';
+import { traceCache } from './telemetry';
 
 export interface PostgresCacheOptions {
 	/**
@@ -48,33 +49,41 @@ export class PostgresCache implements Cache {
 	}
 
 	async get<T>(key: string): Promise<T | undefined> {
-		const { rows } = await this.query<{ value: T }>(
-			`SELECT value FROM ${this.identifier()}
-			 WHERE key = $1 AND (expires_at IS NULL OR expires_at > now())`,
-			[key],
-		);
+		return traceCache('postgresql', 'get', async () => {
+			const { rows } = await this.query<{ value: T }>(
+				`SELECT value FROM ${this.identifier()}
+				 WHERE key = $1 AND (expires_at IS NULL OR expires_at > now())`,
+				[key],
+			);
 
-		return rows[0]?.value;
+			return rows[0]?.value;
+		});
 	}
 
 	async set<T>(key: string, value: T, ttl?: number): Promise<void> {
-		// `now() + interval` computed by the server, not by this process: a
-		// client whose clock is minutes off would otherwise write entries that
-		// expire early or late, and clock skew is not a thing to debug through a
-		// cache.
-		await this.query(
-			`INSERT INTO ${this.identifier()} (key, value, expires_at)
-			 VALUES ($1, $2::jsonb, ${ttl === undefined ? 'NULL' : "now() + ($3 || ' seconds')::interval"})
-			 ON CONFLICT (key) DO UPDATE
-			 SET value = EXCLUDED.value, expires_at = EXCLUDED.expires_at`,
-			ttl === undefined
-				? [key, JSON.stringify(value)]
-				: [key, JSON.stringify(value), String(ttl)],
-		);
+		return traceCache('postgresql', 'set', async () => {
+			// `now() + interval` computed by the server, not by this process: a
+			// client whose clock is minutes off would otherwise write entries that
+			// expire early or late, and clock skew is not a thing to debug through a
+			// cache.
+			await this.query(
+				`INSERT INTO ${this.identifier()} (key, value, expires_at)
+				 VALUES ($1, $2::jsonb, ${ttl === undefined ? 'NULL' : "now() + ($3 || ' seconds')::interval"})
+				 ON CONFLICT (key) DO UPDATE
+				 SET value = EXCLUDED.value, expires_at = EXCLUDED.expires_at`,
+				ttl === undefined
+					? [key, JSON.stringify(value)]
+					: [key, JSON.stringify(value), String(ttl)],
+			);
+		});
 	}
 
 	async delete(key: string): Promise<void> {
-		await this.query(`DELETE FROM ${this.identifier()} WHERE key = $1`, [key]);
+		return traceCache('postgresql', 'delete', async () => {
+			await this.query(`DELETE FROM ${this.identifier()} WHERE key = $1`, [
+				key,
+			]);
+		});
 	}
 
 	async ttl(key: string): Promise<number> {

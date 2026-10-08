@@ -3,8 +3,14 @@ import {
 	type Message,
 	ReceiveMessageCommand,
 } from '@aws-sdk/client-sqs';
+import {
+	carrierFromAttributes,
+	consumeTraced,
+	type TraceCarrier,
+} from '../telemetry';
 import type { EventSubscriber, PublishableMessage } from '../types';
 import type { SQSConnection } from './SQSConnection';
+import { sqsQueueName } from './SQSPublisher';
 
 export interface SQSSubscriberOptions {
 	waitTimeSeconds?: number; // SQS long polling (default: 20)
@@ -90,7 +96,10 @@ export class SQSSubscriber<TMessage extends PublishableMessage<string, any>>
 				if (!message.Body) continue;
 
 				// Try to parse as SNS message first
-				const parsedMessage = this.parseMessage(message.Body);
+				const parsedMessage = this.parseMessage(
+					message.Body,
+					message.MessageAttributes,
+				);
 
 				if (!parsedMessage) {
 					// Not a valid message format
@@ -98,7 +107,7 @@ export class SQSSubscriber<TMessage extends PublishableMessage<string, any>>
 					continue;
 				}
 
-				const { payload, messageType, topicArn } = parsedMessage;
+				const { payload, messageType, topicArn, carrier } = parsedMessage;
 
 				// If expectedTopicArn is set, verify the message is from that topic
 				if (this.options.expectedTopicArn && topicArn) {
@@ -114,8 +123,18 @@ export class SQSSubscriber<TMessage extends PublishableMessage<string, any>>
 					this.messageTypes.has(messageType as TMessage['type'])
 				) {
 					// Call listener
-					if (this.listener) {
-						await this.listener(payload as TMessage);
+					const listener = this.listener;
+					if (listener) {
+						await consumeTraced(
+							{
+								system: 'aws_sqs',
+								destination: sqsQueueName(this.connection.queueUrl),
+								type: messageType,
+								messageId: message.MessageId,
+							},
+							carrier,
+							() => listener(payload as TMessage),
+						);
 					}
 
 					// Delete message after successful processing
@@ -133,10 +152,14 @@ export class SQSSubscriber<TMessage extends PublishableMessage<string, any>>
 	/**
 	 * Parse message body - handles both direct SQS messages and SNS-wrapped messages
 	 */
-	private parseMessage(body: string): {
+	private parseMessage(
+		body: string,
+		attributes: Record<string, unknown> | undefined,
+	): {
 		payload: unknown;
 		messageType: string | undefined;
 		topicArn?: string;
+		carrier?: TraceCarrier;
 	} | null {
 		try {
 			const parsed = JSON.parse(body);
@@ -152,6 +175,8 @@ export class SQSSubscriber<TMessage extends PublishableMessage<string, any>>
 					payload: snsMessage,
 					messageType,
 					topicArn: parsed.TopicArn,
+					// SNS's message attributes, carried in its envelope.
+					carrier: carrierFromAttributes(parsed.MessageAttributes),
 				};
 			}
 
@@ -159,6 +184,7 @@ export class SQSSubscriber<TMessage extends PublishableMessage<string, any>>
 			return {
 				payload: parsed,
 				messageType: parsed.type,
+				carrier: carrierFromAttributes(attributes),
 			};
 		} catch (_error) {
 			return null;

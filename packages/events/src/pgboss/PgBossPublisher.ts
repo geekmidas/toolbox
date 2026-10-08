@@ -1,3 +1,4 @@
+import { publishTraced, withTraceKey } from '../telemetry';
 import type { EventPublisher, PublishableMessage } from '../types';
 import { PgBossNotStarted } from './errors';
 import type { PgBossConnection } from './PgBossConnection';
@@ -53,29 +54,44 @@ export class PgBossPublisher<TMessage extends PublishableMessage<string, any>>
 		// A topic: pg-boss copies the job into every queue subscribed to the
 		// event — one per subscriber — so each subscriber sees each message.
 		// The type rides in the data, because the job is named for the queue.
+		//
+		// pg-boss has no header field, so the trace context rides in the data
+		// too, under a reserved key the subscriber removes before the handler.
 		const { topic } = this.options;
 		if (topic) {
-			for (const m of messages) {
-				await boss.publish(topicEvent(topic, m.type), {
-					type: m.type,
-					payload: m.payload,
-				});
-			}
+			await publishTraced(
+				messages,
+				(m) => ({ system: 'pgboss', destination: topic, type: m.type }),
+				async (carriers) => {
+					for (const [i, m] of messages.entries()) {
+						await boss.publish(
+							topicEvent(topic, m.type),
+							withTraceKey({ type: m.type, payload: m.payload }, carriers[i]),
+						);
+					}
+				},
+			);
 			return;
 		}
 
-		// Group jobs by queue name (v11+ requires per-queue insert calls)
-		const groups = new Map<string, { data: TMessage['payload'] }[]>();
-		for (const m of messages) {
-			const list = groups.get(m.type) ?? [];
-			list.push({ data: m.payload });
-			groups.set(m.type, list);
-		}
+		await publishTraced(
+			messages,
+			(m) => ({ system: 'pgboss', destination: m.type, type: m.type }),
+			async (carriers) => {
+				// Group jobs by queue name (v11+ requires per-queue insert calls)
+				const groups = new Map<string, { data: TMessage['payload'] }[]>();
+				for (const [i, m] of messages.entries()) {
+					const list = groups.get(m.type) ?? [];
+					list.push({ data: withTraceKey(m.payload, carriers[i]) });
+					groups.set(m.type, list);
+				}
 
-		for (const [name, jobs] of groups) {
-			await boss.createQueue(name);
-			await boss.insert(name, jobs);
-		}
+				for (const [name, jobs] of groups) {
+					await boss.createQueue(name);
+					await boss.insert(name, jobs);
+				}
+			},
+		);
 	}
 
 	async close(): Promise<void> {

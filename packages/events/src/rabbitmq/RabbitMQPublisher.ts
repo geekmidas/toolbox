@@ -1,4 +1,5 @@
 import type amqplib from 'amqplib';
+import { publishTraced } from '../telemetry';
 import type { EventPublisher, PublishableMessage } from '../types';
 import { RabbitMQChannelUnavailable } from './errors';
 import type { RabbitMQConnection } from './RabbitMQConnection';
@@ -40,25 +41,39 @@ export class RabbitMQPublisher<TMessage extends PublishableMessage<string, any>>
 
 		const exchange = this.connection.exchangeName;
 
-		for (const message of messages) {
-			const content = Buffer.from(JSON.stringify(message.payload));
-
-			// Use message type as routing key for topic exchanges
-			const routingKey = message.type;
-
-			const published = channel.publish(exchange, routingKey, content, {
-				contentType: 'application/json',
-				timestamp: Date.now(),
+		await publishTraced(
+			messages,
+			(message) => ({
+				system: 'rabbitmq',
+				destination: exchange,
 				type: message.type,
-				persistent: true,
-				...this.options.publishOptions,
-			});
+			}),
+			async (carriers) => {
+				for (const [i, message] of messages.entries()) {
+					const content = Buffer.from(JSON.stringify(message.payload));
+					const { headers, ...publishOptions } =
+						this.options.publishOptions ?? {};
 
-			// Handle backpressure
-			if (!published) {
-				await new Promise((resolve) => channel.once('drain', resolve));
-			}
-		}
+					// Use message type as routing key for topic exchanges; the trace
+					// context goes in the message's headers.
+					const published = channel.publish(exchange, message.type, content, {
+						contentType: 'application/json',
+						timestamp: Date.now(),
+						type: message.type,
+						persistent: true,
+						...publishOptions,
+						...((headers || carriers[i]) && {
+							headers: { ...headers, ...carriers[i] },
+						}),
+					});
+
+					// Handle backpressure
+					if (!published) {
+						await new Promise((resolve) => channel.once('drain', resolve));
+					}
+				}
+			},
+		);
 	}
 
 	async close(): Promise<void> {

@@ -47,6 +47,7 @@ import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Consumable } from './construct-interface';
 import { readCredentials } from './credential';
+import { traceClient } from './tracing';
 
 /** What a credentials schema yields. */
 type Value<TSchema extends StandardSchemaV1> =
@@ -138,7 +139,20 @@ export class ExternalApi<
 			options.envParser,
 		);
 
-		return this.options.client({ url, credentials });
+		const client = await this.options.client({ url, credentials });
+		// Each call a span carrying this API's name — the parent of the fetch
+		// it makes, which is traced already.
+		return traceClient(this.id, client, {
+			'server.address': hostOf(url),
+		});
+	}
+}
+
+function hostOf(url: string): string {
+	try {
+		return new URL(url).host;
+	} catch {
+		return url;
 	}
 }
 

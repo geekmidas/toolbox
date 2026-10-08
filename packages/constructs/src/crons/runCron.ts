@@ -3,6 +3,13 @@ import {
 	runWithRequestContext,
 	type ServiceDiscovery,
 } from '@geekmidas/services';
+import {
+	context,
+	ROOT_CONTEXT,
+	SpanKind,
+	SpanStatusCode,
+	trace,
+} from '@opentelemetry/api';
 import { publishEvents } from '../publisher';
 import type { Cron } from './Cron';
 
@@ -16,8 +23,42 @@ import type { Cron } from './Cron';
  * would pass locally and fail where it matters. Services come through the
  * discovery, which keeps one instance of each, so running every minute does not
  * reconnect a database every minute.
+ *
+ * Each run is a trace of its own: a root span, `cron <name>`, whatever was
+ * active when the timer or the broker fired it.
  */
 export async function runCron(
+	cron: Cron<any, any, any, any, any, any>,
+	serviceDiscovery: ServiceDiscovery<any>,
+	/** The cron's export name, for its span. */
+	name?: string,
+): Promise<unknown> {
+	const span = trace.getTracer('@geekmidas/constructs').startSpan(
+		`cron ${name ?? cron.schedule ?? 'manual'}`,
+		{
+			kind: SpanKind.INTERNAL,
+			attributes: {
+				...(name && { 'gkm.cron.name': name }),
+				...(cron.schedule && { 'gkm.cron.schedule': cron.schedule }),
+			},
+		},
+		ROOT_CONTEXT,
+	);
+
+	return context.with(trace.setSpan(ROOT_CONTEXT, span), async () => {
+		try {
+			return await run(cron, serviceDiscovery);
+		} catch (error) {
+			if (error instanceof Error) span.recordException(error);
+			span.setStatus({ code: SpanStatusCode.ERROR });
+			throw error;
+		} finally {
+			span.end();
+		}
+	});
+}
+
+async function run(
 	cron: Cron<any, any, any, any, any, any>,
 	serviceDiscovery: ServiceDiscovery<any>,
 ): Promise<unknown> {

@@ -4,6 +4,7 @@ import {
 	type SendMessageBatchRequestEntry,
 } from '@aws-sdk/client-sqs';
 import chunk from 'lodash.chunk';
+import { carrierAsAttributes, publishTraced } from '../telemetry';
 import type { EventPublisher, PublishableMessage } from '../types';
 import type { SQSConnection } from './SQSConnection';
 
@@ -63,22 +64,33 @@ export class SQSPublisher<TMessage extends PublishableMessage<string, any>>
 	}
 
 	private async sendBatch(messages: TMessage[]): Promise<void> {
-		const entries: SendMessageBatchRequestEntry[] = messages.map(
-			(message, index) => ({
-				Id: `${index}`,
-				MessageBody: JSON.stringify({
-					type: message.type,
-					payload: message.payload,
-				}),
-				MessageAttributes: {
-					type: {
-						DataType: 'String',
-						StringValue: message.type,
-					},
-				},
-			}),
+		const destination = sqsQueueName(this.connection.queueUrl);
+		await publishTraced(
+			messages,
+			(message) => ({ system: 'aws_sqs', destination, type: message.type }),
+			(carriers) =>
+				this.send(
+					messages.map((message, index) => ({
+						Id: `${index}`,
+						MessageBody: JSON.stringify({
+							type: message.type,
+							payload: message.payload,
+						}),
+						// The trace context as message attributes — SQS's own header
+						// field — beside the type.
+						MessageAttributes: {
+							type: {
+								DataType: 'String',
+								StringValue: message.type,
+							},
+							...carrierAsAttributes(carriers[index]),
+						},
+					})),
+				),
 		);
+	}
 
+	private async send(entries: SendMessageBatchRequestEntry[]): Promise<void> {
 		const input: SendMessageBatchCommandInput = {
 			QueueUrl: this.connection.queueUrl,
 			Entries: entries,
@@ -119,4 +131,9 @@ export class SqsBatchPartlyFailed extends Error {
 		);
 		this.name = 'SqsBatchPartlyFailed';
 	}
+}
+
+/** The queue's name, the last segment of its URL. */
+export function sqsQueueName(queueUrl: string): string {
+	return queueUrl.split('/').filter(Boolean).pop() ?? queueUrl;
 }

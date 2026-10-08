@@ -1,5 +1,6 @@
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import { wrapError } from '@geekmidas/errors';
+import { consumeBatchTraced } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceRecord } from '@geekmidas/services';
@@ -12,6 +13,7 @@ import type {
 	SQSEvent,
 	SQSRecord,
 } from 'aws-lambda';
+import { recordCarrier } from '../tracing';
 import type { Queue, QueueContext } from './Queue';
 
 export type AWSLambdaHandler<TEvent = any, TResult = any> = Handler<
@@ -185,9 +187,16 @@ export class AWSLambdaQueue<
 			const requestId = context.awsRequestId;
 			const logger = this.queue.logger.child({ requestId }) as TLogger;
 
+			// One CONSUMER span for the batch: a child of the producer when it is
+			// one message, linked to each producer when it is several.
 			return runWithRequestContext(
 				{ logger, requestId, startTime, operation: `queue ${this.queue.name}` },
-				() => handler(event, context),
+				() =>
+					consumeBatchTraced(
+						{ system: 'aws_sqs', destination: this.queue.name },
+						event.Records.map(recordCarrier),
+						() => handler(event, context),
+					),
 			);
 		}) as unknown as AWSLambdaHandler<SQSEvent, SQSBatchResponse>;
 	}

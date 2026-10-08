@@ -1,5 +1,6 @@
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import { wrapError } from '@geekmidas/errors';
+import { carrierFromAttributes, consumeTraced } from '@geekmidas/events';
 import {
 	confirmSnsSubscription,
 	type SnsHttpMessage,
@@ -121,29 +122,49 @@ export class SnsPushSubscriberAdaptor {
 				startTime: Date.now(),
 				operation: `subscriber ${this.subscriber.topicName ?? 'sns'}`,
 			},
-			async () => {
-				try {
-					const { services, db } = await subscriberContext(
-						this.subscriber,
-						this.envParser,
-					);
-					const events = subscribedEvents(
-						this.subscriber,
-						toSnsEvent(message),
-						logger,
-					);
-					await runSubscriber(this.subscriber, {
-						events,
-						services,
-						logger,
-						db,
-					});
-				} catch (error) {
-					logger.error(error as object, 'Error processing subscriber');
-					throw wrapError(error);
-				}
-			},
+			// A CONSUMER span, child of the publisher's: SNS hands the trace
+			// context on in the message attributes it was published with.
+			() =>
+				consumeTraced(
+					{
+						system: 'aws_sns',
+						destination:
+							this.subscriber.topicName ??
+							message.TopicArn.split(':').pop() ??
+							message.TopicArn,
+						type: message.MessageAttributes?.type?.Value,
+						messageId: message.MessageId,
+					},
+					carrierFromAttributes(message.MessageAttributes),
+					() => this.run(message, logger),
+				),
 		);
+	}
+
+	private async run(
+		message: SnsHttpMessage,
+		logger: Subscriber<any, any, any, any, any, any, any>['logger'],
+	): Promise<void> {
+		try {
+			const { services, db } = await subscriberContext(
+				this.subscriber,
+				this.envParser,
+			);
+			const events = subscribedEvents(
+				this.subscriber,
+				toSnsEvent(message),
+				logger,
+			);
+			await runSubscriber(this.subscriber, {
+				events,
+				services,
+				logger,
+				db,
+			});
+		} catch (error) {
+			logger.error(error as object, 'Error processing subscriber');
+			throw wrapError(error);
+		}
 	}
 }
 
