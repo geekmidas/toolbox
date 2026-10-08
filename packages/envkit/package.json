@@ -70,5 +70,8 @@
 		"@types/lodash.snakecase": "~4.1.9",
 		"@types/node": "~24.9.1"
 	},
-	"peerDependenciesMeta": {}
+	"peerDependenciesMeta": {},
+	"scripts": {
+		"build": "tsdown --config ../../tsdown.config.ts --filter ."
+	}
 }

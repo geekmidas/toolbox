@@ -288,10 +288,11 @@ on a clean checkout is all it takes.
    one. Build from there: `docker build -f <path>/.gkm/docker/Dockerfile.api .`
 2. **`turbo prune`** cuts the app's slice of it (a single-package project is
    copied whole), and the image installs the slice's dependencies.
-3. **The workspace packages the app depends on are built** in the image — the
-   root's `build` script, then turbo's `^build` — and then the app:
-   `gkm build --provider server --production` for a backend, the framework's
-   build for a site.
+3. **The workspace packages the app depends on are built** in the image, by
+   turbo's `^build` — so each needs a `build` script of its own — and then the
+   app: `gkm build --provider server --production` for a backend, the
+   framework's build for a site. The root's own `build` script is never run: a
+   root `build` of `gkm build` would build every app, and the slice holds one.
 4. **The runner holds the result only**: `server.mjs` for a backend (plus any
    package the bundle leaves external), Next's standalone server, or a Vite
    site's files served by Caddy.

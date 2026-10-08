@@ -53,5 +53,8 @@
 	},
 	"engines": {
 		"node": ">=22.0.0"
+	},
+	"scripts": {
+		"build": "tsdown --config ../../tsdown.config.ts --filter ."
 	}
 }

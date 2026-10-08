@@ -96,5 +96,8 @@
 		"pg": "~8.23.0",
 		"@types/pg": "~8.23.1",
 		"knex": "~3.3.0"
+	},
+	"scripts": {
+		"build": "tsdown --config ../../tsdown.config.ts --filter ."
 	}
 }

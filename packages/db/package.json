@@ -102,7 +102,8 @@
 		"@faker-js/faker": "~10.6.0"
 	},
 	"scripts": {
-		"ts": "tsc --noEmit --skipLibCheck src/**/*.ts"
+		"ts": "tsc --noEmit --skipLibCheck src/**/*.ts",
+		"build": "tsdown --config ../../tsdown.config.ts --filter ."
 	},
 	"devDependencies": {
 		"@types/pg": "~8.23.1"

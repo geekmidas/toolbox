@@ -251,5 +251,8 @@
 		"pg": "~8.23.0",
 		"pino": "~10.3.1",
 		"pino-abstract-transport": "~3.0.0"
+	},
+	"scripts": {
+		"build": "tsdown --config ../../tsdown.config.ts --filter ."
 	}
 }

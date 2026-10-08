@@ -408,31 +408,31 @@ RUN --mount=type=cache,id=${pm.cacheId},target=${pm.cacheTarget} \\
  *
  * Nothing built on the host reaches the image — `.dockerignore` keeps every
  * `dist` out — so a workspace package (a CLI that is a sibling package) is
- * built here: the root's `build` script if it has one, then turbo's build of
- * the app's dependencies (`^build`).
+ * built here: turbo's build of the app's dependencies (`^build`) and nothing
+ * else. The root's own `build` script is never run: the slice holds one app,
+ * and a root `build` that is `gkm build` (what `gkm init` scaffolds) builds
+ * every app the workspace declares, most of which are not in it. The app
+ * itself is built after this, by `gkm build` or its framework.
  */
 function builderStage(
 	options: ImageTemplateOptions,
 	extra: { args?: string[] } = {},
 ): string {
-	const { pm, turbo, monorepo } = layout(options);
+	const { turbo, monorepo } = layout(options);
 	const args = extra.args ?? [];
 	const argLines = args.length
 		? `\n# Build-time args: public values the bundler inlines\n${args.map((a) => `ARG ${a}=""`).join('\n')}\n${args.map((a) => `ENV ${a}=$${a}`).join('\n')}\n`
 		: '';
 	const scopes = [options.turboPackage, ...(options.prunePackages ?? [])];
 	const dependencies = monorepo
-		? `\nRUN ${turbo} run build ${scopes.map((s) => `--filter='${s}^...'`).join(' ')}`
+		? `\n# The workspace packages the app depends on, built from source.\nRUN ${turbo} run build ${scopes.map((s) => `--filter='${s}^...'`).join(' ')}`
 		: '';
 
 	return `# Stage 3: Build
 FROM deps AS builder
 WORKDIR /app
 ${argLines}
-COPY --from=pruner /app/out/full/ ./
-
-# The workspace packages the app depends on, built from source.
-RUN ${pm.run} --if-present build${dependencies}`;
+COPY --from=pruner /app/out/full/ ./${dependencies}`;
 }
 
 /**
