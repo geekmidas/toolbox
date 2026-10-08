@@ -17,3 +17,9 @@ export {
 export { QueueGenerator } from './QueueGenerator';
 export { SubscriberGenerator } from './SubscriberGenerator';
 export { TopicGenerator } from './TopicGenerator';
+export {
+	WorkerGenerator,
+	WorkerSubscribersNeedPush,
+	workerBundleName,
+	workerEntryDir,
+} from './WorkerGenerator';

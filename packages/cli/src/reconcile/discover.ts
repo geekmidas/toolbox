@@ -15,6 +15,9 @@
  */
 
 import { relative } from 'node:path';
+import { Cron } from '@geekmidas/constructs/crons';
+import { Queue } from '@geekmidas/constructs/queue';
+import { Subscriber } from '@geekmidas/constructs/subscribers';
 import {
 	assertDerivations,
 	type ConstructManifest,
@@ -92,6 +95,15 @@ export interface DiscoverOptions {
 	 */
 	runnables?: Record<string, string[]>;
 	/**
+	 * Filled in, when provided, with the files each worker's background work is
+	 * declared in — its crons, queue consumers and topic subscribers — keyed by
+	 * the worker.
+	 *
+	 * What says which app's build carries a worker's entry: the one whose
+	 * directory holds its work. A worker declares no path of its own.
+	 */
+	background?: Record<string, string[]>;
+	/**
 	 * Import the construct modules in this sandbox rather than in this
 	 * process. Defaults to the run's own (`withSandbox`), so a deploy's every
 	 * discovery — the engine's included — happens there; with neither, they
@@ -109,6 +121,7 @@ const DiscoverAnswer = z.discriminatedUnion('reason', [
 			z.object({ id: z.string(), kind: z.string() }).loose(),
 		),
 		runnables: z.record(z.string(), z.array(z.string())),
+		background: z.record(z.string(), z.array(z.string())).optional(),
 	}),
 	z.object({ reason: z.literal('live'), paths: z.array(z.string()) }),
 	z.object({
@@ -157,6 +170,11 @@ async function discoverInSandbox(
 			if (options.runnables) {
 				for (const [owner, edges] of Object.entries(value.runnables)) {
 					options.runnables[owner] = edges;
+				}
+			}
+			if (options.background) {
+				for (const [owner, files] of Object.entries(value.background ?? {})) {
+					options.background[owner] = files;
 				}
 			}
 			return value.manifest as unknown as ConstructManifest;
@@ -295,6 +313,8 @@ export async function discover(
 		const module = await import(bustCache ? `${file}?t=${Date.now()}` : file);
 
 		for (const [exportName, exported] of Object.entries(module)) {
+			if (options.background)
+				recordBackground(options.background, exported, file);
 			if (!isDeclarable(exported)) {
 				if (options.runnables) recordRunnable(options.runnables, exported);
 				continue;
@@ -341,6 +361,31 @@ export async function discover(
 	warnIfNothingFound(globs, matched, Object.keys(manifest).length);
 
 	return manifest;
+}
+
+/**
+ * Record where a worker's background work is declared: a cron, a queue
+ * consumer or a topic subscriber, under the worker that owns it.
+ */
+function recordBackground(
+	background: Record<string, string[]>,
+	exported: unknown,
+	file: string,
+): void {
+	if (
+		!Cron.isCron(exported) &&
+		!Queue.isQueue(exported) &&
+		!Subscriber.isSubscriber(exported)
+	) {
+		return;
+	}
+	const owner = (exported as { owner?: unknown }).owner;
+	if (typeof owner !== 'string') return;
+
+	const key = canonicalId(owner);
+	const files = background[key] ?? [];
+	background[key] = files;
+	if (!files.includes(file)) files.push(file);
 }
 
 /**

@@ -5,10 +5,10 @@ import { logger } from './logger.js';
 /**
  * The background work this application does, and the process that does it.
  *
- * Not a container: a worker names which process runs a cron or a subscriber
- * and what logger it runs with, and that process is the api's server — the one
- * already running, minus the HTTP surface. Declaring a second worker here would
- * be a second grouping, not a second deployment.
+ * A container of its own once deployed: `gkm compose` and Dokploy run it as
+ * the `jobs` service, built from the api's directory, with no route and no
+ * port — its crons, its queue consumer and its subscriber, and a health check.
+ * `gkm dev` runs it in the api's process.
  *
  * `.database(database)` is where its schedules live. Only a server target reads
  * it; on AWS a cron is an EventBridge rule and nothing here is consulted.

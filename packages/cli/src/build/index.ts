@@ -25,6 +25,9 @@ import {
 	QueueGenerator,
 	SubscriberGenerator,
 	TopicGenerator,
+	WorkerGenerator,
+	workerBundleName,
+	workerEntryDir,
 } from '../generators';
 import { telemetryFor } from '../generators/telemetry';
 import { generateOpenApi } from '../openapi.js';
@@ -77,6 +80,7 @@ import type {
 	NormalizedProductionConfig,
 	NormalizedTelescopeConfig,
 } from './types';
+import { type WorkerUnit, workerUnits } from './workers';
 
 const logger = console;
 
@@ -274,6 +278,7 @@ async function buildOneApp(input: {
 		skipBundle: options.skipBundle ?? false,
 		stage: options.stage,
 		workspaceName: workspace.name,
+		workspace,
 	});
 }
 
@@ -307,6 +312,11 @@ export interface BuildAppInput {
 	bustCache?: boolean;
 	/** The workspace's name — telemetry's `service.namespace`. */
 	workspaceName?: string;
+	/**
+	 * The workspace the app is in. A production server build reads it to know
+	 * which workers this app carries the entries of — see `workerUnits`.
+	 */
+	workspace?: NormalizedWorkspace;
 	/**
 	 * Generate a server even when the globs find nothing.
 	 *
@@ -423,12 +433,14 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 	// context rather than after the generators because the entry point's drivers
 	// are decided from it.
 	const constructSources: Record<string, ConstructSource> = {};
+	const background: Record<string, string[]> = {};
 	const declared = constructGlobs
 		? await discover({
 				patterns: constructGlobs,
 				cwd: appRoot,
 				bustCache,
 				sources: constructSources,
+				background,
 			})
 		: {};
 
@@ -610,6 +622,28 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		input.stage,
 	);
 
+	// Each Worker this app carries: its own entry, and — bundling — its own
+	// bundle beside the server's, which the worker's image copies out.
+	if (target === 'server' && production?.enabled && input.workspace) {
+		const appName = Object.entries(input.workspace.apps).find(
+			([, app]) =>
+				resolve(input.workspace!.root, app.path) === resolve(appRoot),
+		)?.[0];
+		const hosted = workerUnits(input.workspace, declared, background).filter(
+			(unit) => unit.app === appName,
+		);
+		await buildWorkers({
+			context: buildContext,
+			workers: hosted,
+			serverDir: join(appRoot, '.gkm', 'server'),
+			crons: allCrons,
+			queues: allQueues,
+			subscribers: allSubscribers,
+			bundle: Boolean(production.bundle && !input.skipBundle),
+			...(input.stage ? { stage: input.stage } : {}),
+		});
+	}
+
 	// One spec per surface, from the endpoints the build already loaded rather
 	// than from a second discovery pass over the same files.
 	await generateOpenApi(
@@ -623,6 +657,59 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 			? { databaseApi: buildContext.databaseApi.path }
 			: {}),
 	};
+}
+
+/**
+ * Write each worker's entry — and, for an image, bundle it — from the
+ * runnables built from that worker, and nothing built from another.
+ */
+async function buildWorkers(input: {
+	context: BuildContext;
+	workers: readonly WorkerUnit[];
+	serverDir: string;
+	crons: GeneratedConstruct<Cron<any, any, any, any>>[];
+	queues: GeneratedConstruct<Queue<any, any, any, any, any, any>>[];
+	subscribers: GeneratedConstruct<
+		Subscriber<any, any, any, any, any, any, any>
+	>[];
+	bundle: boolean;
+	stage?: string;
+}): Promise<void> {
+	const generator = new WorkerGenerator();
+	for (const worker of input.workers) {
+		const owned = <T extends { construct: { owner?: string } }>(list: T[]) =>
+			list.filter(({ construct }) => construct.owner === worker.id);
+		const crons = owned(input.crons);
+		const queues = owned(input.queues);
+		const subscribers = owned(input.subscribers);
+
+		const entryPoint = await generator.build({
+			context: input.context,
+			workerId: worker.id,
+			outputDir: workerEntryDir(input.serverDir, worker.id),
+			crons,
+			queues,
+			subscribers,
+		});
+		logger.log(
+			`Generated worker ${worker.id}: ${crons.length} crons, ${queues.length} queues, ${subscribers.length} subscribers`,
+		);
+
+		if (!input.bundle) continue;
+		const { bundleServer } = await import('./bundler');
+		const outfile = workerBundleName(worker.id);
+		await bundleServer({
+			entryPoint,
+			outputDir: join(input.serverDir, 'dist'),
+			outfile,
+			minify: input.context.production?.minify ?? false,
+			sourcemap: false,
+			external: input.context.production?.external ?? [],
+			...(input.stage ? { stage: input.stage } : {}),
+			constructs: [...crons, ...queues, ...subscribers].map((c) => c.construct),
+		});
+		logger.log(`✅ Bundle complete: .gkm/server/dist/${outfile}`);
+	}
 }
 
 async function buildForTarget(

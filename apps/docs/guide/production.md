@@ -20,8 +20,8 @@ once it does. Each section is short; follow the links for the detail.
 - [ ] The platform's stop timeout is longer than `GKM_SHUTDOWN_TIMEOUT_MS`
       ([Graceful shutdown](#graceful-shutdown)).
 - [ ] You know how to roll back ([Rollback](#rollback)).
-- [ ] Background work (crons, queues, subscribers) has somewhere to run
-      ([What is not deployed yet](#what-is-not-deployed-yet)).
+- [ ] Each `Worker`'s image is deployed beside the APIs, and its health
+      check passes ([Workers](#workers)).
 
 ## Secrets and the master key
 
@@ -224,7 +224,51 @@ An app with no domain gets Dokploy's status check only. Every check emits a
 
 An API image answers HTTP and nothing else: a production build of a `RestApi`
 leaves out crons, queue consumers and topic subscribers, and says so in the
-build output. See [What is not deployed yet](#what-is-not-deployed-yet).
+build output. They run in their `Worker`'s image instead.
+
+## Workers
+
+Each `Worker` with crons, queue consumers or topic subscribers is a deploy unit
+of its own: one entry, one image, one container. A workspace with several
+workers gets one of each per worker.
+
+`gkm build --provider server --production` writes the worker's entry beside the
+server's, in the app whose directory holds the worker's work (the first backend
+that generates a server, when its work sits outside every app):
+
+```
+apps/api/.gkm/server/workers/jobs/   # worker.ts, app.ts, crons.ts, queues.ts, subscribers.ts
+apps/api/.gkm/server/dist/worker-jobs.mjs
+```
+
+The `crons.ts`, `queues.ts` and `subscribers.ts` it starts are the files
+`gkm dev` runs, given only that worker's constructs. The process registers the
+drivers its target needs, starts every cron (scheduled through pg-boss),
+queue consumer and topic subscriber the worker owns, and serves one route:
+`GET /health` on `PORT` (3000 in its image). It answers `200` when every
+consumer started and every broker connection answers a query, and `503`
+otherwise. Its connections to Postgres are named for the worker
+(`application_name = 'Jobs'`), pg-boss's included.
+
+`gkm docker` writes its Dockerfile, `.gkm/docker/Dockerfile.<worker>`. It is
+built the way a backend is, entirely inside Docker: the host app's pruned slice,
+installed, then `gkm build` with the credentials from the `gkm_credentials`
+BuildKit secret. The runner is the worker's bundle alone on `node` with `tini`,
+with a `HEALTHCHECK` on `/health` and no `EXPOSE`.
+
+| Target | A worker runs as |
+| --- | --- |
+| `compose` | a service with no Caddy route and no published port, `restart: unless-stopped`, its own `0600` env file with exactly the keys its constructs read, checked by its Docker health check |
+| `dokploy` | an application with no domain, released after the backends and checked by Dokploy's status (the container's own health check); rolled back like any app |
+| `sst` | Lambdas, one per cron, queue and subscriber |
+
+On a server target the broker is pg-boss, so each topic subscriber polls a queue
+of its own. A build whose broker is SNS (server images for a project that
+deploys to AWS) refuses a worker with topic subscribers with
+`WorkerSubscribersNeedPush`: SNS pushes over HTTP, and a worker serves only its
+health check. A worker reads the object storage keys its constructs reach
+(`<BUCKET>_URL` and the S3 key pair), from the stage's bucket or the stack's
+MinIO, as an API does.
 
 ## Telemetry
 
@@ -381,10 +425,17 @@ On `SIGTERM` or `SIGINT` a production server:
 2. runs the shutdown hooks, which close every database pool;
 3. exits `0`.
 
+A worker:
+
+1. stops pulling messages and scheduling crons;
+2. lets the handlers in flight finish;
+3. closes its broker connections, then its database pools;
+4. exits `0`.
+
 `GKM_SHUTDOWN_TIMEOUT_MS` bounds the whole drain. It defaults to `8000`, under
 Docker's 10-second stop timeout, so the server exits on its own terms rather
 than being killed mid-drain. Past the deadline it exits `1`, so a forced stop
-shows. If you raise it, raise the platform's stop timeout above it too.
+shows, and a message a worker was handling is retried. If you raise it, raise the platform's stop timeout above it too.
 
 When telemetry is on, buffered spans and logs are flushed on the same signal.
 
@@ -455,15 +506,8 @@ setting for it.
 
 ## What is not deployed yet
 
-- **Background work on servers.** A `RestApi` image serves HTTP only, and a
-  `Worker` has no image of its own yet. So on `dokploy` and `compose`, crons,
-  queue consumers and topic subscribers (including SNS push routes) do not
-  run. Publishing still works. `sst` deploys workers as Lambdas. Tracked in
-  [#183](https://github.com/geekmidas/toolbox/issues/183).
 - **Rollback on `compose` and `sst`.** Redeploy the previous tag instead
   (`gkm deploy --target compose --stage <stage> --tag <tag>`).
-- **Shutdown of consumers and subscribers.** The drain above covers HTTP
-  servers; it follows the worker image.
 
 ## See also
 

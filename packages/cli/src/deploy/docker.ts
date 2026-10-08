@@ -69,6 +69,11 @@ export interface DockerDeployOptions {
 	 * whose app is the root (`.gkm/docker/Dockerfile`). Defaults to `.`.
 	 */
 	appPath?: string;
+	/**
+	 * The Dockerfile, relative to `cwd`, when it is not the app's — a
+	 * worker's, which `gkm docker` writes as `.gkm/docker/Dockerfile.<worker>`.
+	 */
+	dockerfile?: string;
 	/** Stops the build or push: the child is killed. */
 	signal?: AbortSignal;
 	/**
@@ -313,7 +318,8 @@ export async function deployDocker(
 		cwd,
 		dockerfile: join(
 			cwd,
-			dockerfileOf(config.appName ?? imageName, options.appPath ?? '.'),
+			options.dockerfile ??
+				dockerfileOf(config.appName ?? imageName, options.appPath ?? '.'),
 		),
 		...(options.signal ? { signal: options.signal } : {}),
 		...(options.stdio ? { stdio: options.stdio } : {}),

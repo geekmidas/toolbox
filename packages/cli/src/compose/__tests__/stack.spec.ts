@@ -12,9 +12,11 @@ import {
 	type ComposeStack,
 	composeStack,
 	envFile,
+	NothingToCompose,
 	type StackInput,
 	StageSecretMissing,
 	StageSeedMissing,
+	withBuildCredentials,
 } from '../stack';
 import { loadComposeApp, writeComposeApp } from './__helpers__/composeApp';
 
@@ -22,11 +24,12 @@ let dir: string;
 let workspace: NormalizedWorkspace;
 let manifest: ConstructManifest;
 let runnables: Record<string, string[]>;
+let background: Record<string, string[]>;
 
 beforeAll(async () => {
 	dir = realpathSync(await createTempDir('gkm-compose-stack-'));
 	writeComposeApp(dir, { registry: 'registry.example.com/acme' });
-	({ workspace, manifest, runnables } = await loadComposeApp(dir));
+	({ workspace, manifest, runnables, background } = await loadComposeApp(dir));
 });
 
 afterAll(async () => {
@@ -48,6 +51,7 @@ function stack(overrides: Partial<StackInput> = {}): ComposeStack {
 		workspace,
 		manifest,
 		runnables,
+		background,
 		stage,
 		identity: deployIdentity(workspace, stage),
 		images: { mode: 'build', tag: 'abc1234' },
@@ -68,6 +72,7 @@ describe('the local stage', () => {
 			'api',
 			'auth',
 			'caddy',
+			'jobs',
 			'postgres',
 			'web',
 		]);
@@ -141,6 +146,7 @@ describe("every service's Docker logs", () => {
 			'api',
 			'auth',
 			'caddy',
+			'jobs',
 			'mailpit',
 			'minio',
 			'postgres',
@@ -169,7 +175,10 @@ describe("a backend's env file", () => {
 			'API_TRUSTED_ORIGINS',
 			'API_URL',
 			'AUTH_URL',
+			'DATABASE_URL',
+			'EVENT_PUBLISHER_CONNECTION_STRING',
 			'NODE_ENV',
+			'NOTES_PUBLISHER_CONNECTION_STRING',
 			'PORT',
 			'STAGE',
 		]);
@@ -580,5 +589,132 @@ describe('mail and storage on a deployed stage', () => {
 		expect(run).toThrow(ExternalServicesNotConfigured);
 		expect(run).toThrow(/UPLOADS_URL/);
 		expect(run).not.toThrow(/MAIL_URL/);
+	});
+});
+
+describe('a worker', () => {
+	const worker = (s: ComposeStack) =>
+		s.workers.find((candidate) => candidate.name === 'jobs')!;
+
+	it('is a service with no route and no published port, restarted and health-checked', () => {
+		const s = stack();
+		const service = s.compose.services.jobs!;
+
+		expect(worker(s)).toMatchObject({ id: 'Jobs', host: 'api', port: 3000 });
+		expect(service.ports).toBeUndefined();
+		expect(service.restart).toBe('unless-stopped');
+		expect(service.env_file).toEqual([{ path: './jobs.env', format: 'raw' }]);
+		expect(service.depends_on).toEqual({
+			postgres: { condition: 'service_healthy' },
+		});
+		expect(service.healthcheck?.test).toEqual([
+			'CMD',
+			'wget',
+			'-q',
+			'-O',
+			'/dev/null',
+			'http://127.0.0.1:3000/health',
+		]);
+		expect(service.logging?.driver).toBe('json-file');
+		// Nothing routes to it, and the edge does not wait for it.
+		expect(s.caddyfile).not.toContain('jobs');
+		expect(s.compose.services.caddy?.depends_on).not.toHaveProperty('jobs');
+		expect(s.apps.map((a) => a.name)).not.toContain('jobs');
+	});
+
+	it("holds exactly the keys the worker's constructs read, on the compose network", () => {
+		const env = worker(stack()).env!;
+
+		expect(Object.keys(env).sort()).toEqual([
+			'DATABASE_URL',
+			'EVENT_PUBLISHER_CONNECTION_STRING',
+			'NODE_ENV',
+			'NOTES_PUBLISHER_CONNECTION_STRING',
+			'PORT',
+			'STAGE',
+		]);
+		expect(env.DATABASE_URL).toMatch(/@postgres:5432\/database$/);
+		expect(env.NOTES_PUBLISHER_CONNECTION_STRING).toMatch(
+			/^pgboss:\/\/[^@]+@postgres:5432\//,
+		);
+		expect(env.PORT).toBe('3000');
+		// Not the auth server's secret, nor its database.
+		expect(env).not.toHaveProperty('AUTH_SECRET');
+		expect(env).not.toHaveProperty('AUTH_DATABASE_URL');
+		expect(envFile(env)).toContain('PORT=3000\n');
+	});
+
+	it("is built inside Docker from its host app's slice, and runs its own bundle", () => {
+		const s = stack();
+
+		expect(worker(s).ref).toBe('compose-app/compose-app-jobs:abc1234');
+		expect(s.compose.services.jobs?.build).toEqual({
+			context: '../../..',
+			dockerfile: '.gkm/compose/development/Dockerfile.jobs',
+		});
+		const dockerfile =
+			s.dockerfiles['.gkm/compose/development/Dockerfile.jobs']!;
+		expect(dockerfile).toContain(
+			'node "$GKM_BIN" build --provider server --production',
+		);
+		expect(dockerfile).toContain(
+			'COPY --from=builder --chown=hono:nodejs /app/apps/api/.gkm/server/dist/worker-jobs.mjs ./worker.mjs',
+		);
+		expect(dockerfile).toContain('CMD ["node", "worker.mjs"]');
+		expect(dockerfile).toContain('/sbin/tini');
+		expect(dockerfile).toContain('http://localhost:3000/health');
+		expect(dockerfile).not.toContain('EXPOSE');
+	});
+
+	it('embeds its own credentials and is handed the key that decrypts them', () => {
+		const s = withBuildCredentials(stack(), {
+			jobs: { masterKey: 'the-jobs-key', buildArg: 'GKM_CIPHERTEXT_HASH=abc' },
+		});
+
+		expect(s.compose.services.jobs?.build?.secrets).toEqual([
+			{ source: 'jobs_credentials', target: 'gkm_credentials' },
+		]);
+		expect(s.compose.secrets?.jobs_credentials).toEqual({
+			file: './jobs.credentials',
+		});
+		expect(worker(s).env?.GKM_MASTER_KEY).toBe('the-jobs-key');
+	});
+
+	it('is pulled at the tag, with nothing to build', () => {
+		const s = stack({
+			images: { mode: 'pull', tag: 'v1.2.0', registry: 'r.example.com/acme' },
+		});
+
+		expect(worker(s).ref).toBe(
+			'r.example.com/acme/compose-app/compose-app-jobs:v1.2.0',
+		);
+		expect(s.compose.services.jobs?.build).toBeUndefined();
+		expect(s.dockerfiles).not.toHaveProperty(
+			'.gkm/compose/v1.2.0/Dockerfile.jobs',
+		);
+	});
+
+	it('runs on a deployed stage, its passwords derived from the seed', () => {
+		const s = stack({ stage: 'production', secrets: production() });
+		const env = worker(s).env!;
+
+		expect(env.STAGE).toBe('production');
+		expect(env.DATABASE_URL).toMatch(/@postgres:5432\//);
+		expect(env.DATABASE_URL).not.toContain('geekmidas');
+	});
+
+	it('is enough for a stack to run, and a worker with no work is not', () => {
+		const noSurfaces = Object.fromEntries(
+			Object.entries(manifest).filter(
+				([, d]) => d.kind !== 'rest-api' && d.kind !== 'site',
+			),
+		) as ConstructManifest;
+
+		const s = stack({ manifest: noSurfaces });
+		expect(s.apps).toEqual([]);
+		expect(s.workers.map((w) => w.name)).toEqual(['jobs']);
+		expect(() => stack({ manifest: noSurfaces, background: {} })).toThrow(
+			NothingToCompose,
+		);
 	});
 });

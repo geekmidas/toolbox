@@ -22,7 +22,8 @@ export interface ComposeAppOptions {
 /**
  * A workspace written the way one is now: a RestApi authenticated by a
  * BetterAuth server in its own container, a database with the auth tenant's
- * migration committed, and a Vite site that calls both.
+ * migration committed, a Vite site that calls both, and a Worker whose queue
+ * consumer writes the notes the API sends it.
  *
  * The code is the fixture; what a project keeps beside it — package files,
  * the workspace config — is written here, so the fixture holds nothing that
@@ -73,7 +74,11 @@ export function writeComposeApp(
 export default defineWorkspace({
   name: ${JSON.stringify(name)},
   stages: { local: 'development', deployed: ['production'] },
-  constructs: ['./constructs/**/*.ts', './apps/*/endpoints/**/*.ts'],
+  constructs: [
+    './constructs/**/*.ts',
+    './apps/*/endpoints/**/*.ts',
+    './apps/*/queues/**/*.ts',
+  ],
   deploy: {
     default: 'dokploy',
     domains: { production: ${JSON.stringify(options.domain ?? 'shop.example.com')} },
@@ -85,18 +90,24 @@ export default defineWorkspace({
 	);
 }
 
-/** The workspace at `dir`, its manifest, and its runnables' edges. */
+/**
+ * The workspace at `dir`, its manifest, its runnables' edges, and where each
+ * worker's work is declared.
+ */
 export async function loadComposeApp(dir: string): Promise<{
 	workspace: NormalizedWorkspace;
 	manifest: ConstructManifest;
 	runnables: Record<string, string[]>;
+	background: Record<string, string[]>;
 }> {
 	const { workspace } = await loadWorkspaceConfig(dir);
 	const runnables: Record<string, string[]> = {};
+	const background: Record<string, string[]> = {};
 	const manifest = await discover({
 		patterns: constructGlobs(workspace),
 		cwd: workspace.root,
 		runnables,
+		background,
 	});
-	return { workspace, manifest, runnables };
+	return { workspace, manifest, runnables, background };
 }

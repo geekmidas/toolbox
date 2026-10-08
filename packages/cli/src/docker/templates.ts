@@ -723,12 +723,56 @@ export function generateBackendDockerfile(
 		external?: string[];
 	},
 ): string {
+	return gkmBundleDockerfile(options, {
+		title: 'Backend Dockerfile',
+		bundle: 'server.mjs',
+		as: 'server.mjs',
+		expose: true,
+	});
+}
+
+/** The port a worker answers its health check on, inside its container. */
+export const WORKER_PORT = 3000;
+
+/**
+ * A Worker's image: the same build as its host app's backend — a pruned
+ * slice, `gkm build --provider server --production` in the image, with the
+ * encrypted credentials from the `gkm_credentials` secret — and a runner that
+ * is the worker's bundle alone. It publishes nothing: its one route is the
+ * health check the HEALTHCHECK asks.
+ * @internal Exported for testing
+ */
+export function generateWorkerDockerfile(
+	options: ImageTemplateOptions & {
+		/** The worker's construct id, for the comment. */
+		worker: string;
+		/** Its bundle under the host app's `.gkm/server/dist`. */
+		bundle: string;
+		healthCheckPath?: string;
+		external?: string[];
+	},
+): string {
+	return gkmBundleDockerfile(options, {
+		title: `Worker Dockerfile (${options.worker})`,
+		bundle: options.bundle,
+		as: 'worker.mjs',
+		expose: false,
+	});
+}
+
+function gkmBundleDockerfile(
+	options: ImageTemplateOptions & {
+		healthCheckPath?: string;
+		external?: string[];
+	},
+	runner: { title: string; bundle: string; as: string; expose: boolean },
+): string {
 	const { port, healthCheckPath = '/health' } = options;
 	const { app } = layout(options);
 	const externals = externalsStages(options, app);
 
 	return `# syntax=docker/dockerfile:1
-# Backend Dockerfile: a turbo-pruned slice, bundled by gkm build in the image
+# ${runner.title}: a turbo-pruned slice, bundled by gkm build in the image
 
 ${prunerStage(options)}
 
@@ -749,8 +793,8 @@ RUN apk add --no-cache tini
 RUN addgroup --system --gid 1001 nodejs && \\
     adduser --system --uid 1001 hono
 
-# The bundled server
-COPY --from=builder --chown=hono:nodejs ${app}/.gkm/server/dist/server.mjs ./${externals.copy}
+# The bundled ${runner.as === 'server.mjs' ? 'server' : 'worker'}
+COPY --from=builder --chown=hono:nodejs ${app}/.gkm/server/dist/${runner.bundle} ./${runner.as === runner.bundle ? '' : runner.as}${externals.copy}
 
 ENV NODE_ENV=production
 ENV PORT=${port}
@@ -759,11 +803,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \\
   CMD wget -qO- http://localhost:${port}${healthCheckPath} > /dev/null 2>&1 || exit 1
 
 USER hono
-
-EXPOSE ${port}
-
+${runner.expose ? `\nEXPOSE ${port}\n` : ''}
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["node", "server.mjs"]
+CMD ["node", "${runner.as}"]
 `;
 }
 

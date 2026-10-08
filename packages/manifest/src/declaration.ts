@@ -610,11 +610,10 @@ export interface WorkerDeclaration extends Node {
 	/**
 	 * A worker declares no app, because it is not one.
 	 *
-	 * It names the process that runs a cron, a subscriber or a queue consumer —
-	 * and that process is the app's server, the same one the endpoints run in,
-	 * without an HTTP surface of its own. Giving it a path made it a second
-	 * container to build, deploy and keep alive for work that was already going
-	 * to run somewhere.
+	 * It names the process that runs a cron, a subscriber or a queue consumer.
+	 * On a server target that process is a container of its own, built from the
+	 * app whose directory holds the work — so the worker needs no path to say
+	 * where its code is.
 	 */
 	/** Surfaces and resources it calls, which is what grants it access. */
 	dependencies?: readonly Dependency[];

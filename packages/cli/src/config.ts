@@ -394,15 +394,18 @@ async function withDerivedApps(
 	}
 
 	try {
+		const background: Record<string, string[]> = {};
 		const manifest = await discover({
 			patterns: globs,
 			cwd: loaded.workspace.root,
+			background,
 			...(sandbox ? { sandbox } : {}),
 		});
 
 		return {
 			...loaded,
 			manifest,
+			background,
 			workspace: {
 				...loaded.workspace,
 				apps: derivedApps(manifest, loaded.workspace),

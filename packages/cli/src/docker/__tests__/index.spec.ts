@@ -130,6 +130,48 @@ describe('gkm docker', () => {
 			expect(printed()).toContain('--profile apps up --build');
 		});
 
+		it("writes each Worker's Dockerfile, built from the app that holds its work", async () => {
+			writeFileSync(join(root, 'pnpm-lock.yaml'), '');
+			writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages: [apps/*]\n');
+			writeFileSync(join(root, 'turbo.json'), '{}');
+			mkdirSync(join(root, 'apps/api'), { recursive: true });
+			writeFileSync(
+				join(root, 'apps/api/package.json'),
+				JSON.stringify({ name: '@shop/api' }),
+			);
+
+			const result = await workspaceDockerCommand(
+				workspace({
+					api: app('backend', 'apps/api'),
+					admin: app('backend', 'apps/admin'),
+				}),
+				{
+					Api: { kind: 'rest-api', id: 'Api', path: 'apps/api', endpoints: [] },
+					Jobs: { kind: 'worker', id: 'Jobs' },
+					// Declared, with nothing to run: no image.
+					Idle: { kind: 'worker', id: 'Idle' },
+				} as never,
+				{},
+				{ Jobs: [join(root, 'apps/api/queues/emails.ts')] },
+			);
+
+			expect(result.apps.map((a) => a.appName)).toEqual([
+				'api',
+				'admin',
+				'jobs',
+			]);
+			const dockerfile = readFileSync(
+				join(root, '.gkm/docker/Dockerfile.jobs'),
+				'utf-8',
+			);
+			expect(dockerfile).toContain('prune @shop/api --docker');
+			expect(dockerfile).toContain(
+				'/app/apps/api/.gkm/server/dist/worker-jobs.mjs ./worker.mjs',
+			);
+			expect(dockerfile).toContain('CMD ["node", "worker.mjs"]');
+			expect(printed()).toContain('worker Jobs, built from api');
+		});
+
 		it("layers the project's own compose file in the run instructions", async () => {
 			writeFileSync(join(root, 'docker-compose.yml'), 'services: {}\n');
 

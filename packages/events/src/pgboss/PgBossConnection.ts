@@ -5,6 +5,13 @@ import { EventPublisherType } from '../types';
 export interface PgBossConnectionConfig {
 	connectionString: string;
 	schema?: string;
+	/**
+	 * Who this connection is to Postgres. Defaults to `GKM_APP_NAME`, which a
+	 * generated entry sets to the construct it runs — so the broker's
+	 * connections are named for the process that holds them, as its database
+	 * pools are, rather than all being `pgboss`.
+	 */
+	applicationName?: string;
 }
 
 export class PgBossConnection implements EventConnection {
@@ -46,9 +53,12 @@ export class PgBossConnection implements EventConnection {
 
 		this.connecting = (async () => {
 			try {
+				const applicationName =
+					this.config.applicationName ?? process.env.GKM_APP_NAME;
 				const boss = new PgBoss({
 					connectionString: this.config.connectionString,
 					...(this.config.schema && { schema: this.config.schema }),
+					...(applicationName && { application_name: applicationName }),
 				});
 
 				await boss.start();

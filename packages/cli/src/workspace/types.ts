@@ -1053,6 +1053,11 @@ export interface LoadedConfig {
 	 * two chances to disagree. Absent when the workspace declares no constructs.
 	 */
 	manifest?: ConstructManifest;
+	/**
+	 * The files each Worker's crons, queues and subscribers are declared in,
+	 * read in the same discovery — what says which app a worker is built from.
+	 */
+	background?: Record<string, string[]>;
 }
 
 /**

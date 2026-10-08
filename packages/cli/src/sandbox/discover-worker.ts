@@ -27,17 +27,19 @@ async function main(): Promise<void> {
 		await registerAdjacentTsconfig();
 
 		const runnables: Record<string, string[]> = {};
+		const background: Record<string, string[]> = {};
 		const manifest = await discover({
 			patterns: request.patterns,
 			cwd: request.cwd,
 			runnables,
+			background,
 		});
 
 		const paths = liveValuePaths(manifest);
 		answer(
 			paths.length > 0
 				? { reason: 'live', paths }
-				: { reason: 'discovered', manifest, runnables },
+				: { reason: 'discovered', manifest, runnables, background },
 		);
 	} catch (error) {
 		answer({ reason: 'failed', error: errorData(error) });

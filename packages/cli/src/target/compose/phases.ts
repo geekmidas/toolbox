@@ -270,10 +270,12 @@ export async function validateCompose(
 	// The runnables' edges say which surface reaches which; the manifest the
 	// run discovered has the declarations but not them.
 	const runnables: Record<string, string[]> = {};
+	const background: Record<string, string[]> = {};
 	const manifest = await discover({
 		patterns: constructGlobs(workspace),
 		cwd: root,
 		runnables,
+		background,
 	});
 
 	const { secrets, generated } = await stageSecrets(ctx, manifest);
@@ -298,6 +300,7 @@ export async function validateCompose(
 		workspace,
 		manifest,
 		runnables,
+		background,
 		stage,
 		identity,
 		images: {
@@ -332,13 +335,26 @@ export async function validateCompose(
 				buildArg: credentialsBuildArg({ encrypted, iv }),
 			};
 		}
+		for (const worker of composed.workers) {
+			if (!worker.env || !worker.build) continue;
+			const { encrypted, iv, masterKey } = encryptSecrets(worker.env);
+			credentials[worker.name] = { encrypted, iv };
+			ctx.secrets.mask(masterKey);
+			masterKeys[worker.name] = {
+				masterKey,
+				buildArg: credentialsBuildArg({ encrypted, iv }),
+			};
+		}
 	}
 	const stack = withBuildCredentials(composed, masterKeys);
 
 	// A release is all of its images or none of them. A dry run asks nothing,
 	// so it can be run without a registry login.
 	if (mode === 'pull' && !ctx.dryRun) {
-		await assertImagesExist(deps.docker, tag, stack.apps);
+		await assertImagesExist(deps.docker, tag, [
+			...stack.apps,
+			...stack.workers,
+		]);
 	}
 
 	// The log UI's root login and the header every backend signs in with:
@@ -469,6 +485,19 @@ export async function planCompose(
 			key: `service:${app.name}`,
 			resourceType: 'service',
 			action: run.previous[app.name] ? 'reuse' : 'create',
+		});
+	}
+	for (const worker of run.stack.workers) {
+		planned({
+			key: `image:${worker.name}`,
+			resourceType: 'image',
+			action: run.mode === 'build' ? 'build' : 'reuse',
+			id: worker.ref,
+		});
+		planned({
+			key: `service:${worker.name}`,
+			resourceType: 'service',
+			action: run.previous[worker.name] ? 'reuse' : 'create',
 		});
 	}
 	planned({ key: 'service:caddy', resourceType: 'service', action: 'ensure' });
@@ -612,7 +641,8 @@ export async function buildCompose(
 	deps: ComposeDeps,
 ): Promise<void> {
 	const { stack, ref } = run;
-	const apps = stack.apps.map((app) => app.name);
+	const images = [...stack.apps, ...stack.workers];
+	const apps = images.map((image) => image.app);
 
 	if (run.mode === 'build') {
 		ctx.logger.info('\n🐳 Building images…');
@@ -624,24 +654,24 @@ export async function buildCompose(
 
 	// What each tag resolved to: the registry's digest for a pulled image, or
 	// — for one built here and never pushed — its content id.
-	for (const app of stack.apps) {
-		const digest = await deps.docker.digest(app.ref);
-		run.images[app.name] = {
-			ref: app.ref,
-			tag: app.tag,
+	for (const image of images) {
+		const digest = await deps.docker.digest(image.ref);
+		run.images[image.app] = {
+			ref: image.ref,
+			tag: image.tag,
 			...(digest ? { digest } : {}),
 		};
 		ctx.emit({
 			type: 'artifact.built',
-			app: app.name,
-			imageRef: app.ref,
+			app: image.app,
+			imageRef: image.ref,
 			...(digest ? { digest } : {}),
 		});
 		run.changes.push({
-			key: `image:${app.name}`,
+			key: `image:${image.app}`,
 			resourceType: 'image',
 			action: run.mode === 'build' ? 'build' : 'reuse',
-			id: digest ?? app.ref,
+			id: digest ?? image.ref,
 		});
 	}
 }
@@ -697,9 +727,23 @@ export async function releaseCompose(
 		});
 	}
 
+	// A worker has no URL, so no `app.deployed`: its service, applied, is it.
+	for (const worker of stack.workers) {
+		applied(ctx, run, {
+			key: `service:${worker.name}`,
+			resourceType: 'service',
+			action: 'ensure',
+			id: `${stack.project}/${worker.name}`,
+			via: run.previous[worker.name] ? 'recorded' : 'created',
+		});
+	}
+
 	ctx.logger.info(`\n✅ ${stack.project} is running:`);
 	for (const app of stack.apps) {
 		ctx.logger.info(`   ${app.name.padEnd(12)} ${app.url}`);
+	}
+	for (const worker of stack.workers) {
+		ctx.logger.info(`   ${worker.name.padEnd(12)} worker ${worker.id}`);
 	}
 	if (stack.local) {
 		ctx.logger.info(
@@ -720,9 +764,9 @@ async function recordImages(
 	const journal = await DeployJournal.open(ctx.state, ctx.stage, () =>
 		createEmptyState(ctx.stage, '', ''),
 	);
-	for (const app of run.stack.apps) {
-		const image = run.images[app.name] ?? { ref: app.ref, tag: app.tag };
-		recordRelease(journal.state, app.name, image);
+	for (const app of [...run.stack.apps, ...run.stack.workers]) {
+		const image = run.images[app.app] ?? { ref: app.ref, tag: app.tag };
+		recordRelease(journal.state, app.app, image);
 	}
 	journal.state.identity = ctx.identity.key;
 	await journal.save();
@@ -755,7 +799,18 @@ export async function verifyCompose(
 		),
 	);
 
-	if (stack.logs) results.push(await checkLogs(ctx, run, deps));
+	// A worker has no route through the edge: its own health check, as Docker
+	// reports it, is the answer.
+	results.push(
+		...(await Promise.all(
+			stack.workers.map((worker) =>
+				checkContainer(ctx, run, deps, worker.name),
+			),
+		)),
+	);
+	if (stack.logs) {
+		results.push(await checkContainer(ctx, run, deps, LOGS_SERVICE));
+	}
 
 	const down = results
 		.filter((result) => !result.healthy)
@@ -766,22 +821,24 @@ export async function verifyCompose(
 }
 
 /**
- * OpenObserve's own health check, as Docker reports it. It is not asked
- * through the edge: by default it has no host there, and served publicly it
- * answers only the addresses it allows — which need not include this one.
+ * A container's own health check, as Docker reports it: a worker's, which
+ * has no route through the edge, and OpenObserve's — by default it has no
+ * host there, and served publicly it answers only the addresses it allows,
+ * which need not include this one.
  */
-async function checkLogs(
+async function checkContainer(
 	ctx: ComposeContext,
 	run: ComposeRun,
 	deps: ComposeDeps,
+	service: string,
 ): Promise<{ app: string; url: string; last: string; healthy: boolean }> {
-	const url = `docker:${LOGS_SERVICE}`;
+	const url = `docker:${service}`;
 	let last = 'not asked';
 
 	for (let attempt = 1; attempt <= deps.healthAttempts; attempt++) {
 		ctx.signal.throwIfAborted();
 		const health = await deps.docker
-			.health(run.ref, LOGS_SERVICE)
+			.health(run.ref, service)
 			.catch((error: unknown) =>
 				error instanceof Error ? error.message : String(error),
 			);
@@ -789,14 +846,14 @@ async function checkLogs(
 		const healthy = health === 'healthy';
 		ctx.emit({
 			type: 'health.checked',
-			app: LOGS_SERVICE,
+			app: service,
 			url,
 			healthy,
 			attempt,
 		});
 		if (healthy) {
-			ctx.logger.info(`   ✓ ${LOGS_SERVICE.padEnd(12)} ${url} (${last})`);
-			return { app: LOGS_SERVICE, url, last, healthy };
+			ctx.logger.info(`   ✓ ${service.padEnd(12)} ${url} (${last})`);
+			return { app: service, url, last, healthy };
 		}
 		if (attempt < deps.healthAttempts) {
 			await new Promise((resolve) =>
@@ -805,8 +862,8 @@ async function checkLogs(
 		}
 	}
 
-	ctx.logger.warn(`   ✗ ${LOGS_SERVICE.padEnd(12)} ${url} (${last})`);
-	return { app: LOGS_SERVICE, url, last, healthy: false };
+	ctx.logger.warn(`   ✗ ${service.padEnd(12)} ${url} (${last})`);
+	return { app: service, url, last, healthy: false };
 }
 
 /** How to open the logs, printed — and as an event, for a headless caller. */
@@ -898,18 +955,31 @@ export function composeResult(
 	ctx: ComposeContext,
 	run: ComposeRun,
 ): DeployResult {
-	const apps = run.stack.apps.map((app) => {
-		const image = run.images[app.name];
-		return {
-			appName: app.name,
-			type: app.kind === 'site' ? ('web' as const) : ('backend' as const),
-			success: !ctx.dryRun,
-			applicationId: `${run.stack.project}/${app.name}`,
-			imageRef: image?.ref ?? app.ref,
-			...(image?.digest ? { digest: image.digest } : {}),
-			url: app.url,
-		};
-	});
+	const apps = [
+		...run.stack.apps.map((app) => {
+			const image = run.images[app.name];
+			return {
+				appName: app.name,
+				type: app.kind === 'site' ? ('web' as const) : ('backend' as const),
+				success: !ctx.dryRun,
+				applicationId: `${run.stack.project}/${app.name}`,
+				imageRef: image?.ref ?? app.ref,
+				...(image?.digest ? { digest: image.digest } : {}),
+				url: app.url,
+			};
+		}),
+		...run.stack.workers.map((worker) => {
+			const image = run.images[worker.name];
+			return {
+				appName: worker.name,
+				type: 'backend' as const,
+				success: !ctx.dryRun,
+				applicationId: `${run.stack.project}/${worker.name}`,
+				imageRef: image?.ref ?? worker.ref,
+				...(image?.digest ? { digest: image.digest } : {}),
+			};
+		}),
+	];
 	return {
 		apps,
 		projectId: run.stack.project,
@@ -967,7 +1037,7 @@ async function writeStack(
 
 	await write(join(dir, 'docker-compose.yml'), composeYaml(stack));
 	await write(join(dir, 'Caddyfile'), stack.caddyfile);
-	for (const app of stack.apps) {
+	for (const app of [...stack.apps, ...stack.workers]) {
 		if (app.env)
 			await write(join(dir, `${app.name}.env`), envFile(app.env), 0o600);
 	}
@@ -1000,8 +1070,9 @@ async function writeStack(
 function composeYaml(stack: ComposeStack): string {
 	const stage = ` --stage ${stack.stage}`;
 	return `# Generated by gkm compose from the construct manifest — do not edit.
-# The ${stack.stage} stage's APIs and sites behind one Caddy. Each backend
-# reads exactly the keys in its own env file beside this one.
+# The ${stack.stage} stage's APIs and sites behind one Caddy, and its workers.
+# Each backend and worker reads exactly the keys in its own env file beside
+# this one.
 #
 #   gkm compose${stage}          start or update it
 #   gkm compose${stage} --down   stop it
@@ -1014,6 +1085,11 @@ function printPlan(ctx: ComposeContext, run: ComposeRun): void {
 	for (const app of stack.apps) {
 		ctx.logger.info(
 			`   ${app.name.padEnd(12)} ${app.url.padEnd(40)} ${mode} ${app.ref}`,
+		);
+	}
+	for (const worker of stack.workers) {
+		ctx.logger.info(
+			`   ${worker.name.padEnd(12)} ${`worker ${worker.id} (no route)`.padEnd(40)} ${mode} ${worker.ref}`,
 		);
 	}
 	if (stack.infra.length > 0) {

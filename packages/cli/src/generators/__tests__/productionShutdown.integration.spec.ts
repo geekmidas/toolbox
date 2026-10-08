@@ -8,6 +8,9 @@ import { POSTGRES_PORT } from '../../../../testkit/test/ports';
 import { EndpointGenerator } from '../EndpointGenerator';
 
 const URL = `postgres://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/geekmidas`;
+// What this server is named to Postgres. Its own, not the surface's `Api`:
+// other suites run servers named `Api` against the same database at once.
+const NAME = `ShutdownApi-${process.pid}`;
 
 /**
  * A real production server, generated the way `gkm build --production` does,
@@ -99,7 +102,13 @@ async function start(env: Record<string, string>) {
 		['--import', 'tsx', join(dir, '.gkm', 'server', 'server.ts')],
 		{
 			cwd: dir,
-			env: { ...process.env, PORT: String(port), ORDERS_URL: URL, ...env },
+			env: {
+				...process.env,
+				PORT: String(port),
+				ORDERS_URL: URL,
+				GKM_APP_NAME: NAME,
+				...env,
+			},
 			stdio: ['ignore', 'pipe', 'pipe'],
 		},
 	);
@@ -154,7 +163,7 @@ describe('a production server stopped by SIGTERM', { timeout: 60_000 }, () => {
 		const inFlight = fetch(`http://localhost:${port}/slow?seconds=1.5`);
 		// Let the request reach the database before the signal.
 		await new Promise((r) => setTimeout(r, 400));
-		expect(await connectionsNamed('Api')).toBeGreaterThan(0);
+		expect(await connectionsNamed(NAME)).toBeGreaterThan(0);
 
 		const signalledAt = Date.now();
 		child.kill('SIGTERM');
@@ -170,7 +179,7 @@ describe('a production server stopped by SIGTERM', { timeout: 60_000 }, () => {
 		const { code, at } = await exited;
 		expect(code).toBe(0);
 		expect(at - signalledAt).toBeLessThan(5000);
-		expect(await connectionsNamed('Api')).toBe(0);
+		expect(await connectionsNamed(NAME)).toBe(0);
 	});
 
 	it('exits at the deadline when a request will not finish', async () => {
