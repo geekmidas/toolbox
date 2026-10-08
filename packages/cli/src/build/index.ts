@@ -76,6 +76,7 @@ import {
 	type NormalizedAppConfig,
 	type NormalizedWorkspace,
 } from '../workspace/index.js';
+import { writeStageTypes } from '../workspace/stageTypes.js';
 import type { StageTelemetryConfig } from '../workspace/types.js';
 import { ownersContext, servedBy } from './owners';
 import {
@@ -158,6 +159,11 @@ export async function buildCommand(
 ): Promise<BuildResult> {
 	// Load config with workspace detection
 	const loadedConfig = await loadWorkspaceConfig();
+	// The declared stages as types, beside the clients the build writes.
+	await writeStageTypes(
+		loadedConfig.workspace.root,
+		loadedConfig.workspace.stages,
+	);
 
 	// Route to workspace build mode for multi-app workspaces
 	// BUT only if we're at the workspace root (prevents recursive builds when

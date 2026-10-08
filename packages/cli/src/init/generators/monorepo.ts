@@ -346,6 +346,10 @@ ${isSst ? '\n# SST\n.sst/\n' : ''}`;
 			forceConsistentCasingInFileNames: true,
 			resolveJsonModule: true,
 		},
+		// Everything, as when nothing is listed, plus the stage names
+		// gkm.config.ts declares — \`.gkm/stages.d.ts\`, named because a dot
+		// folder is never matched by a wildcard.
+		include: ['**/*', '.gkm/stages.d.ts'],
 		// SST typechecks its own config against its own platform types, which
 		// exist only after \`sst install\` and are not this project's to check.
 		exclude: [

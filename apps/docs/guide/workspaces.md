@@ -199,6 +199,55 @@ Projects created before `stages` existed ran locally as `development`. Add
 `~/.gkm/keys/<namespace>/<project>/`) to the new local stage.
 :::
 
+#### Typed stages
+
+Constructs and application code cannot import `gkm.config.ts`, so `gkm dev`,
+`gkm build` and `gkm test --prepare` write the stage names into
+`.gkm/stages.d.ts`, beside the generated clients:
+
+```typescript
+// .gkm/stages.d.ts — generated, gitignored with the rest of .gkm/
+export {};
+
+declare module '@geekmidas/constructs' {
+  interface Stages {
+    local: 'dev';
+    deployed: 'staging' | 'prod';
+  }
+}
+```
+
+`@geekmidas/constructs` reads that interface as `LocalStage`, `DeployedStage`
+and `AnyStage` (the local stage, `test`, or a deployed one), and everything that
+takes a stage name is typed by them:
+
+```typescript
+import type { SeedContext } from '@geekmidas/constructs';
+import { ExternalApi } from '@geekmidas/constructs/external-api';
+
+export const shipping = new ExternalApi('Shipping', {
+  // A key that is no declared stage — `prodution` — is a type error.
+  url: { prod: 'https://api.carrier.example', default: 'https://sandbox.carrier.example' },
+  // …
+});
+
+// db/database/seeds/001_demo.ts
+export async function seed(db: Kysely<Database>, { stage }: SeedContext) {
+  if (stage === 'dev') await insertDemoTenant(db); // 'dev' | 'test' | 'staging' | 'prod'
+}
+```
+
+TypeScript never matches a dot folder with a wildcard, so the tsconfig names
+the file — `gkm init` writes this for you:
+
+```json
+{ "include": ["src/**/*.ts", ".gkm/stages.d.ts"] }
+```
+
+Until the file exists — a fresh clone, before the first `gkm dev` — every stage
+type is `string`, so nothing fails to compile for want of it. A CI typecheck
+runs after `gkm test --prepare`, which writes it.
+
 ### There Is One Config, at the Root
 
 Apps in a workspace do not carry a `gkm.config.ts` of their own. Everything an

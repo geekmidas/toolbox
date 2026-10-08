@@ -12,6 +12,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import type { SeedContext } from '@geekmidas/constructs';
 import type { Kysely, sql } from 'kysely';
 import type { Migration, MigrationProvider } from 'kysely/migration';
 
@@ -57,16 +58,11 @@ export class SeedHasNoSeed extends Error {
 }
 
 /**
- * What a seed is handed beside its database.
- *
- * Seeds run on every stage, production included, so a seed that should write
- * something only somewhere — a demo tenant on `development`, never on
- * `production` — decides by the stage it is given.
+ * What a seed is handed beside its database — `@geekmidas/constructs`'
+ * `SeedContext`, whose `stage` is the union of the declared stages once
+ * `.gkm/stages.d.ts` is generated.
  */
-export interface SeedContext {
-	/** The stage being seeded: the local one, `test`, or a deployed one. */
-	stage: string;
-}
+export type { SeedContext };
 
 /** One seed: what it is called, and what it does. */
 export interface Seed {

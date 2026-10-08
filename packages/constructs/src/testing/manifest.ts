@@ -13,6 +13,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import tls from 'node:tls';
 import { fileURLToPath } from 'node:url';
+import type { TestStage } from '../stages';
 
 /** Where an export lives: what an import statement has to say. */
 export interface TestManifestSource {
@@ -24,7 +25,7 @@ export interface TestManifestSource {
 
 export interface TestManifest {
 	/** The stage the environment was resolved for — `test`. */
-	stage: string;
+	stage: TestStage;
 	/** Every construct the app declares, by id. */
 	constructs: Record<string, { kind: string; source: TestManifestSource }>;
 	/** Every endpoint, and the surface that serves it. */
