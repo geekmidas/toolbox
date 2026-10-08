@@ -11,6 +11,14 @@
 	},
 	"//declaration": "An app, not a library: nothing imports its types. The base config asks for declarations, and TypeScript 7 checks they could be emitted even under noEmit, so every endpoint's inferred type failed as unnameable.",
 	"//include": "`apps/web` and `apps/admin` own their tsconfigs — they need the DOM lib this one deliberately lacks. `sst.config.ts` is deliberately absent: its `/// <reference>` pulls in SST's vendored platform source, which is authored against a much looser config than this one and reports dozens of errors nobody here wrote or can fix. SST typechecks that file itself.",
-	"include": ["constructs/**/*", "apps/api/**/*", "test/**/*", "gkm.config.ts"],
+	"//stages": "`.gkm/stages.d.ts` is what `gkm dev`, `build` and `test --prepare` generate from gkm.config.ts's `stages`, typing every stage name the constructs take. Named, because a wildcard never matches a dot folder; absent, the stage types are `string`.",
+	"include": [
+		"constructs/**/*",
+		"apps/api/**/*",
+		"test/**/*",
+		"db/**/*",
+		"gkm.config.ts",
+		".gkm/stages.d.ts"
+	],
 	"exclude": ["**/node_modules", "**/.next", "**/dist"]
 }

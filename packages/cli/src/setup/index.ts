@@ -45,8 +45,6 @@ export interface SetupOptions {
  * machine, so no container is started for one.
  */
 export async function setupCommand(options: SetupOptions = {}): Promise<void> {
-	logger.log('\n🔧 Setting up the local environment...\n');
-
 	// 1. Load workspace config
 	let loadedConfig: LoadedConfig;
 	try {
@@ -63,6 +61,13 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 	const { workspace } = loadedConfig;
 	const local = stage === workspace.stages.local;
 
+	// What this run is about to do: a deployed stage is provisioned in its own
+	// account, and nothing on this machine is set up for it.
+	logger.log(
+		local
+			? '\n🔧 Setting up the local environment...\n'
+			: `\n☁️  Provisioning the '${stage}' stage${options.dryRun ? ' (dry run)' : ''}...\n`,
+	);
 	logger.log(`📦 Workspace: ${workspace.name}`);
 	logger.log(`📱 Apps: ${Object.keys(workspace.apps).join(', ')}`);
 	logger.log(`🔑 Stage: ${stage}\n`);

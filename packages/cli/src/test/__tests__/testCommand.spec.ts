@@ -223,6 +223,27 @@ describe('testCommand', { timeout: 30_000 }, () => {
 		expect(existsSync(join(dir, '.gkm', 'test', 'index.ts'))).toBe(true);
 	});
 
+	it('writes the declared stages as types for the typecheck after it', async () => {
+		writeFileSync(
+			join(dir, 'gkm.config.ts'),
+			`export default {
+  name: 'shop',
+  stages: { local: 'dev', deployed: ['staging', 'prod'] },
+  constructs: './src/constructs/**/*.ts',
+};
+`,
+		);
+
+		await testCommand({ prepare: true });
+
+		const declaration = readFileSync(join(dir, '.gkm', 'stages.d.ts'), 'utf-8');
+		expect(declaration).toContain("declare module '@geekmidas/constructs' {");
+		expect(declaration).toContain("local: 'dev';");
+		expect(declaration).toContain("deployed: 'staging' | 'prod';");
+		// A module, so the block augments the package rather than replacing it.
+		expect(declaration).toMatch(/^export \{\};$/m);
+	});
+
 	it('refuses to guess a stage with no config and none named', async () => {
 		writeFileSync(join(dir, 'gkm.config.ts'), 'export default ;\n');
 

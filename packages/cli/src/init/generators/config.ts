@@ -112,7 +112,8 @@ export default defineConfig({${stagesBlock(options.stages)}${
 	// Build tsconfig.json - extends root for monorepo, standalone for non-monorepo
 	// Using noEmit: true since typecheck is done via turbo
 	const tsConfig = options.monorepo
-		? workspaceApiTsConfig(options.name)
+		? // This API is its own workspace root: gkm.config.ts is beside it.
+			workspaceApiTsConfig(options.name, '.gkm/stages.d.ts')
 		: {
 				compilerOptions: {
 					target: 'ES2022',
@@ -134,7 +135,9 @@ export default defineConfig({${stagesBlock(options.stages)}${
 						'~/*': ['./src/*'],
 					},
 				},
-				include: ['src/**/*.ts'],
+				// The stage names gkm.config.ts declares, as types — named, because
+				// a dot folder is never matched by a wildcard.
+				include: ['src/**/*.ts', '.gkm/stages.d.ts'],
 				exclude: ['node_modules', 'dist'],
 			};
 
@@ -294,7 +297,7 @@ interface ConfigHelperOptions {
  * the root constructs, so in the other `@<name>/constructs/api.ts` fell through
  * to the `packages/` mapping and nothing could load the surface.
  */
-function workspaceApiTsConfig(name: string) {
+function workspaceApiTsConfig(name: string, stageTypes: string) {
 	return {
 		extends: '../../tsconfig.json',
 		compilerOptions: {
@@ -310,7 +313,9 @@ function workspaceApiTsConfig(name: string) {
 				[`@${name}/*`]: ['../../packages/*/src'],
 			},
 		},
-		include: ['src/**/*.ts'],
+		// `.gkm/stages.d.ts`, generated beside gkm.config.ts, types stage names
+		// from it; a dot folder is never matched by a wildcard, so it is named.
+		include: ['src/**/*.ts', stageTypes],
 		exclude: ['node_modules', 'dist'],
 	};
 }
@@ -323,7 +328,8 @@ function generateSingleAppConfigFiles(
 	// For fullstack, only generate tsconfig.json for the API app
 	// The workspace gkm.config.ts is generated in monorepo.ts
 	// Using noEmit: true since typecheck is done via turbo
-	const tsConfig = workspaceApiTsConfig(options.name);
+	// The workspace's gkm.config.ts, and so its `.gkm/`, is at the root.
+	const tsConfig = workspaceApiTsConfig(options.name, '../../.gkm/stages.d.ts');
 
 	const files: GeneratedFile[] = [
 		{

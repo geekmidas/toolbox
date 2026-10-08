@@ -18,6 +18,7 @@
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { extname, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import type { TestStage } from '@geekmidas/constructs';
 import type { BetterAuth } from '@geekmidas/constructs/auth';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { TestManifest } from '@geekmidas/constructs/testing';
@@ -93,8 +94,8 @@ export interface WriteTestHarnessOptions {
 	targets: string[];
 	/** The constructs glob — the same patterns reconcile and the build use. */
 	patterns: string[];
-	/** The stage the environment was resolved for. */
-	stage: string;
+	/** The stage the environment was resolved for: always `test`. */
+	stage: TestStage;
 	/** The environment the suite runs with. */
 	env: Record<string, string>;
 	/**

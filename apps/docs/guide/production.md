@@ -602,7 +602,9 @@ export async function seed(db, { stage }) {
 A plain `insert` fails the second deploy on its unique key. A failing seed
 stops the deploy before any app starts (`DeploySeedsFailed`, naming the
 construct and the seed); its own writes are rolled back. Something that
-belongs on some stages only — a demo tenant — decides by `stage`.
+belongs on some stages only — a demo tenant — decides by `stage`, typed by
+`SeedContext` from `@geekmidas/constructs` as one of the declared stages (see
+[Typed stages](./workspaces.md#typed-stages)).
 
 ## Database connections
 

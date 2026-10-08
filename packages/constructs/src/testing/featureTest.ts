@@ -57,6 +57,7 @@ import type { Subscriber } from '../subscribers/Subscriber';
 import { TestSubscriberAdaptor } from '../subscribers/TestSubscriberAdaptor';
 import { Topic } from '../topic/Topic';
 import { loadTestManifest, type TestManifest } from './manifest';
+import { inProcessBindings } from './peer';
 
 /** How each database's test factory is built, keyed by its service name. */
 export type FactoryBuilders = Record<string, (db: Kysely<any>) => unknown>;
@@ -896,7 +897,8 @@ function surfaceHandlers(
 					});
 					state.surfaces.set(surface, app);
 				}
-				return (await app).fetch(request);
+				// From this process, so from a loopback peer: see `./peer`.
+				return (await app).fetch(request, inProcessBindings());
 			}),
 		);
 	});
@@ -968,7 +970,9 @@ function authHandler(
 					.then(({ app }) => app);
 				state.auth.set(auth, app);
 			}
-			return (await app).fetch(request);
+			// A loopback peer, so an API's session check — an internal caller —
+			// keeps the browser's address it carries: see `./peer`.
+			return (await app).fetch(request, inProcessBindings());
 		}),
 	);
 }
