@@ -13,6 +13,11 @@
  * over the one connection already inside the test's transaction, on which a
  * `BEGIN` becomes a savepoint and a `COMMIT` releases it. Nothing the code does
  * can end the transaction the test will roll back.
+ *
+ * A statement the code runs outside a transaction of its own gets a savepoint
+ * too, so a failure — a duplicate key two concurrent requests raced to insert —
+ * fails that statement alone, as it would deployed, rather than every request
+ * the test makes after it.
  */
 
 import { Kysely, type KyselyConfig, PostgresDialect } from 'kysely';
@@ -65,6 +70,9 @@ export async function openBoundTransaction(
 	const client = new pg.Client(connectionConfig(url));
 	await client.connect();
 	await client.query('BEGIN');
+	// Shared by every checkout of the connection: concurrent requests in one
+	// test each check it out, and all of them take turns on it.
+	const inTurn = turns();
 
 	return {
 		db: new Kysely({
@@ -73,7 +81,7 @@ export async function openBoundTransaction(
 				// A "pool" of the one connection. Released never, ended never: the
 				// test owns it, and it closes in `rollback`.
 				pool: {
-					connect: async () => savepointing(client),
+					connect: async () => savepointing(client, inTurn),
 					end: async () => {},
 				} as unknown as pg.Pool,
 			}),
@@ -95,31 +103,88 @@ export async function openBoundTransaction(
  * one place they can be caught. A depth counter names the savepoints, so
  * nested transactions nest.
  */
-function savepointing(client: pg.Client): pg.PoolClient {
+function savepointing(client: pg.Client, inTurn: Turns): pg.PoolClient {
 	let depth = 0;
-	const query = client.query.bind(client) as (...args: unknown[]) => unknown;
+	const query = client.query.bind(client) as (
+		...args: unknown[]
+	) => Promise<unknown>;
 
 	const wrapped = Object.create(client) as pg.PoolClient;
 	Object.assign(wrapped, {
 		query: (text: unknown, ...rest: unknown[]) => {
-			const statement =
-				typeof text === 'string' ? text.trim().toLowerCase() : undefined;
+			// A cursor, a query config, a callback: not what Kysely sends for a
+			// statement, and nothing to wrap.
+			if (typeof text !== 'string' || typeof rest.at(-1) === 'function') {
+				return query(text, ...rest);
+			}
+			const statement = text.trim().toLowerCase();
 
-			if (statement === 'begin' || statement?.startsWith('start transaction')) {
-				depth++;
-				return query(`SAVEPOINT test_sp_${depth}`);
+			if (statement === 'begin' || statement.startsWith('start transaction')) {
+				const savepoint = `test_sp_${++depth}`;
+				return inTurn(() => query(`SAVEPOINT ${savepoint}`));
 			}
 			if (statement === 'commit') {
-				return query(`RELEASE SAVEPOINT test_sp_${depth--}`);
+				const savepoint = `test_sp_${depth--}`;
+				return inTurn(() => query(`RELEASE SAVEPOINT ${savepoint}`));
 			}
 			if (statement === 'rollback') {
-				return query(`ROLLBACK TO SAVEPOINT test_sp_${depth--}`);
+				const savepoint = `test_sp_${depth--}`;
+				return inTurn(() => query(`ROLLBACK TO SAVEPOINT ${savepoint}`));
 			}
-			return query(text, ...rest);
+			if (depth > 0) return inTurn(() => query(text, ...rest));
+			return inTurn(() => autocommitted(query, text, rest));
 		},
 		release: () => {},
 	});
 	return wrapped;
+}
+
+/** Runs work in the order it was asked for, each after the last has settled. */
+type Turns = <T>(work: () => Promise<T>) => Promise<T>;
+
+/**
+ * One statement at a time on a connection, in the order they were asked for.
+ *
+ * The connection runs them one at a time anyway; this keeps a statement and
+ * the savepoint around it together, so nothing another request sends lands
+ * between them — a `RELEASE` also ends every savepoint opened after its own.
+ */
+function turns(): Turns {
+	let queue: Promise<unknown> = Promise.resolve();
+	return (work) => {
+		const turn = queue.then(work, work);
+		queue = turn.catch(() => {});
+		return turn;
+	};
+}
+
+/**
+ * A statement run outside any transaction the code opened, failing the way
+ * it would deployed: on its own.
+ *
+ * Deployed, such a statement is its own transaction, so one that fails — a
+ * duplicate key two concurrent requests both tried to insert — fails alone,
+ * and code written for that (Better Auth's rate limiter reads the row the
+ * other request inserted, and carries on) does carry on. Inside the test's
+ * transaction a failed statement would abort everything after it, every
+ * request of the test included. A savepoint around it puts back what
+ * deployed would have.
+ */
+async function autocommitted(
+	query: (...args: unknown[]) => Promise<unknown>,
+	text: string,
+	rest: unknown[],
+): Promise<unknown> {
+	await query('SAVEPOINT test_statement');
+	try {
+		const result = await query(text, ...rest);
+		await query('RELEASE SAVEPOINT test_statement');
+		return result;
+	} catch (error) {
+		await query('ROLLBACK TO SAVEPOINT test_statement');
+		await query('RELEASE SAVEPOINT test_statement');
+		throw error;
+	}
 }
 
 /**

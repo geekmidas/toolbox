@@ -4,6 +4,7 @@ import { ServiceDiscovery } from '@geekmidas/services';
 import { TEST_CONTEXT_HEADER } from '@geekmidas/testkit/context';
 import { Hono } from 'hono';
 import { type HttpHandler, http } from 'msw';
+import { inProcessBindings } from '../testing/peer';
 import type { Endpoint } from './Endpoint';
 import { HonoEndpoint } from './HonoEndpointAdaptor';
 
@@ -203,7 +204,12 @@ export function createMswHandlers(
 				const app = new Hono();
 				HonoEndpoint.addRoute(endpoint, ctx.serviceDiscovery as any, app);
 
-				const response = await app.request(request);
+				// From this process: a loopback peer, as a socket on this machine has.
+				const response = await app.request(
+					request,
+					undefined,
+					inProcessBindings(),
+				);
 
 				return new Response(response.body, {
 					status: response.status,

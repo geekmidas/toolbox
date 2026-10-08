@@ -117,6 +117,7 @@ export const database = new KyselyDatabase('Database');
 		expect(secrets?.custom.JWT_SECRET).toBeTruthy();
 		expect(secrets?.custom).not.toHaveProperty('NODE_ENV');
 		const said = output(log);
+		expect(said).toContain('Setting up the local environment');
 		expect(said).toContain('Generating fresh development secrets');
 		expect(said).toContain('No containers declared');
 		expect(said).toContain('🔧 api → http://localhost:3400');
@@ -211,6 +212,8 @@ export const uploads = new ObjectStorage('Uploads');
 			await setupCommand({ stage: 'prod', dryRun: true });
 
 			const said = output(log);
+			expect(said).toContain("Provisioning the 'prod' stage (dry run)...");
+			expect(said).not.toContain('local environment');
 			expect(said).toContain(
 				"Providers for 'prod' (dry run — nothing is created or written)",
 			);
@@ -262,6 +265,8 @@ export const uploads = new ObjectStorage('Uploads');
 			config(ssm, `shop-${Date.now()}`);
 
 			await setupCommand({ stage: 'prod', skipDocker: true });
+			expect(output(log)).toContain("Provisioning the 'prod' stage...");
+			expect(output(log)).not.toContain('local environment');
 			expect(output(log)).toContain('Secrets written to the "prod" store');
 			// Nothing on this machine to forget to push.
 			expect(existsSync(join(dir, '.gkm', 'secrets', 'prod.json'))).toBe(false);

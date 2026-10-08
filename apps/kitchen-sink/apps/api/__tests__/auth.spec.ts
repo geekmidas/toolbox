@@ -78,4 +78,27 @@ describe('signing in with a magic link', () => {
 			notifications: [{ type: 'user.created', body: 'Grace joined' }],
 		});
 	});
+
+	it('answers requests that check the session at the same time', async ({
+		browser,
+		mailbox,
+	}) => {
+		// A page loading two things at once: two session checks from one
+		// browser, both counted against its rate limit, both in this test's
+		// transaction. Neither may take the other down.
+		const email = address('linus');
+		await browser.api.post('/users', { body: { name: 'Linus', email } });
+		await browser.auth.signIn.magicLink({ email });
+		await browser.visit((await mailbox(email).last()).link!);
+
+		const [first, second] = await Promise.all([
+			browser.api.get('/notifications'),
+			browser.api.get('/notifications'),
+		]);
+
+		expect(first).toMatchObject({
+			notifications: [{ type: 'user.created', body: 'Linus joined' }],
+		});
+		expect(second).toEqual(first);
+	});
 });

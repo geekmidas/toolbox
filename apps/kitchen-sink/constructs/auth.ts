@@ -60,6 +60,12 @@ export const auth = new BetterAuth('Auth', {
 	// its client arrives in `services`, so there is no other way to reach it.
 	dependsOn: [mail],
 	options: async ({ services }) => ({
+		// Kept in the tenant, so every instance of the auth app counts against
+		// the same budget — and on in every stage, tests included, so a test
+		// runs the limiter production runs. Each client is counted by its own
+		// address: a browser's, or the one the API passes on for it when it
+		// checks a session.
+		rateLimit: { enabled: true, storage: 'database' },
 		plugins: [
 			magicLink({
 				sendMagicLink: async ({ email, url }) => {
