@@ -75,7 +75,9 @@ describe('workspace credentials', () => {
 		expect(result.credentials.PORT).toBe(String(apiPort));
 	});
 
-	it('should map APP_DATABASE_URL to DATABASE_URL', async () => {
+	// An app's database URL is its construct's key, derived by reconcile —
+	// never a stored per-app one renamed onto `DATABASE_URL`.
+	it('renames no stored <APP>_DATABASE_URL onto DATABASE_URL', async () => {
 		createSecretsFile(
 			'development',
 			{
@@ -87,7 +89,8 @@ describe('workspace credentials', () => {
 
 		const result = await prepareEntryCredentials({ cwd: apiDir });
 
-		expect(result.credentials.DATABASE_URL).toBe(
+		expect(result.credentials).not.toHaveProperty('DATABASE_URL');
+		expect(result.credentials.API_DATABASE_URL).toBe(
 			'postgresql://localhost/apidb',
 		);
 	});

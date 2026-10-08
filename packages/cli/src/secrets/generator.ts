@@ -50,14 +50,6 @@ const SERVICE_DEFAULTS: Record<
 	},
 };
 
-/** Default credentials for pgboss (not a Docker service, reuses postgres) */
-const PGBOSS_DEFAULTS: Omit<ServiceCredentials, 'password'> = {
-	host: 'localhost',
-	port: 5432,
-	username: 'pgboss',
-	database: 'app',
-};
-
 /**
  * Generate credentials for a specific service.
  */
@@ -121,15 +113,6 @@ export function generateLocalStackAccessKeyId(): string {
 }
 
 /**
- * Generate connection URL for pg-boss (uses PostgreSQL protocol).
- * Format: pgboss://user:pass@host:port/db?schema=pgboss
- */
-export function generatePgBossUrl(creds: ServiceCredentials): string {
-	const { username, password, host, port, database } = creds;
-	return `pgboss://${username}:${encodeURIComponent(password)}@${host}:${port}/${database}?schema=pgboss`;
-}
-
-/**
  * Generate connection URLs from service credentials.
  */
 export function generateConnectionUrls(
@@ -147,12 +130,6 @@ export function generateConnectionUrls(
 
 	if (services.minio) {
 		urls.STORAGE_ENDPOINT = generateMinioEndpoint(services.minio);
-	}
-
-	// A topic's or queue's own broker URL is reconcile's, derived from the
-	// declaration. This is what a worker's crons schedule through.
-	if (services.pgboss) {
-		urls.EVENT_PUBLISHER_CONNECTION_STRING = generatePgBossUrl(services.pgboss);
 	}
 
 	if (services.mailpit) {
@@ -199,19 +176,6 @@ export function createStageSecrets(
 			serviceCredentials.minio.bucket = options.projectName;
 			serviceCredentials.minio.username = options.projectName;
 		}
-	}
-
-	// Always create pgboss credentials when postgres is available.
-	// pgboss reuses postgres host/port/database but with a dedicated user,
-	// so subscribers work out of the box without explicit events config.
-	if (serviceCredentials.postgres && !serviceCredentials.pgboss) {
-		serviceCredentials.pgboss = {
-			...PGBOSS_DEFAULTS,
-			password: generateSecurePassword(),
-			host: serviceCredentials.postgres.host,
-			port: serviceCredentials.postgres.port,
-			database: serviceCredentials.postgres.database,
-		};
 	}
 
 	const urls = generateConnectionUrls(serviceCredentials);

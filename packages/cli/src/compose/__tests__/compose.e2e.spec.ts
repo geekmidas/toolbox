@@ -372,6 +372,10 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				// What a real project has: a lockfile every image installs from,
 				// and a commit its images are tagged with.
 				await exec('pnpm', ['install', '--lockfile-only'], { cwd: dir });
+				// What a scaffolded project ignores: the stage's secrets below
+				// live in `.gkm/`, and an untracked one would tag every image
+				// `-dirty`.
+				writeFileSync(join(dir, '.gitignore'), '.gkm/\n');
 				const git = childEnv({
 					GIT_AUTHOR_NAME: 'gkm',
 					GIT_AUTHOR_EMAIL: 'gkm@example.com',
@@ -384,6 +388,18 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 					cwd: dir,
 					env: git,
 				});
+
+				// The stage started the way a user starts one: its secrets
+				// initialised, a key set, and `gkm setup` run over them. Each used
+				// to store a `localhost` URL under the auth tenant's key, and a
+				// stored key wins: the auth server could not reach its database.
+				for (const args of [
+					['secrets:init', '--stage', 'development'],
+					['secrets:set', 'SOME_KEY', 'x', '--stage', 'development'],
+					['setup', '--stage', 'development', '--skip-docker'],
+				]) {
+					await exec(process.execPath, [CLI, ...args], { cwd: dir });
+				}
 
 				https = await freePort();
 				const http = await freePort();
@@ -447,6 +463,16 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 					);
 				}
 				expect(existsSync(join(dir, 'apps', 'web', 'dist'))).toBe(false);
+			});
+
+			it("hands the auth server its tenant's derived URL, not a stored localhost one", () => {
+				const env = readFileSync(
+					join(dir, '.gkm', 'compose', 'development', 'auth.env'),
+					'utf-8',
+				);
+				expect(env).toMatch(
+					/^AUTH_DATABASE_URL=postgres:\/\/authdatabase:[^@]+@postgres:5432\//m,
+				);
 			});
 
 			it('starts the stack and says where each app answers', () => {

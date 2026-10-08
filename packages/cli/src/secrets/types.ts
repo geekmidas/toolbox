@@ -31,7 +31,6 @@ export interface StageSecrets {
 		minio?: ServiceCredentials;
 		mailpit?: ServiceCredentials;
 		localstack?: ServiceCredentials;
-		pgboss?: ServiceCredentials;
 	};
 	/** Generated connection URLs */
 	urls: {
@@ -40,7 +39,6 @@ export interface StageSecrets {
 		STORAGE_ENDPOINT?: string;
 		SMTP_HOST?: string;
 		SMTP_PORT?: string;
-		EVENT_PUBLISHER_CONNECTION_STRING?: string;
 	};
 	/**
 	 * Values injected by key: those set with `gkm secrets:set` — a third

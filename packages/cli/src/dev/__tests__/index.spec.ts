@@ -969,7 +969,7 @@ describe('loadSecretsForApp', () => {
 		);
 	}
 
-	describe('single app mode (no appName)', () => {
+	describe('a stage read as stored', () => {
 		it('should return secrets as-is without mapping', async () => {
 			createSecretsFile('development', {
 				DATABASE_URL: 'postgresql://localhost/mydb',
@@ -1020,87 +1020,24 @@ describe('loadSecretsForApp', () => {
 		});
 	});
 
-	describe('workspace app mode (with appName)', () => {
-		it('should map {APP}_DATABASE_URL to DATABASE_URL', async () => {
-			createSecretsFile('development', {
-				AUTH_DATABASE_URL: 'postgresql://auth_user:pass@localhost/authdb',
-				API_DATABASE_URL: 'postgresql://api_user:pass@localhost/apidb',
-				JWT_SECRET: 'shared-secret',
-			});
-
-			const authSecrets = await loadSecretsForApp(
-				new FileSecretsStore(testDir),
-				'development',
-				'auth',
-			);
-
-			expect(authSecrets.DATABASE_URL).toBe(
-				'postgresql://auth_user:pass@localhost/authdb',
-			);
-			// Original prefixed secrets are also available
-			expect(authSecrets.AUTH_DATABASE_URL).toBe(
-				'postgresql://auth_user:pass@localhost/authdb',
-			);
-			expect(authSecrets.JWT_SECRET).toBe('shared-secret');
+	// A per-app `<APP>_DATABASE_URL` is no longer renamed onto
+	// `DATABASE_URL`: an app's database URL is its construct's key, derived by
+	// reconcile, and a stored copy of a pre-construct one pointed at a role
+	// that no longer exists.
+	it('renames nothing: a stored <APP>_DATABASE_URL stays itself', async () => {
+		createSecretsFile('development', {
+			AUTH_DATABASE_URL: 'postgresql://auth_user:pass@localhost/authdb',
+			JWT_SECRET: 'shared-secret',
 		});
 
-		it('should map API secrets correctly', async () => {
-			createSecretsFile('development', {
-				AUTH_DATABASE_URL: 'postgresql://auth_user:pass@localhost/authdb',
-				API_DATABASE_URL: 'postgresql://api_user:pass@localhost/apidb',
-			});
+		const secrets = await loadSecretsForApp(
+			new FileSecretsStore(testDir),
+			'development',
+		);
 
-			const apiSecrets = await loadSecretsForApp(
-				new FileSecretsStore(testDir),
-				'development',
-				'api',
-			);
-
-			expect(apiSecrets.DATABASE_URL).toBe(
-				'postgresql://api_user:pass@localhost/apidb',
-			);
-		});
-
-		it('should not override DATABASE_URL if no prefixed version exists', async () => {
-			createSecretsFile('development', {
-				DATABASE_URL: 'postgresql://localhost/maindb',
-				JWT_SECRET: 'secret',
-			});
-
-			// Asking for 'auth' app but AUTH_DATABASE_URL doesn't exist
-			const authSecrets = await loadSecretsForApp(
-				new FileSecretsStore(testDir),
-				'development',
-				'auth',
-			);
-
-			// Should keep the original DATABASE_URL since there's no AUTH_DATABASE_URL
-			expect(authSecrets.DATABASE_URL).toBe('postgresql://localhost/maindb');
-		});
-
-		it('should handle uppercase app names in secrets', async () => {
-			createSecretsFile('development', {
-				MYSERVICE_DATABASE_URL: 'postgresql://localhost/myservicedb',
-			});
-
-			// App name is lowercase but secrets are uppercase prefixed
-			const secrets = await loadSecretsForApp(
-				new FileSecretsStore(testDir),
-				'development',
-				'myservice',
-			);
-
-			expect(secrets.DATABASE_URL).toBe('postgresql://localhost/myservicedb');
-		});
-
-		it('should return empty object if no secrets exist for app', async () => {
-			const secrets = await loadSecretsForApp(
-				new FileSecretsStore(testDir),
-				'development',
-				'api',
-			);
-
-			expect(secrets).toEqual({});
+		expect(secrets).toEqual({
+			AUTH_DATABASE_URL: 'postgresql://auth_user:pass@localhost/authdb',
+			JWT_SECRET: 'shared-secret',
 		});
 	});
 

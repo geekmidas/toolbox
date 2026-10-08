@@ -508,6 +508,9 @@ gkm secrets:init --stage production
 # Set a secret
 gkm secrets:set API_KEY 'secret' --stage production
 
+# Remove a secret
+gkm secrets:unset API_KEY --stage production
+
 # Show secrets (masked)
 gkm secrets:show --stage production
 

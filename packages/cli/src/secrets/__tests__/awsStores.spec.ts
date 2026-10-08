@@ -25,6 +25,7 @@ import {
 	secretsInitCommand,
 	secretsSetCommand,
 	secretsShowCommand,
+	secretsUnsetCommand,
 } from '../index';
 import {
 	MigrateTargetHoldsStage,
@@ -449,6 +450,28 @@ export default defineWorkspace({
 		await secretsShowCommand({ stage: 'prod', reveal: true });
 		expect(printed()).toContain('STRIPE_KEY: sk_live_sm');
 	});
+
+	for (const [label, provider, read] of [
+		['SSM', ssm, inSsm],
+		['Secrets Manager', secretsManager, inSecretsManager],
+	] as const) {
+		it(`secrets:unset removes a key from a stage kept in ${label}`, async () => {
+			writeConfig(provider);
+			await secretsInitCommand({ stage: 'prod' });
+			await secretsSetCommand('STRIPE_KEY', 'sk_live_kept', { stage: 'prod' });
+			await secretsSetCommand(
+				'AUTH_DATABASE_URL',
+				'postgresql://auth:pw@localhost:5432/shop_dev',
+				{ stage: 'prod' },
+			);
+
+			await secretsUnsetCommand('AUTH_DATABASE_URL', { stage: 'prod' });
+
+			const after = await read('prod');
+			expect(after?.custom).not.toHaveProperty('AUTH_DATABASE_URL');
+			expect(after?.custom.STRIPE_KEY).toBe('sk_live_kept');
+		});
+	}
 
 	it('secrets:migrate copies a stage from SSM to Secrets Manager whole', async () => {
 		writeConfig(ssm);

@@ -109,14 +109,19 @@ describe('reconcileMissingSecrets', () => {
 		expect(result!.secrets.updatedAt).not.toBe(originalUpdatedAt);
 	});
 
-	it('should backfill frontend URL keys', () => {
+	// A site's address is its construct's, derived where it runs. Backfilled,
+	// it was a value set by hand — `localhost`, handed to every container.
+	it('backfills no address a construct provides', () => {
 		const workspace = createMultiAppWorkspace();
 		const secrets = createSecrets();
 
 		const result = reconcileMissingSecrets(secrets, workspace, ['postgres']);
 
 		expect(result).not.toBeNull();
-		expect(result!.secrets.custom.WEB_URL).toBe('http://localhost:3001');
-		expect(result!.addedKeys).toContain('WEB_URL');
+		expect(
+			result!.addedKeys.filter((key) =>
+				/_(DATABASE_URL|DB_PASSWORD)$|^(AUTH|WEB)_URL$/.test(key),
+			),
+		).toEqual([]);
 	});
 });

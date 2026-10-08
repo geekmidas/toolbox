@@ -286,7 +286,6 @@ docker-compose.constructs.yml
 .env
 .env.local
 .env.*.local
-docker/.env
 
 # IDE
 .idea/

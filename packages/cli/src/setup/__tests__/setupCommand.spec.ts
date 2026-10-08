@@ -1,7 +1,6 @@
 import {
 	existsSync,
 	mkdirSync,
-	readFileSync,
 	realpathSync,
 	rmSync,
 	writeFileSync,
@@ -144,13 +143,15 @@ export const database = new KyselyDatabase('Database');
 		expect(secrets?.custom.STRIPE_KEY).toBe('sk_kept');
 		// The declared database brought Postgres, and with it credentials.
 		expect(secrets?.services.postgres).toBeDefined();
-		expect(secrets?.services.pgboss?.username).toBe('pgboss');
 		expect(output(log)).toContain('Using existing secrets');
-		expect(existsSync(join(dir, 'docker', '.env'))).toBe(true);
-		// The per-role passwords the Postgres init script reads.
-		expect(readFileSync(join(dir, 'docker', '.env'), 'utf-8')).toContain(
-			`PGBOSS_DB_PASSWORD=${secrets?.services.pgboss?.password}`,
-		);
+		// No per-app database URL or password, and no docker/.env: reconcile
+		// creates each role from the stage's credential.
+		expect(
+			Object.keys(secrets?.custom ?? {}).filter((key) =>
+				/_(DATABASE_URL|DB_PASSWORD)$/.test(key),
+			),
+		).toEqual([]);
+		expect(existsSync(join(dir, 'docker', '.env'))).toBe(false);
 	});
 
 	it('uses existing secrets unchanged when nothing is missing', async () => {

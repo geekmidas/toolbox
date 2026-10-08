@@ -1,32 +1,5 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
 import { generateSecurePassword } from '../secrets/generator.js';
-import type { StageSecrets } from '../secrets/types.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
-
-/**
- * Generate a secure random password for database users.
- * Uses a combination of timestamp and random bytes for uniqueness.
- */
-export function generateDbPassword(): string {
-	return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
-}
-
-/**
- * Generate database URL for an app.
- * All apps connect to the same database, but use different users/schemas.
- */
-export function generateDbUrl(
-	appName: string,
-	password: string,
-	projectName: string,
-	host = 'localhost',
-	port = 5432,
-): string {
-	const userName = appName.replace(/-/g, '_');
-	const dbName = `${projectName.replace(/-/g, '_')}_dev`;
-	return `postgresql://${userName}:${password}@${host}:${port}/${dbName}`;
-}
 
 /**
  * Generate fullstack-aware custom secrets for a workspace.
@@ -34,8 +7,13 @@ export function generateDbUrl(
  * Generates:
  * - Common secrets: PORT, LOG_LEVEL, JWT_SECRET (no `NODE_ENV` — the command
  *   decides that; see `gkm init`)
- * - Per-app database passwords and URLs for backend apps with db service
  * - Better-auth secrets for apps using the better-auth framework
+ *
+ * No address of anything a construct declares — a database's or a tenant's
+ * URL, a surface's or a site's. Those are derived from the construct, with
+ * passwords from the stage, and one stored here would be a value set by hand,
+ * which wins over the derived one: a `localhost` URL handed to a container,
+ * with a password no role has.
  */
 export function generateFullstackCustomSecrets(
 	workspace: NormalizedWorkspace,
@@ -54,38 +32,12 @@ export function generateFullstackCustomSecrets(
 		return customs;
 	}
 
-	// Collect all frontend ports for trusted origins
-	const frontendPorts: number[] = [];
-
-	for (const [appName, appConfig] of Object.entries(workspace.apps)) {
-		if (appConfig.type === 'web') {
-			frontendPorts.push(appConfig.port);
-			const upperName = appName.toUpperCase();
-			customs[`${upperName}_URL`] = `http://localhost:${appConfig.port}`;
-			continue;
-		}
-
-		// Mobile apps (Expo, etc.) don't run on a host port the backend
-		// cares about for CORS, and don't need DB credentials.
-		if (appConfig.type === 'mobile') {
-			continue;
-		}
-
-		// Backend apps with database: generate per-app DB passwords and URLs
-		const password = generateDbPassword();
-		const upperName = appName.toUpperCase();
-
-		customs[`${upperName}_DATABASE_URL`] = generateDbUrl(
-			appName,
-			password,
-			workspace.name,
-		);
-		customs[`${upperName}_DB_PASSWORD`] = password;
+	for (const appConfig of Object.values(workspace.apps)) {
+		if (appConfig.type === 'web' || appConfig.type === 'mobile') continue;
 
 		// Better-auth framework secrets
 		if (appConfig.framework === 'better-auth') {
 			customs.AUTH_PORT = String(appConfig.port);
-			customs.AUTH_URL = `http://localhost:${appConfig.port}`;
 			customs.BETTER_AUTH_SECRET = `better-auth-${Date.now()}-${generateSecurePassword(16)}`;
 			customs.BETTER_AUTH_URL = `http://localhost:${appConfig.port}`;
 		}
@@ -100,44 +52,4 @@ export function generateFullstackCustomSecrets(
 	}
 
 	return customs;
-}
-
-/**
- * Extract *_DB_PASSWORD keys from secrets and write docker/.env.
- *
- * The docker/.env file contains database passwords that the PostgreSQL
- * init script reads to create per-app database users.
- */
-export async function writeDockerEnvFromSecrets(
-	secrets: StageSecrets,
-	workspaceRoot: string,
-): Promise<void> {
-	const dbPasswordEntries = Object.entries(secrets.custom).filter(([key]) =>
-		key.endsWith('_DB_PASSWORD'),
-	);
-
-	// Always include pgboss password when pgboss credentials exist
-	if (
-		secrets.services.pgboss &&
-		!dbPasswordEntries.some(([key]) => key === 'PGBOSS_DB_PASSWORD')
-	) {
-		dbPasswordEntries.push([
-			'PGBOSS_DB_PASSWORD',
-			secrets.services.pgboss.password,
-		]);
-	}
-
-	if (dbPasswordEntries.length === 0) {
-		return;
-	}
-
-	const envContent = `# Auto-generated docker environment file
-# Contains database passwords for docker-compose postgres init
-# This file is gitignored - do not commit to version control
-${dbPasswordEntries.map(([key, value]) => `${key}=${value}`).join('\n')}
-`;
-
-	const envPath = join(workspaceRoot, 'docker', '.env');
-	await mkdir(dirname(envPath), { recursive: true });
-	await writeFile(envPath, envContent);
 }

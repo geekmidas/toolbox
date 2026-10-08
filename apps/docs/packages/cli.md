@@ -503,6 +503,9 @@ gkm secrets:show --stage dev --reveal
 # Set a custom secret
 gkm secrets:set API_KEY sk-1234567890 --stage production
 
+# Remove one
+gkm secrets:unset API_KEY --stage production
+
 # Rotate service passwords
 gkm secrets:rotate --stage production
 gkm secrets:rotate --stage production --service postgres
@@ -518,6 +521,7 @@ gkm secrets:import secrets.json --stage production
 | `secrets:init` | Initialize secrets for a stage |
 | `secrets:show` | Display secrets for a stage |
 | `secrets:set` | Set a custom secret |
+| `secrets:unset` | Remove a custom secret |
 | `secrets:rotate` | Rotate service passwords |
 | `secrets:import` | Import secrets from JSON file |
 
@@ -540,7 +544,7 @@ When services are configured, the following are auto-generated:
 **Event Backend Credentials:**
 
 When the project declares a topic or queue, additional credentials are generated for the target's broker:
-- **pgboss**: `PGBOSS_DB_HOST`, `PGBOSS_DB_PORT`, `PGBOSS_DB_USER`, `PGBOSS_DB_PASSWORD`, `PGBOSS_DB_NAME`
+- **pgboss**: nothing stored — the connection string is derived from the declared database's role
 - **sns**: `AWS_ACCESS_KEY_ID` (LSIA-prefixed), `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AWS_ENDPOINT_URL`
 - **rabbitmq**: Uses the RabbitMQ service credentials
 
@@ -1053,7 +1057,7 @@ thing at all.
 
 | Backend | Key | Infrastructure | Environment Variables |
 |---------|-----|---------------|----------------------|
-| pg-boss | `events: 'pgboss'` | Reuses PostgreSQL (auto-enables `db`) | `<ID>_PUBLISHER_CONNECTION_STRING` per topic/queue, `EVENT_PUBLISHER_CONNECTION_STRING`, `PGBOSS_DB_*` |
+| pg-boss | `events: 'pgboss'` | Reuses PostgreSQL (auto-enables `db`) | `<ID>_PUBLISHER_CONNECTION_STRING` per topic/queue, `EVENT_PUBLISHER_CONNECTION_STRING` |
 | AWS SNS | `events: 'sns'` | AWS emulator container (floci); each topic and queue created on it | `<ID>_PUBLISHER_CONNECTION_STRING` per topic (`sns://`) and queue (`sqs://`) |
 | RabbitMQ | `events: 'rabbitmq'` | RabbitMQ container | `<ID>_PUBLISHER_CONNECTION_STRING` per topic/queue, `EVENT_PUBLISHER_CONNECTION_STRING` |
 

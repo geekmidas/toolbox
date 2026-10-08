@@ -403,21 +403,17 @@ Secrets are encrypted and stored at `.gkm/secrets/dev.json`. The decryption key 
 
 | Key | Value |
 |-----|-------|
-| `NODE_ENV` | `development` |
 | `PORT` | `3000` |
 | `LOG_LEVEL` | `debug` |
 | `JWT_SECRET` | Random |
-| `API_DATABASE_URL` | `postgresql://api:<pass>@localhost:5432/{name}_dev` |
-| `API_DB_PASSWORD` | Random |
-| `AUTH_DATABASE_URL` | `postgresql://auth:<pass>@localhost:5432/{name}_dev` |
-| `AUTH_DB_PASSWORD` | Random |
 | `AUTH_PORT` | `3002` |
-| `AUTH_URL` | `http://localhost:3002` |
 | `BETTER_AUTH_SECRET` | Random |
 | `BETTER_AUTH_URL` | `http://localhost:3002` |
 | `BETTER_AUTH_TRUSTED_ORIGINS` | `http://localhost:3000,http://localhost:3001` |
 
-Service credentials for PostgreSQL and Redis are also included.
+No address of anything a construct declares is stored: the database's and
+the auth tenant's URLs, and the auth server's `AUTH_URL`, are derived from the
+constructs wherever the apps run.
 
 ### 11. Install Dependencies
 

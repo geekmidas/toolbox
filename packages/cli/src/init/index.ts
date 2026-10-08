@@ -466,7 +466,9 @@ export async function initCommand(
 	if (isFullstack) {
 		// Auth service secrets (better-auth)
 		customSecrets.AUTH_PORT = '3002';
-		customSecrets.AUTH_URL = 'http://localhost:3002'; // For API app to call auth service
+		// No `AUTH_URL`: it is the `Auth` construct's address, derived where
+		// the app runs — stored, it would win over that and send every
+		// container to localhost.
 		customSecrets.BETTER_AUTH_SECRET = `better-auth-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 		customSecrets.BETTER_AUTH_URL = 'http://localhost:3002';
 		customSecrets.BETTER_AUTH_TRUSTED_ORIGINS =

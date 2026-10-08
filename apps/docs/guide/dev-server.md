@@ -251,8 +251,7 @@ gkm dev
 `gkm setup` handles everything:
 1. Detects your workspace configuration
 2. Resolves secrets (pulls from SSM if configured, or generates fresh ones)
-3. Writes `docker/.env` with matching database passwords
-4. Starts Docker services (PostgreSQL, Redis, Mailpit)
+3. Starts the containers the constructs imply, creating each database's roles from the stage's credential
 
 ### What's Gitignored
 
@@ -261,7 +260,6 @@ The generated `.gitignore` excludes these files:
 | File | Why Gitignored | Impact When Missing |
 |------|----------------|---------------------|
 | `.gkm/` | Contains build artifacts, port state, dev secrets | Recreated by `gkm setup` |
-| `docker/.env` | Contains database passwords for PostgreSQL init script | Recreated by `gkm setup` |
 | `.env` | Local environment overrides | Not required — secrets handle this |
 | `node_modules/` | Dependencies | Restored by `pnpm install` |
 
@@ -270,29 +268,6 @@ The generated `.gitignore` excludes these files:
 | File | Location | Why Not Committed |
 |------|----------|-------------------|
 | Decryption key | `~/.gkm/keys/{namespace}/{project}/development.key` (`$GKM_HOME/keys/…` when `GKM_HOME` is set) | Security — stored in the user's home directory |
-
-### The `docker/.env` File
-
-The `docker/.env` file is generated during `gkm init` (and by `gkm setup`) but is gitignored. It contains database passwords that the PostgreSQL init script (`docker/postgres/init.sh`) reads to create per-app database users.
-
-**Format:**
-```env
-# docker/.env
-API_DB_PASSWORD=<must match API_DB_PASSWORD from secrets>
-AUTH_DB_PASSWORD=<must match AUTH_DB_PASSWORD from secrets>
-```
-
-`gkm setup` automatically extracts these passwords from your secrets and writes this file. You don't need to create it manually.
-
-::: tip
-If this file is missing when Docker starts PostgreSQL for the first time, the init script runs without passwords set, which means the `api` and `auth` database users are created with empty passwords. The `DATABASE_URL` in your secrets (which includes the password) will then fail to authenticate.
-
-If this happens, remove the Docker volume and restart:
-```bash
-docker compose down -v   # removes volumes
-gkm setup               # regenerates docker/.env and restarts services
-```
-:::
 
 ### Deployed Stages: the Secrets Store
 
@@ -368,7 +343,7 @@ mkdir -p -m 700 ~/.gkm/keys/{namespace}/{project}
 cp /path/to/shared/development.key ~/.gkm/keys/{namespace}/{project}/development.key
 chmod 600 ~/.gkm/keys/{namespace}/{project}/development.key
 
-# Then run setup to generate docker/.env and start services:
+# Then run setup to start services:
 gkm setup
 ```
 
@@ -380,7 +355,7 @@ gkm secrets:show --stage dev --reveal > secrets-export.json
 
 # Import on another machine
 gkm secrets:import secrets-export.json --stage dev
-gkm setup --skip-docker  # just write docker/.env, then start services manually
+gkm setup --skip-docker  # resolve secrets only; start services later
 ```
 
 ### Manual Secrets
@@ -465,15 +440,13 @@ Resolved ports are saved to `.gkm/ports.json` so external tools keep working acr
 4. Server entry imports secrets  (Object.assign to process.env)
 ```
 
-### Per-App Secret Mapping
+### No Per-App Secret Mapping
 
-In workspace mode, secrets use app-prefixed keys. When an individual app runs, its prefixed secrets are mapped to generic names:
-
-```
-Stored:    API_DATABASE_URL=postgresql://api:pass@localhost:5432/app
-Injected:  DATABASE_URL=postgresql://api:pass@localhost:5432/app   (mapped)
-           API_DATABASE_URL=postgresql://api:pass@localhost:5432/app (also available)
-```
+Stored secrets are injected as stored. A database's URL is its construct's
+key (`DATABASE_URL` for `new KyselyDatabase('Database')`, `AUTH_DB_URL` for
+`database.schema('AuthDb')`), derived by reconcile — it is never a stored
+`<APP>_DATABASE_URL` renamed onto `DATABASE_URL`, and a derived address always
+wins over a stored one in `gkm dev` and `gkm test`.
 
 ## Development Tools
 
@@ -628,10 +601,10 @@ The key at `~/.gkm/keys/{namespace}/{project}/development.key` is missing (the e
 
 ### Docker PostgreSQL auth failure
 
-The `docker/.env` passwords don't match the secrets, or `docker/.env` was missing when PostgreSQL first initialized. Fix:
+Another container is probably on the port, or the volume was created by a different project. Reconcile creates each role from the stage's credential; if the volume holds stale roles:
 ```bash
 docker compose down -v   # Remove volumes (destructive!)
-gkm setup               # Regenerates docker/.env and restarts services
+gkm setup               # Starts services and recreates the roles
 ```
 
 ### Port conflicts between projects
