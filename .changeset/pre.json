@@ -78,6 +78,7 @@
     "dev-service-urls",
     "dev-strict-ports",
     "dev-tsx-owning-tsconfig-jsx",
+    "dns-godaddy-compose",
     "dokploy-request-timeouts",
     "dokploy-verify-rollback-migrations",
     "drop-free-standing-builders",

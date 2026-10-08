@@ -1,5 +1,34 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.89
+
+### Minor Changes
+
+- [#220](https://github.com/geekmidas/toolbox/pull/220) [`e23749e`](https://github.com/geekmidas/toolbox/commit/e23749eb1c212ebdb17b415e812e6d1797072246) Thanks [@geekmidas](https://github.com/geekmidas)! - GoDaddy DNS, DNS records for compose stages, and `domains`/`dns` at the root of the config
+
+  - ✨ :boom: **`domains` and `dns` are at the root of `defineWorkspace`**, not under `deploy`: `defineWorkspace({ domains: { prod: 'shop.com' }, dns: { 'shop.com': { provider: 'godaddy' } }, deploy: { … } })`. A config that still has `deploy.domains` or `deploy.dns` fails to load with `DomainsMoved` or `DnsMoved`, which show the value at its new place. `dns` is keyed by root domain only; the single-domain `{ provider, domain }` shape is gone.
+  - :boom: **Per-stage maps are typed from the deployed stages.** `defineWorkspace` infers `stages.deployed` literally (no `as const`), and `domains`, `deploy.objects`, `deploy.telemetry`, `deploy.compose.proxy`/`tls` and a CNAME `target` map take only those stages: any other key, the local stage included, is a type error. A JavaScript config with one fails to load with `UnknownStageKey`, listing the deployed stages.
+  - ✨ :boom: **A compose stage with a domain needs `GKM_SERVER_IPV4`** in its secrets — the public address of its server. `gkm setup --stage <stage>` and every compose deploy stop first with `ServerAddressMissing` and the `gkm secrets:set GKM_SERVER_IPV4 '<ip>' --stage <stage>` line; `GKM_SERVER_IPV6` is optional (AAAA records). A malformed value fails with `ServerAddressInvalid`. `gkm secrets:add` lists the key as required (`requiredStageKeys`), and asks for both with validation. Neither key is ever written into an app's or worker's env, a bundle's embedded secrets, or a Dokploy app's variables. Stages with no domain, or a `*.localhost` one, are not affected; Dokploy finds its server from its endpoint and needs neither.
+  - ⬆️ **`provider: 'godaddy'`** in `dns`: GoDaddy's v1 records API, one name and type at a time (`GET`/`PUT /v1/domains/{domain}/records/{type}/{name}`) — never a zone-wide or type-wide replace. Authenticated with a Personal Access Token (`Authorization: Bearer`) scoped to `domains.dns:update`, from `GODADDY_API_TOKEN` or `gkm login --provider godaddy`. Only A, AAAA and CNAME records of the requested names are written (`GoDaddyRecordNotAllowed` otherwise). A token that cannot read records falls back to writing each one, idempotently. Named errors: `GoDaddyApiAccessDenied` (GoDaddy's API is limited to accounts with 10+ domains or a Discount Domain Club Premier membership — move DNS to Route53 or Cloudflare, or use `manual`), `GoDaddyScopeMissing`, `GoDaddyCredentialsInvalid`, `GoDaddyDomainNotFound`, `GoDaddyRateLimited` (429s and 504s are retried with backoff). TTLs are at least GoDaddy's 600 seconds. The Dokploy target uses it through the same `DnsProvider` interface.
+  - ✨ **`gkm setup --stage <stage>` writes a compose stage's DNS records**: every public host its stack serves — the apex, each app, each file server, the public log UI — gets an A record (and AAAA) for `GKM_SERVER_IPV4`, through the root domain's provider, with this machine's DNS credentials. `dns['<domain>'].records: { mode: 'cname', target }` (one name, or one per stage) writes one A record for the target and a CNAME for every other host; the apex is always an A record. `--dry-run` prints each record and what would change; a record with the right value is left alone, one with another is replaced (`old → new`). `manual` prints the records and writes none.
+  - 🐛 **Every compose deploy checks DNS first**: each public host is resolved with the system resolver before the stack starts and certificates are requested; one that does not resolve to the server stops `validate` with `HostNotPointingAtServer`, naming each host, what it resolves to, and the fix. `--skip-dns-check` (on `gkm deploy` and `gkm compose`) turns it off for a CDN or proxy in front of the server. The local stage is never checked.
+  - `DnsProviderNotImplemented` and `DnsProviderUnknown` replace two unnamed errors from `createDnsProvider`.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.89
+  - @geekmidas/constructs@10.0.0-alpha.89
+  - @geekmidas/db@10.0.0-alpha.89
+  - @geekmidas/envkit@10.0.0-alpha.89
+  - @geekmidas/errors@10.0.0-alpha.89
+  - @geekmidas/logger@10.0.0-alpha.89
+  - @geekmidas/manifest@10.0.0-alpha.89
+  - @geekmidas/schema@10.0.0-alpha.89
+  - @geekmidas/services@10.0.0-alpha.89
+  - @geekmidas/storage@10.0.0-alpha.89
+  - @geekmidas/telescope@10.0.0-alpha.89
+
 ## 10.0.0-alpha.88
 
 ### Minor Changes
