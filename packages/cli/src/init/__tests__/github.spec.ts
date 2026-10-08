@@ -1,5 +1,11 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -414,11 +420,27 @@ describe('generateGithubFiles', () => {
 				try {
 					mkdirSync(join(dir, '.github', 'workflows'), { recursive: true });
 					writeFileSync(join(dir, '.github', 'workflows', 'deploy.yml'), yml());
+					// mkdtemp makes the directory owner-only, and the container runs
+					// as another user: on Linux it could not read the workflow at all.
+					// Docker Desktop's file sharing hides that on a laptop.
+					for (const path of [
+						dir,
+						join(dir, '.github'),
+						join(dir, '.github', 'workflows'),
+					]) {
+						chmodSync(path, 0o755);
+					}
+					chmodSync(join(dir, '.github', 'workflows', 'deploy.yml'), 0o644);
+					const user =
+						process.getuid && process.getgid
+							? ['--user', `${process.getuid()}:${process.getgid()}`]
+							: [];
 					const result = spawnSync(
 						'docker',
 						[
 							'run',
 							'--rm',
+							...user,
 							'-v',
 							`${dir}:/repo`,
 							'-w',
