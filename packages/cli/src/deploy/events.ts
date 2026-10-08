@@ -29,7 +29,7 @@ import type { DeployResult } from './types';
  *   and registry — and the declared constructs
  * - `build`: each app's artifact, built without changing anything live
  * - `release`: the artifacts put live. Dokploy applies the stage's
- *   migrations, then builds and pushes each image here, beside its
+ *   migrations and runs its seeds, then builds and pushes each image here, beside its
  *   application, because a site's build args are resolved per app — and
  *   checks each backend before any site is released
  * - `verify`: what was released answers — for Dokploy, each site's DNS
@@ -160,6 +160,33 @@ export type DeployEvent =
 			/** The addresses a public host answers. */
 			allow?: string[];
 			email: string;
+	  }
+	/**
+	 * One construct's migrations applied by the deploy, before any app
+	 * started. Only for a construct that had one to apply.
+	 */
+	| {
+			type: 'migration.applied';
+			/** The construct, by id: `Database`. */
+			construct: string;
+			/** Its folder: `db/database/migrations`. */
+			folder: string;
+			/** The migrations applied, in order. */
+			applied: string[];
+	  }
+	/**
+	 * One construct's seeds run by the deploy — after its migrations, before
+	 * any app started, every one of them on every deploy. Only for a
+	 * construct that has seeds.
+	 */
+	| {
+			type: 'seed.ran';
+			/** The construct, by id: `Database`. */
+			construct: string;
+			/** Its folder: `db/database/seeds`. */
+			folder: string;
+			/** The seeds run, in order. */
+			seeded: string[];
 	  }
 	| { type: 'deploy.finished'; result: DeployResult }
 	| { type: 'deploy.failed'; error: DeployEventError };

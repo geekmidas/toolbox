@@ -29,6 +29,9 @@
  *   consumes it and writes the row the API then reads back; stopped, it
  *   drains and exits 0 within Docker's timeout.
  *
+ * - (g) the stage is migrated, then seeded, before any app starts: the row
+ *   the database's seed upserts is what the API reads back.
+ *
  * - (f) a value the API caches round-trips through the stack's Redis —
  *   on the network alone, no host port, password protected — and lands in
  *   it, not in a table: the cache was declared from the database.
@@ -758,6 +761,23 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				// Written in the worker's container, not the API's.
 				expect(await compose('logs', 'jobs')).toContain('Wrote a note');
 				expect(await compose('logs', 'api')).not.toContain('Wrote a note');
+			});
+
+			it('(g) migrates, then seeds, before any app starts, and the API reads the seeded row', async () => {
+				const migrated = output.indexOf('🗄️  db/database/migrations: applied 1');
+				const seeded = output.indexOf('🌱 db/database/seeds: ran 1');
+				const started = output.indexOf('🐳 Building images');
+				expect(migrated).toBeGreaterThan(-1);
+				expect(seeded).toBeGreaterThan(migrated);
+				expect(started).toBeGreaterThan(seeded);
+				expect(output).toContain('   ✓ 001_welcome_note');
+
+				const read = await edge('api', '/notes/welcome');
+				expect(read.status).toBe(200);
+				expect(JSON.parse(read.body)).toEqual({
+					id: 'welcome',
+					body: 'Seeded by every deploy',
+				});
 			});
 
 			it('(e) a stopped worker drains and exits 0, inside the stop timeout', async () => {

@@ -20,6 +20,8 @@ once it does. Each section is short; follow the links for the detail.
 - [ ] The platform's stop timeout is longer than `GKM_SHUTDOWN_TIMEOUT_MS`
       ([Graceful shutdown](#graceful-shutdown)).
 - [ ] You know how to roll back ([Rollback](#rollback)).
+- [ ] Every seed is an idempotent upsert: a deploy runs each one, every time
+      ([Migrations and seeds](#migrations-and-seeds)).
 - [ ] Each `Worker`'s image is deployed beside the APIs, and its health
       check passes ([Workers](#workers)).
 - [ ] On `gkm compose`, a server running more than one stack uses
@@ -512,10 +514,10 @@ When telemetry is on, buffered spans and logs are flushed on the same signal.
 
 ## Rollback
 
-| Target | Rollback | Migrations |
+| Target | Rollback | Migrations and seeds |
 | --- | --- | --- |
-| `dokploy` | yes | applied by the deploy, before any app switches |
-| `compose` | no | applied by the deploy, after the infrastructure starts |
+| `dokploy` | yes | applied, then seeded, by the deploy, before any app switches |
+| `compose` | no | applied, then seeded, by the deploy, after the infrastructure starts and before any app |
 | `sst` | no | run in the stack |
 
 On Dokploy, the stage's state keeps each app's `releases`: `current`,
@@ -536,6 +538,30 @@ still run against. An app's first release has nothing to go back to.
 Backends are released and checked before any site. A backend that fails stops
 the run (`BackendDeployFailed`); a site that fails fails the run
 (`FrontendDeployFailed`) after every site has been attempted.
+
+## Migrations and seeds
+
+A `dokploy` or `compose` deploy migrates the stage, then runs its seeds, every
+time, before any app starts. Seeds keep reference data — roles, permissions,
+plans — current, and have no history: each one runs on every deploy of every
+stage, production included, in its own transaction, as the construct's owner.
+So write every seed as an idempotent upsert:
+
+```ts
+// db/database/seeds/001_roles.ts
+export async function seed(db, { stage }) {
+  await db
+    .insertInto('roles')
+    .values([{ name: 'member' }, { name: 'admin' }])
+    .onConflict((oc) => oc.column('name').doNothing())
+    .execute();
+}
+```
+
+A plain `insert` fails the second deploy on its unique key. A failing seed
+stops the deploy before any app starts (`DeploySeedsFailed`, naming the
+construct and the seed); its own writes are rolled back. Something that
+belongs on some stages only — a demo tenant — decides by `stage`.
 
 ## Database connections
 

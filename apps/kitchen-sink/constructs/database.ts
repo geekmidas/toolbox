@@ -25,6 +25,12 @@ export interface Database {
 		read_at: Date | null;
 		created_at: Generated<Date>;
 	};
+	/** The plans on offer: reference data its seed upserts on every deploy. */
+	plans: {
+		id: string;
+		name: string;
+		monthly_cents: number;
+	};
 }
 
 /**

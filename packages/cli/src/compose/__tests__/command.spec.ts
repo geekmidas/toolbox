@@ -9,6 +9,7 @@ import {
 	writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { migrationTargets } from '@geekmidas/manifest';
 import {
 	afterAll,
 	afterEach,
@@ -25,6 +26,7 @@ import {
 	ExternalServicesNotConfigured,
 	UnknownDevService,
 } from '../../deploy/devServices';
+import { SeedFailed } from '../../migrate/databases';
 import type { SqlClient } from '../../reconcile/provision';
 import { CredentialsInvalid } from '../../secrets/credentialSchemas';
 import { FileSecretsStore } from '../../secrets/file';
@@ -33,6 +35,7 @@ import { keystoreProject } from '../../secrets/keystore';
 import { StaleStageSecrets } from '../../secrets/stale';
 import { initStageSecrets } from '../../secrets/storage';
 import { ensureStageSecrets } from '../../setup/index';
+import { DeploySeedsFailed } from '../../target/seeds';
 import {
 	ComposeModeConflict,
 	ComposePinNeedsPull,
@@ -131,6 +134,7 @@ describe('gkm compose --tag', { timeout: RUN_TIMEOUT }, () => {
 				docker,
 				sql,
 				migrate,
+				seed: async () => [],
 				revision: vi.fn(),
 				probe: async () => 200,
 			},
@@ -165,6 +169,10 @@ describe(
 			const fake = fakeDocker();
 			const statements: string[] = [];
 			const migrations: { env: Record<string, string | undefined> }[] = [];
+			const seeds: {
+				env: Record<string, string | undefined>;
+				stage: string;
+			}[] = [];
 			const result = await composeCommand(
 				{ cwd: dir, stage: 'development' },
 				{
@@ -183,9 +191,20 @@ describe(
 						migrations.push(options);
 						return [];
 					},
+					seed: async (options) => {
+						fake.calls.push({ op: 'seed' });
+						seeds.push(options);
+						const target = migrationTargets(options.manifest).find(
+							(t) => t.id === 'Database',
+						)!;
+						return [{ target, seeded: ['001_welcome_note'] }];
+					},
 				},
 			);
-			return { ...fake, statements, migrations, result };
+			const lines = vi
+				.mocked(console.log)
+				.mock.calls.map((call) => String(call[0]));
+			return { ...fake, statements, migrations, seeds, lines, result };
 		}
 
 		it('creates the databases and migrates before any app starts', async () => {
@@ -198,6 +217,7 @@ describe(
 				'port',
 				'sql',
 				'migrate',
+				'seed',
 				'build',
 				'up',
 				'copyOut',
@@ -264,6 +284,18 @@ describe(
 			);
 		});
 
+		it("seeds the stage after migrating, as the owner, with the migrations' URLs", () => {
+			const [options] = ran.seeds;
+
+			expect(options?.stage).toBe('development');
+			expect(options?.env).toEqual(ran.migrations[0]?.env);
+		});
+
+		it('says what it seeded', () => {
+			expect(ran.lines).toContain('🌱 db/database/seeds: ran 1');
+			expect(ran.lines).toContain('   ✓ 001_welcome_note');
+		});
+
 		it('writes the env files for their owner alone', async () => {
 			const stack = join(dir, '.gkm', 'compose', 'development');
 
@@ -312,6 +344,56 @@ describe(
 	},
 );
 
+describe('a failing seed', { timeout: RUN_TIMEOUT }, () => {
+	beforeEach(async () => {
+		dir = await project();
+	});
+	afterEach(async () => {
+		await cleanupDir(dir);
+	});
+
+	it('stops the run after the migrations, naming the construct and the seed, and starts no app', async () => {
+		const fake = fakeDocker();
+		const cause = new Error('relation "roles" does not exist');
+
+		const error = await composeCommand(
+			{ cwd: dir, stage: 'development' },
+			{
+				docker: fake.docker,
+				probe: answering(fake.calls),
+				revision: async () => 'abc1234',
+				sql: () => ({ query: async () => [] }),
+				migrate: async () => {
+					fake.calls.push({ op: 'migrate' });
+					return [];
+				},
+				seed: async () => {
+					fake.calls.push({ op: 'seed' });
+					throw new SeedFailed('Database', '001_welcome_note', cause);
+				},
+			},
+		).catch((e: unknown) => e);
+
+		expect(error).toBeInstanceOf(DeploySeedsFailed);
+		expect(error).toMatchObject({
+			stage: 'development',
+			construct: 'Database',
+			seed: '001_welcome_note',
+		});
+		expect((error as DeploySeedsFailed).cause).toBeInstanceOf(SeedFailed);
+		expect((error as Error).message).toContain(cause.message);
+
+		// Postgres alone came up; nothing was built, and no app started.
+		expect(fake.ops()).toEqual(['up', 'port', 'migrate', 'seed']);
+		expect(
+			fake.calls.filter((call) => call.op === 'up').map((c) => c.args),
+		).toEqual([['postgres', 'redis']]);
+		expect(existsSync(join(dir, '.gkm', 'deploy-development.json'))).toBe(
+			false,
+		);
+	});
+});
+
 describe('gkm compose --dry-run', { timeout: RUN_TIMEOUT }, () => {
 	beforeEach(async () => {
 		dir = await project();
@@ -341,6 +423,24 @@ describe('gkm compose --dry-run', { timeout: RUN_TIMEOUT }, () => {
 		expect(existsSync(join(dir, '.gkm', 'deploy-development.json'))).toBe(
 			false,
 		);
+	});
+
+	it('lists the seeds a release would run, and runs none', async () => {
+		const { docker } = fakeDocker();
+		const seed = vi.fn();
+
+		await composeCommand(
+			{ cwd: dir, stage: 'development', dryRun: true },
+			{ docker, seed, revision: async () => 'abc1234' },
+		);
+
+		const lines = vi
+			.mocked(console.log)
+			.mock.calls.map((call) => String(call[0]));
+		expect(lines).toContain(
+			'🌱 db/database/seeds: would run 1 (001_welcome_note)',
+		);
+		expect(seed).not.toHaveBeenCalled();
 	});
 });
 
@@ -498,6 +598,7 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 				revision: async () => 'abc1234',
 				sql: () => ({ query: async () => [] }),
 				migrate: async () => [],
+				seed: async () => [],
 				buckets: recordingBuckets(fake.calls),
 			},
 		);
@@ -564,6 +665,7 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 				revision: async () => 'abc1234',
 				sql: () => ({ query: async () => [] }),
 				migrate: async () => [],
+				seed: async () => [],
 				buckets: recordingBuckets(fake.calls),
 			},
 		);
@@ -839,6 +941,7 @@ describe('logs', { timeout: RUN_TIMEOUT }, () => {
 				revision: async () => 'abc1234',
 				sql: () => ({ query: async () => [] }),
 				migrate: async () => [],
+				seed: async () => [],
 			},
 		);
 		return { ...fake, result, said: said.join('\n') };
@@ -927,6 +1030,7 @@ describe(
 					revision: async () => 'abc1234',
 					sql: () => ({ query: async () => [] }),
 					migrate: async () => [],
+					seed: async () => [],
 				},
 			);
 			await composeCommand(
@@ -980,6 +1084,7 @@ describe("the stack's Redis", { timeout: RUN_TIMEOUT }, () => {
 				revision: async () => 'abc1234',
 				sql: () => ({ query: async () => [] }),
 				migrate: async () => [],
+				seed: async () => [],
 			},
 		);
 		return { ...fake, result, said: said.join('\n') };
@@ -1115,6 +1220,7 @@ describe('gkm compose --build --push', { timeout: RUN_TIMEOUT }, () => {
 		const { docker, calls, ops } = fakeDocker();
 		const sql = vi.fn();
 		const migrate = vi.fn();
+		const seed = vi.fn();
 		const probe = vi.fn();
 
 		const result = await composeCommand(
@@ -1126,7 +1232,7 @@ describe('gkm compose --build --push', { timeout: RUN_TIMEOUT }, () => {
 				tag: 'v2',
 				digestsFile: 'release/digests.json',
 			},
-			{ docker, sql, migrate, probe },
+			{ docker, sql, migrate, seed, probe },
 		);
 
 		expect(ops()).toEqual(['build', 'push', 'push', 'push', 'push']);
@@ -1137,6 +1243,7 @@ describe('gkm compose --build --push', { timeout: RUN_TIMEOUT }, () => {
 		// Nothing provisioned, migrated or asked.
 		expect(sql).not.toHaveBeenCalled();
 		expect(migrate).not.toHaveBeenCalled();
+		expect(seed).not.toHaveBeenCalled();
 		expect(probe).not.toHaveBeenCalled();
 		expect(result?.images?.api).toEqual({
 			ref: refs.api,
@@ -1297,6 +1404,7 @@ describe('with no deploy.registry', { timeout: RUN_TIMEOUT }, () => {
 				revision: async () => 'abc1234',
 				sql: () => ({ query: async () => [] }) satisfies SqlClient,
 				migrate: async () => [],
+				seed: async () => [],
 				probe: async () => 200,
 			},
 		);
@@ -1344,6 +1452,7 @@ describe('gkm compose --tag --digests-file', { timeout: RUN_TIMEOUT }, () => {
 				revision: vi.fn(),
 				sql: () => ({ query: async () => [] }) satisfies SqlClient,
 				migrate: async () => [],
+				seed: async () => [],
 				probe: async () => 200,
 			},
 		);

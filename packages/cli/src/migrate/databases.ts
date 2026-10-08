@@ -57,6 +57,13 @@ export interface SeedRun {
 	seeded: string[];
 }
 
+/** The seeds a run would run for one construct, read without connecting. */
+export interface PlannedSeeds {
+	target: MigrationTarget;
+	/** In the order they would run. */
+	seeds: string[];
+}
+
 export interface PendingMigrations {
 	target: MigrationTarget;
 	pending: string[];
@@ -258,6 +265,23 @@ export async function seedDatabases(options: SeedOptions): Promise<SeedRun[]> {
 }
 
 /**
+ * The seeds {@link seedDatabases} would run, construct by construct, parents
+ * first, in the order it would run them — read from the folders alone, with
+ * no connection. What a dry run lists. Constructs with none are left out.
+ */
+export async function plannedSeeds(
+	options: Pick<DatabasesOptions, 'root' | 'manifest' | 'only'>,
+): Promise<PlannedSeeds[]> {
+	const planned: PlannedSeeds[] = [];
+	for (const target of await targetsFor(options)) {
+		const files = await migrationFiles(join(options.root, target.seeds));
+		if (files.size === 0) continue;
+		planned.push({ target, seeds: [...files.keys()].sort() });
+	}
+	return planned;
+}
+
+/**
  * Migrate, then seed: a seed only ever runs against the schema it was written
  * for.
  *
@@ -332,7 +356,7 @@ export async function pendingMigrations(
  * a typo in its name is otherwise a migration that silently never runs.
  */
 async function targetsFor(
-	options: DatabasesOptions,
+	options: Pick<DatabasesOptions, 'root' | 'manifest' | 'only'>,
 ): Promise<MigrationTarget[]> {
 	const targets = migrationTargets(options.manifest);
 	const folders = targets.map((target) => target.folder);

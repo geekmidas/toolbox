@@ -90,6 +90,7 @@ export {
 	TargetRuntimeMismatch,
 } from '../target/resolve';
 export { TargetRuntimeUndeclared } from '../target/runtime';
+export { DeploySeedsFailed } from '../target/seeds';
 export {
 	SstConfigNotFound,
 	SstOutputsUnreadable,

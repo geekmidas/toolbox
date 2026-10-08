@@ -76,6 +76,8 @@ lines are masked: any secret the run has read is printed as `***`.
 | `app.failed` | `app`, `error` | An app failed |
 | `health.checked` | `app`, `url`, `healthy`, `status?`, `attempt` | One health check of a released app |
 | `dev-service.used` | `service` (`minio`, `mailpit`), `stage`, `constructs` | A deployed stage runs a dev service in place of real storage or mail (`allowDevServices`). Every run, in `validate` |
+| `migration.applied` | `construct`, `folder`, `applied` | A construct's migrations applied, before any app starts. Only when there was one to apply |
+| `seed.ran` | `construct`, `folder`, `seeded` | A construct's seeds run, after the migrations and before any app starts. Every seed runs on every deploy |
 | `deploy.finished` | `result` | The run finished. `result` is the `DeployResult` |
 | `deploy.failed` | `error` | The run stopped. Always the last event of a failed run |
 
@@ -236,6 +238,7 @@ message.
 | `BackendDeployFailed`, `FrontendDeployFailed` | A Dokploy release failed. |
 | `DeploymentFailed`, `DeploymentTimedOut`, `HealthCheckTimedOut` | Dokploy's deployment failed or an app never became healthy. |
 | `DeployMigrationsFailed` | The stage's migrations failed. |
+| `DeploySeedsFailed` | A seed of the stage failed; `construct` and `seed` name it, `cause` is why. |
 | `RollbackFailed` | A release failed, and so did rolling it back. Both errors are on it. |
 | `SstConfigNotFound`, `SstOutputsUnreadable`, `SurfacesUnhealthy` | The SST target's checks failed. |
 | `ConfigLoadFailed`, `ConfigObjectNotSerializable`, `ConstructDiscoveryFailed`, `ConstructsNotSerializable`, `SandboxWorkerFailed` | The project's code could not be loaded in the sandbox. |
