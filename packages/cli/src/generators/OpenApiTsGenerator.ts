@@ -5,11 +5,22 @@ import {
 	StandardSchemaJsonSchema,
 } from '@geekmidas/schema/conversion';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import {
+	type ClientTelemetryDefault,
+	printTelemetryDefault,
+} from './clientTelemetry.js';
 
-interface OpenApiTsOptions {
+export type { ClientTelemetryDefault } from './clientTelemetry.js';
+
+export interface OpenApiTsOptions {
 	title?: string;
 	version?: string;
 	description?: string;
+	/**
+	 * Trace propagation in the generated `createApi`, off by default. The
+	 * site's edge to a `Telemetry` construct is what turns it on.
+	 */
+	telemetry?: ClientTelemetryDefault;
 }
 
 // JSON Schema type definition
@@ -84,7 +95,13 @@ export class OpenApiTsGenerator {
 		endpoints: Endpoint<any, any, any, any, any, any>[],
 		options: OpenApiTsOptions = {},
 	): Promise<string> {
-		const { title = 'API', version = '1.0.0', description } = options;
+		const {
+			title = 'API',
+			version = '1.0.0',
+			description,
+			telemetry = false,
+		} = options;
+		const telemetryDefault = printTelemetryDefault(telemetry);
 
 		// Extract endpoint info
 		const endpointInfos = await this.extractEndpointInfos(endpoints);
@@ -110,6 +127,7 @@ export class OpenApiTsGenerator {
 			endpointAuth,
 			schemaInterfaces,
 			pathsInterface,
+			telemetryDefault,
 		});
 	}
 
@@ -654,6 +672,7 @@ export class OpenApiTsGenerator {
 		endpointAuth: Record<string, string | null>;
 		schemaInterfaces: string;
 		pathsInterface: string;
+		telemetryDefault: string;
 	}): string {
 		const {
 			title,
@@ -663,7 +682,21 @@ export class OpenApiTsGenerator {
 			endpointAuth,
 			schemaInterfaces,
 			pathsInterface,
+			telemetryDefault,
 		} = params;
+
+		const telemetrySection = `
+// ============================================================
+// Trace Propagation
+// ============================================================
+
+/**
+ * Whether \`createApi\` sends W3C trace context (\`traceparent\`,
+ * \`tracestate\`) to this API when its caller does not say. Set by gkm from
+ * the site's edge to a \`Telemetry\` construct; \`false\` sends none.
+ */
+export const telemetryDefault: boolean | ClientTelemetryOptions = ${telemetryDefault};
+`;
 
 		const securitySchemesObj = securitySchemes.reduce(
 			(acc, s) => {
@@ -689,8 +722,9 @@ import {
   type AuthStrategy,
 } from '@geekmidas/client/auth-fetcher';
 import { createEndpointHooks } from '@geekmidas/client/endpoint-hooks';
+import type { ClientTelemetryOptions } from '@geekmidas/client/telemetry';
 import type { QueryClient } from '@tanstack/react-query';
-
+${telemetrySection}
 /**
  * Options for creating the API client.
  */
@@ -705,6 +739,12 @@ export interface CreateApiOptions {
   onRequest?: (config: RequestInit) => RequestInit | Promise<RequestInit>;
   /** The \`fetch\` requests go out on — a test browser's, for one */
   fetch?: typeof fetch;
+  /**
+   * Trace context on every request to \`baseURL\` (never another origin):
+   * the active OpenTelemetry span's when there is one, otherwise a trace per
+   * page view sampled at \`sampleRate\`. Defaults to \`telemetryDefault\`.
+   */
+  telemetry?: boolean | ClientTelemetryOptions;
 }
 
 /**
@@ -735,6 +775,7 @@ export function createApi(options: CreateApiOptions) {
     authStrategies: options.authStrategies,
     onRequest: options.onRequest,
     ...(options.fetch ? { fetch: options.fetch } : {}),
+    telemetry: options.telemetry ?? telemetryDefault,
   });
 
   const hooks = createEndpointHooks<paths>(fetcher, { queryClient: options.queryClient });
@@ -749,8 +790,9 @@ export function createApi(options: CreateApiOptions) {
 
 import { createTypedFetcher, type FetcherOptions } from '@geekmidas/client/fetcher';
 import { createEndpointHooks } from '@geekmidas/client/endpoint-hooks';
+import type { ClientTelemetryOptions } from '@geekmidas/client/telemetry';
 import type { QueryClient } from '@tanstack/react-query';
-
+${telemetrySection}
 /**
  * Options for creating the API client.
  */
@@ -779,7 +821,10 @@ export interface CreateApiOptions extends Omit<FetcherOptions, 'baseURL'> {
  */
 export function createApi(options: CreateApiOptions) {
   const { queryClient, ...fetcherOptions } = options;
-  const request = createTypedFetcher<paths>(fetcherOptions);
+  const request = createTypedFetcher<paths>({
+    ...fetcherOptions,
+    telemetry: options.telemetry ?? telemetryDefault,
+  });
 
   const hooks = createEndpointHooks<paths>(request, { queryClient });
 

@@ -1,3 +1,5 @@
+import type { ClientTelemetryOptions } from './telemetry';
+
 export type OpenAPIRoutes<Paths> = keyof Paths;
 
 type HttpMethod =
@@ -227,6 +229,13 @@ export interface FetcherOptions {
 	onResponse?: (response: Response) => Response | Promise<Response>;
 	onError?: (error: Error) => void | Promise<void>;
 	fetch?: typeof fetch;
+	/**
+	 * W3C trace context (`traceparent`, `tracestate`) on every request to
+	 * `baseURL`'s origin — never another. Continues the active OpenTelemetry
+	 * span when there is one; otherwise a trace per page view, sampled at
+	 * `sampleRate`. Off unless set.
+	 */
+	telemetry?: boolean | ClientTelemetryOptions;
 }
 
 export type WrappedResult<T, E = unknown> =

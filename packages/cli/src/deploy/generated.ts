@@ -54,7 +54,7 @@ export function withGeneratedSecrets(
 		generated.push(key);
 	}
 
-	const seed = secrets.seed ?? random();
+	const seed = secrets.seed ?? generateSeed();
 	if (!secrets.seed) generated.push('seed');
 
 	return {
@@ -63,6 +63,11 @@ export function withGeneratedSecrets(
 			: secrets,
 		generated,
 	};
+}
+
+/** A stage's seed: 256 random bits, URL-safe. */
+export function generateSeed(): string {
+	return random();
 }
 
 /** 256 bits, URL-safe. */

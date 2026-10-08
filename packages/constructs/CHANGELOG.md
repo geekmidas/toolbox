@@ -1,5 +1,87 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.82
+
+### Patch Changes
+
+- Updated dependencies [[`7b7732a`](https://github.com/geekmidas/toolbox/commit/7b7732aae2d094f53a0da66527851ec112820cde)]:
+  - @geekmidas/telescope@10.0.0-alpha.82
+  - @geekmidas/audit@10.0.0-alpha.82
+  - @geekmidas/auth@10.0.0-alpha.82
+  - @geekmidas/cache@10.0.0-alpha.82
+  - @geekmidas/db@10.0.0-alpha.82
+  - @geekmidas/emailkit@10.0.0-alpha.82
+  - @geekmidas/envkit@10.0.0-alpha.82
+  - @geekmidas/errors@10.0.0-alpha.82
+  - @geekmidas/events@10.0.0-alpha.82
+  - @geekmidas/logger@10.0.0-alpha.82
+  - @geekmidas/manifest@10.0.0-alpha.82
+  - @geekmidas/rate-limit@10.0.0-alpha.82
+  - @geekmidas/schema@10.0.0-alpha.82
+  - @geekmidas/services@10.0.0-alpha.82
+  - @geekmidas/storage@10.0.0-alpha.82
+  - @geekmidas/testkit@10.0.0-alpha.82
+
+## 10.0.0-alpha.81
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/audit@10.0.0-alpha.81
+  - @geekmidas/auth@10.0.0-alpha.81
+  - @geekmidas/cache@10.0.0-alpha.81
+  - @geekmidas/db@10.0.0-alpha.81
+  - @geekmidas/emailkit@10.0.0-alpha.81
+  - @geekmidas/envkit@10.0.0-alpha.81
+  - @geekmidas/errors@10.0.0-alpha.81
+  - @geekmidas/events@10.0.0-alpha.81
+  - @geekmidas/logger@10.0.0-alpha.81
+  - @geekmidas/manifest@10.0.0-alpha.81
+  - @geekmidas/rate-limit@10.0.0-alpha.81
+  - @geekmidas/schema@10.0.0-alpha.81
+  - @geekmidas/services@10.0.0-alpha.81
+  - @geekmidas/storage@10.0.0-alpha.81
+  - @geekmidas/telescope@10.0.0-alpha.81
+  - @geekmidas/testkit@10.0.0-alpha.81
+
+## 10.0.0-alpha.80
+
+### Minor Changes
+
+- [#208](https://github.com/geekmidas/toolbox/pull/208) [`f3638fb`](https://github.com/geekmidas/toolbox/commit/f3638fb116f7aeebbbb29c8f06deaa7813cc760e) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: One trace from a request through a queue to the worker: every events driver
+  (pg-boss, SNS, SQS, RabbitMQ, basic) wraps each publish in a PRODUCER span and
+  carries its W3C trace context in the message — SQS/SNS message attributes,
+  RabbitMQ headers, or pg-boss job data under the reserved key `__gkmTrace`,
+  which is removed before a handler sees the payload. Consumers run each job in a
+  CONSUMER span that continues it (a message without context starts a new
+  trace), Lambda queue and subscriber adaptors do the same from their records,
+  and each cron run is a root trace of its own. The constructs record their own
+  spans: a span per database query (`select orders`, with `db.system`, `db.name`,
+  `db.operation`, never parameter values), `cache.get`/`set`/`delete` with
+  hit/miss on the Redis and Postgres drivers, `storage.presign`/`put`/`delete`,
+  `email.send`, and a span per `ExternalApi` client call. Everything goes through
+  the global `@opentelemetry/api` and is a no-op without a registered provider.
+
+### Patch Changes
+
+- Updated dependencies [[`f3638fb`](https://github.com/geekmidas/toolbox/commit/f3638fb116f7aeebbbb29c8f06deaa7813cc760e)]:
+  - @geekmidas/events@10.0.0-alpha.80
+  - @geekmidas/cache@10.0.0-alpha.80
+  - @geekmidas/storage@10.0.0-alpha.80
+  - @geekmidas/emailkit@10.0.0-alpha.80
+  - @geekmidas/audit@10.0.0-alpha.80
+  - @geekmidas/auth@10.0.0-alpha.80
+  - @geekmidas/db@10.0.0-alpha.80
+  - @geekmidas/envkit@10.0.0-alpha.80
+  - @geekmidas/errors@10.0.0-alpha.80
+  - @geekmidas/logger@10.0.0-alpha.80
+  - @geekmidas/manifest@10.0.0-alpha.80
+  - @geekmidas/rate-limit@10.0.0-alpha.80
+  - @geekmidas/schema@10.0.0-alpha.80
+  - @geekmidas/services@10.0.0-alpha.80
+  - @geekmidas/telescope@10.0.0-alpha.80
+  - @geekmidas/testkit@10.0.0-alpha.80
+
 ## 10.0.0-alpha.79
 
 ### Patch Changes

@@ -50,6 +50,10 @@ import {
 import { writeComposeApp } from './__helpers__/composeApp';
 import { answering, fakeDigest, fakeDocker } from './__helpers__/fakeDocker';
 
+/** No Postgres is running here: its login is taken as the one it was given. */
+const signedIn: NonNullable<Parameters<typeof composeCommand>[1]>['logins'] =
+	async ({ login }) => ({ service: 'postgres', status: 'current', login });
+
 /**
  * `gkm compose` with Docker, the registry, Postgres and the
  * health probe replaced by recorders — everything else real: the command runs
@@ -133,6 +137,7 @@ describe('gkm compose --tag', { timeout: RUN_TIMEOUT }, () => {
 			{
 				docker,
 				sql,
+				logins: signedIn,
 				migrate,
 				seed: async () => [],
 				revision: vi.fn(),
@@ -179,10 +184,12 @@ describe(
 					docker: fake.docker,
 					probe: answering(fake.calls),
 					revision: async () => 'abc1234',
-					sql: (port, password) => ({
+					logins: signedIn,
+
+					sql: (port, login) => ({
 						async query(_database, sql) {
 							statements.push(sql);
-							fake.calls.push({ op: 'sql', args: [port, password] });
+							fake.calls.push({ op: 'sql', args: [port, login.user] });
 							return [];
 						},
 					}),
@@ -268,10 +275,13 @@ describe(
 		it('creates the roles with the master credential on the published port', async () => {
 			const { calls, statements } = ran;
 
-			expect(calls.find((call) => call.op === 'sql')?.args).toEqual([
-				55432,
-				'geekmidas',
-			]);
+			// This machine's generated superuser — the one `gkm dev` uses.
+			const [port, user] = calls.find((call) => call.op === 'sql')?.args as [
+				number,
+				string,
+			];
+			expect(port).toBe(55432);
+			expect(user).toMatch(/_admin$/);
 			expect(statements.join('\n')).toMatch(/CREATE DATABASE "database"/);
 			expect(statements.join('\n')).toMatch(/CREATE ROLE "authdatabase"/);
 		});
@@ -362,6 +372,8 @@ describe('a failing seed', { timeout: RUN_TIMEOUT }, () => {
 				docker: fake.docker,
 				probe: answering(fake.calls),
 				revision: async () => 'abc1234',
+				logins: signedIn,
+
 				sql: () => ({ query: async () => [] }),
 				migrate: async () => {
 					fake.calls.push({ op: 'migrate' });
@@ -596,6 +608,8 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 				docker: fake.docker,
 				probe: answering(fake.calls),
 				revision: async () => 'abc1234',
+				logins: signedIn,
+
 				sql: () => ({ query: async () => [] }),
 				migrate: async () => [],
 				seed: async () => [],
@@ -620,7 +634,7 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 		expect(ops.indexOf('bucket "uploads"')).toBeLessThan(
 			ops.indexOf('up "all"'),
 		);
-		expect(ops).toContain('buckets [55432,"geekmidas"]');
+		expect(ops).toContain('buckets [55432,"minio"]');
 		const env = readFileSync(
 			join(dir, '.gkm', 'compose', 'development', 'api.env'),
 			'utf-8',
@@ -663,6 +677,8 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 				docker: fake.docker,
 				probe: answering(fake.calls),
 				revision: async () => 'abc1234',
+				logins: signedIn,
+
 				sql: () => ({ query: async () => [] }),
 				migrate: async () => [],
 				seed: async () => [],
@@ -939,6 +955,8 @@ describe('logs', { timeout: RUN_TIMEOUT }, () => {
 				docker: fake.docker,
 				probe: answering(fake.calls),
 				revision: async () => 'abc1234',
+				logins: signedIn,
+
 				sql: () => ({ query: async () => [] }),
 				migrate: async () => [],
 				seed: async () => [],
@@ -1028,6 +1046,8 @@ describe(
 					docker,
 					probe: answering(fake.calls),
 					revision: async () => 'abc1234',
+					logins: signedIn,
+
 					sql: () => ({ query: async () => [] }),
 					migrate: async () => [],
 					seed: async () => [],
@@ -1082,6 +1102,8 @@ describe("the stack's Redis", { timeout: RUN_TIMEOUT }, () => {
 				docker: fake.docker,
 				probe: answering(fake.calls),
 				revision: async () => 'abc1234',
+				logins: signedIn,
+
 				sql: () => ({ query: async () => [] }),
 				migrate: async () => [],
 				seed: async () => [],
@@ -1402,6 +1424,8 @@ describe('with no deploy.registry', { timeout: RUN_TIMEOUT }, () => {
 			{
 				docker,
 				revision: async () => 'abc1234',
+				logins: signedIn,
+
 				sql: () => ({ query: async () => [] }) satisfies SqlClient,
 				migrate: async () => [],
 				seed: async () => [],
@@ -1450,6 +1474,8 @@ describe('gkm compose --tag --digests-file', { timeout: RUN_TIMEOUT }, () => {
 			{
 				docker,
 				revision: vi.fn(),
+				logins: signedIn,
+
 				sql: () => ({ query: async () => [] }) satisfies SqlClient,
 				migrate: async () => [],
 				seed: async () => [],

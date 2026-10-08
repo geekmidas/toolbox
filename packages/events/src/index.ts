@@ -28,6 +28,18 @@ export {
 } from './registry';
 export type { EventSubscriberConnectionString } from './Subscriber';
 export { Subscriber } from './Subscriber';
+// Trace context across a broker — see `./telemetry`.
+export {
+	carrierFromAttributes,
+	consumeBatchTraced,
+	consumeTraced,
+	extractTraceContext,
+	type MessagingTarget,
+	publishTraced,
+	TRACE_CONTEXT_KEY,
+	type TraceCarrier,
+	withoutTraceKey,
+} from './telemetry';
 export type {
 	EventConnection,
 	EventPublisher,

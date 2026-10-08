@@ -11,9 +11,10 @@ import { routePath } from 'hono/route';
 import {
 	createHttpServerSpan,
 	endHttpSpan,
-	extractTraceContext,
 	type HttpSpanAttributes,
+	incomingTraceContext,
 } from './http';
+import { isInternalCaller, isTrustedOrigin } from './trust';
 
 /**
  * Options for the Hono telemetry middleware
@@ -45,6 +46,27 @@ export interface HonoTelemetryMiddlewareOptions {
 	 * Whether to skip tracing for this request
 	 */
 	shouldSkip?: (c: Context) => boolean;
+
+	/**
+	 * The origins whose `traceparent` is continued: the API's own sites, the
+	 * same list its CORS allows. A request from any other origin starts a new
+	 * trace linked to the one it claimed.
+	 *
+	 * A function is read on each request, for a server that learns its origins
+	 * only once the app has loaded its configuration.
+	 */
+	trustedOrigins?: readonly string[] | (() => readonly string[] | undefined);
+
+	/**
+	 * Whether a request with no `Origin` from an internal caller continues its
+	 * `traceparent` — another service on the private network (see `./trust`):
+	 * no `Origin`, no proxy's forwarding header, and a loopback or private
+	 * peer address, read from `@hono/node-server`'s socket.
+	 *
+	 * `false` trusts no caller without an origin; a function decides itself.
+	 * @default true
+	 */
+	internalCallers?: boolean | ((c: Context) => boolean);
 }
 
 // Key for storing span on context
@@ -98,13 +120,18 @@ export function honoTelemetryMiddleware(
 		c.req.raw.headers.forEach((value, key) => {
 			headers[key] = value;
 		});
-		const parentContext = extractTraceContext(headers);
+		// Continued only from a trusted caller; anyone else gets a new trace
+		// that links to the one they claimed.
+		const { parent: parentContext, links } = incomingTraceContext(
+			headers,
+			isTrustedCaller(c, options),
+		);
 
 		// Build span attributes from request
 		const attrs = buildHonoSpanAttributes(c, options);
 
 		// Create the span
-		const span = createHttpServerSpan(attrs, parentContext);
+		const span = createHttpServerSpan(attrs, parentContext, links);
 		const spanContext = trace.setSpan(parentContext, span);
 
 		// Store span and context on Hono context
@@ -165,6 +192,40 @@ export function honoTelemetryMiddleware(
 			throw error;
 		}
 	};
+}
+
+/**
+ * Whether this request's `traceparent` is continued: from one of the API's
+ * own origins, or from an internal caller.
+ */
+function isTrustedCaller(
+	c: Context,
+	options: HonoTelemetryMiddlewareOptions,
+): boolean {
+	const origin = c.req.header('origin');
+	if (origin) {
+		const trusted =
+			typeof options.trustedOrigins === 'function'
+				? options.trustedOrigins()
+				: options.trustedOrigins;
+		return isTrustedOrigin(origin, trusted);
+	}
+
+	const internal = options.internalCallers ?? true;
+	if (typeof internal === 'function') return internal(c);
+	if (!internal) return false;
+	return isInternalCaller({
+		headers: c.req.raw.headers,
+		remoteAddress: remoteAddressOf(c),
+	});
+}
+
+/** The TCP peer's address under `@hono/node-server`, or undefined. */
+function remoteAddressOf(c: Context): string | undefined {
+	const env = c.env as
+		| { incoming?: { socket?: { remoteAddress?: string } } }
+		| undefined;
+	return env?.incoming?.socket?.remoteAddress;
 }
 
 /**

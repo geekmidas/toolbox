@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/constructs",
-	"version": "10.0.0-alpha.79",
+	"version": "10.0.0-alpha.82",
 	"private": false,
 	"type": "module",
 	"exports": {
@@ -278,6 +278,7 @@
 		"@geekmidas/manifest": "workspace:^",
 		"@geekmidas/schema": "workspace:^",
 		"@geekmidas/services": "workspace:^",
+		"@opentelemetry/api": "~1.9.1",
 		"cron-parser": "~5.10.1",
 		"fast-glob": "~3.3.3",
 		"lodash.compact": "~3.0.1",
@@ -305,6 +306,7 @@
 		"@geekmidas/services": "workspace:^",
 		"@geekmidas/telescope": "workspace:*",
 		"@geekmidas/testkit": "workspace:^",
+		"@opentelemetry/sdk-trace-node": "~2.11.0",
 		"@types/lodash.compact": "~3.0.9",
 		"@types/lodash.get": "~4.4.9",
 		"@types/lodash.pick": "~4.4.9",

@@ -675,6 +675,80 @@ describe('openapiCommand - workspace mode', () => {
 		expect(content).toContain("'/users'");
 	});
 
+	it('writes the client with trace propagation on when told to (--telemetry)', async () => {
+		const apiDir = join(tempDir, 'apps/api');
+		await mkdir(apiDir, { recursive: true });
+		await createMockEndpointFile(
+			apiDir,
+			'src/endpoints/users.ts',
+			'getUsers',
+			'/users',
+			'GET',
+		);
+		await createTestFile(
+			tempDir,
+			'gkm.config.json',
+			JSON.stringify({
+				stages: { local: 'development', deployed: ['production'] },
+				name: 'test-workspace',
+				apps: {
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3000,
+						constructs: './src/endpoints/**/*.ts',
+					},
+				},
+			}),
+		);
+		process.chdir(apiDir);
+		vi.spyOn(console, 'log').mockImplementation(() => {});
+
+		await openapiCommand({
+			cwd: tempDir,
+			app: 'api',
+			telemetry: { sampleRate: 0.25 },
+		});
+
+		const content = await readFile(
+			join(tempDir, openApiPathFor('Test')),
+			'utf-8',
+		);
+		expect(content).toContain(
+			'export const telemetryDefault: boolean | ClientTelemetryOptions = { sampleRate: 0.25 };',
+		);
+	});
+
+	it('passes --telemetry on to the subprocess it spawns per app', async () => {
+		await createTestFile(
+			tempDir,
+			'gkm.config.json',
+			JSON.stringify({
+				stages: { local: 'development', deployed: ['production'] },
+				name: 'test-workspace',
+				apps: {
+					api: {
+						type: 'backend',
+						path: 'apps/api',
+						port: 3000,
+						constructs: './src/endpoints/**/*.ts',
+					},
+				},
+			}),
+		);
+		await mkdir(join(tempDir, 'apps/api'), { recursive: true });
+		spawnCalls.length = 0;
+
+		await openapiCommand({ cwd: tempDir, telemetry: true });
+
+		expect(spawnCalls[0]?.args.slice(1)).toEqual([
+			'openapi',
+			'--app',
+			'api',
+			'--telemetry',
+		]);
+	});
+
 	it('should throw when --app references unknown app', async () => {
 		await createTestFile(
 			tempDir,

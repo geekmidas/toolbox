@@ -1,6 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, parse } from 'node:path';
 import { IMAGE_BUILD_ENV } from '../exec/imageBuild';
+import {
+	type ClientTelemetryDefault,
+	telemetryArgs,
+} from '../generators/clientTelemetry';
 import type { CacheBackend, DockerConfig, GkmConfig } from '../types';
 
 export type PackageManager = 'pnpm' | 'npm' | 'yarn' | 'bun';
@@ -69,7 +73,16 @@ export interface ImageTemplateOptions {
 	 * in the builder — `gkm openapi --app <app>` from the backend's directory
 	 * (relative to the build root) — before the site is built.
 	 */
-	clients?: { app: string; path: string }[];
+	clients?: {
+		app: string;
+		path: string;
+		/**
+		 * Whether this client propagates trace context by default — passed as
+		 * `--telemetry [rate]`. Off when absent; the site's edge to a
+		 * `Telemetry` construct is what sets it.
+		 */
+		telemetry?: ClientTelemetryDefault;
+	}[];
 }
 
 export interface FrontendDockerfileOptions extends ImageTemplateOptions {
@@ -494,7 +507,7 @@ function siteWorkspaceSteps(options: ImageTemplateOptions): string {
 
 # The typed client of each API this site calls, generated from its endpoints
 # into ${gkmRoot === '.' ? '' : `${gkmRoot}/`}.gkm/client/ — offline, with no secret and no container.
-RUN ${clients.map(({ app, path }) => `cd /app/${path} && gkm openapi --app ${app}`).join(' && \\\n    ')}`
+RUN ${clients.map(({ app, path, telemetry }) => ['cd', `/app/${path}`, '&&', 'gkm', 'openapi', '--app', app, ...telemetryArgs(telemetry)].join(' ')).join(' && \\\n    ')}`
 		: '';
 
 	return `# The gkm CLI the workspace installs, as \`gkm\`

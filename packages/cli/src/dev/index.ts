@@ -30,6 +30,7 @@ import {
 import { resolveOpenApiConfig } from '../openapi';
 import { withOwningTsconfigJsx } from '../owningTsconfigJsx.js';
 import { describeServices } from '../reconcile/containers.js';
+import { describeLogins } from '../reconcile/serviceLogins.js';
 import { FAKE_ENV, reconcileWorkspace } from '../reconcile/workspace.js';
 import { toEmbeddableSecrets } from '../secrets/storage.js';
 import { FileSecretsStore, secretsStoreFor } from '../secrets/store.js';
@@ -56,6 +57,7 @@ import {
 	holderOf,
 	withAppPorts,
 } from './appPorts.js';
+import { devCredentials } from './credentials.js';
 import {
 	type AppStatus,
 	DISCOVERY_QUIET_ENV,
@@ -974,6 +976,19 @@ async function workspaceDevCommand(
 		for (const line of describeServices(reconciled.services)) {
 			logger.log(line);
 		}
+	}
+
+	// And how to sign in to each: the logins are generated per machine, so
+	// nobody can be expected to know them. `gkm dev:credentials` prints these
+	// again without starting anything.
+	const { services: logins } = devCredentials(
+		workspace,
+		reconciled.credentials,
+		reconciled.ports,
+	);
+	if (logins.length > 0) {
+		logger.log('🔑 Logins (again any time: gkm dev:credentials)');
+		for (const line of describeLogins(logins)) logger.log(line);
 	}
 
 	const secretsEnv: Record<string, string> = {

@@ -91,7 +91,9 @@ function sequence(events: DeployEvent[]): string[] {
 		});
 }
 
-describe('deploy() through a target package', () => {
+// Each deploy() loads the config and discovers in sandbox workers, a second or
+// more apiece on a loaded runner — and some tests here deploy twice.
+describe('deploy() through a target package', { timeout: 30_000 }, () => {
 	let root: string;
 	const globals = globalThis as { __gkmPlugin?: unknown[][] };
 

@@ -106,7 +106,64 @@ directory — which is what turbo does — it starts that one.
 ```
 
 Printed on every start, every published port with what it is for — the inbox
-and the MinIO and RabbitMQ consoles as links you can open.
+and the MinIO and RabbitMQ consoles as links you can open — and, under it,
+how to sign in to each:
+
+```
+🔑 Logins (again any time: gkm dev:credentials)
+   Postgres       postgres://shop_admin:Xq…@localhost:28001/postgres
+                  user shop_admin, password Xq…
+   MinIO console  http://localhost:28004
+                  user minio, password 7d… — S3 API on http://localhost:28003
+   Mailpit inbox  http://localhost:28007
+                  no login
+```
+
+#### Local logins are generated, per machine
+
+No container runs with a fixed, shared login. The first time `gkm dev`,
+`gkm test` or `gkm setup` needs them, gkm generates them — random, and in the
+shape each service accepts — and keeps them for every later run:
+
+| Service | User | Password, token or key |
+|---|---|---|
+| Postgres | `<workspace>_admin` (e.g. `shop_admin`) | 256 random bits |
+| MinIO | `minio` | 32 letters and digits (MinIO takes 8–40) |
+| Redis | — | 256 random bits, its `requirepass` |
+| Cache HTTP proxy | — | 256 random bits, its bearer token |
+| RabbitMQ | `rabbitmq` | 256 random bits |
+| AWS emulator | the fixed `LSIA…` key id | a 40-character secret key |
+| OpenObserve (`gkm compose` locally) | `admin@gkm.localhost` | meets its complexity rule |
+
+They are kept encrypted with the local stage's key in the CLI's home —
+`~/.gkm/local/<namespace>/<project>.json`, or under `GKM_HOME` — not in the
+checkout, because every checkout of a project shares its containers: two
+worktrees each with their own password would lock each other out. A random
+seed is kept with them and salts each database role's password, as a deployed
+stage's seed does. `gkm compose --stage <local>` runs its containers with the
+same logins.
+
+To see them without starting anything:
+
+```bash
+gkm dev:credentials          # each service's address and login
+gkm dev:credentials --json   # the same, for a script
+```
+
+It reads the logins and the ports in `.gkm/ports.json`. The discovery
+endpoint (`/__gkm`) lists apps and the constructs they declare, never these
+logins.
+
+**Upgrading.** A volume an older gkm made was initialised with its old fixed
+login. On the first run after upgrading, reconcile notices — it signs in with
+the old login — and moves the service onto the generated one, keeping its
+data: Postgres gets the new superuser and the old one stops logging in;
+MinIO reads its root login on every start, so recreating its container is
+enough; RabbitMQ's user is updated with `rabbitmqctl`. Where Postgres takes
+neither login — another tool changed it — the password is reset from inside
+the container. Where a service cannot be moved (your `docker-compose.yml` pins
+`MINIO_ROOT_USER`, say), it keeps the login it has and gkm prints a line
+saying how to reset it. Nothing is deleted.
 
 An app reaches the inbox over the same edge it reaches an API by: a
 `MobileApp` or `StaticSite` that `.dependsOn([mailer])` is built with

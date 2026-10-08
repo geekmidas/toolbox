@@ -107,6 +107,11 @@ import { bucketClient, pgClient } from '../../reconcile/clients.js';
 import { primaryPortKey } from '../../reconcile/containers.js';
 import { type ConstructSource, discover } from '../../reconcile/discover.js';
 import { envFor } from '../../reconcile/env.js';
+import { loadLocalCredentials } from '../../reconcile/localCredentials.js';
+import {
+	ensurePostgresLogin,
+	LEGACY_LOCAL_LOGIN,
+} from '../../reconcile/logins.js';
 import {
 	applyBuckets,
 	applyPolicies,
@@ -145,6 +150,8 @@ export interface ComposeDeps {
 	sql: typeof pgClient;
 	/** The S3 client the stack's buckets are created through. */
 	buckets: typeof bucketClient;
+	/** Bring the stack's Postgres onto its superuser — see `logins.ts`. */
+	logins: typeof ensurePostgresLogin;
 	/** Apply the stage's migrations — `migrateDatabases` by default. */
 	migrate: typeof migrateDatabases;
 	/** Run the stage's seeds, after its migrations — `seedDatabases` by default. */
@@ -313,6 +320,7 @@ export const defaultDeps: ComposeDeps = {
 	revision: gitRevision,
 	sql: pgClient,
 	buckets: bucketClient,
+	logins: ensurePostgresLogin,
 	migrate: migrateDatabases,
 	seed: seedDatabases,
 	probe: httpsProbe,
@@ -402,6 +410,11 @@ export async function validateCompose(
 			...(registry ? { registry } : {}),
 		},
 		secrets,
+		...(stage === workspace.stages.local
+			? {
+					localCredentials: (await loadLocalCredentials(workspace)).credentials,
+				}
+			: {}),
 		allowDevServices: ctx.allowDevServices,
 		ports: edgePorts(deps.env),
 		...(layout ? { layout } : {}),
@@ -544,6 +557,8 @@ async function stageSecrets(
 ): Promise<{ secrets: StageSecrets | null; generated: string[] }> {
 	const stored = await ctx.secrets.read();
 	if (ctx.stage === ctx.workspace.stages.local) {
+		// The local stage's logins are this machine's, generated once with
+		// `gkm dev`'s — not the stage's secrets.
 		return { secrets: stored, generated: [] };
 	}
 
@@ -806,6 +821,20 @@ async function prepareDatabases(
 	const workspace: NormalizedWorkspace = ctx.workspace;
 	const port = await deps.docker.port(run.ref, 'postgres', 5432);
 
+	// A stack an older gkm started made its superuser under the old fixed
+	// name, with the password this stage derives; it is moved to the
+	// superuser named now — the local stage's from the old fixed login too.
+	const superuser = stack.credential.containers.postgres;
+	const login = await deps.logins({
+		port,
+		login: superuser,
+		legacy: [
+			{ user: LEGACY_LOCAL_LOGIN.user, password: superuser.password },
+			...(stack.local ? [LEGACY_LOCAL_LOGIN] : []),
+		],
+	});
+	if (login.notice) ctx.logger.info(login.notice);
+
 	const statements = postgresStatements(
 		stack.plan,
 		workspace.name,
@@ -813,7 +842,7 @@ async function prepareDatabases(
 	);
 	if (statements.length > 0) {
 		ctx.logger.info('🗄️  Creating databases, roles and grants…');
-		await applyPostgres(deps.sql(port, stack.credential.master), statements);
+		await applyPostgres(deps.sql(port, login.login), statements);
 	}
 
 	// Migrations run here, with the project's own Kysely, the way `gkm
@@ -830,8 +859,11 @@ async function prepareDatabases(
 	const env = envFor(stack.plan, {
 		ports: { [primaryPortKey('postgres')]: port },
 		project: workspace.name,
-		master: stack.credential.master,
-		...(stack.credential.seed ? { seed: stack.credential.seed } : {}),
+		credentials: {
+			...stack.credential.containers,
+			postgres: login.login,
+		},
+		seed: stack.credential.seed,
 	});
 	const options = { root: workspace.root, manifest, sources, env };
 	const runs = await deps.migrate(options);

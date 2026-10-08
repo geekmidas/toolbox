@@ -50,9 +50,6 @@ export const REDIS_MAXMEMORY = '256mb';
 /** The stage secret holding its password. */
 export const REDIS_PASSWORD_KEY = 'REDIS_PASSWORD';
 
-/** The local stage's password: fixed, as its Postgres password is. */
-export const LOCAL_REDIS_PASSWORD = 'geekmidas';
-
 /** Redis's own count of logical databases, before `--databases` raises it. */
 const REDIS_DATABASES = 16;
 
@@ -136,6 +133,8 @@ export function stackRedis(options: {
 	stage: string;
 	local: boolean;
 	custom: Readonly<Record<string, string>>;
+	/** The local stage's generated password — `gkm dev`'s Redis's too. */
+	localPassword?: string;
 }): StackRedis | undefined {
 	const { plan, stage, local, custom } = options;
 
@@ -145,8 +144,8 @@ export function stackRedis(options: {
 	if (caches.length === 0) return undefined;
 
 	const set = custom[REDIS_PASSWORD_KEY];
-	if (!set && !local) throw new RedisPasswordMissing(stage);
-	const password = set ?? LOCAL_REDIS_PASSWORD;
+	const password = set ?? (local ? options.localPassword : undefined);
+	if (!password) throw new RedisPasswordMissing(stage);
 	const auth = encodeURIComponent(password);
 
 	return {

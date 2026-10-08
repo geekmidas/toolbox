@@ -204,7 +204,7 @@ a dev stand-in: on the compose network only with no published port, bounded at
 256 MB with `allkeys-lru` eviction, persisted to an append-only file on the
 `redis-data` volume, and password protected. A deployed stage's password is
 generated on the first run and kept in its secrets as `REDIS_PASSWORD`; the
-local stage uses a fixed one. Each backend and worker that reads a cache gets
+local stage uses the one generated for this machine with `gkm dev`'s logins. Each backend and worker that reads a cache gets
 its URL (`SESSIONS_URL=redis://:…@redis:6379/0`) in its env file, and its image
 registers the Redis cache driver.
 
@@ -364,7 +364,7 @@ Everything else comes from the standard variables:
 | --- | --- |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Collector base URL. Traces go to `/v1/traces`, logs to `/v1/logs`. Turns telemetry on. |
 | `OTEL_EXPORTER_OTLP_HEADERS` | Headers for the exporter, e.g. an API key. |
-| `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` | Sampling, e.g. `parentbased_traceidratio` and `0.1`. |
+| `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` | Sampling, e.g. `parentbased_traceidratio` and `0.1`. The rate also caps a caller's sampled flag: a request cannot force a trace the stage would not keep. |
 | `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` | Override or add resource attributes. |
 
 ### What is exported
@@ -379,9 +379,12 @@ signals that matter most are sent by explicit code instead:
   `http.response.status_code`, `url.path`, `url.scheme`, `server.address`,
   `user_agent.original` and `client.address`. Never the query string, and no
   headers. A 5xx or a thrown error marks it `ERROR`, the exception recorded; a
-  4xx does not. An incoming W3C `traceparent` is continued, and the handler
-  runs inside the span, so its logs and its outbound calls belong to it. The
-  health check and `/ready` get none.
+  4xx does not. An incoming W3C `traceparent` is continued when it comes from
+  one of the API's own sites or an internal caller, and any other caller's
+  becomes a link on a new trace ([whose trace context is
+  continued](/packages/telescope#whose-trace-context-is-continued)). The
+  handler runs inside the span, so its logs and its outbound calls belong to
+  it. The health check and `/ready` get none.
 - **Every log record.** A logger made with `createLogger` from
   `@geekmidas/logger/pino` sends each record through the OpenTelemetry logs
   API as well as to stdout: the pino level as its severity, the message as its
@@ -390,11 +393,22 @@ signals that matter most are sent by explicit code instead:
   with `pino()` directly gets the same with
   `hooks: { streamWrite: otelStreamWrite }` from `@geekmidas/logger/otel`.
 
+- **The constructs' own spans.** Each construct records spans through the
+  global tracer, so they reach the bundle's provider like the request's do: a
+  CLIENT span per database query (`select orders`, with `db.system`, `db.name`,
+  `db.operation` and `db.sql.table` — never a parameter value), cache and
+  storage calls, email sends and `ExternalApi` calls. Each package's page lists
+  its spans.
+- **One trace across a queue.** A publish is a PRODUCER span whose context
+  travels in the message; the worker's job is a CONSUMER span that continues
+  it, so a request, the job it enqueued and that job's queries are one trace —
+  on pg-boss, SNS, SQS and RabbitMQ. Crons start a trace of their own. See
+  [Trace context](../packages/events.md#trace-context).
+
 The auto-instrumentations still run (without `fs`) for what is loaded at run
 time rather than bundled: outbound `fetch`, DNS and TCP, and the runtime's
-metrics. Database queries are not among them — `pg` is inside the bundle, so
-there are no query spans yet; a query still carries its request's
-`request_id` in its SQL comment.
+metrics. A query also still carries its request's `request_id` in its SQL
+comment.
 
 Install `@geekmidas/telescope` and its `@opentelemetry/*` peer dependencies in
 each app that should export. The build checks they resolve. If they do not,

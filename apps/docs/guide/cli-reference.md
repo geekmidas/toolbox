@@ -129,6 +129,22 @@ Fixed port mappings (e.g., `'8080:80'`) are intentionally skipped — only env v
 
 Resolved ports are saved to `.gkm/ports.json` so that external tools (like pgAdmin, database GUIs, etc.) keep working across restarts. The `.gkm/` directory is automatically gitignored.
 
+### `gkm dev:credentials`
+
+Print each local service's address and login — Postgres (as a connection
+string), the MinIO console, Mailpit, Redis, the cache proxy, RabbitMQ, the AWS
+emulator, and OpenObserve where the local compose stack runs it — without
+starting anything. The logins are generated per machine the first time a
+command needs them; see [Local logins](./dev-server.md#local-logins-are-generated-per-machine).
+
+```bash
+gkm dev:credentials [--json]
+```
+
+- `--json` — print `{ workspace, stage, services: [{ service, label, url, user?, password?, note? }] }`
+
+It reads the stored logins and `.gkm/ports.json`; run `gkm dev` once first.
+
 ### `gkm setup`
 
 Reconcile only — derive the containers, databases, roles, schemas, and buckets
@@ -367,11 +383,21 @@ gkm deploy:github --stage prod    --profile acme-prod --dry-run
 
 In the stage's account it creates GitHub's OIDC provider if missing, and the
 role `<project>-github-<stage>`, which only this repository's `<stage>`
-environment can assume — a staging job cannot use the production role. On
+environment can assume — a staging job cannot use the production role. The
+role trusts the exact OIDC subject GitHub sends for that environment, read
+from the repository's settings: `repo:<owner>/<name>:environment:<stage>` by
+default, `repo:<owner>@<ownerId>/<name>@<repoId>:environment:<stage>` on the
+immutable subject, or a custom template built from claims known before the run
+(one that includes `job_workflow_ref`, `ref`, `sha` or `run_id` is refused with
+`OidcSubjectNotSupported`). If the settings cannot be read it assumes the
+default and warns. The subject is printed as **Trusted by**, on `--dry-run`
+too, and re-running rewrites an existing role's trust, printing old → new —
+how a role that trusted the wrong format is repaired. See
+[which subject the role trusts](./deployment.md#which-subject-the-role-trusts). On
 GitHub (through `gh`, so be logged in) it creates the `<stage>` environment and
 sets `AWS_ROLE_ARN`, which the generated deploy workflow reads. With
-`secrets.store` set to SSM it pushes the stage's local secrets to SSM in the
-same account, with the same profile, and hands GitHub no key; with the `'file'`
+`secrets.store` set to SSM or Secrets Manager the deploy job reads the stage's
+secrets there with the role, and GitHub is handed no key; with the `'file'`
 store it sets `GKM_SECRETS_KEY` (from `~/.gkm/keys/<namespace>/<project>/<stage>.key`).
 Re-running it converges.
 
@@ -379,7 +405,7 @@ Re-running it converges.
 |---|---|
 | `--stage` | a stage in `stages.deployed` |
 | `--profile` | the AWS profile for the stage's account — keys, assume-role or SSO, whatever `~/.aws/config` says. Only that profile: exported `AWS_*` variables are not consulted |
-| `--policy-arn` | what the role may do; defaults to `AdministratorAccess`, which is what SST needs to create stacks |
+| `--policy-arn` | what the role may do, in place of the default: `AdministratorAccess`, which SST needs to create stacks — or, for a stage only the `compose` target deploys, an inline policy allowing just the stage's secrets (and deploy state in AWS). See [what the role may do](./deployment.md#what-the-role-may-do) |
 | `--repo` | `owner/name`; defaults to the repository `gh` sees |
 
 The profile needs rights to manage IAM in that account; if it lacks them, AWS's

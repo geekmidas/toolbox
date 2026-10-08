@@ -3,6 +3,8 @@ import type { ConstructManifest } from '@geekmidas/manifest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { deployIdentity } from '../../deploy/identity';
+import { TEST_CREDENTIALS } from '../../reconcile/__tests__/__helpers__/credentials';
+import { generateLocalCredentials } from '../../reconcile/localCredentials';
 import { initStageSecrets } from '../../secrets/storage';
 import type { StageSecrets } from '../../secrets/types';
 import {
@@ -16,7 +18,6 @@ import type {
 import {
 	isStrongLogsPassword,
 	LOCAL_LOGS_EMAIL,
-	LOCAL_LOGS_PASSWORD,
 	LogsEndpointConflict,
 	LogsPasswordMissing,
 	LogsPasswordWeak,
@@ -32,6 +33,10 @@ import {
 	LogsRetentionInvalid,
 } from '../logsConfig';
 import { type ComposeStack, composeStack, type StackInput } from '../stack';
+
+/** This machine's generated root password for the local stage's logs. */
+const LOCAL_LOGS_PASSWORD = TEST_CREDENTIALS.logs.password;
+
 import { loadComposeApp, writeComposeApp } from './__helpers__/composeApp';
 
 let dir: string;
@@ -83,6 +88,7 @@ function stack(
 		identity: deployIdentity(workspace, stage),
 		images: { mode: 'build', tag: 'abc1234' },
 		ports: { https: 8443, http: 8080 },
+		localCredentials: TEST_CREDENTIALS,
 		...overrides,
 	});
 }
@@ -200,7 +206,15 @@ describe('logs: true', () => {
 		expect(s.caddyfile).not.toContain('logs.');
 	});
 
-	it('keeps 30 days, and the local stage signs in with a fixed login', () => {
+	it('generates a root password OpenObserve accepts, every time', () => {
+		for (let i = 0; i < 50; i++) {
+			expect(
+				isStrongLogsPassword(generateLocalCredentials('shop').logs.password),
+			).toBe(true);
+		}
+	});
+
+	it("keeps 30 days, and the local stage signs in with this machine's generated login", () => {
 		const s = stack(true);
 
 		expect(s.logs?.env).toEqual({
@@ -480,7 +494,7 @@ describe('how to open it', () => {
 		expect(lines[1]).toContain('203.0.113.7');
 	});
 
-	it('says the local stage opens directly, with its fixed login', () => {
+	it('says the local stage opens directly, with its generated login', () => {
 		const lines = logsAccess(stack(true).logs!, {
 			...ctx,
 			stage: 'development',

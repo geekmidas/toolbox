@@ -13,7 +13,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { sitesFor, toCaddyfile } from '../caddyfile';
 import type { Docker } from '../index';
 import { COMPOSE_PATH, reconcile } from '../index';
+import { LEGACY_LOCAL_LOGIN } from '../logins';
 import { planHash, saveState } from '../state';
+import { TEST_CREDENTIALS } from './__helpers__/credentials';
+
+/** No container is running here to sign in to. */
+const unchecked: NonNullable<
+	Parameters<typeof reconcile>[0]['logins']
+> = async ({ credentials }) => ({ credentials, outcomes: [] });
 
 /** A database and mail — one container that provisions, one that does not. */
 const manifest = {
@@ -78,6 +85,8 @@ describe('reconcile', () => {
 		const { docker } = fakeDocker();
 
 		return reconcile({
+			credentials: TEST_CREDENTIALS,
+			logins: unchecked,
 			root,
 			project: 'toolbox',
 			manifest,
@@ -203,6 +212,54 @@ describe('reconcile', () => {
 		expect((await run()).changed).toBe(true);
 	});
 
+	it('brings each container onto its login before creating anything in it', async () => {
+		const order: string[] = [];
+		await run({
+			logins: async ({ credentials, containers }) => {
+				order.push(`logins:${[...containers].sort().join(',')}`);
+				return { credentials, outcomes: [] };
+			},
+			sql: (_port, login) => ({
+				query: async () => {
+					order.push(`sql:${login.user}`);
+					return [];
+				},
+			}),
+		});
+
+		expect(order[0]).toBe('logins:mailpit,postgres');
+		expect(order.slice(1).every((step) => step === 'sql:shop_admin')).toBe(
+			true,
+		);
+	});
+
+	it('uses the login a container kept, where it could not be rotated', async () => {
+		const result = await run({
+			// Connecting as the superuser: a database without roles.
+			manifest: {
+				Orders: {
+					kind: 'database',
+					id: 'Orders',
+					roles: false,
+					provides: ['ORDERS_URL'],
+				},
+			} as const satisfies ConstructManifest,
+			logins: async ({ credentials }) => ({
+				credentials: { ...credentials, postgres: LEGACY_LOCAL_LOGIN },
+				outcomes: [
+					{ service: 'postgres', status: 'kept', login: LEGACY_LOCAL_LOGIN },
+				],
+			}),
+		});
+
+		expect(result.credentials.postgres).toEqual(LEGACY_LOCAL_LOGIN);
+		expect(result.logins).toHaveLength(1);
+		// Every URL that connects as the superuser follows it.
+		expect(new URL(result.env.ORDERS_URL!).username).toBe(
+			LEGACY_LOCAL_LOGIN.user,
+		);
+	});
+
 	it('does nothing when the plan is unchanged and containers are healthy', async () => {
 		// The fast path — reconciling on every start is only acceptable if the
 		// converged case is free.
@@ -210,6 +267,8 @@ describe('reconcile', () => {
 
 		const { docker, calls } = fakeDocker({ healthy: true });
 		const second = await reconcile({
+			credentials: TEST_CREDENTIALS,
+			logins: unchecked,
 			root,
 			project: 'toolbox',
 			manifest,
@@ -239,6 +298,8 @@ describe('reconcile', () => {
 		const created: string[] = [];
 		const { docker } = fakeDocker({ healthy: true });
 		const second = await reconcile({
+			credentials: TEST_CREDENTIALS,
+			logins: unchecked,
 			root,
 			project: 'toolbox',
 			manifest,

@@ -277,6 +277,28 @@ describe('a site that imports a generated client', () => {
 		expect(dockerfile).toContain('> /usr/local/bin/gkm');
 	});
 
+	it.each(
+		sites,
+	)('generates a client with trace propagation when the site’s telemetry asks (%s)', (_, generate) => {
+		const dockerfile = generate({
+			...site,
+			clients: [
+				{
+					app: 'api',
+					path: 'examples/shop/apps/api',
+					telemetry: { sampleRate: 0.1 },
+				},
+				{ app: 'auth', path: 'examples/shop/apps/auth' },
+			],
+		});
+
+		expect(dockerfile).toContain(
+			'cd /app/examples/shop/apps/api && gkm openapi --app api --telemetry 0.1',
+		);
+		// Off for a client nothing turned it on for.
+		expect(dockerfile).toMatch(/gkm openapi --app auth$/m);
+	});
+
 	it('runs from the build root when the gkm workspace is it', () => {
 		const dockerfile = generateViteStaticDockerfile({
 			...site,

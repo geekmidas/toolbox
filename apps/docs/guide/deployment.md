@@ -1138,6 +1138,61 @@ With an AWS store (SSM or Secrets Manager) there is nothing to hand over — the
 deploy reads the store with the role; with the `'file'` store it sets `GKM_SECRETS_KEY` instead. No long-lived AWS
 keys are stored anywhere.
 
+#### Which subject the role trusts
+
+The role trusts exactly the `sub` GitHub puts in the deploy job's OIDC token,
+and that depends on the repository's OIDC settings. `gkm deploy:github` reads
+them (`gh api repos/<owner>/<name>/actions/oidc/customization/sub`) before it
+writes the trust, and prints the result as **Trusted by**:
+
+| Repository setting | Subject |
+|---|---|
+| default | `repo:<owner>/<name>:environment:<stage>` |
+| immutable subject (the default for repositories created after 15 July 2026) | `repo:<owner>@<ownerId>/<name>@<repoId>:environment:<stage>` |
+| custom template of `repo`, `context`, `environment`, `repository`, `repository_owner`, `repository_owner_id`, `repository_id`, `repository_visibility` | those claims, in the template's order — `context` is `environment:<stage>` |
+| custom template with a claim that depends on the run (`job_workflow_ref`, `ref`, `sha`, `run_id`, …) | refused with `OidcSubjectNotSupported`: set the repository back to the default or immutable subject |
+
+A `:` inside a value is sent as `%3A`. When the settings cannot be read (no
+permission, or a GitHub Enterprise Server without the endpoint) it assumes the
+default format and warns, naming the endpoint to check.
+
+A role that trusts the wrong format fails the deploy job with *Not authorized
+to perform sts:AssumeRoleWithWebIdentity*. Re-running the command repairs it:
+the trust is rewritten, and the output shows the change.
+
+```bash
+gkm deploy:github --stage prod --profile acme-prod
+#   ✓ Trust: repo:acme/shop:environment:prod → repo:acme@1234/shop@5678:environment:prod
+```
+
+#### What the role may do
+
+| The stage deploys through | The role gets |
+|---|---|
+| SST (or Dokploy, or a mix) | `AdministratorAccess` — SST creates its own stack |
+| `compose` only | an inline policy, `gkm-deploy`, naming only the stage's own resources |
+
+A compose deploy builds and runs containers on a server; from AWS it needs only
+the stage's secrets — read, and written back when a deploy generates a new one
+— and, with the deploy state in AWS, the stage's state:
+
+| Store | Allowed |
+|---|---|
+| `secrets.store` SSM | `ssm:GetParameter`, `ssm:PutParameter` on `arn:aws:ssm:<region>:<account>:parameter/gkm/<project>/<stage>/secrets` |
+| `secrets.store` Secrets Manager | `secretsmanager:GetSecretValue`, `PutSecretValue`, `CreateSecret` on `arn:aws:secretsmanager:<region>:<account>:secret:gkm/<project>/<stage>/secrets-??????` (and `kms:Decrypt`/`GenerateDataKey` through Secrets Manager when `kmsKeyId` is set) |
+| `state` SSM | `ssm:GetParameter`, `PutParameter`, `DeleteParameter` under `/gkm/<project>/<stage>/` |
+| `state` S3 | `s3:GetObject`, `PutObject`, `DeleteObject` under `<prefix>/<project>/<stage>/`, and `s3:ListBucket` on the bucket |
+
+With file secrets and local state the role is given nothing. A custom secrets
+store or state provider cannot be scoped, so it keeps `AdministratorAccess`.
+`--policy-arn` replaces either default, and `--dry-run` prints the policy.
+
+gkm tags the role with the managed policy it attached (`gkm:policy-arn`).
+Re-running on a compose stage puts the scoped policy and detaches
+`AdministratorAccess` if gkm attached it. A role made before that tag existed
+keeps what is attached, and the output gives the `aws iam detach-role-policy`
+command to remove it.
+
 For **Dokploy**, set the environment's values with `gh`. The workflow writes
 `GKM_SECRETS_KEY` to the runner, but the encrypted file it decrypts is under
 the gitignored `.gkm/` — set `secrets.store` to a store CI can reach (SSM, Secrets

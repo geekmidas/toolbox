@@ -71,6 +71,7 @@
 		"dependencies": "~0.4.3"
 	},
 	"@opentelemetry/api": {
+		"dependencies": "~1.9.1",
 		"devDependencies": "~1.9.1",
 		"peerDependencies": ">=1.9.1"
 	},

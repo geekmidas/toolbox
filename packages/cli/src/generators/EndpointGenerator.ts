@@ -93,10 +93,19 @@ export function corsFor(surface: BuildContext['surface']): {
 	if (!surface) return { imports: '', setup: '' };
 
 	const cors = surface.cors ?? {};
+	// `traceparent` and `tracestate` always: a site's client sends them when
+	// its telemetry is on, and a preflight that refused them would fail every
+	// request it makes rather than only its tracing. The API decides whether
+	// to continue the trace (it does only for these same origins), so allowing
+	// the headers grants nothing on its own.
 	const allowHeaders = [
-		'content-type',
-		'authorization',
-		...(cors.allowHeaders ?? []),
+		...new Set([
+			'content-type',
+			'authorization',
+			'traceparent',
+			'tracestate',
+			...(cors.allowHeaders ?? []),
+		]),
 	];
 
 	return {
@@ -114,6 +123,10 @@ export function corsFor(surface: BuildContext['surface']): {
           ),
       }))
       .parse();
+
+    // The same origins are the ones whose trace context the request spans
+    // continue — the server reads them back from \`createApp\`.
+    trustedOrigins.push(...origins);
 
     honoApp.use('*', cors({
       origin: origins,
@@ -550,6 +563,8 @@ process.env.GKM_APP_NAME ??= ${JSON.stringify(context.surface.id)};
 		: ''
 }export interface ServerApp {
   app: HonoType;
+  /** The origins this API's CORS allows: its own sites. */
+  trustedOrigins: readonly string[];
   start: (options?: {
     port?: number;
     /** Returns the server, so a shutdown can stop it taking requests. */
@@ -593,6 +608,7 @@ process.env.GKM_APP_NAME ??= ${JSON.stringify(context.surface.id)};
  */
 export async function createApp(app?: HonoType, enableOpenApi: boolean = true): Promise<ServerApp> {
   const honoApp = app || new Hono();
+  const trustedOrigins: string[] = [];
 ${telescopeSetup}${cors.setup}${beforeSetupCall}${databaseApiSetup}
   // Setup HTTP endpoints
   await setupEndpoints(honoApp, envParser, logger, enableOpenApi);
@@ -600,6 +616,7 @@ ${afterSetupCall}
 
   return {
     app: honoApp,
+    trustedOrigins,
     async start(options) {
       if (!options?.serve) {
         throw new Error(
@@ -817,6 +834,8 @@ process.env.GKM_APP_NAME ??= ${JSON.stringify(context.surface.id)};
 		: ''
 }export interface ServerApp {
   app: HonoType;
+  /** The origins this API's CORS allows: its own sites. */
+  trustedOrigins: readonly string[];
   start: (options?: {
     port?: number;
     serve: (app: HonoType, port: number) => void | Promise<void>;
@@ -828,6 +847,7 @@ process.env.GKM_APP_NAME ??= ${JSON.stringify(context.surface.id)};
  */
 export async function createApp(app?: HonoType): Promise<ServerApp> {
   const honoApp = app || new Hono();
+  const trustedOrigins: string[] = [];
 
   // Health check endpoint (always first)
   honoApp.get('${healthCheckPath}', (c) => c.json({ status: 'ok', timestamp: Date.now() }));
@@ -867,6 +887,7 @@ ${cors.setup}${beforeSetupCall}
 ${afterSetupCall}
   return {
     app: honoApp,
+    trustedOrigins,
     async start(options) {
       if (!options?.serve) {
         throw new Error(
@@ -925,9 +946,14 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { startTelemetry } from './telemetry.js';
 
+// The API's own sites, known once the app has read its configuration: the
+// origins its CORS allows are the ones whose trace context is continued.
+let trustedOrigins: readonly string[] = [];
+
 // Before the app is imported, so the libraries it loads are instrumented.
 const requestSpans = await startTelemetry({
   ignorePaths: [${JSON.stringify(context.production?.healthCheck ?? '/health')}, '/ready'],
+  trustedOrigins: () => trustedOrigins,
 });
 
 const { createApp } = await import('./app.js');
@@ -938,7 +964,9 @@ const port = Number(process.env.PORT) || 3000;
 const app = new Hono();
 if (requestSpans) app.use('*', requestSpans);
 
-const { start } = await createApp(app);
+const created = await createApp(app);
+trustedOrigins = created.trustedOrigins;
+const { start } = created;
 
 await start({
   port,

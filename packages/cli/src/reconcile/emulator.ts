@@ -14,14 +14,13 @@ export const EMULATOR_ACCOUNT = '000000000000';
 export const EMULATOR_REGION = 'us-east-1';
 
 /**
- * The emulator's credential. The `LSIA` prefix is what LocalStack required on
- * issued keys; floci does not care, and keeping it means a project that pins
- * the old image still works.
+ * The emulator's access key id. The `LSIA` prefix is what LocalStack required
+ * on issued keys, and LocalStack reads the account from the id — so it is
+ * fixed, where the secret key beside it is generated per machine (see
+ * `localCredentials.ts`). Floci does not care; keeping it means a project
+ * that pins the old image still works.
  */
-export const EMULATOR_CREDENTIALS = {
-	accessKeyId: 'LSIAQAAAAAAVNCBMPNSG',
-	secretAccessKey: 'geekmidas',
-} as const;
+export const EMULATOR_ACCESS_KEY_ID = 'LSIAQAAAAAAVNCBMPNSG';
 
 /** The emulator's address from the host, on the port it was published on. */
 export function emulatorEndpoint(port: number): string {

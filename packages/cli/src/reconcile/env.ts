@@ -28,24 +28,14 @@ import {
 import { hostFor } from './caddyfile';
 import { primaryPortKey } from './containers';
 import {
-	EMULATOR_CREDENTIALS,
 	EMULATOR_REGION,
 	emulatorEndpoint,
 	emulatorQueueUrl,
 	emulatorTopicArn,
 } from './emulator';
+import type { ContainerCredentials } from './localCredentials';
 import { PgBossNeedsDatabase, type Plan, type PlannedResource } from './plan';
 import type { PortAssignments } from './ports';
-
-/**
- * The credential local containers are brought up with.
- *
- * The design's `roles: false` case — both URLs fall back to the cluster's master
- * credential. A deliberate downgrade, not a default: it holds until the role DDL
- * lands in `@geekmidas/db`, at which point the runtime role's URL replaces this
- * and the owner URL stops being reachable from any manifest edge.
- */
-const LOCAL_USER = 'geekmidas';
 
 /** The host containers are published on. */
 const LOCAL_HOST = 'localhost';
@@ -62,14 +52,15 @@ const LOCAL_REGION = 'us-east-1';
  * the same chain reads these — which is why they are injected beside the URL
  * rather than written into it.
  */
-const STORAGE_CREDENTIALS: Readonly<Record<string, string>> = {
-	AWS_ACCESS_KEY_ID: LOCAL_USER,
-	AWS_SECRET_ACCESS_KEY: LOCAL_USER,
-	AWS_REGION: LOCAL_REGION,
-};
-
-/** The token the local cache proxy accepts. Matches the compose definition. */
-const LOCAL_TOKEN = 'geekmidas';
+function storageCredentials(
+	credentials: ContainerCredentials,
+): Record<string, string> {
+	return {
+		AWS_ACCESS_KEY_ID: credentials.minio.user,
+		AWS_SECRET_ACCESS_KEY: credentials.minio.password,
+		AWS_REGION: LOCAL_REGION,
+	};
+}
 
 /** The port Mailpit's inbox — its web UI and HTTP API — is published under. */
 const MAILPIT_INBOX_PORT = 'mailpit-web';
@@ -78,7 +69,7 @@ const MAILPIT_INBOX_PORT = 'mailpit-web';
 const PGBOSS_SCHEMA = 'pgboss';
 
 /** The exchange every local topic and queue shares on RabbitMQ. */
-const RABBITMQ_EXCHANGE = 'geekmidas.events';
+const RABBITMQ_EXCHANGE = 'gkm.events';
 
 export interface EnvOptions {
 	/** Assigned ports, keyed by port key. */
@@ -120,37 +111,40 @@ export interface EnvOptions {
 	/**
 	 * The stage's random seed, salting every derived role password.
 	 *
-	 * Absent locally, where the cluster is on loopback and a password derived
-	 * from the project and stage alone is the convenience the local stage
-	 * wants. A stack that serves a deployed stage passes the seed its store
-	 * keeps, so its passwords are the ones a deploy derives — and are not
+	 * The local stages' is generated once per machine with their logins; a
+	 * stack that serves a deployed stage passes the seed its store keeps, so
+	 * its passwords are the ones a deploy derives. Either way they are not
 	 * computable from the repo.
 	 */
 	seed?: string;
 	/**
-	 * The cluster master's password, where it is not the local one.
+	 * What every container was brought up with — the cluster's superuser,
+	 * MinIO's root, the cache's token, the emulator's key pair.
 	 *
-	 * pg-boss and a `roles: false` database connect as the master, so its
-	 * password is in their URLs; a deployed stage's is derived from its seed.
+	 * pg-boss and a `roles: false` database connect as the superuser, so its
+	 * login is in their URLs.
 	 */
-	master?: string;
+	credentials: ContainerCredentials;
 }
 
 /**
- * The credentials a stage's URLs carry: the master's password and the seed
- * role passwords are salted with. Locally both are the fixed defaults.
+ * The credentials a stage's URLs carry: the containers' logins and the seed
+ * role passwords are salted with.
  */
 interface StageCredential {
-	master: string;
+	containers: ContainerCredentials;
 	seed?: string;
 }
 
-/** The credential `options` describe, defaulting to the local one. */
-function credentialOf(options: { seed?: string; master?: string }) {
+/** The credential `options` describe. */
+function credentialOf(options: {
+	seed?: string;
+	credentials: ContainerCredentials;
+}): StageCredential {
 	return {
-		master: options.master ?? LOCAL_USER,
+		containers: options.credentials,
 		...(options.seed ? { seed: options.seed } : {}),
-	} satisfies StageCredential;
+	};
 }
 
 /**
@@ -257,7 +251,7 @@ export function envFor(
 	// Only once a bucket actually resolved: an unresolvable plan resolves
 	// nothing, and credentials for a container that is not running are noise.
 	if (plan.resources.some((r) => r.kind === 'objects' && env[r.envKey])) {
-		Object.assign(env, STORAGE_CREDENTIALS);
+		Object.assign(env, storageCredentials(options.credentials));
 	}
 
 	return env;
@@ -516,8 +510,8 @@ function urlFor(
 	plan: Plan,
 	ports: PortAssignments,
 	project: string,
-	addresses: Readonly<Record<string, string>> = {},
-	credential: StageCredential = { master: LOCAL_USER },
+	addresses: Readonly<Record<string, string>> | undefined,
+	credential: StageCredential,
 ): string | undefined {
 	// A secret has no address, so there is no port to wait for.
 	if (resource.kind === 'secret') return localSecret(project, plan, resource);
@@ -561,7 +555,7 @@ function urlFor(
 	// the difference: it reads whichever address was injected and composes none,
 	// so this is the target's decision alone.
 	if (resource.kind === 'rest-api' || resource.kind === 'site') {
-		const address = addresses[resource.id];
+		const address = addresses?.[resource.id];
 		const edge = plan.containers.includes('caddy')
 			? ports[primaryPortKey('caddy')]
 			: undefined;
@@ -596,7 +590,7 @@ function urlFor(
 			if (resource.roles === false) {
 				const schema = schemaOf(resource, plan);
 
-				const master = { user: LOCAL_USER, password: credential.master };
+				const master = credential.containers.postgres;
 				return schema
 					? `${postgres(port, database, master)}?search_path=${schema}`
 					: postgres(port, database, master);
@@ -680,15 +674,16 @@ function urlFor(
 			switch (plan.cache) {
 				case 'elasticache':
 				case 'redis':
-					// The wire protocol, unauthenticated locally. Deployed it is
-					// `rediss://` inside a VPC; the client is the same either way.
-					return `redis://${LOCAL_HOST}:${port}`;
+					// The wire protocol, with the password the container requires.
+					// Deployed it is `rediss://` inside a VPC; the client is the
+					// same either way.
+					return `redis://:${encodeURIComponent(credential.containers.redis.password)}@${LOCAL_HOST}:${port}`;
 
 				default:
 					// The token in the userinfo, because an address and the credential
 					// that opens it are one fact. Deployed the scheme is https and the
 					// host is the provider's; nothing else differs.
-					return `http://:${LOCAL_TOKEN}@${LOCAL_HOST}:${port}`;
+					return `http://:${encodeURIComponent(credential.containers.cacheToken)}@${LOCAL_HOST}:${port}`;
 			}
 
 		case 'queue':
@@ -721,13 +716,16 @@ function broker(
 			const database = plan.resources.find((r) => r.kind === 'database');
 			if (!database) throw new PgBossNeedsDatabase([]);
 
-			return `pgboss://${LOCAL_USER}:${encodeURIComponent(credential.master)}@${LOCAL_HOST}:${port}/${database.name}?schema=${PGBOSS_SCHEMA}`;
+			const { user, password } = credential.containers.postgres;
+			return `pgboss://${user}:${encodeURIComponent(password)}@${LOCAL_HOST}:${port}/${database.name}?schema=${PGBOSS_SCHEMA}`;
 		}
 
-		case 'rabbitmq':
+		case 'rabbitmq': {
 			// The exchange is declared by whichever client connects first, so
 			// naming it here is the whole of the setup.
-			return `rabbitmq://${LOCAL_USER}:${LOCAL_USER}@${LOCAL_HOST}:${port}?exchange=${RABBITMQ_EXCHANGE}`;
+			const { user, password } = credential.containers.rabbitmq;
+			return `rabbitmq://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${LOCAL_HOST}:${port}?exchange=${RABBITMQ_EXCHANGE}`;
+		}
 
 		case 'sns': {
 			// The emulator's ARNs and queue URLs are deterministic, so the address
@@ -750,24 +748,19 @@ function broker(
 							endpoint,
 						});
 			const url = new URL(address);
-			url.searchParams.set('accessKeyId', EMULATOR_CREDENTIALS.accessKeyId);
-			url.searchParams.set(
-				'secretAccessKey',
-				EMULATOR_CREDENTIALS.secretAccessKey,
-			);
+			const { accessKeyId, secretAccessKey } = credential.containers.emulator;
+			url.searchParams.set('accessKeyId', accessKeyId);
+			url.searchParams.set('secretAccessKey', secretAccessKey);
 			return url.toString();
 		}
 	}
 }
 
-/** A local Postgres URL, master credential and all. */
+/** A local Postgres URL, with the login it connects as. */
 function postgres(
 	port: number,
 	database: string,
-	credential: { user: string; password: string } = {
-		user: LOCAL_USER,
-		password: LOCAL_USER,
-	},
+	credential: { user: string; password: string },
 ): string {
 	return `postgres://${credential.user}:${encodeURIComponent(credential.password)}@${LOCAL_HOST}:${port}/${database}`;
 }

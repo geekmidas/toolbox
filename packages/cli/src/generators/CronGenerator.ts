@@ -212,7 +212,7 @@ export async function setupCrons(
       // The cron's own function, the way its Lambda would run it — services,
       // the worker's database as \`db\`, its events. It used to call a
       // \`handler\` a Cron does not have, so every firing logged a failure.
-      await runCron(entry.cron, serviceDiscovery);
+      await runCron(entry.cron, serviceDiscovery, entry.name);
     } catch (error) {
       logger.error({ err: error, cron: entry.name }, 'Cron failed');
     }

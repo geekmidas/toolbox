@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { TEST_DATABASE_CONFIG } from '../../../../testkit/test/globalSetup';
 import { LOCALSTACK_PORT, POSTGRES_PORT } from '../../../../testkit/test/ports';
 import { bucketClient, pgClient } from '../clients';
 
@@ -8,12 +9,16 @@ import { bucketClient, pgClient } from '../clients';
  * MinIO does, credentials and path-style addressing included.
  */
 describe('pgClient', () => {
-	const sql = pgClient(POSTGRES_PORT);
+	// The suite's own Postgres, and its superuser.
+	const sql = pgClient(POSTGRES_PORT, {
+		user: TEST_DATABASE_CONFIG.user,
+		password: TEST_DATABASE_CONFIG.password,
+	});
 
-	it('queries the cluster database when none is named', async () => {
+	it('queries `postgres` when no database is named — every cluster has it', async () => {
 		const rows = await sql.query(undefined, 'SELECT current_database() AS db');
 
-		expect(rows).toEqual([{ db: 'geekmidas' }]);
+		expect(rows).toEqual([{ db: 'postgres' }]);
 	});
 
 	it('connects to the database it is asked about, with parameters', async () => {
@@ -39,7 +44,9 @@ describe('pgClient', () => {
 });
 
 describe('bucketClient', () => {
-	const buckets = bucketClient(LOCALSTACK_PORT);
+	// The emulator takes any key pair.
+	const emulator = { user: 'test', password: 'test-secret' };
+	const buckets = bucketClient(LOCALSTACK_PORT, emulator);
 	const bucket = `reconcile-${Date.now()}`;
 
 	it('creates a bucket that did not exist', async () => {
@@ -74,7 +81,7 @@ describe('bucketClient', () => {
 	});
 
 	it('answers "missing" rather than failing when nothing is listening', async () => {
-		const unreachable = bucketClient(1);
+		const unreachable = bucketClient(1, emulator);
 
 		await expect(unreachable.exists(bucket)).resolves.toBe(false);
 		await expect(unreachable.policy(bucket)).resolves.toBeUndefined();

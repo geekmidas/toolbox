@@ -2,6 +2,7 @@ import type { ConstructManifest } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { APPS_PROFILE, appServices, inNetworkEnv } from '../apps';
+import { TEST_CREDENTIALS } from './__helpers__/credentials';
 
 /**
  * A database that is not called `Database`, and a schema tenant inside it —
@@ -46,7 +47,7 @@ const workspace = {
 
 describe('inNetworkEnv', () => {
 	it('gives each construct its own key, at the container on the network', () => {
-		const env = inNetworkEnv(workspace, manifest);
+		const env = inNetworkEnv(workspace, manifest, TEST_CREDENTIALS);
 
 		expect(env.ORDERS_URL).toMatch(/^postgres(ql)?:\/\/[^@]+@postgres:5432\//);
 		expect(env.AUTH_URL).toMatch(/@postgres:5432\//);
@@ -56,7 +57,7 @@ describe('inNetworkEnv', () => {
 	});
 
 	it('never points an app at the host', () => {
-		const env = inNetworkEnv(workspace, manifest);
+		const env = inNetworkEnv(workspace, manifest, TEST_CREDENTIALS);
 
 		for (const value of Object.values(env)) {
 			expect(value).not.toMatch(/localhost:\d+|127\.0\.0\.1:\d+/);
@@ -66,7 +67,7 @@ describe('inNetworkEnv', () => {
 	it('addresses the local stage, whatever stage is being reconciled', () => {
 		// `gkm test` rewrites the same file; the apps must still point at the
 		// local stage's databases, not the test stage's suffixed ones.
-		const env = inNetworkEnv(workspace, manifest);
+		const env = inNetworkEnv(workspace, manifest, TEST_CREDENTIALS);
 
 		expect(env.ORDERS_URL).not.toMatch(/_test\b|-test\b/);
 	});
@@ -135,6 +136,7 @@ describe('appServices', () => {
 			withAppsWorkspace,
 			withApps,
 			['postgres'],
+			TEST_CREDENTIALS,
 			runnables,
 		);
 
@@ -156,8 +158,13 @@ describe('appServices', () => {
 	// the database's owner URL. An app's environment is its edges.
 	describe('an app gets what its edges reach, and nothing else', () => {
 		const env = (app: string) =>
-			appServices(withAppsWorkspace, withApps, ['postgres'], runnables)[app]
-				?.environment ?? {};
+			appServices(
+				withAppsWorkspace,
+				withApps,
+				['postgres'],
+				TEST_CREDENTIALS,
+				runnables,
+			)[app]?.environment ?? {};
 
 		it('gives the API the tenant its endpoints use, and not the database nothing reaches', () => {
 			expect(env('api')).toHaveProperty('AUTH_URL');
@@ -177,7 +184,13 @@ describe('appServices', () => {
 	// empty `VITE_API_URL`.
 	describe('a site', () => {
 		const web = () =>
-			appServices(withAppsWorkspace, withApps, ['postgres'], runnables).web;
+			appServices(
+				withAppsWorkspace,
+				withApps,
+				['postgres'],
+				TEST_CREDENTIALS,
+				runnables,
+			).web;
 
 		it('is built with its public URLs as build args, at addresses a browser opens', () => {
 			expect(web()?.build?.args).toEqual({
@@ -199,13 +212,19 @@ describe('appServices', () => {
 			},
 		} as NormalizedWorkspace;
 
-		expect(appServices(single, manifest, []).api?.build?.dockerfile).toBe(
-			'.gkm/docker/Dockerfile',
-		);
+		expect(
+			appServices(single, manifest, [], TEST_CREDENTIALS).api?.build
+				?.dockerfile,
+		).toBe('.gkm/docker/Dockerfile');
 	});
 
 	it('does not depend on the local edge, which fronts the browser', () => {
-		const services = appServices(workspace, manifest, ['caddy', 'postgres']);
+		const services = appServices(
+			workspace,
+			manifest,
+			['caddy', 'postgres'],
+			TEST_CREDENTIALS,
+		);
 
 		expect(services.api?.depends_on).toEqual(['postgres']);
 	});

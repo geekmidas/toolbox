@@ -137,14 +137,20 @@ describe('honoTelemetryMiddleware', () => {
 			expect(span?.attributes['http.route']).toBeUndefined();
 		});
 
-		it('should continue an incoming traceparent', async () => {
+		it("should continue an incoming traceparent from the API's own site", async () => {
 			propagation.setGlobalPropagator(new core.W3CTraceContextPropagator());
 			onTestFinished(() => propagation.disable());
-			app.use('*', honoTelemetryMiddleware());
+			app.use(
+				'*',
+				honoTelemetryMiddleware({
+					trustedOrigins: ['https://web.example.com'],
+				}),
+			);
 			app.get('/api/users', (c) => c.json({ users: [] }));
 
 			await app.request('/api/users', {
 				headers: {
+					origin: 'https://web.example.com',
 					traceparent:
 						'00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01',
 				},

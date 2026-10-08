@@ -27,16 +27,14 @@ import {
 	SQSClient,
 } from '@aws-sdk/client-sqs';
 import { Client } from 'pg';
+import { CLUSTER_DATABASE } from './compose';
 import {
-	EMULATOR_CREDENTIALS,
 	EMULATOR_REGION,
 	emulatorEndpoint,
 	emulatorTopicArn,
 } from './emulator';
+import type { ContainerCredentials, Login } from './localCredentials';
 import type { BucketClient, CarrierClient, SqlClient } from './provision';
-
-/** The credential local containers are brought up with. */
-const LOCAL_USER = 'geekmidas';
 
 /**
  * A Postgres client that opens one connection per database it is asked about.
@@ -48,21 +46,21 @@ const LOCAL_USER = 'geekmidas';
 export function pgClient(
 	port: number,
 	/**
-	 * The master's password, where the cluster is not a local one — a
-	 * `gkm compose` stack serving a deployed stage derives its own.
+	 * The cluster's superuser: the workspace's local login, or the one a
+	 * `gkm compose` stack serving a deployed stage derives.
 	 */
-	password: string = LOCAL_USER,
+	login: Login,
 ): SqlClient {
 	return {
 		async query(database, sql, values) {
 			const client = new Client({
 				host: 'localhost',
 				port,
-				user: LOCAL_USER,
-				password,
-				// The cluster's own database, which the image creates. Connecting to
-				// it is what makes `CREATE DATABASE` possible at all.
-				database: database ?? LOCAL_USER,
+				user: login.user,
+				password: login.password,
+				// The cluster's own database, which every cluster has. Connecting
+				// to it is what makes `CREATE DATABASE` possible at all.
+				database: database ?? CLUSTER_DATABASE,
 			});
 
 			await client.connect();
@@ -80,13 +78,10 @@ export function pgClient(
 export function bucketClient(
 	port: number,
 	/**
-	 * Its root credential, where it is not the local one — a `gkm compose`
-	 * stack serving a deployed stage derives its own.
+	 * Its root login: the workspace's local one, or the one a `gkm compose`
+	 * stack serving a deployed stage derives.
 	 */
-	credentials: { user: string; password: string } = {
-		user: LOCAL_USER,
-		password: LOCAL_USER,
-	},
+	credentials: Login,
 ): BucketClient {
 	const s3 = new S3Client({
 		region: 'us-east-1',
@@ -137,11 +132,14 @@ export function bucketClient(
 }
 
 /** A topic and queue client pointed at the local AWS emulator. */
-export function carrierClient(port: number): CarrierClient {
+export function carrierClient(
+	port: number,
+	credentials: ContainerCredentials['emulator'],
+): CarrierClient {
 	const config = {
 		region: EMULATOR_REGION,
 		endpoint: emulatorEndpoint(port),
-		credentials: EMULATOR_CREDENTIALS,
+		credentials,
 	};
 	const sns = new SNSClient(config);
 	const sqs = new SQSClient(config);

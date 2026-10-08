@@ -42,7 +42,14 @@ import { appEnvKeys, networkEnv, workerEnvKeys } from '../reconcile/apps.js';
 import { hostFor } from '../reconcile/caddyfile.js';
 import { type ComposeService, composeFor } from '../reconcile/compose.js';
 import { DEFAULT_IMAGES, portKeys } from '../reconcile/containers.js';
+import { EMULATOR_ACCESS_KEY_ID } from '../reconcile/emulator.js';
 import { localRolePassword } from '../reconcile/env.js';
+import {
+	type ContainerCredentials,
+	LOCAL_RABBITMQ_USER,
+	type LocalCredentials,
+	postgresSuperuser,
+} from '../reconcile/localCredentials.js';
 import { type Plan, type PlannedResource, planFor } from '../reconcile/plan.js';
 import { bucketPolicies } from '../reconcile/provision.js';
 import type { StageSecrets } from '../secrets/types.js';
@@ -261,8 +268,8 @@ export interface ComposeStack {
 	dockerfiles: Record<string, string>;
 	/** The plan the stack was derived from — what provisioning creates. */
 	plan: Plan;
-	/** The Postgres master's password, and the seed role passwords take. */
-	credential: { master: string; seed?: string };
+	/** The containers' logins, and the seed role passwords take. */
+	credential: StackCredential;
 	/**
 	 * The stack's MinIO, where it runs one: its root credential — what the
 	 * backends sign with — and the buckets and open paths provisioning
@@ -281,6 +288,47 @@ export interface ComposeStack {
 	 * whose URL the stage's secrets do not set.
 	 */
 	redis?: StackRedis;
+}
+
+/** What a stack's containers run with, and what its role passwords take. */
+export interface StackCredential {
+	containers: ContainerCredentials;
+	seed: string;
+}
+
+/** The local stage's stack, without the logins `gkm dev` generates. */
+export class LocalCredentialsMissing extends Error {
+	constructor(readonly stage: string) {
+		super(
+			`The local stage '${stage}' runs with this machine's generated logins, and none were passed. Load them with loadLocalCredentials(workspace) and pass them as localCredentials.`,
+		);
+		this.name = 'LocalCredentialsMissing';
+	}
+}
+
+/**
+ * A deployed stage's container logins, derived from its seed like its role
+ * passwords — so every deploy of the stage computes the same ones, and no one
+ * reading the repo can.
+ */
+export function derivedCredentials(
+	project: string,
+	plan: Plan,
+	seed: string,
+): ContainerCredentials {
+	const derive = (purpose: string) =>
+		localRolePassword(project, plan, purpose, seed);
+	return {
+		postgres: { user: postgresSuperuser(project), password: derive('master') },
+		minio: { user: `${project}-minio`, password: derive('minio') },
+		rabbitmq: { user: LOCAL_RABBITMQ_USER, password: derive('rabbitmq') },
+		redis: { password: derive('redis') },
+		cacheToken: derive('cache-token'),
+		emulator: {
+			accessKeyId: EMULATOR_ACCESS_KEY_ID,
+			secretAccessKey: derive('emulator'),
+		},
+	};
 }
 
 /** The stack's MinIO, and what is created in it. */
@@ -313,6 +361,11 @@ export interface StackInput {
 	};
 	/** The stage's secrets — set by hand, and what a deployed stage generated. */
 	secrets?: StageSecrets | null;
+	/**
+	 * This machine's generated local logins — required for the local stage,
+	 * which runs with the same ones `gkm dev` does. See `localCredentials.ts`.
+	 */
+	localCredentials?: LocalCredentials;
 	/**
 	 * The dev services a deployed stage may run for mail and buckets its
 	 * secrets do not configure. The local stage runs both regardless.
@@ -441,13 +494,27 @@ export function composeStack(input: StackInput): ComposeStack {
 	});
 	const byId = new Map(plan.resources.map((r) => [r.id, r]));
 
-	const seed = local ? undefined : input.secrets?.seed;
-	if (!local && !seed) throw new StageSeedMissing(stage);
-	const credential = {
-		master: local
-			? 'geekmidas'
-			: localRolePassword(workspace.name, plan, 'master', seed),
-		...(seed ? { seed } : {}),
+	// The local stage's logins are the ones `gkm dev` generated for this
+	// machine, so the two run their containers with the same; a deployed
+	// stage's are derived from its seed.
+	if (local && !input.localCredentials) {
+		throw new LocalCredentialsMissing(stage);
+	}
+	const seed = local ? input.localCredentials!.seed : input.secrets?.seed;
+	if (!seed) throw new StageSeedMissing(stage);
+	const containers: ContainerCredentials = local
+		? input.localCredentials!
+		: derivedCredentials(workspace.name, plan, seed);
+	const credential: StackCredential = {
+		containers: {
+			...containers,
+			// The stage's own key pair, where it set one, is what MinIO runs as.
+			minio: {
+				user: custom.AWS_ACCESS_KEY_ID ?? containers.minio.user,
+				password: custom.AWS_SECRET_ACCESS_KEY ?? containers.minio.password,
+			},
+		},
+		seed,
 	};
 
 	const apps = stackApps(workspace, manifest, plan, {
@@ -510,6 +577,7 @@ export function composeStack(input: StackInput): ComposeStack {
 				...(domain ? { domain } : {}),
 				custom,
 				https,
+				...(local ? { localLogin: input.localCredentials!.logs } : {}),
 			})
 		: undefined;
 
@@ -536,7 +604,13 @@ export function composeStack(input: StackInput): ComposeStack {
 
 	// The caches: in the stack's Redis, unless the stage set a cache's URL —
 	// a managed Redis — and with every one set, there is no Redis to run.
-	const redis = stackRedis({ plan, stage, local, custom });
+	const redis = stackRedis({
+		plan,
+		stage,
+		local,
+		custom,
+		...(local ? { localPassword: input.localCredentials!.redis.password } : {}),
+	});
 
 	const infra = [
 		...plan.containers
@@ -548,8 +622,8 @@ export function composeStack(input: StackInput): ComposeStack {
 	].sort();
 
 	// The stack's MinIO signs with the stage's own key pair where it set one,
-	// and otherwise with a credential derived like every other: the fixed
-	// local one, or — deployed — from the stage's seed.
+	// and otherwise with the stage's login: the local one `gkm dev` generated,
+	// or — deployed — one derived from the stage's seed.
 	const storage: StackStorage | undefined = infra.includes('minio')
 		? (() => {
 				const buckets = services.minio
@@ -557,14 +631,7 @@ export function composeStack(input: StackInput): ComposeStack {
 					.filter((name): name is string => Boolean(name))
 					.sort();
 				return {
-					user:
-						custom.AWS_ACCESS_KEY_ID ??
-						(local ? 'geekmidas' : `${workspace.name}-minio`),
-					password:
-						custom.AWS_SECRET_ACCESS_KEY ??
-						(local
-							? 'geekmidas'
-							: localRolePassword(workspace.name, plan, 'minio', seed)),
+					...credential.containers.minio,
 					buckets,
 					policies: bucketPolicies(plan).filter((p) =>
 						buckets.includes(p.bucket),
@@ -636,8 +703,8 @@ export function composeStack(input: StackInput): ComposeStack {
 	// the compose network, which is how one service reaches another.
 	const derivation = {
 		project: workspace.name,
-		master: credential.master,
-		...(credential.seed ? { seed: credential.seed } : {}),
+		credentials: credential.containers,
+		seed: credential.seed,
 		// Mailpit on a deployed stage sends as the stage's domain.
 		...(!local && domain ? { mailFrom: `noreply@${domain}` } : {}),
 	};
@@ -832,7 +899,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		infra,
 		apps,
 		workers,
-		master: credential.master,
+		credentials: credential.containers,
 		...(storage ? { storage } : {}),
 		...(logs ? { logs } : {}),
 		...(redis ? { redis } : {}),
@@ -1113,7 +1180,7 @@ function stackFile(options: {
 	infra: readonly string[];
 	apps: readonly StackApp[];
 	workers: readonly StackWorker[];
-	master: string;
+	credentials: ContainerCredentials;
 	storage?: StackStorage;
 	logs?: StackLogs;
 	redis?: StackRedis;
@@ -1144,6 +1211,7 @@ function stackFile(options: {
 			ports: Object.fromEntries(
 				portKeys(infra, plan.fakes).map((key) => [key, 0]),
 			),
+			credentials: options.credentials,
 		},
 	);
 
@@ -1177,10 +1245,6 @@ function stackFile(options: {
 
 	const postgres = services.postgres;
 	if (postgres) {
-		postgres.environment = {
-			...postgres.environment,
-			POSTGRES_PASSWORD: options.master,
-		};
 		// Loopback only, on a port Docker picks: gkm creates the databases and
 		// roles and runs the migrations from this machine, and nothing else
 		// should reach the database from outside the stack.

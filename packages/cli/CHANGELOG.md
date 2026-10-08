@@ -1,5 +1,111 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.82
+
+### Minor Changes
+
+- [#210](https://github.com/geekmidas/toolbox/pull/210) [`7b7732a`](https://github.com/geekmidas/toolbox/commit/7b7732aae2d094f53a0da66527851ec112820cde) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: One trace from the browser to the API: the client propagates W3C trace context, and the API decides whose to trust
+
+  - ✨ **`@geekmidas/client`: `telemetry` on `createTypedFetcher`, the auth-aware fetcher and the generated `createApi`** — off unless set. With it on, every request to the client's own API origin (never another) carries `traceparent`/`tracestate`: through the global OpenTelemetry propagator when a span is active (a browser SDK, or a server-side caller inside a request span), otherwise a page-view trace id (one per page load in a browser, per client in Node), a fresh span id per request, and a sampled flag decided once per page view at `sampleRate` (default 1) by the trace-id rule OpenTelemetry's ratio sampler uses. `@opentelemetry/api` is not imported: its globals are read from `globalThis`, so the feature adds about 0.7 kB gzipped. A `traceparent` the caller sets is kept. New export `@geekmidas/client/telemetry`; a bad rate throws `InvalidClientSampleRate`.
+  - 💥 **`@geekmidas/telescope`: incoming trace context is trusted only from the API's own sites and internal callers.** `honoTelemetryMiddleware` takes `trustedOrigins` (an array, or a function read per request) and `internalCallers` (default: no `Origin`, no proxy forwarding header, and a loopback or private peer address). Any other caller's `traceparent` is no longer continued: the request starts a new trace with a link to it. The Lambda `telemetryMiddleware` takes `trustedOrigins` and `trustRequest`. **Breaking for direct users:** a middleware mounted with no options continues only internal callers.
+  - **`@geekmidas/telescope`: the stage's rate caps a caller's sampled flag.** `traceSampler(rate)` is `parentbased_traceidratio` with the ratio applied to a remote sampled parent as well, so a request cannot force a trace the stage would not keep; `setupTelemetry` uses it for `sampleRatio` and for `OTEL_TRACES_SAMPLER=parentbased_traceidratio`. Also exported: `traceSamplerFromEnv`, `incomingTraceContext`, `isTrustedOrigin`, `isInternalCaller`, `isPrivateAddress`.
+  - **`@geekmidas/cli`: the API's derived CORS always allows `traceparent` and `tracestate`,** and a built server hands the same origins its CORS allows to the request spans (`createApp()` returns `trustedOrigins`).
+  - **`@geekmidas/cli`: `gkm openapi --telemetry [sampleRate]`** writes clients whose `createApi` propagates by default (`telemetryDefault`); off otherwise. A site's Dockerfile passes it to its in-image `gkm openapi --app` when the client's `telemetry` is set.
+
+### Patch Changes
+
+- Updated dependencies [[`7b7732a`](https://github.com/geekmidas/toolbox/commit/7b7732aae2d094f53a0da66527851ec112820cde)]:
+  - @geekmidas/telescope@10.0.0-alpha.82
+  - @geekmidas/constructs@10.0.0-alpha.82
+  - @geekmidas/cache@10.0.0-alpha.82
+  - @geekmidas/db@10.0.0-alpha.82
+  - @geekmidas/envkit@10.0.0-alpha.82
+  - @geekmidas/errors@10.0.0-alpha.82
+  - @geekmidas/logger@10.0.0-alpha.82
+  - @geekmidas/manifest@10.0.0-alpha.82
+  - @geekmidas/schema@10.0.0-alpha.82
+  - @geekmidas/services@10.0.0-alpha.82
+  - @geekmidas/storage@10.0.0-alpha.82
+
+## 10.0.0-alpha.81
+
+### Minor Changes
+
+- 🐛 [#211](https://github.com/geekmidas/toolbox/pull/211) [`b0b6d5c`](https://github.com/geekmidas/toolbox/commit/b0b6d5c1a558795e040654a596d97ad5e27e42b3) Thanks [@geekmidas](https://github.com/geekmidas)! - Local services run with logins generated per machine, not a fixed shared one
+
+  :boom: Every container `gkm dev`, `gkm test` and the local `gkm compose` stage
+  run used to sign in with the same fixed word on every laptop. Each password,
+  token and secret key — Postgres, MinIO, Redis (which now requires one), the
+  cache proxy's token, RabbitMQ, the AWS emulator's secret key and the local
+  OpenObserve root — is now generated the first time it is needed, in the shape
+  the service accepts, and kept encrypted with the local stage's key in the CLI's
+  home, shared by every checkout of the project. User names are neutral:
+  `<workspace>_admin` for the Postgres superuser, `minio`, `rabbitmq`. A seed
+  kept with them salts each database role's password. The Postgres superuser on
+  a deployed `gkm compose` stack is renamed the same way.
+
+  `gkm dev` prints each service's address and login with its other URLs, and
+  `gkm dev:credentials [--json]` prints them without starting anything. The
+  discovery endpoint never carries them.
+
+  Existing volumes are migrated on the first run, data kept: a Postgres made with
+  the old login gets the generated superuser and the old one stops logging in
+  (reset from inside the container where no known login opens it); MinIO is
+  recreated with its new root login; RabbitMQ's user is updated with
+  `rabbitmqctl`. A service that cannot be moved keeps its login and gkm says how
+  to reset it.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.81
+  - @geekmidas/constructs@10.0.0-alpha.81
+  - @geekmidas/db@10.0.0-alpha.81
+  - @geekmidas/envkit@10.0.0-alpha.81
+  - @geekmidas/errors@10.0.0-alpha.81
+  - @geekmidas/logger@10.0.0-alpha.81
+  - @geekmidas/manifest@10.0.0-alpha.81
+  - @geekmidas/schema@10.0.0-alpha.81
+  - @geekmidas/services@10.0.0-alpha.81
+  - @geekmidas/storage@10.0.0-alpha.81
+  - @geekmidas/telescope@10.0.0-alpha.81
+
+## 10.0.0-alpha.80
+
+### Minor Changes
+
+- ✨ [#207](https://github.com/geekmidas/toolbox/pull/207) [`a3eed1a`](https://github.com/geekmidas/toolbox/commit/a3eed1a20f731570ea5487659657dcc28bfe309b) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm deploy:github` trusts the OIDC subject GitHub actually sends. It reads the repository's subject settings (`gh api repos/<repo>/actions/oidc/customization/sub`) and builds the role's trust from them: the default `repo:<owner>/<name>:environment:<stage>`, the immutable `repo:<owner>@<ownerId>/<name>@<repoId>:environment:<stage>`, or a custom template made of claims known before the run. A template that includes a run-dependent claim (`job_workflow_ref`, `ref`, `sha`, …) is refused with `OidcSubjectNotSupported`; unreadable settings fall back to the default with a warning naming the endpoint. Re-running it rewrites an existing role's trust and prints old → new, which repairs a role that failed with "Not authorized to perform sts:AssumeRoleWithWebIdentity". `--dry-run` prints the subject.
+
+  A stage that only the `compose` target deploys now gets an inline `gkm-deploy` policy scoped to its own secrets (the SSM parameter or Secrets Manager secret) and, when the deploy state is in AWS, its state, in place of `AdministratorAccess`. SST and other targets keep `AdministratorAccess`, and `--policy-arn` still overrides both. gkm now tags the role with the managed policy it attached (`gkm:policy-arn`), so a re-run detaches only what gkm put there; an older role's `AdministratorAccess` is left attached, with the command to detach it printed.
+
+### Patch Changes
+
+- [#208](https://github.com/geekmidas/toolbox/pull/208) [`f3638fb`](https://github.com/geekmidas/toolbox/commit/f3638fb116f7aeebbbb29c8f06deaa7813cc760e) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: One trace from a request through a queue to the worker: every events driver
+  (pg-boss, SNS, SQS, RabbitMQ, basic) wraps each publish in a PRODUCER span and
+  carries its W3C trace context in the message — SQS/SNS message attributes,
+  RabbitMQ headers, or pg-boss job data under the reserved key `__gkmTrace`,
+  which is removed before a handler sees the payload. Consumers run each job in a
+  CONSUMER span that continues it (a message without context starts a new
+  trace), Lambda queue and subscriber adaptors do the same from their records,
+  and each cron run is a root trace of its own. The constructs record their own
+  spans: a span per database query (`select orders`, with `db.system`, `db.name`,
+  `db.operation`, never parameter values), `cache.get`/`set`/`delete` with
+  hit/miss on the Redis and Postgres drivers, `storage.presign`/`put`/`delete`,
+  `email.send`, and a span per `ExternalApi` client call. Everything goes through
+  the global `@opentelemetry/api` and is a no-op without a registered provider.
+- Updated dependencies [[`f3638fb`](https://github.com/geekmidas/toolbox/commit/f3638fb116f7aeebbbb29c8f06deaa7813cc760e)]:
+  - @geekmidas/constructs@10.0.0-alpha.80
+  - @geekmidas/cache@10.0.0-alpha.80
+  - @geekmidas/storage@10.0.0-alpha.80
+  - @geekmidas/db@10.0.0-alpha.80
+  - @geekmidas/envkit@10.0.0-alpha.80
+  - @geekmidas/errors@10.0.0-alpha.80
+  - @geekmidas/logger@10.0.0-alpha.80
+  - @geekmidas/manifest@10.0.0-alpha.80
+  - @geekmidas/schema@10.0.0-alpha.80
+  - @geekmidas/services@10.0.0-alpha.80
+  - @geekmidas/telescope@10.0.0-alpha.80
+
 ## 10.0.0-alpha.79
 
 ### Patch Changes
