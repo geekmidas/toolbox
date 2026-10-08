@@ -10,8 +10,12 @@ import { loadWorkspaceConfig } from './config.js';
 import { EndpointGenerator } from './generators/EndpointGenerator.js';
 import { OpenApiTsGenerator } from './generators/OpenApiTsGenerator.js';
 import type { GkmConfig, OpenApiConfig, Routes } from './types.js';
-import { normalizeRoutes } from './workspace/client-generator.js';
-import type { NormalizedAppConfig } from './workspace/types.js';
+import { appKey } from './workspace/derive.js';
+import { appConstructGlobs } from './workspace/index.js';
+import type {
+	NormalizedAppConfig,
+	NormalizedWorkspace,
+} from './workspace/types.js';
 
 interface OpenAPIOptions {
 	cwd?: string;
@@ -262,7 +266,7 @@ export async function openapiCommand(
 					);
 				}
 				const [appName, app] = entry;
-				const result = await generateOpenApiForApp(workspaceRoot, appName, app);
+				const result = await generateOpenApiForApp(workspace, appName, app);
 				if (result) {
 					logger.log(
 						`📄 [${appName}] Generated OpenAPI (${result.endpointCount} endpoints)`,
@@ -294,7 +298,7 @@ export async function openapiCommand(
 					// per-surface lines come from the generator; the count is this
 					// command's own summary, as in the single-app path.
 					const result = await generateOpenApiForApp(
-						workspaceRoot,
+						workspace,
 						appName,
 						app,
 						false,
@@ -317,10 +321,14 @@ export async function openapiCommand(
  * Generate OpenAPI for a single named app within a workspace.
  * Runs in-process. The caller is responsible for ensuring `process.cwd()`
  * is the app's directory so tsx loads the app's tsconfig path aliases.
+ *
+ * The endpoints are found the way the app's build finds them — through the
+ * workspace's constructs globs — never by importing every `.ts` under the app,
+ * which loaded its tests and gkm's own generated files with them.
  */
 async function generateOpenApiForApp(
-	workspaceRoot: string,
-	_appName: string,
+	workspace: NormalizedWorkspace,
+	appName: string,
 	app: NormalizedAppConfig,
 	/**
 	 * Quiet by default, because the usual caller is a subprocess whose output
@@ -329,20 +337,27 @@ async function generateOpenApiForApp(
 	 */
 	silent = true,
 ): Promise<{ outputPath: string; endpointCount: number } | null> {
-	// A backend app, and everything under it.
-	//
-	// It used to gate on `app.routes` and glob that; derive no longer sets it,
-	// because an app has one glob and which kind a module exports is decided by
-	// the value. A surface is an app, so an app's own directory contains exactly
-	// its own surface's endpoints — and the split inside is by surface anyway.
 	if (app.type !== 'backend') {
 		return null;
 	}
 
-	const appPath = join(workspaceRoot, app.path);
-	const globs = [join(appPath, '**/*.ts')];
+	const loaded = await new EndpointGenerator().load(
+		appConstructGlobs(workspace, appName),
+	);
 
-	return generateOpenApiFrom(globs, {
+	// The workspace's globs reach every app's code, so each app writes its own
+	// surfaces' clients and no other's. An endpoint whose surface is no app of
+	// this workspace's has nowhere else to go, and stays.
+	const endpoints = loaded
+		.map(({ construct }) => construct)
+		.filter((endpoint) => {
+			const owner = endpoint.owner ?? endpoint.surface?.id;
+			if (!owner) return false;
+			const key = appKey(owner);
+			return key === appName || !workspace.apps[key];
+		});
+
+	return generateOpenApi(endpoints, {
 		// Absent means enabled, which is what the caller's filter already decided
 		// when it kept this app: it skips one that says `openapi: false` and keeps
 		// every other. Passing `undefined` through let `resolveOpenApiConfig`
@@ -351,7 +366,7 @@ async function generateOpenApiForApp(
 		// is the failure the filter above was written to describe.
 		openapi: app.openapi ?? { enabled: true },
 		silent,
-		root: workspaceRoot,
+		root: workspace.root,
 	});
 }
 

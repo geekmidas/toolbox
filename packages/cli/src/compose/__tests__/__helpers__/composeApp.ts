@@ -22,7 +22,8 @@ export interface ComposeAppOptions {
 /**
  * A workspace written the way one is now: a RestApi authenticated by a
  * BetterAuth server in its own container, a database with the auth tenant's
- * migration committed, a Vite site that calls both, and a Worker whose queue
+ * migration committed, a Vite site that calls both — the API through the
+ * client gkm generates from its endpoints — and a Worker whose queue
  * consumer writes the notes the API sends it.
  *
  * The code is the fixture; what a project keeps beside it — package files,
@@ -67,7 +68,9 @@ export function writeComposeApp(
 		name: `@${name}/web`,
 		private: true,
 		type: 'module',
-		scripts: { build: 'vite build' },
+		// Through `gkm exec`, as a site's scripts are: in its image that injects
+		// the build args, and nothing from a secrets store.
+		scripts: { build: 'gkm exec -- vite build' },
 		devDependencies: { vite: '~8.3.1' },
 	});
 

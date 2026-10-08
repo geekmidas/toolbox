@@ -281,6 +281,7 @@ export async function workspaceDockerCommand(
 		const dockerfile = appDockerfile(appName, app, {
 			layout,
 			workspaceRoot: workspace.root,
+			apps: workspace.apps,
 			...(manifest ? { manifest } : {}),
 		});
 
@@ -364,6 +365,11 @@ export function appDockerfile(
 	options: {
 		layout: ImageLayout;
 		workspaceRoot: string;
+		/**
+		 * Every app in the workspace, so a site's image knows the backends whose
+		 * clients it generates.
+		 */
+		apps?: Readonly<Record<string, NormalizedAppConfig>>;
 		manifest?: ConstructManifest;
 		/** A site's public keys, when the caller resolved them itself. */
 		publicUrlArgs?: string[];
@@ -379,6 +385,7 @@ export function appDockerfile(
 		appName,
 		app,
 		options.workspaceRoot,
+		options.apps,
 	);
 
 	if (app.type === 'web') {

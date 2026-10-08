@@ -19,6 +19,13 @@
       "node"
     ],
     "allowJs": true,
+    "declaration": false,
+    "declarationMap": false,
+    "paths": {
+      "@kitchen-sink/client/*": [
+        "../../.gkm/client/*"
+      ]
+    },
     "incremental": true
   },
   "include": [

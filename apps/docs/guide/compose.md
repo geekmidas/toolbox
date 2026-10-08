@@ -241,6 +241,38 @@ workspace nested in a monorepo is built from the monorepo's root — and its
 `.dockerignore` is made to leave out `.gkm/compose`, so no stage's env file is
 ever sent to a build.
 
+### Sites that import a generated client
+
+A site that calls an API through the typed client gkm generates
+(`import { createApi } from '@myapp/client/api'`, mapped by its tsconfig to the
+workspace root's `.gkm/client/api.ts`) gets that client in its image the same
+way everything else gets there: generated inside Docker, never copied from this
+machine — `.dockerignore` leaves every `.gkm` out of the build context.
+
+So a site's image carries the gkm workspace, as a backend's does: its config,
+the directories its constructs and endpoints live in (sources only — no
+`node_modules`, no build output), the workspace's own package where it is
+nested in a monorepo, and the package of each backend the site depends on.
+Before the site is built, its builder runs, for each of those backends,
+
+```sh
+cd apps/api && gkm openapi --app api
+```
+
+which loads the API's endpoints through the workspace's constructs globs and
+writes `.gkm/client/api.ts` at the workspace root, where the site's tsconfig
+paths point. It needs no secret, no stage and no container. A backend with an
+`entry` of its own, or one with `openapi: false`, has no client to generate.
+
+`gkm` is on the builder's `PATH`, resolved from the workspace, so a site's build
+script can be `gkm exec -- next build` (or `gkm exec -- vite build`). In the
+image `GKM_IMAGE_BUILD=1` is set, and `gkm exec` then injects only the public
+values the Dockerfile's build args carry (`NEXT_PUBLIC_*`, `VITE_*`,
+`EXPO_PUBLIC_*`): it reads no secrets store and resolves no local address, so a
+bundle never inlines a developer's `localhost`. The site is built with
+`turbo run build --env-mode=loose`, so those values reach its build whatever the
+project's `turbo.json` declares.
+
 ## The files
 
 Everything for a stage is in `.gkm/compose/<stage>/` (directory `0700`):

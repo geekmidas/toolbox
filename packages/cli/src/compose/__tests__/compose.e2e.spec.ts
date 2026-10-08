@@ -145,7 +145,8 @@ async function dependOnThisCheckout(
 	}
 
 	const sink = JSON.parse(readFileSync(KITCHEN_SINK, 'utf-8'));
-	const range = (dep: string) => sink.dependencies[dep] as string;
+	const range = (dep: string) =>
+		(sink.dependencies[dep] ?? sink.devDependencies[dep]) as string;
 	// What a production server exports telemetry with: telescope, and the
 	// OpenTelemetry packages at the ranges telescope is built against.
 	const telescope = JSON.parse(readFileSync(TELESCOPE, 'utf-8'));
@@ -177,6 +178,8 @@ async function dependOnThisCheckout(
 							// The cache's client, over the stack's Redis.
 							'@geekmidas/cache',
 							'@geekmidas/cli',
+							// What the client generated for the site imports.
+							'@geekmidas/client',
 							'@geekmidas/constructs',
 							'@geekmidas/db',
 							'@geekmidas/envkit',
@@ -199,6 +202,9 @@ async function dependOnThisCheckout(
 							'pg',
 							'pg-boss',
 							'pino',
+							// The generated client's hooks, bundled into the site.
+							'@tanstack/react-query',
+							'react',
 							'zod',
 						].map((dep) => [dep, range(dep)]),
 					),
@@ -490,6 +496,64 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				const deep = await edge('web', '/some/client/route');
 				expect(deep.status).toBe(200);
 				expect(deep.body).toBe(page.body);
+			});
+
+			it('the site calls the API through the client generated in its image', async () => {
+				const page = await edge('web', '/');
+				const script = page.body.match(/src="(\/assets\/[^"]+\.js)"/)?.[1];
+				const bundle = await edge('web', script!);
+				// The generated client is in the bundle: its route map, which only
+				// generation from the API's endpoints writes.
+				expect(bundle.body).toContain('GET /ping');
+				// Generated in the image, not on this machine.
+				expect(existsSync(join(dir, '.gkm', 'client'))).toBe(false);
+
+				// The bundle, run as the browser runs it: its `fetch` goes to the
+				// edge, from the site's origin.
+				const elements: Record<string, { textContent: string }> = {};
+				const browser = {
+					document: {
+						querySelector: (selector: string) => {
+							elements[selector] ??= { textContent: '' };
+							return elements[selector];
+						},
+						querySelectorAll: () => [],
+						createElement: () => ({ relList: { supports: () => true } }),
+					},
+					fetch: async (url: string, init: RequestInit = {}) => {
+						const target = new URL(url);
+						expect(target.origin).toBe(origin('api'));
+						const answer = await edge('api', target.pathname, {
+							method: init.method ?? 'GET',
+							headers: {
+								...(init.headers as Record<string, string>),
+								origin: origin('web'),
+							},
+						});
+						return new globalThis.Response(answer.body, {
+							status: answer.status,
+							headers: { 'content-type': 'application/json' },
+						});
+					},
+				};
+				const saved = {
+					document: (globalThis as Record<string, unknown>).document,
+					fetch: globalThis.fetch,
+				};
+				Object.assign(globalThis, browser);
+				try {
+					const file = join(dir, 'site-bundle.mjs');
+					writeFileSync(file, bundle.body);
+					await import(file);
+					for (let i = 0; i < 100 && !elements['#ping']?.textContent; i++) {
+						await new Promise((resolve) => setTimeout(resolve, 100));
+					}
+				} finally {
+					Object.assign(globalThis, saved);
+				}
+				expect(elements['#ping']?.textContent).toBe(
+					JSON.stringify({ ok: true }),
+				);
 			});
 
 			it('(a) signs in from the site, setting the session on the shared cookie domain', async () => {

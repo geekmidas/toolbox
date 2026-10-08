@@ -183,6 +183,116 @@ describe('building from the build root', () => {
 	});
 });
 
+/** Every site template. */
+const sites = [
+	['Next.js', generateNextjsDockerfile],
+	['a Node SSR site', generateNodeWebDockerfile],
+	['a Vite site', generateViteStaticDockerfile],
+] as const;
+
+describe('a site that imports a generated client', () => {
+	const site = {
+		...backend,
+		imageName: 'web',
+		appPath: 'examples/shop/apps/web',
+		turboPackage: '@shop/web',
+		gkmRoot: 'examples/shop',
+		gkmPaths: ['gkm.config.*', 'apps', 'constructs'],
+		prunePackages: ['@shop/api', '@shop/workspace'],
+		clients: [{ app: 'api', path: 'examples/shop/apps/api' }],
+		publicUrlArgs: ['VITE_API_URL'],
+	};
+
+	it.each(
+		sites,
+	)('carries the gkm workspace, as a backend does (%s)', (_, generate) => {
+		const dockerfile = generate(site);
+
+		expect(dockerfile).toContain(
+			'RUN cd examples/shop && for path in gkm.config.* apps constructs; do',
+		);
+		// The backends its client comes from, and the workspace's package —
+		// which holds the CLI — in the slice and built.
+		expect(dockerfile).toContain(
+			'prune @shop/web @shop/api @shop/workspace --docker',
+		);
+		expect(dockerfile).toContain(
+			"--filter='@shop/web^...' --filter='@shop/api^...' --filter='@shop/workspace^...'",
+		);
+	});
+
+	it.each(
+		sites,
+	)('generates each client in the image, before the site is built (%s)', (_, generate) => {
+		const dockerfile = generate(site);
+
+		const generated = dockerfile.indexOf(
+			'RUN cd /app/examples/shop/apps/api && gkm openapi --app api',
+		);
+		const built = dockerfile.indexOf(
+			"run build --filter='@shop/web' --env-mode=loose",
+		);
+		const dependencies = dockerfile.indexOf("--filter='@shop/web^...'");
+		expect(generated).toBeGreaterThan(-1);
+		expect(built).toBeGreaterThan(generated);
+		// After the workspace packages — the CLI among them — are built.
+		expect(generated).toBeGreaterThan(dependencies);
+	});
+
+	it.each(
+		sites,
+	)('puts the CLI the workspace resolves on the PATH as gkm (%s)', (_, generate) => {
+		const dockerfile = generate(site);
+
+		// Resolved from the gkm root, never a bin a pruned install never linked.
+		expect(dockerfile).toContain(
+			'RUN cd /app/examples/shop && GKM_BIN="$(node -e',
+		);
+		expect(dockerfile).toContain('node_modules/@geekmidas/cli/bin/gkm.mjs');
+		expect(dockerfile).toContain('> /usr/local/bin/gkm');
+		// Before anything runs it.
+		expect(dockerfile.indexOf('/usr/local/bin/gkm')).toBeLessThan(
+			dockerfile.indexOf('gkm openapi'),
+		);
+	});
+
+	it.each(
+		sites,
+	)('has gkm exec read the build args, never a secret (%s)', (_, generate) => {
+		const dockerfile = generate(site);
+
+		expect(dockerfile).toContain('ENV GKM_IMAGE_BUILD=1');
+		expect(dockerfile).toContain('ARG VITE_API_URL=""');
+		// The site's build sees the environment the Dockerfile set.
+		expect(dockerfile).toContain('--env-mode=loose');
+		expect(dockerfile).not.toContain('gkm_credentials');
+	});
+
+	it.each(
+		sites,
+	)('generates nothing for a site that calls no API (%s)', (_, generate) => {
+		const dockerfile = generate({ ...site, clients: [] });
+
+		expect(dockerfile).not.toContain('gkm openapi');
+		expect(dockerfile).toContain('> /usr/local/bin/gkm');
+	});
+
+	it('runs from the build root when the gkm workspace is it', () => {
+		const dockerfile = generateViteStaticDockerfile({
+			...site,
+			appPath: 'apps/web',
+			gkmRoot: '.',
+			clients: [{ app: 'api', path: 'apps/api' }],
+		});
+
+		expect(dockerfile).toContain('RUN cd /app && GKM_BIN=');
+		expect(dockerfile).toContain(
+			'RUN cd /app/apps/api && gkm openapi --app api',
+		);
+		expect(dockerfile).toContain('into .gkm/client/');
+	});
+});
+
 describe('a backend’s externals', () => {
 	it('leaves the runner a single file when the bundle has none', () => {
 		const dockerfile = generateBackendDockerfile(backend);
