@@ -166,6 +166,13 @@ and key in the stage's AWS account and writes the bucket's URL into the
 stage's secrets. It starts no container: a deployed stage's infrastructure is
 not on this machine. See [Providers](./providers.md).
 
+On a compose workspace with `dns` configured, it then points every public
+host of the stage's stack at its server — `GKM_SERVER_IPV4` (and
+`GKM_SERVER_IPV6`) in the stage's secrets — through each domain's DNS
+provider, with this machine's DNS credentials. A compose stage with a domain
+and no `GKM_SERVER_IPV4` is refused before anything runs, with
+`ServerAddressMissing`. See [Compose: DNS](./compose.md#dns).
+
 - `--dry-run` — print the plan; nothing is created in the account, and nothing
   is written to the stage's secrets or state
 - `--profile <name>` — the AWS profile for the stage's account (else
@@ -349,6 +356,9 @@ Options:
                          every construct a deployed stage doesn't account for
                          (no key in its secrets, no provider). Not
                          production-grade: Mailpit delivers no mail
+  --skip-dns-check       Compose: do not check that each public host resolves
+                         to the stage's server (GKM_SERVER_IPV4) before the
+                         stack starts — for a CDN or proxy in front of it
   --provider <name>      Deprecated: `dokploy` means --target dokploy;
                          docker and aws-lambda are removed
   --skip-push, --skip-build
@@ -511,11 +521,19 @@ Options:
                    Deployed stage: run MinIO and Mailpit for every bucket and
                    mail it doesn't account for (no key in its secrets, no
                    provider). The local stage always runs both
+  --skip-dns-check Deployed stage: do not check that each public host
+                   resolves to GKM_SERVER_IPV4 before the stack starts (a CDN
+                   or proxy in front of the server)
 
 The same as `gkm deploy --target compose --stage <stage>`, plus --build, --pull,
 --push, --digests-file and --down.
 
 Errors:
+  ServerAddressMissing    a deployed stage with a domain and no GKM_SERVER_IPV4
+                          in its secrets (gkm secrets:set GKM_SERVER_IPV4 '<ip>')
+  ServerAddressInvalid    GKM_SERVER_IPV4/IPV6 that is not an address
+  HostNotPointingAtServer a public host that does not resolve to the server
+                          (fix: gkm setup --stage <stage>; or --skip-dns-check)
   RegistryRequired        --push, --tag or --pull with no deploy.registry
                           (the image would be a Docker Hub name)
   ComposePushNeedsBuild   --push without --build, or with --pull
@@ -727,6 +745,7 @@ gkm state:unlock --stage production
 ```bash
 # Login to deployment service
 gkm login --provider dokploy
+gkm login --provider godaddy   # a Personal Access Token, scoped to domains.dns:update
 
 # Show current auth status
 gkm whoami

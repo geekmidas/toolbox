@@ -334,6 +334,22 @@ describe('a deployed stage', () => {
 			...overrides,
 		});
 
+	it("never writes the server's address into an app's or a worker's env", () => {
+		const s = deployed({
+			secrets: production({
+				GKM_SERVER_IPV4: '203.0.113.10',
+				GKM_SERVER_IPV6: '2001:db8::10',
+			}),
+		});
+
+		const envs = JSON.stringify([
+			...s.apps.map((a) => a.env),
+			...s.workers.map((w) => w.env),
+		]);
+		expect(envs).not.toContain('GKM_SERVER_');
+		expect(envs).not.toContain('203.0.113.10');
+	});
+
 	it("answers on the stage's domains, with certificates from ACME", () => {
 		const s = deployed();
 

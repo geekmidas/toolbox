@@ -95,10 +95,10 @@ export default defineWorkspace({
   name: 'shop',
   stages: { local: 'dev', deployed: ['staging', 'production'] },
   constructs: './constructs/**/*.ts',
+  domains: { production: 'shop.example.com', staging: 'staging.shop.example.com' },
   deploy: {
     default: 'dokploy',            // 'dokploy' when left out
     registry: 'ghcr.io/acme',      // read by every target that builds images
-    domains: { production: 'shop.example.com', staging: 'staging.shop.example.com' },
     dokploy: { endpoint: 'https://dokploy.example.com' },
   },
 });
@@ -111,7 +111,9 @@ export default defineWorkspace({
   target. An image is `<registry>/<namespace>/<project>-<app>:<tag>`.
   `deploy.dokploy.registry` was moved here; a config that still sets it fails
   with `DokployRegistryMoved`.
-- `deploy.domains` is each deployed stage's base domain, for every target.
+- `domains`, at the root, is each deployed stage's base domain, for every
+  target. It was `deploy.domains`; a config that still sets that fails with
+  `DomainsMoved`.
 
 ## `--target`
 

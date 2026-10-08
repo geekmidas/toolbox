@@ -126,6 +126,11 @@ export interface ComposeOptions {
 	 * Mailpit for mail.
 	 */
 	allowDevServices?: boolean;
+	/**
+	 * `--skip-dns-check`: do not check that each public host resolves to
+	 * the stage's server (`GKM_SERVER_IPV4`) before the stack starts.
+	 */
+	skipDnsCheck?: boolean;
 }
 
 export interface ComposeResult {
@@ -232,6 +237,7 @@ export async function composeCommand(
 		...(options.dryRun ? { dryRun: true } : {}),
 		...(options.push ? { buildOnly: true } : {}),
 		...(options.allowDevServices ? { allowDevServices: true } : {}),
+		...(options.skipDnsCheck ? { skipDnsCheck: true } : {}),
 		logger: {
 			info: (message) => console.log(message),
 			warn: (message) => console.warn(message),

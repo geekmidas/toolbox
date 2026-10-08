@@ -94,6 +94,12 @@ export interface DeployInput {
 	 * on an AWS target it fails with `DevServicesNeedServerTarget`.
 	 */
 	allowDevServices?: boolean;
+	/**
+	 * Do not check, on a server target, that each public host resolves to
+	 * the stage's server (`GKM_SERVER_IPV4`) before the stack starts — for a CDN
+	 * or proxy in front of the server.
+	 */
+	skipDnsCheck?: boolean;
 	/** Receives each progress line as it is written. Defaults to none. */
 	logger?: DeployLogger;
 	/**
@@ -256,6 +262,7 @@ export function deploy(input: DeployInput): DeployRun {
 							...(input.allowDevServices
 								? { allowDevServices: input.allowDevServices }
 								: {}),
+							...(input.skipDnsCheck ? { skipDnsCheck: true } : {}),
 						},
 						ctx,
 					),

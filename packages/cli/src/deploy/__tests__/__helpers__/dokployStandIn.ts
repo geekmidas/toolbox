@@ -523,9 +523,9 @@ export default defineWorkspace({
     app: { type: 'mobile', path: 'apps/app', port: 8081, framework: 'expo' },
   }`
 	},
+  domains: { ${stage}: 'shop.example.com', staging: 'staging.shop.example.com' },
   deploy: {
     default: 'dokploy',
-    domains: { ${stage}: 'shop.example.com', staging: 'staging.shop.example.com' },
     ${registry}
     ${extra.telemetry ? `telemetry: ${extra.telemetry},` : ''}
     dokploy: {

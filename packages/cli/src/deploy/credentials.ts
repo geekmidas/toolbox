@@ -51,6 +51,20 @@ export interface CredentialKinds {
 		request: { stage: string };
 		value: AwsCredential;
 	};
+	/**
+	 * A GoDaddy Personal Access Token, for a `dns` domain whose provider is
+	 * `godaddy`. Read on the machine that writes the records — never the
+	 * server's.
+	 */
+	godaddy: {
+		request: Record<never, never>;
+		value: GoDaddyCredential;
+	};
+}
+
+/** A GoDaddy Personal Access Token, sent as `Authorization: Bearer <token>`. */
+export interface GoDaddyCredential {
+	token: string;
 }
 
 /**
@@ -105,6 +119,8 @@ const HOW_TO_PROVIDE: Partial<Record<CredentialKind, string>> = {
 		"Set DOKPLOY_API_TOKEN (and DOKPLOY_ENDPOINT, or deploy.dokploy.endpoint in gkm.config.ts), run `gkm login --provider dokploy`, or pass them through the deploy's CredentialProvider.",
 	registry:
 		'Add the registry in Dokploy (Settings → Docker Registry) and set deploy.dokploy.registryId, set DOCKER_REGISTRY_USERNAME and DOCKER_REGISTRY_PASSWORD, or run `gkm deploy` at a terminal to be asked for them.',
+	godaddy:
+		'Set GODADDY_API_TOKEN to a Personal Access Token scoped to domains.dns:update (create one in the GoDaddy developer dashboard), or run `gkm login --provider godaddy`.',
 	aws: "Set AWS_PROFILE to the stage account's profile, or AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY (and AWS_SESSION_TOKEN) — in CI, the keys aws-actions/configure-aws-credentials exports — or pass them through the deploy's CredentialProvider.",
 };
 
@@ -125,7 +141,9 @@ export class MissingCredential extends Error {
 					? `Dokploy has no registry for ${target ?? 'the configured registry'}, and there are no credentials to create one with.`
 					: kind === 'aws'
 						? `No AWS credentials${target ? ` for the "${target}" stage` : ''}.`
-						: `No "${String(kind)}" credentials${target ? ` for ${target}` : ''}.`;
+						: kind === 'godaddy'
+							? `No GoDaddy API token${target ? ` for ${target}` : ''}.`
+							: `No "${String(kind)}" credentials${target ? ` for ${target}` : ''}.`;
 		super(`${what} ${howToProvide}`);
 		this.name = 'MissingCredential';
 	}
@@ -199,6 +217,18 @@ export function storedCredentials(
 					const password = env.DOCKER_REGISTRY_PASSWORD;
 					if (!username || !password) return undefined;
 					return { username, password } as never;
+				}
+				case 'godaddy': {
+					// The environment first, then the stored login.
+					const token =
+						env.GODADDY_API_TOKEN ??
+						(
+							await readCredentials(
+								options.home ? { home: options.home } : undefined,
+							)
+						).godaddy?.token;
+					if (!token) return undefined;
+					return { token } as never;
 				}
 				case 'aws': {
 					const region = env.AWS_REGION ?? env.AWS_DEFAULT_REGION;

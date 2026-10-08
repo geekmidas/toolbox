@@ -7,6 +7,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
+import { isReservedStageKey } from '../../compose/dnsConfig';
 import {
 	type DokployStageState,
 	getGeneratedSecret,
@@ -115,6 +116,9 @@ export function resolveEnvVar(
 	varName: string,
 	context: EnvResolverContext,
 ): string | undefined {
+	// The server's address is gkm's own (`GKM_SERVER_*`): never an app's.
+	if (isReservedStageKey(varName)) return undefined;
+
 	// Auto-supported variables
 	switch (varName) {
 		case 'PORT':

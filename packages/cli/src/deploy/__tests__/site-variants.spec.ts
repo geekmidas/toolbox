@@ -27,9 +27,9 @@ const workspace = {
 			resolvedDeployTarget: 'dokploy',
 		},
 	},
+	domains: { production: 'acme.com' },
 	deploy: {
 		default: 'dokploy',
-		domains: { production: 'acme.com' },
 	},
 	shared: { packages: [] },
 	secrets: {},
@@ -73,7 +73,7 @@ describe('two sites of different variants', () => {
 				name,
 				units[name]!,
 				'production',
-				workspace.deploy?.domains,
+				workspace.domains,
 				isMainFrontendApp(name, units[name]!, units),
 			);
 

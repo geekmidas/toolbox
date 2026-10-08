@@ -1,4 +1,5 @@
 import { z } from 'zod/v4';
+import { checkDnsRecordsMode } from '../compose/dnsConfig.js';
 import { checkComposeStages } from '../compose/proxy.js';
 import { checkStageProvider } from '../providers/config.js';
 import {
@@ -8,7 +9,7 @@ import {
 } from '../target/builtins.js';
 import { isDeployTarget } from '../target/define.js';
 import { checkStageTelemetry } from '../telemetry/config.js';
-import { stageProblems } from './stages.js';
+import { assertDeployedStageKeys, stageProblems } from './stages.js';
 
 /** Routes are a glob, or a list of them. */
 const RoutesSchema = z.union([z.string(), z.array(z.string())]);
@@ -369,10 +370,28 @@ export const UpsertResultSchema = z.object({
 // =============================================================================
 
 /**
+ * How a domain's hosts point at a compose stage's server: an A (and AAAA)
+ * record each (`'a'`, the default), or one A record for `target` and a CNAME
+ * to it for every other host but the apex. `target` is one name, or one per
+ * stage; it must be under the domain.
+ */
+export const DnsRecordsModeSchema = z.union([
+	z.literal('a'),
+	z
+		.object({
+			mode: z.literal('cname'),
+			target: z.union([z.string(), z.record(z.string(), z.string())]),
+		})
+		.strict(),
+]);
+
+/**
  * Hostinger DNS provider config (without domain - domain is the record key).
  */
 export const HostingerDnsProviderSchema = z.object({
 	provider: z.literal('hostinger'),
+	/** How the hosts point at a compose stage's server — see {@link DnsRecordsModeSchema}. */
+	records: DnsRecordsModeSchema.optional(),
 	/** TTL in seconds (default: 300) */
 	ttl: z.number().int().positive().optional(),
 });
@@ -382,6 +401,8 @@ export const HostingerDnsProviderSchema = z.object({
  */
 export const Route53DnsProviderSchema = z.object({
 	provider: z.literal('route53'),
+	/** How the hosts point at a compose stage's server — see {@link DnsRecordsModeSchema}. */
+	records: DnsRecordsModeSchema.optional(),
 	/** AWS region (optional - uses AWS_REGION env var if not provided) */
 	region: AwsRegionSchema.optional(),
 	/** AWS profile name (optional - uses default credential chain if not provided) */
@@ -393,10 +414,31 @@ export const Route53DnsProviderSchema = z.object({
 });
 
 /**
+ * GoDaddy DNS provider config (without domain - domain is the record key).
+ *
+ * Credentials: `GODADDY_API_TOKEN` (a Personal Access Token scoped to
+ * `domains.dns:update`), else `gkm login --provider godaddy`. GoDaddy refuses
+ * a TTL under 600 seconds.
+ */
+export const GoDaddyDnsProviderSchema = z.object({
+	provider: z.literal('godaddy'),
+	/** How the hosts point at a compose stage's server — see {@link DnsRecordsModeSchema}. */
+	records: DnsRecordsModeSchema.optional(),
+	/** TTL in seconds (default and minimum: 600) */
+	ttl: z
+		.number()
+		.int()
+		.min(600, "GoDaddy's minimum TTL is 600 seconds")
+		.optional(),
+});
+
+/**
  * Cloudflare DNS provider config (placeholder for future).
  */
 export const CloudflareDnsProviderSchema = z.object({
 	provider: z.literal('cloudflare'),
+	/** How the hosts point at a compose stage's server — see {@link DnsRecordsModeSchema}. */
+	records: DnsRecordsModeSchema.optional(),
 	/** TTL in seconds (default: 300) */
 	ttl: z.number().int().positive().optional(),
 });
@@ -406,6 +448,8 @@ export const CloudflareDnsProviderSchema = z.object({
  */
 export const ManualDnsProviderSchema = z.object({
 	provider: z.literal('manual'),
+	/** How the hosts point at a compose stage's server — see {@link DnsRecordsModeSchema}. */
+	records: DnsRecordsModeSchema.optional(),
 });
 
 /**
@@ -429,6 +473,8 @@ export const CustomDnsProviderSchema = z.object({
 				'Custom DNS provider must implement name, getRecords(), and upsertRecords() methods',
 		},
 	),
+	/** How the hosts point at a compose stage's server — see {@link DnsRecordsModeSchema}. */
+	records: DnsRecordsModeSchema.optional(),
 	/** TTL in seconds (default: 300) */
 	ttl: z.number().int().positive().optional(),
 });
@@ -439,6 +485,7 @@ export const CustomDnsProviderSchema = z.object({
 export const BuiltInDnsProviderSchema = z.discriminatedUnion('provider', [
 	HostingerDnsProviderSchema,
 	Route53DnsProviderSchema,
+	GoDaddyDnsProviderSchema,
 	CloudflareDnsProviderSchema,
 	ManualDnsProviderSchema,
 ]);
@@ -468,6 +515,7 @@ export type DnsProvider = z.infer<typeof DnsProviderSchema>;
  * Supported providers:
  * - 'hostinger': Use Hostinger DNS API
  * - 'route53': Use AWS Route53
+ * - 'godaddy': Use GoDaddy's v1 DNS API
  * - 'cloudflare': Use Cloudflare DNS API (future)
  * - 'manual': Don't create records, just print required records
  * - Custom: Provide a DnsProvider implementation
@@ -479,6 +527,9 @@ export const HostingerDnsConfigSchema = HostingerDnsProviderSchema.extend({
 	domain: z.string().min(1, 'Domain is required'),
 });
 export const Route53DnsConfigSchema = Route53DnsProviderSchema.extend({
+	domain: z.string().min(1, 'Domain is required'),
+});
+export const GoDaddyDnsConfigSchema = GoDaddyDnsProviderSchema.extend({
 	domain: z.string().min(1, 'Domain is required'),
 });
 export const CloudflareDnsConfigSchema = CloudflareDnsProviderSchema.extend({
@@ -493,6 +544,7 @@ export const CustomDnsConfigSchema = CustomDnsProviderSchema.extend({
 export const BuiltInDnsConfigSchema = z.discriminatedUnion('provider', [
 	HostingerDnsConfigSchema,
 	Route53DnsConfigSchema,
+	GoDaddyDnsConfigSchema,
 	CloudflareDnsConfigSchema,
 	ManualDnsConfigSchema,
 ]);
@@ -651,15 +703,12 @@ const DeployConfigSchema = z.object({
 			"deploy.namespace must be lowercase letters and digits with single '-' between them",
 		)
 		.optional(),
-	/** Each deployed stage's base domain (stage name -> domain). */
-	domains: z.record(z.string(), z.string()).optional(),
 	/** Where every target pushes and pulls the apps' images. */
 	registry: z.string().min(1).optional(),
 	dokploy: DokployWorkspaceConfigSchema.optional(),
 	compose: ComposeWorkspaceConfigSchema.optional(),
 	telemetry: TelemetryConfigSchema.optional(),
 	objects: ObjectsConfigSchema.optional(),
-	dns: DnsConfigWithLegacySchema.optional(),
 	backups: BackupsConfigSchema.optional(),
 });
 
@@ -936,6 +985,10 @@ export const WorkspaceConfigSchema = z
 		 */
 		apps: z.record(z.string(), AppConfigSchema).optional(),
 		shared: SharedConfigSchema.optional(),
+		/** Each deployed stage's base domain (stage name -> domain). */
+		domains: z.record(z.string(), z.string()).optional(),
+		/** Each root domain's DNS provider, and how its hosts are pointed. */
+		dns: DnsConfigSchema.optional(),
 		deploy: DeployConfigSchema.optional(),
 		stages: StagesConfigSchema,
 		secrets: SecretsConfigSchema.optional(),
@@ -1036,6 +1089,55 @@ export const WorkspaceConfigSchema = z
 				message: error instanceof Error ? error.message : String(error),
 				path: ['deploy', 'compose'],
 			});
+		}
+
+		// Every other per-stage map names deployed stages only.
+		const perStage: [string, (string | number)[], unknown][] = [
+			['domains', ['domains'], data.domains],
+			['deploy.objects', ['deploy', 'objects'], data.deploy?.objects],
+			['deploy.telemetry', ['deploy', 'telemetry'], data.deploy?.telemetry],
+			...Object.entries(data.dns ?? {}).map(
+				([domain, entry]): [string, (string | number)[], unknown] => {
+					const records = (entry as { records?: unknown }).records;
+					const target =
+						records && typeof records === 'object'
+							? (records as { target?: unknown }).target
+							: undefined;
+					return [
+						`dns['${domain}'].records.target`,
+						['dns', domain, 'records', 'target'],
+						target && typeof target === 'object' ? target : undefined,
+					];
+				},
+			),
+		];
+		for (const [setting, path, map] of perStage) {
+			try {
+				assertDeployedStageKeys(
+					setting,
+					map as Record<string, unknown> | undefined,
+					data.stages,
+				);
+			} catch (error) {
+				ctx.addIssue({
+					code: 'custom',
+					message: error instanceof Error ? error.message : String(error),
+					path,
+				});
+			}
+		}
+
+		// A CNAME target is a hostname under its own domain.
+		for (const [domain, entry] of Object.entries(data.dns ?? {})) {
+			try {
+				checkDnsRecordsMode(domain, (entry as { records?: unknown }).records);
+			} catch (error) {
+				ctx.addIssue({
+					code: 'custom',
+					message: error instanceof Error ? error.message : String(error),
+					path: ['dns', domain, 'records'],
+				});
+			}
 		}
 
 		// Validate workspace name is required for SSM state provider

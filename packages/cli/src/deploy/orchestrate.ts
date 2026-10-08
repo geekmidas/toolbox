@@ -52,6 +52,8 @@ export interface DeployRequest {
 	 * bucket and mail it does not account for. Server targets only.
 	 */
 	allowDevServices?: boolean;
+	/** `--skip-dns-check`: a server target checks no host's DNS. */
+	skipDnsCheck?: boolean;
 }
 
 /**
@@ -449,6 +451,7 @@ async function prepare(
 		dryRun: ctx.dryRun,
 		atomic: request.atomic ?? false,
 		allowDevServices,
+		...(request.skipDnsCheck ? { skipDnsCheck: true } : {}),
 		credentials: ctx.credentials,
 		state: store,
 		secrets,

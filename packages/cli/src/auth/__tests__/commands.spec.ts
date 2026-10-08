@@ -21,9 +21,11 @@ import {
 	it,
 	vi,
 } from 'vitest';
+import { storedCredentials } from '../../deploy/credentials';
 import {
 	getDokployCredentials,
 	getHostingerToken,
+	readCredentials,
 	storeDokployCredentials,
 } from '../credentials';
 import { loginCommand, logoutCommand, whoamiCommand } from '../index';
@@ -85,6 +87,7 @@ describe('login, logout, whoami', () => {
 		vi.stubEnv('DOKPLOY_API_TOKEN', undefined);
 		vi.stubEnv('DOKPLOY_ENDPOINT', undefined);
 		vi.stubEnv('HOSTINGER_API_TOKEN', undefined);
+		vi.stubEnv('GODADDY_API_TOKEN', undefined);
 		out = [];
 		err = [];
 		vi.spyOn(console, 'log').mockImplementation((...a) => {
@@ -245,6 +248,38 @@ describe('login, logout, whoami', () => {
 				ExitCalled,
 			);
 			expect(err).toContain('Token is required');
+		});
+	});
+
+	describe('gkm login --provider godaddy', () => {
+		const godaddy = () =>
+			storedCredentials({ env: {} }).get({ kind: 'godaddy' });
+
+		it('stores the Personal Access Token, never printing it', async () => {
+			await loginCommand({ provider: 'godaddy', token: 'gd-pat-123456' });
+
+			expect(await godaddy()).toEqual({ token: 'gd-pat-123456' });
+			expect(out).toContain('\n✓ GoDaddy token stored.');
+			expect(out.join('\n')).not.toContain('gd-pat-123456');
+		});
+
+		it('asks for the token when none was given, pointing at the DNS scope', async () => {
+			terminal();
+			type('g', 'd', '\n');
+
+			await loginCommand({ provider: 'godaddy' });
+
+			expect(await godaddy()).toEqual({ token: 'gd' });
+			expect(out.join('\n')).toContain('domains.dns:update');
+		});
+
+		it('is removed by gkm logout --provider godaddy', async () => {
+			await loginCommand({ provider: 'godaddy', token: 'gd-pat' });
+
+			await logoutCommand({ provider: 'godaddy' });
+
+			expect((await readCredentials()).godaddy).toBeUndefined();
+			expect(out).toContain('\n✓ Logged out from GoDaddy');
 		});
 	});
 

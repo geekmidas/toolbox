@@ -364,12 +364,13 @@ Each app answers on its own host:
 | Stage | Hosts | Certificates |
 | --- | --- | --- |
 | local | `api.<project>.localhost`, `<project>.localhost` for the root site | Caddy's internal CA |
-| deployed | the stage's domains, from `deploy.domains` — `api.example.com`, `example.com` | Let's Encrypt, automatically |
+| deployed | the stage's domains, from `domains` — `api.example.com`, `example.com` | Let's Encrypt, automatically |
 
 The hosts are the ones `gkm deploy` uses: an app's `subdomain` (or its name)
 under the stage's base domain, and the root site on the base domain itself.
-For a deployed stage, point those names at the machine and leave ports 80 and
-443 open; Caddy obtains each certificate on first request.
+For a deployed stage, point those names at the machine — [`gkm setup` can
+write the records](#dns) — and leave ports 80 and 443 open; Caddy obtains
+each certificate on first request.
 
 Caddy forwards `Host` and `X-Forwarded-*` as it does by default, so an app sees
 the address its caller used. Responses are never buffered (`flush_interval
@@ -392,6 +393,74 @@ For the local stage the URLs then carry the port
 (`https://api.shop.localhost:8443`), and the env files and site builds use them.
 The local CA's root is copied to `.gkm/compose/<stage>/caddy-root.crt`; point
 `NODE_EXTRA_CA_CERTS` at it, or trust it in a browser.
+
+## DNS
+
+A deployed stage's server is in its own secrets: its public addresses, never
+in `gkm.config.ts`.
+
+```bash
+gkm secrets:set GKM_SERVER_IPV4 '203.0.113.10' --stage production
+gkm secrets:set GKM_SERVER_IPV6 '2001:db8::10' --stage production   # optional
+```
+
+`GKM_SERVER_IPV4` is **required** of every deployed stage that has a domain
+(`domains.<stage>`): `gkm setup --stage <stage>` and every deploy refuse one
+without it, before anything else runs, with `ServerAddressMissing` and the
+`gkm secrets:set` line. `gkm secrets:add` lists it among the stage's required
+keys. A stage whose domain is a `*.localhost` name needs none. A value that is
+not an address fails with `ServerAddressInvalid`, naming the key. Both keys
+are gkm's own: no app's or worker's env file ever holds them.
+
+### Writing the records
+
+With [`dns`](./deployment.md#dns-providers) naming the provider of the
+stage's root domain, `gkm setup --stage <stage>` points every public host the
+stack serves at the server — the apex (the root site), each API and auth
+server, each file server, and the public log UI when it is enabled:
+
+```ts
+// gkm.config.ts
+domains: { production: 'shop.example.com' },
+dns: { 'example.com': { provider: 'godaddy' } },
+```
+
+```text
+$ gkm setup --stage production --dry-run
+🌐 DNS for 'production' → 203.0.113.10 (dry run — nothing is written)
+   example.com (godaddy) — dry run
+   + api.shop.example.com             A     203.0.113.10  (TTL 600) — would create
+   ✓ auth.shop.example.com            A     203.0.113.10  (TTL 600) — up to date
+   ~ shop.example.com                 A     198.51.100.7 → 203.0.113.10  (TTL 600) — would update
+```
+
+Every host gets an A record, and an AAAA record with `GKM_SERVER_IPV6`. With
+`records: { mode: 'cname', target: 'server.example.com' }` on the domain, the
+target gets the A record and every other host a CNAME to it; the apex is
+always an A record. A record that already has its value is not written; one
+with another value is replaced. A `manual` domain is printed, not written.
+The DNS provider's credentials are this machine's — see
+[DNS Providers](./deployment.md#dns-providers) for GoDaddy's token and its API
+access restriction.
+
+### The DNS check
+
+Every deploy of a deployed stage resolves each public host with the system
+resolver (all of its addresses) **before** the stack starts and Caddy or
+Traefik ask Let's Encrypt for certificates — a certificate for a name that
+points elsewhere cannot be issued, and each failed attempt counts against
+Let's Encrypt's rate limit. A host that does not resolve to `GKM_SERVER_IPV4`,
+or also resolves to an address that is not the server's, stops `validate`:
+
+```text
+HostNotPointingAtServer: A host of 'production' does not resolve to its server, so a certificate for it cannot be issued:
+  - api.shop.example.com → 198.51.100.7, expected 203.0.113.10
+Fix: gkm setup --stage production writes the records for example.com (gkm setup --stage production --dry-run shows them first).
+```
+
+A dry run prints the same as a warning. With a CDN or proxy in front of the
+server — the hosts resolve to it, not to the server — pass `--skip-dns-check`
+to `gkm deploy` or `gkm compose`. The local stage is never checked.
 
 ## Proxy: Caddy or Traefik
 

@@ -29,6 +29,10 @@ export interface ComposeAppOptions {
 	deployed?: readonly string[];
 	/** Each deployed stage's domain, in place of `domain`. */
 	domains?: Record<string, string>;
+	/** `dns`, as it is written in the config. */
+	dns?: Record<string, unknown>;
+	/** `deploy.default` — `dokploy` when absent. */
+	target?: string;
 }
 
 /**
@@ -111,9 +115,10 @@ export default defineWorkspace({
     './apps/*/endpoints/**/*.ts',
     './apps/*/queues/**/*.ts',
   ],
+  domains: ${JSON.stringify(options.domains ?? { production: options.domain ?? 'shop.example.com' })},
+  ${options.dns ? `dns: ${JSON.stringify(options.dns)},` : ''}
   deploy: {
-    default: 'dokploy',
-    domains: ${JSON.stringify(options.domains ?? { production: options.domain ?? 'shop.example.com' })},
+    default: ${JSON.stringify(options.target ?? 'dokploy')},
     ${options.registry ? `registry: ${JSON.stringify(options.registry)},` : ''}
     ${compose ? `compose: ${JSON.stringify(compose)},` : ''}
     ${options.deployTelemetry ? `telemetry: ${JSON.stringify(options.deployTelemetry)},` : ''}
@@ -144,4 +149,51 @@ export async function loadComposeApp(dir: string): Promise<{
 		background,
 	});
 	return { workspace, manifest, runnables, background };
+}
+
+/** The documentation address the fixture's servers stand on. */
+export const SERVER_IPV4 = '203.0.113.10';
+
+/**
+ * The stage's server, as `gkm secrets:set GKM_SERVER_IPV4` stores it: what a
+ * deployed stage that serves a domain must have before a deploy runs. Only
+ * that key — nothing a deploy would generate.
+ */
+export async function serveFrom(
+	dir: string,
+	stage = 'production',
+	ipv4 = SERVER_IPV4,
+	home?: string,
+): Promise<void> {
+	const { loadWorkspaceSettings } = await import('../../../config');
+	const { secretsStoreFor } = await import('../../../secrets/store');
+	const { initStageSecrets } = await import('../../../secrets/storage');
+	const workspace = await loadWorkspaceSettings(dir);
+	const store = await secretsStoreFor(workspace, stage, home ? { home } : {});
+	// Written under another GKM_HOME's key, it is unreadable here: start over.
+	const stored =
+		(await store.read(stage).catch(() => null)) ?? initStageSecrets(stage);
+	await store.write(stage, {
+		...stored,
+		custom: { ...stored.custom, GKM_SERVER_IPV4: ipv4 },
+	});
+}
+
+/** A resolver that answers every host with the fixture's server. */
+export const resolvesHere = async (): Promise<string[]> => [SERVER_IPV4];
+
+/** Whether the stage's secrets hold more than the server's address. */
+export async function stageGenerated(
+	dir: string,
+	stage = 'production',
+): Promise<boolean> {
+	const { loadWorkspaceSettings } = await import('../../../config');
+	const { secretsStoreFor } = await import('../../../secrets/store');
+	const workspace = await loadWorkspaceSettings(dir);
+	const stored = await (await secretsStoreFor(workspace, stage)).read(stage);
+	if (!stored) return false;
+	return (
+		stored.seed !== undefined ||
+		Object.keys(stored.custom).some((key) => !key.startsWith('GKM_SERVER_'))
+	);
 }

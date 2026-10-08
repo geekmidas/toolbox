@@ -727,113 +727,166 @@ describe('WorkspaceConfigSchema', () => {
 	});
 
 	describe('DNS configuration', () => {
-		it('should accept multi-domain DNS config', () => {
-			const config = {
-				stages: { local: 'development', deployed: ['production'] },
-				apps: {
-					api: {
-						type: 'backend' as const,
-						path: 'apps/api',
-						port: 3000,
-						routes: './src/**/*.ts',
-					},
+		const base = {
+			stages: { local: 'development', deployed: ['production'] },
+			apps: {
+				api: {
+					type: 'backend' as const,
+					path: 'apps/api',
+					port: 3000,
+					routes: './src/**/*.ts',
 				},
-				deploy: {
-					default: 'dokploy' as const,
-					dns: {
-						'geekmidas.dev': { provider: 'hostinger' as const },
-						'geekmidas.com': {
-							provider: 'route53' as const,
-							region: 'us-east-1' as const,
+			},
+		};
+
+		it('takes dns at the root, keyed by root domain', () => {
+			const result = validateWorkspaceConfig({
+				...base,
+				dns: {
+					'geekmidas.dev': { provider: 'hostinger' as const },
+					'geekmidas.com': {
+						provider: 'route53' as const,
+						region: 'us-east-1' as const,
+					},
+					'example.org': { provider: 'godaddy' as const },
+				},
+			});
+
+			expect(result.dns).toEqual({
+				'geekmidas.dev': { provider: 'hostinger' },
+				'geekmidas.com': { provider: 'route53', region: 'us-east-1' },
+				'example.org': { provider: 'godaddy' },
+			});
+		});
+
+		it('refuses the single-domain shape at the root', () => {
+			const result = safeValidateWorkspaceConfig({
+				...base,
+				dns: { provider: 'hostinger', domain: 'example.com' },
+			});
+
+			expect(result.success).toBe(false);
+		});
+
+		it('takes the manual provider', () => {
+			const result = validateWorkspaceConfig({
+				...base,
+				dns: { 'example.com': { provider: 'manual' as const } },
+			});
+
+			expect(result.dns).toEqual({ 'example.com': { provider: 'manual' } });
+		});
+
+		it('takes a TTL, and refuses one under GoDaddy’s 600 seconds', () => {
+			const result = validateWorkspaceConfig({
+				...base,
+				dns: { 'example.com': { provider: 'hostinger' as const, ttl: 600 } },
+			});
+			expect(result.dns?.['example.com']).toMatchObject({ ttl: 600 });
+
+			const low = safeValidateWorkspaceConfig({
+				...base,
+				dns: { 'example.com': { provider: 'godaddy', ttl: 300 } },
+			});
+			expect(low.success).toBe(false);
+			expect(JSON.stringify(low.error)).toContain('600');
+		});
+
+		it('takes a CNAME records mode whose target is under the domain', () => {
+			const result = validateWorkspaceConfig({
+				...base,
+				dns: {
+					'example.com': {
+						provider: 'godaddy' as const,
+						records: {
+							mode: 'cname' as const,
+							target: { production: 'server.example.com' },
 						},
 					},
 				},
-			};
+			});
 
-			const result = validateWorkspaceConfig(config);
-
-			expect(result.deploy?.dns).toEqual({
-				'geekmidas.dev': { provider: 'hostinger' },
-				'geekmidas.com': { provider: 'route53', region: 'us-east-1' },
+			expect(result.dns?.['example.com']).toMatchObject({
+				records: { mode: 'cname' },
 			});
 		});
 
-		it('should accept legacy single-domain DNS config', () => {
-			const config = {
-				stages: { local: 'development', deployed: ['production'] },
-				apps: {
-					api: {
-						type: 'backend' as const,
-						path: 'apps/api',
-						port: 3000,
-						routes: './src/**/*.ts',
+		it('refuses a CNAME target outside its domain with DnsTargetInvalid', () => {
+			const result = safeValidateWorkspaceConfig({
+				...base,
+				dns: {
+					'example.com': {
+						provider: 'godaddy',
+						records: { mode: 'cname', target: 'server.other.org' },
 					},
 				},
-				deploy: {
-					default: 'dokploy' as const,
-					dns: {
-						provider: 'hostinger' as const,
-						domain: 'example.com',
-					},
-				},
-			};
-
-			const result = validateWorkspaceConfig(config);
-
-			expect(result.deploy?.dns).toEqual({
-				provider: 'hostinger',
-				domain: 'example.com',
 			});
+
+			expect(result.success).toBe(false);
+			expect(JSON.stringify(result.error)).toContain(
+				"dns['example.com'].records.target",
+			);
 		});
 
-		it('should accept DNS config with manual provider', () => {
-			const config = {
-				stages: { local: 'development', deployed: ['production'] },
-				apps: {
-					api: {
-						type: 'backend' as const,
-						path: 'apps/api',
-						port: 3000,
-						routes: './src/**/*.ts',
+		it('refuses a per-stage target for a stage it does not deploy', () => {
+			const result = safeValidateWorkspaceConfig({
+				...base,
+				dns: {
+					'example.com': {
+						provider: 'godaddy',
+						records: {
+							mode: 'cname',
+							target: { staging: 'server.example.com' },
+						},
 					},
 				},
-				deploy: {
-					default: 'dokploy' as const,
-					dns: {
-						'example.com': { provider: 'manual' as const },
-					},
-				},
-			};
-
-			const result = validateWorkspaceConfig(config);
-
-			expect(result.deploy?.dns).toEqual({
-				'example.com': { provider: 'manual' },
 			});
+
+			expect(result.success).toBe(false);
+			expect(JSON.stringify(result.error)).toContain(
+				"names the stage 'staging'",
+			);
+		});
+	});
+
+	describe('per-stage maps', () => {
+		const base = {
+			stages: { local: 'development', deployed: ['production', 'staging'] },
+		};
+
+		it.each([
+			['domains', { domains: { preview: 'preview.example.com' } }],
+			['deploy.objects', { deploy: { objects: { preview: 'external' } } }],
+			['deploy.telemetry', { deploy: { telemetry: { preview: false } } }],
+		])('refuses %s keyed by a stage it does not deploy, naming them', (setting, extra) => {
+			const result = safeValidateWorkspaceConfig({ ...base, ...extra });
+
+			expect(result.success).toBe(false);
+			const message = JSON.stringify(result.error);
+			expect(message).toContain(`${setting} names the stage 'preview'`);
+			expect(message).toContain("'production', 'staging'");
 		});
 
-		it('should accept DNS config with TTL', () => {
-			const config = {
-				stages: { local: 'development', deployed: ['production'] },
-				apps: {
-					api: {
-						type: 'backend' as const,
-						path: 'apps/api',
-						port: 3000,
-						routes: './src/**/*.ts',
-					},
-				},
-				deploy: {
-					default: 'dokploy' as const,
-					dns: {
-						'example.com': { provider: 'hostinger' as const, ttl: 600 },
-					},
-				},
-			};
+		it('refuses the local stage in domains', () => {
+			const result = safeValidateWorkspaceConfig({
+				...base,
+				domains: { development: 'dev.example.com' },
+			});
 
-			const result = validateWorkspaceConfig(config);
+			expect(result.success).toBe(false);
+			expect(JSON.stringify(result.error)).toContain('the local stage');
+		});
 
-			expect((result.deploy?.dns as any)['example.com'].ttl).toBe(600);
+		it('takes deployed stages', () => {
+			const result = validateWorkspaceConfig({
+				...base,
+				domains: { production: 'example.com', staging: 'staging.example.com' },
+			});
+
+			expect(result.domains).toEqual({
+				production: 'example.com',
+				staging: 'staging.example.com',
+			});
 		});
 	});
 

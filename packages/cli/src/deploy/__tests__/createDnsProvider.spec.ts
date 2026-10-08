@@ -4,6 +4,7 @@ import {
 	type DeleteDnsRecord,
 	type DeleteResult,
 	type DnsProvider,
+	DnsProviderNotImplemented,
 	type DnsRecord,
 	isDnsProvider,
 	type UpsertDnsRecord,
@@ -115,7 +116,7 @@ describe('createDnsProvider', () => {
 				createDnsProvider({
 					config: { provider: 'cloudflare' },
 				}),
-			).rejects.toThrow('Cloudflare DNS provider not yet implemented');
+			).rejects.toBeInstanceOf(DnsProviderNotImplemented);
 		});
 	});
 

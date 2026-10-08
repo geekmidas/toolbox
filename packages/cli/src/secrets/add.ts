@@ -14,6 +14,7 @@
  * with `gkm secrets:set`.
  */
 
+import { isIPv4, isIPv6 } from 'node:net';
 import {
 	type S3Address,
 	build as s3Build,
@@ -21,7 +22,9 @@ import {
 } from '@geekmidas/storage/s3-url';
 import prompts, { type PromptObject } from 'prompts';
 import { z } from 'zod';
+import { SERVER_IPV4_KEY, SERVER_IPV6_KEY } from '../compose/dnsConfig.js';
 import { loadWorkspaceSettings } from '../config';
+import { deploysWithCompose } from '../providers/dns.js';
 import { stageProviderNotes } from '../providers/notes.js';
 import { discover } from '../reconcile/discover';
 import { constructGlobs } from '../reconcile/workspace';
@@ -126,7 +129,7 @@ export async function secretsAddCommand(
 		...(options.home ? { home: options.home } : {}),
 	});
 	const stored = await store.read(stage);
-	const domain = workspace.deploy?.domains?.[stage];
+	const domain = workspace.domains?.[stage];
 
 	const all = workspaceStageKeys({
 		manifest,
@@ -135,6 +138,10 @@ export async function secretsAddCommand(
 		supplied: stored?.custom ?? {},
 		...(domain ? { domain } : {}),
 		providers: stageProviderNotes(workspace, stage),
+		// A compose stage that serves a domain names its server.
+		...(!local && domain && deploysWithCompose(workspace)
+			? { server: true }
+			: {}),
 	});
 	const keys = options.missing ? all.filter((k) => !k.set) : all;
 
@@ -204,6 +211,9 @@ export async function secretsAddCommand(
 			case 'file-server':
 				values[entry.key] = await askHttpUrl(ask, io, 'Its public URL');
 				break;
+			case 'server':
+				Object.assign(values, await buildServer(ask, io, has));
+				break;
 			case 'external-api':
 			case 'credential':
 				schemas ??= await loadCredentialSchemas({
@@ -239,7 +249,45 @@ const KIND_LABEL: Record<WorkspaceStageKey['kind'], string> = {
 	'file-server': 'file server',
 	'external-api': 'external API',
 	credential: 'credential',
+	server: 'server address',
 };
+
+/** The server's IPv4 address, and — if it has one — its IPv6 address. */
+async function buildServer(
+	ask: Ask,
+	io: SecretsAddIo,
+	has: (key: string) => boolean,
+): Promise<Record<string, string>> {
+	const ipv4 = text(
+		await askUntil<string>(
+			ask,
+			io,
+			{ type: 'text', message: "The server's public IPv4 address" },
+			(value) =>
+				isIPv4(text(value))
+					? undefined
+					: 'An IPv4 address is required, e.g. 203.0.113.10.',
+		),
+	);
+	const values: Record<string, string> = { [SERVER_IPV4_KEY]: ipv4 };
+	if (has(SERVER_IPV6_KEY)) return values;
+	const ipv6 = text(
+		await askUntil<string>(
+			ask,
+			io,
+			{
+				type: 'text',
+				message: 'Its public IPv6 address (empty for none — no AAAA records)',
+			},
+			(value) =>
+				!text(value) || isIPv6(text(value))
+					? undefined
+					: 'An IPv6 address, e.g. 2001:db8::10, or nothing.',
+		),
+	);
+	if (ipv6) values[SERVER_IPV6_KEY] = ipv6;
+	return values;
+}
 
 /** One question, answered — or the run stopped. */
 type Ask = <T = string>(question: Omit<PromptObject, 'name'>) => Promise<T>;

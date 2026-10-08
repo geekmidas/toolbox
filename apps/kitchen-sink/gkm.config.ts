@@ -41,6 +41,9 @@ export default defineWorkspace({
 	// Omitted entirely when unset, rather than passed as an empty string — the
 	// workspace schema validates the endpoint as a URL, so `''` fails to load
 	// the config at all, and `gkm dev` should not need a deploy target.
+	...(process.env.DOKPLOY_ENDPOINT
+		? { domains: { production: process.env.KITCHEN_SINK_DOMAIN ?? '' } }
+		: {}),
 	deploy: {
 		default: 'dokploy',
 		// Where each deployed stage's telemetry goes. Dokploy runs no collector
@@ -50,9 +53,6 @@ export default defineWorkspace({
 		telemetry: { production: false },
 		...(process.env.DOKPLOY_ENDPOINT
 			? {
-					domains: {
-						production: process.env.KITCHEN_SINK_DOMAIN ?? '',
-					},
 					registry: 'ghcr.io/technanimals',
 					dokploy: {
 						endpoint: process.env.DOKPLOY_ENDPOINT,

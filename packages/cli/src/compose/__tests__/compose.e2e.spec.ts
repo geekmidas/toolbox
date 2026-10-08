@@ -1154,7 +1154,11 @@ export const readStamp = api
 			for (const [stage, value] of Object.entries(stamps)) {
 				await store.write(stage, {
 					...initStageSecrets(stage),
-					custom: { STAMP_CREDENTIALS: JSON.stringify({ value }) },
+					custom: {
+						STAMP_CREDENTIALS: JSON.stringify({ value }),
+						// Its server: a deployed stage with a domain names one.
+						GKM_SERVER_IPV4: '203.0.113.10',
+					},
 				});
 			}
 
@@ -1295,6 +1299,8 @@ export const readStamp = api
 				'--tag',
 				't1',
 				'--dry-run',
+				// Its hosts are example.com names nobody points anywhere.
+				'--skip-dns-check',
 			]);
 			const image = digests.api!;
 			const env = (stage: string) =>

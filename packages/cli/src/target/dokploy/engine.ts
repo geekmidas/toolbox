@@ -448,9 +448,7 @@ export async function validateDokploy(
 		declarations: manifestServiceDeclarations(phase.manifest),
 		supplied: stored?.custom ?? {},
 		allow: phase.allowDevServices,
-		...(workspace.deploy?.domains?.[stage]
-			? { domain: workspace.deploy.domains[stage] }
-			: {}),
+		...(workspace.domains?.[stage] ? { domain: workspace.domains[stage] } : {}),
 		providers: stageProviderNotes(workspace, stage),
 	});
 	const devServices = devServicesUsed(services);
@@ -1763,7 +1761,7 @@ async function settleDns(
 	// ==================================================================
 	// DNS: Create DNS records, verify propagation, and validate for SSL
 	// ==================================================================
-	const dnsConfig = workspace.deploy.dns;
+	const dnsConfig = workspace.dns;
 	if (!dnsConfig || appHostnames.size === 0) return;
 
 	const dnsResult = await orchestrateDns(appHostnames, dnsConfig, endpoint);
@@ -2156,7 +2154,7 @@ function hostOf(
 		appName,
 		app,
 		stage,
-		workspace.deploy?.domains,
+		workspace.domains,
 		app.type === 'web' && isMainFrontendApp(appName, app, workspace.apps),
 	);
 }

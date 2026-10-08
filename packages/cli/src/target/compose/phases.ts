@@ -41,6 +41,18 @@ import { dirname, join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { stringify } from 'yaml';
 import {
+	checkStackDns,
+	type HostLookup,
+	HostNotPointingAtServer,
+	isLocalHost,
+	requiredServerAddress,
+	SERVER_IPV4_KEY,
+	type ServerAddress,
+	serverAddressHint,
+	stackHosts,
+	systemLookup,
+} from '../../compose/dns';
+import {
 	type ComposeDocker,
 	dockerCompose,
 	type StackRef,
@@ -58,18 +70,10 @@ import {
 	pinImages,
 	RegistryRequired,
 } from '../../compose/images';
-import {
-	LOGS_SERVICE,
-	logsAccess,
-	type StackLogs,
-	withLogsPassword,
-} from '../../compose/logs';
+import { LOGS_SERVICE, logsAccess, type StackLogs } from '../../compose/logs';
 import { ComposeTlsFileMissing } from '../../compose/proxy';
-import {
-	REDIS_SERVICE,
-	runsRedis,
-	withRedisPassword,
-} from '../../compose/redis';
+import { REDIS_SERVICE } from '../../compose/redis';
+import { deployedStackSecrets } from '../../compose/secrets';
 import {
 	type ComposeStack,
 	composeProject,
@@ -84,7 +88,6 @@ import {
 import { EDGE_PROJECT, EDGE_SERVICE } from '../../compose/traefik';
 import { reportDevServices } from '../../deploy/devServices';
 import type { ResourceChange } from '../../deploy/events';
-import { withGeneratedSecrets } from '../../deploy/generated.js';
 import { imageRef } from '../../deploy/identity.js';
 import { DeployJournal } from '../../deploy/journal';
 import {
@@ -123,10 +126,7 @@ import { constructGlobs } from '../../reconcile/workspace.js';
 import { runOutput } from '../../run';
 import { assertStageCredentials } from '../../secrets/credentialSchemas.js';
 import { assertNoStaleSecrets } from '../../secrets/stale.js';
-import { initStageSecrets } from '../../secrets/storage.js';
 import type { StageSecrets } from '../../secrets/types.js';
-import { resolveStageTelemetry } from '../../telemetry/config';
-import { usesTelemetry } from '../../telemetry/edges';
 import type { NormalizedWorkspace } from '../../workspace/types.js';
 import {
 	DeploySeedsFailed,
@@ -167,6 +167,11 @@ export interface ComposeDeps {
 	healthIntervalMs: number;
 	/** Where the edge's ports are read from (`GKM_COMPOSE_HTTPS_PORT`, …). */
 	env: NodeJS.ProcessEnv;
+	/**
+	 * Resolves a public host to every address it has, for the DNS check —
+	 * the system resolver by default.
+	 */
+	lookup?: HostLookup;
 }
 
 /** One app's image, as the stage runs it. */
@@ -333,6 +338,7 @@ export const defaultDeps: ComposeDeps = {
 	healthAttempts: 90,
 	healthIntervalMs: 2_000,
 	env: process.env,
+	lookup: systemLookup,
 };
 
 // ============================================================================
@@ -379,6 +385,17 @@ export async function validateCompose(
 	});
 
 	const { secrets, generated } = await stageSecrets(ctx, manifest);
+
+	// A stage that serves real domains names its server — before anything
+	// else is checked, built or started.
+	const server =
+		push || stage === workspace.stages.local
+			? undefined
+			: requiredServerAddress(
+					stage,
+					workspace.domains?.[stage],
+					secrets?.custom,
+				);
 
 	// A third party's credentials against their construct's schema, before a
 	// stack is composed with one every app reading it would refuse. A push
@@ -469,6 +486,17 @@ export async function validateCompose(
 		for (const file of [stack.tls.certFile, stack.tls.keyFile]) {
 			if (!existsSync(file)) throw new ComposeTlsFileMissing(stage, file);
 		}
+	}
+
+	// Every public host resolves to the stage's server — before Caddy or
+	// Traefik ask Let's Encrypt for a certificate it could not issue.
+	if (!push && !stack.local) {
+		await checkDns(
+			ctx,
+			deps,
+			stackHosts(stack).filter((host) => !isLocalHost(host)),
+			server,
+		);
 	}
 
 	if (stack.redis && !stack.local) ctx.secrets.mask(stack.redis.password);
@@ -569,6 +597,49 @@ function assertRedisClient(
  * run goes ahead (`provision`), so a dry run, or a tag that is not there,
  * leaves the stage's secrets as it found them.
  */
+/**
+ * The deploy-time DNS check: each public host resolved with the system
+ * resolver and compared with the server's address from the stage's secrets.
+ * A dry run warns rather than stops.
+ */
+async function checkDns(
+	ctx: ComposeContext,
+	deps: ComposeDeps,
+	hosts: readonly string[],
+	server: ServerAddress | undefined,
+): Promise<void> {
+	const { workspace, stage } = ctx;
+	if (hosts.length === 0) return;
+	if (ctx.skipDnsCheck) {
+		ctx.logger.info('🌐 DNS check skipped (--skip-dns-check)');
+		return;
+	}
+	if (!server) {
+		ctx.logger.info(
+			`🌐 DNS check skipped: no ${SERVER_IPV4_KEY} in '${stage}''s secrets — ${serverAddressHint(stage)}`,
+		);
+		return;
+	}
+	try {
+		const ok = await checkStackDns({
+			stage,
+			hosts,
+			server,
+			dns: workspace.dns,
+			lookup: deps.lookup ?? systemLookup,
+		});
+		ctx.logger.info(
+			`🌐 ${ok.length} host${ok.length === 1 ? '' : 's'} resolve${ok.length === 1 ? 's' : ''} to ${server.ipv4}`,
+		);
+	} catch (error) {
+		if (ctx.dryRun && error instanceof HostNotPointingAtServer) {
+			ctx.logger.warn(`⚠ ${error.message}`);
+			return;
+		}
+		throw error;
+	}
+}
+
 async function stageSecrets(
 	ctx: ComposeContext,
 	manifest: ConstructManifest,
@@ -580,37 +651,12 @@ async function stageSecrets(
 		return { secrets: stored, generated: [] };
 	}
 
-	const withSeed = withGeneratedSecrets(
-		stored ?? initStageSecrets(ctx.stage),
+	const { secrets, generated } = deployedStackSecrets(
+		ctx.workspace,
+		ctx.stage,
+		stored,
 		manifest,
 	);
-	// The log UI's root password, generated once like the seed, where the
-	// stage's telemetry is self-hosted and the stage set none.
-	const telemetry = resolveStageTelemetry({
-		...(ctx.workspace.deploy?.telemetry
-			? { telemetry: ctx.workspace.deploy.telemetry }
-			: {}),
-		stage: ctx.stage,
-		local: false,
-		target: 'compose',
-		runtime: 'server',
-		selfHosted: true,
-		used: usesTelemetry(manifest),
-	});
-	const withLogs =
-		telemetry?.provider === 'self-hosted'
-			? withLogsPassword(withSeed.secrets)
-			: { secrets: withSeed.secrets, generated: [] };
-	// The stack's Redis password, the same way, where a cache lives in it.
-	const withRedis = runsRedis(manifest, withLogs.secrets.custom ?? {})
-		? withRedisPassword(withLogs.secrets)
-		: { secrets: withLogs.secrets, generated: [] };
-	const secrets = withRedis.secrets;
-	const generated = [
-		...withSeed.generated,
-		...withLogs.generated,
-		...withRedis.generated,
-	];
 	// Read through the store they are masked; made up here, they are not yet.
 	if (secrets.seed) ctx.secrets.mask(secrets.seed);
 	for (const value of Object.values(secrets.custom ?? {})) {

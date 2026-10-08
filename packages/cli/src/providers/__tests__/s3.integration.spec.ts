@@ -42,6 +42,8 @@ import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import {
 	loadComposeApp,
+	resolvesHere,
+	SERVER_IPV4,
 	writeComposeApp,
 } from '../../compose/__tests__/__helpers__/composeApp';
 import {
@@ -534,6 +536,7 @@ describe('objects: s3 on a deployed stage', () => {
 				...stored.custom,
 				MAIL_URL: 'smtp://user:password@smtp.example.com:587',
 				MAIL_FROM: `noreply@${DOMAIN}`,
+				GKM_SERVER_IPV4: SERVER_IPV4,
 			},
 		});
 		const info: string[] = [];
@@ -549,6 +552,7 @@ describe('objects: s3 on a deployed stage', () => {
 					docker: fake.docker,
 					probe: answering(fake.calls),
 					revision: async () => 'abc1234',
+					lookup: resolvesHere,
 				},
 			);
 

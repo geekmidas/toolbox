@@ -4,6 +4,7 @@
  * {@link SecretsStore}'s business — see `secretsStoreFor`.
  */
 
+import { isReservedStageKey } from '../compose/dnsConfig.js';
 import type { SecretsStore } from './store.js';
 import type { EmbeddableSecrets, StageSecrets } from './types';
 
@@ -29,7 +30,12 @@ export function initStageSecrets(stage: string): StageSecrets {
 export function toEmbeddableSecrets(secrets: StageSecrets): EmbeddableSecrets {
 	return {
 		...secrets.urls,
-		...secrets.custom,
+		// The server's address (`GKM_SERVER_*`) is gkm's own, never an app's.
+		...Object.fromEntries(
+			Object.entries(secrets.custom).filter(
+				([key]) => !isReservedStageKey(key),
+			),
+		),
 		// Also include individual service credentials if needed
 		...(secrets.services.postgres && {
 			POSTGRES_USER: secrets.services.postgres.username,

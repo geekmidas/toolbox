@@ -83,7 +83,7 @@ Its settings, checked on every run and put back when they drifted:
 - CORS allowing `GET`, `HEAD`, `POST` and `PUT` from the stage's sites that
   call an API using the bucket — read off the graph the way an API's own CORS
   origins are — exposing `ETag`. A site with no address on the stage (no
-  `deploy.domains.<stage>`) is named and left out;
+  `domains.<stage>`) is named and left out;
 - tags `gkm:project`, `gkm:stage`, `gkm:construct`.
 
 **The IAM user.** `gkm-<project>-<stage>-<id>` (64 characters at most), under
@@ -193,6 +193,44 @@ issues a new one the same way — a secret cannot be read back from IAM.
 a policy, and a construct you remove from the code leaves its bucket where it
 is. The one deletion is the old access key a `--rotate-keys` replaced, after
 the deploy that stopped using it, or when you pass `--retire-old-keys`.
+
+## DNS records
+
+`gkm setup --stage <stage>` also points a compose stage's public hosts at its
+server, through the DNS provider each root domain names in `dns`:
+
+```ts
+// gkm.config.ts
+domains: { production: 'shop.example.com' },
+dns: { 'example.com': { provider: 'godaddy' } },
+deploy: { default: 'compose' },
+```
+
+```bash
+gkm secrets:set GKM_SERVER_IPV4 '203.0.113.10' --stage production
+gkm setup --stage production --dry-run   # the exact records, and what changes
+gkm setup --stage production             # write them
+```
+
+It is a provider like the others in every way that matters:
+
+- **Provisioning credentials** come from the machine running setup — the DNS
+  provider's token (`GODADDY_API_TOKEN`, `gkm login --provider godaddy`), an
+  AWS profile for Route53. The server never holds them. With none, setup says
+  how to supply them and prints the records to create by hand.
+- **Idempotent.** A record that already has the right value is left alone; one
+  with another value is replaced, printing `old → new`. Only the A, AAAA and
+  CNAME records of the stack's own hosts are ever written.
+- **`--dry-run`** prints each record — name, type, value, TTL — and whether it
+  would be created, updated or left alone, and writes nothing.
+- **`verify()`** is the deploy's DNS check: every host must resolve to the
+  server before the stack starts (see the
+  [compose guide](./compose.md#the-dns-check)).
+
+The server's address is the stage's own secret, never config: `GKM_SERVER_IPV4`
+(required of a compose stage with a domain) and `GKM_SERVER_IPV6` (optional:
+AAAA records). Neither is ever handed to an app. `provider: 'manual'` prints
+the records and writes nothing.
 
 ## Deploys
 

@@ -36,6 +36,8 @@ export interface WorkspaceStageKeysInput {
 	domain?: string;
 	/** What the stage's providers say — a missing key's hint. */
 	providers?: StageProviderNotes;
+	/** The stage serves a domain from its own server: `GKM_SERVER_IPV4`. */
+	server?: boolean;
 }
 
 /** The keys of each kind of construct an app reads, that the stage supplies. */
@@ -125,5 +127,6 @@ export function workspaceStageKeys(
 		credentials,
 		...(input.domain ? { domain: input.domain } : {}),
 		...(input.providers ? { providers: input.providers } : {}),
+		...(input.server ? { server: true } : {}),
 	}).map((key) => ({ ...key, set: input.supplied[key.key] !== undefined }));
 }

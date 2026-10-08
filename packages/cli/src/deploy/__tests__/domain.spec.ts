@@ -85,7 +85,7 @@ describe('resolveHost', () => {
 		).toThrow(NoDomainForStage);
 		expect(() =>
 			resolveHost('api', app, 'unknown-stage', domains, false),
-		).toThrow("deploy: { domains: { unknown-stage: 'example.com' } }");
+		).toThrow("domains: { unknown-stage: 'example.com' }");
 	});
 
 	it('refuses when no domains are configured at all', () => {

@@ -55,7 +55,12 @@ import {
 	traefikDynamic,
 	traefikStatic,
 } from '../traefik';
-import { loadComposeApp, writeComposeApp } from './__helpers__/composeApp';
+import {
+	loadComposeApp,
+	resolvesHere,
+	serveFrom,
+	writeComposeApp,
+} from './__helpers__/composeApp';
 
 /** No Postgres is running here: its login is taken as the one it was given. */
 const signedIn: NonNullable<Parameters<typeof composeCommand>[1]>['logins'] =
@@ -793,6 +798,7 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 		});
 		home = realpathSync(await createTempDir('gkm-compose-traefik-home-'));
 		vi.stubEnv('GKM_HOME', home);
+		await serveFrom(dir);
 	});
 	afterEach(async () => {
 		vi.restoreAllMocks();
@@ -808,6 +814,7 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 		const result = await composeCommand(
 			{ cwd: dir, stage: 'production', tag: 'v1.4.0' },
 			{
+				lookup: resolvesHere,
 				docker: fake.docker,
 				probe: async (request) => {
 					fake.calls.push({ op: 'probe', args: request });
@@ -901,7 +908,7 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 		const { docker, calls } = fakeDocker();
 		await composeCommand(
 			{ cwd: dir, stage: 'production', down: true },
-			{ docker },
+			{ lookup: resolvesHere, docker },
 		);
 
 		expect(calls).toEqual([{ op: 'down', args: 'compose-app-production' }]);

@@ -127,9 +127,10 @@ function validateDependencies<TApps extends AppsRecord>(apps: TApps): void {
  * // config.apps.foo <- TypeScript error
  * ```
  */
-export function defineWorkspace<const TApps extends AppsRecord>(
-	config: WorkspaceInput<TApps>,
-): InferredWorkspaceConfig<TApps> {
+export function defineWorkspace<
+	const TApps extends AppsRecord,
+	const TDeployed extends string = string,
+>(config: WorkspaceInput<TApps, TDeployed>): InferredWorkspaceConfig<TApps> {
 	assertNoMovedDeployKeys(config.deploy);
 	assertKnownSecretsStore(config.secrets?.store);
 
@@ -180,6 +181,8 @@ export function normalizeWorkspace(
 		root: cwd,
 		...(config.constructs ? { constructs: config.constructs } : {}),
 		apps: normalizedApps,
+		...(config.domains ? { domains: config.domains } : {}),
+		...(config.dns ? { dns: config.dns } : {}),
 		deploy: config.deploy ?? { default: 'dokploy' },
 		shared: config.shared ?? { packages: ['packages/*'] },
 		stages: validateStages(config.stages),
@@ -258,6 +261,8 @@ export function wrapSingleAppAsWorkspace(
 		// domains — and hardcoding the default here silently discarded all of it,
 		// which surfaced as `resolveHost` refusing to name a host for a stage the
 		// config had no way to describe.
+		...(config.domains ? { domains: config.domains } : {}),
+		...(config.dns ? { dns: config.dns } : {}),
 		deploy: { default: 'dokploy', ...config.deploy },
 		shared: { packages: [] },
 		stages: validateStages(config.stages),
@@ -288,11 +293,50 @@ export class DokployRegistryMoved extends Error {
 	}
 }
 
+/**
+ * `deploy.domains`, which became `domains` at the root of the config: a stage's
+ * domain is a fact about the product every target and every command reads,
+ * not a deploy setting.
+ */
+export class DomainsMoved extends Error {
+	constructor(readonly domains: unknown) {
+		super(
+			'deploy.domains is now domains, at the root of gkm.config.ts. Move it ' +
+				`out of deploy: defineWorkspace({ …, domains: ${JSON.stringify(domains)}, deploy: { … } }).`,
+		);
+		this.name = 'DomainsMoved';
+	}
+}
+
+/**
+ * `deploy.dns`, which became `dns` at the root of the config, keyed by root
+ * domain.
+ */
+export class DnsMoved extends Error {
+	constructor(readonly dns: unknown) {
+		const legacy =
+			dns && typeof dns === 'object' && 'domain' in dns && 'provider' in dns;
+		const { domain, ...rest } = (legacy ? dns : {}) as Record<string, unknown>;
+		const moved = legacy ? { [String(domain)]: rest } : dns;
+		super(
+			'deploy.dns is now dns, at the root of gkm.config.ts, keyed by root ' +
+				`domain. Move it out of deploy: defineWorkspace({ …, dns: ${JSON.stringify(moved)}, deploy: { … } }).`,
+		);
+		this.name = 'DnsMoved';
+	}
+}
+
 /** Refuse a deploy key that has moved, naming where it lives now. */
 export function assertNoMovedDeployKeys(deploy: unknown): void {
 	const dokploy = (deploy as { dokploy?: unknown } | undefined)?.dokploy;
 	if (dokploy && typeof dokploy === 'object' && 'registry' in dokploy) {
 		throw new DokployRegistryMoved((dokploy as { registry: unknown }).registry);
+	}
+	if (deploy && typeof deploy === 'object') {
+		if ('domains' in deploy) {
+			throw new DomainsMoved((deploy as { domains: unknown }).domains);
+		}
+		if ('dns' in deploy) throw new DnsMoved((deploy as { dns: unknown }).dns);
 	}
 }
 

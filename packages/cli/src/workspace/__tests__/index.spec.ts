@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { GkmConfig } from '../../types.ts';
 import {
+	DnsMoved,
 	DokployRegistryMoved,
+	DomainsMoved,
 	defineWorkspace,
 	getAppBuildOrder,
 	getAppGkmConfig,
@@ -438,16 +440,16 @@ describe('getAppGkmConfig', () => {
 			{
 				stages: { local: 'development', deployed: ['production'] },
 				routes: './src/**/*.ts',
+				domains: { production: 'example.test' },
 				deploy: {
 					default: 'dokploy',
-					domains: { production: 'example.test' },
 					dokploy: { endpoint: 'http://example:3000' },
 				},
 			} as never,
 			'/project',
 		);
 
-		expect(wrapped.deploy.domains?.production).toBe('example.test');
+		expect(wrapped.domains?.production).toBe('example.test');
 		expect(wrapped.deploy.default).toBe('dokploy');
 	});
 
@@ -757,5 +759,81 @@ describe('deploy.registry', () => {
 				'/project',
 			),
 		).toThrow(DokployRegistryMoved);
+	});
+});
+
+describe('domains and dns, at the root of the config', () => {
+	const stages = { local: 'development', deployed: ['production'] };
+
+	it('refuses deploy.domains, showing it at the root', () => {
+		const config = {
+			stages,
+			constructs: './constructs/**/*.ts',
+			deploy: { domains: { production: 'shop.example.com' } },
+		};
+
+		let error: unknown;
+		try {
+			processConfig(config as never, '/project');
+		} catch (e) {
+			error = e;
+		}
+		expect(error).toBeInstanceOf(DomainsMoved);
+		expect((error as Error).message).toContain(
+			'domains: {"production":"shop.example.com"}',
+		);
+		expect(() => defineWorkspace(config as never)).toThrow(DomainsMoved);
+	});
+
+	it('refuses deploy.dns, keyed by its domain at the root', () => {
+		const multi = {
+			stages,
+			deploy: { dns: { 'example.com': { provider: 'godaddy' } } },
+		};
+		expect(() => defineWorkspace(multi as never)).toThrow(DnsMoved);
+		expect(() => defineWorkspace(multi as never)).toThrow(
+			'dns: {"example.com":{"provider":"godaddy"}}',
+		);
+
+		// The single-domain shape, shown keyed by its domain.
+		const legacy = {
+			stages,
+			deploy: { dns: { provider: 'route53', domain: 'example.com' } },
+		};
+		expect(() => processConfig(legacy as never, '/project')).toThrow(
+			'dns: {"example.com":{"provider":"route53"}}',
+		);
+	});
+
+	it('refuses them in a single-app config too', () => {
+		expect(() =>
+			processConfig(
+				{
+					stages,
+					routes: './src/**/*.ts',
+					deploy: { domains: { production: 'example.com' } },
+				} as never,
+				'/project',
+			),
+		).toThrow(DomainsMoved);
+	});
+
+	it('carries the root keys onto the workspace', () => {
+		const loaded = processConfig(
+			{
+				stages,
+				constructs: './constructs/**/*.ts',
+				domains: { production: 'shop.example.com' },
+				dns: { 'example.com': { provider: 'godaddy' } },
+			} as never,
+			'/project',
+		);
+
+		expect(loaded.workspace.domains).toEqual({
+			production: 'shop.example.com',
+		});
+		expect(loaded.workspace.dns).toEqual({
+			'example.com': { provider: 'godaddy' },
+		});
 	});
 });

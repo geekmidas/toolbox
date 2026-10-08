@@ -711,7 +711,7 @@ export const config = new EnvironmentParser(process.env)
 			await deploy({
 				tag: 'v2',
 				adjust: (workspace) => {
-					workspace.deploy.dns = {
+					workspace.dns = {
 						'shop.example.com': { provider },
 					} as never;
 				},
@@ -755,7 +755,7 @@ export const config = new EnvironmentParser(process.env)
 			await deploy({
 				tag: 'v2',
 				adjust: (workspace) => {
-					workspace.deploy.dns = {
+					workspace.dns = {
 						'shop.example.com': { provider: registrar().provider },
 					} as never;
 				},

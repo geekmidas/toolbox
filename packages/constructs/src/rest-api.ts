@@ -71,7 +71,7 @@ export interface RestApiConfig<
 	path: string;
 	/**
 	 * The label it answers on under a stage's domain — `api` for
-	 * `api.myapp.com`, from `deploy.domains` — and under the project locally,
+	 * `api.myapp.com`, from `domains` — and under the project locally,
 	 * `api.myapp.localhost`. Absent, its id kebab-cased.
 	 */
 	subdomain?: string;
