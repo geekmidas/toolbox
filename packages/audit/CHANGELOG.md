@@ -1,5 +1,13 @@
 # @geekmidas/audit
 
+## 10.0.0-alpha.80
+
+### Patch Changes
+
+- Updated dependencies [[`f3638fb`](https://github.com/geekmidas/toolbox/commit/f3638fb116f7aeebbbb29c8f06deaa7813cc760e)]:
+  - @geekmidas/cache@10.0.0-alpha.80
+  - @geekmidas/schema@10.0.0-alpha.80
+
 ## 10.0.0-alpha.79
 
 ### Patch Changes

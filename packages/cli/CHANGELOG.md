@@ -1,5 +1,41 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.80
+
+### Minor Changes
+
+- ✨ [#207](https://github.com/geekmidas/toolbox/pull/207) [`a3eed1a`](https://github.com/geekmidas/toolbox/commit/a3eed1a20f731570ea5487659657dcc28bfe309b) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm deploy:github` trusts the OIDC subject GitHub actually sends. It reads the repository's subject settings (`gh api repos/<repo>/actions/oidc/customization/sub`) and builds the role's trust from them: the default `repo:<owner>/<name>:environment:<stage>`, the immutable `repo:<owner>@<ownerId>/<name>@<repoId>:environment:<stage>`, or a custom template made of claims known before the run. A template that includes a run-dependent claim (`job_workflow_ref`, `ref`, `sha`, …) is refused with `OidcSubjectNotSupported`; unreadable settings fall back to the default with a warning naming the endpoint. Re-running it rewrites an existing role's trust and prints old → new, which repairs a role that failed with "Not authorized to perform sts:AssumeRoleWithWebIdentity". `--dry-run` prints the subject.
+
+  A stage that only the `compose` target deploys now gets an inline `gkm-deploy` policy scoped to its own secrets (the SSM parameter or Secrets Manager secret) and, when the deploy state is in AWS, its state, in place of `AdministratorAccess`. SST and other targets keep `AdministratorAccess`, and `--policy-arn` still overrides both. gkm now tags the role with the managed policy it attached (`gkm:policy-arn`), so a re-run detaches only what gkm put there; an older role's `AdministratorAccess` is left attached, with the command to detach it printed.
+
+### Patch Changes
+
+- [#208](https://github.com/geekmidas/toolbox/pull/208) [`f3638fb`](https://github.com/geekmidas/toolbox/commit/f3638fb116f7aeebbbb29c8f06deaa7813cc760e) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: One trace from a request through a queue to the worker: every events driver
+  (pg-boss, SNS, SQS, RabbitMQ, basic) wraps each publish in a PRODUCER span and
+  carries its W3C trace context in the message — SQS/SNS message attributes,
+  RabbitMQ headers, or pg-boss job data under the reserved key `__gkmTrace`,
+  which is removed before a handler sees the payload. Consumers run each job in a
+  CONSUMER span that continues it (a message without context starts a new
+  trace), Lambda queue and subscriber adaptors do the same from their records,
+  and each cron run is a root trace of its own. The constructs record their own
+  spans: a span per database query (`select orders`, with `db.system`, `db.name`,
+  `db.operation`, never parameter values), `cache.get`/`set`/`delete` with
+  hit/miss on the Redis and Postgres drivers, `storage.presign`/`put`/`delete`,
+  `email.send`, and a span per `ExternalApi` client call. Everything goes through
+  the global `@opentelemetry/api` and is a no-op without a registered provider.
+- Updated dependencies [[`f3638fb`](https://github.com/geekmidas/toolbox/commit/f3638fb116f7aeebbbb29c8f06deaa7813cc760e)]:
+  - @geekmidas/constructs@10.0.0-alpha.80
+  - @geekmidas/cache@10.0.0-alpha.80
+  - @geekmidas/storage@10.0.0-alpha.80
+  - @geekmidas/db@10.0.0-alpha.80
+  - @geekmidas/envkit@10.0.0-alpha.80
+  - @geekmidas/errors@10.0.0-alpha.80
+  - @geekmidas/logger@10.0.0-alpha.80
+  - @geekmidas/manifest@10.0.0-alpha.80
+  - @geekmidas/schema@10.0.0-alpha.80
+  - @geekmidas/services@10.0.0-alpha.80
+  - @geekmidas/telescope@10.0.0-alpha.80
+
 ## 10.0.0-alpha.79
 
 ### Patch Changes
