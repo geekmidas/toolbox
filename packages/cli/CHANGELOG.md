@@ -1,5 +1,59 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.88
+
+### Minor Changes
+
+- [#219](https://github.com/geekmidas/toolbox/pull/219) [`06047cc`](https://github.com/geekmidas/toolbox/commit/06047cc82da9076a73e60d706612a2e25eadf08d) Thanks [@geekmidas](https://github.com/geekmidas)! - Stage names are typed from the declared stages
+
+  A stage name written outside `gkm.config.ts` was a bare `string`, so a typo
+  was never caught: an `ExternalApi` keyed `prodution` silently fell back to
+  `default`, and a seed's `stage === 'prodution'` branch silently never ran.
+
+  `gkm dev`, `gkm build` and `gkm test --prepare` now write `.gkm/stages.d.ts`
+  from the loaded workspace:
+
+  ```ts
+  declare module "@geekmidas/constructs" {
+    interface Stages {
+      local: "dev";
+      deployed: "staging" | "prod";
+    }
+  }
+  ```
+
+  `@geekmidas/constructs` exports the `Stages` interface and the types read
+  from it: `LocalStage`, `DeployedStage`, `TestStage` (`'test'`) and `AnyStage`.
+  Without the file, before the first run, each of them is `string`, so nothing
+  fails to compile for want of it.
+
+  What they type:
+
+  - `ExternalApi`'s `url` map (`ExternalApiUrl`): keys are the local and
+    deployed stages plus `default`.
+  - A seed's second argument, `SeedContext` (now exported from
+    `@geekmidas/constructs`): `stage` is `AnyStage`.
+  - The test manifest's `stage`, `TestStage`.
+
+  TypeScript never matches a dot folder with a wildcard, so the tsconfig names
+  the file: `gkm init` adds `.gkm/stages.d.ts` to each API's (and the root's)
+  `include`. An existing project adds it by hand. Nothing changes at runtime.
+
+### Patch Changes
+
+- Updated dependencies [[`06047cc`](https://github.com/geekmidas/toolbox/commit/06047cc82da9076a73e60d706612a2e25eadf08d)]:
+  - @geekmidas/constructs@10.0.0-alpha.88
+  - @geekmidas/cache@10.0.0-alpha.88
+  - @geekmidas/db@10.0.0-alpha.88
+  - @geekmidas/envkit@10.0.0-alpha.88
+  - @geekmidas/errors@10.0.0-alpha.88
+  - @geekmidas/logger@10.0.0-alpha.88
+  - @geekmidas/manifest@10.0.0-alpha.88
+  - @geekmidas/schema@10.0.0-alpha.88
+  - @geekmidas/services@10.0.0-alpha.88
+  - @geekmidas/storage@10.0.0-alpha.88
+  - @geekmidas/telescope@10.0.0-alpha.88
+
 ## 10.0.0-alpha.87
 
 ### Patch Changes
