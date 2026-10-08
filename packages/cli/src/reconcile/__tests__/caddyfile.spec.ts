@@ -263,6 +263,22 @@ describe('toCaddyfile', () => {
 		expect(rendered()).toContain('header_up Host {upstream_hostport}');
 	});
 
+	it('removes x-gkm-client-ip from every request it serves', () => {
+		// Only a service of the stack may say whose request it is: the auth
+		// server rate-limits by the address in it.
+		const caddyfile = toCaddyfile([
+			{
+				host: 'api.shop.localhost',
+				upstream: 'http://host.docker.internal:3000',
+			},
+			{ host: 'uploads.shop.localhost', upstream: 'http://minio:9000' },
+		]);
+
+		expect(
+			caddyfile.match(/^\trequest_header -x-gkm-client-ip$/gm),
+		).toHaveLength(2);
+	});
+
 	it('renders a routeless edge rather than an invalid one', () => {
 		// An empty site list is a project that declared no file server, which is
 		// ordinary — not a reason to emit a config Caddy refuses to load.

@@ -23,6 +23,7 @@
  * line at the edge.
  */
 
+import { CLIENT_IP_HEADER } from '@geekmidas/manifest';
 import type { Plan, PlannedResource } from './plan';
 
 /** One host on the edge, and what answers behind it. */
@@ -227,6 +228,10 @@ export function toCaddyfile(sites: readonly CaddySite[]): string {
 		({ host, upstream, rewrite }) => `
 https://${host} {
 	tls internal
+
+	# gkm's own header, which only a service of this stack may send: the auth
+	# server rate-limits by the client address it carries.
+	request_header -${CLIENT_IP_HEADER}
 
 	reverse_proxy ${upstream} {${
 		rewrite

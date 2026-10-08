@@ -11,6 +11,7 @@
  * Pure: the routes are data (`routes.ts`), and rendering them is one string.
  */
 
+import { CLIENT_IP_HEADER } from '@geekmidas/manifest';
 import type { EdgeRoute, EdgeTls, Upstream } from './routes.js';
 
 /** Where Caddy reads a stage's own certificate, inside its container. */
@@ -65,25 +66,29 @@ export function edgeCaddyfile(
 			prefix,
 			allow,
 			streaming,
-		}) => `https://${host} {${certificate}${
-			allow
-				? `
+		}) => `https://${host} {${certificate}
+	# gkm's own header, which only a service of this stack may send: the auth
+	# server rate-limits by the client address it carries.
+	request_header -${CLIENT_IP_HEADER}
+${
+	allow
+		? `
 	# Only these addresses — the peer Caddy sees, never a header a client
 	# could set. Everything else is refused before it reaches the upstream.
 	@denied not remote_ip ${allow.join(' ')}
 	respond @denied 403
 `
-				: ''
-		}${
-			prefix
-				? `
+		: ''
+}${
+	prefix
+		? `
 	# A bucket, served at a host of its own: the bucket is a prefix on MinIO,
 	# which routes and signs on the Host header — so it is sent the upstream's.
 	reverse_proxy ${upstreams.map(address).join(' ')} {
 		rewrite ${prefix}{uri}
 		header_up Host {upstream_hostport}
 	}`
-				: `
+		: `
 	# Host and X-Forwarded-* are passed through as Caddy does by default, so
 	# an app builds redirects, cookies and links on the address a caller used.
 	reverse_proxy ${upstreams.map(address).join(' ')}${
@@ -95,7 +100,7 @@ export function edgeCaddyfile(
 	}`
 			: ''
 	}`
-		}
+}
 }`,
 	);
 

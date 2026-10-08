@@ -431,7 +431,9 @@ describe('served publicly', () => {
 		);
 
 		expect(s.compose.services.openobserve?.ports).toBeUndefined();
-		expect(site).toMatch(/^https:\/\/logs\.shop\.example\.com \{\n\t# Only/);
+		expect(site).toMatch(/^https:\/\/logs\.shop\.example\.com \{\n/);
+		// Refused before anything is proxied.
+		expect(site.indexOf('@denied')).toBeLessThan(site.indexOf('reverse_proxy'));
 		expect(site).toContain('@denied not remote_ip 203.0.113.7 10.0.0.0/8');
 		expect(site).toContain('respond @denied 403');
 		expect(site).toContain('reverse_proxy openobserve:5080');

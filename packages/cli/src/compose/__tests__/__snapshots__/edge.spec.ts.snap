@@ -58,6 +58,10 @@ exports[`the route model, rendered for Caddy > renders every route as a site blo
 # file server in front of the stack's MinIO, and — when its logs are served
 # publicly — one for OpenObserve, to the addresses it allows.
 https://api.shop.example.com {
+	# gkm's own header, which only a service of this stack may send: the auth
+	# server rate-limits by the client address it carries.
+	request_header -x-gkm-client-ip
+
 	# Host and X-Forwarded-* are passed through as Caddy does by default, so
 	# an app builds redirects, cookies and links on the address a caller used.
 	reverse_proxy api:3000 {
@@ -68,6 +72,10 @@ https://api.shop.example.com {
 }
 
 https://shop.example.com {
+	# gkm's own header, which only a service of this stack may send: the auth
+	# server rate-limits by the client address it carries.
+	request_header -x-gkm-client-ip
+
 	# Host and X-Forwarded-* are passed through as Caddy does by default, so
 	# an app builds redirects, cookies and links on the address a caller used.
 	reverse_proxy web:3002 {
@@ -78,6 +86,10 @@ https://shop.example.com {
 }
 
 https://uploads-server.shop.example.com {
+	# gkm's own header, which only a service of this stack may send: the auth
+	# server rate-limits by the client address it carries.
+	request_header -x-gkm-client-ip
+
 	# A bucket, served at a host of its own: the bucket is a prefix on MinIO,
 	# which routes and signs on the Host header — so it is sent the upstream's.
 	reverse_proxy minio:9000 {
@@ -87,6 +99,10 @@ https://uploads-server.shop.example.com {
 }
 
 https://logs.shop.example.com {
+	# gkm's own header, which only a service of this stack may send: the auth
+	# server rate-limits by the client address it carries.
+	request_header -x-gkm-client-ip
+
 	# Only these addresses — the peer Caddy sees, never a header a client
 	# could set. Everything else is refused before it reaches the upstream.
 	@denied not remote_ip 203.0.113.7 10.0.0.0/8
@@ -120,11 +136,21 @@ exports[`the route model, rendered for Traefik > renders routers, services and m
           ],
         },
       },
+      "shop-production-strip-gkm-headers": {
+        "headers": {
+          "customRequestHeaders": {
+            "x-gkm-client-ip": "",
+          },
+        },
+      },
     },
     "routers": {
       "shop-production-api": {
         "entryPoints": [
           "websecure",
+        ],
+        "middlewares": [
+          "shop-production-strip-gkm-headers",
         ],
         "rule": "Host(\`api.shop.example.com\`)",
         "service": "shop-production-api",
@@ -137,6 +163,7 @@ exports[`the route model, rendered for Traefik > renders routers, services and m
           "websecure",
         ],
         "middlewares": [
+          "shop-production-strip-gkm-headers",
           "shop-production-files-uploads-server-prefix",
         ],
         "rule": "Host(\`uploads-server.shop.example.com\`)",
@@ -150,6 +177,7 @@ exports[`the route model, rendered for Traefik > renders routers, services and m
           "websecure",
         ],
         "middlewares": [
+          "shop-production-strip-gkm-headers",
           "shop-production-openobserve-allow",
         ],
         "rule": "Host(\`logs.shop.example.com\`)",
@@ -161,6 +189,9 @@ exports[`the route model, rendered for Traefik > renders routers, services and m
       "shop-production-web": {
         "entryPoints": [
           "websecure",
+        ],
+        "middlewares": [
+          "shop-production-strip-gkm-headers",
         ],
         "rule": "Host(\`shop.example.com\`)",
         "service": "shop-production-web",
