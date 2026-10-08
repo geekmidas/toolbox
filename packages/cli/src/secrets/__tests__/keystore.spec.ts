@@ -241,7 +241,7 @@ describe('the key store', () => {
 });
 
 describe('toEmbeddableSecrets, for every service', () => {
-	it('flattens mail, the AWS emulator and pg-boss credentials too', () => {
+	it('flattens mail and the AWS emulator credentials too', () => {
 		const secrets = createStageSecrets('dev', [
 			'postgres',
 			'mailpit',
@@ -256,8 +256,10 @@ describe('toEmbeddableSecrets, for every service', () => {
 			MAIL_FROM: 'noreply@localhost',
 			AWS_SECRET_ACCESS_KEY: secrets.services.localstack!.password,
 			AWS_ENDPOINT_URL: `http://${secrets.services.localstack!.host}:${secrets.services.localstack!.port}`,
-			PGBOSS_DB_USER: secrets.services.pgboss!.username,
 		});
+		expect(Object.keys(env).some((key) => key.startsWith('PGBOSS_'))).toBe(
+			false,
+		);
 		expect(env.AWS_ACCESS_KEY_ID).toBe(
 			secrets.services.localstack!.accessKeyId ??
 				secrets.services.localstack!.username,

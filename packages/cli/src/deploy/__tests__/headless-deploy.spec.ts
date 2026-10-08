@@ -34,6 +34,7 @@ import { LocalSandbox } from '../../sandbox/local';
 import type { Sandbox } from '../../sandbox/sandbox';
 import { CredentialsInvalid } from '../../secrets/credentialSchemas';
 import { FileSecretsStore } from '../../secrets/file';
+import { StaleStageSecrets } from '../../secrets/stale';
 import {
 	NothingToRollBack,
 	rollbackStage,
@@ -947,6 +948,48 @@ export const sweep = jobs.cron('rate(1 hour)').handle(async () => null);
 				'gkm secrets:add --stage production',
 			);
 			expect((error as Error).message).not.toContain('not-this-one');
+			expect(events).toContainEqual(
+				expect.objectContaining({ type: 'phase.failed', phase: 'validate' }),
+			);
+			expect(requests.filter((r) => !r.startsWith('GET '))).toEqual([]);
+			expect(run).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('a deployed stage holding a localhost database URL', () => {
+		beforeEach(async () => {
+			mkdirSync(join(root, 'src', 'constructs'), { recursive: true });
+			writeFileSync(
+				join(root, 'src', 'constructs', 'database.ts'),
+				`export const Orders = {
+  id: 'Orders',
+  declare: () => [{ kind: 'database', id: 'Orders', provides: ['ORDERS_URL'] }],
+};
+`,
+			);
+			// What an older gkm stored for an app called \`orders\`, now the
+			// database's own key.
+			await new FileSecretsStore(root).write(STAGE, {
+				stage: STAGE,
+				createdAt: '2026-01-01T00:00:00.000Z',
+				updatedAt: '2026-01-01T00:00:00.000Z',
+				services: {},
+				urls: {},
+				custom: {
+					ORDERS_URL: 'postgresql://orders:s3cr3t@localhost:5432/shop_dev',
+				},
+			});
+		});
+
+		it('fails validate naming the key and the command that removes it, and builds nothing', async () => {
+			const { events, result } = await eventsOf();
+			const error = await result.catch((caught: unknown) => caught);
+
+			expect(error).toBeInstanceOf(StaleStageSecrets);
+			expect((error as Error).message).toContain(
+				'gkm secrets:unset ORDERS_URL --stage production',
+			);
+			expect((error as Error).message).not.toContain('s3cr3t');
 			expect(events).toContainEqual(
 				expect.objectContaining({ type: 'phase.failed', phase: 'validate' }),
 			);

@@ -515,6 +515,44 @@ gkm secrets:show --stage production
 gkm secrets:show --stage production --reveal
 ```
 
+### Removing a secret
+
+```bash
+gkm secrets:unset STRIPE_SECRET_KEY --stage production
+```
+
+Removes one key from the stage's own store (the file, SSM or Secrets
+Manager) and keeps everything else. A key the stage does not hold is refused
+with `SecretNotSet`.
+
+### Stale addresses from an older gkm
+
+Before constructs, starting a stage (`gkm setup`, `gkm test --auto-setup`,
+`gkm secrets:reconcile`, `gkm init`) stored an address for each app:
+`<APP>_DATABASE_URL` as a `postgresql://…@localhost:5432/…` URL with a
+`<APP>_DB_PASSWORD`, and `http://localhost:<port>` for a site or an auth
+server. Those keys can now belong to a construct — `database.schema('AuthDatabase')`
+provides `AUTH_DATABASE_URL`, `new BetterAuth('Auth', …)` provides `AUTH_URL`
+— and a deploy derives them. A value the stage holds is a value set by hand,
+which wins over the derived one, so the app would be handed `localhost`.
+
+`gkm compose` and a Dokploy deploy refuse such a stage before building
+anything, with `StaleStageSecrets`, naming each key and how to remove it:
+
+```
+The stage 'production' holds a value an older gkm generated for an address a construct now provides:
+  AUTH_DATABASE_URL: AuthDatabase's, stored pointing at localhost
+...
+  gkm secrets:unset AUTH_DATABASE_URL --stage production
+```
+
+Run the command it prints; the construct's own value is used from then on.
+Only a database's, a tenant's, an API's or a site's key holding a `localhost`
+(or `127.0.0.1`) URL is refused. A managed database set with its real host —
+`gkm secrets:set AUTH_DATABASE_URL 'postgres://…@db.example.com/…'` — is a
+deliberate choice and still wins. `gkm dev` and `gkm test` need nothing
+removed: there, the derived address always wins.
+
 ### Rotation
 
 ```bash

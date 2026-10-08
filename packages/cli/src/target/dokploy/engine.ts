@@ -87,6 +87,7 @@ import { workerEnvKeys } from '../../reconcile/apps.js';
 import { constructGlobs } from '../../reconcile/workspace.js';
 import type { RunOptions } from '../../run';
 import { assertStageCredentials } from '../../secrets/credentialSchemas.js';
+import { assertNoStaleSecrets } from '../../secrets/stale.js';
 import { initStageSecrets } from '../../secrets/storage.js';
 import type { StageSecrets } from '../../secrets/types.js';
 import { derivedApps } from '../../workspace/derive.js';
@@ -431,6 +432,14 @@ export async function validateDokploy(
 			: {}),
 	});
 	reportDevServices(phase, devServicesUsed(services));
+
+	// An address an older gkm stored for what a construct now provides: a
+	// `localhost` URL is never where a deployed app finds anything.
+	assertNoStaleSecrets({
+		manifest: phase.manifest,
+		stage,
+		supplied: stored?.custom ?? {},
+	});
 
 	// A third party's credentials against their construct's schema, before
 	// anything is built with one every app reading it would refuse.

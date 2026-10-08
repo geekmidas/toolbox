@@ -54,18 +54,9 @@ function createSecrets(custom: Record<string, string> = {}): StageSecrets {
 				password: 'postgres',
 				database: 'test_dev',
 			},
-			pgboss: {
-				host: 'localhost',
-				port: 5432,
-				username: 'pgboss',
-				password: 'pgboss-pass',
-				database: 'test_dev',
-			},
 		},
 		urls: {
 			DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/test_dev',
-			EVENT_PUBLISHER_CONNECTION_STRING:
-				'pgboss://pgboss:pgboss-pass@localhost:5432/test_dev?schema=pgboss',
 		},
 		custom,
 	};
@@ -79,11 +70,6 @@ describe('reconcileSecrets', () => {
 			PORT: '3000',
 			LOG_LEVEL: 'debug',
 			JWT_SECRET: 'existing-jwt-secret',
-			API_DATABASE_URL: 'postgresql://api:pass@localhost:5432/test_dev',
-			API_DB_PASSWORD: 'pass',
-			AUTH_DATABASE_URL: 'postgresql://auth:pass@localhost:5432/test_dev',
-			AUTH_DB_PASSWORD: 'pass',
-			WEB_URL: 'http://localhost:3002',
 		});
 
 		const result = reconcileSecrets(secrets, workspace, ['postgres']);
@@ -101,7 +87,7 @@ describe('reconcileSecrets', () => {
 			'http://localhost:3002',
 		);
 		expect(result!.custom.AUTH_PORT).toBe('3001');
-		expect(result!.custom.AUTH_URL).toBe('http://localhost:3001');
+		expect(result!.custom).not.toHaveProperty('AUTH_URL');
 	});
 
 	it('should not overwrite existing secret values', () => {
@@ -111,17 +97,11 @@ describe('reconcileSecrets', () => {
 			PORT: '3000',
 			LOG_LEVEL: 'debug',
 			JWT_SECRET: 'my-custom-jwt',
-			API_DATABASE_URL: 'postgresql://api:custom@localhost:5432/test_dev',
-			API_DB_PASSWORD: 'custom',
-			AUTH_DATABASE_URL: 'postgresql://auth:custom@localhost:5432/test_dev',
-			AUTH_DB_PASSWORD: 'custom',
-			WEB_URL: 'http://localhost:3002',
 			BETTER_AUTH_SECRET: 'my-existing-secret',
 			BETTER_AUTH_URL: 'http://localhost:3001',
 			BETTER_AUTH_TRUSTED_ORIGINS:
 				'http://localhost:3000,http://localhost:3001',
 			AUTH_PORT: '3001',
-			AUTH_URL: 'http://localhost:3001',
 		});
 
 		const result = reconcileSecrets(secrets, workspace, ['postgres']);
@@ -135,17 +115,11 @@ describe('reconcileSecrets', () => {
 		const secrets = createSecrets({
 			NODE_ENV: 'development',
 			PORT: '3000',
-			API_DATABASE_URL: 'postgresql://api:pass@localhost:5432/test_dev',
-			API_DB_PASSWORD: 'pass',
-			AUTH_DATABASE_URL: 'postgresql://auth:pass@localhost:5432/test_dev',
-			AUTH_DB_PASSWORD: 'pass',
-			WEB_URL: 'http://localhost:3002',
 			BETTER_AUTH_SECRET: 'existing',
 			BETTER_AUTH_URL: 'http://localhost:3001',
 			BETTER_AUTH_TRUSTED_ORIGINS:
 				'http://localhost:3000,http://localhost:3001,http://localhost:3002',
 			AUTH_PORT: '3001',
-			AUTH_URL: 'http://localhost:3001',
 		});
 
 		const result = reconcileSecrets(secrets, workspace, ['postgres', 'minio']);
@@ -167,17 +141,11 @@ describe('reconcileSecrets', () => {
 		const secrets = createSecrets({
 			NODE_ENV: 'development',
 			PORT: '3000',
-			API_DATABASE_URL: 'postgresql://api:pass@localhost:5432/test_dev',
-			API_DB_PASSWORD: 'pass',
-			AUTH_DATABASE_URL: 'postgresql://auth:pass@localhost:5432/test_dev',
-			AUTH_DB_PASSWORD: 'pass',
-			WEB_URL: 'http://localhost:3002',
 			BETTER_AUTH_SECRET: 'existing',
 			BETTER_AUTH_URL: 'http://localhost:3001',
 			BETTER_AUTH_TRUSTED_ORIGINS:
 				'http://localhost:3000,http://localhost:3001,http://localhost:3002',
 			AUTH_PORT: '3001',
-			AUTH_URL: 'http://localhost:3001',
 		});
 
 		const result = reconcileSecrets(secrets, workspace, [
@@ -252,11 +220,6 @@ describe('reconcileSecrets', () => {
 			LOG_LEVEL: 'debug',
 			JWT_SECRET: 'keep-this',
 			MY_CUSTOM_VAR: 'user-added',
-			API_DATABASE_URL: 'postgresql://api:pass@localhost:5432/test_dev',
-			API_DB_PASSWORD: 'pass',
-			AUTH_DATABASE_URL: 'postgresql://auth:pass@localhost:5432/test_dev',
-			AUTH_DB_PASSWORD: 'pass',
-			WEB_URL: 'http://localhost:3002',
 		});
 
 		const result = reconcileSecrets(secrets, workspace, ['postgres']);
@@ -272,11 +235,6 @@ describe('reconcileSecrets', () => {
 		const secrets = createSecrets({
 			NODE_ENV: 'development',
 			PORT: '3000',
-			API_DATABASE_URL: 'postgresql://api:pass@localhost:5432/test_dev',
-			API_DB_PASSWORD: 'pass',
-			AUTH_DATABASE_URL: 'postgresql://auth:pass@localhost:5432/test_dev',
-			AUTH_DB_PASSWORD: 'pass',
-			WEB_URL: 'http://localhost:3002',
 		});
 
 		const result = reconcileSecrets(secrets, workspace, ['postgres']);
@@ -307,7 +265,25 @@ describe('generateFullstackCustomSecrets', () => {
 		expect(result.BETTER_AUTH_SECRET).toMatch(/^better-auth-/);
 		expect(result.BETTER_AUTH_URL).toBe('http://localhost:3001');
 		expect(result.AUTH_PORT).toBe('3001');
-		expect(result.AUTH_URL).toBe('http://localhost:3001');
+	});
+
+	// Each of these is a construct's key — a tenant's URL, an auth server's or
+	// a site's address — derived where the app runs. Stored, it would be set
+	// by hand, and win: a container handed `localhost`.
+	it('stores no address a construct provides', () => {
+		const result = generateFullstackCustomSecrets(createWorkspace(), [
+			'postgres',
+		]);
+
+		expect(Object.keys(result).sort()).toEqual([
+			'AUTH_PORT',
+			'BETTER_AUTH_SECRET',
+			'BETTER_AUTH_TRUSTED_ORIGINS',
+			'BETTER_AUTH_URL',
+			'JWT_SECRET',
+			'LOG_LEVEL',
+			'PORT',
+		]);
 	});
 
 	it('should include all app ports in BETTER_AUTH_TRUSTED_ORIGINS', () => {

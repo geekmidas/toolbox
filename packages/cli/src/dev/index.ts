@@ -368,7 +368,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
 			? await secretsStoreFor(workspace, config.stages.local)
 			: new FileSecretsStore(secretsRoot),
 		config.stages.local,
-		workspaceAppName,
 	);
 
 	if (workspace) {

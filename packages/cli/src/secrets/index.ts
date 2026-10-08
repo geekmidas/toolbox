@@ -186,6 +186,62 @@ export async function secretsSetCommand(
 	logger.log(`\n✓ Secret "${key}" set for stage "${stage}" (${store.name})`);
 }
 
+export interface SecretsUnsetOptions {
+	stage: string;
+}
+
+/** `gkm secrets:unset` for a key the stage does not hold. */
+export class SecretNotSet extends Error {
+	constructor(
+		readonly key: string,
+		readonly stage: string,
+	) {
+		super(
+			`The stage '${stage}' holds no secret '${key}'. ` +
+				`List what it holds with gkm secrets:show --stage ${stage}.`,
+		);
+		this.name = 'SecretNotSet';
+	}
+}
+
+/** `gkm secrets:unset` on a stage that has no secrets at all. */
+export class StageSecretsNotFound extends Error {
+	constructor(readonly stage: string) {
+		super(
+			`The stage '${stage}' has no secrets, so there is nothing to remove.`,
+		);
+		this.name = 'StageSecretsNotFound';
+	}
+}
+
+/**
+ * Remove a custom secret from a stage, in the stage's own store — the file,
+ * SSM or Secrets Manager. The rest of the stage is written back as it was.
+ *
+ * @throws {StageSecretsNotFound} when the stage holds no secrets
+ * @throws {SecretNotSet} when it holds none by that key
+ */
+export async function secretsUnsetCommand(
+	key: string,
+	options: SecretsUnsetOptions,
+): Promise<void> {
+	const { stage } = options;
+	const store = await storeFor(stage);
+	const secrets = await store.read(stage);
+	if (!secrets) throw new StageSecretsNotFound(stage);
+	if (!(key in secrets.custom)) throw new SecretNotSet(key, stage);
+
+	const { [key]: _removed, ...custom } = secrets.custom;
+	await store.write(stage, {
+		...secrets,
+		updatedAt: new Date().toISOString(),
+		custom,
+	});
+	logger.log(
+		`\n✓ Secret "${key}" removed from stage "${stage}" (${store.name})`,
+	);
+}
+
 /**
  * A third party's credentials, checked against the schema of the construct
  * that reads them before they are stored — what the app would otherwise

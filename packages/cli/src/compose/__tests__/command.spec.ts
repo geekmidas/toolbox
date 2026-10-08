@@ -28,8 +28,11 @@ import {
 import type { SqlClient } from '../../reconcile/provision';
 import { CredentialsInvalid } from '../../secrets/credentialSchemas';
 import { FileSecretsStore } from '../../secrets/file';
+import { secretsInitCommand, secretsSetCommand } from '../../secrets/index';
 import { keystoreProject } from '../../secrets/keystore';
+import { StaleStageSecrets } from '../../secrets/stale';
 import { initStageSecrets } from '../../secrets/storage';
+import { ensureStageSecrets } from '../../setup/index';
 import {
 	ComposeModeConflict,
 	ComposePinNeedsPull,
@@ -658,6 +661,137 @@ export const shipping = new ExternalApi('Shipping', {
 		expect((error as Error).message).not.toContain('wrong-field-value');
 		expect(fake.ops()).toEqual([]);
 		expect(existsSync(join(dir, '.gkm', 'compose', 'production'))).toBe(false);
+	});
+});
+
+/**
+ * A stage's secrets started the way a user starts them — `gkm secrets:init`,
+ * then `gkm secrets:set` — and the stack composed from them. Initialising
+ * used to store a `localhost` URL for each app's database under the key a
+ * tenant now provides, and a stored key wins over a derived one: the auth
+ * server was handed a database where nothing answers.
+ */
+describe("a stage's addresses", { timeout: RUN_TIMEOUT }, () => {
+	let home: string;
+	let cwd: string;
+
+	beforeEach(async () => {
+		dir = await project();
+		home = realpathSync(await createTempDir('gkm-compose-home-'));
+		vi.stubEnv('GKM_HOME', home);
+		cwd = process.cwd();
+		process.chdir(dir);
+	});
+	afterEach(async () => {
+		process.chdir(cwd);
+		vi.unstubAllEnvs();
+		await cleanupDir(dir);
+		await cleanupDir(home);
+	});
+
+	const store = async () =>
+		new FileSecretsStore(
+			dir,
+			keystoreProject(await loadWorkspaceSettings(dir), home),
+		);
+	const envFile = (app: string) =>
+		Object.fromEntries(
+			readFileSync(
+				join(dir, '.gkm', 'compose', 'development', `${app}.env`),
+				'utf-8',
+			)
+				.split('\n')
+				.filter((line) => line.includes('='))
+				.map((line) => [
+					line.slice(0, line.indexOf('=')),
+					line.slice(line.indexOf('=') + 1),
+				]),
+		);
+	const dryRun = () =>
+		composeCommand(
+			{ cwd: dir, stage: 'development', dryRun: true },
+			{ docker: fakeDocker().docker, revision: async () => 'abc1234' },
+		);
+
+	/** No key of a construct's address, stored. */
+	const addressKeys = (custom: Record<string, string> = {}) =>
+		Object.keys(custom).filter((key) =>
+			/_(DATABASE_URL|DB_PASSWORD)$|^(AUTH|WEB)_URL$/.test(key),
+		);
+
+	it("hands the auth server its tenant's derived URL after secrets:init and secrets:set", async () => {
+		await secretsInitCommand({ stage: 'development' });
+		await secretsSetCommand('SOME_KEY', 'x', { stage: 'development' });
+
+		const stored = await (await store()).read('development');
+		expect(stored?.custom.SOME_KEY).toBe('x');
+		// The workspace's own secrets were generated.
+		expect(stored?.custom.JWT_SECRET).toBeTruthy();
+		expect(addressKeys(stored?.custom)).toEqual([]);
+
+		await dryRun();
+
+		expect(envFile('auth').AUTH_DATABASE_URL).toMatch(
+			/^postgres:\/\/authdatabase:[^@]+@postgres:5432\/database$/,
+		);
+	});
+
+	// `gkm test --auto-setup` and `gkm setup` start a stage knowing its
+	// containers — and with a Postgres among them, they stored a URL and a
+	// password for every backend app.
+	it("hands the auth server its tenant's derived URL after gkm test's auto-setup", async () => {
+		expect(await ensureStageSecrets('development', dir)).toBe(true);
+		await secretsSetCommand('SOME_KEY', 'x', { stage: 'development' });
+
+		const stored = await (await store()).read('development');
+		expect(stored?.custom.JWT_SECRET).toBeTruthy();
+		expect(addressKeys(stored?.custom)).toEqual([]);
+
+		await dryRun();
+
+		expect(envFile('auth').AUTH_DATABASE_URL).toMatch(
+			/^postgres:\/\/authdatabase:[^@]+@postgres:5432\/database$/,
+		);
+	});
+
+	it('refuses a stage holding a localhost URL for a tenant, naming the command that removes it', async () => {
+		await (await store()).write('development', {
+			...initStageSecrets('development'),
+			custom: {
+				AUTH_DATABASE_URL:
+					'postgresql://auth:k3x9@localhost:5432/compose_app_dev',
+				AUTH_DB_PASSWORD: 'k3x9',
+			},
+		});
+
+		const error = await dryRun().catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(StaleStageSecrets);
+		expect((error as StaleStageSecrets).stale).toEqual([
+			{
+				key: 'AUTH_DATABASE_URL',
+				construct: 'AuthDatabase',
+				host: 'localhost',
+			},
+		]);
+		expect((error as Error).message).toContain(
+			'gkm secrets:unset AUTH_DATABASE_URL --stage development',
+		);
+		// Never the password it holds.
+		expect((error as Error).message).not.toContain('k3x9');
+		expect(existsSync(join(dir, '.gkm', 'compose', 'development'))).toBe(false);
+	});
+
+	it('keeps a managed database the stage set, as before', async () => {
+		const managed = 'postgres://auth:pw@db.managed.example:5432/auth';
+		await (await store()).write('development', {
+			...initStageSecrets('development'),
+			custom: { AUTH_DATABASE_URL: managed },
+		});
+
+		await dryRun();
+
+		expect(envFile('auth').AUTH_DATABASE_URL).toBe(managed);
 	});
 });
 

@@ -159,43 +159,22 @@ export async function savePortState(
 // ---------------------------------------------------------------------------
 
 /**
- * Load and flatten secrets for an app from encrypted storage.
- * For workspace app: maps {APP}_DATABASE_URL → DATABASE_URL.
+ * Load and flatten a stage's secrets from its store.
+ *
+ * Every key as stored — nothing renamed. An app's database URL is its
+ * construct's key, derived by reconcile, and never a stored per-app value
+ * mapped onto `DATABASE_URL`.
  * @internal Exported for testing
  */
 export async function loadSecretsForApp(
 	store: SecretsStore,
 	stage: string,
-	appName?: string,
 ): Promise<Record<string, string>> {
-	let secrets: Record<string, string> = {};
-
 	const stageSecrets = await store.read(stage);
-	if (stageSecrets) {
-		logger.log(`🔐 Loading secrets from stage: ${stage}`);
-		secrets = toEmbeddableSecrets(stageSecrets);
-	}
+	if (!stageSecrets) return {};
 
-	if (Object.keys(secrets).length === 0) {
-		return {};
-	}
-
-	// Single app mode - no mapping needed
-	if (!appName) {
-		return secrets;
-	}
-
-	// Workspace app mode - map {APP}_* to generic names
-	const prefix = appName.toUpperCase();
-	const mapped = { ...secrets };
-
-	// Map {APP}_DATABASE_URL → DATABASE_URL
-	const appDbUrl = secrets[`${prefix}_DATABASE_URL`];
-	if (appDbUrl) {
-		mapped.DATABASE_URL = appDbUrl;
-	}
-
-	return mapped;
+	logger.log(`🔐 Loading secrets from stage: ${stage}`);
+	return toEmbeddableSecrets(stageSecrets);
 }
 
 /**
@@ -421,7 +400,7 @@ export async function prepareEntryCredentials(options: {
 			: new FileSecretsStore(secretsRoot)
 		: undefined;
 	const credentials =
-		store && stage ? await loadSecretsForApp(store, stage, appName) : {};
+		store && stage ? await loadSecretsForApp(store, stage) : {};
 
 	// Always inject PORT into credentials so apps can read it
 	credentials.PORT = String(resolvedPort);

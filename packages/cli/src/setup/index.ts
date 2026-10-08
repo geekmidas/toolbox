@@ -7,17 +7,13 @@ import {
 import {
 	createStageSecrets,
 	generateConnectionUrls,
-	generateSecurePassword,
 	generateServiceCredentials,
 } from '../secrets/generator.js';
 import { secretsStoreFor } from '../secrets/store.js';
 import type { SecretServiceName, StageSecrets } from '../secrets/types.js';
 import { ensureTrusted } from '../trust/index.js';
 import type { LoadedConfig, NormalizedWorkspace } from '../workspace/types.js';
-import {
-	generateFullstackCustomSecrets,
-	writeDockerEnvFromSecrets,
-} from './fullstack-secrets.js';
+import { generateFullstackCustomSecrets } from './fullstack-secrets.js';
 
 const logger = console;
 
@@ -34,8 +30,7 @@ export interface SetupOptions {
  * Orchestrates:
  * 1. Load workspace config
  * 2. Resolve secrets (local → the stage's store → generate fresh)
- * 3. Write docker/.env from secrets
- * 4. Start Docker services
+ * 3. Start Docker services
  */
 export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 	logger.log('\n🔧 Setting up the local environment...\n');
@@ -54,7 +49,6 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 	const stage = options.stage ?? loadedConfig.workspace.stages.local;
 
 	const { workspace } = loadedConfig;
-	const isMultiApp = Object.keys(workspace.apps).length > 1;
 
 	logger.log(`📦 Workspace: ${workspace.name}`);
 	logger.log(`📱 Apps: ${Object.keys(workspace.apps).join(', ')}`);
@@ -68,15 +62,7 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 		process.exit(1);
 	}
 
-	// 3. Write docker/.env from secrets (always regenerated as derived file)
-	const containers = await derivedContainers(workspace, stage);
-
-	if (isMultiApp && containers.includes('postgres')) {
-		await writeDockerEnvFromSecrets(secrets, workspace.root);
-		logger.log('📄 Generated docker/.env with database passwords');
-	}
-
-	// 4. Reconcile the local target: derive containers, allocate ports, start.
+	// 3. Reconcile the local target: derive containers, allocate ports, start.
 	if (!options.skipDocker) {
 		logger.log('');
 
@@ -239,26 +225,6 @@ export function reconcileSecrets(
 			logger.log(`   🔄 Adding missing service credentials: ${name}`);
 			changed = true;
 		}
-	}
-
-	// Always add pgboss credentials when postgres is available
-	if (result.services.postgres && !result.services.pgboss) {
-		result = {
-			...result,
-			services: {
-				...result.services,
-				pgboss: {
-					host: result.services.postgres.host,
-					port: result.services.postgres.port,
-					username: 'pgboss',
-					password: generateSecurePassword(),
-					database: result.services.postgres.database ?? 'app',
-				},
-			},
-		};
-		result.urls = generateConnectionUrls(result.services);
-		logger.log('   🔄 Adding missing service credentials: pgboss');
-		changed = true;
 	}
 
 	// Reconcile custom secrets for multi-app workspaces

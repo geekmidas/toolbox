@@ -100,6 +100,7 @@ import {
 import { constructGlobs } from '../../reconcile/workspace.js';
 import { runOutput } from '../../run';
 import { assertStageCredentials } from '../../secrets/credentialSchemas.js';
+import { assertNoStaleSecrets } from '../../secrets/stale.js';
 import { initStageSecrets } from '../../secrets/storage.js';
 import type { StageSecrets } from '../../secrets/types.js';
 import type { NormalizedWorkspace } from '../../workspace/types.js';
@@ -345,6 +346,13 @@ export async function validateCompose(
 	// stack is composed with one every app reading it would refuse. A push
 	// runs no app, so it reads none of them.
 	if (!push) {
+		// An address an older gkm stored for what a construct now provides:
+		// set by hand wins, so every app would be handed `localhost`.
+		assertNoStaleSecrets({
+			manifest,
+			stage,
+			supplied: secrets?.custom ?? {},
+		});
 		await assertStageCredentials({
 			root,
 			patterns: constructGlobs(workspace),

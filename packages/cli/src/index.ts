@@ -30,6 +30,7 @@ import {
 	secretsRotateCommand,
 	secretsSetCommand,
 	secretsShowCommand,
+	secretsUnsetCommand,
 } from './secrets';
 import type { SecretServiceName } from './secrets/types';
 import { type SetupOptions, setupCommand } from './setup/index';
@@ -584,6 +585,24 @@ program
 			}
 		},
 	);
+
+program
+	.command('secrets:unset')
+	.description('Remove a custom secret from a stage')
+	.argument('<key>', 'Secret key (e.g., API_KEY)')
+	.requiredOption('--stage <stage>', 'Stage name')
+	.action(async (key: string, options: { stage: string }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await secretsUnsetCommand(key, options);
+		} catch (error) {
+			console.error(formatError(error));
+			process.exit(1);
+		}
+	});
 
 program
 	.command('secrets:add')

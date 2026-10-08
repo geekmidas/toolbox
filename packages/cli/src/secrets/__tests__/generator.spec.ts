@@ -5,7 +5,6 @@ import {
 	generateLocalStackAccessKeyId,
 	generateLocalStackCredentials,
 	generateMinioEndpoint,
-	generatePgBossUrl,
 	generatePostgresUrl,
 	generateRedisUrl,
 	generateSecurePassword,
@@ -350,36 +349,6 @@ describe('generateLocalStackAccessKeyId', () => {
 	});
 });
 
-describe('generatePgBossUrl', () => {
-	it('should generate pgboss connection URL', () => {
-		const creds: ServiceCredentials = {
-			host: 'localhost',
-			port: 5432,
-			username: 'pgboss',
-			password: 'secret',
-			database: 'myapp_dev',
-		};
-
-		const url = generatePgBossUrl(creds);
-		expect(url).toBe(
-			'pgboss://pgboss:secret@localhost:5432/myapp_dev?schema=pgboss',
-		);
-	});
-
-	it('should encode special characters in password', () => {
-		const creds: ServiceCredentials = {
-			host: 'localhost',
-			port: 5432,
-			username: 'pgboss',
-			password: 'p@ss/word',
-			database: 'app',
-		};
-
-		const url = generatePgBossUrl(creds);
-		expect(url).toContain('p%40ss%2Fword');
-	});
-});
-
 describe('generateLocalStackCredentials', () => {
 	it('should generate credentials with LSIA-prefixed access key', () => {
 		const creds = generateLocalStackCredentials();
@@ -392,17 +361,14 @@ describe('generateLocalStackCredentials', () => {
 });
 
 describe('createStageSecrets with events', () => {
-	// The pair a worker's crons schedule through. A topic's or queue's own
-	// broker URL is reconcile's, derived from the declaration.
-	it('points the event URLs at pgboss when there is a postgres', () => {
+	// The broker's URL is reconcile's, derived from the declared topic or
+	// queue with the stage's own role. A stored one matched no role.
+	it('stores no pg-boss credential or broker URL beside a postgres', () => {
 		const secrets = createStageSecrets('development', ['postgres']);
 
-		expect(secrets.services.pgboss).toBeDefined();
-		expect(secrets.urls.EVENT_PUBLISHER_CONNECTION_STRING).toContain(
-			'pgboss://',
-		);
+		expect(secrets.services).not.toHaveProperty('pgboss');
 		expect(secrets.urls).not.toHaveProperty(
-			'EVENT_SUBSCRIBER_CONNECTION_STRING',
+			'EVENT_PUBLISHER_CONNECTION_STRING',
 		);
 	});
 });

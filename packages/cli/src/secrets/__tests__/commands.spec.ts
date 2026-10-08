@@ -6,11 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FileSecretsStore } from '../file';
 import { createStageSecrets } from '../generator';
 import {
+	SecretNotSet,
+	StageSecretsNotFound,
 	secretsImportCommand,
 	secretsInitCommand,
 	secretsRotateCommand,
 	secretsSetCommand,
 	secretsShowCommand,
+	secretsUnsetCommand,
 } from '../index';
 import { keystoreProject } from '../keystore';
 import type { StageSecrets } from '../types';
@@ -127,8 +130,52 @@ export default defineWorkspace({
 			);
 			const custom = (await workspaceStore.read('dev'))?.custom ?? {};
 			expect(Object.keys(custom).length).toBeGreaterThan(0);
+			// No address of anything a construct declares: derived, and a
+			// stored one would win over it.
+			expect(
+				Object.keys(custom).filter((key) =>
+					/_(DATABASE_URL|DB_PASSWORD)$|_URL$/.test(key),
+				),
+			).toEqual([]);
 			expect(printed()).toContain('generating per-app secrets');
 			expect(printed()).toContain('Custom secrets:');
+		});
+	});
+
+	describe('secrets:unset', () => {
+		it('removes one custom secret and keeps the rest of the stage', async () => {
+			const seeded = await seed();
+			await secretsSetCommand(
+				'AUTH_DATABASE_URL',
+				'postgresql://x@localhost/y',
+				{
+					stage: 'dev',
+				},
+			);
+
+			await secretsUnsetCommand('AUTH_DATABASE_URL', { stage: 'dev' });
+
+			const after = await stored('dev');
+			expect(after?.custom).toEqual({ STRIPE_KEY: 'sk_test_123' });
+			expect(after?.services).toEqual(seeded.services);
+			expect(printed()).toContain(
+				'Secret "AUTH_DATABASE_URL" removed from stage "dev" (file)',
+			);
+		});
+
+		it('refuses a key the stage does not hold, changing nothing', async () => {
+			const seeded = await seed();
+
+			await expect(
+				secretsUnsetCommand('NOPE', { stage: 'dev' }),
+			).rejects.toBeInstanceOf(SecretNotSet);
+			expect((await stored('dev'))?.updatedAt).toBe(seeded.updatedAt);
+		});
+
+		it('refuses a stage with no secrets', async () => {
+			await expect(
+				secretsUnsetCommand('KEY', { stage: 'nowhere' }),
+			).rejects.toBeInstanceOf(StageSecretsNotFound);
 		});
 	});
 
