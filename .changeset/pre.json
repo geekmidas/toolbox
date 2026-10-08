@@ -128,6 +128,7 @@
     "production-image-fixes",
     "production-server-parity",
     "production-telemetry-redaction",
+    "providers-s3",
     "publisher-edge",
     "queues-topics-constructs",
     "reconcile-reprovisions",
