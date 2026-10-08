@@ -216,5 +216,8 @@
 		"better-auth": {
 			"optional": true
 		}
+	},
+	"scripts": {
+		"build": "tsdown --config ../../tsdown.config.ts --filter ."
 	}
 }

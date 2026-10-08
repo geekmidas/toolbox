@@ -46,6 +46,8 @@ export function writeComposeApp(
 		packageManager: 'pnpm@10.13.1',
 		// The client the stack's Redis is reached with.
 		dependencies: { ioredis: '~6.0.0' },
+		// What `gkm init` scaffolds for a fullstack workspace.
+		scripts: { build: 'gkm build' },
 	});
 	writeFileSync(join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - apps/*\n');
 	json('turbo.json', {

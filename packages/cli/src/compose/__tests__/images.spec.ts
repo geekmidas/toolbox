@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { type ImageLookup, isMissingManifest } from '../docker';
+import {
+	type ImageLookup,
+	isLoopbackRegistry,
+	isMissingManifest,
+	pushedDigest,
+} from '../docker';
 import {
 	assertImagesExist,
+	ImageDigestsInvalid,
 	ImageTagNotFound,
+	parseDigests,
+	pinnedRef,
 	RegistryUnreachable,
 	siteTag,
 } from '../images';
@@ -97,5 +105,65 @@ describe('isMissingManifest', () => {
 describe('siteTag', () => {
 	it('is the release tag and the stage, since a site is built per stage', () => {
 		expect(siteTag('v1.4.0', 'production')).toBe('v1.4.0-production');
+	});
+});
+
+const DIGEST = `sha256:${'ab'.repeat(32)}`;
+
+describe('a push', () => {
+	it("reads the digest the registry stored from docker push's last line", () => {
+		const output = [
+			'The push refers to repository [localhost:5000/acme/shop-api]',
+			'5f70bf18a086: Pushed',
+			`v2: digest: ${DIGEST} size: 1784`,
+		].join('\n');
+
+		expect(pushedDigest(output)).toBe(DIGEST);
+		expect(pushedDigest('5f70bf18a086: Pushed')).toBeUndefined();
+	});
+
+	it('pins an image by its ref and digest, whatever the ref already had', () => {
+		expect(pinnedRef('r.example.com/acme/shop-api:v2', DIGEST)).toBe(
+			`r.example.com/acme/shop-api:v2@${DIGEST}`,
+		);
+		expect(
+			pinnedRef(
+				`r.example.com/acme/shop-api:v2@sha256:${'0'.repeat(64)}`,
+				DIGEST,
+			),
+		).toBe(`r.example.com/acme/shop-api:v2@${DIGEST}`);
+	});
+});
+
+describe('a digests file', () => {
+	it('is a JSON object of app to <ref>@sha256:…', () => {
+		const content = JSON.stringify({ api: `r/acme/shop-api:v2@${DIGEST}` });
+		expect(parseDigests('d.json', content)).toEqual({
+			api: `r/acme/shop-api:v2@${DIGEST}`,
+		});
+	});
+
+	it('refuses anything else, naming the file', () => {
+		for (const content of [
+			'not json',
+			'[]',
+			JSON.stringify({ api: 'r/acme/shop-api:v2' }),
+		]) {
+			expect(() => parseDigests('d.json', content)).toThrow(
+				ImageDigestsInvalid,
+			);
+		}
+	});
+});
+
+describe('a registry on loopback', () => {
+	it('is asked over plain HTTP, as the daemon pushes to it — and no other is', () => {
+		expect(isLoopbackRegistry('localhost:5000/acme/shop-api:v2')).toBe(true);
+		expect(isLoopbackRegistry('127.0.0.1:5000/acme/shop-api:v2')).toBe(true);
+		expect(isLoopbackRegistry('localhost/acme/shop-api:v2')).toBe(true);
+		expect(isLoopbackRegistry('ghcr.io/acme/shop-api:v2')).toBe(false);
+		expect(isLoopbackRegistry('localhost.evil.example/a/b:v2')).toBe(false);
+		// A Docker Hub name whose first segment is `localhost`-ish is not one.
+		expect(isLoopbackRegistry('acme/shop-api:v2')).toBe(false);
 	});
 });

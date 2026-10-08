@@ -30,5 +30,8 @@
 	},
 	"devDependencies": {
 		"@types/lodash.snakecase": "~4.1.9"
+	},
+	"scripts": {
+		"build": "tsdown --config ../../tsdown.config.ts --filter ."
 	}
 }

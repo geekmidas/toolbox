@@ -99,7 +99,8 @@
 		"dist"
 	],
 	"scripts": {
-		"play": "tsx src/playground.ts"
+		"play": "tsx src/playground.ts",
+		"build": "tsdown --config ../../tsdown.config.ts --filter ."
 	},
 	"repository": {
 		"type": "git",

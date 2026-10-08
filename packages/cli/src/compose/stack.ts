@@ -190,8 +190,6 @@ export interface StackService {
 		context: string;
 		dockerfile: string;
 		args?: Record<string, string>;
-		/** BuildKit secrets, by the id the Dockerfile mounts them under. */
-		secrets?: { source: string; target: string }[];
 	};
 	restart?: string;
 	command?: string | string[];
@@ -211,8 +209,6 @@ export interface StackFile {
 	name: string;
 	services: Record<string, StackService>;
 	volumes: Record<string, Record<string, never>>;
-	/** Build secrets, each a file beside the compose file. */
-	secrets?: Record<string, { file: string }>;
 }
 
 export interface ComposeStack {
@@ -290,6 +286,13 @@ export interface StackInput {
 	allowDevServices?: readonly DevService[];
 	/** The edge's published ports. 443 and 80 by default. */
 	ports?: { https?: number; http?: number };
+	/**
+	 * The stack only builds its images, to push them (`--build --push`): no
+	 * backend's or worker's runtime environment is resolved and no service
+	 * reads an env file, so building needs none of the stage's backend
+	 * secrets. A site's build args — its public URLs — are still resolved.
+	 */
+	buildOnly?: boolean;
 	/**
 	 * For builds: where the images are built from and with what — the build
 	 * root, its package manager and turbo. The workspace's root, with pnpm,
@@ -674,6 +677,9 @@ export function composeStack(input: StackInput): ComposeStack {
 			if (app.build && Object.keys(args).length > 0) app.build.args = args;
 			continue;
 		}
+		// Built to be pushed, a backend's image is every stage's: what it reads
+		// at runtime is the deploy's business, not the build's.
+		if (input.buildOnly) continue;
 
 		const keys = appEnvKeys(manifest, app.name, input.runnables) ?? new Set();
 		const values = valuesFor(app, keys);
@@ -711,7 +717,7 @@ export function composeStack(input: StackInput): ComposeStack {
 
 	// A worker reaches every surface across the compose network: it is never
 	// one, so no address is its own.
-	for (const worker of workers) {
+	for (const worker of input.buildOnly ? [] : workers) {
 		const keys =
 			workerEnvKeys(manifest, worker.id, input.runnables) ?? new Set();
 		worker.env = {
@@ -745,6 +751,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		composeDir: join(workspace.root, stackDir(stage)),
 		buildRoot: layout.buildRoot,
 		workspaceRoot: workspace.root,
+		envFiles: !input.buildOnly,
 	});
 
 	const caddyfile = edgeCaddyfile(
@@ -1000,6 +1007,8 @@ function stackFile(options: {
 	composeDir: string;
 	buildRoot: string;
 	workspaceRoot: string;
+	/** Whether services read env files — not in a stack that only builds. */
+	envFiles: boolean;
 }): StackFile {
 	const { project, plan, apps } = options;
 	// What reconcile defines; OpenObserve is the stack's own.
@@ -1161,6 +1170,7 @@ function stackFile(options: {
 	};
 
 	for (const service of Object.values(services)) {
+		if (!options.envFiles) delete service.env_file;
 		service.logging = {
 			driver: LOG_ROTATION.driver,
 			options: { ...LOG_ROTATION.options },
@@ -1184,100 +1194,6 @@ function defaultLayout(root: string): ImageLayout {
 			monorepo: true,
 		},
 		gkmPaths: ['gkm.config.*'],
-	};
-}
-
-/** The id the stack's compose file names an app's build credentials by. */
-export function credentialsSecret(app: string): string {
-	return `${app}_credentials`;
-}
-
-/** The file beside the compose file an app's build credentials are read from. */
-export function credentialsFile(app: string): string {
-	return `${app}.credentials`;
-}
-
-/**
- * The stack with each backend's image built with its encrypted credentials:
- * a BuildKit secret per app — the file `credentialsFile` names, mounted as
- * `gkm_credentials` — and the hash naming them as a build arg, so a new key
- * rebuilds the layer that embeds them. Each backend's env file gains the
- * `GKM_MASTER_KEY` that decrypts them, the way a Dokploy deploy injects it.
- *
- * Pure: the caller encrypted them.
- */
-export function withBuildCredentials(
-	stack: ComposeStack,
-	credentials: Readonly<
-		Record<string, { masterKey: string; buildArg: string }>
-	>,
-): ComposeStack {
-	const services = { ...stack.compose.services };
-	const secrets: Record<string, { file: string }> = {
-		...stack.compose.secrets,
-	};
-	const apps = stack.apps.map((app) => {
-		const own = credentials[app.name];
-		const service = services[app.name];
-		if (!own || !service?.build) return app;
-
-		const [key, value] = own.buildArg.split('=') as [string, string];
-		services[app.name] = {
-			...service,
-			build: {
-				...service.build,
-				args: { ...service.build.args, [key]: value },
-				secrets: [
-					{ source: credentialsSecret(app.name), target: 'gkm_credentials' },
-				],
-			},
-		};
-		secrets[credentialsSecret(app.name)] = {
-			file: `./${credentialsFile(app.name)}`,
-		};
-		return {
-			...app,
-			env: { ...app.env, GKM_MASTER_KEY: own.masterKey },
-		};
-	});
-
-	const workers = stack.workers.map((worker) => {
-		const own = credentials[worker.name];
-		const service = services[worker.name];
-		if (!own || !service?.build) return worker;
-
-		const [key, value] = own.buildArg.split('=') as [string, string];
-		services[worker.name] = {
-			...service,
-			build: {
-				...service.build,
-				args: { ...service.build.args, [key]: value },
-				secrets: [
-					{
-						source: credentialsSecret(worker.name),
-						target: 'gkm_credentials',
-					},
-				],
-			},
-		};
-		secrets[credentialsSecret(worker.name)] = {
-			file: `./${credentialsFile(worker.name)}`,
-		};
-		return {
-			...worker,
-			env: { ...worker.env, GKM_MASTER_KEY: own.masterKey },
-		};
-	});
-
-	return {
-		...stack,
-		apps,
-		workers,
-		compose: {
-			...stack.compose,
-			services,
-			...(Object.keys(secrets).length ? { secrets } : {}),
-		},
 	};
 }
 

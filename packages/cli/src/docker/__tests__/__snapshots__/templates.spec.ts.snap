@@ -34,9 +34,7 @@ FROM deps AS builder
 WORKDIR /app
 
 COPY --from=pruner /app/out/full/ ./
-
 # The workspace packages the app depends on, built from source.
-RUN pnpm run --if-present build
 RUN pnpm dlx turbo@2.5.4 run build --filter='@myapp/api^...'
 
 # Bundle the production server, with the encrypted credentials embedded
@@ -113,9 +111,7 @@ FROM deps AS builder
 WORKDIR /app
 
 COPY --from=pruner /app/out/full/ ./
-
 # The workspace packages the app depends on, built from source.
-RUN pnpm run --if-present build
 RUN pnpm dlx turbo@2.5.4 run build --filter='@myapp/auth^...'
 
 # Bundle the entry point with every dependency (dist/index.mjs), embedding the

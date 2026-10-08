@@ -63,6 +63,12 @@ export interface DeployContext {
 	signal?: AbortSignal;
 	/** Look everything up, create, build and push nothing. */
 	dryRun: boolean;
+	/**
+	 * Validate and build — the target's images built, and pushed where it
+	 * pushes them — and nothing else: no lock, nothing provisioned, released,
+	 * verified or recorded. What a CI job runs before a server pulls.
+	 */
+	buildOnly?: boolean;
 	/** The CLI's home, for the stage's keys. Defaults to `GKM_HOME`. */
 	home?: string;
 	/** Where spawned processes' output goes. Defaults to the terminal. */
@@ -100,6 +106,16 @@ export class NoDeployableApps extends Error {
 			`No apps to deploy through "${target}": every selected app deploys somewhere else. Pick the target with --target, or set each app's deploy in gkm.config.ts.`,
 		);
 		this.name = 'NoDeployableApps';
+	}
+}
+
+/** A build-only run through a target with no build phase. */
+export class TargetBuildsNothing extends Error {
+	constructor(readonly target: string) {
+		super(
+			`"${target}" has no build phase, so a build-only run would do nothing. Deploy it in full, or build through a target that builds images (compose).`,
+		);
+		this.name = 'TargetBuildsNothing';
 	}
 }
 
@@ -189,6 +205,16 @@ export async function runDeploy(
 	if (ctx.dryRun) {
 		const run = await validate(target, phaseCtx, emit);
 		await phase('plan', () => target.plan(phaseCtx, run));
+		return target.result(phaseCtx, run);
+	}
+
+	// Building changes no stage — nothing is provisioned, released or
+	// recorded — so it takes no lock: a CI job building the next release must
+	// not fail because a server is deploying the last one.
+	if (ctx.buildOnly) {
+		if (!target.build) throw new TargetBuildsNothing(resolved.name);
+		const run = await validate(target, phaseCtx, emit);
+		await phase('build', () => target.build!(phaseCtx, run));
 		return target.result(phaseCtx, run);
 	}
 

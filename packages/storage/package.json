@@ -46,7 +46,9 @@
 	"files": [
 		"dist"
 	],
-	"scripts": {},
+	"scripts": {
+		"build": "tsdown --config ../../tsdown.config.ts --filter ."
+	},
 	"dependencies": {},
 	"peerDependencies": {
 		"@geekmidas/cache": "workspace:^",

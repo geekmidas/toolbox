@@ -129,5 +129,8 @@
 		"@types/pg": "~8.23.1",
 		"pg": "~8.23.0",
 		"pg-boss": "~12.33.3"
+	},
+	"scripts": {
+		"build": "tsdown --config ../../tsdown.config.ts --filter ."
 	}
 }

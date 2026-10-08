@@ -128,9 +128,12 @@ describe('building from the build root', () => {
 		expect(dockerfile).toContain(
 			"RUN find . -maxdepth 1 -type f ! -name 'pnpm-lock.yaml' ! -name package.json",
 		);
-		// Built from source: the root's build, then turbo's ^build.
-		expect(dockerfile).toContain('RUN pnpm run --if-present build');
-		expect(dockerfile).toContain("--filter='@shop/api^...'");
+		// Built from source by turbo's ^build — never the root's own build
+		// script, which (`gkm build`) would build apps the slice lacks.
+		expect(dockerfile).not.toMatch(/run (--if-present )?build$/m);
+		expect(dockerfile).toMatch(
+			/^RUN .*turbo.* run build --filter='@shop\/api\^\.\.\.'/m,
+		);
 	});
 
 	it('keeps a nested gkm workspace’s own package in a backend’s slice, and copies what it keeps outside one', () => {

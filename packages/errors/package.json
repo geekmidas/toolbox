@@ -18,7 +18,8 @@
 		"dist"
 	],
 	"scripts": {
-		"ts": "tsc --noEmit --skipLibCheck src/**/*.ts"
+		"ts": "tsc --noEmit --skipLibCheck src/**/*.ts",
+		"build": "tsdown --config ../../tsdown.config.ts --filter ."
 	},
 	"repository": {
 		"type": "git",

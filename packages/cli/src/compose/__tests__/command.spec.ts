@@ -1,6 +1,7 @@
 import {
 	existsSync,
 	mkdirSync,
+	readdirSync,
 	readFileSync,
 	realpathSync,
 	rmSync,
@@ -26,18 +27,22 @@ import {
 } from '../../deploy/devServices';
 import type { SqlClient } from '../../reconcile/provision';
 import { CredentialsInvalid } from '../../secrets/credentialSchemas';
-import { decryptSecrets } from '../../secrets/encryption';
 import { FileSecretsStore } from '../../secrets/file';
 import { keystoreProject } from '../../secrets/keystore';
 import { initStageSecrets } from '../../secrets/storage';
 import {
 	ComposeModeConflict,
+	ComposePinNeedsPull,
+	ComposePushNeedsBuild,
 	composeCommand,
+	ImageDigestMismatch,
+	ImageDigestMissing,
 	ImageTagNotFound,
 	RedisClientMissing,
+	RegistryRequired,
 } from '../index';
 import { writeComposeApp } from './__helpers__/composeApp';
-import { answering, fakeDocker } from './__helpers__/fakeDocker';
+import { answering, fakeDigest, fakeDocker } from './__helpers__/fakeDocker';
 
 /**
  * `gkm compose` with Docker, the registry, Postgres and the
@@ -220,29 +225,21 @@ describe(
 			);
 		});
 
-		it("builds each backend with its environment encrypted, as a build secret its env file's key opens", async () => {
+		it("builds each backend with nothing of the stage's in it: its env file is read at runtime", async () => {
 			const stack = join(dir, '.gkm', 'compose', 'development');
 			const compose = readFileSync(join(stack, 'docker-compose.yml'), 'utf-8');
 
-			expect(compose).toMatch(
-				/secrets:\n\s+- source: api_credentials\n\s+target: gkm_credentials/,
-			);
-			expect(compose).toMatch(
-				/api_credentials:\n\s+file: \.\/api\.credentials/,
-			);
-			expect(compose).toMatch(/GKM_CIPHERTEXT_HASH: [0-9a-f]{16}/);
-			expect(statSync(join(stack, 'api.credentials')).mode & 0o777).toBe(0o600);
-
-			const [encrypted, iv] = readFileSync(
-				join(stack, 'api.credentials'),
-				'utf-8',
-			).split('\n');
+			expect(compose).not.toContain('gkm_credentials');
+			expect(compose).not.toContain('GKM_CIPHERTEXT_HASH');
+			expect(compose).not.toMatch(/^secrets:/m);
+			expect(
+				readdirSync(stack).filter((file) => file.endsWith('.credentials')),
+			).toEqual([]);
+			// Every secret the API reads is in its env file, and no key to
+			// decrypt anything is.
 			const env = readFileSync(join(stack, 'api.env'), 'utf-8');
-			const masterKey = /^GKM_MASTER_KEY=([0-9a-f]+)$/m.exec(env)?.[1];
-			const secrets = decryptSecrets(encrypted!, iv!, masterKey!);
-			expect(secrets.PORT).toBe(/^PORT=(.*)$/m.exec(env)?.[1]);
-			// A site embeds nothing.
-			expect(existsSync(join(stack, 'web.credentials'))).toBe(false);
+			expect(env).toMatch(/^DATABASE_URL=postgres:\/\//m);
+			expect(env).not.toContain('GKM_MASTER_KEY');
 		});
 
 		it('creates the roles with the master credential on the published port', async () => {
@@ -418,10 +415,10 @@ describe('a workspace nested in a monorepo', { timeout: RUN_TIMEOUT }, () => {
 		);
 
 		// The build root's ignore file is the one that applies, and it now
-		// leaves out every stack's env files and credentials.
+		// leaves out every stack's env files.
 		const ignore = readFileSync(join(root, '.dockerignore'), 'utf-8');
 		expect(ignore.startsWith('coverage\n')).toBe(true);
-		for (const file of ['api.env', 'auth.env', 'api.credentials']) {
+		for (const file of ['api.env', 'auth.env']) {
 			expect(existsSync(join(stack, file))).toBe(true);
 			expect(
 				dockerIgnores(ignore, `examples/shop/.gkm/compose/development/${file}`),
@@ -962,4 +959,300 @@ it('refuses --build with --pull', async () => {
 			pull: true,
 		}),
 	).rejects.toBeInstanceOf(ComposeModeConflict);
+});
+
+describe('gkm compose --build --push', { timeout: RUN_TIMEOUT }, () => {
+	const REGISTRY = 'registry.example.com/acme/compose-app';
+	const refs = {
+		api: `${REGISTRY}/compose-app-api:v2`,
+		auth: `${REGISTRY}/compose-app-auth:v2`,
+		jobs: `${REGISTRY}/compose-app-jobs:v2`,
+		web: `${REGISTRY}/compose-app-web:v2-production`,
+	};
+
+	beforeEach(async () => {
+		dir = await project();
+	});
+	afterEach(async () => {
+		await cleanupDir(dir);
+	});
+
+	it('builds and pushes every image — backends, the worker, the site at <tag>-<stage> — and starts nothing', async () => {
+		const { docker, calls, ops } = fakeDocker();
+		const sql = vi.fn();
+		const migrate = vi.fn();
+		const probe = vi.fn();
+
+		const result = await composeCommand(
+			{
+				cwd: dir,
+				stage: 'production',
+				build: true,
+				push: true,
+				tag: 'v2',
+				digestsFile: 'release/digests.json',
+			},
+			{ docker, sql, migrate, probe },
+		);
+
+		expect(ops()).toEqual(['build', 'push', 'push', 'push', 'push']);
+		expect(calls[0]?.args).toEqual(['api', 'auth', 'web', 'jobs']);
+		expect(
+			calls.filter((call) => call.op === 'push').map((call) => call.args),
+		).toEqual([refs.api, refs.auth, refs.web, refs.jobs]);
+		// Nothing provisioned, migrated or asked.
+		expect(sql).not.toHaveBeenCalled();
+		expect(migrate).not.toHaveBeenCalled();
+		expect(probe).not.toHaveBeenCalled();
+		expect(result?.images?.api).toEqual({
+			ref: refs.api,
+			tag: 'v2',
+			digest: fakeDigest(refs.api),
+		});
+
+		// The digests file: each image as <ref>@sha256:…, for the deploy step.
+		const digests = JSON.parse(
+			readFileSync(join(dir, 'release', 'digests.json'), 'utf-8'),
+		);
+		expect(digests).toEqual(
+			Object.fromEntries(
+				Object.entries(refs).map(([app, ref]) => [
+					app,
+					`${ref}@${fakeDigest(ref)}`,
+				]),
+			),
+		);
+	});
+
+	it('records nothing, keeps none of the secrets it generated, and reads no env file', async () => {
+		const { docker } = fakeDocker();
+
+		await composeCommand(
+			{ cwd: dir, stage: 'production', build: true, push: true, tag: 'v2' },
+			{ docker },
+		);
+
+		expect(existsSync(join(dir, '.gkm', 'deploy-production.json'))).toBe(false);
+		expect(existsSync(join(dir, '.gkm', 'secrets', 'production.json'))).toBe(
+			false,
+		);
+		const stack = join(dir, '.gkm', 'compose', 'production');
+		expect(readdirSync(stack).filter((file) => file.endsWith('.env'))).toEqual(
+			[],
+		);
+		const compose = readFileSync(join(stack, 'docker-compose.yml'), 'utf-8');
+		expect(compose).not.toContain('env_file');
+		// The site is built with the stage's public URLs.
+		expect(compose).toContain('VITE_API_URL: https://api.shop.example.com');
+		// The same Dockerfiles a deploy builds: the backends register the
+		// stack's Redis cache driver.
+		for (const backend of ['api', 'jobs']) {
+			expect(
+				readFileSync(join(stack, `Dockerfile.${backend}`), 'utf-8'),
+			).toContain('--cache redis');
+		}
+		// Nor is the Redis password written: nothing reads an env file.
+		expect(existsSync(join(stack, 'redis.env'))).toBe(false);
+	});
+
+	it('takes no lock: a push runs while the stage is being deployed', async () => {
+		const { docker } = fakeDocker();
+		const { createStateStore } = await import('../../deploy/StateStore');
+		const store = await createStateStore({
+			config: undefined,
+			workspaceRoot: dir,
+			workspaceName: 'compose-app',
+		});
+		const lock = await store.lock('production', { operation: 'deploy' });
+
+		try {
+			await expect(
+				composeCommand(
+					{ cwd: dir, stage: 'production', build: true, push: true, tag: 'v2' },
+					{ docker },
+				),
+			).resolves.toBeDefined();
+		} finally {
+			await lock.release();
+		}
+	});
+
+	it('refuses --push without --build, and with --pull, before anything runs', async () => {
+		await expect(
+			composeCommand({ cwd: '/nowhere', stage: 'production', push: true }),
+		).rejects.toBeInstanceOf(ComposePushNeedsBuild);
+		await expect(
+			composeCommand({
+				cwd: '/nowhere',
+				stage: 'production',
+				push: true,
+				pull: true,
+			}),
+		).rejects.toBeInstanceOf(ComposePushNeedsBuild);
+		await expect(
+			composeCommand({
+				cwd: '/nowhere',
+				stage: 'production',
+				push: true,
+				tag: 'v2',
+			}),
+		).rejects.toBeInstanceOf(ComposePushNeedsBuild);
+	});
+
+	it('refuses a digests file on a build that neither pushes nor pulls', async () => {
+		await expect(
+			composeCommand({
+				cwd: '/nowhere',
+				stage: 'production',
+				build: true,
+				digestsFile: 'digests.json',
+			}),
+		).rejects.toBeInstanceOf(ComposePinNeedsPull);
+	});
+});
+
+describe('with no deploy.registry', { timeout: RUN_TIMEOUT }, () => {
+	beforeEach(async () => {
+		dir = realpathSync(await createTempDir('gkm-compose-command-'));
+		writeComposeApp(dir);
+	});
+	afterEach(async () => {
+		await cleanupDir(dir);
+	});
+
+	it('refuses to push, before anything is built or contacted', async () => {
+		const { docker, ops } = fakeDocker();
+
+		const error = await composeCommand(
+			{ cwd: dir, stage: 'production', build: true, push: true, tag: 'v2' },
+			{ docker },
+		).catch((e: unknown) => e);
+
+		expect(error).toBeInstanceOf(RegistryRequired);
+		expect((error as RegistryRequired).operation).toBe('push');
+		// The Docker Hub name it would have had.
+		expect((error as RegistryRequired).ref).toMatch(
+			/^compose-app\/compose-app-[a-z]+:v2$/,
+		);
+		expect((error as Error).message).toContain('deploy.registry');
+		expect(ops()).toEqual([]);
+		expect(existsSync(join(dir, '.gkm', 'compose'))).toBe(false);
+	});
+
+	it('refuses to pull a tag, or --pull, before the registry is asked', async () => {
+		for (const options of [{ tag: 'v2' }, { pull: true }]) {
+			const { docker, ops } = fakeDocker();
+			const error = await composeCommand(
+				{ cwd: dir, stage: 'production', ...options },
+				{ docker },
+			).catch((e: unknown) => e);
+
+			expect(error).toBeInstanceOf(RegistryRequired);
+			expect((error as RegistryRequired).operation).toBe('pull');
+			expect(ops()).toEqual([]);
+		}
+	});
+
+	it('still builds and runs here with no tag, as it always has', async () => {
+		const { docker, ops } = fakeDocker();
+
+		await composeCommand(
+			{ cwd: dir, stage: 'development' },
+			{
+				docker,
+				revision: async () => 'abc1234',
+				sql: () => ({ query: async () => [] }) satisfies SqlClient,
+				migrate: async () => [],
+				probe: async () => 200,
+			},
+		);
+
+		expect(ops()).toContain('build');
+		expect(ops()).not.toContain('push');
+	});
+});
+
+describe('gkm compose --tag --digests-file', { timeout: RUN_TIMEOUT }, () => {
+	const REGISTRY = 'registry.example.com/acme/compose-app';
+	const refs = {
+		api: `${REGISTRY}/compose-app-api:v2`,
+		auth: `${REGISTRY}/compose-app-auth:v2`,
+		jobs: `${REGISTRY}/compose-app-jobs:v2`,
+		web: `${REGISTRY}/compose-app-web:v2-production`,
+	};
+	const pinned = Object.fromEntries(
+		Object.entries(refs).map(([app, ref]) => [
+			app,
+			`${ref}@${fakeDigest(ref)}`,
+		]),
+	);
+
+	beforeEach(async () => {
+		dir = await project();
+	});
+	afterEach(async () => {
+		await cleanupDir(dir);
+	});
+
+	it('pulls and runs each image at its digest, and records it', async () => {
+		writeFileSync(join(dir, 'digests.json'), JSON.stringify(pinned));
+		const { docker, calls } = fakeDocker({ registry: Object.values(pinned) });
+
+		await composeCommand(
+			{
+				cwd: dir,
+				stage: 'production',
+				tag: 'v2',
+				digestsFile: 'digests.json',
+			},
+			{
+				docker,
+				revision: vi.fn(),
+				sql: () => ({ query: async () => [] }) satisfies SqlClient,
+				migrate: async () => [],
+				probe: async () => 200,
+			},
+		);
+
+		expect(
+			calls.filter((call) => call.op === 'lookup').map((call) => call.args),
+		).toEqual(expect.arrayContaining(Object.values(pinned)));
+		const compose = readFileSync(
+			join(dir, '.gkm', 'compose', 'production', 'docker-compose.yml'),
+			'utf-8',
+		);
+		expect(compose).toContain(`image: ${pinned.api}`);
+		expect(compose).toContain(`image: ${pinned.web}`);
+
+		const { state } = JSON.parse(
+			readFileSync(join(dir, '.gkm', 'deploy-production.json'), 'utf-8'),
+		);
+		expect(state.releases.api.current.ref).toBe(pinned.api);
+		expect(state.releases.api.current.tag).toBe('v2');
+	});
+
+	it('refuses a file missing an app, or pinning another image, before the registry is asked', async () => {
+		const { api: _, ...noApi } = pinned;
+		writeFileSync(join(dir, 'digests.json'), JSON.stringify(noApi));
+		const { docker, ops } = fakeDocker({ registry: Object.values(pinned) });
+
+		const missing = await composeCommand(
+			{ cwd: dir, stage: 'production', tag: 'v2', digestsFile: 'digests.json' },
+			{ docker },
+		).catch((e: unknown) => e);
+		expect(missing).toBeInstanceOf(ImageDigestMissing);
+		expect((missing as ImageDigestMissing).apps).toEqual(['api']);
+
+		// Written by a push of another tag.
+		writeFileSync(
+			join(dir, 'digests.json'),
+			JSON.stringify({ ...pinned, web: pinned.web!.replace(':v2-', ':v1-') }),
+		);
+		const mismatch = await composeCommand(
+			{ cwd: dir, stage: 'production', tag: 'v2', digestsFile: 'digests.json' },
+			{ docker },
+		).catch((e: unknown) => e);
+		expect(mismatch).toBeInstanceOf(ImageDigestMismatch);
+		expect(ops()).toEqual([]);
+	});
 });

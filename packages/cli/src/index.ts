@@ -481,6 +481,14 @@ program
 	)
 	.option('--build', 'Build images from this checkout, tagged with the commit')
 	.option('--pull', 'Pull images (at --tag, or latest) rather than build them')
+	.option(
+		'--push',
+		'With --build: push every image to deploy.registry and start nothing (for CI)',
+	)
+	.option(
+		'--digests-file <path>',
+		'With --push: write each image as <ref>@sha256:… (JSON). With --tag: run the images at those digests',
+	)
 	.option('--dry-run', 'Write the files and print the plan; start nothing')
 	.option('--down', "Stop the stage's stack (its volumes are kept)")
 	.option(
