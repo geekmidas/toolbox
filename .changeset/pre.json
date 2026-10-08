@@ -151,6 +151,7 @@
     "upgrade-follows-release-line",
     "v10-the-manifest-is-the-source",
     "worker-database",
-    "worker-template"
+    "worker-template",
+    "workers-deploy-unit"
   ]
 }
