@@ -11,7 +11,7 @@ gkm compose --stage development         # the local stage, built from this check
 gkm compose --stage production --tag v1.4.0   # the images CI pushed as v1.4.0
 gkm compose --stage production --build --push --tag v1.4.0  # CI: build and push, start nothing
 gkm compose --stage production --down    # stop it (volumes are kept)
-gkm compose --stage preview --allow-dev-services minio,mailpit  # a demo, on dev services
+gkm compose --stage preview --allow-dev-services  # a demo, on dev services
 ```
 
 `--stage` is required: a stack is always for a named stage, so a deployed
@@ -552,7 +552,7 @@ ExternalServicesNotConfigured: The stage 'production' is deployed, and a deploye
       where 'Mail' sends mail — any SMTP server, read by api, auth
   gkm secrets:set MAIL_FROM 'noreply@example.com' --stage production
   …
-For a stage that is not production — a preview, a demo — the dev services can run instead, with --allow-dev-services mailpit,minio. …
+For a stage that is not production — a preview, a demo — the dev services can run instead, with --allow-dev-services. …
 ```
 
 A third party's credentials (`<ID>_CREDENTIALS`) are checked as before, one at
@@ -570,30 +570,45 @@ gkm secrets:set AWS_ACCESS_KEY_ID 'AKIA…' --stage production
 gkm secrets:set AWS_SECRET_ACCESS_KEY '…' --stage production
 ```
 
+Or have gkm create the buckets: with `deploy.objects.production: { provider:
+'s3' }`, `gkm setup --stage production` creates each bucket, its IAM user and
+key in the stage's AWS account and writes `UPLOADS_URL` and
+`UPLOADS_SERVER_URL` itself — see [Providers](./providers.md). A stage on a
+provider still stops in `validate` while a key is missing, and the line for
+each key says which command writes it. Every deploy then checks the bucket
+answers the key in the stage's secrets (`verify()`), and stops with
+`ProvisionedBucketUnreachable` if it does not.
+
 ### `--allow-dev-services`
 
 For a stage that is not production — a preview box, a demo — the stack can run
 the dev services anyway:
 
 ```bash
-gkm compose --stage preview --allow-dev-services minio,mailpit
-gkm deploy --target compose --stage preview --allow-dev-services minio
+gkm compose --stage preview --allow-dev-services
+gkm deploy --target compose --stage preview --allow-dev-services
 ```
 
-- **`minio`** runs MinIO in the stack for each bucket whose URL the stage did
-  not set, creates the buckets from this machine on a loopback port, and hands
-  the backends its URL and key pair. Its root credential is the stage's own
+It is a switch, with no value: every construct the stage does not **account
+for** gets the dev service the local stage runs for it. A construct is
+accounted for when the stage's secrets hold its key, or when a provider backs
+its kind (`deploy.objects.<stage>: { provider: 's3' }`, or `false`).
+
+- **A bucket** gets MinIO in the stack: the buckets are created from this
+  machine on a loopback port, and the backends are handed MinIO's URL and key
+  pair. Its root credential is the stage's own
   `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` where set, and otherwise derived
   from the stage's seed, as its database passwords are. Each file server over
   it answers on `https://<id>.<stage domain>` through Caddy, unless its URL is
   set.
-- **`mailpit`** runs Mailpit, unless the stage set `MAIL_URL`. `MAIL_FROM` is
+- **Mail** gets Mailpit, unless the stage set `MAIL_URL`. `MAIL_FROM` is
   `noreply@<stage domain>` unless set. Mailpit catches every message and
   **delivers none** — nobody receives a sign-in link.
 
-Keys the stage did set always win over the dev service. Every run that uses one
-prints a warning saying which, and emits a `dev-service.used` event. An
-unknown value fails with `UnknownDevService`.
+What the stage accounts for always wins: a key it set, or a provider. Every run
+that uses a dev service prints a warning saying which, and emits a
+`dev-service.used` event. The flag took a list before (`minio,mailpit`); a
+value now fails with `AllowDevServicesTakesNoValue`.
 
 ## The cache
 

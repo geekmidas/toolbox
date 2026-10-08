@@ -29,7 +29,7 @@ import { getAppBuildOrder } from '../workspace/index.js';
 import { assertDeployedStage } from '../workspace/stages.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import type { CredentialProvider } from './credentials';
-import { DevServicesNeedServerTarget, parseDevServices } from './devServices';
+import { DevServicesNeedServerTarget } from './devServices';
 import { type DeployEvent, type DeployPhase, eventError } from './events';
 import { applicationName, deployIdentity } from './identity.js';
 import { createStateStore } from './StateStore.js';
@@ -48,10 +48,10 @@ export interface DeployRequest {
 	/** On a failed release, roll back every app rather than the failed ones. */
 	atomic?: boolean;
 	/**
-	 * Dev services a deployed stage may run in place of real mail and object
-	 * storage — `minio`, `mailpit`. Server targets only.
+	 * `--allow-dev-services`: a deployed stage runs the dev service for every
+	 * bucket and mail it does not account for. Server targets only.
 	 */
-	allowDevServices?: readonly string[];
+	allowDevServices?: boolean;
 }
 
 /**
@@ -332,11 +332,11 @@ async function prepare(
 	}
 	const options = await parseTargetOptions(resolved);
 
-	// Before anything is discovered: a misspelt service, or one asked of a
-	// target that runs no containers, fails a deploy that has done nothing.
-	const allowDevServices = parseDevServices(request.allowDevServices);
-	if (allowDevServices.length > 0 && resolved.target.runtime === 'aws') {
-		throw new DevServicesNeedServerTarget(targetName, allowDevServices);
+	// Before anything is discovered: dev services asked of a target that runs
+	// no containers fail a deploy that has done nothing.
+	const allowDevServices = request.allowDevServices === true;
+	if (allowDevServices && resolved.target.runtime === 'aws') {
+		throw new DevServicesNeedServerTarget(targetName);
 	}
 
 	// What to deploy comes from the manifest.

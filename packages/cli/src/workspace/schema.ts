@@ -1,5 +1,6 @@
 import { z } from 'zod/v4';
 import { checkComposeStages } from '../compose/proxy.js';
+import { checkStageProvider } from '../providers/config.js';
 import {
 	BUILTIN_TARGETS,
 	builtinTarget,
@@ -601,6 +602,27 @@ const TelemetryConfigSchema = z
 	});
 
 /**
+ * `deploy.objects` — what backs each deployed stage's buckets. The rules are
+ * `checkStageProvider`'s, so the schema and a provision run refuse the same
+ * entries with the same words.
+ */
+const ObjectsConfigSchema = z
+	.record(z.string(), z.unknown())
+	.superRefine((entries, ctx) => {
+		for (const [stage, value] of Object.entries(entries)) {
+			try {
+				checkStageProvider('objects', stage, value);
+			} catch (error) {
+				ctx.addIssue({
+					code: 'custom',
+					message: error instanceof Error ? error.message : String(error),
+					path: [stage],
+				});
+			}
+		}
+	});
+
+/**
  * Deploy configuration schema.
  */
 const DeployConfigSchema = z.object({
@@ -636,6 +658,7 @@ const DeployConfigSchema = z.object({
 	dokploy: DokployWorkspaceConfigSchema.optional(),
 	compose: ComposeWorkspaceConfigSchema.optional(),
 	telemetry: TelemetryConfigSchema.optional(),
+	objects: ObjectsConfigSchema.optional(),
 	dns: DnsConfigWithLegacySchema.optional(),
 	backups: BackupsConfigSchema.optional(),
 });

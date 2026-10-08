@@ -24,7 +24,6 @@ import {
 import { type WorkerUnit, workerUnits } from '../build/workers.js';
 import {
 	assertExternalServices,
-	type DevService,
 	type DevServiceUse,
 	devServicesUsed,
 	type ExternalServices,
@@ -37,6 +36,10 @@ import { validateImageRef } from '../docker/imageRef.js';
 import { appDockerfile, workerDockerfile } from '../docker/index.js';
 import { composeBuildPaths, type ImageLayout } from '../docker/layout.js';
 import { TURBO_VERSION, WORKER_PORT } from '../docker/templates.js';
+import {
+	assertStageProvidersEnabled,
+	stageProviderNotes,
+} from '../providers/notes.js';
 import { appEnvKeys, networkEnv, workerEnvKeys } from '../reconcile/apps.js';
 import { hostFor } from '../reconcile/caddyfile.js';
 import { type ComposeService, composeFor } from '../reconcile/compose.js';
@@ -391,10 +394,11 @@ export interface StackInput {
 	 */
 	localCredentials?: LocalCredentials;
 	/**
-	 * The dev services a deployed stage may run for mail and buckets its
-	 * secrets do not configure. The local stage runs both regardless.
+	 * `--allow-dev-services`: a deployed stage runs the dev service for every
+	 * bucket and mail it does not account for. The local stage runs both
+	 * regardless.
 	 */
-	allowDevServices?: readonly DevService[];
+	allowDevServices?: boolean;
 	/** The edge's published ports. 443 and 80 by default. */
 	ports?: {
 		https?: number;
@@ -642,13 +646,18 @@ export function composeStack(input: StackInput): ComposeStack {
 					.filter((r) => r.kind === 'email')
 					.map((r) => r.id),
 			}
-		: assertExternalServices({
-				stage,
-				declarations: serviceDeclarations(plan, reads, owners),
-				supplied: custom,
-				allow: input.allowDevServices ?? [],
-				...(domain ? { domain } : {}),
-			});
+		: (() => {
+				// A kind the stage set to `false` is refused before its keys are.
+				assertStageProvidersEnabled(workspace, manifest, stage);
+				return assertExternalServices({
+					stage,
+					declarations: serviceDeclarations(plan, reads, owners),
+					supplied: custom,
+					allow: input.allowDevServices === true,
+					...(domain ? { domain } : {}),
+					providers: stageProviderNotes(workspace, stage),
+				});
+			})();
 
 	// The caches: in the stack's Redis, unless the stage set a cache's URL —
 	// a managed Redis — and with every one set, there is no Redis to run.

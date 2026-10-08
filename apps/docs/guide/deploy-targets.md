@@ -54,7 +54,7 @@ container's disk:
 
 | Target | Deployed stage, by default | With `--allow-dev-services` | Local stage |
 |---|---|---|---|
-| `dokploy` | mail and buckets from the stage's secrets; a missing key fails `validate` with `ExternalServicesNotConfigured` | `minio`: a MinIO compose service per bucket whose URL is unset (as every deploy did before); `mailpit`: a Mailpit compose service per `Email`, named like every other service | — (runs no local stage) |
+| `dokploy` | mail and buckets from the stage's secrets; a missing key fails `validate` with `ExternalServicesNotConfigured` | a MinIO compose service per bucket the stage does not account for (as every deploy did before), a Mailpit compose service per `Email` it does not, named like every other service | — (runs no local stage) |
 | `compose` | the same | MinIO and Mailpit in the stack, the buckets created, their keys derived from the stage's seed | MinIO and Mailpit, always, with nothing to set |
 | `sst` | S3, and mail as the stage configures it | refused: `DevServicesNeedServerTarget` | — |
 
@@ -74,6 +74,16 @@ The keys, per construct:
 Every missing key is listed at once, with the command that sets it. Keys the
 stage set always win over a dev service, and a run that uses one warns and
 emits `dev-service.used`.
+
+`--allow-dev-services` takes no value: it stands a dev service in for every
+construct the stage does not account for. A construct is accounted for when
+its key is in the stage's secrets, or when a provider backs its kind on the
+stage — `deploy.objects.<stage>: { provider: 's3' }` creates the bucket and
+writes its key with `gkm setup --stage <stage>` (see
+[Providers](./providers.md)). Under a provider, a missing key is still
+missing — the line naming it says which command writes it — and a deploy
+checks the provisioned bucket answers its key (`ProvisionedBucketUnreachable`
+when it does not).
 
 ## Configuring it
 

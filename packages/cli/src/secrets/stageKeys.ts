@@ -14,6 +14,7 @@ import {
 	requiredStageKeys,
 	type ServiceDeclaration,
 	type StageKey,
+	type StageProviderNotes,
 } from '../deploy/devServices';
 import { appEnvKeys } from '../reconcile/apps';
 import { appKey } from '../workspace/derive';
@@ -33,6 +34,8 @@ export interface WorkspaceStageKeysInput {
 	supplied: Readonly<Record<string, string>>;
 	/** The stage's base domain, for the examples. */
 	domain?: string;
+	/** What the stage's providers say — a missing key's hint. */
+	providers?: StageProviderNotes;
 }
 
 /** The keys of each kind of construct an app reads, that the stage supplies. */
@@ -121,5 +124,6 @@ export function workspaceStageKeys(
 		services,
 		credentials,
 		...(input.domain ? { domain: input.domain } : {}),
+		...(input.providers ? { providers: input.providers } : {}),
 	}).map((key) => ({ ...key, set: input.supplied[key.key] !== undefined }));
 }

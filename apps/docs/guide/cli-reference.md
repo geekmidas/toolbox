@@ -152,10 +152,34 @@ the declared constructs name, and stop there.
 
 ```bash
 gkm setup                      # reconcile the local stage (stages.local)
-gkm setup --stage staging      # another stage
 gkm setup --skip-docker        # secrets and validation only
 gkm setup --force              # regenerate secrets even if they exist
+gkm setup --stage production   # a deployed stage: run its providers
+gkm setup --stage production --dry-run      # print what they would do
+gkm setup --stage production --rotate-keys  # issue each provisioned key a successor
 ```
+
+On a **deployed stage**, `gkm setup --stage <stage>` resolves the stage's
+secrets and then runs every provider `deploy.<kind>.<stage>` names —
+`deploy.objects.<stage>: { provider: 's3' }` creates each bucket, its IAM user
+and key in the stage's AWS account and writes the bucket's URL into the
+stage's secrets. It starts no container: a deployed stage's infrastructure is
+not on this machine. See [Providers](./providers.md).
+
+- `--dry-run` — print the plan; nothing is created in the account, and nothing
+  is written to the stage's secrets or state
+- `--profile <name>` — the AWS profile for the stage's account (else
+  `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, the SDK's
+  default chain)
+- `--rotate-keys` — create a second key for each provisioned user and write it
+  into the stage's secrets; the old key is deleted by the first run after the
+  next deploy
+- `--retire-old-keys` — delete a rotated-out key now, without waiting for a
+  deploy
+
+A provider with no credentials to provision with leaves the stage
+`external`: its keys are yours to set (`gkm secrets:add`), and the run says
+what to supply.
 
 `gkm dev` and `gkm test` call the same function before they start anything, so
 this is only needed when you want the infrastructure without the server — after
@@ -320,10 +344,10 @@ Options:
   --dry-run              Show what would be created or reused; change nothing
   --atomic               If the release fails, roll back every app it released,
                          not only the failed ones
-  --allow-dev-services <list>
-                         Server targets only (dokploy, compose): run MinIO
-                         and/or Mailpit (minio,mailpit) for the buckets and mail
-                         a deployed stage's secrets don't configure. Not
+  --allow-dev-services   Server targets only (dokploy, compose): run the dev
+                         service — MinIO for a bucket, Mailpit for mail — for
+                         every construct a deployed stage doesn't account for
+                         (no key in its secrets, no provider). Not
                          production-grade: Mailpit delivers no mail
   --provider <name>      Deprecated: `dokploy` means --target dokploy;
                          docker and aws-lambda are removed
@@ -343,11 +367,14 @@ are optional: a key in its URL (`s3://KEY:SECRET@bucket?…`) wins, and the
 shared `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, when set, serves every
 bucket whose URL has none. A stage missing any fails before anything is built,
 provisioned or written, with `ExternalServicesNotConfigured` listing every
-missing key and the `gkm secrets:set` line for each. `--allow-dev-services`
-runs MinIO and/or Mailpit in their place, with a warning (and a
-`dev-service.used` event) every run; keys the stage set still win. An unknown
-value fails with `UnknownDevService`; on `sst` the flag fails with
-`DevServicesNeedServerTarget`.
+missing key and the `gkm secrets:set` line for each — or, under a provider
+(`deploy.objects`), the command that writes it. A stage on a provider is
+checked every deploy: the bucket must answer the key in the stage's secrets
+(`ProvisionedBucketUnreachable`). `--allow-dev-services` runs MinIO and Mailpit
+in place of whatever the stage does not account for, with a warning (and a
+`dev-service.used` event) every run; keys the stage set and providers still
+win. The flag takes no value (`AllowDevServicesTakesNoValue`); on `sst` it
+fails with `DevServicesNeedServerTarget`.
 
 See [Deploy targets](./deploy-targets.md) for targets and `deploy.targets`,
 [Deploying from a program](./deploy-api.md) for `deploy()` and the events
@@ -480,10 +507,10 @@ Options:
                    With --tag: run each image at the digest the file names
   --dry-run        Write the files and print the plan; start nothing
   --down           Stop the stage's stack (its volumes are kept)
-  --allow-dev-services <list>
-                   Deployed stage: run MinIO and/or Mailpit (minio,mailpit)
-                   for the buckets and mail its secrets don't configure. The
-                   local stage always runs both
+  --allow-dev-services
+                   Deployed stage: run MinIO and Mailpit for every bucket and
+                   mail it doesn't account for (no key in its secrets, no
+                   provider). The local stage always runs both
 
 The same as `gkm deploy --target compose --stage <stage>`, plus --build, --pull,
 --push, --digests-file and --down.

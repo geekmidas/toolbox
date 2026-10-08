@@ -807,9 +807,12 @@ if something declared it.
 - each declared bucket and `Email` from the stage's secrets (`<ID>_URL`,
   `<ID>_FROM`; a bucket's key in its URL or the shared S3 key pair, both
   optional) — a stage missing any fails `validate` with
-  `ExternalServicesNotConfigured`. Only with `--allow-dev-services minio`
-  is a bucket a MinIO compose stack, and only with `mailpit` is mail a
-  Mailpit one ([Mail and object storage](./deploy-targets.md#mail-and-object-storage))
+  `ExternalServicesNotConfigured`. A stage whose `deploy.objects` names a
+  provider has its buckets' keys written by `gkm setup --stage <stage>`, and
+  each deploy checks the bucket answers its key ([Providers](./providers.md)).
+  Only with `--allow-dev-services` is a bucket the stage does not account for
+  a MinIO compose stack, and mail a Mailpit one
+  ([Mail and object storage](./deploy-targets.md#mail-and-object-storage))
 - pg-boss as a schema tenant of the database that already exists, when a queue
   or topic is carried by it — the only broker a Dokploy deploy provisions today
   (SNS on Dokploy would deliver to the server's push route, but is not

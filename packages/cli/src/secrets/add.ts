@@ -22,6 +22,7 @@ import {
 import prompts, { type PromptObject } from 'prompts';
 import { z } from 'zod';
 import { loadWorkspaceSettings } from '../config';
+import { stageProviderNotes } from '../providers/notes.js';
 import { discover } from '../reconcile/discover';
 import { constructGlobs } from '../reconcile/workspace';
 import { assertDeployedStage } from '../workspace/stages';
@@ -133,6 +134,7 @@ export async function secretsAddCommand(
 		local,
 		supplied: stored?.custom ?? {},
 		...(domain ? { domain } : {}),
+		providers: stageProviderNotes(workspace, stage),
 	});
 	const keys = options.missing ? all.filter((k) => !k.set) : all;
 
@@ -188,6 +190,7 @@ export async function secretsAddCommand(
 			if (!overwrite) continue;
 		}
 		io.log(`\n${entry.key} — ${entry.what}`);
+		if (entry.hint) io.log(`  ${entry.hint}`);
 
 		switch (entry.kind) {
 			case 'bucket':

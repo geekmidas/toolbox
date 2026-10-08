@@ -83,6 +83,11 @@ import { workerDockerfileOf } from '../../docker/index.js';
 import { WORKER_PORT } from '../../docker/templates.js';
 import { plannedSeeds } from '../../migrate/databases';
 import { output } from '../../output';
+import { verifyStageProviders } from '../../providers/index.js';
+import {
+	assertStageProvidersEnabled,
+	stageProviderNotes,
+} from '../../providers/notes.js';
 import { workerEnvKeys } from '../../reconcile/apps.js';
 import { constructGlobs } from '../../reconcile/workspace.js';
 import type { RunOptions } from '../../run';
@@ -304,8 +309,11 @@ export interface DokployRun {
 	verify: VerifySettings;
 	/** Roll back every app the run released, not only the failed ones. */
 	atomic: boolean;
-	/** The dev services the stage may run for mail and buckets. */
-	allowDevServices: readonly DevService[];
+	/**
+	 * The dev services the run uses for mail and buckets the stage does not
+	 * account for — what `--allow-dev-services` came to.
+	 */
+	devServices: readonly DevService[];
 	/**
 	 * The Workers this run deploys — each with background work whose host app
 	 * is being deployed — as applications of their own, with no domain.
@@ -433,6 +441,8 @@ export async function validateDokploy(
 	// stage's are its own, from its secrets, unless a dev service is allowed
 	// to stand in — and one missing any key stops here, naming every one.
 	const stored = await phase.secrets.read();
+	// A kind the stage set to `false` is refused before its keys are.
+	assertStageProvidersEnabled(workspace, phase.manifest, stage);
 	const services = assertExternalServices({
 		stage,
 		declarations: manifestServiceDeclarations(phase.manifest),
@@ -441,8 +451,20 @@ export async function validateDokploy(
 		...(workspace.deploy?.domains?.[stage]
 			? { domain: workspace.deploy.domains[stage] }
 			: {}),
+		providers: stageProviderNotes(workspace, stage),
 	});
-	reportDevServices(phase, devServicesUsed(services));
+	const devServices = devServicesUsed(services);
+	reportDevServices(phase, devServices);
+
+	// What the stage's providers created is still there, and the stage's key
+	// reaches it — `deploy.objects`' bucket, answering its own key.
+	const verified = await verifyStageProviders({
+		workspace,
+		manifest: phase.manifest,
+		stage,
+		secrets: stored?.custom ?? {},
+	});
+	for (const line of verified) logger.log(`   ✓ ${line} verified`);
 
 	// An address an older gkm stored for what a construct now provides: a
 	// `localhost` URL is never where a deployed app finds anything.
@@ -477,7 +499,7 @@ export async function validateDokploy(
 
 	return {
 		...run,
-		allowDevServices: phase.allowDevServices,
+		devServices: devServices.map((use) => use.service),
 		workers,
 		runnables,
 		preflight: await preflight(run),
@@ -847,7 +869,7 @@ async function provision(run: DokployRun): Promise<void> {
 			// The one already discovered above, so a deploy reads the manifest once
 			// and cannot act on two different versions of it.
 			manifest,
-			devServices: run.allowDevServices,
+			devServices: run.devServices,
 		});
 
 		declaredEnv = declared.env;

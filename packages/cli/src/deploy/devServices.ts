@@ -16,10 +16,12 @@
  * chain applies — the stage's shared `AWS_ACCESS_KEY_ID`/
  * `AWS_SECRET_ACCESS_KEY` when it set them, or a role.
  *
- * `--allow-dev-services minio,mailpit` is the way out for a stage that is
- * not production — a preview, a demo: the target runs the dev service and
- * derives the keys from it. Keys the stage did set still win. Every run that
- * uses one says so, loudly.
+ * `--allow-dev-services` is the way out for a stage that is not production —
+ * a preview, a demo: every construct the stage does not account for gets the
+ * dev service the local stage runs for it — a bucket MinIO, mail Mailpit —
+ * and the target derives the keys from it. What the stage does account for
+ * still wins: a key set in its secrets, or a provider (`deploy.objects`)
+ * that backs the kind. Every run that uses one says so, loudly.
  *
  * Pure: what each target runs is decided here from declarations and the
  * stage's values, and the targets do the running.
@@ -32,7 +34,11 @@ import {
 } from '@geekmidas/manifest';
 import { appKey } from '../workspace/derive.js';
 
-/** The dev services a deployed stage may be allowed to run. */
+/**
+ * The dev services a deployed stage can run — one per kind that has one on
+ * every server target: a bucket's MinIO and mail's Mailpit. A cache or a
+ * database is not here because a server stage runs its own anyway.
+ */
 export const DEV_SERVICES = ['minio', 'mailpit'] as const;
 
 export type DevService = (typeof DEV_SERVICES)[number];
@@ -48,30 +54,53 @@ export const STORAGE_KEY_PAIR = [
 	'AWS_SECRET_ACCESS_KEY',
 ] as const;
 
-/** A `--allow-dev-services` value that is not a dev service. */
-export class UnknownDevService extends Error {
-	constructor(readonly value: string) {
-		super(
-			`'${value}' is not a dev service. --allow-dev-services takes a ` +
-				`comma-separated list of ${DEV_SERVICES.join(', ')}: ` +
-				`--allow-dev-services ${DEV_SERVICES.join(',')}`,
-		);
-		this.name = 'UnknownDevService';
-	}
-}
-
 /** Dev services asked of a target that runs no containers. */
 export class DevServicesNeedServerTarget extends Error {
-	constructor(
-		readonly target: string,
-		readonly services: readonly DevService[],
-	) {
+	constructor(readonly target: string) {
 		super(
 			`--allow-dev-services applies to server targets only, and '${target}' ` +
 				`deploys to AWS, where a bucket is S3 and mail is the stage's own. ` +
-				`Drop --allow-dev-services ${services.join(',')}.`,
+				'Drop --allow-dev-services.',
 		);
 		this.name = 'DevServicesNeedServerTarget';
+	}
+}
+
+/**
+ * `--allow-dev-services` given a value — the list it used to take. It is a
+ * switch now: every construct the stage does not account for gets its dev
+ * service.
+ */
+export class AllowDevServicesTakesNoValue extends Error {
+	constructor(readonly value: string) {
+		super(
+			`--allow-dev-services takes no value (it was given '${value}'). It runs ` +
+				'the dev service for every bucket and mail the stage does not account ' +
+				'for — no key in its secrets, no provider in deploy.<kind>.<stage> — so ' +
+				'there is nothing to list. Pass --allow-dev-services on its own.',
+		);
+		this.name = 'AllowDevServicesTakesNoValue';
+	}
+}
+
+/**
+ * Refuses `--allow-dev-services <value>` and `--allow-dev-services=<value>` on
+ * a command line, with the reason, before the parser calls the value an
+ * excess argument. `gkm deploy` and `gkm compose` take no positional
+ * argument, so whatever follows the flag and is not a flag was meant for it.
+ *
+ * @throws {AllowDevServicesTakesNoValue}
+ */
+export function assertDevServicesFlag(argv: readonly string[]): void {
+	for (let i = 0; i < argv.length; i++) {
+		const arg = argv[i]!;
+		if (arg.startsWith('--allow-dev-services=')) {
+			throw new AllowDevServicesTakesNoValue(arg.slice(arg.indexOf('=') + 1));
+		}
+		const next = argv[i + 1];
+		if (arg === '--allow-dev-services' && next && !next.startsWith('-')) {
+			throw new AllowDevServicesTakesNoValue(next);
+		}
 	}
 }
 
@@ -86,10 +115,12 @@ export interface MissingServiceKey {
 	note?: string;
 	/** A placeholder value to show in the `gkm secrets:set` line. */
 	example: string;
-	/** The dev service that would stand in for it. */
-	service: DevService;
+	/** The dev service that would stand in for it, unless the stage accounts for it. */
+	service?: DevService;
 	/** The apps that read it, where known. */
 	apps?: readonly string[];
+	/** What creates it, where a provider backs it on the stage. */
+	hint?: string;
 }
 
 /**
@@ -101,13 +132,14 @@ export class ExternalServicesNotConfigured extends Error {
 		readonly stage: string,
 		readonly missing: readonly MissingServiceKey[],
 	) {
-		const services = [...new Set(missing.map((m) => m.service))].sort();
+		const standIns = missing.some((m) => m.service !== undefined);
 		const lines = missing.map((m) => {
 			const by = m.apps?.length ? `, read by ${m.apps.join(', ')}` : '';
 			return (
 				`  gkm secrets:set ${m.key} '${m.example}' --stage ${stage}\n` +
 				`      ${m.what}${by}` +
-				(m.note ? `\n      ${m.note}` : '')
+				(m.note ? `\n      ${m.note}` : '') +
+				(m.hint ? `\n      ${m.hint}` : '')
 			);
 		});
 		super(
@@ -115,38 +147,16 @@ export class ExternalServicesNotConfigured extends Error {
 				`object storage are real services: gkm runs no Mailpit or MinIO for ` +
 				`it. Set ${missing.length === 1 ? 'this key' : `these ${missing.length} keys`} in the stage's secrets:\n\n` +
 				`${lines.join('\n')}\n\n` +
-				`For a stage that is not production — a preview, a demo — the dev ` +
-				`services can run instead, with --allow-dev-services ` +
-				`${services.join(',')}. Mailpit delivers no mail, and MinIO keeps ` +
-				`every object on one container's disk.\n\n` +
+				(standIns
+					? `For a stage that is not production — a preview, a demo — the ` +
+						`dev services can run instead, with --allow-dev-services. ` +
+						`Mailpit delivers no mail, and MinIO keeps every object on one ` +
+						`container's disk.\n\n`
+					: '') +
 				`Or run: gkm secrets:add --stage ${stage}`,
 		);
 		this.name = 'ExternalServicesNotConfigured';
 	}
-}
-
-/**
- * The dev services a value names: `'minio,mailpit'`, or a list of them.
- *
- * @throws {UnknownDevService} for anything that is not one
- */
-export function parseDevServices(
-	value: string | readonly string[] | undefined,
-): DevService[] {
-	if (value === undefined) return [];
-	const items = (typeof value === 'string' ? [value] : value)
-		.flatMap((item) => item.split(','))
-		.map((item) => item.trim())
-		.filter(Boolean);
-
-	const services = new Set<DevService>();
-	for (const item of items) {
-		if (!(DEV_SERVICES as readonly string[]).includes(item)) {
-			throw new UnknownDevService(item);
-		}
-		services.add(item as DevService);
-	}
-	return [...services].sort();
 }
 
 /** A declaration that is mail or object storage. */
@@ -196,10 +206,29 @@ export interface ExternalServicesInput {
 	declarations: readonly ServiceDeclaration[];
 	/** The stage's values by key — what `gkm secrets:set` stored. */
 	supplied: Readonly<Record<string, string>>;
-	/** What `--allow-dev-services` allowed. */
-	allow: readonly DevService[];
+	/**
+	 * `--allow-dev-services`: every construct the stage does not account for
+	 * gets its dev service.
+	 */
+	allow: boolean;
 	/** The stage's base domain, for the examples. */
 	domain?: string;
+	/**
+	 * What the stage's providers say, by kind: a kind one backs is accounted
+	 * for, so no dev service stands in for it, and a missing key of it names
+	 * what creates it.
+	 */
+	providers?: StageProviderNotes;
+}
+
+/** The stage's providers, as a deploy's checks read them. */
+export interface StageProviderNotes {
+	objects?: {
+		/** A provider (or `false`) backs the kind: no dev service for it. */
+		accounted: boolean;
+		/** What creates a missing key of it. */
+		hint?: string;
+	};
 }
 
 /** Where a deployed stage's mail and storage come from. */
@@ -251,6 +280,8 @@ export interface StageKey {
 	example: string;
 	/** The dev service that would stand in for it, where one can. */
 	service?: DevService;
+	/** What creates it, where a provider backs it on the stage. */
+	hint?: string;
 	/** A file server's bucket. */
 	of?: string;
 	/** The apps that read it, where known. */
@@ -266,6 +297,8 @@ export interface StageKeysInput {
 	credentials?: readonly CredentialDeclaration[];
 	/** The stage's base domain, for the examples. */
 	domain?: string;
+	/** What the stage's providers say — see {@link StageProviderNotes}. */
+	providers?: StageProviderNotes;
 }
 
 /**
@@ -293,6 +326,14 @@ export function requiredStageKeys(input: StageKeysInput): StageKey[] {
 
 	if (!input.local) {
 		const services = byId(input.services);
+		// A kind a provider backs on the stage has no dev service, and a key of
+		// it names what creates it.
+		const objects = input.providers?.objects;
+		const storage = objects?.accounted
+			? objects.hint
+				? { hint: objects.hint }
+				: {}
+			: { service: 'minio' as const };
 		for (const d of services.filter((d) => d.kind === 'email')) {
 			add({
 				key: provideKey(d.id, 'url'),
@@ -321,7 +362,7 @@ export function requiredStageKeys(input: StageKeysInput): StageKey[] {
 				what: `the bucket '${d.id}' — S3, R2, or any S3-compatible store (add &endpoint=… for one that is not S3)`,
 				note: `credentials are optional: a key for this bucket alone in the URL (s3://KEY:SECRET@${appKey(d.id)}?…) wins; without one, the shared AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or a role signs`,
 				example: `s3://${appKey(d.id)}?region=eu-west-1`,
-				service: 'minio',
+				...storage,
 				...apps(d),
 			});
 		}
@@ -332,7 +373,7 @@ export function requiredStageKeys(input: StageKeysInput): StageKey[] {
 				kind: 'file-server',
 				what: `the public address '${d.id}' serves its bucket on — a CDN or the bucket's own domain`,
 				example: `https://${appKey(d.id)}.${domain}`,
-				service: 'minio',
+				...storage,
 				...(d.of ? { of: d.of } : {}),
 				...apps(d),
 			});
@@ -400,16 +441,20 @@ export function externalServices(
 		local: false,
 		services: input.declarations,
 		...(input.domain ? { domain: input.domain } : {}),
+		...(input.providers ? { providers: input.providers } : {}),
 	});
 
-	// A dev service stands in for a construct the stage configured nothing for.
+	// A dev service stands in for each construct the stage does not account
+	// for: no key in its secrets, and no provider backing its kind.
+	const standIn = (k: StageKey) =>
+		allow && k.service !== undefined && !has(k.key);
 	const mailpit = required
 		.filter((k) => k.kind === 'email' && k.key === provideKey(k.id, 'url'))
-		.filter((k) => !has(k.key) && allow.includes('mailpit'))
+		.filter(standIn)
 		.map((k) => k.id);
 	const minio = required
 		.filter((k) => k.kind === 'bucket')
-		.filter((k) => !has(k.key) && allow.includes('minio'))
+		.filter(standIn)
 		.map((k) => k.id);
 
 	const covered = (k: StageKey) =>
@@ -420,14 +465,24 @@ export function externalServices(
 	const missing = required
 		.filter((k) => !has(k.key) && !covered(k))
 		.map(
-			({ key, id, what, note, example, service, apps }): MissingServiceKey => ({
+			({
+				key,
+				id,
+				what,
+				note,
+				example,
+				service,
+				apps,
+				hint,
+			}): MissingServiceKey => ({
 				key,
 				id,
 				what,
 				...(note ? { note } : {}),
 				example,
-				service: service!,
+				...(service ? { service } : {}),
 				...(apps ? { apps } : {}),
+				...(hint ? { hint } : {}),
 			}),
 		);
 

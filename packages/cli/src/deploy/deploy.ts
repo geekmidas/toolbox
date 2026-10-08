@@ -85,16 +85,15 @@ export interface DeployInput {
 	 */
 	credentials?: CredentialProvider;
 	/**
-	 * Dev services a deployed stage may run in place of real mail and object
-	 * storage, on a server target: `'minio'` runs MinIO for each bucket whose
-	 * URL the stage's secrets do not hold, `'mailpit'` runs Mailpit for mail.
-	 * Neither is production-grade — Mailpit delivers no mail — and every run
-	 * that uses one emits `dev-service.used`. Without them, a deployed stage
-	 * missing a mail or storage key fails with `ExternalServicesNotConfigured`.
-	 * An unknown value fails with `UnknownDevService`, and any on an AWS
-	 * target with `DevServicesNeedServerTarget`.
+	 * On a server target, run a dev service for every construct a deployed
+	 * stage does not account for — no key in its secrets, and no provider
+	 * (`deploy.objects`) backing its kind: MinIO for a bucket, Mailpit for
+	 * mail. Neither is production-grade — Mailpit delivers no mail — and every
+	 * run that uses one emits `dev-service.used`. Without it, a deployed stage
+	 * missing a mail or storage key fails with `ExternalServicesNotConfigured`;
+	 * on an AWS target it fails with `DevServicesNeedServerTarget`.
 	 */
-	allowDevServices?: readonly ('minio' | 'mailpit')[];
+	allowDevServices?: boolean;
 	/** Receives each progress line as it is written. Defaults to none. */
 	logger?: DeployLogger;
 	/**

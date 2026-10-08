@@ -1028,7 +1028,7 @@ export const Mail = {
 				"gkm secrets:set UPLOADS_URL 's3://uploads?region=eu-west-1' --stage production",
 			);
 			expect((error as Error).message).toContain(
-				'--allow-dev-services mailpit,minio',
+				'can run instead, with --allow-dev-services.',
 			);
 			expect((error as Error).message).toMatch(
 				/Or run: gkm secrets:add --stage production$/,
@@ -1045,9 +1045,7 @@ export const Mail = {
 		});
 
 		it('runs MinIO and Mailpit where allowed, warning that neither is production-grade', async () => {
-			const { events, result } = await eventsOf({
-				allowDevServices: ['minio', 'mailpit'],
-			});
+			const { events, result } = await eventsOf({ allowDevServices: true });
 			const deployed = await result;
 
 			expect(deployed.successCount).toBeGreaterThan(0);
@@ -1114,9 +1112,7 @@ export const Mail = {
 				},
 			});
 
-			const { events, result } = await eventsOf({
-				allowDevServices: ['minio', 'mailpit'],
-			});
+			const { events, result } = await eventsOf({ allowDevServices: true });
 			await result;
 
 			expect(events.filter((e) => e.type === 'dev-service.used')).toEqual([]);
@@ -1129,15 +1125,24 @@ export const Mail = {
 			);
 		});
 
-		it('refuses a value that is not a dev service, at the terminal too', async () => {
+		it('runs Mailpit alone where the stage set its bucket, at the terminal too', async () => {
+			await new FileSecretsStore(root).write(STAGE, {
+				stage: STAGE,
+				createdAt: '2026-01-01T00:00:00.000Z',
+				updatedAt: '2026-01-01T00:00:00.000Z',
+				services: {},
+				urls: {},
+				custom: { UPLOADS_URL: 's3://acme-uploads?region=eu-west-1' },
+			});
+
 			const code = await deployCli(
-				{ cwd: root, stage: STAGE, allowDevServices: 'minio,redis' },
+				{ cwd: root, stage: STAGE, allowDevServices: true },
 				{ stdout: { write: () => true } },
 			);
 
-			expect(code).toBe(1);
-			expect(out.join('\n')).toContain("'redis' is not a dev service");
-			expect(requests).toEqual([]);
+			expect(code).toBe(0);
+			const stacks = dokploy.projects[0]!.environments[0]!.compose ?? [];
+			expect(stacks.map((c) => c.name)).toEqual(['production-shop-mail']);
 		});
 	});
 });
