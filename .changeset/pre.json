@@ -147,6 +147,7 @@
     "stages-action",
     "storage-url-credentials",
     "surface-has-no-app",
+    "telemetry-construct",
     "telemetry-propagation",
     "test-client-config",
     "test-db-teardown",
