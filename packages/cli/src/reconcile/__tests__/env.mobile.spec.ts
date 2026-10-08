@@ -5,6 +5,7 @@ import { portKeys } from '../containers';
 import { envFor } from '../env';
 import { lanAddress } from '../lan';
 import { planFor } from '../plan';
+import { TEST_CREDENTIALS } from './__helpers__/credentials';
 
 /**
  * A browser and a phone calling the same two surfaces: what the local target
@@ -65,6 +66,7 @@ const env = (lan: string | null = LAN, metroPorts?: Record<string, number>) => {
 		portKeys(plan.containers).map((key, index) => [key, 28000 + index]),
 	);
 	return envFor(plan, {
+		credentials: TEST_CREDENTIALS,
 		ports,
 		project: 'shop',
 		addresses,
@@ -189,7 +191,12 @@ describe('an app that depends on mail, locally', () => {
 		);
 		return {
 			ports,
-			env: envFor(plan, { ports, project: 'shop', addresses: {} }),
+			env: envFor(plan, {
+				ports,
+				project: 'shop',
+				addresses: {},
+				credentials: TEST_CREDENTIALS,
+			}),
 		};
 	};
 

@@ -8,6 +8,7 @@ import {
 } from '../compose';
 import { portKeys } from '../containers';
 import type { Plan } from '../plan';
+import { TEST_CREDENTIALS } from './__helpers__/credentials';
 
 const plan = (containers: string[]): Plan => ({
 	stage: 'development',
@@ -24,6 +25,7 @@ const portsFor = (containers: string[]) =>
 const compose = (containers: string[]) =>
 	composeFor(plan(containers), {
 		project: 'toolbox',
+		credentials: TEST_CREDENTIALS,
 		ports: portsFor(containers),
 	});
 
@@ -96,7 +98,11 @@ describe('composeFor', () => {
 					},
 				],
 			} as unknown as Plan,
-			{ project: 'toolbox', ports: portsFor(['postgres']) },
+			{
+				project: 'toolbox',
+				credentials: TEST_CREDENTIALS,
+				ports: portsFor(['postgres']),
+			},
 		);
 
 		expect(declared.services.postgres.image).toBe('postgres:15-alpine');
@@ -113,6 +119,7 @@ describe('composeFor', () => {
 	it('writes app services beside the containers, behind the apps profile', () => {
 		const file = composeFor(plan(['postgres']), {
 			project: 'toolbox',
+			credentials: TEST_CREDENTIALS,
 			ports: portsFor(['postgres']),
 			apps: {
 				api: {
@@ -188,13 +195,68 @@ describe('composeFor', () => {
 		expect(environment?.AWS_ACCESS_KEY_ID).toMatch(/^LSIA/);
 	});
 
+	describe('the logins each container is brought up with', () => {
+		const every = [
+			'postgres',
+			'minio',
+			'redis',
+			'redis-http',
+			'rabbitmq',
+			'localstack',
+			'mailpit',
+		];
+
+		it("are the workspace's generated ones", () => {
+			const { services } = compose(every);
+
+			expect(services.postgres?.environment).toMatchObject({
+				POSTGRES_USER: TEST_CREDENTIALS.postgres.user,
+				POSTGRES_PASSWORD: TEST_CREDENTIALS.postgres.password,
+				POSTGRES_DB: 'postgres',
+			});
+			expect(services.minio?.environment).toMatchObject({
+				MINIO_ROOT_USER: TEST_CREDENTIALS.minio.user,
+				MINIO_ROOT_PASSWORD: TEST_CREDENTIALS.minio.password,
+			});
+			expect(services.rabbitmq?.environment).toMatchObject({
+				RABBITMQ_DEFAULT_USER: TEST_CREDENTIALS.rabbitmq.user,
+				RABBITMQ_DEFAULT_PASS: TEST_CREDENTIALS.rabbitmq.password,
+			});
+			expect(services['redis-http']?.environment).toMatchObject({
+				SRH_TOKEN: TEST_CREDENTIALS.cacheToken,
+				SRH_CONNECTION_STRING: `redis://:${TEST_CREDENTIALS.redis.password}@redis:6379`,
+			});
+			expect(services.localstack?.environment).toMatchObject({
+				AWS_SECRET_ACCESS_KEY: TEST_CREDENTIALS.emulator.secretAccessKey,
+			});
+		});
+
+		it('make Redis require its password, which its health check signs in with', () => {
+			const { redis } = compose(['redis']).services;
+
+			expect(redis?.command).toContain('--requirepass "$$REDIS_PASSWORD"');
+			expect(redis?.environment).toEqual({
+				REDIS_PASSWORD: TEST_CREDENTIALS.redis.password,
+				REDISCLI_AUTH: TEST_CREDENTIALS.redis.password,
+			});
+		});
+
+		it('never include the old fixed login anywhere in the file', () => {
+			expect(toYaml(compose(every)).toLowerCase()).not.toContain('geekmidas');
+		});
+	});
+
 	it('refuses a container it has no image for', () => {
 		expect(() => compose(['cassandra'])).toThrow(UnknownContainer);
 	});
 
 	it('refuses to emit a container whose port was never assigned', () => {
 		expect(() =>
-			composeFor(plan(['postgres']), { project: 'toolbox', ports: {} }),
+			composeFor(plan(['postgres']), {
+				project: 'toolbox',
+				credentials: TEST_CREDENTIALS,
+				ports: {},
+			}),
 		).toThrow(UnassignedPort);
 	});
 

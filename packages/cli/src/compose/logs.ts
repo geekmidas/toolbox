@@ -41,18 +41,17 @@ export const LOGS_EMAIL_KEY = 'ZO_ROOT_USER_EMAIL';
 export const LOGS_PASSWORD_KEY = 'ZO_ROOT_USER_PASSWORD';
 
 /**
- * The local stage's root login: fixed, as its Postgres password is. It meets
- * OpenObserve's password rules, which a weaker one would not.
+ * The local stage's root user. Its password is generated per machine with
+ * the other local logins — see `reconcile/localCredentials.ts`.
  */
 export const LOCAL_LOGS_EMAIL = 'admin@gkm.localhost';
-export const LOCAL_LOGS_PASSWORD = 'Geekmidas-1';
 
 /** The stack's OpenObserve, as the stack runs it. */
 export interface StackLogs extends ResolvedLogs {
 	/** The root user's email and password. */
 	email: string;
 	password: string;
-	/** Whether the stage's secrets set the password, rather than a default. */
+	/** Whether the stage's secrets set the password, rather than the local login. */
 	passwordFromSecrets: boolean;
 	/** Where a browser opens it: the tunnel's end, or its public host. */
 	url: string;
@@ -178,6 +177,8 @@ export function stackLogs(options: {
 	custom: Readonly<Record<string, string>>;
 	/** The edge's HTTPS port, which a local public URL carries. */
 	https: number;
+	/** The local stage's generated root login — required for it. */
+	localLogin?: { email: string; password: string };
 }): StackLogs {
 	const { config, stage, local, custom } = options;
 
@@ -190,10 +191,12 @@ export function stackLogs(options: {
 
 	const email =
 		custom[LOGS_EMAIL_KEY] ??
-		(local ? LOCAL_LOGS_EMAIL : `admin@${options.domain}`);
+		(local
+			? (options.localLogin?.email ?? LOCAL_LOGS_EMAIL)
+			: `admin@${options.domain}`);
 	const set = custom[LOGS_PASSWORD_KEY];
-	if (!set && !local) throw new LogsPasswordMissing(stage);
-	const password = set ?? LOCAL_LOGS_PASSWORD;
+	const password = set ?? (local ? options.localLogin?.password : undefined);
+	if (!password) throw new LogsPasswordMissing(stage);
 	if (!isStrongLogsPassword(password)) throw new LogsPasswordWeak(stage);
 
 	const host = config.public

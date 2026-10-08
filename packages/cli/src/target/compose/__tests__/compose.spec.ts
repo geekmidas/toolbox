@@ -47,6 +47,12 @@ function quiet(): Partial<ComposeDeps> {
 	return {
 		revision: async () => 'abc1234',
 		sql: () => ({ query: async () => [] }) satisfies SqlClient,
+		// No Postgres runs here: its login is taken as the one it was given.
+		logins: async ({ login }) => ({
+			service: 'postgres',
+			status: 'current',
+			login,
+		}),
 		migrate: async () => [],
 		seed: async () => [],
 		healthIntervalMs: 0,

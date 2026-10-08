@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { portKeys } from '../containers';
 import { envFor } from '../env';
 import { planFor } from '../plan';
+import { TEST_CREDENTIALS } from './__helpers__/credentials';
 
 const manifest = {
 	Orders: { kind: 'database', id: 'Orders', provides: ['ORDERS_URL'] },
@@ -80,6 +81,7 @@ const env = (stage = 'development', mailFrom?: string) => {
 	});
 
 	return envFor(plan, {
+		credentials: TEST_CREDENTIALS,
 		ports: portsFor(stage),
 		addresses: {
 			AuthApi: 'http://localhost:3000',
@@ -225,7 +227,9 @@ describe('envFor', () => {
 	it('resolves nothing without ports', () => {
 		const plan = planFor(manifest, 'test', provisionOrder(manifest));
 
-		expect(envFor(plan, { ports: {} })).toEqual({});
+		expect(envFor(plan, { ports: {}, credentials: TEST_CREDENTIALS })).toEqual(
+			{},
+		);
 	});
 
 	it('carries the cache token in the URL that addresses it', () => {
@@ -244,8 +248,8 @@ describe('envFor', () => {
 		// The URL deliberately carries none — deployed they come from the
 		// execution role — so locally they arrive beside it, on the chain the
 		// same client already reads.
-		expect(env().AWS_ACCESS_KEY_ID).toBe('geekmidas');
-		expect(env().AWS_SECRET_ACCESS_KEY).toBe('geekmidas');
+		expect(env().AWS_ACCESS_KEY_ID).toBe(TEST_CREDENTIALS.minio.user);
+		expect(env().AWS_SECRET_ACCESS_KEY).toBe(TEST_CREDENTIALS.minio.password);
 	});
 
 	it('gives a queue and a topic the same pg-boss connection', () => {
@@ -289,6 +293,7 @@ describe('envFor', () => {
 		});
 
 		const resolved = envFor(plan, {
+			credentials: TEST_CREDENTIALS,
 			ports: portsFor('development'),
 			addresses: {
 				AuthApi: 'http://localhost:3000',
@@ -373,6 +378,7 @@ describe('envFor', () => {
 		});
 
 		const resolved = envFor(plan, {
+			credentials: TEST_CREDENTIALS,
 			ports: portsFor('development'),
 			project: 'shop',
 			addresses: {
@@ -391,6 +397,7 @@ describe('envFor', () => {
 		});
 
 		const resolved = envFor(plan, {
+			credentials: TEST_CREDENTIALS,
 			ports: portsFor('development'),
 			addresses: {
 				AuthApi: 'https://api.example.com',
@@ -410,6 +417,7 @@ describe('cache backends', () => {
 		});
 
 		return envFor(plan, {
+			credentials: TEST_CREDENTIALS,
 			ports: Object.fromEntries(
 				portKeys(plan.containers).map((key, index) => [key, 20000 + index]),
 			),
@@ -456,6 +464,7 @@ describe('the broker a worker schedules through', () => {
 		});
 
 		return envFor(plan, {
+			credentials: TEST_CREDENTIALS,
 			ports: Object.fromEntries(
 				portKeys(plan.containers).map((key, index) => [key, 20000 + index]),
 			),

@@ -22,6 +22,7 @@ import {
 import { parse } from 'yaml';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { deployIdentity } from '../../deploy/identity';
+import { TEST_CREDENTIALS } from '../../reconcile/__tests__/__helpers__/credentials';
 import { initStageSecrets } from '../../secrets/storage';
 import type { StageSecrets } from '../../secrets/types';
 import { safeValidateWorkspaceConfig } from '../../workspace/schema';
@@ -55,6 +56,11 @@ import {
 	traefikStatic,
 } from '../traefik';
 import { loadComposeApp, writeComposeApp } from './__helpers__/composeApp';
+
+/** No Postgres is running here: its login is taken as the one it was given. */
+const signedIn: NonNullable<Parameters<typeof composeCommand>[1]>['logins'] =
+	async ({ login }) => ({ service: 'postgres', status: 'current', login });
+
 import { fakeDocker } from './__helpers__/fakeDocker';
 
 /** The routes of a stack with every kind of host: apps, a bucket, logs. */
@@ -708,6 +714,7 @@ describe('a stack behind the shared edge', () => {
 	it('keeps Caddy for the local stage, whatever is configured', () => {
 		const local = stack({
 			stage: 'development',
+			localCredentials: TEST_CREDENTIALS,
 			secrets: null,
 			images: { mode: 'build', tag: 'abc' },
 		});
@@ -771,6 +778,7 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 				},
 				revision: async () => 'abc1234',
 				sql: () => ({ query: async () => [] }),
+				logins: signedIn,
 				migrate: async () => [],
 				seed: async () => [],
 			},

@@ -21,7 +21,7 @@ const IV_LENGTH = 12; // 96 bits for GCM
 const AUTH_TAG_LENGTH = 16; // 128 bits
 
 /** Encrypted secrets file structure */
-interface EncryptedSecretsFile {
+export interface EncryptedSecretsFile {
 	/** Version for future format changes */
 	version: 1;
 	/** Base64 encoded encrypted data (ciphertext + auth tag) */
@@ -124,7 +124,14 @@ function packageName(root: string): string | undefined {
 	}
 }
 
-function encrypt(secrets: StageSecrets, keyHex: string): EncryptedSecretsFile {
+/**
+ * Encrypt a JSON value with a stage key: AES-256-GCM, the file format every
+ * stage's secrets are kept in.
+ */
+export function encrypt(
+	secrets: unknown,
+	keyHex: string,
+): EncryptedSecretsFile {
 	const key = Buffer.from(keyHex, 'hex');
 	const iv = randomBytes(IV_LENGTH);
 
@@ -144,7 +151,11 @@ function encrypt(secrets: StageSecrets, keyHex: string): EncryptedSecretsFile {
 	};
 }
 
-function decrypt(data: EncryptedSecretsFile, keyHex: string): StageSecrets {
+/** Decrypt what {@link encrypt} wrote. */
+export function decrypt<T = StageSecrets>(
+	data: EncryptedSecretsFile,
+	keyHex: string,
+): T {
 	const key = Buffer.from(keyHex, 'hex');
 	const combined = Buffer.from(data.encrypted, 'base64');
 
@@ -160,5 +171,5 @@ function decrypt(data: EncryptedSecretsFile, keyHex: string): StageSecrets {
 		decipher.final(),
 	]);
 
-	return JSON.parse(plaintext.toString('utf-8')) as StageSecrets;
+	return JSON.parse(plaintext.toString('utf-8')) as T;
 }

@@ -258,6 +258,26 @@ program
 	);
 
 program
+	.command('dev:credentials')
+	.description(
+		"Print each local service's address and login — Postgres, MinIO, Mailpit, Redis, … — without starting anything",
+	)
+	.option('--json', 'Print them as JSON, for a script')
+	.action(async (options: { json?: boolean }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			const { devCredentialsCommand } = await import('./dev/credentials.js');
+			await devCredentialsCommand(options);
+		} catch (error) {
+			console.error(formatError(error));
+			process.exit(1);
+		}
+	});
+
+program
 	.command('exec')
 	.description('Run a command with secrets injected into Credentials')
 	.argument('<command...>', 'Command to run (use -- before command)')

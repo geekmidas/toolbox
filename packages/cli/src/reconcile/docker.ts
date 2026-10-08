@@ -125,6 +125,26 @@ export const dockerCli: Docker = {
 		]);
 	},
 
+	async exec(composePath, service, argv) {
+		try {
+			const { stdout, stderr } = await run('docker', [
+				'compose',
+				...composeFiles(composePath),
+				'exec',
+				'-T',
+				service,
+				...argv,
+			]);
+			return { ok: true, output: `${stdout}${stderr}` };
+		} catch (error) {
+			const { stdout = '', stderr = '' } = error as {
+				stdout?: string;
+				stderr?: string;
+			};
+			return { ok: false, output: `${stdout}${stderr}` };
+		}
+	},
+
 	async healthy(composePath, services) {
 		if (services.length === 0) return true;
 

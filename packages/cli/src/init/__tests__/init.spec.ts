@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, rm } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -406,6 +406,33 @@ describe('initCommand', () => {
 	});
 
 	describe('fullstack template', () => {
+		it('holds no fixed login anywhere — the local ones are generated per machine', async () => {
+			await initCommand('my-fullstack', {
+				template: 'fullstack',
+				yes: true,
+				skipInstall: true,
+			});
+			const projectDir = join(tempDir, 'my-fullstack');
+
+			const files = (await readdir(projectDir, { recursive: true }))
+				.map((file) => join(projectDir, file))
+				.filter((path) => !/[\\/](node_modules|\.git)[\\/]/.test(path));
+			const offending: string[] = [];
+			for (const path of files) {
+				if (!(await stat(path)).isFile()) continue;
+				const text = (await readFile(path, 'utf-8'))
+					// The packages it depends on, their docs, and the spell
+					// checker's word for their scope are names, not logins.
+					.replaceAll('@geekmidas', '')
+					.replaceAll('geekmidas.github.io', '')
+					.replaceAll('github.com/geekmidas/', '')
+					.replace(/^\s*"geekmidas",?$/m, '');
+				if (/geekmidas/i.test(text)) offending.push(path);
+			}
+
+			expect(offending).toEqual([]);
+		});
+
 		it('should create monorepo with api and web apps', async () => {
 			await initCommand('my-fullstack', {
 				template: 'fullstack',
