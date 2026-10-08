@@ -7,9 +7,11 @@
  *   the URL still win.
  * - **Tagged queries.** Inside a request, each query ends in a comment naming
  *   what ran it — `/*operation='POST /orders',request_id='…'*\/` — in the
- *   sqlcommenter form. It shows in `pg_stat_activity.query`, in the server's
- *   slow-query and `auto_explain` logs, and costs no round trip;
- *   `pg_stat_statements` ignores comments, so its grouping is unchanged.
+ *   sqlcommenter form, and inside a trace the query's own span as
+ *   `traceparent='00-<trace>-<span>-<flags>'`. It shows in
+ *   `pg_stat_activity.query`, in the server's slow-query and `auto_explain`
+ *   logs, and costs no round trip; `pg_stat_statements` ignores comments, so
+ *   its grouping is unchanged.
  * - **A listener for idle-client errors.** When the server ends an idle
  *   connection (`idle_session_timeout`, a failover, an admin), the pool emits
  *   `'error'`. With no listener that is an uncaught exception that kills the
@@ -27,6 +29,7 @@ import { currentRequestContext } from '@geekmidas/services';
 import {
 	type Attributes,
 	context,
+	isSpanContextValid,
 	SpanKind,
 	SpanStatusCode,
 	trace,
@@ -35,7 +38,7 @@ import pg from 'pg';
 import { onShutdown } from '../shutdown';
 
 export interface DatabasePoolOptions {
-	/** Tag queries run inside a request with what ran them. Default true. */
+	/** Tag queries with what ran them and the trace they ran in. Default true. */
 	queryTags?: boolean;
 }
 
@@ -77,8 +80,10 @@ export function openPool(
 	});
 	const target = connectionAttributes(parsed);
 	pool.on('connect', (client) => {
-		// Tags first, so the span wraps them and records the statement as the
-		// application wrote it rather than with the comment on the end.
+		// Tags first, so the span wraps them: it records the statement as the
+		// application wrote it rather than with the comment on the end, and it
+		// is the active span when the tag is written — so the `traceparent` a
+		// query carries names the query's own span.
 		if (options.queryTags !== false) tagQueries(client);
 		traceQueries(client, target);
 	});
@@ -118,23 +123,37 @@ export function applicationName(
 }
 
 /**
- * The comment that says what ran a query, or '' outside a request.
+ * The comment that says what ran a query: the request's operation and id, and
+ * the active span as a W3C `traceparent` — the query's own span when it runs
+ * through a traced client, since the span wraps the tagging. '' with neither.
  *
- * Values keep only characters that cannot end a comment or a quoted value —
- * `*` and `'` among those dropped — so a route cannot inject SQL through it.
+ * The keys are in sqlcommenter's sorted order. Values keep only characters
+ * that cannot end a comment or a quoted value — `*` and `'` among those
+ * dropped — so a route cannot inject SQL through it.
  */
 export function queryTag(): string {
 	const request = currentRequestContext();
-	if (!request) return '';
+	const span = trace.getActiveSpan()?.spanContext();
 
 	const tags = [
-		['operation', request.operation],
-		['request_id', request.requestId],
+		['operation', request?.operation],
+		['request_id', request?.requestId],
+		['traceparent', span && isSpanContextValid(span) ? traceparent(span) : ''],
 	].filter((tag): tag is [string, string] => Boolean(tag[1]));
 	if (tags.length === 0) return '';
 
 	const clean = (value: string) => value.replace(/[^\w ./:{}@-]/g, '');
 	return ` /*${tags.map(([key, value]) => `${key}='${clean(value)}'`).join(',')}*/`;
+}
+
+/** A span as W3C trace context's `traceparent`, version 00. */
+function traceparent(span: {
+	traceId: string;
+	spanId: string;
+	traceFlags: number;
+}): string {
+	const flags = (span.traceFlags & 0xff).toString(16).padStart(2, '0');
+	return `00-${span.traceId}-${span.spanId}-${flags}`;
 }
 
 /**

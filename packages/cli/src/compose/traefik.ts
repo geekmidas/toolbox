@@ -18,6 +18,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { CLIENT_IP_HEADER } from '@geekmidas/manifest';
 import { stringify } from 'yaml';
 import type { EdgeRoute, EdgeTls, Upstream } from './routes.js';
 
@@ -182,8 +183,19 @@ export function traefikDynamic(
 	const services: Record<string, unknown> = {};
 	const middlewares: Record<string, unknown> = {};
 
+	// gkm's own header, which only a service of this stack may send — the
+	// auth server rate-limits by the client address it carries — removed from
+	// every request that arrives from outside. An empty value is Traefik's
+	// way of removing a request header.
+	const strip = `${project}-strip-gkm-headers`;
+	if (routes.length > 0) {
+		middlewares[strip] = {
+			headers: { customRequestHeaders: { [CLIENT_IP_HEADER]: '' } },
+		};
+	}
+
 	for (const route of routes) {
-		const chain: string[] = [];
+		const chain: string[] = [strip];
 		if (route.allow) {
 			// The peer Traefik sees — never X-Forwarded-For, which a client
 			// could set. Everything else gets 403.
@@ -203,7 +215,7 @@ export function traefikDynamic(
 			rule: `Host(\`${route.host}\`)`,
 			entryPoints: ['websecure'],
 			service: name(route),
-			...(chain.length > 0 ? { middlewares: chain } : {}),
+			middlewares: chain,
 			tls: tls.kind === 'acme' ? { certResolver: ACME_RESOLVER } : {},
 		};
 

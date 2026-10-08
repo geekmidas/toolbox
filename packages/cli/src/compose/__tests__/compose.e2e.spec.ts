@@ -811,6 +811,22 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				expect(chunks.at(-1)!.at - chunks[0]!.at).toBeGreaterThan(1000);
 			});
 
+			it('strips a spoofed x-gkm-client-ip at Caddy, and passes it inside the network', async () => {
+				const spoofed = await edge('api', '/client-ip', {
+					headers: { 'x-gkm-client-ip': '198.51.100.66' },
+				});
+				expect(spoofed.status).toBe(200);
+				expect(JSON.parse(spoofed.body)).toEqual({ clientIp: null });
+
+				// A service of the stack may send it: the endpoint does read it.
+				const internal = await fromApi(
+					`fetch('http://api:3000/client-ip', { headers: { 'x-gkm-client-ip': '198.51.100.66' } }).then((r) => r.text()).then(console.log)`,
+				);
+				expect(JSON.parse(internal.trim().split('\n').pop()!)).toEqual({
+					clientIp: '198.51.100.66',
+				});
+			});
+
 			/** `docker compose <args>` against this stack. */
 			const compose = (...args: string[]) =>
 				exec('docker', ['compose', '-p', project, '-f', file(), ...args]);
@@ -997,6 +1013,36 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 					);
 					expect(continued).toBeDefined();
 					expect(continued!.reference_parent_span_id).toBe(siteSpanId);
+
+					// The API's session check is part of the API request's trace:
+					// the auth server's span is the child of the API's call to it,
+					// not the root of a trace of its own.
+					// Signed out is enough: the check is made either way, and another
+					// sign-up here would be over Better Auth's sign-up rate limit.
+					const meTrace = randomBytes(16).toString('hex');
+					const me = await edge('api', '/me', {
+						headers: {
+							origin: origin('web'),
+							traceparent: `00-${meTrace}-${randomBytes(8).toString('hex')}-01`,
+						},
+					});
+					expect(me.status).toBe(401);
+					const [sessionCheck] = await eventuallyFound(
+						search,
+						'traces',
+						// Its SERVER span; Better Auth's own spans sit under it.
+						`trace_id = '${meTrace}' AND service_name = 'auth' AND span_kind = '2'`,
+					);
+					expect(sessionCheck).toBeDefined();
+					expect(
+						String(sessionCheck!.http_route ?? sessionCheck!.url_path ?? ''),
+					).toContain('/api/auth/');
+					const [caller] = await eventuallyFound(
+						search,
+						'traces',
+						`trace_id = '${meTrace}' AND span_id = '${sessionCheck!.reference_parent_span_id}'`,
+					);
+					expect(caller?.service_name).toBe('api');
 
 					// And the wrong login is refused.
 					const refused = await fetch(
@@ -1722,6 +1768,14 @@ describe.runIf(RUN)(
 			expect(me.status).toBe(200);
 			expect(JSON.parse(me.body)).toEqual({ email });
 			expect((await edge('staging', 'api', '/me')).status).toBe(401);
+		});
+
+		it('strips a spoofed x-gkm-client-ip at the shared edge', async () => {
+			const spoofed = await edge('staging', 'api', '/client-ip', {
+				headers: { 'x-gkm-client-ip': '198.51.100.66' },
+			});
+			expect(spoofed.status).toBe(200);
+			expect(JSON.parse(spoofed.body)).toEqual({ clientIp: null });
 		});
 
 		it("trusts a sibling's internal origin — its alias — and refuses one nobody declared", async () => {

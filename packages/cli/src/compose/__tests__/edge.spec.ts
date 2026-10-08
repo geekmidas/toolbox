@@ -110,6 +110,14 @@ describe('the route model, rendered for Caddy', () => {
 		expect(caddyfile.match(/remote_ip/g)).toHaveLength(1);
 	});
 
+	it('removes x-gkm-client-ip from every request, in every block', () => {
+		const caddyfile = edgeCaddyfile(ROUTES, { tls: { kind: 'acme' } });
+
+		expect(
+			caddyfile.match(/^\trequest_header -x-gkm-client-ip$/gm),
+		).toHaveLength(ROUTES.length);
+	});
+
 	it("serves a stage's own certificate in every block", () => {
 		const caddyfile = edgeCaddyfile(ROUTES, {
 			tls: {
@@ -197,16 +205,33 @@ describe('the route model, rendered for Traefik', () => {
 		});
 	});
 
+	it('removes x-gkm-client-ip from every request, before anything else', () => {
+		const { routers, middlewares } = dynamic().http;
+
+		// An empty value is how Traefik removes a request header.
+		expect(middlewares['shop-production-strip-gkm-headers']).toEqual({
+			headers: { customRequestHeaders: { 'x-gkm-client-ip': '' } },
+		});
+		for (const router of Object.values(routers)) {
+			expect((router.middlewares as string[])[0]).toBe(
+				'shop-production-strip-gkm-headers',
+			);
+		}
+	});
+
 	it('allows only the listed addresses to the logs, with ipAllowList', () => {
 		const { routers, middlewares } = dynamic().http;
 
 		expect(routers['shop-production-openobserve']?.middlewares).toEqual([
+			'shop-production-strip-gkm-headers',
 			'shop-production-openobserve-allow',
 		]);
 		expect(middlewares['shop-production-openobserve-allow']).toEqual({
 			ipAllowList: { sourceRange: ['203.0.113.7', '10.0.0.0/8'] },
 		});
-		expect(routers['shop-production-api']?.middlewares).toBeUndefined();
+		expect(routers['shop-production-api']?.middlewares).toEqual([
+			'shop-production-strip-gkm-headers',
+		]);
 	});
 
 	it("sends a bucket's requests to MinIO under its prefix, with MinIO's own Host", () => {
@@ -214,7 +239,10 @@ describe('the route model, rendered for Traefik', () => {
 
 		expect(
 			routers['shop-production-files-uploads-server']?.middlewares,
-		).toEqual(['shop-production-files-uploads-server-prefix']);
+		).toEqual([
+			'shop-production-strip-gkm-headers',
+			'shop-production-files-uploads-server-prefix',
+		]);
 		expect(middlewares['shop-production-files-uploads-server-prefix']).toEqual({
 			addPrefix: { prefix: '/uploads' },
 		});
@@ -674,6 +702,9 @@ describe('a stack behind the shared edge', () => {
 			'compose-app-production-openobserve',
 		]);
 		expect(file.http.middlewares).toEqual({
+			'compose-app-production-strip-gkm-headers': {
+				headers: { customRequestHeaders: { 'x-gkm-client-ip': '' } },
+			},
 			'compose-app-production-openobserve-allow': {
 				ipAllowList: { sourceRange: ['203.0.113.7'] },
 			},

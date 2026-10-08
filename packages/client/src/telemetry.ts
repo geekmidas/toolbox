@@ -14,7 +14,10 @@
  *   flag decided once per page view from {@link ClientTelemetryOptions.sampleRate}.
  *
  * Nothing is sent to any origin but the API's own: a trace id is an identifier,
- * and a third party has no business correlating a user's requests by it.
+ * and a third party has no business correlating a user's requests by it. And
+ * nothing at all where a `fetch` instrumentation is listening (a server with
+ * OpenTelemetry's undici instrumentation): it writes the request's own
+ * context, and two `traceparent` headers would be read as none.
  *
  * `@opentelemetry/api` is not imported. Every copy of it — whichever version
  * an app bundles — registers its globals on `globalThis` under
@@ -158,6 +161,38 @@ function originOf(url: string): string | undefined {
 	}
 }
 
+/** The slice of `node:diagnostics_channel` this reads. */
+interface DiagnosticsChannels {
+	channel(name: string): { hasSubscribers: boolean };
+}
+
+let fetchRequests: { hasSubscribers: boolean } | null | undefined;
+
+/**
+ * Whether something instruments `fetch` in this process: OpenTelemetry's
+ * undici instrumentation, or an APM built on it, listening on undici's
+ * diagnostics channel. It opens each request's CLIENT span and appends that
+ * span's `traceparent` itself, so one written here as well would reach the API
+ * as two values joined — `a, b` — which no propagator reads.
+ *
+ * Asked through `process.getBuiltinModule`, so a browser bundle imports no
+ * Node module; anywhere without it, nothing is listening.
+ */
+function fetchIsInstrumented(): boolean {
+	if (fetchRequests === undefined) {
+		const getBuiltinModule = (
+			globalThis as {
+				process?: { getBuiltinModule?: (id: string) => unknown };
+			}
+		).process?.getBuiltinModule;
+		const channels = getBuiltinModule?.('node:diagnostics_channel') as
+			| DiagnosticsChannels
+			| undefined;
+		fetchRequests = channels?.channel('undici:request:create') ?? null;
+	}
+	return fetchRequests?.hasSubscribers === true;
+}
+
 /**
  * An injector for a client whose API is at `baseURL`, or undefined when
  * telemetry is off.
@@ -187,6 +222,8 @@ export function traceContextInjector(
 		// A caller that set its own context keeps it.
 		if (Object.keys(headers).some((h) => h.toLowerCase() === 'traceparent'))
 			return;
+		// A fetch instrumentation writes the request's own context.
+		if (fetchIsInstrumented()) return;
 
 		const active = fromActiveContext();
 		if (active) {

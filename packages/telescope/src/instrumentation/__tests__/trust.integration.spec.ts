@@ -118,6 +118,21 @@ describe('whose traceparent the API continues', () => {
 		expect(span?.parentSpanContext?.spanId).toBe(PARENT_SPAN_ID);
 	});
 
+	it('continues an internal caller that says whose request it is in x-gkm-client-ip', async () => {
+		// An API's session check: the client's address travels in gkm's own
+		// header, which no proxy adds — the edge strips it from outside
+		// traffic — so it does not make the call look like it came through one.
+		const api = await startApi();
+
+		await fetch(`${api.url}/users`, {
+			headers: { traceparent: SAMPLED, 'x-gkm-client-ip': '203.0.113.7' },
+		});
+
+		const [span] = api.exporter.getFinishedSpans();
+		expect(span?.spanContext().traceId).toBe(TRACE_ID);
+		expect(span?.parentSpanContext?.spanId).toBe(PARENT_SPAN_ID);
+	});
+
 	it('does not count a request through a proxy as internal', async () => {
 		// The stack's proxy adds X-Forwarded-For to everything from outside, so
 		// a request with no Origin that came through it is a stranger's.

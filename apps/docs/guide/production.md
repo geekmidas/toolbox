@@ -605,8 +605,11 @@ A query run inside an endpoint, subscriber, queue or cron ends in a
 sqlcommenter tag:
 
 ```sql
-select … /*operation='POST /orders',request_id='…'*/
+select … /*operation='POST /orders',request_id='…',traceparent='00-…-…-01'*/
 ```
+
+With telemetry on, `traceparent` is the query's span (sqlcommenter's W3C
+trace context), so a query in the log joins to its trace.
 
 It shows in `pg_stat_activity.query` and the slow-query and `auto_explain`
 logs. `pg_stat_statements` ignores comments, so its grouping is unchanged.

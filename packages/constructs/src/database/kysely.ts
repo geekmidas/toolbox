@@ -69,7 +69,9 @@ export interface KyselyDatabaseOptions extends Omit<KyselyConfig, 'dialect'> {
 	/**
 	 * End each query run inside a request with a comment naming what ran it —
 	 * `/*operation='POST /orders',request_id='…'*\/` — so `pg_stat_activity`
-	 * and the server's logs can tie a query to its endpoint. Defaults to on.
+	 * and the server's logs can tie a query to its endpoint — and, inside a
+	 * trace, with the query span's `traceparent='00-…'` (sqlcommenter), so
+	 * they can tie it to the trace too. Defaults to on.
 	 */
 	queryTags?: boolean;
 }

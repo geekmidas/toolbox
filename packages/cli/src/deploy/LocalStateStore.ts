@@ -7,6 +7,7 @@
 
 import { randomUUID } from 'node:crypto';
 import {
+	link,
 	mkdir,
 	open,
 	readFile,
@@ -129,23 +130,24 @@ export class LocalStateStore extends DocumentStateStore {
 
 	protected async createLock(stage: string, holder: LockHolder): Promise<void> {
 		await this.ensureDir();
-		let handle: Awaited<ReturnType<typeof open>>;
+		// Written whole, then linked into place: `link` fails if the lock
+		// exists, so taking it is atomic — and a racing runner that loses never
+		// reads a lock its winner has created but not yet written to.
+		const lock = this.lockPath(stage);
+		const temp = `${lock}.${randomUUID()}.tmp`;
+		await writeFile(temp, JSON.stringify(holder, null, 2), {
+			flag: 'wx',
+			mode: FILE_MODE,
+		});
 		try {
-			handle = await open(this.lockPath(stage), 'wx', FILE_MODE);
+			await link(temp, lock);
 		} catch (error) {
 			if (isCode(error, 'EEXIST')) {
-				throw new StateLocked(
-					stage,
-					await this.readLock(stage),
-					this.lockPath(stage),
-				);
+				throw new StateLocked(stage, await this.readLock(stage), lock);
 			}
 			throw error;
-		}
-		try {
-			await handle.writeFile(JSON.stringify(holder, null, 2));
 		} finally {
-			await handle.close();
+			await unlink(temp).catch(() => {});
 		}
 	}
 
