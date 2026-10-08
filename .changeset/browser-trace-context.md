@@ -1,0 +1,13 @@
+---
+'@geekmidas/client': minor
+'@geekmidas/telescope': minor
+'@geekmidas/cli': minor
+---
+
+:sparkles: One trace from the browser to the API: the client propagates W3C trace context, and the API decides whose to trust
+
+- **`@geekmidas/client`: `telemetry` on `createTypedFetcher`, the auth-aware fetcher and the generated `createApi`** — off unless set. With it on, every request to the client's own API origin (never another) carries `traceparent`/`tracestate`: through the global OpenTelemetry propagator when a span is active (a browser SDK, or a server-side caller inside a request span), otherwise a page-view trace id (one per page load in a browser, per client in Node), a fresh span id per request, and a sampled flag decided once per page view at `sampleRate` (default 1) by the trace-id rule OpenTelemetry's ratio sampler uses. `@opentelemetry/api` is not imported: its globals are read from `globalThis`, so the feature adds about 0.7 kB gzipped. A `traceparent` the caller sets is kept. New export `@geekmidas/client/telemetry`; a bad rate throws `InvalidClientSampleRate`.
+- **`@geekmidas/telescope`: incoming trace context is trusted only from the API's own sites and internal callers.** `honoTelemetryMiddleware` takes `trustedOrigins` (an array, or a function read per request) and `internalCallers` (default: no `Origin`, no proxy forwarding header, and a loopback or private peer address). Any other caller's `traceparent` is no longer continued: the request starts a new trace with a link to it. The Lambda `telemetryMiddleware` takes `trustedOrigins` and `trustRequest`. **Breaking for direct users:** a middleware mounted with no options continues only internal callers.
+- **`@geekmidas/telescope`: the stage's rate caps a caller's sampled flag.** `traceSampler(rate)` is `parentbased_traceidratio` with the ratio applied to a remote sampled parent as well, so a request cannot force a trace the stage would not keep; `setupTelemetry` uses it for `sampleRatio` and for `OTEL_TRACES_SAMPLER=parentbased_traceidratio`. Also exported: `traceSamplerFromEnv`, `incomingTraceContext`, `isTrustedOrigin`, `isInternalCaller`, `isPrivateAddress`.
+- **`@geekmidas/cli`: the API's derived CORS always allows `traceparent` and `tracestate`,** and a built server hands the same origins its CORS allows to the request spans (`createApp()` returns `trustedOrigins`).
+- **`@geekmidas/cli`: `gkm openapi --telemetry [sampleRate]`** writes clients whose `createApi` propagates by default (`telemetryDefault`); off otherwise. A site's Dockerfile passes it to its in-image `gkm openapi --app` when the client's `telemetry` is set.

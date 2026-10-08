@@ -101,9 +101,15 @@ const HEADER = `/**
 
 import type { MiddlewareHandler } from 'hono';
 
-/** Requests whose spans would only be noise: health checks, by default. */
 export interface StartTelemetryOptions {
+  /** Requests whose spans would only be noise: health checks, by default. */
   ignorePaths?: string[];
+  /**
+   * The API's own sites — the origins its CORS allows — read on each request.
+   * Their \`traceparent\` is continued, as is an internal caller's; anyone
+   * else's starts a new trace linked to the one it claimed.
+   */
+  trustedOrigins?: () => readonly string[];
 }
 
 /** Telemetry was asked for and cannot start. The server runs without it. */
@@ -203,10 +209,13 @@ export async function startTelemetry(
   }
 
   // A SERVER span per request, opened by the app itself rather than by
-  // hooking node:http: \`GET /users/:id\`, continuing an incoming traceparent,
-  // with the handler — its logs, fetches and queries — running inside it.
+  // hooking node:http: \`GET /users/:id\`, continuing an incoming traceparent
+  // from the API's own sites and internal callers (a new, linked trace from
+  // anyone else), with the handler — its logs, fetches and queries — running
+  // inside it.
   return instrumentation.honoTelemetryMiddleware({
     ignorePaths: options.ignorePaths,
+    trustedOrigins: options.trustedOrigins,
   });
 }
 `;

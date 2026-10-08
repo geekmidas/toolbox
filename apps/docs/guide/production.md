@@ -364,7 +364,7 @@ Everything else comes from the standard variables:
 | --- | --- |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Collector base URL. Traces go to `/v1/traces`, logs to `/v1/logs`. Turns telemetry on. |
 | `OTEL_EXPORTER_OTLP_HEADERS` | Headers for the exporter, e.g. an API key. |
-| `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` | Sampling, e.g. `parentbased_traceidratio` and `0.1`. |
+| `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` | Sampling, e.g. `parentbased_traceidratio` and `0.1`. The rate also caps a caller's sampled flag: a request cannot force a trace the stage would not keep. |
 | `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` | Override or add resource attributes. |
 
 ### What is exported
@@ -379,9 +379,12 @@ signals that matter most are sent by explicit code instead:
   `http.response.status_code`, `url.path`, `url.scheme`, `server.address`,
   `user_agent.original` and `client.address`. Never the query string, and no
   headers. A 5xx or a thrown error marks it `ERROR`, the exception recorded; a
-  4xx does not. An incoming W3C `traceparent` is continued, and the handler
-  runs inside the span, so its logs and its outbound calls belong to it. The
-  health check and `/ready` get none.
+  4xx does not. An incoming W3C `traceparent` is continued when it comes from
+  one of the API's own sites or an internal caller, and any other caller's
+  becomes a link on a new trace ([whose trace context is
+  continued](/packages/telescope#whose-trace-context-is-continued)). The
+  handler runs inside the span, so its logs and its outbound calls belong to
+  it. The health check and `/ready` get none.
 - **Every log record.** A logger made with `createLogger` from
   `@geekmidas/logger/pino` sends each record through the OpenTelemetry logs
   API as well as to stdout: the pino level as its severity, the message as its

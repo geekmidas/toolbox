@@ -566,6 +566,9 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				expect(deep.body).toBe(page.body);
 			});
 
+			/** The `traceparent` the site's bundle sent to the API, as a browser would. */
+			let siteTraceparent: string | undefined;
+
 			it('the site calls the API through the client generated in its image', async () => {
 				const page = await edge('web', '/');
 				const script = page.body.match(/src="(\/assets\/[^"]+\.js)"/)?.[1];
@@ -591,6 +594,8 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 					fetch: async (url: string, init: RequestInit = {}) => {
 						const target = new URL(url);
 						expect(target.origin).toBe(origin('api'));
+						siteTraceparent = (init.headers as Record<string, string>)
+							?.traceparent;
 						const answer = await edge('api', target.pathname, {
 							method: init.method ?? 'GET',
 							headers: {
@@ -622,6 +627,8 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				expect(elements['#ping']?.textContent).toBe(
 					JSON.stringify({ ok: true }),
 				);
+				// The page's trace context went with it.
+				expect(siteTraceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
 			});
 
 			it('(a) signs in from the site, setting the session on the shared cookie domain', async () => {
@@ -952,6 +959,16 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 					expect(String(span!.span_kind)).toBe('2'); // SERVER
 					expect(String(span!.http_response_status_code)).toBe('200');
 					expect(span!.span_id).toBe(line!.span_id);
+
+					// The site's request — sent by its bundle above, from its origin,
+					// through the edge — is a child of the page's trace, not a new one.
+					const [, siteTraceId, siteSpanId] = siteTraceparent!.split('-');
+					const [continued] = await eventually(
+						'traces',
+						`trace_id = '${siteTraceId}' AND operation_name = 'GET /ping'`,
+					);
+					expect(continued).toBeDefined();
+					expect(continued!.reference_parent_span_id).toBe(siteSpanId);
 
 					// And the wrong login is refused.
 					const refused = await fetch(

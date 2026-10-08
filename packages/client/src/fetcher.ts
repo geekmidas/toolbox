@@ -1,5 +1,6 @@
 import qs from 'qs';
 import { methodCalls } from './methods';
+import { type TraceContextInjector, traceContextInjector } from './telemetry';
 import type {
 	EndpointString,
 	ErrorTransformer,
@@ -19,6 +20,7 @@ export class TypedFetcher<Paths> {
 	private defaultHeaders: Record<string, string>;
 	private options: FetcherOptions;
 	private fetchFn: FetchFn;
+	private injectTraceContext: TraceContextInjector | undefined;
 
 	static getFetchFn(fn?: FetchFn): FetchFn {
 		if (fn) {
@@ -44,6 +46,10 @@ export class TypedFetcher<Paths> {
 		this.defaultHeaders = options.headers || {};
 		this.options = options;
 		this.fetchFn = TypedFetcher.getFetchFn(options.fetch);
+		this.injectTraceContext = traceContextInjector(
+			this.baseURL,
+			options.telemetry,
+		);
 	}
 
 	async request<T extends TypedEndpoint<Paths>>(
@@ -91,6 +97,12 @@ export class TypedFetcher<Paths> {
 				'Content-Type': 'application/json',
 			};
 		}
+
+		// Trace context, before the interceptor so it sees the final headers
+		this.injectTraceContext?.(
+			`${this.baseURL}${url}`,
+			requestConfig.headers as Record<string, string>,
+		);
 
 		// Apply request interceptor
 		if (this.options.onRequest) {

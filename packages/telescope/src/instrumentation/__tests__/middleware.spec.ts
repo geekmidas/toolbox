@@ -1,4 +1,5 @@
-import { trace } from '@opentelemetry/api';
+import { propagation, trace } from '@opentelemetry/api';
+import { core } from '@opentelemetry/sdk-node';
 import {
 	BasicTracerProvider,
 	InMemorySpanExporter,
@@ -527,6 +528,68 @@ describe('telemetryMiddleware', () => {
 			expect(spans).toHaveLength(1);
 			// The span should be created (even if not linked to parent in this basic setup)
 			expect(spans[0].name).toContain('GET');
+		});
+	});
+
+	describe('whose trace context is continued', () => {
+		const traceId = '0af7651916cd43dd8448eb211c80319c';
+		const parentSpanId = 'b7ad6b7169203331';
+
+		beforeEach(() => {
+			propagation.setGlobalPropagator(new core.W3CTraceContextPropagator());
+		});
+
+		afterEach(() => {
+			propagation.disable();
+		});
+
+		async function invoke(
+			options: Parameters<typeof telemetryMiddleware>[0],
+			headers: Record<string, string>,
+		) {
+			const mw = telemetryMiddleware(options);
+			const event = {
+				httpMethod: 'GET',
+				path: '/users',
+				requestContext: {},
+				headers: {
+					traceparent: `00-${traceId}-${parentSpanId}-01`,
+					...headers,
+				},
+			};
+			await mw.before?.({ event, context: mockContext } as any);
+			await mw.after?.({
+				event,
+				context: mockContext,
+				response: { statusCode: 200 },
+			} as any);
+			return exporter.getFinishedSpans()[0];
+		}
+
+		it("continues a trace from one of the API's own sites", async () => {
+			const span = await invoke(
+				{ trustedOrigins: ['https://web.example.com'] },
+				{ Origin: 'https://web.example.com' },
+			);
+
+			expect(span?.spanContext().traceId).toBe(traceId);
+			expect(span?.parentSpanContext?.spanId).toBe(parentSpanId);
+		});
+
+		it('links, rather than continues, any other caller', async () => {
+			const span = await invoke(
+				{ trustedOrigins: ['https://web.example.com'] },
+				{},
+			);
+
+			expect(span?.spanContext().traceId).not.toBe(traceId);
+			expect(span?.links[0]?.context.traceId).toBe(traceId);
+		});
+
+		it('continues a caller the function vouches for', async () => {
+			const span = await invoke({ trustRequest: () => true }, {});
+
+			expect(span?.spanContext().traceId).toBe(traceId);
 		});
 	});
 });

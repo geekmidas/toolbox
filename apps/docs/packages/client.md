@@ -15,6 +15,7 @@ pnpm add @geekmidas/client
 - Typed fetcher with error handling
 - Automatic retries and request/response interceptors
 - Query invalidation utilities
+- W3C trace context on requests to its own API, opt-in
 
 ## Package Exports
 
@@ -28,6 +29,7 @@ pnpm add @geekmidas/client
 | `/types` | Type definitions |
 | `/auth-fetcher` | Auth-aware fetcher with per-endpoint security strategies (Bearer, API key, AWS IAM) |
 | `/endpoint-hooks` | `createEndpointHooks` - React Query hooks generated from typed fetcher |
+| `/telemetry` | `ClientTelemetryOptions` - W3C trace context propagation ([below](#trace-propagation)) |
 
 ## Basic Usage
 
@@ -207,3 +209,68 @@ Each surface's typed client is written by `gkm build` (and kept current by
 `@<name>/client/<surface>`: its `createApi()` returns a typed
 fetcher with React Query hooks, built from the endpoints themselves rather
 than from a spec file.
+
+## Trace propagation
+
+With `telemetry` on, every request a client makes **to its own API's origin**
+carries W3C trace context, so a user action in the browser and the API request
+it causes are one trace. A request to any other origin carries none.
+
+```typescript
+const api = createApi({
+  baseURL: import.meta.env.VITE_API_URL,
+  telemetry: { sampleRate: 0.1 }, // or `true` for every page view
+});
+```
+
+Which context it sends:
+
+- **An OpenTelemetry context is active** — a browser SDK has a span open, or the
+  client runs on a server (a Next.js server component, an API calling another
+  API) inside a request span. The globally registered propagator writes the
+  headers (`traceparent`, `tracestate`), so the current span is the parent.
+- **Otherwise (level 1).** One trace id per page view — per page load in a
+  browser, shared by every client on the page; per client in Node — a fresh
+  span id per request, and a sampled flag decided once per page view at
+  `sampleRate` (default 1). The ids are crypto-random.
+
+`@opentelemetry/api` is not a dependency. Every copy of it registers its
+globals on `globalThis` under `Symbol.for('opentelemetry.js.api.1')`, and the
+client reads the propagator and context manager from there — so with no SDK on
+the page it costs nothing, and with one it finds it. The whole feature adds
+about 0.7 kB gzipped to a bundle.
+
+A `traceparent` the caller sets itself is left alone. The React Query hooks go
+through the same fetch, so they carry it too.
+
+The sampled flag is decided from the trace id by the same rule as
+OpenTelemetry's `TraceIdRatioBasedSampler`. The API caps an incoming sampled
+flag at its own rate by that rule, so a page view sampled at the stage's rate
+is sampled at the API too — and a page cannot force more.
+
+### The API's side
+
+- **CORS.** A `RestApi`'s CORS — derived from the sites with an edge to it —
+  always allows the `traceparent` and `tracestate` request headers, so a
+  preflight for them passes.
+- **Trust.** The API continues the context only from its own sites' origins
+  and from internal callers; anyone else's starts a new trace linked to it.
+  See [whose trace context is
+  continued](/packages/telescope#whose-trace-context-is-continued).
+
+### The generated client
+
+`gkm` writes `createApi` with telemetry **off** unless told otherwise; a
+caller's own `telemetry` option always wins. The default the generated module
+prints is `telemetryDefault`, set by:
+
+```bash
+gkm openapi --telemetry        # on, every page view sampled
+gkm openapi --telemetry 0.1    # on, at the stage's rate
+```
+
+A site's Docker image runs the same `gkm openapi --app <api>` for each API it
+calls, and passes `--telemetry` when the site's telemetry asks for it. Driving
+that from a site's `Telemetry` construct, with the stage's rate, is the next
+step of the telemetry work; until then pass `telemetry` to `createApi`.
+

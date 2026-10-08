@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v4';
+import { InvalidClientTelemetrySampleRate } from '../clientTelemetry';
 import { OpenApiTsGenerator } from '../OpenApiTsGenerator';
 
 /**
@@ -215,5 +216,47 @@ describe('OpenApiTsGenerator', () => {
 		expect(content).toContain('Orders');
 		expect(content).toContain('2.1.0');
 		expect(content).toContain('Orders API');
+	});
+
+	describe('trace propagation', () => {
+		const authed = () => [
+			endpoint({ authorizer: { name: 'auth', type: 'jwt' } }),
+		];
+		const open = () => [endpoint({})];
+
+		it.each([
+			['with auth', authed],
+			['without auth', open],
+		])('is off by default (%s)', async (_, endpoints) => {
+			const content = await generate(endpoints());
+
+			expect(content).toContain(
+				'export const telemetryDefault: boolean | ClientTelemetryOptions = false;',
+			);
+			// The caller's own option still wins.
+			expect(content).toContain(
+				'telemetry: options.telemetry ?? telemetryDefault',
+			);
+			expect(content).toContain(
+				"import type { ClientTelemetryOptions } from '@geekmidas/client/telemetry';",
+			);
+		});
+
+		it('prints the default the site’s telemetry decides', async () => {
+			expect(await generate(open(), { telemetry: true })).toContain(
+				'export const telemetryDefault: boolean | ClientTelemetryOptions = true;',
+			);
+			expect(
+				await generate(authed(), { telemetry: { sampleRate: 0.1 } }),
+			).toContain(
+				'export const telemetryDefault: boolean | ClientTelemetryOptions = { sampleRate: 0.1 };',
+			);
+		});
+
+		it('refuses a rate outside 0-1', async () => {
+			await expect(
+				generate(open(), { telemetry: { sampleRate: 1.5 } }),
+			).rejects.toThrow(InvalidClientTelemetrySampleRate);
+		});
 	});
 });

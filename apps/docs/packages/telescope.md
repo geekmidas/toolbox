@@ -552,6 +552,81 @@ setupTelemetry({
 `sampleRatio` keeps that fraction of new traces and makes child spans follow
 their parent. A value outside 0–1 throws `InvalidSampleRatio`.
 
+### Sampling: the stage's rate is a cap
+
+`setupTelemetry` samples with `traceSampler(rate)` — from `sampleRatio`, or from
+`OTEL_TRACES_SAMPLER=parentbased_traceidratio` and `OTEL_TRACES_SAMPLER_ARG`.
+It is `parentbased_traceidratio` with one change: a **remote** parent's sampled
+flag is a request, not an order.
+
+| Parent | Decision |
+| --- | --- |
+| none (a new trace) | the rate, from the trace id |
+| remote, sampled | the rate again — a caller cannot force 100% |
+| remote, not sampled | not sampled — a caller may ask for less |
+| local (this process) | the parent's decision |
+
+The rate is applied to the trace id (`TraceIdRatioBasedSampler`), so every
+service at the same rate makes the same decision for the same trace, and a
+trace kept where it started is kept at every hop. The generated API client
+decides a page view's sampled flag by the same rule.
+
+### Whose trace context is continued
+
+An incoming `traceparent` is a claim made by the caller. Continued, it puts the
+request's span inside a trace the caller chose, and its sampled flag asks this
+API to record it. So `honoTelemetryMiddleware` continues it only from a
+**trusted** caller:
+
+- **The API's own sites.** An `Origin` header naming one of `trustedOrigins` —
+  exactly, scheme, host and port. A built server passes the origins its CORS
+  allows: the sites with an edge to the API (`<ID>_TRUSTED_ORIGINS`). A
+  browser sets `Origin` itself on every cross-origin request, and a page
+  cannot forge it. A wildcard trusts nothing.
+- **An internal caller.** No `Origin`, no header a proxy adds on the way in
+  (`X-Forwarded-For`, `Forwarded`, `X-Real-IP`, `CF-Connecting-IP`, …), and a
+  TCP peer on a loopback or private address (`127/8`, `10/8`, `172.16/12`,
+  `192.168/16`, `169.254/16`, `::1`, `fc00::/7`, `fe80::/10`). That is another
+  service calling this one by its internal URL on the private network: a
+  request from outside reaches the API through the stack's proxy, which adds
+  `X-Forwarded-For`, or from a public address. The peer address is read from
+  `@hono/node-server`'s socket; a request handed to the app in-process has
+  none, and is not internal. `internalCallers: false` turns this off;
+  a function decides it yourself.
+
+Anyone else — an origin that is not the API's, a request with no origin that
+came through the proxy — gets a **new trace**, with a **link** to the context
+it claimed (`gkm.trace.untrusted_parent: true`), so the hop can still be
+followed without the caller choosing the trace. Its baggage is dropped.
+
+```typescript
+import { honoTelemetryMiddleware } from '@geekmidas/telescope/instrumentation';
+
+app.use(
+  '*',
+  honoTelemetryMiddleware({
+    trustedOrigins: ['https://shop.example.com'], // or () => origins
+    internalCallers: true, // the default: private network, no proxy, no Origin
+  }),
+);
+```
+
+A trusted caller's sampled flag is still capped by the [stage's
+rate](#sampling-the-stage-s-rate-is-a-cap). Messages a worker receives from the
+broker do not come over HTTP, and are not subject to these rules.
+
+::: warning Published ports
+The internal rule trusts the network, not a secret. An API port published
+straight to the internet with Docker's userland proxy can see a private peer
+address for outside traffic; publish the API only through the stack's proxy,
+or pass `internalCallers: false`.
+:::
+
+The Lambda middleware (`telemetryMiddleware`) takes `trustedOrigins` too. API
+Gateway has no private network to tell an internal caller by, so a request
+from no trusted origin is continued only when `trustRequest(event)` vouches
+for it — after IAM auth, say.
+
 ## Cleanup
 
 ```typescript
