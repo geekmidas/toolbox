@@ -654,6 +654,48 @@ describe('initCommand', () => {
 			]);
 		});
 
+		it('scaffolds a compose deploy with --deploy compose', async () => {
+			await initCommand('my-fullstack', {
+				template: 'fullstack',
+				yes: true,
+				skipInstall: true,
+				deploy: 'compose',
+				registry: 'ghcr.io/acme',
+			});
+
+			const root = join(tempDir, 'my-fullstack');
+			const pkg = JSON.parse(
+				await readFile(join(root, 'package.json'), 'utf-8'),
+			);
+			const config = await readFile(join(root, 'gkm.config.ts'), 'utf-8');
+			const workflow = await readFile(
+				join(root, '.github/workflows/deploy.yml'),
+				'utf-8',
+			);
+
+			expect(pkg.scripts['deploy:production']).toBe(
+				'gkm compose --stage production',
+			);
+			expect(config).toContain(
+				"deploy: { default: 'compose', registry: 'ghcr.io/acme' },",
+			);
+			expect(workflow).toContain('gkm compose --stage "$STAGE" --build --push');
+			expect(workflow).toContain('uses: geekmidas/toolbox/actions/stages@');
+		});
+
+		it('pushes a compose deploy to ghcr.io under the project without --registry', async () => {
+			await initCommand('my-fullstack', {
+				template: 'fullstack',
+				yes: true,
+				skipInstall: true,
+				deploy: 'compose',
+			});
+
+			await expect(
+				readFile(join(tempDir, 'my-fullstack', 'gkm.config.ts'), 'utf-8'),
+			).resolves.toContain("registry: 'ghcr.io/my-fullstack'");
+		});
+
 		it('scaffolds an SST deploy with --deploy sst', async () => {
 			await initCommand('my-fullstack', {
 				template: 'fullstack',

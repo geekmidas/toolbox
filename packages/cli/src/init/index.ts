@@ -70,8 +70,10 @@ export interface InitOptions {
 	apiPath?: string;
 	/** Package manager to use */
 	pm?: PackageManager;
-	/** Where the project deploys: `dokploy`, `sst`, or `none` */
+	/** Where the project deploys: `compose`, `dokploy`, `sst`, or `none` */
 	deploy?: DeployTarget;
+	/** The registry a `compose` deploy pushes to and pulls from, e.g. `ghcr.io/acme` */
+	registry?: string;
 	/** The AWS region an SST deploy goes to, e.g. `eu-west-1` */
 	region?: string;
 	/** Deployed stage names, comma-separated, e.g. `staging,prod` */
@@ -197,6 +199,21 @@ export async function initCommand(
 				message: 'AWS region (e.g. eu-west-1):',
 				validate: (value: string) =>
 					AWS_REGION.test(value.trim()) || 'An AWS region, like eu-west-1',
+			},
+			{
+				type: (_prev, values) =>
+					!options.yes &&
+					!options.registry &&
+					(options.deploy ?? values.deployTarget) === 'compose'
+						? 'text'
+						: null,
+				name: 'registry',
+				message:
+					'Container registry CI pushes to (e.g. ghcr.io/<your GitHub owner>):',
+				initial: (_prev, values) =>
+					defaultRegistry(projectName || options.name || values.name),
+				validate: (value: string) =>
+					value.trim().length > 0 || 'A registry, like ghcr.io/acme',
 			},
 			{
 				// Named by the project, not picked from a list: whatever the team
@@ -349,6 +366,14 @@ export async function initCommand(
 		packageManager: pkgManager,
 		deployTarget,
 		stages: resolveStages(options, answers),
+		...(deployTarget === 'compose'
+			? {
+					registry:
+						options.registry ??
+						answers.registry?.trim() ??
+						defaultRegistry(name),
+				}
+			: {}),
 		...(deployTarget === 'sst'
 			? {
 					// Asked when there is someone to ask; \`--yes\` takes eu-west-1.
@@ -615,6 +640,18 @@ function printNextSteps(
 		console.log('');
 	}
 
+	if (options.deployTarget === 'compose') {
+		console.log('🚀 Deployment (Docker Compose, on your server):');
+		console.log(
+			`  Images are pushed to ${options.registry}; .github/workflows/deploy.yml builds them`,
+		);
+		console.log(
+			'  and runs gkm compose on the server over SSH. See the comments in it for the',
+		);
+		console.log('  environment variables and secrets each stage needs.');
+		console.log('');
+	}
+
 	if (options.deployTarget === 'sst') {
 		console.log('🚀 Deployment (AWS, through SST):');
 		for (const stage of deployed) {
@@ -681,6 +718,15 @@ export class UnknownDeployTarget extends Error {
 		super(`Unknown deploy target "${target}". Use ${known.join(', ')}.`);
 		this.name = 'UnknownDeployTarget';
 	}
+}
+
+/**
+ * Where a compose deploy's images go when nobody said: GitHub's registry,
+ * under an owner named after the project. The generated config says to change
+ * it to the repository's owner, whose packages the workflow's token can write.
+ */
+function defaultRegistry(name: string | undefined): string {
+	return `ghcr.io/${(name ?? 'my-org').toLowerCase()}`;
 }
 
 /** `--region` that is not shaped like one, e.g. `europe` for `eu-west-1`. */

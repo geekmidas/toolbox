@@ -526,6 +526,15 @@ ${workspaceConstructsGlobs(options.routesStructure, dirname(options.apiPath))
  * `gkm build` builds for, and which backends a cache or a broker resolves to.
  */
 function deployBlock(options: TemplateOptions): string {
+	if (options.deployTarget === 'compose') {
+		return `
+  // \`gkm compose --stage <stage>\` runs a stage as one Docker Compose stack on
+  // the machine it runs on. CI builds every image and pushes it here; the
+  // server pulls exactly those. On ghcr.io the owner is the repository's —
+  // the user or organisation whose packages the workflow's token can write.
+  deploy: { default: 'compose', registry: '${options.registry}' },
+`;
+	}
 	if (options.deployTarget !== 'sst') return '';
 	return `
   // \`gkm deploy\` runs \`sst deploy\` on the manifest \`gkm build\` writes to

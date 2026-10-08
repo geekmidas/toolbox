@@ -176,70 +176,78 @@ or tag `ImageDigestMismatch` — both before the registry is asked.
 
 ### A GitHub Actions workflow
 
-```yaml
-# .github/workflows/deploy.yml
-name: Deploy
-on:
-  push:
-    branches: [main]
+`gkm init --deploy compose` writes `.github/workflows/deploy.yml`, which names
+no stage: the [stages action](./deployment.md#the-stages-action) reads them
+from `gkm.config.ts` with the project's own gkm. A push builds every deployed
+stage and deploys the unprotected ones; publishing a release deploys the
+protected ones; a manual run deploys the stage and `ref` you name. Abridged:
 
+```yaml
+# .github/workflows/deploy.yml (generated)
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
+  stages:                     # build, deploy, has-build, has-deploy, aws-region
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      # … node, the package manager, install
+      - id: stages
+        uses: geekmidas/toolbox/actions/stages@<commit> # @geekmidas/cli <version>
         with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - uses: docker/login-action@v3
+          stage: ${{ inputs.stage }}
+
+  build:
+    needs: stages
+    if: needs.stages.outputs.has-build == 'true'
+    strategy:
+      matrix:
+        stage: ${{ fromJSON(needs.stages.outputs.build) }}
+    environment: ${{ matrix.stage }}
+    permissions: { contents: read, packages: write, id-token: write }
+    steps:
+      # … checkout, install, docker login to the registry
+      - if: needs.stages.outputs.aws-region != ''   # an AWS secrets store
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      # The stage's secrets store: the site builds read its public URLs.
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
-          aws-region: eu-west-1
-      - run: >-
-          pnpm exec gkm compose --stage production --build --push
-          --tag ${{ github.sha }} --digests-file digests.json
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ needs.stages.outputs.aws-region }}
+      - run: pnpm exec gkm compose --stage "$STAGE" --build --push --tag "$SHA" --digests-file digests.json
+        env:
+          STAGE: ${{ matrix.stage }}
+          SHA: ${{ github.sha }}
       - uses: actions/upload-artifact@v4
         with:
-          name: digests
+          name: digests-${{ matrix.stage }}
           path: digests.json
+          retention-days: 90
 
   deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment: production
+    needs: [stages, build]
+    if: ${{ !cancelled() && !failure() && needs.stages.outputs.has-deploy == 'true' }}
+    strategy:
+      matrix:
+        stage: ${{ fromJSON(needs.stages.outputs.deploy) }}
+    environment: ${{ matrix.stage }}
+    concurrency: { group: 'deploy-${{ matrix.stage }}', cancel-in-progress: false }
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: digests
-      - name: Pull and run on the server
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: deploy
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            cd /srv/shop && git fetch && git checkout ${{ github.sha }}
-            pnpm install --frozen-lockfile
-            pnpm exec gkm compose --stage production --tag ${{ github.sha }}
+      # 1. the commit: a release's tag, a manual run's ref, or the push
+      # 2. that commit's push build of this workflow, and its digests-<stage>
+      #    (missing: deploy by tag, with a warning on the run)
+      # 3. over SSH, host key pinned, on the server:
+      #      git checkout <sha> && pnpm install --frozen-lockfile
+      #      pnpm exec gkm compose --stage <stage> --tag <sha> --digests-file …
 ```
 
 The server runs `gkm compose` itself, from a checkout at the same commit:
-provisioning and migrations reach the stack's Postgres on its loopback port. It
-needs a `docker login` to the registry (a read-only token is enough) and the
-stage's secrets store. To pin by digest, copy `digests.json` to the server
-(`scp`, or the action's own file upload) and add `--digests-file digests.json`.
+provisioning and migrations reach the stack's Postgres on its loopback port.
+`DEPLOY_PATH` is that checkout, and it needs a `docker login` to the registry
+(a read-only token is enough) and the stage's secrets store. Each environment
+holds `DEPLOY_SSH_KEY` (a secret) and `DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST`,
+`DEPLOY_USER` and `DEPLOY_PATH` (variables). The SSH session is
+non-interactive, so the package manager has to be on that user's `PATH`
+without a login shell.
+
+The images are pinned by digest: a release deploys exactly what the push of
+its commit built, even if a tag was pushed over since. The digests are kept for
+90 days; a release of an older commit deploys by tag, and says so.
 
 ## Building
 

@@ -6,14 +6,18 @@
  *   release, labelled from their titles.
  * - `deploy.yml` — when a deploy target was picked: a push to main deploys the
  *   stages that are not protected, publishing the drafted release deploys the
- *   protected ones.
+ *   protected ones, and a manual run deploys the one stage it names.
  *
- * The deploy workflow names no stage. It reads `stages` from gkm.config.ts at
- * run time, so the config stays the one place stages are declared and a
- * workflow cannot fall out of step with it.
+ * The deploy workflow names no stage. Its first job runs the
+ * `geekmidas/toolbox/actions/stages` action, which asks the project's own
+ * `gkm stages --github-output` which stages the run builds and deploys — so
+ * the config stays the one place stages are declared, the rules for each event
+ * are tested code in the CLI, and a workflow cannot fall out of step with
+ * either.
  */
 
 import { projectKey } from '../../secrets/keystore.js';
+import { stagesActionUses } from '../stagesAction.js';
 import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
 
 /** How each package manager is set up, installs, and runs a script. */
@@ -216,7 +220,290 @@ template: |
 `;
 }
 
-function deploy(options: TemplateOptions): string {
+/**
+ * What every deploy workflow starts with: its triggers, and the `stages` job,
+ * which asks the project's own gkm (through the stages action) which stages
+ * this run builds and deploys. Nothing in a workflow names a stage.
+ */
+function deployHeader(build: boolean): string {
+	const push = build
+		? 'builds every deployed stage, deploys those not protected'
+		: 'every deployed stage that is not protected';
+	return `name: Deploy
+
+# Which stages exist, and which are protected, is read from \`stages\` in
+# gkm.config.ts by the project's own gkm, through the stages action — nothing
+# here names one:
+#
+#   push to main       ${push}
+#   release published  the protected stages (publish the drafted release)
+#   run workflow       the one stage you name, at the ref you name
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: A deployed stage from gkm.config.ts
+        required: true
+        type: string
+      ref:
+        description: The commit, tag or branch to deploy (default the latest on main)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+`;
+}
+
+function stagesJob(options: TemplateOptions): string {
+	const pm = tooling(options);
+	return `  stages:
+    name: Pick stages
+    runs-on: ubuntu-latest
+    outputs:
+      build: \${{ steps.stages.outputs.build }}
+      deploy: \${{ steps.stages.outputs.deploy }}
+      has-build: \${{ steps.stages.outputs.has-build }}
+      has-deploy: \${{ steps.stages.outputs.has-deploy }}
+      aws-region: \${{ steps.stages.outputs.aws-region }}
+    steps:
+      - uses: actions/checkout@v4
+
+${pm.setup}
+      - name: Install
+        run: ${pm.install}
+
+      # Runs \`gkm stages --github-output\`: the rules for each event are the
+      # installed CLI's, and a manual run naming a stage gkm.config.ts does not
+      # deploy fails here.
+      - name: Read stages from gkm.config.ts
+        id: stages
+        uses: ${stagesActionUses()}
+        with:
+          stage: \${{ inputs.stage }}
+`;
+}
+
+/**
+ * The registry login a compose build pushes with: GitHub's own token on
+ * ghcr.io, otherwise a username variable and a password secret.
+ */
+function registryLogin(registry: string): string {
+	const host = registry.split('/')[0]!;
+	const ghcr = host === 'ghcr.io';
+	return `      - uses: docker/login-action@v3
+        with:
+          registry: ${host}
+          username: ${ghcr ? '${{ github.actor }}' : '${{ vars.REGISTRY_USERNAME }}'}
+          password: ${ghcr ? '${{ secrets.GITHUB_TOKEN }}' : '${{ secrets.REGISTRY_PASSWORD }}'}
+`;
+}
+
+/**
+ * The compose deploy: images are built and pushed by the runner, where the
+ * code is, and pulled by the server, where the stage runs.
+ *
+ * - `build` (on a push): every deployed stage's images, tagged with the
+ *   commit, and their digests kept as the artifact `digests-<stage>`.
+ * - `deploy`: the commit the event names — a release's tag, a manual run's
+ *   `ref` — then that commit's push build, whose digests pin each image. Over
+ *   SSH, with a pinned host key, the server checks the commit out and runs
+ *   `gkm compose` on exactly those images.
+ */
+function composeDeploy(options: TemplateOptions): string {
+	const pm = tooling(options);
+	const registry = options.registry ?? '';
+
+	return `${deployHeader(true)}
+jobs:
+${stagesJob(options)}
+  build:
+    name: Build \${{ matrix.stage }}
+    needs: stages
+    if: needs.stages.outputs.has-build == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stage: \${{ fromJSON(needs.stages.outputs.build) }}
+    # One GitHub environment per stage: its secrets, variables and approvals.
+    environment: \${{ matrix.stage }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+${pm.setup}
+      - name: Install
+        run: ${pm.install}
+
+${registryLogin(registry)}
+      # A site's public URLs are built into it, so the build reads the stage's
+      # secrets store. With secrets.store on SSM or Secrets Manager the job
+      # assumes the stage's role (AWS_ROLE_ARN, set by gkm deploy:github);
+      # with the default 'file' store there is no role to assume.
+      - name: Assume the stage's AWS role
+        if: needs.stages.outputs.aws-region != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: \${{ vars.AWS_ROLE_ARN }}
+          aws-region: \${{ needs.stages.outputs.aws-region }}
+
+      # Builds and pushes every image the stage runs, tagged with the commit,
+      # and starts nothing.
+      - name: Build and push
+        run: ${pm.exec} gkm compose --stage "$STAGE" --build --push --tag "$SHA" --digests-file digests.json
+        env:
+          STAGE: \${{ matrix.stage }}
+          SHA: \${{ github.sha }}
+
+      # What each tag pointed at when it was pushed. A deploy runs these
+      # digests, so a tag moved since cannot change what is released.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-\${{ matrix.stage }}
+          path: digests.json
+          retention-days: 90
+
+  deploy:
+    name: Deploy \${{ matrix.stage }}
+    needs: [stages, build]
+    # The build is skipped on a release or a manual run: deploy then anyway,
+    # but never after a failed build.
+    if: \${{ !cancelled() && !failure() && needs.stages.outputs.has-deploy == 'true' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stage: \${{ fromJSON(needs.stages.outputs.deploy) }}
+    environment: \${{ matrix.stage }}
+    concurrency:
+      group: deploy-\${{ matrix.stage }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      # A release deploys its tag's commit, never its target_commitish — the
+      # branch it was drafted against, which has moved on since.
+      - name: Resolve the commit
+        id: commit
+        run: |
+          case "$EVENT" in
+            release) ref="tags/$TAG" ;;
+            workflow_dispatch) ref="\${REF:-$SHA}" ;;
+            *) ref="$SHA" ;;
+          esac
+          sha=$(gh api "repos/$REPO/commits/$ref" --jq .sha)
+          echo "Deploying $sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: \${{ github.token }}
+          REPO: \${{ github.repository }}
+          EVENT: \${{ github.event_name }}
+          TAG: \${{ github.event.release.tag_name }}
+          REF: \${{ inputs.ref }}
+          SHA: \${{ github.sha }}
+
+      # The push run of this workflow that built the commit for this stage:
+      # this run on a push, the newest one with the stage's digests otherwise.
+      - name: Find the commit's push build
+        id: build
+        run: |
+          if [ "$EVENT" = push ]; then
+            echo "run-id=$RUN_ID" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          workflow=\${WORKFLOW_REF%%@*}
+          workflow=\${workflow##*/}
+          for id in $(gh run list --repo "$REPO" --workflow "$workflow" --event push --commit "$SHA" --limit 20 --json databaseId --jq '.[].databaseId'); do
+            found=$(gh api "repos/$REPO/actions/runs/$id/artifacts?name=$ARTIFACT" --jq '[.artifacts[] | select(.expired | not)] | length')
+            if [ "$found" -gt 0 ]; then
+              echo "run-id=$id" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "run-id=" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: \${{ github.token }}
+          REPO: \${{ github.repository }}
+          EVENT: \${{ github.event_name }}
+          RUN_ID: \${{ github.run_id }}
+          WORKFLOW_REF: \${{ github.workflow_ref }}
+          SHA: \${{ steps.commit.outputs.sha }}
+          ARTIFACT: digests-\${{ matrix.stage }}
+
+      - name: Download digests-\${{ matrix.stage }}
+        if: steps.build.outputs.run-id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: digests-\${{ matrix.stage }}
+          run-id: \${{ steps.build.outputs.run-id }}
+          github-token: \${{ github.token }}
+
+      - name: No digests — deploying by tag
+        if: steps.build.outputs.run-id == ''
+        run: |
+          echo "::warning title=$STAGE deploys by tag, not digest::No push build of $SHA kept digests-$STAGE (never built, or older than 90 days). The server runs whatever the tag $SHA points at in the registry now, which anyone who can push there could have replaced."
+        env:
+          STAGE: \${{ matrix.stage }}
+          SHA: \${{ steps.commit.outputs.sha }}
+
+      # Each environment holds DEPLOY_SSH_KEY (secret) and DEPLOY_KNOWN_HOSTS,
+      # DEPLOY_HOST, DEPLOY_USER and DEPLOY_PATH (variables): the server's
+      # host key is pinned, never accepted on first sight. DEPLOY_PATH is a
+      # clone of this repository, with a docker login to ${registry.split('/')[0]}
+      # and the stage's secrets.
+      #
+      # Every value reaches the server as an argument to a quoted heredoc —
+      # nothing is pasted into the script.
+      - name: Deploy on the server
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          (umask 077 && printf '%s\\n' "$SSH_KEY" > ~/.ssh/deploy_key)
+          printf '%s\\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          digests=""
+          if [ -f digests.json ]; then digests=$(base64 -w0 < digests.json); fi
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \\
+            "$DEPLOY_USER@$DEPLOY_HOST" \\
+            "bash -s -- $(printf '%q ' "$STAGE" "$SHA" "$DEPLOY_PATH" "$digests")" <<'REMOTE'
+          set -euo pipefail
+          stage=$1 sha=$2 dir=$3 digests=$4
+          cd "$dir"
+          git fetch --quiet origin
+          git checkout --quiet --detach "$sha"
+          ${pm.install}
+          args=(--stage "$stage" --tag "$sha")
+          if [ -n "$digests" ]; then
+            mkdir -p .gkm
+            printf '%s' "$digests" | base64 -d > ".gkm/digests-$stage.json"
+            args+=(--digests-file ".gkm/digests-$stage.json")
+          fi
+          ${pm.exec} gkm compose "\${args[@]}"
+          REMOTE
+        env:
+          SSH_KEY: \${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: \${{ vars.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: \${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: \${{ vars.DEPLOY_USER }}
+          DEPLOY_PATH: \${{ vars.DEPLOY_PATH }}
+          STAGE: \${{ matrix.stage }}
+          SHA: \${{ steps.commit.outputs.sha }}
+`;
+}
+
+/**
+ * Dokploy and SST: `gkm deploy` builds, releases and health-checks a stage in
+ * one step, from a checkout, so there is no separate build job — the stages
+ * job's `deploy` list is the matrix, and `build` goes unused.
+ */
+function targetDeploy(options: TemplateOptions): string {
 	const pm = tooling(options);
 	const sst = options.deployTarget === 'sst';
 
@@ -232,9 +519,9 @@ function deploy(options: TemplateOptions): string {
 		: '';
 
 	// A stage's secrets are read from its store by the deploy itself. SSM and
-	// Secrets Manager need nothing but the role the job already assumed; the local file needs its
-	// key, and the encrypted file itself, which a checkout of an ignored
-	// `.gkm/` lacks.
+	// Secrets Manager need nothing but the role the job already assumed; the
+	// local file needs its key, and the encrypted file itself, which a checkout
+	// of an ignored `.gkm/` lacks.
 	// Where the CLI looks for the stage's key: under the project's identity,
 	// not under the checkout's folder name, which on a runner is the repo's.
 	const keyDir = `~/.gkm/keys/${projectKey({ name: options.name })}`;
@@ -251,7 +538,7 @@ function deploy(options: TemplateOptions): string {
       # whatever was typed.
       - name: Stage secrets key
         run: |
-          mkdir -p -m 700 ${keyDir}
+          mkdir -p ${keyDir} && chmod 700 ${keyDir}
           (umask 077 && printf '%s' "$KEY" > ${keyDir}/"$STAGE".key)
         env:
           KEY: \${{ secrets.GKM_SECRETS_KEY }}
@@ -264,80 +551,32 @@ function deploy(options: TemplateOptions): string {
           DOKPLOY_API_TOKEN: \${{ secrets.DOKPLOY_API_TOKEN }}
           DOKPLOY_ENDPOINT: \${{ vars.DOKPLOY_ENDPOINT }}`;
 
-	return `name: Deploy
-
-# Which stages exist, and which are protected, is read from \`stages\` in
-# gkm.config.ts — nothing here names one:
-#
-#   push to main       every deployed stage that is not protected
-#   release published  the protected stages (publish the drafted release)
-#   run workflow       the one stage you name
-on:
-  push:
-    branches: [main]
-  release:
-    types: [published]
-  workflow_dispatch:
-    inputs:
-      stage:
-        description: A deployed stage from gkm.config.ts
-        required: true
-
-permissions:
-  contents: read
-  id-token: write
-
+	return `${deployHeader(false)}
 jobs:
-  stages:
-    name: Pick stages
-    runs-on: ubuntu-latest
-    outputs:
-      stages: \${{ steps.pick.outputs.stages }}
-    steps:
-      - uses: actions/checkout@v4
-
-${pm.setup}
-      - name: Install
-        run: ${pm.install}
-
-      - name: Read stages from gkm.config.ts
-        id: pick
-        run: |
-          ${pm.exec} tsx -e "
-            import config from './gkm.config.ts';
-            const { deployed, protected: kept = [] } = config.stages;
-            const event = process.env.EVENT;
-            if (event === 'workflow_dispatch' && !deployed.includes(process.env.STAGE)) {
-              console.error('Not a deployed stage: ' + process.env.STAGE + ' (deployed: ' + deployed.join(', ') + ')');
-              process.exit(1);
-            }
-            const stages =
-              event === 'workflow_dispatch' ? [process.env.STAGE]
-              : event === 'release' ? kept
-              : deployed.filter((stage) => !kept.includes(stage));
-            console.log('stages=' + JSON.stringify(stages));
-          " >> "$GITHUB_OUTPUT"
-        env:
-          EVENT: \${{ github.event_name }}
-          STAGE: \${{ inputs.stage }}
-
+${stagesJob(options)}
   deploy:
     name: Deploy \${{ matrix.stage }}
     needs: stages
-    if: needs.stages.outputs.stages != '[]'
+    if: needs.stages.outputs.has-deploy == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        stage: \${{ fromJSON(needs.stages.outputs.stages) }}
+        stage: \${{ fromJSON(needs.stages.outputs.deploy) }}
     # One GitHub environment per stage: its secrets and variables, and any
     # approval rule you put on a protected one.
     environment: \${{ matrix.stage }}
     concurrency:
       group: deploy-\${{ matrix.stage }}
       cancel-in-progress: false
+    permissions:
+      contents: read${sst ? '\n      id-token: write' : ''}
     steps:
+      # The event's own commit — a release's tag, the push — or the ref a
+      # manual run names.
       - uses: actions/checkout@v4
+        with:
+          ref: \${{ inputs.ref }}
 
 ${pm.setup}
       - name: Install
@@ -350,6 +589,12 @@ ${stageSecrets}
         env:
           STAGE: \${{ matrix.stage }}${deployEnv}
 `;
+}
+
+function deploy(options: TemplateOptions): string {
+	return options.deployTarget === 'compose'
+		? composeDeploy(options)
+		: targetDeploy(options);
 }
 
 export function generateGithubFiles(options: TemplateOptions): GeneratedFile[] {

@@ -19,8 +19,22 @@ const packages = readdirSync(join(root, 'packages'), { withFileTypes: true })
 	)
 	.map((entry) => `packages/${entry.name}`);
 
+/**
+ * The commit a release is built from, which `scripts/release.sh publish` sets:
+ * written into the CLI so `gkm init` pins the stages action to it. Only then —
+ * a local build's commit may exist nowhere but this checkout.
+ */
+const releaseCommit = process.env.GKM_RELEASE_COMMIT;
+
 export default defineConfig({
 	workspace: packages,
+	...(releaseCommit
+		? {
+				define: {
+					'process.env.GKM_RELEASE_COMMIT': JSON.stringify(releaseCommit),
+				},
+			}
+		: {}),
 	clean: true,
 	outDir: 'dist',
 	// Every file under `src/`, as `'src/'` meant before tsdown 0.23 stopped
