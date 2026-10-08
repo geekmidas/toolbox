@@ -9,11 +9,15 @@ the run before anything changes.
 
 Three targets ship with the CLI:
 
-| Target | Runs on | Runtime | Rollback | Migrations | Builds images | Local stage |
-|---|---|---|---|---|---|---|
-| `dokploy` | a [Dokploy](https://dokploy.com) server | `server` | yes | applied by the target | yes | no |
-| `compose` | the machine that runs the deploy (Docker Compose + Caddy) | `server` | no | applied by the target | yes | yes |
-| `sst` | AWS, through [SST](https://sst.dev) | `aws` | no | applied in the stack | no | no |
+| Target | Runs on | Runtime | Rollback | Migrations | Builds images | Local stage | Workers |
+|---|---|---|---|---|---|---|---|
+| `dokploy` | a [Dokploy](https://dokploy.com) server | `server` | yes | applied by the target | yes | no | an application each, no domain |
+| `compose` | the machine that runs the deploy (Docker Compose + Caddy) | `server` | no | applied by the target | yes | yes | a service each, no route |
+| `sst` | AWS, through [SST](https://sst.dev) | `aws` | no | applied in the stack | no | no | Lambdas |
+
+A `Worker` with crons, queue consumers or topic subscribers runs in a container
+of its own on a server target, built from the app that holds its work; see
+[Workers](./production.md#workers).
 
 Any other target is a package the project installs and names in
 `deploy.targets`; see [Writing a target](./writing-a-target.md).

@@ -36,6 +36,12 @@ and the hosts they answer on all come from what the workspace declares.
 
 - **Every `RestApi`** — one container each, an auth server included.
 - **Every site** (`StaticSite`, Next.js, TanStack) — one container each.
+- **Every `Worker`** with crons, queue consumers or topic subscribers — one
+  container each, running them. It has no Caddy route and no published port,
+  restarts `unless-stopped`, reads exactly the keys its constructs read from
+  its own `0600` env file, and is checked by its Docker health check on
+  `/health`. It starts once migrations have run, with the APIs. See
+  [Workers](./production.md#workers).
 - **The infrastructure those apps declared** — Postgres with a named volume,
   holding every declared database, a database-backed cache's table and
   pg-boss's schema.
@@ -477,9 +483,6 @@ hosts share (`.example.com`), so the site and the APIs all see the session.
 
 ## What is not included yet
 
-- **Workers.** Crons, queue consumers and topic subscribers belong to a
-  `Worker`, and a RestApi's production image serves HTTP only. A stack runs no
-  background work yet.
 - **Mobile apps** ship through their own toolchain and are skipped.
 - **A remote Docker host.** Provisioning and migrations connect to the stack's
   Postgres from this machine on a loopback port, so run `gkm compose` on the

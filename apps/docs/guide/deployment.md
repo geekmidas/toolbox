@@ -125,9 +125,9 @@ serves a health check at `/health`, shuts down gracefully, and leaves out the
 dev tools (Telescope, the database API) and the OpenAPI spec. It serves HTTP
 only: a `Worker`'s queue consumers, crons and topic subscribers are left out, and
 the build says what it left out (`Serving Api only: leaving out 1 cron, …`).
-Publishing is unchanged. Until workers get their own deploy unit, background
-work does not run in a server deploy; see
-[what is not deployed yet](./production.md#what-is-not-deployed-yet).
+Publishing is unchanged. Each `Worker` gets an entry of its own beside it,
+`dist/worker-<worker>.mjs`, which runs that worker's crons, consumers and
+subscribers and serves only `/health`; see [Workers](./production.md#workers).
 
 ### AWS
 

@@ -39,12 +39,13 @@
  * works against another names its own with `.database(other)`, which replaces
  * the worker's — client and manifest edge both — rather than adding to it.
  *
- * It is not an app. A worker names the process that runs its crons and
- * subscribers, and that process is the app's server — the same one the
- * endpoints run in, minus the HTTP surface. Giving a worker a container of its
- * own made a second thing to build, deploy and keep alive for work that was
- * always going to run somewhere already. Declare as many as the shape of the
- * work wants: they are groupings, not deployments.
+ * It is not an app: it declares no path, and its code lives in an app's
+ * directory. But it is a process of its own. On a server target each worker
+ * with work to do is built — from the app that holds that work — into an image
+ * that runs its crons, consumers and subscribers and answers only a health
+ * check, so a slow queue never shares a process with the requests an API
+ * serves. `gkm dev` still runs everything in one process. Declare as many as
+ * the shape of the work wants: each is one container.
  *
  * @example
  * ```ts
