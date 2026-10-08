@@ -107,6 +107,7 @@
     "init-version-pins",
     "install-check",
     "kysely-standards",
+    "local-generated-credentials",
     "logger-error-serializer",
     "logger-is-an-interface",
     "logger-node-env",
