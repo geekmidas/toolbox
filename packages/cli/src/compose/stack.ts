@@ -783,7 +783,13 @@ export function composeStack(input: StackInput): ComposeStack {
 		dockerfiles[app.build.dockerfile] = appDockerfile(
 			app.name,
 			workspace.apps[app.name]!,
-			{ layout, workspaceRoot: workspace.root, manifest, cache: STACK_CACHE },
+			{
+				layout,
+				workspaceRoot: workspace.root,
+				apps: workspace.apps,
+				manifest,
+				cache: STACK_CACHE,
+			},
 		);
 	}
 	for (const worker of workers) {

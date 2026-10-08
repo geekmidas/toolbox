@@ -638,6 +638,43 @@ describe('openapiCommand - workspace mode', () => {
 		);
 	});
 
+	it('reads the app through the constructs globs, never its tests or gkm output', async () => {
+		const apiDir = join(tempDir, 'apps/api');
+		await createMockEndpointFile(
+			apiDir,
+			'endpoints/users.ts',
+			'getUsers',
+			'/users',
+			'GET',
+		);
+		// Neither may be imported: a test file runs its suite at import, and
+		// gkm's generated harness needs the test runner that imports it.
+		const loaded = "throw new Error('imported a file the globs do not name');";
+		await createTestFile(apiDir, '__tests__/users.spec.ts', loaded);
+		await createTestFile(apiDir, '.gkm/test/index.ts', loaded);
+		await createTestFile(
+			tempDir,
+			'gkm.config.json',
+			JSON.stringify({
+				stages: { local: 'development', deployed: ['production'] },
+				name: 'test-workspace',
+				constructs: ['./apps/*/endpoints/**/*.ts'],
+				apps: {
+					api: { type: 'backend', path: 'apps/api', port: 3000 },
+				},
+			}),
+		);
+		process.chdir(apiDir);
+
+		await openapiCommand({ cwd: tempDir, app: 'api' });
+
+		const content = await readFile(
+			join(tempDir, openApiPathFor('Test')),
+			'utf-8',
+		);
+		expect(content).toContain("'/users'");
+	});
+
 	it('should throw when --app references unknown app', async () => {
 		await createTestFile(
 			tempDir,

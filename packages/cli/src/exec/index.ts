@@ -1,11 +1,12 @@
 import { spawn } from 'node:child_process';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
 	createCredentialsPreload,
 	loadEnvFiles,
 	prepareEntryCredentials,
 } from '../credentials';
+import { imageBuildCredentials, isImageBuild } from './imageBuild';
 
 const logger = console;
 
@@ -54,8 +55,12 @@ export async function execCommand(
 
 	// Prepare credentials: loads secrets, resolves Docker ports, rewrites URLs,
 	// injects dependency URLs. Uses readonly port mode (no probing for new ports).
-	const { credentials, secretsJsonPath, appName } =
-		await prepareEntryCredentials({ cwd });
+	//
+	// Inside an image build there is none of that to do: the build args are the
+	// stage's public values, and nothing on a developer's machine is reachable.
+	const { credentials, secretsJsonPath, appName } = isImageBuild()
+		? await imageBuildEntry(cwd)
+		: await prepareEntryCredentials({ cwd });
 
 	if (appName) {
 		logger.log(`📦 App: ${appName}`);
@@ -64,7 +69,7 @@ export async function execCommand(
 	const secretCount = Object.keys(credentials).filter(
 		(k) => k !== 'PORT',
 	).length;
-	if (secretCount > 0) {
+	if (secretCount > 0 && !isImageBuild()) {
 		logger.log(`🔐 Loaded ${secretCount} secret(s)`);
 	}
 
@@ -119,4 +124,25 @@ export async function execCommand(
 	if (exitCode !== 0) {
 		process.exit(exitCode);
 	}
+}
+
+/**
+ * `gkm exec` inside an image build: the public values the Dockerfile's build
+ * args set, written where the preload reads them. No workspace is loaded, no
+ * secret read and no address resolved.
+ */
+async function imageBuildEntry(cwd: string): Promise<{
+	credentials: Record<string, string>;
+	secretsJsonPath: string;
+	appName?: string;
+}> {
+	const credentials = imageBuildCredentials();
+	logger.log(
+		`🐳 Image build: ${Object.keys(credentials).length} public value(s) from the build args`,
+	);
+	const dir = join(cwd, '.gkm');
+	await mkdir(dir, { recursive: true });
+	const secretsJsonPath = join(dir, 'image-build-env.json');
+	await writeFile(secretsJsonPath, JSON.stringify(credentials, null, 2));
+	return { credentials, secretsJsonPath };
 }

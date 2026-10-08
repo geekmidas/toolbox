@@ -150,6 +150,65 @@ describe('execCommand', () => {
 		expect(said).toMatch(/Loaded \d+ secret\(s\)/);
 	});
 
+	it('in an image build, hands the command the build args and no secret', async () => {
+		vi.stubEnv('HOME', dir);
+		vi.stubEnv('NODE_OPTIONS', '');
+		writeFileSync(
+			join(dir, 'gkm.config.ts'),
+			`export default {
+  name: 'shop',
+  stages: { local: 'dev', deployed: ['prod'] },
+  constructs: './src/constructs/**/*.ts',
+  apps: { web: { type: 'web', path: 'apps/web', port: 3601, framework: 'vite' } },
+};
+`,
+		);
+		await new FileSecretsStore(
+			dir,
+			keystoreProject({ name: 'shop', root: dir }),
+		).write('dev', {
+			stage: 'dev',
+			createdAt: '2026-01-01T00:00:00.000Z',
+			updatedAt: '2026-01-01T00:00:00.000Z',
+			services: {},
+			urls: {},
+			custom: { STRIPE_KEY: 'sk_exec', VITE_API_URL: 'http://localhost:1' },
+		});
+		const web = join(dir, 'apps', 'web');
+		mkdirSync(web, { recursive: true });
+		writeFileSync(join(web, 'package.json'), JSON.stringify({ name: 'web' }));
+		process.chdir(web);
+		// What a site's Dockerfile sets: the flag, and its build args.
+		vi.stubEnv('GKM_IMAGE_BUILD', '1');
+		vi.stubEnv('VITE_API_URL', 'https://api.shop.example.com');
+
+		await execCommand(
+			[
+				process.execPath,
+				'-e',
+				`require('fs').writeFileSync('seen.json', JSON.stringify({
+					url: process.env.VITE_API_URL,
+					secret: process.env.STRIPE_KEY ?? null,
+					credentials: globalThis.__gkm_credentials__,
+				}))`,
+			],
+			{ cwd: web },
+		);
+
+		const seen = JSON.parse(readFileSync(join(web, 'seen.json'), 'utf-8'));
+		expect(seen).toEqual({
+			url: 'https://api.shop.example.com',
+			secret: null,
+			credentials: { VITE_API_URL: 'https://api.shop.example.com' },
+		});
+		const said = (console.log as unknown as MockInstance).mock.calls
+			.flat()
+			.join('\n');
+		expect(said).toContain('Image build: 1 public value(s)');
+		expect(said).not.toMatch(/Loaded \d+ secret\(s\)/);
+		expect(exit).not.toHaveBeenCalled();
+	});
+
 	it('refuses to run nothing', async () => {
 		await expect(execCommand([], { cwd: dir })).rejects.toThrow(
 			NoCommandSpecified,

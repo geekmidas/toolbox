@@ -113,6 +113,11 @@ export function appImageOptions(
 	appName: string,
 	app: NormalizedAppConfig,
 	workspaceRoot: string,
+	/**
+	 * Every app in the workspace: a site's image generates the client of each
+	 * backend it depends on, so it has to know where they are.
+	 */
+	apps: Readonly<Record<string, NormalizedAppConfig>> = {},
 ): ImageTemplateOptions {
 	const turboPackage =
 		packageName(
@@ -131,8 +136,11 @@ export function appImageOptions(
 		turboVersion: layout.tools.turboVersion,
 		monorepo: layout.tools.monorepo,
 		gkmRoot: layout.gkmRoot,
-		// A backend is built by gkm, from the workspace's config and constructs;
-		// a site by its own bundler, from its own directory.
+		// A backend is built by gkm, from the workspace's config and constructs.
+		// So is half of a site: the typed client it imports is generated from
+		// the endpoints of the backends it depends on, in its image, before its
+		// bundler runs — so it carries the same workspace, and those backends'
+		// packages for what their endpoints import.
 		...(app.type === 'backend'
 			? {
 					gkmPaths: layout.gkmPaths,
@@ -141,8 +149,73 @@ export function appImageOptions(
 						? { prunePackages: [layout.workspacePackage] }
 						: {}),
 				}
+			: app.type === 'web'
+				? siteWorkspace(layout, app, apps, workspaceRoot, turboPackage)
+				: {}),
+	};
+}
+
+/**
+ * What a site's image carries of the gkm workspace: its config and construct
+ * directories, the workspace's own package where it is nested in a monorepo
+ * (it holds the CLI), and each backend the site calls — whose endpoints its
+ * client is generated from, and whose package their imports resolve in.
+ */
+function siteWorkspace(
+	layout: ImageLayout,
+	site: NormalizedAppConfig,
+	apps: Readonly<Record<string, NormalizedAppConfig>>,
+	workspaceRoot: string,
+	turboPackage: string,
+): Pick<ImageTemplateOptions, 'gkmPaths' | 'prunePackages' | 'clients'> {
+	const clients = siteClients(site, apps);
+	const packages = new Set<string>();
+	if (layout.workspacePackage) packages.add(layout.workspacePackage);
+	for (const { app } of clients) {
+		const backend = apps[app]!;
+		const name = packageName(
+			isAbsolute(backend.path)
+				? backend.path
+				: join(workspaceRoot, backend.path),
+		);
+		if (name) packages.add(name);
+	}
+	packages.delete(turboPackage);
+
+	return {
+		gkmPaths: layout.gkmPaths,
+		...(packages.size > 0 ? { prunePackages: [...packages].sort() } : {}),
+		...(clients.length > 0
+			? {
+					clients: clients.map(({ app }) => ({
+						app,
+						path: fromBuildRoot(layout, apps[app]!.path),
+					})),
+				}
 			: {}),
 	};
+}
+
+/**
+ * The backends whose clients a site imports: each it depends on that gkm
+ * builds from endpoints — not one with an entry of its own, and not one that
+ * turned OpenAPI off.
+ */
+export function siteClients(
+	site: NormalizedAppConfig,
+	apps: Readonly<Record<string, NormalizedAppConfig>>,
+): { app: string }[] {
+	return site.dependencies
+		.filter((name) => {
+			const app = apps[name];
+			if (!app || app.type !== 'backend' || app.entry) return false;
+			if (app.openapi === false) return false;
+			if (typeof app.openapi === 'object' && app.openapi.enabled === false)
+				return false;
+			return true;
+		})
+		.sort()
+		.map((app) => ({ app }));
 }
 
 /**

@@ -1,5 +1,8 @@
+import { ApiUsers } from './users';
+
 /**
- * What this page is for: showing that the URLs arrived.
+ * What this page is for: showing that the URLs arrived, and that the API
+ * answers through the client generated from its endpoints.
  *
  * Neither value is written down anywhere. `NEXT_PUBLIC_API_URL` and
  * `NEXT_PUBLIC_AUTH_URL` are inlined at build time from the edges the `Admin`
@@ -27,6 +30,8 @@ export default function Home() {
 				<dt style={{ color: '#8b98ac' }}>NEXT_PUBLIC_AUTH_URL</dt>
 				<dd style={{ margin: 0 }}>{auth}</dd>
 			</dl>
+
+			<ApiUsers />
 		</main>
 	);
 }

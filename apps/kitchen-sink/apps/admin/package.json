@@ -4,7 +4,7 @@
 	"private": true,
 	"scripts": {
 		"dev": "gkm exec -- next dev",
-		"build": "next build",
+		"build": "gkm exec -- next build",
 		"start": "next start"
 	},
 	"dependencies": {

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, parse } from 'node:path';
+import { IMAGE_BUILD_ENV } from '../exec/imageBuild';
 import type { CacheBackend, DockerConfig, GkmConfig } from '../types';
 
 export type PackageManager = 'pnpm' | 'npm' | 'yarn' | 'bun';
@@ -63,6 +64,12 @@ export interface ImageTemplateOptions {
 	 * packages; these are copied beside them.
 	 */
 	gkmPaths?: string[];
+	/**
+	 * A site's: the backends whose typed clients it imports, each generated
+	 * in the builder — `gkm openapi --app <app>` from the backend's directory
+	 * (relative to the build root) — before the site is built.
+	 */
+	clients?: { app: string; path: string }[];
 }
 
 export interface FrontendDockerfileOptions extends ImageTemplateOptions {
@@ -459,8 +466,54 @@ function binPath(options: ImageTemplateOptions): string {
  * were installed.
  */
 function gkmCommand(args: string): string {
-	const find = `let d=process.cwd();const{existsSync:e}=require("fs"),{dirname:u,join:j}=require("path");for(;;){const p=j(d,"node_modules/@geekmidas/cli/bin/gkm.mjs");if(e(p)){console.log(p);break}if(u(d)===d){console.error("@geekmidas/cli is not installed where the app can resolve it");process.exit(1)}d=u(d)}`;
-	return `GKM_BIN="$(node -e '${find}')" && node "$GKM_BIN" ${args}`;
+	return `GKM_BIN="$(node -e '${FIND_GKM_BIN}')" && node "$GKM_BIN" ${args}`;
+}
+
+/** Prints the `bin/gkm.mjs` Node resolves from the cwd, or fails saying so. */
+const FIND_GKM_BIN = `let d=process.cwd();const{existsSync:e}=require("fs"),{dirname:u,join:j}=require("path");for(;;){const p=j(d,"node_modules/@geekmidas/cli/bin/gkm.mjs");if(e(p)){console.log(p);break}if(u(d)===d){console.error("@geekmidas/cli is not installed where the app can resolve it");process.exit(1)}d=u(d)}`;
+
+/**
+ * What a site's builder does with the gkm workspace it carries, before its
+ * framework builds it — all of it inside the image, nothing from the host:
+ *
+ * - `gkm` on the PATH: the CLI the workspace installs, so a build script that
+ *   is `gkm exec -- next build` runs. Resolved from the gkm root rather than
+ *   through `node_modules/.bin`, where a CLI that is a workspace package has
+ *   no bin linked.
+ * - `GKM_IMAGE_BUILD`, which has `gkm exec` inject the build args above — the
+ *   stage's public URLs — and never load a secret or resolve a local address.
+ * - each backend's typed client, generated from its endpoints at the
+ *   workspace root's `.gkm/client/`, where the site's tsconfig paths point.
+ */
+function siteWorkspaceSteps(options: ImageTemplateOptions): string {
+	const { gkmRoot } = layout(options);
+	const root = `/app/${gkmRoot}`.replace(/\/\.$/, '');
+	const clients = options.clients ?? [];
+	const generate = clients.length
+		? `
+
+# The typed client of each API this site calls, generated from its endpoints
+# into ${gkmRoot === '.' ? '' : `${gkmRoot}/`}.gkm/client/ — offline, with no secret and no container.
+RUN ${clients.map(({ app, path }) => `cd /app/${path} && gkm openapi --app ${app}`).join(' && \\\n    ')}`
+		: '';
+
+	return `# The gkm CLI the workspace installs, as \`gkm\`
+RUN cd ${root} && GKM_BIN="$(node -e '${FIND_GKM_BIN}')" && \\
+    { echo '#!/bin/sh'; echo "exec node \\"$GKM_BIN\\" \\"\\$@\\""; } > /usr/local/bin/gkm && \\
+    chmod +x /usr/local/bin/gkm
+
+# \`gkm exec\` in this build injects the build args, never a stage's secrets
+ENV ${IMAGE_BUILD_ENV}=1${generate}`;
+}
+
+/**
+ * Build the site with turbo. Loose env mode, so the task sees what the
+ * Dockerfile set — the build args and `GKM_IMAGE_BUILD` — whatever the
+ * project's turbo.json declares: the image's environment holds nothing else.
+ */
+function siteBuild(options: ImageTemplateOptions): string {
+	const { turbo } = layout(options);
+	return `RUN ${turbo} run build --filter='${options.turboPackage}' --env-mode=loose`;
 }
 
 /**
@@ -648,10 +701,8 @@ export function generateNextjsDockerfile(
 	const {
 		port,
 		appPath,
-		turboPackage,
 		publicUrlArgs = ['NEXT_PUBLIC_API_URL', 'NEXT_PUBLIC_AUTH_URL'],
 	} = options;
-	const { turbo } = layout(options);
 
 	return `# syntax=docker/dockerfile:1
 # Next.js standalone Dockerfile, built from a turbo-pruned slice
@@ -662,13 +713,15 @@ ${depsStage(options)}
 
 ${builderStage(options, { args: publicUrlArgs })}
 
+${siteWorkspaceSteps(options)}
+
 # Ensure public directory exists (may be empty for scaffolded projects)
 RUN mkdir -p ${appPath}/public
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Build the application
-RUN ${turbo} run build --filter='${turboPackage}'
+${siteBuild(options)}
 
 # The runner needs the standalone server; without it there is nothing to run.
 RUN if [ ! -d ${appPath}/.next/standalone ]; then \\
@@ -906,8 +959,7 @@ CMD ["node", "index.mjs"]
 export function generateNodeWebDockerfile(
 	options: FrontendDockerfileOptions,
 ): string {
-	const { port, appPath, turboPackage } = options;
-	const { turbo } = layout(options);
+	const { port, appPath } = options;
 
 	return `# syntax=docker/dockerfile:1
 # Node SSR web Dockerfile (TanStack Start / Remix), from a turbo-pruned slice
@@ -917,7 +969,10 @@ ${prunerStage(options)}
 ${depsStage(options)}
 
 ${builderStage(options, { args: options.publicUrlArgs ?? [] })}
-RUN ${turbo} run build --filter='${turboPackage}'
+
+${siteWorkspaceSteps(options)}
+
+${siteBuild(options)}
 
 FROM ${options.baseImage} AS runner
 WORKDIR /app
@@ -954,8 +1009,7 @@ CMD ["sh", "-c", "cd ${appPath} && npm start"]
 export function generateViteStaticDockerfile(
 	options: FrontendDockerfileOptions,
 ): string {
-	const { port, appPath, turboPackage } = options;
-	const { turbo } = layout(options);
+	const { port, appPath } = options;
 
 	return `# syntax=docker/dockerfile:1
 # Vite SPA Dockerfile — a turbo-pruned slice built to static files, served by Caddy
@@ -965,7 +1019,10 @@ ${prunerStage(options)}
 ${depsStage(options)}
 
 ${builderStage(options, { args: options.publicUrlArgs ?? [] })}
-RUN ${turbo} run build --filter='${turboPackage}'
+
+${siteWorkspaceSteps(options)}
+
+${siteBuild(options)}
 
 FROM ${STATIC_SITE_IMAGE} AS runner
 

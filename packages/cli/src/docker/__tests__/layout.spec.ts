@@ -158,14 +158,14 @@ describe('a gkm workspace nested in a monorepo', () => {
 		});
 	});
 
-	it("keeps the workspace's package in a backend's slice, and not in a site's", () => {
+	it("keeps the workspace's package in every app's slice, and its config and constructs beside it", () => {
 		const ws = workspace(shop, {
 			api: app('backend', 'apps/api'),
 			web: app('web', 'apps/web'),
 		});
 		const layout = imageLayout(ws);
 
-		const api = appImageOptions(layout, 'api', ws.apps.api!, shop);
+		const api = appImageOptions(layout, 'api', ws.apps.api!, shop, ws.apps);
 		expect(api).toMatchObject({
 			appPath: 'examples/shop/apps/api',
 			turboPackage: '@shop/api',
@@ -174,10 +174,44 @@ describe('a gkm workspace nested in a monorepo', () => {
 			gkmPaths: ['gkm.config.*', 'apps', 'constructs'],
 		});
 
-		const web = appImageOptions(layout, 'web', ws.apps.web!, shop);
-		expect(web.appPath).toBe('examples/shop/apps/web');
-		expect(web.prunePackages).toBeUndefined();
-		expect(web.gkmPaths).toBeUndefined();
+		// A site carries the workspace too: the package holds the CLI its build
+		// may run through `gkm exec`.
+		const web = appImageOptions(layout, 'web', ws.apps.web!, shop, ws.apps);
+		expect(web).toMatchObject({
+			appPath: 'examples/shop/apps/web',
+			prunePackages: ['@shop/workspace'],
+			gkmPaths: ['gkm.config.*', 'apps', 'constructs'],
+		});
+		expect(web.clients).toBeUndefined();
+	});
+
+	it('gives a site each backend it calls: in its slice, and its client generated', () => {
+		write('examples/shop/apps/auth/package.json', { name: '@shop/auth' });
+		write('examples/shop/apps/billing/package.json', { name: '@shop/billing' });
+		const ws = workspace(shop, {
+			api: app('backend', 'apps/api'),
+			// An auth server with an entry of its own has no endpoints to
+			// generate a client from.
+			auth: { ...app('backend', 'apps/auth'), entry: './src/index.ts' },
+			billing: { ...app('backend', 'apps/billing'), openapi: false },
+			web: {
+				...app('web', 'apps/web'),
+				dependencies: ['api', 'auth', 'billing'],
+			},
+		});
+
+		const web = appImageOptions(
+			imageLayout(ws),
+			'web',
+			ws.apps.web!,
+			shop,
+			ws.apps,
+		);
+
+		expect(web.clients).toEqual([
+			{ app: 'api', path: 'examples/shop/apps/api' },
+		]);
+		expect(web.prunePackages).toEqual(['@shop/api', '@shop/workspace']);
 	});
 
 	it('builds from the root in a compose file written under the workspace', () => {
