@@ -766,6 +766,135 @@ writeFileSync(new URL('../seen.json', import.meta.url), JSON.stringify(process.e
 		});
 	});
 
+	describe('a Worker', () => {
+		const ref = (app: string, tag: string) =>
+			`ghcr.io/acme/shop/shop-${app}:${tag}`;
+		const applicationOf = (app: string) =>
+			dokploy.projects[0]!.environments[0]!.applications.find(
+				(a) => a.name === `production-shop-${app}`,
+			)?.applicationId;
+
+		beforeEach(() => {
+			mkdirSync(join(root, 'src', 'constructs'), { recursive: true });
+			writeFileSync(
+				join(root, 'src', 'constructs', 'jobs.ts'),
+				`import { Worker } from '@geekmidas/constructs/worker';
+
+export const jobs = new Worker('Jobs');
+
+export const sweep = jobs.cron('rate(1 hour)').handle(async () => null);
+`,
+			);
+			vi.mocked(runOutput).mockImplementation(async (_, args) => {
+				const ref = args.at(-1)!;
+				const repository = ref.replace(/:[\w][\w.-]*$/, '');
+				const digest = Buffer.from(ref).toString('hex').padEnd(64, '0');
+				return JSON.stringify([`${repository}@sha256:${digest.slice(0, 64)}`]);
+			});
+		});
+
+		it('is deployed as an application of its own, with no domain, checked by its status', async () => {
+			const { events, result } = await eventsOf();
+			const deployed = await result;
+
+			const jobs = applicationOf('jobs');
+			expect(jobs).toBeDefined();
+			expect(deployed.apps).toContainEqual(
+				expect.objectContaining({
+					appName: 'jobs',
+					type: 'backend',
+					success: true,
+					applicationId: jobs,
+					imageRef: ref('jobs', 'v1'),
+				}),
+			);
+			// Nothing routes to it.
+			expect(deployed.urls).not.toHaveProperty('jobs');
+			expect(dokploy.domains.filter((d) => d.applicationId === jobs)).toEqual(
+				[],
+			);
+			expect(dokploy.images[jobs!]).toBe(ref('jobs', 'v1'));
+
+			// Built from its own Dockerfile: the API's slice, the worker's bundle.
+			const dockerfiles = vi
+				.mocked(run)
+				.mock.calls.filter(([, args]) => args[0] === 'build')
+				.map(([, args]) =>
+					args.find((a) => a.startsWith('--file='))!.slice('--file='.length),
+				);
+			expect(dockerfiles).toContain('.gkm/docker/Dockerfile.jobs');
+			expect(
+				readFileSync(join(root, '.gkm/docker/Dockerfile.jobs'), 'utf8'),
+			).toContain(
+				'/app/apps/api/.gkm/server/dist/worker-jobs.mjs ./worker.mjs',
+			);
+
+			// Its environment: what it runs with, and no address of its own.
+			const env = dokploy.env[jobs!]!.split('\n');
+			expect(env).toEqual(
+				expect.arrayContaining([
+					'NODE_ENV=production',
+					'PORT=3000',
+					`STAGE=${STAGE}`,
+				]),
+			);
+			expect(env.some((line) => line.startsWith('JOBS_URL='))).toBe(false);
+
+			// Checked by Dokploy's status — its container's own health check.
+			expect(events).toContainEqual(
+				expect.objectContaining({
+					type: 'health.checked',
+					app: 'jobs',
+					url: `dokploy:application.status/${jobs}`,
+					healthy: true,
+				}),
+			);
+			expect(dokploy.checked.some((url) => url.includes('jobs'))).toBe(false);
+		});
+
+		it('is rolled back to its previous image when its release fails', async () => {
+			await start().result;
+			dokploy.statuses['production-shop-jobs'] = ['error'];
+
+			await expect(start({ tag: 'v2' }).result).rejects.toMatchObject({
+				name: 'BackendDeployFailed',
+				app: 'jobs',
+			});
+
+			expect(dokploy.images[applicationOf('jobs')!]).toBe(ref('jobs', 'v1'));
+			const { state } = JSON.parse(
+				readFileSync(join(root, '.gkm', `deploy-${STAGE}.json`), 'utf8'),
+			);
+			expect(state.releases.jobs.current.ref).toBe(ref('jobs', 'v1'));
+		});
+
+		it('is planned by a dry run, with no domain', async () => {
+			const { result } = await eventsOf({ dryRun: true });
+			const planned = await result;
+
+			expect(planned.apps).toContainEqual(
+				expect.objectContaining({
+					appName: 'jobs',
+					imageRef: ref('jobs', 'v1'),
+				}),
+			);
+			expect(planned.changes).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						key: 'application:jobs',
+						action: 'create',
+					}),
+					expect.objectContaining({ key: 'image:jobs', action: 'build' }),
+				]),
+			);
+			expect(
+				planned.changes.some(
+					(c) => c.key.startsWith('domain:') && c.key.includes('jobs'),
+				),
+			).toBe(false);
+		});
+	});
+
 	describe("a deployed stage's third-party credentials", () => {
 		beforeEach(async () => {
 			mkdirSync(join(root, 'src', 'constructs'), { recursive: true });

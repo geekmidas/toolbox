@@ -23,6 +23,7 @@
  */
 
 import type { ConstructManifest } from '@geekmidas/manifest';
+import { type WorkerUnit, workerUnits } from '../../build/workers.js';
 import {
 	type CredentialProvider,
 	MissingCredential,
@@ -65,6 +66,7 @@ import {
 	type EncryptedAppSecrets,
 	generateSecretsReport,
 	prepareSecretsForAllApps,
+	prepareSecretsForApp,
 } from '../../deploy/secrets.js';
 import { type SniffedEnvironment, sniffAllApps } from '../../deploy/sniffer.js';
 import {
@@ -78,7 +80,10 @@ import {
 	setPostgresBackupId,
 } from '../../deploy/state.js';
 import type { AppDeployResult, DeployResult } from '../../deploy/types';
+import { workerDockerfileOf } from '../../docker/index.js';
+import { WORKER_PORT } from '../../docker/templates.js';
 import { output } from '../../output';
+import { workerEnvKeys } from '../../reconcile/apps.js';
 import { constructGlobs } from '../../reconcile/workspace.js';
 import type { RunOptions } from '../../run';
 import { assertStageCredentials } from '../../secrets/credentialSchemas.js';
@@ -289,6 +294,13 @@ export interface DokployRun {
 	atomic: boolean;
 	/** The dev services the stage may run for mail and buckets. */
 	allowDevServices: readonly DevService[];
+	/**
+	 * The Workers this run deploys — each with background work whose host app
+	 * is being deployed — as applications of their own, with no domain.
+	 */
+	workers: readonly WorkerUnit[];
+	/** Each owner's runnables' edges, from discovery: what a worker reads. */
+	runnables: Readonly<Record<string, readonly string[]>>;
 	provisioned?: Provisioned;
 	released?: Released;
 	/** What the run changed live, for `rollback` to undo. */
@@ -430,9 +442,24 @@ export async function validateDokploy(
 		supplied: stored?.custom ?? {},
 	});
 
+	// Which workers run, and what each reads: the runnables' edges and where
+	// each worker's work is declared, from the run's own discovery.
+	const runnables = phase.runnables ?? {};
+	const background = phase.background ?? {};
+	const workers = workerUnits(workspace, phase.manifest, background).filter(
+		(worker) => appsToDeployNames.includes(worker.app),
+	);
+	if (workers.length > 0) {
+		logger.log(
+			`   Deploying workers: ${workers.map((w) => `${w.name} (from ${w.app})`).join(', ')}`,
+		);
+	}
+
 	return {
 		...run,
 		allowDevServices: phase.allowDevServices,
+		workers,
+		runnables,
 		preflight: await preflight(run),
 		verify: verifySettings(workspace.deploy.dokploy?.verify),
 		atomic: phase.atomic,
@@ -1030,9 +1057,9 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 		applicationId: string,
 		image: DeployedImage,
 		envVars: string[],
-		host: string,
+		/** Where it answers — none for a worker, which has no route. */
+		host: string | undefined,
 	): Promise<void> => {
-		const app = workspace.apps[appName]!;
 		released.applicationIds.set(appName, applicationId);
 
 		// Dokploy's clock, read before deploying: the deployment to wait for is
@@ -1051,16 +1078,18 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 		logger.log(`      Deploying to Dokploy...`);
 		await api.deployApplication(applicationId);
 
-		const domainId = await ensureDomain(
-			api,
-			journal,
-			host,
-			app.port,
-			applicationId,
-			applied,
-		);
-		appHostnames.set(appName, host);
-		if (domainId) appDomainIds.set(appName, domainId);
+		if (host) {
+			const domainId = await ensureDomain(
+				api,
+				journal,
+				host,
+				workspace.apps[appName]!.port,
+				applicationId,
+				applied,
+			);
+			appHostnames.set(appName, host);
+			if (domainId) appDomainIds.set(appName, domainId);
+		}
 
 		logger.log(`      Waiting for the deployment to finish...`);
 		await api.waitForDeployment(applicationId, {
@@ -1071,7 +1100,7 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 		});
 		recordRelease(state, appName, { ...image, tag: imageTag });
 		await journal.save();
-		publicUrls[appName] = `https://${host}`;
+		if (host) publicUrls[appName] = `https://${host}`;
 	};
 
 	// ==================================================================
@@ -1263,6 +1292,110 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 				if (ctx.signal?.aborted) throw ctx.signal.reason;
 				failed(run, appName, error);
 				throw new BackendDeployFailed(appName, error);
+			}
+		}
+	}
+
+	// ==================================================================
+	// PHASE 1b: Deploy workers — an application each, with no domain
+	// ==================================================================
+	if (run.workers.length > 0) {
+		logger.log('\n🧵 Deploying workers...');
+
+		for (const worker of run.workers) {
+			ctx.signal?.throwIfAborted();
+			logger.log(`\n   🧵 Deploying ${worker.name} (worker ${worker.id})...`);
+
+			try {
+				const application = await ensureApplication(
+					api,
+					journal,
+					worker.name,
+					applicationName(identity, worker.name),
+					project.projectId,
+					environmentId,
+					applied,
+				);
+
+				// Exactly what its constructs read: the stage's secrets among
+				// them embedded, encrypted, as a backend's are; the declared
+				// URLs among them as its environment.
+				const keys = [
+					...(workerEnvKeys(run.manifest, worker.id, run.runnables) ?? []),
+				].sort();
+				const secrets = prepareSecretsForApp(stageSecrets, {
+					appName: worker.name,
+					requiredEnvVars: keys,
+					optionalEnvVars: [],
+				});
+				const credentials =
+					secrets.secretCount > 0
+						? {
+								encrypted: secrets.payload.encrypted,
+								iv: secrets.payload.iv,
+							}
+						: undefined;
+
+				const imageRef = imageRefFor(identity, worker.name, registry, imageTag);
+				logger.log(`      Building Docker image: ${imageRef}`);
+				const image = await deployDocker({
+					stage,
+					tag: imageTag,
+					skipPush: false,
+					config: {
+						registry,
+						imageName: imageName(identity, worker.name),
+						appName: worker.name,
+					},
+					credentials,
+					cwd: workspace.root,
+					dockerfile: workerDockerfileOf(worker.name),
+					...(ctx.signal ? { signal: ctx.signal } : {}),
+					...(ctx.stdio ? { stdio: ctx.stdio } : {}),
+				});
+				built(worker.name, image, imageRef);
+
+				const env: Record<string, string> = {
+					...Object.fromEntries(
+						Object.entries(declaredEnv).filter(([key]) => keys.includes(key)),
+					),
+					...otelEnv(stageSecrets?.custom ?? {}, worker.name),
+					...(credentials ? { GKM_MASTER_KEY: secrets.masterKey } : {}),
+					NODE_ENV: 'production',
+					PORT: String(WORKER_PORT),
+					STAGE: stage,
+				};
+				logger.log(
+					`      Resolved ${Object.keys(env).length} env vars: ${Object.keys(env).sort().join(', ')}`,
+				);
+
+				await release(
+					worker.name,
+					application.applicationId,
+					{
+						ref: image.imageRef ?? imageRef,
+						...(image.digest ? { digest: image.digest } : {}),
+					},
+					Object.entries(env).map(([key, value]) => `${key}=${value}`),
+					undefined,
+				);
+				// No domain: Dokploy's finished deployment — the container up,
+				// past its own HEALTHCHECK — is its check.
+				await checkHealth(run, worker.name);
+
+				results.push({
+					appName: worker.name,
+					type: 'backend',
+					success: true,
+					applicationId: application.applicationId,
+					imageRef,
+					...(image.digest ? { digest: image.digest } : {}),
+				});
+				logger.log(`      ✓ ${worker.name} deployed successfully`);
+			} catch (error) {
+				if (ctx.signal?.aborted) throw ctx.signal.reason;
+				failed(run, worker.name, error);
+				throw new BackendDeployFailed(worker.name, error);
 			}
 		}
 	}
@@ -1477,7 +1610,8 @@ export async function verifyDokploy(run: DokployRun): Promise<void> {
  * health is what failed.
  */
 function failed(run: DokployRun, appName: string, error: unknown): void {
-	const app = run.workspace.apps[appName]!;
+	// A worker is no app of the workspace's, and runs on a server: a backend.
+	const type = run.workspace.apps[appName]?.type ?? 'backend';
 	const message = error instanceof Error ? error.message : 'Unknown error';
 	logger.log(`      ✗ Failed to deploy ${appName}: ${message}`);
 
@@ -1487,7 +1621,7 @@ function failed(run: DokployRun, appName: string, error: unknown): void {
 		recorded.success = false;
 		recorded.error = message;
 	} else {
-		results.push({ appName, type: app.type, success: false, error: message });
+		results.push({ appName, type, success: false, error: message });
 	}
 	run.releasing.failed.add(appName);
 	run.ctx.emit({ type: 'app.failed', app: appName, error: eventError(error) });
@@ -2119,6 +2253,54 @@ export async function planDokploy(run: DokployRun): Promise<void> {
 			success: true,
 			imageRef: ref,
 			url: urls[appName],
+			...(existing ? { applicationId: existing.applicationId } : {}),
+		});
+	}
+
+	for (const worker of run.workers) {
+		const dokployAppName = applicationName(identity, worker.name);
+		const recordedId = state?.applications?.[worker.name];
+		const existing =
+			project && environment
+				? ((recordedId
+						? await api.getApplication(recordedId).catch(() => null)
+						: null) ??
+					(await api.findApplicationByName(
+						project.projectId,
+						dokployAppName,
+						environment.environmentId,
+					)))
+				: null;
+		plan(
+			existing
+				? {
+						key: `application:${worker.name}`,
+						resourceType: 'application',
+						action: 'reuse',
+						id: existing.applicationId,
+					}
+				: {
+						key: `application:${worker.name}`,
+						resourceType: 'application',
+						action: 'create',
+					},
+			`${dokployAppName}, worker ${worker.id} — no domain`,
+		);
+		const ref = imageRefFor(
+			identity,
+			worker.name,
+			workspace.deploy.registry,
+			imageTag,
+		);
+		plan(
+			{ key: `image:${worker.name}`, resourceType: 'image', action: 'build' },
+			ref,
+		);
+		apps.push({
+			appName: worker.name,
+			type: 'backend',
+			success: true,
+			imageRef: ref,
 			...(existing ? { applicationId: existing.applicationId } : {}),
 		});
 	}
