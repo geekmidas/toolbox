@@ -38,6 +38,7 @@ import { storeDokployCredentials } from '../../auth/credentials';
 import { loadWorkspaceConfig } from '../../config';
 import { run, runOutput } from '../../run';
 import { FileSecretsStore } from '../../secrets/file';
+import { TelemetryProviderRequired } from '../../telemetry/config';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { deployCommand, workspaceDeployCommand } from '../index';
 import { LocalStateStore } from '../LocalStateStore';
@@ -238,7 +239,53 @@ describe('workspaceDeployCommand', () => {
 		expect(said()).toContain('Skipping 1 mobile app(s)');
 	});
 
-	it("hands every backend the stage's OTEL_* variables, and no site", async () => {
+	/** An API and a Next.js site, both given a Telemetry construct. */
+	const TELEMETRY_CONSTRUCTS = {
+		'app.ts': `import { RestApi } from '@geekmidas/constructs/rest-api';
+import { StaticSite } from '@geekmidas/constructs/site';
+import { Telemetry } from '@geekmidas/constructs/telemetry';
+
+export const telemetry = new Telemetry('Telemetry');
+export const api = new RestApi('Api', {
+  path: 'apps/api',
+  defaultAuthorizer: 'none',
+  telemetry,
+});
+export const web = new StaticSite('Web', {
+  path: 'apps/web',
+  variant: 'next',
+  telemetry,
+}).dependsOn([api]);
+`,
+	};
+
+	it("hands each backend with a Telemetry edge the stage's provider, and no site", async () => {
+		workspace({
+			constructs: TELEMETRY_CONSTRUCTS,
+			telemetry: `{ ${STAGE}: { provider: 'otlp', endpoint: 'https://otlp.example.com', headers: { 'x-api-key': 'hosted-key' }, sampleRate: 0.1 } }`,
+		});
+
+		await deploy();
+
+		const applications = dokploy.projects[0]!.environments[0]!.applications;
+		const api = applications.find((a) => a.name === 'production-shop-api');
+		const web = applications.find((a) => a.name === 'production-shop-web');
+		const lines = (id: string) => dokploy.env[id]!.split('\n');
+		expect(lines(api!.applicationId)).toEqual(
+			expect.arrayContaining([
+				'OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.example.com',
+				'OTEL_EXPORTER_OTLP_HEADERS=x-api-key=hosted-key',
+				'OTEL_TRACES_SAMPLER=parentbased_traceidratio',
+				'OTEL_TRACES_SAMPLER_ARG=0.1',
+				'OTEL_SERVICE_NAME=api',
+			]),
+		);
+		expect(dokploy.env[web!.applicationId] ?? '').not.toContain('OTEL_');
+		// Only key names are printed, never a value.
+		expect(said()).not.toContain('hosted-key');
+	});
+
+	it("never passes the stage's own OTEL_* secrets through", async () => {
 		await new FileSecretsStore(root).write(STAGE, {
 			stage: STAGE,
 			createdAt: '2026-01-01T00:00:00.000Z',
@@ -248,31 +295,37 @@ describe('workspaceDeployCommand', () => {
 			custom: {
 				OTEL_EXPORTER_OTLP_ENDPOINT: 'https://otlp.example.com',
 				OTEL_EXPORTER_OTLP_HEADERS: 'x-api-key=hosted-key',
-				OTEL_TRACES_SAMPLER: 'parentbased_traceidratio',
-				OTEL_TRACES_SAMPLER_ARG: '0.1',
-				// Not one the server reads: never forwarded.
-				OTEL_LOG_LEVEL: 'debug',
 			},
 		});
 
 		await deploy();
 
-		const [api, web] = dokploy.projects[0]!.environments[0]!.applications;
-		const lines = (id: string) => dokploy.env[id]!.split('\n');
-		expect(lines(api!.applicationId)).toEqual(
-			expect.arrayContaining([
-				'OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.example.com',
-				'OTEL_EXPORTER_OTLP_HEADERS=x-api-key=hosted-key',
-				'OTEL_TRACES_SAMPLER=parentbased_traceidratio',
-				'OTEL_TRACES_SAMPLER_ARG=0.1',
-				// Named after the app where the stage names no service.
-				'OTEL_SERVICE_NAME=api',
-			]),
-		);
-		expect(dokploy.env[api!.applicationId]).not.toContain('OTEL_LOG_LEVEL');
-		expect(dokploy.env[web!.applicationId]).not.toContain('OTEL_');
-		// Only key names are printed, never a value.
-		expect(said()).not.toContain('hosted-key');
+		const [api] = dokploy.projects[0]!.environments[0]!.applications;
+		expect(dokploy.env[api!.applicationId]).not.toContain('OTEL_');
+	});
+
+	it('refuses a stage that uses telemetry and names no provider: Dokploy runs no collector', async () => {
+		workspace({ constructs: TELEMETRY_CONSTRUCTS });
+
+		await expect(deploy()).rejects.toBeInstanceOf(TelemetryProviderRequired);
+		// Before anything was made.
+		expect(dokploy.projects).toEqual([]);
+	});
+
+	it('deploys a stage that opts out with false, sending nothing', async () => {
+		workspace({
+			constructs: TELEMETRY_CONSTRUCTS,
+			telemetry: `{ ${STAGE}: false }`,
+		});
+
+		await deploy();
+
+		for (const application of dokploy.projects[0]!.environments[0]!
+			.applications) {
+			expect(dokploy.env[application.applicationId] ?? '').not.toContain(
+				'OTEL_',
+			);
+		}
 	});
 
 	it('reuses what the first deploy made', async () => {

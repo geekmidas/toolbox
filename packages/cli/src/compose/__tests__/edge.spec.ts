@@ -607,7 +607,13 @@ describe('a stack behind the shared edge', () => {
 		dir = realpathSync(await createTempDir('gkm-compose-traefik-'));
 		writeComposeApp(dir, {
 			registry: 'registry.example.com/acme',
-			logs: { public: { allow: ['203.0.113.7'] } },
+			telemetry: true,
+			deployTelemetry: {
+				production: {
+					provider: 'self-hosted',
+					public: { allow: ['203.0.113.7'] },
+				},
+			},
 			compose: { proxy: 'traefik' },
 		});
 		({ workspace, manifest, runnables, background } =

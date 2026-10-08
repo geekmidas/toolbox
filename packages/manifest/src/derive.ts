@@ -119,7 +119,14 @@ export function dependenciesOf(
 			? declaration.endpoints.flatMap((endpoint) => endpoint.dependencies)
 			: [];
 
-	return [...own, ...calls, ...nested];
+	// The `Telemetry` node a process emits through: an edge like any other, so
+	// the keys it provides follow it to exactly the processes that use it.
+	const telemetry =
+		'telemetry' in declaration && typeof declaration.telemetry === 'string'
+			? [{ target: declaration.telemetry, kind: 'telemetry' as const }]
+			: [];
+
+	return [...own, ...calls, ...nested, ...telemetry];
 }
 
 /**

@@ -20,6 +20,7 @@ import {
 	providedKeyFor,
 	publicEnvFor,
 } from '@geekmidas/manifest';
+import { usesTelemetry } from '../telemetry/edges.js';
 import {
 	type CacheBackend,
 	DEFAULT_CACHE,
@@ -107,7 +108,13 @@ const CONTAINERLESS: Partial<Record<DeclarationKind, true>> = {
 	// container — gkm serves it — and an image's container is added per API,
 	// since no kind-wide table can name it.
 	'external-api': true,
+	// Telemetry is collected by OpenObserve, which runs only where a process
+	// uses the node — see `planFor`.
+	telemetry: true,
 };
+
+/** The container that collects telemetry locally, and serves its UI. */
+export const TELEMETRY_CONTAINER = 'openobserve';
 
 /**
  * Containers that cannot run alone.
@@ -492,13 +499,17 @@ export function planFor(
 
 		const container = fake?.image
 			? fake.key
-			: containerFor(
-					declaration.kind,
-					events,
-					cache,
-					'of' in declaration && typeof declaration.of === 'string',
-					options.edge !== false,
-				);
+			: declaration.kind === 'telemetry'
+				? usesTelemetry(manifest)
+					? TELEMETRY_CONTAINER
+					: undefined
+				: containerFor(
+						declaration.kind,
+						events,
+						cache,
+						'of' in declaration && typeof declaration.of === 'string',
+						options.edge !== false,
+					);
 		if (!container && !CONTAINERLESS[declaration.kind]) continue;
 
 		if (container) {

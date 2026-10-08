@@ -8,14 +8,14 @@ export {
 	snifferContext,
 	sniffService,
 } from './Construct';
-export { onShutdown, runShutdownHooks } from './shutdown';
 // Telemetry interface
 export type {
 	Telemetry,
 	TelemetryContext,
 	TelemetryRequest,
 	TelemetryResponse,
-} from './telemetry';
+} from './endpoints/lambdaTelemetry';
+export { onShutdown, runShutdownHooks } from './shutdown';
 // Types
 export type {
 	HttpMethod,

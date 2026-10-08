@@ -2,6 +2,7 @@ import { BetterAuth } from '@geekmidas/constructs/auth';
 import { magicLink } from 'better-auth/plugins';
 import { database } from './database.js';
 import { mail } from './email.js';
+import { telemetry } from './telemetry.js';
 
 /**
  * The auth database — a schema tenant of the app's own database.
@@ -43,6 +44,9 @@ export const auth = new BetterAuth('Auth', {
 	path: 'apps/auth',
 	database: authDb,
 	basePath: '/api/auth',
+
+	// What its process emits, as the API's does.
+	telemetry,
 
 	// Its own container. An auth server holds the session secret and reaches
 	// the identity tables; a surface that shared a process with the API would

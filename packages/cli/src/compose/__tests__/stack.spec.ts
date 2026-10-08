@@ -1,5 +1,5 @@
 import { realpathSync } from 'node:fs';
-import type { ConstructManifest } from '@geekmidas/manifest';
+import { type ConstructManifest, TELEMETRY_KEYS } from '@geekmidas/manifest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { ExternalServicesNotConfigured } from '../../deploy/devServices';
@@ -175,10 +175,16 @@ describe("every service's Docker logs", () => {
 			options: { 'max-size': '10m', 'max-file': '3' },
 		};
 		const plain = stack({ manifest: withServices() });
+		// The API given a Telemetry construct, which runs OpenObserve.
 		const withLogs = stack({
-			workspace: {
-				...workspace,
-				deploy: { ...workspace.deploy, compose: { logs: true } },
+			manifest: {
+				...manifest,
+				Telemetry: {
+					kind: 'telemetry',
+					id: 'Telemetry',
+					provides: [...TELEMETRY_KEYS],
+				},
+				Api: { ...manifest.Api!, telemetry: 'Telemetry' } as never,
 			},
 		});
 

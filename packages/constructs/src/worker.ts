@@ -95,6 +95,7 @@ import { envParserFor } from './endpoints/surfaceEnv';
 import { FunctionBuilder } from './functions/FunctionBuilder';
 import { QueueBuilder } from './queue/QueueBuilder';
 import { SubscriberBuilder } from './subscribers/SubscriberBuilder';
+import type { Telemetry } from './telemetry';
 import type { Topic, TopicEvents } from './topic/Topic';
 
 export interface WorkerConfig {
@@ -114,6 +115,12 @@ export interface WorkerConfig {
 	 * which is what an application's own `config/env.ts` always was.
 	 */
 	envParser?: EnvironmentParser<{}>;
+	/**
+	 * What the worker's process emits — the `Telemetry` construct, passed like
+	 * the logger. An edge to the node: the deploy hands the process the
+	 * `OTEL_*` keys its stage resolves.
+	 */
+	telemetry?: Telemetry;
 }
 
 export class Worker<
@@ -390,6 +397,9 @@ export class Worker<
 				id: this.id,
 				...(this.dependencies.length
 					? { dependencies: this.dependencies }
+					: {}),
+				...(this.config.telemetry
+					? { telemetry: this.config.telemetry.id }
 					: {}),
 				// Nothing calls a worker, so it publishes no address.
 				provides: [],

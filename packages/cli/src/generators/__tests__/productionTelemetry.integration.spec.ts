@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { bundleServer } from '../../build/bundler';
 import { EndpointGenerator } from '../EndpointGenerator';
+import { routeTelemetry } from '../telemetry';
 
 /**
  * A real production server, generated and bundled into one `server.mjs` the
@@ -120,11 +121,21 @@ import { api } from '../api';
 
 export const order = api
   .get('/orders/:id')
+  .telemetry({ attributes: { 'app.area': 'orders' } })
   .params(z.object({ id: z.string() }))
   .output(z.object({ id: z.string() }))
   .handle(async ({ params, logger }) => {
     logger.info({ orderId: params.id, password: 'hunter2' }, 'Fetching order');
     return { id: params.id };
+  });
+
+export const probe = api
+  .get('/probe')
+  .telemetry({ ignore: true })
+  .output(z.object({ ok: z.boolean() }))
+  .handle(async ({ logger }) => {
+    logger.info('Probed');
+    return { ok: true };
   });
 
 export const boom = api
@@ -155,7 +166,12 @@ export const boom = api
 				subscribers: 'exclude',
 				openapi: false,
 			},
-			telemetry: { serviceName: 'Api', available: true },
+			telemetry: {
+				serviceName: 'Api',
+				ignorePaths: [],
+				attributes: {},
+				routes: routeTelemetry(constructs.map(({ construct }) => construct)),
+			},
 		},
 		constructs,
 		outputDir,
@@ -287,6 +303,8 @@ describe(
 				'telemetry-test',
 			);
 			expect(JSON.stringify(span.attributes)).not.toContain('secret');
+			// The route's own `.telemetry({ attributes })`.
+			expect(attr(span.attributes, 'app.area')).toBe('orders');
 
 			const log = await until(() =>
 				logs.find(
@@ -375,6 +393,23 @@ describe(
 			);
 			expect(span.status?.code).toBe(ERROR);
 			expect(span.events?.map((e) => e.name)).toContain('exception');
+		});
+
+		it('opens no span for a route that says `.telemetry({ ignore: true })`', async () => {
+			const response = await fetch(`http://localhost:${server.port}/probe`);
+			expect(response.status).toBe(200);
+			// Its log is still exported; only its span is not recorded.
+			await until(() => logs.find((l) => l.body?.stringValue === 'Probed'));
+			await fetch(`http://localhost:${server.port}/orders/after_probe`);
+			await until(() =>
+				spans.find(
+					(s) => attr(s.attributes, 'url.path') === '/orders/after_probe',
+				),
+			);
+
+			expect(
+				spans.filter((s) => attr(s.attributes, 'url.path') === '/probe'),
+			).toEqual([]);
 		});
 
 		it('opens no span for the health check', async () => {

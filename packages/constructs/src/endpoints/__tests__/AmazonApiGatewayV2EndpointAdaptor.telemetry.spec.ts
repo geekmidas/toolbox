@@ -2,8 +2,8 @@ import { createMockContext, createMockV2Event } from '@geekmidas/testkit/aws';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { RestApi } from '../../rest-api';
-import type { Telemetry } from '../../telemetry';
 import { AmazonApiGatewayV2Endpoint } from '../AmazonApiGatewayV2EndpointAdaptor';
+import type { Telemetry } from '../lambdaTelemetry';
 
 /**
  * A Lambda endpoint reports every request to the telemetry it was given: the

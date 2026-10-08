@@ -57,6 +57,13 @@ export interface DeployTargetCapabilities {
 	 * stage with `UndeclaredStage`.
 	 */
 	localStage?: boolean;
+	/**
+	 * Whether it runs telemetry's self-hosted provider — OpenObserve beside
+	 * the apps — for a stage whose `deploy.telemetry` asks for it, or names
+	 * nothing. Absent, a stage that uses a `Telemetry` construct names a
+	 * provider of its own (`otlp`) or opts out with `false`.
+	 */
+	selfHostedTelemetry?: boolean;
 }
 
 /** A failed validation of a target's options, issue by issue. */

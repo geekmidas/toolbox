@@ -245,5 +245,9 @@ export function providedKeyFor(
 	kind: DeclarationKind,
 	role: string,
 ): string {
-	return kind === 'secret' ? environmentCase(id) : provideKey(id, role);
+	if (kind === 'secret') return environmentCase(id);
+	// OpenTelemetry's own variable, whatever the node is called: an SDK reads
+	// nothing else.
+	if (kind === 'telemetry') return 'OTEL_EXPORTER_OTLP_ENDPOINT';
+	return provideKey(id, role);
 }

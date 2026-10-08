@@ -33,7 +33,6 @@ import {
 } from '../deploy/devServices.js';
 import { isMainFrontendApp, resolveHost } from '../deploy/domain.js';
 import { type DeployIdentity, imageRef } from '../deploy/identity.js';
-import { otelEnv } from '../deploy/otel.js';
 import { validateImageRef } from '../docker/imageRef.js';
 import { appDockerfile, workerDockerfile } from '../docker/index.js';
 import { composeBuildPaths, type ImageLayout } from '../docker/layout.js';
@@ -54,6 +53,18 @@ import { type Plan, type PlannedResource, planFor } from '../reconcile/plan.js';
 import { bucketPolicies } from '../reconcile/provision.js';
 import type { StageSecrets } from '../secrets/types.js';
 import { NoDomainForStage } from '../target/dokploy/domain.js';
+import {
+	otlpTelemetryEnv,
+	type ResolvedTelemetry,
+	resolveStageTelemetry,
+	telemetryEnv,
+} from '../telemetry/config.js';
+import {
+	isTelemetryKey,
+	scopeTelemetryEnv,
+	telemetryOf,
+	usesTelemetry,
+} from '../telemetry/edges.js';
 import { DEFAULT_EVENTS } from '../types.js';
 import { appKey } from '../workspace/derive.js';
 import type {
@@ -69,7 +80,7 @@ import {
 	type StackLogs,
 	stackLogs,
 } from './logs.js';
-import { LOGS_PORT, resolveLogs } from './logsConfig.js';
+import { LOGS_PORT } from './logsConfig.js';
 import { certificateFor, proxyFor } from './proxy.js';
 import {
 	REDIS_SERVICE,
@@ -107,6 +118,13 @@ export const EDGE_PORT_ENV = {
 	https: 'GKM_COMPOSE_HTTPS_PORT',
 	http: 'GKM_COMPOSE_HTTP_PORT',
 } as const;
+
+/**
+ * The variable that moves the local stage's OpenObserve off its loopback
+ * port, 5080 — which the local stage takes from nowhere else, since it
+ * ignores `deploy.telemetry`. Another stack, or another tool, may hold 5080.
+ */
+export const LOGS_PORT_ENV = 'GKM_COMPOSE_LOGS_PORT';
 
 /**
  * Containers this target does not run.
@@ -279,10 +297,12 @@ export interface ComposeStack {
 	/** The dev services a deployed stage runs (`--allow-dev-services`). */
 	devServices: DevServiceUse[];
 	/**
-	 * The stack's OpenObserve, when `deploy.compose.logs` runs one — every
-	 * backend sends its logs and traces to it.
+	 * The stack's OpenObserve, when the stage's telemetry is self-hosted —
+	 * every process with a `Telemetry` edge sends its logs and traces to it.
 	 */
 	logs?: StackLogs;
+	/** Where the stage's telemetry goes, when any process uses it. */
+	telemetry?: ResolvedTelemetry;
 	/**
 	 * The stack's Redis, where a declared cache lives in it — every cache
 	 * whose URL the stage's secrets do not set.
@@ -328,6 +348,10 @@ export function derivedCredentials(
 			accessKeyId: EMULATOR_ACCESS_KEY_ID,
 			secretAccessKey: derive('emulator'),
 		},
+		// Never read: a deployed stage's OpenObserve signs in with the root
+		// login its secrets hold (`stackLogs`), and the stack hands each process
+		// its telemetry keys from that, not from the derivation.
+		logs: { email: `admin@${project}`, password: derive('logs') },
 	};
 }
 
@@ -372,7 +396,12 @@ export interface StackInput {
 	 */
 	allowDevServices?: readonly DevService[];
 	/** The edge's published ports. 443 and 80 by default. */
-	ports?: { https?: number; http?: number };
+	ports?: {
+		https?: number;
+		http?: number;
+		/** The local stage's OpenObserve port — see {@link LOGS_PORT_ENV}. */
+		logs?: number;
+	};
 	/**
 	 * The stack only builds its images, to push them (`--build --push`): no
 	 * backend's or worker's runtime environment is resolved and no service
@@ -565,21 +594,40 @@ export function composeStack(input: StackInput): ComposeStack {
 	}
 	const domain = workspace.deploy?.domains?.[stage];
 
-	// The log UI, when the workspace asks for one: its root login, how it is
-	// reached, and what each backend is handed to send to it.
-	const logsConfig = resolveLogs(workspace.deploy?.compose?.logs);
-	const logsBase = logsConfig
-		? stackLogs({
-				config: logsConfig,
-				stage,
-				local,
-				project: workspace.name,
-				...(domain ? { domain } : {}),
-				custom,
-				https,
-				...(local ? { localLogin: input.localCredentials!.logs } : {}),
-			})
-		: undefined;
+	// Where the stage's telemetry goes, when a process uses a `Telemetry`
+	// node: the local stage always to OpenObserve, a deployed one where
+	// `deploy.telemetry` says — and OpenObserve when it says nothing.
+	const telemetry = resolveStageTelemetry({
+		...(workspace.deploy?.telemetry
+			? { telemetry: workspace.deploy.telemetry }
+			: {}),
+		stage,
+		local,
+		target: 'compose',
+		runtime: 'server',
+		selfHosted: true,
+		used: usesTelemetry(manifest),
+	});
+
+	// The log UI, when the stage's telemetry is self-hosted: its root login,
+	// how it is reached, and what each process with the edge is handed to send
+	// to it.
+	const logsBase =
+		telemetry?.provider === 'self-hosted'
+			? stackLogs({
+					config:
+						local && input.ports?.logs
+							? { ...telemetry.selfHosted, port: input.ports.logs }
+							: telemetry.selfHosted,
+					stage,
+					local,
+					project: workspace.name,
+					...(domain ? { domain } : {}),
+					custom,
+					https,
+					...(local ? { localLogin: input.localCredentials!.logs } : {}),
+				})
+			: undefined;
 
 	// Mail and storage: the local stage runs Mailpit and MinIO for all of it.
 	// A deployed stage takes each from its secrets — or, where allowed, from a
@@ -615,6 +663,8 @@ export function composeStack(input: StackInput): ComposeStack {
 	const infra = [
 		...plan.containers
 			.filter((c) => !NOT_RUN[c])
+			// Run as the stack's own, below, with the stage's login.
+			.filter((c) => c !== LOGS_SERVICE)
 			.filter((c) => c !== 'minio' || services.minio.length > 0)
 			.filter((c) => c !== 'mailpit' || services.mailpit.length > 0)
 			.filter((c) => c !== REDIS_SERVICE || redis !== undefined),
@@ -779,6 +829,20 @@ export function composeStack(input: StackInput): ComposeStack {
 		return outside[key];
 	};
 
+	// What the stage resolves for its `Telemetry` node, before a process is
+	// named: the stack's OpenObserve, or the provider `deploy.telemetry` names.
+	const telemetryValues: Record<string, string> | undefined = logs
+		? telemetryEnv(
+				{
+					endpoint: logs.appEnv.OTEL_EXPORTER_OTLP_ENDPOINT,
+					headers: logs.appEnv.OTEL_EXPORTER_OTLP_HEADERS,
+				},
+				telemetry?.sampleRate ?? 1,
+			)
+		: telemetry?.provider === 'otlp'
+			? otlpTelemetryEnv(telemetry)
+			: undefined;
+
 	/** Each key one backend process reads, resolved for this stage. */
 	const valuesFor = (
 		app: Pick<StackApp, 'name' | 'id' | 'kind'>,
@@ -786,6 +850,8 @@ export function composeStack(input: StackInput): ComposeStack {
 	): Record<string, string> => {
 		const values: Record<string, string> = {};
 		for (const key of [...keys].sort()) {
+			// The node's keys are the stage's telemetry, added per process.
+			if (isTelemetryKey(key)) continue;
 			const owner = owners.get(key) ?? storageOwner(key, plan);
 			// A deployed stage has no inbox: Mailpit runs only locally.
 			if (!local && owner?.kind === 'email' && key.endsWith('_INBOX_URL'))
@@ -843,10 +909,13 @@ export function composeStack(input: StackInput): ComposeStack {
 			values[trusted] = [...new Set(origins)].join(',');
 		}
 
-		// Telemetry: the stage's own `OTEL_*`, or the stack's OpenObserve.
+		// Telemetry: the stage's, to a process with an edge to the node.
 		app.env = {
-			...values,
-			...otelEnv({ ...custom, ...logs?.appEnv }, app.name),
+			...scopeTelemetryEnv(values, {
+				uses: telemetryOf(manifest, app.id) !== undefined,
+				serviceName: app.name,
+				...(telemetryValues ? { telemetry: telemetryValues } : {}),
+			}),
 			NODE_ENV: 'production',
 			PORT: String(app.port),
 			STAGE: stage,
@@ -863,11 +932,14 @@ export function composeStack(input: StackInput): ComposeStack {
 		const keys =
 			workerEnvKeys(manifest, worker.id, input.runnables) ?? new Set();
 		worker.env = {
-			...valuesFor(
-				{ name: worker.name, id: worker.id, kind: 'rest-api' },
-				keys,
+			...scopeTelemetryEnv(
+				valuesFor({ name: worker.name, id: worker.id, kind: 'rest-api' }, keys),
+				{
+					uses: telemetryOf(manifest, worker.id) !== undefined,
+					serviceName: worker.name,
+					...(telemetryValues ? { telemetry: telemetryValues } : {}),
+				},
 			),
-			...otelEnv({ ...custom, ...logs?.appEnv }, worker.name),
 			NODE_ENV: 'production',
 			PORT: String(worker.port),
 			STAGE: stage,
@@ -955,6 +1027,9 @@ export function composeStack(input: StackInput): ComposeStack {
 				apps: workspace.apps,
 				manifest,
 				cache: STACK_CACHE,
+				// A site's clients trace at this stage's sample rate.
+				workspace,
+				stage,
 			},
 		);
 	}
@@ -992,6 +1067,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		...(storage ? { storage } : {}),
 		devServices: local ? [] : devServicesUsed(services),
 		...(logs ? { logs } : {}),
+		...(telemetry ? { telemetry } : {}),
 		...(redis ? { redis } : {}),
 	};
 }

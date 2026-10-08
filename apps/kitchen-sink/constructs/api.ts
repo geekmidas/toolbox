@@ -1,6 +1,7 @@
 import { RestApi } from '@geekmidas/constructs/rest-api';
 import { auth } from './auth.js';
 import { logger } from './logger.js';
+import { telemetry } from './telemetry.js';
 import { telescope } from './telescope.js';
 
 /**
@@ -43,6 +44,11 @@ export const api = new RestApi('Api', {
 	// The Telescope the logger already streams into, declared once beside it
 	// rather than named again as a module path.
 	telescope,
+
+	// What this process emits — passed like the logger. An edge to the
+	// `Telemetry` node: the process is handed the `OTEL_*` keys its stage
+	// resolves, and its build fails without the OpenTelemetry packages.
+	telemetry,
 
 	// No `app`. One RestApi is one server, so this has a container either way,
 	// and everything the block used to hold follows from the id: `Api` means

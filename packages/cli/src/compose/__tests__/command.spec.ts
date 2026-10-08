@@ -913,7 +913,7 @@ describe("a stage's addresses", { timeout: RUN_TIMEOUT }, () => {
 	});
 });
 
-describe('logs', { timeout: RUN_TIMEOUT }, () => {
+describe('telemetry, self-hosted by default', { timeout: RUN_TIMEOUT }, () => {
 	let home: string;
 	const registry = [
 		'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
@@ -924,9 +924,10 @@ describe('logs', { timeout: RUN_TIMEOUT }, () => {
 
 	beforeEach(async () => {
 		dir = realpathSync(await createTempDir('gkm-compose-logs-'));
+		// A Telemetry construct, and a deployed stage that names no provider.
 		writeComposeApp(dir, {
 			registry: 'registry.example.com/acme',
-			logs: true,
+			telemetry: true,
 		});
 		home = realpathSync(await createTempDir('gkm-compose-home-'));
 		vi.stubEnv('GKM_HOME', home);

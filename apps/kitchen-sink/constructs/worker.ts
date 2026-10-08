@@ -1,6 +1,7 @@
 import { Worker } from '@geekmidas/constructs/worker';
 import { database } from './database.js';
 import { logger } from './logger.js';
+import { telemetry } from './telemetry.js';
 
 /**
  * The background work this application does, and the process that does it.
@@ -13,4 +14,6 @@ import { logger } from './logger.js';
  * `.database(database)` is where its schedules live. Only a server target reads
  * it; on AWS a cron is an EventBridge rule and nothing here is consulted.
  */
-export const worker = new Worker('Jobs', { logger }).database(database);
+export const worker = new Worker('Jobs', { logger, telemetry }).database(
+	database,
+);

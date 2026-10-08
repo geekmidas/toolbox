@@ -2,6 +2,7 @@ import { StaticSite } from '@geekmidas/constructs/site';
 import { api } from './api.js';
 import { auth } from './auth.js';
 import { uploads } from './storage.js';
+import { telemetry } from './telemetry.js';
 
 /**
  * The frontend, declared — which is what removes the last mechanism running
@@ -25,11 +26,12 @@ import { uploads } from './storage.js';
 // thing the id already said. No `variant`: static is the default, and Vite
 // builds it. No `port`: ports are assigned in a stable order, and this one
 // holds the base domain so it gets the first of them.
-export const web = new StaticSite('Web', { path: 'apps/web' }).dependsOn([
-	api,
-	auth,
-	uploads.server,
-]);
+// Given the Telemetry construct: the client it imports sends trace context
+// to the API, so a page's request is one trace with what the API did.
+export const web = new StaticSite('Web', {
+	path: 'apps/web',
+	telemetry,
+}).dependsOn([api, auth, uploads.server]);
 
 /**
  * The admin console — the second site, and the second *variant*.

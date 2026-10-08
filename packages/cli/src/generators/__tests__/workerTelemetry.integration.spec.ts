@@ -173,7 +173,12 @@ export const placeOrder = api
 			subscribers: 'exclude',
 			openapi: false,
 		},
-		telemetry: { serviceName: 'Shop', available: true },
+		telemetry: {
+			serviceName: 'Shop',
+			ignorePaths: [],
+			attributes: {},
+			routes: [],
+		},
 	};
 
 	const serverDir = join(dir, '.gkm', 'server');
@@ -192,6 +197,13 @@ export const placeOrder = api
 		crons: await new CronGenerator().load('work/*.ts', dir),
 		queues: await new QueueGenerator().load('work/*.ts', dir),
 		subscribers: await new SubscriberGenerator().load('work/*.ts', dir),
+		// The worker's own edge to the Telemetry construct.
+		telemetry: {
+			serviceName: 'Packing',
+			ignorePaths: [],
+			attributes: {},
+			routes: [],
+		},
 	});
 
 	const dist = join(serverDir, 'dist');

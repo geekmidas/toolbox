@@ -11,6 +11,7 @@ import { COMPOSE_PATH } from '../reconcile/index.js';
 import { reconcileWorkspace } from '../reconcile/workspace.js';
 import { run } from '../run';
 import { getPublicUrlArgNames } from '../target/dokploy/domain.js';
+import { siteClientTelemetry } from '../telemetry/edges.js';
 import type { CacheBackend, GkmConfig } from '../types';
 import { appKey } from '../workspace/derive.js';
 import type {
@@ -103,6 +104,11 @@ export interface DockerOptions {
 	 * Defaults to the process's working directory.
 	 */
 	cwd?: string;
+	/**
+	 * The stage the images are for: a site's clients trace at its sample
+	 * rate. The local stage when absent.
+	 */
+	stage?: string;
 }
 
 /**
@@ -134,6 +140,7 @@ export async function dockerCommand(
 		loaded.manifest,
 		names,
 		loaded.background,
+		options.stage,
 	);
 
 	if (options.build) {
@@ -255,6 +262,8 @@ export async function workspaceDockerCommand(
 	imageNames: Readonly<Record<string, string>> = {},
 	/** Each Worker's files, from discovery — which app each is built from. */
 	background: Readonly<Record<string, readonly string[]>> = {},
+	/** The stage a site's clients trace at the rate of — local when absent. */
+	stage?: string,
 ): Promise<WorkspaceDockerResult> {
 	const results: AppDockerResult[] = [];
 	const layout = imageLayout(workspace);
@@ -283,6 +292,8 @@ export async function workspaceDockerCommand(
 			workspaceRoot: workspace.root,
 			apps: workspace.apps,
 			...(manifest ? { manifest } : {}),
+			workspace,
+			...(stage ? { stage } : {}),
 		});
 
 		const path = dockerfileOf(appName, app.path);
@@ -371,6 +382,8 @@ export function appDockerfile(
 		 */
 		apps?: Readonly<Record<string, NormalizedAppConfig>>;
 		manifest?: ConstructManifest;
+		/** The workspace's stages and `deploy.telemetry`, for a site's clients. */
+		workspace?: Pick<NormalizedWorkspace, 'stages' | 'deploy'>;
 		/** A site's public keys, when the caller resolved them itself. */
 		publicUrlArgs?: string[];
 		/**
@@ -378,6 +391,11 @@ export function appDockerfile(
 		 * deploy target's — the compose stack's own Redis.
 		 */
 		cache?: CacheBackend;
+		/**
+		 * The stage whose sample rate a site's clients trace at — the local
+		 * stage when absent.
+		 */
+		stage?: string;
 	},
 ): string {
 	const image = appImageOptions(
@@ -386,6 +404,14 @@ export function appDockerfile(
 		app,
 		options.workspaceRoot,
 		options.apps,
+		app.type === 'web' && options.manifest && options.workspace
+			? siteClientTelemetry(
+					options.manifest,
+					appName,
+					options.workspace,
+					options.stage,
+				)
+			: undefined,
 	);
 
 	if (app.type === 'web') {

@@ -464,6 +464,10 @@ export interface ShopWorkspace {
 	apps?: string;
 	/** More of `deploy.dokploy.verify`, as source: `healthTimeoutMs: 50`. */
 	verify?: string;
+	/** `deploy.telemetry`, as source. */
+	telemetry?: string;
+	/** Construct modules under `src/constructs/`, by file name. */
+	constructs?: Record<string, string>;
 }
 
 /**
@@ -493,6 +497,10 @@ export function writeShopWorkspace(
 			JSON.stringify({ name: `@shop/${app}`, type: 'module' }),
 		);
 	}
+	for (const [file, source] of Object.entries(extra.constructs ?? {})) {
+		mkdirSync(join(root, 'src', 'constructs'), { recursive: true });
+		writeFileSync(join(root, 'src', 'constructs', file), source);
+	}
 	writeFileSync(
 		join(root, 'gkm.config.ts'),
 		`import { defineWorkspace } from '@geekmidas/cli/config';
@@ -519,6 +527,7 @@ export default defineWorkspace({
     default: 'dokploy',
     domains: { ${stage}: 'shop.example.com', staging: 'staging.shop.example.com' },
     ${registry}
+    ${extra.telemetry ? `telemetry: ${extra.telemetry},` : ''}
     dokploy: {
       endpoint: '${ENDPOINT}',
       // Checked as a real deploy is, without a real deploy's patience.

@@ -52,6 +52,7 @@ import {
 	edgeTo,
 	type ServicesOf,
 } from './construct-interface';
+import type { Telemetry } from './telemetry';
 
 /** The server better-auth hands back. */
 export type AuthServer = ReturnType<typeof betterAuth>;
@@ -146,6 +147,12 @@ export interface BetterAuthConfig<
 	 * so nothing that can be used without being declared.
 	 */
 	dependsOn?: TUses;
+	/**
+	 * What the auth server's process emits — the `Telemetry` construct, passed
+	 * like a `RestApi`'s. An edge to the node: the deploy hands the process the
+	 * `OTEL_*` keys its stage resolves.
+	 */
+	telemetry?: Telemetry;
 	/**
 	 * The rest of better-auth's options: providers, plugins, email settings.
 	 *
@@ -248,6 +255,9 @@ export class BetterAuth<
 				id: this.id,
 				path: this.config.path,
 				...(this.config.subdomain ? { subdomain: this.config.subdomain } : {}),
+				...(this.config.telemetry
+					? { telemetry: this.config.telemetry.id }
+					: {}),
 				provides: [
 					this.keys.url,
 					this.keys.trustedOrigins,

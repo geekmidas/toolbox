@@ -59,7 +59,6 @@ export {
 	siteTag,
 } from './images';
 export {
-	LogsEndpointConflict,
 	LogsPasswordMissing,
 	LogsPasswordWeak,
 	OPENOBSERVE_IMAGE,

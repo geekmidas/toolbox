@@ -90,6 +90,8 @@ interface DockerRun {
 	dockerfile: string;
 	signal?: AbortSignal;
 	stdio?: RunOptions['stdio'];
+	/** The stage the image is for — a site's clients trace at its rate. */
+	stage?: string;
 }
 
 /**
@@ -191,7 +193,7 @@ async function buildImage(
 	imageRef: string,
 	buildArgs: string[] | undefined,
 	credentials: BuildCredentials | undefined,
-	{ cwd, dockerfile, signal, stdio }: DockerRun,
+	{ cwd, dockerfile, signal, stdio, stage }: DockerRun,
 ): Promise<void> {
 	logger.log(`\n🔨 Building Docker image: ${imageRef}`);
 
@@ -200,7 +202,11 @@ async function buildImage(
 	// packages, the bundle, a site's assets — inside Docker. Nothing the host
 	// built reaches it.
 	logger.log('   Generating Dockerfile...');
-	const { buildRoot } = await dockerCommand({ cwd });
+	// For the stage: a site's clients trace at its sample rate.
+	const { buildRoot } = await dockerCommand({
+		cwd,
+		...(stage ? { stage } : {}),
+	});
 
 	// Relative to the build root, which is the context: absolute paths resolve
 	// wherever the deploy was started, and the build runs from the root.
@@ -323,6 +329,7 @@ export async function deployDocker(
 		),
 		...(options.signal ? { signal: options.signal } : {}),
 		...(options.stdio ? { stdio: options.stdio } : {}),
+		stage,
 	};
 
 	await buildImage(imageRef, buildArgs, credentials, docker);

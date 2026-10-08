@@ -46,6 +46,7 @@ import {
 } from './endpoints/Authorizer';
 import { EndpointFactory } from './endpoints/EndpointFactory';
 import { envParserFor } from './endpoints/surfaceEnv';
+import type { Telemetry } from './telemetry';
 
 /** The factory a surface builds its endpoints from. */
 type Endpoints = EndpointFactory<[], '', Logger>;
@@ -136,6 +137,16 @@ export interface RestApiConfig<
 	 * printed an import for. The entry already imports the surface.
 	 */
 	telescope?: Telescope;
+	/**
+	 * What this surface's process emits — the `Telemetry` construct, passed
+	 * like the logger: a fact about the process, not a grant to a route.
+	 *
+	 * An edge to the node, so the deploy hands this process the `OTEL_*` keys
+	 * its stage resolves, and the build fails without the OpenTelemetry
+	 * packages. Where the telemetry goes is never here: it is the deploy's,
+	 * per stage.
+	 */
+	telemetry?: Telemetry;
 }
 
 /**
@@ -195,6 +206,9 @@ export class RestApi<
 	/** The Telescope instance, when this surface was given one. */
 	readonly telescope?: Telescope;
 
+	/** What this surface's process emits, when it was given a `Telemetry`. */
+	readonly telemetry?: Telemetry;
+
 	constructor(
 		id: ConstructName<TName>,
 		private readonly config: RestApiConfig<TAuthorizers>,
@@ -215,6 +229,7 @@ export class RestApi<
 
 		this.logger = config.logger ?? DEFAULT_LOGGER;
 		this.telescope = config.telescope;
+		this.telemetry = config.telemetry;
 		this.envParser = envParserFor(
 			config.envParser
 				? { id: canonical, envParser: config.envParser }
@@ -379,6 +394,9 @@ export class RestApi<
 				// wildcard — puts them here instead.
 				endpoints: [],
 				...(this.dependencies.length ? { calls: this.dependencies } : {}),
+				...(this.config.telemetry
+					? { telemetry: this.config.telemetry.id }
+					: {}),
 				...(this.config.authorizers?.length
 					? { authorizers: this.config.authorizers }
 					: {}),

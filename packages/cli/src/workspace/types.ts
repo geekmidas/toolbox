@@ -161,17 +161,10 @@ export interface DokployVerifyConfig {
  *
  * @example
  * ```ts
- * deploy: { compose: { logs: true } }
- * deploy: { compose: { logs: { port: 5081, retentionDays: 14 } } }
- * deploy: { compose: { logs: { public: { allow: ['203.0.113.7', '10.0.0.0/8'] } } } }
+ * deploy: { compose: { proxy: 'traefik' } }
  * ```
  */
 export interface ComposeWorkspaceConfig {
-	/**
-	 * Run OpenObserve in the stack and send every backend's logs and traces
-	 * to it. `true` for the defaults.
-	 */
-	logs?: boolean | ComposeLogsConfig;
 	/**
 	 * What serves a deployed stage's stack: `'caddy'` (the default) — the
 	 * stack's own Caddy on 80/443 — or `'traefik'`, the server's shared
@@ -206,8 +199,48 @@ export interface ComposeTlsConfig {
 	keyFile: string;
 }
 
-/** How the stack's OpenObserve is run and reached — `deploy.compose.logs`. */
-export interface ComposeLogsConfig {
+/**
+ * Where one stage's telemetry goes, and how much of it — `deploy.telemetry`,
+ * by stage.
+ *
+ * What is emitted is the application's (the `Telemetry` construct); where it
+ * goes is this. A server target runs the self-hosted provider when a stage
+ * names nothing; AWS has none, so a deployed AWS stage that uses telemetry
+ * names a provider. `false` sends nothing. The local stage ignores this: `gkm
+ * dev` and `gkm compose` on it always run OpenObserve, at 100%.
+ *
+ * @example
+ * ```ts
+ * telemetry: {
+ *   staging: 'self-hosted',
+ *   production: { provider: 'self-hosted', retentionDays: 14, sampleRate: 0.1 },
+ *   preview: { provider: 'otlp', endpoint: 'https://otlp.example.com', sampleRate: 0.5 },
+ *   scratch: false,
+ * }
+ * ```
+ */
+export type StageTelemetryConfig =
+	| 'self-hosted'
+	| SelfHostedTelemetryConfig
+	| OtlpTelemetryConfig
+	| false;
+
+/** Shared by every provider. */
+interface TelemetryProviderConfig {
+	/**
+	 * The fraction of traces kept, decided where a trace starts and followed
+	 * by every service it reaches (`parentbased_traceidratio`). Logs are not
+	 * sampled. 0 to 1; default 1.
+	 */
+	sampleRate?: number;
+}
+
+/**
+ * The target runs the collector and its UI: OpenObserve, in a compose stack,
+ * reached through an SSH tunnel by default.
+ */
+export interface SelfHostedTelemetryConfig extends TelemetryProviderConfig {
+	provider: 'self-hosted';
 	/**
 	 * The port it is published on, on 127.0.0.1 only — reached from another
 	 * machine through an SSH tunnel. Default 5080.
@@ -219,11 +252,20 @@ export interface ComposeLogsConfig {
 	 */
 	retentionDays?: number;
 	/**
-	 * Serve it on `logs.<stage domain>` through the stack's Caddy, to these
+	 * Serve it on `logs.<stage domain>` through the stack's proxy, to these
 	 * addresses only (IPs or CIDRs), instead of on a loopback port. Every
 	 * other address is answered 403.
 	 */
 	public?: { allow: string[] };
+}
+
+/** Any OTLP/HTTP endpoint — a collector, a vendor's ingest. */
+export interface OtlpTelemetryConfig extends TelemetryProviderConfig {
+	provider: 'otlp';
+	/** The OTLP/HTTP base URL; `/v1/traces` and `/v1/logs` are added to it. */
+	endpoint: string;
+	/** Headers sent with every export — `{ 'x-team': 'shop' }`. */
+	headers?: Record<string, string>;
 }
 
 /**
@@ -306,6 +348,11 @@ export interface DeployConfig {
 	dokploy?: DokployWorkspaceConfig;
 	/** What the `compose` target runs beside the apps — see {@link ComposeWorkspaceConfig}. */
 	compose?: ComposeWorkspaceConfig;
+	/**
+	 * Where each deployed stage's telemetry goes — see
+	 * {@link StageTelemetryConfig}.
+	 */
+	telemetry?: Record<string, StageTelemetryConfig>;
 	/** DNS configuration for automatic record creation */
 	dns?: DnsConfig;
 	/** Backup destination configuration for database services */

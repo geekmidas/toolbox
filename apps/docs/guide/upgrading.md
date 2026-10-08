@@ -41,7 +41,7 @@ are built from the `RestApi` that serves them; background work belongs to a
 
 | Package | Breaking changes |
 | --- | --- |
-| [`@geekmidas/cli` — `gkm.config.ts`](#cli-config) | 9 |
+| [`@geekmidas/cli` — `gkm.config.ts`](#cli-config) | 10 |
 | [`@geekmidas/cli` — commands](#cli-commands) | 5 |
 | [`@geekmidas/cli` — generated files and builds](#cli-build) | 5 |
 | [`@geekmidas/cli` — environment and secrets](#cli-env) | 4 |
@@ -57,7 +57,7 @@ are built from the `RestApi` that serves them; background work belongs to a
 | [`@geekmidas/testkit`](#testkit) | 2 |
 | [Removed packages: `ui`, `studio`](#removed-packages) | 1 |
 | [Third-party majors](#third-party) | 1 |
-| **Total** | **58** |
+| **Total** | **59** |
 
 ## `@geekmidas/cli` — `gkm.config.ts` {#cli-config}
 
@@ -227,23 +227,74 @@ A custom store is `{ provider: store }` where `store` implements
 whose secrets were only on one machine, set `secrets.store`, then
 `gkm secrets:import <file> --stage <stage>` or `gkm secrets:set`.
 
+### 10. `deploy.compose.logs` is a `Telemetry` construct and `deploy.telemetry` {#telemetry}
+
+What a process emits is now declared — a [`Telemetry` construct](/guide/telemetry)
+given to each surface and worker, like its logger — and where it goes is the
+stage's, in `deploy.telemetry`. `deploy.compose.logs` is gone, and
+`deploy.compose` refuses it.
+
+```ts
+// before — gkm.config.ts
+deploy: {
+  compose: { logs: { retentionDays: 14, public: { allow: ['203.0.113.7'] } } },
+}
+```
+
+```ts
+// after — constructs/telemetry.ts
+import { Telemetry } from '@geekmidas/constructs/telemetry';
+
+export const telemetry = new Telemetry('Telemetry', { ignorePaths: ['/ready'] });
+
+// constructs/api.ts, constructs/worker.ts — and BetterAuth's config
+new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'none', logger, telemetry });
+new Worker('Jobs', { logger, telemetry });
+
+// gkm.config.ts — the options move under the self-hosted provider
+deploy: {
+  telemetry: {
+    production: {
+      provider: 'self-hosted',
+      retentionDays: 14,
+      public: { allow: ['203.0.113.7'] },
+    },
+  },
+}
+```
+
+`'self-hosted'` alone is enough where the defaults do, and on `gkm compose` a
+stage that names nothing runs it anyway. The local stage ignores
+`deploy.telemetry`; its port moves with `GKM_COMPOSE_LOGS_PORT`.
+
+- **The stage's `OTEL_*` secrets are no longer forwarded** to every backend,
+  and `LogsEndpointConflict` is gone. Name the provider instead:
+  `{ provider: 'otlp', endpoint: 'https://otlp.example.com', headers: { … } }`.
+  On Dokploy, which runs no collector, a stage that uses telemetry must do so
+  (or say `false`) — otherwise `TelemetryProviderRequired`.
+- **Only processes with the edge export**, and their builds need
+  `@geekmidas/telescope` and its `@opentelemetry/*` peers: without them,
+  `gkm build` and `gkm dev` fail with `TelemetryPackagesMissing` and the
+  `pnpm --dir <app> add …` to run. A server without the edge loads nothing,
+  even with `OTEL_EXPORTER_OTLP_ENDPOINT` set.
+
 ## `@geekmidas/cli` — commands {#cli-commands}
 
-### 10. `gkm generate:react-query` is removed
+### 11. `gkm generate:react-query` is removed
 
 So is the `@geekmidas/cli/openapi-react-query` export and the
 `openapi-typescript` dependency. Each surface's typed client, with React Query
 hooks, is written by `gkm build`, `gkm dev` and `gkm openapi` (see
-[entry 15](#typed-client-location)).
+[entry 16](#typed-client-location)).
 
-### 11. `gkm secrets:push` and `gkm secrets:pull` are removed
+### 12. `gkm secrets:push` and `gkm secrets:pull` are removed
 
 Every command reads and writes the store of the stage it acts on, so there is
 nothing to move between them. Write a deployed stage's values with
 `gkm secrets:set <KEY> '<value>' --stage <stage>`. The generated SST workflow
 has no pull step and `gkm deploy:github` no longer pushes.
 
-### 12. `gkm build --providers` and the legacy providers are removed
+### 13. `gkm build --providers` and the legacy providers are removed
 
 ```bash
 # before
@@ -253,7 +304,7 @@ gkm build                   # follows deploy.default
 gkm build --provider server # override, e.g. inside a Dockerfile
 ```
 
-### 13. `gkm deploy --provider` is `gkm deploy --target`
+### 14. `gkm deploy --provider` is `gkm deploy --target`
 
 `--provider dokploy` still works with a deprecation warning. `--provider docker`
 and `--provider aws-lambda` fail with `ProviderRemoved`, which points to
@@ -270,7 +321,7 @@ gkm deploy --stage production                 # deploy.default
 gkm deploy --target dokploy --stage production
 ```
 
-### 14. An app is found by its configured path
+### 15. An app is found by its configured path
 
 `gkm dev`, `test` and `exec` run the app whose `path` holds the current
 directory; a directory no app lives in fails with `NotInAnApp`, and at the
@@ -280,7 +331,7 @@ removed. `gkm docker` names its default image after the config's `name`.
 
 ## `@geekmidas/cli` — generated files and builds {#cli-build}
 
-### 15. Each API's typed client lives at the root {#typed-client-location}
+### 16. Each API's typed client lives at the root {#typed-client-location}
 
 The client is the application's: it is written to the workspace root's
 `.gkm/client/<surface>.ts` (it was `.gkm/openapi/` inside the API app) and
@@ -298,7 +349,7 @@ In each frontend's `tsconfig.json`, map
 `"@shop/client/*": ["../../.gkm/client/*"]`, and add `@geekmidas/client` and
 `@tanstack/react-query` to the root `package.json`.
 
-### 16. The manifest is the declarations, written once by the root {#manifest-exports}
+### 17. The manifest is the declarations, written once by the root {#manifest-exports}
 
 `.gkm/manifest/<target>.ts` exports `constructs` and `backends` and nothing
 else. The `manifest = { routes, functions, crons, … }` table, its derived types
@@ -311,7 +362,7 @@ handlers. `@geekmidas/cli/reconcile` drops `writeManifestModule` and
 const { backends, constructs } = await import('./.gkm/manifest/aws.js');
 ```
 
-### 17. A `RestApi`'s production server serves HTTP only
+### 18. A `RestApi`'s production server serves HTTP only
 
 `gkm build --production` (what `gkm docker`'s images run) no longer wires queue
 consumers, crons or topic subscribers into an API's server: they belong to a
@@ -320,7 +371,7 @@ consumers, crons or topic subscribers into an API's server: they belong to a
 entry, image and service on a server target; see
 [Workers](/guide/production#workers).
 
-### 18. The master key is never printed, and credentials reach `docker build` as a secret
+### 19. The master key is never printed, and credentials reach `docker build` as a secret
 
 Output names the master key by fingerprint (the first 8 hex characters of its
 SHA-256). If you copied `GKM_MASTER_KEY` from `gkm build --stage` output, read
@@ -329,7 +380,7 @@ build as a BuildKit secret (`--secret id=gkm_credentials`) rather than the
 `GKM_ENCRYPTED_CREDENTIALS` / `GKM_CREDENTIALS_IV` build args. Regenerate your
 Dockerfiles with `gkm docker`.
 
-### 19. A database construct's folder holds `migrations/` and `seeds/`
+### 20. A database construct's folder holds `migrations/` and `seeds/`
 
 Each database construct (and schema tenant) has `db/<construct>/migrations/` and
 `db/<construct>/seeds/`, applied by `gkm migrate` and `gkm seed` as the
@@ -348,7 +399,7 @@ export default defineConfig({
 
 ## `@geekmidas/cli` — environment and secrets {#cli-env}
 
-### 20. `<ID>_CREDENTIAL` is `<ID>_CREDENTIALS`
+### 21. `<ID>_CREDENTIAL` is `<ID>_CREDENTIALS`
 
 A `Credential` or `ExternalApi` construct provides `<ID>_CREDENTIALS`, one JSON
 value. Rename the secret on every stage:
@@ -359,19 +410,19 @@ gkm secrets:set STRIPE_CREDENTIALS '{"secretKey":"…"}' --stage production
 
 A Dokploy stage missing it fails `gkm deploy` with `MissingSuppliedSecret`.
 
-### 21. `EVENT_SUBSCRIBER_CONNECTION_STRING` is deleted
+### 22. `EVENT_SUBSCRIBER_CONNECTION_STRING` is deleted
 
 Each topic and queue provides `<ID>_PUBLISHER_CONNECTION_STRING`, read by its
 producers and its consumers alike. Crons on a server schedule through
 `EVENT_PUBLISHER_CONNECTION_STRING` (pg-boss and RabbitMQ only).
 
-### 22. `RABBITMQ_URL` and its credentials are gone
+### 23. `RABBITMQ_URL` and its credentials are gone
 
 `RABBITMQ_URL`, `RABBITMQ_USER`, `_PASSWORD`, `_HOST`, `_PORT` and `_VHOST`
 are no longer generated. A topic's broker URL is its own key, e.g.
 `USERS_PUBLISHER_CONNECTION_STRING` for a `Users` topic.
 
-### 23. Dokploy secrets are random, not derived from the repository
+### 24. Dokploy secrets are random, not derived from the repository
 
 An auth server's signing secret and every Dokploy database and bucket password
 used to be a hash of the project name, stage and construct id. A stage's next
@@ -384,7 +435,7 @@ bucket's root user is reset.
 See [Deploy targets](/guide/deploy-targets), [State](/guide/state) and
 [Production](/guide/production) for how the pieces fit together.
 
-### 24. Dokploy deploys are identified by namespace, project and stage
+### 25. Dokploy deploys are identified by namespace, project and stage
 
 A deploy claims its Dokploy project with a `gkm:<namespace>/<project>` marker in
 the description, and never deploys into a same-named project without it
@@ -396,7 +447,7 @@ repository names need the new path. `deploy.namespace` defaults to the
 kebab-cased workspace name; set it when two workspaces of one name deploy to one
 server.
 
-### 25. Stage keys moved under `~/.gkm/keys/`
+### 26. Stage keys moved under `~/.gkm/keys/`
 
 Keys move from `~/.gkm/<folder>/<stage>.key` to
 `~/.gkm/keys/<namespace>/<project>/<stage>.key`. An existing key is copied the
@@ -405,7 +456,7 @@ first time it is read and the old file is kept. `GKM_HOME` moves the whole home
 another needs the key copied by hand; regenerate GitHub workflows so they write
 the key to the new place.
 
-### 26. Deploy state is version 2, locked and journalled
+### 27. Deploy state is version 2, locked and journalled
 
 State is stored as schema version 2; a v1 state is migrated on first read and
 the original kept beside it (`.gkm/deploy-<stage>.v1.json` locally). A deploy
@@ -417,14 +468,14 @@ stale write `StateVersionConflict`, and a crashed run's lock is released with
 `state.provider` still works but warns `StateStoreWithoutLocking`. S3 is a new
 option: `state: { provider: 's3', bucket, region }`. See [State](/guide/state).
 
-### 27. State records `releases`, not `images`
+### 28. State records `releases`, not `images`
 
 Each app's entry is `releases: { [app]: { current, previous, history } }`. An
 app's first release after upgrading has nothing to roll back to.
 `gkm deploy:rollback --stage <stage> --app <app>` puts one app back on its
 previous release.
 
-### 28. A Dokploy deploy waits, checks health, and fails on a failed site
+### 29. A Dokploy deploy waits, checks health, and fails on a failed site
 
 Success is no longer recorded when Dokploy queues a deployment: each app is
 released once its deployment finishes (`DeploymentFailed`,
@@ -445,7 +496,7 @@ deploy: {
 },
 ```
 
-### 29. The project's own code runs in a sandbox, without the deploy's credentials
+### 30. The project's own code runs in a sandbox, without the deploy's credentials
 
 The config load, construct discovery, the env sniffer and the turbo build run in
 a child process with an allowlisted environment (`PATH`, `HOME`, locale,
@@ -457,7 +508,7 @@ the config (a custom state store, an inline target) fails with
 `ConfigObjectNotSerializable`. A config that fails to load raises
 `ConfigLoadFailed` (it was a plain `Error`). See [Sandbox](/guide/sandbox).
 
-### 30. Programmatic deploys go through `deploy()`
+### 31. Programmatic deploys go through `deploy()`
 
 `deploy()` from `@geekmidas/cli/deploy` never prompts, prints or exits; it
 returns a run whose events you iterate and whose `result` you await. See
@@ -483,7 +534,7 @@ registry login is `MissingCredential` (the registry login can come from
 
 ## `@geekmidas/constructs` {#constructs}
 
-### 31. `e` is gone: endpoints are built from a `RestApi`
+### 32. `e` is gone: endpoints are built from a `RestApi`
 
 The logger, env parser and authorizers come from the surface.
 
@@ -514,7 +565,7 @@ export const createUser = api
 
 :::
 
-### 32. `api.endpoints` is gone: branch from the surface
+### 33. `api.endpoints` is gone: branch from the surface
 
 The branching methods live on the surface: `api.database()`, `api.session()`,
 `api.auditor()`, `api.actor()`, `api.authorizer()`, `api.authorize()`,
@@ -530,7 +581,7 @@ export const router = api.database(database);
 api.get('/files').dependsOn([uploads]);
 ```
 
-### 33. `c`, `s` and `f` are gone: background work comes from a `Worker`
+### 34. `c`, `s` and `f` are gone: background work comes from a `Worker`
 
 What is called first decides the kind: a schedule makes a cron, a topic a
 subscriber, anything else a function. The worker carries the logger, and its
@@ -561,7 +612,7 @@ export const reindex = worker.input(schema).handle(…);
 
 :::
 
-### 34. Topics and queues are constructs; `.publisher()` is gone
+### 35. Topics and queues are constructs; `.publisher()` is gone
 
 `q`, `t`, `QueueBuilder`, `TopicBuilder`, `Topic.publisher`, `Queue.publisher`,
 `derivedFrom` and `edgesWith` are deleted, and `.publisher(service)` is gone
@@ -609,7 +660,7 @@ export const emails = worker
 `TestEndpointAdaptor`, `TestFunctionAdaptor` and the MSW adaptor lose their
 `publisher` option: pass a recorder under the topic's name in `services`.
 
-### 35. `RestApi`, `BetterAuth` and `StaticSite` take a required `path`; the `app` block is gone
+### 36. `RestApi`, `BetterAuth` and `StaticSite` take a required `path`; the `app` block is gone
 
 `path` is the app that serves the surface, relative to the workspace root
 (`'apps/api'`, or `'.'` in a single-app project). It used to be inferred from
@@ -623,7 +674,7 @@ new RestApi('Api', { app: { telescope: true } });
 new RestApi('Api', { path: 'apps/api', telescope: true });
 ```
 
-### 36. `SnsPushSubscriberAdaptor` moved to `/subscribers`
+### 37. `SnsPushSubscriberAdaptor` moved to `/subscribers`
 
 Every other export of `@geekmidas/constructs/aws` loads `@middy/core`.
 
@@ -634,7 +685,7 @@ import { SnsPushSubscriberAdaptor } from '@geekmidas/constructs/aws';
 import { SnsPushSubscriberAdaptor } from '@geekmidas/constructs/subscribers';
 ```
 
-### 37. `featureTest` hands databases and factories by name
+### 38. `featureTest` hands databases and factories by name
 
 `featureTest({ database })` is gone; nothing is inferred and nothing opens
 before it is used. Factories live in `test/factories/<construct>.ts` at the
@@ -658,7 +709,7 @@ it('joins', async ({ db, factories }) => {
 `FeatureContext<Browser, unknown>` is `FeatureContext<Browser>`. A
 hand-written magic-link helper can be replaced by `browser.signIn(email)`.
 
-### 38. A mobile app adds Better Auth's `expo()` plugin itself
+### 39. A mobile app adds Better Auth's `expo()` plugin itself
 
 `@geekmidas/constructs` no longer depends on `@better-auth/expo`. An auth server
 a `MobileApp` depends on refuses to start without the plugin
@@ -675,13 +726,13 @@ export const auth = new BetterAuth('Auth', {
 });
 ```
 
-### 39. `.database(other)` on a worker-built construct replaces the worker's
+### 40. `.database(other)` on a worker-built construct replaces the worker's
 
 A cron, queue or subscriber that calls `.database(other)` gets `other` as its
 `db` and its manifest edge, replacing the worker's database rather than adding
 to it.
 
-### 40. Queries carry tags, and connections an `application_name`, by default
+### 41. Queries carry tags, and connections an `application_name`, by default
 
 A query run inside an endpoint, subscriber, queue or cron ends in a
 sqlcommenter comment (`/*operation='POST /orders',request_id='…'*/`), and every
@@ -694,7 +745,7 @@ new KyselyDatabase('Database', { queryTags: false });
 
 ## `@geekmidas/client` {#client}
 
-### 41. Request types come from the schema's input
+### 42. Request types come from the schema's input
 
 `requestBody` and `parameters.query` are typed from the schema's input, not its
 output, so a `z.coerce.number()` query parameter accepts the string a URL
@@ -703,7 +754,7 @@ match; where they differ, pass what the endpoint accepts on the wire.
 
 ## `@geekmidas/cloud` {#cloud}
 
-### 42. `fromManifest`'s overrides are typed and required
+### 43. `fromManifest`'s overrides are typed and required
 
 Overrides are `ManifestOverrides<typeof constructs, typeof backends>`: only the
 manifest's ids are keys, each takes what its kind accepts, and what the synth
@@ -723,31 +774,31 @@ fromManifest(
 );
 ```
 
-### 43. `Api.fromManifest`, `Function.fromManifest` and `Cron.fromManifest` are removed
+### 44. `Api.fromManifest`, `Function.fromManifest` and `Cron.fromManifest` are removed
 
 They read the deleted manifest table. `fromManifest` now deploys every
 surface's endpoints, each function and each cron.
 
-### 44. Failures are named classes
+### 45. Failures are named classes
 
 Match on `DokployCallFailed` (with `path`, `status`, `statusText`, `detail`) and
 `RoutesMissingEnvironment` rather than on message text.
 
 ## `@geekmidas/manifest` {#manifest}
 
-### 45. `Manifest`, `ManifestField` and `flattenManifestField` are removed
+### 46. `Manifest`, `ManifestField` and `flattenManifestField` are removed
 
 The manifest is `constructs` and `backends`; see
-[entry 16](#manifest-exports).
+[entry 17](#manifest-exports).
 
-### 46. `appScheme` is removed
+### 47. `appScheme` is removed
 
 A mobile app's scheme is the same on every stage, and `schemeBase(project,
 given?)` is that scheme.
 
 ## `@geekmidas/db` {#db}
 
-### 47. `decodeCursor` throws `InvalidCursor`
+### 48. `decodeCursor` throws `InvalidCursor`
 
 Exported from `@geekmidas/db/pagination`, `/kysely/pagination` and
 `/objection/pagination`. Match on the class instead of a plain `Error`'s
@@ -755,7 +806,7 @@ message.
 
 ## `@geekmidas/events` {#events}
 
-### 48. Topics fan out on pg-boss
+### 49. Topics fan out on pg-boss
 
 A topic's message is published as `<topic>/<type>`, and each subscriber drains
 its own queue `<topic>/<subscriber>`, so every subscriber sees every message.
@@ -765,12 +816,12 @@ waiting in the old per-type queues are not drained after the upgrade.
 `Subscriber.fromConnection(connection, { topic, subscription })` take the new
 options.
 
-### 49. Failures are named classes
+### 50. Failures are named classes
 
 `UnsupportedEventTransport`, `SnsQueueMissing`, `SqsBatchPartlyFailed`,
 `RabbitMQChannelUnavailable` and `PgBossNotStarted` replace plain `Error`s.
 
-### 50. Brokers are drivers, registered by the entry point
+### 51. Brokers are drivers, registered by the entry point
 
 `Publisher`, `Subscriber` and `EventConnectionFactory` no longer load a broker
 by its scheme on their own: each broker is a driver on its own subpath, and a
@@ -790,7 +841,7 @@ const publisher = await Publisher.fromConnectionString(url);
 
 ## `@geekmidas/logger` {#logger}
 
-### 51. `createLogger` redacts by default
+### 52. `createLogger` redacts by default
 
 `createLogger` from `@geekmidas/logger/pino` redacts `DEFAULT_REDACT_PATHS`
 when `redact` is left out. Pass `redact: false` for the old behaviour.
@@ -802,7 +853,7 @@ const logger = createLogger();                  // redacted
 const raw = createLogger({ redact: false });    // as in 9.x
 ```
 
-### 52. pino is an optional peer
+### 53. pino is an optional peer
 
 `Logger` is a structural interface and `ConsoleLogger` needs no pino. Installing
 `@geekmidas/logger` no longer installs pino or pino-pretty; a project importing
@@ -810,7 +861,7 @@ const raw = createLogger({ redact: false });    // as in 9.x
 
 ## `@geekmidas/telescope` {#telescope}
 
-### 53. No dashboard: `createUI` is `createApi`
+### 54. No dashboard: `createUI` is `createApi`
 
 The embedded React UI is gone. `createApi` serves the same JSON routes under
 `/api/*`; the mount point's root and the old dashboard routes now 404.
@@ -824,7 +875,7 @@ import { createApi } from '@geekmidas/telescope/hono';
 app.route('/__telescope', createApi(telescope));
 ```
 
-### 54. Tables moved into a schema and dropped their prefix
+### 55. Tables moved into a schema and dropped their prefix
 
 `telescope_requests`, `telescope_exceptions` and `telescope_logs` are
 `requests`, `exceptions` and `logs` in a schema of their own. Pass
@@ -833,18 +884,18 @@ already pinned to it.
 
 ## `@geekmidas/testkit` {#testkit}
 
-### 55. `faker.internet.email()` is lowercase
+### 56. `faker.internet.email()` is lowercase
 
 `email()` and `exampleEmail()` return lowercase addresses, as Better Auth stores
 them. A test that compared a mixed-case address it generated needs updating.
 
-### 56. Vitest 5 is required
+### 57. Vitest 5 is required
 
 `@geekmidas/testkit` and `@geekmidas/db` declare `vitest ~5.0.2`.
 
 ## Removed packages {#removed-packages}
 
-### 57. `@geekmidas/ui` and `@geekmidas/studio` are no longer published
+### 58. `@geekmidas/ui` and `@geekmidas/studio` are no longer published
 
 Their last versions are `9.0.2` (`latest`) and `10.0.0-alpha.55` (`alpha`); pin
 those to keep using them. Studio's data layer lives on in
@@ -854,7 +905,7 @@ app. `gkm init` writes shadcn/ui components into the web app instead of a
 
 ## Third-party majors {#third-party}
 
-### 58. OpenTelemetry 2, Zod 4.6, Better Auth 1.7
+### 59. OpenTelemetry 2, Zod 4.6, Better Auth 1.7
 
 Dependency ranges were realigned across the repository. The ones that change
 code you may own:

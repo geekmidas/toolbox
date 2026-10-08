@@ -16,6 +16,8 @@
  */
 
 import { stringify } from 'yaml';
+import { LOGS_EMAIL_KEY, LOGS_PASSWORD_KEY } from '../compose/logs.js';
+import { LOGS_RETENTION_DAYS } from '../compose/logsConfig.js';
 import { DEFAULT_IMAGES, portsOf, postgresImage, volumeOf } from './containers';
 import { EMULATOR_REGION } from './emulator';
 import type { ContainerCredentials } from './localCredentials';
@@ -369,6 +371,35 @@ function define(
 					start_period: '10s',
 				},
 			};
+
+		case 'openobserve': {
+			// The compose stack's own service, with the local stage's login and
+			// the default retention — what `gkm compose` on the local stage runs.
+			const login = credentials.logs;
+			return {
+				image,
+				restart: 'unless-stopped',
+				ports: published,
+				environment: {
+					[LOGS_EMAIL_KEY]: login.email,
+					[LOGS_PASSWORD_KEY]: login.password,
+					ZO_DATA_DIR: '/data',
+					ZO_COMPACT_DATA_RETENTION_DAYS: String(LOGS_RETENTION_DAYS),
+					// A local log store does not report home.
+					ZO_TELEMETRY: 'false',
+				},
+				volumes: ['openobserve-data:/data'],
+				// The image has no shell, `wget` or `curl`: its own binary asks the
+				// running server for its status.
+				healthcheck: {
+					test: ['CMD', '/openobserve', 'node', 'status'],
+					interval: '10s',
+					timeout: '5s',
+					retries: 12,
+					start_period: '20s',
+				},
+			};
+		}
 
 		default:
 			throw new UnknownContainer(container);

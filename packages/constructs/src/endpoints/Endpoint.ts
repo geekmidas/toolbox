@@ -25,6 +25,7 @@ import { ConstructType } from '../Construct';
 import type { Authenticator } from '../construct-interface';
 import { Function, type FunctionHandler } from '../functions';
 import type { TopicEvent } from '../publisher';
+import type { EndpointTelemetry } from '../telemetry';
 import type { HttpMethod, LowerHttpMethod, RemoveUndefined } from '../types';
 import type { Authorizer } from './Authorizer';
 import type { ActorExtractor, MappedAudit } from './audit';
@@ -117,6 +118,12 @@ export class Endpoint<
 	 * Content-Type header instead of JSON-serializing.
 	 */
 	public readonly responseType: string;
+
+	/**
+	 * This route's telemetry — `.telemetry({ ignore, attributes })` — read by
+	 * the build, which hands it to the request middleware.
+	 */
+	public telemetry?: EndpointTelemetry;
 	/** Default headers to apply to all responses */
 	public readonly defaultHeaders: Record<string, string> = {};
 	/** Function to extract session data from the request context */
@@ -640,6 +647,7 @@ export class Endpoint<
 		rlsConfig,
 		rlsBypass,
 		responseType,
+		telemetry,
 	}: EndpointOptions<
 		TRoute,
 		TMethod,
@@ -677,6 +685,7 @@ export class Endpoint<
 		this.status = status;
 		this.responseType = responseType ?? 'application/json';
 		this.endpointFn = fn;
+		if (telemetry) this.telemetry = telemetry;
 
 		if (getSession) {
 			this.hasSession = true;
@@ -886,6 +895,8 @@ export interface EndpointOptions<
 	 * Defaults to `'application/json'` when omitted.
 	 */
 	responseType?: string;
+	/** This route's telemetry — `.telemetry({ ignore, attributes })`. */
+	telemetry?: EndpointTelemetry;
 }
 
 /**

@@ -50,7 +50,6 @@ import {
 	projectName,
 } from '../../deploy/identity.js';
 import { DeployJournal } from '../../deploy/journal.js';
-import { otelEnv } from '../../deploy/otel.js';
 import {
 	findProject,
 	type ResolvedProject,
@@ -91,6 +90,16 @@ import { assertStageCredentials } from '../../secrets/credentialSchemas.js';
 import { assertNoStaleSecrets } from '../../secrets/stale.js';
 import { initStageSecrets } from '../../secrets/storage.js';
 import type { StageSecrets } from '../../secrets/types.js';
+import {
+	otlpTelemetryEnv,
+	resolveStageTelemetry,
+} from '../../telemetry/config.js';
+import {
+	appTelemetry,
+	scopeTelemetryEnv,
+	telemetryOf,
+	usesTelemetry,
+} from '../../telemetry/edges.js';
 import { derivedApps } from '../../workspace/derive.js';
 import { getAppBuildOrder, getPublicEnvPrefix } from '../../workspace/index.js';
 import type {
@@ -983,6 +992,23 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 	} = run.provisioned!;
 	const project = { projectId: run.provisioned!.projectId };
 
+	// Where the stage's telemetry goes. Dokploy runs no collector of its own,
+	// so a stage that uses a `Telemetry` node names one (`otlp`) or opts out —
+	// checked when the deploy was validated.
+	const telemetry = resolveStageTelemetry({
+		...(workspace.deploy?.telemetry
+			? { telemetry: workspace.deploy.telemetry }
+			: {}),
+		stage,
+		local: false,
+		target: 'dokploy',
+		runtime: 'server',
+		selfHosted: false,
+		used: usesTelemetry(run.manifest),
+	});
+	const telemetryValues =
+		telemetry?.provider === 'otlp' ? otlpTelemetryEnv(telemetry) : undefined;
+
 	// ==================================================================
 	// MIGRATIONS: before any app is pointed at code that expects them
 	// ==================================================================
@@ -1238,16 +1264,17 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 				// reads its own key inside `@geekmidas/constructs`, so requiring
 				// them would fail every app that declares anything.
 				//
-				// The stage's `OTEL_*` go to every backend, whatever it reads: they
-				// say where its telemetry goes, which no construct declares. A site
-				// never gets them — its environment ends up in a browser bundle.
-				// (`deploy.compose.logs` is the compose target's; it is not read
-				// here.)
-				const withDeclared = {
-					...resolved,
-					...declaredEnv,
-					...otelEnv(stageSecrets?.custom ?? {}, appName),
-				};
+				// The stage's telemetry goes to a backend with an edge to the
+				// `Telemetry` node, named for it, and to no other. A site never
+				// gets it — its environment ends up in a browser bundle.
+				const withDeclared = scopeTelemetryEnv(
+					{ ...resolved, ...declaredEnv },
+					{
+						uses: appTelemetry(run.manifest, appName) !== undefined,
+						serviceName: appName,
+						...(telemetryValues ? { telemetry: telemetryValues } : {}),
+					},
+				);
 
 				// Build env vars string for Dokploy
 				const envVars: string[] = Object.entries(withDeclared).map(
@@ -1367,10 +1394,16 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 				built(worker.name, image, imageRef);
 
 				const env: Record<string, string> = {
-					...Object.fromEntries(
-						Object.entries(declaredEnv).filter(([key]) => keys.includes(key)),
+					...scopeTelemetryEnv(
+						Object.fromEntries(
+							Object.entries(declaredEnv).filter(([key]) => keys.includes(key)),
+						),
+						{
+							uses: telemetryOf(run.manifest, worker.id) !== undefined,
+							serviceName: worker.name,
+							...(telemetryValues ? { telemetry: telemetryValues } : {}),
+						},
 					),
-					...otelEnv(stageSecrets?.custom ?? {}, worker.name),
 					...(credentials ? { GKM_MASTER_KEY: secrets.masterKey } : {}),
 					NODE_ENV: 'production',
 					PORT: String(WORKER_PORT),

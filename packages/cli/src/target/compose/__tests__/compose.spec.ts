@@ -171,6 +171,7 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 			migrations: 'target',
 			images: true,
 			localStage: true,
+			selfHostedTelemetry: true,
 		});
 	});
 
@@ -324,9 +325,11 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 	});
 
 	it('checks the log UI in verify and reports where it is', async () => {
+		// A Telemetry construct switches it on; the local stage takes its port
+		// from GKM_COMPOSE_LOGS_PORT, never from deploy.telemetry.
 		writeComposeApp(dir, {
 			registry: 'registry.example.com/acme',
-			logs: { port: 5099 },
+			telemetry: true,
 		});
 		const fake = fakeDocker();
 		const run = deploy({
@@ -336,6 +339,7 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 			targets: {
 				compose: composeTarget({
 					...quiet(),
+					env: { GKM_COMPOSE_LOGS_PORT: '5099' },
 					docker: fake.docker,
 					probe: answering(fake.calls),
 				}),
@@ -394,7 +398,7 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 	});
 
 	it('fails verify when the log UI never turns healthy', async () => {
-		writeComposeApp(dir, { logs: true });
+		writeComposeApp(dir, { telemetry: true });
 		const fake = fakeDocker();
 		const run = deploy({
 			cwd: dir,

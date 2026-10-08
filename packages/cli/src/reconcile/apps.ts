@@ -24,9 +24,11 @@ import {
 	provideKey,
 	provisionOrder,
 	publicEnvFor,
+	TELEMETRY_KEYS,
 } from '@geekmidas/manifest';
 import { composeBuildPaths } from '../docker/layout.js';
 import { findBuildRoot } from '../docker/templates.js';
+import { appTelemetry, scopeTelemetryEnv } from '../telemetry/edges.js';
 import { appKey } from '../workspace/derive.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import type { ComposeService } from './compose.js';
@@ -256,6 +258,10 @@ export function appEnvKeys(
 	addEdgeKeys(manifest, edges, keys);
 
 	if (declaration.kind === 'site' || declaration.kind === 'mobile-app') {
+		// A site's edge to a `Telemetry` node hands it none of the node's keys:
+		// an exporter's endpoint and headers are a server's, and a site's
+		// environment is a bundle's.
+		for (const key of TELEMETRY_KEYS) keys.delete(key);
 		for (const key of Object.keys(publicEnvFor(declaration, manifest))) {
 			keys.add(key);
 		}
@@ -414,8 +420,17 @@ export function appServices(
 		}
 
 		const allowed = appEnvKeys(manifest, name, runnables);
-		const own = Object.fromEntries(
-			Object.entries(env).filter(([envKey]) => allowed?.has(envKey)),
+		// The local stage's telemetry, named for this app, where it has the
+		// edge — and none of it where it has not.
+		const own = scopeTelemetryEnv(
+			Object.fromEntries(
+				Object.entries(env).filter(([envKey]) => allowed?.has(envKey)),
+			),
+			{
+				uses: appTelemetry(manifest, name) !== undefined,
+				serviceName: name,
+				telemetry: env,
+			},
 		);
 
 		services[key] = {

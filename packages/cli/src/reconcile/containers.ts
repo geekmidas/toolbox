@@ -3,6 +3,8 @@ import {
 	kebabCase,
 	type PostgresVersion,
 } from '@geekmidas/manifest';
+import { OPENOBSERVE_IMAGE } from '../compose/logs.js';
+import { LOGS_PORT } from '../compose/logsConfig.js';
 /**
  * What gkm knows about each container it can derive.
  *
@@ -48,6 +50,8 @@ export const DEFAULT_IMAGES: Readonly<Record<string, string>> = {
 	// and the certificate, not caching, and a caching proxy would add an
 	// invalidation story no local stack needs.
 	caddy: 'caddy:2-alpine',
+	// Telemetry's collector and its UI — the image the compose stack runs.
+	openobserve: OPENOBSERVE_IMAGE,
 };
 
 /** One port an image listens on. */
@@ -101,6 +105,10 @@ const PORTS: Readonly<Record<string, readonly ContainerPort[]>> = {
 	// the privileged port puts that back — at the cost of a port in the URL,
 	// which no cookie or CORS rule looks at.
 	caddy: [{ key: 'caddy', inside: 443, label: 'https edge' }],
+	// OTLP ingest and the UI on one port.
+	openobserve: [
+		{ key: 'openobserve', inside: LOGS_PORT, label: 'openobserve', web: true },
+	],
 };
 
 /**
@@ -228,6 +236,7 @@ export function volumeOf(container: string): string | undefined {
 		// Holds the CA it generated. Losing it means a new root on every start,
 		// and a trust store full of dead authorities.
 		caddy: 'caddy-data',
+		openobserve: 'openobserve-data',
 	};
 
 	return volumes[container];

@@ -244,6 +244,16 @@
 				"default": "./dist/worker.cjs"
 			}
 		},
+		"./telemetry": {
+			"import": {
+				"types": "./dist/telemetry.d.mts",
+				"default": "./dist/telemetry.mjs"
+			},
+			"require": {
+				"types": "./dist/telemetry.d.cts",
+				"default": "./dist/telemetry.cjs"
+			}
+		},
 		"./database/kysely": {
 			"import": {
 				"types": "./dist/database/kysely.d.mts",

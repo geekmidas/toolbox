@@ -25,6 +25,8 @@ import {
 	provideKey,
 	schemeBase,
 } from '@geekmidas/manifest';
+import { LOGS_ORG, otlpHeaders } from '../compose/logs.js';
+import { telemetryEnv } from '../telemetry/config.js';
 import { hostFor } from './caddyfile';
 import { primaryPortKey } from './containers';
 import {
@@ -218,6 +220,20 @@ export function envFor(
 		// it is the stage's own, from its secrets like any value it was given.
 		if (resource.kind === 'external-api' && url && resource.fake) {
 			env[provideKey(resource.id, 'credentials')] = resource.fake.credentials;
+		}
+
+		// Telemetry owns the rest of OpenTelemetry's keys: how to sign in to
+		// OpenObserve, and the sampler — every trace, locally. The service's
+		// name is each process's own, so it is not resolved here.
+		if (resource.kind === 'telemetry' && url) {
+			const login = options.credentials.logs;
+			Object.assign(
+				env,
+				telemetryEnv(
+					{ endpoint: url, headers: otlpHeaders(login.email, login.password) },
+					1,
+				),
+			);
 		}
 
 		// Mail owns a second key. It is the sending identity, which is the one
@@ -609,6 +625,10 @@ function urlFor(
 				password: localRolePassword(project, plan, role, credential.seed),
 			});
 		}
+
+		case 'telemetry':
+			// OpenObserve takes OTLP/HTTP under its organisation's API.
+			return `http://${LOCAL_HOST}:${port}/api/${LOGS_ORG}`;
 
 		case 'email':
 			// The same scheme the deployed target writes; only host and credentials

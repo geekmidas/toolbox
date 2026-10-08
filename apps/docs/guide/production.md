@@ -13,9 +13,11 @@ once it does. Each section is short; follow the links for the detail.
 - [ ] Deploy state is in a shared store (SSM or S3), not on one laptop
       ([State](#state)).
 - [ ] Every backend answers `GET /health` ([Health checks](#health-checks)).
-- [ ] `OTEL_EXPORTER_OTLP_ENDPOINT` points at a collector — or, on
-      `gkm compose`, `deploy.compose.logs` runs one ([Logs](#logs)) — and
-      `@geekmidas/telescope` is installed in each app ([Telemetry](#telemetry)).
+- [ ] Each surface and worker is given the `Telemetry` construct, its app has
+      `@geekmidas/telescope` and the OpenTelemetry packages, and
+      `deploy.telemetry` says where each deployed stage sends it — on
+      `gkm compose` it runs OpenObserve when nothing is named
+      ([Telemetry](#telemetry), [Logs](#logs)).
 - [ ] Logs are redacted (the default) ([Logging](#logging)).
 - [ ] The platform's stop timeout is longer than `GKM_SHUTDOWN_TIMEOUT_MS`
       ([Graceful shutdown](#graceful-shutdown)).
@@ -345,27 +347,35 @@ MinIO, as an API does.
 
 ## Telemetry
 
-`gkm build --production` writes a `telemetry.ts` beside `server.ts`. The server
-starts telemetry before it imports the app, so the libraries the app loads are
-instrumented.
+A process exports telemetry when it is given the
+[`Telemetry` construct](./telemetry.md) — a `RestApi`, a `BetterAuth` server
+or a `Worker` takes it like its logger. That is an edge in the manifest, and
+it decides three things: the build of that process starts the OpenTelemetry
+SDK, the build fails without the packages it needs, and the deploy hands that
+process — and no other — the `OTEL_*` keys its stage resolves. A process
+without the edge gets a stub that loads nothing.
 
-It does nothing unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set. When it is, it
-loads `@geekmidas/telescope/instrumentation` and starts the OpenTelemetry SDK
+`gkm build --production` writes a `telemetry.ts` beside `server.ts` (and each
+worker's `worker.ts`). The server starts telemetry before it imports the app,
+so the libraries the app loads are instrumented. It does nothing unless
+`OTEL_EXPORTER_OTLP_ENDPOINT` is set — a stage that opted out, or `gkm test`.
+When it is, it loads `@geekmidas/telescope/instrumentation` and starts the SDK
 with:
 
-- `service.name`: the surface's id, or the app directory's name;
-- `service.namespace`: the workspace name;
+- `service.name`: the surface's or worker's id — `OTEL_SERVICE_NAME`, the
+  app's name, overrides it;
+- `service.namespace`: the workspace name, and the construct's `attributes`;
 - `deployment.environment.name` (and the older `deployment.environment`): the
   `STAGE` the deploy sets on every app.
 
-Everything else comes from the standard variables:
+The deploy sets the rest, for each process with the edge:
 
-| Variable | What it does |
+| Variable | Value |
 | --- | --- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Collector base URL. Traces go to `/v1/traces`, logs to `/v1/logs`. Turns telemetry on. |
-| `OTEL_EXPORTER_OTLP_HEADERS` | Headers for the exporter, e.g. an API key. |
-| `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` | Sampling, e.g. `parentbased_traceidratio` and `0.1`. The rate also caps a caller's sampled flag: a request cannot force a trace the stage would not keep. |
-| `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` | Override or add resource attributes. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | The provider's base URL. Traces go to `/v1/traces`, logs to `/v1/logs`. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Its login or headers. |
+| `OTEL_SERVICE_NAME` | The app's name. |
+| `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` | `parentbased_traceidratio`, and the stage's `sampleRate` (1 by default). The rate also caps a caller's sampled flag: a request cannot force a trace the stage would not keep. |
 
 ### What is exported
 
@@ -410,11 +420,12 @@ time rather than bundled: outbound `fetch`, DNS and TCP, and the runtime's
 metrics. A query also still carries its request's `request_id` in its SQL
 comment.
 
-Install `@geekmidas/telescope` and its `@opentelemetry/*` peer dependencies in
-each app that should export. The build checks they resolve. If they do not,
-the entry contains no telemetry import, and a server started with the endpoint
-set emits a `TelemetryUnavailable` warning and runs without telemetry. A
-telemetry failure never stops the server.
+An app whose process has the edge needs `@geekmidas/telescope` and its
+`@opentelemetry/*` peer dependencies. The build checks they resolve, and fails
+with `TelemetryPackagesMissing` — naming the app and the `pnpm --dir <app> add …`
+that fixes it — when one does not. If a package is gone at run time anyway,
+the server emits a `TelemetryUnavailable` warning and runs without telemetry:
+a telemetry failure never stops the server.
 
 If you call `setupTelemetry` yourself, it also takes `sampleRatio` (0–1, a
 parent-based trace-id ratio; outside that range throws `InvalidSampleRatio`),
@@ -422,34 +433,43 @@ parent-based trace-id ratio; outside that range throws `InvalidSampleRatio`),
 
 ### Where the telemetry goes
 
-Every deploy target hands each backend the `OTEL_*` variables the stage's
-secrets hold — the exporter's
-`OTEL_EXPORTER_OTLP_{ENDPOINT,HEADERS,PROTOCOL,TIMEOUT,COMPRESSION}` (for all
-signals, or one: `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`), `OTEL_TRACES_SAMPLER`,
-`OTEL_TRACES_SAMPLER_ARG`, `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_SERVICE_NAME`,
-which defaults to the app's name. They are matched by pattern rather than by
-the bare `OTEL_` prefix, so a stray `OTEL_LOG_LEVEL=debug` is not forwarded.
-Values are secrets, masked in output. Sites never get them: a site's
-environment ends up in a bundle every browser downloads, and an exporter's
-headers are a credential.
+Where is the stage's, in `deploy.telemetry` — never the application's:
 
-```bash
-gkm secrets:set OTEL_EXPORTER_OTLP_ENDPOINT 'https://otlp.example.com' --stage production
-gkm secrets:set OTEL_EXPORTER_OTLP_HEADERS 'x-api-key=…' --stage production
+```ts
+deploy: {
+  telemetry: {
+    staging: 'self-hosted',
+    production: { provider: 'self-hosted', sampleRate: 0.1 },
+    preview: { provider: 'otlp', endpoint: 'https://otlp.example.com' },
+    scratch: false,
+  },
+}
 ```
 
-That is all a hosted backend — Grafana Cloud, Honeycomb, your own collector —
-needs, on Dokploy and on `gkm compose` alike.
+- **`self-hosted`** — the target runs OpenObserve beside the apps. `gkm
+  compose` does, and uses it for a stage that names nothing ([Logs](#logs)).
+- **`otlp`** — any OTLP/HTTP endpoint — Grafana Cloud, Honeycomb, your own
+  collector — with its `headers`.
+- **`false`** — nothing is sent.
+
+Dokploy runs no collector yet, and AWS has none, so a deployed stage there
+that uses the construct names `otlp` or `false`; otherwise the deploy fails
+before anything is built with `TelemetryProviderRequired`, and asking either
+for `self-hosted` fails with `SelfHostedTelemetryUnavailable`. The stage's own
+`OTEL_*` secrets are not passed to anything. Sites never get these keys: a
+site's environment ends up in a bundle every browser downloads, and an
+exporter's headers are a credential. The [Telemetry guide](./telemetry.md)
+has the rest.
 
 ## Logs
 
-With no hosted backend, a `gkm compose` stack can run its own log UI:
-`deploy.compose.logs: true` adds [OpenObserve](https://openobserve.ai) to the
-stack and points every backend at it. In short:
+On `gkm compose`, the self-hosted provider runs [OpenObserve](https://openobserve.ai)
+in the stack and points each process with the `Telemetry` edge at it. In
+short:
 
-- **Enable it** in `gkm.config.ts`: `deploy: { compose: { logs: true } }`, or
-  `{ port, retentionDays, public: { allow } }`. Data is kept 30 days by
-  default (`retentionDays`, at least 3).
+- **Options** are the provider's, per stage:
+  `{ provider: 'self-hosted', port, retentionDays, public: { allow }, sampleRate }`.
+  Data is kept 30 days by default (`retentionDays`, at least 3).
 - **Reach it through an SSH tunnel.** It is published on `127.0.0.1:5080` of
   the server and nowhere else; `gkm compose` prints the
   `ssh -N -L 5080:localhost:5080 <user>@<host>` line to run, and the login.
@@ -464,17 +484,10 @@ stack and points every backend at it. In short:
 - **Public, to some addresses**: `public: { allow: ['203.0.113.7'] }` serves
   it at `https://logs.<stage domain>` through the stack's edge, refusing every other
   address with 403, and publishes no port.
-- **Or a hosted backend**: leave `logs` off and set the `OTEL_*` variables
-  above in the stage's secrets. Setting both fails with
-  `LogsEndpointConflict`.
 
 The root password is generated on the first run and kept in the stage's
 secrets as `ZO_ROOT_USER_PASSWORD`. Every detail, and the tunnel and Tailscale
-examples, is in [Deploy with Docker Compose → Logs](./compose.md#logs).
-
-Dokploy runs no log UI: `deploy.compose.logs` is the compose target's alone,
-and a Dokploy deploy never reads it. Its backends get the stage's `OTEL_*`
-variables as above, so point those at a backend you run or rent.
+examples, is in [Deploy with Docker Compose → Telemetry](./compose.md#telemetry).
 
 Every `gkm compose` service's Docker logs are rotated (`json-file`, 3 × 10 MB),
 so a container's output never fills the disk.

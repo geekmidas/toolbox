@@ -22,6 +22,8 @@ import type {
 	DeployPhaseContext,
 	DeployTargetLogger,
 } from '../target/types';
+import { resolveStageTelemetry } from '../telemetry/config';
+import { usesTelemetry } from '../telemetry/edges';
 import { derivedApps } from '../workspace/derive.js';
 import { getAppBuildOrder } from '../workspace/index.js';
 import { assertDeployedStage } from '../workspace/stages.js';
@@ -352,6 +354,21 @@ async function prepare(
 		runnables,
 		background,
 	});
+	// Where the stage's telemetry goes, settled before anything is built: a
+	// stage that uses a `Telemetry` node on a target that cannot choose for it
+	// — AWS has no self-hosted provider — fails here, naming the config.
+	resolveStageTelemetry({
+		...(configured.deploy?.telemetry
+			? { telemetry: configured.deploy.telemetry }
+			: {}),
+		stage,
+		local,
+		target: targetName,
+		runtime: resolved.target.runtime,
+		selfHosted: resolved.target.capabilities.selfHostedTelemetry === true,
+		used: usesTelemetry(manifest),
+	});
+
 	const units = derivedApps(manifest, configured);
 	const workspace: NormalizedWorkspace =
 		Object.keys(units).length > 0 ? { ...configured, apps: units } : configured;

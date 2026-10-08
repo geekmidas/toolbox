@@ -54,8 +54,9 @@ and the hosts they answer on all come from what the workspace declares.
   app starts. Nothing needs setting — no bucket URL, no mail server. A
   deployed stage brings its own; see
   [Mail and storage on a deployed stage](#mail-and-storage-on-a-deployed-stage).
-- **OpenObserve, when asked for** (`deploy.compose.logs`), receiving every
-  backend's logs and traces — see [Logs](#logs).
+- **OpenObserve, when a process uses a `Telemetry` construct** and the
+  stage's telemetry is self-hosted, receiving the logs and traces of every
+  process with an edge to it — see [Telemetry](#telemetry).
 - **One Caddy**, one host per app — and one per file server over the stack's
   MinIO (`https://uploadsserver.<project>.localhost` locally), rewriting to its
   bucket the way `gkm dev`'s edge does. With `proxy: 'traefik'` the stack runs
@@ -315,7 +316,7 @@ traefik.yml          a copy of what the stack registers with the edge (proxy: 't
 tls/                 the stage's own certificate, where it sets one (proxy: 'caddy')
 api.env              one env file per backend, mode 0600
 auth.env
-openobserve.env      with deploy.compose.logs: its root login, mode 0600
+openobserve.env      with self-hosted telemetry: its root login, mode 0600
 redis.env            with a cache: the Redis password, mode 0600
 Dockerfile.api       when building
 caddy-root.crt       the local stage's CA root
@@ -337,8 +338,9 @@ provides — resolved for the stage:
   the stack's Redis;
 - `PORT`, `STAGE` and `NODE_ENV=production`;
 - its secrets and credentials, from the stage's secrets store;
-- the stage's `OTEL_*` telemetry settings, or the stack's OpenObserve — see
-  [Logs](#logs).
+- for a process with an edge to a `Telemetry` construct, the stage's
+  `OTEL_*` keys — the stack's OpenObserve, or the provider
+  `deploy.telemetry` names — see [Telemetry](#telemetry).
 
 A secret an app does not read is never written to its file. Images stay
 stage-agnostic: no secret is baked into one. Compose reads the files raw, so
@@ -438,8 +440,8 @@ deploy user's gkm home, so nothing needs root:
 
 - **The network.** The edge and the stacks meet on the external Docker
   network `gkm-edge`. Only a stack's public services join it — its APIs, its
-  sites, MinIO when a file server routes to it, and OpenObserve when its logs
-  are public. Postgres, Redis and the workers stay on the stack's own network.
+  sites, MinIO when a file server routes to it, and OpenObserve when it is served
+  publicly. Postgres, Redis and the workers stay on the stack's own network.
 - **Names.** On a shared network every stack's `api` would answer to `api`,
   so each public service is reached by an alias prefixed with its project —
   `shop-production-api` — by the edge and by the rest of its own stack alike:
@@ -650,20 +652,29 @@ gkm secrets:set SESSIONS_URL 'rediss://default:…@cache.example.com:6380' --sta
 This is the compose target's alone. `gkm dev`, `gkm test` and Dokploy keep the
 target's default — a table in the declared database on a server target.
 
-## Logs
+## Telemetry
 
-Every backend's production server exports its traces and pino logs over
-OTLP/HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (see
-[Telemetry](./production.md#telemetry)). The stack can run somewhere to send
-them: [OpenObserve](https://openobserve.ai), opted into in `gkm.config.ts`:
+What a process emits is the application's — a [`Telemetry`
+construct](./telemetry.md) passed to its surfaces and workers. Where it goes
+is the stage's, in `deploy.telemetry`. The [Telemetry guide](./telemetry.md)
+has the whole model; this is what a compose stack does with it.
+
+A stage that names nothing runs the **self-hosted** provider:
+[OpenObserve](https://openobserve.ai), in the stack. Its options are the
+provider's, per stage:
 
 ```ts
 deploy: {
-  compose: {
-    logs: true,
-    // or:
-    // logs: { port: 5080, retentionDays: 30 },
-    // logs: { public: { allow: ['203.0.113.7', '10.0.0.0/8'] } },
+  telemetry: {
+    production: {
+      provider: 'self-hosted',
+      port: 5080,          // published on 127.0.0.1 only
+      retentionDays: 30,   // at least 3
+      sampleRate: 0.1,     // the fraction of traces kept
+      // public: { allow: ['203.0.113.7', '10.0.0.0/8'] },
+    },
+    preview: { provider: 'otlp', endpoint: 'https://otlp.example.com' },
+    scratch: false,
   },
 }
 ```
@@ -672,7 +683,13 @@ deploy: {
 | --- | --- | --- |
 | `port` | `5080` | the port it is published on — on `127.0.0.1` only |
 | `retentionDays` | `30` | days of data kept (OpenObserve's `ZO_COMPACT_DATA_RETENTION_DAYS`); at least 3, which is OpenObserve's own minimum |
-| `public.allow` | — | serve it through Caddy instead, to these IPs and CIDRs only |
+| `public.allow` | — | serve it through the edge instead, to these IPs and CIDRs only |
+| `sampleRate` | `1` | `OTEL_TRACES_SAMPLER_ARG`, with `parentbased_traceidratio` |
+
+The local stage ignores `deploy.telemetry`: `gkm compose --stage <local>`
+always runs OpenObserve on `127.0.0.1:5080`, keeping every trace.
+`GKM_COMPOSE_LOGS_PORT` moves it to another port, for a machine where 5080 is
+taken.
 
 With it on, the stack adds:
 
@@ -680,20 +697,26 @@ With it on, the stack adds:
   version), its data in the `openobserve-data` volume — kept by
   `gkm compose --down`, as every volume is — with a health check and
   `restart: unless-stopped`. Its anonymous usage reporting is off;
-- in every backend's env file, `OTEL_EXPORTER_OTLP_ENDPOINT=http://openobserve:5080/api/default`
-  and `OTEL_EXPORTER_OTLP_HEADERS` signing in as its root user, and
-  `OTEL_SERVICE_NAME` set to the app's name. Sites get none of it;
+- in the env file of each process with an edge to the `Telemetry`
+  construct, `OTEL_EXPORTER_OTLP_ENDPOINT=http://openobserve:5080/api/default`,
+  `OTEL_EXPORTER_OTLP_HEADERS` signing in as its root user,
+  `OTEL_SERVICE_NAME` set to the app's name, and `OTEL_TRACES_SAMPLER` /
+  `OTEL_TRACES_SAMPLER_ARG` from the stage's rate. A process without the
+  edge gets none of it, and sites get none;
 - a check of its health in `verify`, beside the apps, and a `logs.ready`
   event saying where it is.
 
 Nothing waits on it: an app whose telemetry cannot be delivered still serves.
 
+The stage's own `OTEL_*` secrets are never passed to a backend; to send
+somewhere else, name the provider — `{ provider: 'otlp', endpoint, headers }`.
+
 What arrives, each under its app's `service.name`: a SERVER span per request
 (`GET /users/:id`, with its status code), every record a `createLogger` logger
-writes — in the trace of the request that wrote it, so a log line leads to its
-request and back — the spans of outbound `fetch`, DNS and TCP, and the
-runtime's metrics. Query spans do not arrive yet: `pg` is bundled into the
-server. [Telemetry → What is exported](./production.md#what-is-exported) has
+writes — in the trace of the request that wrote it — the spans the constructs
+record (queries, cache, storage, mail, external API calls), a queue job in
+the trace of the request that sent it, and the spans of outbound `fetch`, DNS
+and TCP. [Telemetry → What is exported](./production.md#what-is-exported) has
 the detail.
 
 The root user is `admin@<stage domain>` on a deployed stage. Its password is
@@ -706,10 +729,6 @@ alongside `gkm dev`'s other local logins; `gkm dev:credentials` prints it. Set
 choose your own; a password OpenObserve would refuse (8–128 characters, with a
 lowercase and an uppercase letter, a digit and a symbol) fails with
 `LogsPasswordWeak`.
-
-A stage that already sets `OTEL_EXPORTER_OTLP_ENDPOINT` (or its headers, or a
-per-signal endpoint) fails with `LogsEndpointConflict`: each backend sends its
-telemetry to one place. Remove `logs`, or remove those keys from the stage.
 
 ### Reaching it: an SSH tunnel
 
@@ -763,11 +782,12 @@ Everyone on the tailnet opens `http://<machine's tailnet name>:5080`.
 ### Public, to some addresses
 
 ```ts
-logs: { public: { allow: ['203.0.113.7', '10.0.0.0/8'] } }
+telemetry: {
+  production: { provider: 'self-hosted', public: { allow: ['203.0.113.7', '10.0.0.0/8'] } },
+}
 ```
 
-serves it through the stack's edge at `https://logs.<stage domain>` (locally
-`https://logs.<project>.localhost`, from Caddy's local CA), with a certificate
+serves it through the stack's edge at `https://logs.<stage domain>`, with a certificate
 like every other host. Caddy answers only the listed addresses — matched on
 the connection's own address, never a header — and every other gets 403. No
 host port is published. `allow` must name at least one address; an empty one
@@ -778,27 +798,30 @@ did the apps' hosts.
 ### A hosted OTLP backend instead
 
 To send telemetry somewhere else — Grafana Cloud, Honeycomb, your own
-collector — leave `logs` off and set the standard variables in the stage's
-secrets:
+collector — name it as the stage's provider; the stack then runs no
+OpenObserve:
 
-```bash
-gkm secrets:set OTEL_EXPORTER_OTLP_ENDPOINT 'https://otlp.example.com' --stage production
-gkm secrets:set OTEL_EXPORTER_OTLP_HEADERS 'x-api-key=…' --stage production
+```ts
+deploy: {
+  telemetry: {
+    production: {
+      provider: 'otlp',
+      endpoint: 'https://otlp.example.com',
+      headers: { 'x-team': 'shop' },
+      sampleRate: 0.1,
+    },
+  },
+}
 ```
 
-Every backend's env file gets each of these the stage sets — the exporter's
-`OTEL_EXPORTER_OTLP_{ENDPOINT,HEADERS,PROTOCOL,TIMEOUT,COMPRESSION}`, for all
-signals or one (`OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`), `OTEL_TRACES_SAMPLER`,
-`OTEL_TRACES_SAMPLER_ARG`, `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_SERVICE_NAME`
-(the app's name, unless set) — whatever the app's constructs declare. Other
-`OTEL_*` keys are not passed. Sites get none: their environment is in a
-bundle every browser downloads. The Dokploy target hands its backends the
-same keys.
+Each process with an edge gets the endpoint, the headers (as
+`OTEL_EXPORTER_OTLP_HEADERS`), its own `OTEL_SERVICE_NAME` and the sampler.
+Sites get none: their environment is in a bundle every browser downloads.
 
 ### Docker's own logs are rotated
 
 Every service in the stack — apps, Caddy, Postgres, Redis, Mailpit, MinIO and
-OpenObserve — has its Docker logs rotated, whether or not `logs` is on:
+OpenObserve — has its Docker logs rotated, whether or not it runs OpenObserve:
 
 ```yaml
 logging:

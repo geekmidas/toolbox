@@ -53,6 +53,8 @@ export type {
 	RestApiEndpoint,
 	SecretDeclaration,
 	SiteDeclaration,
+	TelemetryDeclaration,
+	TelemetryKey,
 	TopicDeclaration,
 	WorkerDeclaration,
 } from './declaration';
@@ -60,6 +62,7 @@ export {
 	DEFAULT_POSTGRES_VERSION,
 	DERIVES_FROM,
 	PUBLIC,
+	TELEMETRY_KEYS,
 } from './declaration';
 export {
 	assertDerivations,
