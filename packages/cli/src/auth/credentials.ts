@@ -23,6 +23,12 @@ export interface StoredCredentials {
 		/** When the credentials were stored */
 		storedAt: string;
 	};
+	godaddy?: {
+		/** A Personal Access Token, scoped to domains.dns:update */
+		token: string;
+		/** When the credentials were stored */
+		storedAt: string;
+	};
 }
 
 /**
@@ -302,6 +308,44 @@ export async function removeHostingerCredentials(
 	}
 
 	delete credentials.hostinger;
+	await writeCredentials(credentials, options);
+	return true;
+}
+
+// ============================================
+// GoDaddy credentials
+// ============================================
+
+/**
+ * Store a GoDaddy Personal Access Token.
+ */
+export async function storeGoDaddyToken(
+	token: string,
+	options?: CredentialOptions,
+): Promise<void> {
+	const credentials = await readCredentials(options);
+
+	credentials.godaddy = {
+		token,
+		storedAt: new Date().toISOString(),
+	};
+
+	await writeCredentials(credentials, options);
+}
+
+/**
+ * Remove GoDaddy credentials
+ */
+export async function removeGoDaddyCredentials(
+	options?: CredentialOptions,
+): Promise<boolean> {
+	const credentials = await readCredentials(options);
+
+	if (!credentials.godaddy) {
+		return false;
+	}
+
+	delete credentials.godaddy;
 	await writeCredentials(credentials, options);
 	return true;
 }

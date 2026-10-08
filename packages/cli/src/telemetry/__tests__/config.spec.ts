@@ -198,7 +198,10 @@ describe('the sampler env', () => {
 describe('deploy.telemetry in gkm.config.ts', () => {
 	const config = (telemetry: unknown) => ({
 		name: 'shop',
-		stages: { local: 'development', deployed: ['production'] },
+		stages: {
+			local: 'development',
+			deployed: ['production', 'a', 'b', 'c', 'd'],
+		},
 		apps: { api: { type: 'backend', path: 'apps/api', port: 3000 } },
 		deploy: { telemetry },
 	});

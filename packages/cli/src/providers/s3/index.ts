@@ -617,7 +617,7 @@ async function ensureBucketSettings(
 	});
 	if (unresolved.length > 0) {
 		ctx.log(
-			`   ${unresolved.join(', ')} ${unresolved.length === 1 ? 'has' : 'have'} no address on '${ctx.stage}' (deploy.domains.${ctx.stage}), so ${unresolved.length === 1 ? 'is' : 'are'} not in '${bucket}''s CORS`,
+			`   ${unresolved.join(', ')} ${unresolved.length === 1 ? 'has' : 'have'} no address on '${ctx.stage}' (domains.${ctx.stage}), so ${unresolved.length === 1 ? 'is' : 'are'} not in '${bucket}''s CORS`,
 		);
 	}
 	if (origins.length === 0) return;

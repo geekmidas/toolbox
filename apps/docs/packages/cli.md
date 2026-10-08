@@ -891,6 +891,9 @@ gkm login --provider dokploy
 
 # Login to Hostinger DNS
 gkm login --provider hostinger
+
+# Login to GoDaddy DNS — a Personal Access Token with only domains.dns:update
+gkm login --provider godaddy
 ```
 
 **Providers:**
@@ -899,6 +902,7 @@ gkm login --provider hostinger
 |----------|-------------|
 | `dokploy` | API endpoint + token |
 | `hostinger` | API token from hPanel |
+| `godaddy` | Personal Access Token (`domains.dns:update`), or `GODADDY_API_TOKEN` |
 
 ::: info Route53 Authentication
 Route53 uses the AWS default credential chain. No login command is required. Configure credentials via:
@@ -950,26 +954,24 @@ export default defineWorkspace({
 
   constructs: './constructs/**/*.ts',
 
+  // Each deployed stage's base domain — read by every target, not only
+  // Dokploy. The root site answers on it; every other surface on
+  // `{subdomain}.{domain}`. Typed from stages.deployed.
+  domains: {
+    prod: 'myapp.com',
+  },
+  // Who hosts each root domain's DNS.
+  dns: {
+    'myapp.com': { provider: 'route53', profile: 'production' },
+  },
 
   deploy: {
     default: 'dokploy',
-    // Each deployed stage's base domain — read by every target, not only
-    // Dokploy. The root site answers on it; every other surface on
-    // `{subdomain}.{domain}`.
-    domains: {
-      production: 'myapp.com',
-      staging: 'staging.myapp.com',
-    },
     // Where every target pushes and pulls the apps' images.
     registry: 'ghcr.io/myorg',
     dokploy: {
       endpoint: 'https://dokploy.myserver.com',
       projectId: 'proj_abc123',
-    },
-    dns: {
-      provider: 'route53',
-      domain: 'myapp.com',
-      profile: 'production',  // Optional: AWS profile name
     },
   },
 
@@ -1078,5 +1080,6 @@ thing at all.
 |----------|-------|
 | `route53` | AWS credential chain (or `profile` config) |
 | `hostinger` | `gkm login --provider hostinger` |
+| `godaddy` | `GODADDY_API_TOKEN` or `gkm login --provider godaddy` (10+ domains on the account) |
 | `cloudflare` | Coming soon |
 | `manual` | Prints required records |

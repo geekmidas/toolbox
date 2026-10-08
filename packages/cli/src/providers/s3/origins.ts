@@ -24,7 +24,7 @@ import { appKey } from '../../workspace/derive.js';
 import type { NormalizedWorkspace } from '../../workspace/types.js';
 
 export interface BucketOriginsInput {
-	workspace: Pick<NormalizedWorkspace, 'apps' | 'deploy'>;
+	workspace: Pick<NormalizedWorkspace, 'apps' | 'deploy' | 'domains'>;
 	manifest: ConstructManifest;
 	/** Each owner's runnables' edges, from discovery. */
 	runnables?: Readonly<Record<string, readonly string[]>>;
@@ -86,7 +86,7 @@ export function bucketOrigins(input: BucketOriginsInput): BucketOrigins {
 				name,
 				app,
 				stage,
-				workspace.deploy?.domains,
+				workspace.domains,
 				isMainFrontendApp(name, app, workspace.apps),
 			);
 			origins.add(`https://${host}`);

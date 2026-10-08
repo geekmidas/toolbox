@@ -46,32 +46,36 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
   name: 'my-saas',
-  stages: { local: 'dev', deployed: ['prod'] },
+  // The deployed stages type every per-stage map below: `domains: { qa: … }`
+  // is a type error until `qa` is deployed.
+  stages: { local: 'dev', deployed: ['prod', 'staging'] },
 
   // Where the constructs live. The apps come from them: a `StaticSite` is an
   // app, and so is every `RestApi`. Each one is its own deploy unit — one
   // container, one domain, and nothing to opt into.
   constructs: './constructs/**/*.ts',
 
+  // Each deployed stage's base domain — read by every target and command.
+  // The root site answers on it; every other surface on
+  // `{subdomain}.{domain}`.
+  domains: {
+    prod: 'myapp.com',
+    staging: 'staging.myapp.com',
+  },
+
+  // Who hosts each root domain's DNS, so gkm can write its records.
+  dns: {
+    'myapp.com': { provider: 'route53' },
+  },
+
   deploy: {
     default: 'dokploy',
-    // Each deployed stage's base domain — read by every target, not only
-    // Dokploy. The root site answers on it; every other surface on
-    // `{subdomain}.{domain}`.
-    domains: {
-      production: 'myapp.com',
-      staging: 'staging.myapp.com',
-    },
     // Whose deploy this is, on a server other workspaces share (optional).
     namespace: 'myorg',
     // Where every target pushes and pulls the apps' images.
     registry: 'ghcr.io/myorg',
     dokploy: {
       endpoint: 'https://dokploy.myserver.com',
-    },
-    dns: {
-      provider: 'route53',
-      domain: 'myapp.com',
     },
   },
 
@@ -84,7 +88,7 @@ export default defineWorkspace({
 
 ```bash
 # Deploy to production
-gkm deploy --stage production
+gkm deploy --stage prod
 ```
 
 ---
@@ -334,89 +338,150 @@ See [Deploy state](./state.md) for the providers, locks, the journal,
 
 ## DNS Providers
 
-Automatically configure DNS records for your deployed applications.
+`dns`, at the root of `gkm.config.ts`, says who hosts each root domain's DNS,
+so gkm can point the stage's hosts at the server:
 
-### Route53Provider
-
-AWS Route 53 DNS management.
-
-```typescript
-// gkm.config.ts
-export default defineWorkspace({
-  stages: { local: 'dev', deployed: ['prod'] },
-  deploy: {
-    dns: {
-      provider: 'route53',
-      domain: 'myapp.com',        // Required - root domain
-      region: 'us-east-1',        // Optional, uses AWS_REGION env var
-      profile: 'production',      // Optional, AWS profile from ~/.aws/credentials
-      hostedZoneId: 'Z123...',    // Optional, auto-detected from domain
-      ttl: 300,                   // Optional, default 300
-    },
-  },
-});
-```
-
-**Features:**
-- Auto-detects hosted zone from domain name
-- Batch processes records (up to 1000 per request)
-- Idempotent - skips existing records with same value
-- Supports: A, AAAA, CNAME, MX, TXT, SRV, CAA
-
-**Authentication:** Uses AWS default credential chain (no login command required):
-- Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`)
-- Shared credentials file (`~/.aws/credentials`)
-- AWS profile via `profile` config option
-- IAM role (EC2, ECS, Lambda)
-
-### HostingerProvider
-
-Hostinger DNS management.
+- **Dokploy** writes an A record for each app's host on every deploy, pointing
+  at the Dokploy server (resolved from its endpoint).
+- **Compose** writes them from `gkm setup --stage <stage>`, pointing at the
+  server in the stage's secrets (`GKM_SERVER_IPV4`) — see
+  [the compose guide](./compose.md#dns).
 
 ```typescript
 // gkm.config.ts
 export default defineWorkspace({
   stages: { local: 'dev', deployed: ['prod'] },
-  deploy: {
-    dns: {
-      provider: 'hostinger',
-      domain: 'myapp.com',        // Required - root domain
-      ttl: 300,                   // Optional, default 300
-    },
+  domains: { prod: 'myapp.com' },
+  dns: {
+    'myapp.com': { provider: 'godaddy' },
+    'myapp.dev': { provider: 'route53', region: 'us-east-1' },
   },
 });
 ```
 
-**Setup:**
-1. Get API token from Hostinger hPanel profile
-2. Store with `gkm login --provider hostinger`
+Keyed by root domain; a host is matched to the longest one it is under.
+`dns` and `domains` used to live under `deploy` — a config that still has
+`deploy.dns` or `deploy.domains` fails to load with `DnsMoved` or
+`DomainsMoved`, which show the same value at the root.
 
-### Manual DNS
+gkm only ever writes the **A**, **AAAA** and **CNAME** records of the hosts
+the stack serves. Mail (MX), verification (TXT), NS and SOA records, and every
+other name, are never touched.
 
-For externally managed domains:
+### GoDaddy
 
 ```typescript
-// gkm.config.ts
-export default defineWorkspace({
-  stages: { local: 'dev', deployed: ['prod'] },
-  deploy: {
-    dns: {
-      provider: 'manual',
-      domain: 'myapp.com',        // Required - root domain
-    },
+dns: {
+  'myapp.com': {
+    provider: 'godaddy',
+    ttl: 600,                     // Optional — GoDaddy's minimum, and the default
   },
-});
+},
 ```
 
-The CLI will display required DNS records for manual configuration.
+gkm uses GoDaddy's v1 records API one name and type at a time —
+`GET` and `PUT /v1/domains/{domain}/records/{type}/{name}` — and never the
+calls that replace a whole zone or every record of a type. A record that
+already has the right value is not written.
+
+**Credentials:** a Personal Access Token, from the machine that runs
+`gkm setup` or the deploy — never the server.
+
+1. In the GoDaddy developer dashboard, create a Personal Access Token with
+   **only the `domains.dns:update` scope**. No domain or account scope is
+   needed.
+2. Set `GODADDY_API_TOKEN`, or store it with `gkm login --provider godaddy`.
+
+A token that may update records and not read them still works: gkm writes
+every record — a `PUT` is idempotent — and says it could not compare them
+first, and a dry run lists the records with "current value unknown".
+
+**GoDaddy's API restriction.** GoDaddy only opens its Domains and DNS APIs to
+accounts with **10 or more domains**, or with a Discount Domain Club Premier
+membership. A valid token on a smaller account is refused with
+`403 ACCESS_DENIED`, which gkm reports as `GoDaddyApiAccessDenied`. The
+alternatives: move the domain's DNS hosting to Route53 or Cloudflare (change
+its nameservers at GoDaddy, keep the registration there), or use
+`provider: 'manual'` and create the records gkm prints.
+
+The other failures are named too: `GoDaddyScopeMissing` (the token lacks
+`domains.dns:update`), `GoDaddyCredentialsInvalid` (401),
+`GoDaddyDomainNotFound` (the domain is not in the token's account), and
+`GoDaddyRateLimited` — GoDaddy allows about 60 requests a minute, and gkm
+waits out a 429's `retryAfterSec` a few times before giving up.
+
+### Route53
+
+```typescript
+dns: {
+  'myapp.com': {
+    provider: 'route53',
+    region: 'us-east-1',        // Optional, uses AWS_REGION env var
+    profile: 'production',      // Optional, AWS profile from ~/.aws/credentials
+    hostedZoneId: 'Z123...',    // Optional, auto-detected from domain
+    ttl: 300,                   // Optional, default 300
+  },
+},
+```
+
+**Authentication:** the AWS default credential chain (no login command):
+`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `~/.aws/credentials`, the
+`profile` option, or an IAM role.
+
+### Hostinger
+
+```typescript
+dns: {
+  'myapp.com': { provider: 'hostinger', ttl: 300 },
+},
+```
+
+Get an API token from the Hostinger hPanel profile, and store it with
+`gkm login --provider hostinger` (or set `HOSTINGER_API_TOKEN`).
+
+### Manual
+
+```typescript
+dns: {
+  'myapp.com': { provider: 'manual' },
+},
+```
+
+gkm prints the records to create, and writes none.
+
+### How the hosts point at the server
+
+By default every host gets an A record (and an AAAA record where the server
+has an IPv6 address). A domain can instead point its hosts at one name:
+
+```typescript
+dns: {
+  'myapp.com': {
+    provider: 'godaddy',
+    // One A record for the target; a CNAME to it for every other host.
+    records: { mode: 'cname', target: 'server.myapp.com' },
+    // Or one target per stage:
+    // records: { mode: 'cname', target: { prod: 'prod-box.myapp.com' } },
+  },
+},
+```
+
+The apex (`myapp.com` itself) is always an A record — DNS allows no CNAME
+there. The target must be a name under the same domain; one that is not fails
+to load with `DnsTargetInvalid`. Moving a host between modes deletes its old
+A or CNAME record first, since a name cannot hold both. Used by the compose
+DNS step; the Dokploy target always writes A records.
 
 ### DNS Verification
 
-After creating records, the CLI:
+After creating records, the Dokploy target:
 1. Waits for DNS propagation
 2. Verifies records resolve to correct IP
 3. Caches verification in state (skips on subsequent deploys)
 4. Triggers SSL certificate generation via Dokploy
+
+The compose target checks every host before its stack starts — see
+[the compose guide](./compose.md#the-dns-check).
 
 ---
 

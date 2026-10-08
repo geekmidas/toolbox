@@ -32,6 +32,7 @@ import {
 	dependentsOf,
 	provideKey,
 } from '@geekmidas/manifest';
+import { SERVER_IPV4_KEY, SERVER_IPV6_KEY } from '../compose/dnsConfig.js';
 import { appKey } from '../workspace/derive.js';
 
 /**
@@ -261,7 +262,9 @@ export type StageKeyKind =
 	| 'email'
 	| 'file-server'
 	| 'external-api'
-	| 'credential';
+	| 'credential'
+	/** The server a compose stage's stack runs on: `GKM_SERVER_IPV4`. */
+	| 'server';
 
 /**
  * One key only the stage's secrets can hold — nothing derives it — whether
@@ -299,6 +302,11 @@ export interface StageKeysInput {
 	domain?: string;
 	/** What the stage's providers say — see {@link StageProviderNotes}. */
 	providers?: StageProviderNotes;
+	/**
+	 * The stage serves a domain from a server of its own — a compose stage —
+	 * so its secrets hold the server's address, `GKM_SERVER_IPV4`.
+	 */
+	server?: boolean;
 }
 
 /**
@@ -378,6 +386,17 @@ export function requiredStageKeys(input: StageKeysInput): StageKey[] {
 				...apps(d),
 			});
 		}
+	}
+
+	if (!input.local && input.server) {
+		add({
+			key: SERVER_IPV4_KEY,
+			id: 'server',
+			kind: 'server',
+			what: "the public IPv4 address of the server the stage's stack runs on — its hosts' DNS records point at it, and every deploy checks they do",
+			note: `${SERVER_IPV6_KEY} adds its IPv6 address (AAAA records); neither is ever handed to an app`,
+			example: '203.0.113.10',
+		});
 	}
 
 	for (const d of byId(input.credentials)) {

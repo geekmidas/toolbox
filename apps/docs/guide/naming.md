@@ -78,7 +78,7 @@ the *tag* carries the stage; the name does not.
 Everything above is structural — it does not vary by stage. A hostname does, so
 it is config rather than derivation:
 
-- each stage's base domain is `deploy.domains[stage]` in `gkm.config.ts`
+- each stage's base domain is `domains[stage]` in `gkm.config.ts`
 - the site holding the base domain answers on it — `example.com`
 - every other surface on `{subdomain}.{base}` — `api.example.com`,
   `admin.example.com` — where the subdomain is the construct's own

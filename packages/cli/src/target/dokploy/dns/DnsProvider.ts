@@ -2,7 +2,7 @@
  * DNS Provider Interface
  *
  * Abstracts DNS operations for different providers.
- * Built-in providers: HostingerProvider, Route53Provider
+ * Built-in providers: HostingerProvider, Route53Provider, GoDaddyProvider
  * Users can also supply custom implementations.
  */
 
@@ -13,6 +13,7 @@ import type {
 	DnsProviderSchema,
 	DnsRecordSchema,
 	DnsRecordTypeSchema,
+	GoDaddyDnsProviderSchema,
 	HostingerDnsProviderSchema,
 	ManualDnsProviderSchema,
 	Route53DnsProviderSchema,
@@ -93,6 +94,20 @@ export interface DnsProvider {
 	getRecords(domain: string): Promise<DnsRecord[]>;
 
 	/**
+	 * The records of exactly these names and types, where the provider can
+	 * read them one at a time — cheaper than the whole zone on an API that
+	 * counts requests. Optional: without it, `getRecords` is filtered.
+	 * Throws {@link DnsRecordsUnreadable} when the credentials can only write.
+	 *
+	 * @param domain - Root domain (e.g., 'example.com')
+	 * @param wanted - The names ('@' for the root) and types to read
+	 */
+	readRecords?(
+		domain: string,
+		wanted: readonly DeleteDnsRecord[],
+	): Promise<DnsRecord[]>;
+
+	/**
 	 * Create or update DNS records.
 	 *
 	 * @param domain - Root domain (e.g., 'example.com')
@@ -123,6 +138,7 @@ export interface DnsProvider {
 
 export type HostingerDnsConfig = z.infer<typeof HostingerDnsProviderSchema>;
 export type Route53DnsConfig = z.infer<typeof Route53DnsProviderSchema>;
+export type GoDaddyDnsConfig = z.infer<typeof GoDaddyDnsProviderSchema>;
 export type CloudflareDnsConfig = z.infer<typeof CloudflareDnsProviderSchema>;
 export type ManualDnsConfig = z.infer<typeof ManualDnsProviderSchema>;
 export type CustomDnsConfig = z.infer<typeof CustomDnsProviderSchema>;
@@ -150,6 +166,8 @@ export function isDnsProvider(value: unknown): value is DnsProvider {
 export interface CreateDnsProviderOptions {
 	/** DNS config from workspace */
 	config: DnsConfig;
+	/** Where the GoDaddy provider reads its key — the environment and the CLI's home. */
+	godaddy?: import('./GoDaddyProvider').GoDaddyProviderOptions;
 }
 
 /**
@@ -157,6 +175,7 @@ export interface CreateDnsProviderOptions {
  *
  * - 'hostinger': HostingerProvider
  * - 'route53': Route53Provider
+ * - 'godaddy': GoDaddyProvider
  * - 'manual': Returns null (user handles DNS)
  * - Custom: Use provided DnsProvider implementation
  */
@@ -193,9 +212,57 @@ export async function createDnsProvider(
 		});
 	}
 
-	if (provider === 'cloudflare') {
-		throw new Error('Cloudflare DNS provider not yet implemented');
+	if (provider === 'godaddy') {
+		const { GoDaddyProvider } = await import('./GoDaddyProvider');
+		return new GoDaddyProvider(options.godaddy ?? {});
 	}
 
-	throw new Error(`Unknown DNS provider: ${JSON.stringify(config)}`);
+	if (provider === 'cloudflare') {
+		throw new DnsProviderNotImplemented('cloudflare');
+	}
+
+	throw new DnsProviderUnknown(config);
+}
+
+/**
+ * The provider's credentials can write records and not read them — a key
+ * scoped to updates only. What reads them falls back to writing every record,
+ * which is idempotent, without a diff.
+ */
+export class DnsRecordsUnreadable extends Error {
+	constructor(
+		readonly provider: string,
+		readonly domain: string,
+		readonly reason: string,
+	) {
+		super(
+			`The ${provider} key cannot read ${domain}'s DNS records (${reason}), so ` +
+				'changes cannot be compared with what is there: every record is ' +
+				'written, which leaves one that already has its value as it was.',
+		);
+		this.name = 'DnsRecordsUnreadable';
+	}
+}
+
+/** A DNS provider gkm names and does not have yet. */
+export class DnsProviderNotImplemented extends Error {
+	constructor(readonly provider: string) {
+		super(
+			`The ${provider} DNS provider is not implemented yet. Use 'route53', ` +
+				"'godaddy', 'hostinger' or 'manual' for this domain in dns, or " +
+				'pass your own DnsProvider object.',
+		);
+		this.name = 'DnsProviderNotImplemented';
+	}
+}
+
+/** A `provider:` that is none of the built-ins, nor a DnsProvider object. */
+export class DnsProviderUnknown extends Error {
+	constructor(readonly config: unknown) {
+		super(
+			`Unknown DNS provider: ${JSON.stringify(config)}. dns takes ` +
+				"'route53', 'godaddy', 'hostinger', 'manual', or an object implementing DnsProvider.",
+		);
+		this.name = 'DnsProviderUnknown';
+	}
 }

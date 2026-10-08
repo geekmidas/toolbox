@@ -173,20 +173,41 @@ Delete `studio` from the config; `StudioConfig` is gone. `gkm dev` serves the
 declared database as a read-only JSON API at `/__gkm/db` instead of mounting
 Studio at `/__studio`.
 
-### 7. `deploy.dokploy.domains` is `deploy.domains`
+### 7. `domains` and `dns` are at the root of the config
 
-A stage's base domain is read by every target. A stage with none fails with
-`NoDomainForStage`.
+A stage's base domain is read by every target and command, so it is no longer
+a deploy setting: `deploy.dokploy.domains` (and, during the alphas,
+`deploy.domains`) is `domains` at the root of `defineWorkspace`. `deploy.dns`
+is `dns` at the root too, keyed by root domain — the single-domain
+`{ provider, domain }` shape is gone. A config that still has either fails to
+load with `DomainsMoved` or `DnsMoved`, which show the value at its new place.
+A stage with no domain fails with `NoDomainForStage`.
 
 ```ts
 // before
-deploy: { dokploy: { endpoint, registry, domains: { production: 'shop.com' } } },
-// after
 deploy: {
-  domains: { production: 'shop.com' },
+  dokploy: { endpoint, registry, domains: { production: 'shop.com' } },
+  dns: { provider: 'route53', domain: 'shop.com' },
+},
+// after
+domains: { production: 'shop.com' },
+dns: { 'shop.com': { provider: 'route53' } },
+deploy: {
   dokploy: { endpoint: 'https://dokploy.example.com' },
 },
 ```
+
+Every per-stage map — `domains`, `deploy.objects`, `deploy.telemetry`,
+`deploy.compose.proxy` and `.tls`, a CNAME `target` — is typed from
+`stages.deployed`, which `defineWorkspace` infers without `as const`: a key
+that is not a deployed stage is a type error, and fails to load with
+`UnknownStageKey` in a JavaScript config. The local stage is not a key of any
+of them.
+
+A compose stage with a domain needs its server's address in its secrets —
+`gkm secrets:set GKM_SERVER_IPV4 '<ip>' --stage <stage>` — or `gkm setup` and
+every deploy stop with `ServerAddressMissing`. See
+[Compose: DNS](./compose.md#dns).
 
 Each `RestApi`, `BetterAuth` and `StaticSite` can now set a `subdomain`
 (default: its id, kebab-cased).

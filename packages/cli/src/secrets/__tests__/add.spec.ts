@@ -5,7 +5,10 @@ import { parse as parseS3Url } from '@geekmidas/storage/s3-url';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
-import { loadComposeApp } from '../../compose/__tests__/__helpers__/composeApp';
+import {
+	loadComposeApp,
+	writeComposeApp,
+} from '../../compose/__tests__/__helpers__/composeApp';
 import { loadWorkspaceSettings } from '../../config';
 import {
 	type SecretsAddIo,
@@ -392,5 +395,62 @@ describe('gkm secrets:set', () => {
 			apiKey: 'sk_1',
 			accountId: 'acct_1',
 		});
+	});
+});
+
+describe("a compose stage's server address", () => {
+	beforeEach(() => {
+		// The same workspace, deployed with the compose target.
+		writeComposeApp(dir, { target: 'compose' });
+	});
+
+	it('is required of a compose stage with a domain, in --missing --json', async () => {
+		await secretsAddCommand(
+			{ cwd: dir, stage: STAGE, missing: true, json: true, home },
+			io(false),
+		);
+
+		const listed = JSON.parse(written.join('')) as StageKeyJson[];
+		expect(listed).toContainEqual({
+			key: 'GKM_SERVER_IPV4',
+			kind: 'server',
+			construct: 'server',
+			apps: [],
+			set: false,
+		});
+	});
+
+	it('is not asked of a Dokploy workspace, whose deploy finds the server itself', async () => {
+		writeComposeApp(dir);
+
+		await secretsAddCommand(
+			{ cwd: dir, stage: STAGE, missing: true, json: true, home },
+			io(false),
+		);
+
+		expect(written.join('')).not.toContain('GKM_SERVER_IPV4');
+	});
+
+	it('is built as an IPv4 address, and an optional IPv6 one, re-asking a bad one', async () => {
+		prompts.inject([
+			['GKM_SERVER_IPV4'],
+			'203.0.113',
+			'203.0.113.10',
+			'not-v6',
+			'2001:db8::10',
+		]);
+
+		const result = await secretsAddCommand(
+			{ cwd: dir, stage: STAGE, missing: true, home },
+			io(),
+		);
+
+		expect(result.saved).toEqual(['GKM_SERVER_IPV4', 'GKM_SERVER_IPV6']);
+		expect(await stored()).toMatchObject({
+			GKM_SERVER_IPV4: '203.0.113.10',
+			GKM_SERVER_IPV6: '2001:db8::10',
+		});
+		expect(lines.join('\n')).toContain('An IPv4 address is required');
+		expect(lines.join('\n')).toContain('An IPv6 address');
 	});
 });

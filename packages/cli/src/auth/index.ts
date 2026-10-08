@@ -2,8 +2,11 @@ import { prompt as ask } from '../prompt';
 import {
 	getCredentialsPath,
 	getDokployCredentials,
+	readCredentials,
 	removeDokployCredentials,
+	removeGoDaddyCredentials,
 	storeDokployCredentials,
+	storeGoDaddyToken,
 	storeHostingerToken,
 } from './credentials';
 
@@ -11,16 +14,18 @@ const logger = console;
 
 export interface LoginOptions {
 	/** Which provider's credentials to store — the same word `gkm deploy` uses. */
-	provider: 'dokploy' | 'hostinger';
+	provider: 'dokploy' | 'hostinger' | 'godaddy';
 	/** API token (if not provided, will prompt) */
 	token?: string;
 	/** Endpoint URL */
 	endpoint?: string;
+	/** The CLI's home, holding `credentials.json` — `GKM_HOME`/`~/.gkm` by default. */
+	home?: string;
 }
 
 export interface LogoutOptions {
 	/** Whose credentials to remove — `all` clears every stored provider. */
-	provider?: 'dokploy' | 'all';
+	provider?: 'dokploy' | 'godaddy' | 'all';
 }
 
 /**
@@ -110,6 +115,11 @@ export async function loginCommand(options: LoginOptions): Promise<void> {
 		);
 	}
 
+	if (provider === 'godaddy') {
+		await loginGoDaddy(options);
+		return;
+	}
+
 	if (provider === 'hostinger') {
 		// The DNS provider has told people to run this since it was written, and
 		// this branch did not exist — so the only way to supply the token was the
@@ -152,6 +162,47 @@ export async function loginCommand(options: LoginOptions): Promise<void> {
 }
 
 /**
+ * Store a GoDaddy Personal Access Token. Not validated: the only call that
+ * proves a token without a domain is an account call (`GET /v1/domains`),
+ * which a token scoped to `domains.dns:update` alone may not make — the first
+ * `gkm setup` that writes a record is where a bad token reports itself.
+ */
+async function loginGoDaddy(options: LoginOptions): Promise<void> {
+	logger.log('\n🔐 Logging in to GoDaddy...\n');
+
+	let token = options.token;
+	if (!token) {
+		logger.log(
+			'\nCreate a Personal Access Token in the GoDaddy developer dashboard' +
+				'\n(https://developer.godaddy.com) with only the domains.dns:update scope.\n',
+		);
+		token = await ask('Personal Access Token: ', {
+			hidden: true,
+			instead: LOGIN_INSTEAD,
+		});
+	}
+	if (!token) {
+		logger.error('Token is required');
+		process.exit(1);
+	}
+
+	const where = options.home ? { home: options.home } : undefined;
+	await storeGoDaddyToken(token, where);
+
+	logger.log('\n✓ GoDaddy token stored.');
+	logger.log(`  Token: ${maskToken(token)}`);
+	logger.log(`  Credentials stored in: ${getCredentialsPath(where)}`);
+	logger.log(
+		'  Not validated here: proving a token without a domain needs an account\n' +
+			'  scope a DNS-only token does not have, so the first gkm setup that\n' +
+			'  writes a record is where a bad token reports itself.',
+	);
+	logger.log(
+		'\nYou can now use it as a DNS provider without setting GODADDY_API_TOKEN.',
+	);
+}
+
+/**
  * Logout from a service
  */
 export async function logoutCommand(options: LogoutOptions): Promise<void> {
@@ -159,12 +210,23 @@ export async function logoutCommand(options: LogoutOptions): Promise<void> {
 
 	if (provider === 'all') {
 		const dokployRemoved = await removeDokployCredentials();
+		const godaddyRemoved = await removeGoDaddyCredentials();
 
-		if (dokployRemoved) {
+		if (dokployRemoved || godaddyRemoved) {
 			logger.log('\n✓ Logged out from all services');
 		} else {
 			logger.log('\nNo stored credentials found');
 		}
+		return;
+	}
+
+	if (provider === 'godaddy') {
+		const removed = await removeGoDaddyCredentials();
+		logger.log(
+			removed
+				? '\n✓ Logged out from GoDaddy'
+				: '\nNo GoDaddy credentials found',
+		);
 		return;
 	}
 
@@ -194,6 +256,13 @@ export async function whoamiCommand(): Promise<void> {
 	} else {
 		logger.log('  Dokploy: Not logged in');
 	}
+
+	const godaddy = (await readCredentials()).godaddy;
+	logger.log(
+		godaddy
+			? `  GoDaddy:\n    Token: ${maskToken(godaddy.token)}`
+			: '  GoDaddy: Not logged in',
+	);
 
 	logger.log(`\n  Credentials file: ${getCredentialsPath()}`);
 }

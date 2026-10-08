@@ -99,3 +99,45 @@ export class UndeclaredStage extends Error {
 		this.name = 'UndeclaredStage';
 	}
 }
+
+/**
+ * A per-stage setting keyed by a stage the workspace does not deploy: a typo,
+ * a stage since removed, or the local stage, which none of them apply to.
+ */
+export class UnknownStageKey extends Error {
+	constructor(
+		/** Where it is: `domains`, `deploy.objects`, `dns['example.com'].records.target`. */
+		readonly setting: string,
+		readonly stage: string,
+		readonly deployed: readonly string[],
+		readonly local?: string,
+	) {
+		super(
+			`${setting} names the stage '${stage}', ` +
+				(stage === local
+					? `the local stage — ${setting} is read for deployed stages only. `
+					: "which is not one of this workspace's deployed stages. ") +
+				`It takes ${deployed.length > 0 ? deployed.map((s) => `'${s}'`).join(', ') : 'no stage: stages.deployed is empty'}` +
+				' — the stages in stages.deployed.',
+		);
+		this.name = 'UnknownStageKey';
+	}
+}
+
+/**
+ * The first key of a per-stage map that is not a deployed stage.
+ *
+ * @throws {UnknownStageKey}
+ */
+export function assertDeployedStageKeys(
+	setting: string,
+	map: Readonly<Record<string, unknown>> | undefined,
+	stages: { local?: string; deployed?: readonly string[] } | undefined,
+): void {
+	if (!map || !stages?.deployed) return;
+	for (const key of Object.keys(map)) {
+		if (!stages.deployed.includes(key)) {
+			throw new UnknownStageKey(setting, key, stages.deployed, stages.local);
+		}
+	}
+}

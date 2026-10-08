@@ -44,7 +44,13 @@ import {
 	RedisClientMissing,
 	RegistryRequired,
 } from '../index';
-import { writeComposeApp } from './__helpers__/composeApp';
+import {
+	resolvesHere,
+	SERVER_IPV4,
+	serveFrom,
+	stageGenerated,
+	writeComposeApp,
+} from './__helpers__/composeApp';
 import { answering, fakeDigest, fakeDocker } from './__helpers__/fakeDocker';
 
 /** No Postgres is running here: its login is taken as the one it was given. */
@@ -69,6 +75,8 @@ let dir: string;
 async function project(): Promise<string> {
 	const root = realpathSync(await createTempDir('gkm-compose-command-'));
 	writeComposeApp(root, { registry: 'registry.example.com/acme' });
+	// A deployed stage that serves a domain names its server.
+	await serveFrom(root);
 	return root;
 }
 
@@ -99,7 +107,7 @@ describe('gkm compose --tag', { timeout: RUN_TIMEOUT }, () => {
 
 		const error = await composeCommand(
 			{ cwd: dir, stage: 'production', tag: 'v1.4.0' },
-			{ docker },
+			{ lookup: resolvesHere, docker },
 		).catch((e: unknown) => e);
 
 		expect(error).toBeInstanceOf(ImageTagNotFound);
@@ -112,9 +120,7 @@ describe('gkm compose --tag', { timeout: RUN_TIMEOUT }, () => {
 		expect(ops()).toHaveLength(4);
 		// Nor a file written, nor the stage's secrets generated.
 		expect(existsSync(join(dir, '.gkm', 'compose'))).toBe(false);
-		expect(existsSync(join(dir, '.gkm', 'secrets', 'production.json'))).toBe(
-			false,
-		);
+		expect(await stageGenerated(dir)).toBe(false);
 	});
 
 	it('pulls the tag and builds nothing when every image is there', async () => {
@@ -132,6 +138,7 @@ describe('gkm compose --tag', { timeout: RUN_TIMEOUT }, () => {
 		const result = await composeCommand(
 			{ cwd: dir, stage: 'production', tag: 'v1.4.0' },
 			{
+				lookup: resolvesHere,
 				docker,
 				sql,
 				logins: signedIn,
@@ -178,6 +185,7 @@ describe(
 			const result = await composeCommand(
 				{ cwd: dir, stage: 'development' },
 				{
+					lookup: resolvesHere,
 					docker: fake.docker,
 					probe: answering(fake.calls),
 					revision: async () => 'abc1234',
@@ -366,6 +374,7 @@ describe('a failing seed', { timeout: RUN_TIMEOUT }, () => {
 		const error = await composeCommand(
 			{ cwd: dir, stage: 'development' },
 			{
+				lookup: resolvesHere,
 				docker: fake.docker,
 				probe: answering(fake.calls),
 				revision: async () => 'abc1234',
@@ -416,7 +425,7 @@ describe('gkm compose --dry-run', { timeout: RUN_TIMEOUT }, () => {
 
 		const result = await composeCommand(
 			{ cwd: dir, stage: 'development', dryRun: true },
-			{ docker, revision: async () => 'abc1234' },
+			{ lookup: resolvesHere, docker, revision: async () => 'abc1234' },
 		);
 
 		expect(ops()).toEqual([]);
@@ -440,7 +449,7 @@ describe('gkm compose --dry-run', { timeout: RUN_TIMEOUT }, () => {
 
 		await composeCommand(
 			{ cwd: dir, stage: 'development', dryRun: true },
-			{ docker, seed, revision: async () => 'abc1234' },
+			{ lookup: resolvesHere, docker, seed, revision: async () => 'abc1234' },
 		);
 
 		const lines = vi
@@ -513,7 +522,7 @@ describe('a workspace nested in a monorepo', { timeout: RUN_TIMEOUT }, () => {
 
 		await composeCommand(
 			{ cwd: dir, stage: 'development', dryRun: true },
-			{ docker, revision: async () => 'abc1234' },
+			{ lookup: resolvesHere, docker, revision: async () => 'abc1234' },
 		);
 
 		const stack = join(dir, '.gkm', 'compose', 'development');
@@ -602,6 +611,7 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 		const result = await composeCommand(
 			{ cwd: dir, stage: 'development' },
 			{
+				lookup: resolvesHere,
 				docker: fake.docker,
 				probe: answering(fake.calls),
 				revision: async () => 'abc1234',
@@ -647,7 +657,11 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 
 		const run = composeCommand(
 			{ cwd: dir, stage: 'production' },
-			{ docker: fake.docker, revision: async () => 'abc1234' },
+			{
+				lookup: resolvesHere,
+				docker: fake.docker,
+				revision: async () => 'abc1234',
+			},
 		);
 
 		await expect(run).rejects.toBeInstanceOf(ExternalServicesNotConfigured);
@@ -656,9 +670,7 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 		);
 		expect(fake.ops()).toEqual([]);
 		expect(existsSync(join(dir, '.gkm', 'compose', 'production'))).toBe(false);
-		expect(existsSync(join(dir, '.gkm', 'secrets', 'production.json'))).toBe(
-			false,
-		);
+		expect(await stageGenerated(dir)).toBe(false);
 	});
 
 	it('runs both on a deployed stage with --allow-dev-services, warning loudly', async () => {
@@ -671,6 +683,7 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 		const result = await composeCommand(
 			{ cwd: dir, stage: 'production', allowDevServices: true },
 			{
+				lookup: resolvesHere,
 				docker: fake.docker,
 				probe: answering(fake.calls),
 				revision: async () => 'abc1234',
@@ -714,6 +727,7 @@ describe("a stage's third-party credentials", { timeout: RUN_TIMEOUT }, () => {
 		dir = await project();
 		home = realpathSync(await createTempDir('gkm-compose-home-'));
 		vi.stubEnv('GKM_HOME', home);
+		await serveFrom(dir);
 		writeFileSync(
 			join(dir, 'constructs', 'shipping.ts'),
 			`import { ExternalApi } from '@geekmidas/constructs/external-api';
@@ -739,13 +753,20 @@ export const shipping = new ExternalApi('Shipping', {
 			keystoreProject(await loadWorkspaceSettings(dir), home),
 		).write('production', {
 			...initStageSecrets('production'),
-			custom: { SHIPPING_CREDENTIALS: '{"apikey":"wrong-field-value"}' },
+			custom: {
+				SHIPPING_CREDENTIALS: '{"apikey":"wrong-field-value"}',
+				GKM_SERVER_IPV4: SERVER_IPV4,
+			},
 		});
 		const fake = fakeDocker();
 
 		const error = await composeCommand(
 			{ cwd: dir, stage: 'production' },
-			{ docker: fake.docker, revision: async () => 'abc1234' },
+			{
+				lookup: resolvesHere,
+				docker: fake.docker,
+				revision: async () => 'abc1234',
+			},
 		).catch((caught: unknown) => caught);
 
 		expect(error).toBeInstanceOf(CredentialsInvalid);
@@ -784,6 +805,7 @@ describe("a stage's addresses", { timeout: RUN_TIMEOUT }, () => {
 		dir = await project();
 		home = realpathSync(await createTempDir('gkm-compose-home-'));
 		vi.stubEnv('GKM_HOME', home);
+		await serveFrom(dir);
 		cwd = process.cwd();
 		process.chdir(dir);
 	});
@@ -815,7 +837,11 @@ describe("a stage's addresses", { timeout: RUN_TIMEOUT }, () => {
 	const dryRun = () =>
 		composeCommand(
 			{ cwd: dir, stage: 'development', dryRun: true },
-			{ docker: fakeDocker().docker, revision: async () => 'abc1234' },
+			{
+				lookup: resolvesHere,
+				docker: fakeDocker().docker,
+				revision: async () => 'abc1234',
+			},
 		);
 
 	/** No key of a construct's address, stored. */
@@ -918,6 +944,7 @@ describe('telemetry, self-hosted by default', { timeout: RUN_TIMEOUT }, () => {
 		});
 		home = realpathSync(await createTempDir('gkm-compose-home-'));
 		vi.stubEnv('GKM_HOME', home);
+		await serveFrom(dir);
 	});
 	afterEach(async () => {
 		vi.unstubAllEnvs();
@@ -940,6 +967,7 @@ describe('telemetry, self-hosted by default', { timeout: RUN_TIMEOUT }, () => {
 		const result = await composeCommand(
 			{ cwd: dir, stage: 'production', tag: 'v1.4.0' },
 			{
+				lookup: resolvesHere,
 				docker: fake.docker,
 				probe: answering(fake.calls),
 				revision: async () => 'abc1234',
@@ -1031,6 +1059,7 @@ describe(
 			await composeCommand(
 				{ cwd: dir, stage: 'development' },
 				{
+					lookup: resolvesHere,
 					docker,
 					probe: answering(fake.calls),
 					revision: async () => 'abc1234',
@@ -1043,7 +1072,7 @@ describe(
 			);
 			await composeCommand(
 				{ cwd: dir, stage: 'development', down: true },
-				{ docker },
+				{ lookup: resolvesHere, docker },
 			);
 
 			const override = join(dir, 'docker-compose.development.yml');
@@ -1065,6 +1094,7 @@ describe("the stack's Redis", { timeout: RUN_TIMEOUT }, () => {
 		dir = await project();
 		home = realpathSync(await createTempDir('gkm-compose-home-'));
 		vi.stubEnv('GKM_HOME', home);
+		await serveFrom(dir);
 	});
 	afterEach(async () => {
 		vi.unstubAllEnvs();
@@ -1087,6 +1117,7 @@ describe("the stack's Redis", { timeout: RUN_TIMEOUT }, () => {
 		const result = await composeCommand(
 			{ cwd: dir, stage: 'production', tag: 'v1.4.0' },
 			{
+				lookup: resolvesHere,
 				docker: fake.docker,
 				probe: answering(fake.calls),
 				revision: async () => 'abc1234',
@@ -1145,7 +1176,7 @@ describe("the stack's Redis", { timeout: RUN_TIMEOUT }, () => {
 		const managed = 'rediss://default:token@cache.example.com:6380';
 		await (await store()).write('production', {
 			...initStageSecrets('production'),
-			custom: { SESSIONS_URL: managed },
+			custom: { SESSIONS_URL: managed, GKM_SERVER_IPV4: SERVER_IPV4 },
 		});
 
 		const { result, calls } = await release();
@@ -1170,7 +1201,11 @@ describe("the stack's Redis", { timeout: RUN_TIMEOUT }, () => {
 
 		const error = await composeCommand(
 			{ cwd: dir, stage: 'development' },
-			{ docker: fake.docker, revision: async () => 'abc1234' },
+			{
+				lookup: resolvesHere,
+				docker: fake.docker,
+				revision: async () => 'abc1234',
+			},
 		).catch((caught: unknown) => caught);
 
 		expect(error).toBeInstanceOf(RedisClientMissing);
@@ -1192,7 +1227,7 @@ describe('gkm compose --down', { timeout: RUN_TIMEOUT }, () => {
 
 		await composeCommand(
 			{ cwd: dir, stage: 'development', down: true },
-			{ docker },
+			{ lookup: resolvesHere, docker },
 		);
 
 		expect(calls).toEqual([{ op: 'down', args: 'compose-app-development' }]);
@@ -1242,7 +1277,7 @@ describe('gkm compose --build --push', { timeout: RUN_TIMEOUT }, () => {
 				tag: 'v2',
 				digestsFile: 'release/digests.json',
 			},
-			{ docker, sql, migrate, seed, probe },
+			{ lookup: resolvesHere, docker, sql, migrate, seed, probe },
 		);
 
 		expect(ops()).toEqual(['build', 'push', 'push', 'push', 'push']);
@@ -1280,13 +1315,11 @@ describe('gkm compose --build --push', { timeout: RUN_TIMEOUT }, () => {
 
 		await composeCommand(
 			{ cwd: dir, stage: 'production', build: true, push: true, tag: 'v2' },
-			{ docker },
+			{ lookup: resolvesHere, docker },
 		);
 
 		expect(existsSync(join(dir, '.gkm', 'deploy-production.json'))).toBe(false);
-		expect(existsSync(join(dir, '.gkm', 'secrets', 'production.json'))).toBe(
-			false,
-		);
+		expect(await stageGenerated(dir)).toBe(false);
 		const stack = join(dir, '.gkm', 'compose', 'production');
 		expect(readdirSync(stack).filter((file) => file.endsWith('.env'))).toEqual(
 			[],
@@ -1320,7 +1353,7 @@ describe('gkm compose --build --push', { timeout: RUN_TIMEOUT }, () => {
 			await expect(
 				composeCommand(
 					{ cwd: dir, stage: 'production', build: true, push: true, tag: 'v2' },
-					{ docker },
+					{ lookup: resolvesHere, docker },
 				),
 			).resolves.toBeDefined();
 		} finally {
@@ -1376,7 +1409,7 @@ describe('with no deploy.registry', { timeout: RUN_TIMEOUT }, () => {
 
 		const error = await composeCommand(
 			{ cwd: dir, stage: 'production', build: true, push: true, tag: 'v2' },
-			{ docker },
+			{ lookup: resolvesHere, docker },
 		).catch((e: unknown) => e);
 
 		expect(error).toBeInstanceOf(RegistryRequired);
@@ -1395,7 +1428,7 @@ describe('with no deploy.registry', { timeout: RUN_TIMEOUT }, () => {
 			const { docker, ops } = fakeDocker();
 			const error = await composeCommand(
 				{ cwd: dir, stage: 'production', ...options },
-				{ docker },
+				{ lookup: resolvesHere, docker },
 			).catch((e: unknown) => e);
 
 			expect(error).toBeInstanceOf(RegistryRequired);
@@ -1410,6 +1443,7 @@ describe('with no deploy.registry', { timeout: RUN_TIMEOUT }, () => {
 		await composeCommand(
 			{ cwd: dir, stage: 'development' },
 			{
+				lookup: resolvesHere,
 				docker,
 				revision: async () => 'abc1234',
 				logins: signedIn,
@@ -1460,6 +1494,7 @@ describe('gkm compose --tag --digests-file', { timeout: RUN_TIMEOUT }, () => {
 				digestsFile: 'digests.json',
 			},
 			{
+				lookup: resolvesHere,
 				docker,
 				revision: vi.fn(),
 				logins: signedIn,
@@ -1495,7 +1530,7 @@ describe('gkm compose --tag --digests-file', { timeout: RUN_TIMEOUT }, () => {
 
 		const missing = await composeCommand(
 			{ cwd: dir, stage: 'production', tag: 'v2', digestsFile: 'digests.json' },
-			{ docker },
+			{ lookup: resolvesHere, docker },
 		).catch((e: unknown) => e);
 		expect(missing).toBeInstanceOf(ImageDigestMissing);
 		expect((missing as ImageDigestMissing).apps).toEqual(['api']);
@@ -1507,7 +1542,7 @@ describe('gkm compose --tag --digests-file', { timeout: RUN_TIMEOUT }, () => {
 		);
 		const mismatch = await composeCommand(
 			{ cwd: dir, stage: 'production', tag: 'v2', digestsFile: 'digests.json' },
-			{ docker },
+			{ lookup: resolvesHere, docker },
 		).catch((e: unknown) => e);
 		expect(mismatch).toBeInstanceOf(ImageDigestMismatch);
 		expect(ops()).toEqual([]);

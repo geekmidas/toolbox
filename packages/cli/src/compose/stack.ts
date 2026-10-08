@@ -76,6 +76,7 @@ import type {
 	NormalizedWorkspace,
 } from '../workspace/types.js';
 import { CADDY_TLS_DIR, edgeCaddyfile } from './caddyfile.js';
+import { isReservedStageKey } from './dnsConfig.js';
 import { type AppImage, siteTag } from './images.js';
 import {
 	LOGS_SERVICE,
@@ -596,7 +597,7 @@ export function composeStack(input: StackInput): ComposeStack {
 			...(workerEnvKeys(manifest, worker.id, input.runnables) ?? []),
 		]);
 	}
-	const domain = workspace.deploy?.domains?.[stage];
+	const domain = workspace.domains?.[stage];
 
 	// Where the stage's telemetry goes, when a process uses a `Telemetry`
 	// node: the local stage always to OpenObserve, a deployed one where
@@ -802,6 +803,8 @@ export function composeStack(input: StackInput): ComposeStack {
 		key: string,
 		owner: PlannedResource | undefined,
 	): string | undefined => {
+		// The server's address is gkm's own: never in an app's environment.
+		if (isReservedStageKey(key)) return undefined;
 		// Mail and storage: what the stage set — a real server, a real bucket —
 		// and otherwise the dev service it runs, which `services` has already
 		// checked it may.
@@ -1253,7 +1256,7 @@ function hostOf(
 		name,
 		app,
 		options.stage,
-		workspace.deploy?.domains,
+		workspace.domains,
 		isMainFrontendApp(name, app, workspace.apps),
 	);
 }

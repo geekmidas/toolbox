@@ -33,6 +33,8 @@ export interface DeployCliOptions {
 	atomic?: boolean;
 	/** `--allow-dev-services`. */
 	allowDevServices?: boolean;
+	/** `--skip-dns-check`. */
+	skipDnsCheck?: boolean;
 }
 
 /** Where the command writes. The process's own streams, outside tests. */
@@ -69,6 +71,7 @@ export async function deployCli(
 		...(options.dryRun ? { dryRun: true } : {}),
 		...(options.atomic ? { atomic: true } : {}),
 		...(options.allowDevServices ? { allowDevServices: true } : {}),
+		...(options.skipDnsCheck ? { skipDnsCheck: true } : {}),
 	};
 
 	if (options.json) {

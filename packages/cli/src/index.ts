@@ -542,6 +542,10 @@ program
 		'--allow-dev-services',
 		"Deployed stage: run the dev service (MinIO, Mailpit) for every bucket and mail the stage doesn't account for. Not production-grade",
 	)
+	.option(
+		'--skip-dns-check',
+		'Deployed stage: do not check that each public host resolves to GKM_SERVER_IPV4 in the stage secrets before starting (a CDN or proxy in front)',
+	)
 	.action(async (options: ComposeOptions) => {
 		try {
 			const globalOptions = program.opts();
@@ -902,6 +906,10 @@ program
 		'--allow-dev-services',
 		"Server targets: run the dev service (MinIO, Mailpit) for every bucket and mail the stage doesn't account for. Not production-grade",
 	)
+	.option(
+		'--skip-dns-check',
+		'Compose: do not check that each public host resolves to GKM_SERVER_IPV4 in the stage secrets before starting (a CDN or proxy in front)',
+	)
 	.action(
 		async (options: {
 			target?: string;
@@ -912,6 +920,7 @@ program
 			dryRun?: boolean;
 			atomic?: boolean;
 			allowDevServices?: boolean;
+			skipDnsCheck?: boolean;
 		}) => {
 			const { deployCli } = await import('./deploy/cli');
 			const globalOptions = program.opts();
@@ -927,6 +936,7 @@ program
 				...(options.dryRun ? { dryRun: true } : {}),
 				...(options.atomic ? { atomic: true } : {}),
 				...(options.allowDevServices ? { allowDevServices: true } : {}),
+				...(options.skipDnsCheck ? { skipDnsCheck: true } : {}),
 			});
 			if (code !== 0) process.exit(code);
 		},
@@ -1121,7 +1131,7 @@ program
 	// `services:` backend block, and a Dokploy resource name.
 	.option(
 		'--provider <provider>',
-		'Provider to log in to (dokploy, hostinger)',
+		'Provider to log in to (dokploy, hostinger, godaddy)',
 		'dokploy',
 	)
 	// Kept working rather than removed: it is what shipped, and a flag rename is
@@ -1145,15 +1155,15 @@ program
 				// The alias wins when given, because a default is not a choice.
 				const provider = options.service ?? options.provider;
 
-				if (!['dokploy', 'hostinger'].includes(provider)) {
+				if (!['dokploy', 'hostinger', 'godaddy'].includes(provider)) {
 					console.error(
-						`Unknown provider: ${provider}. Supported: dokploy, hostinger`,
+						`Unknown provider: ${provider}. Supported: dokploy, hostinger, godaddy`,
 					);
 					process.exit(1);
 				}
 
 				await loginCommand({
-					provider: provider as 'dokploy' | 'hostinger',
+					provider: provider as 'dokploy' | 'hostinger' | 'godaddy',
 					token: options.token,
 					endpoint: options.endpoint,
 				});
@@ -1170,7 +1180,7 @@ program
 	.description('Remove stored credentials')
 	.option(
 		'--provider <provider>',
-		'Whose credentials to remove (dokploy, all)',
+		'Whose credentials to remove (dokploy, godaddy, all)',
 		'dokploy',
 	)
 	.option('--service <provider>', '[DEPRECATED] Use --provider instead')
@@ -1182,7 +1192,10 @@ program
 			}
 
 			await logoutCommand({
-				provider: (options.service ?? options.provider) as 'dokploy' | 'all',
+				provider: (options.service ?? options.provider) as
+					| 'dokploy'
+					| 'godaddy'
+					| 'all',
 			});
 		} catch (error) {
 			console.error(formatError(error));

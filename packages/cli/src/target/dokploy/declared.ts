@@ -123,8 +123,8 @@ export async function provisionDeclared(
 		events: eventsBackendFor(providerOf(workspace)),
 		storage: storageBackendFor(providerOf(workspace)),
 		...(options.devServices ? { devServices: options.devServices } : {}),
-		...(workspace.deploy?.domains?.[options.stage]
-			? { domain: workspace.deploy.domains[options.stage] }
+		...(workspace.domains?.[options.stage]
+			? { domain: workspace.domains[options.stage] }
 			: {}),
 		addresses: surfaceAddresses(manifest, options.appUrls),
 		seed: options.seed,

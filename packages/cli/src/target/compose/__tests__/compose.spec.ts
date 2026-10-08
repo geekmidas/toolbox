@@ -3,11 +3,21 @@ import { join } from 'node:path';
 import { migrationTargets } from '@geekmidas/manifest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanupDir, createTempDir } from '../../../__tests__/test-helpers';
-import { writeComposeApp } from '../../../compose/__tests__/__helpers__/composeApp';
+import {
+	resolvesHere,
+	SERVER_IPV4,
+	serveFrom,
+	stageGenerated,
+	writeComposeApp,
+} from '../../../compose/__tests__/__helpers__/composeApp';
 import {
 	answering,
 	fakeDocker,
 } from '../../../compose/__tests__/__helpers__/fakeDocker';
+import {
+	HostNotPointingAtServer,
+	ServerAddressMissing,
+} from '../../../compose/dns';
 import { ImageTagNotFound } from '../../../compose/images';
 import { deploy } from '../../../deploy/deploy';
 import type { DeployEvent } from '../../../deploy/events';
@@ -56,6 +66,7 @@ function quiet(): Partial<ComposeDeps> {
 		migrate: async () => [],
 		seed: async () => [],
 		healthIntervalMs: 0,
+		lookup: resolvesHere,
 	};
 }
 
@@ -259,6 +270,7 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 	});
 
 	it('pulls a given tag, and refuses one the registry lacks before anything changes', async () => {
+		await serveFrom(dir);
 		const fake = fakeDocker({
 			registry: [
 				'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
@@ -281,9 +293,7 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 		);
 		expect(new Set(fake.ops())).toEqual(new Set(['lookup']));
 		expect(existsSync(join(dir, '.gkm', 'compose'))).toBe(false);
-		expect(existsSync(join(dir, '.gkm', 'secrets', 'production.json'))).toBe(
-			false,
-		);
+		expect(await stageGenerated(dir)).toBe(false);
 		expect(existsSync(join(dir, '.gkm', 'deploy-production.json'))).toBe(false);
 	});
 
@@ -431,5 +441,120 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 		const run = deploy({ cwd: dir, stage: 'development', target: 'dokploy' });
 
 		await expect(run.result).rejects.toBeInstanceOf(UndeclaredStage);
+	});
+});
+
+describe('the DNS check', { timeout: RUN_TIMEOUT }, () => {
+	/** A production run, with each host resolved by `lookup`. */
+	async function production(
+		lookup: (host: string) => Promise<string[]>,
+		options: { skipDnsCheck?: boolean } = {},
+	) {
+		const fake = fakeDocker();
+		const run = deploy({
+			cwd: dir,
+			stage: 'production',
+			target: 'compose',
+			...(options.skipDnsCheck ? { skipDnsCheck: true } : {}),
+			targets: {
+				compose: composeTarget({
+					...quiet(),
+					lookup,
+					docker: fake.docker,
+					probe: answering(fake.calls),
+				}),
+			},
+		});
+		const seen = await events(run);
+		const error = await run.result.catch((e: unknown) => e);
+		return { seen, error, ops: fake.ops() };
+	}
+
+	const validated = (seen: DeployEvent[]) =>
+		seen.some((e) => e.type === 'phase.finished' && e.phase === 'validate');
+
+	it('stops validate when a host resolves elsewhere, before anything is started', async () => {
+		await serveFrom(dir);
+
+		const { seen, error, ops } = await production(async (host) =>
+			host === 'api.shop.example.com' ? ['198.51.100.7'] : [SERVER_IPV4],
+		);
+
+		expect(error).toBeInstanceOf(HostNotPointingAtServer);
+		expect((error as HostNotPointingAtServer).hosts).toEqual([
+			{ host: 'api.shop.example.com', resolved: ['198.51.100.7'] },
+		]);
+		expect(validated(seen)).toBe(false);
+		expect(ops).not.toContain('up');
+	});
+
+	it('passes hosts that resolve to the server', async () => {
+		await serveFrom(dir);
+		const asked: string[] = [];
+
+		const { seen } = await production(async (host) => {
+			asked.push(host);
+			return [SERVER_IPV4];
+		});
+
+		expect(validated(seen)).toBe(true);
+		expect(asked.sort()).toEqual([
+			'api.shop.example.com',
+			'auth.shop.example.com',
+			'shop.example.com',
+		]);
+	});
+
+	it('checks nothing with --skip-dns-check', async () => {
+		await serveFrom(dir);
+
+		const { seen } = await production(
+			async () => {
+				throw new Error('nothing is resolved');
+			},
+			{ skipDnsCheck: true },
+		);
+
+		expect(validated(seen)).toBe(true);
+		expect(seen).toContainEqual({
+			type: 'log',
+			level: 'info',
+			message: '🌐 DNS check skipped (--skip-dns-check)',
+		});
+	});
+
+	it('refuses a stage with a domain and no GKM_SERVER_IPV4, naming the command', async () => {
+		const { error, ops } = await production(async () => [SERVER_IPV4]);
+
+		expect(error).toBeInstanceOf(ServerAddressMissing);
+		expect((error as Error).message).toContain(
+			"gkm secrets:set GKM_SERVER_IPV4 '<ip>' --stage production",
+		);
+		expect(ops).toEqual([]);
+	});
+
+	it('never checks the local stage', async () => {
+		const asked: string[] = [];
+		const fake = fakeDocker();
+		const run = deploy({
+			cwd: dir,
+			stage: 'development',
+			target: 'compose',
+			targets: {
+				compose: composeTarget({
+					...quiet(),
+					lookup: async (host) => {
+						asked.push(host);
+						return [];
+					},
+					docker: fake.docker,
+					probe: answering(fake.calls),
+				}),
+			},
+		});
+		await events(run);
+		await run.result;
+
+		expect(asked).toEqual([]);
 	});
 });

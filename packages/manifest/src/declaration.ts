@@ -385,7 +385,7 @@ export interface RestApiDeclaration extends Node {
 	kind: 'rest-api';
 	/**
 	 * The label it answers on under a stage's domain — `api` for
-	 * `api.myapp.com`, from `deploy.domains` — and under the project locally,
+	 * `api.myapp.com`, from `domains` — and under the project locally,
 	 * `api.myapp.localhost`. Absent, its id kebab-cased.
 	 */
 	subdomain?: string;
@@ -538,7 +538,7 @@ export interface SiteDeclaration extends Node {
 	variant: 'static' | 'next' | 'tanstack';
 	/**
 	 * The label it answers on under a stage's domain — `api` for
-	 * `api.myapp.com`, from `deploy.domains` — and under the project locally,
+	 * `api.myapp.com`, from `domains` — and under the project locally,
 	 * `api.myapp.localhost`. Absent, its id kebab-cased.
 	 */
 	subdomain?: string;

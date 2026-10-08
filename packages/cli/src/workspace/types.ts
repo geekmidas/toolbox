@@ -1,4 +1,5 @@
 import type { ConstructManifest } from '@geekmidas/manifest';
+import type { DnsRecordsMode } from '../compose/dnsConfig.js';
 import type { AwsRegion, StateConfig } from '../deploy/StateProvider.js';
 import type { DeployTargetEntry } from '../target/types';
 
@@ -45,7 +46,46 @@ export type {
 export type DeployTargetName = 'dokploy' | 'compose' | 'sst' | (string & {});
 
 /**
- * Each deployed stage's base domain — `deploy.domains`.
+ * A per-stage map, typed from the workspace's deployed stages: a key that is
+ * not one is a type error. Untyped (`string`) stages accept any key, which the
+ * schema then checks at load.
+ */
+export type StageMap<S extends string, V> = string extends S
+	? Record<string, V>
+	: Partial<Record<S, V>>;
+
+/**
+ * `domains: { <stage>: '<domain>' }` at the root of `defineWorkspace`, typed from
+ * the deployed stages.
+ */
+export type DomainsInput<S extends string = string> = StageMap<S, string>;
+
+/** How one root domain's hosts point at a compose stage's server. */
+export type DnsRecordsModeInput<S extends string = string> =
+	| 'a'
+	| { mode: 'cname'; target: string | StageMap<S, string> };
+
+/** One root domain's DNS provider, its records mode typed from the stages. */
+export type DnsDomainInput<S extends string = string> =
+	DnsProvider extends infer P
+		? P extends unknown
+			? Omit<P, 'records'> & { records?: DnsRecordsModeInput<S> }
+			: never
+		: never;
+
+/** `dns: { '<root domain>': { provider, … } }` at the root of `defineWorkspace`. */
+export type DnsInput<S extends string = string> = Record<
+	string,
+	DnsDomainInput<S>
+>;
+
+/** Each root domain's DNS provider — `dns` at the root of the config. */
+export type WorkspaceDnsConfig = Record<string, DnsProvider>;
+
+export type { DnsRecordsMode };
+
+/**
+ * Each deployed stage's base domain — `domains` at the root of the config.
  *
  * A fact about the deployment rather than the platform, so every target reads
  * it. The root site answers on the base domain; every other surface on
@@ -54,9 +94,7 @@ export type DeployTargetName = 'dokploy' | 'compose' | 'sst' | (string & {});
  *
  * @example
  * ```ts
- * deploy: {
- *   domains: { production: 'myapp.com', staging: 'staging.myapp.com' },
- * }
+ * domains: { production: 'myapp.com', staging: 'staging.myapp.com' },
  *
  * // production:
  * // - new StaticSite('Web', { root: true })        → myapp.com
@@ -164,7 +202,7 @@ export interface DokployVerifyConfig {
  * deploy: { compose: { proxy: 'traefik' } }
  * ```
  */
-export interface ComposeWorkspaceConfig {
+export interface ComposeWorkspaceConfig<S extends string = string> {
 	/**
 	 * What serves a deployed stage's stack: `'caddy'` (the default) — the
 	 * stack's own Caddy on 80/443 — or `'traefik'`, the server's shared
@@ -177,7 +215,7 @@ export interface ComposeWorkspaceConfig {
 	 * proxy: { staging: 'traefik', production: 'caddy' }
 	 * ```
 	 */
-	proxy?: ComposeProxy | Record<string, ComposeProxy>;
+	proxy?: ComposeProxy | StageMap<S, ComposeProxy>;
 	/**
 	 * A deployed stage's own certificate, by stage, instead of one from
 	 * Let's Encrypt: a PEM certificate (with its chain) and its key, relative
@@ -187,7 +225,7 @@ export interface ComposeWorkspaceConfig {
 	 * tls: { production: { certFile: 'certs/origin.pem', keyFile: 'certs/origin.key' } }
 	 * ```
 	 */
-	tls?: Record<string, ComposeTlsConfig>;
+	tls?: StageMap<S, ComposeTlsConfig>;
 }
 
 /** The proxies a compose stack can be served by — `deploy.compose.proxy`. */
@@ -305,7 +343,12 @@ export interface OtlpTelemetryConfig extends TelemetryProviderConfig {
 /**
  * DNS provider types for automatic DNS record creation.
  */
-export type DnsProviderType = 'hostinger' | 'route53' | 'cloudflare' | 'manual';
+export type DnsProviderType =
+	| 'hostinger'
+	| 'route53'
+	| 'godaddy'
+	| 'cloudflare'
+	| 'manual';
 
 /**
  * Deployment configuration for the workspace.
@@ -317,20 +360,13 @@ export type DnsProviderType = 'hostinger' | 'route53' | 'cloudflare' | 'manual';
  *   default: 'dokploy',
  * }
  *
- * // Full configuration with DNS and backups
+ * // Full configuration with backups (domains and dns are at the root)
  * deploy: {
  *   default: 'dokploy',
  *   registry: 'ghcr.io/myorg',
  *   dokploy: {
  *     endpoint: 'https://dokploy.myserver.com',
  *     projectId: 'proj_abc123',
- *     domains: {
- *       production: 'myapp.com',
- *     },
- *   },
- *   dns: {
- *     provider: 'hostinger',
- *     domain: 'myapp.com',
  *   },
  *   backups: {
  *     type: 's3',
@@ -339,7 +375,7 @@ export type DnsProviderType = 'hostinger' | 'route53' | 'cloudflare' | 'manual';
  * }
  * ```
  */
-export interface DeployConfig {
+export interface DeployConfig<S extends string = string> {
 	/** Default deploy target for all apps (default: 'dokploy') */
 	default?: DeployTargetName;
 	/**
@@ -370,8 +406,6 @@ export interface DeployConfig {
 	 * names a workspace was already deployed under.
 	 */
 	namespace?: string;
-	/** Each deployed stage's base domain — see {@link DomainsConfig}. */
-	domains?: DomainsConfig;
 	/**
 	 * The container registry the apps' images are pushed to and pulled from,
 	 * whatever the target — `ghcr.io/myorg`. An image is
@@ -381,19 +415,17 @@ export interface DeployConfig {
 	/** Dokploy-specific configuration */
 	dokploy?: DokployWorkspaceConfig;
 	/** What the `compose` target runs beside the apps — see {@link ComposeWorkspaceConfig}. */
-	compose?: ComposeWorkspaceConfig;
+	compose?: ComposeWorkspaceConfig<S>;
 	/**
 	 * Where each deployed stage's telemetry goes — see
 	 * {@link StageTelemetryConfig}.
 	 */
-	telemetry?: Record<string, StageTelemetryConfig>;
+	telemetry?: StageMap<S, StageTelemetryConfig>;
 	/**
 	 * What backs each deployed stage's buckets — the `objects` kind that
 	 * `ObjectStorage` and `FileServer` produce. See {@link StageObjectsConfig}.
 	 */
-	objects?: Record<string, StageObjectsConfig>;
-	/** DNS configuration for automatic record creation */
-	dns?: DnsConfig;
+	objects?: StageMap<S, StageObjectsConfig>;
 	/** Backup destination configuration for database services */
 	backups?: BackupsConfig;
 }
@@ -857,7 +889,10 @@ export type ConstrainedApps<TApps extends AppsRecord> = {
  * });
  * ```
  */
-export type WorkspaceInput<TApps extends AppsRecord> = {
+export type WorkspaceInput<
+	TApps extends AppsRecord,
+	TDeployed extends string = string,
+> = {
 	/**
 	 * Where the workspace's own constructs live, relative to its root.
 	 *
@@ -877,10 +912,24 @@ export type WorkspaceInput<TApps extends AppsRecord> = {
 	apps?: ConstrainedApps<TApps>;
 	/** Shared packages configuration */
 	shared?: SharedConfig;
+	/**
+	 * Each deployed stage's base domain — see {@link DomainsConfig}. A key that
+	 * is not a deployed stage is a type error.
+	 */
+	domains?: DomainsInput<NoInfer<TDeployed>>;
+	/**
+	 * Each root domain's DNS provider, and how its hosts are pointed at a
+	 * compose stage's server (`records`).
+	 */
+	dns?: DnsInput<NoInfer<TDeployed>>;
 	/** Deployment configuration */
-	deploy?: DeployConfig;
-	/** The project's stages: which one is local, which deploy */
-	stages: StagesConfig;
+	deploy?: DeployConfig<NoInfer<TDeployed>>;
+	/**
+	 * The project's stages: which one is local, which deploy. The deployed
+	 * stages type every per-stage map — `domains`, `deploy.objects`,
+	 * `deploy.telemetry`, `deploy.compose.proxy`/`tls`.
+	 */
+	stages: StagesInput<TDeployed>;
 	/** Encrypted secrets configuration */
 	secrets?: SecretsConfig;
 	/** State provider configuration (local filesystem by default, or SSM for team collaboration) */
@@ -888,6 +937,13 @@ export type WorkspaceInput<TApps extends AppsRecord> = {
 	/** How `gkm dev` is reached: the discovery endpoint's port and origins */
 	dev?: DevConfig;
 };
+
+/** `stages`, as `defineWorkspace` infers it: each deployed stage literally. */
+export interface StagesInput<TDeployed extends string = string> {
+	local: string;
+	deployed: readonly TDeployed[];
+	protected?: readonly NoInfer<TDeployed>[];
+}
 
 /**
  * How `gkm dev` is reached from outside the apps it runs.
@@ -948,6 +1004,8 @@ export type InferredWorkspaceConfig<TApps extends AppsRecord> = {
 		};
 	};
 	shared?: SharedConfig;
+	domains?: DomainsConfig;
+	dns?: WorkspaceDnsConfig;
 	deploy?: DeployConfig;
 	stages: StagesConfig;
 	secrets?: SecretsConfig;
@@ -1017,14 +1075,17 @@ export type WorkspaceConfigInput<
  *     },
  *   },
  *
+ *   // Each deployed stage's base domain, and who hosts its DNS
+ *   domains: {
+ *     production: 'myapp.com',
+ *     staging: 'staging.myapp.com',
+ *   },
+ *   dns: { 'myapp.com': { provider: 'godaddy' } },
+ *
  *   // Deployment configuration
  *   deploy: {
  *     default: 'dokploy',
  *     registry: 'ghcr.io/myorg',
- *     domains: {
- *       production: 'myapp.com',
- *       staging: 'staging.myapp.com',
- *     },
  *     dokploy: {
  *       endpoint: 'https://dokploy.myserver.com',
  *       projectId: 'proj_abc123',
@@ -1057,6 +1118,12 @@ export interface WorkspaceConfig {
 
 	/** Shared packages configuration */
 	shared?: SharedConfig;
+
+	/** Each deployed stage's base domain — see {@link DomainsConfig}. */
+	domains?: DomainsConfig;
+
+	/** Each root domain's DNS provider — see {@link WorkspaceDnsConfig}. */
+	dns?: WorkspaceDnsConfig;
 
 	/** Default deployment configuration */
 	deploy?: DeployConfig;
@@ -1139,6 +1206,10 @@ export interface NormalizedWorkspace {
 	constructs?: Routes;
 	/** Normalized app configurations */
 	apps: Record<string, NormalizedAppConfig>;
+	/** Each deployed stage's base domain */
+	domains?: DomainsConfig;
+	/** Each root domain's DNS provider */
+	dns?: WorkspaceDnsConfig;
 	/** Deploy configuration (empty object if not specified) */
 	deploy: DeployConfig;
 	/** Shared packages configuration (empty object if not specified) */
@@ -1221,6 +1292,8 @@ const WORKSPACE_KEYS: ReadonlySet<string> = new Set([
 	'constructs',
 	'apps',
 	'shared',
+	'domains',
+	'dns',
 	'deploy',
 	'stages',
 	'secrets',

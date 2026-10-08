@@ -1,4 +1,5 @@
 import { loadWorkspaceConfig } from '../config.js';
+import { assertStageServer, provisionStageDns } from '../providers/dns.js';
 import { provisionCommand, provisionStage } from '../providers/index.js';
 import { describeServices } from '../reconcile/containers.js';
 import {
@@ -66,6 +67,15 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 	logger.log(`📱 Apps: ${Object.keys(workspace.apps).join(', ')}`);
 	logger.log(`🔑 Stage: ${stage}\n`);
 
+	// A compose stage that serves a domain names its server in its secrets —
+	// refused before anything is generated, created or written.
+	if (!local) {
+		const store = await secretsStoreFor(workspace, stage, {
+			...(options.profile ? { profile: options.profile } : {}),
+		});
+		assertStageServer(workspace, stage, await store.read(stage));
+	}
+
 	// A dry run of a deployed stage is its providers' plan, and nothing else:
 	// no secrets generated, nothing written.
 	if (!local && options.dryRun) {
@@ -128,9 +138,23 @@ async function provisionDeployed(
 				`deploy: { objects: { ${stage}: { provider: 's3' } } } — to have ` +
 				`${provisionCommand(stage)} create it.`,
 		);
-		return;
 	}
-	const changes = configured.reduce((n, r) => n + r.actions.length, 0);
+
+	// A compose stage with a server: its hosts' records, with this machine's
+	// DNS credentials.
+	const dns = await provisionStageDns({
+		workspace,
+		stage,
+		...(options.dryRun ? { dryRun: true } : {}),
+		...(options.profile ? { profile: options.profile } : {}),
+		log: (line) => logger.log(line),
+	});
+
+	const changes =
+		configured.reduce((n, r) => n + r.actions.length, 0) +
+		dns.changes.filter((c) => c.action !== 'unchanged' && c.action !== 'manual')
+			.length;
+	if (configured.length === 0 && dns.mode === 'none') return;
 	logger.log(
 		options.dryRun
 			? `\n${changes === 0 ? '✅ Nothing to change' : `📋 ${changes} change${changes === 1 ? '' : 's'} planned`}`

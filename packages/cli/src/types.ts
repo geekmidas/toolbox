@@ -369,6 +369,10 @@ export interface GkmConfig {
 	 * a rename rather than a rewrite.
 	 */
 	deploy?: import('./workspace/types').DeployConfig;
+	/** Each deployed stage's base domain — the same field a workspace has. */
+	domains?: import('./workspace/types').DomainsConfig;
+	/** Each root domain's DNS provider — the same field a workspace has. */
+	dns?: import('./workspace/types').WorkspaceDnsConfig;
 }
 
 export interface BuildOptions {

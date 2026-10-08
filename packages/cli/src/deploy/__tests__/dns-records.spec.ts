@@ -211,7 +211,7 @@ describe('orchestrateDns', () => {
 
 		expect(result?.success).toBe(false);
 		expect(said()).toContain(
-			'Failed to create DNS provider for shop.com: Cloudflare DNS provider not yet implemented',
+			'Failed to create DNS provider for shop.com: The cloudflare DNS provider is not implemented yet.',
 		);
 	});
 

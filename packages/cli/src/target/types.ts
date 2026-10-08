@@ -202,6 +202,12 @@ export interface DeployPhaseContext<Options = undefined> {
 	 * runs both.
 	 */
 	readonly allowDevServices: boolean;
+	/**
+	 * `--skip-dns-check`: a server target does not check that each public
+	 * host resolves to the stage's server before it starts — for a CDN or
+	 * proxy in front of it.
+	 */
+	readonly skipDnsCheck?: boolean;
 	/** Where every credential comes from. Nothing prompts. */
 	readonly credentials: CredentialProvider;
 	/**

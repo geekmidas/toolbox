@@ -5,11 +5,11 @@ import type {
 	NormalizedAppConfig,
 } from '../../workspace/types.js';
 
-/** A stage was deployed that `deploy.domains` gives no domain. */
+/** A stage was deployed that `domains` gives no domain. */
 export class NoDomainForStage extends Error {
 	constructor(readonly stage: string) {
 		super(
-			`No domain for stage "${stage}". Add it to gkm.config.ts: deploy: { domains: { ${stage}: 'example.com' } }.`,
+			`No domain for stage "${stage}". Add it to gkm.config.ts: domains: { ${stage}: 'example.com' }.`,
 		);
 		this.name = 'NoDomainForStage';
 	}
@@ -19,11 +19,11 @@ export class NoDomainForStage extends Error {
  * The hostname an app answers on for a stage.
  *
  * 1. An explicit `app.domain` — a string, or one per stage — wins.
- * 2. Otherwise from the stage's base domain in `deploy.domains`: the root site
+ * 2. Otherwise from the stage's base domain in `domains`: the root site
  *    answers on the domain itself, and every other app on
  *    `{subdomain}.{domain}` — its declaration's `subdomain`, or its own name.
  *
- * @throws {NoDomainForStage} when `deploy.domains` names no domain for it
+ * @throws {NoDomainForStage} when `domains` names no domain for it
  */
 export function resolveHost(
 	appName: string,
