@@ -1,5 +1,7 @@
 # @geekmidas/manifest
 
+## 10.0.0-alpha.77
+
 ## 10.0.0-alpha.76
 
 ## 10.0.0-alpha.75

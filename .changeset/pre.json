@@ -138,6 +138,7 @@
     "sns-push-without-middy",
     "ssm-lock-readback",
     "sst-deploy-target",
+    "stage-secrets-no-db-urls",
     "storage-url-credentials",
     "surface-has-no-app",
     "test-client-config",
