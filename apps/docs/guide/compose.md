@@ -376,6 +376,11 @@ the address its caller used. Responses are never buffered (`flush_interval
 -1`): server-sent events and streamed Next.js RSC payloads reach the client as
 they are written.
 
+The edge removes **`x-gkm-client-ip`** from every request it forwards
+(`request_header -x-gkm-client-ip` in each site block). That header is gkm's
+own: an API's session check carries the client's address in it, and the auth
+server rate-limits by it, so only a service inside the stack may send it.
+
 The edge is published on 443 and 80. When those are taken — locally they often
 are — move it:
 
@@ -418,9 +423,11 @@ Both proxies serve the same routes. A stack's routes are worked out once — eac
 host, the service and port behind it, whether it streams, its allowlist and its
 health path — and rendered as a Caddyfile or as Traefik configuration, so the
 two never drift. Either way `Host` and `X-Forwarded-*` reach the app as the
-caller sent them, a streamed response is never buffered, and the log UI's
-public mode answers only its `allow` list (Traefik's `ipAllowList`, matched on
-the connection's own address).
+caller sent them, `x-gkm-client-ip` never does (Traefik removes it with a
+`<project>-strip-gkm-headers` headers middleware first in every router's
+chain), a streamed response is never buffered, and the log UI's public mode
+answers only its `allow` list (Traefik's `ipAllowList`, matched on the
+connection's own address).
 
 ### The shared edge
 

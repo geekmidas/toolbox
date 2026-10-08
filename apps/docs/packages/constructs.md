@@ -177,7 +177,21 @@ export const getUser = router
   });
 ```
 
-- Only `cookie`, `authorization` and `x-forwarded-for` are forwarded.
+- Only `cookie` and `authorization` are forwarded, with the active trace
+  context and the client's address — see below.
+- The client's address (the request's `x-forwarded-for`) travels as
+  **`x-gkm-client-ip`**, never as `x-forwarded-for`. The auth server reads it
+  first when it rate-limits (`advanced.ipAddress.ipAddressHeaders` is
+  `['x-gkm-client-ip', …yours or 'x-forwarded-for']`), so each user still has
+  a bucket of their own. Sent as a forwarding header, the call would look like
+  outside traffic, and the auth server's span would start a trace of its own
+  instead of continuing the API's.
+- `x-gkm-client-ip` is **reserved by gkm**. The stack's edge — Caddy, the
+  shared Traefik, the `gkm dev` edge — removes it from every incoming request,
+  and the auth server ignores it on any request that is not an internal
+  caller's (no `Origin`, no forwarding header, a private or loopback peer), so
+  nobody outside can choose the address they are rate-limited by. Don't send
+  it from your own code.
 - No session — Better Auth's `null`, or a `401` — is `null`.
 - A server that answers with any other failure throws `SessionCheckFailed`
   (with its `status`), and one that cannot be reached throws
@@ -422,9 +436,12 @@ query in the log, points at the code responsible.
   ends in a [sqlcommenter](https://google.github.io/sqlcommenter/) comment:
 
   ```sql
-  select … from "orders" where "id" = $1 /*operation='GET /orders/{id}',request_id='7f2a…'*/
+  select … from "orders" where "id" = $1 /*operation='GET /orders/{id}',request_id='7f2a…',traceparent='00-4bf9…-00f0…-01'*/
   ```
 
+  Inside a trace, `traceparent` is the query's own span, in W3C form — so a
+  slow query in the log, or a row of `pg_stat_activity`, is one search away
+  from its trace. Outside a request and a trace, a query is left as written.
   It appears in `pg_stat_activity.query` and in the server's slow-query and
   `auto_explain` logs, and costs no round trip; `pg_stat_statements` ignores
   comments, so its grouping is unchanged. Turn it off with

@@ -185,7 +185,18 @@ middleware as the production server: both are generated from one
   and `ExternalApi` call (see [Tracing](../packages/constructs.md#tracing));
 - a queue job or topic delivery as a CONSUMER span in the trace of the
   request that published it (see
-  [Trace context](../packages/events.md#trace-context)).
+  [Trace context](../packages/events.md#trace-context));
+- an API's session check as part of the request's trace: the API's SERVER
+  span → the `GET …/get-session` CLIENT span → the auth server's own SERVER
+  span. The call carries the trace context and no forwarding header (the
+  client's address goes as `x-gkm-client-ip` —
+  [see the auth server](../packages/constructs.md#the-auth-server-and-what-its-callers-hold)),
+  so the auth server trusts it as an internal caller and continues the trace.
+
+Each query also carries its span in its
+[sqlcommenter](https://google.github.io/sqlcommenter/) tag —
+`/*…,traceparent='00-<trace id>-<span id>-01'*/` — so a slow query in
+Postgres's log or a row of `pg_stat_activity` leads straight to its trace.
 
 To find a request's logs and spans, search OpenObserve's `default` stream by
 `trace_id`.
