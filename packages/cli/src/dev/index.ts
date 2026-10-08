@@ -405,7 +405,11 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		}
 		// Run on its own, it says how to sign in to each, as the workspace's
 		// `gkm dev` does — under it, that one already has.
-		if (!process.env[DISCOVERY_QUIET_ENV]) {
+		if (
+			!process.env[DISCOVERY_QUIET_ENV] &&
+			reconciled.credentials &&
+			reconciled.ports
+		) {
 			const { services: logins } = devCredentials(
 				workspace,
 				reconciled.credentials,

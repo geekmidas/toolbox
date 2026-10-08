@@ -88,19 +88,19 @@ describe('devCredentials', () => {
 		]);
 	});
 
-	it('adds OpenObserve where the local compose stack runs it', () => {
-		const withLogs = devCredentials(
-			{ ...workspace, deploy: { compose: { logs: true } } } as typeof workspace,
-			TEST_CREDENTIALS,
-			PORTS,
-		);
+	it('adds the OpenObserve gkm dev runs for a Telemetry construct', () => {
+		const withLogs = devCredentials(workspace, TEST_CREDENTIALS, {
+			...PORTS,
+			openobserve: 20717,
+		});
 
-		expect(withLogs.services.at(-1)).toMatchObject({
+		expect(withLogs.services.at(-1)).toEqual({
 			service: 'openobserve',
-			url: 'http://localhost:5080',
+			label: 'OpenObserve',
+			url: 'http://localhost:20717',
 			user: TEST_CREDENTIALS.logs.email,
 			password: TEST_CREDENTIALS.logs.password,
-			note: 'when running: gkm compose --stage dev',
+			note: 'when running: gkm dev',
 		});
 	});
 
