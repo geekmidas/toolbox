@@ -27,7 +27,13 @@
  * `traceSampler`, which caps an incoming sampled flag at the stage's rate.
  */
 
-/** Headers a reverse proxy or CDN adds on the way in. */
+/**
+ * Headers a reverse proxy or CDN adds on the way in.
+ *
+ * Not `x-gkm-client-ip`: that is gkm's own, sent by a service calling another
+ * on a client's behalf (an API's session check), and stripped by the stack's
+ * edge from everything that arrives from outside.
+ */
 const FORWARDING_HEADERS = [
 	'forwarded',
 	'x-forwarded-for',

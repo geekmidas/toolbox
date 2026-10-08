@@ -84,6 +84,7 @@ export {
 	externalApiUrl,
 	NoUrlForStage,
 } from './external';
+export { CLIENT_IP_HEADER } from './headers';
 export {
 	DATABASE_FOLDERS,
 	databaseFolder,

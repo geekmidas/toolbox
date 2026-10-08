@@ -1,3 +1,6 @@
+import { subscribe, unsubscribe } from 'node:diagnostics_channel';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { ServiceDiscovery, serviceContext } from '@geekmidas/services';
 import {
@@ -14,9 +17,11 @@ import {
 } from '@opentelemetry/sdk-trace-node';
 import type { Context, SQSRecord } from 'aws-lambda';
 import { type Kysely, sql } from 'kysely';
+import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { POSTGRES_PORT } from '../../../testkit/test/ports';
+import { BetterAuth } from '../auth';
 import { CronBuilder } from '../crons/CronBuilder';
 import { runCron } from '../crons/runCron';
 import { KyselyDatabase } from '../database/kysely';
@@ -110,6 +115,11 @@ describe('without a provider', () => {
 			n: number;
 		}>`select ${1}::int as n`.execute(db);
 		expect(rows).toEqual([{ n: 1 }]);
+		// No span, so no `traceparent` in the query's tag — no tag at all.
+		const { rows: text } = await sql<{
+			q: string;
+		}>`select current_query() as q`.execute(db);
+		expect(text[0]!.q).toBe('select current_query() as q');
 
 		const client = traceClient('Payments', new PaymentsClient());
 		await expect(client.charge(5)).resolves.toEqual({ amount: 5, token: 6 });
@@ -208,6 +218,145 @@ describe('with a provider', () => {
 
 			const span = spans().find((s) => s.name === 'select no_such_table_here');
 			expect(span?.status.code).toBe(SpanStatusCode.ERROR);
+		});
+	});
+
+	describe('query tags', () => {
+		/** `traceparent` for a recorded span. */
+		const traceparentOf = (span: {
+			spanContext(): { traceId: string; spanId: string };
+		}) => `00-${span.spanContext().traceId}-${span.spanContext().spanId}-01`;
+
+		it("carry the query span's traceparent, in sqlcommenter form", async () => {
+			const q = await trace
+				.getTracer('test')
+				.startActiveSpan('GET /orders', async (span) => {
+					const { rows } = await sql<{
+						q: string;
+					}>`select current_query() as q`.execute(db);
+					span.end();
+					return rows[0]!.q;
+				});
+
+			const query = spans().find((s) =>
+				String(s.attributes['db.statement']).includes('current_query'),
+			);
+			expect(query).toBeDefined();
+			expect(q).toBe(
+				`select current_query() as q /*traceparent='${traceparentOf(query!)}'*/`,
+			);
+		});
+
+		it('show in pg_stat_activity, seen from another connection', async () => {
+			const observer = new pg.Client({ connectionString: URL });
+			await observer.connect();
+			try {
+				const seen = await db.connection().execute(async (conn) => {
+					const { rows } = await sql<{
+						pid: number;
+					}>`select pg_backend_pid() as pid`.execute(conn);
+					const pid = rows[0]!.pid;
+
+					return trace
+						.getTracer('test')
+						.startActiveSpan('POST /reports', async (span) => {
+							const running = sql`select pg_sleep(0.5)`.execute(conn);
+							let query = '';
+							for (let i = 0; i < 20 && !query.includes('pg_sleep'); i++) {
+								await new Promise((r) => setTimeout(r, 25));
+								const activity = await observer.query<{ query: string }>(
+									'select query from pg_stat_activity where pid = $1',
+									[pid],
+								);
+								query = activity.rows[0]?.query ?? '';
+							}
+							await running;
+							span.end();
+							return query;
+						});
+				});
+
+				const sleep = spans().find((s) =>
+					String(s.attributes['db.statement']).includes('pg_sleep'),
+				);
+				expect(sleep).toBeDefined();
+				expect(seen).toBe(
+					`select pg_sleep(0.5) /*traceparent='${traceparentOf(sleep!)}'*/`,
+				);
+			} finally {
+				await observer.end();
+			}
+		});
+	});
+
+	describe('session checks', () => {
+		/** An auth server that records the `traceparent` each request carried. */
+		async function authServer() {
+			const received: (string | undefined)[] = [];
+			const server = createServer((req, res) => {
+				received.push(req.headers.traceparent);
+				res.writeHead(200, { 'content-type': 'application/json' });
+				res.end('null');
+			});
+			await new Promise<void>((resolve) => server.listen(0, resolve));
+			const { port } = server.address() as AddressInfo;
+			const client = new BetterAuth('Auth', {
+				database: new KyselyDatabase('AuthDb'),
+				path: 'apps/auth',
+			}).client(
+				new EnvironmentParser({ AUTH_URL: `http://127.0.0.1:${port}` }),
+			);
+			return {
+				received,
+				client,
+				close: () => new Promise((resolve) => server.close(resolve)),
+			};
+		}
+
+		it('carry the active trace context to the auth server', async () => {
+			const auth = await authServer();
+			try {
+				const parent = await trace
+					.getTracer('test')
+					.startActiveSpan('GET /me', async (span) => {
+						await auth.client.api.getSession({ headers: {} });
+						span.end();
+						return span.spanContext();
+					});
+
+				expect(auth.received).toEqual([
+					`00-${parent.traceId}-${parent.spanId}-01`,
+				]);
+			} finally {
+				await auth.close();
+			}
+		});
+
+		it('leave it to a fetch instrumentation that writes its own', async () => {
+			// What OpenTelemetry's undici instrumentation does: append the
+			// request's own CLIENT span as `traceparent`. A second one written
+			// here would arrive joined to it, and be read as neither.
+			const own = `00-${'a'.repeat(32)}-${'b'.repeat(16)}-01`;
+			const instrument = (message: unknown) => {
+				(
+					message as { request: { addHeader(k: string, v: string): void } }
+				).request.addHeader('traceparent', own);
+			};
+			subscribe('undici:request:create', instrument);
+			const auth = await authServer();
+			try {
+				await trace
+					.getTracer('test')
+					.startActiveSpan('GET /me', async (span) => {
+						await auth.client.api.getSession({ headers: {} });
+						span.end();
+					});
+
+				expect(auth.received).toEqual([own]);
+			} finally {
+				unsubscribe('undici:request:create', instrument);
+				await auth.close();
+			}
 		});
 	});
 

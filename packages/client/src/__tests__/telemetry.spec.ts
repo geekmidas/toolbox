@@ -1,3 +1,4 @@
+import { subscribe, unsubscribe } from 'node:diagnostics_channel';
 import { context, propagation, trace } from '@opentelemetry/api';
 import {
 	InMemorySpanExporter,
@@ -194,6 +195,27 @@ describe('trace context on the client', () => {
 				'00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01',
 			);
 			expect(headers.tracestate).toBe('vendor=value');
+		});
+
+		it('leaves the context to a fetch instrumentation listening in this process', async () => {
+			// OpenTelemetry's undici instrumentation appends the request's own
+			// CLIENT span as `traceparent`; a second header written here would
+			// arrive joined to it, and be read as neither.
+			const listener = () => {};
+			subscribe('undici:request:create', listener);
+			try {
+				const headers = await trace
+					.getTracer('test')
+					.startActiveSpan('GET /page', async (span) => {
+						const sent = await echoingClient(true)();
+						span.end();
+						return sent;
+					});
+
+				expect(headers.traceparent).toBeUndefined();
+			} finally {
+				unsubscribe('undici:request:create', listener);
+			}
 		});
 
 		it('falls back to the page view outside any span', async () => {

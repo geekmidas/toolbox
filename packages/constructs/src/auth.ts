@@ -27,6 +27,7 @@
 
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import {
+	CLIENT_IP_HEADER,
 	type ConstructName,
 	canonicalId,
 	type Declaration,
@@ -53,6 +54,7 @@ import {
 	type ServicesOf,
 } from './construct-interface';
 import type { Telemetry } from './telemetry';
+import { injectTraceContext } from './tracing';
 
 /** The server better-auth hands back. */
 export type AuthServer = ReturnType<typeof betterAuth>;
@@ -74,8 +76,9 @@ export interface AuthClient {
 		/**
 		 * The session the request's cookie or bearer token belongs to, or `null`
 		 * when there is none — asked of `<basePath>/get-session` at the auth
-		 * server's URL. Only `cookie`, `authorization` and `x-forwarded-for` are
-		 * forwarded.
+		 * server's URL. Only `cookie` and `authorization` are forwarded, with
+		 * the client's address as `x-gkm-client-ip` (read from the request's
+		 * `x-forwarded-for`) and the active trace context.
 		 *
 		 * @throws {AuthServerUnreachable} when the request does not get there.
 		 * @throws {SessionCheckFailed} when the server answers with a failure.
@@ -438,7 +441,9 @@ export class BetterAuth<
 					? (['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as const)
 					: ([endpoint.method] as const);
 
-			app.on([...methods], endpoint.path, (c) => server.handler(c.req.raw));
+			app.on([...methods], endpoint.path, (c) =>
+				server.handler(withTrustedClientIp(c.req.raw, remoteAddressOf(c))),
+			);
 		}
 
 		return { app, auth: server };
@@ -588,6 +593,22 @@ export class BetterAuth<
 			trustedOrigins: origins,
 			advanced: {
 				...configured.advanced,
+				// The client's address on a call from one of this stack's own
+				// services comes in gkm's header, ahead of whatever the app reads
+				// otherwise — `X-Forwarded-For` by default, as Better Auth reads a
+				// request that reached it through a proxy. The header is honoured
+				// only from an internal caller: see `withTrustedClientIp`.
+				ipAddress: {
+					...configured.advanced?.ipAddress,
+					ipAddressHeaders: [
+						CLIENT_IP_HEADER,
+						...(
+							configured.advanced?.ipAddress?.ipAddressHeaders ?? [
+								'x-forwarded-for',
+							]
+						).filter((name) => name.toLowerCase() !== CLIENT_IP_HEADER),
+					],
+				},
 				// Only when a domain was derived. Better Auth reads the presence
 				// of this block as intent, so enabling it with no domain would
 				// widen the cookie to whatever host happened to set it — and the
@@ -666,14 +687,20 @@ export class ExpoPluginRequired extends Error {
 	}
 }
 
-/**
- * What is forwarded to the auth server: the headers a session travels in, and
- * whose request it is — the server rate-limits `/get-session` by the client's
- * address, so without it every caller shares the API's one bucket.
- */
-const SESSION_HEADERS = ['cookie', 'authorization', 'x-forwarded-for'] as const;
+/** What is forwarded to the auth server: the headers a session travels in. */
+const SESSION_HEADERS = ['cookie', 'authorization'] as const;
 
-/** `GET <basePath>/get-session`, read the way Better Auth answers it. */
+/**
+ * `GET <basePath>/get-session`, read the way Better Auth answers it.
+ *
+ * Whose request it is travels in {@link CLIENT_IP_HEADER} — the server
+ * rate-limits `/get-session` by the client's address, so without it every
+ * caller shares the API's one bucket — and never as `X-Forwarded-For`. A
+ * forwarding header is what marks a request as outside traffic, so the auth
+ * server would start its span in a trace of its own rather than continue the
+ * API's. Without one, this is an internal caller's request, and the trace
+ * context it carries is continued.
+ */
 async function fetchSession(
 	authenticator: string,
 	endpoint: string,
@@ -684,6 +711,14 @@ async function fetchSession(
 		const value = given.get(name);
 		if (value) headers.set(name, value);
 	}
+	// The chain as the API received it, so the auth server reads it exactly
+	// as it would have read `X-Forwarded-For` (its `trustedProxies` included).
+	// Never a `CLIENT_IP_HEADER` the API was sent: this process cannot tell
+	// here whether its own caller was internal, and the auth server trusts
+	// whatever an internal caller — this one — says.
+	const client = given.get('x-forwarded-for');
+	if (client) headers.set(CLIENT_IP_HEADER, client);
+	injectTraceContext(headers);
 
 	const url = `${endpoint}/get-session`;
 	let response: Response;
@@ -754,4 +789,75 @@ export function idempotent(statements: string): string {
 			(_, unique = '') => `create ${unique}index if not exists "`,
 		)
 		.replace(/\badd column "/gi, 'add column if not exists "');
+}
+
+/** Headers a reverse proxy or CDN adds on the way in. */
+const FORWARDING_HEADERS = [
+	'forwarded',
+	'x-forwarded-for',
+	'x-forwarded-host',
+	'x-real-ip',
+	'cf-connecting-ip',
+	'true-client-ip',
+	'fastly-client-ip',
+	'x-client-ip',
+];
+
+/**
+ * `request`, without {@link CLIENT_IP_HEADER} unless an internal caller sent
+ * it — no `Origin`, no forwarding header, a loopback or private peer: the
+ * rule a request's span continues a trace by (`@geekmidas/telescope`'s
+ * `isInternalCaller`).
+ *
+ * The stack's own edges strip the header already. This holds wherever one
+ * does not — a platform's proxy, a port published straight to the internet —
+ * so a stranger cannot pick the address Better Auth rate-limits them by.
+ */
+export function withTrustedClientIp(
+	request: Request,
+	remoteAddress: string | undefined,
+): Request {
+	if (!request.headers.has(CLIENT_IP_HEADER)) return request;
+	const internal =
+		!request.headers.has('origin') &&
+		!FORWARDING_HEADERS.some((name) => request.headers.has(name)) &&
+		isPrivateAddress(remoteAddress);
+	if (internal) return request;
+
+	const headers = new Headers(request.headers);
+	headers.delete(CLIENT_IP_HEADER);
+	return new Request(request, { headers });
+}
+
+/** The TCP peer of a request served by `@hono/node-server`, when there is one. */
+function remoteAddressOf(c: { env: unknown }): string | undefined {
+	const env = c.env as
+		| { incoming?: { socket?: { remoteAddress?: string } } }
+		| undefined;
+	return env?.incoming?.socket?.remoteAddress;
+}
+
+/**
+ * Whether `address` is loopback or private: 127/8, 10/8, 172.16/12,
+ * 192.168/16, 169.254/16, `::1`, `fc00::/7`, `fe80::/10`, and an IPv4 one
+ * mapped into IPv6.
+ */
+function isPrivateAddress(address: string | undefined): boolean {
+	if (!address) return false;
+	const ip = address.toLowerCase().replace(/^::ffff:/, '');
+
+	const v4 = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+	if (v4) {
+		const [a, b] = [Number(v4[1]), Number(v4[2])];
+		return (
+			a === 127 ||
+			a === 10 ||
+			(a === 172 && b >= 16 && b <= 31) ||
+			(a === 192 && b === 168) ||
+			(a === 169 && b === 254)
+		);
+	}
+
+	if (ip === '::1') return true;
+	return /^f[cd][0-9a-f]{2}:/.test(ip) || /^fe[89ab][0-9a-f]:/.test(ip);
 }

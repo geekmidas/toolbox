@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { expo } from '@better-auth/expo';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { serviceContext } from '@geekmidas/services';
@@ -15,6 +17,7 @@ import {
 	deviceLink,
 	ExpoPluginRequired,
 	SessionCheckFailed,
+	withTrustedClientIp,
 } from '../auth';
 import { KyselyDatabase } from '../database/kysely';
 
@@ -679,7 +682,7 @@ describe('BetterAuth.service — what .dependsOn([auth]) hands a caller', () => 
 		expect(await client.api.getSession({ headers: new Headers() })).toBeNull();
 	});
 
-	it('asks <basePath>/get-session, forwarding only the session headers', async () => {
+	it('asks <basePath>/get-session, forwarding only the session headers and the client in gkm’s own header', async () => {
 		const seen = record(() => HttpResponse.json(null));
 		const client = await auth({}, '/auth').service.register(caller());
 
@@ -699,8 +702,22 @@ describe('BetterAuth.service — what .dependsOn([auth]) hands a caller', () => 
 			'better-auth.session_token=abc',
 		);
 		expect(seen[0]!.headers.get('authorization')).toBe('Bearer t0ken');
-		expect(seen[0]!.headers.get('x-forwarded-for')).toBe('203.0.113.7');
+		// Whose request it is, in a header no proxy adds: a forwarding header
+		// would make the auth server treat this as outside traffic.
+		expect(seen[0]!.headers.get('x-gkm-client-ip')).toBe('203.0.113.7');
+		expect(seen[0]!.headers.get('x-forwarded-for')).toBeNull();
 		expect(seen[0]!.headers.get('x-internal')).toBeNull();
+	});
+
+	it('never passes on a client address it was sent in gkm’s own header', async () => {
+		const seen = record(() => HttpResponse.json(null));
+		const client = await auth().service.register(caller());
+
+		await client.api.getSession({
+			headers: { cookie: 'a=1', 'x-gkm-client-ip': '198.51.100.1' },
+		});
+
+		expect(seen[0]!.headers.get('x-gkm-client-ip')).toBeNull();
 	});
 
 	it('reads a 401 as signed out', async () => {
@@ -740,5 +757,120 @@ describe('BetterAuth.service — what .dependsOn([auth]) hands a caller', () => 
 			url: `${AUTH_URL}/api/auth/get-session`,
 		});
 		expect((failure as Error).message).toContain('AUTH_URL');
+	});
+});
+
+describe('the client’s address on a session check', () => {
+	/**
+	 * The auth server on a real socket, as its generated entry serves it: the
+	 * TCP peer is what decides whether `x-gkm-client-ip` is believed, and an
+	 * in-process `app.fetch` has none.
+	 */
+	let listener: Server;
+	let base: string;
+
+	beforeAll(async () => {
+		const { app } = await auth({
+			rateLimit: { enabled: true, window: 60, max: 2, storage: 'memory' },
+		}).server(options());
+		listener = createServer(async (req, res) => {
+			const chunks: Buffer[] = [];
+			for await (const chunk of req) chunks.push(chunk as Buffer);
+			const headers = new Headers();
+			for (const [name, value] of Object.entries(req.headers)) {
+				if (typeof value === 'string') headers.set(name, value);
+			}
+			const response = await app.fetch(
+				new Request(`${AUTH_URL}${req.url}`, {
+					method: req.method,
+					headers,
+					...(chunks.length ? { body: Buffer.concat(chunks) } : {}),
+				}),
+				// What `@hono/node-server` hands the app as `c.env`.
+				{ incoming: req },
+			);
+			res.writeHead(response.status, Object.fromEntries(response.headers));
+			res.end(Buffer.from(await response.arrayBuffer()));
+		});
+		await new Promise<void>((resolve) => listener.listen(0, resolve));
+		base = `http://127.0.0.1:${(listener.address() as AddressInfo).port}`;
+	});
+
+	afterAll(async () => {
+		await new Promise((resolve) => listener.close(resolve));
+	});
+
+	/** An API's client for the server above, as `.dependsOn([auth])` builds it. */
+	const client = () => auth().client(new EnvironmentParser({ AUTH_URL: base }));
+
+	const check = (forwardedFor: string) =>
+		client()
+			.api.getSession({ headers: { 'x-forwarded-for': forwardedFor } })
+			.then(
+				() => 200,
+				(error: unknown) => (error as SessionCheckFailed).status,
+			);
+
+	it('rate-limits each client by its own address, not the API’s', async () => {
+		const ada = '203.0.113.7';
+		const grace = '198.51.100.23';
+
+		expect([await check(ada), await check(ada)]).toEqual([200, 200]);
+		expect(await check(ada)).toBe(429);
+		// Another client of the same API is in a bucket of its own.
+		expect(await check(grace)).toBe(200);
+	});
+
+	it('ignores the header from anything but an internal caller', async () => {
+		// Through a proxy: a forwarding header says this came from outside, so
+		// the address it claims in gkm's header is not the one rate-limited.
+		const spoof = () =>
+			fetch(`${base}/api/auth/get-session`, {
+				headers: {
+					'x-forwarded-for': '192.0.2.50',
+					'x-gkm-client-ip': `192.0.2.${Math.floor(Math.random() * 200)}`,
+				},
+			}).then((r) => r.status);
+
+		expect([await spoof(), await spoof()]).toEqual([200, 200]);
+		expect(await spoof()).toBe(429);
+	});
+});
+
+describe('withTrustedClientIp', () => {
+	const request = (headers: Record<string, string>) =>
+		new Request('http://auth.internal/api/auth/get-session', { headers });
+	const ip = (r: Request) => r.headers.get('x-gkm-client-ip');
+
+	it('keeps it from an internal caller', () => {
+		const internal = request({ 'x-gkm-client-ip': '203.0.113.7' });
+
+		expect(ip(withTrustedClientIp(internal, '127.0.0.1'))).toBe('203.0.113.7');
+		expect(ip(withTrustedClientIp(internal, '::ffff:10.0.3.4'))).toBe(
+			'203.0.113.7',
+		);
+	});
+
+	it('drops it from a public peer, through a proxy, from a page, or with no peer', () => {
+		const sent = { 'x-gkm-client-ip': '203.0.113.7' };
+
+		expect(ip(withTrustedClientIp(request(sent), '8.8.8.8'))).toBeNull();
+		expect(
+			ip(
+				withTrustedClientIp(
+					request({ ...sent, 'x-forwarded-for': '8.8.8.8' }),
+					'10.0.0.2',
+				),
+			),
+		).toBeNull();
+		expect(
+			ip(
+				withTrustedClientIp(
+					request({ ...sent, origin: WEB_ORIGIN }),
+					'127.0.0.1',
+				),
+			),
+		).toBeNull();
+		expect(ip(withTrustedClientIp(request(sent), undefined))).toBeNull();
 	});
 });

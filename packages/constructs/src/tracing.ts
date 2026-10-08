@@ -1,15 +1,23 @@
 /**
  * Where the constructs meet OpenTelemetry, beyond the spans `@geekmidas/events`
- * starts for the brokers: the trace context in a Lambda's records, and the
- * spans around an `ExternalApi`'s client.
+ * starts for the brokers: the trace context in a Lambda's records, the spans
+ * around an `ExternalApi`'s client, and the context a call to a sibling
+ * service carries.
  *
  * Everything goes through the global API, so without a registered provider
  * none of it records anything.
  *
  * @module
  */
+import { channel } from 'node:diagnostics_channel';
 import { carrierFromAttributes, type TraceCarrier } from '@geekmidas/events';
-import { SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
+import {
+	context,
+	propagation,
+	SpanKind,
+	SpanStatusCode,
+	trace,
+} from '@opentelemetry/api';
 
 /**
  * The trace context a Lambda record carries: an SQS record's message
@@ -123,4 +131,29 @@ function callTraced(
 			return result;
 		},
 	);
+}
+
+/**
+ * Where an instrumentation of `fetch` hears of each request — undici's own
+ * diagnostics channel, which OpenTelemetry's undici instrumentation (and every
+ * APM built on it) subscribes to.
+ */
+const FETCH_REQUESTS = channel('undici:request:create');
+
+/**
+ * The active trace context, written into `headers` for a call this process
+ * makes to one of its own services — the auth server's session check — so the
+ * callee's span joins the caller's trace.
+ *
+ * Through the global propagator, so it is a no-op without one. And not at all
+ * when a `fetch` instrumentation is listening: that opens the request's own
+ * CLIENT span and writes its `traceparent` by appending a header, so a second
+ * one here would reach the callee as two values joined — `a, b` — which no
+ * propagator reads, and the trace would break instead of joining.
+ */
+export function injectTraceContext(headers: Headers): void {
+	if (FETCH_REQUESTS.hasSubscribers) return;
+	propagation.inject(context.active(), headers, {
+		set: (carrier, key, value) => carrier.set(key, value),
+	});
 }
