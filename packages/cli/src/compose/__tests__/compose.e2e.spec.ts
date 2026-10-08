@@ -53,6 +53,7 @@ import {
 	realpathSync,
 	writeFileSync,
 } from 'node:fs';
+import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
@@ -225,6 +226,44 @@ async function freePort(): Promise<number> {
 	await new Promise((resolve) => server.close(resolve));
 	if (!address || typeof address === 'string') throw new Error('no port');
 	return address.port;
+}
+
+/**
+ * GET /stream through an edge, each chunk with when it arrived. The API
+ * writes three lines 700ms apart; through an edge that buffers, they
+ * arrive together.
+ */
+function streamed(options: {
+	port: number;
+	host: string;
+	hostHeader: string;
+	ca: string;
+}): Promise<{ text: string; at: number }[]> {
+	return new Promise((resolve, reject) => {
+		const req = httpsRequest(
+			{
+				host: '127.0.0.1',
+				port: options.port,
+				servername: options.host,
+				path: '/stream',
+				ca: options.ca,
+				headers: { host: options.hostHeader },
+			},
+			(res) => {
+				const chunks: { text: string; at: number }[] = [];
+				res.on('data', (chunk: Buffer) => {
+					chunks.push({ text: chunk.toString(), at: Date.now() });
+				});
+				res.on('end', () =>
+					res.statusCode === 200
+						? resolve(chunks)
+						: reject(new Error(`/stream answered ${res.statusCode}`)),
+				);
+			},
+		);
+		req.on('error', reject);
+		req.end();
+	});
 }
 
 interface Response {
@@ -639,6 +678,21 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 
 				expect(await signOutFrom('http://evil.example')).toBe(403);
 				expect(await signOutFrom('http://api:3000')).toBe(200);
+			});
+
+			it('streams a response through Caddy as it is written', async () => {
+				const chunks = await streamed({
+					port: https,
+					host: host('api'),
+					hostHeader: `${host('api')}:${https}`,
+					ca,
+				});
+
+				expect(chunks.map((chunk) => chunk.text).join('')).toBe(
+					'chunk 1\nchunk 2\nchunk 3\n',
+				);
+				// Written 700ms apart, and received apart: nothing buffered them.
+				expect(chunks.at(-1)!.at - chunks[0]!.at).toBeGreaterThan(1000);
 			});
 
 			/** `docker compose <args>` against this stack. */
@@ -1160,6 +1214,525 @@ export const readStamp = api
 				}
 				expect(body).toEqual({ value });
 			}
+		});
+	},
+);
+
+/** Run openssl, failing with what it said. */
+const openssl = (args: readonly string[], cwd: string) =>
+	exec('openssl', args, { cwd });
+
+/**
+ * A certificate authority made for one run, and a certificate it signed for
+ * every host the stacks answer — what `deploy.compose.tls` hands the edge in
+ * place of Let's Encrypt, which cannot issue for names nobody can resolve.
+ * The CLI trusts the CA through NODE_EXTRA_CA_CERTS, as a server would trust
+ * an internal CA.
+ */
+async function testCertificate(
+	dir: string,
+	domains: readonly string[],
+): Promise<{ ca: string; cert: string; key: string }> {
+	await openssl(
+		[
+			'req',
+			'-x509',
+			'-newkey',
+			'rsa:2048',
+			'-nodes',
+			'-days',
+			'2',
+			'-subj',
+			'/CN=gkm compose e2e CA',
+			'-keyout',
+			'ca.key',
+			'-out',
+			'ca.pem',
+			'-addext',
+			'basicConstraints=critical,CA:TRUE',
+			'-addext',
+			'keyUsage=critical,keyCertSign,cRLSign',
+		],
+		dir,
+	);
+	await openssl(
+		[
+			'req',
+			'-newkey',
+			'rsa:2048',
+			'-nodes',
+			'-subj',
+			`/CN=${domains[0]}`,
+			'-keyout',
+			'edge.key',
+			'-out',
+			'edge.csr',
+		],
+		dir,
+	);
+	writeFileSync(
+		join(dir, 'edge.ext'),
+		`subjectAltName=${domains.flatMap((d) => [`DNS:${d}`, `DNS:*.${d}`]).join(',')}
+basicConstraints=CA:FALSE
+extendedKeyUsage=serverAuth
+`,
+	);
+	await openssl(
+		[
+			'x509',
+			'-req',
+			'-in',
+			'edge.csr',
+			'-CA',
+			'ca.pem',
+			'-CAkey',
+			'ca.key',
+			'-CAcreateserial',
+			'-days',
+			'2',
+			'-extfile',
+			'edge.ext',
+			'-out',
+			'edge.pem',
+		],
+		dir,
+	);
+	return {
+		ca: join(dir, 'ca.pem'),
+		cert: join(dir, 'edge.pem'),
+		key: join(dir, 'edge.key'),
+	};
+}
+
+/**
+ * `proxy: 'traefik'`, end to end: two deployed stages of one project, each
+ * its own stack, both behind one shared Traefik edge that the first run
+ * started — on free ports, with a certificate from a CA made for the run.
+ *
+ * - Sign-in from the site's origin through the edge, an API call with that
+ *   session, and the trusted origins of a sibling service — reached by its
+ *   alias on the shared network.
+ * - The site, and a streamed response, through the edge.
+ * - The log UI's allowlist: allowed on one stage, refused on the other.
+ * - `--down` of one stack: its routes are gone, and the other still serves.
+ */
+describe.runIf(RUN)(
+	"gkm compose with proxy: 'traefik', end to end",
+	{ timeout: 60_000 },
+	() => {
+		const name = `compose-traefik-${randomBytes(3).toString('hex')}`;
+		const stages = ['staging', 'production'] as const;
+		type Stage = (typeof stages)[number];
+		const domain = (stage: Stage) => `${stage}.${name}.localhost`;
+		const project = (stage: Stage) => `${name}-${stage}`;
+		/** Every private range: whatever address Docker hands the edge. */
+		const PRIVATE = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'];
+
+		let dir: string;
+		let home: string;
+		let certs: string;
+		let ca: string;
+		let caFile: string;
+		let https: number;
+		let http: number;
+		const output: Partial<Record<Stage, string>> = {};
+
+		const host = (stage: Stage, app: 'api' | 'auth' | 'web' | 'logs') =>
+			app === 'web' ? domain(stage) : `${app}.${domain(stage)}`;
+		const origin = (stage: Stage, app: 'api' | 'auth' | 'web') =>
+			`https://${host(stage, app)}`;
+		const file = (stage: Stage) =>
+			join(dir, '.gkm', 'compose', stage, 'docker-compose.yml');
+		const dynamic = () => join(home, 'edge', 'dynamic');
+
+		/** A request to the shared edge, as a browser at the public address. */
+		function edge(
+			stage: Stage,
+			app: 'api' | 'auth' | 'web' | 'logs',
+			path: string,
+			init: {
+				method?: string;
+				headers?: Record<string, string>;
+				body?: unknown;
+			} = {},
+		): Promise<Response> {
+			const body =
+				init.body === undefined ? undefined : JSON.stringify(init.body);
+			return new Promise((resolve, reject) => {
+				const req = httpsRequest(
+					{
+						host: '127.0.0.1',
+						port: https,
+						servername: host(stage, app),
+						path,
+						method: init.method ?? 'GET',
+						ca,
+						headers: {
+							host: host(stage, app),
+							...(body
+								? {
+										'content-type': 'application/json',
+										'content-length': Buffer.byteLength(body),
+									}
+								: {}),
+							...init.headers,
+						},
+					},
+					(res) => {
+						let text = '';
+						res.on('data', (chunk: Buffer) => {
+							text += chunk.toString();
+						});
+						res.on('end', () =>
+							resolve({
+								status: res.statusCode ?? 0,
+								headers: res.headers,
+								body: text,
+							}),
+						);
+					},
+				);
+				req.on('error', reject);
+				if (body) req.write(body);
+				req.end();
+			});
+		}
+
+		const cookies = (response: Response) =>
+			([] as string[])
+				.concat(response.headers['set-cookie'] ?? [])
+				.map((cookie) => cookie.split(';')[0])
+				.join('; ');
+
+		const gkm = (args: readonly string[]) =>
+			exec(process.execPath, [CLI, ...args], {
+				cwd: dir,
+				env: childEnv({
+					GKM_HOME: home,
+					GKM_COMPOSE_HTTPS_PORT: String(https),
+					GKM_COMPOSE_HTTP_PORT: String(http),
+					// The run's CA, trusted by verify as a server trusts its own.
+					NODE_EXTRA_CA_CERTS: caFile,
+				}),
+			});
+
+		/** The workspace, its log UI open to `allow`. */
+		const configure = (allow: readonly string[]) =>
+			writeComposeApp(dir, {
+				name,
+				deployed: [...stages],
+				domains: Object.fromEntries(stages.map((s) => [s, domain(s)])),
+				compose: {
+					proxy: 'traefik',
+					logs: { public: { allow } },
+					tls: Object.fromEntries(
+						stages.map((s) => [
+							s,
+							{ certFile: '../certs/edge.pem', keyFile: '../certs/edge.key' },
+						]),
+					),
+				},
+			});
+
+		beforeAll(async () => {
+			if (!existsSync(DIST)) {
+				throw new Error(
+					`The CLI is not built (${DIST}). Run \`npx tsdown --config ./tsdown.config.ts\` from the repo root first.`,
+				);
+			}
+
+			const root = realpathSync(await createTempDir('gkm-compose-traefik-'));
+			dir = join(root, 'project');
+			certs = join(root, 'certs');
+			home = join(root, 'home');
+			for (const path of [dir, certs, home]) {
+				await exec('mkdir', ['-p', path]);
+			}
+			caFile = (await testCertificate(certs, stages.map(domain))).ca;
+			ca = readFileSync(caFile, 'utf-8');
+
+			configure(PRIVATE);
+			await dependOnThisCheckout(dir, name, { telemetry: true });
+			await exec('pnpm', ['install', '--lockfile-only'], { cwd: dir });
+			const git = childEnv({
+				GIT_AUTHOR_NAME: 'gkm',
+				GIT_AUTHOR_EMAIL: 'gkm@example.com',
+				GIT_COMMITTER_NAME: 'gkm',
+				GIT_COMMITTER_EMAIL: 'gkm@example.com',
+			});
+			await exec('git', ['init', '-q'], { cwd: dir, env: git });
+			await exec('git', ['add', '-A'], { cwd: dir, env: git });
+			await exec('git', ['commit', '-q', '-m', 'init'], { cwd: dir, env: git });
+
+			https = await freePort();
+			http = await freePort();
+
+			// The first stack starts the edge; its log UI answers the private
+			// ranges, which is where Docker's published ports come from.
+			output.staging = await gkm(['compose', '--stage', 'staging']);
+			// The second registers with the edge the first started, its log UI
+			// open to an address this machine is not.
+			const config = join(dir, 'gkm.config.ts');
+			writeFileSync(
+				config,
+				readFileSync(config, 'utf-8').replace(
+					JSON.stringify(PRIVATE),
+					JSON.stringify(['203.0.113.7']),
+				),
+			);
+			output.production = await gkm(['compose', '--stage', 'production']);
+		}, 2 * BUILD_TIMEOUT);
+
+		afterAll(async () => {
+			if (process.env.GKM_E2E_KEEP === '1') {
+				console.log(`Kept ${name} and gkm-edge in ${dir}`);
+				return;
+			}
+			for (const stage of stages) {
+				if (dir && existsSync(file(stage))) {
+					await exec('docker', [
+						'compose',
+						'-p',
+						project(stage),
+						'-f',
+						file(stage),
+						'down',
+						'--volumes',
+						'--remove-orphans',
+					]).catch(() => {});
+				}
+			}
+			const edgeFile = join(home, 'edge', 'docker-compose.yml');
+			if (home && existsSync(edgeFile)) {
+				await exec('docker', [
+					'compose',
+					'-p',
+					'gkm-edge',
+					'-f',
+					edgeFile,
+					'down',
+					'--volumes',
+				]).catch(() => {});
+				await exec('docker', ['network', 'rm', 'gkm-edge']).catch(() => {});
+			}
+			const images = await exec('docker', [
+				'images',
+				'--quiet',
+				'--filter',
+				`reference=${name}/*`,
+			]).catch(() => '');
+			const ids = [...new Set(images.split('\n').filter(Boolean))];
+			if (ids.length > 0) {
+				await exec('docker', ['image', 'rm', '-f', ...ids]).catch(() => {});
+			}
+			if (dir) await cleanupDir(join(dir, '..'));
+		}, 5 * 60_000);
+
+		it('runs no Caddy of its own, and verified each app through the shared edge', async () => {
+			for (const stage of stages) {
+				const said = output[stage]!;
+				expect(said).toContain(`${project(stage)} is running`);
+				expect(said).toContain('Checking each app through the shared edge');
+				for (const app of ['api', 'auth', 'web', 'jobs']) {
+					expect(said).toContain(`✓ ${app}`);
+				}
+				const ps = await exec('docker', [
+					'compose',
+					'-p',
+					project(stage),
+					'-f',
+					file(stage),
+					'ps',
+					'--services',
+				]);
+				expect(ps.split('\n')).not.toContain('caddy');
+			}
+			// The first run started the edge; the second found it.
+			expect(output.staging).toContain('Starting the shared edge');
+			expect(readdirSync(dynamic()).sort()).toEqual(
+				stages.map((stage) => `${project(stage)}.yml`).sort(),
+			);
+		});
+
+		it('puts only public services on the shared network, by their aliases', async () => {
+			const inspected = JSON.parse(
+				await exec('docker', ['network', 'inspect', 'gkm-edge']),
+			)[0] as { Containers: Record<string, { Name: string }> };
+			const names = Object.values(inspected.Containers).map((c) => c.Name);
+
+			for (const stage of stages) {
+				for (const service of ['api', 'auth', 'web', 'openobserve']) {
+					expect(names).toContain(`${project(stage)}-${service}-1`);
+				}
+				for (const service of ['postgres', 'redis', 'jobs']) {
+					expect(names).not.toContain(`${project(stage)}-${service}-1`);
+				}
+			}
+			expect(names).toContain('gkm-edge-traefik-1');
+		});
+
+		it('redirects plain HTTP to HTTPS', async () => {
+			// node:http, not fetch: fetch will not send a Host of our choosing.
+			const response = await new Promise<{
+				status: number;
+				location?: string;
+			}>((resolve, reject) => {
+				httpRequest(
+					{
+						host: '127.0.0.1',
+						port: http,
+						path: '/health',
+						headers: { host: host('staging', 'api') },
+					},
+					(res) => {
+						res.resume();
+						resolve({
+							status: res.statusCode ?? 0,
+							location: res.headers.location,
+						});
+					},
+				)
+					.on('error', reject)
+					.end();
+			});
+			expect(response.status).toBe(301);
+			expect(response.location).toBe(
+				`https://${host('staging', 'api')}:${https}/health`,
+			);
+		});
+
+		it('signs in from the site through the edge, and the API takes the session', async () => {
+			const email = `t-${randomBytes(4).toString('hex')}@example.com`;
+			const signUp = await edge('staging', 'auth', '/api/auth/sign-up/email', {
+				method: 'POST',
+				headers: { origin: origin('staging', 'web') },
+				body: { email, password: 'correct-horse-battery', name: 'Ada' },
+			});
+			expect(signUp.status).toBe(200);
+
+			const signIn = await edge('staging', 'auth', '/api/auth/sign-in/email', {
+				method: 'POST',
+				headers: { origin: origin('staging', 'web') },
+				body: { email, password: 'correct-horse-battery' },
+			});
+			expect(signIn.status).toBe(200);
+			const session = ([] as string[])
+				.concat(signIn.headers['set-cookie'] ?? [])
+				.find((cookie) => /session_token=/.test(cookie));
+			expect(session).toMatch(/Secure/i);
+
+			const me = await edge('staging', 'api', '/me', {
+				headers: {
+					cookie: cookies(signIn),
+					origin: origin('staging', 'web'),
+				},
+			});
+			expect(me.status).toBe(200);
+			expect(JSON.parse(me.body)).toEqual({ email });
+			expect((await edge('staging', 'api', '/me')).status).toBe(401);
+		});
+
+		it("trusts a sibling's internal origin — its alias — and refuses one nobody declared", async () => {
+			const email = `o-${randomBytes(4).toString('hex')}@example.com`;
+			const signUp = await edge('staging', 'auth', '/api/auth/sign-up/email', {
+				method: 'POST',
+				headers: { origin: origin('staging', 'web') },
+				body: { email, password: 'correct-horse-battery', name: 'Grace' },
+			});
+			expect(signUp.status).toBe(200);
+			const session = cookies(signUp);
+			const auth = `http://${project('staging')}-auth:3001`;
+
+			const signOutFrom = (from: string) =>
+				exec('docker', [
+					'compose',
+					'-p',
+					project('staging'),
+					'-f',
+					file('staging'),
+					'exec',
+					'-T',
+					'api',
+					'node',
+					'-e',
+					`fetch(${JSON.stringify(`${auth}/api/auth/sign-out`)}, { method: 'POST', headers: { origin: ${JSON.stringify(from)}, cookie: ${JSON.stringify(session)}, 'content-type': 'application/json' }, body: '{}' }).then((r) => console.log(r.status))`,
+				]).then((said) => Number(said.trim().split('\n').pop()));
+
+			expect(await signOutFrom('http://evil.example')).toBe(403);
+			expect(await signOutFrom(`http://${project('staging')}-api:3000`)).toBe(
+				200,
+			);
+		});
+
+		it('serves the site, built with its public URLs', async () => {
+			const page = await edge('staging', 'web', '/');
+			expect(page.status).toBe(200);
+			const script = page.body.match(/src="(\/assets\/[^"]+\.js)"/)?.[1];
+			expect(script).toBeDefined();
+			const bundle = await edge('staging', 'web', script!);
+			expect(bundle.body).toContain(origin('staging', 'api'));
+			// Caddy inside the site's image, unchanged behind Traefik.
+			expect(bundle.headers['cache-control']).toBe(
+				'public, max-age=31536000, immutable',
+			);
+		});
+
+		it('streams a response as it is written', async () => {
+			const chunks = await streamed({
+				port: https,
+				host: host('staging', 'api'),
+				hostHeader: host('staging', 'api'),
+				ca,
+			});
+
+			expect(chunks.map((chunk) => chunk.text).join('')).toBe(
+				'chunk 1\nchunk 2\nchunk 3\n',
+			);
+			expect(chunks.at(-1)!.at - chunks[0]!.at).toBeGreaterThan(1000);
+		});
+
+		it('answers the log UI only to the addresses each stage allows', async () => {
+			// Staging allows the private ranges this request arrives from.
+			const allowed = await edge('staging', 'logs', '/web/');
+			expect(allowed.status).not.toBe(403);
+			expect(allowed.status).toBeLessThan(500);
+			// Production allows one address, which this machine is not.
+			const denied = await edge('production', 'logs', '/web/');
+			expect(denied.status).toBe(403);
+		});
+
+		it('serves both stacks at once, each on its own hosts', async () => {
+			for (const stage of stages) {
+				expect((await edge(stage, 'api', '/health')).status).toBe(200);
+				expect((await edge(stage, 'web', '/')).status).toBe(200);
+			}
+		});
+
+		it('--down of one stack removes its routes, and the other keeps serving', async () => {
+			const said = await gkm(['compose', '--stage', 'staging', '--down']);
+			expect(said).toContain(`Removed ${project('staging')}'s routes`);
+			expect(readdirSync(dynamic())).toEqual([`${project('production')}.yml`]);
+
+			// The edge picks the removal up from its directory.
+			let gone = 0;
+			for (let attempt = 0; attempt < 30; attempt++) {
+				gone = (await edge('staging', 'api', '/health')).status;
+				if (gone === 404) break;
+				await new Promise((resolve) => setTimeout(resolve, 500));
+			}
+			expect(gone).toBe(404);
+
+			expect((await edge('production', 'api', '/health')).status).toBe(200);
+			expect((await edge('production', 'web', '/')).status).toBe(200);
+			// The edge itself is left running for the stacks still on it.
+			const edgePs = await exec('docker', [
+				'ps',
+				'--filter',
+				'name=gkm-edge-traefik-1',
+				'--format',
+				'{{.Status}}',
+			]);
+			expect(edgePs).toMatch(/healthy/);
 		});
 	},
 );

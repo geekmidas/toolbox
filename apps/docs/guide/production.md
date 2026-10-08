@@ -22,6 +22,8 @@ once it does. Each section is short; follow the links for the detail.
 - [ ] You know how to roll back ([Rollback](#rollback)).
 - [ ] Each `Worker`'s image is deployed beside the APIs, and its health
       check passes ([Workers](#workers)).
+- [ ] On `gkm compose`, a server running more than one stack uses
+      `proxy: 'traefik'` for each of them ([One server, several stacks](#one-server-several-stacks)).
 
 ## Secrets and the master key
 
@@ -215,6 +217,22 @@ Everything in a cache can be rebuilt, so losing the volume loses nothing but
 warm entries. Dokploy keeps today's default — a table in the declared
 database. See [Deploy with Docker Compose → The cache](./compose.md#the-cache).
 
+## One server, several stacks
+
+A `gkm compose` stack fronts itself with its own Caddy on 80 and 443, so a
+second stack on the same server — another stage, another project — has
+nowhere to go. Set `deploy.compose.proxy: 'traefik'` (for every deployed stage,
+or per stage) and every stack registers its hosts with one shared Traefik edge
+instead: the edge owns 80 and 443, Let's Encrypt and the redirect to HTTPS, and
+`gkm compose --down` of one stack leaves the others served. Only each stack's
+APIs and sites — and MinIO or OpenObserve when they are public — join the
+edge's network; databases, Redis and workers never do.
+
+Moving a running server from per-stack Caddy to the shared edge is a one-time
+step: stop the stack's Caddy, then run `gkm compose` again. Until then it
+refuses with `ComposeProxyClash`. See
+[Proxy: Caddy or Traefik](./compose.md#proxy-caddy-or-traefik).
+
 ## State
 
 A deploy records what it created for each stage: the project and application
@@ -252,7 +270,7 @@ Each target checks the apps after releasing them:
 | Target | What it asks | Passes when |
 | --- | --- | --- |
 | `dokploy` | `https://<host>/health` (backends), `/` (sites) | 3 consecutive 2xx, within 5 minutes |
-| `compose` | `/health` (backends), `/` (sites), through Caddy over HTTPS with the certificate verified | a 2xx or 3xx |
+| `compose` | `/health` (backends), `/` (sites), through the stack's Caddy — or the server's shared Traefik edge — over HTTPS with the certificate verified | a 2xx or 3xx |
 | `sst` | each URL `run()` returns in `sst.config.ts`: `/health` for an API, `/` for a site | a 2xx |
 
 On Dokploy the check is tunable:
@@ -428,7 +446,7 @@ stack and points every backend at it. In short:
   yourself, in the project's `docker-compose.<stage>.yml`, which `gkm compose`
   merges over the stack it generates.
 - **Public, to some addresses**: `public: { allow: ['203.0.113.7'] }` serves
-  it at `https://logs.<stage domain>` through Caddy, refusing every other
+  it at `https://logs.<stage domain>` through the stack's edge, refusing every other
   address with 403, and publishes no port.
 - **Or a hosted backend**: leave `logs` off and set the `OTEL_*` variables
   above in the stage's secrets. Setting both fails with

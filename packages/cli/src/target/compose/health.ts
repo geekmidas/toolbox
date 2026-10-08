@@ -26,6 +26,11 @@ export interface HealthRequest {
 	 * on how this machine resolves `*.localhost`.
 	 */
 	connectTo?: string;
+	/**
+	 * With `connectTo`, the port to connect to, where it is not the URL's —
+	 * the shared edge's published port, asked for a deployed host.
+	 */
+	connectPort?: number;
 	timeoutMs: number;
 	signal?: AbortSignal;
 }
@@ -51,6 +56,7 @@ export const httpsProbe: HealthProbe = ({
 	url,
 	ca,
 	connectTo,
+	connectPort,
 	timeoutMs,
 	signal,
 }) => {
@@ -59,7 +65,7 @@ export const httpsProbe: HealthProbe = ({
 		const req = request(
 			{
 				host: connectTo ?? target.hostname,
-				port: target.port || 443,
+				port: connectPort ?? (target.port || 443),
 				servername: target.hostname,
 				path: `${target.pathname}${target.search}`,
 				method: 'GET',
@@ -94,11 +100,16 @@ export class ComposeAppsUnhealthy extends Error {
 		readonly project: string,
 		/** Each app, and the last thing its check got: a status or an error. */
 		readonly apps: readonly { app: string; url: string; last: string }[],
+		/** The proxy they were asked through. */
+		readonly proxy: 'caddy' | 'traefik' = 'caddy',
 	) {
+		const names = apps.map((a) => a.app).join(' ');
 		super(
-			`${project} started, but ${apps.length === 1 ? 'this app does' : 'these apps do'} not answer through Caddy:\n` +
+			`${project} started, but ${apps.length === 1 ? 'this app does' : 'these apps do'} not answer through ${proxy === 'caddy' ? 'Caddy' : 'the shared Traefik edge'}:\n` +
 				apps.map(({ url, last }) => `  - ${url}: ${last}`).join('\n') +
-				`\nSee why with \`docker compose -p ${project} logs caddy ${apps.map((a) => a.app).join(' ')}\`.`,
+				(proxy === 'caddy'
+					? `\nSee why with \`docker compose -p ${project} logs caddy ${names}\`.`
+					: `\nSee why with \`docker compose -p gkm-edge logs traefik\` and \`docker compose -p ${project} logs ${names}\`.`),
 		);
 		this.name = 'ComposeAppsUnhealthy';
 	}

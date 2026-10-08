@@ -1,66 +1,71 @@
 /**
- * The edge in front of a compose stack: one Caddy, one host per app.
+ * The stack's own edge, rendered for Caddy: one site block per route.
  *
  * Deployed, each host is the stage's real domain and Caddy gets it a
  * certificate from Let's Encrypt on first request — the same automatic HTTPS
- * it does anywhere, with nothing to configure but the name. Locally the hosts
- * are `*.localhost` and the certificates come from Caddy's own CA, as the
- * `gkm dev` edge does, so a local stack is `https://` like a deployed one.
+ * it does anywhere, with nothing to configure but the name — or serves the
+ * stage's own certificate (`deploy.compose.tls`). Locally the hosts are
+ * `*.localhost` and the certificates come from Caddy's own CA, as the `gkm
+ * dev` edge does, so a local stack is `https://` like a deployed one.
  *
- * Pure: what the edge serves is data, and rendering it is one string.
+ * Pure: the routes are data (`routes.ts`), and rendering them is one string.
  */
 
-/** One host on the edge and the app container behind it. */
-export interface EdgeSite {
-	/** e.g. `api.example.com` */
-	host: string;
-	/** The app on the compose network, e.g. `api:3000`. */
-	upstream: string;
-	/**
-	 * A path to rewrite to, where the upstream expects a different one: a
-	 * file server's bucket, as a prefix on MinIO — `/uploads{uri}`.
-	 */
-	rewrite?: string;
-	/**
-	 * The client addresses (IPs or CIDRs) it answers; every other is
-	 * refused with 403. Absent, it answers everyone.
-	 */
-	allow?: readonly string[];
-}
+import type { EdgeRoute, EdgeTls, Upstream } from './routes.js';
 
-export interface EdgeOptions {
-	/** Certificates from Caddy's internal CA rather than from ACME. */
-	local: boolean;
+/** Where Caddy reads a stage's own certificate, inside its container. */
+export const CADDY_TLS_DIR = '/etc/caddy/tls';
+
+export interface CaddyfileOptions {
+	tls: EdgeTls;
 	/** Where ACME sends expiry notices, when someone wants them. */
 	email?: string;
 }
 
+/** An upstream on the stack's own network: its service name. */
+function address({ service, port }: Upstream): string {
+	return `${service}:${port}`;
+}
+
 /** The Caddyfile for a stack's edge. */
 export function edgeCaddyfile(
-	sites: readonly EdgeSite[],
-	options: EdgeOptions,
+	routes: readonly EdgeRoute[],
+	options: CaddyfileOptions,
 ): string {
-	const global = options.local
-		? `{
+	const { tls } = options;
+	const global =
+		tls.kind === 'internal'
+			? `{
 	# No ACME and no public DNS: the CA is Caddy's own and the names resolve
 	# to this machine.
 	local_certs
 	auto_https disable_redirects
 }`
-		: options.email
-			? `{
+			: options.email
+				? `{
 	email ${options.email}
 }`
-			: '';
+				: '';
 
-	const blocks = sites.map(
-		({ host, upstream, rewrite, allow }) => `https://${host} {${
-			options.local
-				? `
+	const certificate =
+		tls.kind === 'internal'
+			? `
 	tls internal
 `
-				: ''
-		}${
+			: tls.kind === 'files'
+				? `
+	tls ${tls.certFile} ${tls.keyFile}
+`
+				: '';
+
+	const blocks = routes.map(
+		({
+			host,
+			upstreams,
+			prefix,
+			allow,
+			streaming,
+		}) => `https://${host} {${certificate}${
 			allow
 				? `
 	# Only these addresses — the peer Caddy sees, never a header a client
@@ -70,21 +75,25 @@ export function edgeCaddyfile(
 `
 				: ''
 		}${
-			rewrite
+			prefix
 				? `
 	# A bucket, served at a host of its own: the bucket is a prefix on MinIO,
 	# which routes and signs on the Host header — so it is sent the upstream's.
-	reverse_proxy ${upstream} {
-		rewrite ${rewrite}
+	reverse_proxy ${upstreams.map(address).join(' ')} {
+		rewrite ${prefix}{uri}
 		header_up Host {upstream_hostport}
 	}`
 				: `
 	# Host and X-Forwarded-* are passed through as Caddy does by default, so
 	# an app builds redirects, cookies and links on the address a caller used.
-	reverse_proxy ${upstream} {
+	reverse_proxy ${upstreams.map(address).join(' ')}${
+		streaming
+			? ` {
 		# Never buffer: a streamed response — server-sent events, a Next.js
 		# RSC payload — reaches the client as each chunk is written.
 		flush_interval -1
+	}`
+			: ''
 	}`
 		}
 }`,

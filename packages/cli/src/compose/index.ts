@@ -27,8 +27,10 @@ import {
 	stackOverrideFile,
 } from '../target/compose/index';
 import { dockerCompose, type StackRef } from './docker';
+import { edgeDir, removeEdgeRoutes } from './edge';
 import { type ImageDigests, parseDigests, pinnedRef } from './images';
 import { type ComposeStack, composeProject, stackDir } from './stack';
+import { EDGE_PROJECT } from './traefik';
 
 export {
 	ComposeAppsUnhealthy,
@@ -40,7 +42,12 @@ export {
 	NoGitRevision,
 	RedisClientMissing,
 } from '../target/compose/index';
-export { isMissingManifest, PushDigestUnknown } from './docker';
+export {
+	isMissingManifest,
+	NetworkCreateFailed,
+	PushDigestUnknown,
+} from './docker';
+export { ComposeProxyClash } from './edge';
 export {
 	assertImagesExist,
 	ImageDigestMismatch,
@@ -64,6 +71,11 @@ export {
 	LogsRetentionInvalid,
 } from './logsConfig';
 export {
+	ComposeStageUnknown,
+	ComposeTlsFileMissing,
+	ComposeTlsOnLocalStage,
+} from './proxy';
+export {
 	REDIS_MAXMEMORY,
 	REDIS_PASSWORD_KEY,
 	RedisPasswordMissing,
@@ -77,6 +89,12 @@ export {
 	StageSecretMissing,
 	StageSeedMissing,
 } from './stack';
+export {
+	EDGE_NETWORK,
+	EDGE_PROJECT,
+	TRAEFIK_IMAGE,
+	traefikDynamic,
+} from './traefik';
 
 export interface ComposeOptions {
 	/** The stage to run. Always named: nothing defaults to the local stage. */
@@ -169,6 +187,12 @@ export async function composeCommand(
 			...(existsSync(override) ? { overrides: [override] } : {}),
 			cwd: workspace.root,
 		};
+		// Unregistered from the shared edge first, so it stops routing to the
+		// stack before the stack stops. The edge keeps serving every other
+		// stack — and keeps running.
+		if (await removeEdgeRoutes(edgeDir(deps.env ?? process.env), ref.project)) {
+			console.log(`🌐 Removed ${ref.project}'s routes from ${EDGE_PROJECT}.`);
+		}
 		await (deps.docker ?? dockerCompose).down(ref);
 		console.log(`🛑 Stopped ${ref.project}. Its volumes are kept.`);
 		return undefined;

@@ -17,6 +17,12 @@ export interface ComposeAppOptions {
 	registry?: string;
 	/** `deploy.compose.logs`, as it is written in the config. */
 	logs?: unknown;
+	/** The rest of `deploy.compose` — `proxy`, `tls` — as written. */
+	compose?: Record<string, unknown>;
+	/** The deployed stages, `['production']` when absent. */
+	deployed?: readonly string[];
+	/** Each deployed stage's domain, in place of `domain`. */
+	domains?: Record<string, string>;
 }
 
 /**
@@ -36,6 +42,13 @@ export function writeComposeApp(
 ): void {
 	const name = options.name ?? 'compose-app';
 	cpSync(FIXTURE, dir, { recursive: true });
+	const compose =
+		options.logs !== undefined || options.compose
+			? {
+					...(options.logs !== undefined ? { logs: options.logs } : {}),
+					...options.compose,
+				}
+			: undefined;
 
 	const json = (path: string, value: unknown) =>
 		writeFileSync(join(dir, path), `${JSON.stringify(value, null, 2)}\n`);
@@ -80,7 +93,7 @@ export function writeComposeApp(
 
 export default defineWorkspace({
   name: ${JSON.stringify(name)},
-  stages: { local: 'development', deployed: ['production'] },
+  stages: { local: 'development', deployed: ${JSON.stringify(options.deployed ?? ['production'])} },
   constructs: [
     './constructs/**/*.ts',
     './apps/*/endpoints/**/*.ts',
@@ -88,9 +101,9 @@ export default defineWorkspace({
   ],
   deploy: {
     default: 'dokploy',
-    domains: { production: ${JSON.stringify(options.domain ?? 'shop.example.com')} },
+    domains: ${JSON.stringify(options.domains ?? { production: options.domain ?? 'shop.example.com' })},
     ${options.registry ? `registry: ${JSON.stringify(options.registry)},` : ''}
-    ${options.logs !== undefined ? `compose: { logs: ${JSON.stringify(options.logs)} },` : ''}
+    ${compose ? `compose: ${JSON.stringify(compose)},` : ''}
   },
 });
 `,

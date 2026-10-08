@@ -1,5 +1,6 @@
 import { z } from 'zod/v4';
 import { resolveLogs } from '../compose/logsConfig.js';
+import { checkComposeStages } from '../compose/proxy.js';
 import {
 	BUILTIN_TARGETS,
 	builtinTarget,
@@ -556,6 +557,20 @@ const ComposeWorkspaceConfigSchema = z.object({
 			}
 		})
 		.optional(),
+	proxy: z
+		.union([
+			z.enum(['caddy', 'traefik']),
+			z.record(z.string(), z.enum(['caddy', 'traefik'])),
+		])
+		.optional(),
+	tls: z
+		.record(
+			z.string(),
+			z
+				.object({ certFile: z.string().min(1), keyFile: z.string().min(1) })
+				.strict(),
+		)
+		.optional(),
 });
 
 /**
@@ -959,6 +974,17 @@ export const WorkspaceConfigSchema = z
 				});
 				return;
 			}
+		}
+
+		// The compose target's per-stage settings name stages this workspace has.
+		try {
+			checkComposeStages(data.deploy?.compose, data.stages);
+		} catch (error) {
+			ctx.addIssue({
+				code: 'custom',
+				message: error instanceof Error ? error.message : String(error),
+				path: ['deploy', 'compose'],
+			});
 		}
 
 		// Validate workspace name is required for SSM state provider

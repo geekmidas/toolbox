@@ -50,10 +50,11 @@ import { NoDomainForStage } from '../target/dokploy/domain.js';
 import { DEFAULT_EVENTS } from '../types.js';
 import { appKey } from '../workspace/derive.js';
 import type {
+	ComposeTlsConfig,
 	NormalizedAppConfig,
 	NormalizedWorkspace,
 } from '../workspace/types.js';
-import { type EdgeSite, edgeCaddyfile } from './caddyfile.js';
+import { CADDY_TLS_DIR, edgeCaddyfile } from './caddyfile.js';
 import { type AppImage, siteTag } from './images.js';
 import {
 	LOGS_SERVICE,
@@ -62,6 +63,7 @@ import {
 	stackLogs,
 } from './logs.js';
 import { LOGS_PORT, resolveLogs } from './logsConfig.js';
+import { certificateFor, proxyFor } from './proxy.js';
 import {
 	REDIS_SERVICE,
 	redisService,
@@ -69,6 +71,13 @@ import {
 	type StackRedis,
 	stackRedis,
 } from './redis.js';
+import type { ComposeProxy, EdgeRoute, EdgeTls } from './routes.js';
+import {
+	EDGE_NETWORK,
+	edgeAlias,
+	edgeCertificatePaths,
+	traefikDynamicFile,
+} from './traefik.js';
 
 /** Where a stack's files are written, relative to the workspace root. */
 export function stackDir(stage: string): string {
@@ -199,6 +208,11 @@ export interface StackService {
 	volumes?: string[];
 	depends_on?: Record<string, { condition: 'service_healthy' }>;
 	healthcheck?: ComposeService['healthcheck'];
+	/**
+	 * Behind the shared edge, a public service is on the stack's own network
+	 * and the edge's, by an alias unique on both.
+	 */
+	networks?: Record<string, { aliases: string[] }>;
 	logging?: {
 		driver: string;
 		options: Record<string, string>;
@@ -209,6 +223,8 @@ export interface StackFile {
 	name: string;
 	services: Record<string, StackService>;
 	volumes: Record<string, Record<string, never>>;
+	/** The shared edge's network, which the stack joins but never creates. */
+	networks?: Record<string, { name: string; external: true }>;
 }
 
 export interface ComposeStack {
@@ -222,7 +238,25 @@ export interface ComposeStack {
 	/** The infrastructure containers, by compose service name. */
 	infra: string[];
 	compose: StackFile;
-	caddyfile: string;
+	/**
+	 * What serves the stack: its own Caddy, or the server's shared Traefik
+	 * edge (`deploy.compose.proxy`). The local stage is always Caddy.
+	 */
+	proxy: ComposeProxy;
+	/** Every public host and what answers it — what either proxy renders. */
+	routes: EdgeRoute[];
+	/** The stack's own Caddy's configuration — with `proxy: 'caddy'`. */
+	caddyfile?: string;
+	/**
+	 * What the stack registers with the shared edge — with `proxy:
+	 * 'traefik'`: the dynamic configuration file written to its directory.
+	 */
+	traefik?: string;
+	/**
+	 * The stage's own certificate and key, on this machine
+	 * (`deploy.compose.tls`) — copied to where the proxy reads it.
+	 */
+	tls?: ComposeTlsConfig;
 	/** Generated Dockerfiles, by path relative to the workspace root. */
 	dockerfiles: Record<string, string>;
 	/** The plan the stack was derived from — what provisioning creates. */
@@ -389,6 +423,10 @@ export function composeStack(input: StackInput): ComposeStack {
 	const custom = input.secrets?.custom ?? {};
 	const https = input.ports?.https ?? 443;
 	const http = input.ports?.http ?? 80;
+	const proxy = proxyFor(workspace.deploy?.compose, stage, local);
+	const certificate = local
+		? undefined
+		: certificateFor(workspace.deploy?.compose, stage, workspace.root);
 
 	// A server target's backends, whatever `deploy.default` says: the stack is
 	// one machine running containers, so events are pg-boss beside the
@@ -463,7 +501,7 @@ export function composeStack(input: StackInput): ComposeStack {
 	// The log UI, when the workspace asks for one: its root login, how it is
 	// reached, and what each backend is handed to send to it.
 	const logsConfig = resolveLogs(workspace.deploy?.compose?.logs);
-	const logs = logsConfig
+	const logsBase = logsConfig
 		? stackLogs({
 				config: logsConfig,
 				stage,
@@ -506,7 +544,7 @@ export function composeStack(input: StackInput): ComposeStack {
 			.filter((c) => c !== 'minio' || services.minio.length > 0)
 			.filter((c) => c !== 'mailpit' || services.mailpit.length > 0)
 			.filter((c) => c !== REDIS_SERVICE || redis !== undefined),
-		...(logs ? [LOGS_SERVICE] : []),
+		...(logsBase ? [LOGS_SERVICE] : []),
 	].sort();
 
 	// The stack's MinIO signs with the stage's own key pair where it set one,
@@ -535,30 +573,9 @@ export function composeStack(input: StackInput): ComposeStack {
 			})()
 		: undefined;
 
-	// Every key the stage resolves, twice: with each app at its public address
-	// — what a browser is handed, and what an app says it is — and with each on
-	// the compose network, which is how one service reaches another.
-	const derivation = {
-		project: workspace.name,
-		master: credential.master,
-		...(credential.seed ? { seed: credential.seed } : {}),
-		// Mailpit on a deployed stage sends as the stage's domain.
-		...(!local && domain ? { mailFrom: `noreply@${domain}` } : {}),
-	};
-	const outside = networkEnv(plan, {
-		...derivation,
-		addresses: Object.fromEntries(apps.map((app) => [app.id, app.url])),
-	});
-	const inside = networkEnv(plan, {
-		...derivation,
-		addresses: Object.fromEntries(
-			apps.map((app) => [app.id, `http://${app.name}:${app.port}`]),
-		),
-	});
-
 	// Each file server over the stack's MinIO, at a host of its own on the
 	// edge — the shape it has deployed: a domain serving a bucket.
-	const fileServers = new Map<string, { url: string; site: EdgeSite }>();
+	const fileServers = new Map<string, { url: string; route: EdgeRoute }>();
 	if (storage) {
 		for (const resource of plan.resources) {
 			if (resource.kind !== 'file-server' || !resource.of) continue;
@@ -576,14 +593,72 @@ export function composeStack(input: StackInput): ComposeStack {
 			}
 			fileServers.set(resource.id, {
 				url: `https://${host}${local && https !== 443 ? `:${https}` : ''}`,
-				site: {
+				route: {
+					name: `files-${appKey(resource.id)}`,
 					host,
-					upstream: 'minio:9000',
-					rewrite: `/${bucket.name}{uri}`,
+					upstreams: [{ service: 'minio', port: 9000 }],
+					streaming: false,
+					prefix: `/${bucket.name}`,
 				},
 			});
 		}
 	}
+
+	// Behind the shared edge, the services it routes to are on a network
+	// every stack's public services share, where a bare name — `api` — would
+	// be answered by each stack's. They are reached, from the edge and from
+	// inside the stack alike, by an alias prefixed with the project.
+	const edgeServices = new Set(
+		proxy === 'traefik'
+			? [
+					...apps.map((app) => app.name),
+					...(fileServers.size > 0 ? ['minio'] : []),
+					...(logsBase?.host && logsBase.public ? [LOGS_SERVICE] : []),
+				]
+			: [],
+	);
+	const hostOf = (service: string) =>
+		edgeServices.has(service) ? edgeAlias(project, service) : service;
+	const logs: StackLogs | undefined = logsBase && {
+		...logsBase,
+		appEnv: {
+			...logsBase.appEnv,
+			OTEL_EXPORTER_OTLP_ENDPOINT:
+				logsBase.appEnv.OTEL_EXPORTER_OTLP_ENDPOINT.replace(
+					`//${LOGS_SERVICE}:`,
+					`//${hostOf(LOGS_SERVICE)}:`,
+				),
+		},
+	};
+
+	// Every key the stage resolves, twice: with each app at its public address
+	// — what a browser is handed, and what an app says it is — and with each on
+	// the compose network, which is how one service reaches another.
+	const derivation = {
+		project: workspace.name,
+		master: credential.master,
+		...(credential.seed ? { seed: credential.seed } : {}),
+		// Mailpit on a deployed stage sends as the stage's domain.
+		...(!local && domain ? { mailFrom: `noreply@${domain}` } : {}),
+	};
+	const outside = networkEnv(
+		plan,
+		{
+			...derivation,
+			addresses: Object.fromEntries(apps.map((app) => [app.id, app.url])),
+		},
+		hostOf,
+	);
+	const inside = networkEnv(
+		plan,
+		{
+			...derivation,
+			addresses: Object.fromEntries(
+				apps.map((app) => [app.id, `http://${hostOf(app.name)}:${app.port}`]),
+			),
+		},
+		hostOf,
+	);
 
 	const surfaceUrls = new Map(
 		plan.resources
@@ -693,7 +768,7 @@ export function composeStack(input: StackInput): ComposeStack {
 			const internal = (byId.get(app.id)?.callers ?? [])
 				.map((caller) => appById.get(caller))
 				.filter((caller): caller is StackApp => caller?.kind === 'rest-api')
-				.map((caller) => `http://${caller.name}:${caller.port}`);
+				.map((caller) => `http://${hostOf(caller.name)}:${caller.port}`);
 			const origins = [
 				...(values[trusted] ?? '').split(',').filter(Boolean),
 				...internal,
@@ -735,6 +810,21 @@ export function composeStack(input: StackInput): ComposeStack {
 		}
 	}
 
+	// A deployed stage's certificates: its own, where it set one, as the
+	// proxy's container reads them — otherwise Let's Encrypt's.
+	const deployedTls: Exclude<EdgeTls, { kind: 'internal' }> = certificate
+		? {
+				kind: 'files',
+				...(proxy === 'caddy'
+					? {
+							certFile: `${CADDY_TLS_DIR}/cert.pem`,
+							keyFile: `${CADDY_TLS_DIR}/key.pem`,
+						}
+					: edgeCertificatePaths(project)),
+			}
+		: { kind: 'acme' };
+	const tls: EdgeTls = local ? { kind: 'internal' } : deployedTls;
+
 	const layout = input.layout ?? defaultLayout(workspace.root);
 	const compose = stackFile({
 		project,
@@ -752,28 +842,37 @@ export function composeStack(input: StackInput): ComposeStack {
 		buildRoot: layout.buildRoot,
 		workspaceRoot: workspace.root,
 		envFiles: !input.buildOnly,
+		proxy,
+		edge: new Map(
+			[...edgeServices].map((service) => [service, hostOf(service)]),
+		),
+		tls: certificate !== undefined,
 	});
 
-	const caddyfile = edgeCaddyfile(
-		[
-			...apps.map((app) => ({
+	// One route per public host — the data both proxies render.
+	const routes: EdgeRoute[] = [
+		...apps.map(
+			(app): EdgeRoute => ({
+				name: app.name,
 				host: app.host,
-				upstream: `${app.name}:${app.port}`,
-			})),
-			...[...fileServers.values()].map(({ site }) => site),
-			...(logs?.host && logs.public
-				? [
-						{
-							host: logs.host,
-							upstream: `${LOGS_SERVICE}:${LOGS_PORT}`,
-							allow: logs.public.allow,
-						},
-					]
-				: []),
-		],
-		{ local },
-	);
-
+				upstreams: [{ service: app.name, port: app.port }],
+				streaming: true,
+				health: app.kind === 'site' ? '/' : '/health',
+			}),
+		),
+		...[...fileServers.values()].map(({ route }) => route),
+		...(logs?.host && logs.public
+			? [
+					{
+						name: LOGS_SERVICE,
+						host: logs.host,
+						upstreams: [{ service: LOGS_SERVICE, port: LOGS_PORT }],
+						streaming: true,
+						allow: logs.public.allow,
+					},
+				]
+			: []),
+	];
 	const dockerfiles: Record<string, string> = {};
 	for (const app of apps) {
 		if (!app.build) continue;
@@ -809,7 +908,17 @@ export function composeStack(input: StackInput): ComposeStack {
 		workers,
 		infra,
 		compose,
-		caddyfile,
+		proxy,
+		routes,
+		...(proxy === 'caddy'
+			? { caddyfile: edgeCaddyfile(routes, { tls }) }
+			: {
+					traefik: traefikDynamicFile(routes, {
+						project,
+						tls: deployedTls,
+					}),
+				}),
+		...(certificate ? { tls: certificate } : {}),
 		dockerfiles,
 		plan,
 		credential,
@@ -1015,6 +1124,11 @@ function stackFile(options: {
 	workspaceRoot: string;
 	/** Whether services read env files — not in a stack that only builds. */
 	envFiles: boolean;
+	proxy: ComposeProxy;
+	/** Behind the shared edge: each service it routes to, and its alias. */
+	edge: ReadonlyMap<string, string>;
+	/** Whether the stage has its own certificate, which Caddy mounts. */
+	tls: boolean;
 }): StackFile {
 	const { project, plan, apps } = options;
 	// What reconcile defines; OpenObserve is the stack's own.
@@ -1036,8 +1150,9 @@ function stackFile(options: {
 	const services: Record<string, StackService> = {};
 	const volumes: Record<string, Record<string, never>> = {
 		...derived.volumes,
-		'caddy-data': {},
-		'caddy-config': {},
+		...(options.proxy === 'caddy'
+			? { 'caddy-data': {}, 'caddy-config': {} }
+			: {}),
 		...(options.logs ? { 'openobserve-data': {} } : {}),
 	};
 
@@ -1157,23 +1272,40 @@ function stackFile(options: {
 		};
 	}
 
-	services.caddy = {
-		image: DEFAULT_IMAGES.caddy!,
-		restart: 'unless-stopped',
-		ports: [`${options.https}:443`, `${options.http}:80`],
-		volumes: [
-			'./Caddyfile:/etc/caddy/Caddyfile:ro',
-			'caddy-data:/data',
-			'caddy-config:/config',
-		],
-		depends_on: Object.fromEntries(apps.map((app) => [app.name, HEALTHY])),
-		healthcheck: {
-			test: ['CMD', 'caddy', 'version'],
-			interval: '10s',
-			timeout: '5s',
-			retries: 5,
-		},
-	};
+	if (options.proxy === 'caddy') {
+		services.caddy = {
+			image: DEFAULT_IMAGES.caddy!,
+			restart: 'unless-stopped',
+			ports: [`${options.https}:443`, `${options.http}:80`],
+			volumes: [
+				'./Caddyfile:/etc/caddy/Caddyfile:ro',
+				'caddy-data:/data',
+				'caddy-config:/config',
+				// The stage's own certificate, copied beside the Caddyfile.
+				...(options.tls ? [`./tls:${CADDY_TLS_DIR}:ro`] : []),
+			],
+			depends_on: Object.fromEntries(apps.map((app) => [app.name, HEALTHY])),
+			healthcheck: {
+				test: ['CMD', 'caddy', 'version'],
+				interval: '10s',
+				timeout: '5s',
+				retries: 5,
+			},
+		};
+	}
+
+	// Behind the shared edge: each service it routes to joins its network,
+	// under the alias the edge reaches it by — and keeps the stack's own,
+	// with the same alias, which is how the stack's services reach it too.
+	// Everything else — the databases, Redis, the workers — stays off it.
+	for (const [service, alias] of options.edge) {
+		const definition = services[service];
+		if (!definition) continue;
+		definition.networks = {
+			default: { aliases: [alias] },
+			edge: { aliases: [alias] },
+		};
+	}
 
 	for (const service of Object.values(services)) {
 		if (!options.envFiles) delete service.env_file;
@@ -1183,7 +1315,14 @@ function stackFile(options: {
 		};
 	}
 
-	return { name: project, services, volumes };
+	return {
+		name: project,
+		services,
+		volumes,
+		...(options.edge.size > 0
+			? { networks: { edge: { name: EDGE_NETWORK, external: true as const } } }
+			: {}),
+	};
 }
 
 /**
