@@ -38,6 +38,7 @@
     "auth-pending-migration",
     "branch-from-the-surface",
     "browser-client-address",
+    "browser-trace-context",
     "build-follows-deploy-target",
     "claude-md-imports-agents",
     "cli-starts-again",

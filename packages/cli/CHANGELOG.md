@@ -1,5 +1,32 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.82
+
+### Minor Changes
+
+- [#210](https://github.com/geekmidas/toolbox/pull/210) [`7b7732a`](https://github.com/geekmidas/toolbox/commit/7b7732aae2d094f53a0da66527851ec112820cde) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: One trace from the browser to the API: the client propagates W3C trace context, and the API decides whose to trust
+
+  - ✨ **`@geekmidas/client`: `telemetry` on `createTypedFetcher`, the auth-aware fetcher and the generated `createApi`** — off unless set. With it on, every request to the client's own API origin (never another) carries `traceparent`/`tracestate`: through the global OpenTelemetry propagator when a span is active (a browser SDK, or a server-side caller inside a request span), otherwise a page-view trace id (one per page load in a browser, per client in Node), a fresh span id per request, and a sampled flag decided once per page view at `sampleRate` (default 1) by the trace-id rule OpenTelemetry's ratio sampler uses. `@opentelemetry/api` is not imported: its globals are read from `globalThis`, so the feature adds about 0.7 kB gzipped. A `traceparent` the caller sets is kept. New export `@geekmidas/client/telemetry`; a bad rate throws `InvalidClientSampleRate`.
+  - 💥 **`@geekmidas/telescope`: incoming trace context is trusted only from the API's own sites and internal callers.** `honoTelemetryMiddleware` takes `trustedOrigins` (an array, or a function read per request) and `internalCallers` (default: no `Origin`, no proxy forwarding header, and a loopback or private peer address). Any other caller's `traceparent` is no longer continued: the request starts a new trace with a link to it. The Lambda `telemetryMiddleware` takes `trustedOrigins` and `trustRequest`. **Breaking for direct users:** a middleware mounted with no options continues only internal callers.
+  - **`@geekmidas/telescope`: the stage's rate caps a caller's sampled flag.** `traceSampler(rate)` is `parentbased_traceidratio` with the ratio applied to a remote sampled parent as well, so a request cannot force a trace the stage would not keep; `setupTelemetry` uses it for `sampleRatio` and for `OTEL_TRACES_SAMPLER=parentbased_traceidratio`. Also exported: `traceSamplerFromEnv`, `incomingTraceContext`, `isTrustedOrigin`, `isInternalCaller`, `isPrivateAddress`.
+  - **`@geekmidas/cli`: the API's derived CORS always allows `traceparent` and `tracestate`,** and a built server hands the same origins its CORS allows to the request spans (`createApp()` returns `trustedOrigins`).
+  - **`@geekmidas/cli`: `gkm openapi --telemetry [sampleRate]`** writes clients whose `createApi` propagates by default (`telemetryDefault`); off otherwise. A site's Dockerfile passes it to its in-image `gkm openapi --app` when the client's `telemetry` is set.
+
+### Patch Changes
+
+- Updated dependencies [[`7b7732a`](https://github.com/geekmidas/toolbox/commit/7b7732aae2d094f53a0da66527851ec112820cde)]:
+  - @geekmidas/telescope@10.0.0-alpha.82
+  - @geekmidas/constructs@10.0.0-alpha.82
+  - @geekmidas/cache@10.0.0-alpha.82
+  - @geekmidas/db@10.0.0-alpha.82
+  - @geekmidas/envkit@10.0.0-alpha.82
+  - @geekmidas/errors@10.0.0-alpha.82
+  - @geekmidas/logger@10.0.0-alpha.82
+  - @geekmidas/manifest@10.0.0-alpha.82
+  - @geekmidas/schema@10.0.0-alpha.82
+  - @geekmidas/services@10.0.0-alpha.82
+  - @geekmidas/storage@10.0.0-alpha.82
+
 ## 10.0.0-alpha.81
 
 ### Minor Changes
