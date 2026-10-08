@@ -4,20 +4,19 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { ExternalServicesNotConfigured } from '../../deploy/devServices';
 import { deployIdentity } from '../../deploy/identity';
+import { TEST_CREDENTIALS } from '../../reconcile/__tests__/__helpers__/credentials';
 import { localRolePassword } from '../../reconcile/env';
+import { postgresSuperuser } from '../../reconcile/localCredentials';
 import { postgresStatements } from '../../reconcile/provision';
 import { initStageSecrets } from '../../secrets/storage';
 import type { StageSecrets } from '../../secrets/types';
 import type { NormalizedWorkspace } from '../../workspace/types';
-import {
-	LOCAL_REDIS_PASSWORD,
-	REDIS_IMAGE,
-	RedisPasswordMissing,
-} from '../redis';
+import { REDIS_IMAGE, RedisPasswordMissing } from '../redis';
 import {
 	type ComposeStack,
 	composeStack,
 	envFile,
+	LocalCredentialsMissing,
 	NothingToCompose,
 	type StackInput,
 	StageSecretMissing,
@@ -65,14 +64,45 @@ function stack(overrides: Partial<StackInput> = {}): ComposeStack {
 		identity: deployIdentity(workspace, stage),
 		images: { mode: 'build', tag: 'abc1234' },
 		ports: { https: 8443, http: 8080 },
+		localCredentials: TEST_CREDENTIALS,
 		...overrides,
 	});
 }
+
+const LOCAL_REDIS_PASSWORD = TEST_CREDENTIALS.redis.password;
 
 const app = (s: ComposeStack, name: string) =>
 	s.apps.find((candidate) => candidate.name === name)!;
 
 describe('the local stage', () => {
+	it("runs Postgres with this machine's generated login, as gkm dev does", () => {
+		const s = stack();
+
+		expect(s.compose.services.postgres?.environment).toMatchObject({
+			POSTGRES_USER: TEST_CREDENTIALS.postgres.user,
+			POSTGRES_PASSWORD: TEST_CREDENTIALS.postgres.password,
+		});
+		expect(s.credential.seed).toBe(TEST_CREDENTIALS.seed);
+	});
+
+	it('refuses to compose without the generated logins', () => {
+		expect(() => stack({ localCredentials: undefined })).toThrow(
+			LocalCredentialsMissing,
+		);
+	});
+
+	it('never carries the old fixed login', () => {
+		const s = stack({ manifest: withServices() });
+
+		const carried = JSON.stringify({
+			compose: s.compose,
+			env: s.apps.map((a) => a.env),
+			redis: s.redis,
+			storage: s.storage,
+		});
+		expect(carried.toLowerCase()).not.toContain('geekmidas');
+	});
+
 	it('runs every API and site, the database they need, and one edge', () => {
 		const s = stack();
 
@@ -342,10 +372,15 @@ describe('a deployed stage', () => {
 				'a-random-seed',
 			),
 		);
-		expect(s.compose.services.postgres?.environment?.POSTGRES_PASSWORD).toBe(
-			s.credential.master,
-		);
-		expect(s.credential.master).not.toBe('geekmidas');
+		expect(s.compose.services.postgres?.environment).toMatchObject({
+			POSTGRES_USER: postgresSuperuser('compose-app'),
+			POSTGRES_PASSWORD: localRolePassword(
+				'compose-app',
+				s.plan,
+				'master',
+				'a-random-seed',
+			),
+		});
 	});
 
 	it('refuses a stage whose secrets have no seed', () => {
@@ -431,8 +466,13 @@ describe('mail and storage on the local stage', () => {
 		expect(api.UPLOADS_URL).toBe(
 			's3://uploads?region=us-east-1&endpoint=http://minio:9000&forcePathStyle=true',
 		);
-		expect(api.AWS_ACCESS_KEY_ID).toBe('geekmidas');
-		expect(api.AWS_SECRET_ACCESS_KEY).toBe('geekmidas');
+		// This machine's generated login: the one `gkm dev`'s MinIO runs with.
+		expect(api.AWS_ACCESS_KEY_ID).toBe(TEST_CREDENTIALS.minio.user);
+		expect(api.AWS_SECRET_ACCESS_KEY).toBe(TEST_CREDENTIALS.minio.password);
+		expect(s.compose.services.minio?.environment).toMatchObject({
+			MINIO_ROOT_USER: TEST_CREDENTIALS.minio.user,
+			MINIO_ROOT_PASSWORD: TEST_CREDENTIALS.minio.password,
+		});
 		expect(api.MAIL_URL).toBe('smtp://mailpit:1025');
 		expect(s.storage).toMatchObject({
 			buckets: ['uploads'],
@@ -816,7 +856,7 @@ describe('the cache', () => {
 		expect(statements.filter((st) => st.id === 'Sessions')).toEqual([]);
 	});
 
-	it('uses the fixed local password on the local stage, as Postgres does', () => {
+	it("uses this machine's generated password on the local stage, as gkm dev does", () => {
 		const s = stack();
 
 		expect(s.redis?.password).toBe(LOCAL_REDIS_PASSWORD);

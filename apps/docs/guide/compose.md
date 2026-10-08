@@ -610,8 +610,8 @@ redis:
 - **Password protected.** On a deployed stage the password is generated on
   the first run and kept in the stage's secrets as `REDIS_PASSWORD`, like its
   seed, so every later run reads it back (`gkm secrets:show --stage production
-  --reveal`). The local stage uses the fixed `geekmidas`, as its Postgres
-  does. Set `REDIS_PASSWORD` yourself to choose it. It is in `redis.env`
+  --reveal`). The local stage uses the password generated for this machine
+  with `gkm dev`'s logins (`gkm dev:credentials` shows it). Set `REDIS_PASSWORD` yourself to choose it. It is in `redis.env`
   (`0600`) as `REDIS_PASSWORD` and `REDISCLI_AUTH`, so neither the compose
   file, the server's command line nor the health check holds it — and
   `docker compose exec redis redis-cli` is signed in.
@@ -692,7 +692,8 @@ The root user is `admin@<stage domain>` on a deployed stage. Its password is
 generated on the first run and kept in the stage's secrets as
 `ZO_ROOT_USER_PASSWORD`, like the stage's seed, so every later run reads it
 back; `gkm secrets:show --stage production --reveal` shows it. The local stage
-signs in as `admin@gkm.localhost` with the fixed password `Geekmidas-1`. Set
+signs in as `admin@gkm.localhost` with a password generated for this machine,
+alongside `gkm dev`'s other local logins; `gkm dev:credentials` prints it. Set
 `ZO_ROOT_USER_EMAIL` or `ZO_ROOT_USER_PASSWORD` in the stage's secrets to
 choose your own; a password OpenObserve would refuse (8–128 characters, with a
 lowercase and an uppercase letter, a digit and a symbol) fails with

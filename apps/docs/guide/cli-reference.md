@@ -129,6 +129,22 @@ Fixed port mappings (e.g., `'8080:80'`) are intentionally skipped — only env v
 
 Resolved ports are saved to `.gkm/ports.json` so that external tools (like pgAdmin, database GUIs, etc.) keep working across restarts. The `.gkm/` directory is automatically gitignored.
 
+### `gkm dev:credentials`
+
+Print each local service's address and login — Postgres (as a connection
+string), the MinIO console, Mailpit, Redis, the cache proxy, RabbitMQ, the AWS
+emulator, and OpenObserve where the local compose stack runs it — without
+starting anything. The logins are generated per machine the first time a
+command needs them; see [Local logins](./dev-server.md#local-logins-are-generated-per-machine).
+
+```bash
+gkm dev:credentials [--json]
+```
+
+- `--json` — print `{ workspace, stage, services: [{ service, label, url, user?, password?, note? }] }`
+
+It reads the stored logins and `.gkm/ports.json`; run `gkm dev` once first.
+
 ### `gkm setup`
 
 Reconcile only — derive the containers, databases, roles, schemas, and buckets

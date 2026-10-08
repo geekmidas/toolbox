@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { portKeys } from '../containers';
 import { envFor } from '../env';
 import { type PlanOptions, planFor } from '../plan';
+import { TEST_CREDENTIALS } from './__helpers__/credentials';
 
 /**
  * The local values that are not an address: a secret the platform owns, the
@@ -27,6 +28,7 @@ function resolve(
 	);
 
 	return envFor(plan, {
+		credentials: TEST_CREDENTIALS,
 		ports,
 		...(options.project ? { project: options.project } : {}),
 	});
@@ -86,7 +88,10 @@ describe('a database without its own roles', () => {
 	it('connects as the cluster’s own credential, with no schema to pin', () => {
 		const url = new URL(resolve(manifest).ORDERS_URL!);
 
-		expect(url.username).toBe('geekmidas');
+		expect(url.username).toBe(TEST_CREDENTIALS.postgres.user);
+		expect(decodeURIComponent(url.password)).toBe(
+			TEST_CREDENTIALS.postgres.password,
+		);
 		expect(url.pathname).toBe('/orders');
 		expect(url.search).toBe('');
 	});
@@ -129,6 +134,9 @@ describe('events on SNS, locally', () => {
 		const url = new URL(env.USERS_PUBLISHER_CONNECTION_STRING!);
 
 		expect(url.searchParams.get('accessKeyId')).toMatch(/^LSIA/);
+		expect(url.searchParams.get('secretAccessKey')).toBe(
+			TEST_CREDENTIALS.emulator.secretAccessKey,
+		);
 	});
 
 	it('has no single broker address, so none is handed out', () => {

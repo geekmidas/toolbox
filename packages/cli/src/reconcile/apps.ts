@@ -32,6 +32,7 @@ import type { NormalizedWorkspace } from '../workspace/types.js';
 import type { ComposeService } from './compose.js';
 import { portKeys, portsOf } from './containers.js';
 import { type EnvOptions, envFor } from './env.js';
+import type { LocalCredentials } from './localCredentials.js';
 import { type Plan, type PlanOptions, planFor } from './plan.js';
 import { backendsOf, surfaceAddresses } from './workspace.js';
 
@@ -61,6 +62,8 @@ export function dockerfileOf(appName: string, path: string): string {
 export function inNetworkEnv(
 	workspace: NormalizedWorkspace,
 	manifest: ConstructManifest,
+	/** The workspace's local logins — see `localCredentials.ts`. */
+	credentials: LocalCredentials,
 	/**
 	 * External APIs' fakes. An image fake is a container on the network like
 	 * any other; a module fake is served by `gkm dev` on the host, which an app
@@ -70,6 +73,8 @@ export function inNetworkEnv(
 ): Record<string, string> {
 	return networkEnv(localPlan(workspace, manifest, fakes), {
 		project: workspace.name,
+		credentials,
+		seed: credentials.seed,
 		addresses: surfaceAddresses(
 			workspace,
 			manifest,
@@ -346,12 +351,19 @@ export function appServices(
 	workspace: NormalizedWorkspace,
 	manifest: ConstructManifest,
 	containers: readonly string[],
+	/** The workspace's local logins — see `localCredentials.ts`. */
+	credentials: LocalCredentials,
 	runnables: Readonly<Record<string, readonly string[]>> = {},
 	fakes: PlanOptions['fakes'] = {},
 ): Record<string, ComposeService> {
 	const plan = localPlan(workspace, manifest, fakes);
-	const env = networkEnv(plan, {
+	const derivation = {
 		project: workspace.name,
+		credentials,
+		seed: credentials.seed,
+	};
+	const env = networkEnv(plan, {
+		...derivation,
 		addresses: surfaceAddresses(
 			workspace,
 			manifest,
@@ -360,7 +372,7 @@ export function appServices(
 	});
 	// What a browser is handed: each app on the port this file publishes it on.
 	const browser = networkEnv(plan, {
-		project: workspace.name,
+		...derivation,
 		addresses: surfaceAddresses(workspace, manifest),
 	});
 	const services: Record<string, ComposeService> = {};

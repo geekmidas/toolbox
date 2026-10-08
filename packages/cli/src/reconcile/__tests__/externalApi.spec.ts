@@ -10,6 +10,7 @@ import { envFor } from '../env';
 import { NoFake, NotAFake, readFakes } from '../fakes';
 import { planFor } from '../plan';
 import { derivedContainers, fakesApply } from '../workspace';
+import { TEST_CREDENTIALS } from './__helpers__/credentials';
 
 const manifest = {
 	Polar: {
@@ -89,6 +90,7 @@ describe('an external API, locally', () => {
 
 	it('points each API at its fake, with the credentials the fake accepts', () => {
 		const env = envFor(plan, {
+			credentials: TEST_CREDENTIALS,
 			ports: { 'polar-fake': 4010, 'stripe-fake': 4011 },
 		});
 
@@ -102,6 +104,7 @@ describe('an external API, locally', () => {
 
 	it('never resolves the provider, whatever the declaration says', () => {
 		const env = envFor(plan, {
+			credentials: TEST_CREDENTIALS,
 			ports: { 'polar-fake': 4010, 'stripe-fake': 4011 },
 		});
 
@@ -112,6 +115,7 @@ describe('an external API, locally', () => {
 
 	it("publishes an image fake on its assigned port, the provider's image as it ships", () => {
 		const compose = composeFor(plan, {
+			credentials: TEST_CREDENTIALS,
 			project: 'shop',
 			ports: { 'polar-fake': 4010, 'stripe-fake': 4011 },
 		});
@@ -133,14 +137,18 @@ describe('an external API, unfaked', () => {
 	it('is the provider, at its URL for the stage, with no fake running', () => {
 		expect(real.containers).not.toContain('stripe-fake');
 		expect(real.fakes).toBeUndefined();
-		expect(envFor(real, { ports: {} })).toMatchObject({
+		expect(
+			envFor(real, { ports: {}, credentials: TEST_CREDENTIALS }),
+		).toMatchObject({
 			POLAR_URL: 'https://www.polaraccesslink.com',
 			STRIPE_URL: 'https://api.stripe.com',
 		});
 	});
 
 	it('leaves its credentials to the stage’s own secrets', () => {
-		expect(envFor(real, { ports: {} })).not.toHaveProperty('POLAR_CREDENTIALS');
+		expect(
+			envFor(real, { ports: {}, credentials: TEST_CREDENTIALS }),
+		).not.toHaveProperty('POLAR_CREDENTIALS');
 	});
 });
 

@@ -11,7 +11,6 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { pgClient } from '../reconcile/clients';
 import type { SqlClient } from '../reconcile/provision';
 import { quoteIdentifier } from '../reconcile/provision';
 import { forgetState } from '../reconcile/state';
@@ -30,7 +29,8 @@ export async function dropTestDatabases(
 	cwd: string,
 	/** The workspace root, which holds the reconcile state. */
 	root: string,
-	sql: (port: number) => SqlClient = pgClient,
+	/** A client on the shared cluster, as its superuser. */
+	sql: (port: number) => SqlClient,
 ): Promise<string[]> {
 	const readyPath = join(cwd, TEST_READY_FILE);
 	const ready = await readReady(readyPath);

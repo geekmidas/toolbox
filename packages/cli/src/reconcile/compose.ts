@@ -17,7 +17,8 @@
 
 import { stringify } from 'yaml';
 import { DEFAULT_IMAGES, portsOf, postgresImage, volumeOf } from './containers';
-import { EMULATOR_CREDENTIALS, EMULATOR_REGION } from './emulator';
+import { EMULATOR_REGION } from './emulator';
+import type { ContainerCredentials } from './localCredentials';
 import type { Plan } from './plan';
 import type { PortAssignments } from './ports';
 
@@ -56,17 +57,8 @@ export interface ComposeFile {
 	volumes?: Record<string, Record<string, never>>;
 }
 
-/** The credential every derived container is brought up with locally. */
-const LOCAL_USER = 'geekmidas';
-
-/**
- * The token the local cache accepts.
- *
- * Fixed rather than generated: it is only ever reachable on a port this project
- * published, and the URL that carries it is derived, so nothing is made safer
- * by making it unguessable and a stable one keeps `redis-cli` sessions working.
- */
-const LOCAL_TOKEN = 'geekmidas';
+/** The database every connection opens first: every cluster has it. */
+export const CLUSTER_DATABASE = 'postgres';
 
 export interface ComposeOptions {
 	/** Names the compose project, which is what isolates it from other stacks. */
@@ -75,6 +67,11 @@ export interface ComposeOptions {
 	ports: PortAssignments;
 	/** App services to write beside the containers — see `reconcile/apps.ts`. */
 	apps?: Readonly<Record<string, ComposeService>>;
+	/**
+	 * What each container is brought up with: the workspace's generated local
+	 * logins — see `localCredentials.ts` — or a stack's derived ones.
+	 */
+	credentials: ContainerCredentials;
 }
 
 /**
@@ -110,7 +107,7 @@ export function composeFor(plan: Plan, options: ComposeOptions): ComposeFile {
 				// no volume — a fake keeps nothing worth keeping — and no
 				// healthcheck, so running is what ready means.
 				{ image, restart: 'unless-stopped', ports: published }
-			: define(container, image, published);
+			: define(container, image, published, options.credentials);
 
 		const volume = volumeOf(container);
 		if (volume) volumes[volume] = {};
@@ -159,6 +156,7 @@ function define(
 	container: string,
 	image: string,
 	published: string[],
+	credentials: ContainerCredentials,
 ): ComposeService {
 	switch (container) {
 		case 'postgres':
@@ -167,11 +165,14 @@ function define(
 				restart: 'unless-stopped',
 				ports: published,
 				environment: {
-					POSTGRES_USER: LOCAL_USER,
-					POSTGRES_PASSWORD: LOCAL_USER,
-					// The cluster's own database. Every declared database is created
-					// inside this cluster by the applier, not by the image.
-					POSTGRES_DB: LOCAL_USER,
+					// Read only when the volume is first initialised. A volume made
+					// with another login is rotated to this one by reconcile — see
+					// `logins.ts` — rather than being trusted to follow.
+					POSTGRES_USER: credentials.postgres.user,
+					POSTGRES_PASSWORD: credentials.postgres.password,
+					// Every declared database is created inside this cluster by the
+					// applier, not by the image; connections open `postgres` first.
+					POSTGRES_DB: CLUSTER_DATABASE,
 				},
 				// One mount at the parent, not at `data`: the 18 image keeps its
 				// cluster in a version-named subdirectory and refuses to start when
@@ -180,7 +181,10 @@ function define(
 				// than a new volume.
 				volumes: ['postgres-data:/var/lib/postgresql'],
 				healthcheck: {
-					test: ['CMD-SHELL', `pg_isready -U ${LOCAL_USER}`],
+					test: [
+						'CMD-SHELL',
+						`pg_isready -U ${credentials.postgres.user} -d ${CLUSTER_DATABASE}`,
+					],
 					interval: '5s',
 					timeout: '3s',
 					retries: 10,
@@ -194,8 +198,10 @@ function define(
 				restart: 'unless-stopped',
 				ports: published,
 				environment: {
-					MINIO_ROOT_USER: LOCAL_USER,
-					MINIO_ROOT_PASSWORD: LOCAL_USER,
+					// Read on every start, so a changed login takes effect when the
+					// container is recreated with it; the buckets stay.
+					MINIO_ROOT_USER: credentials.minio.user,
+					MINIO_ROOT_PASSWORD: credentials.minio.password,
 				},
 				// No bucket is created here: buckets are planned resources, and
 				// creating them in the entrypoint would put their names back in the
@@ -262,9 +268,20 @@ function define(
 				image,
 				restart: 'unless-stopped',
 				ports: published,
+				// The password from the environment, by name, so it is not in the
+				// container's arguments; `$$` is compose's escape for `$`.
+				// Through the image's own entrypoint, so it still drops to `redis`.
+				command:
+					'sh -c \'exec docker-entrypoint.sh redis-server --requirepass "$$REDIS_PASSWORD"\'',
+				environment: {
+					REDIS_PASSWORD: credentials.redis.password,
+					// What `redis-cli` signs in with — the health check's.
+					REDISCLI_AUTH: credentials.redis.password,
+				},
 				volumes: ['redis-data:/data'],
 				healthcheck: {
-					test: ['CMD', 'redis-cli', 'ping'],
+					// Unauthenticated, a ping answers NOAUTH, which is not PONG.
+					test: ['CMD-SHELL', 'redis-cli ping | grep -q PONG'],
 					interval: '5s',
 					timeout: '3s',
 					retries: 5,
@@ -278,11 +295,11 @@ function define(
 				ports: published,
 				environment: {
 					SRH_MODE: 'env',
-					SRH_TOKEN: LOCAL_TOKEN,
+					SRH_TOKEN: credentials.cacheToken,
 					// The Redis beside it, by compose service name — the one address
 					// in this file that is not published, because nothing outside the
 					// network speaks to it.
-					SRH_CONNECTION_STRING: 'redis://redis:6379',
+					SRH_CONNECTION_STRING: `redis://:${encodeURIComponent(credentials.redis.password)}@redis:6379`,
 				},
 				depends_on: ['redis'],
 				healthcheck: {
@@ -310,8 +327,10 @@ function define(
 				restart: 'unless-stopped',
 				ports: published,
 				environment: {
-					RABBITMQ_DEFAULT_USER: LOCAL_USER,
-					RABBITMQ_DEFAULT_PASS: LOCAL_USER,
+					// Read only when the volume is first initialised; reconcile
+					// brings an older volume's users in line — see `logins.ts`.
+					RABBITMQ_DEFAULT_USER: credentials.rabbitmq.user,
+					RABBITMQ_DEFAULT_PASS: credentials.rabbitmq.password,
 				},
 				volumes: ['rabbitmq-data:/var/lib/rabbitmq'],
 				healthcheck: {
@@ -333,8 +352,8 @@ function define(
 				extra_hosts: ['host.docker.internal:host-gateway'],
 				environment: {
 					AWS_DEFAULT_REGION: EMULATOR_REGION,
-					AWS_ACCESS_KEY_ID: EMULATOR_CREDENTIALS.accessKeyId,
-					AWS_SECRET_ACCESS_KEY: EMULATOR_CREDENTIALS.secretAccessKey,
+					AWS_ACCESS_KEY_ID: credentials.emulator.accessKeyId,
+					AWS_SECRET_ACCESS_KEY: credentials.emulator.secretAccessKey,
 				},
 				volumes: ['localstack-data:/var/lib/localstack'],
 				healthcheck: {

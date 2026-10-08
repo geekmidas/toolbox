@@ -18,6 +18,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { generateLocalCredentials } from '../../reconcile/localCredentials';
 import { WorkspaceConfigSchema } from '../../workspace/schema';
 import {
 	DEFAULT_DISCOVERY_PORT,
@@ -190,6 +191,52 @@ async function freePort(): Promise<number> {
 
 describe('the discovery endpoint', () => {
 	describe('security', () => {
+		it("lists a workspace's services and never its logins", async () => {
+			// What `gkm dev` registers: the manifest it reconciled and its apps.
+			// The logins it generated stay out of both, and so out of every
+			// answer and the registry on disk.
+			const credentials = generateLocalCredentials('shop');
+			const session = await join_({
+				manifest: {
+					Orders: { kind: 'database', id: 'Orders', provides: ['ORDERS_URL'] },
+					Sessions: {
+						kind: 'cache',
+						id: 'Sessions',
+						provides: ['SESSIONS_URL'],
+					},
+					Uploads: {
+						kind: 'objects',
+						id: 'Uploads',
+						provides: ['UPLOADS_URL'],
+					},
+				} as JoinDiscoveryOptions['manifest'],
+			});
+
+			const reply = await send(session.endpointPort, '/__gkm', bearer(session));
+			const onDisk = readdirSync(registry, { recursive: true })
+				.map((file) => join(registry, String(file)))
+				.filter((path) => statSync(path).isFile())
+				.map((path) => readFileSync(path, 'utf8'))
+				.join('\n');
+			const secrets = [
+				credentials.seed,
+				credentials.postgres.password,
+				credentials.minio.password,
+				credentials.redis.password,
+				credentials.cacheToken,
+				credentials.rabbitmq.password,
+				credentials.emulator.secretAccessKey,
+				credentials.logs.password,
+			];
+
+			expect(reply.status).toBe(200);
+			expect(reply.body).toContain('Orders');
+			for (const text of [reply.body, onDisk]) {
+				for (const secret of secrets) expect(text).not.toContain(secret);
+				expect(text).not.toMatch(/postgres:\/\/|redis:\/\/|password/i);
+			}
+		});
+
 		it('rejects a request without the token, or with the wrong one', async () => {
 			const session = await join_();
 			const port = session.endpointPort;

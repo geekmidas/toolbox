@@ -19,7 +19,14 @@
  */
 
 import { existsSync } from 'node:fs';
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+	chmod,
+	mkdir,
+	readdir,
+	readFile,
+	rm,
+	writeFile,
+} from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import type { CacheBackend, EventsBackend } from '../types';
@@ -43,6 +50,8 @@ import { dockerCli } from './docker';
 import { envFor } from './env';
 import type { LocalFake } from './fakes';
 import { lanAddress } from './lan';
+import type { LocalCredentials, Login } from './localCredentials';
+import { ensureLogins, type LoginOutcome } from './logins';
 import { type Plan, type PlanOptions, planFor } from './plan';
 import {
 	allocate,
@@ -173,6 +182,17 @@ export interface Docker {
 	 * that is already up will not notice one changing.
 	 */
 	reload(composePath: string, service: string): Promise<void>;
+	/**
+	 * Run a command inside a running service, reporting whether it exited
+	 * cleanly. Bringing an older volume's login in line uses it: Postgres's
+	 * socket and `rabbitmqctl` need no password from inside. Absent, that
+	 * fallback is skipped.
+	 */
+	exec?(
+		composePath: string,
+		service: string,
+		argv: readonly string[],
+	): Promise<{ ok: boolean; output: string }>;
 }
 
 export interface ReconcileOptions {
@@ -212,6 +232,11 @@ export interface ReconcileOptions {
 	extraContainers?: readonly string[];
 	/** Each external API's fake, by id — see `readFakes`. */
 	fakes?: PlanOptions['fakes'];
+	/**
+	 * The workspace's generated local logins — what every container is
+	 * brought up with and every URL carries. See `localCredentials.ts`.
+	 */
+	credentials: LocalCredentials;
 	/** Whether the local edge fronts surfaces, sites and file servers. */
 	edge?: boolean;
 	/**
@@ -242,9 +267,17 @@ export interface ReconcileOptions {
 	docker?: Docker;
 	probe?: PortProbe;
 	/** Injected for tests; the defaults talk to the containers just started. */
-	sql?: (port: number) => SqlClient;
-	buckets?: (port: number) => BucketClient;
-	carriers?: (port: number) => CarrierClient;
+	sql?: (port: number, login: Login) => SqlClient;
+	buckets?: (port: number, login: Login) => BucketClient;
+	carriers?: (
+		port: number,
+		credentials: LocalCredentials['emulator'],
+	) => CarrierClient;
+	/**
+	 * Bring each running container's login in line with `credentials` — see
+	 * `logins.ts`. Injected for tests that run no containers.
+	 */
+	logins?: typeof ensureLogins;
 }
 
 export interface ReconcileResult {
@@ -257,6 +290,14 @@ export interface ReconcileResult {
 	services: readonly ServiceAddress[];
 	/** The `<NAME>_URL` values this stage resolves. */
 	env: Readonly<Record<string, string>>;
+	/**
+	 * The logins in use: the ones passed in, or — where a container that
+	 * already had data could not be moved to one — the login it still takes.
+	 * Keep them when they differ.
+	 */
+	credentials: LocalCredentials;
+	/** What checking each container's login did, when it was checked. */
+	logins: readonly LoginOutcome[];
 	/** What the applier created, or found already there. */
 	provisioned: Applied[];
 	/**
@@ -296,7 +337,9 @@ export async function reconcile(
 		sql = pgClient,
 		buckets = bucketClient,
 		carriers = carrierClient,
+		logins = ensureLogins,
 	} = options;
+	const { seed } = options.credentials;
 
 	const plan = planFor(manifest, stage, provisionOrder(manifest), {
 		localStage: options.localStage,
@@ -327,6 +370,7 @@ export async function reconcile(
 	const compose = composeFor(plan, {
 		project,
 		ports,
+		credentials: options.credentials,
 		...(options.apps ? { apps: options.apps(plan.containers) } : {}),
 	});
 
@@ -337,7 +381,7 @@ export async function reconcile(
 	// And so is what provisioning runs. A toolbox upgrade that changes the role
 	// DDL — a new grant — changes no container and no route, so a hash without
 	// it reported convergence and the existing database never got the grant.
-	const postgres = postgresStatements(plan, project)
+	const postgres = postgresStatements(plan, project, seed)
 		.map((statement) => statement.create)
 		.join(';\n');
 	const hash = planHash(plan, compose, { caddyfile, postgres });
@@ -348,19 +392,25 @@ export async function reconcile(
 			? lanAddress()
 			: (options.lanAddress ?? undefined)
 		: undefined;
-	const env = envFor(plan, {
-		ports,
-		project,
-		...(options.mailFrom ? { mailFrom: options.mailFrom } : {}),
-		...(options.addresses ? { addresses: options.addresses } : {}),
-		...(lan ? { lanAddress: lan } : {}),
-		...(options.metroPorts ? { metroPorts: options.metroPorts } : {}),
-	});
-	// Pointed at whether or not it exists yet: the copy below fills it in, and
-	// anything that reads the environment starts after this returns.
-	if (plan.containers.includes('caddy')) {
-		env.NODE_EXTRA_CA_CERTS = join(root, LOCAL_CA_PATH);
-	}
+	const envWith = (credentials: LocalCredentials) => {
+		const env = envFor(plan, {
+			ports,
+			project,
+			credentials,
+			seed,
+			...(options.mailFrom ? { mailFrom: options.mailFrom } : {}),
+			...(options.addresses ? { addresses: options.addresses } : {}),
+			...(lan ? { lanAddress: lan } : {}),
+			...(options.metroPorts ? { metroPorts: options.metroPorts } : {}),
+		});
+		// Pointed at whether or not it exists yet: the copy below fills it in,
+		// and anything that reads the environment starts after this returns.
+		if (plan.containers.includes('caddy')) {
+			env.NODE_EXTRA_CA_CERTS = join(root, LOCAL_CA_PATH);
+		}
+		return env;
+	};
+	const env = envWith(options.credentials);
 
 	const result: ReconcileResult = {
 		stage,
@@ -369,6 +419,8 @@ export async function reconcile(
 		ports,
 		services,
 		env,
+		credentials: options.credentials,
+		logins: [],
 		provisioned: [],
 		fakes: options.fakes ?? {},
 		hash,
@@ -388,12 +440,16 @@ export async function reconcile(
 		(!start ||
 			!provision ||
 			postgresPort === undefined ||
-			(await databasesExist(sql(postgresPort), postgresDatabaseNames(plan))));
+			(await databasesExist(
+				sql(postgresPort, options.credentials.postgres),
+				postgresDatabaseNames(plan),
+			)));
 
 	// The fast path, and the reason reconciling on every start is acceptable.
 	if (converged) return result;
 
-	await write(composePath, toYaml(compose));
+	// Owner-only: it carries the containers' generated logins.
+	await write(composePath, toYaml(compose), 0o600);
 
 	// Before the containers: Caddy reads these at startup, and mounting a file
 	// that does not exist yet gets a directory instead.
@@ -439,6 +495,30 @@ export async function reconcile(
 			});
 	}
 
+	// A container that already had data may have been made with another
+	// login — an older gkm's fixed one. Brought in line before anything signs
+	// in, and where one cannot be, its login is what is used.
+	const checked =
+		start && plan.containers.length > 0
+			? await logins({
+					credentials: options.credentials,
+					containers: plan.containers,
+					ports: {
+						...(postgresPort !== undefined ? { postgres: postgresPort } : {}),
+						...(ports[primaryPortKey('minio')] !== undefined
+							? { minio: ports[primaryPortKey('minio')] }
+							: {}),
+					},
+					...(docker.exec
+						? {
+								exec: (service: string, argv: readonly string[]) =>
+									docker.exec!(composePath, service, argv),
+							}
+						: {}),
+				})
+			: { credentials: options.credentials, outcomes: [] };
+	const credentials = checked.credentials;
+
 	// Only once the containers are up: there is nothing to create inside a
 	// container that is not running.
 	if (start && provision) {
@@ -448,12 +528,21 @@ export async function reconcile(
 	}
 	const provisioned =
 		start && provision
-			? await create(plan, ports, sql, buckets, carriers, project)
+			? await create(plan, ports, credentials, sql, buckets, carriers, project)
 			: [];
 
 	await saveState(root, { hash, stage });
 
-	return { ...result, provisioned, changed: true };
+	return {
+		...result,
+		...(credentials === options.credentials
+			? {}
+			: { env: envWith(credentials) }),
+		credentials,
+		logins: checked.outcomes,
+		provisioned,
+		changed: true,
+	};
 }
 
 /**
@@ -465,25 +554,31 @@ export async function reconcile(
 async function create(
 	plan: Plan,
 	ports: PortAssignments,
-	sql: (port: number) => SqlClient,
-	buckets: (port: number) => BucketClient,
-	emulatorCarriers: (port: number) => CarrierClient,
+	credentials: LocalCredentials,
+	sql: NonNullable<ReconcileOptions['sql']>,
+	buckets: NonNullable<ReconcileOptions['buckets']>,
+	emulatorCarriers: NonNullable<ReconcileOptions['carriers']>,
 	/** Seeds the derived role passwords — see `localRolePassword`. */
 	project: string,
 ): Promise<Applied[]> {
 	const applied: Applied[] = [];
 
 	const postgresPort = ports[primaryPortKey('postgres')];
-	const statements = postgresStatements(plan, project);
+	const statements = postgresStatements(plan, project, credentials.seed);
 	if (postgresPort !== undefined && statements.length > 0) {
-		applied.push(...(await applyPostgres(sql(postgresPort), statements)));
+		applied.push(
+			...(await applyPostgres(
+				sql(postgresPort, credentials.postgres),
+				statements,
+			)),
+		);
 	}
 
 	const minioPort = ports[primaryPortKey('minio')];
 	const names = bucketNames(plan);
 	const policies = bucketPolicies(plan);
 	if (minioPort !== undefined && (names.length > 0 || policies.length > 0)) {
-		const client = buckets(minioPort);
+		const client = buckets(minioPort, credentials.minio);
 
 		// Buckets first: a policy names a bucket, and applying one to a bucket
 		// that does not exist yet fails on the first reconcile of a new project.
@@ -499,7 +594,10 @@ async function create(
 		carriers.topics.length + carriers.queues.length > 0
 	) {
 		applied.push(
-			...(await applyCarriers(emulatorCarriers(emulatorPort), carriers)),
+			...(await applyCarriers(
+				emulatorCarriers(emulatorPort, credentials.emulator),
+				carriers,
+			)),
 		);
 	}
 
@@ -558,13 +656,21 @@ async function pruneCaddySites(
 	}
 }
 
-async function write(path: string, content: string): Promise<void> {
+async function write(
+	path: string,
+	content: string,
+	mode?: number,
+): Promise<void> {
 	try {
-		if ((await readFile(path, 'utf-8')) === content) return;
+		if ((await readFile(path, 'utf-8')) === content) {
+			if (mode !== undefined) await chmod(path, mode);
+			return;
+		}
 	} catch {
 		// Absent or unreadable — write it.
 	}
 
 	await mkdir(dirname(path), { recursive: true });
-	await writeFile(path, content);
+	await writeFile(path, content, mode === undefined ? {} : { mode });
+	if (mode !== undefined) await chmod(path, mode);
 }

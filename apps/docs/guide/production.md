@@ -204,7 +204,7 @@ a dev stand-in: on the compose network only with no published port, bounded at
 256 MB with `allkeys-lru` eviction, persisted to an append-only file on the
 `redis-data` volume, and password protected. A deployed stage's password is
 generated on the first run and kept in its secrets as `REDIS_PASSWORD`; the
-local stage uses a fixed one. Each backend and worker that reads a cache gets
+local stage uses the one generated for this machine with `gkm dev`'s logins. Each backend and worker that reads a cache gets
 its URL (`SESSIONS_URL=redis://:…@redis:6379/0`) in its env file, and its image
 registers the Redis cache driver.
 

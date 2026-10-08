@@ -8,8 +8,10 @@ import {
 	prepareEntryCredentials,
 } from '../credentials';
 import { sniffAppEnvironment } from '../deploy/sniffer';
+import { pgClient } from '../reconcile/clients.js';
 import { primaryPortKey } from '../reconcile/containers';
 import type { ReconcileResult } from '../reconcile/index.js';
+import { readLocalCredentials } from '../reconcile/localCredentials.js';
 import { postgresDatabaseNames } from '../reconcile/provision.js';
 import { backendsOf, constructGlobs } from '../reconcile/workspace.js';
 import { TEST_STAGE } from '../workspace/stages';
@@ -299,10 +301,15 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 
 /** Drop what the last setup created — see `dropTestDatabases`. */
 async function teardown(cwd: string): Promise<void> {
-	const root = await loadWorkspaceConfig(cwd)
-		.then((loaded) => loaded.workspace.root)
-		.catch(() => cwd);
-	const dropped = await dropTestDatabases(cwd, root);
+	const workspace = await loadWorkspaceConfig(cwd)
+		.then((loaded) => loaded.workspace)
+		.catch(() => undefined);
+	// No workspace, or no logins yet: nothing was ever reconciled to drop.
+	const credentials = workspace ? await readLocalCredentials(workspace) : null;
+	if (!workspace || !credentials) return;
+	const dropped = await dropTestDatabases(cwd, workspace.root, (port) =>
+		pgClient(port, credentials.postgres),
+	);
 	if (dropped.length > 0) {
 		console.log(`  🧹 Dropped ${dropped.join(', ')}`);
 	}

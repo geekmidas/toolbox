@@ -25,6 +25,10 @@ import { appServices } from './apps.js';
 import { discover } from './discover.js';
 import { readFakes } from './fakes.js';
 import { type ReconcileResult, reconcile } from './index.js';
+import {
+	loadLocalCredentials,
+	saveLocalCredentials,
+} from './localCredentials.js';
 import { planFor } from './plan.js';
 
 /**
@@ -131,7 +135,13 @@ export async function reconcileWorkspace(
 		? await readFakes(workspace.root, manifest)
 		: {};
 
+	// Generated the first time anything needs them, and read back after: one
+	// set per machine and workspace, shared by the local stage and `test`,
+	// which run on the same containers.
+	const { credentials } = await loadLocalCredentials(workspace);
+
 	const result = await reconcile({
+		credentials,
 		root: workspace.root,
 		project: workspace.name,
 		manifest,
@@ -143,12 +153,28 @@ export async function reconcileWorkspace(
 		metroPorts: metroPorts(workspace, manifest),
 		fakes,
 		apps: (containers) =>
-			appServices(workspace, manifest, containers, runnables, fakes),
+			appServices(
+				workspace,
+				manifest,
+				containers,
+				credentials,
+				runnables,
+				fakes,
+			),
 		...(options.start === undefined ? {} : { start: options.start }),
 		...(options.progress ? { progress: options.progress } : {}),
 	});
 
 	await savePortState(workspace.root, { ...result.ports });
+
+	// A container that could not be moved to its generated login keeps the
+	// one it takes, and that is what later runs use.
+	if (result.credentials !== credentials) {
+		await saveLocalCredentials(workspace, result.credentials);
+	}
+	for (const outcome of result.logins) {
+		if (outcome.notice) console.log(outcome.notice);
+	}
 
 	// With the manifest, so `gkm dev` can say what the workspace declares
 	// without discovering it a second time.
