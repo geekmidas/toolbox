@@ -258,16 +258,23 @@ function searchBody(where: string): string {
  * or node:http: the line is sent by the logger itself and the span by the
  * server's own middleware.
  */
+/** A search asked until it finds something: telemetry is exported in batches. */
+async function eventuallyFound(
+	search: Search,
+	type: 'logs' | 'traces',
+	where: string,
+): Promise<Record<string, unknown>[]> {
+	for (let attempt = 0; attempt < 60; attempt++) {
+		const hits = await search(type, where);
+		if (hits.length > 0) return hits;
+		await new Promise((resolve) => setTimeout(resolve, 2_000));
+	}
+	return [];
+}
+
 async function expectPingTraced(search: Search): Promise<void> {
-	// Exported in batches: asked until it is there.
-	const eventually = async (type: 'logs' | 'traces', where: string) => {
-		for (let attempt = 0; attempt < 60; attempt++) {
-			const hits = await search(type, where);
-			if (hits.length > 0) return hits;
-			await new Promise((resolve) => setTimeout(resolve, 2_000));
-		}
-		return [];
-	};
+	const eventually = (type: 'logs' | 'traces', where: string) =>
+		eventuallyFound(search, type, where);
 
 	// The handler's line, from the api, with the trace it ran in.
 	const [line] = await eventually(
@@ -960,7 +967,7 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 					const ping = await edge('api', '/ping');
 					expect(ping.status).toBe(200);
 
-					await expectPingTraced(async (type, where) => {
+					const search: Search = async (type, where) => {
 						const response = await fetch(
 							`http://127.0.0.1:${logsPort}/api/default/_search?type=${type}`,
 							{
@@ -977,12 +984,14 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 							hits?: Record<string, unknown>[];
 						};
 						return body.hits ?? [];
-					});
+					};
+					await expectPingTraced(search);
 
 					// The site's request — sent by its bundle above, from its origin,
 					// through the edge — is a child of the page's trace, not a new one.
 					const [, siteTraceId, siteSpanId] = siteTraceparent!.split('-');
-					const [continued] = await eventually(
+					const [continued] = await eventuallyFound(
+						search,
 						'traces',
 						`trace_id = '${siteTraceId}' AND operation_name = 'GET /ping'`,
 					);
