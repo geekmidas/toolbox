@@ -41,3 +41,8 @@ export {
 	type TestManifest,
 	type TestManifestSource,
 } from '../testing/manifest';
+export {
+	IN_PROCESS_PEER_ADDRESS,
+	type InProcessBindings,
+	inProcessBindings,
+} from '../testing/peer';

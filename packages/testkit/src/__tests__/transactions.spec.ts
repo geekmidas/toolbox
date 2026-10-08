@@ -93,6 +93,52 @@ describe('openBoundTransaction', () => {
 		expect(rows.rows.map((r) => r.email)).toEqual(['kept@shop.test']);
 		await tx.rollback();
 	});
+	// Deployed, a statement outside a transaction is its own: a duplicate key
+	// fails that insert and nothing else. Better Auth's rate limiter is built on
+	// it — two requests both insert the row, the loser reads the winner's and
+	// carries on — and in one test both requests share this one connection.
+	it('lets a statement fail on its own, as it does deployed', async () => {
+		await committed(
+			`CREATE TABLE "${schema}".limits (key text PRIMARY KEY, hits int)`,
+		);
+		const tx = await openBoundTransaction(tenantUrl);
+		const insert = () =>
+			sql`INSERT INTO limits VALUES ('client|/get-session', 1)`.execute(tx.db);
+
+		const [first, second] = await Promise.allSettled([insert(), insert()]);
+		expect(first.status).toBe('fulfilled');
+		expect(second).toMatchObject({
+			status: 'rejected',
+			reason: { code: '23505' },
+		});
+
+		// The test's transaction is still open, and the winner's row in it.
+		await sql`UPDATE limits SET hits = hits + 1`.execute(tx.db);
+		const rows = await sql<{
+			hits: number;
+		}>`SELECT hits FROM limits`.execute(tx.db);
+		expect(rows.rows).toEqual([{ hits: 2 }]);
+		await tx.rollback();
+	});
+
+	it('still fails a transaction the code opened with the statement in it', async () => {
+		await committed(`CREATE TABLE "${schema}".once (key text PRIMARY KEY)`);
+		const tx = await openBoundTransaction(tenantUrl);
+
+		const result = tx.db.transaction().execute(async (trx) => {
+			await sql`INSERT INTO once VALUES ('a')`.execute(trx);
+			await sql`INSERT INTO once VALUES ('a')`.execute(trx).catch(() => {});
+			// Deployed, Postgres refuses everything after the failure until the
+			// transaction ends; so it does here.
+			await sql`SELECT 1`.execute(trx);
+		});
+
+		await expect(result).rejects.toMatchObject({ code: '25P02' });
+		const rows = await sql`SELECT * FROM once`.execute(tx.db);
+		expect(rows.rows).toEqual([]);
+		await tx.rollback();
+	});
+
 	// The code under test is handed this Kysely in place of its own. Built
 	// without the database's plugins, it wrote `signedUpAt` to a table whose
 	// column is `signed_up_at`, and a test failed on code production ran fine.

@@ -20,6 +20,7 @@ import {
 	withTrustedClientIp,
 } from '../auth';
 import { KyselyDatabase } from '../database/kysely';
+import { inProcessBindings } from '../testing/peer';
 
 /**
  * The auth server as an app runs it: a real tenant on the test Postgres,
@@ -834,6 +835,36 @@ describe('the client’s address on a session check', () => {
 
 		expect([await spoof(), await spoof()]).toEqual([200, 200]);
 		expect(await spoof()).toBe(429);
+	});
+
+	it('believes no request without a peer but a test’s in-process one', async () => {
+		// What Better Auth is handed, read where it keys its rate limit.
+		const believed: (string | null)[] = [];
+		const { app } = await auth({
+			rateLimit: {
+				enabled: true,
+				storage: 'memory',
+				customRules: {
+					'/get-session': async (request: Request) => {
+						believed.push(request.headers.get('x-gkm-client-ip'));
+						return false;
+					},
+				},
+			},
+		}).server(options());
+		const asInternal = () =>
+			new Request(`${AUTH_URL}/api/auth/get-session`, {
+				headers: { 'x-gkm-client-ip': '203.0.113.7' },
+			});
+
+		// A runtime with no socket — Lambda, Bun — can be reached from outside,
+		// so no peer is not an internal caller.
+		await app.fetch(asInternal());
+		await app.fetch(asInternal(), {});
+		// A feature test's dispatch says it came from this process.
+		await app.fetch(asInternal(), inProcessBindings());
+
+		expect(believed).toEqual([null, null, '203.0.113.7']);
 	});
 });
 
