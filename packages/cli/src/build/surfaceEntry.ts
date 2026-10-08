@@ -1,6 +1,12 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
+import {
+	mountRequestSpansCode,
+	startTelemetryCode,
+	type TelemetryContext,
+	writeTelemetryModule,
+} from '../generators/telemetry.js';
 import type { ConstructSource } from '../reconcile/discover.js';
 import { servedSurface } from './owners';
 
@@ -94,9 +100,15 @@ export default app;
  */
 export async function writeSurfaceServer(
 	outputDir: string,
-	options: { healthCheck: string; gracefulShutdown: boolean },
+	options: {
+		healthCheck: string;
+		gracefulShutdown: boolean;
+		/** What it starts OpenTelemetry with — none without an edge. */
+		telemetry?: TelemetryContext;
+	},
 ): Promise<string> {
 	await mkdir(outputDir, { recursive: true });
+	await writeTelemetryModule(outputDir, options.telemetry);
 
 	const shutdown = options.gracefulShutdown
 		? `
@@ -129,12 +141,14 @@ process.on('SIGINT', shutdown);
  */
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
-${options.gracefulShutdown ? "import { runShutdownHooks } from '@geekmidas/constructs';\n" : ''}import { app as surface } from './app.js';
+${options.gracefulShutdown ? "import { runShutdownHooks } from '@geekmidas/constructs';\n" : ''}
+${startTelemetryCode([options.healthCheck])}
+const { app: surface } = await import('./app.js');
 
 const port = Number(process.env.PORT) || 3000;
 
 const app = new Hono();
-// First, so a probe is answered without reaching the surface's own routes.
+${mountRequestSpansCode('app')}// First, so a probe is answered without reaching the surface's own routes.
 app.get(${JSON.stringify(options.healthCheck)}, (c) =>
   c.json({ status: 'ok', timestamp: Date.now() }),
 );

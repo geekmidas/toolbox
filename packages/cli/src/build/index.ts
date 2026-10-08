@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
-import { join, relative, resolve } from 'node:path';
+import { basename, join, relative, resolve } from 'node:path';
 import type { Cron } from '@geekmidas/constructs/crons';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { Function } from '@geekmidas/constructs/functions';
@@ -29,7 +29,12 @@ import {
 	workerBundleName,
 	workerEntryDir,
 } from '../generators';
-import { telemetryFor } from '../generators/telemetry';
+import {
+	routeTelemetry,
+	type TelemetryContext,
+	telemetryFor,
+	writeTelemetryModule,
+} from '../generators/telemetry';
 import { generateOpenApi } from '../openapi.js';
 import { type ConstructSource, discover } from '../reconcile/discover.js';
 import {
@@ -41,6 +46,7 @@ import {
 import { CommandFailed, DEFAULT_TIMEOUT_MS } from '../run';
 import { LocalSandbox } from '../sandbox/local';
 import { keyFingerprint } from '../secrets/encryption';
+import { telemetryOf } from '../telemetry/edges.js';
 import type {
 	BuildOptions,
 	BuildResult,
@@ -471,6 +477,17 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 			join(appRoot, '.gkm', 'server'),
 			selfServing.source,
 		);
+		// Its entry starts telemetry the way a generated one does, from the
+		// surface's own edge.
+		const telemetry = telemetryFor({
+			node: telemetryOf(declared, selfServing.id),
+			appRoot,
+			app: appNameOf(input),
+			cwd: workspaceRoot,
+			serviceName: selfServing.id,
+			...(input.workspaceName && { workspaceName: input.workspaceName }),
+		});
+		await writeTelemetryModule(join(appRoot, '.gkm', 'server'), telemetry);
 		logger.log(
 			`Generated a server for ${selfServing.id} from its own declaration`,
 		);
@@ -478,7 +495,10 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		// An image needs a process that listens, which the dev entry is not.
 		if (production?.bundle && !input.skipBundle) {
 			const outputDir = join(appRoot, '.gkm', 'server');
-			const entryPoint = await writeSurfaceServer(outputDir, production);
+			const entryPoint = await writeSurfaceServer(outputDir, {
+				...production,
+				...(telemetry ? { telemetry } : {}),
+			});
 			const { bundleServer } = await import('./bundler');
 			await bundleServer({
 				entryPoint,
@@ -527,13 +547,6 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		}),
 		eventsBackends,
 		markOptional: input.markOptional ?? false,
-		...(production && {
-			telemetry: telemetryFor({
-				appRoot,
-				surfaceId: derived.surface?.id,
-				workspaceName: input.workspaceName,
-			}),
-		}),
 	};
 
 	// Initialize generators
@@ -570,6 +583,24 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 	]);
 
 	const allEndpoints = servedBy(loadedEndpoints, derived.surface);
+
+	// Decided by the process's edge to a `Telemetry` node, never by which
+	// packages happen to be installed: with the edge, the server's entry
+	// starts the SDK — and the build fails without what it needs; without it,
+	// the entry loads nothing. The `gkm dev` entry starts it the same way.
+	if (target === 'server') {
+		buildContext.telemetry = telemetryFor({
+			node: derived.surface
+				? telemetryOf(declared, derived.surface.id)
+				: undefined,
+			appRoot,
+			app: appNameOf(input),
+			cwd: workspaceRoot,
+			serviceName: derived.surface?.id ?? basename(appRoot),
+			...(input.workspaceName && { workspaceName: input.workspaceName }),
+			routes: routeTelemetry(allEndpoints.map(({ construct }) => construct)),
+		});
+	}
 
 	logger.log(`Found ${allEndpoints.length} endpoints`);
 	logger.log(`Found ${allFunctions.length} functions`);
@@ -647,6 +678,17 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		);
 		await buildWorkers({
 			context: buildContext,
+			telemetry: (workerId) =>
+				telemetryFor({
+					node: telemetryOf(declared, workerId),
+					appRoot,
+					app: appNameOf(input),
+					cwd: workspaceRoot,
+					serviceName: workerId,
+					...(input.workspaceName && {
+						workspaceName: input.workspaceName,
+					}),
+				}),
 			workers: hosted,
 			serverDir: join(appRoot, '.gkm', 'server'),
 			crons: allCrons,
@@ -678,6 +720,8 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
  */
 async function buildWorkers(input: {
 	context: BuildContext;
+	/** What each worker's process starts OpenTelemetry with, by its id. */
+	telemetry: (workerId: string) => TelemetryContext | undefined;
 	workers: readonly WorkerUnit[];
 	serverDir: string;
 	crons: GeneratedConstruct<Cron<any, any, any, any>>[];
@@ -696,9 +740,11 @@ async function buildWorkers(input: {
 		const queues = owned(input.queues);
 		const subscribers = owned(input.subscribers);
 
+		const telemetry = input.telemetry(worker.id);
 		const entryPoint = await generator.build({
 			context: input.context,
 			workerId: worker.id,
+			...(telemetry ? { telemetry } : {}),
 			outputDir: workerEntryDir(input.serverDir, worker.id),
 			crons,
 			queues,
@@ -723,6 +769,17 @@ async function buildWorkers(input: {
 		});
 		logger.log(`✅ Bundle complete: .gkm/server/dist/${outfile}`);
 	}
+}
+
+/** The app being built, by its workspace name or its directory's. */
+function appNameOf(input: BuildAppInput): string {
+	const named = input.workspace
+		? Object.entries(input.workspace.apps).find(
+				([, app]) =>
+					resolve(input.workspace!.root, app.path) === resolve(input.appRoot),
+			)?.[0]
+		: undefined;
+	return named ?? basename(input.appRoot);
 }
 
 async function buildForTarget(

@@ -64,7 +64,6 @@ import {
 	type StackLogs,
 	withLogsPassword,
 } from '../../compose/logs';
-import { resolveLogs } from '../../compose/logsConfig';
 import { ComposeTlsFileMissing } from '../../compose/proxy';
 import {
 	REDIS_SERVICE,
@@ -78,6 +77,7 @@ import {
 	EDGE_PORT_ENV,
 	envFile,
 	LOG_ROTATION,
+	LOGS_PORT_ENV,
 	type StackApp,
 	stackDir,
 } from '../../compose/stack';
@@ -124,6 +124,8 @@ import { assertStageCredentials } from '../../secrets/credentialSchemas.js';
 import { assertNoStaleSecrets } from '../../secrets/stale.js';
 import { initStageSecrets } from '../../secrets/storage.js';
 import type { StageSecrets } from '../../secrets/types.js';
+import { resolveStageTelemetry } from '../../telemetry/config';
+import { usesTelemetry } from '../../telemetry/edges';
 import type { NormalizedWorkspace } from '../../workspace/types.js';
 import {
 	DeploySeedsFailed,
@@ -295,6 +297,7 @@ export async function gitRevision(root: string): Promise<string> {
 export function edgePorts(env: NodeJS.ProcessEnv = process.env): {
 	https: number;
 	http: number;
+	logs?: number;
 } {
 	const read = (variable: string, fallback: number) => {
 		const value = env[variable];
@@ -305,9 +308,11 @@ export function edgePorts(env: NodeJS.ProcessEnv = process.env): {
 		}
 		return port;
 	};
+	const logs = env[LOGS_PORT_ENV] ? read(LOGS_PORT_ENV, 0) : undefined;
 	return {
 		https: read(EDGE_PORT_ENV.https, 443),
 		http: read(EDGE_PORT_ENV.http, 80),
+		...(logs ? { logs } : {}),
 	};
 }
 
@@ -567,10 +572,22 @@ async function stageSecrets(
 		manifest,
 	);
 	// The log UI's root password, generated once like the seed, where the
-	// workspace runs one and the stage set none.
-	const withLogs = resolveLogs(ctx.workspace.deploy?.compose?.logs)
-		? withLogsPassword(withSeed.secrets)
-		: { secrets: withSeed.secrets, generated: [] };
+	// stage's telemetry is self-hosted and the stage set none.
+	const telemetry = resolveStageTelemetry({
+		...(ctx.workspace.deploy?.telemetry
+			? { telemetry: ctx.workspace.deploy.telemetry }
+			: {}),
+		stage: ctx.stage,
+		local: false,
+		target: 'compose',
+		runtime: 'server',
+		selfHosted: true,
+		used: usesTelemetry(manifest),
+	});
+	const withLogs =
+		telemetry?.provider === 'self-hosted'
+			? withLogsPassword(withSeed.secrets)
+			: { secrets: withSeed.secrets, generated: [] };
 	// The stack's Redis password, the same way, where a cache lives in it.
 	const withRedis = runsRedis(manifest, withLogs.secrets.custom ?? {})
 		? withRedisPassword(withLogs.secrets)

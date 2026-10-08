@@ -20,6 +20,7 @@ import {
 } from '../construct-interface';
 import { BaseFunctionBuilder } from '../functions';
 import type { EventFor } from '../publisher';
+import type { EndpointTelemetry } from '../telemetry';
 import type { Topic } from '../topic/Topic';
 import type { HttpMethod } from '../types';
 import type { Authorizer, SecurityScheme } from './Authorizer';
@@ -91,6 +92,7 @@ export class EndpointBuilder<
 	_customSecuritySchemes: Record<string, SecurityScheme> = {};
 	_rlsConfig?: RlsConfig<TServices, TSession, TLogger>;
 	_rlsBypass?: boolean;
+	_telemetry?: EndpointTelemetry;
 
 	constructor(
 		readonly route: TRoute,
@@ -175,6 +177,20 @@ export class EndpointBuilder<
 
 	memorySize(memorySize: number): this {
 		return cloneWith(this, { _memorySize: memorySize });
+	}
+
+	/**
+	 * This route's telemetry, beside what its surface's `Telemetry` says for
+	 * every route: `{ ignore: true }` records no span for it — a health check,
+	 * a probe — and `attributes` are set on its request span.
+	 *
+	 * @example
+	 * ```ts
+	 * router.get('/health').telemetry({ ignore: true }).handle(() => 'ok');
+	 * ```
+	 */
+	telemetry(options: EndpointTelemetry): this {
+		return cloneWith(this, { _telemetry: { ...options } });
 	}
 
 	/**
@@ -780,6 +796,7 @@ export class EndpointBuilder<
 			rlsConfig: this._rlsConfig,
 			rlsBypass: this._rlsBypass,
 			responseType: this._responseType,
+			...(this._telemetry ? { telemetry: this._telemetry } : {}),
 		});
 
 		// One field says which process runs a construct, whatever its kind. An

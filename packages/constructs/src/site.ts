@@ -31,6 +31,7 @@ import {
 	type SiteDeclaration,
 } from '@geekmidas/manifest';
 import { type Declarable, edgeTo } from './construct-interface';
+import type { Telemetry } from './telemetry';
 
 /**
  * Where a site's source lives, and the little else a layout can differ by.
@@ -84,6 +85,13 @@ export interface StaticSiteConfig {
 	 * else.
 	 */
 	variant?: SiteDeclaration['variant'];
+	/**
+	 * What the site emits — the `Telemetry` construct. An edge to the node and
+	 * nothing more for now: a site is handed none of its server keys, and the
+	 * browser half (propagation from the generated client, then a browser SDK
+	 * exporting through the API) builds on this edge.
+	 */
+	telemetry?: Telemetry;
 }
 
 export class StaticSite<TName extends string = string>
@@ -139,6 +147,9 @@ export class StaticSite<TName extends string = string>
 				},
 				...(this.config.root ? { root: true } : {}),
 				dependencies: this.dependencies,
+				...(this.config.telemetry
+					? { telemetry: this.config.telemetry.id }
+					: {}),
 				provides: [this.keys.url],
 			},
 		];

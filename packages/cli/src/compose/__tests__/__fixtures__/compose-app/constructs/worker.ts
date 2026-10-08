@@ -1,6 +1,9 @@
 import { Worker } from '@geekmidas/constructs/worker';
 import { database } from './database.js';
 import { logger } from './logger.js';
+import { telemetry } from './telemetry.js';
 
 /** The background work: a process of its own, with no route and no port. */
-export const worker = new Worker('Jobs', { logger }).database(database);
+export const worker = new Worker('Jobs', { logger, telemetry }).database(
+	database,
+);

@@ -425,7 +425,9 @@ describe('EndpointGenerator', () => {
 					telemetry: {
 						serviceName: 'Api',
 						serviceNamespace: 'shop',
-						available: true,
+						ignorePaths: [],
+						attributes: {},
+						routes: [],
 					},
 				},
 				constructs,
@@ -437,7 +439,7 @@ describe('EndpointGenerator', () => {
 			// The app is imported only once telemetry has started, so the
 			// libraries it loads are the instrumented ones.
 			expect(server).toContain(
-				"import { startTelemetry } from './telemetry.js';",
+				"const { startTelemetry } = await import('./telemetry.js');",
 			);
 			expect(server).not.toContain("import { createApp } from './app.js'");
 			expect(server.indexOf('await startTelemetry(')).toBeLessThan(
@@ -446,7 +448,7 @@ describe('EndpointGenerator', () => {
 			// Its request-span middleware goes on ahead of every route, and the
 			// health checks open no span.
 			expect(server).toContain(
-				'const requestSpans = await startTelemetry({\n  ignorePaths: ["/health", \'/ready\'],',
+				'const requestSpans = await startTelemetry({\n  ignorePaths: ["/health","/ready"],',
 			);
 			expect(server).toContain("if (requestSpans) app.use('*', requestSpans);");
 			expect(server.indexOf("app.use('*', requestSpans)")).toBeLessThan(
@@ -474,7 +476,7 @@ describe('EndpointGenerator', () => {
 	);
 
 	itWithDir(
-		'should not import telemetry packages in an entry built without them',
+		'gives a server with no Telemetry edge the stub, which loads nothing',
 		async ({ dir }) => {
 			const outputDir = join(dir, 'output');
 			const routesDir = join(dir, 'routes');
@@ -500,7 +502,6 @@ describe('EndpointGenerator', () => {
 						openapi: false,
 						subscribers: 'exclude' as const,
 					},
-					telemetry: { serviceName: 'Api', available: false },
 				},
 				constructs,
 				outputDir,
@@ -513,7 +514,9 @@ describe('EndpointGenerator', () => {
 			);
 			expect(telemetry).not.toContain("@geekmidas/telescope/instrumentation')");
 			expect(telemetry).not.toMatch(/import\(['"]@/);
-			expect(telemetry).toContain('TelemetryUnavailable');
+			// Nothing to say: telemetry is not something this process was given.
+			expect(telemetry).not.toContain('TelemetryUnavailable');
+			expect(telemetry).toContain('return undefined;');
 		},
 	);
 

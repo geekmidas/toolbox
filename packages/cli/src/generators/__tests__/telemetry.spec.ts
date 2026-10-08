@@ -5,12 +5,14 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import type { TelemetryDeclaration } from '@geekmidas/manifest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
 	generateTelemetryModule,
+	missingTelemetryPackages,
 	TELEMETRY_PACKAGES,
+	TelemetryPackagesMissing,
 	telemetryFor,
-	telemetryResolvesFrom,
 } from '../telemetry';
 
 /**
@@ -142,46 +144,123 @@ describe('production entry telemetry', { timeout: 30_000 }, () => {
 		await rm(dir, { recursive: true, force: true });
 	});
 
-	describe('telemetryResolvesFrom', () => {
-		it('is false for an app without the packages', () => {
-			expect(telemetryResolvesFrom(dir)).toBe(false);
+	describe('missingTelemetryPackages', () => {
+		it('names telescope and every OpenTelemetry package for an app without them', () => {
+			expect(missingTelemetryPackages(dir)).toEqual([
+				'@geekmidas/telescope',
+				...TELEMETRY_PACKAGES,
+			]);
 		});
 
-		it('is true once telescope and every OpenTelemetry package resolve', async () => {
+		it('is empty once telescope and every OpenTelemetry package resolve', async () => {
 			await installTelescope(dir);
 			await installOpenTelemetry(dir);
 
-			expect(telemetryResolvesFrom(dir)).toBe(true);
+			expect(missingTelemetryPackages(dir)).toEqual([]);
 		});
 
-		it('is false when one OpenTelemetry package is missing', async () => {
+		it('names the one OpenTelemetry package that is missing', async () => {
 			await installTelescope(dir);
 			await installOpenTelemetry(dir, '@opentelemetry/sdk-node');
 
-			expect(telemetryResolvesFrom(dir)).toBe(false);
+			expect(missingTelemetryPackages(dir)).toEqual([
+				'@opentelemetry/sdk-node',
+			]);
 		});
 	});
 
 	describe('telemetryFor', () => {
-		it('names the service after its surface, in its workspace', async () => {
+		const node: TelemetryDeclaration = {
+			kind: 'telemetry',
+			id: 'Telemetry',
+			ignorePaths: ['/ready'],
+			attributes: { 'service.namespace': 'shop' },
+		};
+
+		it('is nothing for a process with no Telemetry edge, whatever is installed', async () => {
 			expect(
 				telemetryFor({
+					node: undefined,
 					appRoot: dir,
-					surfaceId: 'Api',
+					app: 'api',
+					serviceName: 'Api',
+				}),
+			).toBeUndefined();
+
+			await installTelescope(dir);
+			await installOpenTelemetry(dir);
+			expect(
+				telemetryFor({
+					node: undefined,
+					appRoot: dir,
+					app: 'api',
+					serviceName: 'Api',
+				}),
+			).toBeUndefined();
+		});
+
+		it('fails the build for a process with the edge and a package missing, with the command to add it', async () => {
+			await installTelescope(dir);
+			await installOpenTelemetry(dir, '@opentelemetry/sdk-node');
+
+			const build = () =>
+				telemetryFor({
+					node,
+					appRoot: join(dir),
+					app: 'api',
+					cwd: dirname(dir),
+					serviceName: 'Api',
+				});
+
+			expect(build).toThrow(TelemetryPackagesMissing);
+			try {
+				build();
+			} catch (error) {
+				const missing = error as TelemetryPackagesMissing;
+				expect(missing.app).toBe('api');
+				expect(missing.missing).toEqual(['@opentelemetry/sdk-node']);
+				expect(missing.command).toBe(
+					`pnpm --dir ${basename(dir)} add @opentelemetry/sdk-node`,
+				);
+				expect(missing.message).toContain("'api' uses a Telemetry construct");
+				expect(missing.message).toContain(missing.command);
+			}
+		});
+
+		it('names every package an app without telescope needs', () => {
+			expect(() =>
+				telemetryFor({
+					node,
+					appRoot: dir,
+					app: 'api',
+					cwd: dir,
+					serviceName: 'Api',
+				}),
+			).toThrow(
+				`pnpm --dir . add @geekmidas/telescope ${TELEMETRY_PACKAGES.join(' ')}`,
+			);
+		});
+
+		it('passes once they all resolve: the service, its workspace and the node’s settings', async () => {
+			await installTelescope(dir);
+			await installOpenTelemetry(dir);
+
+			expect(
+				telemetryFor({
+					node,
+					appRoot: dir,
+					app: 'api',
+					serviceName: 'Api',
 					workspaceName: 'shop',
+					routes: [{ method: 'GET', path: '/probe', ignore: true }],
 				}),
 			).toEqual({
 				serviceName: 'Api',
 				serviceNamespace: 'shop',
-				available: false,
+				ignorePaths: ['/ready'],
+				attributes: { 'service.namespace': 'shop' },
+				routes: [{ method: 'GET', path: '/probe', ignore: true }],
 			});
-		});
-
-		it("falls back to the app's directory without a surface", () => {
-			const telemetry = telemetryFor({ appRoot: dir });
-
-			expect(telemetry.serviceName).toBe(dir.split('/').pop());
-			expect(telemetry).not.toHaveProperty('serviceNamespace');
 		});
 	});
 
@@ -193,7 +272,9 @@ describe('production entry telemetry', { timeout: 30_000 }, () => {
 				generateTelemetryModule({
 					serviceName: 'Api',
 					serviceNamespace: 'shop',
-					available: true,
+					ignorePaths: ['/ready'],
+					attributes: { 'service.namespace': 'shop', team: 'orders' },
+					routes: [],
 				}),
 			);
 		});
@@ -218,6 +299,8 @@ describe('production entry telemetry', { timeout: 30_000 }, () => {
 				serviceName: 'Api',
 				serviceNamespace: 'shop',
 				deploymentEnvironment: 'production',
+				// The Telemetry construct's attributes, on every span and log.
+				resourceAttributes: { 'service.namespace': 'shop', team: 'orders' },
 				handleSignals: false,
 				// The logger and the request middleware do these explicitly.
 				instrumentPino: false,
@@ -234,7 +317,8 @@ describe('production entry telemetry', { timeout: 30_000 }, () => {
 			expect(stdout).toContain('server started function');
 			expect(
 				JSON.parse(await readFile(join(dir, 'marker.middleware'), 'utf-8')),
-			).toEqual({ ignorePaths: ['/health'] });
+				// The entry's paths, then the Telemetry construct's.
+			).toEqual({ ignorePaths: ['/health', '/ready'] });
 		});
 
 		it('warns and still starts when the packages are gone at runtime', async () => {
@@ -251,11 +335,8 @@ describe('production entry telemetry', { timeout: 30_000 }, () => {
 		});
 	});
 
-	describe('built without the packages', () => {
-		const source = generateTelemetryModule({
-			serviceName: 'Api',
-			available: false,
-		});
+	describe('for a process with no Telemetry edge', () => {
+		const source = generateTelemetryModule(undefined);
 
 		it('has no import of telescope or OpenTelemetry to bundle', () => {
 			expect(source).not.toContain("import('@geekmidas/telescope");
@@ -263,7 +344,7 @@ describe('production entry telemetry', { timeout: 30_000 }, () => {
 			expect(source).not.toMatch(/import\('@opentelemetry/);
 		});
 
-		it('says why there is no telemetry when the endpoint is set', async () => {
+		it('loads nothing and says nothing, even with the endpoint set', async () => {
 			// Installed after the build: the entry still never loads it.
 			await installTelescope(dir);
 			await writeFile(join(dir, 'telemetry.ts'), source);
@@ -273,19 +354,9 @@ describe('production entry telemetry', { timeout: 30_000 }, () => {
 			});
 
 			expect(code, stderr).toBe(0);
-			expect(stdout).toContain('server started');
-			expect(stderr).toContain('TelemetryUnavailable');
-			expect(stderr).toContain('built without @geekmidas/telescope');
-			expect(existsSync(join(dir, 'marker'))).toBe(false);
-		});
-
-		it('is silent without the endpoint', async () => {
-			await writeFile(join(dir, 'telemetry.ts'), source);
-
-			const { code, stderr } = await start(dir, {});
-
-			expect(code, stderr).toBe(0);
+			expect(stdout).toContain('server started undefined');
 			expect(stderr).not.toContain('TelemetryUnavailable');
+			expect(existsSync(join(dir, 'marker'))).toBe(false);
 		});
 	});
 });

@@ -1,103 +1,90 @@
 /**
- * Telemetry interface for endpoint instrumentation
+ * `Telemetry` — what an application emits, declared.
  *
- * This provides a framework-agnostic way to add telemetry to endpoints.
- * Implementations can use OpenTelemetry, DataDog, or any other system.
- */
-import type { Context as LambdaContext } from 'aws-lambda';
-
-/**
- * Context object returned by onRequestStart, passed to subsequent hooks
- */
-export interface TelemetryContext {
-	/**
-	 * Any data the telemetry implementation needs to track across the request lifecycle
-	 */
-	[key: string]: unknown;
-}
-
-/**
- * Request information passed to telemetry hooks
- */
-export interface TelemetryRequest {
-	/**
-	 * The raw Lambda event
-	 */
-	event: any;
-
-	/**
-	 * The Lambda context
-	 */
-	context: LambdaContext;
-}
-
-/**
- * Response information passed to onRequestEnd
- */
-export interface TelemetryResponse {
-	/**
-	 * HTTP status code
-	 */
-	statusCode: number;
-
-	/**
-	 * Response body (may be stringified JSON)
-	 */
-	body?: string;
-
-	/**
-	 * Response headers
-	 */
-	headers?: Record<string, string>;
-}
-
-/**
- * Telemetry interface for instrumenting endpoint requests
+ * Traces and logs over OTLP, from every process that is given it. The
+ * construct says *what* is emitted — which requests are noise, which
+ * attributes every span carries — and never where it goes or how much of it:
+ * the provider and the sample rate are the deploy's, per stage
+ * (`deploy.telemetry` in `gkm.config.ts`), and locally `gkm dev` runs
+ * OpenObserve and sends everything there.
  *
- * @example
- * ```typescript
- * const telemetry: Telemetry = {
- *   onRequestStart(req) {
- *     const span = tracer.startSpan('http.request');
- *     return { span };
- *   },
- *   onRequestEnd(ctx, response) {
- *     ctx.span.setStatus(response.statusCode);
- *     ctx.span.end();
- *   },
- *   onRequestError(ctx, error) {
- *     ctx.span.recordException(error);
- *     ctx.span.end();
- *   },
- * };
- *
- * const adaptor = new AmazonApiGatewayV2Endpoint(endpoint, {
- *   telemetry,
+ * ```ts
+ * export const telemetry = new Telemetry('Telemetry', {
+ *   ignorePaths: ['/health', '/ready'],
+ *   attributes: { 'service.namespace': 'shop' },
  * });
+ *
+ * // passed like the logger: a fact about the process
+ * new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'none', telemetry });
+ * new Worker('Jobs', { logger, telemetry });
  * ```
+ *
+ * Each process given it is an edge to this node, so the `OTEL_*` keys it
+ * provides reach exactly those processes, and the build of each one fails
+ * without the OpenTelemetry packages it needs.
  */
-export interface Telemetry {
+
+import {
+	type ConstructName,
+	canonicalId,
+	type Declaration,
+	TELEMETRY_KEYS,
+} from '@geekmidas/manifest';
+import type { Declarable } from './construct-interface';
+
+export interface TelemetryConfig {
 	/**
-	 * Called at the start of each request
-	 *
-	 * @param request - The incoming request information
-	 * @returns Context object that will be passed to onRequestEnd/onRequestError
+	 * Request paths no span is recorded for, on every surface that uses this —
+	 * health checks, by default the only noise worth naming. A trailing `*`
+	 * matches a prefix. One route on one surface says so itself:
+	 * `.telemetry({ ignore: true })`.
 	 */
-	onRequestStart(request: TelemetryRequest): TelemetryContext;
+	ignorePaths?: readonly string[];
+	/**
+	 * Resource attributes every span and log record carries —
+	 * `{ 'service.namespace': 'shop' }`. The service's name is not one of
+	 * them: it is the app's, set per process.
+	 */
+	attributes?: Readonly<Record<string, string>>;
+}
+
+export class Telemetry<TName extends string = string>
+	implements Declarable<TName>
+{
+	readonly id: TName;
+	readonly ignorePaths: readonly string[];
+	readonly attributes: Readonly<Record<string, string>>;
+
+	constructor(id: ConstructName<TName>, config: TelemetryConfig = {}) {
+		this.id = canonicalId(id as string) as TName;
+		this.ignorePaths = [...(config.ignorePaths ?? [])];
+		this.attributes = { ...config.attributes };
+	}
 
 	/**
-	 * Called when the request completes successfully
-	 *
-	 * @param ctx - The context returned by onRequestStart
-	 * @param response - The response information
+	 * One node, providing OpenTelemetry's own variables. No address of its
+	 * own: where the telemetry goes is the deploy's, so it is resolved by the
+	 * target for each stage, never declared here.
 	 */
-	onRequestEnd(ctx: TelemetryContext, response: TelemetryResponse): void;
+	declare(): Declaration[] {
+		return [
+			{
+				kind: 'telemetry',
+				id: this.id,
+				...(this.ignorePaths.length ? { ignorePaths: this.ignorePaths } : {}),
+				...(Object.keys(this.attributes).length
+					? { attributes: this.attributes }
+					: {}),
+				provides: [...TELEMETRY_KEYS],
+			},
+		];
+	}
+}
 
-	/**
-	 * Called when the request fails with an error
-	 *
-	 * @param ctx - The context returned by onRequestStart
-	 * @param error - The error that occurred
-	 */
-	onRequestError(ctx: TelemetryContext, error: Error): void;
+/** Per-route telemetry, on the endpoint builder — `.telemetry({ ignore: true })`. */
+export interface EndpointTelemetry {
+	/** Record no span for this route. */
+	ignore?: boolean;
+	/** Attributes this route's request span carries. */
+	attributes?: Readonly<Record<string, string>>;
 }

@@ -752,9 +752,17 @@ export function isServed(id: string, manifest: ConstructManifest): boolean {
  *   what it is — a queue's consumer by {@link subscribeConsumers}.
  * - `cron` and `function` are Lambdas linked to what they depend on, so they
  *   are provisioned once all of it exists, by {@link provisionCompute}.
+ * - `telemetry` provisions nothing: where it goes is the stage's
+ *   `deploy.telemetry`, a provider somebody else runs.
  */
 export const PROVISIONED_ELSEWHERE: ReadonlySet<DeclarationKind> =
-	new Set<DeclarationKind>(['mobile-app', 'worker', 'cron', 'function']);
+	new Set<DeclarationKind>([
+		'mobile-app',
+		'worker',
+		'cron',
+		'function',
+		'telemetry',
+	]);
 
 /**
  * Every function and cron: a Lambda running the handler the build wrote,

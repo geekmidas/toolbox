@@ -80,42 +80,52 @@
 		"devDependencies": "~0.222.0"
 	},
 	"@opentelemetry/auto-instrumentations-node": {
+		"dependencies": "~0.80.0",
 		"devDependencies": "~0.80.0",
 		"peerDependencies": "~0.80.0"
 	},
 	"@opentelemetry/exporter-logs-otlp-http": {
+		"dependencies": "~0.222.0",
 		"devDependencies": "~0.222.0",
 		"peerDependencies": "~0.222.0"
 	},
 	"@opentelemetry/exporter-trace-otlp-http": {
+		"dependencies": "~0.222.0",
 		"devDependencies": "~0.222.0",
 		"peerDependencies": "~0.222.0"
 	},
 	"@opentelemetry/instrumentation-pino": {
+		"dependencies": "~0.68.0",
 		"devDependencies": "~0.68.0",
 		"peerDependencies": "~0.68.0"
 	},
 	"@opentelemetry/resources": {
+		"dependencies": "~2.11.0",
 		"devDependencies": "~2.11.0",
 		"peerDependencies": ">=2.11.0"
 	},
 	"@opentelemetry/sdk-logs": {
+		"dependencies": "~0.222.0",
 		"devDependencies": "~0.222.0",
 		"peerDependencies": "~0.222.0"
 	},
 	"@opentelemetry/sdk-node": {
+		"dependencies": "~0.222.0",
 		"devDependencies": "~0.222.0",
 		"peerDependencies": "~0.222.0"
 	},
 	"@opentelemetry/sdk-trace-base": {
+		"dependencies": "~2.11.0",
 		"devDependencies": "~2.11.0",
 		"peerDependencies": ">=2.11.0"
 	},
 	"@opentelemetry/sdk-trace-node": {
+		"dependencies": "~2.11.0",
 		"devDependencies": "~2.11.0",
 		"peerDependencies": ">=2.11.0"
 	},
 	"@opentelemetry/semantic-conventions": {
+		"dependencies": "~1.43.0",
 		"devDependencies": "~1.43.0",
 		"peerDependencies": ">=1.43.0"
 	},

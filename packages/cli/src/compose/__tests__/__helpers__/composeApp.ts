@@ -15,8 +15,12 @@ export interface ComposeAppOptions {
 	domain?: string;
 	/** Where images are pushed and pulled. */
 	registry?: string;
-	/** `deploy.compose.logs`, as it is written in the config. */
-	logs?: unknown;
+	/**
+	 * Give the API, the auth server and the worker a `Telemetry` construct.
+	 */
+	telemetry?: boolean;
+	/** `deploy.telemetry`, as it is written in the config. */
+	deployTelemetry?: Record<string, unknown>;
 	/** The rest of `deploy.compose` — `proxy`, `tls` — as written. */
 	compose?: Record<string, unknown>;
 	/** The deployed stages, `['production']` when absent. */
@@ -42,13 +46,19 @@ export function writeComposeApp(
 ): void {
 	const name = options.name ?? 'compose-app';
 	cpSync(FIXTURE, dir, { recursive: true });
-	const compose =
-		options.logs !== undefined || options.compose
-			? {
-					...(options.logs !== undefined ? { logs: options.logs } : {}),
-					...options.compose,
-				}
-			: undefined;
+	const compose = options.compose;
+	if (options.telemetry) {
+		writeFileSync(
+			join(dir, 'constructs', 'telemetry.ts'),
+			`import { Telemetry } from '@geekmidas/constructs/telemetry';
+
+/** What the API, the auth server and the worker emit. */
+export const telemetry = new Telemetry('Telemetry', {
+  attributes: { 'service.namespace': ${JSON.stringify(name)} },
+});
+`,
+		);
+	}
 
 	const json = (path: string, value: unknown) =>
 		writeFileSync(join(dir, path), `${JSON.stringify(value, null, 2)}\n`);
@@ -104,6 +114,7 @@ export default defineWorkspace({
     domains: ${JSON.stringify(options.domains ?? { production: options.domain ?? 'shop.example.com' })},
     ${options.registry ? `registry: ${JSON.stringify(options.registry)},` : ''}
     ${compose ? `compose: ${JSON.stringify(compose)},` : ''}
+    ${options.deployTelemetry ? `telemetry: ${JSON.stringify(options.deployTelemetry)},` : ''}
   },
 });
 `,

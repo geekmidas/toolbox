@@ -1,5 +1,4 @@
 import { z } from 'zod/v4';
-import { resolveLogs } from '../compose/logsConfig.js';
 import { checkComposeStages } from '../compose/proxy.js';
 import {
 	BUILTIN_TARGETS,
@@ -7,6 +6,7 @@ import {
 	configurableBuiltins,
 } from '../target/builtins.js';
 import { isDeployTarget } from '../target/define.js';
+import { checkStageTelemetry } from '../telemetry/config.js';
 import { stageProblems } from './stages.js';
 
 /** Routes are a glob, or a list of them. */
@@ -531,47 +531,74 @@ export const BackupsConfigSchema = z.object({
 
 export type BackupsConfig = z.infer<typeof BackupsConfigSchema>;
 
+/** `deploy.compose` — what the compose target runs beside the apps. */
+const ComposeWorkspaceConfigSchema = z
+	.object({
+		proxy: z
+			.union([
+				z.enum(['caddy', 'traefik']),
+				z.record(z.string(), z.enum(['caddy', 'traefik'])),
+			])
+			.optional(),
+		tls: z
+			.record(
+				z.string(),
+				z
+					.object({ certFile: z.string().min(1), keyFile: z.string().min(1) })
+					.strict(),
+			)
+			.optional(),
+	})
+	// Strict, so a key it no longer takes — `logs`, now a `Telemetry`
+	// construct and `deploy.telemetry` — fails to load rather than being
+	// dropped without a word.
+	.strict();
+
+const TelemetrySampleRate = z.number().optional();
+
 /**
- * `deploy.compose` — what the compose target runs beside the apps. The rules
- * past the shape are `resolveLogs`'s, so the schema and the stack refuse the
+ * `deploy.telemetry` — where each stage's telemetry goes. The rules past the
+ * shape are `checkStageTelemetry`'s, so the schema and a deploy refuse the
  * same configs with the same words.
  */
-const ComposeWorkspaceConfigSchema = z.object({
-	logs: z
-		.union([
-			z.boolean(),
-			z.object({
-				port: z.number().optional(),
-				retentionDays: z.number().optional(),
-				public: z.object({ allow: z.array(z.string()) }).optional(),
-			}),
-		])
-		.superRefine((logs, ctx) => {
+const TelemetryConfigSchema = z
+	.record(
+		z.string(),
+		z.union([
+			z.literal(false),
+			z.literal('self-hosted'),
+			z
+				.object({
+					provider: z.literal('self-hosted'),
+					port: z.number().optional(),
+					retentionDays: z.number().optional(),
+					public: z.object({ allow: z.array(z.string()) }).optional(),
+					sampleRate: TelemetrySampleRate,
+				})
+				.strict(),
+			z
+				.object({
+					provider: z.literal('otlp'),
+					endpoint: z.string(),
+					headers: z.record(z.string(), z.string()).optional(),
+					sampleRate: TelemetrySampleRate,
+				})
+				.strict(),
+		]),
+	)
+	.superRefine((telemetry, ctx) => {
+		for (const [stage, config] of Object.entries(telemetry)) {
 			try {
-				resolveLogs(logs);
+				checkStageTelemetry(stage, config);
 			} catch (error) {
 				ctx.addIssue({
 					code: 'custom',
 					message: error instanceof Error ? error.message : String(error),
+					path: [stage],
 				});
 			}
-		})
-		.optional(),
-	proxy: z
-		.union([
-			z.enum(['caddy', 'traefik']),
-			z.record(z.string(), z.enum(['caddy', 'traefik'])),
-		])
-		.optional(),
-	tls: z
-		.record(
-			z.string(),
-			z
-				.object({ certFile: z.string().min(1), keyFile: z.string().min(1) })
-				.strict(),
-		)
-		.optional(),
-});
+		}
+	});
 
 /**
  * Deploy configuration schema.
@@ -608,6 +635,7 @@ const DeployConfigSchema = z.object({
 	registry: z.string().min(1).optional(),
 	dokploy: DokployWorkspaceConfigSchema.optional(),
 	compose: ComposeWorkspaceConfigSchema.optional(),
+	telemetry: TelemetryConfigSchema.optional(),
 	dns: DnsConfigWithLegacySchema.optional(),
 	backups: BackupsConfigSchema.optional(),
 });

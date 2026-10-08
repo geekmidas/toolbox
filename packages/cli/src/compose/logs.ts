@@ -1,7 +1,7 @@
 /**
- * The stack's log UI: OpenObserve, run beside the apps when
- * `deploy.compose.logs` asks for it, and every backend's OpenTelemetry
- * pointed at it.
+ * The stack's log UI: OpenObserve, run beside the apps as telemetry's
+ * self-hosted provider, and every process with a `Telemetry` edge pointed at
+ * it.
  *
  * The production server already exports its traces and pino logs over
  * OTLP/HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. OpenObserve takes OTLP
@@ -18,7 +18,6 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { isOtlpDestination } from '../deploy/otel.js';
 import type { StageSecrets } from '../secrets/types.js';
 import { NoDomainForStage } from '../target/dokploy/domain.js';
 import { LOGS_PORT, type ResolvedLogs } from './logsConfig.js';
@@ -59,29 +58,11 @@ export interface StackLogs extends ResolvedLogs {
 	host?: string;
 	/** Its own environment, written to `openobserve.env` (0600). */
 	env: Record<string, string>;
-	/** What every backend is handed to send its telemetry here. */
+	/** Where every process with a `Telemetry` edge sends, and how it signs. */
 	appEnv: {
 		OTEL_EXPORTER_OTLP_ENDPOINT: string;
 		OTEL_EXPORTER_OTLP_HEADERS: string;
 	};
-}
-
-/** The stage sends its telemetry somewhere already, and logs are on too. */
-export class LogsEndpointConflict extends Error {
-	constructor(
-		readonly stage: string,
-		readonly keys: readonly string[],
-	) {
-		super(
-			`The stage '${stage}' sets ${keys.join(', ')} in its secrets, and ` +
-				'deploy.compose.logs also runs OpenObserve for it — each backend can ' +
-				'send its telemetry to one place. Either keep your own OTLP backend: ' +
-				'remove logs from deploy.compose in gkm.config.ts; or use the ' +
-				`bundled OpenObserve: remove ${keys.join(', ')} from the stage's ` +
-				'secrets, and every backend is pointed at it.',
-		);
-		this.name = 'LogsEndpointConflict';
-	}
 }
 
 /** A root password OpenObserve would refuse to start with. */
@@ -181,11 +162,6 @@ export function stackLogs(options: {
 	localLogin?: { email: string; password: string };
 }): StackLogs {
 	const { config, stage, local, custom } = options;
-
-	const conflicting = Object.keys(custom).filter(isOtlpDestination).sort();
-	if (conflicting.length > 0) {
-		throw new LogsEndpointConflict(stage, conflicting);
-	}
 
 	if (!local && !options.domain) throw new NoDomainForStage(stage);
 

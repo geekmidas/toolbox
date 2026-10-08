@@ -87,6 +87,8 @@ export function composeTarget(
 			// The stack runs where the deploy does, so the local stage is one
 			// it can run — the `gkm dev` hostnames, behind Caddy's own CA.
 			localStage: true,
+			// OpenObserve, in the stack, on loopback.
+			selfHostedTelemetry: true,
 		},
 		// Images are pulled with this machine's own `docker login`.
 		credentials: [],

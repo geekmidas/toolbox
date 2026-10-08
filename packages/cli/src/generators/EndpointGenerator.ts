@@ -9,7 +9,11 @@ import {
 	type GeneratedConstruct,
 	type GeneratorOptions,
 } from './Generator';
-import { generateTelemetryModule } from './telemetry';
+import {
+	mountRequestSpansCode,
+	startTelemetryCode,
+	writeTelemetryModule,
+} from './telemetry';
 
 /**
  * How a generated entry gets its logger and environment parser.
@@ -349,6 +353,10 @@ export async function setupEndpoints(
 		outputDir: string,
 		context: BuildContext,
 	): Promise<string> {
+		// What both entries start telemetry from — the production server and
+		// `gkm dev`'s — decided by the surface's edge to a `Telemetry` node.
+		await writeTelemetryModule(outputDir, context.telemetry);
+
 		// Use production generator if in production mode
 		if (context.production?.enabled) {
 			return this.generateProductionAppFile(outputDir, context);
@@ -932,11 +940,8 @@ export default createApp;
 	): Promise<void> {
 		const serverPath = join(outputDir, 'server.ts');
 
-		await writeFile(
-			join(outputDir, 'telemetry.ts'),
-			generateTelemetryModule(context.telemetry),
-		);
-
+		// `telemetry.ts` beside it was written with `app.ts`, for this entry
+		// and the `gkm dev` one alike, which start it the same way.
 		const content = `#!/usr/bin/env node
 /**
  * Production server entry point
@@ -944,26 +949,14 @@ export default createApp;
  */
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
-import { startTelemetry } from './telemetry.js';
 
-// The API's own sites, known once the app has read its configuration: the
-// origins its CORS allows are the ones whose trace context is continued.
-let trustedOrigins: readonly string[] = [];
-
-// Before the app is imported, so the libraries it loads are instrumented.
-const requestSpans = await startTelemetry({
-  ignorePaths: [${JSON.stringify(context.production?.healthCheck ?? '/health')}, '/ready'],
-  trustedOrigins: () => trustedOrigins,
-});
-
+${startTelemetryCode([context.production?.healthCheck ?? '/health', '/ready'])}
 const { createApp } = await import('./app.js');
 
 const port = Number(process.env.PORT) || 3000;
 
-// The span middleware goes on before any route, so every request runs in it.
 const app = new Hono();
-if (requestSpans) app.use('*', requestSpans);
-
+${mountRequestSpansCode('app')}
 const created = await createApp(app);
 trustedOrigins = created.trustedOrigins;
 const { start } = created;

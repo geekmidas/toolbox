@@ -10,9 +10,9 @@ import type {
 	Context,
 } from 'aws-lambda';
 import set from 'lodash.set';
-import type { Telemetry } from '../telemetry';
 import type { HttpMethod } from '../types';
 import { Endpoint, type EndpointSchemas, ResponseBuilder } from './Endpoint';
+import type { Telemetry } from './lambdaTelemetry';
 import { envParserFor } from './surfaceEnv';
 
 /**

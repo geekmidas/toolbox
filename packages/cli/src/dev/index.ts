@@ -12,6 +12,7 @@ import type {
 	NormalizedProductionConfig,
 	NormalizedTelescopeConfig,
 } from '../build/types';
+import { LOCAL_LOGS_EMAIL } from '../compose/logs.js';
 import {
 	loadAppConfig,
 	loadWorkspaceConfig,
@@ -27,13 +28,22 @@ import {
 	loadSecretsForApp,
 	prepareEntryCredentials,
 } from '../credentials';
+import {
+	mountRequestSpansCode,
+	startTelemetryCode,
+} from '../generators/telemetry.js';
 import { resolveOpenApiConfig } from '../openapi';
 import { withOwningTsconfigJsx } from '../owningTsconfigJsx.js';
-import { describeServices } from '../reconcile/containers.js';
+import {
+	describeServices,
+	type ServiceAddress,
+} from '../reconcile/containers.js';
+import { TELEMETRY_CONTAINER } from '../reconcile/plan.js';
 import { describeLogins } from '../reconcile/serviceLogins.js';
 import { FAKE_ENV, reconcileWorkspace } from '../reconcile/workspace.js';
 import { toEmbeddableSecrets } from '../secrets/storage.js';
 import { FileSecretsStore, secretsStoreFor } from '../secrets/store.js';
+import { appTelemetry, scopeTelemetryEnv } from '../telemetry/edges.js';
 import { ensureTrusted } from '../trust/index.js';
 import type { GkmConfig, Runtime, TelescopeConfig } from '../types';
 import {
@@ -60,6 +70,7 @@ import {
 import { devCredentials } from './credentials.js';
 import {
 	type AppStatus,
+	type DevTelemetryUi,
 	DISCOVERY_QUIET_ENV,
 	type DiscoverySession,
 	dataApisOf,
@@ -349,6 +360,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 				skipBundle: true,
 				bustCache,
 				serveEmpty: true,
+				workspaceName: workspace.name,
 			}),
 		);
 
@@ -364,6 +376,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	let secretsJsonPath: string | undefined;
 	let publicUrl: string | undefined;
 	let manifest: ConstructManifest | undefined;
+	let telemetryUi: DevTelemetryUi | undefined;
 	// The local stage's store, which is always the file.
 	const appSecrets = await loadSecretsForApp(
 		workspace
@@ -390,10 +403,37 @@ export async function devCommand(options: DevOptions): Promise<void> {
 				logger.log(line);
 			}
 		}
+		// Run on its own, it says how to sign in to each, as the workspace's
+		// `gkm dev` does — under it, that one already has.
+		if (!process.env[DISCOVERY_QUIET_ENV]) {
+			const { services: logins } = devCredentials(
+				workspace,
+				reconciled.credentials,
+				reconciled.ports,
+			);
+			if (logins.length > 0) {
+				logger.log('🔑 Logins (again any time: gkm dev:credentials)');
+				for (const line of describeLogins(logins)) logger.log(line);
+			}
+		}
 
 		// Declared URLs win over anything sniffed or stored — the manifest is the
 		// statement of what exists.
 		Object.assign(appSecrets, reconciled.env);
+
+		// The local telemetry, named for this app, when it has an edge to the
+		// `Telemetry` node — and none of it otherwise.
+		const scoped = scopeTelemetryEnv(appSecrets, {
+			uses:
+				reconciled.manifest !== undefined &&
+				appTelemetry(reconciled.manifest, workspaceAppName) !== undefined,
+			serviceName: workspaceAppName,
+			telemetry: reconciled.env,
+		});
+		for (const key of Object.keys(appSecrets)) {
+			if (!(key in scoped)) delete appSecrets[key];
+		}
+		Object.assign(appSecrets, scoped);
 
 		// This app's own address behind the edge, for the ready line.
 		const own = reconciled.plan.resources.find(
@@ -403,6 +443,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		);
 		publicUrl = own ? reconciled.env[own.envKey] : undefined;
 		manifest = reconciled.manifest;
+		telemetryUi = telemetryUiOf(reconciled.services);
 	}
 
 	if (Object.keys(appSecrets).length > 0) {
@@ -449,6 +490,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		},
 		allowedOrigins: workspace.dev?.allowedOrigins ?? [],
 		...(manifest ? { manifest } : {}),
+		...(telemetryUi ? { telemetry: telemetryUi } : {}),
 		apps: [
 			{
 				name: workspaceAppName,
@@ -991,10 +1033,13 @@ async function workspaceDevCommand(
 		for (const line of describeLogins(logins)) logger.log(line);
 	}
 
-	const secretsEnv: Record<string, string> = {
-		...rawSecrets,
-		...reconciled.env,
-	};
+	// No telemetry key for turbo to hand every app: each backend's own `gkm
+	// dev` takes its share, named for it, where it has the edge — and a site
+	// has none to take.
+	const secretsEnv: Record<string, string> = scopeTelemetryEnv(
+		{ ...rawSecrets, ...reconciled.env },
+		{ uses: false, serviceName: workspace.name },
+	);
 
 	// Only with `--fake`, and here rather than in reconcile: every app's own
 	// `gkm dev` reconciles too, and only this process — the one that outlives
@@ -1126,6 +1171,7 @@ async function workspaceDevCommand(
 
 	// Every app turbo starts, as this workspace lists them. Each backend app's
 	// own `gkm dev` registers too, with its status and its data APIs.
+	const workspaceTelemetry = telemetryUiOf(reconciled.services);
 	const discovery = await joinDiscovery({
 		role: 'workspace',
 		port: discoveryPort(workspace.dev),
@@ -1136,6 +1182,7 @@ async function workspaceDevCommand(
 		},
 		allowedOrigins: workspace.dev?.allowedOrigins ?? [],
 		...(reconciled.manifest ? { manifest: reconciled.manifest } : {}),
+		...(workspaceTelemetry ? { telemetry: workspaceTelemetry } : {}),
 		apps: buildOrder.flatMap((name) => {
 			const app = workspace.apps[name];
 			if (!app) return [];
@@ -1440,6 +1487,18 @@ class EntryRunner {
 }
 
 /**
+ * Where the local OpenObserve is, and who signs in to it, when reconcile runs
+ * one — for the discovery endpoint, which is told no password.
+ */
+function telemetryUiOf(
+	services: readonly ServiceAddress[],
+): DevTelemetryUi | undefined {
+	const ui = services.find((s) => s.container === TELEMETRY_CONTAINER);
+	if (!ui) return undefined;
+	return { url: ui.address, email: LOCAL_LOGS_EMAIL };
+}
+
+/**
  * Generate the content of the dev server entry file (server.ts).
  * Uses dynamic import for createApp so Credentials are populated
  * before any app modules evaluate.
@@ -1514,6 +1573,11 @@ if (existsSync(secretsPath)) {
       console.log('🔌 Telescope real-time updates enabled');
     }`;
 
+	// The same start the production entry makes, from the same generated
+	// `telemetry.ts`: after the credentials — the OTEL_* keys are among them —
+	// and before the app is imported, so what it loads is instrumented.
+	const telemetry = startTelemetryCode(['/health', '/ready']);
+
 	if (selfServing) {
 		return `#!/usr/bin/env node
 /**
@@ -1524,8 +1588,17 @@ ${credentialsInjection}${parentWatch}const port = process.argv.includes('--port'
   ? Number.parseInt(process.argv[process.argv.indexOf('--port') + 1])
   : 3000;
 
+${telemetry}
 // Dynamic import so Credentials are populated before the surface evaluates
-const { app } = await import('${appImportPath}');
+const { app: surface } = await import('${appImportPath}');
+
+// Behind the request spans when there are any, as the production server is.
+const { Hono } = await import('hono');
+const app = requestSpans ? new Hono() : surface;
+if (requestSpans) {
+  ${mountRequestSpansCode('app').trim().replace(/\n/g, '\n  ')}
+  app.route('/', surface);
+}
 
 ${serveCode.replace(/^ {4}/gm, '')}
 `;
@@ -1540,11 +1613,16 @@ ${credentialsInjection}${parentWatch}const port = process.argv.includes('--port'
   ? Number.parseInt(process.argv[process.argv.indexOf('--port') + 1])
   : 3000;
 
+${telemetry}
 // Dynamic import so Credentials are populated before env.ts evaluates
 const { createApp } = await import('${appImportPath}');
 
+// The span middleware first, as the production server mounts it.
+const { Hono } = await import('hono');
+const root = new Hono();
+${mountRequestSpansCode('root')}
 // createApp is async to support optional WebSocket setup
-const { app, start } = await createApp(undefined, ${enableOpenApi});
+const { app, start } = await createApp(root, ${enableOpenApi});
 
 // Start the server
 start({

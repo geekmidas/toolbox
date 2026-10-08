@@ -29,6 +29,7 @@ import {
 } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
+import { scopeTelemetryEnv } from '../telemetry/edges';
 import type { CacheBackend, EventsBackend } from '../types';
 import { TEST_STAGE } from '../workspace/stages';
 import { caddyfileRoot, sitesFor, toCaddyfile } from './caddyfile';
@@ -52,7 +53,12 @@ import type { LocalFake } from './fakes';
 import { lanAddress } from './lan';
 import type { LocalCredentials, Login } from './localCredentials';
 import { ensureLogins, type LoginOutcome } from './logins';
-import { type Plan, type PlanOptions, planFor } from './plan';
+import {
+	type Plan,
+	type PlanOptions,
+	planFor,
+	TELEMETRY_CONTAINER,
+} from './plan';
 import {
 	allocate,
 	isPortFree,
@@ -350,6 +356,15 @@ export async function reconcile(
 		...(options.edge === undefined ? {} : { edge: options.edge }),
 	});
 
+	// `gkm test` exports nothing: its stage starts no collector and hands no
+	// process a telemetry key. The container stays in the file — it is the
+	// same file `gkm dev` runs from, and dropping it would have `up
+	// --remove-orphans` stop the one a running `gkm dev` is exporting to.
+	const exports = stage !== TEST_STAGE;
+	const running = exports
+		? plan.containers
+		: plan.containers.filter((c) => c !== TELEMETRY_CONTAINER);
+
 	const composePath = join(root, COMPOSE_PATH);
 
 	// What is already running wins over what was recorded: a container on a port
@@ -385,7 +400,7 @@ export async function reconcile(
 		.map((statement) => statement.create)
 		.join(';\n');
 	const hash = planHash(plan, compose, { caddyfile, postgres });
-	const services = serviceAddresses(plan.containers, ports, plan.fakes);
+	const services = serviceAddresses(running, ports, plan.fakes);
 	// Only a project with a mobile app reads it, so only one looks for it.
 	const lan = plan.resources.some((r) => r.kind === 'mobile-app')
 		? options.lanAddress === undefined
@@ -393,7 +408,7 @@ export async function reconcile(
 			: (options.lanAddress ?? undefined)
 		: undefined;
 	const envWith = (credentials: LocalCredentials) => {
-		const env = envFor(plan, {
+		const resolved = envFor(plan, {
 			ports,
 			project,
 			credentials,
@@ -403,6 +418,10 @@ export async function reconcile(
 			...(lan ? { lanAddress: lan } : {}),
 			...(options.metroPorts ? { metroPorts: options.metroPorts } : {}),
 		});
+		// `gkm test` hands no process a telemetry key.
+		const env = exports
+			? resolved
+			: scopeTelemetryEnv(resolved, { uses: false, serviceName: project });
 		// Pointed at whether or not it exists yet: the copy below fills it in,
 		// and anything that reads the environment starts after this returns.
 		if (plan.containers.includes('caddy')) {
@@ -434,7 +453,7 @@ export async function reconcile(
 		// The file is gitignored and derived; a fresh checkout with the state
 		// still around must write it rather than trust a hash of nothing.
 		existsSync(composePath) &&
-		(!start || (await docker.healthy(composePath, plan.containers))) &&
+		(!start || (await docker.healthy(composePath, running))) &&
 		// Every checkout shares one Postgres, so another one's test teardown can
 		// drop a database this checkout's state still records as created.
 		(!start ||
@@ -459,13 +478,13 @@ export async function reconcile(
 		await pruneCaddySites(root, [stage, options.localStage, TEST_STAGE]);
 	}
 
-	if (start && plan.containers.length > 0) {
+	if (start && running.length > 0) {
 		options.progress?.(
-			`🐳 Starting ${plan.containers.join(', ')} — the first start pulls each image, which can take a few minutes`,
+			`🐳 Starting ${running.join(', ')} — the first start pulls each image, which can take a few minutes`,
 		);
 		await docker.up(
 			composePath,
-			plan.containers,
+			running,
 			options.progress ? { show: true } : {},
 		);
 	}

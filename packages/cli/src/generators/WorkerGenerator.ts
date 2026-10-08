@@ -10,7 +10,11 @@ import { runtimeFor } from './EndpointGenerator.js';
 import type { GeneratedConstruct } from './Generator';
 import { QueueGenerator } from './QueueGenerator';
 import { SubscriberGenerator } from './SubscriberGenerator';
-import { generateTelemetryModule } from './telemetry';
+import {
+	startTelemetryCode,
+	type TelemetryContext,
+	writeTelemetryModule,
+} from './telemetry';
 
 /**
  * A worker whose topic subscribers would have to be pushed to over HTTP.
@@ -59,6 +63,8 @@ export interface WorkerEntryInput {
 	subscribers: GeneratedConstruct<
 		Subscriber<any, any, any, any, any, any, any>
 	>[];
+	/** What its process starts OpenTelemetry with — none without an edge. */
+	telemetry?: TelemetryContext;
 }
 
 /**
@@ -112,14 +118,8 @@ export class WorkerGenerator {
 			join(outputDir, 'app.ts'),
 			workerApp(context, workerId, outputDir),
 		);
-		await writeFile(
-			join(outputDir, 'telemetry.ts'),
-			generateTelemetryModule(
-				context.telemetry
-					? { ...context.telemetry, serviceName: workerId }
-					: undefined,
-			),
-		);
+		// The worker's own edge decides, not the app's that carries it.
+		await writeTelemetryModule(outputDir, input.telemetry);
 
 		const entry = join(outputDir, 'worker.ts');
 		await writeFile(
@@ -258,11 +258,8 @@ function workerEntry(healthCheck: string): string {
  */
 import { createServer } from 'node:http';
 import { runShutdownHooks } from '@geekmidas/constructs';
-import { startTelemetry } from './telemetry.js';
 
-// Before the worker is imported, so the libraries it loads are instrumented.
-await startTelemetry({ ignorePaths: [${JSON.stringify(healthCheck)}] });
-
+${startTelemetryCode([healthCheck])}
 const { startWorker, logger } = await import('./app.js');
 
 const port = Number(process.env.PORT) || 3000;

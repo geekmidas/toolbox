@@ -43,6 +43,11 @@ export default defineWorkspace({
 	// the config at all, and `gkm dev` should not need a deploy target.
 	deploy: {
 		default: 'dokploy',
+		// Where each deployed stage's telemetry goes. Dokploy runs no collector
+		// of its own, so a stage there names one — `{ provider: 'otlp',
+		// endpoint }` — or sends nothing. Locally `gkm dev` ignores this and
+		// runs OpenObserve.
+		telemetry: { production: false },
 		...(process.env.DOKPLOY_ENDPOINT
 			? {
 					domains: {

@@ -3,6 +3,7 @@ import { realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
+import { generateTelemetryModule } from '../../generators/telemetry';
 import { generateServerEntryContent } from '../index';
 
 /**
@@ -55,6 +56,11 @@ describe('the dev server entry', { timeout: 20_000 }, () => {
   };
 }
 `,
+		);
+		// What the build writes beside it for an app with no Telemetry edge.
+		writeFileSync(
+			join(dir, 'telemetry.ts'),
+			generateTelemetryModule(undefined),
 		);
 		writeFileSync(
 			join(dir, 'server.ts'),

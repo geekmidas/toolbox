@@ -36,11 +36,12 @@
  *   on the network alone, no host port, password protected — and lands in
  *   it, not in a table: the cache was declared from the database.
  *
- * - (d) with `deploy.compose.logs` (the `gkm compose` run), the API's
- *   telemetry reaches the stack's OpenObserve — published on 127.0.0.1
- *   alone — signed in with the root login the stack generated: a line the
- *   handler logged and the request's SERVER span are both found through its
- *   search API, in one trace.
+ * - (d) the API, the auth server and the worker are given a `Telemetry`
+ *   construct, which switches on the self-hosted provider on the local
+ *   stage: the API's telemetry reaches the stack's OpenObserve — published
+ *   on 127.0.0.1 alone, on the port GKM_COMPOSE_LOGS_PORT names — signed in
+ *   with the stage's login: a line the handler logged and the request's
+ *   SERVER span are both found through its search API, in one trace.
  *
  * The edge is published on free ports (443 and 80 are often taken), and the
  * stack has a compose project of its own; it is torn down, volumes and built
@@ -231,6 +232,78 @@ async function freePort(): Promise<number> {
 	return address.port;
 }
 
+/** A search over OpenObserve's `default` stream of one type. */
+type Search = (
+	type: 'logs' | 'traces',
+	where: string,
+) => Promise<Record<string, unknown>[]>;
+
+/** The body OpenObserve's search API takes: the last quarter hour. */
+function searchBody(where: string): string {
+	const now = Date.now() * 1000;
+	return JSON.stringify({
+		query: {
+			sql: `SELECT * FROM "default" WHERE ${where}`,
+			start_time: now - 15 * 60 * 1_000_000,
+			end_time: now + 60 * 1_000_000,
+			from: 0,
+			size: 10,
+		},
+	});
+}
+
+/**
+ * The line `GET /ping`'s handler logs and the request's SERVER span, found in
+ * OpenObserve in one trace. The server is one bundle, so nothing hooks pino
+ * or node:http: the line is sent by the logger itself and the span by the
+ * server's own middleware.
+ */
+async function expectPingTraced(search: Search): Promise<void> {
+	// Exported in batches: asked until it is there.
+	const eventually = async (type: 'logs' | 'traces', where: string) => {
+		for (let attempt = 0; attempt < 60; attempt++) {
+			const hits = await search(type, where);
+			if (hits.length > 0) return hits;
+			await new Promise((resolve) => setTimeout(resolve, 2_000));
+		}
+		return [];
+	};
+
+	// The handler's line, from the api, with the trace it ran in.
+	const [line] = await eventually(
+		'logs',
+		`service_name = 'api' AND body = 'Pinged'`,
+	);
+	expect(line).toBeDefined();
+	expect(line!.severity).toBe('INFO');
+	const traceId = String(line!.trace_id);
+	expect(traceId).toMatch(/^[0-9a-f]{32}$/);
+
+	// The request's SERVER span, in that same trace.
+	const [span] = await eventually(
+		'traces',
+		`trace_id = '${traceId}' AND operation_name = 'GET /ping'`,
+	);
+	expect(span).toBeDefined();
+	expect(span!.service_name).toBe('api');
+	expect(String(span!.span_kind)).toBe('2'); // SERVER
+	expect(String(span!.http_response_status_code)).toBe('200');
+	expect(span!.span_id).toBe(line!.span_id);
+}
+
+/** `Basic …` for the root login a stack's `openobserve.env` holds. */
+function openObserveLogin(dir: string, stage: string): string {
+	const env = readFileSync(
+		join(dir, '.gkm', 'compose', stage, 'openobserve.env'),
+		'utf-8',
+	);
+	const login = (key: string) =>
+		new RegExp(`^${key}=(.*)$`, 'm').exec(env)![1]!;
+	return `Basic ${Buffer.from(
+		`${login('ZO_ROOT_USER_EMAIL')}:${login('ZO_ROOT_USER_PASSWORD')}`,
+	).toString('base64')}`;
+}
+
 /**
  * GET /stream through an edge, each chunk with when it arrived. The API
  * writes three lines 700ms apart; through an edge that buffers, they
@@ -284,12 +357,10 @@ const ENTRY_POINTS = [
 	{
 		command: 'gkm compose',
 		args: ['compose', '--stage', 'development'],
-		logs: true,
 	},
 	{
 		command: 'gkm deploy --target compose',
 		args: ['deploy', '--target', 'compose', '--stage', 'development'],
-		logs: false,
 	},
 ] as const;
 
@@ -405,11 +476,10 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				dir = realpathSync(await createTempDir('gkm-compose-e2e-'));
 				// Never 5080: a developer's own OpenObserve may be on it.
 				logsPort = await freePort();
-				writeComposeApp(dir, {
-					name,
-					...(entry.logs ? { logs: { port: logsPort } } : {}),
-				});
-				await dependOnThisCheckout(dir, name, { telemetry: entry.logs });
+				// Every backend given a Telemetry construct: the build fails
+				// without the packages it needs, so the project depends on them.
+				writeComposeApp(dir, { name, telemetry: true });
+				await dependOnThisCheckout(dir, name, { telemetry: true });
 
 				// What a real project has: a lockfile every image installs from,
 				// and a commit its images are tagged with.
@@ -451,6 +521,9 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 					env: childEnv({
 						GKM_COMPOSE_HTTPS_PORT: String(https),
 						GKM_COMPOSE_HTTP_PORT: String(http),
+						// The local stage ignores deploy.telemetry; this moves its
+						// OpenObserve off 5080.
+						GKM_COMPOSE_LOGS_PORT: String(logsPort),
 					}),
 				});
 
@@ -857,7 +930,7 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				).toEqual([]);
 			});
 
-			it.runIf(entry.logs)(
+			it(
 				"(d) sends the API's telemetry to the stack's OpenObserve, on loopback alone",
 				{ timeout: 3 * 60_000 },
 				async () => {
@@ -881,29 +954,13 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 					);
 
 					// The login the stack signs the apps in with, as written.
-					const env = readFileSync(
-						join(dir, '.gkm', 'compose', 'development', 'openobserve.env'),
-						'utf-8',
-					);
-					const login = (key: string) =>
-						new RegExp(`^${key}=(.*)$`, 'm').exec(env)![1]!;
-					const auth = `Basic ${Buffer.from(
-						`${login('ZO_ROOT_USER_EMAIL')}:${login('ZO_ROOT_USER_PASSWORD')}`,
-					).toString('base64')}`;
+					const auth = openObserveLogin(dir, 'development');
 
-					// A request whose handler logs a line. The server is one bundle,
-					// so nothing hooks pino or node:http: the line is sent by the
-					// logger itself and the request's span by the server's own
-					// middleware, and they must land in the same trace.
+					// A request whose handler logs a line.
 					const ping = await edge('api', '/ping');
 					expect(ping.status).toBe(200);
 
-					/** OpenObserve's search API over the `default` stream of a type. */
-					const search = async (
-						type: 'logs' | 'traces',
-						where: string,
-					): Promise<Record<string, unknown>[]> => {
-						const now = Date.now() * 1000;
+					await expectPingTraced(async (type, where) => {
 						const response = await fetch(
 							`http://127.0.0.1:${logsPort}/api/default/_search?type=${type}`,
 							{
@@ -912,15 +969,7 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 									authorization: auth,
 									'content-type': 'application/json',
 								},
-								body: JSON.stringify({
-									query: {
-										sql: `SELECT * FROM "default" WHERE ${where}`,
-										start_time: now - 15 * 60 * 1_000_000,
-										end_time: now + 60 * 1_000_000,
-										from: 0,
-										size: 10,
-									},
-								}),
+								body: searchBody(where),
 							},
 						);
 						if (!response.ok) return [];
@@ -928,37 +977,7 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 							hits?: Record<string, unknown>[];
 						};
 						return body.hits ?? [];
-					};
-					// Exported in batches: asked until it is there.
-					const eventually = async (type: 'logs' | 'traces', where: string) => {
-						for (let attempt = 0; attempt < 60; attempt++) {
-							const hits = await search(type, where);
-							if (hits.length > 0) return hits;
-							await new Promise((resolve) => setTimeout(resolve, 2_000));
-						}
-						return [];
-					};
-
-					// The handler's line, from the api, with the trace it ran in.
-					const [line] = await eventually(
-						'logs',
-						`service_name = 'api' AND body = 'Pinged'`,
-					);
-					expect(line).toBeDefined();
-					expect(line!.severity).toBe('INFO');
-					const traceId = String(line!.trace_id);
-					expect(traceId).toMatch(/^[0-9a-f]{32}$/);
-
-					// The request's SERVER span, in that same trace.
-					const [span] = await eventually(
-						'traces',
-						`trace_id = '${traceId}' AND operation_name = 'GET /ping'`,
-					);
-					expect(span).toBeDefined();
-					expect(span!.service_name).toBe('api');
-					expect(String(span!.span_kind)).toBe('2'); // SERVER
-					expect(String(span!.http_response_status_code)).toBe('200');
-					expect(span!.span_id).toBe(line!.span_id);
+					});
 
 					// The site's request — sent by its bundle above, from its origin,
 					// through the edge — is a child of the page's trace, not a new one.
@@ -1479,15 +1498,27 @@ describe.runIf(RUN)(
 				}),
 			});
 
-		/** The workspace, its log UI open to `allow`. */
-		const configure = (allow: readonly string[]) =>
+		/**
+		 * The workspace: every backend given a Telemetry construct, and each
+		 * stage's self-hosted log UI served publicly — staging's to the private
+		 * ranges, which is where Docker's published ports come from;
+		 * production's to an address this machine is not.
+		 */
+		const configure = () =>
 			writeComposeApp(dir, {
 				name,
 				deployed: [...stages],
 				domains: Object.fromEntries(stages.map((s) => [s, domain(s)])),
+				telemetry: true,
+				deployTelemetry: {
+					staging: { provider: 'self-hosted', public: { allow: PRIVATE } },
+					production: {
+						provider: 'self-hosted',
+						public: { allow: ['203.0.113.7'] },
+					},
+				},
 				compose: {
 					proxy: 'traefik',
-					logs: { public: { allow } },
 					tls: Object.fromEntries(
 						stages.map((s) => [
 							s,
@@ -1514,7 +1545,7 @@ describe.runIf(RUN)(
 			caFile = (await testCertificate(certs, stages.map(domain))).ca;
 			ca = readFileSync(caFile, 'utf-8');
 
-			configure(PRIVATE);
+			configure();
 			await dependOnThisCheckout(dir, name, { telemetry: true });
 			await exec('pnpm', ['install', '--lockfile-only'], { cwd: dir });
 			const git = childEnv({
@@ -1530,19 +1561,8 @@ describe.runIf(RUN)(
 			https = await freePort();
 			http = await freePort();
 
-			// The first stack starts the edge; its log UI answers the private
-			// ranges, which is where Docker's published ports come from.
+			// The first stack starts the edge; the second registers with it.
 			output.staging = await gkm(['compose', '--stage', 'staging']);
-			// The second registers with the edge the first started, its log UI
-			// open to an address this machine is not.
-			const config = join(dir, 'gkm.config.ts');
-			writeFileSync(
-				config,
-				readFileSync(config, 'utf-8').replace(
-					JSON.stringify(PRIVATE),
-					JSON.stringify(['203.0.113.7']),
-				),
-			);
 			output.production = await gkm(['compose', '--stage', 'production']);
 		}, 2 * BUILD_TIMEOUT);
 
@@ -1763,6 +1783,36 @@ describe.runIf(RUN)(
 			const denied = await edge('production', 'logs', '/web/');
 			expect(denied.status).toBe(403);
 		});
+
+		it(
+			"sends the API's telemetry to its stage's OpenObserve, read through the edge",
+			{
+				timeout: 3 * 60_000,
+			},
+			async () => {
+				const ping = await edge('staging', 'api', '/ping');
+				expect(ping.status).toBe(200);
+
+				const auth = openObserveLogin(dir, 'staging');
+				await expectPingTraced(async (type, where) => {
+					const response = await edge(
+						'staging',
+						'logs',
+						`/api/default/_search?type=${type}`,
+						{
+							method: 'POST',
+							headers: { authorization: auth },
+							body: JSON.parse(searchBody(where)),
+						},
+					);
+					if (response.status !== 200) return [];
+					return (
+						(JSON.parse(response.body) as { hits?: Record<string, unknown>[] })
+							.hits ?? []
+					);
+				});
+			},
+		);
 
 		it('serves both stacks at once, each on its own hosts', async () => {
 			for (const stage of stages) {

@@ -468,6 +468,11 @@ export interface RestApiDeclaration extends Node {
 	 * they belong.
 	 */
 	calls?: readonly Dependency[];
+	/**
+	 * The `Telemetry` node this surface's process emits through, by id — an
+	 * edge, read by `dependenciesOf` like any other.
+	 */
+	telemetry?: ConstructId;
 }
 
 /** One glob, or several. Mirrors the CLI's `Routes` without depending on it. */
@@ -559,6 +564,12 @@ export interface SiteDeclaration extends Node {
 	 * single entrypoint — the whole app is the consumer.
 	 */
 	dependencies: readonly Dependency[];
+	/**
+	 * The `Telemetry` node it emits through, by id. A site is handed none of
+	 * the node's keys: they are a server's, and `PUBLIC.telemetry` is empty, so
+	 * nothing of it can reach a bundle.
+	 */
+	telemetry?: ConstructId;
 }
 
 /**
@@ -617,6 +628,8 @@ export interface WorkerDeclaration extends Node {
 	 */
 	/** Surfaces and resources it calls, which is what grants it access. */
 	dependencies?: readonly Dependency[];
+	/** The `Telemetry` node its process emits through, by id. */
+	telemetry?: ConstructId;
 }
 
 /** One route on a surface. */
@@ -701,6 +714,39 @@ export interface CronDeclaration extends Fn {
  * per-kind fields — there is no separate enum to keep in step, and no shape
  * carrying fields that belong to a different kind.
  */
+/**
+ * What an application emits — traces and logs over OTLP — and never where it
+ * goes: the deploy picks the provider and the sample rate, per stage.
+ *
+ * A node like any other, so each process that uses it is an edge from its
+ * surface, worker or site, and the keys it provides reach exactly those
+ * processes. The keys are OpenTelemetry's own, not the node's id: an SDK reads
+ * `OTEL_EXPORTER_OTLP_ENDPOINT` and nothing else.
+ */
+export interface TelemetryDeclaration extends Node {
+	kind: 'telemetry';
+	/** Request paths no span is recorded for — `/health`. A trailing `*` matches a prefix. */
+	ignorePaths?: readonly string[];
+	/** Resource attributes every span and log carries — `service.namespace`. */
+	attributes?: Readonly<Record<string, string>>;
+}
+
+/**
+ * What a `Telemetry` node provides to each process with an edge to it.
+ *
+ * `OTEL_SERVICE_NAME` is resolved per process — the app's name — so it is
+ * listed here but composed by whichever target hands it over.
+ */
+export const TELEMETRY_KEYS = [
+	'OTEL_EXPORTER_OTLP_ENDPOINT',
+	'OTEL_EXPORTER_OTLP_HEADERS',
+	'OTEL_SERVICE_NAME',
+	'OTEL_TRACES_SAMPLER',
+	'OTEL_TRACES_SAMPLER_ARG',
+] as const;
+
+export type TelemetryKey = (typeof TELEMETRY_KEYS)[number];
+
 export type Declaration =
 	| ObjectsDeclaration
 	| FileServerDeclaration
@@ -721,7 +767,8 @@ export type Declaration =
 	| QueueDeclaration
 	| TopicDeclaration
 	| FunctionDeclaration
-	| CronDeclaration;
+	| CronDeclaration
+	| TelemetryDeclaration;
 
 /** A declaration that provisions nothing of its own and names a parent. */
 /**
@@ -931,6 +978,9 @@ export interface ProvidesByKind {
 	 * a topic. So it publishes no address, the way a cron does not.
 	 */
 	worker: Record<never, never>;
+	// Its keys are OpenTelemetry's, not prefixed by the node's id — see
+	// `TELEMETRY_KEYS`.
+	telemetry: Record<never, never>;
 }
 
 export type Provides<K extends keyof ProvidesByKind> = ProvidesByKind[K];
@@ -997,4 +1047,8 @@ export const PUBLIC: {
 	// Nothing calls a worker, so there is no address to hand anyone. It reaches
 	// out — to a queue, a schedule, a topic — and is reached by none of them.
 	worker: [],
+	// An exporter's endpoint and headers are a server's: the headers are a
+	// credential, and a browser exports through its API's ingest route, never
+	// to the provider. Nothing of a `Telemetry` node is ever inlined.
+	telemetry: [],
 };

@@ -8,7 +8,6 @@
  * for a script.
  */
 
-import { resolveLogs } from '../compose/logsConfig.js';
 import { loadWorkspaceConfig } from '../config.js';
 import { loadPortState } from '../credentials/index.js';
 import { portsOf } from '../reconcile/containers.js';
@@ -61,15 +60,12 @@ export function devCredentials(
 	const containers = SIGNED_IN.filter((container) =>
 		portsOf(container).some((port) => ports[port.key] !== undefined),
 	);
-	const logs = resolveLogs(workspace.deploy?.compose?.logs);
-	const local: LocalLogs | undefined = logs
-		? {
-				url: logs.public
-					? `https://logs.${workspace.name}.localhost`
-					: `http://localhost:${logs.port}`,
-				via: `gkm compose --stage ${workspace.stages.local}`,
-			}
-		: undefined;
+	// The OpenObserve `gkm dev` runs for a workspace that uses a `Telemetry`
+	// construct — the local stage's compose stack signs in the same way.
+	const local: LocalLogs | undefined =
+		ports.openobserve !== undefined
+			? { url: `http://localhost:${ports.openobserve}`, via: 'gkm dev' }
+			: undefined;
 	return {
 		workspace: workspace.name,
 		stage: workspace.stages.local,

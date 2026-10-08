@@ -16,6 +16,7 @@ export default defineConfig({
 		'src/site.ts',
 		'src/mobile-app.ts',
 		'src/worker.ts',
+		'src/telemetry.ts',
 		'src/email.ts',
 		'src/database/kysely.ts',
 		'src/endpoints/index.ts',

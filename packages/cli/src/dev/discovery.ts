@@ -106,6 +106,18 @@ export interface SessionApp {
 }
 
 /**
+ * The local OpenObserve `gkm dev` runs for a workspace that uses a
+ * `Telemetry` construct: where its UI is, and who signs in. Never the
+ * password — the endpoint is read by anything holding its token.
+ */
+export interface DevTelemetryUi {
+	/** `http://localhost:<port>`. */
+	url: string;
+	/** The local root user's email. */
+	email: string;
+}
+
+/**
  * One `gkm dev` process, as it registers itself.
  *
  * A `workspace` session is the workspace's own `gkm dev`: it lists every app
@@ -123,6 +135,8 @@ export interface DevSessionRecord {
 	/** `dev.allowedOrigins`: the browser origins this workspace is shown to. */
 	allowedOrigins: string[];
 	manifest?: ConstructManifest;
+	/** The local telemetry UI, when reconcile runs one. */
+	telemetry?: DevTelemetryUi;
 	apps: SessionApp[];
 }
 
@@ -161,6 +175,8 @@ export interface DiscoveredWorkspace {
 	root: string;
 	stage: string;
 	manifest: ConstructManifest | null;
+	/** The local telemetry UI — OpenObserve — when the workspace runs one. */
+	telemetry: DevTelemetryUi | null;
 	apps: DiscoveredApp[];
 }
 
@@ -451,6 +467,7 @@ async function collect(records: DevSessionRecord[]): Promise<WorkspaceView[]> {
 			root,
 			stage: lead.workspace.stage,
 			manifest: group.find((r) => r.manifest)?.manifest ?? null,
+			telemetry: group.find((r) => r.telemetry)?.telemetry ?? null,
 			apps: discovered,
 			allowedOrigins: [...new Set(group.flatMap((r) => r.allowedOrigins))],
 		});
@@ -865,6 +882,7 @@ export interface JoinDiscoveryOptions {
 	workspace: DevSessionRecord['workspace'];
 	allowedOrigins?: readonly string[];
 	manifest?: ConstructManifest;
+	telemetry?: DevTelemetryUi;
 	apps: SessionApp[];
 	/** `0` hosts on a free port of its own, and never hands over. */
 	port?: number;
@@ -907,6 +925,7 @@ export class DiscoverySession {
 			workspace: options.workspace,
 			allowedOrigins: [...(options.allowedOrigins ?? [])],
 			...(options.manifest ? { manifest: options.manifest } : {}),
+			...(options.telemetry ? { telemetry: options.telemetry } : {}),
 			apps: options.apps,
 		};
 		// Registered before the token is settled, so a session starting at the

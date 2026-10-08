@@ -69,14 +69,17 @@ export interface ContainerCredentials {
 	cacheToken: string;
 	/** The AWS emulator's key pair. */
 	emulator: { accessKeyId: string; secretAccessKey: string };
+	/**
+	 * OpenObserve's root user — `gkm dev`'s, where a process uses a
+	 * `Telemetry` construct, and `gkm compose`'s on the local stage.
+	 */
+	logs: { email: string; password: string };
 }
 
 /** The local stage's logins: the containers', and what else it generates. */
 export interface LocalCredentials extends ContainerCredentials {
 	/** Salts every per-role password, as a deployed stage's seed does. */
 	seed: string;
-	/** OpenObserve's root user, where `gkm compose` runs it locally. */
-	logs: { email: string; password: string };
 }
 
 /** MinIO refuses a root password shorter than 8 or longer than 40. */
