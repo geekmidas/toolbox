@@ -1,5 +1,41 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.76
+
+### Minor Changes
+
+- [#201](https://github.com/geekmidas/toolbox/pull/201) [`5871150`](https://github.com/geekmidas/toolbox/commit/5871150c12decdbd22e245035a5d7ee5eec1f051) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: Secrets Manager as a secrets store, and SSM stages past 4 KB
+
+  - `secrets.store: { provider: 'secrets-manager', region, kmsKeyId? }` keeps each deployed stage in one AWS Secrets Manager secret, `gkm/<project>/<stage>/secrets`, holding the same JSON as the SSM parameter: up to 64 KB, encrypted with `aws/secretsmanager` or the key given. Every `secrets:*` command, `gkm setup`, `build`, `exec` and every deploy target read and write it as they do SSM, with the same `AWS_PROFILE` / `--profile` handling.
+  - The SSM store writes in the Intelligent-Tiering tier, so a stage between 4 KB and 8 KB (a service-account JSON key, say) is accepted instead of failing with `ValidationException`. It stays free under 4 KB.
+  - A stage too large for its store — 8 KB for SSM, 64 KB for Secrets Manager — fails with `StageSecretsTooLarge` (stage, store, bytes, limit) before AWS is called; on SSM it points at Secrets Manager.
+  - `gkm secrets:migrate --stage <stage> --to <file|ssm|secrets-manager>` copies a deployed stage, whole, from the configured store to another.
+  - A `secrets.store` provider name gkm does not ship fails with `UnknownSecretsStoreProvider`, never falling back to the file.
+
+### Patch Changes
+
+- 🐛 [#200](https://github.com/geekmidas/toolbox/pull/200) [`c6005cb`](https://github.com/geekmidas/toolbox/commit/c6005cb79031222875545946cc6afe3f94c5e3c9) Thanks [@geekmidas](https://github.com/geekmidas)! - :bug: A site's image generates the API client it imports, and its build can run through `gkm exec`
+
+  `gkm compose --build` (and every image `gkm docker` writes) could not build a site that imports the typed client gkm generates (`@<name>/client/<surface>`): the client lives in the workspace root's `.gkm/client/`, which `.dockerignore` keeps out of every build context, and nothing generated it in the image — `next build` failed with `Cannot find module '<scope>/client/api'`, and a `gkm exec -- next build` script found no config or constructs.
+
+  - **A site's image carries the gkm workspace**, as a backend's does: the config and the construct directories (sources only), the workspace's own package when nested in a monorepo, and the package of each backend the site depends on.
+  - **The client is generated inside the builder**, before the site is built: `gkm openapi --app <backend>` for each backend the site depends on, written where the site's tsconfig paths expect it. Offline — no secret, no stage, no container. Nothing generated on the host is copied in.
+  - 🐛 **`gkm` is on the builder's `PATH`**, resolved from the workspace, so a site build script that is `gkm exec -- next build` runs in the image. There `GKM_IMAGE_BUILD=1` makes `gkm exec` inject only the public build args (`NEXT_PUBLIC_*`, `VITE_*`, `EXPO_PUBLIC_*`) — never a stage's secrets, and never the `localhost` URLs a workspace resolves on a developer's machine. Sites build with `turbo run build --env-mode=loose` so those values reach the task.
+  - **`gkm openapi --app <name>` reads endpoints through the workspace's constructs globs**, as `gkm build` does, instead of importing every `.ts` under the app — which loaded its tests and gkm's generated test harness, and failed.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.76
+  - @geekmidas/constructs@10.0.0-alpha.76
+  - @geekmidas/db@10.0.0-alpha.76
+  - @geekmidas/envkit@10.0.0-alpha.76
+  - @geekmidas/errors@10.0.0-alpha.76
+  - @geekmidas/logger@10.0.0-alpha.76
+  - @geekmidas/manifest@10.0.0-alpha.76
+  - @geekmidas/schema@10.0.0-alpha.76
+  - @geekmidas/services@10.0.0-alpha.76
+  - @geekmidas/storage@10.0.0-alpha.76
+  - @geekmidas/telescope@10.0.0-alpha.76
+
 ## 10.0.0-alpha.75
 
 ### Minor Changes
