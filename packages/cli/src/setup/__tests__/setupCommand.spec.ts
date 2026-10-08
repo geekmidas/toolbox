@@ -182,6 +182,62 @@ export const database = new KyselyDatabase('Database');
 		expect(output(error)).toContain('No gkm.config.ts found');
 	});
 
+	describe("a deployed stage's providers", () => {
+		beforeEach(() => {
+			vi.stubEnv('AWS_ENDPOINT_URL', LOCALSTACK_URL);
+			vi.stubEnv('AWS_ACCESS_KEY_ID', 'test');
+			vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'test');
+			vi.stubEnv('AWS_REGION', 'eu-west-1');
+			vi.stubEnv('AWS_PROFILE', undefined);
+			vi.stubEnv('GKM_HOME', join(dir, '.gkm-home'));
+			mkdirSync(join(dir, 'constructs'), { recursive: true });
+			writeFileSync(
+				join(dir, 'constructs', 'storage.ts'),
+				`import { ObjectStorage } from '@geekmidas/constructs/object-storage';
+
+export const uploads = new ObjectStorage('Uploads');
+`,
+			);
+		});
+
+		it('prints the plan on --dry-run, starting and writing nothing', async () => {
+			const name = `dry-${Date.now().toString(36)}`;
+			config(
+				`constructs: './constructs/**/*.ts',
+  deploy: { objects: { prod: { provider: 's3', region: 'eu-west-1' } } },`,
+				name,
+			);
+
+			await setupCommand({ stage: 'prod', dryRun: true });
+
+			const said = output(log);
+			expect(said).toContain(
+				"Providers for 'prod' (dry run — nothing is created or written)",
+			);
+			expect(said).toContain(
+				`would create in eu-west-1 — bucket ${name}-prod-uploads`,
+			);
+			expect(said).toContain(
+				`would create under /gkm/ — IAM user gkm-${name}-prod-uploads`,
+			);
+			expect(said).toMatch(/📋 \d+ changes planned/);
+			// No secrets generated, no state, no containers.
+			expect(said).not.toContain('Generating fresh');
+			expect(existsSync(join(dir, '.gkm', 'secrets', 'prod.json'))).toBe(false);
+			expect(existsSync(join(dir, '.gkm', 'deploy-prod.json'))).toBe(false);
+		});
+
+		it('says how to name one when the stage has none', async () => {
+			config(`constructs: './constructs/**/*.ts',`);
+
+			await setupCommand({ stage: 'prod', dryRun: true });
+
+			expect(output(log)).toContain(
+				"None configured: 'prod' takes every key from its secrets",
+			);
+		});
+	});
+
 	describe('with a deployed stage kept in SSM', () => {
 		// With a constructs glob: a config with neither apps nor constructs is
 		// a single-app one.

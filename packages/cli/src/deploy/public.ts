@@ -32,6 +32,9 @@
 
 export { ConfigLoadFailed, ConfigObjectNotSerializable } from '../config';
 export { GKM_HOME_ENV, gkmHome } from '../home';
+export { UnknownStageProvider } from '../providers/config';
+export { StageProviderDisabled } from '../providers/notes';
+export { ProvisionedBucketUnreachable } from '../providers/s3/errors';
 export {
 	ConstructDiscoveryFailed,
 	ConstructsNotSerializable,
@@ -115,12 +118,12 @@ export {
 	deploy,
 } from './deploy';
 export {
+	AllowDevServicesTakesNoValue,
 	DEV_SERVICES,
 	type DevService,
 	DevServicesNeedServerTarget,
 	ExternalServicesNotConfigured,
 	type MissingServiceKey,
-	UnknownDevService,
 } from './devServices';
 export type {
 	DeployEvent,

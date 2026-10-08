@@ -225,6 +225,40 @@ export type StageTelemetryConfig =
 	| OtlpTelemetryConfig
 	| false;
 
+/**
+ * What backs one deployed stage's buckets — `deploy.objects`, by stage.
+ *
+ * - `'external'` (the default) — the stage's secrets hold each bucket's URL,
+ *   set by you: S3, R2, any S3-compatible store.
+ * - `{ provider: 's3' }` — `gkm setup --stage <stage>` creates each bucket,
+ *   its IAM user and key in the stage's AWS account, and writes the bucket's
+ *   URL into the stage's secrets.
+ * - `false` — the stage has no object storage; a bucket on it is refused.
+ *
+ * The local stage ignores this: `gkm dev` runs MinIO for every bucket.
+ *
+ * @example
+ * ```ts
+ * objects: {
+ *   production: { provider: 's3', region: 'eu-west-1', versioning: true },
+ *   staging: 'external',
+ * }
+ * ```
+ */
+export type StageObjectsConfig = 'external' | S3ObjectsConfig | false;
+
+/** `objects: { provider: 's3' }` — a bucket per construct in the stage's account. */
+export interface S3ObjectsConfig {
+	provider: 's3';
+	/**
+	 * Where the buckets are created. Defaults to the secrets store's region,
+	 * then `AWS_REGION`.
+	 */
+	region?: string;
+	/** Keep previous versions of every object. Defaults to the construct's own `versioned`. */
+	versioning?: boolean;
+}
+
 /** Shared by every provider. */
 interface TelemetryProviderConfig {
 	/**
@@ -353,6 +387,11 @@ export interface DeployConfig {
 	 * {@link StageTelemetryConfig}.
 	 */
 	telemetry?: Record<string, StageTelemetryConfig>;
+	/**
+	 * What backs each deployed stage's buckets — the `objects` kind that
+	 * `ObjectStorage` and `FileServer` produce. See {@link StageObjectsConfig}.
+	 */
+	objects?: Record<string, StageObjectsConfig>;
 	/** DNS configuration for automatic record creation */
 	dns?: DnsConfig;
 	/** Backup destination configuration for database services */

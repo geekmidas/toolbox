@@ -103,6 +103,7 @@ import {
 	SeedFailed,
 	seedDatabases,
 } from '../../migrate/databases.js';
+import { verifyStageProviders } from '../../providers/index.js';
 import { bucketClient, pgClient } from '../../reconcile/clients.js';
 import { primaryPortKey } from '../../reconcile/containers.js';
 import { type ConstructSource, discover } from '../../reconcile/discover.js';
@@ -429,6 +430,18 @@ export async function validateCompose(
 	// Loud, every run — a dry run included: a deployed stage on Mailpit
 	// delivers no mail, and one on MinIO keeps its files on one disk.
 	reportDevServices(ctx, composed.devServices);
+
+	// What the stage's providers created is still there, and the stage's key
+	// reaches it. A push runs nothing, and the local stage has no providers.
+	if (!push && stage !== workspace.stages.local) {
+		const verified = await verifyStageProviders({
+			workspace,
+			manifest,
+			stage,
+			secrets: secrets?.custom ?? {},
+		});
+		for (const line of verified) ctx.logger.info(`✓ ${line} verified`);
+	}
 
 	// A cache is reached over the Redis wire protocol, and the client is the
 	// project's own dependency: a build without it fails deep inside Docker.

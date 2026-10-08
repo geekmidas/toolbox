@@ -79,8 +79,8 @@ export interface DeclaredOptions {
 	/** A manifest already in hand, for a caller that has discovered one. */
 	manifest?: ConstructManifest;
 	/**
-	 * The dev services the stage may run for mail and buckets its secrets do
-	 * not configure (`--allow-dev-services`).
+	 * The dev services the run uses for mail and buckets the stage does not
+	 * account for (`--allow-dev-services`).
 	 */
 	devServices?: readonly DevService[];
 }

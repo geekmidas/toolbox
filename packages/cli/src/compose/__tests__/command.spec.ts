@@ -22,10 +22,7 @@ import {
 } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { loadWorkspaceSettings } from '../../config';
-import {
-	ExternalServicesNotConfigured,
-	UnknownDevService,
-} from '../../deploy/devServices';
+import { ExternalServicesNotConfigured } from '../../deploy/devServices';
 import { SeedFailed } from '../../migrate/databases';
 import type { SqlClient } from '../../reconcile/provision';
 import { CredentialsInvalid } from '../../secrets/credentialSchemas';
@@ -672,7 +669,7 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 		const fake = fakeDocker();
 
 		const result = await composeCommand(
-			{ cwd: dir, stage: 'production', allowDevServices: 'minio,mailpit' },
+			{ cwd: dir, stage: 'production', allowDevServices: true },
 			{
 				docker: fake.docker,
 				probe: answering(fake.calls),
@@ -707,16 +704,6 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 			/DEV SERVICE ON A DEPLOYED STAGE \(production\): MinIO/,
 		);
 		expect(result?.deploy.stage).toBe('production');
-	});
-
-	it('refuses a value that is not a dev service', async () => {
-		await expect(
-			composeCommand({
-				cwd: dir,
-				stage: 'production',
-				allowDevServices: 'minio,redis',
-			}),
-		).rejects.toBeInstanceOf(UnknownDevService);
 	});
 });
 

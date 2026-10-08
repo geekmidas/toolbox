@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { ExternalServicesNotConfigured } from '../../deploy/devServices';
 import { deployIdentity } from '../../deploy/identity';
+import { StageProviderDisabled } from '../../providers/notes';
 import { TEST_CREDENTIALS } from '../../reconcile/__tests__/__helpers__/credentials';
 import { localRolePassword } from '../../reconcile/env';
 import { postgresSuperuser } from '../../reconcile/localCredentials';
@@ -537,7 +538,8 @@ describe('mail and storage on a deployed stage', () => {
 			expect(message).toContain(`gkm secrets:set ${key} '`);
 		}
 		expect(message).toContain('--stage production');
-		expect(message).toContain('--allow-dev-services mailpit,minio');
+		expect(message).toContain('with --allow-dev-services.');
+		expect(message).not.toMatch(/--allow-dev-services (minio|mailpit)/);
 		expect(missing.find((m) => m.key === 'MAIL_URL')?.apps).toEqual(['api']);
 		// The API signs uploads to the bucket and hands out URLs on the domain
 		// that serves it, so it reads the file server's address as the site does.
@@ -588,7 +590,7 @@ describe('mail and storage on a deployed stage', () => {
 	});
 
 	it('runs MinIO and Mailpit where allowed, with keys derived from them', () => {
-		const s = deployed({ allowDevServices: ['minio', 'mailpit'] });
+		const s = deployed({ allowDevServices: true });
 		const api = app(s, 'api').env!;
 		const password = localRolePassword(
 			'compose-app',
@@ -621,7 +623,7 @@ describe('mail and storage on a deployed stage', () => {
 
 	it('keeps every key the stage did set over the dev service', () => {
 		const s = deployed({
-			allowDevServices: ['minio', 'mailpit'],
+			allowDevServices: true,
 			secrets: production({
 				MAIL_URL: EXTERNAL.MAIL_URL,
 				MAIL_FROM: EXTERNAL.MAIL_FROM,
@@ -647,12 +649,69 @@ describe('mail and storage on a deployed stage', () => {
 		expect(s.devServices).toEqual([{ service: 'minio', ids: ['Uploads'] }]);
 	});
 
-	it('allowing one dev service does not excuse the other', () => {
-		const run = () => deployed({ allowDevServices: ['mailpit'] });
+	describe("with a provider backing the stage's buckets", () => {
+		const withS3 = () => ({
+			...workspace,
+			deploy: {
+				...workspace.deploy,
+				objects: { production: { provider: 's3' as const } },
+			},
+		});
 
-		expect(run).toThrow(ExternalServicesNotConfigured);
-		expect(run).toThrow(/UPLOADS_URL/);
-		expect(run).not.toThrow(/MAIL_URL/);
+		it('runs no MinIO under --allow-dev-services: the provider accounts for buckets', () => {
+			let error: unknown;
+			try {
+				deployed({ workspace: withS3(), allowDevServices: true });
+			} catch (caught) {
+				error = caught;
+			}
+
+			// Mail is still a dev service's; the bucket and its server are the
+			// provider's, so they are asked for — with what creates them.
+			expect(error).toBeInstanceOf(ExternalServicesNotConfigured);
+			const missing = (error as ExternalServicesNotConfigured).missing;
+			expect(missing.map((m) => m.key)).toEqual([
+				'UPLOADS_URL',
+				'UPLOADS_SERVER_URL',
+			]);
+			expect(missing[0]?.service).toBeUndefined();
+			const message = (error as Error).message;
+			expect(message).toContain(
+				'deploy.objects.production is s3: gkm setup --stage production creates it and writes this key',
+			);
+			expect(message).toContain('AWS_PROFILE');
+			// Nothing missing could be a dev service, so none is offered.
+			expect(message).not.toContain('--allow-dev-services');
+		});
+
+		it('deploys with the keys the provider wrote, and runs mail on Mailpit', () => {
+			const s = deployed({
+				workspace: withS3(),
+				allowDevServices: true,
+				secrets: production({
+					UPLOADS_URL:
+						's3://AKIAUPLOADS:secret@compose-app-production-uploads?region=eu-west-1',
+					UPLOADS_SERVER_URL:
+						'https://compose-app-production-uploads.s3.eu-west-1.amazonaws.com',
+				}),
+			});
+
+			expect(s.infra).toEqual(['mailpit', 'postgres', 'redis']);
+			expect(s.devServices).toEqual([{ service: 'mailpit', ids: ['Mail'] }]);
+		});
+
+		it('refuses a bucket on a stage that has none', () => {
+			const none = {
+				...workspace,
+				deploy: {
+					...workspace.deploy,
+					objects: { production: false as const },
+				},
+			};
+			expect(() =>
+				deployed({ workspace: none, secrets: production(EXTERNAL) }),
+			).toThrow(StageProviderDisabled);
+		});
 	});
 });
 

@@ -1,4 +1,5 @@
 import { loadWorkspaceConfig } from '../config.js';
+import { provisionCommand, provisionStage } from '../providers/index.js';
 import { describeServices } from '../reconcile/containers.js';
 import {
 	derivedContainers,
@@ -22,15 +23,25 @@ export interface SetupOptions {
 	force?: boolean;
 	skipDocker?: boolean;
 	yes?: boolean;
+	/** A deployed stage: print what the providers would do, and do none of it. */
+	dryRun?: boolean;
+	/** A deployed stage: the AWS profile for the stage's account. */
+	profile?: string;
+	/** A deployed stage: issue each provisioned key a successor. */
+	rotateKeys?: boolean;
+	/** A deployed stage: delete a rotated-out key without waiting for a deploy. */
+	retireOldKeys?: boolean;
 }
 
 /**
- * Setup development environment.
+ * Converge a stage on what its constructs declare.
  *
- * Orchestrates:
- * 1. Load workspace config
- * 2. Resolve secrets (local → the stage's store → generate fresh)
- * 3. Start Docker services
+ * The local stage: its secrets (local → the stage's store → generated) and
+ * the containers on this machine. A deployed stage: its secrets, and then
+ * every provider `deploy.<kind>.<stage>` names — the bucket, user and key an
+ * `objects: { provider: 's3' }` stage is backed by — created or repaired in
+ * the stage's own account. A deployed stage's infrastructure is not on this
+ * machine, so no container is started for one.
  */
 export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 	logger.log('\n🔧 Setting up the local environment...\n');
@@ -49,10 +60,18 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 	const stage = options.stage ?? loadedConfig.workspace.stages.local;
 
 	const { workspace } = loadedConfig;
+	const local = stage === workspace.stages.local;
 
 	logger.log(`📦 Workspace: ${workspace.name}`);
 	logger.log(`📱 Apps: ${Object.keys(workspace.apps).join(', ')}`);
 	logger.log(`🔑 Stage: ${stage}\n`);
+
+	// A dry run of a deployed stage is its providers' plan, and nothing else:
+	// no secrets generated, nothing written.
+	if (!local && options.dryRun) {
+		await provisionDeployed(workspace, stage, options);
+		return;
+	}
 
 	// 2. Resolve secrets
 	const secrets = await resolveSecrets(stage, workspace, options);
@@ -60,6 +79,11 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 	if (!secrets) {
 		logger.error('❌ Failed to resolve secrets. Exiting.');
 		process.exit(1);
+	}
+
+	if (!local) {
+		await provisionDeployed(workspace, stage, options);
+		return;
 	}
 
 	// 3. Reconcile the local target: derive containers, allocate ports, start.
@@ -71,6 +95,47 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 
 	// Print summary
 	printSummary(workspace, stage);
+}
+
+/**
+ * A deployed stage's providers: each one's `ensure()`, in the stage's own
+ * account, its keys written into the stage's secrets.
+ */
+async function provisionDeployed(
+	workspace: NormalizedWorkspace,
+	stage: string,
+	options: SetupOptions,
+): Promise<void> {
+	logger.log(
+		options.dryRun
+			? `\n☁️  Providers for '${stage}' (dry run — nothing is created or written)`
+			: `\n☁️  Providers for '${stage}'`,
+	);
+	const reports = await provisionStage({
+		workspace,
+		stage,
+		...(options.dryRun ? { dryRun: true } : {}),
+		...(options.profile ? { profile: options.profile } : {}),
+		...(options.rotateKeys ? { rotateKeys: true } : {}),
+		...(options.retireOldKeys ? { retireOldKeys: true } : {}),
+		log: (line) => logger.log(line),
+	});
+	const configured = reports.filter((r) => r.mode === 'provider');
+	if (configured.length === 0) {
+		logger.log(
+			`   None configured: '${stage}' takes every key from its secrets ` +
+				`(gkm secrets:add --stage ${stage}). Name one in gkm.config.ts — ` +
+				`deploy: { objects: { ${stage}: { provider: 's3' } } } — to have ` +
+				`${provisionCommand(stage)} create it.`,
+		);
+		return;
+	}
+	const changes = configured.reduce((n, r) => n + r.actions.length, 0);
+	logger.log(
+		options.dryRun
+			? `\n${changes === 0 ? '✅ Nothing to change' : `📋 ${changes} change${changes === 1 ? '' : 's'} planned`}`
+			: `\n✅ '${stage}' provisioned${changes === 0 ? ' — already up to date' : ` (${changes} change${changes === 1 ? '' : 's'})`}`,
+	);
 }
 
 /**

@@ -14,7 +14,6 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { loadWorkspaceConfig } from '../config';
 import { deploy } from '../deploy/deploy';
-import { parseDevServices } from '../deploy/devServices';
 import { deployIdentity } from '../deploy/identity.js';
 import type { DeployResult } from '../deploy/types';
 import {
@@ -122,10 +121,11 @@ export interface ComposeOptions {
 	/** The workspace — the current directory when absent. */
 	cwd?: string;
 	/**
-	 * `--allow-dev-services minio,mailpit`: on a deployed stage, run MinIO
-	 * and Mailpit for the buckets and mail its secrets do not configure.
+	 * `--allow-dev-services`: on a deployed stage, run the dev service for
+	 * every construct the stage does not account for — MinIO for a bucket,
+	 * Mailpit for mail.
 	 */
-	allowDevServices?: string | readonly string[];
+	allowDevServices?: boolean;
 }
 
 export interface ComposeResult {
@@ -170,7 +170,6 @@ export async function composeCommand(
 	if (options.digestsFile && !options.push && !pulls) {
 		throw new ComposePinNeedsPull();
 	}
-	const allowDevServices = parseDevServices(options.allowDevServices);
 
 	const cwd = resolve(options.cwd ?? process.cwd());
 	// Read here only for what the command adds: the project `--down` stops. The deploy loads it again, as it
@@ -232,7 +231,7 @@ export async function composeCommand(
 		...(tag ? { tag } : {}),
 		...(options.dryRun ? { dryRun: true } : {}),
 		...(options.push ? { buildOnly: true } : {}),
-		...(allowDevServices.length > 0 ? { allowDevServices } : {}),
+		...(options.allowDevServices ? { allowDevServices: true } : {}),
 		logger: {
 			info: (message) => console.log(message),
 			warn: (message) => console.warn(message),

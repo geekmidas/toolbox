@@ -103,9 +103,10 @@ export interface DokployProvisionContext {
 	/** Where a declared bucket lives. Only `minio` has a Dokploy primitive. */
 	storage?: 'minio' | 's3' | 'r2';
 	/**
-	 * The dev services the stage may run (`--allow-dev-services`): MinIO for
-	 * a bucket whose URL the stage's secrets do not hold, Mailpit for mail.
-	 * Without them a bucket and mail are the stage's own, from `supplied`.
+	 * The dev services the run uses — what `--allow-dev-services` came to for
+	 * the constructs the stage does not account for: MinIO for a bucket,
+	 * Mailpit for mail. Without them a bucket and mail are the stage's own,
+	 * from `supplied`.
 	 */
 	devServices?: readonly DevService[];
 	/** The stage's base domain, which Mailpit's sending address is on. */
@@ -414,9 +415,9 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	 * A bucket: the stage's own, or — allowed — a MinIO stack on the box.
 	 *
 	 * A deployed stage's bucket is an external one — S3, R2, any S3-compatible
-	 * store — whose URL and key pair the stage's secrets hold. Only with
-	 * `--allow-dev-services minio` does this target run MinIO for one, and
-	 * then only for a bucket whose URL the stage did not set.
+	 * store — whose URL and key pair the stage's secrets hold. Only under
+	 * `--allow-dev-services` does this target run MinIO for one, and then
+	 * only for a bucket the stage does not account for.
 	 *
 	 * Dokploy has first-class primitives for Postgres and Redis and none for
 	 * object storage, so MinIO is the one kind whose infrastructure this
@@ -533,9 +534,9 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	 * Mail: the stage's own SMTP server, or — allowed — Mailpit on the box.
 	 *
 	 * Every provider speaks SMTP, so the provider is whatever the stage's
-	 * `<ID>_URL` names, with the address it sends from beside it. Only with
-	 * `--allow-dev-services mailpit`, and only where the stage set no URL,
-	 * does this run Mailpit — which catches every message and delivers none.
+	 * `<ID>_URL` names, with the address it sends from beside it. Only under
+	 * `--allow-dev-services`, and only where the stage set no URL, does this
+	 * run Mailpit — which catches every message and delivers none.
 	 */
 	email: async (declaration, context) => {
 		if (declaration.kind !== 'email') throw new WrongKind(declaration.kind);
@@ -983,7 +984,7 @@ function notConfigured(
 		stage: context.stage,
 		declarations: [{ id, kind }],
 		supplied: context.supplied ?? {},
-		allow: [],
+		allow: false,
 		...(context.domain ? { domain: context.domain } : {}),
 	});
 	return new ExternalServicesNotConfigured(context.stage, missing);

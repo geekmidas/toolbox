@@ -48,7 +48,7 @@ event; awaiting `result` rejects with the error itself.
 | `apps` | all | Deploy only these apps (in dependency order). |
 | `dryRun` | `false` | Report what would happen as `resource.planned` events. Takes no lock, writes no state, generates no secrets, builds and pushes nothing. |
 | `atomic` | `false` | When a release or its verification fails, roll back every app the run released, not only the failed ones (on a target that can roll back). |
-| `allowDevServices` | `[]` | `'minio'`, `'mailpit'`: on a server target, run them for the buckets and mail a deployed stage's secrets don't configure, instead of failing with `ExternalServicesNotConfigured`. Not production-grade. `UnknownDevService` for any other value; `DevServicesNeedServerTarget` on an `aws` target. |
+| `allowDevServices` | `false` | `true`: on a server target, run a dev service — MinIO for a bucket, Mailpit for mail — for every construct a deployed stage does not account for (no key in its secrets, no provider in `deploy.<kind>.<stage>`), instead of failing with `ExternalServicesNotConfigured`. Not production-grade. `DevServicesNeedServerTarget` on an `aws` target. |
 | `credentials` | environment, then `gkm login` | Where credentials come from. See [Credentials](#credentials). |
 | `logger` | none | Receives each progress line, as `gkm deploy` would print it. Anything with `info` and `warn` (and optionally `error`), such as a `@geekmidas/logger` `Logger`. |
 | `signal` | none | Stops the run. See [Cancelling](#cancelling). |

@@ -16,10 +16,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { CredentialProvider } from '../../deploy/credentials';
 import { type DeployInput, deploy } from '../../deploy/deploy';
-import {
-	DevServicesNeedServerTarget,
-	UnknownDevService,
-} from '../../deploy/devServices';
+import { DevServicesNeedServerTarget } from '../../deploy/devServices';
 import type { DeployEvent } from '../../deploy/events';
 import { RollbackFailed } from '../../deploy/orchestrate';
 import { defineTarget } from '../define';
@@ -294,19 +291,15 @@ describe('deploy() through a target package', { timeout: 30_000 }, () => {
 				}),
 			});
 
-		it('hands a server target the dev services it allows, and none by default', async () => {
+		it('tells a server target whether dev services are allowed, and not by default', async () => {
 			writeWorkspace(root, `'${PLUGIN}'`);
 			const seen: unknown[] = [];
 			const acme = recording('server', seen);
 
 			await run({ targets: { acme }, dryRun: true });
-			await run({
-				targets: { acme },
-				dryRun: true,
-				allowDevServices: ['minio', 'mailpit'],
-			});
+			await run({ targets: { acme }, dryRun: true, allowDevServices: true });
 
-			expect(seen).toEqual([[], ['mailpit', 'minio']]);
+			expect(seen).toEqual([false, true]);
 		});
 
 		it('refuses them on an AWS target, before any phase runs', async () => {
@@ -315,25 +308,11 @@ describe('deploy() through a target package', { timeout: 30_000 }, () => {
 
 			const { result } = await run({
 				targets: { acme: recording('aws', seen) },
-				allowDevServices: ['minio'],
+				allowDevServices: true,
 			});
 
 			expect(result).toBeInstanceOf(DevServicesNeedServerTarget);
 			expect((result as Error).message).toContain('server targets only');
-			expect(seen).toEqual([]);
-		});
-
-		it('refuses a value that is not a dev service', async () => {
-			writeWorkspace(root, `'${PLUGIN}'`);
-			const seen: unknown[] = [];
-
-			const { result } = await run({
-				targets: { acme: recording('server', seen) },
-				allowDevServices: ['minio', 'redis' as never],
-			});
-
-			expect(result).toBeInstanceOf(UnknownDevService);
-			expect((result as Error).message).toContain("'redis'");
 			expect(seen).toEqual([]);
 		});
 	});

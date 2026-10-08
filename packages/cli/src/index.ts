@@ -12,6 +12,7 @@ import {
 } from './build/index';
 import { type ComposeOptions, composeCommand } from './compose/index';
 import { enableDebug, formatError } from './debug';
+import { assertDevServicesFlag } from './deploy/devServices';
 import { deployInitCommand, deployListCommand } from './deploy/init';
 import {
 	stateDiffCommand,
@@ -112,12 +113,25 @@ program
 program
 	.command('setup')
 	.description(
-		'Reconcile declared constructs — containers, databases, buckets, secrets',
+		'Reconcile declared constructs — locally, containers and secrets; on a deployed stage, its providers (deploy.objects)',
 	)
 	.option('--stage <stage>', 'Stage name (default: stages.local)')
 	.option('--force', 'Regenerate secrets even if they exist')
 	.option('--skip-docker', 'Skip starting Docker services')
 	.option('-y, --yes', 'Skip prompts')
+	.option(
+		'--dry-run',
+		'A deployed stage: print what its providers would create or change, and write nothing',
+	)
+	.option('--profile <profile>', "AWS profile for the stage's account")
+	.option(
+		'--rotate-keys',
+		'A deployed stage: issue each provisioned key a successor (the old one is deleted after the next deploy)',
+	)
+	.option(
+		'--retire-old-keys',
+		'A deployed stage: delete a rotated-out key now instead of after the next deploy',
+	)
 	.action(async (options: SetupOptions) => {
 		try {
 			const globalOptions = program.opts();
@@ -525,8 +539,8 @@ program
 	.option('--dry-run', 'Write the files and print the plan; start nothing')
 	.option('--down', "Stop the stage's stack (its volumes are kept)")
 	.option(
-		'--allow-dev-services <list>',
-		"Deployed stage: run MinIO and/or Mailpit (minio,mailpit) for mail and buckets the stage's secrets don't configure. Not production-grade",
+		'--allow-dev-services',
+		"Deployed stage: run the dev service (MinIO, Mailpit) for every bucket and mail the stage doesn't account for. Not production-grade",
 	)
 	.action(async (options: ComposeOptions) => {
 		try {
@@ -885,8 +899,8 @@ program
 		'If the release fails, roll back every app it released, not only the failed ones',
 	)
 	.option(
-		'--allow-dev-services <list>',
-		"Server targets: run MinIO and/or Mailpit (minio,mailpit) for mail and buckets the stage's secrets don't configure. Not production-grade",
+		'--allow-dev-services',
+		"Server targets: run the dev service (MinIO, Mailpit) for every bucket and mail the stage doesn't account for. Not production-grade",
 	)
 	.action(
 		async (options: {
@@ -897,7 +911,7 @@ program
 			json?: boolean;
 			dryRun?: boolean;
 			atomic?: boolean;
-			allowDevServices?: string;
+			allowDevServices?: boolean;
 		}) => {
 			const { deployCli } = await import('./deploy/cli');
 			const globalOptions = program.opts();
@@ -912,9 +926,7 @@ program
 				...(options.json ? { json: true } : {}),
 				...(options.dryRun ? { dryRun: true } : {}),
 				...(options.atomic ? { atomic: true } : {}),
-				...(options.allowDevServices
-					? { allowDevServices: options.allowDevServices }
-					: {}),
+				...(options.allowDevServices ? { allowDevServices: true } : {}),
 			});
 			if (code !== 0) process.exit(code);
 		},
@@ -1324,5 +1336,13 @@ program
 			process.exit(1);
 		}
 	});
+
+// The flag took a list once; say so rather than "too many arguments".
+try {
+	assertDevServicesFlag(process.argv.slice(2));
+} catch (error) {
+	console.error(formatError(error));
+	process.exit(1);
+}
 
 program.parse();

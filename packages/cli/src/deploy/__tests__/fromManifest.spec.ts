@@ -456,7 +456,7 @@ describe('a bucket', () => {
 
 		await expect(run).rejects.toThrow(ExternalServicesNotConfigured);
 		await expect(run).rejects.toThrow(/UPLOADS_URL/);
-		await expect(run).rejects.toThrow(/--allow-dev-services minio/);
+		await expect(run).rejects.toThrow(/with --allow-dev-services\./);
 	});
 
 	it("is the stage's own bucket when its secrets hold one, and runs nothing", async () => {

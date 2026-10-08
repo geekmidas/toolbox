@@ -21,6 +21,8 @@ export interface ComposeAppOptions {
 	telemetry?: boolean;
 	/** `deploy.telemetry`, as it is written in the config. */
 	deployTelemetry?: Record<string, unknown>;
+	/** `deploy.objects`, as it is written in the config. */
+	deployObjects?: Record<string, unknown>;
 	/** The rest of `deploy.compose` — `proxy`, `tls` — as written. */
 	compose?: Record<string, unknown>;
 	/** The deployed stages, `['production']` when absent. */
@@ -115,6 +117,7 @@ export default defineWorkspace({
     ${options.registry ? `registry: ${JSON.stringify(options.registry)},` : ''}
     ${compose ? `compose: ${JSON.stringify(compose)},` : ''}
     ${options.deployTelemetry ? `telemetry: ${JSON.stringify(options.deployTelemetry)},` : ''}
+    ${options.deployObjects ? `objects: ${JSON.stringify(options.deployObjects)},` : ''}
   },
 });
 `,
