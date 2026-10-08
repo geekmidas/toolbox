@@ -7,6 +7,11 @@
  * OIDC role in a deploy job, or `--profile` on a developer's machine. With
  * staging and production in different accounts, each stage's secrets sit
  * beside its infrastructure, and a staging role cannot read production's.
+ *
+ * Written in the Intelligent-Tiering tier: a stage under 4 KB stays a free
+ * standard parameter, a larger one becomes advanced (up to 8 KB). Past 8 KB
+ * the write is refused with {@link StageSecretsTooLarge} before AWS is
+ * called; Secrets Manager (`secretsManager.ts`) holds up to 64 KB.
  */
 
 import {
@@ -14,24 +19,19 @@ import {
 	ParameterNotFound,
 	PutParameterCommand,
 	SSMClient,
-	type SSMClientConfig,
 } from '@aws-sdk/client-ssm';
+import {
+	type AwsStoreOptions,
+	awsClientConfig,
+	serializeWithin,
+} from './awsStore.js';
 import type { SecretsStore } from './store.js';
 import type { StageSecrets } from './types.js';
 
-export interface AwsSecretsStoreOptions {
-	/** The workspace name, which scopes the parameter path. */
-	project: string;
-	region: string;
-	/**
-	 * A named AWS profile, resolved with `fromIni` only. The default chain
-	 * reads AWS_* from the environment first, so exported staging keys would
-	 * win over `--profile prod` and put production's secrets in staging.
-	 */
-	profile?: string;
-	/** For tests: an endpoint such as the AWS emulator. */
-	endpoint?: string;
-}
+export type AwsSecretsStoreOptions = AwsStoreOptions;
+
+/** The most an SSM parameter holds: 8 KB, in the advanced tier. */
+export const SSM_PARAMETER_LIMIT = 8 * 1024;
 
 /** The parameter a stage's secrets are kept in. */
 export function secretsParameterName(project: string, stage: string): string {
@@ -48,16 +48,7 @@ export class AwsSecretsStore implements SecretsStore {
 	private async ssm(): Promise<SSMClient> {
 		if (this.client) return this.client;
 
-		const config: SSMClientConfig = { region: this.options.region };
-		if (this.options.profile) {
-			const { fromIni } = await import('@aws-sdk/credential-providers');
-			config.credentials = fromIni({ profile: this.options.profile });
-		}
-		if (this.options.endpoint) {
-			config.endpoint = this.options.endpoint;
-		}
-
-		this.client = new SSMClient(config);
+		this.client = new SSMClient(await awsClientConfig(this.options));
 		return this.client;
 	}
 
@@ -81,13 +72,21 @@ export class AwsSecretsStore implements SecretsStore {
 	}
 
 	async write(stage: string, secrets: StageSecrets): Promise<void> {
+		const value = serializeWithin(
+			stage,
+			this.name,
+			secrets,
+			SSM_PARAMETER_LIMIT,
+		);
 		const ssm = await this.ssm();
 
 		await ssm.send(
 			new PutParameterCommand({
 				Name: secretsParameterName(this.options.project, stage),
-				Value: JSON.stringify(secrets),
+				Value: value,
 				Type: 'SecureString',
+				// Standard (free) under 4 KB, advanced past it; never the other way.
+				Tier: 'Intelligent-Tiering',
 				Overwrite: true,
 				Description: `gkm secrets for ${this.options.project}/${stage}`,
 			}),

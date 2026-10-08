@@ -491,7 +491,7 @@ async function preflight({
 >): Promise<Preflight> {
 	logger.log('\n🔐 Loading secrets and analyzing environment requirements...');
 
-	// The stage's own store — SSM in its account, for a stage kept there —
+	// The stage's own store — SSM or Secrets Manager in its account, for a stage kept there —
 	// read through the run, which masks every value from here on.
 	const stored = await secretsStore.read();
 	if (!stored) {

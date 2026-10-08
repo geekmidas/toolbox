@@ -40,16 +40,45 @@ claims its project by. Set `GKM_HOME` to move the CLI's home (a CI job, a
 shared runner, a test). A key still at the old `~/.gkm/<folder>/<stage>.key`
 is copied to the new place the first time it is read.
 
-`.gkm/` is gitignored, so the file store cannot serve a deploy from CI. Use
-SSM, or pass your own `SecretsStore`:
+`.gkm/` is gitignored, so the file store cannot serve a deploy from CI. On
+AWS, keep each deployed stage in SSM Parameter Store or Secrets Manager, in
+the stage's own account — or pass your own `SecretsStore`:
 
 ```typescript
 // gkm.config.ts
 export default defineWorkspace({
   // …
   secrets: { store: { provider: 'ssm', region: 'eu-west-1' } },
+  // or: { provider: 'secrets-manager', region: 'eu-west-1', kmsKeyId?: '…' }
 });
 ```
+
+| | SSM (`'ssm'`) | Secrets Manager (`'secrets-manager'`) |
+|---|---|---|
+| Name | `/gkm/<project>/<stage>/secrets` | `gkm/<project>/<stage>/secrets` |
+| Size | 8 KB (free under 4 KB, advanced tier past it) | 64 KB |
+| Cost | free for most stages | monthly per secret, plus API calls |
+| Versions | parameter history | `AWSCURRENT` / `AWSPREVIOUS`, recovery window on delete |
+| KMS | `aws/ssm` | `aws/secretsmanager`, or `kmsKeyId` |
+
+Start with SSM; move a stage to Secrets Manager when its third-party
+credentials outgrow 8 KB — a write past a store's limit fails with
+`StageSecretsTooLarge` before anything is sent — or when you want its
+versioning or your own KMS key. The credentials that manage and deploy a stage
+need:
+
+- **SSM:** `ssm:GetParameter` and `ssm:PutParameter` on
+  `arn:aws:ssm:<region>:<account>:parameter/gkm/<project>/<stage>/secrets`.
+- **Secrets Manager:** `secretsmanager:GetSecretValue`, `PutSecretValue`,
+  `CreateSecret` and `DescribeSecret` on
+  `arn:aws:secretsmanager:<region>:<account>:secret:gkm/<project>/<stage>/secrets-*`.
+- **A customer-managed key** (`kmsKeyId`): `kms:Decrypt`, `kms:Encrypt` and
+  `kms:GenerateDataKey` on it.
+
+Move a stage between stores with `gkm secrets:migrate --stage production --to
+secrets-manager`, then point `secrets.store` at the new one. See
+[The secrets store on AWS](./deployment.md#the-secrets-store-on-aws) for the
+full comparison and the switch, step by step.
 
 Manage the secrets with:
 

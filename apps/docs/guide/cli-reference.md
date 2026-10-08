@@ -506,7 +506,7 @@ a retired API — are in the changelog, not applied by the command.
 gkm secrets:init --stage production
 
 # Set a secret
-gkm secrets:set --stage production --key API_KEY --value "secret"
+gkm secrets:set API_KEY 'secret' --stage production
 
 # Show secrets (masked)
 gkm secrets:show --stage production
@@ -518,8 +518,30 @@ gkm secrets:show --stage production --reveal
 gkm secrets:rotate --stage production --service postgres
 
 # Import from JSON
-gkm secrets:import --stage production --file secrets.json
+gkm secrets:import secrets.json --stage production
+
+# Copy a deployed stage to another store (file, ssm, secrets-manager)
+gkm secrets:migrate --stage production --to secrets-manager
 ```
+
+#### `gkm secrets:migrate`
+
+| Option | Description |
+|---|---|
+| `--stage <stage>` | A deployed stage (required) |
+| `--to <provider>` | The store to copy to: `file`, `ssm` or `secrets-manager` (required) |
+| `--region <region>` | The target's AWS region (default: the configured store's) |
+| `--profile <profile>` | The AWS profile for the stage's account, for both stores |
+| `--force` | Replace a stage the target already holds |
+
+It copies the stage — service passwords, URLs, custom keys — from the store
+`secrets.store` names to the one `--to` names, then tells you the
+`secrets.store` to set. It does not edit `gkm.config.ts` and leaves the
+source as it was. It fails with `MigrateTargetIsSource` when the target is the
+configured store, `MigrateTargetHoldsStage` when the target already has the
+stage (without `--force`), `NoSecretsToMigrate` when the source has none, and
+`UnknownSecretsStoreProvider` for a `--to` that is not a store. See
+[Switching stores](./deployment.md#switching-stores).
 
 #### Guided secrets
 
@@ -563,8 +585,8 @@ Neither runs on the local stage (its keyring is derived) or on AWS (KMS rotates
 the key itself).
 
 Every `secrets:*` command reads and writes the stage's own store: for a
-deployed stage kept in SSM, `secrets:set` writes to SSM and `secrets:show`
-reads from it, with the default AWS credentials (`AWS_PROFILE`, or a deploy
+deployed stage kept in SSM or Secrets Manager, `secrets:set` writes there and
+`secrets:show` reads from it, with the default AWS credentials (`AWS_PROFILE`, or a deploy
 job's role). See
 [the secrets store](./dev-server.md#deployed-stages-the-secrets-store).
 

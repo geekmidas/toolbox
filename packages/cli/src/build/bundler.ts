@@ -173,7 +173,8 @@ export async function bundleServer(
 			'../secrets/encryption'
 		);
 
-		// The stage's own store — SSM for a deployed stage kept there. Outside
+		// The stage's own store — SSM or Secrets Manager for a deployed stage
+		// kept there. Outside
 		// any workspace nothing names one, so it is the file.
 		const store = await loadWorkspaceSettings().then(
 			(workspace) => secretsStoreFor(workspace, stage),

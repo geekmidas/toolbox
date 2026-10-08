@@ -305,7 +305,7 @@ they live in a **store**, set with `secrets.store` in `gkm.config.ts`:
 import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
-  name: 'my-app',  // Scopes the SSM parameter path
+  name: 'my-app',  // Scopes the parameter or secret name
   stages: { local: 'dev', deployed: ['staging', 'prod'] },
   constructs: './constructs/**/*.ts',
 
@@ -319,21 +319,28 @@ export default defineWorkspace({
 | `store` | Where a deployed stage's secrets live |
 |---|---|
 | `'file'` (default) | the encrypted `.gkm/secrets/<stage>.json` on this machine, with its key in `~/.gkm/keys/` (or `$GKM_HOME/keys/`). It cannot serve a deploy from CI while `.gkm/` is gitignored |
-| `{ provider: 'ssm', region }` | one `SecureString` parameter per stage, `/gkm/<name>/<stage>/secrets`, in the AWS account of the active credentials — so with staging and production in different accounts, each stage's secrets sit beside its infrastructure |
+| `{ provider: 'ssm', region }` | one `SecureString` parameter per stage, `/gkm/<name>/<stage>/secrets`, in the AWS account of the active credentials — so with staging and production in different accounts, each stage's secrets sit beside its infrastructure. Up to 8 KB |
+| `{ provider: 'secrets-manager', region, kmsKeyId? }` | one Secrets Manager secret per stage, `gkm/<name>/<stage>/secrets` (the same path with no leading `/`), in the account of the active credentials, encrypted with `aws/secretsmanager` or the `kmsKeyId` given. Up to 64 KB |
 | `{ provider: store }` | any object with a `name`, `read(stage)` and `write(stage, secrets)` |
 
-`gkm init --deploy sst` writes the SSM store with the region you picked.
+`gkm init --deploy sst` writes the SSM store with the region you picked. A
+provider name that is not one of these (`'secretsmanager'`, say) fails the
+config with `UnknownSecretsStoreProvider`; it is never read as the file. For
+choosing between the two AWS stores, and the IAM each needs, see
+[The secrets store on AWS](./deployment.md#the-secrets-store-on-aws).
 
 **Every command reads and writes the stage's store directly.** `gkm
-secrets:set KEY … --stage prod` writes to SSM; `gkm deploy`, `gkm build`,
+secrets:set KEY … --stage prod` writes to the store; `gkm deploy`, `gkm build`,
 `gkm setup` and `gkm exec --stage prod` read from it. There is no copy on this
 machine to keep in step, and nothing to push before a deploy. The local stage
 is always the file, whatever `store` says.
 
-The SSM store uses the default AWS credential chain: `AWS_PROFILE` on a
+Both AWS stores use the default AWS credential chain: `AWS_PROFILE` on a
 laptop — `AWS_PROFILE=acme-prod gkm secrets:set … --stage prod` — and the
-stage's OIDC role in a deploy job. The credentials need `ssm:GetParameter` and `ssm:PutParameter` on
-`arn:aws:ssm:*:*:parameter/gkm/*` in each stage's account.
+stage's OIDC role in a deploy job. A command given `--profile` (such as
+`gkm deploy:github`) uses that profile alone, never `AWS_*` from the
+environment. The permissions each store needs are listed under
+[IAM](./deployment.md#iam-for-the-secrets-store).
 
 #### Secret Resolution Priority
 
