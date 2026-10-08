@@ -278,3 +278,23 @@ export function otlpTelemetryEnv(
 		resolved.sampleRate,
 	);
 }
+
+/**
+ * The sample rate a stage's browsers trace page views at — a public value,
+ * the same rate its servers sample at — or undefined when the stage sends no
+ * telemetry. The local stage keeps every trace.
+ *
+ * Lenient where `resolveStageTelemetry` is strict: a site's client is built
+ * before, and apart from, the deploy that refuses a stage with no provider.
+ */
+export function stageSampleRate(
+	telemetry: Readonly<Record<string, StageTelemetryConfig>> | undefined,
+	stage: string,
+	local: boolean,
+): number | undefined {
+	if (local) return 1;
+	const config = telemetry?.[stage];
+	if (config === false) return undefined;
+	if (config === undefined || config === 'self-hosted') return 1;
+	return sampleRateOf(stage, config.sampleRate);
+}

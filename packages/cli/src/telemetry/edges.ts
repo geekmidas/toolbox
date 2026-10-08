@@ -123,3 +123,30 @@ export function scopeTelemetryEnv(
 		OTEL_SERVICE_NAME: options.serviceName,
 	};
 }
+
+/** Whether the site `siteId` has an edge to a `Telemetry` node. */
+export function siteUsesTelemetry(
+	manifest: ConstructManifest,
+	siteId: string,
+): boolean {
+	const site = manifest[siteId];
+	return site?.kind === 'site' && nodeOf(manifest, site.telemetry) !== undefined;
+}
+
+/**
+ * Whether the client of the surface `surfaceId` propagates trace context:
+ * when a site that calls it has an edge to a `Telemetry` node. One client
+ * serves every site that calls the surface on the host, so one with the
+ * edge turns it on; a site's image generates its own, from its own edge.
+ */
+export function surfaceClientTraced(
+	manifest: ConstructManifest,
+	surfaceId: string,
+): boolean {
+	return Object.entries(manifest).some(
+		([id, d]) =>
+			d.kind === 'site' &&
+			siteUsesTelemetry(manifest, id) &&
+			d.dependencies.some((edge) => edge.target === surfaceId),
+	);
+}
