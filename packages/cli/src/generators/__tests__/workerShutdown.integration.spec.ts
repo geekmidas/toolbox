@@ -16,6 +16,9 @@ import { WorkerGenerator, workerBundleName } from '../WorkerGenerator';
 const URL = `postgres://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/geekmidas`;
 // A schema of this run's own, so nothing another run left behind is pulled.
 const SCHEMA = `worker_shutdown_${randomBytes(4).toString('hex')}`;
+// What the worker is named to Postgres: its own, so nothing else running
+// against the test database is counted.
+const NAME = `ShutdownJobs-${process.pid}`;
 const BROKER = `pgboss://geekmidas:geekmidas@localhost:${POSTGRES_PORT}/geekmidas?schema=${SCHEMA}`;
 
 /**
@@ -131,6 +134,7 @@ async function start(env: Record<string, string>) {
 			...process.env,
 			PORT: String(port),
 			ORDERS_URL: URL,
+			GKM_APP_NAME: NAME,
 			[provideKey('Slow', 'publisherConnectionString')]: BROKER,
 			...env,
 		},
@@ -205,7 +209,7 @@ describe('a worker stopped by SIGTERM', { timeout: 60_000 }, () => {
 		const next = (await boss.send('Slow', { seconds: 0 }))!;
 		// Mid-job: pulled, and holding a database connection.
 		await until(async () => (await stateOf(inFlight)) === 'active');
-		expect(await connectionsNamed('Jobs')).toBeGreaterThan(0);
+		expect(await connectionsNamed(NAME)).toBeGreaterThan(0);
 
 		const signalledAt = Date.now();
 		child.kill('SIGTERM');
@@ -217,7 +221,7 @@ describe('a worker stopped by SIGTERM', { timeout: 60_000 }, () => {
 		expect(await stateOf(inFlight)).toBe('completed');
 		expect(await stateOf(next)).toBe('created');
 		expect(output()).toContain('Worker stopped');
-		await until(async () => (await connectionsNamed('Jobs')) === 0, 5_000);
+		await until(async () => (await connectionsNamed(NAME)) === 0, 5_000);
 
 		await boss.deleteJob('Slow', next);
 	});
