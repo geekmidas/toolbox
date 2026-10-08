@@ -1,5 +1,32 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.75
+
+### Minor Changes
+
+- [#199](https://github.com/geekmidas/toolbox/pull/199) [`a37f147`](https://github.com/geekmidas/toolbox/commit/a37f147e46668548d89c5b29baf81787394928eb) Thanks [@geekmidas](https://github.com/geekmidas)! - :boom: `gkm compose` builds and pushes from CI, and its images no longer embed a stage's credentials
+
+  - **`gkm compose --stage <s> --build --push --tag <t>`** builds every image the stack needs exactly as a deploy of the stage would — each backend and worker at `<t>`, each site at `<t>-<s>` with the stage's public URLs — pushes each to `deploy.registry`, and prints every pushed ref with the digest the registry stored. It starts nothing: no stage lock, no infrastructure, no provisioning or migrations, no `up`, no generated secret kept and nothing recorded in the stage's state, so a CI runner needs only Docker, a registry login and the stage's secrets store. `--push` without `--build`, or with `--pull`, throws `ComposePushNeedsBuild`. `deploy()` takes `buildOnly` for the same run: validate and build only, with no lock (`TargetBuildsNothing` for a target with no build phase). `ComposeDocker` gains `push(stack, ref)`, which returns the pushed digest (`PushDigestUnknown` when docker does not report one).
+  - **`--digests-file <path>`** writes each pushed image as JSON, `{ "api": "<ref>@sha256:…" }`. Given to a pull (`--tag`/`--pull`), each image is pulled, run and recorded at that digest, so a moved tag cannot change a release. A file missing an app throws `ImageDigestMissing`, an entry for another image or tag `ImageDigestMismatch`, a malformed file `ImageDigestsInvalid`, and the flag on a build that neither pushes nor pulls `ComposePinNeedsPull`.
+  - **`RegistryRequired`.** Pushing (`--push`) or pulling (`--tag`, `--pull`) with no `deploy.registry` now fails at `validate`, before anything is built or a registry is asked, instead of naming the images for Docker Hub. A build with no tag still needs no registry.
+  - 🔥 **:boom: Compose images embed no credentials.** A backend's or worker's image built by `gkm compose` no longer carries the stage's environment encrypted through the `gkm_credentials` BuildKit secret: the compose file has no build secrets and no `GKM_CIPHERTEXT_HASH` arg, no `<app>.credentials` file is written beside the stack (one an earlier version left is removed), and the env files no longer hold `GKM_MASTER_KEY`. Each container reads every secret from its own `0600` env file at runtime, as it already could. So the image built at a commit is the same for every stage — two stages built at one commit no longer overwrite each other's `<app>:<tag>` with different credentials, and rotating a secret needs a restart, not a rebuild. Sites keep `<tag>-<stage>`. Dokploy and SST are unchanged.
+  - **An image never runs the workspace root's `build` script.** Every generated Dockerfile — backend, entry, worker, Next.js, Vite, Node SSR — ran `<pm> run --if-present build` at the root of the app's pruned slice. A root `build` of `gkm build`, which `gkm init` scaffolds for a fullstack workspace, built every app the workspace declares inside a slice holding one, and failed with `No package.json for workspace app(s): …`. The workspace packages an app depends on are built by turbo's `^build` alone, so each needs its own `build` script; the app itself is built by `gkm build` or its framework, as before.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.75
+  - @geekmidas/constructs@10.0.0-alpha.75
+  - @geekmidas/db@10.0.0-alpha.75
+  - @geekmidas/envkit@10.0.0-alpha.75
+  - @geekmidas/errors@10.0.0-alpha.75
+  - @geekmidas/logger@10.0.0-alpha.75
+  - @geekmidas/manifest@10.0.0-alpha.75
+  - @geekmidas/schema@10.0.0-alpha.75
+  - @geekmidas/services@10.0.0-alpha.75
+  - @geekmidas/storage@10.0.0-alpha.75
+  - @geekmidas/telescope@10.0.0-alpha.75
+
 ## 10.0.0-alpha.74
 
 ### Minor Changes
