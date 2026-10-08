@@ -156,6 +156,7 @@
     "test-ports",
     "testkit-faker-age",
     "testkit-feature-primitives",
+    "trace-auth-and-db",
     "tranche-2-toolchain",
     "tranche-3-react-ui",
     "trust-single-prompt",
