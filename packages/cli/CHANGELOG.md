@@ -1,5 +1,24 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.79
+
+### Patch Changes
+
+- [#205](https://github.com/geekmidas/toolbox/pull/205) [`d5defa1`](https://github.com/geekmidas/toolbox/commit/d5defa1b7c22c1e652600729a9de8160f323e955) Thanks [@geekmidas](https://github.com/geekmidas)! - Deploys now seed. `gkm compose` (and `gkm deploy --target compose`) and the Dokploy target migrated a stage but never ran its seeds, so reference data such as roles and permissions was missing on every deployed stage. Both now run every seed (`db/<construct>/seeds`) after the migrations and before any app starts — every deploy, every stage, as `gkm seed --help` always said — so seeds must be idempotent upserts. Dokploy runs them in the deploy's sandbox, beside the migrations. A failing seed stops the release with `DeploySeedsFailed`, naming the construct and the seed and keeping the cause. Each run reports `🌱 db/<construct>/seeds: ran N` and `migration.applied` / `seed.ran` events; a dry run lists the seeds it would run. `gkm compose --build --push` still runs neither.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.79
+  - @geekmidas/constructs@10.0.0-alpha.79
+  - @geekmidas/db@10.0.0-alpha.79
+  - @geekmidas/envkit@10.0.0-alpha.79
+  - @geekmidas/errors@10.0.0-alpha.79
+  - @geekmidas/logger@10.0.0-alpha.79
+  - @geekmidas/manifest@10.0.0-alpha.79
+  - @geekmidas/schema@10.0.0-alpha.79
+  - @geekmidas/services@10.0.0-alpha.79
+  - @geekmidas/storage@10.0.0-alpha.79
+  - @geekmidas/telescope@10.0.0-alpha.79
+
 ## 10.0.0-alpha.78
 
 ### Minor Changes

@@ -64,6 +64,7 @@
     "deploy-state-journal",
     "deploy-state-store",
     "deploy-targets",
+    "deploys-run-seeds",
     "dev-app-ports",
     "dev-background-work",
     "dev-discovery-endpoint",
