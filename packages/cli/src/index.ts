@@ -65,8 +65,12 @@ program
 	.option('--monorepo', 'Setup as monorepo with packages/models', false)
 	.option('--api-path <path>', 'API app path in monorepo (default: apps/api)')
 	.option('--pm <manager>', 'Package manager (pnpm, npm, yarn, bun)')
-	.option('--deploy <target>', 'Where it deploys (dokploy, sst, none)')
+	.option('--deploy <target>', 'Where it deploys (dokploy, compose, sst, none)')
 	.option('--region <region>', 'AWS region for an SST deploy (e.g. eu-west-1)')
+	.option(
+		'--registry <registry>',
+		'Container registry for a compose deploy (e.g. ghcr.io/acme)',
+	)
 	.option(
 		'--stages <names>',
 		'Deployed stages, comma-separated (e.g. staging,prod)',
@@ -980,6 +984,35 @@ program
 			}
 			const { deployGithubCommand } = await import('./deploy/github.js');
 			await deployGithubCommand(options);
+		} catch (error) {
+			console.error(formatError(error));
+			process.exit(1);
+		}
+	});
+
+program
+	.command('stages')
+	.description(
+		"The workspace's stages from gkm.config.ts: local, deployed and protected",
+	)
+	.option('--json', 'Print them as JSON')
+	.option(
+		'--github-output',
+		'Write the stages, and which this workflow run builds and deploys, to $GITHUB_OUTPUT',
+	)
+	.option(
+		'--event <name>',
+		'The event to plan for (default: $GITHUB_EVENT_NAME)',
+	)
+	.option('--stage <stage>', 'The stage a workflow_dispatch deploys')
+	.action(async (options) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			const { stagesCommand } = await import('./stages/index.js');
+			await stagesCommand(options);
 		} catch (error) {
 			console.error(formatError(error));
 			process.exit(1);

@@ -210,8 +210,9 @@ gkm init <project-name> [options]
 Options:
   --template, -t <name>  Template: minimal, api, serverless, worker, fullstack
   --yes, -y              Skip prompts and use defaults
-  --deploy <target>      dokploy, sst or none
+  --deploy <target>      dokploy, compose, sst or none
   --region <region>      AWS region for --deploy sst (e.g. eu-west-1)
+  --registry <registry>  Registry for --deploy compose (e.g. ghcr.io/acme)
   --stages <names>       Deployed stages, comma-separated (e.g. staging,prod)
   --protected-stage <n>  Which deployed stage is production
   --local-stage <name>   What gkm dev / exec / test run as (e.g. dev)
@@ -384,6 +385,53 @@ Re-running it converges.
 The profile needs rights to manage IAM in that account; if it lacks them, AWS's
 error names the action. An expired SSO login says to run
 `aws sso login --profile <name>`.
+
+### `gkm stages`
+
+The workspace's stages, as `stages` in `gkm.config.ts` declares them — read
+through the normal config loader (and sandbox), so nothing else has to parse
+TypeScript to learn them:
+
+```bash
+gkm stages                 # a table: each stage and whether it is local, deployed, protected
+gkm stages --json          # {"local":"dev","deployed":["staging","prod"],"protected":["prod"]}
+gkm stages --github-output --event push
+```
+
+`--json` prints that one line on stdout and nothing else; `protected` is `[]`
+when none is. A config without `stages` fails with `InvalidStages`.
+
+`--github-output` is what the [stages action](./deployment.md#deploying-from-github-actions)
+runs. It writes these outputs to the file `$GITHUB_OUTPUT` names, each a string
+`fromJSON()` reads:
+
+| Output | |
+|---|---|
+| `local`, `deployed`, `protected` | the stages, as JSON |
+| `build` | the stages whose images this run builds and pushes |
+| `deploy` | the stages this run deploys |
+| `has-build`, `has-deploy` | `'true'` or `'false'` — a matrix over `[]` is an error on GitHub, so a job skips on these |
+| `aws-region` | the region of an `ssm` or `secrets-manager` `secrets.store`, else `''` |
+
+For each event:
+
+| `--event` | `build` | `deploy` |
+|---|---|---|
+| `push` | every deployed stage | the deployed stages not protected |
+| `release` | none | the protected stages |
+| `workflow_dispatch` | none | `--stage`, which must be a deployed stage |
+| anything else | none | none |
+
+A `workflow_dispatch` with no `--stage` is `DispatchNamesNoStage`, and one
+naming a stage that is not deployed is `UndeclaredStage`; either is printed as
+an `::error::` annotation, and nothing is written.
+
+| Option | |
+|---|---|
+| `--json` | print the stages as JSON |
+| `--github-output` | write the outputs above to `$GITHUB_OUTPUT` (`GithubOutputNotSet` without it) |
+| `--event` | the event to plan for; defaults to `$GITHUB_EVENT_NAME` |
+| `--stage` | the stage a `workflow_dispatch` deploys |
 
 ### `gkm compose`
 
