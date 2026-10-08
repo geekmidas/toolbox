@@ -132,6 +132,53 @@ export function keptPorts(
 	return kept;
 }
 
+/**
+ * Whether a port is published by one of this project's own containers.
+ *
+ * Asked only of a port the probe found taken: our own container on it is the
+ * normal re-run, anything else is a stack that took the port since it was
+ * saved.
+ */
+export type PortOwner = (port: number) => Promise<boolean>;
+
+/** A kept port something else now holds, and where its container moved. */
+export interface PortMove {
+	key: string;
+	from: number;
+	to: number;
+}
+
+/**
+ * The kept ports, among those the plan publishes, that something other than
+ * this project now holds.
+ *
+ * A saved port is only a memory of a free one. Another checkout's stack — the
+ * same project name hashes to the same block — can bind it in the meantime,
+ * and keeping it unchecked fails `docker compose up` with "port is already
+ * allocated". An observed port is ours by definition and is never asked
+ * about; neither is a saved one the plan no longer publishes, which is only
+ * kept for when it returns.
+ */
+export async function heldElsewhere(
+	kept: PortAssignments,
+	keys: readonly string[],
+	observed: PortAssignments,
+	probe: PortProbe,
+	ours: PortOwner,
+): Promise<string[]> {
+	const held: string[] = [];
+
+	for (const key of [...keys].sort()) {
+		const port = kept[key];
+		if (port === undefined || key in observed) continue;
+		if (await probe(port)) continue;
+		if (await ours(port)) continue;
+		held.push(key);
+	}
+
+	return held;
+}
+
 /** The window was exhausted. */
 export class NoPortAvailable extends Error {
 	/** Where the search started. */
@@ -174,18 +221,23 @@ async function nextFree(
  * Binds rather than connects: a refused connection says nothing about whether
  * the port can be *published*, which is the question Docker will ask. Binds on
  * `0.0.0.0` for the same reason — a port free on loopback can still be taken on
- * the address Docker publishes to.
+ * the address Docker publishes to — and then on `127.0.0.1`, because on macOS
+ * a wildcard bind succeeds beside a listener on loopback alone.
  *
  * Inherently racy, and that is acceptable: Docker failing to bind stays the real
  * check. This exists so the common case surfaces as a message at reconcile
  * rather than as a connection failure ten minutes later.
  */
-export function isPortFree(port: number): Promise<boolean> {
+export async function isPortFree(port: number): Promise<boolean> {
+	return (await canBind(port, '0.0.0.0')) && (await canBind(port, '127.0.0.1'));
+}
+
+function canBind(port: number, host: string): Promise<boolean> {
 	return new Promise((resolve) => {
 		const server = createServer();
 
 		server.once('error', () => resolve(false));
 		server.once('listening', () => server.close(() => resolve(true)));
-		server.listen(port, '0.0.0.0');
+		server.listen(port, host);
 	});
 }

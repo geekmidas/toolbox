@@ -1,12 +1,37 @@
-import { createServer } from 'node:net';
-import { describe, expect, it } from 'vitest';
+import { createServer, type Server } from 'node:net';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
 	allocate,
+	heldElsewhere,
 	isPortFree,
 	keptPorts,
 	NoPortAvailable,
 	startingPort,
 } from '../ports';
+
+/** Real listeners, closed after each test. */
+const listening: Server[] = [];
+
+/** Occupy a port the OS picks, the way another stack would. */
+async function occupy(host: string): Promise<number> {
+	const server = createServer();
+	listening.push(server);
+
+	return new Promise<number>((resolve) => {
+		server.listen(0, host, () => {
+			const address = server.address();
+			resolve(typeof address === 'object' && address ? address.port : 0);
+		});
+	});
+}
+
+afterEach(async () => {
+	await Promise.all(
+		listening
+			.splice(0)
+			.map((server) => new Promise((resolve) => server.close(resolve))),
+	);
+});
 
 /** Nothing is listening anywhere. */
 const free = async () => true;
@@ -108,6 +133,18 @@ describe('allocate', () => {
 		expect(ports.postgres).toBe(base + 1);
 	});
 
+	it('steps over a candidate something is really bound to', async () => {
+		// The real probe against a real listener, standing in for the first
+		// candidate: the OS picks the port, so the test holds no fixed one.
+		const base = startingPort('toolbox');
+		const occupied = await occupy('127.0.0.1');
+		const ports = await allocate('toolbox', ['postgres'], {}, (port) =>
+			port === base ? isPortFree(occupied) : free(),
+		);
+
+		expect(ports.postgres).toBe(base + 1);
+	});
+
 	it('is convergent — reconciling twice changes nothing', async () => {
 		const first = await allocate('toolbox', ['postgres', 'minio'], {}, free);
 		const second = await allocate(
@@ -193,6 +230,65 @@ describe('keptPorts', () => {
 	});
 });
 
+describe('heldElsewhere', () => {
+	/** Nothing found bound is ours. */
+	const nobodys = async () => false;
+
+	it('gives up a saved port another stack has bound since', async () => {
+		const occupied = await occupy('0.0.0.0');
+
+		expect(
+			await heldElsewhere(
+				{ postgres: occupied },
+				['postgres'],
+				{},
+				isPortFree,
+				nobodys,
+			),
+		).toEqual(['postgres']);
+	});
+
+	it('keeps a saved port this project’s own container holds', async () => {
+		// The normal re-run: our container is what is listening.
+		const occupied = await occupy('0.0.0.0');
+
+		expect(
+			await heldElsewhere(
+				{ postgres: occupied },
+				['postgres'],
+				{},
+				isPortFree,
+				async (port) => port === occupied,
+			),
+		).toEqual([]);
+	});
+
+	it('keeps a saved port nothing holds', async () => {
+		expect(
+			await heldElsewhere({ postgres: 21111 }, ['postgres'], {}, free, nobodys),
+		).toEqual([]);
+	});
+
+	it('never asks about an observed port or one the plan no longer has', async () => {
+		const occupied = await occupy('0.0.0.0');
+		const asked: number[] = [];
+
+		const held = await heldElsewhere(
+			{ postgres: occupied, minio: occupied + 1 },
+			['postgres'],
+			{ postgres: occupied },
+			async (port) => {
+				asked.push(port);
+				return false;
+			},
+			nobodys,
+		);
+
+		expect(held).toEqual([]);
+		expect(asked).toEqual([]);
+	});
+});
+
 describe('isPortFree', () => {
 	it('reports a free port as free', async () => {
 		// Real bind, no mock — the probe's whole job is to ask the OS.
@@ -215,5 +311,13 @@ describe('isPortFree', () => {
 		} finally {
 			await new Promise((resolve) => server.close(resolve));
 		}
+	});
+
+	it('reports a port held on loopback alone as taken', async () => {
+		// macOS lets a wildcard bind succeed beside a loopback listener, so a
+		// probe of 0.0.0.0 alone calls this port free.
+		const port = await occupy('127.0.0.1');
+
+		expect(await isPortFree(port)).toBe(false);
 	});
 });

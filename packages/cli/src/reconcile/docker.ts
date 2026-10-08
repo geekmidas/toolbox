@@ -5,8 +5,9 @@
  * what a developer runs by hand when something is wrong, so the two cannot
  * disagree, and it keeps Docker out of this package's dependencies.
  *
- * Every call is scoped to the generated compose file. Nothing here can touch a
- * container this project did not generate.
+ * Every call that acts is scoped to the generated compose file. Nothing here
+ * can touch a container this project did not generate; `publisher` only reads
+ * who holds a port.
  */
 
 import { execFile, spawn } from 'node:child_process';
@@ -75,6 +76,24 @@ export const dockerCli: Docker = {
 			return Number.isFinite(port) && port > 0 ? port : undefined;
 		} catch {
 			// Not running, or no such service. Both mean "nothing to reuse".
+			return undefined;
+		}
+	},
+
+	async publisher(port) {
+		try {
+			// Not scoped to the compose file: the point is to name whoever holds
+			// the port, which is usually another project.
+			const { stdout } = await run('docker', [
+				'ps',
+				'--filter',
+				`publish=${port}`,
+				'--format',
+				'{{.Label "com.docker.compose.project"}}',
+			]);
+
+			return stdout.trim().split('\n')[0] || undefined;
+		} catch {
 			return undefined;
 		}
 	},
