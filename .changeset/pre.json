@@ -78,6 +78,7 @@
     "drop-generate-react-query",
     "edge-root-site",
     "encryption-construct",
+    "events-drivers",
     "external-api",
     "faker-lowercase-email",
     "featuretest-delivery",

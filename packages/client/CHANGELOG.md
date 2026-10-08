@@ -1,5 +1,13 @@
 # @geekmidas/client
 
+## 10.0.0-alpha.72
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/constructs@10.0.0-alpha.72
+  - @geekmidas/schema@10.0.0-alpha.72
+
 ## 10.0.0-alpha.71
 
 ### Patch Changes
