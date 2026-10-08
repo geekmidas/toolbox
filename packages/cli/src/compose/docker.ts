@@ -88,6 +88,11 @@ export interface ComposeDocker {
 		to: string,
 	): Promise<void>;
 	/**
+	 * Push an image built here to its registry, and return the digest the
+	 * registry stored it under (`sha256:…`).
+	 */
+	push(stack: StackRef, ref: string): Promise<string>;
+	/**
 	 * What an image resolved to: the registry digest a pulled image has, or
 	 * the content id of one built here and never pushed.
 	 */
@@ -109,6 +114,40 @@ export class ServicePortUnknown extends Error {
 		);
 		this.name = 'ServicePortUnknown';
 	}
+}
+
+/**
+ * Whether `ref` names a registry on this machine's loopback — which the
+ * daemon pulls from and pushes to over plain HTTP by default, and `docker
+ * manifest inspect` reaches only when told `--insecure` (without it, a local
+ * registry's image is reported as no such manifest).
+ */
+export function isLoopbackRegistry(ref: string): boolean {
+	const first = ref.split('/')[0]!;
+	if (!ref.includes('/') || !/[.:]|^localhost$/.test(first)) return false;
+	const host = first.replace(/:\d+$/, '');
+	return host === 'localhost' || /^127(?:\.\d{1,3}){3}$/.test(host);
+}
+
+/** `docker push` finished without saying what digest the registry stored. */
+export class PushDigestUnknown extends Error {
+	constructor(
+		readonly ref: string,
+		readonly output: string,
+	) {
+		super(
+			`Pushed ${ref}, but docker did not say which digest the registry stored ` +
+				`(it said: ${output.trim().split('\n').slice(-3).join(' / ') || 'nothing'}). ` +
+				`Check the push with \`docker buildx imagetools inspect ${ref}\`.`,
+		);
+		this.name = 'PushDigestUnknown';
+	}
+}
+
+/** The digest `docker push` reports last: `<tag>: digest: sha256:… size: …`. */
+export function pushedDigest(output: string): string | undefined {
+	const matches = [...output.matchAll(/digest: (sha256:[0-9a-f]{64})/g)];
+	return matches.at(-1)?.[1];
 }
 
 function compose(stack: StackRef, args: readonly string[]): string[] {
@@ -175,6 +214,7 @@ export const dockerCompose: ComposeDocker = {
 		const { code, stdout, stderr } = await capture('docker', [
 			'manifest',
 			'inspect',
+			...(isLoopbackRegistry(ref) ? ['--insecure'] : []),
 			ref,
 		]);
 		if (code === 0) return { ref, status: 'found' };
@@ -251,6 +291,18 @@ export const dockerCompose: ComposeDocker = {
 			compose(stack, ['cp', `${service}:${from}`, to]),
 			runOptions(stack),
 		);
+	},
+
+	async push(stack, ref) {
+		// What it printed is read back for the digest; its errors still reach
+		// the terminal.
+		const output = await runOutput('docker', ['push', ref], {
+			cwd: stack.cwd,
+			...(stack.signal ? { signal: stack.signal } : {}),
+		});
+		const digest = pushedDigest(output);
+		if (!digest) throw new PushDigestUnknown(ref, output);
+		return digest;
 	},
 
 	async digest(ref) {

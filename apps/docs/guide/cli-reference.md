@@ -399,6 +399,11 @@ Options:
                    every image is checked in the registry first, nothing is built
   --build          Build images from this checkout, tagged with the commit
   --pull           Pull images (at --tag, or latest) rather than build them
+  --push           With --build: push every image to deploy.registry and
+                   start nothing — no lock, provisioning, up or state (CI)
+  --digests-file <path>
+                   With --push: write each image as {"app": "<ref>@sha256:…"}.
+                   With --tag: run each image at the digest the file names
   --dry-run        Write the files and print the plan; start nothing
   --down           Stop the stage's stack (its volumes are kept)
   --allow-dev-services <list>
@@ -406,8 +411,17 @@ Options:
                    for the buckets and mail its secrets don't configure. The
                    local stage always runs both
 
-The same as `gkm deploy --target compose --stage <stage>`, plus --build, --pull
-and --down.
+The same as `gkm deploy --target compose --stage <stage>`, plus --build, --pull,
+--push, --digests-file and --down.
+
+Errors:
+  RegistryRequired        --push, --tag or --pull with no deploy.registry
+                          (the image would be a Docker Hub name)
+  ComposePushNeedsBuild   --push without --build, or with --pull
+  ComposePinNeedsPull     --digests-file on a build that neither pushes nor pulls
+  ImageDigestMissing, ImageDigestMismatch
+                          a digests file with no entry for an app, or one for
+                          another image or tag
 
 Environment:
   GKM_COMPOSE_HTTPS_PORT  Where the edge publishes HTTPS (default 443)
@@ -419,6 +433,10 @@ Stage secrets passed to every backend (never a site):
   OTEL_TRACES_SAMPLER, OTEL_TRACES_SAMPLER_ARG, OTEL_RESOURCE_ATTRIBUTES,
   OTEL_SERVICE_NAME       (defaults to the app's name)
 ```
+
+`gkm compose --stage <stage> --build --push --tag <tag>` is the CI half of a
+release and `gkm compose --stage <stage> --tag <tag>` the server's — see
+[Deploying from CI](./compose.md#deploying-from-ci).
 
 `deploy.compose.logs` runs OpenObserve in the stack and points every backend
 at it, on a loopback port reached through an SSH tunnel — see

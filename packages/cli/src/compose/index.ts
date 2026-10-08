@@ -10,7 +10,8 @@
  */
 
 import { existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import { loadWorkspaceConfig } from '../config';
 import { deploy } from '../deploy/deploy';
 import { parseDevServices } from '../deploy/devServices';
@@ -19,25 +20,34 @@ import type { DeployResult } from '../deploy/types';
 import {
 	type ComposeDeps,
 	type ComposeImage,
+	ComposePinNeedsPull,
+	ComposePushNeedsBuild,
 	type ComposeRun,
 	composeTarget,
 	stackOverrideFile,
 } from '../target/compose/index';
 import { dockerCompose, type StackRef } from './docker';
+import { type ImageDigests, parseDigests, pinnedRef } from './images';
 import { type ComposeStack, composeProject, stackDir } from './stack';
 
 export {
 	ComposeAppsUnhealthy,
+	ComposePinNeedsPull,
+	ComposePushNeedsBuild,
 	EdgePortInvalid,
 	edgePorts,
 	gitRevision,
 	NoGitRevision,
 	RedisClientMissing,
 } from '../target/compose/index';
-export { isMissingManifest } from './docker';
+export { isMissingManifest, PushDigestUnknown } from './docker';
 export {
 	assertImagesExist,
+	ImageDigestMismatch,
+	ImageDigestMissing,
+	ImageDigestsInvalid,
 	ImageTagNotFound,
+	RegistryRequired,
 	RegistryUnreachable,
 	siteTag,
 } from './images';
@@ -77,6 +87,17 @@ export interface ComposeOptions {
 	build?: boolean;
 	/** Pull images, whatever `--tag` says — `latest` when no tag is given. */
 	pull?: boolean;
+	/**
+	 * With `--build`: push every image built to `deploy.registry`, and start
+	 * nothing — no provisioning, no `up`, nothing recorded. What CI runs.
+	 */
+	push?: boolean;
+	/**
+	 * With `--push`, where each pushed image's `<ref>@sha256:…` is written,
+	 * as JSON by app. With `--tag`/`--pull`, the file to read them back from:
+	 * each image is pulled and run at its digest rather than its tag.
+	 */
+	digestsFile?: string;
 	/** Write the files and print the plan; touch nothing else. */
 	dryRun?: boolean;
 	/** Stop the stage's stack. Its volumes are kept. */
@@ -111,12 +132,27 @@ export class ComposeModeConflict extends Error {
 	}
 }
 
+/** Each pushed image as `<ref>@sha256:…`, by app. */
+function pushedDigests(run: ComposeRun): ImageDigests {
+	return Object.fromEntries(
+		Object.entries(run.images)
+			.filter(([, image]) => image.digest)
+			.sort(([a], [b]) => a.localeCompare(b))
+			.map(([app, image]) => [app, pinnedRef(image.ref, image.digest!)]),
+	);
+}
+
 /** `gkm compose`. */
 export async function composeCommand(
 	options: ComposeOptions,
 	deps: Partial<ComposeDeps> = {},
 ): Promise<ComposeResult | undefined> {
 	if (options.build && options.pull) throw new ComposeModeConflict();
+	if (options.push && !options.build) throw new ComposePushNeedsBuild();
+	const pulls = !options.build && (options.pull || options.tag !== undefined);
+	if (options.digestsFile && !options.push && !pulls) {
+		throw new ComposePinNeedsPull();
+	}
 	const allowDevServices = parseDevServices(options.allowDevServices);
 
 	const cwd = resolve(options.cwd ?? process.cwd());
@@ -142,6 +178,18 @@ export async function composeCommand(
 	const mode = options.build ? 'build' : options.pull ? 'pull' : undefined;
 	const tag = options.tag ?? (options.pull ? 'latest' : undefined);
 
+	// A pinned release: each image at the digest its push reported.
+	const pin =
+		options.digestsFile && pulls
+			? {
+					file: options.digestsFile,
+					digests: parseDigests(
+						options.digestsFile,
+						await readFile(resolve(cwd, options.digestsFile), 'utf-8'),
+					),
+				}
+			: undefined;
+
 	const run = deploy({
 		cwd,
 		stage,
@@ -151,6 +199,8 @@ export async function composeCommand(
 			compose: composeTarget({
 				...deps,
 				...(mode ? { mode } : {}),
+				...(options.push ? { push: true } : {}),
+				...(pin ? { pin } : {}),
 				report: (done) => {
 					finished = done;
 				},
@@ -158,6 +208,7 @@ export async function composeCommand(
 		},
 		...(tag ? { tag } : {}),
 		...(options.dryRun ? { dryRun: true } : {}),
+		...(options.push ? { buildOnly: true } : {}),
 		...(allowDevServices.length > 0 ? { allowDevServices } : {}),
 		logger: {
 			info: (message) => console.log(message),
@@ -167,6 +218,20 @@ export async function composeCommand(
 	});
 	const result = await run.result;
 	if (!finished) return undefined;
+
+	if (options.push && !options.dryRun) {
+		const digests = pushedDigests(finished);
+		console.log(`\n✅ Pushed ${Object.keys(digests).length} image(s):`);
+		for (const [app, ref] of Object.entries(digests)) {
+			console.log(`   ${app.padEnd(12)} ${ref}`);
+		}
+		if (options.digestsFile) {
+			const file = resolve(cwd, options.digestsFile);
+			await mkdir(dirname(file), { recursive: true });
+			await writeFile(file, `${JSON.stringify(digests, null, 2)}\n`);
+			console.log(`\n📝 Wrote the digests to ${options.digestsFile}`);
+		}
+	}
 
 	return {
 		stack: finished.stack,

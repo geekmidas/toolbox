@@ -90,3 +90,137 @@ export async function assertImagesExist(
 		.map((lookup) => lookup.ref);
 	if (missing.length > 0) throw new ImageTagNotFound(tag, missing);
 }
+
+/**
+ * A push or a pull with no `deploy.registry` to push to or pull from.
+ *
+ * Without one an image is named `<namespace>/<project>-<app>:<tag>`, which
+ * Docker resolves to Docker Hub — so a release would be pushed to, or pulled
+ * from, somebody else's account. It is never a fallback.
+ */
+export class RegistryRequired extends Error {
+	constructor(
+		/** What needed the registry: `--push`, or a pull (`--tag`/`--pull`). */
+		readonly operation: 'push' | 'pull',
+		/** The ref an image would have had: a Docker Hub name. */
+		readonly ref: string,
+	) {
+		super(
+			`${operation === 'push' ? 'Pushing' : 'Pulling'} images needs a registry, and gkm.config.ts sets no deploy.registry: ` +
+				`'${ref}' would be ${operation === 'push' ? 'pushed to' : 'pulled from'} Docker Hub. ` +
+				`Set deploy.registry (e.g. registry: 'ghcr.io/acme') in gkm.config.ts.` +
+				(operation === 'pull'
+					? ' To run images built here instead, pass --build.'
+					: ''),
+		);
+		this.name = 'RegistryRequired';
+	}
+}
+
+/**
+ * What a push reports, and what a pull can pin to: each app's image as
+ * `<ref>@sha256:…` — the tag it was pushed as, and the exact image, whatever
+ * that tag is later moved to.
+ */
+export type ImageDigests = Record<string, string>;
+
+/** An image pinned to its digest: `<ref>@sha256:…`. */
+export function pinnedRef(ref: string, digest: string): string {
+	return `${ref.split('@')[0]}@${digest}`;
+}
+
+/** A digests file with no entry for an app the stack runs. */
+export class ImageDigestMissing extends Error {
+	constructor(
+		readonly file: string,
+		readonly apps: readonly string[],
+	) {
+		super(
+			`${file} pins no digest for ${apps.join(', ')}. Use the file the ` +
+				`same release's \`gkm compose --build --push --digests-file\` wrote, ` +
+				`or run without --digests-file to pull by tag.`,
+		);
+		this.name = 'ImageDigestMissing';
+	}
+}
+
+/** A digests file entry that is not this app's image. */
+export class ImageDigestMismatch extends Error {
+	constructor(
+		readonly app: string,
+		readonly expected: string,
+		readonly found: string,
+	) {
+		super(
+			`The digests file pins '${app}' to ${found}, but this release runs ` +
+				`${expected}. It was written for another registry, project, stage ` +
+				`or tag; use the file this stage's push of this tag wrote.`,
+		);
+		this.name = 'ImageDigestMismatch';
+	}
+}
+
+/** A digests file that is not a JSON object of app to pinned ref. */
+export class ImageDigestsInvalid extends Error {
+	constructor(
+		readonly file: string,
+		readonly detail: string,
+	) {
+		super(
+			`${file} is not a digests file (${detail}). It should be the JSON ` +
+				`object \`gkm compose --build --push --digests-file\` writes: ` +
+				`{ "api": "<registry>/<image>:<tag>@sha256:…" }.`,
+		);
+		this.name = 'ImageDigestsInvalid';
+	}
+}
+
+/** Parse a digests file's content, checking its shape. */
+export function parseDigests(file: string, content: string): ImageDigests {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(content);
+	} catch (error) {
+		throw new ImageDigestsInvalid(
+			file,
+			error instanceof Error ? error.message : String(error),
+		);
+	}
+	if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+		throw new ImageDigestsInvalid(file, 'not a JSON object');
+	}
+	for (const [app, value] of Object.entries(parsed)) {
+		if (typeof value !== 'string' || !/@sha256:[0-9a-f]{64}$/.test(value)) {
+			throw new ImageDigestsInvalid(
+				file,
+				`'${app}' is not an <image>:<tag>@sha256:… ref`,
+			);
+		}
+	}
+	return parsed as ImageDigests;
+}
+
+/**
+ * Each image pinned to the digest the file names for it.
+ *
+ * @throws {ImageDigestMissing} naming every app the file has no entry for
+ * @throws {ImageDigestMismatch} when an entry is another image or tag
+ */
+export function pinImages<T extends AppImage>(
+	file: string,
+	digests: ImageDigests,
+	images: readonly T[],
+): T[] {
+	const missing = images
+		.filter((image) => !digests[image.app])
+		.map((image) => image.app);
+	if (missing.length > 0) throw new ImageDigestMissing(file, missing);
+
+	return images.map((image) => {
+		const pinned = digests[image.app]!;
+		if (pinned.split('@')[0] !== image.ref) {
+			throw new ImageDigestMismatch(image.app, image.ref, pinned);
+		}
+		return { ...image, ref: pinned };
+	});
+}

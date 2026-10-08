@@ -22,7 +22,6 @@ import {
 	type StackInput,
 	StageSecretMissing,
 	StageSeedMissing,
-	withBuildCredentials,
 } from '../stack';
 import { loadComposeApp, writeComposeApp } from './__helpers__/composeApp';
 
@@ -686,18 +685,12 @@ describe('a worker', () => {
 		expect(dockerfile).not.toContain('EXPOSE');
 	});
 
-	it('embeds its own credentials and is handed the key that decrypts them', () => {
-		const s = withBuildCredentials(stack(), {
-			jobs: { masterKey: 'the-jobs-key', buildArg: 'GKM_CIPHERTEXT_HASH=abc' },
-		});
+	it('embeds nothing of the stage: it reads its env file at runtime', () => {
+		const s = stack();
 
-		expect(s.compose.services.jobs?.build?.secrets).toEqual([
-			{ source: 'jobs_credentials', target: 'gkm_credentials' },
-		]);
-		expect(s.compose.secrets?.jobs_credentials).toEqual({
-			file: './jobs.credentials',
-		});
-		expect(worker(s).env?.GKM_MASTER_KEY).toBe('the-jobs-key');
+		expect(s.compose.services.jobs?.build).not.toHaveProperty('args');
+		expect(s.compose).not.toHaveProperty('secrets');
+		expect(worker(s).env).not.toHaveProperty('GKM_MASTER_KEY');
 	});
 
 	it('is pulled at the tag, with nothing to build', () => {
@@ -897,5 +890,61 @@ describe('the cache', () => {
 
 		expect(s.infra).not.toContain('redis');
 		expect(s.redis).toBeUndefined();
+	});
+});
+
+describe('a stack that only builds (--build --push)', () => {
+	const pushing = () =>
+		stack({
+			stage: 'production',
+			secrets: production(),
+			images: {
+				mode: 'build',
+				tag: 'abc1234',
+				registry: 'registry.example.com/acme',
+			},
+			buildOnly: true,
+		});
+
+	it('builds every image, a backend at the commit and a site at <tag>-<stage>', () => {
+		const s = pushing();
+
+		expect(app(s, 'api').ref).toBe(
+			'registry.example.com/acme/compose-app/compose-app-api:abc1234',
+		);
+		expect(app(s, 'web').ref).toBe(
+			'registry.example.com/acme/compose-app/compose-app-web:abc1234-production',
+		);
+		for (const name of ['api', 'auth', 'web', 'jobs']) {
+			expect(s.compose.services[name]?.build).toBeDefined();
+		}
+	});
+
+	it("still builds the site with the stage's public URLs", () => {
+		expect(pushing().compose.services.web?.build?.args).toEqual({
+			VITE_API_URL: 'https://api.shop.example.com',
+			VITE_AUTH_URL: 'https://auth.shop.example.com',
+		});
+	});
+
+	it('resolves no runtime env, so no backend secret is needed', () => {
+		const s = stack({
+			stage: 'production',
+			// No AUTH_SECRET: a deploy of this stage would refuse it. (Redis's
+			// password is one the stage generates, so a push run has it.)
+			secrets: {
+				...production(),
+				custom: { REDIS_PASSWORD: 'the-redis-password' },
+			},
+			images: { mode: 'build', tag: 'abc1234' },
+			buildOnly: true,
+		});
+
+		expect(app(s, 'api').env).toBeUndefined();
+		expect(app(s, 'auth').env).toBeUndefined();
+		expect(s.workers[0]?.env).toBeUndefined();
+		for (const service of Object.values(s.compose.services)) {
+			expect(service.env_file).toBeUndefined();
+		}
 	});
 });

@@ -133,6 +133,7 @@ export { type DeployIdentity, deployIdentity } from './identity';
 export {
 	NoDeployableApps,
 	RollbackFailed,
+	TargetBuildsNothing,
 	UnknownDeployApps,
 } from './orchestrate';
 export { ProjectNotOwned } from './ownership';

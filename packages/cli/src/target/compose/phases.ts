@@ -27,7 +27,14 @@
  */
 
 import { existsSync } from 'node:fs';
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
+import {
+	chmod,
+	mkdir,
+	readdir,
+	readFile,
+	rm,
+	writeFile,
+} from 'node:fs/promises';
 import { hostname, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
@@ -37,7 +44,12 @@ import {
 	dockerCompose,
 	type StackRef,
 } from '../../compose/docker';
-import { assertImagesExist } from '../../compose/images';
+import {
+	assertImagesExist,
+	type ImageDigests,
+	pinImages,
+	RegistryRequired,
+} from '../../compose/images';
 import {
 	LOGS_SERVICE,
 	logsAccess,
@@ -54,21 +66,15 @@ import {
 	type ComposeStack,
 	composeProject,
 	composeStack,
-	credentialsFile,
 	EDGE_PORT_ENV,
 	envFile,
 	type StackApp,
 	stackDir,
-	withBuildCredentials,
 } from '../../compose/stack';
 import { reportDevServices } from '../../deploy/devServices';
-import {
-	type BuildCredentials,
-	credentialsBuildArg,
-	credentialsFileContent,
-} from '../../deploy/docker.js';
 import type { ResourceChange } from '../../deploy/events';
 import { withGeneratedSecrets } from '../../deploy/generated.js';
+import { imageRef } from '../../deploy/identity.js';
 import { DeployJournal } from '../../deploy/journal';
 import {
 	createEmptyState,
@@ -94,7 +100,6 @@ import {
 import { constructGlobs } from '../../reconcile/workspace.js';
 import { runOutput } from '../../run';
 import { assertStageCredentials } from '../../secrets/credentialSchemas.js';
-import { encryptSecrets } from '../../secrets/encryption.js';
 import { initStageSecrets } from '../../secrets/storage.js';
 import type { StageSecrets } from '../../secrets/types.js';
 import type { NormalizedWorkspace } from '../../workspace/types.js';
@@ -141,6 +146,11 @@ export interface ComposeImage {
 export interface ComposeRun {
 	/** Build the images from this checkout, or pull the ones a tag names. */
 	mode: 'build' | 'pull';
+	/**
+	 * Build and push the images, and nothing else (`--build --push`): no
+	 * provisioning, no container started, nothing recorded.
+	 */
+	push: boolean;
 	stack: ComposeStack;
 	/** The stack's directory, absolute: `.gkm/compose/<stage>`. */
 	dir: string;
@@ -153,15 +163,46 @@ export interface ComposeRun {
 	previous: Record<string, DeployedImage>;
 	/** Every file written, absolute. */
 	files: string[];
-	/**
-	 * Each backend's encrypted credentials, for a build: written beside the
-	 * compose file as the BuildKit secret its image embeds them from.
-	 */
-	credentials: Record<string, BuildCredentials>;
 	/** Each app's image, once built or pulled. */
 	images: Record<string, ComposeImage>;
 	/** Every resource the run touched, or for a dry run would. */
 	changes: ResourceChange[];
+}
+
+/** How a run gets its images, beyond what the tag implies. */
+export interface ComposeRunOptions {
+	/**
+	 * Build or pull whatever the tag says. By default a given tag is pulled
+	 * and no tag builds from the checkout.
+	 */
+	mode?: 'build' | 'pull';
+	/** Push what was built, and start nothing (`--build --push`). */
+	push?: boolean;
+	/** Run each pulled image at the digest a push reported for it. */
+	pin?: { file: string; digests: ImageDigests };
+}
+
+/** `--push` without `--build`: there is nothing built here to push. */
+export class ComposePushNeedsBuild extends Error {
+	constructor() {
+		super(
+			'--push pushes the images this checkout builds, so it needs --build ' +
+				'(and never --pull): gkm compose --stage <stage> --build --push --tag <tag>.',
+		);
+		this.name = 'ComposePushNeedsBuild';
+	}
+}
+
+/** Digests to run by, on a run that pulls nothing. */
+export class ComposePinNeedsPull extends Error {
+	constructor() {
+		super(
+			'--digests-file pins the images a release pulls, so it needs --tag ' +
+				'(or --pull) — or, with --build --push, it is where the pushed digests ' +
+				'are written.',
+		);
+		this.name = 'ComposePinNeedsPull';
+	}
 }
 
 /** A port variable that does not hold a port. */
@@ -267,11 +308,25 @@ export const defaultDeps: ComposeDeps = {
 export async function validateCompose(
 	ctx: ComposeContext,
 	deps: ComposeDeps,
-	forced?: 'build' | 'pull',
+	options: ComposeRunOptions = {},
 ): Promise<ComposeRun> {
 	const { workspace, stage, identity, tag } = ctx;
 	const root = workspace.root;
-	const mode = forced ?? (ctx.tagGiven ? 'pull' : 'build');
+	const mode = options.mode ?? (ctx.tagGiven ? 'pull' : 'build');
+	const push = options.push === true;
+	if (push && mode !== 'build') throw new ComposePushNeedsBuild();
+	if (options.pin && mode !== 'pull') throw new ComposePinNeedsPull();
+
+	// An image pushed or pulled with no registry is a Docker Hub name, which
+	// is somebody else's. Refused before anything is discovered, built or
+	// asked of a registry.
+	const registry = workspace.deploy?.registry;
+	if (!registry && (push || mode === 'pull')) {
+		throw new RegistryRequired(
+			push ? 'push' : 'pull',
+			imageRef(identity, ctx.apps[0] ?? workspace.name, undefined, tag),
+		);
+	}
 
 	// The runnables' edges say which surface reaches which; the manifest the
 	// run discovered has the declarations but not them.
@@ -287,17 +342,17 @@ export async function validateCompose(
 	const { secrets, generated } = await stageSecrets(ctx, manifest);
 
 	// A third party's credentials against their construct's schema, before a
-	// stack is composed with one every app reading it would refuse.
-	await assertStageCredentials({
-		root,
-		patterns: constructGlobs(workspace),
-		manifest,
-		stage,
-		supplied: secrets?.custom ?? {},
-	});
-
-	const masterKeys: Record<string, { masterKey: string; buildArg: string }> =
-		{};
+	// stack is composed with one every app reading it would refuse. A push
+	// runs no app, so it reads none of them.
+	if (!push) {
+		await assertStageCredentials({
+			root,
+			patterns: constructGlobs(workspace),
+			manifest,
+			stage,
+			supplied: secrets?.custom ?? {},
+		});
+	}
 
 	// Where and with what the images are built — only asked when they are.
 	const layout = mode === 'build' ? imageLayout(workspace) : undefined;
@@ -312,14 +367,13 @@ export async function validateCompose(
 		images: {
 			mode,
 			tag,
-			...(workspace.deploy?.registry
-				? { registry: workspace.deploy.registry }
-				: {}),
+			...(registry ? { registry } : {}),
 		},
 		secrets,
 		allowDevServices: ctx.allowDevServices,
 		ports: edgePorts(deps.env),
 		...(layout ? { layout } : {}),
+		...(push ? { buildOnly: true } : {}),
 	});
 
 	// Loud, every run — a dry run included: a deployed stage on Mailpit
@@ -330,33 +384,12 @@ export async function validateCompose(
 	// project's own dependency: a build without it fails deep inside Docker.
 	if (mode === 'build') assertRedisClient(workspace, composed);
 
-	// Each backend built here embeds its environment, encrypted, the way a
-	// Dokploy deploy builds one: handed to the build as a secret, decrypted at
-	// runtime with the key its env file holds.
-	const credentials: Record<string, BuildCredentials> = {};
-	if (mode === 'build') {
-		for (const app of composed.apps) {
-			if (app.kind !== 'rest-api' || !app.env || !app.build) continue;
-			const { encrypted, iv, masterKey } = encryptSecrets(app.env);
-			credentials[app.name] = { encrypted, iv };
-			ctx.secrets.mask(masterKey);
-			masterKeys[app.name] = {
-				masterKey,
-				buildArg: credentialsBuildArg({ encrypted, iv }),
-			};
-		}
-		for (const worker of composed.workers) {
-			if (!worker.env || !worker.build) continue;
-			const { encrypted, iv, masterKey } = encryptSecrets(worker.env);
-			credentials[worker.name] = { encrypted, iv };
-			ctx.secrets.mask(masterKey);
-			masterKeys[worker.name] = {
-				masterKey,
-				buildArg: credentialsBuildArg({ encrypted, iv }),
-			};
-		}
-	}
-	const stack = withBuildCredentials(composed, masterKeys);
+	// No image embeds the stage's secrets: a backend reads them at runtime
+	// from its env file, so one image built at a commit runs on every stage.
+	// A pinned release runs each image at the digest its push reported.
+	const stack = options.pin
+		? withPinnedImages(composed, options.pin.file, options.pin.digests)
+		: composed;
 
 	// A release is all of its images or none of them. A dry run asks nothing,
 	// so it can be run without a registry login.
@@ -386,8 +419,10 @@ export async function validateCompose(
 	}
 	// What each app ran before this release: its current release, by the same
 	// record the Dokploy target keeps, so a rollback reads one shape for both.
+	// A push changes no stage, so it reads none of its state either.
+	const recorded = push ? undefined : await ctx.state.read(stage);
 	const previous = Object.fromEntries(
-		Object.entries((await ctx.state.read(stage))?.state.releases ?? {}).map(
+		Object.entries(recorded?.state.releases ?? {}).map(
 			([name, releases]): [string, DeployedImage] => {
 				const { ref, tag, digest } = releases.current;
 				return [
@@ -400,6 +435,7 @@ export async function validateCompose(
 
 	return {
 		mode,
+		push,
 		stack,
 		dir,
 		ref: {
@@ -414,7 +450,6 @@ export async function validateCompose(
 		generated,
 		previous,
 		files: [],
-		credentials,
 		images: {},
 		changes: [],
 	};
@@ -499,6 +534,30 @@ async function stageSecrets(
 	return { secrets, generated };
 }
 
+/**
+ * The stack with each app's and worker's image pinned to the digest the file
+ * names: the refs it is checked, pulled and recorded by, and the image each
+ * compose service runs.
+ */
+function withPinnedImages(
+	stack: ComposeStack,
+	file: string,
+	digests: ImageDigests,
+): ComposeStack {
+	const apps = pinImages(file, digests, stack.apps);
+	const workers = pinImages(file, digests, stack.workers);
+	const services = { ...stack.compose.services };
+	for (const image of [...apps, ...workers]) {
+		services[image.name] = { ...services[image.name]!, image: image.ref };
+	}
+	return {
+		...stack,
+		apps,
+		workers,
+		compose: { ...stack.compose, services },
+	};
+}
+
 // ============================================================================
 // plan (dry run)
 // ============================================================================
@@ -517,14 +576,14 @@ export async function planCompose(
 			`🔑 "${ctx.stage}" has no ${run.generated.join(', ')} yet; this dry run used values it did not keep.`,
 		);
 	}
-	run.files = await writeStack(ctx.cwd, run.dir, run.stack, run.credentials);
+	run.files = await writeStack(ctx.cwd, run.dir, run.stack);
 	printPlan(ctx, run);
 
 	const planned = (change: ResourceChange) => {
 		run.changes.push(change);
 		ctx.emit({ type: 'resource.planned', ...change });
 	};
-	for (const service of run.stack.infra) {
+	for (const service of run.push ? [] : run.stack.infra) {
 		planned({
 			key: `service:${service}`,
 			resourceType: 'service',
@@ -538,6 +597,7 @@ export async function planCompose(
 			action: run.mode === 'build' ? 'build' : 'reuse',
 			id: app.ref,
 		});
+		if (run.push) continue;
 		planned({
 			key: `service:${app.name}`,
 			resourceType: 'service',
@@ -551,13 +611,20 @@ export async function planCompose(
 			action: run.mode === 'build' ? 'build' : 'reuse',
 			id: worker.ref,
 		});
+		if (run.push) continue;
 		planned({
 			key: `service:${worker.name}`,
 			resourceType: 'service',
 			action: run.previous[worker.name] ? 'reuse' : 'create',
 		});
 	}
-	planned({ key: 'service:caddy', resourceType: 'service', action: 'ensure' });
+	if (!run.push) {
+		planned({
+			key: 'service:caddy',
+			resourceType: 'service',
+			action: 'ensure',
+		});
+	}
 }
 
 // ============================================================================
@@ -575,6 +642,8 @@ export async function provisionCompose(
 	deps: ComposeDeps,
 ): Promise<void> {
 	const { stack, ref } = run;
+	// A push provisions nothing; its files are written where it builds.
+	if (run.push) return;
 
 	if (run.generated.length > 0 && run.secrets) {
 		await ctx.secrets.write(run.secrets);
@@ -583,7 +652,7 @@ export async function provisionCompose(
 		);
 	}
 
-	run.files = await writeStack(ctx.cwd, run.dir, stack, run.credentials);
+	run.files = await writeStack(ctx.cwd, run.dir, stack);
 	printPlan(ctx, run);
 
 	if (stack.infra.length > 0) {
@@ -701,6 +770,12 @@ export async function buildCompose(
 	const images = [...stack.apps, ...stack.workers];
 	const apps = images.map((image) => image.app);
 
+	// Nothing was provisioned, so nothing has written the files it builds from.
+	if (run.push) {
+		run.files = await writeStack(ctx.cwd, run.dir, stack);
+		printPlan(ctx, run);
+	}
+
 	if (run.mode === 'build') {
 		ctx.logger.info('\n🐳 Building images…');
 		await deps.docker.build(ref, apps);
@@ -709,10 +784,17 @@ export async function buildCompose(
 		await deps.docker.pull(ref, apps);
 	}
 
-	// What each tag resolved to: the registry's digest for a pulled image, or
-	// — for one built here and never pushed — its content id.
+	if (run.push) ctx.logger.info('\n📤 Pushing images…');
+
+	// What each tag resolved to: the registry's digest for a pushed or pulled
+	// image, or — for one built here and never pushed — its content id.
 	for (const image of images) {
-		const digest = await deps.docker.digest(image.ref);
+		const digest = run.push
+			? await deps.docker.push(ref, image.ref)
+			: await deps.docker.digest(image.ref);
+		if (run.push) {
+			ctx.logger.info(`   ${image.app.padEnd(12)} ${image.ref}@${digest}`);
+		}
 		run.images[image.app] = {
 			ref: image.ref,
 			tag: image.tag,
@@ -747,6 +829,8 @@ export async function releaseCompose(
 	deps: ComposeDeps,
 ): Promise<void> {
 	const { stack, ref } = run;
+	// A push starts nothing and records nothing: a stage runs what it pulls.
+	if (run.push) return;
 
 	ctx.logger.info('\n🚀 Starting the stack…');
 	await deps.docker.up(ref);
@@ -845,6 +929,7 @@ export async function verifyCompose(
 	deps: ComposeDeps,
 ): Promise<void> {
 	const { stack } = run;
+	if (run.push) return;
 	const ca = stack.local
 		? await readFile(caFile(run), 'utf-8').catch(() => undefined)
 		: undefined;
@@ -1079,7 +1164,6 @@ async function writeStack(
 	root: string,
 	dir: string,
 	stack: ComposeStack,
-	credentials: Readonly<Record<string, BuildCredentials>> = {},
 ): Promise<string[]> {
 	await mkdir(dir, { recursive: true, mode: 0o700 });
 	await chmod(dir, 0o700);
@@ -1098,26 +1182,25 @@ async function writeStack(
 		if (app.env)
 			await write(join(dir, `${app.name}.env`), envFile(app.env), 0o600);
 	}
-	if (stack.logs) {
+	// A stack that only builds reads no env file, so none is written.
+	if (stack.logs && stack.compose.services[LOGS_SERVICE]?.env_file) {
 		await write(
 			join(dir, `${LOGS_SERVICE}.env`),
 			envFile(stack.logs.env),
 			0o600,
 		);
 	}
-	if (stack.redis) {
+	if (stack.redis && stack.compose.services[REDIS_SERVICE]?.env_file) {
 		await write(
 			join(dir, `${REDIS_SERVICE}.env`),
 			envFile(stack.redis.env),
 			0o600,
 		);
 	}
-	for (const [name, payload] of Object.entries(credentials)) {
-		await write(
-			join(dir, credentialsFile(name)),
-			credentialsFileContent(payload),
-			0o600,
-		);
+	// Images no longer embed a stage's credentials. The ciphertexts an older
+	// gkm left beside the compose file for them to embed are removed.
+	for (const entry of await readdir(dir)) {
+		if (entry.endsWith('.credentials')) await rm(join(dir, entry));
 	}
 	for (const [path, content] of Object.entries(stack.dockerfiles)) {
 		await write(join(root, path), content);

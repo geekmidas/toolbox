@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { ComposeDocker, ImageLookup, StackRef } from '../../docker';
 
 /**
@@ -43,11 +44,20 @@ export function fakeDocker(options: { registry?: readonly string[] } = {}) {
 		async copyOut(_stack, service, from) {
 			calls.push({ op: 'copyOut', args: [service, from] });
 		},
+		async push(_stack, ref) {
+			calls.push({ op: 'push', args: ref });
+			return fakeDigest(ref);
+		},
 		async digest(ref) {
 			return `sha256:${ref.length.toString(16).padStart(4, '0')}`;
 		},
 	};
 	return { docker, calls, ops: () => calls.map((call) => call.op) };
+}
+
+/** The digest the fake registry stores a pushed `ref` under: 64 hex. */
+export function fakeDigest(ref: string): string {
+	return `sha256:${createHash('sha256').update(ref).digest('hex')}`;
 }
 
 /** A probe every app answers 200 to, recorded beside docker's calls. */

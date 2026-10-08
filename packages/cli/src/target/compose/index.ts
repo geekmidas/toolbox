@@ -19,6 +19,9 @@
  *   digest in the stage's state
  * - `verify`: each app asked through Caddy over HTTPS
  *
+ * With `push` (`gkm compose --build --push`), run with `buildOnly`, it builds
+ * every image and pushes it to `deploy.registry`, and does nothing else.
+ *
  * `gkm compose` is this target with a few more switches (`--build`, `--pull`,
  * `--down`), run through the same `deploy()`.
  */
@@ -29,6 +32,7 @@ import {
 	buildCompose,
 	type ComposeDeps,
 	type ComposeRun,
+	type ComposeRunOptions,
 	composeResult,
 	defaultDeps,
 	planCompose,
@@ -47,7 +51,10 @@ export {
 export {
 	type ComposeDeps,
 	type ComposeImage,
+	ComposePinNeedsPull,
+	ComposePushNeedsBuild,
 	type ComposeRun,
+	type ComposeRunOptions,
 	EdgePortInvalid,
 	edgePorts,
 	gitRevision,
@@ -56,12 +63,9 @@ export {
 	stackOverrideFile,
 } from './phases';
 
-export interface ComposeTargetOptions extends Partial<ComposeDeps> {
-	/**
-	 * Build or pull whatever the tag says. By default a given tag is pulled
-	 * and no tag builds from the checkout.
-	 */
-	mode?: 'build' | 'pull';
+export interface ComposeTargetOptions
+	extends Partial<ComposeDeps>,
+		ComposeRunOptions {
 	/** Handed the finished run — `gkm compose` prints and returns from it. */
 	report?: (run: ComposeRun) => void;
 }
@@ -70,7 +74,7 @@ export interface ComposeTargetOptions extends Partial<ComposeDeps> {
 export function composeTarget(
 	options: ComposeTargetOptions = {},
 ): DeployTarget<undefined, ComposeRun> {
-	const { mode, report, ...given } = options;
+	const { mode, push, pin, report, ...given } = options;
 	const deps: ComposeDeps = { ...defaultDeps, ...given };
 
 	return defineTarget<undefined, ComposeRun>({
@@ -88,7 +92,12 @@ export function composeTarget(
 		credentials: [],
 		// Built from the checkout, an image is named after its commit.
 		tag: ({ cwd }) => deps.revision(cwd),
-		validate: (ctx) => validateCompose(ctx, deps, mode),
+		validate: (ctx) =>
+			validateCompose(ctx, deps, {
+				...(mode ? { mode } : {}),
+				...(push ? { push } : {}),
+				...(pin ? { pin } : {}),
+			}),
 		plan: (ctx, run) => planCompose(ctx, run),
 		provision: (ctx, run) => provisionCompose(ctx, run, deps),
 		build: (ctx, run) => buildCompose(ctx, run, deps),

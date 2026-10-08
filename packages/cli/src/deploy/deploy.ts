@@ -67,6 +67,12 @@ export interface DeployInput {
 	 */
 	dryRun?: boolean;
 	/**
+	 * Validate and build only: the target's images built — and pushed, where
+	 * it pushes them — with no lock taken and nothing provisioned, released,
+	 * verified or recorded. `gkm compose --build --push` runs this way.
+	 */
+	buildOnly?: boolean;
+	/**
 	 * When a release or its verification fails, roll back every app the run
 	 * released rather than only the ones that failed — on a target that can
 	 * roll back. For apps that must move together.
@@ -218,6 +224,7 @@ export function deploy(input: DeployInput): DeployRun {
 		credentials:
 			input.credentials ?? storedCredentials({ home: input.home ?? gkmHome() }),
 		dryRun: input.dryRun ?? false,
+		...(input.buildOnly ? { buildOnly: true } : {}),
 		home: input.home ?? gkmHome(),
 		redactor,
 		...(input.signal ? { signal: input.signal } : {}),

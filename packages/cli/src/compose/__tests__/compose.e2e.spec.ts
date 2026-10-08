@@ -58,6 +58,10 @@ import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
+import { loadWorkspaceSettings } from '../../config';
+import { FileSecretsStore } from '../../secrets/file';
+import { keystoreProject } from '../../secrets/keystore';
+import { initStageSecrets } from '../../secrets/storage';
 import { writeComposeApp } from './__helpers__/composeApp';
 
 const RUN = process.env.GKM_E2E === '1';
@@ -163,6 +167,10 @@ async function dependOnThisCheckout(
 				private: true,
 				type: 'module',
 				packageManager: 'pnpm@10.30.1',
+				// What \`gkm init\` scaffolds for a fullstack workspace. An image's
+				// slice holds one app, so it must never run this: it builds
+				// every app the workspace declares.
+				scripts: { build: 'gkm build' },
 				dependencies: {
 					...Object.fromEntries(
 						[
@@ -792,3 +800,302 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 		},
 	);
 }
+
+/**
+ * CI's half and the server's half of a release, through a real registry:
+ * `gkm compose --build --push --tag t1` builds every image and pushes it,
+ * starting nothing; `gkm compose --tag t1` then pulls exactly those images
+ * and runs them, healthy.
+ *
+ * And one backend image for every stage: no image embeds a stage's
+ * credentials, so the API image pushed once runs with the development env
+ * file and with the production one, and each container reads its own
+ * stage's secret.
+ */
+describe.runIf(RUN)(
+	'gkm compose --build --push, then --tag, through a registry',
+	{ timeout: 60_000 },
+	() => {
+		const name = `compose-push-${randomBytes(3).toString('hex')}`;
+		const project = `${name}-development`;
+		const registryName = `gkm-e2e-registry-${randomBytes(3).toString('hex')}`;
+		/** Each stage's value of the API's one third-party credential. */
+		const stamps = {
+			development: `dev-${randomBytes(4).toString('hex')}`,
+			production: `prod-${randomBytes(4).toString('hex')}`,
+		};
+		let dir: string;
+		let home: string;
+		let registry: string;
+		let pushed = '';
+		let pulled = '';
+		let digests: Record<string, string> = {};
+		const containers: string[] = [];
+
+		const file = () =>
+			join(dir, '.gkm', 'compose', 'development', 'docker-compose.yml');
+		const gkm = (args: readonly string[], env: Record<string, string> = {}) =>
+			exec(process.execPath, [CLI, ...args], {
+				cwd: dir,
+				env: childEnv({ GKM_HOME: home, ...env }),
+			});
+		const ref = (app: string, tag = 't1') =>
+			`${registry}/${name}/${name}-${app}:${tag}`;
+
+		beforeAll(async () => {
+			if (!existsSync(DIST)) {
+				throw new Error(
+					`The CLI is not built (${DIST}). Run \`npx tsdown --config ./tsdown.config.ts\` from the repo root first.`,
+				);
+			}
+
+			// A registry of its own, on loopback — which Docker pushes to over
+			// plain HTTP without being told to.
+			const port = await freePort();
+			await exec('docker', [
+				'run',
+				'-d',
+				'--rm',
+				'--name',
+				registryName,
+				'-p',
+				`127.0.0.1:${port}:5000`,
+				'registry:2',
+			]);
+			registry = `localhost:${port}`;
+
+			dir = realpathSync(await createTempDir('gkm-compose-push-'));
+			home = realpathSync(await createTempDir('gkm-compose-push-home-'));
+			writeComposeApp(dir, { name, registry });
+			// A secret the API reads at runtime, and an endpoint that says it.
+			writeFileSync(
+				join(dir, 'constructs', 'stamp.ts'),
+				`import { Credential } from '@geekmidas/constructs/credential';
+import { z } from 'zod';
+
+export const stamp = new Credential('Stamp', {
+  schema: z.object({ value: z.string() }),
+});
+`,
+			);
+			writeFileSync(
+				join(dir, 'apps', 'api', 'endpoints', 'stamp.ts'),
+				`import { z } from 'zod';
+import { api } from '../../../constructs/api.js';
+import { stamp } from '../../../constructs/stamp.js';
+
+export const readStamp = api
+  .get('/stamp')
+  .dependsOn([stamp])
+  .output(z.object({ value: z.string() }))
+  .handle(async ({ services }) => ({ value: services.stamp.value }));
+`,
+			);
+			await dependOnThisCheckout(dir, name);
+			const store = new FileSecretsStore(
+				dir,
+				keystoreProject(await loadWorkspaceSettings(dir), home),
+			);
+			for (const [stage, value] of Object.entries(stamps)) {
+				await store.write(stage, {
+					...initStageSecrets(stage),
+					custom: { STAMP_CREDENTIALS: JSON.stringify({ value }) },
+				});
+			}
+
+			await exec('pnpm', ['install', '--lockfile-only'], { cwd: dir });
+			const git = childEnv({
+				GIT_AUTHOR_NAME: 'gkm',
+				GIT_AUTHOR_EMAIL: 'gkm@example.com',
+				GIT_COMMITTER_NAME: 'gkm',
+				GIT_COMMITTER_EMAIL: 'gkm@example.com',
+			});
+			await exec('git', ['init', '-q'], { cwd: dir, env: git });
+			await exec('git', ['add', '-A'], { cwd: dir, env: git });
+			await exec('git', ['commit', '-q', '-m', 'init'], {
+				cwd: dir,
+				env: git,
+			});
+
+			// CI's half: build and push, start nothing.
+			pushed = await gkm([
+				'compose',
+				'--stage',
+				'development',
+				'--build',
+				'--push',
+				'--tag',
+				't1',
+				'--digests-file',
+				'digests.json',
+			]);
+			digests = JSON.parse(readFileSync(join(dir, 'digests.json'), 'utf-8'));
+
+			// Nothing of the build left on this machine: the server's half has
+			// to pull every image from the registry.
+			await exec('docker', [
+				'image',
+				'rm',
+				'-f',
+				...['api', 'auth', 'jobs'].map((app) => ref(app)),
+				ref('web', 't1-development'),
+			]);
+
+			const https = await freePort();
+			const http = await freePort();
+			pulled = await gkm(['compose', '--stage', 'development', '--tag', 't1'], {
+				GKM_COMPOSE_HTTPS_PORT: String(https),
+				GKM_COMPOSE_HTTP_PORT: String(http),
+			});
+		}, BUILD_TIMEOUT);
+
+		afterAll(async () => {
+			if (process.env.GKM_E2E_KEEP === '1') {
+				console.log(`Kept ${project} and ${registryName} in ${dir}`);
+				return;
+			}
+			for (const container of containers) {
+				await exec('docker', ['rm', '-f', container]).catch(() => {});
+			}
+			if (dir && existsSync(file())) {
+				await exec('docker', [
+					'compose',
+					'-p',
+					project,
+					'-f',
+					file(),
+					'down',
+					'--volumes',
+					'--remove-orphans',
+				]).catch(() => {});
+			}
+			if (registry) {
+				const images = await exec('docker', [
+					'images',
+					'--quiet',
+					'--filter',
+					`reference=${registry}/${name}/*`,
+				]).catch(() => '');
+				const ids = [...new Set(images.split('\n').filter(Boolean))];
+				if (ids.length > 0) {
+					await exec('docker', ['image', 'rm', '-f', ...ids]).catch(() => {});
+				}
+			}
+			await exec('docker', ['rm', '-f', registryName]).catch(() => {});
+			if (dir) await cleanupDir(dir);
+			if (home) await cleanupDir(home);
+		}, 5 * 60_000);
+
+		it('pushed every image with the digest the registry stored, and started nothing', async () => {
+			expect(Object.keys(digests).sort()).toEqual([
+				'api',
+				'auth',
+				'jobs',
+				'web',
+			]);
+			expect(digests.api).toMatch(
+				new RegExp(
+					`^${ref('api').replace(/[.]/g, '\\.')}@sha256:[0-9a-f]{64}$`,
+				),
+			);
+			// The site at <tag>-<stage>, with the stage's public URLs in it.
+			expect(digests.web).toContain(`${name}-web:t1-development@sha256:`);
+			for (const pinned of Object.values(digests)) {
+				expect(pushed).toContain(pinned);
+			}
+			// Nothing was provisioned, started or recorded by the push.
+			expect(pushed).not.toContain('is running');
+			expect(pushed).not.toContain('Creating databases');
+			// The registry has each one.
+			const catalog = await fetch(`http://${registry}/v2/_catalog`).then(
+				(r) => r.json() as Promise<{ repositories: string[] }>,
+			);
+			expect(catalog.repositories.sort()).toEqual(
+				['api', 'auth', 'jobs', 'web'].map((app) => `${name}/${name}-${app}`),
+			);
+		});
+
+		it('pulled exactly the pushed images, and they came up healthy', async () => {
+			expect(pulled).toContain(`${project} is running`);
+			for (const app of ['api', 'auth', 'web', 'jobs']) {
+				expect(pulled).toContain(`✓ ${app}`);
+			}
+
+			const { state } = JSON.parse(
+				readFileSync(join(dir, '.gkm', 'deploy-development.json'), 'utf-8'),
+			);
+			for (const [app, pinned] of Object.entries(digests)) {
+				expect(
+					`${state.releases[app].current.ref}@${state.releases[app].current.digest}`,
+				).toBe(pinned);
+			}
+		});
+
+		it('runs the one API image on every stage, each with its own secrets', async () => {
+			// Production's env file, written as a deploy of it would write it.
+			await gkm([
+				'compose',
+				'--stage',
+				'production',
+				'--tag',
+				't1',
+				'--dry-run',
+			]);
+			const image = digests.api!;
+			const env = (stage: string) =>
+				join(dir, '.gkm', 'compose', stage, 'api.env');
+
+			// Nothing of any stage's is in the image.
+			const history = await exec('docker', [
+				'history',
+				'--no-trunc',
+				'--format',
+				'{{.CreatedBy}}',
+				image,
+			]);
+			expect(history).not.toMatch(/GKM_CIPHERTEXT_HASH=[0-9a-f]/);
+			const environment = await exec('docker', [
+				'image',
+				'inspect',
+				'--format',
+				'{{json .Config.Env}}',
+				image,
+			]);
+			expect(environment).not.toContain('STAMP_CREDENTIALS');
+			expect(environment).not.toContain('GKM_MASTER_KEY');
+
+			for (const [stage, value] of Object.entries(stamps)) {
+				const container = (
+					await exec('docker', [
+						'run',
+						'-d',
+						'--env-file',
+						env(stage),
+						'-p',
+						'127.0.0.1::3000',
+						image,
+					])
+				).trim();
+				containers.push(container);
+				const port = (await exec('docker', ['port', container, '3000']))
+					.trim()
+					.split('\n')[0]!
+					.split(':')
+					.pop();
+
+				let body: unknown;
+				for (let attempt = 0; attempt < 60; attempt++) {
+					const response = await fetch(`http://127.0.0.1:${port}/stamp`).catch(
+						() => undefined,
+					);
+					if (response?.ok) {
+						body = await response.json();
+						break;
+					}
+					await new Promise((resolve) => setTimeout(resolve, 500));
+				}
+				expect(body).toEqual({ value });
+			}
+		});
+	},
+);

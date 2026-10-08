@@ -7,6 +7,7 @@ front serving every app over HTTPS.
 ```bash
 gkm compose --stage development         # the local stage, built from this checkout
 gkm compose --stage production --tag v1.4.0   # the images CI pushed as v1.4.0
+gkm compose --stage production --build --push --tag v1.4.0  # CI: build and push, start nothing
 gkm compose --stage production --down    # stop it (volumes are kept)
 gkm compose --stage preview --allow-dev-services minio,mailpit  # a demo, on dev services
 ```
@@ -87,8 +88,11 @@ tree has changes). `--build` and `--pull` override the default — build when no
 tag is given, pull when one is. `--pull` without `--tag` pulls `latest`.
 
 The registry is `deploy.registry` in `gkm.config.ts` — the same one every
-target pushes to and pulls from; without one, image names have no registry
-prefix.
+target pushes to and pulls from. Without one an image name has no registry
+prefix, and Docker resolves such a name to Docker Hub — so anything that
+pushes or pulls (`--push`, `--tag`, `--pull`) fails at `validate` with
+`RegistryRequired` before anything is built or asked of a registry. A build
+here with no tag needs no registry.
 
 Each run records, per app, the image ref, the tag it ran and the digest that
 tag resolved to (for an image built here and never pushed, its image id) in the
@@ -101,7 +105,7 @@ A site's public URLs (`VITE_API_URL`, `NEXT_PUBLIC_AUTH_URL`) are inlined into
 its bundle when it is built, so one site image serves one stage. A backend
 reads its URLs at runtime, so one backend image serves every stage.
 
-So for a release, CI pushes:
+So for a release, `gkm compose --build --push` pushes:
 
 | App | Image |
 | --- | --- |
@@ -110,6 +114,108 @@ So for a release, CI pushes:
 
 and `gkm compose --stage production --tag v1.4.0` pulls exactly those. A site
 built by `gkm compose` without a tag is tagged `<commit>-<stage>` the same way.
+
+## Deploying from CI
+
+The release is built and pushed where the code is, and pulled where it runs:
+
+```bash
+# the runner: build every image and push it to deploy.registry; start nothing
+gkm compose --stage production --build --push --tag $SHA --digests-file digests.json
+
+# the server: pull exactly those images and run them
+gkm compose --stage production --tag $SHA
+```
+
+`--build --push` builds every image the stack needs exactly as a deploy of the
+stage would — each backend and worker at `<tag>`, each site at
+`<tag>-<stage>` with the stage's public URLs — pushes each to
+`deploy.registry`, and prints every pushed ref with the digest the registry
+stored. Nothing else happens: no stage lock, no infrastructure, no
+provisioning or migrations, no container started, no secret generated and
+kept, nothing recorded in the stage's state. So the runner needs Docker, the
+stage's secrets store (for a site's public URLs) and a `docker login` to the
+registry — no Postgres, no server. `--push` without `--build`, or with
+`--pull`, is `ComposePushNeedsBuild`.
+
+`--digests-file <path>` writes each pushed image as JSON, `{ "api":
+"<ref>@sha256:…" }`. Handed the same file, a pull runs each image at its digest
+rather than its tag, so a tag moved after the push cannot change what is
+released, and the stage's state records the pinned ref:
+
+```bash
+gkm compose --stage production --tag $SHA --digests-file digests.json
+```
+
+A file missing an app is `ImageDigestMissing`, and an entry for another image
+or tag `ImageDigestMismatch` — both before the registry is asked.
+
+### A GitHub Actions workflow
+
+```yaml
+# .github/workflows/deploy.yml
+name: Deploy
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # The stage's secrets store: the site builds read its public URLs.
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-1
+      - run: >-
+          pnpm exec gkm compose --stage production --build --push
+          --tag ${{ github.sha }} --digests-file digests.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests
+          path: digests.json
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: digests
+      - name: Pull and run on the server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: deploy
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /srv/shop && git fetch && git checkout ${{ github.sha }}
+            pnpm install --frozen-lockfile
+            pnpm exec gkm compose --stage production --tag ${{ github.sha }}
+```
+
+The server runs `gkm compose` itself, from a checkout at the same commit:
+provisioning and migrations reach the stack's Postgres on its loopback port. It
+needs a `docker login` to the registry (a read-only token is enough) and the
+stage's secrets store. To pin by digest, copy `digests.json` to the server
+(`scp`, or the action's own file upload) and add `--digests-file digests.json`.
 
 ## Building
 
@@ -122,10 +228,11 @@ runner — and a site by its framework, with its public URLs passed as **build
 args**. A site's container gets no server environment and waits on no
 database.
 
-A backend's environment is embedded in its image encrypted: handed to the
-build as the `gkm_credentials` BuildKit secret (`<app>.credentials`, mode
-`0600`, beside the stack) and decrypted at runtime with the `GKM_MASTER_KEY`
-its env file holds — the way a Dokploy deploy builds one.
+No image embeds anything of a stage. A backend or a worker reads every
+secret at runtime from its own env file (mode `0600`, written by the deploy),
+so the image built at a commit is the same for every stage: the image tested
+on staging is the one production runs, and rotating a secret needs a restart,
+not a rebuild. Only a site differs per stage, by its public URLs.
 
 The generated Dockerfiles are written beside the stack, in
 `.gkm/compose/<stage>/`. The build context is the build root — the directory
@@ -145,7 +252,6 @@ api.env              one env file per backend, mode 0600
 auth.env
 openobserve.env      with deploy.compose.logs: its root login, mode 0600
 redis.env            with a cache: the Redis password, mode 0600
-api.credentials      when building: a backend's encrypted environment, mode 0600
 Dockerfile.api       when building
 caddy-root.crt       the local stage's CA root
 ```
@@ -219,10 +325,10 @@ The local CA's root is copied to `.gkm/compose/<stage>/caddy-root.crt`; point
 
 | Phase | What it does |
 | --- | --- |
-| `validate` | the stack, worked out from the manifest; with a tag, every image looked up in the registry |
+| `validate` | the stack, worked out from the manifest; with `--push` or a tag, `deploy.registry` required; with a tag, every image looked up in the registry |
 | `plan` (`--dry-run`) | the files written, and what a run would build, pull and start — nothing else |
 | `provision` | the stage's generated secrets kept, the files written, the infrastructure started, its databases, roles, grants and migrations applied |
-| `build` | every image built inside Docker — or, with a tag, pulled |
+| `build` | every image built inside Docker — or, with a tag, pulled. With `--push`, each built image pushed, and the run ends here |
 | `release` | `docker compose up --wait --remove-orphans`, and each app's image recorded |
 | `verify` | each app asked through Caddy over HTTPS — an API at `/health`, a site at `/` — with the certificate verified |
 
