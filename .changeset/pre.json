@@ -88,6 +88,7 @@
     "external-api",
     "faker-lowercase-email",
     "featuretest-delivery",
+    "featuretest-loopback-peer",
     "featuretest-services-fixture",
     "fresh-scaffold-tests-run",
     "gkm-compose",
