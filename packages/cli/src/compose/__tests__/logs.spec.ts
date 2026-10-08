@@ -58,6 +58,7 @@ function production(custom: Record<string, string> = {}): StageSecrets {
 		custom: {
 			AUTH_SECRET: 'the-production-signing-secret',
 			ZO_ROOT_USER_PASSWORD: PASSWORD,
+			REDIS_PASSWORD: 'the-redis-password',
 			...custom,
 		},
 	};
@@ -172,7 +173,7 @@ describe('logs: true', () => {
 		const s = stack(true);
 		const service = s.compose.services.openobserve!;
 
-		expect(s.infra).toEqual(['openobserve', 'postgres']);
+		expect(s.infra).toEqual(['openobserve', 'postgres', 'redis']);
 		expect(service.image).toBe(OPENOBSERVE_IMAGE);
 		expect(OPENOBSERVE_IMAGE).toMatch(/:v\d+\.\d+\.\d+$/);
 		expect(service.restart).toBe('unless-stopped');
@@ -263,6 +264,7 @@ describe('logs: true', () => {
 
 		expect(Object.keys(s.compose.services.api?.depends_on ?? {})).toEqual([
 			'postgres',
+			'redis',
 		]);
 	});
 

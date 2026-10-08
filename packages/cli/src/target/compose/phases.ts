@@ -46,6 +46,11 @@ import {
 } from '../../compose/logs';
 import { resolveLogs } from '../../compose/logsConfig';
 import {
+	REDIS_SERVICE,
+	runsRedis,
+	withRedisPassword,
+} from '../../compose/redis';
+import {
 	type ComposeStack,
 	composeProject,
 	composeStack,
@@ -74,6 +79,7 @@ import type { DeployResult } from '../../deploy/types';
 import { ensureDockerignore } from '../../docker/index.js';
 import { imageLayout } from '../../docker/layout.js';
 import { findBuildRoot } from '../../docker/templates.js';
+import { installedFrom } from '../../generators/drivers.js';
 import { migrateDatabases } from '../../migrate/databases.js';
 import { bucketClient, pgClient } from '../../reconcile/clients.js';
 import { primaryPortKey } from '../../reconcile/containers.js';
@@ -320,6 +326,10 @@ export async function validateCompose(
 	// delivers no mail, and one on MinIO keeps its files on one disk.
 	reportDevServices(ctx, composed.devServices);
 
+	// A cache is reached over the Redis wire protocol, and the client is the
+	// project's own dependency: a build without it fails deep inside Docker.
+	if (mode === 'build') assertRedisClient(workspace, composed);
+
 	// Each backend built here embeds its environment, encrypted, the way a
 	// Dokploy deploy builds one: handed to the build as a secret, decrypted at
 	// runtime with the key its env file holds.
@@ -356,6 +366,8 @@ export async function validateCompose(
 			...stack.workers,
 		]);
 	}
+
+	if (stack.redis && !stack.local) ctx.secrets.mask(stack.redis.password);
 
 	// The log UI's root login and the header every backend signs in with:
 	// secrets, unless they are the local stage's fixed ones.
@@ -408,6 +420,43 @@ export async function validateCompose(
 	};
 }
 
+/** A stack whose caches are in Redis, built for an app that has no client. */
+export class RedisClientMissing extends Error {
+	constructor(readonly apps: readonly string[]) {
+		super(
+			`The stack keeps every cache in Redis, and ${apps.join(', ')} ` +
+				`${apps.length === 1 ? 'does' : 'do'} not depend on ioredis, the client ` +
+				'the generated server reaches it with. Add it to the workspace: ' +
+				'pnpm add ioredis',
+		);
+		this.name = 'RedisClientMissing';
+	}
+}
+
+/**
+ * Every backend and worker image built for a stack with a cache can resolve
+ * `ioredis` — listed by its app or a directory above it, the way Node and
+ * the image's install find it.
+ */
+function assertRedisClient(
+	workspace: NormalizedWorkspace,
+	stack: ComposeStack,
+): void {
+	if (!stack.plan.resources.some((r) => r.kind === 'cache')) return;
+
+	const hosts = new Set([
+		...stack.apps.filter((app) => app.kind === 'rest-api').map((a) => a.name),
+		...stack.workers.map((worker) => worker.host),
+	]);
+	const missing = [...hosts]
+		.filter((name) => {
+			const app = workspace.apps[name];
+			return app && !installedFrom(join(workspace.root, app.path), 'ioredis');
+		})
+		.sort();
+	if (missing.length > 0) throw new RedisClientMissing(missing);
+}
+
 /**
  * The stage's secrets — and, for a deployed stage, everything it generates
  * once: its seed, and each declared secret and keyring. Kept only once the
@@ -432,8 +481,16 @@ async function stageSecrets(
 	const withLogs = resolveLogs(ctx.workspace.deploy?.compose?.logs)
 		? withLogsPassword(withSeed.secrets)
 		: { secrets: withSeed.secrets, generated: [] };
-	const secrets = withLogs.secrets;
-	const generated = [...withSeed.generated, ...withLogs.generated];
+	// The stack's Redis password, the same way, where a cache lives in it.
+	const withRedis = runsRedis(manifest, withLogs.secrets.custom ?? {})
+		? withRedisPassword(withLogs.secrets)
+		: { secrets: withLogs.secrets, generated: [] };
+	const secrets = withRedis.secrets;
+	const generated = [
+		...withSeed.generated,
+		...withLogs.generated,
+		...withRedis.generated,
+	];
 	// Read through the store they are masked; made up here, they are not yet.
 	if (secrets.seed) ctx.secrets.mask(secrets.seed);
 	for (const value of Object.values(secrets.custom ?? {})) {
@@ -1045,6 +1102,13 @@ async function writeStack(
 		await write(
 			join(dir, `${LOGS_SERVICE}.env`),
 			envFile(stack.logs.env),
+			0o600,
+		);
+	}
+	if (stack.redis) {
+		await write(
+			join(dir, `${REDIS_SERVICE}.env`),
+			envFile(stack.redis.env),
 			0o600,
 		);
 	}

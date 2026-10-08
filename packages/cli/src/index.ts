@@ -1,13 +1,14 @@
 #!/usr/bin/env -S npx tsx
 
 import { resolve } from 'node:path';
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import pkg from '../package.json';
 import { loginCommand, logoutCommand, whoamiCommand } from './auth';
 import {
 	buildCommand,
 	isMainProvider,
 	UnknownBuildProvider,
+	UnknownCacheBackend,
 } from './build/index';
 import { type ComposeOptions, composeCommand } from './compose/index';
 import { enableDebug, formatError } from './debug';
@@ -34,6 +35,7 @@ import type { SecretServiceName } from './secrets/types';
 import { type SetupOptions, setupCommand } from './setup/index';
 import { type TestOptions, testCommand } from './test/index';
 import { trustCommand } from './trust/index';
+import { isCacheBackend } from './types';
 import { type UpgradeOptions, upgradeCommand } from './upgrade/index';
 
 const program = new Command();
@@ -142,9 +144,18 @@ program
 		'--mark-optional',
 		'Suffix optional env vars with ? in manifest envVars field (e.g. PORT?)',
 	)
+	// Written by the Dockerfiles `gkm compose` generates, whose stack runs its
+	// own Redis: not a choice a project makes, so not in the help.
+	.addOption(
+		new Option(
+			'--cache <backend>',
+			'Register the drivers for this cache backend rather than the target default',
+		).hideHelp(),
+	)
 	.action(
 		async (options: {
 			provider?: string;
+			cache?: string;
 			enableOpenapi?: boolean;
 			production?: boolean;
 			skipBundle?: boolean;
@@ -163,9 +174,13 @@ program
 				) {
 					throw new UnknownBuildProvider(options.provider);
 				}
+				if (options.cache !== undefined && !isCacheBackend(options.cache)) {
+					throw new UnknownCacheBackend(options.cache);
+				}
 
 				await buildCommand({
 					...(options.provider ? { provider: options.provider } : {}),
+					...(options.cache ? { cache: options.cache } : {}),
 					enableOpenApi: options.enableOpenapi || false,
 					production: options.production || false,
 					skipBundle: options.skipBundle || false,

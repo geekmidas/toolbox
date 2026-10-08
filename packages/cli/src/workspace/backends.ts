@@ -15,13 +15,13 @@
 
 import { runtimeOf, type TargetSource } from '../target/runtime.js';
 import {
-	type CacheBackend,
 	DEFAULT_CACHE,
 	DEFAULT_EVENTS,
 	DEFAULT_STORAGE,
 	type EventsBackend,
 	type MainProvider,
 	type StorageBackend,
+	type TargetCacheBackend,
 } from '../types.js';
 
 /**
@@ -50,7 +50,7 @@ export function providerOf(workspace: TargetSource): MainProvider {
  * uses the Upstash protocol, because a backend that differed between the two
  * would be worse than a slower one.
  */
-export function cacheBackendFor(on: MainProvider): CacheBackend {
+export function cacheBackendFor(on: MainProvider): TargetCacheBackend {
 	return DEFAULT_CACHE[on];
 }
 

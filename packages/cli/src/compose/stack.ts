@@ -47,7 +47,7 @@ import { type Plan, type PlannedResource, planFor } from '../reconcile/plan.js';
 import { bucketPolicies } from '../reconcile/provision.js';
 import type { StageSecrets } from '../secrets/types.js';
 import { NoDomainForStage } from '../target/dokploy/domain.js';
-import { DEFAULT_CACHE, DEFAULT_EVENTS } from '../types.js';
+import { DEFAULT_EVENTS } from '../types.js';
 import { appKey } from '../workspace/derive.js';
 import type {
 	NormalizedAppConfig,
@@ -62,6 +62,13 @@ import {
 	stackLogs,
 } from './logs.js';
 import { LOGS_PORT, resolveLogs } from './logsConfig.js';
+import {
+	REDIS_SERVICE,
+	redisService,
+	STACK_CACHE,
+	type StackRedis,
+	stackRedis,
+} from './redis.js';
 
 /** Where a stack's files are written, relative to the workspace root. */
 export function stackDir(stage: string): string {
@@ -187,7 +194,7 @@ export interface StackService {
 		secrets?: { source: string; target: string }[];
 	};
 	restart?: string;
-	command?: string;
+	command?: string | string[];
 	env_file?: { path: string; format: 'raw' }[];
 	environment?: Record<string, string>;
 	ports?: string[];
@@ -239,6 +246,11 @@ export interface ComposeStack {
 	 * backend sends its logs and traces to it.
 	 */
 	logs?: StackLogs;
+	/**
+	 * The stack's Redis, where a declared cache lives in it — every cache
+	 * whose URL the stage's secrets do not set.
+	 */
+	redis?: StackRedis;
 }
 
 /** The stack's MinIO, and what is created in it. */
@@ -376,12 +388,13 @@ export function composeStack(input: StackInput): ComposeStack {
 	const http = input.ports?.http ?? 80;
 
 	// A server target's backends, whatever `deploy.default` says: the stack is
-	// one machine running containers, so the cache is a table in the declared
-	// database and events are pg-boss beside it.
+	// one machine running containers, so events are pg-boss beside the
+	// declared database — and every cache, one declared from that database
+	// included, is in the stack's own Redis.
 	const plan = planFor(manifest, stage, provisionOrder(manifest), {
 		localStage: workspace.stages.local,
 		events: DEFAULT_EVENTS.server,
-		cache: DEFAULT_CACHE.server,
+		cache: STACK_CACHE,
 		// The stack brings its own edge; reconcile's would front the host.
 		edge: false,
 	});
@@ -480,11 +493,16 @@ export function composeStack(input: StackInput): ComposeStack {
 				...(domain ? { domain } : {}),
 			});
 
+	// The caches: in the stack's Redis, unless the stage set a cache's URL —
+	// a managed Redis — and with every one set, there is no Redis to run.
+	const redis = stackRedis({ plan, stage, local, custom });
+
 	const infra = [
 		...plan.containers
 			.filter((c) => !NOT_RUN[c])
 			.filter((c) => c !== 'minio' || services.minio.length > 0)
-			.filter((c) => c !== 'mailpit' || services.mailpit.length > 0),
+			.filter((c) => c !== 'mailpit' || services.mailpit.length > 0)
+			.filter((c) => c !== REDIS_SERVICE || redis !== undefined),
 		...(logs ? [LOGS_SERVICE] : []),
 	].sort();
 
@@ -602,6 +620,9 @@ export function composeStack(input: StackInput): ComposeStack {
 		// Set by hand wins over derived: it is the stage saying what it is.
 		if (custom[key] !== undefined) return custom[key];
 
+		// A cache, in the stack's Redis, by its name on the network.
+		if (owner?.kind === 'cache') return redis?.urls[key];
+
 		// A backend reaches a sibling surface on the compose network; its own
 		// address is the public one, which is what it builds links on. A site
 		// runs in a browser, which has only the public addresses.
@@ -718,6 +739,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		master: credential.master,
 		...(storage ? { storage } : {}),
 		...(logs ? { logs } : {}),
+		...(redis ? { redis } : {}),
 		https,
 		http,
 		composeDir: join(workspace.root, stackDir(stage)),
@@ -754,7 +776,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		dockerfiles[app.build.dockerfile] = appDockerfile(
 			app.name,
 			workspace.apps[app.name]!,
-			{ layout, workspaceRoot: workspace.root, manifest },
+			{ layout, workspaceRoot: workspace.root, manifest, cache: STACK_CACHE },
 		);
 	}
 	for (const worker of workers) {
@@ -762,7 +784,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		dockerfiles[worker.build.dockerfile] = workerDockerfile(
 			{ id: worker.id, name: worker.name, app: worker.host },
 			workspace.apps[worker.host]!,
-			{ layout, workspaceRoot: workspace.root },
+			{ layout, workspaceRoot: workspace.root, cache: STACK_CACHE },
 		);
 	}
 
@@ -781,6 +803,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		...(storage ? { storage } : {}),
 		devServices: local ? [] : devServicesUsed(services),
 		...(logs ? { logs } : {}),
+		...(redis ? { redis } : {}),
 	};
 }
 
@@ -971,6 +994,7 @@ function stackFile(options: {
 	master: string;
 	storage?: StackStorage;
 	logs?: StackLogs;
+	redis?: StackRedis;
 	https: number;
 	http: number;
 	composeDir: string;
@@ -1044,6 +1068,12 @@ function stackFile(options: {
 		// policies from this machine. The apps reach it on the network, and a
 		// browser through a file server's host on the edge.
 		minio.ports = ['127.0.0.1::9000'];
+	}
+
+	// Its own definition rather than reconcile's: `gkm dev`'s Redis is an
+	// open, unbounded scratch store; this one is a production cache.
+	if (services[REDIS_SERVICE] && options.redis) {
+		services[REDIS_SERVICE] = redisService(options.redis);
 	}
 
 	// Started with the infrastructure, but nothing waits on it: an app whose

@@ -20,7 +20,12 @@ import {
 	providedKeyFor,
 	publicEnvFor,
 } from '@geekmidas/manifest';
-import { type CacheBackend, DEFAULT_CACHE, type EventsBackend } from '../types';
+import {
+	type CacheBackend,
+	DEFAULT_CACHE,
+	type EventsBackend,
+	holdsEveryCache,
+} from '../types';
 import { appKey } from '../workspace/derive.js';
 import { rootSite } from '../workspace/rootSite.js';
 import { EDGE_KINDS } from './caddyfile';
@@ -71,6 +76,8 @@ const CACHE_CONTAINERS: Partial<Record<CacheBackend, string>> = {
 	upstash: 'redis-http',
 	// The wire protocol, which is what ElastiCache offers — so dev speaks it too.
 	elasticache: 'redis',
+	// The stack's own Redis: the same container, on the stack's network.
+	redis: 'redis',
 };
 
 /**
@@ -434,8 +441,9 @@ export function containerFor(
 	if (kind === 'cache') {
 		// A cache that *named* a database is in it whatever the backend config
 		// says — the declaration is the stronger statement, and config choosing
-		// otherwise would move a cache the app said lives here.
-		if (derived) return CONTAINERS.database;
+		// otherwise would move a cache the app said lives here — except where
+		// the backend holds every cache (the stack's own Redis).
+		if (derived && !holdsEveryCache(cache)) return CONTAINERS.database;
 
 		return CACHE_CONTAINERS[cache] ?? CONTAINERS.database;
 	}
@@ -476,6 +484,11 @@ export function planFor(
 				...(fake.image ? { image: fake.image, port: fake.port } : {}),
 			};
 		}
+
+		// A cache whose backend holds every cache is detached from the database
+		// it was declared from: it has no `of` and no table, so nothing
+		// downstream composes a database URL for it or creates its table.
+		const detached = declaration.kind === 'cache' && holdsEveryCache(cache);
 
 		const container = fake?.image
 			? fake.key
@@ -535,7 +548,7 @@ export function planFor(
 			...(declaration.kind === 'external-api' && !fake
 				? { url: declaration.url }
 				: {}),
-			...('of' in declaration ? { of: declaration.of } : {}),
+			...('of' in declaration && !detached ? { of: declaration.of } : {}),
 			...('schema' in declaration && declaration.schema
 				? { schema: declaration.schema }
 				: {}),
@@ -545,7 +558,7 @@ export function planFor(
 			...('roles' in declaration && declaration.roles === false
 				? { roles: false }
 				: {}),
-			...('table' in declaration && declaration.table
+			...('table' in declaration && declaration.table && !detached
 				? { table: declaration.table }
 				: {}),
 		});

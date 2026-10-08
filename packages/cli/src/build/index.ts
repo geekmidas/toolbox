@@ -134,6 +134,16 @@ export class UnknownBuildProvider extends Error {
 	}
 }
 
+/** `--cache` named something that is not a cache backend. */
+export class UnknownCacheBackend extends Error {
+	constructor(readonly backend: string) {
+		super(
+			`'${backend}' is not a cache backend. Pass --cache upstash, elasticache, db or redis, or leave it out to register the deploy target's.`,
+		);
+		this.name = 'UnknownCacheBackend';
+	}
+}
+
 export async function buildCommand(
 	options: BuildOptions,
 ): Promise<BuildResult> {
@@ -239,7 +249,10 @@ async function buildOneApp(input: {
 	// registers drivers for it and records it in the manifest, so a deploy
 	// cannot pick differently and hand the running code a URL it has no driver
 	// for.
-	const cacheBackend = cacheBackendFor(providerOf(workspace));
+	//
+	// `--cache` is the one exception: the stack `gkm compose` runs has its own
+	// Redis whatever the target, and its Dockerfiles say so.
+	const cacheBackend = options.cache ?? cacheBackendFor(providerOf(workspace));
 	const eventsBackend = eventsBackendFor(providerOf(workspace));
 
 	const production = normalizeProductionConfig(options.production ?? false);

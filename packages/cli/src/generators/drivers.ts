@@ -20,6 +20,7 @@ import {
 	type CacheBackend,
 	DEFAULT_CACHE,
 	type EventsBackend,
+	holdsEveryCache,
 } from '../types.js';
 
 /** The `s3://` driver, which serves MinIO locally and S3 deployed. */
@@ -41,6 +42,13 @@ export type StorageDrivers = RuntimeDrivers;
 
 const NONE: RuntimeDrivers = { imports: '', setup: '' };
 
+/** The Redis wire protocol's drivers: both schemes, plain and TLS. */
+const REDIS: RuntimeDrivers = {
+	imports: `import { registerCacheDriver } from '@geekmidas/cache';\nimport { redisCacheDriver, redissCacheDriver } from '@geekmidas/cache/redis';`,
+	setup:
+		'registerCacheDriver(redisCacheDriver);\nregisterCacheDriver(redissCacheDriver);',
+};
+
 /**
  * The cache driver for a backend — exactly one, never all three.
  *
@@ -59,11 +67,10 @@ const CACHE_DRIVERS: Record<CacheBackend, RuntimeDrivers> = {
 		setup:
 			'registerCacheDriver(upstashCacheDriver);\nregisterCacheDriver(upstashInsecureCacheDriver);',
 	},
-	elasticache: {
-		imports: `import { registerCacheDriver } from '@geekmidas/cache';\nimport { redisCacheDriver, redissCacheDriver } from '@geekmidas/cache/redis';`,
-		setup:
-			'registerCacheDriver(redisCacheDriver);\nregisterCacheDriver(redissCacheDriver);',
-	},
+	elasticache: REDIS,
+	// The stack's own Redis speaks the same wire protocol — and a managed
+	// Redis set in its place may be `rediss://`.
+	redis: REDIS,
 	db: {
 		imports: `import { registerCacheDriver } from '@geekmidas/cache';\nimport { postgresCacheDriver } from '@geekmidas/cache/postgres';`,
 		setup: 'registerCacheDriver(postgresCacheDriver);',
@@ -187,7 +194,14 @@ export function cacheBackendsIn(
 ): CacheBackend[] {
 	const caches = Object.values(manifest).filter((d) => d.kind === 'cache');
 
-	return [...new Set(caches.map((c) => (c.of ? 'db' : configured)))];
+	// The stack's own Redis holds every cache, one that named a database too.
+	return [
+		...new Set(
+			caches.map((c) =>
+				c.of && !holdsEveryCache(configured) ? 'db' : configured,
+			),
+		),
+	];
 }
 
 /**
@@ -206,17 +220,21 @@ export function cacheBackendsIn(
  * that once and was never polled.
  */
 export function storageDriversFor(appRoot: string): RuntimeDrivers {
-	return dependsOnStorage(appRoot) ? S3 : NONE;
+	return installedFrom(appRoot, '@geekmidas/storage') ? S3 : NONE;
 }
 
-function dependsOnStorage(appRoot: string): boolean {
+/**
+ * Whether `pkg` is a dependency of the app at `appRoot` the way Node resolves
+ * it: listed in the app's own `package.json`, or in any directory above it.
+ */
+export function installedFrom(appRoot: string, pkg: string): boolean {
 	for (let dir = resolve(appRoot); ; dir = dirname(dir)) {
-		if (listsStorage(join(dir, 'package.json'))) return true;
+		if (lists(join(dir, 'package.json'), pkg)) return true;
 		if (dirname(dir) === dir) return false;
 	}
 }
 
-function listsStorage(manifest: string): boolean {
+function lists(manifest: string, dependency: string): boolean {
 	if (!existsSync(manifest)) return false;
 
 	try {
@@ -226,8 +244,7 @@ function listsStorage(manifest: string): boolean {
 		};
 
 		return Boolean(
-			pkg.dependencies?.['@geekmidas/storage'] ??
-				pkg.devDependencies?.['@geekmidas/storage'],
+			pkg.dependencies?.[dependency] ?? pkg.devDependencies?.[dependency],
 		);
 	} catch {
 		// An unreadable package.json is the build's problem, not this function's.

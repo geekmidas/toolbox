@@ -52,6 +52,7 @@ export {
 	edgePorts,
 	gitRevision,
 	NoGitRevision,
+	RedisClientMissing,
 	stackOverrideFile,
 } from './phases';
 

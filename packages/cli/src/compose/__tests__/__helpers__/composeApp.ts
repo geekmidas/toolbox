@@ -44,6 +44,8 @@ export function writeComposeApp(
 		private: true,
 		type: 'module',
 		packageManager: 'pnpm@10.13.1',
+		// The client the stack's Redis is reached with.
+		dependencies: { ioredis: '~6.0.0' },
 	});
 	writeFileSync(join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - apps/*\n');
 	json('turbo.json', {

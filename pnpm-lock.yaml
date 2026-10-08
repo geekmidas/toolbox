@@ -135,6 +135,9 @@ importers:
       hono:
         specifier: ~4.13.8
         version: 4.13.8
+      ioredis:
+        specifier: ~6.0.0
+        version: 6.0.0
       kysely:
         specifier: ~0.29.6
         version: 0.29.6
@@ -17170,7 +17173,7 @@ snapshots:
 
   require-in-the-middle@8.0.1:
     dependencies:
-      debug: 4.4.1
+      debug: 4.4.3
       module-details-from-path: 1.0.4
     transitivePeerDependencies:
       - supports-color
@@ -17500,7 +17503,7 @@ snapshots:
   socks-proxy-agent@8.0.5:
     dependencies:
       agent-base: 7.1.3
-      debug: 4.4.1
+      debug: 4.4.3
       socks: 2.8.9
     transitivePeerDependencies:
       - supports-color

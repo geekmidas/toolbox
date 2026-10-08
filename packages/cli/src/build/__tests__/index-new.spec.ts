@@ -84,6 +84,77 @@ export default {
 		},
 	);
 
+	/** A server build of an app whose cache is declared from its database. */
+	async function buildWithCache(
+		dir: string,
+		options: { cache?: 'redis' } = {},
+	): Promise<string> {
+		await createMockEndpointFile(
+			dir,
+			'src/endpoints/users.ts',
+			'getUsersEndpoint',
+			'/users',
+			'GET',
+		);
+		await createTestFile(
+			dir,
+			'src/cache.ts',
+			`import { KyselyDatabase } from '@geekmidas/constructs/database/kysely';
+
+export const database = new KyselyDatabase('Database');
+export const sessions = database.cache('Sessions');
+`,
+		);
+		await createTestFile(
+			dir,
+			'gkm.config.ts',
+			`
+export default {
+  stages: { local: 'development', deployed: ['production'] },
+  constructs: './src/**/*.ts',
+};
+`,
+		);
+		const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+		const originalCwd = process.cwd();
+		process.chdir(dir);
+		try {
+			await buildCommand({
+				provider: 'server',
+				production: true,
+				skipBundle: true,
+				...options,
+			});
+			return await readFile(join(dir, '.gkm', 'server', 'app.ts'), 'utf-8');
+		} finally {
+			process.chdir(originalCwd);
+			log.mockRestore();
+		}
+	}
+
+	itWithDir(
+		'registers the Postgres driver for a cache declared from its database',
+		async ({ dir }) => {
+			const app = await buildWithCache(dir);
+
+			expect(app).toContain('registerCacheDriver(postgresCacheDriver);');
+			expect(app).not.toContain('@geekmidas/cache/redis');
+		},
+	);
+
+	itWithDir(
+		"registers the Redis drivers instead with --cache redis, as the compose stack's images are built",
+		async ({ dir }) => {
+			const app = await buildWithCache(dir, { cache: 'redis' });
+
+			// Both schemes: the stack's own Redis, and a managed one over TLS.
+			expect(app).toContain('registerCacheDriver(redisCacheDriver);');
+			expect(app).toContain('registerCacheDriver(redissCacheDriver);');
+			expect(app).not.toContain('postgresCacheDriver');
+			expect(app).not.toContain('@geekmidas/cache/postgres');
+		},
+	);
+
 	itWithDir(
 		'should build endpoints, functions, and crons for multiple providers',
 		async ({ dir }) => {
