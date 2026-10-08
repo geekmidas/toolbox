@@ -58,6 +58,7 @@ import {
 	type MobileFramework,
 	type NormalizedWorkspace,
 } from '../workspace/index.js';
+import { writeStageTypes } from '../workspace/stageTypes.js';
 import {
 	APP_TAG_ENV,
 	type AppRunning,
@@ -266,8 +267,13 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		// silence of a start, before anything else can be said.
 		logger.log('🔎 Reading gkm.config.ts and the constructs');
 		const { workspace: everything } = await loadWorkspaceConfig();
+		await writeStageTypes(everything.root, everything.stages);
 		return workspaceDevCommand(everything, options);
 	}
+
+	// The declared stages as types, beside the clients — the same file the
+	// workspace start writes, so an app started on its own has it too.
+	await writeStageTypes(appConfig.workspace.root, appConfig.workspace.stages);
 
 	const config: GkmConfig = appConfig.gkmConfig;
 	const appRoot = appConfig.appRoot;

@@ -47,18 +47,35 @@ import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Consumable } from './construct-interface';
 import { readCredentials } from './credential';
+import type { DeployedStage, LocalStage } from './stages';
 import { traceClient } from './tracing';
 
 /** What a credentials schema yields. */
 type Value<TSchema extends StandardSchemaV1> =
 	StandardSchemaV1.InferOutput<TSchema>;
 
+/**
+ * Where an external API answers: one URL for every stage, or one per stage
+ * name with `default` for any stage not listed.
+ *
+ * Keyed by the stages `gkm.config.ts` declares once `.gkm/stages.d.ts` exists,
+ * so a key that names no stage — `prodution` — is a type error rather than a
+ * URL nothing reads. Without the file any key goes, as before.
+ */
+export type ExternalApiUrl =
+	| string
+	| (string extends LocalStage | DeployedStage
+			? Readonly<Record<string, string>>
+			: { readonly [S in LocalStage | DeployedStage]?: string } & {
+					readonly default?: string;
+				});
+
 export interface ExternalApiOptions<TSchema extends StandardSchemaV1, TClient> {
 	/**
 	 * Where it answers deployed: one URL for every stage, or one per stage
 	 * name, with `default` for any stage not listed.
 	 */
-	url: string | Readonly<Record<string, string>>;
+	url: ExternalApiUrl;
 	/** What the stage's `<ID>_CREDENTIALS` must look like. */
 	credentials: TSchema;
 	/** What a handler is handed, built from where it answers and the credentials. */
@@ -122,7 +139,9 @@ export class ExternalApi<
 			{
 				kind: 'external-api',
 				id: this.id,
-				url: this.options.url,
+				// The stage-keyed map is a record of URLs to the manifest, which
+				// reads it by whatever stage it is resolving.
+				url: this.options.url as Readonly<Record<string, string>> | string,
 				provides: [this.keys.url, this.keys.credentials],
 			},
 		];

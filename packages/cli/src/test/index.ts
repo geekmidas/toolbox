@@ -15,6 +15,7 @@ import { readLocalCredentials } from '../reconcile/localCredentials.js';
 import { postgresDatabaseNames } from '../reconcile/provision.js';
 import { backendsOf, constructGlobs } from '../reconcile/workspace.js';
 import { TEST_STAGE } from '../workspace/stages';
+import { writeStageTypes } from '../workspace/stageTypes';
 import {
 	DEFAULT_FACTORIES_DIR,
 	TEST_MANIFEST_ENV,
@@ -181,6 +182,9 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 	const workspace = await loadWorkspaceConfig(cwd)
 		.then((loaded) => loaded.workspace)
 		.catch(() => undefined);
+	// The declared stages as types, so a suite — and the typecheck that runs
+	// after `--prepare` — sees stage names checked against gkm.config.ts.
+	if (workspace) await writeStageTypes(workspace.root, workspace.stages);
 	const manifestPath = workspace
 		? await writeTestHarness({
 				root: workspace.root,

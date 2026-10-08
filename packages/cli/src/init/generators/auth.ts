@@ -64,7 +64,9 @@ export function generateAuthAppFiles(
 				[`@${options.name}/*`]: ['../../packages/*/src'],
 			},
 		},
-		include: ['src/**/*.ts'],
+		// `.gkm/stages.d.ts` types stage names from gkm.config.ts; a dot folder
+		// is never matched by a wildcard, so it is named.
+		include: ['src/**/*.ts', '../../.gkm/stages.d.ts'],
 		exclude: ['node_modules', 'dist'],
 	};
 
