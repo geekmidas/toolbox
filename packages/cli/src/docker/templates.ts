@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, parse } from 'node:path';
-import type { DockerConfig, GkmConfig } from '../types';
+import type { CacheBackend, DockerConfig, GkmConfig } from '../types';
 
 export type PackageManager = 'pnpm' | 'npm' | 'yarn' | 'bun';
 
@@ -721,6 +721,8 @@ export function generateBackendDockerfile(
 		healthCheckPath?: string;
 		/** Packages the bundle leaves external (esbuild `--external`). */
 		external?: string[];
+		/** The cache backend the entry registers, where not the target's. */
+		cache?: CacheBackend;
 	},
 ): string {
 	return gkmBundleDockerfile(options, {
@@ -750,6 +752,8 @@ export function generateWorkerDockerfile(
 		bundle: string;
 		healthCheckPath?: string;
 		external?: string[];
+		/** The cache backend the entry registers, where not the target's. */
+		cache?: CacheBackend;
 	},
 ): string {
 	return gkmBundleDockerfile(options, {
@@ -764,6 +768,7 @@ function gkmBundleDockerfile(
 	options: ImageTemplateOptions & {
 		healthCheckPath?: string;
 		external?: string[];
+		cache?: CacheBackend;
 	},
 	runner: { title: string; bundle: string; as: string; expose: boolean },
 ): string {
@@ -781,7 +786,7 @@ ${depsStage(options)}
 ${builderStage(options)}
 
 # Bundle the production server, with the encrypted credentials embedded
-${credentialsStep(app, `cd ${app} && ${gkmCommand('build --provider server --production')}`)}
+${credentialsStep(app, `cd ${app} && ${gkmCommand(`build --provider server --production${options.cache ? ` --cache ${options.cache}` : ''}`)}`)}
 ${externals.stage}
 # Production
 FROM ${options.baseImage} AS runner

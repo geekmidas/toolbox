@@ -40,8 +40,41 @@ export type EventsBackend = 'pgboss' | 'sns' | 'rabbitmq';
  * - `db` — a table in the database the app already declared. No infrastructure
  *   at all, and the same relationship pg-boss has to Postgres: it creates its
  *   own table on first use and needs a declared database to live in.
+ * - `redis` — a Redis the stack runs beside the apps, on its network. It holds
+ *   *every* declared cache, one declared from a database included, so the
+ *   cache never competes with the database for its connections. Only the
+ *   compose target selects it today (`gkm compose`).
  */
-export type CacheBackend = 'upstash' | 'elasticache' | 'db';
+export type CacheBackend = 'upstash' | 'elasticache' | 'db' | 'redis';
+
+/**
+ * The backends a deploy target defaults to — every one but the compose
+ * stack's own Redis, which only that target runs.
+ */
+export type TargetCacheBackend = Exclude<CacheBackend, 'redis'>;
+
+/** Whether `value` names a cache backend. */
+export function isCacheBackend(value: string): value is CacheBackend {
+	return (
+		value === 'upstash' ||
+		value === 'elasticache' ||
+		value === 'db' ||
+		value === 'redis'
+	);
+}
+
+/**
+ * Whether a backend holds every declared cache, a cache declared from a
+ * database (`database.cache('Sessions')`) included.
+ *
+ * Every other backend leaves such a cache where its declaration put it: the
+ * declaration is the stronger statement. The stack's own Redis is the
+ * exception, because a stack that runs one runs it *for* the cache — a table
+ * beside it would be a second cache nobody asked for.
+ */
+export function holdsEveryCache(backend: CacheBackend): boolean {
+	return backend === 'redis';
+}
 
 /**
  * Where a declared bucket actually lives.
@@ -80,7 +113,7 @@ export type StorageBackend = 'minio' | 's3' | 'r2';
  * `constructs-outstanding.md` — so two buckets in one app can differ. This is
  * only what happens when nobody has said anything at all.
  */
-export const DEFAULT_CACHE: Record<MainProvider, CacheBackend> = {
+export const DEFAULT_CACHE: Record<MainProvider, TargetCacheBackend> = {
 	// Reachable from a Lambda with no VPC and no connection pool.
 	aws: 'upstash',
 	// The database is already there and already has a connection pool open to
@@ -341,6 +374,12 @@ export interface GkmConfig {
 export interface BuildOptions {
 	/** Overrides the deploy target's: a Dockerfile builds a server regardless. */
 	provider?: MainProvider;
+	/**
+	 * Overrides the target's cache backend for the drivers the entry
+	 * registers — set by the Dockerfiles `gkm compose` writes, whose stack runs
+	 * its own Redis.
+	 */
+	cache?: CacheBackend;
 	enableOpenApi?: boolean;
 	/** Build for production (no dev tools, bundled output) */
 	production?: boolean;

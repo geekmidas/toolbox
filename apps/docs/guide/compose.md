@@ -43,8 +43,9 @@ and the hosts they answer on all come from what the workspace declares.
   `/health`. It starts once migrations have run, with the APIs. See
   [Workers](./production.md#workers).
 - **The infrastructure those apps declared** — Postgres with a named volume,
-  holding every declared database, a database-backed cache's table and
-  pg-boss's schema.
+  holding every declared database and pg-boss's schema.
+- **Redis, when a cache is declared**, holding every cache — see
+  [The cache](#the-cache).
 - **Mail and object storage, on the local stage**: Mailpit, and MinIO with
   every declared bucket (and its file servers' open paths) created before any
   app starts. Nothing needs setting — no bucket URL, no mail server. A
@@ -60,8 +61,9 @@ The databases, roles and grants are created, and each database's migrations
 (`db/<construct>/migrations`) applied, before any app starts — so an app never
 boots against a schema that is not there yet.
 
-A stack is a server target: whatever `deploy.default` says, its cache lives in
-the declared database and its events go through pg-boss beside it.
+A stack is a server target: whatever `deploy.default` says, its events go
+through pg-boss beside the declared database, and every cache lives in the
+stack's own Redis.
 
 ## Tags are the release
 
@@ -142,6 +144,7 @@ Caddyfile            one host per app
 api.env              one env file per backend, mode 0600
 auth.env
 openobserve.env      with deploy.compose.logs: its root login, mode 0600
+redis.env            with a cache: the Redis password, mode 0600
 api.credentials      when building: a backend's encrypted environment, mode 0600
 Dockerfile.api       when building
 caddy-root.crt       the local stage's CA root
@@ -159,7 +162,8 @@ provides — resolved for the stage:
 
 - its own public URL, `https://<host>`, which it builds links and cookies on;
 - each surface it calls, **on the compose network** (`AUTH_URL=http://auth:3001`);
-- connection strings to the stack's own Postgres;
+- connection strings to the stack's own Postgres, and each cache's URL on
+  the stack's Redis;
 - `PORT`, `STAGE` and `NODE_ENV=production`;
 - its secrets and credentials, from the stage's secrets store;
 - the stage's `OTEL_*` telemetry settings, or the stack's OpenObserve — see
@@ -170,7 +174,7 @@ stage-agnostic: no secret is baked into one. Compose reads the files raw, so
 nothing in a value is interpolated.
 
 For a deployed stage, everything the stage generates once — its seed, each
-`Secret`'s value, each encryption keyring — is generated on the first run and
+`Secret`'s value, each encryption keyring, the Redis password — is generated on the first run and
 written back to the stage's secrets store, exactly as `gkm deploy` does, and
 every database password is derived from the seed. A credential or an external
 API's credentials comes from the stage's secrets, and a missing one stops the
@@ -299,6 +303,63 @@ gkm deploy --target compose --stage preview --allow-dev-services minio
 Keys the stage did set always win over the dev service. Every run that uses one
 prints a warning saying which, and emits a `dev-service.used` event. An
 unknown value fails with `UnknownDevService`.
+
+## The cache
+
+A workspace that declares a cache — `new Cache('Sessions')`, or
+`database.cache('Sessions')` — gets a Redis in its stack, on every stage, and
+**every** cache lives in it, a cache declared from a database included. No
+cache table is created in Postgres. A cache can always be rebuilt, so unlike
+Mailpit and MinIO this is a production service, not behind
+`--allow-dev-services`:
+
+```yaml
+redis:
+  image: redis:8-alpine          # reconcile's pin: gkm dev runs the same Redis
+  restart: unless-stopped
+  command: [sh, -c, 'exec docker-entrypoint.sh redis-server --requirepass "$$REDIS_PASSWORD" --maxmemory 256mb --maxmemory-policy allkeys-lru --appendonly yes']
+  env_file: [{ path: ./redis.env, format: raw }]
+  volumes: [redis-data:/data]
+  healthcheck: { test: [CMD-SHELL, 'redis-cli ping | grep -q PONG'] }
+  logging: { driver: json-file, options: { max-size: 10m, max-file: "3" } }
+```
+
+- **Internal only.** It is on the compose network and publishes no port; the
+  apps reach it as `redis:6379`, and nothing on the host or the internet can.
+- **Password protected.** On a deployed stage the password is generated on
+  the first run and kept in the stage's secrets as `REDIS_PASSWORD`, like its
+  seed, so every later run reads it back (`gkm secrets:show --stage production
+  --reveal`). The local stage uses the fixed `geekmidas`, as its Postgres
+  does. Set `REDIS_PASSWORD` yourself to choose it. It is in `redis.env`
+  (`0600`) as `REDIS_PASSWORD` and `REDISCLI_AUTH`, so neither the compose
+  file, the server's command line nor the health check holds it — and
+  `docker compose exec redis redis-cli` is signed in.
+- **Bounded.** `maxmemory 256mb` with `allkeys-lru`: a full cache evicts its
+  least recently used keys rather than taking the box's memory. To change the
+  limit, replace `command` in the project's `docker-compose.<stage>.yml`.
+- **Persisted.** An append-only file on the `redis-data` volume, kept by
+  `--down` as every volume is, so a restart starts warm.
+
+Each backend and worker that reads a cache gets its URL in its env file —
+`SESSIONS_URL=redis://:<password>@redis:6379/0` — and waits for Redis to be
+healthy. Two caches get two logical databases (`/0`, `/1`, by id), so they
+never read each other's keys. Each image is built with `gkm build … --cache
+redis`, so its entry registers the Redis cache driver (`redis://` and
+`rediss://`) instead of the Postgres one, and the project needs `ioredis`
+installed — a build without it stops with `RedisClientMissing` before
+anything is touched. Images pulled with `--tag` must have been built the same
+way: from the Dockerfiles `gkm compose` writes, not `gkm docker`'s.
+
+**A managed Redis instead.** Set the cache's URL in the stage's secrets and
+it is used as given; a stack whose every cache is set that way runs no Redis
+and generates no password:
+
+```bash
+gkm secrets:set SESSIONS_URL 'rediss://default:…@cache.example.com:6380' --stage production
+```
+
+This is the compose target's alone. `gkm dev`, `gkm test` and Dokploy keep the
+target's default — a table in the declared database on a server target.
 
 ## Logs
 
@@ -446,7 +507,7 @@ same keys.
 
 ### Docker's own logs are rotated
 
-Every service in the stack — apps, Caddy, Postgres, Mailpit, MinIO and
+Every service in the stack — apps, Caddy, Postgres, Redis, Mailpit, MinIO and
 OpenObserve — has its Docker logs rotated, whether or not `logs` is on:
 
 ```yaml

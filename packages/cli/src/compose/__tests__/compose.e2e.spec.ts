@@ -29,6 +29,10 @@
  *   consumes it and writes the row the API then reads back; stopped, it
  *   drains and exits 0 within Docker's timeout.
  *
+ * - (f) a value the API caches round-trips through the stack's Redis —
+ *   on the network alone, no host port, password protected — and lands in
+ *   it, not in a table: the cache was declared from the database.
+ *
  * - (d) with `deploy.compose.logs` (the `gkm compose` run), the API's
  *   telemetry reaches the stack's OpenObserve — published on 127.0.0.1
  *   alone — signed in with the root login the stack generated: a line the
@@ -162,6 +166,8 @@ async function dependOnThisCheckout(
 				dependencies: {
 					...Object.fromEntries(
 						[
+							// The cache's client, over the stack's Redis.
+							'@geekmidas/cache',
 							'@geekmidas/cli',
 							'@geekmidas/constructs',
 							'@geekmidas/db',
@@ -179,6 +185,8 @@ async function dependOnThisCheckout(
 							'@hono/node-server',
 							'better-auth',
 							'hono',
+							// What the stack's Redis is reached with.
+							'ioredis',
 							'kysely',
 							'pg',
 							'pg-boss',
@@ -617,6 +625,57 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				expect(exitCode).toBe('0');
 				expect(took).toBeLessThan(10_000);
 				expect(await compose('logs', 'jobs')).toContain('Worker stopped');
+			});
+
+			it("(f) the API's cache round-trips through the stack's Redis, which publishes nothing", async () => {
+				const key = `k-${randomBytes(4).toString('hex')}`;
+				const put = await edge('api', `/cache/${key}`, {
+					method: 'PUT',
+					body: { value: 'from the cache' },
+				});
+				expect(put.status).toBe(200);
+
+				const got = await edge('api', `/cache/${key}`);
+				expect(got.status).toBe(200);
+				expect(JSON.parse(got.body)).toEqual({ value: 'from the cache' });
+
+				// In Redis — the cache's own database there — and nowhere else.
+				const keys = await compose(
+					'exec',
+					'-T',
+					'redis',
+					'redis-cli',
+					'-n',
+					'0',
+					'--scan',
+					'--pattern',
+					`fixture:${key}`,
+				);
+				expect(keys.trim()).toBe(`fixture:${key}`);
+
+				// Signed in by the env file alone; a client without it is refused.
+				const anonymous = await compose(
+					'exec',
+					'-T',
+					'-e',
+					'REDISCLI_AUTH=',
+					'redis',
+					'redis-cli',
+					'ping',
+				).catch((error: Error) => error.message);
+				expect(anonymous).toMatch(/NOAUTH/);
+
+				// Healthy, with no port on this machine.
+				const [ps] = (await compose('ps', '--format', 'json', 'redis'))
+					.trim()
+					.split('\n')
+					.map((line) => JSON.parse(line));
+				expect(ps.Health).toBe('healthy');
+				expect(
+					(ps.Publishers ?? []).filter(
+						(p: { PublishedPort: number }) => p.PublishedPort > 0,
+					),
+				).toEqual([]);
 			});
 
 			it.runIf(entry.logs)(

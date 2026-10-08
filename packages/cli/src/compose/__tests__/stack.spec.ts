@@ -5,9 +5,15 @@ import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { ExternalServicesNotConfigured } from '../../deploy/devServices';
 import { deployIdentity } from '../../deploy/identity';
 import { localRolePassword } from '../../reconcile/env';
+import { postgresStatements } from '../../reconcile/provision';
 import { initStageSecrets } from '../../secrets/storage';
 import type { StageSecrets } from '../../secrets/types';
 import type { NormalizedWorkspace } from '../../workspace/types';
+import {
+	LOCAL_REDIS_PASSWORD,
+	REDIS_IMAGE,
+	RedisPasswordMissing,
+} from '../redis';
 import {
 	type ComposeStack,
 	composeStack,
@@ -41,7 +47,11 @@ function production(custom: Record<string, string> = {}): StageSecrets {
 	return {
 		...initStageSecrets('production'),
 		seed: 'a-random-seed',
-		custom: { AUTH_SECRET: 'the-production-signing-secret', ...custom },
+		custom: {
+			AUTH_SECRET: 'the-production-signing-secret',
+			REDIS_PASSWORD: 'the-redis-password',
+			...custom,
+		},
 	};
 }
 
@@ -74,6 +84,7 @@ describe('the local stage', () => {
 			'caddy',
 			'jobs',
 			'postgres',
+			'redis',
 			'web',
 		]);
 		expect(s.compose.name).toBe('compose-app-development');
@@ -150,6 +161,7 @@ describe("every service's Docker logs", () => {
 			'mailpit',
 			'minio',
 			'postgres',
+			'redis',
 			'web',
 		]);
 		for (const s of [plain, withLogs]) {
@@ -180,6 +192,7 @@ describe("a backend's env file", () => {
 			'NODE_ENV',
 			'NOTES_PUBLISHER_CONNECTION_STRING',
 			'PORT',
+			'SESSIONS_URL',
 			'STAGE',
 		]);
 	});
@@ -343,7 +356,13 @@ describe('a deployed stage', () => {
 	});
 
 	it('refuses a secret the stage was never given, naming the key', () => {
-		const run = () => deployed({ secrets: { ...production(), custom: {} } });
+		const run = () =>
+			deployed({
+				secrets: {
+					...production(),
+					custom: { REDIS_PASSWORD: 'the-redis-password' },
+				},
+			});
 
 		expect(run).toThrow(StageSecretMissing);
 		expect(run).toThrow(/AUTH_SECRET/);
@@ -409,7 +428,7 @@ describe('mail and storage on the local stage', () => {
 		const s = stack({ manifest: withServices() });
 		const api = app(s, 'api').env!;
 
-		expect(s.infra).toEqual(['mailpit', 'minio', 'postgres']);
+		expect(s.infra).toEqual(['mailpit', 'minio', 'postgres', 'redis']);
 		expect(api.UPLOADS_URL).toBe(
 			's3://uploads?region=us-east-1&endpoint=http://minio:9000&forcePathStyle=true',
 		);
@@ -487,7 +506,7 @@ describe('mail and storage on a deployed stage', () => {
 		const s = deployed({ secrets: production(EXTERNAL) });
 		const api = app(s, 'api').env!;
 
-		expect(s.infra).toEqual(['postgres']);
+		expect(s.infra).toEqual(['postgres', 'redis']);
 		expect(s.compose.services).not.toHaveProperty('minio');
 		expect(s.compose.services).not.toHaveProperty('mailpit');
 		expect(api.MAIL_URL).toBe(EXTERNAL.MAIL_URL);
@@ -507,7 +526,7 @@ describe('mail and storage on a deployed stage', () => {
 		const s = deployed({ secrets: production({ ...rest, UPLOADS_URL }) });
 		const api = app(s, 'api').env!;
 
-		expect(s.infra).toEqual(['postgres']);
+		expect(s.infra).toEqual(['postgres', 'redis']);
 		expect(api.UPLOADS_URL).toBe(UPLOADS_URL);
 		expect(api).not.toHaveProperty('AWS_ACCESS_KEY_ID');
 		expect(api).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
@@ -533,7 +552,7 @@ describe('mail and storage on a deployed stage', () => {
 			'a-random-seed',
 		);
 
-		expect(s.infra).toEqual(['mailpit', 'minio', 'postgres']);
+		expect(s.infra).toEqual(['mailpit', 'minio', 'postgres', 'redis']);
 		expect(s.compose.services.minio?.environment).toMatchObject({
 			MINIO_ROOT_USER: 'compose-app-minio',
 			MINIO_ROOT_PASSWORD: password,
@@ -569,7 +588,7 @@ describe('mail and storage on a deployed stage', () => {
 		const api = app(s, 'api').env!;
 
 		// Mail is the stage's own, so no Mailpit runs.
-		expect(s.infra).toEqual(['minio', 'postgres']);
+		expect(s.infra).toEqual(['minio', 'postgres', 'redis']);
 		expect(api.MAIL_URL).toBe(EXTERNAL.MAIL_URL);
 		expect(api.MAIL_FROM).toBe(EXTERNAL.MAIL_FROM);
 		// The bucket is MinIO's, signed with the key pair the stage chose.
@@ -606,6 +625,7 @@ describe('a worker', () => {
 		expect(service.env_file).toEqual([{ path: './jobs.env', format: 'raw' }]);
 		expect(service.depends_on).toEqual({
 			postgres: { condition: 'service_healthy' },
+			redis: { condition: 'service_healthy' },
 		});
 		expect(service.healthcheck?.test).toEqual([
 			'CMD',
@@ -716,5 +736,166 @@ describe('a worker', () => {
 		expect(() => stack({ manifest: noSurfaces, background: {} })).toThrow(
 			NothingToCompose,
 		);
+	});
+});
+
+describe('the cache', () => {
+	const deployed = (custom: Record<string, string> = {}) =>
+		stack({
+			stage: 'production',
+			images: { mode: 'pull', tag: 'v1.4.0' },
+			secrets: production(custom),
+			ports: {},
+		});
+
+	it("runs the stack's Redis: pinned, unpublished, bounded, persisted, checked and rotated", () => {
+		const s = deployed();
+		const redis = s.compose.services.redis!;
+
+		expect(s.infra).toContain('redis');
+		// Reconcile's pin, so `gkm dev` and the stack run one Redis.
+		expect(redis.image).toBe(REDIS_IMAGE);
+		expect(REDIS_IMAGE).toBe('redis:8-alpine');
+		// On the compose network alone: nothing on the host reaches it.
+		expect(redis).not.toHaveProperty('ports');
+		expect(redis.restart).toBe('unless-stopped');
+		expect(redis.volumes).toEqual(['redis-data:/data']);
+		expect(s.compose.volumes).toHaveProperty('redis-data');
+
+		const command = (redis.command as string[]).join(' ');
+		expect(command).toContain('docker-entrypoint.sh redis-server');
+		expect(command).toContain('--maxmemory 256mb');
+		expect(command).toContain('--maxmemory-policy allkeys-lru');
+		expect(command).toContain('--appendonly yes');
+		// The password by name, read from the env file — never its value.
+		expect(command).toContain('--requirepass "$$REDIS_PASSWORD"');
+		expect(command).not.toContain('the-redis-password');
+		expect(redis.env_file).toEqual([{ path: './redis.env', format: 'raw' }]);
+		expect(s.redis?.env).toEqual({
+			REDIS_PASSWORD: 'the-redis-password',
+			REDISCLI_AUTH: 'the-redis-password',
+		});
+
+		expect(redis.healthcheck?.test).toEqual([
+			'CMD-SHELL',
+			'redis-cli ping | grep -q PONG',
+		]);
+		expect(JSON.stringify(redis.healthcheck)).not.toContain(
+			'the-redis-password',
+		);
+		expect(redis.logging).toEqual({
+			driver: 'json-file',
+			options: { 'max-size': '10m', 'max-file': '3' },
+		});
+
+		// Every backend and worker waits for it.
+		for (const name of ['api', 'auth', 'jobs']) {
+			expect(s.compose.services[name]?.depends_on).toHaveProperty('redis');
+		}
+	});
+
+	it("hands each backend that reads the cache its URL on the network, with the stage's password", () => {
+		const s = deployed();
+
+		expect(app(s, 'api').env?.SESSIONS_URL).toBe(
+			'redis://:the-redis-password@redis:6379/0',
+		);
+		// Only to the apps that read it.
+		expect(app(s, 'auth').env).not.toHaveProperty('SESSIONS_URL');
+		expect(envFile(app(s, 'api').env!)).toContain(
+			'SESSIONS_URL=redis://:the-redis-password@redis:6379/0\n',
+		);
+	});
+
+	it('keeps the cache out of the database it was declared from', () => {
+		const s = deployed();
+		const cache = s.plan.resources.find((r) => r.id === 'Sessions')!;
+
+		expect(cache.container).toBe('redis');
+		expect(cache).not.toHaveProperty('of');
+		// No table is created for it.
+		const statements = postgresStatements(
+			s.plan,
+			workspace.name,
+			'a-random-seed',
+		);
+		expect(statements.length).toBeGreaterThan(0);
+		expect(statements.filter((st) => st.id === 'Sessions')).toEqual([]);
+	});
+
+	it('uses the fixed local password on the local stage, as Postgres does', () => {
+		const s = stack();
+
+		expect(s.redis?.password).toBe(LOCAL_REDIS_PASSWORD);
+		expect(app(s, 'api').env?.SESSIONS_URL).toBe(
+			`redis://:${LOCAL_REDIS_PASSWORD}@redis:6379/0`,
+		);
+	});
+
+	it("escapes a password the stage set that a URL's userinfo cannot hold", () => {
+		const s = deployed({ REDIS_PASSWORD: 'p@ss:w/rd' });
+
+		expect(app(s, 'api').env?.SESSIONS_URL).toBe(
+			'redis://:p%40ss%3Aw%2Frd@redis:6379/0',
+		);
+		expect(s.redis?.env.REDIS_PASSWORD).toBe('p@ss:w/rd');
+	});
+
+	it('refuses a deployed stage with no password yet', () => {
+		expect(() =>
+			stack({
+				stage: 'production',
+				images: { mode: 'pull', tag: 'v1.4.0' },
+				secrets: { ...production(), custom: { AUTH_SECRET: 'x' } },
+				ports: {},
+			}),
+		).toThrow(RedisPasswordMissing);
+	});
+
+	it("runs no Redis where the stage set the cache's URL — a managed Redis — and uses it", () => {
+		const managed = 'rediss://default:token@cache.example.com:6380';
+		const s = deployed({ SESSIONS_URL: managed });
+
+		expect(s.infra).not.toContain('redis');
+		expect(s.compose.services).not.toHaveProperty('redis');
+		expect(s.compose.volumes).not.toHaveProperty('redis-data');
+		expect(s.redis).toBeUndefined();
+		expect(app(s, 'api').env?.SESSIONS_URL).toBe(managed);
+		expect(s.compose.services.api?.depends_on).not.toHaveProperty('redis');
+	});
+
+	it('gives each cache a database of its own', () => {
+		const s = stack({
+			manifest: {
+				...manifest,
+				Rates: { kind: 'cache', id: 'Rates', provides: ['RATES_URL'] },
+			} as ConstructManifest,
+		});
+
+		expect(s.plan.resources.filter((r) => r.kind === 'cache')).toHaveLength(2);
+		expect(s.redis?.urls).toEqual({
+			RATES_URL: `redis://:${LOCAL_REDIS_PASSWORD}@redis:6379/0`,
+			SESSIONS_URL: `redis://:${LOCAL_REDIS_PASSWORD}@redis:6379/1`,
+		});
+	});
+
+	it("builds each backend and worker to register the Redis driver, which `gkm docker`'s Dockerfile does not", () => {
+		const s = stack();
+
+		for (const name of ['api', 'jobs']) {
+			expect(
+				s.dockerfiles[`.gkm/compose/development/Dockerfile.${name}`],
+			).toContain(
+				'node "$GKM_BIN" build --provider server --production --cache redis',
+			);
+		}
+	});
+
+	it('runs no Redis for a workspace that declares no cache', () => {
+		const { Sessions: _, ...without } = manifest;
+		const s = stack({ manifest: without as ConstructManifest });
+
+		expect(s.infra).not.toContain('redis');
+		expect(s.redis).toBeUndefined();
 	});
 });

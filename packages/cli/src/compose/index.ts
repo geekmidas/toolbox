@@ -32,6 +32,7 @@ export {
 	edgePorts,
 	gitRevision,
 	NoGitRevision,
+	RedisClientMissing,
 } from '../target/compose/index';
 export { isMissingManifest } from './docker';
 export {
@@ -52,6 +53,12 @@ export {
 	LogsPortInvalid,
 	LogsRetentionInvalid,
 } from './logsConfig';
+export {
+	REDIS_MAXMEMORY,
+	REDIS_PASSWORD_KEY,
+	RedisPasswordMissing,
+	STACK_CACHE,
+} from './redis';
 export {
 	composeStack,
 	EnvValueMultiline,

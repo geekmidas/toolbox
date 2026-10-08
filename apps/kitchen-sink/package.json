@@ -35,6 +35,7 @@
 		"@react-email/components": "~1.0.12",
 		"better-auth": "~1.7.6",
 		"hono": "~4.13.8",
+		"ioredis": "~6.0.0",
 		"kysely": "~0.29.6",
 		"pg": "~8.23.0",
 		"pg-boss": "~12.33.3",

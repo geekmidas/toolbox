@@ -34,6 +34,7 @@ import {
 	ComposeModeConflict,
 	composeCommand,
 	ImageTagNotFound,
+	RedisClientMissing,
 } from '../index';
 import { writeComposeApp } from './__helpers__/composeApp';
 import { answering, fakeDocker } from './__helpers__/fakeDocker';
@@ -198,7 +199,7 @@ describe(
 			]);
 			expect(
 				calls.filter((call) => call.op === 'up').map((c) => c.args),
-			).toEqual([['postgres'], 'all']);
+			).toEqual([['postgres', 'redis'], 'all']);
 		});
 
 		it('builds every image inside Docker, and nothing on this machine first', async () => {
@@ -501,7 +502,12 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 			},
 		);
 
-		expect(result?.stack.infra).toEqual(['mailpit', 'minio', 'postgres']);
+		expect(result?.stack.infra).toEqual([
+			'mailpit',
+			'minio',
+			'postgres',
+			'redis',
+		]);
 		const ops = fake.calls.map((call) =>
 			call.op === 'up' || call.op === 'bucket' || call.op === 'buckets'
 				? `${call.op} ${JSON.stringify(call.args)}`
@@ -562,7 +568,12 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 			},
 		);
 
-		expect(result?.stack.infra).toEqual(['mailpit', 'minio', 'postgres']);
+		expect(result?.stack.infra).toEqual([
+			'mailpit',
+			'minio',
+			'postgres',
+			'redis',
+		]);
 		expect(fake.calls).toContainEqual({
 			op: 'buckets',
 			args: [55432, 'compose-app-minio'],
@@ -733,6 +744,7 @@ describe('logs', { timeout: RUN_TIMEOUT }, () => {
 		expect(calls.find((call) => call.op === 'up')?.args).toEqual([
 			'openobserve',
 			'postgres',
+			'redis',
 		]);
 		expect(calls).toContainEqual({ op: 'health', args: 'openobserve' });
 		expect(said).toContain(
@@ -796,6 +808,130 @@ describe(
 		});
 	},
 );
+
+describe("the stack's Redis", { timeout: RUN_TIMEOUT }, () => {
+	let home: string;
+	const registry = [
+		'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
+		'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0',
+		'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0',
+		'registry.example.com/acme/compose-app/compose-app-web:v1.4.0-production',
+	];
+
+	beforeEach(async () => {
+		dir = await project();
+		home = realpathSync(await createTempDir('gkm-compose-home-'));
+		vi.stubEnv('GKM_HOME', home);
+	});
+	afterEach(async () => {
+		vi.unstubAllEnvs();
+		await cleanupDir(dir);
+		await cleanupDir(home);
+	});
+
+	const store = async () =>
+		new FileSecretsStore(
+			dir,
+			keystoreProject(await loadWorkspaceSettings(dir), home),
+		);
+
+	const release = async () => {
+		const said: string[] = [];
+		vi.spyOn(console, 'log').mockImplementation((...a) => {
+			said.push(a.join(' '));
+		});
+		const fake = fakeDocker({ registry });
+		const result = await composeCommand(
+			{ cwd: dir, stage: 'production', tag: 'v1.4.0' },
+			{
+				docker: fake.docker,
+				probe: answering(fake.calls),
+				revision: async () => 'abc1234',
+				sql: () => ({ query: async () => [] }),
+				migrate: async () => [],
+			},
+		);
+		return { ...fake, result, said: said.join('\n') };
+	};
+
+	const stackFile = (name: string) =>
+		join(dir, '.gkm', 'compose', 'production', name);
+
+	it('generates its password once, keeps it in the stage, and reads it back every run', async () => {
+		const first = await release();
+		const stored = (await (await store()).read('production'))?.custom
+			.REDIS_PASSWORD;
+
+		expect(stored).toMatch(/^[A-Za-z0-9_-]{43}$/);
+		expect(first.said).toContain('REDIS_PASSWORD');
+		expect(first.result?.stack.infra).toContain('redis');
+		expect(first.calls.find((call) => call.op === 'up')?.args).toContain(
+			'redis',
+		);
+
+		// Its own env file, and the API's URL, both the owner's alone.
+		for (const name of ['redis.env', 'api.env']) {
+			expect(statSync(stackFile(name)).mode & 0o777).toBe(0o600);
+		}
+		expect(readFileSync(stackFile('redis.env'), 'utf-8')).toContain(
+			`REDIS_PASSWORD=${stored}\n`,
+		);
+		expect(readFileSync(stackFile('api.env'), 'utf-8')).toContain(
+			`SESSIONS_URL=redis://:${stored}@redis:6379/0\n`,
+		);
+		// Never in the compose file.
+		expect(
+			readFileSync(stackFile('docker-compose.yml'), 'utf-8'),
+		).not.toContain(stored);
+
+		const second = await release();
+		expect(
+			(await (await store()).read('production'))?.custom.REDIS_PASSWORD,
+		).toBe(stored);
+		expect(second.result?.stack.redis?.password).toBe(stored);
+		expect(second.said).not.toContain('REDIS_PASSWORD');
+		expect(readFileSync(stackFile('api.env'), 'utf-8')).toContain(
+			`SESSIONS_URL=redis://:${stored}@redis:6379/0\n`,
+		);
+	});
+
+	it("runs no Redis and generates no password where the stage set the cache's URL", async () => {
+		const managed = 'rediss://default:token@cache.example.com:6380';
+		await (await store()).write('production', {
+			...initStageSecrets('production'),
+			custom: { SESSIONS_URL: managed },
+		});
+
+		const { result, calls } = await release();
+
+		expect(result?.stack.infra).not.toContain('redis');
+		expect(calls.find((call) => call.op === 'up')?.args).not.toContain('redis');
+		expect(existsSync(stackFile('redis.env'))).toBe(false);
+		expect(readFileSync(stackFile('api.env'), 'utf-8')).toContain(
+			`SESSIONS_URL=${managed}\n`,
+		);
+		expect(
+			(await (await store()).read('production'))?.custom,
+		).not.toHaveProperty('REDIS_PASSWORD');
+	});
+
+	it('refuses to build a stack with a cache for apps that cannot resolve ioredis, before anything is touched', async () => {
+		writeFileSync(
+			join(dir, 'package.json'),
+			JSON.stringify({ name: 'compose-app', private: true, type: 'module' }),
+		);
+		const fake = fakeDocker();
+
+		const error = await composeCommand(
+			{ cwd: dir, stage: 'development' },
+			{ docker: fake.docker, revision: async () => 'abc1234' },
+		).catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(RedisClientMissing);
+		expect((error as RedisClientMissing).apps).toEqual(['api', 'auth']);
+		expect(fake.ops()).toEqual([]);
+	});
+});
 
 describe('gkm compose --down', { timeout: RUN_TIMEOUT }, () => {
 	beforeEach(async () => {

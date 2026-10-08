@@ -279,6 +279,7 @@
 		"peerDependencies": ">=4.13.8"
 	},
 	"ioredis": {
+		"dependencies": "~6.0.0",
 		"devDependencies": "~6.0.0",
 		"peerDependencies": ">=6.0.0"
 	},

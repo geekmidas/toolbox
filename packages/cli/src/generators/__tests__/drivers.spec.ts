@@ -37,6 +37,19 @@ describe('cacheBackendsIn', () => {
 		).toEqual(['db']);
 	});
 
+	it("puts a cache that named a database in the stack's Redis, which holds every cache", () => {
+		expect(
+			cacheBackendsIn(
+				manifest({
+					Orders: { kind: 'database' },
+					Sessions: { kind: 'cache', of: 'Orders' },
+					Rates: { kind: 'cache' },
+				}),
+				'redis',
+			),
+		).toEqual(['redis']);
+	});
+
 	it('registers nothing when nothing declared a cache', () => {
 		// An app that never caches should not resolve a cache client at all.
 		expect(
@@ -80,6 +93,16 @@ describe('driversFor', () => {
 	it('still accepts a bare backend name', () => {
 		expect(driversFor({ appRoot, cache: 'elasticache' }).imports).toContain(
 			'@geekmidas/cache/redis',
+		);
+	});
+
+	it("registers both Redis schemes, and no Postgres driver, for the stack's Redis", () => {
+		const { imports, setup } = driversFor({ appRoot, cache: ['redis'] });
+
+		expect(imports).toContain('@geekmidas/cache/redis');
+		expect(imports).not.toContain('@geekmidas/cache/postgres');
+		expect(setup).toBe(
+			'registerCacheDriver(redisCacheDriver);\nregisterCacheDriver(redissCacheDriver);',
 		);
 	});
 

@@ -11,7 +11,7 @@ import { COMPOSE_PATH } from '../reconcile/index.js';
 import { reconcileWorkspace } from '../reconcile/workspace.js';
 import { run } from '../run';
 import { getPublicUrlArgNames } from '../target/dokploy/domain.js';
-import type { GkmConfig } from '../types';
+import type { CacheBackend, GkmConfig } from '../types';
 import { appKey } from '../workspace/derive.js';
 import type {
 	NormalizedAppConfig,
@@ -367,6 +367,11 @@ export function appDockerfile(
 		manifest?: ConstructManifest;
 		/** A site's public keys, when the caller resolved them itself. */
 		publicUrlArgs?: string[];
+		/**
+		 * The cache backend a gkm backend's entry registers, where it is not the
+		 * deploy target's — the compose stack's own Redis.
+		 */
+		cache?: CacheBackend;
 	},
 ): string {
 	const image = appImageOptions(
@@ -392,7 +397,11 @@ export function appDockerfile(
 			healthCheckPath: '/health',
 		});
 	}
-	return generateBackendDockerfile({ ...image, healthCheckPath: '/health' });
+	return generateBackendDockerfile({
+		...image,
+		healthCheckPath: '/health',
+		...(options.cache ? { cache: options.cache } : {}),
+	});
 }
 
 /** Where `gkm docker` writes a worker's Dockerfile. */
@@ -407,7 +416,12 @@ export function workerDockerfileOf(worker: string): string {
 export function workerDockerfile(
 	worker: WorkerUnit,
 	host: NormalizedAppConfig,
-	options: { layout: ImageLayout; workspaceRoot: string },
+	options: {
+		layout: ImageLayout;
+		workspaceRoot: string;
+		/** As {@link appDockerfile}'s: the cache backend its entry registers. */
+		cache?: CacheBackend;
+	},
 ): string {
 	const image = appImageOptions(
 		options.layout,
@@ -422,6 +436,7 @@ export function workerDockerfile(
 		worker: worker.id,
 		bundle: workerBundleName(worker.id),
 		healthCheckPath: '/health',
+		...(options.cache ? { cache: options.cache } : {}),
 	});
 }
 

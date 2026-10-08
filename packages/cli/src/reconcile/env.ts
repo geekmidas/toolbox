@@ -679,6 +679,7 @@ function urlFor(
 
 			switch (plan.cache) {
 				case 'elasticache':
+				case 'redis':
 					// The wire protocol, unauthenticated locally. Deployed it is
 					// `rediss://` inside a VPC; the client is the same either way.
 					return `redis://${LOCAL_HOST}:${port}`;
