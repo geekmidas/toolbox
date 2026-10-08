@@ -429,8 +429,11 @@ describe('generateGithubFiles', () => {
 						],
 						{ encoding: 'utf-8' },
 					);
-					expect(`${result.stdout}${result.stderr}`).toBe('');
-					expect(result.status).toBe(0);
+					// Findings are actionlint's stdout. Its stderr is Docker's too —
+					// "Unable to find image … Pulling" on a runner without the image —
+					// so it only explains a failure, never is one.
+					expect(result.stdout, result.stderr).toBe('');
+					expect(result.status, result.stderr).toBe(0);
 				} finally {
 					rmSync(dir, { recursive: true, force: true });
 				}
