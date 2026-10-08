@@ -33,7 +33,7 @@ export interface SetupOptions {
  *
  * Orchestrates:
  * 1. Load workspace config
- * 2. Resolve secrets (local → SSM → generate fresh)
+ * 2. Resolve secrets (local → the stage's store → generate fresh)
  * 3. Write docker/.env from secrets
  * 4. Start Docker services
  */
@@ -154,7 +154,8 @@ async function resolveSecrets(
 		return generateFreshSecrets(stage, workspace);
 	}
 
-	// The stage's own store — SSM in its account, for a stage kept there
+	// The stage's own store — SSM or Secrets Manager in its account, for a
+	// stage kept there
 	const store = await secretsStoreFor(workspace, stage);
 	const secrets = await store.read(stage);
 	if (secrets) {
@@ -297,7 +298,7 @@ export function reconcileSecrets(
 /**
  * Build a fresh StageSecrets object for a workspace: service credentials,
  * connection URLs, and custom secrets. Pure — does not write to disk or touch
- * SSM. Service passwords are freshly randomized, so the result must be the same
+ * any store. Service passwords are freshly randomized, so the result must be the same
  * one used to start the matching Docker containers.
  * @internal Exported for reuse by `gkm test` auto-setup.
  */

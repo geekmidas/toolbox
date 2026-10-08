@@ -766,6 +766,41 @@ program
 		}
 	});
 
+program
+	.command('secrets:migrate')
+	.description(
+		"Copy a deployed stage's secrets from the configured store to another (file, ssm, secrets-manager)",
+	)
+	.requiredOption('--stage <stage>', 'A deployed stage')
+	.requiredOption('--to <provider>', 'file, ssm or secrets-manager')
+	.option(
+		'--region <region>',
+		"The target's AWS region (default: the configured store's)",
+	)
+	.option('--profile <profile>', "AWS profile for the stage's account")
+	.option('--force', 'Replace a stage the target already holds')
+	.action(
+		async (options: {
+			stage: string;
+			to: string;
+			region?: string;
+			profile?: string;
+			force?: boolean;
+		}) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+				const { secretsMigrateCommand } = await import('./secrets/migrate');
+				await secretsMigrateCommand(options);
+			} catch (error) {
+				console.error(formatError(error));
+				process.exit(1);
+			}
+		},
+	);
+
 // Deploy command — the terminal around `deploy()`: it prompts, prints and
 // sets the exit code; the deploy itself does none of the three.
 program

@@ -1,4 +1,5 @@
 import { basename, isAbsolute, join } from 'node:path';
+import { assertKnownSecretsStore } from '../secrets/providers.js';
 import type { GkmConfig, Routes } from '../types.js';
 import {
 	formatValidationErrors,
@@ -128,6 +129,7 @@ export function defineWorkspace<const TApps extends AppsRecord>(
 	config: WorkspaceInput<TApps>,
 ): InferredWorkspaceConfig<TApps> {
 	assertNoMovedDeployKeys(config.deploy);
+	assertKnownSecretsStore(config.secrets?.store);
 
 	// Validate dependencies at runtime
 	if (config.apps) validateDependencies(config.apps as unknown as TApps);
@@ -299,6 +301,7 @@ export function processConfig(
 	assertNoMovedDeployKeys(config.deploy);
 
 	if (isWorkspaceConfig(config)) {
+		assertKnownSecretsStore(config.secrets?.store);
 		// Validate workspace config
 		const result = safeValidateWorkspaceConfig(config);
 		if (!result.success && result.error) {

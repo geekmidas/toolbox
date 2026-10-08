@@ -545,6 +545,7 @@ function secretsStore(options: TemplateOptions): string {
 	return `
     // Deployed stages keep their secrets in SSM, in the account each stage
     // deploys to: \`gkm secrets:set <KEY> '…' --stage <stage>\` writes there.
+    // Past 8 KB a stage needs { provider: 'secrets-manager', region } instead.
     store: { provider: 'ssm', region: '${options.region}' },`;
 }
 

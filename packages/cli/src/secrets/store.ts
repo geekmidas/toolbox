@@ -4,7 +4,7 @@
  * Every command that needs a stage's secrets — `gkm dev`, `test`, `deploy`,
  * `build`, `setup`, `secrets:*` — asks {@link secretsStoreFor} for that
  * stage's store and reads or writes it. None of them knows whether that is a
- * file on this machine or SSM in the stage's account: the local stage is
+ * file on this machine, SSM or Secrets Manager in the stage's account: the local stage is
  * always the file, and a deployed stage is whatever `secrets.store` names.
  *
  * The same shape deploy state has (`StateProvider`): one interface, a backend
@@ -14,10 +14,14 @@
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { FileSecretsStore } from './file.js';
 import { keystoreProject } from './keystore.js';
+import { UnknownSecretsStoreProvider } from './providers.js';
 import type { StageSecrets } from './types.js';
 
 export interface SecretsStore {
-	/** Which kind of store this is — `'file'`, `'ssm'`, or a custom one's. */
+	/**
+	 * Which kind of store this is — `'file'`, `'ssm'`, `'secrets-manager'`, or
+	 * a custom one's.
+	 */
 	readonly name: string;
 	/** The stage's secrets, or null when it has none here. */
 	read(stage: string): Promise<StageSecrets | null>;
@@ -31,6 +35,21 @@ export interface SsmSecretsStoreConfig {
 	region: string;
 }
 
+/**
+ * Secrets in AWS Secrets Manager, in the account of the active credentials:
+ * one secret per stage, `gkm/<project>/<stage>/secrets`. Up to 64 KB where
+ * SSM holds 8 KB, at a monthly price per secret.
+ */
+export interface SecretsManagerSecretsStoreConfig {
+	provider: 'secrets-manager';
+	region: string;
+	/**
+	 * The KMS key (id, ARN or alias) a stage's secret is created with. Unset,
+	 * it is the account's AWS-managed `aws/secretsmanager` key.
+	 */
+	kmsKeyId?: string;
+}
+
 /** Any other backend: an object implementing {@link SecretsStore}. */
 export interface CustomSecretsStoreConfig {
 	provider: SecretsStore;
@@ -42,11 +61,13 @@ export interface CustomSecretsStoreConfig {
  * `'file'` — the default — keeps each stage's secrets in the encrypted
  * `.gkm/secrets/<stage>.json`, its key in the CLI's home (`GKM_HOME`, else
  * `~/.gkm`). It cannot serve a
- * deploy from CI while `.gkm/` is gitignored; `ssm` or a custom store can.
+ * deploy from CI while `.gkm/` is gitignored; `ssm`, `secrets-manager` or a
+ * custom store can.
  */
 export type SecretsStoreConfig =
 	| 'file'
 	| SsmSecretsStoreConfig
+	| SecretsManagerSecretsStoreConfig
 	| CustomSecretsStoreConfig;
 
 export interface SecretsStoreOptions {
@@ -84,16 +105,59 @@ export async function secretsStoreFor(
 		);
 	}
 
-	if (configured.provider !== 'ssm') {
-		return configured.provider;
+	return storeFromConfig(workspace, configured, options);
+}
+
+/**
+ * The store a `secrets.store` value describes, for any stage — what
+ * {@link secretsStoreFor} answers for a deployed stage, and what
+ * `gkm secrets:migrate` builds for the store it copies to.
+ */
+export async function storeFromConfig(
+	workspace: NormalizedWorkspace,
+	config: SecretsStoreConfig,
+	options: SecretsStoreOptions = {},
+): Promise<SecretsStore> {
+	if (config === 'file') {
+		return new FileSecretsStore(
+			workspace.root,
+			keystoreProject(workspace, options.home),
+		);
 	}
 
-	const { AwsSecretsStore } = await import('./aws.js');
-	return new AwsSecretsStore({
-		project: workspace.name,
-		region: configured.region,
-		...(options.profile ? { profile: options.profile } : {}),
-	});
+	const profile = options.profile ? { profile: options.profile } : {};
+
+	switch (config.provider) {
+		case 'ssm': {
+			const { AwsSecretsStore } = await import('./aws.js');
+			return new AwsSecretsStore({
+				project: workspace.name,
+				region: config.region,
+				...profile,
+			});
+		}
+		case 'secrets-manager': {
+			const { kmsKeyId } = config as SecretsManagerSecretsStoreConfig;
+			const { SecretsManagerSecretsStore } = await import(
+				'./secretsManager.js'
+			);
+			return new SecretsManagerSecretsStore({
+				project: workspace.name,
+				region: config.region,
+				...(kmsKeyId ? { kmsKeyId } : {}),
+				...profile,
+			});
+		}
+		default: {
+			// Typed as a SecretsStore, but a config assembled by hand may name
+			// a provider that is not one.
+			const provider: unknown = config.provider;
+			if (typeof provider === 'object' && provider !== null) {
+				return provider as SecretsStore;
+			}
+			throw new UnknownSecretsStoreProvider(provider);
+		}
+	}
 }
 
 /** Whether a stage's secrets live somewhere other than this machine. */
@@ -106,3 +170,9 @@ export function isRemoteStore(
 }
 
 export { FileSecretsStore };
+export {
+	assertKnownSecretsStore,
+	SECRETS_STORE_PROVIDERS,
+	type SecretsStoreProvider,
+	UnknownSecretsStoreProvider,
+} from './providers.js';

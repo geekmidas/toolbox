@@ -17,8 +17,8 @@ import type { SecretServiceName } from './types';
 const logger = console;
 
 /**
- * The store the stage named on the command line keeps its secrets in — SSM in
- * its account, for a deployed stage kept there. Outside any workspace nothing
+ * The store the stage named on the command line keeps its secrets in — SSM or
+ * Secrets Manager in its account, for a deployed stage kept there. Outside any workspace nothing
  * names a store, so it is the file.
  */
 async function storeFor(stage: string): Promise<SecretsStore> {

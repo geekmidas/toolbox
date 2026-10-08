@@ -631,6 +631,13 @@ const StagesConfigSchema = z
 const SecretsStoreSchema = z.union([
 	z.literal('file'),
 	z.object({ provider: z.literal('ssm'), region: AwsRegionSchema }).strict(),
+	z
+		.object({
+			provider: z.literal('secrets-manager'),
+			region: AwsRegionSchema,
+			kmsKeyId: z.string().min(1).optional(),
+		})
+		.strict(),
 	z.object({
 		/** Any backend: an object implementing SecretsStore */
 		provider: z.custom<{ name: string; read: Function; write: Function }>(

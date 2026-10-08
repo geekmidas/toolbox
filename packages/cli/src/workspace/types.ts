@@ -385,7 +385,9 @@ export interface SecretsConfig {
 	 * Where deployed stages' secrets live, so a deploy can reach them from
 	 * anywhere: `'file'` (default — the encrypted `.gkm/secrets/<stage>.json`,
 	 * which cannot serve CI while `.gkm/` is gitignored), `{ provider: 'ssm',
-	 * region }` (each stage's secrets in its own AWS account), or any object
+	 * region }` (each stage's secrets in an SSM parameter in its own AWS
+	 * account, up to 8 KB), `{ provider: 'secrets-manager', region, kmsKeyId? }`
+	 * (a Secrets Manager secret in its own account, up to 64 KB), or any object
 	 * implementing `SecretsStore`. The local stage always uses the file.
 	 */
 	store?: import('../secrets/store.js').SecretsStoreConfig;

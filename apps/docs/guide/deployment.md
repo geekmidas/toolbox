@@ -429,11 +429,11 @@ After creating records, the CLI:
 gkm secrets:init --stage production
 
 # Set individual secrets
-gkm secrets:set --stage production --key STRIPE_SECRET_KEY --value "sk_live_..."
-gkm secrets:set --stage production --key SENDGRID_API_KEY --value "SG...."
+gkm secrets:set STRIPE_SECRET_KEY 'sk_live_...' --stage production
+gkm secrets:set SENDGRID_API_KEY 'SG....' --stage production
 
 # Import from JSON file
-gkm secrets:import --stage production --file secrets.json
+gkm secrets:import secrets.json --stage production
 ```
 
 ### Guided secrets
@@ -492,13 +492,13 @@ anything. Neither message carries the value.
 
 **Custom Secrets** - User-provided key-value pairs:
 ```bash
-gkm secrets:set --key API_KEY --value "secret"
+gkm secrets:set API_KEY 'secret' --stage production
 ```
 
 **URL Secrets** - Connection strings:
 ```bash
-gkm secrets:set --key DATABASE_URL --value "postgres://..."
-gkm secrets:set --key REDIS_URL --value "redis://..."
+gkm secrets:set DATABASE_URL 'postgres://...' --stage production
+gkm secrets:set REDIS_URL 'redis://...' --stage production
 ```
 
 **Service Secrets** - Auto-managed credentials:
@@ -537,6 +537,109 @@ During deployment:
 ```bash
 docker run -e GKM_MASTER_KEY="$(cat .gkm/server/master.key)" my-api:latest
 ```
+
+### The secrets store on AWS
+
+A deployed stage's secrets live in the store `secrets.store` names (see
+[the secrets store](./dev-server.md#deployed-stages-the-secrets-store)). On
+AWS there are two, and either keeps the whole stage — service passwords, URLs
+and custom keys — as one JSON document in the stage's own account:
+
+```typescript
+// gkm.config.ts
+secrets: { store: { provider: 'ssm', region: 'eu-west-1' } },
+// or
+secrets: { store: { provider: 'secrets-manager', region: 'eu-west-1' } },
+// with a customer-managed key for new secrets
+secrets: {
+  store: {
+    provider: 'secrets-manager',
+    region: 'eu-west-1',
+    kmsKeyId: 'alias/acme-secrets',
+  },
+},
+```
+
+| | SSM Parameter Store (`'ssm'`) | Secrets Manager (`'secrets-manager'`) |
+|---|---|---|
+| Kept as | `SecureString` parameter `/gkm/<project>/<stage>/secrets` | secret `gkm/<project>/<stage>/secrets` (no leading `/`) |
+| Size | 8 KB. Written in the Intelligent-Tiering tier: standard (free) under 4 KB, advanced past it | 64 KB |
+| Cost | free under 4 KB; an advanced parameter is billed monthly per parameter | billed monthly per secret, plus per 10,000 API calls |
+| Encryption | the account's `aws/ssm` key | the account's `aws/secretsmanager` key, or `kmsKeyId` |
+| Versions | parameter history (`aws ssm get-parameter-history`) | each write is a version; the previous one stays labelled `AWSPREVIOUS` |
+| Rotation | `gkm secrets:rotate` | `gkm secrets:rotate`. Secrets Manager's own Lambda rotation does not apply: the secret is gkm's stage document, not one credential |
+| Deleting | immediate | scheduled, with a 7–30 day recovery window |
+
+**How to choose.** Use SSM unless a stage outgrows it: it costs nothing for a
+typical stage and is what `gkm init --deploy sst` writes. Choose Secrets
+Manager when a stage holds large third-party credentials — a service-account
+JSON key is 2–3 KB on its own — or when you want its versioning, recovery
+window or a customer-managed KMS key for the secret.
+
+A stage too large for its store is refused before AWS is called, with
+`StageSecretsTooLarge` naming the stage, its size and the limit (8 KB for SSM,
+64 KB for Secrets Manager); nothing is written. On SSM the message points at
+Secrets Manager.
+
+#### IAM for the secrets store
+
+The credentials that run `gkm secrets:*`, `gkm setup` and `gkm deploy` for a
+stage — a developer's profile, or the deploy job's role — need, in that stage's
+account:
+
+**SSM**
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["ssm:GetParameter", "ssm:PutParameter"],
+  "Resource": "arn:aws:ssm:<region>:<account>:parameter/gkm/<project>/<stage>/secrets"
+}
+```
+
+**Secrets Manager** — the `-*` matches the six random characters AWS appends to
+a secret's ARN:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "secretsmanager:GetSecretValue",
+    "secretsmanager:PutSecretValue",
+    "secretsmanager:CreateSecret",
+    "secretsmanager:DescribeSecret"
+  ],
+  "Resource": "arn:aws:secretsmanager:<region>:<account>:secret:gkm/<project>/<stage>/secrets-*"
+}
+```
+
+With a customer-managed key (`kmsKeyId`), the same credentials also need
+`kms:Decrypt`, `kms:Encrypt` and `kms:GenerateDataKey` on that key. The
+AWS-managed keys need no key policy of yours. Use `<stage>` as `*` to grant
+every stage of a project in that account.
+
+#### Switching stores
+
+`gkm secrets:migrate` copies a deployed stage, whole, from the store
+`secrets.store` names to another — nothing is regenerated, so running services
+keep their passwords:
+
+```bash
+# 1. Copy prod from the configured store (here SSM) to Secrets Manager
+AWS_PROFILE=acme-prod gkm secrets:migrate --stage prod --to secrets-manager
+
+# 2. Point gkm.config.ts at the new store
+#    secrets: { store: { provider: 'secrets-manager', region: 'eu-west-1' } }
+
+# 3. Check that commands now read it
+AWS_PROFILE=acme-prod gkm secrets:show --stage prod
+```
+
+The target's region defaults to the configured store's; pass `--region` for
+another, or when moving off the `'file'` store. A target that already holds the
+stage is refused with `MigrateTargetHoldsStage` unless `--force` is given. The
+source is left as it was: delete the old parameter or secret once deploys read
+from the new store. Run it once per deployed stage.
 
 ---
 
@@ -897,14 +1000,14 @@ AWS_PROFILE=acme-prod gkm secrets:set POLAR_CREDENTIALS '{…}' --stage prod
 [`gkm deploy:github`](./cli-reference.md#gkm-deploy-github) creates GitHub's
 OIDC provider in the account if missing and a role only this repository's
 `<stage>` environment can assume, then sets the environment's `AWS_ROLE_ARN`.
-With the SSM store there is nothing to hand over — the deploy reads the store
-with the role; with the `'file'` store it sets `GKM_SECRETS_KEY` instead. No long-lived AWS
+With an AWS store (SSM or Secrets Manager) there is nothing to hand over — the
+deploy reads the store with the role; with the `'file'` store it sets `GKM_SECRETS_KEY` instead. No long-lived AWS
 keys are stored anywhere.
 
 For **Dokploy**, set the environment's values with `gh`. The workflow writes
 `GKM_SECRETS_KEY` to the runner, but the encrypted file it decrypts is under
-the gitignored `.gkm/` — set `secrets.store` to a store CI can reach (SSM, or a
-custom one) before deploying a Dokploy stage from GitHub:
+the gitignored `.gkm/` — set `secrets.store` to a store CI can reach (SSM, Secrets
+Manager, or a custom one) before deploying a Dokploy stage from GitHub:
 
 ```bash
 gh secret set GKM_SECRETS_KEY --env prod < ~/.gkm/keys/<namespace>/<project>/prod.key
@@ -917,7 +1020,7 @@ gh variable set DOKPLOY_ENDPOINT --env prod --body https://dokploy.example.com
 | Setting | Target | Set by |
 |---|---|---|
 | variable `AWS_ROLE_ARN` | SST | `gkm deploy:github` |
-| the stage's secrets in SSM | SST | `gkm secrets:set … --stage <stage>` |
+| the stage's secrets in SSM or Secrets Manager | SST | `gkm secrets:set … --stage <stage>` |
 | secret `GKM_SECRETS_KEY` | Dokploy (`'file'` store) | `gh secret set` |
 | secret `DOKPLOY_API_TOKEN`, variable `DOKPLOY_ENDPOINT` | Dokploy | `gh` |
 

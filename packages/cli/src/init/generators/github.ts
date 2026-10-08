@@ -231,8 +231,8 @@ function deploy(options: TemplateOptions): string {
 `
 		: '';
 
-	// A stage's secrets are read from its store by the deploy itself. SSM needs
-	// nothing but the role the job already assumed; the local file needs its
+	// A stage's secrets are read from its store by the deploy itself. SSM and
+	// Secrets Manager need nothing but the role the job already assumed; the local file needs its
 	// key, and the encrypted file itself, which a checkout of an ignored
 	// `.gkm/` lacks.
 	// Where the CLI looks for the stage's key: under the project's identity,
