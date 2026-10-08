@@ -452,22 +452,20 @@ Errors:
 Environment:
   GKM_COMPOSE_HTTPS_PORT  Where the edge publishes HTTPS (default 443)
   GKM_COMPOSE_HTTP_PORT   Where the edge publishes HTTP (default 80)
-
-Stage secrets passed to every backend (never a site):
-  OTEL_EXPORTER_OTLP_*    The exporter's ENDPOINT, HEADERS, PROTOCOL, TIMEOUT
-                          and COMPRESSION, for all signals or one (_LOGS_, …)
-  OTEL_TRACES_SAMPLER, OTEL_TRACES_SAMPLER_ARG, OTEL_RESOURCE_ATTRIBUTES,
-  OTEL_SERVICE_NAME       (defaults to the app's name)
+  GKM_COMPOSE_LOGS_PORT   Local stage: where OpenObserve is published on
+                          127.0.0.1 (default 5080)
 ```
 
 `gkm compose --stage <stage> --build --push --tag <tag>` is the CI half of a
 release and `gkm compose --stage <stage> --tag <tag>` the server's — see
 [Deploying from CI](./compose.md#deploying-from-ci).
 
-`deploy.compose.logs` runs OpenObserve in the stack and points every backend
-at it, on a loopback port reached through an SSH tunnel — see
-[Logs](./compose.md#logs). A `docker-compose.<stage>.yml` at the workspace
-root is merged over the generated stack.
+When a process uses a [`Telemetry` construct](./telemetry.md), the stage's
+`deploy.telemetry` decides where it goes; a stage that names nothing — and the
+local stage, always — runs OpenObserve in the stack and points each process
+with the edge at it, on a loopback port reached through an SSH tunnel — see
+[Telemetry](./compose.md#telemetry). A `docker-compose.<stage>.yml` at the
+workspace root is merged over the generated stack.
 
 `deploy.compose.proxy` (`'caddy'`, the default, or `'traefik'`, for every
 deployed stage or per stage) chooses what serves a deployed stage: the stack's
@@ -475,8 +473,9 @@ own Caddy, or the server's shared Traefik edge (compose project and network
 `gkm-edge`, configured from `$GKM_HOME/edge`), which `gkm compose` starts when
 needed and `--down` unregisters from. `deploy.compose.tls.<stage>` gives a
 stage its own certificate in place of Let's Encrypt. See
-[Proxy: Caddy or Traefik](./compose.md#proxy-caddy-or-traefik). `gkm deploy --target dokploy` passes
-the same `OTEL_*` keys to its backends.
+[Proxy: Caddy or Traefik](./compose.md#proxy-caddy-or-traefik). `gkm deploy --target dokploy` runs
+no collector: a stage there that uses telemetry names `{ provider: 'otlp' }` or
+`false` in `deploy.telemetry`.
 
 ### `gkm docker`
 

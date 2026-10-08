@@ -197,6 +197,7 @@ declared.
 | a topic or queue, deploying to AWS | the AWS emulator (SNS and SQS) |
 | a topic, queue or worker, deploying to a server | nothing — pg-boss lives in Postgres |
 | a `RestApi` or `StaticSite` | `caddy`, the edge each app answers behind |
+| a `Telemetry` given to a surface or worker | `openobserve`, the local collector and its UI |
 
 There is no `services` block and no flag that starts a container. The containers
 are written to the generated `docker-compose.constructs.yml`; an image pin, or a
@@ -204,6 +205,35 @@ service no construct implies, goes in your own `docker-compose.yml`, merged over
 it. Reconcile then creates what the URLs name — databases, roles, buckets — and
 persists the ports it assigned to `.gkm/ports.json`, so external tools keep
 working across restarts.
+
+### Telemetry, locally
+
+When any surface or worker is given a [`Telemetry` construct](./telemetry.md),
+reconcile adds OpenObserve to the services, prints where it is, and lists its
+login — `admin@gkm.localhost` with a password generated for this machine —
+with the other local logins:
+
+```
+🐳 Services
+   …
+   openobserve    http://localhost:28011
+🔑 Logins (again any time: gkm dev:credentials)
+   …
+   OpenObserve    http://localhost:28011
+                  user admin@gkm.localhost, password … — when running: gkm dev
+```
+
+Each process with an edge to the construct is handed `OTEL_*` pointing at it,
+named for its app, keeping every trace (`OTEL_TRACES_SAMPLER_ARG=1`); a process
+without the edge, and every site, gets none. `deploy.telemetry` is not read
+here. The dev server's entry starts the same OpenTelemetry SDK and mounts the
+same request middleware the production server does — from the same generated
+`telemetry.ts` — so what you see locally is what a deployed stage sends: a
+span per request, its log lines in its trace, its queries, and the queue jobs
+it enqueued. The [discovery endpoint](#discovery-endpoint) lists the UI as
+`telemetry: { url, email }`, never the password.
+
+`gkm test` starts no collector and hands out no key: tests export nothing.
 
 ### 5. Load Secrets and Resolve Addresses
 
@@ -546,7 +576,7 @@ and prints a connect URL for it:
 
 | Route | What it answers |
 |-------|-----------------|
-| `GET /__gkm` | Every running workspace: name, stage, construct manifest, and each app with its port, URL, status and data APIs |
+| `GET /__gkm` | Every running workspace: name, stage, construct manifest, its local telemetry UI (`telemetry: { url, email }`, or `null`), and each app with its port, URL, status and data APIs |
 | `GET /__gkm/events` | Server-sent events: a `snapshot`, then `workspace.started`/`stopped` and `app.started`/`stopped`/`reloaded`/`status` |
 | `GET /__gkm/workspaces/<id>/apps/<app>/<path>` | That app's data API at `<path>` — Telescope's `/__telescope/api/*`, `/__gkm/db/*`, `/__docs` — so a client needs one origin |
 

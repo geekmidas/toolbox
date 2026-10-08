@@ -492,11 +492,14 @@ const telescope = new Telescope({
 ## Production: OpenTelemetry
 
 Production builds (`gkm build --production`, which `gkm docker` images run)
-leave the Telescope dashboard out. In its place, the generated server entry
-starts OpenTelemetry when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, before the app
-is imported, so traces and logs go to your collector with no code in the app.
+leave the Telescope dashboard out. In its place, the generated server entry of
+a process given a [`Telemetry` construct](/guide/telemetry) starts
+OpenTelemetry when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, before the app is
+imported, so traces and logs go to your collector with no code in the app. The
+deploy sets the variables from the stage's `deploy.telemetry`.
 
-Install the instrumentation's optional peers in the app, then rebuild:
+Install the instrumentation's optional peers in each app that uses the
+construct — the build fails with `TelemetryPackagesMissing` without them:
 
 ```bash
 pnpm add @geekmidas/telescope @opentelemetry/api @opentelemetry/auto-instrumentations-node \
@@ -517,14 +520,15 @@ pnpm add @geekmidas/telescope @opentelemetry/api @opentelemetry/auto-instrumenta
 
 The entry names the resource for you:
 
-- `service.name`: the `RestApi` the server serves (its id), or the app's directory without one.
-- `service.namespace`: the workspace's name.
+- `service.name`: the `RestApi` or `Worker` the process runs (its id);
+  `OTEL_SERVICE_NAME`, which the deploy sets to the app's name, overrides it.
+- `service.namespace`: the workspace's name, and the construct's `attributes`.
 - `deployment.environment.name`: `STAGE`.
 
-An app built without the packages still builds and starts: its entry imports
-none of them, and if `OTEL_EXPORTER_OTLP_ENDPOINT` is set it prints a
-`TelemetryUnavailable` warning saying so. The same warning, and no crash, if the
-packages fail to load at runtime.
+A process with no edge to a `Telemetry` construct gets an entry that imports
+none of the packages and starts nothing. One with the edge whose packages fail
+to load at runtime prints a `TelemetryUnavailable` warning and runs without
+telemetry — never a crash.
 
 ::: tip Bundled builds
 The production bundle inlines the app's dependencies, and OpenTelemetry's

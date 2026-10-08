@@ -59,6 +59,7 @@ export default defineConfig({
           { text: 'Deploy Targets', link: '/guide/deploy-targets' },
           { text: 'Deploy with Docker Compose', link: '/guide/compose' },
           { text: 'Running in Production', link: '/guide/production' },
+          { text: 'Telemetry', link: '/guide/telemetry' },
           { text: 'Deploy State', link: '/guide/state' },
           { text: 'Deploying from a Program', link: '/guide/deploy-api' },
           { text: 'The Sandbox', link: '/guide/sandbox' },

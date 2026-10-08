@@ -57,6 +57,7 @@ pnpm add @geekmidas/constructs
 | `/rest-api` | `RestApi` — an API surface |
 | `/site` | `StaticSite` — a declared static site |
 | `/auth` | `BetterAuth` — a declared auth server |
+| `/telemetry` | `Telemetry` — what the application emits (traces and logs) |
 
 > **Service integrations moved:** the tRPC and Middy middlewares now live in [`@geekmidas/services`](/packages/services) (`@geekmidas/services/trpc`, `@geekmidas/services/middy`) since they depend only on `@geekmidas/services`, not on the constructs.
 
@@ -1926,11 +1927,50 @@ Crons are found by the same `constructs` glob as everything else in
 
 When the project deploys with SST (`deploy: { default: 'sst' }`), `gkm build` compiles each cron into its own Lambda handler under `<app>/.gkm/aws/crons/`, with its schedule expression in the manifest at `.gkm/manifest/aws.ts`. `fromManifest` from `@geekmidas/cloud/sst` turns it into an EventBridge rule; another IaC tool can read the same manifest.
 
+## Telemetry
+
+`Telemetry` declares what a process emits — never where it goes, which is the
+stage's `deploy.telemetry` (see the [Telemetry guide](/guide/telemetry)):
+
+```ts
+import { Telemetry } from '@geekmidas/constructs/telemetry';
+
+export const telemetry = new Telemetry('Telemetry', {
+  ignorePaths: ['/health', '/ready'],        // no span for these, on every surface
+  attributes: { 'service.namespace': 'shop' }, // on every span and log record
+});
+
+// passed like the logger — each one is an edge to the node
+new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'none', logger, telemetry });
+new Worker('Jobs', { logger, telemetry });
+new BetterAuth('Auth', { path: 'apps/auth', database: authDb, telemetry });
+new StaticSite('Web', { path: 'apps/web', telemetry });
+
+// one route says something of its own
+router.get('/health').telemetry({ ignore: true }).handle(() => ({ ok: true }));
+router
+  .get('/orders/:id')
+  .telemetry({ attributes: { 'app.area': 'orders' } })
+  .handle(…);
+```
+
+The node provides OpenTelemetry's own keys — `OTEL_EXPORTER_OTLP_ENDPOINT`,
+`OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME`, `OTEL_TRACES_SAMPLER` and
+`OTEL_TRACES_SAMPLER_ARG` (`TELEMETRY_KEYS` in `@geekmidas/manifest`) — to
+each process with an edge, and none of them to a site's public values. A
+process with the edge is built with the SDK, and needs `@geekmidas/telescope`
+and its OpenTelemetry peers; one without it loads nothing.
+
+The old `Telemetry` *interface* the Lambda adaptors take
+(`onRequestStart`/`onRequestEnd`/`onRequestError`) is still exported from the
+package root under that name; the construct is `@geekmidas/constructs/telemetry`.
+
 ## Tracing
 
 The constructs record their own spans through the global OpenTelemetry tracer,
-so they are a no-op unless a provider is registered (a production entry
-registers one when `OTEL_EXPORTER_OTLP_ENDPOINT` is set):
+so they are a no-op unless a provider is registered (the entry of a process
+given the `Telemetry` construct registers one when
+`OTEL_EXPORTER_OTLP_ENDPOINT` is set):
 
 | Span | Kind | Attributes |
 | --- | --- | --- |
