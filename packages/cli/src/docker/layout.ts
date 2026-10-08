@@ -9,6 +9,7 @@
 
 import { readFileSync } from 'node:fs';
 import { isAbsolute, join, relative, sep } from 'node:path';
+import type { ClientTelemetryDefault } from '../generators/clientTelemetry.js';
 import { allConstructGlobs } from '../workspace/index.js';
 import type {
 	NormalizedAppConfig,
@@ -118,6 +119,11 @@ export function appImageOptions(
 	 * backend it depends on, so it has to know where they are.
 	 */
 	apps: Readonly<Record<string, NormalizedAppConfig>> = {},
+	/**
+	 * Whether a site's clients propagate trace context, at what rate — set
+	 * from its edge to a `Telemetry` construct and the stage's sample rate.
+	 */
+	clientTelemetry?: ClientTelemetryDefault,
 ): ImageTemplateOptions {
 	const turboPackage =
 		packageName(
@@ -150,7 +156,14 @@ export function appImageOptions(
 						: {}),
 				}
 			: app.type === 'web'
-				? siteWorkspace(layout, app, apps, workspaceRoot, turboPackage)
+				? siteWorkspace(
+						layout,
+						app,
+						apps,
+						workspaceRoot,
+						turboPackage,
+						clientTelemetry,
+					)
 				: {}),
 	};
 }
@@ -167,6 +180,7 @@ function siteWorkspace(
 	apps: Readonly<Record<string, NormalizedAppConfig>>,
 	workspaceRoot: string,
 	turboPackage: string,
+	clientTelemetry?: ClientTelemetryDefault,
 ): Pick<ImageTemplateOptions, 'gkmPaths' | 'prunePackages' | 'clients'> {
 	const clients = siteClients(site, apps);
 	const packages = new Set<string>();
@@ -190,6 +204,7 @@ function siteWorkspace(
 					clients: clients.map(({ app }) => ({
 						app,
 						path: fromBuildRoot(layout, apps[app]!.path),
+						...(clientTelemetry ? { telemetry: clientTelemetry } : {}),
 					})),
 				}
 			: {}),

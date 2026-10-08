@@ -4,6 +4,7 @@ import type { ConstructManifest } from '@geekmidas/manifest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { deployIdentity } from '../../deploy/identity';
+import { TEST_CREDENTIALS } from '../../reconcile/__tests__/__helpers__/credentials';
 import { initStageSecrets } from '../../secrets/storage';
 import type { StageSecrets } from '../../secrets/types';
 import { TelemetryProviderRequired } from '../../telemetry/config';
@@ -15,7 +16,6 @@ import {
 	isStrongLogsPassword,
 	LogsPasswordMissing,
 	LogsPasswordWeak,
-	localTelemetryLogin,
 	logsAccess,
 	OPENOBSERVE_IMAGE,
 	otlpHeaders,
@@ -114,6 +114,7 @@ function stack(
 		identity: deployIdentity(workspace, stage),
 		images: { mode: 'build', tag: 'abc1234' },
 		ports: { https: 8443, http: 8080 },
+		localCredentials: TEST_CREDENTIALS,
 		...overrides,
 	});
 }
@@ -177,7 +178,7 @@ describe('the local stage', () => {
 
 	it('keeps 30 days, and signs in with the local login', () => {
 		const s = stack();
-		const login = localTelemetryLogin();
+		const login = TEST_CREDENTIALS.logs;
 
 		expect(s.logs?.env).toEqual({
 			ZO_ROOT_USER_EMAIL: login.email,
@@ -192,7 +193,7 @@ describe('the local stage', () => {
 
 	it('points every process with the edge at it, at 100%, named for the process', () => {
 		const s = stack();
-		const login = localTelemetryLogin();
+		const login = TEST_CREDENTIALS.logs;
 
 		for (const name of ['api', 'auth', 'jobs']) {
 			const own = env(s, name)!;
@@ -504,7 +505,7 @@ describe('how to open it', () => {
 	});
 
 	it('says the local stage opens directly, with its login', () => {
-		const login = localTelemetryLogin();
+		const login = TEST_CREDENTIALS.logs;
 		const lines = logsAccess(stack().logs!, {
 			...ctx,
 			stage: 'development',
@@ -517,5 +518,51 @@ describe('how to open it', () => {
 		expect(lines[3]).toContain(
 			`(login: ${login.email}, password: ${login.password})`,
 		);
+	});
+});
+
+describe("a site's client, in its image", () => {
+	/** The `gkm openapi` the site's Dockerfile runs for each API it calls. */
+	const openapi = (s: ComposeStack) => {
+		const [, dockerfile] =
+			Object.entries(s.dockerfiles).find(([path]) => path.endsWith('web')) ??
+			[];
+		return (dockerfile ?? '')
+			.split('\n')
+			.filter((line) => line.includes('gkm openapi'))
+			.join('\n');
+	};
+
+	it('propagates trace context for a site with the edge, at every trace locally', () => {
+		const s = stack();
+
+		expect(openapi(s)).toContain('gkm openapi --app api --telemetry 1');
+	});
+
+	it('propagates at the stage’s sample rate on a deployed stage', () => {
+		const built = (telemetry: Record<string, StageTelemetryConfig>) =>
+			stack(
+				{ telemetry },
+				{
+					stage: 'production',
+					secrets: production(),
+					ports: {},
+				},
+			);
+
+		expect(
+			openapi(
+				built({ production: { provider: 'self-hosted', sampleRate: 0.1 } }),
+			),
+		).toContain('gkm openapi --app api --telemetry 0.1');
+		// A stage that sends nothing propagates nothing.
+		expect(openapi(built({ production: false }))).not.toContain('--telemetry');
+	});
+
+	it('propagates nothing for a site without the edge', () => {
+		const s = stack({ project: none });
+
+		expect(openapi(s)).toContain('gkm openapi --app api');
+		expect(openapi(s)).not.toContain('--telemetry');
 	});
 });

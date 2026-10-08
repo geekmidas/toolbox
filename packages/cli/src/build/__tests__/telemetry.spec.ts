@@ -17,7 +17,24 @@ import { buildApp } from '../index';
  * without it, the entry gets the stub, whatever is installed.
  */
 
-async function project(dir: string, options: { telemetry: boolean }) {
+async function project(
+	dir: string,
+	options: { telemetry: boolean; site?: boolean },
+) {
+	if (options.site !== undefined) {
+		await createTestFile(
+			dir,
+			'src/site.ts',
+			`import { StaticSite } from '@geekmidas/constructs/site';
+import { api, telemetry } from './api.js';
+
+export const web = new StaticSite('Web', {
+  path: 'web',
+  ${options.site ? 'telemetry,' : ''}
+}).dependsOn([api]);
+`,
+		);
+	}
 	await createTestFile(
 		dir,
 		'src/api.ts',
@@ -56,6 +73,7 @@ const build = (dir: string) =>
 		config: {
 			stages: { local: 'development', deployed: ['production'] },
 			constructs: './src/**/*.ts',
+			openapi: true,
 		},
 		workspaceRoot: dir,
 		appRoot: dir,
@@ -130,6 +148,40 @@ describe('the build’s telemetry, from the surface’s edge', () => {
 			]);
 			expect((error as TelemetryPackagesMissing).command).toBe(
 				`pnpm --dir . add ${TELEMETRY_PACKAGES.join(' ')}`,
+			);
+		},
+	);
+
+	itWithDir(
+		'generates a client that propagates trace context for a site with the edge',
+		async ({ dir }) => {
+			await project(dir, { telemetry: true, site: true });
+
+			await build(dir);
+
+			const client = await readFile(
+				join(dir, '.gkm', 'client', 'api.ts'),
+				'utf-8',
+			);
+			expect(client).toContain(
+				'export const telemetryDefault: boolean | ClientTelemetryOptions = { sampleRate: 1 };',
+			);
+		},
+	);
+
+	itWithDir(
+		'generates one that propagates nothing when no site that calls it has the edge',
+		async ({ dir }) => {
+			await project(dir, { telemetry: true, site: false });
+
+			await build(dir);
+
+			const client = await readFile(
+				join(dir, '.gkm', 'client', 'api.ts'),
+				'utf-8',
+			);
+			expect(client).toContain(
+				'export const telemetryDefault: boolean | ClientTelemetryOptions = false;',
 			);
 		},
 	);

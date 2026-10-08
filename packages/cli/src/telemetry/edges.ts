@@ -17,6 +17,8 @@ import {
 	type TelemetryDeclaration,
 } from '@geekmidas/manifest';
 import { appKey } from '../workspace/derive.js';
+import type { StageTelemetryConfig } from '../workspace/types.js';
+import { stageSampleRate } from './config.js';
 
 /** The `OTEL_*` keys a `Telemetry` node provides. */
 export const TELEMETRY_ENV_KEYS: readonly string[] = TELEMETRY_KEYS;
@@ -130,7 +132,9 @@ export function siteUsesTelemetry(
 	siteId: string,
 ): boolean {
 	const site = manifest[siteId];
-	return site?.kind === 'site' && nodeOf(manifest, site.telemetry) !== undefined;
+	return (
+		site?.kind === 'site' && nodeOf(manifest, site.telemetry) !== undefined
+	);
 }
 
 /**
@@ -149,4 +153,32 @@ export function surfaceClientTraced(
 			siteUsesTelemetry(manifest, id) &&
 			d.dependencies.some((edge) => edge.target === surfaceId),
 	);
+}
+
+/**
+ * Whether the site app `appName`'s clients propagate trace context, and at
+ * what rate: when the site has an edge to a `Telemetry` construct, at the
+ * stage's sample rate — a public value, every trace locally — and not at all
+ * for a stage that sends no telemetry.
+ */
+export function siteClientTelemetry(
+	manifest: ConstructManifest,
+	appName: string,
+	workspace: {
+		stages: { local: string };
+		deploy?: { telemetry?: Readonly<Record<string, StageTelemetryConfig>> };
+	},
+	/** The stage being built for — the local stage when absent. */
+	stage?: string,
+): { sampleRate: number } | undefined {
+	const id = Object.entries(manifest).find(
+		([id, d]) => d.kind === 'site' && appKey(id) === appName,
+	)?.[0];
+	if (!id || !siteUsesTelemetry(manifest, id)) return undefined;
+	const sampleRate = stageSampleRate(
+		workspace.deploy?.telemetry,
+		stage ?? workspace.stages.local,
+		!stage || stage === workspace.stages.local,
+	);
+	return sampleRate === undefined ? undefined : { sampleRate };
 }

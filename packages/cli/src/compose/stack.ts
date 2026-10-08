@@ -1027,6 +1027,9 @@ export function composeStack(input: StackInput): ComposeStack {
 				apps: workspace.apps,
 				manifest,
 				cache: STACK_CACHE,
+				// A site's clients trace at this stage's sample rate.
+				workspace,
+				stage,
 			},
 		);
 	}

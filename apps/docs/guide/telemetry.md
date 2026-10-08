@@ -47,9 +47,16 @@ decides everything else:
 - **Sites.** A site's edge is recorded, and it is handed none of the node's
   keys: an exporter's endpoint and headers are a server's, and a site's
   environment is a bundle every browser downloads. Nothing about telemetry
-  reaches a site's public values. (The browser half — the generated client
-  propagating trace context, then a browser SDK exporting through the API — is
-  built on this edge in later releases.)
+  reaches a site's public values. What the edge does give a site is trace
+  context: the typed client generated for each API it calls sends
+  `traceparent` to that API by default (`telemetryDefault` in
+  `.gkm/client/<surface>.ts`), sampled per page view at the stage's
+  `sampleRate` — every trace locally, none for a stage set to `false`. Built
+  on the host, one client serves every site that calls the API, so a site
+  with the edge turns it on; a site's image generates its own clients
+  (`gkm openapi --app <api> --telemetry <rate>`) from its own edge. See
+  [Trace context](../packages/client.md#trace-propagation) for what the client sends and to
+  whom.
 
 A server generated for a `RestApi` that also runs the workers' crons and
 consumers — under `gkm dev` — uses telemetry when the API or a worker it runs

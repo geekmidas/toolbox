@@ -8,11 +8,12 @@ import {
 } from '@geekmidas/manifest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
-import { localTelemetryLogin, OPENOBSERVE_IMAGE } from '../../compose/logs';
+import { OPENOBSERVE_IMAGE } from '../../compose/logs';
 import { appTelemetry, scopeTelemetryEnv } from '../../telemetry/edges';
 import { appEnvKeys } from '../apps';
 import type { Docker } from '../index';
 import { COMPOSE_PATH, reconcile } from '../index';
+import { TEST_CREDENTIALS } from './__helpers__/credentials';
 
 /**
  * `gkm dev`'s side of telemetry: reconcile runs OpenObserve when a process
@@ -112,6 +113,8 @@ describe('reconcile, with a Telemetry construct', () => {
 		docker = fakeDocker().docker,
 	) =>
 		reconcile({
+			credentials: TEST_CREDENTIALS,
+			logins: async ({ credentials }) => ({ credentials, outcomes: [] }),
 			root,
 			project: 'shop',
 			manifest,
@@ -131,7 +134,7 @@ describe('reconcile, with a Telemetry construct', () => {
 		expect(up[0]).toContain('openobserve');
 
 		const compose = parse(await readFile(join(root, COMPOSE_PATH), 'utf-8'));
-		const login = localTelemetryLogin();
+		const login = TEST_CREDENTIALS.logs;
 		expect(compose.services.openobserve).toMatchObject({
 			image: OPENOBSERVE_IMAGE,
 			environment: {
@@ -160,7 +163,7 @@ describe('reconcile, with a Telemetry construct', () => {
 	it('resolves the local keys: OpenObserve’s ingest, its login, and every trace', async () => {
 		const result = await run(used);
 		const port = result.ports.openobserve;
-		const login = localTelemetryLogin();
+		const login = TEST_CREDENTIALS.logs;
 
 		expect(result.env).toMatchObject({
 			OTEL_EXPORTER_OTLP_ENDPOINT: `http://localhost:${port}/api/default`,

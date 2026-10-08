@@ -29,6 +29,7 @@ import {
 	workerBundleName,
 	workerEntryDir,
 } from '../generators';
+import type { ClientTelemetryDefault } from '../generators/clientTelemetry.js';
 import {
 	routeTelemetry,
 	type TelemetryContext,
@@ -46,7 +47,8 @@ import {
 import { CommandFailed, DEFAULT_TIMEOUT_MS } from '../run';
 import { LocalSandbox } from '../sandbox/local';
 import { keyFingerprint } from '../secrets/encryption';
-import { telemetryOf } from '../telemetry/edges.js';
+import { stageSampleRate } from '../telemetry/config.js';
+import { surfaceClientTraced, telemetryOf } from '../telemetry/edges.js';
 import type {
 	BuildOptions,
 	BuildResult,
@@ -74,6 +76,7 @@ import {
 	type NormalizedAppConfig,
 	type NormalizedWorkspace,
 } from '../workspace/index.js';
+import type { StageTelemetryConfig } from '../workspace/types.js';
 import { ownersContext, servedBy } from './owners';
 import {
 	selfServingSurface,
@@ -703,7 +706,19 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 	// than from a second discovery pass over the same files.
 	await generateOpenApi(
 		allEndpoints.map(({ construct }) => construct),
-		{ openapi: config.openapi, root: workspaceRoot },
+		{
+			openapi: config.openapi,
+			root: workspaceRoot,
+			...(derived.surface
+				? clientTelemetry({
+						manifest: declared,
+						surfaceId: derived.surface.id,
+						telemetry: input.workspace?.deploy?.telemetry,
+						stage: input.stage,
+						localStage: input.workspace?.stages.local ?? config.stages?.local,
+					})
+				: {}),
+		},
 	);
 
 	return {
@@ -769,6 +784,29 @@ async function buildWorkers(input: {
 		});
 		logger.log(`✅ Bundle complete: .gkm/server/dist/${outfile}`);
 	}
+}
+
+/**
+ * Whether the surface's generated client propagates trace context, and at
+ * what rate: on when a site that calls it has an edge to a `Telemetry`
+ * construct, at the stage's sample rate — every trace locally, and on a build
+ * for no stage. Off for a stage that sends no telemetry.
+ */
+function clientTelemetry(options: {
+	manifest: ConstructManifest;
+	surfaceId: string;
+	telemetry?: Readonly<Record<string, StageTelemetryConfig>>;
+	stage?: string;
+	localStage?: string;
+}): { telemetry?: ClientTelemetryDefault } {
+	if (!surfaceClientTraced(options.manifest, options.surfaceId)) return {};
+	const local = !options.stage || options.stage === options.localStage;
+	const sampleRate = stageSampleRate(
+		options.telemetry,
+		options.stage ?? '',
+		local,
+	);
+	return sampleRate === undefined ? {} : { telemetry: { sampleRate } };
 }
 
 /** The app being built, by its workspace name or its directory's. */
