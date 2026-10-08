@@ -1,3 +1,4 @@
+export { sqsEventsDriver } from './driver';
 export type { SQSConnectionConfig } from './SQSConnection';
 export { SQSConnection } from './SQSConnection';
 export type { SQSPublisherOptions } from './SQSPublisher';

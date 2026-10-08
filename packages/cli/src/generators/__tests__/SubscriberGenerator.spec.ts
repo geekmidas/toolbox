@@ -346,6 +346,48 @@ describe('SubscriberGenerator', () => {
 			expect(content).toContain("process.env.GKM_SUBSCRIBERS === 'off'");
 		});
 
+		it('generates push subscriptions only for an SNS broker', async () => {
+			const users = new Topic('Users', {
+				events: { 'user.created': z.object({ id: z.string() }) },
+			});
+			const construct = new Worker('Jobs')
+				.topic(users)
+				.subscribe(['user.created'])
+				.handle(async () => {});
+			const subscribers = [
+				{
+					key: 'userEvents',
+					name: 'userevents',
+					construct,
+					path: {
+						absolute: join(tempDir, 'userEvents.ts'),
+						relative: 'userEvents.ts',
+					},
+				},
+			];
+			const generate = async (eventsBackends: ('pgboss' | 'sns')[]) => {
+				await generator.build(
+					{ ...context, eventsBackends },
+					subscribers,
+					outputDir,
+					{ target: 'server' },
+				);
+				return readFile(join(outputDir, 'subscribers.ts'), 'utf-8');
+			};
+
+			// On pg-boss the SNS client is never named, so a bundle never has to
+			// resolve the AWS SDK.
+			const pgboss = await generate(['pgboss']);
+			expect(pgboss).not.toContain('@geekmidas/events/sns');
+			expect(pgboss).not.toContain('@geekmidas/constructs/subscribers');
+			expect(pgboss).toContain('This build has no SNS driver');
+
+			const sns = await generate(['sns']);
+			expect(sns).toContain("await import('@geekmidas/events/sns')");
+			expect(sns).toContain('SnsPushSubscriberAdaptor');
+			expect(sns).toContain('http://host.docker.internal:');
+		});
+
 		it('hands each polled subscriber its database as db', async () => {
 			const users = new Topic('Users', {
 				events: { 'user.created': z.object({ id: z.string() }) },

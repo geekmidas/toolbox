@@ -15,6 +15,7 @@ import {
 	vi,
 } from 'vitest';
 import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
+import { registerAllEventsDrivers } from '../../__tests__/__helpers__/drivers';
 import { EventConnectionFactory } from '../../EventConnection';
 import { Publisher } from '../../Publisher';
 import type { PublishableMessage } from '../../types';
@@ -22,6 +23,8 @@ import { SQSConnection } from '../SQSConnection';
 import { SQSPublisher } from '../SQSPublisher';
 import { SQSSubscriber } from '../SQSSubscriber';
 import { build } from '../sqsUrl';
+
+registerAllEventsDrivers();
 
 /**
  * A queue end to end on the AWS emulator: what the publisher sends is what the

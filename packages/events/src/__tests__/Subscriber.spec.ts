@@ -7,6 +7,9 @@ import { SQSConnection } from '../sqs/SQSConnection';
 import { SQSSubscriber } from '../sqs/SQSSubscriber';
 import type { PublishableMessage } from '../types';
 import { UnsupportedEventTransport } from '../types';
+import { registerAllEventsDrivers } from './__helpers__/drivers';
+
+registerAllEventsDrivers();
 
 type TestMessage = PublishableMessage<'test.event', { data: string }>;
 
@@ -52,7 +55,7 @@ describe('Subscriber', () => {
 		});
 
 		it('should throw error for unsupported protocol', async () => {
-			const connectionStr = 'unsupported://localhost';
+			const connectionStr = 'unsupported://localhost' as never;
 
 			await expect(
 				Subscriber.fromConnectionString<TestMessage>(connectionStr),

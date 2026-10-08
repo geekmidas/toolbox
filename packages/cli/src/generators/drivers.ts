@@ -16,7 +16,11 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { type CacheBackend, DEFAULT_CACHE } from '../types.js';
+import {
+	type CacheBackend,
+	DEFAULT_CACHE,
+	type EventsBackend,
+} from '../types.js';
 
 /** The `s3://` driver, which serves MinIO locally and S3 deployed. */
 const S3 = {
@@ -67,7 +71,33 @@ const CACHE_DRIVERS: Record<CacheBackend, RuntimeDrivers> = {
 };
 
 /**
- * Everything a generated entry should register: object storage, and the cache.
+ * The events drivers for a broker — only its own, so a bundle never resolves
+ * another broker's client library.
+ *
+ * Keyed off the backend, as the cache is: the target already says which broker
+ * carries the app's topics and queues. SNS registers SQS beside it, because on
+ * AWS a topic is `sns://` and a queue is `sqs://`, and an entry registering one
+ * would publish to topics and fail on the first queue.
+ */
+const EVENTS_DRIVERS: Record<EventsBackend, RuntimeDrivers> = {
+	pgboss: {
+		imports: `import { registerEventsDriver } from '@geekmidas/events';\nimport { pgbossEventsDriver } from '@geekmidas/events/pgboss';`,
+		setup: 'registerEventsDriver(pgbossEventsDriver);',
+	},
+	sns: {
+		imports: `import { registerEventsDriver } from '@geekmidas/events';\nimport { snsEventsDriver } from '@geekmidas/events/sns';\nimport { sqsEventsDriver } from '@geekmidas/events/sqs';`,
+		setup:
+			'registerEventsDriver(snsEventsDriver);\nregisterEventsDriver(sqsEventsDriver);',
+	},
+	rabbitmq: {
+		imports: `import { registerEventsDriver } from '@geekmidas/events';\nimport { rabbitmqEventsDriver } from '@geekmidas/events/rabbitmq';`,
+		setup: 'registerEventsDriver(rabbitmqEventsDriver);',
+	},
+};
+
+/**
+ * Everything a generated entry should register: object storage, the cache,
+ * and the events broker.
  *
  * Merged here rather than threaded separately, because a generated file has one
  * import block and one setup block whatever fills them.
@@ -82,19 +112,22 @@ export function driversFor(options: {
 	 * registered at all.
 	 */
 	cache?: CacheBackend | readonly CacheBackend[] | false;
+	/**
+	 * The events brokers in play — see {@link eventsBackendsIn}. Absent or
+	 * empty means nothing declared a topic or a queue, so no events driver is
+	 * registered and `@geekmidas/events` is never resolved.
+	 */
+	events?: EventsBackend | readonly EventsBackend[] | false;
 }): RuntimeDrivers {
-	const backends =
-		options.cache === false || options.cache === undefined
-			? []
-			: typeof options.cache === 'string'
-				? [options.cache]
-				: options.cache;
+	const backends = listOf(options.cache);
+	const brokers = listOf(options.events);
 
 	const parts = [
 		storageDriversFor(options.appRoot),
 		...[...new Set(backends)].map(
 			(backend) => CACHE_DRIVERS[backend] ?? CACHE_DRIVERS[DEFAULT_CACHE.aws],
 		),
+		...[...new Set(brokers)].map((broker) => EVENTS_DRIVERS[broker]),
 	].filter((part) => part.imports || part.setup);
 
 	if (parts.length === 0) return NONE;
@@ -103,6 +136,36 @@ export function driversFor(options: {
 		imports: parts.map((part) => part.imports).join('\n'),
 		setup: parts.map((part) => part.setup).join('\n'),
 	};
+}
+
+function listOf<T extends string>(
+	value: T | readonly T[] | false | undefined,
+): readonly T[] {
+	if (value === false || value === undefined) return [];
+	return typeof value === 'string' ? [value] : (value as readonly T[]);
+}
+
+/**
+ * Which events brokers an app's entry has to speak: the target's, when the app
+ * declares a `Topic` or a `Queue` — and none at all when it declares neither,
+ * so a project without events never resolves `@geekmidas/events`.
+ *
+ * A worker on pg-boss counts too: a server schedules its crons through the
+ * pg-boss broker, which the plan provisions for a declared worker beside a
+ * declared database (`workerBroker` in `reconcile/plan.ts`) whether or not
+ * anything publishes.
+ */
+export function eventsBackendsIn(
+	manifest: Record<string, { kind: string }>,
+	configured: EventsBackend,
+): EventsBackend[] {
+	const kinds = new Set(Object.values(manifest).map((d) => d.kind));
+	const declared =
+		kinds.has('topic') ||
+		kinds.has('queue') ||
+		(configured === 'pgboss' && kinds.has('worker') && kinds.has('database'));
+
+	return declared ? [configured] : [];
 }
 
 /**

@@ -1,3 +1,4 @@
+export { pgbossEventsDriver } from './driver';
 export { PgBossNotStarted, PgBossSubscriptionNeedsName } from './errors';
 export type { PgBossConnectionConfig } from './PgBossConnection';
 export { PgBossConnection } from './PgBossConnection';

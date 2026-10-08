@@ -35,7 +35,11 @@ export class SubscriberGenerator extends ConstructGenerator<
 
 		if (target === 'server') {
 			// Generate subscribers.ts for server-based polling (even if empty)
-			await this.generateServerSubscribersFile(outputDir, constructs);
+			await this.generateServerSubscribersFile(
+				outputDir,
+				constructs,
+				context.eventsBackends?.includes('sns') ?? false,
+			);
 
 			logger.log(
 				`Generated server subscribers file with ${constructs.length} subscribers (polling mode)`,
@@ -113,8 +117,9 @@ export class SubscriberGenerator extends ConstructGenerator<
 		const content = `import { AWSLambdaSubscriber } from '@geekmidas/constructs/aws';
 import { ${exportName} } from '${importPath}';
 ${runtime.imports}
+${context.storageDrivers?.imports ?? ''}
 ${runtime.bindings}
-
+${context.storageDrivers?.setup ? `\n// The handler registers the drivers its target needs.\n${context.storageDrivers.setup}\n` : ''}
 const adapter = new AWSLambdaSubscriber(envParser, ${exportName});
 
 export const handler = adapter.handler;
@@ -129,6 +134,12 @@ export const handler = adapter.handler;
 		subscribers: GeneratedConstruct<
 			Subscriber<any, any, any, any, any, any, any>
 		>[],
+		/**
+		 * The broker is SNS, so a subscriber is pushed to over HTTP. Only then is
+		 * the push code generated: it imports the SNS client, which a bundle for
+		 * any other broker must never have to resolve.
+		 */
+		push: boolean,
 	): Promise<string> {
 		await mkdir(outputDir, { recursive: true });
 		const subscribersPath = join(outputDir, 'subscribers.ts');
@@ -274,7 +285,9 @@ export async function setupSubscribers(
     }
 
     try {
-      if (connectionString.startsWith('sns:')) {
+${
+	push
+		? `      if (connectionString.startsWith('sns:')) {
         const { SNSConnection, snsUrl, subscribeHttpEndpoint } = await import('@geekmidas/events/sns');
         const { SnsPushSubscriberAdaptor } = await import('@geekmidas/constructs/subscribers');
         const address = snsUrl.parse(connectionString);
@@ -313,6 +326,18 @@ export async function setupSubscribers(
         });
         continue;
       }
+`
+		: `      if (connectionString.startsWith('sns:')) {
+        // Built for a broker other than SNS, so this entry registered no SNS
+        // driver and has no push route to offer.
+        logger.error(
+          { subscriber: id, connectionKey },
+          'This build has no SNS driver: it was built for a target whose broker is not SNS',
+        );
+        continue;
+      }
+`
+}
 
       let connection = connections.get(connectionString);
       if (!connection) {

@@ -2,7 +2,12 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cacheBackendsIn, driversFor, storageDriversFor } from '../drivers';
+import {
+	cacheBackendsIn,
+	driversFor,
+	eventsBackendsIn,
+	storageDriversFor,
+} from '../drivers';
 
 /** A manifest as `cacheBackendsIn` reads it — kind and parent, nothing else. */
 const manifest = (
@@ -83,6 +88,76 @@ describe('driversFor', () => {
 			'@geekmidas/cache',
 		);
 		expect(driversFor({ appRoot }).imports).not.toContain('@geekmidas/cache');
+	});
+});
+
+describe('eventsBackendsIn', () => {
+	it('takes the target’s broker when a topic or a queue is declared', () => {
+		expect(
+			eventsBackendsIn(manifest({ Users: { kind: 'topic' } }), 'sns'),
+		).toEqual(['sns']);
+		expect(
+			eventsBackendsIn(manifest({ Emails: { kind: 'queue' } }), 'pgboss'),
+		).toEqual(['pgboss']);
+	});
+
+	it('registers nothing for a project with no events', () => {
+		expect(
+			eventsBackendsIn(manifest({ Orders: { kind: 'database' } }), 'pgboss'),
+		).toEqual([]);
+	});
+
+	it('counts a worker beside a database on pg-boss, which schedules its crons', () => {
+		const worker = manifest({
+			Jobs: { kind: 'worker' },
+			Orders: { kind: 'database' },
+		});
+
+		expect(eventsBackendsIn(worker, 'pgboss')).toEqual(['pgboss']);
+		// On AWS a cron is an EventBridge rule: no broker for it.
+		expect(eventsBackendsIn(worker, 'sns')).toEqual([]);
+		expect(
+			eventsBackendsIn(manifest({ Jobs: { kind: 'worker' } }), 'pgboss'),
+		).toEqual([]);
+	});
+});
+
+describe('driversFor events', () => {
+	const appRoot = '/nonexistent';
+
+	it('registers only pg-boss on a server', () => {
+		const { imports, setup } = driversFor({ appRoot, events: ['pgboss'] });
+
+		expect(imports).toContain(
+			"import { pgbossEventsDriver } from '@geekmidas/events/pgboss';",
+		);
+		expect(setup).toBe('registerEventsDriver(pgbossEventsDriver);');
+		expect(imports).not.toMatch(/events\/(sns|sqs|rabbitmq)/);
+	});
+
+	it('registers SNS and SQS on AWS — topics and queues', () => {
+		const { imports, setup } = driversFor({ appRoot, events: 'sns' });
+
+		expect(imports).toContain('@geekmidas/events/sns');
+		expect(imports).toContain('@geekmidas/events/sqs');
+		expect(imports).not.toMatch(/events\/(pgboss|rabbitmq)/);
+		expect(setup).toBe(
+			'registerEventsDriver(snsEventsDriver);\nregisterEventsDriver(sqsEventsDriver);',
+		);
+	});
+
+	it('registers RabbitMQ for RabbitMQ', () => {
+		expect(driversFor({ appRoot, events: ['rabbitmq'] }).setup).toBe(
+			'registerEventsDriver(rabbitmqEventsDriver);',
+		);
+	});
+
+	it('registers nothing, and imports no events at all, without a broker', () => {
+		for (const events of [undefined, false, []] as const) {
+			const { imports, setup } = driversFor({ appRoot, events });
+			expect(imports).not.toContain('@geekmidas/events');
+			expect(setup).not.toContain('registerEventsDriver');
+		}
 	});
 });
 

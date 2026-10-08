@@ -652,6 +652,7 @@ export default {
 				target: 'aws',
 				enableOpenApi: false,
 				cacheBackend: 'upstash',
+				eventsBackend: 'sns',
 			});
 
 			expect(existsSync(join(dir, '.gkm/manifest'))).toBe(false);
@@ -747,6 +748,7 @@ export default {
 				target: 'aws',
 				enableOpenApi: false,
 				cacheBackend: 'upstash',
+				eventsBackend: 'sns',
 			});
 
 			expect(await readdir(join(appRoot, '.gkm'))).toEqual(

@@ -1,6 +1,10 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
-import type { EventPublisher } from '@geekmidas/events';
-import { PgBossConnection, PgBossSubscriber } from '@geekmidas/events/pgboss';
+import { type EventPublisher, registerEventsDriver } from '@geekmidas/events';
+import {
+	PgBossConnection,
+	PgBossSubscriber,
+	pgbossEventsDriver,
+} from '@geekmidas/events/pgboss';
 import { ServiceDiscovery } from '@geekmidas/services';
 import { Hono } from 'hono';
 import { Client } from 'pg';
@@ -11,6 +15,9 @@ import { RestApi } from '../../rest-api';
 import { Topic } from '../../topic/Topic';
 import type { Endpoint } from '../Endpoint';
 import { HonoEndpoint } from '../HonoEndpointAdaptor';
+
+// What a server entry registers for its pg-boss broker.
+registerEventsDriver(pgbossEventsDriver);
 
 /** Any endpoint, whatever it was built with — what an adaptor serves. */
 type AnyEndpoint = Endpoint<

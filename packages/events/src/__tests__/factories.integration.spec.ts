@@ -17,6 +17,9 @@ import { RabbitMQSubscriber } from '../rabbitmq/RabbitMQSubscriber';
 import { Subscriber } from '../Subscriber';
 import { SNSConnection } from '../sns/SNSConnection';
 import type { EventConnection, PublishableMessage } from '../types';
+import { registerAllEventsDrivers } from './__helpers__/drivers';
+
+registerAllEventsDrivers();
 
 /**
  * A connection string is the only thing an app is handed, so the factories
@@ -169,7 +172,7 @@ describe('pgboss://', () => {
 		const publisher = await Publisher.fromConnection<Message>(connection);
 		expect(publisher).toBeInstanceOf(PgBossPublisher);
 		await publisher.publish([{ type: 'order.placed', payload: { id: 'p1' } }]);
-		await publisher.close();
+		await (publisher as PgBossPublisher<Message>).close();
 
 		await vi.waitFor(
 			() =>

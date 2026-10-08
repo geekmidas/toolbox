@@ -2,6 +2,7 @@ export { CronGenerator } from './CronGenerator';
 export {
 	cacheBackendsIn,
 	driversFor,
+	eventsBackendsIn,
 	type RuntimeDrivers,
 	type StorageDrivers,
 	storageDriversFor,

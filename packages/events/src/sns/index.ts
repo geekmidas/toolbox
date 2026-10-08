@@ -1,3 +1,4 @@
+export { snsEventsDriver } from './driver';
 export {
 	confirmSnsSubscription,
 	SnsCertificateUnavailable,

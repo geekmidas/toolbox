@@ -534,9 +534,9 @@ const telescope =
 
 ${
 	context.storageDrivers?.setup
-		? `// Which storage drivers exist is the entry point's decision: the scheme in
-// each injected URL picks one, so no construct and no application module names
-// a provider.
+		? `// Which drivers exist — storage, cache, events — is the entry point's
+// decision: the scheme in each injected URL picks one, so no construct and no
+// application module names a provider.
 ${context.storageDrivers.setup}
 `
 		: ''

@@ -19,6 +19,7 @@ import {
 	cacheBackendsIn,
 	driversFor,
 	EndpointGenerator,
+	eventsBackendsIn,
 	FunctionGenerator,
 	type GeneratedConstruct,
 	QueueGenerator,
@@ -42,6 +43,7 @@ import type {
 	BuildResult,
 	CacheBackend,
 	CronInfo,
+	EventsBackend,
 	FunctionInfo,
 	GkmConfig,
 	MainProvider,
@@ -51,7 +53,11 @@ import type {
 	SubscriberInfo,
 } from '../types';
 import { DEFAULT_EMAIL } from '../types.js';
-import { cacheBackendFor, providerOf } from '../workspace/backends.js';
+import {
+	cacheBackendFor,
+	eventsBackendFor,
+	providerOf,
+} from '../workspace/backends.js';
 import {
 	allConstructGlobs,
 	getAppBuildOrder,
@@ -230,6 +236,7 @@ async function buildOneApp(input: {
 	// cannot pick differently and hand the running code a URL it has no driver
 	// for.
 	const cacheBackend = cacheBackendFor(providerOf(workspace));
+	const eventsBackend = eventsBackendFor(providerOf(workspace));
 
 	const production = normalizeProductionConfig(options.production ?? false);
 	if (production) {
@@ -259,6 +266,7 @@ async function buildOneApp(input: {
 		target,
 		enableOpenApi: options.enableOpenApi ?? false,
 		cacheBackend,
+		eventsBackend,
 		production,
 		telescope,
 		hooks,
@@ -279,6 +287,11 @@ export interface BuildAppInput {
 	target: MainProvider;
 	enableOpenApi: boolean;
 	cacheBackend: CacheBackend;
+	/**
+	 * The broker the target puts topics and queues on. Its driver is registered
+	 * only when the app declares one — see `eventsBackendsIn`.
+	 */
+	eventsBackend: EventsBackend;
 	production?: NormalizedProductionConfig;
 	telescope?: NormalizedTelescopeConfig;
 	/**
@@ -394,6 +407,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		target,
 		enableOpenApi,
 		cacheBackend,
+		eventsBackend,
 		production,
 		telescope,
 		databaseApi,
@@ -463,6 +477,10 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		databaseApi,
 	});
 
+	// The broker, only when something declares a topic or a queue: a project
+	// with no events registers nothing and never resolves `@geekmidas/events`.
+	const eventsBackends = eventsBackendsIn(declared, eventsBackend);
+
 	const buildContext: BuildContext = {
 		...derived,
 		telescope,
@@ -480,7 +498,9 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		storageDrivers: driversFor({
 			appRoot,
 			cache: cacheBackendsIn(declared, cacheBackend),
+			events: eventsBackends,
 		}),
+		eventsBackends,
 		markOptional: input.markOptional ?? false,
 		...(production && {
 			telemetry: telemetryFor({

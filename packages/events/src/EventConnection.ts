@@ -1,41 +1,19 @@
+import { eventsDriverFor } from './registry';
 import type { EventConnection } from './types';
-import { EventPublisherType, UnsupportedEventTransport } from './types';
 
 export class EventConnectionFactory {
 	/**
-	 * Create an EventConnection from a connection string
-	 * Dynamically imports the appropriate connection implementation
+	 * Create an EventConnection from a connection string, through whichever
+	 * driver is registered for its scheme — see `registerEventsDriver`.
+	 *
+	 * @throws {UnregisteredEventsScheme} when the broker's driver is not
+	 * registered.
 	 */
 	static async fromConnectionString(
 		connectionStr: string,
 	): Promise<EventConnection> {
-		const url = new URL(connectionStr);
-		const protocol = url.protocol.replace(':', '') as EventPublisherType;
-
-		switch (protocol) {
-			case EventPublisherType.Basic: {
-				const { BasicConnection } = await import('./basic');
-				return BasicConnection.fromConnectionString(connectionStr);
-			}
-			case EventPublisherType.RabbitMQ: {
-				const { RabbitMQConnection } = await import('./rabbitmq');
-				return RabbitMQConnection.fromConnectionString(connectionStr);
-			}
-			case EventPublisherType.SQS: {
-				const { SQSConnection } = await import('./sqs');
-				return SQSConnection.fromConnectionString(connectionStr);
-			}
-			case EventPublisherType.SNS: {
-				const { SNSConnection } = await import('./sns');
-				return SNSConnection.fromConnectionString(connectionStr);
-			}
-			case EventPublisherType.PgBoss: {
-				const { PgBossConnection } = await import('./pgboss');
-				return PgBossConnection.fromConnectionString(connectionStr);
-			}
-			default:
-				throw new UnsupportedEventTransport(protocol, 'connection');
-		}
+		const scheme = new URL(connectionStr).protocol;
+		return eventsDriverFor(scheme, 'connection').connect(connectionStr);
 	}
 }
 

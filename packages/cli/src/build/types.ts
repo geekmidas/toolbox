@@ -133,6 +133,12 @@ export interface BuildContext {
 	 * than choosing its own — see `reconcile/emit.ts`.
 	 */
 	cacheBackend?: import('../types.js').CacheBackend;
+	/**
+	 * The events brokers this build registered drivers for — empty when the app
+	 * declares no topic or queue. What a generated file decides from when it
+	 * has broker-specific code to include, such as SNS push subscriptions.
+	 */
+	eventsBackends?: readonly import('../types.js').EventsBackend[];
 	emailBackend?: import('../types.js').EmailBackend;
 	/**
 	 * Every construct that can own a runnable, by id — the surfaces and the

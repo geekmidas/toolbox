@@ -5,8 +5,28 @@ export type { EventPublisherConnectionString } from './Publisher';
 
 // Generic factories
 export { Publisher, type PublisherOptions } from './Publisher';
+// Which brokers exist is the entry point's decision. Each is a driver on its
+// own subpath — the only module that imports its client library — and is
+// registered once where the process starts:
+//
+//   import { registerEventsDriver } from '@geekmidas/events';
+//   import { pgbossEventsDriver } from '@geekmidas/events/pgboss';
+//   registerEventsDriver(pgbossEventsDriver);
+//
+// - @geekmidas/events/basic     basicEventsDriver
+// - @geekmidas/events/pgboss    pgbossEventsDriver
+// - @geekmidas/events/rabbitmq  rabbitmqEventsDriver
+// - @geekmidas/events/sns       snsEventsDriver
+// - @geekmidas/events/sqs       sqsEventsDriver
+export {
+	type EventsDriver,
+	eventsDriverFor,
+	registerEventsDriver,
+	registeredEventsSchemes,
+	type SubscriberOptions,
+	UnregisteredEventsScheme,
+} from './registry';
 export type { EventSubscriberConnectionString } from './Subscriber';
-
 export { Subscriber } from './Subscriber';
 export type {
 	EventConnection,
@@ -17,9 +37,3 @@ export type {
 	PublishableMessage,
 } from './types';
 export { EventPublisherType, UnsupportedEventTransport } from './types';
-
-// Specific integrations should be imported via subpaths:
-// - @geekmidas/events/basic
-// - @geekmidas/events/rabbitmq
-// - @geekmidas/events/sqs
-// - @geekmidas/events/sns
