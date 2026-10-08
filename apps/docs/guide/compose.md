@@ -61,9 +61,29 @@ and the hosts they answer on all come from what the workspace declares.
   bucket the way `gkm dev`'s edge does. With `proxy: 'traefik'` the stack runs
   no Caddy: it registers the same hosts with the server's shared edge.
 
-The databases, roles and grants are created, and each database's migrations
-(`db/<construct>/migrations`) applied, before any app starts — so an app never
-boots against a schema that is not there yet.
+The databases, roles and grants are created, each database's migrations
+(`db/<construct>/migrations`) applied, and then every one of its seeds
+(`db/<construct>/seeds`) run, before any app starts — so an app never boots
+against a schema that is not there yet, or without the reference data (roles,
+plans, permissions) its first request reads:
+
+```
+🗄️  db/database/migrations: applied 1
+   ✓ 20261008120000_notes
+🌱 db/database/seeds: ran 1
+   ✓ 001_roles
+```
+
+Every deploy migrates, then seeds, every time. Seeds have no history: each
+runs on every run, on every stage, production included, in its own
+transaction, as the construct's owner. So **a seed must be an idempotent
+upsert** (`insert … on conflict … do update`), and changing one and deploying
+is how the reference data changes. A seed that should write something only on
+some stages decides by the `stage` it is handed. A failing seed stops the run
+before any app starts (`DeploySeedsFailed`, naming the construct and the seed);
+its own writes are rolled back, and the migrations and seeds before it stay.
+A dry run lists the seeds a run would run (`🌱 db/database/seeds: would run 1
+(001_roles)`), and `--build --push` runs neither migrations nor seeds.
 
 A stack is a server target: whatever `deploy.default` says, its events go
 through pg-boss beside the declared database, and every cache lives in the
@@ -135,7 +155,7 @@ stage would — each backend and worker at `<tag>`, each site at
 `<tag>-<stage>` with the stage's public URLs — pushes each to
 `deploy.registry`, and prints every pushed ref with the digest the registry
 stored. Nothing else happens: no stage lock, no infrastructure, no
-provisioning or migrations, no container started, no secret generated and
+provisioning, migrations or seeds, no container started, no secret generated and
 kept, nothing recorded in the stage's state. So the runner needs Docker, the
 stage's secrets store (for a site's public URLs) and a `docker login` to the
 registry — no Postgres, no server. `--push` without `--build`, or with
@@ -482,7 +502,7 @@ first request after the switch to wait for one.
 | --- | --- |
 | `validate` | the stack, worked out from the manifest; with `--push` or a tag, `deploy.registry` required; with a tag, every image looked up in the registry |
 | `plan` (`--dry-run`) | the files written, and what a run would build, pull and start — nothing else |
-| `provision` | the stage's generated secrets kept, the files written, the infrastructure started, its databases, roles, grants and migrations applied |
+| `provision` | the stage's generated secrets kept, the files written, the infrastructure started, its databases, roles, grants and migrations applied, then its seeds run |
 | `build` | every image built inside Docker — or, with a tag, pulled. With `--push`, each built image pushed, and the run ends here |
 | `release` | `docker compose up --wait --remove-orphans`, and each app's image recorded |
 | `verify` | each app asked through the edge — its own Caddy, or the shared Traefik — over HTTPS: an API at `/health`, a site at `/`, with the certificate verified |

@@ -772,6 +772,7 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 				revision: async () => 'abc1234',
 				sql: () => ({ query: async () => [] }),
 				migrate: async () => [],
+				seed: async () => [],
 			},
 		);
 		return { ...fake, result };

@@ -816,11 +816,22 @@ if something declared it.
   provisioned yet)
 - every URL the app needs, resolved and encrypted into the build
 
-**Apply the stage's migrations**, before any app is released. They run in the
-deploy's [sandbox](./sandbox.md), against the database's owner URL handed over
-as a secret file, through a port the deploy publishes for the purpose and closes
-again. A failed migration stops the run (`DeployMigrationsFailed`) before
-anything is released.
+**Apply the stage's migrations, then run its seeds**, before any app is
+released. Both run in the deploy's [sandbox](./sandbox.md) — they are the
+project's own code — against the database's owner URL handed over as a secret
+file, through a port the deploy publishes for the purpose and closes again. A
+failed migration stops the run (`DeployMigrationsFailed`) before anything is
+released, and so does a failed seed (`DeploySeedsFailed`, naming the construct
+and the seed).
+
+Every deploy migrates, then seeds, every time. A seed (`db/<construct>/seeds`)
+has no history: each one runs on every deploy of every stage, production
+included, in its own transaction, as the construct's owner. So **a seed must
+be an idempotent upsert** — reference data such as roles, permissions or plans,
+written with `insert … on conflict … do update` — and changing a seed and
+deploying is how that data changes. A seed that belongs on some stages only
+decides by the `stage` it is handed. A dry run lists the seeds a deploy would
+run.
 
 **Deploy the backends**
 - build each image and push it to the registry
