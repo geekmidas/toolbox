@@ -144,6 +144,7 @@
     "ssm-lock-readback",
     "sst-deploy-target",
     "stage-secrets-no-db-urls",
+    "stages-action",
     "storage-url-credentials",
     "surface-has-no-app",
     "telemetry-propagation",
