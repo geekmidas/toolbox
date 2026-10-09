@@ -17,7 +17,7 @@ import {
 	BackupsEntryInvalid,
 	checkStageBackups,
 	nextRun,
-	type parseCron,
+	parseCron,
 } from '../schedule';
 
 const WITH_DATABASE = {
@@ -285,5 +285,58 @@ describe("the container's copy of the schedule", () => {
 				).toEqual(nextRun(backups.schedule, new Date(at)));
 			}
 		}
+	});
+});
+
+describe('a schedule at its edges', () => {
+	it('refuses a cron that never runs twice, and an entry whose value is not text', () => {
+		expect(() => checkStageBackups('prod', { cron: '0 0 30 2 *' })).toThrow(
+			/does not run twice in four years/,
+		);
+		expect(() => checkStageBackups('prod', { every: 6 })).toThrow(
+			BackupsEntryInvalid,
+		);
+		expect(() => checkStageBackups('prod', null)).toThrow(BackupsEntryInvalid);
+		expect(() => checkStageBackups('prod', [])).toThrow(BackupsEntryInvalid);
+	});
+
+	it('never runs a cron whose day does not exist', () => {
+		expect(
+			nextRun(
+				parseCron('prod', '0 0 30 2 *'),
+				new Date('2026-01-01T00:00:00Z'),
+			),
+		).toBeNull();
+	});
+
+	it('takes ranges, steps, lists and Sunday as 7', () => {
+		const cron = parseCron('prod', '0,30 8-10/2 1-7 */6 7');
+		expect(cron).toMatchObject({
+			minutes: [0, 30],
+			hours: [8, 10],
+			days: [1, 2, 3, 4, 5, 6, 7],
+			months: [1, 7],
+			weekdays: [0],
+		});
+		expect(parseCron('prod', '0 2/12 * * *').hours).toEqual([2, 14]);
+		expect(() => parseCron('prod', '0 2 * * MON')).toThrow(BackupCronInvalid);
+		expect(() => parseCron('prod', '0 5-2 * * *')).toThrow(BackupCronInvalid);
+		expect(() => parseCron('prod', '0 */0 * * *')).toThrow(BackupCronInvalid);
+		expect(() => parseCron('prod', '0')).toThrow(/has 1 field, not five/);
+	});
+
+	it('describes itself the way the deploy prints it', () => {
+		expect(
+			checkStageBackups('prod', { every: '90m', keep: '7d' }),
+		).toMatchObject({
+			describe: 'every 90m from 02:00 UTC, kept 7 days',
+		});
+		expect(checkStageBackups('prod', { every: '2d' })).toMatchObject({
+			describe: 'every 2d from 02:00 UTC, kept 30 days',
+		});
+		expect(checkStageBackups('prod', { cron: '0 */6 * * *' })).toMatchObject({
+			describe: "cron '0 */6 * * *' (UTC), kept 30 days",
+			maxGapSeconds: 21_600,
+		});
 	});
 });

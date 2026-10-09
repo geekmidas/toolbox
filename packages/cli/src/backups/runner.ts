@@ -36,8 +36,8 @@ import {
 	rmdirSync,
 	writeFileSync,
 } from 'node:fs';
-import { request as httpRequest } from 'node:http';
-import { request as httpsRequest } from 'node:https';
+import http from 'node:http';
+import https from 'node:https';
 import { createGzip } from 'node:zlib';
 
 /** Where the runner keeps what its health check reads. */
@@ -230,7 +230,9 @@ export async function s3Send(
 		`SignedHeaders=${names.join(';')}, Signature=${signature}`;
 	headers['content-length'] = String(body.length);
 
-	const send = url.protocol === 'https:' ? httpsRequest : httpRequest;
+	// Looked up when called, not bound at import: a test's HTTP interceptor
+	// patches the module's own `request`.
+	const send = url.protocol === 'https:' ? https.request : http.request;
 	return new Promise((resolve, reject) => {
 		const req = send(
 			url,
@@ -426,6 +428,17 @@ export interface BackupDatabase {
 	name: string;
 }
 
+/** Who else is told each line — a test, reading what a run said. */
+const listeners = new Set<(line: Record<string, unknown>) => void>();
+
+/** Be handed each line the runner logs. Returns what stops it. */
+export function onReport(
+	listener: (line: Record<string, unknown>) => void,
+): () => void {
+	listeners.add(listener);
+	return () => listeners.delete(listener);
+}
+
 /** One line of the run's result: JSON on stdout, and OTLP when telemetry is on. */
 async function report(
 	level: 'info' | 'error',
@@ -436,6 +449,7 @@ async function report(
 	const line = { time: at.toISOString(), level, msg: message, ...fields };
 	const out = level === 'error' ? process.stderr : process.stdout;
 	out.write(`${JSON.stringify(line)}\n`);
+	for (const listener of listeners) listener(line);
 	// A run `docker exec` started (`gkm backup:now`) is in the container's
 	// log too, beside the scheduled ones: written to the main process's own.
 	if (process.pid !== 1 && process.platform === 'linux') {
@@ -650,13 +664,13 @@ export function healthy(now = Date.now()): boolean {
 }
 
 /** Run on schedule, forever. */
-async function serve(): Promise<void> {
+export async function serve(): Promise<void> {
 	mkdirSync(STATE_DIR, { recursive: true });
 	writeFileSync(`${STATE_DIR}/started`, String(Date.now()));
 	const schedule = JSON.parse(readEnv('BACKUPS_SCHEDULE')) as Schedule;
 	let stopping = false;
 	for (const signal of ['SIGTERM', 'SIGINT'] as const) {
-		process.on(signal, () => {
+		process.once(signal, () => {
 			stopping = true;
 			process.exit(0);
 		});
@@ -682,14 +696,17 @@ async function serve(): Promise<void> {
 	}
 }
 
-async function main(command: string | undefined): Promise<number> {
+/** What `node backup.mjs <command>` runs; resolves with its exit code. */
+export async function main(command: string | undefined): Promise<number> {
 	if (command === 'serve') {
 		await serve();
 		return 0;
 	}
 	if (command === 'run') return (await backupOnce()) ? 0 : 1;
 	if (command === 'health') return healthy() ? 0 : 1;
-	process.stderr.write('usage: backup.mjs serve | run | health\n');
+	await report('error', 'usage: backup.mjs serve | run | health', {
+		command: command ?? null,
+	});
 	return 2;
 }
 

@@ -6,16 +6,25 @@ import {
 	loadComposeApp,
 	writeComposeApp,
 } from '../../compose/__tests__/__helpers__/composeApp';
-import { type ComposeStack, composeStack } from '../../compose/stack';
+import {
+	type ComposeStack,
+	composeStack,
+	stackPlan,
+} from '../../compose/stack';
 import { deployIdentity } from '../../deploy/identity';
 import { TEST_CREDENTIALS } from '../../reconcile/__tests__/__helpers__/credentials';
 import { initStageSecrets } from '../../secrets/storage';
 import type { StageSecrets } from '../../secrets/types';
 import type { NormalizedWorkspace } from '../../workspace/types';
+import { checkStageBackups, type StageBackups } from '../schedule';
 import {
 	BACKUPS_SERVICE,
 	BackupsUrlMissing,
+	backupsDockerfile,
 	backupsRoleStatements,
+	backupsService,
+	runnerSource,
+	stackBackups,
 } from '../service';
 
 const BACKUPS_URL =
@@ -163,5 +172,84 @@ describe("a deployed compose stage's stack", () => {
 			stack('production', secrets('production', {}), { buildOnly: true })
 				.compose.services[BACKUPS_SERVICE],
 		).toBeUndefined();
+	});
+});
+
+describe('the backups service, from its parts', () => {
+	const input = (parts: Partial<Parameters<typeof stackBackups>[0]> = {}) =>
+		stackBackups({
+			workspace,
+			stage: 'production',
+			project: 'compose-app-production',
+			plan: stackPlan(workspace, manifest, 'production'),
+			backups: checkStageBackups('production', {}) as StageBackups,
+			custom: { BACKUPS_URL },
+			seed: 'a-random-seed',
+			superuser: { user: 'compose_app_admin', password: 'the-admin-password' },
+			...parts,
+		});
+
+	it('signs in as the superuser on a Postgres before pg_read_all_data, and creates no role', () => {
+		const old = {
+			...manifest,
+			Database: { ...manifest.Database, version: 13 },
+		} as ConstructManifest;
+		const backups = input({ plan: stackPlan(workspace, old, 'production') });
+		expect(backups.from).toBe('postgres:13-alpine');
+		expect(backups.image).toMatch(/:pg13-/);
+		expect(backups.readOnly).toBe(false);
+		expect(backups.env).toMatchObject({
+			PGUSER: 'compose_app_admin',
+			PGPASSWORD: 'the-admin-password',
+		});
+		expect(backupsRoleStatements(backups)).toEqual([]);
+	});
+
+	it("hands a cron schedule expanded, and the stage's telemetry when it is on", () => {
+		const backups = input({
+			backups: checkStageBackups('production', {
+				cron: '15 3 * * 1',
+			}) as StageBackups,
+			telemetry: {
+				OTEL_EXPORTER_OTLP_ENDPOINT: 'http://openobserve:5080/api/default',
+				OTEL_EXPORTER_OTLP_HEADERS: 'Authorization=Basic abc',
+				OTEL_TRACES_SAMPLER_ARG: '1',
+			},
+		});
+		expect(JSON.parse(backups.env.BACKUPS_SCHEDULE!)).toEqual({
+			kind: 'cron',
+			minutes: [15],
+			hours: [3],
+			days: null,
+			months: null,
+			weekdays: [1],
+		});
+		expect(backups.env.BACKUPS_MAX_GAP_SECONDS).toBe(String(7 * 86_400));
+		expect(backups.env).toMatchObject({
+			OTEL_EXPORTER_OTLP_ENDPOINT: 'http://openobserve:5080/api/default',
+			OTEL_EXPORTER_OTLP_HEADERS: 'Authorization=Basic abc',
+			OTEL_SERVICE_NAME: 'backups',
+		});
+		expect(backups.env.OTEL_TRACES_SAMPLER_ARG).toBeUndefined();
+
+		const noHeaders = input({
+			telemetry: { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4318' },
+		});
+		expect(noHeaders.env.OTEL_EXPORTER_OTLP_HEADERS).toBeUndefined();
+		expect(noHeaders.env.OTEL_SERVICE_NAME).toBe('backups');
+	});
+
+	it('needs no key, and has no environment, in a stack that only builds', () => {
+		const backups = input({ custom: {}, buildOnly: true });
+		expect(backups.env).toEqual({});
+		expect(backupsService(backups, false)).not.toHaveProperty('env_file');
+	});
+
+	it('names its image by what is in it: a new runner is a new image', () => {
+		expect(input().image).toBe(input().image);
+		expect(backupsDockerfile('postgres:18-alpine')).toContain(
+			'CMD ["node", "/gkm/backup.mjs", "serve"]',
+		);
+		expect(runnerSource()).toContain('export {');
 	});
 });
