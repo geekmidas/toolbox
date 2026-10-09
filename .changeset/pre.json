@@ -136,6 +136,7 @@
     "queues-topics-constructs",
     "reconcile-reprovisions",
     "scaffold-typescript-7",
+    "secrets-add-checkpoints",
     "secrets-manager-store",
     "secrets-store-adaptors",
     "server-crons",

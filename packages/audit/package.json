@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/audit",
-	"version": "10.0.0-alpha.90",
+	"version": "10.0.0-alpha.91",
 	"type": "module",
 	"exports": {
 		".": {

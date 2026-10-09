@@ -1,5 +1,34 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.91
+
+### Minor Changes
+
+- ✨ [#223](https://github.com/geekmidas/toolbox/pull/223) [`15180b3`](https://github.com/geekmidas/toolbox/commit/15180b3b11c1620e2cb72ae20e611de4a75bb0b7) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm secrets:add` walks the stage's keys as checkpoints, unset ones first:
+  at each, **Set it now**, **Skip** or **Stop here**. A key is saved to the
+  stage's store as soon as it is built, so stopping, Ctrl-C or a failure keeps
+  everything set before it, and the run ends with what was saved, skipped and
+  still missing — `--missing` picks up the rest. A key a provider on the stage
+  creates (a bucket under `deploy.objects.<stage>`, written by `gkm setup`) is
+  no longer offered: it is listed with what creates it, and marked
+  `"provisioned": true` in `--json`. Mail asks for the service first — Resend,
+  Amazon SES, Postmark and Mailgun ask only for their secrets.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.91
+  - @geekmidas/constructs@10.0.0-alpha.91
+  - @geekmidas/db@10.0.0-alpha.91
+  - @geekmidas/envkit@10.0.0-alpha.91
+  - @geekmidas/errors@10.0.0-alpha.91
+  - @geekmidas/logger@10.0.0-alpha.91
+  - @geekmidas/manifest@10.0.0-alpha.91
+  - @geekmidas/schema@10.0.0-alpha.91
+  - @geekmidas/services@10.0.0-alpha.91
+  - @geekmidas/storage@10.0.0-alpha.91
+  - @geekmidas/telescope@10.0.0-alpha.91
+
 ## 10.0.0-alpha.90
 
 ### Patch Changes
