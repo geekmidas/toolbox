@@ -155,6 +155,7 @@
     "sst-deploy-target",
     "stage-secrets-no-db-urls",
     "stages-action",
+    "state-in-project-bucket",
     "storage-url-credentials",
     "surface-has-no-app",
     "telemetry-construct",

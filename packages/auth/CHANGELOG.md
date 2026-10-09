@@ -1,5 +1,12 @@
 # @geekmidas/auth
 
+## 10.0.0-alpha.97
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.97
+
 ## 10.0.0-alpha.96
 
 ### Patch Changes
