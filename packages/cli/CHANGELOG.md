@@ -1,5 +1,43 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.96
+
+### Patch Changes
+
+- [#229](https://github.com/geekmidas/toolbox/pull/229) [`1e14668`](https://github.com/geekmidas/toolbox/commit/1e1466859ca69cb8769d68305223c068b3199488) Thanks [@geekmidas](https://github.com/geekmidas)! - The s3 provider's bucket check says why, and buckets are addressed in their own region
+
+  A `HEAD` has no body, so SDK v3 names a 301, 400 or 403 `Unknown`, and the
+  deploy's check of a provisioned bucket printed exactly that. It now reads the
+  answer by its status and puts everything S3 said in the message: the status,
+  the error, `x-amz-bucket-region` and the request ids.
+
+  - **404**: "it does not exist".
+  - **403**: "the key is refused — AccessDenied, or an invalid or not-yet-active
+    key". A key the deploy issued minutes ago (the stage's state records when)
+    is waited for, about a minute, while IAM makes it usable.
+  - **301, or a 400 naming another region**: `BucketRegionMismatch`, naming the
+    bucket's region and the one its URL says.
+  - Anything else: `HTTP <status> <name>`.
+
+  Provisioning reads where each bucket is rather than assuming the stage's
+  region: an adopted bucket in another region gets a URL naming its own region,
+  and a URL whose key is good but whose region is wrong is rewritten on the next
+  deploy. Probing a bucket name is read by status too, so a name another account
+  holds is no longer an `Unknown` failure.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.96
+  - @geekmidas/constructs@10.0.0-alpha.96
+  - @geekmidas/db@10.0.0-alpha.96
+  - @geekmidas/envkit@10.0.0-alpha.96
+  - @geekmidas/errors@10.0.0-alpha.96
+  - @geekmidas/logger@10.0.0-alpha.96
+  - @geekmidas/manifest@10.0.0-alpha.96
+  - @geekmidas/schema@10.0.0-alpha.96
+  - @geekmidas/services@10.0.0-alpha.96
+  - @geekmidas/storage@10.0.0-alpha.96
+  - @geekmidas/telescope@10.0.0-alpha.96
+
 ## 10.0.0-alpha.95
 
 ### Patch Changes
