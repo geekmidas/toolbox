@@ -126,6 +126,7 @@ export async function rollbackStage(
 			config: workspace.state,
 			workspaceRoot: workspace.root,
 			workspaceName: workspace.name,
+			namespace: workspace.deploy?.namespace,
 		});
 		if (!(await store.read(input.stage))) {
 			throw new StageNeverDeployed(input.stage);

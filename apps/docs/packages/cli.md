@@ -944,7 +944,9 @@ gkm state:unlock --stage production
 - Resource records, the DNS records gkm wrote among them
 - Who made each of the last 20 writes, and when
 
-Anything deployed from CI should keep its state in `ssm` (or `s3`): in CI, a
+Anything deployed from CI should keep its state in `s3` —
+`state: { provider: 's3', region }`, in a bucket gkm creates for the project:
+in CI, a
 deploy with local state fails with `LocalStateInCi`. See
 [Deploy state](/guide/state).
 

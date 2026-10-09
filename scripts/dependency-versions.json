@@ -30,6 +30,9 @@
 	"@aws-sdk/client-ssm": {
 		"dependencies": "~3.1136.0"
 	},
+	"@aws-sdk/client-sts": {
+		"dependencies": "~3.1136.0"
+	},
 	"@aws-sdk/credential-providers": {
 		"dependencies": "~3.1136.0"
 	},

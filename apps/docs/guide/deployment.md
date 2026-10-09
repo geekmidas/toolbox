@@ -322,14 +322,16 @@ lives:
 
 ```typescript
 state: { provider: 'local' }                                        // default: .gkm/deploy-<stage>.json
-state: { provider: 'ssm', region: 'us-east-1' }                     // /gkm/<workspace>/<stage>/state
-state: { provider: 's3', bucket: 'my-app-deploy-state', region: 'us-east-1' }
+state: { provider: 's3', region: 'us-east-1' }                      // the project bucket gkm creates
+state: { provider: 's3', bucket: 'my-app-deploy-state', region: 'us-east-1' } // a bucket you have
+state: { provider: 'ssm', region: 'us-east-1' }                     // /gkm/<workspace>/<stage>/state, up to 8 KB
 ```
 
 Every deploy takes the stage's lock (`StateLocked` for a second run; release a
 crashed run's lock with `gkm state:unlock --stage <stage>`), writes
-conditionally, and journals each resource as it creates it. Use SSM or S3 as
-soon as more than one machine deploys a stage.
+conditionally, and journals each resource as it creates it. Use S3 as soon as
+more than one machine deploys a stage; SSM holds a small stage only (see
+[its size](./state.md#size)).
 
 See [Deploy state](./state.md) for the providers, locks, the journal,
 `state:*` commands and the v1 to v2 migration.
@@ -1307,7 +1309,7 @@ the stage's secrets — read, and written back when a deploy generates a new one
 | `secrets.store` SSM | `ssm:GetParameter`, `ssm:PutParameter` on `arn:aws:ssm:<region>:<account>:parameter/gkm/<project>/<stage>/secrets` |
 | `secrets.store` Secrets Manager | `secretsmanager:GetSecretValue`, `PutSecretValue`, `CreateSecret` on `arn:aws:secretsmanager:<region>:<account>:secret:gkm/<project>/<stage>/secrets-??????` (and `kms:Decrypt`/`GenerateDataKey` through Secrets Manager when `kmsKeyId` is set) |
 | `state` SSM | `ssm:GetParameter`, `PutParameter`, `DeleteParameter` under `/gkm/<project>/<stage>/` |
-| `state` S3 | `s3:GetObject`, `PutObject`, `DeleteObject` under `<prefix>/<project>/<stage>/`, and `s3:ListBucket` on the bucket |
+| `state` S3 | `s3:GetObject`, `PutObject`, `DeleteObject` under `<prefix>/<project>/<stage>/`, and `s3:ListBucket` on the bucket; with no `bucket` named, `ProjectBucket`: `s3:CreateBucket`, `PutBucketVersioning`, `PutEncryptionConfiguration`, `PutBucketPublicAccessBlock`, `PutBucketOwnershipControls`, `PutLifecycleConfiguration`, `PutBucketTagging` on exactly `arn:aws:s3:::gkm-<project>-<account>` |
 
 A compose deploy also creates the stage's [resources](./compose.md#deploying-from-ci),
 so the policy grants what those need — only when the stage uses them:

@@ -25,6 +25,10 @@ import {
 	SSMClient,
 } from '@aws-sdk/client-ssm';
 import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
+import {
+	ensureProjectBucket,
+	projectBucket,
+} from '../../providers/projectBucket';
 import { LocalStateStore } from '../LocalStateStore';
 import { S3StateStore } from '../S3StateStore';
 import { SSMStateStore } from '../SSMStateStore';
@@ -95,6 +99,55 @@ stateStoreConformance('S3StateStore', async () => {
 	return {
 		open: () => new S3StateStore(workspaceName, bucket, new S3Client(s3)),
 		seedV1: async (stage, body) => {
+			await client.send(
+				new PutObjectCommand({
+					Bucket: bucket,
+					Key: key(stage, 'state.json'),
+					Body: body,
+				}),
+			);
+		},
+		readV1Backup: async (stage) => {
+			try {
+				const { Body } = await client.send(
+					new GetObjectCommand({
+						Bucket: bucket,
+						Key: key(stage, 'state.v1.json'),
+					}),
+				);
+				return (await Body?.transformToString('utf-8')) ?? null;
+			} catch {
+				return null;
+			}
+		},
+	};
+});
+
+stateStoreConformance('S3StateStore (project bucket)', async () => {
+	const s3 = { ...aws, forcePathStyle: true };
+	const client = new S3Client(s3);
+	// A project of its own, so its bucket is new: the first write creates it.
+	const workspaceName = `conformance-${randomUUID().slice(0, 8)}`;
+	const bucket = projectBucket(
+		{ name: workspaceName },
+		{ accountId: '000000000000' },
+	);
+	const key = (stage: string, leaf: string) =>
+		`gkm/${workspaceName}/${stage}/${leaf}`;
+	return {
+		open: () =>
+			S3StateStore.create({
+				workspaceName,
+				region: aws.region as 'us-east-1',
+				endpoint: aws.endpoint,
+				credentials: aws.credentials,
+			}),
+		seedV1: async (stage, body) => {
+			await ensureProjectBucket(client, {
+				bucket,
+				region: aws.region,
+				identity: { key: `${workspaceName}/${workspaceName}` },
+			});
 			await client.send(
 				new PutObjectCommand({
 					Bucket: bucket,

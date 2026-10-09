@@ -1,6 +1,12 @@
 /**
  * Amazon S3 state store.
  *
+ * In the bucket the config names, which must exist — or, with none named, in
+ * the project bucket (`providers/projectBucket.ts`): found by its name, which
+ * is worked out from the project and the account, and created by the first
+ * write (a deploy's lock, `state:push`). A read of a project bucket that does
+ * not exist yet is a stage with no state; it creates nothing.
+ *
  * - `<prefix>/<workspace>/<stage>/state.json`: the state.
  * - `<prefix>/<workspace>/<stage>/lock.json`: the lock.
  * - `<prefix>/<workspace>/<stage>/state.v1.json`: the v1 state, kept on
@@ -19,6 +25,14 @@ import {
 	S3Client,
 	type S3ClientConfig,
 } from '@aws-sdk/client-s3';
+import { STSClient } from '@aws-sdk/client-sts';
+import {
+	callerAccountId,
+	ensureProjectBucket,
+	findProjectBucket,
+	projectBucketName,
+} from '../providers/projectBucket';
+import { type DeployIdentity, deployIdentity } from './identity';
 import type { AwsRegion } from './StateProvider';
 import {
 	DocumentStateStore,
@@ -31,7 +45,10 @@ import {
 
 export interface S3StateStoreOptions {
 	workspaceName: string;
-	bucket: string;
+	/** Omitted, the project bucket — created by the first write. */
+	bucket?: string;
+	/** `deploy.namespace`, for the project bucket's name. */
+	namespace?: string;
 	/** Key prefix inside the bucket; `gkm` by default. */
 	prefix?: string;
 	region?: AwsRegion;
@@ -67,25 +84,76 @@ function notFound(error: unknown): boolean {
 	);
 }
 
+/** The project bucket, for a store that names no bucket of its own. */
+export interface ProjectBucketSource {
+	identity: Pick<DeployIdentity, 'scope' | 'key'>;
+	region: string;
+	/** What the account id — and so the bucket's name — is read with. */
+	sts: STSClient;
+}
+
 export class S3StateStore extends DocumentStateStore {
 	private readonly prefix: string;
+	/** The bucket's name, once known. */
+	private name?: string;
+	/** Whether the bucket is known to exist. */
+	private exists = false;
 
 	constructor(
 		readonly workspaceName: string,
-		readonly bucket: string,
+		private readonly source: string | ProjectBucketSource,
 		private readonly client: S3Client,
 		prefix = 'gkm',
 	) {
 		super();
 		this.prefix = prefix.replace(/\/+$/, '');
+		if (typeof source === 'string') {
+			this.name = source;
+			this.exists = true;
+		}
+	}
+
+	/** The bucket's name; a project bucket's is known after the first call. */
+	get bucket(): string {
+		if (this.name) return this.name;
+		const { identity } = this.source as ProjectBucketSource;
+		return projectBucketName(identity.scope, '<account id>');
+	}
+
+	/**
+	 * The bucket, or `null` for a project bucket that does not exist yet and
+	 * is not to be created (`create: false`, a read).
+	 */
+	private async use(create: boolean): Promise<string | null> {
+		if (this.exists) return this.name!;
+		const source = this.source as ProjectBucketSource;
+		this.name ??= projectBucketName(
+			source.identity.scope,
+			await callerAccountId(source.sts),
+		);
+		if (create) {
+			await ensureProjectBucket(this.client, {
+				bucket: this.name,
+				region: source.region,
+				identity: source.identity,
+			});
+		} else if ((await findProjectBucket(this.client, this.name)) === 'none') {
+			return null;
+		}
+		this.exists = true;
+		return this.name;
 	}
 
 	static create(options: S3StateStoreOptions): S3StateStore {
+		const endpoint =
+			options.endpoint ??
+			process.env.AWS_ENDPOINT_URL_S3 ??
+			process.env.AWS_ENDPOINT_URL;
 		const config: S3ClientConfig = {
 			region: options.region,
-			endpoint: options.endpoint,
+			endpoint,
 			// The emulator serves buckets by path, not by subdomain.
-			forcePathStyle: options.endpoint ? true : undefined,
+			forcePathStyle: endpoint ? true : undefined,
 		};
 		if (options.profile) {
 			// Required lazily: only a profile needs the credential providers.
@@ -94,9 +162,31 @@ export class S3StateStore extends DocumentStateStore {
 		} else if (options.credentials) {
 			config.credentials = options.credentials;
 		}
+		let source: string | ProjectBucketSource;
+		if (options.bucket) {
+			source = options.bucket;
+		} else {
+			source = {
+				identity: deployIdentity(
+					{
+						name: options.workspaceName,
+						...(options.namespace
+							? { deploy: { namespace: options.namespace } }
+							: {}),
+					},
+					'',
+				),
+				region: options.region ?? process.env.AWS_REGION ?? 'us-east-1',
+				sts: new STSClient({
+					region: config.region,
+					...(options.endpoint ? { endpoint: options.endpoint } : {}),
+					...(config.credentials ? { credentials: config.credentials } : {}),
+				}),
+			};
+		}
 		return new S3StateStore(
 			options.workspaceName,
-			options.bucket,
+			source,
 			new S3Client(config),
 			options.prefix,
 		);
@@ -112,6 +202,7 @@ export class S3StateStore extends DocumentStateStore {
 	}
 
 	protected async readRaw(stage: string): Promise<RawState | null> {
+		if (!(await this.use(false))) return null;
 		const object = await this.get(this.key(stage, 'state.json'));
 		if (!object) return null;
 		return { body: object.body, version: object.etag };
@@ -122,6 +213,7 @@ export class S3StateStore extends DocumentStateStore {
 		body: string,
 		expectedVersion: StateVersion | null,
 	): Promise<StateVersion> {
+		await this.use(true);
 		const Key = this.key(stage, 'state.json');
 		try {
 			const { ETag } = await this.client.send(
@@ -152,6 +244,7 @@ export class S3StateStore extends DocumentStateStore {
 	}
 
 	protected async writeV1Backup(stage: string, body: string): Promise<void> {
+		await this.use(true);
 		try {
 			await this.client.send(
 				new PutObjectCommand({
@@ -169,6 +262,7 @@ export class S3StateStore extends DocumentStateStore {
 	}
 
 	protected async createLock(stage: string, holder: LockHolder): Promise<void> {
+		await this.use(true);
 		const Key = this.key(stage, 'lock.json');
 		try {
 			await this.client.send(
@@ -193,6 +287,7 @@ export class S3StateStore extends DocumentStateStore {
 	}
 
 	protected async readLock(stage: string): Promise<LockHolder | null> {
+		if (!(await this.use(false))) return null;
 		const object = await this.get(this.key(stage, 'lock.json'));
 		if (!object) return null;
 		try {
@@ -206,6 +301,7 @@ export class S3StateStore extends DocumentStateStore {
 		stage: string,
 		holder: LockHolder | null,
 	): Promise<void> {
+		if (!(await this.use(false))) return;
 		const Key = this.key(stage, 'lock.json');
 		const object = await this.get(Key);
 		if (!object) return;

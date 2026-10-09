@@ -94,8 +94,11 @@ export interface SSMStateConfig {
  */
 export interface S3StateConfig {
 	provider: 's3';
-	/** Bucket the state lives in. It must already exist. */
-	bucket: string;
+	/**
+	 * Bucket the state lives in; it must already exist. Omitted, the project
+	 * bucket — `gkm-<project>-<account id>`, created by the first deploy.
+	 */
+	bucket?: string;
 	/** AWS region of the bucket */
 	region: AwsRegion;
 	/** Key prefix inside the bucket (default: `gkm`) */
@@ -143,4 +146,6 @@ export interface CreateStateStoreConfig {
 	workspaceRoot: string;
 	/** Workspace name (for SSM parameter path) */
 	workspaceName: string;
+	/** `deploy.namespace`, for the s3 project bucket's name. */
+	namespace?: string;
 }

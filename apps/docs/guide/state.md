@@ -13,7 +13,8 @@ store.
 
 ::: warning State holds secrets
 Database passwords, generated secrets and backup IAM keys are in the state.
-Local state files are written with mode `0600`; SSM state is a `SecureString`.
+Local state files are written with mode `0600`; SSM state is a `SecureString`;
+the project bucket is encrypted (SSE-S3) with every public access blocked.
 `gkm state:show` masks all three.
 :::
 
@@ -32,33 +33,42 @@ state: { provider: 'local' }   // or leave `state` out
 `.gkm/` is gitignored, so local state does not travel with the repository. A
 second machine deploying the same stage does not see it. It then
 finds the Dokploy project by its [ownership marker](./deployment.md#identity-namespace-project-stage)
-rather than by id. Use a remote provider as soon as more than one place deploys.
+rather than by id. Use S3 as soon as more than one place deploys.
 In CI, local state is refused: see [Deploying from CI](#deploying-from-ci).
 
-### SSM
+### S3 (recommended for deployed stages)
 
 ```ts
 export default defineWorkspace({
   name: 'shop',                 // required: state is keyed by workspace name
   // …
-  state: {
-    provider: 'ssm',
-    region: 'eu-west-1',
-    profile: 'acme-prod',       // optional; the default credential chain otherwise
-  },
+  state: { provider: 's3', region: 'eu-west-1' },
 });
 ```
 
-- State: `/gkm/<workspace>/<stage>/state`, a `SecureString` encrypted with the
-  AWS-managed KMS key
-- Lock: `/gkm/<workspace>/<stage>/lock`, created only if absent
-- Read and written in SSM directly; there is no local copy to go stale
-- Use for: teams, and **anything deployed from CI** (recommended)
+With no `bucket`, the state lives in the **project bucket**, which gkm creates
+and owns:
 
-SSM has no conditional put, so a write checks the parameter's version before
-and after it.
+- Name: `gkm-<project>-<account id>` — the project as the `s3` objects
+  provider scopes its buckets (`<namespace>-<project>` when `deploy.namespace`
+  is set), the account id from `sts:GetCallerIdentity`. Nothing has to record
+  the name (the state lives in the bucket), so it is worked out the same way
+  on every run. A project part too long for S3's 63 characters keeps its start
+  and ends in a hash.
+- Created by the first run that **writes** state — a deploy (its lock),
+  `gkm deploy:rollback`, `gkm state:push` — with the running credentials:
+  versioning on, SSE-S3 encryption, every public access blocked,
+  bucket-owner-enforced ownership, a lifecycle rule expiring noncurrent
+  versions after 90 days, and the tag `gkm:project=<namespace>/<project>`.
+  A bucket that exists is used as it is.
+- Never created by a read: `gkm state:show` and `gkm state:history` of a
+  project with no bucket yet say the stage has no state.
+- One bucket holds every stage of the project: `<prefix>/<workspace>/<stage>/`.
+- A name another account holds (HeadBucket 403) fails with
+  `ProjectBucketTaken`; name a bucket of yours instead (below).
 
-### S3
+To keep the state in a bucket you already have, name it. It must exist; gkm
+never creates or reconfigures it:
 
 ```ts
 state: {
@@ -66,7 +76,7 @@ state: {
   bucket: 'shop-deploy-state', // must already exist
   region: 'eu-west-1',
   prefix: 'gkm',               // optional, default 'gkm'
-  profile: 'acme-prod',        // optional
+  profile: 'acme-prod',        // optional; the default credential chain otherwise
 },
 ```
 
@@ -74,10 +84,88 @@ state: {
 - Lock: `lock.json` beside it
 - Every write is conditional (`If-None-Match: *` to create, `If-Match: <etag>`
   to replace), so two runs can never overwrite each other
-- Use for: teams and CI that already have a bucket, or that keep state out of SSM
+- No size limit worth the name: a busy stage's document is tens of KB
 
-SSM and S3 both need the workspace `name`. Without it they fail with
-`StateStoreNeedsWorkspaceName`.
+#### Permissions
+
+The CI role `gkm deploy:github` creates for a compose stage is given exactly
+what the state needs (see [the deploy role](./deployment.md#what-the-role-may-do)):
+
+- `s3:GetObject`, `PutObject`, `DeleteObject` on
+  `arn:aws:s3:::<bucket>/<prefix>/<workspace>/<stage>/*`;
+- `s3:ListBucket` on `arn:aws:s3:::<bucket>` — what `HeadBucket` needs, so it
+  cannot be narrowed by prefix; it lists keys, never reads them;
+- with the project bucket, `s3:CreateBucket`, `PutBucketVersioning`,
+  `PutEncryptionConfiguration`, `PutBucketPublicAccessBlock`,
+  `PutBucketOwnershipControls`, `PutLifecycleConfiguration` and
+  `PutBucketTagging` on exactly `arn:aws:s3:::gkm-<project>-<account id>`.
+
+A developer who runs `gkm deploy` or `gkm state:push` from a laptop needs the
+same in the stage's account: object read and write under the stage's prefix,
+`s3:ListBucket` on the bucket, and — for the run that creates the project
+bucket — `s3:CreateBucket` and the put-config actions above on it. Use
+`<stage>` as `*` in the object ARN to grant every stage of the project.
+`sts:GetCallerIdentity`, which the bucket's name is worked out with, needs no
+permission. The deploy server is given no AWS access: state is read and
+written only where the deploy runs, the CI runner or the laptop.
+
+### SSM
+
+```ts
+state: {
+  provider: 'ssm',
+  region: 'eu-west-1',
+  profile: 'acme-prod',       // optional; the default credential chain otherwise
+},
+```
+
+- State: `/gkm/<workspace>/<stage>/state`, a `SecureString` encrypted with the
+  AWS-managed KMS key
+- Lock: `/gkm/<workspace>/<stage>/lock`, created only if absent
+- Read and written in SSM directly; there is no local copy to go stale
+- Use for: small stages — a couple of apps — that already keep secrets in SSM
+
+SSM has no conditional put, so a write checks the parameter's version before
+and after it.
+
+#### Size
+
+An SSM parameter holds at most 8 KB, and a stage's document grows with every
+app: each keeps up to 10 releases (ref, tag, digest, when, by whom), the
+resources carry who wrote them, and `history` keeps 20 runs. So gkm:
+
+- writes the state with the **Intelligent-Tiering** tier: SSM uses the
+  standard tier (4 KB, free) while it fits and moves the parameter to the
+  advanced tier (8 KB, charged per parameter per month) when it does not;
+- stores a document over 3 KB **compressed**: `gz:` and the base64 of its
+  gzip, without indentation. Both forms are read; one written before is read
+  as it is, and `state:show`, `state:pull` and `state:diff` read either;
+- checks before a deploy changes anything that the document, with 1 KB of
+  room for the run, fits under 8 KB. One that does not fails with
+  `StateTooLargeForSsm`, naming its size and the limit, before any image is
+  built or container started;
+- names a write SSM refuses anyway `StateRejectedBySsm`, rather than the
+  SDK's `ValidationException`. What the run released is running then; only
+  its record is missing.
+
+Measured on a five-app compose stage with 10 releases per app, 20 history
+entries and 14 resource records (10 and 4 DNS records): 47 KB as stored JSON,
+6.3 KB compressed — it fits, just. With 10 resources and 4 DNS records *per
+app* it is 79 KB, 8.7 KB compressed, and does not. Past a couple of apps, keep
+the state in S3.
+
+#### Moving from SSM to S3
+
+```bash
+gkm state:pull --stage production    # with the ssm config: SSM → .gkm/
+# in gkm.config.ts: state: { provider: 's3', region: 'eu-west-1' }
+gkm state:push --stage production    # .gkm/ → S3; creates the project bucket
+```
+
+The push copies the state and its resource records under the S3 stage's lock.
+The SSM parameters are left as they were; delete them once a deploy has run
+from S3. If a deploy's last write was refused (`StateRejectedBySsm`), SSM holds
+the last write it accepted: move that, then deploy again to record the release.
 
 ### A custom store
 
@@ -201,9 +289,9 @@ start, before anything is built or changed:
 ```
 LocalStateInCi: `gkm deploy` would keep stage 'production's deploy state in
 .gkm/ on this CI runner, and the runner is discarded when the job ends: …
-Keep the state in AWS — in gkm.config.ts:
+Keep the state in S3, in a bucket gkm creates for the project — in gkm.config.ts:
 
-  state: { provider: 'ssm', region: 'eu-west-1' },
+  state: { provider: 's3', region: 'eu-west-1' },
 
 then move the state you already have, from the machine that holds it:
 
@@ -212,9 +300,10 @@ then move the state you already have, from the machine that holds it:
 
 `gkm state:push` copies the laptop's state, migrated to the current schema on
 the way, into the new store. The role `gkm deploy:github` creates for a compose
-stage is allowed to read and write the stage's state parameters
-(`/gkm/<workspace>/<stage>/*`, the lock included) when `state.provider` is
-`ssm`, and the stage's objects under the prefix when it is `s3`. The local
+stage is allowed to read and write the stage's objects under the prefix when
+`state.provider` is `s3` (and to create the project bucket when no bucket is
+named), and the stage's state parameters (`/gkm/<workspace>/<stage>/*`, the
+lock included) when it is `ssm`. The local
 stage, and local state outside CI, are unaffected.
 
 ## Locks
