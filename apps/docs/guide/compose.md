@@ -184,9 +184,18 @@ run connects to nothing and prints where it would deploy:
 
 1. Docker and its compose plugin.
 2. A deploy user in the `docker` group, with the deploying machine's (or CI's)
-   public key in `~/.ssh/authorized_keys`. sshd must allow TCP forwarding for
-   it (`AllowTcpForwarding yes`, OpenSSH's default): the deploy reaches the
-   stack's Postgres through a tunnel.
+   public key in `~/.ssh/authorized_keys`. The deploy reaches the stack's
+   Postgres (and MinIO) through an SSH tunnel (`ssh -L`), so both sshd and the
+   key must allow local port forwarding:
+   - sshd: `AllowTcpForwarding yes` (OpenSSH's default) or `local`, globally
+     or in a `Match User deploy` block.
+   - the key's `authorized_keys` entry: a key installed with `restrict`
+     refuses forwarding unless it also names it —
+     `restrict,port-forwarding ssh-ed25519 AAAA… ci-deploy`. `no-port-forwarding`
+     refuses it outright.
+
+   Either refusal fails the deploy with `ComposeTunnelFailed` before any app
+   starts (ssh typically says `administratively prohibited`).
 3. A firewall open on 22, 80 and 443 — 80 for ACME's HTTP challenge and the
    redirect to HTTPS.
 
@@ -1241,6 +1250,3 @@ A restore asks first (`--yes` skips it), then:
 ## What is not included yet
 
 - **Mobile apps** ship through their own toolchain and are skipped.
-- **A remote Docker host.** Provisioning and migrations connect to the stack's
-  Postgres from this machine on a loopback port, so run `gkm compose` on the
-  machine that hosts the stack.

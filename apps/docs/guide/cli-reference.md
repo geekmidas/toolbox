@@ -427,7 +427,7 @@ how a role that trusted the wrong format is repaired. See
 [which subject the role trusts](./deployment.md#which-subject-the-role-trusts). On
 GitHub (through `gh`, so be logged in) it creates the `<stage>` environment and
 sets `AWS_ROLE_ARN`, which the generated deploy workflow reads. With
-`secrets.store` set to SSM or Secrets Manager the deploy job reads the stage's
+`secrets.store` set to S3, SSM or Secrets Manager the deploy job reads the stage's
 secrets there with the role, and GitHub is handed no key; with the `'file'`
 store it sets `GKM_SECRETS_KEY` (from `~/.gkm/keys/<namespace>/<project>/<stage>.key`).
 Re-running it converges.
@@ -550,7 +550,8 @@ Errors:
                           SSH to the stage's server, or Docker there, did not
                           answer (quotes ssh's stderr) — before anything changes
   ComposeTunnelFailed     the SSH tunnel to the stack's Postgres or MinIO did
-                          not open (AllowTcpForwarding on the server)
+                          not open (sshd's AllowTcpForwarding, or a key
+                          installed with `restrict` and no `port-forwarding`)
   RegistryRequired        --push, --tag or --pull with no deploy.registry
                           (the image would be a Docker Hub name)
   ComposePushNeedsBuild   --push without --build, or with --pull
@@ -752,7 +753,7 @@ Neither runs on the local stage (its keyring is derived) or on AWS (KMS rotates
 the key itself).
 
 Every `secrets:*` command reads and writes the stage's own store: for a
-deployed stage kept in SSM or Secrets Manager, `secrets:set` writes there and
+deployed stage kept in S3, SSM or Secrets Manager, `secrets:set` writes there and
 `secrets:show` reads from it, with the default AWS credentials (`AWS_PROFILE`, or a deploy
 job's role). See
 [the secrets store](./dev-server.md#deployed-stages-the-secrets-store).

@@ -37,7 +37,9 @@ gkm, the AWS CLI and any AWS credentials or IAM user made for it, the stage's
 secrets key, and its `docker login` (images are pulled with the deploying
 machine's login). Keep Docker with its compose plugin, the deploy user in the
 `docker` group with your key authorised (sshd allowing TCP forwarding, the
-default), and ports 22/80/443. The stage's secrets and deploy state are read
+default, and the key's `authorized_keys` entry too: `restrict,port-forwarding`
+rather than a bare `restrict`, which refuses the migration tunnel with
+`ComposeTunnelFailed`), and ports 22/80/443. The stage's secrets and deploy state are read
 and written where the deploy runs.
 
 The shared Traefik edge (`proxy: 'traefik'`) now keeps its configuration in
