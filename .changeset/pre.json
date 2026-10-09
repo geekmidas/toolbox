@@ -58,6 +58,7 @@
     "credentials-schema-accessor",
     "database-hygiene",
     "db-connection-observability",
+    "deploy-creates-resources",
     "deploy-domains-subdomains",
     "deploy-github-oidc-subject",
     "deploy-github-oidc",
