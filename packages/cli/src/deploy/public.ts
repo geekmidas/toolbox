@@ -99,6 +99,7 @@ export {
 	SstOutputsUnreadable,
 	SurfacesUnhealthy,
 } from '../target/sst/index';
+export type { Actor, GithubActor, LocalActor } from './actor';
 export {
 	type AwsCredential,
 	type Credential,
@@ -146,5 +147,9 @@ export {
 	RegistryNotConfigured,
 	RegistryNotFound,
 } from './registry';
-export { StateLocked, StateVersionConflict } from './StateStore';
+export {
+	LocalStateInCi,
+	StateLocked,
+	StateVersionConflict,
+} from './StateStore';
 export type { AppDeployResult, DeployResult } from './types';

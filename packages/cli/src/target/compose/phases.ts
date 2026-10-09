@@ -86,12 +86,13 @@ import {
 	stackDir,
 } from '../../compose/stack';
 import { EDGE_PROJECT, EDGE_SERVICE } from '../../compose/traefik';
+import { currentActor } from '../../deploy/actor.js';
 import { reportDevServices } from '../../deploy/devServices';
 import type { ResourceChange } from '../../deploy/events';
 import { imageRef } from '../../deploy/identity.js';
 import { DeployJournal } from '../../deploy/journal';
 import {
-	createEmptyState,
+	createComposeState,
 	type DeployedImage,
 	recordRelease,
 } from '../../deploy/state.js';
@@ -1147,11 +1148,12 @@ async function recordImages(
 	run: ComposeRun,
 ): Promise<void> {
 	const journal = await DeployJournal.open(ctx.state, ctx.stage, () =>
-		createEmptyState(ctx.stage, '', ''),
+		createComposeState(ctx.stage),
 	);
+	const by = currentActor();
 	for (const app of [...run.stack.apps, ...run.stack.workers]) {
 		const image = run.images[app.app] ?? { ref: app.ref, tag: app.tag };
-		recordRelease(journal.state, app.app, image);
+		recordRelease(journal.state, app.app, image, by);
 	}
 	journal.state.identity = ctx.identity.key;
 	await journal.save();

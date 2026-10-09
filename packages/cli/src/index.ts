@@ -16,6 +16,7 @@ import { assertDevServicesFlag } from './deploy/devServices';
 import { deployInitCommand, deployListCommand } from './deploy/init';
 import {
 	stateDiffCommand,
+	stateHistoryCommand,
 	statePullCommand,
 	statePushCommand,
 	stateShowCommand,
@@ -1241,6 +1242,28 @@ program
 				process.chdir(globalOptions.cwd);
 			}
 			await stateShowCommand(options);
+		} catch (error) {
+			exitWithError(error);
+		}
+	});
+
+program
+	.command('state:history')
+	.description(
+		"Show who wrote a stage's deploy state, newest first, and what each app runs",
+	)
+	.requiredOption(
+		'--stage <stage>',
+		'Deployment stage (e.g., production, staging)',
+	)
+	.option('--json', 'Output as JSON')
+	.action(async (options: { stage: string; json?: boolean }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			await stateHistoryCommand(options);
 		} catch (error) {
 			exitWithError(error);
 		}

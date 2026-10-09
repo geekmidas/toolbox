@@ -33,7 +33,7 @@ import type { CredentialProvider } from './credentials';
 import { DevServicesNeedServerTarget } from './devServices';
 import { type DeployEvent, type DeployPhase, eventError } from './events';
 import { applicationName, deployIdentity } from './identity.js';
-import { createStateStore } from './StateStore.js';
+import { assertStateOutlivesRun, createStateStore } from './StateStore.js';
 import type { DeployResult } from './types';
 
 /** What a run deploys, once the workspace is loaded. */
@@ -230,6 +230,9 @@ export async function runDeploy(
 	// the lock held is released with `gkm state:unlock`.
 	let lock: Awaited<ReturnType<typeof store.lock>>;
 	try {
+		// A CI runner's disk is gone when the job ends; state kept on it is
+		// lost with it, and the next run recreates every resource.
+		assertStateOutlivesRun(phaseCtx.workspace, stage, 'deploy');
 		lock = await store.lock(stage, { operation: 'deploy' });
 	} catch (error) {
 		emit({ type: 'phase.failed', phase: 'validate', error: eventError(error) });

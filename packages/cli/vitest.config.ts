@@ -54,6 +54,14 @@ export default defineProject({
 			GKM_HOME: join(scratch, 'gkm-home'),
 			GKM_DISCOVERY_PORT: '0',
 			GKM_DEV_REGISTRY: join(scratch, 'gkm-dev'),
+			// A deploy refuses to keep a stage's state on a CI runner
+			// (`LocalStateInCi`), and the suites deploy with local state on
+			// purpose. They run as a laptop would; the suites that assert the
+			// refusal set these themselves. Whether the run really is CI stays
+			// readable as GKM_TEST_IN_CI.
+			CI: 'false',
+			GITHUB_ACTIONS: 'false',
+			GKM_TEST_IN_CI: process.env.CI ?? '',
 		},
 		// The `deploy/` suites drive real AWS SDK clients against the local
 		// emulator — SSM for deploy state, S3 and IAM for backup destinations.

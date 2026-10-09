@@ -17,7 +17,7 @@
  */
 
 import type { ResourceRecord, StateStore, StateVersion } from './StateStore';
-import type { DokployStageState } from './state';
+import type { StageState } from './state';
 
 /** One resource, as the journal keys and describes it. */
 export interface JournalEntry {
@@ -52,12 +52,12 @@ export interface Ensured<T> {
 	staleId?: string;
 }
 
-export class DeployJournal {
+export class DeployJournal<S extends StageState = StageState> {
 	private constructor(
 		private readonly store: StateStore,
 		readonly stage: string,
 		/** The stage's state, mutated by the deploy and written by `save`. */
-		readonly state: DokployStageState,
+		readonly state: S,
 		private resources: Record<string, ResourceRecord>,
 		private version: StateVersion,
 		/** Whether the stage had state before this run. */
@@ -68,18 +68,34 @@ export class DeployJournal {
 	 * The stage's journal — its stored state, or `initial` written as the
 	 * stage's first state, so there is somewhere to record the very first
 	 * resource before it is created.
+	 *
+	 * `adopt` turns a stored state into the shape the caller works on — a
+	 * Dokploy deploy of a stage compose deployed keeps its releases and starts
+	 * its Dokploy ids afresh. Without it, the stored state is used as it is.
 	 */
 	static async open(
 		store: StateStore,
 		stage: string,
-		initial: () => DokployStageState,
-	): Promise<DeployJournal> {
+		initial: () => StageState,
+	): Promise<DeployJournal<StageState>>;
+	static async open<S extends StageState>(
+		store: StateStore,
+		stage: string,
+		initial: () => S,
+		adopt: (stored: StageState) => S,
+	): Promise<DeployJournal<S>>;
+	static async open(
+		store: StateStore,
+		stage: string,
+		initial: () => StageState,
+		adopt: (stored: StageState) => StageState = (stored) => stored,
+	): Promise<DeployJournal<StageState>> {
 		const stored = await store.read(stage);
 		if (stored) {
 			return new DeployJournal(
 				store,
 				stage,
-				stored.state,
+				adopt(stored.state),
 				stored.resources,
 				stored.version,
 				true,
@@ -107,10 +123,19 @@ export class DeployJournal {
 		await this.put({ ...entry, status: 'pending' });
 	}
 
-	/** Records `entry` as existing with `id`; a no-op if it already is. */
+	/**
+	 * Records `entry` as existing with `id`; a no-op if it already is, with
+	 * the same data.
+	 */
 	async ready(entry: JournalEntry, id: string): Promise<void> {
 		const current = this.resources[entry.key];
-		if (current?.status === 'ready' && current.id === id) return;
+		if (
+			current?.status === 'ready' &&
+			current.id === id &&
+			JSON.stringify(current.data) === JSON.stringify(entry.data)
+		) {
+			return;
+		}
 		await this.put({ ...entry, status: 'ready', id });
 	}
 
@@ -154,6 +179,21 @@ export class DeployJournal {
 			via: 'created',
 			...(staleId ? { staleId } : {}),
 		};
+	}
+
+	/** Removes `key`'s record — a resource that no longer exists. */
+	async forget(key: string): Promise<void> {
+		if (!(key in this.resources)) return;
+		this.version = await this.store.deleteResource(this.stage, key, {
+			expectedVersion: this.version,
+		});
+		const { [key]: _removed, ...resources } = this.resources;
+		this.resources = resources;
+	}
+
+	/** Every record, as the journal last wrote or read it. */
+	records(): Record<string, ResourceRecord> {
+		return this.resources;
 	}
 
 	/** Writes the stage's state, keeping its resource records. */

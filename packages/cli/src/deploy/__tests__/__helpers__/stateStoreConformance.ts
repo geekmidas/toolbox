@@ -8,6 +8,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { currentActor } from '../../actor';
 import {
 	StageStateMissing,
 	StateLocked,
@@ -84,6 +85,14 @@ export function stateStoreConformance(
 				expect(await store.read(stage)).toEqual({
 					state,
 					resources: {},
+					history: [
+						{
+							serial: 1,
+							at: expect.any(String),
+							by: currentActor(),
+							operation: 'write',
+						},
+					],
 					version,
 				});
 			});
@@ -107,7 +116,9 @@ export function stateStoreConformance(
 					expectedVersion: null,
 					actualVersion: version,
 				});
-				expect((await store.read(stage))?.state.projectId).toBe('proj_1');
+				expect((await store.read(stage))?.state).toMatchObject({
+					projectId: 'proj_1',
+				});
 			});
 
 			it('writes on top of the version it read, and moves the version on', async () => {
@@ -151,7 +162,9 @@ export function stateStoreConformance(
 					expectedVersion: stale,
 					actualVersion: current,
 				});
-				expect((await store.read(stage))?.state.projectId).toBe('theirs');
+				expect((await store.read(stage))?.state).toMatchObject({
+					projectId: 'theirs',
+				});
 			});
 
 			it('lets exactly one of two runners writing on the same version succeed', async () => {
@@ -213,6 +226,7 @@ export function stateStoreConformance(
 					status: 'ready',
 					data: { name: 'worker' },
 					updatedAt: expect.any(String),
+					updatedBy: currentActor(),
 				});
 			});
 

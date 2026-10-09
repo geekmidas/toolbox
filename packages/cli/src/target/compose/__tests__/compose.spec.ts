@@ -1,4 +1,4 @@
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { migrationTargets } from '@geekmidas/manifest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -19,8 +19,10 @@ import {
 	ServerAddressMissing,
 } from '../../../compose/dns';
 import { ImageTagNotFound } from '../../../compose/images';
+import { currentActor } from '../../../deploy/actor';
 import { deploy } from '../../../deploy/deploy';
 import type { DeployEvent } from '../../../deploy/events';
+import { LocalStateInCi } from '../../../deploy/StateStore';
 import { SeedFailed } from '../../../migrate/databases';
 import type { SqlClient } from '../../../reconcile/provision';
 import { UndeclaredStage } from '../../../workspace/stages';
@@ -556,5 +558,133 @@ describe('the DNS check', { timeout: RUN_TIMEOUT }, () => {
 		await run.result;
 
 		expect(asked).toEqual([]);
+	});
+});
+
+describe("the stage's deploy state", { timeout: RUN_TIMEOUT }, () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	const stateFile = (stage: string) =>
+		JSON.parse(
+			readFileSync(join(dir, '.gkm', `deploy-${stage}.json`), 'utf-8'),
+		);
+
+	it('is the compose shape: releases with who released them, and the run in its history', async () => {
+		const fake = fakeDocker();
+		const run = deploy({
+			cwd: dir,
+			stage: 'development',
+			target: 'compose',
+			targets: {
+				compose: composeTarget({
+					...quiet(),
+					docker: fake.docker,
+					probe: answering(fake.calls),
+				}),
+			},
+		});
+		await events(run);
+		await run.result;
+
+		const document = stateFile('development');
+		expect(document.schemaVersion).toBe(3);
+		expect(document.state).toEqual({
+			provider: 'compose',
+			stage: 'development',
+			lastDeployedAt: expect.any(String),
+			identity: expect.any(String),
+			releases: expect.any(Object),
+		});
+		for (const name of [
+			'projectId',
+			'environmentId',
+			'applications',
+			'services',
+			'dnsRecords',
+			'dnsVerified',
+		]) {
+			expect(document.state).not.toHaveProperty(name);
+		}
+		expect(Object.keys(document.state.releases).sort()).toEqual([
+			'api',
+			'auth',
+			'jobs',
+			'web',
+		]);
+		expect(document.state.releases.api.current.releasedBy).toEqual(
+			currentActor(),
+		);
+		expect(document.updatedBy).toEqual(currentActor());
+		// One run, one entry — however many writes it made.
+		expect(document.history).toEqual([
+			{
+				serial: document.serial,
+				at: document.updatedAt,
+				by: currentActor(),
+				operation: 'deploy',
+			},
+		]);
+	});
+
+	it('refuses a deployed stage in CI while its state is local, before anything happens', async () => {
+		vi.stubEnv('GITHUB_ACTIONS', 'true');
+		await serveFrom(dir);
+		const fake = fakeDocker({
+			registry: [
+				'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
+			],
+		});
+		const run = deploy({
+			cwd: dir,
+			stage: 'production',
+			target: 'compose',
+			tag: 'v1.4.0',
+			targets: {
+				compose: composeTarget({ ...quiet(), docker: fake.docker }),
+			},
+		});
+		await events(run);
+
+		const error = await run.result.catch((e) => e);
+		expect(error).toBeInstanceOf(LocalStateInCi);
+		expect(error.message).toContain(
+			"state: { provider: 'ssm', region: '<region>' }",
+		);
+		expect(error.message).toContain('gkm state:push --stage production');
+		expect(fake.ops()).toEqual([]);
+		expect(existsSync(join(dir, '.gkm', 'deploy-production.json'))).toBe(false);
+	});
+
+	it('deploys the local stage in CI with local state', async () => {
+		vi.stubEnv('GITHUB_ACTIONS', 'true');
+		vi.stubEnv('GITHUB_ACTOR', 'octocat');
+		vi.stubEnv('GITHUB_SERVER_URL', 'https://github.com');
+		vi.stubEnv('GITHUB_REPOSITORY', 'acme/shop');
+		vi.stubEnv('GITHUB_RUN_ID', '42');
+		const fake = fakeDocker();
+		const run = deploy({
+			cwd: dir,
+			stage: 'development',
+			target: 'compose',
+			targets: {
+				compose: composeTarget({
+					...quiet(),
+					docker: fake.docker,
+					probe: answering(fake.calls),
+				}),
+			},
+		});
+		await events(run);
+		await run.result;
+
+		expect(
+			stateFile('development').state.releases.api.current.releasedBy,
+		).toEqual({
+			kind: 'github',
+			actor: 'octocat',
+			run: 'https://github.com/acme/shop/actions/runs/42',
+		});
 	});
 });

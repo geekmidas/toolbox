@@ -21,8 +21,12 @@ import {
 	storedCredentials,
 } from '../../deploy/credentials';
 import { DeployJournal } from '../../deploy/journal';
-import { createStateStore } from '../../deploy/StateStore';
 import {
+	assertStateOutlivesRun,
+	createStateStore,
+} from '../../deploy/StateStore';
+import {
+	asDokployState,
 	createEmptyState,
 	type ReleasedImage,
 	recordRollback,
@@ -116,6 +120,7 @@ export async function rollbackStage(
 			sandbox,
 		});
 		assertDeployedStage(workspace.stages, input.stage);
+		assertStateOutlivesRun(workspace, input.stage, 'deploy:rollback');
 
 		const store = await createStateStore({
 			config: workspace.state,
@@ -128,8 +133,11 @@ export async function rollbackStage(
 
 		const lock = await store.lock(input.stage, { operation: 'rollback' });
 		try {
-			const journal = await DeployJournal.open(store, input.stage, () =>
-				createEmptyState(input.stage, '', ''),
+			const journal = await DeployJournal.open(
+				store,
+				input.stage,
+				() => createEmptyState(input.stage, '', ''),
+				asDokployState,
 			);
 			const { state } = journal;
 			const releases = state.releases ?? {};
