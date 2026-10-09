@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/telescope",
-	"version": "10.0.0-alpha.98",
+	"version": "10.0.0-alpha.99",
 	"description": "Laravel Telescope-style request, exception and log recording for web applications, exposed as a JSON API",
 	"type": "module",
 	"exports": {

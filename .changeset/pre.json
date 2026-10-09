@@ -52,6 +52,7 @@
     "compose-env-follows-edges",
     "compose-logs",
     "compose-redis-cache",
+    "compose-remote-docker",
     "compose-target",
     "compose-traefik-edge",
     "constructs-feature-test",
