@@ -1,4 +1,5 @@
 import { z } from 'zod/v4';
+import { checkStageBackups } from '../backups/schedule.js';
 import { checkDnsRecordsMode } from '../compose/dnsConfig.js';
 import { checkComposeStages } from '../compose/proxy.js';
 import { checkStageProvider } from '../providers/config.js';
@@ -254,6 +255,8 @@ const DokployWorkspaceConfigSchema = z
 			.record(z.string(), z.url('Endpoint must be a valid URL'))
 			.optional(),
 		registryId: z.string().optional(),
+		/** Dokploy's own backup destination for the stage's Postgres. */
+		backups: z.lazy(() => DokployBackupsConfigSchema).optional(),
 		verify: z
 			.object({
 				deploymentTimeoutMs: z.number().int().positive().optional(),
@@ -570,7 +573,7 @@ export type DnsConfig = z.infer<typeof DnsConfigWithLegacySchema>;
  * Configures automatic backup destinations for database services.
  * On first deploy, creates S3 bucket with unique name and IAM credentials.
  */
-export const BackupsConfigSchema = z.object({
+export const DokployBackupsConfigSchema = z.object({
 	/** Backup storage type (currently only 's3' supported) */
 	type: z.literal('s3'),
 	/** AWS profile name for creating bucket/IAM resources */
@@ -583,7 +586,28 @@ export const BackupsConfigSchema = z.object({
 	retention: z.number().optional(),
 });
 
-export type BackupsConfig = z.infer<typeof BackupsConfigSchema>;
+export type DokployBackupsConfig = z.infer<typeof DokployBackupsConfigSchema>;
+
+/**
+ * `deploy.backups` — when each deployed compose stage's databases are backed
+ * up, and how long a backup is kept. The rules are `checkStageBackups`', so
+ * the schema and a deploy refuse the same entries with the same words.
+ */
+const BackupsConfigSchema = z
+	.record(z.string(), z.unknown())
+	.superRefine((entries, ctx) => {
+		for (const [stage, value] of Object.entries(entries)) {
+			try {
+				checkStageBackups(stage, value);
+			} catch (error) {
+				ctx.addIssue({
+					code: 'custom',
+					message: error instanceof Error ? error.message : String(error),
+					path: [stage],
+				});
+			}
+		}
+	});
 
 /** `deploy.compose` — what the compose target runs beside the apps. */
 const ComposeWorkspaceConfigSchema = z
@@ -1137,6 +1161,7 @@ export const WorkspaceConfigSchema = z
 		const perStage: [string, (string | number)[], unknown][] = [
 			['domains', ['domains'], data.domains],
 			['deploy.objects', ['deploy', 'objects'], data.deploy?.objects],
+			['deploy.backups', ['deploy', 'backups'], data.deploy?.backups],
 			['deploy.telemetry', ['deploy', 'telemetry'], data.deploy?.telemetry],
 			...Object.entries(data.dns ?? {}).map(
 				([domain, entry]): [string, (string | number)[], unknown] => {

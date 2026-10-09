@@ -101,13 +101,21 @@ export const LOCAL_RABBITMQ_USER = 'rabbitmq';
  * name would claim as its runtime role.
  */
 export function postgresSuperuser(project: string): string {
+	return `${postgresRoleSlug(project)}_admin`;
+}
+
+/**
+ * The project as the start of a role's name: lowercase, `_` for anything
+ * else, never starting with a digit — `gkm` when nothing is left.
+ */
+export function postgresRoleSlug(project: string): string {
 	const slug = project
 		.toLowerCase()
 		.replace(/^@[^/]+\//, '')
 		.replace(/[^a-z0-9]+/g, '_')
 		.replace(/^_+|_+$/g, '')
 		.replace(/^(\d)/, '_$1');
-	return `${slug || 'gkm'}_admin`;
+	return slug || 'gkm';
 }
 
 /** 256 random bits, URL-safe. */

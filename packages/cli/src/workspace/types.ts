@@ -15,9 +15,9 @@ import type {
 } from '../types.js';
 import type {
 	BackendFramework,
-	BackupsConfig,
 	DnsConfig,
 	DnsProvider,
+	DokployBackupsConfig,
 	Framework,
 	FrontendFramework,
 	MobileFramework,
@@ -25,8 +25,8 @@ import type {
 
 export type {
 	BackendFramework,
-	BackupsConfig,
 	DnsConfig,
+	DokployBackupsConfig,
 	DnsProvider,
 	Framework,
 	FrontendFramework,
@@ -164,6 +164,8 @@ export interface DokployWorkspaceConfig {
 	endpoints?: Record<string, string>;
 	/** Registry ID in Dokploy (auto-configured) */
 	registryId?: string;
+	/** Dokploy's own backup schedule for the stage's Postgres, to an S3 destination. */
+	backups?: DokployBackupsConfig;
 	/** How a release is waited for and checked before it counts as live. */
 	verify?: DokployVerifyConfig;
 }
@@ -309,6 +311,34 @@ export type StageTelemetryConfig =
  */
 export type StageObjectsConfig = 'external' | S3ObjectsConfig | false;
 
+/**
+ * One deployed compose stage's backups — `deploy.backups`, by stage.
+ *
+ * A stage that runs Postgres is backed up whether it names one or not: every
+ * day at 02:00 UTC, each backup kept 30 days, in the project bucket. An
+ * entry changes when (`every`, or a five-field UTC `cron`, at most hourly)
+ * and for how long (`keep`); `false` takes none, and deletes nothing.
+ *
+ * @example
+ * ```ts
+ * backups: {
+ *   production: { every: '6h', keep: '30d' },
+ *   staging: { cron: '30 3 * * *', keep: '7d' },
+ *   preview: false,
+ * }
+ * ```
+ */
+export type StageBackupsConfig =
+	| false
+	| {
+			/** `'6h'`, `'1d'` — counted from 02:00 UTC. At least `'1h'`. */
+			every?: string;
+			/** Five fields, in UTC: `'0 *\/6 * * *'`. */
+			cron?: string;
+			/** How long a backup is kept: `'30d'`. */
+			keep?: string;
+	  };
+
 /** `objects: { provider: 's3' }` — a bucket per construct in the stage's account. */
 export interface S3ObjectsConfig {
 	provider: 's3';
@@ -391,10 +421,7 @@ export type DnsProviderType =
  *   dokploy: {
  *     endpoint: 'https://dokploy.myserver.com',
  *     projectId: 'proj_abc123',
- *   },
- *   backups: {
- *     type: 's3',
- *     region: 'us-east-1',
+ *     backups: { type: 's3', region: 'us-east-1' },
  *   },
  * }
  * ```
@@ -450,8 +477,11 @@ export interface DeployConfig<S extends string = string> {
 	 * `ObjectStorage` and `FileServer` produce. See {@link StageObjectsConfig}.
 	 */
 	objects?: StageMap<S, StageObjectsConfig>;
-	/** Backup destination configuration for database services */
-	backups?: BackupsConfig;
+	/**
+	 * When each deployed compose stage's databases are backed up, and how
+	 * long a backup is kept — see {@link StageBackupsConfig}.
+	 */
+	backups?: StageMap<S, StageBackupsConfig>;
 }
 
 /**

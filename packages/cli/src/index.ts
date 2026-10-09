@@ -5,6 +5,11 @@ import { Command, Option } from 'commander';
 import pkg from '../package.json';
 import { loginCommand, logoutCommand, whoamiCommand } from './auth';
 import {
+	backupListCommand,
+	backupNowCommand,
+	backupRestoreCommand,
+} from './backups/commands';
+import {
 	buildCommand,
 	isMainProvider,
 	UnknownBuildProvider,
@@ -1316,6 +1321,78 @@ program
 			exitWithError(error);
 		}
 	});
+
+program
+	.command('backup:list')
+	.description(
+		"List a compose stage's backups, newest first: when, which databases, how big",
+	)
+	.requiredOption('--stage <stage>', 'Deployed stage')
+	.option('--profile <profile>', "AWS profile for the stage's account")
+	.option('--json', 'Output as JSON')
+	.action(
+		async (options: { stage: string; profile?: string; json?: boolean }) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) process.chdir(globalOptions.cwd);
+				await backupListCommand(options);
+			} catch (error) {
+				exitWithError(error);
+			}
+		},
+	);
+
+program
+	.command('backup:now')
+	.description(
+		"Back up a compose stage now: runs its stack's backups container (docker exec)",
+	)
+	.requiredOption('--stage <stage>', 'Deployed stage')
+	.action(async (options: { stage: string }) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) process.chdir(globalOptions.cwd);
+			await backupNowCommand(options);
+		} catch (error) {
+			exitWithError(error);
+		}
+	});
+
+program
+	.command('backup:restore')
+	.description(
+		"Restore a compose stage's databases from a backup — after taking a fresh one",
+	)
+	.requiredOption('--stage <stage>', 'Deployed stage')
+	.option(
+		'--at <time>',
+		'A run (2026-10-10/02-00-00Z), or a time: the newest run at or before it',
+	)
+	.option('--latest', 'The newest run')
+	.option(
+		'--database <name>',
+		'One database, by its file name (auth-database); every one by default',
+	)
+	.option('--profile <profile>', "AWS profile for the stage's account")
+	.option('-y, --yes', 'Restore without asking')
+	.action(
+		async (options: {
+			stage: string;
+			at?: string;
+			latest?: boolean;
+			database?: string;
+			profile?: string;
+			yes?: boolean;
+		}) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) process.chdir(globalOptions.cwd);
+				await backupRestoreCommand(options);
+			} catch (error) {
+				exitWithError(error);
+			}
+		},
+	);
 
 program
 	.command('upgrade')

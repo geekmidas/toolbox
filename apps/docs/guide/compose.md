@@ -1125,6 +1125,119 @@ compose network (`http://api:3000`, or `http://<project>-api:3000` behind the
 network is not rejected. The session cookie's domain is the parent the public
 hosts share (`.example.com`), so the site and the APIs all see the session.
 
+## Backups
+
+A deployed stage whose stack runs Postgres is backed up, without being asked:
+every day at 02:00 UTC, each backup kept 30 days. The local stage never is.
+
+```ts
+// gkm.config.ts
+deploy: {
+  default: 'compose',
+  backups: {
+    production: { every: '6h', keep: '30d' },   // 02:00, 08:00, 14:00, 20:00 UTC
+    staging: { cron: '30 3 * * 1-5', keep: '7d' }, // five fields, in UTC
+    preview: false,                                // none — and nothing is deleted
+  },
+},
+```
+
+`every` is a number and a unit — `90m`, `6h`, `1d` — counted from 02:00 UTC;
+`cron` is five fields in UTC. Either runs at most once an hour: anything more
+frequent fails the config with `BackupIntervalInvalid` or `BackupCronInvalid`.
+`keep` is days. `false` takes no backups, prints a notice on every deploy, and
+deletes none that were taken.
+
+### Where they are
+
+In the project bucket — the one the deploy state lives in, `gkm-<project>-<account
+id>` — under the stage's own prefix, one folder per run and one file per
+database, named after its construct the way its migrations folder is
+(`AuthDatabase` is `db/auth-database`):
+
+```
+gkm/<project>/<stage>/backups/2026-10-10/02-00-00Z/database.sql.gz
+gkm/<project>/<stage>/backups/2026-10-10/02-00-00Z/auth-database.sql.gz
+```
+
+Each file is a gzipped plain `pg_dump --create --clean`: restored, it drops
+and recreates its database, owners and grants included.
+
+### Retention
+
+An S3 lifecycle rule on each stage's `backups/` prefix expires a backup after
+its `keep`, and aborts an upload that never finished. A bucket has one
+lifecycle, so the deploy rebuilds the whole of it from every stage's
+`deploy.backups` — the bucket's own rule for old versions, and each stage's
+expiry — and puts it only when it differs. One stage's deploy never drops
+another's rule.
+
+### What the deploy creates
+
+Beside the stage's providers, with the stage account's credentials — in CI,
+the role `gkm deploy:github` grants the deploy job:
+
+- the project bucket, if it is not there yet, and its lifecycle;
+- an IAM user, `gkm-<project>-<stage>-backups` under `/gkm/`, whose policy
+  allows `s3:PutObject` under the stage's backups prefix and **nothing else**
+  — no get, no list, no delete. A server that is broken into can neither read
+  the backups nor wipe them;
+- its key, in the stage's secrets as `BACKUPS_URL`
+  (`s3://KEY:SECRET@bucket?region=…`).
+
+`--rotate-keys` issues the key a successor and `--retire-old-keys` deletes the
+old one, as for a bucket's key. Every deploy's check puts a marker with the
+key, waiting out a key issued moments ago, so a key that does not work stops
+the deploy rather than the night's run.
+
+### The `backups` service
+
+The stack runs one more container, on its own network. Its image is built on
+the server from the stack's own Postgres image — the same major, so its
+`pg_dump` matches the server — with Node added and gkm's uploader copied in:
+nothing is pulled that the stack does not already have, and nothing is mounted
+from the host: its build context — a Dockerfile and the uploader — is sent to
+the server's engine over the same SSH every deploy uses. It reads `BACKUPS_URL`
+from its environment like any app reads its keys; the server holds no AWS
+credentials of its own.
+
+It signs in as a role of its own, `<project>_backups`, granted
+`pg_read_all_data`: it reads every database and can write none. On schedule it
+dumps each database and streams it, gzipped and in parts, to the run's folder,
+and logs each run as a JSON line — to the stack's telemetry too, when it is on:
+
+```json
+{"time":"2026-10-10T02:00:04.211Z","level":"info","msg":"backup finished","ok":true,"folder":"gkm/shop/production/backups/2026-10-10/02-00-00Z","databases":["auth-database","database"],"bytes":{"auth-database":18342,"database":5120934},"durationMs":3912}
+```
+
+It is unhealthy when its last good run is older than twice the schedule's
+longest gap, after a startup grace — so a missed night shows in
+`docker compose ps`.
+
+### Listing, backing up now, restoring
+
+Run from a laptop, or CI, with the stage account's own credentials:
+
+```bash
+gkm backup:list --stage production          # newest first: time, databases, sizes
+gkm backup:now --stage production           # docker exec on the server, over SSH: a run now
+gkm backup:restore --stage production --latest
+gkm backup:restore --stage production --at 2026-10-10/02-00-00Z --database auth-database
+gkm backup:restore --stage production --at 2026-10-09T12:00:00Z --yes
+```
+
+A restore asks first (`--yes` skips it), then:
+
+1. checks the run holds every database it restores — `BackupDatabaseMissing`
+   otherwise, before anything changes;
+2. takes a fresh backup;
+3. downloads each file with **your** credentials — the backups key cannot read
+   — and streams it, through the server's engine over SSH, into a one-off
+   container of the backups image on the stack's network, which closes the database to new connections, ends the
+   open ones, and recreates it from the file as the stack's superuser.
+
+`--at` takes a run's folder, or a time for the newest run at or before it.
+
 ## What is not included yet
 
 - **Mobile apps** ship through their own toolchain and are skipped.

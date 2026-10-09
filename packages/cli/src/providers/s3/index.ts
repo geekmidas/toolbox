@@ -36,6 +36,14 @@ import {
 	awsEndpoint,
 	awsProvisioningCredentials,
 } from '../aws.js';
+import {
+	ensureAccessKey,
+	ensureIamUser,
+	identityTags,
+	issuedJustNow,
+	TAG_PROJECT,
+	whileKeyIsNew,
+} from '../iam.js';
 import type {
 	EnsureContext,
 	ResourceProvider,
@@ -44,23 +52,18 @@ import type {
 } from '../types.js';
 import { checkS3Config, S3_PROVISIONING } from './config.js';
 import {
-	AccessKeyLimit,
-	BucketKeySetElsewhere,
 	BucketNameUnavailable,
 	BucketOwnedByAnotherProject,
 	BucketProbeFailed,
 	BucketRegionMismatch,
 	BucketRegionUnknown,
-	IamUserNotOwned,
 	ProvisionedBucketUnreachable,
 	RecordedBucketUnreachable,
-	RotationInProgress,
 	S3RegionRequired,
 } from './errors.js';
 import {
 	bucketName,
 	IAM_POLICY_NAME,
-	IAM_USER_PATH,
 	iamUserName,
 	randomSuffix,
 	SUFFIX_ATTEMPTS,
@@ -80,11 +83,6 @@ type S3Module = typeof import('@aws-sdk/client-s3');
 type IamModule = typeof import('@aws-sdk/client-iam');
 
 type Ctx = EnsureContext<S3ObjectsConfig, AwsProvisioning>;
-
-/** The tags gkm finds its own buckets and users by. */
-export const TAG_PROJECT = 'gkm:project';
-export const TAG_STAGE = 'gkm:stage';
-export const TAG_CONSTRUCT = 'gkm:construct';
 
 /** Each bucket construct, with the file servers over it. */
 export interface BucketConstruct {
@@ -358,15 +356,6 @@ async function ensureS3(ctx: Ctx): Promise<void> {
 	}
 }
 
-/** The keys gkm tags a bucket and a user with. */
-function identityTags(ctx: Ctx, id: string) {
-	return [
-		{ Key: TAG_PROJECT, Value: ctx.identity.key },
-		{ Key: TAG_STAGE, Value: ctx.stage },
-		{ Key: TAG_CONSTRUCT, Value: id },
-	];
-}
-
 async function ensureBucket(
 	ctx: Ctx,
 	stageClients: Clients,
@@ -406,14 +395,19 @@ async function ensureBucket(
 		open,
 	});
 
-	const user = await ensureUser(
-		ctx,
-		clients,
+	const user = await ensureIamUser(ctx, clients, {
 		id,
-		iamUserName(nameInput),
-		userPolicy(bucket, { versioning }),
-	);
-	await ensureAccessKey(ctx, clients, { id, bucket, ...user });
+		user: iamUserName(nameInput),
+		policyName: IAM_POLICY_NAME,
+		policy: userPolicy(bucket, { versioning }),
+		describe: 'this bucket only',
+	});
+	await ensureAccessKey(ctx, clients, {
+		id,
+		bucket,
+		urlKey: provideKey(id, 'url'),
+		...user,
+	});
 
 	// Each file server over it serves on the bucket's own endpoint — unless the
 	// stage set an address of its own for it (a CDN), which is kept.
@@ -815,305 +809,6 @@ function canonicalCors(rule: Partial<CorsRule>): string {
 	});
 }
 
-/** The bucket's IAM user and its inline policy. */
-async function ensureUser(
-	ctx: Ctx,
-	clients: Clients,
-	id: string,
-	user: string,
-	policy: ReturnType<typeof userPolicy>,
-): Promise<{ user: string; exists: boolean }> {
-	const { IAM, iam } = clients;
-	const entry: StateEntry = { key: `iam-user:${id}`, type: 'iam-user' };
-	const found = await readOr(
-		() => iam.send(new IAM.GetUserCommand({ UserName: user })),
-		['NoSuchEntity', 'NoSuchEntityException'],
-	);
-
-	if (found?.User) {
-		const tags = await iam.send(
-			new IAM.ListUserTagsCommand({ UserName: user }),
-		);
-		const tag = (key: string) => tags.Tags?.find((t) => t.Key === key)?.Value;
-		if (
-			found.User.Path !== IAM_USER_PATH ||
-			tag(TAG_PROJECT) !== ctx.identity.key ||
-			tag(TAG_STAGE) !== ctx.stage
-		) {
-			throw new IamUserNotOwned(user, ctx.identity.key, ctx.stage);
-		}
-		await ctx.state.ready(entry, user);
-	} else {
-		await ctx.change(
-			{
-				construct: id,
-				resource: `IAM user ${user}`,
-				change: `create under ${IAM_USER_PATH}`,
-			},
-			async () => {
-				await ctx.state.pending(entry);
-				await iam.send(
-					new IAM.CreateUserCommand({
-						UserName: user,
-						Path: IAM_USER_PATH,
-						Tags: identityTags(ctx, id),
-					}),
-				);
-				await ctx.state.ready(entry, user);
-			},
-		);
-	}
-
-	const exists = Boolean(found?.User) || !ctx.dryRun;
-	const current = exists
-		? await readOr(
-				() =>
-					iam.send(
-						new IAM.GetUserPolicyCommand({
-							UserName: user,
-							PolicyName: IAM_POLICY_NAME,
-						}),
-					),
-				['NoSuchEntity', 'NoSuchEntityException'],
-			)
-		: undefined;
-	const document = current?.PolicyDocument
-		? JSON.parse(decodePolicy(current.PolicyDocument))
-		: undefined;
-	if (!document || canonicalPolicy(document) !== canonicalPolicy(policy)) {
-		await ctx.change(
-			{
-				construct: id,
-				resource: `IAM user ${user}`,
-				change: `policy ${IAM_POLICY_NAME}: this bucket only`,
-			},
-			async () => {
-				await iam.send(
-					new IAM.PutUserPolicyCommand({
-						UserName: user,
-						PolicyName: IAM_POLICY_NAME,
-						PolicyDocument: JSON.stringify(policy),
-					}),
-				);
-			},
-		);
-	}
-	return { user, exists };
-}
-
-/** IAM returns a policy document URL-encoded; an emulator may not. */
-function decodePolicy(document: string): string {
-	try {
-		return decodeURIComponent(document);
-	} catch {
-		return document;
-	}
-}
-
-/**
- * The user's access key, in the stage's secrets as the bucket's URL.
- *
- * - First run: one key, written into the stage's secrets.
- * - `--rotate-keys`: a second key, written in place of the first; the first
- *   stays active until the stage has deployed with the second, and the next
- *   run after that deploy — or `--retire-old-keys` — deletes it.
- * - A key the secrets no longer hold (a store emptied by hand): replaced the
- *   same way, since its secret cannot be read back.
- */
-async function ensureAccessKey(
-	ctx: Ctx,
-	clients: Clients,
-	input: { id: string; bucket: string; user: string; exists: boolean },
-): Promise<void> {
-	const { IAM, iam } = clients;
-	const { id, bucket, user } = input;
-	const urlKey = provideKey(id, 'url');
-	const entryKey = `iam-access-key:${id}`;
-	const record = ctx.state.record(entryKey);
-
-	const given = ctx.secrets[urlKey];
-	let inUrl: string | undefined;
-	let parsed: s3Url.S3Address | undefined;
-	if (given !== undefined) {
-		try {
-			parsed = s3Url.parse(given);
-		} catch {
-			parsed = undefined;
-		}
-		if (parsed?.bucket !== bucket) {
-			throw new BucketKeySetElsewhere(
-				urlKey,
-				bucket,
-				parsed?.bucket ?? given.replace(/\/\/[^@]*@/, '//'),
-				ctx.stage,
-			);
-		}
-		inUrl = parsed.accessKeyId;
-	}
-
-	const listed = input.exists
-		? ((
-				await iam.send(new IAM.ListAccessKeysCommand({ UserName: user }))
-			).AccessKeyMetadata?.map((k) => k.AccessKeyId!) ?? [])
-		: [];
-
-	let current = record?.status === 'ready' ? record.id : undefined;
-	let previous =
-		typeof record?.data?.previous === 'string'
-			? record.data.previous
-			: undefined;
-	const rotatedAt =
-		typeof record?.data?.rotatedAt === 'string'
-			? record.data.rotatedAt
-			: undefined;
-	const entry = (data: Record<string, unknown> = {}): StateEntry => ({
-		key: entryKey,
-		type: 'iam-access-key',
-		data: { user, ...data },
-	});
-
-	// The old key of a rotation: deleted once the stage deployed after it.
-	if (previous && current) {
-		const deployed =
-			rotatedAt !== undefined &&
-			ctx.state.lastDeployedAt !== undefined &&
-			ctx.state.lastDeployedAt > rotatedAt;
-		if (ctx.retireOldKeys || deployed) {
-			const old = previous;
-			const keep = current;
-			await ctx.change(
-				{
-					construct: id,
-					resource: `IAM user ${user}`,
-					change: `delete the rotated-out access key ${old}`,
-				},
-				async () => {
-					if (listed.includes(old)) {
-						await iam.send(
-							new IAM.DeleteAccessKeyCommand({
-								UserName: user,
-								AccessKeyId: old,
-							}),
-						);
-					}
-					await ctx.state.ready(entry(), keep);
-				},
-			);
-			previous = undefined;
-		} else {
-			ctx.log(
-				`   ${id}: the old access key ${previous} stays active until '${ctx.stage}' is deployed with the new one; the next deploy after that deletes it (or pass --retire-old-keys)`,
-			);
-		}
-	}
-
-	// No record, and the secrets hold a key of this user's: adopt it.
-	if (!current && inUrl && listed.includes(inUrl)) {
-		await ctx.state.ready(entry(), inUrl);
-		current = inUrl;
-	}
-
-	const valid =
-		current !== undefined && listed.includes(current) && inUrl === current;
-	if (valid && !ctx.rotateKeys) {
-		// The key is good; the address must name where the bucket is.
-		if (parsed && parsed.region !== clients.region) {
-			const address = parsed;
-			await ctx.change(
-				{
-					construct: id,
-					resource: urlKey,
-					change: `name ${clients.region}, the bucket's region (it said ${address.region ?? 'none'})`,
-				},
-				() =>
-					ctx.writeSecrets({
-						[urlKey]: s3Url.build({ ...address, region: clients.region }),
-					}),
-			);
-		}
-		return;
-	}
-	if (ctx.rotateKeys && previous) {
-		throw new RotationInProgress(id, previous, ctx.stage);
-	}
-
-	const outgoing = current && listed.includes(current) ? current : undefined;
-	if (listed.length >= 2) throw new AccessKeyLimit(user, listed);
-
-	const why = !current
-		? 'create an access key'
-		: ctx.rotateKeys
-			? 'rotate: issue a new access key'
-			: 'issue a new access key (the secrets no longer hold the recorded one)';
-	await ctx.change(
-		{ construct: id, resource: `IAM user ${user}`, change: why },
-		async () => {
-			await ctx.state.pending(entry(outgoing ? { previous: outgoing } : {}));
-			const created = await iam.send(
-				new IAM.CreateAccessKeyCommand({ UserName: user }),
-			);
-			const key = created.AccessKey!;
-			// Into the stage's secrets before anything else: IAM shows a secret
-			// once, and a key whose secret is lost is a key to replace.
-			await ctx.writeSecrets({
-				[urlKey]: s3Url.build({
-					bucket,
-					region: clients.region,
-					...(clients.endpoint
-						? { endpoint: clients.endpoint, forcePathStyle: true }
-						: {}),
-					accessKeyId: key.AccessKeyId!,
-					secretAccessKey: key.SecretAccessKey!,
-				}),
-			});
-			// When it was issued: IAM takes seconds to make a new key usable,
-			// and the deploy's check waits for one this young.
-			const issuedAt = new Date().toISOString();
-			await ctx.state.ready(
-				entry(
-					outgoing
-						? { previous: outgoing, rotatedAt: issuedAt, issuedAt }
-						: { issuedAt },
-				),
-				key.AccessKeyId!,
-			);
-		},
-	);
-	if (outgoing) {
-		ctx.log(
-			`   ${urlKey} holds the new key. This deploy moves '${ctx.stage}' onto it; the next deploy after it deletes the old key ${outgoing}`,
-		);
-	}
-}
-
-/** How long a key issued this recently counts as new to IAM. */
-const NEW_KEY_WINDOW_MS = 10 * 60 * 1000;
-
-/** The waits between asks while a new key becomes usable: about a minute. */
-let newKeyWaits: readonly number[] = [2000, 4000, 8000, 15000, 15000, 15000];
-
-/** For tests: the waits for a new key. Returns the old ones. */
-export function useNewKeyWaits(waits: readonly number[]): readonly number[] {
-	const previous = newKeyWaits;
-	newKeyWaits = waits;
-	return previous;
-}
-
-/** When the key in the URL was issued, if the stage's state says it was just now. */
-function issuedJustNow(
-	ctx: VerifyContext<S3ObjectsConfig>,
-	id: string,
-	accessKeyId: string,
-): string | undefined {
-	const record = ctx.resources?.[`iam-access-key:${id}`];
-	const issuedAt = record?.data?.issuedAt;
-	if (record?.id !== accessKeyId || typeof issuedAt !== 'string') {
-		return undefined;
-	}
-	const age = Date.now() - Date.parse(issuedAt);
-	return age >= 0 && age < NEW_KEY_WINDOW_MS ? issuedAt : undefined;
-}
-
 /**
  * Each provisioned bucket answers `HeadBucket` to the key in the stage's
  * secrets — the one the apps will use. A bucket whose URL carries no key is
@@ -1146,21 +841,20 @@ async function verifyS3(ctx: VerifyContext<S3ObjectsConfig>): Promise<void> {
 			...(address.forcePathStyle ? { forcePathStyle: true } : {}),
 		});
 		try {
-			let head = await headBucket(S3, client, address.bucket);
 			// A key IAM issued moments ago is refused until it propagates.
-			const issuedAt = issuedJustNow(ctx, id, address.accessKeyId);
-			let waited = 0;
-			if (!head.ok && head.status === 403 && issuedAt) {
-				ctx.log?.(
-					`   ${id}: waiting for the new key ${address.accessKeyId} to become active…`,
-				);
-				for (const wait of newKeyWaits) {
-					await new Promise((resolve) => setTimeout(resolve, wait));
-					waited += wait;
-					head = await headBucket(S3, client, address.bucket);
-					if (head.ok || head.status !== 403) break;
-				}
-			}
+			const issuedAt = issuedJustNow(ctx.resources, id, address.accessKeyId);
+			const { answer: head, waited } = await whileKeyIsNew(
+				await headBucket(S3, client, address.bucket),
+				{
+					issuedAt,
+					refused: (answer) => !answer.ok && answer.status === 403,
+					ask: () => headBucket(S3, client, address.bucket),
+					onWait: () =>
+						ctx.log?.(
+							`   ${id}: waiting for the new key ${address.accessKeyId} to become active…`,
+						),
+				},
+			);
 			if (head.ok) continue;
 
 			const fail = (reason: string) =>

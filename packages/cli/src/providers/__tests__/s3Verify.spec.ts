@@ -13,11 +13,12 @@ import {
 } from 'vitest';
 import type { ResourceRecord } from '../../deploy/StateStore';
 import type { NormalizedWorkspace } from '../../workspace/types';
+import { useNewKeyWaits } from '../iam';
 import {
 	BucketRegionMismatch,
 	ProvisionedBucketUnreachable,
 } from '../s3/errors';
-import { s3Provider, useNewKeyWaits } from '../s3/index';
+import { s3Provider } from '../s3/index';
 
 /**
  * The deploy's check of a provisioned bucket, against S3 answering exactly

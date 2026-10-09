@@ -106,6 +106,14 @@ export function fakeDocker(
 				}
 			);
 		},
+		async container(engine, project, service) {
+			calls.push({ op: 'container', args: [project, service], ...on(engine) });
+			return { id: `${project}-${service}-1`, image: `${project}-${service}` };
+		},
+		async runOnce(engine, run) {
+			calls.push({ op: 'runOnce', args: run, ...on(engine) });
+			return 0;
+		},
 	};
 	return { docker, calls, ops: () => calls.map((call) => call.op) };
 }
