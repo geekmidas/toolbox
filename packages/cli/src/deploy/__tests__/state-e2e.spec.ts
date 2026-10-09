@@ -1,7 +1,7 @@
 /**
  * Workspace config to stored state, end to end.
  *
- * - Local: the store writes `.gkm/deploy-{stage}.json`, schema v2
+ * - Local: the store writes `.gkm/deploy-{stage}.json`, schema v3
  * - SSM: the store writes `/gkm/<workspace>/<stage>/state` on the AWS emulator,
  *   and nothing locally — SSM is read directly, so no stale local copy can
  *   stand in for it
@@ -110,7 +110,7 @@ describe('State store E2E', () => {
 				),
 			);
 			expect(document).toMatchObject({
-				schemaVersion: 2,
+				schemaVersion: 3,
 				stage: testStage,
 				state: {
 					provider: 'dokploy',
@@ -217,7 +217,7 @@ describe('State store E2E', () => {
 				new GetParameterCommand({ Name: parameter, WithDecryption: true }),
 			);
 			expect(JSON.parse(response.Parameter!.Value!)).toMatchObject({
-				schemaVersion: 2,
+				schemaVersion: 3,
 				state: {
 					stage: testStage,
 					environmentId: 'env_e2e_123',

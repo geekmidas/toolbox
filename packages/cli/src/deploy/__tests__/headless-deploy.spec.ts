@@ -45,6 +45,7 @@ import { type DeployInput, deploy } from '../deploy';
 import { ExternalServicesNotConfigured } from '../devServices';
 import type { DeployEvent } from '../events';
 import { deployCommand } from '../index';
+import { LocalStateInCi } from '../StateStore';
 import {
 	type Dokploy,
 	ENDPOINT,
@@ -750,6 +751,21 @@ writeFileSync(new URL('../seen.json', import.meta.url), JSON.stringify(process.e
 				expect(existsSync(join(root, '.gkm', `deploy-${STAGE}.lock`))).toBe(
 					false,
 				);
+			});
+
+			it('refuses in CI while the stage keeps its state locally, rolling nothing back', async () => {
+				vi.stubEnv('GITHUB_ACTIONS', 'true');
+				try {
+					await expect(
+						rollbackStage({ cwd: root, stage: STAGE, app: 'api' }),
+					).rejects.toBeInstanceOf(LocalStateInCi);
+				} finally {
+					vi.unstubAllEnvs();
+				}
+				expect(running()).toEqual({
+					api: ref('api', 'v2'),
+					web: ref('web', 'v2'),
+				});
 			});
 
 			it('asks which app when given neither', async () => {

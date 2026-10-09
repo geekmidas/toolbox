@@ -115,7 +115,7 @@ describe('LocalStateStore', () => {
 		await mkdir(join(root, '.gkm'), { recursive: true });
 		await writeFile(
 			store.statePath(STAGE),
-			JSON.stringify({ schemaVersion: 3 }),
+			JSON.stringify({ schemaVersion: 4 }),
 		);
 
 		await expect(store.read(STAGE)).rejects.toBeInstanceOf(StateSchemaTooNew);

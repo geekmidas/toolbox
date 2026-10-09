@@ -74,7 +74,7 @@ These look like compatibility code but are not on the removal list:
   `--provider`, but kept on purpose so CI scripts that use them keep working.
   Not a deploy shim.
 - **v1 state migration**: a v1 state file is still migrated on first read. See
-  [Deploy state](./state.md#migrating-from-v1).
+  [Deploy state](./state.md#migrating-from-earlier-versions).
 - **A custom `StateProvider`**: still accepted, behind a store that warns
   `StateStoreWithoutLocking`.
 - **The old stage-key location**: a key at `~/.gkm/<folder>/<stage>.key` is

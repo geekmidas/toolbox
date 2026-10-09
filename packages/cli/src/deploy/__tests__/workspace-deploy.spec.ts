@@ -105,7 +105,7 @@ describe('workspaceDeployCommand', () => {
 		});
 	};
 
-	/** The stage's state document, as the store wrote it (schema v2). */
+	/** The stage's state document, as the store wrote it (schema v3). */
 	const document = (stage = STAGE) =>
 		JSON.parse(
 			readFileSync(join(root, '.gkm', `deploy-${stage}.json`), 'utf8'),
@@ -1050,9 +1050,9 @@ export const config = new EnvironmentParser(process.env)
 				applications: { api: 'app_legacy' },
 				identity: 'shop/shop',
 			});
-			// Migrated to v2 on the way, with the v1 file kept beside it and its
+			// Migrated to v3 on the way, with the v1 file kept beside it and its
 			// ids seeded as records, so the application is used by id.
-			expect(document().schemaVersion).toBe(2);
+			expect(document().schemaVersion).toBe(3);
 			expect(existsSync(join(root, '.gkm', `deploy-${STAGE}.v1.json`))).toBe(
 				true,
 			);

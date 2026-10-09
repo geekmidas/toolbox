@@ -477,17 +477,31 @@ first time it is read and the old file is kept. `GKM_HOME` moves the whole home
 another needs the key copied by hand; regenerate GitHub workflows so they write
 the key to the new place.
 
-### 27. Deploy state is version 2, locked and journalled
+### 27. Deploy state is version 3, locked, journalled, and never kept on a CI runner
 
-State is stored as schema version 2; a v1 state is migrated on first read and
-the original kept beside it (`.gkm/deploy-<stage>.v1.json` locally). A deploy
-holds the stage's lock for the whole run: a second run gets `StateLocked`, a
-stale write `StateVersionConflict`, and a crashed run's lock is released with
+State is stored as schema version 3. A v1 state is migrated on first read and
+the original kept beside it (`.gkm/deploy-<stage>.v1.json` locally); a v2 state
+is read as it is and written as v3 by the next write. A deploy holds the
+stage's lock for the whole run: a second run gets `StateLocked`, a stale write
+`StateVersionConflict`, and a crashed run's lock is released with
 `gkm state:unlock --stage <stage>`. `CachedStateProvider`,
 `LocalStateProvider`, `SSMStateProvider`, `createStateProvider` and the
 `StateStoreProvider` bridge are removed; a custom `StateProvider` in
 `state.provider` still works but warns `StateStoreWithoutLocking`. S3 is a new
-option: `state: { provider: 's3', bucket, region }`. See [State](/guide/state).
+option: `state: { provider: 's3', bucket, region }`.
+
+A compose stage's state has a shape of its own, `provider: 'compose'`, with no
+Dokploy fields; the DNS records gkm wrote are `dns-record` resources rather than
+`dnsRecords`, and `dnsVerified` is gone. Every write records who made it
+(`updatedBy`, `releasedBy`, and the last 20 runs in `history`, shown by
+`gkm state:history --stage <stage>`).
+
+**`LocalStateInCi`:** a deploy or `gkm deploy:rollback` of a deployed stage now
+fails at the start in CI (`GITHUB_ACTIONS=true` or `CI=true`) while the
+workspace keeps state locally, since the runner and its `.gkm/` are discarded
+when the job ends. Move the state to AWS — `state: { provider: 'ssm', region }`
+in `gkm.config.ts`, then `gkm state:push --stage <stage>` from the machine that
+holds it. See [State](/guide/state#deploying-from-ci).
 
 ### 28. State records `releases`, not `images`
 

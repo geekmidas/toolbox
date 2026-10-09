@@ -929,17 +929,24 @@ gkm state:push --stage production
 # Compare local vs remote, resource records included
 gkm state:diff --stage production
 
+# Who wrote the state, newest first, and what each app runs (--json too)
+gkm state:history --stage production
+
 # Release the lock of a deploy that was killed
 gkm state:unlock --stage production
 ```
 
 **State Contents:**
 
-- Application IDs and service IDs
-- Per-app database credentials
-- Generated secrets (BETTER_AUTH_SECRET, etc.)
-- DNS verification status
-- Last deployment timestamp
+- Each app's releases, and who released them
+- Dokploy: application and service IDs, per-app database credentials,
+  generated secrets (BETTER_AUTH_SECRET, etc.)
+- Resource records, the DNS records gkm wrote among them
+- Who made each of the last 20 writes, and when
+
+Anything deployed from CI should keep its state in `ssm` (or `s3`): in CI, a
+deploy with local state fails with `LocalStateInCi`. See
+[Deploy state](/guide/state).
 
 ## Workspace Configuration
 

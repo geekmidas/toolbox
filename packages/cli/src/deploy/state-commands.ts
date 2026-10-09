@@ -11,14 +11,17 @@
 
 import { loadWorkspaceConfig } from '../config';
 import type { NormalizedWorkspace } from '../workspace/types';
+import { describeActor } from './actor';
+import { dnsResources } from './dnsResources';
 import { LocalStateStore } from './LocalStateStore';
 import {
 	createStateStore,
+	type HistoryEntry,
 	type ResourceRecord,
 	type StateStore,
 	type StoredStageState,
 } from './StateStore';
-import type { DokployStageState } from './state';
+import type { DokployStageState, ReleasedImage, StageState } from './state';
 
 /** What `state:show` prints in place of a secret. */
 export const MASKED = '********';
@@ -29,8 +32,9 @@ export const MASKED = '********';
  * to look up ids, in terminals and CI logs; nothing it prints should be
  * usable as a credential.
  */
-export function maskStateSecrets(state: DokployStageState): DokployStageState {
-	const masked: DokployStageState = structuredClone(state);
+export function maskStateSecrets<S extends StageState>(state: S): S {
+	const masked: S = structuredClone(state);
+	if (masked.provider !== 'dokploy') return masked;
 
 	for (const credentials of Object.values(masked.appCredentials ?? {})) {
 		credentials.dbPassword = MASKED;
@@ -139,6 +143,7 @@ export async function stateShowCommand(
 		console.log(JSON.stringify(state, null, 2));
 	} else {
 		printStateDetails(state);
+		printDnsRecords(stored.resources);
 		printUnfinished(stored.resources);
 	}
 }
@@ -214,8 +219,8 @@ export async function stateDiffCommand(
 	console.log('');
 
 	// Compare applications
-	const localApps = local?.applications ?? {};
-	const remoteApps = remote?.applications ?? {};
+	const localApps = dokploy(local)?.applications ?? {};
+	const remoteApps = dokploy(remote)?.applications ?? {};
 	const allApps = new Set([
 		...Object.keys(localApps),
 		...Object.keys(remoteApps),
@@ -242,8 +247,8 @@ export async function stateDiffCommand(
 	}
 
 	// Compare services
-	const localServices = local?.services ?? {};
-	const remoteServices = remote?.services ?? {};
+	const localServices = dokploy(local)?.services ?? {};
+	const remoteServices = dokploy(remote)?.services ?? {};
 
 	if (
 		Object.keys(localServices).length > 0 ||
@@ -372,6 +377,11 @@ export async function copyStage(
 	return source;
 }
 
+/** `state` if Dokploy wrote it — the only shape with ids of its own. */
+function dokploy(state: StageState | null): DokployStageState | null {
+	return state?.provider === 'dokploy' ? state : null;
+}
+
 function describeRecord(record: ResourceRecord | undefined): string {
 	if (!record) return '(none)';
 	return record.id ? `${record.status} ${record.id}` : record.status;
@@ -391,7 +401,13 @@ function printUnfinished(resources: Record<string, ResourceRecord>): void {
 	}
 }
 
-function printStateSummary(state: DokployStageState): void {
+function printStateSummary(state: StageState): void {
+	if (state.provider !== 'dokploy') {
+		console.log(`  Stage: ${state.stage} (${state.provider})`);
+		console.log(`  Apps released: ${Object.keys(state.releases ?? {}).length}`);
+		console.log(`  Last deployed: ${state.lastDeployedAt}`);
+		return;
+	}
 	const appCount = Object.keys(state.applications).length;
 	const hasPostgres = !!state.services.postgresId;
 	const hasRedis = !!state.services.redisId;
@@ -403,7 +419,15 @@ function printStateSummary(state: DokployStageState): void {
 	console.log(`  Last deployed: ${state.lastDeployedAt}`);
 }
 
-function printStateDetails(state: DokployStageState): void {
+function printStateDetails(state: StageState): void {
+	if (state.provider !== 'dokploy') {
+		console.log(`Stage: ${state.stage} (${state.provider})`);
+		console.log(`Last Deployed: ${state.lastDeployedAt}`);
+		if (state.identity) console.log(`Identity: ${state.identity}`);
+		console.log('');
+		printReleases(state.releases);
+		return;
+	}
 	console.log(`Stage: ${state.stage}`);
 	console.log(`Environment ID: ${state.environmentId}`);
 	console.log(`Last Deployed: ${state.lastDeployedAt}`);
@@ -468,4 +492,97 @@ function printStateDetails(state: DokployStageState): void {
 			console.log(`  ${hostname}: ${info.serverIp} (${info.verifiedAt})`);
 		}
 	}
+}
+
+/** Each app's current release, and who released it. */
+function printReleases(releases: StageState['releases']): void {
+	console.log('Releases:');
+	const apps = Object.entries(releases ?? {});
+	if (apps.length === 0) {
+		console.log('  (none)');
+		return;
+	}
+	for (const [app, { current }] of apps) {
+		console.log(`  ${app}: ${describeRelease(current)}`);
+	}
+}
+
+/** `ghcr.io/acme/api:v2 (sha256:…) · 2026-… · ada@laptop` */
+function describeRelease(release: ReleasedImage): string {
+	return [
+		`${release.ref}${release.digest ? ` (${release.digest})` : ''}`,
+		release.releasedAt,
+		describeActor(release.releasedBy),
+	].join(' · ');
+}
+
+/** The DNS records gkm wrote for the stage. */
+function printDnsRecords(resources: Record<string, ResourceRecord>): void {
+	const records = dnsResources(resources);
+	if (records.length === 0) return;
+	console.log('');
+	console.log('DNS Records:');
+	for (const record of records) {
+		console.log(
+			`  ${record.fqdn} ${record.type} ${record.value} (TTL ${record.ttl}${record.provider ? `, ${record.provider}` : ''})`,
+		);
+	}
+}
+
+/** What `state:history --json` prints. */
+export interface StateHistory {
+	stage: string;
+	/** Newest first. */
+	history: HistoryEntry[];
+	/** Each app's current release. */
+	releases: Record<string, ReleasedImage>;
+}
+
+/**
+ * Who wrote a stage's state, newest first, and what each app runs.
+ * `gkm state:history --stage=<stage>`
+ */
+export async function stateHistoryCommand(
+	options: StateCommandOptions & { json?: boolean },
+): Promise<void> {
+	const { workspace } = await loadWorkspaceConfig();
+	const store = await createStateStore({
+		config: workspace.state,
+		workspaceRoot: workspace.root,
+		workspaceName: workspace.name,
+	});
+
+	const stored = await store.read(options.stage);
+	if (!stored) {
+		console.log(`No state found for stage: ${options.stage}`);
+		return;
+	}
+
+	const history: StateHistory = {
+		stage: options.stage,
+		history: stored.history,
+		releases: Object.fromEntries(
+			Object.entries(stored.state.releases ?? {}).map(([app, releases]) => [
+				app,
+				releases.current,
+			]),
+		),
+	};
+
+	if (options.json) {
+		console.log(JSON.stringify(history, null, 2));
+		return;
+	}
+
+	console.log(`History of stage ${options.stage} (newest first):`);
+	if (history.history.length === 0) {
+		console.log('  (none recorded)');
+	}
+	for (const entry of history.history) {
+		console.log(
+			`  ${entry.serial} · ${entry.at} · ${describeActor(entry.by)} · ${entry.operation}`,
+		);
+	}
+	console.log('');
+	printReleases(stored.state.releases);
 }

@@ -24,7 +24,9 @@ import {
 	stackHosts,
 } from '../compose/dns.js';
 import { MissingCredential } from '../deploy/credentials.js';
+import { recordDnsChanges } from '../deploy/dnsResources.js';
 import { deployIdentity } from '../deploy/identity.js';
+import type { DeployJournal } from '../deploy/journal.js';
 import { discover } from '../reconcile/discover.js';
 import { constructGlobs } from '../reconcile/workspace.js';
 import { secretsStoreFor } from '../secrets/store.js';
@@ -52,6 +54,11 @@ export interface ProvisionDnsOptions {
 	hosts?: readonly string[];
 	/** The provider for a domain, for tests. */
 	providerFor?: (config: DnsProviderConfig) => Promise<DnsProvider | null>;
+	/**
+	 * The stage's journal: each record written is kept as a `dns-record`
+	 * resource in its state, each one deleted forgotten. A dry run keeps none.
+	 */
+	journal?: DeployJournal;
 }
 
 /** Whether the workspace deploys through the compose target. */
@@ -213,6 +220,14 @@ export async function provisionStageDns(
 			},
 			...(options.providerFor ? { providerFor: options.providerFor } : {}),
 		});
+		if (options.journal && !options.dryRun) {
+			const providers = new Map(
+				plan.domains.map((domain) => [domain.domain, domain.provider]),
+			);
+			await recordDnsChanges(options.journal, changes, (domain) =>
+				providers.get(domain),
+			);
+		}
 		return { mode: 'records', hosts, changes };
 	} catch (error) {
 		// No credentials on this machine: the framework's rule — say how to

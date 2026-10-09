@@ -1,13 +1,20 @@
 /**
- * Deploy state management for Dokploy deployments
+ * A stage's deploy state.
  *
- * Stores resource IDs (applications, services) per stage to avoid
- * re-creating resources on subsequent deploys.
+ * Every target records the same core — when the stage was last deployed, by
+ * which identity, and each app's releases — and a target that keeps ids of
+ * its own adds them in a shape of its own, told apart by `provider`:
+ *
+ * - `dokploy`: the project, applications, services and credentials Dokploy
+ *   gave the stage, so a later deploy updates them rather than making more.
+ * - `compose`: nothing beyond the core. A compose stage is one stack on one
+ *   server; what it created elsewhere (DNS records) is a resource record.
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { output } from '../output';
+import type { Actor } from './actor';
 
 /**
  * Per-app database credentials
@@ -67,12 +74,32 @@ export interface BackupState {
 	createdAt: string;
 }
 
+/** What every target's state for a stage holds. */
+export interface StageStateCore {
+	stage: string;
+	lastDeployedAt: string;
+	/**
+	 * The deploy identity's key (`<namespace>/<project>`) that last deployed
+	 * this stage — what the project's ownership marker says.
+	 */
+	identity?: string;
+	/**
+	 * Each app's releases, keyed by app name: what runs now, what ran before
+	 * it — which `gkm deploy:rollback` restores — and the history behind both.
+	 */
+	releases?: Record<string, AppReleases>;
+}
+
+/** A compose stage's state: the core, and nothing Dokploy-specific. */
+export interface ComposeStageState extends StageStateCore {
+	provider: 'compose';
+}
+
 /**
  * State for a single stage deployment
  */
-export interface DokployStageState {
+export interface DokployStageState extends StageStateCore {
 	provider: 'dokploy';
-	stage: string;
 	/** Dokploy project ID - created on first deploy */
 	projectId: string;
 	environmentId: string;
@@ -92,23 +119,15 @@ export interface DokployStageState {
 	/** Backup destination state */
 	backups?: BackupState;
 	/**
-	 * The deploy identity's key (`<namespace>/<project>`) that last deployed
-	 * this stage — what the project's ownership marker says.
-	 */
-	identity?: string;
-	/**
 	 * The Dokploy registry the stage's images are pulled through. Kept per
 	 * stage rather than once per machine, so a stage keeps the registry it was
 	 * deployed with whoever deploys it next.
 	 */
 	registryId?: string;
-	/**
-	 * Each app's releases, keyed by app name: what runs now, what ran before
-	 * it — which `gkm deploy:rollback` restores — and the history behind both.
-	 */
-	releases?: Record<string, AppReleases>;
-	lastDeployedAt: string;
 }
+
+/** A stage's state, whichever target wrote it. */
+export type StageState = DokployStageState | ComposeStageState;
 
 /** An image a stage runs: the ref it was pushed as, and what it resolved to. */
 export interface DeployedImage {
@@ -136,12 +155,12 @@ function getStateFilePath(workspaceRoot: string, stage: string): string {
 export async function readStageState(
 	workspaceRoot: string,
 	stage: string,
-): Promise<DokployStageState | null> {
+): Promise<StageState | null> {
 	const filePath = getStateFilePath(workspaceRoot, stage);
 
 	try {
 		const content = await readFile(filePath, 'utf-8');
-		return JSON.parse(content) as DokployStageState;
+		return JSON.parse(content) as StageState;
 	} catch (error) {
 		// File doesn't exist or is invalid - return null
 		if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -159,7 +178,7 @@ export async function readStageState(
 export async function writeStageState(
 	workspaceRoot: string,
 	stage: string,
-	state: DokployStageState,
+	state: StageState,
 ): Promise<void> {
 	const filePath = getStateFilePath(workspaceRoot, stage);
 	const dir = join(workspaceRoot, '.gkm');
@@ -192,6 +211,33 @@ export function createEmptyState(
 	};
 }
 
+/** A new compose stage's state. */
+export function createComposeState(stage: string): ComposeStageState {
+	return {
+		provider: 'compose',
+		stage,
+		lastDeployedAt: new Date().toISOString(),
+	};
+}
+
+/**
+ * `state` as the Dokploy target keeps it. A stage whose state another target
+ * wrote — one moved from compose to Dokploy — keeps its core (releases,
+ * identity) and starts with no Dokploy ids, as a first deploy would.
+ */
+export function asDokployState(state: StageState): DokployStageState {
+	if (state.provider === 'dokploy') return state;
+	const { provider: _provider, ...core } = state;
+	return {
+		...core,
+		provider: 'dokploy',
+		projectId: '',
+		environmentId: '',
+		applications: {},
+		services: {},
+	};
+}
+
 /**
  * Get application ID from state
  */
@@ -218,6 +264,8 @@ export interface ReleasedImage extends DeployedImage {
 	/** The image tag the deploy released under. */
 	tag?: string;
 	releasedAt: string;
+	/** Who released it — absent on a release recorded before it was kept. */
+	releasedBy?: Actor;
 	/** Set when a rollback replaced it: it is never rolled back *to*. */
 	rolledBack?: true;
 }
@@ -256,9 +304,10 @@ function restorable(
  * runs — a redeploy of the same digest — changes nothing.
  */
 export function recordRelease(
-	state: DokployStageState,
+	state: StageStateCore,
 	appName: string,
-	image: Omit<ReleasedImage, 'releasedAt' | 'rolledBack'>,
+	image: Omit<ReleasedImage, 'releasedAt' | 'releasedBy' | 'rolledBack'>,
+	by: Actor,
 	releasedAt: Date = new Date(),
 ): void {
 	const releases = state.releases?.[appName];
@@ -267,6 +316,7 @@ export function recordRelease(
 	const entry: ReleasedImage = {
 		...image,
 		releasedAt: releasedAt.toISOString(),
+		releasedBy: by,
 	};
 	const history = [entry, ...(releases?.history ?? [])].slice(
 		0,
@@ -285,7 +335,7 @@ export function recordRelease(
  * a later one restores it, and `previous` moves to the release before `to`.
  */
 export function recordRollback(
-	state: DokployStageState,
+	state: StageStateCore,
 	appName: string,
 	to: DeployedImage,
 ): void {

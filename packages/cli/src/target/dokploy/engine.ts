@@ -24,6 +24,7 @@
 
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { type WorkerUnit, workerUnits } from '../../build/workers.js';
+import { currentActor } from '../../deploy/actor.js';
 import {
 	type CredentialProvider,
 	MissingCredential,
@@ -69,8 +70,10 @@ import {
 } from '../../deploy/secrets.js';
 import { type SniffedEnvironment, sniffAllApps } from '../../deploy/sniffer.js';
 import {
+	asDokployState,
 	createEmptyState,
 	type DeployedImage,
+	type DokployStageState,
 	getBackupState,
 	recordRelease,
 	recordRollback,
@@ -589,8 +592,8 @@ async function preflight({
 interface Provisioned {
 	api: DokployApi;
 	endpoint: string;
-	journal: DeployJournal;
-	state: DeployJournal['state'];
+	journal: DeployJournal<DokployStageState>;
+	state: DokployStageState;
 	projectId: string;
 	environmentId: string;
 	registry: string | undefined;
@@ -668,8 +671,11 @@ async function provision(run: DokployRun): Promise<void> {
 	// project before it is created.
 	logger.log('\n📋 Loading deploy state...');
 
-	const journal = await DeployJournal.open(store, stage, () =>
-		createEmptyState(stage, '', ''),
+	const journal = await DeployJournal.open(
+		store,
+		stage,
+		() => createEmptyState(stage, '', ''),
+		asDokployState,
 	);
 	const state = journal.state;
 	if (journal.existed) {
@@ -1156,7 +1162,7 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 			intervalMs: run.verify.intervalMs,
 			signal: ctx.signal,
 		});
-		recordRelease(state, appName, { ...image, tag: imageTag });
+		recordRelease(state, appName, { ...image, tag: imageTag }, currentActor());
 		await journal.save();
 		if (host) publicUrls[appName] = `https://${host}`;
 	};
@@ -1970,7 +1976,7 @@ export function dokployResult(run: DokployRun): DeployResult {
  */
 async function ensureApplication(
 	api: DokployApi,
-	journal: DeployJournal,
+	journal: DeployJournal<DokployStageState>,
 	appName: string,
 	dokployAppName: string,
 	projectId: string,
@@ -2030,7 +2036,7 @@ async function ensureApplication(
  */
 async function ensureDomain(
 	api: DokployApi,
-	journal: DeployJournal,
+	journal: DeployJournal<DokployStageState>,
 	host: string,
 	port: number,
 	applicationId: string,
@@ -2182,7 +2188,8 @@ export async function planDokploy(run: DokployRun): Promise<void> {
 	};
 
 	const { api } = await dokployApi(workspace, ctx);
-	const state = (await run.store.read(stage))?.state;
+	const stored = (await run.store.read(stage))?.state;
+	const state = stored ? asDokployState(stored) : undefined;
 
 	const project = await findProject(api, identity, state?.projectId);
 	if (project) {

@@ -12,6 +12,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import {
 	afterAll,
 	afterEach,
@@ -23,12 +24,18 @@ import {
 	vi,
 } from 'vitest';
 import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
+import { currentActor, describeActor } from '../actor';
 import { LocalStateStore } from '../LocalStateStore';
 import { SSMStateStore } from '../SSMStateStore';
 import { StateLocked, type StateStore } from '../StateStore';
-import type { DokployStageState } from '../state';
+import {
+	createComposeState,
+	type DokployStageState,
+	recordRelease,
+} from '../state';
 import {
 	stateDiffCommand,
+	stateHistoryCommand,
 	statePullCommand,
 	statePushCommand,
 	stateShowCommand,
@@ -430,6 +437,156 @@ export default defineWorkspace({
 			workspace(undefined);
 
 			await stateShowCommand({ stage: STAGE });
+
+			expect(said()).toBe(`No state found for stage: ${STAGE}`);
+		});
+	});
+
+	describe('state:push of a compose stage kept on a laptop', () => {
+		it('moves a local v2 document into SSM as v3, DNS records as resources', async () => {
+			workspace('ssm');
+			mkdirSync(join(root, '.gkm'), { recursive: true });
+			writeFileSync(
+				join(root, '.gkm', `deploy-${STAGE}.json`),
+				JSON.stringify({
+					schemaVersion: 2,
+					stage: STAGE,
+					serial: 4,
+					state: {
+						provider: 'dokploy',
+						stage: STAGE,
+						projectId: '',
+						environmentId: '',
+						applications: {},
+						services: {},
+						releases: {
+							api: {
+								current: {
+									ref: 'ghcr.io/acme/api:v1',
+									releasedAt: '2026-09-01T00:00:00.000Z',
+								},
+								history: [
+									{
+										ref: 'ghcr.io/acme/api:v1',
+										releasedAt: '2026-09-01T00:00:00.000Z',
+									},
+								],
+							},
+						},
+						dnsRecords: {
+							'api:A': {
+								domain: 'example.com',
+								name: 'api',
+								type: 'A',
+								value: '203.0.113.10',
+								ttl: 600,
+								createdAt: '2026-09-01T00:00:00.000Z',
+							},
+						},
+						lastDeployedAt: '2026-09-01T00:00:00.000Z',
+					},
+					resources: {},
+					updatedAt: '2026-09-01T00:00:00.000Z',
+				}),
+			);
+
+			await statePushCommand({ stage: STAGE });
+
+			const ssm = new SSMClient({ region: 'us-east-1' });
+			const { Parameter } = await ssm.send(
+				new GetParameterCommand({
+					Name: `/gkm/${name}/${STAGE}/state`,
+					WithDecryption: true,
+				}),
+			);
+			const document = JSON.parse(Parameter!.Value!);
+			expect(document).toMatchObject({
+				schemaVersion: 3,
+				state: {
+					provider: 'compose',
+					stage: STAGE,
+					releases: { api: { current: { ref: 'ghcr.io/acme/api:v1' } } },
+				},
+				resources: {
+					'dns-record:api.example.com:A': {
+						type: 'dns-record',
+						id: 'api.example.com A',
+						status: 'ready',
+						data: { domain: 'example.com', name: 'api', value: '203.0.113.10' },
+					},
+				},
+				updatedBy: currentActor(),
+			});
+			expect(document.state).not.toHaveProperty('projectId');
+			expect(document.history[0]).toMatchObject({ operation: 'state:push' });
+			expect(said()).toContain('State pushed successfully.');
+		});
+	});
+
+	describe('state:history', () => {
+		async function deployed() {
+			workspace('local');
+			const store = new LocalStateStore(root);
+			const lock = await store.lock(STAGE, { operation: 'deploy' });
+			const state = createComposeState(STAGE);
+			recordRelease(
+				state,
+				'api',
+				{ ref: 'ghcr.io/acme/api:v1', digest: 'sha256:aaa' },
+				{ kind: 'local', user: 'ada', host: 'laptop' },
+			);
+			await store.write(STAGE, state, { expectedVersion: null });
+			await lock.release();
+			const rollback = await store.lock(STAGE, { operation: 'rollback' });
+			const stored = (await store.read(STAGE))!;
+			await store.write(STAGE, stored.state, {
+				expectedVersion: stored.version,
+			});
+			await rollback.release();
+			return (await store.read(STAGE))!;
+		}
+
+		it('prints each write newest first, and what each app runs', async () => {
+			const { history } = await deployed();
+			const me = describeActor(currentActor());
+
+			await stateHistoryCommand({ stage: STAGE });
+
+			expect(out).toEqual([
+				`History of stage ${STAGE} (newest first):`,
+				`  2 · ${history[0]!.at} · ${me} · rollback`,
+				`  1 · ${history[1]!.at} · ${me} · deploy`,
+				'',
+				'Releases:',
+				expect.stringMatching(
+					/^ {2}api: ghcr\.io\/acme\/api:v1 \(sha256:aaa\) · .+ · ada@laptop$/,
+				),
+			]);
+		});
+
+		it('prints JSON with --json', async () => {
+			const { history } = await deployed();
+
+			await stateHistoryCommand({ stage: STAGE, json: true });
+
+			expect(JSON.parse(said())).toEqual({
+				stage: STAGE,
+				history,
+				releases: {
+					api: {
+						ref: 'ghcr.io/acme/api:v1',
+						digest: 'sha256:aaa',
+						releasedAt: expect.any(String),
+						releasedBy: { kind: 'local', user: 'ada', host: 'laptop' },
+					},
+				},
+			});
+		});
+
+		it('says so when the stage has no state', async () => {
+			workspace('local');
+
+			await stateHistoryCommand({ stage: STAGE });
 
 			expect(said()).toBe(`No state found for stage: ${STAGE}`);
 		});

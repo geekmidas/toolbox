@@ -739,6 +739,10 @@ gkm state:push --stage production
 # Compare local vs remote
 gkm state:diff --stage production
 
+# Who wrote the stage's state, newest first, and what each app runs
+gkm state:history --stage production
+gkm state:history --stage production --json
+
 # Release the lock of a deploy that was killed
 gkm state:unlock --stage production
 ```

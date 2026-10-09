@@ -84,6 +84,36 @@ describe('deployAccess', () => {
 		expect(scopedPolicyDocument(access.statements('111'))).toBeNull();
 	});
 
+	it('lets the role read and write the stage’s SSM state and take its lock', () => {
+		const access = deployAccess(
+			workspace({
+				target: 'compose',
+				state: { provider: 'ssm', region: 'eu-west-1' },
+			}),
+			'prod',
+		);
+
+		if (access.kind !== 'scoped') return expect.unreachable();
+		const [statement] = access.statements('111');
+		expect(access.statements('111')).toHaveLength(1);
+		expect(statement).toEqual({
+			Sid: 'StageState',
+			Effect: 'Allow',
+			// Get and put the state; put (create-only) and delete the lock.
+			Action: ['ssm:GetParameter', 'ssm:PutParameter', 'ssm:DeleteParameter'],
+			Resource: 'arn:aws:ssm:eu-west-1:111:parameter/gkm/shop/prod/*',
+		});
+		// The parameters SSMStateStore names, all under that path.
+		const covered = (name: string) =>
+			`arn:aws:ssm:eu-west-1:111:parameter${name}`.startsWith(
+				(statement!.Resource as string).slice(0, -1),
+			);
+		for (const leaf of ['state', 'lock', 'state.v1']) {
+			expect(covered(`/gkm/shop/prod/${leaf}`)).toBe(true);
+		}
+		expect(covered('/gkm/shop/staging/state')).toBe(false);
+	});
+
 	it('adds the stage’s deploy state in S3', () => {
 		const access = deployAccess(
 			workspace({

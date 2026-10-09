@@ -9,7 +9,7 @@
  */
 
 import type { StateStore } from './StateStore';
-import type { DokployStageState } from './state';
+import type { StageState } from './state';
 
 /**
  * Interface for deployment state storage providers.
@@ -25,7 +25,7 @@ export interface StateProvider {
 	 * @param stage - The deployment stage (e.g., 'development', 'production')
 	 * @returns The state object or null if not found
 	 */
-	read(stage: string): Promise<DokployStageState | null>;
+	read(stage: string): Promise<StageState | null>;
 
 	/**
 	 * Write deployment state for a stage.
@@ -33,7 +33,7 @@ export interface StateProvider {
 	 * @param stage - The deployment stage
 	 * @param state - The state object to persist
 	 */
-	write(stage: string, state: DokployStageState): Promise<void>;
+	write(stage: string, state: StageState): Promise<void>;
 }
 
 /**

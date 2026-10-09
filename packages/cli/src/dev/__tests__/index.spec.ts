@@ -25,7 +25,7 @@ import {
 } from '../index';
 
 // Skip port-related tests in CI due to flaky port binding issues
-const describePortTests = process.env.CI ? describe.skip : describe;
+const describePortTests = process.env.GKM_TEST_IN_CI ? describe.skip : describe;
 
 // Track servers to clean up after each test
 const activeServers: ReturnType<typeof createServer>[] = [];

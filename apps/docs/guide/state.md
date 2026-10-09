@@ -1,10 +1,11 @@
 # Deploy State
 
 Deploy state records what a stage's deploys created, so the next deploy finds
-it again instead of creating it twice. It holds the Dokploy project,
+it again instead of creating it twice, and who did each of them. Every target
+keeps each app's releases; the Dokploy target also keeps its project,
 environment, application and domain ids, the database services and their
-per-app credentials, generated secrets, DNS records, the registry, and each
-app's releases.
+per-app credentials, generated secrets and the registry. What a deploy creates
+outside the target, such as DNS records, is kept as a resource record.
 
 `state.provider` in `gkm.config.ts` picks where it lives. Every deploy, every
 `gkm deploy:rollback` and every `gkm state:*` command goes through the same
@@ -29,9 +30,10 @@ state: { provider: 'local' }   // or leave `state` out
 - Use for: one person deploying from one machine
 
 `.gkm/` is gitignored, so local state does not travel with the repository. A
-second machine, or a CI job, deploying the same stage does not see it. It then
+second machine deploying the same stage does not see it. It then
 finds the Dokploy project by its [ownership marker](./deployment.md#identity-namespace-project-stage)
 rather than by id. Use a remote provider as soon as more than one place deploys.
+In CI, local state is refused: see [Deploying from CI](#deploying-from-ci).
 
 ### SSM
 
@@ -51,7 +53,7 @@ export default defineWorkspace({
   AWS-managed KMS key
 - Lock: `/gkm/<workspace>/<stage>/lock`, created only if absent
 - Read and written in SSM directly; there is no local copy to go stale
-- Use for: teams and CI on AWS
+- Use for: teams, and **anything deployed from CI** (recommended)
 
 SSM has no conditional put, so a write checks the parameter's version before
 and after it.
@@ -91,6 +93,130 @@ A custom store is a live object in the config, so it works under the default
 local sandbox but fails with `ConfigObjectNotSerializable` under an
 [isolating sandbox](./sandbox.md#isolating-sandboxes).
 
+## The document
+
+Each stage's state is one JSON document, schema version 3. `state` is the
+target's shape, told apart by `provider`. A compose stage's holds nothing
+beyond what every target records:
+
+```json
+{
+  "schemaVersion": 3,
+  "stage": "production",
+  "serial": 12,
+  "state": {
+    "provider": "compose",
+    "stage": "production",
+    "lastDeployedAt": "2026-10-09T09:14:02.511Z",
+    "identity": "acme/shop",
+    "releases": {
+      "api": {
+        "current": {
+          "ref": "ghcr.io/acme/shop-api:v1.4.0",
+          "tag": "v1.4.0",
+          "digest": "sha256:9f2c…",
+          "releasedAt": "2026-10-09T09:13:58.020Z",
+          "releasedBy": {
+            "kind": "github",
+            "actor": "octocat",
+            "run": "https://github.com/acme/shop/actions/runs/11223344",
+            "workflow": "Deploy"
+          }
+        },
+        "previous": { "ref": "ghcr.io/acme/shop-api:v1.3.2", "…": "…" },
+        "history": ["…"]
+      }
+    }
+  },
+  "resources": {
+    "dns-record:api.shop.example.com:A": {
+      "key": "dns-record:api.shop.example.com:A",
+      "type": "dns-record",
+      "id": "api.shop.example.com A",
+      "status": "ready",
+      "data": {
+        "domain": "shop.example.com",
+        "name": "api",
+        "value": "203.0.113.10",
+        "ttl": 600,
+        "provider": "godaddy"
+      },
+      "updatedAt": "2026-10-09T09:12:40.118Z",
+      "updatedBy": { "kind": "github", "actor": "octocat", "run": "…" }
+    }
+  },
+  "updatedAt": "2026-10-09T09:14:02.511Z",
+  "updatedBy": { "kind": "github", "actor": "octocat", "run": "…" },
+  "history": [
+    { "serial": 12, "at": "2026-10-09T09:14:02.511Z", "by": { "kind": "github", "…": "…" }, "operation": "deploy" },
+    { "serial": 9, "at": "2026-10-08T16:40:11.002Z", "by": { "kind": "local", "user": "ada", "host": "ada-laptop" }, "operation": "state:push" }
+  ]
+}
+```
+
+A Dokploy stage's `state` is `provider: "dokploy"` with its ids beside the same
+`releases`.
+
+### Who wrote it
+
+Every write is stamped with who made it:
+
+- in GitHub Actions (`GITHUB_ACTIONS=true`): `{ kind: 'github', actor, run, workflow }`,
+  from `GITHUB_ACTOR`, `GITHUB_SERVER_URL`/`GITHUB_REPOSITORY`/`GITHUB_RUN_ID` and
+  `GITHUB_WORKFLOW`;
+- anywhere else: `{ kind: 'local', user, host }`.
+
+It is kept as the document's `updatedBy`, on every resource record
+(`updatedBy`) and on every release (`releasedBy`). `history` keeps the last 20
+runs that wrote the stage, newest first: a run is one entry however many
+writes it makes, named after the lock it held (`deploy`, `rollback`,
+`state:push`, `state:pull`, …).
+
+```bash
+gkm state:history --stage production
+# History of stage production (newest first):
+#   12 · 2026-10-09T09:14:02.511Z · octocat (Deploy, https://github.com/acme/shop/actions/runs/11223344) · deploy
+#   9 · 2026-10-08T16:40:11.002Z · ada@ada-laptop · state:push
+#
+# Releases:
+#   api: ghcr.io/acme/shop-api:v1.4.0 (sha256:9f2c…) · 2026-10-09T09:13:58.020Z · octocat (Deploy, …)
+gkm state:history --stage production --json
+```
+
+### DNS records
+
+A DNS record gkm wrote for the stage is the resource
+`dns-record:<fqdn>:<type>`, its `id` `<fqdn> <type>` and its value, TTL and
+provider in `data`. One gkm deleted is forgotten. Whether the stage's hosts
+point at its server is checked on every compose deploy, not remembered.
+
+## Deploying from CI
+
+A CI runner is discarded when its job ends, and `.gkm/` with it: a deploy that
+kept its state there leaves the next run nothing to roll back to and no record
+of what was created. So in CI (`GITHUB_ACTIONS=true` or `CI=true`), a deploy or
+`gkm deploy:rollback` of a deployed stage whose state is local fails at the
+start, before anything is built or changed:
+
+```
+LocalStateInCi: `gkm deploy` would keep stage 'production's deploy state in
+.gkm/ on this CI runner, and the runner is discarded when the job ends: …
+Keep the state in AWS — in gkm.config.ts:
+
+  state: { provider: 'ssm', region: 'eu-west-1' },
+
+then move the state you already have, from the machine that holds it:
+
+  gkm state:push --stage production
+```
+
+`gkm state:push` copies the laptop's state, migrated to the current schema on
+the way, into the new store. The role `gkm deploy:github` creates for a compose
+stage is allowed to read and write the stage's state parameters
+(`/gkm/<workspace>/<stage>/*`, the lock included) when `state.provider` is
+`ssm`, and the stage's objects under the prefix when it is `s3`. The local
+stage, and local state outside CI, are unaffected.
+
 ## Locks
 
 A deploy takes the stage's lock before it generates, provisions or records
@@ -106,7 +232,7 @@ run to finish; if it crashed, release the lock with
 ```
 
 The lock records who holds it: user, host, pid, when, and the operation
-(`deploy`, `rollback`). A run cancelled through its `AbortSignal`, or one that
+(`deploy`, `rollback`, `state:push`, …), which is also what `history` names. A run cancelled through its `AbortSignal`, or one that
 fails, releases it. A dry run takes no lock, so it never blocks a real deploy.
 
 ### `gkm state:unlock`
@@ -173,6 +299,7 @@ gkm state:show   --stage production --json
 gkm state:pull   --stage production          # copy the remote stage to .gkm/
 gkm state:push   --stage production          # copy the local stage to the remote
 gkm state:diff   --stage production          # compare local and remote, records included
+gkm state:history --stage production         # who wrote it, newest first; --json too
 gkm state:unlock --stage production          # release a crashed run's lock
 ```
 
@@ -181,24 +308,26 @@ the remote stage's lock, so it fails with `StateLocked` while a deploy of that
 stage is running, rather than replacing the state the deploy is writing. Copies
 are conditional writes, and resource records travel with the state.
 
-## Migrating from v1
+## Migrating from earlier versions
 
-State is stored as schema version 2: the stage's state, wrapped with its
-resource records and a write counter:
+Nothing needs to be done to migrate.
 
-```json
-{
-  "schemaVersion": 2,
-  "stage": "production",
-  "serial": 14,
-  "state": { "provider": "dokploy", "stage": "production", "projectId": "…" },
-  "resources": { "application:api": { "key": "application:api", "type": "application", "id": "…", "status": "ready", "updatedAt": "…" } },
-  "updatedAt": "…"
-}
-```
+**Version 2** wrapped the state with its resource records and a write counter,
+but every target wrote the Dokploy shape. Reading a v2 document, a state whose
+every Dokploy-only field is empty — no project or environment id, no
+application or service ids, credentials, generated secrets, backups or
+registry — was written by compose: it is read as the compose shape, its
+`dnsRecords` become `dns-record` resources (with no `provider`, which v2 did
+not record), and `dnsVerified` and the empty Dokploy fields are dropped. The
+rule is the content, not the workspace's configured target, because a document
+reads the same wherever it is read (`state:show`, `state:push`) and a stage can
+change targets; and it loses nothing, since only empty fields go. A state with
+any Dokploy id is read exactly as it was. Either way the document is written as
+version 3, gaining `updatedBy` and `history`, by the next write — reading alone
+changes nothing.
 
-Version 1 was the bare state object. Nothing needs to be done to migrate: the
-first time any command reads a v1 state, it
+**Version 1** was the bare state object. The first time any command reads one,
+it
 
 1. keeps the original as a backup: `.gkm/deploy-<stage>.v1.json` locally,
    `/gkm/<workspace>/<stage>/state.v1` in SSM, `state.v1.json` beside the S3
@@ -206,7 +335,7 @@ first time any command reads a v1 state, it
 2. seeds a `ready` resource record for every id v1 kept (project, environment,
    applications, Postgres, Redis, backup destination), so the next deploy adopts
    them;
-3. writes the state back as version 2.
+3. writes the state back as version 3, as above.
 
 A state written by a newer CLI than the one reading it fails with
 `StateSchemaTooNew`; upgrade `@geekmidas/cli`. A state file that is not valid
@@ -226,12 +355,13 @@ For a custom store, or a [target](./writing-a-target.md) reading `ctx.state`:
 interface StateStore {
   lock(stage: string, options?: { operation?: string }): Promise<StateLock>; // or StateLocked
   forceUnlock(stage: string): Promise<LockHolder | null>;
-  read(stage: string): Promise<{ state; resources; version } | null>;
+  read(stage: string): Promise<{ state; resources; history; version } | null>;
   write(stage, state, { expectedVersion }): Promise<StateVersion>;           // null: must not exist yet
   putResource(stage, record, { expectedVersion }?): Promise<StateVersion>;
   deleteResource(stage, key, { expectedVersion }?): Promise<StateVersion>;
 }
 ```
 
-`StateStore` is exported as a type from `@geekmidas/cli/target`. `StateLocked`
-and `StateVersionConflict` are exported from `@geekmidas/cli/deploy`.
+`StateStore` is exported as a type from `@geekmidas/cli/target`. `StateLocked`,
+`StateVersionConflict`, `LocalStateInCi` and the `Actor` type are exported from
+`@geekmidas/cli/deploy`.

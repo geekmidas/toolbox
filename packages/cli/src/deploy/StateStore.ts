@@ -22,13 +22,21 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { hostname, userInfo } from 'node:os';
 import { GkmError } from '../errors';
+import { type Actor, currentActor, isCi } from './actor';
+import { dnsRecordResource } from './dnsResources';
 import {
 	type CreateStateStoreConfig,
 	isStateProvider,
 	type S3StateConfig,
 	type SSMStateConfig,
+	type StateConfig,
 } from './StateProvider';
-import type { DokployStageState } from './state';
+import type {
+	ComposeStageState,
+	CreatedDnsRecord,
+	DokployStageState,
+	StageState,
+} from './state';
 
 /** Opaque: a file hash, an SSM parameter version or an S3 ETag. */
 export type StateVersion = string;
@@ -52,14 +60,30 @@ export interface ResourceRecord {
 	/** Whatever the target needs to adopt the resource on a later run. */
 	data?: Record<string, unknown>;
 	updatedAt: string;
+	/** Who wrote the record — absent on one written before it was kept. */
+	updatedBy?: Actor;
 }
 
 /** A resource as a caller hands it to `putResource`; the store stamps it. */
-export type ResourceInput = Omit<ResourceRecord, 'updatedAt'>;
+export type ResourceInput = Omit<ResourceRecord, 'updatedAt' | 'updatedBy'>;
+
+/** One write of a stage's state: which, when, by whom, doing what. */
+export interface HistoryEntry {
+	serial: number;
+	at: string;
+	by: Actor;
+	/** The lock's operation — `deploy`, `rollback`, `setup`, `state:push` … */
+	operation: string;
+}
+
+/** How many writes a document's `history` keeps. */
+export const STATE_HISTORY = 20;
 
 export interface StoredStageState {
-	state: DokployStageState;
+	state: StageState;
 	resources: Record<string, ResourceRecord>;
+	/** The latest writes, newest first. */
+	history: HistoryEntry[];
 	/** Pass back as `expectedVersion` to write on top of exactly this read. */
 	version: StateVersion;
 }
@@ -114,7 +138,7 @@ export interface StateStore {
 	/** Replaces the stage's state, keeping its resource records. */
 	write(
 		stage: string,
-		state: DokployStageState,
+		state: StageState,
 		options: WriteOptions,
 	): Promise<StateVersion>;
 	putResource(
@@ -245,6 +269,29 @@ export class UnknownStateProvider extends GkmError {
 	}
 }
 
+/**
+ * A deploy, setup or rollback of a stage in CI, with the stage's state kept on
+ * the runner — which is discarded when the job ends.
+ */
+export class LocalStateInCi extends GkmError {
+	constructor(
+		readonly stage: string,
+		readonly operation: string,
+		readonly region: string,
+	) {
+		super(
+			`\`gkm ${operation}\` would keep stage '${stage}'s deploy state in .gkm/ on this CI runner, ` +
+				`and the runner is discarded when the job ends: the next run would start ` +
+				`without it — no releases to roll back to, no record of what was created. ` +
+				`Keep the state in AWS — in gkm.config.ts:\n\n` +
+				`  state: { provider: 'ssm', region: '${region}' },\n\n` +
+				`then move the state you already have, from the machine that holds it:\n\n` +
+				`  gkm state:push --stage ${stage}\n`,
+		);
+		this.name = 'LocalStateInCi';
+	}
+}
+
 /** A lock or write that could not get at the state backend in time. */
 export class StateStoreBusy extends GkmError {
 	constructor(
@@ -263,17 +310,35 @@ export class StateStoreBusy extends GkmError {
 // Document format
 // ============================================================================
 
-export const STATE_SCHEMA_VERSION = 2;
+export const STATE_SCHEMA_VERSION = 3;
 
 /**
- * What a store persists. v1 was `DokployStageState` on its own; v2 wraps it
- * so resource records and a write serial can sit beside it. The serial
- * changes every write, so content-addressed versions (a file hash, an S3
- * ETag) never repeat — a writer holding a version from two writes ago cannot
- * match by accident.
+ * What a store persists. v1 was `DokployStageState` on its own; v2 wrapped it
+ * so resource records and a write serial could sit beside it; v3 lets the
+ * state be any target's shape (`provider`), and records who wrote it. The
+ * serial changes every write, so content-addressed versions (a file hash, an
+ * S3 ETag) never repeat — a writer holding a version from two writes ago
+ * cannot match by accident.
  */
 export interface StateDocument {
 	schemaVersion: typeof STATE_SCHEMA_VERSION;
+	stage: string;
+	serial: number;
+	state: StageState;
+	resources: Record<string, ResourceRecord>;
+	updatedAt: string;
+	/**
+	 * Who made the last write. Absent only on a v2 document read and not yet
+	 * written again — the next write is v3 and stamps it.
+	 */
+	updatedBy?: Actor;
+	/** The latest runs that wrote it, newest first, at most {@link STATE_HISTORY}. */
+	history: HistoryEntry[];
+}
+
+/** v2: the state was the Dokploy shape whichever target wrote it. */
+export interface StateDocumentV2 {
+	schemaVersion: 2;
 	stage: string;
 	serial: number;
 	state: DokployStageState;
@@ -282,7 +347,8 @@ export interface StateDocument {
 }
 
 export type DecodedDocument =
-	| { schemaVersion: 2; document: StateDocument }
+	| { schemaVersion: 3; document: StateDocument }
+	| { schemaVersion: 2; document: StateDocumentV2 }
 	| { schemaVersion: 1; state: DokployStageState };
 
 export function decodeDocument(
@@ -305,8 +371,11 @@ export function decodeDocument(
 	if (schemaVersion === undefined) {
 		return { schemaVersion: 1, state: parsed as DokployStageState };
 	}
+	if (schemaVersion === 2) {
+		return { schemaVersion: 2, document: parsed as StateDocumentV2 };
+	}
 	if (schemaVersion === STATE_SCHEMA_VERSION) {
-		return { schemaVersion: 2, document: parsed as StateDocument };
+		return { schemaVersion: 3, document: parsed as StateDocument };
 	}
 	throw new StateSchemaTooNew(stage, schemaVersion);
 }
@@ -323,7 +392,7 @@ export function encodeDocument(document: StateDocument): string {
 export function migrateV1(
 	stage: string,
 	state: DokployStageState,
-): StateDocument {
+): StateDocumentV2 {
 	const now = new Date().toISOString();
 	const resources: Record<string, ResourceRecord> = {};
 	const seed = (type: string, name: string | null, id: string | undefined) => {
@@ -342,12 +411,100 @@ export function migrateV1(
 	seed('backup-destination', null, state.backups?.destinationId);
 
 	return {
-		schemaVersion: STATE_SCHEMA_VERSION,
+		schemaVersion: 2,
 		stage,
 		serial: 1,
 		state,
 		resources,
 		updatedAt: now,
+	};
+}
+
+const isEmpty = (value: object | undefined) =>
+	!value || Object.keys(value).length === 0;
+
+/**
+ * Whether a v2 state in the Dokploy shape was written by the compose target.
+ *
+ * Before v3 every target wrote the Dokploy shape, and compose filled none of
+ * its Dokploy fields. So the rule is the shape's content, not the target the
+ * workspace names now: a state whose every Dokploy-only field is empty — no
+ * project or environment id, no application or service ids, no credentials,
+ * generated secrets, backups or registry — holds nothing only Dokploy could
+ * use, and reading it as compose loses nothing. One with any of them was
+ * written by Dokploy and is kept exactly as it is.
+ *
+ * The configured target is not used: a document decodes the same wherever it
+ * is read (`state:show`, `state:push`) without a workspace, a stage can be
+ * moved between targets, and `--target` can override a run.
+ */
+export function writtenByCompose(state: DokployStageState): boolean {
+	return (
+		!state.projectId &&
+		!state.environmentId &&
+		isEmpty(state.applications) &&
+		!state.services?.postgresId &&
+		!state.services?.redisId &&
+		isEmpty(state.appCredentials) &&
+		isEmpty(state.generatedSecrets) &&
+		!state.backups &&
+		!state.registryId
+	);
+}
+
+/**
+ * A v2 state and its records as v3 keeps them. A compose-written state
+ * becomes the compose shape: its `dnsRecords` become `dns-record` resources,
+ * and `dnsVerified` and the empty Dokploy fields go — the DNS check is made
+ * on every deploy. A Dokploy state is returned as it is.
+ */
+export function upgradeV2State(
+	state: DokployStageState,
+	resources: Record<string, ResourceRecord>,
+): { state: StageState; resources: Record<string, ResourceRecord> } {
+	if (!writtenByCompose(state)) return { state, resources };
+
+	const compose: ComposeStageState = {
+		provider: 'compose',
+		stage: state.stage,
+		lastDeployedAt: state.lastDeployedAt,
+		...(state.identity ? { identity: state.identity } : {}),
+		...(state.releases ? { releases: state.releases } : {}),
+	};
+	const upgraded = { ...resources };
+	for (const record of Object.values(state.dnsRecords ?? {})) {
+		const resource = migratedDnsResource(record);
+		upgraded[resource.key] = resource;
+	}
+	return { state: compose, resources: upgraded };
+}
+
+/** A v2 `dnsRecords` entry as the `dns-record` resource v3 keeps. */
+function migratedDnsResource(record: CreatedDnsRecord): ResourceRecord {
+	const input = dnsRecordResource({
+		domain: record.domain,
+		name: record.name,
+		type: record.type,
+		value: record.value,
+		ttl: record.ttl,
+	});
+	return { ...input, updatedAt: record.createdAt };
+}
+
+/** A v2 document as v3 — not written until the next write. */
+export function migrateV2(document: StateDocumentV2): StateDocument {
+	const { state, resources } = upgradeV2State(
+		document.state,
+		document.resources,
+	);
+	return {
+		schemaVersion: STATE_SCHEMA_VERSION,
+		stage: document.stage,
+		serial: document.serial,
+		state,
+		resources,
+		updatedAt: document.updatedAt,
+		history: [],
 	};
 }
 
@@ -372,6 +529,21 @@ export function contentVersion(body: string): StateVersion {
 	return createHash('sha256').update(body).digest('hex').slice(0, 16);
 }
 
+/**
+ * `history` with this write at its head. A run makes many writes — one per
+ * resource it journals — so a run is one entry: a write by the run that
+ * wrote the newest entry (the same lock) replaces it, and any other is
+ * added. Without a lock, each write is its own entry.
+ */
+export function appendHistory(
+	history: readonly HistoryEntry[],
+	entry: HistoryEntry,
+	sameRun: boolean,
+): HistoryEntry[] {
+	const rest = sameRun ? history.slice(1) : history;
+	return [entry, ...rest].slice(0, STATE_HISTORY);
+}
+
 // ============================================================================
 // Shared implementation
 // ============================================================================
@@ -383,10 +555,16 @@ export interface RawState {
 
 /**
  * A store over a backend that can read and conditionally write one blob per
- * stage, and create a lock object only if it does not exist. Migration and
- * resource records are the same for every such backend, so they live here.
+ * stage, and create a lock object only if it does not exist. Migration,
+ * resource records and history are the same for every such backend, so they
+ * live here.
  */
 export abstract class DocumentStateStore implements StateStore {
+	/** The lock this store holds for each stage — what its writes are for. */
+	private readonly held = new Map<string, LockHolder>();
+	/** Per stage, the lock whose run wrote the newest history entry. */
+	private readonly logged = new Map<string, string>();
+
 	/** Where the stage's state lives, for messages. */
 	protected abstract location(stage: string): string;
 	protected abstract readRaw(stage: string): Promise<RawState | null>;
@@ -413,9 +591,15 @@ export abstract class DocumentStateStore implements StateStore {
 		holder: LockHolder | null,
 	): Promise<void>;
 
+	/** Who this store writes as. */
+	protected actor(): Actor {
+		return currentActor();
+	}
+
 	async lock(stage: string, options?: LockOptions): Promise<StateLock> {
 		const holder = newLockHolder(options);
 		await this.createLock(stage, holder);
+		this.held.set(stage, holder);
 		let released = false;
 		return {
 			stage,
@@ -423,6 +607,7 @@ export abstract class DocumentStateStore implements StateStore {
 			release: async () => {
 				if (released) return;
 				released = true;
+				if (this.held.get(stage)?.id === holder.id) this.held.delete(stage);
 				await this.removeLock(stage, holder);
 			},
 		};
@@ -440,24 +625,26 @@ export abstract class DocumentStateStore implements StateStore {
 		return {
 			state: current.document.state,
 			resources: current.document.resources,
+			history: current.document.history,
 			version: current.version,
 		};
 	}
 
 	async write(
 		stage: string,
-		state: DokployStageState,
+		state: StageState,
 		options: WriteOptions,
 	): Promise<StateVersion> {
 		if (options.expectedVersion === null) {
-			const document: StateDocument = {
+			const document = this.stamp(stage, {
 				schemaVersion: STATE_SCHEMA_VERSION,
 				stage,
 				serial: 1,
 				state,
 				resources: {},
 				updatedAt: new Date().toISOString(),
-			};
+				history: [],
+			});
 			return this.writeRaw(stage, encodeDocument(document), null);
 		}
 		return this.mutate(stage, options.expectedVersion, (document) => ({
@@ -475,7 +662,11 @@ export abstract class DocumentStateStore implements StateStore {
 			...document,
 			resources: {
 				...document.resources,
-				[record.key]: { ...record, updatedAt: new Date().toISOString() },
+				[record.key]: {
+					...record,
+					updatedAt: new Date().toISOString(),
+					updatedBy: this.actor(),
+				},
 			},
 		}));
 	}
@@ -489,6 +680,28 @@ export abstract class DocumentStateStore implements StateStore {
 			const { [key]: _removed, ...resources } = document.resources;
 			return { ...document, resources };
 		});
+	}
+
+	/** `document` as this write leaves it: who wrote it, in its history. */
+	private stamp(stage: string, document: StateDocument): StateDocument {
+		const by = this.actor();
+		const holder = this.held.get(stage);
+		const operation = holder?.operation ?? 'write';
+		const history = document.history ?? [];
+		const sameRun =
+			holder !== undefined &&
+			this.logged.get(stage) === holder.id &&
+			history[0]?.operation === operation;
+		if (holder) this.logged.set(stage, holder.id);
+		return {
+			...document,
+			updatedBy: by,
+			history: appendHistory(
+				history,
+				{ serial: document.serial, at: document.updatedAt, by, operation },
+				sameRun,
+			),
+		};
 	}
 
 	private async mutate(
@@ -508,15 +721,21 @@ export abstract class DocumentStateStore implements StateStore {
 		}
 
 		const next = change(current.document);
+		next.schemaVersion = STATE_SCHEMA_VERSION;
 		next.serial = current.document.serial + 1;
 		next.updatedAt = new Date().toISOString();
-		return this.writeRaw(stage, encodeDocument(next), current.version);
+		return this.writeRaw(
+			stage,
+			encodeDocument(this.stamp(stage, next)),
+			current.version,
+		);
 	}
 
 	/**
-	 * Reads the stage's document, migrating v1 in place on the way. The
-	 * migration is itself a conditional write: if another run migrated (or
-	 * wrote) first, its result is read instead.
+	 * Reads the stage's document as v3. A v1 document is migrated in place on
+	 * the way — itself a conditional write: if another run migrated (or wrote)
+	 * first, its result is read instead. A v2 document is upgraded in memory
+	 * and written as v3 by the next write.
 	 */
 	private async readDocument(
 		stage: string,
@@ -526,12 +745,18 @@ export abstract class DocumentStateStore implements StateStore {
 		if (!raw) return null;
 
 		const decoded = decodeDocument(stage, raw.body, this.location(stage));
-		if (decoded.schemaVersion === 2) {
+		if (decoded.schemaVersion === 3) {
 			return { document: decoded.document, version: raw.version };
+		}
+		if (decoded.schemaVersion === 2) {
+			return { document: migrateV2(decoded.document), version: raw.version };
 		}
 
 		await this.writeV1Backup(stage, raw.body);
-		const document = migrateV1(stage, decoded.state);
+		const document = this.stamp(
+			stage,
+			migrateV2(migrateV1(stage, decoded.state)),
+		);
 		try {
 			const version = await this.writeRaw(
 				stage,
@@ -551,6 +776,38 @@ export abstract class DocumentStateStore implements StateStore {
 // ============================================================================
 // Resolution
 // ============================================================================
+
+/** Whether `config` keeps state on this machine — `local`, or none given. */
+export function isLocalState(config: StateConfig | undefined): boolean {
+	return !config || config.provider === 'local';
+}
+
+/**
+ * Refuses, with `LocalStateInCi`, a run that would write a deployed stage's
+ * state to a CI runner's disk — the local stage, which runs on the runner
+ * itself, is exempt. Local use is untouched. The region the message
+ * suggests is the secrets store's, when the workspace keeps them in AWS.
+ */
+export function assertStateOutlivesRun(
+	workspace: {
+		state?: StateConfig;
+		secrets?: { store?: unknown };
+		stages?: { local: string };
+	},
+	stage: string,
+	operation: string,
+	env: NodeJS.ProcessEnv = process.env,
+): void {
+	// The local stage runs on this machine, runner or not: nothing outlives it.
+	if (stage === workspace.stages?.local) return;
+	if (!isCi(env) || !isLocalState(workspace.state)) return;
+	const store = workspace.secrets?.store as { region?: unknown } | undefined;
+	const region =
+		typeof store === 'object' && store && typeof store.region === 'string'
+			? store.region
+			: '<region>';
+	throw new LocalStateInCi(stage, operation, region);
+}
 
 export function isStateStore(value: unknown): value is StateStore {
 	return (

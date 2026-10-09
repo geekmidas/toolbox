@@ -9,13 +9,14 @@ import type { ConstructManifest } from '@geekmidas/manifest';
 import { deployIdentity } from '../deploy/identity.js';
 import { DeployJournal } from '../deploy/journal.js';
 import { createStateStore } from '../deploy/StateStore.js';
-import { createEmptyState } from '../deploy/state.js';
+import { createComposeState, createEmptyState } from '../deploy/state.js';
 import { discover } from '../reconcile/discover.js';
 import { constructGlobs } from '../reconcile/workspace.js';
 import { initStageSecrets } from '../secrets/storage.js';
 import { secretsStoreFor } from '../secrets/store.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { stageProvider } from './config.js';
+import { deploysWithCompose } from './dns.js';
 import { assertStageProvidersEnabled, provisionCommand } from './notes.js';
 import { builtinProvider } from './registry.js';
 import {
@@ -226,7 +227,9 @@ export async function provisionStage(
 			? await readOnlyState(stateStore, stage)
 			: journalState(
 					await DeployJournal.open(stateStore, stage, () =>
-						createEmptyState(stage, '', ''),
+						deploysWithCompose(workspace)
+							? createComposeState(stage)
+							: createEmptyState(stage, '', ''),
 					),
 				);
 
