@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/events",
-	"version": "10.0.0-alpha.97",
+	"version": "10.0.0-alpha.98",
 	"type": "module",
 	"exports": {
 		".": {

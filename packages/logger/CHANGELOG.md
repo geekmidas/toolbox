@@ -1,5 +1,7 @@
 # @geekmidas/logger
 
+## 10.0.0-alpha.98
+
 ## 10.0.0-alpha.97
 
 ## 10.0.0-alpha.96

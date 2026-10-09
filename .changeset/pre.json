@@ -142,6 +142,7 @@
     "reconcile-reprovisions",
     "scaffold-typescript-7",
     "secrets-add-checkpoints",
+    "secrets-in-project-bucket",
     "secrets-manager-store",
     "secrets-store-adaptors",
     "server-crons",

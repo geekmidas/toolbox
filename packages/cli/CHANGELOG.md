@@ -1,5 +1,34 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.98
+
+### Minor Changes
+
+- ✨ [#232](https://github.com/geekmidas/toolbox/pull/232) [`076e522`](https://github.com/geekmidas/toolbox/commit/076e522c47c114840136f7fdcaa8258727385976) Thanks [@geekmidas](https://github.com/geekmidas)! - Add the `s3` secrets store, `secrets: { store: { provider: 's3' } }`. It keeps each deployed stage's secrets as one object, `<prefix>/<project>/<stage>/secrets.json`, in the project bucket next to the deploy state, or in a named bucket that already exists.
+
+  - **Encryption and history:** objects are written with SSE-S3 and kept by the bucket's versioning. There is no size limit.
+  - **Concurrent writes:** each write is conditional on the ETag that was read, so a lost race fails with `StageSecretsChanged`.
+  - **Bucket creation:** the bucket is created on the first write, never on a read.
+  - **Defaults:** `region` and `prefix` default to an S3 `state`'s.
+  - **Scaffold:** `gkm init --deploy sst` now scaffolds `state: { provider: 's3' }` with the `s3` secrets store. Existing configs keep the store they name.
+  - 🗄️ **Migration:** `gkm secrets:migrate --to s3` copies the stage, reads it back to verify, and is idempotent. It never deletes the source; it prints the command that would.
+  - 👷 **CI role:** `gkm deploy:github` grants the CI role `s3:GetObject`/`s3:PutObject` on the secrets object instead of the SSM parameter.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.98
+  - @geekmidas/constructs@10.0.0-alpha.98
+  - @geekmidas/db@10.0.0-alpha.98
+  - @geekmidas/envkit@10.0.0-alpha.98
+  - @geekmidas/errors@10.0.0-alpha.98
+  - @geekmidas/logger@10.0.0-alpha.98
+  - @geekmidas/manifest@10.0.0-alpha.98
+  - @geekmidas/schema@10.0.0-alpha.98
+  - @geekmidas/services@10.0.0-alpha.98
+  - @geekmidas/storage@10.0.0-alpha.98
+  - @geekmidas/telescope@10.0.0-alpha.98
+
 ## 10.0.0-alpha.97
 
 ### Patch Changes
