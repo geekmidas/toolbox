@@ -306,6 +306,8 @@ describe('state documents', () => {
 			vi.stubEnv('GITHUB_SERVER_URL', 'https://github.com');
 			vi.stubEnv('GITHUB_REPOSITORY', 'acme/shop');
 			vi.stubEnv('GITHUB_RUN_ID', '99');
+			// A GitHub runner sets its own; without this the actor gains `workflow`.
+			vi.stubEnv('GITHUB_WORKFLOW', '');
 
 			await store.write(STAGE, createComposeState(STAGE), {
 				expectedVersion: null,

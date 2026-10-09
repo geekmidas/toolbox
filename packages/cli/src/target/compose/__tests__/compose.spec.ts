@@ -663,6 +663,8 @@ describe("the stage's deploy state", { timeout: RUN_TIMEOUT }, () => {
 		vi.stubEnv('GITHUB_SERVER_URL', 'https://github.com');
 		vi.stubEnv('GITHUB_REPOSITORY', 'acme/shop');
 		vi.stubEnv('GITHUB_RUN_ID', '42');
+		// A GitHub runner sets its own; without this the actor gains `workflow`.
+		vi.stubEnv('GITHUB_WORKFLOW', '');
 		const fake = fakeDocker();
 		const run = deploy({
 			cwd: dir,
