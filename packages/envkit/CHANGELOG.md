@@ -1,5 +1,7 @@
 # @geekmidas/envkit
 
+## 10.0.0-alpha.95
+
 ## 10.0.0-alpha.94
 
 ## 10.0.0-alpha.93

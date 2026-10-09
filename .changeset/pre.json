@@ -40,6 +40,7 @@
     "browser-client-address",
     "browser-trace-context",
     "build-follows-deploy-target",
+    "build-skips-readiness",
     "claude-md-imports-agents",
     "cli-starts-again",
     "client-at-root",

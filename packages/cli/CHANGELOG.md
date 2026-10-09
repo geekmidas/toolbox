@@ -1,5 +1,24 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.95
+
+### Patch Changes
+
+- ✨ [#228](https://github.com/geekmidas/toolbox/pull/228) [`5ce7191`](https://github.com/geekmidas/toolbox/commit/5ce71915d8b2385efd8de3b636b5947ab4b71e51) Thanks [@geekmidas](https://github.com/geekmidas)! - A build is not a deploy: `gkm compose --build --push` no longer runs the deploy's readiness checks, so a stage whose bucket the deploy creates (`deploy.objects`) builds before its first deploy has written `<ID>_URL` — no runtime keys, server address, DNS token or cloud credentials are asked of a CI build. Every deploy runs one readiness check — the stage's providers enabled, its mail and storage keys (`ExternalServicesNotConfigured`, dev services reported once), each provider's `verify()`, stale addresses and third-party credentials — once, after its providers have written their keys and before the target is asked anything, for compose and Dokploy alike. The compose stack builder and Dokploy's engine only decide which dev services stand in; neither refuses a stage. A target's own deploy-only checks go in its new optional `ready(ctx, run)` phase, which a build never calls: compose's certificate files, `GKM_SERVER_IPV4` and DNS moved there out of `validate`.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.95
+  - @geekmidas/constructs@10.0.0-alpha.95
+  - @geekmidas/db@10.0.0-alpha.95
+  - @geekmidas/envkit@10.0.0-alpha.95
+  - @geekmidas/errors@10.0.0-alpha.95
+  - @geekmidas/logger@10.0.0-alpha.95
+  - @geekmidas/manifest@10.0.0-alpha.95
+  - @geekmidas/schema@10.0.0-alpha.95
+  - @geekmidas/services@10.0.0-alpha.95
+  - @geekmidas/storage@10.0.0-alpha.95
+  - @geekmidas/telescope@10.0.0-alpha.95
+
 ## 10.0.0-alpha.94
 
 ### Minor Changes
