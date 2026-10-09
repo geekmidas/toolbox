@@ -80,6 +80,9 @@ export async function assertStageReady(
 			manifest,
 			stage,
 			secrets: supplied,
+			// What the providers just recorded: a key issued by this deploy.
+			resources: (await ctx.state.read(stage))?.resources ?? {},
+			log: (line) => ctx.logger.info(line),
 		});
 		for (const line of verified) ctx.logger.info(`✓ ${line} verified`);
 	}

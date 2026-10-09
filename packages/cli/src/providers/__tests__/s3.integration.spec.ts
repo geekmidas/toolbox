@@ -220,6 +220,7 @@ beforeAll(async () => {
 			'adopted',
 			'planned',
 			'bare',
+			'elsewhere',
 		],
 		domains: {
 			[STAGE]: DOMAIN,
@@ -230,6 +231,7 @@ beforeAll(async () => {
 			adopted: `adopted.${DOMAIN}`,
 			planned: `planned.${DOMAIN}`,
 			bare: `bare.${DOMAIN}`,
+			elsewhere: `elsewhere.${DOMAIN}`,
 		},
 		deployObjects: {
 			[STAGE]: { provider: 's3', region: REGION },
@@ -240,6 +242,7 @@ beforeAll(async () => {
 			adopted: { provider: 's3', region: REGION },
 			planned: { provider: 's3', region: REGION },
 			bare: { provider: 's3', region: REGION },
+			elsewhere: { provider: 's3', region: REGION },
 		},
 	});
 	withFileServer(dir);
@@ -511,7 +514,7 @@ describe('objects: s3 on a deployed stage', () => {
 		});
 		await expect(run).rejects.toBeInstanceOf(ProvisionedBucketUnreachable);
 		await expect(run).rejects.toThrow(
-			/does not exist\. Deploy 'production' with the stage account's credentials/,
+			/does not exist \(HTTP 404 NotFound[^)]*\)\. Deploy 'production' with the stage account's credentials/,
 		);
 	});
 
@@ -672,6 +675,54 @@ describe('a name another account holds', () => {
 		} finally {
 			useS3Clients(previous);
 		}
+	});
+});
+
+describe('a bucket in another region than the stage', () => {
+	const stage = 'elsewhere';
+	const bucket = () => bucketName({ scope: name, stage, id: 'uploads' });
+
+	it('adopts it where it is: its URL and record name its own region', async () => {
+		made.buckets.add(bucket());
+		made.users.add(iamUserName({ scope: name, stage, id: 'uploads' }));
+		// Made by hand in us-east-1; the stage's region is eu-west-1.
+		await new S3Client({ ...admin, region: 'us-east-1' }).send(
+			new CreateBucketCommand({ Bucket: bucket() }),
+		);
+
+		await provision(stage);
+
+		const url = s3Url.parse((await secretsOf(stage)).UPLOADS_URL!);
+		expect(url.bucket).toBe(bucket());
+		expect(url.region).toBe('us-east-1');
+		expect(
+			(await stateOf(stage))?.resources['s3-bucket:Uploads']?.data?.region,
+		).toBe('us-east-1');
+		expect(lines).toContain(
+			`   '${bucket()}' is in us-east-1, not ${REGION}: 'Uploads' is reached and addressed there`,
+		);
+	});
+
+	it('rewrites a URL naming another region, keeping its key', async () => {
+		const store = await secretsStoreFor(workspace, stage, { home });
+		const stored = (await store.read(stage))!;
+		const right = s3Url.parse(stored.custom.UPLOADS_URL!);
+		await store.write(stage, {
+			...stored,
+			custom: {
+				...stored.custom,
+				UPLOADS_URL: s3Url.build({ ...right, region: REGION }),
+			},
+		});
+
+		const [report] = await provision(stage);
+
+		expect(report?.actions).toContainEqual({
+			construct: 'Uploads',
+			resource: 'UPLOADS_URL',
+			change: `name us-east-1, the bucket's region (it said ${REGION})`,
+		});
+		expect(s3Url.parse((await secretsOf(stage)).UPLOADS_URL!)).toEqual(right);
 	});
 });
 

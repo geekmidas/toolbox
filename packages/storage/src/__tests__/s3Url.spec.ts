@@ -28,6 +28,15 @@ describe('s3Url', () => {
 				secretAccessKey: 'wJal/rXUtnFEMI+K7MDENG/bPxRfi+CYEXAMPLE=',
 			},
 		],
+		[
+			'credentials whose secret has /, +, = and %, and looks encoded',
+			{
+				bucket: 'uploads',
+				region: 'eu-west-1',
+				accessKeyId: 'AKIAEXAMPLE',
+				secretAccessKey: 'a/b+c=d%2Fe%2B+/==',
+			},
+		],
 	];
 
 	it.each(cases)('round-trips %s', (_name, address) => {

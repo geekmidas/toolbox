@@ -161,3 +161,73 @@ export class ProvisionedBucketUnreachable extends GkmError {
 		this.name = 'ProvisionedBucketUnreachable';
 	}
 }
+
+/**
+ * `verify()`: the bucket answers from another region than the one its URL
+ * names — S3 redirects (301) or refuses the signature (400) and says where
+ * the bucket is.
+ */
+export class BucketRegionMismatch extends GkmError {
+	constructor(
+		readonly id: string,
+		readonly bucket: string,
+		readonly stage: string,
+		/** The secret holding the bucket's URL: `UPLOADS_URL`. */
+		readonly key: string,
+		readonly bucketRegion: string,
+		/** The URL's `region`; absent when it names none. */
+		readonly urlRegion: string | undefined,
+		/** The region asked: the URL's, else the default it fell back to. */
+		readonly askedRegion: string,
+		/** What S3 answered: status, error, request ids. */
+		readonly answer: string,
+	) {
+		const says = urlRegion
+			? `says ${urlRegion}`
+			: `names no region, so ${askedRegion} was asked`;
+		super(
+			`The bucket '${bucket}' (${id}) is in ${bucketRegion}, but ${key} in ` +
+				`the stage '${stage}''s secrets ${says} (${answer}). Deploy ` +
+				`'${stage}' with the stage account's credentials (gkm deploy --stage ` +
+				`${stage}): the s3 provider reads the bucket's region and rewrites ` +
+				`${key} with it. Set deploy.objects.${stage}.region to ` +
+				`'${bucketRegion}' in gkm.config.ts so the stage's config says where ` +
+				'its buckets are.',
+		);
+		this.name = 'BucketRegionMismatch';
+	}
+}
+
+/** Neither `HeadBucket` nor `GetBucketLocation` says where a bucket is. */
+export class BucketRegionUnknown extends GkmError {
+	constructor(
+		readonly bucket: string,
+		/** What `HeadBucket` answered. */
+		readonly head: string,
+		/** What `GetBucketLocation` answered. */
+		readonly location: string,
+	) {
+		super(
+			`gkm cannot tell which region the bucket '${bucket}' is in: ` +
+				`HeadBucket answered ${head}, and GetBucketLocation ${location}. ` +
+				"Check that the provisioning credentials are the stage account's " +
+				'and may call s3:GetBucketLocation on it, then run the deploy again.',
+		);
+		this.name = 'BucketRegionUnknown';
+	}
+}
+
+/** `HeadBucket` answered neither yes, no, nor "another account's". */
+export class BucketProbeFailed extends GkmError {
+	constructor(
+		readonly bucket: string,
+		/** What S3 answered: status, error, request ids. */
+		readonly answer: string,
+	) {
+		super(
+			`gkm asked S3 whether the bucket '${bucket}' exists and got ${answer}. ` +
+				"Check the provisioning credentials and the stage's region, then run the deploy again.",
+		);
+		this.name = 'BucketProbeFailed';
+	}
+}

@@ -48,6 +48,9 @@ import {
 	BucketKeySetElsewhere,
 	BucketNameUnavailable,
 	BucketOwnedByAnotherProject,
+	BucketProbeFailed,
+	BucketRegionMismatch,
+	BucketRegionUnknown,
 	IamUserNotOwned,
 	ProvisionedBucketUnreachable,
 	RecordedBucketUnreachable,
@@ -158,6 +161,138 @@ function errorName(error: unknown): string {
 	return e?.Code ?? e?.name ?? '';
 }
 
+/**
+ * What S3 answered a call, read off the response rather than the error's
+ * name: a `HEAD` has no body, so SDK v3 names a 301, 400 or 403 `Unknown`
+ * (only a 404 becomes `NotFound`). The status, the bucket's region and the
+ * request ids are in the response either way.
+ */
+export interface S3Answer {
+	/** The HTTP status; absent when no response came back. */
+	status?: number;
+	name: string;
+	message: string;
+	/** `x-amz-bucket-region`: where the bucket is. */
+	region?: string;
+	requestId?: string;
+	id2?: string;
+}
+
+/** The answer an SDK call failed with. */
+export function s3Answer(error: unknown): S3Answer {
+	const e = error as {
+		name?: string;
+		Code?: string;
+		message?: string;
+		$metadata?: {
+			httpStatusCode?: number;
+			requestId?: string;
+			extendedRequestId?: string;
+		};
+		$response?: {
+			statusCode?: number;
+			headers?: Record<string, string | undefined>;
+		};
+	};
+	const headers = Object.fromEntries(
+		Object.entries(e?.$response?.headers ?? {}).map(([k, v]) => [
+			k.toLowerCase(),
+			v,
+		]),
+	);
+	const status = e?.$metadata?.httpStatusCode ?? e?.$response?.statusCode;
+	const region = headers['x-amz-bucket-region'];
+	const requestId = e?.$metadata?.requestId ?? headers['x-amz-request-id'];
+	const id2 = e?.$metadata?.extendedRequestId ?? headers['x-amz-id-2'];
+	return {
+		...(status !== undefined ? { status } : {}),
+		name: errorName(error) || 'Error',
+		message: e?.message ?? String(error),
+		...(region ? { region } : {}),
+		...(requestId ? { requestId } : {}),
+		...(id2 ? { id2 } : {}),
+	};
+}
+
+/**
+ * `HTTP 403 Unknown: UnknownError [x-amz-bucket-region: eu-west-1,
+ * x-amz-request-id: …, x-amz-id-2: …]` — everything S3 said, for a message.
+ */
+export function describeAnswer(answer: S3Answer): string {
+	const said =
+		answer.message && answer.message !== answer.name
+			? `${answer.name}: ${answer.message}`
+			: answer.name;
+	const headers = [
+		answer.region && `x-amz-bucket-region: ${answer.region}`,
+		answer.requestId && `x-amz-request-id: ${answer.requestId}`,
+		answer.id2 && `x-amz-id-2: ${answer.id2}`,
+	].filter(Boolean);
+	return (
+		`${answer.status === undefined ? 'no response' : `HTTP ${answer.status}`} ${said}` +
+		(headers.length > 0 ? ` [${headers.join(', ')}]` : '')
+	);
+}
+
+/** `HeadBucket`: the bucket's region when it answers, else what S3 said. */
+async function headBucket(
+	S3: S3Module,
+	client: InstanceType<S3Module['S3Client']>,
+	bucket: string,
+): Promise<{ ok: true; region?: string } | ({ ok: false } & S3Answer)> {
+	try {
+		const out = await client.send(new S3.HeadBucketCommand({ Bucket: bucket }));
+		return {
+			ok: true,
+			...(out.BucketRegion ? { region: out.BucketRegion } : {}),
+		};
+	} catch (error) {
+		return { ok: false, ...s3Answer(error) };
+	}
+}
+
+/** `GetBucketLocation`'s answer as a region: none is us-east-1, `EU` eu-west-1. */
+async function bucketLocation(
+	S3: S3Module,
+	client: InstanceType<S3Module['S3Client']>,
+	bucket: string,
+): Promise<{ region: string } | { failed: S3Answer }> {
+	try {
+		const out = await client.send(
+			new S3.GetBucketLocationCommand({ Bucket: bucket }),
+		);
+		const location = out.LocationConstraint as string | undefined;
+		return {
+			region: !location
+				? 'us-east-1'
+				: location === 'EU'
+					? 'eu-west-1'
+					: location,
+		};
+	} catch (error) {
+		return { failed: s3Answer(error) };
+	}
+}
+
+/**
+ * Where `bucket` is: `HeadBucket`'s `x-amz-bucket-region` — on a 200, a 301
+ * or a 400 alike — else `GetBucketLocation`.
+ *
+ * @throws {BucketRegionUnknown}
+ */
+async function bucketRegion(clients: Clients, bucket: string): Promise<string> {
+	const { S3, s3 } = clients;
+	const head = await headBucket(S3, s3, bucket);
+	if (head.region) return head.region;
+	const location = await bucketLocation(S3, s3, bucket);
+	if ('region' in location) return location.region;
+	throw new BucketRegionUnknown(
+		bucket,
+		head.ok ? 'HTTP 200 without x-amz-bucket-region' : describeAnswer(head),
+		describeAnswer(location.failed),
+	);
+}
+
 /** A read whose "there is none" answer is one of `missing`. */
 async function readOr<T>(
 	read: () => Promise<T>,
@@ -234,7 +369,7 @@ function identityTags(ctx: Ctx, id: string) {
 
 async function ensureBucket(
 	ctx: Ctx,
-	clients: Clients,
+	stageClients: Clients,
 	construct: BucketConstruct,
 ): Promise<void> {
 	const { id } = construct;
@@ -246,12 +381,23 @@ async function ensureBucket(
 	const versioning = ctx.config.versioning ?? construct.versioned;
 	const open = [...new Set(construct.servers.flatMap((s) => s.open))].sort();
 
-	const { bucket, exists } = await ensureBucketName(
+	const located = await ensureBucketName(
 		ctx,
-		clients,
+		stageClients,
 		id,
 		bucketName(nameInput),
 	);
+	const { bucket, exists } = located;
+	// The bucket is reached, and its URL written, in the region it is in —
+	// one value for both, read off the bucket: an adopted bucket, or one made
+	// before the stage's region changed, may be elsewhere.
+	let clients = stageClients;
+	if (located.region !== stageClients.region) {
+		clients = await makeClients(ctx.credential, located.region);
+		ctx.log(
+			`   '${bucket}' is in ${located.region}, not ${stageClients.region}: '${id}' is reached and addressed there`,
+		);
+	}
 	await ensureBucketSettings(ctx, clients, {
 		id,
 		bucket,
@@ -306,28 +452,41 @@ async function ensureBucketName(
 	clients: Clients,
 	id: string,
 	good: string,
-): Promise<{ bucket: string; exists: boolean }> {
+): Promise<{ bucket: string; exists: boolean; region: string }> {
 	const { S3, s3, region } = clients;
 	const key = `s3-bucket:${id}`;
 	const record = ctx.state.record(key);
-	const entry = (name: string): StateEntry => ({
+	const entry = (name: string, where: string): StateEntry => ({
 		key,
 		type: 's3-bucket',
-		data: { name, region },
+		data: { name, region: where },
 	});
 
-	/** Whether this account holds `name`: yes, no, or someone else does. */
+	/**
+	 * Whether this account holds `name`: yes, no, or someone else does. Read
+	 * by status — a `HEAD` has no body, so its error is named `Unknown` — and,
+	 * when S3 says the bucket is in another region, asked again there.
+	 */
 	const probe = async (name: string): Promise<'ours' | 'none' | 'taken'> => {
-		try {
-			await s3.send(new S3.HeadBucketCommand({ Bucket: name }));
-			return 'ours';
-		} catch (error) {
-			const name = errorName(error);
-			if (name === 'NotFound' || name === 'NoSuchBucket') return 'none';
-			if (name === 'Forbidden' || name === 'AccessDenied') return 'taken';
-			throw error;
+		let head = await headBucket(S3, s3, name);
+		if (
+			!head.ok &&
+			head.region &&
+			head.region !== region &&
+			(head.status === 301 || head.status === 400)
+		) {
+			const there = await makeClients(ctx.credential, head.region);
+			head = await headBucket(there.S3, there.s3, name);
 		}
+		if (head.ok) return 'ours';
+		if (head.status === 404) return 'none';
+		if (head.status === 403) return 'taken';
+		throw new BucketProbeFailed(name, describeAnswer(head));
 	};
+
+	/** Where the bucket is now — read, not assumed: it may be adopted. */
+	const located = async (name: string, made: string): Promise<string> =>
+		ctx.dryRun && made === 'created' ? region : bucketRegion(clients, name);
 
 	const create = async (
 		name: string,
@@ -347,7 +506,7 @@ async function ensureBucketName(
 			}
 			return found;
 		}
-		await ctx.state.pending(entry(name));
+		await ctx.state.pending(entry(name, region));
 		try {
 			await s3.send(
 				new S3.CreateBucketCommand({
@@ -380,9 +539,12 @@ async function ensureBucketName(
 		return 'created';
 	};
 
-	const adopt = async (name: string): Promise<void> => {
+	const adopt = async (name: string, where: string): Promise<void> => {
+		const there =
+			where === region ? clients : await makeClients(ctx.credential, where);
 		const tags = await readOr(
-			() => s3.send(new S3.GetBucketTaggingCommand({ Bucket: name })),
+			() =>
+				there.s3.send(new there.S3.GetBucketTaggingCommand({ Bucket: name })),
 			['NoSuchTagSet', 'NoSuchTagSetError'],
 		);
 		const owner = tags?.TagSet?.find((t) => t.Key === TAG_PROJECT)?.Value;
@@ -395,12 +557,12 @@ async function ensureBucketName(
 	// the same name — never a new one.
 	if (record?.status === 'ready' && record.id) {
 		const found = await probe(record.id);
-		if (found === 'ours') return { bucket: record.id, exists: true };
 		if (found === 'taken') throw new RecordedBucketUnreachable(id, record.id);
-		const made = await create(record.id);
+		const made = found === 'ours' ? 'ours' : await create(record.id);
 		if (made === 'taken') throw new RecordedBucketUnreachable(id, record.id);
-		if (!ctx.dryRun) await ctx.state.ready(entry(record.id), record.id);
-		return { bucket: record.id, exists: made === 'ours' };
+		const where = await located(record.id, made);
+		if (!ctx.dryRun) await ctx.state.ready(entry(record.id, where), record.id);
+		return { bucket: record.id, exists: made === 'ours', region: where };
 	}
 
 	// A run that died between creating a suffixed bucket and recording it.
@@ -417,14 +579,15 @@ async function ensureBucketName(
 		tried.push(name);
 		const made = await create(name);
 		if (made === 'taken') continue;
-		if (made === 'ours') await adopt(name);
-		if (!ctx.dryRun) await ctx.state.ready(entry(name), name);
+		const where = await located(name, made);
+		if (made === 'ours') await adopt(name, where);
+		if (!ctx.dryRun) await ctx.state.ready(entry(name, where), name);
 		if (name !== good) {
 			ctx.log(
 				`   '${good}' is taken by another account; '${id}' is '${name}', recorded in the stage's state`,
 			);
 		}
-		return { bucket: name, exists: made === 'ours' };
+		return { bucket: name, exists: made === 'ours', region: where };
 	}
 	throw new BucketNameUnavailable(
 		id,
@@ -770,8 +933,8 @@ async function ensureAccessKey(
 
 	const given = ctx.secrets[urlKey];
 	let inUrl: string | undefined;
+	let parsed: s3Url.S3Address | undefined;
 	if (given !== undefined) {
-		let parsed: s3Url.S3Address | undefined;
 		try {
 			parsed = s3Url.parse(given);
 		} catch {
@@ -852,7 +1015,24 @@ async function ensureAccessKey(
 
 	const valid =
 		current !== undefined && listed.includes(current) && inUrl === current;
-	if (valid && !ctx.rotateKeys) return;
+	if (valid && !ctx.rotateKeys) {
+		// The key is good; the address must name where the bucket is.
+		if (parsed && parsed.region !== clients.region) {
+			const address = parsed;
+			await ctx.change(
+				{
+					construct: id,
+					resource: urlKey,
+					change: `name ${clients.region}, the bucket's region (it said ${address.region ?? 'none'})`,
+				},
+				() =>
+					ctx.writeSecrets({
+						[urlKey]: s3Url.build({ ...address, region: clients.region }),
+					}),
+			);
+		}
+		return;
+	}
 	if (ctx.rotateKeys && previous) {
 		throw new RotationInProgress(id, previous, ctx.stage);
 	}
@@ -886,11 +1066,14 @@ async function ensureAccessKey(
 					secretAccessKey: key.SecretAccessKey!,
 				}),
 			});
+			// When it was issued: IAM takes seconds to make a new key usable,
+			// and the deploy's check waits for one this young.
+			const issuedAt = new Date().toISOString();
 			await ctx.state.ready(
 				entry(
 					outgoing
-						? { previous: outgoing, rotatedAt: new Date().toISOString() }
-						: {},
+						? { previous: outgoing, rotatedAt: issuedAt, issuedAt }
+						: { issuedAt },
 				),
 				key.AccessKeyId!,
 			);
@@ -903,21 +1086,58 @@ async function ensureAccessKey(
 	}
 }
 
+/** How long a key issued this recently counts as new to IAM. */
+const NEW_KEY_WINDOW_MS = 10 * 60 * 1000;
+
+/** The waits between asks while a new key becomes usable: about a minute. */
+let newKeyWaits: readonly number[] = [2000, 4000, 8000, 15000, 15000, 15000];
+
+/** For tests: the waits for a new key. Returns the old ones. */
+export function useNewKeyWaits(waits: readonly number[]): readonly number[] {
+	const previous = newKeyWaits;
+	newKeyWaits = waits;
+	return previous;
+}
+
+/** When the key in the URL was issued, if the stage's state says it was just now. */
+function issuedJustNow(
+	ctx: VerifyContext<S3ObjectsConfig>,
+	id: string,
+	accessKeyId: string,
+): string | undefined {
+	const record = ctx.resources?.[`iam-access-key:${id}`];
+	const issuedAt = record?.data?.issuedAt;
+	if (record?.id !== accessKeyId || typeof issuedAt !== 'string') {
+		return undefined;
+	}
+	const age = Date.now() - Date.parse(issuedAt);
+	return age >= 0 && age < NEW_KEY_WINDOW_MS ? issuedAt : undefined;
+}
+
 /**
  * Each provisioned bucket answers `HeadBucket` to the key in the stage's
  * secrets — the one the apps will use. A bucket whose URL carries no key is
  * not one this provider wrote, and the deploy's own check covers a URL that
  * is missing.
+ *
+ * A failure is read by its status, never its name — a `HEAD` has no body,
+ * so SDK v3 calls a 301, 400 or 403 `Unknown` — and the message carries
+ * everything S3 said: status, error, region, request ids.
+ *
+ * @throws {BucketRegionMismatch} the bucket is in another region than its URL says
+ * @throws {ProvisionedBucketUnreachable}
  */
 async function verifyS3(ctx: VerifyContext<S3ObjectsConfig>): Promise<void> {
 	const S3 = await import('@aws-sdk/client-s3');
 	for (const { id } of bucketConstructs(ctx.manifest)) {
-		const url = ctx.secrets[provideKey(id, 'url')];
+		const urlKey = provideKey(id, 'url');
+		const url = ctx.secrets[urlKey];
 		if (url === undefined) continue;
 		const address = s3Url.parse(url);
 		if (!address.accessKeyId || !address.secretAccessKey) continue;
+		const asked = address.region ?? ctx.config.region ?? 'us-east-1';
 		const client = new S3.S3Client({
-			region: address.region ?? ctx.config.region ?? 'us-east-1',
+			region: asked,
 			credentials: {
 				accessKeyId: address.accessKeyId,
 				secretAccessKey: address.secretAccessKey,
@@ -926,19 +1146,68 @@ async function verifyS3(ctx: VerifyContext<S3ObjectsConfig>): Promise<void> {
 			...(address.forcePathStyle ? { forcePathStyle: true } : {}),
 		});
 		try {
-			await client.send(new S3.HeadBucketCommand({ Bucket: address.bucket }));
-		} catch (error) {
-			const name = errorName(error);
-			throw new ProvisionedBucketUnreachable(
-				id,
-				address.bucket,
-				ctx.stage,
-				name === 'NotFound'
-					? 'it does not exist'
-					: name === 'Forbidden'
-						? 'the key is refused'
-						: name || String(error),
-			);
+			let head = await headBucket(S3, client, address.bucket);
+			// A key IAM issued moments ago is refused until it propagates.
+			const issuedAt = issuedJustNow(ctx, id, address.accessKeyId);
+			let waited = 0;
+			if (!head.ok && head.status === 403 && issuedAt) {
+				ctx.log?.(
+					`   ${id}: waiting for the new key ${address.accessKeyId} to become active…`,
+				);
+				for (const wait of newKeyWaits) {
+					await new Promise((resolve) => setTimeout(resolve, wait));
+					waited += wait;
+					head = await headBucket(S3, client, address.bucket);
+					if (head.ok || head.status !== 403) break;
+				}
+			}
+			if (head.ok) continue;
+
+			const fail = (reason: string) =>
+				new ProvisionedBucketUnreachable(id, address.bucket, ctx.stage, reason);
+			const said = describeAnswer(head);
+
+			// In another region: S3 redirects, or refuses the signature, and
+			// says where.
+			if (
+				head.status === 301 ||
+				(head.status === 400 && head.region && head.region !== asked)
+			) {
+				let where = head.region;
+				let located = '';
+				if (!where) {
+					const location = await bucketLocation(S3, client, address.bucket);
+					if ('region' in location) where = location.region;
+					else
+						located = `; GetBucketLocation answered ${describeAnswer(location.failed)}`;
+				}
+				if (where && where !== asked) {
+					throw new BucketRegionMismatch(
+						id,
+						address.bucket,
+						ctx.stage,
+						urlKey,
+						where,
+						address.region,
+						asked,
+						said,
+					);
+				}
+				throw fail(`S3 redirected the request (${said}${located})`);
+			}
+			if (head.status === 404) throw fail(`it does not exist (${said})`);
+			if (head.status === 403) {
+				throw fail(
+					'the key is refused — AccessDenied, or an invalid or ' +
+						`not-yet-active key (${said})` +
+						(issuedAt
+							? `. The key was issued at ${issuedAt} by this deploy, and IAM ` +
+								'keys take seconds to become usable: it was still refused ' +
+								`after waiting ${Math.round(waited / 1000)}s`
+							: ''),
+				);
+			}
+			throw fail(said);
 		} finally {
 			client.destroy();
 		}
