@@ -23,11 +23,12 @@ import {
 } from '@geekmidas/manifest';
 import { type WorkerUnit, workerUnits } from '../build/workers.js';
 import {
-	assertExternalServices,
 	type DevServiceUse,
 	devServicesUsed,
 	type ExternalServices,
+	externalServices,
 	type ServiceDeclaration,
+	stageServiceDeclarations,
 	suppliedOnly,
 } from '../deploy/devServices.js';
 import { isMainFrontendApp, resolveHost } from '../deploy/domain.js';
@@ -37,10 +38,7 @@ import { appDockerfile, workerDockerfile } from '../docker/index.js';
 import { composeBuildPaths, type ImageLayout } from '../docker/layout.js';
 import { TURBO_VERSION, WORKER_PORT } from '../docker/templates.js';
 import { GkmError } from '../errors';
-import {
-	assertStageProvidersEnabled,
-	stageProviderNotes,
-} from '../providers/notes.js';
+import { stageProviderNotes } from '../providers/notes.js';
 import { appEnvKeys, networkEnv, workerEnvKeys } from '../reconcile/apps.js';
 import { hostFor } from '../reconcile/caddyfile.js';
 import { type ComposeService, composeFor } from '../reconcile/compose.js';
@@ -581,23 +579,6 @@ export function composeStack(input: StackInput): ComposeStack {
 		}
 	}
 
-	// The keys each app reads: a backend's environment, and the keys a
-	// site's build args rename.
-	const reads = new Map<string, string[]>();
-	for (const app of apps) {
-		const site = manifest[app.id];
-		reads.set(
-			app.name,
-			site?.kind === 'site'
-				? Object.values(publicEnvFor(site, manifest))
-				: [...(appEnvKeys(manifest, app.name, input.runnables) ?? [])],
-		);
-	}
-	for (const worker of workers) {
-		reads.set(worker.name, [
-			...(workerEnvKeys(manifest, worker.id, input.runnables) ?? []),
-		]);
-	}
 	const domain = workspace.domains?.[stage];
 
 	// Where the stage's telemetry goes, when a process uses a `Telemetry`
@@ -637,7 +618,8 @@ export function composeStack(input: StackInput): ComposeStack {
 
 	// Mail and storage: the local stage runs Mailpit and MinIO for all of it.
 	// A deployed stage takes each from its secrets — or, where allowed, from a
-	// dev service — and one missing anything stops here, naming every key.
+	// dev service. Only decided here: whether the stage lacks a key is the
+	// deploy's readiness check's to say, once, and a build asks no such thing.
 	const services: ExternalServices = local
 		? {
 				missing: [],
@@ -648,18 +630,17 @@ export function composeStack(input: StackInput): ComposeStack {
 					.filter((r) => r.kind === 'email')
 					.map((r) => r.id),
 			}
-		: (() => {
-				// A kind the stage set to `false` is refused before its keys are.
-				assertStageProvidersEnabled(workspace, manifest, stage);
-				return assertExternalServices({
-					stage,
-					declarations: serviceDeclarations(plan, reads, owners),
-					supplied: custom,
-					allow: input.allowDevServices === true,
-					...(domain ? { domain } : {}),
-					providers: stageProviderNotes(workspace, stage),
-				});
-			})();
+		: externalServices({
+				stage,
+				declarations: stageServiceDeclarations({
+					manifest,
+					...(input.runnables ? { runnables: input.runnables } : {}),
+				}),
+				supplied: custom,
+				allow: input.allowDevServices === true,
+				...(domain ? { domain } : {}),
+				providers: stageProviderNotes(workspace, stage),
+			});
 
 	// The caches: in the stack's Redis, unless the stage set a cache's URL —
 	// a managed Redis — and with every one set, there is no Redis to run.
@@ -1083,50 +1064,6 @@ export function composeStack(input: StackInput): ComposeStack {
 		...(telemetry ? { telemetry } : {}),
 		...(redis ? { redis } : {}),
 	};
-}
-
-/**
- * The mail and storage constructs a deployed stage's apps read, with who
- * reads each — and every file server's bucket, which serves it whether or
- * not an app reads it directly.
- */
-function serviceDeclarations(
-	plan: Plan,
-	reads: ReadonlyMap<string, readonly string[]>,
-	owners: ReadonlyMap<string, PlannedResource>,
-): ServiceDeclaration[] {
-	const byId = new Map(plan.resources.map((r) => [r.id, r]));
-	const readers = new Map<string, Set<string>>();
-	const add = (id: string, app?: string) => {
-		const set = readers.get(id) ?? new Set<string>();
-		if (app) set.add(app);
-		readers.set(id, set);
-	};
-
-	for (const [app, keys] of reads) {
-		for (const key of keys) {
-			const owner = owners.get(key);
-			if (!owner || !SERVICE_KINDS[owner.kind]) continue;
-			// The inbox is Mailpit's own, never a deployed stage's to set.
-			if (owner.kind === 'email' && key.endsWith('_INBOX_URL')) continue;
-			add(owner.id, app);
-			if (owner.kind === 'file-server' && owner.of) add(owner.of);
-		}
-	}
-
-	return [...readers].flatMap(([id, apps]) => {
-		const resource = byId.get(id);
-		const kind = resource && SERVICE_KINDS[resource.kind];
-		if (!resource || !kind) return [];
-		return [
-			{
-				id,
-				kind,
-				...(resource.of ? { of: resource.of } : {}),
-				apps: [...apps].sort(),
-			},
-		];
-	});
 }
 
 /** The stack's MinIO's value for one of the S3 client's keys. */

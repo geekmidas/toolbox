@@ -2,9 +2,7 @@ import { realpathSync } from 'node:fs';
 import { type ConstructManifest, TELEMETRY_KEYS } from '@geekmidas/manifest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
-import { ExternalServicesNotConfigured } from '../../deploy/devServices';
 import { deployIdentity } from '../../deploy/identity';
-import { StageProviderDisabled } from '../../providers/notes';
 import { TEST_CREDENTIALS } from '../../reconcile/__tests__/__helpers__/credentials';
 import { localRolePassword } from '../../reconcile/env';
 import { postgresSuperuser } from '../../reconcile/localCredentials';
@@ -531,38 +529,15 @@ describe('mail and storage on a deployed stage', () => {
 			...overrides,
 		});
 
-	it('refuses a stage whose secrets configure neither, naming every key at once', () => {
-		let error: unknown;
-		try {
-			deployed();
-		} catch (caught) {
-			error = caught;
-		}
+	it('decides, and refuses nothing: a stage missing every key runs neither', () => {
+		// Whether the stage lacks a key is the deploy's readiness check's to
+		// say, once — a build composes this stack with none of them.
+		const s = deployed();
 
-		expect(error).toBeInstanceOf(ExternalServicesNotConfigured);
-		const missing = (error as ExternalServicesNotConfigured).missing;
-		expect(missing.map((m) => m.key)).toEqual([
-			'MAIL_URL',
-			'MAIL_FROM',
-			'UPLOADS_URL',
-			'UPLOADS_SERVER_URL',
-		]);
-		// A bucket's credentials are optional, so neither half is asked for.
-		expect(missing.map((m) => m.key)).not.toContain('AWS_ACCESS_KEY_ID');
-		const message = (error as Error).message;
-		for (const { key } of missing) {
-			expect(message).toContain(`gkm secrets:set ${key} '`);
-		}
-		expect(message).toContain('--stage production');
-		expect(message).toContain('with --allow-dev-services.');
-		expect(message).not.toMatch(/--allow-dev-services (minio|mailpit)/);
-		expect(missing.find((m) => m.key === 'MAIL_URL')?.apps).toEqual(['api']);
-		// The API signs uploads to the bucket and hands out URLs on the domain
-		// that serves it, so it reads the file server's address as the site does.
-		expect(missing.find((m) => m.key === 'UPLOADS_SERVER_URL')?.apps).toEqual([
-			'api',
-			'web',
-		]);
+		expect(s.infra).toEqual(['postgres', 'redis']);
+		expect(s.compose.services).not.toHaveProperty('minio');
+		expect(s.compose.services).not.toHaveProperty('mailpit');
+		expect(s.devServices).toEqual([]);
 	});
 
 	it("runs neither where the stage's secrets configure both", () => {
@@ -675,29 +650,11 @@ describe('mail and storage on a deployed stage', () => {
 		});
 
 		it('runs no MinIO under --allow-dev-services: the provider accounts for buckets', () => {
-			let error: unknown;
-			try {
-				deployed({ workspace: withS3(), allowDevServices: true });
-			} catch (caught) {
-				error = caught;
-			}
+			// Before the deploy has written the bucket's keys: decided, not refused.
+			const s = deployed({ workspace: withS3(), allowDevServices: true });
 
-			// Mail is still a dev service's; the bucket and its server are the
-			// provider's, so they are asked for — with what creates them.
-			expect(error).toBeInstanceOf(ExternalServicesNotConfigured);
-			const missing = (error as ExternalServicesNotConfigured).missing;
-			expect(missing.map((m) => m.key)).toEqual([
-				'UPLOADS_URL',
-				'UPLOADS_SERVER_URL',
-			]);
-			expect(missing[0]?.service).toBeUndefined();
-			const message = (error as Error).message;
-			expect(message).toContain(
-				'deploy.objects.production is s3: the deploy (gkm deploy --stage production) creates it and writes this key',
-			);
-			expect(message).toContain('AWS_PROFILE');
-			// Nothing missing could be a dev service, so none is offered.
-			expect(message).not.toContain('--allow-dev-services');
+			expect(s.infra).toEqual(['mailpit', 'postgres', 'redis']);
+			expect(s.devServices).toEqual([{ service: 'mailpit', ids: ['Mail'] }]);
 		});
 
 		it('deploys with the keys the provider wrote, and runs mail on Mailpit', () => {
@@ -714,19 +671,6 @@ describe('mail and storage on a deployed stage', () => {
 
 			expect(s.infra).toEqual(['mailpit', 'postgres', 'redis']);
 			expect(s.devServices).toEqual([{ service: 'mailpit', ids: ['Mail'] }]);
-		});
-
-		it('refuses a bucket on a stage that has none', () => {
-			const none = {
-				...workspace,
-				deploy: {
-					...workspace.deploy,
-					objects: { production: false as const },
-				},
-			};
-			expect(() =>
-				deployed({ workspace: none, secrets: production(EXTERNAL) }),
-			).toThrow(StageProviderDisabled);
 		});
 	});
 });

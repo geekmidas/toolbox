@@ -159,8 +159,12 @@ stored. Nothing else happens: no stage lock, no infrastructure, no
 provisioning, migrations or seeds, no container started, no secret generated and
 kept, nothing recorded in the stage's state. So the runner needs Docker, the
 stage's secrets store (for a site's public URLs) and a `docker login` to the
-registry — no Postgres, no server. `--push` without `--build`, or with
-`--pull`, is `ComposePushNeedsBuild`.
+registry — no Postgres, no server. Nor does it run the deploy's readiness
+checks: a build needs none of the stage's runtime keys, its server's address
+(`GKM_SERVER_IPV4`), a DNS token or cloud credentials — so a stage whose bucket
+the deploy creates (`deploy.objects`) builds before its first deploy has
+written the bucket's URL. `--push` without `--build`, or with `--pull`, is
+`ComposePushNeedsBuild`.
 
 `--digests-file <path>` writes each pushed image as JSON, `{ "api":
 "<ref>@sha256:…" }`. Handed the same file, a pull runs each image at its digest
@@ -709,8 +713,9 @@ secrets — the stack runs no Mailpit or MinIO for it:
 | a bucket, `ObjectStorage('Uploads')` | `UPLOADS_URL` (`s3://bucket?region=…`, with `&endpoint=…` for R2 or any S3-compatible store). Its credentials are optional: a key for this bucket alone in the URL (`s3://KEY:SECRET@bucket?…`), or the shared `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` for every bucket whose URL has none |
 | its file server, `UploadsServer` | `UPLOADS_SERVER_URL` — the public address its objects are served on |
 
-Only the keys an app reads count. A stage missing any of them stops in
-`validate` — before a file is written, a secret generated or a container
+Every mail and storage construct the workspace declares counts. A stage
+missing any of them stops in the deploy's readiness check — after the stage's
+providers have written their keys, and before a file is written, a secret generated or a container
 touched — with `ExternalServicesNotConfigured`, listing **every** missing key
 across every app at once, each with the line that sets it:
 

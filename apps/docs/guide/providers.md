@@ -153,8 +153,9 @@ exactly what the stage's buckets and users need), assumed before the step
 that runs the deploy. To set the keys by hand instead, set
 `deploy.objects.<stage>: 'external'`.
 
-The providers run first, then the checks, so `ExternalServicesNotConfigured`
-never reports a key the deploy creates.
+The providers run first, then the deploy's one readiness check, so
+`ExternalServicesNotConfigured` never reports a key the deploy creates. A
+build (`gkm compose --build --push`) runs neither: it needs none of the keys.
 
 In the [compose workflow](./compose.md#deploying-from-ci) the deploy runs on
 the server, which should not hold the stage account's credentials. For a
@@ -266,7 +267,8 @@ the records and writes nothing.
 ## Deploys
 
 Every deploy of a stage on a provider — `gkm deploy` through compose or
-Dokploy, and `gkm compose` — runs `verify()` in `validate`: `HeadBucket` with
+Dokploy, and `gkm compose` — runs `verify()` in its readiness check, before
+the target is asked anything: `HeadBucket` with
 the app's key from the stage's secrets. A bucket that is gone, or a key that is
 refused, stops the deploy with `ProvisionedBucketUnreachable`, saying to
 deploy with the stage account's credentials, which creates or repairs it — a

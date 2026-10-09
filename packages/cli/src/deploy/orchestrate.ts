@@ -36,6 +36,7 @@ import type { CredentialProvider } from './credentials';
 import { DevServicesNeedServerTarget } from './devServices';
 import { type DeployEvent, type DeployPhase, eventError } from './events';
 import { applicationName, deployIdentity } from './identity.js';
+import { assertStageReady } from './readiness';
 import { assertStateOutlivesRun, createStateStore } from './StateStore.js';
 import type { DeployResult } from './types';
 
@@ -278,17 +279,21 @@ export async function runDeploy(
 		if (request.resourcesOnly) {
 			return resourcesOnly(target, phaseCtx, emit);
 		}
-		const run = await validate(target, phaseCtx, emit);
+		const run = await validate(phaseCtx, emit, () =>
+			readyToDeploy(target, phaseCtx),
+		);
 		await phase('plan', () => target.plan(phaseCtx, run));
 		return target.result(phaseCtx, run);
 	}
 
 	// Building changes no stage — nothing is provisioned, released or
 	// recorded — so it takes no lock: a CI job building the next release must
-	// not fail because a server is deploying the last one.
+	// not fail because a server is deploying the last one. Nor is the stage
+	// asked whether it is ready to be deployed: an image carries none of its
+	// keys, and a key the deploy writes is not there until the deploy runs.
 	if (ctx.buildOnly) {
 		if (!target.build) throw new TargetBuildsNothing(resolved.name);
-		const run = await validate(target, phaseCtx, emit);
+		const run = await validate(phaseCtx, emit, () => target.validate(phaseCtx));
 		await phase('build', () => target.build!(phaseCtx, run));
 		return target.result(phaseCtx, run);
 	}
@@ -314,7 +319,9 @@ export async function runDeploy(
 		if (request.resourcesOnly) {
 			return resourcesOnly(target, phaseCtx, emit);
 		}
-		const run = await validate(target, phaseCtx, emit);
+		const run = await validate(phaseCtx, emit, () =>
+			readyToDeploy(target, phaseCtx),
+		);
 		if (target.provision) {
 			await phase('provision', () => target.provision!(phaseCtx, run));
 		}
@@ -432,14 +439,32 @@ function resourcesResult(phaseCtx: DeployPhaseContext<unknown>): DeployResult {
 	};
 }
 
-/** `validate`, then the run's `deploy.started`, inside the validate phase. */
-async function validate(
+/**
+ * What a deploy validates: the stage ready to be deployed — every key it
+ * needs, read as its providers left them — then what the target would run,
+ * then whatever only the target checks. A build-only run validates the
+ * target's run alone: it calls neither readiness check.
+ */
+async function readyToDeploy(
 	target: AnyDeployTarget,
 	phaseCtx: DeployPhaseContext<unknown>,
+): Promise<unknown> {
+	// The rules are a stack's, built from the stage's secrets: a target that
+	// runs none — AWS — has its stage's keys from its own tool.
+	if (target.runtime === 'server') await assertStageReady(phaseCtx);
+	const run = await target.validate(phaseCtx);
+	await target.ready?.(phaseCtx, run);
+	return run;
+}
+
+/** `body`, then the run's `deploy.started`, inside the validate phase. */
+async function validate(
+	phaseCtx: DeployPhaseContext<unknown>,
 	emit: (event: DeployEvent) => void,
+	body: () => Promise<unknown>,
 ): Promise<unknown> {
 	try {
-		const run = await target.validate(phaseCtx);
+		const run = await body();
 		const skipped = new Set(phaseCtx.skipped.map((s) => s.app));
 		emit({
 			type: 'deploy.started',

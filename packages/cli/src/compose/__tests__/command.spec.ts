@@ -24,6 +24,7 @@ import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { loadWorkspaceSettings } from '../../config';
 import { ExternalServicesNotConfigured } from '../../deploy/devServices';
 import { SeedFailed } from '../../migrate/databases';
+import { ProviderCredentialsMissing } from '../../providers/index';
 import type { SqlClient } from '../../reconcile/provision';
 import { CredentialsInvalid } from '../../secrets/credentialSchemas';
 import { FileSecretsStore } from '../../secrets/file';
@@ -33,6 +34,7 @@ import { StaleStageSecrets } from '../../secrets/stale';
 import { initStageSecrets } from '../../secrets/storage';
 import { ensureStageSecrets } from '../../setup/index';
 import { DeploySeedsFailed } from '../../target/seeds';
+import { DnsCredentialMissing } from '../dns';
 import {
 	ComposeModeConflict,
 	ComposePinNeedsPull,
@@ -668,6 +670,9 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 		await expect(run).rejects.toThrow(
 			/MAIL_URL[\s\S]*MAIL_FROM[\s\S]*UPLOADS_URL/,
 		);
+		// Refused by the deploy's one readiness check, not by the target.
+		const error = (await run.catch((e: unknown) => e)) as Error;
+		expect(error.stack).toContain('assertStageReady');
 		expect(fake.ops()).toEqual([]);
 		expect(existsSync(join(dir, '.gkm', 'compose', 'production'))).toBe(false);
 		expect(await stageGenerated(dir)).toBe(false);
@@ -716,6 +721,10 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 		expect(warned.join('\n')).toMatch(
 			/DEV SERVICE ON A DEPLOYED STAGE \(production\): MinIO/,
 		);
+		// Once each, by the deploy — the target decides, and says nothing.
+		expect(
+			warned.filter((line) => line.includes('DEV SERVICE ON A DEPLOYED STAGE')),
+		).toHaveLength(2);
 		expect(result?.deploy.stage).toBe('production');
 	});
 });
@@ -1394,6 +1403,97 @@ describe('gkm compose --build --push', { timeout: RUN_TIMEOUT }, () => {
 		).rejects.toBeInstanceOf(ComposePinNeedsPull);
 	});
 });
+
+describe(
+	'a stage whose keys its deploy writes, built before it deploys',
+	{ timeout: RUN_TIMEOUT },
+	() => {
+		// The CI build that runs on every merge: the bucket is the deploy's to
+		// create, its records the deploy's to write — and the deploy runs after
+		// this build, so none of the stage's keys exist yet.
+		beforeEach(async () => {
+			dir = realpathSync(await createTempDir('gkm-compose-command-'));
+			writeComposeApp(dir, {
+				registry: 'registry.example.com/acme',
+				domains: { production: 'example.app' },
+				dns: { 'example.app': { provider: 'godaddy' } },
+				deployObjects: { production: { provider: 's3', region: 'eu-west-1' } },
+			});
+			withMailAndStorage(dir);
+			const home = join(dir, '.no-home');
+			vi.stubEnv('GODADDY_API_TOKEN', undefined);
+			vi.stubEnv('GODADDY_API_KEY', undefined);
+			vi.stubEnv('GODADDY_API_SECRET', undefined);
+			vi.stubEnv('AWS_ACCESS_KEY_ID', undefined);
+			vi.stubEnv('AWS_SECRET_ACCESS_KEY', undefined);
+			vi.stubEnv('AWS_SESSION_TOKEN', undefined);
+			vi.stubEnv('AWS_PROFILE', undefined);
+			vi.stubEnv('AWS_ROLE_ARN', undefined);
+			vi.stubEnv('AWS_CONFIG_FILE', join(home, 'no-aws-config'));
+			vi.stubEnv(
+				'AWS_SHARED_CREDENTIALS_FILE',
+				join(home, 'no-aws-credentials'),
+			);
+			vi.stubEnv('AWS_EC2_METADATA_DISABLED', 'true');
+		});
+		afterEach(async () => {
+			vi.unstubAllEnvs();
+			await cleanupDir(dir);
+		});
+
+		it('builds and pushes with an empty secrets store: no key, server, DNS token or cloud credential asked for', async () => {
+			const { docker, ops } = fakeDocker();
+
+			await composeCommand(
+				{
+					cwd: dir,
+					stage: 'production',
+					build: true,
+					push: true,
+					tag: 'abc',
+					digestsFile: 'digests.json',
+				},
+				{ docker },
+			);
+
+			expect(ops()).toEqual(['build', 'push', 'push', 'push', 'push']);
+			const digests = JSON.parse(
+				readFileSync(join(dir, 'digests.json'), 'utf-8'),
+			);
+			expect(Object.keys(digests).sort()).toEqual([
+				'api',
+				'auth',
+				'jobs',
+				'web',
+			]);
+			// The site is built with the stage's public URLs, from `domains`.
+			const compose = readFileSync(
+				join(dir, '.gkm', 'compose', 'production', 'docker-compose.yml'),
+				'utf-8',
+			);
+			expect(compose).toContain('VITE_API_URL: https://api.example.app');
+			// Nothing was created, generated or written for the stage.
+			expect(await stageGenerated(dir)).toBe(false);
+		});
+
+		it('deploying it asks for the DNS token, then the cloud credentials, before any key', async () => {
+			const { docker, ops } = fakeDocker();
+			const deps = {
+				docker,
+				lookup: resolvesHere,
+				revision: async () => 'abc1234',
+			};
+
+			await expect(
+				composeCommand({ cwd: dir, stage: 'production' }, deps),
+			).rejects.toBeInstanceOf(DnsCredentialMissing);
+			await expect(
+				composeCommand({ cwd: dir, stage: 'production', skipDns: true }, deps),
+			).rejects.toBeInstanceOf(ProviderCredentialsMissing);
+			expect(ops()).toEqual([]);
+		});
+	},
+);
 
 describe('with no deploy.registry', { timeout: RUN_TIMEOUT }, () => {
 	beforeEach(async () => {

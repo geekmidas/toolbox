@@ -30,11 +30,10 @@ import {
 	MissingCredential,
 } from '../../deploy/credentials';
 import {
-	assertExternalServices,
 	type DevService,
 	devServicesUsed,
-	manifestServiceDeclarations,
-	reportDevServices,
+	externalServices,
+	stageServiceDeclarations,
 } from '../../deploy/devServices.js';
 import { deployDocker } from '../../deploy/docker';
 import {
@@ -87,16 +86,10 @@ import { WORKER_PORT } from '../../docker/templates.js';
 import { GkmError } from '../../errors';
 import { plannedSeeds } from '../../migrate/databases';
 import { output } from '../../output';
-import { verifyStageProviders } from '../../providers/index.js';
-import {
-	assertStageProvidersEnabled,
-	stageProviderNotes,
-} from '../../providers/notes.js';
+import { stageProviderNotes } from '../../providers/notes.js';
 import { workerEnvKeys } from '../../reconcile/apps.js';
 import { constructGlobs } from '../../reconcile/workspace.js';
 import type { RunOptions } from '../../run';
-import { assertStageCredentials } from '../../secrets/credentialSchemas.js';
-import { assertNoStaleSecrets } from '../../secrets/stale.js';
 import { initStageSecrets } from '../../secrets/storage.js';
 import type { StageSecrets } from '../../secrets/types.js';
 import {
@@ -441,50 +434,22 @@ export async function validateDokploy(
 		ctx,
 	};
 
-	// Mail and storage before anything else is read or written: a deployed
-	// stage's are its own, from its secrets, unless a dev service is allowed
-	// to stand in — and one missing any key stops here, naming every one.
+	// Mail and storage: a deployed stage's are its own, from its secrets, or a
+	// dev service where allowed — decided here, from the same list the
+	// deploy's readiness check already refused a stage lacking any key by.
 	const stored = await phase.secrets.read();
-	// A kind the stage set to `false` is refused before its keys are.
-	assertStageProvidersEnabled(workspace, phase.manifest, stage);
-	const services = assertExternalServices({
+	const services = externalServices({
 		stage,
-		declarations: manifestServiceDeclarations(phase.manifest),
+		declarations: stageServiceDeclarations({
+			manifest: phase.manifest,
+			...(phase.runnables ? { runnables: phase.runnables } : {}),
+		}),
 		supplied: stored?.custom ?? {},
 		allow: phase.allowDevServices,
 		...(workspace.domains?.[stage] ? { domain: workspace.domains[stage] } : {}),
 		providers: stageProviderNotes(workspace, stage),
 	});
 	const devServices = devServicesUsed(services);
-	reportDevServices(phase, devServices);
-
-	// What the stage's providers created is still there, and the stage's key
-	// reaches it — `deploy.objects`' bucket, answering its own key.
-	const verified = await verifyStageProviders({
-		workspace,
-		manifest: phase.manifest,
-		stage,
-		secrets: stored?.custom ?? {},
-	});
-	for (const line of verified) logger.log(`   ✓ ${line} verified`);
-
-	// An address an older gkm stored for what a construct now provides: a
-	// `localhost` URL is never where a deployed app finds anything.
-	assertNoStaleSecrets({
-		manifest: phase.manifest,
-		stage,
-		supplied: stored?.custom ?? {},
-	});
-
-	// A third party's credentials against their construct's schema, before
-	// anything is built with one every app reading it would refuse.
-	await assertStageCredentials({
-		root: workspace.root,
-		patterns: constructGlobs(workspace),
-		manifest: phase.manifest,
-		stage,
-		supplied: stored?.custom ?? {},
-	});
 
 	// Which workers run, and what each reads: the runnables' edges and where
 	// each worker's work is declared, from the run's own discovery.

@@ -10,6 +10,8 @@
  *
  * - `validate`: the stack (`composeStack`, pure) and, for a tag, every image
  *   looked up in the registry — `ImageTagNotFound` before anything changes
+ * - `ready`: a deploy's own checks, after the stage's keys are — the stage's
+ *   certificate, its server's address, and every public host's DNS
  * - `plan`: the stack's files and what a run would create or reuse
  * - `provision`: generated secrets kept, files written, infrastructure up,
  *   databases, roles, grants and migrations
@@ -20,7 +22,9 @@
  * - `verify`: each app asked through Caddy over HTTPS
  *
  * With `push` (`gkm compose --build --push`), run with `buildOnly`, it builds
- * every image and pushes it to `deploy.registry`, and does nothing else.
+ * every image and pushes it to `deploy.registry`, and does nothing else: no
+ * readiness check runs, so a stage whose keys the deploy has yet to write
+ * still builds.
  *
  * `gkm compose` is this target with a few more switches (`--build`, `--pull`,
  * `--down`), run through the same `deploy()`.
@@ -37,6 +41,7 @@ import {
 	defaultDeps,
 	planCompose,
 	provisionCompose,
+	readyCompose,
 	releaseCompose,
 	resourcesCompose,
 	validateCompose,
@@ -101,6 +106,7 @@ export function composeTarget(
 				...(push ? { push } : {}),
 				...(pin ? { pin } : {}),
 			}),
+		ready: (ctx, run) => readyCompose(ctx, run, deps),
 		plan: (ctx, run) => planCompose(ctx, run),
 		resources: (ctx) => resourcesCompose(ctx, deps),
 		provision: (ctx, run) => provisionCompose(ctx, run, deps),

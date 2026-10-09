@@ -1040,6 +1040,8 @@ export const Mail = {
 			expect(
 				(error as ExternalServicesNotConfigured).missing.map((m) => m.key),
 			).toEqual(['MAIL_URL', 'MAIL_FROM', 'UPLOADS_URL']);
+			// Refused by the deploy's one readiness check, not by the target.
+			expect((error as Error).stack).toContain('assertStageReady');
 			expect((error as Error).message).toContain(
 				"gkm secrets:set UPLOADS_URL 's3://uploads?region=eu-west-1' --stage production",
 			);
