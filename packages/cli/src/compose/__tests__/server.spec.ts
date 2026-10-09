@@ -8,6 +8,7 @@ import { composeCommand } from '../index';
 import {
 	ComposeServerMissing,
 	ComposeServerUnreachable,
+	ComposeTunnelFailed,
 	composeServer,
 	dockerHost,
 } from '../server';
@@ -89,6 +90,21 @@ describe('composeServer', () => {
 		expect(resolve({ production: { user: 'deploy' } }, {})).toThrow(
 			ComposeServerMissing,
 		);
+	});
+});
+
+describe('ComposeTunnelFailed', () => {
+	it('quotes ssh, and names sshd and a restricted key as the likely causes', () => {
+		const error = new ComposeTunnelFailed(
+			`deploy@${SERVER_IPV4}`,
+			55432,
+			'channel 2: open failed: administratively prohibited: open failed',
+		);
+		expect(error.message).toContain(`127.0.0.1:55432 on deploy@${SERVER_IPV4}`);
+		expect(error.message).toContain('ssh said: channel 2: open failed');
+		expect(error.message).toContain('AllowTcpForwarding yes');
+		expect(error.message).toContain('`restrict`');
+		expect(error.message).toContain('restrict,port-forwarding');
 	});
 });
 

@@ -81,7 +81,10 @@ export class ComposeTunnelFailed extends GkmError {
 		super(
 			`Could not open an SSH tunnel to 127.0.0.1:${remotePort} on ${target} ` +
 				`(ssh said: ${stderr.trim() || 'nothing'}). The server's sshd must allow ` +
-				'TCP forwarding (AllowTcpForwarding yes, the default) for the deploy user.',
+				'TCP forwarding for the deploy user (AllowTcpForwarding yes, the default, ' +
+				'or local), and its key in ~/.ssh/authorized_keys must too: a key ' +
+				'installed with `restrict` refuses forwarding unless it also says ' +
+				'`port-forwarding` (`restrict,port-forwarding ssh-ed25519 …`).',
 		);
 		this.name = 'ComposeTunnelFailed';
 	}

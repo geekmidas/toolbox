@@ -1257,7 +1257,8 @@ With `--deploy compose` the workflow splits the release in two
   environment: `gkm compose --stage <stage> --build --push --tag <sha>
   --digests-file digests.json`, then the digests kept as the artifact
   `digests-<stage>` for 90 days. It assumes the stage's AWS role only when
-  `secrets.store` is SSM or Secrets Manager (`aws-region` is set).
+  `secrets.store` is on AWS — S3, SSM or Secrets Manager (`aws-region` is
+  set); with the `'file'` store it assumes none.
 - **deploy** — for each stage the event deploys, one at a time per stage
   (`concurrency: deploy-<stage>`). It resolves the commit — a release's tag
   (never its `target_commitish`), a manual run's `ref`, or the push — checks
@@ -1317,7 +1318,7 @@ AWS_PROFILE=acme-prod gkm secrets:set POLAR_CREDENTIALS '{…}' --stage prod
 [`gkm deploy:github`](./cli-reference.md#gkm-deploy-github) creates GitHub's
 OIDC provider in the account if missing and a role only this repository's
 `<stage>` environment can assume, then sets the environment's `AWS_ROLE_ARN`.
-With an AWS store (SSM or Secrets Manager) there is nothing to hand over — the
+With an AWS store (S3, SSM or Secrets Manager) there is nothing to hand over — the
 deploy reads the store with the role; with the `'file'` store it sets `GKM_SECRETS_KEY` instead. No long-lived AWS
 keys are stored anywhere.
 
@@ -1361,6 +1362,7 @@ the stage's secrets — read, and written back when a deploy generates a new one
 
 | Store | Allowed |
 |---|---|
+| `secrets.store` S3 | `s3:GetObject`, `PutObject` on the stage's secrets object (`<prefix>/<project>/<stage>/secrets.json`), and `s3:ListBucket` on its bucket unless the `state` statements already cover it; with no `bucket` named, `ProjectBucket` as for `state` S3 below |
 | `secrets.store` SSM | `ssm:GetParameter`, `ssm:PutParameter` on `arn:aws:ssm:<region>:<account>:parameter/gkm/<project>/<stage>/secrets` |
 | `secrets.store` Secrets Manager | `secretsmanager:GetSecretValue`, `PutSecretValue`, `CreateSecret` on `arn:aws:secretsmanager:<region>:<account>:secret:gkm/<project>/<stage>/secrets-??????` (and `kms:Decrypt`/`GenerateDataKey` through Secrets Manager when `kmsKeyId` is set) |
 | `state` SSM | `ssm:GetParameter`, `PutParameter`, `DeleteParameter` under `/gkm/<project>/<stage>/` |
@@ -1408,7 +1410,7 @@ gh variable set DOKPLOY_ENDPOINT --env prod --body https://dokploy.example.com
 | secret `DEPLOY_SSH_KEY` | compose | the private key of the user `deploy.compose.server.<stage>` names, which the server accepts |
 | variable `DEPLOY_KNOWN_HOSTS` | compose | `ssh-keyscan <host>`, checked by hand — the host key is pinned, never accepted on first sight |
 | variable `REGISTRY_USERNAME`, secret `REGISTRY_PASSWORD` | compose, registry other than ghcr.io | your registry (ghcr.io uses the workflow's own token) |
-| the stage's secrets in SSM or Secrets Manager | SST | `gkm secrets:set … --stage <stage>` |
+| the stage's secrets in S3, SSM or Secrets Manager | SST; compose with an AWS `secrets.store` | `gkm secrets:set … --stage <stage>` |
 | secret `GKM_SECRETS_KEY` | Dokploy (`'file'` store) | `gh secret set` |
 | secret `DOKPLOY_API_TOKEN`, variable `DOKPLOY_ENDPOINT` | Dokploy | `gh` |
 | secret `GODADDY_API_TOKEN` or `HOSTINGER_API_TOKEN` | a stage whose domain's `dns` provider is GoDaddy or Hostinger | `gh secret set GODADDY_API_TOKEN --env <stage>` |
