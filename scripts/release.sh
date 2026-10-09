@@ -80,7 +80,18 @@ case "${1:-}" in
 		GKM_RELEASE_COMMIT=$(git rev-parse HEAD)
 		export GKM_RELEASE_COMMIT
 		build
-		pnpm changeset publish
+		# npm signs each package's provenance with Sigstore, and a dropped
+		# connection there fails that package mid-release (alpha.94 went out
+		# without auth and errors). `changeset publish` skips what npm already
+		# has, so another attempt publishes only what is missing.
+		for attempt in 1 2 3; do
+			if pnpm changeset publish; then
+				exit 0
+			fi
+			echo "Publish attempt ${attempt} failed; retrying what is missing." >&2
+			sleep $((attempt * 20))
+		done
+		exit 1
 		;;
 	dry-run)
 		# It consumes the changesets and rewrites every version in the working

@@ -29,7 +29,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -86,6 +86,29 @@ function npmView(field) {
 			encoding: 'utf-8',
 		}),
 	);
+}
+
+/** The public packages whose version in git npm does not have. */
+function unpublished() {
+	const packages = join(root, 'packages');
+	return readdirSync(packages)
+		.map((dir) => join(packages, dir, 'package.json'))
+		.filter((file) => existsSync(file))
+		.map((file) => JSON.parse(readFileSync(file, 'utf-8')))
+		.filter((pkg) => !pkg.private)
+		.filter((pkg) => {
+			try {
+				execFileSync('npm', ['view', `${pkg.name}@${pkg.version}`, 'version'], {
+					encoding: 'utf-8',
+					stdio: ['ignore', 'pipe', 'ignore'],
+				});
+				return false;
+			} catch {
+				// `npm view` exits non-zero for a version the registry lacks.
+				return true;
+			}
+		})
+		.map((pkg) => `${pkg.name}@${pkg.version}`);
 }
 
 /** How long a pull request waits for a release main has just versioned. */
@@ -166,6 +189,17 @@ function main() {
 		if (bumped) {
 			fail(
 				`This run versioned the packages to ${inGit}, which npm already has. It cannot be published; move the versions in git past ${onNpm}.`,
+			);
+		}
+		// The CLI stands for the release, but a publish that failed partway
+		// leaves it out while others are missing — and nothing would ever
+		// publish them, since the CLI says "released". `changeset publish`
+		// skips what npm has, so publishing again finishes the release.
+		const missing = unpublished();
+		if (missing.length > 0) {
+			return decide(
+				true,
+				`${inGit} is on npm, but not for ${missing.join(', ')}: a publish stopped partway; publishing the rest.`,
 			);
 		}
 		return decide(false, `${inGit} is on npm; nothing to publish.`);
