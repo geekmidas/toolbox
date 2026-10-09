@@ -18,7 +18,6 @@ import type { StageSecrets } from '../secrets/types.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { stageProvider } from './config.js';
 import { deploysWithCompose } from './dns.js';
-import { assertStageProvidersEnabled } from './notes.js';
 import { builtinProvider } from './registry.js';
 import {
 	PROVIDER_KINDS,
@@ -62,14 +61,12 @@ export interface VerifyStageInput {
 /**
  * What every deploy runs: each provider's `verify()` — the cheap check that
  * what it created is still there and the stage's key reaches it. Nothing on
- * the local stage, and nothing for a kind on `external`.
- *
- * @throws {StageProviderDisabled} for a declared kind the stage has none of
+ * the local stage, and nothing for a kind on `external` or `false` — a kind
+ * the stage has none of is the deploy's readiness check's to refuse.
  */
 export async function verifyStageProviders(
 	input: VerifyStageInput,
 ): Promise<string[]> {
-	assertStageProvidersEnabled(input.workspace, input.manifest, input.stage);
 	const verified: string[] = [];
 	for (const kind of PROVIDER_KINDS) {
 		if (constructsOf(input.manifest, kind).length === 0) continue;

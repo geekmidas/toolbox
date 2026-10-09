@@ -46,7 +46,6 @@ import {
 	isLocalHost,
 	requiredServerAddress,
 	SERVER_IPV4_KEY,
-	type ServerAddress,
 	serverAddressHint,
 	stackHosts,
 	stageDns,
@@ -87,7 +86,6 @@ import {
 } from '../../compose/stack';
 import { EDGE_PROJECT, EDGE_SERVICE } from '../../compose/traefik';
 import { currentActor } from '../../deploy/actor.js';
-import { reportDevServices } from '../../deploy/devServices';
 import { recordDnsChanges } from '../../deploy/dnsResources.js';
 import type { ResourceChange } from '../../deploy/events';
 import { imageRef } from '../../deploy/identity.js';
@@ -109,7 +107,6 @@ import {
 	SeedFailed,
 	seedDatabases,
 } from '../../migrate/databases.js';
-import { verifyStageProviders } from '../../providers/index.js';
 import { bucketClient, pgClient } from '../../reconcile/clients.js';
 import { primaryPortKey } from '../../reconcile/containers.js';
 import { type ConstructSource, discover } from '../../reconcile/discover.js';
@@ -127,8 +124,6 @@ import {
 } from '../../reconcile/provision.js';
 import { constructGlobs } from '../../reconcile/workspace.js';
 import { runOutput } from '../../run';
-import { assertStageCredentials } from '../../secrets/credentialSchemas.js';
-import { assertNoStaleSecrets } from '../../secrets/stale.js';
 import type { StageSecrets } from '../../secrets/types.js';
 import type {
 	DnsProvider as DnsProviderConfig,
@@ -395,37 +390,6 @@ export async function validateCompose(
 
 	const { secrets, generated } = await stageSecrets(ctx, manifest);
 
-	// A stage that serves real domains names its server — before anything
-	// else is checked, built or started.
-	const server =
-		push || stage === workspace.stages.local
-			? undefined
-			: requiredServerAddress(
-					stage,
-					workspace.domains?.[stage],
-					secrets?.custom,
-				);
-
-	// A third party's credentials against their construct's schema, before a
-	// stack is composed with one every app reading it would refuse. A push
-	// runs no app, so it reads none of them.
-	if (!push) {
-		// An address an older gkm stored for what a construct now provides:
-		// set by hand wins, so every app would be handed `localhost`.
-		assertNoStaleSecrets({
-			manifest,
-			stage,
-			supplied: secrets?.custom ?? {},
-		});
-		await assertStageCredentials({
-			root,
-			patterns: constructGlobs(workspace),
-			manifest,
-			stage,
-			supplied: secrets?.custom ?? {},
-		});
-	}
-
 	// Where and with what the images are built — only asked when they are.
 	const layout = mode === 'build' ? imageLayout(workspace) : undefined;
 
@@ -453,22 +417,6 @@ export async function validateCompose(
 		...(push ? { buildOnly: true } : {}),
 	});
 
-	// Loud, every run — a dry run included: a deployed stage on Mailpit
-	// delivers no mail, and one on MinIO keeps its files on one disk.
-	reportDevServices(ctx, composed.devServices);
-
-	// What the stage's providers created is still there, and the stage's key
-	// reaches it. A push runs nothing, and the local stage has no providers.
-	if (!push && stage !== workspace.stages.local) {
-		const verified = await verifyStageProviders({
-			workspace,
-			manifest,
-			stage,
-			secrets: secrets?.custom ?? {},
-		});
-		for (const line of verified) ctx.logger.info(`✓ ${line} verified`);
-	}
-
 	// A cache is reached over the Redis wire protocol, and the client is the
 	// project's own dependency: a build without it fails deep inside Docker.
 	if (mode === 'build') assertRedisClient(workspace, composed);
@@ -487,26 +435,6 @@ export async function validateCompose(
 			...stack.apps,
 			...stack.workers,
 		]);
-	}
-
-	// The stage's own certificate is read when the stack starts; one that is
-	// not there stops the run here, before anything is written or started.
-	if (stack.tls && !push) {
-		for (const file of [stack.tls.certFile, stack.tls.keyFile]) {
-			if (!existsSync(file)) throw new ComposeTlsFileMissing(stage, file);
-		}
-	}
-
-	// Every public host points at the stage's server — its records written
-	// where a provider holds them, then confirmed — before Caddy or Traefik
-	// ask Let's Encrypt for a certificate it could not issue.
-	if (!push && !stack.local) {
-		await deployDns(
-			ctx,
-			deps,
-			stackHosts(stack).filter((host) => !isLocalHost(host)),
-			server,
-		);
 	}
 
 	if (stack.redis && !stack.local) ctx.secrets.mask(stack.redis.password);
@@ -564,6 +492,41 @@ export async function validateCompose(
 	};
 }
 
+// ============================================================================
+// ready
+// ============================================================================
+
+/**
+ * What only a compose deploy checks before it changes anything, once the
+ * stage's own keys are: the stage's own certificate is there, and every
+ * public host points at the stage's server — its records written where a
+ * provider holds them, then confirmed — before Caddy or Traefik ask Let's
+ * Encrypt for a certificate it could not issue. A build-only run never asks.
+ */
+export async function readyCompose(
+	ctx: ComposeContext,
+	run: ComposeRun,
+	deps: ComposeDeps,
+): Promise<void> {
+	const { stack } = run;
+
+	// Read when the stack starts; one that is not there stops the run here,
+	// before anything is written or started.
+	if (stack.tls) {
+		for (const file of [stack.tls.certFile, stack.tls.keyFile]) {
+			if (!existsSync(file)) throw new ComposeTlsFileMissing(ctx.stage, file);
+		}
+	}
+
+	if (stack.local) return;
+	await stageHostsDns(
+		ctx,
+		deps,
+		stackHosts(stack).filter((host) => !isLocalHost(host)),
+		run.secrets?.custom,
+	);
+}
+
 /** A stack whose caches are in Redis, built for an app that has no client. */
 export class RedisClientMissing extends GkmError {
 	constructor(readonly apps: readonly string[]) {
@@ -608,18 +571,29 @@ function assertRedisClient(
  * leaves the stage's secrets as it found them.
  */
 /**
- * The deploy's DNS step: the stage's own hosts written through each domain's
- * provider in `dns` where they differ, read back from it, and recorded in the
- * stage's state; hosts no provider writes resolved with the system resolver.
- * A dry run prints the plan and writes nothing, and warns rather than stops.
+ * The deploy's DNS step, for a deployed stage: its server's address — required
+ * where it serves a real domain — then its own hosts written through each
+ * domain's provider in `dns` where they differ, read back from it, and
+ * recorded in the stage's state; hosts no provider writes resolved with the
+ * system resolver. A dry run prints the plan and writes nothing, and warns
+ * rather than stops. What a deploy (`ready`) and `--resources-only` both run.
+ *
+ * @throws {ServerAddressMissing} when the stage has a domain and no address
+ * @throws {ServerAddressInvalid} for a value that is not an address
+ * @throws {HostNotPointingAtServer} when a host is not the server
  */
-async function deployDns(
+async function stageHostsDns(
 	ctx: ComposeContext,
 	deps: ComposeDeps,
 	hosts: readonly string[],
-	server: ServerAddress | undefined,
+	custom: Readonly<Record<string, string>> | undefined,
 ): Promise<void> {
 	const { workspace, stage } = ctx;
+	const server = requiredServerAddress(
+		stage,
+		workspace.domains?.[stage],
+		custom,
+	);
 	if (hosts.length === 0) return;
 	if (ctx.skipDns) {
 		ctx.logger.info(
@@ -700,11 +674,6 @@ export async function resourcesCompose(
 	if (stage === workspace.stages.local) return;
 	// The DNS token was asked for before the providers ran.
 	const stored = await ctx.secrets.read();
-	const server = requiredServerAddress(
-		stage,
-		workspace.domains?.[stage],
-		stored?.custom,
-	);
 	const { composeStageHosts } = await import('../../providers/dns.js');
 	const hosts = await composeStageHosts({
 		workspace,
@@ -714,11 +683,11 @@ export async function resourcesCompose(
 		runnables: (ctx.runnables ?? {}) as Record<string, string[]>,
 		background: (ctx.background ?? {}) as Record<string, string[]>,
 	});
-	await deployDns(
+	await stageHostsDns(
 		ctx,
 		deps,
 		hosts.filter((host) => !isLocalHost(host)),
-		server,
+		stored?.custom,
 	);
 }
 

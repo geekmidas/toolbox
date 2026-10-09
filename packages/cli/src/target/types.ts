@@ -306,10 +306,19 @@ export interface DeployTarget<Options = undefined, Run = unknown> {
 	}): Promise<string>;
 
 	/**
-	 * Everything the deploy needs, checked before anything changes: the
-	 * config, the apps, credentials, the stage's secrets.
+	 * What the run is — the apps, the images, what each runs with — checked
+	 * before anything changes. A build-only run calls it too, so it checks
+	 * what building needs; what only a deploy needs is `ready`'s.
 	 */
 	validate(ctx: DeployPhaseContext<Options>): Promise<Run>;
+	/**
+	 * What only this target checks before a deploy changes anything — compose's
+	 * server address and its hosts' DNS. Run after `validate` and the stage's
+	 * own readiness check (every key it needs, after its providers wrote
+	 * theirs), on a deploy and its dry run. A build-only run never calls it:
+	 * an image needs none of it.
+	 */
+	ready?(ctx: DeployPhaseContext<Options>, run: Run): Promise<void>;
 	/** A dry run: emit `resource.planned` for what a real run would do. */
 	plan(ctx: DeployPhaseContext<Options>, run: Run): Promise<void>;
 	/**

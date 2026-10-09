@@ -219,6 +219,7 @@ beforeAll(async () => {
 			'shipped',
 			'adopted',
 			'planned',
+			'bare',
 		],
 		domains: {
 			[STAGE]: DOMAIN,
@@ -228,6 +229,7 @@ beforeAll(async () => {
 			shipped: `shipped.${DOMAIN}`,
 			adopted: `adopted.${DOMAIN}`,
 			planned: `planned.${DOMAIN}`,
+			bare: `bare.${DOMAIN}`,
 		},
 		deployObjects: {
 			[STAGE]: { provider: 's3', region: REGION },
@@ -237,6 +239,7 @@ beforeAll(async () => {
 			shipped: { provider: 's3', region: REGION },
 			adopted: { provider: 's3', region: REGION },
 			planned: { provider: 's3', region: REGION },
+			bare: { provider: 's3', region: REGION },
 		},
 	});
 	withFileServer(dir);
@@ -834,6 +837,27 @@ describe('the deploy creates them', () => {
 		expect(again.error).toBeUndefined();
 		expect(again.logs).toContain('   up to date');
 		expect(await keysOf(user)).toEqual([url.accessKeyId]);
+	}, 120_000);
+
+	it('without credentials to create them, stops on those before any key is asked for', async () => {
+		// A stage with nothing in its secrets: were the keys checked first, the
+		// run would name UPLOADS_URL and the mail — none of it the fix.
+		vi.stubEnv('AWS_ACCESS_KEY_ID', undefined);
+		vi.stubEnv('AWS_SECRET_ACCESS_KEY', undefined);
+		vi.stubEnv('AWS_SESSION_TOKEN', undefined);
+		vi.stubEnv('AWS_CONFIG_FILE', join(home, 'no-aws-config'));
+		vi.stubEnv('AWS_SHARED_CREDENTIALS_FILE', join(home, 'no-aws-credentials'));
+		vi.stubEnv('AWS_EC2_METADATA_DISABLED', 'true');
+		try {
+			const { error, seen } = await deployStage('bare');
+
+			expect(error).toBeInstanceOf(ProviderCredentialsMissing);
+			expect(released(seen)).toBe(false);
+			expect(await secretsOf('bare')).toEqual({});
+		} finally {
+			vi.stubEnv('AWS_ACCESS_KEY_ID', 'test');
+			vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'test');
+		}
 	}, 120_000);
 
 	it('adopts a bucket that is already there, rather than creating it', async () => {

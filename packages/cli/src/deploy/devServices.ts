@@ -29,11 +29,12 @@
 
 import {
 	type ConstructManifest,
-	dependentsOf,
 	provideKey,
+	publicEnvFor,
 } from '@geekmidas/manifest';
 import { SERVER_IPV4_KEY, SERVER_IPV6_KEY } from '../compose/dnsConfig.js';
 import { GkmError } from '../errors';
+import { appEnvKeys, workerEnvKeys } from '../reconcile/apps.js';
 import { appKey } from '../workspace/derive.js';
 
 /**
@@ -171,30 +172,88 @@ export interface ServiceDeclaration {
 	apps?: readonly string[];
 }
 
+/** The kinds a deployed stage takes from its secrets, or a dev service. */
+const SERVICE_KINDS: Readonly<Record<string, ServiceDeclaration['kind']>> = {
+	email: 'email',
+	objects: 'objects',
+	'file-server': 'file-server',
+};
+
+export interface StageServiceDeclarationsInput {
+	manifest: ConstructManifest;
+	/** Each owner's runnables' edges, from discovery. */
+	runnables?: Readonly<Record<string, readonly string[]>>;
+}
+
 /**
- * Every mail and storage construct a manifest declares, with the apps that
- * depend on each — what a target that provisions the whole manifest checks.
+ * Every mail and storage construct a manifest declares, each with the apps
+ * and workers that read it — a process's environment, a site's build args. A
+ * file server's reader reads its bucket too.
+ *
+ * The one list a deploy's readiness check refuses a stage by, every server
+ * target decides its dev services from, and `gkm secrets:add` offers — so
+ * none of them can disagree.
  */
-export function manifestServiceDeclarations(
-	manifest: ConstructManifest,
+export function stageServiceDeclarations(
+	input: StageServiceDeclarationsInput,
 ): ServiceDeclaration[] {
+	const { manifest } = input;
+	const runnables = input.runnables ?? {};
+
+	// The construct each key belongs to.
+	const owners = new Map<string, string>();
+	for (const [id, declaration] of Object.entries(manifest)) {
+		if (!SERVICE_KINDS[declaration.kind]) continue;
+		owners.set(provideKey(id, 'url'), id);
+		if (declaration.kind === 'email') owners.set(provideKey(id, 'from'), id);
+	}
+
+	// Who reads which construct.
+	const readers = new Map<string, Set<string>>();
+	const read = (process: string, keys: Iterable<string>) => {
+		for (const key of keys) {
+			const id = owners.get(key);
+			if (!id) continue;
+			const declaration = manifest[id];
+			const of =
+				declaration?.kind === 'file-server' ? declaration.of : undefined;
+			for (const owner of of ? [id, of] : [id]) {
+				const set = readers.get(owner) ?? new Set<string>();
+				set.add(process);
+				readers.set(owner, set);
+			}
+		}
+	};
+	for (const [id, declaration] of Object.entries(manifest)) {
+		const name = appKey(id);
+		if (
+			declaration.kind === 'rest-api' ||
+			declaration.kind === 'site' ||
+			declaration.kind === 'mobile-app'
+		) {
+			read(name, appEnvKeys(manifest, name, runnables) ?? []);
+		}
+		// A site's build args, by the keys they rename.
+		if (declaration.kind === 'site') {
+			read(name, Object.values(publicEnvFor(declaration, manifest)));
+		}
+		if (declaration.kind === 'worker') {
+			read(name, workerEnvKeys(manifest, id, runnables) ?? []);
+		}
+	}
+
 	return Object.entries(manifest).flatMap(
 		([id, declaration]): ServiceDeclaration[] => {
-			const { kind } = declaration;
-			if (kind !== 'email' && kind !== 'objects' && kind !== 'file-server') {
-				return [];
-			}
-			const apps = dependentsOf(manifest, id)
-				.filter((caller) => {
-					const callerKind = manifest[caller]?.kind;
-					return callerKind === 'rest-api' || callerKind === 'site';
-				})
-				.map(appKey);
+			const kind = SERVICE_KINDS[declaration.kind];
+			if (!kind) return [];
+			const apps = [...(readers.get(id) ?? [])].sort();
 			return [
 				{
 					id,
 					kind,
-					...(declaration.kind === 'file-server' ? { of: declaration.of } : {}),
+					...(declaration.kind === 'file-server' && declaration.of
+						? { of: declaration.of }
+						: {}),
 					...(apps.length ? { apps } : {}),
 				},
 			];
@@ -507,21 +566,6 @@ export function externalServices(
 		);
 
 	return { missing, minio, mailpit };
-}
-
-/**
- * `externalServices`, refusing a stage that lacks anything.
- *
- * @throws {ExternalServicesNotConfigured} naming every missing key
- */
-export function assertExternalServices(
-	input: ExternalServicesInput,
-): ExternalServices {
-	const services = externalServices(input);
-	if (services.missing.length > 0) {
-		throw new ExternalServicesNotConfigured(input.stage, services.missing);
-	}
-	return services;
 }
 
 /** The dev services a run uses, one entry per service it runs. */

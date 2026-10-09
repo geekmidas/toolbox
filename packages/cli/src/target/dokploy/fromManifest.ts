@@ -974,7 +974,8 @@ function storageKeys(
 
 /**
  * The error for a bucket or mail the stage configured nothing for — what
- * `validate` already refused, should a provisioner be reached without it.
+ * the deploy's readiness check (`assertStageReady`) already refused, should a
+ * provisioner be called on its own without it.
  */
 function notConfigured(
 	id: string,

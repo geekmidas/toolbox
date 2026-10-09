@@ -94,7 +94,8 @@ written with: `ctx.options` from the `options` schema, and `run` from what
 
 | Phase | Required | Runs | Job |
 |---|---|---|---|
-| `validate(ctx)` | yes | always | Check the config, apps, credentials and secrets. Returns the run state handed to every later phase. |
+| `validate(ctx)` | yes | always | Check the config, apps and credentials, and work out what the run would do. Returns the run state handed to every later phase. A build-only run calls it too, so check here only what building needs. |
+| `ready(ctx, run)` | no | deploy and dry run, never a build | What only this target checks before a deploy changes anything — compose's server address and DNS. Runs after `validate`. |
 | `plan(ctx, run)` | yes | dry run only | Emit `resource.planned` for what a real run would do. Change nothing. |
 | `provision(ctx, run)` | no | real run | Create or find what the apps run on, and what the workspace declares. |
 | `build(ctx, run)` | no | real run | Build each app's artifact (`artifact.built`) without changing anything live. |
@@ -104,9 +105,19 @@ written with: `ctx.options` from the `options` schema, and `run` from what
 | `result(ctx, run)` | yes | at the end | Return the `DeployResult`. |
 | `tag({ cwd, stage })` | no | before `validate`, when no `--tag` was given | The tag this run releases under. Defaults to `<stage>-<timestamp>`. |
 
-A dry run calls `validate` then `plan`, takes no lock, and must write nothing. A
-real run takes the stage's lock, then calls `validate`, `provision`, `build`,
-`release` and `verify`, and releases the lock however the run ends.
+A dry run calls `validate`, `ready` and `plan`, takes no lock, and must write
+nothing. A real run takes the stage's lock, then calls `validate`, `ready`,
+`provision`, `build`, `release` and `verify`, and releases the lock however the
+run ends. A build-only run (`buildOnly`) calls `validate` and `build`, and
+nothing else.
+
+Before `validate`, every deploy through a `server` target — never a build —
+runs the stage's readiness check once, after the stage's providers have
+written their keys: a kind the stage set to `false` (`StageProviderDisabled`),
+mail and storage keys (`ExternalServicesNotConfigured`, and the dev services
+`allowDevServices` stands in, reported once), each provider's `verify()`, stale
+`localhost` addresses (`StaleStageSecrets`) and third-party credentials against
+their schemas (`CredentialsInvalid`). A target does not repeat them.
 
 If `release` or `verify` throws and the target can roll back, the CLI calls
 `rollback` with `{ phase, error }` and then rethrows the original error. If
