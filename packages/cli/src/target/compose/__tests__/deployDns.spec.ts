@@ -96,12 +96,18 @@ afterEach(async () => {
 	await cleanupDir(dir);
 });
 
-/** A compose workspace whose domains' DNS is GoDaddy's. */
+/**
+ * A compose workspace whose domains' DNS is GoDaddy's. It takes no backups:
+ * what they create in AWS is the backups suite's, not this one's.
+ */
 function workspace(options: Parameters<typeof writeComposeApp>[1] = {}) {
 	writeComposeApp(dir, {
 		registry: 'registry.example.com/acme',
 		target: 'compose',
 		dns: { 'example.com': { provider: 'godaddy' } },
+		deployBackups: Object.fromEntries(
+			(options.deployed ?? ['production']).map((stage) => [stage, false]),
+		),
 		...options,
 	});
 }

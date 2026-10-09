@@ -22,6 +22,13 @@ import {
 	provisionOrder,
 	publicEnvFor,
 } from '@geekmidas/manifest';
+import { stageBackups } from '../backups/config.js';
+import {
+	BACKUPS_SERVICE,
+	backupsService,
+	type StackBackups,
+	stackBackups,
+} from '../backups/service.js';
 import { type WorkerUnit, workerUnits } from '../build/workers.js';
 import {
 	type DevServiceUse,
@@ -229,6 +236,8 @@ export interface StackService {
 		dockerfile: string;
 		args?: Record<string, string>;
 	};
+	/** `build` for an image built on the server and never pulled. */
+	pull_policy?: 'build';
 	restart?: string;
 	command?: string | string[];
 	env_file?: { path: string; format: 'raw' }[];
@@ -373,6 +382,11 @@ export interface ComposeStack {
 	 * whose URL the stage's secrets do not set.
 	 */
 	redis?: StackRedis;
+	/**
+	 * The stage's backups, where it is deployed, runs Postgres and has not
+	 * set `deploy.backups.<stage>: false`.
+	 */
+	backups?: StackBackups;
 }
 
 /** What a stack's containers run with, and what its role passwords take. */
@@ -563,6 +577,27 @@ function probe(port: number, path: string): StackService['healthcheck'] {
 	};
 }
 
+/**
+ * What a stage's stack provisions: reconcile's plan, with a server target's
+ * backends whatever `deploy.default` says — the stack is one machine running
+ * containers, so events are pg-boss beside the declared database, and every
+ * cache, one declared from that database included, is in the stack's own
+ * Redis.
+ */
+export function stackPlan(
+	workspace: Pick<NormalizedWorkspace, 'stages'>,
+	manifest: ConstructManifest,
+	stage: string,
+): Plan {
+	return planFor(manifest, stage, provisionOrder(manifest), {
+		localStage: workspace.stages.local,
+		events: DEFAULT_EVENTS.server,
+		cache: STACK_CACHE,
+		// The stack brings its own edge; reconcile's would front the host.
+		edge: false,
+	});
+}
+
 /** The stack for one stage. */
 export function composeStack(input: StackInput): ComposeStack {
 	const { workspace, manifest, stage, identity } = input;
@@ -580,13 +615,7 @@ export function composeStack(input: StackInput): ComposeStack {
 	// one machine running containers, so events are pg-boss beside the
 	// declared database — and every cache, one declared from that database
 	// included, is in the stack's own Redis.
-	const plan = planFor(manifest, stage, provisionOrder(manifest), {
-		localStage: workspace.stages.local,
-		events: DEFAULT_EVENTS.server,
-		cache: STACK_CACHE,
-		// The stack brings its own edge; reconcile's would front the host.
-		edge: false,
-	});
+	const plan = stackPlan(workspace, manifest, stage);
 	const byId = new Map(plan.resources.map((r) => [r.id, r]));
 
 	// The local stage's logins are the ones `gkm dev` generated for this
@@ -1020,6 +1049,26 @@ export function composeStack(input: StackInput): ComposeStack {
 		: { kind: 'acme' };
 	const tls: EdgeTls = local ? { kind: 'internal' } : deployedTls;
 
+	// The stage's backups: a deployed stage with Postgres, unless it said
+	// `false`. A stack that only builds runs nothing, so has none.
+	const backupsChoice = input.buildOnly
+		? undefined
+		: stageBackups(workspace, manifest, stage);
+	const backups =
+		backupsChoice?.mode === 'on' && infra.includes('postgres')
+			? stackBackups({
+					workspace,
+					stage,
+					project,
+					plan,
+					backups: backupsChoice.backups,
+					custom,
+					seed,
+					superuser: credential.containers.postgres,
+					...(telemetryValues ? { telemetry: telemetryValues } : {}),
+				})
+			: undefined;
+
 	const layout = input.layout ?? defaultLayout(workspace.root);
 	const compose = stackFile({
 		project,
@@ -1031,6 +1080,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		...(storage ? { storage } : {}),
 		...(logs ? { logs } : {}),
 		...(redis ? { redis } : {}),
+		...(backups ? { backups } : {}),
 		https,
 		http,
 		composeDir: join(workspace.root, stackDir(stage)),
@@ -1124,6 +1174,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		...(logs ? { logs } : {}),
 		...(telemetry ? { telemetry } : {}),
 		...(redis ? { redis } : {}),
+		...(backups ? { backups } : {}),
 	};
 }
 
@@ -1271,6 +1322,7 @@ function stackFile(options: {
 	storage?: StackStorage;
 	logs?: StackLogs;
 	redis?: StackRedis;
+	backups?: StackBackups;
 	https: number;
 	http: number;
 	composeDir: string;
@@ -1358,6 +1410,14 @@ function stackFile(options: {
 	// Started with the infrastructure, but nothing waits on it: an app whose
 	// telemetry cannot be delivered still serves.
 	if (options.logs) services[LOGS_SERVICE] = logsService(options.logs);
+
+	// The stage's backups: on the stack's network, from nothing on the host.
+	if (options.backups) {
+		services[BACKUPS_SERVICE] = backupsService(
+			options.backups,
+			options.envFiles,
+		);
+	}
 
 	for (const app of apps) {
 		services[app.name] = {

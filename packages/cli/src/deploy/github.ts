@@ -373,19 +373,17 @@ export async function deployGithubCommand(
 	// fails here.
 	const oidc = resolveOidcSubject(gh, repo, options.stage);
 	// The buckets an s3 provider creates are named after their constructs,
-	// so the role is scoped to exactly those names.
+	// and a stage with a database is backed up: the role is scoped to
+	// exactly those.
 	const manifest = await discover({
 		patterns: constructGlobs(workspace),
 		cwd: workspace.root,
 	});
-	const buckets = Object.entries(manifest)
-		.filter(([, d]) => d.kind === 'objects')
-		.map(([id]) => id);
 	const access = deployAccess(
 		workspace,
 		options.stage,
 		options.policyArn,
-		buckets,
+		manifest,
 	);
 	// Read through the keystore so a key still at the place keys used to be kept
 	// is found, and copied to where it is kept now.

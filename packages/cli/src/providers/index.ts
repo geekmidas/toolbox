@@ -8,6 +8,12 @@
  */
 
 import type { ConstructManifest } from '@geekmidas/manifest';
+import { stageBackups } from '../backups/config.js';
+import {
+	ensureStageBackups,
+	verifyStageBackups,
+} from '../backups/provision.js';
+import { BACKUPS_URL_KEY } from '../backups/service.js';
 import { deployIdentity } from '../deploy/identity.js';
 import { DeployJournal } from '../deploy/journal.js';
 import type { ResourceRecord, StateStore } from '../deploy/StateStore.js';
@@ -88,6 +94,7 @@ export async function verifyStageProviders(
 		});
 		verified.push(`${kind}: ${provider.name}`);
 	}
+	if (await verifyStageBackups(input)) verified.push('backups: s3');
 	return verified;
 }
 
@@ -122,7 +129,8 @@ export interface ProvisionOptions {
 
 /** What one kind came to on a provisioning run. */
 export interface KindReport {
-	kind: ProviderKind;
+	/** A provider kind, or the stage's backups. */
+	kind: ProviderKind | 'backups';
 	mode: 'external' | 'none' | 'provider';
 	provider?: string;
 	actions: ProvisionAction[];
@@ -236,7 +244,17 @@ export async function provisionStage(
 		});
 	}
 
-	if (configured.length === 0) return reports;
+	// The stage's backups: whether there are any is the stack's to say, and
+	// a stage with none needs nothing of this run.
+	const backups = stageBackups(workspace, manifest, stage);
+	if (configured.length === 0 && backups.mode !== 'on') {
+		if (backups.mode === 'disabled') {
+			log(
+				`💾 backups: off — deploy.backups.${stage} is false. Nothing is backed up, and nothing already backed up is deleted.`,
+			);
+		}
+		return reports;
+	}
 
 	const identity = deployIdentity(workspace, stage);
 	let secrets = (await options.secrets.read())?.custom ?? {};
@@ -298,6 +316,50 @@ export async function provisionStage(
 			log,
 		});
 		if (entry.report.actions.length === 0) {
+			log('   up to date');
+		}
+	}
+
+	if (backups.mode === 'on' || backups.mode === 'disabled') {
+		const report: KindReport = {
+			kind: 'backups',
+			mode: backups.mode === 'on' ? 'provider' : 'none',
+			actions: [],
+			planned:
+				backups.mode === 'on' && secrets[BACKUPS_URL_KEY] === undefined
+					? [BACKUPS_URL_KEY]
+					: [],
+		};
+		reports.push(report);
+		await ensureStageBackups({
+			workspace,
+			manifest,
+			stage,
+			...(options.profile ? { profile: options.profile } : {}),
+			...(options.home ? { home: options.home } : {}),
+			env,
+			ctx: {
+				identity,
+				stage,
+				state,
+				dryRun,
+				get secrets() {
+					return secrets;
+				},
+				rotateKeys: options.rotateKeys === true,
+				retireOldKeys: options.retireOldKeys === true,
+				async change(action, apply) {
+					if (!dryRun) await apply();
+					report.actions.push(action);
+					log(
+						`   ${dryRun ? 'would ' : ''}${action.change} — ${action.resource}`,
+					);
+				},
+				writeSecrets,
+				log,
+			},
+		});
+		if (backups.mode === 'on' && report.actions.length === 0) {
 			log('   up to date');
 		}
 	}

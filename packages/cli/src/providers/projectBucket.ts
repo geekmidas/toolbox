@@ -116,6 +116,11 @@ export interface PrefixExpiry {
 	prefix: string;
 	/** Days after which a current object expires. */
 	days: number;
+	/**
+	 * Days after which a multipart upload under the prefix that never
+	 * completed is aborted — its parts are stored, and billed, until it is.
+	 */
+	abortIncompleteDays?: number;
 }
 
 /**
@@ -141,9 +146,75 @@ export function projectBucketLifecycle(
 				Status: 'Enabled',
 				Filter: { Prefix: expiry.prefix },
 				Expiration: { Days: expiry.days },
+				...(expiry.abortIncompleteDays
+					? {
+							AbortIncompleteMultipartUpload: {
+								DaysAfterInitiation: expiry.abortIncompleteDays,
+							},
+						}
+					: {}),
 			}),
 		),
 	];
+}
+
+/** A lifecycle rule reduced to what gkm sets, for comparing with what is there. */
+function canonicalRule(rule: LifecycleRule): string {
+	return JSON.stringify({
+		id: rule.ID ?? '',
+		status: rule.Status ?? '',
+		prefix: rule.Filter?.Prefix ?? rule.Prefix ?? '',
+		days: rule.Expiration?.Days ?? null,
+		markers: rule.Expiration?.ExpiredObjectDeleteMarker ?? null,
+		noncurrent: rule.NoncurrentVersionExpiration?.NoncurrentDays ?? null,
+		abort: rule.AbortIncompleteMultipartUpload?.DaysAfterInitiation ?? null,
+	});
+}
+
+/** Whether two rule sets say the same thing, in any order. */
+export function sameLifecycle(
+	a: readonly LifecycleRule[],
+	b: readonly LifecycleRule[],
+): boolean {
+	const canonical = (rules: readonly LifecycleRule[]) =>
+		rules.map(canonicalRule).sort().join('\n');
+	return canonical(a) === canonical(b);
+}
+
+/**
+ * The project bucket's lifecycle put to {@link projectBucketLifecycle} of
+ * `expiries` — every stage's — when what it holds says anything else.
+ * Returns whether it was put; with `dryRun`, whether it would be.
+ */
+export async function reconcileProjectBucketLifecycle(
+	s3: S3Client,
+	bucket: string,
+	expiries: readonly PrefixExpiry[],
+	options: { dryRun?: boolean } = {},
+): Promise<boolean> {
+	const S3 = await import('@aws-sdk/client-s3');
+	const rules = projectBucketLifecycle(expiries);
+	let current: LifecycleRule[] = [];
+	try {
+		const out = await s3.send(
+			new S3.GetBucketLifecycleConfigurationCommand({ Bucket: bucket }),
+		);
+		current = out.Rules ?? [];
+	} catch (error) {
+		const failure = error as S3Failure;
+		const code = failure.Code ?? failure.name;
+		if (code !== 'NoSuchLifecycleConfiguration') throw error;
+	}
+	if (sameLifecycle(current, rules)) return false;
+	if (!options.dryRun) {
+		await s3.send(
+			new S3.PutBucketLifecycleConfigurationCommand({
+				Bucket: bucket,
+				LifecycleConfiguration: { Rules: rules },
+			}),
+		);
+	}
+	return true;
 }
 
 interface S3Failure {
@@ -306,4 +377,13 @@ export const PROJECT_BUCKET_CREATE_ACTIONS = [
 	's3:PutBucketOwnershipControls',
 	's3:PutLifecycleConfiguration',
 	's3:PutBucketTagging',
+] as const;
+
+/**
+ * What keeping the project bucket's lifecycle takes on a bucket that exists:
+ * reading it, to put it back only when it drifted.
+ */
+export const PROJECT_BUCKET_LIFECYCLE_ACTIONS = [
+	's3:GetLifecycleConfiguration',
+	's3:PutLifecycleConfiguration',
 ] as const;

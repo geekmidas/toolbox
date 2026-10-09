@@ -1,3 +1,4 @@
+import type { ConstructManifest } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import {
@@ -30,6 +31,18 @@ function workspace(
 		...(parts.dns ? { dns: parts.dns } : {}),
 	} as NormalizedWorkspace;
 }
+
+/** A manifest of `ObjectStorage` constructs. */
+function buckets(...ids: string[]): ConstructManifest {
+	return Object.fromEntries(
+		ids.map((id) => [id, { kind: 'objects' }]),
+	) as unknown as ConstructManifest;
+}
+
+/** A manifest with a database: a compose stage that is backed up. */
+const WITH_DATABASE = {
+	Database: { kind: 'database' },
+} as unknown as ConstructManifest;
 
 describe('deployAccess', () => {
 	it('is --policy-arn whenever it is passed', () => {
@@ -437,7 +450,7 @@ describe('deployAccess', () => {
 				}),
 				'prod',
 				undefined,
-				['Uploads', 'Avatars'],
+				buckets('Uploads', 'Avatars'),
 			);
 
 			if (access.kind !== 'scoped') return expect.unreachable();
@@ -482,7 +495,7 @@ describe('deployAccess', () => {
 					}),
 					'prod',
 					undefined,
-					['Uploads'],
+					buckets('Uploads'),
 				);
 
 				if (access.kind !== 'scoped') return expect.unreachable();
@@ -492,6 +505,82 @@ describe('deployAccess', () => {
 						.flatMap((s) => s.Action)
 						.filter((a) => a.startsWith('s3:') || a.startsWith('iam:')),
 				).toEqual([]);
+			}
+		});
+	});
+
+	describe("the stage's backups", () => {
+		const ssm = { provider: 'ssm', region: 'eu-west-1' } as const;
+
+		it('creates the project bucket, keeps its lifecycle, and the backups user — nothing more', () => {
+			const access = deployAccess(
+				workspace({ target: 'compose', store: ssm }),
+				'prod',
+				undefined,
+				WITH_DATABASE,
+			);
+
+			if (access.kind !== 'scoped') return expect.unreachable();
+			const statements = access.statements('111');
+			expect(statements.map((s) => s.Sid)).toEqual([
+				'StageSecrets',
+				'StageBackupsBucket',
+				'StageBackupsUser',
+			]);
+			expect(statements[1]).toEqual({
+				Sid: 'StageBackupsBucket',
+				Effect: 'Allow',
+				Action: [
+					's3:ListBucket',
+					's3:CreateBucket',
+					's3:PutBucketVersioning',
+					's3:PutEncryptionConfiguration',
+					's3:PutBucketPublicAccessBlock',
+					's3:PutBucketOwnershipControls',
+					's3:PutLifecycleConfiguration',
+					's3:PutBucketTagging',
+					's3:GetLifecycleConfiguration',
+				],
+				Resource: 'arn:aws:s3:::gkm-shop-111',
+			});
+			expect(statements[2]).toEqual({
+				Sid: 'StageBackupsUser',
+				Effect: 'Allow',
+				Action: [
+					'iam:GetUser',
+					'iam:CreateUser',
+					'iam:TagUser',
+					'iam:ListUserTags',
+					'iam:GetUserPolicy',
+					'iam:PutUserPolicy',
+					'iam:ListAccessKeys',
+					'iam:CreateAccessKey',
+					'iam:DeleteAccessKey',
+				],
+				Resource: 'arn:aws:iam::111:user/gkm/gkm-shop-prod-backups',
+			});
+			// Never a read of the backups themselves.
+			expect(
+				statements
+					.flatMap((s) => s.Action)
+					.filter((a) => /GetObject|DeleteObject/.test(a)),
+			).toEqual([]);
+		});
+
+		it('grants nothing for backups on a stage set to false, or with no database', () => {
+			for (const [backups, manifest] of [
+				[{ prod: false }, WITH_DATABASE],
+				[undefined, {} as ConstructManifest],
+			] as const) {
+				const ws = workspace({ target: 'compose', store: ssm });
+				if (backups) {
+					(ws.deploy as { backups?: unknown }).backups = backups;
+				}
+				const access = deployAccess(ws, 'prod', undefined, manifest);
+				if (access.kind !== 'scoped') return expect.unreachable();
+				expect(access.statements('111').map((s) => s.Sid)).toEqual([
+					'StageSecrets',
+				]);
 			}
 		});
 	});

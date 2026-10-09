@@ -43,6 +43,7 @@ import { hostname, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { stringify } from 'yaml';
+import { BACKUPS_SERVICE, backupsRoleStatements } from '../../backups/service';
 import {
 	type HostLookup,
 	HostNotPointingAtServer,
@@ -1011,11 +1012,11 @@ async function migrateAndSeed(
 	});
 	if (login.notice) ctx.logger.info(login.notice);
 
-	const statements = postgresStatements(
-		stack.plan,
-		workspace.name,
-		stack.credential.seed,
-	);
+	const statements = [
+		...postgresStatements(stack.plan, workspace.name, stack.credential.seed),
+		// The backups service's own login: it reads, and writes nothing.
+		...(stack.backups ? backupsRoleStatements(stack.backups) : []),
+	];
 	if (statements.length > 0) {
 		ctx.logger.info('🗄️  Creating databases, roles and grants…');
 		await applyPostgres(deps.sql(port, login.login), statements);
@@ -1603,6 +1604,23 @@ async function writeStack(
 			0o600,
 		);
 	}
+	// The backups image's build context, and its key — read from its own env
+	// file like any app's, never from the host.
+	if (stack.backups) {
+		for (const [name, content] of Object.entries(stack.backups.files)) {
+			await write(join(dir, BACKUPS_SERVICE, name), content);
+		}
+		if (stack.compose.services[BACKUPS_SERVICE]?.env_file) {
+			await write(
+				join(dir, `${BACKUPS_SERVICE}.env`),
+				envFile(stack.backups.env),
+				0o600,
+			);
+		}
+	} else {
+		await rm(join(dir, BACKUPS_SERVICE), { recursive: true, force: true });
+		await rm(join(dir, `${BACKUPS_SERVICE}.env`), { force: true });
+	}
 	// Images no longer embed a stage's credentials. The ciphertexts an older
 	// gkm left beside the compose file for them to embed are removed.
 	for (const entry of await readdir(dir)) {
@@ -1653,6 +1671,11 @@ function printPlan(ctx: ComposeContext, run: ComposeRun): void {
 	}
 	if (stack.infra.length > 0) {
 		ctx.logger.info(`   infrastructure: ${stack.infra.join(', ')}`);
+	}
+	if (stack.backups) {
+		ctx.logger.info(
+			`   ${BACKUPS_SERVICE.padEnd(12)} ${stack.backups.databases.map((d) => d.file).join(', ')} — ${stack.backups.backups.describe}, to ${stack.backups.prefix}/`,
+		);
 	}
 	ctx.logger.info(
 		`\n📝 Wrote ${files.length} file(s) under ${stackDir(stack.stage)}/`,

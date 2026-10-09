@@ -782,6 +782,34 @@ gkm state:unlock --stage production
 `pull`, `push` and `diff` need a remote provider (SSM or S3). See
 [Deploy state](./state.md).
 
+### Backups
+
+A deployed compose stage with Postgres is backed up on schedule — see
+[Backups](./compose.md#backups). With the stage account's credentials
+(`--profile`, or the usual AWS variables):
+
+```bash
+# Every run, newest first: when, which databases, how big
+gkm backup:list --stage production
+gkm backup:list --stage production --json
+
+# A backup now: the stack's backups container, through docker exec
+gkm backup:now --stage production
+
+# Restore — asks first, and takes a fresh backup before anything changes
+gkm backup:restore --stage production --latest
+gkm backup:restore --stage production --at 2026-10-10/02-00-00Z
+gkm backup:restore --stage production --at 2026-10-10T12:00:00Z --database auth-database --yes
+```
+
+| Option | |
+| --- | --- |
+| `--at <time>` | A run's folder, or a time: the newest run at or before it |
+| `--latest` | The newest run |
+| `--database <name>` | One database, by its file name (`auth-database`); every one by default |
+| `-y, --yes` | Restore without asking |
+| `--profile <profile>` | AWS profile for the stage's account |
+
 ### Authentication
 
 ```bash

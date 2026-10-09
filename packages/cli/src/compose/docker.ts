@@ -161,6 +161,37 @@ export interface ComposeDocker {
 		command: readonly string[],
 		input?: string,
 	): Promise<ExecResult>;
+	/**
+	 * A compose project's running container for `service` on the engine, by
+	 * its labels — found without the stack's compose file.
+	 */
+	container(
+		engine: DockerEngine,
+		project: string,
+		service: string,
+	): Promise<{ id: string; image: string } | undefined>;
+	/**
+	 * Run `command` once on the engine, in a new container of `image` on
+	 * `network`, removed when it ends, with `stdin` streamed in. Each of `env`
+	 * is passed by name, never on the command line. Resolves with its exit
+	 * code.
+	 */
+	runOnce(
+		engine: DockerEngine,
+		options: {
+			image: string;
+			network: string;
+			command: readonly string[];
+			env?: Readonly<Record<string, string>>;
+			stdin?: NodeJS.ReadableStream;
+			output?: StackRef['output'];
+		},
+	): Promise<number>;
+}
+
+/** The network compose puts a project's services on. */
+export function projectNetwork(project: string): string {
+	return `${project}_default`;
 }
 
 /**
@@ -497,7 +528,75 @@ export const dockerCompose: ComposeDocker = {
 			{ ...options, ...(input === undefined ? {} : { input }) },
 		);
 	},
+
+	async container(engine, project, service) {
+		const env = engineEnv(engine);
+		const { stdout } = await capture(
+			'docker',
+			[
+				'ps',
+				'--filter',
+				`label=com.docker.compose.project=${project}`,
+				'--filter',
+				`label=com.docker.compose.service=${service}`,
+				'--format',
+				'{{.ID}}\t{{.Image}}',
+			],
+			env ? { env } : {},
+		);
+		const [id, image] = stdout.trim().split('\n')[0]?.split('\t') ?? [];
+		return id && image ? { id, image } : undefined;
+	},
+
+	runOnce(engine, options) {
+		return dockerExit(
+			[
+				'run',
+				'--rm',
+				...(options.stdin ? ['-i'] : []),
+				'--network',
+				options.network,
+				...Object.keys(options.env ?? {}).flatMap((name) => ['-e', name]),
+				'--entrypoint',
+				'',
+				options.image,
+				...options.command,
+			],
+			{
+				env: engineEnv(engine, { ...options.env }) ?? process.env,
+				...(options.stdin ? { stdin: options.stdin } : {}),
+				...(options.output ? { output: options.output } : {}),
+			},
+		);
+	},
 };
+
+/** Spawn `docker`, its output where `output` says; resolve with the exit code. */
+function dockerExit(
+	args: readonly string[],
+	options: {
+		env?: NodeJS.ProcessEnv;
+		stdin?: NodeJS.ReadableStream;
+		output?: StackRef['output'];
+	} = {},
+): Promise<number> {
+	const output = STDIO[options.output ?? 'inherit'];
+	const out = Array.isArray(output) ? output : [output, output, output];
+	return new Promise((resolve, reject) => {
+		const child = spawn('docker', [...args], {
+			stdio: [options.stdin ? 'pipe' : 'ignore', out[1], out[2]] as never,
+			env: options.env ?? process.env,
+			shell: false,
+		});
+		if (options.stdin && child.stdin) {
+			options.stdin.on('error', (error) => child.stdin?.destroy(error));
+			child.stdin.on('error', () => {});
+			options.stdin.pipe(child.stdin);
+		}
+		child.on('error', reject);
+		child.on('close', (code) => resolve(code ?? 1));
+	});
+}
 
 /** `docker network create` failed. */
 export class NetworkCreateFailed extends GkmError {

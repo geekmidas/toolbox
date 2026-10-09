@@ -27,6 +27,8 @@ export default defineConfig({
 		'src/sandbox/credentials-worker.ts',
 		'src/sandbox/discover-worker.ts',
 		'src/sandbox/migrate-worker.ts',
+		// Copied into the stack's backups image and run there, alone.
+		'src/backups/runner.ts',
 	],
 	dts: true,
 	format: ['cjs', 'esm'],

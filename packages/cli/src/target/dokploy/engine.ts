@@ -894,7 +894,8 @@ async function provision(run: DokployRun): Promise<void> {
 	// express yet — worth saying rather than backing up one and calling it done.
 	const backupCluster = Object.values(declaredClusters)[0];
 
-	if (workspace.deploy?.backups && backupCluster) {
+	const dokployBackups = workspace.deploy?.dokploy?.backups;
+	if (dokployBackups && backupCluster) {
 		logger.log('\n💾 Provisioning backup destination...');
 
 		const { provisionBackupDestination } = await import(
@@ -906,7 +907,7 @@ async function provision(run: DokployRun): Promise<void> {
 			projectId: project.projectId,
 			projectName: identity.scope,
 			stage,
-			config: workspace.deploy.backups,
+			config: dokployBackups,
 			existingState: getBackupState(state),
 			logger,
 		});
@@ -916,8 +917,8 @@ async function provision(run: DokployRun): Promise<void> {
 
 		// Create backup schedule for postgres if not already configured
 		if (!backupState.postgresBackupId) {
-			const backupSchedule = workspace.deploy.backups.schedule ?? '0 2 * * *';
-			const backupRetention = workspace.deploy.backups.retention ?? 30;
+			const backupSchedule = dokployBackups.schedule ?? '0 2 * * *';
+			const backupRetention = dokployBackups.retention ?? 30;
 
 			logger.log('   Creating postgres backup schedule...');
 			const backup = await api.createPostgresBackup({

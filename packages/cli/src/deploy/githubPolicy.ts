@@ -10,16 +10,22 @@
  * when the deploy state is kept in AWS, the stage's state, and, when the
  * stage's domain is in Route53, the records of its hosted zone, and, when an
  * `s3` provider backs its buckets, those buckets and the IAM user each is
- * reached with — by the names the provider gives them. So a compose stage
- * gets an inline policy naming exactly those resources and nothing else.
+ * reached with — by the names the provider gives them — and, when it runs
+ * Postgres, the project bucket its backups go to and the backups user. So a
+ * compose stage gets an inline policy naming exactly those resources and
+ * nothing else.
  *
  * `--policy-arn` replaces either.
  */
 
+import type { ConstructManifest } from '@geekmidas/manifest';
+import { stageBackups } from '../backups/config.js';
+import { backupsUserName } from '../backups/provision.js';
 import { stageDnsDomains } from '../compose/dns.js';
 import { stageProvider } from '../providers/config.js';
 import {
 	PROJECT_BUCKET_CREATE_ACTIONS,
+	PROJECT_BUCKET_LIFECYCLE_ACTIONS,
 	projectBucketName,
 } from '../providers/projectBucket.js';
 import {
@@ -87,9 +93,12 @@ export function deployAccess(
 	workspace: NormalizedWorkspace,
 	stage: string,
 	policyArn?: string,
-	/** The ids of the stage's `ObjectStorage` constructs, from its manifest. */
-	buckets: readonly string[] = [],
+	/** The stage's constructs: its buckets, and whether it runs Postgres. */
+	manifest: ConstructManifest = {},
 ): DeployAccess {
+	const buckets = Object.entries(manifest)
+		.filter(([, d]) => d.kind === 'objects')
+		.map(([id]) => id);
 	if (policyArn) {
 		return { kind: 'managed', policyArn, reason: '--policy-arn' };
 	}
@@ -305,6 +314,49 @@ export function deployAccess(
 				Resource: names.map(
 					(n) => `arn:aws:iam::${account}:user${IAM_USER_PATH}${n.user}`,
 				),
+			},
+		]);
+	}
+
+	// The stage's backups: the deploy creates the project bucket if it is not
+	// there, keeps its lifecycle, and creates the backups user and its key.
+	// The role never reads the backups — `gkm backup:list` and `:restore`
+	// run with a person's own credentials.
+	if (stageBackups(workspace, manifest, stage).mode === 'on') {
+		const { scope } = deployIdentity(workspace, stage);
+		const user = backupsUserName(scope, stage);
+		const bucketIn = (account: string) => projectBucketName(scope, account);
+		describe.push(
+			`create the project bucket ${bucketIn('<account>')} and keep its lifecycle, and create the backups user ${user} and its key (S3, IAM)`,
+		);
+		build.push((account) => [
+			{
+				Sid: 'StageBackupsBucket',
+				Effect: 'Allow',
+				Action: [
+					's3:ListBucket',
+					...new Set([
+						...PROJECT_BUCKET_CREATE_ACTIONS,
+						...PROJECT_BUCKET_LIFECYCLE_ACTIONS,
+					]),
+				],
+				Resource: `arn:aws:s3:::${bucketIn(account)}`,
+			},
+			{
+				Sid: 'StageBackupsUser',
+				Effect: 'Allow',
+				Action: [
+					'iam:GetUser',
+					'iam:CreateUser',
+					'iam:TagUser',
+					'iam:ListUserTags',
+					'iam:GetUserPolicy',
+					'iam:PutUserPolicy',
+					'iam:ListAccessKeys',
+					'iam:CreateAccessKey',
+					'iam:DeleteAccessKey',
+				],
+				Resource: `arn:aws:iam::${account}:user${IAM_USER_PATH}${user}`,
 			},
 		]);
 	}

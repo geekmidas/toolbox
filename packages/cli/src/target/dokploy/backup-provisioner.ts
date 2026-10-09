@@ -22,7 +22,7 @@ import {
 	type S3ClientConfig,
 } from '@aws-sdk/client-s3';
 import type { BackupState } from '../../deploy/state.js';
-import type { BackupsConfig } from '../../workspace/types.js';
+import type { DokployBackupsConfig } from '../../workspace/types.js';
 import type { DokployApi } from './dokploy-api.js';
 
 export interface ProvisionBackupOptions {
@@ -35,7 +35,7 @@ export interface ProvisionBackupOptions {
 	/** Deploy stage (e.g., 'production', 'staging') */
 	stage: string;
 	/** Backup configuration */
-	config: BackupsConfig;
+	config: DokployBackupsConfig;
 	/** Existing backup state (if any) */
 	existingState?: BackupState;
 	/** Logger for progress output */
