@@ -159,7 +159,7 @@ build (`gkm compose --build --push`) runs neither: it needs none of the keys.
 
 In the [compose workflow](./compose.md#deploying-from-ci) the deploy runs on
 the server, which should not hold the stage account's credentials. For a
-stage whose secrets are in SSM or Secrets Manager, the runner creates the
+stage whose secrets are in S3, SSM or Secrets Manager, the runner creates the
 resources first (`gkm deploy --stage <stage> --resources-only`, with the
 stage's role) and the server deploys with `--skip-resources`, which runs no
 provider — only `verify()`.

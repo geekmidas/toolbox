@@ -512,6 +512,9 @@ gkm secrets:rotate --stage production --service postgres
 
 # Import secrets from JSON
 gkm secrets:import secrets.json --stage production
+
+# Move a deployed stage into the project bucket (copies, verifies, never deletes)
+gkm secrets:migrate --stage production --to s3
 ```
 
 **Commands:**

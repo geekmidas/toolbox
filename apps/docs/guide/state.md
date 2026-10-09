@@ -43,8 +43,22 @@ export default defineWorkspace({
   name: 'shop',                 // required: state is keyed by workspace name
   // …
   state: { provider: 's3', region: 'eu-west-1' },
+  secrets: { store: { provider: 's3' } }, // the stage's secrets, same bucket
 });
 ```
+
+The project bucket holds everything gkm keeps for a stage:
+
+```
+gkm-<project>-<account id>/
+  gkm/<project>/<stage>/state.json     this guide
+  gkm/<project>/<stage>/lock.json
+  gkm/<project>/<stage>/secrets.json   secrets.store: { provider: 's3' }
+  gkm/<project>/<stage>/backups/…      backups
+```
+
+The `s3` secrets store takes its region and prefix from this state config.
+See [the secrets store on AWS](./deployment.md#one-bucket-for-state-secrets-and-backups).
 
 With no `bucket`, the state lives in the **project bucket**, which gkm creates
 and owns:
@@ -99,6 +113,10 @@ what the state needs (see [the deploy role](./deployment.md#what-the-role-may-do
   `PutEncryptionConfiguration`, `PutBucketPublicAccessBlock`,
   `PutBucketOwnershipControls`, `PutLifecycleConfiguration` and
   `PutBucketTagging` on exactly `arn:aws:s3:::gkm-<project>-<account id>`.
+
+If the secrets are in the same bucket (`secrets: { store: { provider: 's3' } }`),
+the role also gets `s3:GetObject` and `s3:PutObject` on
+`<prefix>/<workspace>/<stage>/secrets.json`, and nothing in SSM.
 
 A developer who runs `gkm deploy` or `gkm state:push` from a laptop needs the
 same in the stage's account: object read and write under the stage's prefix,

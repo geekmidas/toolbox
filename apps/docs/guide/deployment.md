@@ -693,16 +693,53 @@ docker run -e GKM_MASTER_KEY="$(cat .gkm/server/master.key)" my-api:latest
 ### The secrets store on AWS
 
 A deployed stage's secrets live in the store `secrets.store` names (see
-[the secrets store](./dev-server.md#deployed-stages-the-secrets-store)). On
-AWS there are two, and either keeps the whole stage — service passwords, URLs
-and custom keys — as one JSON document in the stage's own account:
+[the secrets store](./dev-server.md#deployed-stages-the-secrets-store)). Each
+store keeps the whole stage — service passwords, URLs and custom keys — as one
+JSON document in the stage's own account.
+
+#### One bucket for state, secrets and backups
+
+The recommended setup keeps everything gkm writes for a stage in the project
+bucket, `gkm-<project>-<account id>`, which the first deploy creates (see
+[the state guide](./state.md#s3-recommended-for-deployed-stages)):
 
 ```typescript
 // gkm.config.ts
+state: { provider: 's3', region: 'eu-west-1' },
+secrets: { store: { provider: 's3' } }, // region and prefix come from state
+```
+
+```
+gkm-<project>-<account>/
+  gkm/<project>/<stage>/state.json     deploy state
+  gkm/<project>/<stage>/secrets.json   the stage's secrets
+  gkm/<project>/<stage>/backups/…      backups
+```
+
+- **Encryption:** SSE-S3. Every write asks for `AES256`, though the bucket
+  already defaults to it. There's no KMS key to manage.
+- **History:** the bucket's versioning keeps every past secrets document, and
+  old versions expire after 90 days.
+- **Size:** no limit, unlike an SSM parameter.
+- **Concurrency:** each write is conditional on the ETag the command read
+  (`If-Match`). If two `secrets:set` runs race, the second one fails with
+  `StageSecretsChanged` and nothing is lost. Run it again.
+- **Creation:** a read never creates the bucket. Until the first write, a stage
+  reads as having no secrets.
+
+To use a bucket that already exists, name it with
+`secrets: { store: { provider: 's3', bucket: 'acme-ops', region: 'eu-west-1' } }`.
+`region` is required only when `state` isn't in S3. `prefix` defaults to the S3
+state's prefix, else `gkm`.
+
+`gkm init --deploy sst` writes this pair. Existing workspaces keep whatever
+store they name: an SSM workspace stays in SSM until you migrate it (below).
+
+#### SSM and Secrets Manager
+
+```typescript
 secrets: { store: { provider: 'ssm', region: 'eu-west-1' } },
-// or
-secrets: { store: { provider: 'secrets-manager', region: 'eu-west-1' } },
-// with a customer-managed key for new secrets
+// or, with a customer-managed key for new secrets
 secrets: {
   store: {
     provider: 'secrets-manager',
@@ -712,32 +749,39 @@ secrets: {
 },
 ```
 
-| | SSM Parameter Store (`'ssm'`) | Secrets Manager (`'secrets-manager'`) |
-|---|---|---|
-| Kept as | `SecureString` parameter `/gkm/<project>/<stage>/secrets` | secret `gkm/<project>/<stage>/secrets` (no leading `/`) |
-| Size | 8 KB. Written in the Intelligent-Tiering tier: standard (free) under 4 KB, advanced past it | 64 KB |
-| Cost | free under 4 KB; an advanced parameter is billed monthly per parameter | billed monthly per secret, plus per 10,000 API calls |
-| Encryption | the account's `aws/ssm` key | the account's `aws/secretsmanager` key, or `kmsKeyId` |
-| Versions | parameter history (`aws ssm get-parameter-history`) | each write is a version; the previous one stays labelled `AWSPREVIOUS` |
-| Rotation | `gkm secrets:rotate` | `gkm secrets:rotate`. Secrets Manager's own Lambda rotation does not apply: the secret is gkm's stage document, not one credential |
-| Deleting | immediate | scheduled, with a 7–30 day recovery window |
+| | S3 (`'s3'`) | SSM Parameter Store (`'ssm'`) | Secrets Manager (`'secrets-manager'`) |
+|---|---|---|---|
+| Kept as | object `<prefix>/<project>/<stage>/secrets.json` in the project bucket | `SecureString` parameter `/gkm/<project>/<stage>/secrets` | secret `gkm/<project>/<stage>/secrets` (no leading `/`) |
+| Size | no limit | 8 KB. Written in the Intelligent-Tiering tier: standard (free) under 4 KB, advanced past it | 64 KB |
+| Cost | S3 storage and requests | free under 4 KB; an advanced parameter is billed monthly per parameter | billed monthly per secret, plus per 10,000 API calls |
+| Encryption | SSE-S3 (`AES256`) | the account's `aws/ssm` key | the account's `aws/secretsmanager` key, or `kmsKeyId` |
+| Versions | bucket versioning, 90 days | parameter history (`aws ssm get-parameter-history`) | each write is a version; the previous one stays labelled `AWSPREVIOUS` |
+| Concurrent writes | refused by ETag (`StageSecretsChanged`) | last write wins | last write wins |
 
-**How to choose.** Use SSM unless a stage outgrows it: it costs nothing for a
-typical stage and is what `gkm init --deploy sst` writes. Choose Secrets
-Manager when a stage holds large third-party credentials — a service-account
-JSON key is 2–3 KB on its own — or when you want its versioning, recovery
-window or a customer-managed KMS key for the secret.
-
-A stage too large for its store is refused before AWS is called, with
-`StageSecretsTooLarge` naming the stage, its size and the limit (8 KB for SSM,
-64 KB for Secrets Manager); nothing is written. On SSM the message points at
-Secrets Manager.
+SSM and Secrets Manager refuse a stage that's too large for them before AWS is
+called. The error is `StageSecretsTooLarge`, naming the stage, its size and the
+limit (8 KB for SSM, 64 KB for Secrets Manager), and nothing is written. On SSM
+the message points at S3.
 
 #### IAM for the secrets store
 
-The credentials that run `gkm secrets:*` and `gkm deploy` for a
-stage — a developer's profile, or the deploy job's role — need, in that stage's
-account:
+The credentials that run `gkm secrets:*` and `gkm deploy` for a stage need the
+following permissions in that stage's account. Those credentials are either a
+developer's profile or the deploy job's role. The server needs none, because it
+never reads AWS.
+
+**S3**: the one object, plus `s3:ListBucket` on the bucket, so that a stage
+with no secrets yet returns 404 rather than 403. In the project bucket, the
+first writer also needs the bucket-creation actions listed in
+[the state guide](./state.md#permissions):
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["s3:GetObject", "s3:PutObject"],
+  "Resource": "arn:aws:s3:::gkm-<project>-<account>/gkm/<project>/<stage>/secrets.json"
+}
+```
 
 **SSM**
 
@@ -749,7 +793,7 @@ account:
 }
 ```
 
-**Secrets Manager** — the `-*` matches the six random characters AWS appends to
+**Secrets Manager**: the `-*` matches the six random characters AWS appends to
 a secret's ARN:
 
 ```json
@@ -765,33 +809,48 @@ a secret's ARN:
 }
 ```
 
-With a customer-managed key (`kmsKeyId`), the same credentials also need
-`kms:Decrypt`, `kms:Encrypt` and `kms:GenerateDataKey` on that key. The
-AWS-managed keys need no key policy of yours. Use `<stage>` as `*` to grant
-every stage of a project in that account.
+A customer-managed key (`kmsKeyId`) also needs `kms:Decrypt`, `kms:Encrypt` and
+`kms:GenerateDataKey` on that key.
+
+`gkm deploy:github` grants a compose stage's CI role exactly the statements for
+the store you configured. For S3, that's `StageSecrets`: `s3:GetObject` and
+`s3:PutObject` on `secrets.json`. If the state is in another bucket or
+elsewhere, it also gets `StageSecretsBucket` and the `ProjectBucket` creation
+actions. SSM actions are never added beside it.
 
 #### Switching stores
 
-`gkm secrets:migrate` copies a deployed stage, whole, from the store
-`secrets.store` names to another — nothing is regenerated, so running services
-keep their passwords:
+`gkm secrets:migrate` copies a whole deployed stage from the store
+`secrets.store` names to another one. Nothing is regenerated, so running
+services keep their passwords. The command then reads the copy back and
+compares every key and value. It never deletes the source. Instead, it prints
+the command that would.
 
 ```bash
-# 1. Copy prod from the configured store (here SSM) to Secrets Manager
-AWS_PROFILE=acme-prod gkm secrets:migrate --stage prod --to secrets-manager
+# 1. Copy prod from the configured store (here SSM) into the project bucket,
+#    from your laptop's credentials for the stage's account
+AWS_PROFILE=acme-prod gkm secrets:migrate --stage prod --to s3
+#   ✓ Copied the secrets for stage "prod" from ssm to s3
+#     Verified: 14 keys read back from s3, equal.
+#     Next: set secrets.store to { provider: 's3' } in gkm.config.ts …
+#     … delete it with:
+#       aws ssm delete-parameter --name /gkm/shop/prod/secrets --region eu-west-1 --profile acme-prod
 
 # 2. Point gkm.config.ts at the new store
-#    secrets: { store: { provider: 'secrets-manager', region: 'eu-west-1' } }
+#    secrets: { store: { provider: 's3' } }
 
-# 3. Check that commands now read it
+# 3. Check that commands now read it, deploy, then run the printed delete
 AWS_PROFILE=acme-prod gkm secrets:show --stage prod
 ```
 
-The target's region defaults to the configured store's; pass `--region` for
-another, or when moving off the `'file'` store. A target that already holds the
-stage is refused with `MigrateTargetHoldsStage` unless `--force` is given. The
-source is left as it was: delete the old parameter or secret once deploys read
-from the new store. Run it once per deployed stage.
+The command is safe to repeat. If the target already holds the same secrets, it
+writes nothing and checks the copy again. If the target holds different
+secrets, it refuses with `MigrateTargetHoldsStage` unless you pass `--force`.
+
+For `s3`, the region comes from the S3 state, else from the configured store.
+For the other stores, it comes from the configured store. Pass `--region` to
+choose another. Run the migration once per deployed stage, then rerun
+`gkm deploy:github` so the CI role's policy follows the store.
 
 ---
 

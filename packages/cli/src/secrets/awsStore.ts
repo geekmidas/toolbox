@@ -1,7 +1,8 @@
 /**
- * What the two AWS secrets stores share: how a client finds its credentials,
- * what it says when it has none, and how big a stage may be before AWS would
- * refuse it.
+ * What the AWS secrets stores share: how a client finds its credentials, what
+ * it says when it has none, and — for SSM and Secrets Manager, which hold a
+ * stage in one value of a fixed size — how big a stage may be before AWS
+ * would refuse it. S3 has no such limit.
  */
 
 import { GkmError } from '../errors';
@@ -58,7 +59,7 @@ export class StageSecretsTooLarge extends GkmError {
 		super(
 			`The secrets for stage "${stage}" are ${bytes} bytes, more than the ${limit} bytes ${store} holds in one ${store === 'ssm' ? 'parameter' : 'secret'}. ` +
 				(store === 'ssm'
-					? `Keep them in Secrets Manager instead, which holds up to 64 KB: set secrets.store to { provider: 'secrets-manager', region } in gkm.config.ts, then move the stage with gkm secrets:migrate --stage ${stage} --from ssm.`
+					? `Keep them in S3 instead, which has no such limit: copy the stage with gkm secrets:migrate --stage ${stage} --to s3, then set secrets.store to { provider: 's3' } in gkm.config.ts.`
 					: 'Remove credentials the stage no longer uses, or keep the largest ones somewhere they are fetched from at runtime.'),
 		);
 		this.name = 'StageSecretsTooLarge';
@@ -84,6 +85,7 @@ export function serializeWithin(
 const AWS_STORES: Record<string, string> = {
 	ssm: 'SSM Parameter Store',
 	'secrets-manager': 'Secrets Manager',
+	s3: 'S3',
 };
 
 /** Why the stage's account could not be reached. */
@@ -91,7 +93,7 @@ export type StageSecretsUnreadableReason = 'no-credentials' | 'expired';
 
 export interface StageSecretsUnreadableInput {
 	stage: string;
-	/** The store's name: `ssm`, `secrets-manager`. */
+	/** The store's name: `ssm`, `secrets-manager`, `s3`. */
 	store: string;
 	/** The AWS profile the credentials were looked up with, where one was. */
 	profile?: string;

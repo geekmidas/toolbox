@@ -95,7 +95,7 @@ jobs:
           password: \${{ secrets.GITHUB_TOKEN }}
 
       # A site's public URLs are built into it, so the build reads the stage's
-      # secrets store. With secrets.store on SSM or Secrets Manager the job
+      # secrets store. With secrets.store on S3, SSM or Secrets Manager the job
       # assumes the stage's role (AWS_ROLE_ARN, set by gkm deploy:github);
       # with the default 'file' store there is no role to assume.
       - name: Assume the stage's AWS role

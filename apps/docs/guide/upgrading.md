@@ -12,6 +12,37 @@ gkm upgrade --all
 `10.0.0-alpha.x` project), never goes backwards, and with `--all` also raises
 third-party packages to the floor of the peer ranges the new version declares.
 
+## Secrets in the project bucket {#secrets-in-the-project-bucket}
+
+A stage's secrets can now live in the project bucket, next to its deploy state
+and backups. In that bucket, each stage's secrets are one object,
+`gkm/<project>/<stage>/secrets.json`, encrypted with SSE-S3 and versioned. There
+is no size limit and no KMS key to manage:
+
+```ts
+state: { provider: 's3', region: 'eu-west-1' },
+secrets: { store: { provider: 's3' } }, // region and prefix from state
+```
+
+**Nothing changes on its own.** A workspace keeps the store it names. Only
+`gkm init --deploy sst` now writes the pair above in place of
+`{ provider: 'ssm', region }`. To move an existing stage:
+
+1. Copy, read back and compare (the source isn't touched):
+   `gkm secrets:migrate --stage <stage> --to s3`
+2. Set `secrets: { store: { provider: 's3' } }` in `gkm.config.ts`.
+3. Re-run `gkm deploy:github --stage <stage>`. The CI role's `StageSecrets`
+   statement becomes `s3:GetObject` and `s3:PutObject` on `secrets.json` in
+   place of `ssm:GetParameter` and `ssm:PutParameter`.
+4. Once a deploy has read S3, run the delete command that step 1 printed
+   (`aws ssm delete-parameter …`).
+
+Writes to S3 are conditional. When two `secrets:set` runs race, the second one
+fails with `StageSecretsChanged`. Run it again.
+
+When an SSM stage outgrows 8 KB, `StageSecretsTooLarge` now points at
+`secrets:migrate --to s3`.
+
 ## After 10.0.0-alpha.91: the deploy creates a stage's resources {#deploy-resources}
 
 A deployed stage's resources — a [provider's](/guide/providers) buckets, IAM
@@ -76,7 +107,7 @@ them: run no provider, write or check no DNS record). Together they are
   `gkm deploy --stage "$STAGE" --resources-only`, then `--skip-resources` on
   the server's `gkm compose`. See
   [Deploying from CI](/guide/compose#deploying-from-ci). Only stages whose
-  secrets are in SSM or Secrets Manager are in `resources`.
+  secrets are in S3, SSM or Secrets Manager are in `resources`.
 - **The role.** Re-run `gkm deploy:github --stage <stage>` so a compose
   stage's policy also allows its `s3` provider's buckets and IAM users and its
   `route53` domain's records. See

@@ -516,7 +516,7 @@ ${workspaceConstructsGlobs(options.routesStructure, dirname(options.apiPath))
 	.join('\n')}
   ],
 
-  secrets: {
+${stateBlock(options)}  secrets: {
     enabled: true,${secretsStore(options)}
   },
 });
@@ -548,17 +548,33 @@ function deployBlock(options: TemplateOptions): string {
 }
 
 /**
- * Where a deployed stage's secrets live. On AWS that is SSM in the stage's own
- * account, which the deploy job reaches with the role it already assumed; a
- * server target keeps the encrypted local file, the default.
+ * Where a deployed stage's deploy state lives: on AWS, the project bucket —
+ * one bucket per project and account, created by the first deploy — which
+ * the stage's secrets share.
+ */
+function stateBlock(options: TemplateOptions): string {
+	if (options.deployTarget !== 'sst' || !options.region) return '';
+	return `  // Deploy state, secrets and backups share one bucket per project and
+  // account, gkm-<project>-<account id>, created by the first deploy:
+  // versioned, encrypted, never public.
+  state: { provider: 's3', region: '${options.region}' },
+
+`;
+}
+
+/**
+ * Where a deployed stage's secrets live. On AWS that is the project bucket,
+ * beside the deploy state, in the stage's own account, which the deploy job
+ * reaches with the role it already assumed; a server target keeps the
+ * encrypted local file, the default.
  */
 function secretsStore(options: TemplateOptions): string {
 	if (options.deployTarget !== 'sst' || !options.region) return '';
 	return `
-    // Deployed stages keep their secrets in SSM, in the account each stage
-    // deploys to: \`gkm secrets:set <KEY> '…' --stage <stage>\` writes there.
-    // Past 8 KB a stage needs { provider: 'secrets-manager', region } instead.
-    store: { provider: 'ssm', region: '${options.region}' },`;
+    // Deployed stages keep their secrets in the project bucket, beside the
+    // state, in the account each stage deploys to:
+    // \`gkm secrets:set <KEY> '…' --stage <stage>\` writes there.
+    store: { provider: 's3' },`;
 }
 
 /**

@@ -209,7 +209,7 @@ describe('AwsSecretsStore tiers', () => {
 		expect(await store.read('prod')).toEqual(secrets);
 	});
 
-	it('suggests Secrets Manager for a stage SSM cannot hold', async () => {
+	it('suggests S3 for a stage SSM cannot hold', async () => {
 		const store = new AwsSecretsStore({
 			project: project(),
 			region: 'us-east-1',
@@ -217,7 +217,7 @@ describe('AwsSecretsStore tiers', () => {
 
 		await expect(
 			store.write('prod', stageOfSize(SSM_PARAMETER_LIMIT + 100)),
-		).rejects.toThrow(/secrets-manager/);
+		).rejects.toThrow(/secrets:migrate --stage prod --to s3/);
 	});
 });
 

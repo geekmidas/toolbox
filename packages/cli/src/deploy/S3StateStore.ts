@@ -66,7 +66,7 @@ interface S3Failure {
 
 /** A conditional write that lost: the object is not what the write assumed. */
 function lostRace(error: unknown): boolean {
-	const { name, $metadata } = (error ?? {}) as S3Failure;
+	const { name, $metadata } = error as S3Failure;
 	return (
 		name === 'PreconditionFailed' ||
 		name === 'ConditionalRequestConflict' ||
@@ -76,7 +76,7 @@ function lostRace(error: unknown): boolean {
 }
 
 function notFound(error: unknown): boolean {
-	const { name, $metadata } = (error ?? {}) as S3Failure;
+	const { name, $metadata } = error as S3Failure;
 	return (
 		name === 'NoSuchKey' ||
 		name === 'NotFound' ||
@@ -149,8 +149,10 @@ export class S3StateStore extends DocumentStateStore {
 			options.endpoint ??
 			process.env.AWS_ENDPOINT_URL_S3 ??
 			process.env.AWS_ENDPOINT_URL;
+		// The region the project bucket is created in is the one it is reached in.
+		const region = options.region ?? process.env.AWS_REGION ?? 'us-east-1';
 		const config: S3ClientConfig = {
-			region: options.region,
+			region,
 			endpoint,
 			// The emulator serves buckets by path, not by subdomain.
 			forcePathStyle: endpoint ? true : undefined,
@@ -176,9 +178,9 @@ export class S3StateStore extends DocumentStateStore {
 					},
 					'',
 				),
-				region: options.region ?? process.env.AWS_REGION ?? 'us-east-1',
+				region,
 				sts: new STSClient({
-					region: config.region,
+					region,
 					...(options.endpoint ? { endpoint: options.endpoint } : {}),
 					...(config.credentials ? { credentials: config.credentials } : {}),
 				}),

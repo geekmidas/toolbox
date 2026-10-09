@@ -102,7 +102,7 @@ export interface TargetOptionsSchema<Output = unknown> {
  * would print one prints `***` instead, in the terminal and in the events.
  */
 export interface DeploySecrets {
-	/** Which kind of store holds them — `'file'`, `'ssm'`, `'secrets-manager'`, or
+	/** Which kind of store holds them — `'file'`, `'s3'`, `'ssm'`, `'secrets-manager'`, or
 	 * a custom one's. */
 	readonly store: string;
 	/** The stage's secrets, or null when it has none yet. */
