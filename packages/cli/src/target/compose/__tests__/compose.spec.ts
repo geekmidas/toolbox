@@ -15,6 +15,7 @@ import {
 import {
 	answering,
 	fakeDocker,
+	fakeServer,
 } from '../../../compose/__tests__/__helpers__/fakeDocker';
 import {
 	HostNotPointingAtServer,
@@ -96,6 +97,7 @@ describe("the stage's migrations and seeds", { timeout: RUN_TIMEOUT }, () => {
 				compose: composeTarget({
 					...quiet(),
 					docker: fake.docker,
+					server: fakeServer([]),
 					probe: answering(fake.calls),
 					...deps,
 				}),
@@ -202,6 +204,7 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 				compose: composeTarget({
 					...quiet(),
 					docker: fake.docker,
+					server: fakeServer([]),
 					probe: answering(fake.calls),
 				}),
 			},
@@ -313,6 +316,7 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 				compose: composeTarget({
 					...quiet(),
 					docker: fake.docker,
+					server: fakeServer([]),
 					healthAttempts: 2,
 					probe: async ({ url }) => (url.includes('api.') ? 502 : 200),
 				}),
@@ -357,6 +361,7 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 					...quiet(),
 					env: { GKM_COMPOSE_LOGS_PORT: '5099' },
 					docker: fake.docker,
+					server: fakeServer([]),
 					probe: answering(fake.calls),
 				}),
 			},
@@ -467,6 +472,7 @@ describe('the DNS check', { timeout: RUN_TIMEOUT }, () => {
 					...quiet(),
 					lookup,
 					docker: fake.docker,
+					server: fakeServer([]),
 					probe: answering(fake.calls),
 				}),
 			},
@@ -554,6 +560,7 @@ describe('the DNS check', { timeout: RUN_TIMEOUT }, () => {
 						return [];
 					},
 					docker: fake.docker,
+					server: fakeServer([]),
 					probe: answering(fake.calls),
 				}),
 			},
@@ -585,6 +592,7 @@ describe("the stage's deploy state", { timeout: RUN_TIMEOUT }, () => {
 				compose: composeTarget({
 					...quiet(),
 					docker: fake.docker,
+					server: fakeServer([]),
 					probe: answering(fake.calls),
 				}),
 			},
@@ -678,6 +686,7 @@ describe("the stage's deploy state", { timeout: RUN_TIMEOUT }, () => {
 				compose: composeTarget({
 					...quiet(),
 					docker: fake.docker,
+					server: fakeServer([]),
 					probe: answering(fake.calls),
 				}),
 			},
@@ -740,6 +749,7 @@ describe(
 					compose: composeTarget({
 						...quiet(),
 						docker: fake.docker,
+						server: fakeServer(fake.calls),
 						probe: answering(fake.calls),
 					}),
 				},

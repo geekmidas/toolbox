@@ -156,7 +156,7 @@ export class ProvisionedBucketUnreachable extends GkmError {
 			`The bucket '${bucket}' (${id}) cannot be reached with the key in the ` +
 				`stage '${stage}''s secrets: ${reason}. Deploy '${stage}' with the ` +
 				"stage account's credentials (gkm deploy --stage " +
-				`${stage}), which creates or repairs it — a run with --skip-resources does not.`,
+				`${stage}), which creates or repairs it.`,
 		);
 		this.name = 'ProvisionedBucketUnreachable';
 	}

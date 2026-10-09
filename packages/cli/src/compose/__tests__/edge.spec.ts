@@ -32,10 +32,11 @@ import { portHolders, publishedPorts } from '../docker';
 import {
 	assertEdgePorts,
 	ComposeProxyClash,
-	edgeDir,
+	EdgeWriteFailed,
+	edgeRef,
 	ensureEdge,
 	removeEdgeRoutes,
-	routesFile,
+	routesPath,
 	writeEdgeRoutes,
 } from '../edge';
 import { ComposeTlsFileMissing, composeCommand } from '../index';
@@ -58,6 +59,7 @@ import {
 import {
 	loadComposeApp,
 	resolvesHere,
+	SERVER_IPV4,
 	serveFrom,
 	writeComposeApp,
 } from './__helpers__/composeApp';
@@ -66,7 +68,7 @@ import {
 const signedIn: NonNullable<Parameters<typeof composeCommand>[1]>['logins'] =
 	async ({ login }) => ({ service: 'postgres', status: 'current', login });
 
-import { fakeDocker } from './__helpers__/fakeDocker';
+import { edgeOnDisk, fakeDocker, fakeServer } from './__helpers__/fakeDocker';
 
 /** The routes of a stack with every kind of host: apps, a bucket, logs. */
 const ROUTES: EdgeRoute[] = [
@@ -327,7 +329,6 @@ describe('the edge', () => {
 
 	it('runs the pinned image on the shared network, with its ACME state on a volume', () => {
 		const compose = edgeCompose({
-			dir: '/home/deploy/.gkm/edge',
 			ports: { https: 443, http: 80 },
 			staticConfig: 'x',
 			logging: { driver: 'json-file', options: {} },
@@ -336,25 +337,31 @@ describe('the edge', () => {
 			services: { traefik: Record<string, unknown> };
 			networks: unknown;
 			volumes: unknown;
+			configs: unknown;
 		};
 
 		expect(compose.name).toBe(EDGE_PROJECT);
 		expect(compose.services.traefik.image).toBe(TRAEFIK_IMAGE);
 		expect(TRAEFIK_IMAGE).toMatch(/^traefik:v3\.\d+\.\d+$/);
 		expect(compose.services.traefik.ports).toEqual(['443:443', '80:80']);
+		// Nothing mounted from a path: the deploy runs where the server is
+		// not, so everything is a volume on the server or inline.
 		expect(compose.services.traefik.volumes).toEqual([
-			'/home/deploy/.gkm/edge/traefik.yml:/etc/traefik/traefik.yml:ro',
-			'/home/deploy/.gkm/edge/dynamic:/etc/gkm-edge/dynamic:ro',
-			'/home/deploy/.gkm/edge/certs:/etc/gkm-edge/certs:ro',
+			'dynamic:/etc/gkm-edge/dynamic',
+			'certs:/etc/gkm-edge/certs',
 			'acme:/acme',
 		]);
+		expect(compose.services.traefik.configs).toEqual([
+			{ source: 'traefik', target: '/etc/traefik/traefik.yml' },
+		]);
+		expect(compose.configs).toEqual({ traefik: { content: 'x' } });
 		expect(compose.networks).toEqual({
 			edge: { name: EDGE_NETWORK, external: true },
 		});
-		expect(compose.volumes).toEqual({ acme: {} });
+		expect(compose.volumes).toEqual({ acme: {}, dynamic: {}, certs: {} });
 	});
 
-	describe('on disk and in Docker', () => {
+	describe('through the engine', () => {
 		let dir: string;
 		beforeEach(async () => {
 			dir = realpathSync(await createTempDir('gkm-edge-'));
@@ -363,63 +370,67 @@ describe('the edge', () => {
 			await cleanupDir(dir);
 		});
 
-		it('creates its network, writes its files, and starts it', async () => {
+		it('creates its network and starts it on the engine, from a file written here', async () => {
 			const { docker, calls } = fakeDocker();
 			const logging = { driver: 'json-file', options: {} };
+			const file = join(dir, 'gkm-edge.yml');
+			const host = 'ssh://deploy@203.0.113.10';
 
 			await ensureEdge(docker, {
-				dir,
+				file,
 				ports: { https: 443, http: 80 },
 				logging,
+				host,
 			});
 
 			expect(calls).toEqual([
-				{ op: 'network', args: EDGE_NETWORK },
-				{ op: 'up', args: ['traefik'], edge: true },
+				{ op: 'network', args: EDGE_NETWORK, host },
+				{ op: 'up', args: ['traefik'], edge: true, host },
 			]);
-			expect(
-				parse(readFileSync(join(dir, 'docker-compose.yml'), 'utf-8')).name,
-			).toBe(EDGE_PROJECT);
-			expect(
-				parse(readFileSync(join(dir, 'traefik.yml'), 'utf-8')).providers,
-			).toEqual({ file: { directory: '/etc/gkm-edge/dynamic', watch: true } });
-			expect(existsSync(join(dir, 'dynamic'))).toBe(true);
-			expect(statSync(join(dir, 'certs')).mode & 0o777).toBe(0o700);
+			const compose = parse(readFileSync(file, 'utf-8'));
+			expect(compose.name).toBe(EDGE_PROJECT);
+			expect(parse(compose.configs.traefik.content).providers).toEqual({
+				file: { directory: '/etc/gkm-edge/dynamic', watch: true },
+			});
 
-			// A second run with the same ports leaves the files as they were.
-			const before = statSync(join(dir, 'docker-compose.yml')).mtimeMs;
+			// A second run with the same ports leaves the file as it was.
+			const before = statSync(file).mtimeMs;
 			await ensureEdge(docker, {
-				dir,
+				file,
 				ports: { https: 443, http: 80 },
 				logging,
 			});
-			expect(statSync(join(dir, 'docker-compose.yml')).mtimeMs).toBe(before);
+			expect(statSync(file).mtimeMs).toBe(before);
 
 			// Moved ports change its configuration — and the label that
 			// recreates it.
-			const label = (file: string) =>
-				parse(file).services.traefik.labels['dev.geekmidas.edge.config'];
-			const first = label(
-				readFileSync(join(dir, 'docker-compose.yml'), 'utf-8'),
-			);
+			const label = () =>
+				parse(readFileSync(file, 'utf-8')).services.traefik.labels[
+					'dev.geekmidas.edge.config'
+				];
+			const first = label();
 			await ensureEdge(docker, {
-				dir,
+				file,
 				ports: { https: 8443, http: 8080 },
 				logging,
 			});
-			expect(
-				label(readFileSync(join(dir, 'docker-compose.yml'), 'utf-8')),
-			).not.toBe(first);
+			expect(label()).not.toBe(first);
 		});
 
 		it("writes a stack's file whole, with its certificate first, and removes both", async () => {
+			const volumes = join(dir, 'edge');
+			const { docker, calls } = fakeDocker({ exec: edgeOnDisk(volumes) });
+			const edge = edgeRef(join(dir, 'gkm-edge.yml'), {
+				host: 'ssh://deploy@203.0.113.10',
+			});
 			const source = join(dir, 'source');
 			mkdirSync(source);
 			writeFileSync(join(source, 'cert.pem'), 'CERT');
 			writeFileSync(join(source, 'key.pem'), 'KEY');
 
 			const files = await writeEdgeRoutes(
-				dir,
+				docker,
+				edge,
 				'shop-production',
 				'http: {}\n',
 				{
@@ -428,38 +439,75 @@ describe('the edge', () => {
 				},
 			);
 
-			expect(files.at(-1)).toBe(routesFile(dir, 'shop-production'));
-			expect(readFileSync(routesFile(dir, 'shop-production'), 'utf-8')).toBe(
-				'http: {}\n',
-			);
+			expect(files.at(-1)).toBe(routesPath('shop-production'));
+			// Every write went to the edge's container on the server's engine,
+			// the certificate before the routes.
+			const written = calls
+				.filter((call) => call.op === 'exec')
+				.map((call) => {
+					const { service, command } = call.args as {
+						service: string;
+						command: string[];
+					};
+					expect(service).toBe('traefik');
+					expect(call.host).toBe('ssh://deploy@203.0.113.10');
+					return command[4];
+				});
+			expect(written).toEqual([
+				'/etc/gkm-edge/certs/shop-production.crt',
+				'/etc/gkm-edge/certs/shop-production.key',
+				'/etc/gkm-edge/dynamic/shop-production.yml',
+			]);
 			expect(
-				readFileSync(join(dir, 'certs', 'shop-production.crt'), 'utf-8'),
+				readFileSync(join(volumes, 'dynamic', 'shop-production.yml'), 'utf-8'),
+			).toBe('http: {}\n');
+			expect(
+				readFileSync(join(volumes, 'certs', 'shop-production.crt'), 'utf-8'),
 			).toBe('CERT');
 			expect(
-				statSync(join(dir, 'certs', 'shop-production.key')).mode & 0o777,
+				statSync(join(volumes, 'certs', 'shop-production.key')).mode & 0o777,
 			).toBe(0o600);
 			// Nothing half written is left for the edge to read.
-			expect(readdirSync(join(dir, 'dynamic'))).toEqual([
+			expect(readdirSync(join(volumes, 'dynamic'))).toEqual([
 				'shop-production.yml',
 			]);
 
-			expect(await removeEdgeRoutes(dir, 'shop-production')).toBe(true);
-			expect(readdirSync(join(dir, 'dynamic'))).toEqual([]);
-			expect(readdirSync(join(dir, 'certs'))).toEqual([]);
-			expect(await removeEdgeRoutes(dir, 'shop-production')).toBe(false);
+			expect(await removeEdgeRoutes(docker, edge, 'shop-production')).toBe(
+				true,
+			);
+			expect(readdirSync(join(volumes, 'dynamic'))).toEqual([]);
+			expect(readdirSync(join(volumes, 'certs'))).toEqual([]);
+			expect(await removeEdgeRoutes(docker, edge, 'shop-production')).toBe(
+				false,
+			);
 		});
 
 		it('leaves every other stack registered', async () => {
-			await writeEdgeRoutes(dir, 'a-production', 'http: {}\n');
-			await writeEdgeRoutes(dir, 'b-staging', 'http: {}\n');
+			const volumes = join(dir, 'edge');
+			const { docker } = fakeDocker({ exec: edgeOnDisk(volumes) });
+			const edge = edgeRef(join(dir, 'gkm-edge.yml'));
+			await writeEdgeRoutes(docker, edge, 'a-production', 'http: {}\n');
+			await writeEdgeRoutes(docker, edge, 'b-staging', 'http: {}\n');
 
-			await removeEdgeRoutes(dir, 'a-production');
+			await removeEdgeRoutes(docker, edge, 'a-production');
 
-			expect(readdirSync(join(dir, 'dynamic'))).toEqual(['b-staging.yml']);
+			expect(readdirSync(join(volumes, 'dynamic'))).toEqual(['b-staging.yml']);
 		});
 
-		it('lives in the gkm home', () => {
-			expect(edgeDir({ GKM_HOME: dir })).toBe(join(dir, 'edge'));
+		it('says so when the edge is not running to be written to', async () => {
+			const { docker } = fakeDocker({
+				exec: () => ({
+					code: null,
+					stdout: '',
+					stderr: 'traefik is not running',
+				}),
+			});
+			const edge = edgeRef(join(dir, 'gkm-edge.yml'));
+
+			await expect(
+				writeEdgeRoutes(docker, edge, 'a-production', 'http: {}\n'),
+			).rejects.toBeInstanceOf(EdgeWriteFailed);
+			expect(await removeEdgeRoutes(docker, edge, 'a-production')).toBe(false);
 		});
 	});
 });
@@ -504,6 +552,7 @@ describe('a clash over the edge ports', () => {
 			project: 'shop-production',
 			proxy: 'traefik',
 			ports,
+			engine: {},
 		}).catch((e: unknown) => e);
 
 		expect(error).toBeInstanceOf(ComposeProxyClash);
@@ -530,6 +579,7 @@ describe('a clash over the edge ports', () => {
 			project: 'shop-production',
 			proxy: 'caddy',
 			ports,
+			engine: {},
 		}).catch((e: unknown) => e);
 
 		expect(error).toBeInstanceOf(ComposeProxyClash);
@@ -546,6 +596,7 @@ describe('a clash over the edge ports', () => {
 			project: 'shop-production',
 			proxy: 'traefik',
 			ports,
+			engine: {},
 		});
 		const caddy = fakeDocker({
 			holders: {
@@ -556,6 +607,7 @@ describe('a clash over the edge ports', () => {
 			project: 'shop-production',
 			proxy: 'caddy',
 			ports,
+			engine: {},
 		});
 	});
 });
@@ -807,15 +859,19 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 		await cleanupDir(home);
 	});
 
+	/** The edge's volumes, on the server — here, a directory. */
+	const volumes = () => join(home, 'edge');
+
 	const release = async (
-		holders: Parameters<typeof fakeDocker>[0]['holders'] = {},
+		holders: NonNullable<Parameters<typeof fakeDocker>[0]>['holders'] = {},
 	) => {
-		const fake = fakeDocker({ registry, holders });
+		const fake = fakeDocker({ registry, holders, exec: edgeOnDisk(volumes()) });
 		const result = await composeCommand(
 			{ cwd: dir, stage: 'production', tag: 'v1.4.0' },
 			{
 				lookup: resolvesHere,
 				docker: fake.docker,
+				server: fakeServer([]),
 				probe: async (request) => {
 					fake.calls.push({ op: 'probe', args: request });
 					return 200;
@@ -833,16 +889,22 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 	it('starts the edge before the stack, registers after it is up, and asks through the edge', async () => {
 		const { calls, ops } = await release();
 		const sequence = ops();
+		const host = `ssh://deploy@${SERVER_IPV4}`;
 
-		// The network and the edge first, then the infrastructure.
+		// The network and the edge first, then the infrastructure — all on
+		// the server's engine.
 		expect(sequence.indexOf('network')).toBeLessThan(sequence.indexOf('up'));
 		expect(calls.filter((call) => call.op === 'up')).toEqual([
-			{ op: 'up', args: ['traefik'], edge: true },
-			{ op: 'up', args: ['postgres', 'redis'] },
-			{ op: 'up', args: 'all' },
+			{ op: 'up', args: ['traefik'], edge: true, host },
+			{ op: 'up', args: ['postgres', 'redis'], host },
+			{ op: 'up', args: 'all', host },
 		]);
+		// Registered once the stack is up.
+		expect(sequence.lastIndexOf('up')).toBeLessThan(
+			sequence.lastIndexOf('exec'),
+		);
 
-		const edge = join(home, 'edge');
+		const edge = volumes();
 		const file = parse(
 			readFileSync(
 				join(edge, 'dynamic', 'compose-app-production.yml'),
@@ -865,13 +927,13 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 		expect(existsSync(join(stack, 'traefik.yml'))).toBe(true);
 		expect(existsSync(join(stack, 'Caddyfile'))).toBe(false);
 
-		// Verify asks the edge on this machine, on its port, by each host.
+		// Verify asks the edge on the server, on its port, by each host.
 		const probes = calls
 			.filter((call) => call.op === 'probe')
 			.map((call) => call.args as Record<string, unknown>);
 		expect(probes).toHaveLength(3);
 		for (const probe of probes) {
-			expect(probe).toMatchObject({ connectTo: '127.0.0.1', connectPort: 443 });
+			expect(probe).toMatchObject({ connectTo: SERVER_IPV4, connectPort: 443 });
 		}
 	});
 
@@ -887,7 +949,7 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 		}).catch((e: unknown) => e);
 
 		expect(error).toBeInstanceOf(ComposeProxyClash);
-		expect(existsSync(join(home, 'edge'))).toBe(false);
+		expect(readdirSync(join(volumes(), 'dynamic'))).toEqual([]);
 	});
 
 	it('refuses a certificate file that is not there, before anything is written', async () => {
@@ -902,17 +964,23 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 
 	it('--down stops the stack and unregisters it, leaving the edge and every other stack', async () => {
 		await release();
-		const dynamic = join(home, 'edge', 'dynamic');
+		const dynamic = join(volumes(), 'dynamic');
 		writeFileSync(join(dynamic, 'other-production.yml'), 'http: {}\n');
 
-		const { docker, calls } = fakeDocker();
+		const { docker, calls } = fakeDocker({ exec: edgeOnDisk(volumes()) });
 		await composeCommand(
 			{ cwd: dir, stage: 'production', down: true },
 			{ lookup: resolvesHere, docker },
 		);
 
-		expect(calls).toEqual([{ op: 'down', args: 'compose-app-production' }]);
+		expect(calls.filter((call) => call.op === 'down')).toEqual([
+			{
+				op: 'down',
+				args: 'compose-app-production',
+				host: `ssh://deploy@${SERVER_IPV4}`,
+			},
+		]);
 		expect(readdirSync(dynamic)).toEqual(['other-production.yml']);
-		expect(readdirSync(join(home, 'edge', 'certs'))).toEqual([]);
+		expect(readdirSync(join(volumes(), 'certs'))).toEqual([]);
 	});
 });

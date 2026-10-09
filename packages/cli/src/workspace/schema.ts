@@ -602,6 +602,18 @@ const ComposeWorkspaceConfigSchema = z
 					.strict(),
 			)
 			.optional(),
+		server: z
+			.record(
+				z.string(),
+				z
+					.object({
+						user: z.string().min(1),
+						host: z.string().min(1).optional(),
+						port: z.number().int().min(1).max(65_535).optional(),
+					})
+					.strict(),
+			)
+			.optional(),
 	})
 	// Strict, so a key it no longer takes — `logs`, now a `Telemetry`
 	// construct and `deploy.telemetry` — fails to load rather than being

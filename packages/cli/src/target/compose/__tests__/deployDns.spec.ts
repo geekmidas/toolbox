@@ -20,6 +20,7 @@ import {
 import {
 	answering,
 	fakeDocker,
+	fakeServer,
 } from '../../../compose/__tests__/__helpers__/fakeDocker';
 import { DnsCredentialMissing } from '../../../compose/dns';
 import { composeCommand } from '../../../compose/index';
@@ -121,8 +122,6 @@ async function run(
 		token?: string | null;
 		dryRun?: boolean;
 		skipDns?: boolean;
-		resourcesOnly?: boolean;
-		skipResources?: boolean;
 		lookup?: (host: string) => Promise<string[]>;
 	} = {},
 ) {
@@ -147,6 +146,7 @@ async function run(
 			});
 		},
 		docker: fake.docker,
+		server: fakeServer([]),
 		probe: answering(fake.calls),
 	};
 	const token = options.token === undefined ? TOKEN : options.token;
@@ -159,8 +159,6 @@ async function run(
 		}),
 		...(options.dryRun ? { dryRun: true } : {}),
 		...(options.skipDns ? { skipDns: true } : {}),
-		...(options.resourcesOnly ? { resourcesOnly: true } : {}),
-		...(options.skipResources ? { skipResources: true } : {}),
 		targets: { compose: composeTarget(deps) },
 	});
 	const seen: DeployEvent[] = [];
@@ -331,12 +329,12 @@ describe('the deploy writes its DNS records', { timeout: RUN_TIMEOUT }, () => {
 		expect(error).toBeUndefined();
 		expect(PUTS()).toEqual([]);
 		expect(looked).toEqual([]);
-		// The server's address is a stage secret, so it is masked.
+		// The server's address is in public DNS: it is printed, not masked.
 		expect(logs).toContain(
-			"🌐 DNS for 'production' → *** (dry run — nothing is written)",
+			`🌐 DNS for 'production' → ${SERVER_IPV4} (dry run — nothing is written)`,
 		);
 		expect(logs).toContain(
-			'   + api.shop.example.com             A     ***  (TTL 600) — would create',
+			`   + api.shop.example.com             A     ${SERVER_IPV4}  (TTL 600) — would create`,
 		);
 	});
 
@@ -388,42 +386,6 @@ describe('the deploy writes its DNS records', { timeout: RUN_TIMEOUT }, () => {
 		expect(zone.get('example.com A api.shop')).toEqual([
 			{ data: SERVER_IPV4, ttl: 600 },
 		]);
-		expect(logs.join('\n')).toContain('198.51.100.7 → ***');
-	});
-
-	it('writes the records and starts nothing with --resources-only — what a CI runner runs', async () => {
-		workspace();
-		await serveFrom(dir);
-
-		const { error, ops, seen } = await run('production', {
-			resourcesOnly: true,
-		});
-
-		expect(error).toBeUndefined();
-		expect(PUTS().sort()).toEqual([
-			'PUT example.com A api.shop',
-			'PUT example.com A auth.shop',
-			'PUT example.com A shop',
-		]);
-		expect(ops).toEqual([]);
-		expect(released(seen)).toBe(false);
-	});
-
-	it('writes and checks nothing with --skip-resources, and needs no token — the server after the runner', async () => {
-		workspace();
-		await serveFrom(dir);
-
-		const { error, looked, logs, seen } = await run('production', {
-			token: null,
-			skipResources: true,
-		});
-
-		expect(error).toBeUndefined();
-		expect(released(seen)).toBe(true);
-		expect(requests).toEqual([]);
-		expect(looked).toEqual([]);
-		expect(logs).toContain(
-			'🌐 DNS skipped (--skip-resources): the --resources-only run wrote and confirmed the records',
-		);
+		expect(logs.join('\n')).toContain(`198.51.100.7 → ${SERVER_IPV4}`);
 	});
 });

@@ -236,9 +236,14 @@ export function logsService(logs: StackLogs): StackService {
 export interface LogsAccessContext {
 	stage: string;
 	local: boolean;
-	/** This machine's user and name — the best guess at the SSH target. */
+	/**
+	 * The SSH target: the stage's server login, or — for the local stage —
+	 * this machine's user and name, the best guess at it.
+	 */
 	user: string;
 	hostname: string;
+	/** Whether `user` and `hostname` are the stage's server, not a guess. */
+	known?: boolean;
 }
 
 /** What `gkm compose` prints once the stack is up: how to open the logs. */
@@ -264,7 +269,7 @@ export function logsAccess(logs: StackLogs, ctx: LogsAccessContext): string[] {
 					`     on this machine, open http://localhost:${logs.port} directly; from another:`,
 				]
 			: []),
-		`     ssh -N -L ${logs.port}:localhost:${logs.port} ${ctx.user}@${ctx.hostname}   (user and host are guesses: this machine's)`,
+		`     ssh -N -L ${logs.port}:localhost:${logs.port} ${ctx.user}@${ctx.hostname}${ctx.known ? '' : "   (user and host are guesses: this machine's)"}`,
 		`     then open http://localhost:${logs.port}  (${login})`,
 		`⚠️  Docker-published ports bypass ufw, so OpenObserve is bound to 127.0.0.1 only — reach it through the tunnel, not by opening the port.`,
 	];

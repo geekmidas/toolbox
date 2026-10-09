@@ -3,9 +3,7 @@
  * `secret` construct's value, the log UI's root password where its telemetry
  * is self-hosted, and the stack's Redis password where a cache lives in it.
  *
- * Pure: the compose target writes the result back to the stage's store, and
- * `gkm deploy --resources-only` composes the stack with it to read its hosts,
- * writing nothing.
+ * Pure: the compose target writes the result back to the stage's store.
  */
 
 import type { ConstructManifest } from '@geekmidas/manifest';

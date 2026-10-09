@@ -1213,7 +1213,6 @@ jobs:
       has-build: ${{ steps.stages.outputs.has-build }}
       has-deploy: ${{ steps.stages.outputs.has-deploy }}
       aws-region: ${{ steps.stages.outputs.aws-region }}
-      resources: ${{ steps.stages.outputs.resources }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -1240,8 +1239,7 @@ runs `gkm` from them (the package manager is read from the lockfile, or the
 `package-manager` input). Its inputs are `event` (default the run's event),
 `stage` and `working-directory`; its outputs, all strings `fromJSON()` reads,
 are `local`, `deployed`, `protected`, `build`, `deploy`, `has-build`,
-`has-deploy`, `aws-region` and `resources` (the stages whose resources a
-compose workflow creates on the runner). A manual run naming a stage that is not deployed
+`has-deploy` and `aws-region`. A manual run naming a stage that is not deployed
 fails in this job, with an `::error::` saying which stages are. Every output,
 and how to pin the action, is in its
 [README](https://github.com/geekmidas/toolbox/tree/main/actions/stages).
@@ -1250,7 +1248,7 @@ and how to pin the action, is in its
 the CLI it calls were released together. Upgrading the CLI does not move the
 pin; update both when you want the newer action.
 
-### Compose: build on the runner, run on the server
+### Compose: build and deploy on the runner, run on the server
 
 With `--deploy compose` the workflow splits the release in two
 (see [Deploying from CI](./compose.md#deploying-from-ci)):
@@ -1262,26 +1260,24 @@ With `--deploy compose` the workflow splits the release in two
   `secrets.store` is SSM or Secrets Manager (`aws-region` is set).
 - **deploy** — for each stage the event deploys, one at a time per stage
   (`concurrency: deploy-<stage>`). It resolves the commit — a release's tag
-  (never its `target_commitish`), a manual run's `ref`, or the push — finds
-  that commit's push build, downloads its `digests-<stage>`, and over SSH,
-  with the server's host key pinned, runs `git checkout <sha>`, an install and
-  `gkm compose --stage <stage> --tag <sha> --digests-file …` on the server.
-  Without digests (the build is older than 90 days) it deploys by tag, with a
-  warning on the run. For a stage in the stages action's `resources` output,
-  the runner first creates the stage's resources — its providers' buckets and
-  keys, its DNS records — with `gkm deploy --stage <stage> --resources-only`,
-  the stage's role and the `GODADDY_API_TOKEN`/`HOSTINGER_API_TOKEN` secrets of
-  its environment; the server then deploys with `--skip-resources`, so neither
-  the cloud credentials nor the DNS token reach it. A stage on the `'file'`
-  secrets store is not in `resources`: the server's deploy creates them, with
-  the credentials the server holds.
+  (never its `target_commitish`), a manual run's `ref`, or the push — checks
+  it out and installs, logs in to the registry (read), assumes the stage's
+  role, downloads that commit's push build's `digests-<stage>`, writes the
+  deploy key and the server's pinned host key, and runs one `gkm compose
+  --stage <stage> --tag <sha> --digests-file …` with the
+  `GODADDY_API_TOKEN`/`HOSTINGER_API_TOKEN` secrets of its environment. That
+  run creates the stage's resources and DNS records, migrates its databases
+  through an SSH tunnel, and starts the stack on the server's Docker engine
+  over SSH ([The server](./compose.md#the-server)). Without digests (the build
+  is older than 90 days) it deploys by tag, with a warning on the run.
 
-So a release deploys exactly the images the push of its commit built and
-pushed; nothing is rebuilt for production.
+The server runs nothing of gkm's and holds no credential: the cloud
+credentials, the DNS token, the stage's secrets and its deploy state all stay
+on the runner. So a release deploys exactly the images the push of its commit
+built and pushed; nothing is rebuilt for production.
 
-Every value — the stage, the commit, the path — reaches a script as an
-environment variable or as an argument to a quoted heredoc; none is pasted
-into one.
+Every value — the stage, the commit — reaches a script as an environment
+variable; none is pasted into one.
 
 ### Dokploy and SST
 
@@ -1409,8 +1405,7 @@ gh variable set DOKPLOY_ENDPOINT --env prod --body https://dokploy.example.com
 | Setting | Target | Set by |
 |---|---|---|
 | variable `AWS_ROLE_ARN` | SST; compose with an AWS `secrets.store` | `gkm deploy:github` |
-| secret `DEPLOY_SSH_KEY` | compose | a key the server's `DEPLOY_USER` accepts |
-| variables `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH` | compose | the server, the user, and its clone of the repository |
+| secret `DEPLOY_SSH_KEY` | compose | the private key of the user `deploy.compose.server.<stage>` names, which the server accepts |
 | variable `DEPLOY_KNOWN_HOSTS` | compose | `ssh-keyscan <host>`, checked by hand — the host key is pinned, never accepted on first sight |
 | variable `REGISTRY_USERNAME`, secret `REGISTRY_PASSWORD` | compose, registry other than ghcr.io | your registry (ghcr.io uses the workflow's own token) |
 | the stage's secrets in SSM or Secrets Manager | SST | `gkm secrets:set … --stage <stage>` |

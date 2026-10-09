@@ -208,12 +208,6 @@ export interface DeployPhaseContext<Options = undefined> {
 	 * proxy in front of it, or records written by another step.
 	 */
 	readonly skipDns?: boolean;
-	/**
-	 * `--skip-resources`: an earlier `--resources-only` run created the
-	 * stage's resources — its providers' and its DNS records — so this run
-	 * creates, writes and checks none of them; it only verifies what it reads.
-	 */
-	readonly skipResources?: boolean;
 	/** Where every credential comes from. Nothing prompts. */
 	readonly credentials: CredentialProvider;
 	/**
@@ -321,12 +315,6 @@ export interface DeployTarget<Options = undefined, Run = unknown> {
 	ready?(ctx: DeployPhaseContext<Options>, run: Run): Promise<void>;
 	/** A dry run: emit `resource.planned` for what a real run would do. */
 	plan(ctx: DeployPhaseContext<Options>, run: Run): Promise<void>;
-	/**
-	 * What the stage needs outside the target that only the target knows how
-	 * to create — compose's DNS records. Run by `--resources-only`, after the
-	 * stage's providers, in place of every other phase.
-	 */
-	resources?(ctx: DeployPhaseContext<Options>): Promise<void>;
 	/** Create or find what the apps run on, and what they declare. */
 	provision?(ctx: DeployPhaseContext<Options>, run: Run): Promise<void>;
 	/** Build each app's artifact (`artifact.built`), changing nothing live. */

@@ -531,12 +531,25 @@ ${stateBlock(options)}  secrets: {
  */
 function deployBlock(options: TemplateOptions): string {
 	if (options.deployTarget === 'compose') {
+		// A stage named like an identifier is a bare key, as a person writes it.
+		const key = (stage: string) =>
+			/^[A-Za-z_$][\w$]*$/.test(stage) ? stage : `'${stage}'`;
+		const servers = options.stages.deployed
+			.map((stage) => `${key(stage)}: { user: 'deploy' }`)
+			.join(', ');
 		return `
-  // \`gkm compose --stage <stage>\` runs a stage as one Docker Compose stack on
-  // the machine it runs on. CI builds every image and pushes it here; the
-  // server pulls exactly those. On ghcr.io the owner is the repository's —
+  // \`gkm compose --stage <stage>\` runs a stage as one Docker Compose stack:
+  // the local stage on this machine, a deployed stage on its server, whose
+  // Docker it drives over SSH. CI builds every image and pushes it here, and
+  // the server runs exactly those. On ghcr.io the owner is the repository's —
   // the user or organisation whose packages the workflow's token can write.
-  deploy: { default: 'compose', registry: '${options.registry}' },
+  deploy: {
+    default: 'compose',
+    registry: '${options.registry}',
+    // Each deployed stage's server: the SSH user, in its docker group. The
+    // host is the stage's GKM_SERVER_IPV4 secret unless \`host\` is set.
+    compose: { server: { ${servers} } },
+  },
 `;
 	}
 	if (options.deployTarget !== 'sst') return '';

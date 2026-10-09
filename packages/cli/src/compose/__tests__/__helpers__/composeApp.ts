@@ -37,6 +37,11 @@ export interface ComposeAppOptions {
 	state?: Record<string, unknown>;
 	/** `secrets`, as it is written in the config. */
 	secrets?: Record<string, unknown>;
+	/**
+	 * `deploy.compose.server`: every deployed stage's login, `deploy` on the
+	 * stage's GKM_SERVER_IPV4, when absent — `false` for none.
+	 */
+	server?: Record<string, unknown> | false;
 }
 
 /**
@@ -56,7 +61,18 @@ export function writeComposeApp(
 ): void {
 	const name = options.name ?? 'compose-app';
 	cpSync(FIXTURE, dir, { recursive: true });
-	const compose = options.compose;
+	const deployed = options.deployed ?? ['production'];
+	const server =
+		options.server === false
+			? undefined
+			: (options.server ??
+				Object.fromEntries(
+					deployed.map((stage) => [stage, { user: 'deploy' }]),
+				));
+	const compose =
+		options.compose || server
+			? { ...options.compose, ...(server ? { server } : {}) }
+			: undefined;
 	if (options.telemetry) {
 		writeFileSync(
 			join(dir, 'constructs', 'telemetry.ts'),
@@ -113,7 +129,7 @@ export const telemetry = new Telemetry('Telemetry', {
 
 export default defineWorkspace({
   name: ${JSON.stringify(name)},
-  stages: { local: 'development', deployed: ${JSON.stringify(options.deployed ?? ['production'])} },
+  stages: { local: 'development', deployed: ${JSON.stringify(deployed)} },
   constructs: [
     './constructs/**/*.ts',
     './apps/*/endpoints/**/*.ts',

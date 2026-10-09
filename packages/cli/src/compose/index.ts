@@ -17,6 +17,7 @@ import { deploy } from '../deploy/deploy';
 import { deployIdentity } from '../deploy/identity.js';
 import type { DeployResult } from '../deploy/types';
 import { GkmError } from '../errors';
+import { secretsStoreFor } from '../secrets/store.js';
 import {
 	type ComposeDeps,
 	type ComposeImage,
@@ -27,8 +28,9 @@ import {
 	stackOverrideFile,
 } from '../target/compose/index';
 import { dockerCompose, type StackRef } from './docker';
-import { edgeDir, removeEdgeRoutes } from './edge';
+import { edgeRef, removeEdgeRoutes } from './edge';
 import { type ImageDigests, parseDigests, pinnedRef } from './images';
+import { composeServer, dockerHost, sshTarget } from './server';
 import { type ComposeStack, composeProject, stackDir } from './stack';
 import { EDGE_PROJECT } from './traefik';
 
@@ -47,7 +49,7 @@ export {
 	NetworkCreateFailed,
 	PushDigestUnknown,
 } from './docker';
-export { ComposeProxyClash } from './edge';
+export { ComposeProxyClash, EdgeWriteFailed } from './edge';
 export {
 	assertImagesExist,
 	ImageDigestMismatch,
@@ -70,6 +72,7 @@ export {
 	LogsRetentionInvalid,
 } from './logsConfig';
 export {
+	ComposeServerOnLocalStage,
 	ComposeStageUnknown,
 	ComposeTlsFileMissing,
 	ComposeTlsOnLocalStage,
@@ -80,6 +83,13 @@ export {
 	RedisPasswordMissing,
 	STACK_CACHE,
 } from './redis';
+export {
+	ComposeServerMissing,
+	ComposeServerUnreachable,
+	ComposeTunnelFailed,
+	composeServer,
+	dockerHost,
+} from './server';
 export {
 	composeStack,
 	EnvValueMultiline,
@@ -132,17 +142,6 @@ export interface ComposeOptions {
 	 * that they point at the stage's server (`GKM_SERVER_IPV4`).
 	 */
 	skipDns?: boolean;
-	/**
-	 * Create the stage's resources — its providers' (deploy.<kind>.<stage>)
-	 * and its DNS records — and nothing else: what a CI runner runs with the
-	 * cloud credentials and DNS token before the server deploys.
-	 */
-	resourcesOnly?: boolean;
-	/**
-	 * An earlier `resourcesOnly` run created the stage's resources: run no
-	 * provider, and write or check no DNS record.
-	 */
-	skipResources?: boolean;
 	/** Each provider issues its runtime keys a successor. */
 	rotateKeys?: boolean;
 	/** Delete a rotated-out key now, not after the next deploy. */
@@ -199,20 +198,42 @@ export async function composeCommand(
 	const { stage } = options;
 
 	if (options.down) {
+		const local = stage === workspace.stages.local;
+		// A deployed stage stops on its server, whose host may be its secret.
+		const server = local
+			? undefined
+			: composeServer({
+					stage,
+					local,
+					config: workspace.deploy?.compose?.server,
+					custom: (await (await secretsStoreFor(workspace, stage)).read(stage))
+						?.custom,
+				});
 		const override = stackOverrideFile(workspace.root, stage);
+		const dir = join(workspace.root, stackDir(stage));
 		const ref: StackRef = {
 			project: composeProject(deployIdentity(workspace, stage)),
-			file: join(workspace.root, stackDir(stage), 'docker-compose.yml'),
+			file: join(dir, 'docker-compose.yml'),
 			...(existsSync(override) ? { overrides: [override] } : {}),
 			cwd: workspace.root,
+			...(server ? { host: dockerHost(server) } : {}),
 		};
+		const docker = deps.docker ?? dockerCompose;
+		if (server) console.log(`→ ${sshTarget(server)} (docker over ssh)`);
 		// Unregistered from the shared edge first, so it stops routing to the
 		// stack before the stack stops. The edge keeps serving every other
 		// stack — and keeps running.
-		if (await removeEdgeRoutes(edgeDir(deps.env ?? process.env), ref.project)) {
+		if (
+			server &&
+			(await removeEdgeRoutes(
+				docker,
+				edgeRef(join(dir, `${EDGE_PROJECT}.yml`), { host: ref.host }),
+				ref.project,
+			))
+		) {
 			console.log(`🌐 Removed ${ref.project}'s routes from ${EDGE_PROJECT}.`);
 		}
-		await (deps.docker ?? dockerCompose).down(ref);
+		await docker.down(ref);
 		console.log(`🛑 Stopped ${ref.project}. Its volumes are kept.`);
 		return undefined;
 	}
@@ -254,8 +275,6 @@ export async function composeCommand(
 		...(options.push ? { buildOnly: true } : {}),
 		...(options.allowDevServices ? { allowDevServices: true } : {}),
 		...(options.skipDns ? { skipDns: true } : {}),
-		...(options.resourcesOnly ? { resourcesOnly: true } : {}),
-		...(options.skipResources ? { skipResources: true } : {}),
 		...(options.rotateKeys ? { rotateKeys: true } : {}),
 		...(options.retireOldKeys ? { retireOldKeys: true } : {}),
 		logger: {

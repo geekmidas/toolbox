@@ -17,7 +17,7 @@ import type {
 /** A per-stage setting keyed by a stage the workspace does not have. */
 export class ComposeStageUnknown extends GkmError {
 	constructor(
-		readonly setting: 'proxy' | 'tls',
+		readonly setting: 'proxy' | 'tls' | 'server',
 		readonly stage: string,
 		readonly stages: readonly string[],
 	) {
@@ -42,6 +42,19 @@ export class ComposeTlsOnLocalStage extends GkmError {
 				'installs it). Remove it, or set it for a deployed stage.',
 		);
 		this.name = 'ComposeTlsOnLocalStage';
+	}
+}
+
+/**
+ * A server for the local stage, which always runs on this machine's Docker.
+ */
+export class ComposeServerOnLocalStage extends GkmError {
+	constructor(readonly stage: string) {
+		super(
+			`deploy.compose.server names '${stage}', the local stage, which always ` +
+				"runs on this machine's Docker. Remove it, or set it for a deployed stage.",
+		);
+		this.name = 'ComposeServerOnLocalStage';
 	}
 }
 
@@ -110,6 +123,12 @@ export function checkComposeStages(
 		if (stage === stages.local) throw new ComposeTlsOnLocalStage(stage);
 		if (!known.includes(stage)) {
 			throw new ComposeStageUnknown('tls', stage, known);
+		}
+	}
+	for (const stage of Object.keys(config?.server ?? {})) {
+		if (stage === stages.local) throw new ComposeServerOnLocalStage(stage);
+		if (!known.includes(stage)) {
+			throw new ComposeStageUnknown('server', stage, known);
 		}
 	}
 }

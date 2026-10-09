@@ -327,15 +327,17 @@ describe('generateGithubFiles', () => {
 				group: 'deploy-${{ matrix.stage }}',
 				'cancel-in-progress': false,
 			});
-			// id-token: the stage's role, for the runner's DNS step.
+			// id-token: the stage's role; packages: the pull the server's
+			// engine makes with the runner's login.
 			expect(job.permissions).toEqual({
 				contents: 'read',
 				actions: 'read',
+				packages: 'read',
 				'id-token': 'write',
 			});
 		});
 
-		it('creates the stage resources on the runner, with its role and DNS token, never on the server', () => {
+		it('deploys in one step on the runner, with its role and DNS token — nothing runs gkm on the server', () => {
 			const job = parse(compose()).jobs.deploy;
 			const steps = job.steps as {
 				name?: string;
@@ -344,48 +346,50 @@ describe('generateGithubFiles', () => {
 				if?: string;
 				env?: Record<string, string>;
 			}[];
-			const dns = steps.find((s) => s.name === "Create the stage's resources")!;
-			const ssh = steps.at(-1)!;
+			const deploy = steps.at(-1)!;
 
-			expect(job.env.RESOURCES_ON_RUNNER).toBe(
-				"${{ contains(fromJSON(needs.stages.outputs.resources || '[]'), matrix.stage) }}",
-			);
-			expect(dns.if).toBe("env.RESOURCES_ON_RUNNER == 'true'");
-			expect(dns.run).toBe(
-				'pnpm exec gkm deploy --stage "$STAGE" --resources-only',
-			);
-			expect(dns.env).toEqual({
+			expect(job.env).toBeUndefined();
+			// One gkm, on the runner — no resources-only pass, no SSH that runs
+			// a command on the server.
+			const gkm = steps.filter((s) => s.run?.includes('gkm '));
+			expect(gkm).toEqual([deploy]);
+			expect(deploy.name).toBe('Deploy');
+			expect(deploy.if).toBeUndefined();
+			expect(deploy.run).toContain('args=(--stage "$STAGE" --tag "$SHA")');
+			expect(deploy.run).toContain('args+=(--digests-file digests.json)');
+			expect(deploy.run).toContain('pnpm exec gkm compose "${args[@]}"');
+			expect(deploy.env).toEqual({
 				STAGE: '${{ matrix.stage }}',
+				SHA: '${{ steps.commit.outputs.sha }}',
 				GODADDY_API_TOKEN: '${{ secrets.GODADDY_API_TOKEN }}',
 				HOSTINGER_API_TOKEN: '${{ secrets.HOSTINGER_API_TOKEN }}',
 			});
-			// Every step it needs runs only when it does.
-			const before = steps.slice(
-				steps.findIndex((s) => s.name === 'Check out the commit'),
-				steps.indexOf(dns),
-			);
-			expect(before.length).toBeGreaterThan(2);
-			for (const step of before) {
-				expect(step.if).toContain('RESOURCES_ON_RUNNER');
+			for (const step of steps) {
+				expect(step.run ?? '').not.toMatch(/(^|[\s;&|])ssh /m);
+				expect(step.run ?? '').not.toContain('--skip-resources');
+				expect(step.run ?? '').not.toContain('--resources-only');
 			}
-			expect(
-				before.some((s) => s.uses?.startsWith('aws-actions/configure-aws')),
-			).toBe(true);
-			// Before the server deploys, which then skips DNS — and never gets
-			// the token.
-			expect(steps.indexOf(dns)).toBeLessThan(steps.indexOf(ssh));
-			expect(ssh.run).toContain(
-				'if [ "$resources_on_runner" = true ]; then args+=(--skip-resources); fi',
-			);
-			expect(JSON.stringify(ssh)).not.toContain('GODADDY');
+
+			// Checked out, installed, logged in to the registry and in the
+			// stage's role before it.
+			const at = (match: (s: (typeof steps)[number]) => boolean) =>
+				steps.findIndex(match);
+			for (const before of [
+				at((s) => s.name === 'Check out the commit'),
+				at((s) => s.name === 'Install'),
+				at((s) => !!s.uses?.startsWith('docker/login-action')),
+				at((s) => !!s.uses?.startsWith('aws-actions/configure-aws')),
+				at((s) => s.name === 'SSH to the server'),
+			]) {
+				expect(before).toBeGreaterThanOrEqual(0);
+				expect(before).toBeLessThan(steps.indexOf(deploy));
+			}
 		});
 
-		it('reads which stages have resources from the stages action', () => {
+		it('hands the stages job no resources list', () => {
 			const job = parse(compose()).jobs.stages;
 
-			expect(job.outputs.resources).toBe(
-				'${{ steps.stages.outputs.resources }}',
-			);
+			expect(job.outputs.resources).toBeUndefined();
 		});
 
 		it('deploys a release’s tag, never its target_commitish', () => {
@@ -423,23 +427,18 @@ describe('generateGithubFiles', () => {
 			expect(warning.if).toBe("steps.build.outputs.run-id == ''");
 		});
 
-		it('runs gkm compose on the server over SSH with a pinned host key', () => {
-			const ssh = parse(compose()).jobs.deploy.steps.at(-1);
+		it("pins the server's host key and hands SSH the deploy key", () => {
+			const ssh = parse(compose()).jobs.deploy.steps.find(
+				(s: { name?: string }) => s.name === 'SSH to the server',
+			);
 
-			expect(ssh.run).toContain('StrictHostKeyChecking=yes');
-			expect(ssh.run).toContain("<<'REMOTE'");
-			expect(ssh.run).toContain('git checkout --quiet --detach "$sha"');
-			expect(ssh.run).toContain('pnpm install --frozen-lockfile');
-			expect(ssh.run).toContain('pnpm exec gkm compose "${args[@]}"');
-			expect(ssh.run).toContain('--digests-file');
+			expect(ssh.run).toContain('> ~/.ssh/deploy_key');
+			expect(ssh.run).toContain('> ~/.ssh/known_hosts');
+			expect(ssh.run).toContain('StrictHostKeyChecking yes');
+			expect(ssh.run).toContain('IdentityFile ~/.ssh/deploy_key');
 			expect(ssh.env).toEqual({
 				SSH_KEY: '${{ secrets.DEPLOY_SSH_KEY }}',
 				KNOWN_HOSTS: '${{ vars.DEPLOY_KNOWN_HOSTS }}',
-				DEPLOY_HOST: '${{ vars.DEPLOY_HOST }}',
-				DEPLOY_USER: '${{ vars.DEPLOY_USER }}',
-				DEPLOY_PATH: '${{ vars.DEPLOY_PATH }}',
-				STAGE: '${{ matrix.stage }}',
-				SHA: '${{ steps.commit.outputs.sha }}',
 			});
 		});
 

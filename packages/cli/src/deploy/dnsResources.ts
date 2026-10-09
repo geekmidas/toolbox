@@ -3,8 +3,8 @@
  *
  * Each is `dns-record:<fqdn>:<type>` — `dns-record:api.example.com:A` — with
  * `id` `<fqdn> <type>` and the record's value in `data`. Every deploy's DNS
- * step writes through here — `gkm deploy`, `gkm compose` and a CI runner's
- * `--resources-only` alike — so each record has one key, whoever wrote it.
+ * step writes through here — `gkm deploy` and `gkm compose` alike — so each
+ * record has one key, whoever wrote it.
  */
 
 import type { DeployJournal } from './journal';

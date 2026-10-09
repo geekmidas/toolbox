@@ -5,12 +5,9 @@ import {
 	loadComposeApp,
 	writeComposeApp,
 } from '../../compose/__tests__/__helpers__/composeApp';
-import { composeStageHosts, deploysWithCompose } from '../dns';
+import { deploysWithCompose } from '../dns';
 
-/**
- * What `gkm deploy --resources-only` reads off a compose stage before its
- * stack runs: the hosts the stack serves, from the stack itself.
- */
+/** Whether the deploy's DNS step applies: the workspace deploys with compose. */
 
 let dir: string;
 
@@ -27,25 +24,9 @@ afterAll(async () => {
 	await cleanupDir(dir);
 });
 
-describe('composeStageHosts', () => {
-	it('reads the hosts off the stack the stage would run: the apex and each app', async () => {
-		const { workspace, manifest, runnables, background } =
-			await loadComposeApp(dir);
-
+describe('deploysWithCompose', () => {
+	it('is true for a workspace whose default target is compose', async () => {
+		const { workspace } = await loadComposeApp(dir);
 		expect(deploysWithCompose(workspace)).toBe(true);
-		await expect(
-			composeStageHosts({
-				workspace,
-				stage: 'production',
-				stored: null,
-				manifest,
-				runnables,
-				background,
-			}),
-		).resolves.toEqual([
-			'api.shop.example.com',
-			'auth.shop.example.com',
-			'shop.example.com',
-		]);
 	});
 });

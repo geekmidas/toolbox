@@ -1,6 +1,8 @@
 /**
  * The compose target's phases: a stage as one Docker Compose stack behind
- * Caddy, on the machine the deploy runs on.
+ * Caddy — the local stage on this machine's Docker, a deployed stage on its
+ * server's, driven over SSH (`compose/server.ts`) from wherever the deploy
+ * runs.
  *
  * The order is the point of this file, and the rules it keeps are these:
  *
@@ -9,7 +11,8 @@
  *   them all, and nothing is written, pulled or started.
  * - The databases exist before the apps do (`provision`). Postgres comes up
  *   alone, its databases, roles and grants are created, its migrations
- *   applied and its seeds run from this machine, and only then do the apps
+ *   applied and its seeds run from this machine — through an SSH tunnel to a
+ *   server's loopback — and only then do the apps
  *   start — so an app
  *   never boots against a schema that is not there yet.
  * - What a stage runs is recorded (`release`). Each app's image, the tag it
@@ -44,6 +47,7 @@ import {
 	type HostLookup,
 	HostNotPointingAtServer,
 	isLocalHost,
+	isReservedStageKey,
 	requiredServerAddress,
 	SERVER_IPV4_KEY,
 	serverAddressHint,
@@ -58,7 +62,7 @@ import {
 } from '../../compose/docker';
 import {
 	assertEdgePorts,
-	edgeDir,
+	edgeRef,
 	ensureEdge,
 	removeEdgeRoutes,
 	writeEdgeRoutes,
@@ -74,6 +78,14 @@ import { ComposeTlsFileMissing } from '../../compose/proxy';
 import { REDIS_SERVICE } from '../../compose/redis';
 import { deployedStackSecrets } from '../../compose/secrets';
 import {
+	type ComposeServer,
+	composeServer,
+	dockerHost,
+	type ServerAccess,
+	sshAccess,
+	sshTarget,
+} from '../../compose/server';
+import {
 	type ComposeStack,
 	composeProject,
 	composeStack,
@@ -83,6 +95,7 @@ import {
 	LOGS_PORT_ENV,
 	type StackApp,
 	stackDir,
+	withCaddyConfigs,
 } from '../../compose/stack';
 import { EDGE_PROJECT, EDGE_SERVICE } from '../../compose/traefik';
 import { currentActor } from '../../deploy/actor.js';
@@ -176,6 +189,11 @@ export interface ComposeDeps {
 	lookup?: HostLookup;
 	/** The DNS provider for a `dns` domain — `createDnsProvider` by default. */
 	dnsProviderFor?: (config: DnsProviderConfig) => Promise<DnsProvider | null>;
+	/**
+	 * A deployed stage's server, beyond its Docker engine: the SSH check
+	 * before a deploy, and the tunnels its databases are reached through.
+	 */
+	server: ServerAccess;
 }
 
 /** One app's image, as the stage runs it. */
@@ -195,6 +213,11 @@ export interface ComposeRun {
 	 */
 	push: boolean;
 	stack: ComposeStack;
+	/**
+	 * The deployed stage's server, whose Docker engine — over SSH — runs the
+	 * stack. Absent for the local stage, and for a push, which builds here.
+	 */
+	server?: ComposeServer;
 	/** The stack's directory, absolute: `.gkm/compose/<stage>`. */
 	dir: string;
 	ref: StackRef;
@@ -343,6 +366,7 @@ export const defaultDeps: ComposeDeps = {
 	healthIntervalMs: 2_000,
 	env: process.env,
 	lookup: systemLookup,
+	server: sshAccess,
 };
 
 // ============================================================================
@@ -446,6 +470,22 @@ export async function validateCompose(
 		ctx.secrets.mask(stack.logs.appEnv.OTEL_EXPORTER_OTLP_HEADERS);
 	}
 
+	// Where the stack runs: a deployed stage on its server's engine, over
+	// SSH — never this machine's. A push builds here and runs nothing.
+	// A domain's stage names its address before anything else is said of
+	// its server: it is the host SSH reaches too, unless config names one.
+	if (!push && !stack.local) {
+		requiredServerAddress(stage, workspace.domains?.[stage], secrets?.custom);
+	}
+	const server = push
+		? undefined
+		: composeServer({
+				stage,
+				local: stack.local,
+				config: workspace.deploy?.compose?.server,
+				custom: secrets?.custom,
+			});
+
 	const dir = join(root, stackDir(stage));
 	const override = stackOverrideFile(root, stage);
 	const overrides = existsSync(override) ? [override] : [];
@@ -474,12 +514,14 @@ export async function validateCompose(
 		mode,
 		push,
 		stack,
+		...(server ? { server } : {}),
 		dir,
 		ref: {
 			project: composeProject(identity),
 			file: join(dir, 'docker-compose.yml'),
 			...(overrides.length > 0 ? { overrides } : {}),
 			cwd: root,
+			...(server ? { host: dockerHost(server) } : {}),
 			output: ctx.childOutput,
 			signal: ctx.signal,
 		},
@@ -519,6 +561,11 @@ export async function readyCompose(
 	}
 
 	if (stack.local) return;
+	// The server answers before anything is written — a DNS record included.
+	// A dry run changes nothing anywhere, and connects to nothing.
+	if (run.server && !ctx.dryRun && !run.push) {
+		await deps.server.check(run.server);
+	}
 	await stageHostsDns(
 		ctx,
 		deps,
@@ -565,18 +612,12 @@ function assertRedisClient(
 }
 
 /**
- * The stage's secrets — and, for a deployed stage, everything it generates
- * once: its seed, and each declared secret and keyring. Kept only once the
- * run goes ahead (`provision`), so a dry run, or a tag that is not there,
- * leaves the stage's secrets as it found them.
- */
-/**
  * The deploy's DNS step, for a deployed stage: its server's address — required
  * where it serves a real domain — then its own hosts written through each
  * domain's provider in `dns` where they differ, read back from it, and
  * recorded in the stage's state; hosts no provider writes resolved with the
  * system resolver. A dry run prints the plan and writes nothing, and warns
- * rather than stops. What a deploy (`ready`) and `--resources-only` both run.
+ * rather than stops.
  *
  * @throws {ServerAddressMissing} when the stage has a domain and no address
  * @throws {ServerAddressInvalid} for a value that is not an address
@@ -598,12 +639,6 @@ async function stageHostsDns(
 	if (ctx.skipDns) {
 		ctx.logger.info(
 			'🌐 DNS skipped (--skip-dns): no record is written or checked',
-		);
-		return;
-	}
-	if (ctx.skipResources) {
-		ctx.logger.info(
-			'🌐 DNS skipped (--skip-resources): the --resources-only run wrote and confirmed the records',
 		);
 		return;
 	}
@@ -662,35 +697,11 @@ async function stageHostsDns(
 }
 
 /**
- * `--resources-only`: the stage's DNS records, from the hosts its stack would
- * serve — composed in memory, nothing written, no image asked for. What a CI
- * runner runs with the DNS provider's token, so the server never holds it.
+ * The stage's secrets — and, for a deployed stage, everything it generates
+ * once: its seed, and each declared secret and keyring. Kept only once the
+ * run goes ahead (`provision`), so a dry run, or a tag that is not there,
+ * leaves the stage's secrets as it found them.
  */
-export async function resourcesCompose(
-	ctx: ComposeContext,
-	deps: ComposeDeps,
-): Promise<void> {
-	const { workspace, stage } = ctx;
-	if (stage === workspace.stages.local) return;
-	// The DNS token was asked for before the providers ran.
-	const stored = await ctx.secrets.read();
-	const { composeStageHosts } = await import('../../providers/dns.js');
-	const hosts = await composeStageHosts({
-		workspace,
-		stage,
-		stored,
-		manifest: ctx.manifest,
-		runnables: (ctx.runnables ?? {}) as Record<string, string[]>,
-		background: (ctx.background ?? {}) as Record<string, string[]>,
-	});
-	await stageHostsDns(
-		ctx,
-		deps,
-		hosts.filter((host) => !isLocalHost(host)),
-		stored?.custom,
-	);
-}
-
 async function stageSecrets(
 	ctx: ComposeContext,
 	manifest: ConstructManifest,
@@ -710,8 +721,8 @@ async function stageSecrets(
 	);
 	// Read through the store they are masked; made up here, they are not yet.
 	if (secrets.seed) ctx.secrets.mask(secrets.seed);
-	for (const value of Object.values(secrets.custom ?? {})) {
-		ctx.secrets.mask(value);
+	for (const [key, value] of Object.entries(secrets.custom ?? {})) {
+		if (!isReservedStageKey(key)) ctx.secrets.mask(value);
 	}
 	return { secrets, generated };
 }
@@ -855,6 +866,7 @@ export async function provisionCompose(
 		project: stack.project,
 		proxy: stack.proxy,
 		ports,
+		engine: ref,
 	});
 
 	run.files = await writeStack(ctx.cwd, run.dir, stack);
@@ -863,14 +875,12 @@ export async function provisionCompose(
 	// The shared edge, and the network the stack's public services join —
 	// before any of them, MinIO among them, is started.
 	if (stack.proxy === 'traefik') {
-		const dir = edgeDir(deps.env);
-		ctx.logger.info(
-			`\n🌐 Starting the shared edge (${EDGE_PROJECT}) from ${dir}…`,
-		);
+		ctx.logger.info(`\n🌐 Starting the shared edge (${EDGE_PROJECT})…`);
 		run.files.push(
 			...(await ensureEdge(deps.docker, {
-				dir,
+				file: edgeFile(run),
 				ports,
+				...(ref.host ? { host: ref.host } : {}),
 				logging: {
 					driver: LOG_ROTATION.driver,
 					options: { ...LOG_ROTATION.options },
@@ -923,12 +933,17 @@ async function prepareBuckets(
 	const storage = run.stack.storage!;
 	if (storage.buckets.length === 0) return;
 
-	const port = await deps.docker.port(run.ref, 'minio', 9000);
-	const client = deps.buckets(port, storage);
-	const done = [
-		...(await applyBuckets(client, storage.buckets)),
-		...(await applyPolicies(client, storage.policies)),
-	];
+	const tunnel = await reach(run, deps, 'minio', 9000);
+	let done: Awaited<ReturnType<typeof applyBuckets>>;
+	try {
+		const client = deps.buckets(tunnel.port, storage);
+		done = [
+			...(await applyBuckets(client, storage.buckets)),
+			...(await applyPolicies(client, storage.policies)),
+		];
+	} finally {
+		await tunnel.close();
+	}
 	const created = done.filter((entry) => entry.created).length;
 	ctx.logger.info(
 		`🪣  Buckets: ${storage.buckets.join(', ')}${created ? ` (${created} change(s))` : ''}`,
@@ -944,9 +959,43 @@ async function prepareDatabases(
 	run: ComposeRun,
 	deps: ComposeDeps,
 ): Promise<void> {
+	const tunnel = await reach(run, deps, 'postgres', 5432);
+	try {
+		await migrateAndSeed(ctx, run, deps, tunnel.port);
+	} finally {
+		await tunnel.close();
+	}
+}
+
+/**
+ * A port a stack's service publishes on its engine's loopback, reachable
+ * from this machine: the published port itself on the local stage, and on a
+ * server an SSH tunnel to it over the deploy's own login — so Postgres and
+ * MinIO are never published beyond the server's loopback.
+ *
+ * Migrations and seeds run here, in this process, with the project's own
+ * Kysely — the way `gkm migrate` runs them — through that port. No image
+ * needs to carry them, and nothing is run on the server but the stack.
+ */
+async function reach(
+	run: ComposeRun,
+	deps: ComposeDeps,
+	service: string,
+	inside: number,
+): Promise<{ port: number; close: () => Promise<void> }> {
+	const published = await deps.docker.port(run.ref, service, inside);
+	if (!run.server) return { port: published, close: async () => {} };
+	return deps.server.tunnel(run.server, published);
+}
+
+async function migrateAndSeed(
+	ctx: ComposeContext,
+	run: ComposeRun,
+	deps: ComposeDeps,
+	port: number,
+): Promise<void> {
 	const { stack } = run;
 	const workspace: NormalizedWorkspace = ctx.workspace;
-	const port = await deps.docker.port(run.ref, 'postgres', 5432);
 
 	// A stack an older gkm started made its superuser under the old fixed
 	// name, with the password this stage derives; it is moved to the
@@ -1066,7 +1115,7 @@ export async function buildCompose(
 	for (const image of images) {
 		const digest = run.push
 			? await deps.docker.push(ref, image.ref)
-			: await deps.docker.digest(image.ref);
+			: await deps.docker.digest(ref, image.ref);
 		if (run.push) {
 			ctx.logger.info(`   ${image.app.padEnd(12)} ${image.ref}@${digest}`);
 		}
@@ -1113,20 +1162,24 @@ export async function releaseCompose(
 	// Registered with the shared edge once its services are up, so the edge
 	// never routes to a container that is not there yet. A stack on its own
 	// Caddy leaves nothing behind there from a run on the edge.
-	const edge = edgeDir(deps.env);
+	// The local stage is never on the edge, which is a server's.
+	const edge = edgeRef(edgeFile(run), {
+		...(ref.host ? { host: ref.host } : {}),
+		...(ref.output ? { output: ref.output } : {}),
+	});
 	if (stack.proxy === 'traefik' && stack.traefik) {
 		const written = await writeEdgeRoutes(
+			deps.docker,
 			edge,
 			stack.project,
 			stack.traefik,
 			stack.tls,
 		);
-		run.files.push(...written);
 		ctx.logger.info(
 			`🌐 Registered ${stack.routes.length} route(s) with ${EDGE_PROJECT}: ${written.at(-1)}`,
 		);
-	} else {
-		await removeEdgeRoutes(edge, stack.project);
+	} else if (!stack.local) {
+		await removeEdgeRoutes(deps.docker, edge, stack.project);
 	}
 
 	if (stack.local) {
@@ -1232,17 +1285,14 @@ export async function verifyCompose(
 	ctx.logger.info(
 		`\n🩺 Checking each app through ${stack.proxy === 'caddy' ? 'Caddy' : 'the shared edge'}…`,
 	);
-	// The local stage's edge is this machine. So is the shared edge, by
-	// construction — compose starts it here — so it is asked directly, on
-	// its published port, with each host as SNI and Host: what is checked is
-	// its routing and its certificate, whatever DNS or a NAT in front of
-	// the server does with a request from the server to itself.
-	const edge =
-		stack.local || stack.proxy === 'traefik'
-			? {
-					connectTo: '127.0.0.1',
-					...(stack.local ? {} : { connectPort: edgePorts(deps.env).https }),
-				}
+	// The local stage's edge is this machine; a deployed stage's is its
+	// server. Either is asked directly, on its published port, with each host
+	// as SNI and Host: what is checked is its routing and its certificate,
+	// whatever DNS — or a record not yet propagated — says.
+	const edge = stack.local
+		? { connectTo: '127.0.0.1' }
+		: run.server
+			? { connectTo: run.server.host, connectPort: edgePorts(deps.env).https }
 			: undefined;
 	const results = await Promise.all(
 		stack.apps.map((app) => checkApp(ctx, app, deps, { ca, edge })),
@@ -1268,7 +1318,7 @@ export async function verifyCompose(
 		throw new ComposeAppsUnhealthy(stack.project, down, stack.proxy);
 	}
 
-	if (stack.logs) reportLogs(ctx, stack.logs, stack.local);
+	if (stack.logs) reportLogs(ctx, stack.logs, stack.local, run.server);
 }
 
 /**
@@ -1322,12 +1372,14 @@ function reportLogs(
 	ctx: ComposeContext,
 	logs: StackLogs,
 	local: boolean,
+	server: ComposeServer | undefined,
 ): void {
 	const lines = logsAccess(logs, {
 		stage: ctx.stage,
 		local,
-		user: currentUser(),
-		hostname: hostname(),
+		user: server?.user ?? currentUser(),
+		hostname: server?.host ?? hostname(),
+		...(server ? { known: true } : {}),
 	});
 	ctx.logger.info(`\n${lines.join('\n')}`);
 	ctx.emit({
@@ -1458,6 +1510,11 @@ function caFile(run: ComposeRun): string {
 	return join(run.dir, 'caddy-root.crt');
 }
 
+/** The shared edge's compose file, as this machine hands it to compose. */
+function edgeFile(run: ComposeRun): string {
+	return join(run.dir, `${EDGE_PROJECT}.yml`);
+}
+
 function applied(
 	ctx: ComposeContext,
 	run: ComposeRun,
@@ -1488,9 +1545,30 @@ async function writeStack(
 		files.push(path);
 	};
 
-	await write(join(dir, 'docker-compose.yml'), composeYaml(stack));
-	// The proxy's configuration: the stack's own Caddy's, or — for reading —
-	// a copy of what the stack registers with the shared edge. The other is
+	// Caddy's files go inline, in the compose file: nothing the stack runs
+	// mounts a path on this machine, so the same file runs on a server's
+	// engine over SSH. With the stage's own key in it, it is owner-only.
+	const tls =
+		stack.proxy === 'caddy' && stack.tls
+			? {
+					cert: await readFile(stack.tls.certFile, 'utf-8'),
+					key: await readFile(stack.tls.keyFile, 'utf-8'),
+				}
+			: undefined;
+	const compose =
+		stack.caddyfile !== undefined
+			? withCaddyConfigs(stack.compose, {
+					caddyfile: stack.caddyfile,
+					...(tls ? { tls } : {}),
+				})
+			: stack.compose;
+	await write(
+		join(dir, 'docker-compose.yml'),
+		composeYaml(stack, compose),
+		tls ? 0o600 : 0o644,
+	);
+	// For reading: the proxy's configuration — the stack's own Caddy's, or a
+	// copy of what the stack registers with the shared edge. The other is
 	// removed, so the directory never shows a proxy the stack does not use.
 	if (stack.caddyfile !== undefined) {
 		await write(join(dir, 'Caddyfile'), stack.caddyfile);
@@ -1501,21 +1579,11 @@ async function writeStack(
 	if (stack.traefik !== undefined) {
 		await write(join(dir, 'traefik.yml'), stack.traefik);
 	}
-	// The stage's own certificate, where Caddy mounts it.
-	if (stack.proxy === 'caddy' && stack.tls) {
-		await mkdir(join(dir, 'tls'), { recursive: true, mode: 0o700 });
-		await write(
-			join(dir, 'tls', 'cert.pem'),
-			await readFile(stack.tls.certFile, 'utf-8'),
-		);
-		await write(
-			join(dir, 'tls', 'key.pem'),
-			await readFile(stack.tls.keyFile, 'utf-8'),
-			0o600,
-		);
-	} else {
-		await rm(join(dir, 'tls'), { recursive: true, force: true });
-	}
+	// The copy of the stage's certificate an older gkm mounted from here.
+	await rm(join(dir, 'tls'), { recursive: true, force: true });
+	// Env files stay on this machine: compose reads each one here and sends
+	// its values in the call that creates the container — on a server's
+	// engine too, where no secret is ever written as a file.
 	for (const app of [...stack.apps, ...stack.workers]) {
 		if (app.env)
 			await write(join(dir, `${app.name}.env`), envFile(app.env), 0o600);
@@ -1552,7 +1620,10 @@ async function writeStack(
 	return files;
 }
 
-function composeYaml(stack: ComposeStack): string {
+function composeYaml(
+	stack: ComposeStack,
+	compose: ComposeStack['compose'],
+): string {
 	const stage = ` --stage ${stack.stage}`;
 	return `# Generated by gkm compose from the construct manifest — do not edit.
 # The ${stack.stage} stage's APIs and sites behind ${stack.proxy === 'caddy' ? 'one Caddy' : `the shared Traefik edge (${EDGE_PROJECT})`}, and its workers.
@@ -1561,12 +1632,15 @@ function composeYaml(stack: ComposeStack): string {
 #
 #   gkm compose${stage}          start or update it
 #   gkm compose${stage} --down   stop it
-${stringify(stack.compose, { lineWidth: 0, aliasDuplicateObjects: false })}`;
+${stringify(compose, { lineWidth: 0, aliasDuplicateObjects: false })}`;
 }
 
 function printPlan(ctx: ComposeContext, run: ComposeRun): void {
 	const { stack, mode, files } = run;
 	ctx.logger.info(`\n🧱 ${stack.project} — stage ${stack.stage}`);
+	if (run.server) {
+		ctx.logger.info(`   → ${sshTarget(run.server)} (docker over ssh)`);
+	}
 	for (const app of stack.apps) {
 		ctx.logger.info(
 			`   ${app.name.padEnd(12)} ${app.url.padEnd(40)} ${mode} ${app.ref}`,

@@ -68,6 +68,7 @@ import { FileSecretsStore } from '../../secrets/file';
 import { keystoreProject } from '../../secrets/keystore';
 import { initStageSecrets } from '../../secrets/storage';
 import { writeComposeApp } from './__helpers__/composeApp';
+import { type SshServer, startSshServer } from './__helpers__/sshServer';
 
 const RUN = process.env.GKM_E2E === '1';
 
@@ -1448,9 +1449,17 @@ extendedKeyUsage=serverAuth
 }
 
 /**
- * `proxy: 'traefik'`, end to end: two deployed stages of one project, each
- * its own stack, both behind one shared Traefik edge that the first run
- * started — on free ports, with a certificate from a CA made for the run.
+ * `proxy: 'traefik'`, end to end, on a server: two deployed stages of one
+ * project, each its own stack, both behind one shared Traefik edge that the
+ * first run started — on free ports, with a certificate from a CA made for
+ * the run.
+ *
+ * The server is Docker-in-Docker with sshd (`startSshServer`): Docker, a
+ * deploy user and nothing else. `gkm compose` runs here and drives its engine
+ * over SSH — building the images there, migrating each stage's database
+ * through an SSH tunnel, and registering the routes inside the edge — and
+ * nothing of the stack is a file on the server: the env files are read here
+ * and Caddy's and Traefik's configuration is inline.
  *
  * - Sign-in from the site's origin through the edge, an API call with that
  *   session, and the trusted origins of a sibling service — reached by its
@@ -1473,6 +1482,7 @@ describe.runIf(RUN)(
 
 		let dir: string;
 		let home: string;
+		let server: SshServer;
 		let certs: string;
 		let ca: string;
 		let caFile: string;
@@ -1486,7 +1496,19 @@ describe.runIf(RUN)(
 			`https://${host(stage, app)}`;
 		const file = (stage: Stage) =>
 			join(dir, '.gkm', 'compose', stage, 'docker-compose.yml');
-		const dynamic = () => join(home, 'edge', 'dynamic');
+		/** The routes registered with the edge, in its container on the server. */
+		const dynamic = async () =>
+			(
+				await server.docker([
+					'exec',
+					'gkm-edge-traefik-1',
+					'ls',
+					'/etc/gkm-edge/dynamic',
+				])
+			)
+				.split('\n')
+				.filter(Boolean)
+				.sort();
 
 		/** A request to the shared edge, as a browser at the public address. */
 		function edge(
@@ -1550,13 +1572,17 @@ describe.runIf(RUN)(
 		const gkm = (args: readonly string[]) =>
 			exec(process.execPath, [CLI, ...args], {
 				cwd: dir,
-				env: childEnv({
-					GKM_HOME: home,
-					GKM_COMPOSE_HTTPS_PORT: String(https),
-					GKM_COMPOSE_HTTP_PORT: String(http),
-					// The run's CA, trusted by verify as a server trusts its own.
-					NODE_EXTRA_CA_CERTS: caFile,
-				}),
+				// The server's `ssh` first on PATH: the user's ~/.ssh is never
+				// read. No DOCKER_HOST: gkm sets it from deploy.compose.server.
+				env: server.env(
+					childEnv({
+						GKM_HOME: home,
+						GKM_COMPOSE_HTTPS_PORT: String(https),
+						GKM_COMPOSE_HTTP_PORT: String(http),
+						// The run's CA, trusted by verify as a server trusts its own.
+						NODE_EXTRA_CA_CERTS: caFile,
+					}),
+				),
 			});
 
 		/**
@@ -1578,6 +1604,12 @@ describe.runIf(RUN)(
 						public: { allow: ['203.0.113.7'] },
 					},
 				},
+				server: Object.fromEntries(
+					stages.map((s) => [
+						s,
+						{ user: server.user, host: server.host, port: server.sshPort },
+					]),
+				),
 				compose: {
 					proxy: 'traefik',
 					tls: Object.fromEntries(
@@ -1606,6 +1638,14 @@ describe.runIf(RUN)(
 			caFile = (await testCertificate(certs, stages.map(domain))).ca;
 			ca = readFileSync(caFile, 'utf-8');
 
+			https = await freePort();
+			http = await freePort();
+			server = await startSshServer({
+				dir: join(root, 'server'),
+				ports: [https, http],
+				env: childEnv(),
+			});
+
 			configure();
 			await dependOnThisCheckout(dir, name, { telemetry: true });
 			await exec('pnpm', ['install', '--lockfile-only'], { cwd: dir });
@@ -1619,9 +1659,6 @@ describe.runIf(RUN)(
 			await exec('git', ['add', '-A'], { cwd: dir, env: git });
 			await exec('git', ['commit', '-q', '-m', 'init'], { cwd: dir, env: git });
 
-			https = await freePort();
-			http = await freePort();
-
 			// The first stack starts the edge; the second registers with it.
 			output.staging = await gkm(['compose', '--stage', 'staging']);
 			output.production = await gkm(['compose', '--stage', 'production']);
@@ -1629,46 +1666,12 @@ describe.runIf(RUN)(
 
 		afterAll(async () => {
 			if (process.env.GKM_E2E_KEEP === '1') {
-				console.log(`Kept ${name} and gkm-edge in ${dir}`);
+				console.log(`Kept ${name} on ${server?.name} in ${dir}`);
 				return;
 			}
-			for (const stage of stages) {
-				if (dir && existsSync(file(stage))) {
-					await exec('docker', [
-						'compose',
-						'-p',
-						project(stage),
-						'-f',
-						file(stage),
-						'down',
-						'--volumes',
-						'--remove-orphans',
-					]).catch(() => {});
-				}
-			}
-			const edgeFile = join(home, 'edge', 'docker-compose.yml');
-			if (home && existsSync(edgeFile)) {
-				await exec('docker', [
-					'compose',
-					'-p',
-					'gkm-edge',
-					'-f',
-					edgeFile,
-					'down',
-					'--volumes',
-				]).catch(() => {});
-				await exec('docker', ['network', 'rm', 'gkm-edge']).catch(() => {});
-			}
-			const images = await exec('docker', [
-				'images',
-				'--quiet',
-				'--filter',
-				`reference=${name}/*`,
-			]).catch(() => '');
-			const ids = [...new Set(images.split('\n').filter(Boolean))];
-			if (ids.length > 0) {
-				await exec('docker', ['image', 'rm', '-f', ...ids]).catch(() => {});
-			}
+			// Every stack, the edge and every image are on the server: it goes
+			// whole.
+			await server?.stop();
 			if (dir) await cleanupDir(join(dir, '..'));
 		}, 5 * 60_000);
 
@@ -1680,7 +1683,7 @@ describe.runIf(RUN)(
 				for (const app of ['api', 'auth', 'web', 'jobs']) {
 					expect(said).toContain(`✓ ${app}`);
 				}
-				const ps = await exec('docker', [
+				const ps = await server.docker([
 					'compose',
 					'-p',
 					project(stage),
@@ -1693,14 +1696,59 @@ describe.runIf(RUN)(
 			}
 			// The first run started the edge; the second found it.
 			expect(output.staging).toContain('Starting the shared edge');
-			expect(readdirSync(dynamic()).sort()).toEqual(
+			expect(await dynamic()).toEqual(
 				stages.map((stage) => `${project(stage)}.yml`).sort(),
 			);
 		});
 
+		it("ran on the server's engine over SSH, leaving no file of the stack there", async () => {
+			for (const stage of stages) {
+				expect(output[stage]).toContain(`→ deploy@127.0.0.1 (docker over ssh)`);
+			}
+			// Nothing of either stack runs on this machine's Docker.
+			const here = await exec('docker', [
+				'ps',
+				'--filter',
+				`label=com.docker.compose.project=${project('staging')}`,
+				'-q',
+			]);
+			expect(here.trim()).toBe('');
+
+			// The env file was read here and sent with the container: the
+			// value is in the API's environment, and no env file is on the
+			// server.
+			const env = readFileSync(
+				join(dir, '.gkm', 'compose', 'staging', 'api.env'),
+				'utf-8',
+			);
+			const databaseUrl = /^DATABASE_URL=(.*)$/m.exec(env)![1]!;
+			const inspected = await server.docker([
+				'inspect',
+				'--format',
+				'{{json .Config.Env}}',
+				`${project('staging')}-api-1`,
+			]);
+			expect(JSON.parse(inspected)).toContain(`DATABASE_URL=${databaseUrl}`);
+			const files = await server.shell(
+				"find / -xdev -name '*.env' -path '*compose*' 2>/dev/null; true",
+			);
+			expect(files.trim()).toBe('');
+
+			// Postgres is on the server's loopback alone; the migrations went
+			// through an SSH tunnel to it.
+			const published = await server.docker([
+				'port',
+				`${project('staging')}-postgres-1`,
+				'5432',
+			]);
+			for (const line of published.trim().split('\n')) {
+				expect(line).toMatch(/^127\.0\.0\.1:\d+$/);
+			}
+		});
+
 		it('puts only public services on the shared network, by their aliases', async () => {
 			const inspected = JSON.parse(
-				await exec('docker', ['network', 'inspect', 'gkm-edge']),
+				await server.docker(['network', 'inspect', 'gkm-edge']),
 			)[0] as { Containers: Record<string, { Name: string }> };
 			const names = Object.values(inspected.Containers).map((c) => c.Name);
 
@@ -1796,19 +1844,21 @@ describe.runIf(RUN)(
 			const auth = `http://${project('staging')}-auth:3001`;
 
 			const signOutFrom = (from: string) =>
-				exec('docker', [
-					'compose',
-					'-p',
-					project('staging'),
-					'-f',
-					file('staging'),
-					'exec',
-					'-T',
-					'api',
-					'node',
-					'-e',
-					`fetch(${JSON.stringify(`${auth}/api/auth/sign-out`)}, { method: 'POST', headers: { origin: ${JSON.stringify(from)}, cookie: ${JSON.stringify(session)}, 'content-type': 'application/json' }, body: '{}' }).then((r) => console.log(r.status))`,
-				]).then((said) => Number(said.trim().split('\n').pop()));
+				server
+					.docker([
+						'compose',
+						'-p',
+						project('staging'),
+						'-f',
+						file('staging'),
+						'exec',
+						'-T',
+						'api',
+						'node',
+						'-e',
+						`fetch(${JSON.stringify(`${auth}/api/auth/sign-out`)}, { method: 'POST', headers: { origin: ${JSON.stringify(from)}, cookie: ${JSON.stringify(session)}, 'content-type': 'application/json' }, body: '{}' }).then((r) => console.log(r.status))`,
+					])
+					.then((said) => Number(said.trim().split('\n').pop()));
 
 			expect(await signOutFrom('http://evil.example')).toBe(403);
 			expect(await signOutFrom(`http://${project('staging')}-api:3000`)).toBe(
@@ -1893,7 +1943,7 @@ describe.runIf(RUN)(
 		it('--down of one stack removes its routes, and the other keeps serving', async () => {
 			const said = await gkm(['compose', '--stage', 'staging', '--down']);
 			expect(said).toContain(`Removed ${project('staging')}'s routes`);
-			expect(readdirSync(dynamic())).toEqual([`${project('production')}.yml`]);
+			expect(await dynamic()).toEqual([`${project('production')}.yml`]);
 
 			// The edge picks the removal up from its directory.
 			let gone = 0;
@@ -1907,7 +1957,7 @@ describe.runIf(RUN)(
 			expect((await edge('production', 'api', '/health')).status).toBe(200);
 			expect((await edge('production', 'web', '/')).status).toBe(200);
 			// The edge itself is left running for the stacks still on it.
-			const edgePs = await exec('docker', [
+			const edgePs = await server.docker([
 				'ps',
 				'--filter',
 				'name=gkm-edge-traefik-1',

@@ -100,17 +100,6 @@ export interface DeployInput {
 	 * CDN or proxy in front of the server, or records written by another step.
 	 */
 	skipDns?: boolean;
-	/**
-	 * Create the stage's resources — its providers' (deploy.<kind>.<stage>)
-	 * and its DNS records — and nothing else: what a CI runner runs with the
-	 * cloud credentials and DNS token before the server deploys.
-	 */
-	resourcesOnly?: boolean;
-	/**
-	 * An earlier `resourcesOnly` run created the stage's resources: run no
-	 * provider, and write or check no DNS record.
-	 */
-	skipResources?: boolean;
 	/** Each provider issues its runtime keys a successor. */
 	rotateKeys?: boolean;
 	/** Delete a rotated-out key now, not after the next deploy. */
@@ -278,8 +267,6 @@ export function deploy(input: DeployInput): DeployRun {
 								? { allowDevServices: input.allowDevServices }
 								: {}),
 							...(input.skipDns ? { skipDns: true } : {}),
-							...(input.resourcesOnly ? { resourcesOnly: true } : {}),
-							...(input.skipResources ? { skipResources: true } : {}),
 							...(input.rotateKeys ? { rotateKeys: true } : {}),
 							...(input.retireOldKeys ? { retireOldKeys: true } : {}),
 						},

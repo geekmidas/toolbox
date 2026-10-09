@@ -274,7 +274,7 @@ describe('a deploy whose state would not fit SSM', { timeout: 120_000 }, () => {
 
 		const error = await runDeploy(
 			{ ...workspace, state: { provider: store } },
-			{ stage: STAGE, target: 'stand-in', skipResources: true },
+			{ stage: STAGE, target: 'stand-in' },
 			{
 				emit: (event) => events.push(event),
 				credentials: { get: async () => undefined },

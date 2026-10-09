@@ -26,8 +26,11 @@ gkm deploy --target compose --stage production --tag v1.4.0
 ```
 
 `compose` is the one built-in target that can also run the project's local
-stage: the stack runs on the machine that deploys it. With `deploy.default:
-'compose'`, `gkm deploy --stage production` needs no `--target`.
+stage, on this machine's Docker. A deployed stage runs on **its server**: gkm
+runs where the deploy is started — a CI runner, your laptop — and drives the
+server's Docker engine over SSH (see [The server](#the-server)). With
+`deploy.default: 'compose'`, `gkm deploy --stage production` needs no
+`--target`.
 
 How it compares with `dokploy` and `sst` is in [Deploy targets](./deploy-targets.md).
 
@@ -139,16 +142,96 @@ So for a release, `gkm compose --build --push` pushes:
 and `gkm compose --stage production --tag v1.4.0` pulls exactly those. A site
 built by `gkm compose` without a tag is tagged `<commit>-<stage>` the same way.
 
+## The server
+
+A deployed stage runs on its server's Docker, reached over SSH. gkm itself
+never runs there: `gkm compose --stage production` on a runner or a laptop sets
+`DOCKER_HOST=ssh://deploy@<host>` for every docker and compose call it makes —
+up, down, pull, build, port, ps, exec — so the stack starts on the server, and
+nothing of a deployed stage ever starts on the machine you typed it on.
+
+```ts
+// gkm.config.ts
+deploy: {
+  default: 'compose',
+  compose: {
+    server: {
+      production: { user: 'deploy' },                    // host: GKM_SERVER_IPV4
+      staging: { user: 'deploy', host: 'staging.example.com', port: 2222 },
+    },
+  },
+},
+```
+
+The host is the stage's `GKM_SERVER_IPV4` secret — the address its DNS records
+point at — unless `host` names another; the port is 22 unless `port` says
+otherwise. Every deployed stage needs one: a stage with no entry is
+`ComposeServerMissing`, naming the line to add, before anything happens. The
+local stage takes none (`ComposeServerOnLocalStage`) — it always runs here.
+
+SSH uses your own setup — `~/.ssh/known_hosts` for the server's host key, your
+agent or `~/.ssh/config` for the key — and never prompts. Before a deploy
+changes anything, it checks the login with a read-only `docker version` on the
+server; a failure is `ComposeServerUnreachable`, quoting what ssh said. A dry
+run connects to nothing and prints where it would deploy:
+
+```
+🧱 shop-production — stage production
+   → deploy@203.0.113.10 (docker over ssh)
+```
+
+**What the server needs** — and nothing else:
+
+1. Docker and its compose plugin.
+2. A deploy user in the `docker` group, with the deploying machine's (or CI's)
+   public key in `~/.ssh/authorized_keys`. sshd must allow TCP forwarding for
+   it (`AllowTcpForwarding yes`, OpenSSH's default): the deploy reaches the
+   stack's Postgres through a tunnel.
+3. A firewall open on 22, 80 and 443 — 80 for ACME's HTTP challenge and the
+   redirect to HTTPS.
+
+The server holds **no cloud credentials** — no AWS CLI, no IAM user, no access
+key — and no gkm, Node or checkout of the project. The stage's secrets, its
+deploy state and the DNS provider's token stay where the deploy runs. Nor does
+it need a `docker login`: the images are pulled with the deploying machine's
+registry login, which docker sends with each pull. A backup job's credentials,
+when there is one, reach its container as its environment like any app's
+secret.
+
+**How the stack's files reach it.** Nothing a deployed stack runs is a file on
+the server:
+
+- Each backend's env file is written under `.gkm/compose/<stage>/` where the
+  deploy runs. Compose reads it there and sends the values in the call that
+  creates the container, so a stage's secrets are never written to the
+  server's disk — they live in the container's configuration, which only the
+  docker group can read.
+- Caddy's Caddyfile and a stage's own certificate (`deploy.compose.tls`), and
+  the shared edge's static configuration, are inline `configs` in the compose
+  file (compose v2.23 or later), copied into the container through the
+  engine's API. A stack's routes and certificate on the shared edge are
+  written into the edge's volumes through `docker exec`.
+- Images are built from the checkout where the deploy runs — the build
+  context is sent to the server's engine — or pulled at a tag.
+
+**Migrations and seeds** run where the deploy runs, with the project's own
+Kysely, as `gkm migrate` runs them. The stack's Postgres (and MinIO, where the
+stack runs one) is published on the server's loopback alone; the deploy opens
+an SSH tunnel to that port over the same login, migrates and seeds through it,
+and closes it before any app starts. Neither is ever published beyond the
+server.
+
 ## Deploying from CI
 
-The release is built and pushed where the code is, and pulled where it runs:
+The release is built and pushed where the code is, and deployed from the same
+runner:
 
 ```bash
-# the runner: build every image and push it to deploy.registry; start nothing
+# build every image and push it to deploy.registry; start nothing
 gkm compose --stage production --build --push --tag $SHA --digests-file digests.json
 
-# the server: pull exactly those images and run them
-gkm compose --stage production --tag $SHA
+# run exactly those images on the stage's server, over SSH
+gkm compose --stage production --tag $SHA --digests-file digests.json
 ```
 
 `--build --push` builds every image the stack needs exactly as a deploy of the
@@ -169,11 +252,7 @@ written the bucket's URL. `--push` without `--build`, or with `--pull`, is
 `--digests-file <path>` writes each pushed image as JSON, `{ "api":
 "<ref>@sha256:…" }`. Handed the same file, a pull runs each image at its digest
 rather than its tag, so a tag moved after the push cannot change what is
-released, and the stage's state records the pinned ref:
-
-```bash
-gkm compose --stage production --tag $SHA --digests-file digests.json
-```
+released, and the stage's state records the pinned ref.
 
 A file missing an app is `ImageDigestMissing`, and an entry for another image
 or tag `ImageDigestMismatch` — both before the registry is asked.
@@ -189,7 +268,7 @@ protected ones; a manual run deploys the stage and `ref` you name. Abridged:
 ```yaml
 # .github/workflows/deploy.yml (generated)
 jobs:
-  stages:   # build, deploy, has-build, has-deploy, aws-region, resources
+  stages:   # build, deploy, has-build, has-deploy, aws-region
     steps:
       - uses: actions/checkout@v4
       # … node, the package manager, install
@@ -231,49 +310,38 @@ jobs:
         stage: ${{ fromJSON(needs.stages.outputs.deploy) }}
     environment: ${{ matrix.stage }}
     concurrency: { group: 'deploy-${{ matrix.stage }}', cancel-in-progress: false }
-    env:
-      RESOURCES_ON_RUNNER: ${{ contains(fromJSON(needs.stages.outputs.resources || '[]'), matrix.stage) }}
+    permissions: { contents: read, actions: read, packages: read, id-token: write }
     steps:
       # 1. the commit: a release's tag, a manual run's ref, or the push
-      # 2. a stage in `resources`: on the runner, check out that commit,
-      #    install, assume the stage's role, and create its resources
-      - if: env.RESOURCES_ON_RUNNER == 'true'
-        run: pnpm exec gkm deploy --stage "$STAGE" --resources-only
-        env:
-          STAGE: ${{ matrix.stage }}
-          GODADDY_API_TOKEN: ${{ secrets.GODADDY_API_TOKEN }}
-          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+      # 2. check out that commit, install, docker login (read), and assume
+      #    the stage's role
       # 3. that commit's push build of this workflow, and its digests-<stage>
       #    (missing: deploy by tag, with a warning on the run)
-      # 4. over SSH, host key pinned, on the server:
-      #      git checkout <sha> && pnpm install --frozen-lockfile
-      #      pnpm exec gkm compose --stage <stage> --tag <sha> --digests-file … \
-      #        [--skip-resources]   # when step 2 ran
+      # 4. the deploy key and the server's pinned host key, into ~/.ssh
+      - run: |
+          args=(--stage "$STAGE" --tag "$SHA")
+          if [ -f digests.json ]; then args+=(--digests-file digests.json); fi
+          pnpm exec gkm compose "${args[@]}"
+        env:
+          STAGE: ${{ matrix.stage }}
+          SHA: ${{ steps.commit.outputs.sha }}
+          GODADDY_API_TOKEN: ${{ secrets.GODADDY_API_TOKEN }}
+          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
 ```
 
-The server runs `gkm compose` itself, from a checkout at the same commit:
-provisioning and migrations reach the stack's Postgres on its loopback port.
-`DEPLOY_PATH` is that checkout, and it needs a `docker login` to the registry
-(a read-only token is enough) and the stage's secrets store. Each environment
-holds `DEPLOY_SSH_KEY` (a secret) and `DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST`,
-`DEPLOY_USER` and `DEPLOY_PATH` (variables). The SSH session is
-non-interactive, so the package manager has to be on that user's `PATH`
-without a login shell.
-
-A stage's **resources** — a [provider's](./providers.md) buckets and keys,
-and its hosts' [DNS records](#dns) — are created by the deploy. Run on the
-server, that would need the stage account's credentials and the DNS
-provider's token there. So for each stage in the stages action's `resources`
-output, the runner creates them first (`gkm deploy --resources-only`) with the
-stage's role and the token from the stage's environment, and the server
-deploys with `--skip-resources`: neither credential reaches it. `resources`
-holds the deployed stages that have a `deploy.<kind>.<stage>` provider or a
-`dns` domain whose provider writes records, **and** whose secrets are in an
-AWS store (`secrets.store` `s3`, `ssm` or `secrets-manager`) the runner reads with
-the stage's role. A stage on the default `file` store is not in it: its
-deploy on the server does everything, so the server holds those credentials.
-To create a stage's resources from CI instead, keep its secrets in `s3` (the
-project bucket, beside the state), `ssm` or `secrets-manager`.
+One `gkm compose`, on the runner, does the whole deploy: the stage's
+[provider](./providers.md) resources and keys, its hosts' [DNS records](#dns),
+its databases migrated through the tunnel, and the stack started on the
+server's engine. Each environment holds `DEPLOY_SSH_KEY` (a secret: the deploy
+user's private key) and `DEPLOY_KNOWN_HOSTS` (a variable: the server's host
+key, pinned — never accepted on first sight); the step before the deploy
+writes them, with an `~/.ssh/config` that uses them and shares one SSH
+connection between compose's calls. The server's user and host come from
+`deploy.compose.server` and the stage's `GKM_SERVER_IPV4`, which the runner
+reads from the stage's secrets store with the stage's role — so keep a
+deployed stage's secrets in a store on AWS — `s3` (the project bucket, beside
+the state), `ssm` or `secrets-manager`, not the default `file` — to deploy it
+from CI.
 
 The images are pinned by digest: a release deploys exactly what the push of
 its commit built, even if a tag was pushed over since. The digests are kept for
@@ -337,13 +405,15 @@ project's `turbo.json` declares.
 
 ## The files
 
-Everything for a stage is in `.gkm/compose/<stage>/` (directory `0700`):
+Everything for a stage is in `.gkm/compose/<stage>/` (directory `0700`), on
+the machine that runs the deploy — never on the server:
 
 ```
-docker-compose.yml   the stack — compose project <scope>-<stage>
-Caddyfile            one host per app (proxy: 'caddy')
+docker-compose.yml   the stack — compose project <scope>-<stage>; Caddy's files
+                     inline (mode 0600 when it holds the stage's own key)
+Caddyfile            a copy, for reading, of the inline one (proxy: 'caddy')
 traefik.yml          a copy of what the stack registers with the edge (proxy: 'traefik')
-tls/                 the stage's own certificate, where it sets one (proxy: 'caddy')
+gkm-edge.yml         the shared edge's compose file (proxy: 'traefik')
 api.env              one env file per backend, mode 0600
 auth.env
 openobserve.env      with self-hosted telemetry: its root login, mode 0600
@@ -374,7 +444,9 @@ provides — resolved for the stage:
 
 A secret an app does not read is never written to its file. Images stay
 stage-agnostic: no secret is baked into one. Compose reads the files raw, so
-nothing in a value is interpolated.
+nothing in a value is interpolated — and reads them where the deploy runs: on a
+deployed stage it sends the values with the call that creates each container on
+the server, so no env file is ever copied there.
 
 For a deployed stage, everything the stage generates once — its seed, each
 `Secret`'s value, each encryption keyring, the Redis password — is generated on the first run and
@@ -459,15 +531,16 @@ dns: { 'example.com': { provider: 'godaddy' } },
 
 ```text
 $ gkm deploy --stage production --dry-run
-🌐 DNS for 'production' → *** (dry run — nothing is written)
+🌐 DNS for 'production' → 203.0.113.10 (dry run — nothing is written)
    example.com (godaddy) — dry run
-   + api.shop.example.com             A     ***  (TTL 600) — would create
-   ✓ auth.shop.example.com            A     ***  (TTL 600) — up to date
-   ~ shop.example.com                 A     198.51.100.7 → ***  (TTL 600) — would update
+   + api.shop.example.com             A     203.0.113.10  (TTL 600) — would create
+   ✓ auth.shop.example.com            A     203.0.113.10  (TTL 600) — up to date
+   ~ shop.example.com                 A     198.51.100.7 → 203.0.113.10  (TTL 600) — would update
 ```
 
-The server's address is `***` because it is a stage secret, masked in
-everything a deploy prints.
+The server's address is printed, not masked: it is in public DNS, and it is
+where the deploy goes. Every other stage secret is masked in everything a
+deploy prints.
 
 Every host gets an A record, and an AAAA record with `GKM_SERVER_IPV6`. With
 `records: { mode: 'cname', target: 'server.example.com' }` on the domain, the
@@ -523,10 +596,9 @@ env:
 ```
 
 In the [compose workflow](#a-github-actions-workflow), that step is the
-runner's `gkm deploy --stage <stage> --resources-only`, and the server deploys
-with `--skip-resources`, so the token never reaches the server. A stage whose
-environment lacks the secret fails that step with `DnsCredentialMissing`,
-which says where to add it.
+runner's one `gkm compose`, which drives the server over SSH — the token never
+reaches the server. A stage whose environment lacks the secret fails that step
+with `DnsCredentialMissing`, which says where to add it.
 
 ### The DNS check
 
@@ -599,17 +671,25 @@ connection's own address).
 
 `gkm compose` starts the edge when a stack needs it and it is not running, and
 leaves it running on `--down`. There is no Docker socket: the edge is
-configured through Traefik's file provider alone. Everything lives in the
-deploy user's gkm home, so nothing needs root:
+configured through Traefik's file provider alone. Everything lives in Docker
+on the server — nothing is a file there, and nothing needs root:
 
 ```
-~/.gkm/edge/                      ($GKM_HOME/edge when GKM_HOME is set)
-  docker-compose.yml              compose project gkm-edge, traefik:v3.7.13 pinned
-  traefik.yml                     entrypoints web (80 → HTTPS) and websecure (443),
-                                  ACME over HTTP-01, no dashboard and no API
-  dynamic/<project>.yml           one per stack: its routers, services, middlewares
-  certs/<project>.crt, .key       a stack's own certificate, where it sets one
+gkm-edge (compose project, traefik:v3.7.13 pinned)
+  traefik.yml                     inline config: entrypoints web (80 → HTTPS) and
+                                  websecure (443), ACME over HTTP-01, no dashboard
+                                  and no API
+  dynamic/<project>.yml           volume: one per stack — its routers, services,
+                                  middlewares
+  certs/<project>.crt, .key       volume: a stack's own certificate, where it sets one
+  acme/                           volume: the ACME account and certificates
 ```
+
+The deploy writes a stack's routes and certificate into those volumes through
+`docker exec` on the edge's container, over the same SSH connection as every
+other call. An edge started by an older gkm, which mounted `~/.gkm/edge` on the
+server, is recreated on the first deploy; every stack on it registers again
+on its own next deploy.
 
 - **The network.** The edge and the stacks meet on the external Docker
   network `gkm-edge`. Only a stack's public services join it — its APIs, its
@@ -626,11 +706,11 @@ deploy user's gkm home, so nothing needs root:
   `gkm compose --down`, which leaves every other stack served.
 - **The edge's ports** are 443 and 80; `GKM_COMPOSE_HTTPS_PORT` and
   `GKM_COMPOSE_HTTP_PORT` move them, as they move a stack's own Caddy.
-- **`verify`** asks the edge on this machine, on its published port, with each
-  host as SNI and `Host`: it checks the edge routes the host and presents a
-  certificate a client accepts.
-- **Stop the edge**, once no stack uses it:
-  `docker compose -p gkm-edge -f ~/.gkm/edge/docker-compose.yml down`.
+- **`verify`** asks the edge on the server's address, on its published port,
+  with each host as SNI and `Host`: it checks the edge routes the host and
+  presents a certificate a client accepts.
+- **Stop the edge**, once no stack uses it: `docker compose -p gkm-edge down`
+  on the server.
 
 ### Certificates
 
@@ -653,8 +733,9 @@ deploy: {
 ```
 
 Paths are relative to the workspace root, or absolute; the certificate is PEM
-with its chain. Caddy reads a copy beside its Caddyfile; Traefik gets a copy in
-the edge's `certs/` (the key `0600`) and the stack's file names it. A file that
+with its chain. It is read where the deploy runs: Caddy gets it as inline
+configs beside its Caddyfile; Traefik gets a copy in the edge's `certs/` volume
+(the key `0600`) and the stack's file names it. A file that
 is not there fails the run with `ComposeTlsFileMissing` before anything starts,
 a certificate for the local stage with `ComposeTlsOnLocalStage`, and a stage the
 workspace does not have — in `tls` or a per-stage `proxy` — with
@@ -920,18 +1001,18 @@ lowercase and an uppercase letter, a digit and a symbol) fails with
 
 ### Reaching it: an SSH tunnel
 
-By default OpenObserve is published on `127.0.0.1:5080` of the machine the
+By default OpenObserve is published on `127.0.0.1:5080` of the server the
 stack runs on, and on nothing else. The run ends with how to reach it:
 
 ```
 📜 Logs (OpenObserve) on 127.0.0.1:5080 — from your computer:
-     ssh -N -L 5080:localhost:5080 deploy@box-1   (user and host are guesses: this machine's)
+     ssh -N -L 5080:localhost:5080 deploy@203.0.113.10
      then open http://localhost:5080  (login: admin@example.com, password: gkm secrets:show --stage production --reveal → ZO_ROOT_USER_PASSWORD)
 ⚠️  Docker-published ports bypass ufw, so OpenObserve is bound to 127.0.0.1 only — reach it through the tunnel, not by opening the port.
 ```
 
-The user and host are this machine's own, as a guess; use whatever you SSH in
-with. To make it one word, give the tunnel a name in `~/.ssh/config`:
+The login is the stage's `deploy.compose.server`. To make it one word, give
+the tunnel a name in `~/.ssh/config`:
 
 ```
 Host shop-logs
