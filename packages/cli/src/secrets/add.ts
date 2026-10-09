@@ -10,6 +10,13 @@
  * construct's schema — checked, and saved through the stage's own store, the
  * one `gkm secrets:set` writes. No value is ever printed.
  *
+ * The keys are walked one at a time — unset ones first — and each is a
+ * checkpoint: set it now, skip it, or stop here. A key is saved the moment it
+ * is built, so stopping, Ctrl-C or a failure keeps every key before it, and
+ * running the command again picks up what is still missing. A key a provider
+ * on the stage creates (a bucket under `deploy.objects.<stage>`, written by
+ * `gkm setup`) is not a checkpoint: it is listed, with what creates it.
+ *
  * `--json` asks nothing: it prints the keys, for a script or an agent to set
  * with `gkm secrets:set`.
  */
@@ -24,8 +31,9 @@ import prompts, { type PromptObject } from 'prompts';
 import { z } from 'zod';
 import { SERVER_IPV4_KEY, SERVER_IPV6_KEY } from '../compose/dnsConfig.js';
 import { loadWorkspaceSettings } from '../config';
+import { stageProvider } from '../providers/config.js';
 import { deploysWithCompose } from '../providers/dns.js';
-import { stageProviderNotes } from '../providers/notes.js';
+import { provisionCommand, stageProviderNotes } from '../providers/notes.js';
 import { discover } from '../reconcile/discover';
 import { constructGlobs } from '../reconcile/workspace';
 import { assertDeployedStage } from '../workspace/stages';
@@ -63,10 +71,14 @@ export interface SecretsAddIo {
 
 /** What a run of the command came to. */
 export interface SecretsAddResult {
-	/** The keys offered. */
+	/** The keys offered, in the order they were walked. */
 	keys: WorkspaceStageKey[];
 	/** The keys saved, in the order they were built. */
 	saved: string[];
+	/** The keys skipped at their checkpoint. */
+	skipped: string[];
+	/** The keys the stage must still be given, once the run is over. */
+	missing: string[];
 }
 
 /** One key as `--json` prints it. */
@@ -76,6 +88,8 @@ export interface StageKeyJson {
 	construct: string;
 	apps: string[];
 	set: boolean;
+	/** A provider on the stage creates it: `gkm setup --stage <stage>`. */
+	provisioned?: true;
 }
 
 /** `gkm secrets:add` with nobody at a terminal to answer it. */
@@ -91,10 +105,15 @@ export class SecretsAddNeedsTerminal extends Error {
 	}
 }
 
-/** The person stopped the builder; nothing was saved. */
+/**
+ * The person stopped the builder at a prompt (Ctrl-C). Every key saved
+ * before it is kept; the run ends with what was saved and what is missing.
+ */
 export class SecretsAddCancelled extends Error {
 	constructor(readonly stage: string) {
-		super(`Stopped. Nothing was saved to the stage '${stage}'.`);
+		super(
+			`Stopped. Every key saved to the stage '${stage}' before it is kept.`,
+		);
 		this.name = 'SecretsAddCancelled';
 	}
 }
@@ -143,7 +162,16 @@ export async function secretsAddCommand(
 			? { server: true }
 			: {}),
 	});
-	const keys = options.missing ? all.filter((k) => !k.set) : all;
+	// Unset keys first: a run is for what the stage still lacks.
+	const scope = [...all.filter((k) => !k.set), ...all.filter((k) => k.set)];
+	const keys = options.missing ? scope.filter((k) => !k.set) : scope;
+
+	// A key a provider on the stage writes — `gkm setup` creates its bucket.
+	const objects = stageProvider(workspace as never, 'objects', stage);
+	const provisioned = (k: WorkspaceStageKey) =>
+		objects.mode === 'provider' &&
+		k.hint !== undefined &&
+		(k.kind === 'bucket' || k.kind === 'file-server');
 
 	if (options.json) {
 		const listed: StageKeyJson[] = keys.map((k) => ({
@@ -152,95 +180,144 @@ export async function secretsAddCommand(
 			construct: k.id,
 			apps: [...(k.apps ?? [])],
 			set: k.set,
+			...(provisioned(k) ? { provisioned: true as const } : {}),
 		}));
 		io.write(`${JSON.stringify(listed, null, 2)}\n`);
-		return { keys, saved: [] };
+		return { keys, saved: [], skipped: [], missing: [] };
 	}
 
 	if (!io.interactive) throw new SecretsAddNeedsTerminal(stage);
 
-	if (keys.length === 0) {
+	// A provisioned key is no checkpoint: it is listed, with what creates it.
+	const offered = keys.filter((k) => !provisioned(k));
+	const created = keys.filter(provisioned);
+	if (created.length > 0 && objects.mode === 'provider') {
+		io.log('Not offered — a provider on the stage creates them:');
+		for (const k of created) {
+			io.log(
+				`  ${k.key} — created by ${provisionCommand(stage)} ` +
+					`(deploy.objects.${stage} is ${objects.name})`,
+			);
+		}
+	}
+
+	if (offered.length === 0) {
 		io.log(
-			all.length === 0
+			all.every(provisioned)
 				? `Nothing to add: no construct on '${stage}' needs a key only the stage can supply.`
 				: `Nothing to add: the stage '${stage}' has every key it needs.`,
 		);
-		return { keys, saved: [] };
+		return { keys: offered, saved: [], skipped: [], missing: [] };
 	}
 
 	const ask = asker(stage);
-	const chosen: string[] = await ask({
-		type: 'multiselect',
-		message: `Which keys for '${stage}'? (${store.name} store)`,
-		choices: keys.map((k) => ({
-			title: `${k.key}  ${KIND_LABEL[k.kind]} '${k.id}'${k.apps?.length ? ` · ${k.apps.join(', ')}` : ''}${k.set ? ' · set' : ''}`,
-			value: k.key,
-			selected: !k.set,
-		})),
-		instructions: false,
-		hint: 'space to toggle, enter to continue',
-	});
-	const selected = keys.filter((k) => (chosen ?? []).includes(k.key));
-
-	const values: Record<string, string> = {};
-	const has = (key: string) =>
-		values[key] !== undefined || stored?.custom?.[key] !== undefined;
+	let current = stored ?? initStageSecrets(stage);
+	const saved: string[] = [];
+	const skipped: string[] = [];
+	const has = (key: string) => current.custom?.[key] !== undefined;
 	let schemas: CredentialSchemas | undefined;
 
-	for (const entry of selected) {
-		if (entry.set) {
-			const overwrite: boolean = await ask({
-				type: 'confirm',
-				message: `${entry.key} is set. Replace it?`,
-				initial: false,
+	// Each key is saved as soon as it is built: what is set survives a stop.
+	const save = async (values: Record<string, string>) => {
+		current = {
+			...current,
+			updatedAt: new Date().toISOString(),
+			custom: { ...current.custom, ...values },
+		};
+		await store.write(stage, current);
+		saved.push(...Object.keys(values));
+		io.log(`  ✓ Saved ${Object.keys(values).join(', ')}.`);
+	};
+
+	const walk = async () => {
+		for (const [index, entry] of offered.entries()) {
+			io.log(`\n[${index + 1}/${offered.length}] ${entry.key} — ${entry.what}`);
+			if (entry.hint) io.log(`  ${entry.hint}`);
+
+			const step = await ask<'set' | 'skip' | 'stop'>({
+				type: 'select',
+				message: `${entry.key}  ${KIND_LABEL[entry.kind]} '${entry.id}'${entry.apps?.length ? ` · ${entry.apps.join(', ')}` : ''}${entry.set ? ' · set' : ''}`,
+				choices: [
+					{ title: 'Set it now', value: 'set' },
+					{ title: 'Skip', value: 'skip' },
+					{ title: 'Stop here', value: 'stop' },
+				],
+				initial: 0,
 			});
-			if (!overwrite) continue;
-		}
-		io.log(`\n${entry.key} — ${entry.what}`);
-		if (entry.hint) io.log(`  ${entry.hint}`);
-
-		switch (entry.kind) {
-			case 'bucket':
-				Object.assign(values, await buildBucket(ask, io, entry, has));
-				break;
-			case 'email':
-				values[entry.key] = entry.key.endsWith('_FROM')
-					? await askFrom(ask, io)
-					: await buildSmtpUrl(ask, io);
-				break;
-			case 'file-server':
-				values[entry.key] = await askHttpUrl(ask, io, 'Its public URL');
-				break;
-			case 'server':
-				Object.assign(values, await buildServer(ask, io, has));
-				break;
-			case 'external-api':
-			case 'credential':
-				schemas ??= await loadCredentialSchemas({
-					root: workspace.root,
-					patterns,
+			if (step === 'stop') return;
+			if (step !== 'set') {
+				skipped.push(entry.key);
+				continue;
+			}
+			if (entry.set) {
+				const overwrite: boolean = await ask({
+					type: 'confirm',
+					message: `${entry.key} is set. Replace it?`,
+					initial: false,
 				});
-				values[entry.key] = await buildCredentials(ask, io, entry, schemas);
-				break;
+				if (!overwrite) {
+					skipped.push(entry.key);
+					continue;
+				}
+			}
+
+			switch (entry.kind) {
+				case 'bucket':
+					await save(await buildBucket(ask, io, entry, has));
+					break;
+				case 'email':
+					await save({
+						[entry.key]: entry.key.endsWith('_FROM')
+							? await askFrom(ask, io)
+							: await buildSmtpUrl(ask, io),
+					});
+					break;
+				case 'file-server':
+					await save({
+						[entry.key]: await askHttpUrl(ask, io, 'Its public URL'),
+					});
+					break;
+				case 'server':
+					await save(await buildServer(ask, io, has));
+					break;
+				case 'external-api':
+				case 'credential':
+					schemas ??= await loadCredentialSchemas({
+						root: workspace.root,
+						patterns,
+					});
+					await save({
+						[entry.key]: await buildCredentials(ask, io, entry, schemas),
+					});
+					break;
+			}
 		}
+	};
+
+	try {
+		await walk();
+	} catch (error) {
+		if (!(error instanceof SecretsAddCancelled)) throw error;
+		io.log(`\n${error.message}`);
 	}
 
-	const saved = Object.keys(values);
-	if (saved.length === 0) {
-		io.log('\nNothing was saved.');
-		return { keys, saved };
-	}
-
-	const base = stored ?? initStageSecrets(stage);
-	await store.write(stage, {
-		...base,
-		updatedAt: new Date().toISOString(),
-		custom: { ...base.custom, ...values },
-	});
+	const missing = all
+		.filter((k) => !provisioned(k) && !has(k.key))
+		.map((k) => k.key);
+	io.log('');
 	io.log(
-		`\n✓ Saved ${saved.join(', ')} to the stage '${stage}' (${store.name} store).`,
+		saved.length > 0
+			? `✓ Saved to the stage '${stage}' (${store.name} store): ${saved.join(', ')}`
+			: 'Nothing was saved.',
 	);
-	return { keys, saved };
+	if (skipped.length > 0) io.log(`  Skipped: ${skipped.join(', ')}`);
+	if (missing.length > 0) {
+		io.log(`  Still missing: ${missing.join(', ')}`);
+		io.log(
+			`  Run gkm secrets:add --stage ${stage} --missing again to pick up where this left off.`,
+		);
+	}
+	return { keys: offered, saved, skipped, missing };
 }
 
 const KIND_LABEL: Record<WorkspaceStageKey['kind'], string> = {
@@ -359,12 +436,114 @@ async function askFrom(ask: Ask, io: SecretsAddIo): Promise<string> {
 	);
 }
 
+/** A mail service whose SMTP settings are known: only its secrets are asked. */
+type MailService = 'resend' | 'ses' | 'postmark' | 'mailgun' | 'other';
+
 /**
  * An SMTP server as the URL `@geekmidas/emailkit` reads: `smtp://` for
  * STARTTLS, `smtps://` for TLS from the first byte, with the user and
  * password percent-encoded.
+ *
+ * A known service fills in its own host, port and user; each from its docs:
+ * - Resend: smtp.resend.com, 465 implicit TLS, user `resend`, password the
+ *   API key — https://resend.com/docs/send-with-smtp
+ * - Amazon SES: email-smtp.<region>.amazonaws.com, 587 STARTTLS, SMTP
+ *   credentials — https://docs.aws.amazon.com/ses/latest/dg/smtp-connect.html,
+ *   https://docs.aws.amazon.com/general/latest/gr/ses.html
+ * - Postmark: smtp.postmarkapp.com, 587 STARTTLS, the server API token as
+ *   user and password —
+ *   https://postmarkapp.com/developer/user-guide/send-email-with-smtp
+ * - Mailgun: smtp.mailgun.org (EU: smtp.eu.mailgun.org), 587 STARTTLS, the
+ *   domain's SMTP credentials —
+ *   https://documentation.mailgun.com/docs/mailgun/user-manual/sending-messages/send-smtp,
+ *   https://documentation.mailgun.com/docs/mailgun/api-reference/api-overview
  */
 async function buildSmtpUrl(ask: Ask, io: SecretsAddIo): Promise<string> {
+	const service = await ask<MailService>({
+		type: 'select',
+		message: 'Which mail service?',
+		choices: [
+			{ title: 'Resend', value: 'resend' },
+			{ title: 'Amazon SES', value: 'ses' },
+			{ title: 'Postmark', value: 'postmark' },
+			{ title: 'Mailgun', value: 'mailgun' },
+			{ title: 'Other SMTP server', value: 'other' },
+		],
+		initial: 0,
+	});
+	const secret = async (message: string, what: string) =>
+		text(
+			await askUntil<string>(
+				ask,
+				io,
+				{ type: 'password', message },
+				required(what),
+			),
+		);
+	const login = async (message: string, what: string) =>
+		text(
+			await askUntil<string>(
+				ask,
+				io,
+				{ type: 'text', message },
+				required(what),
+			),
+		);
+
+	switch (service) {
+		case 'resend':
+			return smtpUrl({
+				tls: 'tls',
+				host: 'smtp.resend.com',
+				port: 465,
+				user: 'resend',
+				password: await secret('API key (re_…)', 'The API key'),
+			});
+		case 'ses': {
+			const region = await login('Region', 'The region');
+			return smtpUrl({
+				tls: 'starttls',
+				host: `email-smtp.${region}.amazonaws.com`,
+				port: 587,
+				user: await login('SMTP user name', 'The SMTP user name'),
+				password: await secret('SMTP password', 'The SMTP password'),
+			});
+		}
+		case 'postmark': {
+			const token = await secret('Server API token', 'The server API token');
+			return smtpUrl({
+				tls: 'starttls',
+				host: 'smtp.postmarkapp.com',
+				port: 587,
+				user: token,
+				password: token,
+			});
+		}
+		case 'mailgun': {
+			const region = await ask<'us' | 'eu'>({
+				type: 'select',
+				message: 'Region',
+				choices: [
+					{ title: 'US (smtp.mailgun.org)', value: 'us' },
+					{ title: 'EU (smtp.eu.mailgun.org)', value: 'eu' },
+				],
+				initial: 0,
+			});
+			return smtpUrl({
+				tls: 'starttls',
+				host: region === 'eu' ? 'smtp.eu.mailgun.org' : 'smtp.mailgun.org',
+				port: 587,
+				user: await login(
+					'SMTP login (e.g. postmaster@mg.example.com)',
+					'The SMTP login',
+				),
+				password: await secret('SMTP password', 'The SMTP password'),
+			});
+		}
+		case 'other':
+			break;
+	}
+
 	const host = text(
 		await askUntil<string>(
 			ask,
@@ -399,12 +578,23 @@ async function buildSmtpUrl(ask: Ask, io: SecretsAddIo): Promise<string> {
 		],
 		initial: 0,
 	});
+	return smtpUrl({ tls, host, port: Number(port), user, password });
+}
 
-	const url = new URL(`${tls === 'tls' ? 'smtps' : 'smtp'}://${host}`);
-	url.port = String(Number(port));
-	if (user) {
-		url.username = encodeURIComponent(user);
-		url.password = encodeURIComponent(password ?? '');
+function smtpUrl(server: {
+	tls: 'starttls' | 'tls';
+	host: string;
+	port: number;
+	user?: string;
+	password?: string;
+}): string {
+	const url = new URL(
+		`${server.tls === 'tls' ? 'smtps' : 'smtp'}://${server.host}`,
+	);
+	url.port = String(server.port);
+	if (server.user) {
+		url.username = encodeURIComponent(server.user);
+		url.password = encodeURIComponent(server.password ?? '');
 	}
 	return url.toString().replace(/\/$/, '');
 }
