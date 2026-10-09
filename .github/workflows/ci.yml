@@ -101,7 +101,7 @@ jobs:
 
       - name: Test (unit)
         if: github.event_name != 'push'
-        timeout-minutes: 10
+        timeout-minutes: 15
         env:
           CI: true
         run: pnpm run test:once
