@@ -534,7 +534,10 @@ export interface SecretsConfig {
 	/**
 	 * Where deployed stages' secrets live, so a deploy can reach them from
 	 * anywhere: `'file'` (default — the encrypted `.gkm/secrets/<stage>.json`,
-	 * which cannot serve CI while `.gkm/` is gitignored), `{ provider: 'ssm',
+	 * which cannot serve CI while `.gkm/` is gitignored), `{ provider: 's3',
+	 * region?, bucket?, prefix? }` (each stage's secrets in one object in the
+	 * project bucket beside the deploy state, SSE-S3 and versioned, no size
+	 * limit; region and prefix default to an S3 `state`'s), `{ provider: 'ssm',
 	 * region }` (each stage's secrets in an SSM parameter in its own AWS
 	 * account, up to 8 KB), `{ provider: 'secrets-manager', region, kmsKeyId? }`
 	 * (a Secrets Manager secret in its own account, up to 64 KB), or any object

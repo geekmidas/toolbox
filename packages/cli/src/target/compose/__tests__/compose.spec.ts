@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { migrationTargets } from '@geekmidas/manifest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LOCALSTACK_URL } from '../../../../../testkit/test/ports';
 import { cleanupDir, createTempDir } from '../../../__tests__/test-helpers';
 import {
 	resolvesHere,
@@ -22,9 +24,11 @@ import { ImageTagNotFound } from '../../../compose/images';
 import { currentActor } from '../../../deploy/actor';
 import { deploy } from '../../../deploy/deploy';
 import type { DeployEvent } from '../../../deploy/events';
+import { deployIdentity } from '../../../deploy/identity';
 import { LocalStateInCi } from '../../../deploy/StateStore';
 import { SeedFailed } from '../../../migrate/databases';
 import type { SqlClient } from '../../../reconcile/provision';
+import { S3SecretsStore } from '../../../secrets/s3';
 import { UndeclaredStage } from '../../../workspace/stages';
 import { resolveTarget } from '../../resolve';
 import {
@@ -690,3 +694,75 @@ describe("the stage's deploy state", { timeout: RUN_TIMEOUT }, () => {
 		});
 	});
 });
+
+describe(
+	'a stage whose secrets and state are in the project bucket',
+	{ timeout: RUN_TIMEOUT },
+	() => {
+		let name: string;
+
+		beforeEach(() => {
+			// Against the AWS emulator, through the SDK's endpoint variable.
+			vi.stubEnv('AWS_ENDPOINT_URL', LOCALSTACK_URL);
+			vi.stubEnv('AWS_ACCESS_KEY_ID', 'test');
+			vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'test');
+			// A project of its own per run: the emulator outlives the suite.
+			name = `compose-${randomUUID().slice(0, 8)}`;
+			writeComposeApp(dir, {
+				name,
+				registry: 'registry.example.com/acme',
+				state: { provider: 's3', region: 'eu-west-1' },
+				secrets: { store: { provider: 's3' } },
+			});
+		});
+
+		afterEach(() => vi.unstubAllEnvs());
+
+		it('deploys production reading its secrets from S3, and writes what it generates back there', async () => {
+			await serveFrom(dir);
+			const inS3 = () =>
+				new S3SecretsStore({
+					project: name,
+					identity: deployIdentity({ name }, ''),
+					region: 'eu-west-1',
+					prefix: 'gkm',
+				}).read('production');
+			expect((await inS3())?.custom).toEqual({
+				GKM_SERVER_IPV4: SERVER_IPV4,
+			});
+			const fake = fakeDocker();
+
+			const run = deploy({
+				cwd: dir,
+				stage: 'production',
+				target: 'compose',
+				targets: {
+					compose: composeTarget({
+						...quiet(),
+						docker: fake.docker,
+						probe: answering(fake.calls),
+					}),
+				},
+			});
+			const seen = await events(run);
+			await run.result;
+
+			expect(
+				seen
+					.filter((e) => e.type === 'phase.finished')
+					.map((e) => (e as { phase: string }).phase),
+			).toEqual(['validate', 'provision', 'build', 'release', 'verify']);
+			// The server's address came from S3; what the deploy generated went there.
+			expect(await stageGenerated(dir)).toBe(true);
+			const stored = await inS3();
+			expect(stored?.custom.GKM_SERVER_IPV4).toBe(SERVER_IPV4);
+			expect(stored?.seed).toBeDefined();
+			expect(existsSync(join(dir, '.gkm', 'secrets', 'production.json'))).toBe(
+				false,
+			);
+			expect(existsSync(join(dir, '.gkm', 'deploy-production.json'))).toBe(
+				false,
+			);
+		});
+	},
+);

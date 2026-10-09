@@ -262,7 +262,7 @@ describe('generateMonorepoFiles', () => {
 		expect(paths).toContain('.gitignore');
 	});
 
-	it('keeps an SST workspace’s deployed secrets in SSM in its region', () => {
+	it('keeps an SST workspace’s state and deployed secrets in the project bucket', () => {
 		const options: TemplateOptions = {
 			...baseOptions,
 			template: 'fullstack',
@@ -275,8 +275,10 @@ describe('generateMonorepoFiles', () => {
 			(f) => f.path === 'gkm.config.ts',
 		);
 		expect(config?.content).toContain(
-			"store: { provider: 'ssm', region: 'af-south-1' },",
+			"state: { provider: 's3', region: 'af-south-1' },",
 		);
+		expect(config?.content).toContain("store: { provider: 's3' },");
+		expect(config?.content).not.toContain("provider: 'ssm'");
 	});
 
 	it('leaves a Dokploy workspace on the default file store', () => {
@@ -291,6 +293,7 @@ describe('generateMonorepoFiles', () => {
 		);
 		expect(config?.content).toContain('secrets: {');
 		expect(config?.content).not.toContain('store:');
+		expect(config?.content).not.toContain('state:');
 	});
 
 	it('installs the Expo plugin the auth server loads for a mobile app', () => {

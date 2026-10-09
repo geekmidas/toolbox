@@ -33,6 +33,10 @@ export interface ComposeAppOptions {
 	dns?: Record<string, unknown>;
 	/** `deploy.default` — `dokploy` when absent. */
 	target?: string;
+	/** `state`, as it is written in the config. */
+	state?: Record<string, unknown>;
+	/** `secrets`, as it is written in the config. */
+	secrets?: Record<string, unknown>;
 }
 
 /**
@@ -117,6 +121,8 @@ export default defineWorkspace({
   ],
   domains: ${JSON.stringify(options.domains ?? { production: options.domain ?? 'shop.example.com' })},
   ${options.dns ? `dns: ${JSON.stringify(options.dns)},` : ''}
+  ${options.state ? `state: ${JSON.stringify(options.state)},` : ''}
+  ${options.secrets ? `secrets: ${JSON.stringify(options.secrets)},` : ''}
   deploy: {
     default: ${JSON.stringify(options.target ?? 'dokploy')},
     ${options.registry ? `registry: ${JSON.stringify(options.registry)},` : ''}

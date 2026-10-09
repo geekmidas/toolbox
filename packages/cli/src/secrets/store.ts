@@ -4,7 +4,7 @@
  * Every command that needs a stage's secrets — `gkm dev`, `test`, `deploy`,
  * `build`, `setup`, `secrets:*` — asks {@link secretsStoreFor} for that
  * stage's store and reads or writes it. None of them knows whether that is a
- * file on this machine, SSM or Secrets Manager in the stage's account: the local stage is
+ * file on this machine, or S3, SSM or Secrets Manager in the stage's account: the local stage is
  * always the file, and a deployed stage is whatever `secrets.store` names.
  *
  * The same shape deploy state has (`StateProvider`): one interface, a backend
@@ -14,13 +14,13 @@
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { FileSecretsStore } from './file.js';
 import { keystoreProject } from './keystore.js';
-import { UnknownSecretsStoreProvider } from './providers.js';
+import { s3SecretsLocation, UnknownSecretsStoreProvider } from './providers.js';
 import type { StageSecrets } from './types.js';
 
 export interface SecretsStore {
 	/**
-	 * Which kind of store this is — `'file'`, `'ssm'`, `'secrets-manager'`, or
-	 * a custom one's.
+	 * Which kind of store this is — `'file'`, `'s3'`, `'ssm'`,
+	 * `'secrets-manager'`, or a custom one's.
 	 */
 	readonly name: string;
 	/** The stage's secrets, or null when it has none here. */
@@ -50,6 +50,25 @@ export interface SecretsManagerSecretsStoreConfig {
 	kmsKeyId?: string;
 }
 
+/**
+ * Secrets in S3, one object per stage —
+ * `<prefix>/<project>/<stage>/secrets.json` — in the project bucket beside the
+ * deploy state and backups, or in a bucket that exists. Encrypted with SSE-S3,
+ * every past document kept by the bucket's versioning, and no size limit.
+ */
+export interface S3SecretsStoreConfig {
+	provider: 's3';
+	/**
+	 * A bucket that already exists. Omitted, the project bucket —
+	 * `gkm-<project>-<account id>`, created by the first write.
+	 */
+	bucket?: string;
+	/** The bucket's region. Omitted, the deploy state's, when it is in S3. */
+	region?: string;
+	/** Key prefix inside the bucket. Omitted, the S3 state's, else `gkm`. */
+	prefix?: string;
+}
+
 /** Any other backend: an object implementing {@link SecretsStore}. */
 export interface CustomSecretsStoreConfig {
 	provider: SecretsStore;
@@ -61,11 +80,12 @@ export interface CustomSecretsStoreConfig {
  * `'file'` — the default — keeps each stage's secrets in the encrypted
  * `.gkm/secrets/<stage>.json`, its key in the CLI's home (`GKM_HOME`, else
  * `~/.gkm`). It cannot serve a
- * deploy from CI while `.gkm/` is gitignored; `ssm`, `secrets-manager` or a
- * custom store can.
+ * deploy from CI while `.gkm/` is gitignored; `s3`, `ssm`, `secrets-manager`
+ * or a custom store can.
  */
 export type SecretsStoreConfig =
 	| 'file'
+	| S3SecretsStoreConfig
 	| SsmSecretsStoreConfig
 	| SecretsManagerSecretsStoreConfig
 	| CustomSecretsStoreConfig;
@@ -128,6 +148,22 @@ export async function storeFromConfig(
 	const profile = options.profile ? { profile: options.profile } : {};
 
 	switch (config.provider) {
+		case 's3': {
+			const { S3SecretsStore } = await import('./s3.js');
+			const { deployIdentity } = await import('../deploy/identity.js');
+			const location = s3SecretsLocation(
+				config as S3SecretsStoreConfig,
+				workspace.state,
+			);
+			return new S3SecretsStore({
+				project: workspace.name,
+				identity: deployIdentity(workspace, ''),
+				region: location.region,
+				prefix: location.prefix,
+				...(location.bucket ? { bucket: location.bucket } : {}),
+				...profile,
+			});
+		}
 		case 'ssm': {
 			const { AwsSecretsStore } = await import('./aws.js');
 			return new AwsSecretsStore({
@@ -172,7 +208,9 @@ export function isRemoteStore(
 export { FileSecretsStore };
 export {
 	assertKnownSecretsStore,
+	S3SecretsStoreNeedsRegion,
 	SECRETS_STORE_PROVIDERS,
 	type SecretsStoreProvider,
+	s3SecretsLocation,
 	UnknownSecretsStoreProvider,
 } from './providers.js';

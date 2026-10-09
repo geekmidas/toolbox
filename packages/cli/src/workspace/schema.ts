@@ -2,6 +2,7 @@ import { z } from 'zod/v4';
 import { checkDnsRecordsMode } from '../compose/dnsConfig.js';
 import { checkComposeStages } from '../compose/proxy.js';
 import { checkStageProvider } from '../providers/config.js';
+import { s3SecretsLocation } from '../secrets/providers.js';
 import {
 	BUILTIN_TARGETS,
 	builtinTarget,
@@ -745,6 +746,17 @@ const StagesConfigSchema = z
 
 const SecretsStoreSchema = z.union([
 	z.literal('file'),
+	z
+		.object({
+			provider: z.literal('s3'),
+			/** A bucket that exists; omitted, the project bucket. */
+			bucket: z.string().min(1).optional(),
+			/** Omitted, the S3 deploy state's region. */
+			region: AwsRegionSchema.optional(),
+			/** Omitted, the S3 deploy state's prefix, else 'gkm'. */
+			prefix: z.string().optional(),
+		})
+		.strict(),
 	z.object({ provider: z.literal('ssm'), region: AwsRegionSchema }).strict(),
 	z
 		.object({
@@ -1081,6 +1093,20 @@ export const WorkspaceConfigSchema = z
 					path: ['apps', appName, 'deploy'],
 				});
 				return;
+			}
+		}
+
+		// An s3 secrets store takes its region from the S3 state, or names one.
+		const store = data.secrets?.store;
+		if (typeof store === 'object' && store.provider === 's3') {
+			try {
+				s3SecretsLocation(store, data.state);
+			} catch (error) {
+				ctx.addIssue({
+					code: 'custom',
+					message: error instanceof Error ? error.message : String(error),
+					path: ['secrets', 'store'],
+				});
 			}
 		}
 

@@ -10,6 +10,7 @@ export const SECRETS_STORE_PROVIDERS = [
 	'file',
 	'ssm',
 	'secrets-manager',
+	's3',
 ] as const;
 
 export type SecretsStoreProvider = (typeof SECRETS_STORE_PROVIDERS)[number];
@@ -23,7 +24,7 @@ export class UnknownSecretsStoreProvider extends GkmError {
 	constructor(readonly provider: unknown) {
 		super(
 			`secrets.store names the provider ${JSON.stringify(provider)}, which is not one gkm ships. ` +
-				`Use 'file', { provider: 'ssm', region }, { provider: 'secrets-manager', region }, ` +
+				`Use 'file', { provider: 's3' }, { provider: 'ssm', region }, { provider: 'secrets-manager', region }, ` +
 				'or { provider: <an object with name, read() and write()> } in gkm.config.ts.',
 		);
 		this.name = 'UnknownSecretsStoreProvider';
@@ -46,4 +47,72 @@ export function assertKnownSecretsStore(store: unknown): void {
 	) {
 		throw new UnknownSecretsStoreProvider(provider);
 	}
+}
+
+/** What a `{ provider: 's3' }` store says, before defaults. */
+export interface S3SecretsLocationConfig {
+	provider: 's3';
+	bucket?: string;
+	region?: string;
+	prefix?: string;
+}
+
+/** Where an `s3` store keeps each stage, its defaults filled in. */
+export interface S3SecretsLocation {
+	/** The bucket named; undefined for the project bucket. */
+	bucket: string | undefined;
+	region: string;
+	/** Key prefix, without a trailing slash; `gkm` by default. */
+	prefix: string;
+}
+
+/**
+ * An `s3` secrets store names no region, and the deploy state is not in S3 to
+ * take one from.
+ */
+export class S3SecretsStoreNeedsRegion extends GkmError {
+	constructor() {
+		super(
+			"secrets.store is { provider: 's3' } with no region, and the deploy state is not in S3 " +
+				"to take one from. Name it — secrets: { store: { provider: 's3', region: '<region>' } } — " +
+				"or keep the state beside it: state: { provider: 's3', region: '<region>' }.",
+		);
+		this.name = 'S3SecretsStoreNeedsRegion';
+	}
+}
+
+/**
+ * Where an `s3` store keeps a stage's secrets. With no bucket named it is the
+ * project bucket, beside the deploy state; region and prefix default to the
+ * state's when that is in S3 too, so the two are written once.
+ *
+ * @throws {S3SecretsStoreNeedsRegion} when no region is named or inherited
+ */
+export function s3SecretsLocation(
+	store: S3SecretsLocationConfig,
+	state: unknown,
+): S3SecretsLocation {
+	const s3State =
+		typeof state === 'object' &&
+		state !== null &&
+		(state as { provider?: unknown }).provider === 's3'
+			? (state as { region?: string; prefix?: string })
+			: undefined;
+	const region = store.region ?? s3State?.region;
+	if (!region) throw new S3SecretsStoreNeedsRegion();
+	return {
+		bucket: store.bucket,
+		region,
+		prefix: (store.prefix ?? s3State?.prefix ?? 'gkm').replace(/\/+$/, ''),
+	};
+}
+
+/** The key a stage's secrets are kept at: `<prefix>/<project>/<stage>/secrets.json`. */
+export function s3SecretsKey(
+	prefix: string,
+	project: string,
+	stage: string,
+): string {
+	const path = `${project}/${stage}/secrets.json`;
+	return prefix ? `${prefix}/${path}` : path;
 }

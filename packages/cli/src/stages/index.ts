@@ -19,6 +19,7 @@ import { loadWorkspaceSettings } from '../config.js';
 import { GkmError } from '../errors';
 import { stageProvider } from '../providers/config.js';
 import { PROVIDER_KINDS } from '../providers/types.js';
+import { s3SecretsLocation } from '../secrets/providers.js';
 import type { NormalizedWorkspace, StagesConfig } from '../workspace/types.js';
 import { planStages } from './plan.js';
 
@@ -58,13 +59,16 @@ export function stagesJson(stages: StagesConfig): StagesJson {
 }
 
 /**
- * The region of the workspace's AWS secrets store — `ssm` or
+ * The region of the workspace's AWS secrets store — `s3`, `ssm` or
  * `secrets-manager` — or `''` when its deployed stages keep their secrets
  * anywhere else. A job assumes the stage's AWS role only when this is set.
  */
 export function awsSecretsRegion(workspace: NormalizedWorkspace): string {
 	const store = workspace.secrets?.store;
 	if (typeof store !== 'object' || store === null) return '';
+	if (store.provider === 's3') {
+		return s3SecretsLocation(store, workspace.state).region;
+	}
 	if (store.provider === 'ssm' || store.provider === 'secrets-manager') {
 		return store.region;
 	}

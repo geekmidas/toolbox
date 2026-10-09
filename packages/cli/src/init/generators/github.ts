@@ -356,7 +356,7 @@ ${pm.setup}
 
 ${registryLogin(registry)}
       # A site's public URLs are built into it, so the build reads the stage's
-      # secrets store. With secrets.store on SSM or Secrets Manager the job
+      # secrets store. With secrets.store on S3, SSM or Secrets Manager the job
       # assumes the stage's role (AWS_ROLE_ARN, set by gkm deploy:github);
       # with the default 'file' store there is no role to assume.
       - name: Assume the stage's AWS role
@@ -572,7 +572,7 @@ function targetDeploy(options: TemplateOptions): string {
 `
 		: '';
 
-	// A stage's secrets are read from its store by the deploy itself. SSM and
+	// A stage's secrets are read from its store by the deploy itself. S3, SSM and
 	// Secrets Manager need nothing but the role the job already assumed; the
 	// local file needs its key, and the encrypted file itself, which a checkout
 	// of an ignored `.gkm/` lacks.

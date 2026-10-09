@@ -49,45 +49,46 @@ claims its project by. Set `GKM_HOME` to move the CLI's home (a CI job, a
 shared runner, a test). A key still at the old `~/.gkm/<folder>/<stage>.key`
 is copied to the new place the first time it is read.
 
-`.gkm/` is gitignored, so the file store cannot serve a deploy from CI. On
-AWS, keep each deployed stage in SSM Parameter Store or Secrets Manager, in
-the stage's own account — or pass your own `SecretsStore`:
+`.gkm/` is gitignored, so the file store can't serve a deploy from CI. On AWS,
+keep each deployed stage's secrets in the project bucket, next to its deploy
+state and backups, so everything lives in one place:
 
 ```typescript
 // gkm.config.ts
 export default defineWorkspace({
   // …
-  secrets: { store: { provider: 'ssm', region: 'eu-west-1' } },
-  // or: { provider: 'secrets-manager', region: 'eu-west-1', kmsKeyId?: '…' }
+  state: { provider: 's3', region: 'eu-west-1' },
+  secrets: { store: { provider: 's3' } },
 });
 ```
 
-| | SSM (`'ssm'`) | Secrets Manager (`'secrets-manager'`) |
-|---|---|---|
-| Name | `/gkm/<project>/<stage>/secrets` | `gkm/<project>/<stage>/secrets` |
-| Size | 8 KB (free under 4 KB, advanced tier past it) | 64 KB |
-| Cost | free for most stages | monthly per secret, plus API calls |
-| Versions | parameter history | `AWSCURRENT` / `AWSPREVIOUS`, recovery window on delete |
-| KMS | `aws/ssm` | `aws/secretsmanager`, or `kmsKeyId` |
+Each stage is one object, `gkm/<project>/<stage>/secrets.json`, in
+`gkm-<project>-<account id>`. The first deploy or `secrets:set` creates that
+bucket with versioning on, encryption set to SSE-S3 (no KMS key to manage), and
+public access blocked. There's no size limit. A write is conditional on what
+the command read, so two concurrent `secrets:set` runs can't overwrite each
+other.
 
-Start with SSM; move a stage to Secrets Manager when its third-party
-credentials outgrow 8 KB — a write past a store's limit fails with
-`StageSecretsTooLarge` before anything is sent — or when you want its
-versioning or your own KMS key. The credentials that manage and deploy a stage
-need:
+SSM (`{ provider: 'ssm', region }`, up to 8 KB) and Secrets Manager
+(`{ provider: 'secrets-manager', region, kmsKeyId? }`, up to 64 KB) are still
+supported, and so is your own `SecretsStore`. A workspace keeps the store it
+names, and gkm never moves it by itself. To move a stage into the bucket:
 
-- **SSM:** `ssm:GetParameter` and `ssm:PutParameter` on
-  `arn:aws:ssm:<region>:<account>:parameter/gkm/<project>/<stage>/secrets`.
-- **Secrets Manager:** `secretsmanager:GetSecretValue`, `PutSecretValue`,
-  `CreateSecret` and `DescribeSecret` on
-  `arn:aws:secretsmanager:<region>:<account>:secret:gkm/<project>/<stage>/secrets-*`.
-- **A customer-managed key** (`kmsKeyId`): `kms:Decrypt`, `kms:Encrypt` and
-  `kms:GenerateDataKey` on it.
+```bash
+AWS_PROFILE=acme-prod gkm secrets:migrate --stage production --to s3
+# copies, reads back and compares, then prints the next step:
+#   set secrets.store to { provider: 's3' } — and the exact command that
+#   deletes the old SSM parameter, for you to run once deploys read S3
+```
 
-Move a stage between stores with `gkm secrets:migrate --stage production --to
-secrets-manager`, then point `secrets.store` at the new one. See
+The migration never deletes the source. It's safe to repeat: a target that
+already holds the same secrets is only checked again. Then rerun
+`gkm deploy:github` so the CI role is granted `s3:GetObject` and
+`s3:PutObject` on `secrets.json` instead of the SSM parameter. The server
+itself holds no AWS credentials. Only the CI runner or your laptop reads the
+secrets. See
 [The secrets store on AWS](./deployment.md#the-secrets-store-on-aws) for the
-full comparison and the switch, step by step.
+comparison, IAM and the switch step by step.
 
 Manage the secrets with:
 
@@ -270,6 +271,7 @@ deploy cannot find what it made.
 ```typescript
 // gkm.config.ts
 state: { provider: 's3', region: 'eu-west-1' },
+secrets: { store: { provider: 's3' } }, // the same bucket
 ```
 
 Every run holds a lock on its stage. A second run fails with `StateLocked`,

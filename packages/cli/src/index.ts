@@ -820,16 +820,16 @@ program
 program
 	.command('secrets:migrate')
 	.description(
-		"Copy a deployed stage's secrets from the configured store to another (file, ssm, secrets-manager)",
+		"Copy a deployed stage's secrets from the configured store to another (s3, ssm, secrets-manager, file), verify the copy, and print how to delete the source",
 	)
 	.requiredOption('--stage <stage>', 'A deployed stage')
-	.requiredOption('--to <provider>', 'file, ssm or secrets-manager')
+	.requiredOption('--to <provider>', 's3, ssm, secrets-manager or file')
 	.option(
 		'--region <region>',
-		"The target's AWS region (default: the configured store's)",
+		"The target's AWS region (default: the S3 state's for s3, else the configured store's)",
 	)
 	.option('--profile <profile>', "AWS profile for the stage's account")
-	.option('--force', 'Replace a stage the target already holds')
+	.option('--force', 'Replace different secrets the target already holds')
 	.action(
 		async (options: {
 			stage: string;

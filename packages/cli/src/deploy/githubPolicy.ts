@@ -4,7 +4,9 @@
  * An SST stage creates its own stack, which is most of AWS, so its role gets
  * `AdministratorAccess`. A stage deployed with the `compose` target builds and
  * runs containers on a server; from AWS its deploy job needs only the stage's
- * secrets — read, and written back when a deploy generates a new one — and,
+ * secrets — read, and written back when a deploy generates a new one: the one
+ * object in the project bucket, or the SSM parameter or Secrets Manager secret
+ * — and,
  * when the deploy state is kept in AWS, the stage's state, and, when the
  * stage's domain is in Route53, the records of its hosted zone, and, when an
  * `s3` provider backs its buckets, those buckets and the IAM user each is
@@ -27,6 +29,7 @@ import {
 	SUFFIX_LENGTH,
 } from '../providers/s3/naming.js';
 import { secretsParameterName } from '../secrets/aws.js';
+import { s3SecretsKey, s3SecretsLocation } from '../secrets/providers.js';
 import { secretsManagerSecretName } from '../secrets/secretsManager.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { deployIdentity } from './identity.js';
@@ -117,7 +120,55 @@ export function deployAccess(
 	const describe: string[] = [];
 	const build: ((account: string) => PolicyStatement[])[] = [];
 
-	if (typeof store === 'object' && store.provider === 'ssm') {
+	// The project bucket's name is fixed by the account, so the role is given
+	// exactly it, and the actions that create it for whichever run is first.
+	const projectBucketIn = (account: string) =>
+		projectBucketName(deployIdentity(workspace, stage).scope, account);
+	const projectBucketStatement = (account: string): PolicyStatement => ({
+		Sid: 'ProjectBucket',
+		Effect: 'Allow',
+		Action: [...PROJECT_BUCKET_CREATE_ACTIONS],
+		Resource: `arn:aws:s3:::${projectBucketIn(account)}`,
+	});
+	// Whether the state's statements already cover the secrets' bucket.
+	const stateInSecretsBucket =
+		typeof store === 'object' &&
+		store.provider === 's3' &&
+		state?.provider === 's3' &&
+		state.bucket === (store as { bucket?: string }).bucket;
+
+	if (typeof store === 'object' && store.provider === 's3') {
+		const location = s3SecretsLocation(store, state);
+		const key = s3SecretsKey(location.prefix, project, stage);
+		const named = location.bucket;
+		const bucketIn = (account: string) => named ?? projectBucketIn(account);
+		describe.push(
+			named
+				? `read and update s3://${named}/${key}`
+				: `read and update ${key} in the project bucket ${projectBucketIn('<account>')}${stateInSecretsBucket ? '' : ', creating it'}`,
+		);
+		build.push((account) => [
+			{
+				Sid: 'StageSecrets',
+				Effect: 'Allow',
+				Action: ['s3:GetObject', 's3:PutObject'],
+				Resource: `arn:aws:s3:::${bucketIn(account)}/${key}`,
+			},
+			// The state's statements give these when it is in the same bucket.
+			...(stateInSecretsBucket
+				? []
+				: [
+						{
+							// HeadBucket, and secrets not written yet a 404, not a 403.
+							Sid: 'StageSecretsBucket',
+							Effect: 'Allow' as const,
+							Action: ['s3:ListBucket'],
+							Resource: `arn:aws:s3:::${bucketIn(account)}`,
+						},
+						...(named ? [] : [projectBucketStatement(account)]),
+					]),
+		]);
+	} else if (typeof store === 'object' && store.provider === 'ssm') {
 		const { region } = store;
 		const name = secretsParameterName(project, stage);
 		describe.push(`read and update ${name} (SSM, ${region})`);
@@ -185,28 +236,16 @@ export function deployAccess(
 		const prefix = (state.prefix ?? 'gkm').replace(/\/+$/, '');
 		const path = `${prefix ? `${prefix}/` : ''}${project}/${stage}/`;
 		const named = state.bucket;
-		// No bucket named: the project bucket, which the first deploy creates
-		// — by a name the account fixes, so the role is given exactly it.
-		const bucketIn = (account: string) =>
-			named ??
-			projectBucketName(deployIdentity(workspace, stage).scope, account);
+		// No bucket named: the project bucket, which the first deploy creates.
+		const bucketIn = (account: string) => named ?? projectBucketIn(account);
 		describe.push(
 			named
 				? `read and write the deploy state under s3://${named}/${path}`
-				: `create the project bucket ${projectBucketName(deployIdentity(workspace, stage).scope, '<account>')}, and read and write the deploy state under ${path} in it`,
+				: `create the project bucket ${projectBucketIn('<account>')}, and read and write the deploy state under ${path} in it`,
 		);
 		build.push((account) => [
 			...stateBucketStatements(bucketIn(account), path),
-			...(named
-				? []
-				: [
-						{
-							Sid: 'ProjectBucket',
-							Effect: 'Allow' as const,
-							Action: [...PROJECT_BUCKET_CREATE_ACTIONS],
-							Resource: `arn:aws:s3:::${bucketIn(account)}`,
-						},
-					]),
+			...(named ? [] : [projectBucketStatement(account)]),
 		]);
 	}
 

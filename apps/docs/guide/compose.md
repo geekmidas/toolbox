@@ -269,11 +269,11 @@ stage's role and the token from the stage's environment, and the server
 deploys with `--skip-resources`: neither credential reaches it. `resources`
 holds the deployed stages that have a `deploy.<kind>.<stage>` provider or a
 `dns` domain whose provider writes records, **and** whose secrets are in an
-AWS store (`secrets.store` `ssm` or `secrets-manager`) the runner reads with
+AWS store (`secrets.store` `s3`, `ssm` or `secrets-manager`) the runner reads with
 the stage's role. A stage on the default `file` store is not in it: its
 deploy on the server does everything, so the server holds those credentials.
-To create a stage's resources from CI instead, keep its secrets in `ssm` or
-`secrets-manager`.
+To create a stage's resources from CI instead, keep its secrets in `s3` (the
+project bucket, beside the state), `ssm` or `secrets-manager`.
 
 The images are pinned by digest: a release deploys exactly what the push of
 its commit built, even if a tag was pushed over since. The digests are kept for

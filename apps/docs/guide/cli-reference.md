@@ -475,7 +475,7 @@ runs. It writes these outputs to the file `$GITHUB_OUTPUT` names, each a string
 | `build` | the stages whose images this run builds and pushes |
 | `deploy` | the stages this run deploys |
 | `has-build`, `has-deploy` | `'true'` or `'false'` — a matrix over `[]` is an error on GitHub, so a job skips on these |
-| `aws-region` | the region of an `ssm` or `secrets-manager` `secrets.store`, else `''` |
+| `aws-region` | the region of an `s3`, `ssm` or `secrets-manager` `secrets.store` (an `s3` store's from the S3 state when it names none), else `''` |
 | `resources` | the deployed stages with resources the deploy creates — a `deploy.<kind>.<stage>` provider, or a `dns` domain whose provider writes records — and secrets in an AWS store; a compose workflow creates them on the runner |
 
 For each event:
@@ -669,8 +669,8 @@ gkm secrets:rotate --stage production --service postgres
 # Import from JSON
 gkm secrets:import secrets.json --stage production
 
-# Copy a deployed stage to another store (file, ssm, secrets-manager)
-gkm secrets:migrate --stage production --to secrets-manager
+# Copy a deployed stage to another store (s3, ssm, secrets-manager, file)
+gkm secrets:migrate --stage production --to s3
 ```
 
 #### `gkm secrets:migrate`
@@ -678,19 +678,34 @@ gkm secrets:migrate --stage production --to secrets-manager
 | Option | Description |
 |---|---|
 | `--stage <stage>` | A deployed stage (required) |
-| `--to <provider>` | The store to copy to: `file`, `ssm` or `secrets-manager` (required) |
-| `--region <region>` | The target's AWS region (default: the configured store's) |
-| `--profile <profile>` | The AWS profile for the stage's account, for both stores |
-| `--force` | Replace a stage the target already holds |
+| `--to <provider>` | The store to copy to: `s3`, `ssm`, `secrets-manager` or `file` (required) |
+| `--region <region>` | The target's AWS region. For `s3` it defaults to the S3 state's region, else the configured store's. For the others it defaults to the configured store's |
+| `--profile <profile>` | The AWS profile for the stage's account, used for both stores |
+| `--force` | Replace different secrets that the target already holds |
 
-It copies the stage — service passwords, URLs, custom keys — from the store
-`secrets.store` names to the one `--to` names, then tells you the
-`secrets.store` to set. It does not edit `gkm.config.ts` and leaves the
-source as it was. It fails with `MigrateTargetIsSource` when the target is the
-configured store, `MigrateTargetHoldsStage` when the target already has the
-stage (without `--force`), `NoSecretsToMigrate` when the source has none, and
-`UnknownSecretsStoreProvider` for a `--to` that is not a store. See
-[Switching stores](./deployment.md#switching-stores).
+The command copies the stage (service passwords, URLs and custom keys) from the
+store `secrets.store` names to the store `--to` names. It then reads the copy
+back and compares every key and value. Finally, it tells you which
+`secrets.store` to set, and prints the command that deletes the source copy,
+such as `aws ssm delete-parameter --name /gkm/<project>/<stage>/secrets
+--region <region>`, for you to run once deploys read the new store.
+
+The command never deletes the source and doesn't edit `gkm.config.ts`. It's
+safe to run again: if the target already holds the same secrets, it writes
+nothing and checks them again.
+
+It fails with:
+
+| Error | When |
+|---|---|
+| `MigrateTargetIsSource` | the target is the configured store |
+| `MigrateTargetHoldsStage` | the target holds different secrets, and `--force` wasn't passed |
+| `MigratedSecretsDiffer` | the copy read back doesn't match |
+| `NoSecretsToMigrate` | the source has no secrets |
+| `UnknownSecretsStoreProvider` | `--to` isn't a store |
+| `StageSecretsUnreadable` | there are no AWS credentials, or they've expired |
+
+See [Switching stores](./deployment.md#switching-stores).
 
 #### Guided secrets
 

@@ -12,7 +12,7 @@
  * GitHub it creates that environment and gives it what the generated deploy
  * workflow reads: `AWS_ROLE_ARN`, and — when the stage's secrets are kept in
  * the local file — its key as `GKM_SECRETS_KEY`. With `secrets.store` set to
- * SSM or Secrets Manager the deploy job reads them with the role instead, so
+ * S3, SSM or Secrets Manager the deploy job reads them with the role instead, so
  * no key is handed to GitHub, and this checks the stage's store in the same
  * account, with the same profile. Re-running it converges rather than duplicating.
  *

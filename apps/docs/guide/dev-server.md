@@ -372,13 +372,14 @@ they live in a **store**, set with `secrets.store` in `gkm.config.ts`:
 import { defineWorkspace } from '@geekmidas/cli/config';
 
 export default defineWorkspace({
-  name: 'my-app',  // Scopes the parameter or secret name
+  name: 'my-app',  // Scopes the object, parameter or secret name
   stages: { local: 'dev', deployed: ['staging', 'prod'] },
   constructs: './constructs/**/*.ts',
 
+  state: { provider: 's3', region: 'us-east-1' },
   secrets: {
     enabled: true,
-    store: { provider: 'ssm', region: 'us-east-1' },
+    store: { provider: 's3' }, // beside the state, in the project bucket
   },
 });
 ```
@@ -386,11 +387,12 @@ export default defineWorkspace({
 | `store` | Where a deployed stage's secrets live |
 |---|---|
 | `'file'` (default) | the encrypted `.gkm/secrets/<stage>.json` on this machine, with its key in `~/.gkm/keys/` (or `$GKM_HOME/keys/`). It cannot serve a deploy from CI while `.gkm/` is gitignored |
+| `{ provider: 's3', region?, bucket?, prefix? }` | one object per stage, `<prefix>/<name>/<stage>/secrets.json`, in the project bucket `gkm-<name>-<account id>` beside the deploy state (created by the first write, never by a read), or in a `bucket` that exists. SSE-S3, versioned, no size limit, and writes conditional on what was read. `region` and `prefix` default to an S3 `state`'s |
 | `{ provider: 'ssm', region }` | one `SecureString` parameter per stage, `/gkm/<name>/<stage>/secrets`, in the AWS account of the active credentials — so with staging and production in different accounts, each stage's secrets sit beside its infrastructure. Up to 8 KB |
 | `{ provider: 'secrets-manager', region, kmsKeyId? }` | one Secrets Manager secret per stage, `gkm/<name>/<stage>/secrets` (the same path with no leading `/`), in the account of the active credentials, encrypted with `aws/secretsmanager` or the `kmsKeyId` given. Up to 64 KB |
 | `{ provider: store }` | any object with a `name`, `read(stage)` and `write(stage, secrets)` |
 
-`gkm init --deploy sst` writes the SSM store with the region you picked. A
+`gkm init --deploy sst` writes the `s3` store and an `s3` state with the region you picked. A
 provider name that is not one of these (`'secretsmanager'`, say) fails the
 config with `UnknownSecretsStoreProvider`; it is never read as the file. For
 choosing between the two AWS stores, and the IAM each needs, see

@@ -192,6 +192,123 @@ describe('deployAccess', () => {
 		]);
 	});
 
+	describe('secrets in the project bucket', () => {
+		const PROJECT_BUCKET = 'arn:aws:s3:::gkm-shop-123456789012';
+		const SECRETS = {
+			Sid: 'StageSecrets',
+			Effect: 'Allow',
+			Action: ['s3:GetObject', 's3:PutObject'],
+			Resource: `${PROJECT_BUCKET}/gkm/shop/prod/secrets.json`,
+		};
+
+		it('reads and updates the one secrets object beside the state, instead of an SSM parameter', () => {
+			const inSsm = deployAccess(
+				workspace({
+					target: 'compose',
+					store: { provider: 'ssm', region: 'eu-west-1' },
+					state: { provider: 's3', region: 'eu-west-1' },
+				}),
+				'prod',
+			);
+			const inS3 = deployAccess(
+				workspace({
+					target: 'compose',
+					store: { provider: 's3' },
+					state: { provider: 's3', region: 'eu-west-1' },
+				}),
+				'prod',
+			);
+
+			if (inSsm.kind !== 'scoped' || inS3.kind !== 'scoped') {
+				return expect.unreachable();
+			}
+			expect(inSsm.statements('123456789012')[0]).toMatchObject({
+				Sid: 'StageSecrets',
+				Action: ['ssm:GetParameter', 'ssm:PutParameter'],
+			});
+			const statements = inS3.statements('123456789012');
+			expect(statements[0]).toEqual(SECRETS);
+			// The bucket and its creation come once, from the state.
+			expect(statements.map((s) => s.Sid)).toEqual([
+				'StageSecrets',
+				'StageState',
+				'StageStateBucket',
+				'ProjectBucket',
+			]);
+			expect(JSON.stringify(statements)).not.toContain('ssm:');
+			expect(inS3.describe[0]).toBe(
+				'read and update gkm/shop/prod/secrets.json in the project bucket gkm-shop-<account>',
+			);
+		});
+
+		it('takes the bucket and its creation itself when the state is elsewhere', () => {
+			const access = deployAccess(
+				workspace({
+					target: 'compose',
+					store: { provider: 's3', region: 'eu-west-1' },
+					state: { provider: 'ssm', region: 'eu-west-1' },
+				}),
+				'prod',
+			);
+
+			if (access.kind !== 'scoped') return expect.unreachable();
+			const statements = access.statements('123456789012');
+			expect(statements.slice(0, 3)).toEqual([
+				SECRETS,
+				{
+					Sid: 'StageSecretsBucket',
+					Effect: 'Allow',
+					Action: ['s3:ListBucket'],
+					Resource: PROJECT_BUCKET,
+				},
+				expect.objectContaining({
+					Sid: 'ProjectBucket',
+					Resource: PROJECT_BUCKET,
+				}),
+			]);
+			expect(statements.map((s) => s.Sid)).toEqual([
+				'StageSecrets',
+				'StageSecretsBucket',
+				'ProjectBucket',
+				'StageState',
+			]);
+		});
+
+		it('creates nothing in a bucket the config names, under the S3 state’s prefix', () => {
+			const access = deployAccess(
+				workspace({
+					target: 'compose',
+					store: { provider: 's3', bucket: 'acme-ops' },
+					state: { provider: 's3', region: 'us-east-1', prefix: 'ops/' },
+				}),
+				'prod',
+			);
+
+			if (access.kind !== 'scoped') return expect.unreachable();
+			const statements = access.statements('111');
+			expect(statements.slice(0, 2)).toEqual([
+				{
+					Sid: 'StageSecrets',
+					Effect: 'Allow',
+					Action: ['s3:GetObject', 's3:PutObject'],
+					Resource: 'arn:aws:s3:::acme-ops/ops/shop/prod/secrets.json',
+				},
+				{
+					Sid: 'StageSecretsBucket',
+					Effect: 'Allow',
+					Action: ['s3:ListBucket'],
+					Resource: 'arn:aws:s3:::acme-ops',
+				},
+			]);
+			// Only the state's project bucket is created.
+			expect(
+				statements
+					.filter((s) => s.Sid === 'ProjectBucket')
+					.map((s) => s.Resource),
+			).toEqual(['arn:aws:s3:::gkm-shop-111']);
+		});
+	});
+
 	it('adds the stage’s deploy state in SSM and a KMS key for its secret', () => {
 		const access = deployAccess(
 			workspace({
