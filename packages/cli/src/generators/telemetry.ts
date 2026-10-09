@@ -2,6 +2,7 @@ import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import type { TelemetryDeclaration } from '@geekmidas/manifest';
+import { GkmError } from '../errors';
 
 /**
  * One route's own telemetry — an endpoint's `.telemetry({ ignore, attributes })`.
@@ -115,7 +116,7 @@ export function missingTelemetryPackages(appRoot: string): string[] {
  * Failed at build, not at startup: a process that was given telemetry and
  * quietly ran without it is an outage nobody can see into.
  */
-export class TelemetryPackagesMissing extends Error {
+export class TelemetryPackagesMissing extends GkmError {
 	readonly command: string;
 
 	constructor(

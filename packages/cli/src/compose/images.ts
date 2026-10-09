@@ -9,6 +9,7 @@
  * of whatever is checked out here is not the release the tag names.
  */
 
+import { GkmError } from '../errors';
 import type { ComposeDocker } from './docker';
 
 /** One app's image, as the stack runs it. */
@@ -31,7 +32,7 @@ export function siteTag(tag: string, stage: string): string {
 }
 
 /** Images a tag names that the registry does not have. */
-export class ImageTagNotFound extends Error {
+export class ImageTagNotFound extends GkmError {
 	constructor(
 		readonly tag: string,
 		readonly refs: readonly string[],
@@ -47,7 +48,7 @@ export class ImageTagNotFound extends Error {
 }
 
 /** The registry did not answer, or did not let this machine in. */
-export class RegistryUnreachable extends Error {
+export class RegistryUnreachable extends GkmError {
 	constructor(
 		readonly ref: string,
 		readonly detail: string,
@@ -98,7 +99,7 @@ export async function assertImagesExist(
  * Docker resolves to Docker Hub — so a release would be pushed to, or pulled
  * from, somebody else's account. It is never a fallback.
  */
-export class RegistryRequired extends Error {
+export class RegistryRequired extends GkmError {
 	constructor(
 		/** What needed the registry: `--push`, or a pull (`--tag`/`--pull`). */
 		readonly operation: 'push' | 'pull',
@@ -130,7 +131,7 @@ export function pinnedRef(ref: string, digest: string): string {
 }
 
 /** A digests file with no entry for an app the stack runs. */
-export class ImageDigestMissing extends Error {
+export class ImageDigestMissing extends GkmError {
 	constructor(
 		readonly file: string,
 		readonly apps: readonly string[],
@@ -145,7 +146,7 @@ export class ImageDigestMissing extends Error {
 }
 
 /** A digests file entry that is not this app's image. */
-export class ImageDigestMismatch extends Error {
+export class ImageDigestMismatch extends GkmError {
 	constructor(
 		readonly app: string,
 		readonly expected: string,
@@ -161,7 +162,7 @@ export class ImageDigestMismatch extends Error {
 }
 
 /** A digests file that is not a JSON object of app to pinned ref. */
-export class ImageDigestsInvalid extends Error {
+export class ImageDigestsInvalid extends GkmError {
 	constructor(
 		readonly file: string,
 		readonly detail: string,

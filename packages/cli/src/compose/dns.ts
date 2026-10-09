@@ -50,6 +50,7 @@ import {
 
 export { isReservedStageKey, SERVER_IPV4_KEY, SERVER_IPV6_KEY };
 
+import { GkmError } from '../errors';
 import type { ComposeStack } from './stack';
 
 /** A deployed stage's server: what its hosts' records point at. */
@@ -64,7 +65,7 @@ export function serverAddressHint(stage: string): string {
 }
 
 /** A server address in the stage's secrets that is not an address. */
-export class ServerAddressInvalid extends Error {
+export class ServerAddressInvalid extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly key: string,
@@ -84,7 +85,7 @@ export class ServerAddressInvalid extends Error {
  * A compose stage that serves real domains with no server address: its hosts
  * cannot be pointed or checked, and a certificate would be asked for blind.
  */
-export class ServerAddressMissing extends Error {
+export class ServerAddressMissing extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly domain: string,
@@ -592,7 +593,7 @@ export interface MisdirectedHost {
 }
 
 /** Hosts that do not resolve to the stage's server. */
-export class HostNotPointingAtServer extends Error {
+export class HostNotPointingAtServer extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly hosts: readonly MisdirectedHost[],

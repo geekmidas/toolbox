@@ -33,6 +33,7 @@ import {
 	provideKey,
 } from '@geekmidas/manifest';
 import { SERVER_IPV4_KEY, SERVER_IPV6_KEY } from '../compose/dnsConfig.js';
+import { GkmError } from '../errors';
 import { appKey } from '../workspace/derive.js';
 
 /**
@@ -56,7 +57,7 @@ export const STORAGE_KEY_PAIR = [
 ] as const;
 
 /** Dev services asked of a target that runs no containers. */
-export class DevServicesNeedServerTarget extends Error {
+export class DevServicesNeedServerTarget extends GkmError {
 	constructor(readonly target: string) {
 		super(
 			`--allow-dev-services applies to server targets only, and '${target}' ` +
@@ -72,7 +73,7 @@ export class DevServicesNeedServerTarget extends Error {
  * switch now: every construct the stage does not account for gets its dev
  * service.
  */
-export class AllowDevServicesTakesNoValue extends Error {
+export class AllowDevServicesTakesNoValue extends GkmError {
 	constructor(readonly value: string) {
 		super(
 			`--allow-dev-services takes no value (it was given '${value}'). It runs ` +
@@ -128,7 +129,7 @@ export interface MissingServiceKey {
  * A deployed stage with mail or object storage that its secrets do not
  * configure — every missing key, across every app, at once.
  */
-export class ExternalServicesNotConfigured extends Error {
+export class ExternalServicesNotConfigured extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly missing: readonly MissingServiceKey[],

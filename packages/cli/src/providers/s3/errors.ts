@@ -1,7 +1,9 @@
 /** What the `s3` provider refuses, and how each is put right. */
 
+import { GkmError } from '../../errors';
+
 /** An `objects` entry for `s3` with a field it does not take or cannot use. */
-export class S3ProviderConfigInvalid extends Error {
+export class S3ProviderConfigInvalid extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly field: string,
@@ -16,7 +18,7 @@ export class S3ProviderConfigInvalid extends Error {
 }
 
 /** No region anywhere to create the stage's buckets in. */
-export class S3RegionRequired extends Error {
+export class S3RegionRequired extends GkmError {
 	constructor(readonly stage: string) {
 		super(
 			`The s3 provider has no region for the stage '${stage}'. Name one in ` +
@@ -28,7 +30,7 @@ export class S3RegionRequired extends Error {
 }
 
 /** The good name and every suffixed one are taken by other accounts. */
-export class BucketNameUnavailable extends Error {
+export class BucketNameUnavailable extends GkmError {
 	constructor(
 		readonly id: string,
 		readonly tried: readonly string[],
@@ -43,7 +45,7 @@ export class BucketNameUnavailable extends Error {
 }
 
 /** A bucket in this account carries another project's tag. */
-export class BucketOwnedByAnotherProject extends Error {
+export class BucketOwnedByAnotherProject extends GkmError {
 	constructor(
 		readonly bucket: string,
 		readonly owner: string,
@@ -60,7 +62,7 @@ export class BucketOwnedByAnotherProject extends Error {
 }
 
 /** The bucket the stage's state names exists, and this account cannot reach it. */
-export class RecordedBucketUnreachable extends Error {
+export class RecordedBucketUnreachable extends GkmError {
 	constructor(
 		readonly id: string,
 		readonly bucket: string,
@@ -76,7 +78,7 @@ export class RecordedBucketUnreachable extends Error {
 }
 
 /** An IAM user by gkm's name exists, and gkm did not create it for this stage. */
-export class IamUserNotOwned extends Error {
+export class IamUserNotOwned extends GkmError {
 	constructor(
 		readonly user: string,
 		readonly project: string,
@@ -92,7 +94,7 @@ export class IamUserNotOwned extends Error {
 }
 
 /** The user already has the two access keys IAM allows. */
-export class AccessKeyLimit extends Error {
+export class AccessKeyLimit extends GkmError {
 	constructor(
 		readonly user: string,
 		readonly keys: readonly string[],
@@ -108,7 +110,7 @@ export class AccessKeyLimit extends Error {
 }
 
 /** `--rotate-keys` while the last rotation's old key is still active. */
-export class RotationInProgress extends Error {
+export class RotationInProgress extends GkmError {
 	constructor(
 		readonly id: string,
 		readonly previous: string,
@@ -124,7 +126,7 @@ export class RotationInProgress extends Error {
 }
 
 /** The stage's secrets point the bucket's key at a bucket gkm did not provision. */
-export class BucketKeySetElsewhere extends Error {
+export class BucketKeySetElsewhere extends GkmError {
 	constructor(
 		readonly key: string,
 		readonly bucket: string,
@@ -142,7 +144,7 @@ export class BucketKeySetElsewhere extends Error {
 }
 
 /** `verify()`: a provisioned bucket the stage's key cannot reach. */
-export class ProvisionedBucketUnreachable extends Error {
+export class ProvisionedBucketUnreachable extends GkmError {
 	constructor(
 		readonly id: string,
 		readonly bucket: string,

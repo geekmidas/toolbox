@@ -21,6 +21,7 @@ import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import prompts from 'prompts';
 import { loadWorkspaceConfig } from '../config.js';
+import { GkmError } from '../errors';
 import { LOCAL_CA_PATH } from '../reconcile/index.js';
 
 const logger = console;
@@ -271,7 +272,7 @@ export async function exportLocalAuthority(to: string): Promise<void> {
 }
 
 /** The edge has not run, so there is no authority to trust yet. */
-export class NoLocalAuthority extends Error {
+export class NoLocalAuthority extends GkmError {
 	constructor(readonly path: string) {
 		super(
 			`No local certificate authority at ${path}. It is generated the first ` +
@@ -283,7 +284,7 @@ export class NoLocalAuthority extends Error {
 }
 
 /** A platform with no trust store this knows how to write to. */
-export class UnsupportedPlatform extends Error {
+export class UnsupportedPlatform extends GkmError {
 	constructor(
 		readonly platform: string,
 		readonly certificate: string,

@@ -1,4 +1,5 @@
 import { basename, isAbsolute, join } from 'node:path';
+import { GkmError } from '../errors';
 import { assertKnownSecretsStore } from '../secrets/providers.js';
 import type { GkmConfig, Routes } from '../types.js';
 import {
@@ -283,7 +284,7 @@ export function wrapSingleAppAsWorkspace(
  * Refused by name rather than dropped: the schema strips keys it does not
  * know, and a registry silently gone would deploy images under no registry.
  */
-export class DokployRegistryMoved extends Error {
+export class DokployRegistryMoved extends GkmError {
 	constructor(readonly registry: unknown) {
 		super(
 			`deploy.dokploy.registry is now deploy.registry, read by every deploy target. ` +
@@ -298,7 +299,7 @@ export class DokployRegistryMoved extends Error {
  * domain is a fact about the product every target and every command reads,
  * not a deploy setting.
  */
-export class DomainsMoved extends Error {
+export class DomainsMoved extends GkmError {
 	constructor(readonly domains: unknown) {
 		super(
 			'deploy.domains is now domains, at the root of gkm.config.ts. Move it ' +
@@ -312,7 +313,7 @@ export class DomainsMoved extends Error {
  * `deploy.dns`, which became `dns` at the root of the config, keyed by root
  * domain.
  */
-export class DnsMoved extends Error {
+export class DnsMoved extends GkmError {
 	constructor(readonly dns: unknown) {
 		const legacy =
 			dns && typeof dns === 'object' && 'domain' in dns && 'provider' in dns;
@@ -376,7 +377,7 @@ export function processConfig(
 }
 
 /** A workspace config the schema refuses; the message lists every issue. */
-export class InvalidWorkspaceConfig extends Error {
+export class InvalidWorkspaceConfig extends GkmError {
 	constructor(message: string) {
 		super(message);
 		this.name = 'InvalidWorkspaceConfig';

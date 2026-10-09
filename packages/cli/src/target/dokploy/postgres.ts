@@ -11,6 +11,7 @@
 
 import { createHash } from 'node:crypto';
 import { Client as PgClient } from 'pg';
+import { GkmError } from '../../errors';
 import { output } from '../../output';
 import type { SqlClient, Statement } from '../../reconcile/provision.js';
 import { applyDeclared } from './declared';
@@ -20,7 +21,7 @@ import type { DokployCluster } from './fromManifest';
 const logger = output;
 
 /** A Postgres published for the role DDL never accepted a connection. */
-export class PostgresNotReady extends Error {
+export class PostgresNotReady extends GkmError {
 	constructor(
 		readonly host: string,
 		readonly port: number,
@@ -34,7 +35,7 @@ export class PostgresNotReady extends Error {
 }
 
 /** No port could be published for a cluster, so its DDL cannot reach it. */
-export class PostgresPortUnavailable extends Error {
+export class PostgresPortUnavailable extends GkmError {
 	constructor(
 		readonly appName: string,
 		readonly taken: readonly number[],

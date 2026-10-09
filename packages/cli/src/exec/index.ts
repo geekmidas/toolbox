@@ -6,12 +6,13 @@ import {
 	loadEnvFiles,
 	prepareEntryCredentials,
 } from '../credentials';
+import { GkmError } from '../errors';
 import { imageBuildCredentials, isImageBuild } from './imageBuild';
 
 const logger = console;
 
 /** `gkm exec` was given nothing to run. */
-export class NoCommandSpecified extends Error {
+export class NoCommandSpecified extends GkmError {
 	constructor() {
 		super('No command specified. Usage: gkm exec -- <command>');
 		this.name = 'NoCommandSpecified';

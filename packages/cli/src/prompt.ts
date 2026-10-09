@@ -8,9 +8,10 @@
 
 import { stdin as input, stdout as output } from 'node:process';
 import * as readline from 'node:readline/promises';
+import { GkmError } from './errors';
 
 /** A prompt was needed with no terminal to ask at. */
-export class PromptNeedsTerminal extends Error {
+export class PromptNeedsTerminal extends GkmError {
 	constructor(
 		readonly question: string,
 		/** What to do instead — the flag or variable that answers it. */

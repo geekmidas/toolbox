@@ -30,6 +30,7 @@ import { dirname, join } from 'node:path';
 import { generateLogsPassword, LOCAL_LOGS_EMAIL } from '../compose/logs.js';
 import { generateRedisPassword } from '../compose/redis.js';
 import { generateSeed } from '../deploy/generated.js';
+import { GkmError } from '../errors';
 import { gkmHome } from '../home.js';
 import {
 	decrypt,
@@ -174,7 +175,7 @@ export function localCredentialsPath(project: KeystoreProject): string {
 }
 
 /** The local stage's logins file is there, and its key is not. */
-export class LocalCredentialsKeyMissing extends Error {
+export class LocalCredentialsKeyMissing extends GkmError {
 	constructor(
 		readonly path: string,
 		readonly stage: string,
@@ -188,7 +189,7 @@ export class LocalCredentialsKeyMissing extends Error {
 }
 
 /** Another gkm held the logins file's lock for longer than any write takes. */
-export class LocalCredentialsLocked extends Error {
+export class LocalCredentialsLocked extends GkmError {
 	constructor(readonly lock: string) {
 		super(
 			`Another gkm has been writing the local logins for over ${LOCK_TIMEOUT_MS / 1000}s. If none is running, remove ${lock} and run the command again.`,

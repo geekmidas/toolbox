@@ -57,6 +57,7 @@ import {
 	externalServices,
 	STORAGE_KEY_PAIR,
 } from '../../deploy/devServices.js';
+import { GkmError } from '../../errors';
 import { resourceName } from '../../reconcile/plan.js';
 import type { DokployApi } from './dokploy-api';
 
@@ -1088,7 +1089,7 @@ function supplied(
 }
 
 /** A construct needs a value the stage was never given. */
-export class MissingSuppliedSecret extends Error {
+export class MissingSuppliedSecret extends GkmError {
 	constructor(
 		readonly id: string,
 		readonly key: string,
@@ -1125,7 +1126,7 @@ export class UnresolvedParent extends Error {
 }
 
 /** A cache with nowhere to live. */
-export class CacheNeedsAHome extends Error {
+export class CacheNeedsAHome extends GkmError {
 	constructor(
 		readonly id: string,
 		readonly backend: string | undefined,
@@ -1140,7 +1141,7 @@ export class CacheNeedsAHome extends Error {
 }
 
 /** A `'db'` cache (a server target's default) with more than one database. */
-export class CacheIsAmbiguous extends Error {
+export class CacheIsAmbiguous extends GkmError {
 	constructor(readonly databases: readonly string[]) {
 		super(
 			`A cache backed by the database needs to know which one, and this app ` +
@@ -1152,7 +1153,7 @@ export class CacheIsAmbiguous extends Error {
 }
 
 /** A surface reached provisioning before its domain existed. */
-export class SurfaceHasNoAddress extends Error {
+export class SurfaceHasNoAddress extends GkmError {
 	constructor(readonly id: string) {
 		super(
 			`'${id}' is a surface and no address was supplied for it. The domain is ` +
@@ -1164,7 +1165,7 @@ export class SurfaceHasNoAddress extends Error {
 }
 
 /** A queue or topic on a backend this target has no primitive for. */
-export class UnprovisionableCarrier extends Error {
+export class UnprovisionableCarrier extends GkmError {
 	constructor(
 		readonly id: string,
 		readonly backend: string,
@@ -1182,7 +1183,7 @@ export class UnprovisionableCarrier extends Error {
 }
 
 /** A pg-boss carrier in an app that declares no database to host it. */
-export class BrokerNeedsADatabase extends Error {
+export class BrokerNeedsADatabase extends GkmError {
 	constructor(readonly id: string) {
 		super(
 			`'${id}' is carried by pg-boss, which lives in the database the app ` +
@@ -1194,7 +1195,7 @@ export class BrokerNeedsADatabase extends Error {
 }
 
 /** A bucket on a backend this target has no primitive for. */
-export class UnprovisionableBucket extends Error {
+export class UnprovisionableBucket extends GkmError {
 	constructor(
 		readonly id: string,
 		readonly backend: string,

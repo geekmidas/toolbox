@@ -20,6 +20,7 @@
  */
 
 import { type ResolvedLogs, resolveSelfHosted } from '../compose/logsConfig.js';
+import { GkmError } from '../errors';
 import type { DeployRuntime } from '../target/types.js';
 import type {
 	OtlpTelemetryConfig,
@@ -49,7 +50,7 @@ export type TelemetryProviderName = Exclude<
 >['provider'];
 
 /** A deployed stage uses telemetry and its target cannot choose for it. */
-export class TelemetryProviderRequired extends Error {
+export class TelemetryProviderRequired extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly target: string,
@@ -66,7 +67,7 @@ export class TelemetryProviderRequired extends Error {
 }
 
 /** A stage asks for the self-hosted provider on a target that cannot run it. */
-export class SelfHostedTelemetryUnavailable extends Error {
+export class SelfHostedTelemetryUnavailable extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly target: string,
@@ -83,7 +84,7 @@ export class SelfHostedTelemetryUnavailable extends Error {
 }
 
 /** A sample rate that is not a fraction. */
-export class TelemetrySampleRateInvalid extends Error {
+export class TelemetrySampleRateInvalid extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly sampleRate: unknown,
@@ -98,7 +99,7 @@ export class TelemetrySampleRateInvalid extends Error {
 }
 
 /** An OTLP endpoint that is not an http(s) URL. */
-export class TelemetryEndpointInvalid extends Error {
+export class TelemetryEndpointInvalid extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly endpoint: unknown,

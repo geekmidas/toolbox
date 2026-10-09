@@ -8,6 +8,7 @@
  * *where* the stage goes is the target's.
  */
 
+import { GkmError } from '../errors';
 import { discover } from '../reconcile/discover.js';
 import { constructGlobs } from '../reconcile/workspace.js';
 import { builtinTarget } from '../target/builtins';
@@ -87,7 +88,7 @@ export interface DeployContext {
 }
 
 /** Apps were asked for by name that the workspace does not have. */
-export class UnknownDeployApps extends Error {
+export class UnknownDeployApps extends GkmError {
 	constructor(
 		readonly apps: readonly string[],
 		readonly available: readonly string[],
@@ -101,7 +102,7 @@ export class UnknownDeployApps extends Error {
 }
 
 /** Every app asked for deploys through some other target. */
-export class NoDeployableApps extends Error {
+export class NoDeployableApps extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly target: string,
@@ -114,7 +115,7 @@ export class NoDeployableApps extends Error {
 }
 
 /** A build-only run through a target with no build phase. */
-export class TargetBuildsNothing extends Error {
+export class TargetBuildsNothing extends GkmError {
 	constructor(readonly target: string) {
 		super(
 			`"${target}" has no build phase, so a build-only run would do nothing. Deploy it in full, or build through a target that builds images (compose).`,

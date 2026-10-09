@@ -22,6 +22,7 @@ import {
 } from '@geekmidas/services';
 import { loadWorkspaceConfig } from '../config';
 import { loadSecretsForApp } from '../credentials';
+import { GkmError } from '../errors';
 import { type ConstructSource, discover } from '../reconcile/discover';
 import { constructGlobs, reconcileWorkspace } from '../reconcile/workspace.js';
 import { secretsStoreFor } from '../secrets/store.js';
@@ -65,7 +66,7 @@ export {
 const logger = console;
 
 /** `gkm migrate --stage` named a stage only a deploy can reach. */
-export class MigrateDeployedStage extends Error {
+export class MigrateDeployedStage extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly local: string,
@@ -80,7 +81,7 @@ export class MigrateDeployedStage extends Error {
 }
 
 /** `gkm migration` for a Kysely database, with no name for the file. */
-export class MigrationNeedsName extends Error {
+export class MigrationNeedsName extends GkmError {
 	constructor(readonly construct: string) {
 		super(
 			`Name the migration: \`gkm migration ${construct} add_workouts\`. ` +

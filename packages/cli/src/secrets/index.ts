@@ -5,6 +5,7 @@ import {
 	loadWorkspaceConfig,
 	loadWorkspaceSettings,
 } from '../config';
+import { GkmError } from '../errors';
 import { constructGlobs } from '../reconcile/workspace';
 import { generateFullstackCustomSecrets } from '../setup/fullstack-secrets';
 import { CredentialsInvalid, loadCredentialSchemas } from './credentialSchemas';
@@ -191,7 +192,7 @@ export interface SecretsUnsetOptions {
 }
 
 /** `gkm secrets:unset` for a key the stage does not hold. */
-export class SecretNotSet extends Error {
+export class SecretNotSet extends GkmError {
 	constructor(
 		readonly key: string,
 		readonly stage: string,
@@ -205,7 +206,7 @@ export class SecretNotSet extends Error {
 }
 
 /** `gkm secrets:unset` on a stage that has no secrets at all. */
-export class StageSecretsNotFound extends Error {
+export class StageSecretsNotFound extends GkmError {
 	constructor(readonly stage: string) {
 		super(
 			`The stage '${stage}' has no secrets, so there is nothing to remove.`,

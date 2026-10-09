@@ -19,6 +19,7 @@ import {
 	MissingCredential,
 	storedCredentials,
 } from '../../../deploy/credentials';
+import { GkmError } from '../../../errors';
 import {
 	type DeleteDnsRecord,
 	type DeleteResult,
@@ -58,7 +59,7 @@ export interface GoDaddyProviderOptions {
 }
 
 /** GoDaddy cannot list a zone through the records-by-name endpoints. */
-export class GoDaddyZoneListingUnsupported extends Error {
+export class GoDaddyZoneListingUnsupported extends GkmError {
 	constructor(readonly domain: string) {
 		super(
 			`gkm reads GoDaddy records by name and type only — it never lists ` +

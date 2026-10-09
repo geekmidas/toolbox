@@ -25,6 +25,7 @@ import {
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { deployIdentity, type IdentitySource } from '../deploy/identity';
+import { GkmError } from '../errors';
 import { gkmHome } from '../home';
 
 /** Key length for AES-256 encryption */
@@ -53,7 +54,7 @@ export interface KeystoreProject {
 }
 
 /** A keystore project key that is not `<namespace>/<project>`. */
-export class KeystoreProjectInvalid extends Error {
+export class KeystoreProjectInvalid extends GkmError {
 	constructor(readonly key: string) {
 		super(
 			`'${key}' is not a keystore project: expected '<namespace>/<project>' in lowercase letters, digits and '-', as deployIdentity() produces. Pass the workspace's identity key.`,
@@ -63,7 +64,7 @@ export class KeystoreProjectInvalid extends Error {
 }
 
 /** A stage has no key, here or at the place keys used to be kept. */
-export class KeyNotFound extends Error {
+export class KeyNotFound extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly project: string,

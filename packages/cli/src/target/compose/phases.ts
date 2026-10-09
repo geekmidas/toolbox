@@ -99,6 +99,7 @@ import type { DeployResult } from '../../deploy/types';
 import { ensureDockerignore } from '../../docker/index.js';
 import { imageLayout } from '../../docker/layout.js';
 import { findBuildRoot } from '../../docker/templates.js';
+import { GkmError } from '../../errors';
 import { installedFrom } from '../../generators/drivers.js';
 import {
 	migrateDatabases,
@@ -222,7 +223,7 @@ export interface ComposeRunOptions {
 }
 
 /** `--push` without `--build`: there is nothing built here to push. */
-export class ComposePushNeedsBuild extends Error {
+export class ComposePushNeedsBuild extends GkmError {
 	constructor() {
 		super(
 			'--push pushes the images this checkout builds, so it needs --build ' +
@@ -233,7 +234,7 @@ export class ComposePushNeedsBuild extends Error {
 }
 
 /** Digests to run by, on a run that pulls nothing. */
-export class ComposePinNeedsPull extends Error {
+export class ComposePinNeedsPull extends GkmError {
 	constructor() {
 		super(
 			'--digests-file pins the images a release pulls, so it needs --tag ' +
@@ -245,7 +246,7 @@ export class ComposePinNeedsPull extends Error {
 }
 
 /** A port variable that does not hold a port. */
-export class EdgePortInvalid extends Error {
+export class EdgePortInvalid extends GkmError {
 	constructor(
 		readonly variable: string,
 		readonly value: string,
@@ -258,7 +259,7 @@ export class EdgePortInvalid extends Error {
 }
 
 /** A build with no commit to tag its images with. */
-export class NoGitRevision extends Error {
+export class NoGitRevision extends GkmError {
 	constructor(readonly root: string) {
 		super(
 			`Images built here are tagged with the commit they were built from, ` +
@@ -555,7 +556,7 @@ export async function validateCompose(
 }
 
 /** A stack whose caches are in Redis, built for an app that has no client. */
-export class RedisClientMissing extends Error {
+export class RedisClientMissing extends GkmError {
 	constructor(readonly apps: readonly string[]) {
 		super(
 			`The stack keeps every cache in Redis, and ${apps.join(', ')} ` +

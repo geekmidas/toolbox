@@ -8,6 +8,7 @@
  * project with the right name and no marker is somebody else's.
  */
 
+import { GkmError } from '../errors';
 import {
 	type DokployApi,
 	DokployApiError,
@@ -26,7 +27,7 @@ import {
  * A Dokploy project with the name this deploy would use exists, and nothing
  * says this workspace created it.
  */
-export class ProjectNotOwned extends Error {
+export class ProjectNotOwned extends GkmError {
 	constructor(
 		readonly projectName: string,
 		readonly projectId: string,

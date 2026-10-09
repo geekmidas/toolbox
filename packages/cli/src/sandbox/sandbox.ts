@@ -25,6 +25,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { existsSync, realpathSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { GkmError } from '../errors';
 
 /** Where a command's output goes. */
 export type SandboxOutput = 'capture' | 'inherit' | 'stderr' | 'ignore';
@@ -115,7 +116,7 @@ export interface Sandbox {
 export const SECRETS_DIR_ENV = 'GKM_SECRETS_DIR';
 
 /** A command was asked to run outside the project. */
-export class SandboxCwdEscape extends Error {
+export class SandboxCwdEscape extends GkmError {
 	constructor(
 		readonly cwd: string,
 		readonly root: string,
@@ -152,7 +153,7 @@ export function confineCwd(root: string, cwd: string): string {
 }
 
 /** A secret's file name: one path segment, so it cannot be written elsewhere. */
-export class SecretNameInvalid extends Error {
+export class SecretNameInvalid extends GkmError {
 	constructor(readonly secretName: string) {
 		super(
 			`'${secretName}' cannot be a secret's name: it becomes a file name in ` +

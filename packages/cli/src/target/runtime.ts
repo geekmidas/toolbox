@@ -13,6 +13,7 @@
  * ```
  */
 
+import { GkmError } from '../errors';
 import {
 	builtinTarget,
 	configurableBuiltins,
@@ -25,7 +26,7 @@ import type { DeployRuntime, DeployTargetEntry } from './types';
 const RUNTIMES: readonly DeployRuntime[] = ['server', 'aws'];
 
 /** A target package whose `package.json` does not say where it runs. */
-export class TargetRuntimeUndeclared extends Error {
+export class TargetRuntimeUndeclared extends GkmError {
 	constructor(
 		readonly target: string,
 		readonly packageName: string,

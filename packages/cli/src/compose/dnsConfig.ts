@@ -5,6 +5,8 @@
  * named errors the step applies.
  */
 
+import { GkmError } from '../errors';
+
 /** The stage-secret key holding the server's public IPv4 address. */
 export const SERVER_IPV4_KEY = 'GKM_SERVER_IPV4';
 /** The stage-secret key holding the server's public IPv6 address, if any. */
@@ -36,7 +38,7 @@ export function isHostname(value: unknown): value is string {
 }
 
 /** A CNAME target that is not a hostname under its own domain. */
-export class DnsTargetInvalid extends Error {
+export class DnsTargetInvalid extends GkmError {
 	constructor(
 		readonly domain: string,
 		readonly target: unknown,

@@ -9,6 +9,7 @@
  * configured.
  */
 
+import { GkmError } from '../errors';
 import {
 	type DokployApi,
 	DokployApiError,
@@ -16,7 +17,7 @@ import {
 } from './dokploy-api';
 
 /** There is nowhere to push images to, so Dokploy has nothing to pull. */
-export class RegistryNotConfigured extends Error {
+export class RegistryNotConfigured extends GkmError {
 	constructor(readonly stage: string) {
 		super(
 			`Deploying '${stage}' needs a container registry: Dokploy pulls each app's image from one. ` +
@@ -27,7 +28,7 @@ export class RegistryNotConfigured extends Error {
 }
 
 /** `deploy.dokploy.registryId` names a registry Dokploy does not have. */
-export class RegistryNotFound extends Error {
+export class RegistryNotFound extends GkmError {
 	constructor(readonly registryId: string) {
 		super(
 			`deploy.dokploy.registryId '${registryId}' is not a registry on this Dokploy server. ` +
@@ -38,7 +39,7 @@ export class RegistryNotFound extends Error {
 }
 
 /** More than one Dokploy registry serves the configured registry. */
-export class RegistryAmbiguous extends Error {
+export class RegistryAmbiguous extends GkmError {
 	constructor(
 		readonly registry: string,
 		readonly registryIds: readonly string[],

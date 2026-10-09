@@ -4,6 +4,7 @@ import type { Cron } from '@geekmidas/constructs/crons';
 import type { Queue } from '@geekmidas/constructs/queue';
 import type { Subscriber } from '@geekmidas/constructs/subscribers';
 import type { BuildContext } from '../build/types';
+import { GkmError } from '../errors';
 import { appKey } from '../workspace/derive.js';
 import { CronGenerator } from './CronGenerator';
 import { runtimeFor } from './EndpointGenerator.js';
@@ -25,7 +26,7 @@ import {
  * reached by building server images for a project that deploys to AWS — where
  * a subscriber is a Lambda instead.
  */
-export class WorkerSubscribersNeedPush extends Error {
+export class WorkerSubscribersNeedPush extends GkmError {
 	constructor(
 		readonly worker: string,
 		readonly subscribers: readonly string[],

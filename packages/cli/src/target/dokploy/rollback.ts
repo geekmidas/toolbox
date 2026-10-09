@@ -27,6 +27,7 @@ import {
 	type ReleasedImage,
 	recordRollback,
 } from '../../deploy/state';
+import { GkmError } from '../../errors';
 import { LocalSandbox } from '../../sandbox/local';
 import { type Sandbox, withSandbox } from '../../sandbox/sandbox';
 import { assertDeployedStage } from '../../workspace/stages';
@@ -57,7 +58,7 @@ export interface RolledBack {
 }
 
 /** Neither an app nor every app was asked for. */
-export class RollbackNeedsApp extends Error {
+export class RollbackNeedsApp extends GkmError {
 	constructor(
 		readonly stage: string,
 		/** The apps that have a release to go back to. */
@@ -72,7 +73,7 @@ export class RollbackNeedsApp extends Error {
 }
 
 /** An app has no release before the one it runs. */
-export class NothingToRollBack extends Error {
+export class NothingToRollBack extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly app: string,
@@ -86,7 +87,7 @@ export class NothingToRollBack extends Error {
 }
 
 /** The stage was never deployed through Dokploy from this state. */
-export class StageNeverDeployed extends Error {
+export class StageNeverDeployed extends GkmError {
 	constructor(readonly stage: string) {
 		super(
 			`"${stage}" has no deploy state, so there is nothing to roll back. ` +

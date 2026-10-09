@@ -10,6 +10,7 @@
  */
 
 import { loadWorkspaceSettings } from '../config.js';
+import { GkmError } from '../errors';
 import { assertDeployedStage } from '../workspace/stages.js';
 import {
 	SECRETS_STORE_PROVIDERS,
@@ -36,7 +37,7 @@ export interface SecretsMigrateOptions {
 }
 
 /** An AWS store to copy to, with no region given and none configured. */
-export class MigrateTargetNeedsRegion extends Error {
+export class MigrateTargetNeedsRegion extends GkmError {
 	constructor(readonly to: string) {
 		super(
 			`Copying to ${to} needs a region, and secrets.store has none to reuse. ` +
@@ -47,7 +48,7 @@ export class MigrateTargetNeedsRegion extends Error {
 }
 
 /** The target is the store the stage is already read from. */
-export class MigrateTargetIsSource extends Error {
+export class MigrateTargetIsSource extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly to: string,
@@ -61,7 +62,7 @@ export class MigrateTargetIsSource extends Error {
 }
 
 /** The configured store holds nothing for the stage. */
-export class NoSecretsToMigrate extends Error {
+export class NoSecretsToMigrate extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly store: string,
@@ -76,7 +77,7 @@ export class NoSecretsToMigrate extends Error {
 }
 
 /** The target already holds the stage, and `--force` was not given. */
-export class MigrateTargetHoldsStage extends Error {
+export class MigrateTargetHoldsStage extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly to: string,

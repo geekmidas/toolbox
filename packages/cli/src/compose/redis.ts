@@ -17,6 +17,7 @@
 
 import { randomBytes } from 'node:crypto';
 import type { ConstructManifest } from '@geekmidas/manifest';
+import { GkmError } from '../errors';
 import { DEFAULT_IMAGES } from '../reconcile/containers.js';
 import type { Plan } from '../reconcile/plan.js';
 import type { StageSecrets } from '../secrets/types.js';
@@ -54,7 +55,7 @@ export const REDIS_PASSWORD_KEY = 'REDIS_PASSWORD';
 const REDIS_DATABASES = 16;
 
 /** A deployed stage that runs the stack's Redis and has no password yet. */
-export class RedisPasswordMissing extends Error {
+export class RedisPasswordMissing extends GkmError {
 	constructor(readonly stage: string) {
 		super(
 			`The stage '${stage}' runs the stack's Redis and has no ` +

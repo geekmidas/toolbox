@@ -25,6 +25,7 @@ import {
 	writeFile,
 } from 'node:fs/promises';
 import { join } from 'node:path';
+import { GkmError } from '../errors';
 import { gkmHome } from '../home.js';
 import type { ComposeDocker, PortHolder, StackRef } from './docker.js';
 import type { ComposeProxy } from './routes.js';
@@ -63,7 +64,7 @@ export function edgeRef(
  * edge, or another stack's Caddy. Refused before anything is started, so the
  * stack is never left half on one proxy and half on the other.
  */
-export class ComposeProxyClash extends Error {
+export class ComposeProxyClash extends GkmError {
 	constructor(
 		readonly project: string,
 		readonly proxy: ComposeProxy,

@@ -81,6 +81,7 @@ import {
 import type { AppDeployResult, DeployResult } from '../../deploy/types';
 import { workerDockerfileOf } from '../../docker/index.js';
 import { WORKER_PORT } from '../../docker/templates.js';
+import { GkmError } from '../../errors';
 import { plannedSeeds } from '../../migrate/databases';
 import { output } from '../../output';
 import { verifyStageProviders } from '../../providers/index.js';
@@ -265,7 +266,7 @@ export class FrontendDeployFailed extends Error {
 }
 
 /** An app's environment needs values the stage does not have. */
-export class MissingEnvVars extends Error {
+export class MissingEnvVars extends GkmError {
 	constructor(
 		readonly app: string,
 		readonly missing: readonly string[],

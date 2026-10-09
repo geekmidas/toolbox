@@ -7,10 +7,12 @@
  * views no OpenTelemetry SDK is tracing. A caller's own `telemetry` option
  * still wins.
  */
+
+import { GkmError } from '../errors';
 export type ClientTelemetryDefault = boolean | { sampleRate: number };
 
 /** A `sampleRate` outside 0–1, which no sampler can honour. */
-export class InvalidClientTelemetrySampleRate extends Error {
+export class InvalidClientTelemetrySampleRate extends GkmError {
 	constructor(readonly sampleRate: number) {
 		super(
 			`The client's telemetry sample rate must be a number from 0 to 1, got ${sampleRate}. Pass the stage's rate, such as 0.1, or leave it out for 1.`,

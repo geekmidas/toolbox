@@ -19,6 +19,7 @@
  * manual run deploy what a push already built.
  */
 
+import { GkmError } from '../errors';
 import { UndeclaredStage } from '../workspace/stages.js';
 import type { StagesConfig } from '../workspace/types.js';
 
@@ -64,7 +65,7 @@ export function planStages(stages: StagesConfig, input: PlanInput): StagePlan {
  * A manual run with no stage. Refused rather than read as "nothing to do", so
  * a run started with the field left empty fails where it can be seen.
  */
-export class DispatchNamesNoStage extends Error {
+export class DispatchNamesNoStage extends GkmError {
 	constructor(readonly deployed: readonly string[]) {
 		super(
 			`A manual run deploys one stage, and none was given. Run the workflow again with stage set to one of: ${deployed.join(', ') || 'nothing yet — gkm.config.ts deploys to no stage'}.`,

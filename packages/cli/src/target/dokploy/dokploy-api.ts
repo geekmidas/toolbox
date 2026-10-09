@@ -4,6 +4,8 @@
  * Handles authentication, error handling, and provides typed methods for all Dokploy API endpoints.
  */
 
+import { GkmError } from '../../errors';
+
 export interface DokployApiOptions {
 	/** Dokploy server URL (e.g., https://dokploy.example.com) */
 	baseUrl: string;
@@ -31,7 +33,7 @@ export const DEFAULT_DOKPLOY_TIMEOUT_MS = 30_000;
  * sending it again could repeat a deploy or a create the server is already
  * doing.
  */
-export class DokployRequestTimedOut extends Error {
+export class DokployRequestTimedOut extends GkmError {
 	constructor(
 		readonly baseUrl: string,
 		readonly endpoint: string,
@@ -85,7 +87,7 @@ export interface WaitForDeploymentOptions {
 }
 
 /** A deployment Dokploy ran and reported as failed. */
-export class DeploymentFailed extends Error {
+export class DeploymentFailed extends GkmError {
 	constructor(
 		readonly applicationId: string,
 		readonly deployment: DokployDeployment,
@@ -100,7 +102,7 @@ export class DeploymentFailed extends Error {
 }
 
 /** A deployment that had not finished when the deploy stopped waiting. */
-export class DeploymentTimedOut extends Error {
+export class DeploymentTimedOut extends GkmError {
 	constructor(
 		readonly applicationId: string,
 		readonly timeoutMs: number,

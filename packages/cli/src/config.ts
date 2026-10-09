@@ -1,6 +1,7 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join, parse, resolve, sep } from 'node:path';
 import { z } from 'zod';
+import { GkmError } from './errors';
 import { output } from './output.js';
 import { discover } from './reconcile/discover.js';
 import { activeSandbox, type Sandbox } from './sandbox/sandbox.js';
@@ -146,7 +147,7 @@ export function findWorkspaceRoot(cwd: string): string {
 }
 
 /** No gkm config in a directory or any of its parents. */
-export class ConfigNotFound extends Error {
+export class ConfigNotFound extends GkmError {
 	constructor(readonly cwd: string) {
 		super(
 			'Configuration file not found. Please create gkm.config.json, gkm.config.ts, or gkm.config.js in the project root.',
@@ -427,7 +428,7 @@ async function withDerivedApps(
  * declares — there is no second path that reads a hand-written compose file or
  * an `apps` block's ports. A config that declares nothing has nothing to run.
  */
-export class WorkspaceDeclaresNoConstructs extends Error {
+export class WorkspaceDeclaresNoConstructs extends GkmError {
 	constructor(readonly root: string) {
 		super(
 			`The workspace at ${root} declares no constructs. Every workspace names ` +
@@ -482,7 +483,7 @@ function real(path: string): string {
 }
 
 /** A directory that no app in the workspace lives in. */
-export class NotInAnApp extends Error {
+export class NotInAnApp extends GkmError {
 	constructor(
 		readonly cwd: string,
 		readonly apps: Readonly<Record<string, string>>,
@@ -541,7 +542,7 @@ export async function loadAppConfig(
 }
 
 /** The app a directory is in has no gkm config — a site, or an entry app. */
-export class NotABackendApp extends Error {
+export class NotABackendApp extends GkmError {
 	constructor(readonly appName: string) {
 		super(
 			`App "${appName}" is not a backend app and cannot be run with gkm dev.`,

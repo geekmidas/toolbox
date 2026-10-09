@@ -8,6 +8,7 @@
  */
 
 import { isIP } from 'node:net';
+import { GkmError } from '../errors';
 import type { SelfHostedTelemetryConfig } from '../workspace/types.js';
 
 /** The port OpenObserve listens on, and the one it is published on by default. */
@@ -29,7 +30,7 @@ export interface ResolvedLogs {
 }
 
 /** `public` with no address to allow: nobody could reach it. */
-export class LogsAllowEmpty extends Error {
+export class LogsAllowEmpty extends GkmError {
 	constructor(readonly stage: string) {
 		super(
 			`deploy.telemetry.${stage}.public.allow is empty, so the logs site would ` +
@@ -42,7 +43,7 @@ export class LogsAllowEmpty extends Error {
 }
 
 /** An `allow` entry that is not an IP address or a CIDR range. */
-export class LogsAllowEntryInvalid extends Error {
+export class LogsAllowEntryInvalid extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly entry: string,
@@ -57,7 +58,7 @@ export class LogsAllowEntryInvalid extends Error {
 }
 
 /** A retention OpenObserve would refuse to start with. */
-export class LogsRetentionInvalid extends Error {
+export class LogsRetentionInvalid extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly retentionDays: unknown,
@@ -73,7 +74,7 @@ export class LogsRetentionInvalid extends Error {
 }
 
 /** A port that is not one. */
-export class LogsPortInvalid extends Error {
+export class LogsPortInvalid extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly port: unknown,

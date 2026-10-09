@@ -14,6 +14,7 @@ import {
 	normalizeProductionConfig,
 	normalizeTelescopeConfig,
 } from '../dev';
+import { GkmError } from '../errors';
 import {
 	CronGenerator,
 	cacheBackendsIn,
@@ -135,7 +136,7 @@ export function isMainProvider(value: string): value is MainProvider {
 	return value === 'aws' || value === 'server';
 }
 
-export class UnknownBuildProvider extends Error {
+export class UnknownBuildProvider extends GkmError {
 	constructor(readonly provider: string) {
 		super(
 			`'${provider}' is not a build target. Pass --provider aws or --provider server, or leave it out to build for where gkm.config.ts deploys.`,
@@ -145,7 +146,7 @@ export class UnknownBuildProvider extends Error {
 }
 
 /** `--cache` named something that is not a cache backend. */
-export class UnknownCacheBackend extends Error {
+export class UnknownCacheBackend extends GkmError {
 	constructor(readonly backend: string) {
 		super(
 			`'${backend}' is not a cache backend. Pass --cache upstash, elasticache, db or redis, or leave it out to register the deploy target's.`,

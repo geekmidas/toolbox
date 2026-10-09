@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import { GkmError } from '../errors';
 import {
 	getKeyPath,
 	getOrCreateKey,
@@ -98,7 +99,7 @@ export class FileSecretsStore implements SecretsStore {
 }
 
 /** A stage's secrets file exists, and the key that opens it does not. */
-export class MissingSecretsKey extends Error {
+export class MissingSecretsKey extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly project: string,

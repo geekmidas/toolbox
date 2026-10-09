@@ -21,6 +21,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { hostname, userInfo } from 'node:os';
+import { GkmError } from '../errors';
 import {
 	type CreateStateStoreConfig,
 	isStateProvider,
@@ -132,7 +133,7 @@ export interface StateStore {
 // Errors
 // ============================================================================
 
-export class StateLocked extends Error {
+export class StateLocked extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly holder: LockHolder | null,
@@ -150,7 +151,7 @@ export class StateLocked extends Error {
 	}
 }
 
-export class StateVersionConflict extends Error {
+export class StateVersionConflict extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly expectedVersion: StateVersion | null,
@@ -167,7 +168,7 @@ export class StateVersionConflict extends Error {
 	}
 }
 
-export class StageStateMissing extends Error {
+export class StageStateMissing extends GkmError {
 	constructor(readonly stage: string) {
 		super(
 			`There is no deploy state for stage '${stage}' to record a resource in. ` +
@@ -177,7 +178,7 @@ export class StageStateMissing extends Error {
 	}
 }
 
-export class StateUnreadable extends Error {
+export class StateUnreadable extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly location: string,
@@ -193,7 +194,7 @@ export class StateUnreadable extends Error {
 	}
 }
 
-export class StateSchemaTooNew extends Error {
+export class StateSchemaTooNew extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly schemaVersion: unknown,
@@ -212,7 +213,7 @@ export class StateSchemaTooNew extends Error {
  * in for a store, so a deploy that cannot be protected from a concurrent one
  * says so.
  */
-export class StateStoreWithoutLocking extends Error {
+export class StateStoreWithoutLocking extends GkmError {
 	constructor(readonly provider: string) {
 		super(
 			`The custom state provider '${provider}' has no lock and no versions, ` +
@@ -224,7 +225,7 @@ export class StateStoreWithoutLocking extends Error {
 	}
 }
 
-export class StateStoreNeedsWorkspaceName extends Error {
+export class StateStoreNeedsWorkspaceName extends GkmError {
 	constructor(readonly provider: string) {
 		super(
 			`The '${provider}' state provider keys state by workspace name. ` +
@@ -234,7 +235,7 @@ export class StateStoreNeedsWorkspaceName extends Error {
 	}
 }
 
-export class UnknownStateProvider extends Error {
+export class UnknownStateProvider extends GkmError {
 	constructor(readonly config: unknown) {
 		super(
 			`Unknown state provider ${JSON.stringify(config)}. Use 'local', 'ssm', ` +
@@ -245,7 +246,7 @@ export class UnknownStateProvider extends Error {
 }
 
 /** A lock or write that could not get at the state backend in time. */
-export class StateStoreBusy extends Error {
+export class StateStoreBusy extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly location: string,

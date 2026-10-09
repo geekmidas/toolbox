@@ -3,6 +3,8 @@
  * loader can check `secrets.store` without loading any store.
  */
 
+import { GkmError } from '../errors';
+
 /** The stores this package ships, by the name `secrets.store` gives them. */
 export const SECRETS_STORE_PROVIDERS = [
 	'file',
@@ -17,7 +19,7 @@ export type SecretsStoreProvider = (typeof SECRETS_STORE_PROVIDERS)[number];
  * as `'secretsmanager'` or `'ssm-parameter'`. Refused rather than read as the
  * file, which would leave a deployed stage's secrets on one machine.
  */
-export class UnknownSecretsStoreProvider extends Error {
+export class UnknownSecretsStoreProvider extends GkmError {
 	constructor(readonly provider: unknown) {
 		super(
 			`secrets.store names the provider ${JSON.stringify(provider)}, which is not one gkm ships. ` +

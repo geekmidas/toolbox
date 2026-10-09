@@ -7,6 +7,7 @@
  * without importing a deploy engine.
  */
 
+import { GkmError } from '../errors';
 import type { DeployRuntime, DeployTargetEntry } from './types';
 
 /**
@@ -61,7 +62,7 @@ export function configuredTarget(
 }
 
 /** A target name that is neither built in nor in `deploy.targets`. */
-export class UnknownDeployTarget extends Error {
+export class UnknownDeployTarget extends GkmError {
 	constructor(
 		readonly target: string,
 		/** The names that would have resolved. */
@@ -75,7 +76,7 @@ export class UnknownDeployTarget extends Error {
 }
 
 /** A built-in target `gkm deploy` cannot deploy through yet. */
-export class DeployTargetNotYetSupported extends Error {
+export class DeployTargetNotYetSupported extends GkmError {
 	constructor(
 		readonly target: string,
 		/** What to do instead, when there is something. */

@@ -6,12 +6,13 @@ import {
 	derivedContainers,
 	reconcileWorkspace,
 } from '../reconcile/workspace.js';
+import { StageSecretsUnreadable } from '../secrets/awsStore.js';
 import {
 	createStageSecrets,
 	generateConnectionUrls,
 	generateServiceCredentials,
 } from '../secrets/generator.js';
-import { type SecretsStore, secretsStoreFor } from '../secrets/store.js';
+import { secretsStoreFor } from '../secrets/store.js';
 import type { SecretServiceName, StageSecrets } from '../secrets/types.js';
 import { ensureTrusted } from '../trust/index.js';
 import type { LoadedConfig, NormalizedWorkspace } from '../workspace/types.js';
@@ -78,11 +79,7 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 		const store = await secretsStoreFor(workspace, stage, {
 			...(options.profile ? { profile: options.profile } : {}),
 		});
-		assertStageServer(
-			workspace,
-			stage,
-			await readStageSecrets(store, stage, options),
-		);
+		assertStageServer(workspace, stage, await store.read(stage));
 	}
 
 	// A dry run of a deployed stage is its providers' plan, and nothing else:
@@ -116,69 +113,11 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 	printSummary(workspace, stage);
 }
 
-/** Where each AWS store keeps a stage's secrets, as a person reads it. */
-const AWS_STORES: Record<string, string> = {
-	ssm: 'SSM Parameter Store',
-	'secrets-manager': 'Secrets Manager',
-};
-
 /**
- * A deployed stage's secrets are kept in its AWS account, and no AWS
- * credentials were found to read them with.
- *
- * Raised before any provider runs: even a dry run reads the stage's secrets,
- * since its plan needs the server they name (`GKM_SERVER_IPV4`).
+ * Raised by the AWS stores themselves when there are no AWS credentials to
+ * reach a stage's secrets — exported here, where it was first raised.
  */
-export class StageSecretsUnreadable extends Error {
-	constructor(
-		readonly stage: string,
-		readonly store: string,
-		readonly profile: string | undefined,
-		readonly dryRun: boolean,
-		cause: unknown,
-	) {
-		const where = AWS_STORES[store] ?? `the '${store}' store`;
-		const command = `gkm setup --stage ${stage}${dryRun ? ' --dry-run' : ''}`;
-		super(
-			`The '${stage}' stage's secrets are kept in ${where}, in the stage's AWS account, and ` +
-				(profile
-					? `the AWS profile '${profile}' has no credentials to read them with. Sign in to it (aws sso login --profile ${profile}) or name another: ${command} --profile <profile>.`
-					: `no AWS credentials were found to read them with. Name the account's profile: ${command} --profile <profile>, or AWS_PROFILE=<profile> ${command}.`) +
-				(dryRun
-					? ' A dry run still reads them: its plan needs the server the stage names (GKM_SERVER_IPV4).'
-					: ''),
-			{ cause },
-		);
-		this.name = 'StageSecretsUnreadable';
-	}
-}
-
-/**
- * The stage's secrets from its store, refused with
- * {@link StageSecretsUnreadable} when there are no AWS credentials to read
- * them — matched by the SDK's error name, its message being free to change.
- * Any other failure is the store's own, and passes through.
- */
-async function readStageSecrets(
-	store: SecretsStore,
-	stage: string,
-	options: SetupOptions,
-): Promise<StageSecrets | null> {
-	try {
-		return await store.read(stage);
-	} catch (error) {
-		if ((error as Error | undefined)?.name === 'CredentialsProviderError') {
-			throw new StageSecretsUnreadable(
-				stage,
-				store.name,
-				options.profile,
-				options.dryRun === true,
-				error,
-			);
-		}
-		throw error;
-	}
-}
+export { StageSecretsUnreadable };
 
 /**
  * A deployed stage's providers: each one's `ensure()`, in the stage's own

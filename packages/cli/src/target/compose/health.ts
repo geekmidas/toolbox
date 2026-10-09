@@ -10,6 +10,7 @@
  */
 
 import { request } from 'node:https';
+import { GkmError } from '../../errors';
 
 /** One request to the edge. */
 export interface HealthRequest {
@@ -39,7 +40,7 @@ export interface HealthRequest {
 export type HealthProbe = (request: HealthRequest) => Promise<number>;
 
 /** A request that got no answer in time. */
-export class HealthRequestTimedOut extends Error {
+export class HealthRequestTimedOut extends GkmError {
 	constructor(
 		readonly url: string,
 		readonly timeoutMs: number,
@@ -95,7 +96,7 @@ export function isHealthy(status: number): boolean {
 }
 
 /** Apps that did not answer through the edge. */
-export class ComposeAppsUnhealthy extends Error {
+export class ComposeAppsUnhealthy extends GkmError {
 	constructor(
 		readonly project: string,
 		/** Each app, and the last thing its check got: a status or an error. */

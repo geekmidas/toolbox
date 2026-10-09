@@ -9,6 +9,8 @@
  * before a build starts.
  */
 
+import { GkmError } from '../errors';
+
 const DOMAIN_COMPONENT = '(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9])';
 const DOMAIN = `${DOMAIN_COMPONENT}(?:\\.${DOMAIN_COMPONENT})*(?::[0-9]+)?`;
 const PATH_COMPONENT = '[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*';
@@ -24,7 +26,7 @@ const REFERENCE = new RegExp(
 const MAX_NAME_LENGTH = 255;
 
 /** A value that is not an image reference was about to be built or pushed. */
-export class ImageRefInvalid extends Error {
+export class ImageRefInvalid extends GkmError {
 	constructor(readonly ref: string) {
 		super(
 			`'${ref}' is not a valid image reference. An image is \`[registry/]name[:tag]\`: the name lowercase letters, digits and . _ - separators, the tag up to 128 of letters, digits, _ . and -, not starting with . or -. Check docker.registry in gkm.config.ts and the --tag passed.`,

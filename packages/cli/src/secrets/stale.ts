@@ -21,6 +21,7 @@ import {
 	type DeclarationKind,
 	providedKeyFor,
 } from '@geekmidas/manifest';
+import { GkmError } from '../errors';
 
 /** The kinds whose URL an older gkm wrote into a stage's secrets. */
 const ADDRESSED: ReadonlySet<DeclarationKind> = new Set<DeclarationKind>([
@@ -48,7 +49,7 @@ export interface StaleSecret {
  * `localhost` — what an older `gkm secrets:init`, `gkm setup` or `gkm init`
  * generated. Set by hand wins over derived, so the app would be handed it.
  */
-export class StaleStageSecrets extends Error {
+export class StaleStageSecrets extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly stale: readonly StaleSecret[],

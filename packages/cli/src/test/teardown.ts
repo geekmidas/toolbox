@@ -11,6 +11,7 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { GkmError } from '../errors';
 import type { SqlClient } from '../reconcile/provision';
 import { quoteIdentifier } from '../reconcile/provision';
 import { forgetState } from '../reconcile/state';
@@ -69,7 +70,7 @@ async function readReady(path: string): Promise<TestReady | undefined> {
 }
 
 /** A name recorded for the test stage without the test stage's suffix. */
-export class NotATestDatabase extends Error {
+export class NotATestDatabase extends GkmError {
 	constructor(readonly database: string) {
 		super(
 			`Refusing to drop '${database}': only the test stage's databases (named ` +

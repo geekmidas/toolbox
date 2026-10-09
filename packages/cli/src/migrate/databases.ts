@@ -22,6 +22,7 @@ import {
 import type { Kysely } from 'kysely';
 import type { Migrator } from 'kysely/migration';
 import pg from 'pg';
+import { GkmError } from '../errors';
 import type { ConstructSource } from '../reconcile/discover';
 import { folderProvider, loadSeeds, migrationFiles } from './provider';
 
@@ -70,7 +71,7 @@ export interface PendingMigrations {
 }
 
 /** A folder under `db/` that names no construct. */
-export class UnknownMigrationFolder extends Error {
+export class UnknownMigrationFolder extends GkmError {
 	constructor(
 		readonly folder: string,
 		readonly known: readonly string[],
@@ -85,7 +86,7 @@ export class UnknownMigrationFolder extends Error {
 }
 
 /** A construct was asked for by a name that takes no migrations. */
-export class NoSuchMigrationTarget extends Error {
+export class NoSuchMigrationTarget extends GkmError {
 	constructor(
 		readonly construct: string,
 		readonly known: readonly string[],
@@ -106,7 +107,7 @@ export class NoSuchMigrationTarget extends Error {
  * Migrations moved into `migrations/` so seeds could sit beside them. A file
  * still at the old level would otherwise never run, and nothing would say so.
  */
-export class MigrationsOutsideFolder extends Error {
+export class MigrationsOutsideFolder extends GkmError {
 	constructor(
 		readonly folder: string,
 		readonly files: readonly string[],
@@ -121,7 +122,7 @@ export class MigrationsOutsideFolder extends Error {
 }
 
 /** A folder inside a construct's folder that is neither `migrations` nor `seeds`. */
-export class UnknownDatabaseFolder extends Error {
+export class UnknownDatabaseFolder extends GkmError {
 	constructor(readonly folder: string) {
 		super(
 			`${folder} is neither migrations/ nor seeds/, so nothing in it would ` +
@@ -148,7 +149,7 @@ export class SeedFailed extends Error {
 }
 
 /** A construct with roles has no owner URL to migrate with. */
-export class NoOwnerCredential extends Error {
+export class NoOwnerCredential extends GkmError {
 	constructor(
 		readonly construct: string,
 		readonly key: string,
@@ -178,7 +179,7 @@ export class MigrationFailed extends Error {
 }
 
 /** The project's Kysely could not be found from where a database is declared. */
-export class KyselyNotFound extends Error {
+export class KyselyNotFound extends GkmError {
 	constructor(readonly from: string) {
 		super(
 			`Could not resolve 'kysely' from ${from}. Migrations run with the ` +

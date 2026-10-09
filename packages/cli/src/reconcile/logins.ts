@@ -24,6 +24,7 @@
 
 import { ListBucketsCommand, S3Client } from '@aws-sdk/client-s3';
 import { Client } from 'pg';
+import { GkmError } from '../errors';
 import { CLUSTER_DATABASE } from './compose';
 import type { LocalCredentials, Login } from './localCredentials';
 
@@ -59,7 +60,7 @@ export interface LoginOutcome {
 }
 
 /** No login this workspace knows opens its Postgres. */
-export class PostgresLoginRefused extends Error {
+export class PostgresLoginRefused extends GkmError {
 	constructor(
 		readonly port: number,
 		readonly user: string,
@@ -73,7 +74,7 @@ export class PostgresLoginRefused extends Error {
 }
 
 /** No login this workspace knows opens its MinIO. */
-export class MinioLoginRefused extends Error {
+export class MinioLoginRefused extends GkmError {
 	constructor(
 		readonly port: number,
 		readonly user: string,

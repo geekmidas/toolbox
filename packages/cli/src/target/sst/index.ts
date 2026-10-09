@@ -26,6 +26,7 @@ import {
 	MissingCredential,
 } from '../../deploy/credentials';
 import type { DeployResult } from '../../deploy/types';
+import { GkmError } from '../../errors';
 import { detectPackageManager, type PackageManager } from '../../init/utils';
 import { CommandFailed } from '../../run';
 import { LocalSandbox } from '../../sandbox/local';
@@ -48,7 +49,7 @@ const BUILD_TIMEOUT_MS = 30 * 60_000;
 const DEPLOY_TIMEOUT_MS = 90 * 60_000;
 
 /** The workspace has no `sst.config.ts` for `sst deploy` to run. */
-export class SstConfigNotFound extends Error {
+export class SstConfigNotFound extends GkmError {
 	constructor(readonly cwd: string) {
 		super(
 			`No sst.config.ts in ${cwd}. The sst target runs \`sst deploy\` at the workspace root: scaffold one with \`gkm init --deploy sst\` and copy its sst.config.ts, or deploy through another target with --target.`,

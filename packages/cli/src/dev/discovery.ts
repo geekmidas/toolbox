@@ -57,6 +57,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { ConstructManifest } from '@geekmidas/manifest';
+import { GkmError } from '../errors';
 import type { DevConfig } from '../workspace/types.js';
 
 /** Where the endpoint listens unless configured otherwise. */
@@ -205,7 +206,7 @@ export type DiscoveryEvent =
 // ---------------------------------------------------------------------------
 
 /** `GKM_DISCOVERY_PORT` is set to something that is not a port. */
-export class InvalidDiscoveryPort extends Error {
+export class InvalidDiscoveryPort extends GkmError {
 	constructor(readonly value: string) {
 		super(
 			`${DISCOVERY_PORT_ENV}=${value} is not a port. Set it to a number from 0 ` +

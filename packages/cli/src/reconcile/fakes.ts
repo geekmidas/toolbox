@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { kebabCase } from '@geekmidas/manifest';
+import { GkmError } from '../errors';
 
 /** Where a project keeps its external APIs' fakes, relative to its root. */
 export const DEFAULT_FAKES_DIR = 'test/fakes';
@@ -97,7 +98,7 @@ function isFakeExport(value: unknown): value is FakeExport {
 }
 
 /** An external API with no fake for a local stage to call. */
-export class NoFake extends Error {
+export class NoFake extends GkmError {
 	constructor(
 		readonly id: string,
 		readonly file: string,
@@ -113,7 +114,7 @@ export class NoFake extends Error {
 }
 
 /** A file in the fakes folder whose default export is not a fake. */
-export class NotAFake extends Error {
+export class NotAFake extends GkmError {
 	constructor(readonly file: string) {
 		super(
 			`${file} is where a fake lives, and its default export is not one. ` +

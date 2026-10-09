@@ -10,6 +10,7 @@
 
 import { loadWorkspaceConfig } from '../config.js';
 import { loadPortState } from '../credentials/index.js';
+import { GkmError } from '../errors';
 import { portsOf } from '../reconcile/containers.js';
 import {
 	type LocalCredentials,
@@ -35,7 +36,7 @@ const SIGNED_IN = [
 ] as const;
 
 /** Nothing has generated this workspace's local logins yet. */
-export class NoLocalCredentials extends Error {
+export class NoLocalCredentials extends GkmError {
 	constructor(readonly workspace: string) {
 		super(
 			`'${workspace}' has no local logins on this machine yet: they are generated the first time gkm dev, gkm test or gkm setup starts its services. Run one of them, then this again.`,

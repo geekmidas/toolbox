@@ -6,6 +6,7 @@
 
 import type { ConstructManifest } from '@geekmidas/manifest';
 import type { StageProviderNotes } from '../deploy/devServices.js';
+import { GkmError } from '../errors';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { provisioningOf, stageProvider } from './config.js';
 import { PROVIDER_KINDS, type ProviderKind } from './types.js';
@@ -19,7 +20,7 @@ export function constructsOf(manifest: ConstructManifest, kind: ProviderKind) {
 }
 
 /** A stage that names `false` for a kind, and declares constructs of it. */
-export class StageProviderDisabled extends Error {
+export class StageProviderDisabled extends GkmError {
 	constructor(
 		readonly kind: ProviderKind,
 		readonly stage: string,

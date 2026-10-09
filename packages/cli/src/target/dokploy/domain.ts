@@ -1,3 +1,4 @@
+import { GkmError } from '../../errors';
 import { getPublicEnvPrefix } from '../../workspace/index.js';
 import { rootSite } from '../../workspace/rootSite.js';
 import type {
@@ -6,7 +7,7 @@ import type {
 } from '../../workspace/types.js';
 
 /** A stage was deployed that `domains` gives no domain. */
-export class NoDomainForStage extends Error {
+export class NoDomainForStage extends GkmError {
 	constructor(readonly stage: string) {
 		super(
 			`No domain for stage "${stage}". Add it to gkm.config.ts: domains: { ${stage}: 'example.com' }.`,

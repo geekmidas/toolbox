@@ -30,6 +30,7 @@ import {
 	serviceKey,
 } from '@geekmidas/manifest';
 import { serviceContext } from '@geekmidas/services';
+import { GkmError } from '../errors';
 import {
 	cacheBackendsIn,
 	driversFor,
@@ -120,7 +121,7 @@ export interface WriteTestHarnessOptions {
 export const DEFAULT_FACTORIES_DIR = 'test/factories';
 
 /** A file in the factories folder that names no database construct. */
-export class UnknownFactoryFile extends Error {
+export class UnknownFactoryFile extends GkmError {
 	constructor(
 		readonly file: string,
 		readonly known: readonly string[],
@@ -137,7 +138,7 @@ export class UnknownFactoryFile extends Error {
 }
 
 /** A factory file that exports no `createFactory`. */
-export class FactoryHasNoCreate extends Error {
+export class FactoryHasNoCreate extends GkmError {
 	constructor(readonly file: string) {
 		super(
 			`${file} is a test factory but exports no \`createFactory\`. ` +

@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import prompts from 'prompts';
+import { GkmError } from '../errors';
 import { FileSecretsStore } from '../secrets/file.js';
 import { createStageSecrets } from '../secrets/generator.js';
 import { getKeyPath, projectKey } from '../secrets/keystore.js';
@@ -710,7 +711,7 @@ function resolveStages(
 }
 
 /** `--deploy` naming a target init has no scaffold for. */
-export class UnknownDeployTarget extends Error {
+export class UnknownDeployTarget extends GkmError {
 	constructor(
 		readonly target: string,
 		readonly known: readonly string[],
@@ -730,7 +731,7 @@ function defaultRegistry(name: string | undefined): string {
 }
 
 /** `--region` that is not shaped like one, e.g. `europe` for `eu-west-1`. */
-export class NotAnAwsRegion extends Error {
+export class NotAnAwsRegion extends GkmError {
 	constructor(readonly region: string) {
 		super(`"${region}" is not an AWS region. Use one like eu-west-1.`);
 		this.name = 'NotAnAwsRegion';

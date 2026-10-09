@@ -15,11 +15,12 @@ import { pathToFileURL } from 'node:url';
 import type { SeedContext } from '@geekmidas/constructs';
 import type { Kysely, sql } from 'kysely';
 import type { Migration, MigrationProvider } from 'kysely/migration';
+import { GkmError } from '../errors';
 
 const SCRIPTS = new Set(['.ts', '.mts', '.js', '.mjs']);
 
 /** Two files in one folder that would be one migration. */
-export class DuplicateMigration extends Error {
+export class DuplicateMigration extends GkmError {
 	constructor(
 		readonly folder: string,
 		readonly migration: string,
@@ -34,7 +35,7 @@ export class DuplicateMigration extends Error {
 }
 
 /** A script in a migrations folder that exports no `up`. */
-export class MigrationHasNoUp extends Error {
+export class MigrationHasNoUp extends GkmError {
 	constructor(readonly file: string) {
 		super(
 			`${file} is in a migrations folder but exports no \`up\` function. ` +
@@ -46,7 +47,7 @@ export class MigrationHasNoUp extends Error {
 }
 
 /** A script in a seeds folder that exports no `seed`. */
-export class SeedHasNoSeed extends Error {
+export class SeedHasNoSeed extends GkmError {
 	constructor(readonly file: string) {
 		super(
 			`${file} is in a seeds folder but exports no \`seed\` function. ` +

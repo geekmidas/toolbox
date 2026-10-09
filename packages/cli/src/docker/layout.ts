@@ -9,6 +9,7 @@
 
 import { readFileSync } from 'node:fs';
 import { isAbsolute, join, relative, sep } from 'node:path';
+import { GkmError } from '../errors';
 import type { ClientTelemetryDefault } from '../generators/clientTelemetry.js';
 import { allConstructGlobs } from '../workspace/index.js';
 import type {
@@ -24,7 +25,7 @@ import {
 } from './templates.js';
 
 /** A workspace of packages with no turbo.json, which every image prunes with. */
-export class MonorepoNeedsTurbo extends Error {
+export class MonorepoNeedsTurbo extends GkmError {
 	constructor(readonly buildRoot: string) {
 		super(
 			`${buildRoot} is a workspace of packages, and its images are built from a turbo-pruned slice of it — but it has no turbo.json.\n\n` +

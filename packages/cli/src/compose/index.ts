@@ -16,6 +16,7 @@ import { loadWorkspaceConfig } from '../config';
 import { deploy } from '../deploy/deploy';
 import { deployIdentity } from '../deploy/identity.js';
 import type { DeployResult } from '../deploy/types';
+import { GkmError } from '../errors';
 import {
 	type ComposeDeps,
 	type ComposeImage,
@@ -144,7 +145,7 @@ export interface ComposeResult {
 }
 
 /** `--build` and `--pull` together ask for two different things. */
-export class ComposeModeConflict extends Error {
+export class ComposeModeConflict extends GkmError {
 	constructor() {
 		super(
 			'--build and --pull ask for opposite things: build images from this ' +

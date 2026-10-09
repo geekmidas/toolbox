@@ -11,6 +11,7 @@
 
 import { validateDokployToken } from '../auth';
 import { storeDokployCredentials } from '../auth/credentials';
+import { GkmError } from '../errors';
 import { output } from '../output';
 import { canPrompt, prompt } from '../prompt';
 import {
@@ -26,7 +27,7 @@ const logger = output;
 const INSTEAD = 'Please configure manually.';
 
 /** The Dokploy URL typed at the prompt is not a URL. */
-export class DokployEndpointInvalid extends Error {
+export class DokployEndpointInvalid extends GkmError {
 	constructor(readonly endpoint: string) {
 		super('Invalid URL format');
 		this.name = 'DokployEndpointInvalid';
@@ -34,7 +35,7 @@ export class DokployEndpointInvalid extends Error {
 }
 
 /** Dokploy refused the token typed at the prompt; nothing was stored. */
-export class DokployTokenRejected extends Error {
+export class DokployTokenRejected extends GkmError {
 	constructor(readonly endpoint: string) {
 		super('Invalid credentials. Please check your token.');
 		this.name = 'DokployTokenRejected';

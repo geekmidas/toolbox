@@ -7,6 +7,7 @@
  */
 
 import type { z } from 'zod/v4';
+import { GkmError } from '../../../errors';
 import type {
 	CloudflareDnsProviderSchema,
 	CustomDnsProviderSchema,
@@ -229,7 +230,7 @@ export async function createDnsProvider(
  * scoped to updates only. What reads them falls back to writing every record,
  * which is idempotent, without a diff.
  */
-export class DnsRecordsUnreadable extends Error {
+export class DnsRecordsUnreadable extends GkmError {
 	constructor(
 		readonly provider: string,
 		readonly domain: string,
@@ -257,7 +258,7 @@ export class DnsProviderNotImplemented extends Error {
 }
 
 /** A `provider:` that is none of the built-ins, nor a DnsProvider object. */
-export class DnsProviderUnknown extends Error {
+export class DnsProviderUnknown extends GkmError {
 	constructor(readonly config: unknown) {
 		super(
 			`Unknown DNS provider: ${JSON.stringify(config)}. dns takes ` +

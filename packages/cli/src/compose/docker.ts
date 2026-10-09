@@ -13,6 +13,7 @@
 import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { GkmError } from '../errors';
 import { type RunOptions, run, runOutput } from '../run';
 
 /** Where one stack lives: its compose project and the file that defines it. */
@@ -146,7 +147,7 @@ export function portHolders(output: string, port: number): PortHolder[] {
 const WAIT_TIMEOUT_S = 180;
 
 /** `docker compose port` printed nothing a port can be read from. */
-export class ServicePortUnknown extends Error {
+export class ServicePortUnknown extends GkmError {
 	constructor(
 		readonly service: string,
 		readonly inside: number,
@@ -173,7 +174,7 @@ export function isLoopbackRegistry(ref: string): boolean {
 }
 
 /** `docker push` finished without saying what digest the registry stored. */
-export class PushDigestUnknown extends Error {
+export class PushDigestUnknown extends GkmError {
 	constructor(
 		readonly ref: string,
 		readonly output: string,

@@ -8,6 +8,7 @@ import {
 	prepareEntryCredentials,
 } from '../credentials';
 import { sniffAppEnvironment } from '../deploy/sniffer';
+import { GkmError } from '../errors';
 import { pgClient } from '../reconcile/clients.js';
 import { primaryPortKey } from '../reconcile/containers';
 import type { ReconcileResult } from '../reconcile/index.js';
@@ -374,7 +375,7 @@ async function migrateTestStage(
 }
 
 /** `gkm test` outside a project that declares stages, with none named. */
-export class NoStageToTest extends Error {
+export class NoStageToTest extends GkmError {
 	constructor() {
 		super(
 			'No stage to test with: add `stages` to gkm.config.ts, or pass --stage.',

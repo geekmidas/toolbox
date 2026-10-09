@@ -36,6 +36,7 @@ import { validateImageRef } from '../docker/imageRef.js';
 import { appDockerfile, workerDockerfile } from '../docker/index.js';
 import { composeBuildPaths, type ImageLayout } from '../docker/layout.js';
 import { TURBO_VERSION, WORKER_PORT } from '../docker/templates.js';
+import { GkmError } from '../errors';
 import {
 	assertStageProvidersEnabled,
 	stageProviderNotes,
@@ -321,7 +322,7 @@ export interface StackCredential {
 }
 
 /** The local stage's stack, without the logins `gkm dev` generates. */
-export class LocalCredentialsMissing extends Error {
+export class LocalCredentialsMissing extends GkmError {
 	constructor(readonly stage: string) {
 		super(
 			`The local stage '${stage}' runs with this machine's generated logins, and none were passed. Load them with loadLocalCredentials(workspace) and pass them as localCredentials.`,
@@ -423,7 +424,7 @@ export interface StackInput {
 }
 
 /** A value only the stage's secrets can hold, and they do not. */
-export class StageSecretMissing extends Error {
+export class StageSecretMissing extends GkmError {
 	constructor(
 		readonly app: string,
 		readonly key: string,
@@ -439,7 +440,7 @@ export class StageSecretMissing extends Error {
 }
 
 /** A deployed stage's secrets with no seed to derive its passwords from. */
-export class StageSeedMissing extends Error {
+export class StageSeedMissing extends GkmError {
 	constructor(readonly stage: string) {
 		super(
 			`The stage '${stage}' has no seed in its secrets, and a deployed stage's ` +
@@ -451,7 +452,7 @@ export class StageSeedMissing extends Error {
 }
 
 /** A workspace with no API and no site to run. */
-export class NothingToCompose extends Error {
+export class NothingToCompose extends GkmError {
 	constructor(readonly root: string) {
 		super(
 			`${root} declares no RestApi, no site and no Worker with work to do, ` +
@@ -463,7 +464,7 @@ export class NothingToCompose extends Error {
 }
 
 /** A value that cannot be written to an env file a line at a time. */
-export class EnvValueMultiline extends Error {
+export class EnvValueMultiline extends GkmError {
 	constructor(
 		readonly app: string,
 		readonly key: string,

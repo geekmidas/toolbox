@@ -1,3 +1,4 @@
+import { GkmError } from '../errors';
 import type { StagesConfig } from './types.js';
 
 /**
@@ -77,7 +78,7 @@ export function assertDeployedStage(stages: StagesConfig, stage: string): void {
 }
 
 /** A stages block — in gkm.config.ts or from `gkm init`'s flags — that breaks a rule. */
-export class InvalidStages extends Error {
+export class InvalidStages extends GkmError {
 	constructor(readonly problems: readonly string[]) {
 		super(`Invalid stages:\n  ${problems.join('\n  ')}`);
 		this.name = 'InvalidStages';
@@ -88,7 +89,7 @@ export class InvalidStages extends Error {
  * A stage the project does not deploy to. Refused before anything is
  * provisioned, so a typo does not become a second environment.
  */
-export class UndeclaredStage extends Error {
+export class UndeclaredStage extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly deployed: readonly string[],
@@ -104,7 +105,7 @@ export class UndeclaredStage extends Error {
  * A per-stage setting keyed by a stage the workspace does not deploy: a typo,
  * a stage since removed, or the local stage, which none of them apply to.
  */
-export class UnknownStageKey extends Error {
+export class UnknownStageKey extends GkmError {
 	constructor(
 		/** Where it is: `domains`, `deploy.objects`, `dns['example.com'].records.target`. */
 		readonly setting: string,
