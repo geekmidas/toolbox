@@ -463,7 +463,7 @@ describe('a stage whose buckets a provider creates', () => {
 		});
 	});
 
-	it('walks none of the keys gkm setup writes, and says what creates them', async () => {
+	it('walks none of the keys the deploy writes, and says what creates them', async () => {
 		prompts.inject(['skip', 'skip', 'skip']);
 
 		const result = await secretsAddCommand(
@@ -478,10 +478,10 @@ describe('a stage whose buckets a provider creates', () => {
 		]);
 		const printed = lines.join('\n');
 		expect(printed).toContain(
-			'UPLOADS_URL — created by gkm setup --stage production (deploy.objects.production is s3)',
+			'UPLOADS_URL — created by gkm deploy --stage production (deploy.objects.production is s3)',
 		);
 		expect(printed).toContain(
-			'UPLOADS_SERVER_URL — created by gkm setup --stage production',
+			'UPLOADS_SERVER_URL — created by gkm deploy --stage production',
 		);
 		expect(result.missing).toEqual([
 			'MAIL_URL',
@@ -507,7 +507,7 @@ describe('a stage whose buckets a provider creates', () => {
 		expect(printed).toContain(
 			"Nothing to add: the stage 'production' has every key it needs.",
 		);
-		expect(printed).toContain('UPLOADS_URL — created by gkm setup');
+		expect(printed).toContain('UPLOADS_URL — created by gkm deploy');
 	});
 
 	it('marks them provisioned in --json', async () => {

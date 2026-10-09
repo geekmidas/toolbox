@@ -323,7 +323,7 @@ For non-gkm apps (like the better-auth service), `gkm dev --entry ./src/index.ts
 
 ## Team Onboarding
 
-When a new team member clones the repository and runs `gkm dev`, several things are missing that `gkm init` originally created. The `gkm setup` command handles all of this automatically.
+When a new team member clones the repository and runs `gkm dev`, several things are missing that `gkm init` originally created. `gkm setup` handles all of it — a one-time step that sets up this machine: the local stage's secrets and containers.
 
 ### Quick Setup (Recommended)
 
@@ -337,8 +337,13 @@ gkm dev
 
 `gkm setup` handles everything:
 1. Detects your workspace configuration
-2. Resolves secrets (pulls from SSM if configured, or generates fresh ones)
+2. Resolves the local stage's secrets (generating any that are missing)
 3. Starts the containers the constructs imply, creating each database's roles from the stage's credential
+
+It creates nothing for a deployed stage: `gkm setup --stage <deployed>` fails
+with `SetupIsLocal`. A deployed stage's resources — its buckets and keys, its
+DNS records — are created by its deploy (`gkm deploy --stage <stage>`); see
+[Providers](./providers.md).
 
 ### What's Gitignored
 
@@ -392,8 +397,8 @@ choosing between the two AWS stores, and the IAM each needs, see
 [The secrets store on AWS](./deployment.md#the-secrets-store-on-aws).
 
 **Every command reads and writes the stage's store directly.** `gkm
-secrets:set KEY … --stage prod` writes to the store; `gkm deploy`, `gkm build`,
-`gkm setup` and `gkm exec --stage prod` read from it. There is no copy on this
+secrets:set KEY … --stage prod` writes to the store; `gkm deploy`, `gkm build`
+and `gkm exec --stage prod` read from it. There is no copy on this
 machine to keep in step, and nothing to push before a deploy. The local stage
 is always the file, whatever `store` says.
 
@@ -406,7 +411,7 @@ environment. The permissions each store needs are listed under
 
 #### Secret Resolution Priority
 
-`gkm setup` reads the stage's store — the file for the local stage, `secrets.store` for a deployed one:
+`gkm setup` reads the local stage's secrets — always the file on this machine:
 1. **The store has secrets** — use them, adding any key the workspace now derives (manually added secrets like `STRIPE_KEY` are kept)
 2. **It has none** — generate fresh secrets and write them to that store
 3. **It cannot be reached** — stop, rather than generate secrets nobody else can read
@@ -453,8 +458,8 @@ When you add secrets manually with `gkm secrets:set`:
 gkm secrets:set STRIPE_KEY sk_test_xxx --stage dev
 ```
 
-These are preserved across `gkm setup` runs because setup reads the stage's
-existing secrets first. For a deployed stage with a store, `secrets:set` writes
+These are preserved across `gkm setup` runs because setup reads the local
+stage's existing secrets first. For a deployed stage with a store, `secrets:set` writes
 there, so a deploy from anywhere has them.
 
 ### Setup Command Reference
@@ -463,7 +468,7 @@ there, so a deploy from anywhere has them.
 gkm setup [options]
 
 Options:
-  --stage <stage>    Stage name (default: development)
+  --stage <stage>    Stage name (default: stages.local); never a deployed stage
   --force            Regenerate secrets even if they exist
   --skip-docker      Skip starting Docker services
   -y, --yes          Skip prompts

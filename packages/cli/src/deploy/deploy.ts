@@ -95,11 +95,26 @@ export interface DeployInput {
 	 */
 	allowDevServices?: boolean;
 	/**
-	 * Do not check, on a server target, that each public host resolves to
-	 * the stage's server (`GKM_SERVER_IPV4`) before the stack starts — for a CDN
-	 * or proxy in front of the server.
+	 * On a server target, neither write the public hosts' DNS records nor
+	 * check that they point at the stage's server (`GKM_SERVER_IPV4`) — for a
+	 * CDN or proxy in front of the server, or records written by another step.
 	 */
-	skipDnsCheck?: boolean;
+	skipDns?: boolean;
+	/**
+	 * Create the stage's resources — its providers' (deploy.<kind>.<stage>)
+	 * and its DNS records — and nothing else: what a CI runner runs with the
+	 * cloud credentials and DNS token before the server deploys.
+	 */
+	resourcesOnly?: boolean;
+	/**
+	 * An earlier `resourcesOnly` run created the stage's resources: run no
+	 * provider, and write or check no DNS record.
+	 */
+	skipResources?: boolean;
+	/** Each provider issues its runtime keys a successor. */
+	rotateKeys?: boolean;
+	/** Delete a rotated-out key now, not after the next deploy. */
+	retireOldKeys?: boolean;
 	/** Receives each progress line as it is written. Defaults to none. */
 	logger?: DeployLogger;
 	/**
@@ -262,7 +277,11 @@ export function deploy(input: DeployInput): DeployRun {
 							...(input.allowDevServices
 								? { allowDevServices: input.allowDevServices }
 								: {}),
-							...(input.skipDnsCheck ? { skipDnsCheck: true } : {}),
+							...(input.skipDns ? { skipDns: true } : {}),
+							...(input.resourcesOnly ? { resourcesOnly: true } : {}),
+							...(input.skipResources ? { skipResources: true } : {}),
+							...(input.rotateKeys ? { rotateKeys: true } : {}),
+							...(input.retireOldKeys ? { retireOldKeys: true } : {}),
 						},
 						ctx,
 					),

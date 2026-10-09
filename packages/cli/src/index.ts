@@ -112,25 +112,15 @@ program
 program
 	.command('setup')
 	.description(
-		'Reconcile declared constructs — locally, containers and secrets; on a deployed stage, its providers (deploy.objects)',
+		"Set this machine up for the workspace, once: the local stage's secrets and containers. A deployed stage's resources are created by its deploy",
 	)
-	.option('--stage <stage>', 'Stage name (default: stages.local)')
+	.option(
+		'--stage <stage>',
+		'Stage name (default: stages.local); never a deployed stage',
+	)
 	.option('--force', 'Regenerate secrets even if they exist')
 	.option('--skip-docker', 'Skip starting Docker services')
 	.option('-y, --yes', 'Skip prompts')
-	.option(
-		'--dry-run',
-		'A deployed stage: print what its providers would create or change, and write nothing',
-	)
-	.option('--profile <profile>', "AWS profile for the stage's account")
-	.option(
-		'--rotate-keys',
-		'A deployed stage: issue each provisioned key a successor (the old one is deleted after the next deploy)',
-	)
-	.option(
-		'--retire-old-keys',
-		'A deployed stage: delete a rotated-out key now instead of after the next deploy',
-	)
 	.action(async (options: SetupOptions) => {
 		try {
 			const globalOptions = program.opts();
@@ -531,8 +521,24 @@ program
 		"Deployed stage: run the dev service (MinIO, Mailpit) for every bucket and mail the stage doesn't account for. Not production-grade",
 	)
 	.option(
-		'--skip-dns-check',
-		'Deployed stage: do not check that each public host resolves to GKM_SERVER_IPV4 in the stage secrets before starting (a CDN or proxy in front)',
+		'--skip-dns',
+		"Deployed stage: neither write the public hosts' DNS records nor check they point at GKM_SERVER_IPV4 (a CDN or proxy in front, or records written elsewhere)",
+	)
+	.option(
+		'--resources-only',
+		"Deployed stage: create its resources — deploy.<kind>.<stage> providers' buckets and keys, and its DNS records — and nothing else (a CI runner, before the server deploys)",
+	)
+	.option(
+		'--skip-resources',
+		'Deployed stage: an earlier --resources-only run created its resources; run no provider and write or check no DNS record',
+	)
+	.option(
+		'--rotate-keys',
+		'Deployed stage: each provider issues its runtime keys a successor (the old one is deleted by the next deploy)',
+	)
+	.option(
+		'--retire-old-keys',
+		'Deployed stage: delete a rotated-out key now instead of on the next deploy',
 	)
 	.action(async (options: ComposeOptions) => {
 		try {
@@ -882,8 +888,24 @@ program
 		"Server targets: run the dev service (MinIO, Mailpit) for every bucket and mail the stage doesn't account for. Not production-grade",
 	)
 	.option(
-		'--skip-dns-check',
-		'Compose: do not check that each public host resolves to GKM_SERVER_IPV4 in the stage secrets before starting (a CDN or proxy in front)',
+		'--skip-dns',
+		"Compose: neither write the public hosts' DNS records nor check they point at GKM_SERVER_IPV4 (a CDN or proxy in front, or records written elsewhere)",
+	)
+	.option(
+		'--resources-only',
+		"Deployed stage: create its resources — deploy.<kind>.<stage> providers' buckets and keys, and its DNS records — and nothing else (a CI runner, before the server deploys)",
+	)
+	.option(
+		'--skip-resources',
+		'Deployed stage: an earlier --resources-only run created its resources; run no provider and write or check no DNS record',
+	)
+	.option(
+		'--rotate-keys',
+		'Deployed stage: each provider issues its runtime keys a successor (the old one is deleted by the next deploy)',
+	)
+	.option(
+		'--retire-old-keys',
+		'Deployed stage: delete a rotated-out key now instead of on the next deploy',
 	)
 	.action(
 		async (options: {
@@ -895,7 +917,11 @@ program
 			dryRun?: boolean;
 			atomic?: boolean;
 			allowDevServices?: boolean;
-			skipDnsCheck?: boolean;
+			skipDns?: boolean;
+			resourcesOnly?: boolean;
+			skipResources?: boolean;
+			rotateKeys?: boolean;
+			retireOldKeys?: boolean;
 		}) => {
 			const { deployCli } = await import('./deploy/cli');
 			const globalOptions = program.opts();
@@ -911,7 +937,11 @@ program
 				...(options.dryRun ? { dryRun: true } : {}),
 				...(options.atomic ? { atomic: true } : {}),
 				...(options.allowDevServices ? { allowDevServices: true } : {}),
-				...(options.skipDnsCheck ? { skipDnsCheck: true } : {}),
+				...(options.skipDns ? { skipDns: true } : {}),
+				...(options.resourcesOnly ? { resourcesOnly: true } : {}),
+				...(options.skipResources ? { skipResources: true } : {}),
+				...(options.rotateKeys ? { rotateKeys: true } : {}),
+				...(options.retireOldKeys ? { retireOldKeys: true } : {}),
 			});
 			if (code !== 0) process.exit(code);
 		},

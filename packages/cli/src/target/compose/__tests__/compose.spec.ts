@@ -450,14 +450,14 @@ describe('the DNS check', { timeout: RUN_TIMEOUT }, () => {
 	/** A production run, with each host resolved by `lookup`. */
 	async function production(
 		lookup: (host: string) => Promise<string[]>,
-		options: { skipDnsCheck?: boolean } = {},
+		options: { skipDns?: boolean } = {},
 	) {
 		const fake = fakeDocker();
 		const run = deploy({
 			cwd: dir,
 			stage: 'production',
 			target: 'compose',
-			...(options.skipDnsCheck ? { skipDnsCheck: true } : {}),
+			...(options.skipDns ? { skipDns: true } : {}),
 			targets: {
 				compose: composeTarget({
 					...quiet(),
@@ -507,21 +507,21 @@ describe('the DNS check', { timeout: RUN_TIMEOUT }, () => {
 		]);
 	});
 
-	it('checks nothing with --skip-dns-check', async () => {
+	it('checks nothing with --skip-dns', async () => {
 		await serveFrom(dir);
 
 		const { seen } = await production(
 			async () => {
 				throw new Error('nothing is resolved');
 			},
-			{ skipDnsCheck: true },
+			{ skipDns: true },
 		);
 
 		expect(validated(seen)).toBe(true);
 		expect(seen).toContainEqual({
 			type: 'log',
 			level: 'info',
-			message: '🌐 DNS check skipped (--skip-dns-check)',
+			message: '🌐 DNS skipped (--skip-dns): no record is written or checked',
 		});
 	});
 

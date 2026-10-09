@@ -210,6 +210,9 @@ describe('generateGithubFiles', () => {
 			STAGE: '${{ matrix.stage }}',
 			DOKPLOY_API_TOKEN: '${{ secrets.DOKPLOY_API_TOKEN }}',
 			DOKPLOY_ENDPOINT: '${{ vars.DOKPLOY_ENDPOINT }}',
+			// The deploy writes each app's DNS records with the stage's token.
+			GODADDY_API_TOKEN: '${{ secrets.GODADDY_API_TOKEN }}',
+			HOSTINGER_API_TOKEN: '${{ secrets.HOSTINGER_API_TOKEN }}',
 		});
 		expect(JSON.stringify(job)).not.toContain('configure-aws-credentials');
 	});
@@ -324,7 +327,65 @@ describe('generateGithubFiles', () => {
 				group: 'deploy-${{ matrix.stage }}',
 				'cancel-in-progress': false,
 			});
-			expect(job.permissions).toEqual({ contents: 'read', actions: 'read' });
+			// id-token: the stage's role, for the runner's DNS step.
+			expect(job.permissions).toEqual({
+				contents: 'read',
+				actions: 'read',
+				'id-token': 'write',
+			});
+		});
+
+		it('creates the stage resources on the runner, with its role and DNS token, never on the server', () => {
+			const job = parse(compose()).jobs.deploy;
+			const steps = job.steps as {
+				name?: string;
+				uses?: string;
+				run?: string;
+				if?: string;
+				env?: Record<string, string>;
+			}[];
+			const dns = steps.find((s) => s.name === "Create the stage's resources")!;
+			const ssh = steps.at(-1)!;
+
+			expect(job.env.RESOURCES_ON_RUNNER).toBe(
+				"${{ contains(fromJSON(needs.stages.outputs.resources || '[]'), matrix.stage) }}",
+			);
+			expect(dns.if).toBe("env.RESOURCES_ON_RUNNER == 'true'");
+			expect(dns.run).toBe(
+				'pnpm exec gkm deploy --stage "$STAGE" --resources-only',
+			);
+			expect(dns.env).toEqual({
+				STAGE: '${{ matrix.stage }}',
+				GODADDY_API_TOKEN: '${{ secrets.GODADDY_API_TOKEN }}',
+				HOSTINGER_API_TOKEN: '${{ secrets.HOSTINGER_API_TOKEN }}',
+			});
+			// Every step it needs runs only when it does.
+			const before = steps.slice(
+				steps.findIndex((s) => s.name === 'Check out the commit'),
+				steps.indexOf(dns),
+			);
+			expect(before.length).toBeGreaterThan(2);
+			for (const step of before) {
+				expect(step.if).toContain('RESOURCES_ON_RUNNER');
+			}
+			expect(
+				before.some((s) => s.uses?.startsWith('aws-actions/configure-aws')),
+			).toBe(true);
+			// Before the server deploys, which then skips DNS — and never gets
+			// the token.
+			expect(steps.indexOf(dns)).toBeLessThan(steps.indexOf(ssh));
+			expect(ssh.run).toContain(
+				'if [ "$resources_on_runner" = true ]; then args+=(--skip-resources); fi',
+			);
+			expect(JSON.stringify(ssh)).not.toContain('GODADDY');
+		});
+
+		it('reads which stages have resources from the stages action', () => {
+			const job = parse(compose()).jobs.stages;
+
+			expect(job.outputs.resources).toBe(
+				'${{ steps.stages.outputs.resources }}',
+			);
 		});
 
 		it('deploys a release’s tag, never its target_commitish', () => {

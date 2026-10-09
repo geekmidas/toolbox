@@ -81,7 +81,7 @@ describe('what --allow-dev-services stands in for', () => {
 			providers: {
 				objects: {
 					accounted: true,
-					hint: 'gkm setup --stage preview creates it',
+					hint: 'the deploy (gkm deploy --stage preview) creates it',
 				},
 			},
 		});
@@ -90,7 +90,7 @@ describe('what --allow-dev-services stands in for', () => {
 		expect(services.missing).toEqual([
 			expect.objectContaining({
 				key: 'UPLOADS_URL',
-				hint: 'gkm setup --stage preview creates it',
+				hint: 'the deploy (gkm deploy --stage preview) creates it',
 			}),
 			expect.objectContaining({ key: 'UPLOADS_SERVER_URL' }),
 		]);

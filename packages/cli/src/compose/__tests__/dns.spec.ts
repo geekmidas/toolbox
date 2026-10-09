@@ -506,8 +506,10 @@ describe('the check', () => {
 		expect(error.message).toContain(
 			'auth.shop.example.com → nothing (ENOTFOUND)',
 		);
-		expect(error.message).toContain('gkm setup --stage production');
-		expect(error.message).toContain('--skip-dns-check');
+		expect(error.message).toContain(
+			'gkm deploy --stage production writes the records',
+		);
+		expect(error.message).toContain('--skip-dns');
 	});
 
 	it('fails a host with an address that is not the server’s, an old AAAA', async () => {

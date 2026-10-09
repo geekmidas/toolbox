@@ -3,9 +3,9 @@
 A construct says a thing exists: `new ObjectStorage('Uploads')` is a bucket.
 What backs it on a deployed stage is the stage's to say, under
 `deploy.<kind>.<stage>` — the key is the construct's manifest kind. A stage
-that names a **provider** has gkm create the backing resource in the stage's
-own account and write its connection value into the stage's secrets, where
-every deploy reads it as if you had set it by hand.
+that names a **provider** has its deploy create the backing resource in the
+stage's own account and write its connection value into the stage's secrets,
+where the rest of the deploy reads it as if you had set it by hand.
 
 ```ts
 // gkm.config.ts
@@ -19,10 +19,12 @@ deploy: {
 ```
 
 ```bash
-gkm setup --stage production --dry-run   # what would be created or changed
-gkm setup --stage production             # create it, fix drift, write the keys
-gkm deploy --stage production            # checks the bucket answers its key
+gkm deploy --stage production --dry-run   # what would be created or changed
+gkm deploy --stage production             # create it, fix drift, write the keys, deploy
 ```
+
+`gkm compose --stage production` is the same deploy, and runs the providers
+the same way.
 
 The first kind is `objects` — what `ObjectStorage` and `FileServer` produce.
 `cache` and `email` take the same `deploy.<kind>.<stage>` shape as their
@@ -32,8 +34,8 @@ providers arrive.
 
 | Part | What it is |
 |---|---|
-| provisioning credentials | What *creates* the resource — the stage account's admin credentials. Read only by `gkm setup`, never given to an app. |
-| `ensure()` | Idempotent find-or-create. Tries a good, deterministic name; records what it made in the stage's state; puts back what drifted. **Never deletes.** |
+| provisioning credentials | What *creates* the resource — the stage account's admin credentials. Read only by the deploy, never given to an app. |
+| `ensure()` | Run by every deploy, before its checks. Idempotent find-or-create. Tries a good, deterministic name; records what it made in the stage's state; puts back what drifted. **Never deletes.** |
 | runtime credentials | The keys it writes into the stage's secrets for the apps: for `s3`, the bucket's URL with a key scoped to it. |
 | `verify()` | The cheap check every deploy runs: for `s3`, `HeadBucket` with the key in the stage's secrets. |
 
@@ -42,7 +44,7 @@ providers arrive.
 | Value | Meaning |
 |---|---|
 | `'external'` (or nothing) | Today's behaviour. Each bucket's `<ID>_URL` and each file server's `<ID>_URL` are set in the stage's secrets by you — S3, R2, any S3-compatible store. A missing key fails `validate` with `ExternalServicesNotConfigured`. |
-| `{ provider: 's3', region?, versioning? }` | `gkm setup --stage <stage>` creates and maintains the buckets in the stage's AWS account and writes their keys. |
+| `{ provider: 's3', region?, versioning? }` | Every deploy of the stage creates and maintains the buckets in the stage's AWS account and writes their keys. |
 | `false` | The stage has no object storage. A deploy of a workspace that declares a bucket is refused with `StageProviderDisabled`. |
 
 Anything else — `'minio'` included — fails to load with `UnknownStageProvider`,
@@ -134,20 +136,32 @@ policy than in the construct's own check, which stops at a segment. Prefer
 
 ## Credentials
 
-The provider provisions in the stage's AWS account, found the way the SSM and
-Secrets Manager stores find it:
+The deploy provisions in the stage's AWS account with the credentials of the
+machine it runs on, found the way the SSM and Secrets Manager stores find
+them:
 
-1. `--profile <name>` — that profile alone, even with other keys exported;
-2. `AWS_PROFILE`, else `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`
+1. `AWS_PROFILE`, else `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`
    (`AWS_SESSION_TOKEN`) — in CI, what `aws-actions/configure-aws-credentials`
    exports;
-3. the SDK's default chain — `~/.aws`'s default profile, SSO, a role.
+2. the SDK's default chain — `~/.aws`'s default profile, SSO, a role.
 
-**None of them**: the provider acts as `external`. `gkm setup` says which keys
-are yours to set and what to supply to have them created, and nothing fails.
-A deploy missing a key fails as it always did, with
-`ExternalServicesNotConfigured` — and the line for each key it lacks says
-`gkm setup --stage <stage>` writes it, and with which credentials.
+**None of them**: the deploy stops before anything is created with
+`ProviderCredentialsMissing`, naming the environment it reads. In CI it is
+the stage environment's role (`AWS_ROLE_ARN`, from
+[`gkm deploy:github`](./deployment.md#what-the-role-may-do), which grants
+exactly what the stage's buckets and users need), assumed before the step
+that runs the deploy. To set the keys by hand instead, set
+`deploy.objects.<stage>: 'external'`.
+
+The providers run first, then the checks, so `ExternalServicesNotConfigured`
+never reports a key the deploy creates.
+
+In the [compose workflow](./compose.md#deploying-from-ci) the deploy runs on
+the server, which should not hold the stage account's credentials. For a
+stage whose secrets are in SSM or Secrets Manager, the runner creates the
+resources first (`gkm deploy --stage <stage> --resources-only`, with the
+stage's role) and the server deploys with `--skip-resources`, which runs no
+provider — only `verify()`.
 
 The apps never see the provisioning credentials: only the bucket's own key, in
 its URL.
@@ -155,30 +169,40 @@ its URL.
 ## `--dry-run`
 
 ```bash
-gkm setup --stage production --dry-run
+gkm deploy --stage production --dry-run
 ```
 
 Reads the account (with the provisioning credentials) and the stage's state,
-and prints each change it would make — `would create in eu-west-1 — bucket
-acme-shop-production-uploads`, `would set CORS for https://shop.example.com`,
-… Nothing is created, and nothing is written to the stage's secrets or state.
-No secrets are generated for the stage either.
+and prints each change it would make:
+
+```text
+☁️  objects: s3 (dry run)
+   would create in eu-west-1 — bucket acme-shop-production-uploads
+   would encrypt by default (SSE-S3) — bucket acme-shop-production-uploads
+   would create under /gkm/ — IAM user gkm-acme-shop-production-uploads
+   would create an access key — IAM user gkm-acme-shop-production-uploads
+   …
+```
+
+Nothing is created, and nothing is written to the stage's secrets or state.
+No secrets are generated for the stage either. A run that finds nothing to
+change prints "up to date".
 
 ## Rotating a key
 
 ```bash
-gkm setup --stage production --rotate-keys   # a second key, written to the secrets
-gkm deploy --stage production                # the apps start using it
-gkm setup --stage production                 # the old key is deleted
+gkm deploy --stage production --rotate-keys   # a second key; this deploy releases on it
+gkm deploy --stage production                 # the old key is deleted
 ```
 
 1. `--rotate-keys` creates a second key for each user, writes it into the
-   stage's secrets in place of the first, records the old one in the state,
-   and tells you to deploy. Both keys work.
-2. The next `gkm setup --stage <stage>` **after a deploy** (the stage's state
-   records when it was last deployed) deletes the old key. Before that deploy,
-   it leaves the old key alone and says so.
-3. `--retire-old-keys` deletes it at once, without waiting for a deploy.
+   stage's secrets in place of the first, and records the old one in the
+   state. The same deploy then releases the apps on the new key. Both keys
+   work until the old one is deleted.
+2. The **next** deploy deletes the old key.
+3. `gkm deploy --stage <stage> --retire-old-keys` deletes it at once.
+
+`gkm compose --stage <stage>` takes the same two flags.
 
 Rotating again while an old key is still active fails with
 `RotationInProgress`. IAM allows two keys per user; a user that already has
@@ -196,8 +220,8 @@ the deploy that stopped using it, or when you pass `--retire-old-keys`.
 
 ## DNS records
 
-`gkm setup --stage <stage>` also points a compose stage's public hosts at its
-server, through the DNS provider each root domain names in `dns`:
+The deploy also points a compose stage's public hosts at its server, through
+the DNS provider each root domain names in `dns`:
 
 ```ts
 // gkm.config.ts
@@ -208,24 +232,31 @@ deploy: { default: 'compose' },
 
 ```bash
 gkm secrets:set GKM_SERVER_IPV4 '203.0.113.10' --stage production
-gkm setup --stage production --dry-run   # the exact records, and what changes
-gkm setup --stage production             # write them
+gkm deploy --stage production --dry-run   # the exact records, and what changes
+gkm deploy --stage production             # write them, then deploy
 ```
 
 It is a provider like the others in every way that matters:
 
-- **Provisioning credentials** come from the machine running setup — the DNS
-  provider's token (`GODADDY_API_TOKEN`, `gkm login --provider godaddy`), an
-  AWS profile for Route53. The server never holds them. With none, setup says
-  how to supply them and prints the records to create by hand.
+- **Provisioning credentials** come from the machine running the deploy — the
+  DNS provider's token (`GODADDY_API_TOKEN` or `gkm login --provider godaddy`,
+  `HOSTINGER_API_TOKEN` or `gkm login --provider hostinger`), the AWS SDK
+  chain for Route53. With a token provider and no token, the deploy fails at
+  its start with `DnsCredentialMissing`, naming the key. In CI the token is a
+  secret on the stage's environment, read by the runner's `--resources-only`
+  step, so the server never holds it.
 - **Idempotent.** A record that already has the right value is left alone; one
   with another value is replaced, printing `old → new`. Only the A, AAAA and
-  CNAME records of the stack's own hosts are ever written.
+  CNAME records of the stage's own hosts are ever written — one per host,
+  never a wildcard (`DnsWildcardRefused`) — and none is ever deleted. A new
+  app's host gets its record from the next deploy.
 - **`--dry-run`** prints each record — name, type, value, TTL — and whether it
   would be created, updated or left alone, and writes nothing.
-- **`verify()`** is the deploy's DNS check: every host must resolve to the
-  server before the stack starts (see the
-  [compose guide](./compose.md#the-dns-check)).
+- **Confirmed** by reading the records back from the provider
+  (`DnsRecordsNotConfirmed` if they are not there), before the stack starts
+  and asks for certificates — see the
+  [compose guide](./compose.md#the-dns-check).
+- **`--skip-dns`** neither writes the records nor checks them.
 
 The server's address is the stage's own secret, never config: `GKM_SERVER_IPV4`
 (required of a compose stage with a domain) and `GKM_SERVER_IPV6` (optional:
@@ -237,16 +268,29 @@ the records and writes nothing.
 Every deploy of a stage on a provider — `gkm deploy` through compose or
 Dokploy, and `gkm compose` — runs `verify()` in `validate`: `HeadBucket` with
 the app's key from the stage's secrets. A bucket that is gone, or a key that is
-refused, stops the deploy with `ProvisionedBucketUnreachable`, saying to run
-`gkm setup --stage <stage>`.
+refused, stops the deploy with `ProvisionedBucketUnreachable`, saying to
+deploy with the stage account's credentials, which creates or repairs it — a
+run with `--skip-resources` does not.
+
+Providers run at the start of every deploy, whatever the target: a Dokploy
+deploy creates a stage's buckets the same way.
+
+| Flag | What runs |
+| --- | --- |
+| none | the providers' `ensure()`, the DNS records, then the checks and the release |
+| `--resources-only` | the providers and the DNS records, and nothing else — no image built, nothing started |
+| `--skip-resources` | no provider and no DNS record; `verify()` still runs |
+
+The two together are `ResourcesOnlyAndSkipped`.
 
 `--allow-dev-services` never stands MinIO in for a bucket a provider backs:
 the provider accounts for it.
 
-## Why `gkm setup`
+## Why the deploy
 
-`gkm setup` converges a stage on what its constructs declare. On the local
-stage that is containers and generated secrets on this machine; on a deployed
-stage it is the providers, in the stage's account. A deployed stage's
-infrastructure is not on this machine, so `gkm setup --stage <deployed>`
-starts no container.
+A deployed stage's resources are created by its deploy, every run, so a stage
+is never one step behind its code: a new bucket or a new app's host exists by
+the time the release that needs it starts. `gkm setup` is a one-time local
+step — the local stage's secrets and containers on this machine — and
+`gkm setup --stage <deployed>` fails with `SetupIsLocal`, pointing at
+`gkm deploy --stage <stage>`.

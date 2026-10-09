@@ -12,6 +12,80 @@ gkm upgrade --all
 `10.0.0-alpha.x` project), never goes backwards, and with `--all` also raises
 third-party packages to the floor of the peer ranges the new version declares.
 
+## After 10.0.0-alpha.91: the deploy creates a stage's resources {#deploy-resources}
+
+A deployed stage's resources — a [provider's](/guide/providers) buckets, IAM
+users and keys, and its hosts' [DNS records](/guide/compose#dns) — are created
+by its deploy, every run, before its checks. `gkm setup` is a one-time local
+step only.
+
+### `gkm setup --stage <deployed>` is removed
+
+`gkm setup` sets up this machine: the local stage's secrets and containers. It
+creates nothing for a deployed stage, and `gkm setup --stage <deployed>` fails
+with `SetupIsLocal`. Run the deploy instead — `gkm deploy --stage <stage>`
+(`gkm compose --stage <stage>` is the same deploy) creates or adopts each
+bucket, its IAM user and key, writes the keys into the stage's secrets, and
+says "up to date" when there is nothing to change. Its `--dry-run` prints the
+plan. Setup's `--dry-run` and `--profile` are gone; it takes `--stage` (the
+local stage only), `--force`, `--skip-docker` and `-y`.
+
+A provider with no provisioning credentials no longer leaves the stage
+`external`: the deploy fails with `ProviderCredentialsMissing`, naming the AWS
+environment it reads. Supply them, or set `deploy.objects.<stage>: 'external'`
+and set the keys by hand.
+
+### `--rotate-keys` and `--retire-old-keys` moved to the deploy
+
+```bash
+# before
+gkm setup --stage production --rotate-keys
+# after
+gkm deploy --stage production --rotate-keys
+```
+
+The deploy that rotates releases the apps on the new key, and the next deploy
+deletes the old one; `--retire-old-keys` deletes it at once. Both are flags of
+`gkm deploy` and `gkm compose`.
+
+### The deploy writes the DNS records; `--skip-dns-check` is `--skip-dns`
+
+With a provider for the stage's domain in `dns` (`godaddy`, `route53`,
+`hostinger`), every compose deploy writes the stage's missing or out-of-date
+records — one per public host, never a wildcard (`DnsWildcardRefused`) — and
+confirms them by reading them back from the provider
+(`DnsRecordsNotConfirmed`). A new app's record is created by the next deploy.
+`--skip-dns-check` is removed; `--skip-dns` replaces it and skips writing the
+records as well as checking them. A token provider configured with no token
+fails the deploy at its start with `DnsCredentialMissing`.
+
+### `--resources-only` and `--skip-resources`
+
+`gkm deploy` and `gkm compose` take `--resources-only` (create the stage's
+resources and nothing else) and `--skip-resources` (an earlier run created
+them: run no provider, write or check no DNS record). Together they are
+`ResourcesOnlyAndSkipped`.
+
+### CI: regenerate the deploy workflow, widen the role, add the DNS token
+
+- **The compose workflow** creates a stage's resources on the runner, so the
+  cloud credentials and the DNS token never reach the server. Regenerate it
+  with `gkm init`'s scaffold, or add by hand: the `resources` output to the
+  `stages` job (the stages action has it), and in the deploy job, for a stage
+  in `resources`, a checkout of the commit, an install, the stage's role and
+  `gkm deploy --stage "$STAGE" --resources-only`, then `--skip-resources` on
+  the server's `gkm compose`. See
+  [Deploying from CI](/guide/compose#deploying-from-ci). Only stages whose
+  secrets are in SSM or Secrets Manager are in `resources`.
+- **The role.** Re-run `gkm deploy:github --stage <stage>` so a compose
+  stage's policy also allows its `s3` provider's buckets and IAM users and its
+  `route53` domain's records. See
+  [What the role may do](/guide/deployment#what-the-role-may-do).
+- **The DNS token.** Add `GODADDY_API_TOKEN` (or `HOSTINGER_API_TOKEN`) as a
+  secret on each stage's GitHub environment:
+  `gh secret set GODADDY_API_TOKEN --env <stage>`. The generated workflows
+  (compose, Dokploy and SST) pass it to the deploy step.
+
 ## How this list was compiled
 
 From every changeset released on the `10.0.0-alpha` line (`.changeset/*.md`,
@@ -205,8 +279,8 @@ that is not a deployed stage is a type error, and fails to load with
 of them.
 
 A compose stage with a domain needs its server's address in its secrets —
-`gkm secrets:set GKM_SERVER_IPV4 '<ip>' --stage <stage>` — or `gkm setup` and
-every deploy stop with `ServerAddressMissing`. See
+`gkm secrets:set GKM_SERVER_IPV4 '<ip>' --stage <stage>` — or every deploy
+stops with `ServerAddressMissing`. See
 [Compose: DNS](./compose.md#dns).
 
 Each `RestApi`, `BetterAuth` and `StaticSite` can now set a `subdomain`

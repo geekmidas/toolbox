@@ -1300,7 +1300,7 @@ export const readStamp = api
 				't1',
 				'--dry-run',
 				// Its hosts are example.com names nobody points anywhere.
-				'--skip-dns-check',
+				'--skip-dns',
 			]);
 			const image = digests.api!;
 			const env = (stage: string) =>

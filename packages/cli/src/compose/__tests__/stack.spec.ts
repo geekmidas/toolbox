@@ -693,7 +693,7 @@ describe('mail and storage on a deployed stage', () => {
 			expect(missing[0]?.service).toBeUndefined();
 			const message = (error as Error).message;
 			expect(message).toContain(
-				'deploy.objects.production is s3: gkm setup --stage production creates it and writes this key',
+				'deploy.objects.production is s3: the deploy (gkm deploy --stage production) creates it and writes this key',
 			);
 			expect(message).toContain('AWS_PROFILE');
 			// Nothing missing could be a dev service, so none is offered.

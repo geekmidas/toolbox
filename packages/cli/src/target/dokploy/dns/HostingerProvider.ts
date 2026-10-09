@@ -5,6 +5,10 @@
  */
 
 import { getHostingerToken } from '../../../auth/credentials';
+import {
+	type HostingerCredential,
+	MissingCredential,
+} from '../../../deploy/credentials';
 import type {
 	DeleteDnsRecord,
 	DeleteResult,
@@ -22,6 +26,9 @@ export class HostingerProvider implements DnsProvider {
 	readonly name = 'hostinger';
 	private api: HostingerApi | null = null;
 
+	/** `credential`: the token, when the caller already has it. */
+	constructor(private readonly credential?: HostingerCredential) {}
+
 	/**
 	 * Get or create the Hostinger API client.
 	 */
@@ -30,12 +37,8 @@ export class HostingerProvider implements DnsProvider {
 			return this.api;
 		}
 
-		const token = await getHostingerToken();
-		if (!token) {
-			throw new Error(
-				'Hostinger API token not configured. Run `gkm login --service=hostinger` or get your token from https://hpanel.hostinger.com/profile/api',
-			);
-		}
+		const token = this.credential?.token ?? (await getHostingerToken());
+		if (!token) throw new MissingCredential('hostinger', undefined);
 
 		this.api = new HostingerApi(token);
 		return this.api;

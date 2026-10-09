@@ -37,9 +37,9 @@ export class StageProviderDisabled extends GkmError {
 	}
 }
 
-/** The command a stage's providers are run with. */
+/** The command a stage's providers are run with: every deploy runs them. */
 export function provisionCommand(stage: string): string {
-	return `gkm setup --stage ${stage}`;
+	return `gkm deploy --stage ${stage}`;
 }
 
 /**
@@ -57,8 +57,9 @@ export function provisionHint(
 	const provisioning = provisioningOf(kind, choice.name);
 	if (!provisioning) return undefined;
 	return (
-		`deploy.${kind}.${stage} is ${choice.name}: ${provisionCommand(stage)} ` +
-		`creates it and writes this key, with ${provisioning.describe}` +
+		`deploy.${kind}.${stage} is ${choice.name}: the deploy ` +
+		`(${provisionCommand(stage)}) creates it and writes this key, with ` +
+		`${provisioning.describe}` +
 		(provisioning.login
 			? `, or gkm login --provider ${provisioning.login}`
 			: '')

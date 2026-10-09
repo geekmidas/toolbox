@@ -15,7 +15,7 @@
  * is built, so stopping, Ctrl-C or a failure keeps every key before it, and
  * running the command again picks up what is still missing. A key a provider
  * on the stage creates (a bucket under `deploy.objects.<stage>`, written by
- * `gkm setup`) is not a checkpoint: it is listed, with what creates it.
+ * the deploy) is not a checkpoint: it is listed, with what creates it.
  *
  * `--json` asks nothing: it prints the keys, for a script or an agent to set
  * with `gkm secrets:set`.
@@ -89,7 +89,7 @@ export interface StageKeyJson {
 	construct: string;
 	apps: string[];
 	set: boolean;
-	/** A provider on the stage creates it: `gkm setup --stage <stage>`. */
+	/** A provider on the stage creates it: the deploy, `gkm deploy --stage <stage>`. */
 	provisioned?: true;
 }
 
@@ -167,7 +167,7 @@ export async function secretsAddCommand(
 	const scope = [...all.filter((k) => !k.set), ...all.filter((k) => k.set)];
 	const keys = options.missing ? scope.filter((k) => !k.set) : scope;
 
-	// A key a provider on the stage writes — `gkm setup` creates its bucket.
+	// A key a provider on the stage writes — the deploy creates its bucket.
 	const objects = stageProvider(workspace as never, 'objects', stage);
 	const provisioned = (k: WorkspaceStageKey) =>
 		objects.mode === 'provider' &&

@@ -8,9 +8,12 @@
  * *where* the stage goes is the target's.
  */
 
+import { dnsCredentials, stageDnsDomains } from '../compose/dns.js';
 import { GkmError } from '../errors';
+import { provisionStage } from '../providers/index.js';
 import { discover } from '../reconcile/discover.js';
 import { constructGlobs } from '../reconcile/workspace.js';
+import { initStageSecrets } from '../secrets/storage.js';
 import { builtinTarget } from '../target/builtins';
 import {
 	parseTargetOptions,
@@ -53,8 +56,37 @@ export interface DeployRequest {
 	 * bucket and mail it does not account for. Server targets only.
 	 */
 	allowDevServices?: boolean;
-	/** `--skip-dns-check`: a server target checks no host's DNS. */
-	skipDnsCheck?: boolean;
+	/** `--skip-dns`: a server target writes and checks no host's DNS. */
+	skipDns?: boolean;
+	/**
+	 * `--resources-only`: create what the stage needs — its providers'
+	 * resources and keys, and its DNS records — and nothing else: no image
+	 * built, nothing started. What a CI runner runs with the stage's cloud
+	 * credentials and DNS token before the server deploys.
+	 */
+	resourcesOnly?: boolean;
+	/**
+	 * `--skip-resources`: an earlier `--resources-only` run created them, so
+	 * no provider runs and no DNS record is written or checked.
+	 */
+	skipResources?: boolean;
+	/** `--rotate-keys`: each provider issues its runtime keys a successor. */
+	rotateKeys?: boolean;
+	/** `--retire-old-keys`: delete a rotated-out key now. */
+	retireOldKeys?: boolean;
+}
+
+/** `--resources-only` with `--skip-resources`: the one asks for what the other skips. */
+export class ResourcesOnlyAndSkipped extends GkmError {
+	constructor() {
+		super(
+			"--resources-only creates the stage's resources and nothing else, and " +
+				'--skip-resources deploys without creating them. Run the first where ' +
+				'the cloud credentials are (a CI runner), then the second where the ' +
+				'stack runs.',
+		);
+		this.name = 'ResourcesOnlyAndSkipped';
+	}
 }
 
 /**
@@ -205,9 +237,47 @@ export async function runDeploy(
 	const { resolved, phaseCtx, store } = prepared;
 	const { target } = resolved;
 
+	// The stage's resources — what its providers create, and the keys they
+	// write into its secrets — before any check reads those secrets, so a key
+	// the deploy creates is never reported missing. A build-only run creates
+	// nothing, and neither does the local stage.
+	const resources =
+		!ctx.buildOnly &&
+		!request.skipResources &&
+		phaseCtx.stage !== phaseCtx.workspace.stages.local;
+	const provision = async () => {
+		// The token the stage's DNS records are written with, asked for first:
+		// a deploy without it fails before anything is created or started.
+		if (!request.skipDns && resolved.target.runtime === 'server') {
+			try {
+				await dnsCredentials(
+					phaseCtx.stage,
+					stageDnsDomains(
+						phaseCtx.stage,
+						phaseCtx.workspace.domains,
+						phaseCtx.workspace.dns,
+					),
+					ctx.credentials,
+				);
+			} catch (error) {
+				emit({
+					type: 'phase.failed',
+					phase: 'validate',
+					error: eventError(error),
+				});
+				throw error;
+			}
+		}
+		await provisionResources(phaseCtx, request, ctx, store, emit);
+	};
+
 	// A dry run takes no lock: it writes nothing a lock would protect, and it
 	// should not stop a real deploy that starts while it is looking.
 	if (ctx.dryRun) {
+		if (resources) await provision();
+		if (request.resourcesOnly) {
+			return resourcesOnly(target, phaseCtx, emit);
+		}
 		const run = await validate(target, phaseCtx, emit);
 		await phase('plan', () => target.plan(phaseCtx, run));
 		return target.result(phaseCtx, run);
@@ -240,6 +310,10 @@ export async function runDeploy(
 	}
 
 	try {
+		if (resources) await provision();
+		if (request.resourcesOnly) {
+			return resourcesOnly(target, phaseCtx, emit);
+		}
 		const run = await validate(target, phaseCtx, emit);
 		if (target.provision) {
 			await phase('provision', () => target.provision!(phaseCtx, run));
@@ -273,6 +347,89 @@ export async function runDeploy(
 	} finally {
 		await lock.release();
 	}
+}
+
+/**
+ * The stage's providers, run inside the validate phase. A dry run plans them
+ * and, so the checks after it see the stage as the run would leave it, reads
+ * the keys they would write as placeholders.
+ */
+async function provisionResources(
+	phaseCtx: DeployPhaseContext<unknown>,
+	request: DeployRequest,
+	ctx: DeployContext,
+	store: Awaited<ReturnType<typeof createStateStore>>,
+	emit: (event: DeployEvent) => void,
+): Promise<void> {
+	try {
+		const reports = await provisionStage({
+			workspace: phaseCtx.workspace,
+			stage: phaseCtx.stage,
+			manifest: phaseCtx.manifest,
+			runnables: (phaseCtx.runnables ?? {}) as Record<string, string[]>,
+			secrets: phaseCtx.secrets,
+			state: store,
+			dryRun: ctx.dryRun,
+			...(request.rotateKeys ? { rotateKeys: true } : {}),
+			...(request.retireOldKeys ? { retireOldKeys: true } : {}),
+			...(ctx.home ? { home: ctx.home } : {}),
+			log: (line) => phaseCtx.logger.info(line),
+		});
+		if (!ctx.dryRun) return;
+		const planned = reports.flatMap((r) => r.planned);
+		if (planned.length === 0) return;
+		const secrets = phaseCtx.secrets;
+		(phaseCtx as { secrets: typeof secrets }).secrets = {
+			...secrets,
+			async read() {
+				const stored =
+					(await secrets.read()) ?? initStageSecrets(phaseCtx.stage);
+				const custom = { ...stored.custom };
+				for (const key of planned) custom[key] ??= PLANNED_BY_THE_DEPLOY;
+				return { ...stored, custom };
+			},
+		};
+	} catch (error) {
+		emit({ type: 'phase.failed', phase: 'validate', error: eventError(error) });
+		throw error;
+	}
+}
+
+/** What a dry run reads for a key its providers would write. */
+export const PLANNED_BY_THE_DEPLOY = 's3://planned-by-this-deploy';
+
+/** `--resources-only`: the target's own resources, and nothing else. */
+async function resourcesOnly(
+	target: AnyDeployTarget,
+	phaseCtx: DeployPhaseContext<unknown>,
+	emit: (event: DeployEvent) => void,
+): Promise<DeployResult> {
+	try {
+		if (target.resources) await target.resources(phaseCtx);
+	} catch (error) {
+		emit({ type: 'phase.failed', phase: 'validate', error: eventError(error) });
+		throw error;
+	}
+	emit({ type: 'phase.finished', phase: 'validate' });
+	return resourcesResult(phaseCtx);
+}
+
+/** A `--resources-only` run: no app was deployed. */
+function resourcesResult(phaseCtx: DeployPhaseContext<unknown>): DeployResult {
+	return {
+		apps: [],
+		projectId: '',
+		successCount: 0,
+		failedCount: 0,
+		stage: phaseCtx.stage,
+		identity: phaseCtx.identity.key,
+		tag: phaseCtx.tag,
+		dryRun: phaseCtx.dryRun,
+		environmentId: '',
+		skipped: [...phaseCtx.skipped],
+		urls: {},
+		changes: [],
+	};
 }
 
 /** `validate`, then the run's `deploy.started`, inside the validate phase. */
@@ -316,6 +473,9 @@ async function prepare(
 	redactor: Redactor,
 ): Promise<Prepared> {
 	const { stage } = request;
+	if (request.resourcesOnly && request.skipResources) {
+		throw new ResourcesOnlyAndSkipped();
+	}
 	const configured = typeof source === 'function' ? await source() : source;
 
 	// Before anything is provisioned: a typo'd stage would otherwise create a
@@ -455,7 +615,8 @@ async function prepare(
 		dryRun: ctx.dryRun,
 		atomic: request.atomic ?? false,
 		allowDevServices,
-		...(request.skipDnsCheck ? { skipDnsCheck: true } : {}),
+		...(request.skipDns ? { skipDns: true } : {}),
+		...(request.skipResources ? { skipResources: true } : {}),
 		credentials: ctx.credentials,
 		state: store,
 		secrets,

@@ -169,6 +169,8 @@ export interface CreateDnsProviderOptions {
 	config: DnsConfig;
 	/** Where the GoDaddy provider reads its key — the environment and the CLI's home. */
 	godaddy?: import('./GoDaddyProvider').GoDaddyProviderOptions;
+	/** The Hostinger token, when the caller already has it. */
+	hostinger?: import('../../../deploy/credentials').HostingerCredential;
 }
 
 /**
@@ -200,7 +202,7 @@ export async function createDnsProvider(
 
 	if (provider === 'hostinger') {
 		const { HostingerProvider } = await import('./HostingerProvider');
-		return new HostingerProvider();
+		return new HostingerProvider(options.hostinger);
 	}
 
 	if (provider === 'route53') {

@@ -11,6 +11,7 @@ import {
 	ListUserTagsCommand,
 } from '@aws-sdk/client-iam';
 import {
+	CreateBucketCommand,
 	DeleteBucketCommand,
 	DeleteBucketCorsCommand,
 	DeleteObjectsCommand,
@@ -51,12 +52,19 @@ import {
 	fakeDocker,
 } from '../../compose/__tests__/__helpers__/fakeDocker';
 import { composeCommand } from '../../compose/index';
+import { deploy } from '../../deploy/deploy';
+import type { DeployEvent } from '../../deploy/events';
 import { DeployJournal } from '../../deploy/journal';
 import { createStateStore } from '../../deploy/StateStore';
 import { createEmptyState } from '../../deploy/state';
 import { secretsStoreFor } from '../../secrets/store';
+import { composeTarget } from '../../target/compose/index';
 import type { NormalizedWorkspace } from '../../workspace/types';
-import { provisionStage, verifyStageProviders } from '../index';
+import {
+	ProviderCredentialsMissing,
+	provisionStage,
+	verifyStageProviders,
+} from '../index';
 import {
 	BucketNameUnavailable,
 	ProvisionedBucketUnreachable,
@@ -129,19 +137,31 @@ export const upload = api
 	);
 }
 
-const provision = (
+/** What the deploy runs first: the stage's providers, with its lock held. */
+const provision = async (
 	stage: string,
 	options: Partial<Parameters<typeof provisionStage>[0]> = {},
-) =>
-	provisionStage({
+) => {
+	const store = await secretsStoreFor(workspace, stage, { home });
+	return provisionStage({
 		workspace,
 		stage,
 		manifest,
 		runnables,
 		home,
+		secrets: {
+			read: () => store.read(stage),
+			write: (secrets) => store.write(stage, secrets),
+		},
+		state: await createStateStore({
+			config: workspace.state,
+			workspaceRoot: workspace.root,
+			workspaceName: workspace.name,
+		}),
 		log: (line) => lines.push(line),
 		...options,
 	});
+};
 
 async function secretsOf(stage: string) {
 	const store = await secretsStoreFor(workspace, stage, { home });
@@ -191,18 +211,32 @@ beforeAll(async () => {
 	writeComposeApp(dir, {
 		name,
 		domain: DOMAIN,
-		deployed: [STAGE, 'staging', 'preview', 'scratch'],
+		deployed: [
+			STAGE,
+			'staging',
+			'preview',
+			'scratch',
+			'shipped',
+			'adopted',
+			'planned',
+		],
 		domains: {
 			[STAGE]: DOMAIN,
 			staging: `staging.${DOMAIN}`,
 			preview: `preview.${DOMAIN}`,
 			scratch: `scratch.${DOMAIN}`,
+			shipped: `shipped.${DOMAIN}`,
+			adopted: `adopted.${DOMAIN}`,
+			planned: `planned.${DOMAIN}`,
 		},
 		deployObjects: {
 			[STAGE]: { provider: 's3', region: REGION },
 			staging: { provider: 's3', region: REGION },
 			preview: { provider: 's3', region: REGION },
 			scratch: { provider: 's3', region: REGION },
+			shipped: { provider: 's3', region: REGION },
+			adopted: { provider: 's3', region: REGION },
+			planned: { provider: 's3', region: REGION },
 		},
 	});
 	withFileServer(dir);
@@ -267,7 +301,7 @@ describe('objects: s3 on a deployed stage', () => {
 			kind: 'objects',
 			mode: 'provider',
 			provider: 's3',
-			credentials: true,
+			planned: ['UPLOADS_URL', 'UPLOADS_SERVER_URL'],
 		});
 		const changes = report!.actions.map((a) => `${a.resource}: ${a.change}`);
 		expect(changes).toEqual([
@@ -474,7 +508,7 @@ describe('objects: s3 on a deployed stage', () => {
 		});
 		await expect(run).rejects.toBeInstanceOf(ProvisionedBucketUnreachable);
 		await expect(run).rejects.toThrow(
-			/does not exist\. Run gkm setup --stage production/,
+			/does not exist\. Deploy 'production' with the stage account's credentials/,
 		);
 	});
 
@@ -491,7 +525,9 @@ describe('objects: s3 on a deployed stage', () => {
 			.accessKeyId!;
 		expect(second).not.toBe(first);
 		expect(await keysOf(user())).toEqual([first, second].sort());
-		expect(lines.join('\n')).toContain(`Deploy '${STAGE}' now`);
+		expect(lines.join('\n')).toContain(
+			`This deploy moves '${STAGE}' onto it; the next deploy after it deletes the old key ${first}`,
+		);
 
 		// Not deployed yet: the old key stays, and a second rotation waits.
 		const [waiting] = await provision(STAGE);
@@ -676,7 +712,7 @@ describe('--dry-run', () => {
 });
 
 describe('with no credentials to provision with', () => {
-	it('leaves the stage external, saying what to supply and what to run', async () => {
+	it('stops the deploy by name, saying what it needs here and in CI', async () => {
 		vi.stubEnv('AWS_ACCESS_KEY_ID', undefined);
 		vi.stubEnv('AWS_SECRET_ACCESS_KEY', undefined);
 		vi.stubEnv('AWS_SESSION_TOKEN', undefined);
@@ -685,22 +721,178 @@ describe('with no credentials to provision with', () => {
 		vi.stubEnv('AWS_SHARED_CREDENTIALS_FILE', join(home, 'no-aws-credentials'));
 		vi.stubEnv('AWS_EC2_METADATA_DISABLED', 'true');
 		try {
-			const [report] = await provision('preview');
+			const run = provision('preview');
 
-			expect(report).toMatchObject({ mode: 'provider', credentials: false });
-			expect(report?.actions).toEqual([]);
-			const said = lines.join('\n');
-			expect(said).toContain(
-				"no credentials to provision with, so 'preview' is external for now",
-			);
-			expect(said).toContain('UPLOADS_URL, UPLOADS_SERVER_URL');
-			expect(said).toContain('gkm secrets:add --stage preview');
-			expect(said).toContain('AWS_PROFILE');
-			expect(said).toContain('run gkm setup --stage preview');
+			await expect(run).rejects.toBeInstanceOf(ProviderCredentialsMissing);
+			const error = (await run.catch((e) => e)) as ProviderCredentialsMissing;
+			expect(error).toMatchObject({
+				stage: 'preview',
+				kind: 'objects',
+				provider: 's3',
+				ids: ['Uploads'],
+			});
+			expect(error.message).toContain('AWS_PROFILE');
+			expect(error.message).toContain('AWS_ROLE_ARN');
+			expect(error.message).not.toContain('gkm setup');
 			expect(await secretsOf('preview')).toEqual({});
 		} finally {
 			vi.stubEnv('AWS_ACCESS_KEY_ID', 'test');
 			vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'test');
 		}
 	});
+});
+
+describe('the deploy creates them', () => {
+	/** The stage's own keys, set by hand: its mail and its server. */
+	async function prepared(stage: string) {
+		const store = await secretsStoreFor(workspace, stage, { home });
+		const stored = (await store.read(stage)) ?? {
+			stage,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+			services: {},
+			urls: {},
+			custom: {},
+		};
+		await store.write(stage, {
+			...stored,
+			custom: {
+				...stored.custom,
+				MAIL_URL: 'smtp://user:password@smtp.example.com:587',
+				MAIL_FROM: `noreply@${DOMAIN}`,
+				GKM_SERVER_IPV4: SERVER_IPV4,
+			},
+		});
+	}
+
+	/** A compose deploy of the stage, Docker and the probe recorders. */
+	async function deployStage(
+		stage: string,
+		options: { dryRun?: boolean; rotateKeys?: boolean } = {},
+	) {
+		const fake = fakeDocker();
+		const run = deploy({
+			cwd: dir,
+			stage,
+			target: 'compose',
+			home,
+			...options,
+			targets: {
+				compose: composeTarget({
+					revision: async () => 'abc1234',
+					sql: () => ({ query: async () => [] }),
+					logins: async ({ login }) => ({
+						service: 'postgres',
+						status: 'current',
+						login,
+					}),
+					migrate: async () => [],
+					seed: async () => [],
+					healthIntervalMs: 0,
+					lookup: resolvesHere,
+					docker: fake.docker,
+					probe: answering(fake.calls),
+				}),
+			},
+		});
+		const seen: DeployEvent[] = [];
+		for await (const event of run) seen.push(event);
+		const error = await run.result.then(
+			() => undefined,
+			(e: unknown) => e,
+		);
+		const logs = seen
+			.filter((e) => e.type === 'log')
+			.map((e) => (e as { message: string }).message);
+		return { seen, error, logs, ops: fake.ops() };
+	}
+
+	const released = (seen: DeployEvent[]) =>
+		seen.some((e) => e.type === 'phase.finished' && e.phase === 'release');
+
+	it('creates the bucket, user and key, writes the URL, and goes on to release', async () => {
+		const bucket = bucketName({ scope: name, stage: 'shipped', id: 'uploads' });
+		const user = iamUserName({ scope: name, stage: 'shipped', id: 'uploads' });
+		made.buckets.add(bucket);
+		made.users.add(user);
+		await prepared('shipped');
+
+		const { error, seen, logs } = await deployStage('shipped');
+
+		expect(error).toBeUndefined();
+		expect(released(seen)).toBe(true);
+		await s3.send(new HeadBucketCommand({ Bucket: bucket }));
+		const url = s3Url.parse((await secretsOf('shipped')).UPLOADS_URL!);
+		expect(url.bucket).toBe(bucket);
+		expect(await keysOf(user)).toEqual([url.accessKeyId]);
+		expect(logs).toContain(`   create in ${REGION} — bucket ${bucket}`);
+		// Created before the checks: never reported missing.
+		expect(logs.join('\n')).not.toContain('ExternalServicesNotConfigured');
+
+		// The next deploy finds it all in place.
+		const again = await deployStage('shipped');
+		expect(again.error).toBeUndefined();
+		expect(again.logs).toContain('   up to date');
+		expect(await keysOf(user)).toEqual([url.accessKeyId]);
+	}, 120_000);
+
+	it('adopts a bucket that is already there, rather than creating it', async () => {
+		const bucket = bucketName({ scope: name, stage: 'adopted', id: 'uploads' });
+		made.buckets.add(bucket);
+		made.users.add(
+			iamUserName({ scope: name, stage: 'adopted', id: 'uploads' }),
+		);
+		await s3.send(
+			new CreateBucketCommand({
+				Bucket: bucket,
+				CreateBucketConfiguration: { LocationConstraint: REGION },
+			}),
+		);
+		await prepared('adopted');
+
+		const { error, logs } = await deployStage('adopted');
+
+		expect(error).toBeUndefined();
+		expect(logs).not.toContain(`   create in ${REGION} — bucket ${bucket}`);
+		expect(s3Url.parse((await secretsOf('adopted')).UPLOADS_URL!).bucket).toBe(
+			bucket,
+		);
+		expect((await stateOf('adopted'))?.resources['s3-bucket:Uploads']?.id).toBe(
+			bucket,
+		);
+	}, 120_000);
+
+	it('prints the plan on --dry-run, and creates and writes nothing', async () => {
+		const bucket = bucketName({ scope: name, stage: 'planned', id: 'uploads' });
+		await prepared('planned');
+
+		const { error, logs } = await deployStage('planned', { dryRun: true });
+
+		expect(error).toBeUndefined();
+		expect(logs).toContain('☁️  objects: s3 (dry run)');
+		expect(logs).toContain(`   would create in ${REGION} — bucket ${bucket}`);
+		await expect(
+			s3.send(new HeadBucketCommand({ Bucket: bucket })),
+		).rejects.toThrow();
+		expect((await secretsOf('planned')).UPLOADS_URL).toBeUndefined();
+	}, 120_000);
+
+	it('rotates the key with --rotate-keys, and retires the old one on the next deploy', async () => {
+		const user = iamUserName({ scope: name, stage: 'shipped', id: 'uploads' });
+		const first = s3Url.parse((await secretsOf('shipped')).UPLOADS_URL!)
+			.accessKeyId!;
+
+		const rotated = await deployStage('shipped', { rotateKeys: true });
+
+		expect(rotated.error).toBeUndefined();
+		const second = s3Url.parse((await secretsOf('shipped')).UPLOADS_URL!)
+			.accessKeyId!;
+		expect(second).not.toBe(first);
+		expect(await keysOf(user)).toEqual([first, second].sort());
+
+		// That deploy released the stage on the new key: this one retires the old.
+		const next = await deployStage('shipped');
+		expect(next.error).toBeUndefined();
+		expect(await keysOf(user)).toEqual([second]);
+	}, 120_000);
 });

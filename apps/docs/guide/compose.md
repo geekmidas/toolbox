@@ -185,7 +185,7 @@ protected ones; a manual run deploys the stage and `ref` you name. Abridged:
 ```yaml
 # .github/workflows/deploy.yml (generated)
 jobs:
-  stages:                     # build, deploy, has-build, has-deploy, aws-region
+  stages:   # build, deploy, has-build, has-deploy, aws-region, resources
     steps:
       - uses: actions/checkout@v4
       # … node, the package manager, install
@@ -227,13 +227,24 @@ jobs:
         stage: ${{ fromJSON(needs.stages.outputs.deploy) }}
     environment: ${{ matrix.stage }}
     concurrency: { group: 'deploy-${{ matrix.stage }}', cancel-in-progress: false }
+    env:
+      RESOURCES_ON_RUNNER: ${{ contains(fromJSON(needs.stages.outputs.resources || '[]'), matrix.stage) }}
     steps:
       # 1. the commit: a release's tag, a manual run's ref, or the push
-      # 2. that commit's push build of this workflow, and its digests-<stage>
+      # 2. a stage in `resources`: on the runner, check out that commit,
+      #    install, assume the stage's role, and create its resources
+      - if: env.RESOURCES_ON_RUNNER == 'true'
+        run: pnpm exec gkm deploy --stage "$STAGE" --resources-only
+        env:
+          STAGE: ${{ matrix.stage }}
+          GODADDY_API_TOKEN: ${{ secrets.GODADDY_API_TOKEN }}
+          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+      # 3. that commit's push build of this workflow, and its digests-<stage>
       #    (missing: deploy by tag, with a warning on the run)
-      # 3. over SSH, host key pinned, on the server:
+      # 4. over SSH, host key pinned, on the server:
       #      git checkout <sha> && pnpm install --frozen-lockfile
-      #      pnpm exec gkm compose --stage <stage> --tag <sha> --digests-file …
+      #      pnpm exec gkm compose --stage <stage> --tag <sha> --digests-file … \
+      #        [--skip-resources]   # when step 2 ran
 ```
 
 The server runs `gkm compose` itself, from a checkout at the same commit:
@@ -244,6 +255,21 @@ holds `DEPLOY_SSH_KEY` (a secret) and `DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST`,
 `DEPLOY_USER` and `DEPLOY_PATH` (variables). The SSH session is
 non-interactive, so the package manager has to be on that user's `PATH`
 without a login shell.
+
+A stage's **resources** — a [provider's](./providers.md) buckets and keys,
+and its hosts' [DNS records](#dns) — are created by the deploy. Run on the
+server, that would need the stage account's credentials and the DNS
+provider's token there. So for each stage in the stages action's `resources`
+output, the runner creates them first (`gkm deploy --resources-only`) with the
+stage's role and the token from the stage's environment, and the server
+deploys with `--skip-resources`: neither credential reaches it. `resources`
+holds the deployed stages that have a `deploy.<kind>.<stage>` provider or a
+`dns` domain whose provider writes records, **and** whose secrets are in an
+AWS store (`secrets.store` `ssm` or `secrets-manager`) the runner reads with
+the stage's role. A stage on the default `file` store is not in it: its
+deploy on the server does everything, so the server holds those credentials.
+To create a stage's resources from CI instead, keep its secrets in `ssm` or
+`secrets-manager`.
 
 The images are pinned by digest: a release deploys exactly what the push of
 its commit built, even if a tag was pushed over since. The digests are kept for
@@ -368,9 +394,9 @@ Each app answers on its own host:
 
 The hosts are the ones `gkm deploy` uses: an app's `subdomain` (or its name)
 under the stage's base domain, and the root site on the base domain itself.
-For a deployed stage, point those names at the machine — [`gkm setup` can
-write the records](#dns) — and leave ports 80 and 443 open; Caddy obtains
-each certificate on first request.
+For a deployed stage, those names point at the machine — [the deploy writes
+the records](#dns) through the domain's DNS provider — and ports 80 and 443
+stay open; Caddy obtains each certificate on first request.
 
 Caddy forwards `Host` and `X-Forwarded-*` as it does by default, so an app sees
 the address its caller used. Responses are never buffered (`flush_interval
@@ -405,19 +431,21 @@ gkm secrets:set GKM_SERVER_IPV6 '2001:db8::10' --stage production   # optional
 ```
 
 `GKM_SERVER_IPV4` is **required** of every deployed stage that has a domain
-(`domains.<stage>`): `gkm setup --stage <stage>` and every deploy refuse one
-without it, before anything else runs, with `ServerAddressMissing` and the
-`gkm secrets:set` line. `gkm secrets:add` lists it among the stage's required
-keys. A stage whose domain is a `*.localhost` name needs none. A value that is
-not an address fails with `ServerAddressInvalid`, naming the key. Both keys
-are gkm's own: no app's or worker's env file ever holds them.
+(`domains.<stage>`): every deploy refuses one without it, before anything else
+runs, with `ServerAddressMissing` and the `gkm secrets:set` line. `gkm
+secrets:add` lists it among the stage's required keys. A stage whose domain is
+a `*.localhost` name needs none. A value that is not an address fails with
+`ServerAddressInvalid`, naming the key. Both keys are gkm's own: no app's or
+worker's env file ever holds them.
 
 ### Writing the records
 
 With [`dns`](./deployment.md#dns-providers) naming the provider of the
-stage's root domain, `gkm setup --stage <stage>` points every public host the
-stack serves at the server — the apex (the root site), each API and auth
-server, each file server, and the public log UI when it is enabled:
+stage's root domain, **the deploy writes the records**. Every `gkm deploy
+--stage <stage>` (and `gkm compose --stage <stage>`, the same deploy) points
+each public host the stack serves at the server, before its checks run and
+before anything starts — the apex (the root site), each API and auth server,
+each file server, and the public log UI when it is enabled:
 
 ```ts
 // gkm.config.ts
@@ -426,41 +454,106 @@ dns: { 'example.com': { provider: 'godaddy' } },
 ```
 
 ```text
-$ gkm setup --stage production --dry-run
-🌐 DNS for 'production' → 203.0.113.10 (dry run — nothing is written)
+$ gkm deploy --stage production --dry-run
+🌐 DNS for 'production' → *** (dry run — nothing is written)
    example.com (godaddy) — dry run
-   + api.shop.example.com             A     203.0.113.10  (TTL 600) — would create
-   ✓ auth.shop.example.com            A     203.0.113.10  (TTL 600) — up to date
-   ~ shop.example.com                 A     198.51.100.7 → 203.0.113.10  (TTL 600) — would update
+   + api.shop.example.com             A     ***  (TTL 600) — would create
+   ✓ auth.shop.example.com            A     ***  (TTL 600) — up to date
+   ~ shop.example.com                 A     198.51.100.7 → ***  (TTL 600) — would update
 ```
+
+The server's address is `***` because it is a stage secret, masked in
+everything a deploy prints.
 
 Every host gets an A record, and an AAAA record with `GKM_SERVER_IPV6`. With
 `records: { mode: 'cname', target: 'server.example.com' }` on the domain, the
 target gets the A record and every other host a CNAME to it; the apex is
 always an A record. A record that already has its value is not written; one
-with another value is replaced. A `manual` domain is printed, not written.
-The DNS provider's credentials are this machine's — see
-[DNS Providers](./deployment.md#dns-providers) for GoDaddy's token and its API
-access restriction.
+with another value is replaced. The deploy touches only the A, AAAA and CNAME
+records of the stage's own hosts, and never another name; the only record it
+deletes is one a change of mode replaces (an A record where a CNAME now goes,
+or the other way round). What it wrote is recorded in the stage's deploy state as
+`dns-record` resources. A `manual` domain is printed, not written.
+
+**No wildcard.** One record is written per host, never `*.shop.example.com`.
+A wildcard host is refused with `DnsWildcardRefused`.
+
+The DNS provider's credentials are read by the machine that runs the deploy —
+see [DNS Providers](./deployment.md#dns-providers) for GoDaddy's token and its
+API access restriction. With a token provider (GoDaddy, Hostinger) configured
+and no token, the deploy fails at its start — before anything is created,
+built or started — with `DnsCredentialMissing`, naming the key.
+
+### Adding an app
+
+A new app's host gets its record from the next deploy. Nothing is run by hand
+first: the deploy sees the host has no record, writes it, confirms it, and
+only then starts the stack and asks for its certificate.
+
+### A stage on another server
+
+Each deployed stage has its own `GKM_SERVER_IPV4` (and `GKM_SERVER_IPV6`), so
+two stages can live on two machines under one domain:
+
+```ts
+domains: { production: 'example.com', dev: 'dev.example.com' },
+dns: { 'example.com': { provider: 'godaddy' } },
+```
+
+```bash
+gkm secrets:set GKM_SERVER_IPV4 '203.0.113.10' --stage production
+gkm secrets:set GKM_SERVER_IPV4 '198.51.100.20' --stage dev
+```
+
+A stage's deploy writes only its own hosts — `api.dev.example.com` from the
+`dev` deploy, `api.example.com` from `production`'s — never another stage's.
+
+### In CI
+
+The DNS token is a secret on the stage's GitHub **environment**, passed to
+the step that runs the deploy:
+
+```yaml
+env:
+  GODADDY_API_TOKEN: ${{ secrets.GODADDY_API_TOKEN }}
+```
+
+In the [compose workflow](#a-github-actions-workflow), that step is the
+runner's `gkm deploy --stage <stage> --resources-only`, and the server deploys
+with `--skip-resources`, so the token never reaches the server. A stage whose
+environment lacks the secret fails that step with `DnsCredentialMissing`,
+which says where to add it.
 
 ### The DNS check
 
-Every deploy of a deployed stage resolves each public host with the system
-resolver (all of its addresses) **before** the stack starts and Caddy or
-Traefik ask Let's Encrypt for certificates — a certificate for a name that
-points elsewhere cannot be issued, and each failed attempt counts against
-Let's Encrypt's rate limit. A host that does not resolve to `GKM_SERVER_IPV4`,
-or also resolves to an address that is not the server's, stops `validate`:
+A certificate for a name that points elsewhere cannot be issued, and each
+failed attempt counts against Let's Encrypt's rate limit, so every deploy of a
+deployed stage confirms each public host **before** the stack starts and Caddy
+or Traefik ask for certificates.
+
+Records the deploy wrote, or found up to date, through a provider are
+confirmed by **reading them back from the provider** — not by a public lookup,
+which can lag behind a change or have cached a brand-new name as missing. A
+record the provider does not return as written stops the deploy with
+`DnsRecordsNotConfirmed`.
+
+Every other host is resolved with the system resolver (all of its addresses):
+a `manual` domain, a host under no `dns` domain, a GoDaddy key that can write
+records but not read them, and a workspace with no `dns` at all. A host that
+does not resolve to `GKM_SERVER_IPV4`, or also resolves to an address that is
+not the server's, stops `validate`:
 
 ```text
 HostNotPointingAtServer: A host of 'production' does not resolve to its server, so a certificate for it cannot be issued:
   - api.shop.example.com → 198.51.100.7, expected 203.0.113.10
-Fix: gkm setup --stage production writes the records for example.com (gkm setup --stage production --dry-run shows them first).
+Fix: gkm deploy --stage production writes the records for example.com through their provider (--dry-run shows them first).
 ```
 
 A dry run prints the same as a warning. With a CDN or proxy in front of the
-server — the hosts resolve to it, not to the server — pass `--skip-dns-check`
-to `gkm deploy` or `gkm compose`. The local stage is never checked.
+server — the hosts resolve to it, not to the server — or records written
+elsewhere, pass `--skip-dns` to `gkm deploy` or `gkm compose`: the deploy
+neither writes the hosts' records nor checks them. The local stage is never
+checked.
 
 ## Proxy: Caddy or Traefik
 
@@ -647,12 +740,11 @@ gkm secrets:set AWS_SECRET_ACCESS_KEY '…' --stage production
 ```
 
 Or have gkm create the buckets: with `deploy.objects.production: { provider:
-'s3' }`, `gkm setup --stage production` creates each bucket, its IAM user and
+'s3' }`, `gkm deploy --stage production` creates each bucket, its IAM user and
 key in the stage's AWS account and writes `UPLOADS_URL` and
-`UPLOADS_SERVER_URL` itself — see [Providers](./providers.md). A stage on a
-provider still stops in `validate` while a key is missing, and the line for
-each key says which command writes it. Every deploy then checks the bucket
-answers the key in the stage's secrets (`verify()`), and stops with
+`UPLOADS_SERVER_URL` itself, before its checks run — see
+[Providers](./providers.md). Every deploy then checks the bucket answers the
+key in the stage's secrets (`verify()`), and stops with
 `ProvisionedBucketUnreachable` if it does not.
 
 ### `--allow-dev-services`

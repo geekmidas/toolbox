@@ -54,5 +54,5 @@ export const S3_PROVISIONING = {
 		'AWS_SESSION_TOKEN',
 	],
 	describe:
-		"the stage's AWS account — --profile <name>, AWS_PROFILE, or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY (in CI, what aws-actions/configure-aws-credentials exports)",
+		"the stage's AWS account — AWS_PROFILE, or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY (in CI, what aws-actions/configure-aws-credentials exports)",
 } as const;

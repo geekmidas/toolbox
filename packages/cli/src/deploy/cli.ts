@@ -33,8 +33,16 @@ export interface DeployCliOptions {
 	atomic?: boolean;
 	/** `--allow-dev-services`. */
 	allowDevServices?: boolean;
-	/** `--skip-dns-check`. */
-	skipDnsCheck?: boolean;
+	/** `--skip-dns`. */
+	skipDns?: boolean;
+	/** `--resources-only`. */
+	resourcesOnly?: boolean;
+	/** `--skip-resources`. */
+	skipResources?: boolean;
+	/** `--rotate-keys`. */
+	rotateKeys?: boolean;
+	/** `--retire-old-keys`. */
+	retireOldKeys?: boolean;
 }
 
 /** Where the command writes. The process's own streams, outside tests. */
@@ -71,7 +79,11 @@ export async function deployCli(
 		...(options.dryRun ? { dryRun: true } : {}),
 		...(options.atomic ? { atomic: true } : {}),
 		...(options.allowDevServices ? { allowDevServices: true } : {}),
-		...(options.skipDnsCheck ? { skipDnsCheck: true } : {}),
+		...(options.skipDns ? { skipDns: true } : {}),
+		...(options.resourcesOnly ? { resourcesOnly: true } : {}),
+		...(options.skipResources ? { skipResources: true } : {}),
+		...(options.rotateKeys ? { rotateKeys: true } : {}),
+		...(options.retireOldKeys ? { retireOldKeys: true } : {}),
 	};
 
 	if (options.json) {

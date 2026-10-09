@@ -268,9 +268,9 @@ export type StageTelemetryConfig =
  *
  * - `'external'` (the default) — the stage's secrets hold each bucket's URL,
  *   set by you: S3, R2, any S3-compatible store.
- * - `{ provider: 's3' }` — `gkm setup --stage <stage>` creates each bucket,
- *   its IAM user and key in the stage's AWS account, and writes the bucket's
- *   URL into the stage's secrets.
+ * - `{ provider: 's3' }` — every deploy of the stage creates (or repairs)
+ *   each bucket, its IAM user and key in the stage's AWS account, and writes
+ *   the bucket's URL into the stage's secrets, before its checks.
  * - `false` — the stage has no object storage; a bucket on it is refused.
  *
  * The local stage ignores this: `gkm dev` runs MinIO for every bucket.
