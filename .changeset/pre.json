@@ -46,6 +46,7 @@
     "client-coercion-types",
     "client-method-calls",
     "compose-build-push",
+    "compose-deploy-state",
     "compose-env-follows-edges",
     "compose-logs",
     "compose-redis-cache",
