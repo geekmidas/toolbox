@@ -17,6 +17,10 @@
 import { stageDnsDomains } from '../compose/dns.js';
 import { stageProvider } from '../providers/config.js';
 import {
+	PROJECT_BUCKET_CREATE_ACTIONS,
+	projectBucketName,
+} from '../providers/projectBucket.js';
+import {
 	bucketName,
 	IAM_USER_PATH,
 	iamUserName,
@@ -180,23 +184,29 @@ export function deployAccess(
 	} else if (state?.provider === 's3') {
 		const prefix = (state.prefix ?? 'gkm').replace(/\/+$/, '');
 		const path = `${prefix ? `${prefix}/` : ''}${project}/${stage}/`;
+		const named = state.bucket;
+		// No bucket named: the project bucket, which the first deploy creates
+		// — by a name the account fixes, so the role is given exactly it.
+		const bucketIn = (account: string) =>
+			named ??
+			projectBucketName(deployIdentity(workspace, stage).scope, account);
 		describe.push(
-			`read and write the deploy state under s3://${state.bucket}/${path}`,
+			named
+				? `read and write the deploy state under s3://${named}/${path}`
+				: `create the project bucket ${projectBucketName(deployIdentity(workspace, stage).scope, '<account>')}, and read and write the deploy state under ${path} in it`,
 		);
-		build.push(() => [
-			{
-				Sid: 'StageState',
-				Effect: 'Allow',
-				Action: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'],
-				Resource: `arn:aws:s3:::${state.bucket}/${path}*`,
-			},
-			// So a state not written yet is a 404, not a 403.
-			{
-				Sid: 'StageStateBucket',
-				Effect: 'Allow',
-				Action: ['s3:ListBucket'],
-				Resource: `arn:aws:s3:::${state.bucket}`,
-			},
+		build.push((account) => [
+			...stateBucketStatements(bucketIn(account), path),
+			...(named
+				? []
+				: [
+						{
+							Sid: 'ProjectBucket',
+							Effect: 'Allow' as const,
+							Action: [...PROJECT_BUCKET_CREATE_ACTIONS],
+							Resource: `arn:aws:s3:::${bucketIn(account)}`,
+						},
+					]),
 		]);
 	}
 
@@ -310,6 +320,31 @@ export function deployAccess(
 		statements: (account) => build.flatMap((statements) => statements(account)),
 		describe,
 	};
+}
+
+/**
+ * Reading and writing one stage's deploy state in `bucket`, as the deploy
+ * role is given it.
+ */
+export function stateBucketStatements(
+	bucket: string,
+	path: string,
+): PolicyStatement[] {
+	return [
+		{
+			Sid: 'StageState',
+			Effect: 'Allow',
+			Action: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'],
+			Resource: `arn:aws:s3:::${bucket}/${path}*`,
+		},
+		// HeadBucket, and a state not written yet a 404 rather than a 403.
+		{
+			Sid: 'StageStateBucket',
+			Effect: 'Allow',
+			Action: ['s3:ListBucket'],
+			Resource: `arn:aws:s3:::${bucket}`,
+		},
+	];
 }
 
 /** The scoped access as a policy document, or null when it allows nothing. */

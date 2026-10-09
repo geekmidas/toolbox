@@ -13,7 +13,7 @@ once it does. Each section is short; follow the links for the detail.
       creates) — and no deploy passes `--allow-dev-services`
       ([Mail and object storage](#mail-and-object-storage),
       [Providers](./providers.md)).
-- [ ] Deploy state is in a shared store (SSM or S3), not on one laptop
+- [ ] Deploy state is in a shared store (S3), not on one laptop
       ([State](#state)).
 - [ ] Every backend answers `GET /health` ([Health checks](#health-checks)).
 - [ ] Each surface and worker is given the `Telemetry` construct, its app has
@@ -263,11 +263,13 @@ deploy cannot find what it made.
 
 - The default is `local`: `.gkm/deploy-<stage>.json`, mode `0600`. Fine for one
   person on one machine.
-- For a team or CI, use `ssm` or `s3`, so every run sees the same state:
+- For a team or CI, use `s3`, so every run sees the same state. With no
+  `bucket`, gkm creates a versioned, encrypted, private bucket for the project
+  on the first deploy:
 
 ```typescript
 // gkm.config.ts
-state: { provider: 's3', bucket: 'acme-deploy-state', region: 'eu-west-1' },
+state: { provider: 's3', region: 'eu-west-1' },
 ```
 
 Every run holds a lock on its stage. A second run fails with `StateLocked`,

@@ -128,6 +128,7 @@ export async function stateShowCommand(
 		config: workspace.state,
 		workspaceRoot: workspace.root,
 		workspaceName: workspace.name,
+		namespace: workspace.deploy?.namespace,
 	});
 
 	const stored = await store.read(options.stage);
@@ -165,6 +166,7 @@ export async function stateUnlockCommand(
 		config: workspace.state,
 		workspaceRoot: workspace.root,
 		workspaceName: workspace.name,
+		namespace: workspace.deploy?.namespace,
 	});
 
 	const holder = await store.forceUnlock(options.stage);
@@ -318,6 +320,7 @@ async function remoteAndLocal(
 			config: workspace.state,
 			workspaceRoot: workspace.root,
 			workspaceName: workspace.name,
+			namespace: workspace.deploy?.namespace,
 		}),
 	};
 }
@@ -550,6 +553,7 @@ export async function stateHistoryCommand(
 		config: workspace.state,
 		workspaceRoot: workspace.root,
 		workspaceName: workspace.name,
+		namespace: workspace.deploy?.namespace,
 	});
 
 	const stored = await store.read(options.stage);

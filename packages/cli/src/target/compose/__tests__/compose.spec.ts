@@ -650,7 +650,7 @@ describe("the stage's deploy state", { timeout: RUN_TIMEOUT }, () => {
 		const error = await run.result.catch((e) => e);
 		expect(error).toBeInstanceOf(LocalStateInCi);
 		expect(error.message).toContain(
-			"state: { provider: 'ssm', region: '<region>' }",
+			"state: { provider: 's3', region: '<region>' }",
 		);
 		expect(error.message).toContain('gkm state:push --stage production');
 		expect(fake.ops()).toEqual([]);

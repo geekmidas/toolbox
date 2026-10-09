@@ -149,6 +149,49 @@ describe('deployAccess', () => {
 		]);
 	});
 
+	it('creates the project bucket when the S3 state names none, and nothing else', () => {
+		const access = deployAccess(
+			workspace({
+				target: 'compose',
+				state: { provider: 's3', region: 'eu-west-1' },
+			}),
+			'prod',
+		);
+
+		if (access.kind !== 'scoped') return expect.unreachable();
+		expect(access.describe[0]).toContain(
+			'create the project bucket gkm-shop-<account>',
+		);
+		expect(access.statements('123456789012')).toEqual([
+			{
+				Sid: 'StageState',
+				Effect: 'Allow',
+				Action: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'],
+				Resource: 'arn:aws:s3:::gkm-shop-123456789012/gkm/shop/prod/*',
+			},
+			{
+				Sid: 'StageStateBucket',
+				Effect: 'Allow',
+				Action: ['s3:ListBucket'],
+				Resource: 'arn:aws:s3:::gkm-shop-123456789012',
+			},
+			{
+				Sid: 'ProjectBucket',
+				Effect: 'Allow',
+				Action: [
+					's3:CreateBucket',
+					's3:PutBucketVersioning',
+					's3:PutEncryptionConfiguration',
+					's3:PutBucketPublicAccessBlock',
+					's3:PutBucketOwnershipControls',
+					's3:PutLifecycleConfiguration',
+					's3:PutBucketTagging',
+				],
+				Resource: 'arn:aws:s3:::gkm-shop-123456789012',
+			},
+		]);
+	});
+
 	it('adds the stage’s deploy state in SSM and a KMS key for its secret', () => {
 		const access = deployAccess(
 			workspace({

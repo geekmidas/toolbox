@@ -10,6 +10,14 @@
  * did not land exactly one version above the one it was based on raced
  * another writer, and raises `StateVersionConflict` rather than reporting
  * success. Both writes stay in the parameter's history.
+ *
+ * Size: the state is written with the Intelligent-Tiering tier, so SSM picks
+ * the advanced tier (8 KB) once a value passes the standard tier's 4 KB, and a
+ * document over {@link SSM_COMPRESS_OVER} bytes is stored gzipped, as `gz:`
+ * and base64. Both forms are read, so a document written before either is
+ * read as it was. A deploy checks before it starts that the stage's document
+ * leaves room under {@link SSM_MAX_BYTES} (`assertStateRoom`); a write SSM
+ * refuses anyway raises `StateRejectedBySsm` rather than the SDK's error.
  */
 
 import {
@@ -23,13 +31,42 @@ import {
 } from '@aws-sdk/client-ssm';
 import type { AwsRegion } from './StateProvider';
 import {
+	compressBody,
 	DocumentStateStore,
+	decompressBody,
 	type LockHolder,
 	type RawState,
+	type StateCapacity,
 	StateLocked,
+	StateRejectedBySsm,
 	type StateVersion,
 	StateVersionConflict,
 } from './StateStore';
+
+/** The most an advanced-tier parameter holds — what the state must fit. */
+export const SSM_MAX_BYTES = 8192;
+/** A body past this is stored compressed: well under the standard 4 KB. */
+export const SSM_COMPRESS_OVER = 3072;
+
+/**
+ * `body` as the state parameter stores it: past the threshold, without its
+ * indentation and compressed.
+ */
+export function packSsmBody(body: string): string {
+	if (Buffer.byteLength(body) <= SSM_COMPRESS_OVER) return body;
+	let compact = body;
+	try {
+		compact = JSON.stringify(JSON.parse(body));
+	} catch {
+		// Not JSON: stored as it was given, compressed.
+	}
+	return compressBody(compact);
+}
+
+/** A refusal of the value itself — its size, past the tier's limit. */
+function refusedValue(error: unknown): boolean {
+	return (error as { name?: string })?.name === 'ValidationException';
+}
 
 export interface SSMStateStoreOptions {
 	workspaceName: string;
@@ -45,6 +82,8 @@ export class SSMStateStore extends DocumentStateStore {
 	constructor(
 		readonly workspaceName: string,
 		private readonly client: SSMClient,
+		/** For messages; the client's own region is used for every call. */
+		readonly region = '<region>',
 	) {
 		super();
 	}
@@ -61,7 +100,11 @@ export class SSMStateStore extends DocumentStateStore {
 		} else if (options.credentials) {
 			config.credentials = options.credentials;
 		}
-		return new SSMStateStore(options.workspaceName, new SSMClient(config));
+		return new SSMStateStore(
+			options.workspaceName,
+			new SSMClient(config),
+			options.region,
+		);
 	}
 
 	private name(stage: string, leaf: string): string {
@@ -75,10 +118,45 @@ export class SSMStateStore extends DocumentStateStore {
 	protected async readRaw(stage: string): Promise<RawState | null> {
 		const parameter = await this.get(this.name(stage, 'state'));
 		if (!parameter) return null;
-		return { body: parameter.value, version: String(parameter.version) };
+		return {
+			body: decompressBody(parameter.value),
+			version: String(parameter.version),
+		};
+	}
+
+	/** The stage's document as the next write would store it. */
+	async capacity(stage: string): Promise<StateCapacity | null> {
+		const raw = await this.readRaw(stage);
+		if (!raw) return null;
+		return {
+			bytes: Buffer.byteLength(packSsmBody(raw.body)),
+			limit: SSM_MAX_BYTES,
+			location: this.location(stage),
+			region: this.region,
+		};
 	}
 
 	protected async writeRaw(
+		stage: string,
+		document: string,
+		expectedVersion: StateVersion | null,
+	): Promise<StateVersion> {
+		try {
+			return await this.put(stage, packSsmBody(document), expectedVersion);
+		} catch (error) {
+			if (!refusedValue(error)) throw error;
+			throw new StateRejectedBySsm(
+				stage,
+				Buffer.byteLength(packSsmBody(document)),
+				this.location(stage),
+				this.region,
+				error,
+			);
+		}
+	}
+
+	/** The conditional put of `body`, stored as it is given. */
+	private async put(
 		stage: string,
 		body: string,
 		expectedVersion: StateVersion | null,
@@ -93,6 +171,7 @@ export class SSMStateStore extends DocumentStateStore {
 						Name,
 						Value: body,
 						Type: 'SecureString',
+						Tier: 'Intelligent-Tiering',
 						Description,
 					}),
 				);
@@ -121,6 +200,7 @@ export class SSMStateStore extends DocumentStateStore {
 				Name,
 				Value: body,
 				Type: 'SecureString',
+				Tier: 'Intelligent-Tiering',
 				Overwrite: true,
 				Description,
 			}),
@@ -154,8 +234,11 @@ export class SSMStateStore extends DocumentStateStore {
 			await this.client.send(
 				new PutParameterCommand({
 					Name: this.name(stage, 'state.v1'),
-					Value: body,
+					// Kept as it was — the v1 state a person restores by hand —
+					// unless it is too big to store that way.
+					Value: packSsmBody(body),
 					Type: 'SecureString',
+					Tier: 'Intelligent-Tiering',
 					Description: `GKM v1 deployment state for ${this.workspaceName}/${stage}, kept on migration`,
 				}),
 			);
@@ -172,6 +255,7 @@ export class SSMStateStore extends DocumentStateStore {
 				new PutParameterCommand({
 					Name,
 					Value: JSON.stringify(holder),
+					// A few hundred bytes: the standard tier, which costs nothing.
 					Type: 'String',
 					Description: `GKM deploy lock for ${this.workspaceName}/${stage}`,
 				}),

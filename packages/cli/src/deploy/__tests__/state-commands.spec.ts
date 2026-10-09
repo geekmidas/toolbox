@@ -9,9 +9,10 @@
  * Requires the emulator: docker compose up -d localstack
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { HeadBucketCommand, S3Client } from '@aws-sdk/client-s3';
 import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import {
 	afterAll,
@@ -24,10 +25,12 @@ import {
 	vi,
 } from 'vitest';
 import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
+import { projectBucket } from '../../providers/projectBucket';
 import { currentActor, describeActor } from '../actor';
 import { LocalStateStore } from '../LocalStateStore';
+import { S3StateStore } from '../S3StateStore';
 import { SSMStateStore } from '../SSMStateStore';
-import { StateLocked, type StateStore } from '../StateStore';
+import { COMPRESSED_PREFIX, StateLocked, type StateStore } from '../StateStore';
 import {
 	createComposeState,
 	type DokployStageState,
@@ -41,6 +44,7 @@ import {
 	stateShowCommand,
 	stateUnlockCommand,
 } from '../state-commands';
+import { busyResources, busyState } from './__helpers__/busyStage';
 
 const STAGE = 'production';
 
@@ -74,6 +78,8 @@ describe('state commands', () => {
 
 	beforeAll(() => {
 		vi.stubEnv('AWS_ENDPOINT_URL_SSM', LOCALSTACK_URL);
+		vi.stubEnv('AWS_ENDPOINT_URL_S3', LOCALSTACK_URL);
+		vi.stubEnv('AWS_ENDPOINT_URL_STS', LOCALSTACK_URL);
 		vi.stubEnv('AWS_ACCESS_KEY_ID', 'test');
 		vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'test');
 	});
@@ -83,13 +89,15 @@ describe('state commands', () => {
 	});
 
 	/** A workspace whose state lives where `provider` says. */
-	function workspace(provider: 'ssm' | 'local' | undefined) {
+	function workspace(provider: 'ssm' | 's3' | 'local' | undefined) {
 		const block =
 			provider === 'ssm'
 				? "state: { provider: 'ssm', region: 'us-east-1' },"
-				: provider === 'local'
-					? "state: { provider: 'local' },"
-					: '';
+				: provider === 's3'
+					? "state: { provider: 's3', region: 'us-east-1' },"
+					: provider === 'local'
+						? "state: { provider: 'local' },"
+						: '';
 		writeFileSync(
 			join(root, 'gkm.config.ts'),
 			`import { defineWorkspace } from '@geekmidas/cli/config';
@@ -439,6 +447,112 @@ export default defineWorkspace({
 			await stateShowCommand({ stage: STAGE });
 
 			expect(said()).toBe(`No state found for stage: ${STAGE}`);
+		});
+	});
+
+	describe('a busy stage, stored compressed in SSM', () => {
+		/** The busy stage, written into SSM the way deploys write it. */
+		async function busyInSsm(): Promise<void> {
+			const store = remote().store;
+			let version = await store.write(STAGE, busyState(STAGE), {
+				expectedVersion: null,
+			});
+			for (const record of busyResources(STAGE)) {
+				version = await store.putResource(STAGE, record, {
+					expectedVersion: version,
+				});
+			}
+			const { Parameter } = await new SSMClient({
+				region: 'us-east-1',
+				endpoint: LOCALSTACK_URL,
+			}).send(
+				new GetParameterCommand({
+					Name: `/gkm/${name}/${STAGE}/state`,
+					WithDecryption: true,
+				}),
+			);
+			expect(Parameter?.Value?.startsWith(COMPRESSED_PREFIX)).toBe(true);
+		}
+
+		it('state:show reads it', async () => {
+			workspace('ssm');
+			await busyInSsm();
+
+			await stateShowCommand({ stage: STAGE, json: true });
+
+			expect(JSON.parse(said())).toEqual(busyState(STAGE));
+		});
+
+		it('state:pull brings it down whole', async () => {
+			workspace('ssm');
+			await busyInSsm();
+
+			await statePullCommand({ stage: STAGE });
+
+			const pulled = await local().store.read(STAGE);
+			expect(pulled?.state).toEqual(busyState(STAGE));
+			expect(Object.keys(pulled!.resources)).toEqual(
+				busyResources(STAGE).map((r) => r.key),
+			);
+		});
+
+		it('moves to the project bucket: pull with ssm, switch to s3, push', async () => {
+			workspace('ssm');
+			await busyInSsm();
+			await statePullCommand({ stage: STAGE });
+
+			// The config switched to s3. A config module is imported once per
+			// process — each gkm command is a process of its own — so the switch
+			// is made in a copy of the workspace, with the pulled state in it.
+			const pulledInto = root;
+			root = mkdtempSync(join(tmpdir(), 'gkm-state-cmd-s3-'));
+			cpSync(join(pulledInto, '.gkm'), join(root, '.gkm'), {
+				recursive: true,
+			});
+			process.chdir(root);
+			workspace('s3');
+			await statePushCommand({ stage: STAGE });
+			rmSync(pulledInto, { recursive: true, force: true });
+
+			const s3 = S3StateStore.create({
+				workspaceName: name,
+				region: 'us-east-1',
+			});
+			const moved = await s3.read(STAGE);
+			expect(moved?.state).toEqual(busyState(STAGE));
+			expect(Object.keys(moved!.resources)).toEqual(
+				busyResources(STAGE).map((r) => r.key),
+			);
+			expect(s3.bucket).toBe(
+				projectBucket({ name }, { accountId: '000000000000' }),
+			);
+
+			// And deploys read it there: state:show with the s3 config.
+			out = [];
+			await stateShowCommand({ stage: STAGE, json: true });
+			expect(JSON.parse(said())).toEqual(busyState(STAGE));
+		});
+	});
+
+	describe('state in the project bucket', () => {
+		it('state:show of a project with no bucket yet creates none', async () => {
+			workspace('s3');
+
+			await stateShowCommand({ stage: STAGE });
+
+			expect(said()).toBe(`No state found for stage: ${STAGE}`);
+			const bucket = projectBucket({ name }, { accountId: '000000000000' });
+			const found = await new S3Client({
+				region: 'us-east-1',
+				endpoint: LOCALSTACK_URL,
+				forcePathStyle: true,
+			})
+				.send(new HeadBucketCommand({ Bucket: bucket }))
+				.then(
+					() => true,
+					() => false,
+				);
+			expect(found).toBe(false);
 		});
 	});
 

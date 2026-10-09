@@ -37,7 +37,11 @@ import { DevServicesNeedServerTarget } from './devServices';
 import { type DeployEvent, type DeployPhase, eventError } from './events';
 import { applicationName, deployIdentity } from './identity.js';
 import { assertStageReady } from './readiness';
-import { assertStateOutlivesRun, createStateStore } from './StateStore.js';
+import {
+	assertStateOutlivesRun,
+	assertStateRoom,
+	createStateStore,
+} from './StateStore.js';
 import type { DeployResult } from './types';
 
 /** What a run deploys, once the workspace is loaded. */
@@ -315,6 +319,19 @@ export async function runDeploy(
 	}
 
 	try {
+		// The state this run will write fits where it is kept — checked before
+		// anything is created or started, not found out at the last write,
+		// with the stack already running and nowhere to record it.
+		try {
+			await assertStateRoom(store, stage);
+		} catch (error) {
+			emit({
+				type: 'phase.failed',
+				phase: 'validate',
+				error: eventError(error),
+			});
+			throw error;
+		}
 		if (resources) await provision();
 		if (request.resourcesOnly) {
 			return resourcesOnly(target, phaseCtx, emit);
@@ -608,6 +625,7 @@ async function prepare(
 		config: workspace.state,
 		workspaceRoot: workspace.root,
 		workspaceName: workspace.name,
+		namespace: workspace.deploy?.namespace,
 	});
 	const secrets = await deploySecrets(workspace, stage, redactor, {
 		...(ctx.home ? { home: ctx.home } : {}),

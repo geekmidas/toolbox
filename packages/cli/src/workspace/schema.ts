@@ -801,8 +801,11 @@ const SSMStateConfigSchema = z.object({
  */
 const S3StateConfigSchema = z.object({
 	provider: z.literal('s3'),
-	/** Bucket the state lives in (must already exist) */
-	bucket: z.string().min(1),
+	/**
+	 * Bucket the state lives in (must already exist). Omitted, the project
+	 * bucket, created by the first deploy.
+	 */
+	bucket: z.string().min(1).optional(),
 	/** AWS region of the bucket */
 	region: AwsRegionSchema,
 	/** Key prefix inside the bucket (default: 'gkm') */
@@ -841,7 +844,8 @@ const BuiltInStateConfigSchema = z.discriminatedUnion('provider', [
  * Configures how deployment state is stored.
  * - 'local': Store in .gkm/deploy-{stage}.json (default)
  * - 'ssm': Store in AWS SSM Parameter Store (requires region)
- * - 's3': Store in an S3 bucket with conditional writes (requires bucket, region)
+ * - 's3': Store in an S3 bucket with conditional writes (requires region; the
+ *   project bucket is created when no bucket is named)
  * - Custom: Provide a StateStore, or a StateProvider with read/write methods
  */
 const StateConfigSchema = z.union([

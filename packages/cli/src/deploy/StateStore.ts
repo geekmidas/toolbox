@@ -21,6 +21,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { hostname, userInfo } from 'node:os';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { GkmError } from '../errors';
 import { type Actor, currentActor, isCi } from './actor';
 import { dnsRecordResource } from './dnsResources';
@@ -151,6 +152,21 @@ export interface StateStore {
 		key: string,
 		options?: ResourceWriteOptions,
 	): Promise<StateVersion>;
+	/**
+	 * How big the stage's document is as this store would write it, against
+	 * the most it can hold — for a store with a limit (SSM). `null` when the
+	 * stage has no state yet.
+	 */
+	capacity?(stage: string): Promise<StateCapacity | null>;
+}
+
+/** A stored document's size against the store's limit, in bytes. */
+export interface StateCapacity {
+	bytes: number;
+	limit: number;
+	location: string;
+	/** The store's AWS region, for the message that suggests S3. */
+	region?: string;
 }
 
 // ============================================================================
@@ -283,12 +299,74 @@ export class LocalStateInCi extends GkmError {
 			`\`gkm ${operation}\` would keep stage '${stage}'s deploy state in .gkm/ on this CI runner, ` +
 				`and the runner is discarded when the job ends: the next run would start ` +
 				`without it — no releases to roll back to, no record of what was created. ` +
-				`Keep the state in AWS — in gkm.config.ts:\n\n` +
-				`  state: { provider: 'ssm', region: '${region}' },\n\n` +
+				`Keep the state in S3, in a bucket gkm creates for the project — in gkm.config.ts:\n\n` +
+				`  state: { provider: 's3', region: '${region}' },\n\n` +
 				`then move the state you already have, from the machine that holds it:\n\n` +
 				`  gkm state:push --stage ${stage}\n`,
 		);
 		this.name = 'LocalStateInCi';
+	}
+}
+
+/**
+ * What a run adds to a document, at most, as the store writes it: a release
+ * per app and a history entry — the release and run history are capped, so
+ * a stage's document stops growing once they are full.
+ */
+export const STATE_HEADROOM_BYTES = 1024;
+
+/** The switch to S3, as the messages below spell it out. */
+function moveToS3(stage: string, region: string): string {
+	return (
+		`Keep the state in S3 instead — in gkm.config.ts:\n\n` +
+		`  state: { provider: 's3', region: '${region}' },\n\n` +
+		`which keeps it in a bucket gkm creates for the project. Move the state ` +
+		`there: \`gkm state:pull --stage ${stage}\` with the ssm config, then ` +
+		`switch the config and \`gkm state:push --stage ${stage}\`.`
+	);
+}
+
+/**
+ * Before a deploy changes anything: the stage's state, with room for what
+ * this run adds, would not fit in its SSM parameter.
+ */
+export class StateTooLargeForSsm extends GkmError {
+	constructor(
+		readonly stage: string,
+		readonly bytes: number,
+		readonly limit: number,
+		readonly location: string,
+		readonly region: string,
+	) {
+		super(
+			`Deploy state for stage '${stage}' is ${bytes} bytes compressed ` +
+				`(${location}), and with room for this deploy (${STATE_HEADROOM_BYTES} ` +
+				`bytes) it would pass SSM's limit of ${limit}. Nothing was deployed. ` +
+				moveToS3(stage, region),
+		);
+		this.name = 'StateTooLargeForSsm';
+	}
+}
+
+/** SSM refused a write of the stage's state — past its size limit, usually. */
+export class StateRejectedBySsm extends GkmError {
+	constructor(
+		readonly stage: string,
+		readonly bytes: number,
+		readonly location: string,
+		readonly region: string,
+		cause: unknown,
+	) {
+		super(
+			`SSM refused to save the deploy state for stage '${stage}' (${bytes} ` +
+				`bytes, ${location}): ${cause instanceof Error ? cause.message : String(cause)} ` +
+				`If a deploy was running, what it released is running now — only ` +
+				`the record of it is missing, and the state holds what the last ` +
+				`saved write left. ${moveToS3(stage, region)} Then deploy again to ` +
+				`record the release, or push a good copy with \`gkm state:push\`.`,
+			{ cause },
+		);
+		this.name = 'StateRejectedBySsm';
 	}
 }
 
@@ -351,6 +429,22 @@ export type DecodedDocument =
 	| { schemaVersion: 2; document: StateDocumentV2 }
 	| { schemaVersion: 1; state: DokployStageState };
 
+/** What marks a stored body as gzipped and base64-encoded. */
+export const COMPRESSED_PREFIX = 'gz:';
+
+/** `body` as `gz:` and its gzip in base64. */
+export function compressBody(body: string): string {
+	return COMPRESSED_PREFIX + gzipSync(body).toString('base64');
+}
+
+/** A stored body as the JSON it holds: compressed or not. */
+export function decompressBody(body: string): string {
+	if (!body.startsWith(COMPRESSED_PREFIX)) return body;
+	return gunzipSync(
+		Buffer.from(body.slice(COMPRESSED_PREFIX.length), 'base64'),
+	).toString('utf-8');
+}
+
 export function decodeDocument(
 	stage: string,
 	body: string,
@@ -358,7 +452,7 @@ export function decodeDocument(
 ): DecodedDocument {
 	let parsed: unknown;
 	try {
-		parsed = JSON.parse(body);
+		parsed = JSON.parse(decompressBody(body));
 	} catch (error) {
 		throw new StateUnreadable(stage, location, error);
 	}
@@ -777,6 +871,28 @@ export abstract class DocumentStateStore implements StateStore {
 // Resolution
 // ============================================================================
 
+/**
+ * Refuses, with `StateTooLargeForSsm`, a run whose state would not fit its
+ * store once this run has added to it — before the run changes anything, not
+ * at the last write, after the stack has started.
+ */
+export async function assertStateRoom(
+	store: StateStore,
+	stage: string,
+): Promise<void> {
+	const capacity = await store.capacity?.(stage);
+	if (!capacity) return;
+	if (capacity.bytes + STATE_HEADROOM_BYTES > capacity.limit) {
+		throw new StateTooLargeForSsm(
+			stage,
+			capacity.bytes,
+			capacity.limit,
+			capacity.location,
+			capacity.region ?? '<region>',
+		);
+	}
+}
+
 /** Whether `config` keeps state on this machine — `local`, or none given. */
 export function isLocalState(config: StateConfig | undefined): boolean {
 	return !config || config.provider === 'local';
@@ -871,7 +987,8 @@ export async function createStateStore(
 		const s3 = config as S3StateConfig;
 		return S3StateStore.create({
 			workspaceName,
-			bucket: s3.bucket,
+			...(s3.bucket ? { bucket: s3.bucket } : {}),
+			...(options.namespace ? { namespace: options.namespace } : {}),
 			prefix: s3.prefix,
 			region: s3.region,
 			profile: s3.profile,

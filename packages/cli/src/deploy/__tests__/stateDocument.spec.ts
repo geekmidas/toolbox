@@ -418,7 +418,7 @@ describe('LocalStateInCi', () => {
 
 		expect(error).toBeInstanceOf(LocalStateInCi);
 		expect((error as Error).message).toContain(
-			"state: { provider: 'ssm', region: 'eu-west-1' }",
+			"state: { provider: 's3', region: 'eu-west-1' }",
 		);
 		expect((error as Error).message).toContain(
 			'gkm state:push --stage production',
