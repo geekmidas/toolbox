@@ -41,8 +41,10 @@ export class AmazonApiGatewayV2Endpoint<
 		);
 	}
 
-	override getInput(e: APIGatewayProxyEventV2): GetInputResponse {
-		const raw = AmazonApiGatewayEndpoint.decodeBody(
+	override async getInput(
+		e: APIGatewayProxyEventV2,
+	): Promise<GetInputResponse> {
+		const raw = await this.readBody(
 			e.body,
 			e.isBase64Encoded,
 			e.headers?.['content-type'],

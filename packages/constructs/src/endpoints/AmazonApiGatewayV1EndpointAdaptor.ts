@@ -33,7 +33,7 @@ export class AmazonApiGatewayV1Endpoint<
 	TLogger,
 	TSession
 > {
-	override getInput(e: APIGatewayProxyEvent): GetInputResponse {
+	override async getInput(e: APIGatewayProxyEvent): Promise<GetInputResponse> {
 		// For arrays, AWS API Gateway V1 provides multiValueQueryStringParameters
 		const multiValueParams = e.multiValueQueryStringParameters || {};
 		const singleValueParams = e.queryStringParameters || {};
@@ -56,7 +56,7 @@ export class AmazonApiGatewayV1Endpoint<
 		}
 
 		return {
-			body: AmazonApiGatewayEndpoint.decodeBody(
+			body: await this.readBody(
 				e.body,
 				e.isBase64Encoded,
 				e.headers?.['Content-Type'] ?? e.headers?.['content-type'],

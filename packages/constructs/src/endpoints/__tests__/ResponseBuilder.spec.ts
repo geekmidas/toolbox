@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { ResponseBuilder, SuccessStatus } from '../Endpoint';
+import {
+	Endpoint,
+	RedirectStatus,
+	ResponseBuilder,
+	SuccessStatus,
+} from '../Endpoint';
 
 describe('ResponseBuilder', () => {
 	describe('header', () => {
@@ -145,6 +150,56 @@ describe('ResponseBuilder', () => {
 			const result = builder.status(SuccessStatus.OK);
 
 			expect(result).toBe(builder);
+		});
+	});
+
+	describe('redirect', () => {
+		it('should set Location and a 303 by default, with no body', () => {
+			const builder = new ResponseBuilder();
+			const result = builder.redirect('/ios');
+
+			expect(result.data).toBeUndefined();
+			expect(result.metadata.status).toBe(303);
+			expect(result.metadata.headers).toEqual({ location: '/ios' });
+		});
+
+		it('should take another redirect status', () => {
+			const result = new ResponseBuilder().redirect(
+				'/new',
+				RedirectStatus.PermanentRedirect,
+			);
+
+			expect(result.metadata.status).toBe(308);
+		});
+
+		it('should keep cookies and headers set before it', () => {
+			const result = new ResponseBuilder()
+				.cookie('session', 'abc')
+				.header('x-trace', '1')
+				.redirect('/ios');
+
+			expect(result.metadata.cookies?.get('session')?.value).toBe('abc');
+			expect(result.metadata.headers).toEqual({
+				'x-trace': '1',
+				location: '/ios',
+			});
+		});
+
+		it('should accept a 3xx through status()', () => {
+			const builder = new ResponseBuilder();
+			builder.status(303).header('location', '/ios');
+
+			expect(builder.getMetadata().status).toBe(303);
+		});
+	});
+
+	describe('Endpoint.isRedirectStatus', () => {
+		it('should be true for a 3xx only', () => {
+			expect(Endpoint.isRedirectStatus(303)).toBe(true);
+			expect(Endpoint.isRedirectStatus(301)).toBe(true);
+			expect(Endpoint.isRedirectStatus(200)).toBe(false);
+			expect(Endpoint.isRedirectStatus(404)).toBe(false);
+			expect(Endpoint.isRedirectStatus(undefined)).toBe(false);
 		});
 	});
 

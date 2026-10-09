@@ -29,8 +29,8 @@ import type { ActorExtractor, MappedAudit } from './audit';
 import type {
 	AuthorizeFn,
 	EndpointHandler,
+	EndpointStatus,
 	SessionFn,
-	SuccessStatus,
 } from './Endpoint';
 import {
 	Endpoint,
@@ -69,7 +69,7 @@ export class EndpointBuilder<
 > {
 	protected schemas: TInput = {} as TInput;
 	protected _description?: string;
-	protected _status?: SuccessStatus;
+	protected _status?: EndpointStatus;
 	protected _tags?: string[];
 	protected _memorySize?: number;
 	protected _responseType: string = 'application/json';
@@ -117,7 +117,12 @@ export class EndpointBuilder<
 		return cloneWith(this, { _description: description });
 	}
 
-	status(status: SuccessStatus): this {
+	/**
+	 * The status a successful request is answered with — a 2xx, or a 3xx for
+	 * an endpoint that always redirects (with a `Location` header). One that
+	 * sometimes redirects returns `response.redirect(url)` instead.
+	 */
+	status(status: EndpointStatus): this {
 		return cloneWith(this, { _status: status });
 	}
 

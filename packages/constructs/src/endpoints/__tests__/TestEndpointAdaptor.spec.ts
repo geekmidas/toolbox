@@ -653,6 +653,58 @@ describe('TestEndpointAdaptor', () => {
 			expect(result.status).toBe(201);
 		});
 
+		it('should answer with the endpoint status when the handler sets none', async () => {
+			const endpoint = api
+				.post('/resources')
+				.status(SuccessStatus.Created)
+				.output(z.object({ id: z.string() }))
+				.handle(async () => ({ id: '123' }));
+
+			const result = await new TestEndpointAdaptor(endpoint).fullRequest({
+				services: mockServices,
+				headers: { host: 'example.com' },
+			});
+
+			expect(result.status).toBe(201);
+		});
+
+		it('should expose a redirect: its status and Location, with no body', async () => {
+			const endpoint = api
+				.post('/sign-in')
+				.body(z.object({ password: z.string() }))
+				.output(z.string())
+				.responseType('text/html')
+				.handle(async (_ctx, response) =>
+					response.cookie('session', 'abc').redirect('/ios'),
+				);
+
+			const result = await new TestEndpointAdaptor(endpoint).fullRequest({
+				body: { password: 'hunter2' },
+				services: mockServices,
+				headers: { host: 'example.com' },
+			});
+
+			expect(result.status).toBe(303);
+			expect(result.headers.location).toBe('/ios');
+			expect(result.headers['set-cookie']).toEqual(['session=abc']);
+			expect(result.body).toBeUndefined();
+		});
+
+		it('should not check a redirect against an object output schema', async () => {
+			const endpoint = api
+				.get('/old')
+				.output(z.object({ id: z.string() }))
+				.handle(async (_ctx, response) => response.redirect('/new', 301));
+
+			const result = await new TestEndpointAdaptor(endpoint).fullRequest({
+				services: mockServices,
+				headers: { host: 'example.com' },
+			});
+
+			expect(result.status).toBe(301);
+			expect(result.headers.location).toBe('/new');
+		});
+
 		it('should delete cookies', async () => {
 			const endpoint = api
 				.post('/auth/logout')

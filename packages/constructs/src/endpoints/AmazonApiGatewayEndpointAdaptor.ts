@@ -13,6 +13,7 @@ import set from 'lodash.set';
 import type { HttpMethod } from '../types';
 import { Endpoint, type EndpointSchemas, ResponseBuilder } from './Endpoint';
 import type { Telemetry } from './lambdaTelemetry';
+import { readRequestBody } from './readRequestBody';
 import { envParserFor } from './surfaceEnv';
 
 /**
@@ -151,34 +152,49 @@ export abstract class AmazonApiGatewayEndpoint<
 			},
 		};
 	}
-	abstract getInput(e: TEvent): GetInputResponse;
+	abstract getInput(e: TEvent): Promise<GetInputResponse>;
 
 	/**
-	 * Decodes the raw body from an API Gateway event.
-	 * Uses Content-Type to decide parsing strategy (like Express/Fastify/Hono):
-	 * - `application/json` (or missing) → JSON.parse the decoded string
-	 * - Anything else → return decoded string as-is, let the schema handle it
+	 * Decodes the raw body from an API Gateway event — base64 when API
+	 * Gateway says so — and reads it by its Content-Type, as every adaptor
+	 * does (see {@link readRequestBody}): JSON, an HTML form's fields, or text.
 	 *
-	 * Defaults to JSON when no Content-Type is provided for backwards compatibility.
+	 * A body with no Content-Type is read as JSON, as it always has been here.
 	 */
-	static decodeBody(
+	static async decodeBody(
 		body: string | undefined | null,
 		isBase64Encoded: boolean | undefined,
 		contentType: string | undefined,
-	): any {
+	): Promise<unknown> {
 		if (!body) return undefined;
 
-		const raw = isBase64Encoded
-			? Buffer.from(body, 'base64').toString('utf-8')
-			: body;
+		// Bytes, not a string: a multipart file part is binary.
+		const bytes = Buffer.from(body, isBase64Encoded ? 'base64' : 'utf-8');
+		const request = new Request('http://api-gateway.invalid/', {
+			method: 'POST',
+			headers: contentType ? { 'content-type': contentType } : {},
+			body: bytes,
+		});
 
-		const isJson =
-			!contentType || contentType.toLowerCase().includes('application/json');
-		if (isJson) {
-			return JSON.parse(raw);
-		}
+		return readRequestBody(request, contentType, { untyped: 'json' });
+	}
 
-		return raw;
+	/**
+	 * The event's body, read only for an endpoint with a `.body()` schema —
+	 * one without is handed no body, and is not refused a content type it
+	 * never reads.
+	 */
+	protected readBody(
+		body: string | undefined | null,
+		isBase64Encoded: boolean | undefined,
+		contentType: string | undefined,
+	): Promise<unknown> {
+		if (!this.endpoint.input?.body) return Promise.resolve(undefined);
+		return AmazonApiGatewayEndpoint.decodeBody(
+			body,
+			isBase64Encoded,
+			contentType,
+		);
 	}
 
 	protected getCookies(e: TEvent): CookieFn {
@@ -190,7 +206,7 @@ export abstract class AmazonApiGatewayEndpoint<
 		return {
 			before: async (req) => {
 				try {
-					const { body, query, params } = this.getInput(req.event);
+					const { body, query, params } = await this.getInput(req.event);
 					const headers = req.event.headers as Record<string, string>;
 					const header = Endpoint.createHeaders(headers);
 					const cookie = this.getCookies(req.event);
@@ -442,11 +458,16 @@ export abstract class AmazonApiGatewayEndpoint<
 						metadata = response.metadata;
 					}
 
-					const output = this.endpoint.outputSchema
-						? await this.endpoint.parseOutput(data)
-						: undefined;
+					// A redirect has no body to check against the schema.
+					const redirect = Endpoint.isRedirectStatus(
+						metadata.status ?? this.endpoint.status,
+					);
+					const output =
+						this.endpoint.outputSchema && !redirect
+							? await this.endpoint.parseOutput(data)
+							: undefined;
 
-					return { output, metadata, responseBuilder };
+					return { output, metadata, responseBuilder, redirect };
 				};
 
 				// If RLS is active, wrap handler with RLS context
@@ -463,7 +484,7 @@ export abstract class AmazonApiGatewayEndpoint<
 			},
 			// Process declarative audits after handler (inside transaction)
 			async (result, auditor) => {
-				if (!audits?.length) return;
+				if (!audits?.length || result.redirect) return;
 
 				for (const audit of audits) {
 					if (audit.when && !audit.when(result.output as any)) {

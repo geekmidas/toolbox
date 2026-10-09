@@ -46,12 +46,12 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 	});
 
 	describe('getInput', () => {
-		it('should parse JSON body when content-type is application/json', () => {
+		it('should parse JSON body when content-type is application/json', async () => {
 			const endpoint = new Endpoint({
 				route: '/test',
 				method: 'GET',
 				fn: async () => ({ success: true }),
-				input: {},
+				input: { body: z.any() },
 				output: z.object({ success: z.boolean() }),
 				services: [],
 				logger: mockLogger,
@@ -69,16 +69,16 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				body: JSON.stringify({ name: 'test' }),
 			});
 
-			const result = adapter.getInput(event);
+			const result = await adapter.getInput(event);
 			expect(result.body).toEqual({ name: 'test' });
 		});
 
-		it('should decode base64-encoded JSON body', () => {
+		it('should decode base64-encoded JSON body', async () => {
 			const endpoint = new Endpoint({
 				route: '/test',
 				method: 'GET',
 				fn: async () => ({ success: true }),
-				input: {},
+				input: { body: z.any() },
 				output: z.object({ success: z.boolean() }),
 				services: [],
 				logger: mockLogger,
@@ -97,16 +97,16 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				isBase64Encoded: true,
 			});
 
-			const result = adapter.getInput(event);
+			const result = await adapter.getInput(event);
 			expect(result.body).toEqual({ name: 'test' });
 		});
 
-		it('should return raw string for non-JSON content-type', () => {
+		it('should read a form-urlencoded body into its fields', async () => {
 			const endpoint = new Endpoint({
 				route: '/test',
 				method: 'POST',
 				fn: async () => ({ success: true }),
-				input: {},
+				input: { body: z.any() },
 				output: z.object({ success: z.boolean() }),
 				services: [],
 				logger: mockLogger,
@@ -124,16 +124,16 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				body: 'amount=100&currency=ZAR',
 			});
 
-			const result = adapter.getInput(event);
-			expect(result.body).toBe('amount=100&currency=ZAR');
+			const result = await adapter.getInput(event);
+			expect(result.body).toEqual({ amount: '100', currency: 'ZAR' });
 		});
 
-		it('should decode base64 and return string for form-urlencoded content', () => {
+		it('should decode a base64 form-urlencoded body into its fields', async () => {
 			const endpoint = new Endpoint({
 				route: '/test',
 				method: 'POST',
 				fn: async () => ({ success: true }),
-				input: {},
+				input: { body: z.any() },
 				output: z.object({ success: z.boolean() }),
 				services: [],
 				logger: mockLogger,
@@ -152,8 +152,8 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 				isBase64Encoded: true,
 			});
 
-			const result = adapter.getInput(event);
-			expect(result.body).toBe('amount=100&currency=ZAR');
+			const result = await adapter.getInput(event);
+			expect(result.body).toEqual({ amount: '100', currency: 'ZAR' });
 		});
 	});
 
