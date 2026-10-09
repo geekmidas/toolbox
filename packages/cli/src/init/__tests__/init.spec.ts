@@ -676,8 +676,11 @@ describe('initCommand', () => {
 			expect(pkg.scripts['deploy:production']).toBe(
 				'gkm compose --stage production',
 			);
+			expect(config).toContain("default: 'compose',");
+			expect(config).toContain("registry: 'ghcr.io/acme',");
+			// Each deployed stage names its server, which gkm drives over SSH.
 			expect(config).toContain(
-				"deploy: { default: 'compose', registry: 'ghcr.io/acme' },",
+				"compose: { server: { production: { user: 'deploy' } } },",
 			);
 			expect(workflow).toContain('gkm compose --stage "$STAGE" --build --push');
 			expect(workflow).toContain('uses: geekmidas/toolbox/actions/stages@');

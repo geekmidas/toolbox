@@ -63,35 +63,10 @@ export interface DeployRequest {
 	allowDevServices?: boolean;
 	/** `--skip-dns`: a server target writes and checks no host's DNS. */
 	skipDns?: boolean;
-	/**
-	 * `--resources-only`: create what the stage needs — its providers'
-	 * resources and keys, and its DNS records — and nothing else: no image
-	 * built, nothing started. What a CI runner runs with the stage's cloud
-	 * credentials and DNS token before the server deploys.
-	 */
-	resourcesOnly?: boolean;
-	/**
-	 * `--skip-resources`: an earlier `--resources-only` run created them, so
-	 * no provider runs and no DNS record is written or checked.
-	 */
-	skipResources?: boolean;
 	/** `--rotate-keys`: each provider issues its runtime keys a successor. */
 	rotateKeys?: boolean;
 	/** `--retire-old-keys`: delete a rotated-out key now. */
 	retireOldKeys?: boolean;
-}
-
-/** `--resources-only` with `--skip-resources`: the one asks for what the other skips. */
-export class ResourcesOnlyAndSkipped extends GkmError {
-	constructor() {
-		super(
-			"--resources-only creates the stage's resources and nothing else, and " +
-				'--skip-resources deploys without creating them. Run the first where ' +
-				'the cloud credentials are (a CI runner), then the second where the ' +
-				'stack runs.',
-		);
-		this.name = 'ResourcesOnlyAndSkipped';
-	}
 }
 
 /**
@@ -247,9 +222,7 @@ export async function runDeploy(
 	// the deploy creates is never reported missing. A build-only run creates
 	// nothing, and neither does the local stage.
 	const resources =
-		!ctx.buildOnly &&
-		!request.skipResources &&
-		phaseCtx.stage !== phaseCtx.workspace.stages.local;
+		!ctx.buildOnly && phaseCtx.stage !== phaseCtx.workspace.stages.local;
 	const provision = async () => {
 		// The token the stage's DNS records are written with, asked for first:
 		// a deploy without it fails before anything is created or started.
@@ -280,9 +253,6 @@ export async function runDeploy(
 	// should not stop a real deploy that starts while it is looking.
 	if (ctx.dryRun) {
 		if (resources) await provision();
-		if (request.resourcesOnly) {
-			return resourcesOnly(target, phaseCtx, emit);
-		}
 		const run = await validate(phaseCtx, emit, () =>
 			readyToDeploy(target, phaseCtx),
 		);
@@ -333,9 +303,6 @@ export async function runDeploy(
 			throw error;
 		}
 		if (resources) await provision();
-		if (request.resourcesOnly) {
-			return resourcesOnly(target, phaseCtx, emit);
-		}
 		const run = await validate(phaseCtx, emit, () =>
 			readyToDeploy(target, phaseCtx),
 		);
@@ -422,40 +389,6 @@ async function provisionResources(
 /** What a dry run reads for a key its providers would write. */
 export const PLANNED_BY_THE_DEPLOY = 's3://planned-by-this-deploy';
 
-/** `--resources-only`: the target's own resources, and nothing else. */
-async function resourcesOnly(
-	target: AnyDeployTarget,
-	phaseCtx: DeployPhaseContext<unknown>,
-	emit: (event: DeployEvent) => void,
-): Promise<DeployResult> {
-	try {
-		if (target.resources) await target.resources(phaseCtx);
-	} catch (error) {
-		emit({ type: 'phase.failed', phase: 'validate', error: eventError(error) });
-		throw error;
-	}
-	emit({ type: 'phase.finished', phase: 'validate' });
-	return resourcesResult(phaseCtx);
-}
-
-/** A `--resources-only` run: no app was deployed. */
-function resourcesResult(phaseCtx: DeployPhaseContext<unknown>): DeployResult {
-	return {
-		apps: [],
-		projectId: '',
-		successCount: 0,
-		failedCount: 0,
-		stage: phaseCtx.stage,
-		identity: phaseCtx.identity.key,
-		tag: phaseCtx.tag,
-		dryRun: phaseCtx.dryRun,
-		environmentId: '',
-		skipped: [...phaseCtx.skipped],
-		urls: {},
-		changes: [],
-	};
-}
-
 /**
  * What a deploy validates: the stage ready to be deployed — every key it
  * needs, read as its providers left them — then what the target would run,
@@ -515,9 +448,6 @@ async function prepare(
 	redactor: Redactor,
 ): Promise<Prepared> {
 	const { stage } = request;
-	if (request.resourcesOnly && request.skipResources) {
-		throw new ResourcesOnlyAndSkipped();
-	}
 	const configured = typeof source === 'function' ? await source() : source;
 
 	// Before anything is provisioned: a typo'd stage would otherwise create a
@@ -659,7 +589,6 @@ async function prepare(
 		atomic: request.atomic ?? false,
 		allowDevServices,
 		...(request.skipDns ? { skipDns: true } : {}),
-		...(request.skipResources ? { skipResources: true } : {}),
 		credentials: ctx.credentials,
 		state: store,
 		secrets,

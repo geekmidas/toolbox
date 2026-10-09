@@ -1,6 +1,7 @@
 /**
  * The built-in `compose` target: a stage as one Docker Compose stack behind
- * Caddy, on the machine that runs the deploy.
+ * Caddy — the local stage on the machine that runs the deploy, a deployed
+ * stage on its server's Docker engine, over SSH (`deploy.compose.server`).
  *
  * ```bash
  * gkm deploy --target compose --stage production --tag v1.4.0  # what CI pushed
@@ -43,7 +44,6 @@ import {
 	provisionCompose,
 	readyCompose,
 	releaseCompose,
-	resourcesCompose,
 	validateCompose,
 	verifyCompose,
 } from './phases';
@@ -90,13 +90,14 @@ export function composeTarget(
 			rollback: false,
 			migrations: 'target',
 			images: true,
-			// The stack runs where the deploy does, so the local stage is one
-			// it can run — the `gkm dev` hostnames, behind Caddy's own CA.
+			// The local stage runs where the deploy does — the `gkm dev`
+			// hostnames, behind Caddy's own CA.
 			localStage: true,
 			// OpenObserve, in the stack, on loopback.
 			selfHostedTelemetry: true,
 		},
-		// Images are pulled with this machine's own `docker login`.
+		// Images are pulled with this machine's own `docker login`, which
+		// docker sends with each pull — on a server's engine too.
 		credentials: [],
 		// Built from the checkout, an image is named after its commit.
 		tag: ({ cwd }) => deps.revision(cwd),
@@ -108,7 +109,6 @@ export function composeTarget(
 			}),
 		ready: (ctx, run) => readyCompose(ctx, run, deps),
 		plan: (ctx, run) => planCompose(ctx, run),
-		resources: (ctx) => resourcesCompose(ctx, deps),
 		provision: (ctx, run) => provisionCompose(ctx, run, deps),
 		build: (ctx, run) => buildCompose(ctx, run, deps),
 		release: (ctx, run) => releaseCompose(ctx, run, deps),

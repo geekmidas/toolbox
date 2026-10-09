@@ -53,7 +53,13 @@ import {
 	stageGenerated,
 	writeComposeApp,
 } from './__helpers__/composeApp';
-import { answering, fakeDigest, fakeDocker } from './__helpers__/fakeDocker';
+import {
+	answering,
+	fakeDigest,
+	fakeDocker,
+	fakeServer,
+	TUNNEL_PORT,
+} from './__helpers__/fakeDocker';
 
 /** No Postgres is running here: its login is taken as the one it was given. */
 const signedIn: NonNullable<Parameters<typeof composeCommand>[1]>['logins'] =
@@ -142,6 +148,7 @@ describe('gkm compose --tag', { timeout: RUN_TIMEOUT }, () => {
 			{
 				lookup: resolvesHere,
 				docker,
+				server: fakeServer([]),
 				sql,
 				logins: signedIn,
 				migrate,
@@ -189,6 +196,7 @@ describe(
 				{
 					lookup: resolvesHere,
 					docker: fake.docker,
+					server: fakeServer([]),
 					probe: answering(fake.calls),
 					revision: async () => 'abc1234',
 					logins: signedIn,
@@ -378,6 +386,7 @@ describe('a failing seed', { timeout: RUN_TIMEOUT }, () => {
 			{
 				lookup: resolvesHere,
 				docker: fake.docker,
+				server: fakeServer([]),
 				probe: answering(fake.calls),
 				revision: async () => 'abc1234',
 				logins: signedIn,
@@ -615,6 +624,7 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 			{
 				lookup: resolvesHere,
 				docker: fake.docker,
+				server: fakeServer([]),
 				probe: answering(fake.calls),
 				revision: async () => 'abc1234',
 				logins: signedIn,
@@ -662,6 +672,7 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 			{
 				lookup: resolvesHere,
 				docker: fake.docker,
+				server: fakeServer([]),
 				revision: async () => 'abc1234',
 			},
 		);
@@ -690,6 +701,7 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 			{
 				lookup: resolvesHere,
 				docker: fake.docker,
+				server: fakeServer(fake.calls),
 				probe: answering(fake.calls),
 				revision: async () => 'abc1234',
 				logins: signedIn,
@@ -707,10 +719,17 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 			'postgres',
 			'redis',
 		]);
+		// MinIO is published on the server's loopback alone, and reached
+		// through an SSH tunnel to it — closed once the buckets are made.
+		expect(fake.calls).toContainEqual({
+			op: 'tunnel',
+			args: [`deploy@${SERVER_IPV4}`, 55432],
+		});
 		expect(fake.calls).toContainEqual({
 			op: 'buckets',
-			args: [55432, 'compose-app-minio'],
+			args: [TUNNEL_PORT, 'compose-app-minio'],
 		});
+		expect(fake.calls).toContainEqual({ op: 'tunnel-closed', args: 55432 });
 		expect(fake.calls).toContainEqual({
 			op: 'bucket',
 			args: 'uploads-production',
@@ -774,6 +793,7 @@ export const shipping = new ExternalApi('Shipping', {
 			{
 				lookup: resolvesHere,
 				docker: fake.docker,
+				server: fakeServer([]),
 				revision: async () => 'abc1234',
 			},
 		).catch((caught: unknown) => caught);
@@ -849,6 +869,7 @@ describe("a stage's addresses", { timeout: RUN_TIMEOUT }, () => {
 			{
 				lookup: resolvesHere,
 				docker: fakeDocker().docker,
+				server: fakeServer([]),
 				revision: async () => 'abc1234',
 			},
 		);
@@ -978,6 +999,7 @@ describe('telemetry, self-hosted by default', { timeout: RUN_TIMEOUT }, () => {
 			{
 				lookup: resolvesHere,
 				docker: fake.docker,
+				server: fakeServer([]),
 				probe: answering(fake.calls),
 				revision: async () => 'abc1234',
 				logins: signedIn,
@@ -1023,11 +1045,18 @@ describe('telemetry, self-hosted by default', { timeout: RUN_TIMEOUT }, () => {
 			'postgres',
 			'redis',
 		]);
-		expect(calls).toContainEqual({ op: 'health', args: 'openobserve' });
+		expect(calls).toContainEqual({
+			op: 'health',
+			args: 'openobserve',
+			host: `ssh://deploy@${SERVER_IPV4}`,
+		});
 		expect(said).toContain(
 			'📜 Logs (OpenObserve) on 127.0.0.1:5080 — from your computer:',
 		);
-		expect(said).toMatch(/ssh -N -L 5080:localhost:5080 \S+@\S+/);
+		// The tunnel is to the stage's server, by its login — not a guess.
+		expect(said).toContain(
+			`ssh -N -L 5080:localhost:5080 deploy@${SERVER_IPV4}\n`,
+		);
 		expect(said).toContain('Docker-published ports bypass ufw');
 	});
 });
@@ -1070,6 +1099,7 @@ describe(
 				{
 					lookup: resolvesHere,
 					docker,
+					server: fakeServer([]),
 					probe: answering(fake.calls),
 					revision: async () => 'abc1234',
 					logins: signedIn,
@@ -1128,6 +1158,7 @@ describe("the stack's Redis", { timeout: RUN_TIMEOUT }, () => {
 			{
 				lookup: resolvesHere,
 				docker: fake.docker,
+				server: fakeServer([]),
 				probe: answering(fake.calls),
 				revision: async () => 'abc1234',
 				logins: signedIn,
@@ -1213,6 +1244,7 @@ describe("the stack's Redis", { timeout: RUN_TIMEOUT }, () => {
 			{
 				lookup: resolvesHere,
 				docker: fake.docker,
+				server: fakeServer([]),
 				revision: async () => 'abc1234',
 			},
 		).catch((caught: unknown) => caught);
@@ -1480,6 +1512,7 @@ describe(
 			const { docker, ops } = fakeDocker();
 			const deps = {
 				docker,
+				server: fakeServer([]),
 				lookup: resolvesHere,
 				revision: async () => 'abc1234',
 			};
@@ -1545,6 +1578,7 @@ describe('with no deploy.registry', { timeout: RUN_TIMEOUT }, () => {
 			{
 				lookup: resolvesHere,
 				docker,
+				server: fakeServer([]),
 				revision: async () => 'abc1234',
 				logins: signedIn,
 
@@ -1596,6 +1630,7 @@ describe('gkm compose --tag --digests-file', { timeout: RUN_TIMEOUT }, () => {
 			{
 				lookup: resolvesHere,
 				docker,
+				server: fakeServer([]),
 				revision: vi.fn(),
 				logins: signedIn,
 

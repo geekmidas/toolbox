@@ -12,6 +12,59 @@ gkm upgrade --all
 `10.0.0-alpha.x` project), never goes backwards, and with `--all` also raises
 third-party packages to the floor of the peer ranges the new version declares.
 
+## After 10.0.0-alpha.98: a compose deploy drives the server over SSH {#compose-remote-docker}
+
+gkm no longer runs on a compose stage's server. `gkm compose --stage <stage>`
+(and `gkm deploy` through compose) runs on a CI runner or your machine and
+drives the stage's server's Docker engine over SSH (`DOCKER_HOST=ssh://…`).
+See [The server](/guide/compose#the-server).
+
+### Every deployed compose stage names its server
+
+```ts
+deploy: { compose: { server: { production: { user: 'deploy' } } } }
+```
+
+The host is the stage's `GKM_SERVER_IPV4` secret unless `host` is set; the
+port is 22 unless `port` is. A deployed stage without one fails with
+`ComposeServerMissing` before anything happens — it is never started on the
+machine you run the command on. SSH failing is `ComposeServerUnreachable`.
+
+### The server holds nothing but Docker and a login
+
+Remove from the server: the repository checkout, Node, the package manager,
+gkm, the AWS CLI and any AWS credentials or IAM user made for it, the stage's
+secrets key, and its `docker login` (images are pulled with the deploying
+machine's login). Keep Docker with its compose plugin, the deploy user in the
+`docker` group with your key authorised (sshd allowing TCP forwarding, the
+default), and ports 22/80/443. The stage's secrets and deploy state are read
+and written where the deploy runs.
+
+The shared Traefik edge (`proxy: 'traefik'`) now keeps its configuration in
+Docker rather than `~/.gkm/edge` on the server: the first deploy recreates
+the edge, and each stack on it registers again on its own next deploy.
+`~/.gkm/edge` can then be removed.
+
+### `--resources-only` and `--skip-resources` are removed
+
+With the deploy on the runner there is nothing to split: one `gkm compose`
+creates the stage's resources, writes its DNS records and starts the stack.
+Remove both flags; `ResourcesOnlyAndSkipped` is gone, and the stages action's
+`resources` output with them.
+
+### CI: regenerate the deploy workflow
+
+The compose workflow's deploy job is one step on the runner — checkout,
+install, a read-only registry login, the stage's role, the deploy key and the
+pinned host key, then `gkm compose --stage "$STAGE" --tag "$SHA"
+--digests-file digests.json` with `GODADDY_API_TOKEN` from the environment.
+The SSH step that ran gkm on the server is gone, and so are the `DEPLOY_HOST`,
+`DEPLOY_USER` and `DEPLOY_PATH` variables (the server comes from
+`deploy.compose.server` and `GKM_SERVER_IPV4`); `DEPLOY_SSH_KEY` and
+`DEPLOY_KNOWN_HOSTS` stay. The job needs `packages: read`. A stage deployed
+from CI keeps its secrets in a store on AWS (not the default `file`), which
+the runner reads with the stage's role.
+
 ## Secrets in the project bucket {#secrets-in-the-project-bucket}
 
 A stage's secrets can now live in the project bucket, next to its deploy state
@@ -90,24 +143,10 @@ confirms them by reading them back from the provider
 records as well as checking them. A token provider configured with no token
 fails the deploy at its start with `DnsCredentialMissing`.
 
-### `--resources-only` and `--skip-resources`
-
-`gkm deploy` and `gkm compose` take `--resources-only` (create the stage's
-resources and nothing else) and `--skip-resources` (an earlier run created
-them: run no provider, write or check no DNS record). Together they are
-`ResourcesOnlyAndSkipped`.
-
 ### CI: regenerate the deploy workflow, widen the role, add the DNS token
 
-- **The compose workflow** creates a stage's resources on the runner, so the
-  cloud credentials and the DNS token never reach the server. Regenerate it
-  with `gkm init`'s scaffold, or add by hand: the `resources` output to the
-  `stages` job (the stages action has it), and in the deploy job, for a stage
-  in `resources`, a checkout of the commit, an install, the stage's role and
-  `gkm deploy --stage "$STAGE" --resources-only`, then `--skip-resources` on
-  the server's `gkm compose`. See
-  [Deploying from CI](/guide/compose#deploying-from-ci). Only stages whose
-  secrets are in S3, SSM or Secrets Manager are in `resources`.
+- **The compose workflow** runs the whole deploy on the runner — see
+  [CI: regenerate the deploy workflow](#compose-remote-docker) above.
 - **The role.** Re-run `gkm deploy:github --stage <stage>` so a compose
   stage's policy also allows its `s3` provider's buckets and IAM users and its
   `route53` domain's records. See

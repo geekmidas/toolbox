@@ -50,6 +50,7 @@ import {
 import {
 	answering,
 	fakeDocker,
+	fakeServer,
 } from '../../compose/__tests__/__helpers__/fakeDocker';
 import { composeCommand } from '../../compose/index';
 import { deploy } from '../../deploy/deploy';
@@ -592,6 +593,7 @@ describe('objects: s3 on a deployed stage', () => {
 				{ cwd: dir, stage: STAGE, dryRun: true },
 				{
 					docker: fake.docker,
+					server: fakeServer([]),
 					probe: answering(fake.calls),
 					revision: async () => 'abc1234',
 					lookup: resolvesHere,
@@ -845,6 +847,7 @@ describe('the deploy creates them', () => {
 					healthIntervalMs: 0,
 					lookup: resolvesHere,
 					docker: fake.docker,
+					server: fakeServer([]),
 					probe: answering(fake.calls),
 				}),
 			},

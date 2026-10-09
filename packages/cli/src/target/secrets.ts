@@ -3,6 +3,7 @@
  * stage's own store, and masked in everything the run prints once read.
  */
 
+import { isReservedStageKey } from '../compose/dnsConfig.js';
 import { secretsStoreFor } from '../secrets/store';
 import type { StageSecrets } from '../secrets/types';
 import type { NormalizedWorkspace } from '../workspace/types';
@@ -37,7 +38,11 @@ export class Redactor {
 function secretValues(secrets: StageSecrets): string[] {
 	return [
 		secrets.seed,
-		...Object.values(secrets.custom ?? {}),
+		// The server's address is not one: it is in public DNS, and the deploy
+		// prints it as the place it is deploying to.
+		...Object.entries(secrets.custom ?? {})
+			.filter(([key]) => !isReservedStageKey(key))
+			.map(([, value]) => value),
 		...Object.values(secrets.urls ?? {}),
 		...Object.values(secrets.services ?? {}).map(
 			(service) => service?.password,

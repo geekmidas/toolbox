@@ -28,6 +28,18 @@ export interface StackRef {
 	/** Where relative paths in the file resolve — the workspace root. */
 	cwd: string;
 	/**
+	 * The Docker engine the stack runs on, as `DOCKER_HOST` names it: a
+	 * deployed stage's server, `ssh://user@host`. Absent for this machine's
+	 * engine — the local stage — whose environment is left as it is.
+	 *
+	 * Compose is a client: it reads the compose file and every `env_file` here
+	 * and sends their values in the API calls that create each container. A
+	 * stage's secrets therefore never land on the server as a file — they are
+	 * in the container's configuration, which only the server's Docker group
+	 * can read.
+	 */
+	host?: string;
+	/**
 	 * Where docker's own output goes: the terminal (the default), stderr — so
 	 * a `--json` run's stdout carries only events — or nowhere.
 	 */
@@ -43,8 +55,25 @@ const STDIO: Record<NonNullable<StackRef['output']>, RunOptions['stdio']> = {
 	ignore: 'ignore',
 };
 
+/**
+ * The environment a docker command for `engine` runs with: this process's,
+ * with `DOCKER_HOST` pointing at the stack's engine when it is a server's.
+ */
+export function engineEnv(
+	engine: Pick<StackRef, 'host'>,
+	extra: NodeJS.ProcessEnv = {},
+): NodeJS.ProcessEnv | undefined {
+	if (!engine.host && Object.keys(extra).length === 0) return undefined;
+	return {
+		...process.env,
+		...extra,
+		...(engine.host ? { DOCKER_HOST: engine.host } : {}),
+	};
+}
+
 /** How a stack's docker commands run: where it is, where output goes. */
-function runOptions(stack: StackRef, env?: NodeJS.ProcessEnv): RunOptions {
+function runOptions(stack: StackRef, extra?: NodeJS.ProcessEnv): RunOptions {
+	const env = engineEnv(stack, extra);
 	return {
 		cwd: stack.cwd,
 		stdio: STDIO[stack.output ?? 'inherit'],
@@ -52,6 +81,17 @@ function runOptions(stack: StackRef, env?: NodeJS.ProcessEnv): RunOptions {
 		...(stack.signal ? { signal: stack.signal } : {}),
 	};
 }
+
+/** What a command run in a container said, whatever it exited with. */
+export interface ExecResult {
+	/** Its exit code — null when the service has no running container. */
+	code: number | null;
+	stdout: string;
+	stderr: string;
+}
+
+/** The engine a call that is about no stack in particular is made against. */
+export type DockerEngine = Pick<StackRef, 'host'>;
 
 /** What the registry said about one image ref. */
 export type ImageLookup =
@@ -103,14 +143,24 @@ export interface ComposeDocker {
 	 */
 	push(stack: StackRef, ref: string): Promise<string>;
 	/**
-	 * What an image resolved to: the registry digest a pulled image has, or
-	 * the content id of one built here and never pushed.
+	 * What an image resolved to on the stack's engine: the registry digest a
+	 * pulled image has, or the content id of one built and never pushed.
 	 */
-	digest(ref: string): Promise<string | undefined>;
-	/** Create a network, unless one by that name is there. */
-	ensureNetwork(name: string): Promise<void>;
-	/** Every running container publishing `port` on the host. */
-	publishers(port: number): Promise<PortHolder[]>;
+	digest(engine: DockerEngine, ref: string): Promise<string | undefined>;
+	/** Create a network on the engine, unless one by that name is there. */
+	ensureNetwork(engine: DockerEngine, name: string): Promise<void>;
+	/** Every running container publishing `port` on the engine's host. */
+	publishers(engine: DockerEngine, port: number): Promise<PortHolder[]>;
+	/**
+	 * Run a command in a service's running container, `input` on its stdin —
+	 * how files reach a container on a server, through the engine alone.
+	 */
+	exec(
+		stack: StackRef,
+		service: string,
+		command: readonly string[],
+		input?: string,
+	): Promise<ExecResult>;
 }
 
 /**
@@ -210,19 +260,22 @@ function compose(stack: StackRef, args: readonly string[]): string[] {
 function capture(
 	command: string,
 	args: readonly string[],
-	timeoutMs = 60_000,
+	options: { env?: NodeJS.ProcessEnv; input?: string; timeoutMs?: number } = {},
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
+	const { timeoutMs = 60_000 } = options;
 	return new Promise((resolve, reject) => {
 		const child = spawn(command, [...args], {
-			stdio: ['ignore', 'pipe', 'pipe'],
+			stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
 			shell: false,
+			...(options.env ? { env: options.env } : {}),
 		});
+		if (options.input !== undefined) child.stdin?.end(options.input);
 		let stdout = '';
 		let stderr = '';
-		child.stdout.on('data', (chunk: Buffer) => {
+		child.stdout?.on('data', (chunk: Buffer) => {
 			stdout += chunk.toString();
 		});
-		child.stderr.on('data', (chunk: Buffer) => {
+		child.stderr?.on('data', (chunk: Buffer) => {
 			stderr += chunk.toString();
 		});
 		const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
@@ -307,10 +360,15 @@ export const dockerCompose: ComposeDocker = {
 	},
 
 	async port(stack, service, inside) {
+		const env = engineEnv(stack);
 		const output = await runOutput(
 			'docker',
 			compose(stack, ['port', service, String(inside)]),
-			{ cwd: stack.cwd, ...(stack.signal ? { signal: stack.signal } : {}) },
+			{
+				cwd: stack.cwd,
+				...(env ? { env } : {}),
+				...(stack.signal ? { signal: stack.signal } : {}),
+			},
 		);
 		// `127.0.0.1:54321` — the part after the last colon is the host port.
 		const port = Number(output.trim().split(':').pop());
@@ -321,9 +379,12 @@ export const dockerCompose: ComposeDocker = {
 	},
 
 	async health(stack, service) {
-		const { code, stdout } = await capture('docker', [
-			...compose(stack, ['ps', '--format', '{{.Health}}', service]),
-		]);
+		const env = engineEnv(stack);
+		const { code, stdout } = await capture(
+			'docker',
+			compose(stack, ['ps', '--format', '{{.Health}}', service]),
+			env ? { env } : {},
+		);
 		if (code !== 0) return undefined;
 		return stdout.trim().split('\n')[0] || undefined;
 	},
@@ -349,13 +410,13 @@ export const dockerCompose: ComposeDocker = {
 		return digest;
 	},
 
-	async digest(ref) {
-		const { code, stdout } = await capture('docker', [
-			'image',
-			'inspect',
-			'--format={{json .RepoDigests}} {{.Id}}',
-			ref,
-		]);
+	async digest(engine, ref) {
+		const env = engineEnv(engine);
+		const { code, stdout } = await capture(
+			'docker',
+			['image', 'inspect', '--format={{json .RepoDigests}} {{.Id}}', ref],
+			env ? { env } : {},
+		);
 		if (code !== 0) return undefined;
 
 		const [json = '[]', id] = stdout.trim().split(' ');
@@ -375,28 +436,71 @@ export const dockerCompose: ComposeDocker = {
 		return id || undefined;
 	},
 
-	async ensureNetwork(name) {
-		const { code } = await capture('docker', ['network', 'inspect', name]);
+	async ensureNetwork(engine, name) {
+		const env = engineEnv(engine);
+		const options = env ? { env } : {};
+		const { code } = await capture(
+			'docker',
+			['network', 'inspect', name],
+			options,
+		);
 		if (code === 0) return;
-		const created = await capture('docker', ['network', 'create', name]);
+		const created = await capture(
+			'docker',
+			['network', 'create', name],
+			options,
+		);
 		// Another run may have created it between the two calls.
 		if (created.code !== 0 && !/already exists/.test(created.stderr)) {
 			throw new NetworkCreateFailed(name, created.stderr);
 		}
 	},
 
-	async publishers(port) {
-		const { stdout } = await capture('docker', [
-			'ps',
-			'--format',
-			'{{.Names}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}\t{{.Ports}}',
-		]);
+	async publishers(engine, port) {
+		const env = engineEnv(engine);
+		const { stdout } = await capture(
+			'docker',
+			[
+				'ps',
+				'--format',
+				'{{.Names}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}\t{{.Ports}}',
+			],
+			env ? { env } : {},
+		);
 		return portHolders(stdout, port);
+	},
+
+	async exec(stack, service, command, input) {
+		const env = engineEnv(stack);
+		const options = env ? { env } : {};
+		// By its compose labels, so it needs no compose file: `--down` reaches
+		// the shared edge with nothing but its project's name.
+		const { stdout: ids } = await capture(
+			'docker',
+			[
+				'ps',
+				'-q',
+				'--filter',
+				`label=com.docker.compose.project=${stack.project}`,
+				'--filter',
+				`label=com.docker.compose.service=${service}`,
+			],
+			options,
+		);
+		const container = ids.trim().split('\n')[0];
+		if (!container) {
+			return { code: null, stdout: '', stderr: `${service} is not running` };
+		}
+		return capture(
+			'docker',
+			['exec', ...(input === undefined ? [] : ['-i']), container, ...command],
+			{ ...options, ...(input === undefined ? {} : { input }) },
+		);
 	},
 };
 
 /** `docker network create` failed. */
-export class NetworkCreateFailed extends Error {
+export class NetworkCreateFailed extends GkmError {
 	constructor(
 		readonly network: string,
 		readonly output: string,

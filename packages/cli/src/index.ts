@@ -525,14 +525,6 @@ program
 		"Deployed stage: neither write the public hosts' DNS records nor check they point at GKM_SERVER_IPV4 (a CDN or proxy in front, or records written elsewhere)",
 	)
 	.option(
-		'--resources-only',
-		"Deployed stage: create its resources — deploy.<kind>.<stage> providers' buckets and keys, and its DNS records — and nothing else (a CI runner, before the server deploys)",
-	)
-	.option(
-		'--skip-resources',
-		'Deployed stage: an earlier --resources-only run created its resources; run no provider and write or check no DNS record',
-	)
-	.option(
 		'--rotate-keys',
 		'Deployed stage: each provider issues its runtime keys a successor (the old one is deleted by the next deploy)',
 	)
@@ -892,14 +884,6 @@ program
 		"Compose: neither write the public hosts' DNS records nor check they point at GKM_SERVER_IPV4 (a CDN or proxy in front, or records written elsewhere)",
 	)
 	.option(
-		'--resources-only',
-		"Deployed stage: create its resources — deploy.<kind>.<stage> providers' buckets and keys, and its DNS records — and nothing else (a CI runner, before the server deploys)",
-	)
-	.option(
-		'--skip-resources',
-		'Deployed stage: an earlier --resources-only run created its resources; run no provider and write or check no DNS record',
-	)
-	.option(
 		'--rotate-keys',
 		'Deployed stage: each provider issues its runtime keys a successor (the old one is deleted by the next deploy)',
 	)
@@ -918,8 +902,6 @@ program
 			atomic?: boolean;
 			allowDevServices?: boolean;
 			skipDns?: boolean;
-			resourcesOnly?: boolean;
-			skipResources?: boolean;
 			rotateKeys?: boolean;
 			retireOldKeys?: boolean;
 		}) => {
@@ -938,8 +920,6 @@ program
 				...(options.atomic ? { atomic: true } : {}),
 				...(options.allowDevServices ? { allowDevServices: true } : {}),
 				...(options.skipDns ? { skipDns: true } : {}),
-				...(options.resourcesOnly ? { resourcesOnly: true } : {}),
-				...(options.skipResources ? { skipResources: true } : {}),
 				...(options.rotateKeys ? { rotateKeys: true } : {}),
 				...(options.retireOldKeys ? { retireOldKeys: true } : {}),
 			});

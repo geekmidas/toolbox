@@ -35,10 +35,6 @@ export interface DeployCliOptions {
 	allowDevServices?: boolean;
 	/** `--skip-dns`. */
 	skipDns?: boolean;
-	/** `--resources-only`. */
-	resourcesOnly?: boolean;
-	/** `--skip-resources`. */
-	skipResources?: boolean;
 	/** `--rotate-keys`. */
 	rotateKeys?: boolean;
 	/** `--retire-old-keys`. */
@@ -80,8 +76,6 @@ export async function deployCli(
 		...(options.atomic ? { atomic: true } : {}),
 		...(options.allowDevServices ? { allowDevServices: true } : {}),
 		...(options.skipDns ? { skipDns: true } : {}),
-		...(options.resourcesOnly ? { resourcesOnly: true } : {}),
-		...(options.skipResources ? { skipResources: true } : {}),
 		...(options.rotateKeys ? { rotateKeys: true } : {}),
 		...(options.retireOldKeys ? { retireOldKeys: true } : {}),
 	};

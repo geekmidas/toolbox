@@ -158,8 +158,8 @@ export class ProviderCredentialsMissing extends GkmError {
 				`into the stage's secrets — and it found no ${provider} credentials ` +
 				`to do it with. On this machine, supply ${describe}` +
 				(login ? `, or run gkm login --provider ${login}` : '') +
-				'. In CI, the step that runs the deploy (or gkm deploy ' +
-				`--resources-only) needs them: the '${stage}' environment's role ` +
+				'. In CI, the step that runs the deploy needs them: the ' +
+				`'${stage}' environment's role ` +
 				'(AWS_ROLE_ARN, from gkm deploy:github), assumed before that step. ' +
 				`With the keys set by hand instead, set deploy.${kind}.${stage} to 'external'.`,
 		);

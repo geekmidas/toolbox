@@ -226,6 +226,30 @@ export interface ComposeWorkspaceConfig<S extends string = string> {
 	 * ```
 	 */
 	tls?: StageMap<S, ComposeTlsConfig>;
+	/**
+	 * Each deployed stage's server: the SSH login gkm drives its Docker
+	 * engine with (`DOCKER_HOST=ssh://user@host`). gkm runs where the deploy
+	 * starts — a CI runner, a laptop — and never on the server, which holds
+	 * Docker and this login and no cloud credentials. The host defaults to
+	 * the stage's `GKM_SERVER_IPV4` secret. Every deployed stage needs one;
+	 * the local stage runs on this machine's Docker.
+	 *
+	 * ```ts
+	 * server: { production: { user: 'deploy' } }
+	 * server: { staging: { user: 'deploy', host: 'staging.example.com', port: 2222 } }
+	 * ```
+	 */
+	server?: StageMap<S, ComposeServerConfig>;
+}
+
+/** A deployed stage's server — `deploy.compose.server.<stage>`. */
+export interface ComposeServerConfig {
+	/** The SSH user, in the server's `docker` group. */
+	user: string;
+	/** The host to SSH to. Default: the stage's `GKM_SERVER_IPV4` secret. */
+	host?: string;
+	/** The SSH port. Default 22. */
+	port?: number;
 }
 
 /** The proxies a compose stack can be served by — `deploy.compose.proxy`. */

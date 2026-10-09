@@ -157,12 +157,9 @@ The providers run first, then the deploy's one readiness check, so
 `ExternalServicesNotConfigured` never reports a key the deploy creates. A
 build (`gkm compose --build --push`) runs neither: it needs none of the keys.
 
-In the [compose workflow](./compose.md#deploying-from-ci) the deploy runs on
-the server, which should not hold the stage account's credentials. For a
-stage whose secrets are in S3, SSM or Secrets Manager, the runner creates the
-resources first (`gkm deploy --stage <stage> --resources-only`, with the
-stage's role) and the server deploys with `--skip-resources`, which runs no
-provider — only `verify()`.
+In the [compose workflow](./compose.md#deploying-from-ci) the whole deploy
+runs on the runner, with the stage's role, and drives the server's Docker over
+SSH: the stage account's credentials never reach the server.
 
 The apps never see the provisioning credentials: only the bucket's own key, in
 its URL.
@@ -244,8 +241,8 @@ It is a provider like the others in every way that matters:
   `HOSTINGER_API_TOKEN` or `gkm login --provider hostinger`), the AWS SDK
   chain for Route53. With a token provider and no token, the deploy fails at
   its start with `DnsCredentialMissing`, naming the key. In CI the token is a
-  secret on the stage's environment, read by the runner's `--resources-only`
-  step, so the server never holds it.
+  secret on the stage's environment, read by the runner's deploy step, so the
+  server never holds it.
 - **Idempotent.** A record that already has the right value is left alone; one
   with another value is replaced, printing `old → new`. Only the A, AAAA and
   CNAME records of the stage's own hosts are ever written — one per host,
@@ -271,19 +268,13 @@ Dokploy, and `gkm compose` — runs `verify()` in its readiness check, before
 the target is asked anything: `HeadBucket` with
 the app's key from the stage's secrets. A bucket that is gone, or a key that is
 refused, stops the deploy with `ProvisionedBucketUnreachable`, saying to
-deploy with the stage account's credentials, which creates or repairs it — a
-run with `--skip-resources` does not.
+deploy with the stage account's credentials, which creates or repairs it.
 
 Providers run at the start of every deploy, whatever the target: a Dokploy
 deploy creates a stage's buckets the same way.
 
-| Flag | What runs |
-| --- | --- |
-| none | the providers' `ensure()`, the DNS records, then the checks and the release |
-| `--resources-only` | the providers and the DNS records, and nothing else — no image built, nothing started |
-| `--skip-resources` | no provider and no DNS record; `verify()` still runs |
-
-The two together are `ResourcesOnlyAndSkipped`.
+Each deploy runs the providers' `ensure()`, the DNS records, then the checks
+and the release; `--skip-dns` leaves the records out.
 
 `--allow-dev-services` never stands MinIO in for a bucket a provider backs:
 the provider accounts for it.

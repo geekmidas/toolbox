@@ -1,35 +1,33 @@
 /**
- * The server's shared Traefik edge, on disk and in Docker: started when a
- * stack needs it, and each stack's routes written to — and removed from —
- * the directory it watches.
+ * The server's shared Traefik edge, in Docker: started when a stack needs it,
+ * and each stack's routes written to — and removed from — the directory it
+ * watches.
  *
- * The edge lives in the deploy user's gkm home (`$GKM_HOME/edge`, else
- * `~/.gkm/edge`): the user who runs `gkm compose` owns it, so nothing needs
- * root, and it sits beside the stage keys that same user already keeps.
+ * Everything goes through the server's Docker engine, never its filesystem:
+ * the edge's static configuration is handed to it inline, and the directories
+ * it watches are volumes each stack writes into with `docker exec`. So the
+ * deploy runs anywhere that reaches the engine — a CI runner over SSH — and
+ * nothing it writes depends on a path on that machine.
  *
- *   ~/.gkm/edge/
- *     docker-compose.yml   the edge's compose project (gkm-edge)
- *     traefik.yml          its static configuration
- *     dynamic/<project>.yml  one per stack: its routers, services, middlewares
- *     certs/<project>.crt|.key  a stack's own certificate, where it has one
+ *   gkm-edge (compose project)
+ *     traefik.yml                   its static configuration (inline config)
+ *     dynamic/<project>.yml         one per stack: routers, services, middlewares
+ *     certs/<project>.crt|.key      a stack's own certificate, where it has one
  */
 
-import { existsSync } from 'node:fs';
-import {
-	chmod,
-	copyFile,
-	mkdir,
-	readFile,
-	rename,
-	rm,
-	writeFile,
-} from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { GkmError } from '../errors';
-import { gkmHome } from '../home.js';
-import type { ComposeDocker, PortHolder, StackRef } from './docker.js';
+import type {
+	ComposeDocker,
+	DockerEngine,
+	PortHolder,
+	StackRef,
+} from './docker.js';
 import type { ComposeProxy } from './routes.js';
 import {
+	EDGE_CERTS_DIR,
+	EDGE_DYNAMIC_DIR,
 	EDGE_NETWORK,
 	EDGE_PROJECT,
 	EDGE_SERVICE,
@@ -38,22 +36,31 @@ import {
 	traefikStaticFile,
 } from './traefik.js';
 
-/** The edge's directory on this machine. */
-export function edgeDir(env: NodeJS.ProcessEnv = process.env): string {
-	return join(gkmHome(env), 'edge');
-}
-
 /** The edge's compose project, as docker is asked about it. */
 export function edgeRef(
-	dir: string,
-	options: Pick<StackRef, 'output' | 'signal'> = {},
+	file: string,
+	options: Pick<StackRef, 'output' | 'signal' | 'host'> = {},
 ): StackRef {
 	return {
 		project: EDGE_PROJECT,
-		file: join(dir, 'docker-compose.yml'),
-		cwd: dir,
+		file,
+		cwd: dirname(file),
 		...options,
 	};
+}
+
+/** Writing to or removing from the edge's volumes failed. */
+export class EdgeWriteFailed extends GkmError {
+	constructor(
+		readonly path: string,
+		readonly output: string,
+	) {
+		super(
+			`Could not write ${path} in the shared edge (${EDGE_PROJECT}): ${output.trim() || 'it is not running'}. ` +
+				`Check it with \`docker compose -p ${EDGE_PROJECT} ps\` on the server, and run gkm compose again.`,
+		);
+		this.name = 'EdgeWriteFailed';
+	}
 }
 
 /**
@@ -95,11 +102,16 @@ export class ComposeProxyClash extends GkmError {
  */
 export async function assertEdgePorts(
 	docker: ComposeDocker,
-	options: { project: string; proxy: ComposeProxy; ports: EdgePorts },
+	options: {
+		project: string;
+		proxy: ComposeProxy;
+		ports: EdgePorts;
+		engine: DockerEngine;
+	},
 ): Promise<void> {
 	const { project, proxy, ports } = options;
 	for (const port of [ports.https, ports.http]) {
-		for (const holder of await docker.publishers(port)) {
+		for (const holder of await docker.publishers(options.engine, port)) {
 			const own =
 				proxy === 'traefik'
 					? holder.project === EDGE_PROJECT
@@ -109,129 +121,154 @@ export async function assertEdgePorts(
 	}
 }
 
-/** Write a file whole or not at all: a temporary file, then a rename. */
-async function writeAtomic(
+/**
+ * Write a file into the edge's running container whole or not at all: a
+ * temporary name, then a rename. Not `.yml`: the edge reads only `.yml`,
+ * `.yaml` and `.toml` files, so it never sees one half written.
+ */
+async function put(
+	docker: ComposeDocker,
+	edge: StackRef,
 	path: string,
 	content: string,
-	mode = 0o644,
+	mode: '600' | '644' = '644',
 ): Promise<void> {
-	// Not `.yml`: the edge reads only `.yml`, `.yaml` and `.toml` files, so it
-	// never sees one half written.
-	const temporary = `${path}.${process.pid}.tmp`;
-	await writeFile(temporary, content, { mode });
-	await chmod(temporary, mode);
-	await rename(temporary, path);
+	const result = await docker.exec(
+		edge,
+		EDGE_SERVICE,
+		[
+			'sh',
+			'-c',
+			'set -e; t="$1.tmp"; cat > "$t"; chmod "$2" "$t"; mv "$t" "$1"',
+			'sh',
+			path,
+			mode,
+		],
+		content,
+	);
+	if (result.code !== 0) {
+		throw new EdgeWriteFailed(path, `${result.stderr}${result.stdout}`);
+	}
 }
 
-/** Write a file only when its content changed; whether it did. */
-async function writeIfChanged(path: string, content: string): Promise<boolean> {
-	const current = await readFile(path, 'utf-8').catch(() => undefined);
-	if (current === content) return false;
-	await writeAtomic(path, content);
-	return true;
+/** Remove files from the edge's container; whether the first was there. */
+async function remove(
+	docker: ComposeDocker,
+	edge: StackRef,
+	paths: readonly string[],
+): Promise<boolean> {
+	const result = await docker.exec(edge, EDGE_SERVICE, [
+		'sh',
+		'-c',
+		'e=1; [ -f "$1" ] && e=0; rm -f "$@"; exit $e',
+		'sh',
+		...paths,
+	]);
+	return result.code === 0;
 }
 
 /**
- * The edge, up: its network, its files, and its container — started when it
- * is not running, and recreated when its configuration changed. Idempotent:
- * on a server where it already runs as configured, `up` changes nothing.
+ * The edge, up: its network and its container — started when it is not
+ * running, and recreated when its configuration changed. Idempotent: on a
+ * server where it already runs as configured, `up` changes nothing. Its
+ * compose file is written to `file`, on this machine: compose reads it here.
  */
 export async function ensureEdge(
 	docker: ComposeDocker,
 	options: {
-		dir: string;
+		file: string;
 		ports: EdgePorts;
 		logging: { driver: string; options: Record<string, string> };
+		host?: string;
 		output?: StackRef['output'];
 		signal?: AbortSignal;
 	},
 ): Promise<string[]> {
-	const { dir, ports } = options;
-	await mkdir(join(dir, 'dynamic'), { recursive: true });
-	await mkdir(join(dir, 'certs'), { recursive: true, mode: 0o700 });
-
+	const { file, ports } = options;
 	const staticConfig = traefikStaticFile(ports);
-	await writeIfChanged(join(dir, 'traefik.yml'), staticConfig);
-	await writeIfChanged(
-		join(dir, 'docker-compose.yml'),
-		edgeComposeFile({ dir, ports, staticConfig, logging: options.logging }),
-	);
+	const content = edgeComposeFile({
+		ports,
+		staticConfig,
+		logging: options.logging,
+	});
+	await mkdir(dirname(file), { recursive: true });
+	if ((await readFile(file, 'utf-8').catch(() => undefined)) !== content) {
+		await writeFile(file, content);
+	}
 
-	await docker.ensureNetwork(EDGE_NETWORK);
-	await docker.up(
-		edgeRef(dir, {
-			...(options.output ? { output: options.output } : {}),
-			...(options.signal ? { signal: options.signal } : {}),
-		}),
-		[EDGE_SERVICE],
-	);
-	return [join(dir, 'traefik.yml'), join(dir, 'docker-compose.yml')];
+	const ref = edgeRef(file, {
+		...(options.host ? { host: options.host } : {}),
+		...(options.output ? { output: options.output } : {}),
+		...(options.signal ? { signal: options.signal } : {}),
+	});
+	await docker.ensureNetwork(ref, EDGE_NETWORK);
+	await docker.up(ref, [EDGE_SERVICE]);
+	return [file];
 }
 
-/** A stack's file in the edge's directory. */
-export function routesFile(dir: string, project: string): string {
-	return join(dir, 'dynamic', `${project}.yml`);
+/** A stack's routes, inside the edge's container. */
+export function routesPath(project: string): string {
+	return `${EDGE_DYNAMIC_DIR}/${project}.yml`;
+}
+
+function certificatePaths(project: string): [string, string] {
+	return [
+		`${EDGE_CERTS_DIR}/${project}.crt`,
+		`${EDGE_CERTS_DIR}/${project}.key`,
+	];
 }
 
 /**
  * Register a stack with the edge: its certificate first, where it has one,
  * so the routes that need it never load without it — then its routes, in one
- * rename the edge picks up whole.
+ * rename the edge picks up whole. The certificate is read here and written
+ * through the engine. The paths written, inside the edge.
  */
 export async function writeEdgeRoutes(
-	dir: string,
+	docker: ComposeDocker,
+	edge: StackRef,
 	project: string,
 	routes: string,
 	certificate?: { certFile: string; keyFile: string },
 ): Promise<string[]> {
-	const files: string[] = [];
+	const written: string[] = [];
+	const [crt, key] = certificatePaths(project);
 	if (certificate) {
-		const certs = join(dir, 'certs');
-		await mkdir(certs, { recursive: true, mode: 0o700 });
-		const crt = join(certs, `${project}.crt`);
-		const key = join(certs, `${project}.key`);
-		await copyFile(certificate.certFile, `${crt}.tmp`);
-		await rename(`${crt}.tmp`, crt);
-		await copyFile(certificate.keyFile, `${key}.tmp`);
-		await chmod(`${key}.tmp`, 0o600);
-		await rename(`${key}.tmp`, key);
-		files.push(crt, key);
+		await put(docker, edge, crt, await readFile(certificate.certFile, 'utf-8'));
+		await put(
+			docker,
+			edge,
+			key,
+			await readFile(certificate.keyFile, 'utf-8'),
+			'600',
+		);
+		written.push(crt, key);
 	} else {
-		await removeCertificate(dir, project);
+		await remove(docker, edge, [crt, key]);
 	}
-	await mkdir(join(dir, 'dynamic'), { recursive: true });
-	const file = routesFile(dir, project);
-	await writeAtomic(file, routes);
-	files.push(file);
-	return files;
+	await put(docker, edge, routesPath(project), routes);
+	written.push(routesPath(project));
+	return written;
 }
 
 /** What a stack's file holds for the moment between emptying and removal. */
 const UNREGISTERED = '# Unregistered by gkm compose --down.\n';
 
-async function removeCertificate(dir: string, project: string): Promise<void> {
-	for (const ext of ['crt', 'key']) {
-		await rm(join(dir, 'certs', `${project}.${ext}`), { force: true });
-	}
-}
-
 /**
  * Unregister a stack: its routes, then its certificate. Whether there was
- * anything to remove.
+ * anything to remove — false, too, when the edge is not running.
  */
 export async function removeEdgeRoutes(
-	dir: string,
+	docker: ComposeDocker,
+	edge: StackRef,
 	project: string,
 ): Promise<boolean> {
-	const file = routesFile(dir, project);
-	const existed = existsSync(file);
-	if (existed) {
-		// Emptied by a rename before it is removed. A watcher that misses the
-		// removal — Docker Desktop's file sharing can drop a delete event —
-		// has still seen the stack's routes go.
-		await writeAtomic(file, UNREGISTERED);
-	}
-	await rm(file, { force: true });
-	await removeCertificate(dir, project);
-	return existed;
+	const file = routesPath(project);
+	const there = await docker.exec(edge, EDGE_SERVICE, ['test', '-f', file]);
+	if (there.code !== 0) return false;
+	// Emptied by a rename before it is removed: a watcher that misses the
+	// removal has still seen the stack's routes go.
+	await put(docker, edge, file, UNREGISTERED);
+	await remove(docker, edge, [file, ...certificatePaths(project)]);
+	return true;
 }

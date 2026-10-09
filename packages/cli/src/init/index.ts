@@ -647,9 +647,11 @@ function printNextSteps(
 			`  Images are pushed to ${options.registry}; .github/workflows/deploy.yml builds them`,
 		);
 		console.log(
-			'  and runs gkm compose on the server over SSH. See the comments in it for the',
+			"  and deploys each stage to its server's Docker over SSH (deploy.compose.server",
 		);
-		console.log('  environment variables and secrets each stage needs.');
+		console.log(
+			'  in gkm.config.ts). See the comments in it for the secrets each stage needs.',
+		);
 		console.log('');
 	}
 

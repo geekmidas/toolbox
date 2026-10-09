@@ -115,14 +115,16 @@ export function traefikStatic(ports: EdgePorts): Record<string, unknown> {
 
 /** The edge's compose document. */
 export function edgeCompose(options: {
-	/** The edge's directory on the host. */
-	dir: string;
 	ports: EdgePorts;
-	/** The static configuration, as written — its hash recreates the edge. */
+	/**
+	 * The static configuration, as written: handed to the container inline
+	 * (`configs.content`), so nothing is read from a path on whichever machine
+	 * runs the deploy — and its hash recreates the edge when it changes.
+	 */
 	staticConfig: string;
 	logging: { driver: string; options: Record<string, string> };
 }): Record<string, unknown> {
-	const { dir, ports } = options;
+	const { ports } = options;
 	return {
 		name: EDGE_PROJECT,
 		services: {
@@ -130,12 +132,13 @@ export function edgeCompose(options: {
 				image: TRAEFIK_IMAGE,
 				restart: 'unless-stopped',
 				ports: [`${ports.https}:443`, `${ports.http}:80`],
+				configs: [{ source: 'traefik', target: '/etc/traefik/traefik.yml' }],
 				volumes: [
-					`${dir}/traefik.yml:/etc/traefik/traefik.yml:ro`,
-					// Directories, not files: a stack's file is replaced by a
-					// rename, which a file mounted on its own would never see.
-					`${dir}/dynamic:${EDGE_DYNAMIC_DIR}:ro`,
-					`${dir}/certs:${EDGE_CERTS_DIR}:ro`,
+					// Volumes on the server, written through the engine (`docker
+					// exec`): each stack's routes and certificate, replaced by a
+					// rename the file provider sees whole.
+					`dynamic:${EDGE_DYNAMIC_DIR}`,
+					`certs:${EDGE_CERTS_DIR}`,
 					'acme:/acme',
 				],
 				// Static configuration is read at start: a change to it is a
@@ -156,7 +159,8 @@ export function edgeCompose(options: {
 				logging: options.logging,
 			},
 		},
-		volumes: { acme: {} },
+		configs: { traefik: { content: options.staticConfig } },
+		volumes: { acme: {}, dynamic: {}, certs: {} },
 		networks: { edge: { name: EDGE_NETWORK, external: true } },
 	};
 }
@@ -288,7 +292,7 @@ export function edgeComposeFile(
 # Started by the first stack that runs with proxy: 'traefik', and left
 # running by gkm compose --down. Stop it, once nothing uses it, with:
 #
-#   docker compose -p ${EDGE_PROJECT} -f ${options.dir}/docker-compose.yml down
+#   docker compose -p ${EDGE_PROJECT} down
 ${yaml(edgeCompose(options))}`;
 }
 

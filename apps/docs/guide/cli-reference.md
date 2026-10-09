@@ -341,12 +341,6 @@ Options:
   --skip-dns             Compose: neither write the public hosts' DNS records
                          nor check they point at GKM_SERVER_IPV4 — a CDN or
                          proxy in front, or records written elsewhere
-  --resources-only       Deployed stage: create its resources — providers'
-                         buckets and keys, its DNS records — and nothing else:
-                         no image built, nothing started (a CI runner)
-  --skip-resources       Deployed stage: an earlier --resources-only run
-                         created them; run no provider, write or check no DNS
-                         record (providers' verify() still runs)
   --rotate-keys          Deployed stage: each provider issues its keys a
                          successor; this deploy releases on it, the next one
                          deletes the old key
@@ -384,8 +378,7 @@ A deployed stage's **resources** are created by the deploy, every run, before
 its checks: each provider's buckets and keys ([Providers](./providers.md)),
 and, on compose with a `dns` provider for the stage's domain, one record per
 public host, read back from the provider ([Compose: DNS](./compose.md#dns)).
-`--dry-run` prints both plans and writes nothing. `--resources-only` with
-`--skip-resources` fails with `ResourcesOnlyAndSkipped`.
+`--dry-run` prints both plans and writes nothing.
 
 See [Deploy targets](./deploy-targets.md) for targets and `deploy.targets`,
 [Deploying from a program](./deploy-api.md) for `deploy()` and the events
@@ -501,7 +494,9 @@ an `::error::` annotation, and nothing is written.
 ### `gkm compose`
 
 Run the workspace's APIs and sites for a stage as one Docker Compose stack
-behind Caddy, over HTTPS. See [Deploy with Docker Compose](./compose.md).
+behind Caddy, over HTTPS — the local stage on this machine's Docker, a deployed
+stage on its server's (`deploy.compose.server`), over SSH. See
+[Deploy with Docker Compose](./compose.md).
 
 ```bash
 gkm compose [options]
@@ -526,10 +521,6 @@ Options:
   --skip-dns       Deployed stage: neither write the public hosts' DNS
                    records nor check they point at GKM_SERVER_IPV4 (a CDN or
                    proxy in front, or records written elsewhere)
-  --resources-only Deployed stage: create its resources — providers' buckets
-                   and keys, its DNS records — and nothing else (a CI runner)
-  --skip-resources Deployed stage: an earlier --resources-only run created
-                   them; run no provider, write or check no DNS record
   --rotate-keys    Deployed stage: issue each provisioned key a successor
   --retire-old-keys
                    Deployed stage: delete a rotated-out key now
@@ -553,7 +544,13 @@ Errors:
   ProviderCredentialsMissing
                           a deploy.<kind>.<stage> provider with no credentials
                           to create its resources with
-  ResourcesOnlyAndSkipped --resources-only with --skip-resources
+  ComposeServerMissing    a deployed stage with no deploy.compose.server entry,
+                          or no host there and no GKM_SERVER_IPV4 to default to
+  ComposeServerUnreachable
+                          SSH to the stage's server, or Docker there, did not
+                          answer (quotes ssh's stderr) — before anything changes
+  ComposeTunnelFailed     the SSH tunnel to the stack's Postgres or MinIO did
+                          not open (AllowTcpForwarding on the server)
   RegistryRequired        --push, --tag or --pull with no deploy.registry
                           (the image would be a Docker Hub name)
   ComposePushNeedsBuild   --push without --build, or with --pull

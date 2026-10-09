@@ -14,6 +14,7 @@
  * service reach the same API by different names.
  */
 
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import {
 	type ConstructManifest,
@@ -234,6 +235,9 @@ export interface StackService {
 	environment?: Record<string, string>;
 	ports?: string[];
 	volumes?: string[];
+	/** Files handed to the container inline — see {@link withCaddyConfigs}. */
+	configs?: { source: string; target: string; mode?: number }[];
+	labels?: Record<string, string>;
 	depends_on?: Record<string, { condition: 'service_healthy' }>;
 	healthcheck?: ComposeService['healthcheck'];
 	/**
@@ -253,6 +257,64 @@ export interface StackFile {
 	volumes: Record<string, Record<string, never>>;
 	/** The shared edge's network, which the stack joins but never creates. */
 	networks?: Record<string, { name: string; external: true }>;
+	/** Files the stack's containers are handed, by content. */
+	configs?: Record<string, { content: string }>;
+}
+
+/**
+ * The stack with Caddy's files inline: its Caddyfile and, where the stage has
+ * one, its own certificate — `configs` with their `content`, which compose
+ * copies into the container through the engine's API. Nothing is mounted from
+ * a path, so the stack runs the same on a server's engine, over SSH, as on
+ * this machine's. Their hash is a label: a changed file is a changed service,
+ * which `up` recreates (compose does not, for a config's content alone).
+ */
+export function withCaddyConfigs(
+	compose: StackFile,
+	files: { caddyfile: string; tls?: { cert: string; key: string } },
+): StackFile {
+	const caddy = compose.services.caddy;
+	if (!caddy) return compose;
+	const configs: Record<string, { content: string }> = {
+		caddyfile: { content: files.caddyfile },
+		...(files.tls
+			? {
+					'tls-cert': { content: files.tls.cert },
+					'tls-key': { content: files.tls.key },
+				}
+			: {}),
+	};
+	const hash = createHash('sha256');
+	for (const [name, { content }] of Object.entries(configs)) {
+		hash.update(`${name}\0${content}\0`);
+	}
+	return {
+		...compose,
+		services: {
+			...compose.services,
+			caddy: {
+				...caddy,
+				configs: [
+					{ source: 'caddyfile', target: '/etc/caddy/Caddyfile' },
+					...(files.tls
+						? [
+								{ source: 'tls-cert', target: `${CADDY_TLS_DIR}/cert.pem` },
+								{
+									source: 'tls-key',
+									target: `${CADDY_TLS_DIR}/key.pem`,
+									mode: 0o400,
+								},
+							]
+						: []),
+				],
+				labels: {
+					...caddy.labels,
+					'dev.geekmidas.caddy.config': hash.digest('hex').slice(0, 16),
+				},
+			},
+		},
+		configs: { ...compose.configs, ...configs },
+	};
 }
 
 export interface ComposeStack {
@@ -979,7 +1041,6 @@ export function composeStack(input: StackInput): ComposeStack {
 		edge: new Map(
 			[...edgeServices].map((service) => [service, hostOf(service)]),
 		),
-		tls: certificate !== undefined,
 	});
 
 	// One route per public host — the data both proxies render.
@@ -1220,8 +1281,6 @@ function stackFile(options: {
 	proxy: ComposeProxy;
 	/** Behind the shared edge: each service it routes to, and its alias. */
 	edge: ReadonlyMap<string, string>;
-	/** Whether the stage has its own certificate, which Caddy mounts. */
-	tls: boolean;
 }): StackFile {
 	const { project, plan, apps } = options;
 	// What reconcile defines; OpenObserve is the stack's own.
@@ -1367,13 +1426,9 @@ function stackFile(options: {
 			image: DEFAULT_IMAGES.caddy!,
 			restart: 'unless-stopped',
 			ports: [`${options.https}:443`, `${options.http}:80`],
-			volumes: [
-				'./Caddyfile:/etc/caddy/Caddyfile:ro',
-				'caddy-data:/data',
-				'caddy-config:/config',
-				// The stage's own certificate, copied beside the Caddyfile.
-				...(options.tls ? [`./tls:${CADDY_TLS_DIR}:ro`] : []),
-			],
+			// The Caddyfile and the stage's own certificate are inline configs,
+			// added as the file is written (`withCaddyConfigs`).
+			volumes: ['caddy-data:/data', 'caddy-config:/config'],
 			depends_on: Object.fromEntries(apps.map((app) => [app.name, HEALTHY])),
 			healthcheck: {
 				test: ['CMD', 'caddy', 'version'],
