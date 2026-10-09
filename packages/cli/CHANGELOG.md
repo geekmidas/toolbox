@@ -1,5 +1,28 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.92
+
+### Patch Changes
+
+- [#224](https://github.com/geekmidas/toolbox/pull/224) [`75f4304`](https://github.com/geekmidas/toolbox/commit/75f4304d00348ffde6da92a7c8d5d6849d4e8f1b) Thanks [@geekmidas](https://github.com/geekmidas)! - Named errors print without a stack, and missing AWS credentials are named in every command
+
+  An error gkm raises on purpose now extends `GkmError`, and every command prints it as `Name: message` (and what caused it, by message), without a stack trace, and exits 1. Any other error keeps its stack, and `--debug` or `GKM_DEBUG=1` shows the stack of both.
+
+  The SSM and Secrets Manager stores raise `StageSecretsUnreadable` themselves, on a read or a write, when there are no AWS credentials or AWS refuses them as expired. Every command that touches a deployed stage's secrets (`secrets:add`, `secrets:set`, `secrets:show`, `secrets:unset`, `secrets:migrate`, `setup`, `deploy`, `compose`) says so by name instead of printing the SDK's `CredentialsProviderError`. With a profile, the message says `aws sso login --profile <profile>`. The class lives in `secrets/awsStore.ts` and is still exported from `setup`.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.92
+  - @geekmidas/constructs@10.0.0-alpha.92
+  - @geekmidas/db@10.0.0-alpha.92
+  - @geekmidas/envkit@10.0.0-alpha.92
+  - @geekmidas/errors@10.0.0-alpha.92
+  - @geekmidas/logger@10.0.0-alpha.92
+  - @geekmidas/manifest@10.0.0-alpha.92
+  - @geekmidas/schema@10.0.0-alpha.92
+  - @geekmidas/services@10.0.0-alpha.92
+  - @geekmidas/storage@10.0.0-alpha.92
+  - @geekmidas/telescope@10.0.0-alpha.92
+
 ## 10.0.0-alpha.91
 
 ### Minor Changes
