@@ -10,7 +10,7 @@
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { deployIdentity } from '../deploy/identity.js';
 import { DeployJournal } from '../deploy/journal.js';
-import type { StateStore } from '../deploy/StateStore.js';
+import type { ResourceRecord, StateStore } from '../deploy/StateStore.js';
 import { createComposeState, createEmptyState } from '../deploy/state.js';
 import { GkmError } from '../errors';
 import { initStageSecrets } from '../secrets/storage.js';
@@ -56,6 +56,10 @@ export interface VerifyStageInput {
 	stage: string;
 	/** The stage's secrets, by key. */
 	secrets: Readonly<Record<string, string>>;
+	/** What the stage's state records, by key. */
+	resources?: Readonly<Record<string, ResourceRecord>>;
+	/** Progress worth printing. */
+	log?: (line: string) => void;
 }
 
 /**
@@ -79,6 +83,8 @@ export async function verifyStageProviders(
 			stage: input.stage,
 			config: choice.config,
 			secrets: input.secrets,
+			...(input.resources ? { resources: input.resources } : {}),
+			...(input.log ? { log: input.log } : {}),
 		});
 		verified.push(`${kind}: ${provider.name}`);
 	}

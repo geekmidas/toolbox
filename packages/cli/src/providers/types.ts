@@ -117,6 +117,13 @@ export interface VerifyContext<C extends ProviderConfig> {
 	config: C;
 	/** The stage's secrets, by key. */
 	secrets: Readonly<Record<string, string>>;
+	/**
+	 * What the stage's state records, by key — how a provider knows a key it
+	 * checks was issued moments ago. Absent when nothing was read.
+	 */
+	resources?: Readonly<Record<string, ResourceRecord>>;
+	/** Progress worth printing: waiting on something. */
+	log?: (line: string) => void;
 }
 
 /** Where a provider's provisioning credentials are looked for. */

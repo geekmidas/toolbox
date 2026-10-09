@@ -90,6 +90,8 @@ function phase(
 				custom: overrides.custom ?? {},
 			}),
 		},
+		// A stage nothing has been recorded for yet.
+		state: { read: async () => null },
 		logger: { info: () => {}, warn: (m: string) => warned.push(m) },
 		emit: (event: unknown) => events.push(event),
 	} as unknown as DeployPhaseContext<unknown>;
