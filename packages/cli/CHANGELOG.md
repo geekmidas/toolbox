@@ -1,5 +1,27 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.101
+
+### Patch Changes
+
+- [#235](https://github.com/geekmidas/toolbox/pull/235) [`702011a`](https://github.com/geekmidas/toolbox/commit/702011a3550cd22cc7fc3aff167b309e4070399b) Thanks [@geekmidas](https://github.com/geekmidas)! - `ComposeTunnelFailed` names the likely cause of a refused migration tunnel: a
+  deploy key installed with `restrict` in `authorized_keys` refuses port
+  forwarding unless it also says `port-forwarding`
+  (`restrict,port-forwarding ssh-ed25519 …`), and sshd must allow it
+  (`AllowTcpForwarding yes` or `local`).
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.101
+  - @geekmidas/constructs@10.0.0-alpha.101
+  - @geekmidas/db@10.0.0-alpha.101
+  - @geekmidas/envkit@10.0.0-alpha.101
+  - @geekmidas/errors@10.0.0-alpha.101
+  - @geekmidas/logger@10.0.0-alpha.101
+  - @geekmidas/manifest@10.0.0-alpha.101
+  - @geekmidas/schema@10.0.0-alpha.101
+  - @geekmidas/services@10.0.0-alpha.101
+  - @geekmidas/storage@10.0.0-alpha.101
+  - @geekmidas/telescope@10.0.0-alpha.101
+
 ## 10.0.0-alpha.100
 
 ### Minor Changes
