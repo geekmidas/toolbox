@@ -1,6 +1,9 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { writeComposeApp } from '../../../compose/__tests__/__helpers__/composeApp';
+import {
+	type ComposeAppOptions,
+	writeComposeApp,
+} from '../../../compose/__tests__/__helpers__/composeApp';
 
 /**
  * The compose fixture — an API, an auth server and a site — with every kind
@@ -8,8 +11,11 @@ import { writeComposeApp } from '../../../compose/__tests__/__helpers__/composeA
  * server, mail, a third-party API whose credentials have a schema, and a
  * `Credential` that nothing reads.
  */
-export function writeServicesApp(dir: string): void {
-	writeComposeApp(dir);
+export function writeServicesApp(
+	dir: string,
+	options: ComposeAppOptions = {},
+): void {
+	writeComposeApp(dir, options);
 	writeFileSync(
 		join(dir, 'constructs', 'services.ts'),
 		`import { Credential } from '@geekmidas/constructs/credential';

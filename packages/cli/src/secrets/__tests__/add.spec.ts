@@ -196,23 +196,20 @@ describe('gkm secrets:add --json', () => {
 describe('gkm secrets:add', () => {
 	it('builds every kind of key, re-asks what is refused, and saves them encrypted', async () => {
 		prompts.inject([
-			[
-				'MAIL_URL',
-				'MAIL_FROM',
-				'UPLOADS_URL',
-				'UPLOADS_SERVER_URL',
-				'SHIPPING_CREDENTIALS',
-			],
-			// MAIL_URL: host, port, user, password, TLS.
+			// MAIL_URL: another SMTP server — host, port, user, password, TLS.
+			'set',
+			'other',
 			'smtp.example.com',
 			'2525',
 			'mailer@example.com',
 			'p@ss/word+1',
 			'tls',
 			// MAIL_FROM: refused, then taken.
+			'set',
 			'not-an-address',
 			'noreply@shop.example.com',
 			// UPLOADS_URL: an S3-compatible store, with a key of its own.
+			'set',
 			'compatible',
 			'https://minio.example.com',
 			'acme-uploads',
@@ -222,9 +219,11 @@ describe('gkm secrets:add', () => {
 			'AKIA/EXAMPLE+1',
 			'se/cr+et==',
 			// UPLOADS_SERVER_URL: refused, then taken.
+			'set',
 			'ftp://files.example.com',
 			'https://files.shop.example.com',
 			// SHIPPING_CREDENTIALS: each field, refused by the schema, then again.
+			'set',
 			'bad-key',
 			'acct_1',
 			false,
@@ -245,6 +244,7 @@ describe('gkm secrets:add', () => {
 			'UPLOADS_SERVER_URL',
 			'SHIPPING_CREDENTIALS',
 		]);
+		expect(result.missing).toEqual([]);
 
 		const values = await stored();
 
@@ -296,19 +296,25 @@ describe('gkm secrets:add', () => {
 	it('asks before replacing a key that is set, and offers the shared key pair', async () => {
 		await seed({ UPLOADS_URL: 's3://old-bucket?region=eu-west-1' });
 
-		prompts.inject([['UPLOADS_URL'], false]);
+		// The unset keys come first; the set one is walked last.
+		prompts.inject(['skip', 'skip', 'skip', 'skip', 'set', false]);
 		const kept = await secretsAddCommand(
 			{ cwd: dir, stage: STAGE, home },
 			io(),
 		);
 
+		expect(kept.keys.map((k) => k.key).at(-1)).toBe('UPLOADS_URL');
 		expect(kept.saved).toEqual([]);
 		expect((await stored()).UPLOADS_URL).toBe(
 			's3://old-bucket?region=eu-west-1',
 		);
 
 		prompts.inject([
-			['UPLOADS_URL'],
+			'skip',
+			'skip',
+			'skip',
+			'skip',
+			'set',
 			true,
 			// AWS S3, no key of its own — then the shared pair.
 			's3',
@@ -339,7 +345,17 @@ describe('gkm secrets:add', () => {
 	});
 
 	it('builds an R2 bucket from its account id', async () => {
-		prompts.inject([['UPLOADS_URL'], 'r2', 'abc123', 'media', false, false]);
+		prompts.inject([
+			'skip',
+			'skip',
+			'set',
+			'r2',
+			'abc123',
+			'media',
+			false,
+			false,
+			'stop',
+		]);
 
 		await secretsAddCommand({ cwd: dir, stage: STAGE, home }, io());
 
@@ -348,6 +364,236 @@ describe('gkm secrets:add', () => {
 			region: 'auto',
 			endpoint: 'https://abc123.r2.cloudflarestorage.com',
 		});
+	});
+});
+
+describe('checkpoints', () => {
+	it('saves each key as it is set: one aborted later is kept', async () => {
+		prompts.inject([
+			'set',
+			'resend',
+			're_kept',
+			// Ctrl-C at MAIL_FROM's checkpoint.
+			new Error('aborted'),
+		]);
+
+		const result = await secretsAddCommand(
+			{ cwd: dir, stage: STAGE, home },
+			io(),
+		);
+
+		expect(result.saved).toEqual(['MAIL_URL']);
+		expect(parseEmailUrl((await stored()).MAIL_URL!)).toMatchObject({
+			host: 'smtp.resend.com',
+			auth: { user: 'resend', pass: 're_kept' },
+		});
+		expect(lines.join('\n')).toContain('Still missing: MAIL_FROM');
+	});
+
+	it('keeps what is saved when stopped partway through a later key', async () => {
+		prompts.inject(['set', 'resend', 're_kept', 'set', new Error('aborted')]);
+
+		await secretsAddCommand({ cwd: dir, stage: STAGE, home }, io());
+
+		expect(Object.keys(await stored())).toEqual(['MAIL_URL']);
+	});
+
+	it('leaves a skipped key unset, and moves on', async () => {
+		prompts.inject(['skip', 'set', 'noreply@shop.example.com', 'stop']);
+
+		const result = await secretsAddCommand(
+			{ cwd: dir, stage: STAGE, home },
+			io(),
+		);
+
+		expect(result.skipped).toEqual(['MAIL_URL']);
+		expect(result.saved).toEqual(['MAIL_FROM']);
+		expect(await stored()).toEqual({ MAIL_FROM: 'noreply@shop.example.com' });
+		expect(lines.join('\n')).toContain('Skipped: MAIL_URL');
+	});
+
+	it('stops at Stop here, keeping what was saved and listing what is missing', async () => {
+		prompts.inject(['set', 'postmark', 'tok', 'stop']);
+
+		const result = await secretsAddCommand(
+			{ cwd: dir, stage: STAGE, home },
+			io(),
+		);
+
+		expect(result.saved).toEqual(['MAIL_URL']);
+		expect(result.missing).toEqual([
+			'MAIL_FROM',
+			'UPLOADS_URL',
+			'UPLOADS_SERVER_URL',
+			'SHIPPING_CREDENTIALS',
+		]);
+		expect(Object.keys(await stored())).toEqual(['MAIL_URL']);
+		const printed = lines.join('\n');
+		expect(printed).toContain(
+			"Saved to the stage 'production' (file store): MAIL_URL",
+		);
+		expect(printed).toContain(
+			'Still missing: MAIL_FROM, UPLOADS_URL, UPLOADS_SERVER_URL, SHIPPING_CREDENTIALS',
+		);
+	});
+
+	it('picks up on a re-run with only what is still missing', async () => {
+		prompts.inject(['set', 'postmark', 'tok', 'stop']);
+		await secretsAddCommand({ cwd: dir, stage: STAGE, home }, io());
+
+		prompts.inject(['stop']);
+		const again = await secretsAddCommand(
+			{ cwd: dir, stage: STAGE, missing: true, home },
+			io(),
+		);
+
+		expect(again.keys.map((k) => k.key)).toEqual([
+			'MAIL_FROM',
+			'UPLOADS_URL',
+			'UPLOADS_SERVER_URL',
+			'SHIPPING_CREDENTIALS',
+		]);
+	});
+});
+
+describe('a stage whose buckets a provider creates', () => {
+	beforeEach(() => {
+		writeServicesApp(dir, {
+			deployObjects: { production: { provider: 's3' } },
+		});
+	});
+
+	it('walks none of the keys gkm setup writes, and says what creates them', async () => {
+		prompts.inject(['skip', 'skip', 'skip']);
+
+		const result = await secretsAddCommand(
+			{ cwd: dir, stage: STAGE, home },
+			io(),
+		);
+
+		expect(result.keys.map((k) => k.key)).toEqual([
+			'MAIL_URL',
+			'MAIL_FROM',
+			'SHIPPING_CREDENTIALS',
+		]);
+		const printed = lines.join('\n');
+		expect(printed).toContain(
+			'UPLOADS_URL — created by gkm setup --stage production (deploy.objects.production is s3)',
+		);
+		expect(printed).toContain(
+			'UPLOADS_SERVER_URL — created by gkm setup --stage production',
+		);
+		expect(result.missing).toEqual([
+			'MAIL_URL',
+			'MAIL_FROM',
+			'SHIPPING_CREDENTIALS',
+		]);
+	});
+
+	it('has nothing to add once the rest is set', async () => {
+		await seed({
+			MAIL_URL: 'smtp://x',
+			MAIL_FROM: 'noreply@shop.example.com',
+			SHIPPING_CREDENTIALS: '{"apiKey":"sk_1","accountId":"a"}',
+		});
+
+		const result = await secretsAddCommand(
+			{ cwd: dir, stage: STAGE, missing: true, home },
+			io(),
+		);
+
+		expect(result.keys).toEqual([]);
+		const printed = lines.join('\n');
+		expect(printed).toContain(
+			"Nothing to add: the stage 'production' has every key it needs.",
+		);
+		expect(printed).toContain('UPLOADS_URL — created by gkm setup');
+	});
+
+	it('marks them provisioned in --json', async () => {
+		await secretsAddCommand(
+			{ cwd: dir, stage: STAGE, json: true, home },
+			io(false),
+		);
+
+		const listed = JSON.parse(written.join('')) as StageKeyJson[];
+		expect(listed.find((k) => k.key === 'UPLOADS_URL')).toMatchObject({
+			provisioned: true,
+		});
+		expect(listed.find((k) => k.key === 'MAIL_URL')).not.toHaveProperty(
+			'provisioned',
+		);
+	});
+});
+
+describe('a mail server from a known service', () => {
+	const build = async (answers: unknown[]) => {
+		prompts.inject(['set', ...answers, 'stop']);
+		await secretsAddCommand({ cwd: dir, stage: STAGE, home }, io());
+		return (await stored()).MAIL_URL!;
+	};
+
+	it('Resend asks only for the API key', async () => {
+		const url = await build(['resend', 're_ab/c+d=']);
+
+		expect(url).toBe(
+			`smtps://resend:${encodeURIComponent('re_ab/c+d=')}@smtp.resend.com:465`,
+		);
+		expect(parseEmailUrl(url)).toEqual({
+			host: 'smtp.resend.com',
+			port: 465,
+			secure: true,
+			auth: { user: 'resend', pass: 're_ab/c+d=' },
+		});
+	});
+
+	it('Amazon SES asks the region and the SMTP credentials', async () => {
+		const url = await build(['ses', 'eu-central-1', 'AKIASMTP', 'smtp/pw+']);
+
+		expect(parseEmailUrl(url)).toEqual({
+			host: 'email-smtp.eu-central-1.amazonaws.com',
+			port: 587,
+			secure: false,
+			auth: { user: 'AKIASMTP', pass: 'smtp/pw+' },
+		});
+	});
+
+	it('Postmark asks for the server token once, as user and password', async () => {
+		const url = await build(['postmark', 'tok-123']);
+
+		expect(parseEmailUrl(url)).toEqual({
+			host: 'smtp.postmarkapp.com',
+			port: 587,
+			secure: false,
+			auth: { user: 'tok-123', pass: 'tok-123' },
+		});
+	});
+
+	it("Mailgun's EU region", async () => {
+		const url = await build([
+			'mailgun',
+			'eu',
+			'postmaster@mg.example.com',
+			'pw',
+		]);
+
+		expect(parseEmailUrl(url)).toMatchObject({
+			host: 'smtp.eu.mailgun.org',
+			port: 587,
+			auth: { user: 'postmaster@mg.example.com', pass: 'pw' },
+		});
+	});
+
+	it('another SMTP server is asked for as before', async () => {
+		const url = await build([
+			'other',
+			'smtp.example.com',
+			'587',
+			'',
+			'starttls',
+		]);
+
+		expect(url).toBe('smtp://smtp.example.com:587');
 	});
 });
 
@@ -433,11 +679,16 @@ describe("a compose stage's server address", () => {
 
 	it('is built as an IPv4 address, and an optional IPv6 one, re-asking a bad one', async () => {
 		prompts.inject([
-			['GKM_SERVER_IPV4'],
+			'skip',
+			'skip',
+			'skip',
+			'skip',
+			'set',
 			'203.0.113',
 			'203.0.113.10',
 			'not-v6',
 			'2001:db8::10',
+			'stop',
 		]);
 
 		const result = await secretsAddCommand(

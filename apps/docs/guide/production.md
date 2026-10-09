@@ -162,10 +162,12 @@ gkm secrets:set UPLOADS_URL 's3://AKIA…:…@acme-uploads?region=eu-west-1' --s
 gkm secrets:set UPLOADS_SERVER_URL 'https://files.example.com' --stage production
 ```
 
-Or let gkm ask for each one: `gkm secrets:add --stage production` lists every
-key the stage lacks across all its apps, builds each by kind — a bucket from
-its provider, mail from its SMTP server, a third party's credentials field by
-field from their schema — and saves them to the stage's store. See
+Or let gkm ask for each one: `gkm secrets:add --stage production` walks every
+key the stage lacks across all its apps — set it now, skip it, or stop — and
+builds each you set by kind: a bucket from its provider, mail from its service
+(Resend, SES, Postmark, Mailgun or any SMTP server), a third party's
+credentials field by field from their schema. Each is saved to the stage's
+store as soon as it is built. See
 [Guided secrets](./deployment.md#guided-secrets).
 
 The names follow the constructs: `Email('Mail')` reads `MAIL_URL` and

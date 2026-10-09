@@ -503,7 +503,7 @@ gkm secrets:import secrets.json --stage production
 
 ### Guided secrets
 
-`gkm secrets:add` builds the keys a stage must be given, one at a time, for
+`gkm secrets:add` walks the keys a stage must be given, one at a time, for
 every app in the workspace at once. Run it from the workspace root:
 
 ```bash
@@ -517,7 +517,7 @@ that reads it, its kind, the apps that read it, and whether it is set:
 | Kind | Keys | Built from |
 | --- | --- | --- |
 | Bucket | `<ID>_URL` | AWS S3 (bucket, region), Cloudflare R2 (account id or endpoint, bucket), MinIO or any S3-compatible store (endpoint, bucket, path-style), or a pasted `s3://` URL. Then, optionally, a key for that bucket alone, written into the URL percent-encoded — or the stage's shared `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`. Neither is required. |
-| Email | `<ID>_URL`, `<ID>_FROM` | SMTP host, port (587 by default), user, password and TLS mode, as `smtp://` (STARTTLS) or `smtps://` (TLS on connect); then the address it sends from. |
+| Email | `<ID>_URL`, `<ID>_FROM` | The mail service first. Resend (its API key: `smtps://resend:…@smtp.resend.com:465`), Amazon SES (the region and the SMTP credentials: `email-smtp.<region>.amazonaws.com:587`), Postmark (the server API token, as user and password: `smtp.postmarkapp.com:587`) and Mailgun (US or EU, then the domain's SMTP login and password: `smtp.mailgun.org` / `smtp.eu.mailgun.org`, 587) ask only for their secrets. Any other SMTP server: host, port (587 by default), user, password and TLS mode, as `smtp://` (STARTTLS) or `smtps://` (TLS on connect). Then the address it sends from. |
 | File server | `<ID>_URL` | Its public `https://` address. |
 | External API, `Credential` | `<ID>_CREDENTIALS` | The construct's own schema: one prompt per field of a zod object (hidden for a field named like a secret, key, token or password), or the JSON itself for any other schema. |
 
@@ -526,7 +526,36 @@ only for third parties' credentials, since it runs Mailpit and MinIO itself.
 Nothing derived is ever offered: database URLs, generated secrets and the seed
 are the deploy's to make.
 
-Missing keys start selected; a set key asks before it is replaced. Every value
+Each key is a checkpoint — unset keys first, then (without `--missing`) the
+set ones:
+
+```
+[1/4] MAIL_URL — where 'Mail' sends mail — any SMTP server
+? MAIL_URL  email 'Mail' · api
+❯ Set it now
+  Skip
+  Stop here
+```
+
+**Set it now** builds the key and saves it to the stage's store at once,
+before the next one. **Skip** leaves it unset and moves on. **Stop here** ends
+the run. Every key set before a stop, a Ctrl-C or a failure is kept, and the
+run ends with what was saved, what was skipped and what the stage still lacks;
+`gkm secrets:add --stage production --missing` picks up the rest. A set key
+asks before it is replaced.
+
+A key a provider on the stage creates is not a checkpoint. With
+`deploy.objects.production: { provider: 's3' }`, `gkm setup --stage production`
+creates each bucket and writes its `<ID>_URL` (and its file server's), so they
+are listed once instead:
+
+```
+Not offered — a provider on the stage creates them:
+  UPLOADS_URL — created by gkm setup --stage production (deploy.objects.production is s3)
+```
+
+A deploy still requires those keys, and points at `gkm setup` when one is
+missing. Every value
 is checked before it is kept — an address must be one, a URL must be
 `http(s)://` — and credentials are checked against the construct's schema,
 showing each issue's path (`SHIPPING_CREDENTIALS.apiKey: …`) and asking again
@@ -546,6 +575,8 @@ gkm secrets:add --stage production --missing --json
   { "key": "SHIPPING_CREDENTIALS", "kind": "external-api", "construct": "Shipping", "apps": ["api"], "set": false }
 ]
 ```
+
+A key a provider on the stage creates carries `"provisioned": true`.
 
 A third party's credentials are checked against their schema wherever they
 are set. `gkm secrets:set SHIPPING_CREDENTIALS '…'` refuses a value the
