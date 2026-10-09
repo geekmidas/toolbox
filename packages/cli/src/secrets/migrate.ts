@@ -123,6 +123,19 @@ export class MigratedSecretsDiffer extends GkmError {
 	}
 }
 
+/** The region the configured store is in, where it is an AWS one. */
+function configuredRegion(
+	configured: SecretsStoreConfig,
+	state: unknown,
+): string | undefined {
+	if (typeof configured !== 'object') return undefined;
+	if (configured.provider === 's3') {
+		return s3SecretsLocation(configured, state).region;
+	}
+	// A custom store has no region to reuse.
+	return 'region' in configured ? configured.region : undefined;
+}
+
 /** The store a `--to` name and region describe. */
 function targetConfig(
 	to: string,
@@ -136,12 +149,7 @@ function targetConfig(
 	const provider = to as SecretsStoreProvider;
 	if (provider === 'file') return 'file';
 
-	const fallback =
-		typeof configured === 'object' &&
-		'region' in configured &&
-		typeof configured.region === 'string'
-			? configured.region
-			: undefined;
+	const fallback = configuredRegion(configured, state);
 
 	if (provider === 's3') {
 		// The project bucket beside an S3 state is in the state's region.
@@ -185,10 +193,13 @@ function configLine(target: SecretsStoreConfig): string {
 }
 
 /** The keys whose values differ between two documents, as `section.KEY`. */
-function differingKeys(a: StageSecrets, b: StageSecrets | null): string[] {
+export function differingKeys(
+	a: StageSecrets,
+	b: StageSecrets | null,
+): string[] {
 	const keys: string[] = [];
 	for (const section of ['custom', 'urls', 'services'] as const) {
-		const left = (a[section] ?? {}) as Record<string, unknown>;
+		const left = a[section] as Record<string, unknown>;
 		const right = (b?.[section] ?? {}) as Record<string, unknown>;
 		for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
 			if (!isDeepStrictEqual(left[key], right[key])) {
@@ -272,9 +283,9 @@ export async function secretsMigrateCommand(
 	}
 
 	const count =
-		Object.keys(secrets.custom ?? {}).length +
-		Object.keys(secrets.urls ?? {}).length +
-		Object.keys(secrets.services ?? {}).length;
+		Object.keys(secrets.custom).length +
+		Object.keys(secrets.urls).length +
+		Object.keys(secrets.services).length;
 	logger.log(
 		already
 			? `\n✓ ${destination.name} already holds the same secrets for stage "${stage}" as ${source.name}; nothing copied`

@@ -8,7 +8,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -23,6 +23,8 @@ import {
 	ListObjectVersionsCommand,
 	S3Client,
 } from '@aws-sdk/client-s3';
+import { bypass, HttpResponse, http } from 'msw';
+import { setupServer } from 'msw/node';
 import {
 	afterAll,
 	afterEach,
@@ -48,13 +50,16 @@ import {
 	secretsUnsetCommand,
 } from '../index';
 import {
+	MigratedSecretsDiffer,
 	MigrateTargetHoldsStage,
 	MigrateTargetIsSource,
+	MigrateTargetNeedsRegion,
+	NoSecretsToMigrate,
 	secretsMigrateCommand,
 } from '../migrate';
 import { S3SecretsStore, StageSecretsChanged } from '../s3';
 import { initStageSecrets } from '../storage';
-import { secretsStoreFor } from '../store';
+import { secretsStoreFor, UnknownSecretsStoreProvider } from '../store';
 import type { StageSecrets } from '../types';
 import { writeServicesApp } from './__helpers__/servicesApp';
 
@@ -68,15 +73,21 @@ const EMULATOR = {
 	AWS_SECRET_ACCESS_KEY: 'test',
 };
 const saved: Record<string, string | undefined> = {};
+/** For the one answer the emulator cannot give: a copy read back changed. */
+const server = setupServer();
 
 beforeAll(() => {
+	server.listen({ onUnhandledRequest: 'bypass' });
 	for (const [key, value] of Object.entries(EMULATOR)) {
 		saved[key] = process.env[key];
 		process.env[key] = value;
 	}
 });
 
+afterEach(() => server.resetHandlers());
+
 afterAll(() => {
+	server.close();
 	for (const [key, value] of Object.entries(saved)) {
 		if (value === undefined) delete process.env[key];
 		else process.env[key] = value;
@@ -519,6 +530,132 @@ describe(
 			expect(printed()).toContain(
 				`set secrets.store to { provider: 's3', region: '${REGION}' }`,
 			);
+		});
+
+		it('secrets:migrate --to s3 from the file store needs a region, then copies', async () => {
+			writeConfig({ enabled: true });
+			await secretsInitCommand({ stage: STAGE });
+			const before = await (
+				await secretsStoreFor((await loadWorkspaceConfig(dir)).workspace, STAGE)
+			).read(STAGE);
+
+			await expect(
+				secretsMigrateCommand({ stage: STAGE, to: 's3' }),
+			).rejects.toBeInstanceOf(MigrateTargetNeedsRegion);
+			await expect(
+				secretsMigrateCommand({ stage: STAGE, to: 'vault' }),
+			).rejects.toBeInstanceOf(UnknownSecretsStoreProvider);
+
+			await secretsMigrateCommand({ stage: STAGE, to: 's3', region: REGION });
+
+			expect(await inS3()).toEqual(before);
+			expect(printed()).toContain(
+				`set secrets.store to { provider: 's3', region: '${REGION}' }`,
+			);
+			expect(printed()).toContain(`rm .gkm/secrets/${STAGE}.json`);
+		});
+
+		it('secrets:migrate out of S3 takes the state’s region, and prints how to remove the object', async () => {
+			writeConfig(S3_SECRETS, S3_STATE);
+			await secretsInitCommand({ stage: STAGE });
+
+			await secretsMigrateCommand({ stage: STAGE, to: 'ssm' });
+
+			expect(await inSsm()).toEqual(await inS3());
+			expect(printed()).toContain(
+				`set secrets.store to { provider: 'ssm', region: '${REGION}' }`,
+			);
+			expect(printed()).toContain(
+				`aws s3 rm s3://${bucketOf(name)}/gkm/${name}/${STAGE}/secrets.json`,
+			);
+		});
+		it('secrets:migrate --to file from S3, and refuses a stage S3 does not hold', async () => {
+			writeConfig(S3_SECRETS, S3_STATE);
+
+			await expect(
+				secretsMigrateCommand({ stage: STAGE, to: 'file' }),
+			).rejects.toBeInstanceOf(NoSecretsToMigrate);
+
+			await secretsInitCommand({ stage: STAGE });
+			await secretsMigrateCommand({ stage: STAGE, to: 'file' });
+
+			const { workspace } = await loadWorkspaceConfig(dir);
+			// The local stage's store is the file, which holds every stage's.
+			const inFile = await (
+				await secretsStoreFor(workspace, 'development')
+			).read(STAGE);
+			expect(inFile).toEqual(await inS3());
+			expect(printed()).toContain("set secrets.store to 'file'");
+		});
+
+		it('secrets:migrate --to ssm from the file store needs a region', async () => {
+			writeConfig({ enabled: true });
+			await secretsInitCommand({ stage: STAGE });
+
+			await expect(
+				secretsMigrateCommand({ stage: STAGE, to: 'ssm' }),
+			).rejects.toBeInstanceOf(MigrateTargetNeedsRegion);
+		});
+
+		it('secrets:migrate reads and writes with the profile it is given', async () => {
+			const aws = mkdtempSync(join(tmpdir(), 'gkm-s3-migrate-profile-'));
+			writeFileSync(
+				join(aws, 'credentials'),
+				'[emulator]\naws_access_key_id = test\naws_secret_access_key = test\n',
+			);
+			writeFileSync(join(aws, 'config'), '');
+			vi.stubEnv('AWS_SHARED_CREDENTIALS_FILE', join(aws, 'credentials'));
+			vi.stubEnv('AWS_CONFIG_FILE', join(aws, 'config'));
+			try {
+				writeConfig(S3_SECRETS, S3_STATE);
+				await secretsInitCommand({ stage: STAGE });
+
+				await secretsMigrateCommand({
+					stage: STAGE,
+					to: 'ssm',
+					profile: 'emulator',
+				});
+
+				expect(await inSsm()).toEqual(await inS3());
+				expect(printed()).toContain(
+					`aws s3 rm s3://${bucketOf(name)}/gkm/${name}/${STAGE}/secrets.json --profile emulator`,
+				);
+			} finally {
+				rmSync(aws, { recursive: true, force: true });
+			}
+		});
+
+		it('secrets:migrate refuses a copy that reads back different, naming the keys', async () => {
+			writeConfig(SSM_SECRETS, S3_STATE);
+			await secretsInitCommand({ stage: STAGE });
+			await secretsSetCommand('STRIPE_KEY', 'sk_live_real', { stage: STAGE });
+			let written = false;
+			const objectUrl = `${LOCALSTACK_URL}/${bucketOf(name)}/gkm/${name}/${STAGE}/secrets.json`;
+			server.use(
+				http.put(objectUrl, async ({ request }) => {
+					written = true;
+					return fetch(bypass(request));
+				}),
+				http.get(objectUrl, async ({ request }) => {
+					const response = await fetch(bypass(request));
+					if (!written) return response;
+					const stored = (await response.json()) as StageSecrets;
+					return HttpResponse.json({
+						...stored,
+						custom: { ...stored.custom, STRIPE_KEY: 'sk_live_mangled' },
+					});
+				}),
+			);
+
+			const refused = await secretsMigrateCommand({
+				stage: STAGE,
+				to: 's3',
+			}).catch((e: unknown) => e);
+
+			expect(refused).toBeInstanceOf(MigratedSecretsDiffer);
+			expect(refused).toMatchObject({ keys: ['custom.STRIPE_KEY'] });
+			// The source is untouched.
+			expect((await inSsm())?.custom.STRIPE_KEY).toBe('sk_live_real');
 		});
 	},
 );

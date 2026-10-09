@@ -79,7 +79,7 @@ interface S3Failure {
 
 /** A conditional write that lost: the object is not what the write assumed. */
 function lostRace(error: unknown): boolean {
-	const { name, $metadata } = (error ?? {}) as S3Failure;
+	const { name, $metadata } = error as S3Failure;
 	return (
 		name === 'PreconditionFailed' ||
 		name === 'ConditionalRequestConflict' ||
@@ -89,7 +89,7 @@ function lostRace(error: unknown): boolean {
 }
 
 function notFound(error: unknown): boolean {
-	const { name, $metadata } = (error ?? {}) as S3Failure;
+	const { name, $metadata } = error as S3Failure;
 	return (
 		name === 'NoSuchKey' ||
 		name === 'NotFound' ||
@@ -215,9 +215,13 @@ export class S3SecretsStore implements SecretsStore {
 			const response = await this.call(stage, 'read', () =>
 				s3.send(new GetObjectCommand({ Bucket: bucket, Key: this.key(stage) })),
 			);
-			const body = (await response.Body?.transformToString('utf-8')) ?? '';
-			this.etags.set(stage, response.ETag ?? null);
-			return body ? (JSON.parse(body) as StageSecrets) : null;
+			const body = await (
+				response.Body as {
+					transformToString(encoding: string): Promise<string>;
+				}
+			).transformToString('utf-8');
+			this.remember(stage, response.ETag);
+			return JSON.parse(body) as StageSecrets;
 		} catch (error) {
 			if (!notFound(error)) throw error;
 			this.etags.set(stage, null);
@@ -256,10 +260,7 @@ export class S3SecretsStore implements SecretsStore {
 					}),
 				),
 			);
-			this.etags.set(
-				stage,
-				ETag ?? (await this.currentEtag(s3, stage, Bucket, Key)),
-			);
+			this.remember(stage, ETag);
 		} catch (error) {
 			if (lostRace(error)) {
 				this.etags.delete(stage);
@@ -267,6 +268,15 @@ export class S3SecretsStore implements SecretsStore {
 			}
 			throw error;
 		}
+	}
+
+	/**
+	 * The ETag the stage is now at. Some S3-compatible servers answer without
+	 * one: then nothing is remembered, and the next write asks for it first.
+	 */
+	private remember(stage: string, etag: string | undefined): void {
+		if (etag) this.etags.set(stage, etag);
+		else this.etags.delete(stage);
 	}
 
 	private async currentEtag(
