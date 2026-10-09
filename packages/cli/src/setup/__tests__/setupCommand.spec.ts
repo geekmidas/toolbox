@@ -336,12 +336,9 @@ export const uploads = new ObjectStorage('Uploads');
 				await expect(result).rejects.toMatchObject({
 					stage: 'prod',
 					store: 'ssm',
-					message: expect.stringContaining(
-						'AWS_PROFILE=<profile> gkm setup --stage prod --dry-run',
-					),
+					message: expect.stringContaining('AWS_PROFILE=<profile>'),
 				});
 				await expect(result).rejects.toThrow(/SSM Parameter Store/);
-				await expect(result).rejects.toThrow(/A dry run still reads them/);
 				expect(output(log)).not.toContain('Providers for');
 			});
 

@@ -26,6 +26,7 @@ import {
 	schemeBase,
 } from '@geekmidas/manifest';
 import { LOGS_ORG, otlpHeaders } from '../compose/logs.js';
+import { GkmError } from '../errors';
 import { telemetryEnv } from '../telemetry/config.js';
 import { hostFor } from './caddyfile';
 import { primaryPortKey } from './containers';
@@ -882,7 +883,7 @@ function schemaOf(resource: PlannedResource, plan: Plan): string | undefined {
  * On SNS each topic and queue is its own address, so there is no project-wide
  * one to hand out — a cron's schedule store, say, cannot live there.
  */
-export class UnprovisionedEventsBackend extends Error {
+export class UnprovisionedEventsBackend extends GkmError {
 	constructor(readonly backend: string) {
 		super(
 			`'${backend}' has no single broker address: each topic and queue is ` +

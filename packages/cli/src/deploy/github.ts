@@ -44,6 +44,7 @@ import {
 	UpdateAssumeRolePolicyCommand,
 } from '@aws-sdk/client-iam';
 import { loadWorkspaceConfig } from '../config.js';
+import { GkmError } from '../errors';
 import { getKeyPath, keystoreProject, readKey } from '../secrets/keystore.js';
 import { isRemoteStore, secretsStoreFor } from '../secrets/store.js';
 import { assertDeployedStage } from '../workspace/stages.js';
@@ -529,7 +530,7 @@ const SUBJECT_KINDS = {
 } as const;
 
 /** The profile's SSO login has lapsed; the fix is one command away. */
-export class SsoSessionExpired extends Error {
+export class SsoSessionExpired extends GkmError {
 	constructor(readonly profile: string) {
 		super(
 			`The SSO session for profile "${profile}" has expired or is invalid. Run: aws sso login --profile ${profile}`,

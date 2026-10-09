@@ -18,8 +18,13 @@ import {
 } from 'vitest';
 import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import { ConfigLoadFailed, loadWorkspaceConfig } from '../../config';
+import { secretsAddCommand } from '../add';
 import { AwsSecretsStore, SSM_PARAMETER_LIMIT } from '../aws';
-import { StageSecretsTooLarge } from '../awsStore';
+import {
+	StageSecretsTooLarge,
+	StageSecretsUnreadable,
+	withStageCredentials,
+} from '../awsStore';
 import { createStageSecrets } from '../generator';
 import {
 	secretsInitCommand,
@@ -523,5 +528,157 @@ export default defineWorkspace({
 		await expect(
 			secretsMigrateCommand({ stage: 'prod', to: 'vault' }),
 		).rejects.toBeInstanceOf(UnknownSecretsStoreProvider);
+	});
+
+	describe('with no AWS credentials on this machine', () => {
+		beforeEach(() => {
+			// Nothing for the SDK's chain to find and no instance metadata to
+			// ask, so it gives up without a network call — and the endpoint is
+			// a closed port, should anything try.
+			for (const key of [
+				'AWS_ACCESS_KEY_ID',
+				'AWS_SECRET_ACCESS_KEY',
+				'AWS_SESSION_TOKEN',
+				'AWS_PROFILE',
+				'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI',
+				'AWS_CONTAINER_CREDENTIALS_FULL_URI',
+				'AWS_WEB_IDENTITY_TOKEN_FILE',
+			]) {
+				vi.stubEnv(key, undefined);
+			}
+			vi.stubEnv('AWS_CONFIG_FILE', '/dev/null');
+			vi.stubEnv('AWS_SHARED_CREDENTIALS_FILE', '/dev/null');
+			vi.stubEnv('AWS_EC2_METADATA_DISABLED', 'true');
+			vi.stubEnv('AWS_ENDPOINT_URL', 'http://127.0.0.1:1');
+		});
+
+		afterEach(() => vi.unstubAllEnvs());
+
+		for (const [label, create] of [
+			[
+				'SSM',
+				(profile?: string) =>
+					new AwsSecretsStore({
+						project: name,
+						region: 'us-east-1',
+						...(profile ? { profile } : {}),
+					}),
+			],
+			[
+				'Secrets Manager',
+				(profile?: string) =>
+					new SecretsManagerSecretsStore({
+						project: name,
+						region: 'us-east-1',
+						...(profile ? { profile } : {}),
+					}),
+			],
+		] as const) {
+			it(`${label}: refuses a read and a write by name`, async () => {
+				const store = create();
+
+				const read = store.read('prod');
+				await expect(read).rejects.toBeInstanceOf(StageSecretsUnreadable);
+				await expect(read).rejects.toMatchObject({
+					stage: 'prod',
+					store: store.name,
+					access: 'read',
+					reason: 'no-credentials',
+					cause: expect.objectContaining({
+						name: 'CredentialsProviderError',
+					}),
+				});
+				await expect(read).rejects.toThrow(
+					/no AWS credentials were found to read them with/,
+				);
+
+				const write = store.write('prod', initStageSecrets('prod'));
+				await expect(write).rejects.toMatchObject({
+					name: 'StageSecretsUnreadable',
+					access: 'write',
+					message: expect.stringContaining('to write them with'),
+				});
+			});
+
+			it(`${label}: names the profile that has no credentials, and how to sign in`, async () => {
+				const read = create('prod-account').read('prod');
+
+				await expect(read).rejects.toMatchObject({
+					name: 'StageSecretsUnreadable',
+					profile: 'prod-account',
+					message: expect.stringContaining(
+						'aws sso login --profile prod-account',
+					),
+				});
+			});
+		}
+
+		it('secrets:set refuses by name, and writes nothing', async () => {
+			writeConfig(ssm);
+
+			await expect(
+				secretsSetCommand('STRIPE_KEY', 'sk_live_x', { stage: 'prod' }),
+			).rejects.toBeInstanceOf(StageSecretsUnreadable);
+		});
+
+		it('secrets:add --json refuses by name, and prints nothing', async () => {
+			writeConfig(ssm);
+			const written: string[] = [];
+
+			await expect(
+				secretsAddCommand(
+					{ stage: 'prod', json: true, missing: true, cwd: dir, home },
+					{
+						log: (line) => written.push(line),
+						write: (chunk) => written.push(chunk),
+						interactive: false,
+					},
+				),
+			).rejects.toBeInstanceOf(StageSecretsUnreadable);
+			expect(written).toEqual([]);
+		});
+
+		it('says to sign in again when AWS refuses the credentials as expired', async () => {
+			const expired = Object.assign(
+				new Error('The security token included in the request is expired'),
+				{ name: 'ExpiredTokenException' },
+			);
+
+			const call = withStageCredentials(
+				{
+					stage: 'prod',
+					store: 'ssm',
+					profile: 'prod-account',
+					access: 'read',
+				},
+				async () => {
+					throw expired;
+				},
+			);
+
+			await expect(call).rejects.toMatchObject({
+				name: 'StageSecretsUnreadable',
+				reason: 'expired',
+				cause: expired,
+				message: expect.stringContaining(
+					"the AWS profile 'prod-account' signed in, but its session has expired. Sign in to it (aws sso login --profile prod-account)",
+				),
+			});
+		});
+
+		it('passes any other failure through', async () => {
+			const denied = Object.assign(new Error('not authorized'), {
+				name: 'AccessDeniedException',
+			});
+
+			await expect(
+				withStageCredentials(
+					{ stage: 'prod', store: 'ssm', profile: undefined, access: 'read' },
+					async () => {
+						throw denied;
+					},
+				),
+			).rejects.toBe(denied);
+		});
 	});
 });

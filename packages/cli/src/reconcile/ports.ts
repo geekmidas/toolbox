@@ -19,6 +19,7 @@
 
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:net';
+import { GkmError } from '../errors';
 
 /** What was assigned, by container name. Persisted between runs. */
 export type PortAssignments = Readonly<Record<string, number>>;
@@ -180,7 +181,7 @@ export async function heldElsewhere(
 }
 
 /** The window was exhausted. */
-export class NoPortAvailable extends Error {
+export class NoPortAvailable extends GkmError {
 	/** Where the search started. */
 	readonly from: number;
 	/** The window searched, so the caller can report what was full. */

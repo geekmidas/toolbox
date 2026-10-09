@@ -16,6 +16,7 @@
  * code with the stage's credentials. A target is installed and named.
  */
 
+import { GkmError } from '../errors';
 import {
 	builtinTarget,
 	configurableBuiltins,
@@ -58,7 +59,7 @@ export interface ResolveTargetOptions {
 }
 
 /** A target package whose default export is not a target. */
-export class TargetPackageInvalid extends Error {
+export class TargetPackageInvalid extends GkmError {
 	constructor(
 		readonly target: string,
 		readonly packageName: string,
@@ -71,7 +72,7 @@ export class TargetPackageInvalid extends Error {
 }
 
 /** A `deploy.targets` entry that is not a target, a package name or a pair. */
-export class TargetEntryInvalid extends Error {
+export class TargetEntryInvalid extends GkmError {
 	constructor(readonly target: string) {
 		super(
 			`deploy.targets.${target} must be a package name, a target object (defineTarget), or [package or target, options].`,
@@ -81,7 +82,7 @@ export class TargetEntryInvalid extends Error {
 }
 
 /** A target whose `runtime` is not the one its package declares. */
-export class TargetRuntimeMismatch extends Error {
+export class TargetRuntimeMismatch extends GkmError {
 	constructor(
 		readonly target: string,
 		readonly packageName: string,
@@ -96,7 +97,7 @@ export class TargetRuntimeMismatch extends Error {
 }
 
 /** Options a target's schema rejected. */
-export class InvalidTargetOptions extends Error {
+export class InvalidTargetOptions extends GkmError {
 	constructor(
 		readonly target: string,
 		readonly issues: readonly TargetOptionsIssue[],

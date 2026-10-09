@@ -7,6 +7,7 @@
  */
 
 import { isAbsolute, resolve } from 'node:path';
+import { GkmError } from '../errors';
 import type {
 	ComposeProxy,
 	ComposeTlsConfig,
@@ -14,7 +15,7 @@ import type {
 } from '../workspace/types.js';
 
 /** A per-stage setting keyed by a stage the workspace does not have. */
-export class ComposeStageUnknown extends Error {
+export class ComposeStageUnknown extends GkmError {
 	constructor(
 		readonly setting: 'proxy' | 'tls',
 		readonly stage: string,
@@ -33,7 +34,7 @@ export class ComposeStageUnknown extends Error {
  * A certificate for the local stage, whose certificates are always Caddy's
  * own CA — the one `gkm trust` installs.
  */
-export class ComposeTlsOnLocalStage extends Error {
+export class ComposeTlsOnLocalStage extends GkmError {
 	constructor(readonly stage: string) {
 		super(
 			`deploy.compose.tls sets a certificate for '${stage}', the local stage, ` +
@@ -45,7 +46,7 @@ export class ComposeTlsOnLocalStage extends Error {
 }
 
 /** The stage's certificate or key file is not there to read. */
-export class ComposeTlsFileMissing extends Error {
+export class ComposeTlsFileMissing extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly file: string,

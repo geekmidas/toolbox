@@ -20,6 +20,7 @@ import {
 	providedKeyFor,
 	publicEnvFor,
 } from '@geekmidas/manifest';
+import { GkmError } from '../errors';
 import { usesTelemetry } from '../telemetry/edges.js';
 import {
 	type CacheBackend,
@@ -689,7 +690,7 @@ export function planFor(
  * code either way — declare a database, or select a backend that brings its own
  * broker.
  */
-export class CacheNeedsDatabase extends Error {
+export class CacheNeedsDatabase extends GkmError {
 	constructor(readonly ids: readonly string[]) {
 		super(
 			`A cache backed by the database needs a declared database, and none ` +
@@ -711,7 +712,7 @@ export class CacheNeedsDatabase extends Error {
  * `orders.cache('Sessions')` names the database, which is a fact about the
  * application rather than a deployment choice.
  */
-export class CacheIsAmbiguous extends Error {
+export class CacheIsAmbiguous extends GkmError {
 	constructor(
 		readonly ids: readonly string[],
 		readonly databases: readonly string[],
@@ -726,7 +727,7 @@ export class CacheIsAmbiguous extends Error {
 	}
 }
 
-export class PgBossNeedsDatabase extends Error {
+export class PgBossNeedsDatabase extends GkmError {
 	constructor(readonly ids: readonly string[]) {
 		super(
 			`pg-boss keeps its queues in a declared database, and none was declared. ` +

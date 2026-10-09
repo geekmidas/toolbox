@@ -24,6 +24,7 @@ import {
 	type AwsStoreOptions,
 	awsClientConfig,
 	serializeWithin,
+	withStageCredentials,
 } from './awsStore.js';
 import type { SecretsStore } from './store.js';
 import type { StageSecrets } from './types.js';
@@ -52,15 +53,28 @@ export class AwsSecretsStore implements SecretsStore {
 		return this.client;
 	}
 
+	/** Where a call for `stage` is, for an error saying it has no credentials. */
+	private context(stage: string, access: 'read' | 'write') {
+		return { stage, store: this.name, profile: this.options.profile, access };
+	}
+
+	/**
+	 * @throws {StageSecretsUnreadable} when there are no AWS credentials to
+	 * read it with, or they have expired
+	 */
 	async read(stage: string): Promise<StageSecrets | null> {
 		const ssm = await this.ssm();
 
 		try {
-			const { Parameter } = await ssm.send(
-				new GetParameterCommand({
-					Name: secretsParameterName(this.options.project, stage),
-					WithDecryption: true,
-				}),
+			const { Parameter } = await withStageCredentials(
+				this.context(stage, 'read'),
+				() =>
+					ssm.send(
+						new GetParameterCommand({
+							Name: secretsParameterName(this.options.project, stage),
+							WithDecryption: true,
+						}),
+					),
 			);
 			return Parameter?.Value
 				? (JSON.parse(Parameter.Value) as StageSecrets)
@@ -71,6 +85,10 @@ export class AwsSecretsStore implements SecretsStore {
 		}
 	}
 
+	/**
+	 * @throws {StageSecretsUnreadable} when there are no AWS credentials to
+	 * write it with, or they have expired
+	 */
 	async write(stage: string, secrets: StageSecrets): Promise<void> {
 		const value = serializeWithin(
 			stage,
@@ -80,16 +98,18 @@ export class AwsSecretsStore implements SecretsStore {
 		);
 		const ssm = await this.ssm();
 
-		await ssm.send(
-			new PutParameterCommand({
-				Name: secretsParameterName(this.options.project, stage),
-				Value: value,
-				Type: 'SecureString',
-				// Standard (free) under 4 KB, advanced past it; never the other way.
-				Tier: 'Intelligent-Tiering',
-				Overwrite: true,
-				Description: `gkm secrets for ${this.options.project}/${stage}`,
-			}),
+		await withStageCredentials(this.context(stage, 'write'), () =>
+			ssm.send(
+				new PutParameterCommand({
+					Name: secretsParameterName(this.options.project, stage),
+					Value: value,
+					Type: 'SecureString',
+					// Standard (free) under 4 KB, advanced past it; never the other way.
+					Tier: 'Intelligent-Tiering',
+					Overwrite: true,
+					Description: `gkm secrets for ${this.options.project}/${stage}`,
+				}),
+			),
 		);
 	}
 }

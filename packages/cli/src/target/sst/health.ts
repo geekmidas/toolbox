@@ -8,6 +8,7 @@
  * 2xx, after redirects.
  */
 
+import { GkmError } from '../../errors';
 import type { TargetEvent } from '../types';
 
 export interface HealthCheckOptions {
@@ -22,7 +23,7 @@ export interface HealthCheckOptions {
 }
 
 /** Surfaces that never answered healthy. */
-export class SurfacesUnhealthy extends Error {
+export class SurfacesUnhealthy extends GkmError {
 	constructor(
 		readonly stage: string,
 		/** Each surface that failed, with the last thing it answered. */

@@ -28,6 +28,7 @@ import {
 	loadSecretsForApp,
 	prepareEntryCredentials,
 } from '../credentials';
+import { GkmError } from '../errors';
 import {
 	mountRequestSpansCode,
 	startTelemetryCode,
@@ -1683,7 +1684,7 @@ function tsxCommand(appRoot: string, args: string[]): [string, string[]] {
 }
 
 /** A port this app must serve on is held by something else. */
-export class DevPortInUse extends Error {
+export class DevPortInUse extends GkmError {
 	constructor(
 		readonly port: number,
 		/** What holds it, when `lsof` could say — `node (pid 123)`. */
@@ -1707,7 +1708,7 @@ export class DevPortInUse extends Error {
  * Only these are refused: a port another project holds is moved off instead
  * (see `assignAppPorts`), but moving off our own would start a second copy.
  */
-export class WorkspacePortsInUse extends Error {
+export class WorkspacePortsInUse extends GkmError {
 	constructor(readonly held: readonly AppRunning[]) {
 		super(
 			`This workspace's apps are already running:\n${held

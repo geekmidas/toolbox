@@ -11,7 +11,7 @@ import {
 	UnknownCacheBackend,
 } from './build/index';
 import { type ComposeOptions, composeCommand } from './compose/index';
-import { enableDebug, formatError } from './debug';
+import { enableDebug, exitWithError } from './debug';
 import { assertDevServicesFlag } from './deploy/devServices';
 import { deployInitCommand, deployListCommand } from './deploy/init';
 import {
@@ -86,8 +86,7 @@ program
 			}
 			await initCommand(name, options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -105,8 +104,7 @@ program
 			}
 			await trustCommand(options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -140,8 +138,7 @@ program
 			}
 			await setupCommand(options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -207,8 +204,7 @@ program
 					markOptional: options.markOptional || false,
 				});
 			} catch (error) {
-				console.error(formatError(error));
-				process.exit(1);
+				exitWithError(error);
 			}
 		},
 	);
@@ -269,8 +265,7 @@ program
 					subscribers: options.subscribers,
 				});
 			} catch (error) {
-				console.error(formatError(error));
-				process.exit(1);
+				exitWithError(error);
 			}
 		},
 	);
@@ -290,8 +285,7 @@ program
 			const { devCredentialsCommand } = await import('./dev/credentials.js');
 			await devCredentialsCommand(options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -307,8 +301,7 @@ program
 			}
 			await execCommand(commandArgs);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -348,8 +341,7 @@ program
 			}
 			await testCommand({ ...options, pattern });
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -376,8 +368,7 @@ program
 					...(construct ? { construct } : {}),
 				});
 			} catch (error) {
-				console.error(formatError(error));
-				process.exit(1);
+				exitWithError(error);
 			}
 		},
 	);
@@ -405,8 +396,7 @@ program
 					...(construct ? { construct } : {}),
 				});
 			} catch (error) {
-				console.error(formatError(error));
-				process.exit(1);
+				exitWithError(error);
 			}
 		},
 	);
@@ -427,8 +417,7 @@ program
 			const { migrationCommand } = await import('./migrate/index.js');
 			await migrationCommand({ construct, ...(name ? { name } : {}) });
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -488,8 +477,7 @@ program
 				...(telemetry !== undefined ? { telemetry } : {}),
 			});
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -508,8 +496,7 @@ program
 			}
 			await dockerCommand(options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -554,8 +541,7 @@ program
 			}
 			await composeCommand(options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -586,8 +572,7 @@ program
 					registry: options.registry,
 				});
 			} catch (error) {
-				console.error(formatError(error));
-				process.exit(1);
+				exitWithError(error);
 			}
 		},
 	);
@@ -606,8 +591,7 @@ program
 			}
 			await secretsInitCommand(options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -630,8 +614,7 @@ program
 				}
 				await secretsSetCommand(key, value, options);
 			} catch (error) {
-				console.error(formatError(error));
-				process.exit(1);
+				exitWithError(error);
 			}
 		},
 	);
@@ -649,8 +632,7 @@ program
 			}
 			await secretsUnsetCommand(key, options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -672,8 +654,7 @@ program
 				const { secretsAddCommand } = await import('./secrets/add');
 				await secretsAddCommand(options);
 			} catch (error) {
-				console.error(formatError(error));
-				process.exit(1);
+				exitWithError(error);
 			}
 		},
 	);
@@ -694,8 +675,7 @@ program
 			const { encryptionRotateCommand } = await import('./encryption/index.js');
 			await encryptionRotateCommand(construct, options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -719,8 +699,7 @@ program
 				);
 				await encryptionRetireCommand(construct, key, options);
 			} catch (error) {
-				console.error(formatError(error));
-				process.exit(1);
+				exitWithError(error);
 			}
 		},
 	);
@@ -738,8 +717,7 @@ program
 			}
 			await secretsShowCommand(options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -759,8 +737,7 @@ program
 			}
 			await secretsRotateCommand(options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -778,8 +755,7 @@ program
 			}
 			await secretsImportCommand(file, options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -830,8 +806,7 @@ program
 				console.log(`    + ${key}`);
 			}
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -864,8 +839,7 @@ program
 				const { secretsMigrateCommand } = await import('./secrets/migrate');
 				await secretsMigrateCommand(options);
 			} catch (error) {
-				console.error(formatError(error));
-				process.exit(1);
+				exitWithError(error);
 			}
 		},
 	);
@@ -966,8 +940,7 @@ program
 					log: (line) => console.log(line),
 				});
 			} catch (error) {
-				console.error(formatError(error));
-				process.exit(1);
+				exitWithError(error);
 			}
 		},
 	);
@@ -1006,8 +979,7 @@ program
 					registryId: options.registryId,
 				});
 			} catch (error) {
-				console.error(formatError(error));
-				process.exit(1);
+				exitWithError(error);
 			}
 		},
 	);
@@ -1035,8 +1007,7 @@ program
 			const { deployGithubCommand } = await import('./deploy/github.js');
 			await deployGithubCommand(options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -1064,8 +1035,7 @@ program
 			const { stagesCommand } = await import('./stages/index.js');
 			await stagesCommand(options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -1114,8 +1084,7 @@ program
 					});
 				}
 			} catch (error) {
-				console.error(formatError(error));
-				process.exit(1);
+				exitWithError(error);
 			}
 		},
 	);
@@ -1168,8 +1137,7 @@ program
 					endpoint: options.endpoint,
 				});
 			} catch (error) {
-				console.error(formatError(error));
-				process.exit(1);
+				exitWithError(error);
 			}
 		},
 	);
@@ -1198,8 +1166,7 @@ program
 					| 'all',
 			});
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -1216,8 +1183,7 @@ program
 
 			await whoamiCommand();
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -1237,8 +1203,7 @@ program
 			}
 			await statePullCommand(options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -1257,8 +1222,7 @@ program
 			}
 			await statePushCommand(options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -1278,8 +1242,7 @@ program
 			}
 			await stateShowCommand(options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -1298,8 +1261,7 @@ program
 			}
 			await stateUnlockCommand(options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -1318,8 +1280,7 @@ program
 			}
 			await stateDiffCommand(options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -1345,8 +1306,7 @@ program
 			}
 			await upgradeCommand(options);
 		} catch (error) {
-			console.error(formatError(error));
-			process.exit(1);
+			exitWithError(error);
 		}
 	});
 
@@ -1354,8 +1314,7 @@ program
 try {
 	assertDevServicesFlag(process.argv.slice(2));
 } catch (error) {
-	console.error(formatError(error));
-	process.exit(1);
+	exitWithError(error);
 }
 
 program.parse();

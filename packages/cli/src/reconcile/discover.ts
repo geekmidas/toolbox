@@ -26,6 +26,7 @@ import {
 } from '@geekmidas/manifest';
 import fg from 'fast-glob';
 import { z } from 'zod';
+import { GkmError } from '../errors';
 import { clearZodGlobalRegistry } from '../generators/Generator';
 import { output } from '../output';
 import { activeSandbox, type Sandbox } from '../sandbox/sandbox';
@@ -471,7 +472,7 @@ function warnIfNothingFound(
 }
 
 /** Two constructs claiming one id. */
-export class DuplicateConstruct extends Error {
+export class DuplicateConstruct extends GkmError {
 	/** The id claimed twice. */
 	readonly id: string;
 	/** The files that claimed it. */

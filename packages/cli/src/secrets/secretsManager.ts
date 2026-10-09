@@ -22,6 +22,7 @@ import {
 	type AwsStoreOptions,
 	awsClientConfig,
 	serializeWithin,
+	withStageCredentials,
 } from './awsStore.js';
 import type { SecretsStore } from './store.js';
 import type { StageSecrets } from './types.js';
@@ -59,12 +60,25 @@ export class SecretsManagerSecretsStore implements SecretsStore {
 		return secretsManagerSecretName(this.options.project, stage);
 	}
 
+	/** Where a call for `stage` is, for an error saying it has no credentials. */
+	private context(stage: string, access: 'read' | 'write') {
+		return { stage, store: this.name, profile: this.options.profile, access };
+	}
+
+	/**
+	 * @throws {StageSecretsUnreadable} when there are no AWS credentials to
+	 * read it with, or they have expired
+	 */
 	async read(stage: string): Promise<StageSecrets | null> {
 		const client = await this.secretsManager();
 
 		try {
-			const { SecretString } = await client.send(
-				new GetSecretValueCommand({ SecretId: this.secretName(stage) }),
+			const { SecretString } = await withStageCredentials(
+				this.context(stage, 'read'),
+				() =>
+					client.send(
+						new GetSecretValueCommand({ SecretId: this.secretName(stage) }),
+					),
 			);
 			return SecretString ? (JSON.parse(SecretString) as StageSecrets) : null;
 		} catch (error) {
@@ -73,6 +87,10 @@ export class SecretsManagerSecretsStore implements SecretsStore {
 		}
 	}
 
+	/**
+	 * @throws {StageSecretsUnreadable} when there are no AWS credentials to
+	 * write it with, or they have expired
+	 */
 	async write(stage: string, secrets: StageSecrets): Promise<void> {
 		const value = serializeWithin(
 			stage,
@@ -83,6 +101,18 @@ export class SecretsManagerSecretsStore implements SecretsStore {
 		const client = await this.secretsManager();
 		const name = this.secretName(stage);
 
+		await withStageCredentials(this.context(stage, 'write'), () =>
+			this.put(client, stage, name, value),
+		);
+	}
+
+	/** Put the secret, creating it on the stage's first write. */
+	private async put(
+		client: SecretsManagerClient,
+		stage: string,
+		name: string,
+		value: string,
+	): Promise<void> {
 		try {
 			await client.send(
 				new PutSecretValueCommand({ SecretId: name, SecretString: value }),

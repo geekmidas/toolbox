@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { parseDocument } from 'yaml';
+import { GkmError } from '../errors';
 import {
 	detectPackageManager,
 	findWorkspacePackages,
@@ -319,7 +320,7 @@ function install(pm: PackageManager, cwd: string): void {
 }
 
 /** npm did not answer for a package, so there is no version to compare. */
-export class RegistryUnavailable extends Error {
+export class RegistryUnavailable extends GkmError {
 	constructor(
 		// Not `name`: that is Error's own, and holds the class name.
 		readonly packageName: string,
@@ -333,7 +334,7 @@ export class RegistryUnavailable extends Error {
 }
 
 /** A dist-tag npm does not have, e.g. `--tag beta` before any beta. */
-export class NoReleaseOnTag extends Error {
+export class NoReleaseOnTag extends GkmError {
 	constructor(
 		readonly tag: string,
 		readonly tags: readonly string[],
@@ -346,7 +347,7 @@ export class NoReleaseOnTag extends Error {
 }
 
 /** The line asked for is behind what is installed; upgrade never goes back. */
-export class WouldDowngrade extends Error {
+export class WouldDowngrade extends GkmError {
 	constructor(
 		readonly installed: string,
 		readonly tag: string,

@@ -31,6 +31,7 @@ import prompts, { type PromptObject } from 'prompts';
 import { z } from 'zod';
 import { SERVER_IPV4_KEY, SERVER_IPV6_KEY } from '../compose/dnsConfig.js';
 import { loadWorkspaceSettings } from '../config';
+import { GkmError } from '../errors';
 import { stageProvider } from '../providers/config.js';
 import { deploysWithCompose } from '../providers/dns.js';
 import { provisionCommand, stageProviderNotes } from '../providers/notes.js';
@@ -93,7 +94,7 @@ export interface StageKeyJson {
 }
 
 /** `gkm secrets:add` with nobody at a terminal to answer it. */
-export class SecretsAddNeedsTerminal extends Error {
+export class SecretsAddNeedsTerminal extends GkmError {
 	constructor(readonly stage: string) {
 		super(
 			`gkm secrets:add asks for each key, and there is no terminal to ask ` +

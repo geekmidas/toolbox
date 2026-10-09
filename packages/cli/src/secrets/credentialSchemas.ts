@@ -17,6 +17,7 @@ import { decodeCredentials } from '@geekmidas/constructs/credential';
 import { type ConstructManifest, provideKey } from '@geekmidas/manifest';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
+import { GkmError } from '../errors';
 import {
 	ConstructDiscoveryFailed,
 	type ConstructSource,
@@ -310,7 +311,7 @@ export function issueLine(key: string, issue: CredentialIssue): string {
  * stage's secrets, or already there when a deploy reads them. The values are
  * never in the message: only where each is wrong, and why.
  */
-export class CredentialsInvalid extends Error {
+export class CredentialsInvalid extends GkmError {
 	constructor(
 		readonly stage: string,
 		readonly invalid: readonly InvalidCredential[],

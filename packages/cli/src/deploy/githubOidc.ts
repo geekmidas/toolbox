@@ -20,6 +20,7 @@
  * See https://docs.github.com/en/actions/reference/security/oidc.
  */
 
+import { GkmError } from '../errors';
 import type { Gh } from './github.js';
 
 /** `GET /repos/{owner}/{repo}/actions/oidc/customization/sub`. */
@@ -234,7 +235,7 @@ function readRepoFacts(gh: Gh, repo: string): RepoFacts {
  * The repository's custom subject template includes a claim whose value
  * depends on the run — or names none — so no one subject can be trusted.
  */
-export class OidcSubjectNotSupported extends Error {
+export class OidcSubjectNotSupported extends GkmError {
 	constructor(
 		readonly repo: string,
 		readonly includeClaimKeys: string[],
@@ -252,7 +253,7 @@ export class OidcSubjectNotSupported extends Error {
 }
 
 /** The subject needs the repository's ids, and none were read. */
-export class RepoFactsRequired extends Error {
+export class RepoFactsRequired extends GkmError {
 	constructor(readonly repo: string) {
 		super(
 			`The OIDC subject of ${repo} includes its owner and repository ids; read them with gh api repos/${repo} and pass them in.`,
@@ -265,7 +266,7 @@ export class RepoFactsRequired extends Error {
  * The repository uses its organisation's subject template, and that template
  * could not be read — so what GitHub sends is unknown, and is not guessed.
  */
-export class OrgOidcTemplateUnreadable extends Error {
+export class OrgOidcTemplateUnreadable extends GkmError {
 	constructor(
 		readonly repo: string,
 		readonly endpoint: string,

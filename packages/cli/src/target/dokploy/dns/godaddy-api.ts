@@ -22,6 +22,7 @@
  */
 
 import type { GoDaddyCredential } from '../../../deploy/credentials';
+import { GkmError } from '../../../errors';
 
 export const GODADDY_API_BASE = 'https://api.godaddy.com';
 
@@ -53,7 +54,7 @@ interface GoDaddyErrorBody {
  * Domains and DNS APIs answer only accounts with 10 or more domains, or a
  * Discount Domain Club Premier membership.
  */
-export class GoDaddyApiAccessDenied extends Error {
+export class GoDaddyApiAccessDenied extends GkmError {
 	constructor(
 		readonly domain: string,
 		readonly detail?: string,
@@ -73,7 +74,7 @@ export class GoDaddyApiAccessDenied extends Error {
 }
 
 /** The token lacks the scope a records call needs. */
-export class GoDaddyScopeMissing extends Error {
+export class GoDaddyScopeMissing extends GkmError {
 	constructor(
 		readonly method: string,
 		readonly domain: string,
@@ -92,7 +93,7 @@ export class GoDaddyScopeMissing extends Error {
 }
 
 /** GoDaddy did not accept the token at all. */
-export class GoDaddyCredentialsInvalid extends Error {
+export class GoDaddyCredentialsInvalid extends GkmError {
 	constructor(readonly code?: string) {
 		super(
 			`GoDaddy did not accept the API token (401${code ? ` ${code}` : ''}). ` +
@@ -105,7 +106,7 @@ export class GoDaddyCredentialsInvalid extends Error {
 }
 
 /** The domain is not in the account the token belongs to. */
-export class GoDaddyDomainNotFound extends Error {
+export class GoDaddyDomainNotFound extends GkmError {
 	constructor(
 		readonly domain: string,
 		readonly code?: string,
@@ -119,7 +120,7 @@ export class GoDaddyDomainNotFound extends Error {
 }
 
 /** Still rate limited after waiting it out. */
-export class GoDaddyRateLimited extends Error {
+export class GoDaddyRateLimited extends GkmError {
 	constructor(
 		readonly attempts: number,
 		readonly retryAfterSec?: number,
@@ -158,7 +159,7 @@ export class GoDaddyRequestFailed extends Error {
  * A write gkm was about to make to a record type it never manages, or to a
  * name it was not asked for.
  */
-export class GoDaddyRecordNotAllowed extends Error {
+export class GoDaddyRecordNotAllowed extends GkmError {
 	constructor(
 		readonly domain: string,
 		readonly type: string,

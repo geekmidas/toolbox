@@ -18,6 +18,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
+import { GkmError } from '../errors';
 import type { StageSecrets } from '../secrets/types.js';
 import { NoDomainForStage } from '../target/dokploy/domain.js';
 import { LOGS_PORT, type ResolvedLogs } from './logsConfig.js';
@@ -66,7 +67,7 @@ export interface StackLogs extends ResolvedLogs {
 }
 
 /** A root password OpenObserve would refuse to start with. */
-export class LogsPasswordWeak extends Error {
+export class LogsPasswordWeak extends GkmError {
 	constructor(readonly stage: string) {
 		super(
 			`The stage '${stage}' sets ${LOGS_PASSWORD_KEY}, and OpenObserve refuses ` +
@@ -80,7 +81,7 @@ export class LogsPasswordWeak extends Error {
 }
 
 /** A deployed stage with logs on and no root password generated yet. */
-export class LogsPasswordMissing extends Error {
+export class LogsPasswordMissing extends GkmError {
 	constructor(readonly stage: string) {
 		super(
 			`The stage '${stage}' runs OpenObserve and has no ${LOGS_PASSWORD_KEY} ` +

@@ -13,12 +13,13 @@ import { existsSync } from 'node:fs';
 import { readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { kebabCase } from '@geekmidas/manifest';
+import { GkmError } from '../../errors';
 
 /** Where SST leaves the last successful deploy's outputs, under the project. */
 export const SST_OUTPUTS_FILE = join('.sst', 'outputs.json');
 
 /** `.sst/outputs.json` is there, and is not JSON. */
-export class SstOutputsUnreadable extends Error {
+export class SstOutputsUnreadable extends GkmError {
 	constructor(
 		readonly path: string,
 		readonly reason: string,

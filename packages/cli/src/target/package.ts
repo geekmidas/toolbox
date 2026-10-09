@@ -10,6 +10,7 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { GkmError } from '../errors';
 
 export interface TargetPackageManifest {
 	name?: string;
@@ -26,7 +27,7 @@ export interface LocatedPackage {
 }
 
 /** A target package the project does not have installed. */
-export class TargetPackageNotFound extends Error {
+export class TargetPackageNotFound extends GkmError {
 	constructor(
 		readonly target: string,
 		readonly packageName: string,

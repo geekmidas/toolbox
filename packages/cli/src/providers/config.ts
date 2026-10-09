@@ -6,6 +6,7 @@
  * the way `checkStageTelemetry` does for `deploy.telemetry`.
  */
 
+import { GkmError } from '../errors';
 import { checkS3Config, S3_PROVISIONING } from './s3/config.js';
 import type {
 	ProviderConfig,
@@ -57,7 +58,7 @@ function accepted(kind: ProviderKind): string {
 }
 
 /** An entry that names no provider gkm has, or is not an entry at all. */
-export class UnknownStageProvider extends Error {
+export class UnknownStageProvider extends GkmError {
 	constructor(
 		readonly kind: ProviderKind,
 		readonly stage: string,

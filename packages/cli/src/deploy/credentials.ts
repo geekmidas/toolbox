@@ -10,6 +10,7 @@
  */
 
 import { readCredentials } from '../auth/credentials';
+import { GkmError } from '../errors';
 
 /**
  * What each kind of credential is asked for with, and what it is.
@@ -125,7 +126,7 @@ const HOW_TO_PROVIDE: Partial<Record<CredentialKind, string>> = {
 };
 
 /** A deploy needed a credential, and its provider had none. */
-export class MissingCredential extends Error {
+export class MissingCredential extends GkmError {
 	constructor(
 		readonly kind: CredentialKind,
 		/** What it was for: the Dokploy endpoint or the registry URL. */

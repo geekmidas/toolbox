@@ -22,6 +22,7 @@ import {
 } from '@geekmidas/constructs/encryption';
 import { canonicalId, provideKey } from '@geekmidas/manifest';
 import { loadWorkspaceSettings } from '../config';
+import { GkmError } from '../errors';
 import { withCustomSecret } from '../secrets/storage.js';
 import { type SecretsStore, secretsStoreFor } from '../secrets/store.js';
 import { providerOf } from '../workspace/backends.js';
@@ -30,7 +31,7 @@ import type { NormalizedWorkspace } from '../workspace/types.js';
 
 const logger = console;
 
-export class LocalKeyringIsDerived extends Error {
+export class LocalKeyringIsDerived extends GkmError {
 	constructor(
 		readonly construct: string,
 		readonly stage: string,
@@ -42,7 +43,7 @@ export class LocalKeyringIsDerived extends Error {
 	}
 }
 
-export class KmsRotatesItself extends Error {
+export class KmsRotatesItself extends GkmError {
 	constructor(readonly construct: string) {
 		super(
 			`${construct} is a KMS key on AWS: KMS rotates it yearly and keeps every version, so no value is ever stranded and there is no key to retire. Nothing to do here.`,
@@ -51,7 +52,7 @@ export class KmsRotatesItself extends Error {
 	}
 }
 
-export class NoKeyringYet extends Error {
+export class NoKeyringYet extends GkmError {
 	constructor(
 		readonly construct: string,
 		readonly stage: string,

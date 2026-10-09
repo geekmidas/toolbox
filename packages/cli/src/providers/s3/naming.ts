@@ -10,6 +10,7 @@
 
 import { randomInt } from 'node:crypto';
 import { kebabCase } from '@geekmidas/manifest';
+import { GkmError } from '../../errors';
 
 /** S3's limit on a bucket name. */
 export const BUCKET_NAME_MAX = 63;
@@ -23,7 +24,7 @@ export const SUFFIX_ATTEMPTS = 5;
 const SUFFIX_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
 /** A name that S3 would refuse — what the name builder never returns. */
-export class InvalidBucketName extends Error {
+export class InvalidBucketName extends GkmError {
 	constructor(
 		readonly bucket: string,
 		readonly reason: string,

@@ -4,6 +4,7 @@ import { dirname, join, relative } from 'node:path';
 import { type ConstructManifest, publicEnvFor } from '@geekmidas/manifest';
 import { type WorkerUnit, workerUnits } from '../build/workers.js';
 import { loadWorkspaceConfig } from '../config';
+import { GkmError } from '../errors';
 import { workerBundleName } from '../generators/WorkerGenerator.js';
 import { output } from '../output';
 import { dockerfileOf } from '../reconcile/apps.js';
@@ -81,7 +82,7 @@ export class DockerPushFailed extends Error {
 }
 
 /** `gkm docker --push` was asked for with nowhere to push to. */
-export class PushNeedsRegistry extends Error {
+export class PushNeedsRegistry extends GkmError {
 	constructor(readonly imageName: string) {
 		super(
 			`Registry is required to push Docker image '${imageName}'. Use --registry or configure docker.registry in gkm.config.ts`,

@@ -13,6 +13,7 @@
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { detectPackageManager, type PackageManager } from '../docker/templates';
+import { GkmError } from '../errors';
 import { CommandFailed } from '../run';
 import type { Sandbox, SandboxOutput, SandboxResult } from './sandbox';
 
@@ -46,7 +47,7 @@ export interface InstallOptions {
 }
 
 /** A name in `allowScripts` that is not a package name. */
-export class InstallAllowlistNameInvalid extends Error {
+export class InstallAllowlistNameInvalid extends GkmError {
 	constructor(readonly packageName: string) {
 		super(
 			`'${packageName}' is not a package name, so its scripts cannot be ` +
@@ -58,7 +59,7 @@ export class InstallAllowlistNameInvalid extends Error {
 }
 
 /** The package manager has no way to run only some packages' scripts. */
-export class InstallScriptsAllowlistUnsupported extends Error {
+export class InstallScriptsAllowlistUnsupported extends GkmError {
 	constructor(
 		readonly packageManager: string,
 		readonly allowScripts: readonly string[],

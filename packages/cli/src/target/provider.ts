@@ -7,6 +7,7 @@
  * the job.
  */
 
+import { GkmError } from '../errors';
 import { DeployTargetNotYetSupported } from './builtins';
 
 /** What each removed provider's job is done with now. */
@@ -18,7 +19,7 @@ const REMOVED: Record<string, string> = {
 };
 
 /** A `--provider` that no longer exists. */
-export class ProviderRemoved extends Error {
+export class ProviderRemoved extends GkmError {
 	constructor(
 		readonly provider: string,
 		/** What to use instead. */

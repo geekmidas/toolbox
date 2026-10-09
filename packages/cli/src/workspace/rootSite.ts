@@ -20,6 +20,8 @@
  * @returns the root site's name, or `undefined` when there are no sites
  * @throws {AmbiguousRootSite} when several sites could be the root and none says it is
  */
+
+import { GkmError } from '../errors';
 export function rootSite(
 	sites: readonly { name: string; root?: boolean }[],
 ): string | undefined {
@@ -42,7 +44,7 @@ export function rootSite(
 }
 
 /** Several sites could hold the base domain, and none of them says it does. */
-export class AmbiguousRootSite extends Error {
+export class AmbiguousRootSite extends GkmError {
 	constructor(
 		readonly sites: readonly string[],
 		readonly tooMany = false,

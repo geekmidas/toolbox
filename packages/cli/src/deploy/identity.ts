@@ -10,6 +10,7 @@
  */
 
 import { kebabCase, scopedName } from '@geekmidas/manifest';
+import { GkmError } from '../errors';
 
 export interface DeployIdentity {
 	/**
@@ -41,7 +42,7 @@ export interface DeployIdentity {
 }
 
 /** A namespace that cannot be part of a Dokploy name or an image path. */
-export class DeployNamespaceInvalid extends Error {
+export class DeployNamespaceInvalid extends GkmError {
 	constructor(readonly namespace: string) {
 		super(
 			`deploy.namespace '${namespace}' is not usable as a name: use lowercase letters, digits and single '-' between them (e.g. 'acme' or 'acme-platform') in gkm.config.ts.`,
@@ -51,7 +52,7 @@ export class DeployNamespaceInvalid extends Error {
 }
 
 /** A workspace name with nothing a target can name a resource by. */
-export class DeployProjectNameInvalid extends Error {
+export class DeployProjectNameInvalid extends GkmError {
 	constructor(readonly workspaceName: string) {
 		super(
 			`The workspace name '${workspaceName}' has no letters or digits to name deployed resources by. Set "name" in gkm.config.ts.`,

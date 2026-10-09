@@ -9,6 +9,7 @@
  * about to crash-loop is not enough.
  */
 
+import { GkmError } from '../../errors';
 import type { TargetEvent } from '../types';
 
 /** What the health check of one app is. */
@@ -30,7 +31,7 @@ export interface HealthCheck {
 const REQUEST_TIMEOUT_MS = 10_000;
 
 /** An app never answered healthy enough times in a row. */
-export class HealthCheckTimedOut extends Error {
+export class HealthCheckTimedOut extends GkmError {
 	constructor(
 		readonly app: string,
 		readonly url: string,

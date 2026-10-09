@@ -15,6 +15,7 @@
 
 import { appendFile } from 'node:fs/promises';
 import { loadWorkspaceSettings } from '../config.js';
+import { GkmError } from '../errors';
 import type { NormalizedWorkspace, StagesConfig } from '../workspace/types.js';
 import { planStages } from './plan.js';
 
@@ -160,7 +161,7 @@ export async function stagesCommand(
 }
 
 /** `--github-output` outside a GitHub Actions step, which sets the file. */
-export class GithubOutputNotSet extends Error {
+export class GithubOutputNotSet extends GkmError {
 	constructor() {
 		super(
 			'gkm stages --github-output writes to the file GITHUB_OUTPUT names, and it is not set. Run it in a GitHub Actions step, or set GITHUB_OUTPUT to a file to write to.',
@@ -170,7 +171,7 @@ export class GithubOutputNotSet extends Error {
 }
 
 /** No `--event`, and no `GITHUB_EVENT_NAME` to take it from. */
-export class GithubEventNotSet extends Error {
+export class GithubEventNotSet extends GkmError {
 	constructor() {
 		super(
 			'gkm stages --github-output plans for an event, and none was given. Pass --event (push, release, workflow_dispatch), or run it in a GitHub Actions step, which sets GITHUB_EVENT_NAME.',

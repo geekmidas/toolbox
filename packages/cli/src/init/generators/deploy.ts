@@ -8,6 +8,7 @@
  */
 
 import { canonicalId } from '@geekmidas/manifest';
+import { GkmError } from '../../errors';
 import { databaseFor, emailFor } from '../constructs.js';
 import { DEPENDENCY_VERSIONS } from '../dependencies.js';
 import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
@@ -173,7 +174,7 @@ ${inputs.join('\n')}
  * An SST scaffold asked for without a region. `init` always resolves one —
  * asked, `--region`, or eu-west-1 under `--yes` — so this is a caller's bug.
  */
-export class SstNeedsRegion extends Error {
+export class SstNeedsRegion extends GkmError {
 	constructor() {
 		super('An SST deploy needs a region: pass --region, e.g. eu-west-1.');
 		this.name = 'SstNeedsRegion';

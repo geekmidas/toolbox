@@ -1,5 +1,6 @@
 import { isAbsolute, join, relative, sep } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
+import { GkmError } from '../errors';
 import { appKey } from '../workspace/derive.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 
@@ -21,7 +22,7 @@ export interface WorkerUnit {
 }
 
 /** A worker with background work and no backend app to build it from. */
-export class WorkerHasNoApp extends Error {
+export class WorkerHasNoApp extends GkmError {
 	constructor(readonly worker: string) {
 		super(
 			`The worker '${worker}' has crons, queues or subscribers, and the ` +
@@ -33,7 +34,7 @@ export class WorkerHasNoApp extends Error {
 }
 
 /** A worker whose service name an app already has. */
-export class WorkerNameTaken extends Error {
+export class WorkerNameTaken extends GkmError {
 	constructor(
 		readonly worker: string,
 		readonly service: string,

@@ -82,6 +82,97 @@ describe('formatError', () => {
 	});
 });
 
+describe('formatError for an error gkm raised on purpose', () => {
+	afterEach(() => vi.unstubAllEnvs());
+
+	/** A named error, as every one gkm raises is written. */
+	async function named() {
+		const { GkmError } = await import('../errors');
+		class StageNotReady extends GkmError {
+			constructor(readonly stage: string) {
+				super(
+					`The stage '${stage}' is not ready. Run gkm setup --stage ${stage}.`,
+				);
+				this.name = 'StageNotReady';
+			}
+		}
+		return new StageNotReady('prod');
+	}
+
+	it('prints its name and message, and no stack', async () => {
+		vi.stubEnv('GKM_DEBUG', '');
+		const { formatError } = await fresh();
+		const error = await named();
+
+		expect(formatError(error)).toBe(
+			"StageNotReady: The stage 'prod' is not ready. Run gkm setup --stage prod.",
+		);
+	});
+
+	it('names what it wraps by its message alone', async () => {
+		vi.stubEnv('GKM_DEBUG', '');
+		const { formatError } = await fresh();
+		const error = await named();
+		const cause = Object.assign(new Error('Could not load credentials'), {
+			name: 'CredentialsProviderError',
+		});
+		Object.assign(error, { cause });
+
+		const out = formatError(error);
+
+		expect(out).toContain(
+			'Caused by: CredentialsProviderError: Could not load credentials',
+		);
+		expect(out).not.toContain(cause.stack!);
+		expect(out).not.toMatch(/\n\s+at /);
+	});
+
+	it('prints the stack in debug mode', async () => {
+		vi.stubEnv('GKM_DEBUG', '1');
+		const { formatError } = await fresh();
+		const error = await named();
+
+		expect(formatError(error)).toBe(error.stack);
+	});
+
+	it('keeps the stack of an error nobody explained', async () => {
+		vi.stubEnv('GKM_DEBUG', '');
+		const { formatError } = await fresh();
+		const error = new TypeError(
+			"Cannot read properties of undefined (reading 'id')",
+		);
+
+		expect(formatError(error)).toBe(error.stack);
+	});
+});
+
+describe('exitWithError', () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		vi.restoreAllMocks();
+	});
+
+	it('prints the error on stderr and exits 1', async () => {
+		vi.stubEnv('GKM_DEBUG', '');
+		const { exitWithError } = await fresh();
+		const { GkmError } = await import('../errors');
+		const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const exit = vi.spyOn(process, 'exit').mockImplementation(() => {
+			throw new Error('exited');
+		});
+		class NothingToDo extends GkmError {
+			constructor() {
+				super('Nothing to do.');
+				this.name = 'NothingToDo';
+			}
+		}
+
+		expect(() => exitWithError(new NothingToDo())).toThrow('exited');
+		expect(stderr).toHaveBeenCalledWith('NothingToDo: Nothing to do.');
+		expect(exit).toHaveBeenCalledWith(1);
+	});
+});
+
 describe('formatWarning', () => {
 	afterEach(() => vi.unstubAllEnvs());
 
