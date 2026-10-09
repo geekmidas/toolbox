@@ -5,15 +5,27 @@
  * `AdministratorAccess`. A stage deployed with the `compose` target builds and
  * runs containers on a server; from AWS its deploy job needs only the stage's
  * secrets — read, and written back when a deploy generates a new one — and,
- * when the deploy state is kept in AWS, the stage's state. So a compose stage
+ * when the deploy state is kept in AWS, the stage's state, and, when the
+ * stage's domain is in Route53, the records of its hosted zone, and, when an
+ * `s3` provider backs its buckets, those buckets and the IAM user each is
+ * reached with — by the names the provider gives them. So a compose stage
  * gets an inline policy naming exactly those resources and nothing else.
  *
  * `--policy-arn` replaces either.
  */
 
+import { stageDnsDomains } from '../compose/dns.js';
+import { stageProvider } from '../providers/config.js';
+import {
+	bucketName,
+	IAM_USER_PATH,
+	iamUserName,
+	SUFFIX_LENGTH,
+} from '../providers/s3/naming.js';
 import { secretsParameterName } from '../secrets/aws.js';
 import { secretsManagerSecretName } from '../secrets/secretsManager.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
+import { deployIdentity } from './identity.js';
 
 /**
  * What SST needs to create a stack is most of AWS, so this is the default
@@ -68,6 +80,8 @@ export function deployAccess(
 	workspace: NormalizedWorkspace,
 	stage: string,
 	policyArn?: string,
+	/** The ids of the stage's `ObjectStorage` constructs, from its manifest. */
+	buckets: readonly string[] = [],
 ): DeployAccess {
 	if (policyArn) {
 		return { kind: 'managed', policyArn, reason: '--policy-arn' };
@@ -183,6 +197,111 @@ export function deployAccess(
 				Action: ['s3:ListBucket'],
 				Resource: `arn:aws:s3:::${state.bucket}`,
 			},
+		]);
+	}
+
+	// The deploy creates each bucket an s3 provider backs, and the IAM user
+	// and key it is reached with: by their names — the good one, or the good
+	// one with a clash's six-character suffix — and nothing else.
+	const objects = stageProvider(workspace, 'objects', stage);
+	if (objects.mode === 'provider' && objects.name === 's3' && buckets.length) {
+		const { scope } = deployIdentity(workspace, stage);
+		const names = [...buckets].sort().map((id) => ({
+			bucket: bucketName({ scope, stage, id }),
+			user: iamUserName({ scope, stage, id }),
+		}));
+		const suffix = '?'.repeat(SUFFIX_LENGTH - 1);
+		describe.push(
+			`create and configure the buckets ${names.map((n) => n.bucket).join(', ')} and their IAM users (S3, IAM)`,
+		);
+		build.push((account) => [
+			{
+				Sid: 'StageBuckets',
+				Effect: 'Allow',
+				Action: [
+					's3:CreateBucket',
+					's3:ListBucket',
+					's3:GetBucketTagging',
+					's3:PutBucketTagging',
+					's3:GetBucketPublicAccessBlock',
+					's3:PutBucketPublicAccessBlock',
+					's3:GetBucketPolicy',
+					's3:PutBucketPolicy',
+					's3:GetEncryptionConfiguration',
+					's3:PutEncryptionConfiguration',
+					's3:GetBucketVersioning',
+					's3:PutBucketVersioning',
+					's3:GetBucketCORS',
+					's3:PutBucketCORS',
+				],
+				Resource: names.flatMap((n) => [
+					`arn:aws:s3:::${n.bucket}`,
+					`arn:aws:s3:::${n.bucket}-${suffix}`,
+				]),
+			},
+			{
+				Sid: 'StageBucketUsers',
+				Effect: 'Allow',
+				Action: [
+					'iam:GetUser',
+					'iam:CreateUser',
+					'iam:TagUser',
+					'iam:ListUserTags',
+					'iam:GetUserPolicy',
+					'iam:PutUserPolicy',
+					'iam:ListAccessKeys',
+					'iam:CreateAccessKey',
+					'iam:DeleteAccessKey',
+				],
+				Resource: names.map(
+					(n) => `arn:aws:iam::${account}:user${IAM_USER_PATH}${n.user}`,
+				),
+			},
+		]);
+	}
+
+	// The deploy writes the stage's hosts' records: in Route53, only that
+	// zone's — and, with no hostedZoneId to name it, the zone is looked up
+	// by name, which IAM cannot scope.
+	for (const { domain, config } of stageDnsDomains(
+		stage,
+		workspace.domains,
+		workspace.dns,
+	)) {
+		if (config.provider !== 'route53') continue;
+		const zoneId = (config as { hostedZoneId?: string }).hostedZoneId?.replace(
+			/^\/?hostedzone\//,
+			'',
+		);
+		describe.push(
+			`write the A, AAAA and CNAME records of ${domain} (Route53${zoneId ? `, ${zoneId}` : ''})`,
+		);
+		build.push(() => [
+			{
+				Sid: 'StageDnsRecords',
+				Effect: 'Allow',
+				Action: [
+					'route53:ChangeResourceRecordSets',
+					'route53:ListResourceRecordSets',
+				],
+				Resource: `arn:aws:route53:::hostedzone/${zoneId ?? '*'}`,
+			},
+			{
+				Sid: 'StageDnsChanges',
+				Effect: 'Allow',
+				Action: ['route53:GetChange'],
+				Resource: 'arn:aws:route53:::change/*',
+			},
+			...(zoneId
+				? []
+				: [
+						{
+							Sid: 'StageDnsZones',
+							Effect: 'Allow' as const,
+							Action: ['route53:ListHostedZonesByName'],
+							Resource: '*',
+						},
+					]),
 		]);
 	}
 

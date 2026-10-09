@@ -156,6 +156,7 @@ describe('gkm stages', () => {
 				'has-build': 'true',
 				'has-deploy': 'true',
 				'aws-region': '',
+				resources: '[]',
 			});
 		});
 
@@ -194,6 +195,46 @@ describe('gkm stages', () => {
 			expect((await outputs({ event: 'push' }))['aws-region']).toBe(
 				'af-south-1',
 			);
+		});
+
+		it('names the stages whose resources the deploy creates on a runner', async () => {
+			await writeFile(
+				join(dir, 'gkm.config.ts'),
+				config(
+					`{ local: 'dev', deployed: ['staging', 'prod', 'preview', 'demo'] }`,
+					`secrets: { store: { provider: 'ssm', region: 'af-south-1' } },
+  domains: {
+    staging: 'staging.example.org',
+    prod: 'example.com',
+    preview: 'preview.example.org',
+    demo: 'demo.example.org',
+  },
+  dns: {
+    'example.com': { provider: 'godaddy' },
+    'example.org': { provider: 'manual' },
+  },
+  deploy: { objects: { preview: { provider: 's3', region: 'af-south-1' } } },`,
+				),
+			);
+
+			// prod: DNS through GoDaddy; preview: an s3 provider; staging and
+			// demo: manual DNS, keys set by hand — nothing to create.
+			expect((await outputs({ event: 'push' })).resources).toBe(
+				'["prod","preview"]',
+			);
+		});
+
+		it('names none when the secrets are not where a runner can reach them', async () => {
+			await writeFile(
+				join(dir, 'gkm.config.ts'),
+				config(
+					DEPLOYED,
+					`domains: { prod: 'example.com' },
+  dns: { 'example.com': { provider: 'godaddy' } },`,
+				),
+			);
+
+			expect((await outputs({ event: 'push' })).resources).toBe('[]');
 		});
 
 		it('annotates the run and writes nothing for a dispatch to an unknown stage', async () => {

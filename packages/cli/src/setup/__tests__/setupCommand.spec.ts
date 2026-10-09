@@ -1,10 +1,4 @@
-import {
-	existsSync,
-	mkdirSync,
-	realpathSync,
-	rmSync,
-	writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
 	afterEach,
@@ -17,21 +11,20 @@ import {
 } from 'vitest';
 import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
-import { loadWorkspaceConfig } from '../../config';
 import { FileSecretsStore } from '../../secrets/file';
 import { keystoreProject } from '../../secrets/keystore';
-import { secretsStoreFor } from '../../secrets/store';
 
 /**
  * `gkm setup` as a developer runs it: in a project, with its keys under a home
  * directory. The keys go to a temporary one, and nothing here starts a
  * container — the projects declare none, or pass `--skip-docker`.
  *
- * The SSM cases talk to the AWS emulator the suite already runs, through the
- * SDK's own `AWS_ENDPOINT_URL`, so reads and writes are the real calls.
+ * The SSM case talks to the AWS emulator the suite already runs, through the
+ * SDK's own `AWS_ENDPOINT_URL`, so reads and writes are the real calls. A
+ * deployed stage is never set up from here: its deploy creates what it needs.
  */
 
-const { setupCommand, StageSecretsUnreadable } = await import('../index');
+const { setupCommand, SetupIsLocal } = await import('../index');
 
 class Exited extends Error {
 	constructor(readonly code: number | undefined) {
@@ -183,14 +176,8 @@ export const database = new KyselyDatabase('Database');
 		expect(output(error)).toContain('No gkm.config.ts found');
 	});
 
-	describe("a deployed stage's providers", () => {
-		beforeEach(() => {
-			vi.stubEnv('AWS_ENDPOINT_URL', LOCALSTACK_URL);
-			vi.stubEnv('AWS_ACCESS_KEY_ID', 'test');
-			vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'test');
-			vi.stubEnv('AWS_REGION', 'eu-west-1');
-			vi.stubEnv('AWS_PROFILE', undefined);
-			vi.stubEnv('GKM_HOME', join(dir, '.gkm-home'));
+	describe('a deployed stage', () => {
+		it('is refused by name: the deploy creates its resources, and nothing is written', async () => {
 			mkdirSync(join(dir, 'constructs'), { recursive: true });
 			writeFileSync(
 				join(dir, 'constructs', 'storage.ts'),
@@ -199,87 +186,33 @@ export const database = new KyselyDatabase('Database');
 export const uploads = new ObjectStorage('Uploads');
 `,
 			);
-		});
-
-		it('prints the plan on --dry-run, starting and writing nothing', async () => {
-			const name = `dry-${Date.now().toString(36)}`;
 			config(
 				`constructs: './constructs/**/*.ts',
   deploy: { objects: { prod: { provider: 's3', region: 'eu-west-1' } } },`,
-				name,
 			);
 
-			await setupCommand({ stage: 'prod', dryRun: true });
+			const result = setupCommand({ stage: 'prod' });
 
-			const said = output(log);
-			expect(said).toContain("Provisioning the 'prod' stage (dry run)...");
-			expect(said).not.toContain('local environment');
-			expect(said).toContain(
-				"Providers for 'prod' (dry run — nothing is created or written)",
+			await expect(result).rejects.toBeInstanceOf(SetupIsLocal);
+			await expect(result).rejects.toThrow(
+				'gkm deploy --stage prod (gkm compose --stage prod is the same deploy)',
 			);
-			expect(said).toContain(
-				`would create in eu-west-1 — bucket ${name}-prod-uploads`,
-			);
-			expect(said).toContain(
-				`would create under /gkm/ — IAM user gkm-${name}-prod-uploads`,
-			);
-			expect(said).toMatch(/📋 \d+ changes planned/);
-			// No secrets generated, no state, no containers.
-			expect(said).not.toContain('Generating fresh');
-			expect(existsSync(join(dir, '.gkm', 'secrets', 'prod.json'))).toBe(false);
-			expect(existsSync(join(dir, '.gkm', 'deploy-prod.json'))).toBe(false);
-		});
-
-		it('says how to name one when the stage has none', async () => {
-			config(`constructs: './constructs/**/*.ts',`);
-
-			await setupCommand({ stage: 'prod', dryRun: true });
-
-			expect(output(log)).toContain(
-				"None configured: 'prod' takes every key from its secrets",
-			);
+			expect(output(log)).not.toContain('Generating fresh');
+			expect(existsSync(join(dir, '.gkm'))).toBe(false);
 		});
 	});
 
-	describe('with a deployed stage kept in SSM', () => {
+	describe('with the deployed stages kept in SSM', () => {
 		// With a constructs glob: a config with neither apps nor constructs is
 		// a single-app one.
 		const ssm = `constructs: './src/constructs/**/*.ts',
   secrets: { store: { provider: 'ssm', region: 'us-east-1' } },`;
-
-		/** What the stage's own store holds, resolved as every command does. */
-		async function storedIn(stage: string) {
-			const { workspace } = await loadWorkspaceConfig(dir);
-			return (await secretsStoreFor(workspace, stage)).read(stage);
-		}
 
 		beforeEach(() => {
 			vi.stubEnv('AWS_ENDPOINT_URL', LOCALSTACK_URL);
 			vi.stubEnv('AWS_ACCESS_KEY_ID', 'test');
 			vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'test');
 			vi.stubEnv('AWS_REGION', 'us-east-1');
-		});
-
-		it('writes fresh secrets to the store, where a new machine finds them', async () => {
-			// A name nobody else in the emulator has used.
-			config(ssm, `shop-${Date.now()}`);
-
-			await setupCommand({ stage: 'prod', skipDocker: true });
-			expect(output(log)).toContain("Provisioning the 'prod' stage...");
-			expect(output(log)).not.toContain('local environment');
-			expect(output(log)).toContain('Secrets written to the "prod" store');
-			// Nothing on this machine to forget to push.
-			expect(existsSync(join(dir, '.gkm', 'secrets', 'prod.json'))).toBe(false);
-			const stored = await storedIn('prod');
-			expect(stored?.stage).toBe('prod');
-
-			// A second machine: the same store, nothing local.
-			rmSync(join(dir, '.gkm'), { recursive: true, force: true });
-			log.mockClear();
-			await setupCommand({ stage: 'prod', skipDocker: true });
-
-			expect(output(log)).toContain('Using existing secrets');
-			expect(await storedIn('prod')).toEqual(stored);
 		});
 
 		it('keeps the local stage on this machine', async () => {
@@ -293,73 +226,6 @@ export const uploads = new ObjectStorage('Uploads');
 			);
 			expect(output(log)).not.toContain('(ssm)');
 			expect(await fileStore(name).read('dev')).not.toBeNull();
-		});
-
-		it('stops when SSM cannot be reached, rather than generating secrets nobody can read', async () => {
-			vi.stubEnv('AWS_ENDPOINT_URL', 'http://127.0.0.1:1');
-			config(ssm);
-
-			const result = setupCommand({
-				stage: 'prod',
-				skipDocker: true,
-				yes: true,
-			});
-			await expect(result).rejects.toThrow();
-			// Unreachable is not unauthenticated: the SDK's own error passes through.
-			await expect(result).rejects.not.toBeInstanceOf(StageSecretsUnreadable);
-			expect(existsSync(join(dir, '.gkm', 'secrets', 'prod.json'))).toBe(false);
-		});
-
-		describe('with no AWS credentials on this machine', () => {
-			beforeEach(() => {
-				// Nothing for the SDK's chain to find, and no instance metadata
-				// endpoint to ask: it gives up without a network call.
-				vi.stubEnv('AWS_ACCESS_KEY_ID', undefined);
-				vi.stubEnv('AWS_SECRET_ACCESS_KEY', undefined);
-				vi.stubEnv('AWS_SESSION_TOKEN', undefined);
-				vi.stubEnv('AWS_PROFILE', undefined);
-				vi.stubEnv('AWS_CONFIG_FILE', join(dir, 'no-aws-config'));
-				vi.stubEnv('AWS_SHARED_CREDENTIALS_FILE', join(dir, 'no-aws-creds'));
-				vi.stubEnv('AWS_CONTAINER_CREDENTIALS_RELATIVE_URI', undefined);
-				vi.stubEnv('AWS_CONTAINER_CREDENTIALS_FULL_URI', undefined);
-				vi.stubEnv('AWS_WEB_IDENTITY_TOKEN_FILE', undefined);
-				vi.stubEnv('AWS_EC2_METADATA_DISABLED', 'true');
-				vi.stubEnv('AWS_ENDPOINT_URL', 'http://127.0.0.1:1');
-			});
-
-			it('refuses a dry run by name, before any provider runs', async () => {
-				config(ssm);
-
-				const result = setupCommand({ stage: 'prod', dryRun: true });
-
-				await expect(result).rejects.toBeInstanceOf(StageSecretsUnreadable);
-				await expect(result).rejects.toMatchObject({
-					stage: 'prod',
-					store: 'ssm',
-					message: expect.stringContaining('AWS_PROFILE=<profile>'),
-				});
-				await expect(result).rejects.toThrow(/SSM Parameter Store/);
-				expect(output(log)).not.toContain('Providers for');
-			});
-
-			it('names the profile that has no credentials', async () => {
-				config(ssm);
-
-				const result = setupCommand({
-					stage: 'prod',
-					dryRun: true,
-					profile: 'prod-account',
-				});
-
-				await expect(result).rejects.toMatchObject({
-					name: 'StageSecretsUnreadable',
-					profile: 'prod-account',
-					message: expect.stringContaining(
-						"the AWS profile 'prod-account' has no credentials",
-					),
-				});
-				expect(output(log)).not.toContain('Providers for');
-			});
 		});
 	});
 });

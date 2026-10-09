@@ -147,46 +147,28 @@ It reads the stored logins and `.gkm/ports.json`; run `gkm dev` once first.
 
 ### `gkm setup`
 
-Reconcile only — derive the containers, databases, roles, schemas, and buckets
-the declared constructs name, and stop there.
+Set this machine up for the workspace, once: the local stage's secrets and
+containers. It derives the containers, databases, roles, schemas and buckets
+the declared constructs name, and stops there.
 
 ```bash
-gkm setup                      # reconcile the local stage (stages.local)
+gkm setup                      # set up the local stage (stages.local)
 gkm setup --skip-docker        # secrets and validation only
 gkm setup --force              # regenerate secrets even if they exist
-gkm setup --stage production   # a deployed stage: run its providers
-gkm setup --stage production --dry-run      # print what they would do
-gkm setup --stage production --rotate-keys  # issue each provisioned key a successor
 ```
 
-On a **deployed stage**, `gkm setup --stage <stage>` resolves the stage's
-secrets and then runs every provider `deploy.<kind>.<stage>` names —
-`deploy.objects.<stage>: { provider: 's3' }` creates each bucket, its IAM user
-and key in the stage's AWS account and writes the bucket's URL into the
-stage's secrets. It starts no container: a deployed stage's infrastructure is
-not on this machine. See [Providers](./providers.md).
+- `--stage <stage>` — the stage to set up (default `stages.local`); never a
+  deployed stage
+- `--force` — regenerate secrets even if they exist
+- `--skip-docker` — start no container
+- `-y, --yes` — skip prompts
 
-On a compose workspace with `dns` configured, it then points every public
-host of the stage's stack at its server — `GKM_SERVER_IPV4` (and
-`GKM_SERVER_IPV6`) in the stage's secrets — through each domain's DNS
-provider, with this machine's DNS credentials. A compose stage with a domain
-and no `GKM_SERVER_IPV4` is refused before anything runs, with
-`ServerAddressMissing`. See [Compose: DNS](./compose.md#dns).
-
-- `--dry-run` — print the plan; nothing is created in the account, and nothing
-  is written to the stage's secrets or state
-- `--profile <name>` — the AWS profile for the stage's account (else
-  `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, the SDK's
-  default chain)
-- `--rotate-keys` — create a second key for each provisioned user and write it
-  into the stage's secrets; the old key is deleted by the first run after the
-  next deploy
-- `--retire-old-keys` — delete a rotated-out key now, without waiting for a
-  deploy
-
-A provider with no credentials to provision with leaves the stage
-`external`: its keys are yours to set (`gkm secrets:add`), and the run says
-what to supply.
+It creates nothing for a deployed stage — no bucket, IAM user, key or DNS
+record, and no provider is called. `gkm setup --stage <deployed>` fails with
+`SetupIsLocal`: the deploy creates what a deployed stage needs, every time it
+runs — `gkm deploy --stage <stage>` (`gkm compose --stage <stage>` is the same
+deploy), and its `--dry-run` prints what it would create. See
+[Providers](./providers.md) and [Compose: DNS](./compose.md#dns).
 
 `gkm dev` and `gkm test` call the same function before they start anything, so
 this is only needed when you want the infrastructure without the server — after
@@ -356,9 +338,19 @@ Options:
                          every construct a deployed stage doesn't account for
                          (no key in its secrets, no provider). Not
                          production-grade: Mailpit delivers no mail
-  --skip-dns-check       Compose: do not check that each public host resolves
-                         to the stage's server (GKM_SERVER_IPV4) before the
-                         stack starts — for a CDN or proxy in front of it
+  --skip-dns             Compose: neither write the public hosts' DNS records
+                         nor check they point at GKM_SERVER_IPV4 — a CDN or
+                         proxy in front, or records written elsewhere
+  --resources-only       Deployed stage: create its resources — providers'
+                         buckets and keys, its DNS records — and nothing else:
+                         no image built, nothing started (a CI runner)
+  --skip-resources       Deployed stage: an earlier --resources-only run
+                         created them; run no provider, write or check no DNS
+                         record (providers' verify() still runs)
+  --rotate-keys          Deployed stage: each provider issues its keys a
+                         successor; this deploy releases on it, the next one
+                         deletes the old key
+  --retire-old-keys      Deployed stage: delete a rotated-out key now
   --provider <name>      Deprecated: `dokploy` means --target dokploy;
                          docker and aws-lambda are removed
   --skip-push, --skip-build
@@ -375,16 +367,25 @@ storage come from its secrets: each `Email`'s `<ID>_URL` and `<ID>_FROM`, each
 bucket's `<ID>_URL`, and each file server's `<ID>_URL`. A bucket's credentials
 are optional: a key in its URL (`s3://KEY:SECRET@bucket?…`) wins, and the
 shared `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, when set, serves every
-bucket whose URL has none. A stage missing any fails before anything is built,
-provisioned or written, with `ExternalServicesNotConfigured` listing every
-missing key and the `gkm secrets:set` line for each — or, under a provider
-(`deploy.objects`), the command that writes it. A stage on a provider is
-checked every deploy: the bucket must answer the key in the stage's secrets
+bucket whose URL has none. A stage missing any fails before anything is built
+or written, with `ExternalServicesNotConfigured` listing every missing key and
+the `gkm secrets:set` line for each. Under a provider (`deploy.objects`) the
+deploy creates the buckets and writes their keys first, so those keys are never
+reported missing; a provider with no provisioning credentials stops the deploy
+with `ProviderCredentialsMissing`, naming the environment it reads. A stage on
+a provider is checked every deploy: the bucket must answer the key in the stage's secrets
 (`ProvisionedBucketUnreachable`). `--allow-dev-services` runs MinIO and Mailpit
 in place of whatever the stage does not account for, with a warning (and a
 `dev-service.used` event) every run; keys the stage set and providers still
 win. The flag takes no value (`AllowDevServicesTakesNoValue`); on `sst` it
 fails with `DevServicesNeedServerTarget`.
+
+A deployed stage's **resources** are created by the deploy, every run, before
+its checks: each provider's buckets and keys ([Providers](./providers.md)),
+and, on compose with a `dns` provider for the stage's domain, one record per
+public host, read back from the provider ([Compose: DNS](./compose.md#dns)).
+`--dry-run` prints both plans and writes nothing. `--resources-only` with
+`--skip-resources` fails with `ResourcesOnlyAndSkipped`.
 
 See [Deploy targets](./deploy-targets.md) for targets and `deploy.targets`,
 [Deploying from a program](./deploy-api.md) for `deploy()` and the events
@@ -442,7 +443,7 @@ Re-running it converges.
 |---|---|
 | `--stage` | a stage in `stages.deployed` |
 | `--profile` | the AWS profile for the stage's account — keys, assume-role or SSO, whatever `~/.aws/config` says. Only that profile: exported `AWS_*` variables are not consulted |
-| `--policy-arn` | what the role may do, in place of the default: `AdministratorAccess`, which SST needs to create stacks — or, for a stage only the `compose` target deploys, an inline policy allowing just the stage's secrets (and deploy state in AWS). See [what the role may do](./deployment.md#what-the-role-may-do) |
+| `--policy-arn` | what the role may do, in place of the default: `AdministratorAccess`, which SST needs to create stacks — or, for a stage only the `compose` target deploys, an inline policy allowing just the stage's secrets (and deploy state in AWS), plus, when the stage uses them, its `s3` provider's buckets and IAM users and its `route53` domain's records. See [what the role may do](./deployment.md#what-the-role-may-do) |
 | `--repo` | `owner/name`; defaults to the repository `gh` sees |
 
 The profile needs rights to manage IAM in that account; if it lacks them, AWS's
@@ -475,6 +476,7 @@ runs. It writes these outputs to the file `$GITHUB_OUTPUT` names, each a string
 | `deploy` | the stages this run deploys |
 | `has-build`, `has-deploy` | `'true'` or `'false'` — a matrix over `[]` is an error on GitHub, so a job skips on these |
 | `aws-region` | the region of an `ssm` or `secrets-manager` `secrets.store`, else `''` |
+| `resources` | the deployed stages with resources the deploy creates — a `deploy.<kind>.<stage>` provider, or a `dns` domain whose provider writes records — and secrets in an AWS store; a compose workflow creates them on the runner |
 
 For each event:
 
@@ -521,9 +523,16 @@ Options:
                    Deployed stage: run MinIO and Mailpit for every bucket and
                    mail it doesn't account for (no key in its secrets, no
                    provider). The local stage always runs both
-  --skip-dns-check Deployed stage: do not check that each public host
-                   resolves to GKM_SERVER_IPV4 before the stack starts (a CDN
-                   or proxy in front of the server)
+  --skip-dns       Deployed stage: neither write the public hosts' DNS
+                   records nor check they point at GKM_SERVER_IPV4 (a CDN or
+                   proxy in front, or records written elsewhere)
+  --resources-only Deployed stage: create its resources — providers' buckets
+                   and keys, its DNS records — and nothing else (a CI runner)
+  --skip-resources Deployed stage: an earlier --resources-only run created
+                   them; run no provider, write or check no DNS record
+  --rotate-keys    Deployed stage: issue each provisioned key a successor
+  --retire-old-keys
+                   Deployed stage: delete a rotated-out key now
 
 The same as `gkm deploy --target compose --stage <stage>`, plus --build, --pull,
 --push, --digests-file and --down.
@@ -532,8 +541,19 @@ Errors:
   ServerAddressMissing    a deployed stage with a domain and no GKM_SERVER_IPV4
                           in its secrets (gkm secrets:set GKM_SERVER_IPV4 '<ip>')
   ServerAddressInvalid    GKM_SERVER_IPV4/IPV6 that is not an address
-  HostNotPointingAtServer a public host that does not resolve to the server
-                          (fix: gkm setup --stage <stage>; or --skip-dns-check)
+  DnsCredentialMissing    a dns provider for the stage's domain and no token
+                          (GODADDY_API_TOKEN, HOSTINGER_API_TOKEN) — before
+                          anything runs
+  DnsWildcardRefused      a wildcard public host; records are one per host
+  DnsRecordsNotConfirmed  records the deploy wrote that the provider does not
+                          return when read back
+  HostNotPointingAtServer a public host, under no dns provider that writes, that
+                          does not resolve to the server (fix: a dns provider,
+                          or the records by hand; or --skip-dns)
+  ProviderCredentialsMissing
+                          a deploy.<kind>.<stage> provider with no credentials
+                          to create its resources with
+  ResourcesOnlyAndSkipped --resources-only with --skip-resources
   RegistryRequired        --push, --tag or --pull with no deploy.registry
                           (the image would be a Docker Hub name)
   ComposePushNeedsBuild   --push without --build, or with --pull
@@ -695,7 +715,7 @@ only for their secrets) or any SMTP server, credentials field by field from
 the construct's schema — checked, and saved through the stage's store at
 once, so a stop or Ctrl-C keeps it. The run ends with what was saved, skipped
 and still missing. A key a provider on the stage creates — a bucket under
-`deploy.objects.<stage>`, written by `gkm setup --stage <stage>` — is listed
+`deploy.objects.<stage>`, written by `gkm deploy --stage <stage>` — is listed
 rather than offered. `--json` prints `key`, `kind`, `construct`, `apps` and
 `set` for each, and `provisioned: true` for a key a provider creates. Without a terminal and without `--json` it fails
 with `SecretsAddNeedsTerminal`. See

@@ -45,6 +45,8 @@ import {
 } from '@aws-sdk/client-iam';
 import { loadWorkspaceConfig } from '../config.js';
 import { GkmError } from '../errors';
+import { discover } from '../reconcile/discover.js';
+import { constructGlobs } from '../reconcile/workspace.js';
 import { getKeyPath, keystoreProject, readKey } from '../secrets/keystore.js';
 import { isRemoteStore, secretsStoreFor } from '../secrets/store.js';
 import { assertDeployedStage } from '../workspace/stages.js';
@@ -370,7 +372,21 @@ export async function deployGithubCommand(
 	// settings, before anything is changed, so a format no role can trust
 	// fails here.
 	const oidc = resolveOidcSubject(gh, repo, options.stage);
-	const access = deployAccess(workspace, options.stage, options.policyArn);
+	// The buckets an s3 provider creates are named after their constructs,
+	// so the role is scoped to exactly those names.
+	const manifest = await discover({
+		patterns: constructGlobs(workspace),
+		cwd: workspace.root,
+	});
+	const buckets = Object.entries(manifest)
+		.filter(([, d]) => d.kind === 'objects')
+		.map(([id]) => id);
+	const access = deployAccess(
+		workspace,
+		options.stage,
+		options.policyArn,
+		buckets,
+	);
 	// Read through the keystore so a key still at the place keys used to be kept
 	// is found, and copied to where it is kept now.
 	const key = await readKey(options.stage, keystoreProject(workspace));

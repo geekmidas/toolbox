@@ -128,10 +128,25 @@ export interface ComposeOptions {
 	 */
 	allowDevServices?: boolean;
 	/**
-	 * `--skip-dns-check`: do not check that each public host resolves to
-	 * the stage's server (`GKM_SERVER_IPV4`) before the stack starts.
+	 * `--skip-dns`: neither write the public hosts' DNS records nor check
+	 * that they point at the stage's server (`GKM_SERVER_IPV4`).
 	 */
-	skipDnsCheck?: boolean;
+	skipDns?: boolean;
+	/**
+	 * Create the stage's resources — its providers' (deploy.<kind>.<stage>)
+	 * and its DNS records — and nothing else: what a CI runner runs with the
+	 * cloud credentials and DNS token before the server deploys.
+	 */
+	resourcesOnly?: boolean;
+	/**
+	 * An earlier `resourcesOnly` run created the stage's resources: run no
+	 * provider, and write or check no DNS record.
+	 */
+	skipResources?: boolean;
+	/** Each provider issues its runtime keys a successor. */
+	rotateKeys?: boolean;
+	/** Delete a rotated-out key now, not after the next deploy. */
+	retireOldKeys?: boolean;
 }
 
 export interface ComposeResult {
@@ -238,7 +253,11 @@ export async function composeCommand(
 		...(options.dryRun ? { dryRun: true } : {}),
 		...(options.push ? { buildOnly: true } : {}),
 		...(options.allowDevServices ? { allowDevServices: true } : {}),
-		...(options.skipDnsCheck ? { skipDnsCheck: true } : {}),
+		...(options.skipDns ? { skipDns: true } : {}),
+		...(options.resourcesOnly ? { resourcesOnly: true } : {}),
+		...(options.skipResources ? { skipResources: true } : {}),
+		...(options.rotateKeys ? { rotateKeys: true } : {}),
+		...(options.retireOldKeys ? { retireOldKeys: true } : {}),
 		logger: {
 			info: (message) => console.log(message),
 			warn: (message) => console.warn(message),

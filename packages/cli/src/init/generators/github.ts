@@ -270,6 +270,7 @@ function stagesJob(options: TemplateOptions): string {
       has-build: \${{ steps.stages.outputs.has-build }}
       has-deploy: \${{ steps.stages.outputs.has-deploy }}
       aws-region: \${{ steps.stages.outputs.aws-region }}
+      resources: \${{ steps.stages.outputs.resources }}
     steps:
       - uses: actions/checkout@v4
 
@@ -286,6 +287,11 @@ ${pm.setup}
         with:
           stage: \${{ inputs.stage }}
 `;
+}
+
+/** Every step in `steps` run only when `condition` holds. */
+function onlyIf(steps: string, condition: string): string {
+	return steps.replace(/^ {6}- /gm, `      - if: ${condition}\n        `);
 }
 
 /**
@@ -313,6 +319,11 @@ function registryLogin(registry: string): string {
  *   `ref` — then that commit's push build, whose digests pin each image. Over
  *   SSH, with a pinned host key, the server checks the commit out and runs
  *   `gkm compose` on exactly those images.
+ * - Resources: where the stage has some the deploy creates — a provider's
+ *   bucket and key, DNS records through a provider — the runner creates them
+ *   first (`gkm deploy --resources-only`) with the stage's role and the DNS
+ *   token from its environment, and the server deploys with
+ *   `--skip-resources`: neither credential reaches the server.
  */
 function composeDeploy(options: TemplateOptions): string {
 	const pm = tooling(options);
@@ -389,6 +400,13 @@ ${registryLogin(registry)}
     permissions:
       contents: read
       actions: read
+      id-token: write
+    env:
+      # Whether the stage has resources the deploy creates — a provider's
+      # bucket and key (deploy.<kind>.<stage>), DNS records through a provider
+      # in dns: the runner creates them with the stage's role and DNS token,
+      # so neither reaches the server, which deploys with --skip-resources.
+      RESOURCES_ON_RUNNER: \${{ contains(fromJSON(needs.stages.outputs.resources || '[]'), matrix.stage) }}
     steps:
       # A release deploys its tag's commit, never its target_commitish — the
       # branch it was drafted against, which has moved on since.
@@ -410,6 +428,40 @@ ${registryLogin(registry)}
           TAG: \${{ github.event.release.tag_name }}
           REF: \${{ inputs.ref }}
           SHA: \${{ github.sha }}
+
+      # The deploy's resources, here on the runner: each provider's bucket
+      # and key (written into the stage's secrets store), and every public
+      # host's DNS record — a new app's included, one per host, never a
+      # wildcard — written through the provider where it is missing or out of
+      # date and read back from it. The stage's secrets (GKM_SERVER_IPV4
+      # among them) are read with the stage's role; the DNS token is a secret
+      # on this stage's environment. A missing credential fails here, before
+      # anything is deployed.
+      - name: Check out the commit
+        if: env.RESOURCES_ON_RUNNER == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: \${{ steps.commit.outputs.sha }}
+
+${onlyIf(pm.setup, "env.RESOURCES_ON_RUNNER == 'true'")}
+      - name: Install
+        if: env.RESOURCES_ON_RUNNER == 'true'
+        run: ${pm.install}
+
+      - name: Assume the stage's AWS role
+        if: env.RESOURCES_ON_RUNNER == 'true' && needs.stages.outputs.aws-region != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: \${{ vars.AWS_ROLE_ARN }}
+          aws-region: \${{ needs.stages.outputs.aws-region }}
+
+      - name: Create the stage's resources
+        if: env.RESOURCES_ON_RUNNER == 'true'
+        run: ${pm.exec} gkm deploy --stage "$STAGE" --resources-only
+        env:
+          STAGE: \${{ matrix.stage }}
+          GODADDY_API_TOKEN: \${{ secrets.GODADDY_API_TOKEN }}
+          HOSTINGER_API_TOKEN: \${{ secrets.HOSTINGER_API_TOKEN }}
 
       # The push run of this workflow that built the commit for this stage:
       # this run on a push, the newest one with the stage's digests otherwise.
@@ -472,9 +524,9 @@ ${registryLogin(registry)}
           if [ -f digests.json ]; then digests=$(base64 -w0 < digests.json); fi
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \\
             "$DEPLOY_USER@$DEPLOY_HOST" \\
-            "bash -s -- $(printf '%q ' "$STAGE" "$SHA" "$DEPLOY_PATH" "$digests")" <<'REMOTE'
+            "bash -s -- $(printf '%q ' "$STAGE" "$SHA" "$DEPLOY_PATH" "$digests" "$RESOURCES_ON_RUNNER")" <<'REMOTE'
           set -euo pipefail
-          stage=$1 sha=$2 dir=$3 digests=$4
+          stage=$1 sha=$2 dir=$3 digests=$4 resources_on_runner=$5
           cd "$dir"
           git fetch --quiet origin
           git checkout --quiet --detach "$sha"
@@ -485,6 +537,8 @@ ${registryLogin(registry)}
             printf '%s' "$digests" | base64 -d > ".gkm/digests-$stage.json"
             args+=(--digests-file ".gkm/digests-$stage.json")
           fi
+          # Created and confirmed from the runner already.
+          if [ "$resources_on_runner" = true ]; then args+=(--skip-resources); fi
           ${pm.exec} gkm compose "\${args[@]}"
           REMOTE
         env:
@@ -545,11 +599,16 @@ function targetDeploy(options: TemplateOptions): string {
           STAGE: \${{ matrix.stage }}
 `;
 
+	// The deploy writes each app's DNS records through the provider in
+	// gkm.config.ts's \`dns\`; its token is a secret on the stage's
+	// environment (empty, and unused, without one).
 	const deployEnv = sst
 		? ''
 		: `
           DOKPLOY_API_TOKEN: \${{ secrets.DOKPLOY_API_TOKEN }}
-          DOKPLOY_ENDPOINT: \${{ vars.DOKPLOY_ENDPOINT }}`;
+          DOKPLOY_ENDPOINT: \${{ vars.DOKPLOY_ENDPOINT }}
+          GODADDY_API_TOKEN: \${{ secrets.GODADDY_API_TOKEN }}
+          HOSTINGER_API_TOKEN: \${{ secrets.HOSTINGER_API_TOKEN }}`;
 
 	return `${deployHeader(false)}
 jobs:

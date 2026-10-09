@@ -8,17 +8,26 @@ import {
 
 /** The parts of a loaded workspace the deploy role's access depends on. */
 function workspace(
-	parts: Partial<Pick<NormalizedWorkspace, 'state' | 'apps'>> & {
+	parts: Partial<
+		Pick<NormalizedWorkspace, 'state' | 'apps' | 'domains' | 'dns'>
+	> & {
 		target?: string;
+		objects?: Record<string, unknown>;
 		store?: NormalizedWorkspace['secrets']['store'];
 	},
 ): NormalizedWorkspace {
 	return {
 		name: 'shop',
 		apps: parts.apps ?? {},
-		deploy: parts.target ? { default: parts.target } : {},
+		deploy: {
+			...(parts.target ? { default: parts.target } : {}),
+			...(parts.objects ? { objects: parts.objects } : {}),
+		},
+		stages: { local: 'dev', deployed: ['prod', 'dev-stage'] },
 		secrets: parts.store ? { store: parts.store } : {},
 		...(parts.state ? { state: parts.state } : {}),
+		...(parts.domains ? { domains: parts.domains } : {}),
+		...(parts.dns ? { dns: parts.dns } : {}),
 	} as NormalizedWorkspace;
 }
 
@@ -172,5 +181,158 @@ describe('deployAccess', () => {
 		expect(statements[2]!.Resource).toBe(
 			'arn:aws:ssm:eu-west-1:111:parameter/gkm/shop/prod/*',
 		);
+	});
+
+	describe("the stage's DNS records", () => {
+		const ssm = { provider: 'ssm', region: 'eu-west-1' } as const;
+
+		it("writes the stage's Route53 zone, and only that zone", () => {
+			const access = deployAccess(
+				workspace({
+					target: 'compose',
+					store: ssm,
+					domains: { prod: 'shop.example.com', dev: 'dev.example.org' },
+					dns: {
+						'example.com': { provider: 'route53', hostedZoneId: 'Z123' },
+						'example.org': { provider: 'route53', hostedZoneId: 'Z999' },
+					},
+				}),
+				'prod',
+			);
+
+			if (access.kind !== 'scoped') return expect.unreachable();
+			const statements = access.statements('111');
+			expect(statements.map((s) => s.Sid)).toEqual([
+				'StageSecrets',
+				'StageDnsRecords',
+				'StageDnsChanges',
+			]);
+			expect(statements[1]).toMatchObject({
+				Action: [
+					'route53:ChangeResourceRecordSets',
+					'route53:ListResourceRecordSets',
+				],
+				Resource: 'arn:aws:route53:::hostedzone/Z123',
+			});
+			expect(statements[2]).toMatchObject({
+				Action: ['route53:GetChange'],
+			});
+			expect(access.describe).toContain(
+				'write the A, AAAA and CNAME records of example.com (Route53, Z123)',
+			);
+		});
+
+		it('looks the zone up by name when no hostedZoneId names it', () => {
+			const access = deployAccess(
+				workspace({
+					target: 'compose',
+					store: ssm,
+					domains: { prod: 'shop.example.com' },
+					dns: { 'example.com': { provider: 'route53' } },
+				}),
+				'prod',
+			);
+
+			if (access.kind !== 'scoped') return expect.unreachable();
+			expect(access.statements('111').map((s) => s.Sid)).toEqual([
+				'StageSecrets',
+				'StageDnsRecords',
+				'StageDnsChanges',
+				'StageDnsZones',
+			]);
+		});
+
+		it('grants nothing in Route53 for a domain another provider hosts', () => {
+			for (const provider of ['godaddy', 'manual'] as const) {
+				const access = deployAccess(
+					workspace({
+						target: 'compose',
+						store: ssm,
+						domains: { prod: 'shop.example.com' },
+						dns: { 'example.com': { provider } },
+					}),
+					'prod',
+				);
+
+				if (access.kind !== 'scoped') return expect.unreachable();
+				expect(
+					access
+						.statements('111')
+						.flatMap((s) => s.Action)
+						.filter((a) => a.startsWith('route53:')),
+				).toEqual([]);
+			}
+		});
+	});
+
+	describe('the buckets an s3 provider creates', () => {
+		const ssm = { provider: 'ssm', region: 'eu-west-1' } as const;
+
+		it('creates and configures exactly those buckets, and their IAM users', () => {
+			const access = deployAccess(
+				workspace({
+					target: 'compose',
+					store: ssm,
+					objects: { prod: { provider: 's3', region: 'eu-west-1' } },
+				}),
+				'prod',
+				undefined,
+				['Uploads', 'Avatars'],
+			);
+
+			if (access.kind !== 'scoped') return expect.unreachable();
+			const statements = access.statements('111');
+			expect(statements.map((s) => s.Sid)).toEqual([
+				'StageSecrets',
+				'StageBuckets',
+				'StageBucketUsers',
+			]);
+			expect(statements[1]!.Action).toContain('s3:CreateBucket');
+			expect(statements[1]!.Action).toContain('s3:PutBucketCORS');
+			expect(statements[1]!.Resource).toEqual([
+				'arn:aws:s3:::shop-prod-avatars',
+				'arn:aws:s3:::shop-prod-avatars-??????',
+				'arn:aws:s3:::shop-prod-uploads',
+				'arn:aws:s3:::shop-prod-uploads-??????',
+			]);
+			expect(statements[2]!.Action).toEqual([
+				'iam:GetUser',
+				'iam:CreateUser',
+				'iam:TagUser',
+				'iam:ListUserTags',
+				'iam:GetUserPolicy',
+				'iam:PutUserPolicy',
+				'iam:ListAccessKeys',
+				'iam:CreateAccessKey',
+				'iam:DeleteAccessKey',
+			]);
+			expect(statements[2]!.Resource).toEqual([
+				'arn:aws:iam::111:user/gkm/gkm-shop-prod-avatars',
+				'arn:aws:iam::111:user/gkm/gkm-shop-prod-uploads',
+			]);
+		});
+
+		it('grants nothing in S3 or IAM where the stage sets its keys by hand', () => {
+			for (const objects of [undefined, { prod: 'external' }]) {
+				const access = deployAccess(
+					workspace({
+						target: 'compose',
+						store: ssm,
+						...(objects ? { objects } : {}),
+					}),
+					'prod',
+					undefined,
+					['Uploads'],
+				);
+
+				if (access.kind !== 'scoped') return expect.unreachable();
+				expect(
+					access
+						.statements('111')
+						.flatMap((s) => s.Action)
+						.filter((a) => a.startsWith('s3:') || a.startsWith('iam:')),
+				).toEqual([]);
+			}
+		});
 	});
 });

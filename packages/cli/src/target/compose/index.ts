@@ -38,6 +38,7 @@ import {
 	planCompose,
 	provisionCompose,
 	releaseCompose,
+	resourcesCompose,
 	validateCompose,
 	verifyCompose,
 } from './phases';
@@ -101,6 +102,7 @@ export function composeTarget(
 				...(pin ? { pin } : {}),
 			}),
 		plan: (ctx, run) => planCompose(ctx, run),
+		resources: (ctx) => resourcesCompose(ctx, deps),
 		provision: (ctx, run) => provisionCompose(ctx, run, deps),
 		build: (ctx, run) => buildCompose(ctx, run, deps),
 		release: (ctx, run) => releaseCompose(ctx, run, deps),

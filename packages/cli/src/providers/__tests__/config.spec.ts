@@ -113,14 +113,14 @@ describe("what a stage's entry resolves to", () => {
 });
 
 describe('the hint a missing key is given', () => {
-	it('names the provision command and the credentials it needs', () => {
+	it('names the deploy as what creates it, and the credentials it needs', () => {
 		const hint = provisionHint(
 			workspace({ prod: { provider: 's3' } }) as never,
 			'objects',
 			'prod',
 		);
 		expect(hint).toBe(
-			"deploy.objects.prod is s3: gkm setup --stage prod creates it and writes this key, with the stage's AWS account — --profile <name>, AWS_PROFILE, or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY (in CI, what aws-actions/configure-aws-credentials exports)",
+			"deploy.objects.prod is s3: the deploy (gkm deploy --stage prod) creates it and writes this key, with the stage's AWS account — AWS_PROFILE, or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY (in CI, what aws-actions/configure-aws-credentials exports)",
 		);
 	});
 

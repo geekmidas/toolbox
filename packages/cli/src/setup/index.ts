@@ -1,12 +1,10 @@
 import { loadWorkspaceConfig } from '../config.js';
-import { assertStageServer, provisionStageDns } from '../providers/dns.js';
-import { provisionCommand, provisionStage } from '../providers/index.js';
+import { GkmError } from '../errors';
 import { describeServices } from '../reconcile/containers.js';
 import {
 	derivedContainers,
 	reconcileWorkspace,
 } from '../reconcile/workspace.js';
-import { StageSecretsUnreadable } from '../secrets/awsStore.js';
 import {
 	createStageSecrets,
 	generateConnectionUrls,
@@ -21,29 +19,34 @@ import { generateFullstackCustomSecrets } from './fullstack-secrets.js';
 const logger = console;
 
 export interface SetupOptions {
+	/** The stage to set this machine up for — never a deployed one. */
 	stage?: string;
 	force?: boolean;
 	skipDocker?: boolean;
 	yes?: boolean;
-	/** A deployed stage: print what the providers would do, and do none of it. */
-	dryRun?: boolean;
-	/** A deployed stage: the AWS profile for the stage's account. */
-	profile?: string;
-	/** A deployed stage: issue each provisioned key a successor. */
-	rotateKeys?: boolean;
-	/** A deployed stage: delete a rotated-out key without waiting for a deploy. */
-	retireOldKeys?: boolean;
 }
 
 /**
- * Converge a stage on what its constructs declare.
- *
- * The local stage: its secrets (local → the stage's store → generated) and
- * the containers on this machine. A deployed stage: its secrets, and then
- * every provider `deploy.<kind>.<stage>` names — the bucket, user and key an
- * `objects: { provider: 's3' }` stage is backed by — created or repaired in
- * the stage's own account. A deployed stage's infrastructure is not on this
- * machine, so no container is started for one.
+ * `gkm setup --stage <deployed stage>`: setup is this machine's, done once,
+ * and creates nothing for a deployed stage — the deploy does.
+ */
+export class SetupIsLocal extends GkmError {
+	constructor(readonly stage: string) {
+		super(
+			`gkm setup sets up this machine — its secrets and its containers — and '${stage}' ` +
+				`is a deployed stage: nothing of it is set up from here. The deploy creates ` +
+				`what '${stage}' needs — its buckets and keys, its DNS records — every time it ` +
+				`runs: gkm deploy --stage ${stage} (gkm compose --stage ${stage} is the same ` +
+				'deploy). Its --dry-run prints what it would create.',
+		);
+		this.name = 'SetupIsLocal';
+	}
+}
+
+/**
+ * Set this machine up for the workspace, once: the local stage's secrets
+ * (local → the stage's store → generated) and its containers. A deployed
+ * stage is refused with {@link SetupIsLocal}: its resources are the deploy's.
  */
 export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 	// 1. Load workspace config
@@ -60,34 +63,14 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 	const stage = options.stage ?? loadedConfig.workspace.stages.local;
 
 	const { workspace } = loadedConfig;
-	const local = stage === workspace.stages.local;
+	if ((workspace.stages.deployed as readonly string[]).includes(stage)) {
+		throw new SetupIsLocal(stage);
+	}
 
-	// What this run is about to do: a deployed stage is provisioned in its own
-	// account, and nothing on this machine is set up for it.
-	logger.log(
-		local
-			? '\n🔧 Setting up the local environment...\n'
-			: `\n☁️  Provisioning the '${stage}' stage${options.dryRun ? ' (dry run)' : ''}...\n`,
-	);
+	logger.log('\n🔧 Setting up the local environment...\n');
 	logger.log(`📦 Workspace: ${workspace.name}`);
 	logger.log(`📱 Apps: ${Object.keys(workspace.apps).join(', ')}`);
 	logger.log(`🔑 Stage: ${stage}\n`);
-
-	// A compose stage that serves a domain names its server in its secrets —
-	// refused before anything is generated, created or written.
-	if (!local) {
-		const store = await secretsStoreFor(workspace, stage, {
-			...(options.profile ? { profile: options.profile } : {}),
-		});
-		assertStageServer(workspace, stage, await store.read(stage));
-	}
-
-	// A dry run of a deployed stage is its providers' plan, and nothing else:
-	// no secrets generated, nothing written.
-	if (!local && options.dryRun) {
-		await provisionDeployed(workspace, stage, options);
-		return;
-	}
 
 	// 2. Resolve secrets
 	const secrets = await resolveSecrets(stage, workspace, options);
@@ -95,11 +78,6 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 	if (!secrets) {
 		logger.error('❌ Failed to resolve secrets. Exiting.');
 		process.exit(1);
-	}
-
-	if (!local) {
-		await provisionDeployed(workspace, stage, options);
-		return;
 	}
 
 	// 3. Reconcile the local target: derive containers, allocate ports, start.
@@ -111,67 +89,6 @@ export async function setupCommand(options: SetupOptions = {}): Promise<void> {
 
 	// Print summary
 	printSummary(workspace, stage);
-}
-
-/**
- * Raised by the AWS stores themselves when there are no AWS credentials to
- * reach a stage's secrets — exported here, where it was first raised.
- */
-export { StageSecretsUnreadable };
-
-/**
- * A deployed stage's providers: each one's `ensure()`, in the stage's own
- * account, its keys written into the stage's secrets.
- */
-async function provisionDeployed(
-	workspace: NormalizedWorkspace,
-	stage: string,
-	options: SetupOptions,
-): Promise<void> {
-	logger.log(
-		options.dryRun
-			? `\n☁️  Providers for '${stage}' (dry run — nothing is created or written)`
-			: `\n☁️  Providers for '${stage}'`,
-	);
-	const reports = await provisionStage({
-		workspace,
-		stage,
-		...(options.dryRun ? { dryRun: true } : {}),
-		...(options.profile ? { profile: options.profile } : {}),
-		...(options.rotateKeys ? { rotateKeys: true } : {}),
-		...(options.retireOldKeys ? { retireOldKeys: true } : {}),
-		log: (line) => logger.log(line),
-	});
-	const configured = reports.filter((r) => r.mode === 'provider');
-	if (configured.length === 0) {
-		logger.log(
-			`   None configured: '${stage}' takes every key from its secrets ` +
-				`(gkm secrets:add --stage ${stage}). Name one in gkm.config.ts — ` +
-				`deploy: { objects: { ${stage}: { provider: 's3' } } } — to have ` +
-				`${provisionCommand(stage)} create it.`,
-		);
-	}
-
-	// A compose stage with a server: its hosts' records, with this machine's
-	// DNS credentials.
-	const dns = await provisionStageDns({
-		workspace,
-		stage,
-		...(options.dryRun ? { dryRun: true } : {}),
-		...(options.profile ? { profile: options.profile } : {}),
-		log: (line) => logger.log(line),
-	});
-
-	const changes =
-		configured.reduce((n, r) => n + r.actions.length, 0) +
-		dns.changes.filter((c) => c.action !== 'unchanged' && c.action !== 'manual')
-			.length;
-	if (configured.length === 0 && dns.mode === 'none') return;
-	logger.log(
-		options.dryRun
-			? `\n${changes === 0 ? '✅ Nothing to change' : `📋 ${changes} change${changes === 1 ? '' : 's'} planned`}`
-			: `\n✅ '${stage}' provisioned${changes === 0 ? ' — already up to date' : ` (${changes} change${changes === 1 ? '' : 's'})`}`,
-	);
 }
 
 /**
@@ -225,7 +142,7 @@ async function reconcileLocal(
 /**
  * Resolve secrets with priority:
  * 1. Local secrets exist → use them (preserves manual additions)
- * 2. A deployed stage whose store has secrets → pull and use
+ * 2. The stage's store has secrets → use them
  * 3. Neither → generate fresh secrets
  *
  * --force skips checks 1 and 2 and always regenerates.

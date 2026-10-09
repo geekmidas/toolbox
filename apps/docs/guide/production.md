@@ -9,8 +9,8 @@ once it does. Each section is short; follow the links for the detail.
       constructs need is set ([Secrets](#secrets-and-the-master-key)).
 - [ ] Mail goes through a real SMTP server and buckets are real object
       storage — set by hand, or created by a provider
-      (`deploy.objects.<stage>: { provider: 's3' }` and `gkm setup --stage
-      <stage>`) — and no deploy passes `--allow-dev-services`
+      (`deploy.objects.<stage>: { provider: 's3' }`, which the deploy
+      creates) — and no deploy passes `--allow-dev-services`
       ([Mail and object storage](#mail-and-object-storage),
       [Providers](./providers.md)).
 - [ ] Deploy state is in a shared store (SSM or S3), not on one laptop
@@ -197,13 +197,15 @@ printed — storage errors and the logger replace a URL's userinfo with
 `REDACTED`.
 
 Or let gkm create the buckets. With `deploy.objects.production: { provider:
-'s3' }`, `gkm setup --stage production` — run once from a machine holding the
-stage account's admin credentials — creates each bucket (private, SSE-S3,
+'s3' }`, every `gkm deploy --stage production` — with the stage account's
+credentials, in CI the stage's role — creates each bucket (private, SSE-S3,
 TLS-only, CORS for the stage's sites), an IAM user for it with a policy for
 that bucket alone, and a key, and writes `UPLOADS_URL` (key included) and
-`UPLOADS_SERVER_URL` into the stage's secrets. Re-run it to repair drift; it
-never deletes a bucket or a user. Rotate the key with `--rotate-keys`. Every
-deploy checks the bucket answers that key. See [Providers](./providers.md).
+`UPLOADS_SERVER_URL` into the stage's secrets, before its checks run. Each
+later deploy repairs drift and says "up to date" when there is none; it never
+deletes a bucket or a user. Rotate the key with `gkm deploy --stage production
+--rotate-keys`. Every deploy checks the bucket answers that key. See
+[Providers](./providers.md).
 
 `--allow-dev-services` runs MinIO and Mailpit instead, for every bucket and
 mail the stage does not account for — for a preview or a demo, never for

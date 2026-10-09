@@ -63,6 +63,14 @@ outputs:
       The region of the workspace's AWS secrets store (ssm or
       secrets-manager), or '' when the stages keep their secrets elsewhere.
     value: ${{ steps.stages.outputs.aws-region }}
+  resources:
+    description: >-
+      The deployed stages with resources the deploy creates — a provider
+      under deploy.<kind>.<stage>, or DNS records through a provider in dns —
+      and secrets in an AWS store, as a JSON array: a compose deploy creates
+      them on the runner (gkm deploy --resources-only), with the stage's role
+      and DNS token, before the server deploys with --skip-resources.
+    value: ${{ steps.stages.outputs.resources }}
 
 runs:
   using: composite

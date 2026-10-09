@@ -78,12 +78,10 @@ emits `dev-service.used`.
 `--allow-dev-services` takes no value: it stands a dev service in for every
 construct the stage does not account for. A construct is accounted for when
 its key is in the stage's secrets, or when a provider backs its kind on the
-stage — `deploy.objects.<stage>: { provider: 's3' }` creates the bucket and
-writes its key with `gkm setup --stage <stage>` (see
-[Providers](./providers.md)). Under a provider, a missing key is still
-missing — the line naming it says which command writes it — and a deploy
-checks the provisioned bucket answers its key (`ProvisionedBucketUnreachable`
-when it does not).
+stage — with `deploy.objects.<stage>: { provider: 's3' }` the deploy creates
+the bucket and writes its key before its checks run (see
+[Providers](./providers.md)), then checks the provisioned bucket answers that
+key (`ProvisionedBucketUnreachable` when it does not).
 
 ## Configuring it
 

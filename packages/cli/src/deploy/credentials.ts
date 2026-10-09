@@ -61,6 +61,19 @@ export interface CredentialKinds {
 		request: Record<never, never>;
 		value: GoDaddyCredential;
 	};
+	/**
+	 * A Hostinger API token, for a `dns` domain whose provider is
+	 * `hostinger`. Like GoDaddy's, read where the records are written.
+	 */
+	hostinger: {
+		request: Record<never, never>;
+		value: HostingerCredential;
+	};
+}
+
+/** A Hostinger API token, from hpanel.hostinger.com/profile/api. */
+export interface HostingerCredential {
+	token: string;
 }
 
 /** A GoDaddy Personal Access Token, sent as `Authorization: Bearer <token>`. */
@@ -122,6 +135,8 @@ const HOW_TO_PROVIDE: Partial<Record<CredentialKind, string>> = {
 		'Add the registry in Dokploy (Settings → Docker Registry) and set deploy.dokploy.registryId, set DOCKER_REGISTRY_USERNAME and DOCKER_REGISTRY_PASSWORD, or run `gkm deploy` at a terminal to be asked for them.',
 	godaddy:
 		'Set GODADDY_API_TOKEN to a Personal Access Token scoped to domains.dns:update (create one in the GoDaddy developer dashboard), or run `gkm login --provider godaddy`.',
+	hostinger:
+		'Set HOSTINGER_API_TOKEN to a token from hpanel.hostinger.com/profile/api, or run `gkm login --provider hostinger`.',
 	aws: "Set AWS_PROFILE to the stage account's profile, or AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY (and AWS_SESSION_TOKEN) — in CI, the keys aws-actions/configure-aws-credentials exports — or pass them through the deploy's CredentialProvider.",
 };
 
@@ -144,7 +159,9 @@ export class MissingCredential extends GkmError {
 						? `No AWS credentials${target ? ` for the "${target}" stage` : ''}.`
 						: kind === 'godaddy'
 							? `No GoDaddy API token${target ? ` for ${target}` : ''}.`
-							: `No "${String(kind)}" credentials${target ? ` for ${target}` : ''}.`;
+							: kind === 'hostinger'
+								? `No Hostinger API token${target ? ` for ${target}` : ''}.`
+								: `No "${String(kind)}" credentials${target ? ` for ${target}` : ''}.`;
 		super(`${what} ${howToProvide}`);
 		this.name = 'MissingCredential';
 	}
@@ -222,12 +239,23 @@ export function storedCredentials(
 				case 'godaddy': {
 					// The environment first, then the stored login.
 					const token =
-						env.GODADDY_API_TOKEN ??
+						env.GODADDY_API_TOKEN ||
 						(
 							await readCredentials(
 								options.home ? { home: options.home } : undefined,
 							)
 						).godaddy?.token;
+					if (!token) return undefined;
+					return { token } as never;
+				}
+				case 'hostinger': {
+					const token =
+						env.HOSTINGER_API_TOKEN ||
+						(
+							await readCredentials(
+								options.home ? { home: options.home } : undefined,
+							)
+						).hostinger?.token;
 					if (!token) return undefined;
 					return { token } as never;
 				}

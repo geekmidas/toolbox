@@ -4,7 +4,7 @@
  * is self-hosted, and the stack's Redis password where a cache lives in it.
  *
  * Pure: the compose target writes the result back to the stage's store, and
- * `gkm setup`'s DNS step composes the stack with it to read the stack's hosts,
+ * `gkm deploy --resources-only` composes the stack with it to read its hosts,
  * writing nothing.
  */
 

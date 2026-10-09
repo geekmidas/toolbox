@@ -118,8 +118,9 @@ export class RotationInProgress extends GkmError {
 	) {
 		super(
 			`The bucket '${id}' is mid-rotation: its old key ${previous} is still ` +
-				`active. Deploy '${stage}', then run gkm setup --stage ${stage} — ` +
-				'or pass --retire-old-keys to delete it now — before rotating again.',
+				`active until '${stage}' is deployed with the new one: deploy it ` +
+				`(gkm deploy --stage ${stage}) — the next deploy after that deletes ` +
+				'the old key — or pass --retire-old-keys to delete it now, before rotating again.',
 		);
 		this.name = 'RotationInProgress';
 	}
@@ -153,8 +154,9 @@ export class ProvisionedBucketUnreachable extends GkmError {
 	) {
 		super(
 			`The bucket '${bucket}' (${id}) cannot be reached with the key in the ` +
-				`stage '${stage}''s secrets: ${reason}. Run gkm setup --stage ${stage} ` +
-				"with the stage account's credentials to create or repair it, then deploy again.",
+				`stage '${stage}''s secrets: ${reason}. Deploy '${stage}' with the ` +
+				"stage account's credentials (gkm deploy --stage " +
+				`${stage}), which creates or repairs it — a run with --skip-resources does not.`,
 		);
 		this.name = 'ProvisionedBucketUnreachable';
 	}

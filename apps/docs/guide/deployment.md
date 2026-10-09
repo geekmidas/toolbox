@@ -343,9 +343,24 @@ so gkm can point the stage's hosts at the server:
 
 - **Dokploy** writes an A record for each app's host on every deploy, pointing
   at the Dokploy server (resolved from its endpoint).
-- **Compose** writes them from `gkm setup --stage <stage>`, pointing at the
-  server in the stage's secrets (`GKM_SERVER_IPV4`) — see
-  [the compose guide](./compose.md#dns).
+- **Compose**: every deploy (`gkm deploy --stage <stage>`, or `gkm compose
+  --stage <stage>`) writes each public host's missing or out-of-date record,
+  pointing at the server in the stage's secrets (`GKM_SERVER_IPV4`), and reads
+  it back from the provider before anything starts — one record per host,
+  never a wildcard. See [the compose guide](./compose.md#dns).
+
+The token a provider reads is a credential of the machine that runs the
+deploy. In CI, add it as a secret on the stage's GitHub **environment** and
+pass it to the deploy step's env — the workflows `gkm init` writes already do:
+
+```yaml
+env:
+  GODADDY_API_TOKEN: ${{ secrets.GODADDY_API_TOKEN }}
+```
+
+With a token provider configured and no token, the deploy fails at its start
+— before anything is created, built or started — with
+`DnsCredentialMissing`, which names the key.
 
 ```typescript
 // gkm.config.ts
@@ -384,8 +399,8 @@ gkm uses GoDaddy's v1 records API one name and type at a time —
 calls that replace a whole zone or every record of a type. A record that
 already has the right value is not written.
 
-**Credentials:** a Personal Access Token, from the machine that runs
-`gkm setup` or the deploy — never the server.
+**Credentials:** a Personal Access Token, from the machine that runs the
+deploy — in CI the runner, never the server.
 
 1. In the GoDaddy developer dashboard, create a Personal Access Token with
    **only the `domains.dns:update` scope**. No domain or account scope is
@@ -437,7 +452,9 @@ dns: {
 ```
 
 Get an API token from the Hostinger hPanel profile, and store it with
-`gkm login --provider hostinger` (or set `HOSTINGER_API_TOKEN`).
+`gkm login --provider hostinger` (or set `HOSTINGER_API_TOKEN`) on the machine
+that runs the deploy — in CI, a `HOSTINGER_API_TOKEN` secret on the stage's
+environment.
 
 ### Manual
 
@@ -545,18 +562,17 @@ run ends with what was saved, what was skipped and what the stage still lacks;
 asks before it is replaced.
 
 A key a provider on the stage creates is not a checkpoint. With
-`deploy.objects.production: { provider: 's3' }`, `gkm setup --stage production`
+`deploy.objects.production: { provider: 's3' }`, `gkm deploy --stage production`
 creates each bucket and writes its `<ID>_URL` (and its file server's), so they
 are listed once instead:
 
 ```
 Not offered — a provider on the stage creates them:
-  UPLOADS_URL — created by gkm setup --stage production (deploy.objects.production is s3)
+  UPLOADS_URL — created by gkm deploy --stage production (deploy.objects.production is s3)
 ```
 
-A deploy still requires those keys, and points at `gkm setup` when one is
-missing. Every value
-is checked before it is kept — an address must be one, a URL must be
+The deploy creates them before its checks run, so a key it creates is never
+reported missing. Every value is checked before it is kept — an address must be one, a URL must be
 `http(s)://` — and credentials are checked against the construct's schema,
 showing each issue's path (`SHIPPING_CREDENTIALS.apiKey: …`) and asking again
 until it passes. Everything is saved through the stage's own store, as
@@ -717,7 +733,7 @@ Secrets Manager.
 
 #### IAM for the secrets store
 
-The credentials that run `gkm secrets:*`, `gkm setup` and `gkm deploy` for a
+The credentials that run `gkm secrets:*` and `gkm deploy` for a
 stage — a developer's profile, or the deploy job's role — need, in that stage's
 account:
 
@@ -904,8 +920,8 @@ if something declared it.
   `<ID>_FROM`; a bucket's key in its URL or the shared S3 key pair, both
   optional) — a stage missing any fails `validate` with
   `ExternalServicesNotConfigured`. A stage whose `deploy.objects` names a
-  provider has its buckets' keys written by `gkm setup --stage <stage>`, and
-  each deploy checks the bucket answers its key ([Providers](./providers.md)).
+  provider has its buckets and keys created by the deploy itself, before
+  `validate`, and each deploy checks the bucket answers its key ([Providers](./providers.md)).
   Only with `--allow-dev-services` is a bucket the stage does not account for
   a MinIO compose stack, and mail a Mailpit one
   ([Mail and object storage](./deploy-targets.md#mail-and-object-storage))
@@ -1136,6 +1152,7 @@ jobs:
       has-build: ${{ steps.stages.outputs.has-build }}
       has-deploy: ${{ steps.stages.outputs.has-deploy }}
       aws-region: ${{ steps.stages.outputs.aws-region }}
+      resources: ${{ steps.stages.outputs.resources }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -1162,7 +1179,8 @@ runs `gkm` from them (the package manager is read from the lockfile, or the
 `package-manager` input). Its inputs are `event` (default the run's event),
 `stage` and `working-directory`; its outputs, all strings `fromJSON()` reads,
 are `local`, `deployed`, `protected`, `build`, `deploy`, `has-build`,
-`has-deploy` and `aws-region`. A manual run naming a stage that is not deployed
+`has-deploy`, `aws-region` and `resources` (the stages whose resources a
+compose workflow creates on the runner). A manual run naming a stage that is not deployed
 fails in this job, with an `::error::` saying which stages are. Every output,
 and how to pin the action, is in its
 [README](https://github.com/geekmidas/toolbox/tree/main/actions/stages).
@@ -1188,7 +1206,14 @@ With `--deploy compose` the workflow splits the release in two
   with the server's host key pinned, runs `git checkout <sha>`, an install and
   `gkm compose --stage <stage> --tag <sha> --digests-file …` on the server.
   Without digests (the build is older than 90 days) it deploys by tag, with a
-  warning on the run.
+  warning on the run. For a stage in the stages action's `resources` output,
+  the runner first creates the stage's resources — its providers' buckets and
+  keys, its DNS records — with `gkm deploy --stage <stage> --resources-only`,
+  the stage's role and the `GODADDY_API_TOKEN`/`HOSTINGER_API_TOKEN` secrets of
+  its environment; the server then deploys with `--skip-resources`, so neither
+  the cloud credentials nor the DNS token reach it. A stage on the `'file'`
+  secrets store is not in `resources`: the server's deploy creates them, with
+  the credentials the server holds.
 
 So a release deploys exactly the images the push of its commit built and
 pushed; nothing is rebuilt for production.
@@ -1202,7 +1227,9 @@ into one.
 `gkm deploy` builds, releases and health-checks a stage in one step from a
 checkout, so these workflows have no build job: the deploy job runs over the
 action's `deploy` list, checks out the event's commit (or the manual run's
-`ref`), and runs `gkm deploy --stage <stage>`.
+`ref`), and runs `gkm deploy --stage <stage>`, with `GODADDY_API_TOKEN` and
+`HOSTINGER_API_TOKEN` from the environment's secrets for the DNS records the
+deploy writes.
 
 ### One-time setup, per stage
 
@@ -1282,6 +1309,19 @@ the stage's secrets — read, and written back when a deploy generates a new one
 | `state` SSM | `ssm:GetParameter`, `PutParameter`, `DeleteParameter` under `/gkm/<project>/<stage>/` |
 | `state` S3 | `s3:GetObject`, `PutObject`, `DeleteObject` under `<prefix>/<project>/<stage>/`, and `s3:ListBucket` on the bucket |
 
+A compose deploy also creates the stage's [resources](./compose.md#deploying-from-ci),
+so the policy grants what those need — only when the stage uses them:
+
+| The stage has | Allowed |
+| --- | --- |
+| an `s3` provider (`deploy.objects.<stage>`) | `StageBuckets`: `s3:CreateBucket`, `ListBucket` (HeadBucket), `Get`/`PutBucketTagging`, `Get`/`PutBucketPublicAccessBlock`, `Get`/`PutBucketPolicy`, `Get`/`PutEncryptionConfiguration`, `Get`/`PutBucketVersioning`, `Get`/`PutBucketCORS` on exactly `arn:aws:s3:::<bucket name>` and `arn:aws:s3:::<bucket name>-??????` (the provider's fallback when the name is taken) for each declared bucket; `StageBucketUsers`: `iam:GetUser`, `CreateUser`, `TagUser`, `ListUserTags`, `GetUserPolicy`, `PutUserPolicy`, `ListAccessKeys`, `CreateAccessKey`, `DeleteAccessKey` on `arn:aws:iam::<account>:user/gkm/<user name>` for each bucket's user |
+| a `route53` domain in `dns` | `StageDnsRecords`: `route53:ChangeResourceRecordSets`, `ListResourceRecordSets` on `arn:aws:route53:::hostedzone/<hostedZoneId>` (`hostedzone/*` when the domain names no `hostedZoneId`); `StageDnsChanges`: `route53:GetChange` on `arn:aws:route53:::change/*`; and, without a `hostedZoneId`, `StageDnsZones`: `route53:ListHostedZonesByName` on `*` — IAM cannot scope a lookup by name |
+
+Writing a created key into the stage's secrets is the store's own
+`PutParameter` or `PutSecretValue` above. A stage that adds a provider or a
+`route53` domain re-runs `gkm deploy:github --stage <stage>` to widen its
+policy.
+
 With file secrets and local state the role is given nothing. A custom secrets
 store or state provider cannot be scoped, so it keeps `AdministratorAccess`.
 `--policy-arn` replaces either default, and `--dry-run` prints the policy.
@@ -1315,6 +1355,7 @@ gh variable set DOKPLOY_ENDPOINT --env prod --body https://dokploy.example.com
 | the stage's secrets in SSM or Secrets Manager | SST | `gkm secrets:set … --stage <stage>` |
 | secret `GKM_SECRETS_KEY` | Dokploy (`'file'` store) | `gh secret set` |
 | secret `DOKPLOY_API_TOKEN`, variable `DOKPLOY_ENDPOINT` | Dokploy | `gh` |
+| secret `GODADDY_API_TOKEN` or `HOSTINGER_API_TOKEN` | a stage whose domain's `dns` provider is GoDaddy or Hostinger | `gh secret set GODADDY_API_TOKEN --env <stage>` |
 
 Tests in CI need none of these: `gkm test` with `GKM_AUTO_SETUP=1` generates
 throwaway secrets for the test stage.

@@ -77,6 +77,7 @@ Every output is a string `fromJSON()` reads.
 | `has-build` | `true` | whether `build` is not empty |
 | `has-deploy` | `true` | whether `deploy` is not empty |
 | `aws-region` | `eu-west-1` | the region of an `ssm` or `secrets-manager` `secrets.store`, else `''` |
+| `resources` | `["prod"]` | the deployed stages with resources the deploy creates (a `deploy.<kind>.<stage>` provider, or DNS records through a provider) and secrets in an AWS store — a compose workflow creates them on the runner |
 
 GitHub fails a matrix over `[]`, so gate each matrix job on `has-build` or
 `has-deploy`.

@@ -18,6 +18,7 @@ import {
 	it,
 	vi,
 } from 'vitest';
+import { MissingCredential } from '../credentials';
 import { HostingerProvider } from '../dns/HostingerProvider';
 import {
 	type DnsRecord,
@@ -232,8 +233,15 @@ describe('Hostinger zone', () => {
 	it('says how to log in when no token is configured', async () => {
 		vi.stubEnv('HOSTINGER_API_TOKEN', undefined);
 
-		await expect(
-			new HostingerProvider().getRecords('shop.com'),
-		).rejects.toThrow('Hostinger API token not configured');
+		const error = await new HostingerProvider()
+			.getRecords('shop.com')
+			.catch((e: unknown) => e);
+
+		expect(error).toBeInstanceOf(MissingCredential);
+		expect((error as MissingCredential).kind).toBe('hostinger');
+		expect((error as Error).message).toContain('HOSTINGER_API_TOKEN');
+		expect((error as Error).message).toContain(
+			'gkm login --provider hostinger',
+		);
 	});
 });

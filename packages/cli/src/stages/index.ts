@@ -14,8 +14,11 @@
  */
 
 import { appendFile } from 'node:fs/promises';
+import { stageDnsDomains } from '../compose/dns.js';
 import { loadWorkspaceSettings } from '../config.js';
 import { GkmError } from '../errors';
+import { stageProvider } from '../providers/config.js';
+import { PROVIDER_KINDS } from '../providers/types.js';
 import type { NormalizedWorkspace, StagesConfig } from '../workspace/types.js';
 import { planStages } from './plan.js';
 
@@ -69,6 +72,26 @@ export function awsSecretsRegion(workspace: NormalizedWorkspace): string {
 }
 
 /**
+ * The deployed stages with resources the deploy creates — a provider under
+ * `deploy.<kind>.<stage>`, or a domain under a `dns` entry whose provider
+ * writes records — and secrets a CI runner can reach (an AWS store): a
+ * compose deploy workflow creates their resources on the runner, with the
+ * stage's role and DNS token, rather than on the server.
+ */
+export function resourceStages(workspace: NormalizedWorkspace): string[] {
+	if (!awsSecretsRegion(workspace)) return [];
+	return workspace.stages.deployed.filter(
+		(stage) =>
+			PROVIDER_KINDS.some(
+				(kind) => stageProvider(workspace, kind, stage).mode === 'provider',
+			) ||
+			stageDnsDomains(stage, workspace.domains, workspace.dns).some(
+				({ config }) => config.provider !== 'manual',
+			),
+	);
+}
+
+/**
  * Every output the stages action sets, each a string `fromJSON()` reads, for
  * one workflow run.
  */
@@ -90,6 +113,7 @@ export function githubOutputs(
 		'has-build': String(plan.build.length > 0),
 		'has-deploy': String(plan.deploy.length > 0),
 		'aws-region': awsSecretsRegion(workspace),
+		resources: JSON.stringify(resourceStages(workspace)),
 	};
 }
 

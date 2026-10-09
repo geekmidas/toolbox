@@ -2,9 +2,9 @@
  * DNS records gkm wrote for a stage, as resource records in its deploy state.
  *
  * Each is `dns-record:<fqdn>:<type>` — `dns-record:api.example.com:A` — with
- * `id` `<fqdn> <type>` and the record's value in `data`. Setup's DNS step and
- * a deploy's both write through here, so the two agree on one key per record
- * and a record written by either is found by both.
+ * `id` `<fqdn> <type>` and the record's value in `data`. Every deploy's DNS
+ * step writes through here — `gkm deploy`, `gkm compose` and a CI runner's
+ * `--resources-only` alike — so each record has one key, whoever wrote it.
  */
 
 import type { DeployJournal } from './journal';

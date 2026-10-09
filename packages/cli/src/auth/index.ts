@@ -165,7 +165,7 @@ export async function loginCommand(options: LoginOptions): Promise<void> {
  * Store a GoDaddy Personal Access Token. Not validated: the only call that
  * proves a token without a domain is an account call (`GET /v1/domains`),
  * which a token scoped to `domains.dns:update` alone may not make — the first
- * `gkm setup` that writes a record is where a bad token reports itself.
+ * deploy that writes a record is where a bad token reports itself.
  */
 async function loginGoDaddy(options: LoginOptions): Promise<void> {
 	logger.log('\n🔐 Logging in to GoDaddy...\n');
@@ -194,7 +194,7 @@ async function loginGoDaddy(options: LoginOptions): Promise<void> {
 	logger.log(`  Credentials stored in: ${getCredentialsPath(where)}`);
 	logger.log(
 		'  Not validated here: proving a token without a domain needs an account\n' +
-			'  scope a DNS-only token does not have, so the first gkm setup that\n' +
+			'  scope a DNS-only token does not have, so the first deploy that\n' +
 			'  writes a record is where a bad token reports itself.',
 	);
 	logger.log(

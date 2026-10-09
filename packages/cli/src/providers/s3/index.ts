@@ -839,7 +839,7 @@ async function ensureAccessKey(
 			previous = undefined;
 		} else {
 			ctx.log(
-				`   ${id}: the old access key ${previous} stays active until '${ctx.stage}' is deployed with the new one; the next gkm setup --stage ${ctx.stage} after that deletes it (or pass --retire-old-keys)`,
+				`   ${id}: the old access key ${previous} stays active until '${ctx.stage}' is deployed with the new one; the next deploy after that deletes it (or pass --retire-old-keys)`,
 			);
 		}
 	}
@@ -898,7 +898,7 @@ async function ensureAccessKey(
 	);
 	if (outgoing) {
 		ctx.log(
-			`   ${urlKey} holds the new key. Deploy '${ctx.stage}' now; the next gkm setup --stage ${ctx.stage} after that deploy deletes the old key ${outgoing}`,
+			`   ${urlKey} holds the new key. This deploy moves '${ctx.stage}' onto it; the next deploy after it deletes the old key ${outgoing}`,
 		);
 	}
 }

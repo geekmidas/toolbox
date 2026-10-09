@@ -19,10 +19,19 @@
  *   resolver. One that is not the server stops the deploy with
  *   {@link HostNotPointingAtServer}, before Caddy or Traefik ask Let's Encrypt
  *   for a certificate it cannot get — and use up the rate limit trying.
+ * - **The step** (`stageDns`): all three, as every deploy runs them — the plan applied through each provider,
+ *   what was written read back from the provider, and only the hosts no
+ *   provider wrote resolved publicly. A brand-new name is never looked up
+ *   before its record exists, so no resolver caches it as missing.
  */
 
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIPv4, isIPv6 } from 'node:net';
+import type {
+	CredentialProvider,
+	GoDaddyCredential,
+	HostingerCredential,
+} from '../deploy/credentials';
 import {
 	createDnsProvider,
 	type DnsProvider,
@@ -208,6 +217,25 @@ export interface PlanStackDnsInput {
 	dns: WorkspaceDnsConfig | undefined;
 }
 
+/**
+ * A wildcard host: gkm writes one record per public host, so a stage on
+ * another server — or a name someone else points elsewhere — is never caught
+ * by a record it did not ask for.
+ */
+export class DnsWildcardRefused extends GkmError {
+	constructor(
+		readonly stage: string,
+		readonly host: string,
+	) {
+		super(
+			`'${stage}' would point ${host} at its server, and gkm never writes a ` +
+				'wildcard record: each public host gets its own. Give the app a ' +
+				'subdomain of its own instead.',
+		);
+		this.name = 'DnsWildcardRefused';
+	}
+}
+
 /** The records a stage's hosts need — pure. */
 export function planStackDns(input: PlanStackDnsInput): StackDnsPlan {
 	const { stage, server } = input;
@@ -238,6 +266,7 @@ export function planStackDns(input: PlanStackDnsInput): StackDnsPlan {
 
 	for (const raw of input.hosts) {
 		const host = raw.toLowerCase();
+		if (host.includes('*')) throw new DnsWildcardRefused(stage, host);
 		const domain = findRootDomain(host, dns);
 		if (!domain) {
 			uncovered.push(host);
@@ -307,8 +336,62 @@ export interface ApplyStackDnsOptions {
 	log?: (line: string) => void;
 	/** Where the GoDaddy provider reads its key: the environment and the CLI's home. */
 	credentials?: GoDaddyProviderOptions;
+	/** The Hostinger token, when the caller already has it. */
+	hostinger?: HostingerCredential;
 	/** The provider for a domain — `createDnsProvider` by default. */
 	providerFor?: (config: DnsProviderConfig) => Promise<DnsProvider | null>;
+	/**
+	 * Read every record written back from its provider, and throw
+	 * {@link DnsRecordsNotConfirmed} for one that does not hold its value.
+	 */
+	confirm?: boolean;
+}
+
+/** What applying a plan did, and what of it the providers confirmed. */
+export interface StackDnsApplied {
+	/** Every change, the unchanged included; a dry run makes none of them. */
+	changes: DnsChange[];
+	/**
+	 * Hosts whose every record the provider holds with its value — read
+	 * before the run (unchanged) or after it wrote them (`confirm`).
+	 */
+	confirmed: string[];
+	/**
+	 * Hosts no provider vouches for: a `manual` domain's, those under no
+	 * domain in `dns`, and those of a key that can write and not read.
+	 */
+	unconfirmed: string[];
+}
+
+/** One record a provider did not hold with its value after it was written. */
+export interface UnconfirmedRecord {
+	host: string;
+	type: StackRecordType;
+	expected: string;
+	/** What the provider read back — empty when the record is not there. */
+	found: string[];
+}
+
+/** Records a provider accepted and then did not read back with their value. */
+export class DnsRecordsNotConfirmed extends GkmError {
+	constructor(
+		readonly stage: string,
+		readonly domain: string,
+		readonly provider: string,
+		readonly records: readonly UnconfirmedRecord[],
+	) {
+		const lines = records.map(
+			(r) =>
+				`  - ${r.host} ${r.type}: ${r.found.length > 0 ? r.found.join(', ') : 'nothing'}, expected ${r.expected}`,
+		);
+		super(
+			`${provider} accepted '${stage}''s records for ${domain}, and reading them ` +
+				`back does not show them:\n${lines.join('\n')}\n` +
+				"Deploy again; if it persists, check the records in the provider's " +
+				'console — another tool may be writing the same names.',
+		);
+		this.name = 'DnsRecordsNotConfirmed';
+	}
 }
 
 /** `api.example.com  A  203.0.113.10  (TTL 600)` */
@@ -472,6 +555,20 @@ export async function applyStackDns(
 	plan: StackDnsPlan,
 	options: ApplyStackDnsOptions = {},
 ): Promise<DnsChange[]> {
+	return (await settleStackDns(plan, options)).changes;
+}
+
+/**
+ * Each domain's records, through its provider — and, with `confirm`, what was
+ * written read back from it. A record already holding its value is neither
+ * written nor read again.
+ *
+ * @throws {DnsRecordsNotConfirmed} when a written record does not read back
+ */
+export async function settleStackDns(
+	plan: StackDnsPlan,
+	options: ApplyStackDnsOptions = {},
+): Promise<StackDnsApplied> {
 	const dryRun = options.dryRun === true;
 	const log = options.log ?? ((line: string) => console.log(line));
 	const providerFor =
@@ -480,9 +577,14 @@ export async function applyStackDns(
 			createDnsProvider({
 				config: config as SchemaDnsConfig,
 				...(options.credentials ? { godaddy: options.credentials } : {}),
+				...(options.hostinger ? { hostinger: options.hostinger } : {}),
 			}));
 
 	const changes: DnsChange[] = [];
+	const confirmed = new Set<string>();
+	const unconfirmed = new Set<string>();
+	const hostsOf = (domain: DomainDnsPlan) =>
+		new Set(domain.records.map((r) => r.host));
 	for (const host of plan.uncovered) {
 		log(
 			`   ⚠ ${host} is under no domain in dns — point it at ${plan.server.ipv4} yourself`,
@@ -492,17 +594,20 @@ export async function applyStackDns(
 	for (const domain of plan.domains) {
 		if (domain.provider === 'manual') {
 			changes.push(...printManual(domain, log, 'manual'));
+			for (const host of hostsOf(domain)) unconfirmed.add(host);
 			continue;
 		}
 		const provider = await providerFor(domain.config);
 		if (!provider) {
 			changes.push(...printManual(domain, log, 'manual'));
+			for (const host of hostsOf(domain)) unconfirmed.add(host);
 			continue;
 		}
 
 		log(`   ${domain.domain} (${provider.name})${dryRun ? ' — dry run' : ''}`);
 		let existing: DnsRecord[];
 		let diff: DnsChange[];
+		let unreadable = false;
 		try {
 			existing = await existingRecords(provider, domain);
 			diff = diffDomainDns(domain, existing);
@@ -511,6 +616,7 @@ export async function applyStackDns(
 			log(
 				`   ℹ The ${provider.name} key cannot read ${domain.domain}'s DNS records, so changes cannot be diffed: every record is written (idempotent).`,
 			);
+			unreadable = true;
 			existing = [];
 			diff = domain.records.map((r) => ({
 				domain: r.domain,
@@ -542,6 +648,22 @@ export async function applyStackDns(
 		}
 
 		changes.push(...diff);
+
+		// A host every one of whose records was already right is confirmed by
+		// the read that found it so; one with a write is confirmed by reading
+		// it back — or, with a key that cannot read, by nobody.
+		const written = new Set(
+			diff
+				.filter((c) => c.action !== 'unchanged')
+				.map((c) => fullName(c.domain, c.name)),
+		);
+		for (const host of hostsOf(domain)) {
+			// A dry run writes nothing, so nothing it would write is resolved:
+			// a name looked up before its record exists is cached as missing.
+			if (unreadable) {
+				if (!dryRun) unconfirmed.add(host);
+			} else if (!written.has(host)) confirmed.add(host);
+		}
 		if (dryRun) continue;
 
 		const deletes = diff.filter((c) => c.action === 'delete');
@@ -566,8 +688,47 @@ export async function applyStackDns(
 				})),
 			);
 		}
+
+		if (!options.confirm || unreadable || written.size === 0) continue;
+		const rewritten = {
+			...domain,
+			records: domain.records.filter((r) => written.has(r.host)),
+		};
+		const after = await existingRecords(provider, rewritten);
+		const missing: UnconfirmedRecord[] = [];
+		for (const record of rewritten.records) {
+			const found = after.find(
+				(r) => r.name === record.name && r.type === record.type,
+			);
+			const values = found?.values ?? [];
+			if (values.length !== 1 || !same(values[0]!, record.value)) {
+				missing.push({
+					host: record.host,
+					type: record.type,
+					expected: record.value,
+					found: values,
+				});
+			}
+		}
+		if (missing.length > 0) {
+			throw new DnsRecordsNotConfirmed(
+				plan.stage,
+				domain.domain,
+				provider.name,
+				missing,
+			);
+		}
+		for (const host of written) confirmed.add(host);
+		log(
+			`   ✓ ${written.size} host${written.size === 1 ? '' : 's'} read back from ${provider.name}`,
+		);
 	}
-	return changes;
+	for (const host of plan.uncovered) unconfirmed.add(host);
+	return {
+		changes,
+		confirmed: [...confirmed].sort(),
+		unconfirmed: [...unconfirmed].filter((h) => !confirmed.has(h)).sort(),
+	};
 }
 
 // ============================================================================
@@ -614,7 +775,7 @@ export class HostNotPointingAtServer extends GkmError {
 				`certificate for ${hosts.length === 1 ? 'it' : 'them'} cannot be issued:\n` +
 				`${lines.join('\n')}\n${fix}\n` +
 				'Records can take a few minutes to propagate. With a CDN or proxy in ' +
-				'front of the server, pass --skip-dns-check.',
+				'front of the server, pass --skip-dns.',
 		);
 		this.name = 'HostNotPointingAtServer';
 	}
@@ -676,7 +837,7 @@ export async function checkStackDns(
 	return ok;
 }
 
-/** How to fix it: `gkm setup`, or the records to create by hand. */
+/** How to fix it: the deploy, or the records to create by hand. */
 function dnsFix(input: CheckStackDnsInput, bad: readonly MisdirectedHost[]) {
 	const hosts = bad.map((h) => h.host);
 	let plan: StackDnsPlan;
@@ -710,7 +871,7 @@ function dnsFix(input: CheckStackDnsInput, bad: readonly MisdirectedHost[]) {
 	const lines: string[] = [];
 	if (automatic.length > 0) {
 		lines.push(
-			`Fix: gkm setup --stage ${input.stage} writes the records for ${automatic.map((d) => d.domain).join(', ')} (gkm setup --stage ${input.stage} --dry-run shows them first).`,
+			`Fix: gkm deploy --stage ${input.stage} writes the records for ${automatic.map((d) => d.domain).join(', ')} through their provider (--dry-run shows them first).`,
 		);
 	}
 	if (byHand.length > 0) {
@@ -720,4 +881,187 @@ function dnsFix(input: CheckStackDnsInput, bad: readonly MisdirectedHost[]) {
 		);
 	}
 	return lines.join('\n');
+}
+
+// ============================================================================
+// The step: plan, apply, confirm, check
+// ============================================================================
+
+/** The environment variable each token-authenticated provider reads. */
+export const DNS_TOKEN_KEYS = {
+	godaddy: 'GODADDY_API_TOKEN',
+	hostinger: 'HOSTINGER_API_TOKEN',
+} as const;
+
+/** A provider whose credential is a token gkm reads. */
+export type TokenDnsProvider = keyof typeof DNS_TOKEN_KEYS;
+
+/** The tokens a stage's records are written with. */
+export interface DnsCredentials {
+	godaddy?: GoDaddyCredential;
+	hostinger?: HostingerCredential;
+}
+
+/**
+ * A domain whose records the deploy writes, and no token to write them with.
+ * Raised before anything is built, started or written.
+ */
+export class DnsCredentialMissing extends GkmError {
+	constructor(
+		readonly stage: string,
+		readonly domain: string,
+		readonly provider: TokenDnsProvider,
+		/** The variable the token is read from: `GODADDY_API_TOKEN`. */
+		readonly key: string,
+	) {
+		super(
+			`'${stage}''s hosts are under ${domain}, whose DNS is ${provider}'s, and ` +
+				`the deploy writes their records — but ${key} is not set. In CI, add ` +
+				`${key} as a secret on the '${stage}' GitHub environment and pass it ` +
+				`to the step that writes the records: env: { ${key}: \${{ secrets.${key} }} }. ` +
+				`On this machine, export ${key} or run gkm login --provider ${provider}. ` +
+				'With a CDN or proxy in front of the server, pass --skip-dns.',
+		);
+		this.name = 'DnsCredentialMissing';
+	}
+}
+
+/** One `dns` domain and its provider's config. */
+export interface DnsDomain {
+	domain: string;
+	config: DnsProviderConfig;
+}
+
+/**
+ * The `dns` domain a stage's own domain (`domains.<stage>`) is under — where
+ * its hosts' records go — or none.
+ */
+export function stageDnsDomains(
+	stage: string,
+	domains: Readonly<Record<string, string>> | undefined,
+	dns: WorkspaceDnsConfig | undefined,
+): DnsDomain[] {
+	const own = domains?.[stage];
+	if (!own || !dns || isLocalHost(own)) return [];
+	const normalized = normalizeDnsConfig(dns);
+	const root = findRootDomain(own.toLowerCase(), normalized);
+	return root ? [{ domain: root, config: normalized[root]! }] : [];
+}
+
+/**
+ * Each token the domains' providers need, from `credentials` — `manual`,
+ * Route53 (the AWS SDK's own chain) and a provider object need none.
+ *
+ * @throws {DnsCredentialMissing} naming the first domain with no token
+ */
+export async function dnsCredentials(
+	stage: string,
+	domains: readonly DnsDomain[],
+	credentials: CredentialProvider,
+): Promise<DnsCredentials> {
+	const found: DnsCredentials = {};
+	for (const { domain, config } of domains) {
+		const provider = config.provider;
+		if (provider !== 'godaddy' && provider !== 'hostinger') continue;
+		if (found[provider]) continue;
+		const token = await credentials.get({ kind: provider });
+		if (!token?.token) {
+			throw new DnsCredentialMissing(
+				stage,
+				domain,
+				provider,
+				DNS_TOKEN_KEYS[provider],
+			);
+		}
+		found[provider] = token;
+	}
+	return found;
+}
+
+export interface StageDnsInput {
+	stage: string;
+	/** The stage's public hosts, read off its stack. */
+	hosts: readonly string[];
+	server: ServerAddress;
+	dns: WorkspaceDnsConfig | undefined;
+	/** Where the providers' tokens come from. */
+	credentials: CredentialProvider;
+	dryRun?: boolean;
+	log?: (line: string) => void;
+	/** Resolves the hosts no provider confirmed — the system resolver by default. */
+	lookup?: HostLookup;
+	/** The provider for a domain — `createDnsProvider` by default. */
+	providerFor?: (config: DnsProviderConfig) => Promise<DnsProvider | null>;
+	/** GoDaddy's API, for tests: its base URL and how a 429 is waited out. */
+	godaddy?: Pick<GoDaddyProviderOptions, 'baseUrl' | 'sleep' | 'maxAttempts'>;
+}
+
+export interface StageDnsResult {
+	plan: StackDnsPlan;
+	changes: DnsChange[];
+	/** Hosts whose records their provider holds with the server's address. */
+	confirmed: string[];
+	/** Hosts the system resolver found pointing at the server. */
+	resolved: string[];
+}
+
+/**
+ * A stage's DNS, as every deploy runs it: the
+ * stage's own hosts planned, written through each domain's provider where
+ * they differ, and read back from it. Only A, AAAA and CNAME records of
+ * those names are touched; nothing is a wildcard, and no other name is read,
+ * written or deleted. What no provider confirms — a `manual` domain, a host
+ * under no domain in `dns`, a key that cannot read — is resolved publicly.
+ * A dry run prints the plan and writes nothing.
+ *
+ * @throws {DnsCredentialMissing} before anything is read or written
+ * @throws {DnsRecordsNotConfirmed} when a written record does not read back
+ * @throws {HostNotPointingAtServer} when a resolved host is not the server
+ */
+export async function stageDns(input: StageDnsInput): Promise<StageDnsResult> {
+	const { stage, server } = input;
+	const log = input.log ?? ((line: string) => console.log(line));
+	const plan = planStackDns({
+		stage,
+		hosts: input.hosts,
+		server,
+		dns: input.dns,
+	});
+	const tokens = await dnsCredentials(
+		stage,
+		plan.domains.map(({ domain, config }) => ({ domain, config })),
+		input.credentials,
+	);
+	// No `dns` at all: nothing to write, and every host is the person's to
+	// point — checked, without a line per host saying so.
+	const applied: StackDnsApplied = !input.dns
+		? { changes: [], confirmed: [], unconfirmed: [...plan.uncovered] }
+		: await settleStackDns(plan, {
+				...(input.dryRun ? { dryRun: true } : { confirm: true }),
+				log,
+				credentials: {
+					...(input.godaddy ?? {}),
+					...(tokens.godaddy ? { credential: tokens.godaddy } : {}),
+					log,
+				},
+				...(tokens.hostinger ? { hostinger: tokens.hostinger } : {}),
+				...(input.providerFor ? { providerFor: input.providerFor } : {}),
+			});
+
+	let resolved: string[] = [];
+	if (applied.unconfirmed.length > 0) {
+		resolved = await checkStackDns({
+			stage,
+			hosts: applied.unconfirmed,
+			server,
+			dns: input.dns,
+			...(input.lookup ? { lookup: input.lookup } : {}),
+		});
+	}
+	return {
+		plan,
+		changes: applied.changes,
+		confirmed: applied.confirmed,
+		resolved,
+	};
 }

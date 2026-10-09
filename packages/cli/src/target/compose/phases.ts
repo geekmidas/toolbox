@@ -41,7 +41,6 @@ import { dirname, join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { stringify } from 'yaml';
 import {
-	checkStackDns,
 	type HostLookup,
 	HostNotPointingAtServer,
 	isLocalHost,
@@ -50,6 +49,7 @@ import {
 	type ServerAddress,
 	serverAddressHint,
 	stackHosts,
+	stageDns,
 	systemLookup,
 } from '../../compose/dns';
 import {
@@ -88,6 +88,7 @@ import {
 import { EDGE_PROJECT, EDGE_SERVICE } from '../../compose/traefik';
 import { currentActor } from '../../deploy/actor.js';
 import { reportDevServices } from '../../deploy/devServices';
+import { recordDnsChanges } from '../../deploy/dnsResources.js';
 import type { ResourceChange } from '../../deploy/events';
 import { imageRef } from '../../deploy/identity.js';
 import { DeployJournal } from '../../deploy/journal';
@@ -129,7 +130,11 @@ import { runOutput } from '../../run';
 import { assertStageCredentials } from '../../secrets/credentialSchemas.js';
 import { assertNoStaleSecrets } from '../../secrets/stale.js';
 import type { StageSecrets } from '../../secrets/types.js';
-import type { NormalizedWorkspace } from '../../workspace/types.js';
+import type {
+	DnsProvider as DnsProviderConfig,
+	NormalizedWorkspace,
+} from '../../workspace/types.js';
+import type { DnsProvider } from '../dokploy/dns/DnsProvider';
 import {
 	DeploySeedsFailed,
 	reportDatabaseRuns,
@@ -174,6 +179,8 @@ export interface ComposeDeps {
 	 * the system resolver by default.
 	 */
 	lookup?: HostLookup;
+	/** The DNS provider for a `dns` domain — `createDnsProvider` by default. */
+	dnsProviderFor?: (config: DnsProviderConfig) => Promise<DnsProvider | null>;
 }
 
 /** One app's image, as the stage runs it. */
@@ -490,10 +497,11 @@ export async function validateCompose(
 		}
 	}
 
-	// Every public host resolves to the stage's server — before Caddy or
-	// Traefik ask Let's Encrypt for a certificate it could not issue.
+	// Every public host points at the stage's server — its records written
+	// where a provider holds them, then confirmed — before Caddy or Traefik
+	// ask Let's Encrypt for a certificate it could not issue.
 	if (!push && !stack.local) {
-		await checkDns(
+		await deployDns(
 			ctx,
 			deps,
 			stackHosts(stack).filter((host) => !isLocalHost(host)),
@@ -600,11 +608,12 @@ function assertRedisClient(
  * leaves the stage's secrets as it found them.
  */
 /**
- * The deploy-time DNS check: each public host resolved with the system
- * resolver and compared with the server's address from the stage's secrets.
- * A dry run warns rather than stops.
+ * The deploy's DNS step: the stage's own hosts written through each domain's
+ * provider in `dns` where they differ, read back from it, and recorded in the
+ * stage's state; hosts no provider writes resolved with the system resolver.
+ * A dry run prints the plan and writes nothing, and warns rather than stops.
  */
-async function checkDns(
+async function deployDns(
 	ctx: ComposeContext,
 	deps: ComposeDeps,
 	hosts: readonly string[],
@@ -612,27 +621,63 @@ async function checkDns(
 ): Promise<void> {
 	const { workspace, stage } = ctx;
 	if (hosts.length === 0) return;
-	if (ctx.skipDnsCheck) {
-		ctx.logger.info('🌐 DNS check skipped (--skip-dns-check)');
+	if (ctx.skipDns) {
+		ctx.logger.info(
+			'🌐 DNS skipped (--skip-dns): no record is written or checked',
+		);
+		return;
+	}
+	if (ctx.skipResources) {
+		ctx.logger.info(
+			'🌐 DNS skipped (--skip-resources): the --resources-only run wrote and confirmed the records',
+		);
 		return;
 	}
 	if (!server) {
 		ctx.logger.info(
-			`🌐 DNS check skipped: no ${SERVER_IPV4_KEY} in '${stage}''s secrets — ${serverAddressHint(stage)}`,
+			`🌐 DNS skipped: no ${SERVER_IPV4_KEY} in '${stage}''s secrets — ${serverAddressHint(stage)}`,
 		);
 		return;
 	}
+	const log = (line: string) => ctx.logger.info(line);
+	if (workspace.dns) {
+		log(
+			`🌐 DNS for '${stage}' → ${server.ipv4}${server.ipv6 ? ` / ${server.ipv6}` : ''}${ctx.dryRun ? ' (dry run — nothing is written)' : ''}`,
+		);
+	}
 	try {
-		const ok = await checkStackDns({
+		const result = await stageDns({
 			stage,
 			hosts,
 			server,
 			dns: workspace.dns,
+			credentials: ctx.credentials,
+			log,
 			lookup: deps.lookup ?? systemLookup,
+			...(ctx.dryRun ? { dryRun: true } : {}),
+			...(deps.dnsProviderFor ? { providerFor: deps.dnsProviderFor } : {}),
 		});
-		ctx.logger.info(
-			`🌐 ${ok.length} host${ok.length === 1 ? '' : 's'} resolve${ok.length === 1 ? 's' : ''} to ${server.ipv4}`,
-		);
+		// What it wrote, kept in the stage's state; what it deleted, forgotten.
+		if (!ctx.dryRun) {
+			const journal = await DeployJournal.open(ctx.state, stage, () =>
+				createComposeState(stage),
+			);
+			const providers = new Map(
+				result.plan.domains.map((d) => [d.domain, d.provider]),
+			);
+			await recordDnsChanges(journal, result.changes, (domain) =>
+				providers.get(domain),
+			);
+		}
+		const parts = [
+			result.confirmed.length > 0
+				? `${result.confirmed.length} host${result.confirmed.length === 1 ? '' : 's'} confirmed by the DNS provider`
+				: '',
+			result.resolved.length > 0
+				? `${result.resolved.length} host${result.resolved.length === 1 ? '' : 's'} resolve${result.resolved.length === 1 ? 's' : ''} to ${server.ipv4}`
+				: '',
+		].filter(Boolean);
+		if (parts.length > 0) log(`🌐 ${parts.join(', ')}`);
 	} catch (error) {
 		if (ctx.dryRun && error instanceof HostNotPointingAtServer) {
 			ctx.logger.warn(`⚠ ${error.message}`);
@@ -640,6 +685,41 @@ async function checkDns(
 		}
 		throw error;
 	}
+}
+
+/**
+ * `--resources-only`: the stage's DNS records, from the hosts its stack would
+ * serve — composed in memory, nothing written, no image asked for. What a CI
+ * runner runs with the DNS provider's token, so the server never holds it.
+ */
+export async function resourcesCompose(
+	ctx: ComposeContext,
+	deps: ComposeDeps,
+): Promise<void> {
+	const { workspace, stage } = ctx;
+	if (stage === workspace.stages.local) return;
+	// The DNS token was asked for before the providers ran.
+	const stored = await ctx.secrets.read();
+	const server = requiredServerAddress(
+		stage,
+		workspace.domains?.[stage],
+		stored?.custom,
+	);
+	const { composeStageHosts } = await import('../../providers/dns.js');
+	const hosts = await composeStageHosts({
+		workspace,
+		stage,
+		stored,
+		manifest: ctx.manifest,
+		runnables: (ctx.runnables ?? {}) as Record<string, string[]>,
+		background: (ctx.background ?? {}) as Record<string, string[]>,
+	});
+	await deployDns(
+		ctx,
+		deps,
+		hosts.filter((host) => !isLocalHost(host)),
+		server,
+	);
 }
 
 async function stageSecrets(
