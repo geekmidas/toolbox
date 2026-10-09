@@ -47,6 +47,7 @@
     "client-at-root",
     "client-coercion-types",
     "client-method-calls",
+    "compose-backups",
     "compose-build-push",
     "compose-deploy-state",
     "compose-env-follows-edges",

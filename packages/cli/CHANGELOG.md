@@ -1,5 +1,46 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.100
+
+### Minor Changes
+
+- [#234](https://github.com/geekmidas/toolbox/pull/234) [`5fe101c`](https://github.com/geekmidas/toolbox/commit/5fe101c0ee2189f6d632331168e1cdaa8df0cdff) Thanks [@geekmidas](https://github.com/geekmidas)! - Backups for every deployed compose stage with Postgres
+
+  A deployed compose stage whose stack runs Postgres is now backed up by
+  default: every day at 02:00 UTC, kept 30 days, into the project bucket under
+  `gkm/<project>/<stage>/backups/<day>/<time>/<database>.sql.gz`.
+  `deploy.backups.<stage>` takes `{ every, keep }`, `{ cron, keep }` or `false`;
+  an interval under an hour is refused by name.
+
+  The deploy creates the IAM user `gkm-<project>-<stage>-backups`, allowed only
+  `s3:PutObject` under that prefix, and writes its key into the stage's secrets
+  as `BACKUPS_URL`; `--rotate-keys` and `--retire-old-keys` cover it, and
+  `gkm deploy:github` grants the role what it takes. The project bucket's
+  lifecycle expires each stage's backups, rebuilt from every stage's config.
+  The stack runs a `backups` service built from its own Postgres image, signing
+  in with a read-only role and healthy only while its last run is recent.
+
+  `gkm backup:list`, `gkm backup:now` and `gkm backup:restore` list, take and
+  restore backups — a restore asks first and takes a fresh backup.
+
+  Dokploy's backup destination moved from `deploy.backups` to
+  `deploy.dokploy.backups`.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.100
+  - @geekmidas/constructs@10.0.0-alpha.100
+  - @geekmidas/db@10.0.0-alpha.100
+  - @geekmidas/envkit@10.0.0-alpha.100
+  - @geekmidas/errors@10.0.0-alpha.100
+  - @geekmidas/logger@10.0.0-alpha.100
+  - @geekmidas/manifest@10.0.0-alpha.100
+  - @geekmidas/schema@10.0.0-alpha.100
+  - @geekmidas/services@10.0.0-alpha.100
+  - @geekmidas/storage@10.0.0-alpha.100
+  - @geekmidas/telescope@10.0.0-alpha.100
+
 ## 10.0.0-alpha.99
 
 ### Minor Changes
