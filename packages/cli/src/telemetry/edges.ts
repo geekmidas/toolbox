@@ -2,10 +2,8 @@
  * Which processes use a `Telemetry` node — read off the manifest's edges.
  *
  * A process uses telemetry when its own declaration names the node: a
- * surface's `telemetry`, a worker's. The server the build generates for a
- * surface whose endpoints a glob finds also runs the workers' crons and
- * consumers under `gkm dev`, and is handed their edges' keys by `appEnvKeys`,
- * so a worker's edge counts for it too — the same rule, read the same way.
+ * surface's `telemetry`, a worker's. A surface's process runs its own
+ * endpoints, so a worker's edge never counts for it.
  *
  * A site's edge is recorded and never followed here: a site is handed none of
  * the node's keys (see `PUBLIC.telemetry`).
@@ -54,18 +52,7 @@ export function telemetryOf(
 	}
 	if (declaration.kind !== 'rest-api') return undefined;
 
-	const own = nodeOf(manifest, declaration.telemetry);
-	if (own) return own;
-
-	// A generated server — one whose endpoints the glob finds, so it declares
-	// none — runs the workers' crons and consumers too.
-	if (declaration.endpoints.length > 0) return undefined;
-	for (const other of Object.values(manifest)) {
-		if (other.kind !== 'worker') continue;
-		const node = nodeOf(manifest, other.telemetry);
-		if (node) return node;
-	}
-	return undefined;
+	return nodeOf(manifest, declaration.telemetry);
 }
 
 /**

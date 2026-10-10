@@ -44,7 +44,11 @@ import { describeLogins } from '../reconcile/serviceLogins.js';
 import { FAKE_ENV, reconcileWorkspace } from '../reconcile/workspace.js';
 import { toEmbeddableSecrets } from '../secrets/storage.js';
 import { FileSecretsStore, secretsStoreFor } from '../secrets/store.js';
-import { appTelemetry, scopeTelemetryEnv } from '../telemetry/edges.js';
+import {
+	appTelemetry,
+	scopeTelemetryEnv,
+	telemetryOf,
+} from '../telemetry/edges.js';
 import { ensureTrusted } from '../trust/index.js';
 import type { GkmConfig, Runtime, TelescopeConfig } from '../types';
 import {
@@ -368,6 +372,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 				bustCache,
 				serveEmpty: true,
 				workspaceName: workspace.name,
+				workspace,
 			}),
 		);
 
@@ -433,11 +438,16 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		Object.assign(appSecrets, reconciled.env);
 
 		// The local telemetry, named for this app, when it has an edge to the
-		// `Telemetry` node — and none of it otherwise.
+		// `Telemetry` node — or a worker whose work its process runs here does
+		// — and none of it otherwise.
+		const declared = reconciled.manifest;
 		const scoped = scopeTelemetryEnv(appSecrets, {
 			uses:
-				reconciled.manifest !== undefined &&
-				appTelemetry(reconciled.manifest, workspaceAppName) !== undefined,
+				declared !== undefined &&
+				(appTelemetry(declared, workspaceAppName) !== undefined ||
+					(initial.workers ?? []).some(
+						(id) => telemetryOf(declared, id) !== undefined,
+					)),
 			serviceName: workspaceAppName,
 			telemetry: reconciled.env,
 		});

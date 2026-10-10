@@ -390,6 +390,18 @@ function recordBackground(
 }
 
 /**
+ * What a runnable consumes, by id: a queue's consumer drains that queue, a
+ * subscriber its topic. Nothing for anything else.
+ */
+export function consumedBy(runnable: unknown): string[] {
+	if (Queue.isQueue(runnable)) return [runnable.id];
+	if (Subscriber.isSubscriber(runnable) && runnable.topicName) {
+		return [canonicalId(runnable.topicName)];
+	}
+	return [];
+}
+
+/**
  * Record a runnable's edges under the construct that owns it — the surface an
  * endpoint was built from, or the worker a cron or subscriber was. Anything
  * with no owner, or that is not a runnable at all, is left alone.
@@ -416,7 +428,9 @@ function recordRunnable(
 	const key = canonicalId(owner);
 	const edges = runnables[key] ?? [];
 	runnables[key] = edges;
-	for (const id of runnable.constructs) {
+	// What it consumes is an edge of its process too, so a worker is handed
+	// the carriers its own work is bound to and no other.
+	for (const id of [...runnable.constructs, ...consumedBy(exported)]) {
 		if (typeof id !== 'string') continue;
 		const target = canonicalId(id);
 		if (!edges.includes(target)) edges.push(target);

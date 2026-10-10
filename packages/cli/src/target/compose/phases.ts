@@ -121,6 +121,7 @@ import {
 	SeedFailed,
 	seedDatabases,
 } from '../../migrate/databases.js';
+import { appEnvKeys, workerEnvKeys } from '../../reconcile/apps.js';
 import { bucketClient, pgClient } from '../../reconcile/clients.js';
 import { primaryPortKey } from '../../reconcile/containers.js';
 import { type ConstructSource, discover } from '../../reconcile/discover.js';
@@ -444,7 +445,9 @@ export async function validateCompose(
 
 	// A cache is reached over the Redis wire protocol, and the client is the
 	// project's own dependency: a build without it fails deep inside Docker.
-	if (mode === 'build') assertRedisClient(workspace, composed);
+	if (mode === 'build') {
+		assertRedisClient(workspace, composed, manifest, runnables);
+	}
 
 	// No image embeds the stage's secrets: a backend reads them at runtime
 	// from its env file, so one image built at a commit runs on every stage.
@@ -589,19 +592,38 @@ export class RedisClientMissing extends GkmError {
 }
 
 /**
- * Every backend and worker image built for a stack with a cache can resolve
+ * Every backend and worker image whose process reaches a cache can resolve
  * `ioredis` — listed by its app or a directory above it, the way Node and
- * the image's install find it.
+ * the image's install find it. A process that reaches no cache registers no
+ * cache driver, so it needs no client.
  */
 function assertRedisClient(
 	workspace: NormalizedWorkspace,
 	stack: ComposeStack,
+	manifest: ConstructManifest,
+	runnables: Readonly<Record<string, readonly string[]>>,
 ): void {
 	if (!stack.plan.resources.some((r) => r.kind === 'cache')) return;
 
+	const cacheKeys = Object.values(manifest)
+		.filter((d) => d.kind === 'cache')
+		.flatMap((d) => d.provides ?? []);
+	const reachesCache = (keys: Set<string> | undefined) =>
+		cacheKeys.some((key) => keys?.has(key));
+
 	const hosts = new Set([
-		...stack.apps.filter((app) => app.kind === 'rest-api').map((a) => a.name),
-		...stack.workers.map((worker) => worker.host),
+		...stack.apps
+			.filter(
+				(app) =>
+					app.kind === 'rest-api' &&
+					reachesCache(appEnvKeys(manifest, app.name, runnables)),
+			)
+			.map((a) => a.name),
+		...stack.workers
+			.filter((worker) =>
+				reachesCache(workerEnvKeys(manifest, worker.id, runnables)),
+			)
+			.map((worker) => worker.host),
 	]);
 	const missing = [...hosts]
 		.filter((name) => {

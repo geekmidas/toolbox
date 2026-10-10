@@ -10,6 +10,7 @@ import {
 	createMockFunctionFile,
 	createTestFile,
 } from '../../__tests__/test-helpers';
+import { normalizeWorkspace } from '../../workspace/index';
 import { buildApp, buildCommand, writeManifest } from '../index';
 
 /** The generated manifest, imported the way `sst.config.ts` imports it. */
@@ -73,10 +74,17 @@ export default {
 				expect(app).not.toContain('setupCrons');
 				expect(app).not.toContain('setupQueues');
 				expect(app).not.toContain('setupSubscribers');
-				// Says so, rather than dropping the cron silently.
-				expect(log.mock.calls.flat().join('\n')).toMatch(
-					/Serving Test only: leaving out 1 cron/,
+				// Not dropped: the cron is the worker's, in the worker's entry.
+				const serverCrons = await readFile(
+					join(dir, '.gkm', 'server', 'crons.ts'),
+					'utf-8',
 				);
+				expect(serverCrons).not.toContain('cleanupCron');
+				const workerCrons = await readFile(
+					join(dir, '.gkm', 'server', 'workers', 'jobs', 'crons.ts'),
+					'utf-8',
+				);
+				expect(workerCrons).toContain('cleanupCron');
 			} finally {
 				process.chdir(originalCwd);
 				log.mockRestore();
@@ -103,6 +111,22 @@ export default {
 
 export const database = new KyselyDatabase('Database');
 export const sessions = database.cache('Sessions');
+`,
+		);
+		// The process registers a cache driver because an endpoint it serves
+		// reaches the cache.
+		await createTestFile(
+			dir,
+			'src/endpoints/session.ts',
+			`import { z } from 'zod';
+import { sessions } from '../cache.js';
+import { api } from '../constructs/api.js';
+
+export const getSession = api
+  .get('/session')
+  .dependsOn([sessions])
+  .output(z.object({ ok: z.boolean() }))
+  .handle(async () => ({ ok: true }));
 `,
 		);
 		await createTestFile(
@@ -724,6 +748,10 @@ export default {
 				enableOpenApi: false,
 				cacheBackend: 'upstash',
 				eventsBackend: 'sns',
+				workspace: normalizeWorkspace(
+					{ stages: { local: 'development', deployed: ['production'] } },
+					dir,
+				),
 			});
 
 			expect(existsSync(join(dir, '.gkm/manifest'))).toBe(false);
@@ -820,6 +848,10 @@ export default {
 				enableOpenApi: false,
 				cacheBackend: 'upstash',
 				eventsBackend: 'sns',
+				workspace: normalizeWorkspace(
+					{ stages: { local: 'development', deployed: ['production'] } },
+					dir,
+				),
 			});
 
 			expect(await readdir(join(appRoot, '.gkm'))).toEqual(

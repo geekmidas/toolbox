@@ -58,9 +58,10 @@ decides everything else:
   [Trace context](../packages/client.md#trace-propagation) for what the client sends and to
   whom.
 
-A server generated for a `RestApi` that also runs the workers' crons and
-consumers — under `gkm dev` — uses telemetry when the API or a worker it runs
-has the edge.
+Under `gkm dev`, a worker's crons and consumers run in the dev server of the
+one app that hosts the worker (the app whose directory holds its work). That
+server uses telemetry when its API or a worker it hosts has the edge. Any other
+`RestApi` runs only its own endpoints, so a worker's edge never counts for it.
 
 ### One route: `.telemetry()`
 

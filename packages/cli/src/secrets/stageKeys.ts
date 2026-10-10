@@ -5,8 +5,8 @@
  * The keys themselves are `requiredStageKeys`'s, and the mail and storage
  * constructs `stageServiceDeclarations`' — the lists a deploy's readiness
  * check refuses a stage by. What this adds is the workspace: which third
- * parties' credentials its apps read (`appEnvKeys`) and which of the keys
- * the stage has set.
+ * parties' credentials its apps and workers read (`appEnvKeys`,
+ * `workerEnvKeys`) and which of the keys the stage has set.
  */
 
 import { type ConstructManifest, provideKey } from '@geekmidas/manifest';
@@ -17,7 +17,7 @@ import {
 	type StageProviderNotes,
 	stageServiceDeclarations,
 } from '../deploy/devServices';
-import { appEnvKeys } from '../reconcile/apps';
+import { appEnvKeys, workerEnvKeys } from '../reconcile/apps';
 import { appKey } from '../workspace/derive';
 
 /** A stage key, and whether the stage's secrets hold it. */
@@ -51,15 +51,18 @@ export function workspaceStageKeys(
 ): WorkspaceStageKey[] {
 	const { manifest } = input;
 
-	// What each app's environment holds.
+	// What each process's environment holds: each app's, and each worker's —
+	// whose crons and consumers run in a process of their own.
 	const reads = new Map<string, Set<string>>();
 	for (const [id, declaration] of Object.entries(manifest)) {
 		const { kind } = declaration;
-		if (kind !== 'rest-api' && kind !== 'site' && kind !== 'mobile-app') {
-			continue;
-		}
 		const name = appKey(id);
-		const keys = appEnvKeys(manifest, name, input.runnables);
+		const keys =
+			kind === 'rest-api' || kind === 'site' || kind === 'mobile-app'
+				? appEnvKeys(manifest, name, input.runnables)
+				: kind === 'worker'
+					? workerEnvKeys(manifest, id, input.runnables)
+					: undefined;
 		if (keys) reads.set(name, keys);
 	}
 

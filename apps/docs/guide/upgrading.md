@@ -533,10 +533,11 @@ const { backends, constructs } = await import('./.gkm/manifest/aws.js');
 
 `gkm build --production` (what `gkm docker`'s images run) no longer wires queue
 consumers, crons or topic subscribers into an API's server: they belong to a
-`Worker`, and the build says what it left out. Publishing is unchanged and
-`gkm dev` still runs everything in one process. Each `Worker` is its own
-entry, image and service on a server target; see
-[Workers](/guide/production#workers).
+`Worker`, whose entry the build writes beside it. Publishing is unchanged.
+`gkm dev` runs a worker's work in the dev server of the one app that hosts it
+(the app whose directory holds its work); a second `RestApi` runs only its own
+endpoints and is handed only their keys. Each `Worker` is its own entry, image
+and service on a server target; see [Workers](/guide/production#workers).
 
 ### 19. The master key is never printed, and credentials reach `docker build` as a secret
 

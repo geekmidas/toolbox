@@ -8,6 +8,7 @@ import {
 	TELEMETRY_PACKAGES,
 	TelemetryPackagesMissing,
 } from '../../generators/telemetry';
+import { normalizeWorkspace } from '../../workspace/index';
 import { buildApp } from '../index';
 
 /**
@@ -82,6 +83,13 @@ const build = (dir: string) =>
 		cacheBackend: 'redis',
 		eventsBackend: 'pgboss',
 		workspaceName: 'shop',
+		workspace: normalizeWorkspace(
+			{
+				name: 'shop',
+				stages: { local: 'development', deployed: ['production'] },
+			},
+			dir,
+		),
 	});
 
 describe('the build’s telemetry, from the surface’s edge', () => {

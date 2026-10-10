@@ -339,7 +339,10 @@ apps/api/.gkm/server/dist/worker-jobs.mjs
 ```
 
 The `crons.ts`, `queues.ts` and `subscribers.ts` it starts are the files
-`gkm dev` runs, given only that worker's constructs. The process registers the
+`gkm dev` runs, given only that worker's constructs. Under `gkm dev` they run
+in the dev server of that same host app, and no other: a second `RestApi`
+serves its own endpoints and is handed only the keys they reach, never a
+worker's. The process registers the
 drivers its target needs, starts every cron (scheduled through pg-boss),
 queue consumer and topic subscriber the worker owns, and serves one route:
 `GET /health` on `PORT` (3000 in its image). It answers `200` when every
