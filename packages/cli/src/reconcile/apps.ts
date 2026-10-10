@@ -97,11 +97,13 @@ function localPlan(
 	workspace: NormalizedWorkspace,
 	manifest: ConstructManifest,
 	fakes: PlanOptions['fakes'] = {},
+	credentialFakes: PlanOptions['credentialFakes'] = {},
 ): Plan {
 	return planFor(manifest, workspace.stages.local, provisionOrder(manifest), {
 		localStage: workspace.stages.local,
 		...backendsOf(workspace),
 		fakes,
+		credentialFakes,
 		edge: false,
 	});
 }
@@ -333,8 +335,13 @@ export function appServices(
 	credentials: LocalCredentials,
 	runnables: Readonly<Record<string, readonly string[]>> = {},
 	fakes: PlanOptions['fakes'] = {},
+	/**
+	 * Each credential's fake value, under `gkm dev --fake` — handed to the
+	 * apps that read the credential, as an external API's fake is.
+	 */
+	credentialFakes: PlanOptions['credentialFakes'] = {},
 ): Record<string, ComposeService> {
-	const plan = localPlan(workspace, manifest, fakes);
+	const plan = localPlan(workspace, manifest, fakes, credentialFakes);
 	const derivation = {
 		project: workspace.name,
 		credentials,
