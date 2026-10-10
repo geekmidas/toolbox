@@ -87,7 +87,7 @@ import { GkmError } from '../../errors';
 import { plannedSeeds } from '../../migrate/databases';
 import { output } from '../../output';
 import { stageProviderNotes } from '../../providers/notes.js';
-import { workerEnvKeys } from '../../reconcile/apps.js';
+import { appEnvKeys, workerEnvKeys } from '../../reconcile/apps.js';
 import { constructGlobs } from '../../reconcile/workspace.js';
 import type { RunOptions } from '../../run';
 import { initStageSecrets } from '../../secrets/storage.js';
@@ -1257,11 +1257,24 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 				// reads its own key inside `@geekmidas/constructs`, so requiring
 				// them would fail every app that declares anything.
 				//
+				// Only the declared keys this app's own edges reach: a surface's
+				// process runs its endpoints, never a worker's crons or consumers,
+				// so it is handed none of their keys. An app no construct
+				// describes states no edges, so nothing narrows what it is handed.
+				//
 				// The stage's telemetry goes to a backend with an edge to the
 				// `Telemetry` node, named for it, and to no other. A site never
 				// gets it — its environment ends up in a browser bundle.
+				const own = appEnvKeys(run.manifest, appName, run.runnables);
 				const withDeclared = scopeTelemetryEnv(
-					{ ...resolved, ...declaredEnv },
+					{
+						...resolved,
+						...Object.fromEntries(
+							Object.entries(declaredEnv).filter(
+								([key]) => own === undefined || own.has(key),
+							),
+						),
+					},
 					{
 						uses: appTelemetry(run.manifest, appName) !== undefined,
 						serviceName: appName,

@@ -79,7 +79,7 @@ import {
 } from '../workspace/index.js';
 import { writeStageTypes } from '../workspace/stageTypes.js';
 import type { StageTelemetryConfig } from '../workspace/types.js';
-import { ownersContext, servedBy } from './owners';
+import { ownersContext, reachedBy, servedBy } from './owners';
 import {
 	selfServingSurface,
 	writeSurfaceEntry,
@@ -91,7 +91,7 @@ import type {
 	NormalizedProductionConfig,
 	NormalizedTelescopeConfig,
 } from './types';
-import { type WorkerUnit, workerUnits } from './workers';
+import { isUnder, type WorkerUnit, workerUnits } from './workers';
 
 const logger = console;
 
@@ -342,10 +342,11 @@ export interface BuildAppInput {
 	/** The workspace's name — telemetry's `service.namespace`. */
 	workspaceName?: string;
 	/**
-	 * The workspace the app is in. A production server build reads it to know
-	 * which workers this app carries the entries of — see `workerUnits`.
+	 * The workspace the app is in: which workers this app hosts — runs under
+	 * `gkm dev`, carries the entries of in an image — is read off it. See
+	 * `workerUnits`.
 	 */
-	workspace?: NormalizedWorkspace;
+	workspace: NormalizedWorkspace;
 	/**
 	 * Generate a server even when the globs find nothing.
 	 *
@@ -364,6 +365,11 @@ export interface AppBuildOutput extends BuildResult {
 	selfServing?: string;
 	/** Where the generated server serves the database's JSON API, if it does. */
 	databaseApi?: string;
+	/**
+	 * The workers whose crons, consumers and subscribers this process runs —
+	 * under `gkm dev`, those this app hosts.
+	 */
+	workers?: string[];
 	/** What it generated, for the application's manifest. */
 	built?: AppBuild;
 }
@@ -532,10 +538,6 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		databaseApi,
 	});
 
-	// The broker, only when something declares a topic or a queue: a project
-	// with no events registers nothing and never resolves `@geekmidas/events`.
-	const eventsBackends = eventsBackendsIn(declared, eventsBackend);
-
 	const buildContext: BuildContext = {
 		...derived,
 		telescope,
@@ -546,16 +548,6 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		// Mail is SMTP everywhere; the provider is whatever the stage's URL
 		// names, so there is no choice to read here.
 		emailBackend: DEFAULT_EMAIL,
-		// Both halves of "where does the cache live": the declaration for one
-		// that named its database, and the deploy target's default for one that
-		// named nowhere. Reading only the default registers a driver for a
-		// protocol the target never composes.
-		storageDrivers: driversFor({
-			appRoot,
-			cache: cacheBackendsIn(declared, cacheBackend),
-			events: eventsBackends,
-		}),
-		eventsBackends,
 		markOptional: input.markOptional ?? false,
 	};
 
@@ -594,15 +586,78 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 
 	const allEndpoints = servedBy(loadedEndpoints, derived.surface);
 
+	// The workers this app hosts: `gkm dev` runs their crons, consumers and
+	// subscribers in this app's process, and an image build writes their
+	// entries beside its server's. Every app's glob finds every worker's work;
+	// only the one host runs it, so a second surface never does.
+	const appName = appNameOf(input);
+	const hosted = workerUnits(input.workspace, declared, background).filter(
+		(unit) => unit.app === appName,
+	);
+	const hostedIds = new Set(hosted.map((unit) => unit.id));
+	const appRootAbs = resolve(appRoot);
+	const hostedHere = <
+		T extends { construct: { owner?: string }; path: { absolute: string } },
+	>(
+		list: T[],
+	) =>
+		list.filter(({ construct, path }) =>
+			construct.owner !== undefined
+				? hostedIds.has(construct.owner)
+				: // Built from no worker: the app whose directory holds it.
+					isUnder(path.absolute, appRootAbs),
+		);
+	const hostedCrons = hostedHere(allCrons);
+	const hostedQueues = hostedHere(allQueues);
+	const hostedSubscribers = hostedHere(allSubscribers);
+
+	// A RestApi's production image answers HTTP and nothing else: its
+	// workers' work runs in each worker's own image. Under `gkm dev` — and for
+	// a project with no surface — the host's process runs it.
+	const servesOnly = Boolean(production?.enabled && derived.surface);
+	const inProcess = servesOnly
+		? { crons: [], queues: [], subscribers: [] }
+		: {
+				crons: hostedCrons,
+				queues: hostedQueues,
+				subscribers: hostedSubscribers,
+			};
+
+	// The drivers its entry registers, for what this process reaches and
+	// nothing another one does — a surface that reaches no cache never
+	// resolves a cache client.
+	const reach = derived.surface
+		? reachedBy(
+				declared,
+				[
+					derived.surface.id,
+					...(servesOnly ? [] : hosted.map((unit) => unit.id)),
+				],
+				[
+					...allEndpoints,
+					...allFunctions,
+					...inProcess.crons,
+					...inProcess.queues,
+					...inProcess.subscribers,
+				],
+			)
+		: declared;
+	Object.assign(
+		buildContext,
+		runtimeDrivers({ appRoot, reach, cacheBackend, eventsBackend }),
+	);
+
 	// Decided by the process's edge to a `Telemetry` node, never by which
 	// packages happen to be installed: with the edge, the server's entry
 	// starts the SDK — and the build fails without what it needs; without it,
 	// the entry loads nothing. The `gkm dev` entry starts it the same way.
 	if (target === 'server') {
 		buildContext.telemetry = telemetryFor({
-			node: derived.surface
-				? telemetryOf(declared, derived.surface.id)
-				: undefined,
+			node: processTelemetry(
+				declared,
+				derived.surface?.id,
+				servesOnly ? [] : hosted.map((unit) => unit.id),
+			),
 			appRoot,
 			app: appNameOf(input),
 			cwd: workspaceRoot,
@@ -634,24 +689,8 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		return {};
 	}
 
-	// A RestApi's production image answers HTTP and nothing else. Queues,
-	// crons and subscribers belong to a Worker — the process with no port —
-	// even when they sit in the API's directory, so the server it builds leaves
-	// them out rather than running them beside the routes.
-	if (production?.subscribers === 'include' && derived.surface) {
+	if (servesOnly && production) {
 		buildContext.production = { ...production, subscribers: 'exclude' };
-		const left = [
-			[allCrons.length, 'cron'],
-			[allQueues.length, 'queue consumer'],
-			[allSubscribers.length, 'subscriber'],
-		]
-			.filter(([n]) => (n as number) > 0)
-			.map(([n, what]) => `${n} ${what}${n === 1 ? '' : 's'}`);
-		if (left.length > 0) {
-			logger.log(
-				`Serving ${derived.surface.id} only: leaving out ${left.join(', ')} — they run in a Worker's image`,
-			);
-		}
 	}
 
 	const result = await buildForTarget(
@@ -667,9 +706,9 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		topicGenerator,
 		allEndpoints,
 		allFunctions,
-		allCrons,
-		allSubscribers,
-		allQueues,
+		inProcess.crons,
+		inProcess.subscribers,
+		inProcess.queues,
 		allTopics,
 		enableOpenApi,
 		input.skipBundle ?? false,
@@ -678,16 +717,18 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 
 	// Each Worker this app carries: its own entry, and — bundling — its own
 	// bundle beside the server's, which the worker's image copies out.
-	if (target === 'server' && production?.enabled && input.workspace) {
-		const appName = Object.entries(input.workspace.apps).find(
-			([, app]) =>
-				resolve(input.workspace!.root, app.path) === resolve(appRoot),
-		)?.[0];
-		const hosted = workerUnits(input.workspace, declared, background).filter(
-			(unit) => unit.app === appName,
-		);
+	if (target === 'server' && production?.enabled) {
 		await buildWorkers({
-			context: buildContext,
+			// Its own drivers, for what the worker reaches.
+			context: (workerId, work) => ({
+				...buildContext,
+				...runtimeDrivers({
+					appRoot,
+					reach: reachedBy(declared, [workerId], work),
+					cacheBackend,
+					eventsBackend,
+				}),
+			}),
 			telemetry: (workerId) =>
 				telemetryFor({
 					node: telemetryOf(declared, workerId),
@@ -701,9 +742,9 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 				}),
 			workers: hosted,
 			serverDir: join(appRoot, '.gkm', 'server'),
-			crons: allCrons,
-			queues: allQueues,
-			subscribers: allSubscribers,
+			crons: hostedCrons,
+			queues: hostedQueues,
+			subscribers: hostedSubscribers,
 			bundle: Boolean(production.bundle && !input.skipBundle),
 			...(input.stage ? { stage: input.stage } : {}),
 		});
@@ -733,6 +774,48 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		...(buildContext.databaseApi
 			? { databaseApi: buildContext.databaseApi.path }
 			: {}),
+		...(!servesOnly && hosted.length > 0
+			? { workers: hosted.map((unit) => unit.id) }
+			: {}),
+	};
+}
+
+/**
+ * The `Telemetry` node a process emits through: its surface's, or — where it
+ * runs a worker's work, under `gkm dev` — that worker's.
+ */
+function processTelemetry(
+	declared: ConstructManifest,
+	surfaceId: string | undefined,
+	workers: readonly string[],
+): ReturnType<typeof telemetryOf> {
+	for (const id of [...(surfaceId ? [surfaceId] : []), ...workers]) {
+		const node = telemetryOf(declared, id);
+		if (node) return node;
+	}
+	return undefined;
+}
+
+/**
+ * The drivers a process's entry registers, from the declarations it reaches:
+ * the cache's — the declaration for one that named its database, the deploy
+ * target's default for one that named nowhere — and the broker's, only when
+ * it reaches a topic or a queue (see `eventsBackendsIn`).
+ */
+function runtimeDrivers(options: {
+	appRoot: string;
+	reach: ConstructManifest;
+	cacheBackend: CacheBackend;
+	eventsBackend: EventsBackend;
+}): Pick<BuildContext, 'storageDrivers' | 'eventsBackends'> {
+	const eventsBackends = eventsBackendsIn(options.reach, options.eventsBackend);
+	return {
+		storageDrivers: driversFor({
+			appRoot: options.appRoot,
+			cache: cacheBackendsIn(options.reach, options.cacheBackend),
+			events: eventsBackends,
+		}),
+		eventsBackends,
 	};
 }
 
@@ -741,7 +824,11 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
  * runnables built from that worker, and nothing built from another.
  */
 async function buildWorkers(input: {
-	context: BuildContext;
+	/** The build context for one worker's entry, given the work it runs. */
+	context: (
+		workerId: string,
+		work: readonly GeneratedConstruct<any>[],
+	) => BuildContext;
 	/** What each worker's process starts OpenTelemetry with, by its id. */
 	telemetry: (workerId: string) => TelemetryContext | undefined;
 	workers: readonly WorkerUnit[];
@@ -763,8 +850,13 @@ async function buildWorkers(input: {
 		const subscribers = owned(input.subscribers);
 
 		const telemetry = input.telemetry(worker.id);
+		const context = input.context(worker.id, [
+			...crons,
+			...queues,
+			...subscribers,
+		]);
 		const entryPoint = await generator.build({
-			context: input.context,
+			context,
 			workerId: worker.id,
 			...(telemetry ? { telemetry } : {}),
 			outputDir: workerEntryDir(input.serverDir, worker.id),
@@ -783,9 +875,9 @@ async function buildWorkers(input: {
 			entryPoint,
 			outputDir: join(input.serverDir, 'dist'),
 			outfile,
-			minify: input.context.production?.minify ?? false,
+			minify: context.production?.minify ?? false,
 			sourcemap: false,
-			external: input.context.production?.external ?? [],
+			external: context.production?.external ?? [],
 			...(input.stage ? { stage: input.stage } : {}),
 			constructs: [...crons, ...queues, ...subscribers].map((c) => c.construct),
 		});

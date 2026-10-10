@@ -44,6 +44,12 @@ export interface ComposeAppOptions {
 	 * stage's GKM_SERVER_IPV4, when absent — `false` for none.
 	 */
 	server?: Record<string, unknown> | false;
+	/**
+	 * A second RestApi, `Reviewer` in `apps/reviewer`, whose one globbed
+	 * endpoint reads only the auth tenant — and a cron on the worker, which
+	 * reads a credential nothing else does.
+	 */
+	reviewer?: boolean;
 }
 
 /**
@@ -91,6 +97,8 @@ export const telemetry = new Telemetry('Telemetry', {
 	const json = (path: string, value: unknown) =>
 		writeFileSync(join(dir, path), `${JSON.stringify(value, null, 2)}\n`);
 
+	if (options.reviewer) writeReviewer(dir, name);
+
 	json('package.json', {
 		name,
 		private: true,
@@ -136,6 +144,7 @@ export default defineWorkspace({
     './constructs/**/*.ts',
     './apps/*/endpoints/**/*.ts',
     './apps/*/queues/**/*.ts',
+    './apps/*/crons/**/*.ts',
   ],
   domains: ${JSON.stringify(options.domains ?? { production: options.domain ?? 'shop.example.com' })},
   ${options.dns ? `dns: ${JSON.stringify(options.dns)},` : ''}
@@ -151,6 +160,70 @@ export default defineWorkspace({
   },
 });
 `,
+	);
+}
+
+/**
+ * The second surface and the worker's cron — see `ComposeAppOptions.reviewer`.
+ */
+function writeReviewer(dir: string, name: string): void {
+	const write = (path: string, source: string) => {
+		mkdirSync(join(dir, path, '..'), { recursive: true });
+		writeFileSync(join(dir, path), source);
+	};
+	write(
+		'constructs/reviewer.ts',
+		`import { RestApi } from '@geekmidas/constructs/rest-api';
+import { logger } from './logger.js';
+
+/** A small password-protected page: its own surface, its own container. */
+export const reviewer = new RestApi('Reviewer', {
+  path: 'apps/reviewer',
+  defaultAuthorizer: 'none',
+  logger,
+});
+`,
+	);
+	write(
+		'constructs/push.ts',
+		`import { Credential } from '@geekmidas/constructs/credential';
+import { z } from 'zod';
+
+/** Read by the worker's cron alone. */
+export const push = new Credential('Push', {
+  schema: z.object({ key: z.string() }),
+});
+`,
+	);
+	write(
+		'apps/reviewer/endpoints/review.ts',
+		`import { z } from 'zod';
+import { authDatabase } from '../../../constructs/database.js';
+import { reviewer } from '../../../constructs/reviewer.js';
+
+/** Reads the auth tenant, and nothing else. */
+export const review = reviewer
+  .database(authDatabase)
+  .get('/review')
+  .output(z.object({ ok: z.boolean() }))
+  .handle(async () => ({ ok: true }));
+`,
+	);
+	write(
+		'apps/api/crons/sweep.ts',
+		`import { push } from '../../../constructs/push.js';
+import { worker } from '../../../constructs/worker.js';
+
+/** The worker's, sitting in the API's directory. */
+export const sweep = worker
+  .cron('rate(1 day)')
+  .dependsOn([push])
+  .handle(async () => null);
+`,
+	);
+	write(
+		'apps/reviewer/package.json',
+		`${JSON.stringify({ name: `@${name}/reviewer`, private: true, type: 'module' }, null, 2)}\n`,
 	);
 }
 

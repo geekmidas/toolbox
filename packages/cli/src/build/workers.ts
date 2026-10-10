@@ -115,7 +115,8 @@ export function workerUnits(
 	return units.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function isUnder(file: string, dir: string): boolean {
+/** Whether `file` is inside `dir`. */
+export function isUnder(file: string, dir: string): boolean {
 	const rel = relative(dir, file);
 	return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)
 		? !rel.startsWith(`..${sep}`)

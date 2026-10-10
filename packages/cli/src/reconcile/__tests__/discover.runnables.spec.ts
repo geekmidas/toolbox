@@ -108,10 +108,11 @@ export const nightly = jobs
 			// without `USERS_PUBLISHER_CONNECTION_STRING`.
 			Api: ['Orders', 'Uploads', 'Users'],
 			// The queue's consumer runs in the worker, so its bucket is the worker's
-			// too — a queue is a declaration *and* a runnable.
-			Jobs: expect.arrayContaining(['Orders', 'Uploads']),
+			// too — a queue is a declaration *and* a runnable — and so is the
+			// queue it drains.
+			Jobs: expect.arrayContaining(['Orders', 'Uploads', 'Receipts']),
 		});
-		expect(runnables.Jobs).toHaveLength(2);
+		expect(runnables.Jobs).toHaveLength(3);
 		expect(manifest.Receipts).toMatchObject({ kind: 'queue' });
 	});
 
@@ -213,7 +214,12 @@ export const rollup = reports
 		});
 
 		// The handler's `db` reaches the database, so the process running it has
-		// to be composed with it.
-		expect(runnables.Reports).toEqual(['Orders']);
+		// to be composed with it — and each reaches what it consumes: the
+		// subscriber its topic, the consumer its queue.
+		expect([...(runnables.Reports ?? [])].sort()).toEqual([
+			'Orders',
+			'Rollup',
+			'Users',
+		]);
 	});
 });

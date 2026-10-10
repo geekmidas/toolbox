@@ -166,6 +166,7 @@ export async function reconcileWorkspace(
 				credentials,
 				runnables,
 				fakes,
+				credentialFakes,
 			),
 		...(options.start === undefined ? {} : { start: options.start }),
 		...(options.progress ? { progress: options.progress } : {}),

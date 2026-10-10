@@ -97,11 +97,13 @@ function localPlan(
 	workspace: NormalizedWorkspace,
 	manifest: ConstructManifest,
 	fakes: PlanOptions['fakes'] = {},
+	credentialFakes: PlanOptions['credentialFakes'] = {},
 ): Plan {
 	return planFor(manifest, workspace.stages.local, provisionOrder(manifest), {
 		localStage: workspace.stages.local,
 		...backendsOf(workspace),
 		fakes,
+		credentialFakes,
 		edge: false,
 	});
 }
@@ -192,8 +194,12 @@ export function networkEnv(
  *
  * One hop: a surface an app calls is reached over HTTP, so its URL is the
  * app's business and its database is not. A site also gets the public
- * variant of each key its bundle inlines (`NEXT_PUBLIC_API_URL`), and a surface
- * the edges of the workers whose crons and subscribers its server runs.
+ * variant of each key its bundle inlines (`NEXT_PUBLIC_API_URL`).
+ *
+ * A surface's process runs its own endpoints and nothing else. A Worker's
+ * crons, queue consumers and subscribers run in the worker's own process
+ * (`workerEnvKeys`), so no surface is handed a worker's edges — however its
+ * endpoints were found.
  *
  * `undefined` for an app no declaration describes, which gets nothing but its
  * port.
@@ -224,37 +230,10 @@ export function appEnvKeys(
 
 	const edges = [
 		...dependenciesOf(declaration).map((edge) => edge.target),
-		// The endpoints the glob found, which the surface's node does not list.
+		// The endpoints the glob found, which the surface's node does not list —
+		// the ones built from this surface, wherever their files are.
 		...(runnables[id] ?? []),
 	];
-	// The server the build generates — a surface whose endpoints the glob finds,
-	// so it declares none — also runs the workers' crons and subscribers. One
-	// that serves itself (an auth server's wildcard) runs only its own handler.
-	if (declaration.kind === 'rest-api' && declaration.endpoints.length === 0) {
-		const runsWorkers = Object.values(manifest).some(
-			(other) => other.kind === 'worker',
-		);
-		for (const [otherId, other] of Object.entries(manifest)) {
-			if (other.kind !== 'worker') continue;
-			edges.push(
-				...dependenciesOf(other).map((edge) => edge.target),
-				...(runnables[otherId] ?? []),
-			);
-			// A server schedules its crons through the broker.
-			keys.add('EVENT_PUBLISHER_CONNECTION_STRING');
-		}
-		// Each consumer reaches the thing it consumes: a queue's consumer its
-		// queue, a subscriber its topic. Which subscriber binds which topic is
-		// only known once the build has found them, so a server that runs the
-		// workers is handed every carrier's address.
-		if (runsWorkers) {
-			for (const other of Object.values(manifest)) {
-				if (other.kind !== 'queue' && other.kind !== 'topic') continue;
-				for (const key of other.provides ?? []) keys.add(key);
-			}
-		}
-	}
-
 	addEdgeKeys(manifest, edges, keys);
 
 	if (declaration.kind === 'site' || declaration.kind === 'mobile-app') {
@@ -272,10 +251,9 @@ export function appEnvKeys(
 
 /**
  * The keys a Worker's own process reads: what the worker and everything built
- * from it declared an edge to, the broker its crons schedule through, and the
- * address of every queue and topic — which of them its consumers and
- * subscribers are bound to is only known once a build has found them, so a
- * process that runs them is handed each carrier's.
+ * from it declared an edge to — the queues its consumers drain and the topics
+ * its subscribers are bound to among them (see `DiscoverOptions.runnables`) —
+ * and the broker its crons schedule through.
  *
  * `undefined` when no worker has that id.
  */
@@ -294,10 +272,6 @@ export function workerEnvKeys(
 		// A server schedules its crons through the broker.
 		'EVENT_PUBLISHER_CONNECTION_STRING',
 	]);
-	for (const other of Object.values(manifest)) {
-		if (other.kind !== 'queue' && other.kind !== 'topic') continue;
-		for (const key of other.provides ?? []) keys.add(key);
-	}
 	addEdgeKeys(
 		manifest,
 		[
@@ -361,8 +335,13 @@ export function appServices(
 	credentials: LocalCredentials,
 	runnables: Readonly<Record<string, readonly string[]>> = {},
 	fakes: PlanOptions['fakes'] = {},
+	/**
+	 * Each credential's fake value, under `gkm dev --fake` — handed to the
+	 * apps that read the credential, as an external API's fake is.
+	 */
+	credentialFakes: PlanOptions['credentialFakes'] = {},
 ): Record<string, ComposeService> {
-	const plan = localPlan(workspace, manifest, fakes);
+	const plan = localPlan(workspace, manifest, fakes, credentialFakes);
 	const derivation = {
 		project: workspace.name,
 		credentials,

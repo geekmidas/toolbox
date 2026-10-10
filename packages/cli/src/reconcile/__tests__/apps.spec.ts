@@ -179,6 +179,45 @@ describe('appServices', () => {
 		});
 	});
 
+	// `gkm dev --fake` hands a credential's fake to the process that reads
+	// it, in its container as in `gkm dev`'s own server — and to no other.
+	describe("a credential's fake", () => {
+		const faked = {
+			...withApps,
+			Payments: {
+				kind: 'credential',
+				id: 'Payments',
+				provides: ['PAYMENTS_CREDENTIALS'],
+			},
+		} as unknown as ConstructManifest;
+		const env = (app: string, credentialFakes = {}) =>
+			appServices(
+				withAppsWorkspace,
+				faked,
+				['postgres'],
+				TEST_CREDENTIALS,
+				{ Api: ['Auth', 'Payments'] },
+				{},
+				credentialFakes,
+			)[app]?.environment ?? {};
+
+		it('reaches the app that reads the credential', () => {
+			const value = JSON.stringify({ secretKey: 'sk_test_fake' });
+
+			expect(env('api', { Payments: value })).toHaveProperty(
+				'PAYMENTS_CREDENTIALS',
+				value,
+			);
+			expect(env('signer', { Payments: value })).not.toHaveProperty(
+				'PAYMENTS_CREDENTIALS',
+			);
+		});
+
+		it('is not invented without a fake', () => {
+			expect(env('api')).not.toHaveProperty('PAYMENTS_CREDENTIALS');
+		});
+	});
+
 	// A static bundle is finished when it is built: a public URL handed to its
 	// container at runtime reaches nothing, and the site was built against an
 	// empty `VITE_API_URL`.

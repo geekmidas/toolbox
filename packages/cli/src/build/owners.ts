@@ -1,6 +1,11 @@
 import { resolve } from 'node:path';
-import { type ConstructManifest, provideKey } from '@geekmidas/manifest';
-import type { ConstructSource } from '../reconcile/discover.js';
+import {
+	type ConstructManifest,
+	canonicalId,
+	dependenciesOf,
+	provideKey,
+} from '@geekmidas/manifest';
+import { type ConstructSource, consumedBy } from '../reconcile/discover.js';
 import { type BuildContext, DEV_DATABASE_API_PATH } from './types';
 
 /**
@@ -129,5 +134,35 @@ export function servedSurface(
 ): RestApiDeclaration | undefined {
 	return restApis(declared).find(
 		(d) => resolve(workspaceRoot, d.path) === resolve(appRoot),
+	);
+}
+
+/**
+ * The declarations one process reaches: the constructs it runs as — a surface,
+ * a worker — what each declared an edge to, and what each runnable it runs
+ * depends on or consumes.
+ *
+ * What decides which drivers its entry registers: a process that reaches no
+ * cache never resolves a cache client because another process in the
+ * workspace does.
+ */
+export function reachedBy(
+	declared: ConstructManifest,
+	processes: readonly string[],
+	runnables: readonly { construct: { constructs?: readonly string[] } }[],
+): ConstructManifest {
+	const reached = new Set<string>();
+	for (const id of processes) {
+		const declaration = declared[id];
+		if (!declaration) continue;
+		reached.add(id);
+		for (const edge of dependenciesOf(declaration)) reached.add(edge.target);
+	}
+	for (const { construct } of runnables) {
+		for (const id of construct.constructs ?? []) reached.add(canonicalId(id));
+		for (const id of consumedBy(construct)) reached.add(id);
+	}
+	return Object.fromEntries(
+		Object.entries(declared).filter(([id]) => reached.has(id)),
 	);
 }

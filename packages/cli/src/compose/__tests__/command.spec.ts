@@ -473,6 +473,56 @@ describe('gkm compose --dry-run', { timeout: RUN_TIMEOUT }, () => {
 	});
 });
 
+describe(
+	'the local stage, with the deployed stages’ state in S3',
+	{
+		timeout: RUN_TIMEOUT,
+	},
+	() => {
+		beforeEach(async () => {
+			dir = realpathSync(await createTempDir('gkm-compose-command-'));
+			writeComposeApp(dir, {
+				registry: 'registry.example.com/acme',
+				state: { provider: 's3', region: 'eu-west-1' },
+			});
+			// No AWS credential anywhere this process could find one: reading the
+			// remote store would fail rather than reach AWS.
+			for (const key of [
+				'AWS_ACCESS_KEY_ID',
+				'AWS_SECRET_ACCESS_KEY',
+				'AWS_SESSION_TOKEN',
+				'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI',
+				'AWS_CONTAINER_CREDENTIALS_FULL_URI',
+				'AWS_WEB_IDENTITY_TOKEN_FILE',
+			]) {
+				vi.stubEnv(key, undefined);
+			}
+			vi.stubEnv('AWS_PROFILE', 'gkm-no-such-profile');
+			vi.stubEnv('AWS_SHARED_CREDENTIALS_FILE', join(dir, 'no-credentials'));
+			vi.stubEnv('AWS_CONFIG_FILE', join(dir, 'no-config'));
+			vi.stubEnv('AWS_EC2_METADATA_DISABLED', 'true');
+		});
+		afterEach(async () => {
+			vi.unstubAllEnvs();
+			await cleanupDir(dir);
+		});
+
+		it('plans a dry run from local state, and needs no AWS credentials', async () => {
+			const { docker, ops } = fakeDocker();
+
+			const result = await composeCommand(
+				{ cwd: dir, stage: 'development', dryRun: true },
+				{ lookup: resolvesHere, docker, revision: async () => 'abc1234' },
+			);
+
+			expect(ops()).toEqual([]);
+			expect(result?.files.map((file) => file.slice(dir.length + 1))).toContain(
+				'.gkm/compose/development/docker-compose.yml',
+			);
+		});
+	},
+);
+
 /**
  * Whether Docker leaves `path` (relative to the context) out of a build,
  * by the `**`, `*` and plain patterns gkm writes: a path is out when it, or a
@@ -1250,7 +1300,9 @@ describe("the stack's Redis", { timeout: RUN_TIMEOUT }, () => {
 		).catch((caught: unknown) => caught);
 
 		expect(error).toBeInstanceOf(RedisClientMissing);
-		expect((error as RedisClientMissing).apps).toEqual(['api', 'auth']);
+		// The API's endpoints reach the cache; the auth server's process does
+		// not, so it registers no cache driver and needs no client.
+		expect((error as RedisClientMissing).apps).toEqual(['api']);
 		expect(fake.ops()).toEqual([]);
 	});
 });

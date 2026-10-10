@@ -551,8 +551,11 @@ async function prepare(
 	});
 	if (apps.length === 0) throw new NoDeployableApps(stage, targetName);
 
+	// The local stage's state is this machine's, always: it runs nothing
+	// remote, so it never reads or writes the deployed stages' store — nor
+	// needs that store's credentials.
 	const store = await createStateStore({
-		config: workspace.state,
+		config: stage === workspace.stages.local ? undefined : workspace.state,
 		workspaceRoot: workspace.root,
 		workspaceName: workspace.name,
 		namespace: workspace.deploy?.namespace,
