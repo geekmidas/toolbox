@@ -1,5 +1,22 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.102
+
+### Patch Changes
+
+- Updated dependencies [[`19968b9`](https://github.com/geekmidas/toolbox/commit/19968b93962002bdcd1f7dbc2a31cd2a0837c807)]:
+  - @geekmidas/constructs@10.0.0-alpha.102
+  - @geekmidas/cache@10.0.0-alpha.102
+  - @geekmidas/db@10.0.0-alpha.102
+  - @geekmidas/envkit@10.0.0-alpha.102
+  - @geekmidas/errors@10.0.0-alpha.102
+  - @geekmidas/logger@10.0.0-alpha.102
+  - @geekmidas/manifest@10.0.0-alpha.102
+  - @geekmidas/schema@10.0.0-alpha.102
+  - @geekmidas/services@10.0.0-alpha.102
+  - @geekmidas/storage@10.0.0-alpha.102
+  - @geekmidas/telescope@10.0.0-alpha.102
+
 ## 10.0.0-alpha.101
 
 ### Patch Changes

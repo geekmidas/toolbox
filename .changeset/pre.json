@@ -91,6 +91,7 @@
     "drop-generate-react-query",
     "edge-root-site",
     "encryption-construct",
+    "endpoint-form-bodies",
     "events-drivers",
     "external-api",
     "faker-lowercase-email",
