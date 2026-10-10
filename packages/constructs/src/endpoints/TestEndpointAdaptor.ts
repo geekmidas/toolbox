@@ -36,6 +36,7 @@ import {
 	type AuditExecutionContext,
 	executeWithAuditTransaction,
 } from './processAudits';
+import { enforceRateLimit } from './rateLimit';
 
 export type TestHttpResponse<TBody = any> = {
 	body: TBody;
@@ -223,6 +224,20 @@ export class TestEndpointAdaptor<
 					);
 				}
 
+				// The endpoint's `.rateLimit()`, as it is enforced deployed: over
+				// the limit, a 429 thrown with its `Retry-After` and
+				// `X-RateLimit-*` headers.
+				const rateLimitHeaders = this.endpoint.rateLimit
+					? await enforceRateLimit(this.endpoint.rateLimit, {
+							header,
+							services: ctx.services,
+							logger,
+							session,
+							path: this.endpoint.route,
+							method: this.endpoint.method,
+						})
+					: {};
+
 				// Create audit context if audit storage is provided
 				// The auditorStorage instance is required when endpoint uses .auditor()
 				const auditorStorage = (ctx as any).auditorStorage as TAuditStorage;
@@ -351,6 +366,7 @@ export class TestEndpointAdaptor<
 
 				// Convert cookies to Set-Cookie headers
 				const headers: Record<string, string | string[]> = {
+					...rateLimitHeaders,
 					...(metadata.headers || {}),
 				};
 

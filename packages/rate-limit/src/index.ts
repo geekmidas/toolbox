@@ -1,20 +1,14 @@
 import type { Cache } from '@geekmidas/cache';
+import { TooManyRequestsError } from '@geekmidas/errors';
 import type { Logger } from '@geekmidas/logger';
 import type { Service, ServiceRecord } from '@geekmidas/services';
 
 /**
- * Error thrown when rate limit is exceeded
+ * Thrown when a client is over its limit: `@geekmidas/errors`' 429, so every
+ * endpoint adaptor answers 429 with it — its `Retry-After` and
+ * `X-RateLimit-*` headers on the response — rather than a 500.
  */
-export class TooManyRequestsError extends Error {
-	public readonly statusCode = 429;
-	public readonly retryAfter?: number;
-
-	constructor(message?: string, retryAfter?: number) {
-		super(message || 'Too many requests, please try again later.');
-		this.name = 'TooManyRequestsError';
-		this.retryAfter = retryAfter;
-	}
-}
+export { TooManyRequestsError };
 
 /**
  * Rate limit configuration for an endpoint
@@ -248,11 +242,13 @@ export async function checkRateLimit<
 			await config.handler(ctx, info);
 		}
 
-		// Throw rate limit error
+		// A 429 carrying what the client needs to come back: `Retry-After`,
+		// the seconds until the window resets, and the usual `X-RateLimit-*`.
 		const retryAfterSeconds = Math.ceil(info.retryAfter / 1000);
 		throw new TooManyRequestsError(
 			config.message || 'Too many requests, please try again later.',
 			retryAfterSeconds,
+			{ headers: definedHeaders(getRateLimitHeaders(info, config)) },
 		);
 	}
 
@@ -287,4 +283,13 @@ export function getRateLimitHeaders(
 	}
 
 	return headers;
+}
+
+/** The headers that are set, as a plain record. */
+function definedHeaders(headers: RateLimitHeaders): Record<string, string> {
+	return Object.fromEntries(
+		Object.entries(headers).filter(
+			(entry): entry is [string, string] => entry[1] !== undefined,
+		),
+	);
 }

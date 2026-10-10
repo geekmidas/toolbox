@@ -1,6 +1,6 @@
 import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
 import type { EnvironmentParser } from '@geekmidas/envkit';
-import { HttpError, wrapError } from '@geekmidas/errors';
+import { type HttpError, isHttpError, wrapError } from '@geekmidas/errors';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import {
@@ -30,12 +30,13 @@ import {
 } from './Endpoint';
 import { getEndpointsFromRoutes } from './helpers';
 import { createHonoCookies, createHonoHeaders } from './lazyAccessors';
-import { loadRateLimit, loadRls } from './optionalPeers';
+import { loadRls } from './optionalPeers';
 import { parseHonoQuery } from './parseHonoQuery';
 import {
 	createAuditContext,
 	executeWithAuditTransaction,
 } from './processAudits';
+import { enforceRateLimit } from './rateLimit';
 import { readRequestBody } from './readRequestBody';
 
 export interface HonoEndpointOptions {
@@ -322,7 +323,8 @@ export class HonoEndpoint<
 						untyped: 'empty',
 					});
 				} catch (error) {
-					if (!(error instanceof HttpError)) throw error;
+					if (!isHttpError(error)) throw error;
+					setErrorHeaders(c, error);
 					return c.json(
 						errorBody(error),
 						error.statusCode as ContentfulStatusCode,
@@ -436,25 +438,19 @@ export class HonoEndpoint<
 
 						// Check rate limit only if configured
 						if (features.hasRateLimit) {
-							const { checkRateLimit, getRateLimitHeaders } =
-								await loadRateLimit();
-							const rateLimitInfo = await checkRateLimit(endpoint.rateLimit!, {
-								header,
-								services,
-								logger,
-								session,
-								path: c.req.path,
-								method: endpoint.method,
-							});
-
-							const rateLimitHeaders = getRateLimitHeaders(
-								rateLimitInfo,
+							const rateLimitHeaders = await enforceRateLimit(
 								endpoint.rateLimit!,
+								{
+									header,
+									services,
+									logger,
+									session,
+									path: c.req.path,
+									method: endpoint.method,
+								},
 							);
 							for (const [key, value] of Object.entries(rateLimitHeaders)) {
-								if (value) {
-									c.header(key, value);
-								}
+								c.header(key, value);
 							}
 						}
 
@@ -652,6 +648,7 @@ export class HonoEndpoint<
 								422,
 								'Response validation failed',
 							);
+							setErrorHeaders(c, error);
 							const body = errorBody(error);
 							if (HonoEndpoint.isDev) {
 								logger.info(
@@ -672,6 +669,7 @@ export class HonoEndpoint<
 						// leaves an uncaught one, for middleware — a request span
 						// records it as the exception. A 4xx is the client's.
 						if (error.statusCode >= 500 && e instanceof Error) c.error = e;
+						setErrorHeaders(c, error);
 						const body = errorBody(error);
 						if (HonoEndpoint.isDev) {
 							logger.info(
@@ -751,4 +749,14 @@ function errorBody(error: HttpError) {
 		...(internal ? {} : { details: error.details }),
 		...(HonoEndpoint.isDev ? { stack: error.stack } : {}),
 	};
+}
+
+/**
+ * The headers an error says its response carries — a 429's `Retry-After` and
+ * `X-RateLimit-*` — on the response that reports it.
+ */
+function setErrorHeaders(c: Context, error: HttpError): void {
+	for (const [key, value] of Object.entries(error.headers ?? {})) {
+		c.header(key, value);
+	}
 }

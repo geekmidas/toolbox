@@ -122,6 +122,27 @@ drift.
 | `StaticSite` | `/site` | — a surface |
 | `BetterAuth` | `/auth` | an `AuthClient` — `api.getSession({ headers })`, over HTTP to the auth app |
 
+A `Credential`'s value is the stage's `<ID>_CREDENTIALS` — `STRIPE_CREDENTIALS`
+here — set with `gkm secrets:add`. On the test stage, and under
+`gkm dev --fake`, it can come from a fake beside the external APIs' instead,
+which no deployed stage reads:
+
+```typescript
+// test/fakes/stripe.ts
+import { fake } from '@geekmidas/constructs/credential';
+import type { stripe } from '../../constructs/stripe';
+
+export default fake.credential<typeof stripe>({
+  secretKey: 'sk_test_fake',
+  webhookSecret: 'whsec_fake',
+});
+```
+
+A test stage set up fresh stores no credentials, so `gkm test` refuses a
+credential with neither a fake nor a stored value before any test runs
+(`CredentialHasNoTestValue`, naming the key and the file to create). See
+[Testing — a credential's test value](../guide/testing.md#a-credential-s-test-value).
+
 ### `.dependsOn()` — the one primitive
 
 Every builder takes it: endpoints, functions, crons, queue workers, and

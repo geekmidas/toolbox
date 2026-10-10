@@ -175,87 +175,9 @@ function hostOf(url: string): string {
 	}
 }
 
-/** Anything that answers a request — a Hono app, or a bare `{ fetch }`. */
-export interface FetchHandler {
-	fetch(request: Request): Response | Promise<Response>;
-}
-
-/**
- * Marks a fake. A registered symbol, so a fake built by a second copy of this
- * package — a linked workspace, two versions in a lockfile — is still one.
- */
-const FAKE = Symbol.for('@geekmidas/constructs/fake');
-
-/** What an external API's credentials look like going in, for a fake to supply. */
-type CredentialsOf<TApi> =
-	TApi extends ExternalApi<string, infer TSchema, unknown>
-		? StandardSchemaV1.InferInput<TSchema>
-		: unknown;
-
-/**
- * An external API's stand-in, as `test/fakes/<id>.ts` default-exports it.
- *
- * `credentials` are what the fake accepts, and what a local or test stage is
- * handed as `<ID>_CREDENTIALS` in place of the stage's own.
- */
-export type Fake = {
-	readonly [FAKE]: true;
-	readonly credentials: unknown;
-} & (
-	| {
-			readonly kind: 'app';
-			/** Served by gkm: in-process in a test, on its own port in `gkm dev`. */
-			readonly handler: FetchHandler;
-	  }
-	| {
-			readonly kind: 'image';
-			/** The provider's own local server, run as a container. */
-			readonly image: string;
-			/** The port it listens on inside the container. */
-			readonly port: number;
-	  }
-);
-
-/**
- * Build the fake `test/fakes/<id>.ts` default-exports.
- *
- * Pass the API's type to have the credentials checked against its schema —
- * `fake.app<typeof polar>(…)`.
- */
-export const fake = {
-	/** A working implementation of the API, kept beside the tests that use it. */
-	app<TApi = unknown>(
-		handler: FetchHandler,
-		options: { credentials: CredentialsOf<TApi> },
-	): Fake {
-		return {
-			[FAKE]: true,
-			kind: 'app',
-			handler,
-			credentials: options.credentials,
-		};
-	},
-
-	/** A local server the provider publishes — `stripe/stripe-mock`. */
-	image<TApi = unknown>(
-		image: string,
-		options: { port: number; credentials: CredentialsOf<TApi> },
-	): Fake {
-		return {
-			[FAKE]: true,
-			kind: 'image',
-			image,
-			port: options.port,
-			credentials: options.credentials,
-		};
-	},
-};
-
-/** Whether a value is a fake — what gkm asks of a `test/fakes` default export. */
-export function isFake(value: unknown): value is Fake {
-	return (
-		typeof value === 'object' &&
-		value !== null &&
-		(value as { [FAKE]?: unknown })[FAKE] === true
-	);
-}
+export {
+	type Fake,
+	type FetchHandler,
+	fake,
+	isFake,
+} from './fake';

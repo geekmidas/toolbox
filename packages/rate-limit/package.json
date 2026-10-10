@@ -30,7 +30,9 @@
 		"registry": "https://registry.npmjs.org/",
 		"access": "public"
 	},
-	"dependencies": {},
+	"dependencies": {
+		"@geekmidas/errors": "workspace:~"
+	},
 	"peerDependencies": {
 		"@geekmidas/cache": "workspace:^",
 		"@geekmidas/logger": "workspace:^",

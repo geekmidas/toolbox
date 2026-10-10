@@ -296,6 +296,39 @@ export default fake.image<typeof stripe>('stripe/stripe-mock', {
 There is nothing to import from an image fake: assert on what the endpoint
 returned, or on what the provider's server reports through its own API.
 
+### A credential's test value
+
+A `Credential` has no server to fake, only a value — and nobody issues one to
+a test stage set up fresh, as CI's `GKM_AUTO_SETUP` does: it stores no third
+party's values. So a credential a test reaches has a fake in the same folder,
+default-exporting `fake.credential(…)` with the value as its schema takes it:
+
+```typescript
+// constructs/reviewer.ts
+export const reviewerPassword = new Credential('ReviewerPassword', {
+  schema: z.string().min(16),
+});
+
+// test/fakes/reviewer-password.ts
+import { fake } from '@geekmidas/constructs/credential';
+import type { reviewerPassword } from '../../constructs/reviewer';
+
+export default fake.credential<typeof reviewerPassword>(
+  'a-reviewer-password-for-tests',
+);
+```
+
+`gkm test` hands it to the suite as `REVIEWER_PASSWORD_CREDENTIALS`, so
+`services.get('reviewerPassword')` in a feature test — and a handler that
+depends on it — gets `'a-reviewer-password-for-tests'`, validated against the
+schema like the real value. `gkm dev --fake` hands it to the apps it starts.
+
+A fake wins over a value the stage stores, as an external API's does. Without
+one, a stored value is used — so a credential that only a developer's own
+stage sets needs no fake until a fresh stage runs the suite. A deployed stage
+never reads it: `gkm deploy` still refuses a stage without the real
+`<ID>_CREDENTIALS`.
+
 ### In `gkm dev`
 
 `gkm dev` calls the real API — its sandbox — with the local stage's own
@@ -309,7 +342,8 @@ runs every image fake, and the apps it starts are pointed at them.
 | Error | Means |
 |---|---|
 | `NoFake` | an `ExternalApi` has no `test/fakes/<id>.ts`; the message names the file to create |
-| `NotAFake` | the file's default export isn't `fake.app(…)` or `fake.image(…)` |
+| `NotAFake` | the file's default export isn't `fake.app(…)` or `fake.image(…)` — or, for a `Credential`, `fake.credential(…)` |
+| `CredentialHasNoTestValue` | `gkm test` only: a `Credential` has no fake and the stage stores no value; the message names the key and the file to create |
 
 Commands that act on a stage — `gkm setup`, `secrets:*`, `deploy` — never read
 a fake, and don't need one to exist.
