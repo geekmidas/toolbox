@@ -226,6 +226,22 @@ describe('Client Error Classes (4xx)', () => {
 			const error = new TooManyRequestsError('Rate limit exceeded', 60);
 
 			expect(error.details).toEqual({ retryAfter: 60 });
+			expect(error.retryAfter).toBe(60);
+		});
+
+		it('says when to retry in the Retry-After header its response carries', () => {
+			const error = new TooManyRequestsError('Rate limit exceeded', 60, {
+				headers: { 'X-RateLimit-Limit': '10' },
+			});
+
+			expect(error.headers).toEqual({
+				'Retry-After': '60',
+				'X-RateLimit-Limit': '10',
+			});
+		});
+
+		it('carries no headers when it knows no retry time', () => {
+			expect(new TooManyRequestsError().headers).toBeUndefined();
 		});
 	});
 });
@@ -541,6 +557,27 @@ describe('wrapError', () => {
 
 		expect(wrapped.statusCode).toBe(500);
 		expect(wrapped.message).toBe('Failed to query database');
+		expect(wrapped.details?.originalError).toBe(original);
+	});
+
+	it('passes an HttpError through with its headers', () => {
+		const original = new TooManyRequestsError('Slow down', 30);
+
+		const wrapped = wrapError(original, 500, 'Internal Server Error');
+
+		expect(wrapped).toBe(original);
+		expect(wrapped.statusCode).toBe(429);
+		expect(wrapped.headers).toEqual({ 'Retry-After': '30' });
+	});
+
+	it('makes anything that is not an HttpError a 500, whatever status it carries', () => {
+		const original = Object.assign(new Error('Looks like a 429'), {
+			statusCode: 429,
+		});
+
+		const wrapped = wrapError(original);
+
+		expect(wrapped.statusCode).toBe(500);
 		expect(wrapped.details?.originalError).toBe(original);
 	});
 

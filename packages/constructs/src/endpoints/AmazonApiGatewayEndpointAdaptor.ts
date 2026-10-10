@@ -13,6 +13,7 @@ import set from 'lodash.set';
 import type { HttpMethod } from '../types';
 import { Endpoint, type EndpointSchemas, ResponseBuilder } from './Endpoint';
 import type { Telemetry } from './lambdaTelemetry';
+import { enforceRateLimit } from './rateLimit';
 import { readRequestBody } from './readRequestBody';
 import { envParserFor } from './surfaceEnv';
 
@@ -144,10 +145,15 @@ export abstract class AmazonApiGatewayEndpoint<
 				);
 				const wrappedError = wrapError(req.error);
 
-				// Set the response with the proper status code from the HttpError
+				// Set the response with the proper status code from the HttpError,
+				// and the headers it says the response carries (a 429's
+				// `Retry-After`).
 				req.response = {
 					statusCode: wrappedError.statusCode,
 					body: wrappedError.body,
+					...(wrappedError.headers
+						? { headers: { ...wrappedError.headers } }
+						: {}),
 				};
 			},
 		};
@@ -299,6 +305,40 @@ export abstract class AmazonApiGatewayEndpoint<
 				}
 			},
 		};
+	}
+
+	/**
+	 * The endpoint's `.rateLimit()`, after authorization as on every adaptor:
+	 * over the limit it throws a 429, which `error()` answers with its
+	 * headers; under it, the `X-RateLimit-*` headers go on the response.
+	 */
+	private rateLimit(): Middleware<TEvent, TInput, TServices, TLogger> {
+		return {
+			before: async (req) => {
+				if (!this.endpoint.rateLimit) return;
+
+				(req.event as any).rateLimitHeaders = await enforceRateLimit(
+					this.endpoint.rateLimit,
+					{
+						header: req.event.header,
+						services: req.event.services,
+						logger: req.event.logger,
+						session: req.event.session,
+						path: this.requestPath(req.event),
+						method: this.endpoint.method,
+					},
+				);
+			},
+		};
+	}
+
+	/** The path the request was made to, as the limiter keys a client by. */
+	private requestPath(event: TEvent): string {
+		return (
+			(event as APIGatewayProxyEvent).path ??
+			(event as APIGatewayProxyEventV2).rawPath ??
+			this.endpoint.route
+		);
 	}
 
 	private database(): Middleware<TEvent, TInput, TServices, TLogger> {
@@ -527,13 +567,17 @@ export abstract class AmazonApiGatewayEndpoint<
 		const baseHeaders: Record<string, string> | undefined = isJsonResponse
 			? undefined
 			: { 'content-type': this.endpoint.responseType };
+		const rateLimitHeaders: Record<string, string> | undefined = (event as any)
+			.rateLimitHeaders;
 
 		if (
 			baseHeaders ||
+			rateLimitHeaders ||
 			(metadata.headers && Object.keys(metadata.headers).length > 0)
 		) {
 			lambdaResponse.headers = {
 				...(baseHeaders ?? {}),
+				...(rateLimitHeaders ?? {}),
 				...(metadata.headers ?? {}),
 			};
 		}
@@ -608,6 +652,7 @@ export abstract class AmazonApiGatewayEndpoint<
 			.use(this.database())
 			.use(this.session())
 			.use(this.authorize())
+			.use(this.rateLimit())
 			.use(this.events());
 
 		// Add telemetry middleware if configured (runs early for span creation)

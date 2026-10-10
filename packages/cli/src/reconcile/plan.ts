@@ -274,6 +274,11 @@ export interface PlannedResource {
 	 */
 	fake?: { key: string; credentials: string };
 	/**
+	 * For a credential: its fake's value, as `<ID>_CREDENTIALS` holds it — what
+	 * a plan made with fakes hands the stage in place of its own.
+	 */
+	fakeCredentials?: string;
+	/**
 	 * For an external API with no fake in this plan: the URL it is called at,
 	 * as declared — one string, or one per stage name.
 	 */
@@ -392,6 +397,12 @@ export interface PlanOptions {
 	 * resolves no URL.
 	 */
 	fakes?: Readonly<Record<string, LocalFake>>;
+	/**
+	 * Each credential's fake value, by id — read from `test/fakes` by
+	 * `readCredentialFakes`, for a plan made with fakes (`gkm test`,
+	 * `gkm dev --fake`). A credential without one is the stage's own.
+	 */
+	credentialFakes?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -559,6 +570,10 @@ export function planFor(
 				: {}),
 			...(declaration.kind === 'external-api' && !fake
 				? { url: declaration.url }
+				: {}),
+			...(declaration.kind === 'credential' &&
+			options.credentialFakes?.[id] !== undefined
+				? { fakeCredentials: options.credentialFakes[id] }
 				: {}),
 			...('of' in declaration && !detached ? { of: declaration.of } : {}),
 			...('schema' in declaration && declaration.schema

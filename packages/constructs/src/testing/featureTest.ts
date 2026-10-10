@@ -50,7 +50,7 @@ import { KyselyDatabase } from '../database/kysely';
 import { Email } from '../email';
 import { Endpoint } from '../endpoints/Endpoint';
 import { HonoEndpoint } from '../endpoints/HonoEndpointAdaptor';
-import type { Fake } from '../external-api';
+import type { Fake } from '../fake';
 import { Queue } from '../queue/Queue';
 import { TestQueueAdaptor } from '../queue/TestQueueAdaptor';
 import type { Subscriber } from '../subscribers/Subscriber';

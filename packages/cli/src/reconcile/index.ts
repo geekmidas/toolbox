@@ -246,6 +246,8 @@ export interface ReconcileOptions {
 	extraContainers?: readonly string[];
 	/** Each external API's fake, by id — see `readFakes`. */
 	fakes?: PlanOptions['fakes'];
+	/** Each credential's fake value, by id — see `readCredentialFakes`. */
+	credentialFakes?: PlanOptions['credentialFakes'];
 	/**
 	 * The workspace's generated local logins — what every container is
 	 * brought up with and every URL carries. See `localCredentials.ts`.
@@ -366,6 +368,9 @@ export async function reconcile(
 		cache: options.cache,
 		extraContainers: options.extraContainers,
 		...(options.fakes ? { fakes: options.fakes } : {}),
+		...(options.credentialFakes
+			? { credentialFakes: options.credentialFakes }
+			: {}),
 		...(options.edge === undefined ? {} : { edge: options.edge }),
 	});
 

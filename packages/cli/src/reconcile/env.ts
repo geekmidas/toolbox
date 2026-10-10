@@ -223,6 +223,16 @@ export function envFor(
 			env[provideKey(resource.id, 'credentials')] = resource.fake.credentials;
 		}
 
+		// A credential resolves nothing (see `urlFor`) — unless the plan was
+		// made with fakes and it has one: then the stage is handed the fake's
+		// value in place of its own, as an external API is handed its fake's.
+		if (
+			resource.kind === 'credential' &&
+			resource.fakeCredentials !== undefined
+		) {
+			env[resource.envKey] = resource.fakeCredentials;
+		}
+
 		// Telemetry owns the rest of OpenTelemetry's keys: how to sign in to
 		// OpenObserve, and the sampler — every trace, locally. The service's
 		// name is each process's own, so it is not resolved here.
@@ -548,7 +558,8 @@ function urlFor(
 	// inventing a value would produce a Stripe key that is not a Stripe key and
 	// fail at the first call rather than at the first read. It comes from
 	// `gkm secrets` or `.env` like any other supplied value, and the construct's
-	// own schema is what reports it missing.
+	// own schema is what reports it missing — or, on a stage that fakes, from
+	// its fake (`envFor`).
 	if (resource.kind === 'credential') return undefined;
 
 	// An external API is the provider, at its URL for this stage — unless the

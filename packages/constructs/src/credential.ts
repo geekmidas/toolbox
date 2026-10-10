@@ -28,6 +28,26 @@
  * StandardSchema: the spec has no introspection API, so enumerating a schema's
  * fields means reaching into one library's internals (`.shape`) and being wrong
  * for every other.
+ *
+ * **A test stage is handed a fake.** Nobody issues a credential to a test
+ * stage set up fresh — CI's auto-setup stores no third party's values — so a
+ * credential a test reaches has a fake at `test/fakes/<id>.ts`, the folder an
+ * `ExternalApi`'s fake lives in:
+ *
+ * ```ts
+ * // test/fakes/stripe.ts
+ * import { fake } from '@geekmidas/constructs/credential';
+ * import type { stripe } from '../../constructs/stripe';
+ *
+ * export default fake.credential<typeof stripe>({
+ *   secretKey: 'sk_test_fake',
+ *   webhookSecret: 'whsec_fake',
+ * });
+ * ```
+ *
+ * gkm reads it for `gkm test` and `gkm dev --fake` only, and the construct
+ * never names it, so it is in no deployed bundle and a deploy still refuses a
+ * stage without the real value.
  */
 
 import {
@@ -238,3 +258,5 @@ function describe(issues: unknown): string {
 		})
 		.join('; ');
 }
+
+export { type Fake, fake, isFake } from './fake';

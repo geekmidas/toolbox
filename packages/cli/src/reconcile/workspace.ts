@@ -23,7 +23,7 @@ import { TEST_STAGE } from '../workspace/stages.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { appServices } from './apps.js';
 import { discover } from './discover.js';
-import { readFakes } from './fakes.js';
+import { readCredentialFakes, readFakes } from './fakes.js';
 import { type ReconcileResult, reconcile } from './index.js';
 import {
 	loadLocalCredentials,
@@ -85,8 +85,10 @@ export interface WorkspaceReconcileOptions {
 	manifest?: ConstructManifest;
 	/**
 	 * Point every external API at its fake (`test/fakes/<id>.ts`) instead of
-	 * the provider — `gkm dev --fake`. Always so for the test stage; otherwise
-	 * an external API is the real one, at its URL for this stage.
+	 * the provider, and hand every credential with a fake its fake's value —
+	 * `gkm dev --fake`. Always so for the test stage; otherwise an external
+	 * API is the real one, at its URL for this stage, and a credential the
+	 * stage's own.
 	 */
 	fake?: boolean;
 	/** Told each slow step as it starts — see `ReconcileOptions.progress`. */
@@ -100,7 +102,8 @@ export interface WorkspaceReconcileOptions {
 export const FAKE_ENV = 'GKM_FAKE';
 
 /**
- * Whether external APIs are faked: always for `gkm test`, and for `gkm dev`
+ * Whether third parties are faked — external APIs, and credentials with a
+ * fake: always for `gkm test`, and for `gkm dev`
  * only when asked — by `--fake`, or by the workspace that started this app
  * with it. Never for anything acting on a deployed stage.
  */
@@ -131,8 +134,10 @@ export async function reconcileWorkspace(
 		runnables,
 	});
 	const manifest = options.manifest ?? discovered;
-	const fakes = fakesApply(options.stage, options.fake)
-		? await readFakes(workspace.root, manifest)
+	const faked = fakesApply(options.stage, options.fake);
+	const fakes = faked ? await readFakes(workspace.root, manifest) : {};
+	const credentialFakes = faked
+		? await readCredentialFakes(workspace.root, manifest)
 		: {};
 
 	// Generated the first time anything needs them, and read back after: one
@@ -152,6 +157,7 @@ export async function reconcileWorkspace(
 		addresses: surfaceAddresses(workspace, manifest),
 		metroPorts: metroPorts(workspace, manifest),
 		fakes,
+		credentialFakes,
 		apps: (containers) =>
 			appServices(
 				workspace,

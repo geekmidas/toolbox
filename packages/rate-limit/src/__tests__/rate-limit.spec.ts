@@ -1,4 +1,5 @@
 import { InMemoryCache } from '@geekmidas/cache/memory';
+import { HttpError, isHttpError } from '@geekmidas/errors';
 import { describe, expect, it, vi } from 'vitest';
 import {
 	checkRateLimit,
@@ -122,6 +123,32 @@ describe('Rate Limiting', () => {
 			await expect(checkRateLimit(config, ctx)).rejects.toThrow(
 				TooManyRequestsError,
 			);
+		});
+
+		it('throws an HttpError 429 carrying Retry-After and the X-RateLimit-* headers', async () => {
+			const config: RateLimitConfig = {
+				limit: 1,
+				windowMs: 30_000,
+				cache: new InMemoryCache<RateLimitData>(),
+			};
+			const ctx = createContext();
+
+			await checkRateLimit(config, ctx);
+			const error = await checkRateLimit(config, ctx).catch((e: unknown) => e);
+
+			// An HttpError, so every endpoint adaptor answers 429 rather than 500.
+			expect(isHttpError(error)).toBe(true);
+			expect(error).toBeInstanceOf(HttpError);
+			const { statusCode, retryAfter, headers } = error as TooManyRequestsError;
+			expect(statusCode).toBe(429);
+			expect(retryAfter).toBeGreaterThan(0);
+			expect(retryAfter).toBeLessThanOrEqual(30);
+			expect(headers).toEqual({
+				'Retry-After': String(retryAfter),
+				'X-RateLimit-Limit': '1',
+				'X-RateLimit-Remaining': '0',
+				'X-RateLimit-Reset': expect.any(String),
+			});
 		});
 
 		it('should use custom message when rate limit is exceeded', async () => {

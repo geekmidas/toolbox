@@ -24,6 +24,13 @@ export class HttpError extends Error {
 	public readonly details?: any;
 	/** Application-specific error code for client-side handling */
 	public readonly code?: string;
+	/**
+	 * Headers the response that reports this error carries — a 429's
+	 * `Retry-After`, a 401's `WWW-Authenticate`. Every endpoint adaptor sets
+	 * them on the error response, so the error says everything the client is
+	 * told.
+	 */
+	public readonly headers?: Readonly<Record<string, string>>;
 
 	/**
 	 * Creates a new HttpError instance.
@@ -34,6 +41,7 @@ export class HttpError extends Error {
 	 * @param options.statusMessage - Override the default status message
 	 * @param options.details - Additional error details or context
 	 * @param options.code - Application-specific error code
+	 * @param options.headers - Headers the error response carries
 	 * @param options.cause - The underlying error that caused this error (ES2022)
 	 */
 	constructor(
@@ -43,6 +51,7 @@ export class HttpError extends Error {
 			statusMessage?: string;
 			details?: any;
 			code?: string;
+			headers?: Readonly<Record<string, string>>;
 			cause?: Error;
 		},
 	) {
@@ -53,6 +62,7 @@ export class HttpError extends Error {
 			options?.statusMessage || this.getDefaultStatusMessage(statusCode);
 		this.details = options?.details;
 		this.code = options?.code;
+		if (options?.headers) this.headers = options.headers;
 
 		// Set cause if provided (ES2022 feature)
 		if (options?.cause) {
@@ -272,14 +282,32 @@ export class UnprocessableEntityError extends HttpError {
  * ```
  */
 export class TooManyRequestsError extends HttpError {
+	/** Seconds the client should wait before retrying, where known. */
+	public readonly retryAfter?: number;
+
 	/**
 	 * @param message - Optional error message
-	 * @param retryAfter - Number of seconds the client should wait before retrying
+	 * @param retryAfter - Number of seconds the client should wait before
+	 * retrying, sent as the `Retry-After` header
+	 * @param options.headers - Further headers the response carries, such as
+	 * a rate limiter's `X-RateLimit-*`
 	 */
-	constructor(message?: string, retryAfter?: number) {
+	constructor(
+		message?: string,
+		retryAfter?: number,
+		options?: { headers?: Readonly<Record<string, string>> },
+	) {
+		const headers = {
+			...options?.headers,
+			...(retryAfter !== undefined
+				? { 'Retry-After': String(retryAfter) }
+				: {}),
+		};
 		super(429, message, {
-			details: retryAfter ? { retryAfter } : undefined,
+			details: retryAfter !== undefined ? { retryAfter } : undefined,
+			...(Object.keys(headers).length > 0 ? { headers } : {}),
 		});
+		if (retryAfter !== undefined) this.retryAfter = retryAfter;
 	}
 }
 
@@ -652,7 +680,13 @@ export function isServerError(error: unknown): error is HttpError {
 
 /**
  * Wraps an unknown error into an HttpError.
- * If the error is already an HttpError, returns it unchanged.
+ *
+ * One rule: an error that is an HttpError ({@link isHttpError}) passes
+ * through unchanged, its status and headers with it; anything else — however
+ * it is shaped, a `statusCode` field included — becomes `statusCode` (500 by
+ * default). An error that should answer with its own status extends
+ * HttpError, so the decision is made where the error is defined rather than
+ * guessed from its fields here.
  *
  * @param error - The error to wrap
  * @param statusCode - The HTTP status code to use (defaults to 500)
@@ -677,10 +711,6 @@ export function wrapError(
 		return error;
 	}
 
-	if (error instanceof HttpError) {
-		return error;
-	}
-
 	return new HttpError(statusCode, message || 'An unknown error occurred', {
 		details: { originalError: error },
 	});
@@ -695,6 +725,7 @@ export interface HttpErrorOptions {
 	statusMessage?: string;
 	details?: any;
 	code?: string;
+	headers?: Readonly<Record<string, string>>;
 	cause?: Error;
 }
 

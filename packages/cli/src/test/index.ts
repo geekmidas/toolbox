@@ -11,6 +11,7 @@ import { sniffAppEnvironment } from '../deploy/sniffer';
 import { GkmError } from '../errors';
 import { pgClient } from '../reconcile/clients.js';
 import { primaryPortKey } from '../reconcile/containers';
+import { assertTestCredentials } from '../reconcile/fakes.js';
 import type { ReconcileResult } from '../reconcile/index.js';
 import { readLocalCredentials } from '../reconcile/localCredentials.js';
 import { postgresDatabaseNames } from '../reconcile/provision.js';
@@ -126,6 +127,18 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 		reconcileStage: 'test',
 	});
 
+	// Every credential the suite can reach, resolved now — its fake's value,
+	// or one the stage stores — so one with neither fails here, naming the
+	// fake to add, rather than as a schema error in the first handler that
+	// asks for it.
+	const credentials = result.reconciled
+		? assertTestCredentials(
+				result.secretsRoot,
+				result.reconciled.plan,
+				result.credentials,
+			)
+		: {};
+
 	let finalCredentials = { ...result.credentials };
 
 	// 3. Sniff env vars to filter only what the app needs (workspace only)
@@ -154,7 +167,9 @@ export async function testCommand(options: TestOptions = {}): Promise<void> {
 					filtered[key] = value;
 				}
 			}
-			finalCredentials = filtered;
+			// A credential is read inside its construct, so no walk of the app
+			// finds it: kept whatever the sniff saw.
+			finalCredentials = { ...filtered, ...credentials };
 			console.log(
 				`  🔍 Sniffed ${sniffed.requiredEnvVars.length} required env var(s)` +
 					(result.declaredKeys.length > 0
