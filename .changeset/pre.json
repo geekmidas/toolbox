@@ -164,6 +164,7 @@
     "state-in-project-bucket",
     "storage-url-credentials",
     "surface-has-no-app",
+    "surface-owns-its-workers",
     "telemetry-construct",
     "telemetry-propagation",
     "test-client-config",
