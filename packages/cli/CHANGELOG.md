@@ -1,5 +1,29 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.103
+
+### Patch Changes
+
+- [#237](https://github.com/geekmidas/toolbox/pull/237) [`add2c78`](https://github.com/geekmidas/toolbox/commit/add2c7839a574808b5b531eb992d7ac1970f7e3c) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: A `Credential` gets a test value from `test/fakes/<id>.ts`, and `gkm test` names one that has none
+
+  - **`fake.credential(value)`** (from `@geekmidas/constructs/credential`, and `/external-api` beside `fake.app`/`fake.image`), default-exported from `test/fakes/<id>.ts` — the folder an `ExternalApi`'s fake lives in — is the credential's `<ID>_CREDENTIALS` on the test stage and under `gkm dev --fake`. `fake.credential<typeof construct>(…)` checks it against the schema's input. A test stage set up fresh (CI's auto-setup) stores no third party's credentials, so a feature test resolving such a credential failed with a `ZodError` in the handler that first asked.
+  - **`gkm test` (and `--prepare`, and the Vitest global setup) refuses a credential with neither a fake nor a stored value** before any test runs: `CredentialHasNoTestValue`, naming the key and the fake file to create. A stored value is still used when there is no fake, and a fake wins over one, as an external API's does.
+  - **A credential's value survives the sniffed-env filter** in `gkm test`, since it is read inside the construct where no walk of the app sees it.
+  - Deployed stages never read a fake: a deploy still refuses a stage without the real key.
+
+- Updated dependencies [[`add2c78`](https://github.com/geekmidas/toolbox/commit/add2c7839a574808b5b531eb992d7ac1970f7e3c), [`add2c78`](https://github.com/geekmidas/toolbox/commit/add2c7839a574808b5b531eb992d7ac1970f7e3c)]:
+  - @geekmidas/constructs@10.0.0-alpha.103
+  - @geekmidas/errors@10.0.0-alpha.103
+  - @geekmidas/cache@10.0.0-alpha.103
+  - @geekmidas/db@10.0.0-alpha.103
+  - @geekmidas/envkit@10.0.0-alpha.103
+  - @geekmidas/logger@10.0.0-alpha.103
+  - @geekmidas/manifest@10.0.0-alpha.103
+  - @geekmidas/schema@10.0.0-alpha.103
+  - @geekmidas/services@10.0.0-alpha.103
+  - @geekmidas/storage@10.0.0-alpha.103
+  - @geekmidas/telescope@10.0.0-alpha.103
+
 ## 10.0.0-alpha.102
 
 ### Patch Changes

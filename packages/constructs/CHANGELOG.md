@@ -1,5 +1,43 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.103
+
+### Minor Changes
+
+- [#237](https://github.com/geekmidas/toolbox/pull/237) [`add2c78`](https://github.com/geekmidas/toolbox/commit/add2c7839a574808b5b531eb992d7ac1970f7e3c) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: A `Credential` gets a test value from `test/fakes/<id>.ts`, and `gkm test` names one that has none
+
+  - **`fake.credential(value)`** (from `@geekmidas/constructs/credential`, and `/external-api` beside `fake.app`/`fake.image`), default-exported from `test/fakes/<id>.ts` — the folder an `ExternalApi`'s fake lives in — is the credential's `<ID>_CREDENTIALS` on the test stage and under `gkm dev --fake`. `fake.credential<typeof construct>(…)` checks it against the schema's input. A test stage set up fresh (CI's auto-setup) stores no third party's credentials, so a feature test resolving such a credential failed with a `ZodError` in the handler that first asked.
+  - **`gkm test` (and `--prepare`, and the Vitest global setup) refuses a credential with neither a fake nor a stored value** before any test runs: `CredentialHasNoTestValue`, naming the key and the fake file to create. A stored value is still used when there is no fake, and a fake wins over one, as an external API's does.
+  - **A credential's value survives the sniffed-env filter** in `gkm test`, since it is read inside the construct where no walk of the app sees it.
+  - Deployed stages never read a fake: a deploy still refuses a stage without the real key.
+
+### Patch Changes
+
+- 🐛 [#237](https://github.com/geekmidas/toolbox/pull/237) [`add2c78`](https://github.com/geekmidas/toolbox/commit/add2c7839a574808b5b531eb992d7ac1970f7e3c) Thanks [@geekmidas](https://github.com/geekmidas)! - :bug: An endpoint over its `.rateLimit()` answers 429 with `Retry-After`, not 500
+
+  - **`TooManyRequestsError` is `@geekmidas/errors`' 429.** The limiter's own error carried `statusCode = 429` but was not an `HttpError`, so every adaptor's `wrapError` turned it into a 500 "Internal Server Error". `@geekmidas/rate-limit` now throws (and re-exports) the errors package's class, carrying `Retry-After` — the seconds until the window resets — and the `X-RateLimit-Limit`/`-Remaining`/`-Reset` headers.
+  - **An `HttpError` says which headers its response carries** (`headers`, set by an option on `HttpError` and by `TooManyRequestsError`'s `retryAfter`), and the Hono and API Gateway adaptors set them on the error response.
+  - **Every adaptor checks the limit**: API Gateway Lambdas and `TestEndpointAdaptor` ignored `.rateLimit()`; they now check it after authorization, as Hono does, and put `X-RateLimit-*` on a success.
+  - **`wrapError` has one rule**: an `HttpError` passes through; anything else — a `statusCode` field included — is a 500.
+
+- Updated dependencies [[`add2c78`](https://github.com/geekmidas/toolbox/commit/add2c7839a574808b5b531eb992d7ac1970f7e3c)]:
+  - @geekmidas/rate-limit@10.0.0-alpha.103
+  - @geekmidas/errors@10.0.0-alpha.103
+  - @geekmidas/audit@10.0.0-alpha.103
+  - @geekmidas/auth@10.0.0-alpha.103
+  - @geekmidas/cache@10.0.0-alpha.103
+  - @geekmidas/db@10.0.0-alpha.103
+  - @geekmidas/emailkit@10.0.0-alpha.103
+  - @geekmidas/envkit@10.0.0-alpha.103
+  - @geekmidas/events@10.0.0-alpha.103
+  - @geekmidas/logger@10.0.0-alpha.103
+  - @geekmidas/manifest@10.0.0-alpha.103
+  - @geekmidas/schema@10.0.0-alpha.103
+  - @geekmidas/services@10.0.0-alpha.103
+  - @geekmidas/storage@10.0.0-alpha.103
+  - @geekmidas/telescope@10.0.0-alpha.103
+  - @geekmidas/testkit@10.0.0-alpha.103
+
 ## 10.0.0-alpha.102
 
 ### Minor Changes
