@@ -304,13 +304,19 @@ export class TestEndpointAdaptor<
 							metadata = response.metadata;
 						}
 
-						const output = await this.endpoint.parseOutput(data);
+						// A redirect has no body to check against the schema.
+						const redirect = Endpoint.isRedirectStatus(
+							metadata.status ?? this.endpoint.status,
+						);
+						const output = redirect
+							? (undefined as never)
+							: await this.endpoint.parseOutput(data);
 
-						return { output, metadata, responseBuilder };
+						return { output, metadata, responseBuilder, redirect };
 					},
 					// Process declarative audits after handler (inside transaction)
 					async (result, auditor) => {
-						if (!audits?.length) return;
+						if (!audits?.length || result.redirect) return;
 
 						for (const audit of audits) {
 							if (audit.when && !audit.when(result.output as any)) {
@@ -328,17 +334,20 @@ export class TestEndpointAdaptor<
 					{ db: rawDb },
 				);
 
-				const { output, metadata } = result;
+				const { output, metadata, redirect } = result;
 
 				// A topic the test handed in as a service — a recorder — is published
-				// to directly; any other is registered as it is deployed.
-				await publishConstructEvents(
-					this.endpoint,
-					output,
-					this.serviceDiscovery,
-					this.endpoint.logger,
-					ctx.services as Record<string, unknown>,
-				);
+				// to directly; any other is registered as it is deployed. A redirect
+				// has no output to derive an event from, as when deployed.
+				if (!redirect) {
+					await publishConstructEvents(
+						this.endpoint,
+						output,
+						this.serviceDiscovery,
+						this.endpoint.logger,
+						ctx.services as Record<string, unknown>,
+					);
+				}
 
 				// Convert cookies to Set-Cookie headers
 				const headers: Record<string, string | string[]> = {
@@ -358,7 +367,7 @@ export class TestEndpointAdaptor<
 				// Return HTTP response format
 				return {
 					body: output,
-					status: metadata.status || 200,
+					status: metadata.status ?? this.endpoint.status,
 					headers,
 				};
 			},

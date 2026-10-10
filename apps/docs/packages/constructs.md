@@ -793,6 +793,90 @@ const uploadEndpoint = api
   });
 ```
 
+### HTML forms and redirects
+
+A server-rendered page needs two things an API rarely does: a body posted by
+an HTML `<form>`, and a redirect after the post. Both work on every adaptor —
+a Hono server, `gkm dev`, API Gateway and a feature test.
+
+**The body is read by its `Content-Type`** into the same `.body()` schema:
+
+| Content-Type | What the schema is handed |
+| --- | --- |
+| `application/json`, `application/*+json` | the parsed JSON |
+| `application/x-www-form-urlencoded`, `multipart/form-data` | an object of fields; a repeated field (or one named `field[]`) is an array, a file part a `File` |
+| `text/*` | the text |
+| anything else | nothing — the request is answered `415 Unsupported Media Type` |
+
+A form field is always a string, so coerce what isn't (`z.coerce.number()`).
+A body that fails the schema is the same 422 whatever it was sent as.
+
+**`response.redirect(url, status = 303)`** sets `Location` and the status
+and sends no body. A redirect is not checked against `.output()`, so a page
+endpoint can redirect instead of rendering. Since a redirect has no output,
+an endpoint's declared `.event()`s and `.audit()`s are not sent for it.
+`.status()` and `response.status()` also take a 3xx (`RedirectStatus`: 301,
+302, 303, 307, 308).
+
+```typescript
+import { z } from 'zod';
+
+// GET /login — the page
+export const loginPage = api
+  .get('/login')
+  .query(z.object({ error: z.string().optional() }))
+  .output(z.string())
+  .responseType('text/html')
+  .handle(async ({ query }) => `<!doctype html>
+    <form method="post" action="/login">
+      ${query.error ? '<p>Wrong email or password</p>' : ''}
+      <input name="email" type="email" required>
+      <input name="password" type="password" required>
+      <button>Sign in</button>
+    </form>`);
+
+// POST /login — the form posts application/x-www-form-urlencoded
+export const login = router
+  .post('/login')
+  .body(z.object({ email: z.email(), password: z.string() }))
+  .output(z.string())
+  .responseType('text/html')
+  .handle(async ({ body, db }, response) => {
+    const session = await signIn(db, body.email, body.password);
+    if (!session) return response.redirect('/login?error=1');
+
+    // Post/Redirect/Get: a reload of the next page doesn't post again
+    return response
+      .cookie('session', session.token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        path: '/',
+      })
+      .redirect('/dashboard');
+  });
+```
+
+In a feature test, the browser follows a redirect as a browser does; pass
+`redirect: 'manual'` to see it instead:
+
+```typescript
+it('signs in', async ({ browser }) => {
+  const response = await browser.fetch(`${API_URL}/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ email, password }).toString(),
+    redirect: 'manual',
+  });
+
+  expect(response.status).toBe(303);
+  expect(response.headers.get('location')).toBe('/dashboard');
+});
+```
+
+The OpenAPI document and the generated client still describe the body as
+JSON: a form is for a browser, and JSON is what a typed client sends.
+
 ### Authorization and Sessions
 
 `.session()` is called on the **factory** to create a session-enabled router. The session callback receives `header`, `cookie`, `services`, `auth` (the construct the surface named with `.auth(…)`), and `db` (when a database is configured). Throw an error to reject unauthorized requests.

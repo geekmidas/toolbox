@@ -110,8 +110,8 @@ export class Endpoint<
 	description?: string;
 	/** Optional tags for OpenAPI documentation */
 	tags?: string[];
-	/** The HTTP success status code to return (default: 200) */
-	public readonly status: SuccessStatus;
+	/** The HTTP status code to return (default: 200) */
+	public readonly status: EndpointStatus;
 	/**
 	 * Response content type for this endpoint. Defaults to `'application/json'`.
 	 * Non-JSON types cause adaptors to emit the body as-is with the declared
@@ -236,6 +236,15 @@ export class Endpoint<
 
 	static isSuccessStatus(status: number): boolean {
 		return status >= 200 && status < 300;
+	}
+
+	/**
+	 * Whether `status` sends the client elsewhere. A redirect has no body, so
+	 * its response is not checked against the output schema, and what is
+	 * derived from the output — declared events and audits — is not sent.
+	 */
+	static isRedirectStatus(status: number | undefined): boolean {
+		return status !== undefined && status >= 300 && status < 400;
 	}
 
 	/**
@@ -389,8 +398,10 @@ export class Endpoint<
 			// may coerce it on the way out — see EndpointHandler).
 				| InferStandardSchemaInput<OutSchema>
 				| ResponseWithMetadata<InferStandardSchemaInput<OutSchema>>
-				| Promise<InferStandardSchemaInput<OutSchema>>
-				| Promise<ResponseWithMetadata<InferStandardSchemaInput<OutSchema>>>
+				| Promise<
+						| InferStandardSchemaInput<OutSchema>
+						| ResponseWithMetadata<InferStandardSchemaInput<OutSchema>>
+				  >
 		:
 				| any
 				| ResponseWithMetadata<any>
@@ -869,7 +880,7 @@ export interface EndpointOptions<
 	/** Optional rate limiting configuration */
 	rateLimit?: RateLimitConfig;
 	/** Success HTTP status code */
-	status: SuccessStatus | undefined;
+	status: EndpointStatus | undefined;
 	/** What it publishes once its handler succeeds, each to its own topic. */
 	events?: TopicEvent[];
 	/** Optional authorizer configuration */
@@ -1137,7 +1148,7 @@ export interface CookieOptions {
 export interface ResponseMetadata {
 	headers?: Record<string, string>;
 	cookies?: Map<string, { value: string; options?: CookieOptions }>;
-	status?: SuccessStatus;
+	status?: EndpointStatus;
 }
 
 /**
@@ -1178,9 +1189,31 @@ export class ResponseBuilder {
 		return this;
 	}
 
-	status(code: SuccessStatus): this {
+	status(code: EndpointStatus): this {
 		this.metadata.status = code;
 		return this;
+	}
+
+	/**
+	 * Send the client to `url` — `Location` and a 3xx, with no body. 303 by
+	 * default: after a form post, the browser follows it with a GET, so a
+	 * reload does not post the form again.
+	 *
+	 * A redirect is not checked against the endpoint's `.output()` schema, so
+	 * an endpoint that renders a page can redirect instead.
+	 *
+	 * @example
+	 * ```typescript
+	 * return response.cookie('session', token).redirect('/dashboard');
+	 * ```
+	 */
+	redirect(
+		url: string,
+		status: RedirectStatus = RedirectStatus.SeeOther,
+	): ResponseWithMetadata<never> {
+		this.metadata.headers!.location = url;
+		this.metadata.status = status;
+		return { data: undefined as never, metadata: this.metadata };
 	}
 
 	send<T>(data: T): ResponseWithMetadata<T> {
@@ -1334,10 +1367,14 @@ export type EndpointHandler<
 		// so the handler may return the looser input while consumers
 		// (EndpointOutput / the generated client) still see the parsed
 		// output type.
+		// A handler that sometimes redirects returns either from one
+		// promise, so the promise may hold either.
 			| InferStandardSchemaInput<OutSchema>
 			| ResponseWithMetadata<InferStandardSchemaInput<OutSchema>>
-			| Promise<InferStandardSchemaInput<OutSchema>>
-			| Promise<ResponseWithMetadata<InferStandardSchemaInput<OutSchema>>>
+			| Promise<
+					| InferStandardSchemaInput<OutSchema>
+					| ResponseWithMetadata<InferStandardSchemaInput<OutSchema>>
+			  >
 	:
 			| unknown
 			| ResponseWithMetadata<unknown>
@@ -1361,6 +1398,26 @@ export enum SuccessStatus {
 	/** Server is delivering only part of the resource due to a range header */
 	PartialContent = 206,
 }
+
+/**
+ * HTTP redirect status codes an endpoint can answer with —
+ * `response.redirect(url, status)`, or `.status()` with a `Location` header.
+ */
+export enum RedirectStatus {
+	/** The resource has moved for good; a POST may become a GET */
+	MovedPermanently = 301,
+	/** The resource is elsewhere for now; a POST may become a GET */
+	Found = 302,
+	/** See the resource elsewhere, with a GET — the answer to a form post */
+	SeeOther = 303,
+	/** The resource is elsewhere for now; the method and body are kept */
+	TemporaryRedirect = 307,
+	/** The resource has moved for good; the method and body are kept */
+	PermanentRedirect = 308,
+}
+
+/** A status an endpoint answers with when its handler succeeds. */
+export type EndpointStatus = SuccessStatus | RedirectStatus;
 
 export type EndpointOutput<T> =
 	T extends Endpoint<any, any, any, infer OutSchema, any, any, any, any>

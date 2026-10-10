@@ -1,6 +1,6 @@
 import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
 import type { EnvironmentParser } from '@geekmidas/envkit';
-import { type HttpError, wrapError } from '@geekmidas/errors';
+import { HttpError, wrapError } from '@geekmidas/errors';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import {
@@ -14,7 +14,10 @@ import { type Context, Hono } from 'hono';
 import { setCookie } from 'hono/cookie';
 import { logger as honoLogger } from 'hono/logger';
 import { timing } from 'hono/timing';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import type {
+	ContentfulStatusCode,
+	RedirectStatusCode,
+} from 'hono/utils/http-status';
 import { validator } from 'hono/validator';
 import { publishConstructEvents } from '../publisher';
 import type { HttpMethod, LowerHttpMethod } from '../types';
@@ -33,6 +36,7 @@ import {
 	createAuditContext,
 	executeWithAuditTransaction,
 } from './processAudits';
+import { readRequestBody } from './readRequestBody';
 
 export interface HonoEndpointOptions {
 	/**
@@ -309,11 +313,26 @@ export class HonoEndpoint<
 		const validators: any[] = [];
 
 		if (features.hasBodyValidation) {
-			validators.push(
-				validator('json', (value, c) =>
-					HonoEndpoint.validate(c, value, endpoint.input?.body),
-				),
-			);
+			// Read by its Content-Type — JSON, an HTML form, text — and kept
+			// where a JSON validator keeps it, so the handler reads it as before.
+			validators.push(async (c: Context, next: () => Promise<void>) => {
+				let raw: unknown;
+				try {
+					raw = await readRequestBody(c.req, c.req.header('content-type'), {
+						untyped: 'empty',
+					});
+				} catch (error) {
+					if (!(error instanceof HttpError)) throw error;
+					return c.json(
+						errorBody(error),
+						error.statusCode as ContentfulStatusCode,
+					);
+				}
+				const body = await HonoEndpoint.validate(c, raw, endpoint.input?.body);
+				if (body instanceof Response) return body;
+				c.req.addValidatedData('json', body as {});
+				await next();
+			});
 		}
 
 		if (features.hasQueryValidation) {
@@ -527,11 +546,16 @@ export class HonoEndpoint<
 										metadata = response.metadata;
 									}
 
-									const output = endpoint.outputSchema
-										? await endpoint.parseOutput(data)
-										: undefined;
+									// A redirect has no body to check against the schema.
+									const redirect = Endpoint.isRedirectStatus(
+										metadata.status ?? endpoint.status,
+									);
+									const output =
+										endpoint.outputSchema && !redirect
+											? await endpoint.parseOutput(data)
+											: undefined;
 
-									return { output, metadata, responseBuilder };
+									return { output, metadata, responseBuilder, redirect };
 								};
 
 								if (features.hasRls && rlsContext && baseDb) {
@@ -547,7 +571,7 @@ export class HonoEndpoint<
 								return executeHandler(baseDb as TDatabase | undefined);
 							},
 							async (result, auditor) => {
-								if (!audits?.length) return;
+								if (!audits?.length || result.redirect) return;
 
 								for (const audit of audits) {
 									if (audit.when && !audit.when(result.output as any)) {
@@ -564,7 +588,7 @@ export class HonoEndpoint<
 							{ db: rawDb },
 						);
 
-						const { output, metadata } = result;
+						const { output, metadata, redirect } = result;
 
 						try {
 							let status = endpoint.status as ContentfulStatusCode;
@@ -597,6 +621,10 @@ export class HonoEndpoint<
 
 							if (HonoEndpoint.isDev) {
 								logger.info({ status, body: output }, 'Outgoing response');
+							}
+
+							if (redirect) {
+								return c.body(null, status as RedirectStatusCode);
 							}
 
 							// Respect the endpoint's declared responseType. For JSON (default)

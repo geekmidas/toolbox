@@ -6,6 +6,10 @@ import { z } from 'zod';
 import { RestApi } from '../../rest-api';
 import { AmazonApiGatewayEndpoint } from '../AmazonApiGatewayEndpointAdaptor';
 import { AmazonApiGatewayV2Endpoint } from '../AmazonApiGatewayV2EndpointAdaptor';
+import {
+	MalformedRequestBody,
+	UnsupportedRequestContentType,
+} from '../readRequestBody';
 
 /** Endpoints are built from a surface now, so the tests build one. */
 const api = new RestApi('Test', { path: '.', defaultAuthorizer: 'none' });
@@ -20,8 +24,11 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 	});
 
 	describe('getInput', () => {
-		it('should parse request body, query, and params', () => {
-			const endpoint = api.get('/test').handle(() => ({ success: true }));
+		it('should parse request body, query, and params', async () => {
+			const endpoint = api
+				.post('/test')
+				.body(z.any())
+				.handle(() => ({ success: true }));
 			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event({
@@ -31,7 +38,7 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 				body: JSON.stringify({ name: 'test' }),
 			});
 
-			const result = adapter.getInput(event);
+			const result = await adapter.getInput(event);
 
 			expect(result).toEqual({
 				body: { name: 'test' },
@@ -40,8 +47,11 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 			});
 		});
 
-		it('should parse JSON body when content-type is application/json', () => {
-			const endpoint = api.get('/test').handle(() => ({ success: true }));
+		it('should parse JSON body when content-type is application/json', async () => {
+			const endpoint = api
+				.post('/test')
+				.body(z.any())
+				.handle(() => ({ success: true }));
 			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event({
@@ -49,13 +59,16 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 				body: JSON.stringify({ name: 'test' }),
 			});
 
-			const result = adapter.getInput(event);
+			const result = await adapter.getInput(event);
 
 			expect(result.body).toEqual({ name: 'test' });
 		});
 
-		it('should decode base64-encoded JSON body', () => {
-			const endpoint = api.get('/test').handle(() => ({ success: true }));
+		it('should decode base64-encoded JSON body', async () => {
+			const endpoint = api
+				.post('/test')
+				.body(z.any())
+				.handle(() => ({ success: true }));
 			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event({
@@ -64,13 +77,16 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 				isBase64Encoded: true,
 			});
 
-			const result = adapter.getInput(event);
+			const result = await adapter.getInput(event);
 
 			expect(result.body).toEqual({ name: 'test' });
 		});
 
-		it('should return base64-decoded string for non-JSON content-type', () => {
-			const endpoint = api.get('/test').handle(() => ({ success: true }));
+		it('should decode a base64 form-urlencoded body into its fields', async () => {
+			const endpoint = api
+				.post('/test')
+				.body(z.any())
+				.handle(() => ({ success: true }));
 			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event({
@@ -79,13 +95,16 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 				isBase64Encoded: true,
 			});
 
-			const result = adapter.getInput(event);
+			const result = await adapter.getInput(event);
 
-			expect(result.body).toBe('amount=100&currency=ZAR');
+			expect(result.body).toEqual({ amount: '100', currency: 'ZAR' });
 		});
 
-		it('should return raw string when content-type is not JSON', () => {
-			const endpoint = api.get('/test').handle(() => ({ success: true }));
+		it('should return raw string when content-type is text', async () => {
+			const endpoint = api
+				.post('/test')
+				.body(z.any())
+				.handle(() => ({ success: true }));
 			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event({
@@ -93,13 +112,16 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 				body: 'plain-text-body',
 			});
 
-			const result = adapter.getInput(event);
+			const result = await adapter.getInput(event);
 
 			expect(result.body).toBe('plain-text-body');
 		});
 
-		it('should default to JSON parsing when no content-type header', () => {
-			const endpoint = api.get('/test').handle(() => ({ success: true }));
+		it('should default to JSON parsing when no content-type header', async () => {
+			const endpoint = api
+				.post('/test')
+				.body(z.any())
+				.handle(() => ({ success: true }));
 			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event({
@@ -107,24 +129,41 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 				body: JSON.stringify({ name: 'test' }),
 			});
 
-			const result = adapter.getInput(event);
+			const result = await adapter.getInput(event);
 
 			expect(result.body).toEqual({ name: 'test' });
 		});
 
-		it('should handle missing body, query, and params', () => {
-			const endpoint = api.get('/test').handle(() => ({ success: true }));
+		it('should handle missing body, query, and params', async () => {
+			const endpoint = api
+				.post('/test')
+				.body(z.any())
+				.handle(() => ({ success: true }));
 			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
 
 			const event = createMockV2Event();
 
-			const result = adapter.getInput(event);
+			const result = await adapter.getInput(event);
 
 			expect(result).toEqual({
 				body: undefined,
 				query: {},
 				params: {},
 			});
+		});
+
+		it('should not read the body of an endpoint without a body schema', async () => {
+			const endpoint = api.post('/test').handle(() => ({ success: true }));
+			const adapter = new AmazonApiGatewayV2Endpoint(endpoint);
+
+			const event = createMockV2Event({
+				headers: { 'content-type': 'application/xml' },
+				body: '<ignored/>',
+			});
+
+			const result = await adapter.getInput(event);
+
+			expect(result.body).toBeUndefined();
 		});
 	});
 
@@ -570,19 +609,25 @@ describe('AmazonApiGatewayV2Endpoint', () => {
 describe('AmazonApiGatewayEndpoint.decodeBody', () => {
 	const decodeBody = AmazonApiGatewayEndpoint.decodeBody;
 
-	it('should return undefined for null/undefined body', () => {
-		expect(decodeBody(undefined, false, 'application/json')).toBeUndefined();
-		expect(decodeBody(null, false, 'application/json')).toBeUndefined();
-		expect(decodeBody('', false, 'application/json')).toBeUndefined();
+	it('should return undefined for null/undefined body', async () => {
+		expect(
+			await decodeBody(undefined, false, 'application/json'),
+		).toBeUndefined();
+		expect(await decodeBody(null, false, 'application/json')).toBeUndefined();
+		expect(await decodeBody('', false, 'application/json')).toBeUndefined();
 	});
 
-	it('should JSON.parse when content-type is application/json', () => {
-		const result = decodeBody('{"name":"test"}', false, 'application/json');
+	it('should JSON.parse when content-type is application/json', async () => {
+		const result = await decodeBody(
+			'{"name":"test"}',
+			false,
+			'application/json',
+		);
 		expect(result).toEqual({ name: 'test' });
 	});
 
-	it('should JSON.parse when content-type includes application/json with charset', () => {
-		const result = decodeBody(
+	it('should JSON.parse when content-type includes application/json with charset', async () => {
+		const result = await decodeBody(
 			'{"name":"test"}',
 			false,
 			'application/json; charset=utf-8',
@@ -590,43 +635,100 @@ describe('AmazonApiGatewayEndpoint.decodeBody', () => {
 		expect(result).toEqual({ name: 'test' });
 	});
 
-	it('should decode base64 then JSON.parse for base64-encoded JSON', () => {
+	it('should JSON.parse a +json media type', async () => {
+		const result = await decodeBody(
+			'{"op":"replace"}',
+			false,
+			'application/merge-patch+json',
+		);
+		expect(result).toEqual({ op: 'replace' });
+	});
+
+	it('should decode base64 then JSON.parse for base64-encoded JSON', async () => {
 		const encoded = Buffer.from('{"name":"test"}').toString('base64');
-		const result = decodeBody(encoded, true, 'application/json');
+		const result = await decodeBody(encoded, true, 'application/json');
 		expect(result).toEqual({ name: 'test' });
 	});
 
-	it('should return raw string for non-JSON content-type', () => {
-		const result = decodeBody(
+	it('should read a form-urlencoded body into its fields', async () => {
+		const result = await decodeBody(
 			'amount=100&currency=ZAR',
 			false,
 			'application/x-www-form-urlencoded',
 		);
-		expect(result).toBe('amount=100&currency=ZAR');
+		expect(result).toEqual({ amount: '100', currency: 'ZAR' });
 	});
 
-	it('should decode base64 and return string for non-JSON content-type', () => {
+	it('should decode a base64 form-urlencoded body into its fields', async () => {
 		const encoded = Buffer.from('amount=100&currency=ZAR').toString('base64');
-		const result = decodeBody(
+		const result = await decodeBody(
 			encoded,
 			true,
 			'application/x-www-form-urlencoded',
 		);
-		expect(result).toBe('amount=100&currency=ZAR');
+		expect(result).toEqual({ amount: '100', currency: 'ZAR' });
 	});
 
-	it('should return raw string for text/plain', () => {
-		const result = decodeBody('hello world', false, 'text/plain');
+	it('should read a repeated form field as an array', async () => {
+		const result = await decodeBody(
+			'tag=a&tag=b&tag=c&name=x',
+			false,
+			'application/x-www-form-urlencoded',
+		);
+		expect(result).toEqual({ tag: ['a', 'b', 'c'], name: 'x' });
+	});
+
+	it('should decode a base64 multipart body, with a file part as a File', async () => {
+		const form = new FormData();
+		form.append('name', 'avatar');
+		form.append('file', new File([new Uint8Array([0, 255, 1])], 'a.bin'));
+		const request = new Request('http://localhost/', {
+			method: 'POST',
+			body: form,
+		});
+		const contentType = request.headers.get('content-type') ?? undefined;
+		const encoded = Buffer.from(await request.arrayBuffer()).toString('base64');
+
+		const result = (await decodeBody(encoded, true, contentType)) as Record<
+			string,
+			unknown
+		>;
+
+		expect(result.name).toBe('avatar');
+		expect(result.file).toBeInstanceOf(File);
+		const file = result.file as File;
+		expect(file.name).toBe('a.bin');
+		expect([...new Uint8Array(await file.arrayBuffer())]).toEqual([0, 255, 1]);
+	});
+
+	it('should return raw string for text/plain', async () => {
+		const result = await decodeBody('hello world', false, 'text/plain');
 		expect(result).toBe('hello world');
 	});
 
-	it('should default to JSON parsing when content-type is undefined', () => {
-		const result = decodeBody('{"name":"test"}', false, undefined);
+	it('should default to JSON parsing when content-type is undefined', async () => {
+		const result = await decodeBody('{"name":"test"}', false, undefined);
 		expect(result).toEqual({ name: 'test' });
 	});
 
-	it('should not JSON.parse a string that happens to be valid JSON when content-type is not JSON', () => {
-		const result = decodeBody('{"looks":"like json"}', false, 'text/plain');
+	it('should not JSON.parse a string that happens to be valid JSON when content-type is not JSON', async () => {
+		const result = await decodeBody(
+			'{"looks":"like json"}',
+			false,
+			'text/plain',
+		);
 		expect(result).toBe('{"looks":"like json"}');
+	});
+
+	it('should refuse a content type it cannot read', async () => {
+		await expect(
+			decodeBody('<a/>', false, 'application/xml'),
+		).rejects.toBeInstanceOf(UnsupportedRequestContentType);
+	});
+
+	it('should refuse malformed JSON', async () => {
+		await expect(
+			decodeBody('{nope', false, 'application/json'),
+		).rejects.toBeInstanceOf(MalformedRequestBody);
 	});
 });

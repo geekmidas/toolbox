@@ -1,0 +1,9 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"noEmit": true
+	},
+	"include": ["src/**/*"],
+	"//": "The runtime specs stay out, as in the client's: they were never compiled, and the type assertions here should not wait on them.",
+	"exclude": ["src/**/*.spec.ts", "src/**/*.test.ts"]
+}
