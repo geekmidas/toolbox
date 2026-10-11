@@ -1,6 +1,6 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { describe, expect, it } from 'vitest';
-import { RandomPassword } from '../random-password';
+import { InvalidPasswordLength, RandomPassword } from '../random-password';
 
 const register = (password: RandomPassword, env: Record<string, string>) =>
 	password.service.register({
@@ -14,6 +14,29 @@ describe('RandomPassword', () => {
 		expect(admin.declare()).toEqual([
 			{ kind: 'secret', id: 'AdminPassword', provides: ['ADMIN_PASSWORD'] },
 		]);
+	});
+
+	it('declares the format a stage draws it in', () => {
+		expect(
+			new RandomPassword('RouterPassword', {
+				length: 24,
+				symbols: '!@#',
+			}).declare(),
+		).toEqual([
+			{
+				kind: 'secret',
+				id: 'RouterPassword',
+				provides: ['ROUTER_PASSWORD'],
+				length: 24,
+				symbols: '!@#',
+			},
+		]);
+	});
+
+	it.each([0, -1, 12.5, Number.NaN])('refuses a length of %s', (length) => {
+		expect(() => new RandomPassword('RouterPassword', { length })).toThrow(
+			InvalidPasswordLength,
+		);
 	});
 
 	it('is a service under its camel-cased id', () => {

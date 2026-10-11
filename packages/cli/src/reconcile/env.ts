@@ -20,6 +20,7 @@ import * as sqsUrl from '@geekmidas/events/sqs/url';
 import {
 	cacheTable,
 	cookieDomain,
+	drawSecret,
 	externalApiUrl,
 	mobileOrigins,
 	provideKey,
@@ -935,15 +936,44 @@ function localKeyring(
  * A hash of what identifies it, so it is stable, distinct per project, stage
  * and construct, and never written to disk as a literal. Deployed this is the
  * one kind whose value does *not* come from here — a secret manager generates
- * it once and the target reads it back.
+ * it once and the target reads it back. Drawn in the format the deploy draws
+ * it in, so a value that passes a third party's rules here passes them there.
  */
 function localSecret(
 	project: string,
 	plan: Plan,
 	resource: PlannedResource,
 ): string {
-	return createHash('sha256')
-		.update(`${project}:${plan.stage}:${resource.id}`)
-		.digest('base64url')
-		.slice(0, 43);
+	return drawSecret(
+		hashStream(`${project}:${plan.stage}:${resource.id}`),
+		resource.format,
+	);
+}
+
+/**
+ * Integers in `[0, n)` drawn from a hash of `seed`, the same every time —
+ * what a local secret is drawn with instead of `crypto`, so `gkm dev` and
+ * `gkm test` need nothing stored. Rejection-sampled, so no character is
+ * likelier than another.
+ */
+function hashStream(seed: string): (n: number) => number {
+	let block = 0;
+	let bytes = Buffer.alloc(0);
+	let offset = 0;
+
+	const next = (): number => {
+		if (offset === bytes.length) {
+			bytes = createHash('sha256').update(`${seed}:${block++}`).digest();
+			offset = 0;
+		}
+		return bytes[offset++] as number;
+	};
+
+	return (n) => {
+		const limit = 256 - (256 % n);
+		for (;;) {
+			const byte = next();
+			if (byte < limit) return byte % n;
+		}
+	};
 }

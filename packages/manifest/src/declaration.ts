@@ -1,3 +1,5 @@
+import type { SecretFormat } from './secret';
+
 /**
  * The construct manifest — the contract between what an application declares
  * and what a target adapter provisions.
@@ -248,7 +250,7 @@ export interface DatabaseSchemaDeclaration extends Node {
  * thing that stores it, and the thing that reads it are three different systems
  * deployed, and one derived string locally.
  */
-export interface SecretDeclaration extends Node {
+export interface SecretDeclaration extends Node, SecretFormat {
 	kind: 'secret';
 }
 

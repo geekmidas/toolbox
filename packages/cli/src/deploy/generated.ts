@@ -6,8 +6,8 @@
  *   master and roles, a bucket's root user. Derived from repo facts alone
  *   (project, stage, construct id), those passwords were computable by anyone
  *   who could read the repo.
- * - **Each `secret` construct's value** — an auth server's signing secret —
- *   random, rather than derived.
+ * - **Each `secret` construct's value** — an auth server's signing secret, a
+ *   `RandomPassword` — random, rather than derived, in its declared format.
  * - **Each `encryption` construct's keyring** — one random key and an index
  *   key. Later keys are added by `gkm encryption:rotate`, never by a deploy.
  *
@@ -17,9 +17,9 @@
  * `gkm secrets:set` is kept, never replaced.
  */
 
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import { generateKeyring } from '@geekmidas/constructs/encryption';
-import type { ConstructManifest } from '@geekmidas/manifest';
+import { type ConstructManifest, drawSecret } from '@geekmidas/manifest';
 import type { StageSecrets } from '../secrets/types.js';
 
 export interface GeneratedSecrets {
@@ -50,7 +50,9 @@ export function withGeneratedSecrets(
 		if (!key || custom[key]) continue;
 
 		custom[key] =
-			declaration.kind === 'encryption' ? generateKeyring() : random();
+			declaration.kind === 'encryption'
+				? generateKeyring()
+				: drawSecret(randomInt, declaration);
 		generated.push(key);
 	}
 

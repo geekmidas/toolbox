@@ -19,6 +19,8 @@ import type {
 	Declaration,
 	DeclarationKind,
 	Dependency,
+	SecretDeclaration,
+	SecretFormat,
 	SiteDeclaration,
 } from '@geekmidas/manifest';
 import {
@@ -31,6 +33,8 @@ import {
 	PUBLIC_PREFIX,
 	providedKeyFor,
 	provisionOrder,
+	SECRET_LENGTH,
+	SECRET_SYMBOLS,
 	schemeBase,
 } from '@geekmidas/manifest';
 import { RandomPassword } from '@pulumi/random';
@@ -386,12 +390,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	// back. One set with `sst secret set` wins over it.
 	secret: (stack, d, props) =>
 		new Secret(stack, d.id, {
-			placeholder: new RandomPassword(`${d.id}Generated`, {
-				length: 43,
-				// The alphabet a server stage's is drawn from, base64url's.
-				special: true,
-				overrideSpecial: '-_',
-			}).result,
+			placeholder: generatedSecret(d.id, d as SecretDeclaration),
 			...(props as SecretProps),
 		}),
 
@@ -1072,6 +1071,30 @@ export function fromManifest<
 	}
 
 	return provisioned;
+}
+
+/**
+ * A secret in its declared format — the alphabet `drawSecret` draws from on
+ * every other stage, with one symbol guaranteed as it guarantees one.
+ *
+ * The format is fixed at the first deploy, as a server stage's is: changing it
+ * would replace the password, and every later deploy is meant to read back the
+ * one it had.
+ */
+function generatedSecret(id: string, format: SecretFormat) {
+	const symbols = [...new Set(format.symbols ?? SECRET_SYMBOLS)].join('');
+
+	return new RandomPassword(
+		`${id}Generated`,
+		{
+			length: format.length ?? SECRET_LENGTH,
+			special: symbols.length > 0,
+			...(symbols ? { overrideSpecial: symbols, minSpecial: 1 } : {}),
+		},
+		{
+			ignoreChanges: ['length', 'special', 'overrideSpecial', 'minSpecial'],
+		},
+	).result;
 }
 
 /** What one function receives from its edges. */

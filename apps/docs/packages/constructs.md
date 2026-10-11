@@ -160,6 +160,21 @@ reads the same value back. One set by hand (`gkm secrets:set`,
 `sst secret set`) is kept rather than replaced. `gkm dev` and `gkm test` derive
 it from the project, the stage and the id, so it needs no fake.
 
+It is 43 letters, digits, `-` and `_` unless you say otherwise — for a system
+with password rules of its own:
+
+```typescript
+export const routerPassword = new RandomPassword('RouterPassword', {
+  length: 24,
+  symbols: '!@#$%', // drawn beside letters and digits; '' for none
+});
+```
+
+When there are symbols, at least one is always in the password. Every stage
+draws it the same way, so a password that passes the rules in `gkm dev` passes
+them deployed. A deployed stage keeps the password it generated even if the
+format changes later.
+
 ### `.dependsOn()` — the one primitive
 
 Every builder takes it: endpoints, functions, crons, queue workers, and
