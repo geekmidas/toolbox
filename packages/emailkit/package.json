@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/emailkit",
-	"version": "10.0.0-alpha.104",
+	"version": "10.0.0-alpha.105",
 	"description": "Type-safe email client with SMTP support and React templates",
 	"private": false,
 	"type": "module",

@@ -143,6 +143,7 @@
     "provisioned-key-errors",
     "publisher-edge",
     "queues-topics-constructs",
+    "random-password",
     "rate-limit-answers-429",
     "reconcile-reprovisions",
     "scaffold-typescript-7",
