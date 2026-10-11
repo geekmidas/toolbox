@@ -201,7 +201,7 @@ describe('writeTestHarness', () => {
 			/import type \{ database as __Database \} from '(\.\.\/)+.*constructs\/database\.js';/,
 		);
 		expect(harness).toContain(
-			'featureTest<Browser, { database: DatabaseOf<typeof __Database> }, {}, { database: ClientOf<typeof __Database>; mail: ClientOf<typeof __Mail>; notes: ClientOf<typeof __Notes> }>({ manifest, modules, browser: Browser })',
+			'featureTest<Browser, { database: DatabaseOf<typeof __Database> }, {}, { database: ClientOf<typeof __Database>; mail: ClientOf<typeof __Mail>; adminPassword: ClientOf<typeof __AdminPassword>; notes: ClientOf<typeof __Notes> }>({ manifest, modules, browser: Browser })',
 		);
 		// The auth server's tenant is its own, reached through it.
 		expect(harness).not.toContain('__AuthDatabase');
@@ -256,12 +256,15 @@ describe('writeTestHarness', () => {
 
 		const harness = await read(apps[0]!, 'index.ts');
 
-		// What a handler depending on each construct is handed. The auth server's
-		// tenant is reached through it, so it is not here.
+		// What a handler depending on each construct is handed — a random
+		// password's is its value. The auth server's tenant is reached through
+		// it, so it is not here.
 		expect(harness).toContain(
-			'{ database: ClientOf<typeof __Database>; mail: ClientOf<typeof __Mail>; notes: ClientOf<typeof __Notes> }',
+			'{ database: ClientOf<typeof __Database>; mail: ClientOf<typeof __Mail>; adminPassword: ClientOf<typeof __AdminPassword>; notes: ClientOf<typeof __Notes> }',
 		);
 		expect(harness).not.toContain('authDatabase: ClientOf');
+		// Nor is the secret it signs with: it declares that on its own behalf.
+		expect(harness).not.toContain('authSecret: ClientOf');
 		// One type import per construct, though the database is named twice.
 		expect(harness.match(/as __Database \}/g)).toHaveLength(1);
 	});
@@ -276,7 +279,7 @@ describe('writeTestHarness', () => {
 			"import { createFactory as __databaseFactory } from '../../../../test/factories/database.js';",
 		);
 		expect(harness).toContain(
-			'featureTest<Browser, { database: DatabaseOf<typeof __Database> }, { database: typeof __databaseFactory }, { database: ClientOf<typeof __Database>; mail: ClientOf<typeof __Mail>; notes: ClientOf<typeof __Notes> }>' +
+			'featureTest<Browser, { database: DatabaseOf<typeof __Database> }, { database: typeof __databaseFactory }, { database: ClientOf<typeof __Database>; mail: ClientOf<typeof __Mail>; adminPassword: ClientOf<typeof __AdminPassword>; notes: ClientOf<typeof __Notes> }>' +
 				'({ manifest, modules, browser: Browser, factories: { database: __databaseFactory } })',
 		);
 	});

@@ -112,6 +112,12 @@ export {
 	scopedName,
 	serviceKey,
 } from './naming';
+export {
+	drawSecret,
+	SECRET_LENGTH,
+	SECRET_SYMBOLS,
+	type SecretFormat,
+} from './secret';
 
 /** A single HTTP route. */
 export interface RouteInfo {

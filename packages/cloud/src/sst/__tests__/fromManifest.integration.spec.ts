@@ -355,6 +355,31 @@ describe('fromManifest', () => {
 		});
 	});
 
+	it('generates a secret rather than waiting for one to be set', () => {
+		vi.spyOn(console, 'log').mockImplementation(() => {});
+		const provisioned = fromManifest(stack, manifest(), overrides, {
+			cache: 'db',
+			email: 'smtp',
+		});
+
+		// Without a placeholder, the stub stands in for `SecretMissingError`.
+		expect(provisioned.AuthSecret!.provides().value).not.toBe(
+			'stub-secret-AuthSecret',
+		);
+	});
+
+	it('keeps a secret’s placeholder over the generated one', () => {
+		vi.spyOn(console, 'log').mockImplementation(() => {});
+		const provisioned = fromManifest(
+			stack,
+			manifest(),
+			{ ...overrides, AuthSecret: { placeholder: 'chosen' } },
+			{ cache: 'db', email: 'smtp' },
+		);
+
+		expect(provisioned.AuthSecret!.provides().value).toBe('chosen');
+	});
+
 	it('takes an existing cache and mailer rather than creating them', async () => {
 		vi.spyOn(console, 'log').mockImplementation(() => {});
 		const provisioned = fromManifest(

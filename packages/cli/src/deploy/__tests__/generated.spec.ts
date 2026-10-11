@@ -32,6 +32,21 @@ describe('withGeneratedSecrets', () => {
 		expect(secrets.custom).not.toHaveProperty('STRIPE_CREDENTIALS');
 	});
 
+	it('generates a secret in the format it declares', () => {
+		const { secrets } = withGeneratedSecrets(initStageSecrets('prod'), {
+			RouterPassword: {
+				kind: 'secret',
+				id: 'RouterPassword',
+				provides: ['ROUTER_PASSWORD'],
+				length: 16,
+				symbols: '!@#',
+			},
+		} as unknown as ConstructManifest);
+
+		expect(secrets.custom.ROUTER_PASSWORD).toMatch(/^[A-Za-z0-9!@#]{16}$/);
+		expect(secrets.custom.ROUTER_PASSWORD).toMatch(/[!@#]/);
+	});
+
 	it('is random, so no two stages share a value', () => {
 		const one = withGeneratedSecrets(initStageSecrets('prod'), manifest);
 		const two = withGeneratedSecrets(initStageSecrets('prod'), manifest);

@@ -15,8 +15,10 @@ import type { StackType } from '../Stack';
  * signing key, the thing that stores it, and the thing that reads it are three
  * different systems deployed, and one derived string locally.
  *
- * Usable on its own. `Stack.fromManifest` translates a manifest into these, but
- * the component takes an ordinary placeholder so it works in a hand-written
+ * Usable on its own. `Stack.fromManifest` translates a manifest into these, and
+ * hands each a generated placeholder, so a manifest's secret is generated on
+ * its first deploy rather than set by hand; the component on its own takes
+ * whatever placeholder it is given, so it works in a hand-written
  * `sst.config.ts` with no manifest anywhere.
  */
 export class Secret<
@@ -72,5 +74,5 @@ export interface SecretProps {
 	 * letting the deploy fail — is the correct handling for a real secret. It
 	 * exists for the values that are secrets by habit rather than by need.
 	 */
-	placeholder?: string;
+	placeholder?: $util.Input<string>;
 }

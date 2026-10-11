@@ -19,6 +19,7 @@ import {
 	type PostgresVersion,
 	providedKeyFor,
 	publicEnvFor,
+	type SecretFormat,
 } from '@geekmidas/manifest';
 import { GkmError } from '../errors';
 import { usesTelemetry } from '../telemetry/edges.js';
@@ -240,6 +241,8 @@ export interface PlannedResource {
 	subdomain?: string;
 	/** The schema a tenant pins on its roles' `search_path`. */
 	schema?: string;
+	/** For a secret: the format it is derived in, as a deploy generates it. */
+	format?: SecretFormat;
 	/** For a cache in a database: the table entries are kept in. */
 	table?: string;
 	/**
@@ -574,6 +577,19 @@ export function planFor(
 			...(declaration.kind === 'credential' &&
 			options.credentialFakes?.[id] !== undefined
 				? { fakeCredentials: options.credentialFakes[id] }
+				: {}),
+			...(declaration.kind === 'secret' &&
+			(declaration.length !== undefined || declaration.symbols !== undefined)
+				? {
+						format: {
+							...(declaration.length !== undefined
+								? { length: declaration.length }
+								: {}),
+							...(declaration.symbols !== undefined
+								? { symbols: declaration.symbols }
+								: {}),
+						},
+					}
 				: {}),
 			...('of' in declaration && !detached ? { of: declaration.of } : {}),
 			...('schema' in declaration && declaration.schema

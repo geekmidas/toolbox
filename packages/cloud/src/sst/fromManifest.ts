@@ -19,6 +19,8 @@ import type {
 	Declaration,
 	DeclarationKind,
 	Dependency,
+	SecretDeclaration,
+	SecretFormat,
 	SiteDeclaration,
 } from '@geekmidas/manifest';
 import {
@@ -31,8 +33,11 @@ import {
 	PUBLIC_PREFIX,
 	providedKeyFor,
 	provisionOrder,
+	SECRET_LENGTH,
+	SECRET_SYMBOLS,
 	schemeBase,
 } from '@geekmidas/manifest';
+import { RandomPassword } from '@pulumi/random';
 import {
 	Cache,
 	CacheIsAmbiguous,
@@ -53,7 +58,7 @@ import { Function } from './aws/Function';
 import { ObjectStorage } from './aws/ObjectStorage';
 import { Queue } from './aws/Queue';
 import { RestApiSurface } from './aws/RestApiSurface';
-import { Secret } from './aws/Secret';
+import { Secret, type SecretProps } from './aws/Secret';
 import { StaticSite } from './aws/StaticSite';
 import { Topic } from './aws/Topic';
 import {
@@ -380,7 +385,14 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 			callers: context.callers?.get(d.id)?.promise,
 		}),
 
-	secret: (stack, d, props) => new Secret(stack, d.id, props),
+	// Generated on the first deploy and kept in the stage's state, as a server
+	// stage keeps it in its secrets: every later deploy reads the same value
+	// back. One set with `sst secret set` wins over it.
+	secret: (stack, d, props) =>
+		new Secret(stack, d.id, {
+			placeholder: generatedSecret(d.id, d as SecretDeclaration),
+			...(props as SecretProps),
+		}),
 
 	// The same storage as a secret, under a different role — see the component.
 	credential: (stack, d, props) => new Credential(stack, d.id, props),
@@ -1059,6 +1071,30 @@ export function fromManifest<
 	}
 
 	return provisioned;
+}
+
+/**
+ * A secret in its declared format — the alphabet `drawSecret` draws from on
+ * every other stage, with one symbol guaranteed as it guarantees one.
+ *
+ * The format is fixed at the first deploy, as a server stage's is: changing it
+ * would replace the password, and every later deploy is meant to read back the
+ * one it had.
+ */
+function generatedSecret(id: string, format: SecretFormat) {
+	const symbols = [...new Set(format.symbols ?? SECRET_SYMBOLS)].join('');
+
+	return new RandomPassword(
+		`${id}Generated`,
+		{
+			length: format.length ?? SECRET_LENGTH,
+			special: symbols.length > 0,
+			...(symbols ? { overrideSpecial: symbols, minSpecial: 1 } : {}),
+		},
+		{
+			ignoreChanges: ['length', 'special', 'overrideSpecial', 'minSpecial'],
+		},
+	).result;
 }
 
 /** What one function receives from its edges. */

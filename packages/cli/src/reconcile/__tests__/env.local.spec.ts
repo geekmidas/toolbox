@@ -51,6 +51,28 @@ describe('a declared secret, locally', () => {
 	});
 });
 
+describe('a declared secret with a format, locally', () => {
+	const manifest = {
+		RouterPassword: {
+			kind: 'secret',
+			id: 'RouterPassword',
+			provides: ['ROUTER_PASSWORD'],
+			length: 16,
+			symbols: '!@#',
+		},
+	} as const satisfies ConstructManifest;
+
+	it('is drawn in it, as a deploy draws it, and is still stable', () => {
+		const one = resolve(manifest, 'dev', { project: 'shop' }).ROUTER_PASSWORD;
+
+		expect(one).toMatch(/^[A-Za-z0-9!@#]{16}$/);
+		expect(one).toMatch(/[!@#]/);
+		expect(resolve(manifest, 'dev', { project: 'shop' }).ROUTER_PASSWORD).toBe(
+			one,
+		);
+	});
+});
+
 describe('a declared encryption key, locally', () => {
 	const manifest = {
 		Pii: { kind: 'encryption', id: 'Pii', provides: ['PII_URL'] },
