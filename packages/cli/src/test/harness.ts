@@ -451,6 +451,7 @@ const SERVICE_KINDS = new Set([
 	'file-server',
 	'objects',
 	'queue',
+	'secret',
 	'topic',
 ]);
 
@@ -459,8 +460,13 @@ function serviceSources(
 	sources: Record<string, ConstructSource>,
 ): DatabaseSource[] {
 	return Object.entries(declared)
-		.filter(([id, declaration]) =>
-			Boolean(sources[id] && SERVICE_KINDS.has(declaration.kind)),
+		.filter(
+			([id, declaration]) =>
+				SERVICE_KINDS.has(declaration.kind) &&
+				// The construct exported *is* this node, rather than declaring it
+				// on the way to something else: an auth server's signing secret is
+				// its own, and nothing depends on it.
+				(sources[id]?.construct as { id?: string } | undefined)?.id === id,
 		)
 		.map(([id, declaration]) => ({
 			id,

@@ -113,6 +113,7 @@ drift.
 | `FileServer` | `/file-server` | a `StorageClient` **superset** — plus `url()` and `signedUrl()` |
 | `Cache` | `/cache` | `CacheClient` |
 | `Credential` | `/credential` | the parsed, validated value — no `await` at the call site |
+| `RandomPassword` | `/random-password` | the password, a `string` — generated once per stage |
 | `Encryption` | `/encryption` | a `Cipher` — `encrypt`, `decrypt`, `index`, `reencrypt` |
 | `ExternalApi` | `/external-api` | whatever its `client` builds — the real API, or its fake in tests and `gkm dev --fake` |
 | `Email` | `/email` | an `EmailClient` typed by your templates |
@@ -142,6 +143,22 @@ A test stage set up fresh stores no credentials, so `gkm test` refuses a
 credential with neither a fake nor a stored value before any test runs
 (`CredentialHasNoTestValue`, naming the key and the file to create). See
 [Testing — a credential's test value](../guide/testing.md#a-credential-s-test-value).
+
+A `RandomPassword` is the other way round: a secret nobody issues, so nobody
+sets it either.
+
+```typescript
+import { RandomPassword } from '@geekmidas/constructs/random-password';
+
+export const adminPassword = new RandomPassword('AdminPassword');
+```
+
+Its key is its name — `ADMIN_PASSWORD` — and a handler that depends on it gets
+the value as a string. The first deploy of a stage generates it and keeps it, a
+server stage in its secrets and an AWS stage in its state, so every later deploy
+reads the same value back. One set by hand (`gkm secrets:set`,
+`sst secret set`) is kept rather than replaced. `gkm dev` and `gkm test` derive
+it from the project, the stage and the id, so it needs no fake.
 
 ### `.dependsOn()` — the one primitive
 

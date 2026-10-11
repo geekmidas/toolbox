@@ -33,6 +33,7 @@ import {
 	provisionOrder,
 	schemeBase,
 } from '@geekmidas/manifest';
+import { RandomPassword } from '@pulumi/random';
 import {
 	Cache,
 	CacheIsAmbiguous,
@@ -53,7 +54,7 @@ import { Function } from './aws/Function';
 import { ObjectStorage } from './aws/ObjectStorage';
 import { Queue } from './aws/Queue';
 import { RestApiSurface } from './aws/RestApiSurface';
-import { Secret } from './aws/Secret';
+import { Secret, type SecretProps } from './aws/Secret';
 import { StaticSite } from './aws/StaticSite';
 import { Topic } from './aws/Topic';
 import {
@@ -380,7 +381,19 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 			callers: context.callers?.get(d.id)?.promise,
 		}),
 
-	secret: (stack, d, props) => new Secret(stack, d.id, props),
+	// Generated on the first deploy and kept in the stage's state, as a server
+	// stage keeps it in its secrets: every later deploy reads the same value
+	// back. One set with `sst secret set` wins over it.
+	secret: (stack, d, props) =>
+		new Secret(stack, d.id, {
+			placeholder: new RandomPassword(`${d.id}Generated`, {
+				length: 43,
+				// The alphabet a server stage's is drawn from, base64url's.
+				special: true,
+				overrideSpecial: '-_',
+			}).result,
+			...(props as SecretProps),
+		}),
 
 	// The same storage as a secret, under a different role — see the component.
 	credential: (stack, d, props) => new Credential(stack, d.id, props),
