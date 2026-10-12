@@ -1288,6 +1288,10 @@ gkm exec --stage production --profile acme-prod -- pnpm tsx scripts/report.ts
 - **The tunnels close when the command exits** — on success, failure or
   Ctrl-C — and `gkm exec` exits with the command's code.
 - **A protected stage asks first.** `--yes` runs without asking, for CI.
+- **Your own SSH login.** The server is reached as
+  `deploy.compose.server.<stage>.user` by default. Where only CI holds that
+  key, `--ssh-user <you>` logs in as you instead. That login needs Docker
+  (the server's `docker` group) and TCP forwarding.
 
 The stage must have been deployed: one whose secrets lack what its first
 deploy generates is refused with `ExecStageNotDeployed`, since what its apps

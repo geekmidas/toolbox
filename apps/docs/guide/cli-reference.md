@@ -265,6 +265,7 @@ Options:
   --stage <name>         A deployed compose stage to run as (default: the local stage)
   --profile <profile>    AWS profile for the stage's account, where its secrets are kept
   -y, --yes              Run against a protected stage without asking
+  --ssh-user <user>      SSH login for the stage's server (default: deploy.compose.server.<stage>.user)
 ```
 
 The app is the one whose directory the command runs in.

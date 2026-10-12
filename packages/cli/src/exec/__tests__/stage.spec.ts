@@ -382,6 +382,33 @@ describe('gkm exec --stage', () => {
 		expect(code).toBe(0);
 	});
 
+	it('reaches the server as the --ssh-user login, over the configured one', async () => {
+		await deployed();
+		const calls: Call[] = [];
+
+		const code = await execOnStage(
+			[process.execPath, '-e', RECORDER],
+			{
+				stage: 'production',
+				cwd: join(dir, 'apps', 'api'),
+				sshUser: 'midas',
+			},
+			deps(calls),
+		);
+
+		expect(code).toBe(0);
+		expect(calls).toContainEqual(
+			expect.objectContaining({
+				op: 'published',
+				host: `ssh://midas@${SERVER_IPV4}`,
+			}),
+		);
+		expect(calls.find((call) => call.op === 'tunnel')!.args).toEqual([
+			`midas@${SERVER_IPV4}`,
+			54_321,
+		]);
+	});
+
 	it('says SSH refused the login, and runs nothing', async () => {
 		await deployed();
 		const calls: Call[] = [];

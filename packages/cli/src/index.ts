@@ -304,10 +304,19 @@ program
 	)
 	.option('--profile <profile>', "AWS profile for the stage's account")
 	.option('-y, --yes', 'Run against a protected stage without asking')
+	.option(
+		'--ssh-user <user>',
+		"SSH login for the stage's server (default: deploy.compose.server.<stage>.user)",
+	)
 	.action(
 		async (
 			commandArgs: string[],
-			options: { stage?: string; profile?: string; yes?: boolean },
+			options: {
+				stage?: string;
+				profile?: string;
+				yes?: boolean;
+				sshUser?: string;
+			},
 		) => {
 			try {
 				const globalOptions = program.opts();

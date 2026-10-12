@@ -34,6 +34,8 @@ export interface ExecOptions {
 	profile?: string;
 	/** Run against a protected stage without asking. */
 	yes?: boolean;
+	/** The SSH login for the stage's server, over the configured one. */
+	sshUser?: string;
 }
 
 /**

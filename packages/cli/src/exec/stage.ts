@@ -103,6 +103,12 @@ export interface StageExecOptions {
 	stage: string;
 	/** The AWS profile for the stage's account, where its secrets are kept. */
 	profile?: string;
+	/**
+	 * The SSH login to reach the server as, in place of
+	 * `deploy.compose.server.<stage>.user` — a person's own, where the
+	 * deploy's key lives only in CI.
+	 */
+	sshUser?: string;
 	/** Run against a protected stage without asking. */
 	yes?: boolean;
 	cwd?: string;
@@ -304,6 +310,7 @@ async function stageStack(
 		config: workspace.deploy?.compose?.server,
 		custom: secrets.custom,
 	})!;
+	if (options.sshUser) server.user = options.sshUser;
 	return {
 		stack,
 		appName: info?.appName,
