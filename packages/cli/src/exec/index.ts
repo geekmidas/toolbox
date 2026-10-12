@@ -8,6 +8,7 @@ import {
 } from '../credentials';
 import { GkmError } from '../errors';
 import { imageBuildCredentials, isImageBuild } from './imageBuild';
+import type { StageExecDeps } from './stage';
 
 const logger = console;
 
@@ -25,6 +26,17 @@ export class NoCommandSpecified extends GkmError {
 export interface ExecOptions {
 	/** Working directory */
 	cwd?: string;
+	/**
+	 * A deployed compose stage to run as, through SSH tunnels to its server —
+	 * see `stage.ts`. The local stage by default.
+	 */
+	stage?: string;
+	/** The AWS profile for the stage's account, where its secrets are kept. */
+	profile?: string;
+	/** Run against a protected stage without asking. */
+	yes?: boolean;
+	/** The SSH login for the stage's server, over the configured one. */
+	sshUser?: string;
 }
 
 /**
@@ -36,16 +48,39 @@ export interface ExecOptions {
  * ```bash
  * gkm exec -- npx @better-auth/cli migrate
  * gkm exec -- npx prisma migrate dev
+ * gkm exec --stage production -- node scripts/backfill.ts
  * ```
  */
 export async function execCommand(
 	commandArgs: string[],
 	options: ExecOptions = {},
+	stageDeps?: StageExecDeps,
 ): Promise<void> {
 	const cwd = options.cwd ?? process.cwd();
 
 	if (!commandArgs[0]) {
 		throw new NoCommandSpecified();
+	}
+
+	if (options.stage && !isImageBuild()) {
+		const { execOnStage } = await import('./stage.js');
+		const { loadWorkspaceConfig } = await import('../config.js');
+		const { workspace } = await loadWorkspaceConfig(cwd);
+		if (options.stage !== workspace.stages.local) {
+			const exitCode = await execOnStage(
+				commandArgs as [string, ...string[]],
+				{
+					stage: options.stage,
+					cwd,
+					...(options.profile ? { profile: options.profile } : {}),
+					...(options.yes ? { yes: true } : {}),
+					...(options.sshUser ? { sshUser: options.sshUser } : {}),
+				},
+				stageDeps,
+			);
+			if (exitCode !== 0) process.exit(exitCode);
+			return;
+		}
 	}
 
 	// Load .env files

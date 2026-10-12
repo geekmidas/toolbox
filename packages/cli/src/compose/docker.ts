@@ -171,6 +171,17 @@ export interface ComposeDocker {
 		service: string,
 	): Promise<{ id: string; image: string } | undefined>;
 	/**
+	 * The host port a compose project's running `service` publishes for
+	 * `inside` on the engine, by its labels — found without the stack's
+	 * compose file. Undefined when it is not running or publishes none.
+	 */
+	published(
+		engine: DockerEngine,
+		project: string,
+		service: string,
+		inside: number,
+	): Promise<number | undefined>;
+	/**
 	 * Run `command` once on the engine, in a new container of `image` on
 	 * `network`, removed when it ends, with `stdin` streamed in. Each of `env`
 	 * is passed by name, never on the command line. Resolves with its exit
@@ -210,6 +221,20 @@ export function publishedPorts(column: string): number[] {
 	return [...ports];
 }
 
+/**
+ * The host port a `docker ps` Ports column publishes for `inside`:
+ * `127.0.0.1:54321->5432/tcp` is 54321.
+ */
+export function publishedPort(
+	column: string,
+	inside: number,
+): number | undefined {
+	const match = new RegExp(
+		`(?:[\\d.]+|\\[[^\\]]*\\]):(\\d+)->${inside}/tcp`,
+	).exec(column);
+	return match ? Number(match[1]) : undefined;
+}
+
 /** Each line `docker ps` printed, as the containers holding `port`. */
 export function portHolders(output: string, port: number): PortHolder[] {
 	return output
@@ -226,6 +251,21 @@ export function portHolders(output: string, port: number): PortHolder[] {
 
 /** How long a stack has to pass its health checks. */
 const WAIT_TIMEOUT_S = 180;
+
+/** `docker` itself failed, before it could say anything about a service. */
+export class DockerUnreachable extends GkmError {
+	constructor(
+		readonly engine: string,
+		readonly stderr: string,
+	) {
+		super(
+			`Could not ask Docker on ${engine} which ports its services publish ` +
+				`(docker said: ${stderr.trim() || 'nothing'}). Check that ` +
+				`\`DOCKER_HOST=${engine} docker ps\` works from here.`,
+		);
+		this.name = 'DockerUnreachable';
+	}
+}
 
 /** `docker compose port` printed nothing a port can be read from. */
 export class ServicePortUnknown extends GkmError {
@@ -546,6 +586,28 @@ export const dockerCompose: ComposeDocker = {
 		);
 		const [id, image] = stdout.trim().split('\n')[0]?.split('\t') ?? [];
 		return id && image ? { id, image } : undefined;
+	},
+
+	async published(engine, project, service, inside) {
+		const env = engineEnv(engine);
+		const { code, stdout, stderr } = await capture(
+			'docker',
+			[
+				'ps',
+				'--filter',
+				`label=com.docker.compose.project=${project}`,
+				'--filter',
+				`label=com.docker.compose.service=${service}`,
+				'--format',
+				'{{.Ports}}',
+			],
+			env ? { env } : {},
+		);
+		// Docker not answering is not a service that publishes nothing.
+		if (code !== 0) {
+			throw new DockerUnreachable(engine.host ?? 'this machine', stderr);
+		}
+		return publishedPort(stdout, inside);
 	},
 
 	runOnce(engine, options) {
