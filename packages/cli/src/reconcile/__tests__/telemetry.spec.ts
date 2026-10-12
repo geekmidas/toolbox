@@ -217,7 +217,10 @@ describe('the keys follow the edges', () => {
 		for (const key of TELEMETRY_KEYS) expect(keys).not.toContain(key);
 
 		const inlined = publicEnvFor(used.Web as never, used);
-		expect(Object.keys(inlined)).toEqual(['NEXT_PUBLIC_API_URL']);
+		expect(Object.keys(inlined)).toEqual([
+			'NEXT_PUBLIC_WEB_URL',
+			'NEXT_PUBLIC_API_URL',
+		]);
 		for (const [name, source] of Object.entries(inlined)) {
 			expect(`${name} ${source}`).not.toMatch(/OTEL_/);
 		}

@@ -132,6 +132,20 @@ A site's public URLs (`VITE_API_URL`, `NEXT_PUBLIC_AUTH_URL`) are inlined into
 its bundle when it is built, so one site image serves one stage. A backend
 reads its URLs at runtime, so one backend image serves every stage.
 
+What a site's image is built with — every value its build reads, as build
+arguments its Dockerfile declares:
+
+- its edges' public values and its own address, under the variant's public
+  prefix: `VITE_API_URL`, `VITE_WEB_URL` (`NEXT_PUBLIC_` on a Next.js site);
+- its own address under its own name, `WEB_URL`, for server code that runs at
+  build time — `next build` prerenders, and a page's `metadataBase` is read then;
+- every stage secret already named for the bundle: `NEXT_PUBLIC_APP_STORE_URL`,
+  set with `gkm secrets:set … --stage production`, reaches a Next.js site's
+  build. A secret without the site's prefix never does.
+
+`gkm exec -- next build` has the same values locally, so a site that builds on
+your machine builds in the image.
+
 So for a release, `gkm compose --build --push` pushes:
 
 | App | Image |

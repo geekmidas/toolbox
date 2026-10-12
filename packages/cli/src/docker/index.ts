@@ -1,7 +1,11 @@
 import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
-import { type ConstructManifest, publicEnvFor } from '@geekmidas/manifest';
+import {
+	type ConstructManifest,
+	provideKey,
+	publicEnvFor,
+} from '@geekmidas/manifest';
 import { type WorkerUnit, workerUnits } from '../build/workers.js';
 import { loadWorkspaceConfig } from '../config';
 import { GkmError } from '../errors';
@@ -499,7 +503,12 @@ export function siteDockerfile(
 	const publicUrlArgs =
 		options.publicUrlArgs ??
 		(declared?.kind === 'site' && options.manifest
-			? Object.keys(publicEnvFor(declared, options.manifest))
+			? [
+					// Its own address under its own name, for server code that runs
+					// at build — what `siteBuildArgs` hands every image build.
+					provideKey(declared.id, 'url'),
+					...Object.keys(publicEnvFor(declared, options.manifest)),
+				]
 			: getPublicUrlArgNames(app));
 
 	const webOpts = { ...options.image, publicUrlArgs };

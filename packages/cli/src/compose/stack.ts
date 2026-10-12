@@ -101,6 +101,7 @@ import {
 	stackRedis,
 } from './redis.js';
 import type { ComposeProxy, EdgeRoute, EdgeTls } from './routes.js';
+import { siteBuildArgs } from './siteBuild.js';
 import {
 	EDGE_NETWORK,
 	edgeAlias,
@@ -960,13 +961,12 @@ export function composeStack(input: StackInput): ComposeStack {
 			const site = manifest[app.id];
 			if (site?.kind !== 'site') continue;
 
-			const args: Record<string, string> = {};
-			for (const [key, source] of Object.entries(
-				publicEnvFor(site, manifest),
-			)) {
-				const value = valueFor(app, source, owners.get(source));
-				if (value !== undefined) args[key] = value;
-			}
+			const args = siteBuildArgs(
+				site,
+				manifest,
+				(key) => valueFor(app, key, owners.get(key)),
+				custom,
+			);
 			if (app.build && Object.keys(args).length > 0) app.build.args = args;
 			continue;
 		}
@@ -1135,6 +1135,11 @@ export function composeStack(input: StackInput): ComposeStack {
 				// A site's clients trace at this stage's sample rate.
 				workspace,
 				stage,
+				// Every build argument the site is handed, declared, or the
+				// build drops it.
+				...(app.kind === 'site' && app.build.args
+					? { publicUrlArgs: Object.keys(app.build.args) }
+					: {}),
 			},
 		);
 	}

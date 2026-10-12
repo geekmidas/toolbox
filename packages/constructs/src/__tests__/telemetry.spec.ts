@@ -127,8 +127,12 @@ describe('Telemetry edges', () => {
 
 		const inlined = publicEnvFor(manifest.Web, manifest);
 
-		// The API's address, as before — and no OTEL_* under any prefix.
-		expect(inlined).toEqual({ VITE_API_URL: 'API_URL' });
+		// The API's address and the site's own — and no OTEL_* under any
+		// prefix.
+		expect(inlined).toEqual({
+			VITE_WEB_URL: 'WEB_URL',
+			VITE_API_URL: 'API_URL',
+		});
 		for (const [name, source] of Object.entries(inlined)) {
 			expect(name).not.toMatch(/OTEL_/);
 			expect(source).not.toMatch(/OTEL_/);
