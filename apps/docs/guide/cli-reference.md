@@ -262,21 +262,25 @@ Execute a command with workspace environment variables injected.
 gkm exec [options] -- <command>
 
 Options:
-  --app, -a <name>       App context for env resolution (auto-detected from cwd)
-  --stage, -s <name>     Stage for env resolution (default: development)
+  --stage <name>         A deployed compose stage to run as (default: the local stage)
+  --profile <profile>    AWS profile for the stage's account, where its secrets are kept
+  -y, --yes              Run against a protected stage without asking
 ```
+
+The app is the one whose directory the command runs in.
 
 **Examples:**
 ```bash
 # Run Next.js dev with injected env vars
 gkm exec -- next dev --turbopack
 
-# Run with specific app context
-gkm exec --app web -- next build
-
-# Run tests with production env vars
-gkm exec --stage production -- vitest run
+# A one-off script against production, through SSH tunnels to its server
+cd apps/api && gkm exec --stage production -- node scripts/backfill.ts
 ```
+
+With `--stage`, the command runs as the app runs on that stage: the environment
+its container has, with each database reached through an SSH tunnel. See
+[Running a script against a deployed stage](./compose.md#running-a-script-against-a-deployed-stage).
 
 **Credentials Injection:**
 

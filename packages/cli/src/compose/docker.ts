@@ -171,6 +171,17 @@ export interface ComposeDocker {
 		service: string,
 	): Promise<{ id: string; image: string } | undefined>;
 	/**
+	 * The host port a compose project's running `service` publishes for
+	 * `inside` on the engine, by its labels — found without the stack's
+	 * compose file. Undefined when it is not running or publishes none.
+	 */
+	published(
+		engine: DockerEngine,
+		project: string,
+		service: string,
+		inside: number,
+	): Promise<number | undefined>;
+	/**
 	 * Run `command` once on the engine, in a new container of `image` on
 	 * `network`, removed when it ends, with `stdin` streamed in. Each of `env`
 	 * is passed by name, never on the command line. Resolves with its exit
@@ -208,6 +219,20 @@ export function publishedPorts(column: string): number[] {
 		for (let port = first; port <= last; port++) ports.add(port);
 	}
 	return [...ports];
+}
+
+/**
+ * The host port a `docker ps` Ports column publishes for `inside`:
+ * `127.0.0.1:54321->5432/tcp` is 54321.
+ */
+export function publishedPort(
+	column: string,
+	inside: number,
+): number | undefined {
+	const match = new RegExp(
+		`(?:[\\d.]+|\\[[^\\]]*\\]):(\\d+)->${inside}/tcp`,
+	).exec(column);
+	return match ? Number(match[1]) : undefined;
 }
 
 /** Each line `docker ps` printed, as the containers holding `port`. */
@@ -546,6 +571,24 @@ export const dockerCompose: ComposeDocker = {
 		);
 		const [id, image] = stdout.trim().split('\n')[0]?.split('\t') ?? [];
 		return id && image ? { id, image } : undefined;
+	},
+
+	async published(engine, project, service, inside) {
+		const env = engineEnv(engine);
+		const { stdout } = await capture(
+			'docker',
+			[
+				'ps',
+				'--filter',
+				`label=com.docker.compose.project=${project}`,
+				'--filter',
+				`label=com.docker.compose.service=${service}`,
+				'--format',
+				'{{.Ports}}',
+			],
+			env ? { env } : {},
+		);
+		return publishedPort(stdout, inside);
 	},
 
 	runOnce(engine, options) {

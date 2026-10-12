@@ -1261,6 +1261,38 @@ A restore asks first (`--yes` skips it), then:
 
 `--at` takes a run's folder, or a time for the newest run at or before it.
 
+## Running a script against a deployed stage
+
+A data import, a backfill, a report: run it from a laptop or CI as the app
+runs on the stage, from the app's directory.
+
+```bash
+cd apps/api
+gkm exec --stage production -- node scripts/backfill.ts
+gkm exec --stage production --profile acme-prod -- pnpm tsx scripts/report.ts
+```
+
+- **The environment is the container's.** It is derived the way the deploy
+  derives it, from the stage's secrets, read from the stage's store the way
+  the deploy reads them (`--profile` names the AWS profile for an S3, SSM or
+  Secrets Manager store). The app's own keys — its database login, its bucket
+  key, its public URLs — and those of each worker built from it.
+- **Databases go through SSH tunnels.** Each service the environment names
+  that the server publishes on its loopback — Postgres, MinIO — is reached
+  through an SSH tunnel on the deploy's own login, the one the deploy
+  migrates through, and its URL points at `127.0.0.1:<local port>`. A sibling
+  app is reached at its public address. A service the server does not
+  publish (the stack's Redis) keeps its address, and gkm says so.
+- **Nothing is written to disk.** The values exist only in the command's
+  environment; its `Credentials` are filled from there.
+- **The tunnels close when the command exits** — on success, failure or
+  Ctrl-C — and `gkm exec` exits with the command's code.
+- **A protected stage asks first.** `--yes` runs without asking, for CI.
+
+The stage must have been deployed: one whose secrets lack what its first
+deploy generates is refused with `ExecStageNotDeployed`, since what its apps
+run with is not decided yet.
+
 ## What is not included yet
 
 - **Mobile apps** ship through their own toolchain and are skipped.

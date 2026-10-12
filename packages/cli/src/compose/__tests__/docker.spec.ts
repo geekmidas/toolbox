@@ -16,6 +16,7 @@ import {
 	dockerCompose,
 	engineEnv,
 	projectNetwork,
+	publishedPort,
 	type StackRef,
 } from '../docker';
 
@@ -58,6 +59,20 @@ describe("a service's container", () => {
 		expect(
 			await dockerCompose.container({}, SUITE.project, 'no-such-service'),
 		).toBeUndefined();
+	});
+
+	it('says the port it publishes, without the compose file', async () => {
+		expect(
+			await dockerCompose.published({}, SUITE.project, 'postgres', 5432),
+		).toBe(POSTGRES_PORT);
+		expect(
+			await dockerCompose.published({}, SUITE.project, 'postgres', 5433),
+		).toBeUndefined();
+		expect(
+			await dockerCompose.published({}, SUITE.project, 'no-such-service', 1),
+		).toBeUndefined();
+		expect(publishedPort('127.0.0.1:54321->5432/tcp', 5432)).toBe(54321);
+		expect(publishedPort('127.0.0.1:54321->15432/tcp', 5432)).toBeUndefined();
 	});
 
 	it('runs a command, its input on stdin, and says what it printed', async () => {

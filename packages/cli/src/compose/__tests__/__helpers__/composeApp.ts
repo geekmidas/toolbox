@@ -29,6 +29,8 @@ export interface ComposeAppOptions {
 	compose?: Record<string, unknown>;
 	/** The deployed stages, `['production']` when absent. */
 	deployed?: readonly string[];
+	/** The protected stages, none when absent. */
+	protected?: readonly string[];
 	/** Each deployed stage's domain, in place of `domain`. */
 	domains?: Record<string, string>;
 	/** `dns`, as it is written in the config. */
@@ -139,7 +141,7 @@ export const telemetry = new Telemetry('Telemetry', {
 
 export default defineWorkspace({
   name: ${JSON.stringify(name)},
-  stages: { local: 'development', deployed: ${JSON.stringify(deployed)} },
+  stages: { local: 'development', deployed: ${JSON.stringify(deployed)}${options.protected ? `, protected: ${JSON.stringify(options.protected)}` : ''} },
   constructs: [
     './constructs/**/*.ts',
     './apps/*/endpoints/**/*.ts',

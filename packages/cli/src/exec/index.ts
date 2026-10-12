@@ -25,6 +25,15 @@ export class NoCommandSpecified extends GkmError {
 export interface ExecOptions {
 	/** Working directory */
 	cwd?: string;
+	/**
+	 * A deployed compose stage to run as, through SSH tunnels to its server —
+	 * see `stage.ts`. The local stage by default.
+	 */
+	stage?: string;
+	/** The AWS profile for the stage's account, where its secrets are kept. */
+	profile?: string;
+	/** Run against a protected stage without asking. */
+	yes?: boolean;
 }
 
 /**
@@ -36,6 +45,7 @@ export interface ExecOptions {
  * ```bash
  * gkm exec -- npx @better-auth/cli migrate
  * gkm exec -- npx prisma migrate dev
+ * gkm exec --stage production -- node scripts/backfill.ts
  * ```
  */
 export async function execCommand(
@@ -46,6 +56,22 @@ export async function execCommand(
 
 	if (!commandArgs[0]) {
 		throw new NoCommandSpecified();
+	}
+
+	if (options.stage && !isImageBuild()) {
+		const { execOnStage } = await import('./stage.js');
+		const { loadWorkspaceConfig } = await import('../config.js');
+		const { workspace } = await loadWorkspaceConfig(cwd);
+		if (options.stage !== workspace.stages.local) {
+			const exitCode = await execOnStage(commandArgs as [string, ...string[]], {
+				stage: options.stage,
+				cwd,
+				...(options.profile ? { profile: options.profile } : {}),
+				...(options.yes ? { yes: true } : {}),
+			});
+			if (exitCode !== 0) process.exit(exitCode);
+			return;
+		}
 	}
 
 	// Load .env files

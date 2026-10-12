@@ -298,17 +298,28 @@ program
 	.command('exec')
 	.description('Run a command with secrets injected into Credentials')
 	.argument('<command...>', 'Command to run (use -- before command)')
-	.action(async (commandArgs: string[]) => {
-		try {
-			const globalOptions = program.opts();
-			if (globalOptions.cwd) {
-				process.chdir(globalOptions.cwd);
+	.option(
+		'--stage <stage>',
+		'A deployed compose stage to run as, through SSH tunnels to its server (default: the local stage)',
+	)
+	.option('--profile <profile>', "AWS profile for the stage's account")
+	.option('-y, --yes', 'Run against a protected stage without asking')
+	.action(
+		async (
+			commandArgs: string[],
+			options: { stage?: string; profile?: string; yes?: boolean },
+		) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) {
+					process.chdir(globalOptions.cwd);
+				}
+				await execCommand(commandArgs, options);
+			} catch (error) {
+				exitWithError(error);
 			}
-			await execCommand(commandArgs);
-		} catch (error) {
-			exitWithError(error);
-		}
-	});
+		},
+	);
 
 program
 	.command('test')
