@@ -412,6 +412,49 @@ program
 	);
 
 program
+	.command('deploy:google-play')
+	.description(
+		"Let EAS Submit publish a mobile app to Google Play: a service account with a grant on the app alone, its key in EAS, each stage's track in eas.json, and the store listing from store/play/",
+	)
+	.option(
+		'--developer <id>',
+		"The Play developer account (the number in Play Console's address)",
+	)
+	.option(
+		'--app <app>',
+		'The mobile app (default: the one here, or the only one)',
+	)
+	.option(
+		'--project <project>',
+		'The Google Cloud project (default: <workspace>-play, created when absent)',
+	)
+	.option(
+		'--stage <stage>',
+		"The stage whose values evaluate the app's Expo config (default: the protected one)",
+	)
+	.option('--profile <profile>', "AWS profile for that stage's account")
+	.action(
+		async (options: {
+			developer?: string;
+			app?: string;
+			project?: string;
+			stage?: string;
+			profile?: string;
+		}) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) process.chdir(globalOptions.cwd);
+				const { deployGooglePlay } = await import(
+					'./mobile/googlePlay/index.js'
+				);
+				await deployGooglePlay(options);
+			} catch (error) {
+				exitWithError(error);
+			}
+		},
+	);
+
+program
 	.command('test')
 	.description('Run tests with secrets loaded from environment')
 	.option(

@@ -538,6 +538,25 @@ Options:
 
 See [Mobile apps on a deployed stage](./mobile.md#gkm-publish).
 
+### `gkm deploy:google-play`
+
+Let EAS Submit publish a mobile app to Google Play: a service account with a
+grant on the app alone, its key in EAS (rotated on every run), each stage's
+track in `eas.json`, and the store listing from `store/play/`.
+
+```bash
+gkm deploy:google-play --developer <id> [options]
+
+Options:
+  --developer <id>       The Play developer account (the number in Play Console's address)
+  --app <app>            The mobile app (default: the one here, or the only one)
+  --project <project>    The Google Cloud project (default: <workspace>-play)
+  --stage <stage>        The stage whose values evaluate the app's Expo config
+  --profile <profile>    AWS profile for that stage's account
+```
+
+See [Mobile apps on a deployed stage](./mobile.md#gkm-deploy-google-play).
+
 ### `gkm compose`
 
 Run the workspace's APIs and sites for a stage as one Docker Compose stack
