@@ -80,12 +80,20 @@ function releaseTag() {
 	return 'latest';
 }
 
+/**
+ * One field of the CLI's registry entry. npm 12 answers `npm view <pkg>
+ * <field> --json` with the value wrapped in a one-element array, where npm 11
+ * answered with the value itself; read as an object, the wrapped dist-tags had
+ * no `alpha`, and every release looked like a line that had never published.
+ * Both shapes are read the same way.
+ */
 function npmView(field) {
-	return JSON.parse(
+	const value = JSON.parse(
 		execFileSync('npm', ['view', PACKAGE, field, '--json'], {
 			encoding: 'utf-8',
 		}),
 	);
+	return Array.isArray(value) && value.length === 1 ? value[0] : value;
 }
 
 /** The public packages whose version in git npm does not have. */
