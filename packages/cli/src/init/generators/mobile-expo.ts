@@ -1,4 +1,9 @@
-import { provideKey, schemeBase } from '@geekmidas/manifest';
+import {
+	type MobileAppDeclaration,
+	provideKey,
+	schemeBase,
+} from '@geekmidas/manifest';
+import { mobileStage } from '../../mobile/stage.js';
 import { emailFor } from '../constructs.js';
 import {
 	DEPENDENCY_VERSIONS,
@@ -166,6 +171,20 @@ export default function expoConfig({ config: base }: ConfigContext): ExpoConfig 
 }
 `;
 
+	// One store profile per deployed stage, named after it, as `gkm eas:sync`
+	// writes them: the EAS environment its values are synced to, the channel
+	// its updates go out on, and the Play track it submits to. No URL is
+	// written here — an `env` in eas.json would win over what the sync sets.
+	const mobile: MobileAppDeclaration = {
+		kind: 'mobile-app',
+		id: 'App',
+		variant: 'expo',
+		app: { path: 'apps/app' },
+		dependencies: [],
+	};
+	const stages = options.stages.deployed.map((stage) =>
+		mobileStage({ stages: options.stages }, mobile, stage),
+	);
 	const easJson = {
 		cli: {
 			version: '>= 10.2.1',
@@ -178,29 +197,28 @@ export default function expoConfig({ config: base }: ConfigContext): ExpoConfig 
 				// Locally \`gkm\` injects the scheme and both URLs from the graph.
 				environment: 'development',
 			},
-			preview: {
-				distribution: 'internal',
-				environment: 'preview',
-				// EAS builds outside \`gkm\`, so a store build is told its scheme —
-				// the bare one, which is what the deployed auth server trusts.
-				env: {
-					APP_SCHEME: scheme,
-					EXPO_PUBLIC_API_URL: 'https://api.example.com',
-					EXPO_PUBLIC_AUTH_URL: 'https://auth.example.com',
-				},
-			},
-			production: {
-				autoIncrement: true,
-				environment: 'production',
-				// EAS builds outside \`gkm\`, so a store build is told its scheme —
-				// the bare one, which is what the deployed auth server trusts.
-				env: {
-					APP_SCHEME: scheme,
-					EXPO_PUBLIC_API_URL: 'https://api.example.com',
-					EXPO_PUBLIC_AUTH_URL: 'https://auth.example.com',
-				},
-			},
+			...Object.fromEntries(
+				stages.map((stage) => [
+					stage.stage,
+					{
+						autoIncrement: true,
+						environment: stage.environment,
+						channel: stage.channel,
+					},
+				]),
+			),
 		},
+		submit: Object.fromEntries(
+			stages.map((stage) => [
+				stage.stage,
+				{
+					android: {
+						track: stage.android.track,
+						releaseStatus: stage.android.releaseStatus,
+					},
+				},
+			]),
+		),
 	};
 
 	const babelConfig = `module.exports = function (api) {

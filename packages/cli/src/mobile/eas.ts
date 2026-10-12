@@ -88,6 +88,9 @@ export class EasCommandFailed extends GkmError {
 	}
 }
 
+/** A platform EAS builds for. */
+export type EasPlatform = 'ios' | 'android';
+
 /** What gkm asks of EAS, so tests can stand in. */
 export interface EasCli {
 	/** Create or update a variable in one of the project's environments. */
@@ -95,16 +98,120 @@ export interface EasCli {
 		dir: string,
 		variable: { environment: string; name: string; value: string },
 	): Promise<void>;
+	/**
+	 * The fingerprint of the app's native code, as a build with `profile`
+	 * would compute it — what its runtime version is.
+	 */
+	fingerprint(
+		dir: string,
+		options: { platform: EasPlatform; profile: string },
+	): Promise<string>;
+	/** A finished store build of `profile` with that fingerprint, if any. */
+	storeBuild(
+		dir: string,
+		options: { platform: EasPlatform; profile: string; fingerprint: string },
+	): Promise<string | undefined>;
+	/** Start a store build of `profile`, submitted to the store when asked. */
+	build(
+		dir: string,
+		options: {
+			platform: EasPlatform;
+			profile: string;
+			submit: boolean;
+			wait: boolean;
+		},
+	): Promise<void>;
+	/** Publish an update of the app's JavaScript on a channel. */
+	update(
+		dir: string,
+		options: {
+			platform: EasPlatform;
+			channel: string;
+			environment: string;
+			message: string;
+		},
+	): Promise<void>;
 }
 
 /**
- * The real one: the `eas` the app installs, else the workspace's, else the
- * one on PATH — never a prompt (`--non-interactive`).
+ * Run `eas` in `dir`: the app's own, else the workspace's, else the one on
+ * PATH. What it prints on stdout is answered; a failure is
+ * {@link EasCommandFailed} with what it said.
  */
-export function easCli(root: string): EasCli {
+function runEas(
+	root: string,
+	dir: string,
+	args: readonly string[],
+	options: { inherit?: boolean; env?: Readonly<Record<string, string>> } = {},
+): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const child = spawn('eas', [...args, '--non-interactive'], {
+			cwd: dir,
+			// A build's or an update's progress is the user's to read.
+			stdio: ['ignore', options.inherit ? 'inherit' : 'pipe', 'pipe'],
+			env: {
+				...process.env,
+				...options.env,
+				PATH: [
+					join(dir, 'node_modules', '.bin'),
+					join(root, 'node_modules', '.bin'),
+					process.env.PATH,
+				].join(delimiter),
+			},
+		});
+		let stdout = '';
+		let stderr = '';
+		child.stdout?.on('data', (chunk: Buffer) => {
+			stdout += chunk.toString();
+		});
+		child.stderr?.on('data', (chunk: Buffer) => {
+			stderr += chunk.toString();
+			if (options.inherit) process.stderr.write(chunk);
+		});
+		const command = args.slice(0, 3).join(' ');
+		child.on('error', (error: NodeJS.ErrnoException) =>
+			reject(
+				error.code === 'ENOENT'
+					? new EasCliMissing(dir)
+					: new EasCommandFailed(command, null, error.message),
+			),
+		);
+		child.on('close', (code) =>
+			code === 0
+				? resolve(stdout)
+				: reject(new EasCommandFailed(command, code, stderr)),
+		);
+	});
+}
+
+/** The JSON `eas … --json` printed, read for `what`. */
+function easJson(output: string, what: string): unknown {
+	try {
+		return JSON.parse(output);
+	} catch {
+		throw new EasCommandFailed(what, 0, `not JSON: ${output.slice(0, 200)}`);
+	}
+}
+
+/**
+ * The real one — never a prompt (`--non-interactive`). `env` is what the
+ * app's `app.config.ts` reads for the stage: every `eas` command evaluates
+ * it, and one that reads a value it lacks fails before it starts — and a
+ * fingerprint computed here must match the one EAS computes with the
+ * stage's values.
+ */
+export function easCli(
+	root: string,
+	env: Readonly<Record<string, string>> = {},
+): EasCli {
+	const run = (
+		dir: string,
+		args: readonly string[],
+		options: { inherit?: boolean } = {},
+	) => runEas(root, dir, args, { ...options, env });
 	return {
-		setEnv(dir, { environment, name, value }) {
-			const args = [
+		async setEnv(dir, { environment, name, value }) {
+			await run(dir, [
 				'env:set',
 				'--environment',
 				environment,
@@ -116,40 +223,82 @@ export function easCli(root: string): EasCli {
 				'plaintext',
 				'--scope',
 				'project',
-				'--non-interactive',
-			];
-			return new Promise((resolve, reject) => {
-				const child = spawn('eas', args, {
-					cwd: dir,
-					stdio: ['ignore', 'ignore', 'pipe'],
-					env: {
-						...process.env,
-						PATH: [
-							join(dir, 'node_modules', '.bin'),
-							join(root, 'node_modules', '.bin'),
-							process.env.PATH,
-						].join(delimiter),
-					},
-				});
-				let stderr = '';
-				child.stderr.on('data', (chunk: Buffer) => {
-					stderr += chunk.toString();
-				});
-				child.on('error', (error: NodeJS.ErrnoException) =>
-					reject(
-						error.code === 'ENOENT'
-							? new EasCliMissing(dir)
-							: new EasCommandFailed('env:set', null, error.message),
-					),
-				);
-				child.on('close', (code) =>
-					code === 0
-						? resolve()
-						: reject(
-								new EasCommandFailed(`env:set --name ${name}`, code, stderr),
-							),
-				);
-			});
+			]);
+		},
+
+		async fingerprint(dir, { platform, profile }) {
+			const output = await run(dir, [
+				'fingerprint:generate',
+				'--platform',
+				platform,
+				'--build-profile',
+				profile,
+				'--json',
+			]);
+			const hash = (
+				easJson(output, 'fingerprint:generate') as { hash?: unknown }
+			).hash;
+			if (typeof hash !== 'string') {
+				throw new EasCommandFailed('fingerprint:generate', 0, 'no hash');
+			}
+			return hash;
+		},
+
+		async storeBuild(dir, { platform, profile, fingerprint }) {
+			const output = await run(dir, [
+				'build:list',
+				'--platform',
+				platform,
+				'--build-profile',
+				profile,
+				'--fingerprint-hash',
+				fingerprint,
+				'--status',
+				'finished',
+				'--distribution',
+				'store',
+				'--limit',
+				'1',
+				'--json',
+			]);
+			const builds = easJson(output, 'build:list');
+			if (!Array.isArray(builds)) return undefined;
+			const id = (builds[0] as { id?: unknown } | undefined)?.id;
+			return typeof id === 'string' ? id : undefined;
+		},
+
+		async build(dir, { platform, profile, submit, wait }) {
+			await run(
+				dir,
+				[
+					'build',
+					'--platform',
+					platform,
+					'--profile',
+					profile,
+					...(submit ? ['--auto-submit'] : []),
+					...(wait ? [] : ['--no-wait']),
+				],
+				{ inherit: true },
+			);
+		},
+
+		async update(dir, { platform, channel, environment, message }) {
+			await run(
+				dir,
+				[
+					'update',
+					'--platform',
+					platform,
+					'--channel',
+					channel,
+					'--environment',
+					environment,
+					'--message',
+					message,
+				],
+				{ inherit: true },
+			);
 		},
 	};
 }
@@ -210,6 +359,8 @@ export interface EasSyncOptions {
 /** What a sync wrote — or, dry, would. */
 export interface EasSyncResult {
 	app: string;
+	/** The workspace's root, where its `eas` may be installed. */
+	root: string;
 	dir: string;
 	stage: MobileStage;
 	values: Record<string, string>;
@@ -272,7 +423,14 @@ export async function easSync(
 		for (const [key, value] of Object.entries(values)) {
 			logger.log(`   would set ${key}=${value}`);
 		}
-		return { app: name, dir, stage, values, easJsonChanged };
+		return {
+			app: name,
+			root: workspace.root,
+			dir,
+			stage,
+			values,
+			easJsonChanged,
+		};
 	}
 
 	logger.log(`📱 ${where}`);
@@ -282,10 +440,17 @@ export async function easSync(
 			`   wrote build.${stage.stage} and submit.${stage.stage} in ${path}`,
 		);
 	}
-	const cli = eas ?? easCli(workspace.root);
+	const cli = eas ?? easCli(workspace.root, values);
 	for (const [key, value] of Object.entries(values)) {
 		await cli.setEnv(dir, { environment: stage.environment, name: key, value });
 		logger.log(`   set ${key}`);
 	}
-	return { app: name, dir, stage, values, easJsonChanged };
+	return {
+		app: name,
+		root: workspace.root,
+		dir,
+		stage,
+		values,
+		easJsonChanged,
+	};
 }

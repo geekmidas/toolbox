@@ -1,29 +1,14 @@
-import {
-	chmodSync,
-	existsSync,
-	mkdirSync,
-	readFileSync,
-	realpathSync,
-	writeFileSync,
-} from 'node:fs';
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { MobileAppDeclaration } from '@geekmidas/manifest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import {
-	loadComposeApp,
-	SERVER_IPV4,
-	writeComposeApp,
-} from '../../compose/__tests__/__helpers__/composeApp';
-import {
 	type Call,
 	fakeDocker,
 	fakeServer,
 } from '../../compose/__tests__/__helpers__/fakeDocker';
-import { deployedStackSecrets } from '../../compose/secrets';
-import { loadWorkspaceSettings } from '../../config';
 import { execOnStage } from '../../exec/stage';
-import { secretsStoreFor } from '../../secrets/store';
 import {
 	type EasCli,
 	EasCommandFailed,
@@ -34,6 +19,12 @@ import {
 	withStageProfiles,
 } from '../eas';
 import { MobileAppStageUndeclared, mobileStage } from '../stage';
+import {
+	deployedMobileApp,
+	easRecorder,
+	easStandIn,
+	easStandInCalls,
+} from './__helpers__/mobileApp';
 
 /**
  * A mobile app's EAS project set up for a deployed stage: the compose
@@ -55,36 +46,13 @@ afterEach(async () => {
 	await cleanupDir(dir);
 });
 
-/** The fixture, deployed: its secrets as its first deploy left them. */
-async function deployed(
-	options: Parameters<typeof writeComposeApp>[1] = {},
+/** The fixture, deployed, with a `MobileApp`. */
+const deployed = (
+	options: Parameters<typeof deployedMobileApp>[1] = {},
 	custom: Record<string, string> = {},
-): Promise<void> {
-	writeComposeApp(dir, { target: 'compose', mobile: true, ...options });
-	const { workspace, manifest } = await loadComposeApp(dir);
-	const { secrets } = deployedStackSecrets(
-		workspace,
-		'production',
-		null,
-		manifest,
-	);
-	const store = await secretsStoreFor(
-		await loadWorkspaceSettings(dir),
-		'production',
-	);
-	await store.write('production', {
-		...secrets,
-		custom: {
-			...secrets.custom,
-			AUTH_SECRET: 'the-production-signing-secret',
-			BACKUPS_URL: 's3://K:S@backups?region=eu-west-1',
-			GKM_SERVER_IPV4: SERVER_IPV4,
-			...custom,
-		},
-	});
-}
+) => deployedMobileApp(dir, options, custom);
 
-/** `eas` as a recorder. */
+/** `eas` as a recorder, keeping each variable set and where. */
 function recorder() {
 	const set: {
 		dir: string;
@@ -93,6 +61,7 @@ function recorder() {
 		value: string;
 	}[] = [];
 	const eas: EasCli = {
+		...easRecorder().eas,
 		async setEnv(at, variable) {
 			set.push({ dir: at, ...variable });
 		},
@@ -305,22 +274,9 @@ describe('gkm eas:sync', () => {
 });
 
 describe('the eas it runs', () => {
-	/** An `eas` in the app's node_modules/.bin that records its arguments. */
-	function standIn(appDir: string, exit = 0) {
-		const bin = join(appDir, 'node_modules', '.bin');
-		mkdirSync(bin, { recursive: true });
-		const log = join(appDir, 'eas-args.txt');
-		writeFileSync(
-			join(bin, 'eas'),
-			`#!/bin/sh\nprintf '%s\\n' "$@" >> '${log}'\necho 'not logged in' >&2\nexit ${exit}\n`,
-		);
-		chmodSync(join(bin, 'eas'), 0o755);
-		return log;
-	}
-
 	it('is the app’s own, setting a plaintext project variable without a prompt', async () => {
 		const appDir = join(dir, 'app');
-		const log = standIn(appDir);
+		const log = easStandIn(appDir);
 
 		await easCli(dir).setEnv(appDir, {
 			environment: 'production',
@@ -328,25 +284,27 @@ describe('the eas it runs', () => {
 			value: 'https://api.shop.example.com',
 		});
 
-		expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual([
-			'env:set',
-			'--environment',
-			'production',
-			'--name',
-			'EXPO_PUBLIC_API_URL',
-			'--value',
-			'https://api.shop.example.com',
-			'--visibility',
-			'plaintext',
-			'--scope',
-			'project',
-			'--non-interactive',
+		expect(easStandInCalls(log, (path) => readFileSync(path, 'utf8'))).toEqual([
+			[
+				'env:set',
+				'--environment',
+				'production',
+				'--name',
+				'EXPO_PUBLIC_API_URL',
+				'--value',
+				'https://api.shop.example.com',
+				'--visibility',
+				'plaintext',
+				'--scope',
+				'project',
+				'--non-interactive',
+			],
 		]);
 	});
 
 	it('says what eas said when it fails', async () => {
 		const appDir = join(dir, 'app');
-		standIn(appDir, 1);
+		easStandIn(appDir, { exit: 1 });
 
 		const failed = easCli(dir).setEnv(appDir, {
 			environment: 'production',

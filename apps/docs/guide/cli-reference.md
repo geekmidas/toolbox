@@ -515,6 +515,29 @@ Options:
 
 See [Mobile apps on a deployed stage](./mobile.md).
 
+### `gkm publish`
+
+Ship a mobile app for a deployed compose stage: sync its EAS project, then an
+update on the stage's channel when a store build has its native code, or a
+store build submitted to the stores when none does.
+
+```bash
+gkm publish --stage <stage> [options]
+
+Options:
+  --stage <stage>        A deployed compose stage
+  --app <app>            The mobile app (default: the one here, or the only one)
+  --platform <platform>  ios, android or all (default: all)
+  --build                A store build, whatever the fingerprint says
+  --update               An update, whatever the fingerprint says
+  --wait                 Wait for a build to finish, and submit, on EAS
+  --message <message>    An update's message (default: the commit's subject)
+  --profile <profile>    AWS profile for the stage's account
+  --dry-run              Say what would be released, and release nothing
+```
+
+See [Mobile apps on a deployed stage](./mobile.md#gkm-publish).
+
 ### `gkm compose`
 
 Run the workspace's APIs and sites for a stage as one Docker Compose stack

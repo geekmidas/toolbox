@@ -315,6 +315,29 @@ describe('generateGithubFiles', () => {
 			});
 		});
 
+		it('publishes the phone app after its servers, with the stage’s EAS token', () => {
+			type Step = { name?: string; run?: string; env?: Record<string, string> };
+			const steps = (yaml: string) => parse(yaml).jobs.deploy.steps as Step[];
+
+			const withApp = steps(compose({ mobileApp: true }));
+			const names = withApp.map((step) => step.name);
+			const publish = withApp.find((step) => step.name === 'Publish the app')!;
+
+			expect(names.indexOf('Publish the app')).toBe(
+				names.indexOf('Deploy') + 1,
+			);
+			expect(publish.run).toBe('pnpm exec gkm publish --stage "$STAGE"');
+			expect(publish.env).toEqual({
+				STAGE: '${{ matrix.stage }}',
+				EXPO_TOKEN: '${{ secrets.EXPO_TOKEN }}',
+			});
+
+			// No app, nothing to publish.
+			expect(steps(compose()).map((step) => step.name)).not.toContain(
+				'Publish the app',
+			);
+		});
+
 		it('deploys each stage once at a time, after a build that did not fail', () => {
 			const job = parse(compose()).jobs.deploy;
 
