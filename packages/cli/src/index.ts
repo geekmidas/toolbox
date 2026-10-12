@@ -361,6 +361,57 @@ program
 	);
 
 program
+	.command('publish')
+	.description(
+		'Ship a mobile app for a deployed stage: sync its EAS project, then an update when a store build has its native code, a store build submitted to the stores when none does',
+	)
+	.requiredOption('--stage <stage>', 'A deployed compose stage')
+	.option(
+		'--app <app>',
+		'The mobile app (default: the one here, or the only one)',
+	)
+	.option('--platform <platform>', 'ios, android or all', 'all')
+	.option('--build', 'A store build, whatever the fingerprint says')
+	.option('--update', 'An update, whatever the fingerprint says')
+	.option('--wait', 'Wait for a build to finish, and submit, on EAS')
+	.option(
+		'--message <message>',
+		"An update's message (default: the commit's subject)",
+	)
+	.option('--profile <profile>', "AWS profile for the stage's account")
+	.option('--dry-run', 'Say what would be released, and release nothing')
+	.action(
+		async (options: {
+			stage: string;
+			app?: string;
+			platform: 'ios' | 'android' | 'all';
+			build?: boolean;
+			update?: boolean;
+			wait?: boolean;
+			message?: string;
+			profile?: string;
+			dryRun?: boolean;
+		}) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) process.chdir(globalOptions.cwd);
+				const { publish, PublishModeConflict } = await import(
+					'./mobile/publish.js'
+				);
+				if (options.build && options.update) throw new PublishModeConflict();
+				const { build, update, ...rest } = options;
+				await publish({
+					...rest,
+					...(build ? { mode: 'build' as const } : {}),
+					...(update ? { mode: 'update' as const } : {}),
+				});
+			} catch (error) {
+				exitWithError(error);
+			}
+		},
+	);
+
+program
 	.command('test')
 	.description('Run tests with secrets loaded from environment')
 	.option(

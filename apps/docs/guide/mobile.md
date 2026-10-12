@@ -86,6 +86,68 @@ Then build with the stage's profile:
 eas build --profile prod --platform all
 ```
 
+## `gkm publish`
+
+```bash
+gkm publish --stage prod
+```
+
+Ships the app's current code to the stage's users, the cheapest way that
+gets it there. It syncs first (as `gkm eas:sync`), then, for iOS and Android:
+
+1. computes the fingerprint of the app's native code with the stage's build
+   profile (`eas fingerprint:generate`). With `runtimeVersion: { policy:
+   'fingerprint' }` in `app.config.ts`, that is the runtime version a build
+   gets;
+2. looks for a finished store build of the stage's profile with that
+   fingerprint (`eas build:list`);
+3. **if there is one**, only JavaScript changed: it publishes an update on the
+   stage's channel (`eas update --channel <stage>`), which phones running that
+   build download. The message is the commit's subject unless `--message`
+   names one;
+4. **if there is none**, it starts a store build (`eas build --profile <stage>
+   --auto-submit --no-wait`), submitted as the stage's submit profile says:
+   Android to its Play track, iOS to App Store Connect once
+   `submit.<stage>.ios.ascAppId` is set in `eas.json`. Without it, iOS is
+   built and not submitted, and gkm says so.
+
+| Option | |
+| --- | --- |
+| `--platform ios\|android\|all` | One platform, or both (the default) |
+| `--build` | A store build, whatever the fingerprint says |
+| `--update` | An update, whatever the fingerprint says. Refused when no store build has the native code (`NoStoreBuildForUpdate`): it would reach nobody |
+| `--wait` | Wait for the build, and its submission, on EAS |
+| `--dry-run` | Say what it would release, and release nothing. It still asks EAS for the fingerprint and the builds |
+
+### In CI
+
+`gkm init` writes a deploy workflow whose deploy job, for a workspace with a
+mobile app, publishes it after the stage's servers:
+
+```yaml
+      - name: Publish the app
+        run: pnpm exec gkm publish --stage "$STAGE"
+        env:
+          STAGE: ${{ matrix.stage }}
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+```
+
+A workflow written before this needs the step added by hand. `EXPO_TOKEN` is
+an EAS access token, a secret on each stage's GitHub environment. The build
+runs on EAS, so the job doesn't wait for it.
+
+### Before the first store build
+
+Each store needs things only an account owner can set up:
+
+- **iOS:** the app in App Store Connect, its Apple ID in
+  `submit.<stage>.ios.ascAppId`, App Store distribution credentials
+  (`eas credentials -p ios`), and an App Store Connect API key in EAS so CI
+  can submit without an Apple login.
+- **Android:** the app in Play Console, and a Google service account key in
+  EAS for EAS Submit. Play requires the very first upload of a new app to be
+  done by hand.
+
 ## `gkm exec --stage` for a mobile app
 
 From the app's directory, `gkm exec --stage prod -- <command>` runs the command

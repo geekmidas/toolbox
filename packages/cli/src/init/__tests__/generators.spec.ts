@@ -525,18 +525,41 @@ describe('generateExpoAppFiles', () => {
 		expect(pkg.dependencies['expo-device']).toBeDefined();
 	});
 
-	it('tells a store build its scheme, and a dev build nothing gkm injects', () => {
+	it('gives each deployed stage a store profile, and no value a sync would be overridden by', () => {
 		const eas = JSON.parse(
-			generateExpoAppFiles(fullstackOptions).find(
-				(f) => f.path === 'apps/app/eas.json',
-			)!.content,
+			generateExpoAppFiles({
+				...fullstackOptions,
+				stages: {
+					local: 'development',
+					deployed: ['staging', 'production'],
+					protected: ['production'],
+				},
+			}).find((f) => f.path === 'apps/app/eas.json')!.content,
 		);
 
-		expect(eas.build.dev.env).toBeUndefined();
-		expect(eas.build.production.env.APP_SCHEME).toMatch(/^[a-z][a-z0-9+.-]*$/);
-		expect(eas.build.preview.env.APP_SCHEME).toBe(
-			eas.build.production.env.APP_SCHEME,
-		);
+		// As `gkm eas:sync` writes them: the values live in each stage's EAS
+		// environment, so no profile — dev included — carries an `env`.
+		expect(eas.build).toEqual({
+			dev: {
+				developmentClient: true,
+				distribution: 'internal',
+				environment: 'development',
+			},
+			staging: {
+				autoIncrement: true,
+				environment: 'preview',
+				channel: 'staging',
+			},
+			production: {
+				autoIncrement: true,
+				environment: 'production',
+				channel: 'production',
+			},
+		});
+		expect(eas.submit).toEqual({
+			staging: { android: { track: 'internal', releaseStatus: 'draft' } },
+			production: { android: { track: 'production', releaseStatus: 'draft' } },
+		});
 	});
 
 	it('declares expo + better-auth/expo as dependencies', () => {
