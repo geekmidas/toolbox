@@ -1,5 +1,92 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.111
+
+### Minor Changes
+
+- [#254](https://github.com/geekmidas/toolbox/pull/254) [`7999ddd`](https://github.com/geekmidas/toolbox/commit/7999ddd9d78f3682dc4b1c4645794f5c6e10ed76) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm deploy:google-play` sets up publishing a mobile app to Google Play
+
+  One run, as a Play Console admin, replaces the manual "Google Service Account
+  key" steps:
+
+  - each deployed stage's Play track and release status in `eas.json`;
+  - a Google Cloud project (`--project`, or `<workspace>-play`, created when
+    absent) with the Android Publisher API enabled, and a `<workspace>-play`
+    service account in it;
+  - the account invited in Play Console with a grant on the app alone. Its
+    permissions follow the stages' tracks: production releases only when a
+    stage submits to production, and listing edits only when the app keeps a
+    listing;
+  - ✨ a new JSON key, held in memory only, uploaded to EAS and assigned for EAS
+    Submit, then verified by opening and discarding an edit with it. Only then
+    are older keys deleted from EAS and Google;
+  - the store listing and data safety form from `store/play/` (fastlane
+    supply's layout), pushed through an edit;
+  - a checklist of the declarations Play Console only takes by hand.
+
+  Signing in uses gcloud's application-default login, in gkm's own gcloud
+  config. The app's package and EAS project come from its Expo config.
+
+- [#253](https://github.com/geekmidas/toolbox/pull/253) [`974d496`](https://github.com/geekmidas/toolbox/commit/974d496ac9daa6d6c18f1d94be1f0b0c05436d44) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm publish --stage <stage>` ships a mobile app for a deployed stage
+
+  It syncs the app's EAS project (as `gkm eas:sync`), then, per platform,
+  chooses the cheapest release:
+
+  - ⬆️ an **update** on the stage's channel when a finished store build of the
+    stage's profile has the same native fingerprint, so only JavaScript changed;
+  - otherwise a **store build** with `--auto-submit`. Android goes to the
+    stage's Play track. iOS is submitted once `submit.<stage>.ios.ascAppId` is
+    set, and is built without submitting until then.
+
+  `--build` and `--update` force either choice. `--update` with no store build
+  to receive it is refused (`NoStoreBuildForUpdate`).
+
+  `gkm init`'s deploy workflow publishes the app after a stage's servers when
+  the workspace has one (`EXPO_TOKEN` on the stage's environment). Its
+  `eas.json` now has one store profile per deployed stage (environment,
+  channel, Play track) and no URLs. URLs in `eas.json`'s `env` would override
+  the values `gkm eas:sync` sets.
+
+- [#252](https://github.com/geekmidas/toolbox/pull/252) [`6de4510`](https://github.com/geekmidas/toolbox/commit/6de4510a18c216b4be768db35d49e0d289b3ac3e) Thanks [@geekmidas](https://github.com/geekmidas)! - A mobile app's values for a deployed stage reach EAS: `gkm eas:sync`, and `gkm exec --stage` from a mobile app
+
+  A store build runs on EAS's machines, outside gkm, so until now a deployed
+  stage's API and auth URLs had to be copied into EAS by hand.
+
+  - `gkm eas:sync --stage <stage>` writes the stage's `build.<stage>` profile
+    (EAS environment and channel) and `submit.<stage>.android` profile (Play
+    track and release status) into the app's `eas.json`. Every other field is
+    kept. It then sets the app's values for the stage in that EAS environment
+    with `eas env:set`, as plaintext. Those values are its scheme, its edges'
+    public URLs under `EXPO_PUBLIC_`, and any stage secret already named
+    `EXPO_PUBLIC_…`. `--dry-run` writes nothing.
+  - `MobileApp` takes `stages`, which says how a stage ships it where that
+    differs from the defaults. The protected stage reads EAS's `production`
+    environment and submits to Play's `production` track. Every other deployed
+    stage reads `preview` and submits to `internal`. Every Android release is a
+    `draft` unless the stage says `completed`.
+  - `gkm exec --stage <stage>` from a mobile app's directory runs with those
+    same values, and needs no SSH. A command whose app reaches nothing on the
+    stage's server network (a site or a mobile app) no longer opens an SSH
+    connection.
+  - 🐛 Fixed: a deployed stage no longer hands a site's build an email's
+    `…_INBOX_URL`. That's Mailpit's local inbox, which a deployed stage
+    doesn't have. A backend never got it, but a site did.
+
+### Patch Changes
+
+- Updated dependencies [[`6de4510`](https://github.com/geekmidas/toolbox/commit/6de4510a18c216b4be768db35d49e0d289b3ac3e)]:
+  - @geekmidas/constructs@10.0.0-alpha.111
+  - @geekmidas/manifest@10.0.0-alpha.111
+  - @geekmidas/cache@10.0.0-alpha.111
+  - @geekmidas/db@10.0.0-alpha.111
+  - @geekmidas/envkit@10.0.0-alpha.111
+  - @geekmidas/errors@10.0.0-alpha.111
+  - @geekmidas/logger@10.0.0-alpha.111
+  - @geekmidas/schema@10.0.0-alpha.111
+  - @geekmidas/services@10.0.0-alpha.111
+  - @geekmidas/storage@10.0.0-alpha.111
+  - @geekmidas/telescope@10.0.0-alpha.111
+
 ## 10.0.0-alpha.110
 
 ### Minor Changes
