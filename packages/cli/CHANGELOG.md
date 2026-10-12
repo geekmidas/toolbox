@@ -1,5 +1,46 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.110
+
+### Minor Changes
+
+- [#251](https://github.com/geekmidas/toolbox/pull/251) [`bd5b430`](https://github.com/geekmidas/toolbox/commit/bd5b43069feabb52521da1231d69ff225fa41305) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm exec --stage <stage>` runs a command against a deployed compose stage
+
+  A one-off script (a data import, a backfill, a report) can now run from a
+  laptop or CI as an app runs on a deployed stage:
+
+  ```bash
+  cd apps/api
+  gkm exec --stage production -- node scripts/backfill.ts
+  ```
+
+  - The environment is the app's container's, derived the way the deploy
+    derives it from the stage's secrets, read from the stage's store
+    (`--profile` names the AWS profile for it).
+  - Each service it names that the server publishes on its loopback (Postgres,
+    MinIO) goes through an SSH tunnel on the deploy's login, the same tunnel the
+    deploy migrates through. A sibling app is reached at its public address.
+  - Nothing is written to disk. The values exist only in the command's
+    environment, and `Credentials` is filled from there.
+  - The tunnels close when the command exits, whether it succeeds, fails or is
+    interrupted. `gkm exec` exits with the command's code.
+  - A protected stage asks first. `--yes` skips the question.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.110
+  - @geekmidas/constructs@10.0.0-alpha.110
+  - @geekmidas/db@10.0.0-alpha.110
+  - @geekmidas/envkit@10.0.0-alpha.110
+  - @geekmidas/errors@10.0.0-alpha.110
+  - @geekmidas/logger@10.0.0-alpha.110
+  - @geekmidas/manifest@10.0.0-alpha.110
+  - @geekmidas/schema@10.0.0-alpha.110
+  - @geekmidas/services@10.0.0-alpha.110
+  - @geekmidas/storage@10.0.0-alpha.110
+  - @geekmidas/telescope@10.0.0-alpha.110
+
 ## 10.0.0-alpha.109
 
 ### Patch Changes

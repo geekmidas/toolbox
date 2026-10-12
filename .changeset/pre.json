@@ -96,6 +96,7 @@
     "encryption-construct",
     "endpoint-form-bodies",
     "events-drivers",
+    "exec-on-a-deployed-stage",
     "external-api",
     "faker-lowercase-email",
     "featuretest-delivery",
