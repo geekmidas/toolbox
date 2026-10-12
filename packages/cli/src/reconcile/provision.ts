@@ -69,6 +69,10 @@ export function postgresStatements(
 	seed?: string,
 ): Statement[] {
 	const statements: Statement[] = [];
+	// A cache's table, run once every database and its roles exist: a cache
+	// can sort before the database it lives in (`Cache`, `Database`), and its
+	// table cannot be looked for in a database not yet created.
+	const cacheTables: Statement[] = [];
 
 	for (const resource of plan.resources) {
 		if (!resource.provisions || resource.container !== 'postgres') continue;
@@ -121,7 +125,7 @@ export function postgresStatements(
 				: undefined;
 
 		if (cacheHome) {
-			statements.push(...cacheTableDdl(resource, cacheHome, plan));
+			cacheTables.push(...cacheTableDdl(resource, cacheHome, plan));
 		}
 
 		// A reader provisions nothing: it is a set of grants on an endpoint that
@@ -129,7 +133,7 @@ export function postgresStatements(
 		// stays safe because read-only is enforced by the role.
 	}
 
-	return statements;
+	return [...statements, ...cacheTables];
 }
 
 /**

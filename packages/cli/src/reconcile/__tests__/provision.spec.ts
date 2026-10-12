@@ -141,6 +141,35 @@ describe('the cache table', () => {
 		expect(statements.every((s) => s.database === 'orders')).toBe(true);
 	});
 
+	it('comes after the database it lives in, whatever sorts first', () => {
+		// A scaffold declares `Cache` and `Database`: the cache sorts first,
+		// and checking for its table in a database not yet created failed every
+		// fresh `gkm test` with 'database "database_test" does not exist'.
+		const scaffold = {
+			Cache: { kind: 'cache', id: 'Cache', provides: ['CACHE_URL'] },
+			Database: {
+				kind: 'database',
+				id: 'Database',
+				schema: 'app',
+				provides: ['DATABASE_URL'],
+			},
+		} as const satisfies ConstructManifest;
+
+		const statements = postgresStatements(
+			planFor(scaffold, 'test', provisionOrder(scaffold), {
+				localStage: 'development',
+				cache: 'db',
+			}),
+		);
+		const database = statements.findIndex((s) =>
+			s.create.startsWith('CREATE DATABASE'),
+		);
+		const firstCache = statements.findIndex((s) => s.id === 'Cache');
+
+		expect(database).toBeGreaterThanOrEqual(0);
+		expect(firstCache).toBeGreaterThan(database);
+	});
+
 	it('gives two caches in one database a table each', () => {
 		// Sharing a table would mean sharing a keyspace: each would read the
 		// other's entries and evict the other's keys.
