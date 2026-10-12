@@ -1,4 +1,5 @@
 import {
+	existsSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
@@ -28,7 +29,10 @@ import {
 	fakeDocker,
 } from '../../compose/__tests__/__helpers__/fakeDocker';
 import { deployedStackSecrets } from '../../compose/secrets';
-import type { ServerAccess } from '../../compose/server';
+import {
+	ComposeServerUnreachable,
+	type ServerAccess,
+} from '../../compose/server';
 import { composeStack } from '../../compose/stack';
 import { loadWorkspaceSettings } from '../../config';
 import { deployIdentity } from '../../deploy/identity';
@@ -376,6 +380,33 @@ describe('gkm exec --stage', () => {
 			deps(calls, { confirm: async () => false }),
 		);
 		expect(code).toBe(0);
+	});
+
+	it('says SSH refused the login, and runs nothing', async () => {
+		await deployed();
+		const calls: Call[] = [];
+		const refused = new ComposeServerUnreachable(
+			`deploy@${SERVER_IPV4}`,
+			'Permission denied (publickey).',
+		);
+		const server = realServer(calls);
+
+		await expect(
+			execOnStage(
+				[process.execPath, '-e', RECORDER],
+				{ stage: 'production', cwd: join(dir, 'apps', 'api') },
+				deps(calls, {
+					server: {
+						...server,
+						check: async () => {
+							throw refused;
+						},
+					},
+				}),
+			),
+		).rejects.toThrow(refused);
+		expect(calls).toEqual([]);
+		expect(existsSync(join(dir, 'apps', 'api', 'seen.json'))).toBe(false);
 	});
 
 	it('refuses a stage that was never deployed', async () => {

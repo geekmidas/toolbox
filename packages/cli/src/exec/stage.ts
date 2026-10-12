@@ -318,7 +318,7 @@ async function stageStack(
  * is closed once it exits, whatever it exits with.
  *
  * @throws {ExecStageNotComposed}, {ExecStageNotDeployed}, {ExecAppNotInStack},
- *   {ExecNotConfirmed}
+ *   {ExecNotConfirmed}, {ComposeServerUnreachable}
  */
 export async function execOnStage(
 	commandArgs: readonly [string, ...string[]],
@@ -338,6 +338,10 @@ export async function execOnStage(
 	}
 
 	logger.log(`📦 App: ${appName} on '${stage}' (${server.host})`);
+
+	// The deploy's own check: SSH logs in and Docker answers, before any
+	// tunnel is asked for — so a key the server refuses is said as that.
+	await deps.server.check(server);
 
 	const tunnels: Tunnel[] = [];
 	const ports = new Map<string, number>();
