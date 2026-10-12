@@ -70,6 +70,7 @@ import {
 	appTag,
 	assignAppPorts,
 	describeHolder,
+	describeMove,
 	holderOf,
 	withAppPorts,
 } from './appPorts.js';
@@ -298,11 +299,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 	if (assigned.running.length > 0) {
 		throw new WorkspacePortsInUse(assigned.running);
 	}
-	for (const { app, from, to, holder } of assigned.moved) {
-		logger.log(
-			`↪️  ${app}: ${from} is held by ${describeHolder(holder)}, which is not this workspace's — using ${to}`,
-		);
-	}
+	for (const move of assigned.moved) logger.log(describeMove(move));
 	const workspace: NormalizedWorkspace = withAppPorts(
 		appConfig.workspace,
 		assigned.ports,
@@ -965,11 +962,7 @@ async function workspaceDevCommand(
 	if (assigned.running.length > 0) {
 		throw new WorkspacePortsInUse(assigned.running);
 	}
-	for (const { app, from, to, holder } of assigned.moved) {
-		logger.log(
-			`↪️  ${app}: ${from} is held by ${describeHolder(holder)}, which is not this workspace's — using ${to}`,
-		);
-	}
+	for (const move of assigned.moved) logger.log(describeMove(move));
 	const workspace = withAppPorts(configured, assigned.ports);
 	const appCount = Object.keys(workspace.apps).length;
 	const frontendApps = Object.entries(workspace.apps).filter(

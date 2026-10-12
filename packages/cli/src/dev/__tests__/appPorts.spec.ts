@@ -1,5 +1,5 @@
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -8,6 +8,7 @@ import {
 	APP_TAG_ENV,
 	appTag,
 	assignAppPorts,
+	describeMove,
 	holderOf,
 	type PortHolder,
 	savedAppPorts,
@@ -41,6 +42,15 @@ describe('assignAppPorts', () => {
 	afterEach(async () => {
 		await rm(root, { recursive: true, force: true });
 	});
+
+	/** The ports a previous `gkm dev` left in `.gkm/app-ports.json`. */
+	const saved = async (ports: Record<string, number>) => {
+		await mkdir(join(root, '.gkm'), { recursive: true });
+		await writeFile(
+			join(root, '.gkm', 'app-ports.json'),
+			JSON.stringify(ports),
+		);
+	};
 
 	it('keeps each app on its usual port when nothing holds it', async () => {
 		const { ports, moved, running } = await assignAppPorts(
@@ -100,6 +110,47 @@ describe('assignAppPorts', () => {
 
 		expect(running).toEqual([{ app: 'api', port: 3000, holder: leftover }]);
 		expect(ports.api).toBe(3000);
+	});
+
+	it('moves an app added later off a port a sibling already has', async () => {
+		// web moved onto 3002 once; reviewer, added since, usually answers there.
+		await saved({ api: 3000, auth: 3001, web: 3002 });
+		const workspace = workspaceAt(root);
+		workspace.apps.reviewer = {
+			...workspace.apps.api!,
+			path: 'apps/reviewer',
+			port: 3002,
+		};
+
+		const { ports, moved } = await assignAppPorts(
+			workspace,
+			['api', 'auth', 'reviewer', 'web'],
+			machine({}),
+		);
+
+		expect(ports).toEqual({ api: 3000, auth: 3001, web: 3002, reviewer: 3003 });
+		expect(moved).toEqual([
+			{ app: 'reviewer', from: 3002, to: 3003, sibling: 'web' },
+		]);
+		expect(describeMove(moved[0]!)).toBe(
+			"↪️  reviewer: 3002 is web's — using 3003",
+		);
+		expect((await savedAppPorts(root)).reviewer).toBe(3003);
+	});
+
+	it('repairs a saved file that gave two apps one port, keeping the first', async () => {
+		await saved({ api: 3000, web: 3002, auth: 3002 });
+
+		const { ports, moved } = await assignAppPorts(
+			workspaceAt(root),
+			['api', 'auth', 'web'],
+			machine({}),
+		);
+
+		expect(ports).toEqual({ api: 3000, web: 3002, auth: 3003 });
+		expect(moved).toEqual([
+			{ app: 'auth', from: 3002, to: 3003, sibling: 'web' },
+		]);
 	});
 
 	it('keeps a move, so the app stays put once the other project stops', async () => {
