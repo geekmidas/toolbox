@@ -110,6 +110,7 @@
     "harness-static-imports",
     "headless-deploy",
     "headless-toolbox",
+    "identify-request-user",
     "images-built-in-docker",
     "init-deploy-target",
     "init-github-actions",
