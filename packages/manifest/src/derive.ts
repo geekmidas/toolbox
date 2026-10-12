@@ -177,7 +177,8 @@ export const PUBLIC_PREFIX: Record<
 
 /**
  * The keys a site's bundle needs, mapped to the key each value comes from —
- * `{ VITE_API_URL: 'API_URL' }`.
+ * `{ VITE_API_URL: 'API_URL' }` — its edges' public values, and a site's own
+ * address (`{ VITE_WEB_URL: 'WEB_URL' }`).
  *
  * A rename, not a second derivation: `API_URL` is resolved once, by whatever
  * resolved it for the server, and the site reads the same value under the name
@@ -199,6 +200,14 @@ export function publicEnvFor(
 ): Record<string, string> {
 	const prefix = PUBLIC_PREFIX[declaration.variant];
 	const keys: Record<string, string> = {};
+
+	// A site's own address, as its bundle reads it: what a page links to
+	// itself with — a canonical URL, an Open Graph image. A site with no edges
+	// still has one.
+	if (declaration.kind === 'site') {
+		const own = provideKey(declaration.id, 'url');
+		keys[`${prefix}${own}`] = own;
+	}
 
 	for (const edge of declaration.dependencies) {
 		const target = manifest[edge.target];

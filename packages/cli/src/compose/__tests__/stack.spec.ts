@@ -1,4 +1,5 @@
 import { realpathSync } from 'node:fs';
+import { EnvironmentParser } from '@geekmidas/envkit';
 import { type ConstructManifest, TELEMETRY_KEYS } from '@geekmidas/manifest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
@@ -296,16 +297,105 @@ describe("a backend's env file", () => {
 });
 
 describe('a static site', () => {
-	it('is built with its public URLs as build args', () => {
+	const dockerfileOf = (s: ComposeStack) =>
+		s.dockerfiles[`.gkm/compose/${s.stage}/Dockerfile.web`]!;
+
+	it('is built with its public URLs and its own address as build args', () => {
 		const s = stack();
 
 		expect(s.compose.services.web?.build?.args).toEqual({
+			// Its own address under its own name — read by server code at build
+			// time — and under the public prefix, for the bundle.
+			WEB_URL: 'https://compose-app.localhost:8443',
+			VITE_WEB_URL: 'https://compose-app.localhost:8443',
 			VITE_API_URL: 'https://api.compose-app.localhost:8443',
 			VITE_AUTH_URL: 'https://auth.compose-app.localhost:8443',
 		});
-		const dockerfile = s.dockerfiles['.gkm/compose/development/Dockerfile.web'];
-		expect(dockerfile).toContain('ARG VITE_API_URL=""');
-		expect(dockerfile).toContain('ARG VITE_AUTH_URL=""');
+		// Every one declared, or the build drops it.
+		for (const key of Object.keys(s.compose.services.web!.build!.args!)) {
+			expect(dockerfileOf(s)).toContain(`ARG ${key}=""`);
+			expect(dockerfileOf(s)).toContain(`ENV ${key}=$${key}`);
+		}
+	});
+
+	it('gets its own address with no edges at all', () => {
+		const alone = {
+			...manifest,
+			Web: { ...manifest.Web, dependencies: [] },
+		} as ConstructManifest;
+		const s = stack({ manifest: alone });
+
+		expect(s.compose.services.web?.build?.args).toEqual({
+			WEB_URL: 'https://compose-app.localhost:8443',
+			VITE_WEB_URL: 'https://compose-app.localhost:8443',
+		});
+		expect(dockerfileOf(s)).toContain('ARG WEB_URL=""');
+	});
+
+	it('is built with the stage secrets named for the bundle, and no others', () => {
+		const s = stack({
+			stage: 'production',
+			images: {
+				mode: 'build',
+				tag: 'v1',
+				registry: 'registry.example.com/acme',
+			},
+			secrets: production({
+				VITE_APP_STORE_URL: 'https://apps.apple.com/app/id1',
+				// Another variant's prefix: not this site's bundle.
+				NEXT_PUBLIC_ANALYTICS_ID: 'G-123',
+				STRIPE_KEY: 'sk_live_x',
+			}),
+			ports: {},
+		});
+		const args = s.compose.services.web!.build!.args!;
+
+		expect(args.VITE_APP_STORE_URL).toBe('https://apps.apple.com/app/id1');
+		expect(dockerfileOf(s)).toContain('ARG VITE_APP_STORE_URL=""');
+		expect(args).not.toHaveProperty('NEXT_PUBLIC_ANALYTICS_ID');
+		expect(args).not.toHaveProperty('STRIPE_KEY');
+		expect(args).not.toHaveProperty('AUTH_SECRET');
+		expect(dockerfileOf(s)).not.toContain('STRIPE_KEY');
+	});
+
+	it('builds a site whose config needs its own address at build time', () => {
+		// The environment `next build` runs in inside the image: the
+		// Dockerfile's `ENV KEY=$KEY` lines, each filled from the build arg
+		// compose passes. A key the Dockerfile does not declare is not there.
+		const s = stack();
+		const args = s.compose.services.web!.build!.args!;
+		const buildEnv: Record<string, string | undefined> = {};
+		for (const [, key] of dockerfileOf(s).matchAll(/^ENV (\w+)=\$\1$/gm)) {
+			buildEnv[key!] = args[key!];
+		}
+
+		// A site's server config, as one reads its own URL for `metadataBase`
+		// while it prerenders — what failed with
+		// `Environment variable "WEB_URL": expected string, received undefined`.
+		const config = new EnvironmentParser(buildEnv)
+			.create((get) => ({
+				webUrl: get('WEB_URL').string().url(),
+				publicWebUrl: get('VITE_WEB_URL').string().url(),
+			}))
+			.parse();
+
+		expect(config).toEqual({
+			webUrl: 'https://compose-app.localhost:8443',
+			publicWebUrl: 'https://compose-app.localhost:8443',
+		});
+	});
+
+	it('keeps its own address over a stage secret of the same name', () => {
+		const s = stack({
+			secrets: {
+				...initStageSecrets('development'),
+				custom: { VITE_WEB_URL: 'https://stale.example.com' },
+			},
+		});
+
+		expect(s.compose.services.web!.build!.args!.VITE_WEB_URL).toBe(
+			'https://compose-app.localhost:8443',
+		);
 	});
 
 	it('gets no server env and waits on no infrastructure', () => {
@@ -987,6 +1077,8 @@ describe('a stack that only builds (--build --push)', () => {
 
 	it("still builds the site with the stage's public URLs", () => {
 		expect(pushing().compose.services.web?.build?.args).toEqual({
+			WEB_URL: 'https://shop.example.com',
+			VITE_WEB_URL: 'https://shop.example.com',
 			VITE_API_URL: 'https://api.shop.example.com',
 			VITE_AUTH_URL: 'https://auth.shop.example.com',
 		});

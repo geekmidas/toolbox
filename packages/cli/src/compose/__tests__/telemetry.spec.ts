@@ -214,7 +214,10 @@ describe('the local stage', () => {
 		const s = stack();
 
 		expect(env(s, 'web')).toBeUndefined();
+		// Its public values and its own address: no server key among them.
 		expect(Object.keys(buildArgs(s, 'web'))).toEqual([
+			'WEB_URL',
+			'VITE_WEB_URL',
 			'VITE_API_URL',
 			'VITE_AUTH_URL',
 		]);

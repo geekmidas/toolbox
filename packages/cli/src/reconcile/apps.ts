@@ -26,6 +26,7 @@ import {
 	publicEnvFor,
 	TELEMETRY_KEYS,
 } from '@geekmidas/manifest';
+import { siteBuildArgs } from '../compose/siteBuild.js';
 import { composeBuildPaths } from '../docker/layout.js';
 import { findBuildRoot } from '../docker/templates.js';
 import { appTelemetry, scopeTelemetryEnv } from '../telemetry/edges.js';
@@ -128,12 +129,10 @@ export function sitePublicArgs(
 	)?.[1];
 	if (declaration?.kind !== 'site') return {};
 
-	const args: Record<string, string> = {};
-	for (const key of Object.keys(publicEnvFor(declaration, manifest))) {
-		const value = env[key];
-		if (value !== undefined) args[key] = value;
-	}
-	return args;
+	// The image build's own rule, so a site built here gets what a stage's
+	// image does. No stage secrets: the local stage's reach a site through
+	// `gkm exec`, which hands it every one.
+	return siteBuildArgs(declaration, manifest, (key) => env[key], {});
 }
 
 /**

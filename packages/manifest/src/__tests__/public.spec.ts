@@ -27,6 +27,7 @@ describe('publicEnvFor', () => {
 		expect(
 			publicEnvFor(site('static', ['Api', 'Uploads', 'Orders']), manifest),
 		).toEqual({
+			VITE_WEB_URL: 'WEB_URL',
 			VITE_API_URL: 'API_URL',
 			VITE_UPLOADS_URL: 'UPLOADS_URL',
 		});
@@ -34,16 +35,27 @@ describe('publicEnvFor', () => {
 
 	it('uses the framework prefix for each variant', () => {
 		expect(publicEnvFor(site('next', ['Login']), manifest)).toEqual({
+			NEXT_PUBLIC_WEB_URL: 'WEB_URL',
 			NEXT_PUBLIC_LOGIN_ISSUER: 'LOGIN_ISSUER',
 			NEXT_PUBLIC_LOGIN_AUDIENCE: 'LOGIN_AUDIENCE',
 		});
 		expect(
 			Object.keys(publicEnvFor(site('tanstack', ['Api']), manifest)),
-		).toEqual(['VITE_API_URL']);
+		).toEqual(['VITE_WEB_URL', 'VITE_API_URL']);
 	});
 
 	it('skips an edge to something the manifest does not have', () => {
-		expect(publicEnvFor(site('static', ['Gone']), manifest)).toEqual({});
+		expect(publicEnvFor(site('static', ['Gone']), manifest)).toEqual({
+			VITE_WEB_URL: 'WEB_URL',
+		});
+	});
+
+	it('gives a site its own address, edges or none', () => {
+		// What a page links to itself with — a canonical URL, an Open Graph
+		// image. A site that depends on nothing used to get nothing at all.
+		expect(publicEnvFor(site('next', []), manifest)).toEqual({
+			NEXT_PUBLIC_WEB_URL: 'WEB_URL',
+		});
 	});
 });
 
