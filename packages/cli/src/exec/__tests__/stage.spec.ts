@@ -39,6 +39,7 @@ import { deployIdentity } from '../../deploy/identity';
 import { secretsStoreFor } from '../../secrets/store';
 import type { StageSecrets } from '../../secrets/types';
 import { UndeclaredStage } from '../../workspace/stages';
+import { execCommand } from '../index';
 import {
 	appEnvironment,
 	ExecAppNotInStack,
@@ -403,6 +404,30 @@ describe('gkm exec --stage', () => {
 				host: `ssh://midas@${SERVER_IPV4}`,
 			}),
 		);
+		expect(calls.find((call) => call.op === 'tunnel')!.args).toEqual([
+			`midas@${SERVER_IPV4}`,
+			54_321,
+		]);
+	});
+
+	it('is what gkm exec --stage runs, with every option it was given', async () => {
+		await deployed();
+		const calls: Call[] = [];
+
+		await execCommand(
+			[process.execPath, '-e', RECORDER],
+			{
+				stage: 'production',
+				cwd: join(dir, 'apps', 'api'),
+				sshUser: 'midas',
+			},
+			deps(calls),
+		);
+
+		const seen = JSON.parse(
+			readFileSync(join(dir, 'apps', 'api', 'seen.json'), 'utf-8'),
+		);
+		expect(seen.connected).toBe(true);
 		expect(calls.find((call) => call.op === 'tunnel')!.args).toEqual([
 			`midas@${SERVER_IPV4}`,
 			54_321,

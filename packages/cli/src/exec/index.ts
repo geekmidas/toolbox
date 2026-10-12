@@ -8,6 +8,7 @@ import {
 } from '../credentials';
 import { GkmError } from '../errors';
 import { imageBuildCredentials, isImageBuild } from './imageBuild';
+import type { StageExecDeps } from './stage';
 
 const logger = console;
 
@@ -53,6 +54,7 @@ export interface ExecOptions {
 export async function execCommand(
 	commandArgs: string[],
 	options: ExecOptions = {},
+	stageDeps?: StageExecDeps,
 ): Promise<void> {
 	const cwd = options.cwd ?? process.cwd();
 
@@ -65,12 +67,17 @@ export async function execCommand(
 		const { loadWorkspaceConfig } = await import('../config.js');
 		const { workspace } = await loadWorkspaceConfig(cwd);
 		if (options.stage !== workspace.stages.local) {
-			const exitCode = await execOnStage(commandArgs as [string, ...string[]], {
-				stage: options.stage,
-				cwd,
-				...(options.profile ? { profile: options.profile } : {}),
-				...(options.yes ? { yes: true } : {}),
-			});
+			const exitCode = await execOnStage(
+				commandArgs as [string, ...string[]],
+				{
+					stage: options.stage,
+					cwd,
+					...(options.profile ? { profile: options.profile } : {}),
+					...(options.yes ? { yes: true } : {}),
+					...(options.sshUser ? { sshUser: options.sshUser } : {}),
+				},
+				stageDeps,
+			);
 			if (exitCode !== 0) process.exit(exitCode);
 			return;
 		}
