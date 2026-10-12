@@ -15,13 +15,16 @@ bundle silently went without it.
 
 A site's build now gets, as build arguments its Dockerfile declares:
 
-- its edges' public values and its own address, under the variant's prefix:
-  `publicEnvFor` adds `NEXT_PUBLIC_WEB_URL` / `VITE_WEB_URL`, which also reaches
-  `gkm dev` and `gkm exec`;
+- its edges' public values, and its own address as `NEXT_PUBLIC_BASE_URL` /
+  `VITE_BASE_URL`. The name is the same in every site, whatever the construct is
+  called, so the code that reads it can be shared. `publicEnvFor` adds it, so
+  `gkm dev` and `gkm exec` get it too;
 - its own address under its own name (`WEB_URL`), for server code that runs at
   build time;
 - every stage secret that carries the site's public prefix
   (`NEXT_PUBLIC_APP_STORE_URL` for a Next.js site). A secret without the prefix
   never reaches it.
 
-A derived address wins over a stage secret of the same name.
+A derived address wins over a stage secret of the same name. To give a site
+another address, set its plain `WEB_URL`, which both names then carry. Better still,
+change `domains` in `gkm.config.ts`.

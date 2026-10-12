@@ -217,9 +217,9 @@ describe('the local stage', () => {
 		// Its public values and its own address: no server key among them.
 		expect(Object.keys(buildArgs(s, 'web'))).toEqual([
 			'WEB_URL',
-			'VITE_WEB_URL',
 			'VITE_API_URL',
 			'VITE_AUTH_URL',
+			'VITE_BASE_URL',
 		]);
 		expect(JSON.stringify(s.compose.services.web)).not.toContain('OTEL_');
 	});

@@ -305,9 +305,9 @@ describe('a static site', () => {
 
 		expect(s.compose.services.web?.build?.args).toEqual({
 			// Its own address under its own name — read by server code at build
-			// time — and under the public prefix, for the bundle.
+			// time — and as the bundle's base URL, under one name in every site.
 			WEB_URL: 'https://compose-app.localhost:8443',
-			VITE_WEB_URL: 'https://compose-app.localhost:8443',
+			VITE_BASE_URL: 'https://compose-app.localhost:8443',
 			VITE_API_URL: 'https://api.compose-app.localhost:8443',
 			VITE_AUTH_URL: 'https://auth.compose-app.localhost:8443',
 		});
@@ -327,7 +327,7 @@ describe('a static site', () => {
 
 		expect(s.compose.services.web?.build?.args).toEqual({
 			WEB_URL: 'https://compose-app.localhost:8443',
-			VITE_WEB_URL: 'https://compose-app.localhost:8443',
+			VITE_BASE_URL: 'https://compose-app.localhost:8443',
 		});
 		expect(dockerfileOf(s)).toContain('ARG WEB_URL=""');
 	});
@@ -375,13 +375,13 @@ describe('a static site', () => {
 		const config = new EnvironmentParser(buildEnv)
 			.create((get) => ({
 				webUrl: get('WEB_URL').string().url(),
-				publicWebUrl: get('VITE_WEB_URL').string().url(),
+				baseUrl: get('VITE_BASE_URL').string().url(),
 			}))
 			.parse();
 
 		expect(config).toEqual({
 			webUrl: 'https://compose-app.localhost:8443',
-			publicWebUrl: 'https://compose-app.localhost:8443',
+			baseUrl: 'https://compose-app.localhost:8443',
 		});
 	});
 
@@ -389,11 +389,11 @@ describe('a static site', () => {
 		const s = stack({
 			secrets: {
 				...initStageSecrets('development'),
-				custom: { VITE_WEB_URL: 'https://stale.example.com' },
+				custom: { VITE_BASE_URL: 'https://stale.example.com' },
 			},
 		});
 
-		expect(s.compose.services.web!.build!.args!.VITE_WEB_URL).toBe(
+		expect(s.compose.services.web!.build!.args!.VITE_BASE_URL).toBe(
 			'https://compose-app.localhost:8443',
 		);
 	});
@@ -1078,7 +1078,7 @@ describe('a stack that only builds (--build --push)', () => {
 	it("still builds the site with the stage's public URLs", () => {
 		expect(pushing().compose.services.web?.build?.args).toEqual({
 			WEB_URL: 'https://shop.example.com',
-			VITE_WEB_URL: 'https://shop.example.com',
+			VITE_BASE_URL: 'https://shop.example.com',
 			VITE_API_URL: 'https://api.shop.example.com',
 			VITE_AUTH_URL: 'https://auth.shop.example.com',
 		});

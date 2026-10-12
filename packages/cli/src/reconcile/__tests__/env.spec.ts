@@ -118,8 +118,8 @@ describe('envFor', () => {
 			// bundler inlines. No database URL has one: `PUBLIC` decides which
 			// values may be prefixed, and a connection string never may.
 			'VITE_AUTH_API_URL',
-			// And the site's own address, the same way.
-			'VITE_CONSOLE_URL',
+			// And the site's own address, as its base URL.
+			'VITE_BASE_URL',
 		]);
 	});
 

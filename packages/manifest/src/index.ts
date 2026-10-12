@@ -72,6 +72,7 @@ export {
 	PUBLIC_PREFIX,
 	provisionOrder,
 	publicEnvFor,
+	SITE_BASE_URL,
 } from './derive';
 export { KMS_SCHEME, kmsUrl } from './encryption';
 export {

@@ -27,34 +27,49 @@ describe('publicEnvFor', () => {
 		expect(
 			publicEnvFor(site('static', ['Api', 'Uploads', 'Orders']), manifest),
 		).toEqual({
-			VITE_WEB_URL: 'WEB_URL',
 			VITE_API_URL: 'API_URL',
 			VITE_UPLOADS_URL: 'UPLOADS_URL',
+			VITE_BASE_URL: 'WEB_URL',
 		});
 	});
 
 	it('uses the framework prefix for each variant', () => {
 		expect(publicEnvFor(site('next', ['Login']), manifest)).toEqual({
-			NEXT_PUBLIC_WEB_URL: 'WEB_URL',
 			NEXT_PUBLIC_LOGIN_ISSUER: 'LOGIN_ISSUER',
 			NEXT_PUBLIC_LOGIN_AUDIENCE: 'LOGIN_AUDIENCE',
+			NEXT_PUBLIC_BASE_URL: 'WEB_URL',
 		});
 		expect(
 			Object.keys(publicEnvFor(site('tanstack', ['Api']), manifest)),
-		).toEqual(['VITE_WEB_URL', 'VITE_API_URL']);
+		).toEqual(['VITE_API_URL', 'VITE_BASE_URL']);
 	});
 
 	it('skips an edge to something the manifest does not have', () => {
 		expect(publicEnvFor(site('static', ['Gone']), manifest)).toEqual({
-			VITE_WEB_URL: 'WEB_URL',
+			VITE_BASE_URL: 'WEB_URL',
 		});
 	});
 
-	it('gives a site its own address, edges or none', () => {
+	it('gives a site its own address as its base URL, edges or none', () => {
 		// What a page links to itself with — a canonical URL, an Open Graph
-		// image. A site that depends on nothing used to get nothing at all.
+		// image — under one name in every site, whatever the construct is
+		// called. A site that depends on nothing used to get nothing at all.
 		expect(publicEnvFor(site('next', []), manifest)).toEqual({
-			NEXT_PUBLIC_WEB_URL: 'WEB_URL',
+			NEXT_PUBLIC_BASE_URL: 'WEB_URL',
+		});
+		expect(
+			publicEnvFor({ ...site('next', []), id: 'Admin' }, manifest),
+		).toEqual({ NEXT_PUBLIC_BASE_URL: 'ADMIN_URL' });
+	});
+
+	it("keeps the base URL the site's own over an edge to a construct named Base", () => {
+		const withBase = {
+			...manifest,
+			Base: { kind: 'rest-api', id: 'Base', path: '.', endpoints: [] },
+		} as unknown as ConstructManifest;
+
+		expect(publicEnvFor(site('next', ['Base']), withBase)).toEqual({
+			NEXT_PUBLIC_BASE_URL: 'WEB_URL',
 		});
 	});
 });

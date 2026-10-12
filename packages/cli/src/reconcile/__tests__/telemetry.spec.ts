@@ -218,8 +218,8 @@ describe('the keys follow the edges', () => {
 
 		const inlined = publicEnvFor(used.Web as never, used);
 		expect(Object.keys(inlined)).toEqual([
-			'NEXT_PUBLIC_WEB_URL',
 			'NEXT_PUBLIC_API_URL',
+			'NEXT_PUBLIC_BASE_URL',
 		]);
 		for (const [name, source] of Object.entries(inlined)) {
 			expect(`${name} ${source}`).not.toMatch(/OTEL_/);

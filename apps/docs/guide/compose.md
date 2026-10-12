@@ -135,8 +135,10 @@ reads its URLs at runtime, so one backend image serves every stage.
 What a site's image is built with — every value its build reads, as build
 arguments its Dockerfile declares:
 
-- its edges' public values and its own address, under the variant's public
-  prefix: `VITE_API_URL`, `VITE_WEB_URL` (`NEXT_PUBLIC_` on a Next.js site);
+- its edges' public values under the variant's public prefix (`VITE_API_URL`,
+  or `NEXT_PUBLIC_API_URL` on a Next.js site), and its own address as
+  `VITE_BASE_URL` / `NEXT_PUBLIC_BASE_URL`. That name is the same in every site,
+  so a layout's `metadataBase` reads one name whatever the construct is called;
 - its own address under its own name, `WEB_URL`, for server code that runs at
   build time — `next build` prerenders, and a page's `metadataBase` is read then;
 - every stage secret already named for the bundle: `NEXT_PUBLIC_APP_STORE_URL`,

@@ -176,9 +176,15 @@ export const PUBLIC_PREFIX: Record<
 };
 
 /**
+ * The name a site reads its own address under, after the variant's public
+ * prefix: `NEXT_PUBLIC_BASE_URL`, `VITE_BASE_URL`.
+ */
+export const SITE_BASE_URL = 'BASE_URL';
+
+/**
  * The keys a site's bundle needs, mapped to the key each value comes from —
  * `{ VITE_API_URL: 'API_URL' }` — its edges' public values, and a site's own
- * address (`{ VITE_WEB_URL: 'WEB_URL' }`).
+ * address under one name in every site (`{ VITE_BASE_URL: 'WEB_URL' }`).
  *
  * A rename, not a second derivation: `API_URL` is resolved once, by whatever
  * resolved it for the server, and the site reads the same value under the name
@@ -201,14 +207,6 @@ export function publicEnvFor(
 	const prefix = PUBLIC_PREFIX[declaration.variant];
 	const keys: Record<string, string> = {};
 
-	// A site's own address, as its bundle reads it: what a page links to
-	// itself with — a canonical URL, an Open Graph image. A site with no edges
-	// still has one.
-	if (declaration.kind === 'site') {
-		const own = provideKey(declaration.id, 'url');
-		keys[`${prefix}${own}`] = own;
-	}
-
 	for (const edge of declaration.dependencies) {
 		const target = manifest[edge.target];
 		if (!target) continue;
@@ -217,6 +215,16 @@ export function publicEnvFor(
 			const key = provideKey(edge.target, role as string);
 			keys[`${prefix}${key}`] = key;
 		}
+	}
+
+	// A site's own address, as its bundle reads it: what a page links to
+	// itself with — a canonical URL, an Open Graph image. Under one name in
+	// every site (`NEXT_PUBLIC_BASE_URL`, `VITE_BASE_URL`), so code that reads
+	// it is the same in each and survives renaming the construct. Last, so it
+	// wins the name over an edge to a construct called `Base`. A site with no
+	// edges still has one.
+	if (declaration.kind === 'site') {
+		keys[`${prefix}${SITE_BASE_URL}`] = provideKey(declaration.id, 'url');
 	}
 
 	return keys;

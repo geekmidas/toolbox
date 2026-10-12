@@ -130,8 +130,8 @@ describe('Telemetry edges', () => {
 		// The API's address and the site's own — and no OTEL_* under any
 		// prefix.
 		expect(inlined).toEqual({
-			VITE_WEB_URL: 'WEB_URL',
 			VITE_API_URL: 'API_URL',
+			VITE_BASE_URL: 'WEB_URL',
 		});
 		for (const [name, source] of Object.entries(inlined)) {
 			expect(name).not.toMatch(/OTEL_/);

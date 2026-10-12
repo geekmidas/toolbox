@@ -10,8 +10,9 @@ import {
  * What a site's image is built with: every value its build reads, resolved for
  * the stage — and so every `ARG` its Dockerfile declares.
  *
- * - **Its edges' public values and its own address**, under the variant's
- *   public prefix (`publicEnvFor`): what the bundler inlines.
+ * - **Its edges' public values and its own base URL**, under the variant's
+ *   public prefix (`publicEnvFor`): what the bundler inlines —
+ *   `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_BASE_URL`.
  * - **Its own address under its own name** (`WEB_URL`). Server code runs at
  *   build too — `next build` prerenders, and a page's `metadataBase` is read
  *   then — and `gkm exec -- next build` has it locally, so the image build

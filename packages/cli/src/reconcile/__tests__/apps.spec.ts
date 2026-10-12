@@ -234,7 +234,7 @@ describe('appServices', () => {
 		it('is built with its public URLs as build args, at addresses a browser opens', () => {
 			expect(web()?.build?.args).toEqual({
 				WEB_URL: 'http://localhost:3002',
-				VITE_WEB_URL: 'http://localhost:3002',
+				VITE_BASE_URL: 'http://localhost:3002',
 				VITE_API_URL: 'http://localhost:3000',
 			});
 		});
