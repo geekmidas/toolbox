@@ -173,6 +173,20 @@ export function withAppPorts(
 	return { ...workspace, apps };
 }
 
+/** Says where an app moved from, to, and why. */
+export function describeMove({
+	app,
+	from,
+	to,
+	holder,
+	sibling,
+}: AppMoved): string {
+	const why = sibling
+		? `is ${sibling}'s`
+		: `is held by ${describeHolder(holder)}, which is not this workspace's`;
+	return `↪️  ${app}: ${from} ${why} — using ${to}`;
+}
+
 /** An app this workspace already has running — left by a previous start. */
 export interface AppRunning {
 	app: string;
@@ -180,12 +194,15 @@ export interface AppRunning {
 	holder: PortHolder;
 }
 
-/** An app that moved, because another project holds its port. */
+/** An app that moved, because another project or a sibling has its port. */
 export interface AppMoved {
 	app: string;
 	from: number;
 	to: number;
-	holder: PortHolder | undefined;
+	/** What holds the port, when another project's process does. */
+	holder?: PortHolder;
+	/** The app in this workspace the port is already given to. */
+	sibling?: string;
 }
 
 export interface AppPortsDeps {
@@ -225,10 +242,31 @@ export async function assignAppPorts(
 	const moved: AppMoved[] = [];
 	const running: AppRunning[] = [];
 
+	// A saved port is owned: by the app that saved it, or the first in the
+	// file when a file saved before this rule holds one port twice. An app
+	// moves off a port a sibling owns. Default ports are numbered across every
+	// app, so one added later can be given a port a sibling kept from before
+	// it existed. Two apps *configured* on one port own neither, and are left
+	// to the conflict check, which refuses them.
+	const owner = new Map<number, string>();
+	for (const [name, port] of Object.entries(saved)) {
+		if (!owner.has(port)) owner.set(port, name);
+	}
+
 	// Sorted, so which app moves first — and where — does not depend on order.
 	for (const name of Object.keys(wanted).sort()) {
 		const want = wanted[name]!;
 		ports[name] = want;
+
+		const sibling = owner.get(want);
+		if (sibling !== undefined && sibling !== name) {
+			const next = await nextFree(want, taken, deps);
+			owner.set(next, name);
+			ports[name] = next;
+			moved.push({ app: name, from: want, to: next, sibling });
+			continue;
+		}
+
 		if (await deps.free(want)) continue;
 
 		const holder = deps.holder(want);
@@ -237,13 +275,29 @@ export async function assignAppPorts(
 			continue;
 		}
 
-		let next = want + 1;
-		while (taken.has(next) || !(await deps.free(next))) next += 1;
-		taken.add(next);
+		const next = await nextFree(want, taken, deps);
+		owner.set(next, name);
 		ports[name] = next;
-		moved.push({ app: name, from: want, to: next, holder });
+		moved.push({
+			app: name,
+			from: want,
+			to: next,
+			...(holder ? { holder } : {}),
+		});
 	}
 
 	await saveAppPorts(workspace.root, ports);
 	return { ports, moved, running };
+}
+
+/** The first port after `from` that no app has and nothing holds — reserved. */
+async function nextFree(
+	from: number,
+	taken: Set<number>,
+	deps: AppPortsDeps,
+): Promise<number> {
+	let next = from + 1;
+	while (taken.has(next) || !(await deps.free(next))) next += 1;
+	taken.add(next);
+	return next;
 }

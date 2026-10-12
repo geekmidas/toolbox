@@ -365,17 +365,13 @@ export async function prepareEntryCredentials(options: {
 	// a build or a script that binds nothing, so this app's own dev server
 	// holding the port is no reason to stop it.
 	if (appName && workspace && options.explicitPort === undefined) {
-		const { assignAppPorts, describeHolder, holderOf, withAppPorts } =
+		const { assignAppPorts, describeMove, holderOf, withAppPorts } =
 			await import('../dev/appPorts.js');
 		const assigned = await assignAppPorts(workspace, [appName], {
 			free: isPortAvailable,
 			holder: holderOf,
 		});
-		for (const { app, from, to, holder } of assigned.moved) {
-			logger.log(
-				`↪️  ${app}: ${from} is held by ${describeHolder(holder)}, which is not this workspace's — using ${to}`,
-			);
-		}
+		for (const move of assigned.moved) logger.log(describeMove(move));
 		workspace = withAppPorts(workspace, assigned.ports);
 		workspaceAppPort = assigned.ports[appName] ?? workspaceAppPort;
 	}
