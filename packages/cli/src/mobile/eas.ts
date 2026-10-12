@@ -19,7 +19,10 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { delimiter, join } from 'node:path';
-import type { MobileAppDeclaration } from '@geekmidas/manifest';
+import type {
+	ConstructManifest,
+	MobileAppDeclaration,
+} from '@geekmidas/manifest';
 import { GkmError } from '../errors';
 import { loadStage } from '../exec/stage.js';
 import { appKey } from '../workspace/derive.js';
@@ -303,6 +306,36 @@ export function easCli(
 	};
 }
 
+/**
+ * The mobile app a command is about: the one `--app` names, else the one
+ * this directory is, else the only one.
+ *
+ * @throws {NoMobileApp}, {MobileAppNotChosen}, {MobileAppUnknown}
+ */
+export function chooseMobileApp(
+	manifest: ConstructManifest,
+	app: string | undefined,
+	here: string | undefined,
+): MobileAppDeclaration {
+	const declarations = Object.values(manifest).filter(
+		(declaration): declaration is MobileAppDeclaration =>
+			declaration.kind === 'mobile-app',
+	);
+	const names = declarations.map((declaration) => appKey(declaration.id));
+	if (declarations.length === 0) throw new NoMobileApp();
+	const name =
+		app ??
+		(here && names.includes(here)
+			? here
+			: names.length === 1
+				? names[0]
+				: undefined);
+	if (!name) throw new MobileAppNotChosen(names);
+	const declaration = declarations.find((d) => appKey(d.id) === name);
+	if (!declaration) throw new MobileAppUnknown(name, names);
+	return declaration;
+}
+
 /** `eas.json`, as far as gkm writes it. */
 interface EasJson {
 	build?: Record<string, Record<string, unknown>>;
@@ -383,22 +416,8 @@ export async function easSync(
 	const loaded = await loadStage(options);
 	const { workspace, manifest, stack } = loaded;
 
-	const declarations = Object.values(manifest).filter(
-		(declaration): declaration is MobileAppDeclaration =>
-			declaration.kind === 'mobile-app',
-	);
-	const names = declarations.map((declaration) => appKey(declaration.id));
-	if (declarations.length === 0) throw new NoMobileApp();
-	const name =
-		options.app ??
-		(loaded.appName && names.includes(loaded.appName)
-			? loaded.appName
-			: names.length === 1
-				? names[0]
-				: undefined);
-	if (!name) throw new MobileAppNotChosen(names);
-	const declaration = declarations.find((d) => appKey(d.id) === name);
-	if (!declaration) throw new MobileAppUnknown(name, names);
+	const declaration = chooseMobileApp(manifest, options.app, loaded.appName);
+	const name = appKey(declaration.id);
 
 	const stage = mobileStage(workspace, declaration, options.stage);
 	const values =
