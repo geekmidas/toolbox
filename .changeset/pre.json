@@ -159,6 +159,7 @@
     "session-reads-auth",
     "setup-leaves-node-env",
     "single-app-paths",
+    "site-build-args",
     "site-image-client",
     "sns-push-subscribers",
     "sns-push-without-middy",
