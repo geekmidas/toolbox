@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Logger } from '@geekmidas/logger';
-import type { ServiceContext } from './types';
+import type { RequestUser, ServiceContext } from './types';
 
 /**
  * Internal storage for request context data.
@@ -16,6 +16,11 @@ export interface RequestContextData {
 	 * can say what it was done for.
 	 */
 	operation?: string;
+	/**
+	 * Who the request is for, once its session was verified. Set by
+	 * {@link identifyRequest}, which also rebinds {@link logger} with it.
+	 */
+	user?: RequestUser;
 }
 
 /**
@@ -169,7 +174,51 @@ export const serviceContext: ServiceContext = {
 	hasContext() {
 		return requestContextStorage.getStore() !== undefined;
 	},
+
+	getUser() {
+		return requestContextStorage.getStore()?.user;
+	},
 };
+
+/**
+ * Say who the current request is for, once its session was verified.
+ *
+ * Kept on the request's own context, so everything that runs for it from
+ * here on — the handler, every service, a query, an event it publishes, work
+ * it awaits after any number of hops — reads the same user, and no other
+ * request ever does. Its logger is rebound with `userId` (and
+ * `sessionId`): every line logged for the request after this, through the
+ * logger a handler is handed or one a service captured, says whose it was.
+ *
+ * Identifying again with another user replaces the first — the bindings are
+ * applied to the request's logger as it was before any identification, so a
+ * line never carries two users.
+ *
+ * Outside a request there is nothing to identify, and it does nothing: a
+ * session verified from a script is still verified.
+ *
+ * @returns whether there was a request to identify
+ */
+export function identifyRequest(user: RequestUser): boolean {
+	const store = requestContextStorage.getStore();
+	if (!store) return false;
+
+	const anonymous = anonymousLoggers.get(store) ?? store.logger;
+	anonymousLoggers.set(store, anonymous);
+
+	store.user = user;
+	store.logger = anonymous.child({
+		userId: user.id,
+		...(user.sessionId ? { sessionId: user.sessionId } : {}),
+	});
+	return true;
+}
+
+/**
+ * Each request's logger as it was before {@link identifyRequest} rebound it,
+ * so identifying again binds to that rather than stacking a second user.
+ */
+const anonymousLoggers = new WeakMap<RequestContextData, Logger>();
 
 /**
  * The current request's context, or undefined outside one.

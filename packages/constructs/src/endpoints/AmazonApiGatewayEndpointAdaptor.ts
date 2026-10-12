@@ -36,6 +36,7 @@ import type {
 	InferStandardSchema,
 } from '@geekmidas/schema';
 import {
+	currentRequestContext,
 	runWithRequestContext,
 	type Service,
 	ServiceDiscovery,
@@ -48,6 +49,7 @@ import {
 	createAuditContext,
 	executeWithAuditTransaction,
 } from './processAudits';
+import { requestLogger } from './requestLogger';
 
 // Helper function to publish events
 
@@ -244,15 +246,25 @@ export abstract class AmazonApiGatewayEndpoint<
 
 	abstract getLoggerContext(data: TEvent, context: Context): LoggerContext;
 
+	/** This request's logger: see {@link requestLogger}. */
+	private requestLogger(event: TEvent, context: Context): TLogger {
+		return requestLogger<TLogger>(this.endpoint, {
+			requestId: context.awsRequestId,
+			host: (event as { headers?: Record<string, string | undefined> }).headers
+				?.host,
+			...this.getLoggerContext(event, context),
+		});
+	}
+
 	private logger(): Middleware<TEvent, TInput, TServices, TLogger> {
 		return {
 			before: (req) => {
-				req.event.logger = this.endpoint.logger.child({
-					route: this.endpoint.route,
-					host: req.event.headers?.host,
-					method: this.endpoint.method,
-					...this.getLoggerContext(req.event, req.context),
-				}) as TLogger;
+				// The request's own logger, made once in the request context, so
+				// the handler and every service log through the same one — with
+				// the route, and with the user once the session is verified.
+				req.event.logger =
+					(currentRequestContext()?.logger as TLogger) ??
+					this.requestLogger(req.event, req.context);
 			},
 		};
 	}
@@ -378,6 +390,11 @@ export abstract class AmazonApiGatewayEndpoint<
 					cookie: req.event.cookie,
 					...(db !== undefined && { db }),
 				} as any)) as TSession;
+				// A verified session identified the request: the middlewares and
+				// the handler after this log with the logger bound with who it is
+				// for.
+				req.event.logger =
+					(currentRequestContext()?.logger as TLogger) ?? req.event.logger;
 			},
 		};
 	}
@@ -670,7 +687,7 @@ export abstract class AmazonApiGatewayEndpoint<
 		const wrappedHandler = async (event: TEvent, context: Context) => {
 			const startTime = Date.now();
 			const requestId = context.awsRequestId;
-			const logger = this.endpoint.logger.child({ requestId }) as TLogger;
+			const logger = this.requestLogger(event, context);
 
 			// Cast event to any since Middy middlewares enrich the event with
 			// services, logger, session, etc. during the middleware chain execution

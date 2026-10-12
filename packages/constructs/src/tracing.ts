@@ -11,6 +11,7 @@
  */
 import { channel } from 'node:diagnostics_channel';
 import { carrierFromAttributes, type TraceCarrier } from '@geekmidas/events';
+import { identifyRequest, type RequestUser } from '@geekmidas/services';
 import {
 	context,
 	propagation,
@@ -155,5 +156,22 @@ export function injectTraceContext(headers: Headers): void {
 	if (FETCH_REQUESTS.hasSubscribers) return;
 	propagation.inject(context.active(), headers, {
 		set: (carrier, key, value) => carrier.set(key, value),
+	});
+}
+
+/**
+ * Say who the current request is for: on its context — so its logger and
+ * every service read it — and on its span, as OpenTelemetry's `enduser.id`
+ * and `session.id`, so the request's trace can be found by who made it.
+ *
+ * The span is the active one: the request's own, since a session is verified
+ * before the handler opens any of its own. With no provider registered there
+ * is none, and only the context is told.
+ */
+export function identifyUser(user: RequestUser): void {
+	identifyRequest(user);
+	trace.getActiveSpan()?.setAttributes({
+		'enduser.id': user.id,
+		...(user.sessionId ? { 'session.id': user.sessionId } : {}),
 	});
 }

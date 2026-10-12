@@ -1,4 +1,5 @@
 import type { AuthSession } from '../auth';
+import { identifyUser } from '../tracing';
 import type { EndpointSurface, HeaderFn } from './Endpoint';
 
 /**
@@ -42,10 +43,29 @@ export function sessionAuth(
 				if (value) headers.set(name, value);
 			}
 
-			return (await authenticator.verify(
+			const session = (await authenticator.verify(
 				headers,
 				surface.envParser,
 			)) as AuthSession | null;
+
+			// Whose request this is, from here on: its logger, its services and
+			// its trace all say so. Read defensively: an authenticator other than
+			// Better Auth answers in its own shape, and one without a user id
+			// identifies no one.
+			const identity = session as {
+				user?: { id?: unknown };
+				session?: { id?: unknown };
+			} | null;
+			if (typeof identity?.user?.id === 'string') {
+				identifyUser({
+					id: identity.user.id,
+					...(typeof identity.session?.id === 'string'
+						? { sessionId: identity.session.id }
+						: {}),
+				});
+			}
+
+			return session;
 		},
 	};
 }

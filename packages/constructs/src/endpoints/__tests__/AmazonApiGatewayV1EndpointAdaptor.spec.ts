@@ -355,7 +355,11 @@ describe('AmazonApiGatewayV1Endpoint', () => {
 			const context = createMockContext();
 			await handler(event, context);
 
+			// One logger for the request, carrying which request and route it
+			// is: the handler's, the request context's and every service's.
 			expect(mockLogger.child).toHaveBeenCalledWith({
+				requestId: 'test-request-id',
+				endpoint: 'GET /test',
 				route: '/test',
 				host: 'test.example.com',
 				method: 'GET',

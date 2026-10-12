@@ -5,6 +5,7 @@ export {
 	currentRequestContext,
 	enterRequestContext,
 	exitRequestContext,
+	identifyRequest,
 	type RequestContextData,
 	runWithRequestContext,
 	serviceContext,
@@ -15,4 +16,9 @@ export {
 	ServiceDiscovery,
 	type ServiceRecord,
 } from './ServiceDiscovery';
-export type { Service, ServiceContext, ServiceRegisterOptions } from './types';
+export type {
+	RequestUser,
+	Service,
+	ServiceContext,
+	ServiceRegisterOptions,
+} from './types';
