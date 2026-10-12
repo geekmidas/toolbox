@@ -88,6 +88,8 @@ export function generateTestFactoryFiles(
 	}
 
 	const db = databaseFor();
+	// A workspace's people sign in, so each row names its auth server user.
+	const fullstack = options.monorepo && options.template === 'fullstack';
 	// From the project root. A fullstack monorepo declares its constructs at
 	// the root and maps them through the root tsconfig; an API monorepo keeps
 	// them in the app, and a single app under `src/`.
@@ -108,7 +110,7 @@ import type { Database } from '${schema}';
 const usersBuilder = KyselyFactory.createBuilder<Database, 'users'>(
   'users',
   ({ faker }) => ({
-    id: faker.string.uuid(),
+    id: faker.string.uuid(),${fullstack ? '\n    authUserId: faker.string.uuid(),' : ''}
     name: faker.person.fullName(),
     email: faker.internet.email(),
     createdAt: new Date(),

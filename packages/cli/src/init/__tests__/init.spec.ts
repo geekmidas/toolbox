@@ -3,7 +3,7 @@ import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { initCommand } from '../index.js';
+import { initCommand, UnknownWebFramework } from '../index.js';
 
 describe('initCommand', () => {
 	let tempDir: string;
@@ -474,6 +474,59 @@ describe('initCommand', () => {
 			expect(existsSync(join(projectDir, 'packages/models/package.json'))).toBe(
 				true,
 			);
+		});
+
+		it('signs in from every app by default: web, admin, the mobile app and its reviewers', async () => {
+			await initCommand('my-fullstack', {
+				template: 'fullstack',
+				yes: true,
+				skipInstall: true,
+			});
+
+			const projectDir = join(tempDir, 'my-fullstack');
+			for (const path of [
+				'apps/admin/src/app/login/page.tsx',
+				'apps/web/src/app/signing-in/page.tsx',
+				'apps/app/app/signing-in.tsx',
+				'apps/reviewer/package.json',
+				'packages/auth/src/client/index.ts',
+				'packages/auth/src/server/index.ts',
+				'constructs/admin.ts',
+				'constructs/app.ts',
+				'constructs/reviewer.ts',
+			]) {
+				expect(existsSync(join(projectDir, path)), path).toBe(true);
+			}
+		});
+
+		it('takes --no-mobile-app and --web', async () => {
+			await initCommand('my-fullstack', {
+				template: 'fullstack',
+				yes: true,
+				skipInstall: true,
+				web: 'tanstack-start',
+				mobileApp: false,
+			});
+
+			const projectDir = join(tempDir, 'my-fullstack');
+			expect(existsSync(join(projectDir, 'apps/admin/src/routes'))).toBe(true);
+			expect(existsSync(join(projectDir, 'apps/app'))).toBe(false);
+			expect(existsSync(join(projectDir, 'apps/reviewer'))).toBe(false);
+			await expect(
+				readFile(join(projectDir, 'constructs/site.ts'), 'utf-8'),
+			).resolves.toContain("variant: 'tanstack'");
+		});
+
+		it('refuses a web framework it has no site for', async () => {
+			await expect(
+				initCommand('my-fullstack', {
+					template: 'fullstack',
+					yes: true,
+					skipInstall: true,
+					web: 'remix' as never,
+				}),
+			).rejects.toBeInstanceOf(UnknownWebFramework);
+			expect(existsSync(join(tempDir, 'my-fullstack'))).toBe(false);
 		});
 
 		it('should create workspace config with defineWorkspace', async () => {

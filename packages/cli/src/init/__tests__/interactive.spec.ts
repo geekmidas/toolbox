@@ -101,17 +101,75 @@ describe('initCommand, answered interactively', () => {
 			true,
 			'pino',
 			'centralized-routes',
-			'tanstack-start',
+			'tanstack-start', // web and admin framework
+			true, // a mobile app
 		]);
 
 		await initCommand('shop', { skipInstall: true });
 
 		expect(read('shop/gkm.config.ts')).toContain("protected: ['prod']");
 		expect(existsSync(join(dir, 'shop/apps/web/src/routes'))).toBe(true);
+		expect(existsSync(join(dir, 'shop/apps/admin/src/routes'))).toBe(true);
+		expect(existsSync(join(dir, 'shop/apps/app/app/signing-in.tsx'))).toBe(
+			true,
+		);
+		expect(existsSync(join(dir, 'shop/apps/reviewer/package.json'))).toBe(true);
 		expect(existsSync(join(dir, 'shop/constructs/database.ts'))).toBe(true);
 		expect(JSON.parse(read('shop/package.json')).scripts).toHaveProperty(
 			'deploy:prod',
 		);
+	});
+
+	it('leaves out the mobile app, and its reviewer site, when told no', async () => {
+		prompts.inject([
+			'fullstack',
+			[],
+			'pnpm',
+			'none',
+			'prod',
+			'local',
+			true,
+			'pino',
+			'centralized-endpoints',
+			'nextjs',
+			false, // no mobile app
+		]);
+
+		await initCommand('shop', { skipInstall: true });
+
+		expect(existsSync(join(dir, 'shop/apps/web/src/app'))).toBe(true);
+		expect(existsSync(join(dir, 'shop/apps/admin/src/app'))).toBe(true);
+		expect(existsSync(join(dir, 'shop/apps/app'))).toBe(false);
+		expect(existsSync(join(dir, 'shop/apps/reviewer'))).toBe(false);
+		expect(existsSync(join(dir, 'shop/constructs/reviewer.ts'))).toBe(false);
+		expect(existsSync(join(dir, 'shop/packages/auth/src/reviewers.ts'))).toBe(
+			false,
+		);
+	});
+
+	it('asks neither frontend question when the flags answered them', async () => {
+		prompts.inject([
+			[],
+			'pnpm',
+			'none',
+			'prod',
+			'local',
+			true,
+			'pino',
+			'centralized-endpoints',
+			// Nothing for the framework or the mobile app: --web and
+			// --no-mobile-app said.
+		]);
+
+		await initCommand('shop', {
+			template: 'fullstack',
+			web: 'tanstack-start',
+			mobileApp: false,
+			skipInstall: true,
+		});
+
+		expect(existsSync(join(dir, 'shop/apps/admin/src/routes'))).toBe(true);
+		expect(existsSync(join(dir, 'shop/apps/app'))).toBe(false);
 	});
 
 	it('takes what the flags already answered and asks only the rest', async () => {

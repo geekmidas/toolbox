@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateAgentFiles } from '../generators/agents.js';
 import { generateAuthAppFiles } from '../generators/auth.js';
+import { generateAuthPackage } from '../generators/auth-package.js';
 import { generateConfigFiles } from '../generators/config.js';
 import { generateDeployFiles } from '../generators/deploy';
 import { generateEnvFiles } from '../generators/env.js';
@@ -11,12 +12,11 @@ import {
 	generateRootConstructs,
 } from '../generators/monorepo.js';
 import { generatePackageJson } from '../generators/package.js';
+import { generateSiteFiles } from '../generators/sites.js';
 import {
 	generateTestFactoryFiles,
 	generateTestFiles,
 } from '../generators/test.js';
-import { generateWebAppFiles } from '../generators/web.js';
-import { generateTanStackWebFiles } from '../generators/web-tanstack.js';
 import { apiTemplate } from '../templates/api.js';
 import type { TemplateOptions } from '../templates/index.js';
 import { minimalTemplate } from '../templates/minimal.js';
@@ -297,7 +297,7 @@ describe('generateMonorepoFiles', () => {
 	});
 
 	it('installs the Expo plugin the auth server loads for a mobile app', () => {
-		const rootDependencies = (frontendFramework: 'expo' | 'nextjs') =>
+		const rootDependencies = (mobileApp: boolean) =>
 			(
 				JSON.parse(
 					generateMonorepoFiles(
@@ -306,15 +306,16 @@ describe('generateMonorepoFiles', () => {
 							template: 'fullstack',
 							monorepo: true,
 							apiPath: 'apps/api',
-							frontendFramework,
+							frontendFramework: 'nextjs',
+							mobileApp,
 						},
 						minimalTemplate,
 					).find((f) => f.path === 'package.json')!.content,
 				) as { dependencies: Record<string, string> }
 			).dependencies;
 
-		expect(rootDependencies('expo')).toHaveProperty('@better-auth/expo');
-		expect(rootDependencies('nextjs')).not.toHaveProperty('@better-auth/expo');
+		expect(rootDependencies(true)).toHaveProperty('@better-auth/expo');
+		expect(rootDependencies(false)).not.toHaveProperty('@better-auth/expo');
 	});
 
 	it('installs what the root test factory imports, at the root', () => {
@@ -384,7 +385,7 @@ describe('generateMonorepoFiles', () => {
 	});
 });
 
-describe('generateTanStackWebFiles', () => {
+describe('generateSiteFiles - TanStack Start', () => {
 	const fullstackOptions: TemplateOptions = {
 		...baseOptions,
 		template: 'fullstack',
@@ -394,11 +395,16 @@ describe('generateTanStackWebFiles', () => {
 	};
 
 	it('returns empty array for non-fullstack template', () => {
-		expect(generateTanStackWebFiles(baseOptions)).toHaveLength(0);
+		expect(
+			generateSiteFiles({
+				...baseOptions,
+				frontendFramework: 'tanstack-start',
+			}),
+		).toHaveLength(0);
 	});
 
 	it('generates the expected file paths', () => {
-		const files = generateTanStackWebFiles(fullstackOptions);
+		const files = generateSiteFiles(fullstackOptions);
 		const paths = files.map((f) => f.path);
 		expect(paths).toContain('apps/web/package.json');
 		expect(paths).toContain('apps/web/vite.config.ts');
@@ -409,7 +415,7 @@ describe('generateTanStackWebFiles', () => {
 	});
 
 	it('uses VITE_ prefix in client config, not NEXT_PUBLIC_', () => {
-		const files = generateTanStackWebFiles(fullstackOptions);
+		const files = generateSiteFiles(fullstackOptions);
 		const clientConfig = files.find(
 			(f) => f.path === 'apps/web/src/config/client.ts',
 		);
@@ -420,7 +426,7 @@ describe('generateTanStackWebFiles', () => {
 	});
 
 	it('declares tanstack and vite as dependencies', () => {
-		const files = generateTanStackWebFiles(fullstackOptions);
+		const files = generateSiteFiles(fullstackOptions);
 		const pkg = JSON.parse(
 			files.find((f) => f.path === 'apps/web/package.json')!.content,
 		);
@@ -437,11 +443,14 @@ describe('generateExpoAppFiles', () => {
 		template: 'fullstack',
 		monorepo: true,
 		apiPath: 'apps/api',
-		frontendFramework: 'expo',
+		frontendFramework: 'nextjs',
+		mobileApp: true,
 	};
 
 	it('returns empty array for non-fullstack template', () => {
-		expect(generateExpoAppFiles(baseOptions)).toHaveLength(0);
+		expect(
+			generateExpoAppFiles({ ...baseOptions, mobileApp: true }),
+		).toHaveLength(0);
 	});
 
 	it('generates the expected Expo file paths', () => {
@@ -454,8 +463,10 @@ describe('generateExpoAppFiles', () => {
 		expect(paths).toContain('apps/app/metro.config.js');
 		expect(paths).toContain('apps/app/app/_layout.tsx');
 		expect(paths).toContain('apps/app/app/index.tsx');
-		expect(paths).toContain('apps/app/app/login.tsx');
+		expect(paths).toContain('apps/app/app/signing-in.tsx');
+		expect(paths).toContain('apps/app/app/+native-intent.tsx');
 		expect(paths).toContain('apps/app/lib/auth-client.ts');
+		expect(paths).not.toContain('apps/app/app/login.tsx');
 	});
 
 	it('builds app.config.ts from what gkm injects, into extra.config', () => {
@@ -503,27 +514,6 @@ describe('generateExpoAppFiles', () => {
 		expect(new Set(sdk)).toEqual(new Set(['57']));
 		// Reanimated 4 runs on worklets, which the SDK pins beside it.
 		expect(pkg.dependencies['react-native-worklets']).toBeDefined();
-	});
-
-	it('signs in from the emailed link, which brings the session back as ?cookie=', () => {
-		// The link opens in the phone's browser, which gets the cookie; the auth
-		// server's Expo plugin carries it back on the deep link, and the app has
-		// to store it — the Expo client does that only for sign-ins it opened.
-		const files = generateExpoAppFiles(fullstackOptions);
-		const authClient = files.find(
-			(f) => f.path === 'apps/app/lib/auth-client.ts',
-		)!.content;
-		const layout = files.find(
-			(f) => f.path === 'apps/app/app/_layout.tsx',
-		)!.content;
-
-		expect(authClient).toContain('export function useSessionFromLink()');
-		expect(authClient).toContain('Linking.useLinkingURL()');
-		// Merged into what the Expo client keeps, not written over it.
-		expect(authClient).toContain('getSetCookie(cookie, previous ?? undefined)');
-		expect(authClient).toContain("authClient.$store.notify('$sessionSignal')");
-		expect(layout).toContain('useSessionFromLink();');
-		expect(authClient).not.toMatch(/\\`/);
 	});
 
 	it('installs expo-device, which tells the emulator from a phone', () => {
@@ -597,49 +587,35 @@ describe('generateRootConstructs - the apps, as constructs', () => {
 		expect(all).not.toMatch(/Shop/);
 	});
 
-	it('declares a mobile app as a MobileApp that depends on the API and auth', () => {
-		const files = generateRootConstructs({
-			...fullstackBase,
-			frontendFramework: 'expo',
-		});
+	it('leaves the sites and the mobile app to their own generators', () => {
+		const files = generateRootConstructs({ ...fullstackBase, mobileApp: true });
 
 		expect(at(files, 'constructs/site.ts')).toBeUndefined();
-		expect(at(files, 'constructs/app.ts')!.content).toContain(
-			"new MobileApp('App', { path: 'apps/app' }).dependsOn([",
-		);
+		expect(at(files, 'constructs/admin.ts')).toBeUndefined();
+		expect(at(files, 'constructs/app.ts')).toBeUndefined();
+		expect(
+			at(
+				generateExpoAppFiles({ ...fullstackBase, mobileApp: true }),
+				'constructs/app.ts',
+			)!.content,
+		).toContain("new MobileApp('App', { path: 'apps/app' })");
 	});
 
-	it('gives the auth server the Expo plugin a mobile app signs in through', () => {
-		const expoAuth = at(
-			generateRootConstructs({ ...fullstackBase, frontendFramework: 'expo' }),
-			'constructs/auth.ts',
+	it('declares the site with the path it lives at, at the root domain', () => {
+		const site = at(
+			generateSiteFiles({ ...fullstackBase, frontendFramework: 'nextjs' }),
+			'constructs/site.ts',
 		)!.content;
-		const webAuth = at(
-			generateRootConstructs({ ...fullstackBase, frontendFramework: 'nextjs' }),
-			'constructs/auth.ts',
-		)!.content;
-
-		expect(expoAuth).toContain("import { expo } from '@better-auth/expo';");
-		expect(expoAuth).toContain('options: { plugins: [expo()] },');
-		expect(webAuth).not.toContain('@better-auth/expo');
-		expect(webAuth).not.toContain('expo()');
-	});
-
-	it('declares the site with the path it lives at', () => {
-		const files = generateRootConstructs({
-			...fullstackBase,
-			frontendFramework: 'nextjs',
-		});
-		const site = at(files, 'constructs/site.ts');
 
 		// Written down: nothing infers `apps/web` from the id.
-		expect(site!.content).toContain(
-			"new StaticSite('Web', { path: 'apps/web', variant: 'next' })",
-		);
+		expect(site).toContain("new StaticSite('Web', {");
+		expect(site).toContain("path: 'apps/web'");
+		expect(site).toContain("variant: 'next'");
+		expect(site).toContain('root: true');
 	});
 
 	it('carries the framework as the site variant', () => {
-		const files = generateRootConstructs({
+		const files = generateSiteFiles({
 			...fullstackBase,
 			frontendFramework: 'tanstack-start',
 		});
@@ -647,15 +623,9 @@ describe('generateRootConstructs - the apps, as constructs', () => {
 		expect(at(files, 'constructs/site.ts')!.content).toContain(
 			"variant: 'tanstack'",
 		);
-	});
-
-	it('declares no site for a mobile app, which no static site serves', () => {
-		const files = generateRootConstructs({
-			...fullstackBase,
-			frontendFramework: 'expo',
-		});
-
-		expect(at(files, 'constructs/site.ts')).toBeUndefined();
+		expect(at(files, 'constructs/admin.ts')!.content).toContain(
+			"variant: 'tanstack'",
+		);
 	});
 
 	it('gives the auth server a construct and no hand-written entry', () => {
@@ -665,14 +635,98 @@ describe('generateRootConstructs - the apps, as constructs', () => {
 		expect(auth!.content).toContain("new BetterAuth('Auth'");
 		expect(auth!.content).toContain("basePath: '/api/auth'");
 		// Its schema in the declared Postgres, not a second database.
-		expect(auth!.content).toContain('authDb');
+		expect(auth!.content).toContain('database: authDatabase');
+	});
+
+	it('signs in with a magic link the mailer sends, limited per address', () => {
+		const auth = at(
+			generateRootConstructs({ ...fullstackBase, name: 'shop' }),
+			'constructs/auth.ts',
+		)!.content;
+
+		expect(auth).toContain("from '@shop/auth/server'");
+		expect(auth).toContain('magicLinkSignIn({');
+		expect(auth).toContain('magicLinkEmailLimit(MAGIC_LINK_LIMITS.perEmail)');
+		expect(auth).toContain('dependsOn: [email]');
+		expect(auth).toContain("sendTemplate('magicLink'");
+		expect(auth).toContain("rateLimit: { enabled: true, storage: 'database' }");
+	});
+
+	it('gives the auth server the Expo plugin and reviewer links only with a mobile app', () => {
+		const withApp = at(
+			generateRootConstructs({ ...fullstackBase, mobileApp: true }),
+			'constructs/auth.ts',
+		)!.content;
+		const without = at(
+			generateRootConstructs({ ...fullstackBase, mobileApp: false }),
+			'constructs/auth.ts',
+		)!.content;
+
+		expect(withApp).toContain("import { expo } from '@better-auth/expo';");
+		expect(withApp).toContain('expo(),');
+		expect(withApp).toContain('reviewerLinks(),');
+		expect(without).not.toContain('@better-auth/expo');
+		expect(without).not.toContain('expo()');
+		expect(without).not.toContain('reviewerLinks');
+	});
+
+	it('sends mail from a template, beside the construct that sends it', () => {
+		const files = generateRootConstructs(fullstackBase);
+
+		expect(at(files, 'constructs/email.ts')!.content).toContain(
+			'templates: { magicLink: MagicLink }',
+		);
+		expect(at(files, 'constructs/templates/MagicLink.tsx')).toBeDefined();
+		expect(at(files, 'constructs/templates/layout.tsx')).toBeDefined();
+	});
+
+	it('declares the access-control tables, their seeds and the first-admin script', () => {
+		const files = generateRootConstructs(fullstackBase);
+		const paths = files.map((f) => f.path);
+
+		const database = at(files, 'constructs/database.ts')!.content;
+		for (const table of [
+			'permissions',
+			'roles',
+			'rolePermissions',
+			'userRoles',
+		]) {
+			expect(database).toContain(`${table}: {`);
+		}
+		expect(database).toContain('authUserId: string');
+		expect(paths).toContainEqual(
+			expect.stringMatching(
+				/^db\/database\/migrations\/\d{14}_create_access_control\.ts$/,
+			),
+		);
+		expect(paths).toContain('db/database/seeds/01_permissions.ts');
+		expect(paths).toContain('db/database/seeds/02_system_roles.ts');
+		expect(paths).toContain('scripts/grant-admin.ts');
+	});
+
+	it('types reviewer_links on the auth tenant only with a mobile app', () => {
+		const database = (mobileApp: boolean) =>
+			at(
+				generateRootConstructs({ ...fullstackBase, mobileApp }),
+				'constructs/database.ts',
+			)!.content;
+
+		expect(database(true)).toContain('reviewer_links: {');
+		expect(database(false)).not.toContain('reviewer_links');
 	});
 
 	it('wires the edges the deploy order and the CORS origins come from', () => {
-		const files = generateRootConstructs(fullstackBase);
-
-		expect(at(files, 'constructs/api.ts')!.content).toContain('.auth(auth)');
-		expect(at(files, 'constructs/site.ts')!.content).toContain(
+		expect(
+			at(generateRootConstructs(fullstackBase), 'constructs/api.ts')!.content,
+		).toContain('.auth(auth)');
+		const sites = generateSiteFiles({
+			...fullstackBase,
+			frontendFramework: 'nextjs',
+		});
+		expect(at(sites, 'constructs/site.ts')!.content).toContain(
+			'.dependsOn([api, auth])',
+		);
+		expect(at(sites, 'constructs/admin.ts')!.content).toContain(
 			'.dependsOn([api, auth])',
 		);
 	});
@@ -750,6 +804,35 @@ describe('the workspace root, for the constructs that live there', () => {
 		expect(dependencies['@geekmidas/cache']).toBeUndefined();
 	});
 
+	it('installs the shared auth and models packages and the mail templates', () => {
+		const { dependencies } = root(fullstackBase, 'package.json');
+
+		expect(dependencies['@test-project/auth']).toBe('workspace:*');
+		expect(dependencies['@test-project/models']).toBe('workspace:*');
+		expect(dependencies['@react-email/components']).toBeDefined();
+	});
+
+	it('installs the S3 SDK only with uploads', () => {
+		const sdk = [
+			'@aws-sdk/client-s3',
+			'@aws-sdk/s3-presigned-post',
+			'@aws-sdk/s3-request-presigner',
+		];
+		const withUploads = root(fullstackBase, 'package.json').dependencies;
+		const without = root(
+			{
+				...fullstackBase,
+				constructs: { ...fullstackBase.constructs, uploads: false },
+			},
+			'package.json',
+		).dependencies;
+
+		for (const pkg of sdk) {
+			expect(withUploads[pkg], pkg).toBeDefined();
+			expect(without[pkg], pkg).toBeUndefined();
+		}
+	});
+
 	it('lets the root constructs import each other with `.ts`', () => {
 		const { compilerOptions } = root(fullstackBase, 'tsconfig.json');
 
@@ -821,9 +904,10 @@ describe('what a workspace runs its tools with', () => {
 		expect(files.map((f) => f.path)).not.toContainEqual(
 			expect.stringMatching(/^src\/services\//),
 		);
-		expect(file(files, 'src/router.ts')).toContain(
-			'router.session(async ({ auth })',
-		);
+		const router = file(files, 'src/router.ts');
+		expect(router).toContain('export const memberRouter = router.session(');
+		expect(router).toContain('export const staffRouter = router.session(');
+		expect(router).toContain('await auth.getSession()');
 		// No hand-written database browser either: `gkm dev` serves the declared
 		// database's JSON API itself.
 		expect(files.map((f) => f.path)).not.toContain('src/config/studio.ts');
@@ -856,13 +940,26 @@ describe('the API, in a workspace', () => {
 	});
 
 	it.each([
-		['centralized-endpoints', 'src/endpoints/users/list.ts'],
-		['centralized-routes', 'src/routes/users/list.ts'],
-		['domain-based', 'src/users/routes/list.ts'],
+		['centralized-endpoints', 'src/endpoints/profiles/me.ts'],
+		['centralized-routes', 'src/routes/profiles/me.ts'],
+		['domain-based', 'src/profiles/routes/me.ts'],
 	] as const)('keeps the %s layout', (structure, path) => {
 		const paths = apiTemplate.files(options(structure)).map((f) => f.path);
 
 		expect(paths).toContain(path);
+	});
+
+	it('lists people only to staff, never publicly', () => {
+		const files = apiTemplate.files(options('centralized-endpoints'));
+		const paths = files.map((f) => f.path);
+
+		expect(paths).not.toContainEqual(expect.stringContaining('users/list'));
+		expect(paths).toContain('src/__tests__/signing-in.spec.ts');
+		const users = files.find(
+			(f) => f.path === 'src/endpoints/admin/users.ts',
+		)!.content;
+		expect(users).toContain('staffRouter');
+		expect(users).toContain(".authorize(can('users.view'))");
 	});
 
 	it.each([
@@ -884,11 +981,11 @@ describe('the API, in a workspace', () => {
 	});
 });
 
-describe('generateWebAppFiles', () => {
+describe('generateSiteFiles - Next.js', () => {
 	it('typechecks without project references to non-composite packages', () => {
 		// `paths` point at the sources; a reference to a project that is not
 		// `composite` turns the app's `tsc --noEmit` into TS6306.
-		const tsconfig = generateWebAppFiles({
+		const tsconfig = generateSiteFiles({
 			...baseOptions,
 			template: 'fullstack',
 			monorepo: true,
@@ -897,6 +994,79 @@ describe('generateWebAppFiles', () => {
 		}).find((f) => f.path === 'apps/web/tsconfig.json');
 
 		expect(JSON.parse(tsconfig!.content).references).toBeUndefined();
+	});
+});
+
+describe('generateAuthPackage', () => {
+	const options = (mobileApp: boolean): TemplateOptions => ({
+		...baseOptions,
+		name: 'shop',
+		template: 'fullstack',
+		monorepo: true,
+		apiPath: 'apps/api',
+		frontendFramework: 'nextjs',
+		mobileApp,
+	});
+	const paths = (mobileApp: boolean) =>
+		generateAuthPackage(options(mobileApp)).map((f) => f.path);
+
+	it('writes nothing outside the fullstack workspace', () => {
+		expect(generateAuthPackage(baseOptions)).toEqual([]);
+	});
+
+	it('exports the server plugins, the client hooks and the shared constants', () => {
+		const pkg = JSON.parse(
+			generateAuthPackage(options(false)).find(
+				(f) => f.path === 'packages/auth/package.json',
+			)!.content,
+		);
+
+		expect(pkg.name).toBe('@shop/auth');
+		expect(pkg.exports).toEqual({
+			'./server': './src/server/index.ts',
+			'./client': './src/client/index.ts',
+			'./*': './src/*.ts',
+		});
+		expect(paths(false)).toEqual(
+			expect.arrayContaining([
+				'packages/auth/src/magic-link.ts',
+				'packages/auth/src/server/index.ts',
+				'packages/auth/src/server/magic-link.ts',
+				'packages/auth/src/server/email-limit.ts',
+				'packages/auth/src/client/index.ts',
+				'packages/auth/src/client/provider.tsx',
+				'packages/auth/src/client/hooks.ts',
+				'packages/auth/src/client/sign-in-link.ts',
+			]),
+		);
+	});
+
+	it('keeps store reviewers only with a mobile app', () => {
+		expect(paths(true)).toContain('packages/auth/src/reviewers.ts');
+		expect(paths(true)).toContain('packages/auth/src/server/reviewer-links.ts');
+		expect(paths(false)).not.toContain('packages/auth/src/reviewers.ts');
+		expect(paths(false)).not.toContain(
+			'packages/auth/src/server/reviewer-links.ts',
+		);
+
+		const server = (mobileApp: boolean) =>
+			generateAuthPackage(options(mobileApp)).find(
+				(f) => f.path === 'packages/auth/src/server/index.ts',
+			)!.content;
+		expect(server(true)).toContain('reviewerLinks');
+		expect(server(false)).not.toContain('reviewer');
+	});
+
+	it('is headless: the client imports neither the DOM nor React Native', () => {
+		const client = generateAuthPackage(options(true))
+			.filter((f) => f.path.startsWith('packages/auth/src/client/'))
+			.map((f) => f.content)
+			.join('\n');
+
+		expect(client).toContain('export function AuthProvider(');
+		expect(client).not.toContain('react-native');
+		expect(client).not.toContain('react-dom');
+		expect(client).not.toMatch(/\bwindow\./);
 	});
 });
 
@@ -920,6 +1090,17 @@ describe('generateAuthAppFiles', () => {
 		expect(pkg.scripts.dev).toBe('gkm dev');
 		expect(pkg.scripts.typecheck).toBeUndefined();
 		expect(pkg.dependencies['@geekmidas/constructs']).toBeDefined();
+	});
+
+	it('leaves `@<name>/auth` to the shared sign-in package', () => {
+		const pkg = JSON.parse(
+			generateAuthAppFiles(options).find(
+				(f) => f.path === 'apps/auth/package.json',
+			)!.content,
+		);
+
+		expect(pkg.name).toBe('@test-project/auth-server');
+		expect(pkg.dependencies['@test-project/auth']).toBe('workspace:*');
 	});
 });
 
@@ -1077,13 +1258,15 @@ describe('shadcn components in the web app', () => {
 	describe.each([
 		{
 			framework: 'Next.js',
-			generate: generateWebAppFiles,
+			generate: (options: TemplateOptions) =>
+				generateSiteFiles({ ...options, frontendFramework: 'nextjs' }),
 			css: 'src/app/globals.css',
 			rsc: true,
 		},
 		{
 			framework: 'TanStack Start',
-			generate: generateTanStackWebFiles,
+			generate: (options: TemplateOptions) =>
+				generateSiteFiles({ ...options, frontendFramework: 'tanstack-start' }),
 			css: 'src/styles/globals.css',
 			rsc: false,
 		},
@@ -1140,18 +1323,19 @@ describe('shadcn components in the web app', () => {
 	});
 
 	it("builds the Next.js home page from the app's own components", () => {
-		const page = generateWebAppFiles(fullstackOptions).find(
-			(f) => f.path === 'apps/web/src/app/page.tsx',
-		)!.content;
+		const page = generateSiteFiles({
+			...fullstackOptions,
+			frontendFramework: 'nextjs',
+		}).find((f) => f.path === 'apps/web/src/app/page.tsx')!.content;
 
-		expect(page).toContain("from '~/components/ui/button.tsx'");
 		expect(page).toContain("from '~/components/ui/card.tsx'");
 	});
 
 	it('marks the radix-based components as client components', () => {
-		const dialog = generateWebAppFiles(fullstackOptions).find(
-			(f) => f.path === 'apps/web/src/components/ui/dialog.tsx',
-		)!.content;
+		const dialog = generateSiteFiles({
+			...fullstackOptions,
+			frontendFramework: 'nextjs',
+		}).find((f) => f.path === 'apps/web/src/components/ui/dialog.tsx')!.content;
 
 		expect(dialog.startsWith("'use client';")).toBe(true);
 	});

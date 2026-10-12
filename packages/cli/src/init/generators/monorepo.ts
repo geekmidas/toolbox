@@ -1,16 +1,12 @@
 import { dirname } from 'node:path';
 import {
 	cacheFor,
-	databaseFor,
-	emailFor,
 	storageFor,
-	usersMigration,
 	workspaceConstructsGlobs,
 } from '../constructs.js';
 import {
 	BIOME_SCHEMA,
 	DEPENDENCY_VERSIONS,
-	EXPO_VERSIONS,
 	PNPM_VERSION,
 	TOOLCHAIN_VERSIONS,
 } from '../dependencies.js';
@@ -21,7 +17,20 @@ import type {
 } from '../templates/index.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 import { deployPackage, generateDeployFiles } from './deploy.js';
+import { workspaceReact, workspaceReactTypes } from './react.js';
+import {
+	accessControlMigration,
+	accessControlSeeds,
+	apiConstruct,
+	authConstruct,
+	databaseConstruct,
+	emailConstruct,
+	emailLayout,
+	magicLinkTemplate,
+	workspaceUsersMigration,
+} from './root-constructs.js';
 import { stagesBlock } from './stages.js';
+import { grantAdminScript } from './workspace-api.js';
 
 /**
  * What the root `constructs/` folder imports, and the peers each construct
@@ -47,7 +56,14 @@ function rootConstructDependencies(
 		kysely: DEPENDENCY_VERSIONS.kysely,
 		pg: DEPENDENCY_VERSIONS.pg,
 		...(options.constructs.uploads
-			? { '@geekmidas/storage': v['@geekmidas/storage'] }
+			? {
+					'@geekmidas/storage': v['@geekmidas/storage'],
+					'@aws-sdk/client-s3': DEPENDENCY_VERSIONS['@aws-sdk/client-s3'],
+					'@aws-sdk/s3-presigned-post':
+						DEPENDENCY_VERSIONS['@aws-sdk/s3-presigned-post'],
+					'@aws-sdk/s3-request-presigner':
+						DEPENDENCY_VERSIONS['@aws-sdk/s3-request-presigner'],
+				}
 			: {}),
 		...(options.constructs.mail
 			? { '@geekmidas/emailkit': v['@geekmidas/emailkit'] }
@@ -55,9 +71,19 @@ function rootConstructDependencies(
 		...(options.constructs.cache
 			? { '@geekmidas/cache': v['@geekmidas/cache'] }
 			: {}),
+		// The auth server's plugins, shared with every frontend's hooks.
+		[`@${options.name}/auth`]: 'workspace:*',
+		// What the seeds and scripts at the root read: the permission catalogue
+		// and the system roles.
+		[`@${options.name}/models`]: 'workspace:*',
+		// The mailer's templates are React Email components, rendered on the
+		// auth server.
+		'@react-email/components': DEPENDENCY_VERSIONS['@react-email/components'],
+		// …and typed against the workspace's React.
+		'@types/react': workspaceReactTypes(options),
 		// A mobile app signs in through Better Auth's Expo plugin, which the
 		// auth server loads when one depends on it.
-		...(options.frontendFramework === 'expo'
+		...(options.mobileApp
 			? { '@better-auth/expo': DEPENDENCY_VERSIONS['better-auth'] }
 			: {}),
 	};
@@ -84,10 +110,7 @@ function rootClientDependencies(
 	return {
 		'@geekmidas/client': GEEKMIDAS_VERSIONS['@geekmidas/client'],
 		'@tanstack/react-query': DEPENDENCY_VERSIONS['@tanstack/react-query'],
-		react:
-			options.frontendFramework === 'expo'
-				? EXPO_VERSIONS.react
-				: DEPENDENCY_VERSIONS.react,
+		react: workspaceReact(options),
 	};
 }
 
@@ -215,6 +238,20 @@ export function generateMonorepoFiles(
 		},
 		// Tailwind v4's `@theme` and `@apply`, which the UI package's CSS uses.
 		css: { parser: { tailwindDirectives: true } },
+		// NativeWind is Tailwind v3, whose `@tailwind` directives Biome's CSS
+		// linter does not know.
+		...(options.mobileApp
+			? {
+					overrides: [
+						{
+							includes: ['apps/app/global.css'],
+							linter: {
+								rules: { suspicious: { noUnknownAtRules: 'off' } },
+							},
+						},
+					],
+				}
+			: {}),
 		files: {
 			includes: [
 				'**',
@@ -334,6 +371,10 @@ ${isSst ? '\n# SST\n.sst/\n' : ''}`;
 						// The constructs import each other with `.ts` extensions.
 						allowImportingTsExtensions: true,
 						noEmit: true,
+						// The mailer's templates are React components
+						// (`constructs/templates/`), compiled by every app that imports
+						// the constructs. A site overrides it with its own.
+						jsx: 'react-jsx',
 					}
 				: {}),
 			target: 'ES2022',
@@ -607,179 +648,39 @@ export function generateRootConstructs(
 ): GeneratedFile[] {
 	if (!options.monorepo || options.template !== 'fullstack') return [];
 
-	const { frontendFramework } = options;
-	const { cache, uploads, mail } = options.constructs;
-	const db = databaseFor();
-	const files: GeneratedFile[] = [];
-
-	files.push({
-		path: 'constructs/logger.ts',
-		content: `import { createLogger } from '@geekmidas/logger/${options.loggerType}';
+	const { cache, uploads } = options.constructs;
+	const files: GeneratedFile[] = [
+		{
+			path: 'constructs/logger.ts',
+			content: `import { createLogger } from '@geekmidas/logger/${options.loggerType}';
 
 /**
  * The logger every endpoint runs with.
  *
- * Named once, here, because the surface carries it. It used to be
- * \`logger: './src/config/logger#logger'\` in config — a module path the build
- * printed into each generated handler, checked by nothing and wrong the moment
- * the file moved.
+ * Named once, here, because the surface carries it — the actual logger, not
+ * a module path the build prints into each handler.
  */
 export const logger = createLogger();
 `,
-	});
-
-	files.push({
-		path: 'constructs/database.ts',
-		content: `import { KyselyDatabase } from '@geekmidas/constructs/database/kysely';
-import { CamelCasePlugin, type Generated } from 'kysely';
-
-/**
- * Your database schema. Add tables here.
- *
- * camelCase, because of the plugin below: the columns are snake_case in
- * Postgres (\`created_at\`), and Kysely maps between the two.
- */
-export interface Database {
-  users: {
-    id: Generated<string>;
-    name: string;
-    email: string;
-    createdAt: Generated<Date>;
-  };
-}
-
-/**
- * The database, declared once.
- *
- * The container, the database inside it, its roles and schema, and
- * \`${db.urlKey}\` all derive from this line — which is why nothing lists
- * \`postgres\` anywhere.
- */
-export const database = new KyselyDatabase<Database, '${db.id}'>('${db.id}', {
-  // Yours to keep, change or remove. Every connection this construct opens —
-  // every endpoint, the tests — uses it.
-  plugins: [new CamelCasePlugin()],
-});
-
-/**
- * The auth server's own schema in that same Postgres, with its own role.
- *
- * A schema tenant rather than a second database: one container, and a role
- * whose \`search_path\` is pinned, so Better Auth's tables cannot collide with
- * the application's. It takes its own options: no plugin, because Better
- * Auth names its own columns.
- */
-export const authDb = database.schema<Record<string, never>, 'AuthDb'>('AuthDb');
-`,
-	});
-
-	// Its migrations beside it, in the folder its name gives.
-	files.push(usersMigration());
-
-	files.push({
-		path: 'constructs/auth.ts',
-		content: `${frontendFramework === 'expo' ? "import { expo } from '@better-auth/expo';\n" : ''}import { BetterAuth } from '@geekmidas/constructs/auth';
-import { authDb } from './database.ts';
-
-/**
- * The auth server.
- *
- * There is no \`src/index.ts\` to go with this, and that is the point: the
- * routes are a wildcard, so no glob finds them and the build generates the
- * entry from this declaration instead. CORS, the trusted origins and the
- * cookie domain come from whatever declared an edge to it — nobody writes an
- * origin down.
- */
-export const auth = new BetterAuth('Auth', {
-  path: 'apps/auth',
-  database: authDb,
-  basePath: '/api/auth',${
-		frontendFramework === 'expo'
-			? `
-  // The mobile app signs in through Better Auth's Expo plugin: it sends its
-  // scheme as the origin, and this is what reads it. The construct refuses to
-  // start without it once a MobileApp depends on this server.
-  options: { plugins: [expo()] },`
-			: ''
-	}
-});
-`,
-	});
-
-	files.push({
-		path: 'constructs/api.ts',
-		content: `import { RestApi } from '@geekmidas/constructs/rest-api';
-import { auth } from './auth.ts';
-import { logger } from './logger.ts';
-
-/**
- * The application's HTTP surface — one RestApi, one container.
- *
- * \`path\` is where its app lives. Its handlers are found by the workspace's
- * \`constructs\` glob, and belong to it because they were built from it.
- */
-export const api = new RestApi('Api', {
-  path: '${options.apiPath}',
-
-  // Typed out rather than omitted: an API that ships open because a field was
-  // left off is the one default worth refusing to have.
-  defaultAuthorizer: 'none',
-
-  // The actual logger, not a path to one.
-  logger,
-}).auth(auth);
-`,
-	});
-
-	const variant =
-		frontendFramework === 'tanstack-start'
-			? "{ path: 'apps/web', variant: 'tanstack' }"
-			: frontendFramework === 'expo'
-				? undefined
-				: "{ path: 'apps/web', variant: 'next' }";
-
-	if (frontendFramework === 'expo') {
-		files.push({
-			path: 'constructs/app.ts',
-			content: `import { MobileApp } from '@geekmidas/constructs/mobile-app';
-import { api } from './api.ts';
-import { auth } from './auth.ts';
-
-/**
- * The mobile app — a construct like a site, which is what makes it an app.
- *
- * \`.dependsOn()\` is the single fact behind what a mobile app otherwise has
- * written down by hand: its API and auth URLs, its URL scheme, the
- * scheme in the auth server's trusted origins, Better Auth's Expo plugin, and
- * sign-in links a phone can open.
- */
-export const app = new MobileApp('App', { path: 'apps/app' }).dependsOn([
-  api,
-  auth,
-]);
-`,
-		});
-	}
-
-	if (variant !== undefined) {
-		files.push({
-			path: 'constructs/site.ts',
-			content: `import { StaticSite } from '@geekmidas/constructs/site';
-import { api } from './api.ts';
-import { auth } from './auth.ts';
-
-/**
- * The frontend — a construct like any other, which is what makes it an app.
- *
- * \`path\` is where it lives. \`.dependsOn()\` is the single fact
- * behind four things that are hand-maintained otherwise: this site's
- * build-time API URL, the API's CORS origins, the auth server's trusted
- * origins, and which generated client lands here.
- */
-export const web = new StaticSite('Web', ${variant}).dependsOn([api, auth]);
-`,
-		});
-	}
+		},
+		{ path: 'constructs/database.ts', content: databaseConstruct(options) },
+		{ path: 'constructs/auth.ts', content: authConstruct(options) },
+		{ path: 'constructs/api.ts', content: apiConstruct(options) },
+		{ path: 'constructs/email.ts', content: emailConstruct() },
+		{
+			path: 'constructs/templates/MagicLink.tsx',
+			content: magicLinkTemplate(options.name),
+		},
+		{
+			path: 'constructs/templates/layout.tsx',
+			content: emailLayout(options.name),
+		},
+		// Its migrations and seeds beside it, in the folder its name gives.
+		workspaceUsersMigration(),
+		accessControlMigration(),
+		...accessControlSeeds(options.name),
+		grantAdminScript(options),
+	];
 
 	if (uploads) {
 		const bucket = storageFor();
@@ -789,18 +690,6 @@ export const web = new StaticSite('Web', ${variant}).dependsOn([api, auth]);
 
 /** A bucket — MinIO locally, S3 deployed, one declaration for both. */
 export const uploads = new ObjectStorage('${bucket.id}');
-`,
-		});
-	}
-
-	if (mail) {
-		const mail = emailFor();
-		files.push({
-			path: 'constructs/email.ts',
-			content: `import { Email } from '@geekmidas/constructs/email';
-
-/** Outbound mail — Mailpit locally, SES deployed. */
-export const email = new Email('${mail.id}', { templates: {} });
 `,
 		});
 	}

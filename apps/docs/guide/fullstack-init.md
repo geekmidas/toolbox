@@ -18,7 +18,7 @@ model, see [Getting Started](/guide/getting-started).
 
 ## Overview
 
-The fullstack template creates a production-ready monorepo with three applications and two shared packages. It sets up authentication, database isolation, encrypted secrets, Docker services, and development tooling — all wired together and ready to run with a single `gkm dev` command.
+The fullstack template creates a monorepo for a product people sign in to: an API, an auth server, a web site and an admin panel — and, unless you say no, a mobile app and the site its App Store and Play Store reviewers sign in through. Signing in is a magic link, end to end: the auth server sends it, every app requests it and handles it coming back, and the admin panel lets in only the people whose role grants it. Encrypted secrets, the containers and the tooling are wired in, and the generated project's own feature tests run with `gkm test`.
 
 ## Interactive Prompts
 
@@ -38,7 +38,8 @@ Running `gkm init my-app` walks you through these prompts in order:
 | 10 | Telescope | Yes / No | Yes |
 | 11 | Logger | Pino (recommended), Console | Pino |
 | 12 | Routes structure | Centralized (endpoints), Centralized (routes), Domain-based | Centralized (endpoints) |
-| 13 | Frontend framework *(fullstack only)* | **Next.js**, **TanStack Start**, **Expo** | Next.js |
+| 13 | Web and admin framework *(fullstack only)* | **Next.js**, **TanStack Start** | Next.js |
+| 14 | Include a mobile app? *(fullstack only)* | Yes / No — Expo, with its sign-in and the store-reviewer site | Yes |
 
 Stages are named by the project, not picked from a list. They are written to
 `gkm.config.ts` as [`stages`](./workspaces.md#stages) and everything else is
@@ -56,17 +57,52 @@ gkm init my-app --template fullstack --yes
 Selecting **Fullstack** automatically enables monorepo mode. The `--monorepo` flag is not needed.
 :::
 
-## Frontend Framework Choice
+## The Apps
 
-Fullstack picks one frontend scaffold; the API + auth services stay the same regardless. Each framework gets its own conventions for client-bundled env vars, which the toolbox honors automatically when generating dependency URLs and Docker build args:
+| App | Path | What it is |
+|-----|------|------------|
+| API | `apps/api/` | `RestApi` — `GET /profiles/me` for whoever is signed in, and the admin panel's staff-only endpoints |
+| Auth server | `apps/auth/` | `BetterAuth` with magic links; the entry is generated from `constructs/auth.ts` |
+| Web site | `apps/web/` | Next.js or TanStack Start — sign-in page, the link landing at `/signing-in`, a signed-in home. Answers on the root domain |
+| Admin panel | `apps/admin/` | Same framework as the site — sign-in, and a gate that lets in only roles granting `admin.access` |
+| Mobile app *(optional)* | `apps/app/` | Expo SDK 57, expo-router, NativeWind — continue → check your email → link opens the app → signed in |
+| Reviewer site *(with the app)* | `apps/reviewer/` | Where an App Store or Play Store reviewer, who has no inbox, finds their sign-in link — behind a generated password |
 
-| Framework | App path | Port | Public env prefix | Notes |
-|-----------|----------|------|-------------------|-------|
-| **Next.js** | `apps/web/` | 3001 | `NEXT_PUBLIC_` | App router, React Server Components, standalone Docker output. |
-| **TanStack Start** | `apps/web/` | 3001 | `VITE_` | File-based router on Vite + Nitro. |
-| **Expo** | `apps/app/` | 8081 (Metro) | `EXPO_PUBLIC_` | iOS + Android via expo-router; NativeWind for styling; better-auth Expo client wired in. |
+The web site and the admin panel share the framework you pick. Each gets its own conventions for client-bundled env vars (`NEXT_PUBLIC_` or `VITE_`; the app's are `EXPO_PUBLIC_`), which the toolbox honors when generating dependency URLs and Docker build args. With a mobile app, every frontend runs Expo's React version, so the hooks they share resolve one React.
 
-You can still use `framework: 'vite'` or `framework: 'remix'` by editing `gkm.config.ts` after init — the deploy/sniffer pipeline supports them — but `gkm init` only scaffolds the three above.
+## Signing In
+
+Everything about signing in lives in `packages/auth` (`@<name>/auth`), so the server and every app agree on it:
+
+| Import | Used by | What it is |
+|--------|---------|------------|
+| `@<name>/auth/server` | `constructs/auth.ts` | Better Auth plugins: `magicLinkSignIn` (sends through the mailer), `magicLinkEmailLimit` (a per-address limit beside Better Auth's per-IP one) and, with a mobile app, `reviewerLinks` |
+| `@<name>/auth/client` | web, admin, app | Headless React: `AuthProvider` takes the Better Auth client the app built; `useSession`, `useRequestSignInLink`, `useSignInLinkResult`, `useSignOut` |
+| `@<name>/auth/magic-link` | both | How long a link lasts, the error an expired one comes back with, how an address is checked, the route a link lands on |
+
+The link is a React Email template (`constructs/templates/MagicLink.tsx`) sent by the `Email` construct — Mailpit locally, so `gkm dev` and `gkm test` read it there. A link that has expired or was used comes back to the same page with the address, and the page offers to send a new one.
+
+### Who gets into the admin panel
+
+Roles are sets of permissions (`permissions`, `roles`, `role_permissions`, `user_roles`, migrated in `db/database/`), and the catalogue is `PERMISSIONS` in `@<name>/models/access` — the seeds write it, with the **Member** and **Super admin** roles. Whoever signs in becomes a Member on their first request to the API. The admin panel and every staff endpoint need `admin.access`; nobody has it until you grant the first Super admin:
+
+```bash
+# after signing in once, anywhere
+gkm exec -- tsx scripts/grant-admin.ts you@example.com
+```
+
+### Store reviewers
+
+A store reviewer can't receive email, so the reviewer accounts in `@<name>/auth/reviewers` never are: the auth server keeps their link in `reviewer_links`, and `reviewer.<domain>` shows it to whoever has the site's password — a `RandomPassword`, generated on a stage's first deploy (`gkm secrets:show --stage <stage>` reads it). Change the placeholder reviewer addresses to your own domain, and give the stores the address, the reviewer site and its password in the review notes.
+
+### After `gkm init`
+
+Better Auth's tables — and the rate-limit and reviewer-link tables its plugins add — are its tenant's first migration:
+
+```bash
+gkm migration auth   # writes db/auth-database/migrations/<stamp>_better_auth.sql
+gkm test             # migrates, seeds, and runs the API's and reviewer site's feature tests
+```
 
 ## What Gets Generated
 
@@ -75,90 +111,38 @@ You can still use `framework: 'vite'` or `framework: 'remix'` by editing `gkm.co
 ```
 my-app/
 ├── apps/
-│   ├── api/                     # Backend API
+│   ├── api/                       # RestApi
 │   │   ├── src/
-│   │   │   ├── config/
-│   │   │   │   ├── env.ts       # EnvironmentParser singleton
-│   │   │   │   ├── logger.ts    # Logger instance (Pino or Console)
-│   │   │   │   └── telescope.ts # Telescope setup
-│   │   │   ├── services/
-│   │   │   │   ├── database.ts  # Kysely database service
-│   │   │   │   └── auth.ts      # Auth client service
-│   │   │   ├── router.ts        # a branch of api, with session/auth
-│   │   │   ├── endpoints/
-│   │   │   │   ├── health.ts    # GET /health
-│   │   │   │   ├── users/
-│   │   │   │   │   ├── list.ts  # GET /users
-│   │   │   │   │   └── get.ts   # GET /users/:id
-│   │   │   │   └── profile.ts   # Protected endpoint
-│   │   │   └── test/
-│   │   │       ├── globalSetup.ts
-│   │   │       └── fixtures/
-│   │   ├── package.json
-│   │   ├── tsconfig.json
-│   │   └── gkm.config.ts
-│   ├── auth/                    # Authentication service
-│   │   ├── src/
-│   │   │   ├── config/
-│   │   │   │   ├── env.ts
-│   │   │   │   └── logger.ts
-│   │   │   ├── auth.ts          # better-auth with magic link
-│   │   │   └── index.ts         # Hono server entry
-│   │   ├── package.json
-│   │   └── tsconfig.json
-│   └── web/                     # Frontend (Next.js OR TanStack Start)
-│       ├── src/
-│       │   ├── app/             # (Next.js) Root layout, page, providers
-│       │   ├── routes/          # (TanStack Start) __root.tsx, index.tsx, …
-│       │   ├── api/index.ts     # Typed API client
-│       │   ├── components/ui/   # shadcn/ui components — the app's own source
-│       │   ├── config/
-│       │   │   ├── client.ts    # NEXT_PUBLIC_* / VITE_* config
-│       │   │   └── server.ts    # Server-side secrets
-│       │   └── lib/
-│       │       ├── query-client.ts
-│       │       ├── auth-client.ts
-│       │       └── utils.ts     # cn() class merging
-│       ├── components.json      # shadcn/ui config
-│       ├── next.config.ts       # (Next.js)
-│       ├── vite.config.ts       # (TanStack Start)
-│       ├── tsconfig.json
-│       └── package.json
-│
-│   # …or, when frontendFramework=expo, instead of apps/web:
-│   └── app/                     # Expo (React Native) app
-│       ├── app/                 # expo-router screens (_layout, index, login)
-│       ├── lib/                 # api, auth-client, query-client
-│       ├── app.config.ts
-│       ├── eas.json             # EAS build profiles + EXPO_PUBLIC_* env
-│       ├── babel.config.js
-│       ├── metro.config.js      # NativeWind integration
-│       ├── tailwind.config.ts
-│       ├── global.css
-│       ├── tsconfig.json
-│       └── package.json
+│   │   │   ├── router.ts          # router → memberRouter → staffRouter
+│   │   │   ├── access.ts          # can('users.view')
+│   │   │   ├── users/members.ts   # the users row and permissions of whoever signed in
+│   │   │   ├── endpoints/         # health, profiles/me, admin/users
+│   │   │   └── __tests__/signing-in.spec.ts
+│   │   └── test/                  # transaction-wrapped example
+│   ├── auth/                      # BetterAuth — no src/, the entry is generated
+│   ├── web/                       # Next.js or TanStack Start
+│   │   └── src/                   # login, signing-in, home; auth/, lib/auth-client.ts
+│   ├── admin/                     # same framework — login, signing-in, staff gate, dashboard
+│   ├── app/                       # (mobile app) Expo: (auth)/continue, check-email,
+│   │                              #   signing-in, +native-intent, lib/auth-client.ts
+│   └── reviewer/                  # (mobile app) reviewer site and its feature tests
+├── constructs/                    # every construct, shared by the apps
+│   ├── api.ts  auth.ts  database.ts  email.ts  logger.ts
+│   ├── site.ts  admin.ts  app.ts  reviewer.ts
+│   └── templates/                 # MagicLink.tsx, layout.tsx (React Email)
+├── db/database/
+│   ├── migrations/                # users, access control
+│   └── seeds/                     # permissions, system roles
 ├── packages/
-│   └── models/                  # Shared Zod schemas
-│   │   ├── src/
-│   │   │   ├── common.ts       # Id, Timestamps, Pagination
-│   │   │   └── user.ts         # User, CreateUser, UpdateUser
-│   │   ├── package.json
-│   │   └── tsconfig.json
-├── docker-compose.constructs.yml # written by gkm from the constructs (gitignored)
-├── .gkm/
-│   └── secrets/
-│       └── development.json     # Encrypted development secrets
-├── .vscode/
-│   ├── settings.json            # Biome formatter, editor defaults
-│   └── extensions.json          # Recommended extensions
-├── package.json                 # Root workspace
-├── pnpm-workspace.yaml
-├── tsconfig.json                # Base TS config (ES2022, strict)
-├── vitest.config.ts
-├── turbo.json                   # Task orchestration with caching
-├── biome.json                   # 2-space, single quotes, semicolons
-├── gkm.config.ts                # defineWorkspace() config
-└── .gitignore
+│   ├── auth/                      # @<name>/auth — server, client, magic-link (, reviewers)
+│   └── models/                    # @<name>/models — common, user, access, profile
+├── scripts/grant-admin.ts         # the first Super admin
+├── test/factories/database.ts     # the database's test factory
+├── docker-compose.constructs.yml  # written by gkm from the constructs (gitignored)
+├── .gkm/secrets/                  # encrypted local secrets
+├── gkm.config.ts                  # defineWorkspace()
+├── package.json  pnpm-workspace.yaml  turbo.json  tsconfig.json  biome.json
+└── vitest.config.ts
 ```
 
 ## GitHub Actions
@@ -269,116 +253,57 @@ schemas each needs. Put an image pin or an extra service in your own
 
 ### 6. Generate API App (`apps/api`)
 
-The API app is built on `@geekmidas/constructs` with the Hono framework.
+The API is the `Api` construct (`constructs/api.ts`), built with `.auth(auth)` so a handler can ask the auth server whose cookie it carries. `src/router.ts` branches it:
 
-**Configuration files:**
-- `gkm.config.ts` — endpoint routes, env parser, logger, Telescope
-- `tsconfig.json` — inherits root config
-- `package.json` — deps, scripts, exports
+- `router` — `api.database(database)`, no session.
+- `memberRouter` — someone signed in. Their first request makes their `users` row (linked to the auth server's user by `authUserId`) and gives them the Member role; handlers get `session.member` and `session.permissions`.
+- `staffRouter` — a member whose roles grant `admin.access`, else a 403 with the code `staff_required`. Staff endpoints add `.authorize(can(…))`.
 
-**Source files:**
-- `config/env.ts` — `EnvironmentParser` singleton with database, cache, and auth config
-- `config/logger.ts` — Pino or Console logger based on prompt selection
-- `config/telescope.ts` — Telescope request recording (if enabled)
-- `services/database.ts` — Kysely database service with PostgreSQL dialect
-- `services/auth.ts` — Auth client for calling the auth service
-- `router.ts` — a branch of `api` with a default JWT authorizer and session support
-- `endpoints/health.ts` — basic health check
-- `endpoints/users/list.ts` and `get.ts` — example CRUD endpoints
-- `endpoints/profile.ts` — protected endpoint requiring authentication
-
-**Test files:**
-- `test/globalSetup.ts` — test database setup and teardown
-- `test/fixtures/` — test helpers
-
-**Key dependencies:**
-
-| Package | Purpose |
-|---------|---------|
-| `@geekmidas/constructs` | `RestApi` and the endpoint builder it carries |
-| `@geekmidas/services` | Service discovery |
-| `@geekmidas/envkit` | Environment parsing |
-| `@geekmidas/auth` | JWT verification |
-| `@geekmidas/telescope` | Request debugging |
-| `@geekmidas/audit` | Audit logging |
-| `@geekmidas/rate-limit` | Rate limiting |
-| `hono` | HTTP framework |
-| `kysely` + `pg` | Database ORM |
-| `pino` | Structured logging (if selected) |
-| `zod` | Schema validation |
-
-**Scripts:** `dev` → `gkm dev`, `build` → `gkm build`, `test` → `vitest`, `typecheck` → `tsc --noEmit`, `lint` → `biome lint .`, `fmt` → `biome format . --write`
+`GET /profiles/me` returns who is signed in and their permissions — what every frontend reads first. `GET /admin/users` is the admin panel's first page. `src/__tests__/signing-in.spec.ts` signs in through a real emailed link and checks the gate.
 
 ### 7. Generate Auth App (`apps/auth`)
 
-A standalone authentication service built with [better-auth](https://better-auth.com) and magic link authentication.
+Only a package: the `BetterAuth` construct in `constructs/auth.ts` is the server, and the build generates its entry. Its package is `@<name>/auth-server`, so `@<name>/auth` is free for the shared package every app imports.
 
 ```typescript
-// apps/auth/src/auth.ts
-export const auth = betterAuth({
-  database: new pg.Pool({ connectionString: process.env.DATABASE_URL }),
-  baseURL: process.env.BETTER_AUTH_URL,
-  trustedOrigins: process.env.BETTER_AUTH_TRUSTED_ORIGINS.split(','),
-  secret: process.env.BETTER_AUTH_SECRET,
-  plugins: [
-    magicLink({
-      expiresIn: 300, // 5 minutes
-      sendMagicLink: async ({ email, url }) => {
-        // Logs to console in dev, integrate emailkit for production
-        console.log('Magic link for', email, ':', url);
-      },
-    }),
-  ],
+// constructs/auth.ts (abridged)
+export const auth = new BetterAuth('Auth', {
+  path: 'apps/auth',
+  database: authDatabase,
+  basePath: '/api/auth',
+  dependsOn: [email],
+  options: async ({ services }) => ({
+    rateLimit: { enabled: true, storage: 'database' },
+    plugins: [
+      expo(), // with a mobile app
+      magicLinkSignIn({
+        sendMagicLink: ({ email: to, url }) =>
+          services.mail.sendTemplate('magicLink', { to, subject: 'Sign in to my-app', props: { url, minutes: MAGIC_LINK_MINUTES } }),
+      }),
+      magicLinkEmailLimit(MAGIC_LINK_LIMITS.perEmail),
+      reviewerLinks(), // with a mobile app
+    ],
+  }),
 });
 ```
 
-The Hono entry point mounts auth routes at `/api/auth/*` with CORS for trusted origins and a `/health` endpoint.
+### 8. Generate the Frontends
 
-**Key dependencies:** `better-auth`, `hono`, `@hono/node-server`, `kysely`, `pg`
+The web site and the admin panel are generated by one generator, in the framework you picked. Both wrap their tree in `<AuthProvider client={authClient}>` and use the same pages: `/login` asks for a link with `useRequestSignInLink`, and `/signing-in` reads where it landed with `useSignInLinkResult`. The admin panel's home is a gate around a dashboard: no session sends you to `/login`; a session without `admin.access` gets "no access" and a sign-out button.
 
-**Scripts:** `dev` → `gkm dev --entry ./src/index.ts`, `db:migrate` → `npx @better-auth/cli migrate`, `db:generate` → `npx @better-auth/cli generate`
+#### Next.js
 
-### 8. Generate Frontend App
+App router, React Server Components, standalone Docker output, Tailwind CSS v4. `next.config.ts` transpiles `@<name>/models` and `@<name>/auth`. Public env vars use the `NEXT_PUBLIC_` prefix.
 
-The frontend scaffold depends on which `frontendFramework` you picked. All three share the same toolbox plumbing — typed API client (`@geekmidas/client`), `EnvironmentParser` for config, better-auth — but use different bundlers and env-var prefixes.
+#### TanStack Start
 
-#### Next.js (`apps/web`, default)
+File-based routes under `src/routes/` on Vite + Nitro, Tailwind CSS v4 via `@tailwindcss/vite`. Public env vars use the `VITE_` prefix. `src/routeTree.gen.ts` is written as the router plugin would write it, so a fresh checkout typechecks before the first `vite dev`; the plugin overwrites it from then on.
 
-A Next.js 16 frontend with React 19, React Query, and better-auth client.
+#### The mobile app (`apps/app`)
 
-- Path aliases: `~/*` → `./src/*`, `@{name}/models`
-- Tailwind CSS v4 via PostCSS plugin
-- React Query with 60s stale time
-- better-auth client with magic link plugin
-- Separate server and client config files (`NEXT_PUBLIC_*` for client)
-- Transpiles workspace packages via `next.config.ts`
+Expo SDK 57 with expo-router and NativeWind. `constructs/app.ts` depends on the API, the auth server and the mailer, which is what gives it its URLs, its scheme in the auth server's trusted origins, and — locally — Mailpit's inbox URL, so "Open your email" opens it.
 
-**Key dependencies:** `next`, `react`, `react-dom`, `@tanstack/react-query`, `better-auth`, `@geekmidas/client`, `@geekmidas/envkit`, `tailwindcss`
-
-#### TanStack Start (`apps/web`)
-
-A Vite + TanStack Start app with file-based routing via `@tanstack/react-router`.
-
-- File-based routes under `src/routes/` (e.g. `__root.tsx`, `index.tsx`)
-- Vite as the bundler — env vars use the `VITE_` prefix and are read via `import.meta.env`
-- Tailwind CSS v4 via the `@tailwindcss/vite` plugin
-- React Query, better-auth (magic link), typed API client
-- Server-side secrets stay in `src/config/server.ts` (read via `process.env`)
-
-**Key dependencies:** `@tanstack/react-start`, `@tanstack/react-router`, `vite`, `@vitejs/plugin-react`, `@tailwindcss/vite`, `@tanstack/react-query`, `better-auth`, `@geekmidas/client`, `@geekmidas/envkit`
-
-#### Expo (`apps/app`)
-
-A React Native mobile app on Expo SDK 57 with expo-router and NativeWind.
-
-- expo-router screens under `app/` (`_layout.tsx`, `index.tsx`, `login.tsx`)
-- NativeWind for Tailwind-style class names on React Native primitives
-- `@better-auth/expo` client with magic link, backed by `expo-secure-store`
-- React Query for data fetching against the `@{name}/api` typed client
-- Public env vars use the `EXPO_PUBLIC_` prefix and are inlined into the bundle
-- `eas.json` includes dev / preview / production build profiles, each with its own `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_AUTH_URL`
-
-**Key dependencies:** `expo`, `expo-router`, `expo-secure-store`, `@better-auth/expo`, `nativewind`, `react-native`, `@tanstack/react-query`, `@geekmidas/client`
+The sign-in flow: `(auth)/continue` asks for the address, `(auth)/check-email` waits; the link opens in the phone's browser, the auth server's Expo plugin redirects back into the app with the session, `+native-intent.tsx` keeps the link exactly as it arrived, and `signing-in.tsx` stores the session in the secure store. An expired link offers to send a new one.
 
 ### 9. shadcn/ui Components in the Web App
 
@@ -510,6 +435,8 @@ gkm init <project-name> [options]
 | `--stages <names>` | Deployed stages, comma-separated, e.g. `staging,prod` |
 | `--protected-stage <name>` | Which deployed stage is production (retained and protected) |
 | `--local-stage <name>` | What `gkm dev`, `exec` and `test` run as, e.g. `dev` |
+| `--web <framework>` | Fullstack: the web site's and admin panel's framework — `nextjs`, `tanstack-start` |
+| `--mobile-app` / `--no-mobile-app` | Fullstack: include the Expo app and its reviewer site, or not |
 
 ## Defaults with `--yes`
 
@@ -526,7 +453,8 @@ When running with `--yes`, these defaults are used:
 | Telescope | Enabled |
 | Logger | Pino |
 | Routes structure | Centralized (endpoints) |
-| Frontend framework *(fullstack only)* | Next.js |
+| Web and admin framework *(fullstack only)* | Next.js |
+| Mobile app *(fullstack only)* | Included, with its reviewer site |
 
 ## Team Onboarding
 

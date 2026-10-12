@@ -7,12 +7,13 @@ import {
 	TOOLCHAIN_VERSIONS,
 } from '../dependencies';
 import { generateAuthAppFiles } from '../generators/auth';
+import { generateAuthPackage } from '../generators/auth-package';
 import { generateExpoAppFiles } from '../generators/mobile-expo';
 import { generateModelsPackage } from '../generators/models';
 import { generateMonorepoFiles } from '../generators/monorepo';
 import { generatePackageJson } from '../generators/package';
-import { generateWebAppFiles } from '../generators/web';
-import { generateTanStackWebFiles } from '../generators/web-tanstack';
+import { generateReviewerAppFiles } from '../generators/reviewer';
+import { generateSiteFiles } from '../generators/sites';
 import {
 	type GeneratedFile,
 	getTemplate,
@@ -44,9 +45,10 @@ function scaffold(options: Partial<TemplateOptions>): GeneratedFile[] {
 		...generateMonorepoFiles(o, template),
 		...generateModelsPackage(o),
 		...generateAuthAppFiles(o),
-		...generateWebAppFiles(o),
-		...generateTanStackWebFiles(o),
+		...generateAuthPackage(o),
+		...generateSiteFiles(o),
 		...generateExpoAppFiles(o),
+		...generateReviewerAppFiles(o),
 	];
 }
 
@@ -74,12 +76,23 @@ const SHAPES: [string, Partial<TemplateOptions>][] = [
 		},
 	],
 	[
-		'fullstack + Expo',
+		'fullstack + Next.js + mobile app',
 		{
 			template: 'fullstack',
 			monorepo: true,
 			apiPath: 'apps/api',
-			frontendFramework: 'expo',
+			frontendFramework: 'nextjs',
+			mobileApp: true,
+		},
+	],
+	[
+		'fullstack + TanStack Start + mobile app',
+		{
+			template: 'fullstack',
+			monorepo: true,
+			apiPath: 'apps/api',
+			frontendFramework: 'tanstack-start',
+			mobileApp: true,
 		},
 	],
 ];

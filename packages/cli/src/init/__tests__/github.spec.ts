@@ -227,11 +227,14 @@ describe('generateGithubFiles', () => {
 		);
 	});
 
-	it('adds a Mobile category only for an Expo app', () => {
+	it('adds a Mobile category only for a workspace with a mobile app', () => {
 		expect(files()['.github/release-drafter.yml']).not.toContain('Mobile');
 		expect(
-			files({ frontendFramework: 'expo' })['.github/release-drafter.yml'],
-		).toContain('📱 Mobile');
+			files({ mobileApp: false })['.github/release-drafter.yml'],
+		).not.toContain('Mobile');
+		expect(files({ mobileApp: true })['.github/release-drafter.yml']).toContain(
+			'📱 Mobile',
+		);
 	});
 
 	describe('on a compose target', () => {
