@@ -13,7 +13,9 @@ export function generateAuthAppFiles(
 		return [];
 	}
 
-	const packageName = `@${options.name}/auth`;
+	// `@<name>/auth` is the shared sign-in package (`packages/auth`) every
+	// app imports; this is the server, which nothing imports.
+	const packageName = `@${options.name}/auth-server`;
 	const modelsPackage = `@${options.name}/models`;
 
 	// package.json for auth app
@@ -33,6 +35,7 @@ export function generateAuthAppFiles(
 		// than leaning on the workspace root's.
 		dependencies: {
 			[modelsPackage]: 'workspace:*',
+			[`@${options.name}/auth`]: 'workspace:*',
 			'@geekmidas/auth': GEEKMIDAS_VERSIONS['@geekmidas/auth'],
 			'@geekmidas/constructs': GEEKMIDAS_VERSIONS['@geekmidas/constructs'],
 			'@geekmidas/db': GEEKMIDAS_VERSIONS['@geekmidas/db'],

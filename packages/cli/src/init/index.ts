@@ -14,6 +14,7 @@ import {
 import type { StagesConfig } from '../workspace/types.js';
 import { generateAgentFiles } from './generators/agents.js';
 import { generateAuthAppFiles } from './generators/auth.js';
+import { generateAuthPackage } from './generators/auth-package.js';
 import { generateConfigFiles } from './generators/config.js';
 import { generateEnvFiles } from './generators/env.js';
 import { generateGithubFiles } from './generators/github.js';
@@ -24,13 +25,13 @@ import {
 	generateRootConstructs,
 } from './generators/monorepo.js';
 import { generatePackageJson } from './generators/package.js';
+import { generateReviewerAppFiles } from './generators/reviewer.js';
+import { generateSiteFiles } from './generators/sites.js';
 import { generateSourceFiles } from './generators/source.js';
 import {
 	generateTestFactoryFiles,
 	generateTestFiles,
 } from './generators/test.js';
-import { generateWebAppFiles } from './generators/web.js';
-import { generateTanStackWebFiles } from './generators/web-tanstack.js';
 import {
 	constructChoices,
 	type DeployTarget,
@@ -83,6 +84,10 @@ export interface InitOptions {
 	protectedStage?: string;
 	/** What `gkm dev`, `exec` and `test` run as, e.g. `dev` */
 	localStage?: string;
+	/** Fullstack: what the web site and the admin panel are built with */
+	web?: FullstackFrontendFramework;
+	/** Fullstack: whether there is a mobile app (and so a reviewer site) */
+	mobileApp?: boolean;
 }
 
 /** `' staging, prod '` → `['staging', 'prod']`. */
@@ -112,6 +117,16 @@ export async function initCommand(
 		throw new UnknownDeployTarget(
 			options.deploy,
 			deployTargetChoices.map((c) => c.value),
+		);
+	}
+
+	if (
+		options.web &&
+		!frontendFrameworkChoices.some((choice) => choice.value === options.web)
+	) {
+		throw new UnknownWebFramework(
+			options.web,
+			frontendFrameworkChoices.map((c) => c.value),
 		);
 	}
 
@@ -280,16 +295,29 @@ export async function initCommand(
 				initial: 0,
 			},
 			{
-				// Only prompt for frontend framework on the fullstack template.
+				// The fullstack template's web site and admin panel share one.
 				type: (_prev, values) =>
 					!options.yes &&
+					!options.web &&
 					(options.template === 'fullstack' || values.template === 'fullstack')
 						? 'select'
 						: null,
 				name: 'frontendFramework',
-				message: 'Frontend framework:',
+				message: 'Web and admin framework:',
 				choices: frontendFrameworkChoices,
 				initial: 0,
+			},
+			{
+				type: (_prev, values) =>
+					!options.yes &&
+					options.mobileApp === undefined &&
+					(options.template === 'fullstack' || values.template === 'fullstack')
+						? 'confirm'
+						: null,
+				name: 'mobileApp',
+				message:
+					'Include a mobile app? (Expo, with its sign-in and a site for App Store and Play Store reviewers)',
+				initial: true,
 			},
 		],
 		{ onCancel },
@@ -330,12 +358,13 @@ export async function initCommand(
 		? constructChoices.map((c) => c.value)
 		: answers.constructs || [];
 	const constructs = {
-		// A fullstack workspace always has a database: its auth server's
-		// tenant lives in it.
+		// A fullstack workspace always has a database — its auth server's
+		// tenant lives in it — and mail, because signing in is a link sent by
+		// email.
 		database: isFullstack || chosen.includes('database'),
 		cache: chosen.includes('cache'),
 		uploads: chosen.includes('uploads'),
-		mail: chosen.includes('mail'),
+		mail: isFullstack || chosen.includes('mail'),
 	};
 
 	const pkgManager: PackageManager = options.pm
@@ -350,9 +379,12 @@ export async function initCommand(
 		options.deploy ?? (options.yes ? 'none' : (answers.deployTarget ?? 'none'));
 
 	const frontendFramework: FullstackFrontendFramework | undefined = isFullstack
-		? options.yes
-			? 'nextjs'
-			: (answers.frontendFramework ?? 'nextjs')
+		? (options.web ??
+			(options.yes ? 'nextjs' : (answers.frontendFramework ?? 'nextjs')))
+		: undefined;
+	// Most products this template is for have one, so `--yes` keeps it.
+	const mobileApp = isFullstack
+		? (options.mobileApp ?? (options.yes ? true : (answers.mobileApp ?? true)))
 		: undefined;
 	const templateOptions: TemplateOptions = {
 		name,
@@ -385,6 +417,7 @@ export async function initCommand(
 			: {}),
 		constructs,
 		frontendFramework,
+		...(mobileApp !== undefined ? { mobileApp } : {}),
 	};
 
 	const targetDir = join(cwd, name);
@@ -429,16 +462,21 @@ export async function initCommand(
 				// The project's, like its migrations: a factory belongs to a
 				// database, and every app's tests are handed it.
 				...generateTestFactoryFiles(templateOptions),
+				// Signing in, shared: the auth server's plugins and every
+				// frontend's hooks.
+				...generateAuthPackage(templateOptions),
 			]
 		: [];
 
-	// Collect frontend app files for fullstack template, dispatched by framework
+	// The fullstack template's frontends: the web site and the admin panel in
+	// the framework it was given, and — with a mobile app — the Expo app and
+	// the site its store reviewers sign in through.
 	const webAppFiles = isFullstack
-		? frontendFramework === 'tanstack-start'
-			? generateTanStackWebFiles(templateOptions)
-			: frontendFramework === 'expo'
-				? generateExpoAppFiles(templateOptions)
-				: generateWebAppFiles(templateOptions)
+		? [
+				...generateSiteFiles(templateOptions),
+				...generateExpoAppFiles(templateOptions),
+				...generateReviewerAppFiles(templateOptions),
+			]
 		: [];
 
 	// Collect auth app files for fullstack template
@@ -602,19 +640,26 @@ function printNextSteps(
 		console.log(`  ├── apps/`);
 		console.log(`  │   ├── api/          # Backend API`);
 		if (isFullstackTemplate(options.template)) {
-			console.log(`  │   ├── auth/         # Auth service (better-auth)`);
-			switch (options.frontendFramework) {
-				case 'tanstack-start':
-					console.log(`  │   └── web/          # TanStack Start frontend`);
-					break;
-				case 'expo':
-					console.log(`  │   └── app/          # Expo (React Native) app`);
-					break;
-				default:
-					console.log(`  │   └── web/          # Next.js frontend`);
+			console.log(`  │   ├── auth/         # Auth server (Better Auth)`);
+			const web =
+				options.frontendFramework === 'tanstack-start'
+					? 'TanStack Start'
+					: 'Next.js';
+			console.log(`  │   ├── web/          # Web site (${web})`);
+			if (options.mobileApp) {
+				console.log(`  │   ├── admin/        # Admin panel (${web})`);
+				console.log(`  │   ├── app/          # Mobile app (Expo)`);
+				console.log(`  │   └── reviewer/     # Store reviewers' sign-in`);
+			} else {
+				console.log(`  │   └── admin/        # Admin panel (${web})`);
 			}
 		}
 		console.log(`  ├── packages/`);
+		if (isFullstackTemplate(options.template)) {
+			console.log(
+				`  │   ├── auth/         # Sign-in: server plugins, client hooks`,
+			);
+		}
 		console.log(`  │   └── models/       # Shared Zod schemas`);
 		console.log(`  ├── .gkm/secrets/     # Encrypted secrets`);
 		console.log(`  ├── gkm.config.ts     # Workspace config`);
@@ -720,6 +765,17 @@ export class UnknownDeployTarget extends GkmError {
 	) {
 		super(`Unknown deploy target "${target}". Use ${known.join(', ')}.`);
 		this.name = 'UnknownDeployTarget';
+	}
+}
+
+/** `--web` named a framework the fullstack template has no site for. */
+export class UnknownWebFramework extends GkmError {
+	constructor(
+		readonly framework: string,
+		readonly known: readonly string[],
+	) {
+		super(`Unknown web framework "${framework}". Use ${known.join(', ')}.`);
+		this.name = 'UnknownWebFramework';
 	}
 }
 

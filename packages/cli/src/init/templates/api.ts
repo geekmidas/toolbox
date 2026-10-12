@@ -7,6 +7,7 @@ import {
 } from '../constructs.js';
 import { DEPENDENCY_VERSIONS, TOOLCHAIN_VERSIONS } from '../dependencies.js';
 import { stageEnv } from '../generators/stages.js';
+import { workspaceApiFiles } from '../generators/workspace-api.js';
 import { GEEKMIDAS_VERSIONS } from '../versions.js';
 import type {
 	GeneratedFile,
@@ -219,12 +220,21 @@ export const healthEndpoint = router
   }));
 `,
 			},
+		];
 
-			// users endpoints
-			{
-				path: getRoutePath('users/list.ts'),
-				content: modelsImport
-					? `import { ListUsersResponseSchema } from '${modelsImport}/user';
+		// The fullstack workspace's API is about who signs in: a profile and the
+		// admin panel's first page, both behind a session. Its people are real
+		// accounts, so there is no public list of them.
+		const fullstack = options.template === 'fullstack';
+		if (fullstack) {
+			files.push(...workspaceApiFiles(options, getRoutePath));
+		} else {
+			files.push(
+				// users endpoints
+				{
+					path: getRoutePath('users/list.ts'),
+					content: modelsImport
+						? `import { ListUsersResponseSchema } from '${modelsImport}/user';
 import { router } from '${src('router.ts')}';
 
 export const listUsersEndpoint = router
@@ -245,7 +255,7 @@ ${
   }));
 `
 }`
-					: `import { z } from 'zod';
+						: `import { z } from 'zod';
 import { router } from '${src('router.ts')}';
 
 const UserSchema = z.object({
@@ -273,11 +283,11 @@ ${
   }));
 `
 }`,
-			},
-			{
-				path: getRoutePath('users/get.ts'),
-				content: modelsImport
-					? `import { IdParamsSchema } from '${modelsImport}/common';
+				},
+				{
+					path: getRoutePath('users/get.ts'),
+					content: modelsImport
+						? `import { IdParamsSchema } from '${modelsImport}/common';
 import { UserResponseSchema } from '${modelsImport}/user';
 import { router } from '${src('router.ts')}';
 
@@ -291,7 +301,7 @@ export const getUserEndpoint = router
     email: 'alice@example.com',
   }));
 `
-					: `import { z } from 'zod';
+						: `import { z } from 'zod';
 import { router } from '${src('router.ts')}';
 
 export const getUserEndpoint = router
@@ -308,13 +318,14 @@ export const getUserEndpoint = router
     email: 'alice@example.com',
   }));
 `,
-			},
-		];
+				},
+			);
+		}
 
 		// The monorepo router: the API names the auth construct (`.auth(auth)` at
 		// the root), so the session comes from it rather than a service that
 		// fetches the auth server by hand.
-		if (options.monorepo) {
+		if (options.monorepo && !fullstack) {
 			// Add router with session
 			files.push({
 				path: 'src/router.ts',

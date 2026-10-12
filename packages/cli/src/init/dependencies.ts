@@ -28,6 +28,15 @@ export const DEPENDENCY_VERSIONS = {
 	next: '~16.3.6',
 	react: '~19.3.0',
 	'react-dom': '~19.3.0',
+	// What `ObjectStorage` talks to S3 and MinIO with: `@geekmidas/storage`'s
+	// optional peers, so nothing installs them unless a project does.
+	'@aws-sdk/client-s3': '~3.1136.0',
+	'@aws-sdk/s3-presigned-post': '~3.1136.0',
+	'@aws-sdk/s3-request-presigner': '~3.1136.0',
+	// What `gkm test`'s feature-test harness intercepts HTTP with.
+	msw: '~2.15.0',
+	// The mailer's templates, rendered on the auth server.
+	'@react-email/components': '~1.0.12',
 	'@tanstack/react-query': '~5.104.0',
 	'@tanstack/react-router': '~1.170.40',
 	'@tanstack/react-start': '~1.168.59',
@@ -111,7 +120,7 @@ export const EXPO_VERSIONS = {
 } as const;
 
 /**
- * The pnpm a pnpm scaffold runs under, through \`packageManager\`.
+ * The pnpm a pnpm scaffold runs under, through `packageManager`.
  *
  * Pinned in every layout. Without it Corepack takes the newest pnpm, and 11
  * fails the first install on dependencies with build scripts (esbuild) until

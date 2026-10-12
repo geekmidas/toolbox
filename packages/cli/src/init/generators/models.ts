@@ -1,5 +1,6 @@
 import { TOOLCHAIN_VERSIONS } from '../dependencies.js';
 import type { GeneratedFile, TemplateOptions } from '../templates/index.js';
+import { accessModels } from './workspace-api.js';
 
 /**
  * Generate packages/models for shared Zod schemas (monorepo only)
@@ -150,5 +151,7 @@ export type ListUsersResponse = z.infer<typeof ListUsersResponseSchema>;
 			path: 'packages/models/src/user.ts',
 			content: userTs,
 		},
+		// Who may do what: the fullstack workspace's admin panel and API.
+		...(options.template === 'fullstack' ? accessModels() : []),
 	];
 }

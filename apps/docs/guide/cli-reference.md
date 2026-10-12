@@ -252,7 +252,7 @@ Options:
 - `api` - Full API with database
 - `serverless` - AWS Lambda ready
 - `worker` - Background job processing
-- `fullstack` - API + Frontend (Next.js)
+- `fullstack` - API, auth server, web site, admin panel and an optional mobile app, signing in with magic links
 
 ### `gkm exec`
 

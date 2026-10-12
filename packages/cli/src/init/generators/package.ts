@@ -86,6 +86,14 @@ export function generatePackageJson(
 		dependencies[`@${name}/models`] = 'workspace:*';
 	}
 
+	// The fullstack API is tested through its feature tests: a browser that
+	// signs in by email, against the auth server, in the test's transaction.
+	const fullstack = options.template === 'fullstack';
+	if (fullstack) {
+		dependencies[`@${name}/auth`] = 'workspace:*';
+		devDependencies.msw = DEPENDENCY_VERSIONS.msw;
+	}
+
 	// Sort dependencies alphabetically
 	const sortObject = (obj: Record<string, string>) =>
 		Object.fromEntries(
@@ -112,6 +120,8 @@ export function generatePackageJson(
 		scripts,
 		dependencies: sortObject(dependencies),
 		devDependencies: sortObject(devDependencies),
+		// The feature-test harness `gkm test` generates for this app.
+		...(fullstack ? { imports: { '#test': './.gkm/test/index.ts' } } : {}),
 	};
 
 	return [

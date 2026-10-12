@@ -65,7 +65,7 @@ program
 	.argument('[name]', 'Project name')
 	.option(
 		'--template <template>',
-		'Project template (minimal, api, serverless, worker)',
+		'Project template (minimal, api, fullstack, serverless, worker)',
 	)
 	.option('--skip-install', 'Skip dependency installation', false)
 	.option('-y, --yes', 'Skip prompts, use defaults', false)
@@ -84,6 +84,15 @@ program
 	)
 	.option('--protected-stage <name>', 'Which deployed stage is production')
 	.option('--local-stage <name>', 'What gkm dev runs as (e.g. dev)')
+	.option(
+		'--web <framework>',
+		'Fullstack: what the web site and admin panel use (nextjs, tanstack-start)',
+	)
+	.option(
+		'--mobile-app',
+		'Fullstack: include the Expo app and its store-reviewer site',
+	)
+	.option('--no-mobile-app', 'Fullstack: no mobile app')
 	.action(async (name: string | undefined, options: InitOptions) => {
 		try {
 			const globalOptions = program.opts();

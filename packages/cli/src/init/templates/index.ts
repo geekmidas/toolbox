@@ -56,7 +56,8 @@ export interface ScaffoldedConstructs {
  * `FrontendFramework` type also covers `vite` and `remix` which
  * users can configure manually after init.
  */
-export type FullstackFrontendFramework = 'nextjs' | 'tanstack-start' | 'expo';
+/** What the web site and the admin panel are built with. */
+export type FullstackFrontendFramework = 'nextjs' | 'tanstack-start';
 
 /**
  * Options collected from user prompts
@@ -82,8 +83,13 @@ export interface TemplateOptions {
 	stages: StagesConfig;
 	/** The constructs this scaffold declares */
 	constructs: ScaffoldedConstructs;
-	/** Frontend framework (fullstack template only) */
+	/** What the web site and the admin panel are built with (fullstack only) */
 	frontendFramework?: FullstackFrontendFramework;
+	/**
+	 * Whether the workspace has a mobile app (fullstack only): the Expo app,
+	 * its sign-in, and the site store reviewers sign in to it through.
+	 */
+	mobileApp?: boolean;
 }
 
 /**
@@ -138,7 +144,8 @@ export const templateChoices = [
 	{
 		title: 'Fullstack',
 		value: 'fullstack' as TemplateName,
-		description: 'Monorepo with API + Next.js + shared models',
+		description:
+			'Monorepo: API, auth, web, admin and an optional mobile app, signing in with magic links',
 	},
 ];
 
@@ -186,11 +193,6 @@ export const frontendFrameworkChoices = [
 		title: 'TanStack Start',
 		value: 'tanstack-start' as FullstackFrontendFramework,
 		description: 'File-based router on Vite + Nitro',
-	},
-	{
-		title: 'Expo',
-		value: 'expo' as FullstackFrontendFramework,
-		description: 'React Native mobile app (iOS + Android)',
 	},
 ];
 

@@ -154,13 +154,12 @@ jobs:
 `;
 
 function releaseDrafterConfig(options: TemplateOptions): string {
-	const mobile =
-		options.frontendFramework === 'expo'
-			? `  - title: "📱 Mobile"
+	const mobile = options.mobileApp
+		? `  - title: "📱 Mobile"
     labels: [mobile, ios, android]
     collapse-after: 10
 `
-			: '';
+		: '';
 
 	return `name-template: "v$RESOLVED_VERSION"
 tag-template: "v$RESOLVED_VERSION"
