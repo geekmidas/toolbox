@@ -33,6 +33,7 @@
     "align-deps-tranche-1",
     "alpha-packaging",
     "api-image-http-only",
+    "app-ports-sibling-clash",
     "auth-client-for-callers",
     "auth-migrations-no-server",
     "auth-pending-migration",
