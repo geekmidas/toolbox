@@ -619,6 +619,42 @@ describe('mail and storage on a deployed stage', () => {
 			...overrides,
 		});
 
+	it('hands no inbox to a site or a phone: Mailpit runs only locally', () => {
+		// A mobile app that opens sign-in links, as a site might.
+		const manifest: ConstructManifest = {
+			...withServices(),
+			App: {
+				kind: 'mobile-app',
+				id: 'App',
+				variant: 'expo',
+				app: { path: 'apps/app' },
+				dependencies: [
+					{ target: 'Api', kind: 'rest-api' },
+					{ target: 'Mail', kind: 'email' },
+				],
+				provides: ['APP_SCHEME'],
+			},
+		};
+		const phone = (s: ComposeStack) =>
+			s.mobileApps.find((candidate) => candidate.name === 'app')!.values;
+
+		// Deployed: the public API, the scheme — and no inbox, even where the
+		// stage runs Mailpit as a dev service.
+		const prod = deployed({ manifest, allowDevServices: true });
+		expect(phone(prod)).toEqual({
+			APP_SCHEME: 'compose-app',
+			EXPO_PUBLIC_API_URL: 'https://api.shop.example.com',
+		});
+		expect(Object.keys(app(prod, 'web').build?.args ?? {})).not.toContain(
+			'VITE_MAIL_INBOX_URL',
+		);
+
+		// Locally the inbox is how a sign-in link is opened.
+		expect(phone(stack({ manifest }))).toHaveProperty(
+			'EXPO_PUBLIC_MAIL_INBOX_URL',
+		);
+	});
+
 	it('decides, and refuses nothing: a stage missing every key runs neither', () => {
 		// Whether the stage lacks a key is the deploy's readiness check's to
 		// say, once — a build composes this stack with none of them.

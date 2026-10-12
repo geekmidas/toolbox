@@ -42,8 +42,10 @@ import { deploysWithCompose } from '../providers/dns.js';
 import { discover } from '../reconcile/discover.js';
 import { constructGlobs } from '../reconcile/workspace.js';
 import { secretsStoreFor } from '../secrets/store.js';
+import type { StageSecrets } from '../secrets/types.js';
 import { edgePorts } from '../target/compose/phases.js';
 import { assertDeployedStage } from '../workspace/stages.js';
+import type { NormalizedWorkspace } from '../workspace/types.js';
 
 const logger = console;
 
@@ -145,22 +147,26 @@ export interface StackAddress {
 }
 
 /**
- * The environment an app's container runs with: a backend's own, over the
- * keys of each worker built from it; a site's, its public values.
+ * The environment an app runs with on the stage: a backend's container's,
+ * over the keys of each worker built from it; a site's or a mobile app's,
+ * the public values its build reads.
  *
  * @throws {ExecAppNotInStack}
  */
 export function appEnvironment(
-	stack: ComposeStack,
+	stack: Pick<ComposeStack, 'stage' | 'apps' | 'workers' | 'mobileApps'>,
 	appName: string | undefined,
 ): Record<string, string> {
+	const mobile = stack.mobileApps.find(
+		(candidate) => candidate.name === appName,
+	);
+	if (mobile) return { ...mobile.values };
 	const app = stack.apps.find((candidate) => candidate.name === appName);
 	if (!app) {
-		throw new ExecAppNotInStack(
-			stack.stage,
-			appName,
-			stack.apps.map((candidate) => candidate.name),
-		);
+		throw new ExecAppNotInStack(stack.stage, appName, [
+			...stack.apps.map((candidate) => candidate.name),
+			...stack.mobileApps.map((candidate) => candidate.name),
+		]);
 	}
 	if (app.kind === 'site') return { ...app.build?.args };
 	const workers = stack.workers.filter((worker) => worker.host === app.name);
@@ -248,16 +254,29 @@ export function credentialsImport(keys: readonly string[]): string {
 	return `--import=data:text/javascript,${encodeURIComponent(source)}`;
 }
 
-/** The stage's stack, and the app this directory is, as the deploy has them. */
-async function stageStack(
-	options: StageExecOptions,
-	env: NodeJS.ProcessEnv,
-): Promise<{
+/** A deployed compose stage, as its deploy has it, and the app here. */
+export interface LoadedStage {
+	workspace: NormalizedWorkspace;
+	manifest: ConstructManifest;
 	stack: ComposeStack;
+	/** The stage's secrets, as its deploy reads them. */
+	secrets: StageSecrets;
+	/** The app this directory is, if it is one. */
 	appName: string | undefined;
-	server: ComposeServer;
 	protectedStage: boolean;
-}> {
+}
+
+/**
+ * The stage's stack, and the app this directory is, as the deploy has them:
+ * its secrets read from its store, its values derived as the deploy derives
+ * them. Nothing is reached but the store — no server, no SSH.
+ *
+ * @throws {UndeclaredStage}, {ExecStageNotComposed}, {ExecStageNotDeployed}
+ */
+export async function loadStage(
+	options: Pick<StageExecOptions, 'stage' | 'profile' | 'cwd'>,
+	env: NodeJS.ProcessEnv = process.env,
+): Promise<LoadedStage> {
 	const cwd = options.cwd ?? process.cwd();
 	const { stage } = options;
 	// Outside an app the workspace is still loaded, so the stage is checked
@@ -304,19 +323,29 @@ async function stageStack(
 		secrets,
 		ports: edgePorts(env),
 	});
-	const server = composeServer({
-		stage,
-		local: false,
-		config: workspace.deploy?.compose?.server,
-		custom: secrets.custom,
-	})!;
-	if (options.sshUser) server.user = options.sshUser;
 	return {
+		workspace,
+		manifest,
 		stack,
+		secrets,
 		appName: info?.appName,
-		server,
 		protectedStage: workspace.stages.protected?.includes(stage) ?? false,
 	};
+}
+
+/** The stage's server, as SSH reaches it: `--ssh-user` over the config's. */
+function stageServer(
+	loaded: LoadedStage,
+	options: StageExecOptions,
+): ComposeServer {
+	const server = composeServer({
+		stage: options.stage,
+		local: false,
+		config: loaded.workspace.deploy?.compose?.server,
+		custom: loaded.secrets.custom,
+	})!;
+	if (options.sshUser) server.user = options.sshUser;
+	return server;
 }
 
 /**
@@ -333,10 +362,8 @@ export async function execOnStage(
 	deps: StageExecDeps = defaultStageExecDeps,
 ): Promise<number> {
 	const { stage } = options;
-	const { stack, appName, server, protectedStage } = await stageStack(
-		options,
-		deps.env,
-	);
+	const loaded = await loadStage(options, deps.env);
+	const { stack, appName, protectedStage } = loaded;
 	const env = appEnvironment(stack, appName);
 
 	if (protectedStage && !options.yes) {
@@ -344,6 +371,16 @@ export async function execOnStage(
 		if (!(await deps.confirm(question))) throw new ExecNotConfirmed(stage);
 	}
 
+	// Only what reaches a service on the stack needs the server: a site's or
+	// a mobile app's values are public addresses, and need no SSH at all.
+	const addresses = stackAddresses(env, stack);
+	if (addresses.length === 0) {
+		logger.log(`📦 App: ${appName} on '${stage}'`);
+		logger.log(`🔐 Loaded ${Object.keys(env).length} value(s) for '${stage}'`);
+		return run(commandArgs, env, options.cwd);
+	}
+
+	const server = stageServer(loaded, options);
 	logger.log(`📦 App: ${appName} on '${stage}' (${server.host})`);
 
 	// The deploy's own check: SSH logs in and Docker answers, before any
@@ -353,7 +390,7 @@ export async function execOnStage(
 	const tunnels: Tunnel[] = [];
 	const ports = new Map<string, number>();
 	try {
-		for (const address of stackAddresses(env, stack)) {
+		for (const address of addresses) {
 			const published = await deps.docker.published(
 				{ host: dockerHost(server) },
 				stack.project,

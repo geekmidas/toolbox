@@ -1,5 +1,6 @@
 import {
 	type ConstructManifest,
+	type MobileAppDeclaration,
 	PUBLIC_PREFIX,
 	provideKey,
 	publicEnvFor,
@@ -7,15 +8,18 @@ import {
 } from '@geekmidas/manifest';
 
 /**
- * What a site's image is built with: every value its build reads, resolved for
- * the stage — and so every `ARG` its Dockerfile declares.
+ * What a site's image is built with — or a mobile app's EAS build: every
+ * value its build reads, resolved for the stage, and so every `ARG` a site's
+ * Dockerfile declares.
  *
  * - **Its edges' public values and its own address**, under the variant's
  *   public prefix (`publicEnvFor`): what the bundler inlines.
  * - **Its own address under its own name** (`WEB_URL`). Server code runs at
  *   build too — `next build` prerenders, and a page's `metadataBase` is read
  *   then — and `gkm exec -- next build` has it locally, so the image build
- *   must, or a site that builds locally fails in CI.
+ *   must, or a site that builds locally fails in CI. A mobile app has no
+ *   address: its own value is its scheme (`APP_SCHEME`), which its
+ *   `app.config.ts` reads when EAS builds it.
  * - **Every stage secret already named for the bundle**: a key carrying the
  *   variant's public prefix (`NEXT_PUBLIC_APP_STORE_URL` on a `next` site) was
  *   declared public by whoever named it, so it is passed. Anything else is
@@ -25,15 +29,15 @@ import {
  * A derived value wins over a stage secret of the same name: the site's
  * addresses are the construct's, not a copy someone set.
  */
-export function siteBuildArgs(
-	site: SiteDeclaration,
+export function publicBuildValues(
+	site: SiteDeclaration | MobileAppDeclaration,
 	manifest: ConstructManifest,
 	resolve: (key: string) => string | undefined,
 	secrets: Readonly<Record<string, string>>,
 ): Record<string, string> {
 	const args: Record<string, string> = {};
 
-	const own = provideKey(site.id, 'url');
+	const own = provideKey(site.id, site.kind === 'site' ? 'url' : 'scheme');
 	const ownValue = resolve(own);
 	if (ownValue) args[own] = ownValue;
 

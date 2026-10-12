@@ -52,6 +52,11 @@ export interface ComposeAppOptions {
 	 * reads a credential nothing else does.
 	 */
 	reviewer?: boolean;
+	/**
+	 * A `MobileApp`, `App` in `apps/app`, that calls the API and the auth
+	 * server — with each stage's `stages` setting, where given.
+	 */
+	mobile?: boolean | { stages: Record<string, unknown> };
 }
 
 /**
@@ -100,6 +105,25 @@ export const telemetry = new Telemetry('Telemetry', {
 		writeFileSync(join(dir, path), `${JSON.stringify(value, null, 2)}\n`);
 
 	if (options.reviewer) writeReviewer(dir, name);
+	if (options.mobile) {
+		const stages =
+			typeof options.mobile === 'object'
+				? `, stages: ${JSON.stringify(options.mobile.stages)}`
+				: '';
+		writeFileSync(
+			join(dir, 'constructs', 'mobile.ts'),
+			`import { MobileApp } from '@geekmidas/constructs/mobile-app';
+import { api } from './api.js';
+import { auth } from './auth.js';
+
+/** The phone app: built by EAS with the stage's API and auth URLs. */
+export const app = new MobileApp('App', { path: 'apps/app'${stages} }).dependsOn([
+  api,
+  auth,
+]);
+`,
+		);
+	}
 
 	json('package.json', {
 		name,
@@ -117,7 +141,7 @@ export const telemetry = new Telemetry('Telemetry', {
 		tasks: { build: { outputs: ['dist/**'] } },
 	});
 
-	for (const app of ['api', 'auth']) {
+	for (const app of options.mobile ? ['api', 'auth', 'app'] : ['api', 'auth']) {
 		mkdirSync(join(dir, 'apps', app), { recursive: true });
 		json(`apps/${app}/package.json`, {
 			name: `@${name}/${app}`,

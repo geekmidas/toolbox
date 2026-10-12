@@ -599,8 +599,40 @@ export interface MobileAppDeclaration extends Node {
 	 * stage.
 	 */
 	scheme?: string;
+	/**
+	 * How each deployed stage ships it, where that differs from the defaults
+	 * — see {@link MobileAppStage}. Keyed by stage name.
+	 */
+	stages?: Readonly<Record<string, MobileAppStage>>;
 	/** What it calls — the surfaces whose URLs it is built with. */
 	dependencies: readonly Dependency[];
+}
+
+/** A Play track an Android build is submitted to. */
+export type PlayTrack = 'internal' | 'alpha' | 'beta' | 'production';
+
+/**
+ * What a submitted Android release does on its track: `draft` waits for
+ * someone to release it in Play Console; `completed` goes out at once.
+ */
+export type PlayReleaseStatus = 'draft' | 'completed';
+
+/**
+ * How one deployed stage ships a mobile app. Every field is optional: the
+ * protected stage defaults to EAS's `production` environment and Play's
+ * `production` track, every other deployed stage to `preview` and
+ * `internal`, and every release to `draft`.
+ */
+export interface MobileAppStage {
+	/**
+	 * The EAS environment its builds read their variables from —
+	 * `production`, `preview` or `development` (others need a paid plan).
+	 */
+	environment?: string;
+	android?: {
+		track?: PlayTrack;
+		releaseStatus?: PlayReleaseStatus;
+	};
 }
 
 /**

@@ -496,6 +496,25 @@ an `::error::` annotation, and nothing is written.
 | `--event` | the event to plan for; defaults to `$GITHUB_EVENT_NAME` |
 | `--stage` | the stage a `workflow_dispatch` deploys |
 
+### `gkm eas:sync`
+
+Set up a mobile app's EAS project for a deployed compose stage: the stage's
+`build.<stage>` and `submit.<stage>` profiles in `eas.json`, and the values
+the app's build reads (its scheme, its edges' public URLs as `EXPO_PUBLIC_*`)
+in the stage's EAS environment.
+
+```bash
+gkm eas:sync --stage <stage> [options]
+
+Options:
+  --stage <stage>        A deployed compose stage
+  --app <app>            The mobile app (default: the one here, or the only one)
+  --profile <profile>    AWS profile for the stage's account
+  --dry-run              Say what would be written, and write nothing
+```
+
+See [Mobile apps on a deployed stage](./mobile.md).
+
 ### `gkm compose`
 
 Run the workspace's APIs and sites for a stage as one Docker Compose stack
