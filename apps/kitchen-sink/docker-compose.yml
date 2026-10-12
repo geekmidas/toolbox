@@ -1,0 +1,9 @@
+# Merged over the generated docker-compose.constructs.yml.
+#
+# OpenObserve from the geekmidas mirror on GHCR rather than public.ecr.aws:
+# CI's runners pull from ECR Public anonymously and are rate-limited there
+# ("toomanyrequests: Rate exceeded"). Same image, same tag as
+# OPENOBSERVE_IMAGE in packages/cli/src/compose/logs.ts — bump both together.
+services:
+  openobserve:
+    image: ghcr.io/geekmidas/openobserve:v1.0.4
