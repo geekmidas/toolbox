@@ -58,6 +58,7 @@ export default defineConfig({
           { text: 'Deployment', link: '/guide/deployment' },
           { text: 'Deploy Targets', link: '/guide/deploy-targets' },
           { text: 'Deploy with Docker Compose', link: '/guide/compose' },
+          { text: 'Mobile apps on a deployed stage', link: '/guide/mobile' },
           { text: 'Providers', link: '/guide/providers' },
           { text: 'Running in Production', link: '/guide/production' },
           { text: 'Telemetry', link: '/guide/telemetry' },

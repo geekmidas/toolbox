@@ -32,6 +32,7 @@ import {
 	type Declaration,
 	type Dependency,
 	type MobileAppDeclaration,
+	type MobileAppStage,
 	provideKey,
 } from '@geekmidas/manifest';
 import { type Declarable, edgeTo } from './construct-interface';
@@ -66,6 +67,18 @@ export interface MobileAppConfig {
 	 * Give one only when the app is known by another name.
 	 */
 	scheme?: string;
+	/**
+	 * How a deployed stage ships it, where that differs from the defaults: the
+	 * protected stage reads EAS's `production` environment and submits to
+	 * Play's `production` track, every other deployed stage `preview` and
+	 * `internal`, and every Android release is a `draft` until someone
+	 * releases it in Play Console.
+	 *
+	 * ```ts
+	 * stages: { beta: { environment: 'preview', android: { track: 'alpha' } } }
+	 * ```
+	 */
+	stages?: Readonly<Record<string, MobileAppStage>>;
 }
 
 export class MobileApp<TName extends string = string>
@@ -111,6 +124,7 @@ export class MobileApp<TName extends string = string>
 					...(this.config.config ? { config: this.config.config } : {}),
 				},
 				...(this.config.scheme ? { scheme: this.config.scheme } : {}),
+				...(this.config.stages ? { stages: this.config.stages } : {}),
 				dependencies: this.dependencies,
 				provides: [this.keys.scheme],
 			},

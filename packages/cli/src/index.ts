@@ -331,6 +331,36 @@ program
 	);
 
 program
+	.command('eas:sync')
+	.description(
+		"Set up a mobile app's EAS project for a deployed stage: its eas.json profiles, and its public values in the stage's EAS environment",
+	)
+	.requiredOption('--stage <stage>', 'A deployed compose stage')
+	.option(
+		'--app <app>',
+		'The mobile app (default: the one here, or the only one)',
+	)
+	.option('--profile <profile>', "AWS profile for the stage's account")
+	.option('--dry-run', 'Say what would be written, and write nothing')
+	.action(
+		async (options: {
+			stage: string;
+			app?: string;
+			profile?: string;
+			dryRun?: boolean;
+		}) => {
+			try {
+				const globalOptions = program.opts();
+				if (globalOptions.cwd) process.chdir(globalOptions.cwd);
+				const { easSync } = await import('./mobile/eas.js');
+				await easSync(options);
+			} catch (error) {
+				exitWithError(error);
+			}
+		},
+	);
+
+program
 	.command('test')
 	.description('Run tests with secrets loaded from environment')
 	.option(

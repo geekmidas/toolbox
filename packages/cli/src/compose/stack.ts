@@ -20,7 +20,6 @@ import {
 	type ConstructManifest,
 	provideKey,
 	provisionOrder,
-	publicEnvFor,
 } from '@geekmidas/manifest';
 import { stageBackups } from '../backups/config.js';
 import {
@@ -101,7 +100,7 @@ import {
 	stackRedis,
 } from './redis.js';
 import type { ComposeProxy, EdgeRoute, EdgeTls } from './routes.js';
-import { siteBuildArgs } from './siteBuild.js';
+import { publicBuildValues } from './siteBuild.js';
 import {
 	EDGE_NETWORK,
 	edgeAlias,
@@ -229,6 +228,23 @@ export interface StackWorker extends AppImage {
 	env?: Record<string, string>;
 }
 
+/**
+ * A mobile app, as a stage builds it: nothing in the stack runs it — EAS
+ * builds it and the stores ship it — but its build reads the stage's
+ * public values, resolved here the way a site's build args are.
+ */
+export interface StackMobileApp {
+	/** Its app key — `app`. */
+	name: string;
+	/** The `MobileApp` construct. */
+	id: string;
+	/**
+	 * What its build reads, for this stage: its scheme, its edges' public
+	 * URLs under `EXPO_PUBLIC_`, and every stage secret already named so.
+	 */
+	values: Record<string, string>;
+}
+
 /** A service as the stack's compose file defines it. */
 export interface StackService {
 	image: string;
@@ -335,6 +351,8 @@ export interface ComposeStack {
 	apps: StackApp[];
 	/** Each Worker with background work, in a container of its own. */
 	workers: StackWorker[];
+	/** Each mobile app, and what its build reads for this stage. */
+	mobileApps: StackMobileApp[];
 	/** The infrastructure containers, by compose service name. */
 	infra: string[];
 	compose: StackFile;
@@ -879,6 +897,11 @@ export function composeStack(input: StackInput): ComposeStack {
 	): string | undefined => {
 		// The server's address is gkm's own: never in an app's environment.
 		if (isReservedStageKey(key)) return undefined;
+		// A deployed stage has no inbox: Mailpit runs only locally — not for a
+		// backend, a site's bundle or a phone.
+		if (!local && owner?.kind === 'email' && key.endsWith('_INBOX_URL')) {
+			return undefined;
+		}
 		// Mail and storage: what the stage set — a real server, a real bucket —
 		// and otherwise the dev service it runs, which `services` has already
 		// checked it may.
@@ -939,9 +962,6 @@ export function composeStack(input: StackInput): ComposeStack {
 			// The node's keys are the stage's telemetry, added per process.
 			if (isTelemetryKey(key)) continue;
 			const owner = owners.get(key) ?? storageOwner(key, plan);
-			// A deployed stage has no inbox: Mailpit runs only locally.
-			if (!local && owner?.kind === 'email' && key.endsWith('_INBOX_URL'))
-				continue;
 			if ((STORAGE_KEYS as readonly string[]).includes(key)) {
 				// The stage's own key pair where it set one — an external bucket
 				// signs with it — and otherwise the stack's MinIO's.
@@ -961,7 +981,7 @@ export function composeStack(input: StackInput): ComposeStack {
 			const site = manifest[app.id];
 			if (site?.kind !== 'site') continue;
 
-			const args = siteBuildArgs(
+			const args = publicBuildValues(
 				site,
 				manifest,
 				(key) => valueFor(app, key, owners.get(key)),
@@ -1009,6 +1029,28 @@ export function composeStack(input: StackInput): ComposeStack {
 		for (const [key, value] of Object.entries(app.env)) {
 			if (/[\r\n]/.test(value)) throw new EnvValueMultiline(app.name, key);
 		}
+	}
+
+	// A mobile app runs on a phone, which has only the public addresses — as
+	// a browser does — so its values resolve as a site's do.
+	const mobileApps: StackMobileApp[] = [];
+	for (const declaration of Object.values(manifest)) {
+		if (declaration.kind !== 'mobile-app') continue;
+		const app = {
+			name: appKey(declaration.id),
+			id: declaration.id,
+			kind: 'site' as const,
+		};
+		mobileApps.push({
+			name: app.name,
+			id: app.id,
+			values: publicBuildValues(
+				declaration,
+				manifest,
+				(key) => valueFor(app, key, owners.get(key)),
+				custom,
+			),
+		});
 	}
 
 	// A worker reaches every surface across the compose network: it is never
@@ -1158,6 +1200,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		local,
 		apps,
 		workers,
+		mobileApps,
 		infra,
 		compose,
 		proxy,

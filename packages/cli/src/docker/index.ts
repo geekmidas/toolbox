@@ -505,7 +505,7 @@ export function siteDockerfile(
 		(declared?.kind === 'site' && options.manifest
 			? [
 					// Its own address under its own name, for server code that runs
-					// at build — what `siteBuildArgs` hands every image build.
+					// at build — what `publicBuildValues` hands every image build.
 					provideKey(declared.id, 'url'),
 					...Object.keys(publicEnvFor(declared, options.manifest)),
 				]
