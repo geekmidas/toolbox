@@ -13,6 +13,7 @@ import { Readable } from 'node:stream';
 import { afterAll, describe, expect, it } from 'vitest';
 import { POSTGRES_PORT } from '../../../../testkit/test/ports';
 import {
+	DockerUnreachable,
 	dockerCompose,
 	engineEnv,
 	projectNetwork,
@@ -72,6 +73,16 @@ describe("a service's container", () => {
 			await dockerCompose.published({}, SUITE.project, 'no-such-service', 1),
 		).toBeUndefined();
 		expect(publishedPort('127.0.0.1:54321->5432/tcp', 5432)).toBe(54321);
+
+		// Docker not answering is said, not taken for a port never published.
+		await expect(
+			dockerCompose.published(
+				{ host: 'unix:///nonexistent/docker.sock' },
+				SUITE.project,
+				'postgres',
+				5432,
+			),
+		).rejects.toThrow(DockerUnreachable);
 		expect(publishedPort('127.0.0.1:54321->15432/tcp', 5432)).toBeUndefined();
 	});
 

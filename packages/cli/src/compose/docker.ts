@@ -252,6 +252,21 @@ export function portHolders(output: string, port: number): PortHolder[] {
 /** How long a stack has to pass its health checks. */
 const WAIT_TIMEOUT_S = 180;
 
+/** `docker` itself failed, before it could say anything about a service. */
+export class DockerUnreachable extends GkmError {
+	constructor(
+		readonly engine: string,
+		readonly stderr: string,
+	) {
+		super(
+			`Could not ask Docker on ${engine} which ports its services publish ` +
+				`(docker said: ${stderr.trim() || 'nothing'}). Check that ` +
+				`\`DOCKER_HOST=${engine} docker ps\` works from here.`,
+		);
+		this.name = 'DockerUnreachable';
+	}
+}
+
 /** `docker compose port` printed nothing a port can be read from. */
 export class ServicePortUnknown extends GkmError {
 	constructor(
@@ -575,7 +590,7 @@ export const dockerCompose: ComposeDocker = {
 
 	async published(engine, project, service, inside) {
 		const env = engineEnv(engine);
-		const { stdout } = await capture(
+		const { code, stdout, stderr } = await capture(
 			'docker',
 			[
 				'ps',
@@ -588,6 +603,10 @@ export const dockerCompose: ComposeDocker = {
 			],
 			env ? { env } : {},
 		);
+		// Docker not answering is not a service that publishes nothing.
+		if (code !== 0) {
+			throw new DockerUnreachable(engine.host ?? 'this machine', stderr);
+		}
 		return publishedPort(stdout, inside);
 	},
 

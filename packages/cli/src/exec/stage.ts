@@ -351,8 +351,9 @@ export async function execOnStage(
 			);
 			if (published === undefined) {
 				logger.log(
-					`⚠️  ${address.service} is not published on the server, so it is ` +
-						'unreachable from here; its address is passed on unchanged.',
+					`⚠️  ${address.service} is not published on the server (no running ` +
+						`${stack.project} ${address.service} publishes ${address.port}), so ` +
+						'it is unreachable from here; its address is passed on unchanged.',
 				);
 				continue;
 			}
