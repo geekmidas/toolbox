@@ -4,6 +4,7 @@ import { type HttpError, isHttpError, wrapError } from '@geekmidas/errors';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import {
+	currentRequestContext,
 	runWithRequestContext,
 	type Service,
 	ServiceDiscovery,
@@ -38,6 +39,7 @@ import {
 } from './processAudits';
 import { enforceRateLimit } from './rateLimit';
 import { readRequestBody } from './readRequestBody';
+import { requestLogger } from './requestLogger';
 
 export interface HonoEndpointOptions {
 	/**
@@ -360,14 +362,11 @@ export class HonoEndpoint<
 			const startTime = Date.now();
 			const requestId = c.req.header('X-Request-ID') ?? crypto.randomUUID();
 
-			const logger = endpoint.logger.child({
+			let logger = requestLogger<TLogger>(endpoint, {
 				requestId,
-				endpoint: endpoint.fullPath,
-				route: endpoint.route,
 				host: c.req.header('host'),
-				method: endpoint.method,
 				path: c.req.path,
-			}) as TLogger;
+			});
 
 			// Set response header
 			c.header('X-Request-ID', requestId);
@@ -411,6 +410,10 @@ export class HonoEndpoint<
 							cookie,
 							...(rawDb !== undefined && { db: rawDb }),
 						} as any);
+
+						// A verified session identified the request: from here on its
+						// logger is the one bound with who it is for.
+						logger = (currentRequestContext()?.logger as TLogger) ?? logger;
 
 						// Check authorization (defaults to true)
 						const isAuthorized = await endpoint.authorize({

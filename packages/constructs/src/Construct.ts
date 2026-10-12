@@ -44,6 +44,9 @@ const snifferContext: ServiceContext = {
 	hasContext() {
 		return false;
 	},
+	getUser() {
+		return undefined;
+	},
 };
 
 export abstract class Construct<

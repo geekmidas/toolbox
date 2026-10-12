@@ -13,6 +13,7 @@ import type {
 	InferStandardSchema,
 } from '@geekmidas/schema';
 import {
+	currentRequestContext,
 	runWithRequestContext,
 	type Service,
 	ServiceDiscovery,
@@ -37,6 +38,7 @@ import {
 	executeWithAuditTransaction,
 } from './processAudits';
 import { enforceRateLimit } from './rateLimit';
+import { requestLogger } from './requestLogger';
 
 export type TestHttpResponse<TBody = any> = {
 	body: TBody;
@@ -180,12 +182,10 @@ export class TestEndpointAdaptor<
 			ctx.headers['x-request-id'] ??
 			crypto.randomUUID();
 
-		const logger = this.endpoint.logger.child({
+		let logger = requestLogger<TLogger>(this.endpoint, {
 			requestId,
-			route: this.endpoint.route,
 			host: ctx.headers.host,
-			method: this.endpoint.method,
-		}) as TLogger;
+		});
 
 		// Get database from context for session extraction
 		const rawDb = (ctx as any).database as TDatabase;
@@ -202,6 +202,10 @@ export class TestEndpointAdaptor<
 					cookie,
 					...(rawDb !== undefined && { db: rawDb }),
 				} as any);
+
+				// A verified session identified the request: from here on its
+				// logger is the one bound with who it is for.
+				logger = (currentRequestContext()?.logger as TLogger) ?? logger;
 
 				// Check authorization
 				const isAuthorized = await this.endpoint.authorize({

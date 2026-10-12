@@ -38,6 +38,26 @@ export interface ServiceContext {
 	 * Use this to guard calls if you need to handle both cases.
 	 */
 	hasContext(): boolean;
+
+	/**
+	 * Who the current request is for, once its session was verified
+	 * (`identifyRequest`), or `undefined` — before then, for a request with no
+	 * session, and outside a request.
+	 */
+	getUser(): RequestUser | undefined;
+}
+
+/**
+ * Who a request is for: the identity its session was verified as.
+ *
+ * An id, never an address: it rides on every log line and span of the
+ * request, and both leave the process for wherever telemetry is kept.
+ */
+export interface RequestUser {
+	/** The user's id at the identity provider — Better Auth's `user.id`. */
+	id: string;
+	/** The session the request was made with. */
+	sessionId?: string;
 }
 
 /**

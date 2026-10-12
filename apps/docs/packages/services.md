@@ -196,6 +196,29 @@ than snapshotting a concrete logger elsewhere.
 Calling a log method (or `getLogger()` itself) outside any request context throws.
 Guard detached/background work with `serviceContext.hasContext()`.
 
+### Who a request is for
+
+Every endpoint request's logger is bound with which request it is and what it
+was for — `requestId`, `endpoint`, `route`, `method`, plus `host` and `path`
+(and the Lambda and API Gateway context on AWS). Once its session is verified,
+the request is **identified**: `identifyRequest({ id, sessionId })` keeps the
+user on the request's own context and rebinds its logger with `userId` and
+`sessionId`, on top of those bindings.
+
+An endpoint on a surface with `.auth(…)` does this itself when
+`auth.getSession()` returns a session — and also marks the request's span with
+OpenTelemetry's `enduser.id` and `session.id`, so its trace can be found by who
+made it. From then on:
+
+- every line the handler logs, and every line a service logs through
+  `serviceContext.getLogger()`, carries the user and the route;
+- `serviceContext.getUser()` returns `{ id, sessionId }` — anywhere the request
+  goes, across every `await`, and never in another request.
+
+Only ids are bound, never an email: logs and traces leave the process. A
+session read some other way can identify the request itself with
+`identifyRequest` from `@geekmidas/services`.
+
 See [Request-Scoped Logging in Singleton Services](https://github.com/geekmidas/toolbox/blob/main/packages/services/docs/request-scoped-logging.md)
 for the full problem description and implementation details.
 
