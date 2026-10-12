@@ -39,10 +39,13 @@ jobs:
           node-version: 22
           cache: "pnpm"
           registry-url: https://registry.npmjs.org
-      - name: Install npm 10.9.0
-        run: npm install -g npm@10.9.0
-      - name: Upgrade npm to latest
-        run: npm install -g npm@latest
+      # npm 11: trusted publishing needs 11.5.1 or later. Pinned to the major,
+      # not `latest`: npm 12 wraps `npm view <pkg> <field> --json` in an array,
+      # which read every release as unpublished — the release state said "npm
+      # has no alpha release", and the publish tried to republish all of it.
+      # A new major is taken on purpose, with the release scripts checked.
+      - name: Install npm 11
+        run: npm install -g npm@11
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
