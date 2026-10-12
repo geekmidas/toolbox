@@ -119,22 +119,35 @@ gets it there. It syncs first (as `gkm eas:sync`), then, for iOS and Android:
 | `--wait` | Wait for the build, and its submission, on EAS |
 | `--dry-run` | Say what it would release, and release nothing. It still asks EAS for the fingerprint and the builds |
 
-### In CI
+### Run by EAS: the stage's workflow
 
-`gkm init` writes a deploy workflow whose deploy job, for a workspace with a
-mobile app, publishes it after the stage's servers:
+`gkm eas:sync` also writes the stage's [EAS workflow](https://docs.expo.dev/eas/workflows/get-started/),
+`.eas/workflows/publish-<stage>.yml` in the app, which does what `gkm publish`
+does using EAS's own jobs. Shipping the app then needs nothing in the project's
+CI: no runner, no `eas-cli` install, and no token in GitHub.
 
-```yaml
-      - name: Publish the app
-        run: pnpm exec gkm publish --stage "$STAGE"
-        env:
-          STAGE: ${{ matrix.stage }}
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+- `fingerprint` reads the native code's fingerprint with the stage's EAS
+  environment.
+- `get-build`, per platform, looks for a finished store build of the stage's
+  profile with that fingerprint.
+- **If there is one:** `update` publishes on the stage's channel.
+- **If there is none:** `build` makes a store build, and `submit` sends it with
+  the stage's submit profile. iOS gets a `submit` job once
+  `submit.<stage>.ios.ascAppId` is in `eas.json`.
+
+It runs when the stage is deployed: the protected stage on a release tag
+(`v*`), every other deployed stage on a push to `main`. Any of them can also be
+run by hand:
+
+```bash
+eas workflow:run .eas/workflows/publish-prod.yml
 ```
 
-A workflow written before this needs the step added by hand. `EXPO_TOKEN` is
-an EAS access token, a secret on each stage's GitHub environment. The build
-runs on EAS, so the job doesn't wait for it.
+It needs EAS's GitHub app connected to the repository (expo.dev → the
+project → GitHub). The values a build reads come from the stage's EAS
+environment, so run `gkm eas:sync` again when they change, for example after a
+new domain or a new dependency. The file is generated: change the stage on the
+`MobileApp`, not the YAML. `gkm init` writes one for each deployed stage.
 
 ### Before the first store build
 

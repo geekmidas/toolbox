@@ -519,27 +519,6 @@ ${registryLogin(registry)}
           SHA: \${{ steps.commit.outputs.sha }}
           GODADDY_API_TOKEN: \${{ secrets.GODADDY_API_TOKEN }}
           HOSTINGER_API_TOKEN: \${{ secrets.HOSTINGER_API_TOKEN }}
-${options.mobileApp ? publishMobile(pm.exec) : ''}`;
-}
-
-/**
- * The phone app, once its stage's servers run this release: its values
- * synced to the stage's EAS environment, then an update on the stage's
- * channel when a store build has its native code, or a store build
- * submitted to the stores when none does (\`gkm publish\`). The build runs
- * on EAS; this step only starts it.
- */
-function publishMobile(exec: string): string {
-	return `
-      # The phone app, after its servers: an update when a store build has
-      # this native code, a store build submitted to the stores when none
-      # does. EXPO_TOKEN is a secret on the stage's environment (an EAS
-      # access token); the build runs on EAS, not here.
-      - name: Publish the app
-        run: ${exec} gkm publish --stage "$STAGE"
-        env:
-          STAGE: \${{ matrix.stage }}
-          EXPO_TOKEN: \${{ secrets.EXPO_TOKEN }}
 `;
 }
 

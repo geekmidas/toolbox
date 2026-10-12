@@ -17,8 +17,8 @@
 
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
-import { delimiter, join } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { delimiter, dirname, join } from 'node:path';
 import type {
 	ConstructManifest,
 	MobileAppDeclaration,
@@ -26,6 +26,7 @@ import type {
 import { GkmError } from '../errors';
 import { loadStage } from '../exec/stage.js';
 import { appKey } from '../workspace/derive.js';
+import { easWorkflow, easWorkflowPath } from './easWorkflow.js';
 import { type MobileStage, mobileStage } from './stage.js';
 
 const logger = console;
@@ -399,6 +400,8 @@ export interface EasSyncResult {
 	values: Record<string, string>;
 	/** Whether `eas.json` changed. */
 	easJsonChanged: boolean;
+	/** The stage's EAS workflow, relative to the app, and whether it changed. */
+	workflow: { path: string; changed: boolean };
 }
 
 /**
@@ -431,6 +434,22 @@ export async function easSync(
 	const after = withStageProfiles(before, stage);
 	const easJsonChanged = JSON.stringify(before) !== JSON.stringify(after);
 
+	const workflowPath = easWorkflowPath(stage.stage);
+	const workflowFile = join(dir, workflowPath);
+	const workflowYaml = easWorkflow(stage, {
+		release: workspace.stages.protected?.includes(stage.stage) ?? false,
+		iosSubmits: Boolean(
+			(after.submit?.[stage.stage]?.ios as { ascAppId?: string } | undefined)
+				?.ascAppId,
+		),
+	});
+	const workflow = {
+		path: workflowPath,
+		changed:
+			!existsSync(workflowFile) ||
+			(await readFile(workflowFile, 'utf8')) !== workflowYaml,
+	};
+
 	const where = `${name} on '${stage.stage}': EAS environment '${stage.environment}', channel '${stage.channel}', Play track '${stage.android.track}' (${stage.android.releaseStatus})`;
 	if (options.dryRun) {
 		logger.log(`📱 ${where} (dry run)`);
@@ -439,6 +458,7 @@ export async function easSync(
 				`   would write build.${stage.stage} and submit.${stage.stage} in ${path}`,
 			);
 		}
+		if (workflow.changed) logger.log(`   would write ${workflowFile}`);
 		for (const [key, value] of Object.entries(values)) {
 			logger.log(`   would set ${key}=${value}`);
 		}
@@ -449,6 +469,7 @@ export async function easSync(
 			stage,
 			values,
 			easJsonChanged,
+			workflow,
 		};
 	}
 
@@ -458,6 +479,11 @@ export async function easSync(
 		logger.log(
 			`   wrote build.${stage.stage} and submit.${stage.stage} in ${path}`,
 		);
+	}
+	if (workflow.changed) {
+		await mkdir(dirname(workflowFile), { recursive: true });
+		await writeFile(workflowFile, workflowYaml);
+		logger.log(`   wrote ${workflowFile}`);
 	}
 	const cli = eas ?? easCli(workspace.root, values);
 	for (const [key, value] of Object.entries(values)) {
@@ -471,5 +497,6 @@ export async function easSync(
 		stage,
 		values,
 		easJsonChanged,
+		workflow,
 	};
 }
