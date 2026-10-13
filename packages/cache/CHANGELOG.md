@@ -1,5 +1,7 @@
 # @geekmidas/cache
 
+## 10.0.0-alpha.112
+
 ## 10.0.0-alpha.111
 
 ## 10.0.0-alpha.110

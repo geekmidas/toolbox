@@ -92,6 +92,7 @@
     "dokploy-verify-rollback-migrations",
     "drop-free-standing-builders",
     "drop-generate-react-query",
+    "eas-workflow",
     "edge-root-site",
     "encryption-construct",
     "endpoint-form-bodies",

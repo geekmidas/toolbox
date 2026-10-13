@@ -1,5 +1,42 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.112
+
+### Minor Changes
+
+- [#255](https://github.com/geekmidas/toolbox/pull/255) [`b5aeaa4`](https://github.com/geekmidas/toolbox/commit/b5aeaa4cdaa19fc9123df67207b7f59f2e2d8f23) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm eas:sync` writes each stage's EAS workflow
+
+  `.eas/workflows/publish-<stage>.yml`, beside the app's `eas.json`, does what
+  `gkm publish` does using EAS Workflows' own jobs:
+
+  - `fingerprint`, then `get-build` per platform;
+  - ⬆️ an `update` on the stage's channel when a store build has the native code;
+  - otherwise a `build` and a `submit` with the stage's profile. iOS submits once
+    its `ascAppId` is set.
+
+  It runs on a release tag for the protected stage and on `main` for the
+  others, or by hand with `eas workflow:run`. Shipping the app then needs nothing
+  in the project's own CI.
+
+  `gkm init` writes the workflows for a mobile app instead of a "Publish the app"
+  step in the deploy workflow. That step ran `gkm publish` on a runner with no
+  `eas-cli` installed, so it failed.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.112
+  - @geekmidas/constructs@10.0.0-alpha.112
+  - @geekmidas/db@10.0.0-alpha.112
+  - @geekmidas/envkit@10.0.0-alpha.112
+  - @geekmidas/errors@10.0.0-alpha.112
+  - @geekmidas/logger@10.0.0-alpha.112
+  - @geekmidas/manifest@10.0.0-alpha.112
+  - @geekmidas/schema@10.0.0-alpha.112
+  - @geekmidas/services@10.0.0-alpha.112
+  - @geekmidas/storage@10.0.0-alpha.112
+  - @geekmidas/telescope@10.0.0-alpha.112
+
 ## 10.0.0-alpha.111
 
 ### Minor Changes
