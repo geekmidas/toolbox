@@ -35,6 +35,12 @@ export function easWorkflow(
 		release: boolean;
 		/** Whether iOS builds are submitted: the stage's ascAppId is set. */
 		iosSubmits: boolean;
+		/**
+		 * Whether the workspace pins its package manager (package.json's
+		 * `packageManager`): EAS's machines then install with that version,
+		 * through corepack, as a build profile's `corepack: true` does.
+		 */
+		corepack?: boolean;
 	},
 ): string {
 	const profile = stage.stage;
@@ -101,6 +107,7 @@ export function easWorkflow(
 			on: options.release
 				? { push: { tags: ['v*'] } }
 				: { push: { branches: ['main'] } },
+			...(options.corepack ? { defaults: { tools: { corepack: true } } } : {}),
 			jobs,
 		},
 		{ lineWidth: 0 },

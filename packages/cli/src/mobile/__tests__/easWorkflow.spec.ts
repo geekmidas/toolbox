@@ -92,6 +92,17 @@ describe("a stage's EAS workflow", () => {
 		expect(jobs.submit_android).toBeDefined();
 	});
 
+	it("installs with the workspace's pinned package manager", () => {
+		expect(
+			parse(
+				easWorkflow(prod, { release: true, iosSubmits: false, corepack: true }),
+			).defaults,
+		).toEqual({ tools: { corepack: true } });
+		expect(
+			parse(easWorkflow(prod, { release: true, iosSubmits: false })).defaults,
+		).toBeUndefined();
+	});
+
 	it('runs on a release tag for the released stage, on main for the rest', () => {
 		expect(workflow({ release: true, iosSubmits: false }).on).toEqual({
 			push: { tags: ['v*'] },
@@ -143,6 +154,8 @@ describe('gkm eas:sync writes the workflow', () => {
 		expect(written.on).toEqual({ push: { tags: ['v*'] } });
 		expect(written.jobs.fingerprint.environment).toBe('production');
 		expect(written.jobs.submit_ios).toBeDefined();
+		// The fixture pins pnpm.
+		expect(written.defaults).toEqual({ tools: { corepack: true } });
 
 		// Again, unchanged.
 		const again = await easSync(

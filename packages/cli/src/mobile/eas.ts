@@ -16,7 +16,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { delimiter, dirname, join } from 'node:path';
 import type {
@@ -337,6 +337,20 @@ export function chooseMobileApp(
 	return declaration;
 }
 
+/** Whether the workspace's package.json pins a `packageManager`. */
+function packageManagerPinned(root: string): boolean {
+	const path = join(root, 'package.json');
+	if (!existsSync(path)) return false;
+	try {
+		return Boolean(
+			(JSON.parse(readFileSync(path, 'utf8')) as { packageManager?: string })
+				.packageManager,
+		);
+	} catch {
+		return false;
+	}
+}
+
 /** `eas.json`, as far as gkm writes it. */
 interface EasJson {
 	build?: Record<string, Record<string, unknown>>;
@@ -438,6 +452,7 @@ export async function easSync(
 	const workflowFile = join(dir, workflowPath);
 	const workflowYaml = easWorkflow(stage, {
 		release: workspace.stages.protected?.includes(stage.stage) ?? false,
+		corepack: packageManagerPinned(workspace.root),
 		iosSubmits: Boolean(
 			(after.submit?.[stage.stage]?.ios as { ascAppId?: string } | undefined)
 				?.ascAppId,

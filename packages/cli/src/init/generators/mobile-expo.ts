@@ -1006,6 +1006,8 @@ android/
 			content: easWorkflow(stage, {
 				release: options.stages.protected?.includes(stage.stage) ?? false,
 				iosSubmits: false,
+				// The scaffold pins its package manager in package.json.
+				corepack: true,
 			}),
 		})),
 		{ path: 'apps/app/babel.config.js', content: babelConfig },
