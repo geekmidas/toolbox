@@ -1116,6 +1116,37 @@ program
 
 // Deploy init command - Initialize Dokploy project and application
 program
+	.command('compose:server')
+	.description(
+		"Set up a stage's server for compose deploys: harden it (SSH keys only, no root login, firewall, security updates, fail2ban), install Docker, create the deploy user, and give its key to GitHub",
+	)
+	.requiredOption('--stage <stage>', 'A deployed stage from gkm.config.ts')
+	.option(
+		'--admin <user>',
+		'The sudo user you log in to the server as — never root (asked when absent)',
+	)
+	.option(
+		'--key-file <path>',
+		'The deploy key pair (default: ~/.ssh/gkm-<project>-<stage>)',
+	)
+	.option('--repo <owner/name>', 'GitHub repository (default: this one)')
+	.option('--no-github', "Leave the GitHub environment's key and host alone")
+	.option('--yes', 'Set the server up without asking first')
+	.option('--dry-run', 'Print the plan and the script; connect to nothing')
+	.action(async (options) => {
+		try {
+			const globalOptions = program.opts();
+			if (globalOptions.cwd) {
+				process.chdir(globalOptions.cwd);
+			}
+			const { composeServerCommand } = await import('./compose/serverSetup');
+			await composeServerCommand(options);
+		} catch (error) {
+			exitWithError(error);
+		}
+	});
+
+program
 	.command('deploy:init')
 	.description('Initialize Dokploy deployment (create project and application)')
 	.option(

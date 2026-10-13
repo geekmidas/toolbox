@@ -637,6 +637,35 @@ Environment:
 release and `gkm compose --stage <stage> --tag <tag>` the server's — see
 [Deploying from CI](./compose.md#deploying-from-ci).
 
+### `gkm compose:server`
+
+Set up a deployed stage's server for compose deploys, from this machine, as
+its admin — a sudo user, never root (asked for when `--admin` is absent). See
+[Setting the server up](./compose.md#setting-the-server-up).
+
+```bash
+gkm compose:server --stage <stage> [options]
+
+Options:
+  --stage <stage>      A deployed stage from gkm.config.ts (required)
+  --admin <user>       The sudo user you log in to the server as
+  --key-file <path>    The deploy key pair (default ~/.ssh/gkm-<project>-<stage>)
+  --repo <owner/name>  GitHub repository (default: this one)
+  --no-github          Leave the GitHub environment alone
+  --yes                Set the server up without asking first
+  --dry-run            Print the plan and the script; connect to nothing
+
+Errors:
+  ComposeServerAdminIsRoot        --admin root: its SSH login is turned off
+  ComposeServerAdminIsDeployUser  --admin names the deploy user, which has no sudo
+  ComposeServerAdminUnreachable   no key logs the admin in (ssh-copy-id first)
+  ComposeServerSetupFailed        the script on the server stopped (output above)
+  ComposeServerHostKeyMismatch    the network's host key is not the server's
+                                  own; nothing is given to GitHub
+  ComposeServerCheckFailed        the deploy key can't run docker, or open a
+                                  tunnel, as the deploy user
+```
+
 When a process uses a [`Telemetry` construct](./telemetry.md), the stage's
 `deploy.telemetry` decides where it goes; a stage that names nothing — and the
 local stage, always — runs OpenObserve in the stack and points each process

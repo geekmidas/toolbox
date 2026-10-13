@@ -85,7 +85,8 @@ export interface DeployGithubOptions {
 /** Runs `gh` with the given arguments and optional stdin, returning stdout. */
 export type Gh = (args: string[], input?: string) => string;
 
-const defaultGh: Gh = (args, input) =>
+/** The system's `gh`. */
+export const ghCli: Gh = (args, input) =>
 	execFileSync('gh', args, {
 		encoding: 'utf-8',
 		// stderr captured, so a read that fails (a 404) is not printed as noise.
@@ -360,7 +361,7 @@ export async function deployGithubCommand(
 	options: DeployGithubOptions,
 	deps: { iam?: IAMClient; gh?: Gh; cwd?: string } = {},
 ): Promise<{ roleArn?: string; repo: string; subject: string }> {
-	const gh = deps.gh ?? defaultGh;
+	const gh = deps.gh ?? ghCli;
 	const { workspace } = await loadWorkspaceConfig(deps.cwd);
 	assertDeployedStage(workspace.stages, options.stage);
 
