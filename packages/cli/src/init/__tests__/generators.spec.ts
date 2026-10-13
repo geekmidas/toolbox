@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import { generateAgentFiles } from '../generators/agents.js';
 import { generateAuthAppFiles } from '../generators/auth.js';
 import { generateAuthPackage } from '../generators/auth-package.js';
@@ -560,6 +561,32 @@ describe('generateExpoAppFiles', () => {
 			staging: { android: { track: 'internal', releaseStatus: 'draft' } },
 			production: { android: { track: 'production', releaseStatus: 'draft' } },
 		});
+	});
+
+	it("writes each deployed stage's EAS workflow", () => {
+		const files = generateExpoAppFiles({
+			...fullstackOptions,
+			stages: {
+				local: 'development',
+				deployed: ['staging', 'production'],
+				protected: ['production'],
+			},
+		});
+		const workflow = (stage: string) =>
+			parse(
+				files.find(
+					(f) => f.path === `apps/app/.eas/workflows/publish-${stage}.yml`,
+				)!.content,
+			);
+
+		expect(workflow('production').on).toEqual({ push: { tags: ['v*'] } });
+		expect(workflow('production').jobs.fingerprint.environment).toBe(
+			'production',
+		);
+		expect(workflow('staging').on).toEqual({ push: { branches: ['main'] } });
+		expect(workflow('staging').jobs.update_android.params.channel).toBe(
+			'staging',
+		);
 	});
 
 	it('declares expo + better-auth/expo as dependencies', () => {

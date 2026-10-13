@@ -3,6 +3,7 @@ import {
 	provideKey,
 	schemeBase,
 } from '@geekmidas/manifest';
+import { easWorkflow, easWorkflowPath } from '../../mobile/easWorkflow.js';
 import { mobileStage } from '../../mobile/stage.js';
 import { emailFor } from '../constructs.js';
 import {
@@ -997,6 +998,16 @@ android/
 			path: 'apps/app/eas.json',
 			content: `${JSON.stringify(easJson, null, 2)}\n`,
 		},
+		// Each deployed stage's EAS workflow — an update, or a store build
+		// submitted — as `gkm eas:sync` writes it. Run by EAS, so shipping the
+		// app needs nothing in the project's own CI.
+		...stages.map((stage) => ({
+			path: `apps/app/${easWorkflowPath(stage.stage)}`,
+			content: easWorkflow(stage, {
+				release: options.stages.protected?.includes(stage.stage) ?? false,
+				iosSubmits: false,
+			}),
+		})),
 		{ path: 'apps/app/babel.config.js', content: babelConfig },
 		{ path: 'apps/app/metro.config.js', content: metroConfig },
 		{
