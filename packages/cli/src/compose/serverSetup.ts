@@ -16,8 +16,14 @@
  * `DEPLOY_KNOWN_HOSTS`, which the generated deploy workflow reads. Last, it
  * logs in exactly as CI will, and checks Docker and the tunnel answer.
  *
- * A fresh server only root can log in to gets its admin first: with root's
- * key it creates the user, or with the admin's password it copies a key in.
+ * A fresh server only root can log in to gets its admin first: as root —
+ * with root's key, or its password on a brand-new server — it creates the
+ * user, and `ssh-copy-id` puts your key on it when root had none to give.
+ * Root's password is locked once the admin's sudo works.
+ *
+ * What it set up is kept in the stage's state (`server:compose`): the admin,
+ * the deploy key's path and the pinned host key, so a second run asks
+ * nothing it was already told.
  * Safe to run again: each step changes only what is missing or wrong.
  */
 
@@ -28,6 +34,9 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { loadWorkspaceConfig } from '../config';
 import { type Gh, ghCli } from '../deploy/github';
+import { DeployJournal } from '../deploy/journal';
+import { createStateStore, type StateStore } from '../deploy/StateStore';
+import { createComposeState } from '../deploy/state';
 import { GkmError } from '../errors';
 import { prompt } from '../prompt';
 import { secretsStoreFor } from '../secrets/store.js';
@@ -76,6 +85,22 @@ export interface ComposeServerSetupDeps {
 	gh: Gh;
 	/** Ask the person at the terminal. */
 	ask: (question: string) => Promise<string>;
+	/** The stage's state; the workspace's own store when absent. */
+	state: StateStore;
+}
+
+/** The stage's record of its server, as `compose:server` last set it up. */
+export const SERVER_RECORD = 'server:compose';
+
+/** What `server:compose` holds. */
+export interface ServerRecordData {
+	host: string;
+	port: number;
+	admin: string;
+	/** The deploy key pair, `~/`-relative when it is under the home directory. */
+	keyFile: string;
+	/** The pinned host key line, as `known_hosts` holds it. */
+	knownHosts: string;
 }
 
 export interface ComposeServerSetupResult {
@@ -265,6 +290,17 @@ async function fingerprints(run: Runner, keys: string): Promise<string[]> {
 		.filter((value): value is string => Boolean(value));
 }
 
+/** `path`, written `~/…` when it is under the home directory. */
+function toHome(path: string): string {
+	const home = homedir();
+	return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+}
+
+/** A path `toHome` wrote, back to one this machine can open. */
+function fromHome(path: string): string {
+	return path.startsWith('~/') ? join(homedir(), path.slice(2)) : path;
+}
+
 /** The default deploy key pair for a stage. */
 export function defaultKeyFile(project: string, stage: string): string {
 	return join(homedir(), '.ssh', `gkm-${project}-${stage}`);
@@ -297,15 +333,33 @@ export async function composeServerCommand(
 			?.custom,
 	})!;
 
+	// What an earlier run set this server up with — only while it is still
+	// the server the stage names.
+	const state =
+		deps.state ??
+		(await createStateStore({
+			config: workspace.state,
+			workspaceRoot: workspace.root,
+			workspaceName: workspace.name,
+			namespace: workspace.deploy?.namespace,
+		}));
+	const stored = (await state.read(stage))?.resources[SERVER_RECORD]?.data as
+		| ServerRecordData
+		| undefined;
+	const before = stored?.host === server.host ? stored : undefined;
+
 	const admin = (
 		options.admin ??
+		before?.admin ??
 		(await ask(`The sudo user you log in to ${server.host} as (not root): `))
 	).trim();
 	if (!admin || admin === 'root') throw new ComposeServerAdminIsRoot();
 	if (admin === server.user) throw new ComposeServerAdminIsDeployUser(admin);
 
 	const keyFile = resolve(
-		options.keyFile ?? defaultKeyFile(workspace.name, stage),
+		options.keyFile ??
+			(before ? fromHome(before.keyFile) : undefined) ??
+			defaultKeyFile(workspace.name, stage),
 	);
 	const comment = `gkm-${workspace.name}-${stage}-deploy`;
 	const repo = github
@@ -317,7 +371,9 @@ export async function composeServerCommand(
 
 	console.log(`\n🖥  Server for stage "${stage}"\n`);
 	console.log(`  Server:      ${server.host} (ssh port ${server.port})`);
-	console.log(`  Admin:       ${admin} — logs in with your key, runs sudo`);
+	console.log(
+		`  Admin:       ${admin} — logs in with your key, runs sudo${before && !options.admin ? ' (from the stage state)' : ''}`,
+	);
 	console.log(
 		`  Deploy user: ${server.user} — docker group, no sudo, no password`,
 	);
@@ -330,6 +386,7 @@ export async function composeServerCommand(
 	console.log('\n  On the server, through sudo:');
 	for (const step of [
 		"SSH: keys only, root's login off (and nothing else may turn passwords back on)",
+		`root's password locked — ${admin}'s sudo is the way to root`,
 		`firewall: ${server.port}, 80 and 443 in, everything out`,
 		'security updates installed daily (unattended-upgrades); fail2ban on sshd',
 		"Docker and its compose plugin, from Docker's repository",
@@ -388,28 +445,41 @@ export async function composeServerCommand(
 		]);
 	let login = await probe(admin);
 	if (login.code !== 0) {
-		const root = await probe('root');
-		if (root.code === 0) {
-			if (
-				isYes(
-					await ask(
-						`\n  ${admin} can't log in with a key, but root can. Create ${admin} as a sudo user with root's keys? [Y/n] `,
-					),
-					true,
-				)
-			) {
-				await run(
-					'ssh',
-					[
-						'-t',
-						...sshOptions(server),
-						at('root', server.host),
-						remoteCommand(ADMIN_SCRIPT, [admin], false),
-					],
-					{ interactive: true },
+		// A server only root can log in to yet: root creates the admin — with
+		// its key, or on a brand-new server with the password the provider
+		// gave it, which this is the last time anything asks for.
+		const rootHasKey = (await probe('root')).code === 0;
+		const createAsRoot = isYes(
+			await ask(
+				rootHasKey
+					? `\n  ${admin} can't log in with a key, but root can. Create ${admin} as a sudo user with root's keys? [Y/n] `
+					: `\n  ${admin} can't log in with a key. Is this a new server, where ${admin} still has to be created? Log in as root with its password to create it [y/N] `,
+			),
+			rootHasKey,
+		);
+		if (createAsRoot) {
+			const created = await run(
+				'ssh',
+				[
+					'-t',
+					...sshOptions(server),
+					at('root', server.host),
+					remoteCommand(ADMIN_SCRIPT, [admin], false),
+				],
+				{ interactive: true },
+			);
+			if (created.code !== 0) {
+				throw new ComposeServerSetupFailed(
+					at('root', server.host),
+					created.code,
 				);
 			}
-		} else if (
+			login = await probe(admin);
+		}
+		// Root had no key to hand on — a server set up with a password — so
+		// yours goes on with the admin's.
+		if (
+			login.code !== 0 &&
 			isYes(
 				await ask(
 					`\n  ${admin} can't log in with a key. Copy yours there with ssh-copy-id (asks ${admin}'s password)? [Y/n] `,
@@ -417,9 +487,14 @@ export async function composeServerCommand(
 				true,
 			)
 		) {
-			await run('ssh-copy-id', ['-p', String(server.port), adminTarget], {
-				interactive: true,
-			});
+			const copied = await run(
+				'ssh-copy-id',
+				['-p', String(server.port), adminTarget],
+				{ interactive: true },
+			);
+			if (copied.code !== 0) {
+				throw new ComposeServerAdminUnreachable(adminTarget, copied.stderr);
+			}
 		}
 		login = await probe(admin);
 		if (login.code !== 0) {
@@ -548,6 +623,26 @@ export async function composeServerCommand(
 	} finally {
 		await rm(known, { force: true });
 	}
+
+	// Remembered for the next run, and for whoever runs it next.
+	const journal = await DeployJournal.open(state, stage, () =>
+		createComposeState(stage),
+	);
+	await journal.ready(
+		{
+			key: SERVER_RECORD,
+			type: 'server',
+			data: {
+				host: server.host,
+				port: server.port,
+				admin,
+				keyFile: toHome(keyFile),
+				knownHosts,
+			} satisfies ServerRecordData,
+		},
+		server.host,
+	);
+	console.log(`  ✓ Kept in the "${stage}" state: ${admin}, ${toHome(keyFile)}`);
 
 	console.log(
 		`\n✅ ${server.host} is ready for "${stage}".${repo ? ' CI deploys it with the key it was given.' : ''} ` +

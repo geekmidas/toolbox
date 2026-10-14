@@ -209,6 +209,7 @@ It logs in as the server's **admin** — the sudo user you log in as, never root
 - turns SSH to **keys only** with **root's login off**, in a file that sorts
   before a provider's own (cloud-init's `50-cloud-init.conf` turns passwords
   back on), then reads `sshd -T` to confirm that is what sshd does;
+- **locks root's password** — root is reached through the admin's sudo;
 - enables **ufw**: SSH, 80 and 443 in, everything out — and names any other
   port left open;
 - installs **unattended-upgrades** (security updates daily) and **fail2ban**
@@ -224,11 +225,27 @@ reports of itself — and gives the stage's GitHub environment both, as
 logs in exactly as CI will and checks Docker and the tunnel answer. Running it
 again changes only what is missing or wrong.
 
-A server only root can log in to yet gets its admin first: when root's key
-works, gkm offers to create the user with root's keys (you choose its sudo
-password); otherwise it offers `ssh-copy-id` with the admin's password.
+A brand-new server, where only root logs in, gets its admin first. gkm logs
+in as root — with its key, or with the password the provider gave it — and
+creates the admin as a sudo user (you choose the password sudo will ask for),
+with root's keys if root has any. If it has none, `ssh-copy-id` puts yours on
+the admin. Then the setup above runs as the admin: password logins and root's
+login off, root's password locked.
 
-What it leaves to you: the provider's panel (a strong root password, its own
+```bash
+gkm compose:server --stage production --admin midas
+#   midas can't log in with a key. Is this a new server …? [y/N] y
+#   root@203.0.113.7's password:            ← the provider's root password
+#   creating midas — choose the password sudo will ask for:
+#   midas can't log in with a key. Copy yours there with ssh-copy-id? [Y/n]
+```
+
+What it set up is kept in the stage's state, as the `server:compose` record:
+the admin, the deploy key's path and the pinned host key. The next run — on
+this machine or a teammate's — asks for none of them while the stage's server
+is still the same host (`--admin` and `--key-file` still win).
+
+What it leaves to you: the provider's panel (its console login, its own
 malware scanner), and uptime monitoring from outside the server. It installs no
 reverse proxy — the stack brings Caddy, or the shared edge — and no image
 auto-updater such as Watchtower, which would replace the exact images a deploy

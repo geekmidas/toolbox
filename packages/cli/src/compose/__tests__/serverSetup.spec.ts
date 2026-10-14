@@ -3,6 +3,7 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
+import { LocalStateStore } from '../../deploy/LocalStateStore';
 import { ADMIN_SCRIPT, SERVER_SCRIPT } from '../serverScript';
 import {
 	ComposeServerAdminIsDeployUser,
@@ -12,6 +13,7 @@ import {
 	type Ran,
 	type Runner,
 	remoteCommand,
+	SERVER_RECORD,
 	systemRunner,
 } from '../serverSetup';
 import {
@@ -75,10 +77,17 @@ describe('gkm compose:server', () => {
 	});
 
 	/**
-	 * A server as `ssh` finds it: who logs in with a key, what the setup
-	 * script reports, and which host key the network shows.
+	 * A server as `ssh` finds it: who logs in with a key, whether root takes
+	 * its password (a brand-new server), what the setup script reports, and
+	 * which host key the network shows.
 	 */
-	function server(options: { logsIn?: string[]; scanned?: string } = {}) {
+	function server(
+		options: {
+			logsIn?: string[];
+			rootPassword?: boolean;
+			scanned?: string;
+		} = {},
+	) {
 		const calls: Call[] = [];
 		const logsIn = new Set(options.logsIn ?? ['admin']);
 		const run: Runner = async (command, args, extra = {}) => {
@@ -87,12 +96,18 @@ describe('gkm compose:server', () => {
 			if (command === 'ssh-keyscan') {
 				return ok(`${SERVER_IPV4} ${options.scanned ?? hostKey}\n`);
 			}
-			if (command === 'ssh-copy-id') return ok();
+			if (command === 'ssh-copy-id') {
+				logsIn.add(args.at(-1)!.split('@')[0]!);
+				return ok();
+			}
 			const target = args.find((arg) => arg.includes(`@${SERVER_IPV4}`))!;
 			const user = target.split('@')[0]!;
 			if (args.includes('true')) return logsIn.has(user) ? ok() : refused;
 			if (args.some((arg) => arg.includes(ADMIN_B64))) {
-				logsIn.add('admin');
+				// Root's keys go to the admin; a root that logged in with its
+				// password has none to give.
+				if (logsIn.has('root')) logsIn.add('admin');
+				else if (!options.rootPassword) return refused;
 				return ok();
 			}
 			if (args.includes('-t'))
@@ -315,6 +330,145 @@ describe('gkm compose:server', () => {
 		).toBe(true);
 		expect(fake.gh).toEqual([]);
 	});
+});
+
+describe('gkm compose:server on a brand-new server', () => {
+	let dir: string;
+
+	beforeEach(async () => {
+		vi.spyOn(console, 'log').mockImplementation(() => {});
+		dir = realpathSync(await createTempDir('gkm-compose-server-new-'));
+		writeComposeApp(dir);
+		await serveFrom(dir);
+	});
+	afterEach(async () => {
+		vi.restoreAllMocks();
+		await cleanupDir(dir);
+	});
+
+	/** A server that answers the setup, with a host key made here. */
+	function freshServer(options: { rootPassword?: boolean } = {}) {
+		execFileSync('ssh-keygen', [
+			'-q',
+			'-t',
+			'ed25519',
+			'-N',
+			'',
+			'-f',
+			join(dir, 'host'),
+		]);
+		const hostKey = readFileSync(join(dir, 'host.pub'), 'utf-8')
+			.split(' ')
+			.slice(0, 2)
+			.join(' ');
+		const fingerprint = execFileSync('ssh-keygen', ['-lf', join(dir, 'host')], {
+			encoding: 'utf-8',
+		}).split(' ')[1]!;
+		const logsIn = new Set<string>();
+		const calls: Call[] = [];
+		const run: Runner = async (command, args, extra = {}) => {
+			calls.push({ command, args, ...extra });
+			if (command === 'ssh-keygen') return systemRunner(command, args, extra);
+			if (command === 'ssh-keyscan') return ok(`${SERVER_IPV4} ${hostKey}\n`);
+			if (command === 'ssh-copy-id') {
+				logsIn.add(args.at(-1)!.split('@')[0]!);
+				return ok();
+			}
+			const user = args
+				.find((arg) => arg.includes(`@${SERVER_IPV4}`))!
+				.split('@')[0]!;
+			if (args.includes('true')) return logsIn.has(user) ? ok() : refused;
+			if (args.some((arg) => arg.includes(ADMIN_B64))) {
+				return options.rootPassword ? ok() : refused;
+			}
+			if (args.includes('-t')) {
+				return logsIn.has(user) ? ok(`HOSTKEY=${fingerprint}\r\n`) : refused;
+			}
+			if (args.includes('docker')) return ok('28.5.1\n');
+			if (args.includes('-W')) return ok('SSH-2.0-OpenSSH_9.6\r\n');
+			return refused;
+		};
+		return { calls, run, gh: () => '' };
+	}
+
+	const ADMIN_B64 = Buffer.from(ADMIN_SCRIPT).toString('base64');
+
+	it("creates the admin with root's password, copies a key to it, and runs the setup as it", async () => {
+		const fake = freshServer({ rootPassword: true });
+		const ask = vi
+			.fn()
+			// A new server, the admin still to be created: yes.
+			.mockResolvedValueOnce('y')
+			// Copy a key to it: the default.
+			.mockResolvedValueOnce('');
+
+		await composeServerCommand(
+			{
+				cwd: dir,
+				stage: 'production',
+				admin: 'admin',
+				keyFile: join(dir, 'deploy_key'),
+				yes: true,
+				github: false,
+			},
+			{ run: fake.run, gh: fake.gh, ask },
+		);
+
+		expect(ask.mock.calls[0]![0]).toContain('new server');
+		// Root, by its password: interactive, and no BatchMode to stop it asking.
+		const bootstrap = fake.calls.find((call) =>
+			call.args.some((arg) => arg.includes(ADMIN_B64)),
+		)!;
+		expect(bootstrap.args).toContain(`root@${SERVER_IPV4}`);
+		expect(bootstrap.args).not.toContain('BatchMode=yes');
+		expect(bootstrap.interactive).toBe(true);
+		// Then this machine's key, onto the admin.
+		const copy = fake.calls.find((call) => call.command === 'ssh-copy-id')!;
+		expect(copy.args.at(-1)).toBe(`admin@${SERVER_IPV4}`);
+		// And the setup, as the admin, through sudo.
+		const setup = fake.calls.find((call) =>
+			call.args.some((arg) => arg.includes(SERVER_B64)),
+		)!;
+		expect(setup.args).toContain(`admin@${SERVER_IPV4}`);
+	});
+
+	it("remembers the admin and the key in the stage's state, and asks nothing the second time", async () => {
+		const fake = freshServer({ rootPassword: true });
+		const keyFile = join(dir, 'deploy_key');
+		await composeServerCommand(
+			{
+				cwd: dir,
+				stage: 'production',
+				admin: 'admin',
+				keyFile,
+				yes: true,
+				github: false,
+			},
+			{
+				run: fake.run,
+				gh: fake.gh,
+				ask: vi.fn().mockResolvedValueOnce('y').mockResolvedValueOnce(''),
+			},
+		);
+
+		const stored = await new LocalStateStore(dir).read('production');
+		expect(stored?.resources[SERVER_RECORD]).toMatchObject({
+			type: 'server',
+			id: SERVER_IPV4,
+			status: 'ready',
+			data: { host: SERVER_IPV4, port: 22, admin: 'admin', keyFile },
+		});
+
+		const ask = vi.fn();
+		const again = await composeServerCommand(
+			{ cwd: dir, stage: 'production', dryRun: true, github: false },
+			{ run: fake.run, gh: fake.gh, ask },
+		);
+		expect(ask).not.toHaveBeenCalled();
+		expect(again).toMatchObject({ admin: 'admin', keyFile });
+	});
+
+	const SERVER_B64 = Buffer.from(SERVER_SCRIPT).toString('base64');
 });
 
 describe('the server scripts', () => {
