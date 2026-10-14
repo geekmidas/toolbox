@@ -254,6 +254,12 @@ above. That is the address the other apps receive (`API_URL`, and
 origins and cookie domain name. The right is the local port the edge forwards
 to; nothing is handed out as `http://localhost:<port>`.
 
+The edge is one Caddy container for every checkout of the project, and it
+reads its routes from the checkout that started it (`.gkm/caddy-sites/`). So
+`gkm dev` keeps a running edge only when this checkout started it; one a
+worktree left running is recreated with this checkout's routes, rather than
+forwarding to the ports the worktree's apps had.
+
 The site the base domain points at when deployed answers on the project's bare
 host locally — `https://shop.localhost` — by the same rule: the only site, else
 the site named `web`, else the one declaring `root: true`. Every other app is a

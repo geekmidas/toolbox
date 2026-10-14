@@ -164,8 +164,9 @@ export const dockerCli: Docker = {
 		}
 	},
 
-	async healthy(composePath, services) {
+	async healthy(composePath, services, { mounted = [] } = {}) {
 		if (services.length === 0) return true;
+		const checkout = dirname(composePath);
 
 		try {
 			const { stdout } = await run('docker', [
@@ -183,6 +184,7 @@ export const dockerCli: Docker = {
 					Service?: string;
 					State?: string;
 					Health?: string;
+					Labels?: string;
 				};
 
 				// A container with a health check must be passing it; one without
@@ -193,7 +195,18 @@ export const dockerCli: Docker = {
 						entry.Health === '' ||
 						entry.Health === 'healthy');
 
-				if (ok && entry.Service) running.add(entry.Service);
+				// Every checkout of a project shares its compose project name, so a
+				// worktree's container answers here too. One that mounts the
+				// checkout's files reads that worktree's — Caddy routing to the
+				// ports another checkout's apps had — so it counts only when it was
+				// created from this one.
+				const fromHere =
+					!entry.Service ||
+					!mounted.includes(entry.Service) ||
+					label(entry.Labels, 'com.docker.compose.project.working_dir') ===
+						checkout;
+
+				if (ok && fromHere && entry.Service) running.add(entry.Service);
 			}
 
 			return services.every((service) => running.has(service));
@@ -203,5 +216,14 @@ export const dockerCli: Docker = {
 		}
 	},
 };
+
+/** One label's value out of `docker compose ps`'s comma-joined `Labels`. */
+function label(labels: string | undefined, name: string): string | undefined {
+	const prefix = `${name}=`;
+	return labels
+		?.split(',')
+		.find((pair) => pair.startsWith(prefix))
+		?.slice(prefix.length);
+}
 
 export { HEALTH_TIMEOUT_MS };
