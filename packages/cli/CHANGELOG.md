@@ -1,5 +1,38 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.114
+
+### Patch Changes
+
+- [#262](https://github.com/geekmidas/toolbox/pull/262) [`90618aa`](https://github.com/geekmidas/toolbox/commit/90618aaa9668375518a75db31b7393beea91799b) Thanks [@geekmidas](https://github.com/geekmidas)! - The deploy workflow `gkm init` writes logs in to the registry gkm.config.ts names when it runs
+
+  The registry login was written into the workflow from what init was told, so
+  a bare namespace (`acme`) became `registry: acme` with no credentials, and a
+  later change to `deploy.registry` never reached the workflow. `gkm stages
+--github-output` (and the stages action) now output `registry`, the host to log
+  in to — `ghcr.io`, another registry's host, or `docker.io` for a Docker Hub
+  namespace — and both jobs log in to it: GitHub's token on ghcr.io, the stage's
+  `REGISTRY_USERNAME`/`REGISTRY_PASSWORD` elsewhere.
+
+  The workflow also frees the runner's disk before building every image, cancels
+  a push build a newer push supersedes, fails the build when it kept no digests,
+  and names a manual run's bad `ref` instead of failing on an empty commit.
+
+- [#259](https://github.com/geekmidas/toolbox/pull/259) [`2ced539`](https://github.com/geekmidas/toolbox/commit/2ced53959a219954c43d255e6afdabf3f3bf54cf) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm init` gitignores a Next.js app's `next-env.d.ts`, which Next.js regenerates on every build and dev run.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.114
+  - @geekmidas/constructs@10.0.0-alpha.114
+  - @geekmidas/db@10.0.0-alpha.114
+  - @geekmidas/envkit@10.0.0-alpha.114
+  - @geekmidas/errors@10.0.0-alpha.114
+  - @geekmidas/logger@10.0.0-alpha.114
+  - @geekmidas/manifest@10.0.0-alpha.114
+  - @geekmidas/schema@10.0.0-alpha.114
+  - @geekmidas/services@10.0.0-alpha.114
+  - @geekmidas/storage@10.0.0-alpha.114
+  - @geekmidas/telescope@10.0.0-alpha.114
+
 ## 10.0.0-alpha.113
 
 ### Minor Changes
