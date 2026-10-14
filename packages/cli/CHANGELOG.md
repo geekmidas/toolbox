@@ -1,5 +1,37 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.113
+
+### Minor Changes
+
+- [#257](https://github.com/geekmidas/toolbox/pull/257) [`7804def`](https://github.com/geekmidas/toolbox/commit/7804def42c1f614478bd8a85e9de35cef98f50be) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm compose:server` sets a stage's server up for compose deploys
+
+  From your machine, as the server's sudo user (asked for, never root), it
+  hardens the VPS — SSH by key only with root's login off, ufw open on SSH, 80
+  and 443 alone, daily security updates, fail2ban on sshd — installs Docker from
+  Docker's repository, and creates the deploy user with a key that may run
+  commands and open the migration tunnel, nothing more. It pins the server's host
+  key (checked against the server's own fingerprint) and gives the stage's GitHub
+  environment `DEPLOY_SSH_KEY` and `DEPLOY_KNOWN_HOSTS`, then logs in as CI will
+  to check Docker and the tunnel. A server only root can reach gets its admin
+  first. `--dry-run` prints the plan and the exact script, and connects to
+  nothing.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.113
+  - @geekmidas/constructs@10.0.0-alpha.113
+  - @geekmidas/db@10.0.0-alpha.113
+  - @geekmidas/envkit@10.0.0-alpha.113
+  - @geekmidas/errors@10.0.0-alpha.113
+  - @geekmidas/logger@10.0.0-alpha.113
+  - @geekmidas/manifest@10.0.0-alpha.113
+  - @geekmidas/schema@10.0.0-alpha.113
+  - @geekmidas/services@10.0.0-alpha.113
+  - @geekmidas/storage@10.0.0-alpha.113
+  - @geekmidas/telescope@10.0.0-alpha.113
+
 ## 10.0.0-alpha.112
 
 ### Minor Changes

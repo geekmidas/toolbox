@@ -56,6 +56,7 @@
     "compose-logs",
     "compose-redis-cache",
     "compose-remote-docker",
+    "compose-server",
     "compose-target",
     "compose-traefik-edge",
     "constructs-feature-test",
