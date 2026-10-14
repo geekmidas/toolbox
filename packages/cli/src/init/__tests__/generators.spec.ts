@@ -75,10 +75,11 @@ describe('generatePackageJson', () => {
 		expect(pkg.private).toBe(true);
 	});
 
-	it('should include telescope when enabled', () => {
+	it('should include telescope, and its live feed, when enabled', () => {
 		const files = generatePackageJson(baseOptions, minimalTemplate);
 		const pkg = JSON.parse(files[0].content);
 		expect(pkg.dependencies['@geekmidas/telescope']).toMatch(/^~/);
+		expect(pkg.dependencies['@hono/node-ws']).toMatch(/^~/);
 	});
 
 	it('should include database dependencies when enabled', () => {
@@ -94,6 +95,7 @@ describe('generatePackageJson', () => {
 		const files = generatePackageJson(options, minimalTemplate);
 		const pkg = JSON.parse(files[0].content);
 		expect(pkg.dependencies['@geekmidas/telescope']).toBeUndefined();
+		expect(pkg.dependencies['@hono/node-ws']).toBeUndefined();
 	});
 
 	it('should use tilde versions for @geekmidas packages', () => {

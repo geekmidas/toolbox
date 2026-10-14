@@ -17,6 +17,7 @@ export const DEPENDENCY_VERSIONS = {
 	hono: '~4.13.9',
 	// 1.x: 2.x changes the server entry this scaffold writes.
 	'@hono/node-server': '~1.19.17',
+	'@hono/node-ws': '~1.3.1',
 	kysely: '~0.29.6',
 	pg: '~8.23.0',
 	pino: '~10.3.1',

@@ -31,6 +31,9 @@ export function generatePackageJson(
 	if (telescope) {
 		dependencies['@geekmidas/telescope'] =
 			GEEKMIDAS_VERSIONS['@geekmidas/telescope'];
+		// Telescope's live feed: the server `gkm dev` generates imports it to
+		// push each request as it is recorded, and warns on every start without.
+		dependencies['@hono/node-ws'] = DEPENDENCY_VERSIONS['@hono/node-ws'];
 	}
 
 	// Only a project that declares constructs needs them. The workspace path
