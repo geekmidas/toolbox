@@ -199,7 +199,8 @@ run connects to nothing and prints where it would deploy:
 `gkm compose:server` makes a fresh VPS ready for a stage, from your machine:
 
 ```bash
-gkm compose:server --stage production            # asks for the admin user
+gkm compose:server --stage production            # as you: ssh's own user and key
+gkm compose:server --stage production --admin ops --identity ~/.ssh/ops
 gkm compose:server --stage production --dry-run  # the plan and the script
 ```
 
@@ -233,17 +234,19 @@ the admin. Then the setup above runs as the admin: password logins and root's
 login off, root's password locked.
 
 ```bash
-gkm compose:server --stage production --admin midas
+gkm compose:server --stage production   # ssh would log in as midas
 #   midas can't log in with a key. Is this a new server …? [y/N] y
 #   root@203.0.113.7's password:            ← the provider's root password
 #   creating midas — choose the password sudo will ask for:
 #   midas can't log in with a key. Copy yours there with ssh-copy-id? [Y/n]
 ```
 
-What it set up is kept in the stage's state, as the `server:compose` record:
-the admin, the deploy key's path and the pinned host key. The next run — on
-this machine or a teammate's — asks for none of them while the stage's server
-is still the same host (`--admin` and `--key-file` still win).
+Once it is done, the stage's state records it (`server:compose`), with who
+ran it and when; a later run says so before it starts. Nothing personal is
+kept: the admin is whoever runs it, logging in with their own key. On a server
+already set up, root and password logins are off, so a teammate whose key
+can't log in is stopped and told who set it up: an admin there adds their key
+(or creates them a sudo user) before they run it.
 
 What it leaves to you: the provider's panel (its console login, its own
 malware scanner), and uptime monitoring from outside the server. It installs no

@@ -1123,7 +1123,11 @@ program
 	.requiredOption('--stage <stage>', 'A deployed stage from gkm.config.ts')
 	.option(
 		'--admin <user>',
-		'The sudo user you log in to the server as — never root (asked when absent)',
+		"The sudo user you log in to the server as — never root (default: ssh's own user for the host)",
+	)
+	.option(
+		'--identity <path>',
+		"The SSH key the admin logs in with (default: ssh's own choice)",
 	)
 	.option(
 		'--key-file <path>',

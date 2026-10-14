@@ -21,9 +21,9 @@
  * user, and `ssh-copy-id` puts your key on it when root had none to give.
  * Root's password is locked once the admin's sudo works.
  *
- * What it set up is kept in the stage's state (`server:compose`): the admin,
- * the deploy key's path and the pinned host key, so a second run asks
- * nothing it was already told.
+ * Once it has, the stage's state records that it is done (`server:compose`,
+ * stamped with who and when) — nothing personal: the admin is whoever runs
+ * it, with their own key.
  * Safe to run again: each step changes only what is missing or wrong.
  */
 
@@ -33,6 +33,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { loadWorkspaceConfig } from '../config';
+import { describeActor } from '../deploy/actor';
 import { type Gh, ghCli } from '../deploy/github';
 import { DeployJournal } from '../deploy/journal';
 import { createStateStore, type StateStore } from '../deploy/StateStore';
@@ -47,8 +48,14 @@ import { ADMIN_SCRIPT, SERVER_SCRIPT } from './serverScript';
 export interface ComposeServerSetupOptions {
 	/** The deployed stage whose server this is. */
 	stage: string;
-	/** The server's sudo user. Asked for when absent. */
+	/**
+	 * The server's sudo user. Absent, the user `ssh` logs in to the server as
+	 * by default (`~/.ssh/config`, else this machine's) — asked for only when
+	 * that is root.
+	 */
 	admin?: string;
+	/** The key the admin logs in with. Absent, `ssh`'s own choice. */
+	identity?: string;
 	/** The deploy key pair. Default `~/.ssh/gkm-<project>-<stage>`. */
 	keyFile?: string;
 	/** `owner/name`; defaults to the repository `gh` sees here. */
@@ -92,15 +99,12 @@ export interface ComposeServerSetupDeps {
 /** The stage's record of its server, as `compose:server` last set it up. */
 export const SERVER_RECORD = 'server:compose';
 
-/** What `server:compose` holds. */
+/**
+ * What `server:compose` holds: which server was set up. Who set it up, and
+ * when, are the record's own `updatedBy` and `updatedAt`.
+ */
 export interface ServerRecordData {
 	host: string;
-	port: number;
-	admin: string;
-	/** The deploy key pair, `~/`-relative when it is under the home directory. */
-	keyFile: string;
-	/** The pinned host key line, as `known_hosts` holds it. */
-	knownHosts: string;
 }
 
 export interface ComposeServerSetupResult {
@@ -149,6 +153,27 @@ export class ComposeServerAdminUnreachable extends GkmError {
 				`\`ssh-copy-id ${target}\` — then run this again.`,
 		);
 		this.name = 'ComposeServerAdminUnreachable';
+	}
+}
+
+/**
+ * The server was set up already, and this person cannot log in to it as
+ * the admin they named. Root's login and passwords are off there, so only
+ * an admin can let them in.
+ */
+export class ComposeServerAccessNeeded extends GkmError {
+	constructor(
+		readonly target: string,
+		readonly setUpBy: string,
+		readonly setUpOn: string,
+	) {
+		super(
+			`${target} can't log in with your key, and the server was set up by ${setUpBy} on ${setUpOn} — ` +
+				'root and password logins are off there. Ask them, or another admin, to add your ' +
+				`public key to ${target.split('@')[0]}'s ~/.ssh/authorized_keys (or create you a sudo ` +
+				'user with it), then run this again.',
+		);
+		this.name = 'ComposeServerAccessNeeded';
 	}
 }
 
@@ -245,6 +270,14 @@ function sshOptions(server: ComposeServer): string[] {
 	return ['-o', 'ConnectTimeout=20', '-p', String(server.port)];
 }
 
+/** How the admin (or root) logs in: the server's options and their key. */
+function loginOptions(server: ComposeServer, identity?: string): string[] {
+	return [
+		...sshOptions(server),
+		...(identity ? ['-i', identity, '-o', 'IdentitiesOnly=yes'] : []),
+	];
+}
+
 /** `user@host`, as `ssh` takes it. */
 function at(user: string, host: string): string {
 	return `${user}@${host}`;
@@ -290,17 +323,6 @@ async function fingerprints(run: Runner, keys: string): Promise<string[]> {
 		.filter((value): value is string => Boolean(value));
 }
 
-/** `path`, written `~/…` when it is under the home directory. */
-function toHome(path: string): string {
-	const home = homedir();
-	return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
-}
-
-/** A path `toHome` wrote, back to one this machine can open. */
-function fromHome(path: string): string {
-	return path.startsWith('~/') ? join(homedir(), path.slice(2)) : path;
-}
-
 /** The default deploy key pair for a stage. */
 export function defaultKeyFile(project: string, stage: string): string {
 	return join(homedir(), '.ssh', `gkm-${project}-${stage}`);
@@ -333,8 +355,7 @@ export async function composeServerCommand(
 			?.custom,
 	})!;
 
-	// What an earlier run set this server up with — only while it is still
-	// the server the stage names.
+	// Whether this server was set up before, by whom and when.
 	const state =
 		deps.state ??
 		(await createStateStore({
@@ -343,23 +364,31 @@ export async function composeServerCommand(
 			workspaceName: workspace.name,
 			namespace: workspace.deploy?.namespace,
 		}));
-	const stored = (await state.read(stage))?.resources[SERVER_RECORD]?.data as
-		| ServerRecordData
-		| undefined;
-	const before = stored?.host === server.host ? stored : undefined;
+	const record = (await state.read(stage))?.resources[SERVER_RECORD];
+	const done =
+		(record?.data as ServerRecordData | undefined)?.host === server.host
+			? record
+			: undefined;
 
+	// The admin's login: `--admin`/`--identity`, or what `ssh` itself would
+	// use for this host — read with `ssh -G`, which connects to nothing.
+	const identity = options.identity ? resolve(options.identity) : undefined;
+	const asAdmin = loginOptions(server, identity);
+	const sshUser =
+		(await run('ssh', ['-G', ...asAdmin, server.host])).stdout.match(
+			/^user (\S+)$/m,
+		)?.[1] ?? '';
 	const admin = (
 		options.admin ??
-		before?.admin ??
-		(await ask(`The sudo user you log in to ${server.host} as (not root): `))
+		(sshUser && sshUser !== 'root'
+			? sshUser
+			: await ask(`The sudo user you log in to ${server.host} as (not root): `))
 	).trim();
 	if (!admin || admin === 'root') throw new ComposeServerAdminIsRoot();
 	if (admin === server.user) throw new ComposeServerAdminIsDeployUser(admin);
 
 	const keyFile = resolve(
-		options.keyFile ??
-			(before ? fromHome(before.keyFile) : undefined) ??
-			defaultKeyFile(workspace.name, stage),
+		options.keyFile ?? defaultKeyFile(workspace.name, stage),
 	);
 	const comment = `gkm-${workspace.name}-${stage}-deploy`;
 	const repo = github
@@ -372,7 +401,7 @@ export async function composeServerCommand(
 	console.log(`\n🖥  Server for stage "${stage}"\n`);
 	console.log(`  Server:      ${server.host} (ssh port ${server.port})`);
 	console.log(
-		`  Admin:       ${admin} — logs in with your key, runs sudo${before && !options.admin ? ' (from the stage state)' : ''}`,
+		`  Admin:       ${admin} — logs in with ${identity ?? 'your SSH key'}, runs sudo${options.admin ? '' : ' (your SSH login)'}`,
 	);
 	console.log(
 		`  Deploy user: ${server.user} — docker group, no sudo, no password`,
@@ -383,6 +412,11 @@ export async function composeServerCommand(
 	console.log(
 		`  GitHub:      ${repo ? `environment "${stage}" of ${repo}: DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS` : 'left alone (--no-github)'}`,
 	);
+	if (done) {
+		console.log(
+			`\n  Already set up by ${describeActor(done.updatedBy)} on ${done.updatedAt.slice(0, 10)}; running again changes only what is missing or wrong.`,
+		);
+	}
 	console.log('\n  On the server, through sudo:');
 	for (const step of [
 		"SSH: keys only, root's login off (and nothing else may turn passwords back on)",
@@ -439,11 +473,20 @@ export async function composeServerCommand(
 			'BatchMode=yes',
 			'-o',
 			'StrictHostKeyChecking=accept-new',
-			...sshOptions(server),
+			...asAdmin,
 			at(user, server.host),
 			'true',
 		]);
 	let login = await probe(admin);
+	// A server already set up has no root or password login left to make
+	// one with: an admin there has to let this person in.
+	if (login.code !== 0 && done) {
+		throw new ComposeServerAccessNeeded(
+			adminTarget,
+			describeActor(done.updatedBy),
+			done.updatedAt.slice(0, 10),
+		);
+	}
 	if (login.code !== 0) {
 		// A server only root can log in to yet: root creates the admin — with
 		// its key, or on a brand-new server with the password the provider
@@ -462,7 +505,7 @@ export async function composeServerCommand(
 				'ssh',
 				[
 					'-t',
-					...sshOptions(server),
+					...asAdmin,
 					at('root', server.host),
 					remoteCommand(ADMIN_SCRIPT, [admin], false),
 				],
@@ -489,7 +532,12 @@ export async function composeServerCommand(
 		) {
 			const copied = await run(
 				'ssh-copy-id',
-				['-p', String(server.port), adminTarget],
+				[
+					...(identity ? ['-i', identity] : []),
+					'-p',
+					String(server.port),
+					adminTarget,
+				],
 				{ interactive: true },
 			);
 			if (copied.code !== 0) {
@@ -508,7 +556,7 @@ export async function composeServerCommand(
 		'ssh',
 		[
 			'-t',
-			...sshOptions(server),
+			...asAdmin,
 			adminTarget,
 			remoteCommand(
 				SERVER_SCRIPT,
@@ -624,7 +672,7 @@ export async function composeServerCommand(
 		await rm(known, { force: true });
 	}
 
-	// Remembered for the next run, and for whoever runs it next.
+	// Done: the stage's state says so, and who did it.
 	const journal = await DeployJournal.open(state, stage, () =>
 		createComposeState(stage),
 	);
@@ -632,17 +680,11 @@ export async function composeServerCommand(
 		{
 			key: SERVER_RECORD,
 			type: 'server',
-			data: {
-				host: server.host,
-				port: server.port,
-				admin,
-				keyFile: toHome(keyFile),
-				knownHosts,
-			} satisfies ServerRecordData,
+			data: { host: server.host } satisfies ServerRecordData,
 		},
 		server.host,
 	);
-	console.log(`  ✓ Kept in the "${stage}" state: ${admin}, ${toHome(keyFile)}`);
+	console.log(`  ✓ Recorded in the "${stage}" state`);
 
 	console.log(
 		`\n✅ ${server.host} is ready for "${stage}".${repo ? ' CI deploys it with the key it was given.' : ''} ` +
