@@ -487,6 +487,7 @@ ${registryLogin(registry)}
       # pinned host key (DEPLOY_KNOWN_HOSTS, a variable) on each environment:
       # never accepted on first sight. The server — user and host — is
       # deploy.compose.server in gkm.config.ts and the stage's GKM_SERVER_IPV4.
+      # \`gkm compose:server --stage <stage>\` sets the server up and gives both.
       - name: SSH to the server
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh

@@ -194,7 +194,51 @@ run connects to nothing and prints where it would deploy:
    → deploy@203.0.113.10 (docker over ssh)
 ```
 
-**What the server needs** — and nothing else:
+### Setting the server up
+
+`gkm compose:server` makes a fresh VPS ready for a stage, from your machine:
+
+```bash
+gkm compose:server --stage production            # asks for the admin user
+gkm compose:server --stage production --dry-run  # the plan and the script
+```
+
+It logs in as the server's **admin** — the sudo user you log in as, never root
+— and through sudo:
+
+- turns SSH to **keys only** with **root's login off**, in a file that sorts
+  before a provider's own (cloud-init's `50-cloud-init.conf` turns passwords
+  back on), then reads `sshd -T` to confirm that is what sshd does;
+- enables **ufw**: SSH, 80 and 443 in, everything out — and names any other
+  port left open;
+- installs **unattended-upgrades** (security updates daily) and **fail2ban**
+  on sshd;
+- installs **Docker** and its compose plugin from Docker's own repository;
+- creates the **deploy user** (in the docker group, no sudo, no password) and
+  authorizes a deploy key there as `restrict,port-forwarding`.
+
+Off the server, it makes that key pair here (`~/.ssh/gkm-<project>-<stage>`),
+pins the server's host key — checked against the fingerprint the server
+reports of itself — and gives the stage's GitHub environment both, as
+`DEPLOY_SSH_KEY` and `DEPLOY_KNOWN_HOSTS` (`--no-github` skips it). Last, it
+logs in exactly as CI will and checks Docker and the tunnel answer. Running it
+again changes only what is missing or wrong.
+
+A server only root can log in to yet gets its admin first: when root's key
+works, gkm offers to create the user with root's keys (you choose its sudo
+password); otherwise it offers `ssh-copy-id` with the admin's password.
+
+What it leaves to you: the provider's panel (a strong root password, its own
+malware scanner), and uptime monitoring from outside the server. It installs no
+reverse proxy — the stack brings Caddy, or the shared edge — and no image
+auto-updater such as Watchtower, which would replace the exact images a deploy
+pinned. Docker's published ports bypass ufw, so a stack publishes Postgres and
+MinIO on the server's loopback alone, and only the edge on 80 and 443.
+
+### What the server needs
+
+What `gkm compose:server` sets up, for a server set up by hand — and nothing
+else:
 
 1. Docker and its compose plugin.
 2. A deploy user in the `docker` group, with the deploying machine's (or CI's)
