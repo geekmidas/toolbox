@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
@@ -102,6 +102,69 @@ async function collectRequiredEnvVars(
 	return Array.from(required).sort();
 }
 
+/** `<dir>/node_modules/<name>`, from `from` up to the root; the first found. */
+function installed(name: string, from: string): string | undefined {
+	for (let dir = from; ; dir = dirname(dir)) {
+		const candidate = join(dir, 'node_modules', name, 'package.json');
+		if (existsSync(candidate)) return realpathSync(dirname(candidate));
+		if (dirname(dir) === dir) return undefined;
+	}
+}
+
+/**
+ * The optional peers of the @geekmidas packages an app reaches that are not
+ * installed where those packages would resolve them.
+ *
+ * Each is imported only on the path that needs it — `@aws-sdk/client-kms`
+ * for a `kms:` key, say — so an app that never takes that path never
+ * installs it. esbuild resolves a dynamic import all the same, and fails
+ * the bundle on one it cannot find; left external instead, it is only
+ * looked for if that path runs, where its absence says what to install.
+ */
+export function missingOptionalPeers(from: string): string[] {
+	const missing = new Set<string>();
+	const seen = new Set<string>();
+	const visit = (dir: string) => {
+		if (seen.has(dir)) return;
+		seen.add(dir);
+		const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'));
+		for (const [peer, meta] of Object.entries(
+			(pkg.peerDependenciesMeta ?? {}) as Record<
+				string,
+				{ optional?: boolean }
+			>,
+		)) {
+			if (meta?.optional && !installed(peer, dir)) missing.add(peer);
+		}
+		for (const name of Object.keys({
+			...pkg.dependencies,
+			...pkg.peerDependencies,
+		})) {
+			if (!name.startsWith('@geekmidas/')) continue;
+			const found = installed(name, dir);
+			if (found) visit(found);
+		}
+	};
+
+	// The app's own package.json: the nearest above the entry.
+	for (let dir = from; ; dir = dirname(dir)) {
+		if (existsSync(join(dir, 'package.json'))) {
+			const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'));
+			for (const name of Object.keys({
+				...pkg.dependencies,
+				...pkg.devDependencies,
+			})) {
+				if (!name.startsWith('@geekmidas/')) continue;
+				const found = installed(name, dir);
+				if (found) visit(found);
+			}
+			break;
+		}
+		if (dirname(dir) === dir) break;
+	}
+	return [...missing].sort();
+}
+
 /**
  * Bundle the server application using esbuild.
  * Creates a fully standalone bundle with all dependencies included.
@@ -151,8 +214,12 @@ export async function bundleServer(
 		args.push('--sourcemap');
 	}
 
-	// Add external packages (user-specified)
-	for (const ext of external) {
+	// Add external packages (user-specified), and the optional peers a
+	// @geekmidas package only loads on a path this app may never take
+	for (const ext of [
+		...external,
+		...missingOptionalPeers(dirname(entryPoint)),
+	]) {
 		args.push(`--external:${ext}`);
 	}
 
