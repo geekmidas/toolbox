@@ -43,6 +43,7 @@
     "bucket-check-says-why",
     "build-follows-deploy-target",
     "build-skips-readiness",
+    "bundle-missing-optional-peers",
     "cache-table-after-database",
     "claude-md-imports-agents",
     "cli-starts-again",

@@ -1,5 +1,24 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.116
+
+### Patch Changes
+
+- 🐛 [#267](https://github.com/geekmidas/toolbox/pull/267) [`4d56770`](https://github.com/geekmidas/toolbox/commit/4d56770b7bdf66ed84a888b5e8e3bc08defb61eb) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm build --production` bundles an app that never installed an optional peer it never loads. A @geekmidas package imports such a peer only on the path that needs it — `@aws-sdk/client-kms` for a `kms:` encryption key — but esbuild resolved that import anyway and failed the bundle (`Could not resolve "@aws-sdk/client-kms"`) for an app whose keys are all local. The optional peers of the app's @geekmidas packages that are not installed are now left external.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.116
+  - @geekmidas/constructs@10.0.0-alpha.116
+  - @geekmidas/db@10.0.0-alpha.116
+  - @geekmidas/envkit@10.0.0-alpha.116
+  - @geekmidas/errors@10.0.0-alpha.116
+  - @geekmidas/logger@10.0.0-alpha.116
+  - @geekmidas/manifest@10.0.0-alpha.116
+  - @geekmidas/schema@10.0.0-alpha.116
+  - @geekmidas/services@10.0.0-alpha.116
+  - @geekmidas/storage@10.0.0-alpha.116
+  - @geekmidas/telescope@10.0.0-alpha.116
+
 ## 10.0.0-alpha.115
 
 ### Patch Changes
