@@ -156,7 +156,22 @@ describe('gkm stages', () => {
 				'has-build': 'true',
 				'has-deploy': 'true',
 				'aws-region': '',
+				registry: '',
 			});
+		});
+
+		it.each([
+			['ghcr.io/acme', 'ghcr.io'],
+			['registry.acme.dev:5000/apps', 'registry.acme.dev:5000'],
+			// A bare namespace is Docker Hub's, not a host called `acme`.
+			['acme', 'docker.io'],
+		])("names %s's host, %s, to log in to", async (registry, host) => {
+			await writeFile(
+				join(dir, 'gkm.config.ts'),
+				config(DEPLOYED, `deploy: { registry: '${registry}' },`),
+			);
+
+			expect((await outputs({ event: 'push' })).registry).toBe(host);
 		});
 
 		it('takes --event over GITHUB_EVENT_NAME', async () => {

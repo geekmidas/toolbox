@@ -63,6 +63,11 @@ outputs:
       The region of the workspace's AWS secrets store (ssm or
       secrets-manager), or '' when the stages keep their secrets elsewhere.
     value: ${{ steps.stages.outputs.aws-region }}
+  registry:
+    description: >-
+      The host to log in to for deploy.registry: ghcr.io, another registry's
+      host, docker.io for a bare Docker Hub namespace, or '' when none is set.
+    value: ${{ steps.stages.outputs.registry }}
 
 runs:
   using: composite

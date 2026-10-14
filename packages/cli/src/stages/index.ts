@@ -73,6 +73,22 @@ export function awsSecretsRegion(workspace: NormalizedWorkspace): string {
 }
 
 /**
+ * The host a workflow logs in to for `deploy.registry`, as Docker reads an
+ * image name: the first part when it names a host (a dot, a port, or
+ * `localhost`), Docker Hub's `docker.io` for a bare namespace, and `''` when
+ * no registry is set. Read at run time, so a workflow follows the config
+ * rather than what it said when the workflow was written.
+ */
+export function registryHost(workspace: NormalizedWorkspace): string {
+	const registry = workspace.deploy?.registry?.trim();
+	if (!registry) return '';
+	const first = registry.split('/')[0]!;
+	return first.includes('.') || first.includes(':') || first === 'localhost'
+		? first
+		: 'docker.io';
+}
+
+/**
  * Every output the stages action sets, each a string `fromJSON()` reads, for
  * one workflow run.
  */
@@ -94,6 +110,7 @@ export function githubOutputs(
 		'has-build': String(plan.build.length > 0),
 		'has-deploy': String(plan.deploy.length > 0),
 		'aws-region': awsSecretsRegion(workspace),
+		registry: registryHost(workspace),
 	};
 }
 
