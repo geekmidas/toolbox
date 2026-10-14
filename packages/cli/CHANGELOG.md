@@ -1,5 +1,28 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.115
+
+### Patch Changes
+
+- ✨ [#266](https://github.com/geekmidas/toolbox/pull/266) [`b22cf05`](https://github.com/geekmidas/toolbox/commit/b22cf05abe0fdb6f8225a188d56bfe7b7641cf1a) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm compose:server` sets up a brand-new server whose root logs in with a password: it creates the admin as root, copies your key to the admin with `ssh-copy-id`, then turns password and root logins off and locks root's password. The stage's state records that the server is set up (`server:compose`, with who and when), and a later run says so. On a server already set up, someone whose key can't log in is stopped and told to ask whoever set it up, rather than offered root or `ssh-copy-id`. With no `--admin`, it logs in as the user `ssh` itself would (`~/.ssh/config`, else this computer's username); `--identity` names the key.
+
+- [#264](https://github.com/geekmidas/toolbox/pull/264) [`3f2de9d`](https://github.com/geekmidas/toolbox/commit/3f2de9d05683d6199ffbb414d14a77a9a51c3412) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm dev` no longer keeps a Caddy that another checkout of the project started. Every checkout (a worktree beside the main one) shares the compose project name, so a worktree's Caddy passed the health check and kept serving that worktree's routes — an app's HTTPS address answered 502 because it forwarded to ports the worktree's apps had. Caddy now counts as up only when it was created from this checkout; otherwise it is recreated with this checkout's routes.
+
+- [#265](https://github.com/geekmidas/toolbox/pull/265) [`2fbf966`](https://github.com/geekmidas/toolbox/commit/2fbf96667eb85d9a3f196bd2afd8f58f30f80e70) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm init` installs `@hono/node-ws` in an app with Telescope. The server `gkm dev` generates imports it for Telescope's live feed, and without it every start warned "Cannot find package '@hono/node-ws'".
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.115
+  - @geekmidas/constructs@10.0.0-alpha.115
+  - @geekmidas/db@10.0.0-alpha.115
+  - @geekmidas/envkit@10.0.0-alpha.115
+  - @geekmidas/errors@10.0.0-alpha.115
+  - @geekmidas/logger@10.0.0-alpha.115
+  - @geekmidas/manifest@10.0.0-alpha.115
+  - @geekmidas/schema@10.0.0-alpha.115
+  - @geekmidas/services@10.0.0-alpha.115
+  - @geekmidas/storage@10.0.0-alpha.115
+  - @geekmidas/telescope@10.0.0-alpha.115
+
 ## 10.0.0-alpha.114
 
 ### Patch Changes
