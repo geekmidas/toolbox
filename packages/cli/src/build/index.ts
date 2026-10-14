@@ -23,6 +23,7 @@ import {
 	eventsBackendsIn,
 	FunctionGenerator,
 	type GeneratedConstruct,
+	opensKmsKeys,
 	QueueGenerator,
 	SubscriberGenerator,
 	TopicGenerator,
@@ -644,7 +645,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		: declared;
 	Object.assign(
 		buildContext,
-		runtimeDrivers({ appRoot, reach, cacheBackend, eventsBackend }),
+		runtimeDrivers({ appRoot, reach, cacheBackend, eventsBackend, target }),
 	);
 
 	// Decided by the process's edge to a `Telemetry` node, never by which
@@ -727,6 +728,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 					reach: reachedBy(declared, [workerId], work),
 					cacheBackend,
 					eventsBackend,
+					target,
 				}),
 			}),
 			telemetry: (workerId) =>
@@ -800,13 +802,15 @@ function processTelemetry(
  * The drivers a process's entry registers, from the declarations it reaches:
  * the cache's — the declaration for one that named its database, the deploy
  * target's default for one that named nowhere — and the broker's, only when
- * it reaches a topic or a queue (see `eventsBackendsIn`).
+ * it reaches a topic or a queue (see `eventsBackendsIn`) — and the KMS
+ * cipher, only built for AWS and only when it reaches an `Encryption`.
  */
 function runtimeDrivers(options: {
 	appRoot: string;
 	reach: ConstructManifest;
 	cacheBackend: CacheBackend;
 	eventsBackend: EventsBackend;
+	target: MainProvider;
 }): Pick<BuildContext, 'storageDrivers' | 'eventsBackends'> {
 	const eventsBackends = eventsBackendsIn(options.reach, options.eventsBackend);
 	return {
@@ -814,6 +818,7 @@ function runtimeDrivers(options: {
 			appRoot: options.appRoot,
 			cache: cacheBackendsIn(options.reach, options.cacheBackend),
 			events: eventsBackends,
+			kms: opensKmsKeys(options.reach, options.target),
 		}),
 		eventsBackends,
 	};

@@ -330,3 +330,16 @@ export function keyringCipher(
 		},
 	};
 }
+
+/**
+ * A cipher for a URL scheme other than `aes256gcm:` — `kms:` on AWS.
+ *
+ * Registered by the entry point a build generates, and only for a target
+ * whose keys live there, so a process that never holds such a key never
+ * imports the SDK it would need.
+ */
+export interface CipherDriver {
+	/** The scheme it opens, with its colon: `'kms:'`. */
+	readonly scheme: string;
+	open(construct: string, url: string): Cipher;
+}

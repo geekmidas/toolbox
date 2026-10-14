@@ -103,8 +103,33 @@ const EVENTS_DRIVERS: Record<EventsBackend, RuntimeDrivers> = {
 };
 
 /**
+ * The KMS cipher, for an entry whose keys are on AWS. `aes256gcm:` is built
+ * into `Encryption`; only this one needs a driver, because only it needs an
+ * SDK — and only an AWS build has `kms://` keys to open.
+ */
+const KMS: RuntimeDrivers = {
+	imports: `import { registerCipherDriver } from '@geekmidas/constructs/encryption';\nimport { kmsCipherDriver } from '@geekmidas/constructs/encryption/kms';`,
+	setup: 'registerCipherDriver(kmsCipherDriver);',
+};
+
+/**
+ * Whether an entry opens KMS keys: built for AWS, from a process that reaches
+ * an `Encryption`. A server's keys are keyrings, and `gkm dev` and `gkm test`
+ * derive theirs locally — none of them imports `@aws-sdk/client-kms`.
+ */
+export function opensKmsKeys(
+	manifest: Record<string, { kind: string }>,
+	target: 'aws' | 'server',
+): boolean {
+	return (
+		target === 'aws' &&
+		Object.values(manifest).some((d) => d.kind === 'encryption')
+	);
+}
+
+/**
  * Everything a generated entry should register: object storage, the cache,
- * and the events broker.
+ * the events broker and the KMS cipher.
  *
  * Merged here rather than threaded separately, because a generated file has one
  * import block and one setup block whatever fills them.
@@ -125,6 +150,8 @@ export function driversFor(options: {
 	 * registered and `@geekmidas/events` is never resolved.
 	 */
 	events?: EventsBackend | readonly EventsBackend[] | false;
+	/** Whether it opens KMS keys — see {@link opensKmsKeys}. */
+	kms?: boolean;
 }): RuntimeDrivers {
 	const backends = listOf(options.cache);
 	const brokers = listOf(options.events);
@@ -135,6 +162,7 @@ export function driversFor(options: {
 			(backend) => CACHE_DRIVERS[backend] ?? CACHE_DRIVERS[DEFAULT_CACHE.aws],
 		),
 		...[...new Set(brokers)].map((broker) => EVENTS_DRIVERS[broker]),
+		...(options.kms ? [KMS] : []),
 	].filter((part) => part.imports || part.setup);
 
 	if (parts.length === 0) return NONE;

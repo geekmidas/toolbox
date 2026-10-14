@@ -3,6 +3,7 @@ export {
 	cacheBackendsIn,
 	driversFor,
 	eventsBackendsIn,
+	opensKmsKeys,
 	type RuntimeDrivers,
 	type StorageDrivers,
 	storageDriversFor,

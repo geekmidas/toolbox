@@ -4,11 +4,13 @@ import {
 	KMSClient,
 	ScheduleKeyDeletionCommand,
 } from '@aws-sdk/client-kms';
+import { EnvironmentParser } from '@geekmidas/envkit';
 import { kmsUrl } from '@geekmidas/manifest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
+import { Encryption, registerCipherDriver } from '../../encryption';
 import { CiphertextNotAuthentic } from '../cipher';
-import { kmsCipher } from '../kms';
+import { kmsCipher, kmsCipherDriver } from '../kms';
 
 /**
  * Against floci — the AWS emulator the test stack already runs for SNS and
@@ -107,5 +109,19 @@ describe('the KMS cipher', () => {
 		const ciphertext = await pii.encrypt('kept');
 
 		expect(await pii.reencrypt(ciphertext)).toBe(ciphertext);
+	});
+});
+
+describe('Encryption with the KMS cipher registered', () => {
+	it("opens a kms:// key, as an AWS build's entry registers it", async () => {
+		registerCipherDriver(kmsCipherDriver);
+		const pii = await new Encryption('Pii').service.register({
+			envParser: new EnvironmentParser({ PII_URL: url }),
+			context: {} as never,
+		});
+
+		const ciphertext = await pii.encrypt('ada@example.com');
+		expect(ciphertext).toMatch(/^gkm1\.kms\./);
+		expect(await pii.decrypt(ciphertext)).toBe('ada@example.com');
 	});
 });

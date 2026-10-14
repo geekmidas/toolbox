@@ -14,8 +14,10 @@
  * The blind index is a KMS HMAC key's `GenerateMac`: deterministic, and the
  * key is as unextractable as the encryption key.
  *
- * In its own module, loaded only when a URL says `kms://`, so a project that
- * never deploys to AWS never needs `@aws-sdk/client-kms` installed.
+ * In its own entry, `@geekmidas/constructs/encryption/kms`, which only an
+ * AWS build's generated entry imports — to register {@link kmsCipherDriver}
+ * — so a project that never deploys to AWS never needs
+ * `@aws-sdk/client-kms` installed, and its bundle never mentions it.
  */
 
 import {
@@ -24,9 +26,11 @@ import {
 	GenerateMacCommand,
 	KMSClient,
 } from '@aws-sdk/client-kms';
+import { KMS_SCHEME } from '@geekmidas/manifest';
 import {
 	associatedData,
 	type Cipher,
+	type CipherDriver,
 	CiphertextNotAuthentic,
 	EncryptionUrlInvalid,
 	formatCiphertext,
@@ -126,3 +130,9 @@ export function kmsCipher(construct: string, url: string): Cipher {
 		},
 	};
 }
+
+/** The `kms:` cipher, as an AWS build's entry registers it. */
+export const kmsCipherDriver: CipherDriver = {
+	scheme: KMS_SCHEME,
+	open: kmsCipher,
+};
