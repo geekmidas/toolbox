@@ -199,7 +199,8 @@ run connects to nothing and prints where it would deploy:
 `gkm compose:server` makes a fresh VPS ready for a stage, from your machine:
 
 ```bash
-gkm compose:server --stage production            # asks for the admin user
+gkm compose:server --stage production            # as you: ssh's own user and key
+gkm compose:server --stage production --admin ops --identity ~/.ssh/ops
 gkm compose:server --stage production --dry-run  # the plan and the script
 ```
 
@@ -209,6 +210,7 @@ It logs in as the server's **admin** — the sudo user you log in as, never root
 - turns SSH to **keys only** with **root's login off**, in a file that sorts
   before a provider's own (cloud-init's `50-cloud-init.conf` turns passwords
   back on), then reads `sshd -T` to confirm that is what sshd does;
+- **locks root's password** — root is reached through the admin's sudo;
 - enables **ufw**: SSH, 80 and 443 in, everything out — and names any other
   port left open;
 - installs **unattended-upgrades** (security updates daily) and **fail2ban**
@@ -224,11 +226,29 @@ reports of itself — and gives the stage's GitHub environment both, as
 logs in exactly as CI will and checks Docker and the tunnel answer. Running it
 again changes only what is missing or wrong.
 
-A server only root can log in to yet gets its admin first: when root's key
-works, gkm offers to create the user with root's keys (you choose its sudo
-password); otherwise it offers `ssh-copy-id` with the admin's password.
+A brand-new server, where only root logs in, gets its admin first. gkm logs
+in as root — with its key, or with the password the provider gave it — and
+creates the admin as a sudo user (you choose the password sudo will ask for),
+with root's keys if root has any. If it has none, `ssh-copy-id` puts yours on
+the admin. Then the setup above runs as the admin: password logins and root's
+login off, root's password locked.
 
-What it leaves to you: the provider's panel (a strong root password, its own
+```bash
+gkm compose:server --stage production   # ssh would log in as midas
+#   midas can't log in with a key. Is this a new server …? [y/N] y
+#   root@203.0.113.7's password:            ← the provider's root password
+#   creating midas — choose the password sudo will ask for:
+#   midas can't log in with a key. Copy yours there with ssh-copy-id? [Y/n]
+```
+
+Once it is done, the stage's state records it (`server:compose`), with who
+ran it and when; a later run says so before it starts. Nothing personal is
+kept: the admin is whoever runs it, logging in with their own key. On a server
+already set up, root and password logins are off, so a teammate whose key
+can't log in is stopped and told who set it up: an admin there adds their key
+(or creates them a sudo user) before they run it.
+
+What it leaves to you: the provider's panel (its console login, its own
 malware scanner), and uptime monitoring from outside the server. It installs no
 reverse proxy — the stack brings Caddy, or the shared edge — and no image
 auto-updater such as Watchtower, which would replace the exact images a deploy

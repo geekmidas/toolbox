@@ -640,7 +640,9 @@ release and `gkm compose --stage <stage> --tag <tag>` the server's — see
 ### `gkm compose:server`
 
 Set up a deployed stage's server for compose deploys, from this machine, as
-its admin — a sudo user, never root (asked for when `--admin` is absent). See
+its admin — a sudo user, never root: by default the user `ssh` itself logs
+in as (`~/.ssh/config`, else this computer's username), asked for only when
+that is root. See
 [Setting the server up](./compose.md#setting-the-server-up).
 
 ```bash
@@ -648,7 +650,8 @@ gkm compose:server --stage <stage> [options]
 
 Options:
   --stage <stage>      A deployed stage from gkm.config.ts (required)
-  --admin <user>       The sudo user you log in to the server as
+  --admin <user>       The sudo user you log in to the server as (default: ssh's own user)
+  --identity <path>    The SSH key the admin logs in with (default: ssh's own choice)
   --key-file <path>    The deploy key pair (default ~/.ssh/gkm-<project>-<stage>)
   --repo <owner/name>  GitHub repository (default: this one)
   --no-github          Leave the GitHub environment alone
@@ -659,6 +662,7 @@ Errors:
   ComposeServerAdminIsRoot        --admin root: its SSH login is turned off
   ComposeServerAdminIsDeployUser  --admin names the deploy user, which has no sudo
   ComposeServerAdminUnreachable   no key logs the admin in (ssh-copy-id first)
+  ComposeServerAccessNeeded       already set up, and your key can't log in: ask its admin
   ComposeServerSetupFailed        the script on the server stopped (output above)
   ComposeServerHostKeyMismatch    the network's host key is not the server's
                                   own; nothing is given to GitHub

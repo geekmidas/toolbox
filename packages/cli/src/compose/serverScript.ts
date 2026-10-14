@@ -55,6 +55,10 @@ case "$FORWARD" in
 	*) fail "sshd does not let $DEPLOY forward ports (allowtcpforwarding $FORWARD)." ;;
 esac
 say "sshd: keys only, no root login; $DEPLOY may open local tunnels"
+# Root is reached through the admin's sudo, which this script is running
+# under — so its password, the one a provider mails out, can go.
+passwd -l root >/dev/null
+say "root's password locked; $ADMIN's sudo is the way to root"
 
 # ── Firewall: SSH, HTTP, HTTPS ─────────────────────────────────────────────
 command -v ufw >/dev/null || { apt-get update -qq && apt-get install -y -qq ufw >/dev/null; }
@@ -144,12 +148,13 @@ install -d -m 700 -o "$ADMIN" -g "$ADMIN" "$HOME_DIR/.ssh"
 AUTH="$HOME_DIR/.ssh/authorized_keys"
 touch "$AUTH"
 # The keys alone: a provider's options on root's lines (a command="…" that
-# says "log in as ubuntu") would stop the admin's login too.
-{ grep -oE '(ssh|ecdsa|sk)-[^ ]+ [A-Za-z0-9+/=]+( .*)?$' /root/.ssh/authorized_keys || true; } |
+# says "log in as ubuntu") would stop the admin's login too. A server root
+# logs in to with a password has none; ssh-copy-id brings the admin's.
+{ grep -oE '(ssh|ecdsa|sk)-[^ ]+ [A-Za-z0-9+/=]+( .*)?$' /root/.ssh/authorized_keys 2>/dev/null || true; } |
 	while IFS= read -r key; do
 		grep -qxF "$key" "$AUTH" || echo "$key" >> "$AUTH"
 	done
 chown "$ADMIN:$ADMIN" "$AUTH"
 chmod 600 "$AUTH"
-echo "   $ADMIN is a sudo user, with root's SSH keys"
+echo "   $ADMIN is a sudo user, with root's SSH keys (if root had any)"
 `;
