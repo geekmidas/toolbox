@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -97,6 +97,85 @@ describe('dockerCli', { timeout: 180_000 }, () => {
 		} finally {
 			vi.stubEnv('COMPOSE_PROJECT_NAME', project);
 		}
+	});
+});
+
+/**
+ * Two checkouts of one project — a worktree beside the main one — share its
+ * compose project name, and so its containers. One that mounts the checkout's
+ * files is only this checkout's when it was created from it.
+ */
+describe('dockerCli across checkouts', { timeout: 180_000 }, () => {
+	let root: string;
+	const project = `gkm-docker-checkouts-${Date.now()}`;
+
+	/** A checkout whose one service mounts a file out of it. */
+	function checkout(name: string): string {
+		const dir = join(root, name);
+		mkdirSync(join(dir, 'sites'), { recursive: true });
+		writeFileSync(join(dir, 'sites', 'name'), `${name}\n`);
+		const composePath = join(dir, 'docker-compose.constructs.yml');
+		writeFileSync(
+			composePath,
+			`services:
+  edge:
+    image: busybox:1.36
+    command: ['sleep', '600']
+    volumes:
+      - './sites:/sites:ro'
+`,
+		);
+		return composePath;
+	}
+
+	beforeAll(async () => {
+		vi.stubEnv('COMPOSE_PROJECT_NAME', project);
+		root = realpathSync(await createTempDir('gkm-docker-checkouts-'));
+	});
+
+	afterAll(async () => {
+		await run('docker', [
+			'compose',
+			...composeFiles(join(root, 'main', 'docker-compose.constructs.yml')),
+			'down',
+			'-v',
+			'--timeout',
+			'0',
+		]).catch(() => {});
+		vi.unstubAllEnvs();
+		await cleanupDir(root);
+	});
+
+	it('counts a container that mounts the checkout only when this checkout created it', async () => {
+		const worktree = checkout('worktree');
+		const main = checkout('main');
+		await dockerCli.up(worktree, ['edge']);
+
+		// The worktree's container answers for main, and reads the worktree's
+		// files.
+		await expect(dockerCli.healthy(main, ['edge'])).resolves.toBe(true);
+		await expect(
+			dockerCli.healthy(main, ['edge'], { mounted: ['edge'] }),
+		).resolves.toBe(false);
+		await expect(
+			dockerCli.healthy(worktree, ['edge'], { mounted: ['edge'] }),
+		).resolves.toBe(true);
+
+		// Brought up from main, it is recreated with main's files.
+		await dockerCli.up(main, ['edge']);
+		await expect(
+			dockerCli.healthy(main, ['edge'], { mounted: ['edge'] }),
+		).resolves.toBe(true);
+		const { stdout } = await run('docker', [
+			'compose',
+			...composeFiles(main),
+			'exec',
+			'-T',
+			'edge',
+			'cat',
+			'/sites/name',
+		]);
+		expect(stdout).toBe('main\n');
 	});
 });
 

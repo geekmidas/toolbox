@@ -112,6 +112,12 @@ export const PROJECT_COMPOSE_PATH = 'docker-compose.yml';
 export const CADDYFILE_PATH = '.gkm/Caddyfile';
 
 /**
+ * The containers that mount this checkout's files: Caddy reads its routes out
+ * of `.gkm/`, so one started from a worktree serves that worktree's ports.
+ */
+const CHECKOUT_MOUNTS = ['caddy'];
+
+/**
  * Where one stage's routes live, imported by the file above.
  *
  * Per stage because one edge serves every stage, the same way one Postgres
@@ -174,8 +180,18 @@ export interface Docker {
 		services: readonly string[],
 		options?: { show?: boolean },
 	): Promise<void>;
-	/** Whether every named service is running and passing its health check. */
-	healthy(composePath: string, services: readonly string[]): Promise<boolean>;
+	/**
+	 * Whether every named service is running and passing its health check.
+	 *
+	 * `mounted` names the services that mount this checkout's files; one of
+	 * those counts only when it was created from the compose file's directory,
+	 * not from another checkout of the same project.
+	 */
+	healthy(
+		composePath: string,
+		services: readonly string[],
+		options?: { mounted?: readonly string[] },
+	): Promise<boolean>;
 	/**
 	 * Copy a file out of a running container.
 	 *
@@ -492,7 +508,10 @@ export async function reconcile(
 		// The file is gitignored and derived; a fresh checkout with the state
 		// still around must write it rather than trust a hash of nothing.
 		existsSync(composePath) &&
-		(!start || (await docker.healthy(composePath, running))) &&
+		(!start ||
+			(await docker.healthy(composePath, running, {
+				mounted: CHECKOUT_MOUNTS,
+			}))) &&
 		// Every checkout shares one Postgres, so another one's test teardown can
 		// drop a database this checkout's state still records as created.
 		(!start ||
