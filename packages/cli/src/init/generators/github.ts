@@ -269,6 +269,7 @@ function stagesJob(options: TemplateOptions): string {
       has-build: \${{ steps.stages.outputs.has-build }}
       has-deploy: \${{ steps.stages.outputs.has-deploy }}
       aws-region: \${{ steps.stages.outputs.aws-region }}
+      registry: \${{ steps.stages.outputs.registry }}
     steps:
       - uses: actions/checkout@v4
 
@@ -288,17 +289,25 @@ ${pm.setup}
 }
 
 /**
- * The registry login a compose build pushes with: GitHub's own token on
- * ghcr.io, otherwise a username variable and a password secret.
+ * The registry login a compose build pushes with, and a deploy pulls with.
+ * The host is `deploy.registry`'s, read from gkm.config.ts by the stages
+ * job at run time — never written here, so the workflow follows the config:
+ * GitHub's own token on ghcr.io, otherwise the stage environment's
+ * `REGISTRY_USERNAME` variable and `REGISTRY_PASSWORD` secret.
  */
-function registryLogin(registry: string): string {
-	const host = registry.split('/')[0]!;
-	const ghcr = host === 'ghcr.io';
-	return `      - uses: docker/login-action@v3
+function registryLogin(): string {
+	const ghcr = "needs.stages.outputs.registry == 'ghcr.io'";
+	return `      # deploy.registry in gkm.config.ts: GitHub's registry with this
+      # workflow's own token (the job's \`packages\` permission decides push
+      # or pull), any other with the stage's REGISTRY_USERNAME variable and
+      # REGISTRY_PASSWORD secret.
+      - name: Log in to the registry
+        if: needs.stages.outputs.registry != ''
+        uses: docker/login-action@v3
         with:
-          registry: ${host}
-          username: ${ghcr ? '${{ github.actor }}' : '${{ vars.REGISTRY_USERNAME }}'}
-          password: ${ghcr ? '${{ secrets.GITHUB_TOKEN }}' : '${{ secrets.REGISTRY_PASSWORD }}'}
+          registry: \${{ needs.stages.outputs.registry }}
+          username: \${{ ${ghcr} && github.actor || vars.REGISTRY_USERNAME }}
+          password: \${{ ${ghcr} && secrets.GITHUB_TOKEN || secrets.REGISTRY_PASSWORD }}
 `;
 }
 
@@ -318,9 +327,15 @@ function registryLogin(registry: string): string {
  */
 function composeDeploy(options: TemplateOptions): string {
 	const pm = tooling(options);
-	const registry = options.registry ?? '';
 
 	return `${deployHeader(true)}
+# A push to main builds main's newest commit: a later push cancels an earlier
+# push's run, so several merges in a row build once. A release or a manual
+# run shares no group (its run id is in the name), and is never cancelled.
+concurrency:
+  group: \${{ github.workflow }}-\${{ github.event_name == 'push' && github.ref || github.run_id }}
+  cancel-in-progress: \${{ github.event_name == 'push' }}
+
 jobs:
 ${stagesJob(options)}
   build:
@@ -339,13 +354,22 @@ ${stagesJob(options)}
       packages: write
       id-token: write
     steps:
+      # The runner's preinstalled toolchains, none of them used here: with
+      # them, building every image of a workspace runs out of disk.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \\
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h /
+
       - uses: actions/checkout@v4
 
 ${pm.setup}
       - name: Install
         run: ${pm.install}
 
-${registryLogin(registry)}
+${registryLogin()}
       # A site's public URLs are built into it, so the build reads the stage's
       # secrets store. With secrets.store on S3, SSM or Secrets Manager the job
       # assumes the stage's role (AWS_ROLE_ARN, set by gkm deploy:github);
@@ -371,6 +395,7 @@ ${registryLogin(registry)}
         with:
           name: digests-\${{ matrix.stage }}
           path: digests.json
+          if-no-files-found: error
           retention-days: 90
 
   deploy:
@@ -404,8 +429,14 @@ ${registryLogin(registry)}
             workflow_dispatch) ref="\${REF:-$SHA}" ;;
             *) ref="$SHA" ;;
           esac
-          sha=$(gh api "repos/$REPO/commits/$ref" --jq .sha)
-          echo "Deploying $sha"
+          case "$ref" in
+            ''|-*) echo "::error::Not a tag or commit: '$ref'"; exit 1 ;;
+          esac
+          if ! sha=$(gh api "repos/$REPO/commits/$ref" --jq .sha); then
+            echo "::error::'$ref' is not a tag, branch or commit in this repository"
+            exit 1
+          fi
+          echo "Deploying $ref = $sha"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: \${{ github.token }}
@@ -426,7 +457,7 @@ ${pm.setup}
 
       # The server's engine pulls with the login docker sends from here: it
       # holds none of its own.
-${registryLogin(registry)}
+${registryLogin()}
       # The stage's secrets and deploy state are read and written here, with
       # the stage's role (AWS_ROLE_ARN, set by gkm deploy:github). With the
       # default 'file' secrets store there is no role, and no secrets file in

@@ -283,6 +283,7 @@ describe('generateGithubFiles', () => {
 			expect(upload.with).toEqual({
 				name: 'digests-${{ matrix.stage }}',
 				path: 'digests.json',
+				'if-no-files-found': 'error',
 				'retention-days': 90,
 			});
 
@@ -297,21 +298,42 @@ describe('generateGithubFiles', () => {
 			});
 		});
 
-		it('logs in to ghcr.io with the workflow token, elsewhere with a secret', () => {
-			const login = (yml: string) =>
-				parse(yml).jobs.build.steps.find((s: { uses?: string }) =>
-					s.uses?.startsWith('docker/login-action'),
-				).with;
+		it("logs in to gkm.config.ts's registry at run time, never the one init was told", () => {
+			const logins = (yml: string) =>
+				['build', 'deploy'].map((job) =>
+					parse(yml).jobs[job].steps.find((s: { uses?: string }) =>
+						s.uses?.startsWith('docker/login-action'),
+					),
+				);
+			const ghcr = "needs.stages.outputs.registry == 'ghcr.io'";
 
-			expect(login(compose())).toEqual({
-				registry: 'ghcr.io',
-				username: '${{ github.actor }}',
-				password: '${{ secrets.GITHUB_TOKEN }}',
-			});
-			expect(login(compose({ registry: 'registry.acme.dev/shop' }))).toEqual({
-				registry: 'registry.acme.dev',
-				username: '${{ vars.REGISTRY_USERNAME }}',
-				password: '${{ secrets.REGISTRY_PASSWORD }}',
+			// A bare namespace given to init is in the workflow nowhere: the
+			// stages job reads deploy.registry when the workflow runs.
+			const written = compose({ registry: 'acme' });
+			expect(written).not.toContain('registry: acme');
+			expect(parse(written).jobs.stages.outputs.registry).toBe(
+				'${{ steps.stages.outputs.registry }}',
+			);
+			for (const login of logins(written)) {
+				expect(login.if).toBe("needs.stages.outputs.registry != ''");
+				expect(login.with).toEqual({
+					registry: '${{ needs.stages.outputs.registry }}',
+					username: `\${{ ${ghcr} && github.actor || vars.REGISTRY_USERNAME }}`,
+					password: `\${{ ${ghcr} && secrets.GITHUB_TOKEN || secrets.REGISTRY_PASSWORD }}`,
+				});
+			}
+		});
+
+		it("frees the runner's disk before building every image", () => {
+			const steps = parse(compose()).jobs.build.steps as { name?: string }[];
+			expect(steps[0]!.name).toBe('Free disk space');
+		});
+
+		it('cancels a superseded push build, never a release or manual deploy', () => {
+			expect(parse(compose()).concurrency).toEqual({
+				group:
+					"${{ github.workflow }}-${{ github.event_name == 'push' && github.ref || github.run_id }}",
+				'cancel-in-progress': "${{ github.event_name == 'push' }}",
 			});
 		});
 
