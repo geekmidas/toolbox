@@ -246,6 +246,7 @@ export default function RootLayout({
 
 	// .gitignore for Next.js
 	const gitignore = `.next/
+next-env.d.ts
 node_modules/
 .env.local
 *.log

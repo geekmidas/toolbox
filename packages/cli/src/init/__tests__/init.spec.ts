@@ -469,6 +469,14 @@ describe('initCommand', () => {
 			expect(existsSync(join(projectDir, 'apps/web/src/app/page.tsx'))).toBe(
 				true,
 			);
+			// Next.js writes next-env.d.ts on every build and dev run.
+			const webIgnore = await readFile(
+				join(projectDir, 'apps/web/.gitignore'),
+				'utf-8',
+			);
+			expect(webIgnore.split('\n')).toEqual(
+				expect.arrayContaining(['.next/', 'next-env.d.ts']),
+			);
 
 			// Models package
 			expect(existsSync(join(projectDir, 'packages/models/package.json'))).toBe(
