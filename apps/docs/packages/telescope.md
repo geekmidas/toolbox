@@ -459,7 +459,15 @@ const metrics = await telescope.getEndpointMetrics({
 
 ## Real-Time WebSocket Updates
 
-Live updates come over a WebSocket. Subscribe programmatically:
+Live updates come over a WebSocket. On Node, the server `gkm dev` and `gkm build`
+generate serves it with `@hono/node-ws`: install it beside Telescope (`gkm init`
+does), or the server starts without the live feed and warns that it is missing.
+
+```bash
+pnpm add @hono/node-ws
+```
+
+Subscribe programmatically:
 
 ```typescript
 // Add WebSocket client for broadcasts
