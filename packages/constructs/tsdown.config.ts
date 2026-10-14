@@ -10,6 +10,7 @@ export default defineConfig({
 		'src/cache.ts',
 		'src/credential.ts',
 		'src/encryption.ts',
+		'src/encryption/kms.ts',
 		'src/random-password.ts',
 		'src/external-api.ts',
 		'src/auth.ts',

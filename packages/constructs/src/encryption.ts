@@ -43,12 +43,13 @@ import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import type { Construct } from './construct-interface';
 import {
 	type Cipher,
+	type CipherDriver,
 	keyringCipher,
 	LOCAL_SCHEME,
 	UnknownEncryptionScheme,
 } from './encryption/cipher';
 
-export type { Cipher } from './encryption/cipher';
+export type { Cipher, CipherDriver } from './encryption/cipher';
 export {
 	CiphertextMalformed,
 	CiphertextNotAuthentic,
@@ -64,6 +65,32 @@ export {
 	rotateKeyring,
 	UnknownEncryptionScheme,
 } from './encryption/cipher';
+
+const drivers = new Map<string, CipherDriver>();
+
+/** Make a cipher available for its scheme. Idempotent. */
+export function registerCipherDriver(driver: CipherDriver): void {
+	drivers.set(driver.scheme, driver);
+}
+
+/**
+ * A key whose URL names a cipher this process registered no driver for —
+ * `kms:` in an entry built for a target whose keys are local.
+ */
+export class UnregisteredEncryptionScheme extends Error {
+	constructor(
+		readonly construct: string,
+		readonly scheme: string,
+	) {
+		super(
+			`${construct}'s key is a '${scheme}' URL, and this build registered no cipher for it. ` +
+				(scheme === KMS_SCHEME
+					? "A KMS key is an AWS target's: build for it (gkm build --provider aws), which registers the KMS cipher and needs @aws-sdk/client-kms installed."
+					: 'Register its driver with registerCipherDriver before the first request.'),
+		);
+		this.name = 'UnregisteredEncryptionScheme';
+	}
+}
 
 export class Encryption<TName extends string = string>
 	implements Construct<TName, Cipher>
@@ -119,11 +146,12 @@ export class Encryption<TName extends string = string>
 			);
 		}
 
+		// Registered by the entry a build generates, only for a target whose
+		// keys live there — so no other process imports that cipher's SDK.
+		const driver = drivers.get(scheme);
+		if (driver) return driver.open(this.id, url);
 		if (scheme === KMS_SCHEME) {
-			// Loaded only here, so a project that never deploys to AWS never
-			// needs `@aws-sdk/client-kms` installed.
-			const { kmsCipher } = await import('./encryption/kms');
-			return kmsCipher(this.id, url);
+			throw new UnregisteredEncryptionScheme(this.id, scheme);
 		}
 
 		throw new UnknownEncryptionScheme(this.id, scheme);

@@ -6,6 +6,7 @@ import {
 	cacheBackendsIn,
 	driversFor,
 	eventsBackendsIn,
+	opensKmsKeys,
 	storageDriversFor,
 } from '../drivers';
 
@@ -111,6 +112,36 @@ describe('driversFor', () => {
 			'@geekmidas/cache',
 		);
 		expect(driversFor({ appRoot }).imports).not.toContain('@geekmidas/cache');
+	});
+});
+
+describe('opensKmsKeys', () => {
+	const pii = manifest({ Pii: { kind: 'encryption' } });
+
+	it('is an AWS entry that reaches an Encryption', () => {
+		expect(opensKmsKeys(pii, 'aws')).toBe(true);
+	});
+
+	it('is never a server entry, whose keys are keyrings', () => {
+		expect(opensKmsKeys(pii, 'server')).toBe(false);
+	});
+
+	it('is no entry that reaches no Encryption', () => {
+		expect(
+			opensKmsKeys(manifest({ Orders: { kind: 'database' } }), 'aws'),
+		).toBe(false);
+	});
+
+	it('registers the KMS cipher from its own entry, and only when asked', () => {
+		const appRoot = '/nonexistent';
+		const kms = driversFor({ appRoot, kms: true });
+		expect(kms.imports).toContain('@geekmidas/constructs/encryption/kms');
+		expect(kms.setup).toBe('registerCipherDriver(kmsCipherDriver);');
+
+		expect(driversFor({ appRoot, kms: false })).toEqual({
+			imports: '',
+			setup: '',
+		});
 	});
 });
 

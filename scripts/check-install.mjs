@@ -59,6 +59,7 @@ const OPTIONAL = new Set([
 	'@geekmidas/telescope',
 	// Transport and provider SDKs: which broker or cloud you use is a choice,
 	// and the entry for one you do not use has no business being installable.
+	'@aws-sdk/client-kms',
 	'@aws-sdk/client-s3',
 	'@aws-sdk/client-sns',
 	'@aws-sdk/client-sqs',

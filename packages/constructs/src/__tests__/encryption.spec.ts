@@ -5,6 +5,7 @@ import {
 	generateKeyring,
 	rotateKeyring,
 	UnknownEncryptionScheme,
+	UnregisteredEncryptionScheme,
 } from '../encryption';
 
 const register = (construct: Encryption, env: Record<string, string>) =>
@@ -64,6 +65,16 @@ describe('Encryption', () => {
 		} finally {
 			warn.mockRestore();
 		}
+	});
+
+	it('opens no KMS key unless the entry registered the KMS cipher', async () => {
+		const error = await register(new Encryption('Pii'), {
+			PII_URL:
+				'kms://eu-west-1?key=arn:aws:kms:eu-west-1:1:key/a&index=arn:aws:kms:eu-west-1:1:key/b',
+		}).catch((error: unknown) => error);
+
+		expect(error).toBeInstanceOf(UnregisteredEncryptionScheme);
+		expect(error).toMatchObject({ construct: 'Pii', scheme: 'kms:' });
 	});
 
 	it('refuses a URL no cipher handles, naming the scheme', async () => {
