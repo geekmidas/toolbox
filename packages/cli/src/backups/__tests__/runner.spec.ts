@@ -578,7 +578,9 @@ describe('a run', () => {
 		expect(second).toBe(true);
 		// The second took the lock only once the first let it go.
 		expect(Date.now() - started).toBeGreaterThanOrEqual(2000);
-		expect(await keys(`${PREFIX}/2026-10-15/`)).toHaveLength(2);
+		// The run's own folder, not its day: another test backs up at `new
+		// Date()`, which is this day when the suite runs on 2026-10-15.
+		expect(await keys(`${PREFIX}/2026-10-15/02-00-00Z/`)).toHaveLength(2);
 	}, 15_000);
 
 	it('says which variable it is missing', async () => {
