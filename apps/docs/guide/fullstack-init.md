@@ -84,12 +84,11 @@ The link is a React Email template (`constructs/templates/MagicLink.tsx`) sent b
 
 ### Who gets into the admin panel
 
-Roles are sets of permissions (`permissions`, `roles`, `role_permissions`, `user_roles`, migrated in `db/database/`), and the catalogue is `PERMISSIONS` in `@<name>/models/access` — the seeds write it, with the **Member** and **Super admin** roles. Whoever signs in becomes a Member on their first request to the API. The admin panel and every staff endpoint need `admin.access`; nobody has it until you grant the first Super admin:
+Roles are sets of permissions (`permissions`, `roles`, `role_permissions`, `user_roles`, migrated in `db/database/`), and the catalogue is `PERMISSIONS` in `@<name>/models/access` — the seeds write it, with the **Member** and **Super admin** roles. Whoever signs in becomes a Member on their first request to the API. The admin panel and every staff endpoint need `admin.access`, which the **Super admin** role grants.
 
-```bash
-# after signing in once, anywhere
-gkm exec -- tsx scripts/grant-admin.ts you@example.com
-```
+`gkm init` asks for the first admin's email (`--admin-email`; with `--yes` it takes `git config user.email`) and writes it to `db/database/seeds/03_admins.ts`. That seed gives each address in `ADMINS` a `users` row and the Member and Super admin roles before they have ever signed in. When the person first signs in, their sign-in claims that row by email, so the admin panel lets them in at once. Someone who already has a row just gets the roles.
+
+To add an admin later, add their address to `ADMINS` and run the seeds again (`gkm dev --seed`, `gkm test`, or the next deploy). Removing an address from the list does not take the role away.
 
 ### Store reviewers
 
@@ -132,11 +131,10 @@ my-app/
 │   └── templates/                 # MagicLink.tsx, layout.tsx (React Email)
 ├── db/database/
 │   ├── migrations/                # users, access control
-│   └── seeds/                     # permissions, system roles
+│   └── seeds/                     # permissions, system roles, admins
 ├── packages/
 │   ├── auth/                      # @<name>/auth — server, client, magic-link (, reviewers)
 │   └── models/                    # @<name>/models — common, user, access, profile
-├── scripts/grant-admin.ts         # the first Super admin
 ├── test/factories/database.ts     # the database's test factory
 ├── docker-compose.constructs.yml  # written by gkm from the constructs (gitignored)
 ├── .gkm/secrets/                  # encrypted local secrets
@@ -437,6 +435,7 @@ gkm init <project-name> [options]
 | `--local-stage <name>` | What `gkm dev`, `exec` and `test` run as, e.g. `dev` |
 | `--web <framework>` | Fullstack: the web site's and admin panel's framework — `nextjs`, `tanstack-start` |
 | `--mobile-app` / `--no-mobile-app` | Fullstack: include the Expo app and its reviewer site, or not |
+| `--admin-email <email>` | Fullstack: the first Super admin, seeded by `03_admins.ts` |
 
 ## Defaults with `--yes`
 

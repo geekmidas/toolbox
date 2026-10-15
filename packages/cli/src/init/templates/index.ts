@@ -90,6 +90,11 @@ export interface TemplateOptions {
 	 * its sign-in, and the site store reviewers sign in to it through.
 	 */
 	mobileApp?: boolean;
+	/**
+	 * Who the seeds make the first Super admin (fullstack only), lowercased as
+	 * Better Auth stores it. Without one the admin seed names nobody.
+	 */
+	adminEmail?: string;
 }
 
 /**

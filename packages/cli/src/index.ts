@@ -93,6 +93,10 @@ program
 		'Fullstack: include the Expo app and its store-reviewer site',
 	)
 	.option('--no-mobile-app', 'Fullstack: no mobile app')
+	.option(
+		'--admin-email <email>',
+		'Fullstack: who the seeds make the first Super admin',
+	)
 	.action(async (name: string | undefined, options: InitOptions) => {
 		try {
 			const globalOptions = program.opts();

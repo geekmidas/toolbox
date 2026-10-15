@@ -38,9 +38,11 @@ export interface Database {
     id: Generated<string>;
     /**
      * The Better Auth user this person signs in as. The auth schema is its
-     * own, so this is a plain column, not a foreign key into it.
+     * own, so this is a plain column, not a foreign key into it. Null for
+     * someone the seeds named who has not signed in yet: their first sign-in
+     * claims the row by email.
      */
-    authUserId: string;
+    authUserId: string | null;
     name: string;
     email: string;
     createdAt: Generated<Date>;
@@ -345,8 +347,9 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       col.primaryKey().defaultTo(db.fn('gen_random_uuid')),
     )
     // The Better Auth user this person signs in as. A plain column: the auth
-    // schema is its own, and the id's format is Better Auth's to choose.
-    .addColumn('auth_user_id', 'text', (col) => col.notNull().unique())
+    // schema is its own, and the id's format is Better Auth's to choose. Null
+    // until someone the seeds named (an admin) first signs in.
+    .addColumn('auth_user_id', 'text', (col) => col.unique())
     .addColumn('name', 'varchar(255)', (col) => col.notNull())
     .addColumn('email', 'varchar(255)', (col) => col.notNull().unique())
     .addColumn('created_at', 'timestamptz', (col) =>
@@ -454,7 +457,10 @@ export async function down(db: Kysely<unknown>): Promise<void> {
  * upserts, run after every migration, so a changed list is applied by running
  * them again.
  */
-export function accessControlSeeds(name: string): GeneratedFile[] {
+export function accessControlSeeds(
+	options: Pick<TemplateOptions, 'name' | 'adminEmail'>,
+): GeneratedFile[] {
+	const { name } = options;
 	const folder = seedFolder(databaseFor().id);
 	return [
 		{
@@ -541,5 +547,79 @@ export async function seed(db: Kysely<unknown>): Promise<void> {
 }
 `,
 		},
+		adminsSeed(folder, options),
 	];
+}
+
+/**
+ * The Super admins, by email — the first one asked for by `gkm init`. Each
+ * gets a `users` row before they have signed in, which their first sign-in
+ * claims (`memberFor`), so the admin panel lets them in straight away.
+ */
+function adminsSeed(
+	folder: string,
+	options: Pick<TemplateOptions, 'name' | 'adminEmail'>,
+): GeneratedFile {
+	const admins = options.adminEmail
+		? `[\n  '${options.adminEmail}',\n]`
+		: "[\n  // 'you@example.com',\n]";
+	return {
+		path: `${folder}/03_admins.ts`,
+		content: `import { SYSTEM_ROLES } from '@${options.name}/models/access';
+import type { Kysely } from 'kysely';
+
+/**
+ * Who is a Super admin, by the address they sign in with. Add someone here and
+ * run the seeds (\`gkm dev --seed\`, or the next deploy); taking them off the
+ * list does not take the role away — the admin panel does that.
+ */
+const ADMINS: string[] = ${admins};
+
+type Tables = {
+  users: { id?: string; email: string; name: string };
+  roles: { id: string; name: string; is_system: boolean };
+  user_roles: { user_id: string; role_id: string };
+};
+
+/**
+ * A \`users\` row for each admin who has none — their first sign-in claims it —
+ * and the Member and Super admin roles. Runs after the system roles seed.
+ */
+export async function seed(db: Kysely<unknown>): Promise<void> {
+  // Better Auth stores addresses lowercased; so does every \`users\` row.
+  const emails = ADMINS.map((email) => email.trim().toLowerCase());
+  if (emails.length === 0) return;
+
+  const tables = db.withTables<Tables>();
+
+  await tables
+    .insertInto('users')
+    .values(emails.map((email) => ({ email, name: email.split('@')[0]! })))
+    .onConflict((oc) => oc.column('email').doNothing())
+    .execute();
+
+  const users = await tables
+    .selectFrom('users')
+    .select('id')
+    .where('email', 'in', emails)
+    .execute();
+  const roles = await tables
+    .selectFrom('roles')
+    .select('id')
+    .where('is_system', '=', true)
+    .where('name', 'in', [SYSTEM_ROLES.Member.name, SYSTEM_ROLES.SuperAdmin.name])
+    .execute();
+
+  await tables
+    .insertInto('user_roles')
+    .values(
+      users.flatMap((user) =>
+        roles.map((role) => ({ user_id: user.id!, role_id: role.id })),
+      ),
+    )
+    .onConflict((oc) => oc.columns(['user_id', 'role_id']).doNothing())
+    .execute();
+}
+`,
+	};
 }

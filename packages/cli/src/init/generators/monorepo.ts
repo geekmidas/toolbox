@@ -30,7 +30,6 @@ import {
 	workspaceUsersMigration,
 } from './root-constructs.js';
 import { stagesBlock } from './stages.js';
-import { grantAdminScript } from './workspace-api.js';
 
 /**
  * What the root `constructs/` folder imports, and the peers each construct
@@ -678,8 +677,7 @@ export const logger = createLogger();
 		// Its migrations and seeds beside it, in the folder its name gives.
 		workspaceUsersMigration(),
 		accessControlMigration(),
-		...accessControlSeeds(options.name),
-		grantAdminScript(options),
+		...accessControlSeeds(options),
 	];
 
 	if (uploads) {
