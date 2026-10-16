@@ -6,28 +6,36 @@
 '@geekmidas/cloud': minor
 ---
 
-A database declares PostGIS: `new KyselyDatabase('Geo', { extensions: ['postgis'] })`
+A database names its own image and extensions
 
-PostGIS is not in the stock Postgres image, and it is not a trusted extension,
-so the owner role a migration runs as cannot create it. The only way to get it
-was a `postgis/postgis` pin in the project's `docker-compose.yml`, which covered
-local dev for the whole project and no deployed stage.
+```ts
+new KyselyDatabase('Geo', {
+  version: 18,
+  image: 'postgis/postgis:18-3.6-alpine',
+  extensions: ['postgis'],
+});
+```
 
-It is now declared on the database, and each target acts on that one database:
+The only way to run PostGIS used to be a `postgis/postgis` pin in the
+project's `docker-compose.yml`. That covered local dev for the whole project and
+no deployed stage.
 
-- **Local** (`gkm dev`/`test`/`setup`): the shared Postgres container runs
-  `postgis/postgis:<major>-<postgis>-alpine` when any database declares it.
-  PostGIS is a superset of Postgres, so the other databases are unaffected.
-- **Dokploy**: that database's own cluster runs the Debian `postgis/postgis`
-  image. An already-deployed cluster is moved onto it when the Postgres major
-  and C library match. Otherwise the deploy fails with
-  `ImageCannotGainExtensions` rather than starting a data directory on an image
-  it cannot safely run on. A new cluster now also runs the declared `version`:
-  every Dokploy cluster used to be created as `postgres:18`.
-- **AWS**: RDS ships PostGIS; the bootstrap creates it.
+- **`image`** replaces `postgres:<version>` wherever a target runs a container.
+  It's used as written, and it's the project's choice: it should be the declared
+  `version` and ship the extensions listed.
+  - **Local:** the shared container runs it. Two databases naming different
+    images fail with `ConflictingPostgresImages`.
+  - **Dokploy:** that database's own cluster runs it, including an existing
+    cluster, on its next deploy.
+  - **AWS:** runs RDS and ignores it.
+- **`extensions`** are created in that database by the cluster master, before
+  the first migration, on every target:
+  `CREATE EXTENSION IF NOT EXISTS <name> SCHEMA public`. The owner role a
+  migration runs as can't create an untrusted extension such as PostGIS. This is
+  only attempted: an image without the extension fails with Postgres's own
+  error. `public` joins the database's roles' `search_path` behind the schema,
+  so `geometry` resolves unqualified. `roleStatements` takes the new
+  `extensions` field.
 
-On every target the cluster master runs
-`CREATE EXTENSION IF NOT EXISTS postgis SCHEMA public` in that database, before
-the first migration. `public` joins its roles' `search_path` behind the schema,
-so `geometry` resolves unqualified while tables still land in the schema.
-`roleStatements` takes the new `extensions` field.
+A new Dokploy cluster with no `image` now runs `postgres:<version>`. Every
+cluster used to be created as `postgres:18`.

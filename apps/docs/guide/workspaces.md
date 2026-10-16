@@ -80,8 +80,9 @@ The containers a project needs are derived from its constructs and written to
 test`, `gkm setup` and `gkm docker` alike. It is regenerated on every run,
 gitignored, and never edited.
 
-PostGIS is not one of those: declare it on the database
-(`extensions: ['postgis']`), so the deployed cluster gets it too.
+A database's own image is not one of those: name it on the database
+(`image: 'postgis/postgis:18-3.6-alpine'`, `extensions: ['postgis']`), so the
+deployed cluster runs it too.
 
 Anything a construct cannot express goes in **your own `docker-compose.yml`**,
 beside it: an image pin, an extra service, a volume or port tweak. gkm merges

@@ -16,7 +16,6 @@ import {
 	canonicalId,
 	DEFAULT_POSTGRES_VERSION,
 	type Declaration,
-	type PostgresExtension,
 	type PostgresVersion,
 	provideKey,
 	serviceKey,
@@ -68,20 +67,30 @@ export interface KyselyDatabaseOptions extends Omit<KyselyConfig, 'dialect'> {
 	 */
 	version?: PostgresVersion;
 	/**
-	 * Extensions this database needs that a migration cannot create itself.
+	 * The container image to run instead of `postgres:<version>`, wherever a
+	 * target runs one (local, Dokploy). AWS runs RDS and ignores it.
 	 *
-	 * `postgis` is not in the stock Postgres image and is not a trusted
-	 * extension, so the owner role a migration runs as may not create it.
-	 * Declaring it here runs this database on an image that has it and creates
-	 * it, as the cluster master, before the first migration — in this database
-	 * only. Its types then resolve unqualified: `public`, where it is created,
-	 * is added to this database's roles' `search_path`.
+	 * Yours to choose and used as written: it should be the `version` above,
+	 * and ship every extension below.
 	 *
 	 * ```ts
-	 * new KyselyDatabase<GeoDB>('Geo', { extensions: ['postgis'] });
+	 * new KyselyDatabase<GeoDB>('Geo', {
+	 *   image: 'postgis/postgis:18-3.6-alpine',
+	 *   extensions: ['postgis'],
+	 * });
 	 * ```
 	 */
-	extensions?: readonly PostgresExtension[];
+	image?: string;
+	/**
+	 * Extensions to create in this database, as the cluster master, before the
+	 * first migration — for the ones the owner role a migration runs as may not
+	 * create (PostGIS is not a trusted extension). They are created in
+	 * `public`, which joins this database's roles' `search_path`, so their
+	 * types resolve unqualified.
+	 *
+	 * Only attempted: the image has to ship them.
+	 */
+	extensions?: readonly string[];
 	/**
 	 * End each query run inside a request with a comment naming what ran it —
 	 * `/*operation='POST /orders',request_id='…'*\/` — so `pg_stat_activity`
@@ -182,6 +191,7 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 				engine: 'postgres',
 				schema: this.schemaName,
 				version: this.version,
+				...(this.options.image ? { image: this.options.image } : {}),
 				...(this.options.extensions?.length
 					? { extensions: [...new Set(this.options.extensions)] }
 					: {}),
@@ -290,12 +300,14 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 	 */
 	get clientConfig(): Omit<KyselyConfig, 'dialect'> {
 		// Split what the manifest declared from what Kysely takes, so neither
-		// leaks into the other: \`schema\`, \`roles\`, \`version\` and
-		// \`extensions\` describe infrastructure and mean nothing to a client.
+		// leaks into the other: \`schema\`, \`roles\`, \`version\`, \`image\`
+		// and \`extensions\` describe infrastructure and mean nothing to a
+		// client.
 		const {
 			schema: _schema,
 			roles: _roles,
 			version: _version,
+			image: _image,
 			extensions: _extensions,
 			queryTags: _queryTags,
 			...kysely

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import {
+	ConflictingPostgresImages,
 	composeFor,
 	toYaml,
 	UnassignedPort,
@@ -108,45 +109,48 @@ describe('composeFor', () => {
 		expect(declared.services.postgres.image).toBe('postgres:15-alpine');
 	});
 
-	it('runs PostGIS when any one database declares it', () => {
-		// The local cluster is shared, so it runs an image with every declared
-		// extension; each is still only created in the database that asked.
-		const declared = composeFor(
-			{
-				stage: 'development',
-				containers: ['postgres'],
-				resources: [
-					{
-						id: 'Orders',
-						kind: 'database',
-						container: 'postgres',
-						name: 'orders',
-						envKey: 'ORDERS_URL',
-						provisions: true,
-						version: 17,
-					},
-					{
-						id: 'Geo',
-						kind: 'database',
-						container: 'postgres',
-						name: 'geo',
-						envKey: 'GEO_URL',
-						provisions: true,
-						version: 17,
-						extensions: ['postgis'],
-					},
-				],
-			} as unknown as Plan,
-			{
-				project: 'toolbox',
-				credentials: TEST_CREDENTIALS,
-				ports: portsFor(['postgres']),
-			},
-		);
+	describe('a database naming its own image', () => {
+		const database = (id: string, image?: string) => ({
+			id,
+			kind: 'database',
+			container: 'postgres',
+			name: id.toLowerCase(),
+			envKey: `${id.toUpperCase()}_URL`,
+			provisions: true,
+			version: 18,
+			...(image ? { image } : {}),
+		});
+		const composeOf = (resources: object[]) =>
+			composeFor(
+				{
+					stage: 'development',
+					containers: ['postgres'],
+					resources,
+				} as unknown as Plan,
+				{
+					project: 'toolbox',
+					credentials: TEST_CREDENTIALS,
+					ports: portsFor(['postgres']),
+				},
+			);
 
-		expect(declared.services.postgres.image).toBe(
-			'postgis/postgis:17-3.5-alpine',
-		);
+		it('runs that image, as written, for the shared cluster', () => {
+			const { services } = composeOf([
+				database('Orders'),
+				database('Geo', 'postgis/postgis:18-3.6-alpine'),
+			]);
+
+			expect(services.postgres.image).toBe('postgis/postgis:18-3.6-alpine');
+		});
+
+		it('refuses two databases naming different images for it', () => {
+			expect(() =>
+				composeOf([
+					database('Geo', 'postgis/postgis:18-3.6-alpine'),
+					database('Vectors', 'pgvector/pgvector:pg18'),
+				]),
+			).toThrow(ConflictingPostgresImages);
+		});
 	});
 
 	it('pins no image of its own beyond the default — that is the project file', () => {

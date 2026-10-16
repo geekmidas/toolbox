@@ -16,7 +16,6 @@ import {
 	type Declaration,
 	type DeclarationKind,
 	dependentsOf,
-	type PostgresExtension,
 	type PostgresVersion,
 	providedKeyFor,
 	publicEnvFor,
@@ -262,12 +261,13 @@ export interface PlannedResource {
 	 * to come from two, and had drifted a major apart with nothing recording it.
 	 */
 	version?: PostgresVersion;
+	/** For a database: the image it named in place of `postgres:<version>`. */
+	image?: string;
 	/**
-	 * For a database: the extensions it declared that a migration cannot create
-	 * — they pick the image the cluster runs, and are created in this database
-	 * alone, as the master.
+	 * For a database: the extensions to create in it, as the master, before
+	 * any migration. In this database alone.
 	 */
-	extensions?: readonly PostgresExtension[];
+	extensions?: readonly string[];
 	/**
 	 * For a file server: the paths it serves without a signature.
 	 *
@@ -604,6 +604,9 @@ export function planFor(
 				: {}),
 			...('version' in declaration && declaration.version
 				? { version: declaration.version }
+				: {}),
+			...('image' in declaration && declaration.image
+				? { image: declaration.image }
 				: {}),
 			...('extensions' in declaration && declaration.extensions?.length
 				? { extensions: declaration.extensions }

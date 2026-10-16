@@ -100,22 +100,35 @@ owner/runtime role split, and the Postgres major version — read by the local
 target as a container tag and by the AWS target as the RDS engine version, so
 the two can't drift apart the way they used to.
 
-A database that needs PostGIS says so on the construct, not in a compose file:
+A database that needs another image, for PostGIS or pgvector, names it on the
+construct, along with the extensions to create:
 
 ```typescript
 export const geo = new KyselyDatabase<GeoDB, 'Geo'>('Geo', {
+  version: 18,
+  image: 'postgis/postgis:18-3.6-alpine',
   extensions: ['postgis'],
 });
 ```
 
-Every target then runs that database on an image that ships PostGIS (RDS already
-does) and creates the extension in it, as the cluster master, before the first
-migration. PostGIS isn't a trusted extension, so the owner role a migration runs
-as can't create it. It goes in `public`, which joins that database's roles'
-`search_path`, so `geometry` resolves without a schema prefix. Other databases
-are untouched: on Dokploy each one is its own cluster, and locally the one
-shared container runs the PostGIS image (a superset of Postgres) but creates the
-extension only where it was declared.
+The image is yours to choose, and gkm runs it as written, locally and on
+Dokploy. Pick one at the declared `version` that ships every extension you
+list. AWS runs RDS, which ignores `image` (RDS already ships PostGIS).
+
+On every target, the cluster master then tries
+`CREATE EXTENSION IF NOT EXISTS <name> SCHEMA public` in that database before
+the first migration. That step is needed because PostGIS isn't a trusted
+extension, so the owner role a migration runs as can't create it. If the image
+doesn't ship the extension, Postgres says so: `extension "postgis" is not
+available`. `public` joins that database's roles' `search_path`, so `geometry`
+resolves without a schema prefix.
+
+Locally, every database shares one Postgres container, so a named image runs
+all of them. Two databases naming different images is an error. On Dokploy,
+each database is its own cluster with its own image. Changing the image of a
+deployed cluster is applied on the next deploy, so keep it at the same Postgres
+major and C library: an Alpine image is musl, and the default Dokploy cluster
+is Debian (glibc).
 
 ::: warning Both type arguments or neither
 TypeScript has no partial type-argument inference, so

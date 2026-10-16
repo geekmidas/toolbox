@@ -11,7 +11,6 @@ import {
 	CacheIsAmbiguous,
 	CacheNeedsAHome,
 	type DokployProvisionContext,
-	ImageCannotGainExtensions,
 	MissingSuppliedSecret,
 	type Provisioned,
 	provisionableKinds,
@@ -284,32 +283,34 @@ describe('the database', () => {
 	});
 });
 
-describe('a database declaring an extension', () => {
+describe('a database naming its image and extensions', () => {
 	const geo = {
 		Geo: {
 			kind: 'database',
 			id: 'Geo',
 			engine: 'postgres',
 			schema: 'app',
-			version: 17,
+			version: 18,
+			image: 'postgis/postgis:18-3.6',
 			extensions: ['postgis'],
 			provides: ['GEO_URL'],
 		},
 	} as const satisfies ConstructManifest;
 
-	it('runs on its own cluster, on an image that ships it', async () => {
-		// Every database is its own Dokploy service, so the image is this one's
-		// alone — and Debian, like every Dokploy cluster before it.
+	it('runs its own cluster on that image; the rest on the declared major', async () => {
 		const fake = fakeApi();
-		await provision({ api: fake.api }, { Orders: manifest.Orders, ...geo });
+		await provision(
+			{ api: fake.api },
+			{ Orders: { ...manifest.Orders, version: 17 }, ...geo },
+		);
 
 		expect([...fake.images.values()]).toEqual([
-			'postgres:18',
-			'postgis/postgis:17-3.5',
+			'postgres:17',
+			'postgis/postgis:18-3.6',
 		]);
 	});
 
-	it('creates it as the master, in that database only', async () => {
+	it('tries to create the extensions as the master, in that database only', async () => {
 		const { context } = await provision(
 			{},
 			{ Orders: manifest.Orders, ...geo },
@@ -323,21 +324,18 @@ describe('a database declaring an extension', () => {
 		]);
 	});
 
-	it('moves a cluster it was added to onto the image, at the same major', async () => {
-		const fake = fakeApi({ image: 'postgres:17' });
+	it('moves an existing cluster onto the image it now names', async () => {
+		const fake = fakeApi({ image: 'postgres:18' });
 		await provision({ api: fake.api }, geo);
 
-		expect([...fake.images.values()]).toEqual(['postgis/postgis:17-3.5']);
+		expect([...fake.images.values()]).toEqual(['postgis/postgis:18-3.6']);
 	});
 
-	it('refuses to move one whose data directory could not follow', async () => {
-		// Another major will not start on the old data directory; another C
-		// library starts and then answers text lookups wrongly.
-		for (const image of ['postgres:16', 'postgres:17-alpine']) {
-			await expect(
-				provision({ api: fakeApi({ image }).api }, geo),
-			).rejects.toBeInstanceOf(ImageCannotGainExtensions);
-		}
+	it('leaves an existing cluster’s image alone when none is named', async () => {
+		const fake = fakeApi({ image: 'postgres:16' });
+		await provision({ api: fake.api }, { Orders: manifest.Orders });
+
+		expect([...fake.images.values()]).toEqual(['postgres:16']);
 	});
 });
 

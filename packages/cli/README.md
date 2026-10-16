@@ -515,9 +515,10 @@ services:
     image: axllent/mailpit:v1.27
 ```
 
-PostGIS is declared on the database rather than pinned here —
-`new KyselyDatabase('Geo', { extensions: ['postgis'] })` — so every target
-runs it, and creates it in that database only.
+A database's own image is named on the database rather than pinned here —
+`new KyselyDatabase('Geo', { image: 'postgis/postgis:18-3.6-alpine', extensions: ['postgis'] })`
+— so a deploy runs it too, and the extension is created in that database
+only.
 
 **Service Configuration Options:**
 
