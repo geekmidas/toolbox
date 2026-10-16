@@ -47,6 +47,7 @@ export type {
 	OidcDeclaration,
 	PlayReleaseStatus,
 	PlayTrack,
+	PostgresExtension,
 	PostgresVersion,
 	ProvidedKeys,
 	Provides,

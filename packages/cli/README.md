@@ -511,9 +511,13 @@ constructs; an image pin or an extra service goes in your own
 ```yaml
 # docker-compose.yml
 services:
-  postgres:
-    image: postgis/postgis:16-3.4-alpine
+  mailpit:
+    image: axllent/mailpit:v1.27
 ```
+
+PostGIS is declared on the database rather than pinned here —
+`new KyselyDatabase('Geo', { extensions: ['postgis'] })` — so every target
+runs it, and creates it in that database only.
 
 **Service Configuration Options:**
 

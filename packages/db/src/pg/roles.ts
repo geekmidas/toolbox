@@ -45,6 +45,15 @@ export interface RoleSpec {
 	 * is not given it, so it stays confined to its own schema.
 	 */
 	database?: string;
+	/**
+	 * Extensions the database declared that its owner may not create — PostGIS
+	 * is not trusted, so only the connecting master can.
+	 *
+	 * Created in `public`, where every tutorial and tool expects them, and
+	 * `public` joins the roles' `search_path` behind the schema so `geometry`
+	 * resolves unqualified. Tables still land in the schema: it comes first.
+	 */
+	extensions?: readonly string[];
 	/** Supplied, never generated here. */
 	passwords: { runtime: string; owner: string; reader?: string };
 }
@@ -73,6 +82,7 @@ export interface RoleStatement {
  */
 export function roleStatements(spec: RoleSpec): RoleStatement[] {
 	const { runtime, owner, schema, passwords, database } = spec;
+	const searchPath = searchPathOf(spec);
 
 	return [
 		{
@@ -135,6 +145,14 @@ export function roleStatements(spec: RoleSpec): RoleStatement[] {
 					},
 				]
 			: []),
+		...(spec.extensions ?? []).map((extension) => ({
+			describe: `extension ${extension}`,
+			exists: {
+				sql: 'SELECT 1 FROM pg_extension WHERE extname = $1',
+				values: [extension],
+			},
+			sql: `CREATE EXTENSION IF NOT EXISTS ${ident(extension)} SCHEMA public`,
+		})),
 		{
 			describe: `${runtime} may use ${schema}`,
 			sql: `GRANT USAGE ON SCHEMA ${ident(schema)} TO ${ident(runtime)}`,
@@ -171,11 +189,11 @@ export function roleStatements(spec: RoleSpec): RoleStatement[] {
 			// string that has to remember `search_path` is one that eventually
 			// forgets, and the forgetting looks like an empty database.
 			describe: `${runtime} resolves names in ${schema}`,
-			sql: `ALTER ROLE ${ident(runtime)} SET search_path TO ${ident(schema)}`,
+			sql: `ALTER ROLE ${ident(runtime)} SET search_path TO ${searchPath}`,
 		},
 		{
 			describe: `${owner} resolves names in ${schema}`,
-			sql: `ALTER ROLE ${ident(owner)} SET search_path TO ${ident(schema)}`,
+			sql: `ALTER ROLE ${ident(owner)} SET search_path TO ${searchPath}`,
 		},
 		...(spec.reader ? readerStatements(spec, spec.reader) : []),
 	];
@@ -234,9 +252,19 @@ function readerStatements(spec: RoleSpec, reader: string): RoleStatement[] {
 		},
 		{
 			describe: `${reader} resolves names in ${schema}`,
-			sql: `ALTER ROLE ${ident(reader)} SET search_path TO ${ident(schema)}`,
+			sql: `ALTER ROLE ${ident(reader)} SET search_path TO ${searchPathOf(spec)}`,
 		},
 	];
+}
+
+/**
+ * The `search_path` every role of a tenant is pinned to: its schema, and
+ * `public` behind it where the database's extensions were created.
+ */
+function searchPathOf(spec: RoleSpec): string {
+	return spec.extensions?.length
+		? `${ident(spec.schema)}, public`
+		: ident(spec.schema);
 }
 
 /** A reader role was named and no password was supplied for it. */

@@ -239,6 +239,9 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 				runtime,
 				owner: ownerRole(runtime),
 				ownsDatabase: true,
+				// RDS ships PostGIS, so the image is not a question here — only the
+				// `CREATE EXTENSION`, which the master can run and the owner cannot.
+				...(d.extensions?.length ? { extensions: d.extensions } : {}),
 				...(hasReader(d.id, context) ? { reader: readerRole(runtime) } : {}),
 			});
 

@@ -108,6 +108,47 @@ describe('composeFor', () => {
 		expect(declared.services.postgres.image).toBe('postgres:15-alpine');
 	});
 
+	it('runs PostGIS when any one database declares it', () => {
+		// The local cluster is shared, so it runs an image with every declared
+		// extension; each is still only created in the database that asked.
+		const declared = composeFor(
+			{
+				stage: 'development',
+				containers: ['postgres'],
+				resources: [
+					{
+						id: 'Orders',
+						kind: 'database',
+						container: 'postgres',
+						name: 'orders',
+						envKey: 'ORDERS_URL',
+						provisions: true,
+						version: 17,
+					},
+					{
+						id: 'Geo',
+						kind: 'database',
+						container: 'postgres',
+						name: 'geo',
+						envKey: 'GEO_URL',
+						provisions: true,
+						version: 17,
+						extensions: ['postgis'],
+					},
+				],
+			} as unknown as Plan,
+			{
+				project: 'toolbox',
+				credentials: TEST_CREDENTIALS,
+				ports: portsFor(['postgres']),
+			},
+		);
+
+		expect(declared.services.postgres.image).toBe(
+			'postgis/postgis:17-3.5-alpine',
+		);
+	});
+
 	it('pins no image of its own beyond the default — that is the project file', () => {
 		// An image pin is the project's docker-compose.yml, merged over this
 		// one; nothing in config names an image any more.

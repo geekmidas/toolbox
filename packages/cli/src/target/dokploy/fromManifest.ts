@@ -43,11 +43,14 @@ import {
 	cacheTable,
 	cloudName,
 	cookieDomain,
+	DEFAULT_POSTGRES_VERSION,
 	type Declaration,
 	type DeclarationKind,
 	dependentsOf,
 	externalApiUrl,
 	mobileOrigins,
+	type PostgresExtension,
+	type PostgresVersion,
 	provideKey,
 	schemeBase,
 } from '@geekmidas/manifest';
@@ -58,6 +61,7 @@ import {
 	STORAGE_KEY_PAIR,
 } from '../../deploy/devServices.js';
 import { GkmError } from '../../errors';
+import { postgresImage } from '../../reconcile/containers.js';
 import { resourceName } from '../../reconcile/plan.js';
 import type { DokployApi } from './dokploy-api';
 
@@ -210,7 +214,11 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 		// Two names, deliberately: what Postgres calls the database, and what the
 		// Dokploy service list calls the service.
 		const name = resourceName(declaration.id, declaration.kind, context.stage);
-		const { postgres } = await context.api.findOrCreatePostgres(
+		const version = declaration.version ?? DEFAULT_POSTGRES_VERSION;
+		const extensions = declaration.extensions ?? [];
+		// Debian, as every Dokploy cluster before this was: see `postgresImage`.
+		const image = postgresImage(version, extensions, 'glibc');
+		const { postgres, created } = await context.api.findOrCreatePostgres(
 			serviceName(
 				{ stage: context.stage, app: context.scope ?? context.project },
 				declaration.id,
@@ -222,8 +230,27 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 				// The cluster master, which nothing in the application ever holds:
 				// every handler connects as a role created *by* this one.
 				databasePassword: derivedPassword(context, `${name}:master`),
+				dockerImage: image,
 			},
 		);
+
+		// A cluster found rather than created keeps the image it was born with.
+		// One gaining an extension moves to an image that ships it — taken up
+		// when the deploy redeploys it to run the DDL — but only at the same
+		// major and the same C library, the two things a data directory cannot
+		// change under it.
+		if (!created && extensions.length > 0 && postgres.dockerImage !== image) {
+			if (!sameCluster(postgres.dockerImage, version)) {
+				throw new ImageCannotGainExtensions(
+					declaration.id,
+					postgres.dockerImage,
+					image,
+				);
+			}
+			await context.api.updatePostgres(postgres.postgresId, {
+				dockerImage: image,
+			});
+		}
 
 		const host = clusterHost(postgres);
 		context.clusters[postgres.databaseName] = postgres;
@@ -237,6 +264,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 				id: declaration.id,
 				database: postgres.databaseName,
 				ownsDatabase: true,
+				extensions,
 				runtime,
 				owner,
 				...(reads ? { reader: readerRole(runtime) } : {}),
@@ -742,6 +770,18 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	},
 };
 
+/**
+ * Whether a cluster running `image` can be moved to another image of
+ * `version`: the same Postgres major, on glibc. A plain `postgres:<major>` or
+ * a Debian `postgis/postgis:<major>-…` qualifies; an Alpine tag or another
+ * major does not.
+ */
+function sameCluster(image: string, version: PostgresVersion): boolean {
+	const match = /^(?:postgres|postgis\/postgis):(\d+)(?:[-.]|$)/.exec(image);
+
+	return Number(match?.[1]) === version && !image.includes('alpine');
+}
+
 /** The provisioner for a kind, or nothing where this target has none yet. */
 export function provisionerFor(kind: DeclarationKind): Provisioner | undefined {
 	return PROVISIONERS[kind];
@@ -768,6 +808,8 @@ function statementsFor(options: {
 	schema: string;
 	/** A database's roles rather than a tenant's: its owner may create in it. */
 	ownsDatabase?: boolean;
+	/** What the database declared that only the master may create. */
+	extensions?: readonly PostgresExtension[];
 	context: DokployProvisionContext;
 }): DeferredStatement[] {
 	const { id, database, runtime, owner, reader, schema, context } = options;
@@ -778,6 +820,7 @@ function statementsFor(options: {
 		...(reader ? { reader } : {}),
 		schema,
 		...(options.ownsDatabase ? { database } : {}),
+		...(options.extensions?.length ? { extensions: options.extensions } : {}),
 		passwords: {
 			runtime: derivedPassword(context, runtime),
 			owner: derivedPassword(context, owner),
@@ -1207,5 +1250,26 @@ export class UnprovisionableBucket extends GkmError {
 				`does not hold, the way an API key does. Supply the bucket's URL.`,
 		);
 		this.name = 'UnprovisionableBucket';
+	}
+}
+
+/**
+ * A deployed cluster gained an extension, and its image cannot be swapped for
+ * one that ships it without risking the data in it.
+ */
+export class ImageCannotGainExtensions extends GkmError {
+	constructor(
+		readonly id: string,
+		readonly current: string,
+		readonly wanted: string,
+	) {
+		super(
+			`'${id}' declares extensions its cluster's image does not ship, and ` +
+				`the cluster runs '${current}' — another Postgres major or C library ` +
+				`than '${wanted}', which its data directory cannot be moved onto in ` +
+				`place. Dump the database, change the service's image to '${wanted}' ` +
+				`in Dokploy, and restore it.`,
+		);
+		this.name = 'ImageCannotGainExtensions';
 	}
 }

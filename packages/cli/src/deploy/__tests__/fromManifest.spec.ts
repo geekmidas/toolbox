@@ -11,6 +11,7 @@ import {
 	CacheIsAmbiguous,
 	CacheNeedsAHome,
 	type DokployProvisionContext,
+	ImageCannotGainExtensions,
 	MissingSuppliedSecret,
 	type Provisioned,
 	provisionableKinds,
@@ -67,19 +68,27 @@ const manifest = {
 	},
 } as const satisfies ConstructManifest;
 
-/** A Dokploy that creates nothing and remembers what it was asked for. */
-function fakeApi() {
+/**
+ * A Dokploy that creates nothing and remembers what it was asked for.
+ *
+ * `existing` is the image of a cluster an earlier deploy created: given, every
+ * Postgres is found rather than created, running it.
+ */
+function fakeApi(existing?: { image: string }) {
 	const created: string[] = [];
 	const composeFiles = new Map<string, string>();
+	const images = new Map<string, string>();
 
 	const api = {
 		async findOrCreatePostgres(
 			name: string,
 			_projectId: string,
 			_environmentId: string,
-			options?: { databaseName?: string },
+			options?: { databaseName?: string; dockerImage?: string },
 		) {
 			created.push(name);
+			const image = existing?.image ?? options?.dockerImage;
+			if (image) images.set(`pg-${name}`, image);
 
 			// Faithful about the distinction the real API draws: `name` is the
 			// Dokploy service, `databaseName` is what Postgres calls the database.
@@ -95,9 +104,13 @@ function fakeApi() {
 					databaseName,
 					databaseUser: `${databaseName}_master`,
 					databasePassword: 'master-password',
+					dockerImage: image,
 				},
-				created: true,
+				created: !existing,
 			};
+		},
+		async updatePostgres(postgresId: string, updates: { dockerImage: string }) {
+			images.set(postgresId, updates.dockerImage);
 		},
 		async findOrCreateCompose(
 			name: string,
@@ -116,7 +129,7 @@ function fakeApi() {
 		async deployCompose() {},
 	} as unknown as DokployApi;
 
-	return { api, created, composeFiles };
+	return { api, created, composeFiles, images };
 }
 
 async function provision(
@@ -268,6 +281,63 @@ describe('the database', () => {
 		expect(
 			withoutReader.context.deferred.some((s) => s.sql.includes('_reader')),
 		).toBe(false);
+	});
+});
+
+describe('a database declaring an extension', () => {
+	const geo = {
+		Geo: {
+			kind: 'database',
+			id: 'Geo',
+			engine: 'postgres',
+			schema: 'app',
+			version: 17,
+			extensions: ['postgis'],
+			provides: ['GEO_URL'],
+		},
+	} as const satisfies ConstructManifest;
+
+	it('runs on its own cluster, on an image that ships it', async () => {
+		// Every database is its own Dokploy service, so the image is this one's
+		// alone — and Debian, like every Dokploy cluster before it.
+		const fake = fakeApi();
+		await provision({ api: fake.api }, { Orders: manifest.Orders, ...geo });
+
+		expect([...fake.images.values()]).toEqual([
+			'postgres:18',
+			'postgis/postgis:17-3.5',
+		]);
+	});
+
+	it('creates it as the master, in that database only', async () => {
+		const { context } = await provision(
+			{},
+			{ Orders: manifest.Orders, ...geo },
+		);
+		const creates = context.deferred.filter((s) =>
+			s.sql.startsWith('CREATE EXTENSION'),
+		);
+
+		expect(creates.map((s) => [s.id, s.sql])).toEqual([
+			['Geo', 'CREATE EXTENSION IF NOT EXISTS "postgis" SCHEMA public'],
+		]);
+	});
+
+	it('moves a cluster it was added to onto the image, at the same major', async () => {
+		const fake = fakeApi({ image: 'postgres:17' });
+		await provision({ api: fake.api }, geo);
+
+		expect([...fake.images.values()]).toEqual(['postgis/postgis:17-3.5']);
+	});
+
+	it('refuses to move one whose data directory could not follow', async () => {
+		// Another major will not start on the old data directory; another C
+		// library starts and then answers text lookups wrongly.
+		for (const image of ['postgres:16', 'postgres:17-alpine']) {
+			await expect(
+				provision({ api: fakeApi({ image }).api }, geo),
+			).rejects.toBeInstanceOf(ImageCannotGainExtensions);
+		}
 	});
 });
 

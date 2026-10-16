@@ -1,10 +1,12 @@
 import {
 	DEFAULT_POSTGRES_VERSION,
 	kebabCase,
+	type PostgresExtension,
 	type PostgresVersion,
 } from '@geekmidas/manifest';
 import { OPENOBSERVE_IMAGE } from '../compose/logs.js';
 import { LOGS_PORT } from '../compose/logsConfig.js';
+
 /**
  * What gkm knows about each container it can derive.
  *
@@ -19,21 +21,51 @@ import { LOGS_PORT } from '../compose/logsConfig.js';
  */
 
 /**
- * The Postgres image for a major version.
+ * The PostGIS release each Postgres major is published with.
+ *
+ * `postgis/postgis` tags are `<pg>-<postgis>[-alpine]`, and not every pair
+ * exists in both flavours: 18 is published only with 3.6, and 17 with 3.6
+ * only on Alpine — so 17 stays on 3.5, which both libcs have.
+ */
+const POSTGIS: Readonly<Record<PostgresVersion, string>> = {
+	13: '3.5',
+	14: '3.5',
+	15: '3.5',
+	16: '3.5',
+	17: '3.5',
+	18: '3.6',
+};
+
+/**
+ * The Postgres image for a major version, and the extensions it must ship.
  *
  * One place that knows the tag shape, so a declared version reaches the
  * container without anyone restating `-alpine` beside it.
+ *
+ * `libc` keeps an existing cluster on the C library it was initialised with:
+ * text indexes sort by its collation, so a data directory moved from glibc to
+ * musl at the same major starts fine and answers lookups wrongly. Local
+ * containers have always been Alpine; Dokploy's have always been Debian.
  */
-export function postgresImage(version: PostgresVersion): string {
-	return `postgres:${version}-alpine`;
+export function postgresImage(
+	version: PostgresVersion,
+	extensions: readonly PostgresExtension[] = [],
+	libc: 'musl' | 'glibc' = 'musl',
+): string {
+	const suffix = libc === 'musl' ? '-alpine' : '';
+
+	return extensions.includes('postgis')
+		? `postgis/postgis:${version}-${POSTGIS[version]}${suffix}`
+		: `postgres:${version}${suffix}`;
 }
 
 /**
  * The default image for each container.
  *
  * Pinned to a major rather than `latest` where the image publishes one, so a
- * rebuild does not silently move a developer's Postgres a version. Overridable
- * per project: a project needing `postgis/postgis` says so in config.
+ * rebuild does not silently move a developer's Postgres a version. A database
+ * needing PostGIS declares `extensions: ['postgis']`; any other pin is the
+ * project's own `docker-compose.yml`.
  */
 export const DEFAULT_IMAGES: Readonly<Record<string, string>> = {
 	postgres: postgresImage(DEFAULT_POSTGRES_VERSION),

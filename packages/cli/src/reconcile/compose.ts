@@ -15,6 +15,7 @@
  * from the declaration, provider detail from config.
  */
 
+import { DEFAULT_POSTGRES_VERSION } from '@geekmidas/manifest';
 import { stringify } from 'yaml';
 import { LOGS_EMAIL_KEY, LOGS_PASSWORD_KEY } from '../compose/logs.js';
 import { LOGS_RETENTION_DAYS } from '../compose/logsConfig.js';
@@ -92,15 +93,24 @@ export function composeFor(plan: Plan, options: ComposeOptions): ComposeFile {
 		// developer runs is the major the declaration names — and the same one a
 		// deploy provisions. An image pin is the project's own
 		// `docker-compose.yml`, merged over this file, and wins over both.
+		//
+		// Extensions are declared per database but the local cluster is shared,
+		// so it runs an image with every one of them; each is still created only
+		// in the database that declared it.
 		const declared =
 			container === 'postgres'
 				? plan.resources.find((r) => r.version)?.version
 				: undefined;
+		const extensions =
+			container === 'postgres'
+				? [...new Set(plan.resources.flatMap((r) => r.extensions ?? []))]
+				: [];
 
 		const fake = plan.fakes?.[container];
-		const image = declared
-			? postgresImage(declared)
-			: (fake?.image ?? DEFAULT_IMAGES[container]);
+		const image =
+			declared || extensions.length > 0
+				? postgresImage(declared ?? DEFAULT_POSTGRES_VERSION, extensions)
+				: (fake?.image ?? DEFAULT_IMAGES[container]);
 		if (!image) throw new UnknownContainer(container);
 
 		const published = publish(container, options.ports, plan.fakes);

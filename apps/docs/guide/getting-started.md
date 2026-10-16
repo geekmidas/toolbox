@@ -100,6 +100,23 @@ owner/runtime role split, and the Postgres major version — read by the local
 target as a container tag and by the AWS target as the RDS engine version, so
 the two can't drift apart the way they used to.
 
+A database that needs PostGIS says so on the construct, not in a compose file:
+
+```typescript
+export const geo = new KyselyDatabase<GeoDB, 'Geo'>('Geo', {
+  extensions: ['postgis'],
+});
+```
+
+Every target then runs that database on an image that ships PostGIS (RDS already
+does) and creates the extension in it, as the cluster master, before the first
+migration. PostGIS isn't a trusted extension, so the owner role a migration runs
+as can't create it. It goes in `public`, which joins that database's roles'
+`search_path`, so `geometry` resolves without a schema prefix. Other databases
+are untouched: on Dokploy each one is its own cluster, and locally the one
+shared container runs the PostGIS image (a superset of Postgres) but creates the
+extension only where it was declared.
+
 ::: warning Both type arguments or neither
 TypeScript has no partial type-argument inference, so
 `new KyselyDatabase<Database>('Example')` leaves the name at `string` and widens

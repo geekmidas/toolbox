@@ -16,6 +16,7 @@ import {
 	canonicalId,
 	DEFAULT_POSTGRES_VERSION,
 	type Declaration,
+	type PostgresExtension,
 	type PostgresVersion,
 	provideKey,
 	serviceKey,
@@ -66,6 +67,21 @@ export interface KyselyDatabaseOptions extends Omit<KyselyConfig, 'dialect'> {
 	 * Defaults to {@link DEFAULT_POSTGRES_VERSION}.
 	 */
 	version?: PostgresVersion;
+	/**
+	 * Extensions this database needs that a migration cannot create itself.
+	 *
+	 * `postgis` is not in the stock Postgres image and is not a trusted
+	 * extension, so the owner role a migration runs as may not create it.
+	 * Declaring it here runs this database on an image that has it and creates
+	 * it, as the cluster master, before the first migration — in this database
+	 * only. Its types then resolve unqualified: `public`, where it is created,
+	 * is added to this database's roles' `search_path`.
+	 *
+	 * ```ts
+	 * new KyselyDatabase<GeoDB>('Geo', { extensions: ['postgis'] });
+	 * ```
+	 */
+	extensions?: readonly PostgresExtension[];
 	/**
 	 * End each query run inside a request with a comment naming what ran it —
 	 * `/*operation='POST /orders',request_id='…'*\/` — so `pg_stat_activity`
@@ -166,6 +182,9 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 				engine: 'postgres',
 				schema: this.schemaName,
 				version: this.version,
+				...(this.options.extensions?.length
+					? { extensions: [...new Set(this.options.extensions)] }
+					: {}),
 				// One key, the runtime role's. `config` also holds the owner key and
 				// it is deliberately absent here: a key in `provides` is a key an
 				// edge can name, and nothing should be able to depend on DDL rights.
@@ -271,12 +290,13 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 	 */
 	get clientConfig(): Omit<KyselyConfig, 'dialect'> {
 		// Split what the manifest declared from what Kysely takes, so neither
-		// leaks into the other: \`schema\`, \`roles\` and \`version\` describe
-		// infrastructure and mean nothing to a client.
+		// leaks into the other: \`schema\`, \`roles\`, \`version\` and
+		// \`extensions\` describe infrastructure and mean nothing to a client.
 		const {
 			schema: _schema,
 			roles: _roles,
 			version: _version,
+			extensions: _extensions,
 			queryTags: _queryTags,
 			...kysely
 		} = this.options;

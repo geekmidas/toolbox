@@ -157,6 +157,26 @@ describe('the reader role', () => {
 		);
 	});
 
+	it('resolves a declared extension’s names for the reader too', () => {
+		const sql = sqlOf({
+			...spec,
+			reader: 'orders_reader',
+			extensions: ['postgis'],
+			passwords: { ...spec.passwords, reader: 'rd-pw' },
+		});
+
+		expect(sql).toContain(
+			'ALTER ROLE "orders_reader" SET search_path TO "app", public',
+		);
+		expect(sql).toContain(
+			'CREATE EXTENSION IF NOT EXISTS "postgis" SCHEMA public',
+		);
+	});
+
+	it('leaves public off the search_path when nothing was declared', () => {
+		expect(sqlOf(spec).join('\n')).not.toContain('public');
+	});
+
 	it('keeps a tenant’s owner confined to its schema', () => {
 		expect(sqlOf(spec).join('\n')).not.toContain('ON DATABASE');
 	});

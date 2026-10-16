@@ -71,6 +71,23 @@ describe('KyselyDatabase', () => {
 			]);
 		});
 
+		it('declares the extensions a migration cannot create, once each', () => {
+			const [declaration] = new KyselyDatabase('Geo', {
+				extensions: ['postgis', 'postgis'],
+			}).declare();
+
+			expect(declaration).toMatchObject({ extensions: ['postgis'] });
+			expect(new KyselyDatabase('Orders').declare()[0]).not.toHaveProperty(
+				'extensions',
+			);
+		});
+
+		it('keeps them out of the Kysely client config', () => {
+			const db = new KyselyDatabase('Geo', { extensions: ['postgis'] });
+
+			expect(db.clientConfig).not.toHaveProperty('extensions');
+		});
+
 		it('provides exactly one key — the runtime role', () => {
 			// The owner URL is wired straight to the migrator by the adapter, so no
 			// edge in any manifest can name it.

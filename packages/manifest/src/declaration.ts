@@ -191,6 +191,17 @@ export type PostgresVersion = 13 | 14 | 15 | 16 | 17 | 18;
  */
 export const DEFAULT_POSTGRES_VERSION: PostgresVersion = 18;
 
+/**
+ * The Postgres extensions a database can declare.
+ *
+ * Only the ones a declaration has to name: an extension the stock image
+ * ships and Postgres trusts (`citext`, `pg_trgm`) a migration creates itself,
+ * as the database's owner. These are the ones it cannot — PostGIS is not in
+ * the stock image, and it is not trusted, so only the cluster master may
+ * create it — and so the target has to know before the first migration runs.
+ */
+export type PostgresExtension = 'postgis';
+
 export interface DatabaseDeclaration extends Node {
 	kind: 'database';
 	engine?: 'postgres';
@@ -204,6 +215,14 @@ export interface DatabaseDeclaration extends Node {
 	 * Defaults to {@link DEFAULT_POSTGRES_VERSION}.
 	 */
 	version?: PostgresVersion;
+	/**
+	 * Extensions this database needs that a migration cannot create itself.
+	 *
+	 * Per database rather than per project: the target runs an image that has
+	 * them, and creates them in this database — as the cluster master, before
+	 * any migration — and in no other.
+	 */
+	extensions?: readonly PostgresExtension[];
 	/**
 	 * The schema, pinned on both roles' `search_path`. Names the role the schema
 	 * plays rather than restating the database's own name, so `app` reads
