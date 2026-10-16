@@ -191,27 +191,44 @@ export type PostgresVersion = 13 | 14 | 15 | 16 | 17 | 18;
  */
 export const DEFAULT_POSTGRES_VERSION: PostgresVersion = 18;
 
-export interface DatabaseDeclaration extends Node {
+/**
+ * A database runs a declared major on the stock image, or an image the project
+ * names — never both, since the image's tag already says its major.
+ */
+export type DatabaseDeclaration = DatabaseDeclarationBase &
+	(
+		| {
+				/**
+				 * The engine's major version, read by every target that provisions
+				 * one.
+				 *
+				 * Declared rather than configured per target, because a version set
+				 * in a compose file and a version set in a deploy config are two
+				 * statements of one fact — and they had already drifted apart,
+				 * silently, by a major.
+				 *
+				 * Defaults to {@link DEFAULT_POSTGRES_VERSION}.
+				 */
+				version?: PostgresVersion;
+				image?: never;
+		  }
+		| {
+				/**
+				 * The container image to run in place of `postgres:<version>`, where
+				 * the target runs one (local, Dokploy). AWS runs RDS, ignores it, and
+				 * provisions {@link DEFAULT_POSTGRES_VERSION}.
+				 *
+				 * The project's choice, used as written: it should ship every
+				 * extension in `extensions`.
+				 */
+				image: string;
+				version?: never;
+		  }
+	);
+
+interface DatabaseDeclarationBase extends Node {
 	kind: 'database';
 	engine?: 'postgres';
-	/**
-	 * The engine's major version, read by every target that provisions one.
-	 *
-	 * Declared rather than configured per target, because a version set in a
-	 * compose file and a version set in a deploy config are two statements of
-	 * one fact — and they had already drifted apart, silently, by a major.
-	 *
-	 * Defaults to {@link DEFAULT_POSTGRES_VERSION}.
-	 */
-	version?: PostgresVersion;
-	/**
-	 * The container image to run instead of `postgres:<version>`, where the
-	 * target runs one (local, Dokploy). AWS runs RDS and ignores it.
-	 *
-	 * The project's choice, used as written: it should be the declared
-	 * `version`, and ship every extension in `extensions`.
-	 */
-	image?: string;
 	/**
 	 * Extensions to create in this database, as the cluster master, before any
 	 * migration — for the ones its owner may not create (PostGIS is untrusted).

@@ -81,6 +81,8 @@ describe('KyselyDatabase', () => {
 				image: 'postgis/postgis:18-3.6-alpine',
 				extensions: ['postgis'],
 			});
+			// The tag is the major: a second statement of it could disagree.
+			expect(declaration).not.toHaveProperty('version');
 			const [plain] = new KyselyDatabase('Orders').declare();
 			expect(plain).not.toHaveProperty('image');
 			expect(plain).not.toHaveProperty('extensions');

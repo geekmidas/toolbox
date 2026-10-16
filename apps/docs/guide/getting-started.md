@@ -100,20 +100,21 @@ owner/runtime role split, and the Postgres major version — read by the local
 target as a container tag and by the AWS target as the RDS engine version, so
 the two can't drift apart the way they used to.
 
-A database that needs another image, for PostGIS or pgvector, names it on the
-construct, along with the extensions to create:
+A database that needs another image, for PostGIS or pgvector, names it in place
+of `version`, along with the extensions to create:
 
 ```typescript
 export const geo = new KyselyDatabase<GeoDB, 'Geo'>('Geo', {
-  version: 18,
   image: 'postgis/postgis:18-3.6-alpine',
   extensions: ['postgis'],
 });
 ```
 
-The image is yours to choose, and gkm runs it as written, locally and on
-Dokploy. Pick one at the declared `version` that ships every extension you
-list. AWS runs RDS, which ignores `image` (RDS already ships PostGIS).
+It's `version` or `image`, never both: the image's tag already says the major,
+and the type rejects a second statement of it. The image is yours to choose, and
+gkm runs it as written, locally and on Dokploy. Pick one that ships every
+extension you list. AWS runs RDS, which ignores `image` (RDS already ships
+PostGIS) and provisions the default major.
 
 On every target, the cluster master then tries
 `CREATE EXTENSION IF NOT EXISTS <name> SCHEMA public` in that database before

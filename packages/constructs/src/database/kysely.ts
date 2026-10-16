@@ -38,7 +38,7 @@ const DEFAULT_SCHEMA = 'app';
  * straight through, so anything Kysely adds later arrives without being
  * tracked here.
  */
-export interface KyselyDatabaseOptions extends Omit<KyselyConfig, 'dialect'> {
+interface KyselyDatabaseBaseOptions extends Omit<KyselyConfig, 'dialect'> {
 	/**
 	 * The schema, pinned on both roles' `search_path`.
 	 *
@@ -55,32 +55,6 @@ export interface KyselyDatabaseOptions extends Omit<KyselyConfig, 'dialect'> {
 	 * function's environment. A deliberate downgrade, not a default.
 	 */
 	roles?: boolean;
-	/**
-	 * The Postgres major version to provision.
-	 *
-	 * Declared here so one statement reaches both targets. It was previously
-	 * set in two unrelated places — a container tag locally, nothing at all on
-	 * AWS (so Aurora chose) — which is how local came to run 18 while deployed
-	 * ran 17.7 with nothing recording the difference.
-	 *
-	 * Defaults to {@link DEFAULT_POSTGRES_VERSION}.
-	 */
-	version?: PostgresVersion;
-	/**
-	 * The container image to run instead of `postgres:<version>`, wherever a
-	 * target runs one (local, Dokploy). AWS runs RDS and ignores it.
-	 *
-	 * Yours to choose and used as written: it should be the `version` above,
-	 * and ship every extension below.
-	 *
-	 * ```ts
-	 * new KyselyDatabase<GeoDB>('Geo', {
-	 *   image: 'postgis/postgis:18-3.6-alpine',
-	 *   extensions: ['postgis'],
-	 * });
-	 * ```
-	 */
-	image?: string;
 	/**
 	 * Extensions to create in this database, as the cluster master, before the
 	 * first migration — for the ones the owner role a migration runs as may not
@@ -100,6 +74,52 @@ export interface KyselyDatabaseOptions extends Omit<KyselyConfig, 'dialect'> {
 	 */
 	queryTags?: boolean;
 }
+
+/**
+ * Which Postgres the database runs: a major on the stock image, or an image
+ * the project names. One or the other, never both — an image's tag already
+ * says its major, and a second statement of it is one that can disagree.
+ */
+export type PostgresRuntime =
+	| {
+			/**
+			 * The Postgres major version to provision, on the stock image.
+			 *
+			 * Declared here so one statement reaches every target. It was
+			 * previously set in two unrelated places — a container tag locally,
+			 * nothing at all on AWS (so Aurora chose) — which is how local came to
+			 * run 18 while deployed ran 17.7 with nothing recording the difference.
+			 *
+			 * Defaults to {@link DEFAULT_POSTGRES_VERSION}.
+			 */
+			version?: PostgresVersion;
+			image?: never;
+	  }
+	| {
+			/**
+			 * The container image to run, wherever a target runs one (local,
+			 * Dokploy), in place of `postgres:<version>`.
+			 *
+			 * Yours to choose and used as written: its tag is the major, and it
+			 * should ship every extension in `extensions`. AWS runs RDS, ignores
+			 * it, and provisions {@link DEFAULT_POSTGRES_VERSION}.
+			 *
+			 * ```ts
+			 * new KyselyDatabase<GeoDB>('Geo', {
+			 *   image: 'postgis/postgis:18-3.6-alpine',
+			 *   extensions: ['postgis'],
+			 * });
+			 * ```
+			 */
+			image: string;
+			version?: never;
+	  };
+
+/**
+ * Everything Kysely takes, plus what this construct declares — including
+ * which Postgres it runs, as a version or an image.
+ */
+export type KyselyDatabaseOptions = KyselyDatabaseBaseOptions & PostgresRuntime;
 
 /** What makes a construct derived rather than a database in its own right. */
 interface DerivedFrom {
@@ -128,7 +148,7 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 	private readonly config: { url: string; ownerUrl: string };
 	private readonly schemaName: string;
 	private readonly roles: boolean;
-	private readonly version: PostgresVersion;
+	private readonly runtime: { version: PostgresVersion } | { image: string };
 	private readonly derivedFrom?: DerivedFrom;
 
 	constructor(
@@ -147,7 +167,9 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 		};
 		this.schemaName = options.schema ?? DEFAULT_SCHEMA;
 		this.roles = options.roles ?? true;
-		this.version = options.version ?? DEFAULT_POSTGRES_VERSION;
+		this.runtime = options.image
+			? { image: options.image }
+			: { version: options.version ?? DEFAULT_POSTGRES_VERSION };
 		this.derivedFrom = derivedFrom;
 
 		// A field, not a getter: service discovery caches by object identity.
@@ -190,8 +212,8 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 				id: this.id,
 				engine: 'postgres',
 				schema: this.schemaName,
-				version: this.version,
-				...(this.options.image ? { image: this.options.image } : {}),
+				// A version, or the image whose tag is one — never both.
+				...this.runtime,
 				...(this.options.extensions?.length
 					? { extensions: [...new Set(this.options.extensions)] }
 					: {}),

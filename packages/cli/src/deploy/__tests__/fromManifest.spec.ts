@@ -290,7 +290,6 @@ describe('a database naming its image and extensions', () => {
 			id: 'Geo',
 			engine: 'postgres',
 			schema: 'app',
-			version: 18,
 			image: 'postgis/postgis:18-3.6',
 			extensions: ['postgis'],
 			provides: ['GEO_URL'],

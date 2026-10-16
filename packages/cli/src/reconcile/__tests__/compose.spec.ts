@@ -117,8 +117,7 @@ describe('composeFor', () => {
 			name: id.toLowerCase(),
 			envKey: `${id.toUpperCase()}_URL`,
 			provisions: true,
-			version: 18,
-			...(image ? { image } : {}),
+			...(image ? { image } : { version: 18 }),
 		});
 		const composeOf = (resources: object[]) =>
 			composeFor(
