@@ -10,11 +10,13 @@ import { postgresSuperuser } from '../../reconcile/localCredentials';
 import { postgresStatements } from '../../reconcile/provision';
 import { initStageSecrets } from '../../secrets/storage';
 import type { StageSecrets } from '../../secrets/types';
+import { NoDomainForStage } from '../../target/dokploy/domain';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { REDIS_IMAGE, RedisPasswordMissing } from '../redis';
 import {
 	type ComposeStack,
 	composeStack,
+	EdgeHostTaken,
 	envFile,
 	LocalCredentialsMissing,
 	NothingToCompose,
@@ -920,6 +922,116 @@ describe('a worker', () => {
 		expect(() => stack({ manifest: noSurfaces, background: {} })).toThrow(
 			NothingToCompose,
 		);
+	});
+});
+
+describe('a worker SNS pushes to', () => {
+	/**
+	 * The workspace with a topic the worker subscribes to: the build would
+	 * find it through discovery, which records the subscriber under `Jobs`.
+	 */
+	const withTopic = (base: ConstructManifest = manifest): ConstructManifest =>
+		({
+			...base,
+			Alerts: {
+				kind: 'topic',
+				id: 'Alerts',
+				provides: ['ALERTS_PUBLISHER_CONNECTION_STRING'],
+				events: ['alert.raised'],
+				subscribers: [],
+			},
+		}) as unknown as ConstructManifest;
+	const SNS =
+		'sns://AKIAEXAMPLE:secret@?topicArn=arn:aws:sns:eu-west-1:123456789012:alerts&region=eu-west-1';
+
+	const deployed = (overrides: Partial<StackInput> = {}) =>
+		stack({
+			stage: 'production',
+			manifest: withTopic(),
+			runnables: { ...runnables, Jobs: [...(runnables.Jobs ?? []), 'Alerts'] },
+			subscribers: {
+				Jobs: [
+					{ name: 'onAlert', topic: 'Alerts' },
+					{ name: 'onAlertAgain', topic: 'Alerts' },
+				],
+			},
+			images: { mode: 'pull', tag: 'v1.4.0' },
+			secrets: production({ ALERTS_PUBLISHER_CONNECTION_STRING: SNS }),
+			ports: {},
+			...overrides,
+		});
+	const jobs = (s: ComposeStack) => s.workers.find((w) => w.name === 'jobs')!;
+
+	it("answers on its own host, on exactly its subscribers' routes", () => {
+		const s = deployed();
+
+		expect(jobs(s).push).toEqual({
+			host: 'jobs.shop.example.com',
+			url: 'https://jobs.shop.example.com',
+			paths: ['/__gkm/subscribers/onAlert', '/__gkm/subscribers/onAlertAgain'],
+		});
+		expect(s.routes.find((r) => r.name === 'jobs')).toEqual({
+			name: 'jobs',
+			host: 'jobs.shop.example.com',
+			upstreams: [{ service: 'jobs', port: 3000 }],
+			streaming: false,
+			paths: ['/__gkm/subscribers/onAlert', '/__gkm/subscribers/onAlertAgain'],
+			health: '/health',
+		});
+		expect(s.caddyfile).toContain('https://jobs.shop.example.com {');
+		expect(s.caddyfile).toContain('reverse_proxy jobs:3000');
+		// The edge waits for it, as it does for every service it routes to.
+		expect(s.compose.services.caddy?.depends_on).toHaveProperty('jobs');
+	});
+
+	it('is told the public base its routes are subscribed under', () => {
+		const env = jobs(deployed()).env!;
+
+		expect(env.GKM_SUBSCRIBER_PUSH_URL).toBe('https://jobs.shop.example.com');
+		expect(env.ALERTS_PUBLISHER_CONNECTION_STRING).toBe(SNS);
+	});
+
+	it('stays private while its topics are on pg-boss', () => {
+		const s = deployed({ secrets: production() });
+
+		expect(jobs(s).push).toBeUndefined();
+		expect(jobs(s).env).not.toHaveProperty('GKM_SUBSCRIBER_PUSH_URL');
+		expect(s.routes.map((r) => r.name)).not.toContain('jobs');
+		expect(s.caddyfile).not.toContain('jobs');
+	});
+
+	it('stays private on the local stage, where the emulator pushes to the host', () => {
+		const s = stack({
+			manifest: withTopic(),
+			runnables: { ...runnables, Jobs: [...(runnables.Jobs ?? []), 'Alerts'] },
+			subscribers: { Jobs: [{ name: 'onAlert', topic: 'Alerts' }] },
+		});
+
+		expect(jobs(s).push).toBeUndefined();
+		expect(s.routes.map((r) => r.name)).not.toContain('jobs');
+	});
+
+	it('needs the stage to have a domain to answer on', () => {
+		expect(() =>
+			deployed({ workspace: { ...workspace, domains: {} } }),
+		).toThrow(NoDomainForStage);
+	});
+
+	it('refuses a host an app already answers on', () => {
+		// The API on the subdomain the worker would take.
+		const run = () =>
+			deployed({
+				workspace: {
+					...workspace,
+					apps: {
+						...workspace.apps,
+						api: { ...workspace.apps.api!, subdomain: 'jobs' },
+					},
+				},
+			});
+
+		expect(run).toThrow(EdgeHostTaken);
+		expect(run).toThrow(/'api' and 'jobs' would both answer on jobs\.shop/);
 	});
 });
 

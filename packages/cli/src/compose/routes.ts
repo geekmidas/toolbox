@@ -47,6 +47,12 @@ export interface EdgeRoute {
 	 * client could set.
 	 */
 	allow?: readonly string[];
+	/**
+	 * The only paths it answers, matched exactly; every other is refused at
+	 * the edge, before the request reaches the upstream. Absent, it answers
+	 * every path. A worker is reached only on the routes SNS pushes to.
+	 */
+	paths?: readonly string[];
 	/** The path the upstream answers its health on — `/health`, `/`. */
 	health?: string;
 }
