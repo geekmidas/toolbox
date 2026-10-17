@@ -32,8 +32,9 @@ export function postgresImage(version: PostgresVersion): string {
  * The default image for each container.
  *
  * Pinned to a major rather than `latest` where the image publishes one, so a
- * rebuild does not silently move a developer's Postgres a version. Overridable
- * per project: a project needing `postgis/postgis` says so in config.
+ * rebuild does not silently move a developer's Postgres a version. A database
+ * can name its own (`image: 'postgis/postgis:…'`); any other pin is the
+ * project's own `docker-compose.yml`.
  */
 export const DEFAULT_IMAGES: Readonly<Record<string, string>> = {
 	postgres: postgresImage(DEFAULT_POSTGRES_VERSION),

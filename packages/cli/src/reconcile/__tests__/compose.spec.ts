@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import {
+	ConflictingPostgresImages,
 	composeFor,
 	toYaml,
 	UnassignedPort,
@@ -106,6 +107,49 @@ describe('composeFor', () => {
 		);
 
 		expect(declared.services.postgres.image).toBe('postgres:15-alpine');
+	});
+
+	describe('a database naming its own image', () => {
+		const database = (id: string, image?: string) => ({
+			id,
+			kind: 'database',
+			container: 'postgres',
+			name: id.toLowerCase(),
+			envKey: `${id.toUpperCase()}_URL`,
+			provisions: true,
+			...(image ? { image } : { version: 18 }),
+		});
+		const composeOf = (resources: object[]) =>
+			composeFor(
+				{
+					stage: 'development',
+					containers: ['postgres'],
+					resources,
+				} as unknown as Plan,
+				{
+					project: 'toolbox',
+					credentials: TEST_CREDENTIALS,
+					ports: portsFor(['postgres']),
+				},
+			);
+
+		it('runs that image, as written, for the shared cluster', () => {
+			const { services } = composeOf([
+				database('Orders'),
+				database('Geo', 'postgis/postgis:18-3.6-alpine'),
+			]);
+
+			expect(services.postgres.image).toBe('postgis/postgis:18-3.6-alpine');
+		});
+
+		it('refuses two databases naming different images for it', () => {
+			expect(() =>
+				composeOf([
+					database('Geo', 'postgis/postgis:18-3.6-alpine'),
+					database('Vectors', 'pgvector/pgvector:pg18'),
+				]),
+			).toThrow(ConflictingPostgresImages);
+		});
 	});
 
 	it('pins no image of its own beyond the default — that is the project file', () => {

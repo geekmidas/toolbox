@@ -92,15 +92,23 @@ export function composeFor(plan: Plan, options: ComposeOptions): ComposeFile {
 		// developer runs is the major the declaration names — and the same one a
 		// deploy provisions. An image pin is the project's own
 		// `docker-compose.yml`, merged over this file, and wins over both.
+		//
+		// A database can name its own image (PostGIS, pgvector). The local
+		// cluster is shared, so that image runs every database in it — and two
+		// databases naming different ones cannot both have theirs.
 		const declared =
 			container === 'postgres'
 				? plan.resources.find((r) => r.version)?.version
 				: undefined;
+		const named =
+			container === 'postgres' ? declaredPostgresImage(plan) : undefined;
 
 		const fake = plan.fakes?.[container];
-		const image = declared
-			? postgresImage(declared)
-			: (fake?.image ?? DEFAULT_IMAGES[container]);
+		const image =
+			named ??
+			(declared
+				? postgresImage(declared)
+				: (fake?.image ?? DEFAULT_IMAGES[container]));
 		if (!image) throw new UnknownContainer(container);
 
 		const published = publish(container, options.ports, plan.fakes);
@@ -140,6 +148,40 @@ ${stringify(file, { lineWidth: 0 })}`;
 }
 
 /** A container with no image, from config or from the defaults. */
+/**
+ * The image the databases in the plan named for the shared local cluster, if
+ * any did.
+ */
+function declaredPostgresImage(plan: Plan): string | undefined {
+	const named = plan.resources.filter(
+		(r): r is typeof r & { image: string } =>
+			r.kind === 'database' && Boolean(r.image),
+	);
+	const images = [...new Set(named.map((r) => r.image))];
+
+	if (images.length > 1) {
+		throw new ConflictingPostgresImages(
+			named.map((r) => ({ id: r.id, image: r.image })),
+		);
+	}
+
+	return images[0];
+}
+
+/** Two databases on the one local cluster named different images for it. */
+export class ConflictingPostgresImages extends Error {
+	constructor(readonly databases: readonly { id: string; image: string }[]) {
+		super(
+			`Locally every database runs in one Postgres container, and these ` +
+				`name different images for it: ` +
+				`${databases.map((d) => `${d.id} (${d.image})`).join(', ')}. ` +
+				`Give them the same image — one that ships every extension they ` +
+				`declare.`,
+		);
+		this.name = 'ConflictingPostgresImages';
+	}
+}
+
 export class UnknownContainer extends Error {
 	/** The container that could not be resolved. */
 	readonly container: string;

@@ -261,6 +261,13 @@ export interface PlannedResource {
 	 * to come from two, and had drifted a major apart with nothing recording it.
 	 */
 	version?: PostgresVersion;
+	/** For a database: the image it named in place of `postgres:<version>`. */
+	image?: string;
+	/**
+	 * For a database: the extensions to create in it, as the master, before
+	 * any migration. In this database alone.
+	 */
+	extensions?: readonly string[];
 	/**
 	 * For a file server: the paths it serves without a signature.
 	 *
@@ -597,6 +604,12 @@ export function planFor(
 				: {}),
 			...('version' in declaration && declaration.version
 				? { version: declaration.version }
+				: {}),
+			...('image' in declaration && declaration.image
+				? { image: declaration.image }
+				: {}),
+			...('extensions' in declaration && declaration.extensions?.length
+				? { extensions: declaration.extensions }
 				: {}),
 			...('roles' in declaration && declaration.roles === false
 				? { roles: false }

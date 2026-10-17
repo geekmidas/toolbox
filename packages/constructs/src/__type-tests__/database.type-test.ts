@@ -51,3 +51,16 @@ type ReaderVendsAClient = Expect<
 >;
 
 export type { ReaderIsAConstruct, ReaderVendsAClient };
+
+// A version or an image, never both: the image's tag already says its major.
+new KyselyDatabase('Geo', { version: 17 });
+new KyselyDatabase('Geo', {
+	image: 'postgis/postgis:18-3.6-alpine',
+	extensions: ['postgis'],
+});
+// `version` beside `image` is a second statement of the major.
+new KyselyDatabase('Geo', {
+	version: 18,
+	// @ts-expect-error — an image's tag already says its major.
+	image: 'postgis/postgis:18-3.6-alpine',
+});

@@ -240,6 +240,7 @@ function rolesFor(
 		...(resource.kind === 'database'
 			? { database: rootDatabase(resource, plan) }
 			: {}),
+		...(resource.extensions ? { extensions: resource.extensions } : {}),
 		passwords: {
 			runtime: localRolePassword(project, plan, runtime, seed),
 			owner: localRolePassword(project, plan, owner, seed),

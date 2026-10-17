@@ -80,6 +80,10 @@ The containers a project needs are derived from its constructs and written to
 test`, `gkm setup` and `gkm docker` alike. It is regenerated on every run,
 gitignored, and never edited.
 
+A database's own image is not one of those: name it on the database
+(`image: 'postgis/postgis:18-3.6-alpine'`, `extensions: ['postgis']`), so the
+deployed cluster runs it too.
+
 Anything a construct cannot express goes in **your own `docker-compose.yml`**,
 beside it: an image pin, an extra service, a volume or port tweak. gkm merges
 it over the generated file, so yours wins:
@@ -91,8 +95,8 @@ docker compose -f docker-compose.constructs.yml -f docker-compose.yml …
 ```yaml
 # docker-compose.yml — yours, optional
 services:
-  postgres:
-    image: postgis/postgis:18-3.5   # a pin, merged over the derived postgres
+  mailpit:
+    image: axllent/mailpit:v1.27    # a pin, merged over the derived mailpit
   pgadmin:                          # a service no construct implies
     image: dpage/pgadmin4
 ```

@@ -71,6 +71,33 @@ describe('KyselyDatabase', () => {
 			]);
 		});
 
+		it('declares the image it names and its extensions, once each', () => {
+			const [declaration] = new KyselyDatabase('Geo', {
+				image: 'postgis/postgis:18-3.6-alpine',
+				extensions: ['postgis', 'postgis'],
+			}).declare();
+
+			expect(declaration).toMatchObject({
+				image: 'postgis/postgis:18-3.6-alpine',
+				extensions: ['postgis'],
+			});
+			// The tag is the major: a second statement of it could disagree.
+			expect(declaration).not.toHaveProperty('version');
+			const [plain] = new KyselyDatabase('Orders').declare();
+			expect(plain).not.toHaveProperty('image');
+			expect(plain).not.toHaveProperty('extensions');
+		});
+
+		it('keeps them out of the Kysely client config', () => {
+			const db = new KyselyDatabase('Geo', {
+				image: 'postgis/postgis:18-3.6-alpine',
+				extensions: ['postgis'],
+			});
+
+			expect(db.clientConfig).not.toHaveProperty('image');
+			expect(db.clientConfig).not.toHaveProperty('extensions');
+		});
+
 		it('provides exactly one key — the runtime role', () => {
 			// The owner URL is wired straight to the migrator by the adapter, so no
 			// edge in any manifest can name it.

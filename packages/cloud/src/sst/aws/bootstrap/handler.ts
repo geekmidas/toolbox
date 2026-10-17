@@ -33,6 +33,8 @@ export interface BootstrapTenant {
 	 * the database, for trusted extensions.
 	 */
 	ownsDatabase?: boolean;
+	/** Extensions the database declared, created as the master. */
+	extensions?: readonly string[];
 	passwords: { runtime: string; owner: string; reader?: string };
 }
 

@@ -852,6 +852,7 @@ export class DokployApi {
 		options?: {
 			databaseName?: string;
 			databasePassword?: string;
+			dockerImage?: string;
 		},
 	): Promise<{ postgres: DokployPostgres; created: boolean }> {
 		const existing = await this.findPostgresByName(projectId, name);

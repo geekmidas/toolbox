@@ -113,6 +113,21 @@ describe('bootstrapEvent', () => {
 		expect(roleStatements(event.tenants[0]).length).toBeGreaterThan(0);
 	});
 
+	it('carries a declared extension through to the DDL the master runs', () => {
+		// RDS ships PostGIS, but only the master may create it.
+		const event = JSON.parse(
+			bootstrapEvent(
+				master,
+				[{ ...tenant, extensions: ['postgis'] }],
+				passwords,
+			),
+		);
+
+		expect(roleStatements(event.tenants[0]).map((s) => s.sql)).toContain(
+			'CREATE EXTENSION IF NOT EXISTS "postgis" SCHEMA public',
+		);
+	});
+
 	it('carries a reader password only where a reader was named', () => {
 		const withReader = { ...tenant, reader: 'authdb_reader' };
 		const event = JSON.parse(

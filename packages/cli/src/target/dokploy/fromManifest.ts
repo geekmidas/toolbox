@@ -43,6 +43,7 @@ import {
 	cacheTable,
 	cloudName,
 	cookieDomain,
+	DEFAULT_POSTGRES_VERSION,
 	type Declaration,
 	type DeclarationKind,
 	dependentsOf,
@@ -210,7 +211,13 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 		// Two names, deliberately: what Postgres calls the database, and what the
 		// Dokploy service list calls the service.
 		const name = resourceName(declaration.id, declaration.kind, context.stage);
-		const { postgres } = await context.api.findOrCreatePostgres(
+		// The project's image where it named one; otherwise the declared major,
+		// on Debian like every Dokploy cluster before it.
+		const image =
+			declaration.image ??
+			`postgres:${declaration.version ?? DEFAULT_POSTGRES_VERSION}`;
+		const extensions = declaration.extensions ?? [];
+		const { postgres, created } = await context.api.findOrCreatePostgres(
 			serviceName(
 				{ stage: context.stage, app: context.scope ?? context.project },
 				declaration.id,
@@ -222,8 +229,19 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 				// The cluster master, which nothing in the application ever holds:
 				// every handler connects as a role created *by* this one.
 				databasePassword: derivedPassword(context, `${name}:master`),
+				dockerImage: image,
 			},
 		);
+
+		// A cluster found rather than created keeps the image it was born with,
+		// so a named image is applied to it — taken up when the deploy
+		// redeploys it to run the DDL. Whether the data directory can run on it
+		// is the image's business: same major, same C library.
+		if (!created && declaration.image && postgres.dockerImage !== image) {
+			await context.api.updatePostgres(postgres.postgresId, {
+				dockerImage: image,
+			});
+		}
 
 		const host = clusterHost(postgres);
 		context.clusters[postgres.databaseName] = postgres;
@@ -237,6 +255,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 				id: declaration.id,
 				database: postgres.databaseName,
 				ownsDatabase: true,
+				extensions,
 				runtime,
 				owner,
 				...(reads ? { reader: readerRole(runtime) } : {}),
@@ -768,6 +787,8 @@ function statementsFor(options: {
 	schema: string;
 	/** A database's roles rather than a tenant's: its owner may create in it. */
 	ownsDatabase?: boolean;
+	/** What the database declared that only the master may create. */
+	extensions?: readonly string[];
 	context: DokployProvisionContext;
 }): DeferredStatement[] {
 	const { id, database, runtime, owner, reader, schema, context } = options;
@@ -778,6 +799,7 @@ function statementsFor(options: {
 		...(reader ? { reader } : {}),
 		schema,
 		...(options.ownsDatabase ? { database } : {}),
+		...(options.extensions?.length ? { extensions: options.extensions } : {}),
 		passwords: {
 			runtime: derivedPassword(context, runtime),
 			owner: derivedPassword(context, owner),
