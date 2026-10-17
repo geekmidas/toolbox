@@ -1,5 +1,60 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.118
+
+### Minor Changes
+
+- [#272](https://github.com/geekmidas/toolbox/pull/272) [`eec2d62`](https://github.com/geekmidas/toolbox/commit/eec2d628f3d877490d5c8b67502c03bf6c28ccf1) Thanks [@geekmidas](https://github.com/geekmidas)! - A database names its own image and extensions
+
+  ```ts
+  new KyselyDatabase("Geo", {
+    image: "postgis/postgis:18-3.6-alpine",
+    extensions: ["postgis"],
+  });
+  ```
+
+  The only way to run PostGIS used to be a `postgis/postgis` pin in the
+  project's `docker-compose.yml`. That covered local dev for the whole project and
+  no deployed stage.
+
+  - **`image`** replaces `postgres:<version>` wherever a target runs a container.
+    It's `version` or `image`, never both: the options are a discriminated union,
+    because the image's tag already says the major. It's used as written, and it's
+    the project's choice: it should ship the extensions listed.
+    - **Local:** the shared container runs it. Two databases naming different
+      images fail with `ConflictingPostgresImages`.
+    - **Dokploy:** that database's own cluster runs it, including an existing
+      cluster, on its next deploy.
+    - **AWS:** runs RDS, ignores it, and provisions the default major.
+  - **`extensions`** are created in that database by the cluster master, before
+    the first migration, on every target:
+    `CREATE EXTENSION IF NOT EXISTS <name> SCHEMA public`. The owner role a
+    migration runs as can't create an untrusted extension such as PostGIS. This is
+    only attempted: an image without the extension fails with Postgres's own
+    error. `public` joins the database's roles' `search_path` behind the schema,
+    so `geometry` resolves unqualified. `roleStatements` takes the new
+    `extensions` field.
+
+  A new Dokploy cluster with no `image` now runs `postgres:<version>`. Every
+  cluster used to be created as `postgres:18`.
+
+### Patch Changes
+
+- ✨ [#270](https://github.com/geekmidas/toolbox/pull/270) [`549f10d`](https://github.com/geekmidas/toolbox/commit/549f10db34c2012770c793716b0a2316224e567d) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm init --template fullstack` asks for the first admin's email (`--admin-email`; `--yes` takes `git config user.email`). It is written to a new seed, `db/database/seeds/03_admins.ts`, which gives each address in `ADMINS` a `users` row and the Member and Super admin roles before that person has signed in. Their first sign-in claims the row by email, so `users.auth_user_id` is now nullable until then. This replaces `scripts/grant-admin.ts`: to add an admin later, add their address to the list and run the seeds again.
+
+- Updated dependencies [[`eec2d62`](https://github.com/geekmidas/toolbox/commit/eec2d628f3d877490d5c8b67502c03bf6c28ccf1)]:
+  - @geekmidas/manifest@10.0.0-alpha.118
+  - @geekmidas/constructs@10.0.0-alpha.118
+  - @geekmidas/db@10.0.0-alpha.118
+  - @geekmidas/cache@10.0.0-alpha.118
+  - @geekmidas/envkit@10.0.0-alpha.118
+  - @geekmidas/errors@10.0.0-alpha.118
+  - @geekmidas/logger@10.0.0-alpha.118
+  - @geekmidas/schema@10.0.0-alpha.118
+  - @geekmidas/services@10.0.0-alpha.118
+  - @geekmidas/storage@10.0.0-alpha.118
+  - @geekmidas/telescope@10.0.0-alpha.118
+
 ## 10.0.0-alpha.117
 
 ### Patch Changes
