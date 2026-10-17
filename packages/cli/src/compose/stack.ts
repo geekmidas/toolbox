@@ -28,7 +28,12 @@ import {
 	type StackBackups,
 	stackBackups,
 } from '../backups/service.js';
-import { type WorkerUnit, workerUnits } from '../build/workers.js';
+import {
+	type ProcessorUnit,
+	processorUnits,
+	type WorkerUnit,
+	workerUnits,
+} from '../build/workers.js';
 import {
 	type DevServiceUse,
 	devServicesUsed,
@@ -41,15 +46,36 @@ import {
 import { isMainFrontendApp, resolveHost } from '../deploy/domain.js';
 import { type DeployIdentity, imageRef } from '../deploy/identity.js';
 import { validateImageRef } from '../docker/imageRef.js';
-import { appDockerfile, workerDockerfile } from '../docker/index.js';
+import {
+	appDockerfile,
+	processorDockerfile,
+	processorNative,
+	workerDockerfile,
+} from '../docker/index.js';
 import { composeBuildPaths, type ImageLayout } from '../docker/layout.js';
-import { TURBO_VERSION, WORKER_PORT } from '../docker/templates.js';
+import {
+	PROCESSOR_PORT,
+	TURBO_VERSION,
+	WORKER_PORT,
+} from '../docker/templates.js';
 import { GkmError } from '../errors';
+import { subscriberRoute } from '../generators/subscriberRoute.js';
 import { stageProviderNotes } from '../providers/notes.js';
-import { appEnvKeys, networkEnv, workerEnvKeys } from '../reconcile/apps.js';
+import {
+	ORIGIN_VERIFY_HEADER,
+	originSecretKey,
+	processorOriginHost,
+} from '../providers/processorOrigin.js';
+import {
+	appEnvKeys,
+	networkEnv,
+	processorEnvKeys,
+	workerEnvKeys,
+} from '../reconcile/apps.js';
 import { hostFor } from '../reconcile/caddyfile.js';
 import { type ComposeService, composeFor } from '../reconcile/compose.js';
 import { DEFAULT_IMAGES, portKeys } from '../reconcile/containers.js';
+import type { BoundSubscriber } from '../reconcile/discover.js';
 import { EMULATOR_ACCESS_KEY_ID } from '../reconcile/emulator.js';
 import { localRolePassword } from '../reconcile/env.js';
 import {
@@ -211,8 +237,9 @@ export interface StackApp extends AppImage {
 
 /**
  * A Worker in the stack: its crons, queue consumers and subscribers in a
- * container of their own. Nothing routes to it and nothing is published —
- * its one route is the health check Docker asks.
+ * container of their own. Nothing is published, and nothing routes to it
+ * unless SNS pushes to one of its subscribers — then the edge answers it on
+ * a host of its own, on exactly those subscribers' routes.
  */
 export interface StackWorker extends AppImage {
 	/** Its compose service name — `jobs`. */
@@ -226,6 +253,66 @@ export interface StackWorker extends AppImage {
 	build?: AppBuild;
 	/** Exactly the keys the worker's constructs read. */
 	env?: Record<string, string>;
+	/** Where SNS pushes to it, when it pushes to any of its subscribers. */
+	push?: WorkerPush;
+}
+
+/** A worker's public face: the routes SNS pushes its subscribers' messages to. */
+export interface WorkerPush {
+	/** e.g. `jobs.example.com` */
+	host: string;
+	/** `https://<host>` — what the worker subscribes its routes under. */
+	url: string;
+	/** Each pushed subscriber's route, and nothing else the worker serves. */
+	paths: string[];
+}
+
+/**
+ * A file server's processors in the stack: one container answering each of
+ * their patterns, built from the app whose build writes their entry.
+ *
+ * Reached on the file server's own host when the stack's MinIO serves it —
+ * its patterns sent here, every other path to the bucket — or, when a CDN
+ * serves the bucket, on a host of its own that only the CDN may call.
+ */
+export interface StackProcessor extends AppImage {
+	/** Its compose service name — `assets-processors`. */
+	name: string;
+	/** The file server's surface it answers on, `AssetsServer`. */
+	id: string;
+	/** The app whose build writes its entry, which its image is built from. */
+	host: string;
+	port: number;
+	/** Its processors' prefixes — `/i/` — the paths the edge sends it. */
+	prefixes: string[];
+	/** Packages with native code, installed in its image for linux. */
+	native: string[];
+	/**
+	 * Where a CDN reaches it, when the bucket is served by one: its host, and
+	 * the header value the CDN adds, without which the edge refuses.
+	 */
+	origin?: { host: string; secret: string };
+	build?: AppBuild;
+	/** Exactly the keys its processors read. */
+	env?: Record<string, string>;
+}
+
+/** A CDN serves the bucket, and the secret it sends the processors is not in the stage. */
+export class ProcessorOriginSecretMissing extends GkmError {
+	constructor(
+		readonly fileServer: string,
+		readonly key: string,
+		readonly stage: string,
+	) {
+		super(
+			`'${fileServer}' has processors, and its bucket is not the stack's MinIO, ` +
+				`so they are reached through the CDN in front of it — which sends ` +
+				`${key}, and stage '${stage}' has none. It is written by the deploy ` +
+				`that creates the CDN (\`deploy.objects.${stage}\` on s3, cdn on): run ` +
+				`gkm deploy --stage ${stage}.`,
+		);
+		this.name = 'ProcessorOriginSecretMissing';
+	}
 }
 
 /**
@@ -351,6 +438,8 @@ export interface ComposeStack {
 	apps: StackApp[];
 	/** Each Worker with background work, in a container of its own. */
 	workers: StackWorker[];
+	/** Each file server's processors, in a container of their own. */
+	processors: StackProcessor[];
 	/** Each mobile app, and what its build reads for this stage. */
 	mobileApps: StackMobileApp[];
 	/** The infrastructure containers, by compose service name. */
@@ -473,6 +562,11 @@ export interface StackInput {
 	 * which workers run, and which app each is built from.
 	 */
 	background?: Readonly<Record<string, readonly string[]>>;
+	/**
+	 * Each Worker's topic subscribers, from discovery — which of them SNS
+	 * pushes to decides whether the worker answers on a host of its own.
+	 */
+	subscribers?: Readonly<Record<string, readonly BoundSubscriber[]>>;
 	stage: string;
 	identity: DeployIdentity;
 	images: {
@@ -671,7 +765,13 @@ export function composeStack(input: StackInput): ComposeStack {
 		workerUnits(workspace, manifest, input.background ?? {}),
 		{ stage, identity, images: input.images },
 	);
-	if (apps.length === 0 && workers.length === 0) {
+	const processors = stackProcessors(processorUnits(workspace, manifest), {
+		manifest,
+		stage,
+		identity,
+		images: input.images,
+	});
+	if (apps.length === 0 && workers.length === 0 && processors.length === 0) {
 		throw new NothingToCompose(workspace.root);
 	}
 
@@ -1054,25 +1154,79 @@ export function composeStack(input: StackInput): ComposeStack {
 	}
 
 	// A worker reaches every surface across the compose network: it is never
-	// one, so no address is its own.
+	// one, so no address is its own — unless SNS pushes to it.
 	for (const worker of input.buildOnly ? [] : workers) {
 		const keys =
 			workerEnvKeys(manifest, worker.id, input.runnables) ?? new Set();
+		const resolved = valuesFor(
+			{ name: worker.name, id: worker.id, kind: 'rest-api' },
+			keys,
+		);
+		const push = local
+			? undefined
+			: workerPush(worker, input.subscribers?.[worker.id] ?? [], resolved, {
+					stage,
+					...(domain ? { domain } : {}),
+				});
+		if (push) {
+			worker.push = push;
+			if (proxy === 'traefik') edgeServices.add(worker.name);
+		}
 		worker.env = {
-			...scopeTelemetryEnv(
-				valuesFor({ name: worker.name, id: worker.id, kind: 'rest-api' }, keys),
-				{
-					uses: telemetryOf(manifest, worker.id) !== undefined,
-					serviceName: worker.name,
-					...(telemetryValues ? { telemetry: telemetryValues } : {}),
-				},
-			),
+			...scopeTelemetryEnv(resolved, {
+				uses: telemetryOf(manifest, worker.id) !== undefined,
+				serviceName: worker.name,
+				...(telemetryValues ? { telemetry: telemetryValues } : {}),
+			}),
+			...(push ? { [SUBSCRIBER_PUSH_URL_KEY]: push.url } : {}),
 			NODE_ENV: 'production',
 			PORT: String(worker.port),
 			STAGE: stage,
 		};
 		for (const [key, value] of Object.entries(worker.env)) {
 			if (/[\r\n]/.test(value)) throw new EnvValueMultiline(worker.name, key);
+		}
+	}
+
+	// Each file server's processors: on its own host when the stack's MinIO
+	// serves it — their patterns to their container, every other path to the
+	// bucket — and otherwise on a host the CDN in front of the bucket reaches,
+	// with the secret it sends.
+	for (const unit of processors) {
+		const served = fileServers.get(unit.id);
+		if (served) {
+			served.route = {
+				...served.route,
+				handlers: [
+					{
+						name: unit.name,
+						prefixes: unit.prefixes,
+						upstreams: [{ service: unit.name, port: unit.port }],
+					},
+				],
+			};
+		} else if (!local && !input.buildOnly) {
+			if (!domain) throw new NoDomainForStage(stage);
+			const key = originSecretKey(unit.id);
+			const secret = custom[key];
+			if (!secret) throw new ProcessorOriginSecretMissing(unit.id, key, stage);
+			unit.origin = { host: processorOriginHost(unit.id, domain), secret };
+		}
+		if (proxy === 'traefik' && (served || unit.origin)) {
+			edgeServices.add(unit.name);
+		}
+
+		if (input.buildOnly) continue;
+		const keys =
+			processorEnvKeys(manifest, unit.id, input.runnables) ?? new Set();
+		unit.env = {
+			...valuesFor({ name: unit.name, id: unit.id, kind: 'rest-api' }, keys),
+			NODE_ENV: 'production',
+			PORT: String(unit.port),
+			STAGE: stage,
+		};
+		for (const [key, value] of Object.entries(unit.env)) {
+			if (/[\r\n]/.test(value)) throw new EnvValueMultiline(unit.name, key);
 		}
 	}
 
@@ -1118,6 +1272,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		infra,
 		apps,
 		workers,
+		processors,
 		credentials: credential.containers,
 		...(storage ? { storage } : {}),
 		...(logs ? { logs } : {}),
@@ -1147,6 +1302,38 @@ export function composeStack(input: StackInput): ComposeStack {
 			}),
 		),
 		...[...fileServers.values()].map(({ route }) => route),
+		...processors.flatMap(({ name, port, prefixes, origin }): EdgeRoute[] =>
+			origin
+				? [
+						{
+							name,
+							host: origin.host,
+							upstreams: [{ service: name, port }],
+							streaming: false,
+							prefixes,
+							requireHeader: {
+								name: ORIGIN_VERIFY_HEADER,
+								value: origin.secret,
+							},
+							health: '/health',
+						},
+					]
+				: [],
+		),
+		...workers.flatMap(({ name, port, push }): EdgeRoute[] =>
+			push
+				? [
+						{
+							name,
+							host: push.host,
+							upstreams: [{ service: name, port }],
+							streaming: false,
+							paths: push.paths,
+							health: '/health',
+						},
+					]
+				: [],
+		),
 		...(logs?.host && logs.public
 			? [
 					{
@@ -1159,6 +1346,7 @@ export function composeStack(input: StackInput): ComposeStack {
 				]
 			: []),
 	];
+	assertHostsUnique(routes);
 	const dockerfiles: Record<string, string> = {};
 	for (const app of apps) {
 		if (!app.build) continue;
@@ -1193,6 +1381,19 @@ export function composeStack(input: StackInput): ComposeStack {
 			{ layout, workspaceRoot: workspace.root, cache: STACK_CACHE },
 		);
 	}
+	for (const unit of processors) {
+		if (!unit.build) continue;
+		dockerfiles[unit.build.dockerfile] = processorDockerfile(
+			{ id: unit.id, name: unit.name, app: unit.host },
+			workspace.apps[unit.host]!,
+			{
+				layout,
+				workspaceRoot: workspace.root,
+				native: unit.native,
+				cache: STACK_CACHE,
+			},
+		);
+	}
 
 	return {
 		project,
@@ -1200,6 +1401,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		local,
 		apps,
 		workers,
+		processors,
 		mobileApps,
 		infra,
 		compose,
@@ -1302,6 +1504,106 @@ function stackApps(
 	return apps.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** What the worker reads the public base of its push routes from. */
+export const SUBSCRIBER_PUSH_URL_KEY = 'GKM_SUBSCRIBER_PUSH_URL';
+
+/**
+ * Where SNS pushes to a worker on a deployed stage, or nothing when it pushes
+ * to none of its subscribers.
+ *
+ * A subscriber is pushed to when its topic's connection string, as this stage
+ * resolved it for the worker, is an SNS one — the same test the worker's own
+ * startup makes, so the edge exposes a route exactly when the worker mounts
+ * it. Each such route, and nothing else the worker serves, answers on
+ * `<worker>.<domain>`.
+ */
+export function workerPush(
+	worker: Pick<StackWorker, 'name'>,
+	subscribers: readonly BoundSubscriber[],
+	env: Readonly<Record<string, string>>,
+	options: { stage: string; domain?: string },
+): WorkerPush | undefined {
+	const paths = subscribers
+		.filter(({ topic }) =>
+			env[provideKey(topic, 'publisherConnectionString')]?.startsWith('sns:'),
+		)
+		.map(({ name }) => subscriberRoute(name))
+		.sort();
+	if (paths.length === 0) return undefined;
+	if (!options.domain) throw new NoDomainForStage(options.stage);
+
+	const host = `${worker.name}.${options.domain}`;
+	return { host, url: `https://${host}`, paths: [...new Set(paths)] };
+}
+
+/** Two constructs the edge would answer on one host. */
+export class EdgeHostTaken extends GkmError {
+	constructor(
+		readonly host: string,
+		readonly first: string,
+		readonly second: string,
+	) {
+		super(
+			`'${first}' and '${second}' would both answer on ${host}, and the ` +
+				`edge can send a host to only one of them. Give one a subdomain of ` +
+				`its own, or rename it.`,
+		);
+		this.name = 'EdgeHostTaken';
+	}
+}
+
+/** Refuse a stack where one host would be routed to two services. */
+function assertHostsUnique(routes: readonly EdgeRoute[]): void {
+	const claimed = new Map<string, string>();
+	for (const { host, name } of routes) {
+		const first = claimed.get(host);
+		if (first !== undefined) throw new EdgeHostTaken(host, first, name);
+		claimed.set(host, name);
+	}
+}
+
+/** Each processor unit's image, and where it is built from. */
+function stackProcessors(
+	units: readonly ProcessorUnit[],
+	options: {
+		manifest: ConstructManifest;
+		stage: string;
+		identity: DeployIdentity;
+		images: StackInput['images'];
+	},
+): StackProcessor[] {
+	return units.map((unit) => {
+		const server = options.manifest[unit.id];
+		const processors =
+			server?.kind === 'file-server' ? (server.processors ?? []) : [];
+		return {
+			app: unit.name,
+			name: unit.name,
+			id: unit.id,
+			host: unit.app,
+			port: PROCESSOR_PORT,
+			prefixes: [...new Set(processors.map((p) => p.prefix))].sort(),
+			native: processorNative(options.manifest, unit.id),
+			ref: validateImageRef(
+				imageRef(
+					options.identity,
+					unit.name,
+					options.images.registry,
+					options.images.tag,
+				),
+			),
+			tag: options.images.tag,
+			...(options.images.mode === 'build'
+				? {
+						build: {
+							dockerfile: `${stackDir(options.stage)}/Dockerfile.${unit.name}`,
+						},
+					}
+				: {}),
+		};
+	});
+}
+
 /** Each worker's image, and where it is built from. */
 function stackWorkers(
 	units: readonly WorkerUnit[],
@@ -1366,6 +1668,7 @@ function stackFile(options: {
 	infra: readonly string[];
 	apps: readonly StackApp[];
 	workers: readonly StackWorker[];
+	processors: readonly StackProcessor[];
 	credentials: ContainerCredentials;
 	storage?: StackStorage;
 	logs?: StackLogs;
@@ -1502,8 +1805,9 @@ function stackFile(options: {
 		};
 	}
 
-	// A worker: no route, no published port — its health check is Docker's.
-	for (const worker of options.workers) {
+	// A worker or a processor unit: no published port — its health check is
+	// Docker's, and the edge reaches it only on the paths it routes there.
+	for (const worker of [...options.workers, ...options.processors]) {
 		services[worker.name] = {
 			image: worker.ref,
 			...(worker.build
@@ -1537,7 +1841,13 @@ function stackFile(options: {
 			// The Caddyfile and the stage's own certificate are inline configs,
 			// added as the file is written (`withCaddyConfigs`).
 			volumes: ['caddy-data:/data', 'caddy-config:/config'],
-			depends_on: Object.fromEntries(apps.map((app) => [app.name, HEALTHY])),
+			depends_on: Object.fromEntries(
+				[
+					...apps.map((app) => app.name),
+					...options.workers.filter((w) => w.push).map((w) => w.name),
+					...options.processors.map((p) => p.name),
+				].map((name) => [name, HEALTHY]),
+			),
 			healthcheck: {
 				test: ['CMD', 'caddy', 'version'],
 				interval: '10s',

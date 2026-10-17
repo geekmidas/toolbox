@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { ORIGIN_VERIFY_HEADER } from '../processorOrigin';
 import {
 	CACHING_OPTIMIZED,
+	CACHING_OPTIMIZED_UNCOMPRESSED,
 	cdnHost,
 	cdnName,
 	distributionConfig,
@@ -209,5 +211,81 @@ describe('the distribution', () => {
 			),
 		).toBe(false);
 		expect(holds({ ...filled, Aliases: { Quantity: 0 } }, config)).toBe(false);
+	});
+});
+
+describe("a file server's processors behind the distribution", () => {
+	const config = distributionConfig({
+		comment: 'gkm shop prod AssetsServer',
+		callerReference: 'gkm-shop-prod-assets-server',
+		host: 'assets-server.shop.example.com',
+		certificateArn: 'arn:aws:acm:us-east-1:111:certificate/c',
+		bucketDomain: 'shop-prod-assets.s3.eu-west-1.amazonaws.com',
+		originAccessControlId: 'OAC',
+		corsPolicyId: 'CORS',
+		immutablePolicyId: 'IMM',
+		// Everything immutable: the processors' behaviours must still win.
+		immutable: ['**'],
+		processors: {
+			prefixes: ['/i/', '/pdf/'],
+			host: 'assets-server-processors.shop.example.com',
+			secret: 'the-secret',
+		},
+	});
+
+	it('reaches the processor unit over HTTPS, sending the secret its edge checks', () => {
+		expect(config.Origins?.Quantity).toBe(2);
+		expect(config.Origins?.Items?.[1]).toEqual({
+			Id: 'processors',
+			DomainName: 'assets-server-processors.shop.example.com',
+			OriginPath: '',
+			CustomOriginConfig: {
+				HTTPPort: 80,
+				HTTPSPort: 443,
+				OriginProtocolPolicy: 'https-only',
+				OriginSslProtocols: { Quantity: 1, Items: ['TLSv1.2'] },
+				OriginReadTimeout: 30,
+				OriginKeepaliveTimeout: 5,
+			},
+			CustomHeaders: {
+				Quantity: 1,
+				Items: [
+					{ HeaderName: ORIGIN_VERIFY_HEADER, HeaderValue: 'the-secret' },
+				],
+			},
+		});
+	});
+
+	it('sends each pattern there first, cached on the path alone and not re-compressed', () => {
+		const behaviours = config.CacheBehaviors?.Items ?? [];
+
+		expect(behaviours.map((b) => [b.PathPattern, b.TargetOriginId])).toEqual([
+			['i/*', 'processors'],
+			['pdf/*', 'processors'],
+			['*', 'bucket'],
+		]);
+		expect(behaviours[0]).toMatchObject({
+			Compress: false,
+			CachePolicyId: CACHING_OPTIMIZED_UNCOMPRESSED,
+			ResponseHeadersPolicyId: 'CORS',
+			ViewerProtocolPolicy: 'redirect-to-https',
+		});
+	});
+
+	it('has no processors origin for a file server without processors', () => {
+		const plain = distributionConfig({
+			comment: 'c',
+			callerReference: 'r',
+			host: 'h',
+			certificateArn: 'a',
+			bucketDomain: 'b',
+			originAccessControlId: 'o',
+			immutable: [],
+		});
+
+		expect(plain.Origins).toEqual({
+			Quantity: 1,
+			Items: [expect.objectContaining({ Id: 'bucket' })],
+		});
 	});
 });

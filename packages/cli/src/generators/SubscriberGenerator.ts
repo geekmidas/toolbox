@@ -10,6 +10,7 @@ import {
 	type GeneratedConstruct,
 	type GeneratorOptions,
 } from './Generator';
+import { SUBSCRIBER_ROUTE_PREFIX } from './subscriberRoute.js';
 
 export class SubscriberGenerator extends ConstructGenerator<
 	Subscriber<any, any, any, any, any, any, any>,
@@ -246,7 +247,7 @@ const connections = new Map<string, EventConnection>();
 const failed: string[] = [];
 
 /** The route a subscriber's pushes arrive on. */
-export const SUBSCRIBER_ROUTE = (id: string) => \`/__gkm/subscribers/\${id}\`;
+export const SUBSCRIBER_ROUTE = (id: string) => \`${SUBSCRIBER_ROUTE_PREFIX}\${id}\`;
 
 /** Resolves once something is accepting connections on the port. */
 async function listening(port: number): Promise<void> {

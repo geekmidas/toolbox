@@ -10,14 +10,17 @@ import { postgresSuperuser } from '../../reconcile/localCredentials';
 import { postgresStatements } from '../../reconcile/provision';
 import { initStageSecrets } from '../../secrets/storage';
 import type { StageSecrets } from '../../secrets/types';
+import { NoDomainForStage } from '../../target/dokploy/domain';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { REDIS_IMAGE, RedisPasswordMissing } from '../redis';
 import {
 	type ComposeStack,
 	composeStack,
+	EdgeHostTaken,
 	envFile,
 	LocalCredentialsMissing,
 	NothingToCompose,
+	ProcessorOriginSecretMissing,
 	type StackInput,
 	StageSecretMissing,
 	StageSeedMissing,
@@ -920,6 +923,249 @@ describe('a worker', () => {
 		expect(() => stack({ manifest: noSurfaces, background: {} })).toThrow(
 			NothingToCompose,
 		);
+	});
+});
+
+describe("a file server's processors", () => {
+	/** The bucket and its file server, with a thumbnail processor in the API's app. */
+	const withProcessors = (): ConstructManifest => {
+		const services = withServices();
+		return {
+			...services,
+			UploadsServer: {
+				...services.UploadsServer,
+				processors: [
+					{
+						id: 'thumbnails',
+						handler: 'apps/api/processors/thumbnails.ts#thumbnails',
+						path: '/i/:width/*',
+						prefix: '/i/',
+						native: ['sharp'],
+						dependencies: [{ target: 'Uploads', kind: 'objects' }],
+					},
+				],
+			},
+		} as unknown as ConstructManifest;
+	};
+	const unit = (s: ComposeStack) =>
+		s.processors.find((p) => p.name === 'uploads-processors')!;
+
+	it('run in a container of their own, built from the app holding them', () => {
+		const s = stack({ manifest: withProcessors() });
+
+		expect(unit(s)).toMatchObject({
+			id: 'UploadsServer',
+			host: 'api',
+			port: 3000,
+			prefixes: ['/i/'],
+			native: ['sharp'],
+		});
+		const service = s.compose.services['uploads-processors']!;
+		expect(service.ports).toBeUndefined();
+		expect(service.env_file).toEqual([
+			{ path: './uploads-processors.env', format: 'raw' },
+		]);
+		expect(service.healthcheck?.test).toContain('http://127.0.0.1:3000/health');
+		expect(s.compose.services.caddy?.depends_on).toHaveProperty(
+			'uploads-processors',
+		);
+	});
+
+	it('read their bucket, on the compose network', () => {
+		const env = unit(stack({ manifest: withProcessors() })).env!;
+
+		expect(env.UPLOADS_URL).toMatch(/^s3:\/\//);
+		expect(env.PORT).toBe('3000');
+		// Not the API's secret: only what the processors reach.
+		expect(env).not.toHaveProperty('AUTH_SECRET');
+		expect(env).not.toHaveProperty('DATABASE_URL');
+	});
+
+	it("take their patterns on the file server's host, while the bucket keeps the rest", () => {
+		const s = stack({ manifest: withProcessors() });
+		const route = s.routes.find((r) => r.name === 'files-uploads-server')!;
+
+		expect(route.handlers).toEqual([
+			{
+				name: 'uploads-processors',
+				prefixes: ['/i/'],
+				upstreams: [{ service: 'uploads-processors', port: 3000 }],
+			},
+		]);
+		expect(route.upstreams).toEqual([{ service: 'minio', port: 9000 }]);
+		expect(s.caddyfile).toContain('@handler0 path /i/*');
+		// No host of their own: the file server's is theirs.
+		expect(unit(s).origin).toBeUndefined();
+	});
+
+	it('install their native packages in their image, for linux', () => {
+		const s = stack({ manifest: withProcessors() });
+		const dockerfile =
+			s.dockerfiles['.gkm/compose/development/Dockerfile.uploads-processors']!;
+
+		expect(dockerfile).toContain('Processors Dockerfile (UploadsServer)');
+		expect(dockerfile).toContain(
+			'/app/apps/api/.gkm/server/dist/uploads-processors.mjs ./processors.mjs',
+		);
+		expect(dockerfile).toContain('const names = ["sharp"];');
+		expect(dockerfile).toContain('CMD ["node", "processors.mjs"]');
+	});
+
+	describe('behind a CDN', () => {
+		/** A stage whose bucket is S3's, served by the CDN the deploy made. */
+		const deployed = (custom: Record<string, string> = {}) =>
+			stack({
+				stage: 'production',
+				manifest: withProcessors(),
+				images: { mode: 'pull', tag: 'v1.4.0' },
+				secrets: production({
+					...EXTERNAL,
+					UPLOADS_SERVER_URL: 'https://uploads-server.shop.example.com',
+					...custom,
+				}),
+				ports: {},
+			});
+
+		it('answer on a host only the CDN may call', () => {
+			const s = deployed({ UPLOADS_SERVER_ORIGIN_SECRET: 'from-the-deploy' });
+
+			expect(unit(s).origin).toEqual({
+				host: 'uploads-server-processors.shop.example.com',
+				secret: 'from-the-deploy',
+			});
+			expect(s.routes.find((r) => r.name === 'uploads-processors')).toEqual({
+				name: 'uploads-processors',
+				host: 'uploads-server-processors.shop.example.com',
+				upstreams: [{ service: 'uploads-processors', port: 3000 }],
+				streaming: false,
+				prefixes: ['/i/'],
+				requireHeader: {
+					name: 'X-Gkm-Origin-Verify',
+					value: 'from-the-deploy',
+				},
+				health: '/health',
+			});
+			expect(s.caddyfile).toContain(
+				'@forged not header X-Gkm-Origin-Verify "from-the-deploy"',
+			);
+			// The secret is the edge's, never the processors' own.
+			expect(Object.values(unit(s).env!)).not.toContain('from-the-deploy');
+		});
+
+		it('refuse to compose without the secret the CDN sends', () => {
+			expect(() => deployed()).toThrow(ProcessorOriginSecretMissing);
+			expect(() => deployed()).toThrow(/UPLOADS_SERVER_ORIGIN_SECRET/);
+		});
+	});
+});
+
+describe('a worker SNS pushes to', () => {
+	/**
+	 * The workspace with a topic the worker subscribes to: the build would
+	 * find it through discovery, which records the subscriber under `Jobs`.
+	 */
+	const withTopic = (base: ConstructManifest = manifest): ConstructManifest =>
+		({
+			...base,
+			Alerts: {
+				kind: 'topic',
+				id: 'Alerts',
+				provides: ['ALERTS_PUBLISHER_CONNECTION_STRING'],
+				events: ['alert.raised'],
+				subscribers: [],
+			},
+		}) as unknown as ConstructManifest;
+	const SNS =
+		'sns://AKIAEXAMPLE:secret@?topicArn=arn:aws:sns:eu-west-1:123456789012:alerts&region=eu-west-1';
+
+	const deployed = (overrides: Partial<StackInput> = {}) =>
+		stack({
+			stage: 'production',
+			manifest: withTopic(),
+			runnables: { ...runnables, Jobs: [...(runnables.Jobs ?? []), 'Alerts'] },
+			subscribers: {
+				Jobs: [
+					{ name: 'onAlert', topic: 'Alerts' },
+					{ name: 'onAlertAgain', topic: 'Alerts' },
+				],
+			},
+			images: { mode: 'pull', tag: 'v1.4.0' },
+			secrets: production({ ALERTS_PUBLISHER_CONNECTION_STRING: SNS }),
+			ports: {},
+			...overrides,
+		});
+	const jobs = (s: ComposeStack) => s.workers.find((w) => w.name === 'jobs')!;
+
+	it("answers on its own host, on exactly its subscribers' routes", () => {
+		const s = deployed();
+
+		expect(jobs(s).push).toEqual({
+			host: 'jobs.shop.example.com',
+			url: 'https://jobs.shop.example.com',
+			paths: ['/__gkm/subscribers/onAlert', '/__gkm/subscribers/onAlertAgain'],
+		});
+		expect(s.routes.find((r) => r.name === 'jobs')).toEqual({
+			name: 'jobs',
+			host: 'jobs.shop.example.com',
+			upstreams: [{ service: 'jobs', port: 3000 }],
+			streaming: false,
+			paths: ['/__gkm/subscribers/onAlert', '/__gkm/subscribers/onAlertAgain'],
+			health: '/health',
+		});
+		expect(s.caddyfile).toContain('https://jobs.shop.example.com {');
+		expect(s.caddyfile).toContain('reverse_proxy jobs:3000');
+		// The edge waits for it, as it does for every service it routes to.
+		expect(s.compose.services.caddy?.depends_on).toHaveProperty('jobs');
+	});
+
+	it('is told the public base its routes are subscribed under', () => {
+		const env = jobs(deployed()).env!;
+
+		expect(env.GKM_SUBSCRIBER_PUSH_URL).toBe('https://jobs.shop.example.com');
+		expect(env.ALERTS_PUBLISHER_CONNECTION_STRING).toBe(SNS);
+	});
+
+	it('stays private while its topics are on pg-boss', () => {
+		const s = deployed({ secrets: production() });
+
+		expect(jobs(s).push).toBeUndefined();
+		expect(jobs(s).env).not.toHaveProperty('GKM_SUBSCRIBER_PUSH_URL');
+		expect(s.routes.map((r) => r.name)).not.toContain('jobs');
+		expect(s.caddyfile).not.toContain('jobs');
+	});
+
+	it('stays private on the local stage, where the emulator pushes to the host', () => {
+		const s = stack({
+			manifest: withTopic(),
+			runnables: { ...runnables, Jobs: [...(runnables.Jobs ?? []), 'Alerts'] },
+			subscribers: { Jobs: [{ name: 'onAlert', topic: 'Alerts' }] },
+		});
+
+		expect(jobs(s).push).toBeUndefined();
+		expect(s.routes.map((r) => r.name)).not.toContain('jobs');
+	});
+
+	it('needs the stage to have a domain to answer on', () => {
+		expect(() =>
+			deployed({ workspace: { ...workspace, domains: {} } }),
+		).toThrow(NoDomainForStage);
+	});
+
+	it('refuses a host an app already answers on', () => {
+		// The API on the subdomain the worker would take.
+		const run = () =>
+			deployed({
+				workspace: {
+					...workspace,
+					apps: {
+						...workspace.apps,
+						api: { ...workspace.apps.api!, subdomain: 'jobs' },
+					},
+				},
+			});
+
+		expect(run).toThrow(EdgeHostTaken);
+		expect(run).toThrow(/'api' and 'jobs' would both answer on jobs\.shop/);
 	});
 });
 

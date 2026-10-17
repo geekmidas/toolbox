@@ -29,6 +29,8 @@
  * than rename the one holding the data.
  */
 
+import type { Logger } from '@geekmidas/logger';
+import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
 	type ConstructName,
 	canonicalId,
@@ -38,7 +40,15 @@ import {
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { createStorageClient, type StorageClient } from '@geekmidas/storage';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Construct, Declarable } from './construct-interface';
+import type { Processor } from './processors/Processor';
+import { ProcessorBuilder } from './processors/ProcessorBuilder';
+import {
+	fillPattern,
+	type PatternParams,
+	parsePattern,
+} from './processors/pattern';
 
 /**
  * A key an open pattern admits.
@@ -102,6 +112,48 @@ export interface FileServerClient<TOpen extends string = never>
 	 * @param expiresIn - minutes, matching `getUploadURL`.
 	 */
 	signedUrl(key: string, expiresIn?: number): Promise<string>;
+
+	/**
+	 * The address of a processor's derivative of an open object — the
+	 * thumbnail, not the original.
+	 *
+	 * @throws {NotOpen} when the key matches no declared pattern.
+	 * @throws {ProcessorNotOnThisServer} for another file server's processor.
+	 */
+	processedUrl<
+		TPattern extends string,
+		TSchema extends StandardSchemaV1 | undefined,
+	>(
+		processor: Processor<TPattern, TSchema, any, any>,
+		params: ProcessorUrlParams<TPattern, TSchema>,
+		key: string,
+	): string;
+}
+
+/**
+ * What addresses a derivative: the values the processor's schema accepts —
+ * its input, since these go into a path — or, without one, the raw strings.
+ */
+export type ProcessorUrlParams<
+	TPattern extends string,
+	TSchema extends StandardSchemaV1 | undefined,
+> = TSchema extends StandardSchemaV1
+	? StandardSchemaV1.InferInput<TSchema>
+	: PatternParams<TPattern>;
+
+/** A processed URL was asked of a file server the processor is not on. */
+export class ProcessorNotOnThisServer extends Error {
+	constructor(
+		readonly pattern: string,
+		readonly server: string,
+		readonly expected: string,
+	) {
+		super(
+			`The processor at '${pattern}' belongs to '${server}', not '${expected}'. ` +
+				`Ask its own file server for the URL: services.<its id>.processedUrl(…).`,
+		);
+		this.name = 'ProcessorNotOnThisServer';
+	}
 }
 
 export interface FileServerOptions<TOpen extends string = never> {
@@ -196,6 +248,13 @@ export class FileServer<
 	 */
 	private readonly keys: { origin: string; server: string };
 
+	/**
+	 * How a processor reaches the bucket: the bucket's own URL and nothing of
+	 * the serving half, which a processor never needs. A field, not a getter:
+	 * services are cached by object identity.
+	 */
+	private readonly origin: Service<string, StorageClient>;
+
 	constructor(
 		id: ConstructName<TName>,
 		private readonly options: FileServerOptions<TOpen> = {},
@@ -227,6 +286,55 @@ export class FileServer<
 			serviceName: serviceKey(canonical) as Uncapitalize<TName>,
 			register: (registerOptions) => this.connect(registerOptions),
 		};
+
+		const originKey = this.keys.origin;
+		this.origin = {
+			serviceName: `${serviceKey(originId)}ProcessorOrigin`,
+			register: ({ envParser }) => {
+				const { url } = envParser
+					.create((get) => ({ url: get(originKey).string() }))
+					.parse();
+				return createStorageClient(url);
+			},
+		};
+	}
+
+	/**
+	 * A processor behind one path pattern of this server: a handler that makes
+	 * a derivative of an open object on read.
+	 *
+	 * ```ts
+	 * export const thumbnails = assets
+	 *   .process('/i/:width/*')
+	 *   .params(z.object({ width: z.enum(['64', '256', '1024']) }))
+	 *   .native(['sharp'])
+	 *   .handle(async ({ params, object }) => ({
+	 *     body: await sharp(await object.bytes()).resize(Number(params.width)).webp().toBuffer(),
+	 *     contentType: 'image/webp',
+	 *     cache: 'immutable',
+	 *   }));
+	 * ```
+	 *
+	 * Open paths only: a key no `open` pattern admits is answered 404, as an
+	 * unsigned read of it would be.
+	 *
+	 * @throws {ProcessorPatternInvalid} for a pattern the edge cannot route.
+	 */
+	process<TPattern extends `/${string}/*`>(
+		pattern: TPattern,
+		options: { logger?: Logger } = {},
+	): ProcessorBuilder<TPattern> {
+		return new ProcessorBuilder<TPattern>({
+			parsed: parsePattern(pattern),
+			surfaceId: this.surfaceId,
+			bucketId: this.options.origin?.id ?? this.id,
+			origin: this.origin,
+			serves: (key) => this.serves(key),
+			logger: (options.logger ?? DEFAULT_LOGGER) as Logger,
+			native: [],
+			services: [],
+			constructs: [],
+		});
 	}
 
 	/**
@@ -325,6 +433,21 @@ export class FileServer<
 			openUrl: serve,
 			signedUrl: (key: string, expiresIn?: number) =>
 				storage.getDownloadURL({ path: key } as never, expiresIn),
+			processedUrl: (
+				processor: Processor<string, any, any, any>,
+				params: Record<string, string | number>,
+				key: string,
+			) => {
+				if (processor.surfaceId !== this.surfaceId) {
+					throw new ProcessorNotOnThisServer(
+						processor.pattern,
+						processor.surfaceId,
+						this.surfaceId,
+					);
+				}
+				if (!this.serves(key)) throw new NotOpen(key, this.open);
+				return `${base}${fillPattern(processor.parsed, params, key)}`;
+			},
 		}) as FileServerClient<TOpen>;
 	}
 

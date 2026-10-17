@@ -282,4 +282,50 @@ describe('withCompute — the edges it records', () => {
 				.subscribers[0]?.dependencies,
 		).toEqual([{ target: 'Uploads', kind: 'objects' }]);
 	});
+
+	it("replaces a processor's source with the handler the build wrote, in its file server", () => {
+		const served = {
+			...base,
+			Media: { kind: 'objects', id: 'Media', provides: ['MEDIA_URL'] },
+			MediaServer: {
+				kind: 'file-server',
+				id: 'MediaServer',
+				of: 'Media',
+				processors: [
+					{
+						id: 'thumbnails',
+						handler: 'processors/thumbnails.ts#thumbnails',
+						path: '/i/:width/*',
+						prefix: '/i/',
+						dependencies: [],
+					},
+				],
+			},
+		} as unknown as ConstructManifest;
+
+		const merged = withCompute(served, {
+			processors: [
+				{
+					name: 'thumbnails',
+					handler: 'apps/api/.gkm/aws/processors/thumbnails.handler',
+					fileServer: 'MediaServer',
+					path: '/i/:width/*',
+					prefix: '/i/',
+					native: ['sharp'],
+					dependencies: ['Media'],
+				},
+			],
+		});
+
+		expect(merged.MediaServer).toMatchObject({
+			processors: [
+				{
+					id: 'thumbnails',
+					handler: 'apps/api/.gkm/aws/processors/thumbnails.handler',
+					native: ['sharp'],
+					dependencies: [{ target: 'Media', kind: 'objects' }],
+				},
+			],
+		});
+	});
 });

@@ -140,6 +140,10 @@ On a stage whose buckets the `s3` provider creates, the file server answers on
 `<fileserver>.<domain>` through CloudFront, with that header on the immutable
 paths — see [Providers](../guide/providers.md#objects-s3).
 
+A file server can also make derivatives of its open objects on read — a
+thumbnail at `/i/256/avatars/7.png` — with `assets.process('/i/:width/*')`. See
+[File Server Processors](../guide/file-server-processors.md).
+
 A `Credential`'s value is the stage's `<ID>_CREDENTIALS` — `STRIPE_CREDENTIALS`
 here — set with `gkm secrets:add`. On the test stage, and under
 `gkm dev --fake`, it can come from a fake beside the external APIs' instead,
