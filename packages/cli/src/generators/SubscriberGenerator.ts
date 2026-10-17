@@ -10,7 +10,10 @@ import {
 	type GeneratedConstruct,
 	type GeneratorOptions,
 } from './Generator';
-import { SUBSCRIBER_ROUTE_PREFIX } from './subscriberRoute.js';
+import {
+	SNS_SUBSCRIPTIONS_KEY,
+	SUBSCRIBER_ROUTE_PREFIX,
+} from './subscriberRoute.js';
 
 export class SubscriberGenerator extends ConstructGenerator<
 	Subscriber<any, any, any, any, any, any, any>,
@@ -218,16 +221,20 @@ export async function stopSubscribers(): Promise<void> {}
  * topic's own connection string:
  *
  * - **sns://** — pushed, not polled. The subscriber gets an HTTP route on this
- *   server, and the route is subscribed to the topic with a filter policy of
- *   the events it named, so SNS fans out to each subscriber. The route runs the
- *   subscriber through the same adaptor a Lambda subscription does.
+ *   server, subscribed to the topic with a filter policy of the events it
+ *   named, so SNS fans out to each subscriber. The route runs the subscriber
+ *   through the same adaptor a Lambda subscription does. Against SNS itself
+ *   the deploy made the subscription and recorded its ARN in
+ *   ${SNS_SUBSCRIPTIONS_KEY}: a route is mounted only for a recorded one, its
+ *   confirmation goes through the API, and nothing is subscribed from here.
+ *   Against an emulator, where nothing deploys, the route subscribes itself.
  * - **anything else** (pgboss://, rabbitmq://, sqs://) — polled. On pg-boss
  *   each subscriber drains a queue of its own, \`<topic>/<subscriber>\`, so
  *   every subscriber sees every event; replicas of one subscriber share it.
  *
  * GKM_SUBSCRIBERS=off (\`gkm dev --no-subscribers\`) runs none of them.
- * GKM_SUBSCRIBER_PUSH_URL is the address SNS pushes to; against the local
- * emulator it defaults to this server through host.docker.internal.
+ * GKM_SUBSCRIBER_PUSH_URL is the address an emulator pushes to, defaulting to
+ * this server through host.docker.internal.
  */
 import { connect } from 'node:net';
 import type { EnvironmentParser } from '@geekmidas/envkit';
@@ -245,6 +252,21 @@ ${entries}
 // and its shutdown closes what was opened.
 const connections = new Map<string, EventConnection>();
 const failed: string[] = [];
+
+/**
+ * The subscriptions the deploy made against SNS itself, by subscriber: which
+ * routes to mount, and the ARN each one's notifications must name.
+ */
+function recordedSubscriptions(logger: Logger): Record<string, string> {
+  const raw = process.env.${SNS_SUBSCRIPTIONS_KEY};
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+  } catch {}
+  logger.error('${SNS_SUBSCRIPTIONS_KEY} is not a JSON object of subscriber → subscription ARN');
+  return {};
+}
 
 /** The route a subscriber's pushes arrive on. */
 export const SUBSCRIBER_ROUTE = (id: string) => \`${SUBSCRIBER_ROUTE_PREFIX}\${id}\`;
@@ -278,6 +300,7 @@ export async function setupSubscribers(
   }
 
   const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
+  const recorded = recordedSubscriptions(logger);
   const afterListening: ((port: number) => Promise<void>)[] = [];
 
   for (const { id, subscriber, topic, connectionKey } of subscribers) {
@@ -300,35 +323,61 @@ export async function setupSubscribers(
 ${
 	push
 		? `      if (connectionString.startsWith('sns:')) {
-        const { SNSConnection, snsUrl, subscribeHttpEndpoint } = await import('@geekmidas/events/sns');
+        const { SNSConnection, snsUrl, subscribeHttpEndpoint, confirmSubscription } = await import('@geekmidas/events/sns');
         const { SnsPushSubscriberAdaptor } = await import('@geekmidas/constructs/subscribers');
         const address = snsUrl.parse(connectionString);
         const route = SUBSCRIBER_ROUTE(id);
-        const adaptor = new SnsPushSubscriberAdaptor(envParser, subscriber, {
-          topicArn: address.topicArn,
-          // An emulator signs nothing. Decided by the address this server was
-          // configured with, never by anything a request says about itself.
-          verify: !address.endpoint,
-          ...(address.endpoint ? { emulatorEndpoint: address.endpoint } : {}),
-        });
+        const mount = (adaptor: InstanceType<typeof SnsPushSubscriberAdaptor>) =>
+          app.post(route, async (c: any) => {
+            const body = JSON.parse(await c.req.text());
+            const response = await adaptor.handle(body, {
+              subscriptionArn: c.req.header('x-amz-sns-subscription-arn'),
+            });
+            return c.json(response.body, response.status);
+          });
 
-        app.post(route, async (c: any) => {
-          const body = JSON.parse(await c.req.text());
-          const response = await adaptor.handle(body);
-          return c.json(response.body, response.status);
-        });
+        if (!address.endpoint) {
+          // SNS itself: the deploy subscribed this route and recorded the ARN.
+          // Nothing is subscribed from here, so this server's credentials need
+          // only sns:ConfirmSubscription on the topic.
+          const subscriptionArn = recorded[id];
+          if (!subscriptionArn) {
+            logger.error(
+              { subscriber: id },
+              'No subscription recorded for this subscriber in ${SNS_SUBSCRIPTIONS_KEY}: deploy it so SNS has a route to push to',
+            );
+            failed.push(id);
+            continue;
+          }
+          const connection = await SNSConnection.fromConnectionString(connectionString);
+          mount(
+            new SnsPushSubscriberAdaptor(envParser, subscriber, {
+              topicArn: address.topicArn,
+              verify: true,
+              subscriptionArn,
+              // As the topic's owner, so only the owner can unsubscribe the
+              // route — not whoever holds a notification's UnsubscribeURL.
+              confirm: (message) => confirmSubscription(connection, message),
+            }),
+          );
+          logger.info({ subscriber: id, events }, 'Subscriber mounted for push');
+          continue;
+        }
+
+        // An emulator signs nothing, and nothing deploys its subscriptions:
+        // decided by the address this server was configured with, never by
+        // anything a request says about itself.
+        mount(
+          new SnsPushSubscriberAdaptor(envParser, subscriber, {
+            topicArn: address.topicArn,
+            verify: false,
+            emulatorEndpoint: address.endpoint,
+          }),
+        );
 
         afterListening.push(async (port) => {
           const base =
-            process.env.GKM_SUBSCRIBER_PUSH_URL ??
-            (address.endpoint ? \`http://host.docker.internal:\${port}\` : undefined);
-          if (!base) {
-            logger.error(
-              { subscriber: id },
-              'Set GKM_SUBSCRIBER_PUSH_URL to the public URL of this worker, which SNS pushes to',
-            );
-            return;
-          }
+            process.env.GKM_SUBSCRIBER_PUSH_URL ?? \`http://host.docker.internal:\${port}\`;
           const connection = await SNSConnection.fromConnectionString(connectionString);
           await subscribeHttpEndpoint(connection, {
             endpoint: new URL(route, base).toString(),

@@ -409,13 +409,22 @@ notification as an SNS Lambda event. Subscription confirmations are confirmed
 automatically, and every message's signature is verified against a certificate
 served over https from `sns.<region>.amazonaws.com` — except against an
 emulator, which signs nothing (decided by the `endpoint` in the connection
-string, never by the request). Startup converges: a subscription stuck pending
-confirmation is replaced, and a confirmed one whose event list changed has its
-filter updated.
+string, never by the request).
 
-`GKM_SUBSCRIBER_PUSH_URL` is the public base URL SNS pushes to. Against the
-local emulator it defaults to `http://host.docker.internal:<port>`; anywhere
-else it must be set, or the subscriber is not subscribed.
+Against SNS itself the deploy owns the subscriptions: it subscribes each route
+and hands the server the ARNs in `GKM_SNS_SUBSCRIPTIONS` (a JSON object of
+subscriber export → subscription ARN). The server subscribes nothing, mounts a
+route only for a recorded subscription, confirms through the
+`ConfirmSubscription` API with `AuthenticateOnUnsubscribe` — so the
+`UnsubscribeURL` in every notification cannot cut the route off — and refuses
+a notification whose `x-amz-sns-subscription-arn` names another subscription.
+Its credentials need only `sns:ConfirmSubscription` on the topic.
+
+Against the local emulator, where nothing deploys, the server subscribes its
+own routes once listening, under `GKM_SUBSCRIBER_PUSH_URL` (by default
+`http://host.docker.internal:<port>`). Startup converges: a subscription stuck
+pending confirmation is replaced, and one whose event list changed has its
+filter updated.
 
 **Polled (pg-boss).** A topic's messages are published as the pg-boss event
 `<topic>/<type>`, and each subscriber drains a queue of its own,

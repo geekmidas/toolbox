@@ -245,7 +245,42 @@ if (message.Type === 'SubscriptionConfirmation') {
   served over https from `sns.<region>.amazonaws.com` — anywhere else is a
   certificate the sender chose. It throws rather than returning `false`.
 - `confirmSnsSubscription` visits the `SubscribeURL`; until then SNS delivers
-  nothing.
+  nothing. A subscription confirmed that way can be removed by anyone holding
+  the `UnsubscribeURL` every notification carries, so against SNS itself
+  confirm with `confirmSubscription(connection, message)` instead: it calls
+  `ConfirmSubscription` with `AuthenticateOnUnsubscribe`, after which only the
+  topic's owner can unsubscribe. It needs only `sns:ConfirmSubscription`.
+
+When something other than the server owns the subscriptions — a deploy —
+`reconcileHttpSubscriptions` converges a topic on the endpoints it wants and
+answers each one's ARN to hand the server:
+
+```typescript
+import { reconcileHttpSubscriptions } from '@geekmidas/events/sns';
+
+const { subscriptions, pending, removed } = await reconcileHttpSubscriptions(
+  connection,
+  {
+    endpoints: [
+      {
+        name: 'onUserCreated',
+        endpoint: 'https://jobs.example.com/__gkm/subscribers/onUserCreated',
+        events: ['user.created'],
+        // or a filter of your own, matched on the body:
+        // filterPolicy: { Records: { eventName: [{ prefix: 'ObjectCreated:' }] } },
+        // filterPolicyScope: 'MessageBody',
+      },
+    ],
+    // Subscriptions on this host that are no longer wanted are removed
+    ownedHost: 'jobs.example.com',
+  },
+);
+```
+
+SNS answers an ARN even while a subscription waits to be confirmed, so the
+ARNs can be recorded before the server starts. Run it again once the server is
+up: each still-pending endpoint is subscribed again, which resends its
+confirmation, and the ARNs stay the same.
 
 `gkm dev` and server builds wire all of this for each topic subscriber — see
 [Dev Server](#dev-server).
@@ -446,12 +481,15 @@ How each consumer is fed:
   Lambda subscription uses, minus middy (`SnsPushSubscriberAdaptor` from
   `@geekmidas/constructs/subscribers`). Confirmations are confirmed automatically and
   signatures verified, except against an emulator, which signs nothing —
-  decided by the `endpoint` in the connection string. Startup converges, so a
-  stale pending subscription is replaced and a changed event list updates the
-  filter.
+  decided by the `endpoint` in the connection string. Against SNS itself the
+  deploy makes each subscription and hands the server its ARN in
+  `GKM_SNS_SUBSCRIPTIONS`; the server subscribes nothing and mounts a route only
+  for a recorded one. Against the emulator it subscribes its own routes, and
+  startup converges, so a stale pending subscription is replaced and a changed
+  event list updates the filter.
 
-`GKM_SUBSCRIBER_PUSH_URL` is the public base URL SNS pushes to; against the
-local emulator it defaults to `http://host.docker.internal:<port>`.
+`GKM_SUBSCRIBER_PUSH_URL` is the base the emulator pushes to, by default
+`http://host.docker.internal:<port>`.
 `gkm dev --no-subscribers` runs no topic subscribers (queues still run).
 
 ::: tip

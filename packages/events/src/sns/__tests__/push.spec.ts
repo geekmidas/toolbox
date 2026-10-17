@@ -1,13 +1,21 @@
 import { createSign, generateKeyPairSync } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { CreateTopicCommand } from '@aws-sdk/client-sns';
+import {
+	CreateTopicCommand,
+	GetSubscriptionAttributesCommand,
+	ListSubscriptionsByTopicCommand,
+	PublishCommand,
+} from '@aws-sdk/client-sns';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import {
 	confirmSnsSubscription,
+	confirmSubscription,
+	reconcileHttpSubscriptions,
 	SnsCertificateUntrusted,
 	type SnsHttpMessage,
+	SnsNotAConfirmation,
 	SnsSignatureInvalid,
 	snsStringToSign,
 	subscribeHttpEndpoint,
@@ -296,5 +304,177 @@ describe('HTTP push through the emulator', () => {
 		expect(delivered.map((r) => JSON.parse(r.message.Message).type)).toEqual([
 			'user.deleted',
 		]);
+	});
+
+	describe('subscriptions the deploy owns', () => {
+		const route = (path: string) =>
+			`http://host.docker.internal:${port}${path}`;
+		const ownedHost = () => `host.docker.internal:${port}`;
+		const attributes = async (arn: string) =>
+			(
+				await connection.snsClient.send(
+					new GetSubscriptionAttributesCommand({ SubscriptionArn: arn }),
+				)
+			).Attributes ?? {};
+		const listed = async () =>
+			(
+				await connection.snsClient.send(
+					new ListSubscriptionsByTopicCommand({
+						TopicArn: connection.topicArn,
+					}),
+				)
+			).Subscriptions ?? [];
+		const confirmationFor = (path: string) =>
+			received.find(
+				(r) => r.path === path && r.message.Type === 'SubscriptionConfirmation',
+			)?.message;
+
+		it('subscribes each endpoint, answers its ARN, and keeps it across runs', async () => {
+			const endpoints = [
+				{
+					name: 'onKindA',
+					endpoint: route('/deploy-a'),
+					filterPolicy: { kind: ['a'] },
+					filterPolicyScope: 'MessageBody' as const,
+				},
+				{ name: 'onCreated', endpoint: route('/deploy-b'), events: ['x'] },
+			];
+
+			const first = await reconcileHttpSubscriptions(connection, {
+				endpoints,
+				ownedHost: ownedHost(),
+			});
+			// Answered while still pending: the deploy records them before the
+			// server is there to confirm.
+			expect(Object.keys(first.subscriptions).sort()).toEqual([
+				'onCreated',
+				'onKindA',
+			]);
+			expect(first.pending.sort()).toEqual(['onCreated', 'onKindA']);
+			expect(await attributes(first.subscriptions.onKindA!)).toMatchObject({
+				FilterPolicyScope: 'MessageBody',
+				FilterPolicy: JSON.stringify({ kind: ['a'] }),
+			});
+
+			// Run again once the server is up: the same ARNs, still one
+			// subscription per endpoint, and each pending one subscribed again —
+			// which on SNS itself resends its confirmation.
+			const second = await reconcileHttpSubscriptions(connection, {
+				endpoints,
+				ownedHost: ownedHost(),
+			});
+			expect(second.subscriptions).toEqual(first.subscriptions);
+			expect(second.removed).toEqual([]);
+			const ours = (await listed()).filter((s) =>
+				s.Endpoint?.includes('/deploy-'),
+			);
+			expect(ours).toHaveLength(2);
+		});
+
+		it('confirms through the API as the topic owner, and delivers to the filter', async () => {
+			const endpoint = route('/deploy-confirmed');
+			const { subscriptions } = await reconcileHttpSubscriptions(connection, {
+				endpoints: [
+					{
+						name: 'onKindA',
+						endpoint,
+						filterPolicy: { kind: ['a'] },
+						filterPolicyScope: 'MessageBody',
+					},
+				],
+				ownedHost: ownedHost(),
+			});
+			await until(() => Boolean(confirmationFor('/deploy-confirmed')));
+
+			const arn = await confirmSubscription(
+				connection,
+				confirmationFor('/deploy-confirmed')!,
+			);
+			expect(arn).toBe(subscriptions.onKindA);
+			expect(await attributes(arn!)).toMatchObject({
+				PendingConfirmation: 'false',
+			});
+
+			// Confirmed: no longer pending on the next run.
+			const again = await reconcileHttpSubscriptions(connection, {
+				endpoints: [
+					{
+						name: 'onKindA',
+						endpoint,
+						filterPolicy: { kind: ['a'] },
+						filterPolicyScope: 'MessageBody',
+					},
+				],
+				ownedHost: ownedHost(),
+			});
+			expect(again.pending).toEqual([]);
+
+			// A message SNSPublisher never sent — a bucket's — is matched on its
+			// body, so only `kind: a` arrives.
+			for (const kind of ['b', 'a']) {
+				await connection.snsClient.send(
+					new PublishCommand({
+						TopicArn: connection.topicArn,
+						Message: JSON.stringify({ kind }),
+					}),
+				);
+			}
+			const delivered = () =>
+				received.filter(
+					(r) =>
+						r.path === '/deploy-confirmed' && r.message.Type === 'Notification',
+				);
+			await until(() => delivered().length > 0);
+			await new Promise((resolve) => setTimeout(resolve, 500));
+			expect(delivered().map((r) => JSON.parse(r.message.Message))).toEqual([
+				{ kind: 'a' },
+			]);
+		});
+
+		it('brings a filter up to date, and removes what its host no longer wants', async () => {
+			const kept = route('/deploy-kept');
+			const renamed = route('/deploy-renamed');
+			const { subscriptions } = await reconcileHttpSubscriptions(connection, {
+				endpoints: [
+					{ name: 'kept', endpoint: kept, events: ['user.created'] },
+					{ name: 'renamed', endpoint: renamed, events: ['user.created'] },
+				],
+				ownedHost: ownedHost(),
+			});
+			// Somebody else's endpoint on the same topic.
+			const elsewhere = await subscribeHttpEndpoint(connection, {
+				endpoint: 'http://elsewhere.invalid:8080/hook',
+				events: ['user.created'],
+			});
+
+			const result = await reconcileHttpSubscriptions(connection, {
+				endpoints: [
+					{
+						name: 'kept',
+						endpoint: kept,
+						events: ['user.created', 'user.deleted'],
+					},
+				],
+				ownedHost: ownedHost(),
+			});
+
+			expect(result.subscriptions).toEqual({ kept: subscriptions.kept });
+			expect(result.removed).toContain(subscriptions.renamed);
+			expect(result.removed).not.toContain(elsewhere);
+			expect(await attributes(subscriptions.kept!)).toMatchObject({
+				FilterPolicy: JSON.stringify({
+					type: ['user.created', 'user.deleted'],
+				}),
+			});
+			const endpoints = (await listed()).map((s) => s.Endpoint);
+			expect(endpoints).not.toContain(renamed);
+			expect(endpoints).toContain('http://elsewhere.invalid:8080/hook');
+		});
+
+		it('confirms only a confirmation', async () => {
+			await expect(
+				confirmSubscription(connection, notification()),
+			).rejects.toBeInstanceOf(SnsNotAConfirmation);
+		});
 	});
 });

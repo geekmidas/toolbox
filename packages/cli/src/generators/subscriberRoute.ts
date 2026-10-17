@@ -12,3 +12,11 @@ export const SUBSCRIBER_ROUTE_PREFIX = '/__gkm/subscribers/';
 export function subscriberRoute(exportName: string): string {
 	return `${SUBSCRIBER_ROUTE_PREFIX}${exportName}`;
 }
+
+/**
+ * Where the deploy hands a server the SNS subscriptions it made for its
+ * routes: a JSON object of subscriber export → subscription ARN. Against SNS
+ * itself a server mounts a route only for a subscription recorded here, and
+ * refuses a notification that names another.
+ */
+export const SNS_SUBSCRIPTIONS_KEY = 'GKM_SNS_SUBSCRIPTIONS';
