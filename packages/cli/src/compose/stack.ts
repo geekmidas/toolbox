@@ -85,7 +85,7 @@ import {
 	postgresSuperuser,
 } from '../reconcile/localCredentials.js';
 import { type Plan, type PlannedResource, planFor } from '../reconcile/plan.js';
-import { bucketPolicies } from '../reconcile/provision.js';
+import { bucketLifecycles, bucketPolicies } from '../reconcile/provision.js';
 import type { StageSecrets } from '../secrets/types.js';
 import { NoDomainForStage } from '../target/dokploy/domain.js';
 import {
@@ -550,6 +550,8 @@ export interface StackStorage {
 	buckets: string[];
 	/** The open paths of each served bucket. */
 	policies: { bucket: string; open: string[] }[];
+	/** How long each bucket keeps what is under each prefix. */
+	lifecycles: { bucket: string; expire: Readonly<Record<string, number>> }[];
 }
 
 export interface StackInput {
@@ -888,6 +890,9 @@ export function composeStack(input: StackInput): ComposeStack {
 					policies: bucketPolicies(plan).filter((p) =>
 						buckets.includes(p.bucket),
 					),
+					lifecycles: bucketLifecycles(plan).filter((l) =>
+						buckets.includes(l.bucket),
+					),
 				};
 			})()
 		: undefined;
@@ -1220,7 +1225,15 @@ export function composeStack(input: StackInput): ComposeStack {
 		const keys =
 			processorEnvKeys(manifest, unit.id, input.runnables) ?? new Set();
 		unit.env = {
-			...valuesFor({ name: unit.name, id: unit.id, kind: 'rest-api' }, keys),
+			// Telemetry: the stage's, when the file server has an edge to the node.
+			...scopeTelemetryEnv(
+				valuesFor({ name: unit.name, id: unit.id, kind: 'rest-api' }, keys),
+				{
+					uses: telemetryOf(manifest, unit.id) !== undefined,
+					serviceName: unit.name,
+					...(telemetryValues ? { telemetry: telemetryValues } : {}),
+				},
+			),
 			NODE_ENV: 'production',
 			PORT: String(unit.port),
 			STAGE: stage,

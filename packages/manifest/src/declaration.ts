@@ -87,6 +87,12 @@ export interface Fn extends Node {
 export interface ObjectsDeclaration extends Node {
 	kind: 'objects';
 	versioned?: boolean;
+	/**
+	 * Days the objects under each prefix are kept before the bucket deletes
+	 * them, prefix → days. Structural: which generated files are ephemeral is
+	 * a fact about the application, not a stage's choice.
+	 */
+	expire?: Readonly<Record<string, number>>;
 }
 
 /**
@@ -143,6 +149,13 @@ export interface FileServerDeclaration extends Node {
 	 * A processor answers requests on this server's domain and nothing else.
 	 */
 	processors?: readonly ProcessorDeclaration[];
+	/**
+	 * Days its processors' derivatives are kept in the bucket before it deletes
+	 * them (`DEFAULT_DERIVED_DAYS` when absent) — they are remade on demand.
+	 */
+	derivedDays?: number;
+	/** The `Telemetry` node its processor unit emits through, by id. */
+	telemetry?: ConstructId;
 }
 
 /** A processor on a file server — see {@link FileServerDeclaration.processors}. */

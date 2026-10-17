@@ -134,11 +134,11 @@ const freePort = () =>
 	});
 
 /** The bundle, run with node alone; resolves once its health check passes. */
-async function start() {
+async function start(env: Record<string, string> = {}) {
 	const port = await freePort();
 	const child = spawn(process.execPath, [bundle], {
 		cwd: dir,
-		env: { ...process.env, PORT: String(port), MEDIA_URL: BUCKET_URL },
+		env: { ...process.env, PORT: String(port), MEDIA_URL: BUCKET_URL, ...env },
 		stdio: ['ignore', 'pipe', 'pipe'],
 	});
 	children.push(child);
@@ -186,6 +186,26 @@ describe('a processor unit, bundled', () => {
 			400,
 		);
 		expect((await fetch(`${base}/${run}/open/hello.txt`)).status).toBe(404);
+	});
+
+	it("refuses a request without the CDN's header, when it is given the secret", async () => {
+		const { port } = await start({
+			GKM_PROCESSOR_ORIGIN_SECRET: 'from-the-cdn',
+		});
+		const url = `http://localhost:${port}/shout/1/${run}/open/hello.txt`;
+
+		expect((await fetch(url)).status).toBe(403);
+		expect(
+			(await fetch(url, { headers: { 'x-gkm-origin-verify': 'forged' } }))
+				.status,
+		).toBe(403);
+		const sent = await fetch(url, {
+			headers: { 'x-gkm-origin-verify': 'from-the-cdn' },
+		});
+		expect(sent.status).toBe(200);
+		expect(await sent.text()).toBe('HELLO');
+		// Its health is Docker's and Dokploy's, never the CDN's.
+		expect((await fetch(`http://localhost:${port}/health`)).status).toBe(200);
 	});
 
 	it('stops on SIGTERM', async () => {

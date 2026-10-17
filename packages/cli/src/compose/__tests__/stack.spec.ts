@@ -981,6 +981,29 @@ describe("a file server's processors", () => {
 		expect(env).not.toHaveProperty('DATABASE_URL');
 	});
 
+	it("send telemetry only where their file server has the node's edge", () => {
+		const base = withProcessors();
+		const traced = stack({
+			manifest: {
+				...base,
+				Telemetry: {
+					kind: 'telemetry',
+					id: 'Telemetry',
+					provides: [...TELEMETRY_KEYS],
+				},
+				UploadsServer: { ...base.UploadsServer!, telemetry: 'Telemetry' },
+			} as unknown as ConstructManifest,
+		});
+
+		expect(unit(traced).env?.OTEL_EXPORTER_OTLP_ENDPOINT).toMatch(
+			/^http:\/\/openobserve:/,
+		);
+		expect(unit(traced).env?.OTEL_SERVICE_NAME).toBe('uploads-processors');
+		expect(unit(stack({ manifest: base })).env).not.toHaveProperty(
+			'OTEL_EXPORTER_OTLP_ENDPOINT',
+		);
+	});
+
 	it("take their patterns on the file server's host, while the bucket keeps the rest", () => {
 		const s = stack({ manifest: withProcessors() });
 		const route = s.routes.find((r) => r.name === 'files-uploads-server')!;

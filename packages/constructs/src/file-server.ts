@@ -34,6 +34,7 @@ import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
 	type ConstructName,
 	canonicalId,
+	DERIVED_PREFIX,
 	type Declaration,
 	provideKey,
 	serviceKey,
@@ -42,6 +43,7 @@ import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { createStorageClient, type StorageClient } from '@geekmidas/storage';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Construct, Declarable } from './construct-interface';
+import { expiryDays, type ObjectExpiry } from './expire';
 import type { Processor } from './processors/Processor';
 import { ProcessorBuilder } from './processors/ProcessorBuilder';
 import {
@@ -49,6 +51,7 @@ import {
 	type PatternParams,
 	parsePattern,
 } from './processors/pattern';
+import type { Telemetry } from './telemetry';
 
 /**
  * A key an open pattern admits.
@@ -185,6 +188,24 @@ export interface FileServerOptions<TOpen extends string = never> {
 	/** Keep previous versions of an object. */
 	versioned?: boolean;
 	/**
+	 * Delete the objects under each prefix this many days after they were
+	 * written — `{ 'previews/': { days: 7 } }`. A setting of the bucket this
+	 * server vends, so it cannot be given with `origin`.
+	 */
+	expire?: ObjectExpiry;
+	/**
+	 * How long its processors' derivatives are kept in the bucket before it
+	 * deletes them — 30 days unless said. They are remade on the next request,
+	 * so this trades storage for the work of making one again.
+	 */
+	derived?: { readonly days: number };
+	/**
+	 * What its processor unit emits — the `Telemetry` construct, as a worker
+	 * takes it: each request is a span, and the deploy hands the unit the
+	 * `OTEL_*` keys its stage resolves.
+	 */
+	telemetry?: Telemetry;
+	/**
 	 * A bucket declared elsewhere, instead of one of this server's own.
 	 *
 	 * `new FileServer('Uploads')` declares both nodes; this fronts a bucket that
@@ -209,6 +230,24 @@ export class ImmutableNotOpen extends Error {
 				'cached there: add it to `open`, or narrow it to one that is.',
 		);
 		this.name = 'ImmutableNotOpen';
+	}
+}
+
+/**
+ * A bucket setting given to a file server that fronts a bucket declared
+ * elsewhere — where the bucket's own construct is the one that says it.
+ */
+export class BucketOptionOnOrigin extends Error {
+	constructor(
+		readonly server: string,
+		readonly origin: string,
+		readonly option: string,
+	) {
+		super(
+			`'${server}' fronts '${origin}', which declares itself, so '${option}' ` +
+				`belongs on the construct that declares '${origin}', not on the file server.`,
+		);
+		this.name = 'BucketOptionOnOrigin';
 	}
 }
 
@@ -242,6 +281,12 @@ export class FileServer<
 	private readonly open: readonly string[];
 	private readonly immutable: readonly string[];
 
+	/** The vended bucket's expiry, checked once: prefix → days. */
+	private readonly expire: Record<string, number> | undefined;
+
+	/** Days its processors' derivatives are kept, when it says. */
+	private readonly derivedDays: number | undefined;
+
 	/**
 	 * Declared once and read by both `declare()` and `connect()`, so the keys the
 	 * target publishes and the keys the client reads cannot drift.
@@ -274,6 +319,15 @@ export class FileServer<
 		// is what makes "serve a bucket I already have" an edit that adds a node
 		// instead of renaming the one holding the data.
 		const originId = options.origin?.id ?? canonical;
+		if (options.origin && options.expire) {
+			throw new BucketOptionOnOrigin(canonical, originId, 'expire');
+		}
+		this.expire = expiryDays(canonical, options.expire);
+		this.derivedDays = options.derived
+			? expiryDays(canonical, { [DERIVED_PREFIX]: options.derived })?.[
+					DERIVED_PREFIX
+				]
+			: undefined;
 		this.surfaceId = `${canonical}Server`;
 
 		this.keys = {
@@ -380,6 +434,12 @@ export class FileServer<
 			of: origin?.id ?? this.id,
 			...(this.open.length ? { open: this.open } : {}),
 			...(this.immutable.length ? { immutable: this.immutable } : {}),
+			...(this.derivedDays !== undefined
+				? { derivedDays: this.derivedDays }
+				: {}),
+			...(this.options.telemetry
+				? { telemetry: this.options.telemetry.id }
+				: {}),
 			provides: [this.keys.server],
 		};
 
@@ -393,6 +453,7 @@ export class FileServer<
 				id: this.id,
 				provides: [this.keys.origin],
 				...(this.options.versioned ? { versioned: true } : {}),
+				...(this.expire ? { expire: this.expire } : {}),
 			},
 			surface,
 		];

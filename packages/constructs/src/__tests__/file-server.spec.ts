@@ -4,6 +4,7 @@ import { registerStorageDriver } from '@geekmidas/storage';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { FileServer, ImmutableNotOpen, NotOpen } from '../file-server';
 import { ObjectStorage } from '../object-storage';
+import { Telemetry } from '../telemetry';
 
 /** A driver that records the URL it was built from and nothing else. */
 const fakeDriver = {
@@ -170,6 +171,19 @@ describe('FileServer immutable paths', () => {
 		);
 		// Narrower, or the same.
 		expect(make(['brand/**', 'brand/2026/*.png', 'avatars/*'])).not.toThrow();
+	});
+});
+
+describe('FileServer telemetry', () => {
+	it('declares the node its processor unit emits through', () => {
+		const telemetry = new Telemetry('Telemetry');
+		const surface = (files: FileServer) =>
+			files.declare().find((d) => d.kind === 'file-server');
+
+		expect(
+			surface(new FileServer('Assets', { open: ['**'], telemetry })),
+		).toMatchObject({ telemetry: 'Telemetry' });
+		expect(surface(new FileServer('Assets'))).not.toHaveProperty('telemetry');
 	});
 });
 

@@ -72,6 +72,8 @@ export default defineProject({
 		// `gkm dev` is run against a real app too: its auth server signs a user
 		// up in the test Postgres, and its API queries through the database it
 		// declared.
+		// MinIO for what reconcile and a compose stack create in it — a bucket's
+		// lifecycle is MinIO's own implementation, not the emulator's.
 		globalSetup: [
 			'../testkit/test/awsSetup.ts',
 			'../testkit/test/globalSetup.ts',

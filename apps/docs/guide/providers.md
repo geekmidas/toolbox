@@ -84,6 +84,10 @@ Its settings, checked on every run and put back when they drifted:
 - a bucket policy denying every request not made over TLS
   (`aws:SecureTransport` false);
 - versioning, when asked for (turned off, it is *suspended*, never stripped);
+- one lifecycle rule per prefix the construct's `expire` names, id
+  `gkm-expire-<prefix>-<hash>`, merged into the bucket's lifecycle: every
+  rule not starting `gkm-` is kept as it is, and a `gkm-` rule nothing
+  declares any more is removed;
 - CORS allowing `GET`, `HEAD`, `POST` and `PUT` from the stage's sites that
   call an API using the bucket — read off the graph the way an API's own CORS
   origins are — exposing `ETag`. A site with no address on the stage (no

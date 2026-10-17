@@ -668,6 +668,16 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 				[
 					derived.surface.id,
 					...(servesOnly ? [] : hosted.map((unit) => unit.id)),
+					// Under `gkm dev` the processors run here too, and read their
+					// file server's bucket.
+					...(production?.enabled
+						? []
+						: hostedUnits.flatMap((unit) => {
+								const server = declared[unit.id];
+								return server?.kind === 'file-server'
+									? [unit.id, server.of]
+									: [unit.id];
+							})),
 				],
 				[
 					...allEndpoints,
@@ -675,6 +685,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 					...inProcess.crons,
 					...inProcess.queues,
 					...inProcess.subscribers,
+					...(production?.enabled ? [] : hostedProcessors),
 				],
 			)
 		: declared;
@@ -727,6 +738,16 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 
 	if (servesOnly && production) {
 		buildContext.production = { ...production, subscribers: 'exclude' };
+	}
+
+	// `gkm dev` serves the processors this app holds in its own process, under
+	// a route the local edge rewrites each pattern onto.
+	if (target === 'server' && !production?.enabled && hostedProcessors.length) {
+		await processorGenerator.buildDev(
+			join(appRoot, '.gkm', 'server'),
+			hostedProcessors,
+		);
+		buildContext.devProcessors = true;
 	}
 
 	const result = await buildForTarget(
@@ -805,6 +826,18 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 			units: hostedUnits.map((unit) => unit.id),
 			serverDir: join(appRoot, '.gkm', 'server'),
 			processors: hostedProcessors,
+			// The file server's own edge decides, as a worker's does.
+			telemetry: (fileServerId) =>
+				telemetryFor({
+					node: telemetryOf(declared, fileServerId),
+					appRoot,
+					app: appNameOf(input),
+					cwd: workspaceRoot,
+					serviceName: fileServerId,
+					...(input.workspaceName && {
+						workspaceName: input.workspaceName,
+					}),
+				}),
 			workspaceRoot,
 			bundle: Boolean(production.bundle && !input.skipBundle),
 			...(input.stage ? { stage: input.stage } : {}),
@@ -961,6 +994,8 @@ async function buildProcessors(input: {
 	units: readonly string[];
 	serverDir: string;
 	processors: GeneratedConstruct<Processor<string, any, any, any>>[];
+	/** What each unit starts OpenTelemetry with, by its file server's id. */
+	telemetry: (fileServerId: string) => TelemetryContext | undefined;
 	workspaceRoot: string;
 	bundle: boolean;
 	stage?: string;
@@ -974,9 +1009,11 @@ async function buildProcessors(input: {
 		if (processors.length === 0) continue;
 
 		const { context } = input;
+		const telemetry = input.telemetry(fileServerId);
 		const entryPoint = await generator.buildEntry({
 			context,
 			fileServerId,
+			...(telemetry ? { telemetry } : {}),
 			outputDir: processorEntryDir(input.serverDir, fileServerId),
 			processors,
 		});
