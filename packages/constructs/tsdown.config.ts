@@ -15,6 +15,7 @@ export default defineConfig({
 		'src/external-api.ts',
 		'src/auth.ts',
 		'src/rest-api.ts',
+		'src/websocket-api.ts',
 		'src/site.ts',
 		'src/mobile-app.ts',
 		'src/worker.ts',
