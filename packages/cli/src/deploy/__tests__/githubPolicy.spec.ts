@@ -458,17 +458,33 @@ describe('deployAccess', () => {
 			expect(statements.map((s) => s.Sid)).toEqual([
 				'StageSecrets',
 				'StageBuckets',
+				'StageBucketTopics',
+				'StageBucketDeadLetters',
 				'StageBucketUsers',
 			]);
 			expect(statements[1]!.Action).toContain('s3:CreateBucket');
 			expect(statements[1]!.Action).toContain('s3:PutBucketCORS');
+			// A watched bucket's notifications, topic and dead-letter queue —
+			// by the bucket's name, in whichever region it is.
+			expect(statements[1]!.Action).toContain('s3:PutBucketNotification');
+			expect(statements[2]!.Action).toContain('sns:Subscribe');
+			expect(statements[2]!.Resource).toContain(
+				'arn:aws:sns:*:111:shop-prod-uploads-events',
+			);
+			expect(statements[2]!.Resource).toContain(
+				'arn:aws:sns:*:111:shop-prod-uploads-events:*',
+			);
+			expect(statements[2]!.Action).not.toContain('sns:Publish');
+			expect(statements[3]!.Resource).toContain(
+				'arn:aws:sqs:*:111:shop-prod-uploads-events-dlq',
+			);
 			expect(statements[1]!.Resource).toEqual([
 				'arn:aws:s3:::shop-prod-avatars',
 				'arn:aws:s3:::shop-prod-avatars-??????',
 				'arn:aws:s3:::shop-prod-uploads',
 				'arn:aws:s3:::shop-prod-uploads-??????',
 			]);
-			expect(statements[2]!.Action).toEqual([
+			expect(statements[4]!.Action).toEqual([
 				'iam:GetUser',
 				'iam:CreateUser',
 				'iam:TagUser',
@@ -479,7 +495,7 @@ describe('deployAccess', () => {
 				'iam:CreateAccessKey',
 				'iam:DeleteAccessKey',
 			]);
-			expect(statements[2]!.Resource).toEqual([
+			expect(statements[4]!.Resource).toEqual([
 				'arn:aws:iam::111:user/gkm/gkm-shop-prod-avatars',
 				'arn:aws:iam::111:user/gkm/gkm-shop-prod-uploads',
 			]);

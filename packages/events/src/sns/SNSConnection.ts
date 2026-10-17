@@ -7,11 +7,11 @@ export interface SNSConnectionConfig {
 	topicArn: string;
 	region?: string;
 	endpoint?: string; // Custom endpoint (e.g., for LocalStack)
-	credentials?: {
-		accessKeyId: string;
-		secretAccessKey: string;
-		sessionToken?: string;
-	};
+	/**
+	 * Static keys, or a provider the SDK resolves them through — a deploy's
+	 * profile or chain, where nothing pins a key pair.
+	 */
+	credentials?: SNSClientConfig['credentials'];
 }
 
 export class SNSConnection implements EventConnection {

@@ -81,6 +81,38 @@ The handler filters what it is sent: by event, then by prefix and suffix. Its
 filter is final, whatever the source already filtered. A test event, which S3
 sends when a notification is configured, is answered and runs nothing.
 
+### An S3 bucket on a compose stage
+
+With `deploy.objects: { provider: 's3' }`, the deploy creates what S3 needs to
+reach your worker, in the stage's account, for every bucket a subscriber
+watches:
+
+| Created | What for |
+|---|---|
+| SNS topic `<bucket>-events` | S3 publishes every create and delete to it. Only this bucket, in this account, may publish. |
+| SQS queue `<bucket>-events-dlq` | What SNS gives up delivering is kept for 14 days, so an outage longer than its retries loses nothing. |
+| The bucket's notification entry `gkm-<Bucket>` | Merged into the bucket's notifications. An entry you added yourself is kept. |
+| `<BUCKET>_EVENTS_CONNECTION_STRING` | The topic, signed by the bucket's own access key. That key may confirm subscriptions to this topic and do nothing else to it. |
+| One HTTP subscription per subscriber | `https://<worker>.<domain>/__gkm/subscribers/<export>`, failing over to the queue. |
+
+The deploy owns the subscriptions. The worker cannot subscribe anything: it
+mounts a route only for a subscription the deploy recorded, confirms it with
+`AuthenticateOnUnsubscribe` (so an `UnsubscribeURL` from a log cannot cut it
+off), and refuses a delivery for any other subscription. On the first deploy
+the subscription is made before the worker starts. Once the worker is
+healthy, the deploy asks SNS to send the confirmation again and waits for it.
+If it is still unconfirmed, the deploy says so; the next deploy sends it
+again.
+
+A subscriber you remove is unsubscribed on the next deploy. Nothing else is
+ever deleted.
+
+The deploy's role needs the SNS, SQS and `s3:*BucketNotification` actions
+`gkm` lists for it (see the GitHub deploy role). If S3 refuses the entry
+because another notification already sends the same events elsewhere, the
+deploy fails with `BucketNotificationsOverlap`: S3 sends each event to one
+place only.
+
 ## Write handlers to run twice
 
 Delivery is at least once. S3 and MinIO can report the same change twice, and
