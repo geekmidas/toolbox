@@ -147,4 +147,75 @@ describe('SnsPushSubscriberAdaptor', () => {
 
 		expect((await adaptor(subscriber).handle({ hello: 1 })).status).toBe(400);
 	});
+
+	describe('with the subscription the deploy recorded', () => {
+		const SUBSCRIPTION_ARN = `${TOPIC_ARN}:1d4ee7a7-recorded`;
+		const recorded = (
+			subscriber: ReturnType<typeof subscriberThatRecords>['subscriber'],
+			confirm?: (message: SnsHttpMessage) => Promise<unknown>,
+		) =>
+			new SnsPushSubscriberAdaptor(new EnvironmentParser({}), subscriber, {
+				topicArn: TOPIC_ARN,
+				verify: false,
+				subscriptionArn: SUBSCRIPTION_ARN,
+				...(confirm ? { confirm } : {}),
+			});
+
+		it('runs a notification that names it', async () => {
+			const { subscriber, handled } = subscriberThatRecords();
+
+			const response = await recorded(subscriber).handle(notification(), {
+				subscriptionArn: SUBSCRIPTION_ARN,
+			});
+
+			expect(response.status).toBe(200);
+			expect(handled).toHaveLength(1);
+		});
+
+		it('refuses one from a subscription the deploy did not make', async () => {
+			// Somebody subscribed this route by hand, or a stale one survived.
+			const { subscriber, handled } = subscriberThatRecords();
+
+			for (const subscriptionArn of [`${TOPIC_ARN}:by-hand`, undefined]) {
+				const response = await recorded(subscriber).handle(notification(), {
+					subscriptionArn,
+				});
+				expect(response).toMatchObject({
+					status: 403,
+					body: { error: 'not the recorded subscription' },
+				});
+			}
+			expect(handled).toEqual([]);
+		});
+
+		it('confirms through the hook it was given, never by visiting the URL', async () => {
+			const confirmed: SnsHttpMessage[] = [];
+			const fetched = vi.spyOn(globalThis, 'fetch');
+			const { subscriber } = subscriberThatRecords();
+
+			try {
+				const response = await recorded(subscriber, async (message) => {
+					confirmed.push(message);
+				}).handle(
+					notification({
+						Type: 'SubscriptionConfirmation',
+						Token: 'token-2',
+						SubscribeURL:
+							'https://sns.us-east-1.amazonaws.com/?Action=ConfirmSubscription&Token=token-2',
+					}),
+					// A confirmation names no subscription yet.
+					{ subscriptionArn: 'PendingConfirmation' },
+				);
+
+				expect(response).toEqual({
+					status: 200,
+					body: { status: 'confirmed' },
+				});
+				expect(confirmed.map((m) => m.Token)).toEqual(['token-2']);
+				expect(fetched).not.toHaveBeenCalled();
+			} finally {
+				fetched.mockRestore();
+			}
+		});
+	});
 });

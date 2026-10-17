@@ -121,6 +121,11 @@ import {
 	SeedFailed,
 	seedDatabases,
 } from '../../migrate/databases.js';
+import {
+	confirmPendingSubscriptions,
+	PushSubscriptionsUnconfirmed,
+	recordedPushSubscriptions,
+} from '../../providers/s3/events.js';
 import { appEnvKeys, workerEnvKeys } from '../../reconcile/apps.js';
 import { bucketClient, pgClient } from '../../reconcile/clients.js';
 import { primaryPortKey } from '../../reconcile/containers.js';
@@ -200,6 +205,11 @@ export interface ComposeDeps {
 	 * before a deploy, and the tunnels its databases are reached through.
 	 */
 	server: ServerAccess;
+	/**
+	 * Once the stack is up, have SNS resend each pending subscription's
+	 * confirmation and wait for it — `confirmPendingSubscriptions` by default.
+	 */
+	confirmSubscriptions?: typeof confirmPendingSubscriptions;
 }
 
 /** One app's image, as the stage runs it. */
@@ -422,6 +432,10 @@ export async function validateCompose(
 
 	const { secrets, generated } = await stageSecrets(ctx, manifest);
 
+	// What each app ran before this release, and the SNS subscriptions the
+	// stage's providers made: a push changes no stage, so it reads neither.
+	const recorded = push ? undefined : await ctx.state.read(stage);
+
 	// Where and with what the images are built — only asked when they are.
 	const layout = mode === 'build' ? imageLayout(workspace) : undefined;
 
@@ -439,6 +453,7 @@ export async function validateCompose(
 			...(registry ? { registry } : {}),
 		},
 		secrets,
+		pushSubscriptions: recordedPushSubscriptions(recorded?.resources),
 		...(stage === workspace.stages.local
 			? {
 					localCredentials: (await loadLocalCredentials(workspace)).credentials,
@@ -507,8 +522,6 @@ export async function validateCompose(
 	}
 	// What each app ran before this release: its current release, by the same
 	// record the Dokploy target keeps, so a rollback reads one shape for both.
-	// A push changes no stage, so it reads none of its state either.
-	const recorded = push ? undefined : await ctx.state.read(stage);
 	const previous = Object.fromEntries(
 		Object.entries(recorded?.state.releases ?? {}).map(
 			([name, releases]): [string, DeployedImage] => {
@@ -1348,7 +1361,38 @@ export async function verifyCompose(
 		throw new ComposeAppsUnhealthy(stack.project, down, stack.proxy);
 	}
 
+	await confirmSubscriptions(ctx, deps);
+
 	if (stack.logs) reportLogs(ctx, stack.logs, stack.local, run.server);
+}
+
+/**
+ * The SNS subscriptions the stage's providers made before the workers were
+ * up: each still pending is subscribed again, so SNS resends its
+ * confirmation to a worker now there to answer it, and waited on. One still
+ * pending after that is said, not failed on — every app is healthy, and
+ * rolling them back would not confirm it.
+ */
+async function confirmSubscriptions(
+	ctx: ComposeContext,
+	deps: ComposeDeps,
+): Promise<void> {
+	const stored = await ctx.state.read(ctx.stage);
+	const confirm = deps.confirmSubscriptions ?? confirmPendingSubscriptions;
+	const left = await confirm({
+		workspace: ctx.workspace,
+		stage: ctx.stage,
+		resources: stored?.resources,
+		env: deps.env,
+		log: (line) => ctx.logger.info(line),
+		record: async (record) => {
+			const { updatedAt: _, updatedBy: __, ...input } = record;
+			await ctx.state.putResource(ctx.stage, input);
+		},
+	});
+	if (left.length > 0) {
+		ctx.logger.warn(`⚠ ${new PushSubscriptionsUnconfirmed(left).message}`);
+	}
 }
 
 /**

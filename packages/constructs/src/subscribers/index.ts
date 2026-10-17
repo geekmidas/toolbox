@@ -7,6 +7,7 @@ export {
 } from './ObjectSubscriberBuilder';
 export {
 	type SnsPushOptions,
+	type SnsPushRequest,
 	type SnsPushResponse,
 	SnsPushSubscriberAdaptor,
 } from './SnsPushSubscriberAdaptor';

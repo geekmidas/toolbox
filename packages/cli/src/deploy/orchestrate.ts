@@ -11,7 +11,7 @@
 import { dnsCredentials, stageDnsDomains } from '../compose/dns.js';
 import { GkmError } from '../errors';
 import { provisionStage } from '../providers/index.js';
-import { discover } from '../reconcile/discover.js';
+import { type BoundSubscriber, discover } from '../reconcile/discover.js';
 import { constructGlobs } from '../reconcile/workspace.js';
 import { initStageSecrets } from '../secrets/storage.js';
 import { builtinTarget } from '../target/builtins';
@@ -358,6 +358,7 @@ async function provisionResources(
 			stage: phaseCtx.stage,
 			manifest: phaseCtx.manifest,
 			runnables: (phaseCtx.runnables ?? {}) as Record<string, string[]>,
+			...(phaseCtx.subscribers ? { subscribers: phaseCtx.subscribers } : {}),
 			secrets: phaseCtx.secrets,
 			state: store,
 			dryRun: ctx.dryRun,
@@ -486,11 +487,13 @@ async function prepare(
 	// constructs stays something you do a piece at a time.
 	const runnables: Record<string, string[]> = {};
 	const background: Record<string, string[]> = {};
+	const subscribers: Record<string, BoundSubscriber[]> = {};
 	const manifest = await discover({
 		patterns: constructGlobs(configured),
 		cwd: configured.root,
 		runnables,
 		background,
+		subscribers,
 	});
 	// Where the stage's telemetry goes, settled before anything is built: a
 	// stage that uses a `Telemetry` node on a target that cannot choose for it
@@ -587,6 +590,7 @@ async function prepare(
 		manifest,
 		runnables,
 		background,
+		subscribers,
 		options,
 		dryRun: ctx.dryRun,
 		atomic: request.atomic ?? false,

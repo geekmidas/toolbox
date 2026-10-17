@@ -59,7 +59,7 @@ export async function awsProvisioningCredentials(
  */
 export function awsEndpoint(
 	env: NodeJS.ProcessEnv,
-	service: 'S3' | 'IAM',
+	service: 'S3' | 'IAM' | 'SNS' | 'SQS' | 'STS',
 ): string | undefined {
 	return env[`AWS_ENDPOINT_URL_${service}`] ?? env.AWS_ENDPOINT_URL;
 }
