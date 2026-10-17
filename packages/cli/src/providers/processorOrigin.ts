@@ -26,6 +26,14 @@ export function originSecretKey(serverId: string): string {
 	return provideKey(serverId, 'originSecret');
 }
 
+/**
+ * What the processor unit reads that secret from. Set wherever the CDN fronts
+ * it, so the unit refuses a request without the header itself — on Dokploy,
+ * whose edge cannot match a header, the only check; behind the stack's own
+ * edge, a second one.
+ */
+export const PROCESSOR_ORIGIN_SECRET_ENV = 'GKM_PROCESSOR_ORIGIN_SECRET';
+
 /** A new value for that secret: random, generated once, kept in the stage. */
 export function newOriginSecret(): string {
 	return randomBytes(32).toString('base64url');

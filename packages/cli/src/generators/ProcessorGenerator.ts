@@ -5,6 +5,10 @@ import type { ProcessorInfo } from '@geekmidas/manifest';
 import type { BuildContext } from '../build/types';
 import { processorUnitName } from '../build/workers';
 import {
+	ORIGIN_VERIFY_HEADER,
+	PROCESSOR_ORIGIN_SECRET_ENV,
+} from '../providers/processorOrigin';
+import {
 	ConstructGenerator,
 	type GeneratedConstruct,
 	type GeneratorOptions,
@@ -136,6 +140,7 @@ export const handler = adapter.handler;
  * routes only those patterns here; everything else on the file server's
  * domain is the bucket.
  */
+import { timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import { runShutdownHooks } from '@geekmidas/constructs';
 import { processorServer } from '@geekmidas/constructs/processors';
@@ -152,12 +157,27 @@ const port = Number(process.env.PORT) || 3000;
 let stopping = false;
 
 ${input.telemetry ? REQUEST_SPANS : NO_REQUEST_SPANS}
+// Where the CDN fronts this unit, the secret it adds to every request: one
+// without it is refused here, whatever the edge in front did or could not.
+const originSecret = process.env.${PROCESSOR_ORIGIN_SECRET_ENV}
+  ? Buffer.from(process.env.${PROCESSOR_ORIGIN_SECRET_ENV})
+  : undefined;
+const fromOrigin = (header: string | string[] | undefined) => {
+  if (!originSecret) return true;
+  const given = Buffer.from(typeof header === 'string' ? header : '');
+  return given.length === originSecret.length && timingSafeEqual(given, originSecret);
+};
+
 const server = createServer(async (req, res) => {
   const method = req.method ?? 'GET';
   const path = (req.url ?? '/').split('?')[0] ?? '/';
   if (path === ${JSON.stringify(healthCheck)}) {
     res.writeHead(stopping ? 503 : 200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ status: stopping ? 'stopping' : 'ok' }));
+    return;
+  }
+  if (!fromOrigin(req.headers[${JSON.stringify(ORIGIN_VERIFY_HEADER.toLowerCase())}])) {
+    res.writeHead(403, { 'cache-control': 'no-store' }).end();
     return;
   }
   await traced(method, path, async () => {
