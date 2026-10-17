@@ -420,6 +420,19 @@ route only for a recorded subscription, confirms through the
 a notification whose `x-amz-sns-subscription-arn` names another subscription.
 Its credentials need only `sns:ConfirmSubscription` on the topic.
 
+Who makes the subscriptions depends on where the topic comes from. A bucket's
+topic is the `s3` provider's, and so are its subscriptions. A topic a compose
+stage sets to SNS by hand — its `<TOPIC>_PUBLISHER_CONNECTION_STRING` stage
+secret an `sns://` string with no `endpoint` — is subscribed by the compose
+deploy, before the stack's files are written, with the keys in that string
+(`accessKeyId`, `secretAccessKey`; the deploy's own AWS credentials if it
+carries none). Those keys need `sns:Subscribe`, `sns:ListSubscriptionsByTopic`,
+`sns:GetSubscriptionAttributes`, `sns:SetSubscriptionAttributes` and
+`sns:Unsubscribe` on the topic; the worker reading the same string uses only
+`sns:ConfirmSubscription`. Each subscription is recorded in the stage's state,
+a removed subscriber's is unsubscribed, and pointing the secret at another
+topic moves them there.
+
 Against the local emulator, where nothing deploys, the server subscribes its
 own routes once listening, under `GKM_SUBSCRIBER_PUSH_URL` (by default
 `http://host.docker.internal:<port>`). Startup converges: a subscription stuck

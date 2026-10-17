@@ -95,6 +95,7 @@ import {
 	LOG_ROTATION,
 	LOGS_PORT_ENV,
 	type StackApp,
+	type StackInput,
 	stackDir,
 	withCaddyConfigs,
 } from '../../compose/stack';
@@ -104,6 +105,14 @@ import { recordDnsChanges } from '../../deploy/dnsResources.js';
 import type { ResourceChange } from '../../deploy/events';
 import { imageRef } from '../../deploy/identity.js';
 import { DeployJournal } from '../../deploy/journal';
+import type { ResourceRecord } from '../../deploy/StateStore.js';
+import {
+	confirmPendingSubscriptions,
+	PushSubscriptionsUnconfirmed,
+	recordedPushSubscriptions,
+	SUBSCRIPTION_TYPE,
+	subscriptionKey,
+} from '../../deploy/snsSubscriptions.js';
 import {
 	createComposeState,
 	type DeployedImage,
@@ -121,11 +130,6 @@ import {
 	SeedFailed,
 	seedDatabases,
 } from '../../migrate/databases.js';
-import {
-	confirmPendingSubscriptions,
-	PushSubscriptionsUnconfirmed,
-	recordedPushSubscriptions,
-} from '../../providers/s3/events.js';
 import { appEnvKeys, workerEnvKeys } from '../../reconcile/apps.js';
 import { bucketClient, pgClient } from '../../reconcile/clients.js';
 import { primaryPortKey } from '../../reconcile/containers.js';
@@ -166,6 +170,12 @@ import {
 	httpsProbe,
 	isHealthy,
 } from './health';
+import {
+	ensureTopicSubscriptions,
+	recordedTopicSubscriptions,
+	type TopicPush,
+	topicPushes,
+} from './topicSubscriptions';
 
 /** Every phase's context: the compose target takes no options. */
 export type ComposeContext = DeployPhaseContext<undefined>;
@@ -249,6 +259,16 @@ export interface ComposeRun {
 	images: Record<string, ComposeImage>;
 	/** Every resource the run touched, or for a dry run would. */
 	changes: ResourceChange[];
+	/**
+	 * The subscriptions `provision` makes for topics the stage set to SNS by
+	 * hand — and the stack composed again once their ARNs are recorded. Until
+	 * then {@link stack} hands those workers no subscriptions.
+	 */
+	topicSubscriptions?: {
+		pushes: TopicPush[];
+		recorded: Readonly<Record<string, ResourceRecord>> | undefined;
+		restack: (arns: Record<string, Record<string, string>>) => ComposeStack;
+	};
 }
 
 /** How a run gets its images, beyond what the tag implies. */
@@ -439,7 +459,7 @@ export async function validateCompose(
 	// Where and with what the images are built — only asked when they are.
 	const layout = mode === 'build' ? imageLayout(workspace) : undefined;
 
-	const composed = composeStack({
+	const input: StackInput = {
 		workspace,
 		manifest,
 		runnables,
@@ -453,7 +473,6 @@ export async function validateCompose(
 			...(registry ? { registry } : {}),
 		},
 		secrets,
-		pushSubscriptions: recordedPushSubscriptions(recorded?.resources),
 		...(stage === workspace.stages.local
 			? {
 					localCredentials: (await loadLocalCredentials(workspace)).credentials,
@@ -463,7 +482,26 @@ export async function validateCompose(
 		ports: edgePorts(deps.env),
 		...(layout ? { layout } : {}),
 		...(push ? { buildOnly: true } : {}),
-	});
+	};
+	const recordedArns = recordedPushSubscriptions(recorded?.resources);
+
+	// A topic the stage set to SNS by hand is subscribed by this deploy, in
+	// `provision` — so until then the stack is composed to learn where SNS
+	// pushes, and composed again with the ARNs once they are recorded.
+	const planned = push
+		? undefined
+		: composeStack({ ...input, recordingSubscriptions: true });
+	const pushes = planned ? topicPushes(planned, manifest) : [];
+	const topics =
+		planned &&
+		(pushes.length > 0 ||
+			recordedTopicSubscriptions(recorded?.resources).length > 0)
+			? { pushes, recorded: recorded?.resources }
+			: undefined;
+	const composed =
+		topics && planned
+			? planned
+			: composeStack({ ...input, pushSubscriptions: recordedArns });
 
 	// A cache is reached over the Redis wire protocol, and the client is the
 	// project's own dependency: a build without it fails deep inside Docker.
@@ -474,9 +512,11 @@ export async function validateCompose(
 	// No image embeds the stage's secrets: a backend reads them at runtime
 	// from its env file, so one image built at a commit runs on every stage.
 	// A pinned release runs each image at the digest its push reported.
-	const stack = options.pin
-		? withPinnedImages(composed, options.pin.file, options.pin.digests)
-		: composed;
+	const pinned = (unpinned: ComposeStack) =>
+		options.pin
+			? withPinnedImages(unpinned, options.pin.file, options.pin.digests)
+			: unpinned;
+	const stack = pinned(composed);
 
 	// A release is all of its images or none of them. A dry run asks nothing,
 	// so it can be run without a registry login.
@@ -538,6 +578,22 @@ export async function validateCompose(
 		mode,
 		push,
 		stack,
+		...(topics
+			? {
+					topicSubscriptions: {
+						...topics,
+						restack: (arns) => {
+							const merged = { ...recordedArns };
+							for (const [worker, own] of Object.entries(arns)) {
+								merged[worker] = { ...merged[worker], ...own };
+							}
+							return pinned(
+								composeStack({ ...input, pushSubscriptions: merged }),
+							);
+						},
+					},
+				}
+			: {}),
 		...(server ? { server } : {}),
 		dir,
 		ref: {
@@ -865,6 +921,16 @@ export async function planCompose(
 			action: run.previous[worker.name] ? 'reuse' : 'create',
 		});
 	}
+	for (const push of run.topicSubscriptions?.pushes ?? []) {
+		const key = subscriptionKey(push.worker, push.name);
+		const id = run.topicSubscriptions?.recorded?.[key]?.id;
+		planned({
+			key,
+			resourceType: SUBSCRIPTION_TYPE,
+			action: id ? 'reuse' : 'create',
+			...(id ? { id } : {}),
+		});
+	}
 	if (!run.push) {
 		planned({
 			key:
@@ -891,7 +957,7 @@ export async function provisionCompose(
 	run: ComposeRun,
 	deps: ComposeDeps,
 ): Promise<void> {
-	const { stack, ref } = run;
+	const { ref } = run;
 	// A push provisions nothing; its files are written where it builds.
 	if (run.push) return;
 
@@ -906,12 +972,17 @@ export async function provisionCompose(
 	// before a file is written or a container started.
 	const ports = edgePorts(deps.env);
 	await assertEdgePorts(deps.docker, {
-		project: stack.project,
-		proxy: stack.proxy,
+		project: run.stack.project,
+		proxy: run.stack.proxy,
 		ports,
 		engine: ref,
 	});
 
+	if (run.topicSubscriptions) {
+		await subscribeTopics(ctx, run, deps);
+	}
+
+	const { stack } = run;
 	run.files = await writeStack(ctx.cwd, run.dir, stack);
 	printPlan(ctx, run);
 
@@ -961,6 +1032,45 @@ export async function provisionCompose(
 	if (stack.storage && stack.infra.includes('minio')) {
 		await prepareBuckets(ctx, run, deps);
 	}
+}
+
+/**
+ * Subscribe each topic subscriber SNS pushes to — for a topic the stage set
+ * to SNS by hand — record the ARNs, and compose the stack again with them,
+ * before a file is written.
+ */
+async function subscribeTopics(
+	ctx: ComposeContext,
+	run: ComposeRun,
+	deps: ComposeDeps,
+): Promise<void> {
+	const { pushes, recorded, restack } = run.topicSubscriptions!;
+	if (pushes.length > 0) {
+		ctx.logger.info("\n📮 SNS subscriptions for the stage's own topics");
+	}
+	const arns = await ensureTopicSubscriptions({
+		pushes,
+		recorded,
+		secrets: run.secrets?.custom ?? {},
+		stage: ctx.stage,
+		env: deps.env,
+		record: async (resource) => {
+			await ctx.state.putResource(ctx.stage, resource);
+			applied(ctx, run, {
+				key: resource.key,
+				resourceType: SUBSCRIPTION_TYPE,
+				action: 'ensure',
+				id: resource.id!,
+				via:
+					recorded?.[resource.key]?.id === resource.id ? 'recorded' : 'created',
+			});
+		},
+		forget: async (key) => {
+			await ctx.state.deleteResource(ctx.stage, key);
+		},
+		log: (line) => ctx.logger.info(line),
+	});
+	run.stack = restack(arns);
 }
 
 /**
@@ -1361,7 +1471,7 @@ export async function verifyCompose(
 		throw new ComposeAppsUnhealthy(stack.project, down, stack.proxy);
 	}
 
-	await confirmSubscriptions(ctx, deps);
+	await confirmSubscriptions(ctx, run, deps);
 
 	if (stack.logs) reportLogs(ctx, stack.logs, stack.local, run.server);
 }
@@ -1375,6 +1485,7 @@ export async function verifyCompose(
  */
 async function confirmSubscriptions(
 	ctx: ComposeContext,
+	run: ComposeRun,
 	deps: ComposeDeps,
 ): Promise<void> {
 	const stored = await ctx.state.read(ctx.stage);
@@ -1382,6 +1493,7 @@ async function confirmSubscriptions(
 	const left = await confirm({
 		workspace: ctx.workspace,
 		stage: ctx.stage,
+		secrets: run.secrets?.custom ?? {},
 		resources: stored?.resources,
 		env: deps.env,
 		log: (line) => ctx.logger.info(line),

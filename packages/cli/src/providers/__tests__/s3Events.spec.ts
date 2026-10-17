@@ -1,11 +1,11 @@
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
+import { recordedPushSubscriptions } from '../../deploy/snsSubscriptions';
 import {
 	bucketWatchers,
 	eventsDeadLetterName,
 	eventsTopicName,
 	mergedNotifications,
-	recordedPushSubscriptions,
 } from '../s3/events';
 
 const manifest = {

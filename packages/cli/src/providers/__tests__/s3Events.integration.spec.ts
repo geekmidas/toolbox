@@ -56,18 +56,17 @@ import { loadWorkspaceConfig } from '../../config';
 import { deploy } from '../../deploy/deploy';
 import type { DeployEvent } from '../../deploy/events';
 import { createStateStore } from '../../deploy/StateStore';
+import {
+	confirmPendingSubscriptions,
+	recordedPushSubscriptions,
+} from '../../deploy/snsSubscriptions';
 import { type BoundSubscriber, discover } from '../../reconcile/discover';
 import { constructGlobs } from '../../reconcile/workspace';
 import { secretsStoreFor } from '../../secrets/store';
 import { composeTarget } from '../../target/compose/index';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { provisionStage } from '../index';
-import {
-	confirmPendingSubscriptions,
-	eventsDeadLetterName,
-	eventsTopicName,
-	recordedPushSubscriptions,
-} from '../s3/events';
+import { eventsDeadLetterName, eventsTopicName } from '../s3/events';
 import { bucketName, iamUserName } from '../s3/naming';
 
 /**
