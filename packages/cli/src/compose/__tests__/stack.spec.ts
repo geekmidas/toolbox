@@ -20,6 +20,7 @@ import {
 	envFile,
 	LocalCredentialsMissing,
 	NothingToCompose,
+	PushSubscriptionMissing,
 	type StackInput,
 	StageSecretMissing,
 	StageSeedMissing,
@@ -943,6 +944,12 @@ describe('a worker SNS pushes to', () => {
 		}) as unknown as ConstructManifest;
 	const SNS =
 		'sns://AKIAEXAMPLE:secret@?topicArn=arn:aws:sns:eu-west-1:123456789012:alerts&region=eu-west-1';
+	const ARN = (name: string) =>
+		`arn:aws:sns:eu-west-1:123456789012:alerts:${name}-0b6c`;
+	/** What the deploy recorded when it subscribed each route. */
+	const RECORDED = {
+		Jobs: { onAlert: ARN('onAlert'), onAlertAgain: ARN('onAlertAgain') },
+	};
 
 	const deployed = (overrides: Partial<StackInput> = {}) =>
 		stack({
@@ -963,6 +970,7 @@ describe('a worker SNS pushes to', () => {
 			},
 			images: { mode: 'pull', tag: 'v1.4.0' },
 			secrets: production({ ALERTS_PUBLISHER_CONNECTION_STRING: SNS }),
+			pushSubscriptions: RECORDED,
 			ports: {},
 			...overrides,
 		});
@@ -975,6 +983,20 @@ describe('a worker SNS pushes to', () => {
 			host: 'jobs.shop.example.com',
 			url: 'https://jobs.shop.example.com',
 			paths: ['/__gkm/subscribers/onAlert', '/__gkm/subscribers/onAlertAgain'],
+			// What the deploy subscribes, one endpoint per subscriber.
+			subscribers: [
+				{
+					name: 'onAlert',
+					connectionKey: 'ALERTS_PUBLISHER_CONNECTION_STRING',
+					endpoint: 'https://jobs.shop.example.com/__gkm/subscribers/onAlert',
+				},
+				{
+					name: 'onAlertAgain',
+					connectionKey: 'ALERTS_PUBLISHER_CONNECTION_STRING',
+					endpoint:
+						'https://jobs.shop.example.com/__gkm/subscribers/onAlertAgain',
+				},
+			],
 		});
 		expect(s.routes.find((r) => r.name === 'jobs')).toEqual({
 			name: 'jobs',
@@ -990,11 +1012,37 @@ describe('a worker SNS pushes to', () => {
 		expect(s.compose.services.caddy?.depends_on).toHaveProperty('jobs');
 	});
 
-	it('is told the public base its routes are subscribed under', () => {
+	it('is handed the subscriptions the deploy made, and subscribes nothing itself', () => {
 		const env = jobs(deployed()).env!;
 
-		expect(env.GKM_SUBSCRIBER_PUSH_URL).toBe('https://jobs.shop.example.com');
+		expect(JSON.parse(env.GKM_SNS_SUBSCRIPTIONS!)).toEqual(RECORDED.Jobs);
 		expect(env.ALERTS_PUBLISHER_CONNECTION_STRING).toBe(SNS);
+		// Only an emulator's server subscribes itself, under this base.
+		expect(env).not.toHaveProperty('GKM_SUBSCRIBER_PUSH_URL');
+	});
+
+	it('hands it only its own subscribers’ subscriptions', () => {
+		const env = jobs(
+			deployed({
+				pushSubscriptions: {
+					Jobs: { ...RECORDED.Jobs, somebodyElses: ARN('other') },
+					Reports: { onReport: ARN('onReport') },
+				},
+			}),
+		).env!;
+
+		expect(JSON.parse(env.GKM_SNS_SUBSCRIPTIONS!)).toEqual(RECORDED.Jobs);
+	});
+
+	it('refuses a pushed subscriber the deploy recorded no subscription for', () => {
+		const missing = () =>
+			deployed({ pushSubscriptions: { Jobs: { onAlert: ARN('onAlert') } } });
+
+		expect(missing).toThrow(PushSubscriptionMissing);
+		expect(missing).toThrow(/'onAlertAgain' on the worker 'jobs'/);
+		expect(() => deployed({ pushSubscriptions: undefined })).toThrow(
+			PushSubscriptionMissing,
+		);
 	});
 
 	it("is pushed to by a bucket's events, as by a topic", () => {
@@ -1016,9 +1064,13 @@ describe('a worker SNS pushes to', () => {
 				],
 			},
 			secrets: production({ UPLOADS_EVENTS_CONNECTION_STRING: SNS }),
+			pushSubscriptions: { Jobs: { onAvatar: ARN('onAvatar') } },
 		});
 
 		expect(jobs(s).push?.paths).toEqual(['/__gkm/subscribers/onAvatar']);
+		expect(JSON.parse(jobs(s).env!.GKM_SNS_SUBSCRIPTIONS!)).toEqual({
+			onAvatar: ARN('onAvatar'),
+		});
 		expect(jobs(s).env?.UPLOADS_EVENTS_CONNECTION_STRING).toBe(SNS);
 		expect(jobs(s).env).not.toHaveProperty('UPLOADS_URL');
 	});
@@ -1027,7 +1079,7 @@ describe('a worker SNS pushes to', () => {
 		const s = deployed({ secrets: production() });
 
 		expect(jobs(s).push).toBeUndefined();
-		expect(jobs(s).env).not.toHaveProperty('GKM_SUBSCRIBER_PUSH_URL');
+		expect(jobs(s).env).not.toHaveProperty('GKM_SNS_SUBSCRIPTIONS');
 		expect(s.routes.map((r) => r.name)).not.toContain('jobs');
 		expect(s.caddyfile).not.toContain('jobs');
 	});

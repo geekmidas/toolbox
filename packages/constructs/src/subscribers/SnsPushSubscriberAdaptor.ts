@@ -32,6 +32,29 @@ export interface SnsPushOptions {
 	 * from the request.
 	 */
 	emulatorEndpoint?: string;
+	/**
+	 * The subscription the deploy made for this route, as it recorded it
+	 * (`GKM_SNS_SUBSCRIPTIONS`). A notification naming another one in its
+	 * `x-amz-sns-subscription-arn` header is refused — a subscription someone
+	 * added by hand, pointing at this route.
+	 *
+	 * Defence in depth, not authentication: SNS does not sign its headers.
+	 * What authenticates a message is its signature and its `TopicArn`.
+	 */
+	subscriptionArn?: string;
+	/**
+	 * How a confirmation is confirmed. By visiting its `SubscribeURL` when
+	 * unset — what an emulator takes. Against SNS itself, the server confirms
+	 * through the API with `AuthenticateOnUnsubscribe`, so the `UnsubscribeURL`
+	 * every notification carries cannot cut the route off.
+	 */
+	confirm?: (message: SnsHttpMessage) => Promise<unknown>;
+}
+
+/** What SNS said about a request, outside its signed body. */
+export interface SnsPushRequest {
+	/** The `x-amz-sns-subscription-arn` header. */
+	subscriptionArn?: string;
 }
 
 /** What to answer SNS with. A non-2xx tells SNS to retry. */
@@ -56,7 +79,10 @@ export class SnsPushSubscriberAdaptor {
 		private readonly options: SnsPushOptions,
 	) {}
 
-	async handle(body: unknown): Promise<SnsPushResponse> {
+	async handle(
+		body: unknown,
+		request: SnsPushRequest = {},
+	): Promise<SnsPushResponse> {
 		const message = body as SnsHttpMessage;
 		if (typeof message?.Type !== 'string' || !message.TopicArn) {
 			return refuse(400, 'not an SNS message');
@@ -81,6 +107,14 @@ export class SnsPushSubscriberAdaptor {
 
 		switch (message.Type) {
 			case 'SubscriptionConfirmation':
+				if (this.options.confirm) {
+					await this.options.confirm(message);
+					this.subscriber.logger.info(
+						{ topicArn: message.TopicArn },
+						'Confirmed SNS subscription',
+					);
+					return { status: 200, body: { status: 'confirmed' } };
+				}
 				await confirmSnsSubscription(
 					this.options.emulatorEndpoint && message.SubscribeURL
 						? {
@@ -98,6 +132,19 @@ export class SnsPushSubscriberAdaptor {
 				);
 				return { status: 200, body: { status: 'confirmed' } };
 			case 'Notification':
+				if (
+					this.options.subscriptionArn &&
+					request.subscriptionArn !== this.options.subscriptionArn
+				) {
+					this.subscriber.logger.warn(
+						{
+							topicArn: message.TopicArn,
+							subscriptionArn: request.subscriptionArn,
+						},
+						'Refused an SNS notification from a subscription the deploy did not make',
+					);
+					return refuse(403, 'not the recorded subscription');
+				}
 				try {
 					await this.notify(message);
 					return { status: 200, body: { status: 'ok' } };
