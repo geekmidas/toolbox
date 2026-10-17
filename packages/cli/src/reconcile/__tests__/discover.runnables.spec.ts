@@ -5,7 +5,7 @@ import {
 	createTestFile,
 } from '../../__tests__/test-helpers';
 import { LocalSandbox } from '../../sandbox/local';
-import { discover } from '../discover';
+import { type BoundSubscriber, discover } from '../discover';
 
 /**
  * A runnable's edges, collected by the discovery that already imports it.
@@ -222,4 +222,50 @@ export const rollup = reports
 			'Users',
 		]);
 	});
+
+	it(
+		'records each worker’s topic subscribers by export and topic, here and in a sandbox',
+		{ timeout: 30_000 },
+		async () => {
+			await createTestFile(
+				dir,
+				'subscribers/welcome.ts',
+				`import { jobs, users } from '../constructs/index.js';
+
+export const welcome = jobs
+	.topic(users)
+	.subscribe(['user.created'])
+	.handle(async () => {});
+`,
+			);
+			// The same subscriber again, through a barrel: one route, not two.
+			await createTestFile(
+				dir,
+				'subscribers/index.ts',
+				`export { welcome } from './welcome.js';
+`,
+			);
+			const patterns = [
+				'constructs/**/*.ts',
+				'queues/**/*.ts',
+				'subscribers/**/*.ts',
+			];
+			const here: Record<string, BoundSubscriber[]> = {};
+			const there: Record<string, BoundSubscriber[]> = {};
+
+			await discover({ patterns, cwd: dir, subscribers: here });
+			await discover({
+				patterns,
+				cwd: dir,
+				subscribers: there,
+				sandbox: new LocalSandbox({ root: dir }),
+			});
+
+			// A queue's consumer is no topic subscriber: SNS never pushes to it.
+			expect(here).toEqual({
+				Jobs: [{ name: 'welcome', topic: 'Users' }],
+			});
+			expect(there).toEqual(here);
+		},
+	);
 });

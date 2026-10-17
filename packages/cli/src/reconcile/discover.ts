@@ -105,12 +105,30 @@ export interface DiscoverOptions {
 	 */
 	background?: Record<string, string[]>;
 	/**
+	 * Filled in, when provided, with each worker's topic subscribers — by the
+	 * export a push route is named after, and the topic each is bound to —
+	 * keyed by the worker.
+	 *
+	 * What says which worker SNS pushes to, and on which paths: a build bound
+	 * for a server records no subscriber in the manifest, because none has a
+	 * handler of its own there.
+	 */
+	subscribers?: Record<string, BoundSubscriber[]>;
+	/**
 	 * Import the construct modules in this sandbox rather than in this
 	 * process. Defaults to the run's own (`withSandbox`), so a deploy's every
 	 * discovery — the engine's included — happens there; with neither, they
 	 * are imported here, as before.
 	 */
 	sandbox?: Sandbox;
+}
+
+/** A worker's topic subscriber, as discovery found it. */
+export interface BoundSubscriber {
+	/** Its export — what its push route is named after. */
+	name: string;
+	/** The topic it is bound to, by id. */
+	topic: string;
 }
 
 /** What the discovery worker answers. Checked: the worker ran project code. */
@@ -123,6 +141,12 @@ const DiscoverAnswer = z.discriminatedUnion('reason', [
 		),
 		runnables: z.record(z.string(), z.array(z.string())),
 		background: z.record(z.string(), z.array(z.string())).optional(),
+		subscribers: z
+			.record(
+				z.string(),
+				z.array(z.object({ name: z.string(), topic: z.string() })),
+			)
+			.optional(),
 	}),
 	z.object({ reason: z.literal('live'), paths: z.array(z.string()) }),
 	z.object({
@@ -176,6 +200,11 @@ async function discoverInSandbox(
 			if (options.background) {
 				for (const [owner, files] of Object.entries(value.background ?? {})) {
 					options.background[owner] = files;
+				}
+			}
+			if (options.subscribers) {
+				for (const [owner, bound] of Object.entries(value.subscribers ?? {})) {
+					options.subscribers[owner] = bound;
 				}
 			}
 			return value.manifest as unknown as ConstructManifest;
@@ -316,6 +345,8 @@ export async function discover(
 		for (const [exportName, exported] of Object.entries(module)) {
 			if (options.background)
 				recordBackground(options.background, exported, file);
+			if (options.subscribers)
+				recordSubscriber(options.subscribers, exported, exportName);
 			if (!isDeclarable(exported)) {
 				if (options.runnables) recordRunnable(options.runnables, exported);
 				continue;
@@ -387,6 +418,31 @@ function recordBackground(
 	const files = background[key] ?? [];
 	background[key] = files;
 	if (!files.includes(file)) files.push(file);
+}
+
+/**
+ * Record a topic subscriber under the worker that runs it, by its export.
+ * Once per name: a file reached twice through a re-export finds it again.
+ */
+function recordSubscriber(
+	subscribers: Record<string, BoundSubscriber[]>,
+	exported: unknown,
+	exportName: string,
+): void {
+	if (!Subscriber.isSubscriber(exported)) return;
+	const { owner, topicName } = exported as {
+		owner?: unknown;
+		topicName?: unknown;
+	};
+	if (typeof owner !== 'string' || typeof topicName !== 'string') return;
+
+	const key = canonicalId(owner);
+	const bound = subscribers[key] ?? [];
+	subscribers[key] = bound;
+	const topic = canonicalId(topicName);
+	if (!bound.some((s) => s.topic === topic && s.name === exportName)) {
+		bound.push({ name: exportName, topic });
+	}
 }
 
 /**

@@ -215,8 +215,13 @@ export function traefikDynamic(
 			chain.push(name(route, 'prefix'));
 		}
 
+		// Only the paths it names, where it names some: a request for any
+		// other matches no router, and the edge answers it 404 itself.
+		const paths = route.paths
+			? ` && (${route.paths.map((path) => `Path(\`${path}\`)`).join(' || ')})`
+			: '';
 		routers[name(route)] = {
-			rule: `Host(\`${route.host}\`)`,
+			rule: `Host(\`${route.host}\`)${paths}`,
 			entryPoints: ['websecure'],
 			service: name(route),
 			middlewares: chain,

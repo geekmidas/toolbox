@@ -158,6 +158,54 @@ describe('the route model, rendered for Caddy', () => {
 	});
 });
 
+/** A worker SNS pushes to: two subscribers' routes, and nothing else. */
+const PUSHED: EdgeRoute = {
+	name: 'jobs',
+	host: 'jobs.shop.example.com',
+	upstreams: [{ service: 'jobs', port: 3000 }],
+	streaming: false,
+	paths: ['/__gkm/subscribers/onAlert', '/__gkm/subscribers/onSignup'],
+	health: '/health',
+};
+
+describe('a route that answers only some paths', () => {
+	it('is refused by Caddy on every other path, before the upstream', () => {
+		const caddyfile = edgeCaddyfile([PUSHED], { tls: { kind: 'acme' } });
+
+		expect(caddyfile).toContain(
+			'@elsewhere not path /__gkm/subscribers/onAlert /__gkm/subscribers/onSignup\n\trespond @elsewhere 404',
+		);
+		// Refused before the proxy is reached, so nothing else is let through.
+		expect(caddyfile.indexOf('respond @elsewhere 404')).toBeLessThan(
+			caddyfile.indexOf('reverse_proxy jobs:3000'),
+		);
+	});
+
+	it('matches no Traefik router on any other path', () => {
+		const { http } = traefikDynamic([PUSHED], {
+			project: 'shop-production',
+			tls: { kind: 'acme' },
+		}) as { http: { routers: Record<string, { rule: string }> } };
+
+		expect(http.routers['shop-production-jobs']?.rule).toBe(
+			'Host(`jobs.shop.example.com`) && (Path(`/__gkm/subscribers/onAlert`) || Path(`/__gkm/subscribers/onSignup`))',
+		);
+	});
+
+	it('leaves a route without paths answering every one', () => {
+		const caddyfile = edgeCaddyfile(ROUTES, { tls: { kind: 'acme' } });
+		const { http } = traefikDynamic(ROUTES, {
+			project: 'shop-production',
+			tls: { kind: 'acme' },
+		}) as { http: { routers: Record<string, { rule: string }> } };
+
+		expect(caddyfile).not.toContain('@elsewhere');
+		expect(http.routers['shop-production-api']?.rule).toBe(
+			'Host(`api.shop.example.com`)',
+		);
+	});
+});
+
 describe('the route model, rendered for Traefik', () => {
 	const dynamic = (
 		tls: Parameters<typeof traefikDynamic>[1]['tls'] = {

@@ -124,7 +124,11 @@ import {
 import { appEnvKeys, workerEnvKeys } from '../../reconcile/apps.js';
 import { bucketClient, pgClient } from '../../reconcile/clients.js';
 import { primaryPortKey } from '../../reconcile/containers.js';
-import { type ConstructSource, discover } from '../../reconcile/discover.js';
+import {
+	type BoundSubscriber,
+	type ConstructSource,
+	discover,
+} from '../../reconcile/discover.js';
 import { envFor } from '../../reconcile/env.js';
 import { loadLocalCredentials } from '../../reconcile/localCredentials.js';
 import {
@@ -407,11 +411,13 @@ export async function validateCompose(
 	// run discovered has the declarations but not them.
 	const runnables: Record<string, string[]> = {};
 	const background: Record<string, string[]> = {};
+	const subscribers: Record<string, BoundSubscriber[]> = {};
 	const manifest = await discover({
 		patterns: constructGlobs(workspace),
 		cwd: root,
 		runnables,
 		background,
+		subscribers,
 	});
 
 	const { secrets, generated } = await stageSecrets(ctx, manifest);
@@ -424,6 +430,7 @@ export async function validateCompose(
 		manifest,
 		runnables,
 		background,
+		subscribers,
 		stage,
 		identity,
 		images: {
