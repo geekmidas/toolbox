@@ -201,6 +201,25 @@ export function envFor(
 				}),
 			);
 		}
+		if (resource.kind === 'websocket-api') {
+			// Who may open it from a browser, read off its inbound edges as a
+			// REST surface's are. A socket carries no cookie scope of its own.
+			const origins = surfaceEnv(resource, url, resolved)[
+				provideKey(resource.id, 'trustedOrigins')
+			];
+			if (origins !== undefined) {
+				env[provideKey(resource.id, 'trustedOrigins')] = origins;
+			}
+			const publisher = webSocketPublisher(
+				resource,
+				options.ports,
+				options.project ?? '',
+				credential,
+			);
+			if (publisher) {
+				env[provideKey(resource.id, 'publisherConnectionString')] = publisher;
+			}
+		}
 		if (url) env[resource.envKey] = url;
 
 		// A database owns a second key, and it is deliberately not in `provides`:
@@ -423,10 +442,36 @@ function surfaceEnv(
 	};
 }
 
-/** An address reduced to the origin a browser compares against. */
+/**
+ * Where a WebSocket surface's publisher meets its sockets: the local Redis,
+ * on channels named for the project and the surface, so two projects sharing
+ * one Redis never see each other's frames.
+ */
+export function webSocketPublisher(
+	resource: PlannedResource,
+	ports: PortAssignments,
+	project: string,
+	credential: StageCredential,
+): string | undefined {
+	const port = ports[primaryPortKey('redis')];
+	if (port === undefined) return undefined;
+
+	const channel = encodeURIComponent(
+		`gkm:ws:${project ? `${project}:` : ''}${resource.id}`,
+	);
+	return `redis://:${encodeURIComponent(credential.containers.redis.password)}@${LOCAL_HOST}:${port}?channel=${channel}`;
+}
+
+/**
+ * An address reduced to the origin a browser compares against.
+ *
+ * A WebSocket surface's address is `wss://`, but its host is served over
+ * HTTPS like any other: its origin is that one, and a non-web scheme among the
+ * origins means a mobile app to whoever reads the list.
+ */
 function originOf(address: string): string | undefined {
 	try {
-		return new URL(address).origin;
+		return new URL(address.replace(/^ws(s?):/, 'http$1:')).origin;
 	} catch {
 		return undefined;
 	}
@@ -592,6 +637,18 @@ function urlFor(
 		return address && edge !== undefined
 			? `https://${hostFor(resource, project)}:${edge}`
 			: address;
+	}
+
+	// The same address, in the scheme a WebSocket client opens.
+	if (resource.kind === 'websocket-api') {
+		const address = addresses?.[resource.id];
+		const edge = plan.containers.includes('caddy')
+			? ports[primaryPortKey('caddy')]
+			: undefined;
+
+		return address && edge !== undefined
+			? `wss://${hostFor(resource, project)}:${edge}`
+			: address?.replace(/^http/, 'ws');
 	}
 
 	if (!resource.container) return undefined;

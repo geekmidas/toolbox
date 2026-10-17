@@ -85,3 +85,58 @@ describe('appEnvKeys', () => {
 		expect(keys).toContain('UPLOADS_SERVER_URL');
 	});
 });
+
+describe('an edge to a WebSocket surface', () => {
+	const sockets = {
+		Realtime: {
+			kind: 'websocket-api',
+			id: 'Realtime',
+			path: 'apps/realtime',
+			provides: [
+				'REALTIME_URL',
+				'REALTIME_TRUSTED_ORIGINS',
+				'REALTIME_PUBLISHER_CONNECTION_STRING',
+			],
+		},
+		Api: {
+			kind: 'rest-api',
+			id: 'Api',
+			path: 'apps/api',
+			endpoints: [],
+			provides: ['API_URL'],
+		},
+		Web: {
+			kind: 'site',
+			id: 'Web',
+			variant: 'vite',
+			app: { path: 'apps/web' },
+			dependencies: [{ target: 'Realtime', kind: 'websocket-api' }],
+			provides: ['WEB_URL'],
+		},
+	} as unknown as ConstructManifest;
+
+	it('hands a server its address and its publisher', () => {
+		const keys = appEnvKeys(sockets, 'api', { Api: ['Realtime'] })!;
+
+		expect(keys).toContain('REALTIME_URL');
+		expect(keys).toContain('REALTIME_PUBLISHER_CONNECTION_STRING');
+		expect(keys).not.toContain('REALTIME_TRUSTED_ORIGINS');
+	});
+
+	it('hands a site its address alone: the publisher writes to every socket', () => {
+		const keys = appEnvKeys(sockets, 'web')!;
+
+		expect(keys).toContain('REALTIME_URL');
+		expect(keys).not.toContain('REALTIME_PUBLISHER_CONNECTION_STRING');
+	});
+
+	it('hands the surface its own keys', () => {
+		const keys = appEnvKeys(sockets, 'realtime')!;
+
+		expect([...keys].sort()).toEqual([
+			'REALTIME_PUBLISHER_CONNECTION_STRING',
+			'REALTIME_TRUSTED_ORIGINS',
+			'REALTIME_URL',
+		]);
+	});
+});

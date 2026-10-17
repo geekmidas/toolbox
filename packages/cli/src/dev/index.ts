@@ -456,7 +456,9 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		// This app's own address behind the edge, for the ready line.
 		const own = reconciled.plan.resources.find(
 			(r) =>
-				(r.kind === 'rest-api' || r.kind === 'site') &&
+				(r.kind === 'rest-api' ||
+					r.kind === 'websocket-api' ||
+					r.kind === 'site') &&
 				appKey(r.id) === workspaceAppName,
 		);
 		publicUrl = own ? reconciled.env[own.envKey] : undefined;
@@ -1095,7 +1097,12 @@ async function workspaceDevCommand(
 	// given, rather than their ports.
 	const appUrls: Record<string, string> = {};
 	for (const resource of reconciled.plan.resources) {
-		if (resource.kind !== 'rest-api' && resource.kind !== 'site') continue;
+		if (
+			resource.kind !== 'rest-api' &&
+			resource.kind !== 'websocket-api' &&
+			resource.kind !== 'site'
+		)
+			continue;
 		const address = reconciled.env[resource.envKey];
 		if (address) appUrls[resource.id] = address;
 	}
@@ -1604,7 +1611,7 @@ ${credentialsInjection}${parentWatch}const port = process.argv.includes('--port'
 
 ${telemetry}
 // Dynamic import so Credentials are populated before the surface evaluates
-const { app: surface } = await import('${appImportPath}');
+const { app: surface, attach } = await import('${appImportPath}');
 
 // Behind the request spans when there are any, as the production server is.
 const { Hono } = await import('hono');
@@ -1614,7 +1621,13 @@ if (requestSpans) {
   app.route('/', surface);
 }
 
-${serveCode.replace(/^ {4}/gm, '')}
+${serveCode.replace(/^ {4}/gm, '')}${
+	runtime === 'bun'
+		? ''
+		: `
+// A surface that takes upgrades — a WebSocket one — is handed them.
+attach?.(server);`
+}
 `;
 	}
 

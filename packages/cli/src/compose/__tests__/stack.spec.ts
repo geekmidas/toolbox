@@ -1141,3 +1141,106 @@ describe('a stack that only builds (--build --push)', () => {
 		}
 	});
 });
+
+describe('a WebSocket surface', () => {
+	let realtimeDir: string;
+	let realtime: Awaited<ReturnType<typeof loadComposeApp>>;
+
+	beforeAll(async () => {
+		realtimeDir = realpathSync(await createTempDir('gkm-compose-realtime-'));
+		writeComposeApp(realtimeDir, { realtime: true });
+		realtime = await loadComposeApp(realtimeDir);
+	});
+
+	afterAll(async () => {
+		await cleanupDir(realtimeDir);
+	});
+
+	const deployed = (proxy?: 'traefik') =>
+		composeStack({
+			workspace: proxy
+				? {
+						...realtime.workspace,
+						deploy: {
+							...realtime.workspace.deploy,
+							compose: { ...realtime.workspace.deploy?.compose, proxy },
+						},
+					}
+				: realtime.workspace,
+			manifest: realtime.manifest,
+			runnables: realtime.runnables,
+			background: realtime.background,
+			stage: 'production',
+			identity: deployIdentity(realtime.workspace, 'production'),
+			images: { mode: 'pull', tag: 'v1.4.0' },
+			secrets: production(),
+			ports: {},
+			localCredentials: TEST_CREDENTIALS,
+		});
+
+	it('runs one container per replica, each an upstream of its one route', () => {
+		const s = deployed();
+
+		for (const name of ['realtime', 'realtime-2', 'realtime-3']) {
+			const service = s.compose.services[name]!;
+			expect(service.image).toBe(app(s, 'realtime').ref);
+			expect(service.env_file).toEqual([
+				{ path: './realtime.env', format: 'raw' },
+			]);
+			expect(service.healthcheck?.test).toEqual(
+				expect.arrayContaining([expect.stringContaining('/health')]),
+			);
+			expect(service.ulimits).toEqual({
+				nofile: { soft: 1_048_576, hard: 1_048_576 },
+			});
+			expect(service.depends_on).toHaveProperty('redis');
+			expect(s.compose.services.caddy?.depends_on).toHaveProperty(name);
+		}
+
+		const route = s.routes.find((r) => r.name === 'realtime')!;
+		expect(route.upstreams).toEqual([
+			{ service: 'realtime', port: app(s, 'realtime').port },
+			{ service: 'realtime-2', port: app(s, 'realtime').port },
+			{ service: 'realtime-3', port: app(s, 'realtime').port },
+		]);
+		expect(route.health).toBe('/health');
+	});
+
+	it('answers on wss://, and meets its senders on the stack Redis', () => {
+		const s = deployed();
+		const realtimeApp = app(s, 'realtime');
+
+		expect(realtimeApp.kind).toBe('websocket-api');
+		expect(realtimeApp.url).toBe(`wss://${realtimeApp.host}`);
+		expect(s.infra).toContain('redis');
+
+		const publisher = 'redis://:the-redis-password@redis:6379';
+		expect(realtimeApp.env?.REALTIME_PUBLISHER_CONNECTION_STRING).toBe(
+			publisher,
+		);
+		expect(realtimeApp.env?.REALTIME_URL).toBe(realtimeApp.url);
+		// The API sends to it, so it holds the same publisher — and reaches
+		// the surface across the network.
+		expect(app(s, 'api').env?.REALTIME_PUBLISHER_CONNECTION_STRING).toBe(
+			publisher,
+		);
+		expect(app(s, 'api').env?.REALTIME_URL).toBe(
+			`ws://realtime:${realtimeApp.port}`,
+		);
+		// Nothing else reaches it.
+		expect(app(s, 'auth').env).not.toHaveProperty(
+			'REALTIME_PUBLISHER_CONNECTION_STRING',
+		);
+	});
+
+	it('widens the edge for the connections it holds', () => {
+		const caddy = deployed().compose.services.caddy!;
+
+		expect(caddy.sysctls).toEqual({
+			'net.ipv4.ip_local_port_range': '1024 65535',
+		});
+		expect(caddy.ulimits).toEqual({
+			nofile: { soft: 1_048_576, hard: 1_048_576 },
+		});
+	});
+});

@@ -60,7 +60,11 @@ export function hostOf(
 	id: string,
 ): string | undefined {
 	const declaration = manifest[id];
-	if (!declaration || declaration.kind !== 'rest-api') return undefined;
+	if (
+		!declaration ||
+		(declaration.kind !== 'rest-api' && declaration.kind !== 'websocket-api')
+	)
+		return undefined;
 
 	return id;
 }
@@ -136,7 +140,8 @@ export function derivedApps(
 		if (
 			declaration.kind !== 'site' &&
 			declaration.kind !== 'mobile-app' &&
-			declaration.kind !== 'rest-api'
+			declaration.kind !== 'rest-api' &&
+			declaration.kind !== 'websocket-api'
 		)
 			continue;
 
@@ -146,7 +151,9 @@ export function derivedApps(
 				? declaration.app
 				: {
 						path: declaration.path,
-						...(declaration.telescope ? { telescope: true } : {}),
+						...(declaration.kind === 'rest-api' && declaration.telescope
+							? { telescope: true }
+							: {}),
 					};
 
 		const name = appKey(id);
@@ -165,7 +172,9 @@ export function derivedApps(
 			path: spec.path,
 			port: spec.port ?? configured?.port ?? 0,
 			// The label it answers on, under a stage's domain and locally alike.
-			...((declaration.kind === 'rest-api' || declaration.kind === 'site') &&
+			...((declaration.kind === 'rest-api' ||
+				declaration.kind === 'websocket-api' ||
+				declaration.kind === 'site') &&
 			declaration.subdomain
 				? { subdomain: declaration.subdomain }
 				: {}),
@@ -205,7 +214,8 @@ export function derivedApps(
 		if (
 			declaration.kind !== 'site' &&
 			declaration.kind !== 'mobile-app' &&
-			declaration.kind !== 'rest-api'
+			declaration.kind !== 'rest-api' &&
+			declaration.kind !== 'websocket-api'
 		)
 			continue;
 
@@ -214,7 +224,7 @@ export function derivedApps(
 
 		// A site names its edges `dependencies`; a surface names them `calls`.
 		const edges =
-			declaration.kind === 'rest-api'
+			declaration.kind === 'rest-api' || declaration.kind === 'websocket-api'
 				? (declaration.calls ?? [])
 				: (declaration.dependencies ?? []);
 

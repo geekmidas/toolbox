@@ -344,6 +344,14 @@ describe('the edge', () => {
 		expect(compose.services.traefik.image).toBe(TRAEFIK_IMAGE);
 		expect(TRAEFIK_IMAGE).toMatch(/^traefik:v3\.\d+\.\d+$/);
 		expect(compose.services.traefik.ports).toEqual(['443:443', '80:80']);
+		// Two sockets per connection, and the whole port range to open the
+		// upstream half from.
+		expect(compose.services.traefik.sysctls).toEqual({
+			'net.ipv4.ip_local_port_range': '1024 65535',
+		});
+		expect(compose.services.traefik.ulimits).toEqual({
+			nofile: { soft: 1_048_576, hard: 1_048_576 },
+		});
 		// Nothing mounted from a path: the deploy runs where the server is
 		// not, so everything is a volume on the server or inline.
 		expect(compose.services.traefik.volumes).toEqual([

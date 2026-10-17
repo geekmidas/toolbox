@@ -55,6 +55,8 @@ export interface CaddySite {
 export const EDGE_KINDS: Readonly<Record<string, true>> = {
 	'file-server': true,
 	'rest-api': true,
+	// Caddy proxies the upgrade as it is; nothing about the route differs.
+	'websocket-api': true,
 	site: true,
 };
 

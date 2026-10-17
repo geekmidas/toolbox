@@ -470,6 +470,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 	// are decided from it.
 	const constructSources: Record<string, ConstructSource> = {};
 	const background: Record<string, string[]> = {};
+	const served: Record<string, string[]> = {};
 	const declared = constructGlobs
 		? await discover({
 				patterns: constructGlobs,
@@ -477,6 +478,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 				bustCache,
 				sources: constructSources,
 				background,
+				served,
 			})
 		: {};
 
@@ -493,6 +495,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		await writeSurfaceEntry(
 			join(appRoot, '.gkm', 'server'),
 			selfServing.source,
+			served[selfServing.id] ?? [],
 		);
 		// Its entry starts telemetry the way a generated one does, from the
 		// surface's own edge.
