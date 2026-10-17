@@ -279,7 +279,8 @@
 		"dependencies": "~18.0.1"
 	},
 	"esbuild": {
-		"dependencies": "~0.28.2"
+		"dependencies": "~0.28.2",
+		"devDependencies": "~0.28.2"
 	},
 	"expo-secure-store": {
 		"peerDependencies": "^14.2.3"

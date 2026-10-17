@@ -296,6 +296,43 @@ importers:
         specifier: ~8.3.1
         version: 8.3.1(@types/node@24.9.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.43.1)(tsx@4.23.15)(yaml@2.9.1)
 
+  apps/websocket-load:
+    dependencies:
+      '@geekmidas/constructs':
+        specifier: workspace:*
+        version: link:../../packages/constructs
+      '@geekmidas/envkit':
+        specifier: workspace:*
+        version: link:../../packages/envkit
+      '@geekmidas/logger':
+        specifier: workspace:*
+        version: link:../../packages/logger
+      hono:
+        specifier: ~4.13.8
+        version: 4.13.8
+      ioredis:
+        specifier: ~6.0.0
+        version: 6.0.0
+      ws:
+        specifier: ~8.22.0
+        version: 8.22.0
+      zod:
+        specifier: ~4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@types/node':
+        specifier: ~24.9.1
+        version: 24.9.1
+      '@types/ws':
+        specifier: ~8.18.1
+        version: 8.18.2
+      esbuild:
+        specifier: ~0.28.2
+        version: 0.28.2
+      tsx:
+        specifier: ~4.23.15
+        version: 4.23.15
+
   packages/audit:
     dependencies:
       '@standard-schema/spec':
