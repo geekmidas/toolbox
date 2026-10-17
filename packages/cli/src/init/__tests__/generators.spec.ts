@@ -732,7 +732,7 @@ describe('generateRootConstructs - the apps, as constructs', () => {
 		expect(at(files, 'constructs/templates/layout.tsx')).toBeDefined();
 	});
 
-	it('declares the access-control tables, their seeds and the first-admin script', () => {
+	it('declares the access-control tables and their seeds', () => {
 		const files = generateRootConstructs(fullstackBase);
 		const paths = files.map((f) => f.path);
 
@@ -753,7 +753,35 @@ describe('generateRootConstructs - the apps, as constructs', () => {
 		);
 		expect(paths).toContain('db/database/seeds/01_permissions.ts');
 		expect(paths).toContain('db/database/seeds/02_system_roles.ts');
-		expect(paths).toContain('scripts/grant-admin.ts');
+		expect(paths).not.toContain('scripts/grant-admin.ts');
+	});
+
+	it('seeds the admin init was given, lowercased, as a Super admin', () => {
+		const admins = (adminEmail?: string) =>
+			at(
+				generateRootConstructs({ ...fullstackBase, adminEmail }),
+				'db/database/seeds/03_admins.ts',
+			)!.content;
+
+		expect(admins('ada@example.com')).toContain(
+			"const ADMINS: string[] = [\n  'ada@example.com',\n];",
+		);
+		expect(admins('ada@example.com')).toContain('SYSTEM_ROLES.SuperAdmin.name');
+		// Nobody given: the list is there to fill in, and seeds no one.
+		expect(admins()).toContain("// 'you@example.com',");
+		expect(admins()).not.toMatch(/^\s+'[^']+@/m);
+	});
+
+	it("leaves a seeded admin's auth user empty until they sign in", () => {
+		const files = generateRootConstructs(fullstackBase);
+		const users = files.find((f) => f.path.endsWith('_create_users.ts'))!;
+
+		expect(at(files, 'constructs/database.ts')!.content).toContain(
+			'authUserId: string | null;',
+		);
+		expect(users.content).toContain(
+			".addColumn('auth_user_id', 'text', (col) => col.unique())",
+		);
 	});
 
 	it('types reviewer_links on the auth tenant only with a mobile app', () => {

@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import prompts from 'prompts';
+import { z } from 'zod';
 import { GkmError } from '../errors';
 import { FileSecretsStore } from '../secrets/file.js';
 import { createStageSecrets } from '../secrets/generator.js';
@@ -88,6 +89,8 @@ export interface InitOptions {
 	web?: FullstackFrontendFramework;
 	/** Fullstack: whether there is a mobile app (and so a reviewer site) */
 	mobileApp?: boolean;
+	/** Fullstack: who the seeds make the first Super admin */
+	adminEmail?: string;
 }
 
 /** `' staging, prod '` → `['staging', 'prod']`. */
@@ -96,6 +99,26 @@ const stageList = (value: string): string[] =>
 		.split(',')
 		.map((name) => name.trim())
 		.filter(Boolean);
+
+/** Whether `value` is an email address, as the API's models check one. */
+const isEmail = (value: string): boolean =>
+	z.email().safeParse(value.trim()).success;
+
+/**
+ * Who `git` says you are, offered as the first admin: the address you most
+ * likely sign in with. Nothing when git has none.
+ */
+function gitEmail(): string | undefined {
+	try {
+		const email = execSync('git config user.email', {
+			encoding: 'utf-8',
+			stdio: ['ignore', 'pipe', 'ignore'],
+		}).trim();
+		return isEmail(email) ? email.toLowerCase() : undefined;
+	} catch {
+		return undefined;
+	}
+}
 
 /** `eu-west-1`, `us-gov-west-1`, `ap-southeast-2`. */
 const AWS_REGION = /^[a-z]{2}(-gov)?-[a-z]+-\d$/;
@@ -132,6 +155,10 @@ export async function initCommand(
 
 	if (options.region && !AWS_REGION.test(options.region)) {
 		throw new NotAnAwsRegion(options.region);
+	}
+
+	if (options.adminEmail && !isEmail(options.adminEmail)) {
+		throw new NotAnEmail(options.adminEmail);
 	}
 
 	// Flags are checked before anything is asked or written, the same rules
@@ -319,6 +346,22 @@ export async function initCommand(
 					'Include a mobile app? (Expo, with its sign-in and a site for App Store and Play Store reviewers)',
 				initial: true,
 			},
+			{
+				// Better Auth signs in by email, so the first admin is an address:
+				// the seeds give it a `users` row and Super admin, and signing in
+				// with it claims that row.
+				type: (_prev, values) =>
+					!options.yes &&
+					!options.adminEmail &&
+					(options.template === 'fullstack' || values.template === 'fullstack')
+						? 'text'
+						: null,
+				name: 'adminEmail',
+				message: 'Admin email (the first Super admin of the admin panel):',
+				initial: gitEmail() ?? '',
+				validate: (value: string) =>
+					isEmail(value) || 'An email address, like you@example.com',
+			},
 		],
 		{ onCancel },
 	);
@@ -386,6 +429,13 @@ export async function initCommand(
 	const mobileApp = isFullstack
 		? (options.mobileApp ?? (options.yes ? true : (answers.mobileApp ?? true)))
 		: undefined;
+	// `--yes` takes git's address; without one, nobody is seeded, and the
+	// seed file says where to add someone.
+	const adminEmail = isFullstack
+		? (options.adminEmail ?? (options.yes ? gitEmail() : answers.adminEmail))
+				?.trim()
+				.toLowerCase()
+		: undefined;
 	const templateOptions: TemplateOptions = {
 		name,
 		template,
@@ -418,6 +468,7 @@ export async function initCommand(
 		constructs,
 		frontendFramework,
 		...(mobileApp !== undefined ? { mobileApp } : {}),
+		...(adminEmail ? { adminEmail } : {}),
 	};
 
 	const targetDir = join(cwd, name);
@@ -789,6 +840,15 @@ function defaultRegistry(name: string | undefined): string {
 }
 
 /** `--region` that is not shaped like one, e.g. `europe` for `eu-west-1`. */
+export class NotAnEmail extends GkmError {
+	constructor(readonly value: string) {
+		super(
+			`"${value}" is not an email address. Give --admin-email the address the first admin signs in with.`,
+		);
+		this.name = 'NotAnEmail';
+	}
+}
+
 export class NotAnAwsRegion extends GkmError {
 	constructor(readonly region: string) {
 		super(`"${region}" is not an AWS region. Use one like eu-west-1.`);

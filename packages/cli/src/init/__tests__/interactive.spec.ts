@@ -10,7 +10,12 @@ import { join } from 'node:path';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InvalidStages } from '../../workspace/stages';
-import { initCommand, NotAnAwsRegion, UnknownDeployTarget } from '../index';
+import {
+	initCommand,
+	NotAnAwsRegion,
+	NotAnEmail,
+	UnknownDeployTarget,
+} from '../index';
 
 /** What `process.exit` becomes here, so a refusal can be asserted on. */
 class Exited extends Error {
@@ -103,6 +108,7 @@ describe('initCommand, answered interactively', () => {
 			'centralized-routes',
 			'tanstack-start', // web and admin framework
 			true, // a mobile app
+			' Ada@Example.com ', // the first admin, lowercased
 		]);
 
 		await initCommand('shop', { skipInstall: true });
@@ -117,6 +123,9 @@ describe('initCommand, answered interactively', () => {
 		expect(existsSync(join(dir, 'shop/constructs/database.ts'))).toBe(true);
 		expect(JSON.parse(read('shop/package.json')).scripts).toHaveProperty(
 			'deploy:prod',
+		);
+		expect(read('shop/db/database/seeds/03_admins.ts')).toContain(
+			"'ada@example.com',",
 		);
 	});
 
@@ -133,6 +142,7 @@ describe('initCommand, answered interactively', () => {
 			'centralized-endpoints',
 			'nextjs',
 			false, // no mobile app
+			'ada@example.com',
 		]);
 
 		await initCommand('shop', { skipInstall: true });
@@ -157,19 +167,23 @@ describe('initCommand, answered interactively', () => {
 			true,
 			'pino',
 			'centralized-endpoints',
-			// Nothing for the framework or the mobile app: --web and
-			// --no-mobile-app said.
+			// Nothing for the framework, the mobile app or the admin: --web,
+			// --no-mobile-app and --admin-email said.
 		]);
 
 		await initCommand('shop', {
 			template: 'fullstack',
 			web: 'tanstack-start',
 			mobileApp: false,
+			adminEmail: 'Grace@Example.com',
 			skipInstall: true,
 		});
 
 		expect(existsSync(join(dir, 'shop/apps/admin/src/routes'))).toBe(true);
 		expect(existsSync(join(dir, 'shop/apps/app'))).toBe(false);
+		expect(read('shop/db/database/seeds/03_admins.ts')).toContain(
+			"'grace@example.com',",
+		);
 	});
 
 	it('takes what the flags already answered and asks only the rest', async () => {
@@ -205,6 +219,17 @@ describe('initCommand, answered interactively', () => {
 			await expect(
 				initCommand('x', { deploy: 'sst', region: 'europe', yes: true }),
 			).rejects.toThrow(NotAnAwsRegion);
+		});
+
+		it('an admin email that is not one', async () => {
+			await expect(
+				initCommand('x', {
+					template: 'fullstack',
+					adminEmail: 'ada',
+					yes: true,
+				}),
+			).rejects.toThrow(NotAnEmail);
+			expect(existsSync(join(dir, 'x'))).toBe(false);
 		});
 
 		it('stage flags that break the rules gkm.config.ts is held to', async () => {

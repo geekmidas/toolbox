@@ -120,6 +120,10 @@ interface SignedIn {
  * The \`users\` row for whoever signed in, made the first time they call the
  * API and given the Member role. The auth server owns who someone is; this
  * row is what the application's own tables refer to.
+ *
+ * Someone the seeds named before they signed in — an admin, in
+ * \`03_admins.ts\` — already has a row with their email and no auth user: their
+ * first sign-in claims it, roles and all.
  */
 export async function memberFor(db: Kysely<Database>, user: SignedIn) {
   const found = await db
@@ -129,13 +133,23 @@ export async function memberFor(db: Kysely<Database>, user: SignedIn) {
     .executeTakeFirst();
   if (found) return found;
 
-  const member = await db
-    .insertInto('users')
-    .values({ authUserId: user.id, email: user.email, name: user.name })
-    // Two first requests at once: the second finds the first's row.
-    .onConflict((oc) => oc.column('authUserId').doUpdateSet({ email: user.email }))
-    .returningAll()
-    .executeTakeFirstOrThrow();
+  const member =
+    (await db
+      .updateTable('users')
+      .set({ authUserId: user.id, ...(user.name ? { name: user.name } : {}) })
+      .where('email', '=', user.email)
+      .where('authUserId', 'is', null)
+      .returningAll()
+      .executeTakeFirst()) ??
+    (await db
+      .insertInto('users')
+      .values({ authUserId: user.id, email: user.email, name: user.name })
+      // Two first requests at once: the second finds the first's row.
+      .onConflict((oc) =>
+        oc.column('authUserId').doUpdateSet({ email: user.email }),
+      )
+      .returningAll()
+      .executeTakeFirstOrThrow());
 
   const memberRole = await db
     .selectFrom('roles')
@@ -303,66 +317,6 @@ export const AdminUsersSchema = z
 }
 
 /**
- * `scripts/grant-admin.ts`: the first Super admin. Nobody can grant a role
- * before someone has one, so the first is granted from a terminal.
- */
-export function grantAdminScript(options: TemplateOptions): GeneratedFile {
-	return {
-		path: 'scripts/grant-admin.ts',
-		content: `/**
- * Make someone a Super admin — the first one, before the admin panel can.
- *
- *   gkm exec -- tsx scripts/grant-admin.ts you@example.com
- *
- * They need to have signed in once (the web site, the admin panel or the app),
- * which is what makes their \`users\` row.
- */
-import { database } from '@${options.name}/constructs/database.ts';
-import { SYSTEM_ROLES } from '@${options.name}/models/access';
-import { EnvironmentParser } from '@geekmidas/envkit';
-
-const email = process.argv[2]?.trim().toLowerCase();
-if (!email) {
-  console.error('Usage: gkm exec -- tsx scripts/grant-admin.ts <email>');
-  process.exit(1);
-}
-
-const db = await database.service.register({
-  envParser: new EnvironmentParser({ ...process.env }),
-} as never);
-
-try {
-  const user = await db
-    .selectFrom('users')
-    .select('id')
-    .where('email', '=', email)
-    .executeTakeFirst();
-  if (!user) {
-    console.error(\`No one has signed in as \${email} yet. Sign in once, then run this again.\`);
-    process.exit(1);
-  }
-
-  const role = await db
-    .selectFrom('roles')
-    .select('id')
-    .where('name', '=', SYSTEM_ROLES.SuperAdmin.name)
-    .executeTakeFirstOrThrow();
-
-  await db
-    .insertInto('userRoles')
-    .values({ userId: user.id, roleId: role.id })
-    .onConflict((oc) => oc.columns(['userId', 'roleId']).doNothing())
-    .execute();
-
-  console.log(\`\${email} is a \${SYSTEM_ROLES.SuperAdmin.name}.\`);
-} finally {
-  await db.destroy();
-}
-`,
-	};
-}
-
-/**
  * The API's feature tests: signing in by email end to end, and the admin
  * panel's gate. Each runs in a transaction, against the real auth server and
  * the real mail catcher.
@@ -424,6 +378,39 @@ describe('the admin panel', () => {
     const { users } = await browser.api.get('/admin/users');
 
     expect(users).toContainEqual(expect.objectContaining({ id: me.id }));
+  });
+
+  it('lets in an admin the seeds named, on their first sign-in', async ({
+    browser,
+    db,
+    faker,
+  }) => {
+    // What \`03_admins.ts\` writes: a row with no auth user yet, and the role.
+    const email = faker.internet.email();
+    const app = await db.get('database');
+    const admin = await app
+      .insertInto('users')
+      .values({ email, name: 'Admin' })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    const superAdmin = await app
+      .selectFrom('roles')
+      .select('id')
+      .where('name', '=', SYSTEM_ROLES.SuperAdmin.name)
+      .executeTakeFirstOrThrow();
+    await app
+      .insertInto('userRoles')
+      .values({ userId: admin.id, roleId: superAdmin.id })
+      .execute();
+
+    await browser.signIn(email);
+
+    expect(await browser.api.get('/profiles/me')).toMatchObject({
+      id: admin.id,
+      email,
+    });
+    const { users } = await browser.api.get('/admin/users');
+    expect(users).toContainEqual(expect.objectContaining({ id: admin.id }));
   });
 });
 `;
