@@ -80,7 +80,9 @@ import { userPolicy } from '../s3/policy';
  * through the SDK's own `AWS_ENDPOINT_URL`: every bucket, user, policy and
  * key is a real call, and the workspace is the compose fixture with a
  * `FileServer` whose `brand/**` is open, an API that writes to it, and a site
- * that calls the API.
+ * that calls the API. Every stage here serves its file server from the
+ * bucket's own endpoint (`cdn: false`); the CDN has a suite of its own
+ * (`s3Cdn.integration.spec.ts`).
  *
  * What floci does not do, and so is asserted as documents instead: it
  * enforces neither IAM nor bucket policies — any key signs, and an anonymous
@@ -235,15 +237,15 @@ beforeAll(async () => {
 			elsewhere: `elsewhere.${DOMAIN}`,
 		},
 		deployObjects: {
-			[STAGE]: { provider: 's3', region: REGION },
-			staging: { provider: 's3', region: REGION },
-			preview: { provider: 's3', region: REGION },
-			scratch: { provider: 's3', region: REGION },
-			shipped: { provider: 's3', region: REGION },
-			adopted: { provider: 's3', region: REGION },
-			planned: { provider: 's3', region: REGION },
-			bare: { provider: 's3', region: REGION },
-			elsewhere: { provider: 's3', region: REGION },
+			[STAGE]: { provider: 's3', region: REGION, cdn: false },
+			staging: { provider: 's3', region: REGION, cdn: false },
+			preview: { provider: 's3', region: REGION, cdn: false },
+			scratch: { provider: 's3', region: REGION, cdn: false },
+			shipped: { provider: 's3', region: REGION, cdn: false },
+			adopted: { provider: 's3', region: REGION, cdn: false },
+			planned: { provider: 's3', region: REGION, cdn: false },
+			bare: { provider: 's3', region: REGION, cdn: false },
+			elsewhere: { provider: 's3', region: REGION, cdn: false },
 		},
 	});
 	withFileServer(dir);

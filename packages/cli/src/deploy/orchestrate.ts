@@ -364,6 +364,7 @@ async function provisionResources(
 			...(request.rotateKeys ? { rotateKeys: true } : {}),
 			...(request.retireOldKeys ? { retireOldKeys: true } : {}),
 			...(ctx.home ? { home: ctx.home } : {}),
+			credentials: ctx.credentials,
 			log: (line) => phaseCtx.logger.info(line),
 		});
 		if (!ctx.dryRun) return;
