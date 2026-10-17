@@ -1,4 +1,11 @@
 export {
+	type ObjectSubscriber,
+	ObjectSubscriberBuilder,
+	type ObjectSubscriberContext,
+	type ObjectSubscriberHandler,
+	ObjectSubscriberHasNoEvents,
+} from './ObjectSubscriberBuilder';
+export {
 	type SnsPushOptions,
 	type SnsPushResponse,
 	SnsPushSubscriberAdaptor,
