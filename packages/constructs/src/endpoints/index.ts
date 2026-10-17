@@ -25,7 +25,11 @@ export {
 	ResponseBuilder,
 	SuccessStatus,
 } from './Endpoint';
-export { EndpointBuilder } from './EndpointBuilder';
+export {
+	EndpointBuilder,
+	UploadEndpointBuilder,
+	type UploadHandler,
+} from './EndpointBuilder';
 export { EndpointFactory } from './EndpointFactory';
 export {
 	createApiGatewayCookies,
@@ -54,3 +58,13 @@ export {
 	type SessionAuth,
 } from './sessionAuth';
 export { defaultEnvParser, envParserFor } from './surfaceEnv';
+export {
+	UPLOAD_POST_SCHEMA,
+	UploadAcceptInvalid,
+	UploadContentTypeRefused,
+	UploadContentTypeUnresolved,
+	UploadExpiryInvalid,
+	UploadMaxSizeInvalid,
+	type UploadOptions,
+	type UploadPost,
+} from './upload';

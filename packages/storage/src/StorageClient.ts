@@ -68,11 +68,53 @@ export interface StorageClient {
 		expiresIn?: number,
 	): Promise<GetUploadResponse>;
 	/**
+	 * A signed form a browser posts one file to, straight into the bucket.
+	 *
+	 * The policy is the guard: the storage refuses a file larger than
+	 * `maxSize`, or of a type the policy does not allow, so nothing the client
+	 * sends past this call is trusted to the server that issued it.
+	 *
+	 * @param params - What may be uploaded, and where.
+	 * @returns The form's action and fields, the key, and when it expires.
+	 */
+	getUploadPost(params: UploadPostParams): Promise<UploadPost>;
+	/**
 	 * Delete a file from storage.
 	 *
 	 * @param key - The key (path) of the file to delete.
 	 */
 	delete(key: string): Promise<void>;
+}
+
+/** What a signed upload form allows. */
+export interface UploadPostParams {
+	/** Where the object lands. */
+	key: string;
+	/** The largest file the storage accepts, in bytes. */
+	maxSize: number;
+	/**
+	 * The type the file must be sent as: an exact `Content-Type`, fixed in the
+	 * form's fields — or `{ startsWith }`, which the client sets itself
+	 * (`image/` for any image). Absent, any type is accepted.
+	 */
+	contentType?: string | { startsWith: string };
+	/** How long the form is valid, in seconds. Defaults to 300. */
+	expiresIn?: number;
+}
+
+/**
+ * A signed upload form. Post it as `multipart/form-data`: every field, then
+ * the file last, as `file`.
+ */
+export interface UploadPost {
+	/** The form's action — where the browser posts. */
+	url: string;
+	/** Every field the post must carry, as signed. */
+	fields: Record<string, string>;
+	/** Where the object lands. */
+	key: string;
+	/** When the signature stops being accepted, as an ISO timestamp. */
+	expiresAt: string;
 }
 
 export interface GetUploadParams {

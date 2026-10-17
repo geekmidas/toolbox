@@ -1,4 +1,7 @@
-import type { StandardSchemaV1 } from '@standard-schema/spec';
+import type {
+	StandardJSONSchemaV1,
+	StandardSchemaV1,
+} from '@standard-schema/spec';
 
 export enum SchemaVendor {
 	zod = 'zod',
@@ -116,7 +119,21 @@ export async function convertStandardSchemaToJsonSchema(
 		return undefined;
 	}
 
-	const vendor = schema['~standard']?.vendor;
+	const standard = schema['~standard'] as StandardSchemaV1.Props &
+		Partial<StandardJSONSchemaV1.Props>;
+	const vendor = standard?.vendor;
+	// A schema that converts itself (Standard JSON Schema) needs no vendor
+	// convertor — one written by hand, with no schema library behind it, can
+	// still be documented.
+	if (
+		!isSchemaVendor(vendor) &&
+		typeof standard?.jsonSchema?.output === 'function'
+	) {
+		return extractAndConvertDefs(
+			standard.jsonSchema.output({ target: 'draft-2020-12' }),
+			componentCollector,
+		);
+	}
 	if (!isSchemaVendor(vendor)) {
 		throw new Error(
 			`Unsupported or missing vendor "${vendor}" for Standard Schema. Supported vendors are: ${Object.keys(StandardSchemaJsonSchema).join(', ')}`,

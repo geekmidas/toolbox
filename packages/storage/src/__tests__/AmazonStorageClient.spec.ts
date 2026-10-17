@@ -240,6 +240,101 @@ describe('AmazonStorageClient Integration Tests', () => {
 		});
 	});
 
+	describe('a signed upload form', () => {
+		/** Post `body` through `form`, the file last, as a browser would. */
+		const post = (
+			form: { url: string; fields: Record<string, string> },
+			body: string,
+			type: string,
+			extra: Record<string, string> = {},
+		) => {
+			const data = new FormData();
+			for (const [key, value] of Object.entries({
+				...form.fields,
+				...extra,
+			})) {
+				data.append(key, value);
+			}
+			data.append('file', new Blob([body], { type }));
+			return fetch(form.url, { method: 'POST', body: data });
+		};
+		const stored = async (key: string) =>
+			(await fetch(await client.getDownloadURL({ path: key }))).text();
+
+		it('lands a file within the limit at its key, with its type fixed', async () => {
+			const key = `uploads/${crypto.randomUUID()}.png`;
+			const form = await client.getUploadPost({
+				key,
+				maxSize: 1024,
+				contentType: 'image/png',
+			});
+
+			expect(form.key).toBe(key);
+			expect(form.fields).toMatchObject({ key, 'Content-Type': 'image/png' });
+			expect(new Date(form.expiresAt).getTime()).toBeGreaterThan(Date.now());
+
+			const response = await post(form, 'small enough', 'image/png');
+			expect(response.status).toBeLessThan(300);
+			expect(await stored(key)).toBe('small enough');
+		});
+
+		it('is refused by the storage for a file over the limit', async () => {
+			const key = `uploads/${crypto.randomUUID()}.bin`;
+			const form = await client.getUploadPost({ key, maxSize: 8 });
+
+			const response = await post(form, 'more than eight bytes', 'text/plain');
+
+			expect(response.status).toBe(400);
+			expect(await response.text()).toContain('EntityTooLarge');
+		});
+
+		it('is refused by the storage for a type the policy does not allow', async () => {
+			const key = `uploads/${crypto.randomUUID()}.png`;
+			const form = await client.getUploadPost({
+				key,
+				maxSize: 1024,
+				contentType: 'image/png',
+			});
+
+			const response = await post(form, 'not an image', 'text/plain', {
+				'Content-Type': 'text/plain',
+			});
+
+			expect(response.status).toBe(403);
+		});
+
+		it('takes any type under a prefix, set by the client', async () => {
+			const form = await client.getUploadPost({
+				key: `uploads/${crypto.randomUUID()}`,
+				maxSize: 1024,
+				contentType: { startsWith: 'image/' },
+			});
+
+			expect(form.fields).not.toHaveProperty('Content-Type');
+			const jpeg = await post(form, 'a jpeg', 'image/jpeg', {
+				'Content-Type': 'image/jpeg',
+			});
+			expect(jpeg.status).toBeLessThan(300);
+			const text = await post(form, 'text', 'text/plain', {
+				'Content-Type': 'text/plain',
+			});
+			expect(text.status).toBe(403);
+		});
+
+		it('expires when it says it does', async () => {
+			const before = Date.now();
+			const form = await client.getUploadPost({
+				key: 'uploads/expiring',
+				maxSize: 1,
+				expiresIn: 60,
+			});
+			const expiresAt = new Date(form.expiresAt).getTime();
+
+			expect(expiresAt).toBeGreaterThanOrEqual(before + 60_000);
+			expect(expiresAt).toBeLessThanOrEqual(Date.now() + 60_000);
+		});
+	});
+
 	describe('versioning', () => {
 		it('should handle file versions', async () => {
 			const versionKey = 'test-files/versioned.txt';
