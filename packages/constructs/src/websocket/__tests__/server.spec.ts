@@ -423,6 +423,10 @@ describe('WebSocketApi', () => {
 			surface: 'Realtime',
 			connections: 0,
 		});
+
+		const health = await fetch(`${url.replace('ws:', 'http:')}/health`);
+		expect(health.status).toBe(200);
+		expect(await health.json()).toEqual({ status: 'ok', connections: 0 });
 	});
 
 	it('declares an app with its url, trusted origins and publisher', () => {

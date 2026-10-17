@@ -275,6 +275,11 @@ export class WebSocketApi<TName extends string = string>
 		onShutdown(() => server.close());
 
 		const app = new Hono();
+		// Its own, so a process with nothing in front of it — `gkm dev`'s —
+		// answers a probe too. A production entry puts one before it anyway.
+		app.get('/health', (c) =>
+			c.json({ status: 'ok', connections: server.size }),
+		);
 		app.get('/', (c) =>
 			c.json({ surface: this.id, connections: server.size }, 426, {
 				Upgrade: 'websocket',

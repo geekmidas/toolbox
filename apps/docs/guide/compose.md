@@ -1008,6 +1008,38 @@ gkm secrets:set SESSIONS_URL 'rediss://default:…@cache.example.com:6380' --sta
 This is the compose target's alone. `gkm dev`, `gkm test` and Dokploy keep the
 target's default — a table in the declared database on a server target.
 
+## WebSocket surfaces
+
+A `WebSocketApi` is an app like a `RestApi`: an image built from its
+directory, a host on the stage's domain (`wss://realtime.example.com`), and
+`/health` on the same port as its sockets. What differs is that it holds
+connections, so the stack is sized for that:
+
+- **One container per replica.** `replicas: 3` runs `realtime`,
+  `realtime-2` and `realtime-3` from one image and one env file, each an
+  upstream of the surface's one route. Node runs one thread, and each
+  edge-to-container pair has its own budget of ports, so a busy surface wants
+  about one replica per core.
+- **Redis carries the sends.** The surface's publisher is the stack's Redis
+  (the one [the cache](#the-cache) uses), so an endpoint in the API's
+  container reaches a socket held by `realtime-2`. A stage that sets
+  `REALTIME_PUBLISHER_CONNECTION_STRING` itself uses that instead.
+- **The edge is widened.** Caddy — and the shared Traefik — run with
+  `net.ipv4.ip_local_port_range=1024 65535` and a million file descriptors:
+  every client connection is two sockets at the edge, and the half to the
+  container is opened from the edge's own port range — about 28k by Linux's
+  default, per container. The surface's containers get the same descriptor
+  limit.
+- **The kernel is raised** by `gkm compose:server`:
+  `nf_conntrack_max=1048576` (each connection is tracked twice, and the
+  default table fills long before memory does — then new connections are
+  dropped silently), and `somaxconn`/`tcp_max_syn_backlog` for reconnect
+  storms after a deploy.
+
+A deploy replaces the containers, and every socket on them is closed with
+1012; clients reconnect, which the edge spreads across the replicas that are
+up.
+
 ## Telemetry
 
 What a process emits is the application's — a [`Telemetry`

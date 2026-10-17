@@ -247,4 +247,39 @@ describe('a WebSocket surface, locally', () => {
 			`redis://:${password}@localhost:${ports.redis}?channel=gkm%3Aws%3Ashop%3ARealtime`,
 		);
 	});
+	it('counts as a web origin, not a mobile one, to a surface it calls', () => {
+		const calling = {
+			...manifest,
+			Api: {
+				kind: 'rest-api',
+				id: 'Api',
+				path: 'apps/api',
+				endpoints: [],
+				provides: ['API_URL', 'API_TRUSTED_ORIGINS', 'API_COOKIE_DOMAIN'],
+			},
+			Realtime: {
+				...manifest.Realtime,
+				calls: [{ target: 'Api', kind: 'rest-api' }],
+			},
+		} as unknown as ConstructManifest;
+		const plan = planFor(calling, 'dev', provisionOrder(calling), {
+			localStage: 'dev',
+			edge: false,
+		});
+		const ports = Object.fromEntries(
+			portKeys(plan.containers).map((key, i) => [key, 21000 + i]),
+		);
+
+		const env = envFor(plan, {
+			credentials: TEST_CREDENTIALS,
+			ports,
+			project: 'shop',
+			addresses: {
+				Api: 'http://localhost:3000',
+				Realtime: 'http://localhost:3002',
+			},
+		});
+
+		expect(env.API_TRUSTED_ORIGINS).toBe('http://localhost:3002');
+	});
 });

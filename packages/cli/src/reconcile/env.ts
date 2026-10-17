@@ -462,10 +462,16 @@ export function webSocketPublisher(
 	return `redis://:${encodeURIComponent(credential.containers.redis.password)}@${LOCAL_HOST}:${port}?channel=${channel}`;
 }
 
-/** An address reduced to the origin a browser compares against. */
+/**
+ * An address reduced to the origin a browser compares against.
+ *
+ * A WebSocket surface's address is `wss://`, but its host is served over
+ * HTTPS like any other: its origin is that one, and a non-web scheme among the
+ * origins means a mobile app to whoever reads the list.
+ */
 function originOf(address: string): string | undefined {
 	try {
-		return new URL(address).origin;
+		return new URL(address.replace(/^ws(s?):/, 'http$1:')).origin;
 	} catch {
 		return undefined;
 	}
