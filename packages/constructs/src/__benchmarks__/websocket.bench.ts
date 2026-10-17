@@ -8,9 +8,12 @@ import { ConsoleLogger } from '@geekmidas/logger/console';
 import { afterAll, describe, test } from 'vitest';
 import WebSocket from 'ws';
 import { z } from 'zod';
-import { REDIS_PORT } from '../../../testkit/test/ports';
 import type { WebSocketPublisher } from '../websocket/publisher';
 import { WebSocketApi } from '../websocket-api';
+
+// The test Redis, where the suites put it (`REDIS_HOST_PORT`). Read here
+// rather than from testkit's helpers, which sit outside this package's build.
+const REDIS_PORT = Number(process.env.REDIS_HOST_PORT) || 6379;
 
 /**
  * WebSocket surface benchmarks, through real sockets on loopback.

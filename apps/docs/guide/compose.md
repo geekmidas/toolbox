@@ -1040,6 +1040,33 @@ A deploy replaces the containers, and every socket on them is closed with
 1012; clients reconnect, which the edge spreads across the replicas that are
 up.
 
+### How many connections fit
+
+Measured with real sockets through the edge as `gkm compose` renders it — the
+simulator and every run are in `apps/websocket-load` (`RESULTS.md`):
+
+| Per connection | |
+|---|---|
+| The edge (Caddy 2 or Traefik v3), TLS | **~170–185 KB** |
+| The `WebSocketApi` process | ~10–15 KB |
+
+**The edge, not the app, is what fills a box.** Budgeting ~190 KB per
+connection for the stack:
+
+| VPS memory | Concurrent WebSockets |
+|---|---|
+| 4 GB | ~15k |
+| 8 GB | ~35k |
+| 16 GB | ~80k |
+| 32 GB | ~165k |
+
+At 50k connections across four replicas, every broadcast reached every socket
+in 150–200 ms and an echo round trip was 1.3–1.7 ms at the median. One
+replica holds 35k and broadcasts to all of them in ~0.5 s; more replicas buy
+broadcast latency, not memory. Without the widened port range a replica stops
+at exactly 28,231 sockets and the edge answers the rest with 502. Traefik's
+60-second read timeout does not cut an idle upgraded socket.
+
 ## Telemetry
 
 What a process emits is the application's — a [`Telemetry`
