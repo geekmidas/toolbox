@@ -50,6 +50,7 @@ import type {
 	StateEntry,
 	VerifyContext,
 } from '../types.js';
+import { ensureBucketCdn } from './cdn.js';
 import { checkS3Config, S3_PROVISIONING } from './config.js';
 import {
 	BucketNameUnavailable,
@@ -88,7 +89,11 @@ type Ctx = EnsureContext<S3ObjectsConfig, AwsProvisioning>;
 export interface BucketConstruct {
 	id: string;
 	versioned: boolean;
-	servers: { id: string; open: readonly string[] }[];
+	servers: {
+		id: string;
+		open: readonly string[];
+		immutable: readonly string[];
+	}[];
 }
 
 export function bucketConstructs(
@@ -107,6 +112,7 @@ export function bucketConstructs(
 				.map(([sid, s]) => ({
 					id: sid,
 					open: (s as FileServerDeclaration).open ?? [],
+					immutable: (s as FileServerDeclaration).immutable ?? [],
 				}))
 				.sort((a, b) => a.id.localeCompare(b.id)),
 		}))
@@ -387,12 +393,30 @@ async function ensureBucket(
 			`   '${bucket}' is in ${located.region}, not ${stageClients.region}: '${id}' is reached and addressed there`,
 		);
 	}
+	// Its file servers behind a CDN, unless the stage said not to — first,
+	// because the bucket's policy grants exactly the distributions it made.
+	const cdn =
+		ctx.config.cdn !== false && construct.servers.length > 0
+			? await ensureBucketCdn(ctx, {
+					bucket,
+					region: clients.region,
+					servers: construct.servers,
+					origins: bucketOrigins({
+						workspace: ctx.workspace,
+						manifest: ctx.manifest,
+						runnables: ctx.runnables,
+						stage: ctx.stage,
+						bucket: id,
+					}).origins,
+				})
+			: undefined;
 	await ensureBucketSettings(ctx, clients, {
 		id,
 		bucket,
 		exists,
 		versioning,
 		open,
+		...(cdn ? { cdn } : {}),
 	});
 
 	const user = await ensureIamUser(ctx, clients, {
@@ -409,10 +433,12 @@ async function ensureBucket(
 		...user,
 	});
 
-	// Each file server over it serves on the bucket's own endpoint — unless the
-	// stage set an address of its own for it (a CDN), which is kept.
-	const publicUrl = bucketPublicUrl(bucket, clients.region, clients.endpoint);
+	// Each file server over it serves on its CDN, or on the bucket's own
+	// endpoint — unless the stage set an address of its own for it, which is
+	// kept.
+	const bucketUrl = bucketPublicUrl(bucket, clients.region, clients.endpoint);
 	for (const server of construct.servers) {
+		const publicUrl = cdn?.urls[server.id] ?? bucketUrl;
 		const key = provideKey(server.id, 'url');
 		const entry: StateEntry = { key: `file-server:${server.id}`, type: 'url' };
 		const recorded = ctx.state.record(entry.key)?.id;
@@ -600,6 +626,8 @@ async function ensureBucketSettings(
 		exists: boolean;
 		versioning: boolean;
 		open: readonly string[];
+		/** The distributions serving it, when a CDN does. */
+		cdn?: { distributionArns: readonly string[] };
 	},
 ): Promise<void> {
 	const { S3, s3 } = clients;
@@ -645,7 +673,8 @@ async function ensureBucketSettings(
 		);
 	}
 
-	const isOpen = input.open.length > 0;
+	// Behind a CDN the bucket is never public: CloudFront alone reads it.
+	const isOpen = input.open.length > 0 && !input.cdn;
 	const block = publicAccessBlock(isOpen);
 	const ensureBlock = async () => {
 		const current = await read(
@@ -674,7 +703,11 @@ async function ensureBucketSettings(
 		}
 	};
 
-	const policy = bucketPolicy(bucket, input.open);
+	const policy = bucketPolicy(
+		bucket,
+		input.open,
+		input.cdn ? { cdn: input.cdn } : {},
+	);
 	const ensurePolicy = async () => {
 		const current = await read(
 			() => s3.send(new S3.GetBucketPolicyCommand({ Bucket })),
@@ -687,7 +720,9 @@ async function ensureBucketSettings(
 			await set(
 				isOpen
 					? `policy: TLS only, public read on ${input.open.join(', ')}`
-					: 'policy: TLS only',
+					: input.cdn && input.open.length > 0
+						? `policy: TLS only, CloudFront reads ${input.open.join(', ')}`
+						: 'policy: TLS only',
 				() =>
 					s3.send(
 						new S3.PutBucketPolicyCommand({

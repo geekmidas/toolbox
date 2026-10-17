@@ -44,7 +44,7 @@ providers arrive.
 | Value | Meaning |
 |---|---|
 | `'external'` (or nothing) | Today's behaviour. Each bucket's `<ID>_URL` and each file server's `<ID>_URL` are set in the stage's secrets by you — S3, R2, any S3-compatible store. A missing key fails `validate` with `ExternalServicesNotConfigured`. |
-| `{ provider: 's3', region?, versioning? }` | Every deploy of the stage creates and maintains the buckets in the stage's AWS account and writes their keys. |
+| `{ provider: 's3', region?, versioning?, cdn? }` | Every deploy of the stage creates and maintains the buckets in the stage's AWS account and writes their keys. |
 | `false` | The stage has no object storage. A deploy of a workspace that declares a bucket is refused with `StageProviderDisabled`. |
 
 Anything else — `'minio'` included — fails to load with `UnknownStageProvider`,
@@ -55,6 +55,8 @@ dev` and `gkm compose` on it always run MinIO.
   region (`secrets.store.region`), then `AWS_REGION`.
 - `versioning` — keep previous versions of every object. Defaults to the
   construct's own `versioned`.
+- `cdn` — serve each file server through CloudFront on its own name (see
+  below). On by default; `false` serves from the bucket's own endpoint.
 
 ## `objects: s3`
 
@@ -121,18 +123,80 @@ and never touches anyone else's (`IamUserNotOwned`). Its one inline policy,
 URL — `UPLOADS_URL=s3://KEY:SECRET@<bucket>?region=<region>`, percent-encoded.
 The key id is recorded in the state; the secret is never printed.
 
-**A `FileServer`.** Its URL (`UPLOADS_SERVER_URL`) becomes the bucket's
-regional endpoint, `https://<bucket>.s3.<region>.amazonaws.com` — what
-`uploads.url('brand/logo.png')` appends a key to. A URL you set yourself (a
-CDN) is kept. When the file server has `open` paths, they are public on
-exactly those prefixes — `s3:GetObject` for `Principal: *` on
-`arn:aws:s3:::<bucket>/brand/*` — and Block Public Access is relaxed only as
-far as that needs: `BlockPublicPolicy` and `RestrictPublicBuckets` off, ACLs
-still blocked. A bucket with no open paths keeps all four flags on.
+**A `FileServer`, behind a CDN.** By default each file server over the bucket
+is served through CloudFront on `<fileserver>.<domain>` —
+`https://uploads-server.shop.example.com` — and that is its URL
+(`UPLOADS_SERVER_URL`), what `uploads.url('brand/logo.png')` appends a key to.
+Per file server, on the stage:
 
-A single `*` in an S3 policy crosses `/`, so `avatars/*.png` is wider in the
-policy than in the construct's own check, which stops at a segment. Prefer
-`**` where crossing segments is what you meant.
+- **A certificate** for that name, from ACM in `us-east-1` (the one region
+  CloudFront reads certificates from), validated by a CNAME the deploy writes
+  through the root domain's DNS provider in `dns` — and keeps, because ACM
+  renews against the same record. The deploy waits for it to be issued, up to
+  15 minutes. A domain no provider in `dns` writes (or a `manual` one) prints
+  the record and stops with `CdnCertificatePending`; create it and deploy
+  again — everything up to the certificate is recorded, and the run carries
+  on from there.
+- **An origin access control**, which signs CloudFront's reads of the bucket.
+- **Response headers policies**: CORS `GET`/`HEAD` for the stage's sites (the
+  same origins as the bucket's CORS rule), and, on the paths the file server
+  calls `immutable`, `Cache-Control: public, max-age=31536000, immutable` over
+  whatever the object was stored with.
+- **A distribution** on the name: HTTPS only, compressed, cached with AWS's
+  managed `CachingOptimized` policy — keyed on the path alone, so no query
+  string or cookie fragments the cache.
+- **A CNAME** from the name to the distribution, through the same provider.
+
+**The bucket stays private.** Block Public Access keeps all four flags on, and
+the bucket policy grants `s3:GetObject` on exactly the open prefixes to
+CloudFront alone, for exactly the stage's distributions:
+
+```json
+{
+  "Sid": "GkmCdnRead",
+  "Effect": "Allow",
+  "Principal": { "Service": "cloudfront.amazonaws.com" },
+  "Action": "s3:GetObject",
+  "Resource": ["arn:aws:s3:::<bucket>/brand/*"],
+  "Condition": { "StringEquals": { "AWS:SourceArn": ["<distribution ARN>"] } }
+}
+```
+
+A key outside the open paths is refused to CloudFront too, so the edge answers
+it 403. A signed read is unchanged: `signedUrl()` is an S3 presign at the
+bucket's own host.
+
+```ts
+export const uploads = new FileServer('Uploads', {
+  open: ['brand/**'],
+  // Keyed by content hash: never rewritten, so clients keep them forever.
+  immutable: ['brand/logos/*'],
+});
+```
+
+`immutable` is a subset of `open` (`ImmutableNotOpen` otherwise): only say it
+of paths whose keys are written once, because a client holding an immutable
+copy never asks again.
+
+A CDN is a name on the stage's domain, so a stage with file servers and no
+`domains.<stage>` fails with `FileServerCdnNeedsDomain`. Every resource is
+recorded in the stage's state and reused, found again by its name when a run
+died before recording it, and put back when it drifted — while what the
+provider does not own (a price class, logging, a WAF set by hand) is kept.
+The deploy role (`gkm deploy:github`) is given the ACM and CloudFront actions
+this needs, none of which delete.
+
+**Without a CDN.** `deploy.objects.<stage>.cdn: false` serves each file server
+from the bucket's regional endpoint, `https://<bucket>.s3.<region>.amazonaws.com`.
+The open paths are then public on exactly those prefixes — `s3:GetObject` for
+`Principal: *` on `arn:aws:s3:::<bucket>/brand/*` — and Block Public Access is
+relaxed only as far as that needs: `BlockPublicPolicy` and
+`RestrictPublicBuckets` off, ACLs still blocked. A bucket with no open paths
+keeps all four flags on. Either way, a URL you set yourself is kept.
+
+A single `*` in an S3 policy or a CloudFront path pattern crosses `/`, so
+`avatars/*.png` is wider there than in the construct's own check, which stops
+at a segment. Prefer `**` where crossing segments is what you meant.
 
 ## Credentials
 

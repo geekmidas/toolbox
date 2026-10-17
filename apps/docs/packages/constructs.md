@@ -123,6 +123,23 @@ drift.
 | `StaticSite` | `/site` | — a surface |
 | `BetterAuth` | `/auth` | an `AuthClient` — `api.getSession({ headers })`, over HTTP to the auth app |
 
+A `FileServer` serves the paths it calls `open` without a signature, and
+everything else only through `signedUrl()`. Paths whose keys are written once
+can also be `immutable`, so the edge tells every client to keep them forever:
+
+```typescript
+import { FileServer } from '@geekmidas/constructs/file-server';
+
+export const assets = new FileServer('Assets', {
+  open: ['brand/**', 'avatars/*'],
+  immutable: ['brand/logos/*'], // a subset of `open`, or `ImmutableNotOpen`
+});
+```
+
+On a stage whose buckets the `s3` provider creates, the file server answers on
+`<fileserver>.<domain>` through CloudFront, with that header on the immutable
+paths — see [Providers](../guide/providers.md#objects-s3).
+
 A `Credential`'s value is the stage's `<ID>_CREDENTIALS` — `STRIPE_CREDENTIALS`
 here — set with `gkm secrets:add`. On the test stage, and under
 `gkm dev --fake`, it can come from a fake beside the external APIs' instead,

@@ -2,7 +2,7 @@ import type { ConstructManifest } from '@geekmidas/manifest';
 import { assertDerivations, UnknownParent } from '@geekmidas/manifest';
 import { registerStorageDriver } from '@geekmidas/storage';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { FileServer, NotOpen } from '../file-server';
+import { FileServer, ImmutableNotOpen, NotOpen } from '../file-server';
 import { ObjectStorage } from '../object-storage';
 
 /** A driver that records the URL it was built from and nothing else. */
@@ -137,6 +137,39 @@ describe('FileServer', () => {
 		const files = await client();
 
 		expect(typeof files.getDownloadURL).toBe('function');
+	});
+});
+
+describe('FileServer immutable paths', () => {
+	it('declares the open paths the edge keeps forever', () => {
+		const assets = new FileServer('Assets', {
+			open: ['brand/**', 'avatars/*.png'],
+			immutable: ['brand/logos/*', 'avatars/*.png'],
+		});
+
+		expect(assets.declare()[1]).toMatchObject({
+			kind: 'file-server',
+			immutable: ['brand/logos/*', 'avatars/*.png'],
+		});
+	});
+
+	it('declares none unless asked', () => {
+		expect(uploads.declare()[1]).not.toHaveProperty('immutable');
+	});
+
+	it('refuses a pattern no open path admits: the edge serves only those', () => {
+		const make = (immutable: string[]) => () =>
+			new FileServer('Assets', { open: ['brand/**', 'avatars/*'], immutable });
+
+		// Wider than what is open, or outside it altogether.
+		expect(make(['**'])).toThrow(ImmutableNotOpen);
+		expect(make(['avatars/**'])).toThrow(ImmutableNotOpen);
+		expect(make(['invoices/*'])).toThrow(/'invoices\/\*' is immutable/);
+		expect(() => new FileServer('Assets', { immutable: ['brand/*'] })).toThrow(
+			/opens none/,
+		);
+		// Narrower, or the same.
+		expect(make(['brand/**', 'brand/2026/*.png', 'avatars/*'])).not.toThrow();
 	});
 });
 

@@ -127,6 +127,14 @@ export interface FileServerDeclaration extends Node {
 	 * behaviours off path patterns, and a bucket policy names prefixes.
 	 */
 	open?: readonly string[];
+	/**
+	 * Open paths whose objects never change once written, so the edge tells
+	 * every client to keep them forever (`Cache-Control: public,
+	 * max-age=31536000, immutable`, over whatever the object was stored with).
+	 *
+	 * A subset of `open`: a signed object is never served by the edge.
+	 */
+	immutable?: readonly string[];
 }
 
 /**

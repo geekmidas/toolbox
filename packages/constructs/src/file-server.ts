@@ -119,6 +119,17 @@ export interface FileServerOptions<TOpen extends string = never> {
 	 * refuse to serve unsigned.
 	 */
 	open?: readonly TOpen[];
+	/**
+	 * Open paths whose objects never change once written — keyed by a content
+	 * hash or a file id — so every client may keep them forever: the edge
+	 * sends `Cache-Control: public, max-age=31536000, immutable`, over
+	 * whatever the object was stored with.
+	 *
+	 * A subset of `open`, because a signed object is never served by the edge.
+	 * Only say it of paths whose keys are written once: a client holding an
+	 * immutable copy never asks again.
+	 */
+	immutable?: readonly string[];
 	/** Keep previous versions of an object. */
 	versioned?: boolean;
 	/**
@@ -130,6 +141,23 @@ export interface FileServerOptions<TOpen extends string = never> {
 	 * depending on the server mints URLs.
 	 */
 	origin?: Declarable;
+}
+
+/** An immutable pattern that no open pattern admits. */
+export class ImmutableNotOpen extends Error {
+	constructor(
+		readonly id: string,
+		readonly pattern: string,
+		readonly open: readonly string[],
+	) {
+		super(
+			`'${id}' says '${pattern}' is immutable, and no open path admits it` +
+				(open.length ? ` (open: ${open.join(', ')})` : ' — it opens none') +
+				'. Only an open path is served by the edge, so only one can be ' +
+				'cached there: add it to `open`, or narrow it to one that is.',
+		);
+		this.name = 'ImmutableNotOpen';
+	}
 }
 
 /** A key was asked to be served unsigned, and no open pattern admits it. */
@@ -160,6 +188,7 @@ export class FileServer<
 	readonly surfaceId: string;
 
 	private readonly open: readonly string[];
+	private readonly immutable: readonly string[];
 
 	/**
 	 * Declared once and read by both `declare()` and `connect()`, so the keys the
@@ -175,6 +204,12 @@ export class FileServer<
 
 		this.id = canonical as TName;
 		this.open = options.open ?? [];
+		this.immutable = options.immutable ?? [];
+		for (const pattern of this.immutable) {
+			if (!this.covers(pattern)) {
+				throw new ImmutableNotOpen(canonical, pattern, this.open);
+			}
+		}
 
 		// The surface takes the suffix and the bucket keeps the plain id, which
 		// is what makes "serve a bucket I already have" an edit that adds a node
@@ -236,6 +271,7 @@ export class FileServer<
 			id: this.surfaceId,
 			of: origin?.id ?? this.id,
 			...(this.open.length ? { open: this.open } : {}),
+			...(this.immutable.length ? { immutable: this.immutable } : {}),
 			provides: [this.keys.server],
 		};
 
@@ -302,6 +338,15 @@ export class FileServer<
 	 */
 	private serves(key: string): boolean {
 		return this.open.some((pattern) => globToRegExp(pattern).test(key));
+	}
+
+	/**
+	 * Whether every key a pattern admits is open: the pattern itself, each of
+	 * its wildcards taken as a segment of its own, is a key an open pattern
+	 * serves — `brand/logos/*` under `brand/**`, but not `**` under `brand/**`.
+	 */
+	private covers(pattern: string): boolean {
+		return this.serves(pattern.replace(/\*\*/g, 'x/x').replace(/\*/g, 'x'));
 	}
 }
 
