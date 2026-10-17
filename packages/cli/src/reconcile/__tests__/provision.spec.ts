@@ -1,13 +1,17 @@
+import type { LifecycleRule } from '@aws-sdk/client-s3';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { provisionOrder } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
+import { expireRuleId } from '../../providers/s3/lifecycle';
 import { planFor } from '../plan';
 import {
 	applyBuckets,
 	applyCarriers,
+	applyLifecycles,
 	applyPolicies,
 	applyPostgres,
 	type BucketClient,
+	bucketLifecycles,
 	bucketNames,
 	bucketPolicies,
 	bucketPolicy,
@@ -453,6 +457,8 @@ describe('bucket policies', () => {
 				writes.push(document);
 				stored = document;
 			},
+			lifecycle: async () => undefined,
+			setLifecycle: async () => {},
 		};
 
 		const policies = bucketPolicies(plan());
@@ -468,11 +474,127 @@ describe('bucket policies', () => {
 			create: async () => {},
 			policy: async () => '{"Version":"2012-10-17","Statement":[]}',
 			setPolicy: async () => {},
+			lifecycle: async () => undefined,
+			setLifecycle: async () => {},
 		};
 
 		expect(
 			(await applyPolicies(client, bucketPolicies(plan())))[0],
 		).toMatchObject({ created: true });
+	});
+});
+
+describe('bucket lifecycles', () => {
+	const manifest = {
+		Private: {
+			kind: 'objects',
+			id: 'Private',
+			provides: ['PRIVATE_URL'],
+			expire: { 'quotes/': 30, 'tmp/': 1 },
+		},
+		Assets: { kind: 'objects', id: 'Assets', provides: ['ASSETS_URL'] },
+	} as const satisfies ConstructManifest;
+	const plan = (m: ConstructManifest = manifest) =>
+		planFor(m, 'development', provisionOrder(m), {
+			localStage: 'development',
+		});
+
+	/** A bucket client holding one lifecycle per bucket, as MinIO does. */
+	function minio(initial: Record<string, LifecycleRule[]> = {}) {
+		const stored = { ...initial };
+		const writes: string[] = [];
+		const client: BucketClient = {
+			exists: async () => true,
+			create: async () => {},
+			policy: async () => undefined,
+			setPolicy: async () => {},
+			lifecycle: async (bucket) => stored[bucket],
+			setLifecycle: async (bucket, rules) => {
+				writes.push(bucket);
+				if (rules.length === 0) delete stored[bucket];
+				else stored[bucket] = rules;
+			},
+		};
+		return { client, stored, writes };
+	}
+
+	it('lists every bucket, with what each one expires', () => {
+		expect(bucketLifecycles(plan())).toEqual([
+			{ bucket: 'assets', expire: {} },
+			{ bucket: 'private', expire: { 'quotes/': 30, 'tmp/': 1 } },
+		]);
+	});
+
+	it('writes the rules once, and leaves a bucket that asks for none alone', async () => {
+		const { client, stored, writes } = minio();
+		const lifecycles = bucketLifecycles(plan());
+
+		const first = await applyLifecycles(client, lifecycles);
+		const second = await applyLifecycles(client, lifecycles);
+
+		expect(first).toEqual([
+			{
+				id: 'private:lifecycle',
+				describe: 'expire quotes/ after 30 days, tmp/ after 1 day on private',
+				created: true,
+			},
+		]);
+		expect(second.map((a) => a.created)).toEqual([false]);
+		expect(writes).toEqual(['private']);
+		expect(
+			stored.private?.map((r) => [r.Filter?.Prefix, r.Expiration?.Days]),
+		).toEqual([
+			['quotes/', 30],
+			['tmp/', 1],
+		]);
+	});
+
+	it("keeps another rule the bucket already has, and drops gkm's when no longer declared", async () => {
+		const foreign: LifecycleRule = {
+			ID: 'abort-multipart',
+			Status: 'Enabled',
+			Filter: { Prefix: '' },
+			AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 },
+		};
+		const { client, stored } = minio({ private: [foreign] });
+
+		await applyLifecycles(client, bucketLifecycles(plan()));
+		expect(stored.private?.map((r) => r.ID)).toEqual([
+			'abort-multipart',
+			expireRuleId('quotes/'),
+			expireRuleId('tmp/'),
+		]);
+
+		// The expiry removed from the construct: only the foreign rule is left.
+		const removed = {
+			...manifest,
+			Private: { kind: 'objects', id: 'Private', provides: ['PRIVATE_URL'] },
+		} as const satisfies ConstructManifest;
+		const applied = await applyLifecycles(
+			client,
+			bucketLifecycles(plan(removed)),
+		);
+
+		expect(applied).toEqual([
+			{
+				id: 'private:lifecycle',
+				describe: 'remove expiry rules on private',
+				created: true,
+			},
+		]);
+		expect(stored.private).toEqual([foreign]);
+	});
+
+	it('removes the lifecycle outright when gkm held its only rules', async () => {
+		const { client, stored } = minio();
+		await applyLifecycles(client, bucketLifecycles(plan()));
+
+		const removed = {
+			Private: { kind: 'objects', id: 'Private', provides: ['PRIVATE_URL'] },
+		} as const satisfies ConstructManifest;
+		await applyLifecycles(client, bucketLifecycles(plan(removed)));
+
+		expect(stored).not.toHaveProperty('private');
 	});
 });
 

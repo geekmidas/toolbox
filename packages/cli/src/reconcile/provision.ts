@@ -16,9 +16,11 @@
  * growing its own.
  */
 
+import type { LifecycleRule } from '@aws-sdk/client-s3';
 import { cacheTableStatements } from '@geekmidas/cache/postgres';
 import { ownerRole, readerRole, roleStatements } from '@geekmidas/db/pg/roles';
 import { cacheTable } from '@geekmidas/manifest';
+import { mergeLifecycle } from '../providers/s3/lifecycle';
 import { localRole, localRolePassword, rootDatabase } from './env';
 import type { Plan, PlannedResource } from './plan';
 
@@ -377,6 +379,23 @@ export function bucketPolicies(
 }
 
 /**
+ * What each bucket keeps, and for how long: the buckets that declare an
+ * expiry, by their stage-scoped name.
+ *
+ * Every bucket in the plan, not only those that declare one, is what a
+ * removed expiry needs — its rules are dropped from a bucket that no longer
+ * asks for them — so a bucket with none is listed with an empty expiry.
+ */
+export function bucketLifecycles(
+	plan: Plan,
+): { bucket: string; expire: Readonly<Record<string, number>> }[] {
+	return plan.resources
+		.filter((r) => r.kind === 'objects' && r.provisions)
+		.map((r) => ({ bucket: r.name, expire: r.expire ?? {} }))
+		.sort((a, b) => a.bucket.localeCompare(b.bucket));
+}
+
+/**
  * One bucket's open paths as an S3 bucket policy.
  *
  * Anonymous `s3:GetObject` on the named prefixes and nothing else — which is
@@ -499,6 +518,42 @@ export interface BucketClient {
 	/** The bucket's current policy, or `undefined` where it has none. */
 	policy(bucket: string): Promise<string | undefined>;
 	setPolicy(bucket: string, policy: string): Promise<void>;
+	/** The bucket's lifecycle rules, or `undefined` where it has none. */
+	lifecycle(bucket: string): Promise<LifecycleRule[] | undefined>;
+	/** Replace its lifecycle with these rules — none removes it. */
+	setLifecycle(bucket: string, rules: LifecycleRule[]): Promise<void>;
+}
+
+/**
+ * Apply each bucket's expiry, beside whatever other rules it has, skipping
+ * those already correct — the same merge the `s3` provider makes deployed.
+ */
+export async function applyLifecycles(
+	client: BucketClient,
+	lifecycles: readonly {
+		bucket: string;
+		expire: Readonly<Record<string, number>>;
+	}[],
+): Promise<Applied[]> {
+	const applied: Applied[] = [];
+
+	for (const { bucket, expire } of lifecycles) {
+		const merge = mergeLifecycle(await client.lifecycle(bucket), expire);
+		const id = `${bucket}:lifecycle`;
+		const describe = `${merge.describe} on ${bucket}`;
+
+		// Nothing declared and nothing of gkm's there: not worth a line.
+		if (!merge.changed && Object.keys(expire).length === 0) continue;
+		if (!merge.changed) {
+			applied.push({ id, describe, created: false });
+			continue;
+		}
+
+		await client.setLifecycle(bucket, merge.rules);
+		applied.push({ id, describe, created: true });
+	}
+
+	return applied;
 }
 
 /**

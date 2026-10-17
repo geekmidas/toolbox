@@ -1,7 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import type { LifecycleRule } from '@aws-sdk/client-s3';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { TEST_DATABASE_CONFIG } from '../../../../testkit/test/globalSetup';
-import { LOCALSTACK_PORT, POSTGRES_PORT } from '../../../../testkit/test/ports';
+import {
+	LOCALSTACK_PORT,
+	MINIO_PORT,
+	POSTGRES_PORT,
+} from '../../../../testkit/test/ports';
+import { expireRuleId } from '../../providers/s3/lifecycle';
 import { bucketClient, pgClient } from '../clients';
+import { applyLifecycles } from '../provision';
 
 /**
  * The drivers reconcile's applier runs against, against the real thing: the
@@ -85,5 +92,57 @@ describe('bucketClient', () => {
 
 		await expect(unreachable.exists(bucket)).resolves.toBe(false);
 		await expect(unreachable.policy(bucket)).resolves.toBeUndefined();
+	});
+});
+
+/**
+ * A bucket's lifecycle against the suite's real MinIO — the one a local or
+ * compose stack runs — rather than the emulator, whose lifecycle is its own.
+ */
+describe('bucketClient against MinIO: lifecycle', () => {
+	const buckets = bucketClient(MINIO_PORT, {
+		user: 'geekmidas',
+		password: 'geekmidas',
+	});
+	const bucket = `lifecycle-${Date.now()}`;
+	// Someone else's rule — an expiry, since MinIO refuses a rule that only
+	// aborts incomplete multipart uploads.
+	const foreign: LifecycleRule = {
+		ID: 'keep-logs',
+		Status: 'Enabled',
+		Filter: { Prefix: 'logs/' },
+		Expiration: { Days: 90 },
+	};
+
+	beforeAll(async () => {
+		await buckets.create(bucket);
+	});
+
+	it('has none, then holds what was merged in, beside a rule it already had', async () => {
+		await expect(buckets.lifecycle(bucket)).resolves.toBeUndefined();
+		await buckets.setLifecycle(bucket, [foreign]);
+
+		const lifecycles = [{ bucket, expire: { 'quotes/': 30 } }];
+		const first = await applyLifecycles(buckets, lifecycles);
+		const second = await applyLifecycles(buckets, lifecycles);
+
+		expect(first.map((a) => a.created)).toEqual([true]);
+		// MinIO reads back what it was given: the merge converges.
+		expect(second.map((a) => a.created)).toEqual([false]);
+		const rules = (await buckets.lifecycle(bucket)) ?? [];
+		expect(rules.map((r) => r.ID).sort()).toEqual(
+			['keep-logs', expireRuleId('quotes/')].sort(),
+		);
+		expect(rules.find((r) => r.ID === expireRuleId('quotes/'))).toMatchObject({
+			Status: 'Enabled',
+			Filter: { Prefix: 'quotes/' },
+			Expiration: { Days: 30 },
+		});
+	});
+
+	it('removes the lifecycle when the last rule goes', async () => {
+		await buckets.setLifecycle(bucket, []);
+
+		await expect(buckets.lifecycle(bucket)).resolves.toBeUndefined();
 	});
 });

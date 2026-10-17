@@ -17,12 +17,14 @@ import {
 	DeleteObjectsCommand,
 	GetBucketCorsCommand,
 	GetBucketEncryptionCommand,
+	GetBucketLifecycleConfigurationCommand,
 	GetBucketPolicyCommand,
 	GetBucketTaggingCommand,
 	GetBucketVersioningCommand,
 	GetPublicAccessBlockCommand,
 	HeadBucketCommand,
 	ListObjectVersionsCommand,
+	PutBucketLifecycleConfigurationCommand,
 	PutPublicAccessBlockCommand,
 	S3Client,
 } from '@aws-sdk/client-s3';
@@ -72,6 +74,7 @@ import {
 	RotationInProgress,
 } from '../s3/errors';
 import { defaultClients, useS3Clients } from '../s3/index';
+import { expireRuleId } from '../s3/lifecycle';
 import { bucketName, iamUserName } from '../s3/naming';
 import { userPolicy } from '../s3/policy';
 
@@ -123,7 +126,10 @@ function withFileServer(root: string): void {
 		`import { FileServer } from '@geekmidas/constructs/file-server';
 import { Email } from '@geekmidas/constructs/email';
 
-export const uploads = new FileServer('Uploads', { open: ['brand/**'] });
+export const uploads = new FileServer('Uploads', {
+	open: ['brand/**'],
+	expire: { 'tmp/': { days: 1 } },
+});
 export const mail = new Email('Mail', { templates: {} });
 `,
 	);
@@ -318,6 +324,7 @@ describe('objects: s3 on a deployed stage', () => {
 			`bucket ${bucket()}: tag`,
 			`bucket ${bucket()}: block public access (ACLs; the policy opens the open paths)`,
 			`bucket ${bucket()}: policy: TLS only, public read on brand/**`,
+			`bucket ${bucket()}: expire tmp/ after 1 day`,
 			`bucket ${bucket()}: CORS for https://${DOMAIN}`,
 			`IAM user ${user()}: create under /gkm/`,
 			`IAM user ${user()}: policy gkm-bucket: this bucket only`,
@@ -416,6 +423,17 @@ describe('objects: s3 on a deployed stage', () => {
 		expect(
 			(await s3.send(new GetBucketVersioningCommand({ Bucket }))).Status,
 		).toBeUndefined();
+		expect(
+			(await s3.send(new GetBucketLifecycleConfigurationCommand({ Bucket })))
+				.Rules,
+		).toEqual([
+			expect.objectContaining({
+				ID: expireRuleId('tmp/'),
+				Status: 'Enabled',
+				Filter: expect.objectContaining({ Prefix: 'tmp/' }),
+				Expiration: expect.objectContaining({ Days: 1 }),
+			}),
+		]);
 
 		// The user: under /gkm/, tagged, with a policy for this bucket only.
 		const found = await iam.send(new GetUserCommand({ UserName: user() }));
@@ -475,6 +493,51 @@ describe('objects: s3 on a deployed stage', () => {
 			(await s3.send(new GetPublicAccessBlockCommand({ Bucket })))
 				.PublicAccessBlockConfiguration?.BlockPublicAcls,
 		).toBe(true);
+	});
+
+	it("merges its expiry into the bucket's lifecycle, keeping every other rule", async () => {
+		const Bucket = bucket();
+		const foreign = {
+			ID: 'abort-multipart',
+			Status: 'Enabled' as const,
+			Filter: { Prefix: 'uploads/' },
+			AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 },
+		};
+		// Someone else's rule, and a gkm rule nothing declares any more.
+		await s3.send(
+			new PutBucketLifecycleConfigurationCommand({
+				Bucket,
+				LifecycleConfiguration: {
+					Rules: [
+						foreign,
+						{
+							ID: expireRuleId('old/'),
+							Status: 'Enabled',
+							Filter: { Prefix: 'old/' },
+							Expiration: { Days: 3 },
+						},
+					],
+				},
+			}),
+		);
+
+		const [report] = await provision(STAGE);
+		const [again] = await provision(STAGE);
+
+		expect(report?.actions.map((a) => a.change)).toEqual([
+			'expire tmp/ after 1 day',
+		]);
+		expect(again?.actions).toEqual([]);
+		const rules =
+			(await s3.send(new GetBucketLifecycleConfigurationCommand({ Bucket })))
+				.Rules ?? [];
+		expect(rules.map((r) => r.ID).sort()).toEqual(
+			['abort-multipart', expireRuleId('tmp/')].sort(),
+		);
+		expect(rules.find((r) => r.ID === 'abort-multipart')).toMatchObject({
+			Filter: { Prefix: 'uploads/' },
+			AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 },
+		});
 	});
 
 	it('presigns a PUT and a GET with the key it wrote', async () => {
@@ -741,6 +804,7 @@ describe('--dry-run', () => {
 			`bucket ${good}: tag`,
 			`bucket ${good}: block public access (ACLs; the policy opens the open paths)`,
 			`bucket ${good}: policy: TLS only, public read on brand/**`,
+			`bucket ${good}: expire tmp/ after 1 day`,
 			`bucket ${good}: CORS for https://preview.${DOMAIN}`,
 			`IAM user ${iamUserName({ scope: name, stage: 'preview', id: 'uploads' })}: create under /gkm/`,
 			`IAM user ${iamUserName({ scope: name, stage: 'preview', id: 'uploads' })}: policy gkm-bucket: this bucket only`,

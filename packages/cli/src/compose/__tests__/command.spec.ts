@@ -653,6 +653,12 @@ function recordingBuckets(calls: { op: string; args?: unknown }[]) {
 				return undefined;
 			},
 			async setPolicy() {},
+			async lifecycle() {
+				return undefined;
+			},
+			async setLifecycle(bucket: string) {
+				calls.push({ op: 'lifecycle', args: bucket });
+			},
 		};
 	};
 }

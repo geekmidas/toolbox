@@ -17,10 +17,22 @@ import {
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { createStorageClient, type StorageClient } from '@geekmidas/storage';
 import type { Construct } from './construct-interface';
+import { expiryDays, type ObjectExpiry } from './expire';
+
+export {
+	ExpiryDaysInvalid,
+	ExpiryPrefixInvalid,
+	type ObjectExpiry,
+} from './expire';
 
 export interface ObjectStorageOptions {
 	/** Keep previous versions of an object. */
 	versioned?: boolean;
+	/**
+	 * Delete the objects under each prefix this many days after they were
+	 * written — `{ 'quotes/': { days: 30 } }`.
+	 */
+	expire?: ObjectExpiry;
 }
 
 export class ObjectStorage<TName extends string = string>
@@ -36,6 +48,9 @@ export class ObjectStorage<TName extends string = string>
 	 */
 	private readonly keys: { url: string };
 
+	/** Checked once, at declaration: prefix → days. */
+	private readonly expire: Record<string, number> | undefined;
+
 	constructor(
 		id: ConstructName<TName>,
 		private readonly options: ObjectStorageOptions = {},
@@ -46,6 +61,7 @@ export class ObjectStorage<TName extends string = string>
 
 		this.id = canonical as TName;
 		this.keys = { url: provideKey(canonical, 'url') };
+		this.expire = expiryDays(canonical, options.expire);
 
 		// A field, not a getter: consumers cache services by object identity.
 		this.service = {
@@ -61,6 +77,7 @@ export class ObjectStorage<TName extends string = string>
 				id: this.id,
 				provides: [this.keys.url],
 				...(this.options.versioned ? { versioned: true } : {}),
+				...(this.expire ? { expire: this.expire } : {}),
 			},
 		];
 	}
