@@ -975,8 +975,16 @@ export interface ProvidesByKind {
 	 * publishes to, or the broker they are relayed onto. Never declared as
 	 * provided: a handler is bound to the bucket rather than depending on it,
 	 * so the key reaches exactly the process that runs one.
+	 *
+	 * `eventsToken` is the relay's half: what a local object store presents
+	 * when it posts an event to that process, so the route it posts to takes
+	 * nothing from anyone else.
 	 */
-	objects: { url: string; eventsConnectionString?: string };
+	objects: {
+		url: string;
+		eventsConnectionString?: string;
+		eventsToken?: string;
+	};
 	/** Where the served objects answer. Public: a browser is the point of it. */
 	'file-server': { url: string };
 	/**

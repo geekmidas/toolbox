@@ -11,8 +11,10 @@
 
 import {
 	CreateBucketCommand,
+	GetBucketNotificationConfigurationCommand,
 	GetBucketPolicyCommand,
 	HeadBucketCommand,
+	PutBucketNotificationConfigurationCommand,
 	PutBucketPolicyCommand,
 	S3Client,
 } from '@aws-sdk/client-s3';
@@ -34,7 +36,12 @@ import {
 	emulatorTopicArn,
 } from './emulator';
 import type { ContainerCredentials, Login } from './localCredentials';
-import type { BucketClient, CarrierClient, SqlClient } from './provision';
+import type {
+	BucketClient,
+	BucketNotification,
+	CarrierClient,
+	SqlClient,
+} from './provision';
 
 /**
  * A Postgres client that opens one connection per database it is asked about.
@@ -126,6 +133,22 @@ export function bucketClient(
 		async setPolicy(bucket, policy) {
 			await s3.send(
 				new PutBucketPolicyCommand({ Bucket: bucket, Policy: policy }),
+			);
+		},
+
+		async notification(bucket) {
+			const { $metadata: _, ...notification } = await s3.send(
+				new GetBucketNotificationConfigurationCommand({ Bucket: bucket }),
+			);
+			return notification as BucketNotification;
+		},
+
+		async setNotification(bucket, notification) {
+			await s3.send(
+				new PutBucketNotificationConfigurationCommand({
+					Bucket: bucket,
+					NotificationConfiguration: notification as never,
+				}),
 			);
 		},
 	};
