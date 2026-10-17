@@ -45,3 +45,15 @@ export function subscriberConnectionKey(construct: {
 	}
 	return undefined;
 }
+
+/**
+ * The key a bucket's relay token is read from, by the process that runs the
+ * bucket's subscribers — beside its events connection string.
+ */
+export function subscriberTokenKey(construct: {
+	bucketName?: string;
+}): string | undefined {
+	return construct.bucketName
+		? provideKey(canonicalId(construct.bucketName), 'eventsToken')
+		: undefined;
+}

@@ -1126,6 +1126,138 @@ describe('a worker SNS pushes to', () => {
 	});
 });
 
+describe("a watched bucket in the stack's MinIO", () => {
+	/** The workspace with a bucket a subscriber in `Jobs` watches. */
+	const watched = (overrides: Partial<StackInput> = {}) =>
+		stack({
+			manifest: {
+				...manifest,
+				Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+				Reports: { kind: 'objects', id: 'Reports', provides: ['REPORTS_URL'] },
+			} as unknown as ConstructManifest,
+			runnables: {
+				...runnables,
+				Jobs: [...(runnables.Jobs ?? []), 'Uploads#events'],
+			},
+			subscribers: {
+				Jobs: [
+					{
+						name: 'onAvatar',
+						connectionKey: 'UPLOADS_EVENTS_CONNECTION_STRING',
+					},
+				],
+			},
+			...overrides,
+		});
+	const jobs = (s: ComposeStack) => s.workers.find((w) => w.name === 'jobs')!;
+
+	it('posts its events to the worker running its subscriber, which relays them onto pg-boss', () => {
+		const s = watched();
+		const env = jobs(s).env!;
+
+		// Delivered from the stack's broker, by its name on the network.
+		expect(env.UPLOADS_EVENTS_CONNECTION_STRING).toMatch(
+			/^pgboss:\/\/[^@]+@postgres:5432\//,
+		);
+		expect(env.UPLOADS_EVENTS_TOKEN).toMatch(/^[\w-]{32}$/);
+		// Not the bucket itself: binding to its events is not reading it.
+		expect(env).not.toHaveProperty('UPLOADS_URL');
+
+		expect(s.storage?.webhooks).toEqual([
+			{
+				bucket: 'Uploads',
+				endpoint: 'http://jobs:3000/__gkm/objects/Uploads',
+				token: env.UPLOADS_EVENTS_TOKEN,
+			},
+		]);
+		expect(s.compose.services.minio?.environment).toMatchObject({
+			MINIO_NOTIFY_WEBHOOK_ENABLE_UPLOADS: 'on',
+			MINIO_NOTIFY_WEBHOOK_ENDPOINT_UPLOADS:
+				'http://jobs:3000/__gkm/objects/Uploads',
+			MINIO_NOTIFY_WEBHOOK_AUTH_TOKEN_UPLOADS: env.UPLOADS_EVENTS_TOKEN,
+			MINIO_NOTIFY_WEBHOOK_QUEUE_DIR_UPLOADS: '/gkm-object-events/uploads',
+		});
+		// On the stack's own network: nothing on the host to map.
+		expect(s.compose.services.minio?.extra_hosts).toBeUndefined();
+		expect(s.storage?.objects.map((b) => b.id).sort()).toEqual([
+			'Reports',
+			'Uploads',
+		]);
+	});
+
+	it('declares no target for a bucket nothing watches', () => {
+		const environment = watched().compose.services.minio?.environment ?? {};
+
+		expect(
+			Object.keys(environment).filter((k) => k.includes('REPORTS')),
+		).toEqual([]);
+		const unwatched = watched({ subscribers: {} });
+		expect(unwatched.storage?.webhooks).toEqual([]);
+		expect(jobs(unwatched).env).not.toHaveProperty(
+			'UPLOADS_EVENTS_CONNECTION_STRING',
+		);
+		expect(
+			Object.keys(unwatched.compose.services.minio?.environment ?? {}).filter(
+				(k) => k.startsWith('MINIO_NOTIFY'),
+			),
+		).toEqual([]);
+	});
+
+	it("signs with a token derived from a deployed stage's seed", () => {
+		const deployed = (seed: string) =>
+			watched({
+				stage: 'production',
+				images: { mode: 'pull', tag: 'v1.4.0' },
+				secrets: { ...production(), seed },
+				ports: {},
+				allowDevServices: true,
+			});
+		const token = (s: ComposeStack) => jobs(s).env?.UPLOADS_EVENTS_TOKEN;
+
+		expect(token(deployed('a-random-seed'))).toBe(
+			token(deployed('a-random-seed')),
+		);
+		expect(token(deployed('a-random-seed'))).not.toBe(
+			token(deployed('another-seed')),
+		);
+		expect(token(deployed('a-random-seed'))).not.toBe(token(watched()));
+		expect(deployed('a-random-seed').storage?.webhooks[0]?.token).toBe(
+			token(deployed('a-random-seed')),
+		);
+	});
+
+	it('posts nothing where the stage says its events come from SNS', () => {
+		const SNS =
+			'sns://AKIAEXAMPLE:secret@?topicArn=arn:aws:sns:eu-west-1:123456789012:uploads&region=eu-west-1';
+		const s = watched({
+			stage: 'production',
+			images: { mode: 'pull', tag: 'v1.4.0' },
+			secrets: production({ UPLOADS_EVENTS_CONNECTION_STRING: SNS }),
+			ports: {},
+			allowDevServices: true,
+		});
+
+		expect(jobs(s).env?.UPLOADS_EVENTS_CONNECTION_STRING).toBe(SNS);
+		expect(s.storage?.webhooks).toEqual([]);
+	});
+
+	it('relays nothing for a bucket the stage brings itself', () => {
+		const s = watched({
+			stage: 'production',
+			images: { mode: 'pull', tag: 'v1.4.0' },
+			secrets: production({
+				UPLOADS_URL: 's3://acme-uploads?region=eu-west-1',
+				REPORTS_URL: 's3://acme-reports?region=eu-west-1',
+			}),
+			ports: {},
+		});
+
+		expect(jobs(s).env).not.toHaveProperty('UPLOADS_EVENTS_CONNECTION_STRING');
+		expect(jobs(s).env).not.toHaveProperty('UPLOADS_EVENTS_TOKEN');
+		expect(s.storage).toBeUndefined();
+	});
+});
+
 describe('the cache', () => {
 	const deployed = (custom: Record<string, string> = {}) =>
 		stack({
