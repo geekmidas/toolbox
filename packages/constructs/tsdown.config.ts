@@ -25,6 +25,7 @@ export default defineConfig({
 		'src/functions/index.ts',
 		'src/crons/index.ts',
 		'src/subscribers/index.ts',
+		'src/processors/index.ts',
 		'src/queue/index.ts',
 		'src/topic/index.ts',
 		'src/adaptors/hono.ts',

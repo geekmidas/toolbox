@@ -5,7 +5,11 @@ import {
 	createTestFile,
 } from '../../__tests__/test-helpers';
 import { LocalSandbox } from '../../sandbox/local';
-import { type BoundSubscriber, discover } from '../discover';
+import {
+	type BoundSubscriber,
+	discover,
+	ProcessorServerUnknown,
+} from '../discover';
 
 /**
  * A runnable's edges, collected by the discovery that already imports it.
@@ -268,4 +272,95 @@ export const welcome = jobs
 			expect(there).toEqual(here);
 		},
 	);
+
+	it(
+		'nests each processor in its file server, with its source as its handler, here and in a sandbox',
+		{ timeout: 30_000 },
+		async () => {
+			await createTestFile(
+				dir,
+				'constructs/media.ts',
+				`import { FileServer } from '@geekmidas/constructs/file-server';
+
+export const media = new FileServer('Media', { open: ['public/**'] });
+`,
+			);
+			await createTestFile(
+				dir,
+				'processors/thumbnails.ts',
+				`import { media } from '../constructs/media.js';
+
+export const thumbnails = media
+	.process('/i/:width/*')
+	.native(['sharp'])
+	.timeout(15_000)
+	.handle(async () => ({ body: '', contentType: 'image/webp' }));
+
+export const pages = media
+	.process('/pdf/:page/*')
+	.handle(async () => ({ body: '', contentType: 'image/png' }));
+`,
+			);
+			// The same processor again, through a barrel: one processor.
+			await createTestFile(
+				dir,
+				'processors/index.ts',
+				`export { thumbnails } from './thumbnails.js';\n`,
+			);
+			const patterns = ['constructs/**/*.ts', 'processors/**/*.ts'];
+			const runnables: Record<string, string[]> = {};
+
+			const local = await discover({ patterns, cwd: dir, runnables });
+			const sandboxed = await discover({
+				patterns,
+				cwd: dir,
+				sandbox: new LocalSandbox({ root: dir }),
+			});
+
+			expect(local.MediaServer).toMatchObject({
+				kind: 'file-server',
+				processors: [
+					{
+						id: 'pages',
+						handler: 'processors/thumbnails.ts#pages',
+						path: '/pdf/:page/*',
+						prefix: '/pdf/',
+						dependencies: [{ target: 'Media', kind: 'objects' }],
+					},
+					{
+						id: 'thumbnails',
+						handler: 'processors/thumbnails.ts#thumbnails',
+						path: '/i/:width/*',
+						prefix: '/i/',
+						native: ['sharp'],
+						timeout: 15_000,
+						dependencies: [{ target: 'Media', kind: 'objects' }],
+					},
+				],
+			});
+			expect(sandboxed).toEqual(local);
+			// Its unit reaches the bucket, as a worker reaches what its work does.
+			expect(runnables.MediaServer).toEqual(['Media']);
+		},
+	);
+
+	it('refuses a processor whose file server it never found', async () => {
+		await createTestFile(
+			dir,
+			'processors/orphan.ts',
+			`import { FileServer } from '@geekmidas/constructs/file-server';
+
+// Declared here, and not exported: discovery never sees the server.
+const hidden = new FileServer('Hidden');
+
+export const orphan = hidden
+	.process('/i/*')
+	.handle(async () => ({ body: '', contentType: 'image/webp' }));
+`,
+		);
+
+		await expect(
+			discover({ patterns: ['processors/orphan.ts'], cwd: dir }),
+		).rejects.toBeInstanceOf(ProcessorServerUnknown);
+	});
 });

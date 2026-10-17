@@ -135,6 +135,26 @@ export interface FileServerDeclaration extends Node {
 	 * A subset of `open`: a signed object is never served by the edge.
 	 */
 	immutable?: readonly string[];
+	/**
+	 * The handlers behind its path patterns — each makes a derivative of an
+	 * open object on read: `/i/:width/*` a thumbnail.
+	 *
+	 * Nested for the reason a topic's subscribers are: position is the trigger.
+	 * A processor answers requests on this server's domain and nothing else.
+	 */
+	processors?: readonly ProcessorDeclaration[];
+}
+
+/** A processor on a file server — see {@link FileServerDeclaration.processors}. */
+export interface ProcessorDeclaration extends Fn {
+	/** Its pattern, as written: `/i/:width/*`. */
+	path: string;
+	/** The literal path the edge routes to it: `/i/`. */
+	prefix: string;
+	/** Packages with native code, installed for the target rather than bundled. */
+	native?: readonly string[];
+	timeout?: number;
+	memorySize?: number;
 }
 
 /**

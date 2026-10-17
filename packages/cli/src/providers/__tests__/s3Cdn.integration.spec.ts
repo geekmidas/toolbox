@@ -289,9 +289,10 @@ beforeAll(async () => {
 	domain = `${name}.example.com`;
 	writeComposeApp(dir, {
 		name,
-		deployed: [STAGE, 'unserved', 'bare', 'pending', 'planned'],
+		deployed: [STAGE, 'unserved', 'bare', 'pending', 'planned', 'processed'],
 		domains: {
 			[STAGE]: domain,
+			processed: `processed.${domain}`,
 			unserved: `unserved.${domain}`,
 			// Under no domain in `dns`: nothing writes its records.
 			pending: `${name}.example.org`,
@@ -307,6 +308,7 @@ beforeAll(async () => {
 			bare: { provider: 's3', region: REGION },
 			pending: { provider: 's3', region: REGION },
 			planned: { provider: 's3', region: REGION },
+			processed: { provider: 's3', region: REGION },
 		},
 	});
 	writeFileSync(
@@ -601,6 +603,70 @@ describe('a file server behind a CDN', () => {
 		]) {
 			expect(after[key]?.id).toBe(before[key]?.id);
 		}
+	});
+});
+
+describe("a file server's processors behind the CDN", () => {
+	const stage = 'processed';
+	/** The discovered manifest, with a thumbnail processor on the file server. */
+	const withProcessors = (): ConstructManifest =>
+		({
+			...manifest,
+			UploadsServer: {
+				...manifest.UploadsServer,
+				processors: [
+					{
+						id: 'thumbnails',
+						handler: 'apps/api/processors/thumbnails.ts#thumbnails',
+						path: '/i/:width/*',
+						prefix: '/i/',
+						dependencies: [{ target: 'Uploads', kind: 'objects' }],
+					},
+				],
+			},
+		}) as unknown as ConstructManifest;
+	const configOf = async () => {
+		const id = (await resourcesOf(stage))[
+			'cloudfront-distribution:UploadsServer'
+		]!.id!;
+		return (await cloudfront.send(new GetDistributionConfigCommand({ Id: id })))
+			.DistributionConfig!;
+	};
+
+	it('sends each pattern to the processor unit, with a secret the stage keeps', async () => {
+		track(stage);
+		await provision(stage, { manifest: withProcessors() });
+
+		const secret = (await secretsOf(stage)).UPLOADS_SERVER_ORIGIN_SECRET;
+		expect(secret).toMatch(/^[A-Za-z0-9_-]{43}$/);
+
+		const config = await configOf();
+		const origin = config.Origins?.Items?.find((o) => o.Id === 'processors');
+		expect(origin).toMatchObject({
+			DomainName: `uploads-server-processors.processed.${domain}`,
+			CustomOriginConfig: { OriginProtocolPolicy: 'https-only' },
+			CustomHeaders: {
+				Quantity: 1,
+				Items: [{ HeaderName: 'X-Gkm-Origin-Verify', HeaderValue: secret }],
+			},
+		});
+		expect(
+			config.CacheBehaviors?.Items?.map((b) => [
+				b.PathPattern,
+				b.TargetOriginId,
+			]),
+		).toEqual([
+			['i/*', 'processors'],
+			['brand/logos/*', 'bucket'],
+		]);
+	});
+
+	it('keeps the secret, and changes nothing, on a second run', async () => {
+		const before = (await secretsOf(stage)).UPLOADS_SERVER_ORIGIN_SECRET;
+		const [report] = await provision(stage, { manifest: withProcessors() });
+
+		expect(report!.actions).toEqual([]);
+		expect((await secretsOf(stage)).UPLOADS_SERVER_ORIGIN_SECRET).toBe(before);
 	});
 });
 

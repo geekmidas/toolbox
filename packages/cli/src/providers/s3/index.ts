@@ -93,6 +93,8 @@ export interface BucketConstruct {
 		id: string;
 		open: readonly string[];
 		immutable: readonly string[];
+		/** Its processors' prefixes, each the CDN sends to the processor unit. */
+		processors?: readonly string[];
 	}[];
 }
 
@@ -113,6 +115,17 @@ export function bucketConstructs(
 					id: sid,
 					open: (s as FileServerDeclaration).open ?? [],
 					immutable: (s as FileServerDeclaration).immutable ?? [],
+					...((s as FileServerDeclaration).processors?.length
+						? {
+								processors: [
+									...new Set(
+										(s as FileServerDeclaration).processors!.map(
+											(p) => p.prefix,
+										),
+									),
+								].sort(),
+							}
+						: {}),
 				}))
 				.sort((a, b) => a.id.localeCompare(b.id)),
 		}))

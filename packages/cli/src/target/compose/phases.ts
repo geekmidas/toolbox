@@ -469,6 +469,7 @@ export async function validateCompose(
 		await assertImagesExist(deps.docker, tag, [
 			...stack.apps,
 			...stack.workers,
+			...stack.processors,
 		]);
 	}
 
@@ -769,14 +770,16 @@ function withPinnedImages(
 ): ComposeStack {
 	const apps = pinImages(file, digests, stack.apps);
 	const workers = pinImages(file, digests, stack.workers);
+	const processors = pinImages(file, digests, stack.processors);
 	const services = { ...stack.compose.services };
-	for (const image of [...apps, ...workers]) {
+	for (const image of [...apps, ...workers, ...processors]) {
 		services[image.name] = { ...services[image.name]!, image: image.ref };
 	}
 	return {
 		...stack,
 		apps,
 		workers,
+		processors,
 		compose: { ...stack.compose, services },
 	};
 }
@@ -838,7 +841,7 @@ export async function planCompose(
 			action: run.previous[app.name] ? 'reuse' : 'create',
 		});
 	}
-	for (const worker of run.stack.workers) {
+	for (const worker of [...run.stack.workers, ...run.stack.processors]) {
 		planned({
 			key: `image:${worker.name}`,
 			resourceType: 'image',
@@ -1121,7 +1124,7 @@ export async function buildCompose(
 	deps: ComposeDeps,
 ): Promise<void> {
 	const { stack, ref } = run;
-	const images = [...stack.apps, ...stack.workers];
+	const images = [...stack.apps, ...stack.workers, ...stack.processors];
 	const apps = images.map((image) => image.app);
 
 	// Nothing was provisioned, so nothing has written the files it builds from.
@@ -1245,8 +1248,9 @@ export async function releaseCompose(
 		});
 	}
 
-	// A worker has no URL, so no `app.deployed`: its service, applied, is it.
-	for (const worker of stack.workers) {
+	// A worker has no URL, so no `app.deployed`: its service, applied, is it —
+	// nor has a processor unit, which answers on its file server's.
+	for (const worker of [...stack.workers, ...stack.processors]) {
 		applied(ctx, run, {
 			key: `service:${worker.name}`,
 			resourceType: 'service',
@@ -1262,6 +1266,9 @@ export async function releaseCompose(
 	}
 	for (const worker of stack.workers) {
 		ctx.logger.info(`   ${worker.name.padEnd(12)} worker ${worker.id}`);
+	}
+	for (const unit of stack.processors) {
+		ctx.logger.info(`   ${unit.name.padEnd(12)} processors of ${unit.id}`);
 	}
 	if (stack.local) {
 		ctx.logger.info(
@@ -1283,7 +1290,11 @@ async function recordImages(
 		createComposeState(ctx.stage),
 	);
 	const by = currentActor();
-	for (const app of [...run.stack.apps, ...run.stack.workers]) {
+	for (const app of [
+		...run.stack.apps,
+		...run.stack.workers,
+		...run.stack.processors,
+	]) {
 		const image = run.images[app.app] ?? { ref: app.ref, tag: app.tag };
 		recordRelease(journal.state, app.app, image, by);
 	}
@@ -1332,7 +1343,7 @@ export async function verifyCompose(
 	// reports it, is the answer.
 	results.push(
 		...(await Promise.all(
-			stack.workers.map((worker) =>
+			[...stack.workers, ...stack.processors].map((worker) =>
 				checkContainer(ctx, run, deps, worker.name),
 			),
 		)),
@@ -1504,7 +1515,7 @@ export function composeResult(
 				url: app.url,
 			};
 		}),
-		...run.stack.workers.map((worker) => {
+		...[...run.stack.workers, ...run.stack.processors].map((worker) => {
 			const image = run.images[worker.name];
 			return {
 				appName: worker.name,
@@ -1614,7 +1625,7 @@ async function writeStack(
 	// Env files stay on this machine: compose reads each one here and sends
 	// its values in the call that creates the container — on a server's
 	// engine too, where no secret is ever written as a file.
-	for (const app of [...stack.apps, ...stack.workers]) {
+	for (const app of [...stack.apps, ...stack.workers, ...stack.processors]) {
 		if (app.env)
 			await write(join(dir, `${app.name}.env`), envFile(app.env), 0o600);
 	}
@@ -1696,6 +1707,11 @@ function printPlan(ctx: ComposeContext, run: ComposeRun): void {
 	for (const worker of stack.workers) {
 		ctx.logger.info(
 			`   ${worker.name.padEnd(12)} ${`worker ${worker.id} (no route)`.padEnd(40)} ${mode} ${worker.ref}`,
+		);
+	}
+	for (const unit of stack.processors) {
+		ctx.logger.info(
+			`   ${unit.name.padEnd(12)} ${`processors of ${unit.id}`.padEnd(40)} ${mode} ${unit.ref}`,
 		);
 	}
 	if (stack.infra.length > 0) {

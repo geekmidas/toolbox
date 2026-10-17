@@ -41,6 +41,12 @@ import { appKey } from '../../workspace/derive.js';
 import type { S3ObjectsConfig } from '../../workspace/types.js';
 import { type AwsProvisioning, awsClientConfig, awsEndpoint } from '../aws.js';
 import { identityTags } from '../iam.js';
+import {
+	newOriginSecret,
+	ORIGIN_VERIFY_HEADER,
+	originSecretKey,
+	processorOriginHost,
+} from '../processorOrigin.js';
 import type { EnsureContext, StateEntry } from '../types.js';
 
 type CloudFrontModule = typeof import('@aws-sdk/client-cloudfront');
@@ -57,14 +63,27 @@ export const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 /** The only region CloudFront reads a certificate from. */
 const CDN_REGION = 'us-east-1';
 
-/** The distribution's one origin. */
+/** The distribution's bucket origin. */
 const ORIGIN_ID = 'bucket';
+
+/** Its processors' origin: the stack's processor unit, at a host of its own. */
+const PROCESSORS_ORIGIN_ID = 'processors';
+
+/**
+ * AWS's managed `CachingOptimizedForUncompressedObjects`: keyed on the path
+ * alone, and nothing re-compressed — a derivative is an image, already
+ * compressed, and its width is in the path, so nothing else may fragment it.
+ */
+export const CACHING_OPTIMIZED_UNCOMPRESSED =
+	'b2884449-e4de-46a7-ac36-70bc7f1ddd6d';
 
 /** A file server, as the CDN serves it. */
 export interface CdnServer {
 	id: string;
 	open: readonly string[];
 	immutable: readonly string[];
+	/** Its processors' prefixes — `/i/` — each sent to the processor unit. */
+	processors?: readonly string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -250,6 +269,11 @@ export function distributionConfig(input: {
 	/** For the immutable paths: CORS and the forever header. */
 	immutablePolicyId?: string;
 	immutable: readonly string[];
+	/**
+	 * The file server's processors: each prefix sent to the processor unit
+	 * at `host`, with the secret header its edge checks.
+	 */
+	processors?: { prefixes: readonly string[]; host: string; secret: string };
 }): DistributionConfig {
 	const behaviour = (policy?: string) => ({
 		TargetOriginId: ORIGIN_ID,
@@ -264,30 +288,68 @@ export function distributionConfig(input: {
 		...(policy ? { ResponseHeadersPolicyId: policy } : {}),
 	});
 	const patterns = [...new Set(input.immutable.map(pathPattern))].sort();
+	const processors = input.processors;
+	const processorPatterns = processors
+		? [...new Set(processors.prefixes.map((p) => `${pathPattern(p)}*`))].sort()
+		: [];
 	return {
 		CallerReference: input.callerReference,
 		Comment: input.comment,
 		Enabled: true,
 		Aliases: { Quantity: 1, Items: [input.host] },
-		Origins: {
-			Quantity: 1,
-			Items: [
-				{
-					Id: ORIGIN_ID,
-					DomainName: input.bucketDomain,
-					OriginPath: '',
-					S3OriginConfig: { OriginAccessIdentity: '' },
-					OriginAccessControlId: input.originAccessControlId,
-				},
-			],
-		},
+		Origins: list([
+			{
+				Id: ORIGIN_ID,
+				DomainName: input.bucketDomain,
+				OriginPath: '',
+				S3OriginConfig: { OriginAccessIdentity: '' },
+				OriginAccessControlId: input.originAccessControlId,
+			},
+			...(processors
+				? [
+						{
+							Id: PROCESSORS_ORIGIN_ID,
+							DomainName: processors.host,
+							OriginPath: '',
+							CustomOriginConfig: {
+								HTTPPort: 80,
+								HTTPSPort: 443,
+								OriginProtocolPolicy: 'https-only',
+								OriginSslProtocols: { Quantity: 1, Items: ['TLSv1.2'] },
+								OriginReadTimeout: 30,
+								OriginKeepaliveTimeout: 5,
+							},
+							// What the processor unit's edge checks: without it, its
+							// public host refuses the request.
+							CustomHeaders: {
+								Quantity: 1,
+								Items: [
+									{
+										HeaderName: ORIGIN_VERIFY_HEADER,
+										HeaderValue: processors.secret,
+									},
+								],
+							},
+						},
+					]
+				: []),
+		]),
 		DefaultCacheBehavior: behaviour(input.corsPolicyId),
-		CacheBehaviors: list(
-			patterns.map((PathPattern) => ({
+		// The processors' first: CloudFront takes the first pattern that
+		// matches, and an immutable `*` would otherwise answer from the bucket.
+		CacheBehaviors: list([
+			...processorPatterns.map((PathPattern) => ({
+				...behaviour(input.corsPolicyId),
+				TargetOriginId: PROCESSORS_ORIGIN_ID,
+				Compress: false,
+				CachePolicyId: CACHING_OPTIMIZED_UNCOMPRESSED,
+				PathPattern,
+			})),
+			...patterns.map((PathPattern) => ({
 				...behaviour(input.immutablePolicyId),
 				PathPattern,
 			})),
-		),
+		]),
 		ViewerCertificate: {
 			ACMCertificateArn: input.certificateArn,
 			SSLSupportMethod: 'sni-only',
@@ -453,6 +515,7 @@ export async function ensureBucketCdn(
 			...input,
 			server,
 			host: cdnHost(server.id, domain),
+			processorHost: processorOriginHost(server.id, domain),
 		});
 		out.distributionArns.push(arn);
 		out.urls[server.id] = url;
@@ -463,7 +526,11 @@ export async function ensureBucketCdn(
 async function ensureServerCdn(
 	ctx: Ctx,
 	clients: CdnClients,
-	input: BucketCdnInput & { server: CdnServer; host: string },
+	input: BucketCdnInput & {
+		server: CdnServer;
+		host: string;
+		processorHost: string;
+	},
 ): Promise<{ arn: string; url: string }> {
 	const { server, host } = input;
 	const name = cdnName(ctx.identity.scope, ctx.stage, server.id);
@@ -509,6 +576,14 @@ async function ensureServerCdn(
 				})
 			: undefined;
 
+	const processors = server.processors?.length
+		? {
+				prefixes: server.processors,
+				host: input.processorHost,
+				secret: await ensureOriginSecret(ctx, server.id),
+			}
+		: undefined;
+
 	const distribution = await ensureDistribution(ctx, clients, {
 		id: server.id,
 		comment,
@@ -522,6 +597,7 @@ async function ensureServerCdn(
 			...(corsPolicyId ? { corsPolicyId } : {}),
 			...(immutablePolicyId ? { immutablePolicyId } : {}),
 			immutable: server.immutable,
+			...(processors ? { processors } : {}),
 		}),
 	});
 
@@ -536,6 +612,21 @@ async function ensureServerCdn(
 		}
 	}
 	return { arn: distribution.arn, url: `https://${host}` };
+}
+
+/**
+ * The secret the CDN sends a file server's processors: the one in the stage's
+ * secrets, or a new one written there — read by the stack, whose edge checks
+ * it, when it composes.
+ */
+async function ensureOriginSecret(ctx: Ctx, serverId: string): Promise<string> {
+	const key = originSecretKey(serverId);
+	const kept = ctx.secrets[key];
+	if (kept) return kept;
+	const secret = newOriginSecret();
+	ctx.log(`   ${serverId}: a new processor origin secret, kept as ${key}`);
+	await ctx.writeSecrets({ [key]: secret });
+	return secret;
 }
 
 /** The certificate for `host`: recorded, adopted, or requested — then issued. */

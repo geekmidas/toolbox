@@ -16,6 +16,7 @@
 
 import { relative } from 'node:path';
 import { Cron } from '@geekmidas/constructs/crons';
+import { Processor } from '@geekmidas/constructs/processors';
 import { Queue } from '@geekmidas/constructs/queue';
 import { Subscriber } from '@geekmidas/constructs/subscribers';
 import {
@@ -23,6 +24,7 @@ import {
 	type ConstructManifest,
 	canonicalId,
 	type Declaration,
+	type ProcessorDeclaration,
 } from '@geekmidas/manifest';
 import fg from 'fast-glob';
 import { z } from 'zod';
@@ -337,6 +339,12 @@ export async function discover(
 	/** Matched files, for the diagnostic below. */
 	let matched = 0;
 
+	/** Each processor, once, by the export that first reached it. */
+	const processors = new Map<
+		object,
+		{ exportName: string; file: string; processor: Processor<string> }
+	>();
+
 	for await (const found of files) {
 		matched++;
 		const file = found.toString();
@@ -347,6 +355,12 @@ export async function discover(
 				recordBackground(options.background, exported, file);
 			if (options.subscribers)
 				recordSubscriber(options.subscribers, exported, exportName);
+			if (Processor.isProcessor(exported)) {
+				const seenAt = processors.get(exported);
+				if (!seenAt || definedIn(file, seenAt.file)) {
+					processors.set(exported, { exportName, file, processor: exported });
+				}
+			}
 			if (!isDeclarable(exported)) {
 				if (options.runnables) recordRunnable(options.runnables, exported);
 				continue;
@@ -386,6 +400,8 @@ export async function discover(
 		}
 	}
 
+	nestProcessors(manifest, [...processors.values()], cwd);
+
 	// Reference integrity before anyone reads it — a schema tenant naming a
 	// database that was deleted is a manifest error, not a reconcile failure.
 	assertDerivations(manifest);
@@ -418,6 +434,83 @@ function recordBackground(
 	const files = background[key] ?? [];
 	background[key] = files;
 	if (!files.includes(file)) files.push(file);
+}
+
+/** A processor built from a file server the discovery never found. */
+export class ProcessorServerUnknown extends GkmError {
+	constructor(
+		readonly processor: string,
+		readonly server: string,
+	) {
+		super(
+			`The processor '${processor}' answers on '${server}', which no ` +
+				`discovered file declares. Export the FileServer from a file the ` +
+				`workspace's constructs glob matches.`,
+		);
+		this.name = 'ProcessorServerUnknown';
+	}
+}
+
+/**
+ * Whether `file` is the likelier home of an export also reached from
+ * `other`: not a barrel (`index.*`) where the other is, and otherwise the
+ * first by path — so the answer never depends on the order the glob
+ * streamed them in.
+ */
+function definedIn(file: string, other: string): boolean {
+	const barrel = (path: string) => /(^|[/\\])index\.[cm]?[jt]s$/.test(path);
+	if (barrel(file) !== barrel(other)) return barrel(other);
+	return file < other;
+}
+
+/**
+ * Nest each processor in the file server it answers on.
+ *
+ * A processor is positional, as a subscriber is: it answers on its server's
+ * domain and nothing else. It is nested here, not only by the build, because
+ * every deploy path — the compose stack, the CDN in front of the bucket, the
+ * SST stack — reads the discovered manifest. Its handler is its source until a
+ * build replaces it with the generated one.
+ */
+function nestProcessors(
+	manifest: Record<string, Declaration>,
+	processors: readonly {
+		exportName: string;
+		file: string;
+		processor: Processor<string>;
+	}[],
+	cwd: string,
+): void {
+	for (const { exportName, file, processor } of processors) {
+		const server = manifest[processor.surfaceId];
+		if (server?.kind !== 'file-server') {
+			throw new ProcessorServerUnknown(exportName, processor.surfaceId);
+		}
+		const declaration: ProcessorDeclaration = {
+			id: exportName,
+			handler: `${relative(cwd, file)}#${exportName}`,
+			path: processor.pattern,
+			prefix: processor.prefix,
+			...(processor.native.length ? { native: [...processor.native] } : {}),
+			...(processor.timeout !== undefined
+				? { timeout: processor.timeout }
+				: {}),
+			...(processor.memorySize !== undefined
+				? { memorySize: processor.memorySize }
+				: {}),
+			dependencies: processor.constructs.flatMap((id) => {
+				const target = manifest[canonicalId(id)];
+				return target ? [{ target: target.id, kind: target.kind }] : [];
+			}),
+		};
+		manifest[server.id] = {
+			...server,
+			processors: [
+				...(server.processors ?? []).filter((p) => p.id !== exportName),
+				declaration,
+			].sort((a, b) => a.id.localeCompare(b.id)),
+		};
+	}
 }
 
 /**

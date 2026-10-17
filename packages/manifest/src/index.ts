@@ -48,6 +48,7 @@ export type {
 	PlayReleaseStatus,
 	PlayTrack,
 	PostgresVersion,
+	ProcessorDeclaration,
 	ProvidedKeys,
 	Provides,
 	ProvidesByKind,
@@ -219,6 +220,23 @@ export interface TopicInfo {
 	events: readonly string[];
 	/** Whether the topic is FIFO. */
 	fifo?: boolean;
+}
+
+/** A file server's processor, as the build generated it. */
+export interface ProcessorInfo {
+	/** Its export. */
+	name: string;
+	handler: string;
+	/** The file server's surface it answers on, by id. */
+	fileServer: string;
+	path: string;
+	prefix: string;
+	native?: readonly string[];
+	timeout?: number;
+	memorySize?: number;
+	environment?: readonly string[];
+	/** See {@link RouteInfo.dependencies} — same field, same reason. */
+	dependencies?: readonly string[];
 }
 
 /** A queue worker — a queue and its single consumer. */
