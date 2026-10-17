@@ -154,6 +154,8 @@ export interface FileServerDeclaration extends Node {
 	 * them (`DEFAULT_DERIVED_DAYS` when absent) — they are remade on demand.
 	 */
 	derivedDays?: number;
+	/** The `Telemetry` node its processor unit emits through, by id. */
+	telemetry?: ConstructId;
 }
 
 /** A processor on a file server — see {@link FileServerDeclaration.processors}. */

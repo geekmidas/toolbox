@@ -1225,7 +1225,15 @@ export function composeStack(input: StackInput): ComposeStack {
 		const keys =
 			processorEnvKeys(manifest, unit.id, input.runnables) ?? new Set();
 		unit.env = {
-			...valuesFor({ name: unit.name, id: unit.id, kind: 'rest-api' }, keys),
+			// Telemetry: the stage's, when the file server has an edge to the node.
+			...scopeTelemetryEnv(
+				valuesFor({ name: unit.name, id: unit.id, kind: 'rest-api' }, keys),
+				{
+					uses: telemetryOf(manifest, unit.id) !== undefined,
+					serviceName: unit.name,
+					...(telemetryValues ? { telemetry: telemetryValues } : {}),
+				},
+			),
 			NODE_ENV: 'production',
 			PORT: String(unit.port),
 			STAGE: stage,

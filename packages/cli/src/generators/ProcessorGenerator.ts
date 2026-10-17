@@ -9,7 +9,11 @@ import {
 	type GeneratedConstruct,
 	type GeneratorOptions,
 } from './Generator';
-import { startTelemetryCode, writeTelemetryModule } from './telemetry';
+import {
+	startTelemetryCode,
+	type TelemetryContext,
+	writeTelemetryModule,
+} from './telemetry';
 
 type AnyProcessor = Processor<string, any, any, any>;
 
@@ -100,13 +104,14 @@ export const handler = adapter.handler;
 		fileServerId: string;
 		outputDir: string;
 		processors: GeneratedConstruct<AnyProcessor>[];
+		/** From the file server's edge to a `Telemetry` node, when it has one. */
+		telemetry?: TelemetryContext;
 	}): Promise<string> {
 		const { context, outputDir, processors } = input;
 		await mkdir(outputDir, { recursive: true });
-		// A file server has no edge to a `Telemetry` node: the module is written
-		// so the entry's start-up is the same shape as every other, and loads
-		// nothing.
-		await writeTelemetryModule(outputDir, undefined);
+		// The file server's own edge decides; without one the module loads
+		// nothing, and the entry's start-up is the same shape either way.
+		await writeTelemetryModule(outputDir, input.telemetry);
 
 		const healthCheck = context.production?.healthCheck ?? '/health';
 		const imports = processors
@@ -141,29 +146,36 @@ ${startTelemetryCode([healthCheck])}
 ${context.storageDrivers?.setup ? `// The entry point registers the drivers its target needs.\n${context.storageDrivers.setup}\n` : ''}
 process.env.GKM_APP_NAME ??= ${JSON.stringify(processorUnitName(input.fileServerId))};
 
-const serve = processorServer([${processors.map(({ key }) => key).join(', ')}]);
+const processors = [${processors.map(({ key }) => key).join(', ')}];
+const serve = processorServer(processors);
 const port = Number(process.env.PORT) || 3000;
 let stopping = false;
 
+${input.telemetry ? REQUEST_SPANS : NO_REQUEST_SPANS}
 const server = createServer(async (req, res) => {
+  const method = req.method ?? 'GET';
   const path = (req.url ?? '/').split('?')[0] ?? '/';
   if (path === ${JSON.stringify(healthCheck)}) {
     res.writeHead(stopping ? 503 : 200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ status: stopping ? 'stopping' : 'ok' }));
     return;
   }
-  try {
-    const response = await serve({ method: req.method ?? 'GET', path });
-    if (!response) {
-      res.writeHead(404, { 'cache-control': 'public, max-age=60' }).end();
-      return;
+  await traced(method, path, async () => {
+    try {
+      const response = await serve({ method, path });
+      if (!response) {
+        res.writeHead(404, { 'cache-control': 'public, max-age=60' }).end();
+        return 404;
+      }
+      res.writeHead(response.status, response.headers);
+      res.end(method === 'HEAD' ? undefined : response.body);
+      return response.status;
+    } catch (error) {
+      console.error(error);
+      res.writeHead(500, { 'cache-control': 'no-store' }).end();
+      return 500;
     }
-    res.writeHead(response.status, response.headers);
-    res.end(req.method === 'HEAD' ? undefined : response.body);
-  } catch (error) {
-    console.error(error);
-    res.writeHead(500, { 'cache-control': 'no-store' }).end();
-  }
+  });
 });
 server.listen(port);
 
@@ -182,6 +194,61 @@ process.on('SIGINT', shutdown);
 		return entry;
 	}
 }
+
+/**
+ * A SERVER span per request, once telemetry has started — opened by the unit
+ * rather than by hooking node:http, which sees nothing inside a bundle. Named
+ * after the processor's pattern, never the key, which has no bound.
+ *
+ * Only in an entry whose file server has a `Telemetry` node: the bundle
+ * follows the import, and an app without one need not install the API.
+ */
+const REQUEST_SPANS = `const tracing = requestSpans ? await import('@opentelemetry/api') : undefined;
+const routeOf = (path: string) =>
+  processors.find((processor) => path.startsWith(processor.prefix))?.pattern;
+
+async function traced(
+  method: string,
+  path: string,
+  run: () => Promise<number>,
+): Promise<void> {
+  if (!tracing) {
+    await run();
+    return;
+  }
+  const route = routeOf(path);
+  await tracing.trace.getTracer('@geekmidas/processors').startActiveSpan(
+    route ? \`\${method} \${route}\` : method,
+    {
+      kind: tracing.SpanKind.SERVER,
+      attributes: {
+        'http.request.method': method,
+        'url.path': path,
+        ...(route ? { 'http.route': route } : {}),
+      },
+    },
+    async (span) => {
+      try {
+        const status = await run();
+        span.setAttribute('http.response.status_code', status);
+        if (status >= 500) span.setStatus({ code: tracing.SpanStatusCode.ERROR });
+      } finally {
+        span.end();
+      }
+    },
+  );
+}
+`;
+
+/** The same shape without telemetry: each request just runs. */
+const NO_REQUEST_SPANS = `async function traced(
+  _method: string,
+  _path: string,
+  run: () => Promise<number>,
+): Promise<void> {
+  await run();
+}
+`;
 
 /** What the manifest records of one processor. */
 export async function processorInfo(

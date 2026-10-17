@@ -51,6 +51,7 @@ import {
 	type PatternParams,
 	parsePattern,
 } from './processors/pattern';
+import type { Telemetry } from './telemetry';
 
 /**
  * A key an open pattern admits.
@@ -198,6 +199,12 @@ export interface FileServerOptions<TOpen extends string = never> {
 	 * so this trades storage for the work of making one again.
 	 */
 	derived?: { readonly days: number };
+	/**
+	 * What its processor unit emits — the `Telemetry` construct, as a worker
+	 * takes it: each request is a span, and the deploy hands the unit the
+	 * `OTEL_*` keys its stage resolves.
+	 */
+	telemetry?: Telemetry;
 	/**
 	 * A bucket declared elsewhere, instead of one of this server's own.
 	 *
@@ -429,6 +436,9 @@ export class FileServer<
 			...(this.immutable.length ? { immutable: this.immutable } : {}),
 			...(this.derivedDays !== undefined
 				? { derivedDays: this.derivedDays }
+				: {}),
+			...(this.options.telemetry
+				? { telemetry: this.options.telemetry.id }
 				: {}),
 			provides: [this.keys.server],
 		};
