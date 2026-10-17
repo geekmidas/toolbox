@@ -45,7 +45,10 @@ import { appDockerfile, workerDockerfile } from '../docker/index.js';
 import { composeBuildPaths, type ImageLayout } from '../docker/layout.js';
 import { TURBO_VERSION, WORKER_PORT } from '../docker/templates.js';
 import { GkmError } from '../errors';
-import { subscriberRoute } from '../generators/subscriberRoute.js';
+import {
+	SNS_SUBSCRIPTIONS_KEY,
+	subscriberRoute,
+} from '../generators/subscriberRoute.js';
 import { stageProviderNotes } from '../providers/notes.js';
 import { appEnvKeys, networkEnv, workerEnvKeys } from '../reconcile/apps.js';
 import { hostFor } from '../reconcile/caddyfile.js';
@@ -237,10 +240,25 @@ export interface StackWorker extends AppImage {
 export interface WorkerPush {
 	/** e.g. `jobs.example.com` */
 	host: string;
-	/** `https://<host>` — what the worker subscribes its routes under. */
+	/** `https://<host>` — what each route is subscribed under. */
 	url: string;
 	/** Each pushed subscriber's route, and nothing else the worker serves. */
 	paths: string[];
+	/**
+	 * Each pushed subscriber: its export, the topic it is bound to, and the
+	 * URL the deploy subscribes to that topic for it.
+	 */
+	subscribers: PushedSubscriber[];
+}
+
+/** One subscriber SNS pushes to, as the deploy subscribes it. */
+export interface PushedSubscriber {
+	/** Its export — what its subscription ARN is recorded under. */
+	name: string;
+	/** The topic it is bound to, by id. */
+	topic: string;
+	/** `https://<host>/__gkm/subscribers/<name>` */
+	endpoint: string;
 }
 
 /**
@@ -493,6 +511,15 @@ export interface StackInput {
 	 * pushes to decides whether the worker answers on a host of its own.
 	 */
 	subscribers?: Readonly<Record<string, readonly BoundSubscriber[]>>;
+	/**
+	 * The SNS subscriptions the deploy made for each worker's pushed
+	 * subscribers — worker id → subscriber export → subscription ARN — handed
+	 * to the worker as `GKM_SNS_SUBSCRIPTIONS`. A pushed subscriber without
+	 * one fails the stack: the worker would mount no route for it.
+	 */
+	pushSubscriptions?: Readonly<
+		Record<string, Readonly<Record<string, string>>>
+	>;
 	stage: string;
 	identity: DeployIdentity;
 	images: {
@@ -1098,7 +1125,15 @@ export function composeStack(input: StackInput): ComposeStack {
 				serviceName: worker.name,
 				...(telemetryValues ? { telemetry: telemetryValues } : {}),
 			}),
-			...(push ? { [SUBSCRIBER_PUSH_URL_KEY]: push.url } : {}),
+			...(push
+				? {
+						[SNS_SUBSCRIPTIONS_KEY]: recordedSubscriptions(
+							worker,
+							push,
+							input.pushSubscriptions?.[worker.id],
+						),
+					}
+				: {}),
 			NODE_ENV: 'production',
 			PORT: String(worker.port),
 			STAGE: stage,
@@ -1349,9 +1384,6 @@ function stackApps(
 	return apps.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** What the worker reads the public base of its push routes from. */
-export const SUBSCRIBER_PUSH_URL_KEY = 'GKM_SUBSCRIBER_PUSH_URL';
-
 /**
  * Where SNS pushes to a worker on a deployed stage, or nothing when it pushes
  * to none of its subscribers.
@@ -1368,17 +1400,66 @@ export function workerPush(
 	env: Readonly<Record<string, string>>,
 	options: { stage: string; domain?: string },
 ): WorkerPush | undefined {
-	const paths = subscribers
+	const pushed = subscribers
 		.filter(({ topic }) =>
 			env[provideKey(topic, 'publisherConnectionString')]?.startsWith('sns:'),
 		)
-		.map(({ name }) => subscriberRoute(name))
-		.sort();
-	if (paths.length === 0) return undefined;
+		.filter(
+			(subscriber, index, all) =>
+				all.findIndex((s) => s.name === subscriber.name) === index,
+		)
+		.sort((a, b) => a.name.localeCompare(b.name));
+	if (pushed.length === 0) return undefined;
 	if (!options.domain) throw new NoDomainForStage(options.stage);
 
 	const host = `${worker.name}.${options.domain}`;
-	return { host, url: `https://${host}`, paths: [...new Set(paths)] };
+	const url = `https://${host}`;
+	return {
+		host,
+		url,
+		paths: pushed.map(({ name }) => subscriberRoute(name)),
+		subscribers: pushed.map(({ name, topic }) => ({
+			name,
+			topic,
+			endpoint: `${url}${subscriberRoute(name)}`,
+		})),
+	};
+}
+
+/** A pushed subscriber the deploy recorded no SNS subscription for. */
+export class PushSubscriptionMissing extends GkmError {
+	constructor(
+		readonly worker: string,
+		readonly subscriber: string,
+	) {
+		super(
+			`SNS pushes to '${subscriber}' on the worker '${worker}', and the ` +
+				`deploy recorded no subscription for it, so the worker would mount ` +
+				`no route and SNS would deliver nowhere. Deploy the stage, which ` +
+				`subscribes each pushed subscriber and records its ARN.`,
+		);
+		this.name = 'PushSubscriptionMissing';
+	}
+}
+
+/**
+ * The worker's `GKM_SNS_SUBSCRIPTIONS`: each pushed subscriber's recorded
+ * subscription ARN, and nothing for a subscriber it does not run.
+ *
+ * @throws {PushSubscriptionMissing} when one has none
+ */
+function recordedSubscriptions(
+	worker: Pick<StackWorker, 'name'>,
+	push: WorkerPush,
+	recorded: Readonly<Record<string, string>> = {},
+): string {
+	const arns: Record<string, string> = {};
+	for (const { name } of push.subscribers) {
+		const arn = recorded[name];
+		if (!arn) throw new PushSubscriptionMissing(worker.name, name);
+		arns[name] = arn;
+	}
+	return JSON.stringify(arns);
 }
 
 /** Two constructs the edge would answer on one host. */
