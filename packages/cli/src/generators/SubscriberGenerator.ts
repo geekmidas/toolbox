@@ -3,7 +3,10 @@ import { dirname, join, relative } from 'node:path';
 import { Subscriber } from '@geekmidas/constructs/subscribers';
 import { canonicalId } from '@geekmidas/manifest';
 import type { BuildContext } from '../build/types';
-import { subscriberConnectionKey } from '../reconcile/edges.js';
+import {
+	subscriberConnectionKey,
+	subscriberTokenKey,
+} from '../reconcile/edges.js';
 import type { SubscriberInfo } from '../types';
 import { runtimeFor } from './EndpointGenerator.js';
 import {
@@ -11,7 +14,10 @@ import {
 	type GeneratedConstruct,
 	type GeneratorOptions,
 } from './Generator';
-import { SUBSCRIBER_ROUTE_PREFIX } from './subscriberRoute.js';
+import {
+	OBJECTS_ROUTE_PREFIX,
+	SUBSCRIBER_ROUTE_PREFIX,
+} from './subscriberRoute.js';
 
 export class SubscriberGenerator extends ConstructGenerator<
 	Subscriber<any, any, any, any, any, any, any>,
@@ -217,12 +223,18 @@ export async function stopSubscribers(): Promise<void> {}
 		const entries = subscribers
 			.map(({ key, construct }) => {
 				const connectionKey = subscriberConnectionKey(construct);
+				const tokenKey = subscriberTokenKey(construct);
 				const topic = construct.topicName ?? construct.bucketName;
+				const bucket = construct.bucketName
+					? canonicalId(construct.bucketName)
+					: undefined;
 				return `  { id: '${key}', subscriber: ${key}, topic: ${
 					topic ? `'${topic}'` : 'undefined'
 				}, connectionKey: ${
 					connectionKey ? `'${connectionKey}'` : 'undefined'
-				}, filtered: ${construct.bucketName ? 'false' : 'true'} },`;
+				}, filtered: ${construct.bucketName ? 'false' : 'true'}, bucket: ${
+					bucket ? `'${bucket}'` : 'undefined'
+				}, tokenKey: ${tokenKey ? `'${tokenKey}'` : 'undefined'} },`;
 			})
 			.join('\n');
 
@@ -240,14 +252,21 @@ export async function stopSubscribers(): Promise<void> {}
  *   each subscriber drains a queue of its own, \`<topic>/<subscriber>\`, so
  *   every subscriber sees every event; replicas of one subscriber share it.
  *
+ * A bucket's subscriber is polled the same way, under the bucket's name, when
+ * the bucket is in a local object store: the store posts each event to
+ * \`${OBJECTS_ROUTE_PREFIX}<Bucket>\` on this server, with the bucket's token, and
+ * the event is relayed onto the broker as \`object.created\` or
+ * \`object.deleted\` — so every subscriber of the bucket sees it.
+ *
  * GKM_SUBSCRIBERS=off (\`gkm dev --no-subscribers\`) runs none of them.
  * GKM_SUBSCRIBER_PUSH_URL is the address SNS pushes to; against the local
  * emulator it defaults to this server through host.docker.internal.
  */
+import { timingSafeEqual } from 'node:crypto';
 import { connect } from 'node:net';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
-import { EventConnectionFactory, Subscriber } from '@geekmidas/events';
+import { EventConnectionFactory, Publisher, Subscriber } from '@geekmidas/events';
 import type { EventConnection } from '@geekmidas/events';
 import { ServiceDiscovery } from '@geekmidas/services';
 ${imports}
@@ -263,6 +282,66 @@ const failed: string[] = [];
 
 /** The route a subscriber's pushes arrive on. */
 export const SUBSCRIBER_ROUTE = (id: string) => \`${SUBSCRIBER_ROUTE_PREFIX}\${id}\`;
+
+/** The route a local object store posts a bucket's events to. */
+export const OBJECTS_ROUTE = (bucket: string) => \`${OBJECTS_ROUTE_PREFIX}\${bucket}\`;
+
+// The buckets whose events this server relays: one route each, however many
+// subscribers watch the bucket.
+const relays = new Set<string>();
+
+/**
+ * Mount the route a local object store posts one bucket's events to, and
+ * relay each event onto the broker under the bucket's name.
+ *
+ * Answered 2xx only once every event is published: the store keeps what it
+ * was not told it delivered, and sends it again.
+ */
+async function mountObjectRelay(
+  app: { post: (path: string, handler: (c: any) => unknown) => unknown },
+  relay: { bucket: string; topic: string; connection: EventConnection; tokenKey: string },
+  logger: Logger,
+): Promise<void> {
+  const token = process.env[relay.tokenKey];
+  if (!token) {
+    logger.error(
+      { bucket: relay.bucket, tokenKey: relay.tokenKey },
+      'No token for this bucket: the events its object store posts cannot be received',
+    );
+    failed.push(\`\${relay.bucket}#events\`);
+    return;
+  }
+  const { toObjectEvents } = await import('@geekmidas/storage/events');
+  const publisher = await Publisher.fromConnection(relay.connection, { topic: relay.topic });
+  const expected = Buffer.from(\`Bearer \${token}\`);
+
+  app.post(OBJECTS_ROUTE(relay.bucket), async (c: any) => {
+    // Compared in constant time: the route is not public, but it is the one
+    // way to put an event in front of every subscriber of the bucket.
+    const given = Buffer.from(c.req.header('authorization') ?? '');
+    if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
+      return c.json({ status: 'refused' }, 401);
+    }
+
+    let messages: Awaited<ReturnType<typeof toObjectEvents>>;
+    try {
+      messages = toObjectEvents(JSON.parse(await c.req.text()));
+    } catch (error) {
+      logger.warn({ err: error, bucket: relay.bucket }, 'Refused an object notification that did not parse');
+      return c.json({ status: 'malformed' }, 400);
+    }
+
+    try {
+      if (messages.length > 0) await publisher.publish(messages as any);
+    } catch (error) {
+      // The store sends it again.
+      logger.error({ err: error, bucket: relay.bucket }, 'Failed to relay object events');
+      return c.json({ status: 'failed' }, 500);
+    }
+    return c.json({ status: 'ok', relayed: messages.length }, 200);
+  });
+  logger.info({ bucket: relay.bucket }, 'Relaying object events');
+}
 
 /** Resolves once something is accepting connections on the port. */
 async function listening(port: number): Promise<void> {
@@ -295,7 +374,7 @@ export async function setupSubscribers(
   const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
   const afterListening: ((port: number) => Promise<void>)[] = [];
 
-  for (const { id, subscriber, topic, connectionKey, filtered } of subscribers) {
+  for (const { id, subscriber, topic, connectionKey, filtered, bucket, tokenKey } of subscribers) {
     const events = subscriber.subscribedEvents || [];
     if (events.length === 0) {
       logger.warn({ subscriber: id }, 'Subscriber has no subscribed events, skipping');
@@ -405,6 +484,13 @@ ${
         }
       });
       logger.info({ subscriber: id, events }, 'Subscriber started polling');
+
+      // A bucket in a local object store publishes nothing for this to poll:
+      // the store posts its events here, and they are relayed onto the broker.
+      if (bucket && tokenKey && topic && !relays.has(bucket)) {
+        relays.add(bucket);
+        await mountObjectRelay(app, { bucket, topic, connection, tokenKey }, logger);
+      }
     } catch (error) {
       // The message too: a missing module's code alone does not say which.
       logger.error(

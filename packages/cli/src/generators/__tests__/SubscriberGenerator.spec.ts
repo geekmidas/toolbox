@@ -305,7 +305,7 @@ describe('SubscriberGenerator', () => {
 			expect(subscribersContent).toContain('orderEventSubscriber');
 			// Not bound to a topic, so there is no topic string to reach.
 			expect(subscribersContent).toContain(
-				"{ id: 'userEventSubscriber', subscriber: userEventSubscriber, topic: undefined, connectionKey: undefined, filtered: true }",
+				"{ id: 'userEventSubscriber', subscriber: userEventSubscriber, topic: undefined, connectionKey: undefined, filtered: true, bucket: undefined, tokenKey: undefined }",
 			);
 		});
 
@@ -423,8 +423,17 @@ describe('SubscriberGenerator', () => {
 				);
 
 				expect(content).toContain(
-					"{ id: 'onAvatar', subscriber: onAvatar, topic: 'Uploads', connectionKey: 'UPLOADS_EVENTS_CONNECTION_STRING', filtered: false }",
+					"{ id: 'onAvatar', subscriber: onAvatar, topic: 'Uploads', connectionKey: 'UPLOADS_EVENTS_CONNECTION_STRING', filtered: false, bucket: 'Uploads', tokenKey: 'UPLOADS_EVENTS_TOKEN' }",
 				);
+				// In MinIO the bucket posts its events here, with its token, and
+				// they are relayed onto the broker under the bucket's name.
+				expect(content).toContain(
+					'await mountObjectRelay(app, { bucket, topic, connection, tokenKey }, logger);',
+				);
+				expect(content).toContain(
+					'export const OBJECTS_ROUTE = (bucket: string) => `/__gkm/objects/${bucket}`;',
+				);
+				expect(content).toContain('timingSafeEqual(given, expected)');
 				// The storage publishes to an SNS topic whatever carries the
 				// app's own events, so the push code is generated anyway.
 				expect(content).toContain('SnsPushSubscriberAdaptor');

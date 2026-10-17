@@ -137,6 +137,7 @@ import {
 } from '../../reconcile/logins.js';
 import {
 	applyBuckets,
+	applyNotifications,
 	applyPolicies,
 	applyPostgres,
 	postgresStatements,
@@ -970,6 +971,13 @@ async function prepareBuckets(
 		done = [
 			...(await applyBuckets(client, storage.buckets)),
 			...(await applyPolicies(client, storage.policies)),
+			// Each watched bucket's events to the worker MinIO was started
+			// pointing at — and none from a bucket no longer watched.
+			...(await applyNotifications(
+				client,
+				storage.objects,
+				new Set(storage.webhooks.map((hook) => hook.bucket)),
+			)),
 		];
 	} finally {
 		await tunnel.close();
