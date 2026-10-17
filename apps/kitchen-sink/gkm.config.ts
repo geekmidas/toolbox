@@ -30,7 +30,7 @@ export default defineWorkspace({
 	// apps come from: a `site` is an app, and so is a `rest-api` that named one.
 	constructs: [
 		'./constructs/**/*.ts',
-		'./apps/*/{endpoints,queues,subscribers,crons,functions}/**/*.ts',
+		'./apps/*/{endpoints,routes,queues,subscribers,crons,functions}/**/*.ts',
 	],
 
 	// Read from the environment rather than written down, for the reason

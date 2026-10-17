@@ -69,15 +69,19 @@ export function workerUnits(
 		.filter(([, app]) => app.type === 'backend' && !app.entry)
 		.map(([name, app]) => {
 			const surface = Object.entries(manifest).find(
-				([id, d]) => d.kind === 'rest-api' && appKey(id) === name,
+				([id, d]) =>
+					(d.kind === 'rest-api' || d.kind === 'websocket-api') &&
+					appKey(id) === name,
 			)?.[1];
 			return {
 				name,
 				root: isAbsolute(app.path) ? app.path : join(workspace.root, app.path),
 				// Endpoints declared on the surface itself are one that serves
-				// itself — an auth server — whose build generates no server.
+				// itself — an auth server — whose build generates no server. A
+				// WebSocket surface always serves itself.
 				generated: !(
-					surface?.kind === 'rest-api' && surface.endpoints.length > 0
+					surface?.kind === 'websocket-api' ||
+					(surface?.kind === 'rest-api' && surface.endpoints.length > 0)
 				),
 			};
 		})

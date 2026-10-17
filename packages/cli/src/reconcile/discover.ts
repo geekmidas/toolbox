@@ -105,6 +105,12 @@ export interface DiscoverOptions {
 	 */
 	background?: Record<string, string[]>;
 	/**
+	 * Filled in, when provided, with the files that export something built
+	 * from each surface — an endpoint, a WebSocket route — keyed by the
+	 * surface. What a surface that serves itself imports its routes from.
+	 */
+	served?: Record<string, string[]>;
+	/**
 	 * Import the construct modules in this sandbox rather than in this
 	 * process. Defaults to the run's own (`withSandbox`), so a deploy's every
 	 * discovery — the engine's included — happens there; with neither, they
@@ -316,6 +322,7 @@ export async function discover(
 		for (const [exportName, exported] of Object.entries(module)) {
 			if (options.background)
 				recordBackground(options.background, exported, file);
+			if (options.served) recordServed(options.served, exported, file);
 			if (!isDeclarable(exported)) {
 				if (options.runnables) recordRunnable(options.runnables, exported);
 				continue;
@@ -386,6 +393,22 @@ function recordBackground(
 	const key = canonicalId(owner);
 	const files = background[key] ?? [];
 	background[key] = files;
+	if (!files.includes(file)) files.push(file);
+}
+
+/** Record the file of anything built from a surface, under that surface. */
+function recordServed(
+	served: Record<string, string[]>,
+	exported: unknown,
+	file: string,
+): void {
+	if (typeof exported !== 'object' || exported === null) return;
+	const surface = (exported as { surface?: { id?: unknown } }).surface?.id;
+	if (typeof surface !== 'string') return;
+
+	const key = canonicalId(surface);
+	const files = served[key] ?? [];
+	served[key] = files;
 	if (!files.includes(file)) files.push(file);
 }
 

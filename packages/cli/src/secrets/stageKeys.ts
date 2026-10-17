@@ -58,7 +58,10 @@ export function workspaceStageKeys(
 		const { kind } = declaration;
 		const name = appKey(id);
 		const keys =
-			kind === 'rest-api' || kind === 'site' || kind === 'mobile-app'
+			kind === 'rest-api' ||
+			kind === 'websocket-api' ||
+			kind === 'site' ||
+			kind === 'mobile-app'
 				? appEnvKeys(manifest, name, input.runnables)
 				: kind === 'worker'
 					? workerEnvKeys(manifest, id, input.runnables)

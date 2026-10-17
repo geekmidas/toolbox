@@ -445,6 +445,7 @@
 		"devDependencies": "^3.5.13"
 	},
 	"ws": {
+		"dependencies": "~8.22.0",
 		"devDependencies": "~8.22.0",
 		"peerDependencies": ">=8.22.0"
 	},

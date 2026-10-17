@@ -228,6 +228,8 @@ export class WebSocketApi<TName extends string = string>
 	): Promise<{
 		app: Hono;
 		attach(server: Server): void;
+		/** Close every socket with 1012, so the HTTP server can close. */
+		release(): Promise<void>;
 		server: WebSocketSurfaceServer;
 	}> {
 		const { Hono } = await import('hono');
@@ -279,7 +281,12 @@ export class WebSocketApi<TName extends string = string>
 			}),
 		);
 
-		return { app, attach: (http) => server.attach(http), server };
+		return {
+			app,
+			attach: (http) => server.attach(http),
+			release: () => server.close(),
+			server,
+		};
 	}
 
 	declare(): Declaration[] {

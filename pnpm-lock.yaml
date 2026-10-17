@@ -272,6 +272,21 @@ importers:
 
   apps/kitchen-sink/apps/auth: {}
 
+  apps/kitchen-sink/apps/realtime:
+    dependencies:
+      '@geekmidas/errors':
+        specifier: workspace:*
+        version: link:../../../../packages/errors
+      ioredis:
+        specifier: ~6.0.0
+        version: 6.0.0
+      ws:
+        specifier: ~8.22.0
+        version: 8.22.0
+      zod:
+        specifier: ~4.6.5
+        version: 4.6.5
+
   apps/kitchen-sink/apps/web:
     devDependencies:
       '@geekmidas/envkit':

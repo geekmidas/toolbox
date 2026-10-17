@@ -16,7 +16,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import type { ConstructManifest } from '@geekmidas/manifest';
+import { type ConstructManifest, provideKey } from '@geekmidas/manifest';
 import { GkmError } from '../errors';
 import { DEFAULT_IMAGES } from '../reconcile/containers.js';
 import type { Plan } from '../reconcile/plan.js';
@@ -72,7 +72,10 @@ export interface StackRedis {
 	password: string;
 	/** Whether the stage's secrets set the password, rather than the local one. */
 	passwordFromSecrets: boolean;
-	/** Each cache it holds: its URL key, and the URL. */
+	/**
+	 * Each cache it holds — its URL key, and the URL — and each WebSocket
+	 * surface's publisher, whose sockets meet their senders on its pub/sub.
+	 */
 	urls: Record<string, string>;
 	/** Its own environment, written to `redis.env` (0600). */
 	env: Record<string, string>;
@@ -81,18 +84,25 @@ export interface StackRedis {
 }
 
 /**
- * Whether a stage's stack runs Redis: a cache is declared and the stage's
- * secrets do not set the URL of every one.
+ * Whether a stage's stack runs Redis: a cache or a WebSocket surface is
+ * declared and the stage's secrets do not set the URL of every one.
  */
 export function runsRedis(
 	manifest: ConstructManifest,
 	custom: Readonly<Record<string, string>>,
 ): boolean {
-	return Object.values(manifest).some(
-		(declaration) =>
-			declaration?.kind === 'cache' &&
-			(declaration.provides ?? []).some((key) => custom[key] === undefined),
-	);
+	return Object.values(manifest).some((declaration) => {
+		if (declaration?.kind === 'cache') {
+			return (declaration.provides ?? []).some(
+				(key) => custom[key] === undefined,
+			);
+		}
+		return (
+			declaration?.kind === 'websocket-api' &&
+			custom[provideKey(declaration.id, 'publisherConnectionString')] ===
+				undefined
+		);
+	});
 }
 
 /** A password: 256 random bits, URL-safe, so it sits in a URL unescaped. */
@@ -142,7 +152,11 @@ export function stackRedis(options: {
 	const caches = plan.resources
 		.filter((r) => r.kind === 'cache' && custom[r.envKey] === undefined)
 		.sort((a, b) => a.id.localeCompare(b.id));
-	if (caches.length === 0) return undefined;
+	const publishers = plan.resources
+		.filter((r) => r.kind === 'websocket-api')
+		.map((r) => provideKey(r.id, 'publisherConnectionString'))
+		.filter((key) => custom[key] === undefined);
+	if (caches.length === 0 && publishers.length === 0) return undefined;
 
 	const set = custom[REDIS_PASSWORD_KEY];
 	const password = set ?? (local ? options.localPassword : undefined);
@@ -152,12 +166,18 @@ export function stackRedis(options: {
 	return {
 		password,
 		passwordFromSecrets: Boolean(set),
-		urls: Object.fromEntries(
-			caches.map((cache, index) => [
+		urls: Object.fromEntries([
+			...caches.map((cache, index) => [
 				cache.envKey,
 				`redis://:${auth}@${REDIS_SERVICE}:${REDIS_PORT}/${index}`,
 			]),
-		),
+			// Pub/sub is not scoped by database, so no index: a surface's
+			// channels are named for it.
+			...publishers.map((key) => [
+				key,
+				`redis://:${auth}@${REDIS_SERVICE}:${REDIS_PORT}`,
+			]),
+		]),
 		env: {
 			// What the server is started with, by name: the command reads it
 			// from the environment, so the value is never in its arguments.

@@ -20,7 +20,12 @@
 import { createHash } from 'node:crypto';
 import { CLIENT_IP_HEADER } from '@geekmidas/manifest';
 import { stringify } from 'yaml';
-import type { EdgeRoute, EdgeTls, Upstream } from './routes.js';
+import {
+	EDGE_LIMITS,
+	type EdgeRoute,
+	type EdgeTls,
+	type Upstream,
+} from './routes.js';
 
 /**
  * The image, pinned: the edge is every stack's way in, so a new version is a
@@ -150,6 +155,9 @@ export function edgeCompose(options: {
 						.slice(0, 16),
 				},
 				networks: ['edge'],
+				// Every stack on the server shares it, so it is sized for the one
+				// that holds the most sockets — see `EDGE_LIMITS`.
+				...EDGE_LIMITS,
 				healthcheck: {
 					test: ['CMD', 'traefik', 'healthcheck', '--ping'],
 					interval: '10s',
