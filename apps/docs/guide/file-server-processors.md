@@ -75,13 +75,30 @@ It returns `{ body, contentType, cache? }`. `cache` is:
 The default is an hour. A missing object is `404`, cached for a minute; a
 handler that throws is `500`, not cached.
 
+### How long kept results stay
+
+What is kept under `.gkm-derived/` is a cache: remade on the next request if
+it is gone. So the bucket deletes it after 30 days, through the same lifecycle
+rules as `expire` — on S3 and on MinIO alike. Change it on the file server:
+
+```ts
+new FileServer('Assets', { open: ['**'], derived: { days: 7 } });
+```
+
+Two file servers over one bucket keep them for the longer of the two.
+
 ## Where it runs
 
 | Target | Runs as | Reached through |
 |---|---|---|
+| `gkm dev` | the dev server of the app holding the processors, under `/__gkm/processors/<FileServer>` | the file server's local host: the edge rewrites each pattern there, every other path to MinIO |
 | Compose, bucket in the stack's MinIO | its own container, `<fileserver>-processors`, built from the app holding the processors | the file server's host: the patterns go to the container, every other path to the bucket |
 | Compose, bucket on S3 (the `s3` provider, CDN on) | the same container | CloudFront: each pattern is a behaviour whose origin is the container's own host, `<fileserver>-server-processors.<domain>` |
+| Dokploy, bucket on S3 (CDN on) | an application of its own, from the same image | CloudFront, at the same host; the unit checks the CDN's header itself |
 | SST | a Lambda behind a function URL with IAM auth | the file server's router, on the pattern's prefix, signed with origin access control |
+
+`processedUrl()` answers under `gkm dev` as it does deployed, and the dev
+server reloads processors with the rest of its code.
 
 Its own container because making a derivative is CPU-bound: a resize spike in
 the API's process would be every request's latency.
@@ -97,16 +114,29 @@ without it (`403` under Caddy; no matching router, so `404`, under Traefik)
 and answers only the processors' prefixes. A stack composed before that
 deploy has run fails with `ProcessorOriginSecretMissing`, naming the key.
 
+Dokploy's proxy routes by host alone and cannot match a header, so there the
+unit is handed the secret (`GKM_PROCESSOR_ORIGIN_SECRET`) and refuses a
+request without it itself, `403`, compared in constant time. Its health check
+needs no header. A Dokploy file server over MinIO answers on MinIO itself,
+path-style, with no host to route a pattern on, so processors there fail the
+deploy with `ProcessorsNeedCdn`: put the bucket on S3 behind the CDN.
+
+## Telemetry
+
+Give the file server the `Telemetry` construct, as a worker takes it:
+
+```ts
+new FileServer('Assets', { open: ['**'], telemetry });
+```
+
+The processor unit then starts OpenTelemetry, and each request it answers is a
+SERVER span named after the processor's pattern — `GET /i/:width/*`, never the
+key — with `http.route`, `url.path` and the status. The deploy hands the unit
+the stage's `OTEL_*` keys. Without the edge, the unit loads no tracing at all.
+
 ## Native packages
 
 `.native(['sharp'])` names packages with native code. They are left out of
 the bundle and installed for the platform the processor runs on: linux in its
 image, at the version the build resolved; `nodejs.install` on Lambda. Add them
 to the app's dependencies.
-
-## Not yet
-
-- `gkm dev` serves the originals: processors run in deployed stacks.
-- The derived prefix is not expired automatically yet; give the bucket an
-  expiry on `.gkm-derived/` once bucket lifecycle rules are available.
-- The Dokploy target does not run processor containers.
