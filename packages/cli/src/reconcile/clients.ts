@@ -11,8 +11,11 @@
 
 import {
 	CreateBucketCommand,
+	DeleteBucketLifecycleCommand,
+	GetBucketLifecycleConfigurationCommand,
 	GetBucketPolicyCommand,
 	HeadBucketCommand,
+	PutBucketLifecycleConfigurationCommand,
 	PutBucketPolicyCommand,
 	S3Client,
 } from '@aws-sdk/client-s3';
@@ -126,6 +129,37 @@ export function bucketClient(
 		async setPolicy(bucket, policy) {
 			await s3.send(
 				new PutBucketPolicyCommand({ Bucket: bucket, Policy: policy }),
+			);
+		},
+
+		async lifecycle(bucket) {
+			try {
+				const result = await s3.send(
+					new GetBucketLifecycleConfigurationCommand({ Bucket: bucket }),
+				);
+				return result.Rules;
+			} catch (error) {
+				// No lifecycle is MinIO's ordinary answer for a bucket with none;
+				// anything else — unreachable, refused — is not "none".
+				if (
+					(error as { name?: string }).name === 'NoSuchLifecycleConfiguration'
+				) {
+					return undefined;
+				}
+				throw error;
+			}
+		},
+
+		async setLifecycle(bucket, rules) {
+			if (rules.length === 0) {
+				await s3.send(new DeleteBucketLifecycleCommand({ Bucket: bucket }));
+				return;
+			}
+			await s3.send(
+				new PutBucketLifecycleConfigurationCommand({
+					Bucket: bucket,
+					LifecycleConfiguration: { Rules: rules },
+				}),
 			);
 		},
 	};

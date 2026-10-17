@@ -110,6 +110,8 @@ describe('reconcile', () => {
 				create: async () => {},
 				policy: async () => undefined,
 				setPolicy: async () => {},
+				lifecycle: async () => undefined,
+				setLifecycle: async () => {},
 			}),
 			...overrides,
 		});
@@ -292,6 +294,8 @@ describe('reconcile', () => {
 				create: async () => {},
 				policy: async () => undefined,
 				setPolicy: async () => {},
+				lifecycle: async () => undefined,
+				setLifecycle: async () => {},
 			}),
 		});
 
@@ -329,6 +333,8 @@ describe('reconcile', () => {
 				create: async () => {},
 				policy: async () => undefined,
 				setPolicy: async () => {},
+				lifecycle: async () => undefined,
+				setLifecycle: async () => {},
 			}),
 		});
 

@@ -462,6 +462,13 @@ describe('deployAccess', () => {
 			]);
 			expect(statements[1]!.Action).toContain('s3:CreateBucket');
 			expect(statements[1]!.Action).toContain('s3:PutBucketCORS');
+			// A construct's `expire` — set, changed and removed.
+			expect(statements[1]!.Action).toEqual(
+				expect.arrayContaining([
+					's3:GetLifecycleConfiguration',
+					's3:PutLifecycleConfiguration',
+				]),
+			);
 			expect(statements[1]!.Resource).toEqual([
 				'arn:aws:s3:::shop-prod-avatars',
 				'arn:aws:s3:::shop-prod-avatars-??????',

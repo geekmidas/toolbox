@@ -278,6 +278,13 @@ export interface PlannedResource {
 	 */
 	open?: readonly string[];
 	/**
+	 * For a bucket: days kept under each prefix before it deletes them.
+	 *
+	 * Carried for the same reason as `open`: the local MinIO expires them too,
+	 * so a prefix that empties itself in production empties itself here.
+	 */
+	expire?: Readonly<Record<string, number>>;
+	/**
 	 * For an external API: the port key its fake answers on, and the
 	 * credentials it accepts — what a local stage is handed in place of the
 	 * provider and the stage's own.
@@ -570,6 +577,9 @@ export function planFor(
 				: {}),
 			...(declaration.kind === 'file-server' && declaration.open?.length
 				? { open: declaration.open }
+				: {}),
+			...(declaration.kind === 'objects' && declaration.expire
+				? { expire: declaration.expire }
 				: {}),
 			...((declaration.kind === 'rest-api' || declaration.kind === 'site') &&
 			declaration.subdomain
