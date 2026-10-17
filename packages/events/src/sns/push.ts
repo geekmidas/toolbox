@@ -186,8 +186,11 @@ export interface SubscribeHttpEndpointOptions {
 	 * The event types this endpoint takes. Becomes the subscription's filter
 	 * policy on the `type` attribute `SNSPublisher` sets, so SNS sends nothing
 	 * else — fan-out to every subscriber, each seeing only what it named.
+	 *
+	 * Absent for a topic whose publisher sets no `type` — a bucket's, which
+	 * the storage publishes to — whose subscriber filters what it is sent.
 	 */
-	events: readonly string[];
+	events?: readonly string[];
 	/**
 	 * An SQS queue's ARN for what SNS gives up delivering. SNS retries an HTTP
 	 * endpoint for a limited time and then drops the message, so without one an
@@ -219,10 +222,12 @@ export async function subscribeHttpEndpoint(
 		throw new SnsEndpointNotHttp(options.endpoint);
 	}
 
-	const attributes: Record<string, string> = {
-		FilterPolicyScope: 'MessageAttributes',
-		FilterPolicy: JSON.stringify({ type: [...options.events] }),
-	};
+	const attributes: Record<string, string> = options.events
+		? {
+				FilterPolicyScope: 'MessageAttributes',
+				FilterPolicy: JSON.stringify({ type: [...options.events] }),
+			}
+		: {};
 	if (options.deadLetterQueueArn) {
 		attributes.RedrivePolicy = JSON.stringify({
 			deadLetterTargetArn: options.deadLetterQueueArn,

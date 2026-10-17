@@ -150,7 +150,7 @@ export class SnsPushSubscriberAdaptor {
 				this.subscriber,
 				this.envParser,
 			);
-			const events = subscribedEvents(
+			const events = await subscribedEvents(
 				this.subscriber,
 				toSnsEvent(message),
 				logger,

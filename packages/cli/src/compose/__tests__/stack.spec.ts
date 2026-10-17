@@ -951,8 +951,14 @@ describe('a worker SNS pushes to', () => {
 			runnables: { ...runnables, Jobs: [...(runnables.Jobs ?? []), 'Alerts'] },
 			subscribers: {
 				Jobs: [
-					{ name: 'onAlert', topic: 'Alerts' },
-					{ name: 'onAlertAgain', topic: 'Alerts' },
+					{
+						name: 'onAlert',
+						connectionKey: 'ALERTS_PUBLISHER_CONNECTION_STRING',
+					},
+					{
+						name: 'onAlertAgain',
+						connectionKey: 'ALERTS_PUBLISHER_CONNECTION_STRING',
+					},
 				],
 			},
 			images: { mode: 'pull', tag: 'v1.4.0' },
@@ -991,6 +997,32 @@ describe('a worker SNS pushes to', () => {
 		expect(env.ALERTS_PUBLISHER_CONNECTION_STRING).toBe(SNS);
 	});
 
+	it("is pushed to by a bucket's events, as by a topic", () => {
+		const s = deployed({
+			manifest: withTopic({
+				...manifest,
+				Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+			} as unknown as ConstructManifest),
+			runnables: {
+				...runnables,
+				Jobs: [...(runnables.Jobs ?? []), 'Uploads#events'],
+			},
+			subscribers: {
+				Jobs: [
+					{
+						name: 'onAvatar',
+						connectionKey: 'UPLOADS_EVENTS_CONNECTION_STRING',
+					},
+				],
+			},
+			secrets: production({ UPLOADS_EVENTS_CONNECTION_STRING: SNS }),
+		});
+
+		expect(jobs(s).push?.paths).toEqual(['/__gkm/subscribers/onAvatar']);
+		expect(jobs(s).env?.UPLOADS_EVENTS_CONNECTION_STRING).toBe(SNS);
+		expect(jobs(s).env).not.toHaveProperty('UPLOADS_URL');
+	});
+
 	it('stays private while its topics are on pg-boss', () => {
 		const s = deployed({ secrets: production() });
 
@@ -1004,7 +1036,14 @@ describe('a worker SNS pushes to', () => {
 		const s = stack({
 			manifest: withTopic(),
 			runnables: { ...runnables, Jobs: [...(runnables.Jobs ?? []), 'Alerts'] },
-			subscribers: { Jobs: [{ name: 'onAlert', topic: 'Alerts' }] },
+			subscribers: {
+				Jobs: [
+					{
+						name: 'onAlert',
+						connectionKey: 'ALERTS_PUBLISHER_CONNECTION_STRING',
+					},
+				],
+			},
 		});
 
 		expect(jobs(s).push).toBeUndefined();

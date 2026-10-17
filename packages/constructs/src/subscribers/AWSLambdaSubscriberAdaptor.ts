@@ -123,7 +123,7 @@ export class AWSLambdaSubscriber<
 					rawEvent,
 				});
 
-				req.event.events = subscribedEvents(
+				req.event.events = await subscribedEvents(
 					this.subscriber,
 					rawEvent as unknown as SQSEvent | SNSEvent,
 					this.logger,

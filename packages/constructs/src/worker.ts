@@ -93,7 +93,9 @@ import type { ScheduleExpression } from './crons/Cron';
 import { CronBuilder } from './crons/CronBuilder';
 import { envParserFor } from './endpoints/surfaceEnv';
 import { FunctionBuilder } from './functions/FunctionBuilder';
+import type { ObjectStorage } from './object-storage';
 import { QueueBuilder } from './queue/QueueBuilder';
+import { ObjectSubscriberBuilder } from './subscribers/ObjectSubscriberBuilder';
 import { SubscriberBuilder } from './subscribers/SubscriberBuilder';
 import type { Telemetry } from './telemetry';
 import type { Topic, TopicEvents } from './topic/Topic';
@@ -246,6 +248,45 @@ export class Worker<
 				TDatabaseServiceName
 			>().logger(this.logger),
 		).queue(name);
+	}
+
+	/**
+	 * A runnable that reacts to a bucket's objects changing.
+	 *
+	 * A bucket is a topic whose publisher is the storage: the binding is the
+	 * same as {@link Worker.topic}'s, and so is everything after it — the
+	 * services, the database, how it is delivered. The handler is handed the
+	 * objects; reading one still means depending on the bucket,
+	 * `.dependsOn([uploads])`.
+	 *
+	 * @example
+	 * ```ts
+	 * export const onAvatar = worker
+	 *   .objects(uploads)
+	 *   .on(['object.created'], { prefix: 'avatars/', suffix: '.png' })
+	 *   .handle(async ({ objects }) => { … });
+	 * ```
+	 */
+	objects<TBucketName extends string>(bucket: ObjectStorage<TBucketName>) {
+		const inner = this.own(
+			new SubscriberBuilder<
+				[],
+				Logger,
+				undefined,
+				undefined,
+				[],
+				TDatabase,
+				TDatabaseServiceName
+			>().logger(this.logger),
+		);
+		return new ObjectSubscriberBuilder<
+			[],
+			Logger,
+			undefined,
+			[],
+			TDatabase,
+			TDatabaseServiceName
+		>(inner, bucket.id);
 	}
 
 	/**
