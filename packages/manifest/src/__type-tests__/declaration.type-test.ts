@@ -24,6 +24,7 @@ const manifest = {
 		id: 'Avatars',
 		provides: ['AVATARS_URL'],
 		versioned: true,
+		expire: { 'previews/': 7 },
 	},
 } as const satisfies ConstructManifest;
 
@@ -42,6 +43,11 @@ type _Ids = Expect<Equals<IdsOf<M>, 'Uploads' | 'Avatars'>>;
 type _Kind = Expect<Equals<DeclarationOf<M, 'Uploads'>['kind'], 'objects'>>;
 type _Versioned = Expect<
 	Equals<DeclarationOf<M, 'Avatars'>['versioned'], true>
+>;
+
+// The expiry keeps its literal prefixes and days.
+type _Expire = Expect<
+	Equals<DeclarationOf<M, 'Avatars'>['expire'], { readonly 'previews/': 7 }>
 >;
 
 // Provided keys are literals, so an adapter can type the env it composes.
