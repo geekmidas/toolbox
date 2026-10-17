@@ -126,6 +126,33 @@ describe('Schema Conversion', () => {
 			).rejects.toThrow(/Unsupported or missing vendor/);
 		});
 
+		it('converts a schema of any vendor that converts itself (Standard JSON Schema)', async () => {
+			const output = vi.fn(() => ({
+				type: 'object',
+				properties: { key: { type: 'string' } },
+				required: ['key'],
+			}));
+			const handWritten = {
+				'~standard': {
+					version: 1,
+					vendor: 'hand-written',
+					validate: vi.fn(),
+					jsonSchema: { input: vi.fn(), output },
+				},
+			};
+
+			const jsonSchema = await convertStandardSchemaToJsonSchema(
+				handWritten as any,
+			);
+
+			expect(jsonSchema).toEqual({
+				type: 'object',
+				properties: { key: { type: 'string' } },
+				required: ['key'],
+			});
+			expect(output).toHaveBeenCalledWith({ target: 'draft-2020-12' });
+		});
+
 		it('should throw error for missing vendor', async () => {
 			const invalidSchema = {
 				'~standard': {

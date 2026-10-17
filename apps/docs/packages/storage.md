@@ -112,6 +112,35 @@ const uploadUrl = await storage.getUploadURL({
 // await fetch(uploadUrl, { method: 'PUT', body: file });
 ```
 
+### Signed Upload Forms
+
+`getUploadPost` signs a form a browser posts one file to, straight into the
+bucket. Its policy is enforced by the storage itself: a file over `maxSize`, or
+of a type the policy does not allow, is refused there, not by your server.
+
+```typescript
+const form = await storage.getUploadPost({
+  key: 'avatars/user-1.png',
+  maxSize: 5 * 1024 * 1024, // bytes
+  contentType: 'image/png', // or { startsWith: 'image/' }; absent, any type
+  expiresIn: 300, // seconds, the default
+});
+// { url, fields, key, expiresAt }
+
+// In the browser: every field, then the file last.
+const data = new FormData();
+for (const [name, value] of Object.entries(form.fields)) data.append(name, value);
+data.append('file', file);
+await fetch(form.url, { method: 'POST', body: data });
+```
+
+An exact `contentType` is fixed in `fields`. With `{ startsWith }` the client
+sets `Content-Type` itself, as a form field, and the storage checks the prefix.
+A policy fixes one type or one prefix — it cannot say "either of these" — which
+is why an endpoint's `.upload()` asks which type an upload is when it accepts
+several. Prefer this to `getUploadURL` for anything a browser sends: a
+presigned `PUT` cannot limit the size.
+
 ### List and Delete Files
 
 ```typescript
@@ -219,6 +248,7 @@ interface StorageClient {
   getUpload(params: GetUploadParams, expiresIn?: number): Promise<GetUploadResponse>;
   getVersions(key: string): Promise<DocumentVersion[]>;
   getVersionDownloadURL(file: File, versionId: string): Promise<string>;
+  getUploadPost(params: UploadPostParams): Promise<UploadPost>;
 }
 
 interface File {
@@ -236,6 +266,10 @@ interface GetUploadParams {
 ```
 
 ## Usage with Endpoints
+
+For uploads, an endpoint's `.upload(bucket, …)` issues the signed form for you
+— see [Direct uploads](./constructs.md#direct-uploads). The bucket below is a
+service written by hand; a declared `ObjectStorage` needs none of it.
 
 ```typescript
 import { api } from '../constructs/api';

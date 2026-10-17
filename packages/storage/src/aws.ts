@@ -8,6 +8,8 @@ export type {
 	GetUploadParams,
 	GetUploadResponse,
 	StorageClient,
+	UploadPost,
+	UploadPostParams,
 } from './StorageClient';
 export { s3Driver } from './s3Driver';
 export type { S3Address } from './s3Url';
