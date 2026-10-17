@@ -26,7 +26,7 @@ import type {
 	FileServerDeclaration,
 	ObjectsDeclaration,
 } from '@geekmidas/manifest';
-import { provideKey } from '@geekmidas/manifest';
+import { bucketExpiry, provideKey } from '@geekmidas/manifest';
 import * as s3Url from '@geekmidas/storage/s3-url';
 import { appKey } from '../../workspace/derive.js';
 import type { S3ObjectsConfig } from '../../workspace/types.js';
@@ -109,8 +109,8 @@ export function bucketConstructs(
 		.map(([id, d]) => ({
 			id,
 			versioned: (d as ObjectsDeclaration).versioned === true,
-			...((d as ObjectsDeclaration).expire
-				? { expire: (d as ObjectsDeclaration).expire }
+			...(bucketExpiry(manifest, id)
+				? { expire: bucketExpiry(manifest, id) }
 				: {}),
 			servers: Object.entries(manifest)
 				.filter(

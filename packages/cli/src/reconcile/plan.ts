@@ -12,6 +12,7 @@
  */
 
 import {
+	bucketExpiry,
 	type ConstructManifest,
 	type Declaration,
 	type DeclarationKind,
@@ -578,8 +579,8 @@ export function planFor(
 			...(declaration.kind === 'file-server' && declaration.open?.length
 				? { open: declaration.open }
 				: {}),
-			...(declaration.kind === 'objects' && declaration.expire
-				? { expire: declaration.expire }
+			...(declaration.kind === 'objects' && bucketExpiry(manifest, id)
+				? { expire: bucketExpiry(manifest, id) }
 				: {}),
 			...((declaration.kind === 'rest-api' || declaration.kind === 'site') &&
 			declaration.subdomain

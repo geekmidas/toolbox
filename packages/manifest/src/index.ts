@@ -77,6 +77,11 @@ export {
 	provisionOrder,
 	publicEnvFor,
 } from './derive';
+export {
+	bucketExpiry,
+	DEFAULT_DERIVED_DAYS,
+	DERIVED_PREFIX,
+} from './derived';
 export { KMS_SCHEME, kmsUrl } from './encryption';
 export {
 	IllegalDerivation,

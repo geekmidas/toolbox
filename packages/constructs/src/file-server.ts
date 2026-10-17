@@ -34,6 +34,7 @@ import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
 	type ConstructName,
 	canonicalId,
+	DERIVED_PREFIX,
 	type Declaration,
 	provideKey,
 	serviceKey,
@@ -42,6 +43,7 @@ import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { createStorageClient, type StorageClient } from '@geekmidas/storage';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Construct, Declarable } from './construct-interface';
+import { expiryDays, type ObjectExpiry } from './expire';
 import type { Processor } from './processors/Processor';
 import { ProcessorBuilder } from './processors/ProcessorBuilder';
 import {
@@ -49,7 +51,6 @@ import {
 	type PatternParams,
 	parsePattern,
 } from './processors/pattern';
-import { expiryDays, type ObjectExpiry } from './expire';
 
 /**
  * A key an open pattern admits.
@@ -192,6 +193,12 @@ export interface FileServerOptions<TOpen extends string = never> {
 	 */
 	expire?: ObjectExpiry;
 	/**
+	 * How long its processors' derivatives are kept in the bucket before it
+	 * deletes them — 30 days unless said. They are remade on the next request,
+	 * so this trades storage for the work of making one again.
+	 */
+	derived?: { readonly days: number };
+	/**
 	 * A bucket declared elsewhere, instead of one of this server's own.
 	 *
 	 * `new FileServer('Uploads')` declares both nodes; this fronts a bucket that
@@ -270,6 +277,9 @@ export class FileServer<
 	/** The vended bucket's expiry, checked once: prefix → days. */
 	private readonly expire: Record<string, number> | undefined;
 
+	/** Days its processors' derivatives are kept, when it says. */
+	private readonly derivedDays: number | undefined;
+
 	/**
 	 * Declared once and read by both `declare()` and `connect()`, so the keys the
 	 * target publishes and the keys the client reads cannot drift.
@@ -306,6 +316,11 @@ export class FileServer<
 			throw new BucketOptionOnOrigin(canonical, originId, 'expire');
 		}
 		this.expire = expiryDays(canonical, options.expire);
+		this.derivedDays = options.derived
+			? expiryDays(canonical, { [DERIVED_PREFIX]: options.derived })?.[
+					DERIVED_PREFIX
+				]
+			: undefined;
 		this.surfaceId = `${canonical}Server`;
 
 		this.keys = {
@@ -412,6 +427,9 @@ export class FileServer<
 			of: origin?.id ?? this.id,
 			...(this.open.length ? { open: this.open } : {}),
 			...(this.immutable.length ? { immutable: this.immutable } : {}),
+			...(this.derivedDays !== undefined
+				? { derivedDays: this.derivedDays }
+				: {}),
 			provides: [this.keys.server],
 		};
 

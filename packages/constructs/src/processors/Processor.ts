@@ -13,7 +13,7 @@ import type { ParsedPattern, PatternParams } from './pattern';
  * handler runs, so a derivative is made once. Exported so the bucket's expiry
  * can name it.
  */
-export const DERIVED_PREFIX = '.gkm-derived/';
+export { DERIVED_PREFIX } from '@geekmidas/manifest';
 
 /** How long a response may be kept, by a browser and by the edge. */
 export type ProcessorCache =

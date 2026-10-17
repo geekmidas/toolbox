@@ -1,4 +1,5 @@
 import type { LifecycleRule } from '@aws-sdk/client-s3';
+import { DERIVED_PREFIX } from '@geekmidas/manifest';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { TEST_DATABASE_CONFIG } from '../../../../testkit/test/globalSetup';
 import {
@@ -87,6 +88,22 @@ describe('bucketClient', () => {
 		);
 	});
 
+	it("takes a processor's derived prefix, as S3 does", async () => {
+		const name = `${bucket}-derived`;
+		await buckets.create(name);
+		const lifecycles = [{ bucket: name, expire: { [DERIVED_PREFIX]: 30 } }];
+
+		await applyLifecycles(buckets, lifecycles);
+		const again = await applyLifecycles(buckets, lifecycles);
+
+		expect(again.map((a) => a.created)).toEqual([false]);
+		expect((await buckets.lifecycle(name))?.[0]).toMatchObject({
+			ID: expireRuleId(DERIVED_PREFIX),
+			Filter: { Prefix: '.gkm-derived/' },
+			Expiration: { Days: 30 },
+		});
+	});
+
 	it('answers "missing" rather than failing when nothing is listening', async () => {
 		const unreachable = bucketClient(1, emulator);
 
@@ -136,6 +153,22 @@ describe('bucketClient against MinIO: lifecycle', () => {
 		expect(rules.find((r) => r.ID === expireRuleId('quotes/'))).toMatchObject({
 			Status: 'Enabled',
 			Filter: { Prefix: 'quotes/' },
+			Expiration: { Days: 30 },
+		});
+	});
+
+	it("takes a processor's derived prefix, leading dot and all", async () => {
+		const lifecycles = [{ bucket, expire: { [DERIVED_PREFIX]: 30 } }];
+		await applyLifecycles(buckets, lifecycles);
+		const again = await applyLifecycles(buckets, lifecycles);
+
+		expect(again.map((a) => a.created)).toEqual([false]);
+		expect(
+			(await buckets.lifecycle(bucket))?.find(
+				(r) => r.ID === expireRuleId(DERIVED_PREFIX),
+			),
+		).toMatchObject({
+			Filter: { Prefix: '.gkm-derived/' },
 			Expiration: { Days: 30 },
 		});
 	});
