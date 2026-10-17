@@ -134,6 +134,13 @@ export interface BoundSubscriber {
 	 * what makes SNS push to it.
 	 */
 	connectionKey: string;
+	/**
+	 * The event types a topic subscriber names — its SNS subscription's filter
+	 * on the `type` attribute the topic's publisher sets. Absent for a
+	 * bucket's subscriber: S3 sets no such attribute, and the subscriber's own
+	 * filter decides.
+	 */
+	events?: readonly string[];
 }
 
 /** What the discovery worker answers. Checked: the worker ran project code. */
@@ -149,7 +156,13 @@ const DiscoverAnswer = z.discriminatedUnion('reason', [
 		subscribers: z
 			.record(
 				z.string(),
-				z.array(z.object({ name: z.string(), connectionKey: z.string() })),
+				z.array(
+					z.object({
+						name: z.string(),
+						connectionKey: z.string(),
+						events: z.array(z.string()).optional(),
+					}),
+				),
 			)
 			.optional(),
 	}),
@@ -448,7 +461,12 @@ function recordSubscriber(
 			(s) => s.connectionKey === connectionKey && s.name === exportName,
 		)
 	) {
-		bound.push({ name: exportName, connectionKey });
+		const events = exported.topicName ? exported.subscribedEvents : undefined;
+		bound.push({
+			name: exportName,
+			connectionKey,
+			...(events ? { events: [...events] } : {}),
+		});
 	}
 }
 

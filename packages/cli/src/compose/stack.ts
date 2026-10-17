@@ -262,6 +262,11 @@ export interface PushedSubscriber {
 	connectionKey: string;
 	/** `https://<host>/__gkm/subscribers/<name>` */
 	endpoint: string;
+	/**
+	 * The event types a topic subscriber names — its subscription's filter.
+	 * Absent for a bucket's subscriber.
+	 */
+	events?: readonly string[];
 }
 
 /**
@@ -523,6 +528,13 @@ export interface StackInput {
 	pushSubscriptions?: Readonly<
 		Record<string, Readonly<Record<string, string>>>
 	>;
+	/**
+	 * Composed before the deploy has made the subscriptions it is about to
+	 * record — to learn where SNS pushes, and with what. No worker is handed
+	 * `GKM_SNS_SUBSCRIPTIONS`, so a pushed subscriber without an ARN is not
+	 * refused: this stack is read, never run.
+	 */
+	recordingSubscriptions?: boolean;
 	stage: string;
 	identity: DeployIdentity;
 	images: {
@@ -1128,7 +1140,7 @@ export function composeStack(input: StackInput): ComposeStack {
 				serviceName: worker.name,
 				...(telemetryValues ? { telemetry: telemetryValues } : {}),
 			}),
-			...(push
+			...(push && !input.recordingSubscriptions
 				? {
 						[SNS_SUBSCRIPTIONS_KEY]: recordedSubscriptions(
 							worker,
@@ -1420,10 +1432,11 @@ export function workerPush(
 		host,
 		url,
 		paths: pushed.map(({ name }) => subscriberRoute(name)),
-		subscribers: pushed.map(({ name, connectionKey }) => ({
+		subscribers: pushed.map(({ name, connectionKey, events }) => ({
 			name,
 			connectionKey,
 			endpoint: `${url}${subscriberRoute(name)}`,
+			...(events ? { events } : {}),
 		})),
 	};
 }

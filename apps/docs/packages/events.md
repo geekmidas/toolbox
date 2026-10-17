@@ -484,7 +484,9 @@ How each consumer is fed:
   decided by the `endpoint` in the connection string. Against SNS itself the
   deploy makes each subscription and hands the server its ARN in
   `GKM_SNS_SUBSCRIPTIONS`; the server subscribes nothing and mounts a route only
-  for a recorded one. Against the emulator it subscribes its own routes, and
+  for a recorded one. On a compose stage whose topic secret names SNS, that is
+  the compose deploy, signing with the keys in the topic's string — see
+  [`gkm compose`](./cli.md). Against the emulator it subscribes its own routes, and
   startup converges, so a stale pending subscription is replaced and a changed
   event list updates the filter.
 

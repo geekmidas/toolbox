@@ -304,6 +304,8 @@ export const welcome = jobs
 					{
 						name: 'welcome',
 						connectionKey: 'USERS_PUBLISHER_CONNECTION_STRING',
+						// Its subscription's filter.
+						events: ['user.created'],
 					},
 				],
 			});

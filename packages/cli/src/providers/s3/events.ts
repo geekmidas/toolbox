@@ -27,23 +27,18 @@ import type {
 } from '@geekmidas/manifest';
 import { provideKey } from '@geekmidas/manifest';
 import * as s3Url from '@geekmidas/storage/s3-url';
-import type { ResourceRecord } from '../../deploy/StateStore.js';
+import {
+	subscriptionKey,
+	subscriptionResource,
+} from '../../deploy/snsSubscriptions.js';
 import { GkmError } from '../../errors';
 import { subscriberRoute } from '../../generators/subscriberRoute.js';
 import type { BoundSubscriber } from '../../reconcile/discover.js';
 import { eventsEdge } from '../../reconcile/edges.js';
 import { NoDomainForStage } from '../../target/dokploy/domain.js';
 import { appKey } from '../../workspace/derive.js';
-import type {
-	NormalizedWorkspace,
-	S3ObjectsConfig,
-} from '../../workspace/types.js';
-import {
-	type AwsProvisioning,
-	awsClientConfig,
-	awsEndpoint,
-	awsProvisioningCredentials,
-} from '../aws.js';
+import type { S3ObjectsConfig } from '../../workspace/types.js';
+import { type AwsProvisioning, awsClientConfig, awsEndpoint } from '../aws.js';
 import { deploysWithCompose } from '../dns.js';
 import { identityTags } from '../iam.js';
 import type { EnsureContext } from '../types.js';
@@ -528,10 +523,6 @@ export async function ensureEventsKey(
 	);
 }
 
-/** The state key a subscriber's SNS subscription is recorded under. */
-export const subscriptionKey = (worker: string, name: string) =>
-	`sns-subscription:${worker}/${name}`;
-
 /** Where SNS pushes to a worker: its own host on the stage's domain. */
 export function workerPushHost(worker: string, domain: string): string {
 	return `${appKey(worker)}.${domain}`;
@@ -626,161 +617,21 @@ export async function ensurePushSubscriptions(
 					`   ✓ '${spec.name}' subscribed to ${events.topicArn.split(':').pop()} at ${spec.endpoint}`,
 				);
 			}
-			await ctx.state.ready(
+			const { key, type, data } = subscriptionResource(
 				{
-					key: subscriptionKey(worker, spec.name),
-					type: 'sns-subscription',
-					data: {
-						worker,
-						topicArn: events.topicArn,
-						endpoint: spec.endpoint,
-						deadLetterQueueArn: events.deadLetterArn,
-						pending,
-					},
+					worker,
+					name: spec.name,
+					topicArn: events.topicArn,
+					endpoint: spec.endpoint,
+					deadLetterQueueArn: events.deadLetterArn,
+					pending,
 				},
 				arn,
 			);
+			await ctx.state.ready({ key, type, ...(data ? { data } : {}) }, arn);
 		}
 		for (const arn of result.removed) {
 			ctx.log(`   – unsubscribed ${arn}: no subscriber wants it any more`);
 		}
 	}
-}
-
-/**
- * The subscriptions the deploy recorded, by worker and export — what each
- * worker is handed as `GKM_SNS_SUBSCRIPTIONS`.
- */
-export function recordedPushSubscriptions(
-	resources: Readonly<Record<string, ResourceRecord>> | undefined,
-): Record<string, Record<string, string>> {
-	const byWorker: Record<string, Record<string, string>> = {};
-	for (const record of Object.values(resources ?? {})) {
-		if (record.type !== 'sns-subscription' || !record.id) continue;
-		const [worker, name] = record.key
-			.slice('sns-subscription:'.length)
-			.split('/');
-		if (!worker || !name) continue;
-		byWorker[worker] = { ...byWorker[worker], [name]: record.id };
-	}
-	return byWorker;
-}
-
-/** A subscription still waiting to be confirmed once its worker is up. */
-export class PushSubscriptionsUnconfirmed extends GkmError {
-	constructor(readonly endpoints: readonly string[]) {
-		super(
-			`SNS still waits for ${endpoints.join(', ')} to confirm ${endpoints.length === 1 ? 'its subscription' : 'their subscriptions'}, ` +
-				`so nothing is pushed there yet. Check the worker's logs for the ` +
-				`confirmation it refused, and that its host answers from the internet; ` +
-				`the next deploy sends the confirmation again.`,
-		);
-		this.name = 'PushSubscriptionsUnconfirmed';
-	}
-}
-
-/**
- * Once the workers are up: every subscription recorded as pending is
- * subscribed again — SNS resends its confirmation to a worker now there to
- * answer it — and waited on until confirmed.
- *
- * The first deploy needs it: the subscription is made before the worker
- * starts, so SNS's first confirmation finds nobody.
- *
- * @returns what is still pending when the wait ran out — none, normally.
- */
-export async function confirmPendingSubscriptions(input: {
-	workspace: NormalizedWorkspace;
-	stage: string;
-	resources: Readonly<Record<string, ResourceRecord>> | undefined;
-	env?: NodeJS.ProcessEnv;
-	home?: string;
-	/** How long to wait for confirmations, in milliseconds. */
-	timeoutMs?: number;
-	record?: (record: ResourceRecord) => Promise<void>;
-	log?: (line: string) => void;
-}): Promise<string[]> {
-	const env = input.env ?? process.env;
-	const records = Object.values(input.resources ?? {}).filter(
-		(r) => r.type === 'sns-subscription' && r.id,
-	);
-	const pending = records.filter((r) => r.data?.pending === true);
-	if (pending.length === 0) return [];
-
-	const credential = await awsProvisioningCredentials({
-		stage: input.stage,
-		env,
-		...(input.home ? { home: input.home } : {}),
-	});
-	if (!credential) {
-		return pending.map((r) => String(r.data?.endpoint));
-	}
-	const { SNSConnection, reconcileHttpSubscriptions } = await import(
-		'@geekmidas/events/sns'
-	);
-	const { GetSubscriptionAttributesCommand } = await import(
-		'@aws-sdk/client-sns'
-	);
-	const endpoint = awsEndpoint(env, 'SNS');
-
-	// Every subscription to the same topic on the same host, not only the
-	// pending ones: the reconcile removes what it is not handed.
-	const groups = new Map<string, ResourceRecord[]>();
-	for (const record of records) {
-		const host = new URL(String(record.data?.endpoint)).host;
-		const group = `${record.data?.topicArn}|${host}`;
-		groups.set(group, [...(groups.get(group) ?? []), record]);
-	}
-
-	const left: string[] = [];
-	for (const [group, members] of groups) {
-		if (!members.some((r) => r.data?.pending === true)) continue;
-		const [topicArn, host] = group.split('|') as [string, string];
-		// The topic's own region, read off its ARN: a bucket may be elsewhere.
-		const region = topicArn.split(':')[3]!;
-		const { credentials } = await awsClientConfig(credential, region);
-		const connection = new SNSConnection({
-			topicArn,
-			region,
-			...(endpoint ? { endpoint } : {}),
-			...(credentials ? { credentials } : {}),
-		});
-		const name = (r: ResourceRecord) => r.key.split('/').pop()!;
-		await reconcileHttpSubscriptions(connection, {
-			endpoints: members.map((r) => ({
-				name: name(r),
-				endpoint: String(r.data?.endpoint),
-				...(r.data?.deadLetterQueueArn
-					? { deadLetterQueueArn: String(r.data.deadLetterQueueArn) }
-					: {}),
-			})),
-			ownedHost: host,
-		});
-
-		const deadline = Date.now() + (input.timeoutMs ?? 60_000);
-		for (const record of members.filter((r) => r.data?.pending === true)) {
-			let confirmed = false;
-			while (!confirmed) {
-				const { Attributes = {} } = await connection.snsClient.send(
-					new GetSubscriptionAttributesCommand({
-						SubscriptionArn: record.id!,
-					}),
-				);
-				confirmed = Attributes.PendingConfirmation !== 'true';
-				if (confirmed || Date.now() > deadline) break;
-				await new Promise((resolve) => setTimeout(resolve, 1000));
-			}
-			if (confirmed) {
-				input.log?.(`   ✓ ${record.data?.endpoint} confirmed its subscription`);
-				await input.record?.({
-					...record,
-					data: { ...record.data, pending: false },
-				});
-			} else {
-				left.push(String(record.data?.endpoint));
-			}
-		}
-		await connection.close();
-	}
-	return left;
 }
