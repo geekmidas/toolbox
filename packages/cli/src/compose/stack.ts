@@ -46,8 +46,8 @@ import { composeBuildPaths, type ImageLayout } from '../docker/layout.js';
 import { TURBO_VERSION, WORKER_PORT } from '../docker/templates.js';
 import { GkmError } from '../errors';
 import {
-	SNS_SUBSCRIPTIONS_KEY,
 	objectsRoute,
+	SNS_SUBSCRIPTIONS_KEY,
 	subscriberRoute,
 } from '../generators/subscriberRoute.js';
 import { stageProviderNotes } from '../providers/notes.js';

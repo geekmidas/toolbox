@@ -1235,6 +1235,10 @@ describe("a watched bucket in the stack's MinIO", () => {
 			secrets: production({ UPLOADS_EVENTS_CONNECTION_STRING: SNS }),
 			ports: {},
 			allowDevServices: true,
+			// What the deploy records once it has subscribed the worker's route.
+			pushSubscriptions: {
+				Jobs: { onAvatar: 'arn:aws:sns:eu-west-1:123456789012:uploads:1' },
+			},
 		});
 
 		expect(jobs(s).env?.UPLOADS_EVENTS_CONNECTION_STRING).toBe(SNS);
