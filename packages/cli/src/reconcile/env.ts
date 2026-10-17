@@ -38,6 +38,7 @@ import {
 	emulatorTopicArn,
 } from './emulator';
 import type { ContainerCredentials } from './localCredentials';
+import { objectsWebhookToken } from './objectEvents';
 import { PgBossNeedsDatabase, type Plan, type PlannedResource } from './plan';
 import type { PortAssignments } from './ports';
 
@@ -78,6 +79,12 @@ const RABBITMQ_EXCHANGE = 'gkm.events';
 export interface EnvOptions {
 	/** Assigned ports, keyed by port key. */
 	ports: PortAssignments;
+	/**
+	 * The buckets, by construct id, whose MinIO posts their events to be
+	 * relayed onto the broker — see `objectEvents.ts`. Only these resolve an
+	 * events key and a token: a bucket nothing watches has neither.
+	 */
+	relayedBuckets?: readonly string[];
 	/**
 	 * The project, which seeds any secret this stage derives.
 	 *
@@ -275,6 +282,28 @@ export function envFor(
 	Object.assign(env, publicEnv(plan, env, options.addresses));
 
 	Object.assign(env, brokerEnv(plan, options.ports, credential));
+
+	// A bucket in MinIO has no topic of its own to publish its events to:
+	// MinIO posts them to the process that runs the bucket's subscribers, which
+	// relays them onto the one broker — so that broker is where they are
+	// delivered from, and the token is what MinIO presents. On SNS a bucket's
+	// events come from a topic the storage publishes to instead.
+	const relay = env.EVENT_PUBLISHER_CONNECTION_STRING;
+	if (relay && options.relayedBuckets?.length) {
+		for (const resource of plan.resources) {
+			if (resource.kind !== 'objects' || resource.container !== 'minio') {
+				continue;
+			}
+			if (!options.relayedBuckets.includes(resource.id)) continue;
+			if (!env[resource.envKey]) continue;
+			env[provideKey(resource.id, 'eventsConnectionString')] = relay;
+			env[provideKey(resource.id, 'eventsToken')] = objectsWebhookToken(
+				options.project ?? '',
+				resource.id,
+				credential.seed,
+			);
+		}
+	}
 
 	// Only once a bucket actually resolved: an unresolvable plan resolves
 	// nothing, and credentials for a container that is not running are noise.

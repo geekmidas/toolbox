@@ -46,6 +46,7 @@ import { composeBuildPaths, type ImageLayout } from '../docker/layout.js';
 import { TURBO_VERSION, WORKER_PORT } from '../docker/templates.js';
 import { GkmError } from '../errors';
 import {
+	objectsRoute,
 	SNS_SUBSCRIPTIONS_KEY,
 	subscriberRoute,
 } from '../generators/subscriberRoute.js';
@@ -63,6 +64,11 @@ import {
 	type LocalCredentials,
 	postgresSuperuser,
 } from '../reconcile/localCredentials.js';
+import {
+	minioWebhookEnv,
+	type ObjectWebhook,
+	watchedBuckets,
+} from '../reconcile/objectEvents.js';
 import { type Plan, type PlannedResource, planFor } from '../reconcile/plan.js';
 import { bucketPolicies } from '../reconcile/provision.js';
 import type { StageSecrets } from '../secrets/types.js';
@@ -502,6 +508,13 @@ export interface StackStorage {
 	buckets: string[];
 	/** The open paths of each served bucket. */
 	policies: { bucket: string; open: string[] }[];
+	/**
+	 * Each bucket by construct id and name, and which of them post their
+	 * events to a worker — the notifications gkm writes once MinIO runs.
+	 */
+	objects: { id: string; name: string }[];
+	/** Where MinIO posts each watched bucket's events: on the stack's network. */
+	webhooks: ObjectWebhook[];
 }
 
 export interface StackInput {
@@ -850,9 +863,26 @@ export function composeStack(input: StackInput): ComposeStack {
 					policies: bucketPolicies(plan).filter((p) =>
 						buckets.includes(p.bucket),
 					),
+					objects: services.minio
+						.map((id) => ({ id, name: byId.get(id)?.name }))
+						.filter((b): b is { id: string; name: string } => Boolean(b.name))
+						.sort((a, b) => a.name.localeCompare(b.name)),
+					// Filled once each worker's environment is resolved, below.
+					webhooks: [],
 				};
 			})()
 		: undefined;
+
+	// A bucket's events keys, so they resolve by where the bucket lives.
+	const bucketEventKeys = new Map<string, string>();
+	for (const resource of plan.resources) {
+		if (resource.kind !== 'objects') continue;
+		bucketEventKeys.set(
+			provideKey(resource.id, 'eventsConnectionString'),
+			resource.id,
+		);
+		bucketEventKeys.set(provideKey(resource.id, 'eventsToken'), resource.id);
+	}
 
 	// Each file server over the stack's MinIO, at a host of its own on the
 	// edge — the shape it has deployed: a domain serving a bucket.
@@ -921,6 +951,11 @@ export function composeStack(input: StackInput): ComposeStack {
 		seed: credential.seed,
 		// Mailpit on a deployed stage sends as the stage's domain.
 		...(!local && domain ? { mailFrom: `noreply@${domain}` } : {}),
+		// Each watched bucket in the stack's MinIO, whose events it posts to a
+		// worker to relay onto the stack's broker.
+		relayedBuckets: [
+			...watchedBuckets(manifest, input.subscribers ?? {}).keys(),
+		].filter((bucket) => services.minio.includes(bucket)),
 	};
 	const outside = networkEnv(
 		plan,
@@ -959,6 +994,14 @@ export function composeStack(input: StackInput): ComposeStack {
 	): string | undefined => {
 		// The server's address is gkm's own: never in an app's environment.
 		if (isReservedStageKey(key)) return undefined;
+		// A bucket's events: relayed onto the stack's broker when the bucket is
+		// in the stack's MinIO, and otherwise wherever the stage says — a topic
+		// the storage publishes to — or nowhere.
+		const watching = bucketEventKeys.get(key);
+		if (watching) {
+			if (custom[key] !== undefined) return custom[key];
+			return services.minio.includes(watching) ? outside[key] : undefined;
+		}
 		// A deployed stage has no inbox: Mailpit runs only locally — not for a
 		// backend, a site's bundle or a phone.
 		if (!local && owner?.kind === 'email' && key.endsWith('_INBOX_URL')) {
@@ -1155,6 +1198,26 @@ export function composeStack(input: StackInput): ComposeStack {
 		};
 		for (const [key, value] of Object.entries(worker.env)) {
 			if (/[\r\n]/.test(value)) throw new EnvValueMultiline(worker.name, key);
+		}
+	}
+
+	// Each watched bucket in the stack's MinIO posts its events to the worker
+	// that runs one of its subscribers, across the stack's network — with the
+	// token that worker was handed, so the two cannot disagree. Not where its
+	// events come from SNS: then the storage publishes them itself.
+	if (storage && !input.buildOnly) {
+		const watched = watchedBuckets(manifest, input.subscribers ?? {});
+		for (const [bucket, workerId] of watched) {
+			if (!services.minio.includes(bucket)) continue;
+			const worker = workers.find((w) => w.id === workerId);
+			const relay = worker?.env?.[provideKey(bucket, 'eventsConnectionString')];
+			const token = worker?.env?.[provideKey(bucket, 'eventsToken')];
+			if (!worker || !relay || relay.startsWith('sns:') || !token) continue;
+			storage.webhooks.push({
+				bucket,
+				endpoint: `http://${hostOf(worker.name)}:${worker.port}${objectsRoute(bucket)}`,
+				token,
+			});
 		}
 	}
 
@@ -1643,6 +1706,9 @@ function stackFile(options: {
 			...minio.environment,
 			MINIO_ROOT_USER: options.storage.user,
 			MINIO_ROOT_PASSWORD: options.storage.password,
+			// Where each watched bucket's events are posted: a worker, on the
+			// stack's network. In the environment, so a change recreates MinIO.
+			...minioWebhookEnv(options.storage.webhooks),
 		};
 		// Loopback only, like Postgres: gkm creates the buckets and their
 		// policies from this machine. The apps reach it on the network, and a

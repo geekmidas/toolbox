@@ -20,3 +20,15 @@ export function subscriberRoute(exportName: string): string {
  * refuses a notification that names another.
  */
 export const SNS_SUBSCRIPTIONS_KEY = 'GKM_SNS_SUBSCRIPTIONS';
+
+/**
+ * Where a local object store posts a bucket's events, on the process that runs
+ * the bucket's subscribers: named after the bucket. Never on a public host —
+ * MinIO reaches it over the stack's network, or the host's.
+ */
+export const OBJECTS_ROUTE_PREFIX = '/__gkm/objects/';
+
+/** The route a bucket's events are posted to. */
+export function objectsRoute(bucketId: string): string {
+	return `${OBJECTS_ROUTE_PREFIX}${bucketId}`;
+}

@@ -296,6 +296,7 @@ function addEdgeKeys(
 		if (bucket) {
 			if (manifest[bucket]?.kind === 'objects') {
 				keys.add(provideKey(bucket, 'eventsConnectionString'));
+				keys.add(provideKey(bucket, 'eventsToken'));
 			}
 			continue;
 		}

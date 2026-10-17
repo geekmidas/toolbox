@@ -113,6 +113,48 @@ because another notification already sends the same events elsewhere, the
 deploy fails with `BucketNotificationsOverlap`: S3 sends each event to one
 place only.
 
+## A bucket in MinIO
+
+MinIO has no topic to publish a bucket's events to, so where MinIO holds a
+watched bucket (under `gkm dev`, and in a compose stack that runs its own
+MinIO), it posts each event to the process that runs the bucket's
+subscribers, and that process relays it onto the broker:
+
+1. MinIO is started with a webhook target per watched bucket, and the bucket
+   is pointed at it for every created and removed object. gkm writes both.
+   Nothing to configure.
+2. The process mounts `POST /__gkm/objects/<Bucket>`. MinIO presents the
+   bucket's token (`<BUCKET>_EVENTS_TOKEN`), compared in constant time, and
+   anything else gets 401.
+3. Each event is published onto the broker under the bucket's name, as
+   `object.created` or `object.deleted`. The route answers 2xx only once
+   every event is published. Otherwise MinIO keeps the event and sends it
+   again.
+4. Every subscriber of the bucket drains a queue of its own, and filters by
+   prefix and suffix as above.
+
+Where it posts:
+
+- **`gkm dev`**: the dev server of the app that builds the worker running the
+  bucket's subscribers, through `host.docker.internal` on that app's port.
+  Only the local stage's buckets post. `gkm test` shares the MinIO, and its
+  uploads reach the test's subscribers in-process instead (see Testing).
+- **A compose stack**: the worker's container, across the stack's own
+  network. The route is on no public host.
+
+MinIO starts before whatever it posts to. What it cannot deliver yet, it
+keeps on disk and sends once the route answers. Nothing is lost while the
+worker restarts.
+
+The token is derived, never stored. Locally it comes from the project, since
+everything it protects is on loopback. In a stack serving a deployed stage it
+comes from that stage's random seed, so it is a secret there.
+
+A bucket whose events come from SNS (an S3 bucket, or a stage that sets
+`<BUCKET>_EVENTS_CONNECTION_STRING` itself) gets no webhook target. The two
+paths never both deliver. On an AWS target's `gkm dev`, where the broker is
+SNS, MinIO relays nothing.
+
 ## Write handlers to run twice
 
 Delivery is at least once. S3 and MinIO can report the same change twice, and

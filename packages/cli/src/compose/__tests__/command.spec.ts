@@ -653,6 +653,10 @@ function recordingBuckets(calls: { op: string; args?: unknown }[]) {
 				return undefined;
 			},
 			async setPolicy() {},
+			async notification() {
+				return {};
+			},
+			async setNotification() {},
 		};
 	};
 }
