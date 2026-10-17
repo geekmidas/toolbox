@@ -11,6 +11,7 @@
  */
 
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
+import { processorUnits } from '../build/workers.js';
 import { loadPortState, savePortState } from '../credentials/index.js';
 import {
 	cacheBackendFor,
@@ -155,6 +156,7 @@ export async function reconcileWorkspace(
 		...backendsOf(workspace),
 		saved: await loadPortState(workspace.root),
 		addresses: surfaceAddresses(workspace, manifest),
+		processorAddresses: processorAddresses(workspace, manifest),
 		metroPorts: metroPorts(workspace, manifest),
 		fakes,
 		credentialFakes,
@@ -209,6 +211,23 @@ export function metroPorts(
 		if (port) ports[id] = port;
 	}
 	return ports;
+}
+
+/**
+ * Where each file server's processors answer locally: the dev server of the
+ * app holding them, which `gkm dev` mounts them on — the same app whose build
+ * writes their unit deployed.
+ */
+export function processorAddresses(
+	workspace: NormalizedWorkspace,
+	manifest: ConstructManifest,
+): Record<string, string> {
+	const addresses: Record<string, string> = {};
+	for (const unit of processorUnits(workspace, manifest)) {
+		const port = workspace.apps[unit.app]?.port;
+		if (port) addresses[unit.id] = localAddress(port);
+	}
+	return addresses;
 }
 
 /**

@@ -668,6 +668,16 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 				[
 					derived.surface.id,
 					...(servesOnly ? [] : hosted.map((unit) => unit.id)),
+					// Under `gkm dev` the processors run here too, and read their
+					// file server's bucket.
+					...(production?.enabled
+						? []
+						: hostedUnits.flatMap((unit) => {
+								const server = declared[unit.id];
+								return server?.kind === 'file-server'
+									? [unit.id, server.of]
+									: [unit.id];
+							})),
 				],
 				[
 					...allEndpoints,
@@ -675,6 +685,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 					...inProcess.crons,
 					...inProcess.queues,
 					...inProcess.subscribers,
+					...(production?.enabled ? [] : hostedProcessors),
 				],
 			)
 		: declared;
@@ -727,6 +738,16 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 
 	if (servesOnly && production) {
 		buildContext.production = { ...production, subscribers: 'exclude' };
+	}
+
+	// `gkm dev` serves the processors this app holds in its own process, under
+	// a route the local edge rewrites each pattern onto.
+	if (target === 'server' && !production?.enabled && hostedProcessors.length) {
+		await processorGenerator.buildDev(
+			join(appRoot, '.gkm', 'server'),
+			hostedProcessors,
+		);
+		buildContext.devProcessors = true;
 	}
 
 	const result = await buildForTarget(

@@ -298,6 +298,12 @@ export interface ReconcileOptions {
 	 * arrives here rather than being read off a published container port.
 	 */
 	addresses?: Readonly<Record<string, string>>;
+	/**
+	 * Where each file server's processors answer, keyed by the file server's
+	 * id: the dev server of the app holding them. Only the edge reads it — a
+	 * file server's own address is still the bucket's.
+	 */
+	processorAddresses?: Readonly<Record<string, string>>;
 	docker?: Docker;
 	probe?: PortProbe;
 	/** Injected for tests; the defaults talk to the containers just started. */
@@ -448,7 +454,9 @@ export async function reconcile(
 	// The edge's config is part of what "converged" means: a file server added or
 	// a bucket renamed changes the routing without changing a container, and a
 	// hash that ignored it would leave the old routes in place.
-	const caddyfile = toCaddyfile(sitesFor(plan, project, options.addresses));
+	const caddyfile = toCaddyfile(
+		sitesFor(plan, project, options.addresses, options.processorAddresses),
+	);
 	// And so is what provisioning runs. A toolbox upgrade that changes the role
 	// DDL — a new grant — changes no container and no route, so a hash without
 	// it reported convergence and the existing database never got the grant.

@@ -13,6 +13,7 @@ import {
 	type GeneratedConstruct,
 	type GeneratorOptions,
 } from './Generator';
+import { PROCESSORS_DEV_PREFIX } from './processorRoute';
 import {
 	startTelemetryCode,
 	type TelemetryContext,
@@ -94,6 +95,87 @@ export const handler = adapter.handler;
 			);
 		}
 		return infos;
+	}
+
+	/**
+	 * `gkm dev`'s half: `processors.ts` beside the dev server's app, mounting
+	 * each file server's processors under `/__gkm/processors/<FileServer>`.
+	 * The local edge sends each pattern on the file server's host there, so
+	 * `processedUrl()` answers locally as it does deployed.
+	 *
+	 * In the dev server's own process rather than a unit of its own: locally
+	 * there is no CPU to protect, and the dev server already reloads on change.
+	 */
+	async buildDev(
+		outputDir: string,
+		processors: GeneratedConstruct<AnyProcessor>[],
+	): Promise<string> {
+		await mkdir(outputDir, { recursive: true });
+		const file = join(outputDir, 'processors.ts');
+
+		const imports = processors
+			.map(({ key, path }) => {
+				const specifier = relative(outputDir, path.absolute).replace(
+					/\.ts$/,
+					'.js',
+				);
+				return `import { ${key} } from '${specifier.startsWith('.') ? specifier : `./${specifier}`}';`;
+			})
+			.join('\n');
+		const byServer = new Map<string, string[]>();
+		for (const { key, construct } of processors) {
+			byServer.set(construct.surfaceId, [
+				...(byServer.get(construct.surfaceId) ?? []),
+				key,
+			]);
+		}
+		const units = [...byServer.entries()]
+			.map(([id, keys]) => `    ${JSON.stringify(id)}: [${keys.join(', ')}],`)
+			.join('\n');
+
+		await writeFile(
+			file,
+			`/**
+ * Generated processors setup for \`gkm dev\`.
+ *
+ * Each file server's processors, under ${PROCESSORS_DEV_PREFIX}<FileServer>: the
+ * local edge rewrites each processor pattern on the file server's host here.
+ */
+import type { EnvironmentParser } from '@geekmidas/envkit';
+import { processorServer } from '@geekmidas/constructs/processors';
+${imports}
+
+export function setupProcessors(
+  app: { all: (path: string, handler: (c: any) => unknown) => unknown },
+  envParser: EnvironmentParser<any>,
+): void {
+  const units: Record<string, ReturnType<typeof processorServer>> = Object.fromEntries(
+    Object.entries({
+${units}
+    }).map(([id, processors]) => [id, processorServer(processors, envParser)]),
+  );
+
+  app.all('${PROCESSORS_DEV_PREFIX}:server/*', async (c: any) => {
+    const server = c.req.param('server') as string;
+    const serve = units[server];
+    if (!serve) return c.notFound();
+    const path = c.req.path.slice(\`${PROCESSORS_DEV_PREFIX}\${server}\`.length) || '/';
+    const response = await serve({ method: c.req.method, path });
+    if (!response) {
+      return new Response(null, {
+        status: 404,
+        headers: { 'cache-control': 'public, max-age=60' },
+      });
+    }
+    return new Response(c.req.method === 'HEAD' ? null : response.body, {
+      status: response.status,
+      headers: response.headers,
+    });
+  });
+}
+`,
+		);
+		return file;
 	}
 
 	/**

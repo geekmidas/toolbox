@@ -139,6 +139,11 @@ export interface BuildContext {
 	 * has broker-specific code to include, such as SNS push subscriptions.
 	 */
 	eventsBackends?: readonly import('../types.js').EventsBackend[];
+	/**
+	 * `gkm dev` wrote `processors.ts` beside the app — this app holds file
+	 * server processors — so the dev server mounts them.
+	 */
+	devProcessors?: boolean;
 	emailBackend?: import('../types.js').EmailBackend;
 	/**
 	 * Every construct that can own a runnable, by id — the surfaces and the

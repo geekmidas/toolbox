@@ -521,6 +521,47 @@ describe('EndpointGenerator', () => {
 	);
 
 	itWithDir(
+		'mounts the processors gkm dev wrote beside it, ahead of the endpoints',
+		async ({ dir }) => {
+			const outputDir = join(dir, 'output');
+			const routesDir = join(dir, 'routes');
+			await mkdir(outputDir, { recursive: true });
+			await createMockEndpointFile(
+				routesDir,
+				'testEndpoint.ts',
+				'testEndpoint',
+				'/test',
+				'GET',
+			);
+			const constructs = await generator.load('**/routes/*.ts', dir);
+
+			await generator.build(
+				{ ...context, ...createMockBuildContext(), devProcessors: true },
+				constructs,
+				outputDir,
+				{ target: 'server' },
+			);
+			const withProcessors = await readFile(join(outputDir, 'app.ts'), 'utf-8');
+			expect(withProcessors).toContain(
+				"import { setupProcessors } from './processors.js';",
+			);
+			expect(
+				withProcessors.indexOf('setupProcessors(honoApp, envParser)'),
+			).toBeLessThan(withProcessors.indexOf('await setupEndpoints('));
+
+			await generator.build(
+				{ ...context, ...createMockBuildContext() },
+				constructs,
+				outputDir,
+				{ target: 'server' },
+			);
+			expect(await readFile(join(outputDir, 'app.ts'), 'utf-8')).not.toContain(
+				'setupProcessors',
+			);
+		},
+	);
+
+	itWithDir(
 		'names a production server to Postgres after its surface',
 		async ({ dir }) => {
 			const outputDir = join(dir, 'output');
