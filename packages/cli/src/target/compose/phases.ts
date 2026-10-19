@@ -49,6 +49,7 @@ import {
 	HostNotPointingAtServer,
 	isLocalHost,
 	isReservedStageKey,
+	type PrunedDnsRecord,
 	requiredServerAddress,
 	SERVER_IPV4_KEY,
 	serverAddressHint,
@@ -100,7 +101,11 @@ import {
 } from '../../compose/stack';
 import { EDGE_PROJECT, EDGE_SERVICE } from '../../compose/traefik';
 import { currentActor } from '../../deploy/actor.js';
-import { recordDnsChanges } from '../../deploy/dnsResources.js';
+import {
+	dnsResources,
+	forgetDnsResource,
+	recordDnsChanges,
+} from '../../deploy/dnsResources.js';
 import type { ResourceChange } from '../../deploy/events';
 import { imageRef } from '../../deploy/identity.js';
 import { DeployJournal } from '../../deploy/journal';
@@ -235,6 +240,11 @@ export interface ComposeRun {
 	images: Record<string, ComposeImage>;
 	/** Every resource the run touched, or for a dry run would. */
 	changes: ResourceChange[];
+	/**
+	 * Deletes the DNS records gkm wrote for hosts the stage no longer serves:
+	 * found by `ready`, run by `verify` once the stack answers on its new ones.
+	 */
+	pruneDns?: () => Promise<PrunedDnsRecord[]>;
 }
 
 /** How a run gets its images, beyond what the tag implies. */
@@ -570,12 +580,13 @@ export async function readyCompose(
 	if (run.server && !ctx.dryRun && !run.push) {
 		await deps.server.check(run.server);
 	}
-	await stageHostsDns(
+	const prune = await stageHostsDns(
 		ctx,
 		deps,
 		stackHosts(stack).filter((host) => !isLocalHost(host)),
 		run.secrets?.custom,
 	);
+	if (prune) run.pruneDns = prune;
 }
 
 /** A stack whose caches are in Redis, built for an app that has no client. */
@@ -640,7 +651,8 @@ function assertRedisClient(
  * domain's provider in `dns` where they differ, read back from it, and
  * recorded in the stage's state; hosts no provider writes resolved with the
  * system resolver. A dry run prints the plan and writes nothing, and warns
- * rather than stops.
+ * rather than stops. Returns the prune of the records gkm wrote for hosts the
+ * stage no longer serves — which a dry run prints there and then.
  *
  * @throws {ServerAddressMissing} when the stage has a domain and no address
  * @throws {ServerAddressInvalid} for a value that is not an address
@@ -651,7 +663,7 @@ async function stageHostsDns(
 	deps: ComposeDeps,
 	hosts: readonly string[],
 	custom: Readonly<Record<string, string>> | undefined,
-): Promise<void> {
+): Promise<(() => Promise<PrunedDnsRecord[]>) | undefined> {
 	const { workspace, stage } = ctx;
 	const server = requiredServerAddress(
 		stage,
@@ -678,11 +690,13 @@ async function stageHostsDns(
 		);
 	}
 	try {
+		const stored = await ctx.state.read(stage);
 		const result = await stageDns({
 			stage,
 			hosts,
 			server,
 			dns: workspace.dns,
+			recorded: dnsResources(stored?.resources ?? {}),
 			credentials: ctx.credentials,
 			log,
 			lookup: deps.lookup ?? systemLookup,
@@ -710,12 +724,38 @@ async function stageHostsDns(
 				: '',
 		].filter(Boolean);
 		if (parts.length > 0) log(`🌐 ${parts.join(', ')}`);
+		if (ctx.dryRun) {
+			await result.prune();
+			return undefined;
+		}
+		return result.recorded.stale.length > 0 ? result.prune : undefined;
 	} catch (error) {
 		if (ctx.dryRun && error instanceof HostNotPointingAtServer) {
 			ctx.logger.warn(`⚠ ${error.message}`);
-			return;
+			return undefined;
 		}
 		throw error;
+	}
+}
+
+/**
+ * The records gkm wrote for hosts the stage no longer serves, deleted once it
+ * answers on its new ones — and forgotten from its state, deleted or not:
+ * none is gkm's to manage any more.
+ */
+async function pruneStageDns(
+	ctx: ComposeContext,
+	run: ComposeRun,
+): Promise<void> {
+	if (!run.pruneDns) return;
+	const pruned = await run.pruneDns();
+	const journal = await DeployJournal.open(ctx.state, ctx.stage, () =>
+		createComposeState(ctx.stage),
+	);
+	for (const { record } of pruned) await forgetDnsResource(journal, record);
+	const deleted = pruned.filter((p) => p.action === 'delete').length;
+	if (deleted > 0) {
+		ctx.logger.info(`🌐 ${deleted} record${deleted === 1 ? '' : 's'} deleted`);
 	}
 }
 
@@ -1340,6 +1380,7 @@ export async function verifyCompose(
 	if (down.length > 0) {
 		throw new ComposeAppsUnhealthy(stack.project, down, stack.proxy);
 	}
+	await pruneStageDns(ctx, run);
 
 	if (stack.logs) reportLogs(ctx, stack.logs, stack.local, run.server);
 }

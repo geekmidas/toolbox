@@ -634,10 +634,12 @@ Every host gets an A record, and an AAAA record with `GKM_SERVER_IPV6`. With
 target gets the A record and every other host a CNAME to it; the apex is
 always an A record. A record that already has its value is not written; one
 with another value is replaced. The deploy touches only the A, AAAA and CNAME
-records of the stage's own hosts, and never another name; the only record it
-deletes is one a change of mode replaces (an A record where a CNAME now goes,
-or the other way round). What it wrote is recorded in the stage's deploy state as
-`dns-record` resources. A `manual` domain is printed, not written.
+records of the stage's own hosts, and the records it wrote for them before.
+It deletes one a change of mode replaces (an A record where a CNAME now goes,
+or the other way round), and one it wrote for a host the stage no longer
+serves — see [Changing the domain](#changing-the-domain). What it wrote is
+recorded in the stage's deploy state as `dns-record` resources. A `manual`
+domain is printed, not written.
 
 **No wildcard.** One record is written per host, never `*.shop.example.com`.
 A wildcard host is refused with `DnsWildcardRefused`.
@@ -653,6 +655,35 @@ built or started — with `DnsCredentialMissing`, naming the key.
 A new app's host gets its record from the next deploy. Nothing is run by hand
 first: the deploy sees the host has no record, writes it, confirms it, and
 only then starts the stack and asks for its certificate.
+
+### Changing the domain
+
+Change `domains.<stage>` (or an app's `domain` or `subdomain`) and deploy. The
+deploy writes the new hosts' records, starts the stack on them, and checks
+each app answers. Only then does it go through the records the stage's state
+says it wrote, and delete each one whose host and type the stack no longer
+has:
+
+```
+   No longer served by 'production':
+   - old.example.com                  A     203.0.113.10 — delete
+   - api.old.example.com              A     203.0.113.10 — delete
+   ⚠ auth.old.example.com             A     198.51.100.7 — pointed elsewhere since gkm wrote 203.0.113.10; left as it is
+🌐 2 records deleted
+```
+
+A record is deleted only if its provider still holds the value gkm wrote, so
+a name someone has pointed elsewhere since is left alone. Where no provider
+can delete it (a `manual` domain, a domain taken out of `dns`, a key that can
+only write), it is printed for you to remove. Each one is forgotten from the
+stage's state either way. A deploy that stops before its apps answer deletes
+nothing: the old hosts keep working until the new ones do. `--dry-run` prints
+what would go. The same goes for an app that is removed or renamed, and for
+the AAAA records once `GKM_SERVER_IPV6` is unset.
+
+Keep the old domain's entry in `dns` until a deploy has run without it in
+`domains`: that entry is how the deploy reaches the provider to delete its
+records.
 
 ### A stage on another server
 

@@ -10,7 +10,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { POSTGRES_PORT } from '../../../../testkit/test/ports';
 import {
 	DockerUnreachable,
@@ -155,11 +155,18 @@ describe("the suite's own stack, read through its compose file", () => {
 	});
 
 	it('cannot ask a registry that is not there about an image, and says so', async () => {
-		const answer = await dockerCompose.lookup('localhost:1/gkm/nothing:none');
-		expect(answer).toMatchObject({
-			ref: 'localhost:1/gkm/nothing:none',
-			status: 'unreachable',
-		});
+		// An empty Docker config: no credential helper, whose keychain on a
+		// developer's machine can hold the CLI up before it asks anything.
+		vi.stubEnv('DOCKER_CONFIG', mkdtempSync(join(tmpdir(), 'gkm-docker-')));
+		try {
+			const answer = await dockerCompose.lookup('localhost:1/gkm/nothing:none');
+			expect(answer).toMatchObject({
+				ref: 'localhost:1/gkm/nothing:none',
+				status: 'unreachable',
+			});
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 });
 
