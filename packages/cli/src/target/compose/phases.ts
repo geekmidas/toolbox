@@ -137,6 +137,7 @@ import {
 } from '../../reconcile/logins.js';
 import {
 	applyBuckets,
+	applyLifecycles,
 	applyPolicies,
 	applyPostgres,
 	postgresStatements,
@@ -970,6 +971,7 @@ async function prepareBuckets(
 		done = [
 			...(await applyBuckets(client, storage.buckets)),
 			...(await applyPolicies(client, storage.policies)),
+			...(await applyLifecycles(client, storage.lifecycles)),
 		];
 	} finally {
 		await tunnel.close();

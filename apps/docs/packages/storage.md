@@ -18,6 +18,36 @@ Use [`FileServer`](/packages/constructs) instead when the objects are also
 served on a domain.
 :::
 
+## Expiring a prefix
+
+Files a bucket holds only for a while — generated documents, previews,
+temporary uploads — are deleted by the bucket itself, a number of days after
+each was written:
+
+```typescript
+export const files = new ObjectStorage('Private', {
+  expire: { 'quotes/': { days: 30 }, 'tmp/': { days: 1 } },
+});
+```
+
+`FileServer` takes the same option for the bucket it vends; one fronting a
+bucket declared elsewhere (`origin`) refuses it with `BucketOptionOnOrigin`,
+since the expiry belongs on that bucket's own construct.
+
+- **Prefixes are literal.** A lifecycle rule matches the start of a key, so
+  `'quotes/'` expires `quotes/2026/7.pdf`. An empty prefix, one starting with
+  `/`, or one containing `*` or `?` is refused with `ExpiryPrefixInvalid`.
+- **Whole days, one or more** — the unit the bucket counts in. Anything else
+  is refused with `ExpiryDaysInvalid`.
+- **Everywhere the bucket runs.** The `s3` provider writes one rule per
+  prefix on every deploy (see [Providers](/guide/providers#objects-s3)), and
+  `gkm dev`, `gkm test` and `gkm compose` write the same rules into their
+  MinIO. Rules gkm did not write are kept; removing `expire` removes gkm's.
+- **Not instant.** S3 and MinIO run lifecycle in the background, roughly once
+  a day, so an object can outlive its expiry by a day or so. On a versioned
+  bucket, expiry makes the current version noncurrent; the versions kept are
+  not removed.
+
 ## Installation
 
 ```bash

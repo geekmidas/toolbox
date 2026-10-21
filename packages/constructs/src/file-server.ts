@@ -39,6 +39,7 @@ import {
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { createStorageClient, type StorageClient } from '@geekmidas/storage';
 import type { Construct, Declarable } from './construct-interface';
+import { expiryDays, type ObjectExpiry } from './expire';
 
 /**
  * A key an open pattern admits.
@@ -122,6 +123,12 @@ export interface FileServerOptions<TOpen extends string = never> {
 	/** Keep previous versions of an object. */
 	versioned?: boolean;
 	/**
+	 * Delete the objects under each prefix this many days after they were
+	 * written — `{ 'previews/': { days: 7 } }`. A setting of the bucket this
+	 * server vends, so it cannot be given with `origin`.
+	 */
+	expire?: ObjectExpiry;
+	/**
 	 * A bucket declared elsewhere, instead of one of this server's own.
 	 *
 	 * `new FileServer('Uploads')` declares both nodes; this fronts a bucket that
@@ -130,6 +137,24 @@ export interface FileServerOptions<TOpen extends string = never> {
 	 * depending on the server mints URLs.
 	 */
 	origin?: Declarable;
+}
+
+/**
+ * A bucket setting given to a file server that fronts a bucket declared
+ * elsewhere — where the bucket's own construct is the one that says it.
+ */
+export class BucketOptionOnOrigin extends Error {
+	constructor(
+		readonly server: string,
+		readonly origin: string,
+		readonly option: string,
+	) {
+		super(
+			`'${server}' fronts '${origin}', which declares itself, so '${option}' ` +
+				`belongs on the construct that declares '${origin}', not on the file server.`,
+		);
+		this.name = 'BucketOptionOnOrigin';
+	}
 }
 
 /** A key was asked to be served unsigned, and no open pattern admits it. */
@@ -161,6 +186,9 @@ export class FileServer<
 
 	private readonly open: readonly string[];
 
+	/** The vended bucket's expiry, checked once: prefix → days. */
+	private readonly expire: Record<string, number> | undefined;
+
 	/**
 	 * Declared once and read by both `declare()` and `connect()`, so the keys the
 	 * target publishes and the keys the client reads cannot drift.
@@ -180,6 +208,10 @@ export class FileServer<
 		// is what makes "serve a bucket I already have" an edit that adds a node
 		// instead of renaming the one holding the data.
 		const originId = options.origin?.id ?? canonical;
+		if (options.origin && options.expire) {
+			throw new BucketOptionOnOrigin(canonical, originId, 'expire');
+		}
+		this.expire = expiryDays(canonical, options.expire);
 		this.surfaceId = `${canonical}Server`;
 
 		this.keys = {
@@ -249,6 +281,7 @@ export class FileServer<
 				id: this.id,
 				provides: [this.keys.origin],
 				...(this.options.versioned ? { versioned: true } : {}),
+				...(this.expire ? { expire: this.expire } : {}),
 			},
 			surface,
 		];
