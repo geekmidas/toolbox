@@ -1,8 +1,9 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { Subscriber } from '@geekmidas/constructs/subscribers';
-import { canonicalId, provideKey } from '@geekmidas/manifest';
+import { canonicalId } from '@geekmidas/manifest';
 import type { BuildContext } from '../build/types';
+import { subscriberConnectionKey } from '../reconcile/edges.js';
 import type { SubscriberInfo } from '../types';
 import { runtimeFor } from './EndpointGenerator.js';
 import {
@@ -34,12 +35,19 @@ export class SubscriberGenerator extends ConstructGenerator<
 		const logger = console;
 		const subscriberInfos: SubscriberInfo[] = [];
 
+		for (const { key, construct } of constructs) {
+			assertDoesNotFeedItself(key, construct);
+		}
+
 		if (target === 'server') {
-			// Generate subscribers.ts for server-based polling (even if empty)
+			// Generate subscribers.ts for server-based polling (even if empty).
+			// A bucket's subscriber is pushed to by the topic the storage
+			// publishes to, whatever broker carries the app's own events.
 			await this.generateServerSubscribersFile(
 				outputDir,
 				constructs,
-				context.eventsBackends?.includes('sns') ?? false,
+				(context.eventsBackends?.includes('sns') ?? false) ||
+					constructs.some(({ construct }) => construct.bucketName),
 			);
 
 			logger.log(
@@ -80,6 +88,15 @@ export class SubscriberGenerator extends ConstructGenerator<
 				// binding so infra wires the SNS subscription.
 				...(construct.topicName
 					? { transport: 'topic' as const, topic: construct.topicName }
+					: {}),
+				// A subscriber bound to a bucket records it, and the keys it
+				// watches, so infra wires the bucket's notifications.
+				...(construct.bucketName
+					? {
+							transport: 'topic' as const,
+							bucket: construct.bucketName,
+							...construct.objectFilter,
+						}
 					: {}),
 				timeout: construct.timeout,
 				memorySize: construct.memorySize,
@@ -194,20 +211,18 @@ export async function stopSubscribers(): Promise<void> {}
 			.join('\n');
 
 		// Each subscriber reaches the topic it is bound to, by that topic's own
-		// key — resolved here, at build time, from the binding.
+		// key — resolved here, at build time, from the binding. A bucket's
+		// subscriber reaches the bucket's events, which carry no `type`
+		// attribute for SNS to filter on: it filters what it is sent itself.
 		const entries = subscribers
 			.map(({ key, construct }) => {
-				const connectionKey = construct.topicName
-					? provideKey(
-							canonicalId(construct.topicName),
-							'publisherConnectionString',
-						)
-					: undefined;
+				const connectionKey = subscriberConnectionKey(construct);
+				const topic = construct.topicName ?? construct.bucketName;
 				return `  { id: '${key}', subscriber: ${key}, topic: ${
-					construct.topicName ? `'${construct.topicName}'` : 'undefined'
+					topic ? `'${topic}'` : 'undefined'
 				}, connectionKey: ${
 					connectionKey ? `'${connectionKey}'` : 'undefined'
-				} },`;
+				}, filtered: ${construct.bucketName ? 'false' : 'true'} },`;
 			})
 			.join('\n');
 
@@ -280,7 +295,7 @@ export async function setupSubscribers(
   const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
   const afterListening: ((port: number) => Promise<void>)[] = [];
 
-  for (const { id, subscriber, topic, connectionKey } of subscribers) {
+  for (const { id, subscriber, topic, connectionKey, filtered } of subscribers) {
     const events = subscriber.subscribedEvents || [];
     if (events.length === 0) {
       logger.warn({ subscriber: id }, 'Subscriber has no subscribed events, skipping');
@@ -290,7 +305,7 @@ export async function setupSubscribers(
     if (!connectionString) {
       logger.error(
         { subscriber: id, connectionKey },
-        'No connection string for the topic this subscriber is bound to',
+        'No connection string for the topic or bucket this subscriber is bound to',
       );
       failed.push(id);
       continue;
@@ -332,7 +347,7 @@ ${
           const connection = await SNSConnection.fromConnectionString(connectionString);
           await subscribeHttpEndpoint(connection, {
             endpoint: new URL(route, base).toString(),
-            events,
+            ...(filtered ? { events } : {}),
           });
           logger.info({ subscriber: id, events }, 'Subscriber subscribed for push');
         });
@@ -430,4 +445,38 @@ export async function stopSubscribers(): Promise<void> {
 		await writeFile(subscribersPath, content);
 		return subscribersPath;
 	}
+}
+
+/**
+ * A bucket's subscriber that writes back into the keys it watches.
+ *
+ * Every write it makes is a new object event, which runs it again — forever,
+ * and billed per run. The rule is the one the build can check: a subscriber
+ * that depends on the bucket it watches must watch a prefix, so what it writes
+ * can go elsewhere. A thumbnailer watching `uploads/` writes `thumbnails/`.
+ */
+export class ObjectSubscriberFeedsItself extends Error {
+	constructor(
+		readonly subscriber: string,
+		readonly bucket: string,
+	) {
+		super(
+			`'${subscriber}' watches every key in '${bucket}' and depends on it, ` +
+				`so each object it writes runs it again. Watch a prefix — ` +
+				`.on([...], { prefix: 'uploads/' }) — and write outside it.`,
+		);
+		this.name = 'ObjectSubscriberFeedsItself';
+	}
+}
+
+function assertDoesNotFeedItself(
+	key: string,
+	construct: Subscriber<any, any, any, any, any, any, any>,
+): void {
+	const bucket = construct.bucketName;
+	if (!bucket || construct.objectFilter?.prefix) return;
+	const depends = (construct.constructs ?? []).some(
+		(id: string) => canonicalId(id) === canonicalId(bucket),
+	);
+	if (depends) throw new ObjectSubscriberFeedsItself(key, bucket);
 }

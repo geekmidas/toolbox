@@ -1361,8 +1361,9 @@ export const SUBSCRIBER_PUSH_URL_KEY = 'GKM_SUBSCRIBER_PUSH_URL';
  * Where SNS pushes to a worker on a deployed stage, or nothing when it pushes
  * to none of its subscribers.
  *
- * A subscriber is pushed to when its topic's connection string, as this stage
- * resolved it for the worker, is an SNS one — the same test the worker's own
+ * A subscriber is pushed to when the connection string its deliveries come
+ * from — its topic's, or its bucket's events — as this stage resolved it for
+ * the worker, is an SNS one — the same test the worker's own
  * startup makes, so the edge exposes a route exactly when the worker mounts
  * it. Each such route, and nothing else the worker serves, answers on
  * `<worker>.<domain>`.
@@ -1374,9 +1375,7 @@ export function workerPush(
 	options: { stage: string; domain?: string },
 ): WorkerPush | undefined {
 	const paths = subscribers
-		.filter(({ topic }) =>
-			env[provideKey(topic, 'publisherConnectionString')]?.startsWith('sns:'),
-		)
+		.filter(({ connectionKey }) => env[connectionKey]?.startsWith('sns:'))
 		.map(({ name }) => subscriberRoute(name))
 		.sort();
 	if (paths.length === 0) return undefined;

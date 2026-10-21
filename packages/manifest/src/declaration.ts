@@ -88,12 +88,33 @@ export interface ObjectsDeclaration extends Node {
 	kind: 'objects';
 	versioned?: boolean;
 	/**
+	 * The handlers bound to its objects changing, each with the events it
+	 * wants and the keys it watches.
+	 *
+	 * Nested as a topic's subscribers are, because position is the trigger:
+	 * a bucket is a topic whose publisher is the storage itself. Filled by the
+	 * build from what it found — a bucket names nobody who watches it.
+	 *
+	 * `prefix` and `suffix` are structural: *which* objects a handler reacts
+	 * to is a fact about the application, and a target can filter on them at
+	 * the source.
+	 */
+	subscribers?: readonly ObjectSubscriberDeclaration[];
+	/**
 	 * Days the objects under each prefix are kept before the bucket deletes
 	 * them, prefix → days. Structural: which generated files are ephemeral is
 	 * a fact about the application, not a stage's choice.
 	 */
 	expire?: Readonly<Record<string, number>>;
 }
+
+/** A handler bound to a bucket, as {@link ObjectsDeclaration} nests it. */
+export type ObjectSubscriberDeclaration = Fn & {
+	/** `object.created`, `object.deleted`. */
+	events: readonly string[];
+	prefix?: string;
+	suffix?: string;
+};
 
 /**
  * A domain that serves a bucket's objects.
@@ -954,7 +975,14 @@ export type AllProvidedKeys<M extends ConstructManifest> = {
  * `s3://` and `gs://` never appear here.
  */
 export interface ProvidesByKind {
-	objects: { url: string };
+	/**
+	 * The bucket, and — read only by the handlers bound to it — where its
+	 * object events are delivered from: an `sns://` topic the storage
+	 * publishes to, or the broker they are relayed onto. Never declared as
+	 * provided: a handler is bound to the bucket rather than depending on it,
+	 * so the key reaches exactly the process that runs one.
+	 */
+	objects: { url: string; eventsConnectionString?: string };
 	/** Where the served objects answer. Public: a browser is the point of it. */
 	'file-server': { url: string };
 	/**

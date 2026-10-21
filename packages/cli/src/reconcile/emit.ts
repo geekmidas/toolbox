@@ -147,6 +147,29 @@ export function withCompute(
 	}
 
 	for (const subscriber of compute.subscribers ?? []) {
+		// A bucket's subscriber nests in the bucket, as a topic's does in the
+		// topic: the storage is what triggers it.
+		if (subscriber.bucket) {
+			const bucket = next[canonicalId(subscriber.bucket)];
+			if (bucket?.kind !== 'objects') continue;
+
+			next[bucket.id] = {
+				...bucket,
+				subscribers: [
+					...(bucket.subscribers ?? []),
+					{
+						id: subscriber.name,
+						handler: subscriber.handler,
+						events: subscriber.subscribedEvents,
+						...(subscriber.prefix ? { prefix: subscriber.prefix } : {}),
+						...(subscriber.suffix ? { suffix: subscriber.suffix } : {}),
+						dependencies: edgesTo(manifest, subscriber.dependencies),
+					},
+				],
+			};
+			continue;
+		}
+
 		const topicId = subscriber.topic && canonicalId(subscriber.topic);
 		const topic = topicId ? next[topicId] : undefined;
 		if (topic?.kind !== 'topic') continue;
