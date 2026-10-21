@@ -8,10 +8,11 @@ import {
 } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
+import { CreateQueueCommand, SQSClient } from '@aws-sdk/client-sqs';
 import { build, type Plugin } from 'esbuild';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { POSTGRES_PORT } from '../../../../testkit/test/ports';
+import { LOCALSTACK_URL, POSTGRES_PORT } from '../../../../testkit/test/ports';
 import { bundleServer } from '../../build/bundler';
 import type { BuildContext } from '../../build/types';
 import type { EventsBackend } from '../../types';
@@ -335,6 +336,125 @@ describe('a bundled production server registers only its own broker', () => {
 			},
 		);
 	});
+});
+
+/**
+ * A server pushed to by SNS itself, rather than by an emulator: the deploy
+ * made each subscription and recorded its ARN, so the server subscribes
+ * nothing and mounts a route only for a recorded one.
+ *
+ * The topic's address names no endpoint — what decides SNS itself — so
+ * nothing here may reach AWS: no subscription is made, and every message
+ * below is refused before anything would confirm it.
+ */
+describe('an SNS server against SNS itself', () => {
+	const TOPIC_ARN = 'arn:aws:sns:us-east-1:123456789012:users';
+	const SUBSCRIPTION_ARN = `${TOPIC_ARN}:2bcfbf39-05c3-41de-beaa-fcfcc21c8f55`;
+	let server: string;
+	let env: Record<string, string>;
+
+	beforeAll(async () => {
+		const dir = project();
+		const outputDir = await generate(dir, 'sns');
+		server = (
+			await bundle(outputDir, [
+				...BROKER_MODULES.pgboss,
+				...BROKER_MODULES.rabbitmq,
+			])
+		).bundle;
+
+		// The queue consumer polls an SQS queue on the emulator; only the topic
+		// is SNS itself.
+		const sqs = new SQSClient({
+			region: 'us-east-1',
+			endpoint: LOCALSTACK_URL,
+			credentials: { accessKeyId: 'LSIAtest', secretAccessKey: 'test' },
+		});
+		const { QueueUrl } = await sqs.send(
+			new CreateQueueCommand({ QueueName: `emails-${Date.now()}` }),
+		);
+		sqs.destroy();
+		const queue = new URL('sqs://');
+		queue.searchParams.set('queueUrl', QueueUrl as string);
+		queue.searchParams.set('region', 'us-east-1');
+		queue.searchParams.set('endpoint', LOCALSTACK_URL);
+		const topic = new URL('sns://');
+		topic.searchParams.set('topicArn', TOPIC_ARN);
+		topic.searchParams.set('region', 'us-east-1');
+
+		env = {
+			USERS_PUBLISHER_CONNECTION_STRING: topic.toString(),
+			EMAILS_PUBLISHER_CONNECTION_STRING: queue.toString(),
+			AWS_ACCESS_KEY_ID: 'LSIAtest',
+			AWS_SECRET_ACCESS_KEY: 'test',
+			AWS_REGION: 'us-east-1',
+		};
+	}, 120_000);
+
+	const push = (port: number, body: unknown, subscriptionArn?: string) =>
+		fetch(`http://localhost:${port}/__gkm/subscribers/onUser`, {
+			method: 'POST',
+			headers: {
+				'content-type': 'text/plain',
+				...(subscriptionArn
+					? { 'x-amz-sns-subscription-arn': subscriptionArn }
+					: {}),
+			},
+			body: JSON.stringify(body),
+		});
+
+	const notification = {
+		Type: 'Notification',
+		MessageId: 'm-1',
+		TopicArn: TOPIC_ARN,
+		Message: JSON.stringify({ type: 'user.created', payload: { userId: 'u' } }),
+		Timestamp: new Date().toISOString(),
+		SignatureVersion: '1',
+		Signature: 'EXAMPLE',
+		SigningCertURL: 'EXAMPLE',
+	};
+
+	it(
+		'mounts no route for a subscriber the deploy recorded no subscription for',
+		{ timeout: 60_000 },
+		async () => {
+			const { child, port, output } = await start(server, env);
+			try {
+				await until(output, 'No subscription recorded for this subscriber');
+
+				expect((await push(port, notification)).status).toBe(404);
+				// Nothing subscribed from here: the deploy owns the subscriptions.
+				expect(output()).not.toContain('subscribed for push');
+			} finally {
+				child.kill('SIGKILL');
+			}
+		},
+	);
+
+	it(
+		'mounts a recorded one, and verifies what arrives on it',
+		{ timeout: 60_000 },
+		async () => {
+			const { child, port, output } = await start(server, {
+				...env,
+				GKM_SNS_SUBSCRIPTIONS: JSON.stringify({ onUser: SUBSCRIPTION_ARN }),
+			});
+			try {
+				await until(output, 'Subscriber mounted for push');
+
+				// Unsigned — what a forger sends — so refused before the handler.
+				const response = await push(port, notification, SUBSCRIPTION_ARN);
+				expect(response.status).toBe(403);
+				expect(await response.json()).toMatchObject({
+					error: 'SnsCertificateUntrusted',
+				});
+				expect(output()).not.toContain('"marker":"subscriber"');
+				expect(output()).not.toContain('subscribed for push');
+			} finally {
+				child.kill('SIGKILL');
+			}
+		},
+	);
 });
 
 const freePort = () =>

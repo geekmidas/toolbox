@@ -385,6 +385,16 @@ describe('SubscriberGenerator', () => {
 			const sns = await generate(['sns']);
 			expect(sns).toContain("await import('@geekmidas/events/sns')");
 			expect(sns).toContain('SnsPushSubscriberAdaptor');
+			// Against SNS itself: a route only for a subscription the deploy
+			// recorded, confirmed through the API, its ARN checked on arrival.
+			expect(sns).toContain('process.env.GKM_SNS_SUBSCRIPTIONS');
+			expect(sns).toContain('const subscriptionArn = recorded[id];');
+			expect(sns).toContain(
+				'confirm: (message) => confirmSubscription(connection, message)',
+			);
+			expect(sns).toContain("c.req.header('x-amz-sns-subscription-arn')");
+			// Only an emulator's route subscribes itself.
+			expect(sns.match(/subscribeHttpEndpoint\(connection/g)).toHaveLength(1);
 			expect(sns).toContain('http://host.docker.internal:');
 		});
 
