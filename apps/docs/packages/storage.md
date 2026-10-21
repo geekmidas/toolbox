@@ -18,6 +18,36 @@ Use [`FileServer`](/packages/constructs) instead when the objects are also
 served on a domain.
 :::
 
+## Expiring a prefix
+
+Files a bucket holds only for a while — generated documents, previews,
+temporary uploads — are deleted by the bucket itself, a number of days after
+each was written:
+
+```typescript
+export const files = new ObjectStorage('Private', {
+  expire: { 'quotes/': { days: 30 }, 'tmp/': { days: 1 } },
+});
+```
+
+`FileServer` takes the same option for the bucket it vends; one fronting a
+bucket declared elsewhere (`origin`) refuses it with `BucketOptionOnOrigin`,
+since the expiry belongs on that bucket's own construct.
+
+- **Prefixes are literal.** A lifecycle rule matches the start of a key, so
+  `'quotes/'` expires `quotes/2026/7.pdf`. An empty prefix, one starting with
+  `/`, or one containing `*` or `?` is refused with `ExpiryPrefixInvalid`.
+- **Whole days, one or more** — the unit the bucket counts in. Anything else
+  is refused with `ExpiryDaysInvalid`.
+- **Everywhere the bucket runs.** The `s3` provider writes one rule per
+  prefix on every deploy (see [Providers](/guide/providers#objects-s3)), and
+  `gkm dev`, `gkm test` and `gkm compose` write the same rules into their
+  MinIO. Rules gkm did not write are kept; removing `expire` removes gkm's.
+- **Not instant.** S3 and MinIO run lifecycle in the background, roughly once
+  a day, so an object can outlive its expiry by a day or so. On a versioned
+  bucket, expiry makes the current version noncurrent; the versions kept are
+  not removed.
+
 ## Installation
 
 ```bash
@@ -111,6 +141,35 @@ const uploadUrl = await storage.getUploadURL({
 // Client can upload directly to this URL
 // await fetch(uploadUrl, { method: 'PUT', body: file });
 ```
+
+### Signed Upload Forms
+
+`getUploadPost` signs a form a browser posts one file to, straight into the
+bucket. Its policy is enforced by the storage itself: a file over `maxSize`, or
+of a type the policy does not allow, is refused there, not by your server.
+
+```typescript
+const form = await storage.getUploadPost({
+  key: 'avatars/user-1.png',
+  maxSize: 5 * 1024 * 1024, // bytes
+  contentType: 'image/png', // or { startsWith: 'image/' }; absent, any type
+  expiresIn: 300, // seconds, the default
+});
+// { url, fields, key, expiresAt }
+
+// In the browser: every field, then the file last.
+const data = new FormData();
+for (const [name, value] of Object.entries(form.fields)) data.append(name, value);
+data.append('file', file);
+await fetch(form.url, { method: 'POST', body: data });
+```
+
+An exact `contentType` is fixed in `fields`. With `{ startsWith }` the client
+sets `Content-Type` itself, as a form field, and the storage checks the prefix.
+A policy fixes one type or one prefix — it cannot say "either of these" — which
+is why an endpoint's `.upload()` asks which type an upload is when it accepts
+several. Prefer this to `getUploadURL` for anything a browser sends: a
+presigned `PUT` cannot limit the size.
 
 ### List and Delete Files
 
@@ -219,6 +278,7 @@ interface StorageClient {
   getUpload(params: GetUploadParams, expiresIn?: number): Promise<GetUploadResponse>;
   getVersions(key: string): Promise<DocumentVersion[]>;
   getVersionDownloadURL(file: File, versionId: string): Promise<string>;
+  getUploadPost(params: UploadPostParams): Promise<UploadPost>;
 }
 
 interface File {
@@ -236,6 +296,10 @@ interface GetUploadParams {
 ```
 
 ## Usage with Endpoints
+
+For uploads, an endpoint's `.upload(bucket, …)` issues the signed form for you
+— see [Direct uploads](./constructs.md#direct-uploads). The bucket below is a
+service written by hand; a declared `ObjectStorage` needs none of it.
 
 ```typescript
 import { api } from '../constructs/api';

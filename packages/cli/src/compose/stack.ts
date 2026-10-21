@@ -61,7 +61,7 @@ import {
 	postgresSuperuser,
 } from '../reconcile/localCredentials.js';
 import { type Plan, type PlannedResource, planFor } from '../reconcile/plan.js';
-import { bucketPolicies } from '../reconcile/provision.js';
+import { bucketLifecycles, bucketPolicies } from '../reconcile/provision.js';
 import type { StageSecrets } from '../secrets/types.js';
 import { NoDomainForStage } from '../target/dokploy/domain.js';
 import {
@@ -476,6 +476,8 @@ export interface StackStorage {
 	buckets: string[];
 	/** The open paths of each served bucket. */
 	policies: { bucket: string; open: string[] }[];
+	/** How long each bucket keeps what is under each prefix. */
+	lifecycles: { bucket: string; expire: Readonly<Record<string, number>> }[];
 }
 
 export interface StackInput {
@@ -807,6 +809,9 @@ export function composeStack(input: StackInput): ComposeStack {
 					buckets,
 					policies: bucketPolicies(plan).filter((p) =>
 						buckets.includes(p.bucket),
+					),
+					lifecycles: bucketLifecycles(plan).filter((l) =>
+						buckets.includes(l.bucket),
 					),
 				};
 			})()

@@ -41,6 +41,7 @@
     "browser-client-address",
     "browser-trace-context",
     "bucket-check-says-why",
+    "bucket-expire",
     "build-follows-deploy-target",
     "build-skips-readiness",
     "bundle-missing-optional-peers",
@@ -101,6 +102,7 @@
     "edge-root-site",
     "encryption-cipher-drivers",
     "encryption-construct",
+    "endpoint-direct-uploads",
     "endpoint-form-bodies",
     "events-drivers",
     "exec-on-a-deployed-stage",
@@ -207,6 +209,7 @@
     "upgrade-follows-release-line",
     "v10-the-manifest-is-the-source",
     "worker-database",
+    "worker-push-host",
     "worker-template",
     "workers-deploy-unit"
   ]
