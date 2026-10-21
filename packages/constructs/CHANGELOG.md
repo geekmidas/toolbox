@@ -1,5 +1,81 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.119
+
+### Minor Changes
+
+- [#278](https://github.com/geekmidas/toolbox/pull/278) [`209a77d`](https://github.com/geekmidas/toolbox/commit/209a77dfca8c5522d2193a14d35ef2cad92d5701) Thanks [@geekmidas](https://github.com/geekmidas)! - A bucket can expire what is under a prefix
+
+  ```ts
+  new ObjectStorage("Private", { expire: { "quotes/": { days: 30 } } });
+  ```
+
+  `ObjectStorage` and the bucket a `FileServer` vends take `expire`: prefix →
+  `{ days }`. The manifest records it as `ObjectsDeclaration.expire` (prefix →
+  days). An empty, rooted or globbed prefix fails with `ExpiryPrefixInvalid`,
+  anything but a positive whole number of days with `ExpiryDaysInvalid`, and
+  `expire` on a file server fronting a bucket declared elsewhere with
+  `BucketOptionOnOrigin`.
+
+  The `s3` provider merges one rule per prefix (`gkm-expire-…`) into the
+  bucket's lifecycle on every deploy, keeping every rule it did not write and
+  removing its own when no longer declared. `gkm dev`, `gkm test` and
+  `gkm compose` write the same rules into their MinIO. A CI deploy role now
+  needs `s3:GetLifecycleConfiguration` and `s3:PutLifecycleConfiguration` on
+  the stage's buckets; `gkm deploy:github` includes them.
+
+- [#275](https://github.com/geekmidas/toolbox/pull/275) [`7880ca2`](https://github.com/geekmidas/toolbox/commit/7880ca23699651af20f36d1ae947b60e5fd37282) Thanks [@geekmidas](https://github.com/geekmidas)! - Direct uploads: `.upload(bucket, …)` on an endpoint
+
+  An endpoint can now hand the browser a signed form that uploads one file
+  straight to a bucket, so the file never passes through the server:
+
+  ```ts
+  export const avatarUpload = router
+    .post("/me/avatar")
+    .upload(uploads, {
+      key: ({ session }) => `avatars/${session.userId}.png`,
+      maxSize: 5 * 1024 * 1024,
+      accept: ["image/png"],
+    })
+    .handle(async ({ upload }) => upload); // { url, fields, key, expiresAt }
+  ```
+
+  The endpoint chooses the key, resolved from the session, body and params. The
+  form's policy, enforced by the storage itself, refuses a file over `maxSize`
+  (`content-length-range`) or of a type `accept` does not allow. The bucket
+  becomes a dependency, as with `.dependsOn([bucket])`. The form is the
+  endpoint's typed and documented output unless an `.output()` came first. A
+  policy fixes one type or one prefix (`image/*`), so an endpoint that accepts
+  several types says which one this upload is with `contentType`. A type outside
+  `accept` is refused with a 415. Options that could never be honoured fail when
+  the module loads.
+
+  - `@geekmidas/storage`: `StorageClient.getUploadPost({ key, maxSize, contentType?, expiresIn? })`,
+    a presigned POST whose policy limits size and type.
+  - `@geekmidas/schema`: a Standard Schema that implements Standard JSON Schema
+    (`~standard.jsonSchema`) converts to JSON Schema whatever its vendor. A
+    hand-written schema can now be documented in OpenAPI.
+
+### Patch Changes
+
+- Updated dependencies [[`209a77d`](https://github.com/geekmidas/toolbox/commit/209a77dfca8c5522d2193a14d35ef2cad92d5701), [`7880ca2`](https://github.com/geekmidas/toolbox/commit/7880ca23699651af20f36d1ae947b60e5fd37282)]:
+  - @geekmidas/manifest@10.0.0-alpha.119
+  - @geekmidas/storage@10.0.0-alpha.119
+  - @geekmidas/schema@10.0.0-alpha.119
+  - @geekmidas/audit@10.0.0-alpha.119
+  - @geekmidas/auth@10.0.0-alpha.119
+  - @geekmidas/cache@10.0.0-alpha.119
+  - @geekmidas/db@10.0.0-alpha.119
+  - @geekmidas/emailkit@10.0.0-alpha.119
+  - @geekmidas/envkit@10.0.0-alpha.119
+  - @geekmidas/errors@10.0.0-alpha.119
+  - @geekmidas/events@10.0.0-alpha.119
+  - @geekmidas/logger@10.0.0-alpha.119
+  - @geekmidas/rate-limit@10.0.0-alpha.119
+  - @geekmidas/services@10.0.0-alpha.119
+  - @geekmidas/telescope@10.0.0-alpha.119
+  - @geekmidas/testkit@10.0.0-alpha.119
+
 ## 10.0.0-alpha.118
 
 ### Minor Changes

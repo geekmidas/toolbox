@@ -1,5 +1,60 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.119
+
+### Minor Changes
+
+- [#278](https://github.com/geekmidas/toolbox/pull/278) [`209a77d`](https://github.com/geekmidas/toolbox/commit/209a77dfca8c5522d2193a14d35ef2cad92d5701) Thanks [@geekmidas](https://github.com/geekmidas)! - A bucket can expire what is under a prefix
+
+  ```ts
+  new ObjectStorage("Private", { expire: { "quotes/": { days: 30 } } });
+  ```
+
+  `ObjectStorage` and the bucket a `FileServer` vends take `expire`: prefix →
+  `{ days }`. The manifest records it as `ObjectsDeclaration.expire` (prefix →
+  days). An empty, rooted or globbed prefix fails with `ExpiryPrefixInvalid`,
+  anything but a positive whole number of days with `ExpiryDaysInvalid`, and
+  `expire` on a file server fronting a bucket declared elsewhere with
+  `BucketOptionOnOrigin`.
+
+  The `s3` provider merges one rule per prefix (`gkm-expire-…`) into the
+  bucket's lifecycle on every deploy, keeping every rule it did not write and
+  removing its own when no longer declared. `gkm dev`, `gkm test` and
+  `gkm compose` write the same rules into their MinIO. A CI deploy role now
+  needs `s3:GetLifecycleConfiguration` and `s3:PutLifecycleConfiguration` on
+  the stage's buckets; `gkm deploy:github` includes them.
+
+- [#274](https://github.com/geekmidas/toolbox/pull/274) [`b825ed9`](https://github.com/geekmidas/toolbox/commit/b825ed9d3aff5cc62ef113bef1cffb93ccc8f7ae) Thanks [@geekmidas](https://github.com/geekmidas)! - A compose worker SNS pushes to answers on a host of its own
+
+  A worker on a compose stage had no route at all, so a topic subscriber
+  delivered by SNS push had nowhere for SNS to reach it. When any of a worker's
+  topic subscribers resolves to an `sns://` connection string on a deployed
+  stage, the worker now answers on `<worker>.<domain>` — DNS record and
+  certificate included — on exactly those subscribers'
+  `/__gkm/subscribers/<export>` routes. Every other path is refused at the edge,
+  by Caddy and Traefik alike (`EdgeRoute.paths`). The worker is handed
+  `GKM_SUBSCRIBER_PUSH_URL` from the same route, so the address it subscribes
+  under is the one the edge serves. A worker whose topics are on pg-boss stays
+  private.
+
+  Two constructs routed to one host now fail the deploy with `EdgeHostTaken`
+  instead of one silently shadowing the other.
+
+### Patch Changes
+
+- Updated dependencies [[`209a77d`](https://github.com/geekmidas/toolbox/commit/209a77dfca8c5522d2193a14d35ef2cad92d5701), [`7880ca2`](https://github.com/geekmidas/toolbox/commit/7880ca23699651af20f36d1ae947b60e5fd37282)]:
+  - @geekmidas/constructs@10.0.0-alpha.119
+  - @geekmidas/manifest@10.0.0-alpha.119
+  - @geekmidas/storage@10.0.0-alpha.119
+  - @geekmidas/schema@10.0.0-alpha.119
+  - @geekmidas/cache@10.0.0-alpha.119
+  - @geekmidas/db@10.0.0-alpha.119
+  - @geekmidas/envkit@10.0.0-alpha.119
+  - @geekmidas/errors@10.0.0-alpha.119
+  - @geekmidas/logger@10.0.0-alpha.119
+  - @geekmidas/services@10.0.0-alpha.119
+  - @geekmidas/telescope@10.0.0-alpha.119
+
 ## 10.0.0-alpha.118
 
 ### Minor Changes
