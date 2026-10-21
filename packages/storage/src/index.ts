@@ -13,4 +13,8 @@ export {
 	registeredStorageSchemes,
 	registerStorageDriver,
 } from './registry';
-export type { StorageClient } from './StorageClient.ts';
+export type {
+	StorageClient,
+	UploadPost,
+	UploadPostParams,
+} from './StorageClient.ts';

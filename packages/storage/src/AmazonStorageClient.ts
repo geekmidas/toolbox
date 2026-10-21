@@ -5,7 +5,10 @@ import {
 	PutObjectCommand,
 	S3Client,
 } from '@aws-sdk/client-s3';
-import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
+import {
+	createPresignedPost,
+	type PresignedPostOptions,
+} from '@aws-sdk/s3-presigned-post';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import type { Cache } from '@geekmidas/cache';
@@ -17,6 +20,8 @@ import {
 	type GetUploadResponse,
 	type StorageClient,
 	StorageProvider,
+	type UploadPost,
+	type UploadPostParams,
 } from './StorageClient';
 import { type StorageOperation, traceStorage } from './telemetry';
 
@@ -187,6 +192,41 @@ export class AmazonStorageClient implements StorageClient {
 		const fields = keys.map((key) => ({ key, value: values[key] || '' }));
 
 		return { url, fields };
+	}
+
+	async getUploadPost({
+		key,
+		maxSize,
+		contentType,
+		expiresIn = 300,
+	}: UploadPostParams): Promise<UploadPost> {
+		const fields: Record<string, string> = {};
+		const conditions: NonNullable<PresignedPostOptions['Conditions']> = [
+			['content-length-range', 0, maxSize],
+		];
+		if (typeof contentType === 'string') {
+			fields['Content-Type'] = contentType;
+			conditions.push(['eq', '$Content-Type', contentType]);
+		} else if (contentType) {
+			conditions.push(['starts-with', '$Content-Type', contentType.startsWith]);
+		}
+
+		// Read before signing, so the timestamp is never later than the policy's.
+		const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+		const post = await this.traced(
+			'presign',
+			() =>
+				createPresignedPost(this.client, {
+					Bucket: this.bucket,
+					Key: key,
+					Expires: expiresIn,
+					Fields: fields,
+					Conditions: conditions,
+				}),
+			{ 'storage.presign.method': 'POST' },
+		);
+
+		return { url: post.url, fields: post.fields, key, expiresAt };
 	}
 
 	async upload(
