@@ -16,8 +16,11 @@ import type { WorkspaceDnsConfig } from '../../workspace/types';
 import {
 	applyStackDns,
 	checkStackDns,
+	diffRecordedDns,
 	HostNotPointingAtServer,
 	planStackDns,
+	pruneStackDns,
+	type RecordedDnsRecord,
 	requiredServerAddress,
 	ServerAddressInvalid,
 	ServerAddressMissing,
@@ -535,5 +538,192 @@ describe('the check', () => {
 
 		expect(failure.message).toContain('create these records at the DNS host');
 		expect(failure.message).toMatch(/files\.other\.org\s+A\s+203\.0\.113\.10/);
+	});
+});
+
+/** A record gkm wrote for the stage, as its state keeps it. */
+const written = (
+	fqdn: string,
+	type = 'A',
+	value = IPV4,
+	domain = 'example.com',
+): RecordedDnsRecord => ({
+	fqdn,
+	domain,
+	name: fqdn === domain ? '@' : fqdn.slice(0, -(domain.length + 1)),
+	type,
+	value,
+	ttl: 600,
+	provider: 'godaddy',
+});
+
+describe('what gkm wrote before, against the plan', () => {
+	const plan = (hosts: string[], ipv6?: string) =>
+		planStackDns({
+			stage: 'production',
+			hosts,
+			server: { ipv4: IPV4, ...(ipv6 ? { ipv6 } : {}) },
+			dns: dns(),
+		});
+
+	it("finds the old domain's records stale once the stage moves to a new one", () => {
+		const diff = diffRecordedDns(
+			plan(['store.example.com', 'api.store.example.com']),
+			[written('shop.example.com'), written('api.shop.example.com')],
+		);
+
+		expect(diff.added.map((r) => r.host)).toEqual([
+			'api.store.example.com',
+			'store.example.com',
+		]);
+		expect(diff.kept).toEqual([]);
+		expect(diff.stale.map((r) => r.fqdn)).toEqual([
+			'shop.example.com',
+			'api.shop.example.com',
+		]);
+	});
+
+	it('keeps a record the plan has at another value — the apply updates it', () => {
+		const diff = diffRecordedDns(plan(['api.shop.example.com']), [
+			written('api.shop.example.com', 'A', '198.51.100.7'),
+		]);
+
+		expect(diff.kept.map((r) => `${r.host} ${r.type}`)).toEqual([
+			'api.shop.example.com A',
+		]);
+		expect(diff.stale).toEqual([]);
+	});
+
+	it('finds an AAAA stale once the server has no IPv6 address', () => {
+		const diff = diffRecordedDns(plan(['api.shop.example.com']), [
+			written('api.shop.example.com'),
+			written('api.shop.example.com', 'AAAA', IPV6),
+		]);
+
+		expect(diff.stale.map((r) => `${r.fqdn} ${r.type}`)).toEqual([
+			'api.shop.example.com AAAA',
+		]);
+	});
+
+	it('matches names whatever their case or trailing dot', () => {
+		const diff = diffRecordedDns(plan(['API.Shop.example.com']), [
+			written('api.shop.example.com.'),
+		]);
+
+		expect(diff.stale).toEqual([]);
+		expect(diff.added).toEqual([]);
+	});
+});
+
+describe('pruning what the stage no longer serves', () => {
+	const options = (provider: DnsProvider | null, lines: string[]) => ({
+		stage: 'production',
+		dns: dns(),
+		log: (line: string) => lines.push(line),
+		providerFor: async () => provider,
+	});
+
+	it('deletes a stale record that still holds the value gkm wrote', async () => {
+		const provider = new RecordingDns([
+			{ name: 'api.shop', type: 'A', ttl: 600, values: [IPV4] },
+		]);
+		const lines: string[] = [];
+
+		const pruned = await pruneStackDns(
+			[written('api.shop.example.com')],
+			options(provider, lines),
+		);
+
+		expect(pruned.map((p) => p.action)).toEqual(['delete']);
+		expect(provider.writes).toEqual(['delete A api.shop']);
+		expect(provider.zone).toEqual([]);
+		expect(lines.join('\n')).toMatch(
+			/- api\.shop\.example\.com\s+A\s+203\.0\.113\.10 — delete/,
+		);
+	});
+
+	it('leaves one someone pointed elsewhere since', async () => {
+		const provider = new RecordingDns([
+			{ name: 'api.shop', type: 'A', ttl: 600, values: ['198.51.100.7'] },
+		]);
+		const lines: string[] = [];
+
+		const pruned = await pruneStackDns(
+			[written('api.shop.example.com')],
+			options(provider, lines),
+		);
+
+		expect(pruned).toEqual([
+			expect.objectContaining({ action: 'changed', found: ['198.51.100.7'] }),
+		]);
+		expect(provider.writes).toEqual([]);
+		expect(lines.join('\n')).toContain(
+			`pointed elsewhere since gkm wrote ${IPV4}; left as it is`,
+		);
+	});
+
+	it('forgets one that is already gone, deleting nothing', async () => {
+		const provider = new RecordingDns([]);
+
+		const pruned = await pruneStackDns(
+			[written('api.shop.example.com')],
+			options(provider, []),
+		);
+
+		expect(pruned.map((p) => p.action)).toEqual(['gone']);
+		expect(provider.writes).toEqual([]);
+	});
+
+	it('reads and prints on a dry run, and deletes nothing', async () => {
+		const provider = new RecordingDns([
+			{ name: 'api.shop', type: 'A', ttl: 600, values: [IPV4] },
+		]);
+		const lines: string[] = [];
+
+		await pruneStackDns([written('api.shop.example.com')], {
+			...options(provider, lines),
+			dryRun: true,
+		});
+
+		expect(provider.writes).toEqual([]);
+		expect(lines.join('\n')).toContain('would delete');
+	});
+
+	it('prints a record under a domain gone from dns for a person to remove', async () => {
+		const lines: string[] = [];
+		const provider = new RecordingDns([]);
+
+		const pruned = await pruneStackDns(
+			[written('api.shop.old.org', 'A', IPV4, 'old.org')],
+			options(provider, lines),
+		);
+
+		expect(pruned.map((p) => p.action)).toEqual(['manual']);
+		expect(provider.writes).toEqual([]);
+		expect(lines.join('\n')).toContain(
+			'old.org: no longer in dns — remove these records at its DNS host',
+		);
+		expect(lines.join('\n')).toMatch(
+			/api\.shop\.old\.org\s+A\s+203\.0\.113\.10/,
+		);
+	});
+
+	it("prints a manual domain's stale records, and asks no provider", async () => {
+		const lines: string[] = [];
+		let asked = false;
+
+		const pruned = await pruneStackDns([written('api.shop.example.com')], {
+			stage: 'production',
+			dns: { 'example.com': { provider: 'manual' } } as WorkspaceDnsConfig,
+			log: (line) => lines.push(line),
+			providerFor: async () => {
+				asked = true;
+				return null;
+			},
+		});
+
+		expect(asked).toBe(false);
+		expect(pruned.map((p) => p.action)).toEqual(['manual']);
+		expect(lines.join('\n')).toContain('example.com: manual');
 	});
 });

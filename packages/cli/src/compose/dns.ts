@@ -19,10 +19,17 @@
  *   resolver. One that is not the server stops the deploy with
  *   {@link HostNotPointingAtServer}, before Caddy or Traefik ask Let's Encrypt
  *   for a certificate it cannot get — and use up the rate limit trying.
- * - **The step** (`stageDns`): all three, as every deploy runs them — the plan applied through each provider,
- *   what was written read back from the provider, and only the hosts no
- *   provider wrote resolved publicly. A brand-new name is never looked up
- *   before its record exists, so no resolver caches it as missing.
+ * - **What gkm wrote before** (`diffRecordedDns`, pure): the plan against the
+ *   records the stage's state says gkm wrote — added, kept, and stale: a
+ *   host the stage no longer serves, after a domain or an app changed.
+ * - **The prune** (`pruneStackDns`): each stale record deleted through its
+ *   domain's provider, if it still holds the value gkm wrote. One someone
+ *   pointed elsewhere is left alone; one no provider can delete is printed.
+ * - **The step** (`stageDns`): all of it, as every deploy runs it — the plan applied through each provider,
+ *   what was written read back from the provider, the stale records pruned,
+ *   and only the hosts no provider wrote resolved publicly. A brand-new name
+ *   is never looked up before its record exists, so no resolver caches it as
+ *   missing.
  */
 
 import { lookup as dnsLookup } from 'node:dns/promises';
@@ -32,6 +39,7 @@ import type {
 	GoDaddyCredential,
 	HostingerCredential,
 } from '../deploy/credentials';
+import type { DnsResourceRecord } from '../deploy/dnsResources';
 import {
 	createDnsProvider,
 	type DnsProvider,
@@ -422,14 +430,41 @@ async function existingRecords(
 	plan: DomainDnsPlan,
 ): Promise<DnsRecord[]> {
 	const names = [...new Set(plan.records.map((r) => r.name))];
-	const wanted = names.flatMap((name) =>
-		MANAGED.map((type) => ({ name, type })),
+	return readRecords(
+		provider,
+		plan.domain,
+		names.flatMap((name) => MANAGED.map((type) => ({ name, type }))),
 	);
-	if (provider.readRecords) return provider.readRecords(plan.domain, wanted);
-	const all = await provider.getRecords(plan.domain);
-	return all.filter(
-		(r) =>
-			names.includes(r.name) && (MANAGED as readonly string[]).includes(r.type),
+}
+
+/** Exactly these names and types, as the provider holds them. */
+async function readRecords(
+	provider: DnsProvider,
+	domain: string,
+	wanted: readonly { name: string; type: StackRecordType }[],
+): Promise<DnsRecord[]> {
+	if (provider.readRecords) return provider.readRecords(domain, wanted);
+	const all = await provider.getRecords(domain);
+	return all.filter((r) =>
+		wanted.some((w) => w.name === r.name && w.type === r.type),
+	);
+}
+
+/** The provider for a domain's config: `providerFor`, or the real one. */
+function providerResolver(
+	options: Pick<
+		ApplyStackDnsOptions,
+		'providerFor' | 'credentials' | 'hostinger'
+	>,
+): (config: DnsProviderConfig) => Promise<DnsProvider | null> {
+	return (
+		options.providerFor ??
+		((config: DnsProviderConfig) =>
+			createDnsProvider({
+				config: config as SchemaDnsConfig,
+				...(options.credentials ? { godaddy: options.credentials } : {}),
+				...(options.hostinger ? { hostinger: options.hostinger } : {}),
+			}))
 	);
 }
 
@@ -571,14 +606,7 @@ export async function settleStackDns(
 ): Promise<StackDnsApplied> {
 	const dryRun = options.dryRun === true;
 	const log = options.log ?? ((line: string) => console.log(line));
-	const providerFor =
-		options.providerFor ??
-		((config: DnsProviderConfig) =>
-			createDnsProvider({
-				config: config as SchemaDnsConfig,
-				...(options.credentials ? { godaddy: options.credentials } : {}),
-				...(options.hostinger ? { hostinger: options.hostinger } : {}),
-			}));
+	const providerFor = providerResolver(options);
 
 	const changes: DnsChange[] = [];
 	const confirmed = new Set<string>();
@@ -729,6 +757,180 @@ export async function settleStackDns(
 		confirmed: [...confirmed].sort(),
 		unconfirmed: [...unconfirmed].filter((h) => !confirmed.has(h)).sort(),
 	};
+}
+
+// ============================================================================
+// What gkm wrote before: the diff and the prune
+// ============================================================================
+
+/** A record gkm wrote for the stage, as its state keeps it. */
+export type RecordedDnsRecord = DnsResourceRecord & { fqdn: string };
+
+/** The plan against the records the stage's state says gkm wrote. */
+export interface RecordedDnsDiff {
+	/** Planned, and never written by gkm for the stage. */
+	added: PlannedDnsRecord[];
+	/** Planned, and written by gkm before — at this value or another. */
+	kept: PlannedDnsRecord[];
+	/** Written by gkm before, and no longer planned. */
+	stale: RecordedDnsRecord[];
+}
+
+/** `api.example.com A` — a record's identity, whatever its value. */
+const recordKey = (fqdn: string, type: string) =>
+	`${fqdn.trim().replace(/\.$/, '').toLowerCase()} ${type.toUpperCase()}`;
+
+/**
+ * The plan against the records gkm wrote for the stage — pure. A record is
+ * its full name and its type: one the plan has at another value is kept (the
+ * apply updates it), and one whose name or type the plan no longer has is
+ * stale — a host the stage stopped serving when its domain or an app changed,
+ * or an AAAA once its server has no IPv6 address.
+ */
+export function diffRecordedDns(
+	plan: StackDnsPlan,
+	recorded: readonly RecordedDnsRecord[],
+): RecordedDnsDiff {
+	const planned = plan.domains.flatMap((domain) => domain.records);
+	const wanted = new Set(planned.map((r) => recordKey(r.host, r.type)));
+	const written = new Set(recorded.map((r) => recordKey(r.fqdn, r.type)));
+	return {
+		added: planned.filter((r) => !written.has(recordKey(r.host, r.type))),
+		kept: planned.filter((r) => written.has(recordKey(r.host, r.type))),
+		stale: recorded.filter((r) => !wanted.has(recordKey(r.fqdn, r.type))),
+	};
+}
+
+/** What the prune did with one stale record — or, in a dry run, would. */
+export interface PrunedDnsRecord {
+	record: RecordedDnsRecord;
+	/**
+	 * - `delete`: it still held the value gkm wrote, and is deleted
+	 * - `gone`: the provider no longer has it
+	 * - `changed`: it was pointed elsewhere since, and is left as it is
+	 * - `manual`: no provider gkm can use deletes it — printed for a person
+	 *
+	 * Each is forgotten from the stage's state: none is gkm's any more.
+	 */
+	action: 'delete' | 'gone' | 'changed' | 'manual';
+	/** What the provider holds, for `changed`. */
+	found?: string[];
+}
+
+export interface PruneStackDnsOptions
+	extends Pick<
+		ApplyStackDnsOptions,
+		'dryRun' | 'log' | 'credentials' | 'hostinger' | 'providerFor'
+	> {
+	stage: string;
+	dns: WorkspaceDnsConfig | undefined;
+}
+
+/**
+ * Each stale record deleted through its domain's provider — only where the
+ * provider still holds exactly the value gkm wrote, so a name someone has
+ * since pointed elsewhere is never taken from them. Where no provider can
+ * read and delete it — a `manual` domain, one gone from `dns`, a key that
+ * can only write — it is printed for a person to remove. A dry run reads
+ * and prints, and deletes nothing.
+ */
+export async function pruneStackDns(
+	stale: readonly RecordedDnsRecord[],
+	options: PruneStackDnsOptions,
+): Promise<PrunedDnsRecord[]> {
+	if (stale.length === 0) return [];
+	const dryRun = options.dryRun === true;
+	const log = options.log ?? ((line: string) => console.log(line));
+	const providerFor = providerResolver(options);
+	const dns = options.dns ? normalizeDnsConfig(options.dns) : {};
+
+	const byDomain = new Map<string, RecordedDnsRecord[]>();
+	for (const record of stale) {
+		byDomain.set(record.domain, [
+			...(byDomain.get(record.domain) ?? []),
+			record,
+		]);
+	}
+
+	log(`   No longer served by '${options.stage}':`);
+	const pruned: PrunedDnsRecord[] = [];
+	const byHand = (
+		domain: string,
+		records: RecordedDnsRecord[],
+		why: string,
+	) => {
+		log(`   ${domain}: ${why} — remove these records at its DNS host:`);
+		for (const record of records) {
+			log(
+				`     ${record.fqdn.padEnd(32)} ${record.type.padEnd(5)} ${record.value}`,
+			);
+			pruned.push({ record, action: 'manual' });
+		}
+	};
+
+	for (const [domain, records] of byDomain) {
+		const config = dns[domain];
+		if (!config) {
+			byHand(domain, records, 'no longer in dns');
+			continue;
+		}
+		const provider =
+			providerName(config) === 'manual' ? null : await providerFor(config);
+		if (!provider) {
+			byHand(domain, records, 'manual');
+			continue;
+		}
+
+		let existing: DnsRecord[];
+		try {
+			existing = await readRecords(
+				provider,
+				domain,
+				records.map((r) => ({ name: r.name, type: r.type as StackRecordType })),
+			);
+		} catch (error) {
+			if (!(error instanceof DnsRecordsUnreadable)) throw error;
+			byHand(
+				domain,
+				records,
+				`the ${provider.name} key cannot read its records, so none is deleted unchecked`,
+			);
+			continue;
+		}
+
+		const would = dryRun ? 'would ' : '';
+		const deletes: PrunedDnsRecord[] = [];
+		for (const record of records) {
+			const host = record.fqdn.padEnd(32);
+			const type = record.type.padEnd(5);
+			const found =
+				existing.find((r) => r.name === record.name && r.type === record.type)
+					?.values ?? [];
+			if (found.length === 0) {
+				log(`   · ${host} ${type} already gone`);
+				pruned.push({ record, action: 'gone' });
+			} else if (found.length === 1 && same(found[0]!, record.value)) {
+				log(`   - ${host} ${type} ${record.value} — ${would}delete`);
+				deletes.push({ record, action: 'delete' });
+			} else {
+				log(
+					`   ⚠ ${host} ${type} ${found.join(', ')} — pointed elsewhere since gkm wrote ${record.value}; left as it is`,
+				);
+				pruned.push({ record, action: 'changed', found });
+			}
+		}
+		if (!dryRun && deletes.length > 0) {
+			await provider.deleteRecords(
+				domain,
+				deletes.map(({ record }) => ({
+					name: record.name,
+					type: record.type as StackRecordType,
+				})),
+			);
+		}
+		pruned.push(...deletes);
+	}
+	return pruned;
 }
 
 // ============================================================================
@@ -994,6 +1196,8 @@ export interface StageDnsInput {
 	providerFor?: (config: DnsProviderConfig) => Promise<DnsProvider | null>;
 	/** GoDaddy's API, for tests: its base URL and how a 429 is waited out. */
 	godaddy?: Pick<GoDaddyProviderOptions, 'baseUrl' | 'sleep' | 'maxAttempts'>;
+	/** The records the stage's state says gkm wrote: the stale ones are pruned. */
+	recorded?: readonly RecordedDnsRecord[];
 }
 
 export interface StageDnsResult {
@@ -1003,13 +1207,22 @@ export interface StageDnsResult {
 	confirmed: string[];
 	/** Hosts the system resolver found pointing at the server. */
 	resolved: string[];
+	/** The plan against the records gkm wrote for the stage before. */
+	recorded: RecordedDnsDiff;
+	/**
+	 * The stale records pruned, through the providers this step used — called
+	 * once the stack serves its new hosts, so a run that stops short leaves
+	 * the old ones answering. In a dry run it reads and prints.
+	 */
+	prune: () => Promise<PrunedDnsRecord[]>;
 }
 
 /**
  * A stage's DNS, as every deploy runs it: the
  * stage's own hosts planned, written through each domain's provider where
- * they differ, and read back from it. Only A, AAAA and CNAME records of
- * those names are touched; nothing is a wildcard, and no other name is read,
+ * they differ, and read back from it — and each record gkm wrote for a host
+ * the stage no longer serves found, for `prune` to delete. Only A, AAAA and CNAME records of those
+ * names are touched; nothing is a wildcard, and no other name is read,
  * written or deleted. What no provider confirms — a `manual` domain, a host
  * under no domain in `dns`, a key that cannot read — is resolved publicly.
  * A dry run prints the plan and writes nothing.
@@ -1027,26 +1240,58 @@ export async function stageDns(input: StageDnsInput): Promise<StageDnsResult> {
 		server,
 		dns: input.dns,
 	});
+	const recorded = diffRecordedDns(plan, input.recorded ?? []);
+	// A stale record's domain needs its provider's token too — the stage's
+	// old domain, after it moved to another.
+	const dns = input.dns ? normalizeDnsConfig(input.dns) : {};
+	const staleDomains = [...new Set(recorded.stale.map((r) => r.domain))]
+		.filter(
+			(domain) => dns[domain] && !plan.domains.some((d) => d.domain === domain),
+		)
+		.map((domain) => ({ domain, config: dns[domain]! }));
 	const tokens = await dnsCredentials(
 		stage,
-		plan.domains.map(({ domain, config }) => ({ domain, config })),
+		[
+			...plan.domains.map(({ domain, config }) => ({ domain, config })),
+			...staleDomains,
+		],
 		input.credentials,
 	);
+	const providers = {
+		log,
+		credentials: {
+			...(input.godaddy ?? {}),
+			...(tokens.godaddy ? { credential: tokens.godaddy } : {}),
+			log,
+		},
+		...(tokens.hostinger ? { hostinger: tokens.hostinger } : {}),
+		...(input.providerFor ? { providerFor: input.providerFor } : {}),
+	};
 	// No `dns` at all: nothing to write, and every host is the person's to
 	// point — checked, without a line per host saying so.
 	const applied: StackDnsApplied = !input.dns
 		? { changes: [], confirmed: [], unconfirmed: [...plan.uncovered] }
 		: await settleStackDns(plan, {
 				...(input.dryRun ? { dryRun: true } : { confirm: true }),
-				log,
-				credentials: {
-					...(input.godaddy ?? {}),
-					...(tokens.godaddy ? { credential: tokens.godaddy } : {}),
-					log,
-				},
-				...(tokens.hostinger ? { hostinger: tokens.hostinger } : {}),
-				...(input.providerFor ? { providerFor: input.providerFor } : {}),
+				...providers,
 			});
+
+	// A record the apply already deleted — a change of mode — is not pruned.
+	const deleted = new Set(
+		applied.changes
+			.filter((c) => c.action === 'delete')
+			.map((c) => recordKey(fullName(c.domain, c.name), c.type)),
+	);
+	const stale = recorded.stale.filter(
+		(r) => !deleted.has(recordKey(r.fqdn, r.type)),
+	);
+	const prune = () =>
+		pruneStackDns(stale, {
+			stage,
+			dns: input.dns,
+			...(input.dryRun ? { dryRun: true } : {}),
+			...providers,
+		});
 
 	let resolved: string[] = [];
 	if (applied.unconfirmed.length > 0) {
@@ -1063,5 +1308,7 @@ export async function stageDns(input: StageDnsInput): Promise<StageDnsResult> {
 		changes: applied.changes,
 		confirmed: applied.confirmed,
 		resolved,
+		recorded,
+		prune,
 	};
 }
