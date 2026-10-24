@@ -617,6 +617,17 @@ belongs on some stages only — a demo tenant — decides by `stage`, typed by
 `SeedContext` from `@geekmidas/constructs` as one of the declared stages (see
 [Typed stages](./workspaces.md#typed-stages)).
 
+A seed gets the same client the app gets: the construct's `plugins` and
+other client options, on the owner's connection. With a `CamelCasePlugin`,
+a seed writes `isEditable` exactly as a handler does. A schema tenant's seeds
+use the tenant's own options and never its parent's. That keeps better-auth's
+camelCase tables untouched by a snake_case app's plugin.
+
+A migration gets a bare client, with no plugins. A casing plugin rewrites
+schema-builder DDL too, and a migration has to do the same thing on every
+stage forever, so it can't depend on options that may change. Write
+identifiers in a migration as they are stored: `is_editable`.
+
 ## Database connections
 
 Every pool opened by a `KyselyDatabase` names itself to Postgres, so
