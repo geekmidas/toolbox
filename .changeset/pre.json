@@ -167,6 +167,7 @@
     "random-password",
     "rate-limit-answers-429",
     "reconcile-reprovisions",
+    "runner-stdin-epipe",
     "scaffold-typescript-7",
     "secrets-add-checkpoints",
     "secrets-in-project-bucket",

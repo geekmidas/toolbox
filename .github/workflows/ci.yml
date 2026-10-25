@@ -26,8 +26,14 @@ jobs:
     name: Validate
     runs-on: ubuntu-latest
     steps:
+      # The whole history: in a shallow clone, `changeset version` finds the
+      # commit that added each changeset by `git fetch --deepen=50` in a loop
+      # with no limit, and on the runner that fetch has hung until the job's
+      # six-hour limit (#283, #285) while finishing in seconds locally.
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v5
         with:
@@ -155,6 +161,7 @@ jobs:
       # versioned in git and never published.
       - name: Release (dry run)
         if: github.event_name == 'pull_request'
+        timeout-minutes: 10
         run: scripts/release.sh dry-run
         # The changelog generator wraps @changesets/changelog-github, which
         # looks up each changeset's commit and pull request on GitHub. Main's
