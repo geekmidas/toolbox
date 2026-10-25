@@ -172,6 +172,7 @@
     "secrets-in-project-bucket",
     "secrets-manager-store",
     "secrets-store-adaptors",
+    "seeds-use-client-config",
     "server-crons",
     "session-reads-auth",
     "setup-leaves-node-env",

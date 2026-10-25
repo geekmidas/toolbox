@@ -1,5 +1,28 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.120
+
+### Patch Changes
+
+- [#291](https://github.com/geekmidas/toolbox/pull/291) [`825be35`](https://github.com/geekmidas/toolbox/commit/825be35d5d7eba2ba25af379ef65ccdc4c6d4e9f) Thanks [@geekmidas](https://github.com/geekmidas)! - Seeds get the database's own client
+
+  `gkm seed` used to give each seed a bare Kysely, so a `CamelCasePlugin` declared on the construct did nothing in a seed. A seed typed against the camel-cased `Database` failed with `column "isEditable" … does not exist`. Seeds now build their client from the construct's `clientConfig` on the owner's connection, the same client a handler or a test gets. A schema tenant's seeds use the tenant's own options and never its parent's.
+
+  Migrations keep a bare client. A casing plugin would rewrite their DDL too, and a migration that has already run must never change.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.120
+  - @geekmidas/constructs@10.0.0-alpha.120
+  - @geekmidas/db@10.0.0-alpha.120
+  - @geekmidas/envkit@10.0.0-alpha.120
+  - @geekmidas/errors@10.0.0-alpha.120
+  - @geekmidas/logger@10.0.0-alpha.120
+  - @geekmidas/manifest@10.0.0-alpha.120
+  - @geekmidas/schema@10.0.0-alpha.120
+  - @geekmidas/services@10.0.0-alpha.120
+  - @geekmidas/storage@10.0.0-alpha.120
+  - @geekmidas/telescope@10.0.0-alpha.120
+
 ## 10.0.0-alpha.119
 
 ### Minor Changes
