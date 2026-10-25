@@ -3,9 +3,9 @@ import { defineProject } from 'vitest/config';
 export default defineProject({
 	test: {
 		name: 'constructs',
-		// The KMS cipher is tested against floci, the AWS emulator: started if
-		// it is not already up, as for every suite that talks to it.
-		// Processors read and keep derivatives in MinIO.
+		// The KMS cipher is tested against floci, the AWS emulator, and direct
+		// uploads and processors' derivatives against MinIO: each started if it
+		// is not already up, as for every suite that talks to it.
 		globalSetup: [
 			'../testkit/test/awsSetup.ts',
 			'../testkit/test/minioSetup.ts',

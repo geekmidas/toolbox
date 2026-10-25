@@ -19,7 +19,7 @@ import {
 	migrationTargets,
 	provideKey,
 } from '@geekmidas/manifest';
-import type { Kysely } from 'kysely';
+import type { Kysely, KyselyConfig } from 'kysely';
 import type { Migrator } from 'kysely/migration';
 import pg from 'pg';
 import { GkmError } from '../errors';
@@ -233,6 +233,11 @@ export async function migrateDatabases(
  * Each runs in its own transaction, as the construct's owner, so a failure
  * leaves nothing half-written. Assumes the schema is migrated —
  * {@link migrateAndSeed} is what makes that true.
+ *
+ * A seed is handed the client the app gets — the construct's `clientConfig`,
+ * plugins included — on the owner's connection. One written against
+ * `Kysely<DB>` with a `CamelCasePlugin` writes `isEditable` here as it does in
+ * a handler or a test.
  */
 export async function seedDatabases(options: SeedOptions): Promise<SeedRun[]> {
 	const runs: SeedRun[] = [];
@@ -244,20 +249,26 @@ export async function seedDatabases(options: SeedOptions): Promise<SeedRun[]> {
 			continue;
 		}
 
-		const seeded = await withOwner(options, target, async (db, kysely) => {
-			const names: string[] = [];
-			for (const seed of await loadSeeds(folder, kysely.sql)) {
-				try {
-					await db
-						.transaction()
-						.execute((trx) => seed.run(trx, { stage: options.stage }));
-				} catch (error) {
-					throw new SeedFailed(target.id, seed.name, error);
+		const config = clientConfigOf(options, target);
+		const seeded = await withOwner(
+			options,
+			target,
+			config,
+			async (db, kysely) => {
+				const names: string[] = [];
+				for (const seed of await loadSeeds(folder, kysely.sql)) {
+					try {
+						await db
+							.transaction()
+							.execute((trx) => seed.run(trx, { stage: options.stage }));
+					} catch (error) {
+						throw new SeedFailed(target.id, seed.name, error);
+					}
+					names.push(seed.name);
 				}
-				names.push(seed.name);
-			}
-			return names;
-		});
+				return names;
+			},
+		);
 
 		runs.push({ target, seeded });
 	}
@@ -430,13 +441,18 @@ async function foldersIn(dir: string): Promise<string[]> {
  * Unordered migrations are allowed. Files are timestamped, so a branch merged
  * after another's migration ran carries an older one; refusing it would make
  * every such merge a manual repair.
+ *
+ * The client is bare — none of the construct's plugins. A casing plugin
+ * rewrites identifiers in schema-builder DDL too, and a migration must do the
+ * same thing forever after it has run, so it cannot depend on configuration
+ * that may change.
  */
 async function withMigrator<T>(
 	options: DatabasesOptions,
 	target: MigrationTarget,
 	run: (migrator: Migrator) => Promise<T>,
 ): Promise<T> {
-	return withOwner(options, target, (db, { Migrator, sql }) =>
+	return withOwner(options, target, {}, (db, { Migrator, sql }) =>
 		run(
 			new Migrator({
 				db,
@@ -449,11 +465,12 @@ async function withMigrator<T>(
 
 /**
  * One target's database, connected as its owner and closed afterwards — what
- * migrations and seeds both run as.
+ * migrations and seeds both run as, each with the client config it needs.
  */
 async function withOwner<T>(
 	options: DatabasesOptions,
 	target: MigrationTarget,
+	config: Omit<KyselyConfig, 'dialect'>,
 	run: (
 		db: Kysely<unknown>,
 		kysely: Awaited<ReturnType<typeof kyselyFrom>>,
@@ -466,6 +483,7 @@ async function withOwner<T>(
 	const kysely = await kyselyFrom(from);
 
 	const db: Kysely<unknown> = new kysely.Kysely<unknown>({
+		...config,
 		dialect: new kysely.PostgresDialect({
 			pool: new pg.Pool(poolConfig(ownerUrl(options, target))),
 		}),
@@ -476,6 +494,24 @@ async function withOwner<T>(
 	} finally {
 		await db.destroy();
 	}
+}
+
+/**
+ * What the construct builds its clients with besides a dialect — its plugins
+ * and logging — read from the construct discovery already imported.
+ *
+ * A tenant's is its own: `database.schema('Auth', { plugins })` declares the
+ * client for its tables, not the parent's. With no construct to ask (a
+ * manifest without sources), the client is bare.
+ */
+function clientConfigOf(
+	options: DatabasesOptions,
+	target: MigrationTarget,
+): Omit<KyselyConfig, 'dialect'> {
+	const construct = options.sources?.[target.id]?.construct;
+	if (typeof construct !== 'object' || construct === null) return {};
+	if (!('clientConfig' in construct)) return {};
+	return (construct.clientConfig as Omit<KyselyConfig, 'dialect'>) ?? {};
 }
 
 /**

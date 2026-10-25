@@ -2,8 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { KyselyDatabase } from '@geekmidas/constructs/database/kysely';
 import { roleStatements } from '@geekmidas/db/pg/roles';
 import type { ConstructManifest } from '@geekmidas/manifest';
+import { CamelCasePlugin } from 'kysely';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { TEST_DATABASE_CONFIG } from '../../../../testkit/test/globalSetup';
@@ -535,6 +537,108 @@ describe('seedDatabases', () => {
 		});
 		// The seed before it stays; the broken one's first insert does not.
 		expect(await roles()).toEqual(['Member', 'Super admin']);
+	});
+
+	describe('with the construct declaring a CamelCasePlugin', () => {
+		const camelCased = {
+			Database: {
+				...sources.Database,
+				construct: new KyselyDatabase('Database', {
+					plugins: [new CamelCasePlugin()],
+				}),
+			},
+		};
+
+		const columns = async () =>
+			(
+				await query<{ column_name: string }>(
+					'SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY column_name',
+					[app.schema, 'roles'],
+				)
+			).map((row) => row.column_name);
+
+		it('hands a seed the client the app gets, plugins included', async () => {
+			await writeFile(
+				join(root, 'db/database/migrations/20260101000100_editable.sql'),
+				'alter table roles add column is_editable boolean not null default true;',
+			);
+			await seedFile(
+				'roles.ts',
+				`export async function seed(db) {
+  await db.insertInto('roles').values({ name: 'Admin', isEditable: false })
+    .onConflict((oc) => oc.column('name').doNothing()).execute();
+}
+`,
+			);
+
+			await migrateAndSeed({
+				root,
+				manifest,
+				sources: camelCased,
+				env,
+				stage,
+			});
+
+			expect(
+				await query(`SELECT name, is_editable FROM "${app.schema}".roles`),
+			).toEqual([{ name: 'Admin', is_editable: false }]);
+		});
+
+		it('seeds a tenant with its own client, not its parent’s plugins', async () => {
+			// better-auth's tables are camelCase in a tenant of a snake_case app.
+			const tenanted = {
+				...camelCased,
+				AuthDatabase: {
+					...sources.Database,
+					exportName: 'authDatabase',
+					construct: camelCased.Database.construct.schema('AuthDatabase', {
+						schema: auth.schema,
+					}),
+				},
+			};
+			await mkdir(join(root, 'db/auth-database/seeds'), { recursive: true });
+			await writeFile(
+				join(root, 'db/auth-database/migrations/20260101000100_user.sql'),
+				'create table "user" ("id" text primary key, "emailVerified" boolean not null);',
+			);
+			await writeFile(
+				join(root, 'db/auth-database/seeds/user.ts'),
+				`export async function seed(db) {
+  await db.insertInto('user').values({ id: 'system', emailVerified: true })
+    .onConflict((oc) => oc.column('id').doNothing()).execute();
+}
+`,
+			);
+
+			await migrateAndSeed({
+				root,
+				manifest,
+				sources: tenanted,
+				env,
+				stage,
+				only: 'auth-database',
+			});
+
+			expect(
+				await query(
+					`SELECT "id", "emailVerified" FROM "${auth.schema}"."user"`,
+				),
+			).toEqual([{ id: 'system', emailVerified: true }]);
+		});
+
+		it('runs migrations bare, so what one did never changes with the plugins', async () => {
+			await writeFile(
+				join(root, 'db/database/migrations/20260101000100_legacy.ts'),
+				`export async function up(db) {
+  await db.schema.alterTable('roles').addColumn('legacyName', 'text').execute();
+}
+`,
+			);
+
+			await migrateDatabases({ root, manifest, sources: camelCased, env });
+
+			expect(await columns()).toEqual(['legacyName', 'name']);
+		});
 	});
 
 	it('refuses a seed script that exports no seed', async () => {
