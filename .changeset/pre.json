@@ -54,6 +54,7 @@
     "compose-backups",
     "compose-build-push",
     "compose-deploy-state",
+    "compose-dns-prune",
     "compose-env-follows-edges",
     "compose-logs",
     "compose-redis-cache",

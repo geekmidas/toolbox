@@ -482,7 +482,27 @@ export interface DeployConfig<S extends string = string> {
 	 * long a backup is kept — see {@link StageBackupsConfig}.
 	 */
 	backups?: StageMap<S, StageBackupsConfig>;
+	/**
+	 * The deployed stages whose sites ask for a password before anything
+	 * loads — every site with `true`, or the ones named. Compose only, for now.
+	 *
+	 * The edge asks with HTTP basic auth: the user is the stage's name, and
+	 * the password is generated once per site into the stage's secrets
+	 * (`<SITE>_SITE_PASSWORD`, read with `gkm secrets:show --reveal`), where
+	 * one set by hand wins. A stage left out, and the local stage, are public.
+	 *
+	 * ```ts
+	 * sitePassword: {
+	 *   staging: true,     // every site on staging
+	 *   preview: ['web'],  // only these
+	 * }
+	 * ```
+	 */
+	sitePassword?: StageMap<S, SitePasswordChoice>;
 }
+
+/** Every site of a stage, or the ones named — see {@link DeployConfig.sitePassword}. */
+export type SitePasswordChoice = true | readonly string[];
 
 /**
  * Models package configuration for shared schemas.
@@ -984,7 +1004,7 @@ export type WorkspaceInput<
 	/**
 	 * The project's stages: which one is local, which deploy. The deployed
 	 * stages type every per-stage map — `domains`, `deploy.objects`,
-	 * `deploy.telemetry`, `deploy.compose.proxy`/`tls`.
+	 * `deploy.telemetry`, `deploy.sitePassword`, `deploy.compose.proxy`/`tls`.
 	 */
 	stages: StagesInput<TDeployed>;
 	/** Encrypted secrets configuration */

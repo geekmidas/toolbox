@@ -53,6 +53,12 @@ export interface EdgeRoute {
 	 * every path. A worker is reached only on the routes SNS pushes to.
 	 */
 	paths?: readonly string[];
+	/**
+	 * The login every request must carry — HTTP basic auth, asked for by the
+	 * edge before anything reaches the upstream. Absent, it asks for none.
+	 * The password's bcrypt hash, never the password.
+	 */
+	auth?: { user: string; hash: string };
 	/** The path the upstream answers its health on — `/health`, `/`. */
 	health?: string;
 }

@@ -9,6 +9,7 @@
  */
 
 import { dnsCredentials, stageDnsDomains } from '../compose/dns.js';
+import { assertSitePasswordTarget } from '../compose/sitePassword.js';
 import { GkmError } from '../errors';
 import { provisionStage } from '../providers/index.js';
 import { type BoundSubscriber, discover } from '../reconcile/discover.js';
@@ -477,6 +478,9 @@ async function prepare(
 	if (allowDevServices && resolved.target.runtime === 'aws') {
 		throw new DevServicesNeedServerTarget(targetName);
 	}
+	// A stage whose sites are meant to be private, on a target that would
+	// serve them publicly, fails before anything is deployed.
+	assertSitePasswordTarget(configured, stage, resolved.target.name);
 
 	// What to deploy comes from the manifest.
 	//
