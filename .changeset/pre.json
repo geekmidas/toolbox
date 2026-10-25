@@ -61,6 +61,7 @@
     "compose-remote-docker",
     "compose-server-fresh-root",
     "compose-server",
+    "compose-site-password",
     "compose-target",
     "compose-traefik-edge",
     "constructs-feature-test",
