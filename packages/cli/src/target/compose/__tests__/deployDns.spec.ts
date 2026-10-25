@@ -26,10 +26,17 @@ import { DnsCredentialMissing } from '../../../compose/dns';
 import { composeCommand } from '../../../compose/index';
 import { storedCredentials } from '../../../deploy/credentials';
 import { deploy } from '../../../deploy/deploy';
-import { dnsResourceKey } from '../../../deploy/dnsResources';
+import {
+	dnsResourceKey,
+	dnsResources,
+	recordDnsResource,
+} from '../../../deploy/dnsResources';
 import type { DeployEvent } from '../../../deploy/events';
+import { DeployJournal } from '../../../deploy/journal';
 import { createStateStore } from '../../../deploy/StateStore';
+import { createComposeState } from '../../../deploy/state';
 import type { SqlClient } from '../../../reconcile/provision';
+import { ComposeAppsUnhealthy } from '../health';
 import { type ComposeDeps, composeTarget } from '../index';
 
 /**
@@ -75,6 +82,16 @@ const server = setupServer(
 				`${domain} ${type} ${name}`,
 				(await request.json()) as { data: string; ttl: number }[],
 			);
+			return new HttpResponse(null, { status: 204 });
+		},
+	),
+	http.delete(
+		'https://api.godaddy.com/v1/domains/:domain/records/:type/:name',
+		({ params, request }) => {
+			expect(request.headers.get('Authorization')).toBe(`Bearer ${TOKEN}`);
+			const { domain, type, name } = params as Record<string, string>;
+			requests.push(`DELETE ${domain} ${type} ${name}`);
+			zone.delete(`${domain} ${type} ${name}`);
 			return new HttpResponse(null, { status: 204 });
 		},
 	),
@@ -129,6 +146,8 @@ async function run(
 		dryRun?: boolean;
 		skipDns?: boolean;
 		lookup?: (host: string) => Promise<string[]>;
+		/** Every app answers with this status — 200 by default. */
+		status?: number;
 	} = {},
 ) {
 	const fake = fakeDocker();
@@ -144,6 +163,7 @@ async function run(
 		migrate: async () => [],
 		seed: async () => [],
 		healthIntervalMs: 0,
+		...(options.status ? { healthAttempts: 1 } : {}),
 		lookup: async (host) => {
 			looked.push(host);
 			if (options.lookup) return options.lookup(host);
@@ -153,7 +173,10 @@ async function run(
 		},
 		docker: fake.docker,
 		server: fakeServer([]),
-		probe: answering(fake.calls),
+		probe:
+			options.status === undefined
+				? answering(fake.calls)
+				: async () => options.status!,
 	};
 	const token = options.token === undefined ? TOKEN : options.token;
 	const deployed = deploy({
@@ -395,3 +418,131 @@ describe('the deploy writes its DNS records', { timeout: RUN_TIMEOUT }, () => {
 		expect(logs.join('\n')).toContain(`198.51.100.7 → ${SERVER_IPV4}`);
 	});
 });
+
+/** The stage's state store, as the deploy reads it. */
+const stateStore = () =>
+	createStateStore({
+		config: undefined,
+		workspaceRoot: dir,
+		workspaceName: 'compose-app',
+	});
+
+/**
+ * The stage as a deploy at `old.example.com` left it: its three hosts'
+ * records in the zone, and in its state as gkm's.
+ */
+async function deployedAtOldDomain() {
+	const journal = await DeployJournal.open(
+		await stateStore(),
+		'production',
+		() => createComposeState('production'),
+	);
+	for (const name of ['old', 'api.old', 'auth.old']) {
+		zone.set(`example.com A ${name}`, [{ data: SERVER_IPV4, ttl: 600 }]);
+		await recordDnsResource(journal, {
+			domain: 'example.com',
+			name,
+			type: 'A',
+			value: SERVER_IPV4,
+			ttl: 600,
+			provider: 'godaddy',
+		});
+	}
+}
+
+const DELETES = () => requests.filter((r) => r.startsWith('DELETE')).sort();
+
+describe(
+	'the deploy after the stage moves to another domain',
+	{ timeout: RUN_TIMEOUT },
+	() => {
+		it("writes the new domain's records, then deletes the old one's and forgets them", async () => {
+			workspace();
+			await serveFrom(dir);
+			await deployedAtOldDomain();
+
+			const { error, logs } = await run('production');
+
+			expect(error).toBeUndefined();
+			expect(PUTS().sort()).toEqual([
+				'PUT example.com A api.shop',
+				'PUT example.com A auth.shop',
+				'PUT example.com A shop',
+			]);
+			expect(DELETES()).toEqual([
+				'DELETE example.com A api.old',
+				'DELETE example.com A auth.old',
+				'DELETE example.com A old',
+			]);
+			// The old records go only once the new ones answer.
+			const lastPut = Math.max(...PUTS().map((r) => requests.indexOf(r)));
+			expect(requests.findIndex((r) => r.startsWith('DELETE'))).toBeGreaterThan(
+				lastPut,
+			);
+			expect(zone.has('example.com A old')).toBe(false);
+			expect(logs).toContain('🌐 3 records deleted');
+
+			const stored = await (await stateStore()).read('production');
+			expect(dnsResources(stored!.resources).map((r) => r.fqdn)).toEqual([
+				'api.shop.example.com',
+				'auth.shop.example.com',
+				'shop.example.com',
+			]);
+		});
+
+		it('leaves a record someone pointed elsewhere since, and forgets it', async () => {
+			workspace();
+			await serveFrom(dir);
+			await deployedAtOldDomain();
+			zone.set('example.com A api.old', [{ data: '198.51.100.7', ttl: 600 }]);
+
+			const { error } = await run('production');
+
+			expect(error).toBeUndefined();
+			expect(DELETES()).toEqual([
+				'DELETE example.com A auth.old',
+				'DELETE example.com A old',
+			]);
+			expect(zone.get('example.com A api.old')).toEqual([
+				{ data: '198.51.100.7', ttl: 600 },
+			]);
+			const stored = await (await stateStore()).read('production');
+			expect(
+				stored!.resources[dnsResourceKey('api.old.example.com', 'A')],
+			).toBeUndefined();
+		});
+
+		it('keeps the old records while the stack does not answer on the new ones', async () => {
+			workspace();
+			await serveFrom(dir);
+			await deployedAtOldDomain();
+
+			const { error } = await run('production', { status: 502 });
+
+			expect(error).toBeInstanceOf(ComposeAppsUnhealthy);
+			expect(DELETES()).toEqual([]);
+			expect(zone.get('example.com A old')).toEqual([
+				{ data: SERVER_IPV4, ttl: 600 },
+			]);
+			const stored = await (await stateStore()).read('production');
+			expect(
+				stored!.resources[dnsResourceKey('old.example.com', 'A')],
+			).toBeDefined();
+		});
+
+		it('prints what it would delete on a dry run, and deletes nothing', async () => {
+			workspace();
+			await serveFrom(dir);
+			await deployedAtOldDomain();
+
+			const { error, logs } = await run('production', { dryRun: true });
+
+			expect(error).toBeUndefined();
+			expect(DELETES()).toEqual([]);
+			expect(logs).toContain("   No longer served by 'production':");
+			expect(logs).toContain(
+				`   - old.example.com                  A     ${SERVER_IPV4} — would delete`,
+			);
+		});
+	},
+);

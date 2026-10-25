@@ -1,5 +1,26 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.121
+
+### Patch Changes
+
+- [`08bdedb`](https://github.com/geekmidas/toolbox/commit/08bdedbae21cced4275d0329c777c430e4d65b70) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm compose:server` no longer dies on a program that exits without reading its input
+
+  The runner behind `gkm compose:server` writes each command's input to its stdin. When the program exited before reading all of it, the write met a closed pipe, and the `EPIPE` it raised had no listener, so it was thrown as an uncaught exception instead of the run reporting the program's exit. The runner now ignores that error: the exit code already says how the program went.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.121
+  - @geekmidas/constructs@10.0.0-alpha.121
+  - @geekmidas/db@10.0.0-alpha.121
+  - @geekmidas/envkit@10.0.0-alpha.121
+  - @geekmidas/errors@10.0.0-alpha.121
+  - @geekmidas/logger@10.0.0-alpha.121
+  - @geekmidas/manifest@10.0.0-alpha.121
+  - @geekmidas/schema@10.0.0-alpha.121
+  - @geekmidas/services@10.0.0-alpha.121
+  - @geekmidas/storage@10.0.0-alpha.121
+  - @geekmidas/telescope@10.0.0-alpha.121
+
 ## 10.0.0-alpha.120
 
 ### Patch Changes
