@@ -8,9 +8,11 @@ import {
 	applyBuckets,
 	applyCarriers,
 	applyLifecycles,
+	applyNotifications,
 	applyPolicies,
 	applyPostgres,
 	type BucketClient,
+	type BucketNotification,
 	bucketLifecycles,
 	bucketNames,
 	bucketPolicies,
@@ -457,6 +459,8 @@ describe('bucket policies', () => {
 				writes.push(document);
 				stored = document;
 			},
+			notification: async () => ({}),
+			setNotification: async () => {},
 			lifecycle: async () => undefined,
 			setLifecycle: async () => {},
 		};
@@ -474,6 +478,8 @@ describe('bucket policies', () => {
 			create: async () => {},
 			policy: async () => '{"Version":"2012-10-17","Statement":[]}',
 			setPolicy: async () => {},
+			notification: async () => ({}),
+			setNotification: async () => {},
 			lifecycle: async () => undefined,
 			setLifecycle: async () => {},
 		};
@@ -481,6 +487,106 @@ describe('bucket policies', () => {
 		expect(
 			(await applyPolicies(client, bucketPolicies(plan())))[0],
 		).toMatchObject({ created: true });
+	});
+});
+
+describe('object events from MinIO', () => {
+	/** A bucket client that keeps each bucket's notification, and counts writes. */
+	function store(initial: Record<string, BucketNotification> = {}) {
+		const notifications: Record<string, BucketNotification> = { ...initial };
+		const writes: string[] = [];
+		const client: BucketClient = {
+			exists: async () => true,
+			create: async () => {},
+			policy: async () => undefined,
+			setPolicy: async () => {},
+			lifecycle: async () => undefined,
+			setLifecycle: async () => {},
+			notification: async (bucket) => notifications[bucket] ?? {},
+			setNotification: async (bucket, notification) => {
+				writes.push(bucket);
+				notifications[bucket] = notification;
+			},
+		};
+		return { client, notifications, writes };
+	}
+	const buckets = [
+		{ id: 'Uploads', name: 'uploads' },
+		{ id: 'Reports', name: 'reports' },
+	];
+
+	it("points a watched bucket's events at its target, once", async () => {
+		const { client, notifications, writes } = store();
+
+		const first = await applyNotifications(
+			client,
+			buckets,
+			new Set(['Uploads']),
+		);
+		const second = await applyNotifications(
+			client,
+			buckets,
+			new Set(['Uploads']),
+		);
+
+		expect(notifications.uploads?.QueueConfigurations).toEqual([
+			{
+				Id: 'gkm-Uploads',
+				QueueArn: 'arn:minio:sqs::UPLOADS:webhook',
+				Events: ['s3:ObjectCreated:*', 's3:ObjectRemoved:*'],
+			},
+		]);
+		// A bucket nothing watches, with nothing of gkm's on it, is left alone.
+		expect(notifications.reports).toBeUndefined();
+		expect(first).toEqual([
+			{
+				id: 'uploads:events',
+				describe: 'object events from uploads',
+				created: true,
+			},
+		]);
+		expect(second[0]?.created).toBe(false);
+		expect(writes).toEqual(['uploads']);
+	});
+
+	it('keeps every rule it did not write, and removes its own once unwatched', async () => {
+		const mine = {
+			Id: 'gkm-Uploads',
+			QueueArn: 'arn:minio:sqs::UPLOADS:webhook',
+			Events: ['s3:ObjectCreated:*', 's3:ObjectRemoved:*'],
+		};
+		const theirs = {
+			Id: 'audit',
+			QueueArn: 'arn:minio:sqs::AUDIT:webhook',
+			Events: ['s3:ObjectRemoved:*'],
+		};
+		const { client, notifications } = store({
+			uploads: { QueueConfigurations: [theirs] },
+		});
+
+		await applyNotifications(client, buckets, new Set(['Uploads']));
+		expect(notifications.uploads?.QueueConfigurations).toEqual([theirs, mine]);
+
+		await applyNotifications(client, buckets, new Set());
+		expect(notifications.uploads?.QueueConfigurations).toEqual([theirs]);
+	});
+
+	it('takes a rule read back in another order, with an empty filter, as converged', async () => {
+		const { client, writes } = store({
+			uploads: {
+				QueueConfigurations: [
+					{
+						Id: 'gkm-Uploads',
+						QueueArn: 'arn:minio:sqs::UPLOADS:webhook',
+						Events: ['s3:ObjectRemoved:*', 's3:ObjectCreated:*'],
+						Filter: { Key: { FilterRules: [] } },
+					},
+				],
+			},
+		});
+
+		await applyNotifications(client, buckets, new Set(['Uploads']));
+		expect(writes).toEqual([]);
 	});
 });
 
@@ -508,6 +614,8 @@ describe('bucket lifecycles', () => {
 			create: async () => {},
 			policy: async () => undefined,
 			setPolicy: async () => {},
+			notification: async () => ({}),
+			setNotification: async () => {},
 			lifecycle: async (bucket) => stored[bucket],
 			setLifecycle: async (bucket, rules) => {
 				writes.push(bucket);
@@ -597,7 +705,6 @@ describe('bucket lifecycles', () => {
 		expect(stored).not.toHaveProperty('private');
 	});
 });
-
 describe('carriers on the AWS emulator', () => {
 	const manifest = {
 		Orders: { kind: 'database', id: 'Orders', provides: ['ORDERS_URL'] },

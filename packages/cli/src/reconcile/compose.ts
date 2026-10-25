@@ -21,6 +21,11 @@ import { LOGS_RETENTION_DAYS } from '../compose/logsConfig.js';
 import { DEFAULT_IMAGES, portsOf, postgresImage, volumeOf } from './containers';
 import { EMULATOR_REGION } from './emulator';
 import type { ContainerCredentials } from './localCredentials';
+import {
+	HOST_GATEWAY,
+	minioWebhookEnv,
+	type ObjectWebhook,
+} from './objectEvents';
 import type { Plan } from './plan';
 import type { PortAssignments } from './ports';
 
@@ -74,6 +79,11 @@ export interface ComposeOptions {
 	 * logins — see `localCredentials.ts` — or a stack's derived ones.
 	 */
 	credentials: ContainerCredentials;
+	/**
+	 * Where MinIO posts each watched bucket's events — see `objectEvents.ts`.
+	 * Declared as MinIO's environment, so a change recreates the container.
+	 */
+	objectWebhooks?: readonly ObjectWebhook[];
 }
 
 /**
@@ -121,6 +131,23 @@ export function composeFor(plan: Plan, options: ComposeOptions): ComposeFile {
 
 		const volume = volumeOf(container);
 		if (volume) volumes[volume] = {};
+	}
+
+	const minio = services.minio;
+	if (minio && options.objectWebhooks?.length) {
+		minio.environment = {
+			...minio.environment,
+			...minioWebhookEnv(options.objectWebhooks),
+		};
+		// Locally it posts to a process on the host, which Docker Desktop
+		// resolves on its own and Linux needs mapped.
+		if (
+			options.objectWebhooks.some((hook) =>
+				hook.endpoint.includes(`//${HOST_GATEWAY}:`),
+			)
+		) {
+			minio.extra_hosts = [`${HOST_GATEWAY}:host-gateway`];
+		}
 	}
 
 	return {

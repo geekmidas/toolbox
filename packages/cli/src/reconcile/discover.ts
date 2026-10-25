@@ -31,6 +31,7 @@ import { clearZodGlobalRegistry } from '../generators/Generator';
 import { output } from '../output';
 import { activeSandbox, type Sandbox } from '../sandbox/sandbox';
 import { runWorker } from '../sandbox/worker';
+import { eventsEdge, subscriberConnectionKey } from './edges';
 
 /** `console`, or the deploy run discovering the manifest. */
 const logger = output;
@@ -105,9 +106,9 @@ export interface DiscoverOptions {
 	 */
 	background?: Record<string, string[]>;
 	/**
-	 * Filled in, when provided, with each worker's topic subscribers — by the
-	 * export a push route is named after, and the topic each is bound to —
-	 * keyed by the worker.
+	 * Filled in, when provided, with each worker's subscribers — by the export
+	 * a push route is named after, and the key its deliveries come from: its
+	 * topic's, or its bucket's events — keyed by the worker.
 	 *
 	 * What says which worker SNS pushes to, and on which paths: a build bound
 	 * for a server records no subscriber in the manifest, because none has a
@@ -123,12 +124,23 @@ export interface DiscoverOptions {
 	sandbox?: Sandbox;
 }
 
-/** A worker's topic subscriber, as discovery found it. */
+/** A worker's subscriber — to a topic or to a bucket — as discovery found it. */
 export interface BoundSubscriber {
 	/** Its export — what its push route is named after. */
 	name: string;
-	/** The topic it is bound to, by id. */
-	topic: string;
+	/**
+	 * The env key its deliveries come from: its topic's publisher connection
+	 * string, or its bucket's events connection string. An `sns://` value is
+	 * what makes SNS push to it.
+	 */
+	connectionKey: string;
+	/**
+	 * The event types a topic subscriber names — its SNS subscription's filter
+	 * on the `type` attribute the topic's publisher sets. Absent for a
+	 * bucket's subscriber: S3 sets no such attribute, and the subscriber's own
+	 * filter decides.
+	 */
+	events?: readonly string[];
 }
 
 /** What the discovery worker answers. Checked: the worker ran project code. */
@@ -144,7 +156,13 @@ const DiscoverAnswer = z.discriminatedUnion('reason', [
 		subscribers: z
 			.record(
 				z.string(),
-				z.array(z.object({ name: z.string(), topic: z.string() })),
+				z.array(
+					z.object({
+						name: z.string(),
+						connectionKey: z.string(),
+						events: z.array(z.string()).optional(),
+					}),
+				),
 			)
 			.optional(),
 	}),
@@ -421,8 +439,9 @@ function recordBackground(
 }
 
 /**
- * Record a topic subscriber under the worker that runs it, by its export.
- * Once per name: a file reached twice through a re-export finds it again.
+ * Record a subscriber — to a topic or to a bucket — under the worker that
+ * runs it, by its export. Once per name: a file reached twice through a
+ * re-export finds it again.
  */
 function recordSubscriber(
 	subscribers: Record<string, BoundSubscriber[]>,
@@ -430,18 +449,24 @@ function recordSubscriber(
 	exportName: string,
 ): void {
 	if (!Subscriber.isSubscriber(exported)) return;
-	const { owner, topicName } = exported as {
-		owner?: unknown;
-		topicName?: unknown;
-	};
-	if (typeof owner !== 'string' || typeof topicName !== 'string') return;
+	const owner = (exported as { owner?: unknown }).owner;
+	const connectionKey = subscriberConnectionKey(exported);
+	if (typeof owner !== 'string' || !connectionKey) return;
 
 	const key = canonicalId(owner);
 	const bound = subscribers[key] ?? [];
 	subscribers[key] = bound;
-	const topic = canonicalId(topicName);
-	if (!bound.some((s) => s.topic === topic && s.name === exportName)) {
-		bound.push({ name: exportName, topic });
+	if (
+		!bound.some(
+			(s) => s.connectionKey === connectionKey && s.name === exportName,
+		)
+	) {
+		const events = exported.topicName ? exported.subscribedEvents : undefined;
+		bound.push({
+			name: exportName,
+			connectionKey,
+			...(events ? { events: [...events] } : {}),
+		});
 	}
 }
 
@@ -454,7 +479,23 @@ export function consumedBy(runnable: unknown): string[] {
 	if (Subscriber.isSubscriber(runnable) && runnable.topicName) {
 		return [canonicalId(runnable.topicName)];
 	}
+	if (Subscriber.isSubscriber(runnable) && runnable.bucketName) {
+		return [canonicalId(runnable.bucketName)];
+	}
 	return [];
+}
+
+/**
+ * The edges a runnable's process records for what it consumes. A bucket's
+ * subscriber consumes the bucket's *events*, not the bucket: binding to its
+ * changes is not reading its objects, so its process is handed the events
+ * key and not the bucket's URL — that still takes `.dependsOn([bucket])`.
+ */
+function consumedEdges(runnable: unknown): string[] {
+	if (Subscriber.isSubscriber(runnable) && runnable.bucketName) {
+		return [eventsEdge(canonicalId(runnable.bucketName))];
+	}
+	return consumedBy(runnable);
 }
 
 /**
@@ -486,10 +527,13 @@ function recordRunnable(
 	runnables[key] = edges;
 	// What it consumes is an edge of its process too, so a worker is handed
 	// the carriers its own work is bound to and no other.
-	for (const id of [...runnable.constructs, ...consumedBy(exported)]) {
+	for (const id of runnable.constructs) {
 		if (typeof id !== 'string') continue;
 		const target = canonicalId(id);
 		if (!edges.includes(target)) edges.push(target);
+	}
+	for (const edge of consumedEdges(exported)) {
+		if (!edges.includes(edge)) edges.push(edge);
 	}
 }
 
