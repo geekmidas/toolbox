@@ -657,6 +657,12 @@ function recordingBuckets(calls: { op: string; args?: unknown }[]) {
 				return {};
 			},
 			async setNotification() {},
+			async lifecycle() {
+				return undefined;
+			},
+			async setLifecycle(bucket: string) {
+				calls.push({ op: 'lifecycle', args: bucket });
+			},
 		};
 	};
 }

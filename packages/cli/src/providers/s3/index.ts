@@ -68,6 +68,7 @@ import {
 	ensureEventsKey,
 	ensurePushSubscriptions,
 } from './events.js';
+import { mergeLifecycle } from './lifecycle.js';
 import {
 	bucketName,
 	IAM_POLICY_NAME,
@@ -95,6 +96,8 @@ type Ctx = EnsureContext<S3ObjectsConfig, AwsProvisioning>;
 export interface BucketConstruct {
 	id: string;
 	versioned: boolean;
+	/** Days kept under each prefix before the bucket deletes them. */
+	expire?: Readonly<Record<string, number>>;
 	servers: { id: string; open: readonly string[] }[];
 }
 
@@ -106,6 +109,9 @@ export function bucketConstructs(
 		.map(([id, d]) => ({
 			id,
 			versioned: (d as ObjectsDeclaration).versioned === true,
+			...((d as ObjectsDeclaration).expire
+				? { expire: (d as ObjectsDeclaration).expire }
+				: {}),
 			servers: Object.entries(manifest)
 				.filter(
 					([, s]) =>
@@ -403,6 +409,7 @@ async function ensureBucket(
 		exists,
 		versioning,
 		open,
+		...(construct.expire ? { expire: construct.expire } : {}),
 	});
 
 	// Watched: the topic it publishes its changes to comes first, because the
@@ -626,7 +633,10 @@ async function ensureBucketName(
 	);
 }
 
-/** Tags, Block Public Access, encryption, policy, versioning and CORS. */
+/**
+ * Tags, Block Public Access, encryption, policy, versioning, lifecycle and
+ * CORS.
+ */
 async function ensureBucketSettings(
 	ctx: Ctx,
 	clients: Clients,
@@ -637,6 +647,7 @@ async function ensureBucketSettings(
 		exists: boolean;
 		versioning: boolean;
 		open: readonly string[];
+		expire?: Readonly<Record<string, number>>;
 	},
 ): Promise<void> {
 	const { S3, s3 } = clients;
@@ -798,6 +809,27 @@ async function ensureBucketSettings(
 					VersioningConfiguration: { Status: 'Suspended' },
 				}),
 			),
+		);
+	}
+
+	// Lifecycle: the declared expiry, beside whatever other rules the bucket
+	// already has — one document per bucket, so gkm rewrites only its own.
+	const lifecycle = await read(
+		() => s3.send(new S3.GetBucketLifecycleConfigurationCommand({ Bucket })),
+		['NoSuchLifecycleConfiguration'],
+	);
+	const merge = mergeLifecycle(lifecycle?.Rules, input.expire);
+	if (merge.changed) {
+		await set(merge.describe, () =>
+			merge.rules.length > 0
+				? s3.send(
+						new S3.PutBucketLifecycleConfigurationCommand({
+							Bucket,
+							LifecycleConfiguration: { Rules: merge.rules },
+						}),
+					)
+				: // A lifecycle with no rules is refused: gkm's were the last.
+					s3.send(new S3.DeleteBucketLifecycleCommand({ Bucket })),
 		);
 	}
 

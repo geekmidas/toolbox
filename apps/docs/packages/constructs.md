@@ -846,6 +846,60 @@ const uploadEndpoint = api
   });
 ```
 
+### Direct uploads
+
+`.upload(bucket, …)` makes an endpoint hand the browser a signed form that
+uploads one file straight to the bucket — the file never passes through your
+server. The endpoint decides **where** (`key`, resolved from the session, body
+and params); the form's policy decides **what**: the storage refuses a file
+over `maxSize`, or of a type `accept` does not allow.
+
+```typescript
+import { uploads } from '../constructs/storage';
+
+export const avatarUpload = router
+  .post('/me/avatar')
+  .upload(uploads, {
+    key: ({ session }) => `avatars/${session.userId}.png`,
+    maxSize: 5 * 1024 * 1024,
+    accept: ['image/png'],
+  })
+  .handle(async ({ upload }) => upload); // { url, fields, key, expiresAt }
+```
+
+The browser posts every field of `fields`, then the file last as `file`, to
+`url` as `multipart/form-data`.
+
+- **The bucket is a dependency**, as with `.dependsOn([uploads])`:
+  `services.uploads` is in the handler and the manifest records the edge.
+- **The form is the output** — typed, and documented in OpenAPI — unless an
+  `.output()` came first; then the handler returns what that schema says.
+- **`.upload()` is the last step before `.handle()`.** The key is resolved
+  from the body, params and session, so they are declared first.
+- **`accept`** takes media types (`image/png`) and whole types (`image/*`).
+  A signed policy fixes one type or one prefix, never "one of these", so with
+  several, `contentType` says which this upload is — and a type not in
+  `accept` is refused with a 415 (`UploadContentTypeRefused`):
+
+  ```typescript
+  .body(z.object({ contentType: z.enum(['application/pdf', 'image/png']) }))
+  .upload(uploads, {
+    key: ({ session }) => `documents/${session.userId}/${crypto.randomUUID()}`,
+    maxSize: 20 * 1024 * 1024,
+    accept: ['application/pdf', 'image/png'],
+    contentType: ({ body }) => body.contentType,
+  })
+  ```
+- **`expiresIn`** is in seconds — 300 by default, at most seven days.
+
+Options that could never be honoured fail when the module loads, not on the
+first request: `UploadMaxSizeInvalid`, `UploadExpiryInvalid`,
+`UploadAcceptInvalid`, `UploadContentTypeUnresolved`.
+
+The endpoint never learns that the upload finished — the browser talks to the
+storage, not to it. That arrives as the bucket's `object.created` event, to a
+worker subscribed to the bucket ([#273](https://github.com/geekmidas/toolbox/issues/273)).
+
 ### HTML forms and redirects
 
 A server-rendered page needs two things an API rarely does: a body posted by

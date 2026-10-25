@@ -464,6 +464,13 @@ describe('deployAccess', () => {
 			]);
 			expect(statements[1]!.Action).toContain('s3:CreateBucket');
 			expect(statements[1]!.Action).toContain('s3:PutBucketCORS');
+			// A construct's `expire` — set, changed and removed.
+			expect(statements[1]!.Action).toEqual(
+				expect.arrayContaining([
+					's3:GetLifecycleConfiguration',
+					's3:PutLifecycleConfiguration',
+				]),
+			);
 			// A watched bucket's notifications, topic and dead-letter queue —
 			// by the bucket's name, in whichever region it is.
 			expect(statements[1]!.Action).toContain('s3:PutBucketNotification');

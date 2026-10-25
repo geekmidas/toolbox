@@ -70,7 +70,7 @@ import {
 	watchedBuckets,
 } from '../reconcile/objectEvents.js';
 import { type Plan, type PlannedResource, planFor } from '../reconcile/plan.js';
-import { bucketPolicies } from '../reconcile/provision.js';
+import { bucketLifecycles, bucketPolicies } from '../reconcile/provision.js';
 import type { StageSecrets } from '../secrets/types.js';
 import { NoDomainForStage } from '../target/dokploy/domain.js';
 import {
@@ -515,6 +515,8 @@ export interface StackStorage {
 	objects: { id: string; name: string }[];
 	/** Where MinIO posts each watched bucket's events: on the stack's network. */
 	webhooks: ObjectWebhook[];
+	/** How long each bucket keeps what is under each prefix. */
+	lifecycles: { bucket: string; expire: Readonly<Record<string, number>> }[];
 }
 
 export interface StackInput {
@@ -869,6 +871,9 @@ export function composeStack(input: StackInput): ComposeStack {
 						.sort((a, b) => a.name.localeCompare(b.name)),
 					// Filled once each worker's environment is resolved, below.
 					webhooks: [],
+					lifecycles: bucketLifecycles(plan).filter((l) =>
+						buckets.includes(l.bucket),
+					),
 				};
 			})()
 		: undefined;

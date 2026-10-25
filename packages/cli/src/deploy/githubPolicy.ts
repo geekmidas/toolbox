@@ -293,6 +293,10 @@ export function deployAccess(
 					's3:PutBucketCORS',
 					's3:GetBucketNotification',
 					's3:PutBucketNotification',
+					// A construct's `expire`, and removing it: S3 authorises
+					// DeleteBucketLifecycle as PutLifecycleConfiguration.
+					's3:GetLifecycleConfiguration',
+					's3:PutLifecycleConfiguration',
 				],
 				Resource: names.flatMap((n) => [
 					`arn:aws:s3:::${n.bucket}`,

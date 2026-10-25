@@ -112,6 +112,8 @@ describe('reconcile', () => {
 				setPolicy: async () => {},
 				notification: async () => ({}),
 				setNotification: async () => {},
+				lifecycle: async () => undefined,
+				setLifecycle: async () => {},
 			}),
 			...overrides,
 		});
@@ -147,6 +149,8 @@ describe('reconcile', () => {
 					setNotification: async (bucket: string) => {
 						pointed.push(bucket);
 					},
+					lifecycle: async () => undefined,
+					setLifecycle: async () => {},
 				}),
 			};
 		};
@@ -401,6 +405,8 @@ describe('reconcile', () => {
 				setPolicy: async () => {},
 				notification: async () => ({}),
 				setNotification: async () => {},
+				lifecycle: async () => undefined,
+				setLifecycle: async () => {},
 			}),
 		});
 
@@ -440,6 +446,8 @@ describe('reconcile', () => {
 				setPolicy: async () => {},
 				notification: async () => ({}),
 				setNotification: async () => {},
+				lifecycle: async () => undefined,
+				setLifecycle: async () => {},
 			}),
 		});
 

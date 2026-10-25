@@ -100,6 +100,12 @@ export interface ObjectsDeclaration extends Node {
 	 * the source.
 	 */
 	subscribers?: readonly ObjectSubscriberDeclaration[];
+	/**
+	 * Days the objects under each prefix are kept before the bucket deletes
+	 * them, prefix → days. Structural: which generated files are ephemeral is
+	 * a fact about the application, not a stage's choice.
+	 */
+	expire?: Readonly<Record<string, number>>;
 }
 
 /** A handler bound to a bucket, as {@link ObjectsDeclaration} nests it. */

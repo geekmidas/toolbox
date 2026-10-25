@@ -73,10 +73,12 @@ import {
 	type Applied,
 	applyBuckets,
 	applyCarriers,
+	applyLifecycles,
 	applyNotifications,
 	applyPolicies,
 	applyPostgres,
 	type BucketClient,
+	bucketLifecycles,
 	bucketNames,
 	bucketPolicies,
 	type CarrierClient,
@@ -688,14 +690,18 @@ async function create(
 	const minioPort = ports[primaryPortKey('minio')];
 	const names = bucketNames(plan);
 	const policies = bucketPolicies(plan);
+	const lifecycles = bucketLifecycles(plan);
 	if (minioPort !== undefined && (names.length > 0 || policies.length > 0)) {
 		const client = buckets(minioPort, credentials.minio);
 
-		// Buckets first: a policy names a bucket, and applying one to a bucket
-		// that does not exist yet fails on the first reconcile of a new project.
+		// Buckets first: a policy or a lifecycle names a bucket, and applying
+		// one to a bucket that does not exist yet fails on the first reconcile
+		// of a new project.
 		if (names.length > 0) applied.push(...(await applyBuckets(client, names)));
 		if (policies.length > 0)
 			applied.push(...(await applyPolicies(client, policies)));
+		if (lifecycles.length > 0)
+			applied.push(...(await applyLifecycles(client, lifecycles)));
 		// After the buckets, and only once MinIO runs with the targets: a rule
 		// naming a target MinIO was not started with is refused.
 		if (names.length > 0) {

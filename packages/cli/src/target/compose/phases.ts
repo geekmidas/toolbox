@@ -146,6 +146,7 @@ import {
 } from '../../reconcile/logins.js';
 import {
 	applyBuckets,
+	applyLifecycles,
 	applyNotifications,
 	applyPolicies,
 	applyPostgres,
@@ -1094,6 +1095,7 @@ async function prepareBuckets(
 		done = [
 			...(await applyBuckets(client, storage.buckets)),
 			...(await applyPolicies(client, storage.policies)),
+			...(await applyLifecycles(client, storage.lifecycles)),
 			// Each watched bucket's events to the worker MinIO was started
 			// pointing at — and none from a bucket no longer watched.
 			...(await applyNotifications(
