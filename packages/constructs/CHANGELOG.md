@@ -1,5 +1,49 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.123
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/audit@10.0.0-alpha.123
+  - @geekmidas/auth@10.0.0-alpha.123
+  - @geekmidas/cache@10.0.0-alpha.123
+  - @geekmidas/db@10.0.0-alpha.123
+  - @geekmidas/emailkit@10.0.0-alpha.123
+  - @geekmidas/envkit@10.0.0-alpha.123
+  - @geekmidas/errors@10.0.0-alpha.123
+  - @geekmidas/events@10.0.0-alpha.123
+  - @geekmidas/logger@10.0.0-alpha.123
+  - @geekmidas/manifest@10.0.0-alpha.123
+  - @geekmidas/rate-limit@10.0.0-alpha.123
+  - @geekmidas/schema@10.0.0-alpha.123
+  - @geekmidas/services@10.0.0-alpha.123
+  - @geekmidas/storage@10.0.0-alpha.123
+  - @geekmidas/telescope@10.0.0-alpha.123
+  - @geekmidas/testkit@10.0.0-alpha.123
+
+## 10.0.0-alpha.122
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/audit@10.0.0-alpha.122
+  - @geekmidas/auth@10.0.0-alpha.122
+  - @geekmidas/cache@10.0.0-alpha.122
+  - @geekmidas/db@10.0.0-alpha.122
+  - @geekmidas/emailkit@10.0.0-alpha.122
+  - @geekmidas/envkit@10.0.0-alpha.122
+  - @geekmidas/errors@10.0.0-alpha.122
+  - @geekmidas/events@10.0.0-alpha.122
+  - @geekmidas/logger@10.0.0-alpha.122
+  - @geekmidas/manifest@10.0.0-alpha.122
+  - @geekmidas/rate-limit@10.0.0-alpha.122
+  - @geekmidas/schema@10.0.0-alpha.122
+  - @geekmidas/services@10.0.0-alpha.122
+  - @geekmidas/storage@10.0.0-alpha.122
+  - @geekmidas/telescope@10.0.0-alpha.122
+  - @geekmidas/testkit@10.0.0-alpha.122
+
 ## 10.0.0-alpha.121
 
 ### Patch Changes

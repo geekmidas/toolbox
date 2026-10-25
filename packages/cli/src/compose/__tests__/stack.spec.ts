@@ -21,6 +21,7 @@ import {
 	LocalCredentialsMissing,
 	NothingToCompose,
 	ProcessorOriginSecretMissing,
+	PushSubscriptionMissing,
 	type StackInput,
 	StageSecretMissing,
 	StageSeedMissing,
@@ -1100,6 +1101,12 @@ describe('a worker SNS pushes to', () => {
 		}) as unknown as ConstructManifest;
 	const SNS =
 		'sns://AKIAEXAMPLE:secret@?topicArn=arn:aws:sns:eu-west-1:123456789012:alerts&region=eu-west-1';
+	const ARN = (name: string) =>
+		`arn:aws:sns:eu-west-1:123456789012:alerts:${name}-0b6c`;
+	/** What the deploy recorded when it subscribed each route. */
+	const RECORDED = {
+		Jobs: { onAlert: ARN('onAlert'), onAlertAgain: ARN('onAlertAgain') },
+	};
 
 	const deployed = (overrides: Partial<StackInput> = {}) =>
 		stack({
@@ -1108,12 +1115,19 @@ describe('a worker SNS pushes to', () => {
 			runnables: { ...runnables, Jobs: [...(runnables.Jobs ?? []), 'Alerts'] },
 			subscribers: {
 				Jobs: [
-					{ name: 'onAlert', topic: 'Alerts' },
-					{ name: 'onAlertAgain', topic: 'Alerts' },
+					{
+						name: 'onAlert',
+						connectionKey: 'ALERTS_PUBLISHER_CONNECTION_STRING',
+					},
+					{
+						name: 'onAlertAgain',
+						connectionKey: 'ALERTS_PUBLISHER_CONNECTION_STRING',
+					},
 				],
 			},
 			images: { mode: 'pull', tag: 'v1.4.0' },
 			secrets: production({ ALERTS_PUBLISHER_CONNECTION_STRING: SNS }),
+			pushSubscriptions: RECORDED,
 			ports: {},
 			...overrides,
 		});
@@ -1126,6 +1140,20 @@ describe('a worker SNS pushes to', () => {
 			host: 'jobs.shop.example.com',
 			url: 'https://jobs.shop.example.com',
 			paths: ['/__gkm/subscribers/onAlert', '/__gkm/subscribers/onAlertAgain'],
+			// What the deploy subscribes, one endpoint per subscriber.
+			subscribers: [
+				{
+					name: 'onAlert',
+					connectionKey: 'ALERTS_PUBLISHER_CONNECTION_STRING',
+					endpoint: 'https://jobs.shop.example.com/__gkm/subscribers/onAlert',
+				},
+				{
+					name: 'onAlertAgain',
+					connectionKey: 'ALERTS_PUBLISHER_CONNECTION_STRING',
+					endpoint:
+						'https://jobs.shop.example.com/__gkm/subscribers/onAlertAgain',
+				},
+			],
 		});
 		expect(s.routes.find((r) => r.name === 'jobs')).toEqual({
 			name: 'jobs',
@@ -1141,18 +1169,74 @@ describe('a worker SNS pushes to', () => {
 		expect(s.compose.services.caddy?.depends_on).toHaveProperty('jobs');
 	});
 
-	it('is told the public base its routes are subscribed under', () => {
+	it('is handed the subscriptions the deploy made, and subscribes nothing itself', () => {
 		const env = jobs(deployed()).env!;
 
-		expect(env.GKM_SUBSCRIBER_PUSH_URL).toBe('https://jobs.shop.example.com');
+		expect(JSON.parse(env.GKM_SNS_SUBSCRIPTIONS!)).toEqual(RECORDED.Jobs);
 		expect(env.ALERTS_PUBLISHER_CONNECTION_STRING).toBe(SNS);
+		// Only an emulator's server subscribes itself, under this base.
+		expect(env).not.toHaveProperty('GKM_SUBSCRIBER_PUSH_URL');
+	});
+
+	it('hands it only its own subscribers’ subscriptions', () => {
+		const env = jobs(
+			deployed({
+				pushSubscriptions: {
+					Jobs: { ...RECORDED.Jobs, somebodyElses: ARN('other') },
+					Reports: { onReport: ARN('onReport') },
+				},
+			}),
+		).env!;
+
+		expect(JSON.parse(env.GKM_SNS_SUBSCRIPTIONS!)).toEqual(RECORDED.Jobs);
+	});
+
+	it('refuses a pushed subscriber the deploy recorded no subscription for', () => {
+		const missing = () =>
+			deployed({ pushSubscriptions: { Jobs: { onAlert: ARN('onAlert') } } });
+
+		expect(missing).toThrow(PushSubscriptionMissing);
+		expect(missing).toThrow(/'onAlertAgain' on the worker 'jobs'/);
+		expect(() => deployed({ pushSubscriptions: undefined })).toThrow(
+			PushSubscriptionMissing,
+		);
+	});
+
+	it("is pushed to by a bucket's events, as by a topic", () => {
+		const s = deployed({
+			manifest: withTopic({
+				...manifest,
+				Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+			} as unknown as ConstructManifest),
+			runnables: {
+				...runnables,
+				Jobs: [...(runnables.Jobs ?? []), 'Uploads#events'],
+			},
+			subscribers: {
+				Jobs: [
+					{
+						name: 'onAvatar',
+						connectionKey: 'UPLOADS_EVENTS_CONNECTION_STRING',
+					},
+				],
+			},
+			secrets: production({ UPLOADS_EVENTS_CONNECTION_STRING: SNS }),
+			pushSubscriptions: { Jobs: { onAvatar: ARN('onAvatar') } },
+		});
+
+		expect(jobs(s).push?.paths).toEqual(['/__gkm/subscribers/onAvatar']);
+		expect(JSON.parse(jobs(s).env!.GKM_SNS_SUBSCRIPTIONS!)).toEqual({
+			onAvatar: ARN('onAvatar'),
+		});
+		expect(jobs(s).env?.UPLOADS_EVENTS_CONNECTION_STRING).toBe(SNS);
+		expect(jobs(s).env).not.toHaveProperty('UPLOADS_URL');
 	});
 
 	it('stays private while its topics are on pg-boss', () => {
 		const s = deployed({ secrets: production() });
 
 		expect(jobs(s).push).toBeUndefined();
-		expect(jobs(s).env).not.toHaveProperty('GKM_SUBSCRIBER_PUSH_URL');
+		expect(jobs(s).env).not.toHaveProperty('GKM_SNS_SUBSCRIPTIONS');
 		expect(s.routes.map((r) => r.name)).not.toContain('jobs');
 		expect(s.caddyfile).not.toContain('jobs');
 	});
@@ -1161,7 +1245,14 @@ describe('a worker SNS pushes to', () => {
 		const s = stack({
 			manifest: withTopic(),
 			runnables: { ...runnables, Jobs: [...(runnables.Jobs ?? []), 'Alerts'] },
-			subscribers: { Jobs: [{ name: 'onAlert', topic: 'Alerts' }] },
+			subscribers: {
+				Jobs: [
+					{
+						name: 'onAlert',
+						connectionKey: 'ALERTS_PUBLISHER_CONNECTION_STRING',
+					},
+				],
+			},
 		});
 
 		expect(jobs(s).push).toBeUndefined();
@@ -1189,6 +1280,142 @@ describe('a worker SNS pushes to', () => {
 
 		expect(run).toThrow(EdgeHostTaken);
 		expect(run).toThrow(/'api' and 'jobs' would both answer on jobs\.shop/);
+	});
+});
+
+describe("a watched bucket in the stack's MinIO", () => {
+	/** The workspace with a bucket a subscriber in `Jobs` watches. */
+	const watched = (overrides: Partial<StackInput> = {}) =>
+		stack({
+			manifest: {
+				...manifest,
+				Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+				Reports: { kind: 'objects', id: 'Reports', provides: ['REPORTS_URL'] },
+			} as unknown as ConstructManifest,
+			runnables: {
+				...runnables,
+				Jobs: [...(runnables.Jobs ?? []), 'Uploads#events'],
+			},
+			subscribers: {
+				Jobs: [
+					{
+						name: 'onAvatar',
+						connectionKey: 'UPLOADS_EVENTS_CONNECTION_STRING',
+					},
+				],
+			},
+			...overrides,
+		});
+	const jobs = (s: ComposeStack) => s.workers.find((w) => w.name === 'jobs')!;
+
+	it('posts its events to the worker running its subscriber, which relays them onto pg-boss', () => {
+		const s = watched();
+		const env = jobs(s).env!;
+
+		// Delivered from the stack's broker, by its name on the network.
+		expect(env.UPLOADS_EVENTS_CONNECTION_STRING).toMatch(
+			/^pgboss:\/\/[^@]+@postgres:5432\//,
+		);
+		expect(env.UPLOADS_EVENTS_TOKEN).toMatch(/^[\w-]{32}$/);
+		// Not the bucket itself: binding to its events is not reading it.
+		expect(env).not.toHaveProperty('UPLOADS_URL');
+
+		expect(s.storage?.webhooks).toEqual([
+			{
+				bucket: 'Uploads',
+				endpoint: 'http://jobs:3000/__gkm/objects/Uploads',
+				token: env.UPLOADS_EVENTS_TOKEN,
+			},
+		]);
+		expect(s.compose.services.minio?.environment).toMatchObject({
+			MINIO_NOTIFY_WEBHOOK_ENABLE_UPLOADS: 'on',
+			MINIO_NOTIFY_WEBHOOK_ENDPOINT_UPLOADS:
+				'http://jobs:3000/__gkm/objects/Uploads',
+			MINIO_NOTIFY_WEBHOOK_AUTH_TOKEN_UPLOADS: env.UPLOADS_EVENTS_TOKEN,
+			MINIO_NOTIFY_WEBHOOK_QUEUE_DIR_UPLOADS: '/gkm-object-events/uploads',
+		});
+		// On the stack's own network: nothing on the host to map.
+		expect(s.compose.services.minio?.extra_hosts).toBeUndefined();
+		expect(s.storage?.objects.map((b) => b.id).sort()).toEqual([
+			'Reports',
+			'Uploads',
+		]);
+	});
+
+	it('declares no target for a bucket nothing watches', () => {
+		const environment = watched().compose.services.minio?.environment ?? {};
+
+		expect(
+			Object.keys(environment).filter((k) => k.includes('REPORTS')),
+		).toEqual([]);
+		const unwatched = watched({ subscribers: {} });
+		expect(unwatched.storage?.webhooks).toEqual([]);
+		expect(jobs(unwatched).env).not.toHaveProperty(
+			'UPLOADS_EVENTS_CONNECTION_STRING',
+		);
+		expect(
+			Object.keys(unwatched.compose.services.minio?.environment ?? {}).filter(
+				(k) => k.startsWith('MINIO_NOTIFY'),
+			),
+		).toEqual([]);
+	});
+
+	it("signs with a token derived from a deployed stage's seed", () => {
+		const deployed = (seed: string) =>
+			watched({
+				stage: 'production',
+				images: { mode: 'pull', tag: 'v1.4.0' },
+				secrets: { ...production(), seed },
+				ports: {},
+				allowDevServices: true,
+			});
+		const token = (s: ComposeStack) => jobs(s).env?.UPLOADS_EVENTS_TOKEN;
+
+		expect(token(deployed('a-random-seed'))).toBe(
+			token(deployed('a-random-seed')),
+		);
+		expect(token(deployed('a-random-seed'))).not.toBe(
+			token(deployed('another-seed')),
+		);
+		expect(token(deployed('a-random-seed'))).not.toBe(token(watched()));
+		expect(deployed('a-random-seed').storage?.webhooks[0]?.token).toBe(
+			token(deployed('a-random-seed')),
+		);
+	});
+
+	it('posts nothing where the stage says its events come from SNS', () => {
+		const SNS =
+			'sns://AKIAEXAMPLE:secret@?topicArn=arn:aws:sns:eu-west-1:123456789012:uploads&region=eu-west-1';
+		const s = watched({
+			stage: 'production',
+			images: { mode: 'pull', tag: 'v1.4.0' },
+			secrets: production({ UPLOADS_EVENTS_CONNECTION_STRING: SNS }),
+			ports: {},
+			allowDevServices: true,
+			// What the deploy records once it has subscribed the worker's route.
+			pushSubscriptions: {
+				Jobs: { onAvatar: 'arn:aws:sns:eu-west-1:123456789012:uploads:1' },
+			},
+		});
+
+		expect(jobs(s).env?.UPLOADS_EVENTS_CONNECTION_STRING).toBe(SNS);
+		expect(s.storage?.webhooks).toEqual([]);
+	});
+
+	it('relays nothing for a bucket the stage brings itself', () => {
+		const s = watched({
+			stage: 'production',
+			images: { mode: 'pull', tag: 'v1.4.0' },
+			secrets: production({
+				UPLOADS_URL: 's3://acme-uploads?region=eu-west-1',
+				REPORTS_URL: 's3://acme-reports?region=eu-west-1',
+			}),
+			ports: {},
+		});
+
+		expect(jobs(s).env).not.toHaveProperty('UPLOADS_EVENTS_CONNECTION_STRING');
+		expect(jobs(s).env).not.toHaveProperty('UPLOADS_EVENTS_TOKEN');
+		expect(s.storage).toBeUndefined();
 	});
 });
 

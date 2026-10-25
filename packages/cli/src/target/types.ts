@@ -14,6 +14,7 @@ import type { DeployEvent } from '../deploy/events';
 import type { DeployIdentity } from '../deploy/identity';
 import type { StateStore } from '../deploy/StateStore';
 import type { DeployResult } from '../deploy/types';
+import type { BoundSubscriber } from '../reconcile/discover';
 import type { StageSecrets } from '../secrets/types';
 import type { NormalizedWorkspace } from '../workspace/types';
 
@@ -179,6 +180,11 @@ export interface DeployPhaseContext<Options = undefined> {
 	 * built from (`workerUnits`).
 	 */
 	readonly background?: Readonly<Record<string, readonly string[]>>;
+	/**
+	 * Each Worker's subscribers, from the same discovery — by export, and the
+	 * key its deliveries come from: which of them SNS pushes to.
+	 */
+	readonly subscribers?: Readonly<Record<string, readonly BoundSubscriber[]>>;
 	/** The target's options, as its `options` schema parsed them. */
 	readonly options: Options;
 	/**

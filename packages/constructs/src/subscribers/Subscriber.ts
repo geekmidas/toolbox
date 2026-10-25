@@ -100,6 +100,17 @@ export class Subscriber<
 		this.databaseService = databaseService;
 	}
 
+	/**
+	 * The id of the bucket this subscriber is bound to (via
+	 * `worker.objects(bucket)`), when its topic is the storage itself — read
+	 * by the build to bind it, and by the adaptors to read what the storage
+	 * sends as object events.
+	 */
+	bucketName?: string;
+
+	/** Which of the bucket's keys it watches — see `worker.objects()`. */
+	objectFilter?: { prefix?: string; suffix?: string };
+
 	get subscribedEvents(): TSubscribedEvents | undefined {
 		return this._subscribedEvents;
 	}

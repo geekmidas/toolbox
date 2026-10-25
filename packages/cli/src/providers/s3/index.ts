@@ -62,6 +62,13 @@ import {
 	RecordedBucketUnreachable,
 	S3RegionRequired,
 } from './errors.js';
+import {
+	type BucketWatcher,
+	bucketWatchers,
+	ensureBucketEvents,
+	ensureEventsKey,
+	ensurePushSubscriptions,
+} from './events.js';
 import { mergeLifecycle } from './lifecycle.js';
 import {
 	bucketName,
@@ -376,8 +383,9 @@ export function useS3Clients(factory: S3ClientFactory): S3ClientFactory {
 async function ensureS3(ctx: Ctx): Promise<void> {
 	const region = s3Region(ctx);
 	const clients = await makeClients(ctx.credential, region);
+	const watched = bucketWatchers(ctx.manifest, ctx.runnables, ctx.subscribers);
 	for (const construct of bucketConstructs(ctx.manifest)) {
-		await ensureBucket(ctx, clients, construct);
+		await ensureBucket(ctx, clients, construct, watched.get(construct.id));
 	}
 }
 
@@ -385,6 +393,8 @@ async function ensureBucket(
 	ctx: Ctx,
 	stageClients: Clients,
 	construct: BucketConstruct,
+	/** Who watches it, when a subscriber does — see `./events.ts`. */
+	watchers?: readonly BucketWatcher[],
 ): Promise<void> {
 	const { id } = construct;
 	const nameInput = {
@@ -439,11 +449,24 @@ async function ensureBucket(
 		...(construct.expire ? { expire: construct.expire } : {}),
 	});
 
+	// Watched: the topic it publishes its changes to comes first, because the
+	// bucket's key is allowed to confirm subscriptions to it.
+	const events = watchers
+		? await ensureBucketEvents(ctx, clients, {
+				id,
+				bucket,
+				region: clients.region,
+			})
+		: undefined;
+
 	const user = await ensureIamUser(ctx, clients, {
 		id,
 		user: iamUserName(nameInput),
 		policyName: IAM_POLICY_NAME,
-		policy: userPolicy(bucket, { versioning }),
+		policy: userPolicy(bucket, {
+			versioning,
+			...(events ? { eventsTopicArn: events.topicArn } : {}),
+		}),
 		describe: 'this bucket only',
 	});
 	await ensureAccessKey(ctx, clients, {
@@ -452,6 +475,20 @@ async function ensureBucket(
 		urlKey: provideKey(id, 'url'),
 		...user,
 	});
+
+	if (events && watchers) {
+		await ensureEventsKey(ctx, {
+			id,
+			topicArn: events.topicArn,
+			region: clients.region,
+		});
+		await ensurePushSubscriptions(ctx, {
+			id,
+			events,
+			region: clients.region,
+			watchers,
+		});
+	}
 
 	// Each file server over it serves on its CDN, or on the bucket's own
 	// endpoint — unless the stage set an address of its own for it, which is
@@ -994,9 +1031,13 @@ export const s3Provider: ResourceProvider<S3ObjectsConfig, AwsProvisioning> = {
 	check: checkS3Config,
 	provisioning: S3_PROVISIONING,
 	credentials: awsProvisioningCredentials,
-	runtimeKeys(manifest) {
+	runtimeKeys(manifest, runnables = {}) {
+		const watched = bucketWatchers(manifest, runnables);
 		return bucketConstructs(manifest).flatMap((b) => [
 			provideKey(b.id, 'url'),
+			...(watched.has(b.id)
+				? [provideKey(b.id, 'eventsConnectionString')]
+				: []),
 			...b.servers.map((s) => provideKey(s.id, 'url')),
 		]);
 	},

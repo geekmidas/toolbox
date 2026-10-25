@@ -34,6 +34,7 @@ import { appKey } from '../workspace/derive.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import type { ComposeService } from './compose.js';
 import { portKeys, portsOf } from './containers.js';
+import { eventsEdgeBucket } from './edges.js';
 import { type EnvOptions, envFor } from './env.js';
 import type { LocalCredentials } from './localCredentials.js';
 import { type Plan, type PlanOptions, planFor } from './plan.js';
@@ -317,6 +318,17 @@ function addEdgeKeys(
 	keys: Set<string>,
 ): void {
 	for (const id of edges) {
+		// A bucket's events: its subscribers' process reads where they are
+		// delivered from, and nothing else of the bucket.
+		const bucket = eventsEdgeBucket(id);
+		if (bucket) {
+			if (manifest[bucket]?.kind === 'objects') {
+				keys.add(provideKey(bucket, 'eventsConnectionString'));
+				keys.add(provideKey(bucket, 'eventsToken'));
+			}
+			continue;
+		}
+
 		const target = manifest[id];
 		if (!target) continue;
 		// A surface is reached over HTTP, so its caller is given its address

@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/cli",
-	"version": "10.0.0-alpha.121",
+	"version": "10.0.0-alpha.123",
 	"description": "CLI tools for building Lambda handlers, server applications, and generating OpenAPI specs",
 	"private": false,
 	"type": "module",
@@ -128,6 +128,7 @@
 		"@geekmidas/schema": "workspace:~",
 		"@geekmidas/services": "workspace:~",
 		"@geekmidas/storage": "workspace:~",
+		"bcryptjs": "~3.0.3",
 		"chokidar": "~5.0.0",
 		"commander": "~15.0.0",
 		"dotenv": "~18.0.1",

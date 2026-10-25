@@ -53,6 +53,7 @@ import type { LocalFake } from './fakes';
 import { lanAddress } from './lan';
 import type { LocalCredentials, Login } from './localCredentials';
 import { ensureLogins, type LoginOutcome } from './logins';
+import type { ObjectWebhook } from './objectEvents';
 import {
 	type Plan,
 	type PlanOptions,
@@ -73,6 +74,7 @@ import {
 	applyBuckets,
 	applyCarriers,
 	applyLifecycles,
+	applyNotifications,
 	applyPolicies,
 	applyPostgres,
 	type BucketClient,
@@ -274,6 +276,13 @@ export interface ReconcileOptions {
 	/** Whether the local edge fronts surfaces, sites and file servers. */
 	edge?: boolean;
 	/**
+	 * Where MinIO posts each watched bucket's events — see `objectEvents.ts`.
+	 * The same for every stage, because one MinIO serves them all; only the
+	 * local stage's buckets are pointed at them, so `gkm test`'s uploads never
+	 * reach the process `gkm dev` runs.
+	 */
+	objectWebhooks?: readonly ObjectWebhook[];
+	/**
 	 * The apps, as services beside the containers — see `reconcile/apps.ts`.
 	 * Handed the derived containers so an app can depend on them.
 	 */
@@ -449,6 +458,9 @@ export async function reconcile(
 		ports,
 		credentials: options.credentials,
 		...(options.apps ? { apps: options.apps(plan.containers) } : {}),
+		...(options.objectWebhooks?.length
+			? { objectWebhooks: options.objectWebhooks }
+			: {}),
 	});
 
 	// The edge's config is part of what "converged" means: a file server added or
@@ -481,6 +493,11 @@ export async function reconcile(
 			...(options.addresses ? { addresses: options.addresses } : {}),
 			...(lan ? { lanAddress: lan } : {}),
 			...(options.metroPorts ? { metroPorts: options.metroPorts } : {}),
+			...(options.objectWebhooks?.length
+				? {
+						relayedBuckets: options.objectWebhooks.map((hook) => hook.bucket),
+					}
+				: {}),
 		});
 		// `gkm test` hands no process a telemetry key.
 		const env = exports
@@ -615,7 +632,22 @@ export async function reconcile(
 	}
 	const provisioned =
 		start && provision
-			? await create(plan, ports, credentials, sql, buckets, carriers, project)
+			? await create(
+					plan,
+					ports,
+					credentials,
+					sql,
+					buckets,
+					carriers,
+					project,
+					// Only the local stage's buckets post their events: `gkm test`
+					// shares the MinIO, and its uploads are not `gkm dev`'s business.
+					new Set(
+						stage === (options.localStage ?? stage)
+							? (options.objectWebhooks ?? []).map((hook) => hook.bucket)
+							: [],
+					),
+				)
 			: [];
 
 	await saveState(root, { hash, stage });
@@ -647,6 +679,8 @@ async function create(
 	emulatorCarriers: NonNullable<ReconcileOptions['carriers']>,
 	/** Seeds the derived role passwords — see `localRolePassword`. */
 	project: string,
+	/** The buckets, by construct id, whose events MinIO posts on. */
+	watched: ReadonlySet<string>,
 ): Promise<Applied[]> {
 	const applied: Applied[] = [];
 
@@ -676,6 +710,19 @@ async function create(
 			applied.push(...(await applyPolicies(client, policies)));
 		if (lifecycles.length > 0)
 			applied.push(...(await applyLifecycles(client, lifecycles)));
+		// After the buckets, and only once MinIO runs with the targets: a rule
+		// naming a target MinIO was not started with is refused.
+		if (names.length > 0) {
+			applied.push(
+				...(await applyNotifications(
+					client,
+					plan.resources
+						.filter((r) => r.provisions && r.kind === 'objects')
+						.map((r) => ({ id: r.id, name: r.name })),
+					watched,
+				)),
+			);
+		}
 	}
 
 	const emulatorPort = ports[primaryPortKey('localstack')];

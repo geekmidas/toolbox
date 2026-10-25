@@ -213,6 +213,15 @@ export function traefikDynamic(
 			};
 			chain.push(name(route, 'allow'));
 		}
+		if (route.auth) {
+			// The stage's login, asked for before anything reaches the
+			// upstream. The service's health check goes to the upstream
+			// directly, so it is never asked.
+			middlewares[name(route, 'auth')] = {
+				basicAuth: { users: [`${route.auth.user}:${route.auth.hash}`] },
+			};
+			chain.push(name(route, 'auth'));
+		}
 		if (route.prefix) {
 			middlewares[name(route, 'prefix')] = {
 				addPrefix: { prefix: route.prefix },

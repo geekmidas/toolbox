@@ -5,6 +5,7 @@ import {
 	createTestFile,
 } from '../../__tests__/test-helpers';
 import { LocalSandbox } from '../../sandbox/local';
+import { workerEnvKeys } from '../apps';
 import {
 	type BoundSubscriber,
 	discover,
@@ -227,6 +228,42 @@ export const rollup = reports
 		]);
 	});
 
+	it('hands a bucket’s subscriber the bucket’s events, and not the bucket', async () => {
+		await createTestFile(
+			dir,
+			'subscribers/avatars.ts',
+			`import { jobs, uploads } from '../constructs/index.js';
+
+export const onAvatar = jobs
+	.objects(uploads)
+	.on(['object.created'], { prefix: 'avatars/' })
+	.handle(async () => {});
+`,
+		);
+		const patterns = ['constructs/**/*.ts', 'subscribers/**/*.ts'];
+		const runnables: Record<string, string[]> = {};
+		const subscribers: Record<string, BoundSubscriber[]> = {};
+
+		const manifest = await discover({
+			patterns,
+			cwd: dir,
+			runnables,
+			subscribers,
+		});
+
+		expect(subscribers).toEqual({
+			Jobs: [
+				{ name: 'onAvatar', connectionKey: 'UPLOADS_EVENTS_CONNECTION_STRING' },
+			],
+		});
+		const keys = workerEnvKeys(manifest, 'Jobs', runnables);
+		expect(keys).toContain('UPLOADS_EVENTS_CONNECTION_STRING');
+		// Reading the objects takes `.dependsOn([uploads])`; being told they
+		// changed does not.
+		expect(keys).not.toContain('UPLOADS_URL');
+		expect(keys).not.toContain('AWS_SECRET_ACCESS_KEY');
+	});
+
 	it(
 		'records each worker’s topic subscribers by export and topic, here and in a sandbox',
 		{ timeout: 30_000 },
@@ -267,7 +304,14 @@ export const welcome = jobs
 
 			// A queue's consumer is no topic subscriber: SNS never pushes to it.
 			expect(here).toEqual({
-				Jobs: [{ name: 'welcome', topic: 'Users' }],
+				Jobs: [
+					{
+						name: 'welcome',
+						connectionKey: 'USERS_PUBLISHER_CONNECTION_STRING',
+						// Its subscription's filter.
+						events: ['user.created'],
+					},
+				],
 			});
 			expect(there).toEqual(here);
 		},

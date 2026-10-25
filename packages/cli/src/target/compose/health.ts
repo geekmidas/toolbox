@@ -32,6 +32,11 @@ export interface HealthRequest {
 	 * the shared edge's published port, asked for a deployed host.
 	 */
 	connectPort?: number;
+	/**
+	 * The `Authorization` header to send — a site the stage puts behind a
+	 * password is asked with its login, which proves the login works too.
+	 */
+	authorization?: string;
 	timeoutMs: number;
 	signal?: AbortSignal;
 }
@@ -58,6 +63,7 @@ export const httpsProbe: HealthProbe = ({
 	ca,
 	connectTo,
 	connectPort,
+	authorization,
 	timeoutMs,
 	signal,
 }) => {
@@ -70,7 +76,10 @@ export const httpsProbe: HealthProbe = ({
 				servername: target.hostname,
 				path: `${target.pathname}${target.search}`,
 				method: 'GET',
-				headers: { host: target.host },
+				headers: {
+					host: target.host,
+					...(authorization ? { authorization } : {}),
+				},
 				...(ca ? { ca } : {}),
 				...(signal ? { signal } : {}),
 				timeout: timeoutMs,

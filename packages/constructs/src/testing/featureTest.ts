@@ -26,7 +26,12 @@
 import { randomUUID } from 'node:crypto';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { provideKey } from '@geekmidas/manifest';
-import { ServiceDiscovery, serviceContext } from '@geekmidas/services';
+import {
+	ServiceDiscovery,
+	type ServiceRegisterOptions,
+	serviceContext,
+} from '@geekmidas/services';
+import type { StorageClient } from '@geekmidas/storage';
 import { Browser as TestBrowser } from '@geekmidas/testkit/browser';
 import {
 	currentTestContext,
@@ -51,6 +56,7 @@ import { Email } from '../email';
 import { Endpoint } from '../endpoints/Endpoint';
 import { HonoEndpoint } from '../endpoints/HonoEndpointAdaptor';
 import type { Fake } from '../fake';
+import type { ObjectStorage } from '../object-storage';
 import { Queue } from '../queue/Queue';
 import { TestQueueAdaptor } from '../queue/TestQueueAdaptor';
 import type { Subscriber } from '../subscribers/Subscriber';
@@ -201,6 +207,26 @@ export interface FeatureContext<
 	queue: <Q extends Queue<any, any, any, any, any, any>>(
 		queue: Q,
 	) => QueueAdaptorOf<Q>;
+	/**
+	 * A bucket's objects, as its subscribers see them change.
+	 *
+	 * An upload or delete through the bucket's client — `services.uploads`,
+	 * in a handler or in the test — is reported to the bucket's subscribers
+	 * already; `emit` reports what the storage would see and the app's code
+	 * never does, such as a browser uploading to a presigned URL.
+	 */
+	objects: (bucket: { id: string }) => {
+		emit: (...events: EmittedObjectEvent[]) => Promise<void>;
+	};
+}
+
+/** An object changing, as a test reports it: the bucket is the one emitted on. */
+export interface EmittedObjectEvent {
+	type: 'object.created' | 'object.deleted';
+	key: string;
+	size?: number;
+	etag?: string;
+	versionId?: string;
 }
 
 type SubscriberAdaptorOf<S> =
@@ -301,7 +327,7 @@ interface ContextState {
 	published: Map<string, PublishedMessage[]>;
 	/** What was published and is still to be delivered, in order. */
 	pending: {
-		channel: Topic<any, any> | Queue<any, any>;
+		channel: Topic<any, any> | Queue<any, any> | ObjectStorage;
 		messages: PublishedMessage[];
 	}[];
 	/** Set while delivering, so a consumer's own requests do not deliver again. */
@@ -323,6 +349,8 @@ interface LoadedApp {
 	emails: Email[];
 	/** Every topic and queue — what a test's publishing is recorded for. */
 	channels: (Topic<any, any> | Queue<any, any>)[];
+	/** Every bucket a subscriber is bound to — whose changes are reported. */
+	watched: ObjectStorage[];
 	/** Every construct a handler can depend on — what `services` resolves. */
 	consumables: Consumable[];
 	/** Every topic subscriber, by the name it is exported as. */
@@ -421,6 +449,7 @@ export function featureTest<
 			// Before anything resolves them: a publisher is a service, so the one this
 			// test's endpoints get is whichever is registered under its name first.
 			await state.discovery.register(recorders(app.channels, state));
+			await state.discovery.register(watchers(app, state));
 
 			try {
 				await runInTestContext(id, async () => {
@@ -497,6 +526,25 @@ export function featureTest<
 								thenDeliver(new TestQueueAdaptor(queue, state.discovery), () =>
 									deliver(app, state, id),
 								) as QueueAdaptorOf<typeof queue>,
+							objects: (bucket) => ({
+								emit: async (...events) => {
+									const watched = app.watched.find(
+										(candidate) => candidate.id === bucket.id,
+									);
+									if (!watched) {
+										throw new BucketNotWatched(bucket.id);
+									}
+									const name = bucketName(watched, app.envParser);
+									state.pending.push({
+										channel: watched,
+										messages: events.map(({ type, ...object }) => ({
+											type,
+											payload: { bucket: name, ...object },
+										})),
+									});
+									await deliver(app, state, id);
+								},
+							}),
 						} as FeatureContext<TBrowser, TDatabases, TFactories, TServices>);
 					} finally {
 						restore();
@@ -607,6 +655,15 @@ async function load(
 				value instanceof Topic || value instanceof Queue,
 		),
 	);
+	const watched = unique(
+		constructs.filter(
+			(value): value is ObjectStorage =>
+				isBucket(value) &&
+				subscribers.some(
+					({ subscriber }) => subscriber.bucketName === value.id,
+				),
+		),
+	);
 
 	const inbox = emails
 		.map((email) => manifest.env[provideKey(email.id, 'inboxUrl')])
@@ -619,6 +676,7 @@ async function load(
 		auths,
 		emails,
 		channels,
+		watched,
 		consumables,
 		subscribers,
 		...(inbox ? { readMail: createMailbox({ inbox }) } : {}),
@@ -733,8 +791,10 @@ async function deliver(
 			for (const { channel, messages } of state.pending.splice(0)) {
 				if (channel instanceof Queue) {
 					await toQueue(channel, messages, state, id);
-				} else {
+				} else if (channel instanceof Topic) {
 					await toSubscribers(channel, messages, app, state, id);
+				} else {
+					await toObjectSubscribers(channel, messages, app, state, id);
 				}
 			}
 		}
@@ -797,6 +857,121 @@ async function toSubscribers(
 		).catch((error: unknown) => {
 			throw new DeliveryFailed(consumer, named, error);
 		});
+	}
+}
+
+/**
+ * A bucket's changes to each subscriber bound to it that named their type —
+ * the subscriber keeps the keys it watches, as it does deployed.
+ */
+async function toObjectSubscribers(
+	bucket: ObjectStorage,
+	messages: PublishedMessage[],
+	app: LoadedApp,
+	state: ContextState,
+	id: string,
+): Promise<void> {
+	for (const { name, subscriber } of app.subscribers) {
+		if (subscriber.bucketName !== bucket.id) continue;
+
+		const named = messages.filter(({ type }) =>
+			(subscriber.subscribedEvents ?? []).includes(type),
+		);
+		if (named.length === 0) continue;
+
+		const consumer = `subscriber '${name}'`;
+		await runAsServer(id, () =>
+			new TestSubscriberAdaptor(subscriber, state.discovery).invoke({
+				events: named,
+			} as never),
+		).catch((error: unknown) => {
+			throw new DeliveryFailed(consumer, named, error);
+		});
+	}
+}
+
+/**
+ * A client for each watched bucket that reports what it writes: the real
+ * client — the test's MinIO — under the name the bucket is injected by, so
+ * an upload a handler makes reaches the bucket's subscribers as the storage
+ * would report it.
+ */
+function watchers(
+	app: LoadedApp,
+	state: ContextState,
+): {
+	serviceName: string;
+	register: (options: ServiceRegisterOptions) => Promise<unknown>;
+}[] {
+	return app.watched.map((bucket) => ({
+		serviceName: bucket.service.serviceName,
+		register: async (options) => {
+			const client = (await bucket.service.register(options)) as StorageClient;
+			const name = bucketName(bucket, app.envParser);
+			// Delivered once the request writing it has answered — or at once,
+			// when the test itself wrote it.
+			const report = async (message: PublishedMessage) => {
+				state.pending.push({ channel: bucket, messages: [message] });
+				const context = currentTestContext();
+				if (context?.side === 'client') await deliver(app, state, context.id);
+			};
+
+			const watching = Object.create(client) as StorageClient;
+			watching.upload = async (key, data, contentType) => {
+				await client.upload(key, data, contentType);
+				await report({
+					type: 'object.created',
+					payload: { bucket: name, key, size: byteLength(data) },
+				});
+			};
+			watching.delete = async (key) => {
+				await client.delete(key);
+				await report({
+					type: 'object.deleted',
+					payload: { bucket: name, key },
+				});
+			};
+			return watching;
+		},
+	}));
+}
+
+/** The bucket's name as the storage knows it — the host of its URL. */
+function bucketName(
+	bucket: ObjectStorage,
+	envParser: EnvironmentParser<{}>,
+): string {
+	const { url } = envParser
+		.create((get) => ({ url: get(provideKey(bucket.id, 'url')).string() }))
+		.parse();
+	try {
+		return new URL(url).hostname || bucket.id;
+	} catch {
+		return bucket.id;
+	}
+}
+
+function byteLength(data: string | Buffer): number {
+	return typeof data === 'string' ? Buffer.byteLength(data) : data.length;
+}
+
+/** An `ObjectStorage`, recognised by what it declares — never by importing it. */
+function isBucket(value: unknown): value is ObjectStorage {
+	const declare = (value as { declare?: () => { kind?: string }[] })?.declare;
+	return (
+		typeof declare === 'function' && declare.call(value)[0]?.kind === 'objects'
+	);
+}
+
+/** `objects(bucket)` named a bucket no subscriber in the app is bound to. */
+export class BucketNotWatched extends Error {
+	constructor(readonly bucket: string) {
+		super(
+			`No subscriber is bound to '${bucket}', so nothing receives what is ` +
+				`emitted on it. Bind one — worker.objects(${bucket.charAt(0).toLowerCase()}${bucket.slice(1)}) — or ` +
+				`check the test manifest lists it.`,
+		);
+		this.name = 'BucketNotWatched';
 	}
 }
 

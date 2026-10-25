@@ -653,6 +653,10 @@ function recordingBuckets(calls: { op: string; args?: unknown }[]) {
 				return undefined;
 			},
 			async setPolicy() {},
+			async notification() {
+				return {};
+			},
+			async setNotification() {},
 			async lifecycle() {
 				return undefined;
 			},
@@ -1175,6 +1179,126 @@ describe(
 		});
 	},
 );
+
+describe('a site behind a password', { timeout: RUN_TIMEOUT }, () => {
+	let home: string;
+	const registry = [
+		'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
+		'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0',
+		'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0',
+		'registry.example.com/acme/compose-app/compose-app-web:v1.4.0-production',
+	];
+
+	beforeEach(async () => {
+		dir = realpathSync(await createTempDir('gkm-compose-command-'));
+		writeComposeApp(dir, {
+			registry: 'registry.example.com/acme',
+			sitePassword: { production: true },
+		});
+		home = realpathSync(await createTempDir('gkm-compose-home-'));
+		vi.stubEnv('GKM_HOME', home);
+		await serveFrom(dir);
+	});
+	afterEach(async () => {
+		vi.unstubAllEnvs();
+		await cleanupDir(dir);
+		await cleanupDir(home);
+	});
+
+	const store = async () =>
+		new FileSecretsStore(
+			dir,
+			keystoreProject(await loadWorkspaceSettings(dir), home),
+		);
+
+	const release = async () => {
+		const said: string[] = [];
+		vi.spyOn(console, 'log').mockImplementation((...a) => {
+			said.push(a.join(' '));
+		});
+		const fake = fakeDocker({ registry });
+		const asked: { url: string; authorization?: string }[] = [];
+		const result = await composeCommand(
+			{ cwd: dir, stage: 'production', tag: 'v1.4.0' },
+			{
+				lookup: resolvesHere,
+				docker: fake.docker,
+				server: fakeServer([]),
+				probe: async ({ url, authorization }) => {
+					asked.push({ url, ...(authorization ? { authorization } : {}) });
+					return 200;
+				},
+				revision: async () => 'abc1234',
+				logins: signedIn,
+
+				sql: () => ({ query: async () => [] }),
+				migrate: async () => [],
+				seed: async () => [],
+			},
+		);
+		return { result, asked, said: said.join('\n') };
+	};
+
+	const caddyfile = () =>
+		readFileSync(
+			join(dir, '.gkm', 'compose', 'production', 'Caddyfile'),
+			'utf-8',
+		);
+
+	it('generates its password once, puts the site behind it, and checks it with the login', async () => {
+		const first = await release();
+		const stored = (await (await store()).read('production'))?.custom
+			.WEB_SITE_PASSWORD;
+
+		expect(stored).toMatch(/^[A-Za-z0-9_-]{32}$/);
+		expect(first.said).toContain('WEB_SITE_PASSWORD');
+		expect(first.said).toContain(
+			'🔒 user: production, password: gkm secrets:show --stage production --reveal → WEB_SITE_PASSWORD',
+		);
+
+		// The site's host asks for the login; the API's does not, and the
+		// password itself is never written down.
+		const web = caddyfile().match(
+			/^https:\/\/shop\.example\.com \{[\s\S]*?^\}/m,
+		)?.[0];
+		expect(web).toContain('basic_auth {\n\t\tproduction $2a$10$');
+		expect(caddyfile().match(/basic_auth/g)).toHaveLength(1);
+		expect(caddyfile()).not.toContain(stored);
+
+		// The check goes through the edge with the login, the API's without.
+		const login = `Basic ${Buffer.from(`production:${stored}`).toString('base64')}`;
+		expect(first.asked).toContainEqual({
+			url: 'https://shop.example.com/',
+			authorization: login,
+		});
+		expect(first.asked).toContainEqual({
+			url: 'https://api.shop.example.com/health',
+		});
+
+		// A second run reads it back and renders the same edge.
+		const before = caddyfile();
+		const second = await release();
+		expect(
+			(await (await store()).read('production'))?.custom.WEB_SITE_PASSWORD,
+		).toBe(stored);
+		expect(second.said).not.toContain('Generated for');
+		expect(caddyfile()).toBe(before);
+	});
+
+	it('serves a site the stage set no password for to everyone', async () => {
+		writeComposeApp(dir, { registry: 'registry.example.com/acme' });
+
+		const { result } = await release();
+
+		expect(caddyfile()).not.toContain('basic_auth');
+		expect(result?.stack.apps.every((app) => app.auth === undefined)).toBe(
+			true,
+		);
+		expect(
+			(await (await store()).read('production'))?.custom,
+		).not.toHaveProperty('WEB_SITE_PASSWORD');
+	});
+});
 
 describe("the stack's Redis", { timeout: RUN_TIMEOUT }, () => {
 	let home: string;

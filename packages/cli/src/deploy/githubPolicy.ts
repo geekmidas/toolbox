@@ -270,7 +270,7 @@ export function deployAccess(
 		}));
 		const suffix = '?'.repeat(SUFFIX_LENGTH - 1);
 		describe.push(
-			`create and configure the buckets ${names.map((n) => n.bucket).join(', ')} and their IAM users (S3, IAM)`,
+			`create and configure the buckets ${names.map((n) => n.bucket).join(', ')}, their IAM users, and — for a bucket a subscriber watches — its events topic, dead-letter queue and subscriptions (S3, IAM, SNS, SQS)`,
 		);
 		build.push((account) => [
 			{
@@ -291,6 +291,8 @@ export function deployAccess(
 					's3:PutBucketVersioning',
 					's3:GetBucketCORS',
 					's3:PutBucketCORS',
+					's3:GetBucketNotification',
+					's3:PutBucketNotification',
 					// A construct's `expire`, and removing it: S3 authorises
 					// DeleteBucketLifecycle as PutLifecycleConfiguration.
 					's3:GetLifecycleConfiguration',
@@ -299,6 +301,46 @@ export function deployAccess(
 				Resource: names.flatMap((n) => [
 					`arn:aws:s3:::${n.bucket}`,
 					`arn:aws:s3:::${n.bucket}-${suffix}`,
+				]),
+			},
+			// A watched bucket's events: its topic and the subscriptions to it —
+			// in whichever region the bucket is — and its dead-letter queue.
+			{
+				Sid: 'StageBucketTopics',
+				Effect: 'Allow',
+				Action: [
+					'sns:CreateTopic',
+					'sns:TagResource',
+					'sns:GetTopicAttributes',
+					'sns:SetTopicAttributes',
+					'sns:Subscribe',
+					'sns:Unsubscribe',
+					'sns:ListSubscriptionsByTopic',
+					'sns:GetSubscriptionAttributes',
+					'sns:SetSubscriptionAttributes',
+				],
+				Resource: names.flatMap((n) =>
+					[`${n.bucket}-events`, `${n.bucket}-${suffix}-events`].flatMap(
+						(topic) => [
+							`arn:aws:sns:*:${account}:${topic}`,
+							`arn:aws:sns:*:${account}:${topic}:*`,
+						],
+					),
+				),
+			},
+			{
+				Sid: 'StageBucketDeadLetters',
+				Effect: 'Allow',
+				Action: [
+					'sqs:CreateQueue',
+					'sqs:TagQueue',
+					'sqs:GetQueueUrl',
+					'sqs:GetQueueAttributes',
+					'sqs:SetQueueAttributes',
+				],
+				Resource: names.flatMap((n) => [
+					`arn:aws:sqs:*:${account}:${n.bucket}-events-dlq`,
+					`arn:aws:sqs:*:${account}:${n.bucket}-${suffix}-events-dlq`,
 				]),
 			},
 			{

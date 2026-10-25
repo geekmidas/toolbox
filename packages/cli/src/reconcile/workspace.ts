@@ -11,8 +11,14 @@
  */
 
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
-import { processorUnits } from '../build/workers.js';
+import {
+	processorUnits,
+	WorkerHasNoApp,
+	type WorkerUnit,
+	workerUnits,
+} from '../build/workers.js';
 import { loadPortState, savePortState } from '../credentials/index.js';
+import { objectsRoute } from '../generators/subscriberRoute.js';
 import {
 	cacheBackendFor,
 	eventsBackendFor,
@@ -23,13 +29,19 @@ import { allConstructGlobs } from '../workspace/index.js';
 import { TEST_STAGE } from '../workspace/stages.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { appServices } from './apps.js';
-import { discover } from './discover.js';
+import { type BoundSubscriber, discover } from './discover.js';
 import { readCredentialFakes, readFakes } from './fakes.js';
 import { type ReconcileResult, reconcile } from './index.js';
 import {
 	loadLocalCredentials,
 	saveLocalCredentials,
 } from './localCredentials.js';
+import {
+	HOST_GATEWAY,
+	type ObjectWebhook,
+	objectsWebhookToken,
+	watchedBuckets,
+} from './objectEvents.js';
 import { planFor } from './plan.js';
 
 /**
@@ -129,10 +141,14 @@ export async function reconcileWorkspace(
 	// Discovered here even when a manifest was handed in: the apps' services
 	// are given the keys their runnables reach, and only discovery sees those.
 	const runnables: Record<string, string[]> = {};
+	const background: Record<string, string[]> = {};
+	const subscribers: Record<string, BoundSubscriber[]> = {};
 	const discovered = await discover({
 		patterns: constructGlobs(workspace),
 		cwd: workspace.root,
 		runnables,
+		background,
+		subscribers,
 	});
 	const manifest = options.manifest ?? discovered;
 	const faked = fakesApply(options.stage, options.fake);
@@ -145,6 +161,12 @@ export async function reconcileWorkspace(
 	// set per machine and workspace, shared by the local stage and `test`,
 	// which run on the same containers.
 	const { credentials } = await loadLocalCredentials(workspace);
+
+	const objectWebhooks = localObjectWebhooks(workspace, manifest, {
+		background,
+		subscribers,
+		seed: credentials.seed,
+	});
 
 	const result = await reconcile({
 		credentials,
@@ -160,6 +182,7 @@ export async function reconcileWorkspace(
 		metroPorts: metroPorts(workspace, manifest),
 		fakes,
 		credentialFakes,
+		...(objectWebhooks.length > 0 ? { objectWebhooks } : {}),
 		apps: (containers) =>
 			appServices(
 				workspace,
@@ -193,6 +216,53 @@ export async function reconcileWorkspace(
 	// With the manifest, so `gkm dev` can say what the workspace declares
 	// without discovering it a second time.
 	return { ...result, manifest };
+}
+
+/**
+ * Where MinIO posts each watched bucket's events under `gkm dev`: the dev
+ * server of the app that builds the worker running the bucket's subscribers,
+ * on the host, on that app's port — the process that relays them onto the
+ * broker.
+ *
+ * None where the broker is SNS: there a bucket's events come from a topic, and
+ * nothing relays them. None for a worker no app can build — `gkm build` says
+ * so; a dev loop has nothing to post to.
+ */
+export function localObjectWebhooks(
+	workspace: NormalizedWorkspace,
+	manifest: ConstructManifest,
+	options: {
+		background: Readonly<Record<string, readonly string[]>>;
+		subscribers: Readonly<Record<string, readonly BoundSubscriber[]>>;
+		/** The local logins' seed, which derives each bucket's token. */
+		seed?: string;
+	},
+): ObjectWebhook[] {
+	if (backendsOf(workspace).events === 'sns') return [];
+
+	const watched = watchedBuckets(manifest, options.subscribers);
+	if (watched.size === 0) return [];
+
+	let units: WorkerUnit[];
+	try {
+		units = workerUnits(workspace, manifest, options.background);
+	} catch (error) {
+		if (error instanceof WorkerHasNoApp) return [];
+		throw error;
+	}
+
+	const hooks: ObjectWebhook[] = [];
+	for (const [bucket, worker] of watched) {
+		const app = units.find((unit) => unit.id === worker)?.app;
+		const port = app ? workspace.apps[app]?.port : undefined;
+		if (!port) continue;
+		hooks.push({
+			bucket,
+			endpoint: `http://${HOST_GATEWAY}:${port}${objectsRoute(bucket)}`,
+			token: objectsWebhookToken(workspace.name, bucket, options.seed),
+		});
+	}
+	return hooks;
 }
 
 /**

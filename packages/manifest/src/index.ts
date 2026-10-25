@@ -43,6 +43,7 @@ export type {
 	MobileAppDeclaration,
 	MobileAppStage,
 	Node,
+	ObjectSubscriberDeclaration,
 	ObjectsDeclaration,
 	OidcDeclaration,
 	PlayReleaseStatus,
@@ -200,6 +201,13 @@ export interface SubscriberInfo {
 	transport?: 'topic' | 'queue';
 	/** The {@link TopicInfo.name} this subscriber binds to (via `worker.topic(topic)`). */
 	topic?: string;
+	/**
+	 * The bucket this subscriber is bound to (via `worker.objects(bucket)`), by
+	 * id — and which of its keys it watches.
+	 */
+	bucket?: string;
+	prefix?: string;
+	suffix?: string;
 	timeout?: number;
 	memorySize?: number;
 	environment?: readonly string[];

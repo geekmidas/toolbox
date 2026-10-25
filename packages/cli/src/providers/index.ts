@@ -23,6 +23,7 @@ import { DeployJournal } from '../deploy/journal.js';
 import type { ResourceRecord, StateStore } from '../deploy/StateStore.js';
 import { createComposeState, createEmptyState } from '../deploy/state.js';
 import { GkmError } from '../errors';
+import type { BoundSubscriber } from '../reconcile/discover.js';
 import { initStageSecrets } from '../secrets/storage.js';
 import type { StageSecrets } from '../secrets/types.js';
 import type { DnsProvider } from '../target/dokploy/dns/DnsProvider.js';
@@ -118,6 +119,8 @@ export interface ProvisionOptions {
 	stage: string;
 	manifest: ConstructManifest;
 	runnables?: Record<string, string[]>;
+	/** Each Worker's subscribers, from discovery. */
+	subscribers?: Readonly<Record<string, readonly BoundSubscriber[]>>;
 	/** The stage's secrets — where each runtime key is written. */
 	secrets: ProvisionSecrets;
 	/** The stage's deploy state. The caller holds the stage's lock. */
@@ -276,7 +279,7 @@ export async function provisionStage(
 	let secrets = (await options.secrets.read())?.custom ?? {};
 	for (const entry of configured) {
 		entry.report.planned = entry.provider
-			.runtimeKeys(manifest)
+			.runtimeKeys(manifest, runnables)
 			.filter((key) => secrets[key] === undefined);
 	}
 
@@ -310,6 +313,7 @@ export async function provisionStage(
 			workspace,
 			manifest,
 			runnables,
+			...(options.subscribers ? { subscribers: options.subscribers } : {}),
 			stage,
 			identity,
 			config: entry.config,

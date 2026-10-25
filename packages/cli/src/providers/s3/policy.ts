@@ -33,7 +33,15 @@ const bucketArn = (bucket: string) => `arn:aws:s3:::${bucket}`;
  */
 export function userPolicy(
 	bucket: string,
-	options: { versioning?: boolean } = {},
+	options: {
+		versioning?: boolean;
+		/**
+		 * The bucket's events topic, when a subscriber watches it: the worker
+		 * confirms the subscriptions the deploy made with this key, and does
+		 * nothing else to the topic.
+		 */
+		eventsTopicArn?: string;
+	} = {},
 ): PolicyDocument {
 	return {
 		Version: '2012-10-17',
@@ -61,6 +69,16 @@ export function userPolicy(
 				],
 				Resource: bucketArn(bucket),
 			},
+			...(options.eventsTopicArn
+				? [
+						{
+							Sid: 'GkmEvents',
+							Effect: 'Allow' as const,
+							Action: 'sns:ConfirmSubscription',
+							Resource: options.eventsTopicArn,
+						},
+					]
+				: []),
 		],
 	};
 }

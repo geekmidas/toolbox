@@ -140,6 +140,48 @@ describe('withCompute', () => {
 		]);
 	});
 
+	it('nests a bucket’s subscriber inside the bucket, with the keys it watches', () => {
+		const merged = withCompute(
+			{
+				...base,
+				Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+			},
+			{
+				subscribers: [
+					{
+						name: 'onAvatar',
+						handler: 'h',
+						bucket: 'Uploads',
+						prefix: 'avatars/',
+						suffix: '.png',
+						subscribedEvents: ['object.created'],
+						dependencies: ['Uploads'],
+					},
+				],
+			},
+		);
+
+		expect(merged.Uploads).toEqual({
+			kind: 'objects',
+			id: 'Uploads',
+			provides: ['UPLOADS_URL'],
+			subscribers: [
+				{
+					id: 'onAvatar',
+					handler: 'h',
+					events: ['object.created'],
+					prefix: 'avatars/',
+					suffix: '.png',
+					dependencies: [{ target: 'Uploads', kind: 'objects' }],
+				},
+			],
+		});
+		// Not a topic subscriber.
+		expect((merged.Users as { subscribers: unknown[] }).subscribers).toEqual(
+			[],
+		);
+	});
+
 	it('ignores a subscriber whose topic is not declared', () => {
 		// Better a missing binding than a topic invented to hold it — the
 		// reference check is what should report this, not a silent creation.

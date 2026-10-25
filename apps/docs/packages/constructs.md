@@ -1731,16 +1731,21 @@ Subscribers run in-process beside the server, each through the
 shared subscriber string. How a subscriber is fed follows that string:
 
 - **`sns://` — pushed.** The server mounts
-  `POST /__gkm/subscribers/<exportName>` and, once listening, subscribes it to
-  the topic with a filter policy on the `type` attribute listing the events
-  from `.subscribe([...])`. SNS fans out, one subscription per subscriber. The
+  `POST /__gkm/subscribers/<exportName>`, subscribed to the topic with a filter
+  policy on the `type` attribute listing the events from `.subscribe([...])`.
+  SNS fans out, one subscription per subscriber. Against SNS itself the deploy
+  makes that subscription and hands the server its ARN in
+  `GKM_SNS_SUBSCRIPTIONS`; against an emulator the server subscribes itself
+  once listening. The
   route is `SnsPushSubscriberAdaptor` (from `@geekmidas/constructs/subscribers`),
   which reads each notification as an SNS Lambda event — the same parsing,
   services and error handling as deployed, without Lambda's middy wrapper, so a
   server needs no `@middy/core`. Confirmations are
-  confirmed automatically; signatures are verified except against an emulator.
-  `GKM_SUBSCRIBER_PUSH_URL` is the public base SNS pushes to (locally it
-  defaults to `http://host.docker.internal:<port>`).
+  confirmed automatically — through the API, as the topic's owner, against SNS
+  itself — and signatures are verified except against an emulator. A
+  notification naming a subscription other than the recorded one is refused.
+  `GKM_SUBSCRIBER_PUSH_URL` is the base an emulator pushes to (by default
+  `http://host.docker.internal:<port>`).
 - **`pgboss://`, `rabbitmq://` — polled.** On pg-boss each subscriber drains a
   queue of its own, `<topic>/<exportName>`, so every subscriber sees every
   event and replicas of one subscriber share it.
