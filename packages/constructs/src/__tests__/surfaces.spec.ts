@@ -9,6 +9,7 @@ import { Cache } from '../cache';
 import { edgeTo, NotAConstruct } from '../construct-interface';
 import { KyselyDatabase } from '../database/kysely';
 import { MobileApp } from '../mobile-app';
+import { RandomPassword } from '../random-password';
 import { RestApi } from '../rest-api';
 import { StaticSite } from '../site';
 
@@ -93,6 +94,21 @@ describe('StaticSite', () => {
 		) as ConstructManifest;
 
 		expect(dependentsOf(manifest, 'Api')).toEqual(['Console']);
+	});
+
+	it('names the password it is served behind, and on which stages', () => {
+		const sitePassword = new RandomPassword('SitePassword');
+		const guarded = new StaticSite('Console', {
+			path: 'apps/console',
+			password: { secret: sitePassword, stages: ['staging'] },
+		});
+
+		expect(guarded.declare()[0]).toMatchObject({
+			password: { secret: 'SitePassword', stages: ['staging'] },
+			// Not an edge: the site is handed none of the password.
+			dependencies: [],
+		});
+		expect(site.declare()[0]).not.toHaveProperty('password');
 	});
 });
 

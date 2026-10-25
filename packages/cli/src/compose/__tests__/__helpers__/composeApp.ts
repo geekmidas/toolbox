@@ -25,8 +25,6 @@ export interface ComposeAppOptions {
 	deployObjects?: Record<string, unknown>;
 	/** `deploy.backups`, as it is written in the config. */
 	deployBackups?: Record<string, unknown>;
-	/** `deploy.sitePassword`, as it is written in the config. */
-	sitePassword?: Record<string, unknown>;
 	/** The rest of `deploy.compose` — `proxy`, `tls` — as written. */
 	compose?: Record<string, unknown>;
 	/** The deployed stages, `['production']` when absent. */
@@ -59,6 +57,10 @@ export interface ComposeAppOptions {
 	 * server — with each stage's `stages` setting, where given.
 	 */
 	mobile?: boolean | { stages: Record<string, unknown> };
+	/**
+	 * Put the site behind a `RandomPassword`, `SitePassword`, on these stages.
+	 */
+	sitePassword?: readonly string[];
 }
 
 /**
@@ -107,6 +109,35 @@ export const telemetry = new Telemetry('Telemetry', {
 		writeFileSync(join(dir, path), `${JSON.stringify(value, null, 2)}\n`);
 
 	if (options.reviewer) writeReviewer(dir, name);
+	if (options.sitePassword) {
+		writeFileSync(
+			join(dir, 'constructs', 'passwords.ts'),
+			`import { RandomPassword } from '@geekmidas/constructs/random-password';
+
+/** The login the site is served behind while it is tried. */
+export const sitePassword = new RandomPassword('SitePassword');
+`,
+		);
+		writeFileSync(
+			join(dir, 'constructs', 'site.ts'),
+			`import { StaticSite } from '@geekmidas/constructs/site';
+import { api } from './api.js';
+import { auth } from './auth.js';
+import { sitePassword } from './passwords.js';
+import { telemetry } from './telemetry.js';
+
+/** A Vite site that signs in through the auth server and calls the API. */
+export const web = new StaticSite('Web', {
+	path: 'apps/web',
+	telemetry,
+	password: {
+		secret: sitePassword,
+		stages: ${JSON.stringify(options.sitePassword)},
+	},
+}).dependsOn([api, auth]);
+`,
+		);
+	}
 	if (options.mobile) {
 		const stages =
 			typeof options.mobile === 'object'
@@ -185,7 +216,6 @@ export default defineWorkspace({
     ${options.deployTelemetry ? `telemetry: ${JSON.stringify(options.deployTelemetry)},` : ''}
     ${options.deployObjects ? `objects: ${JSON.stringify(options.deployObjects)},` : ''}
     ${options.deployBackups ? `backups: ${JSON.stringify(options.deployBackups)},` : ''}
-    ${options.sitePassword ? `sitePassword: ${JSON.stringify(options.sitePassword)},` : ''}
   },
 });
 `,
