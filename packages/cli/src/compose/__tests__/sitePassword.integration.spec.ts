@@ -8,18 +8,20 @@
  */
 
 import { execFile } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { request } from 'node:https';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { RandomPassword } from '@geekmidas/constructs/random-password';
+import { drawSecret, type SecretDeclaration } from '@geekmidas/manifest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { DEFAULT_IMAGES } from '../../reconcile/containers';
 import { edgeCaddyfile } from '../caddyfile';
 import type { EdgeRoute } from '../routes';
-import { generateSitePassword, siteAuth } from '../sitePassword';
+import { siteAuth } from '../sitePassword';
 import { TRAEFIK_IMAGE, traefikDynamic } from '../traefik';
 
 const run = promisify(execFile);
@@ -31,8 +33,12 @@ const HOST = 'web.shop.localhost';
 const SITE = 'the site';
 /** A first run pulls both images. */
 const SETUP_TIMEOUT = 180_000;
-const auth = siteAuth('staging', 'web', {
-	WEB_SITE_PASSWORD: generateSitePassword(),
+/** A password drawn as a deploy draws a `RandomPassword`'s. */
+const auth = siteAuth('staging', 'SITE_PASSWORD', {
+	SITE_PASSWORD: drawSecret(
+		randomInt,
+		new RandomPassword('SitePassword').declare()[0] as SecretDeclaration,
+	),
 });
 
 /** One GET through the proxy on `port`, as a browser would send it. */

@@ -9,7 +9,7 @@
  */
 
 import { dnsCredentials, stageDnsDomains } from '../compose/dns.js';
-import { assertSitePasswordTarget } from '../compose/sitePassword.js';
+import { assertSitePasswords } from '../compose/sitePassword.js';
 import { GkmError } from '../errors';
 import { provisionStage } from '../providers/index.js';
 import { discover } from '../reconcile/discover.js';
@@ -477,10 +477,6 @@ async function prepare(
 	if (allowDevServices && resolved.target.runtime === 'aws') {
 		throw new DevServicesNeedServerTarget(targetName);
 	}
-	// A stage whose sites are meant to be private, on a target that would
-	// serve them publicly, fails before anything is deployed.
-	assertSitePasswordTarget(configured, stage, resolved.target.name);
-
 	// What to deploy comes from the manifest.
 	//
 	// Discovered here rather than by the target, because the list of things
@@ -554,6 +550,10 @@ async function prepare(
 		return false;
 	});
 	if (apps.length === 0) throw new NoDeployableApps(stage, targetName);
+
+	// A site meant to be private on this stage, deployed through a target that
+	// would serve it publicly, fails before anything is deployed.
+	assertSitePasswords(configured, manifest, stage, apps, resolved.target.name);
 
 	// The local stage's state is this machine's, always: it runs nothing
 	// remote, so it never reads or writes the deployed stages' store — nor
