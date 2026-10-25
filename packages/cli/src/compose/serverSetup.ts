@@ -305,6 +305,10 @@ export const systemRunner: Runner = (command, args, options = {}) =>
 		});
 		child.on('error', reject);
 		child.on('close', (code) => resolve({ code: code ?? 1, stdout, stderr }));
+		// A program that exits without reading all its input closes the pipe
+		// under the write: EPIPE. Its exit code already says how it went, and
+		// unheard, the error would be thrown from nowhere.
+		child.stdin?.on('error', () => {});
 		if (child.stdin) child.stdin.end(options.input ?? '');
 	});
 
