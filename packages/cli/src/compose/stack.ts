@@ -103,6 +103,7 @@ import {
 } from './redis.js';
 import type { ComposeProxy, EdgeRoute, EdgeTls } from './routes.js';
 import { publicBuildValues } from './siteBuild.js';
+import { passwordSites, type SiteAuth, siteAuth } from './sitePassword.js';
 import {
 	EDGE_NETWORK,
 	edgeAlias,
@@ -209,6 +210,8 @@ export interface StackApp extends AppImage {
 	build?: AppBuild;
 	/** A backend's environment, exactly the keys it reads. Absent for a site. */
 	env?: Record<string, string>;
+	/** The login the edge asks for, where `deploy.sitePassword` puts it behind one. */
+	auth?: SiteAuth;
 }
 
 /**
@@ -1172,6 +1175,21 @@ export function composeStack(input: StackInput): ComposeStack {
 		),
 	});
 
+	// The sites the stage puts behind a password, each with its login.
+	if (!local) {
+		const sites = apps.filter((app) => app.kind === 'site');
+		const chosen = passwordSites(
+			workspace,
+			stage,
+			sites.map((app) => app.name),
+		);
+		for (const app of sites) {
+			if (chosen.includes(app.name)) {
+				app.auth = siteAuth(stage, app.name, custom);
+			}
+		}
+	}
+
 	// One route per public host — the data both proxies render.
 	const routes: EdgeRoute[] = [
 		...apps.map(
@@ -1180,6 +1198,9 @@ export function composeStack(input: StackInput): ComposeStack {
 				host: app.host,
 				upstreams: [{ service: app.name, port: app.port }],
 				streaming: true,
+				...(app.auth
+					? { auth: { user: app.auth.user, hash: app.auth.hash } }
+					: {}),
 				health: app.kind === 'site' ? '/' : '/health',
 			}),
 		),
