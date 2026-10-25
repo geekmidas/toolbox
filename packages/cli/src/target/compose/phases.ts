@@ -86,6 +86,7 @@ import {
 	sshAccess,
 	sshTarget,
 } from '../../compose/server';
+import type { SiteAuth } from '../../compose/sitePassword';
 import {
 	type ComposeStack,
 	composeProject,
@@ -1260,7 +1261,13 @@ export async function releaseCompose(
 
 	ctx.logger.info(`\n✅ ${stack.project} is running:`);
 	for (const app of stack.apps) {
-		ctx.logger.info(`   ${app.name.padEnd(12)} ${app.url}`);
+		ctx.logger.info(
+			`   ${app.name.padEnd(12)} ${app.url}${
+				app.auth
+					? `  🔒 user: ${app.auth.user}, password: gkm secrets:show --stage ${ctx.stage} --reveal → ${app.auth.key}`
+					: ''
+			}`,
+		);
 	}
 	for (const worker of stack.workers) {
 		ctx.logger.info(`   ${worker.name.padEnd(12)} worker ${worker.id}`);
@@ -1399,6 +1406,11 @@ async function checkContainer(
 	return { app: service, url, last, healthy: false };
 }
 
+/** A login, as the `Authorization` header that carries it. */
+function basicAuthorization(auth: SiteAuth): string {
+	return `Basic ${Buffer.from(`${auth.user}:${auth.password}`).toString('base64')}`;
+}
+
 /** How to open the logs, printed — and as an event, for a headless caller. */
 function reportLogs(
 	ctx: ComposeContext,
@@ -1452,6 +1464,7 @@ async function checkApp(
 			status = await deps.probe({
 				url,
 				...(options.ca ? { ca: options.ca } : {}),
+				...(app.auth ? { authorization: basicAuthorization(app.auth) } : {}),
 				...options.edge,
 				timeoutMs: 10_000,
 				signal: ctx.signal,

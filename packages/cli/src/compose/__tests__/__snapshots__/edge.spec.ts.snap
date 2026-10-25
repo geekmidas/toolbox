@@ -57,7 +57,8 @@ exports[`the route model, rendered for Caddy > renders every route as a site blo
 # One host per API and site, each in front of its own container, one per
 # file server in front of the stack's MinIO, one per worker SNS pushes to,
 # answering only those routes, and — when its logs are served publicly — one
-# for OpenObserve, to the addresses it allows.
+# for OpenObserve, to the addresses it allows. A site the stage puts behind a
+# password asks for its login first.
 https://api.shop.example.com {
 	# gkm's own header, which only a service of this stack may send: the auth
 	# server rate-limits by the client address it carries.
