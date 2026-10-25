@@ -1,5 +1,16 @@
 # @geekmidas/cloud
 
+## 10.0.0-alpha.124
+
+### Patch Changes
+
+- Updated dependencies [[`3e51741`](https://github.com/geekmidas/toolbox/commit/3e51741d5fd226622cd4be16749a482fd20d4e34), [`1f57386`](https://github.com/geekmidas/toolbox/commit/1f57386df433108f0e074512c41a3bcef8b4df71), [`935f5e2`](https://github.com/geekmidas/toolbox/commit/935f5e2449d9527da9a63465e0da30888e8114ff), [`e53270f`](https://github.com/geekmidas/toolbox/commit/e53270fd8ee151fa2c04412fb6a48e8355e4ec07)]:
+  - @geekmidas/events@10.0.0-alpha.124
+  - @geekmidas/manifest@10.0.0-alpha.124
+  - @geekmidas/storage@10.0.0-alpha.124
+  - @geekmidas/db@10.0.0-alpha.124
+  - @geekmidas/envkit@10.0.0-alpha.124
+
 ## 10.0.0-alpha.123
 
 ### Patch Changes

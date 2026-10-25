@@ -1,5 +1,96 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.124
+
+### Minor Changes
+
+- [#283](https://github.com/geekmidas/toolbox/pull/283) [`3e51741`](https://github.com/geekmidas/toolbox/commit/3e51741d5fd226622cd4be16749a482fd20d4e34) Thanks [@geekmidas](https://github.com/geekmidas)! - Against SNS itself, the deploy owns a server's push subscriptions
+
+  A server subscribed its own routes to SNS at startup and confirmed each by
+  visiting its `SubscribeURL`. That needed `sns:Subscribe`, `Unsubscribe` and
+  `SetSubscriptionAttributes` at runtime, and a subscription confirmed that way
+  can be removed by anyone holding the `UnsubscribeURL` every notification
+  carries.
+
+  **Behaviour change:** against SNS itself (an `sns://` string with no
+  `endpoint`), a server no longer subscribes anything. It mounts a subscriber's
+  route only when `GKM_SNS_SUBSCRIPTIONS` — a JSON object of subscriber export →
+  subscription ARN, handed over by the deploy — has one for it; a subscriber
+  without one is logged and reported as failed. Confirmations go through the
+  `ConfirmSubscription` API with `AuthenticateOnUnsubscribe`, so only the
+  topic's owner can unsubscribe a route, and the runtime needs only
+  `sns:ConfirmSubscription` on its topic. A notification whose
+  `x-amz-sns-subscription-arn` header names another subscription is refused
+  (defence in depth: SNS does not sign its headers). Against an emulator nothing
+  changes: the server still subscribes itself.
+
+  - `@geekmidas/events/sns`: `reconcileHttpSubscriptions(connection, { endpoints,
+ownedHost })` converges a topic's HTTP subscriptions for a deploy and answers
+    `{ subscriptions, pending, removed }`. ARNs are answered while still pending
+    and stay stable across runs, and a re-run resends pending confirmations. It
+    also removes this host's subscriptions that are no longer wanted.
+    `confirmSubscription(connection, message)` confirms as the topic owner.
+    `subscribeHttpEndpoint` and the reconciler take an explicit `filterPolicy`
+    and `filterPolicyScope` (`MessageBody` for messages with no `type`
+    attribute).
+  - `@geekmidas/constructs/subscribers`: `SnsPushSubscriberAdaptor` takes
+    `subscriptionArn` and a `confirm` hook, and `handle(body, { subscriptionArn })`.
+  - `gkm compose`: a worker SNS pushes to is handed `GKM_SNS_SUBSCRIPTIONS` from
+    the stack's new `pushSubscriptions` input in place of
+    `GKM_SUBSCRIBER_PUSH_URL`, and a pushed subscriber without a recorded ARN
+    fails with `PushSubscriptionMissing`.
+
+- [#283](https://github.com/geekmidas/toolbox/pull/283) [`935f5e2`](https://github.com/geekmidas/toolbox/commit/935f5e2449d9527da9a63465e0da30888e8114ff) Thanks [@geekmidas](https://github.com/geekmidas)! - Object events: subscribers that run when a bucket's objects change
+
+  `worker.objects(bucket).on(['object.created'], { prefix, suffix }).handle(…)`
+  binds a handler to an `ObjectStorage`. It is handed `objects` (each
+  `{ bucket, key, size?, etag?, versionId? }`, with the key decoded) and
+  `events` (the same objects with their `object.created` / `object.deleted`
+  type). It compiles down to a topic subscriber, so it runs through the same
+  Lambda, SNS push, polled and test adaptors.
+
+  - `@geekmidas/storage/events` reads an S3 or MinIO notification body into
+    object messages (`toObjectEvents`): it decodes form-encoded keys, reads
+    `s3:TestEvent` as no event, and throws `ObjectNotificationMalformed` on
+    anything else. `matchesObjectFilter` is the prefix/suffix test.
+  - The adaptors read what the storage sends and filter by event, prefix and
+    suffix themselves. Their filter is final, whatever the source filtered.
+  - The manifest nests a bucket's subscribers in its `objects` node
+    (`subscribers`, with `events`, `prefix`, `suffix`). The handler's process
+    reads `<BUCKET>_EVENTS_CONNECTION_STRING`, and is not given the bucket's URL
+    unless it also depends on the bucket.
+  - A server build includes the SNS push route whenever a bucket has
+    subscribers, even when the app's own events go through pg-boss. A bucket's
+    push subscription sets no `type` filter policy (`subscribeHttpEndpoint`'s
+    `events` is now optional).
+  - The build refuses `ObjectSubscriberFeedsItself`: a subscriber that depends
+    on the bucket it watches and watches every key in it.
+  - Discovery's per-worker subscribers are now `{ name, connectionKey }`, so a
+    compose worker gets its push host for a bucket's events as for a topic's.
+  - 🔥 In a `featureTest`, an upload or delete through the bucket's client is
+    delivered to its subscribers, and `objects(bucket).emit(...)` reports
+    changes the app never sees, such as a presigned upload.
+
+### Patch Changes
+
+- Updated dependencies [[`3e51741`](https://github.com/geekmidas/toolbox/commit/3e51741d5fd226622cd4be16749a482fd20d4e34), [`1f57386`](https://github.com/geekmidas/toolbox/commit/1f57386df433108f0e074512c41a3bcef8b4df71), [`935f5e2`](https://github.com/geekmidas/toolbox/commit/935f5e2449d9527da9a63465e0da30888e8114ff), [`e53270f`](https://github.com/geekmidas/toolbox/commit/e53270fd8ee151fa2c04412fb6a48e8355e4ec07)]:
+  - @geekmidas/events@10.0.0-alpha.124
+  - @geekmidas/manifest@10.0.0-alpha.124
+  - @geekmidas/storage@10.0.0-alpha.124
+  - @geekmidas/audit@10.0.0-alpha.124
+  - @geekmidas/auth@10.0.0-alpha.124
+  - @geekmidas/cache@10.0.0-alpha.124
+  - @geekmidas/db@10.0.0-alpha.124
+  - @geekmidas/emailkit@10.0.0-alpha.124
+  - @geekmidas/envkit@10.0.0-alpha.124
+  - @geekmidas/errors@10.0.0-alpha.124
+  - @geekmidas/logger@10.0.0-alpha.124
+  - @geekmidas/rate-limit@10.0.0-alpha.124
+  - @geekmidas/schema@10.0.0-alpha.124
+  - @geekmidas/services@10.0.0-alpha.124
+  - @geekmidas/telescope@10.0.0-alpha.124
+  - @geekmidas/testkit@10.0.0-alpha.124
+
 ## 10.0.0-alpha.123
 
 ### Patch Changes
