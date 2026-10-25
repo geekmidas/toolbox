@@ -255,6 +255,9 @@
 	"amqplib": {
 		"peerDependencies": ">=2.0.1"
 	},
+	"bcryptjs": {
+		"dependencies": "~3.0.3"
+	},
 	"better-auth": {
 		"dependencies": "~1.7.6",
 		"devDependencies": "~1.7.6",
