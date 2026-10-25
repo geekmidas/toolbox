@@ -601,3 +601,15 @@ describe('the server scripts', () => {
 		expect(existsSync(ran.stderr.trim())).toBe(false);
 	});
 });
+
+describe('systemRunner', () => {
+	it('answers with the exit of a program that never reads its input', async () => {
+		// Far more than a pipe holds: the write is still going when `true`
+		// exits, and the rest of it meets a closed pipe.
+		const input = 'x'.repeat(8 * 1024 * 1024);
+
+		await expect(systemRunner('true', [], { input })).resolves.toMatchObject({
+			code: 0,
+		});
+	});
+});
