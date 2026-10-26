@@ -48,7 +48,10 @@ services:
       retries: 3
     restart: always # Ensure the container restarts automatically
   minio:
-    image: minio/minio:latest
+    # pgsty's community build, and pinned. MinIO took their images off Docker
+    # Hub and then put Quay behind a login, and each move took CI with it. The
+    # fork ships the same binary, entrypoint and `mc`, so nothing else changes.
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     entrypoint: sh
     ports:
       - "9000:9000"

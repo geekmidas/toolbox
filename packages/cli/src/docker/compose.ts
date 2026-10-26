@@ -13,7 +13,7 @@ export const DEFAULT_SERVICE_IMAGES: Record<ComposeServiceName, string> = {
 	postgres: 'postgres',
 	redis: 'redis',
 	rabbitmq: 'rabbitmq',
-	minio: 'minio/minio',
+	minio: 'pgsty/minio',
 	mailpit: 'axllent/mailpit',
 	localstack: 'localstack/localstack',
 };
@@ -23,7 +23,11 @@ export const DEFAULT_SERVICE_VERSIONS: Record<ComposeServiceName, string> = {
 	postgres: '18-alpine',
 	redis: '7-alpine',
 	rabbitmq: '3-management-alpine',
-	minio: 'latest',
+	// Pinned, unlike its neighbours, and deliberately: MinIO took their images
+	// off Docker Hub and then put Quay behind a login. The image is pgsty's
+	// community build of the same binary, and a pin means a move like that
+	// breaks one version bump rather than every project that pulls.
+	minio: 'RELEASE.2026-08-04T00-00-00Z',
 	mailpit: 'latest',
 	localstack: 'latest',
 };
@@ -647,7 +651,7 @@ function getInfraServiceImage(
 	const defaults: Record<'postgres' | 'redis' | 'minio', string> = {
 		postgres: 'postgres:18-alpine',
 		redis: 'redis:7-alpine',
-		minio: 'minio/minio:latest',
+		minio: 'pgsty/minio:RELEASE.2026-08-04T00-00-00Z',
 	};
 
 	if (!config || config === true) {
@@ -662,7 +666,7 @@ function getInfraServiceImage(
 			const baseImages: Record<'postgres' | 'redis' | 'minio', string> = {
 				postgres: 'postgres',
 				redis: 'redis',
-				minio: 'minio/minio',
+				minio: 'pgsty/minio',
 			};
 			return `${baseImages[serviceName]}:${config.version}`;
 		}

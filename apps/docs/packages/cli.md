@@ -1118,7 +1118,7 @@ auth: {
 | PostgreSQL | `db` | `postgres:18-alpine` | `DATABASE_URL` |
 | Redis | `cache` | `redis:8-alpine` | `REDIS_URL` |
 | Mailpit | `mail` | `axllent/mailpit` | `SMTP_HOST`, `SMTP_PORT`, `MAIL_FROM` |
-| MinIO | `storage` | `minio/minio:latest` | `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` |
+| MinIO | `storage` | `pgsty/minio:RELEASE.2026-08-04T00-00-00Z` | `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` |
 
 ### Events Configuration
 
