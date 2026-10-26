@@ -336,7 +336,7 @@ importers:
         specifier: workspace:~
         version: link:../schema
       '@geekmidas/telescope':
-        specifier: workspace:~
+        specifier: workspace:^
         version: link:../telescope
       chokidar:
         specifier: ~4.0.3
