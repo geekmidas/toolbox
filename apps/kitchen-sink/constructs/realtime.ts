@@ -1,4 +1,5 @@
 import { WebSocketApi } from '@geekmidas/constructs/websocket-api';
+import { z } from 'zod';
 import { auth } from './auth.js';
 import { logger } from './logger.js';
 import { telemetry } from './telemetry.js';
@@ -15,10 +16,17 @@ import { telemetry } from './telemetry.js';
  *
  * Two replicas, because Node runs one thread and each process behind the edge
  * has a budget of connections of its own.
+ *
+ * `messages` is everything it sends its sockets: `broadcast` and `send` are
+ * typed by it, and each message's data is checked before it goes out.
  */
 export const realtime = new WebSocketApi('Realtime', {
 	path: 'apps/realtime',
 	replicas: 2,
+	messages: {
+		announcement: z.object({ text: z.string() }),
+		'chat.said': z.object({ from: z.string(), text: z.string() }),
+	},
 	logger,
 	telemetry,
 }).auth(auth);

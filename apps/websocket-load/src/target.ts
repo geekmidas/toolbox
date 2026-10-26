@@ -8,8 +8,8 @@
  * - `echo` returns its body — a round trip, for RTT.
  * - `stats` returns this process's memory and socket count, so the cost of a
  *   connection is read off the server rather than guessed.
- * - `fanout` broadcasts to every socket on every replica, stamped with the
- *   time it was sent.
+ * - `fanout` broadcasts a `fanned` message to every socket on every replica,
+ *   stamped with the time it was sent.
  *
  * With `REALTIME_PUBLISHER_CONNECTION_STRING` set to a `redis://` URL, any
  * number of these share their sockets the way replicas on a stack do.
@@ -41,7 +41,7 @@ const fanout = realtime
 	.body(z.object({ seq: z.number() }).optional())
 	.handle(async ({ body, sockets }) => {
 		const sent = body?.seq ?? ++seq;
-		await sockets.broadcast({ fanout: sent, t: Date.now() });
+		await sockets.broadcast('fanned', { seq: sent, t: Date.now() });
 		return { seq: sent };
 	});
 

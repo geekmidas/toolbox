@@ -8,7 +8,11 @@ import {
 	type ServicesOf,
 	servicesOf,
 } from '../construct-interface';
-import type { WebSocketPublisher } from './publisher';
+import type {
+	NoMessages,
+	WebSocketMessages,
+	WebSocketPublisher,
+} from './publisher';
 
 /** One open connection, as a handler sees it. */
 export interface Connection {
@@ -20,15 +24,20 @@ export interface Connection {
 	readonly data: Record<string, unknown>;
 }
 
-interface BaseContext<TServices extends Service[]> {
+interface BaseContext<
+	TServices extends Service[],
+	TMessages extends WebSocketMessages,
+> {
 	services: ServiceRecord<TServices>;
 	logger: Logger;
 	/** Every socket this surface holds, on whichever process holds it. */
-	sockets: WebSocketPublisher;
+	sockets: WebSocketPublisher<TMessages>;
 }
 
-export interface ConnectContext<TServices extends Service[]>
-	extends BaseContext<TServices> {
+export interface ConnectContext<
+	TServices extends Service[],
+	TMessages extends WebSocketMessages = NoMessages,
+> extends BaseContext<TServices, TMessages> {
 	connectionId: string;
 	headers: Headers;
 	query: URLSearchParams;
@@ -40,16 +49,21 @@ export interface ConnectContext<TServices extends Service[]>
 	session: unknown;
 }
 
-export interface MessageContext<TBody, TServices extends Service[]>
-	extends BaseContext<TServices> {
+export interface MessageContext<
+	TBody,
+	TServices extends Service[],
+	TMessages extends WebSocketMessages = NoMessages,
+> extends BaseContext<TServices, TMessages> {
 	connection: Connection;
 	body: TBody;
 	/** Send to this connection alone. */
 	reply(message: unknown): void;
 }
 
-export interface DisconnectContext<TServices extends Service[]>
-	extends BaseContext<TServices> {
+export interface DisconnectContext<
+	TServices extends Service[],
+	TMessages extends WebSocketMessages = NoMessages,
+> extends BaseContext<TServices, TMessages> {
 	connection: Connection;
 	code: number;
 	reason: string;
@@ -94,6 +108,8 @@ export class WebSocketRouteBuilder<
 	TKind extends RouteKind,
 	TSchema extends StandardSchemaV1 | undefined = undefined,
 	TServices extends Service[] = [],
+	/** The surface's declared messages, which `sockets` sends. */
+	TMessages extends WebSocketMessages = NoMessages,
 > {
 	constructor(
 		private readonly kind: TKind,
@@ -107,7 +123,7 @@ export class WebSocketRouteBuilder<
 	/** The schema a frame's `data` must satisfy before the handler runs. */
 	body<S extends StandardSchemaV1>(
 		schema: S,
-	): WebSocketRouteBuilder<TKind, S, TServices> {
+	): WebSocketRouteBuilder<TKind, S, TServices, TMessages> {
 		return new WebSocketRouteBuilder(
 			this.kind,
 			this.action,
@@ -124,7 +140,8 @@ export class WebSocketRouteBuilder<
 	): WebSocketRouteBuilder<
 		TKind,
 		TSchema,
-		[...TServices, ...(ServicesOf<T> extends Service[] ? ServicesOf<T> : [])]
+		[...TServices, ...(ServicesOf<T> extends Service[] ? ServicesOf<T> : [])],
+		TMessages
 	> {
 		return new WebSocketRouteBuilder(
 			this.kind,
@@ -144,19 +161,20 @@ export class WebSocketRouteBuilder<
 	handle(
 		handler: TKind extends 'connect'
 			? (
-					context: ConnectContext<TServices>,
+					context: ConnectContext<TServices, TMessages>,
 				) =>
 					| Record<string, unknown>
 					| undefined
 					| Promise<Record<string, unknown> | undefined>
 			: TKind extends 'disconnect'
-				? (context: DisconnectContext<TServices>) => unknown
+				? (context: DisconnectContext<TServices, TMessages>) => unknown
 				: (
 						context: MessageContext<
 							TSchema extends StandardSchemaV1
 								? InferStandardSchema<TSchema>
 								: unknown,
-							TServices
+							TServices,
+							TMessages
 						>,
 					) => unknown,
 	): WebSocketRoute {

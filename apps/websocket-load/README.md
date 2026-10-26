@@ -11,7 +11,7 @@ Results from the last run are in [RESULTS.md](./RESULTS.md).
 - **`src/target.ts`** — a `WebSocketApi` served as the generated entry serves
   one: Node's `http`, `/health`, the surface attached to upgrades. Routes:
   `echo` (returns its body), `stats` (this process's RSS, heap and socket
-  count), `fanout` (broadcasts `{ fanout, t }` to every socket on every
+  count), `fanout` (broadcasts a `fanned` message, `{ seq, t }`, to every socket on every
   replica). With `REALTIME_PUBLISHER_CONNECTION_STRING=redis://…` any number
   of them share sockets as replicas on a stack do.
 - **`src/simulate.ts`** — opens N sockets at a ramp rate and holds them

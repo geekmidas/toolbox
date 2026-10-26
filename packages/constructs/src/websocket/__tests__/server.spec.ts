@@ -12,6 +12,7 @@ import { REDIS_PORT } from '../../../../testkit/test/ports';
 import type { Authenticator } from '../../construct-interface';
 import { runShutdownHooks } from '../../shutdown';
 import { WebSocketApi } from '../../websocket-api';
+import { InvalidWebSocketMessage, UnknownWebSocketMessage } from '../publisher';
 import { CLOSE, DuplicateWebSocketRoute } from '../server';
 import { UnsupportedWebSocketTransport } from '../transport';
 
@@ -39,7 +40,7 @@ afterEach(async () => {
 
 /** Serve `surface` on port 0, as the generated entry does. */
 async function serve(
-	surface: WebSocketApi,
+	surface: WebSocketApi<string, any>,
 	modules: object[],
 	env: Record<string, string> = {},
 ): Promise<Running & { size(): number }> {
@@ -311,7 +312,7 @@ describe('WebSocketApi', () => {
 		const shout = realtime
 			.route('shout')
 			.handle(async ({ sockets, body, connection }) => {
-				await sockets.broadcast({ shout: body }, { except: [connection.id] });
+				await sockets.broadcast('shouted', body, { except: [connection.id] });
 			});
 		const { url } = await serve(realtime, [{ hello, shout }]);
 		const [a, b, c] = await Promise.all([
@@ -326,8 +327,8 @@ describe('WebSocketApi', () => {
 		const { data: bId } = await b.next();
 
 		a.send({ action: 'shout', data: 'hey' });
-		expect(await b.next()).toEqual({ shout: 'hey' });
-		expect(await c.next()).toEqual({ shout: 'hey' });
+		expect(await b.next()).toEqual({ action: 'shouted', data: 'hey' });
+		expect(await c.next()).toEqual({ action: 'shouted', data: 'hey' });
 
 		const publisher = await realtime.service.register({
 			envParser: new EnvironmentParser({
@@ -335,12 +336,81 @@ describe('WebSocketApi', () => {
 			}),
 			context: undefined as never,
 		});
-		await publisher.send([bId], { only: 'b' });
-		expect(await b.next()).toEqual({ only: 'b' });
+		await publisher.send([bId], 'only', 'b');
+		expect(await b.next()).toEqual({ action: 'only', data: 'b' });
 
 		await publisher.close(aId, 4000, 'bye');
 		await expect(a.closed).resolves.toEqual({ code: 4000, reason: 'bye' });
 		expect(c.frames).toEqual([]);
+	});
+
+	it('sends only the messages it declares, typed and checked by their schemas', async () => {
+		const realtime = new WebSocketApi('Realtime', {
+			path: '.',
+			logger: silent,
+			messages: {
+				announcement: z.object({ text: z.string().trim() }),
+				'chat.said': z.object({ from: z.string(), text: z.string() }),
+			},
+		});
+		const hello = realtime
+			.route('hello')
+			.handle(({ connection }) => connection.id);
+		const say = realtime
+			.route('chat.say')
+			.body(z.object({ text: z.string() }))
+			.handle(async ({ sockets, body, connection }) => {
+				await sockets.broadcast(
+					'chat.said',
+					{ from: connection.id, text: body.text },
+					{ except: [connection.id] },
+				);
+			});
+		const { url } = await serve(realtime, [{ hello, say }]);
+		const [a, b] = await Promise.all([client(url), client(url)]);
+		a.send({ action: 'hello' });
+		const { data: aId } = await a.next();
+
+		a.send({ action: 'chat.say', data: { text: 'hi' } });
+		expect(await b.next()).toEqual({
+			action: 'chat.said',
+			data: { from: aId, text: 'hi' },
+		});
+
+		const publisher = await realtime.service.register({
+			envParser: new EnvironmentParser({
+				REALTIME_PUBLISHER_CONNECTION_STRING: 'memory://gkm:ws:Realtime',
+			}),
+			context: undefined as never,
+		});
+
+		// What the schema made of it is what is sent.
+		await publisher.broadcast('announcement', { text: '  maintenance  ' });
+		expect(await a.next()).toEqual({
+			action: 'announcement',
+			data: { text: 'maintenance' },
+		});
+		expect(await b.next()).toEqual({
+			action: 'announcement',
+			data: { text: 'maintenance' },
+		});
+
+		await expect(
+			// @ts-expect-error — an action it does not declare
+			publisher.broadcast('anouncement', { text: 'typo' }),
+		).rejects.toBeInstanceOf(UnknownWebSocketMessage);
+		await expect(
+			// @ts-expect-error — data its schema refuses
+			publisher.send(aId, 'announcement', { text: 3 }),
+		).rejects.toBeInstanceOf(InvalidWebSocketMessage);
+		await expect(
+			// @ts-expect-error — data its schema refuses
+			publisher.send(aId, 'announcement', { text: 3 }),
+		).rejects.toThrow("Realtime's 'announcement' message was refused");
+
+		// Neither refused message reached a socket.
+		expect(a.frames).toEqual([]);
+		expect(b.frames).toEqual([]);
 	});
 
 	it('pings, and drops a socket that stops answering', async () => {
@@ -481,12 +551,12 @@ describe('WebSocketApi over Redis', () => {
 			envParser: new EnvironmentParser(env),
 			context: undefined as never,
 		});
-		await publisher.send([aId, bId], { to: 'both' });
-		expect(await a.next()).toEqual({ to: 'both' });
-		expect(await b.next()).toEqual({ to: 'both' });
+		await publisher.send([aId, bId], 'to', 'both');
+		expect(await a.next()).toEqual({ action: 'to', data: 'both' });
+		expect(await b.next()).toEqual({ action: 'to', data: 'both' });
 
-		await publisher.broadcast({ to: 'all' }, { except: [bId] });
-		expect(await a.next()).toEqual({ to: 'all' });
+		await publisher.broadcast('to', 'all', { except: [bId] });
+		expect(await a.next()).toEqual({ action: 'to', data: 'all' });
 
 		await publisher.close(bId, 4002, 'kicked');
 		await expect(b.closed).resolves.toEqual({ code: 4002, reason: 'kicked' });

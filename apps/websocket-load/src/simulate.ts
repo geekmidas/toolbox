@@ -166,16 +166,17 @@ function count(into: Record<string, number>, key: string): void {
 
 function onMessage(this: Client, raw: WebSocket.RawData): void {
 	const frame = JSON.parse(raw.toString());
-	if (typeof frame.fanout === 'number') {
+	if (frame.action === 'fanned') {
 		if (this.probe) return;
 		const at = Date.now();
-		let list = arrivals.get(frame.fanout);
+		const { seq, t } = frame.data as { seq: number; t: number };
+		let list = arrivals.get(seq);
 		if (!list) {
 			list = [];
-			arrivals.set(frame.fanout, list);
-			expectedFor.set(frame.fanout, openNow);
+			arrivals.set(seq, list);
+			expectedFor.set(seq, openNow);
 		}
-		list.push(at - frame.t);
+		list.push(at - t);
 		return;
 	}
 	if (frame.action === 'echo' && typeof frame.id === 'number') {

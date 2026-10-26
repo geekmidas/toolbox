@@ -9,18 +9,20 @@
  *
  * Anything else reaches a socket through the surface's publisher:
  * `.dependsOn([realtime])` puts `services.realtime` in an endpoint, a cron or
- * a subscriber, and whichever replica holds the socket delivers.
+ * a subscriber, and whichever replica holds the socket delivers. What it
+ * sends is declared in `messages`, which the publisher is typed by.
  *
  * ```ts
  * export const realtime = new WebSocketApi('Realtime', {
  *   path: 'apps/realtime',
+ *   messages: { 'chat.sent': z.object({ text: z.string() }) },
  *   logger,
  * });
  *
  * export const send = realtime
  *   .route('chat.send')
  *   .body(z.object({ text: z.string() }))
- *   .handle(async ({ body, sockets }) => sockets.broadcast(body));
+ *   .handle(async ({ body, sockets }) => sockets.broadcast('chat.sent', body));
  * ```
  */
 
@@ -46,12 +48,24 @@ import {
 import { envParserFor } from './endpoints/surfaceEnv';
 import { onShutdown } from './shutdown';
 import type { Telemetry } from './telemetry';
-import { WebSocketPublisher } from './websocket/publisher';
+import {
+	type NoMessages,
+	type WebSocketMessages,
+	WebSocketPublisher,
+} from './websocket/publisher';
 import { WebSocketRoute, WebSocketRouteBuilder } from './websocket/route';
 import { WebSocketSurfaceServer } from './websocket/server';
 import { transportFromConnectionString } from './websocket/transport';
 
-export { WebSocketPublisher } from './websocket/publisher';
+export {
+	InvalidWebSocketMessage,
+	type MessageAction,
+	type MessageData,
+	type NoMessages,
+	UnknownWebSocketMessage,
+	type WebSocketMessages,
+	WebSocketPublisher,
+} from './websocket/publisher';
 export type {
 	ConnectContext,
 	Connection,
@@ -75,9 +89,27 @@ export {
 	type WebSocketTransport,
 } from './websocket/transport';
 
-export interface WebSocketApiConfig {
+export interface WebSocketApiConfig<
+	TMessages extends WebSocketMessages = NoMessages,
+> {
 	/** The app that serves it, relative to the workspace root. */
 	path: string;
+	/**
+	 * What it sends its sockets, by action — each with the schema its `data`
+	 * is checked by before it is sent.
+	 *
+	 * ```ts
+	 * messages: {
+	 *   announcement: z.object({ text: z.string() }),
+	 *   'chat.said': z.object({ from: z.string(), text: z.string() }),
+	 * }
+	 * ```
+	 *
+	 * The publisher is typed by it — `services.realtime.broadcast(
+	 * 'announcement', { text })` — in an endpoint and in a route's `sockets`
+	 * alike. Absent, any action and any data go, unchecked.
+	 */
+	messages?: TMessages;
 	/** The label it answers on. Absent, its id kebab-cased. */
 	subdomain?: string;
 	/** How many processes serve it on one machine. Default 1. */
@@ -104,8 +136,10 @@ export class InvalidReplicaCount extends Error {
 	}
 }
 
-export class WebSocketApi<TName extends string = string>
-	implements Declarable<TName>
+export class WebSocketApi<
+	TName extends string = string,
+	TMessages extends WebSocketMessages = NoMessages,
+> implements Declarable<TName>
 {
 	readonly id: TName;
 
@@ -123,11 +157,11 @@ export class WebSocketApi<TName extends string = string>
 	 * The surface as a dependency: `services.<id>` is its publisher, so an
 	 * endpoint sends to a socket the way a route beside it does.
 	 */
-	readonly service: Service<Uncapitalize<TName>, WebSocketPublisher>;
+	readonly service: Service<Uncapitalize<TName>, WebSocketPublisher<TMessages>>;
 
 	constructor(
 		id: ConstructName<TName>,
-		private readonly config: WebSocketApiConfig,
+		private readonly config: WebSocketApiConfig<TMessages>,
 		/** Internal: how `.calls()` carries edges into the copy it returns. */
 		private readonly dependencies: readonly Dependency[] = [],
 		/** Internal: how `.auth()` carries the authenticator into its copy. */
@@ -159,6 +193,7 @@ export class WebSocketApi<TName extends string = string>
 
 		const envVar = this.keys.publisherConnectionString;
 		const channel = channelOf(canonical);
+		const declared = this.declared;
 		this.service = {
 			serviceName: serviceKey(canonical) as Uncapitalize<TName>,
 			async register({ envParser }) {
@@ -170,18 +205,22 @@ export class WebSocketApi<TName extends string = string>
 					channel,
 				);
 				onShutdown(() => transport.close());
-				return new WebSocketPublisher(transport);
+				return new WebSocketPublisher<TMessages>(
+					transport,
+					undefined,
+					declared,
+				);
 			},
 		};
 	}
 
 	/** The handler a connection's upgrade runs: refuse it, or say who it is. */
-	connect(): WebSocketRouteBuilder<'connect'> {
+	connect(): WebSocketRouteBuilder<'connect', undefined, [], TMessages> {
 		return new WebSocketRouteBuilder('connect', '$connect', { id: this.id });
 	}
 
 	/** The handler a closed connection runs. */
-	disconnect(): WebSocketRouteBuilder<'disconnect'> {
+	disconnect(): WebSocketRouteBuilder<'disconnect', undefined, [], TMessages> {
 		return new WebSocketRouteBuilder('disconnect', '$disconnect', {
 			id: this.id,
 		});
@@ -191,13 +230,15 @@ export class WebSocketApi<TName extends string = string>
 	 * The handler for frames whose `action` is `action`. `$default` answers
 	 * any action nothing else does.
 	 */
-	route(action: string): WebSocketRouteBuilder<'message'> {
+	route(
+		action: string,
+	): WebSocketRouteBuilder<'message', undefined, [], TMessages> {
 		return new WebSocketRouteBuilder('message', action, { id: this.id });
 	}
 
 	/** What authenticates a connection — its session reaches `connect()`. */
-	auth(construct: Authenticator): WebSocketApi<TName> {
-		return new WebSocketApi<TName>(
+	auth(construct: Authenticator): WebSocketApi<TName, TMessages> {
+		return new WebSocketApi<TName, TMessages>(
 			this.id as ConstructName<TName>,
 			this.config,
 			[...this.dependencies, edgeTo(construct)],
@@ -206,8 +247,8 @@ export class WebSocketApi<TName extends string = string>
 	}
 
 	/** Other surfaces this one calls. See `RestApi.calls`. */
-	calls(constructs: readonly Declarable[]): WebSocketApi<TName> {
-		return new WebSocketApi<TName>(
+	calls(constructs: readonly Declarable[]): WebSocketApi<TName, TMessages> {
+		return new WebSocketApi<TName, TMessages>(
 			this.id as ConstructName<TName>,
 			this.config,
 			[...this.dependencies, ...constructs.map(edgeTo)],
@@ -230,7 +271,7 @@ export class WebSocketApi<TName extends string = string>
 		attach(server: Server): void;
 		/** Close every socket with 1012, so the HTTP server can close. */
 		release(): Promise<void>;
-		server: WebSocketSurfaceServer;
+		server: WebSocketSurfaceServer<TMessages>;
 	}> {
 		const { Hono } = await import('hono');
 		const routes = (options.modules ?? []).flatMap((module) =>
@@ -256,7 +297,7 @@ export class WebSocketApi<TName extends string = string>
 			}))
 			.parse();
 
-		const server = await WebSocketSurfaceServer.start({
+		const server = await WebSocketSurfaceServer.start<TMessages>({
 			surface: this.id,
 			routes,
 			transport: await transportFromConnectionString(
@@ -266,6 +307,7 @@ export class WebSocketApi<TName extends string = string>
 			envParser: options.envParser,
 			logger: this.logger,
 			trustedOrigins: origins,
+			...(this.declared ? { messages: this.declared.messages } : {}),
 			...(this.authenticator ? { authenticator: this.authenticator } : {}),
 			...(this.config.heartbeat
 				? { heartbeatMs: this.config.heartbeat * 1000 }
@@ -292,6 +334,13 @@ export class WebSocketApi<TName extends string = string>
 			release: () => server.close(),
 			server,
 		};
+	}
+
+	/** The declared messages, with the surface they are checked for. */
+	private get declared(): { surface: string; messages: TMessages } | undefined {
+		return this.config.messages
+			? { surface: this.id, messages: this.config.messages }
+			: undefined;
 	}
 
 	declare(): Declaration[] {

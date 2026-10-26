@@ -16,7 +16,11 @@ import type { Logger } from '@geekmidas/logger';
 import { runWithRequestContext, ServiceDiscovery } from '@geekmidas/services';
 import type { WebSocket, WebSocketServer } from 'ws';
 import type { Authenticator } from '../construct-interface';
-import { WebSocketPublisher } from './publisher';
+import {
+	type NoMessages,
+	type WebSocketMessages,
+	WebSocketPublisher,
+} from './publisher';
 import type { Connection, WebSocketRoute } from './route';
 import type { Delivery, WebSocketTransport } from './transport';
 
@@ -50,8 +54,12 @@ export class DuplicateWebSocketRoute extends Error {
 	}
 }
 
-export interface WebSocketServerOptions {
+export interface WebSocketServerOptions<
+	TMessages extends WebSocketMessages = NoMessages,
+> {
 	surface: string;
+	/** What the surface sends its sockets — see `WebSocketApiConfig.messages`. */
+	messages?: TMessages;
 	routes: readonly WebSocketRoute[];
 	transport: WebSocketTransport;
 	envParser: EnvironmentParser<{}>;
@@ -77,11 +85,13 @@ interface Held {
 	alive: boolean;
 }
 
-export class WebSocketSurfaceServer {
+export class WebSocketSurfaceServer<
+	TMessages extends WebSocketMessages = NoMessages,
+> {
 	/** This process, as connection ids name it. */
 	readonly instance = randomBytes(6).toString('hex');
 	/** `sockets` in a route: local sends skip the transport. */
-	readonly publisher: WebSocketPublisher;
+	readonly publisher: WebSocketPublisher<TMessages>;
 
 	private readonly held = new Map<string, Held>();
 	private readonly routes = new Map<string, WebSocketRoute>();
@@ -95,7 +105,7 @@ export class WebSocketSurfaceServer {
 
 	private constructor(
 		private readonly wss: WebSocketServer,
-		private readonly options: WebSocketServerOptions,
+		private readonly options: WebSocketServerOptions<TMessages>,
 	) {
 		for (const route of options.routes) {
 			if (route.surface.id !== options.surface) continue;
@@ -112,10 +122,16 @@ export class WebSocketSurfaceServer {
 			}
 		}
 
-		this.publisher = new WebSocketPublisher(options.transport, {
-			instance: this.instance,
-			deliver: (delivery) => this.deliver(delivery),
-		});
+		this.publisher = new WebSocketPublisher<TMessages>(
+			options.transport,
+			{
+				instance: this.instance,
+				deliver: (delivery) => this.deliver(delivery),
+			},
+			options.messages
+				? { surface: options.surface, messages: options.messages }
+				: undefined,
+		);
 
 		this.heartbeat = setInterval(
 			() => this.beat(),
@@ -124,9 +140,9 @@ export class WebSocketSurfaceServer {
 		this.heartbeat.unref();
 	}
 
-	static async start(
-		options: WebSocketServerOptions,
-	): Promise<WebSocketSurfaceServer> {
+	static async start<TMessages extends WebSocketMessages = NoMessages>(
+		options: WebSocketServerOptions<TMessages>,
+	): Promise<WebSocketSurfaceServer<TMessages>> {
 		const { WebSocketServer } = await import('ws');
 		const wss = new WebSocketServer({
 			noServer: true,
@@ -137,7 +153,7 @@ export class WebSocketSurfaceServer {
 			perMessageDeflate: false,
 			clientTracking: false,
 		});
-		const server = new WebSocketSurfaceServer(wss, options);
+		const server = new WebSocketSurfaceServer<TMessages>(wss, options);
 		await options.transport.subscribe(server.instance, (delivery) =>
 			server.deliver(delivery),
 		);
@@ -312,7 +328,7 @@ export class WebSocketSurfaceServer {
 		context: (base: {
 			services: unknown;
 			logger: Logger;
-			sockets: WebSocketPublisher;
+			sockets: WebSocketPublisher<TMessages>;
 		}) => object,
 	): Promise<unknown> {
 		const logger = this.options.logger.child({

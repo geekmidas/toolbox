@@ -12,9 +12,6 @@ export const announce = router
 	.body(z.object({ text: z.string().min(1).max(500) }))
 	.output(z.object({ sent: z.boolean() }))
 	.handle(async ({ body, services }) => {
-		await services.realtime.broadcast({
-			action: 'announcement',
-			data: { text: body.text },
-		});
+		await services.realtime.broadcast('announcement', { text: body.text });
 		return { sent: true };
 	});

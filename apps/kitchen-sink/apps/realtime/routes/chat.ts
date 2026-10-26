@@ -18,10 +18,8 @@ export const say = realtime
 	.body(z.object({ text: z.string().min(1).max(500) }))
 	.handle(async ({ body, connection, sockets }) => {
 		await sockets.broadcast(
-			{
-				action: 'chat.said',
-				data: { from: connection.data.userId, text: body.text },
-			},
+			'chat.said',
+			{ from: String(connection.data.userId), text: body.text },
 			{ except: [connection.id] },
 		);
 		return { sent: true };

@@ -168,7 +168,7 @@ describe('WebSocketApi - broadcast fan-out', () => {
 				const received = new Promise<void>((resolve) => {
 					done = resolve;
 				});
-				await sockets!.broadcast({ t: Date.now() });
+				await sockets!.broadcast('tick', { t: Date.now() });
 				await received;
 			}).run({ time: 5_000, iterations: 10 });
 
@@ -220,7 +220,7 @@ describe('WebSocketApi - publisher send', () => {
 				const arrived = new Promise<void>((resolve) => {
 					received = resolve;
 				});
-				await publisher.send(id, { t: 1 });
+				await publisher.send(id, 'tick', { t: 1 });
 				await arrived;
 			}).run({ time: 3_000 });
 
