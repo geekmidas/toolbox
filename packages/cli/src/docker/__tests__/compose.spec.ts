@@ -383,7 +383,7 @@ describe('generateDockerCompose', () => {
 				services: { minio: { version: 'RELEASE.2024-01-01' } },
 			});
 
-			expect(yaml).toContain('image: minio/minio:RELEASE.2024-01-01');
+			expect(yaml).toContain('image: pgsty/minio:RELEASE.2024-01-01');
 		});
 
 		it('should configure minio credentials', () => {
@@ -1067,7 +1067,7 @@ describe('generateWorkspaceCompose', () => {
 			const yaml = generateWorkspaceCompose(workspace);
 
 			expect(yaml).toContain('minio:');
-			expect(yaml).toContain('image: minio/minio:latest');
+			expect(yaml).toContain('image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z');
 			expect(yaml).toContain('container_name: test-workspace-minio');
 		});
 
@@ -1108,7 +1108,7 @@ describe('generateWorkspaceCompose', () => {
 			});
 			const yaml = generateWorkspaceCompose(workspace);
 
-			expect(yaml).toContain('image: minio/minio:RELEASE.2024-01-01');
+			expect(yaml).toContain('image: pgsty/minio:RELEASE.2024-01-01');
 		});
 	});
 

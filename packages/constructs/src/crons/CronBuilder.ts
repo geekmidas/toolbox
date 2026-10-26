@@ -1,15 +1,13 @@
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
-import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { ComposableStandardSchema } from '@geekmidas/schema';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import uniqBy from 'lodash.uniqby';
 import { ConstructType } from '../Construct';
+import { cloneWith } from '../clone';
 import { FunctionBuilder, type FunctionHandler } from '../functions';
 import { Cron, type ScheduleExpression } from './Cron';
-
-const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
 export class CronBuilder<
 	TInput extends ComposableStandardSchema,
@@ -39,8 +37,7 @@ export class CronBuilder<
 	}
 
 	override memorySize(memorySize: number): this {
-		this._memorySize = memorySize;
-		return this;
+		return cloneWith(this, { _memorySize: memorySize });
 	}
 
 	schedule(
@@ -55,8 +52,7 @@ export class CronBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		this._schedule = _expression;
-		return this;
+		return cloneWith(this, { _schedule: _expression });
 	}
 
 	override input<T extends ComposableStandardSchema>(
@@ -71,9 +67,9 @@ export class CronBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		this.inputSchema = schema as unknown as TInput;
-
-		return this as unknown as CronBuilder<
+		return cloneWith(this, {
+			inputSchema: schema as unknown as TInput,
+		}) as unknown as CronBuilder<
 			T,
 			TServices,
 			TLogger,
@@ -97,9 +93,9 @@ export class CronBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		this.outputSchema = schema as unknown as OutSchema;
-
-		return this as unknown as CronBuilder<
+		return cloneWith(this, {
+			outputSchema: schema as unknown as OutSchema,
+		}) as unknown as CronBuilder<
 			TInput,
 			TServices,
 			TLogger,
@@ -123,12 +119,12 @@ export class CronBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		this._services = uniqBy(
-			[...this._services, ...services],
-			(s) => s.serviceName,
-		) as TServices;
-
-		return this as unknown as CronBuilder<
+		return cloneWith(this, {
+			_services: uniqBy(
+				[...this._services, ...services],
+				(s) => s.serviceName,
+			) as TServices,
+		}) as unknown as CronBuilder<
 			TInput,
 			[...TServices, ...T],
 			TLogger,
@@ -152,9 +148,9 @@ export class CronBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		this._logger = logger as unknown as TLogger;
-
-		return this as unknown as CronBuilder<
+		return cloneWith(this, {
+			_logger: logger as unknown as TLogger,
+		}) as unknown as CronBuilder<
 			TInput,
 			TServices,
 			T,
@@ -178,12 +174,12 @@ export class CronBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		this._publisher = publisher as unknown as Service<
-			TEventPublisherServiceName,
-			TEventPublisher
-		>;
-
-		return this as unknown as CronBuilder<
+		return cloneWith(this, {
+			_publisher: publisher as unknown as Service<
+				TEventPublisherServiceName,
+				TEventPublisher
+			>,
+		}) as unknown as CronBuilder<
 			TInput,
 			TServices,
 			TLogger,
@@ -211,12 +207,12 @@ export class CronBuilder<
 		T,
 		TName
 	> {
-		this._databaseService = service as unknown as Service<
-			TDatabaseServiceName,
-			TDatabase
-		>;
-
-		return this as unknown as CronBuilder<
+		return cloneWith(this, {
+			_databaseService: service as unknown as Service<
+				TDatabaseServiceName,
+				TDatabase
+			>,
+		}) as unknown as CronBuilder<
 			TInput,
 			TServices,
 			TLogger,
@@ -254,17 +250,11 @@ export class CronBuilder<
 			this._databaseService,
 		);
 
-		// Reset builder state after creating the cron to prevent pollution
-		this._services = [] as Service[] as TServices;
-		this._logger = DEFAULT_LOGGER;
-		this._events = [];
-		this._publisher = undefined;
-		this._databaseService = undefined;
-		this._schedule = undefined;
-		this.inputSchema = undefined;
-		this.outputSchema = undefined;
-		this._timeout = undefined;
-		this._memorySize = undefined;
+		// No reset. `.handle()` reads this builder and leaves it alone, so a
+		// configured base keeps its configuration for every construct built
+		// from it. The reset that used to be here wiped the base on first use.
+
+		cron.monitors = this._monitors;
 
 		return cron;
 	}

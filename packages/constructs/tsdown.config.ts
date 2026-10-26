@@ -7,6 +7,7 @@ export default defineConfig({
 		'src/endpoints/index.ts',
 		'src/functions/index.ts',
 		'src/crons/index.ts',
+		'src/monitors/index.ts',
 		'src/subscribers/index.ts',
 		'src/queue/index.ts',
 		'src/topic/index.ts',

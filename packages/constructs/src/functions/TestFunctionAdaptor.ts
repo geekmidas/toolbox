@@ -15,6 +15,7 @@ import {
 	type ServiceRecord,
 } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import { startMonitors } from '../monitor';
 import { publishEvents } from '../publisher';
 import type { Function } from './Function';
 import { FunctionBuilder } from './FunctionBuilder';
@@ -159,42 +160,76 @@ export class TestFunctionAdaptor<
 		const startTime = Date.now();
 
 		return runWithRequestContext({ logger, requestId, startTime }, async () => {
-			// Execute the function
-			const response = await this.fn.fn({
-				input: parsedInput,
-				services,
-				logger,
-				db,
-				auditor,
-			} as any);
-
-			// Parse output if schema is provided
-			const output = await this.fn.parseOutput(response);
-
-			// Flush audits if any were recorded
-			if (auditor) {
-				const records = auditor.getRecords();
-				if (records.length > 0) {
-					logger.debug(
-						{ auditCount: records.length },
-						'Flushing function audits',
-					);
-					await auditor.flush();
-				}
-			}
-
-			// Register publisher service if provided in context
-
-			await publishEvents(
-				logger,
+			const monitor = await startMonitors(
+				this.fn,
 				this.serviceDiscovery,
-				this.fn.events,
-				output,
-				this.fn.publisherService,
+				logger,
 			);
-
-			return output;
+			try {
+				const output = await this.run({
+					parsedInput,
+					services,
+					logger,
+					db,
+					auditor,
+				});
+				await monitor.success(output);
+				return output;
+			} catch (error) {
+				await monitor.failure(error);
+				throw error;
+			}
 		}) as Promise<InferStandardSchema<TOutSchema>>;
+	}
+
+	private async run({
+		parsedInput,
+		services,
+		logger,
+		db,
+		auditor,
+	}: {
+		parsedInput: unknown;
+		services: ServiceRecord<TServices>;
+		logger: TLogger;
+		db: TDatabase | undefined;
+		auditor: Auditor<TAuditAction> | undefined;
+	}): Promise<InferStandardSchema<TOutSchema>> {
+		// Execute the function
+		const response = await this.fn.fn({
+			input: parsedInput,
+			services,
+			logger,
+			db,
+			auditor,
+		} as any);
+
+		// Parse output if schema is provided
+		const output = await this.fn.parseOutput(response);
+
+		// Flush audits if any were recorded
+		if (auditor) {
+			const records = auditor.getRecords();
+			if (records.length > 0) {
+				logger.debug(
+					{ auditCount: records.length },
+					'Flushing function audits',
+				);
+				await auditor.flush();
+			}
+		}
+
+		// Register publisher service if provided in context
+
+		await publishEvents(
+			logger,
+			this.serviceDiscovery,
+			this.fn.events,
+			output,
+			this.fn.publisherService,
+		);
+
+		return output;
 	}
 }
 

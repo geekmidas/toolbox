@@ -10,6 +10,8 @@ import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import get from 'lodash.get';
 import { ConstructType } from '../Construct';
+import { cloneWith } from '../clone';
+import { addMonitor, type MonitorService } from '../monitor';
 
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
@@ -36,6 +38,7 @@ export abstract class BaseFunctionBuilder<
 	protected _publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
 	protected _auditorStorage?: Service<TAuditStorageServiceName, TAuditStorage>;
 	protected _databaseService?: Service<TDatabaseServiceName, TDatabase>;
+	public _monitors: MonitorService[] = [];
 
 	static isStandardSchemaV1(s: unknown): s is StandardSchemaV1 {
 		const schema = (s as StandardSchemaV1)['~standard'];
@@ -81,19 +84,27 @@ export abstract class BaseFunctionBuilder<
 	abstract logger<T extends Logger>(logger: T): any;
 
 	timeout(timeout: number): this {
-		this._timeout = timeout;
-		return this;
+		return cloneWith(this, { _timeout: timeout });
 	}
 
 	abstract output<T extends StandardSchemaV1>(schema: T): any;
 
 	abstract input<T extends ComposableStandardSchema>(schema: T): any;
 
+	/**
+	 * Report each run to a monitor — a heartbeat, an uptime check, an error
+	 * tracker. Can be called more than once; every monitor is told.
+	 */
+	monitor(monitor: MonitorService): this {
+		return cloneWith(this, { _monitors: addMonitor(this._monitors, monitor) });
+	}
+
 	event<TEvent extends MappedEvent<TEventPublisher, OutSchema>>(
 		event: TEvent,
 	): this {
-		this._events.push(event);
-		return this;
+		// Replaced rather than pushed: a clone shares whatever array the field
+		// points at, so an in-place push would be seen by the base it came from.
+		return cloneWith(this, { _events: [...this._events, event] });
 	}
 
 	publisher<T extends EventPublisher<any>, TName extends string>(
@@ -110,12 +121,12 @@ export abstract class BaseFunctionBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		this._publisher = publisher as unknown as Service<
-			TEventPublisherServiceName,
-			TEventPublisher
-		>;
-
-		return this as unknown as BaseFunctionBuilder<
+		return cloneWith(this, {
+			_publisher: publisher as unknown as Service<
+				TEventPublisherServiceName,
+				TEventPublisher
+			>,
+		}) as unknown as BaseFunctionBuilder<
 			TInput,
 			OutSchema,
 			TServices,
@@ -143,12 +154,12 @@ export abstract class BaseFunctionBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		this._auditorStorage = storage as unknown as Service<
-			TAuditStorageServiceName,
-			TAuditStorage
-		>;
-
-		return this as unknown as BaseFunctionBuilder<
+		return cloneWith(this, {
+			_auditorStorage: storage as unknown as Service<
+				TAuditStorageServiceName,
+				TAuditStorage
+			>,
+		}) as unknown as BaseFunctionBuilder<
 			TInput,
 			OutSchema,
 			TServices,
@@ -180,12 +191,12 @@ export abstract class BaseFunctionBuilder<
 		T,
 		TName
 	> {
-		this._databaseService = service as unknown as Service<
-			TDatabaseServiceName,
-			TDatabase
-		>;
-
-		return this as unknown as BaseFunctionBuilder<
+		return cloneWith(this, {
+			_databaseService: service as unknown as Service<
+				TDatabaseServiceName,
+				TDatabase
+			>,
+		}) as unknown as BaseFunctionBuilder<
 			TInput,
 			OutSchema,
 			TServices,

@@ -49,7 +49,8 @@ describe('EndpointBuilder audit methods', () => {
 			const builder = new EndpointBuilder('/users', 'POST');
 			const result = builder.auditor(auditStorageService);
 
-			expect(result).toBe(builder);
+			expect(result).toBeInstanceOf(EndpointBuilder);
+			expect(result).not.toBe(builder);
 		});
 
 		it('should pass auditor storage service to endpoint', () => {
@@ -96,7 +97,8 @@ describe('EndpointBuilder audit methods', () => {
 			const builder = new EndpointBuilder('/users', 'POST');
 			const result = builder.actor(() => ({ id: '123', type: 'user' }));
 
-			expect(result).toBe(builder);
+			expect(result).toBeInstanceOf(EndpointBuilder);
+			expect(result).not.toBe(builder);
 		});
 
 		it('should pass actor extractor to endpoint', () => {
@@ -183,7 +185,8 @@ describe('EndpointBuilder audit methods', () => {
 			const builder = new EndpointBuilder('/users', 'POST');
 			const result = builder.audit([]);
 
-			expect(result).toBe(builder);
+			expect(result).toBeInstanceOf(EndpointBuilder);
+			expect(result).not.toBe(builder);
 		});
 
 		it('should pass audit definitions to endpoint', () => {

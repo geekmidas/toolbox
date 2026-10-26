@@ -8,6 +8,12 @@ export {
 	snifferContext,
 	sniffService,
 } from './Construct';
+// Monitoring interface
+export type {
+	ConstructMonitor,
+	MonitorContext,
+	MonitorService,
+} from './monitor';
 // Telemetry interface
 export type {
 	Telemetry,

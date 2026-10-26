@@ -38,6 +38,7 @@ import {
 	ServiceDiscovery,
 	type ServiceRecord,
 } from '@geekmidas/services';
+import { startMonitors } from '../monitor';
 import { publishConstructEvents } from '../publisher';
 import type { MappedAudit } from './audit';
 import type { CookieFn, HeaderFn } from './Endpoint';
@@ -134,6 +135,8 @@ export abstract class AmazonApiGatewayEndpoint<
 					'Error processing request',
 				);
 				const wrappedError = wrapError(req.error);
+				// Kept for the monitors, which only see the response otherwise.
+				(req.event as any).__error = req.error;
 
 				// Set the response with the proper status code from the HttpError
 				req.response = {
@@ -600,8 +603,26 @@ export abstract class AmazonApiGatewayEndpoint<
 
 			// Cast event to any since Middy middlewares enrich the event with
 			// services, logger, session, etc. during the middleware chain execution
-			return runWithRequestContext({ logger, requestId, startTime }, () =>
-				chain(event as unknown as Parameters<typeof chain>[0], context),
+			return runWithRequestContext(
+				{ logger, requestId, startTime },
+				async () => {
+					const monitor = await startMonitors(
+						this.endpoint,
+						ServiceDiscovery.getInstance(this.envParser),
+						logger,
+					);
+					const response = await chain(
+						event as unknown as Parameters<typeof chain>[0],
+						context,
+					);
+					// Awaited: Lambda freezes the process once the response is
+					// returned, so an unawaited ping may never be sent.
+					await monitor.settle(
+						(response as any)?.statusCode ?? 200,
+						(event as any).__error,
+					);
+					return response;
+				},
 			);
 		};
 

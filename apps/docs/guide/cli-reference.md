@@ -123,7 +123,7 @@ services:
     ports:
       - '${PGADMIN_HOST_PORT:-5050}:80'
   minio:
-    image: minio/minio
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     ports:
       - '${MINIO_API_PORT:-9000}:9000'
       - '${MINIO_CONSOLE_PORT:-9001}:9001'

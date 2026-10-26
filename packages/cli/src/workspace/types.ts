@@ -147,7 +147,7 @@ export interface ServicesConfig {
 	cache?: boolean | ServiceImageConfig;
 	/** Mail service (mailpit for dev) */
 	mail?: boolean | MailServiceConfig;
-	/** MinIO S3-compatible object storage (default: minio/minio:latest) */
+	/** MinIO S3-compatible object storage (default: pgsty/minio:RELEASE.2026-08-04T00-00-00Z) */
 	storage?: boolean | ServiceImageConfig;
 	/** Event backend: pgboss (reuses postgres), sns (LocalStack), or rabbitmq */
 	events?: import('../types.js').EventsBackend;
