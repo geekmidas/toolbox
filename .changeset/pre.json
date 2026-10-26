@@ -183,6 +183,7 @@
     "secrets-in-project-bucket",
     "secrets-manager-store",
     "secrets-store-adaptors",
+    "seed-drivers",
     "seeds-use-client-config",
     "server-crons",
     "session-reads-auth",

@@ -1,5 +1,32 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.126
+
+### Patch Changes
+
+- [#306](https://github.com/geekmidas/toolbox/pull/306) [`d7996d5`](https://github.com/geekmidas/toolbox/commit/d7996d5fdeb44776e336c09e010f71a506d3606b) Thanks [@geekmidas](https://github.com/geekmidas)! - Seeds run with the drivers the stage's entry registers
+
+  `gkm seed`, `gkm dev --seed`, `gkm test`'s setup and `compose`/`dokploy`
+  deploys ran seeds without registering a single driver, so a seed that reached a
+  bucket through its construct failed with `UnregisteredStorageScheme`. The only
+  workaround was for the app to call `registerStorageDriver(s3Driver)` itself,
+  which names a provider in exactly the layer that is meant to stay neutral. The
+  seed runner now registers what a generated entry for the project would: storage,
+  the cache backend and the events broker, chosen by the same `driversFor`.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.126
+  - @geekmidas/constructs@10.0.0-alpha.126
+  - @geekmidas/db@10.0.0-alpha.126
+  - @geekmidas/envkit@10.0.0-alpha.126
+  - @geekmidas/errors@10.0.0-alpha.126
+  - @geekmidas/logger@10.0.0-alpha.126
+  - @geekmidas/manifest@10.0.0-alpha.126
+  - @geekmidas/schema@10.0.0-alpha.126
+  - @geekmidas/services@10.0.0-alpha.126
+  - @geekmidas/storage@10.0.0-alpha.126
+  - @geekmidas/telescope@10.0.0-alpha.126
+
 ## 10.0.0-alpha.125
 
 ### Minor Changes
