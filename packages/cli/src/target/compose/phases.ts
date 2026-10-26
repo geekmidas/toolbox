@@ -148,7 +148,7 @@ import {
 	applyPostgres,
 	postgresStatements,
 } from '../../reconcile/provision.js';
-import { constructGlobs } from '../../reconcile/workspace.js';
+import { backendsOf, constructGlobs } from '../../reconcile/workspace.js';
 import { runOutput } from '../../run';
 import type { StageSecrets } from '../../secrets/types.js';
 import type {
@@ -1120,7 +1120,7 @@ async function migrateAndSeed(
 	// Seeds after migrations, before any app starts: an app that boots with
 	// its reference data missing fails on the first request that needs it.
 	const seeds = await deps
-		.seed({ ...options, stage: ctx.stage })
+		.seed({ ...options, stage: ctx.stage, backends: backendsOf(workspace) })
 		.catch((error: unknown) => {
 			if (error instanceof SeedFailed) {
 				throw new DeploySeedsFailed(

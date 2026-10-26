@@ -88,7 +88,7 @@ import { plannedSeeds } from '../../migrate/databases';
 import { output } from '../../output';
 import { stageProviderNotes } from '../../providers/notes.js';
 import { appEnvKeys, workerEnvKeys } from '../../reconcile/apps.js';
-import { constructGlobs } from '../../reconcile/workspace.js';
+import { backendsOf, constructGlobs } from '../../reconcile/workspace.js';
 import type { RunOptions } from '../../run';
 import { initStageSecrets } from '../../secrets/storage.js';
 import type { StageSecrets } from '../../secrets/types.js';
@@ -1709,6 +1709,7 @@ async function migrate(run: DokployRun): Promise<void> {
 		stage,
 		manifest,
 		patterns: constructGlobs(workspace),
+		backends: backendsOf(workspace),
 		urls,
 		signal: ctx.signal,
 	});

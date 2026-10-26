@@ -25,6 +25,7 @@ import pg from 'pg';
 import { GkmError } from '../errors';
 import type { ConstructSource } from '../reconcile/discover';
 import { folderProvider, loadSeeds, migrationFiles } from './provider';
+import { registerSeedDrivers, type SeedBackends } from './seedDrivers';
 
 export interface DatabasesOptions {
 	/** The project root — where `db/` lives. */
@@ -50,6 +51,11 @@ export interface MigrationRun {
 export interface SeedOptions extends DatabasesOptions {
 	/** The stage being seeded, handed to every seed. */
 	stage: string;
+	/**
+	 * What the stage's caches and topics resolve to — which drivers a seed is
+	 * run with, as the stage's own entry would register them.
+	 */
+	backends: SeedBackends;
 }
 
 export interface SeedRun {
@@ -238,15 +244,24 @@ export async function migrateDatabases(
  * plugins included — on the owner's connection. One written against
  * `Kysely<DB>` with a `CamelCasePlugin` writes `isEditable` here as it does in
  * a handler or a test.
+ *
+ * And with the drivers the stage's entry registers, so a seed reaching a
+ * bucket or a cache through its construct gets the client a handler would.
  */
 export async function seedDatabases(options: SeedOptions): Promise<SeedRun[]> {
 	const runs: SeedRun[] = [];
+	let registered = false;
 
 	for (const target of await targetsFor(options)) {
 		const folder = join(options.root, target.seeds);
 		if ((await migrationFiles(folder)).size === 0) {
 			runs.push({ target, seeded: [] });
 			continue;
+		}
+
+		if (!registered) {
+			await registerSeedDrivers(options);
+			registered = true;
 		}
 
 		const config = clientConfigOf(options, target);

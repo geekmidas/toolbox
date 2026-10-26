@@ -3,7 +3,7 @@
  * what `gkm seed` runs, against URLs the deploy hands it as secret files.
  *
  * Usage (by the Dokploy target's release, never by hand):
- *   node --import=<tsx> migrate-worker.ts '{"root":"…","stage":"…","manifest":{…},"patterns":[…]}'
+ *   node --import=<tsx> migrate-worker.ts '{"root":"…","stage":"…","manifest":{…},"patterns":[…],"backends":{…}}'
  *
  * Migrations and seeds are the project's own code, which is why they run
  * here rather than in the deploy. Each owner URL arrives as a file in `GKM_SECRETS_DIR`,
@@ -19,6 +19,7 @@ import {
 	SeedFailed,
 	seedDatabases,
 } from '../migrate/databases';
+import type { SeedBackends } from '../migrate/seedDrivers';
 import { type ConstructSource, discover } from '../reconcile/discover';
 import { SECRETS_DIR_ENV } from './sandbox';
 import { answer, errorData, registerAdjacentTsconfig } from './workerRuntime';
@@ -42,6 +43,7 @@ async function main(): Promise<void> {
 			stage: string;
 			manifest: ConstructManifest;
 			patterns: string[];
+			backends: SeedBackends;
 		};
 		await registerAdjacentTsconfig();
 
@@ -65,7 +67,11 @@ async function main(): Promise<void> {
 		};
 		const runs = await migrateDatabases(options);
 		// Every seed, every time, after the schema it was written for.
-		const seeds = await seedDatabases({ ...options, stage: request.stage });
+		const seeds = await seedDatabases({
+			...options,
+			stage: request.stage,
+			backends: request.backends,
+		});
 
 		answer({
 			reason: 'migrated',

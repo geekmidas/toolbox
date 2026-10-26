@@ -24,6 +24,7 @@ import {
 } from '@geekmidas/manifest';
 import { z } from 'zod';
 import { migrationFiles } from '../../migrate/provider';
+import type { SeedBackends } from '../../migrate/seedDrivers';
 import { LocalSandbox } from '../../sandbox/local';
 import { activeSandbox, type Sandbox } from '../../sandbox/sandbox';
 import { runWorker } from '../../sandbox/worker';
@@ -129,6 +130,8 @@ export interface RunMigrationsOptions {
 	manifest: ConstructManifest;
 	/** The constructs globs, for where each construct is declared. */
 	patterns: readonly string[];
+	/** What the stage's caches and topics resolve to — the drivers seeds get. */
+	backends: SeedBackends;
 	/** The URLs to migrate with, reachable from where the sandbox runs. */
 	urls: Readonly<Record<string, string>>;
 	signal: AbortSignal;
@@ -158,6 +161,7 @@ export async function runMigrations(
 				stage: options.stage,
 				manifest: options.manifest,
 				patterns: options.patterns,
+				backends: options.backends,
 			}),
 		],
 		cwd: options.root,
