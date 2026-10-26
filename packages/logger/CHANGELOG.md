@@ -1,5 +1,7 @@
 # @geekmidas/logger
 
+## 9.1.0
+
 ## 9.0.2
 
 ### Patch Changes

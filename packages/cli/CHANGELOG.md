@@ -1,5 +1,22 @@
 # @geekmidas/cli
 
+## 9.1.0
+
+### Patch Changes
+
+- [#308](https://github.com/geekmidas/toolbox/pull/308) [`f9a4b69`](https://github.com/geekmidas/toolbox/commit/f9a4b69d2f9fc3c582484ab2830be7131c13d5bd) Thanks [@geekmidas](https://github.com/geekmidas)! - Projects with storage could not start: the MinIO image is gone from Docker Hub
+
+  MinIO removed `minio/minio` from Docker Hub, so every compose file the CLI writes (`gkm init`, `gkm docker`) failed at the pull. The default is now `pgsty/minio`, a community build of the same server, pinned at `RELEASE.2026-08-04T00-00-00Z`. It keeps the same entrypoint, `mc` and `curl`, so the healthchecks and bucket bootstrapping still work. If a project already sets its own MinIO image or version in config, that still wins.
+
+- Updated dependencies [[`f9a4b69`](https://github.com/geekmidas/toolbox/commit/f9a4b69d2f9fc3c582484ab2830be7131c13d5bd), [`f9a4b69`](https://github.com/geekmidas/toolbox/commit/f9a4b69d2f9fc3c582484ab2830be7131c13d5bd)]:
+  - @geekmidas/constructs@9.1.0
+  - @geekmidas/envkit@9.1.0
+  - @geekmidas/errors@9.1.0
+  - @geekmidas/logger@9.1.0
+  - @geekmidas/manifest@9.1.0
+  - @geekmidas/schema@9.1.0
+  - @geekmidas/telescope@9.1.0
+
 ## 9.0.2
 
 ### Patch Changes
