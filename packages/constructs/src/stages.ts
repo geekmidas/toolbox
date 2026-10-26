@@ -56,8 +56,25 @@ export type AnyStage = LocalStage | TestStage | DeployedStage;
  *   if (stage === 'dev') await insertDemoTenant(db);
  * }
  * ```
+ *
+ * A seed reaching a construct's service — a bucket, a cache — builds it from
+ * the stage's `env`, as a handler's service is built from its own:
+ *
+ * ```ts
+ * export async function seed(db, { stage, env }: SeedContext) {
+ *   const bucket = await assets.service.register({
+ *     envParser: new EnvironmentParser(env),
+ *     context: serviceContext,
+ *   });
+ * }
+ * ```
  */
 export interface SeedContext {
 	/** The stage being seeded: the local one, `test`, or a deployed one. */
 	stage: AnyStage;
+	/**
+	 * The stage's resolved environment — every construct's URL, as the runner
+	 * resolved it. Not `process.env`, which a seed run never populates.
+	 */
+	env: Readonly<Record<string, string | undefined>>;
 }

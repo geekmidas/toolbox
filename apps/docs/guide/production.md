@@ -626,8 +626,20 @@ camelCase tables untouched by a snake_case app's plugin.
 A seed reaches the rest of the app the way a handler does, too. Before the
 first seed runs, gkm registers the drivers the stage's own entry registers:
 `s3://` storage when the project installs `@geekmidas/storage`, its caches'
-backend and its topics' broker. A seed that uploads a sample photo through a
-bucket's service calls `bucket.service.register(…)` and names no provider.
+backend and its topics' broker. And every seed is handed the stage's resolved
+`env` — not `process.env`, which a seed run never fills. A seed that uploads a
+sample photo through a bucket's service names no provider and no URL:
+
+```ts
+export async function seed(db, { stage, env }) {
+  if (stage !== 'dev') return;
+  const bucket = await assets.service.register({
+    envParser: new EnvironmentParser(env),
+    context: serviceContext,
+  });
+  await bucket.upload(key, photo, 'image/jpeg');
+}
+```
 
 A migration gets a bare client, with no plugins. A casing plugin rewrites
 schema-builder DDL too, and a migration has to do the same thing on every

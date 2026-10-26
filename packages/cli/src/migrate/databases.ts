@@ -245,8 +245,9 @@ export async function migrateDatabases(
  * `Kysely<DB>` with a `CamelCasePlugin` writes `isEditable` here as it does in
  * a handler or a test.
  *
- * And with the drivers the stage's entry registers, so a seed reaching a
- * bucket or a cache through its construct gets the client a handler would.
+ * And with the drivers the stage's entry registers, and the stage's `env`, so
+ * a seed reaching a bucket or a cache through its construct gets the client a
+ * handler would.
  */
 export async function seedDatabases(options: SeedOptions): Promise<SeedRun[]> {
 	const runs: SeedRun[] = [];
@@ -275,7 +276,9 @@ export async function seedDatabases(options: SeedOptions): Promise<SeedRun[]> {
 					try {
 						await db
 							.transaction()
-							.execute((trx) => seed.run(trx, { stage: options.stage }));
+							.execute((trx) =>
+								seed.run(trx, { stage: options.stage, env: options.env }),
+							);
 					} catch (error) {
 						throw new SeedFailed(target.id, seed.name, error);
 					}
