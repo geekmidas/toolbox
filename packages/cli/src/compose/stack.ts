@@ -134,7 +134,13 @@ import {
 	type StackRedis,
 	stackRedis,
 } from './redis.js';
-import type { ComposeProxy, EdgeRoute, EdgeTls } from './routes.js';
+import {
+	type ComposeProxy,
+	EDGE_LIMITS,
+	type EdgeRoute,
+	type EdgeTls,
+	NOFILE,
+} from './routes.js';
 import { publicBuildValues } from './siteBuild.js';
 import { passwordSites, type SiteAuth, siteAuth } from './sitePassword.js';
 import {
@@ -232,7 +238,12 @@ export interface StackApp extends AppImage {
 	name: string;
 	/** The construct it serves. */
 	id: string;
-	kind: 'rest-api' | 'site';
+	kind: 'rest-api' | 'websocket-api' | 'site';
+	/**
+	 * How many containers serve it, each an upstream of its route: `api`,
+	 * then `api-2`, `api-3`. One, but for a surface that asked for more.
+	 */
+	replicas: number;
 	/** Its directory, relative to the workspace root. */
 	path: string;
 	port: number;
@@ -386,6 +397,9 @@ export interface StackService {
 	/** Files handed to the container inline — see {@link withCaddyConfigs}. */
 	configs?: { source: string; target: string; mode?: number }[];
 	labels?: Record<string, string>;
+	/** Per-container kernel settings — namespaced ones only. */
+	sysctls?: Record<string, string>;
+	ulimits?: Record<string, { soft: number; hard: number }>;
 	depends_on?: Record<string, { condition: 'service_healthy' }>;
 	healthcheck?: ComposeService['healthcheck'];
 	/**
@@ -847,6 +861,12 @@ export function composeStack(input: StackInput): ComposeStack {
 		if (resource.kind === 'external-api') {
 			owners.set(provideKey(resource.id, 'credentials'), resource);
 		}
+		if (resource.kind === 'websocket-api') {
+			owners.set(
+				provideKey(resource.id, 'publisherConnectionString'),
+				resource,
+			);
+		}
 	}
 
 	const domain = workspace.domains?.[stage];
@@ -1010,7 +1030,7 @@ export function composeStack(input: StackInput): ComposeStack {
 	const edgeServices = new Set(
 		proxy === 'traefik'
 			? [
-					...apps.map((app) => app.name),
+					...apps.flatMap(replicaNames),
 					...(fileServers.size > 0 ? ['minio'] : []),
 					...(logsBase?.host && logsBase.public ? [LOGS_SERVICE] : []),
 				]
@@ -1058,7 +1078,10 @@ export function composeStack(input: StackInput): ComposeStack {
 		{
 			...derivation,
 			addresses: Object.fromEntries(
-				apps.map((app) => [app.id, `http://${hostOf(app.name)}:${app.port}`]),
+				apps.map((app) => [
+					app.id,
+					`${app.kind === 'websocket-api' ? 'ws' : 'http'}://${hostOf(app.name)}:${app.port}`,
+				]),
 			),
 		},
 		hostOf,
@@ -1066,7 +1089,12 @@ export function composeStack(input: StackInput): ComposeStack {
 
 	const surfaceUrls = new Map(
 		plan.resources
-			.filter((r) => r.kind === 'rest-api' || r.kind === 'site')
+			.filter(
+				(r) =>
+					r.kind === 'rest-api' ||
+					r.kind === 'websocket-api' ||
+					r.kind === 'site',
+			)
 			.map((r) => [r.envKey, r.id]),
 	);
 	const appById = new Map(apps.map((app) => [app.id, app]));
@@ -1117,14 +1145,25 @@ export function composeStack(input: StackInput): ComposeStack {
 		// Set by hand wins over derived: it is the stage saying what it is.
 		if (custom[key] !== undefined) return custom[key];
 
-		// A cache, in the stack's Redis, by its name on the network.
+		// A cache, in the stack's Redis, by its name on the network — and a
+		// WebSocket surface's publisher, on its pub/sub.
 		if (owner?.kind === 'cache') return redis?.urls[key];
+		if (
+			owner?.kind === 'websocket-api' &&
+			key === provideKey(owner.id, 'publisherConnectionString')
+		) {
+			return redis?.urls[key];
+		}
 
 		// A backend reaches a sibling surface on the compose network; its own
 		// address is the public one, which is what it builds links on. A site
 		// runs in a browser, which has only the public addresses.
 		const surface = surfaceUrls.get(key);
-		if (app.kind === 'rest-api' && surface && surface !== app.id) {
+		if (
+			(app.kind === 'rest-api' || app.kind === 'websocket-api') &&
+			surface &&
+			surface !== app.id
+		) {
 			return inside[key];
 		}
 
@@ -1198,7 +1237,10 @@ export function composeStack(input: StackInput): ComposeStack {
 		if (keys.has(trusted)) {
 			const internal = (byId.get(app.id)?.callers ?? [])
 				.map((caller) => appById.get(caller))
-				.filter((caller): caller is StackApp => caller?.kind === 'rest-api')
+				.filter(
+					(caller): caller is StackApp =>
+						caller?.kind === 'rest-api' || caller?.kind === 'websocket-api',
+				)
 				.map((caller) => `http://${hostOf(caller.name)}:${caller.port}`);
 			const origins = [
 				...(values[trusted] ?? '').split(',').filter(Boolean),
@@ -1440,7 +1482,10 @@ export function composeStack(input: StackInput): ComposeStack {
 			(app): EdgeRoute => ({
 				name: app.name,
 				host: app.host,
-				upstreams: [{ service: app.name, port: app.port }],
+				upstreams: replicaNames(app).map((service) => ({
+					service,
+					port: app.port,
+				})),
 				streaming: true,
 				...(app.auth
 					? { auth: { user: app.auth.user, hash: app.auth.hash } }
@@ -1610,7 +1655,11 @@ function stackApps(
 	const resources = new Map(plan.resources.map((r) => [r.id, r]));
 
 	for (const [id, declaration] of Object.entries(manifest)) {
-		if (declaration.kind !== 'rest-api' && declaration.kind !== 'site')
+		if (
+			declaration.kind !== 'rest-api' &&
+			declaration.kind !== 'websocket-api' &&
+			declaration.kind !== 'site'
+		)
 			continue;
 
 		const name = appKey(id);
@@ -1632,10 +1681,12 @@ function stackApps(
 			name,
 			id,
 			kind: declaration.kind,
+			replicas:
+				declaration.kind === 'websocket-api' ? (declaration.replicas ?? 1) : 1,
 			path: app.path,
 			port: app.port,
 			host,
-			url: `https://${host}${options.local && options.https !== 443 ? `:${options.https}` : ''}`,
+			url: `${declaration.kind === 'websocket-api' ? 'wss' : 'https'}://${host}${options.local && options.https !== 443 ? `:${options.https}` : ''}`,
 			ref,
 			tag,
 			...(options.images.mode === 'build'
@@ -1854,6 +1905,19 @@ function hostOf(
 	);
 }
 
+/** An app's compose services, one per replica: `api`, `api-2`, `api-3`. */
+export function replicaNames(
+	app: Pick<StackApp, 'name' | 'replicas'>,
+): string[] {
+	return [
+		app.name,
+		...Array.from(
+			{ length: app.replicas - 1 },
+			(_, i) => `${app.name}-${i + 2}`,
+		),
+	];
+}
+
 /** The compose document: the infrastructure, the apps, and the edge. */
 function stackFile(options: {
 	project: string;
@@ -1967,7 +2031,7 @@ function stackFile(options: {
 	}
 
 	for (const app of apps) {
-		services[app.name] = {
+		const definition: StackService = {
 			image: app.ref,
 			...(app.build
 				? {
@@ -1985,7 +2049,7 @@ function stackFile(options: {
 			restart: 'unless-stopped',
 			// A site is a bundle and reads nothing at runtime; a backend reads
 			// exactly the keys in its own file.
-			...(app.kind === 'rest-api'
+			...(app.kind !== 'site'
 				? {
 						env_file: [{ path: `./${app.name}.env`, format: 'raw' as const }],
 						...(infra.length
@@ -1998,7 +2062,13 @@ function stackFile(options: {
 					}
 				: {}),
 			healthcheck: probe(app.port, app.kind === 'site' ? '/' : '/health'),
+			// Every socket is a descriptor, and Docker's default soft limit is
+			// 1024 wherever the engine was not told otherwise.
+			...(app.kind === 'websocket-api' ? { ulimits: { nofile: NOFILE } } : {}),
 		};
+		// Each replica the same service under its own name: one image, one
+		// env file, and an upstream each.
+		for (const name of replicaNames(app)) services[name] = { ...definition };
 	}
 
 	// A worker or a processor unit: no published port — its health check is
@@ -2037,9 +2107,10 @@ function stackFile(options: {
 			// The Caddyfile and the stage's own certificate are inline configs,
 			// added as the file is written (`withCaddyConfigs`).
 			volumes: ['caddy-data:/data', 'caddy-config:/config'],
+			...EDGE_LIMITS,
 			depends_on: Object.fromEntries(
 				[
-					...apps.map((app) => app.name),
+					...apps.flatMap(replicaNames),
 					...options.workers.filter((w) => w.push).map((w) => w.name),
 					...options.processors.map((p) => p.name),
 				].map((name) => [name, HEALTHY]),

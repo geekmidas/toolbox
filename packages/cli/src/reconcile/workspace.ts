@@ -329,7 +329,11 @@ export function surfaceAddresses(
 	const addresses: Record<string, string> = {};
 
 	for (const [id, declaration] of Object.entries(manifest)) {
-		if (declaration.kind !== 'rest-api' && declaration.kind !== 'site')
+		if (
+			declaration.kind !== 'rest-api' &&
+			declaration.kind !== 'websocket-api' &&
+			declaration.kind !== 'site'
+		)
 			continue;
 
 		// Every site and every surface is its own app, keyed by its id the way

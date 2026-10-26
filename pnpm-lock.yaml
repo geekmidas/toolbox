@@ -272,6 +272,21 @@ importers:
 
   apps/kitchen-sink/apps/auth: {}
 
+  apps/kitchen-sink/apps/realtime:
+    dependencies:
+      '@geekmidas/errors':
+        specifier: workspace:*
+        version: link:../../../../packages/errors
+      ioredis:
+        specifier: ~6.0.0
+        version: 6.0.0
+      ws:
+        specifier: ~8.22.0
+        version: 8.22.0
+      zod:
+        specifier: ~4.6.5
+        version: 4.6.5
+
   apps/kitchen-sink/apps/web:
     devDependencies:
       '@geekmidas/envkit':
@@ -280,6 +295,43 @@ importers:
       vite:
         specifier: ~8.3.1
         version: 8.3.1(@types/node@24.9.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.43.1)(tsx@4.23.15)(yaml@2.9.1)
+
+  apps/websocket-load:
+    dependencies:
+      '@geekmidas/constructs':
+        specifier: workspace:*
+        version: link:../../packages/constructs
+      '@geekmidas/envkit':
+        specifier: workspace:*
+        version: link:../../packages/envkit
+      '@geekmidas/logger':
+        specifier: workspace:*
+        version: link:../../packages/logger
+      hono:
+        specifier: ~4.13.8
+        version: 4.13.8
+      ioredis:
+        specifier: ~6.0.0
+        version: 6.0.0
+      ws:
+        specifier: ~8.22.0
+        version: 8.22.0
+      zod:
+        specifier: ~4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@types/node':
+        specifier: ~24.9.1
+        version: 24.9.1
+      '@types/ws':
+        specifier: ~8.18.1
+        version: 8.18.2
+      esbuild:
+        specifier: ~0.28.2
+        version: 0.28.2
+      tsx:
+        specifier: ~4.23.15
+        version: 4.23.15
 
   packages/audit:
     dependencies:
@@ -761,9 +813,15 @@ importers:
       '@types/qs':
         specifier: ~6.15.1
         version: 6.15.1
+      '@types/ws':
+        specifier: ~8.18.1
+        version: 8.18.2
       better-auth:
         specifier: ~1.7.6
         version: 1.7.6(@opentelemetry/api@1.9.1)(next@16.3.6(@babel/core@7.28.0)(@opentelemetry/api@1.9.1)(@types/node@24.9.1)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(pg@8.23.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(vitest@5.0.2)(vue@3.5.18(typescript@7.0.2))
+      ioredis:
+        specifier: ~6.0.0
+        version: 6.0.0
       kysely:
         specifier: ~0.29.6
         version: 0.29.6
@@ -773,6 +831,9 @@ importers:
       pg:
         specifier: ~8.23.0
         version: 8.23.0
+      ws:
+        specifier: ~8.22.0
+        version: 8.22.0
       zod:
         specifier: ~4.6.5
         version: 4.6.5
@@ -4714,6 +4775,9 @@ packages:
 
   '@types/web-bluetooth@0.0.21':
     resolution: {integrity: sha512-oIQLCGWtcFZy2JW77j9k8nHzAOpqMHLQejDA48XXMWH6tjCQHz5RCFz1bzsmROyL6PUm+LLnUiI4BCn221inxA==}
+
+  '@types/ws@8.18.2':
+    resolution: {integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==}
 
   '@types/yargs-parser@21.0.3':
     resolution: {integrity: sha512-I4q9QU9MQv4oEOz4tAHJtNz1cwuLxn2F3xcc2iV5WdqLPpUnj30aUuxt1mAxYTG+oe8CZMV/+6rU4S4gRDzqtQ==}
@@ -13845,6 +13909,10 @@ snapshots:
   '@types/unist@3.0.3': {}
 
   '@types/web-bluetooth@0.0.21': {}
+
+  '@types/ws@8.18.2':
+    dependencies:
+      '@types/node': 24.9.1
 
   '@types/yargs-parser@21.0.3': {}
 

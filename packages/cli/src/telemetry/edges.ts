@@ -51,7 +51,8 @@ export function telemetryOf(
 	if (declaration.kind === 'worker' || declaration.kind === 'file-server') {
 		return nodeOf(manifest, declaration.telemetry);
 	}
-	if (declaration.kind !== 'rest-api') return undefined;
+	if (declaration.kind !== 'rest-api' && declaration.kind !== 'websocket-api')
+		return undefined;
 
 	return nodeOf(manifest, declaration.telemetry);
 }
@@ -65,7 +66,9 @@ export function appTelemetry(
 	appName: string,
 ): TelemetryDeclaration | undefined {
 	const id = Object.entries(manifest).find(
-		([id, d]) => d.kind === 'rest-api' && appKey(id) === appName,
+		([id, d]) =>
+			(d.kind === 'rest-api' || d.kind === 'websocket-api') &&
+			appKey(id) === appName,
 	)?.[0];
 	return id ? telemetryOf(manifest, id) : undefined;
 }
@@ -75,6 +78,7 @@ export function usesTelemetry(manifest: ConstructManifest): boolean {
 	return Object.entries(manifest).some(
 		([id, d]) =>
 			(d.kind === 'rest-api' ||
+				d.kind === 'websocket-api' ||
 				d.kind === 'worker' ||
 				d.kind === 'file-server') &&
 			telemetryOf(manifest, id) !== undefined,

@@ -572,6 +572,37 @@ export interface RestApiDeclaration extends Node {
 	telemetry?: ConstructId;
 }
 
+/**
+ * A WebSocket surface: one long-lived connection per client, and the routes a
+ * frame is dispatched to by its `action`.
+ *
+ * A process of its own, like a `rest-api` — it owns an address and a container
+ * — but the routes are not listed: a frame is reached by its action rather
+ * than a method and path, and nothing outside the process routes on it.
+ *
+ * Anything else reaches a socket through its publisher: a `redis://` string on
+ * a stack, over which whichever replica holds the socket delivers.
+ */
+export interface WebSocketApiDeclaration extends Node {
+	kind: 'websocket-api';
+	/** The label it answers on, as a `rest-api`'s. Absent, its id kebab-cased. */
+	subdomain?: string;
+	/** The app that serves this surface, relative to the workspace root. */
+	path: string;
+	/** The construct that authenticates a connection, as a `rest-api`'s. */
+	auth?: ConstructId;
+	/** Other surfaces this one calls. See `RestApiDeclaration.calls`. */
+	calls?: readonly Dependency[];
+	/** The `Telemetry` node its process emits through. */
+	telemetry?: ConstructId;
+	/**
+	 * How many processes serve it on one machine. Node runs one thread, and
+	 * each process behind the edge has its own budget of connections.
+	 * Absent, one.
+	 */
+	replicas?: number;
+}
+
 /** One glob, or several. Mirrors the CLI's `Routes` without depending on it. */
 export type Glob = string | readonly string[];
 
@@ -888,6 +919,7 @@ export type Declaration =
 	| CredentialDeclaration
 	| EncryptionDeclaration
 	| RestApiDeclaration
+	| WebSocketApiDeclaration
 	| SiteDeclaration
 	| MobileAppDeclaration
 	| WorkerDeclaration
@@ -1078,6 +1110,16 @@ export interface ProvidesByKind {
 		 */
 		cookieDomain: string;
 	};
+	/**
+	 * Where it answers (`wss://`), the origins a browser may open it from, and
+	 * the connection string anything else sends to a socket through.
+	 */
+	'websocket-api': {
+		url: string;
+		/** Comma-separated, read off inbound edges as a `rest-api`'s. */
+		trustedOrigins: string;
+		publisherConnectionString: string;
+	};
 	/** The value itself. A secret has no address to hand out instead. */
 	secret: { value: string };
 	/**
@@ -1168,6 +1210,9 @@ export const PUBLIC: {
 	// into a bundle that nothing there reads is how a bundle grows keys nobody
 	// can account for.
 	'rest-api': ['url'],
+	// Where a browser opens it. Not the connection string: whoever holds it can
+	// write to every socket.
+	'websocket-api': ['url'],
 	// Carries broker credentials, and a browser that can publish to a queue can
 	// forge any job the worker trusts.
 	queue: [],

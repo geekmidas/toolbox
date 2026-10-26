@@ -127,4 +127,21 @@ export type EdgeTls =
 	 */
 	| { kind: 'files'; certFile: string; keyFile: string };
 
+/** File descriptors a process holding sockets may open. */
+export const NOFILE = { soft: 1_048_576, hard: 1_048_576 };
+
+/**
+ * What the edge runs with: a descriptor per socket, twice — the client's and
+ * the upstream's — and every local port for those upstream connections. One
+ * edge address to one upstream has only the ephemeral range to open
+ * connections from, ~28k by Linux's default; widened, ~64k per replica.
+ */
+export const EDGE_LIMITS: {
+	sysctls: Record<string, string>;
+	ulimits: Record<string, { soft: number; hard: number }>;
+} = {
+	sysctls: { 'net.ipv4.ip_local_port_range': '1024 65535' },
+	ulimits: { nofile: NOFILE },
+};
+
 export type { ComposeProxy } from '../workspace/types.js';

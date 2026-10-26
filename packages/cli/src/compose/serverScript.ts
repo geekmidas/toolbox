@@ -106,6 +106,26 @@ fi
 systemctl enable --now docker >/dev/null 2>&1
 say "docker $(docker version --format '{{.Server.Version}}')"
 
+# ── Kernel: room for many open connections ─────────────────────────────────
+# Each client behind the edge is tracked twice by conntrack — the published
+# port, then the bridge to the app — and the default table, sized from memory,
+# fills long before memory does. When it is full, new connections are dropped
+# with nothing logged where anyone looks.
+cat > /etc/sysctl.d/60-gkm-connections.conf <<'EOF'
+# Written by gkm compose:server.
+net.netfilter.nf_conntrack_max = 1048576
+net.core.somaxconn = 65535
+net.ipv4.tcp_max_syn_backlog = 65535
+fs.file-max = 2097152
+EOF
+# Buckets for the table, a quarter of its entries: from the next boot on, and
+# now.
+echo "options nf_conntrack hashsize=262144" > /etc/modprobe.d/gkm-conntrack.conf
+modprobe nf_conntrack
+echo 262144 > /sys/module/nf_conntrack/parameters/hashsize 2>/dev/null || true
+sysctl --quiet --system
+say "kernel: $(sysctl -n net.netfilter.nf_conntrack_max) tracked connections, a backlog of $(sysctl -n net.core.somaxconn)"
+
 # ── The deploy user: no password, no sudo, in the docker group ─────────────
 id "$DEPLOY" >/dev/null 2>&1 || adduser --disabled-password --gecos "" "$DEPLOY" >/dev/null
 usermod -aG docker "$DEPLOY"

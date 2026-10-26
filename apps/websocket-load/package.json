@@ -1,0 +1,29 @@
+{
+	"name": "@geekmidas/websocket-load",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Real-socket load for a WebSocketApi: a target server, a connection simulator, and a compose scenario that runs both through the edge gkm compose deploys.",
+	"scripts": {
+		"build": "node build.mjs",
+		"target": "tsx src/target.ts",
+		"simulate": "tsx src/simulate.ts",
+		"scenario": "node build.mjs && tsx src/scenario.ts",
+		"ts:check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@geekmidas/constructs": "workspace:*",
+		"@geekmidas/envkit": "workspace:*",
+		"@geekmidas/logger": "workspace:*",
+		"hono": "~4.13.8",
+		"ioredis": "~6.0.0",
+		"ws": "~8.22.0",
+		"zod": "~4.6.5"
+	},
+	"devDependencies": {
+		"@types/node": "~24.9.1",
+		"@types/ws": "~8.18.1",
+		"esbuild": "~0.28.2",
+		"tsx": "~4.23.15"
+	}
+}

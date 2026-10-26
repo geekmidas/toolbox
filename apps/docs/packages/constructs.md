@@ -55,6 +55,7 @@ pnpm add @geekmidas/constructs
 | `/external-api` | `ExternalApi` — an HTTP API somebody else runs, faked in tests |
 | `/email` | `Email` — declared outbound mail |
 | `/rest-api` | `RestApi` — an API surface |
+| `/websocket-api` | `WebSocketApi` — a surface that holds long-lived connections |
 | `/site` | `StaticSite` — a declared static site |
 | `/auth` | `BetterAuth` — a declared auth server |
 | `/telemetry` | `Telemetry` — what the application emits (traces and logs) |
@@ -195,6 +196,78 @@ When there are symbols, at least one is always in the password. Every stage
 draws it the same way, so a password that passes the rules in `gkm dev` passes
 them deployed. A deployed stage keeps the password it generated even if the
 format changes later.
+
+### `WebSocketApi` — long-lived connections
+
+A surface like `RestApi`, in a container of its own, whose routes are
+dispatched on a frame's `action` rather than a method and path. Frames are API
+Gateway's shape — `{ "action": "chat.say", "id": 1, "data": … }` — and the
+connection's lifecycle runs `connect()` and `disconnect()`:
+
+```typescript
+// constructs/realtime.ts
+import { WebSocketApi } from '@geekmidas/constructs/websocket-api';
+
+export const realtime = new WebSocketApi('Realtime', {
+  path: 'apps/realtime',
+  replicas: 2, // processes on one machine; see "WebSocket surfaces" in the compose guide
+  messages: {
+    // what it sends its sockets, by action
+    announcement: z.object({ text: z.string() }),
+    'chat.said': z.object({ from: z.string(), text: z.string() }),
+  },
+  logger,
+}).auth(auth);
+
+// apps/realtime/routes/chat.ts
+export const connect = realtime.connect().handle(({ session, query }) => {
+  if (!session) throw new UnauthorizedError(); // refuses the upgrade with 401
+  return { userId: session.user.id };          // the connection's `data` from here on
+});
+
+export const say = realtime
+  .route('chat.say')
+  .body(z.object({ text: z.string() }))
+  .handle(async ({ body, connection, sockets }) => {
+    await sockets.broadcast(
+      'chat.said',
+      { from: String(connection.data.userId), text: body.text },
+      { except: [connection.id] },
+    );
+    return { sent: true }; // sent back as { action: 'chat.say', id, data }
+  });
+```
+
+- **A reply** is whatever the handler returns, echoed with the frame's `id`.
+  A frame that is not JSON, names no route, or fails its schema is answered
+  with `{ action: '$error', id, data: { message, issues? } }` and the socket
+  stays open. `$default` answers any action nothing else does.
+- **What it sends is declared.** A message goes out as `{ action, data }`,
+  the shape frames arrive in. `messages` names each action with the schema
+  its `data` must pass, and types the publisher by it:
+  `broadcast('anouncement', …)` or data of the wrong shape doesn't compile.
+  The schema checks the data before anything is sent too, so a bad message
+  throws in the sender (`UnknownWebSocketMessage`, `InvalidWebSocketMessage`)
+  rather than reaching every client. A surface without `messages` sends any
+  action and any data, unchecked.
+- **Anything else reaches a socket through the surface's publisher.**
+  `.dependsOn([realtime])` on an endpoint, a cron or a subscriber puts
+  `services.realtime` in its handler: `send(ids, action, data)`,
+  `broadcast(action, data, { except })` and `close(ids, code, reason)`. A
+  connection id names the process that holds it, so a send goes to that
+  process alone; between processes the publisher is Redis pub/sub
+  (`REALTIME_PUBLISHER_CONNECTION_STRING`), which `gkm dev` and `gkm compose`
+  run for you.
+- **Browsers are checked against the graph.** An upgrade carrying an `Origin`
+  outside `REALTIME_TRUSTED_ORIGINS` — read off what declares an edge to the
+  surface, as a `RestApi`'s CORS origins are — is refused with 403. A client
+  with no `Origin` (a server, a load generator) is not a browser.
+- **Liveness** is the server's: a ping every `heartbeat` seconds (30), and a
+  socket that missed the last one is dropped. One that stops reading while
+  4 MB is queued for it is closed with 1013. On SIGTERM every socket is closed
+  with **1012** — reconnect, and land on a process that is still up.
+- A site that declares an edge to the surface gets its URL alone, never the
+  publisher: whoever holds that string can write to every socket.
 
 ### `.dependsOn()` — the one primitive
 

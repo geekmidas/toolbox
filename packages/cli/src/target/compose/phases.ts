@@ -706,7 +706,7 @@ function assertRedisClient(
 		...stack.apps
 			.filter(
 				(app) =>
-					app.kind === 'rest-api' &&
+					(app.kind === 'rest-api' || app.kind === 'websocket-api') &&
 					reachesCache(appEnvKeys(manifest, app.name, runnables)),
 			)
 			.map((a) => a.name),
@@ -1670,7 +1670,8 @@ async function checkApp(
 		edge?: { connectTo: string; connectPort?: number };
 	},
 ): Promise<{ app: string; url: string; last: string; healthy: boolean }> {
-	const url = `${app.url}${app.kind === 'site' ? '/' : '/health'}`;
+	// A WebSocket surface answers its health over plain HTTPS on its host.
+	const url = `${app.url.replace(/^ws/, 'http')}${app.kind === 'site' ? '/' : '/health'}`;
 	let last = 'not asked';
 
 	for (let attempt = 1; attempt <= deps.healthAttempts; attempt++) {

@@ -228,6 +228,7 @@ export function stageServiceDeclarations(
 		const name = appKey(id);
 		if (
 			declaration.kind === 'rest-api' ||
+			declaration.kind === 'websocket-api' ||
 			declaration.kind === 'site' ||
 			declaration.kind === 'mobile-app'
 		) {

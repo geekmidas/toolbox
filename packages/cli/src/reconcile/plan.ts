@@ -60,6 +60,10 @@ const CONTAINERS: Partial<Record<DeclarationKind, string>> = {
 	// one is selected — which is the same reason the declaration has no
 	// `provider` field.
 	email: 'mailpit',
+	// A WebSocket surface answers on its app's port like a REST one, but its
+	// publisher is Redis pub/sub: an endpoint in another process reaches a
+	// socket through it, so it runs wherever the surface is declared.
+	'websocket-api': 'redis',
 };
 
 /**
@@ -569,7 +573,8 @@ export function planFor(
 			// Only for surfaces. Every other kind is reached by a URL that says
 			// nothing about who holds it, so a caller list would be a fact with
 			// no reader.
-			...(declaration.kind === 'rest-api'
+			...(declaration.kind === 'rest-api' ||
+			declaration.kind === 'websocket-api'
 				? { callers: dependentsOf(manifest, id) }
 				: {}),
 			...(declaration.kind === 'site'
@@ -594,7 +599,9 @@ export function planFor(
 			...(declaration.kind === 'objects' && bucketExpiry(manifest, id)
 				? { expire: bucketExpiry(manifest, id) }
 				: {}),
-			...((declaration.kind === 'rest-api' || declaration.kind === 'site') &&
+			...((declaration.kind === 'rest-api' ||
+				declaration.kind === 'websocket-api' ||
+				declaration.kind === 'site') &&
 			declaration.subdomain
 				? { subdomain: declaration.subdomain }
 				: {}),

@@ -227,6 +227,46 @@ export const rollup = reports
 			'Users',
 		]);
 	});
+	it("records the files that export what each surface serves, and a WebSocket route's edges", async () => {
+		await createTestFile(
+			dir,
+			'constructs/realtime.ts',
+			`import { WebSocketApi } from '@geekmidas/constructs/websocket-api';
+
+export const realtime = new WebSocketApi('Realtime', { path: '.' });
+`,
+		);
+		await createTestFile(
+			dir,
+			'routes/chat.ts',
+			`import { orders } from '../constructs/index.js';
+import { realtime } from '../constructs/realtime.js';
+
+export const send = realtime
+	.route('chat.send')
+	.dependsOn([orders])
+	.handle(() => null);
+`,
+		);
+		const runnables: Record<string, string[]> = {};
+		const served: Record<string, string[]> = {};
+
+		const manifest = await discover({
+			patterns: ['constructs/**/*.ts', 'endpoints/**/*.ts', 'routes/**/*.ts'],
+			cwd: dir,
+			runnables,
+			served,
+		});
+
+		expect(manifest.Realtime?.kind).toBe('websocket-api');
+		expect(runnables.Realtime).toEqual(['Orders']);
+		expect(served.Realtime).toEqual([
+			expect.stringMatching(/routes\/chat\.ts$/),
+		]);
+		expect(served.Api).toEqual([
+			expect.stringMatching(/endpoints\/orders\.ts$/),
+		]);
+	});
 
 	it('hands a bucket’s subscriber the bucket’s events, and not the bucket', async () => {
 		await createTestFile(

@@ -108,6 +108,12 @@ export interface DiscoverOptions {
 	 */
 	background?: Record<string, string[]>;
 	/**
+	 * Filled in, when provided, with the files that export something built
+	 * from each surface — an endpoint, a WebSocket route — keyed by the
+	 * surface. What a surface that serves itself imports its routes from.
+	 */
+	served?: Record<string, string[]>;
+	/**
 	 * Filled in, when provided, with each worker's subscribers — by the export
 	 * a push route is named after, and the key its deliveries come from: its
 	 * topic's, or its bucket's events — keyed by the worker.
@@ -371,6 +377,7 @@ export async function discover(
 		for (const [exportName, exported] of Object.entries(module)) {
 			if (options.background)
 				recordBackground(options.background, exported, file);
+			if (options.served) recordServed(options.served, exported, file);
 			if (options.subscribers)
 				recordSubscriber(options.subscribers, exported, exportName);
 			if (Processor.isProcessor(exported)) {
@@ -451,6 +458,22 @@ function recordBackground(
 	const key = canonicalId(owner);
 	const files = background[key] ?? [];
 	background[key] = files;
+	if (!files.includes(file)) files.push(file);
+}
+
+/** Record the file of anything built from a surface, under that surface. */
+function recordServed(
+	served: Record<string, string[]>,
+	exported: unknown,
+	file: string,
+): void {
+	if (typeof exported !== 'object' || exported === null) return;
+	const surface = (exported as { surface?: { id?: unknown } }).surface?.id;
+	if (typeof surface !== 'string') return;
+
+	const key = canonicalId(surface);
+	const files = served[key] ?? [];
+	served[key] = files;
 	if (!files.includes(file)) files.push(file);
 }
 

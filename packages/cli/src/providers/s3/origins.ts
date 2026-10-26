@@ -55,7 +55,12 @@ export function bucketOrigins(input: BucketOriginsInput): BucketOrigins {
 	const keys = bucketKeys(manifest, input.bucket);
 
 	const readers = Object.entries(manifest)
-		.filter(([, d]) => d.kind === 'rest-api' || d.kind === 'site')
+		.filter(
+			([, d]) =>
+				d.kind === 'rest-api' ||
+				d.kind === 'websocket-api' ||
+				d.kind === 'site',
+		)
 		.filter(([id]) => {
 			const env = appEnvKeys(manifest, appKey(id), input.runnables);
 			return env !== undefined && keys.some((key) => env.has(key));
