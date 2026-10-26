@@ -1,5 +1,70 @@
 # @geekmidas/manifest
 
+## 10.0.0-alpha.124
+
+### Minor Changes
+
+- [#283](https://github.com/geekmidas/toolbox/pull/283) [`935f5e2`](https://github.com/geekmidas/toolbox/commit/935f5e2449d9527da9a63465e0da30888e8114ff) Thanks [@geekmidas](https://github.com/geekmidas)! - Object events: subscribers that run when a bucket's objects change
+
+  `worker.objects(bucket).on(['object.created'], { prefix, suffix }).handle(…)`
+  binds a handler to an `ObjectStorage`. It is handed `objects` (each
+  `{ bucket, key, size?, etag?, versionId? }`, with the key decoded) and
+  `events` (the same objects with their `object.created` / `object.deleted`
+  type). It compiles down to a topic subscriber, so it runs through the same
+  Lambda, SNS push, polled and test adaptors.
+
+  - `@geekmidas/storage/events` reads an S3 or MinIO notification body into
+    object messages (`toObjectEvents`): it decodes form-encoded keys, reads
+    `s3:TestEvent` as no event, and throws `ObjectNotificationMalformed` on
+    anything else. `matchesObjectFilter` is the prefix/suffix test.
+  - The adaptors read what the storage sends and filter by event, prefix and
+    suffix themselves. Their filter is final, whatever the source filtered.
+  - The manifest nests a bucket's subscribers in its `objects` node
+    (`subscribers`, with `events`, `prefix`, `suffix`). The handler's process
+    reads `<BUCKET>_EVENTS_CONNECTION_STRING`, and is not given the bucket's URL
+    unless it also depends on the bucket.
+  - A server build includes the SNS push route whenever a bucket has
+    subscribers, even when the app's own events go through pg-boss. A bucket's
+    push subscription sets no `type` filter policy (`subscribeHttpEndpoint`'s
+    `events` is now optional).
+  - The build refuses `ObjectSubscriberFeedsItself`: a subscriber that depends
+    on the bucket it watches and watches every key in it.
+  - Discovery's per-worker subscribers are now `{ name, connectionKey }`, so a
+    compose worker gets its push host for a bucket's events as for a topic's.
+  - 🔥 In a `featureTest`, an upload or delete through the bucket's client is
+    delivered to its subscribers, and `objects(bucket).emit(...)` reports
+    changes the app never sees, such as a presigned upload.
+
+### Patch Changes
+
+- [#283](https://github.com/geekmidas/toolbox/pull/283) [`1f57386`](https://github.com/geekmidas/toolbox/commit/1f57386df433108f0e074512c41a3bcef8b4df71) Thanks [@geekmidas](https://github.com/geekmidas)! - Object events from a bucket in MinIO, under `gkm dev` and in a compose stack
+
+  A bucket's subscribers had nothing to receive locally: MinIO has no topic to
+  publish to. Where MinIO holds a watched bucket, gkm now starts it with a
+  webhook target per bucket and points the bucket at it, for every created and
+  removed object. MinIO posts each event to the process that runs the bucket's
+  subscribers, at `POST /__gkm/objects/<Bucket>`, presenting the bucket's token
+  (`<BUCKET>_EVENTS_TOKEN`, derived, compared in constant time). That process
+  relays each event onto the broker under the bucket's name, as `object.created`
+  or `object.deleted`, and answers 2xx only once it is published. MinIO keeps
+  what it could not deliver on disk and sends it again, so events written before
+  the worker is up are not lost.
+
+  - **`gkm dev`**: MinIO posts to the dev server of the app that builds the
+    worker, through `host.docker.internal`. Only the local stage's buckets post,
+    so `gkm test`'s uploads never reach it.
+  - **Compose**: MinIO posts to the worker's container across the stack's own
+    network. The route is on no public host, and the token comes from the
+    stage's seed.
+
+  A worker container now serves the POST routes its subscribers mount beside
+  its health check, and subscribes its pushed routes once it answers. A bucket
+  whose events come from SNS gets no webhook target. Bucket notifications are
+  merged: only gkm's own `gkm-<Bucket>` rule is added or removed, and any other
+  rule on the bucket is kept.
+
+## 10.0.0-alpha.123
+
 ## 10.0.0-alpha.122
 
 ## 10.0.0-alpha.121

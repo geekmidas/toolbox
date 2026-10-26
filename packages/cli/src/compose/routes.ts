@@ -54,6 +54,27 @@ export interface EdgeRoute {
 	 */
 	paths?: readonly string[];
 	/**
+	 * Path prefixes it answers besides `paths` — `/i/` admits everything
+	 * under it. Together they are the whole allowlist; absent both, it
+	 * answers every path. A processor unit's own host is reached only on its
+	 * processors' prefixes.
+	 */
+	prefixes?: readonly string[];
+	/**
+	 * A header every request must carry, with exactly this value; any other
+	 * is refused at the edge. What a CDN adds to reach its origin, so the
+	 * origin's public host cannot be called around the CDN.
+	 */
+	requireHeader?: { name: string; value: string };
+	/**
+	 * Path prefixes on this host sent to another upstream, ahead of the
+	 * route's own: a file server's processor patterns, to its processor unit,
+	 * while every other path is the bucket. Served at the path asked for —
+	 * no `prefix` — and never combined with `allow`, `paths`, `prefixes` or
+	 * `requireHeader`, which would have to hold for every handler too.
+	 */
+	handlers?: readonly EdgeHandler[];
+	/**
 	 * The login every request must carry — HTTP basic auth, asked for by the
 	 * edge before anything reaches the upstream. Absent, it asks for none.
 	 * The password's bcrypt hash, never the password.
@@ -61,6 +82,37 @@ export interface EdgeRoute {
 	auth?: { user: string; hash: string };
 	/** The path the upstream answers its health on — `/health`, `/`. */
 	health?: string;
+}
+
+/** Some of a route's paths, answered by another upstream. */
+export interface EdgeHandler {
+	/** Unique within the route: what a renderer names its router after. */
+	name: string;
+	/** e.g. `/i/` — everything under it. */
+	prefixes: readonly string[];
+	upstreams: readonly Upstream[];
+}
+
+/** A route with handlers and a check that would have to hold for each of them. */
+export class EdgeRouteConflict extends Error {
+	constructor(readonly route: string) {
+		super(
+			`The edge route '${route}' sends some paths to other upstreams and also ` +
+				`restricts who or what it answers. The two are not combined: give the ` +
+				`restricted paths a host of their own.`,
+		);
+		this.name = 'EdgeRouteConflict';
+	}
+}
+
+/** @throws {EdgeRouteConflict} */
+export function assertRouteRenderable(route: EdgeRoute): void {
+	if (
+		route.handlers?.length &&
+		(route.allow || route.paths || route.prefixes || route.requireHeader)
+	) {
+		throw new EdgeRouteConflict(route.name);
+	}
 }
 
 /** Where a stack's certificates come from. */

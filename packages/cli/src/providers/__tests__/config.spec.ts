@@ -54,6 +54,15 @@ describe('deploy.objects.<stage>', () => {
 				versioning: 'yes',
 			}),
 		).toThrow(/versioning/);
+		expect(() =>
+			checkStageProvider('objects', 'prod', { provider: 's3', cdn: 'off' }),
+		).toThrow(/cdn is "off"; set it to false/);
+	});
+
+	it('takes cdn: false, to serve file servers from the bucket’s own endpoint', () => {
+		expect(
+			checkStageProvider('objects', 'prod', { provider: 's3', cdn: false }),
+		).toEqual({ provider: 's3', cdn: false });
 	});
 
 	it('fails the workspace config with the same words', () => {

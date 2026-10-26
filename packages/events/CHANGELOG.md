@@ -1,5 +1,111 @@
 # @geekmidas/events
 
+## 10.0.0-alpha.124
+
+### Minor Changes
+
+- [#283](https://github.com/geekmidas/toolbox/pull/283) [`3e51741`](https://github.com/geekmidas/toolbox/commit/3e51741d5fd226622cd4be16749a482fd20d4e34) Thanks [@geekmidas](https://github.com/geekmidas)! - Against SNS itself, the deploy owns a server's push subscriptions
+
+  A server subscribed its own routes to SNS at startup and confirmed each by
+  visiting its `SubscribeURL`. That needed `sns:Subscribe`, `Unsubscribe` and
+  `SetSubscriptionAttributes` at runtime, and a subscription confirmed that way
+  can be removed by anyone holding the `UnsubscribeURL` every notification
+  carries.
+
+  **Behaviour change:** against SNS itself (an `sns://` string with no
+  `endpoint`), a server no longer subscribes anything. It mounts a subscriber's
+  route only when `GKM_SNS_SUBSCRIPTIONS` — a JSON object of subscriber export →
+  subscription ARN, handed over by the deploy — has one for it; a subscriber
+  without one is logged and reported as failed. Confirmations go through the
+  `ConfirmSubscription` API with `AuthenticateOnUnsubscribe`, so only the
+  topic's owner can unsubscribe a route, and the runtime needs only
+  `sns:ConfirmSubscription` on its topic. A notification whose
+  `x-amz-sns-subscription-arn` header names another subscription is refused
+  (defence in depth: SNS does not sign its headers). Against an emulator nothing
+  changes: the server still subscribes itself.
+
+  - `@geekmidas/events/sns`: `reconcileHttpSubscriptions(connection, { endpoints,
+ownedHost })` converges a topic's HTTP subscriptions for a deploy and answers
+    `{ subscriptions, pending, removed }`. ARNs are answered while still pending
+    and stay stable across runs, and a re-run resends pending confirmations. It
+    also removes this host's subscriptions that are no longer wanted.
+    `confirmSubscription(connection, message)` confirms as the topic owner.
+    `subscribeHttpEndpoint` and the reconciler take an explicit `filterPolicy`
+    and `filterPolicyScope` (`MessageBody` for messages with no `type`
+    attribute).
+  - `@geekmidas/constructs/subscribers`: `SnsPushSubscriberAdaptor` takes
+    `subscriptionArn` and a `confirm` hook, and `handle(body, { subscriptionArn })`.
+  - `gkm compose`: a worker SNS pushes to is handed `GKM_SNS_SUBSCRIPTIONS` from
+    the stack's new `pushSubscriptions` input in place of
+    `GKM_SUBSCRIBER_PUSH_URL`, and a pushed subscriber without a recorded ARN
+    fails with `PushSubscriptionMissing`.
+
+### Patch Changes
+
+- [#283](https://github.com/geekmidas/toolbox/pull/283) [`935f5e2`](https://github.com/geekmidas/toolbox/commit/935f5e2449d9527da9a63465e0da30888e8114ff) Thanks [@geekmidas](https://github.com/geekmidas)! - Object events: subscribers that run when a bucket's objects change
+
+  `worker.objects(bucket).on(['object.created'], { prefix, suffix }).handle(…)`
+  binds a handler to an `ObjectStorage`. It is handed `objects` (each
+  `{ bucket, key, size?, etag?, versionId? }`, with the key decoded) and
+  `events` (the same objects with their `object.created` / `object.deleted`
+  type). It compiles down to a topic subscriber, so it runs through the same
+  Lambda, SNS push, polled and test adaptors.
+
+  - `@geekmidas/storage/events` reads an S3 or MinIO notification body into
+    object messages (`toObjectEvents`): it decodes form-encoded keys, reads
+    `s3:TestEvent` as no event, and throws `ObjectNotificationMalformed` on
+    anything else. `matchesObjectFilter` is the prefix/suffix test.
+  - The adaptors read what the storage sends and filter by event, prefix and
+    suffix themselves. Their filter is final, whatever the source filtered.
+  - The manifest nests a bucket's subscribers in its `objects` node
+    (`subscribers`, with `events`, `prefix`, `suffix`). The handler's process
+    reads `<BUCKET>_EVENTS_CONNECTION_STRING`, and is not given the bucket's URL
+    unless it also depends on the bucket.
+  - A server build includes the SNS push route whenever a bucket has
+    subscribers, even when the app's own events go through pg-boss. A bucket's
+    push subscription sets no `type` filter policy (`subscribeHttpEndpoint`'s
+    `events` is now optional).
+  - The build refuses `ObjectSubscriberFeedsItself`: a subscriber that depends
+    on the bucket it watches and watches every key in it.
+  - Discovery's per-worker subscribers are now `{ name, connectionKey }`, so a
+    compose worker gets its push host for a bucket's events as for a topic's.
+  - 🔥 In a `featureTest`, an upload or delete through the bucket's client is
+    delivered to its subscribers, and `objects(bucket).emit(...)` reports
+    changes the app never sees, such as a presigned upload.
+
+- [#283](https://github.com/geekmidas/toolbox/pull/283) [`e53270f`](https://github.com/geekmidas/toolbox/commit/e53270fd8ee151fa2c04412fb6a48e8355e4ec07) Thanks [@geekmidas](https://github.com/geekmidas)! - An S3 bucket's changes reach a compose worker, wired by the deploy
+
+  For each bucket a subscriber watches on a stage whose objects are on `s3`,
+  the deploy now creates, in the stage's account:
+
+  - an SNS topic `<bucket>-events` that only that bucket may publish to;
+  - a dead-letter queue `<bucket>-events-dlq` for what SNS gives up delivering;
+  - the bucket's notification entry `gkm-<Bucket>`, merged so that entries
+    added by hand are kept;
+  - `<BUCKET>_EVENTS_CONNECTION_STRING`, signed by the bucket's own access key,
+    whose policy gains `sns:ConfirmSubscription` on that topic alone;
+  - one HTTP subscription per subscriber, at
+    `https://<worker>.<domain>/__gkm/subscribers/<export>`, failing over to the
+    queue.
+
+  The subscription ARNs are recorded in the stage's state and handed to each
+  worker as `GKM_SNS_SUBSCRIPTIONS`. Once the workers are healthy, the deploy
+  has SNS resend any pending confirmation and waits for it. A subscription no
+  subscriber wants any more is unsubscribed. The GitHub deploy role gains the
+  SNS, SQS and bucket-notification actions this takes.
+
+  `SNSConnection` accepts a credential provider as well as static keys.
+
+- Updated dependencies []:
+  - @geekmidas/schema@10.0.0-alpha.124
+
+## 10.0.0-alpha.123
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/schema@10.0.0-alpha.123
+
 ## 10.0.0-alpha.122
 
 ### Patch Changes

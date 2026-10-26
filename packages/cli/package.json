@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/cli",
-	"version": "10.0.0-alpha.122",
+	"version": "10.0.0-alpha.124",
 	"description": "CLI tools for building Lambda handlers, server applications, and generating OpenAPI specs",
 	"private": false,
 	"type": "module",
@@ -107,6 +107,8 @@
 	},
 	"dependencies": {
 		"@apidevtools/swagger-parser": "~13.1.0",
+		"@aws-sdk/client-acm": "~3.1136.0",
+		"@aws-sdk/client-cloudfront": "~3.1136.0",
 		"@aws-sdk/client-iam": "~3.1136.0",
 		"@aws-sdk/client-route-53": "~3.1136.0",
 		"@aws-sdk/client-s3": "~3.1136.0",

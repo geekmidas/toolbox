@@ -48,6 +48,8 @@ export default defineConfig({
           { text: 'CLI Reference', link: '/guide/cli-reference' },
           { text: 'Workspaces', link: '/guide/workspaces' },
           { text: 'Typed API Client', link: '/guide/openapi-typescript' },
+          { text: 'File Server Processors', link: '/guide/file-server-processors' },
+          { text: 'Object Events', link: '/guide/object-events' },
           { text: 'Testing', link: '/guide/testing' },
           { text: 'Upgrading to 10.0.0-alpha', link: '/guide/upgrading' },
         ],

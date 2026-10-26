@@ -4,7 +4,13 @@ import type {
 	NormalizedAppConfig,
 	NormalizedWorkspace,
 } from '../../workspace/types';
-import { WorkerHasNoApp, WorkerNameTaken, workerUnits } from '../workers';
+import {
+	ProcessorsHaveNoApp,
+	processorUnits,
+	WorkerHasNoApp,
+	WorkerNameTaken,
+	workerUnits,
+} from '../workers';
 
 const ROOT = '/repo';
 
@@ -95,5 +101,58 @@ describe('workerUnits', () => {
 				{ Jobs: ['/repo/apps/api/queues/emails.ts'] },
 			),
 		).toThrow(WorkerNameTaken);
+	});
+});
+
+describe('processorUnits', () => {
+	const withProcessors = (handlers: string[]) =>
+		({
+			...manifest,
+			Media: { kind: 'objects', id: 'Media' },
+			MediaServer: {
+				kind: 'file-server',
+				id: 'MediaServer',
+				of: 'Media',
+				processors: handlers.map((handler, index) => ({
+					id: `p${index}`,
+					handler,
+					path: '/i/*',
+					prefix: '/i/',
+					dependencies: [],
+				})),
+			},
+			Plain: {
+				kind: 'file-server',
+				id: 'PlainServer',
+				of: 'Media',
+			},
+		}) as unknown as ConstructManifest;
+
+	it("builds a file server's processors from the app holding most of them", () => {
+		expect(
+			processorUnits(
+				workspace(apps),
+				withProcessors([
+					'apps/billing/processors/a.ts#a',
+					'apps/billing/processors/b.ts#b',
+					'apps/api/processors/c.ts#c',
+				]),
+			),
+		).toEqual([
+			{ id: 'MediaServer', name: 'media-processors', app: 'billing' },
+		]);
+	});
+
+	it('has no unit for a file server without processors', () => {
+		expect(processorUnits(workspace(apps), manifest)).toEqual([]);
+	});
+
+	it('refuses processors no backend app can build', () => {
+		expect(() =>
+			processorUnits(
+				workspace({ auth: backend('apps/auth') }),
+				withProcessors(['shared/processors/a.ts#a']),
+			),
+		).toThrow(ProcessorsHaveNoApp);
 	});
 });

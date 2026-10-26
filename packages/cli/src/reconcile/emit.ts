@@ -24,6 +24,7 @@ import type {
 	Declaration,
 	Dependency,
 	FunctionInfo,
+	ProcessorInfo,
 	QueueInfo,
 	RestApiEndpoint,
 	RouteInfo,
@@ -106,6 +107,7 @@ export function withCompute(
 		crons?: readonly CronInfo[];
 		queues?: readonly QueueInfo[];
 		subscribers?: readonly SubscriberInfo[];
+		processors?: readonly ProcessorInfo[];
 	},
 ): ConstructManifest {
 	const next: Record<string, Declaration> = { ...manifest };
@@ -147,6 +149,29 @@ export function withCompute(
 	}
 
 	for (const subscriber of compute.subscribers ?? []) {
+		// A bucket's subscriber nests in the bucket, as a topic's does in the
+		// topic: the storage is what triggers it.
+		if (subscriber.bucket) {
+			const bucket = next[canonicalId(subscriber.bucket)];
+			if (bucket?.kind !== 'objects') continue;
+
+			next[bucket.id] = {
+				...bucket,
+				subscribers: [
+					...(bucket.subscribers ?? []),
+					{
+						id: subscriber.name,
+						handler: subscriber.handler,
+						events: subscriber.subscribedEvents,
+						...(subscriber.prefix ? { prefix: subscriber.prefix } : {}),
+						...(subscriber.suffix ? { suffix: subscriber.suffix } : {}),
+						dependencies: edgesTo(manifest, subscriber.dependencies),
+					},
+				],
+			};
+			continue;
+		}
+
 		const topicId = subscriber.topic && canonicalId(subscriber.topic);
 		const topic = topicId ? next[topicId] : undefined;
 		if (topic?.kind !== 'topic') continue;
@@ -162,6 +187,34 @@ export function withCompute(
 					dependencies: edgesTo(manifest, subscriber.dependencies),
 				},
 			],
+		};
+	}
+
+	// Discovery nested each processor with its source as its handler; the
+	// build's is the one a target runs.
+	for (const processor of compute.processors ?? []) {
+		const server = next[processor.fileServer];
+		if (server?.kind !== 'file-server') continue;
+
+		next[server.id] = {
+			...server,
+			processors: [
+				...(server.processors ?? []).filter((p) => p.id !== processor.name),
+				{
+					id: processor.name,
+					handler: processor.handler,
+					path: processor.path,
+					prefix: processor.prefix,
+					...(processor.native?.length ? { native: processor.native } : {}),
+					...(processor.timeout !== undefined
+						? { timeout: processor.timeout }
+						: {}),
+					...(processor.memorySize !== undefined
+						? { memorySize: processor.memorySize }
+						: {}),
+					dependencies: edgesTo(manifest, processor.dependencies),
+				},
+			].sort((a, b) => a.id.localeCompare(b.id)),
 		};
 	}
 

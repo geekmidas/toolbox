@@ -123,6 +123,27 @@ drift.
 | `StaticSite` | `/site` | — a surface |
 | `BetterAuth` | `/auth` | an `AuthClient` — `api.getSession({ headers })`, over HTTP to the auth app |
 
+A `FileServer` serves the paths it calls `open` without a signature, and
+everything else only through `signedUrl()`. Paths whose keys are written once
+can also be `immutable`, so the edge tells every client to keep them forever:
+
+```typescript
+import { FileServer } from '@geekmidas/constructs/file-server';
+
+export const assets = new FileServer('Assets', {
+  open: ['brand/**', 'avatars/*'],
+  immutable: ['brand/logos/*'], // a subset of `open`, or `ImmutableNotOpen`
+});
+```
+
+On a stage whose buckets the `s3` provider creates, the file server answers on
+`<fileserver>.<domain>` through CloudFront, with that header on the immutable
+paths — see [Providers](../guide/providers.md#objects-s3).
+
+A file server can also make derivatives of its open objects on read — a
+thumbnail at `/i/256/avatars/7.png` — with `assets.process('/i/:width/*')`. See
+[File Server Processors](../guide/file-server-processors.md).
+
 A `Credential`'s value is the stage's `<ID>_CREDENTIALS` — `STRIPE_CREDENTIALS`
 here — set with `gkm secrets:add`. On the test stage, and under
 `gkm dev --fake`, it can come from a fake beside the external APIs' instead,
@@ -1710,16 +1731,21 @@ Subscribers run in-process beside the server, each through the
 shared subscriber string. How a subscriber is fed follows that string:
 
 - **`sns://` — pushed.** The server mounts
-  `POST /__gkm/subscribers/<exportName>` and, once listening, subscribes it to
-  the topic with a filter policy on the `type` attribute listing the events
-  from `.subscribe([...])`. SNS fans out, one subscription per subscriber. The
+  `POST /__gkm/subscribers/<exportName>`, subscribed to the topic with a filter
+  policy on the `type` attribute listing the events from `.subscribe([...])`.
+  SNS fans out, one subscription per subscriber. Against SNS itself the deploy
+  makes that subscription and hands the server its ARN in
+  `GKM_SNS_SUBSCRIPTIONS`; against an emulator the server subscribes itself
+  once listening. The
   route is `SnsPushSubscriberAdaptor` (from `@geekmidas/constructs/subscribers`),
   which reads each notification as an SNS Lambda event — the same parsing,
   services and error handling as deployed, without Lambda's middy wrapper, so a
   server needs no `@middy/core`. Confirmations are
-  confirmed automatically; signatures are verified except against an emulator.
-  `GKM_SUBSCRIBER_PUSH_URL` is the public base SNS pushes to (locally it
-  defaults to `http://host.docker.internal:<port>`).
+  confirmed automatically — through the API, as the topic's owner, against SNS
+  itself — and signatures are verified except against an emulator. A
+  notification naming a subscription other than the recorded one is refused.
+  `GKM_SUBSCRIBER_PUSH_URL` is the base an emulator pushes to (by default
+  `http://host.docker.internal:<port>`).
 - **`pgboss://`, `rabbitmq://` — polled.** On pg-boss each subscriber drains a
   queue of its own, `<topic>/<exportName>`, so every subscriber sees every
   event and replicas of one subscriber share it.

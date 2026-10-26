@@ -140,6 +140,48 @@ describe('withCompute', () => {
 		]);
 	});
 
+	it('nests a bucket’s subscriber inside the bucket, with the keys it watches', () => {
+		const merged = withCompute(
+			{
+				...base,
+				Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+			},
+			{
+				subscribers: [
+					{
+						name: 'onAvatar',
+						handler: 'h',
+						bucket: 'Uploads',
+						prefix: 'avatars/',
+						suffix: '.png',
+						subscribedEvents: ['object.created'],
+						dependencies: ['Uploads'],
+					},
+				],
+			},
+		);
+
+		expect(merged.Uploads).toEqual({
+			kind: 'objects',
+			id: 'Uploads',
+			provides: ['UPLOADS_URL'],
+			subscribers: [
+				{
+					id: 'onAvatar',
+					handler: 'h',
+					events: ['object.created'],
+					prefix: 'avatars/',
+					suffix: '.png',
+					dependencies: [{ target: 'Uploads', kind: 'objects' }],
+				},
+			],
+		});
+		// Not a topic subscriber.
+		expect((merged.Users as { subscribers: unknown[] }).subscribers).toEqual(
+			[],
+		);
+	});
+
 	it('ignores a subscriber whose topic is not declared', () => {
 		// Better a missing binding than a topic invented to hold it — the
 		// reference check is what should report this, not a silent creation.
@@ -281,5 +323,51 @@ describe('withCompute — the edges it records', () => {
 			(merged.Users as { subscribers: { dependencies: unknown }[] })
 				.subscribers[0]?.dependencies,
 		).toEqual([{ target: 'Uploads', kind: 'objects' }]);
+	});
+
+	it("replaces a processor's source with the handler the build wrote, in its file server", () => {
+		const served = {
+			...base,
+			Media: { kind: 'objects', id: 'Media', provides: ['MEDIA_URL'] },
+			MediaServer: {
+				kind: 'file-server',
+				id: 'MediaServer',
+				of: 'Media',
+				processors: [
+					{
+						id: 'thumbnails',
+						handler: 'processors/thumbnails.ts#thumbnails',
+						path: '/i/:width/*',
+						prefix: '/i/',
+						dependencies: [],
+					},
+				],
+			},
+		} as unknown as ConstructManifest;
+
+		const merged = withCompute(served, {
+			processors: [
+				{
+					name: 'thumbnails',
+					handler: 'apps/api/.gkm/aws/processors/thumbnails.handler',
+					fileServer: 'MediaServer',
+					path: '/i/:width/*',
+					prefix: '/i/',
+					native: ['sharp'],
+					dependencies: ['Media'],
+				},
+			],
+		});
+
+		expect(merged.MediaServer).toMatchObject({
+			processors: [
+				{
+					id: 'thumbnails',
+					handler: 'apps/api/.gkm/aws/processors/thumbnails.handler',
+					native: ['sharp'],
+					dependencies: [{ target: 'Media', kind: 'objects' }],
+				},
+			],
+		});
 	});
 });

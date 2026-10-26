@@ -29,17 +29,29 @@
  * than rename the one holding the data.
  */
 
+import type { Logger } from '@geekmidas/logger';
+import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
 	type ConstructName,
 	canonicalId,
+	DERIVED_PREFIX,
 	type Declaration,
 	provideKey,
 	serviceKey,
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { createStorageClient, type StorageClient } from '@geekmidas/storage';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Construct, Declarable } from './construct-interface';
 import { expiryDays, type ObjectExpiry } from './expire';
+import type { Processor } from './processors/Processor';
+import { ProcessorBuilder } from './processors/ProcessorBuilder';
+import {
+	fillPattern,
+	type PatternParams,
+	parsePattern,
+} from './processors/pattern';
+import type { Telemetry } from './telemetry';
 
 /**
  * A key an open pattern admits.
@@ -103,6 +115,48 @@ export interface FileServerClient<TOpen extends string = never>
 	 * @param expiresIn - minutes, matching `getUploadURL`.
 	 */
 	signedUrl(key: string, expiresIn?: number): Promise<string>;
+
+	/**
+	 * The address of a processor's derivative of an open object — the
+	 * thumbnail, not the original.
+	 *
+	 * @throws {NotOpen} when the key matches no declared pattern.
+	 * @throws {ProcessorNotOnThisServer} for another file server's processor.
+	 */
+	processedUrl<
+		TPattern extends string,
+		TSchema extends StandardSchemaV1 | undefined,
+	>(
+		processor: Processor<TPattern, TSchema, any, any>,
+		params: ProcessorUrlParams<TPattern, TSchema>,
+		key: string,
+	): string;
+}
+
+/**
+ * What addresses a derivative: the values the processor's schema accepts —
+ * its input, since these go into a path — or, without one, the raw strings.
+ */
+export type ProcessorUrlParams<
+	TPattern extends string,
+	TSchema extends StandardSchemaV1 | undefined,
+> = TSchema extends StandardSchemaV1
+	? StandardSchemaV1.InferInput<TSchema>
+	: PatternParams<TPattern>;
+
+/** A processed URL was asked of a file server the processor is not on. */
+export class ProcessorNotOnThisServer extends Error {
+	constructor(
+		readonly pattern: string,
+		readonly server: string,
+		readonly expected: string,
+	) {
+		super(
+			`The processor at '${pattern}' belongs to '${server}', not '${expected}'. ` +
+				`Ask its own file server for the URL: services.<its id>.processedUrl(…).`,
+		);
+		this.name = 'ProcessorNotOnThisServer';
+	}
 }
 
 export interface FileServerOptions<TOpen extends string = never> {
@@ -120,6 +174,17 @@ export interface FileServerOptions<TOpen extends string = never> {
 	 * refuse to serve unsigned.
 	 */
 	open?: readonly TOpen[];
+	/**
+	 * Open paths whose objects never change once written — keyed by a content
+	 * hash or a file id — so every client may keep them forever: the edge
+	 * sends `Cache-Control: public, max-age=31536000, immutable`, over
+	 * whatever the object was stored with.
+	 *
+	 * A subset of `open`, because a signed object is never served by the edge.
+	 * Only say it of paths whose keys are written once: a client holding an
+	 * immutable copy never asks again.
+	 */
+	immutable?: readonly string[];
 	/** Keep previous versions of an object. */
 	versioned?: boolean;
 	/**
@@ -129,6 +194,18 @@ export interface FileServerOptions<TOpen extends string = never> {
 	 */
 	expire?: ObjectExpiry;
 	/**
+	 * How long its processors' derivatives are kept in the bucket before it
+	 * deletes them — 30 days unless said. They are remade on the next request,
+	 * so this trades storage for the work of making one again.
+	 */
+	derived?: { readonly days: number };
+	/**
+	 * What its processor unit emits — the `Telemetry` construct, as a worker
+	 * takes it: each request is a span, and the deploy hands the unit the
+	 * `OTEL_*` keys its stage resolves.
+	 */
+	telemetry?: Telemetry;
+	/**
 	 * A bucket declared elsewhere, instead of one of this server's own.
 	 *
 	 * `new FileServer('Uploads')` declares both nodes; this fronts a bucket that
@@ -137,6 +214,23 @@ export interface FileServerOptions<TOpen extends string = never> {
 	 * depending on the server mints URLs.
 	 */
 	origin?: Declarable;
+}
+
+/** An immutable pattern that no open pattern admits. */
+export class ImmutableNotOpen extends Error {
+	constructor(
+		readonly id: string,
+		readonly pattern: string,
+		readonly open: readonly string[],
+	) {
+		super(
+			`'${id}' says '${pattern}' is immutable, and no open path admits it` +
+				(open.length ? ` (open: ${open.join(', ')})` : ' — it opens none') +
+				'. Only an open path is served by the edge, so only one can be ' +
+				'cached there: add it to `open`, or narrow it to one that is.',
+		);
+		this.name = 'ImmutableNotOpen';
+	}
 }
 
 /**
@@ -185,15 +279,26 @@ export class FileServer<
 	readonly surfaceId: string;
 
 	private readonly open: readonly string[];
+	private readonly immutable: readonly string[];
 
 	/** The vended bucket's expiry, checked once: prefix → days. */
 	private readonly expire: Record<string, number> | undefined;
+
+	/** Days its processors' derivatives are kept, when it says. */
+	private readonly derivedDays: number | undefined;
 
 	/**
 	 * Declared once and read by both `declare()` and `connect()`, so the keys the
 	 * target publishes and the keys the client reads cannot drift.
 	 */
 	private readonly keys: { origin: string; server: string };
+
+	/**
+	 * How a processor reaches the bucket: the bucket's own URL and nothing of
+	 * the serving half, which a processor never needs. A field, not a getter:
+	 * services are cached by object identity.
+	 */
+	private readonly origin: Service<string, StorageClient>;
 
 	constructor(
 		id: ConstructName<TName>,
@@ -203,6 +308,12 @@ export class FileServer<
 
 		this.id = canonical as TName;
 		this.open = options.open ?? [];
+		this.immutable = options.immutable ?? [];
+		for (const pattern of this.immutable) {
+			if (!this.covers(pattern)) {
+				throw new ImmutableNotOpen(canonical, pattern, this.open);
+			}
+		}
 
 		// The surface takes the suffix and the bucket keeps the plain id, which
 		// is what makes "serve a bucket I already have" an edit that adds a node
@@ -212,6 +323,11 @@ export class FileServer<
 			throw new BucketOptionOnOrigin(canonical, originId, 'expire');
 		}
 		this.expire = expiryDays(canonical, options.expire);
+		this.derivedDays = options.derived
+			? expiryDays(canonical, { [DERIVED_PREFIX]: options.derived })?.[
+					DERIVED_PREFIX
+				]
+			: undefined;
 		this.surfaceId = `${canonical}Server`;
 
 		this.keys = {
@@ -224,6 +340,55 @@ export class FileServer<
 			serviceName: serviceKey(canonical) as Uncapitalize<TName>,
 			register: (registerOptions) => this.connect(registerOptions),
 		};
+
+		const originKey = this.keys.origin;
+		this.origin = {
+			serviceName: `${serviceKey(originId)}ProcessorOrigin`,
+			register: ({ envParser }) => {
+				const { url } = envParser
+					.create((get) => ({ url: get(originKey).string() }))
+					.parse();
+				return createStorageClient(url);
+			},
+		};
+	}
+
+	/**
+	 * A processor behind one path pattern of this server: a handler that makes
+	 * a derivative of an open object on read.
+	 *
+	 * ```ts
+	 * export const thumbnails = assets
+	 *   .process('/i/:width/*')
+	 *   .params(z.object({ width: z.enum(['64', '256', '1024']) }))
+	 *   .native(['sharp'])
+	 *   .handle(async ({ params, object }) => ({
+	 *     body: await sharp(await object.bytes()).resize(Number(params.width)).webp().toBuffer(),
+	 *     contentType: 'image/webp',
+	 *     cache: 'immutable',
+	 *   }));
+	 * ```
+	 *
+	 * Open paths only: a key no `open` pattern admits is answered 404, as an
+	 * unsigned read of it would be.
+	 *
+	 * @throws {ProcessorPatternInvalid} for a pattern the edge cannot route.
+	 */
+	process<TPattern extends `/${string}/*`>(
+		pattern: TPattern,
+		options: { logger?: Logger } = {},
+	): ProcessorBuilder<TPattern> {
+		return new ProcessorBuilder<TPattern>({
+			parsed: parsePattern(pattern),
+			surfaceId: this.surfaceId,
+			bucketId: this.options.origin?.id ?? this.id,
+			origin: this.origin,
+			serves: (key) => this.serves(key),
+			logger: (options.logger ?? DEFAULT_LOGGER) as Logger,
+			native: [],
+			services: [],
+			constructs: [],
+		});
 	}
 
 	/**
@@ -268,6 +433,13 @@ export class FileServer<
 			id: this.surfaceId,
 			of: origin?.id ?? this.id,
 			...(this.open.length ? { open: this.open } : {}),
+			...(this.immutable.length ? { immutable: this.immutable } : {}),
+			...(this.derivedDays !== undefined
+				? { derivedDays: this.derivedDays }
+				: {}),
+			...(this.options.telemetry
+				? { telemetry: this.options.telemetry.id }
+				: {}),
 			provides: [this.keys.server],
 		};
 
@@ -322,6 +494,21 @@ export class FileServer<
 			openUrl: serve,
 			signedUrl: (key: string, expiresIn?: number) =>
 				storage.getDownloadURL({ path: key } as never, expiresIn),
+			processedUrl: (
+				processor: Processor<string, any, any, any>,
+				params: Record<string, string | number>,
+				key: string,
+			) => {
+				if (processor.surfaceId !== this.surfaceId) {
+					throw new ProcessorNotOnThisServer(
+						processor.pattern,
+						processor.surfaceId,
+						this.surfaceId,
+					);
+				}
+				if (!this.serves(key)) throw new NotOpen(key, this.open);
+				return `${base}${fillPattern(processor.parsed, params, key)}`;
+			},
 		}) as FileServerClient<TOpen>;
 	}
 
@@ -335,6 +522,15 @@ export class FileServer<
 	 */
 	private serves(key: string): boolean {
 		return this.open.some((pattern) => globToRegExp(pattern).test(key));
+	}
+
+	/**
+	 * Whether every key a pattern admits is open: the pattern itself, each of
+	 * its wildcards taken as a segment of its own, is a key an open pattern
+	 * serves — `brand/logos/*` under `brand/**`, but not `**` under `brand/**`.
+	 */
+	private covers(pattern: string): boolean {
+		return this.serves(pattern.replace(/\*\*/g, 'x/x').replace(/\*/g, 'x'));
 	}
 }
 

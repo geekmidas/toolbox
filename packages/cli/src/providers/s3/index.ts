@@ -26,7 +26,7 @@ import type {
 	FileServerDeclaration,
 	ObjectsDeclaration,
 } from '@geekmidas/manifest';
-import { provideKey } from '@geekmidas/manifest';
+import { bucketExpiry, provideKey } from '@geekmidas/manifest';
 import * as s3Url from '@geekmidas/storage/s3-url';
 import { appKey } from '../../workspace/derive.js';
 import type { S3ObjectsConfig } from '../../workspace/types.js';
@@ -50,6 +50,7 @@ import type {
 	StateEntry,
 	VerifyContext,
 } from '../types.js';
+import { ensureBucketCdn } from './cdn.js';
 import { checkS3Config, S3_PROVISIONING } from './config.js';
 import {
 	BucketNameUnavailable,
@@ -61,6 +62,13 @@ import {
 	RecordedBucketUnreachable,
 	S3RegionRequired,
 } from './errors.js';
+import {
+	type BucketWatcher,
+	bucketWatchers,
+	ensureBucketEvents,
+	ensureEventsKey,
+	ensurePushSubscriptions,
+} from './events.js';
 import { mergeLifecycle } from './lifecycle.js';
 import {
 	bucketName,
@@ -91,7 +99,13 @@ export interface BucketConstruct {
 	versioned: boolean;
 	/** Days kept under each prefix before the bucket deletes them. */
 	expire?: Readonly<Record<string, number>>;
-	servers: { id: string; open: readonly string[] }[];
+	servers: {
+		id: string;
+		open: readonly string[];
+		immutable: readonly string[];
+		/** Its processors' prefixes, each the CDN sends to the processor unit. */
+		processors?: readonly string[];
+	}[];
 }
 
 export function bucketConstructs(
@@ -102,8 +116,8 @@ export function bucketConstructs(
 		.map(([id, d]) => ({
 			id,
 			versioned: (d as ObjectsDeclaration).versioned === true,
-			...((d as ObjectsDeclaration).expire
-				? { expire: (d as ObjectsDeclaration).expire }
+			...(bucketExpiry(manifest, id)
+				? { expire: bucketExpiry(manifest, id) }
 				: {}),
 			servers: Object.entries(manifest)
 				.filter(
@@ -113,6 +127,18 @@ export function bucketConstructs(
 				.map(([sid, s]) => ({
 					id: sid,
 					open: (s as FileServerDeclaration).open ?? [],
+					immutable: (s as FileServerDeclaration).immutable ?? [],
+					...((s as FileServerDeclaration).processors?.length
+						? {
+								processors: [
+									...new Set(
+										(s as FileServerDeclaration).processors!.map(
+											(p) => p.prefix,
+										),
+									),
+								].sort(),
+							}
+						: {}),
 				}))
 				.sort((a, b) => a.id.localeCompare(b.id)),
 		}))
@@ -357,8 +383,9 @@ export function useS3Clients(factory: S3ClientFactory): S3ClientFactory {
 async function ensureS3(ctx: Ctx): Promise<void> {
 	const region = s3Region(ctx);
 	const clients = await makeClients(ctx.credential, region);
+	const watched = bucketWatchers(ctx.manifest, ctx.runnables, ctx.subscribers);
 	for (const construct of bucketConstructs(ctx.manifest)) {
-		await ensureBucket(ctx, clients, construct);
+		await ensureBucket(ctx, clients, construct, watched.get(construct.id));
 	}
 }
 
@@ -366,6 +393,8 @@ async function ensureBucket(
 	ctx: Ctx,
 	stageClients: Clients,
 	construct: BucketConstruct,
+	/** Who watches it, when a subscriber does — see `./events.ts`. */
+	watchers?: readonly BucketWatcher[],
 ): Promise<void> {
 	const { id } = construct;
 	const nameInput = {
@@ -393,20 +422,51 @@ async function ensureBucket(
 			`   '${bucket}' is in ${located.region}, not ${stageClients.region}: '${id}' is reached and addressed there`,
 		);
 	}
+	// Its file servers behind a CDN, unless the stage said not to — first,
+	// because the bucket's policy grants exactly the distributions it made.
+	const cdn =
+		ctx.config.cdn !== false && construct.servers.length > 0
+			? await ensureBucketCdn(ctx, {
+					bucket,
+					region: clients.region,
+					servers: construct.servers,
+					origins: bucketOrigins({
+						workspace: ctx.workspace,
+						manifest: ctx.manifest,
+						runnables: ctx.runnables,
+						stage: ctx.stage,
+						bucket: id,
+					}).origins,
+				})
+			: undefined;
 	await ensureBucketSettings(ctx, clients, {
 		id,
 		bucket,
 		exists,
 		versioning,
 		open,
+		...(cdn ? { cdn } : {}),
 		...(construct.expire ? { expire: construct.expire } : {}),
 	});
+
+	// Watched: the topic it publishes its changes to comes first, because the
+	// bucket's key is allowed to confirm subscriptions to it.
+	const events = watchers
+		? await ensureBucketEvents(ctx, clients, {
+				id,
+				bucket,
+				region: clients.region,
+			})
+		: undefined;
 
 	const user = await ensureIamUser(ctx, clients, {
 		id,
 		user: iamUserName(nameInput),
 		policyName: IAM_POLICY_NAME,
-		policy: userPolicy(bucket, { versioning }),
+		policy: userPolicy(bucket, {
+			versioning,
+			...(events ? { eventsTopicArn: events.topicArn } : {}),
+		}),
 		describe: 'this bucket only',
 	});
 	await ensureAccessKey(ctx, clients, {
@@ -416,10 +476,26 @@ async function ensureBucket(
 		...user,
 	});
 
-	// Each file server over it serves on the bucket's own endpoint — unless the
-	// stage set an address of its own for it (a CDN), which is kept.
-	const publicUrl = bucketPublicUrl(bucket, clients.region, clients.endpoint);
+	if (events && watchers) {
+		await ensureEventsKey(ctx, {
+			id,
+			topicArn: events.topicArn,
+			region: clients.region,
+		});
+		await ensurePushSubscriptions(ctx, {
+			id,
+			events,
+			region: clients.region,
+			watchers,
+		});
+	}
+
+	// Each file server over it serves on its CDN, or on the bucket's own
+	// endpoint — unless the stage set an address of its own for it, which is
+	// kept.
+	const bucketUrl = bucketPublicUrl(bucket, clients.region, clients.endpoint);
 	for (const server of construct.servers) {
+		const publicUrl = cdn?.urls[server.id] ?? bucketUrl;
 		const key = provideKey(server.id, 'url');
 		const entry: StateEntry = { key: `file-server:${server.id}`, type: 'url' };
 		const recorded = ctx.state.record(entry.key)?.id;
@@ -610,6 +686,8 @@ async function ensureBucketSettings(
 		exists: boolean;
 		versioning: boolean;
 		open: readonly string[];
+		/** The distributions serving it, when a CDN does. */
+		cdn?: { distributionArns: readonly string[] };
 		expire?: Readonly<Record<string, number>>;
 	},
 ): Promise<void> {
@@ -656,7 +734,8 @@ async function ensureBucketSettings(
 		);
 	}
 
-	const isOpen = input.open.length > 0;
+	// Behind a CDN the bucket is never public: CloudFront alone reads it.
+	const isOpen = input.open.length > 0 && !input.cdn;
 	const block = publicAccessBlock(isOpen);
 	const ensureBlock = async () => {
 		const current = await read(
@@ -685,7 +764,11 @@ async function ensureBucketSettings(
 		}
 	};
 
-	const policy = bucketPolicy(bucket, input.open);
+	const policy = bucketPolicy(
+		bucket,
+		input.open,
+		input.cdn ? { cdn: input.cdn } : {},
+	);
 	const ensurePolicy = async () => {
 		const current = await read(
 			() => s3.send(new S3.GetBucketPolicyCommand({ Bucket })),
@@ -698,7 +781,9 @@ async function ensureBucketSettings(
 			await set(
 				isOpen
 					? `policy: TLS only, public read on ${input.open.join(', ')}`
-					: 'policy: TLS only',
+					: input.cdn && input.open.length > 0
+						? `policy: TLS only, CloudFront reads ${input.open.join(', ')}`
+						: 'policy: TLS only',
 				() =>
 					s3.send(
 						new S3.PutBucketPolicyCommand({
@@ -946,9 +1031,13 @@ export const s3Provider: ResourceProvider<S3ObjectsConfig, AwsProvisioning> = {
 	check: checkS3Config,
 	provisioning: S3_PROVISIONING,
 	credentials: awsProvisioningCredentials,
-	runtimeKeys(manifest) {
+	runtimeKeys(manifest, runnables = {}) {
+		const watched = bucketWatchers(manifest, runnables);
 		return bucketConstructs(manifest).flatMap((b) => [
 			provideKey(b.id, 'url'),
+			...(watched.has(b.id)
+				? [provideKey(b.id, 'eventsConnectionString')]
+				: []),
 			...b.servers.map((s) => provideKey(s.id, 'url')),
 		]);
 	},

@@ -530,7 +530,7 @@ import { setupEndpoints } from './endpoints.js';
 import { setupSubscribers } from './subscribers.js';
 import { setupQueues } from './queues.js';
 import { setupCrons } from './crons.js';
-${runtime.imports}
+${context.devProcessors ? "import { setupProcessors } from './processors.js';\n" : ''}${runtime.imports}
 ${telescopeImports}
 ${databaseApiImports}
 ${hooksImports}
@@ -617,7 +617,15 @@ process.env.GKM_APP_NAME ??= ${JSON.stringify(context.surface.id)};
 export async function createApp(app?: HonoType, enableOpenApi: boolean = true): Promise<ServerApp> {
   const honoApp = app || new Hono();
   const trustedOrigins: string[] = [];
-${telescopeSetup}${cors.setup}${beforeSetupCall}${databaseApiSetup}
+${telescopeSetup}${cors.setup}${beforeSetupCall}${databaseApiSetup}${
+	context.devProcessors
+		? `
+  // The file servers' processors this app holds, where the local edge sends
+  // each pattern on their hosts. Ahead of the endpoints, so none shadows them.
+  setupProcessors(honoApp, envParser);
+`
+		: ''
+}
   // Setup HTTP endpoints
   await setupEndpoints(honoApp, envParser, logger, enableOpenApi);
 ${afterSetupCall}

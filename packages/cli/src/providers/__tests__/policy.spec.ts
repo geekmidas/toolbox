@@ -75,6 +75,60 @@ describe("the bucket's policy", () => {
 	});
 });
 
+describe("the bucket's policy behind a CDN", () => {
+	it('grants the open prefixes to exactly the stage’s distributions, and to nobody else', () => {
+		const policy = bucketPolicy('b', ['brand/**', 'avatars/*.png'], {
+			cdn: {
+				distributionArns: [
+					'arn:aws:cloudfront::111:distribution/E2',
+					'arn:aws:cloudfront::111:distribution/E1',
+				],
+			},
+		});
+
+		expect(policy.Statement.map((s) => s.Sid)).toEqual([
+			'GkmDenyInsecureTransport',
+			'GkmCdnRead',
+		]);
+		expect(policy.Statement[1]).toEqual({
+			Sid: 'GkmCdnRead',
+			Effect: 'Allow',
+			Principal: { Service: 'cloudfront.amazonaws.com' },
+			Action: 's3:GetObject',
+			Resource: ['arn:aws:s3:::b/avatars/*.png', 'arn:aws:s3:::b/brand/*'],
+			Condition: {
+				StringEquals: {
+					'AWS:SourceArn': [
+						'arn:aws:cloudfront::111:distribution/E1',
+						'arn:aws:cloudfront::111:distribution/E2',
+					],
+				},
+			},
+		});
+	});
+
+	it('reads one distribution AWS wrote back as a string as the same policy', () => {
+		const arn = 'arn:aws:cloudfront::111:distribution/E1';
+		const ours = bucketPolicy('b', ['brand/**'], {
+			cdn: { distributionArns: [arn] },
+		});
+		const theirs = JSON.parse(JSON.stringify(ours));
+		theirs.Statement[1].Condition.StringEquals['AWS:SourceArn'] = arn;
+		theirs.Statement[1].Resource = 'arn:aws:s3:::b/brand/*';
+
+		expect(canonicalPolicy(theirs)).toBe(canonicalPolicy(ours));
+	});
+
+	it('grants nothing with no open paths: the edge serves only those', () => {
+		const policy = bucketPolicy('b', [], {
+			cdn: { distributionArns: ['arn:aws:cloudfront::111:distribution/E1'] },
+		});
+		expect(policy.Statement.map((s) => s.Sid)).toEqual([
+			'GkmDenyInsecureTransport',
+		]);
+	});
+});
+
 describe('Block Public Access', () => {
 	it('blocks all four with no open paths', () => {
 		expect(publicAccessBlock(false)).toEqual({

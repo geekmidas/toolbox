@@ -16,6 +16,7 @@ import {
 	type ProvisionedManifest,
 	provisionCompute,
 	provisionerFor,
+	provisionProcessors,
 	resolveEdges,
 	subscribeConsumers,
 	vpcFor,
@@ -553,6 +554,78 @@ describe('functions and crons', () => {
 			link: [orders],
 			vpc,
 		});
+	});
+});
+
+describe("a file server's processors", () => {
+	const stack = new App({
+		name: 'shop',
+		stage: 'production',
+		domain: 'example.com',
+		hostedZoneId: 'Z',
+		region: 'eu-west-1',
+	}).stack('media');
+	const argsOf = (component: unknown) =>
+		(component as { args: Record<string, any> }).args;
+
+	it('are Lambdas behind IAM-auth URLs, served through the router on their prefix', () => {
+		const media = { _id: 'Media', _type: 'sst.aws.Bucket' };
+		const router = { _id: 'MediaServer' };
+		const provisioned = {
+			Media: media,
+			MediaServer: router,
+		} as unknown as ProvisionedManifest;
+
+		const [thumbnails, pages] = provisionProcessors(
+			stack,
+			{
+				Media: { kind: 'objects', id: 'Media', provides: ['MEDIA_URL'] },
+				MediaServer: {
+					kind: 'file-server',
+					id: 'MediaServer',
+					of: 'Media',
+					processors: [
+						{
+							id: 'thumbnails',
+							handler: 'apps/api/.gkm/aws/processors/thumbnails.handler',
+							path: '/i/:width/*',
+							prefix: '/i/',
+							native: ['sharp'],
+							timeout: 15_000,
+							memorySize: 1536,
+							dependencies: [{ target: 'Media', kind: 'objects' }],
+						},
+						{
+							id: 'pages',
+							handler: 'apps/api/.gkm/aws/processors/pages.handler',
+							path: '/pdf/:page/*',
+							prefix: '/pdf/',
+							dependencies: [{ target: 'Media', kind: 'objects' }],
+						},
+					],
+				},
+			} as never,
+			provisioned,
+		);
+
+		expect(thumbnails).toBeInstanceOf(Function);
+		expect(argsOf(thumbnails)).toMatchObject({
+			name: stack.logicalPrefixedName('MediaServerthumbnails'),
+			handler: 'apps/api/.gkm/aws/processors/thumbnails.handler',
+			link: [media],
+			timeout: '15 seconds',
+			memory: '1536 MB',
+			// Installed for the Lambda, never bundled.
+			nodejs: { install: ['sharp'] },
+			url: {
+				authorization: 'iam',
+				router: { instance: router, path: '/i' },
+			},
+		});
+		expect(argsOf(pages)).toMatchObject({
+			url: { router: { path: '/pdf' } },
+		});
+		expect(argsOf(pages).nodejs).toBeUndefined();
 	});
 });
 
