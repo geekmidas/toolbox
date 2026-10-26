@@ -1,5 +1,96 @@
 # @geekmidas/manifest
 
+## 10.0.0-alpha.125
+
+### Minor Changes
+
+- [#285](https://github.com/geekmidas/toolbox/pull/285) [`474d6e5`](https://github.com/geekmidas/toolbox/commit/474d6e57726faca5fb54733c152073200c35f49f) Thanks [@geekmidas](https://github.com/geekmidas)! - A file server over an `s3` bucket is served through a CDN
+
+  On a stage whose buckets the `s3` provider creates, a `FileServer` used to
+  answer on the bucket's regional endpoint — one region for every reader, on an
+  `amazonaws.com` host, with its open paths public on the bucket itself. The
+  deploy now serves each file server through CloudFront on
+  `<fileserver>.<domain>`, and that is its URL:
+
+  - an ACM certificate (us-east-1) for the name, validated by a CNAME written
+    through the root domain's DNS provider in `dns` and kept for renewals; a
+    domain nothing writes prints the record and stops with
+    `CdnCertificatePending`, and the next deploy carries on from there;
+  - an origin access control, and a bucket policy granting exactly the stage's
+    distributions `s3:GetObject` on exactly the open prefixes — the bucket is
+    never public, and Block Public Access keeps all four flags on;
+  - response headers policies: CORS for the stage's sites, and
+    `Cache-Control: public, max-age=31536000, immutable` on the paths a file
+    server now calls `immutable` (`new FileServer('Assets', { open, immutable })`,
+    a subset of `open` or `ImmutableNotOpen`; `FileServerDeclaration.immutable`
+    in the manifest);
+  - a distribution on the name — HTTPS only, compressed, cached on the path
+    alone — and a CNAME to it.
+
+  Each is recorded in the stage's state, found again by name when a run died
+  before recording it, and put back when it drifted; nothing is deleted. A stage
+  with file servers and no domain fails with `FileServerCdnNeedsDomain`;
+  `deploy.objects.<stage>.cdn: false` keeps the bucket's own endpoint. The
+  deploy role from `gkm deploy:github` is given the ACM and CloudFront actions,
+  none of which delete.
+
+- [#285](https://github.com/geekmidas/toolbox/pull/285) [`120f994`](https://github.com/geekmidas/toolbox/commit/120f9948a8bea9ab9a3616a281972c81931ba55c) Thanks [@geekmidas](https://github.com/geekmidas)! - File server processors: derivatives of open objects, made on read
+
+  `assets.process('/i/:width/*').params(schema).handle(…)` puts a handler behind
+  one path pattern of a file server — a thumbnail, a page of a PDF — made when it
+  is read, so every object already in the bucket is covered. The parameters'
+  schema is the allowlist: anything it refuses is a short-cached `400` and the
+  handler never runs. Only open paths are processed. A result marked
+  `cache: 'immutable'` is kept in the bucket under `.gkm-derived/` and answered
+  from there next time; `services.assets.processedUrl(processor, params, key)`
+  addresses it.
+
+  - **Manifest:** `FileServerDeclaration.processors`, nested — discovery puts
+    each one there with its source as its handler, and a build replaces it with
+    the generated one.
+  - **Compose:** a file server's processors run in a container of their own
+    (`<fileserver>-processors`), built from the app holding them, with any
+    `.native([...])` packages installed for linux. Behind the stack's MinIO, the
+    file server's host sends their patterns there and every other path to the
+    bucket (`EdgeRoute.handlers`, rendered for Caddy and Traefik). With the
+    bucket on S3, the CDN sends each pattern to the container's own host,
+    adding a secret header the edge requires (`EdgeRoute.requireHeader`,
+    `EdgeRoute.prefixes`); the deploy keeps the secret as
+    `<FILESERVER>_SERVER_ORIGIN_SECRET`.
+  - **CDN (`s3` provider):** a custom origin per file server with processors,
+    and a behaviour per pattern ahead of the immutable ones, keyed on the path
+    alone and not re-compressed.
+  - **SST:** each processor is a Lambda behind an IAM-auth function URL, routed
+    through the file server's router with origin access control.
+  - 👷 **Build:** `gkm build --production` writes and bundles each processor unit
+    beside the server; `gkm docker` writes its Dockerfile.
+
+  Two constructs routed to one host still fail with `EdgeHostTaken`; a route
+  that sends paths elsewhere and also restricts who it answers fails with
+  `EdgeRouteConflict`.
+
+- [#285](https://github.com/geekmidas/toolbox/pull/285) [`92ba72c`](https://github.com/geekmidas/toolbox/commit/92ba72c3de6a5d65e1f699f5cb66b61eadb5f875) Thanks [@geekmidas](https://github.com/geekmidas)! - File server processors: kept results expire, `gkm dev` runs them, telemetry, Dokploy
+
+  - **Kept results expire.** A file server with processors puts an expiry on its
+    bucket's `.gkm-derived/` prefix — 30 days, or `derived: { days }` on the
+    file server — through the same lifecycle rules as `expire`, on S3 and MinIO.
+    `bucketExpiry(manifest, id)` in `@geekmidas/manifest` is the one answer both
+    read.
+  - **`gkm dev` runs them.** The dev server of the app holding a file server's
+    processors mounts them under `/__gkm/processors/<FileServer>`, and the local
+    edge sends each pattern on the file server's host there, so `processedUrl()`
+    answers locally as it does deployed.
+  - **Telemetry.** `FileServer` takes `telemetry` as a `Worker` does: the
+    processor unit starts OpenTelemetry, each request is a SERVER span named
+    after the processor's pattern, and the deploy hands the unit the stage's
+    `OTEL_*` keys. Without the edge it loads no tracing.
+  - **Dokploy.** Each processor unit is an application of its own at
+    `<fileserver>-processors.<domain>`, the host the CDN reaches. Dokploy's
+    proxy cannot match a header, so the unit refuses a request without the
+    CDN's `X-Gkm-Origin-Verify` itself. A Dokploy file server over MinIO has no
+    host to route a pattern on, so processors there fail with
+    `ProcessorsNeedCdn`.
+
 ## 10.0.0-alpha.124
 
 ### Minor Changes
