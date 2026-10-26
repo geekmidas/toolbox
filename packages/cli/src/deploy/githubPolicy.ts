@@ -362,6 +362,54 @@ export function deployAccess(
 				),
 			},
 		]);
+
+		// Each file server behind a CDN: its certificate, its origin access
+		// control, its response headers policies and its distribution. Neither
+		// ACM nor CloudFront scopes creating these to a name, so they are on
+		// every resource of the account; nothing here deletes.
+		const served = Object.values(manifest).some(
+			(d) => d.kind === 'file-server',
+		);
+		if (served && (objects.config as { cdn?: boolean }).cdn !== false) {
+			describe.push(
+				'create the file servers’ certificates and CloudFront distributions (ACM, CloudFront)',
+			);
+			build.push(() => [
+				{
+					Sid: 'StageFileServerCertificates',
+					Effect: 'Allow',
+					Action: [
+						'acm:RequestCertificate',
+						'acm:DescribeCertificate',
+						'acm:ListCertificates',
+						'acm:AddTagsToCertificate',
+					],
+					Resource: '*',
+				},
+				{
+					Sid: 'StageFileServerCdn',
+					Effect: 'Allow',
+					Action: [
+						'cloudfront:CreateDistribution',
+						'cloudfront:CreateDistributionWithTags',
+						'cloudfront:GetDistribution',
+						'cloudfront:GetDistributionConfig',
+						'cloudfront:UpdateDistribution',
+						'cloudfront:ListDistributions',
+						'cloudfront:TagResource',
+						'cloudfront:CreateOriginAccessControl',
+						'cloudfront:GetOriginAccessControl',
+						'cloudfront:ListOriginAccessControls',
+						'cloudfront:CreateResponseHeadersPolicy',
+						'cloudfront:GetResponseHeadersPolicy',
+						'cloudfront:GetResponseHeadersPolicyConfig',
+						'cloudfront:UpdateResponseHeadersPolicy',
+						'cloudfront:ListResponseHeadersPolicies',
+					],
+					Resource: '*',
+				},
+			]);
+		}
 	}
 
 	// The stage's backups: the deploy creates the project bucket if it is not

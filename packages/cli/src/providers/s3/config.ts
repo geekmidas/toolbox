@@ -4,7 +4,7 @@ import type { S3ObjectsConfig } from '../../workspace/types.js';
 import type { ProviderConfig } from '../types.js';
 import { S3ProviderConfigInvalid } from './errors.js';
 
-const FIELDS = ['provider', 'region', 'versioning'] as const;
+const FIELDS = ['provider', 'region', 'versioning', 'cdn'] as const;
 
 /** An AWS region code: `eu-west-1`, `us-gov-west-1`, `ap-southeast-4`. */
 const REGION = /^[a-z]{2}(-[a-z]+)+-\d+$/;
@@ -20,7 +20,7 @@ export function checkS3Config(
 				stage,
 				field,
 				entry[field],
-				`the s3 provider takes ${FIELDS.slice(1).join(' and ')} only`,
+				`the s3 provider takes ${FIELDS.slice(1).join(', ')} only`,
 			);
 		}
 	}
@@ -40,6 +40,14 @@ export function checkS3Config(
 			'versioning',
 			entry.versioning,
 			'set it to true to keep previous versions of every object, or leave it out',
+		);
+	}
+	if (entry.cdn !== undefined && typeof entry.cdn !== 'boolean') {
+		throw new S3ProviderConfigInvalid(
+			stage,
+			'cdn',
+			entry.cdn,
+			"set it to false to serve file servers from the bucket's own endpoint, or leave it out",
 		);
 	}
 	return entry as unknown as S3ObjectsConfig;

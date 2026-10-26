@@ -84,3 +84,23 @@ describe('a bucket that expires a prefix', () => {
 		expect(make).toThrow(ExpiryDaysInvalid);
 	});
 });
+
+describe("a file server's derivatives", () => {
+	const surface = (files: FileServer) =>
+		files.declare().find((d) => d.kind === 'file-server');
+
+	it('declares how long they are kept, when it says', () => {
+		expect(
+			surface(new FileServer('Assets', { open: ['**'], derived: { days: 7 } })),
+		).toMatchObject({ derivedDays: 7 });
+		expect(
+			surface(new FileServer('Assets', { open: ['**'] })),
+		).not.toHaveProperty('derivedDays');
+	});
+
+	it.each([0, 1.5])('refuses %s days', (days) => {
+		expect(
+			() => new FileServer('Assets', { open: ['**'], derived: { days } }),
+		).toThrow(ExpiryDaysInvalid);
+	});
+});

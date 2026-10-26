@@ -4,6 +4,7 @@ import { basename, join, relative, resolve } from 'node:path';
 import type { Cron } from '@geekmidas/constructs/crons';
 import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { Function } from '@geekmidas/constructs/functions';
+import type { Processor } from '@geekmidas/constructs/processors';
 import type { Queue } from '@geekmidas/constructs/queue';
 import type { Subscriber } from '@geekmidas/constructs/subscribers';
 import type { Topic } from '@geekmidas/constructs/topic';
@@ -33,6 +34,12 @@ import {
 } from '../generators';
 import type { ClientTelemetryDefault } from '../generators/clientTelemetry.js';
 import {
+	ProcessorGenerator,
+	processorBundleName,
+	processorEntryDir,
+	processorInfo,
+} from '../generators/ProcessorGenerator';
+import {
 	routeTelemetry,
 	type TelemetryContext,
 	telemetryFor,
@@ -60,6 +67,7 @@ import type {
 	FunctionInfo,
 	GkmConfig,
 	MainProvider,
+	ProcessorInfo,
 	QueueInfo,
 	RouteInfo,
 	Routes,
@@ -92,7 +100,12 @@ import type {
 	NormalizedProductionConfig,
 	NormalizedTelescopeConfig,
 } from './types';
-import { isUnder, type WorkerUnit, workerUnits } from './workers';
+import {
+	isUnder,
+	processorUnits,
+	type WorkerUnit,
+	workerUnits,
+} from './workers';
 
 const logger = console;
 
@@ -384,6 +397,8 @@ export interface AppBuild {
 	crons: CronInfo[];
 	subscribers: SubscriberInfo[];
 	queues: QueueInfo[];
+	/** The file servers' processors whose unit this app builds. */
+	processors?: ProcessorInfo[];
 }
 
 /**
@@ -430,6 +445,7 @@ export async function writeManifest(input: {
 		crons: builds.flatMap((build) => build.crons),
 		queues: builds.flatMap((build) => build.queues),
 		subscribers: builds.flatMap((build) => build.subscribers),
+		processors: builds.flatMap((build) => build.processors ?? []),
 	});
 
 	const path = join(manifestDir, `${target}.ts`);
@@ -608,6 +624,25 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 				: // Built from no worker: the app whose directory holds it.
 					isUnder(path.absolute, appRootAbs),
 		);
+	// The processors whose unit this app builds: a file server's are all
+	// built by one app, the one holding the most of their files.
+	const processorGenerator = new ProcessorGenerator();
+	const loadedProcessors = await processorGenerator.load(
+		code,
+		appRoot,
+		bustCache,
+	);
+	const hostedUnits = input.workspace
+		? processorUnits(input.workspace, declared).filter(
+				(unit) => unit.app === appName,
+			)
+		: [];
+	const hostedProcessors = input.workspace
+		? loadedProcessors.filter(({ construct }) =>
+				hostedUnits.some((unit) => unit.id === construct.surfaceId),
+			)
+		: loadedProcessors;
+
 	const hostedCrons = hostedHere(allCrons);
 	const hostedQueues = hostedHere(allQueues);
 	const hostedSubscribers = hostedHere(allSubscribers);
@@ -633,6 +668,16 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 				[
 					derived.surface.id,
 					...(servesOnly ? [] : hosted.map((unit) => unit.id)),
+					// Under `gkm dev` the processors run here too, and read their
+					// file server's bucket.
+					...(production?.enabled
+						? []
+						: hostedUnits.flatMap((unit) => {
+								const server = declared[unit.id];
+								return server?.kind === 'file-server'
+									? [unit.id, server.of]
+									: [unit.id];
+							})),
 				],
 				[
 					...allEndpoints,
@@ -640,6 +685,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 					...inProcess.crons,
 					...inProcess.queues,
 					...inProcess.subscribers,
+					...(production?.enabled ? [] : hostedProcessors),
 				],
 			)
 		: declared;
@@ -692,6 +738,16 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 
 	if (servesOnly && production) {
 		buildContext.production = { ...production, subscribers: 'exclude' };
+	}
+
+	// `gkm dev` serves the processors this app holds in its own process, under
+	// a route the local edge rewrites each pattern onto.
+	if (target === 'server' && !production?.enabled && hostedProcessors.length) {
+		await processorGenerator.buildDev(
+			join(appRoot, '.gkm', 'server'),
+			hostedProcessors,
+		);
+		buildContext.devProcessors = true;
 	}
 
 	const result = await buildForTarget(
@@ -750,6 +806,45 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 			bundle: Boolean(production.bundle && !input.skipBundle),
 			...(input.stage ? { stage: input.stage } : {}),
 		});
+	}
+
+	// Each processor, for the manifest: a Lambda each on AWS; on a server, the
+	// entry of its file server's unit — written, and bundled, for an image.
+	let processors: ProcessorInfo[] = [];
+	if (target === 'aws') {
+		processors = await processorGenerator.build(
+			buildContext,
+			hostedProcessors,
+			join(appRoot, '.gkm', target),
+			{ target, root: workspaceRoot },
+		);
+	} else if (production?.enabled) {
+		processors = await buildProcessors({
+			// The unit reaches its bucket and what its processors depend on, all
+			// in the declarations: the app's drivers cover it.
+			context: buildContext,
+			units: hostedUnits.map((unit) => unit.id),
+			serverDir: join(appRoot, '.gkm', 'server'),
+			processors: hostedProcessors,
+			// The file server's own edge decides, as a worker's does.
+			telemetry: (fileServerId) =>
+				telemetryFor({
+					node: telemetryOf(declared, fileServerId),
+					appRoot,
+					app: appNameOf(input),
+					cwd: workspaceRoot,
+					serviceName: fileServerId,
+					...(input.workspaceName && {
+						workspaceName: input.workspaceName,
+					}),
+				}),
+			workspaceRoot,
+			bundle: Boolean(production.bundle && !input.skipBundle),
+			...(input.stage ? { stage: input.stage } : {}),
+		});
+	}
+	if (processors.length > 0 && result.built) {
+		result.built = { ...result.built, processors };
 	}
 
 	// One spec per surface, from the endpoints the build already loaded rather
@@ -888,6 +983,69 @@ async function buildWorkers(input: {
 		});
 		logger.log(`✅ Bundle complete: .gkm/server/dist/${outfile}`);
 	}
+}
+
+/**
+ * Write each processor unit's entry — and, for an image, bundle it — from the
+ * processors of its file server and no other.
+ */
+async function buildProcessors(input: {
+	context: BuildContext;
+	units: readonly string[];
+	serverDir: string;
+	processors: GeneratedConstruct<Processor<string, any, any, any>>[];
+	/** What each unit starts OpenTelemetry with, by its file server's id. */
+	telemetry: (fileServerId: string) => TelemetryContext | undefined;
+	workspaceRoot: string;
+	bundle: boolean;
+	stage?: string;
+}): Promise<ProcessorInfo[]> {
+	const generator = new ProcessorGenerator();
+	const infos: ProcessorInfo[] = [];
+	for (const fileServerId of input.units) {
+		const processors = input.processors.filter(
+			({ construct }) => construct.surfaceId === fileServerId,
+		);
+		if (processors.length === 0) continue;
+
+		const { context } = input;
+		const telemetry = input.telemetry(fileServerId);
+		const entryPoint = await generator.buildEntry({
+			context,
+			fileServerId,
+			...(telemetry ? { telemetry } : {}),
+			outputDir: processorEntryDir(input.serverDir, fileServerId),
+			processors,
+		});
+		const handler = relative(input.workspaceRoot, entryPoint);
+		for (const { key, construct } of processors) {
+			infos.push(await processorInfo(key, construct, handler, context));
+		}
+		logger.log(
+			`Generated processors for ${fileServerId}: ${processors.map(({ key }) => key).join(', ')}`,
+		);
+
+		if (!input.bundle) continue;
+		const { bundleServer } = await import('./bundler');
+		const outfile = processorBundleName(fileServerId);
+		await bundleServer({
+			entryPoint,
+			outputDir: join(input.serverDir, 'dist'),
+			outfile,
+			minify: context.production?.minify ?? false,
+			sourcemap: false,
+			// Native packages are installed beside the bundle, for the image's
+			// platform — never inlined.
+			external: [
+				...(context.production?.external ?? []),
+				...new Set(processors.flatMap(({ construct }) => construct.native)),
+			],
+			...(input.stage ? { stage: input.stage } : {}),
+			constructs: processors.map((p) => p.construct),
+		});
+		logger.log(`✅ Bundle complete: .gkm/server/dist/${outfile}`);
+	}
+	return infos;
 }
 
 /**

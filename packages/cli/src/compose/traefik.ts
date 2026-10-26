@@ -20,7 +20,12 @@
 import { createHash } from 'node:crypto';
 import { CLIENT_IP_HEADER } from '@geekmidas/manifest';
 import { stringify } from 'yaml';
-import type { EdgeRoute, EdgeTls, Upstream } from './routes.js';
+import {
+	assertRouteRenderable,
+	type EdgeRoute,
+	type EdgeTls,
+	type Upstream,
+} from './routes.js';
 
 /**
  * The image, pinned: the edge is every stack's way in, so a new version is a
@@ -224,13 +229,45 @@ export function traefikDynamic(
 			chain.push(name(route, 'prefix'));
 		}
 
+		assertRouteRenderable(route);
 		// Only the paths it names, where it names some: a request for any
-		// other matches no router, and the edge answers it 404 itself.
-		const paths = route.paths
-			? ` && (${route.paths.map((path) => `Path(\`${path}\`)`).join(' || ')})`
+		// other matches no router, and the edge answers it 404 itself. So
+		// does one without the header a CDN sends, where it requires one.
+		const allowed = [
+			...(route.paths ?? []).map((path) => `Path(\`${path}\`)`),
+			...(route.prefixes ?? []).map((prefix) => `PathPrefix(\`${prefix}\`)`),
+		];
+		const paths = allowed.length ? ` && (${allowed.join(' || ')})` : '';
+		const header = route.requireHeader
+			? ` && Header(\`${route.requireHeader.name}\`, \`${route.requireHeader.value}\`)`
 			: '';
+
+		// Each handler: a router of its own on the same host, ahead of the
+		// route's, to a service of its own.
+		for (const handler of route.handlers ?? []) {
+			const handlerName = name(route, handler.name);
+			routers[handlerName] = {
+				rule: `Host(\`${route.host}\`) && (${handler.prefixes
+					.map((prefix) => `PathPrefix(\`${prefix}\`)`)
+					.join(' || ')})`,
+				// Above the route's own router, whatever the rules' lengths.
+				priority: 10_000,
+				entryPoints: ['websecure'],
+				service: handlerName,
+				middlewares: [strip],
+				tls: tls.kind === 'acme' ? { certResolver: ACME_RESOLVER } : {},
+			};
+			services[handlerName] = {
+				loadBalancer: {
+					servers: handler.upstreams.map((upstream) => ({
+						url: url(upstream),
+					})),
+				},
+			};
+		}
+
 		routers[name(route)] = {
-			rule: `Host(\`${route.host}\`)${paths}`,
+			rule: `Host(\`${route.host}\`)${paths}${header}`,
 			entryPoints: ['websecure'],
 			service: name(route),
 			middlewares: chain,

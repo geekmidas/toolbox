@@ -284,6 +284,34 @@ export function workerEnvKeys(
 }
 
 /** What each construct an edge reaches hands the process that reaches it. */
+/**
+ * The keys a file server's processor unit reads: its bucket's, and what each
+ * of its processors depends on. `undefined` for a file server with none.
+ */
+export function processorEnvKeys(
+	manifest: ConstructManifest,
+	fileServerId: string,
+	/** Each owner's runnables' edges, from discovery — see `DiscoverOptions`. */
+	runnables: Readonly<Record<string, readonly string[]>> = {},
+): Set<string> | undefined {
+	const server = manifest[fileServerId];
+	if (server?.kind !== 'file-server' || !server.processors?.length) {
+		return undefined;
+	}
+
+	const keys = new Set<string>();
+	addEdgeKeys(
+		manifest,
+		[
+			server.of,
+			...server.processors.flatMap((p) => p.dependencies.map((d) => d.target)),
+			...(runnables[fileServerId] ?? []),
+		],
+		keys,
+	);
+	return keys;
+}
+
 function addEdgeKeys(
 	manifest: ConstructManifest,
 	edges: readonly string[],

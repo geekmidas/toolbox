@@ -24,6 +24,7 @@ import type {
 	Declaration,
 	Dependency,
 	FunctionInfo,
+	ProcessorInfo,
 	QueueInfo,
 	RestApiEndpoint,
 	RouteInfo,
@@ -106,6 +107,7 @@ export function withCompute(
 		crons?: readonly CronInfo[];
 		queues?: readonly QueueInfo[];
 		subscribers?: readonly SubscriberInfo[];
+		processors?: readonly ProcessorInfo[];
 	},
 ): ConstructManifest {
 	const next: Record<string, Declaration> = { ...manifest };
@@ -185,6 +187,34 @@ export function withCompute(
 					dependencies: edgesTo(manifest, subscriber.dependencies),
 				},
 			],
+		};
+	}
+
+	// Discovery nested each processor with its source as its handler; the
+	// build's is the one a target runs.
+	for (const processor of compute.processors ?? []) {
+		const server = next[processor.fileServer];
+		if (server?.kind !== 'file-server') continue;
+
+		next[server.id] = {
+			...server,
+			processors: [
+				...(server.processors ?? []).filter((p) => p.id !== processor.name),
+				{
+					id: processor.name,
+					handler: processor.handler,
+					path: processor.path,
+					prefix: processor.prefix,
+					...(processor.native?.length ? { native: processor.native } : {}),
+					...(processor.timeout !== undefined
+						? { timeout: processor.timeout }
+						: {}),
+					...(processor.memorySize !== undefined
+						? { memorySize: processor.memorySize }
+						: {}),
+					dependencies: edgesTo(manifest, processor.dependencies),
+				},
+			].sort((a, b) => a.id.localeCompare(b.id)),
 		};
 	}
 

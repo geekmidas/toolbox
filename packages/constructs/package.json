@@ -144,6 +144,16 @@
 				"default": "./dist/file-server.cjs"
 			}
 		},
+		"./processors": {
+			"import": {
+				"types": "./dist/processors/index.d.mts",
+				"default": "./dist/processors/index.mjs"
+			},
+			"require": {
+				"types": "./dist/processors/index.d.cts",
+				"default": "./dist/processors/index.cjs"
+			}
+		},
 		"./email": {
 			"import": {
 				"types": "./dist/email.d.mts",

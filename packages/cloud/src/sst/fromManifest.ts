@@ -839,6 +839,65 @@ export function provisionCompute(
 	return crons;
 }
 
+/**
+ * Every file server's processors: each a Lambda behind a function URL with
+ * IAM auth, served through the file server's router on its pattern's prefix
+ * — so the CDN signs each request (origin access control) and the URL cannot
+ * be called around the cache. Linked to the bucket it reads and what it
+ * depends on; its native packages installed for the Lambda, not bundled.
+ *
+ * After everything else, for the reason {@link provisionCompute} is.
+ */
+export function provisionProcessors(
+	stack: StackType,
+	manifest: ConstructManifest,
+	provisioned: ProvisionedManifest,
+): Function[] {
+	const lambdas: Function[] = [];
+
+	for (const [id, declaration] of Object.entries(manifest)) {
+		if (declaration?.kind !== 'file-server') continue;
+		const router = provisioned[id];
+		if (!router) continue;
+
+		for (const processor of declaration.processors ?? []) {
+			const { link } = resolveEdges(processor.dependencies, provisioned);
+			const vpc = vpcFor(link);
+			const native = processor.native ?? [];
+			lambdas.push(
+				new Function(stack, `${id}${processor.id}`, {
+					name: stack.logicalPrefixedName(`${id}${processor.id}`),
+					handler: processor.handler,
+					link,
+					...(vpc ? { vpc } : {}),
+					...(processor.timeout !== undefined
+						? {
+								timeout:
+									`${Math.ceil(processor.timeout / 1000)} seconds` as sst.aws.FunctionArgs['timeout'],
+							}
+						: {}),
+					...(processor.memorySize !== undefined
+						? {
+								memory:
+									`${processor.memorySize} MB` as sst.aws.FunctionArgs['memory'],
+							}
+						: {}),
+					...(native.length ? { nodejs: { install: [...native] } } : {}),
+					url: {
+						authorization: 'iam',
+						router: {
+							instance: router as unknown as sst.aws.Router,
+							path: processor.prefix.replace(/\/$/, ''),
+						},
+					},
+				}),
+			);
+		}
+	}
+
+	return lambdas;
+}
+
 /** A provisioned queue: what {@link subscribeConsumers} subscribes through. */
 interface Consumable {
 	consume(consumer: {
@@ -1051,6 +1110,7 @@ export function fromManifest<
 	// The functions and crons, each queue's one consumer and each surface's
 	// endpoints, once everything they link to exists.
 	provisionCompute(stack, manifest, provisioned);
+	provisionProcessors(stack, manifest, provisioned);
 	subscribeConsumers(manifest, provisioned);
 	mountRoutes(manifest, provisioned);
 

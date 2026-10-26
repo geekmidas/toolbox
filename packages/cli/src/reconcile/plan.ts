@@ -12,6 +12,7 @@
  */
 
 import {
+	bucketExpiry,
 	type ConstructManifest,
 	type Declaration,
 	type DeclarationKind,
@@ -277,6 +278,11 @@ export interface PlannedResource {
 	 * in production is the bug this avoids.
 	 */
 	open?: readonly string[];
+	/**
+	 * For a file server: the literal prefixes its processors answer — `/i/` —
+	 * which the local edge sends to the dev server holding them.
+	 */
+	processors?: readonly string[];
 	/**
 	 * For a bucket: days kept under each prefix before it deletes them.
 	 *
@@ -578,8 +584,15 @@ export function planFor(
 			...(declaration.kind === 'file-server' && declaration.open?.length
 				? { open: declaration.open }
 				: {}),
-			...(declaration.kind === 'objects' && declaration.expire
-				? { expire: declaration.expire }
+			...(declaration.kind === 'file-server' && declaration.processors?.length
+				? {
+						processors: [
+							...new Set(declaration.processors.map((p) => p.prefix)),
+						].sort(),
+					}
+				: {}),
+			...(declaration.kind === 'objects' && bucketExpiry(manifest, id)
+				? { expire: bucketExpiry(manifest, id) }
 				: {}),
 			...((declaration.kind === 'rest-api' || declaration.kind === 'site') &&
 			declaration.subdomain

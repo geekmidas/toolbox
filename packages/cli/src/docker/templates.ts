@@ -802,6 +802,9 @@ export function generateBackendDockerfile(
 /** The port a worker answers its health check on, inside its container. */
 export const WORKER_PORT = 3000;
 
+/** The port a processor unit answers on, inside its container. */
+export const PROCESSOR_PORT = 3000;
+
 /**
  * A Worker's image: the same build as its host app's backend — a pruned
  * slice, `gkm build --provider server --production` in the image, with the
@@ -827,6 +830,30 @@ export function generateWorkerDockerfile(
 		bundle: options.bundle,
 		as: 'worker.mjs',
 		expose: false,
+	});
+}
+
+/**
+ * A file server's processor unit: its host app's build, and the unit's bundle
+ * as the runner. Its native packages — `sharp` — are installed for the image's
+ * platform beside the bundle, at the versions the build resolved.
+ */
+export function generateProcessorDockerfile(
+	options: ImageTemplateOptions & {
+		/** The file server's surface id, for the comment. */
+		fileServer: string;
+		/** Its bundle under the host app's `.gkm/server/dist`. */
+		bundle: string;
+		healthCheckPath?: string;
+		external?: string[];
+		cache?: CacheBackend;
+	},
+): string {
+	return gkmBundleDockerfile(options, {
+		title: `Processors Dockerfile (${options.fileServer})`,
+		bundle: options.bundle,
+		as: 'processors.mjs',
+		expose: true,
 	});
 }
 
@@ -864,7 +891,7 @@ RUN apk add --no-cache tini
 RUN addgroup --system --gid 1001 nodejs && \\
     adduser --system --uid 1001 hono
 
-# The bundled ${runner.as === 'server.mjs' ? 'server' : 'worker'}
+# The bundled ${runner.as.replace(/\.mjs$/, '')}
 COPY --from=builder --chown=hono:nodejs ${app}/.gkm/server/dist/${runner.bundle} ./${runner.as === runner.bundle ? '' : runner.as}${externals.copy}
 
 ENV NODE_ENV=production

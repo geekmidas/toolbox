@@ -912,6 +912,123 @@ export const sweep = jobs.cron('rate(1 hour)').handle(async () => null);
 		});
 	});
 
+	describe("a file server's processors", () => {
+		const ref = (app: string, tag: string) =>
+			`ghcr.io/acme/shop/shop-${app}:${tag}`;
+		const applicationOf = (app: string) =>
+			dokploy.projects[0]!.environments[0]!.applications.find(
+				(a) => a.name === `production-shop-${app}`,
+			)?.applicationId;
+		/** The bucket on S3 behind a CDN, as the s3 provider leaves the stage. */
+		const fronted = (custom: Record<string, string> = {}) =>
+			new FileSecretsStore(root).write(STAGE, {
+				stage: STAGE,
+				createdAt: '2026-01-01T00:00:00.000Z',
+				updatedAt: '2026-01-01T00:00:00.000Z',
+				services: {},
+				urls: {},
+				custom: {
+					ASSETS_URL: 's3://acme-assets?region=eu-west-1',
+					ASSETS_SERVER_URL: 'https://assets-server.shop.example.com',
+					...custom,
+				},
+			});
+
+		beforeEach(() => {
+			mkdirSync(join(root, 'src', 'constructs'), { recursive: true });
+			writeFileSync(
+				join(root, 'src', 'constructs', 'assets.ts'),
+				`import { FileServer } from '@geekmidas/constructs/file-server';
+
+export const assets = new FileServer('Assets', { open: ['**'] });
+
+export const echo = assets
+  .process('/e/*')
+  .handle(async ({ object }) => ({
+    body: await object.bytes(),
+    contentType: 'application/octet-stream',
+  }));
+`,
+			);
+			vi.mocked(runOutput).mockImplementation(async (_, args) => {
+				const ref = args.at(-1)!;
+				const repository = ref.replace(/:[\w][\w.-]*$/, '');
+				const digest = Buffer.from(ref).toString('hex').padEnd(64, '0');
+				return JSON.stringify([`${repository}@sha256:${digest.slice(0, 64)}`]);
+			});
+		});
+
+		it('are deployed as an application of their own, on the host the CDN reaches', async () => {
+			await fronted({ ASSETS_SERVER_ORIGIN_SECRET: 'from-the-cdn' });
+
+			const deployed = await start().result;
+
+			const unit = applicationOf('assets-processors');
+			expect(unit).toBeDefined();
+			expect(deployed.apps).toContainEqual(
+				expect.objectContaining({
+					appName: 'assets-processors',
+					type: 'backend',
+					success: true,
+					applicationId: unit,
+					imageRef: ref('assets-processors', 'v1'),
+				}),
+			);
+			expect(dokploy.domains.filter((d) => d.applicationId === unit)).toEqual([
+				expect.objectContaining({
+					host: 'assets-server-processors.shop.example.com',
+				}),
+			]);
+			expect(deployed.urls['assets-processors']).toBe(
+				'https://assets-server-processors.shop.example.com',
+			);
+
+			// Dokploy's Traefik routes by host alone, so the unit checks the
+			// CDN's header itself — and reads its bucket.
+			const env = dokploy.env[unit!]!.split('\n');
+			expect(env).toEqual(
+				expect.arrayContaining([
+					'GKM_PROCESSOR_ORIGIN_SECRET=from-the-cdn',
+					'ASSETS_URL=s3://acme-assets?region=eu-west-1',
+					'PORT=3000',
+				]),
+			);
+		});
+
+		it('refuse to deploy where nothing could reach them', async () => {
+			await fronted();
+
+			await expect(start().result).rejects.toMatchObject({
+				name: 'ProcessorsNeedCdn',
+				fileServer: 'AssetsServer',
+				secretKey: 'ASSETS_SERVER_ORIGIN_SECRET',
+			});
+			expect(applicationOf('assets-processors')).toBeUndefined();
+		});
+
+		it('are planned by a dry run, at their host', async () => {
+			await fronted({ ASSETS_SERVER_ORIGIN_SECRET: 'from-the-cdn' });
+
+			const planned = await start({ dryRun: true }).result;
+
+			expect(planned.apps).toContainEqual(
+				expect.objectContaining({
+					appName: 'assets-processors',
+					imageRef: ref('assets-processors', 'v1'),
+					url: 'https://assets-server-processors.shop.example.com',
+				}),
+			);
+			expect(planned.changes).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						key: 'application:assets-processors',
+						action: 'create',
+					}),
+				]),
+			);
+		});
+	});
+
 	describe("a deployed stage's third-party credentials", () => {
 		beforeEach(async () => {
 			mkdirSync(join(root, 'src', 'constructs'), { recursive: true });

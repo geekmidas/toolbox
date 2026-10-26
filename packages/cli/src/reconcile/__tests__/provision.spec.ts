@@ -2,6 +2,7 @@ import type { LifecycleRule } from '@aws-sdk/client-s3';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { provisionOrder } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
+import { bucketConstructs } from '../../providers/s3/index';
 import { expireRuleId } from '../../providers/s3/lifecycle';
 import { planFor } from '../plan';
 import {
@@ -631,6 +632,38 @@ describe('bucket lifecycles', () => {
 			{ bucket: 'assets', expire: {} },
 			{ bucket: 'private', expire: { 'quotes/': 30, 'tmp/': 1 } },
 		]);
+	});
+
+	it("expires a processing file server's derivatives in its bucket", () => {
+		const processing = {
+			...manifest,
+			AssetsServer: {
+				kind: 'file-server',
+				id: 'AssetsServer',
+				of: 'Assets',
+				open: ['**'],
+				derivedDays: 7,
+				processors: [
+					{
+						id: 'thumbnails',
+						handler: 'thumbnails.handler',
+						dependencies: [],
+						path: '/i/:width/*',
+						prefix: '/i/',
+					},
+				],
+				provides: ['ASSETS_SERVER_URL'],
+			},
+		} as unknown as ConstructManifest;
+
+		expect(bucketLifecycles(plan(processing))).toContainEqual({
+			bucket: 'assets',
+			expire: { '.gkm-derived/': 7 },
+		});
+		// The `s3` provider reads the same answer.
+		expect(
+			bucketConstructs(processing).find((b) => b.id === 'Assets')?.expire,
+		).toEqual({ '.gkm-derived/': 7 });
 	});
 
 	it('writes the rules once, and leaves a bucket that asks for none alone', async () => {

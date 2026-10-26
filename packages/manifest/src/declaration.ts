@@ -154,6 +154,41 @@ export interface FileServerDeclaration extends Node {
 	 * behaviours off path patterns, and a bucket policy names prefixes.
 	 */
 	open?: readonly string[];
+	/**
+	 * Open paths whose objects never change once written, so the edge tells
+	 * every client to keep them forever (`Cache-Control: public,
+	 * max-age=31536000, immutable`, over whatever the object was stored with).
+	 *
+	 * A subset of `open`: a signed object is never served by the edge.
+	 */
+	immutable?: readonly string[];
+	/**
+	 * The handlers behind its path patterns — each makes a derivative of an
+	 * open object on read: `/i/:width/*` a thumbnail.
+	 *
+	 * Nested for the reason a topic's subscribers are: position is the trigger.
+	 * A processor answers requests on this server's domain and nothing else.
+	 */
+	processors?: readonly ProcessorDeclaration[];
+	/**
+	 * Days its processors' derivatives are kept in the bucket before it deletes
+	 * them (`DEFAULT_DERIVED_DAYS` when absent) — they are remade on demand.
+	 */
+	derivedDays?: number;
+	/** The `Telemetry` node its processor unit emits through, by id. */
+	telemetry?: ConstructId;
+}
+
+/** A processor on a file server — see {@link FileServerDeclaration.processors}. */
+export interface ProcessorDeclaration extends Fn {
+	/** Its pattern, as written: `/i/:width/*`. */
+	path: string;
+	/** The literal path the edge routes to it: `/i/`. */
+	prefix: string;
+	/** Packages with native code, installed for the target rather than bundled. */
+	native?: readonly string[];
+	timeout?: number;
+	memorySize?: number;
 }
 
 /**
