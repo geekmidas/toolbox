@@ -107,7 +107,7 @@
 		"zod": "~4.1.13"
 	},
 	"peerDependencies": {
-		"@geekmidas/telescope": "workspace:~"
+		"@geekmidas/telescope": "workspace:^"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/telescope": {
