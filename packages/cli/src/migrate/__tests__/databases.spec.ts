@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -353,6 +354,7 @@ export async function up(db) {
 describe('seedDatabases', () => {
 	let root: string;
 	const stage = 'production';
+	const backends = { cache: 'redis', events: 'pgboss' } as const;
 
 	const seedFile = (name: string, content: string) =>
 		writeFile(join(root, 'db/database/seeds', name), content);
@@ -405,6 +407,7 @@ describe('seedDatabases', () => {
 			sources,
 			env,
 			stage,
+			backends,
 		});
 
 		expect(migrations.map((r) => [r.target.id, r.applied])).toEqual([
@@ -419,7 +422,7 @@ describe('seedDatabases', () => {
 	});
 
 	it('runs every seed again on the next pass, applying what changed', async () => {
-		await migrateAndSeed({ root, manifest, sources, env, stage });
+		await migrateAndSeed({ root, manifest, sources, env, stage, backends });
 		await seedFile(
 			'roles.ts',
 			`export async function seed(db) {
@@ -429,7 +432,14 @@ describe('seedDatabases', () => {
 `,
 		);
 
-		const again = await seedDatabases({ root, manifest, sources, env, stage });
+		const again = await seedDatabases({
+			root,
+			manifest,
+			sources,
+			env,
+			stage,
+			backends,
+		});
 
 		expect(again[0]?.seeded).toEqual(['roles']);
 		expect(await roles()).toEqual(['Member', 'Reviewer', 'Super admin']);
@@ -454,6 +464,7 @@ describe('seedDatabases', () => {
 			sources,
 			env,
 			stage,
+			backends,
 		});
 
 		expect(seeds[0]?.seeded).toEqual(['01_admin', '02_reviewer', 'roles']);
@@ -476,6 +487,7 @@ describe('seedDatabases', () => {
 			sources,
 			env,
 			stage,
+			backends,
 			only: 'auth-database',
 		});
 
@@ -499,7 +511,7 @@ describe('seedDatabases', () => {
 `,
 		);
 
-		await migrateAndSeed({ root, manifest, sources, env, stage });
+		await migrateAndSeed({ root, manifest, sources, env, stage, backends });
 		expect(await roles()).toEqual(['Member', 'Super admin']);
 
 		await seedDatabases({
@@ -508,6 +520,7 @@ describe('seedDatabases', () => {
 			sources,
 			env,
 			stage: 'development',
+			backends,
 		});
 		expect(await roles()).toEqual(['Demo', 'Member', 'Super admin']);
 	});
@@ -528,6 +541,7 @@ describe('seedDatabases', () => {
 			sources,
 			env,
 			stage,
+			backends,
 		}).catch((error: unknown) => error);
 
 		expect(failure).toBeInstanceOf(SeedFailed);
@@ -577,6 +591,7 @@ describe('seedDatabases', () => {
 				sources: camelCased,
 				env,
 				stage,
+				backends,
 			});
 
 			expect(
@@ -616,6 +631,7 @@ describe('seedDatabases', () => {
 				sources: tenanted,
 				env,
 				stage,
+				backends,
 				only: 'auth-database',
 			});
 
@@ -641,11 +657,71 @@ describe('seedDatabases', () => {
 		});
 	});
 
+	describe('in a project whose entry registers drivers', () => {
+		// What a seed reaching a bucket or a cache through its construct would
+		// be handed — read from the registries the project's own packages hold.
+		const schemesSeed = `import { registeredStorageSchemes } from '@geekmidas/storage';
+import { registeredCacheSchemes } from '@geekmidas/cache';
+export async function seed(db) {
+  const names = [...registeredStorageSchemes(), ...registeredCacheSchemes()];
+  if (names.length > 0) await db.insertInto('roles').values(names.map((name) => ({ name }))).execute();
+}
+`;
+
+		beforeEach(() => seedFile('schemes.ts', schemesSeed));
+
+		it('registers them before seeding, so a seed needs no provider of its own', async () => {
+			await writeFile(
+				join(root, 'package.json'),
+				JSON.stringify({
+					dependencies: {
+						'@geekmidas/cache': '*',
+						'@geekmidas/storage': '*',
+					},
+				}),
+			);
+
+			await migrateAndSeed({
+				root,
+				manifest: {
+					...manifest,
+					Sessions: { kind: 'cache', id: 'Sessions', provides: [] },
+				},
+				sources,
+				env,
+				stage,
+				backends,
+			});
+
+			expect(new Set(await roles())).toEqual(
+				new Set(['Member', 'Super admin', 'redis:', 'rediss:', 's3:']),
+			);
+		});
+
+		// The registries are the process's, so what an earlier run registered
+		// is still there; what this one would have loaded is its module.
+		it('registers nothing a project neither installs nor declares', async () => {
+			await writeFile(join(root, 'package.json'), '{}');
+
+			const { seeds } = await migrateAndSeed({
+				root,
+				manifest,
+				sources,
+				env,
+				stage,
+				backends,
+			});
+
+			expect(seeds[0]?.seeded).toEqual(['roles', 'schemes']);
+			expect(existsSync(join(root, '.gkm'))).toBe(false);
+		});
+	});
+
 	it('refuses a seed script that exports no seed', async () => {
 		await seedFile('lookup.ts', 'export async function up() {}');
 
 		await expect(
-			migrateAndSeed({ root, manifest, sources, env, stage }),
+			migrateAndSeed({ root, manifest, sources, env, stage, backends }),
 		).rejects.toBeInstanceOf(SeedHasNoSeed);
 	});
 });

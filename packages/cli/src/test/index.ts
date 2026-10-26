@@ -375,6 +375,7 @@ async function migrateTestStage(
 		sources,
 		env,
 		stage: TEST_STAGE,
+		backends: backendsOf(workspace),
 	});
 
 	for (const { target, applied } of migrations) {
