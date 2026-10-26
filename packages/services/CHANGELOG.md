@@ -1,13 +1,5 @@
 # @geekmidas/services
 
-## 10.0.0
-
-### Patch Changes
-
-- Updated dependencies []:
-  - @geekmidas/envkit@10.0.0
-  - @geekmidas/logger@10.0.0
-
 ## 9.0.2
 
 ### Patch Changes

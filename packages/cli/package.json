@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/cli",
-	"version": "10.0.0",
+	"version": "9.0.2",
 	"description": "CLI tools for building Lambda handlers, server applications, and generating OpenAPI specs",
 	"private": false,
 	"type": "module",
@@ -107,7 +107,7 @@
 		"zod": "~4.1.13"
 	},
 	"peerDependencies": {
-		"@geekmidas/telescope": "workspace:~"
+		"@geekmidas/telescope": "workspace:^"
 	},
 	"peerDependenciesMeta": {
 		"@geekmidas/telescope": {

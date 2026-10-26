@@ -1,12 +1,5 @@
 # @geekmidas/telescope
 
-## 10.0.0
-
-### Patch Changes
-
-- Updated dependencies []:
-  - @geekmidas/logger@10.0.0
-
 ## 9.0.2
 
 ### Patch Changes
