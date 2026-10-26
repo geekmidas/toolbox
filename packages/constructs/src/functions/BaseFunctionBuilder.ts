@@ -11,6 +11,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import get from 'lodash.get';
 import { ConstructType } from '../Construct';
 import { cloneWith } from '../clone';
+import type { MonitorService } from '../monitor';
 
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
@@ -37,6 +38,7 @@ export abstract class BaseFunctionBuilder<
 	protected _publisher?: Service<TEventPublisherServiceName, TEventPublisher>;
 	protected _auditorStorage?: Service<TAuditStorageServiceName, TAuditStorage>;
 	protected _databaseService?: Service<TDatabaseServiceName, TDatabase>;
+	public _monitors: MonitorService[] = [];
 
 	static isStandardSchemaV1(s: unknown): s is StandardSchemaV1 {
 		const schema = (s as StandardSchemaV1)['~standard'];
@@ -88,6 +90,14 @@ export abstract class BaseFunctionBuilder<
 	abstract output<T extends StandardSchemaV1>(schema: T): any;
 
 	abstract input<T extends ComposableStandardSchema>(schema: T): any;
+
+	/**
+	 * Report each run to a monitor — a heartbeat, an uptime check, an error
+	 * tracker. Can be called more than once; every monitor is told.
+	 */
+	monitor(monitor: MonitorService): this {
+		return cloneWith(this, { _monitors: [...this._monitors, monitor] });
+	}
 
 	event<TEvent extends MappedEvent<TEventPublisher, OutSchema>>(
 		event: TEvent,

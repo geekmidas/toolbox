@@ -9,6 +9,7 @@ import type { Logger } from '@geekmidas/logger';
 import type { Service, ServiceContext } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import compact from 'lodash.compact';
+import type { MonitorService } from './monitor';
 
 // Cache for service environment variables to handle singleton services
 // Stores both the full list and the optional subset so the same sniff result
@@ -59,6 +60,9 @@ export abstract class Construct<
 > {
 	/** Database service for this construct (used by Endpoint for RLS/audit context) */
 	public databaseService?: Service<TDatabaseServiceName, TDatabase>;
+
+	/** Monitors told about each run of this construct (see `.monitor()`). */
+	public monitors: MonitorService[] = [];
 
 	constructor(
 		public readonly type: ConstructType,
@@ -111,6 +115,7 @@ export abstract class Construct<
 			this.publisherService,
 			this.auditorStorageService,
 			this.databaseService,
+			...this.monitors,
 		]);
 
 		try {

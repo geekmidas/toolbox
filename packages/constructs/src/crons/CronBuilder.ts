@@ -254,6 +254,8 @@ export class CronBuilder<
 		// configured base keeps its configuration for every construct built
 		// from it. The reset that used to be here wiped the base on first use.
 
+		cron.monitors = this._monitors;
+
 		return cron;
 	}
 }

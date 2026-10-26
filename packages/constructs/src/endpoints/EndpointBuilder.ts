@@ -715,7 +715,7 @@ export class EndpointBuilder<
 			}
 		}
 
-		return new Endpoint({
+		const endpoint = new Endpoint({
 			fn,
 			method: this.method,
 			route: this.route,
@@ -742,5 +742,8 @@ export class EndpointBuilder<
 			rlsBypass: this._rlsBypass,
 			responseType: this._responseType,
 		});
+		endpoint.monitors = this._monitors;
+
+		return endpoint;
 	}
 }

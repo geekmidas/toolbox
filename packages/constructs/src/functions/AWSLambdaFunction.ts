@@ -13,6 +13,7 @@ import { runWithRequestContext } from '@geekmidas/services';
 import middy, { type MiddlewareObj } from '@middy/core';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Context, Handler } from 'aws-lambda';
+import { startMonitors } from '../monitor';
 import type { Function, FunctionHandler } from './Function';
 import { FunctionBuilder } from './FunctionBuilder';
 import { FunctionExecutionWrapper } from './FunctionExecutionWrapper';
@@ -127,6 +128,10 @@ export class AWSLambdaFunction<
 			onError: (req) => {
 				const logger = req.event?.logger || this.fn.logger;
 				logger.error(req.error || {}, 'Error processing function');
+				// Kept for the monitors, which otherwise only see the wrapped error.
+				if (req.event) {
+					(req.event as any).__error = req.error;
+				}
 
 				// Re-throw the wrapped error to let Lambda handle it
 				throw wrapError(req.error);
@@ -338,8 +343,29 @@ export class AWSLambdaFunction<
 			const requestId = context.awsRequestId;
 			const logger = this.fn.logger.child({ requestId }) as TLogger;
 
-			return runWithRequestContext({ logger, requestId, startTime }, () =>
-				chain(event as Parameters<typeof chain>[0], context),
+			return runWithRequestContext(
+				{ logger, requestId, startTime },
+				async () => {
+					// Around the whole chain, not as a middleware: a middleware's
+					// `after` runs before audits flush and events publish, and its
+					// `onError` never runs once `error()` rethrows.
+					const monitor = await startMonitors(
+						this.fn,
+						this.serviceDiscovery,
+						logger,
+					);
+					try {
+						const output = await chain(
+							event as Parameters<typeof chain>[0],
+							context,
+						);
+						await monitor.success(output);
+						return output;
+					} catch (error) {
+						await monitor.failure((event as any)?.__error ?? error);
+						throw error;
+					}
+				},
 			);
 		};
 
