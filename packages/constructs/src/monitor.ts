@@ -43,6 +43,28 @@ export interface MonitoredRun {
 	settle(status: number, error?: unknown): Promise<void>;
 }
 
+/**
+ * Add a monitor to a construct's list, refusing one that is already there.
+ *
+ * Services are cached by name, so two monitors with one name would silently
+ * share an instance: two heartbeats reading `HEARTBEAT_URL` would both ping
+ * whichever was registered first, and the other provider would never hear
+ * from the construct.
+ */
+export function addMonitor(
+	monitors: readonly MonitorService[],
+	monitor: MonitorService,
+): MonitorService[] {
+	if (monitors.some((m) => m.serviceName === monitor.serviceName)) {
+		throw new Error(
+			`Monitor "${monitor.serviceName}" is already set on this construct. ` +
+				'Two heartbeats reading the same env var would share one URL; ' +
+				"give one its own, e.g. heartbeat.healthchecks('HEALTHCHECKS_HEARTBEAT_URL').",
+		);
+	}
+	return [...monitors, monitor];
+}
+
 const NOOP_RUN: MonitoredRun = {
 	async success() {},
 	async failure() {},

@@ -209,6 +209,51 @@ describe('heartbeat', () => {
 	});
 });
 
+describe('duplicate monitors', () => {
+	it('refuses two heartbeats reading the same env var', () => {
+		expect(() =>
+			new CronBuilder()
+				.monitor(heartbeat.betterStack())
+				.monitor(heartbeat.healthchecks()),
+		).toThrow('Monitor "heartbeat:HEARTBEAT_URL" is already set');
+	});
+
+	it('refuses an endpoint repeating its factory’s monitor', () => {
+		const e = new EndpointFactory().monitor(heartbeat.betterStack());
+
+		expect(() => e.get('/x').monitor(heartbeat.betterStack())).toThrow(
+			'is already set',
+		);
+	});
+
+	it('refuses the same monitor twice on a factory', () => {
+		expect(() =>
+			new EndpointFactory()
+				.monitor(heartbeat.betterStack())
+				.monitor(heartbeat.healthchecks()),
+		).toThrow('is already set');
+	});
+
+	it('allows two heartbeats on their own env vars', async () => {
+		const fn = new FunctionBuilder()
+			.input(z.object({}))
+			.monitor(heartbeat.betterStack('BETTER_STACK_HEARTBEAT_URL'))
+			.monitor(heartbeat.healthchecks('HEALTHCHECKS_HEARTBEAT_URL'))
+			.handle(async () => ({}));
+
+		await new TestFunctionAdaptor(
+			fn,
+			discovery({
+				BETTER_STACK_HEARTBEAT_URL: `${HEARTBEAT}/bs`,
+				HEALTHCHECKS_HEARTBEAT_URL: `${HEARTBEAT}/hc`,
+			}),
+		).invoke({ input: {}, services: {} });
+
+		// Each provider gets its own pings, in its own URL shape.
+		expect(pings.sort()).toEqual(['/abc/bs', '/abc/hc', '/abc/hc/start']);
+	});
+});
+
 describe('functions and crons', () => {
 	it('report start, then success with what start returned', async () => {
 		const { calls, service } = recorder();

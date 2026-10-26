@@ -9,7 +9,7 @@ import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import uniqBy from 'lodash.uniqby';
 import { cloneWith } from '../clone';
-import type { MonitorService } from '../monitor';
+import { addMonitor, type MonitorService } from '../monitor';
 import type { HttpMethod } from '../types';
 import {
 	type Authorizer,
@@ -141,7 +141,7 @@ export class EndpointFactory<
 	 */
 	monitor(monitor: MonitorService): this {
 		return cloneWith(this, {
-			defaultMonitors: [...this.defaultMonitors, monitor],
+			defaultMonitors: addMonitor(this.defaultMonitors, monitor),
 		});
 	}
 

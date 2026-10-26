@@ -11,7 +11,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import get from 'lodash.get';
 import { ConstructType } from '../Construct';
 import { cloneWith } from '../clone';
-import type { MonitorService } from '../monitor';
+import { addMonitor, type MonitorService } from '../monitor';
 
 const DEFAULT_LOGGER = new ConsoleLogger() as any;
 
@@ -96,7 +96,7 @@ export abstract class BaseFunctionBuilder<
 	 * tracker. Can be called more than once; every monitor is told.
 	 */
 	monitor(monitor: MonitorService): this {
-		return cloneWith(this, { _monitors: [...this._monitors, monitor] });
+		return cloneWith(this, { _monitors: addMonitor(this._monitors, monitor) });
 	}
 
 	event<TEvent extends MappedEvent<TEventPublisher, OutSchema>>(
