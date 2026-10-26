@@ -1,5 +1,5 @@
 import type { Service } from '@geekmidas/services';
-import type { ConstructMonitor } from '../monitor';
+import type { ConstructMonitor, MonitorInfo } from '../monitor';
 
 export interface HeartbeatOptions {
 	/**
@@ -19,6 +19,11 @@ export interface HeartbeatOptions {
 	failure?: (url: string) => string;
 	/** Milliseconds to wait for the provider. @default 3000 */
 	timeout?: number;
+	/**
+	 * The service the URL belongs to, recorded in the manifest so infrastructure
+	 * knows which kind of heartbeat to create. Set by the presets.
+	 */
+	provider?: string;
 }
 
 /**
@@ -36,17 +41,19 @@ export interface HeartbeatOptions {
  */
 export function heartbeat(
 	options: HeartbeatOptions = {},
-): Service<`heartbeat:${string}`, ConstructMonitor> {
+): Service<`heartbeat:${string}`, ConstructMonitor> & { monitor: MonitorInfo } {
 	const {
 		env = 'HEARTBEAT_URL',
 		start,
 		success = (url) => url,
 		failure,
 		timeout = 3000,
+		provider,
 	} = options;
 
 	return {
 		serviceName: `heartbeat:${env}`,
+		monitor: { type: 'heartbeat', ...(provider ? { provider } : {}), env },
 		async register({ envParser }) {
 			const { url } = envParser
 				.create((get) => ({ url: get(env).string().optional() }))
@@ -75,12 +82,13 @@ export function heartbeat(
 
 /** Better Stack heartbeats: `{url}` on success, `{url}/fail` on failure. */
 heartbeat.betterStack = (env?: string) =>
-	heartbeat({ env, failure: (url) => `${url}/fail` });
+	heartbeat({ env, provider: 'betterStack', failure: (url) => `${url}/fail` });
 
 /** Healthchecks.io: `{url}/start`, `{url}` and `{url}/fail`. */
 heartbeat.healthchecks = (env?: string) =>
 	heartbeat({
 		env,
+		provider: 'healthchecks',
 		start: (url) => `${url}/start`,
 		failure: (url) => `${url}/fail`,
 	});

@@ -12,6 +12,7 @@ export {
 export type {
 	ConstructMonitor,
 	MonitorContext,
+	MonitorInfo,
 	MonitorService,
 } from './monitor';
 // Telemetry interface

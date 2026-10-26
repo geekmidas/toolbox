@@ -30,7 +30,23 @@ export interface ConstructMonitor<TRun = unknown> {
 	): Promise<void>;
 }
 
-export type MonitorService = Service<string, ConstructMonitor<any>>;
+/**
+ * A monitor as the build manifest records it, so infrastructure can provision
+ * what it reports to: a heartbeat's URL, set in the variable it reads.
+ */
+export interface MonitorInfo {
+	/** The kind of monitor, e.g. `heartbeat`. */
+	type: string;
+	/** The service it reports to, e.g. `betterStack`. Absent for a custom one. */
+	provider?: string;
+	/** The environment variable it reads its target from. */
+	env?: string;
+}
+
+export type MonitorService = Service<string, ConstructMonitor<any>> & {
+	/** How the manifest records this monitor. Defaults to its service name. */
+	monitor?: MonitorInfo;
+};
 
 /** A run in progress, closed by exactly one of its two methods. */
 export interface MonitoredRun {

@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Function } from '@geekmidas/constructs/functions';
 import { f } from '@geekmidas/constructs/functions';
+import { heartbeat } from '@geekmidas/constructs/monitors';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import {
@@ -118,6 +119,25 @@ describe('FunctionGenerator', () => {
 				const sendEmailContent = await readFile(sendEmailHandlerPath, 'utf-8');
 				expect(sendEmailContent).toContain('AWSLambdaFunction');
 				expect(sendEmailContent).toContain('import { sendEmail }');
+			});
+
+			it('records the function’s monitors in its manifest entry', async () => {
+				const monitored = createTestFunctionConstruct('monitored');
+				monitored.construct = f
+					.monitor(heartbeat.betterStack('MONITORING_URL'))
+					.handle(async () => ({}));
+
+				const functionInfos = await generator.build(
+					context,
+					[monitored, createTestFunctionConstruct('plain')],
+					outputDir,
+					{ provider: 'aws-lambda' },
+				);
+
+				expect(functionInfos[0].monitoring).toEqual([
+					{ type: 'heartbeat', provider: 'betterStack', env: 'MONITORING_URL' },
+				]);
+				expect(functionInfos[1].monitoring).toBeUndefined();
 			});
 
 			it('should generate correct relative import paths', async () => {

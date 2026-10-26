@@ -36,6 +36,19 @@ export function flattenManifestField<T>(
 		: Object.values(field as Record<string, readonly T[]>).flat();
 }
 
+/**
+ * A monitor set with `.monitor()`, so infrastructure can provision what it
+ * reports to, e.g. create a heartbeat and set its URL in `env`.
+ */
+export interface MonitorInfo {
+	/** The kind of monitor, e.g. `heartbeat`. */
+	type: string;
+	/** The service it reports to, e.g. `betterStack`. Absent for a custom one. */
+	provider?: string;
+	/** The environment variable it reads its target from. */
+	env?: string;
+}
+
 /** A single HTTP route. */
 export interface RouteInfo {
 	/** Route path, e.g. `/users/{id}`. */
@@ -50,6 +63,8 @@ export interface RouteInfo {
 	environment?: readonly string[];
 	/** Authorizer name: `none`, `iam`, or a declared authorizer. */
 	authorizer: string;
+	/** Monitors set with `.monitor()`; absent when there are none. */
+	monitoring?: readonly MonitorInfo[];
 }
 
 /** A standalone Lambda function. */
@@ -59,6 +74,8 @@ export interface FunctionInfo {
 	timeout?: number;
 	memorySize?: number;
 	environment?: readonly string[];
+	/** Monitors set with `.monitor()`; absent when there are none. */
+	monitoring?: readonly MonitorInfo[];
 }
 
 /** A scheduled (cron) function. */
@@ -70,6 +87,8 @@ export interface CronInfo {
 	timeout?: number;
 	memorySize?: number;
 	environment?: readonly string[];
+	/** Monitors set with `.monitor()`; absent when there are none. */
+	monitoring?: readonly MonitorInfo[];
 }
 
 /** An event subscriber function (topic/queue resolved by `transport`). */

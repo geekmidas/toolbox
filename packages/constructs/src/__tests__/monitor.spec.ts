@@ -634,3 +634,60 @@ describe('heartbeat requests, per construct', () => {
 		});
 	});
 });
+
+describe('getMonitoring', () => {
+	it('records each monitor for the manifest', () => {
+		const cron = new CronBuilder()
+			.schedule('rate(1 day)')
+			.monitor(heartbeat.betterStack('MONITORING_URL'))
+			.monitor(heartbeat.healthchecks('HEALTHCHECKS_URL'))
+			.handle(async () => ({}));
+
+		expect(cron.getMonitoring()).toEqual([
+			{ type: 'heartbeat', provider: 'betterStack', env: 'MONITORING_URL' },
+			{ type: 'heartbeat', provider: 'healthchecks', env: 'HEALTHCHECKS_URL' },
+		]);
+	});
+
+	it('records a custom heartbeat without a provider, on its default env var', () => {
+		const fn = new FunctionBuilder()
+			.monitor(heartbeat())
+			.handle(async () => ({}));
+
+		expect(fn.getMonitoring()).toEqual([
+			{ type: 'heartbeat', env: 'HEARTBEAT_URL' },
+		]);
+	});
+
+	it('records a hand-written monitor by its service name', () => {
+		const fn = new FunctionBuilder()
+			.monitor({
+				serviceName: 'errors',
+				async register() {
+					return { async success() {}, async failure() {} };
+				},
+			})
+			.handle(async () => ({}));
+
+		expect(fn.getMonitoring()).toEqual([{ type: 'errors' }]);
+	});
+
+	it('records an endpoint’s monitors inherited from its factory', () => {
+		const endpoint = new EndpointFactory()
+			.monitor(heartbeat.betterStack())
+			.get('/health')
+			.handle(async () => ({}));
+
+		expect(endpoint.getMonitoring()).toEqual([
+			{ type: 'heartbeat', provider: 'betterStack', env: 'HEARTBEAT_URL' },
+		]);
+	});
+
+	it('records nothing for a construct without monitors', () => {
+		const cron = new CronBuilder()
+			.schedule('rate(1 day)')
+			.handle(async () => ({}));
+
+		expect(cron.getMonitoring()).toBeUndefined();
+	});
+});
