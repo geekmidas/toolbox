@@ -6,6 +6,7 @@ import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import { cloneWith } from '../clone';
 import type { Topic, TopicEvents, TopicMessage } from '../topic/Topic';
 import { Subscriber, type SubscriberHandler } from './Subscriber';
 
@@ -50,8 +51,9 @@ export class SubscriberBuilder<
 		TEventPublisherServiceName,
 		TSubscribedEvents
 	> {
-		this._topicName = topic.name;
-		return this as unknown as SubscriberBuilder<
+		return cloneWith(this, {
+			_topicName: topic.name,
+		}) as unknown as SubscriberBuilder<
 			TServices,
 			TLogger,
 			OutSchema,
@@ -62,8 +64,7 @@ export class SubscriberBuilder<
 	}
 
 	timeout(timeout: number): this {
-		this._timeout = timeout;
-		return this;
+		return cloneWith(this, { _timeout: timeout });
 	}
 
 	output<T extends StandardSchemaV1>(
@@ -76,8 +77,9 @@ export class SubscriberBuilder<
 		TEventPublisherServiceName,
 		TSubscribedEvents
 	> {
-		this.outputSchema = schema as unknown as OutSchema;
-		return this as any;
+		return cloneWith(this, {
+			outputSchema: schema as unknown as OutSchema,
+		}) as any;
 	}
 
 	services<T extends Service[]>(
@@ -90,8 +92,9 @@ export class SubscriberBuilder<
 		TEventPublisherServiceName,
 		TSubscribedEvents
 	> {
-		this._services = [...this._services, ...services] as any;
-		return this as any;
+		return cloneWith(this, {
+			_services: [...this._services, ...services] as any,
+		}) as any;
 	}
 
 	logger<T extends Logger>(
@@ -104,8 +107,7 @@ export class SubscriberBuilder<
 		TEventPublisherServiceName,
 		TSubscribedEvents
 	> {
-		this._logger = logger as unknown as TLogger;
-		return this as any;
+		return cloneWith(this, { _logger: logger as unknown as TLogger }) as any;
 	}
 
 	publisher<T extends EventPublisher<any>, TName extends string>(
@@ -118,8 +120,7 @@ export class SubscriberBuilder<
 		TName,
 		TSubscribedEvents
 	> {
-		this._publisher = publisher as any;
-		return this as any;
+		return cloneWith(this, { _publisher: publisher as any }) as any;
 	}
 
 	subscribe<
@@ -141,8 +142,9 @@ export class SubscriberBuilder<
 			: [...TSubscribedEvents, TEvent]
 	> {
 		const eventsToAdd = Array.isArray(event) ? event : [event];
-		this._subscribedEvents = [...this._subscribedEvents, ...eventsToAdd] as any;
-		return this as any;
+		return cloneWith(this, {
+			_subscribedEvents: [...this._subscribedEvents, ...eventsToAdd] as any,
+		}) as any;
 	}
 
 	handle(
@@ -172,14 +174,9 @@ export class SubscriberBuilder<
 			this._topicName,
 		);
 
-		// Reset builder state after creating the subscriber to prevent pollution
-		this._services = [] as Service[] as TServices;
-		this._logger = DEFAULT_LOGGER;
-		this._publisher = undefined;
-		this._topicName = undefined;
-		this._subscribedEvents = [] as any;
-		this._timeout = 30000; // Reset to default
-		this.outputSchema = undefined;
+		// No reset. `.handle()` reads this builder and leaves it alone, so a
+		// configured base keeps its configuration for every construct built
+		// from it. The reset that used to be here wiped the base on first use.
 
 		return subscriber;
 	}

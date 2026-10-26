@@ -31,6 +31,8 @@ const ServiceB = {
 	},
 } satisfies Service<'b', any>;
 
+const customLogger = new ConsoleLogger({ app: 'reusable-base' });
+
 describe('FunctionBuilder - State Isolation', () => {
 	describe('singleton instance state reset', () => {
 		it('should reset services after handle() is called', () => {
@@ -122,25 +124,26 @@ describe('FunctionBuilder - State Isolation', () => {
 		it('should not share references between different builder chains', () => {
 			const f = new FunctionBuilder();
 
-			// Start two separate chains
+			// Two chains off one base. They used to be the *same object* — every
+			// method mutated the base and returned it — so chain 1's function came
+			// out holding chain 2's services as well, and the base only survived
+			// because `.handle()` wiped it afterwards. That wipe is also what made
+			// a configured base unusable twice.
 			const builder1 = f.services([ServiceA]);
 			const builder2 = f.services([ServiceB]);
 
-			// They should be the same instance (singleton)
-			expect(builder1).toBe(builder2);
-			expect(builder1).toBe(f);
+			expect(builder1).not.toBe(builder2);
+			expect(builder1).not.toBe(f);
 
-			// But after handle, state is reset
 			const fn1 = builder1.handle(async () => ({}));
+			const fn2 = builder2.handle(async () => ({}));
 
-			// Now builder2 should have reset state
-			expect((builder2 as any)._services).toEqual([]);
-
-			// Add services again
-			const fn2 = builder2.services([ServiceB]).handle(async () => ({}));
-
-			expect(fn1.services.map((s) => s.serviceName)).toEqual(['a', 'b']);
+			// Each function gets exactly what its own chain declared.
+			expect(fn1.services.map((s) => s.serviceName)).toEqual(['a']);
 			expect(fn2.services.map((s) => s.serviceName)).toEqual(['b']);
+
+			// And the base is untouched, so it stays reusable.
+			expect((f as any)._services).toEqual([]);
 		});
 	});
 
@@ -202,6 +205,46 @@ describe('FunctionBuilder - State Isolation', () => {
 
 			expect((fn1 as any).auditorStorageService).toBe(auditStorageService);
 			expect((fn2 as any).auditorStorageService).toBeUndefined();
+		});
+	});
+
+	describe('a configured base, reused', () => {
+		it('carries its configuration into every function built from it', () => {
+			const base = new FunctionBuilder().logger(customLogger).timeout(60_000);
+
+			const first = base.services([ServiceA]).handle(async () => ({}));
+			const second = base.services([ServiceB]).handle(async () => ({}));
+
+			// The point of the whole shape: `const base = f.logger(log)` is a base you
+			// can keep. It used to survive exactly one `.handle()` — the reset put
+			// the logger and the timeout back to their defaults — so the second
+			// function built from it silently logged somewhere else and timed out
+			// on a different clock.
+			for (const built of [first, second]) {
+				expect(built.logger).toBe(customLogger);
+				expect(built.timeout).toBe(60_000);
+			}
+
+			// And each still gets only what its own chain declared.
+			expect(first.services.map((s) => s.serviceName)).toEqual(['a']);
+			expect(second.services.map((s) => s.serviceName)).toEqual(['b']);
+		});
+
+		it('persists configuration when handle() is called on the base itself', () => {
+			const base = new FunctionBuilder().logger(customLogger).timeout(60_000);
+
+			// No clone in between: `.handle()` is called straight on the base,
+			// twice. Cloning the config methods was not enough on its own —
+			// `.handle()` still ran a reset block that wiped whatever it was
+			// called on, so the second function came back on the default logger and
+			// the default timeout.
+			const first = base.handle(async () => ({}));
+			const second = base.handle(async () => ({}));
+
+			for (const built of [first, second]) {
+				expect(built.logger).toBe(customLogger);
+				expect(built.timeout).toBe(60_000);
+			}
 		});
 	});
 });

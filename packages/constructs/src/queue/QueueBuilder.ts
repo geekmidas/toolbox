@@ -2,6 +2,7 @@ import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import { cloneWith } from '../clone';
 import { Queue, type QueueHandler } from './Queue';
 
 /**
@@ -28,32 +29,34 @@ export class QueueBuilder<
 	queue<T extends string>(
 		name: T,
 	): QueueBuilder<T, TMessage, TServices, TLogger> {
-		this._name = name;
-		return this as unknown as QueueBuilder<T, TMessage, TServices, TLogger>;
+		return cloneWith(this, { _name: name }) as unknown as QueueBuilder<
+			T,
+			TMessage,
+			TServices,
+			TLogger
+		>;
 	}
 
 	timeout(timeout: number): this {
-		this._timeout = timeout;
-		return this;
+		return cloneWith(this, { _timeout: timeout });
 	}
 
 	/** SQS event-source batch size (deployed). */
 	batchSize(batchSize: number): this {
-		this._batchSize = batchSize;
-		return this;
+		return cloneWith(this, { _batchSize: batchSize });
 	}
 
 	/** Mark the queue as FIFO (deployed). */
 	fifo(fifo = true): this {
-		this._fifo = fifo;
-		return this;
+		return cloneWith(this, { _fifo: fifo });
 	}
 
 	services<T extends Service[]>(
 		services: T,
 	): QueueBuilder<TName, TMessage, [...TServices, ...T], TLogger> {
-		this._services = [...this._services, ...services] as unknown as TServices;
-		return this as unknown as QueueBuilder<
+		return cloneWith(this, {
+			_services: [...this._services, ...services] as unknown as TServices,
+		}) as unknown as QueueBuilder<
 			TName,
 			TMessage,
 			[...TServices, ...T],
@@ -64,16 +67,18 @@ export class QueueBuilder<
 	logger<T extends Logger>(
 		logger: T,
 	): QueueBuilder<TName, TMessage, TServices, T> {
-		this._logger = logger as unknown as TLogger;
-		return this as unknown as QueueBuilder<TName, TMessage, TServices, T>;
+		return cloneWith(this, {
+			_logger: logger as unknown as TLogger,
+		}) as unknown as QueueBuilder<TName, TMessage, TServices, T>;
 	}
 
 	/** The typed message (job) payload the queue carries. */
 	message<T extends StandardSchemaV1>(
 		schema: T,
 	): QueueBuilder<TName, T, TServices, TLogger> {
-		this._messageSchema = schema as unknown as TMessage;
-		return this as unknown as QueueBuilder<TName, T, TServices, TLogger>;
+		return cloneWith(this, {
+			_messageSchema: schema as unknown as TMessage,
+		}) as unknown as QueueBuilder<TName, T, TServices, TLogger>;
 	}
 
 	handle(
@@ -101,14 +106,9 @@ export class QueueBuilder<
 			this._fifo,
 		);
 
-		// Reset builder state to prevent pollution across reuse.
-		this._name = undefined;
-		this._messageSchema = undefined;
-		this._timeout = 30000;
-		this._batchSize = undefined;
-		this._fifo = undefined;
-		this._services = [] as Service[] as TServices;
-		this._logger = DEFAULT_LOGGER as TLogger;
+		// No reset. `.handle()` reads this builder and leaves it alone, so a
+		// configured base keeps its configuration for every construct built
+		// from it. The reset that used to be here wiped the base on first use.
 
 		return queue;
 	}

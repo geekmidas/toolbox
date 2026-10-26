@@ -28,8 +28,10 @@ describe('EndpointBuilder', () => {
 			const builder = new EndpointBuilder('/users', 'GET');
 			const result = builder.description('Get all users');
 
-			expect(result).toBe(builder); // Should return this for chaining
-			expect((builder as any)._description).toBe('Get all users');
+			// The value lands on the returned builder, not on the one it came
+			// from — that is what keeps a configured base reusable.
+			expect((result as any)._description).toBe('Get all users');
+			expect((builder as any)._description).toBeUndefined();
 		});
 
 		it('should pass description to endpoint', () => {
@@ -46,8 +48,8 @@ describe('EndpointBuilder', () => {
 			const builder = new EndpointBuilder('/users', 'POST');
 			const result = builder.status(201);
 
-			expect(result).toBe(builder); // Should return this for chaining
-			expect((builder as any)._status).toBe(201);
+			expect((result as any)._status).toBe(201);
+			expect((builder as any)._status).toBeUndefined();
 		});
 
 		it('should pass status to endpoint', () => {
@@ -384,8 +386,10 @@ describe('EndpointBuilder', () => {
 			const builder = new EndpointBuilder('/test', 'GET');
 			const result = builder.authorize(authFn);
 
-			expect(result).toBe(builder);
-			expect((builder as any)._authorize).toBe(authFn);
+			expect((result as any)._authorize).toBe(authFn);
+			// The base keeps whatever it had — a fresh builder carries a default
+			// authorize, so the check is that it did not take the new one.
+			expect((builder as any)._authorize).not.toBe(authFn);
 		});
 
 		it('should pass .authorize() function to endpoint', () => {
@@ -447,8 +451,12 @@ describe('EndpointBuilder', () => {
 			const builder2 = builder1.description('Test');
 			const builder3 = builder2.status(200);
 
-			expect(builder1).toBe(builder2);
-			expect(builder2).toBe(builder3);
+			// Each step is a new builder that accumulates what came before.
+			expect(builder3).toBeInstanceOf(EndpointBuilder);
+			expect((builder3 as any)._description).toBe('Test');
+			expect((builder3 as any)._status).toBe(200);
+			expect(builder2).not.toBe(builder1);
+			expect(builder3).not.toBe(builder2);
 		});
 	});
 

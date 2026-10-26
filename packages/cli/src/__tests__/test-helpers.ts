@@ -119,16 +119,15 @@ export const ${exportName} = new CronBuilder()
 export function createTestEndpoint(path: string, method: HttpMethod = 'GET') {
 	const m = method.toLowerCase() as Lowercase<HttpMethod>;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const builder = (e as any)[m](path);
-	builder.output(z.object({ message: z.string() }));
+	const builder = (e as any)[m](path).output(z.object({ message: z.string() }));
 	return builder.handle(async () => ({ message: `Hello from ${path}` }));
 }
 
 export function createTestFunction(timeout: number = 30) {
-	const builder = new FunctionBuilder();
-	builder.input(z.object({ name: z.string() }));
-	builder.output(z.object({ greeting: z.string() }));
-	builder.timeout(timeout);
+	const builder = new FunctionBuilder()
+		.input(z.object({ name: z.string() }))
+		.output(z.object({ greeting: z.string() }))
+		.timeout(timeout);
 	return builder.handle(async ({ input }: any) => ({
 		greeting: `Hello, ${input.name}!`,
 	}));
@@ -138,10 +137,10 @@ export function createTestCron(
 	schedule: ScheduleExpression = 'rate(1 hour)',
 	timeout: number = 30,
 ) {
-	const builder = new CronBuilder();
-	builder.schedule(schedule);
-	builder.output(z.object({ processed: z.number() }));
-	builder.timeout(timeout);
+	const builder = new CronBuilder()
+		.schedule(schedule)
+		.output(z.object({ processed: z.number() }))
+		.timeout(timeout);
 	return builder.handle(async () => {
 		return { processed: 10 };
 	});
