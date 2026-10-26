@@ -1,5 +1,68 @@
 # @geekmidas/testkit
 
+## 10.0.0-alpha.125
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/envkit@10.0.0-alpha.125
+  - @geekmidas/logger@10.0.0-alpha.125
+  - @geekmidas/services@10.0.0-alpha.125
+
+## 10.0.0-alpha.124
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/envkit@10.0.0-alpha.124
+  - @geekmidas/logger@10.0.0-alpha.124
+  - @geekmidas/services@10.0.0-alpha.124
+
+## 10.0.0-alpha.123
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/envkit@10.0.0-alpha.123
+  - @geekmidas/logger@10.0.0-alpha.123
+  - @geekmidas/services@10.0.0-alpha.123
+
+## 10.0.0-alpha.122
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/envkit@10.0.0-alpha.122
+  - @geekmidas/logger@10.0.0-alpha.122
+  - @geekmidas/services@10.0.0-alpha.122
+
+## 10.0.0-alpha.121
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/envkit@10.0.0-alpha.121
+  - @geekmidas/logger@10.0.0-alpha.121
+  - @geekmidas/services@10.0.0-alpha.121
+
+## 10.0.0-alpha.120
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/envkit@10.0.0-alpha.120
+  - @geekmidas/logger@10.0.0-alpha.120
+  - @geekmidas/services@10.0.0-alpha.120
+
+## 10.0.0-alpha.119
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/envkit@10.0.0-alpha.119
+  - @geekmidas/logger@10.0.0-alpha.119
+  - @geekmidas/services@10.0.0-alpha.119
+
 ## 10.0.0-alpha.118
 
 ### Patch Changes

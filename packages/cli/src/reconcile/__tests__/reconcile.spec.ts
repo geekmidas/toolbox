@@ -110,10 +110,121 @@ describe('reconcile', () => {
 				create: async () => {},
 				policy: async () => undefined,
 				setPolicy: async () => {},
+				notification: async () => ({}),
+				setNotification: async () => {},
+				lifecycle: async () => undefined,
+				setLifecycle: async () => {},
 			}),
 			...overrides,
 		});
 	};
+
+	describe("a watched bucket's events", () => {
+		/** A bucket, and a queue on pg-boss beside the database it lives in. */
+		const watching = {
+			...manifest,
+			Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+			Emails: {
+				kind: 'queue',
+				id: 'Emails',
+				provides: ['EMAILS_PUBLISHER_CONNECTION_STRING'],
+			},
+		} as unknown as ConstructManifest;
+		const hook = {
+			bucket: 'Uploads',
+			endpoint: 'http://host.docker.internal:3000/__gkm/objects/Uploads',
+			token: 'the-token',
+		};
+		/** A MinIO that records which buckets were pointed at a target. */
+		const recording = () => {
+			const pointed: string[] = [];
+			return {
+				pointed,
+				buckets: () => ({
+					exists: async () => true,
+					create: async () => {},
+					policy: async () => undefined,
+					setPolicy: async () => {},
+					notification: async () => ({}),
+					setNotification: async (bucket: string) => {
+						pointed.push(bucket);
+					},
+					lifecycle: async () => undefined,
+					setLifecycle: async () => {},
+				}),
+			};
+		};
+
+		it("starts MinIO with each bucket's target, and points the local stage's bucket at it", async () => {
+			const { pointed, buckets } = recording();
+			const { docker } = fakeDocker({ healthy: true });
+
+			const result = await run({
+				manifest: watching,
+				events: 'pgboss',
+				objectWebhooks: [hook],
+				docker,
+				buckets,
+			});
+
+			expect(result.compose.services.minio?.environment).toMatchObject({
+				MINIO_NOTIFY_WEBHOOK_ENABLE_UPLOADS: 'on',
+				MINIO_NOTIFY_WEBHOOK_ENDPOINT_UPLOADS: hook.endpoint,
+				MINIO_NOTIFY_WEBHOOK_AUTH_TOKEN_UPLOADS: 'the-token',
+			});
+			// It posts to a process on the host, which Linux has to map.
+			expect(result.compose.services.minio?.extra_hosts).toEqual([
+				'host.docker.internal:host-gateway',
+			]);
+			expect(pointed).toEqual(['uploads']);
+			// Delivered from the one broker, with the token MinIO presents.
+			expect(result.env.UPLOADS_EVENTS_CONNECTION_STRING).toBe(
+				result.env.EVENT_PUBLISHER_CONNECTION_STRING,
+			);
+			expect(result.env.UPLOADS_EVENTS_CONNECTION_STRING).toMatch(/^pgboss:/);
+			expect(result.env.UPLOADS_EVENTS_TOKEN).toMatch(/^[\w-]{32}$/);
+		});
+
+		it("leaves `gkm test`'s bucket alone, on the same MinIO", async () => {
+			const { pointed, buckets } = recording();
+			const { docker } = fakeDocker({ healthy: true });
+
+			const result = await run({
+				manifest: watching,
+				events: 'pgboss',
+				objectWebhooks: [hook],
+				stage: 'test',
+				docker,
+				buckets,
+			});
+
+			// The same container definition, so the two stages never fight over
+			// it — but only the local stage's bucket posts its events.
+			expect(
+				result.compose.services.minio?.environment
+					?.MINIO_NOTIFY_WEBHOOK_ENDPOINT_UPLOADS,
+			).toBe(hook.endpoint);
+			expect(pointed).toEqual([]);
+		});
+
+		it('resolves no events key for a bucket nothing watches', async () => {
+			const { docker } = fakeDocker({ healthy: true });
+
+			const result = await run({
+				manifest: watching,
+				events: 'pgboss',
+				docker,
+			});
+
+			expect(result.env).not.toHaveProperty('UPLOADS_EVENTS_CONNECTION_STRING');
+			expect(result.env).not.toHaveProperty('UPLOADS_EVENTS_TOKEN');
+			expect(
+				Object.keys(result.compose.services.minio?.environment ?? {}).some(
+					(key) => key.startsWith('MINIO_NOTIFY'),
+				),
+			).toBe(false);
+		});
+	});
 
 	it('says what it is doing as it does it, and lets Docker show its own progress', async () => {
 		// A first `gkm dev` pulls every image and creates every database: minutes
@@ -292,6 +403,10 @@ describe('reconcile', () => {
 				create: async () => {},
 				policy: async () => undefined,
 				setPolicy: async () => {},
+				notification: async () => ({}),
+				setNotification: async () => {},
+				lifecycle: async () => undefined,
+				setLifecycle: async () => {},
 			}),
 		});
 
@@ -329,6 +444,10 @@ describe('reconcile', () => {
 				create: async () => {},
 				policy: async () => undefined,
 				setPolicy: async () => {},
+				notification: async () => ({}),
+				setNotification: async () => {},
+				lifecycle: async () => undefined,
+				setLifecycle: async () => {},
 			}),
 		});
 

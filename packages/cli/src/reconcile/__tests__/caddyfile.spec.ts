@@ -217,6 +217,74 @@ describe('sitesFor', () => {
 	});
 });
 
+describe("a file server's processors under gkm dev", () => {
+	const processing = {
+		...manifest,
+		UploadsServer: {
+			...manifest.UploadsServer,
+			processors: [
+				{
+					id: 'thumbnails',
+					handler: 'apps/api/processors.ts#thumbnails',
+					dependencies: [],
+					path: '/i/:width/*',
+					prefix: '/i/',
+				},
+				{
+					id: 'previews',
+					handler: 'apps/api/processors.ts#previews',
+					dependencies: [],
+					path: '/pdf/*',
+					prefix: '/pdf/',
+				},
+			],
+		},
+	} as unknown as ConstructManifest;
+	const processingPlan = () =>
+		planFor(processing, 'development', provisionOrder(processing), {
+			localStage: 'development',
+		});
+
+	it('sends their patterns to the dev server holding them, and the rest to the bucket', () => {
+		const [site] = sitesFor(
+			processingPlan(),
+			'shop',
+			{},
+			{
+				UploadsServer: 'http://localhost:3000',
+			},
+		);
+
+		expect(site).toEqual({
+			host: 'uploadsserver.shop.localhost',
+			upstream: 'http://minio:9000',
+			rewrite: '/uploads{uri}',
+			processors: {
+				prefixes: ['/i/', '/pdf/'],
+				upstream: 'http://host.docker.internal:3000',
+				under: '/__gkm/processors/UploadsServer',
+			},
+		});
+
+		const caddyfile = toCaddyfile([site!]);
+		expect(caddyfile).toContain(`	@processors path /i/* /pdf/*
+	handle @processors {
+		reverse_proxy http://host.docker.internal:3000 {
+			rewrite /__gkm/processors/UploadsServer{uri}`);
+		// Answered there; the bucket still takes every other path.
+		expect(caddyfile.indexOf('handle @processors')).toBeLessThan(
+			caddyfile.indexOf('reverse_proxy http://minio:9000'),
+		);
+	});
+
+	it('routes them nowhere until the dev server has an address', () => {
+		const [site] = sitesFor(processingPlan(), 'shop');
+
+		expect(site).not.toHaveProperty('processors');
+		expect(toCaddyfile([site!])).not.toContain('@processors');
+	});
+});
+
 describe('hostFor', () => {
 	it('omits the project when there is none to name', () => {
 		// An empty label makes `uploads..localhost`, which nothing resolves and no

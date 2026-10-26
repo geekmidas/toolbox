@@ -23,6 +23,7 @@
 import type { ConstructManifest } from '@geekmidas/manifest';
 import type { DeployIdentity } from '../deploy/identity.js';
 import type { ResourceRecord } from '../deploy/StateStore.js';
+import type { BoundSubscriber } from '../reconcile/discover.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 
 /** The manifest kinds a stage can name a provider for. */
@@ -82,6 +83,11 @@ export interface EnsureContext<C extends ProviderConfig, K> {
 	manifest: ConstructManifest;
 	/** Each owner's runnables' edges, from discovery. */
 	runnables: Readonly<Record<string, readonly string[]>>;
+	/**
+	 * Each Worker's subscribers, from discovery — by export and the key its
+	 * deliveries come from. What a provider subscribes on a worker's behalf.
+	 */
+	subscribers?: Readonly<Record<string, readonly BoundSubscriber[]>>;
 	stage: string;
 	identity: DeployIdentity;
 	config: C;
@@ -106,7 +112,30 @@ export interface EnsureContext<C extends ProviderConfig, K> {
 	 * run writes nothing.
 	 */
 	writeSecrets(values: Record<string, string>): Promise<void>;
+	/**
+	 * Writes DNS records through the stage's DNS providers (`dns`), as the
+	 * deploy's own DNS step does — what a certificate's validation record and
+	 * a CDN's name need. A dry run prints them and writes nothing.
+	 */
+	writeDns(records: readonly ProviderDnsRecord[]): Promise<ProviderDnsResult>;
 	log(line: string): void;
+}
+
+/** One record a provider asks the stage's DNS for. */
+export interface ProviderDnsRecord {
+	/** The full name: `_abc.files.example.com`. */
+	host: string;
+	type: 'CNAME';
+	value: string;
+}
+
+/** What writing a provider's records came to. */
+export interface ProviderDnsResult {
+	/**
+	 * Hosts no DNS provider wrote — under no domain in `dns`, or a `manual`
+	 * one — printed for the person to create.
+	 */
+	manual: string[];
 }
 
 /** What `verify()` is handed. */
@@ -166,7 +195,10 @@ export interface ResourceProvider<
 	/** Its provisioning credentials, or `undefined` when there are none. */
 	credentials(lookup: CredentialLookup): Promise<K | undefined>;
 	/** The keys it writes into the stage's secrets for these constructs. */
-	runtimeKeys(manifest: ConstructManifest): string[];
+	runtimeKeys(
+		manifest: ConstructManifest,
+		runnables?: Readonly<Record<string, readonly string[]>>,
+	): string[];
 	ensure(ctx: EnsureContext<C, K>): Promise<void>;
 	verify(ctx: VerifyContext<C>): Promise<void>;
 }

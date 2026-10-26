@@ -11,8 +11,13 @@
 
 import {
 	CreateBucketCommand,
+	DeleteBucketLifecycleCommand,
+	GetBucketLifecycleConfigurationCommand,
+	GetBucketNotificationConfigurationCommand,
 	GetBucketPolicyCommand,
 	HeadBucketCommand,
+	PutBucketLifecycleConfigurationCommand,
+	PutBucketNotificationConfigurationCommand,
 	PutBucketPolicyCommand,
 	S3Client,
 } from '@aws-sdk/client-s3';
@@ -34,7 +39,12 @@ import {
 	emulatorTopicArn,
 } from './emulator';
 import type { ContainerCredentials, Login } from './localCredentials';
-import type { BucketClient, CarrierClient, SqlClient } from './provision';
+import type {
+	BucketClient,
+	BucketNotification,
+	CarrierClient,
+	SqlClient,
+} from './provision';
 
 /**
  * A Postgres client that opens one connection per database it is asked about.
@@ -126,6 +136,53 @@ export function bucketClient(
 		async setPolicy(bucket, policy) {
 			await s3.send(
 				new PutBucketPolicyCommand({ Bucket: bucket, Policy: policy }),
+			);
+		},
+
+		async lifecycle(bucket) {
+			try {
+				const result = await s3.send(
+					new GetBucketLifecycleConfigurationCommand({ Bucket: bucket }),
+				);
+				return result.Rules;
+			} catch (error) {
+				// No lifecycle is MinIO's ordinary answer for a bucket with none;
+				// anything else — unreachable, refused — is not "none".
+				if (
+					(error as { name?: string }).name === 'NoSuchLifecycleConfiguration'
+				) {
+					return undefined;
+				}
+				throw error;
+			}
+		},
+
+		async setLifecycle(bucket, rules) {
+			if (rules.length === 0) {
+				await s3.send(new DeleteBucketLifecycleCommand({ Bucket: bucket }));
+				return;
+			}
+			await s3.send(
+				new PutBucketLifecycleConfigurationCommand({
+					Bucket: bucket,
+					LifecycleConfiguration: { Rules: rules },
+				}),
+			);
+		},
+
+		async notification(bucket) {
+			const { $metadata: _, ...notification } = await s3.send(
+				new GetBucketNotificationConfigurationCommand({ Bucket: bucket }),
+			);
+			return notification as BucketNotification;
+		},
+
+		async setNotification(bucket, notification) {
+			await s3.send(
+				new PutBucketNotificationConfigurationCommand({
+					Bucket: bucket,
+					NotificationConfiguration: notification as never,
+				}),
 			);
 		},
 	};

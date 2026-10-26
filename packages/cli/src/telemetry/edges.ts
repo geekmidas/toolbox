@@ -37,8 +37,9 @@ function nodeOf(
 }
 
 /**
- * The `Telemetry` node the process for `id` — a surface or a worker, by
- * construct id — emits through, or undefined when it has no edge to one.
+ * The `Telemetry` node the process for `id` — a surface, a worker, or a file
+ * server's processor unit, by construct id — emits through, or undefined
+ * when it has no edge to one.
  */
 export function telemetryOf(
 	manifest: ConstructManifest,
@@ -47,7 +48,7 @@ export function telemetryOf(
 	const declaration = manifest[id];
 	if (!declaration) return undefined;
 
-	if (declaration.kind === 'worker') {
+	if (declaration.kind === 'worker' || declaration.kind === 'file-server') {
 		return nodeOf(manifest, declaration.telemetry);
 	}
 	if (declaration.kind !== 'rest-api' && declaration.kind !== 'websocket-api')
@@ -78,7 +79,8 @@ export function usesTelemetry(manifest: ConstructManifest): boolean {
 		([id, d]) =>
 			(d.kind === 'rest-api' ||
 				d.kind === 'websocket-api' ||
-				d.kind === 'worker') &&
+				d.kind === 'worker' ||
+				d.kind === 'file-server') &&
 			telemetryOf(manifest, id) !== undefined,
 	);
 }

@@ -25,6 +25,8 @@ export interface ComposeAppOptions {
 	deployObjects?: Record<string, unknown>;
 	/** `deploy.backups`, as it is written in the config. */
 	deployBackups?: Record<string, unknown>;
+	/** `deploy.sitePassword`, as it is written in the config. */
+	sitePassword?: Record<string, unknown>;
 	/** The rest of `deploy.compose` — `proxy`, `tls` — as written. */
 	compose?: Record<string, unknown>;
 	/** The deployed stages, `['production']` when absent. */
@@ -189,6 +191,7 @@ export default defineWorkspace({
     ${options.deployTelemetry ? `telemetry: ${JSON.stringify(options.deployTelemetry)},` : ''}
     ${options.deployObjects ? `objects: ${JSON.stringify(options.deployObjects)},` : ''}
     ${options.deployBackups ? `backups: ${JSON.stringify(options.deployBackups)},` : ''}
+    ${options.sitePassword ? `sitePassword: ${JSON.stringify(options.sitePassword)},` : ''}
   },
 });
 `,

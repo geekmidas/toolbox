@@ -72,9 +72,13 @@ export default defineProject({
 		// `gkm dev` is run against a real app too: its auth server signs a user
 		// up in the test Postgres, and its API queries through the database it
 		// declared.
+		// MinIO for what reconcile and a compose stack create in it — a bucket's
+		// lifecycle is MinIO's own implementation, not the emulator's.
 		globalSetup: [
 			'../testkit/test/awsSetup.ts',
 			'../testkit/test/globalSetup.ts',
+			// A bundled processor unit reads from MinIO.
+			'../testkit/test/minioSetup.ts',
 		],
 		// `*.test-d.ts` are compiled, and a type error in one is a failure: an
 		// assertion about a type in a runtime spec compiles to nothing and

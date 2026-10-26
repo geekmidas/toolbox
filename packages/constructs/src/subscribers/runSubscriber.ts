@@ -26,11 +26,11 @@ export class SubscriberOutputInvalid extends Error {
 }
 
 /** The events in an SQS or SNS batch (a Lambda event's `Records`) that `subscriber` subscribed to. */
-export function subscribedEvents(
+export async function subscribedEvents(
 	subscriber: AnySubscriber,
 	rawEvent: { Records?: readonly unknown[] },
 	logger: Logger,
-): any[] {
+): Promise<any[]> {
 	const events: any[] = [];
 	const records = rawEvent.Records ?? [];
 	const first = records[0] as any;
@@ -42,10 +42,23 @@ export function subscribedEvents(
 				: undefined;
 	if (!parse) return events;
 
+	// A bucket's subscriber is sent what the storage sends — a notification
+	// of records — and reads it as object events. Loaded only then: an app
+	// with no bucket never installs the storage package.
+	const toObjectEvents = subscriber.bucketName
+		? (await import('@geekmidas/storage/events')).toObjectEvents
+		: undefined;
+
 	for (const record of records) {
 		try {
 			const event = parse(record);
-			if (isSubscribed(subscriber, event)) events.push(event);
+			const parsed =
+				toObjectEvents && !(typeof event === 'object' && event?.type)
+					? toObjectEvents(event)
+					: [event];
+			for (const one of parsed) {
+				if (isSubscribed(subscriber, one)) events.push(one);
+			}
 		} catch (error) {
 			logger.error({ err: error, record }, 'Failed to parse record');
 		}

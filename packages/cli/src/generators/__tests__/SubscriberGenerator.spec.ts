@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { KyselyDatabase } from '@geekmidas/constructs/database/kysely';
+import { ObjectStorage } from '@geekmidas/constructs/object-storage';
 import {
 	type Subscriber,
 	SubscriberBuilder,
@@ -15,7 +16,10 @@ import {
 	createTempDir,
 } from '../../__tests__/test-helpers';
 import type { GeneratedConstruct } from '../Generator';
-import { SubscriberGenerator } from '../SubscriberGenerator';
+import {
+	ObjectSubscriberFeedsItself,
+	SubscriberGenerator,
+} from '../SubscriberGenerator';
 
 describe('SubscriberGenerator', () => {
 	let tempDir: string;
@@ -301,7 +305,7 @@ describe('SubscriberGenerator', () => {
 			expect(subscribersContent).toContain('orderEventSubscriber');
 			// Not bound to a topic, so there is no topic string to reach.
 			expect(subscribersContent).toContain(
-				"{ id: 'userEventSubscriber', subscriber: userEventSubscriber, topic: undefined, connectionKey: undefined }",
+				"{ id: 'userEventSubscriber', subscriber: userEventSubscriber, topic: undefined, connectionKey: undefined, filtered: true, bucket: undefined, tokenKey: undefined }",
 			);
 		});
 
@@ -385,7 +389,115 @@ describe('SubscriberGenerator', () => {
 			const sns = await generate(['sns']);
 			expect(sns).toContain("await import('@geekmidas/events/sns')");
 			expect(sns).toContain('SnsPushSubscriberAdaptor');
+			// Against SNS itself: a route only for a subscription the deploy
+			// recorded, confirmed through the API, its ARN checked on arrival.
+			expect(sns).toContain('process.env.GKM_SNS_SUBSCRIPTIONS');
+			expect(sns).toContain('const subscriptionArn = recorded[id];');
+			expect(sns).toContain(
+				'confirm: (message) => confirmSubscription(connection, message)',
+			);
+			expect(sns).toContain("c.req.header('x-amz-sns-subscription-arn')");
+			// Only an emulator's route subscribes itself.
+			expect(sns.match(/subscribeHttpEndpoint\(connection/g)).toHaveLength(1);
 			expect(sns).toContain('http://host.docker.internal:');
+		});
+
+		describe('a subscriber bound to a bucket', () => {
+			const uploads = new ObjectStorage('Uploads');
+			const generated = (
+				construct: Subscriber<any, any, any, any, any, any, any>,
+			) => ({
+				key: 'onAvatar',
+				name: 'onavatar',
+				construct,
+				path: {
+					absolute: join(tempDir, 'onAvatar.ts'),
+					relative: 'onAvatar.ts',
+				},
+			});
+			const onAvatar = new Worker('Jobs')
+				.objects(uploads)
+				.on(['object.created'], { prefix: 'avatars/', suffix: '.png' })
+				.handle(async () => {});
+
+			it("reaches the bucket's events, and is pushed to on a pg-boss build", async () => {
+				await generator.build(
+					{ ...context, eventsBackends: ['pgboss'] },
+					[generated(onAvatar)],
+					outputDir,
+					{ target: 'server' },
+				);
+				const content = await readFile(
+					join(outputDir, 'subscribers.ts'),
+					'utf-8',
+				);
+
+				expect(content).toContain(
+					"{ id: 'onAvatar', subscriber: onAvatar, topic: 'Uploads', connectionKey: 'UPLOADS_EVENTS_CONNECTION_STRING', filtered: false, bucket: 'Uploads', tokenKey: 'UPLOADS_EVENTS_TOKEN' }",
+				);
+				// In MinIO the bucket posts its events here, with its token, and
+				// they are relayed onto the broker under the bucket's name.
+				expect(content).toContain(
+					'await mountObjectRelay(app, { bucket, topic, connection, tokenKey }, logger);',
+				);
+				expect(content).toContain(
+					'export const OBJECTS_ROUTE = (bucket: string) => `/__gkm/objects/${bucket}`;',
+				);
+				expect(content).toContain('timingSafeEqual(given, expected)');
+				// The storage publishes to an SNS topic whatever carries the
+				// app's own events, so the push code is generated anyway.
+				expect(content).toContain('SnsPushSubscriberAdaptor');
+				// S3 sets no type attribute: no filter policy, the adaptor
+				// filters.
+				expect(content).toContain('...(filtered ? { events } : {})');
+			});
+
+			it('records the bucket and the keys it watches for a Lambda build', async () => {
+				const [info] = await generator.build(
+					context,
+					[generated(onAvatar)],
+					outputDir,
+					{ target: 'aws' },
+				);
+
+				expect(info).toMatchObject({
+					name: 'onAvatar',
+					transport: 'topic',
+					bucket: 'Uploads',
+					prefix: 'avatars/',
+					suffix: '.png',
+					subscribedEvents: ['object.created'],
+				});
+				expect(info).not.toHaveProperty('topic');
+			});
+
+			it('refuses one that writes into every key it watches', async () => {
+				const loop = new Worker('Jobs')
+					.objects(uploads)
+					.dependsOn([uploads])
+					.on(['object.created'])
+					.handle(async () => {});
+
+				await expect(
+					generator.build(context, [generated(loop)], outputDir, {
+						target: 'server',
+					}),
+				).rejects.toThrow(ObjectSubscriberFeedsItself);
+			});
+
+			it('accepts one that watches a prefix of the bucket it writes to', async () => {
+				const thumbnails = new Worker('Jobs')
+					.objects(uploads)
+					.dependsOn([uploads])
+					.on(['object.created'], { prefix: 'originals/' })
+					.handle(async () => {});
+
+				await expect(
+					generator.build(context, [generated(thumbnails)], outputDir, {
+						target: 'server',
+					}),
+				).resolves.toEqual([]);
+			});
 		});
 
 		it('hands each polled subscriber its database as db', async () => {

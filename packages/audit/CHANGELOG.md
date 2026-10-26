@@ -1,5 +1,61 @@
 # @geekmidas/audit
 
+## 10.0.0-alpha.125
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.125
+  - @geekmidas/schema@10.0.0-alpha.125
+
+## 10.0.0-alpha.124
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.124
+  - @geekmidas/schema@10.0.0-alpha.124
+
+## 10.0.0-alpha.123
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.123
+  - @geekmidas/schema@10.0.0-alpha.123
+
+## 10.0.0-alpha.122
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.122
+  - @geekmidas/schema@10.0.0-alpha.122
+
+## 10.0.0-alpha.121
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.121
+  - @geekmidas/schema@10.0.0-alpha.121
+
+## 10.0.0-alpha.120
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.120
+  - @geekmidas/schema@10.0.0-alpha.120
+
+## 10.0.0-alpha.119
+
+### Patch Changes
+
+- Updated dependencies [[`7880ca2`](https://github.com/geekmidas/toolbox/commit/7880ca23699651af20f36d1ae947b60e5fd37282)]:
+  - @geekmidas/schema@10.0.0-alpha.119
+  - @geekmidas/cache@10.0.0-alpha.119
+
 ## 10.0.0-alpha.118
 
 ### Patch Changes

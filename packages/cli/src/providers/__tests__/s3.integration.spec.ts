@@ -17,12 +17,14 @@ import {
 	DeleteObjectsCommand,
 	GetBucketCorsCommand,
 	GetBucketEncryptionCommand,
+	GetBucketLifecycleConfigurationCommand,
 	GetBucketPolicyCommand,
 	GetBucketTaggingCommand,
 	GetBucketVersioningCommand,
 	GetPublicAccessBlockCommand,
 	HeadBucketCommand,
 	ListObjectVersionsCommand,
+	PutBucketLifecycleConfigurationCommand,
 	PutPublicAccessBlockCommand,
 	S3Client,
 } from '@aws-sdk/client-s3';
@@ -72,6 +74,7 @@ import {
 	RotationInProgress,
 } from '../s3/errors';
 import { defaultClients, useS3Clients } from '../s3/index';
+import { expireRuleId } from '../s3/lifecycle';
 import { bucketName, iamUserName } from '../s3/naming';
 import { userPolicy } from '../s3/policy';
 
@@ -80,7 +83,9 @@ import { userPolicy } from '../s3/policy';
  * through the SDK's own `AWS_ENDPOINT_URL`: every bucket, user, policy and
  * key is a real call, and the workspace is the compose fixture with a
  * `FileServer` whose `brand/**` is open, an API that writes to it, and a site
- * that calls the API.
+ * that calls the API. Every stage here serves its file server from the
+ * bucket's own endpoint (`cdn: false`); the CDN has a suite of its own
+ * (`s3Cdn.integration.spec.ts`).
  *
  * What floci does not do, and so is asserted as documents instead: it
  * enforces neither IAM nor bucket policies — any key signs, and an anonymous
@@ -121,7 +126,10 @@ function withFileServer(root: string): void {
 		`import { FileServer } from '@geekmidas/constructs/file-server';
 import { Email } from '@geekmidas/constructs/email';
 
-export const uploads = new FileServer('Uploads', { open: ['brand/**'] });
+export const uploads = new FileServer('Uploads', {
+	open: ['brand/**'],
+	expire: { 'tmp/': { days: 1 } },
+});
 export const mail = new Email('Mail', { templates: {} });
 `,
 	);
@@ -235,15 +243,15 @@ beforeAll(async () => {
 			elsewhere: `elsewhere.${DOMAIN}`,
 		},
 		deployObjects: {
-			[STAGE]: { provider: 's3', region: REGION },
-			staging: { provider: 's3', region: REGION },
-			preview: { provider: 's3', region: REGION },
-			scratch: { provider: 's3', region: REGION },
-			shipped: { provider: 's3', region: REGION },
-			adopted: { provider: 's3', region: REGION },
-			planned: { provider: 's3', region: REGION },
-			bare: { provider: 's3', region: REGION },
-			elsewhere: { provider: 's3', region: REGION },
+			[STAGE]: { provider: 's3', region: REGION, cdn: false },
+			staging: { provider: 's3', region: REGION, cdn: false },
+			preview: { provider: 's3', region: REGION, cdn: false },
+			scratch: { provider: 's3', region: REGION, cdn: false },
+			shipped: { provider: 's3', region: REGION, cdn: false },
+			adopted: { provider: 's3', region: REGION, cdn: false },
+			planned: { provider: 's3', region: REGION, cdn: false },
+			bare: { provider: 's3', region: REGION, cdn: false },
+			elsewhere: { provider: 's3', region: REGION, cdn: false },
 		},
 	});
 	withFileServer(dir);
@@ -316,6 +324,7 @@ describe('objects: s3 on a deployed stage', () => {
 			`bucket ${bucket()}: tag`,
 			`bucket ${bucket()}: block public access (ACLs; the policy opens the open paths)`,
 			`bucket ${bucket()}: policy: TLS only, public read on brand/**`,
+			`bucket ${bucket()}: expire tmp/ after 1 day`,
 			`bucket ${bucket()}: CORS for https://${DOMAIN}`,
 			`IAM user ${user()}: create under /gkm/`,
 			`IAM user ${user()}: policy gkm-bucket: this bucket only`,
@@ -414,6 +423,17 @@ describe('objects: s3 on a deployed stage', () => {
 		expect(
 			(await s3.send(new GetBucketVersioningCommand({ Bucket }))).Status,
 		).toBeUndefined();
+		expect(
+			(await s3.send(new GetBucketLifecycleConfigurationCommand({ Bucket })))
+				.Rules,
+		).toEqual([
+			expect.objectContaining({
+				ID: expireRuleId('tmp/'),
+				Status: 'Enabled',
+				Filter: expect.objectContaining({ Prefix: 'tmp/' }),
+				Expiration: expect.objectContaining({ Days: 1 }),
+			}),
+		]);
 
 		// The user: under /gkm/, tagged, with a policy for this bucket only.
 		const found = await iam.send(new GetUserCommand({ UserName: user() }));
@@ -473,6 +493,51 @@ describe('objects: s3 on a deployed stage', () => {
 			(await s3.send(new GetPublicAccessBlockCommand({ Bucket })))
 				.PublicAccessBlockConfiguration?.BlockPublicAcls,
 		).toBe(true);
+	});
+
+	it("merges its expiry into the bucket's lifecycle, keeping every other rule", async () => {
+		const Bucket = bucket();
+		const foreign = {
+			ID: 'abort-multipart',
+			Status: 'Enabled' as const,
+			Filter: { Prefix: 'uploads/' },
+			AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 },
+		};
+		// Someone else's rule, and a gkm rule nothing declares any more.
+		await s3.send(
+			new PutBucketLifecycleConfigurationCommand({
+				Bucket,
+				LifecycleConfiguration: {
+					Rules: [
+						foreign,
+						{
+							ID: expireRuleId('old/'),
+							Status: 'Enabled',
+							Filter: { Prefix: 'old/' },
+							Expiration: { Days: 3 },
+						},
+					],
+				},
+			}),
+		);
+
+		const [report] = await provision(STAGE);
+		const [again] = await provision(STAGE);
+
+		expect(report?.actions.map((a) => a.change)).toEqual([
+			'expire tmp/ after 1 day',
+		]);
+		expect(again?.actions).toEqual([]);
+		const rules =
+			(await s3.send(new GetBucketLifecycleConfigurationCommand({ Bucket })))
+				.Rules ?? [];
+		expect(rules.map((r) => r.ID).sort()).toEqual(
+			['abort-multipart', expireRuleId('tmp/')].sort(),
+		);
+		expect(rules.find((r) => r.ID === 'abort-multipart')).toMatchObject({
+			Filter: { Prefix: 'uploads/' },
+			AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 },
+		});
 	});
 
 	it('presigns a PUT and a GET with the key it wrote', async () => {
@@ -739,6 +804,7 @@ describe('--dry-run', () => {
 			`bucket ${good}: tag`,
 			`bucket ${good}: block public access (ACLs; the policy opens the open paths)`,
 			`bucket ${good}: policy: TLS only, public read on brand/**`,
+			`bucket ${good}: expire tmp/ after 1 day`,
 			`bucket ${good}: CORS for https://preview.${DOMAIN}`,
 			`IAM user ${iamUserName({ scope: name, stage: 'preview', id: 'uploads' })}: create under /gkm/`,
 			`IAM user ${iamUserName({ scope: name, stage: 'preview', id: 'uploads' })}: policy gkm-bucket: this bucket only`,

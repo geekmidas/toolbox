@@ -201,6 +201,7 @@ export enum ConstructType {
 	Subscriber = 'dev.geekmidas.function.subscriber',
 	Queue = 'dev.geekmidas.function.queue',
 	Topic = 'dev.geekmidas.resource.topic',
+	Processor = 'dev.geekmidas.function.processor',
 }
 
 /**

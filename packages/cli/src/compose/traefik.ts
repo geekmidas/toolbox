@@ -21,6 +21,7 @@ import { createHash } from 'node:crypto';
 import { CLIENT_IP_HEADER } from '@geekmidas/manifest';
 import { stringify } from 'yaml';
 import {
+	assertRouteRenderable,
 	EDGE_LIMITS,
 	type EdgeRoute,
 	type EdgeTls,
@@ -216,6 +217,15 @@ export function traefikDynamic(
 			};
 			chain.push(name(route, 'allow'));
 		}
+		if (route.auth) {
+			// The stage's login, asked for before anything reaches the
+			// upstream. The service's health check goes to the upstream
+			// directly, so it is never asked.
+			middlewares[name(route, 'auth')] = {
+				basicAuth: { users: [`${route.auth.user}:${route.auth.hash}`] },
+			};
+			chain.push(name(route, 'auth'));
+		}
 		if (route.prefix) {
 			middlewares[name(route, 'prefix')] = {
 				addPrefix: { prefix: route.prefix },
@@ -223,8 +233,45 @@ export function traefikDynamic(
 			chain.push(name(route, 'prefix'));
 		}
 
+		assertRouteRenderable(route);
+		// Only the paths it names, where it names some: a request for any
+		// other matches no router, and the edge answers it 404 itself. So
+		// does one without the header a CDN sends, where it requires one.
+		const allowed = [
+			...(route.paths ?? []).map((path) => `Path(\`${path}\`)`),
+			...(route.prefixes ?? []).map((prefix) => `PathPrefix(\`${prefix}\`)`),
+		];
+		const paths = allowed.length ? ` && (${allowed.join(' || ')})` : '';
+		const header = route.requireHeader
+			? ` && Header(\`${route.requireHeader.name}\`, \`${route.requireHeader.value}\`)`
+			: '';
+
+		// Each handler: a router of its own on the same host, ahead of the
+		// route's, to a service of its own.
+		for (const handler of route.handlers ?? []) {
+			const handlerName = name(route, handler.name);
+			routers[handlerName] = {
+				rule: `Host(\`${route.host}\`) && (${handler.prefixes
+					.map((prefix) => `PathPrefix(\`${prefix}\`)`)
+					.join(' || ')})`,
+				// Above the route's own router, whatever the rules' lengths.
+				priority: 10_000,
+				entryPoints: ['websecure'],
+				service: handlerName,
+				middlewares: [strip],
+				tls: tls.kind === 'acme' ? { certResolver: ACME_RESOLVER } : {},
+			};
+			services[handlerName] = {
+				loadBalancer: {
+					servers: handler.upstreams.map((upstream) => ({
+						url: url(upstream),
+					})),
+				},
+			};
+		}
+
 		routers[name(route)] = {
-			rule: `Host(\`${route.host}\`)`,
+			rule: `Host(\`${route.host}\`)${paths}${header}`,
 			entryPoints: ['websecure'],
 			service: name(route),
 			middlewares: chain,

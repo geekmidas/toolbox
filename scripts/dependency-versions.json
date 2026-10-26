@@ -2,6 +2,12 @@
 	"@apidevtools/swagger-parser": {
 		"dependencies": "~13.1.0"
 	},
+	"@aws-sdk/client-acm": {
+		"dependencies": "~3.1136.0"
+	},
+	"@aws-sdk/client-cloudfront": {
+		"dependencies": "~3.1136.0"
+	},
 	"@aws-sdk/client-iam": {
 		"dependencies": "~3.1136.0"
 	},
@@ -257,6 +263,9 @@
 	},
 	"amqplib": {
 		"peerDependencies": ">=2.0.1"
+	},
+	"bcryptjs": {
+		"dependencies": "~3.0.3"
 	},
 	"better-auth": {
 		"dependencies": "~1.7.6",

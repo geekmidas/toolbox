@@ -617,6 +617,23 @@ belongs on some stages only — a demo tenant — decides by `stage`, typed by
 `SeedContext` from `@geekmidas/constructs` as one of the declared stages (see
 [Typed stages](./workspaces.md#typed-stages)).
 
+A seed gets the same client the app gets: the construct's `plugins` and
+other client options, on the owner's connection. With a `CamelCasePlugin`,
+a seed writes `isEditable` exactly as a handler does. A schema tenant's seeds
+use the tenant's own options and never its parent's. That keeps better-auth's
+camelCase tables untouched by a snake_case app's plugin.
+
+A seed reaches the rest of the app the way a handler does, too. Before the
+first seed runs, gkm registers the drivers the stage's own entry registers:
+`s3://` storage when the project installs `@geekmidas/storage`, its caches'
+backend and its topics' broker. A seed that uploads a sample photo through a
+bucket's service calls `bucket.service.register(…)` and names no provider.
+
+A migration gets a bare client, with no plugins. A casing plugin rewrites
+schema-builder DDL too, and a migration has to do the same thing on every
+stage forever, so it can't depend on options that may change. Write
+identifiers in a migration as they are stored: `is_editable`.
+
 ## Database connections
 
 Every pool opened by a `KyselyDatabase` names itself to Postgres, so

@@ -1,5 +1,121 @@
 # @geekmidas/storage
 
+## 10.0.0-alpha.125
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.125
+
+## 10.0.0-alpha.124
+
+### Minor Changes
+
+- [#283](https://github.com/geekmidas/toolbox/pull/283) [`935f5e2`](https://github.com/geekmidas/toolbox/commit/935f5e2449d9527da9a63465e0da30888e8114ff) Thanks [@geekmidas](https://github.com/geekmidas)! - Object events: subscribers that run when a bucket's objects change
+
+  `worker.objects(bucket).on(['object.created'], { prefix, suffix }).handle(…)`
+  binds a handler to an `ObjectStorage`. It is handed `objects` (each
+  `{ bucket, key, size?, etag?, versionId? }`, with the key decoded) and
+  `events` (the same objects with their `object.created` / `object.deleted`
+  type). It compiles down to a topic subscriber, so it runs through the same
+  Lambda, SNS push, polled and test adaptors.
+
+  - `@geekmidas/storage/events` reads an S3 or MinIO notification body into
+    object messages (`toObjectEvents`): it decodes form-encoded keys, reads
+    `s3:TestEvent` as no event, and throws `ObjectNotificationMalformed` on
+    anything else. `matchesObjectFilter` is the prefix/suffix test.
+  - The adaptors read what the storage sends and filter by event, prefix and
+    suffix themselves. Their filter is final, whatever the source filtered.
+  - The manifest nests a bucket's subscribers in its `objects` node
+    (`subscribers`, with `events`, `prefix`, `suffix`). The handler's process
+    reads `<BUCKET>_EVENTS_CONNECTION_STRING`, and is not given the bucket's URL
+    unless it also depends on the bucket.
+  - A server build includes the SNS push route whenever a bucket has
+    subscribers, even when the app's own events go through pg-boss. A bucket's
+    push subscription sets no `type` filter policy (`subscribeHttpEndpoint`'s
+    `events` is now optional).
+  - The build refuses `ObjectSubscriberFeedsItself`: a subscriber that depends
+    on the bucket it watches and watches every key in it.
+  - Discovery's per-worker subscribers are now `{ name, connectionKey }`, so a
+    compose worker gets its push host for a bucket's events as for a topic's.
+  - 🔥 In a `featureTest`, an upload or delete through the bucket's client is
+    delivered to its subscribers, and `objects(bucket).emit(...)` reports
+    changes the app never sees, such as a presigned upload.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.124
+
+## 10.0.0-alpha.123
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.123
+
+## 10.0.0-alpha.122
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.122
+
+## 10.0.0-alpha.121
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.121
+
+## 10.0.0-alpha.120
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.120
+
+## 10.0.0-alpha.119
+
+### Minor Changes
+
+- [#275](https://github.com/geekmidas/toolbox/pull/275) [`7880ca2`](https://github.com/geekmidas/toolbox/commit/7880ca23699651af20f36d1ae947b60e5fd37282) Thanks [@geekmidas](https://github.com/geekmidas)! - Direct uploads: `.upload(bucket, …)` on an endpoint
+
+  An endpoint can now hand the browser a signed form that uploads one file
+  straight to a bucket, so the file never passes through the server:
+
+  ```ts
+  export const avatarUpload = router
+    .post("/me/avatar")
+    .upload(uploads, {
+      key: ({ session }) => `avatars/${session.userId}.png`,
+      maxSize: 5 * 1024 * 1024,
+      accept: ["image/png"],
+    })
+    .handle(async ({ upload }) => upload); // { url, fields, key, expiresAt }
+  ```
+
+  The endpoint chooses the key, resolved from the session, body and params. The
+  form's policy, enforced by the storage itself, refuses a file over `maxSize`
+  (`content-length-range`) or of a type `accept` does not allow. The bucket
+  becomes a dependency, as with `.dependsOn([bucket])`. The form is the
+  endpoint's typed and documented output unless an `.output()` came first. A
+  policy fixes one type or one prefix (`image/*`), so an endpoint that accepts
+  several types says which one this upload is with `contentType`. A type outside
+  `accept` is refused with a 415. Options that could never be honoured fail when
+  the module loads.
+
+  - `@geekmidas/storage`: `StorageClient.getUploadPost({ key, maxSize, contentType?, expiresIn? })`,
+    a presigned POST whose policy limits size and type.
+  - `@geekmidas/schema`: a Standard Schema that implements Standard JSON Schema
+    (`~standard.jsonSchema`) converts to JSON Schema whatever its vendor. A
+    hand-written schema can now be documented in OpenAPI.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.119
+
 ## 10.0.0-alpha.118
 
 ### Patch Changes

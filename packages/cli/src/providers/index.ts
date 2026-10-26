@@ -14,16 +14,26 @@ import {
 	verifyStageBackups,
 } from '../backups/provision.js';
 import { BACKUPS_URL_KEY } from '../backups/service.js';
+import {
+	type CredentialProvider,
+	storedCredentials,
+} from '../deploy/credentials.js';
 import { deployIdentity } from '../deploy/identity.js';
 import { DeployJournal } from '../deploy/journal.js';
 import type { ResourceRecord, StateStore } from '../deploy/StateStore.js';
 import { createComposeState, createEmptyState } from '../deploy/state.js';
 import { GkmError } from '../errors';
+import type { BoundSubscriber } from '../reconcile/discover.js';
 import { initStageSecrets } from '../secrets/storage.js';
 import type { StageSecrets } from '../secrets/types.js';
-import type { NormalizedWorkspace } from '../workspace/types.js';
+import type { DnsProvider } from '../target/dokploy/dns/DnsProvider.js';
+import type {
+	DnsProvider as DnsProviderConfig,
+	NormalizedWorkspace,
+} from '../workspace/types.js';
 import { stageProvider } from './config.js';
 import { deploysWithCompose } from './dns.js';
+import { writeProviderDns } from './dnsWriter.js';
 import { builtinProvider } from './registry.js';
 import {
 	PROVIDER_KINDS,
@@ -109,6 +119,8 @@ export interface ProvisionOptions {
 	stage: string;
 	manifest: ConstructManifest;
 	runnables?: Record<string, string[]>;
+	/** Each Worker's subscribers, from discovery. */
+	subscribers?: Readonly<Record<string, readonly BoundSubscriber[]>>;
 	/** The stage's secrets — where each runtime key is written. */
 	secrets: ProvisionSecrets;
 	/** The stage's deploy state. The caller holds the stage's lock. */
@@ -124,6 +136,13 @@ export interface ProvisionOptions {
 	/** The CLI's home. */
 	home?: string;
 	env?: NodeJS.ProcessEnv;
+	/**
+	 * Where the DNS providers' tokens come from, for the records a provider
+	 * writes. Defaults to the environment and the stored logins.
+	 */
+	credentials?: CredentialProvider;
+	/** The DNS provider for a domain — `createDnsProvider` by default. */
+	dnsProviderFor?: (config: DnsProviderConfig) => Promise<DnsProvider | null>;
 	log?: (line: string) => void;
 }
 
@@ -260,7 +279,7 @@ export async function provisionStage(
 	let secrets = (await options.secrets.read())?.custom ?? {};
 	for (const entry of configured) {
 		entry.report.planned = entry.provider
-			.runtimeKeys(manifest)
+			.runtimeKeys(manifest, runnables)
 			.filter((key) => secrets[key] === undefined);
 	}
 
@@ -294,6 +313,7 @@ export async function provisionStage(
 			workspace,
 			manifest,
 			runnables,
+			...(options.subscribers ? { subscribers: options.subscribers } : {}),
 			stage,
 			identity,
 			config: entry.config,
@@ -313,6 +333,22 @@ export async function provisionStage(
 				);
 			},
 			writeSecrets,
+			writeDns: (records) =>
+				writeProviderDns(records, {
+					workspace,
+					stage,
+					dryRun,
+					credentials:
+						options.credentials ??
+						storedCredentials({
+							env,
+							...(options.home ? { home: options.home } : {}),
+						}),
+					...(options.dnsProviderFor
+						? { providerFor: options.dnsProviderFor }
+						: {}),
+					log,
+				}),
 			log,
 		});
 		if (entry.report.actions.length === 0) {

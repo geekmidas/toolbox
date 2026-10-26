@@ -104,6 +104,7 @@ describe('runMigrations', { timeout: 30_000 }, () => {
 			stage: 'production',
 			manifest,
 			patterns: [],
+			backends: { cache: 'redis', events: 'pgboss' },
 			urls: { DATABASE_URL: url },
 			signal: new AbortController().signal,
 			sandbox,
@@ -141,6 +142,7 @@ describe('runMigrations', { timeout: 30_000 }, () => {
 			stage: 'production',
 			manifest,
 			patterns: [],
+			backends: { cache: 'redis', events: 'pgboss' },
 			urls: { DATABASE_URL: url },
 			signal: new AbortController().signal,
 		};
@@ -170,6 +172,7 @@ describe('runMigrations', { timeout: 30_000 }, () => {
 				stage: 'production',
 				manifest,
 				patterns: [],
+				backends: { cache: 'redis', events: 'pgboss' },
 				urls: { DATABASE_URL: url },
 				signal: new AbortController().signal,
 			}),
@@ -231,6 +234,7 @@ describe('runMigrations, with seeds', { timeout: 30_000 }, () => {
 		stage: 'production',
 		manifest,
 		patterns: [],
+		backends: { cache: 'redis', events: 'pgboss' },
 		urls: { DATABASE_URL: url },
 		signal: new AbortController().signal,
 	});

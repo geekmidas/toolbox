@@ -10,10 +10,10 @@
 export interface PolicyStatement {
 	Sid: string;
 	Effect: 'Allow' | 'Deny';
-	Principal?: '*' | { AWS: string | string[] };
+	Principal?: '*' | { AWS: string | string[] } | { Service: string };
 	Action: string | string[];
 	Resource: string | string[];
-	Condition?: Record<string, Record<string, string>>;
+	Condition?: Record<string, Record<string, string | string[]>>;
 }
 
 export interface PolicyDocument {
@@ -33,7 +33,15 @@ const bucketArn = (bucket: string) => `arn:aws:s3:::${bucket}`;
  */
 export function userPolicy(
 	bucket: string,
-	options: { versioning?: boolean } = {},
+	options: {
+		versioning?: boolean;
+		/**
+		 * The bucket's events topic, when a subscriber watches it: the worker
+		 * confirms the subscriptions the deploy made with this key, and does
+		 * nothing else to the topic.
+		 */
+		eventsTopicArn?: string;
+	} = {},
 ): PolicyDocument {
 	return {
 		Version: '2012-10-17',
@@ -61,6 +69,16 @@ export function userPolicy(
 				],
 				Resource: bucketArn(bucket),
 			},
+			...(options.eventsTopicArn
+				? [
+						{
+							Sid: 'GkmEvents',
+							Effect: 'Allow' as const,
+							Action: 'sns:ConfirmSubscription',
+							Resource: options.eventsTopicArn,
+						},
+					]
+				: []),
 		],
 	};
 }
@@ -78,12 +96,16 @@ export function openResource(bucket: string, pattern: string): string {
 
 /**
  * The bucket's own policy: every request refused unless it came over TLS,
- * and — only when a file server opens paths on it — anonymous `s3:GetObject`
- * on exactly those prefixes.
+ * and — only when a file server opens paths on it — `s3:GetObject` on
+ * exactly those prefixes: to anyone, or, when a CDN serves them, to
+ * CloudFront alone, for exactly the stage's distributions. Behind a CDN the
+ * bucket is never public: a key outside the open prefixes is refused to
+ * CloudFront too, so the edge answers it 403.
  */
 export function bucketPolicy(
 	bucket: string,
 	open: readonly string[] = [],
+	options: { cdn?: { distributionArns: readonly string[] } } = {},
 ): PolicyDocument {
 	const statements: PolicyStatement[] = [
 		{
@@ -95,13 +117,29 @@ export function bucketPolicy(
 			Condition: { Bool: { 'aws:SecureTransport': 'false' } },
 		},
 	];
-	if (open.length > 0) {
+	const resources = [
+		...new Set(open.map((p) => openResource(bucket, p))),
+	].sort();
+	if (open.length > 0 && options.cdn) {
+		statements.push({
+			Sid: 'GkmCdnRead',
+			Effect: 'Allow',
+			Principal: { Service: 'cloudfront.amazonaws.com' },
+			Action: 's3:GetObject',
+			Resource: resources,
+			Condition: {
+				StringEquals: {
+					'AWS:SourceArn': [...new Set(options.cdn.distributionArns)].sort(),
+				},
+			},
+		});
+	} else if (open.length > 0) {
 		statements.push({
 			Sid: 'GkmOpenPaths',
 			Effect: 'Allow',
 			Principal: '*',
 			Action: 's3:GetObject',
-			Resource: [...new Set(open.map((p) => openResource(bucket, p)))].sort(),
+			Resource: resources,
 		});
 	}
 	return { Version: '2012-10-17', Statement: statements };
@@ -168,7 +206,10 @@ function canonical(value: unknown, key?: string): unknown {
 				.map((k) => {
 					const v = (value as Record<string, unknown>)[k];
 					const listy =
-						k === 'Action' || k === 'Resource' || k === 'AWS'
+						k === 'Action' ||
+						k === 'Resource' ||
+						k === 'AWS' ||
+						k === 'AWS:SourceArn'
 							? Array.isArray(v)
 								? v
 								: [v]

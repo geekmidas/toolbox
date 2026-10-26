@@ -747,6 +747,12 @@ const DeployConfigSchema = z.object({
 	telemetry: TelemetryConfigSchema.optional(),
 	objects: ObjectsConfigSchema.optional(),
 	backups: BackupsConfigSchema.optional(),
+	sitePassword: z
+		.record(
+			z.string(),
+			z.union([z.literal(true), z.array(z.string().min(1)).min(1)]),
+		)
+		.optional(),
 });
 
 /**
@@ -1163,6 +1169,11 @@ export const WorkspaceConfigSchema = z
 			['deploy.objects', ['deploy', 'objects'], data.deploy?.objects],
 			['deploy.backups', ['deploy', 'backups'], data.deploy?.backups],
 			['deploy.telemetry', ['deploy', 'telemetry'], data.deploy?.telemetry],
+			[
+				'deploy.sitePassword',
+				['deploy', 'sitePassword'],
+				data.deploy?.sitePassword,
+			],
 			...Object.entries(data.dns ?? {}).map(
 				([domain, entry]): [string, (string | number)[], unknown] => {
 					const records = (entry as { records?: unknown }).records;

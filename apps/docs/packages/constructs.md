@@ -124,6 +124,27 @@ drift.
 | `StaticSite` | `/site` | — a surface |
 | `BetterAuth` | `/auth` | an `AuthClient` — `api.getSession({ headers })`, over HTTP to the auth app |
 
+A `FileServer` serves the paths it calls `open` without a signature, and
+everything else only through `signedUrl()`. Paths whose keys are written once
+can also be `immutable`, so the edge tells every client to keep them forever:
+
+```typescript
+import { FileServer } from '@geekmidas/constructs/file-server';
+
+export const assets = new FileServer('Assets', {
+  open: ['brand/**', 'avatars/*'],
+  immutable: ['brand/logos/*'], // a subset of `open`, or `ImmutableNotOpen`
+});
+```
+
+On a stage whose buckets the `s3` provider creates, the file server answers on
+`<fileserver>.<domain>` through CloudFront, with that header on the immutable
+paths — see [Providers](../guide/providers.md#objects-s3).
+
+A file server can also make derivatives of its open objects on read — a
+thumbnail at `/i/256/avatars/7.png` — with `assets.process('/i/:width/*')`. See
+[File Server Processors](../guide/file-server-processors.md).
+
 A `Credential`'s value is the stage's `<ID>_CREDENTIALS` — `STRIPE_CREDENTIALS`
 here — set with `gkm secrets:add`. On the test stage, and under
 `gkm dev --fake`, it can come from a fake beside the external APIs' instead,
@@ -918,6 +939,60 @@ const uploadEndpoint = api
       });
   });
 ```
+
+### Direct uploads
+
+`.upload(bucket, …)` makes an endpoint hand the browser a signed form that
+uploads one file straight to the bucket — the file never passes through your
+server. The endpoint decides **where** (`key`, resolved from the session, body
+and params); the form's policy decides **what**: the storage refuses a file
+over `maxSize`, or of a type `accept` does not allow.
+
+```typescript
+import { uploads } from '../constructs/storage';
+
+export const avatarUpload = router
+  .post('/me/avatar')
+  .upload(uploads, {
+    key: ({ session }) => `avatars/${session.userId}.png`,
+    maxSize: 5 * 1024 * 1024,
+    accept: ['image/png'],
+  })
+  .handle(async ({ upload }) => upload); // { url, fields, key, expiresAt }
+```
+
+The browser posts every field of `fields`, then the file last as `file`, to
+`url` as `multipart/form-data`.
+
+- **The bucket is a dependency**, as with `.dependsOn([uploads])`:
+  `services.uploads` is in the handler and the manifest records the edge.
+- **The form is the output** — typed, and documented in OpenAPI — unless an
+  `.output()` came first; then the handler returns what that schema says.
+- **`.upload()` is the last step before `.handle()`.** The key is resolved
+  from the body, params and session, so they are declared first.
+- **`accept`** takes media types (`image/png`) and whole types (`image/*`).
+  A signed policy fixes one type or one prefix, never "one of these", so with
+  several, `contentType` says which this upload is — and a type not in
+  `accept` is refused with a 415 (`UploadContentTypeRefused`):
+
+  ```typescript
+  .body(z.object({ contentType: z.enum(['application/pdf', 'image/png']) }))
+  .upload(uploads, {
+    key: ({ session }) => `documents/${session.userId}/${crypto.randomUUID()}`,
+    maxSize: 20 * 1024 * 1024,
+    accept: ['application/pdf', 'image/png'],
+    contentType: ({ body }) => body.contentType,
+  })
+  ```
+- **`expiresIn`** is in seconds — 300 by default, at most seven days.
+
+Options that could never be honoured fail when the module loads, not on the
+first request: `UploadMaxSizeInvalid`, `UploadExpiryInvalid`,
+`UploadAcceptInvalid`, `UploadContentTypeUnresolved`.
+
+The endpoint never learns that the upload finished — the browser talks to the
+storage, not to it. That arrives as the bucket's `object.created` event, to a
+worker subscribed to the bucket ([#273](https://github.com/geekmidas/toolbox/issues/273)).
 
 ### HTML forms and redirects
 
@@ -1729,16 +1804,21 @@ Subscribers run in-process beside the server, each through the
 shared subscriber string. How a subscriber is fed follows that string:
 
 - **`sns://` — pushed.** The server mounts
-  `POST /__gkm/subscribers/<exportName>` and, once listening, subscribes it to
-  the topic with a filter policy on the `type` attribute listing the events
-  from `.subscribe([...])`. SNS fans out, one subscription per subscriber. The
+  `POST /__gkm/subscribers/<exportName>`, subscribed to the topic with a filter
+  policy on the `type` attribute listing the events from `.subscribe([...])`.
+  SNS fans out, one subscription per subscriber. Against SNS itself the deploy
+  makes that subscription and hands the server its ARN in
+  `GKM_SNS_SUBSCRIPTIONS`; against an emulator the server subscribes itself
+  once listening. The
   route is `SnsPushSubscriberAdaptor` (from `@geekmidas/constructs/subscribers`),
   which reads each notification as an SNS Lambda event — the same parsing,
   services and error handling as deployed, without Lambda's middy wrapper, so a
   server needs no `@middy/core`. Confirmations are
-  confirmed automatically; signatures are verified except against an emulator.
-  `GKM_SUBSCRIBER_PUSH_URL` is the public base SNS pushes to (locally it
-  defaults to `http://host.docker.internal:<port>`).
+  confirmed automatically — through the API, as the topic's owner, against SNS
+  itself — and signatures are verified except against an emulator. A
+  notification naming a subscription other than the recorded one is refused.
+  `GKM_SUBSCRIBER_PUSH_URL` is the base an emulator pushes to (by default
+  `http://host.docker.internal:<port>`).
 - **`pgboss://`, `rabbitmq://` — polled.** On pg-boss each subscriber drains a
   queue of its own, `<topic>/<exportName>`, so every subscriber sees every
   event and replicas of one subscriber share it.

@@ -16,10 +16,16 @@
  * growing its own.
  */
 
+import type { LifecycleRule } from '@aws-sdk/client-s3';
 import { cacheTableStatements } from '@geekmidas/cache/postgres';
 import { ownerRole, readerRole, roleStatements } from '@geekmidas/db/pg/roles';
 import { cacheTable } from '@geekmidas/manifest';
+import { mergeLifecycle } from '../providers/s3/lifecycle';
 import { localRole, localRolePassword, rootDatabase } from './env';
+import {
+	minioNotificationRule,
+	NOTIFICATION_RULE_PREFIX,
+} from './objectEvents';
 import type { Plan, PlannedResource } from './plan';
 
 /** One thing to create, and how to tell whether it already exists. */
@@ -377,6 +383,23 @@ export function bucketPolicies(
 }
 
 /**
+ * What each bucket keeps, and for how long: the buckets that declare an
+ * expiry, by their stage-scoped name.
+ *
+ * Every bucket in the plan, not only those that declare one, is what a
+ * removed expiry needs — its rules are dropped from a bucket that no longer
+ * asks for them — so a bucket with none is listed with an empty expiry.
+ */
+export function bucketLifecycles(
+	plan: Plan,
+): { bucket: string; expire: Readonly<Record<string, number>> }[] {
+	return plan.resources
+		.filter((r) => r.kind === 'objects' && r.provisions)
+		.map((r) => ({ bucket: r.name, expire: r.expire ?? {} }))
+		.sort((a, b) => a.bucket.localeCompare(b.bucket));
+}
+
+/**
  * One bucket's open paths as an S3 bucket policy.
  *
  * Anonymous `s3:GetObject` on the named prefixes and nothing else — which is
@@ -499,6 +522,141 @@ export interface BucketClient {
 	/** The bucket's current policy, or `undefined` where it has none. */
 	policy(bucket: string): Promise<string | undefined>;
 	setPolicy(bucket: string, policy: string): Promise<void>;
+	/** The bucket's notification configuration — empty where it has none. */
+	notification(bucket: string): Promise<BucketNotification>;
+	setNotification(
+		bucket: string,
+		notification: BucketNotification,
+	): Promise<void>;
+	/** The bucket's lifecycle rules, or `undefined` where it has none. */
+	lifecycle(bucket: string): Promise<LifecycleRule[] | undefined>;
+	/** Replace its lifecycle with these rules — none removes it. */
+	setLifecycle(bucket: string, rules: LifecycleRule[]): Promise<void>;
+}
+
+/** A queue rule of a bucket's notification, as the S3 API shapes it. */
+export interface BucketNotificationRule {
+	Id?: string;
+	QueueArn?: string;
+	Events?: string[];
+	Filter?: unknown;
+}
+
+/**
+ * A bucket's notification configuration, as the S3 API shapes it. The topic
+ * and function rules are carried through untouched: gkm writes queue rules —
+ * which is what a MinIO webhook target is — and keeps whatever else is there.
+ */
+export interface BucketNotification {
+	QueueConfigurations?: BucketNotificationRule[];
+	TopicConfigurations?: unknown[];
+	LambdaFunctionConfigurations?: unknown[];
+}
+
+/**
+ * Point each watched bucket's events at its webhook target, and stop sending
+ * an unwatched one's.
+ *
+ * Merged rather than written whole: only the rule gkm owns on a bucket
+ * (`gkm-<Bucket>`) is added or removed, and every other rule — one somebody
+ * added by hand — is kept. Compared before writing, so a converged reconcile
+ * changes nothing.
+ *
+ * @param buckets - each bucket the plan names, by construct id and name
+ * @param watched - the construct ids whose events are relayed
+ */
+export async function applyNotifications(
+	client: BucketClient,
+	buckets: readonly { id: string; name: string }[],
+	watched: ReadonlySet<string>,
+): Promise<Applied[]> {
+	const applied: Applied[] = [];
+
+	for (const { id, name } of buckets) {
+		const current = await client.notification(name);
+		const queues = current.QueueConfigurations ?? [];
+		const others = queues.filter(
+			(rule) => !rule.Id?.startsWith(NOTIFICATION_RULE_PREFIX),
+		);
+		const wanted = watched.has(id)
+			? [...others, minioNotificationRule(id)]
+			: others;
+
+		// Nothing of gkm's there, and nothing to add: not this bucket's concern.
+		if (!watched.has(id) && others.length === queues.length) continue;
+
+		const describe = `object events from ${name}`;
+		const ours = queues.filter((rule) =>
+			rule.Id?.startsWith(NOTIFICATION_RULE_PREFIX),
+		);
+		const converged = watched.has(id)
+			? ours.length === 1 && sameRule(ours[0]!, minioNotificationRule(id))
+			: ours.length === 0;
+		if (converged) {
+			applied.push({ id: `${name}:events`, describe, created: false });
+			continue;
+		}
+
+		await client.setNotification(name, {
+			...current,
+			QueueConfigurations: wanted,
+		});
+		applied.push({ id: `${name}:events`, describe, created: true });
+	}
+
+	return applied;
+}
+
+/**
+ * Whether a rule read back says what gkm wrote: the same target, the same
+ * events in any order, and no filter — the store may hand back an empty one.
+ */
+function sameRule(
+	current: BucketNotificationRule,
+	wanted: BucketNotificationRule,
+): boolean {
+	const filter = current.Filter as
+		| { Key?: { FilterRules?: unknown[] } }
+		| undefined;
+	return (
+		current.Id === wanted.Id &&
+		current.QueueArn === wanted.QueueArn &&
+		JSON.stringify([...(current.Events ?? [])].sort()) ===
+			JSON.stringify([...(wanted.Events ?? [])].sort()) &&
+		(filter?.Key?.FilterRules?.length ?? 0) === 0
+	);
+}
+
+/**
+ * Apply each bucket's expiry, beside whatever other rules it has, skipping
+ * those already correct — the same merge the `s3` provider makes deployed.
+ */
+export async function applyLifecycles(
+	client: BucketClient,
+	lifecycles: readonly {
+		bucket: string;
+		expire: Readonly<Record<string, number>>;
+	}[],
+): Promise<Applied[]> {
+	const applied: Applied[] = [];
+
+	for (const { bucket, expire } of lifecycles) {
+		const merge = mergeLifecycle(await client.lifecycle(bucket), expire);
+		const id = `${bucket}:lifecycle`;
+		const describe = `${merge.describe} on ${bucket}`;
+
+		// Nothing declared and nothing of gkm's there: not worth a line.
+		if (!merge.changed && Object.keys(expire).length === 0) continue;
+		if (!merge.changed) {
+			applied.push({ id, describe, created: false });
+			continue;
+		}
+
+		await client.setLifecycle(bucket, merge.rules);
+		applied.push({ id, describe, created: true });
+	}
+
+	return applied;
 }
 
 /**

@@ -1,5 +1,419 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.125
+
+### Minor Changes
+
+- [#285](https://github.com/geekmidas/toolbox/pull/285) [`474d6e5`](https://github.com/geekmidas/toolbox/commit/474d6e57726faca5fb54733c152073200c35f49f) Thanks [@geekmidas](https://github.com/geekmidas)! - A file server over an `s3` bucket is served through a CDN
+
+  On a stage whose buckets the `s3` provider creates, a `FileServer` used to
+  answer on the bucket's regional endpoint — one region for every reader, on an
+  `amazonaws.com` host, with its open paths public on the bucket itself. The
+  deploy now serves each file server through CloudFront on
+  `<fileserver>.<domain>`, and that is its URL:
+
+  - an ACM certificate (us-east-1) for the name, validated by a CNAME written
+    through the root domain's DNS provider in `dns` and kept for renewals; a
+    domain nothing writes prints the record and stops with
+    `CdnCertificatePending`, and the next deploy carries on from there;
+  - an origin access control, and a bucket policy granting exactly the stage's
+    distributions `s3:GetObject` on exactly the open prefixes — the bucket is
+    never public, and Block Public Access keeps all four flags on;
+  - response headers policies: CORS for the stage's sites, and
+    `Cache-Control: public, max-age=31536000, immutable` on the paths a file
+    server now calls `immutable` (`new FileServer('Assets', { open, immutable })`,
+    a subset of `open` or `ImmutableNotOpen`; `FileServerDeclaration.immutable`
+    in the manifest);
+  - a distribution on the name — HTTPS only, compressed, cached on the path
+    alone — and a CNAME to it.
+
+  Each is recorded in the stage's state, found again by name when a run died
+  before recording it, and put back when it drifted; nothing is deleted. A stage
+  with file servers and no domain fails with `FileServerCdnNeedsDomain`;
+  `deploy.objects.<stage>.cdn: false` keeps the bucket's own endpoint. The
+  deploy role from `gkm deploy:github` is given the ACM and CloudFront actions,
+  none of which delete.
+
+- [#285](https://github.com/geekmidas/toolbox/pull/285) [`120f994`](https://github.com/geekmidas/toolbox/commit/120f9948a8bea9ab9a3616a281972c81931ba55c) Thanks [@geekmidas](https://github.com/geekmidas)! - File server processors: derivatives of open objects, made on read
+
+  `assets.process('/i/:width/*').params(schema).handle(…)` puts a handler behind
+  one path pattern of a file server — a thumbnail, a page of a PDF — made when it
+  is read, so every object already in the bucket is covered. The parameters'
+  schema is the allowlist: anything it refuses is a short-cached `400` and the
+  handler never runs. Only open paths are processed. A result marked
+  `cache: 'immutable'` is kept in the bucket under `.gkm-derived/` and answered
+  from there next time; `services.assets.processedUrl(processor, params, key)`
+  addresses it.
+
+  - **Manifest:** `FileServerDeclaration.processors`, nested — discovery puts
+    each one there with its source as its handler, and a build replaces it with
+    the generated one.
+  - **Compose:** a file server's processors run in a container of their own
+    (`<fileserver>-processors`), built from the app holding them, with any
+    `.native([...])` packages installed for linux. Behind the stack's MinIO, the
+    file server's host sends their patterns there and every other path to the
+    bucket (`EdgeRoute.handlers`, rendered for Caddy and Traefik). With the
+    bucket on S3, the CDN sends each pattern to the container's own host,
+    adding a secret header the edge requires (`EdgeRoute.requireHeader`,
+    `EdgeRoute.prefixes`); the deploy keeps the secret as
+    `<FILESERVER>_SERVER_ORIGIN_SECRET`.
+  - **CDN (`s3` provider):** a custom origin per file server with processors,
+    and a behaviour per pattern ahead of the immutable ones, keyed on the path
+    alone and not re-compressed.
+  - **SST:** each processor is a Lambda behind an IAM-auth function URL, routed
+    through the file server's router with origin access control.
+  - 👷 **Build:** `gkm build --production` writes and bundles each processor unit
+    beside the server; `gkm docker` writes its Dockerfile.
+
+  Two constructs routed to one host still fail with `EdgeHostTaken`; a route
+  that sends paths elsewhere and also restricts who it answers fails with
+  `EdgeRouteConflict`.
+
+- [#285](https://github.com/geekmidas/toolbox/pull/285) [`92ba72c`](https://github.com/geekmidas/toolbox/commit/92ba72c3de6a5d65e1f699f5cb66b61eadb5f875) Thanks [@geekmidas](https://github.com/geekmidas)! - File server processors: kept results expire, `gkm dev` runs them, telemetry, Dokploy
+
+  - **Kept results expire.** A file server with processors puts an expiry on its
+    bucket's `.gkm-derived/` prefix — 30 days, or `derived: { days }` on the
+    file server — through the same lifecycle rules as `expire`, on S3 and MinIO.
+    `bucketExpiry(manifest, id)` in `@geekmidas/manifest` is the one answer both
+    read.
+  - **`gkm dev` runs them.** The dev server of the app holding a file server's
+    processors mounts them under `/__gkm/processors/<FileServer>`, and the local
+    edge sends each pattern on the file server's host there, so `processedUrl()`
+    answers locally as it does deployed.
+  - **Telemetry.** `FileServer` takes `telemetry` as a `Worker` does: the
+    processor unit starts OpenTelemetry, each request is a SERVER span named
+    after the processor's pattern, and the deploy hands the unit the stage's
+    `OTEL_*` keys. Without the edge it loads no tracing.
+  - **Dokploy.** Each processor unit is an application of its own at
+    `<fileserver>-processors.<domain>`, the host the CDN reaches. Dokploy's
+    proxy cannot match a header, so the unit refuses a request without the
+    CDN's `X-Gkm-Origin-Verify` itself. A Dokploy file server over MinIO has no
+    host to route a pattern on, so processors there fail with
+    `ProcessorsNeedCdn`.
+
+### Patch Changes
+
+- Updated dependencies [[`474d6e5`](https://github.com/geekmidas/toolbox/commit/474d6e57726faca5fb54733c152073200c35f49f), [`120f994`](https://github.com/geekmidas/toolbox/commit/120f9948a8bea9ab9a3616a281972c81931ba55c), [`92ba72c`](https://github.com/geekmidas/toolbox/commit/92ba72c3de6a5d65e1f699f5cb66b61eadb5f875)]:
+  - @geekmidas/constructs@10.0.0-alpha.125
+  - @geekmidas/manifest@10.0.0-alpha.125
+  - @geekmidas/cache@10.0.0-alpha.125
+  - @geekmidas/db@10.0.0-alpha.125
+  - @geekmidas/envkit@10.0.0-alpha.125
+  - @geekmidas/errors@10.0.0-alpha.125
+  - @geekmidas/logger@10.0.0-alpha.125
+  - @geekmidas/schema@10.0.0-alpha.125
+  - @geekmidas/services@10.0.0-alpha.125
+  - @geekmidas/storage@10.0.0-alpha.125
+  - @geekmidas/telescope@10.0.0-alpha.125
+
+## 10.0.0-alpha.124
+
+### Minor Changes
+
+- [#283](https://github.com/geekmidas/toolbox/pull/283) [`3e51741`](https://github.com/geekmidas/toolbox/commit/3e51741d5fd226622cd4be16749a482fd20d4e34) Thanks [@geekmidas](https://github.com/geekmidas)! - Against SNS itself, the deploy owns a server's push subscriptions
+
+  A server subscribed its own routes to SNS at startup and confirmed each by
+  visiting its `SubscribeURL`. That needed `sns:Subscribe`, `Unsubscribe` and
+  `SetSubscriptionAttributes` at runtime, and a subscription confirmed that way
+  can be removed by anyone holding the `UnsubscribeURL` every notification
+  carries.
+
+  **Behaviour change:** against SNS itself (an `sns://` string with no
+  `endpoint`), a server no longer subscribes anything. It mounts a subscriber's
+  route only when `GKM_SNS_SUBSCRIPTIONS` — a JSON object of subscriber export →
+  subscription ARN, handed over by the deploy — has one for it; a subscriber
+  without one is logged and reported as failed. Confirmations go through the
+  `ConfirmSubscription` API with `AuthenticateOnUnsubscribe`, so only the
+  topic's owner can unsubscribe a route, and the runtime needs only
+  `sns:ConfirmSubscription` on its topic. A notification whose
+  `x-amz-sns-subscription-arn` header names another subscription is refused
+  (defence in depth: SNS does not sign its headers). Against an emulator nothing
+  changes: the server still subscribes itself.
+
+  - `@geekmidas/events/sns`: `reconcileHttpSubscriptions(connection, { endpoints,
+ownedHost })` converges a topic's HTTP subscriptions for a deploy and answers
+    `{ subscriptions, pending, removed }`. ARNs are answered while still pending
+    and stay stable across runs, and a re-run resends pending confirmations. It
+    also removes this host's subscriptions that are no longer wanted.
+    `confirmSubscription(connection, message)` confirms as the topic owner.
+    `subscribeHttpEndpoint` and the reconciler take an explicit `filterPolicy`
+    and `filterPolicyScope` (`MessageBody` for messages with no `type`
+    attribute).
+  - `@geekmidas/constructs/subscribers`: `SnsPushSubscriberAdaptor` takes
+    `subscriptionArn` and a `confirm` hook, and `handle(body, { subscriptionArn })`.
+  - `gkm compose`: a worker SNS pushes to is handed `GKM_SNS_SUBSCRIPTIONS` from
+    the stack's new `pushSubscriptions` input in place of
+    `GKM_SUBSCRIBER_PUSH_URL`, and a pushed subscriber without a recorded ARN
+    fails with `PushSubscriptionMissing`.
+
+- [#283](https://github.com/geekmidas/toolbox/pull/283) [`1f57386`](https://github.com/geekmidas/toolbox/commit/1f57386df433108f0e074512c41a3bcef8b4df71) Thanks [@geekmidas](https://github.com/geekmidas)! - Object events from a bucket in MinIO, under `gkm dev` and in a compose stack
+
+  A bucket's subscribers had nothing to receive locally: MinIO has no topic to
+  publish to. Where MinIO holds a watched bucket, gkm now starts it with a
+  webhook target per bucket and points the bucket at it, for every created and
+  removed object. MinIO posts each event to the process that runs the bucket's
+  subscribers, at `POST /__gkm/objects/<Bucket>`, presenting the bucket's token
+  (`<BUCKET>_EVENTS_TOKEN`, derived, compared in constant time). That process
+  relays each event onto the broker under the bucket's name, as `object.created`
+  or `object.deleted`, and answers 2xx only once it is published. MinIO keeps
+  what it could not deliver on disk and sends it again, so events written before
+  the worker is up are not lost.
+
+  - **`gkm dev`**: MinIO posts to the dev server of the app that builds the
+    worker, through `host.docker.internal`. Only the local stage's buckets post,
+    so `gkm test`'s uploads never reach it.
+  - **Compose**: MinIO posts to the worker's container across the stack's own
+    network. The route is on no public host, and the token comes from the
+    stage's seed.
+
+  A worker container now serves the POST routes its subscribers mount beside
+  its health check, and subscribes its pushed routes once it answers. A bucket
+  whose events come from SNS gets no webhook target. Bucket notifications are
+  merged: only gkm's own `gkm-<Bucket>` rule is added or removed, and any other
+  rule on the bucket is kept.
+
+- [#283](https://github.com/geekmidas/toolbox/pull/283) [`935f5e2`](https://github.com/geekmidas/toolbox/commit/935f5e2449d9527da9a63465e0da30888e8114ff) Thanks [@geekmidas](https://github.com/geekmidas)! - Object events: subscribers that run when a bucket's objects change
+
+  `worker.objects(bucket).on(['object.created'], { prefix, suffix }).handle(…)`
+  binds a handler to an `ObjectStorage`. It is handed `objects` (each
+  `{ bucket, key, size?, etag?, versionId? }`, with the key decoded) and
+  `events` (the same objects with their `object.created` / `object.deleted`
+  type). It compiles down to a topic subscriber, so it runs through the same
+  Lambda, SNS push, polled and test adaptors.
+
+  - `@geekmidas/storage/events` reads an S3 or MinIO notification body into
+    object messages (`toObjectEvents`): it decodes form-encoded keys, reads
+    `s3:TestEvent` as no event, and throws `ObjectNotificationMalformed` on
+    anything else. `matchesObjectFilter` is the prefix/suffix test.
+  - The adaptors read what the storage sends and filter by event, prefix and
+    suffix themselves. Their filter is final, whatever the source filtered.
+  - The manifest nests a bucket's subscribers in its `objects` node
+    (`subscribers`, with `events`, `prefix`, `suffix`). The handler's process
+    reads `<BUCKET>_EVENTS_CONNECTION_STRING`, and is not given the bucket's URL
+    unless it also depends on the bucket.
+  - A server build includes the SNS push route whenever a bucket has
+    subscribers, even when the app's own events go through pg-boss. A bucket's
+    push subscription sets no `type` filter policy (`subscribeHttpEndpoint`'s
+    `events` is now optional).
+  - The build refuses `ObjectSubscriberFeedsItself`: a subscriber that depends
+    on the bucket it watches and watches every key in it.
+  - Discovery's per-worker subscribers are now `{ name, connectionKey }`, so a
+    compose worker gets its push host for a bucket's events as for a topic's.
+  - 🔥 In a `featureTest`, an upload or delete through the bucket's client is
+    delivered to its subscribers, and `objects(bucket).emit(...)` reports
+    changes the app never sees, such as a presigned upload.
+
+- [#283](https://github.com/geekmidas/toolbox/pull/283) [`e53270f`](https://github.com/geekmidas/toolbox/commit/e53270fd8ee151fa2c04412fb6a48e8355e4ec07) Thanks [@geekmidas](https://github.com/geekmidas)! - An S3 bucket's changes reach a compose worker, wired by the deploy
+
+  For each bucket a subscriber watches on a stage whose objects are on `s3`,
+  the deploy now creates, in the stage's account:
+
+  - an SNS topic `<bucket>-events` that only that bucket may publish to;
+  - a dead-letter queue `<bucket>-events-dlq` for what SNS gives up delivering;
+  - the bucket's notification entry `gkm-<Bucket>`, merged so that entries
+    added by hand are kept;
+  - `<BUCKET>_EVENTS_CONNECTION_STRING`, signed by the bucket's own access key,
+    whose policy gains `sns:ConfirmSubscription` on that topic alone;
+  - one HTTP subscription per subscriber, at
+    `https://<worker>.<domain>/__gkm/subscribers/<export>`, failing over to the
+    queue.
+
+  The subscription ARNs are recorded in the stage's state and handed to each
+  worker as `GKM_SNS_SUBSCRIPTIONS`. Once the workers are healthy, the deploy
+  has SNS resend any pending confirmation and waits for it. A subscription no
+  subscriber wants any more is unsubscribed. The GitHub deploy role gains the
+  SNS, SQS and bucket-notification actions this takes.
+
+  `SNSConnection` accepts a credential provider as well as static keys.
+
+### Patch Changes
+
+- [#283](https://github.com/geekmidas/toolbox/pull/283) [`79d9787`](https://github.com/geekmidas/toolbox/commit/79d978787cfa3ec1b4539e2b6b891636a692b2c6) Thanks [@geekmidas](https://github.com/geekmidas)! - A compose deploy subscribes a hand-set SNS topic's subscribers
+
+  Since the deploy owns SNS push subscriptions, a worker never subscribes itself
+  against SNS — and a compose stage whose topic secret
+  (`<TOPIC>_PUBLISHER_CONNECTION_STRING`) names a real SNS topic had nobody to
+  subscribe its routes, so the stack refused to compose with
+  `PushSubscriptionMissing`. The compose deploy now does it, in `provision`,
+  before a file is written: one subscription per subscriber at its route on the
+  worker's host, filtered on the event types it names, signed with the keys in
+  the topic's string (or the deploy's own AWS credentials when it carries none).
+  Each ARN is recorded in the stage's state and handed to the worker; a removed
+  subscriber's subscription is unsubscribed and forgotten, pointing the secret at
+  another topic moves them, and pending confirmations are resent once the
+  workers are up, as a bucket's are. A dry run lists them.
+
+  The recorded-subscription helpers the `s3` provider and the compose target
+  share moved to `deploy/snsSubscriptions.ts`.
+
+- Updated dependencies [[`3e51741`](https://github.com/geekmidas/toolbox/commit/3e51741d5fd226622cd4be16749a482fd20d4e34), [`1f57386`](https://github.com/geekmidas/toolbox/commit/1f57386df433108f0e074512c41a3bcef8b4df71), [`935f5e2`](https://github.com/geekmidas/toolbox/commit/935f5e2449d9527da9a63465e0da30888e8114ff)]:
+  - @geekmidas/constructs@10.0.0-alpha.124
+  - @geekmidas/manifest@10.0.0-alpha.124
+  - @geekmidas/storage@10.0.0-alpha.124
+  - @geekmidas/cache@10.0.0-alpha.124
+  - @geekmidas/db@10.0.0-alpha.124
+  - @geekmidas/envkit@10.0.0-alpha.124
+  - @geekmidas/errors@10.0.0-alpha.124
+  - @geekmidas/logger@10.0.0-alpha.124
+  - @geekmidas/schema@10.0.0-alpha.124
+  - @geekmidas/services@10.0.0-alpha.124
+  - @geekmidas/telescope@10.0.0-alpha.124
+
+## 10.0.0-alpha.123
+
+### Minor Changes
+
+- [#294](https://github.com/geekmidas/toolbox/pull/294) [`a6e480b`](https://github.com/geekmidas/toolbox/commit/a6e480b17fd9a2494d17ceac2fd131d102911257) Thanks [@geekmidas](https://github.com/geekmidas)! - A compose stage's sites can be put behind a password
+
+  `deploy.sitePassword` names the deployed stages whose sites ask for a login before anything loads: `true` for every site, or a list of the ones to protect.
+
+  ```ts
+  deploy: {
+    sitePassword: { staging: true, preview: ['web'] },
+  }
+  ```
+
+  The edge asks with HTTP basic auth, with Caddy's `basic_auth` or a Traefik `basicAuth` middleware on the shared edge. The user is the stage's name. The password is generated once per site into the stage's secrets as `<SITE>_SITE_PASSWORD`, and one set by hand wins. Only its bcrypt hash reaches the edge's config, and its salt is derived from the password, so a deploy that changed nothing renders the same edge.
+
+  The keys are typed from `stages.deployed`, and the config check refuses an unknown stage or the local one. A name that is not a site fails with `UnknownPasswordSite`. The deploy's health check signs in with the login, and the summary says where to read the password: `gkm secrets:show --stage <stage> --reveal`. Dokploy and AWS don't support it yet. A stage it names that deploys through either fails with `SitePasswordNeedsCompose` before anything is deployed, rather than being served publicly.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.123
+  - @geekmidas/constructs@10.0.0-alpha.123
+  - @geekmidas/db@10.0.0-alpha.123
+  - @geekmidas/envkit@10.0.0-alpha.123
+  - @geekmidas/errors@10.0.0-alpha.123
+  - @geekmidas/logger@10.0.0-alpha.123
+  - @geekmidas/manifest@10.0.0-alpha.123
+  - @geekmidas/schema@10.0.0-alpha.123
+  - @geekmidas/services@10.0.0-alpha.123
+  - @geekmidas/storage@10.0.0-alpha.123
+  - @geekmidas/telescope@10.0.0-alpha.123
+
+## 10.0.0-alpha.122
+
+### Minor Changes
+
+- 🔥 [#289](https://github.com/geekmidas/toolbox/pull/289) [`3abee35`](https://github.com/geekmidas/toolbox/commit/3abee354c7b841e6fc1b138fdf05f7d2844ea975) Thanks [@geekmidas](https://github.com/geekmidas)! - A compose deploy deletes the DNS records of hosts the stage no longer serves
+
+  When a stage's domain changes, or an app is renamed or removed, the deploy now goes through the `dns-record` resources it wrote in the stage's state. Once the stack answers on its new hosts, it deletes each recorded record the plan no longer has. A record is deleted only if its provider still holds the value gkm wrote: one that has been pointed elsewhere since is left alone. One no provider can delete (a `manual` domain, a domain gone from `dns`, a write-only key) is printed for a person to remove. All of them are forgotten from the stage's state. A deploy that fails before verify deletes nothing, and `--dry-run` prints what would be deleted. `diffRecordedDns` (pure) and `pruneStackDns` in `compose/dns` are the diff and the delete.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.122
+  - @geekmidas/constructs@10.0.0-alpha.122
+  - @geekmidas/db@10.0.0-alpha.122
+  - @geekmidas/envkit@10.0.0-alpha.122
+  - @geekmidas/errors@10.0.0-alpha.122
+  - @geekmidas/logger@10.0.0-alpha.122
+  - @geekmidas/manifest@10.0.0-alpha.122
+  - @geekmidas/schema@10.0.0-alpha.122
+  - @geekmidas/services@10.0.0-alpha.122
+  - @geekmidas/storage@10.0.0-alpha.122
+  - @geekmidas/telescope@10.0.0-alpha.122
+
+## 10.0.0-alpha.121
+
+### Patch Changes
+
+- [`08bdedb`](https://github.com/geekmidas/toolbox/commit/08bdedbae21cced4275d0329c777c430e4d65b70) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm compose:server` no longer dies on a program that exits without reading its input
+
+  The runner behind `gkm compose:server` writes each command's input to its stdin. When the program exited before reading all of it, the write met a closed pipe, and the `EPIPE` it raised had no listener, so it was thrown as an uncaught exception instead of the run reporting the program's exit. The runner now ignores that error: the exit code already says how the program went.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.121
+  - @geekmidas/constructs@10.0.0-alpha.121
+  - @geekmidas/db@10.0.0-alpha.121
+  - @geekmidas/envkit@10.0.0-alpha.121
+  - @geekmidas/errors@10.0.0-alpha.121
+  - @geekmidas/logger@10.0.0-alpha.121
+  - @geekmidas/manifest@10.0.0-alpha.121
+  - @geekmidas/schema@10.0.0-alpha.121
+  - @geekmidas/services@10.0.0-alpha.121
+  - @geekmidas/storage@10.0.0-alpha.121
+  - @geekmidas/telescope@10.0.0-alpha.121
+
+## 10.0.0-alpha.120
+
+### Patch Changes
+
+- [#291](https://github.com/geekmidas/toolbox/pull/291) [`825be35`](https://github.com/geekmidas/toolbox/commit/825be35d5d7eba2ba25af379ef65ccdc4c6d4e9f) Thanks [@geekmidas](https://github.com/geekmidas)! - Seeds get the database's own client
+
+  `gkm seed` used to give each seed a bare Kysely, so a `CamelCasePlugin` declared on the construct did nothing in a seed. A seed typed against the camel-cased `Database` failed with `column "isEditable" … does not exist`. Seeds now build their client from the construct's `clientConfig` on the owner's connection, the same client a handler or a test gets. A schema tenant's seeds use the tenant's own options and never its parent's.
+
+  Migrations keep a bare client. A casing plugin would rewrite their DDL too, and a migration that has already run must never change.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.120
+  - @geekmidas/constructs@10.0.0-alpha.120
+  - @geekmidas/db@10.0.0-alpha.120
+  - @geekmidas/envkit@10.0.0-alpha.120
+  - @geekmidas/errors@10.0.0-alpha.120
+  - @geekmidas/logger@10.0.0-alpha.120
+  - @geekmidas/manifest@10.0.0-alpha.120
+  - @geekmidas/schema@10.0.0-alpha.120
+  - @geekmidas/services@10.0.0-alpha.120
+  - @geekmidas/storage@10.0.0-alpha.120
+  - @geekmidas/telescope@10.0.0-alpha.120
+
+## 10.0.0-alpha.119
+
+### Minor Changes
+
+- [#278](https://github.com/geekmidas/toolbox/pull/278) [`209a77d`](https://github.com/geekmidas/toolbox/commit/209a77dfca8c5522d2193a14d35ef2cad92d5701) Thanks [@geekmidas](https://github.com/geekmidas)! - A bucket can expire what is under a prefix
+
+  ```ts
+  new ObjectStorage("Private", { expire: { "quotes/": { days: 30 } } });
+  ```
+
+  `ObjectStorage` and the bucket a `FileServer` vends take `expire`: prefix →
+  `{ days }`. The manifest records it as `ObjectsDeclaration.expire` (prefix →
+  days). An empty, rooted or globbed prefix fails with `ExpiryPrefixInvalid`,
+  anything but a positive whole number of days with `ExpiryDaysInvalid`, and
+  `expire` on a file server fronting a bucket declared elsewhere with
+  `BucketOptionOnOrigin`.
+
+  The `s3` provider merges one rule per prefix (`gkm-expire-…`) into the
+  bucket's lifecycle on every deploy, keeping every rule it did not write and
+  removing its own when no longer declared. `gkm dev`, `gkm test` and
+  `gkm compose` write the same rules into their MinIO. A CI deploy role now
+  needs `s3:GetLifecycleConfiguration` and `s3:PutLifecycleConfiguration` on
+  the stage's buckets; `gkm deploy:github` includes them.
+
+- [#274](https://github.com/geekmidas/toolbox/pull/274) [`b825ed9`](https://github.com/geekmidas/toolbox/commit/b825ed9d3aff5cc62ef113bef1cffb93ccc8f7ae) Thanks [@geekmidas](https://github.com/geekmidas)! - A compose worker SNS pushes to answers on a host of its own
+
+  A worker on a compose stage had no route at all, so a topic subscriber
+  delivered by SNS push had nowhere for SNS to reach it. When any of a worker's
+  topic subscribers resolves to an `sns://` connection string on a deployed
+  stage, the worker now answers on `<worker>.<domain>` — DNS record and
+  certificate included — on exactly those subscribers'
+  `/__gkm/subscribers/<export>` routes. Every other path is refused at the edge,
+  by Caddy and Traefik alike (`EdgeRoute.paths`). The worker is handed
+  `GKM_SUBSCRIBER_PUSH_URL` from the same route, so the address it subscribes
+  under is the one the edge serves. A worker whose topics are on pg-boss stays
+  private.
+
+  Two constructs routed to one host now fail the deploy with `EdgeHostTaken`
+  instead of one silently shadowing the other.
+
+### Patch Changes
+
+- Updated dependencies [[`209a77d`](https://github.com/geekmidas/toolbox/commit/209a77dfca8c5522d2193a14d35ef2cad92d5701), [`7880ca2`](https://github.com/geekmidas/toolbox/commit/7880ca23699651af20f36d1ae947b60e5fd37282)]:
+  - @geekmidas/constructs@10.0.0-alpha.119
+  - @geekmidas/manifest@10.0.0-alpha.119
+  - @geekmidas/storage@10.0.0-alpha.119
+  - @geekmidas/schema@10.0.0-alpha.119
+  - @geekmidas/cache@10.0.0-alpha.119
+  - @geekmidas/db@10.0.0-alpha.119
+  - @geekmidas/envkit@10.0.0-alpha.119
+  - @geekmidas/errors@10.0.0-alpha.119
+  - @geekmidas/logger@10.0.0-alpha.119
+  - @geekmidas/services@10.0.0-alpha.119
+  - @geekmidas/telescope@10.0.0-alpha.119
+
 ## 10.0.0-alpha.118
 
 ### Minor Changes

@@ -12,6 +12,7 @@
  */
 
 import {
+	bucketExpiry,
 	type ConstructManifest,
 	type Declaration,
 	type DeclarationKind,
@@ -281,6 +282,18 @@ export interface PlannedResource {
 	 * in production is the bug this avoids.
 	 */
 	open?: readonly string[];
+	/**
+	 * For a file server: the literal prefixes its processors answer — `/i/` —
+	 * which the local edge sends to the dev server holding them.
+	 */
+	processors?: readonly string[];
+	/**
+	 * For a bucket: days kept under each prefix before it deletes them.
+	 *
+	 * Carried for the same reason as `open`: the local MinIO expires them too,
+	 * so a prefix that empties itself in production empties itself here.
+	 */
+	expire?: Readonly<Record<string, number>>;
 	/**
 	 * For an external API: the port key its fake answers on, and the
 	 * credentials it accepts — what a local stage is handed in place of the
@@ -575,6 +588,16 @@ export function planFor(
 				: {}),
 			...(declaration.kind === 'file-server' && declaration.open?.length
 				? { open: declaration.open }
+				: {}),
+			...(declaration.kind === 'file-server' && declaration.processors?.length
+				? {
+						processors: [
+							...new Set(declaration.processors.map((p) => p.prefix)),
+						].sort(),
+					}
+				: {}),
+			...(declaration.kind === 'objects' && bucketExpiry(manifest, id)
+				? { expire: bucketExpiry(manifest, id) }
 				: {}),
 			...((declaration.kind === 'rest-api' ||
 				declaration.kind === 'websocket-api' ||

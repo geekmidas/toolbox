@@ -1,5 +1,54 @@
 # @geekmidas/telescope
 
+## 10.0.0-alpha.125
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/logger@10.0.0-alpha.125
+
+## 10.0.0-alpha.124
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/logger@10.0.0-alpha.124
+
+## 10.0.0-alpha.123
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/logger@10.0.0-alpha.123
+
+## 10.0.0-alpha.122
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/logger@10.0.0-alpha.122
+
+## 10.0.0-alpha.121
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/logger@10.0.0-alpha.121
+
+## 10.0.0-alpha.120
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/logger@10.0.0-alpha.120
+
+## 10.0.0-alpha.119
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/logger@10.0.0-alpha.119
+
 ## 10.0.0-alpha.118
 
 ### Patch Changes

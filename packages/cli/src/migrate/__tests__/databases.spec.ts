@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { KyselyDatabase } from '@geekmidas/constructs/database/kysely';
 import { roleStatements } from '@geekmidas/db/pg/roles';
 import type { ConstructManifest } from '@geekmidas/manifest';
+import { CamelCasePlugin } from 'kysely';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { TEST_DATABASE_CONFIG } from '../../../../testkit/test/globalSetup';
@@ -351,6 +354,7 @@ export async function up(db) {
 describe('seedDatabases', () => {
 	let root: string;
 	const stage = 'production';
+	const backends = { cache: 'redis', events: 'pgboss' } as const;
 
 	const seedFile = (name: string, content: string) =>
 		writeFile(join(root, 'db/database/seeds', name), content);
@@ -403,6 +407,7 @@ describe('seedDatabases', () => {
 			sources,
 			env,
 			stage,
+			backends,
 		});
 
 		expect(migrations.map((r) => [r.target.id, r.applied])).toEqual([
@@ -417,7 +422,7 @@ describe('seedDatabases', () => {
 	});
 
 	it('runs every seed again on the next pass, applying what changed', async () => {
-		await migrateAndSeed({ root, manifest, sources, env, stage });
+		await migrateAndSeed({ root, manifest, sources, env, stage, backends });
 		await seedFile(
 			'roles.ts',
 			`export async function seed(db) {
@@ -427,7 +432,14 @@ describe('seedDatabases', () => {
 `,
 		);
 
-		const again = await seedDatabases({ root, manifest, sources, env, stage });
+		const again = await seedDatabases({
+			root,
+			manifest,
+			sources,
+			env,
+			stage,
+			backends,
+		});
 
 		expect(again[0]?.seeded).toEqual(['roles']);
 		expect(await roles()).toEqual(['Member', 'Reviewer', 'Super admin']);
@@ -452,6 +464,7 @@ describe('seedDatabases', () => {
 			sources,
 			env,
 			stage,
+			backends,
 		});
 
 		expect(seeds[0]?.seeded).toEqual(['01_admin', '02_reviewer', 'roles']);
@@ -474,6 +487,7 @@ describe('seedDatabases', () => {
 			sources,
 			env,
 			stage,
+			backends,
 			only: 'auth-database',
 		});
 
@@ -497,7 +511,7 @@ describe('seedDatabases', () => {
 `,
 		);
 
-		await migrateAndSeed({ root, manifest, sources, env, stage });
+		await migrateAndSeed({ root, manifest, sources, env, stage, backends });
 		expect(await roles()).toEqual(['Member', 'Super admin']);
 
 		await seedDatabases({
@@ -506,6 +520,7 @@ describe('seedDatabases', () => {
 			sources,
 			env,
 			stage: 'development',
+			backends,
 		});
 		expect(await roles()).toEqual(['Demo', 'Member', 'Super admin']);
 	});
@@ -526,6 +541,7 @@ describe('seedDatabases', () => {
 			sources,
 			env,
 			stage,
+			backends,
 		}).catch((error: unknown) => error);
 
 		expect(failure).toBeInstanceOf(SeedFailed);
@@ -537,11 +553,175 @@ describe('seedDatabases', () => {
 		expect(await roles()).toEqual(['Member', 'Super admin']);
 	});
 
+	describe('with the construct declaring a CamelCasePlugin', () => {
+		const camelCased = {
+			Database: {
+				...sources.Database,
+				construct: new KyselyDatabase('Database', {
+					plugins: [new CamelCasePlugin()],
+				}),
+			},
+		};
+
+		const columns = async () =>
+			(
+				await query<{ column_name: string }>(
+					'SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY column_name',
+					[app.schema, 'roles'],
+				)
+			).map((row) => row.column_name);
+
+		it('hands a seed the client the app gets, plugins included', async () => {
+			await writeFile(
+				join(root, 'db/database/migrations/20260101000100_editable.sql'),
+				'alter table roles add column is_editable boolean not null default true;',
+			);
+			await seedFile(
+				'roles.ts',
+				`export async function seed(db) {
+  await db.insertInto('roles').values({ name: 'Admin', isEditable: false })
+    .onConflict((oc) => oc.column('name').doNothing()).execute();
+}
+`,
+			);
+
+			await migrateAndSeed({
+				root,
+				manifest,
+				sources: camelCased,
+				env,
+				stage,
+				backends,
+			});
+
+			expect(
+				await query(`SELECT name, is_editable FROM "${app.schema}".roles`),
+			).toEqual([{ name: 'Admin', is_editable: false }]);
+		});
+
+		it('seeds a tenant with its own client, not its parent’s plugins', async () => {
+			// better-auth's tables are camelCase in a tenant of a snake_case app.
+			const tenanted = {
+				...camelCased,
+				AuthDatabase: {
+					...sources.Database,
+					exportName: 'authDatabase',
+					construct: camelCased.Database.construct.schema('AuthDatabase', {
+						schema: auth.schema,
+					}),
+				},
+			};
+			await mkdir(join(root, 'db/auth-database/seeds'), { recursive: true });
+			await writeFile(
+				join(root, 'db/auth-database/migrations/20260101000100_user.sql'),
+				'create table "user" ("id" text primary key, "emailVerified" boolean not null);',
+			);
+			await writeFile(
+				join(root, 'db/auth-database/seeds/user.ts'),
+				`export async function seed(db) {
+  await db.insertInto('user').values({ id: 'system', emailVerified: true })
+    .onConflict((oc) => oc.column('id').doNothing()).execute();
+}
+`,
+			);
+
+			await migrateAndSeed({
+				root,
+				manifest,
+				sources: tenanted,
+				env,
+				stage,
+				backends,
+				only: 'auth-database',
+			});
+
+			expect(
+				await query(
+					`SELECT "id", "emailVerified" FROM "${auth.schema}"."user"`,
+				),
+			).toEqual([{ id: 'system', emailVerified: true }]);
+		});
+
+		it('runs migrations bare, so what one did never changes with the plugins', async () => {
+			await writeFile(
+				join(root, 'db/database/migrations/20260101000100_legacy.ts'),
+				`export async function up(db) {
+  await db.schema.alterTable('roles').addColumn('legacyName', 'text').execute();
+}
+`,
+			);
+
+			await migrateDatabases({ root, manifest, sources: camelCased, env });
+
+			expect(await columns()).toEqual(['legacyName', 'name']);
+		});
+	});
+
+	describe('in a project whose entry registers drivers', () => {
+		// What a seed reaching a bucket or a cache through its construct would
+		// be handed — read from the registries the project's own packages hold.
+		const schemesSeed = `import { registeredStorageSchemes } from '@geekmidas/storage';
+import { registeredCacheSchemes } from '@geekmidas/cache';
+export async function seed(db) {
+  const names = [...registeredStorageSchemes(), ...registeredCacheSchemes()];
+  if (names.length > 0) await db.insertInto('roles').values(names.map((name) => ({ name }))).execute();
+}
+`;
+
+		beforeEach(() => seedFile('schemes.ts', schemesSeed));
+
+		it('registers them before seeding, so a seed needs no provider of its own', async () => {
+			await writeFile(
+				join(root, 'package.json'),
+				JSON.stringify({
+					dependencies: {
+						'@geekmidas/cache': '*',
+						'@geekmidas/storage': '*',
+					},
+				}),
+			);
+
+			await migrateAndSeed({
+				root,
+				manifest: {
+					...manifest,
+					Sessions: { kind: 'cache', id: 'Sessions', provides: [] },
+				},
+				sources,
+				env,
+				stage,
+				backends,
+			});
+
+			expect(new Set(await roles())).toEqual(
+				new Set(['Member', 'Super admin', 'redis:', 'rediss:', 's3:']),
+			);
+		});
+
+		// The registries are the process's, so what an earlier run registered
+		// is still there; what this one would have loaded is its module.
+		it('registers nothing a project neither installs nor declares', async () => {
+			await writeFile(join(root, 'package.json'), '{}');
+
+			const { seeds } = await migrateAndSeed({
+				root,
+				manifest,
+				sources,
+				env,
+				stage,
+				backends,
+			});
+
+			expect(seeds[0]?.seeded).toEqual(['roles', 'schemes']);
+			expect(existsSync(join(root, '.gkm'))).toBe(false);
+		});
+	});
+
 	it('refuses a seed script that exports no seed', async () => {
 		await seedFile('lookup.ts', 'export async function up() {}');
 
 		await expect(
-			migrateAndSeed({ root, manifest, sources, env, stage }),
+			migrateAndSeed({ root, manifest, sources, env, stage, backends }),
 		).rejects.toBeInstanceOf(SeedHasNoSeed);
 	});
 });

@@ -1,5 +1,119 @@
 # @geekmidas/cloud
 
+## 10.0.0-alpha.125
+
+### Minor Changes
+
+- [#285](https://github.com/geekmidas/toolbox/pull/285) [`120f994`](https://github.com/geekmidas/toolbox/commit/120f9948a8bea9ab9a3616a281972c81931ba55c) Thanks [@geekmidas](https://github.com/geekmidas)! - File server processors: derivatives of open objects, made on read
+
+  `assets.process('/i/:width/*').params(schema).handle(…)` puts a handler behind
+  one path pattern of a file server — a thumbnail, a page of a PDF — made when it
+  is read, so every object already in the bucket is covered. The parameters'
+  schema is the allowlist: anything it refuses is a short-cached `400` and the
+  handler never runs. Only open paths are processed. A result marked
+  `cache: 'immutable'` is kept in the bucket under `.gkm-derived/` and answered
+  from there next time; `services.assets.processedUrl(processor, params, key)`
+  addresses it.
+
+  - **Manifest:** `FileServerDeclaration.processors`, nested — discovery puts
+    each one there with its source as its handler, and a build replaces it with
+    the generated one.
+  - **Compose:** a file server's processors run in a container of their own
+    (`<fileserver>-processors`), built from the app holding them, with any
+    `.native([...])` packages installed for linux. Behind the stack's MinIO, the
+    file server's host sends their patterns there and every other path to the
+    bucket (`EdgeRoute.handlers`, rendered for Caddy and Traefik). With the
+    bucket on S3, the CDN sends each pattern to the container's own host,
+    adding a secret header the edge requires (`EdgeRoute.requireHeader`,
+    `EdgeRoute.prefixes`); the deploy keeps the secret as
+    `<FILESERVER>_SERVER_ORIGIN_SECRET`.
+  - **CDN (`s3` provider):** a custom origin per file server with processors,
+    and a behaviour per pattern ahead of the immutable ones, keyed on the path
+    alone and not re-compressed.
+  - **SST:** each processor is a Lambda behind an IAM-auth function URL, routed
+    through the file server's router with origin access control.
+  - 👷 **Build:** `gkm build --production` writes and bundles each processor unit
+    beside the server; `gkm docker` writes its Dockerfile.
+
+  Two constructs routed to one host still fail with `EdgeHostTaken`; a route
+  that sends paths elsewhere and also restricts who it answers fails with
+  `EdgeRouteConflict`.
+
+### Patch Changes
+
+- Updated dependencies [[`474d6e5`](https://github.com/geekmidas/toolbox/commit/474d6e57726faca5fb54733c152073200c35f49f), [`120f994`](https://github.com/geekmidas/toolbox/commit/120f9948a8bea9ab9a3616a281972c81931ba55c), [`92ba72c`](https://github.com/geekmidas/toolbox/commit/92ba72c3de6a5d65e1f699f5cb66b61eadb5f875)]:
+  - @geekmidas/manifest@10.0.0-alpha.125
+  - @geekmidas/db@10.0.0-alpha.125
+  - @geekmidas/envkit@10.0.0-alpha.125
+  - @geekmidas/events@10.0.0-alpha.125
+  - @geekmidas/storage@10.0.0-alpha.125
+
+## 10.0.0-alpha.124
+
+### Patch Changes
+
+- Updated dependencies [[`3e51741`](https://github.com/geekmidas/toolbox/commit/3e51741d5fd226622cd4be16749a482fd20d4e34), [`1f57386`](https://github.com/geekmidas/toolbox/commit/1f57386df433108f0e074512c41a3bcef8b4df71), [`935f5e2`](https://github.com/geekmidas/toolbox/commit/935f5e2449d9527da9a63465e0da30888e8114ff), [`e53270f`](https://github.com/geekmidas/toolbox/commit/e53270fd8ee151fa2c04412fb6a48e8355e4ec07)]:
+  - @geekmidas/events@10.0.0-alpha.124
+  - @geekmidas/manifest@10.0.0-alpha.124
+  - @geekmidas/storage@10.0.0-alpha.124
+  - @geekmidas/db@10.0.0-alpha.124
+  - @geekmidas/envkit@10.0.0-alpha.124
+
+## 10.0.0-alpha.123
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/db@10.0.0-alpha.123
+  - @geekmidas/envkit@10.0.0-alpha.123
+  - @geekmidas/events@10.0.0-alpha.123
+  - @geekmidas/manifest@10.0.0-alpha.123
+  - @geekmidas/storage@10.0.0-alpha.123
+
+## 10.0.0-alpha.122
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/db@10.0.0-alpha.122
+  - @geekmidas/envkit@10.0.0-alpha.122
+  - @geekmidas/events@10.0.0-alpha.122
+  - @geekmidas/manifest@10.0.0-alpha.122
+  - @geekmidas/storage@10.0.0-alpha.122
+
+## 10.0.0-alpha.121
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/db@10.0.0-alpha.121
+  - @geekmidas/envkit@10.0.0-alpha.121
+  - @geekmidas/events@10.0.0-alpha.121
+  - @geekmidas/manifest@10.0.0-alpha.121
+  - @geekmidas/storage@10.0.0-alpha.121
+
+## 10.0.0-alpha.120
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/db@10.0.0-alpha.120
+  - @geekmidas/envkit@10.0.0-alpha.120
+  - @geekmidas/events@10.0.0-alpha.120
+  - @geekmidas/manifest@10.0.0-alpha.120
+  - @geekmidas/storage@10.0.0-alpha.120
+
+## 10.0.0-alpha.119
+
+### Patch Changes
+
+- Updated dependencies [[`209a77d`](https://github.com/geekmidas/toolbox/commit/209a77dfca8c5522d2193a14d35ef2cad92d5701), [`7880ca2`](https://github.com/geekmidas/toolbox/commit/7880ca23699651af20f36d1ae947b60e5fd37282)]:
+  - @geekmidas/manifest@10.0.0-alpha.119
+  - @geekmidas/storage@10.0.0-alpha.119
+  - @geekmidas/db@10.0.0-alpha.119
+  - @geekmidas/envkit@10.0.0-alpha.119
+  - @geekmidas/events@10.0.0-alpha.119
+
 ## 10.0.0-alpha.118
 
 ### Minor Changes

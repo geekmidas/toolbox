@@ -23,7 +23,12 @@
  */
 
 import type { ConstructManifest } from '@geekmidas/manifest';
-import { type WorkerUnit, workerUnits } from '../../build/workers.js';
+import {
+	type ProcessorUnit,
+	processorUnits,
+	type WorkerUnit,
+	workerUnits,
+} from '../../build/workers.js';
 import { currentActor } from '../../deploy/actor.js';
 import {
 	type CredentialProvider,
@@ -82,13 +87,22 @@ import {
 } from '../../deploy/state.js';
 import type { AppDeployResult, DeployResult } from '../../deploy/types';
 import { workerDockerfileOf } from '../../docker/index.js';
-import { WORKER_PORT } from '../../docker/templates.js';
+import { PROCESSOR_PORT, WORKER_PORT } from '../../docker/templates.js';
 import { GkmError } from '../../errors';
 import { plannedSeeds } from '../../migrate/databases';
 import { output } from '../../output';
 import { stageProviderNotes } from '../../providers/notes.js';
-import { appEnvKeys, workerEnvKeys } from '../../reconcile/apps.js';
-import { constructGlobs } from '../../reconcile/workspace.js';
+import {
+	originSecretKey,
+	PROCESSOR_ORIGIN_SECRET_ENV,
+	processorOriginHost,
+} from '../../providers/processorOrigin.js';
+import {
+	appEnvKeys,
+	processorEnvKeys,
+	workerEnvKeys,
+} from '../../reconcile/apps.js';
+import { backendsOf, constructGlobs } from '../../reconcile/workspace.js';
 import type { RunOptions } from '../../run';
 import { initStageSecrets } from '../../secrets/storage.js';
 import type { StageSecrets } from '../../secrets/types.js';
@@ -244,6 +258,29 @@ export class BackendDeployFailed extends Error {
 }
 
 /**
+ * A file server's processors on a Dokploy stage nothing can reach: Dokploy
+ * serves a file server on MinIO itself, path-style, with no host of its own
+ * to route a pattern on, so only the CDN in front of an S3 bucket reaches a
+ * processor unit — and that CDN's deploy records the secret it sends.
+ */
+export class ProcessorsNeedCdn extends Error {
+	constructor(
+		readonly fileServer: string,
+		readonly secretKey: string,
+		readonly stage: string,
+	) {
+		super(
+			`'${fileServer}' has processors, and on Dokploy only the CDN in front ` +
+				`of an S3 bucket can reach them: the stage '${stage}' has no domain, ` +
+				`or no ${secretKey}, which the s3 provider writes when it puts a CDN ` +
+				`in front of the bucket. Give the stage a domain and ` +
+				`deploy.objects.${stage}: { provider: 's3' }, then deploy again.`,
+		);
+		this.name = 'ProcessorsNeedCdn';
+	}
+}
+
+/**
  * Sites failed to release or to answer. Every site is attempted before this
  * is thrown, so one broken site does not keep the others back — but the run
  * fails, and what failed is rolled back.
@@ -316,6 +353,12 @@ export interface DokployRun {
 	 * is being deployed — as applications of their own, with no domain.
 	 */
 	workers: readonly WorkerUnit[];
+	/**
+	 * The processor units this run deploys — each file server with processors
+	 * whose host app is being deployed — as applications of their own, on the
+	 * host the CDN in front of the bucket reaches.
+	 */
+	processors: readonly ProcessorUnit[];
 	/** Each owner's runnables' edges, from discovery: what a worker reads. */
 	runnables: Readonly<Record<string, readonly string[]>>;
 	provisioned?: Provisioned;
@@ -464,10 +507,20 @@ export async function validateDokploy(
 		);
 	}
 
+	const processors = processorUnits(workspace, phase.manifest).filter((unit) =>
+		appsToDeployNames.includes(unit.app),
+	);
+	if (processors.length > 0) {
+		logger.log(
+			`   Deploying processors: ${processors.map((p) => `${p.name} (from ${p.app})`).join(', ')}`,
+		);
+	}
+
 	return {
 		...run,
 		devServices: devServices.map((use) => use.service),
 		workers,
+		processors,
 		runnables,
 		preflight: await preflight(run),
 		verify: verifySettings(workspace.deploy.dokploy?.verify),
@@ -1089,6 +1142,8 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 		envVars: string[],
 		/** Where it answers — none for a worker, which has no route. */
 		host: string | undefined,
+		/** The port behind that host: the app's own, unless it is no app. */
+		port: number | undefined = workspace.apps[appName]?.port,
 	): Promise<void> => {
 		released.applicationIds.set(appName, applicationId);
 
@@ -1113,7 +1168,7 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 				api,
 				journal,
 				host,
-				workspace.apps[appName]!.port,
+				port!,
 				applicationId,
 				applied,
 			);
@@ -1451,6 +1506,126 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 	}
 
 	// ==================================================================
+	// PHASE 1c: Deploy processor units — an application each, on the host
+	// the CDN in front of the bucket reaches
+	// ==================================================================
+	if (run.processors.length > 0) {
+		logger.log('\n🖼️  Deploying processors...');
+
+		for (const unit of run.processors) {
+			ctx.signal?.throwIfAborted();
+			logger.log(
+				`\n   🖼️  Deploying ${unit.name} (processors of ${unit.id})...`,
+			);
+
+			// Dokploy serves a bucket's file server on MinIO itself, path-style,
+			// so no host exists to route a pattern on: only the CDN in front of
+			// an S3 bucket reaches a unit, and it holds the secret it sends.
+			const domain = workspace.domains?.[stage];
+			const secretKey = originSecretKey(unit.id);
+			const secret = stageSecrets.custom?.[secretKey];
+			if (!domain || !secret) {
+				throw new ProcessorsNeedCdn(unit.id, secretKey, stage);
+			}
+
+			try {
+				const application = await ensureApplication(
+					api,
+					journal,
+					unit.name,
+					applicationName(identity, unit.name),
+					project.projectId,
+					environmentId,
+					applied,
+				);
+
+				const keys = [
+					...(processorEnvKeys(run.manifest, unit.id, run.runnables) ?? []),
+				].sort();
+				const secrets = prepareSecretsForApp(stageSecrets, {
+					appName: unit.name,
+					requiredEnvVars: keys,
+					optionalEnvVars: [],
+				});
+				const credentials =
+					secrets.secretCount > 0
+						? {
+								encrypted: secrets.payload.encrypted,
+								iv: secrets.payload.iv,
+							}
+						: undefined;
+
+				const imageRef = imageRefFor(identity, unit.name, registry, imageTag);
+				logger.log(`      Building Docker image: ${imageRef}`);
+				const image = await deployDocker({
+					stage,
+					tag: imageTag,
+					skipPush: false,
+					config: {
+						registry,
+						imageName: imageName(identity, unit.name),
+						appName: unit.name,
+					},
+					credentials,
+					cwd: workspace.root,
+					dockerfile: workerDockerfileOf(unit.name),
+					...(ctx.signal ? { signal: ctx.signal } : {}),
+					...(ctx.stdio ? { stdio: ctx.stdio } : {}),
+				});
+				built(unit.name, image, imageRef);
+
+				const env: Record<string, string> = {
+					...scopeTelemetryEnv(
+						Object.fromEntries(
+							Object.entries(declaredEnv).filter(([key]) => keys.includes(key)),
+						),
+						{
+							uses: telemetryOf(run.manifest, unit.id) !== undefined,
+							serviceName: unit.name,
+							...(telemetryValues ? { telemetry: telemetryValues } : {}),
+						},
+					),
+					...(credentials ? { GKM_MASTER_KEY: secrets.masterKey } : {}),
+					// Dokploy's Traefik routes by host alone: the unit checks the
+					// CDN's header itself.
+					[PROCESSOR_ORIGIN_SECRET_ENV]: secret,
+					NODE_ENV: 'production',
+					PORT: String(PROCESSOR_PORT),
+					STAGE: stage,
+				};
+
+				const host = processorOriginHost(unit.id, domain);
+				await release(
+					unit.name,
+					application.applicationId,
+					{
+						ref: image.imageRef ?? imageRef,
+						...(image.digest ? { digest: image.digest } : {}),
+					},
+					Object.entries(env).map(([key, value]) => `${key}=${value}`),
+					host,
+					PROCESSOR_PORT,
+				);
+				await checkHealth(run, unit.name);
+
+				results.push({
+					appName: unit.name,
+					type: 'backend',
+					success: true,
+					applicationId: application.applicationId,
+					imageRef,
+					...(image.digest ? { digest: image.digest } : {}),
+				});
+				logger.log(`      ✓ ${unit.name} deployed at https://${host}`);
+			} catch (error) {
+				if (ctx.signal?.aborted) throw ctx.signal.reason;
+				failed(run, unit.name, error);
+				throw new BackendDeployFailed(unit.name, error);
+			}
+		}
+	}
+
+	// ==================================================================
 	// PHASE 2: Deploy frontend apps (with public URLs from backends)
 	// ==================================================================
 	let frontendFailure: unknown;
@@ -1709,6 +1884,7 @@ async function migrate(run: DokployRun): Promise<void> {
 		stage,
 		manifest,
 		patterns: constructGlobs(workspace),
+		backends: backendsOf(workspace),
 		urls,
 		signal: ctx.signal,
 	});
@@ -1806,8 +1982,10 @@ async function checkHealth(run: DokployRun, appName: string): Promise<void> {
 		return;
 	}
 
+	// A processor unit is no app of the workspace's, and answers its health
+	// where a backend does.
 	const path =
-		workspace.apps[appName]!.type === 'web' ? '/' : verify.healthCheckPath;
+		workspace.apps[appName]?.type === 'web' ? '/' : verify.healthCheckPath;
 	const url = `https://${host}${path}`;
 	logger.log(`\n🩺 Checking ${appName} at ${url}...`);
 	await verifyHealth({
@@ -2371,6 +2549,57 @@ export async function planDokploy(run: DokployRun): Promise<void> {
 			type: 'backend',
 			success: true,
 			imageRef: ref,
+			...(existing ? { applicationId: existing.applicationId } : {}),
+		});
+	}
+
+	for (const unit of run.processors) {
+		const dokployAppName = applicationName(identity, unit.name);
+		const recordedId = state?.applications?.[unit.name];
+		const existing =
+			project && environment
+				? ((recordedId
+						? await api.getApplication(recordedId).catch(() => null)
+						: null) ??
+					(await api.findApplicationByName(
+						project.projectId,
+						dokployAppName,
+						environment.environmentId,
+					)))
+				: null;
+		const domain = workspace.domains?.[stage];
+		const host = domain ? processorOriginHost(unit.id, domain) : undefined;
+		plan(
+			existing
+				? {
+						key: `application:${unit.name}`,
+						resourceType: 'application',
+						action: 'reuse',
+						id: existing.applicationId,
+					}
+				: {
+						key: `application:${unit.name}`,
+						resourceType: 'application',
+						action: 'create',
+					},
+			`${dokployAppName}, processors of ${unit.id}${host ? ` at https://${host}` : ''}`,
+		);
+		const ref = imageRefFor(
+			identity,
+			unit.name,
+			workspace.deploy.registry,
+			imageTag,
+		);
+		plan(
+			{ key: `image:${unit.name}`, resourceType: 'image', action: 'build' },
+			ref,
+		);
+		apps.push({
+			appName: unit.name,
+			type: 'backend',
+			success: true,
+			imageRef: ref,
+			...(host ? { url: `https://${host}` } : {}),
 			...(existing ? { applicationId: existing.applicationId } : {}),
 		});
 	}
