@@ -27,7 +27,9 @@
     "@geekmidas/services": "9.0.2",
     "@geekmidas/storage": "9.0.2",
     "@geekmidas/telescope": "9.0.2",
-    "@geekmidas/testkit": "9.0.2"
+    "@geekmidas/testkit": "9.0.2",
+    "@kitchen-sink/realtime": "0.0.0",
+    "@geekmidas/websocket-load": "0.0.0"
   },
   "changesets": [
     "align-deps-tranche-1",
@@ -221,6 +223,7 @@
     "typescript-7",
     "upgrade-follows-release-line",
     "v10-the-manifest-is-the-source",
+    "websocket-api",
     "worker-database",
     "worker-push-host",
     "worker-template",
