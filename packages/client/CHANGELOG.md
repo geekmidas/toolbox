@@ -1,5 +1,45 @@
 # @geekmidas/client
 
+## 10.0.0-alpha.127
+
+### Patch Changes
+
+- Updated dependencies [[`7610ab0`](https://github.com/geekmidas/toolbox/commit/7610ab05775a09648a43a8c479bfeabf373a5e36)]:
+  - @geekmidas/constructs@10.0.0-alpha.127
+  - @geekmidas/schema@10.0.0-alpha.127
+
+## 10.0.0-alpha.126
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/constructs@10.0.0-alpha.126
+  - @geekmidas/schema@10.0.0-alpha.126
+
+## 10.0.0-alpha.125
+
+### Patch Changes
+
+- Updated dependencies [[`474d6e5`](https://github.com/geekmidas/toolbox/commit/474d6e57726faca5fb54733c152073200c35f49f), [`120f994`](https://github.com/geekmidas/toolbox/commit/120f9948a8bea9ab9a3616a281972c81931ba55c), [`92ba72c`](https://github.com/geekmidas/toolbox/commit/92ba72c3de6a5d65e1f699f5cb66b61eadb5f875)]:
+  - @geekmidas/constructs@10.0.0-alpha.125
+  - @geekmidas/schema@10.0.0-alpha.125
+
+## 10.0.0-alpha.124
+
+### Patch Changes
+
+- Updated dependencies [[`3e51741`](https://github.com/geekmidas/toolbox/commit/3e51741d5fd226622cd4be16749a482fd20d4e34), [`935f5e2`](https://github.com/geekmidas/toolbox/commit/935f5e2449d9527da9a63465e0da30888e8114ff)]:
+  - @geekmidas/constructs@10.0.0-alpha.124
+  - @geekmidas/schema@10.0.0-alpha.124
+
+## 10.0.0-alpha.123
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/constructs@10.0.0-alpha.123
+  - @geekmidas/schema@10.0.0-alpha.123
+
 ## 10.0.0-alpha.122
 
 ### Patch Changes

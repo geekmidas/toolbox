@@ -88,12 +88,33 @@ export interface ObjectsDeclaration extends Node {
 	kind: 'objects';
 	versioned?: boolean;
 	/**
+	 * The handlers bound to its objects changing, each with the events it
+	 * wants and the keys it watches.
+	 *
+	 * Nested as a topic's subscribers are, because position is the trigger:
+	 * a bucket is a topic whose publisher is the storage itself. Filled by the
+	 * build from what it found — a bucket names nobody who watches it.
+	 *
+	 * `prefix` and `suffix` are structural: *which* objects a handler reacts
+	 * to is a fact about the application, and a target can filter on them at
+	 * the source.
+	 */
+	subscribers?: readonly ObjectSubscriberDeclaration[];
+	/**
 	 * Days the objects under each prefix are kept before the bucket deletes
 	 * them, prefix → days. Structural: which generated files are ephemeral is
 	 * a fact about the application, not a stage's choice.
 	 */
 	expire?: Readonly<Record<string, number>>;
 }
+
+/** A handler bound to a bucket, as {@link ObjectsDeclaration} nests it. */
+export type ObjectSubscriberDeclaration = Fn & {
+	/** `object.created`, `object.deleted`. */
+	events: readonly string[];
+	prefix?: string;
+	suffix?: string;
+};
 
 /**
  * A domain that serves a bucket's objects.
@@ -133,6 +154,41 @@ export interface FileServerDeclaration extends Node {
 	 * behaviours off path patterns, and a bucket policy names prefixes.
 	 */
 	open?: readonly string[];
+	/**
+	 * Open paths whose objects never change once written, so the edge tells
+	 * every client to keep them forever (`Cache-Control: public,
+	 * max-age=31536000, immutable`, over whatever the object was stored with).
+	 *
+	 * A subset of `open`: a signed object is never served by the edge.
+	 */
+	immutable?: readonly string[];
+	/**
+	 * The handlers behind its path patterns — each makes a derivative of an
+	 * open object on read: `/i/:width/*` a thumbnail.
+	 *
+	 * Nested for the reason a topic's subscribers are: position is the trigger.
+	 * A processor answers requests on this server's domain and nothing else.
+	 */
+	processors?: readonly ProcessorDeclaration[];
+	/**
+	 * Days its processors' derivatives are kept in the bucket before it deletes
+	 * them (`DEFAULT_DERIVED_DAYS` when absent) — they are remade on demand.
+	 */
+	derivedDays?: number;
+	/** The `Telemetry` node its processor unit emits through, by id. */
+	telemetry?: ConstructId;
+}
+
+/** A processor on a file server — see {@link FileServerDeclaration.processors}. */
+export interface ProcessorDeclaration extends Fn {
+	/** Its pattern, as written: `/i/:width/*`. */
+	path: string;
+	/** The literal path the edge routes to it: `/i/`. */
+	prefix: string;
+	/** Packages with native code, installed for the target rather than bundled. */
+	native?: readonly string[];
+	timeout?: number;
+	memorySize?: number;
 }
 
 /**
@@ -516,6 +572,37 @@ export interface RestApiDeclaration extends Node {
 	telemetry?: ConstructId;
 }
 
+/**
+ * A WebSocket surface: one long-lived connection per client, and the routes a
+ * frame is dispatched to by its `action`.
+ *
+ * A process of its own, like a `rest-api` — it owns an address and a container
+ * — but the routes are not listed: a frame is reached by its action rather
+ * than a method and path, and nothing outside the process routes on it.
+ *
+ * Anything else reaches a socket through its publisher: a `redis://` string on
+ * a stack, over which whichever replica holds the socket delivers.
+ */
+export interface WebSocketApiDeclaration extends Node {
+	kind: 'websocket-api';
+	/** The label it answers on, as a `rest-api`'s. Absent, its id kebab-cased. */
+	subdomain?: string;
+	/** The app that serves this surface, relative to the workspace root. */
+	path: string;
+	/** The construct that authenticates a connection, as a `rest-api`'s. */
+	auth?: ConstructId;
+	/** Other surfaces this one calls. See `RestApiDeclaration.calls`. */
+	calls?: readonly Dependency[];
+	/** The `Telemetry` node its process emits through. */
+	telemetry?: ConstructId;
+	/**
+	 * How many processes serve it on one machine. Node runs one thread, and
+	 * each process behind the edge has its own budget of connections.
+	 * Absent, one.
+	 */
+	replicas?: number;
+}
+
 /** One glob, or several. Mirrors the CLI's `Routes` without depending on it. */
 export type Glob = string | readonly string[];
 
@@ -849,6 +936,7 @@ export type Declaration =
 	| CredentialDeclaration
 	| EncryptionDeclaration
 	| RestApiDeclaration
+	| WebSocketApiDeclaration
 	| SiteDeclaration
 	| MobileAppDeclaration
 	| WorkerDeclaration
@@ -971,7 +1059,22 @@ export type AllProvidedKeys<M extends ConstructManifest> = {
  * `s3://` and `gs://` never appear here.
  */
 export interface ProvidesByKind {
-	objects: { url: string };
+	/**
+	 * The bucket, and — read only by the handlers bound to it — where its
+	 * object events are delivered from: an `sns://` topic the storage
+	 * publishes to, or the broker they are relayed onto. Never declared as
+	 * provided: a handler is bound to the bucket rather than depending on it,
+	 * so the key reaches exactly the process that runs one.
+	 *
+	 * `eventsToken` is the relay's half: what a local object store presents
+	 * when it posts an event to that process, so the route it posts to takes
+	 * nothing from anyone else.
+	 */
+	objects: {
+		url: string;
+		eventsConnectionString?: string;
+		eventsToken?: string;
+	};
 	/** Where the served objects answer. Public: a browser is the point of it. */
 	'file-server': { url: string };
 	/**
@@ -1023,6 +1126,16 @@ export interface ProvidesByKind {
 		 * one host locally, unrelated hosts deployed.
 		 */
 		cookieDomain: string;
+	};
+	/**
+	 * Where it answers (`wss://`), the origins a browser may open it from, and
+	 * the connection string anything else sends to a socket through.
+	 */
+	'websocket-api': {
+		url: string;
+		/** Comma-separated, read off inbound edges as a `rest-api`'s. */
+		trustedOrigins: string;
+		publisherConnectionString: string;
 	};
 	/** The value itself. A secret has no address to hand out instead. */
 	secret: { value: string };
@@ -1114,6 +1227,9 @@ export const PUBLIC: {
 	// into a bundle that nothing there reads is how a bundle grows keys nobody
 	// can account for.
 	'rest-api': ['url'],
+	// Where a browser opens it. Not the connection string: whoever holds it can
+	// write to every socket.
+	'websocket-api': ['url'],
 	// Carries broker credentials, and a browser that can publish to a queue can
 	// forge any job the worker trusts.
 	queue: [],

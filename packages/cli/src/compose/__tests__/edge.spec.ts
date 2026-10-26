@@ -46,7 +46,7 @@ import {
 	checkComposeStages,
 	proxyFor,
 } from '../proxy';
-import type { EdgeRoute } from '../routes';
+import { type EdgeRoute, EdgeRouteConflict } from '../routes';
 import { type ComposeStack, composeStack, type StackInput } from '../stack';
 import {
 	EDGE_NETWORK,
@@ -167,6 +167,124 @@ const PUSHED: EdgeRoute = {
 	paths: ['/__gkm/subscribers/onAlert', '/__gkm/subscribers/onSignup'],
 	health: '/health',
 };
+
+/** A file server over MinIO whose processor patterns go to their own service. */
+const PROCESSED: EdgeRoute = {
+	name: 'files-assets-server',
+	host: 'assets-server.shop.example.com',
+	upstreams: [{ service: 'minio', port: 9000 }],
+	streaming: false,
+	prefix: '/assets',
+	handlers: [
+		{
+			name: 'assets-processors',
+			prefixes: ['/i/', '/pdf/'],
+			upstreams: [{ service: 'assets-processors', port: 3000 }],
+		},
+	],
+};
+
+/** A processor unit's own host, which only the CDN may call. */
+const ORIGIN: EdgeRoute = {
+	name: 'assets-processors',
+	host: 'assets-server-processors.shop.example.com',
+	upstreams: [{ service: 'assets-processors', port: 3000 }],
+	streaming: false,
+	prefixes: ['/i/'],
+	requireHeader: { name: 'X-Gkm-Origin-Verify', value: 's3cr3t' },
+	health: '/health',
+};
+
+describe('a route whose processor paths go elsewhere', () => {
+	it('is handled by Caddy in order: the processors, then the bucket', () => {
+		const caddyfile = edgeCaddyfile([PROCESSED], { tls: { kind: 'acme' } });
+
+		// A named matcher: `handle` takes one matcher token, and Caddy refuses
+		// two paths written inline (checked against `caddy adapt`).
+		expect(caddyfile).toContain(`	@handler0 path /i/* /pdf/*
+	handle @handler0 {
+		reverse_proxy assets-processors:3000
+	}`);
+		// Every other path is the bucket, as before — inside a handle of its own.
+		expect(caddyfile).toContain(`	handle {
+		# A bucket, served at a host of its own`);
+		expect(caddyfile).toContain('		reverse_proxy minio:9000 {');
+		expect(caddyfile.indexOf('handle @handler0')).toBeLessThan(
+			caddyfile.indexOf('handle {'),
+		);
+	});
+
+	it('is a router of its own under Traefik, above the bucket’s', () => {
+		const { http } = traefikDynamic([PROCESSED], {
+			project: 'shop-production',
+			tls: { kind: 'acme' },
+		}) as {
+			http: {
+				routers: Record<
+					string,
+					{ rule: string; priority?: number; service: string }
+				>;
+				services: Record<
+					string,
+					{ loadBalancer: { servers: { url: string }[] } }
+				>;
+			};
+		};
+
+		const handler =
+			http.routers['shop-production-files-assets-server-assets-processors'];
+		expect(handler).toMatchObject({
+			rule: 'Host(`assets-server.shop.example.com`) && (PathPrefix(`/i/`) || PathPrefix(`/pdf/`))',
+			priority: 10_000,
+			service: 'shop-production-files-assets-server-assets-processors',
+		});
+		expect(
+			http.services['shop-production-files-assets-server-assets-processors']
+				?.loadBalancer.servers,
+		).toEqual([{ url: 'http://shop-production-assets-processors:3000' }]);
+		expect(http.routers['shop-production-files-assets-server']?.rule).toBe(
+			'Host(`assets-server.shop.example.com`)',
+		);
+	});
+
+	it('is never combined with a check every handler would need too', () => {
+		const conflicted = { ...PROCESSED, allow: ['10.0.0.0/8'] };
+
+		expect(() =>
+			edgeCaddyfile([conflicted], { tls: { kind: 'acme' } }),
+		).toThrow(EdgeRouteConflict);
+		expect(() =>
+			traefikDynamic([conflicted], { project: 'p', tls: { kind: 'acme' } }),
+		).toThrow(EdgeRouteConflict);
+	});
+});
+
+describe('an origin only the CDN may call', () => {
+	it('refuses, under Caddy, a request without the header, and every other path', () => {
+		const caddyfile = edgeCaddyfile([ORIGIN], { tls: { kind: 'acme' } });
+
+		expect(caddyfile).toContain(
+			'@forged not header X-Gkm-Origin-Verify "s3cr3t"\n\trespond @forged 403',
+		);
+		expect(caddyfile).toContain(
+			'@elsewhere not path /i/*\n\trespond @elsewhere 404',
+		);
+		expect(caddyfile.indexOf('respond @forged 403')).toBeLessThan(
+			caddyfile.indexOf('reverse_proxy assets-processors:3000'),
+		);
+	});
+
+	it('matches no Traefik router without the header, or off its prefixes', () => {
+		const { http } = traefikDynamic([ORIGIN], {
+			project: 'shop-production',
+			tls: { kind: 'acme' },
+		}) as { http: { routers: Record<string, { rule: string }> } };
+
+		expect(http.routers['shop-production-assets-processors']?.rule).toBe(
+			'Host(`assets-server-processors.shop.example.com`) && (PathPrefix(`/i/`)) && Header(`X-Gkm-Origin-Verify`, `s3cr3t`)',
+		);
+	});
+});
 
 describe('a route that answers only some paths', () => {
 	it('is refused by Caddy on every other path, before the upstream', () => {
@@ -392,6 +510,14 @@ describe('the edge', () => {
 		expect(compose.services.traefik.image).toBe(TRAEFIK_IMAGE);
 		expect(TRAEFIK_IMAGE).toMatch(/^traefik:v3\.\d+\.\d+$/);
 		expect(compose.services.traefik.ports).toEqual(['443:443', '80:80']);
+		// Two sockets per connection, and the whole port range to open the
+		// upstream half from.
+		expect(compose.services.traefik.sysctls).toEqual({
+			'net.ipv4.ip_local_port_range': '1024 65535',
+		});
+		expect(compose.services.traefik.ulimits).toEqual({
+			nofile: { soft: 1_048_576, hard: 1_048_576 },
+		});
 		// Nothing mounted from a path: the deploy runs where the server is
 		// not, so everything is a volume on the server or inline.
 		expect(compose.services.traefik.volumes).toEqual([

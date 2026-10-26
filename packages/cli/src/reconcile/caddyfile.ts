@@ -24,6 +24,7 @@
  */
 
 import { CLIENT_IP_HEADER } from '@geekmidas/manifest';
+import { processorsDevRoute } from '../generators/processorRoute.js';
 import type { Plan, PlannedResource } from './plan';
 
 /** One host on the edge, and what answers behind it. */
@@ -39,6 +40,17 @@ export interface CaddySite {
 	 * want none: they are already serving the paths the client asked for.
 	 */
 	rewrite?: string;
+	/**
+	 * Path prefixes sent somewhere else on the same host: a file server's
+	 * processor patterns, to the dev server holding them, under the route it
+	 * mounts them on.
+	 */
+	processors?: {
+		prefixes: readonly string[];
+		upstream: string;
+		/** Prepended to the path: `/__gkm/processors/AssetsServer`. */
+		under: string;
+	};
 }
 
 /**
@@ -55,6 +67,8 @@ export interface CaddySite {
 export const EDGE_KINDS: Readonly<Record<string, true>> = {
 	'file-server': true,
 	'rest-api': true,
+	// Caddy proxies the upgrade as it is; nothing about the route differs.
+	'websocket-api': true,
 	site: true,
 };
 
@@ -95,6 +109,11 @@ export function sitesFor(
 	 * which is why they arrive here instead of being read off a port.
 	 */
 	addresses: Readonly<Record<string, string>> = {},
+	/**
+	 * Where each file server's processors answer, keyed by the file server's
+	 * id: the dev server of the app holding them.
+	 */
+	processorAddresses: Readonly<Record<string, string>> = {},
 ): CaddySite[] {
 	const byId = new Map(plan.resources.map((r) => [r.id, r]));
 	const sites: CaddySite[] = [];
@@ -110,10 +129,23 @@ export function sitesFor(
 			const origin = resource.of ? byId.get(resource.of) : undefined;
 			if (!origin) continue;
 
+			// Its processors' patterns go to the dev server holding them, once
+			// it has an address; everything else is still the bucket.
+			const address = processorAddresses[resource.id];
+			const port = address ? portOf(address) : undefined;
 			sites.push({
 				host,
 				upstream: 'http://minio:9000',
 				rewrite: `/${origin.name}{uri}`,
+				...(resource.processors?.length && port
+					? {
+							processors: {
+								prefixes: resource.processors,
+								upstream: `http://${HOST_GATEWAY}:${port}`,
+								under: processorsDevRoute(resource.id),
+							},
+						}
+					: {}),
 			});
 			continue;
 		}
@@ -225,14 +257,28 @@ export function toCaddyfile(sites: readonly CaddySite[]): string {
 	}
 
 	const blocks = sites.map(
-		({ host, upstream, rewrite }) => `
+		({ host, upstream, rewrite, processors }) => `
 https://${host} {
 	tls internal
 
 	# gkm's own header, which only a service of this stack may send: the auth
 	# server rate-limits by the client address it carries.
 	request_header -${CLIENT_IP_HEADER}
-
+${
+	processors
+		? `
+	# Its processors' patterns, to the dev server holding them — under the
+	# route it mounts them on. Answered there, so the bucket below never is.
+	@processors path ${processors.prefixes.map((prefix) => `${prefix}*`).join(' ')}
+	handle @processors {
+		reverse_proxy ${processors.upstream} {
+			rewrite ${processors.under}{uri}
+			header_up Host {host}
+		}
+	}
+`
+		: ''
+}
 	reverse_proxy ${upstream} {${
 		rewrite
 			? `

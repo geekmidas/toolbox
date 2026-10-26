@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/constructs",
-	"version": "10.0.0-alpha.122",
+	"version": "10.0.0-alpha.127",
 	"private": false,
 	"type": "module",
 	"exports": {
@@ -144,6 +144,16 @@
 				"default": "./dist/file-server.cjs"
 			}
 		},
+		"./processors": {
+			"import": {
+				"types": "./dist/processors/index.d.mts",
+				"default": "./dist/processors/index.mjs"
+			},
+			"require": {
+				"types": "./dist/processors/index.d.cts",
+				"default": "./dist/processors/index.cjs"
+			}
+		},
 		"./email": {
 			"import": {
 				"types": "./dist/email.d.mts",
@@ -232,6 +242,16 @@
 			"require": {
 				"types": "./dist/rest-api.d.cts",
 				"default": "./dist/rest-api.cjs"
+			}
+		},
+		"./websocket-api": {
+			"import": {
+				"types": "./dist/websocket-api.d.mts",
+				"default": "./dist/websocket-api.mjs"
+			},
+			"require": {
+				"types": "./dist/websocket-api.d.cts",
+				"default": "./dist/websocket-api.cjs"
 			}
 		},
 		"./site": {
@@ -344,10 +364,13 @@
 		"@types/lodash.uniqby": "~4.7.9",
 		"@types/pg": "~8.23.1",
 		"@types/qs": "~6.15.1",
+		"@types/ws": "~8.18.1",
 		"better-auth": "~1.7.6",
+		"ioredis": "~6.0.0",
 		"kysely": "~0.29.6",
 		"msw": "~2.15.0",
 		"pg": "~8.23.0",
+		"ws": "~8.22.0",
 		"zod": "~4.6.5"
 	},
 	"peerDependencies": {
@@ -365,9 +388,11 @@
 		"@types/aws-lambda": ">=8.10.163",
 		"better-auth": ">=1.7.5",
 		"hono": ">=4.13.8",
+		"ioredis": ">=6.0.0",
 		"kysely": "~0.29.6",
 		"msw": ">=2.15.0",
-		"pg": ">=8.23.0"
+		"pg": ">=8.23.0",
+		"ws": ">=8.22.0"
 	},
 	"peerDependenciesMeta": {
 		"@aws-sdk/client-kms": {
@@ -409,6 +434,9 @@
 		"hono": {
 			"optional": true
 		},
+		"ioredis": {
+			"optional": true
+		},
 		"kysely": {
 			"optional": true
 		},
@@ -416,6 +444,9 @@
 			"optional": true
 		},
 		"pg": {
+			"optional": true
+		},
+		"ws": {
 			"optional": true
 		}
 	}

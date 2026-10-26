@@ -34,6 +34,7 @@ import { appKey } from '../workspace/derive.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import type { ComposeService } from './compose.js';
 import { portKeys, portsOf } from './containers.js';
+import { eventsEdgeBucket } from './edges.js';
 import { type EnvOptions, envFor } from './env.js';
 import type { LocalCredentials } from './localCredentials.js';
 import { type Plan, type PlanOptions, planFor } from './plan.js';
@@ -211,7 +212,10 @@ export function appEnvKeys(
 ): Set<string> | undefined {
 	const entry = Object.entries(manifest).find(
 		([id, d]) =>
-			(d.kind === 'rest-api' || d.kind === 'site' || d.kind === 'mobile-app') &&
+			(d.kind === 'rest-api' ||
+				d.kind === 'websocket-api' ||
+				d.kind === 'site' ||
+				d.kind === 'mobile-app') &&
 			appKey(id) === appName,
 	);
 	if (!entry) return undefined;
@@ -233,7 +237,12 @@ export function appEnvKeys(
 		// the ones built from this surface, wherever their files are.
 		...(runnables[id] ?? []),
 	];
-	addEdgeKeys(manifest, edges, keys);
+	addEdgeKeys(
+		manifest,
+		edges,
+		keys,
+		declaration.kind === 'site' || declaration.kind === 'mobile-app',
+	);
 
 	if (declaration.kind === 'site' || declaration.kind === 'mobile-app') {
 		// A site's edge to a `Telemetry` node hands it none of the node's keys:
@@ -283,12 +292,53 @@ export function workerEnvKeys(
 }
 
 /** What each construct an edge reaches hands the process that reaches it. */
+/**
+ * The keys a file server's processor unit reads: its bucket's, and what each
+ * of its processors depends on. `undefined` for a file server with none.
+ */
+export function processorEnvKeys(
+	manifest: ConstructManifest,
+	fileServerId: string,
+	/** Each owner's runnables' edges, from discovery — see `DiscoverOptions`. */
+	runnables: Readonly<Record<string, readonly string[]>> = {},
+): Set<string> | undefined {
+	const server = manifest[fileServerId];
+	if (server?.kind !== 'file-server' || !server.processors?.length) {
+		return undefined;
+	}
+
+	const keys = new Set<string>();
+	addEdgeKeys(
+		manifest,
+		[
+			server.of,
+			...server.processors.flatMap((p) => p.dependencies.map((d) => d.target)),
+			...(runnables[fileServerId] ?? []),
+		],
+		keys,
+	);
+	return keys;
+}
+
 function addEdgeKeys(
 	manifest: ConstructManifest,
 	edges: readonly string[],
 	keys: Set<string>,
+	/** The process is a bundle a browser or a phone runs. */
+	client = false,
 ): void {
 	for (const id of edges) {
+		// A bucket's events: its subscribers' process reads where they are
+		// delivered from, and nothing else of the bucket.
+		const bucket = eventsEdgeBucket(id);
+		if (bucket) {
+			if (manifest[bucket]?.kind === 'objects') {
+				keys.add(provideKey(bucket, 'eventsConnectionString'));
+				keys.add(provideKey(bucket, 'eventsToken'));
+			}
+			continue;
+		}
+
 		const target = manifest[id];
 		if (!target) continue;
 		// A surface is reached over HTTP, so its caller is given its address
@@ -298,6 +348,14 @@ function addEdgeKeys(
 		// AUTH_URL, and the auth app alone holds its secret, tenant and mailer.
 		if (target.kind === 'rest-api') {
 			keys.add(provideKey(id, 'url'));
+			continue;
+		}
+		// A WebSocket surface is opened at its address, and sent to through its
+		// publisher — which writes to every socket, so a client is handed the
+		// address alone.
+		if (target.kind === 'websocket-api') {
+			keys.add(provideKey(id, 'url'));
+			if (!client) keys.add(provideKey(id, 'publisherConnectionString'));
 			continue;
 		}
 		for (const key of target.provides ?? []) keys.add(key);

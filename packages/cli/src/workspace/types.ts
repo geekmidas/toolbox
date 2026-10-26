@@ -349,6 +349,13 @@ export interface S3ObjectsConfig {
 	region?: string;
 	/** Keep previous versions of every object. Defaults to the construct's own `versioned`. */
 	versioning?: boolean;
+	/**
+	 * Serve each file server through a CDN on `<fileserver>.<domain>`: a
+	 * CloudFront distribution reading the bucket, its certificate and its DNS
+	 * records, all created by the deploy. On by default, which needs the
+	 * stage to have a domain; `false` serves from the bucket's own endpoint.
+	 */
+	cdn?: boolean;
 }
 
 /** Shared by every provider. */

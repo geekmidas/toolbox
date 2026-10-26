@@ -24,7 +24,11 @@ import { loadWorkspaceConfig } from '../config';
 import { loadSecretsForApp } from '../credentials';
 import { GkmError } from '../errors';
 import { type ConstructSource, discover } from '../reconcile/discover';
-import { constructGlobs, reconcileWorkspace } from '../reconcile/workspace.js';
+import {
+	backendsOf,
+	constructGlobs,
+	reconcileWorkspace,
+} from '../reconcile/workspace.js';
 import { secretsStoreFor } from '../secrets/store.js';
 import { TEST_STAGE } from '../workspace/stages';
 import type { NormalizedWorkspace } from '../workspace/types.js';
@@ -62,6 +66,11 @@ export {
 	MigrationHasNoUp,
 	SeedHasNoSeed,
 } from './provider';
+export {
+	registerSeedDrivers,
+	type SeedBackends,
+	SeedDriversUnresolved,
+} from './seedDrivers';
 
 const logger = console;
 
@@ -186,6 +195,7 @@ export async function seedCommand(options: MigrateOptions = {}): Promise<void> {
 		sources: ready.sources,
 		env: ready.env,
 		stage: ready.stage,
+		backends: backendsOf(ready.workspace),
 		...(options.construct ? { only: options.construct } : {}),
 	});
 
@@ -288,6 +298,7 @@ export async function prepareDevDatabases(
 	const { migrations, seeds } = await migrateAndSeed({
 		...options,
 		stage: workspace.stages.local,
+		backends: backendsOf(workspace),
 	});
 	logMigrations(migrations);
 	logSeeds(seeds);

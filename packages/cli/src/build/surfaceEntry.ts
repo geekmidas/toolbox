@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import {
 	mountRequestSpansCode,
@@ -38,12 +38,33 @@ export function selfServingSurface(options: {
 }): { id: string; source: ConstructSource } | undefined {
 	const { declared, sources, workspaceRoot, appRoot } = options;
 
-	const served = servedSurface(declared, workspaceRoot, appRoot);
+	const served =
+		servedSurface(declared, workspaceRoot, appRoot) ??
+		servedWebSocketApi(declared, workspaceRoot, appRoot);
 	const source = served ? sources[served.id] : undefined;
 
 	if (!served || !source || !servesItself(source.construct)) return undefined;
 
 	return { id: served.id, source };
+}
+
+/** The WebSocket surface whose `path` is the directory being built. */
+function servedWebSocketApi(
+	declared: ConstructManifest,
+	workspaceRoot: string,
+	appRoot: string,
+): { id: string } | undefined {
+	return Object.values(declared).find(
+		(d) =>
+			d.kind === 'websocket-api' &&
+			resolve(workspaceRoot, d.path) === resolve(appRoot),
+	);
+}
+
+/** An import specifier for `file`, from `outputDir`, as the bundle sees it. */
+function specifierOf(outputDir: string, file: string): string {
+	const rel = relative(outputDir, file).replace(/\.ts$/, '.js');
+	return rel.startsWith('.') ? rel : `./${rel}`;
 }
 
 /**
@@ -61,11 +82,25 @@ export function selfServingSurface(options: {
 export async function writeSurfaceEntry(
 	outputDir: string,
 	source: ConstructSource,
+	/**
+	 * Files exporting what was built from the surface — a WebSocket surface's
+	 * routes. Handed to its `server()`, which keeps what is its own.
+	 */
+	served: readonly string[] = [],
 ): Promise<void> {
 	await mkdir(outputDir, { recursive: true });
 
-	const rel = relative(outputDir, source.file).replace(/\.ts$/, '.js');
-	const specifier = rel.startsWith('.') ? rel : `./${rel}`;
+	const specifier = specifierOf(outputDir, source.file);
+	const modules = served.filter((file) => file !== source.file);
+	const imports = modules
+		.map(
+			(file, index) =>
+				`import * as served${index} from '${specifierOf(outputDir, file)}';\n`,
+		)
+		.join('');
+	const options = modules.length
+		? `{ envParser, context: snifferContext, modules: [${modules.map((_, index) => `served${index}`).join(', ')}] }`
+		: '{ envParser, context: snifferContext }';
 
 	await writeFile(
 		join(outputDir, 'app.ts'),
@@ -78,10 +113,19 @@ export async function writeSurfaceEntry(
 import { snifferContext } from '@geekmidas/constructs';
 import { defaultEnvParser } from '@geekmidas/constructs/endpoints';
 import { ${source.exportName} as surface } from '${specifier}';
-
+${imports}
 const envParser = defaultEnvParser();
 
-export const { app } = await surface.server({ envParser, context: snifferContext });
+const served = await surface.server(${options});
+
+export const app = served.app;
+/** Hands the HTTP server's upgrades to the surface, when it takes them. */
+export const attach: ((server: unknown) => void) | undefined = served.attach;
+/**
+ * Ends what the HTTP server would otherwise wait on forever — open sockets —
+ * before it is closed.
+ */
+export const release: (() => Promise<void>) | undefined = served.release;
 
 export default app;
 `,
@@ -121,6 +165,9 @@ const shutdown = async () => {
   shuttingDown = true;
   const deadline = Number(process.env.GKM_SHUTDOWN_TIMEOUT_MS) || 8000;
   setTimeout(() => process.exit(1), deadline).unref();
+  // Upgraded sockets hold the server open: they are closed first, with a code
+  // that tells a client to reconnect elsewhere.
+  await release?.();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await runShutdownHooks((error) => console.error(error));
   process.exit(0);
@@ -143,7 +190,7 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 ${options.gracefulShutdown ? "import { runShutdownHooks } from '@geekmidas/constructs';\n" : ''}
 ${startTelemetryCode([options.healthCheck])}
-const { app: surface } = await import('./app.js');
+const { app: surface, attach, release } = await import('./app.js');
 
 const port = Number(process.env.PORT) || 3000;
 
@@ -155,6 +202,7 @@ app.get(${JSON.stringify(options.healthCheck)}, (c) =>
 app.route('/', surface);
 
 const server = serve({ fetch: app.fetch, port });
+attach?.(server);
 console.log(JSON.stringify({ msg: 'Production server started', port }));
 ${shutdown}`,
 	);

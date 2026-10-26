@@ -418,6 +418,7 @@ export interface BuildResult {
 export type {
 	CronInfo,
 	FunctionInfo,
+	ProcessorInfo,
 	QueueInfo,
 	RouteInfo,
 	SubscriberInfo,

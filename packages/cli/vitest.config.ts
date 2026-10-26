@@ -77,6 +77,7 @@ export default defineProject({
 		globalSetup: [
 			'../testkit/test/awsSetup.ts',
 			'../testkit/test/globalSetup.ts',
+			// A bundled processor unit reads from MinIO.
 			'../testkit/test/minioSetup.ts',
 		],
 		// `*.test-d.ts` are compiled, and a type error in one is a failure: an

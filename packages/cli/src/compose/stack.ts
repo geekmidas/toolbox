@@ -28,7 +28,12 @@ import {
 	type StackBackups,
 	stackBackups,
 } from '../backups/service.js';
-import { type WorkerUnit, workerUnits } from '../build/workers.js';
+import {
+	type ProcessorUnit,
+	processorUnits,
+	type WorkerUnit,
+	workerUnits,
+} from '../build/workers.js';
 import {
 	type DevServiceUse,
 	devServicesUsed,
@@ -41,13 +46,36 @@ import {
 import { isMainFrontendApp, resolveHost } from '../deploy/domain.js';
 import { type DeployIdentity, imageRef } from '../deploy/identity.js';
 import { validateImageRef } from '../docker/imageRef.js';
-import { appDockerfile, workerDockerfile } from '../docker/index.js';
+import {
+	appDockerfile,
+	processorDockerfile,
+	processorNative,
+	workerDockerfile,
+} from '../docker/index.js';
 import { composeBuildPaths, type ImageLayout } from '../docker/layout.js';
-import { TURBO_VERSION, WORKER_PORT } from '../docker/templates.js';
+import {
+	PROCESSOR_PORT,
+	TURBO_VERSION,
+	WORKER_PORT,
+} from '../docker/templates.js';
 import { GkmError } from '../errors';
-import { subscriberRoute } from '../generators/subscriberRoute.js';
+import {
+	objectsRoute,
+	SNS_SUBSCRIPTIONS_KEY,
+	subscriberRoute,
+} from '../generators/subscriberRoute.js';
 import { stageProviderNotes } from '../providers/notes.js';
-import { appEnvKeys, networkEnv, workerEnvKeys } from '../reconcile/apps.js';
+import {
+	ORIGIN_VERIFY_HEADER,
+	originSecretKey,
+	processorOriginHost,
+} from '../providers/processorOrigin.js';
+import {
+	appEnvKeys,
+	networkEnv,
+	processorEnvKeys,
+	workerEnvKeys,
+} from '../reconcile/apps.js';
 import { hostFor } from '../reconcile/caddyfile.js';
 import { type ComposeService, composeFor } from '../reconcile/compose.js';
 import { DEFAULT_IMAGES, portKeys } from '../reconcile/containers.js';
@@ -60,6 +88,11 @@ import {
 	type LocalCredentials,
 	postgresSuperuser,
 } from '../reconcile/localCredentials.js';
+import {
+	minioWebhookEnv,
+	type ObjectWebhook,
+	watchedBuckets,
+} from '../reconcile/objectEvents.js';
 import { type Plan, type PlannedResource, planFor } from '../reconcile/plan.js';
 import { bucketLifecycles, bucketPolicies } from '../reconcile/provision.js';
 import type { StageSecrets } from '../secrets/types.js';
@@ -101,7 +134,13 @@ import {
 	type StackRedis,
 	stackRedis,
 } from './redis.js';
-import type { ComposeProxy, EdgeRoute, EdgeTls } from './routes.js';
+import {
+	type ComposeProxy,
+	EDGE_LIMITS,
+	type EdgeRoute,
+	type EdgeTls,
+	NOFILE,
+} from './routes.js';
 import { publicBuildValues } from './siteBuild.js';
 import { type SiteAuth, siteAuth, sitePasswordKey } from './sitePassword.js';
 import {
@@ -199,7 +238,12 @@ export interface StackApp extends AppImage {
 	name: string;
 	/** The construct it serves. */
 	id: string;
-	kind: 'rest-api' | 'site';
+	kind: 'rest-api' | 'websocket-api' | 'site';
+	/**
+	 * How many containers serve it, each an upstream of its route: `api`,
+	 * then `api-2`, `api-3`. One, but for a surface that asked for more.
+	 */
+	replicas: number;
 	/** Its directory, relative to the workspace root. */
 	path: string;
 	port: number;
@@ -240,10 +284,81 @@ export interface StackWorker extends AppImage {
 export interface WorkerPush {
 	/** e.g. `jobs.example.com` */
 	host: string;
-	/** `https://<host>` — what the worker subscribes its routes under. */
+	/** `https://<host>` — what each route is subscribed under. */
 	url: string;
 	/** Each pushed subscriber's route, and nothing else the worker serves. */
 	paths: string[];
+	/**
+	 * Each pushed subscriber: its export, the key of the SNS connection its
+	 * deliveries come from, and the URL the deploy subscribes for it.
+	 */
+	subscribers: PushedSubscriber[];
+}
+
+/** One subscriber SNS pushes to, as the deploy subscribes it. */
+export interface PushedSubscriber {
+	/** Its export — what its subscription ARN is recorded under. */
+	name: string;
+	/**
+	 * The env key of the SNS connection it is delivered from — its topic's
+	 * publisher string, or its bucket's events string.
+	 */
+	connectionKey: string;
+	/** `https://<host>/__gkm/subscribers/<name>` */
+	endpoint: string;
+	/**
+	 * The event types a topic subscriber names — its subscription's filter.
+	 * Absent for a bucket's subscriber.
+	 */
+	events?: readonly string[];
+}
+
+/**
+ * A file server's processors in the stack: one container answering each of
+ * their patterns, built from the app whose build writes their entry.
+ *
+ * Reached on the file server's own host when the stack's MinIO serves it —
+ * its patterns sent here, every other path to the bucket — or, when a CDN
+ * serves the bucket, on a host of its own that only the CDN may call.
+ */
+export interface StackProcessor extends AppImage {
+	/** Its compose service name — `assets-processors`. */
+	name: string;
+	/** The file server's surface it answers on, `AssetsServer`. */
+	id: string;
+	/** The app whose build writes its entry, which its image is built from. */
+	host: string;
+	port: number;
+	/** Its processors' prefixes — `/i/` — the paths the edge sends it. */
+	prefixes: string[];
+	/** Packages with native code, installed in its image for linux. */
+	native: string[];
+	/**
+	 * Where a CDN reaches it, when the bucket is served by one: its host, and
+	 * the header value the CDN adds, without which the edge refuses.
+	 */
+	origin?: { host: string; secret: string };
+	build?: AppBuild;
+	/** Exactly the keys its processors read. */
+	env?: Record<string, string>;
+}
+
+/** A CDN serves the bucket, and the secret it sends the processors is not in the stage. */
+export class ProcessorOriginSecretMissing extends GkmError {
+	constructor(
+		readonly fileServer: string,
+		readonly key: string,
+		readonly stage: string,
+	) {
+		super(
+			`'${fileServer}' has processors, and its bucket is not the stack's MinIO, ` +
+				`so they are reached through the CDN in front of it — which sends ` +
+				`${key}, and stage '${stage}' has none. It is written by the deploy ` +
+				`that creates the CDN (\`deploy.objects.${stage}\` on s3, cdn on): run ` +
+				`gkm deploy --stage ${stage}.`,
+		);
+		this.name = 'ProcessorOriginSecretMissing';
+	}
 }
 
 /**
@@ -282,6 +397,9 @@ export interface StackService {
 	/** Files handed to the container inline — see {@link withCaddyConfigs}. */
 	configs?: { source: string; target: string; mode?: number }[];
 	labels?: Record<string, string>;
+	/** Per-container kernel settings — namespaced ones only. */
+	sysctls?: Record<string, string>;
+	ulimits?: Record<string, { soft: number; hard: number }>;
 	depends_on?: Record<string, { condition: 'service_healthy' }>;
 	healthcheck?: ComposeService['healthcheck'];
 	/**
@@ -369,6 +487,8 @@ export interface ComposeStack {
 	apps: StackApp[];
 	/** Each Worker with background work, in a container of its own. */
 	workers: StackWorker[];
+	/** Each file server's processors, in a container of their own. */
+	processors: StackProcessor[];
 	/** Each mobile app, and what its build reads for this stage. */
 	mobileApps: StackMobileApp[];
 	/** The infrastructure containers, by compose service name. */
@@ -479,6 +599,13 @@ export interface StackStorage {
 	buckets: string[];
 	/** The open paths of each served bucket. */
 	policies: { bucket: string; open: string[] }[];
+	/**
+	 * Each bucket by construct id and name, and which of them post their
+	 * events to a worker — the notifications gkm writes once MinIO runs.
+	 */
+	objects: { id: string; name: string }[];
+	/** Where MinIO posts each watched bucket's events: on the stack's network. */
+	webhooks: ObjectWebhook[];
 	/** How long each bucket keeps what is under each prefix. */
 	lifecycles: { bucket: string; expire: Readonly<Record<string, number>> }[];
 }
@@ -498,6 +625,22 @@ export interface StackInput {
 	 * pushes to decides whether the worker answers on a host of its own.
 	 */
 	subscribers?: Readonly<Record<string, readonly BoundSubscriber[]>>;
+	/**
+	 * The SNS subscriptions the deploy made for each worker's pushed
+	 * subscribers — worker id → subscriber export → subscription ARN — handed
+	 * to the worker as `GKM_SNS_SUBSCRIPTIONS`. A pushed subscriber without
+	 * one fails the stack: the worker would mount no route for it.
+	 */
+	pushSubscriptions?: Readonly<
+		Record<string, Readonly<Record<string, string>>>
+	>;
+	/**
+	 * Composed before the deploy has made the subscriptions it is about to
+	 * record — to learn where SNS pushes, and with what. No worker is handed
+	 * `GKM_SNS_SUBSCRIPTIONS`, so a pushed subscriber without an ARN is not
+	 * refused: this stack is read, never run.
+	 */
+	recordingSubscriptions?: boolean;
 	stage: string;
 	identity: DeployIdentity;
 	images: {
@@ -696,7 +839,13 @@ export function composeStack(input: StackInput): ComposeStack {
 		workerUnits(workspace, manifest, input.background ?? {}),
 		{ stage, identity, images: input.images },
 	);
-	if (apps.length === 0 && workers.length === 0) {
+	const processors = stackProcessors(processorUnits(workspace, manifest), {
+		manifest,
+		stage,
+		identity,
+		images: input.images,
+	});
+	if (apps.length === 0 && workers.length === 0 && processors.length === 0) {
 		throw new NothingToCompose(workspace.root);
 	}
 
@@ -711,6 +860,12 @@ export function composeStack(input: StackInput): ComposeStack {
 		}
 		if (resource.kind === 'external-api') {
 			owners.set(provideKey(resource.id, 'credentials'), resource);
+		}
+		if (resource.kind === 'websocket-api') {
+			owners.set(
+				provideKey(resource.id, 'publisherConnectionString'),
+				resource,
+			);
 		}
 	}
 
@@ -813,12 +968,29 @@ export function composeStack(input: StackInput): ComposeStack {
 					policies: bucketPolicies(plan).filter((p) =>
 						buckets.includes(p.bucket),
 					),
+					objects: services.minio
+						.map((id) => ({ id, name: byId.get(id)?.name }))
+						.filter((b): b is { id: string; name: string } => Boolean(b.name))
+						.sort((a, b) => a.name.localeCompare(b.name)),
+					// Filled once each worker's environment is resolved, below.
+					webhooks: [],
 					lifecycles: bucketLifecycles(plan).filter((l) =>
 						buckets.includes(l.bucket),
 					),
 				};
 			})()
 		: undefined;
+
+	// A bucket's events keys, so they resolve by where the bucket lives.
+	const bucketEventKeys = new Map<string, string>();
+	for (const resource of plan.resources) {
+		if (resource.kind !== 'objects') continue;
+		bucketEventKeys.set(
+			provideKey(resource.id, 'eventsConnectionString'),
+			resource.id,
+		);
+		bucketEventKeys.set(provideKey(resource.id, 'eventsToken'), resource.id);
+	}
 
 	// Each file server over the stack's MinIO, at a host of its own on the
 	// edge — the shape it has deployed: a domain serving a bucket.
@@ -858,7 +1030,7 @@ export function composeStack(input: StackInput): ComposeStack {
 	const edgeServices = new Set(
 		proxy === 'traefik'
 			? [
-					...apps.map((app) => app.name),
+					...apps.flatMap(replicaNames),
 					...(fileServers.size > 0 ? ['minio'] : []),
 					...(logsBase?.host && logsBase.public ? [LOGS_SERVICE] : []),
 				]
@@ -887,6 +1059,11 @@ export function composeStack(input: StackInput): ComposeStack {
 		seed: credential.seed,
 		// Mailpit on a deployed stage sends as the stage's domain.
 		...(!local && domain ? { mailFrom: `noreply@${domain}` } : {}),
+		// Each watched bucket in the stack's MinIO, whose events it posts to a
+		// worker to relay onto the stack's broker.
+		relayedBuckets: [
+			...watchedBuckets(manifest, input.subscribers ?? {}).keys(),
+		].filter((bucket) => services.minio.includes(bucket)),
 	};
 	const outside = networkEnv(
 		plan,
@@ -901,7 +1078,10 @@ export function composeStack(input: StackInput): ComposeStack {
 		{
 			...derivation,
 			addresses: Object.fromEntries(
-				apps.map((app) => [app.id, `http://${hostOf(app.name)}:${app.port}`]),
+				apps.map((app) => [
+					app.id,
+					`${app.kind === 'websocket-api' ? 'ws' : 'http'}://${hostOf(app.name)}:${app.port}`,
+				]),
 			),
 		},
 		hostOf,
@@ -909,7 +1089,12 @@ export function composeStack(input: StackInput): ComposeStack {
 
 	const surfaceUrls = new Map(
 		plan.resources
-			.filter((r) => r.kind === 'rest-api' || r.kind === 'site')
+			.filter(
+				(r) =>
+					r.kind === 'rest-api' ||
+					r.kind === 'websocket-api' ||
+					r.kind === 'site',
+			)
 			.map((r) => [r.envKey, r.id]),
 	);
 	const appById = new Map(apps.map((app) => [app.id, app]));
@@ -925,6 +1110,14 @@ export function composeStack(input: StackInput): ComposeStack {
 	): string | undefined => {
 		// The server's address is gkm's own: never in an app's environment.
 		if (isReservedStageKey(key)) return undefined;
+		// A bucket's events: relayed onto the stack's broker when the bucket is
+		// in the stack's MinIO, and otherwise wherever the stage says — a topic
+		// the storage publishes to — or nowhere.
+		const watching = bucketEventKeys.get(key);
+		if (watching) {
+			if (custom[key] !== undefined) return custom[key];
+			return services.minio.includes(watching) ? outside[key] : undefined;
+		}
 		// A deployed stage has no inbox: Mailpit runs only locally — not for a
 		// backend, a site's bundle or a phone.
 		if (!local && owner?.kind === 'email' && key.endsWith('_INBOX_URL')) {
@@ -952,14 +1145,25 @@ export function composeStack(input: StackInput): ComposeStack {
 		// Set by hand wins over derived: it is the stage saying what it is.
 		if (custom[key] !== undefined) return custom[key];
 
-		// A cache, in the stack's Redis, by its name on the network.
+		// A cache, in the stack's Redis, by its name on the network — and a
+		// WebSocket surface's publisher, on its pub/sub.
 		if (owner?.kind === 'cache') return redis?.urls[key];
+		if (
+			owner?.kind === 'websocket-api' &&
+			key === provideKey(owner.id, 'publisherConnectionString')
+		) {
+			return redis?.urls[key];
+		}
 
 		// A backend reaches a sibling surface on the compose network; its own
 		// address is the public one, which is what it builds links on. A site
 		// runs in a browser, which has only the public addresses.
 		const surface = surfaceUrls.get(key);
-		if (app.kind === 'rest-api' && surface && surface !== app.id) {
+		if (
+			(app.kind === 'rest-api' || app.kind === 'websocket-api') &&
+			surface &&
+			surface !== app.id
+		) {
 			return inside[key];
 		}
 
@@ -1033,7 +1237,10 @@ export function composeStack(input: StackInput): ComposeStack {
 		if (keys.has(trusted)) {
 			const internal = (byId.get(app.id)?.callers ?? [])
 				.map((caller) => appById.get(caller))
-				.filter((caller): caller is StackApp => caller?.kind === 'rest-api')
+				.filter(
+					(caller): caller is StackApp =>
+						caller?.kind === 'rest-api' || caller?.kind === 'websocket-api',
+				)
 				.map((caller) => `http://${hostOf(caller.name)}:${caller.port}`);
 			const origins = [
 				...(values[trusted] ?? '').split(',').filter(Boolean),
@@ -1106,13 +1313,91 @@ export function composeStack(input: StackInput): ComposeStack {
 				serviceName: worker.name,
 				...(telemetryValues ? { telemetry: telemetryValues } : {}),
 			}),
-			...(push ? { [SUBSCRIBER_PUSH_URL_KEY]: push.url } : {}),
+			...(push && !input.recordingSubscriptions
+				? {
+						[SNS_SUBSCRIPTIONS_KEY]: recordedSubscriptions(
+							worker,
+							push,
+							input.pushSubscriptions?.[worker.id],
+						),
+					}
+				: {}),
 			NODE_ENV: 'production',
 			PORT: String(worker.port),
 			STAGE: stage,
 		};
 		for (const [key, value] of Object.entries(worker.env)) {
 			if (/[\r\n]/.test(value)) throw new EnvValueMultiline(worker.name, key);
+		}
+	}
+
+	// Each file server's processors: on its own host when the stack's MinIO
+	// serves it — their patterns to their container, every other path to the
+	// bucket — and otherwise on a host the CDN in front of the bucket reaches,
+	// with the secret it sends.
+	for (const unit of processors) {
+		const served = fileServers.get(unit.id);
+		if (served) {
+			served.route = {
+				...served.route,
+				handlers: [
+					{
+						name: unit.name,
+						prefixes: unit.prefixes,
+						upstreams: [{ service: unit.name, port: unit.port }],
+					},
+				],
+			};
+		} else if (!local && !input.buildOnly) {
+			if (!domain) throw new NoDomainForStage(stage);
+			const key = originSecretKey(unit.id);
+			const secret = custom[key];
+			if (!secret) throw new ProcessorOriginSecretMissing(unit.id, key, stage);
+			unit.origin = { host: processorOriginHost(unit.id, domain), secret };
+		}
+		if (proxy === 'traefik' && (served || unit.origin)) {
+			edgeServices.add(unit.name);
+		}
+
+		if (input.buildOnly) continue;
+		const keys =
+			processorEnvKeys(manifest, unit.id, input.runnables) ?? new Set();
+		unit.env = {
+			// Telemetry: the stage's, when the file server has an edge to the node.
+			...scopeTelemetryEnv(
+				valuesFor({ name: unit.name, id: unit.id, kind: 'rest-api' }, keys),
+				{
+					uses: telemetryOf(manifest, unit.id) !== undefined,
+					serviceName: unit.name,
+					...(telemetryValues ? { telemetry: telemetryValues } : {}),
+				},
+			),
+			NODE_ENV: 'production',
+			PORT: String(unit.port),
+			STAGE: stage,
+		};
+		for (const [key, value] of Object.entries(unit.env)) {
+			if (/[\r\n]/.test(value)) throw new EnvValueMultiline(unit.name, key);
+		}
+	}
+
+	// Each watched bucket in the stack's MinIO posts its events to the worker
+	// that runs one of its subscribers, across the stack's network — with the
+	// token that worker was handed, so the two cannot disagree. Not where its
+	// events come from SNS: then the storage publishes them itself.
+	if (storage && !input.buildOnly) {
+		const watched = watchedBuckets(manifest, input.subscribers ?? {});
+		for (const [bucket, workerId] of watched) {
+			if (!services.minio.includes(bucket)) continue;
+			const worker = workers.find((w) => w.id === workerId);
+			const relay = worker?.env?.[provideKey(bucket, 'eventsConnectionString')];
+			const token = worker?.env?.[provideKey(bucket, 'eventsToken')];
+			if (!worker || !relay || relay.startsWith('sns:') || !token) continue;
+			storage.webhooks.push({
+				bucket,
+				endpoint: `http://${hostOf(worker.name)}:${worker.port}${objectsRoute(bucket)}`,
+				token,
+			});
 		}
 	}
 
@@ -1158,6 +1443,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		infra,
 		apps,
 		workers,
+		processors,
 		credentials: credential.containers,
 		...(storage ? { storage } : {}),
 		...(logs ? { logs } : {}),
@@ -1191,7 +1477,10 @@ export function composeStack(input: StackInput): ComposeStack {
 			(app): EdgeRoute => ({
 				name: app.name,
 				host: app.host,
-				upstreams: [{ service: app.name, port: app.port }],
+				upstreams: replicaNames(app).map((service) => ({
+					service,
+					port: app.port,
+				})),
 				streaming: true,
 				...(app.auth
 					? { auth: { user: app.auth.user, hash: app.auth.hash } }
@@ -1200,6 +1489,24 @@ export function composeStack(input: StackInput): ComposeStack {
 			}),
 		),
 		...[...fileServers.values()].map(({ route }) => route),
+		...processors.flatMap(({ name, port, prefixes, origin }): EdgeRoute[] =>
+			origin
+				? [
+						{
+							name,
+							host: origin.host,
+							upstreams: [{ service: name, port }],
+							streaming: false,
+							prefixes,
+							requireHeader: {
+								name: ORIGIN_VERIFY_HEADER,
+								value: origin.secret,
+							},
+							health: '/health',
+						},
+					]
+				: [],
+		),
 		...workers.flatMap(({ name, port, push }): EdgeRoute[] =>
 			push
 				? [
@@ -1261,6 +1568,19 @@ export function composeStack(input: StackInput): ComposeStack {
 			{ layout, workspaceRoot: workspace.root, cache: STACK_CACHE },
 		);
 	}
+	for (const unit of processors) {
+		if (!unit.build) continue;
+		dockerfiles[unit.build.dockerfile] = processorDockerfile(
+			{ id: unit.id, name: unit.name, app: unit.host },
+			workspace.apps[unit.host]!,
+			{
+				layout,
+				workspaceRoot: workspace.root,
+				native: unit.native,
+				cache: STACK_CACHE,
+			},
+		);
+	}
 
 	return {
 		project,
@@ -1268,6 +1588,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		local,
 		apps,
 		workers,
+		processors,
 		mobileApps,
 		infra,
 		compose,
@@ -1329,7 +1650,11 @@ function stackApps(
 	const resources = new Map(plan.resources.map((r) => [r.id, r]));
 
 	for (const [id, declaration] of Object.entries(manifest)) {
-		if (declaration.kind !== 'rest-api' && declaration.kind !== 'site')
+		if (
+			declaration.kind !== 'rest-api' &&
+			declaration.kind !== 'websocket-api' &&
+			declaration.kind !== 'site'
+		)
 			continue;
 
 		const name = appKey(id);
@@ -1351,10 +1676,12 @@ function stackApps(
 			name,
 			id,
 			kind: declaration.kind,
+			replicas:
+				declaration.kind === 'websocket-api' ? (declaration.replicas ?? 1) : 1,
 			path: app.path,
 			port: app.port,
 			host,
-			url: `https://${host}${options.local && options.https !== 443 ? `:${options.https}` : ''}`,
+			url: `${declaration.kind === 'websocket-api' ? 'wss' : 'https'}://${host}${options.local && options.https !== 443 ? `:${options.https}` : ''}`,
 			ref,
 			tag,
 			...(options.images.mode === 'build'
@@ -1370,15 +1697,13 @@ function stackApps(
 	return apps.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** What the worker reads the public base of its push routes from. */
-export const SUBSCRIBER_PUSH_URL_KEY = 'GKM_SUBSCRIBER_PUSH_URL';
-
 /**
  * Where SNS pushes to a worker on a deployed stage, or nothing when it pushes
  * to none of its subscribers.
  *
- * A subscriber is pushed to when its topic's connection string, as this stage
- * resolved it for the worker, is an SNS one — the same test the worker's own
+ * A subscriber is pushed to when the connection string its deliveries come
+ * from — its topic's, or its bucket's events — as this stage resolved it for
+ * the worker, is an SNS one — the same test the worker's own
  * startup makes, so the edge exposes a route exactly when the worker mounts
  * it. Each such route, and nothing else the worker serves, answers on
  * `<worker>.<domain>`.
@@ -1389,17 +1714,65 @@ export function workerPush(
 	env: Readonly<Record<string, string>>,
 	options: { stage: string; domain?: string },
 ): WorkerPush | undefined {
-	const paths = subscribers
-		.filter(({ topic }) =>
-			env[provideKey(topic, 'publisherConnectionString')]?.startsWith('sns:'),
+	const pushed = subscribers
+		.filter(({ connectionKey }) => env[connectionKey]?.startsWith('sns:'))
+		.filter(
+			(subscriber, index, all) =>
+				all.findIndex((s) => s.name === subscriber.name) === index,
 		)
-		.map(({ name }) => subscriberRoute(name))
-		.sort();
-	if (paths.length === 0) return undefined;
+		.sort((a, b) => a.name.localeCompare(b.name));
+	if (pushed.length === 0) return undefined;
 	if (!options.domain) throw new NoDomainForStage(options.stage);
 
 	const host = `${worker.name}.${options.domain}`;
-	return { host, url: `https://${host}`, paths: [...new Set(paths)] };
+	const url = `https://${host}`;
+	return {
+		host,
+		url,
+		paths: pushed.map(({ name }) => subscriberRoute(name)),
+		subscribers: pushed.map(({ name, connectionKey, events }) => ({
+			name,
+			connectionKey,
+			endpoint: `${url}${subscriberRoute(name)}`,
+			...(events ? { events } : {}),
+		})),
+	};
+}
+
+/** A pushed subscriber the deploy recorded no SNS subscription for. */
+export class PushSubscriptionMissing extends GkmError {
+	constructor(
+		readonly worker: string,
+		readonly subscriber: string,
+	) {
+		super(
+			`SNS pushes to '${subscriber}' on the worker '${worker}', and the ` +
+				`deploy recorded no subscription for it, so the worker would mount ` +
+				`no route and SNS would deliver nowhere. Deploy the stage, which ` +
+				`subscribes each pushed subscriber and records its ARN.`,
+		);
+		this.name = 'PushSubscriptionMissing';
+	}
+}
+
+/**
+ * The worker's `GKM_SNS_SUBSCRIPTIONS`: each pushed subscriber's recorded
+ * subscription ARN, and nothing for a subscriber it does not run.
+ *
+ * @throws {PushSubscriptionMissing} when one has none
+ */
+function recordedSubscriptions(
+	worker: Pick<StackWorker, 'name'>,
+	push: WorkerPush,
+	recorded: Readonly<Record<string, string>> = {},
+): string {
+	const arns: Record<string, string> = {};
+	for (const { name } of push.subscribers) {
+		const arn = recorded[name];
+		if (!arn) throw new PushSubscriptionMissing(worker.name, name);
+		arns[name] = arn;
+	}
+	return JSON.stringify(arns);
 }
 
 /** Two constructs the edge would answer on one host. */
@@ -1426,6 +1799,48 @@ function assertHostsUnique(routes: readonly EdgeRoute[]): void {
 		if (first !== undefined) throw new EdgeHostTaken(host, first, name);
 		claimed.set(host, name);
 	}
+}
+
+/** Each processor unit's image, and where it is built from. */
+function stackProcessors(
+	units: readonly ProcessorUnit[],
+	options: {
+		manifest: ConstructManifest;
+		stage: string;
+		identity: DeployIdentity;
+		images: StackInput['images'];
+	},
+): StackProcessor[] {
+	return units.map((unit) => {
+		const server = options.manifest[unit.id];
+		const processors =
+			server?.kind === 'file-server' ? (server.processors ?? []) : [];
+		return {
+			app: unit.name,
+			name: unit.name,
+			id: unit.id,
+			host: unit.app,
+			port: PROCESSOR_PORT,
+			prefixes: [...new Set(processors.map((p) => p.prefix))].sort(),
+			native: processorNative(options.manifest, unit.id),
+			ref: validateImageRef(
+				imageRef(
+					options.identity,
+					unit.name,
+					options.images.registry,
+					options.images.tag,
+				),
+			),
+			tag: options.images.tag,
+			...(options.images.mode === 'build'
+				? {
+						build: {
+							dockerfile: `${stackDir(options.stage)}/Dockerfile.${unit.name}`,
+						},
+					}
+				: {}),
+		};
+	});
 }
 
 /** Each worker's image, and where it is built from. */
@@ -1485,6 +1900,19 @@ function hostOf(
 	);
 }
 
+/** An app's compose services, one per replica: `api`, `api-2`, `api-3`. */
+export function replicaNames(
+	app: Pick<StackApp, 'name' | 'replicas'>,
+): string[] {
+	return [
+		app.name,
+		...Array.from(
+			{ length: app.replicas - 1 },
+			(_, i) => `${app.name}-${i + 2}`,
+		),
+	];
+}
+
 /** The compose document: the infrastructure, the apps, and the edge. */
 function stackFile(options: {
 	project: string;
@@ -1492,6 +1920,7 @@ function stackFile(options: {
 	infra: readonly string[];
 	apps: readonly StackApp[];
 	workers: readonly StackWorker[];
+	processors: readonly StackProcessor[];
 	credentials: ContainerCredentials;
 	storage?: StackStorage;
 	logs?: StackLogs;
@@ -1568,6 +1997,9 @@ function stackFile(options: {
 			...minio.environment,
 			MINIO_ROOT_USER: options.storage.user,
 			MINIO_ROOT_PASSWORD: options.storage.password,
+			// Where each watched bucket's events are posted: a worker, on the
+			// stack's network. In the environment, so a change recreates MinIO.
+			...minioWebhookEnv(options.storage.webhooks),
 		};
 		// Loopback only, like Postgres: gkm creates the buckets and their
 		// policies from this machine. The apps reach it on the network, and a
@@ -1594,7 +2026,7 @@ function stackFile(options: {
 	}
 
 	for (const app of apps) {
-		services[app.name] = {
+		const definition: StackService = {
 			image: app.ref,
 			...(app.build
 				? {
@@ -1612,7 +2044,7 @@ function stackFile(options: {
 			restart: 'unless-stopped',
 			// A site is a bundle and reads nothing at runtime; a backend reads
 			// exactly the keys in its own file.
-			...(app.kind === 'rest-api'
+			...(app.kind !== 'site'
 				? {
 						env_file: [{ path: `./${app.name}.env`, format: 'raw' as const }],
 						...(infra.length
@@ -1625,12 +2057,18 @@ function stackFile(options: {
 					}
 				: {}),
 			healthcheck: probe(app.port, app.kind === 'site' ? '/' : '/health'),
+			// Every socket is a descriptor, and Docker's default soft limit is
+			// 1024 wherever the engine was not told otherwise.
+			...(app.kind === 'websocket-api' ? { ulimits: { nofile: NOFILE } } : {}),
 		};
+		// Each replica the same service under its own name: one image, one
+		// env file, and an upstream each.
+		for (const name of replicaNames(app)) services[name] = { ...definition };
 	}
 
-	// A worker: no published port — its health check is Docker's, and the edge
-	// reaches it only where SNS pushes to it.
-	for (const worker of options.workers) {
+	// A worker or a processor unit: no published port — its health check is
+	// Docker's, and the edge reaches it only on the paths it routes there.
+	for (const worker of [...options.workers, ...options.processors]) {
 		services[worker.name] = {
 			image: worker.ref,
 			...(worker.build
@@ -1664,10 +2102,12 @@ function stackFile(options: {
 			// The Caddyfile and the stage's own certificate are inline configs,
 			// added as the file is written (`withCaddyConfigs`).
 			volumes: ['caddy-data:/data', 'caddy-config:/config'],
+			...EDGE_LIMITS,
 			depends_on: Object.fromEntries(
 				[
-					...apps.map((app) => app.name),
+					...apps.flatMap(replicaNames),
 					...options.workers.filter((w) => w.push).map((w) => w.name),
+					...options.processors.map((p) => p.name),
 				].map((name) => [name, HEALTHY]),
 			),
 			healthcheck: {

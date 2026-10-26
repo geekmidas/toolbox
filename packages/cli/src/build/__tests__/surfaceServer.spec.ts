@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { writeSurfaceServer } from '../surfaceEntry';
+import { writeSurfaceEntry, writeSurfaceServer } from '../surfaceEntry';
 
 /**
  * The process a production image runs for a surface that serves itself — an
@@ -79,5 +79,80 @@ describe('writeSurfaceServer', { timeout: 60_000 }, () => {
 
 		child.kill('SIGTERM');
 		expect(await exited).toBe(0);
+	});
+});
+
+describe('a WebSocket surface, served', { timeout: 60_000 }, () => {
+	it('takes upgrades on the same port as its health, and closes every socket with 1012 on SIGTERM', async () => {
+		const root = mkdtempSync(join(dir, 'ws-'));
+		writeFileSync(join(root, 'package.json'), '{ "type": "module" }\n');
+		writeFileSync(
+			join(root, 'realtime.ts'),
+			`import { WebSocketApi } from '@geekmidas/constructs/websocket-api';
+
+export const realtime = new WebSocketApi('Realtime', { path: '.' });
+`,
+		);
+		writeFileSync(
+			join(root, 'routes.ts'),
+			`import { realtime } from './realtime.js';
+
+export const echo = realtime.route('echo').handle(({ body }) => body);
+`,
+		);
+		const outputDir = join(root, '.gkm', 'server');
+		await writeSurfaceEntry(
+			outputDir,
+			{
+				file: join(root, 'realtime.ts'),
+				exportName: 'realtime',
+				construct: undefined,
+			},
+			[join(root, 'routes.ts'), join(root, 'realtime.ts')],
+		);
+		const entry = await writeSurfaceServer(outputDir, {
+			healthCheck: '/health',
+			gracefulShutdown: true,
+		});
+		const port = await freePort();
+		const child = spawn(process.execPath, ['--import', 'tsx', entry], {
+			cwd: root,
+			env: { ...process.env, PORT: String(port) },
+			stdio: 'ignore',
+		});
+		const exited = new Promise<number | null>((resolve) =>
+			child.once('exit', resolve),
+		);
+
+		const deadline = Date.now() + 30_000;
+		while (
+			!(await fetch(`http://localhost:${port}/health`).catch(() => undefined))
+		) {
+			if (Date.now() > deadline) throw new Error('server did not start');
+			await new Promise((r) => setTimeout(r, 100));
+		}
+
+		const socket = new WebSocket(`ws://localhost:${port}/`);
+		await new Promise((resolve, reject) => {
+			socket.onopen = resolve;
+			socket.onerror = reject;
+		});
+		const reply = new Promise<unknown>((resolve) => {
+			socket.onmessage = (event) => resolve(JSON.parse(String(event.data)));
+		});
+		socket.send(JSON.stringify({ action: 'echo', id: 1, data: 'hi' }));
+		expect(await reply).toEqual({ action: 'echo', id: 1, data: 'hi' });
+
+		const closed = new Promise<number>((resolve) => {
+			socket.onclose = (event) => resolve(event.code);
+		});
+		const signalled = Date.now();
+		child.kill('SIGTERM');
+
+		expect(await closed).toBe(1012);
+		expect(await exited).toBe(0);
+		// Released, not waited out: an open socket held the server until the
+		// shutdown deadline before.
+		expect(Date.now() - signalled).toBeLessThan(5_000);
 	});
 });

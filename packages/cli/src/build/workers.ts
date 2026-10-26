@@ -65,23 +65,7 @@ export function workerUnits(
 	manifest: ConstructManifest,
 	background: Readonly<Record<string, readonly string[]>>,
 ): WorkerUnit[] {
-	const hosts = Object.entries(workspace.apps)
-		.filter(([, app]) => app.type === 'backend' && !app.entry)
-		.map(([name, app]) => {
-			const surface = Object.entries(manifest).find(
-				([id, d]) => d.kind === 'rest-api' && appKey(id) === name,
-			)?.[1];
-			return {
-				name,
-				root: isAbsolute(app.path) ? app.path : join(workspace.root, app.path),
-				// Endpoints declared on the surface itself are one that serves
-				// itself — an auth server — whose build generates no server.
-				generated: !(
-					surface?.kind === 'rest-api' && surface.endpoints.length > 0
-				),
-			};
-		})
-		.sort((a, b) => a.name.localeCompare(b.name));
+	const hosts = hostApps(workspace, manifest);
 
 	const units: WorkerUnit[] = [];
 	for (const [id, declaration] of Object.entries(manifest)) {
@@ -92,27 +76,131 @@ export function workerUnits(
 		const name = appKey(id);
 		if (workspace.apps[name]) throw new WorkerNameTaken(id, name);
 
-		// The app holding the most of its work; then one that generates a
-		// server; then by name.
-		const ranked = hosts
-			.map((host) => ({
-				host,
-				holds: files.filter((file) => isUnder(file, host.root)).length,
-			}))
-			.sort(
-				(a, b) =>
-					b.holds - a.holds ||
-					Number(b.host.generated) - Number(a.host.generated),
-			);
-		const host = ranked[0]?.host;
-		if (!host || (ranked[0]!.holds === 0 && !host.generated)) {
-			throw new WorkerHasNoApp(id);
-		}
+		const host = hostFor(hosts, files);
+		if (!host) throw new WorkerHasNoApp(id);
 
 		units.push({ id, name, app: host.name });
 	}
 
 	return units.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** The service and image name of a file server's processors: `assets-processors`. */
+export function processorUnitName(fileServerId: string): string {
+	return `${appKey(fileServerId.replace(/Server$/, ''))}-processors`;
+}
+
+/** A file server's processors as a deploy unit: one process, one image. */
+export interface ProcessorUnit {
+	/** The file server's surface, `AssetsServer`. */
+	id: string;
+	/** Its service and image name, `assets-processors`. */
+	name: string;
+	/** The backend app whose build writes its entry, `api`. */
+	app: string;
+}
+
+/** A file server with processors and no backend app to build them from. */
+export class ProcessorsHaveNoApp extends GkmError {
+	constructor(readonly fileServer: string) {
+		super(
+			`The file server '${fileServer}' has processors, and the workspace has ` +
+				`no backend app that builds a server to carry their entry. Declare a ` +
+				`RestApi whose app holds the processors' code.`,
+		);
+		this.name = 'ProcessorsHaveNoApp';
+	}
+}
+
+/**
+ * The processor units a workspace deploys — each file server with processors
+ * — and the app each is built from, chosen as a worker's is: the backend app
+ * holding the most of its processors' files.
+ */
+export function processorUnits(
+	workspace: NormalizedWorkspace,
+	manifest: ConstructManifest,
+): ProcessorUnit[] {
+	const hosts = hostApps(workspace, manifest);
+
+	const units: ProcessorUnit[] = [];
+	for (const declaration of Object.values(manifest)) {
+		if (declaration.kind !== 'file-server') continue;
+		const processors = declaration.processors ?? [];
+		if (processors.length === 0) continue;
+
+		// Each handler is its source, `apps/api/processors/thumbs.ts#thumbs`,
+		// until a build replaces it.
+		const files = processors.map(({ handler }) => {
+			const file = handler.split('#')[0] ?? handler;
+			return isAbsolute(file) ? file : join(workspace.root, file);
+		});
+		const host = hostFor(hosts, files);
+		if (!host) throw new ProcessorsHaveNoApp(declaration.id);
+
+		const name = processorUnitName(declaration.id);
+		if (workspace.apps[name]) throw new WorkerNameTaken(declaration.id, name);
+		units.push({ id: declaration.id, name, app: host.name });
+	}
+
+	return units.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+interface HostApp {
+	name: string;
+	root: string;
+	generated: boolean;
+}
+
+/** The backend apps whose builds generate a server, each where it lives. */
+function hostApps(
+	workspace: NormalizedWorkspace,
+	manifest: ConstructManifest,
+): HostApp[] {
+	return Object.entries(workspace.apps)
+		.filter(([, app]) => app.type === 'backend' && !app.entry)
+		.map(([name, app]) => {
+			const surface = Object.entries(manifest).find(
+				([id, d]) =>
+					(d.kind === 'rest-api' || d.kind === 'websocket-api') &&
+					appKey(id) === name,
+			)?.[1];
+			return {
+				name,
+				root: isAbsolute(app.path) ? app.path : join(workspace.root, app.path),
+				// Endpoints declared on the surface itself are one that serves
+				// itself — an auth server — whose build generates no server. A
+				// WebSocket surface always serves itself.
+				generated: !(
+					surface?.kind === 'websocket-api' ||
+					(surface?.kind === 'rest-api' && surface.endpoints.length > 0)
+				),
+			};
+		})
+		.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * The app holding the most of these files; then one that generates a server;
+ * then by name. None when no app holds any and none generates a server.
+ */
+function hostFor(
+	hosts: readonly HostApp[],
+	files: readonly string[],
+): HostApp | undefined {
+	const ranked = hosts
+		.map((host) => ({
+			host,
+			holds: files.filter((file) => isUnder(file, host.root)).length,
+		}))
+		.sort(
+			(a, b) =>
+				b.holds - a.holds ||
+				Number(b.host.generated) - Number(a.host.generated),
+		);
+	const host = ranked[0]?.host;
+	if (!host || (ranked[0]!.holds === 0 && !host.generated)) return undefined;
+	return host;
 }
 
 /** Whether `file` is inside `dir`. */

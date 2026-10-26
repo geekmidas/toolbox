@@ -6,9 +6,15 @@ import {
 	provideKey,
 	publicEnvFor,
 } from '@geekmidas/manifest';
-import { type WorkerUnit, workerUnits } from '../build/workers.js';
+import {
+	type ProcessorUnit,
+	processorUnits,
+	type WorkerUnit,
+	workerUnits,
+} from '../build/workers.js';
 import { loadWorkspaceConfig } from '../config';
 import { GkmError } from '../errors';
+import { processorBundleName } from '../generators/ProcessorGenerator.js';
 import { workerBundleName } from '../generators/WorkerGenerator.js';
 import { output } from '../output';
 import { dockerfileOf } from '../reconcile/apps.js';
@@ -31,8 +37,10 @@ import {
 	generateEntryDockerfile,
 	generateNextjsDockerfile,
 	generateNodeWebDockerfile,
+	generateProcessorDockerfile,
 	generateViteStaticDockerfile,
 	generateWorkerDockerfile,
+	PROCESSOR_PORT,
 	resolveDockerConfig,
 	WORKER_PORT,
 } from './templates';
@@ -343,6 +351,31 @@ export async function workspaceDockerCommand(
 		});
 	}
 
+	// Each file server's processors: an image of their own, built from the
+	// app whose build writes their entry.
+	for (const unit of manifest ? processorUnits(workspace, manifest) : []) {
+		logger.log(
+			`\n   📄 Generating Dockerfile for ${unit.name} (processors of ${unit.id}, built from ${unit.app})`,
+		);
+		const dockerfile = processorDockerfile(unit, workspace.apps[unit.app]!, {
+			layout,
+			workspaceRoot: workspace.root,
+			native: processorNative(manifest!, unit.id),
+		});
+		const path = workerDockerfileOf(unit.name);
+		const dockerfilePath = join(workspace.root, path);
+		await mkdir(dirname(dockerfilePath), { recursive: true });
+		await writeFile(dockerfilePath, dockerfile);
+		logger.log(`      Generated: ${path}`);
+
+		results.push({
+			appName: unit.name,
+			type: 'backend',
+			dockerfile: dockerfilePath,
+			imageName: imageNames[unit.name] ?? unit.name,
+		});
+	}
+
 	const dockerignorePath = await ensureDockerignore(layout.buildRoot);
 	logger.log(`\n   Ensured: ${dockerignorePath}`);
 
@@ -474,6 +507,52 @@ export function workerDockerfile(
 		worker: worker.id,
 		bundle: workerBundleName(worker.id),
 		healthCheckPath: '/health',
+		...(options.cache ? { cache: options.cache } : {}),
+	});
+}
+
+/** The native packages a file server's processors named, once each. */
+export function processorNative(
+	manifest: ConstructManifest,
+	fileServerId: string,
+): string[] {
+	const server = manifest[fileServerId];
+	if (server?.kind !== 'file-server') return [];
+	return [
+		...new Set((server.processors ?? []).flatMap((p) => p.native ?? [])),
+	].sort();
+}
+
+/**
+ * A file server's processor unit's Dockerfile: its host app's build, and the
+ * unit's bundle as the runner, with its processors' native packages
+ * installed beside it — see `generateProcessorDockerfile`.
+ */
+export function processorDockerfile(
+	unit: ProcessorUnit,
+	host: NormalizedAppConfig,
+	options: {
+		layout: ImageLayout;
+		workspaceRoot: string;
+		/** Packages with native code its processors named. */
+		native: readonly string[];
+		cache?: CacheBackend;
+	},
+): string {
+	const image = appImageOptions(
+		options.layout,
+		unit.app,
+		host,
+		options.workspaceRoot,
+	);
+	return generateProcessorDockerfile({
+		...image,
+		imageName: unit.name,
+		port: PROCESSOR_PORT,
+		fileServer: unit.id,
+		bundle: processorBundleName(unit.id),
+		healthCheckPath: '/health',
+		...(options.native.length ? { external: [...options.native] } : {}),
 		...(options.cache ? { cache: options.cache } : {}),
 	});
 }

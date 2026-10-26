@@ -61,6 +61,11 @@ export interface ComposeAppOptions {
 	 * Put the site behind a `RandomPassword`, `SitePassword`, on these stages.
 	 */
 	sitePassword?: readonly string[];
+	/**
+	 * A `WebSocketApi`, `Realtime` in `apps/realtime` on three replicas, with
+	 * one route — and an API endpoint that sends to its sockets.
+	 */
+	realtime?: boolean;
 }
 
 /**
@@ -138,6 +143,7 @@ export const web = new StaticSite('Web', {
 `,
 		);
 	}
+	if (options.realtime) writeRealtime(dir, name);
 	if (options.mobile) {
 		const stages =
 			typeof options.mobile === 'object'
@@ -219,6 +225,58 @@ export default defineWorkspace({
   },
 });
 `,
+	);
+}
+
+/** The WebSocket surface — see `ComposeAppOptions.realtime`. */
+function writeRealtime(dir: string, name: string): void {
+	const write = (path: string, source: string) => {
+		mkdirSync(join(dir, path, '..'), { recursive: true });
+		writeFileSync(join(dir, path), source);
+	};
+	write(
+		'constructs/realtime.ts',
+		`import { WebSocketApi } from '@geekmidas/constructs/websocket-api';
+import { logger } from './logger.js';
+
+/** Long-lived connections, on three processes. */
+export const realtime = new WebSocketApi('Realtime', {
+  path: 'apps/realtime',
+  replicas: 3,
+  logger,
+});
+`,
+	);
+	write(
+		'apps/realtime/endpoints/echo.ts',
+		`import { z } from 'zod';
+import { realtime } from '../../../constructs/realtime.js';
+
+export const echo = realtime
+  .route('echo')
+  .body(z.object({ text: z.string() }))
+  .handle(({ body }) => body);
+`,
+	);
+	write(
+		'apps/api/endpoints/notify.ts',
+		`import { z } from 'zod';
+import { api } from '../../../constructs/api.js';
+import { realtime } from '../../../constructs/realtime.js';
+
+/** Sends to a socket the realtime surface holds. */
+export const notify = api
+  .post('/notify')
+  .dependsOn([realtime])
+  .body(z.object({ to: z.string() }))
+  .handle(async ({ body, services }) => {
+    await services.realtime.send(body.to, { hello: true });
+  });
+`,
+	);
+	write(
+		'apps/realtime/package.json',
+		`${JSON.stringify({ name: `@${name}/realtime`, private: true, type: 'module' }, null, 2)}\n`,
 	);
 }
 

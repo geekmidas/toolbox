@@ -458,6 +458,8 @@ describe('deployAccess', () => {
 			expect(statements.map((s) => s.Sid)).toEqual([
 				'StageSecrets',
 				'StageBuckets',
+				'StageBucketTopics',
+				'StageBucketDeadLetters',
 				'StageBucketUsers',
 			]);
 			expect(statements[1]!.Action).toContain('s3:CreateBucket');
@@ -469,13 +471,27 @@ describe('deployAccess', () => {
 					's3:PutLifecycleConfiguration',
 				]),
 			);
+			// A watched bucket's notifications, topic and dead-letter queue —
+			// by the bucket's name, in whichever region it is.
+			expect(statements[1]!.Action).toContain('s3:PutBucketNotification');
+			expect(statements[2]!.Action).toContain('sns:Subscribe');
+			expect(statements[2]!.Resource).toContain(
+				'arn:aws:sns:*:111:shop-prod-uploads-events',
+			);
+			expect(statements[2]!.Resource).toContain(
+				'arn:aws:sns:*:111:shop-prod-uploads-events:*',
+			);
+			expect(statements[2]!.Action).not.toContain('sns:Publish');
+			expect(statements[3]!.Resource).toContain(
+				'arn:aws:sqs:*:111:shop-prod-uploads-events-dlq',
+			);
 			expect(statements[1]!.Resource).toEqual([
 				'arn:aws:s3:::shop-prod-avatars',
 				'arn:aws:s3:::shop-prod-avatars-??????',
 				'arn:aws:s3:::shop-prod-uploads',
 				'arn:aws:s3:::shop-prod-uploads-??????',
 			]);
-			expect(statements[2]!.Action).toEqual([
+			expect(statements[4]!.Action).toEqual([
 				'iam:GetUser',
 				'iam:CreateUser',
 				'iam:TagUser',
@@ -486,10 +502,56 @@ describe('deployAccess', () => {
 				'iam:CreateAccessKey',
 				'iam:DeleteAccessKey',
 			]);
-			expect(statements[2]!.Resource).toEqual([
+			expect(statements[4]!.Resource).toEqual([
 				'arn:aws:iam::111:user/gkm/gkm-shop-prod-avatars',
 				'arn:aws:iam::111:user/gkm/gkm-shop-prod-uploads',
 			]);
+		});
+
+		it('creates a served bucket’s certificate and distribution, unless the stage serves it without a CDN', () => {
+			const served = {
+				...buckets('Uploads'),
+				UploadsServer: { kind: 'file-server', of: 'Uploads' },
+			} as unknown as ConstructManifest;
+			const sids = (objects: Record<string, unknown>, manifest = served) => {
+				const access = deployAccess(
+					workspace({ target: 'compose', store: ssm, objects }),
+					'prod',
+					undefined,
+					manifest,
+				);
+				if (access.kind !== 'scoped') throw new Error('not scoped');
+				return access.statements('111');
+			};
+
+			const statements = sids({ prod: { provider: 's3' } });
+			expect(statements.map((s) => s.Sid)).toEqual([
+				'StageSecrets',
+				'StageBuckets',
+				'StageBucketTopics',
+				'StageBucketDeadLetters',
+				'StageBucketUsers',
+				'StageFileServerCertificates',
+				'StageFileServerCdn',
+			]);
+			expect(statements[5]!.Action).toContain('acm:RequestCertificate');
+			expect(statements[6]!.Action).toContain('cloudfront:UpdateDistribution');
+			// Nothing that deletes.
+			expect(
+				statements
+					.slice(5)
+					.flatMap((s) => s.Action)
+					.filter((a) => /Delete/.test(a)),
+			).toEqual([]);
+
+			expect(
+				sids({ prod: { provider: 's3', cdn: false } }).map((s) => s.Sid),
+			).not.toContain('StageFileServerCdn');
+			expect(
+				sids({ prod: { provider: 's3' } }, buckets('Uploads')).map(
+					(s) => s.Sid,
+				),
+			).not.toContain('StageFileServerCdn');
 		});
 
 		it('grants nothing in S3 or IAM where the stage sets its keys by hand', () => {

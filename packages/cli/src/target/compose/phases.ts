@@ -97,6 +97,7 @@ import {
 	LOG_ROTATION,
 	LOGS_PORT_ENV,
 	type StackApp,
+	type StackInput,
 	stackDir,
 	withCaddyConfigs,
 } from '../../compose/stack';
@@ -110,6 +111,14 @@ import {
 import type { ResourceChange } from '../../deploy/events';
 import { imageRef } from '../../deploy/identity.js';
 import { DeployJournal } from '../../deploy/journal';
+import type { ResourceRecord } from '../../deploy/StateStore.js';
+import {
+	confirmPendingSubscriptions,
+	PushSubscriptionsUnconfirmed,
+	recordedPushSubscriptions,
+	SUBSCRIPTION_TYPE,
+	subscriptionKey,
+} from '../../deploy/snsSubscriptions.js';
 import {
 	createComposeState,
 	type DeployedImage,
@@ -144,11 +153,12 @@ import {
 import {
 	applyBuckets,
 	applyLifecycles,
+	applyNotifications,
 	applyPolicies,
 	applyPostgres,
 	postgresStatements,
 } from '../../reconcile/provision.js';
-import { constructGlobs } from '../../reconcile/workspace.js';
+import { backendsOf, constructGlobs } from '../../reconcile/workspace.js';
 import { runOutput } from '../../run';
 import type { StageSecrets } from '../../secrets/types.js';
 import type {
@@ -168,6 +178,12 @@ import {
 	httpsProbe,
 	isHealthy,
 } from './health';
+import {
+	ensureTopicSubscriptions,
+	recordedTopicSubscriptions,
+	type TopicPush,
+	topicPushes,
+} from './topicSubscriptions';
 
 /** Every phase's context: the compose target takes no options. */
 export type ComposeContext = DeployPhaseContext<undefined>;
@@ -207,6 +223,11 @@ export interface ComposeDeps {
 	 * before a deploy, and the tunnels its databases are reached through.
 	 */
 	server: ServerAccess;
+	/**
+	 * Once the stack is up, have SNS resend each pending subscription's
+	 * confirmation and wait for it — `confirmPendingSubscriptions` by default.
+	 */
+	confirmSubscriptions?: typeof confirmPendingSubscriptions;
 }
 
 /** One app's image, as the stage runs it. */
@@ -246,6 +267,16 @@ export interface ComposeRun {
 	images: Record<string, ComposeImage>;
 	/** Every resource the run touched, or for a dry run would. */
 	changes: ResourceChange[];
+	/**
+	 * The subscriptions `provision` makes for topics the stage set to SNS by
+	 * hand — and the stack composed again once their ARNs are recorded. Until
+	 * then {@link stack} hands those workers no subscriptions.
+	 */
+	topicSubscriptions?: {
+		pushes: TopicPush[];
+		recorded: Readonly<Record<string, ResourceRecord>> | undefined;
+		restack: (arns: Record<string, Record<string, string>>) => ComposeStack;
+	};
 	/**
 	 * Deletes the DNS records gkm wrote for hosts the stage no longer serves:
 	 * found by `ready`, run by `verify` once the stack answers on its new ones.
@@ -434,10 +465,14 @@ export async function validateCompose(
 
 	const { secrets, generated } = await stageSecrets(ctx, manifest);
 
+	// What each app ran before this release, and the SNS subscriptions the
+	// stage's providers made: a push changes no stage, so it reads neither.
+	const recorded = push ? undefined : await ctx.state.read(stage);
+
 	// Where and with what the images are built — only asked when they are.
 	const layout = mode === 'build' ? imageLayout(workspace) : undefined;
 
-	const composed = composeStack({
+	const input: StackInput = {
 		workspace,
 		manifest,
 		runnables,
@@ -460,7 +495,26 @@ export async function validateCompose(
 		ports: edgePorts(deps.env),
 		...(layout ? { layout } : {}),
 		...(push ? { buildOnly: true } : {}),
-	});
+	};
+	const recordedArns = recordedPushSubscriptions(recorded?.resources);
+
+	// A topic the stage set to SNS by hand is subscribed by this deploy, in
+	// `provision` — so until then the stack is composed to learn where SNS
+	// pushes, and composed again with the ARNs once they are recorded.
+	const planned = push
+		? undefined
+		: composeStack({ ...input, recordingSubscriptions: true });
+	const pushes = planned ? topicPushes(planned, manifest) : [];
+	const topics =
+		planned &&
+		(pushes.length > 0 ||
+			recordedTopicSubscriptions(recorded?.resources).length > 0)
+			? { pushes, recorded: recorded?.resources }
+			: undefined;
+	const composed =
+		topics && planned
+			? planned
+			: composeStack({ ...input, pushSubscriptions: recordedArns });
 
 	// A cache is reached over the Redis wire protocol, and the client is the
 	// project's own dependency: a build without it fails deep inside Docker.
@@ -471,9 +525,11 @@ export async function validateCompose(
 	// No image embeds the stage's secrets: a backend reads them at runtime
 	// from its env file, so one image built at a commit runs on every stage.
 	// A pinned release runs each image at the digest its push reported.
-	const stack = options.pin
-		? withPinnedImages(composed, options.pin.file, options.pin.digests)
-		: composed;
+	const pinned = (unpinned: ComposeStack) =>
+		options.pin
+			? withPinnedImages(unpinned, options.pin.file, options.pin.digests)
+			: unpinned;
+	const stack = pinned(composed);
 
 	// A release is all of its images or none of them. A dry run asks nothing,
 	// so it can be run without a registry login.
@@ -481,6 +537,7 @@ export async function validateCompose(
 		await assertImagesExist(deps.docker, tag, [
 			...stack.apps,
 			...stack.workers,
+			...stack.processors,
 		]);
 	}
 
@@ -519,8 +576,6 @@ export async function validateCompose(
 	}
 	// What each app ran before this release: its current release, by the same
 	// record the Dokploy target keeps, so a rollback reads one shape for both.
-	// A push changes no stage, so it reads none of its state either.
-	const recorded = push ? undefined : await ctx.state.read(stage);
 	const previous = Object.fromEntries(
 		Object.entries(recorded?.state.releases ?? {}).map(
 			([name, releases]): [string, DeployedImage] => {
@@ -537,6 +592,22 @@ export async function validateCompose(
 		mode,
 		push,
 		stack,
+		...(topics
+			? {
+					topicSubscriptions: {
+						...topics,
+						restack: (arns) => {
+							const merged = { ...recordedArns };
+							for (const [worker, own] of Object.entries(arns)) {
+								merged[worker] = { ...merged[worker], ...own };
+							}
+							return pinned(
+								composeStack({ ...input, pushSubscriptions: merged }),
+							);
+						},
+					},
+				}
+			: {}),
 		...(server ? { server } : {}),
 		dir,
 		ref: {
@@ -635,7 +706,7 @@ function assertRedisClient(
 		...stack.apps
 			.filter(
 				(app) =>
-					app.kind === 'rest-api' &&
+					(app.kind === 'rest-api' || app.kind === 'websocket-api') &&
 					reachesCache(appEnvKeys(manifest, app.name, runnables)),
 			)
 			.map((a) => a.name),
@@ -811,14 +882,16 @@ function withPinnedImages(
 ): ComposeStack {
 	const apps = pinImages(file, digests, stack.apps);
 	const workers = pinImages(file, digests, stack.workers);
+	const processors = pinImages(file, digests, stack.processors);
 	const services = { ...stack.compose.services };
-	for (const image of [...apps, ...workers]) {
+	for (const image of [...apps, ...workers, ...processors]) {
 		services[image.name] = { ...services[image.name]!, image: image.ref };
 	}
 	return {
 		...stack,
 		apps,
 		workers,
+		processors,
 		compose: { ...stack.compose, services },
 	};
 }
@@ -880,7 +953,7 @@ export async function planCompose(
 			action: run.previous[app.name] ? 'reuse' : 'create',
 		});
 	}
-	for (const worker of run.stack.workers) {
+	for (const worker of [...run.stack.workers, ...run.stack.processors]) {
 		planned({
 			key: `image:${worker.name}`,
 			resourceType: 'image',
@@ -892,6 +965,16 @@ export async function planCompose(
 			key: `service:${worker.name}`,
 			resourceType: 'service',
 			action: run.previous[worker.name] ? 'reuse' : 'create',
+		});
+	}
+	for (const push of run.topicSubscriptions?.pushes ?? []) {
+		const key = subscriptionKey(push.worker, push.name);
+		const id = run.topicSubscriptions?.recorded?.[key]?.id;
+		planned({
+			key,
+			resourceType: SUBSCRIPTION_TYPE,
+			action: id ? 'reuse' : 'create',
+			...(id ? { id } : {}),
 		});
 	}
 	if (!run.push) {
@@ -920,7 +1003,7 @@ export async function provisionCompose(
 	run: ComposeRun,
 	deps: ComposeDeps,
 ): Promise<void> {
-	const { stack, ref } = run;
+	const { ref } = run;
 	// A push provisions nothing; its files are written where it builds.
 	if (run.push) return;
 
@@ -935,12 +1018,17 @@ export async function provisionCompose(
 	// before a file is written or a container started.
 	const ports = edgePorts(deps.env);
 	await assertEdgePorts(deps.docker, {
-		project: stack.project,
-		proxy: stack.proxy,
+		project: run.stack.project,
+		proxy: run.stack.proxy,
 		ports,
 		engine: ref,
 	});
 
+	if (run.topicSubscriptions) {
+		await subscribeTopics(ctx, run, deps);
+	}
+
+	const { stack } = run;
 	run.files = await writeStack(ctx.cwd, run.dir, stack);
 	printPlan(ctx, run);
 
@@ -993,6 +1081,45 @@ export async function provisionCompose(
 }
 
 /**
+ * Subscribe each topic subscriber SNS pushes to — for a topic the stage set
+ * to SNS by hand — record the ARNs, and compose the stack again with them,
+ * before a file is written.
+ */
+async function subscribeTopics(
+	ctx: ComposeContext,
+	run: ComposeRun,
+	deps: ComposeDeps,
+): Promise<void> {
+	const { pushes, recorded, restack } = run.topicSubscriptions!;
+	if (pushes.length > 0) {
+		ctx.logger.info("\n📮 SNS subscriptions for the stage's own topics");
+	}
+	const arns = await ensureTopicSubscriptions({
+		pushes,
+		recorded,
+		secrets: run.secrets?.custom ?? {},
+		stage: ctx.stage,
+		env: deps.env,
+		record: async (resource) => {
+			await ctx.state.putResource(ctx.stage, resource);
+			applied(ctx, run, {
+				key: resource.key,
+				resourceType: SUBSCRIPTION_TYPE,
+				action: 'ensure',
+				id: resource.id!,
+				via:
+					recorded?.[resource.key]?.id === resource.id ? 'recorded' : 'created',
+			});
+		},
+		forget: async (key) => {
+			await ctx.state.deleteResource(ctx.stage, key);
+		},
+		log: (line) => ctx.logger.info(line),
+	});
+	run.stack = restack(arns);
+}
+
+/**
  * Create each bucket the stack's MinIO serves, and the open paths of each
  * one a file server fronts — from this machine, on MinIO's loopback port,
  * the way `gkm dev` creates them.
@@ -1013,6 +1140,13 @@ async function prepareBuckets(
 			...(await applyBuckets(client, storage.buckets)),
 			...(await applyPolicies(client, storage.policies)),
 			...(await applyLifecycles(client, storage.lifecycles)),
+			// Each watched bucket's events to the worker MinIO was started
+			// pointing at — and none from a bucket no longer watched.
+			...(await applyNotifications(
+				client,
+				storage.objects,
+				new Set(storage.webhooks.map((hook) => hook.bucket)),
+			)),
 		];
 	} finally {
 		await tunnel.close();
@@ -1120,7 +1254,7 @@ async function migrateAndSeed(
 	// Seeds after migrations, before any app starts: an app that boots with
 	// its reference data missing fails on the first request that needs it.
 	const seeds = await deps
-		.seed({ ...options, stage: ctx.stage })
+		.seed({ ...options, stage: ctx.stage, backends: backendsOf(workspace) })
 		.catch((error: unknown) => {
 			if (error instanceof SeedFailed) {
 				throw new DeploySeedsFailed(
@@ -1164,7 +1298,7 @@ export async function buildCompose(
 	deps: ComposeDeps,
 ): Promise<void> {
 	const { stack, ref } = run;
-	const images = [...stack.apps, ...stack.workers];
+	const images = [...stack.apps, ...stack.workers, ...stack.processors];
 	const apps = images.map((image) => image.app);
 
 	// Nothing was provisioned, so nothing has written the files it builds from.
@@ -1288,8 +1422,9 @@ export async function releaseCompose(
 		});
 	}
 
-	// A worker has no URL, so no `app.deployed`: its service, applied, is it.
-	for (const worker of stack.workers) {
+	// A worker has no URL, so no `app.deployed`: its service, applied, is it —
+	// nor has a processor unit, which answers on its file server's.
+	for (const worker of [...stack.workers, ...stack.processors]) {
 		applied(ctx, run, {
 			key: `service:${worker.name}`,
 			resourceType: 'service',
@@ -1312,6 +1447,9 @@ export async function releaseCompose(
 	for (const worker of stack.workers) {
 		ctx.logger.info(`   ${worker.name.padEnd(12)} worker ${worker.id}`);
 	}
+	for (const unit of stack.processors) {
+		ctx.logger.info(`   ${unit.name.padEnd(12)} processors of ${unit.id}`);
+	}
 	if (stack.local) {
 		ctx.logger.info(
 			`\n🔐 Certificates are from Caddy's local CA: NODE_EXTRA_CA_CERTS=${join(stackDir(ctx.stage), 'caddy-root.crt')}`,
@@ -1332,7 +1470,11 @@ async function recordImages(
 		createComposeState(ctx.stage),
 	);
 	const by = currentActor();
-	for (const app of [...run.stack.apps, ...run.stack.workers]) {
+	for (const app of [
+		...run.stack.apps,
+		...run.stack.workers,
+		...run.stack.processors,
+	]) {
 		const image = run.images[app.app] ?? { ref: app.ref, tag: app.tag };
 		recordRelease(journal.state, app.app, image, by);
 	}
@@ -1381,7 +1523,7 @@ export async function verifyCompose(
 	// reports it, is the answer.
 	results.push(
 		...(await Promise.all(
-			stack.workers.map((worker) =>
+			[...stack.workers, ...stack.processors].map((worker) =>
 				checkContainer(ctx, run, deps, worker.name),
 			),
 		)),
@@ -1398,7 +1540,40 @@ export async function verifyCompose(
 	}
 	await pruneStageDns(ctx, run);
 
+	await confirmSubscriptions(ctx, run, deps);
+
 	if (stack.logs) reportLogs(ctx, stack.logs, stack.local, run.server);
+}
+
+/**
+ * The SNS subscriptions the stage's providers made before the workers were
+ * up: each still pending is subscribed again, so SNS resends its
+ * confirmation to a worker now there to answer it, and waited on. One still
+ * pending after that is said, not failed on — every app is healthy, and
+ * rolling them back would not confirm it.
+ */
+async function confirmSubscriptions(
+	ctx: ComposeContext,
+	run: ComposeRun,
+	deps: ComposeDeps,
+): Promise<void> {
+	const stored = await ctx.state.read(ctx.stage);
+	const confirm = deps.confirmSubscriptions ?? confirmPendingSubscriptions;
+	const left = await confirm({
+		workspace: ctx.workspace,
+		stage: ctx.stage,
+		secrets: run.secrets?.custom ?? {},
+		resources: stored?.resources,
+		env: deps.env,
+		log: (line) => ctx.logger.info(line),
+		record: async (record) => {
+			const { updatedAt: _, updatedBy: __, ...input } = record;
+			await ctx.state.putResource(ctx.stage, input);
+		},
+	});
+	if (left.length > 0) {
+		ctx.logger.warn(`⚠ ${new PushSubscriptionsUnconfirmed(left).message}`);
+	}
 }
 
 /**
@@ -1495,7 +1670,8 @@ async function checkApp(
 		edge?: { connectTo: string; connectPort?: number };
 	},
 ): Promise<{ app: string; url: string; last: string; healthy: boolean }> {
-	const url = `${app.url}${app.kind === 'site' ? '/' : '/health'}`;
+	// A WebSocket surface answers its health over plain HTTPS on its host.
+	const url = `${app.url.replace(/^ws/, 'http')}${app.kind === 'site' ? '/' : '/health'}`;
 	let last = 'not asked';
 
 	for (let attempt = 1; attempt <= deps.healthAttempts; attempt++) {
@@ -1560,7 +1736,7 @@ export function composeResult(
 				url: app.url,
 			};
 		}),
-		...run.stack.workers.map((worker) => {
+		...[...run.stack.workers, ...run.stack.processors].map((worker) => {
 			const image = run.images[worker.name];
 			return {
 				appName: worker.name,
@@ -1670,7 +1846,7 @@ async function writeStack(
 	// Env files stay on this machine: compose reads each one here and sends
 	// its values in the call that creates the container — on a server's
 	// engine too, where no secret is ever written as a file.
-	for (const app of [...stack.apps, ...stack.workers]) {
+	for (const app of [...stack.apps, ...stack.workers, ...stack.processors]) {
 		if (app.env)
 			await write(join(dir, `${app.name}.env`), envFile(app.env), 0o600);
 	}
@@ -1752,6 +1928,11 @@ function printPlan(ctx: ComposeContext, run: ComposeRun): void {
 	for (const worker of stack.workers) {
 		ctx.logger.info(
 			`   ${worker.name.padEnd(12)} ${`worker ${worker.id} (no route)`.padEnd(40)} ${mode} ${worker.ref}`,
+		);
+	}
+	for (const unit of stack.processors) {
+		ctx.logger.info(
+			`   ${unit.name.padEnd(12)} ${`processors of ${unit.id}`.padEnd(40)} ${mode} ${unit.ref}`,
 		);
 	}
 	if (stack.infra.length > 0) {

@@ -1,0 +1,16 @@
+{
+	"name": "@kitchen-sink/realtime",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "gkm build",
+		"dev": "gkm dev"
+	},
+	"dependencies": {
+		"@geekmidas/errors": "workspace:*",
+		"ioredis": "~6.0.0",
+		"ws": "~8.22.0",
+		"zod": "~4.6.5"
+	}
+}

@@ -2,6 +2,12 @@
 	"@apidevtools/swagger-parser": {
 		"dependencies": "~13.1.0"
 	},
+	"@aws-sdk/client-acm": {
+		"dependencies": "~3.1136.0"
+	},
+	"@aws-sdk/client-cloudfront": {
+		"dependencies": "~3.1136.0"
+	},
 	"@aws-sdk/client-iam": {
 		"dependencies": "~3.1136.0"
 	},
@@ -239,6 +245,9 @@
 	"@types/react-dom": {
 		"devDependencies": "~19.3.0"
 	},
+	"@types/ws": {
+		"devDependencies": "~8.18.1"
+	},
 	"@upstash/redis": {
 		"peerDependencies": ">=1.39.0"
 	},
@@ -279,7 +288,8 @@
 		"dependencies": "~18.0.1"
 	},
 	"esbuild": {
-		"dependencies": "~0.28.2"
+		"dependencies": "~0.28.2",
+		"devDependencies": "~0.28.2"
 	},
 	"expo-secure-store": {
 		"peerDependencies": "^14.2.3"
@@ -443,6 +453,11 @@
 	},
 	"vue": {
 		"devDependencies": "^3.5.13"
+	},
+	"ws": {
+		"dependencies": "~8.22.0",
+		"devDependencies": "~8.22.0",
+		"peerDependencies": ">=8.22.0"
 	},
 	"yaml": {
 		"dependencies": "~2.9.1"

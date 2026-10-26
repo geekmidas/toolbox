@@ -168,3 +168,118 @@ describe('events on SNS, locally', () => {
 		expect(env.EVENT_SUBSCRIBER_CONNECTION_STRING).toBeUndefined();
 	});
 });
+
+describe('a WebSocket surface, locally', () => {
+	const manifest = {
+		Realtime: {
+			kind: 'websocket-api',
+			id: 'Realtime',
+			path: 'apps/realtime',
+			provides: [
+				'REALTIME_URL',
+				'REALTIME_TRUSTED_ORIGINS',
+				'REALTIME_PUBLISHER_CONNECTION_STRING',
+			],
+		},
+		Web: {
+			kind: 'site',
+			id: 'Web',
+			variant: 'vite',
+			app: { path: 'apps/web' },
+			dependencies: [{ target: 'Realtime', kind: 'websocket-api' }],
+			provides: ['WEB_URL'],
+		},
+	} as unknown as ConstructManifest;
+
+	function resolveWith(
+		addresses: Record<string, string>,
+		options: PlanOptions = {},
+	) {
+		const plan = planFor(manifest, 'dev', provisionOrder(manifest), {
+			localStage: 'dev',
+			...options,
+		});
+		const ports = Object.fromEntries(
+			portKeys(plan.containers).map((key, i) => [key, 21000 + i]),
+		);
+		return {
+			plan,
+			ports,
+			env: envFor(plan, {
+				credentials: TEST_CREDENTIALS,
+				ports,
+				project: 'shop',
+				addresses,
+			}),
+		};
+	}
+
+	const addresses = {
+		Realtime: 'http://localhost:3002',
+		Web: 'http://localhost:5173',
+	};
+
+	it('runs Redis, and answers on wss:// behind the edge, as a REST surface does', () => {
+		const { plan, env, ports } = resolveWith(addresses);
+
+		expect(plan.containers).toContain('redis');
+		expect(env.REALTIME_URL).toBe(
+			`wss://realtime.shop.localhost:${ports.caddy}`,
+		);
+		expect(env.REALTIME_TRUSTED_ORIGINS).toBe(
+			// The one site holds the base domain.
+			`https://shop.localhost:${ports.caddy}`,
+		);
+	});
+
+	it('answers on ws:// at its own port without the edge', () => {
+		const { env } = resolveWith(addresses, { edge: false });
+
+		expect(env.REALTIME_URL).toBe('ws://localhost:3002');
+		expect(env.REALTIME_TRUSTED_ORIGINS).toBe('http://localhost:5173');
+	});
+
+	it('meets its senders on the local Redis, on channels named for the project', () => {
+		const { env, ports } = resolveWith({ Realtime: 'http://localhost:3002' });
+		const password = encodeURIComponent(TEST_CREDENTIALS.redis.password);
+
+		expect(env.REALTIME_PUBLISHER_CONNECTION_STRING).toBe(
+			`redis://:${password}@localhost:${ports.redis}?channel=gkm%3Aws%3Ashop%3ARealtime`,
+		);
+	});
+	it('counts as a web origin, not a mobile one, to a surface it calls', () => {
+		const calling = {
+			...manifest,
+			Api: {
+				kind: 'rest-api',
+				id: 'Api',
+				path: 'apps/api',
+				endpoints: [],
+				provides: ['API_URL', 'API_TRUSTED_ORIGINS', 'API_COOKIE_DOMAIN'],
+			},
+			Realtime: {
+				...manifest.Realtime,
+				calls: [{ target: 'Api', kind: 'rest-api' }],
+			},
+		} as unknown as ConstructManifest;
+		const plan = planFor(calling, 'dev', provisionOrder(calling), {
+			localStage: 'dev',
+			edge: false,
+		});
+		const ports = Object.fromEntries(
+			portKeys(plan.containers).map((key, i) => [key, 21000 + i]),
+		);
+
+		const env = envFor(plan, {
+			credentials: TEST_CREDENTIALS,
+			ports,
+			project: 'shop',
+			addresses: {
+				Api: 'http://localhost:3000',
+				Realtime: 'http://localhost:3002',
+			},
+		});
+
+		expect(env.API_TRUSTED_ORIGINS).toBe('http://localhost:3002');
+	});
+});
