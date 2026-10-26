@@ -1,7 +1,5 @@
 # @geekmidas/errors
 
-## 10.0.0
-
 ## 9.0.2
 
 ### Patch Changes

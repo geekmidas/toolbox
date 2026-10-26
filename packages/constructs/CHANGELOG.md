@@ -1,46 +1,5 @@
 # @geekmidas/constructs
 
-## 10.0.0
-
-### Minor Changes
-
-- [#304](https://github.com/geekmidas/toolbox/pull/304) [`4235b31`](https://github.com/geekmidas/toolbox/commit/4235b31416c39b08ce151606d4b46a34b8ef7896) Thanks [@geekmidas](https://github.com/geekmidas)! - Functions, crons and endpoints can report their runs to a monitor
-
-  `.monitor(service)` tells a monitor when a run starts, succeeds or fails: a heartbeat, an uptime check, an error tracker. It can be called more than once, and a monitor set on a shared base or on an `EndpointFactory` is inherited by everything built from it. A monitor that fails is logged and never fails the run.
-
-  `heartbeat()` from `@geekmidas/constructs/monitors` pings a URL read from an environment variable, `HEARTBEAT_URL` by default. When the variable is unset it does nothing, so only the stages that set it are monitored. Presets cover Better Stack and Healthchecks.io:
-
-  ```ts
-  import { heartbeat } from "@geekmidas/constructs/monitors";
-
-  export const nightly = c
-    .schedule("rate(1 day)")
-    .monitor(heartbeat.betterStack("NIGHTLY_HEARTBEAT_URL"))
-    .handle(async () => {});
-  ```
-
-  Endpoints report from the response status: a 5xx is a failure and anything else, including a 4xx, is a success. On Lambda the report is awaited before the response returns; on Hono it is not, so requests do not wait on the monitoring service.
-
-- [#304](https://github.com/geekmidas/toolbox/pull/304) [`a920ff4`](https://github.com/geekmidas/toolbox/commit/a920ff4e3a66edf4e9d5b0183cf9f17d7111391f) Thanks [@geekmidas](https://github.com/geekmidas)! - A configured builder can be reused as a base
-
-  Builder methods now return a new builder instead of changing the one they were called on, and `.handle()` no longer resets the builder. A base like `const base = c.logger(logger).timeout(60_000)` keeps its configuration for every cron built from it; before, the first `.handle()` wiped it, so the second cron silently came back on the default logger and timeout. Two chains started from one base also no longer share state.
-
-  This applies to the function, cron, subscriber, queue, topic and endpoint builders. Chained code is unaffected. Code that calls a method without using its result, such as `builder.timeout(30); builder.handle(…)`, must chain instead: `builder.timeout(30).handle(…)`.
-
-### Patch Changes
-
-- Updated dependencies []:
-  - @geekmidas/audit@10.0.0
-  - @geekmidas/cache@10.0.0
-  - @geekmidas/db@10.0.0
-  - @geekmidas/envkit@10.0.0
-  - @geekmidas/errors@10.0.0
-  - @geekmidas/events@10.0.0
-  - @geekmidas/logger@10.0.0
-  - @geekmidas/rate-limit@10.0.0
-  - @geekmidas/schema@10.0.0
-  - @geekmidas/services@10.0.0
-
 ## 9.0.2
 
 ### Patch Changes
