@@ -1,4 +1,5 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
+import { NotFoundError } from '@geekmidas/errors';
 import { ServiceDiscovery } from '@geekmidas/services';
 import { createMockContext, createMockV2Event } from '@geekmidas/testkit/aws';
 import { Hono } from 'hono';
@@ -21,6 +22,7 @@ import { AmazonApiGatewayV2Endpoint } from '../endpoints/AmazonApiGatewayV2Endpo
 import { EndpointFactory } from '../endpoints/EndpointFactory';
 import { HonoEndpoint } from '../endpoints/HonoEndpointAdaptor';
 import { TestEndpointAdaptor } from '../endpoints/TestEndpointAdaptor';
+import { AWSLambdaFunction } from '../functions/AWSLambdaFunction';
 import { FunctionBuilder } from '../functions/FunctionBuilder';
 import { TestFunctionAdaptor } from '../functions/TestFunctionAdaptor';
 import type { ConstructMonitor, MonitorService } from '../monitor';
@@ -285,7 +287,6 @@ describe('endpoints', () => {
 		return {
 			ok: e.get('/ok').handle(async () => ({ ok: true })),
 			missing: e.get('/missing').handle(async () => {
-				const { NotFoundError } = await import('@geekmidas/errors');
 				throw new NotFoundError('nope');
 			}),
 			broken: e.get('/broken').handle(async () => {
@@ -408,6 +409,183 @@ describe('endpoints', () => {
 
 			expect(response.statusCode).toBe(500);
 			expect(calls).toEqual(['start', 'failure:run-1:500:boom']);
+		});
+	});
+});
+
+/**
+ * The heartbeat over real HTTP (MSW), on every construct and runtime: what
+ * actually reaches the provider when a run succeeds or fails.
+ */
+describe('heartbeat requests, per construct', () => {
+	const env = { HEARTBEAT_URL: HEARTBEAT };
+
+	function endpoints() {
+		const e = new EndpointFactory().monitor(heartbeat.betterStack());
+		return {
+			ok: e.get('/ok').handle(async () => ({ ok: true })),
+			missing: e.get('/missing').handle(async () => {
+				throw new NotFoundError('nope');
+			}),
+			broken: e.get('/broken').handle(async () => {
+				throw new Error('boom');
+			}),
+		};
+	}
+
+	describe('function, AWS Lambda handler', () => {
+		const invoke = (fn: any) =>
+			new AWSLambdaFunction(new EnvironmentParser(env), fn).handler(
+				{},
+				createMockContext(),
+				vi.fn(),
+			);
+
+		it('sends the success ping', async () => {
+			await invoke(
+				new FunctionBuilder()
+					.monitor(heartbeat.betterStack())
+					.handle(async () => ({})),
+			);
+			expect(pings).toEqual(['/abc']);
+		});
+
+		it('sends the failure ping', async () => {
+			await expect(
+				invoke(
+					new FunctionBuilder()
+						.monitor(heartbeat.betterStack())
+						.handle(async () => {
+							throw new Error('boom');
+						}),
+				),
+			).rejects.toThrow();
+			expect(pings).toEqual(['/abc/fail']);
+		});
+	});
+
+	describe('cron, AWS Lambda handler', () => {
+		const invoke = (cron: any) =>
+			new AWSScheduledFunction(new EnvironmentParser(env), cron).handler(
+				{},
+				createMockContext(),
+				vi.fn(),
+			);
+
+		it('sends the success ping', async () => {
+			await invoke(
+				new CronBuilder()
+					.schedule('rate(1 day)')
+					.monitor(heartbeat.betterStack())
+					.handle(async () => ({})),
+			);
+			expect(pings).toEqual(['/abc']);
+		});
+
+		it('sends the failure ping', async () => {
+			await expect(
+				invoke(
+					new CronBuilder()
+						.schedule('rate(1 day)')
+						.monitor(heartbeat.betterStack())
+						.handle(async () => {
+							throw new Error('boom');
+						}),
+				),
+			).rejects.toThrow();
+			expect(pings).toEqual(['/abc/fail']);
+		});
+
+		it('sends the start ping first, for Healthchecks.io', async () => {
+			await invoke(
+				new CronBuilder()
+					.schedule('rate(1 day)')
+					.monitor(heartbeat.healthchecks())
+					.handle(async () => ({})),
+			);
+			expect(pings).toEqual(['/abc/start', '/abc']);
+		});
+
+		it('sends one ping per run, from a shared base', async () => {
+			const base = new CronBuilder().monitor(heartbeat.betterStack());
+
+			await invoke(base.schedule('rate(1 day)').handle(async () => ({})));
+			await invoke(base.schedule('rate(1 hour)').handle(async () => ({})));
+
+			expect(pings).toEqual(['/abc', '/abc']);
+		});
+	});
+
+	describe('endpoint, TestEndpointAdaptor', () => {
+		const request = (endpoint: any) =>
+			new TestEndpointAdaptor(endpoint, discovery(env)).fullRequest({
+				services: {},
+				headers: {},
+			} as any);
+
+		it('sends the success ping on a 2xx', async () => {
+			await request(endpoints().ok);
+			expect(pings).toEqual(['/abc']);
+		});
+
+		it('sends the success ping on a 4xx', async () => {
+			await expect(request(endpoints().missing)).rejects.toThrow();
+			expect(pings).toEqual(['/abc']);
+		});
+
+		it('sends the failure ping on a 5xx', async () => {
+			await expect(request(endpoints().broken)).rejects.toThrow();
+			expect(pings).toEqual(['/abc/fail']);
+		});
+	});
+
+	describe('endpoint, Hono', () => {
+		async function serve(endpoint: any, path: string) {
+			const app = new Hono();
+			new HonoEndpoint(endpoint).addRoute(discovery(env), app);
+			return app.request(path);
+		}
+
+		// Hono does not wait on the ping, so each test waits for it to land.
+		it('sends the success ping on a 2xx', async () => {
+			expect((await serve(endpoints().ok, '/ok')).status).toBe(200);
+			await vi.waitFor(() => expect(pings).toEqual(['/abc']));
+		});
+
+		it('sends the success ping on a 4xx', async () => {
+			expect((await serve(endpoints().missing, '/missing')).status).toBe(404);
+			await vi.waitFor(() => expect(pings).toEqual(['/abc']));
+		});
+
+		it('sends the failure ping on a 5xx', async () => {
+			expect((await serve(endpoints().broken, '/broken')).status).toBe(500);
+			await vi.waitFor(() => expect(pings).toEqual(['/abc/fail']));
+		});
+	});
+
+	describe('endpoint, API Gateway', () => {
+		const invoke = (endpoint: any) =>
+			new AmazonApiGatewayV2Endpoint(
+				new EnvironmentParser(env),
+				endpoint,
+			).handler(createMockV2Event(), createMockContext(), vi.fn()) as Promise<{
+				statusCode: number;
+			}>;
+
+		// Awaited before the response returns: the ping is there already.
+		it('sends the success ping on a 2xx', async () => {
+			expect((await invoke(endpoints().ok)).statusCode).toBe(200);
+			expect(pings).toEqual(['/abc']);
+		});
+
+		it('sends the success ping on a 4xx', async () => {
+			expect((await invoke(endpoints().missing)).statusCode).toBe(404);
+			expect(pings).toEqual(['/abc']);
+		});
+
+		it('sends the failure ping on a 5xx', async () => {
+			expect((await invoke(endpoints().broken)).statusCode).toBe(500);
+			expect(pings).toEqual(['/abc/fail']);
 		});
 	});
 });
