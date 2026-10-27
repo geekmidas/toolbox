@@ -247,13 +247,21 @@ describe('docker templates', () => {
 	});
 
 	describe('resolveDockerConfig', () => {
+		it('defaults to a pinned Node version, not a floating tag', () => {
+			// A floating tag lets a cached or older image build below a Node
+			// security release; an exact version can't.
+			expect(resolveDockerConfig({}).baseImage).toMatch(
+				/^node:\d+\.\d+\.\d+-alpine$/,
+			);
+		});
+
 		it('should use defaults when no config provided', () => {
 			const config: GkmConfig = {};
 			const result = resolveDockerConfig(config);
 
 			// imageName comes from package.json or defaults to 'api'
 			expect(typeof result.imageName).toBe('string');
-			expect(result.baseImage).toBe('node:22-alpine');
+			expect(result.baseImage).toBe('node:22.23.4-alpine');
 			expect(result.port).toBe(3000);
 		});
 
@@ -281,7 +289,7 @@ describe('docker templates', () => {
 			const result = resolveDockerConfig(config);
 
 			expect(result.imageName).toBe('partial-app');
-			expect(result.baseImage).toBe('node:22-alpine'); // default
+			expect(result.baseImage).toBe('node:22.23.4-alpine'); // default
 			expect(result.port).toBe(3000); // default
 		});
 	});

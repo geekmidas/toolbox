@@ -107,7 +107,7 @@ export interface DockerConfig {
 	registry?: string;
 	/** Docker image name (default: derived from package.json name) */
 	imageName?: string;
-	/** Base Docker image (default: 'node:22-alpine') */
+	/** Base Docker image (default: 'node:22.23.4-alpine', a Node security release) */
 	baseImage?: string;
 	/** Container port (default: 3000) */
 	port?: number;

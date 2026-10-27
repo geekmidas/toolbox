@@ -589,7 +589,7 @@ The CLI generates optimized multi-stage Dockerfiles:
 
 ```dockerfile
 # Build stage
-FROM node:22-alpine AS builder
+FROM node:22.23.4-alpine AS builder
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile
@@ -597,7 +597,7 @@ COPY . .
 RUN pnpm build && pnpm gkm build --provider server
 
 # Production stage
-FROM node:22-alpine AS runner
+FROM node:22.23.4-alpine AS runner
 WORKDIR /app
 COPY --from=builder /app/.gkm/server/dist ./
 EXPOSE 3000

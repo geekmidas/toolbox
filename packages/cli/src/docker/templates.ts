@@ -40,6 +40,14 @@ export interface MultiStageDockerfileOptions extends DockerTemplateOptions {
 	turboPackage?: string;
 }
 
+/**
+ * The image generated Dockerfiles build on unless one is configured. Pinned to
+ * a Node security release, not the floating `node:22-alpine` tag, so a cached
+ * or older image can't put a build below the patched version — and the
+ * Dockerfile says which version it runs.
+ */
+export const DEFAULT_BASE_IMAGE = 'node:22.23.4-alpine';
+
 const LOCKFILES: [string, PackageManager][] = [
 	['pnpm-lock.yaml', 'pnpm'],
 	['bun.lockb', 'bun'],
@@ -548,7 +556,7 @@ export function resolveDockerConfig(
 	return {
 		registry: docker.registry ?? '',
 		imageName: docker.imageName ?? defaultImageName,
-		baseImage: docker.baseImage ?? 'node:22-alpine',
+		baseImage: docker.baseImage ?? DEFAULT_BASE_IMAGE,
 		port: docker.port ?? 3000,
 		compose: docker.compose,
 	};

@@ -11,6 +11,7 @@ import {
 	generateWorkspaceCompose,
 } from './compose';
 import {
+	DEFAULT_BASE_IMAGE,
 	detectPackageManager,
 	findLockfilePath,
 	generateBackendDockerfile,
@@ -427,7 +428,7 @@ export async function workspaceDockerCommand(
 			const publicUrlArgs = getPublicUrlArgNames(app);
 			const webOpts = {
 				imageName,
-				baseImage: 'node:22-alpine',
+				baseImage: DEFAULT_BASE_IMAGE,
 				port: app.port,
 				appPath,
 				turboPackage,
@@ -452,7 +453,7 @@ export async function workspaceDockerCommand(
 			// Backend with custom entry point - use tsdown bundling
 			dockerfile = generateEntryDockerfile({
 				imageName,
-				baseImage: 'node:22-alpine',
+				baseImage: DEFAULT_BASE_IMAGE,
 				port: app.port,
 				appPath,
 				entry: app.entry,
@@ -464,7 +465,7 @@ export async function workspaceDockerCommand(
 			// Backend with gkm routes - use gkm build
 			dockerfile = generateBackendDockerfile({
 				imageName,
-				baseImage: 'node:22-alpine',
+				baseImage: DEFAULT_BASE_IMAGE,
 				port: app.port,
 				appPath,
 				turboPackage,

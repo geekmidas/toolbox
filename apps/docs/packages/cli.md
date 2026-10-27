@@ -557,7 +557,7 @@ export default defineConfig({
   docker: {
     registry: 'ghcr.io/myorg',
     imageName: 'my-api',
-    baseImage: 'node:22-alpine',
+    baseImage: 'node:22.23.4-alpine',
     port: 3000,
     compose: {
       services: ['postgres', 'redis'], // Include in docker-compose
@@ -757,7 +757,7 @@ The `docker` configuration controls Docker file generation:
 |--------|------|---------|-------------|
 | `registry` | `string` | `''` | Container registry URL |
 | `imageName` | `string` | package name | Docker image name |
-| `baseImage` | `string` | `node:22-alpine` | Base Docker image |
+| `baseImage` | `string` | `node:22.23.4-alpine` | Base Docker image, pinned to a Node security release |
 | `port` | `number` | `3000` | Container port |
 | `compose.services` | `string[]` | `[]` | Services for docker-compose |
 
