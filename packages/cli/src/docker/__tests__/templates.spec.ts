@@ -369,6 +369,24 @@ describe('docker templates', () => {
 			expect(dockerfile).toContain('# Next.js standalone Dockerfile');
 		});
 
+		it('builds every Node stage on a NODE_IMAGE argument, defaulting to the configured image', () => {
+			const dockerfile = generateBackendDockerfile(baseOptions);
+
+			// Declared before the first FROM, so every stage can read it, and a
+			// compose file's build.args can pick another Node version.
+			expect(dockerfile.indexOf('ARG NODE_IMAGE=node:22-alpine')).toBeLessThan(
+				dockerfile.indexOf('FROM '),
+			);
+			const nodeStages = dockerfile.match(/^FROM \S+ AS \w+$/gm) ?? [];
+			expect(
+				nodeStages.filter((l) => !/^FROM (builder|deps) /.test(l)),
+			).toEqual([
+				'FROM ${NODE_IMAGE} AS pruner',
+				'FROM ${NODE_IMAGE} AS deps',
+				'FROM ${NODE_IMAGE} AS runner',
+			]);
+		});
+
 		it('should include four stages: pruner, deps, builder, runner', () => {
 			const dockerfile = generateNextjsDockerfile(baseOptions);
 
@@ -503,11 +521,13 @@ describe('docker templates', () => {
 			const dockerfile = generateBackendDockerfile(baseOptions);
 
 			// An ARG is recorded in `docker history`; a secret mount is not. The
-			// one ARG is the ciphertext's hash, which busts the layer's cache.
+			// ARGs are the Node image and the ciphertext's hash, which busts the
+			// layer's cache — neither is a credential.
 			expect(dockerfile).toContain(
 				'RUN --mount=type=secret,id=gkm_credentials,required=false',
 			);
 			expect(dockerfile.match(/^ARG .*$/gm)).toEqual([
+				'ARG NODE_IMAGE=node:22-alpine',
 				'ARG GKM_CIPHERTEXT_HASH=""',
 			]);
 			expect(dockerfile).toMatchSnapshot();
@@ -596,6 +616,7 @@ describe('docker templates', () => {
 				'--define:__GKM_CREDENTIALS_IV__="\\"$IV\\""',
 			);
 			expect(dockerfile.match(/^ARG .*$/gm)).toEqual([
+				'ARG NODE_IMAGE=node:22-alpine',
 				'ARG GKM_CIPHERTEXT_HASH=""',
 			]);
 			expect(dockerfile).toMatchSnapshot();

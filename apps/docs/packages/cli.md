@@ -742,7 +742,7 @@ The `docker` configuration controls Docker file generation:
 |--------|------|---------|-------------|
 | `registry` | `string` | `''` | Container registry URL |
 | `imageName` | `string` | package name | Docker image name |
-| `baseImage` | `string` | `node:22.23.4-alpine` | Base Docker image, pinned to a Node security release |
+| `baseImage` | `string` | `node:22.23.4-alpine` | Base Docker image, pinned to a Node security release. The Dockerfile takes it as the `NODE_IMAGE` build argument, so `--build-arg` or compose `build.args` can override it |
 | `port` | `number` | `3000` | Container port |
 
 There is no `compose` option. `gkm docker` writes `docker-compose.constructs.yml`

@@ -112,6 +112,22 @@ gkm setup      # start the containers and create what they hold
 docker compose -f docker-compose.constructs.yml --profile apps up --build
 ```
 
+Each app's Dockerfile builds on Node `22.23.4-alpine`, a Node security release,
+through a `NODE_IMAGE` build argument. To run an app on another version, set it
+in your `docker-compose.yml`, which is merged over the generated file:
+
+```yaml
+# docker-compose.yml — yours
+services:
+  api:
+    build:
+      args:
+        NODE_IMAGE: node:24.22.1-alpine
+```
+
+Outside compose, `docker build --build-arg NODE_IMAGE=node:24.22.1-alpine`
+does the same.
+
 ::: info There is no `apps` block
 There used to be one, naming each app with its type, path, port, framework and
 dependencies — every one of which was already declared. `StaticSite('Web', {
