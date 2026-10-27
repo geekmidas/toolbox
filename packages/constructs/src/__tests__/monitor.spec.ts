@@ -145,18 +145,20 @@ describe('heartbeat', () => {
 		expect(pings).toEqual(['/abc/start', '/abc']);
 	});
 
-	it('does nothing when its env var is unset', async () => {
+	it('skips the heartbeat but still runs when its env var is missing', async () => {
 		const cron = new CronBuilder()
 			.input(z.object({}))
 			.schedule('rate(1 day)')
 			.monitor(heartbeat.betterStack())
-			.handle(async () => ({}));
+			.output(z.object({ ok: z.boolean() }))
+			.handle(async () => ({ ok: true }));
 
-		await new TestFunctionAdaptor(cron, discovery()).invoke({
+		const output = await new TestFunctionAdaptor(cron, discovery()).invoke({
 			input: {},
 			services: {},
 		});
 
+		expect(output).toEqual({ ok: true });
 		expect(pings).toEqual([]);
 	});
 
@@ -196,16 +198,17 @@ describe('heartbeat', () => {
 		expect(output).toEqual({ ok: true });
 	});
 
-	it('declares its env var as optional', async () => {
+	it('declares its env var as required', async () => {
 		const cron = new CronBuilder()
 			.input(z.object({}))
 			.schedule('rate(1 day)')
 			.monitor(heartbeat.betterStack('NIGHTLY_HEARTBEAT_URL'))
 			.handle(async () => ({}));
 
-		expect(await cron.getEnvironment({ markOptional: true })).toContain(
-			'NIGHTLY_HEARTBEAT_URL?',
-		);
+		const environment = await cron.getEnvironment({ markOptional: true });
+
+		expect(environment).toContain('NIGHTLY_HEARTBEAT_URL');
+		expect(environment).not.toContain('NIGHTLY_HEARTBEAT_URL?');
 	});
 });
 

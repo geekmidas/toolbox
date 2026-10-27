@@ -3,8 +3,10 @@ import type { ConstructMonitor, MonitorInfo } from '../monitor';
 
 export interface HeartbeatOptions {
 	/**
-	 * The environment variable holding the heartbeat URL. When it is unset the
-	 * monitor does nothing, so only the stages that set it are monitored.
+	 * The environment variable holding the heartbeat URL. Required: the manifest
+	 * lists it so infrastructure sets it wherever the construct is deployed. If
+	 * it is missing at runtime the monitor is skipped with a warning, and the
+	 * run goes on.
 	 * @default 'HEARTBEAT_URL'
 	 */
 	env?: string;
@@ -56,7 +58,7 @@ export function heartbeat(
 		monitor: { type: 'heartbeat', ...(provider ? { provider } : {}), env },
 		async register({ envParser }) {
 			const { url } = envParser
-				.create((get) => ({ url: get(env).string().optional() }))
+				.create((get) => ({ url: get(env).string() }))
 				.parse();
 
 			const ping = async (target?: (url: string) => string) => {
