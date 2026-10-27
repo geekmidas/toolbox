@@ -63,3 +63,18 @@ export class UnresolvedDependency extends Error {
 		this.available = available;
 	}
 }
+
+/**
+ * A site declared `subdomain: '*'`, which the AWS target cannot serve yet: a
+ * distribution answers on the hosts it was given, and a tenant's host is
+ * created by the running app.
+ */
+export class WildcardSiteNotSupported extends Error {
+	constructor(readonly id: string) {
+		super(
+			`'${id}' answers on every subdomain, which the AWS target cannot ` +
+				`serve yet. Give it a subdomain of its own to deploy it here.`,
+		);
+		this.name = 'WildcardSiteNotSupported';
+	}
+}

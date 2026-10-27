@@ -1,3 +1,4 @@
+import { WILDCARD_SUBDOMAIN } from '@geekmidas/manifest';
 import { GkmError } from '../../errors';
 import { getPublicEnvPrefix } from '../../workspace/index.js';
 import { rootSite } from '../../workspace/rootSite.js';
@@ -61,10 +62,13 @@ export function isMainFrontendApp(
 	app: NormalizedAppConfig,
 	allApps: Record<string, NormalizedAppConfig>,
 ): boolean {
-	if (app.type !== 'web') return false;
+	// A wildcard site answers on every subdomain, never on the domain itself.
+	const holds = (a: NormalizedAppConfig) =>
+		a.type === 'web' && a.subdomain !== WILDCARD_SUBDOMAIN;
+	if (!holds(app)) return false;
 
 	const sites = Object.entries(allApps)
-		.filter(([, a]) => a.type === 'web')
+		.filter(([, a]) => holds(a))
 		.map(([name, a]) => ({ name, root: a.root }));
 
 	return rootSite(sites) === appName;

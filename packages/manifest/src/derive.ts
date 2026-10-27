@@ -19,7 +19,7 @@ import type {
 	MobileAppDeclaration,
 	SiteDeclaration,
 } from './declaration';
-import { DERIVES_FROM, PUBLIC } from './declaration';
+import { DERIVES_FROM, isWildcardSite, PUBLIC } from './declaration';
 import { IllegalDerivation, UnknownParent } from './errors';
 import { provideKey } from './naming';
 
@@ -207,6 +207,16 @@ export function publicEnvFor(
 	if (declaration.kind === 'site') {
 		const own = provideKey(declaration.id, 'url');
 		keys[`${prefix}${own}`] = own;
+	}
+
+	// A wildcard site's tenant is the leading label of the host it was
+	// reached on, so its bundle needs the domain to take it off against, and
+	// the labels no tenant may be.
+	if (isWildcardSite(declaration)) {
+		for (const role of ['domain', 'protectedSubdomains']) {
+			const key = provideKey(declaration.id, role);
+			keys[`${prefix}${key}`] = key;
+		}
 	}
 
 	for (const edge of declaration.dependencies) {

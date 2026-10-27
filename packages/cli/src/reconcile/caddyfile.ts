@@ -23,7 +23,7 @@
  * line at the edge.
  */
 
-import { CLIENT_IP_HEADER } from '@geekmidas/manifest';
+import { CLIENT_IP_HEADER, WILDCARD_SUBDOMAIN } from '@geekmidas/manifest';
 import { processorsDevRoute } from '../generators/processorRoute.js';
 import type { Plan, PlannedResource } from './plan';
 
@@ -193,6 +193,15 @@ export function hostFor(resource: PlannedResource, project: string): string {
 	// which is nobody's domain to take.
 	const label =
 		resource.root && project ? stageOf(resource) : labelOf(resource);
+
+	// A wildcard site answers on every label under the stage's own domain —
+	// `*.shop.localhost`, `*.test.shop.localhost` — so a stage is a label of
+	// that domain rather than a suffix on the `*`.
+	if (resource.subdomain === WILDCARD_SUBDOMAIN) {
+		return [WILDCARD_SUBDOMAIN, stageOf(resource), project, LOCAL_TLD]
+			.filter(Boolean)
+			.join('.');
+	}
 
 	return [label, project, LOCAL_TLD].filter(Boolean).join('.');
 }

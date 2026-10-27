@@ -29,6 +29,7 @@ import {
 	type Dependency,
 	provideKey,
 	type SiteDeclaration,
+	WILDCARD_SUBDOMAIN,
 } from '@geekmidas/manifest';
 import { type Declarable, edgeTo } from './construct-interface';
 import type { Telemetry } from './telemetry';
@@ -51,8 +52,21 @@ export interface StaticSiteConfig {
 	 * The label it answers on under a stage's domain — `api` for
 	 * `api.myapp.com`, from `domains` — and under the project locally,
 	 * `api.myapp.localhost`. Absent, its id kebab-cased.
+	 *
+	 * `'*'` answers on every subdomain nothing else does — one host per
+	 * tenant, `acme.myapp.com` — and then `hosts` names which of them are
+	 * real. Every other app keeps its own host, and a project has at most one
+	 * such site.
 	 */
 	subdomain?: string;
+	/**
+	 * With `subdomain: '*'`, the route that says which hosts are tenants: an
+	 * exported `GET` endpoint the edge asks before it serves a host,
+	 * `?domain=<host>`, answering `200` for a tenant and `404` otherwise.
+	 *
+	 * It runs without a session and belongs to no public API.
+	 */
+	hosts?: SiteHostsEndpoint;
 	/**
 	 * The port it answers on locally.
 	 *
@@ -94,6 +108,66 @@ export interface StaticSiteConfig {
 	telemetry?: Telemetry;
 }
 
+/**
+ * The shape of the endpoint `hosts` names — read structurally, so a site
+ * module never loads the endpoint machinery to say which route it means.
+ */
+export interface SiteHostsEndpoint {
+	route: string;
+	method: string;
+	surface: { id: string };
+}
+
+/** `subdomain: '*'` without `hosts`: nothing would say which hosts are tenants. */
+export class WildcardSiteNeedsHosts extends Error {
+	constructor(readonly id: string) {
+		super(
+			`'${id}' answers on every subdomain, so it has to say which of them ` +
+				`are tenants: pass \`hosts\`, a GET endpoint answering 200 for a ` +
+				`host it serves and 404 otherwise.`,
+		);
+		this.name = 'WildcardSiteNeedsHosts';
+	}
+}
+
+/** `hosts` on a site with one host, where there is nothing to check. */
+export class SiteHostsNeedsWildcard extends Error {
+	constructor(readonly id: string) {
+		super(
+			`'${id}' names a \`hosts\` check but answers on one host. ` +
+				`Declare \`subdomain: '*'\` to serve every subdomain, or drop \`hosts\`.`,
+		);
+		this.name = 'SiteHostsNeedsWildcard';
+	}
+}
+
+/** A `hosts` endpoint that is not a `GET`: the edge only ever asks with one. */
+export class SiteHostsNotGet extends Error {
+	constructor(
+		readonly id: string,
+		readonly method: string,
+		readonly route: string,
+	) {
+		super(
+			`'${id}' checks its hosts with ${method} ${route}, but the edge asks ` +
+				`with GET ${route}?domain=<host>. Make it a GET endpoint.`,
+		);
+		this.name = 'SiteHostsNotGet';
+	}
+}
+
+/** A wildcard site that says it holds the base domain. */
+export class WildcardSiteCannotBeRoot extends Error {
+	constructor(readonly id: string) {
+		super(
+			`'${id}' answers on every subdomain, so it cannot also hold the base ` +
+				`domain. Drop \`root: true\`, and declare the site the base domain ` +
+				`points at separately.`,
+		);
+		this.name = 'WildcardSiteCannotBeRoot';
+	}
+}
+
 export class StaticSite<TName extends string = string>
 	implements Declarable<TName>
 {
@@ -113,6 +187,18 @@ export class StaticSite<TName extends string = string>
 	) {
 		this.id = canonicalId(id as string) as TName;
 		this.keys = { url: provideKey(this.id, 'url') };
+
+		const wildcard = config.subdomain === WILDCARD_SUBDOMAIN;
+		if (wildcard && !config.hosts) throw new WildcardSiteNeedsHosts(this.id);
+		if (!wildcard && config.hosts) throw new SiteHostsNeedsWildcard(this.id);
+		if (wildcard && config.root) throw new WildcardSiteCannotBeRoot(this.id);
+		if (config.hosts && config.hosts.method.toUpperCase() !== 'GET') {
+			throw new SiteHostsNotGet(
+				this.id,
+				config.hosts.method,
+				config.hosts.route,
+			);
+		}
 	}
 
 	/**
@@ -134,12 +220,21 @@ export class StaticSite<TName extends string = string>
 	}
 
 	declare(): Declaration[] {
+		const { hosts } = this.config;
 		return [
 			{
 				kind: 'site',
 				id: this.id,
 				variant: this.config.variant ?? 'static',
 				...(this.config.subdomain ? { subdomain: this.config.subdomain } : {}),
+				...(hosts
+					? {
+							hosts: {
+								surface: canonicalId(hosts.surface.id),
+								path: hosts.route,
+							},
+						}
+					: {}),
 				app: {
 					path: this.config.path,
 					...(this.config.port ? { port: this.config.port } : {}),
@@ -150,7 +245,15 @@ export class StaticSite<TName extends string = string>
 				...(this.config.telemetry
 					? { telemetry: this.config.telemetry.id }
 					: {}),
-				provides: [this.keys.url],
+				provides: [
+					this.keys.url,
+					...(hosts
+						? [
+								provideKey(this.id, 'domain'),
+								provideKey(this.id, 'protectedSubdomains'),
+							]
+						: []),
+				],
 			},
 		];
 	}

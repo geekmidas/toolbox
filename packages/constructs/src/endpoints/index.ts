@@ -1,5 +1,8 @@
 import { EndpointFactory } from './EndpointFactory';
 
+// What a surface's generated CORS asks of each request's `Origin`: an exact
+// origin, or one label in place of a wildcard site's `*`.
+export { trustsOrigin } from '@geekmidas/manifest';
 export { publishConstructEvents } from '../publisher';
 export {
 	type Authorizer,

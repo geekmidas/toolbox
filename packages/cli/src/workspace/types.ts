@@ -1002,6 +1002,15 @@ export type WorkspaceInput<
 	 */
 	domains?: DomainsInput<NoInfer<TDeployed>>;
 	/**
+	 * Subdomains a wildcard site's tenants may never take, beyond every app's
+	 * own (which are derived from the constructs and never listed here): the
+	 * names no construct declares — `www`, `mail`, `status`, `docs`.
+	 *
+	 * Listing an app's own subdomain is refused at load: the construct
+	 * already protects it.
+	 */
+	protectedSubdomains?: readonly string[];
+	/**
 	 * Each root domain's DNS provider, and how its hosts are pointed at a
 	 * compose stage's server (`records`).
 	 */
@@ -1089,6 +1098,7 @@ export type InferredWorkspaceConfig<TApps extends AppsRecord> = {
 	};
 	shared?: SharedConfig;
 	domains?: DomainsConfig;
+	protectedSubdomains?: readonly string[];
 	dns?: WorkspaceDnsConfig;
 	deploy?: DeployConfig;
 	stages: StagesConfig;
@@ -1206,6 +1216,9 @@ export interface WorkspaceConfig {
 	/** Each deployed stage's base domain — see {@link DomainsConfig}. */
 	domains?: DomainsConfig;
 
+	/** Subdomains no tenant may take — see `WorkspaceInput`. */
+	protectedSubdomains?: readonly string[];
+
 	/** Each root domain's DNS provider — see {@link WorkspaceDnsConfig}. */
 	dns?: WorkspaceDnsConfig;
 
@@ -1292,6 +1305,8 @@ export interface NormalizedWorkspace {
 	apps: Record<string, NormalizedAppConfig>;
 	/** Each deployed stage's base domain */
 	domains?: DomainsConfig;
+	/** Subdomains no tenant may take, beyond every app's own */
+	protectedSubdomains?: readonly string[];
 	/** Each root domain's DNS provider */
 	dns?: WorkspaceDnsConfig;
 	/** Deploy configuration (empty object if not specified) */
@@ -1377,6 +1392,7 @@ const WORKSPACE_KEYS: ReadonlySet<string> = new Set([
 	'apps',
 	'shared',
 	'domains',
+	'protectedSubdomains',
 	'dns',
 	'deploy',
 	'stages',

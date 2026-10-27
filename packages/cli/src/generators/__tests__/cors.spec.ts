@@ -1,4 +1,5 @@
 import type { AddressInfo } from 'node:net';
+import { trustsOrigin } from '@geekmidas/constructs/endpoints';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { type ServerType, serve } from '@hono/node-server';
 import { transform } from 'esbuild';
@@ -34,6 +35,7 @@ describe('corsFor', () => {
 		const { setup, imports } = corsFor(surface());
 
 		expect(imports).toContain("from 'hono/cors'");
+		expect(imports).toContain("from '@geekmidas/constructs/endpoints'");
 		expect(setup).toContain("get('API_TRUSTED_ORIGINS')");
 		// The list itself is never in the output — only the key it arrives under.
 		expect(setup).not.toMatch(/https?:\/\//);
@@ -95,12 +97,14 @@ describe('corsFor', () => {
 			const envParser = new EnvironmentParser({
 				API_TRUSTED_ORIGINS: origins,
 			});
-			new Function('honoApp', 'envParser', 'cors', 'trustedOrigins', code)(
-				honoApp,
-				envParser,
-				cors,
-				trustedOrigins,
-			);
+			new Function(
+				'honoApp',
+				'envParser',
+				'cors',
+				'trustsOrigin',
+				'trustedOrigins',
+				code,
+			)(honoApp, envParser, cors, trustsOrigin, trustedOrigins);
 			honoApp.post('/users', (c) => c.json({ ok: true }));
 
 			server = await new Promise<ServerType>((resolve) => {
@@ -153,18 +157,41 @@ describe('corsFor', () => {
 			expect(response.headers.get('access-control-allow-origin')).toBeNull();
 		});
 
+		it('lets any one tenant of a wildcard site in, and nothing wider', async () => {
+			const url = await serveGeneratedCors('https://*.example.com');
+			const preflight = (origin: string) =>
+				fetch(`${url}/users`, {
+					method: 'OPTIONS',
+					headers: { origin, 'access-control-request-method': 'POST' },
+				}).then((r) => r.headers.get('access-control-allow-origin'));
+
+			expect(await preflight('https://acme.example.com')).toBe(
+				'https://acme.example.com',
+			);
+			expect(await preflight('https://example.com')).toBeNull();
+			expect(await preflight('https://a.b.example.com')).toBeNull();
+		});
+
 		it('hands the same origins to the request spans', async () => {
 			const { setup } = corsFor(surface());
 			const { code } = await transform(setup, { loader: 'ts' });
 			const trustedOrigins: string[] = [];
 
-			new Function('honoApp', 'envParser', 'cors', 'trustedOrigins', code)(
+			new Function(
+				'honoApp',
+				'envParser',
+				'cors',
+				'trustsOrigin',
+				'trustedOrigins',
+				code,
+			)(
 				new Hono(),
 				new EnvironmentParser({
 					API_TRUSTED_ORIGINS:
 						'https://web.example.com, https://admin.example.com',
 				}),
 				cors,
+				trustsOrigin,
 				trustedOrigins,
 			);
 

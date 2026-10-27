@@ -113,7 +113,8 @@ export function corsFor(surface: BuildContext['surface']): {
 	];
 
 	return {
-		imports: `import { cors } from 'hono/cors';`,
+		imports: `import { cors } from 'hono/cors';
+import { trustsOrigin } from '@geekmidas/constructs/endpoints';`,
 		setup: `
   // Who may call ${surface.id}, read off the graph rather than listed here.
   {
@@ -132,8 +133,9 @@ export function corsFor(surface: BuildContext['surface']): {
     // continue — the server reads them back from \`createApp\`.
     trustedOrigins.push(...origins);
 
+    // An exact origin, or any one label in place of a wildcard site's \`*\`.
     honoApp.use('*', cors({
-      origin: origins,
+      origin: (origin) => (trustsOrigin(origin, origins) ? origin : null),
       allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
       allowHeaders: ${JSON.stringify(allowHeaders)},${
 				cors.exposeHeaders

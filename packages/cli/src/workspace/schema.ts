@@ -1045,6 +1045,13 @@ export const WorkspaceConfigSchema = z
 		shared: SharedConfigSchema.optional(),
 		/** Each deployed stage's base domain (stage name -> domain). */
 		domains: z.record(z.string(), z.string()).optional(),
+		/**
+		 * Subdomains no tenant of a wildcard site may take, beyond every app's
+		 * own: `www`, `mail`, `status`. One DNS label each.
+		 */
+		protectedSubdomains: z
+			.array(z.string().regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/))
+			.optional(),
 		/** Each root domain's DNS provider, and how its hosts are pointed. */
 		dns: DnsConfigSchema.optional(),
 		deploy: DeployConfigSchema.optional(),
