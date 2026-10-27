@@ -54,6 +54,7 @@ export class CronGenerator extends ConstructGenerator<
 				environment: await construct.getEnvironment({
 					markOptional: context.markOptional,
 				}),
+				monitoring: construct.getMonitoring(),
 			});
 
 			logger.log(`Generated cron handler: ${key}`);

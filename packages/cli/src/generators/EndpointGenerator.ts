@@ -95,11 +95,22 @@ export class EndpointGenerator extends ConstructGenerator<
 			await this.generateEndpointsFile(outputDir, constructs, context);
 			const appFile = await this.generateAppFile(outputDir, context);
 
+			// One process serves every endpoint, so its monitors are the distinct
+			// ones across them: endpoints reading the same variable share its URL.
+			const monitoring = [
+				...new Map(
+					constructs
+						.flatMap(({ construct }) => construct.getMonitoring() ?? [])
+						.map((monitor) => [JSON.stringify(monitor), monitor]),
+				).values(),
+			];
+
 			routes.push({
 				path: '*',
 				method: 'ALL',
 				handler: relative(process.cwd(), appFile),
 				authorizer: 'none',
+				...(monitoring.length ? { monitoring } : {}),
 			});
 
 			logger.log(
@@ -134,6 +145,7 @@ export class EndpointGenerator extends ConstructGenerator<
 						markOptional: context.markOptional,
 					}),
 					authorizer: construct.authorizer?.name ?? 'none',
+					monitoring: construct.getMonitoring(),
 				};
 
 				routes.push(routeInfo);
@@ -166,6 +178,7 @@ export class EndpointGenerator extends ConstructGenerator<
 						markOptional: context.markOptional,
 					}),
 					authorizer: construct.authorizer?.name ?? 'none',
+					monitoring: construct.getMonitoring(),
 				};
 
 				routes.push(routeInfo);

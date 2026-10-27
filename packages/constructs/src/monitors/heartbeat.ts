@@ -1,10 +1,12 @@
 import type { Service } from '@geekmidas/services';
-import type { ConstructMonitor } from '../monitor';
+import type { ConstructMonitor, MonitorInfo } from '../monitor';
 
 export interface HeartbeatOptions {
 	/**
-	 * The environment variable holding the heartbeat URL. When it is unset the
-	 * monitor does nothing, so only the stages that set it are monitored.
+	 * The environment variable holding the heartbeat URL. Required: the manifest
+	 * lists it so infrastructure sets it wherever the construct is deployed. If
+	 * it is missing at runtime the monitor is skipped with a warning, and the
+	 * run goes on.
 	 * @default 'HEARTBEAT_URL'
 	 */
 	env?: string;
@@ -19,6 +21,11 @@ export interface HeartbeatOptions {
 	failure?: (url: string) => string;
 	/** Milliseconds to wait for the provider. @default 3000 */
 	timeout?: number;
+	/**
+	 * The service the URL belongs to, recorded in the manifest so infrastructure
+	 * knows which kind of heartbeat to create. Set by the presets.
+	 */
+	provider?: string;
 }
 
 /**
@@ -36,20 +43,22 @@ export interface HeartbeatOptions {
  */
 export function heartbeat(
 	options: HeartbeatOptions = {},
-): Service<`heartbeat:${string}`, ConstructMonitor> {
+): Service<`heartbeat:${string}`, ConstructMonitor> & { monitor: MonitorInfo } {
 	const {
 		env = 'HEARTBEAT_URL',
 		start,
 		success = (url) => url,
 		failure,
 		timeout = 3000,
+		provider,
 	} = options;
 
 	return {
 		serviceName: `heartbeat:${env}`,
+		monitor: { type: 'heartbeat', ...(provider ? { provider } : {}), env },
 		async register({ envParser }) {
 			const { url } = envParser
-				.create((get) => ({ url: get(env).string().optional() }))
+				.create((get) => ({ url: get(env).string() }))
 				.parse();
 
 			const ping = async (target?: (url: string) => string) => {
@@ -75,12 +84,13 @@ export function heartbeat(
 
 /** Better Stack heartbeats: `{url}` on success, `{url}/fail` on failure. */
 heartbeat.betterStack = (env?: string) =>
-	heartbeat({ env, failure: (url) => `${url}/fail` });
+	heartbeat({ env, provider: 'betterStack', failure: (url) => `${url}/fail` });
 
 /** Healthchecks.io: `{url}/start`, `{url}` and `{url}/fail`. */
 heartbeat.healthchecks = (env?: string) =>
 	heartbeat({
 		env,
+		provider: 'healthchecks',
 		start: (url) => `${url}/start`,
 		failure: (url) => `${url}/fail`,
 	});

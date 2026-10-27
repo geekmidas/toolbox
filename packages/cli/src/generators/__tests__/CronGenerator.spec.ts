@@ -1,6 +1,11 @@
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Cron, ScheduleExpression } from '@geekmidas/constructs/crons';
+import {
+	type Cron,
+	CronBuilder,
+	type ScheduleExpression,
+} from '@geekmidas/constructs/crons';
+import { heartbeat } from '@geekmidas/constructs/monitors';
 import { itWithDir } from '@geekmidas/testkit/os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -143,6 +148,45 @@ describe('CronGenerator', () => {
 				);
 				expect(hourlyCleanupContent).toContain('AWSScheduledFunction');
 				expect(hourlyCleanupContent).toContain('import { hourlyCleanup }');
+			});
+
+			it('records the cron’s monitors in its manifest entry', async () => {
+				const monitored = new CronBuilder()
+					.schedule('cron(0 8 * * ? *)')
+					.monitor(heartbeat.betterStack('MONITORING_URL'))
+					.handle(async () => ({}));
+				const plain = createTestCron();
+
+				const cronInfos = await generator.build(
+					context,
+					[
+						{
+							key: 'monitored',
+							name: 'monitored',
+							construct: monitored,
+							path: {
+								absolute: join(tempDir, 'monitored.ts'),
+								relative: 'monitored.ts',
+							},
+						},
+						{
+							key: 'plain',
+							name: 'plain',
+							construct: plain,
+							path: {
+								absolute: join(tempDir, 'plain.ts'),
+								relative: 'plain.ts',
+							},
+						},
+					],
+					outputDir,
+					{ provider: 'aws-lambda' },
+				);
+
+				expect(cronInfos[0].monitoring).toEqual([
+					{ type: 'heartbeat', provider: 'betterStack', env: 'MONITORING_URL' },
+				]);
+				expect(cronInfos[1].monitoring).toBeUndefined();
 			});
 
 			it('should use default schedule when none provided', async () => {
