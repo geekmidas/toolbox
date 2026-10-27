@@ -1,5 +1,31 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.128
+
+### Patch Changes
+
+- [#311](https://github.com/geekmidas/toolbox/pull/311) [`dd06610`](https://github.com/geekmidas/toolbox/commit/dd0661010a647e7abc3b77d06d8499038c262476) Thanks [@geekmidas](https://github.com/geekmidas)! - Seeds are handed the stage's env
+
+  `gkm seed` and `gkm dev --seed` resolved the stage's env and used it only for the owner connection. Seeds got `{ stage }`, and `process.env` was never filled, so a seed building a construct's service had no URLs to give its `EnvironmentParser` and failed with `ASSETS_URL: expected string, received undefined`. `SeedContext` now carries `env`, the stage's resolved environment, so a seed calls `register({ envParser: new EnvironmentParser(env), context })` the way a handler's service is built. `gkm exec -- gkm seed` is no longer needed as a workaround.
+
+- Updated dependencies []:
+  - @geekmidas/audit@10.0.0-alpha.128
+  - @geekmidas/auth@10.0.0-alpha.128
+  - @geekmidas/cache@10.0.0-alpha.128
+  - @geekmidas/db@10.0.0-alpha.128
+  - @geekmidas/emailkit@10.0.0-alpha.128
+  - @geekmidas/envkit@10.0.0-alpha.128
+  - @geekmidas/errors@10.0.0-alpha.128
+  - @geekmidas/events@10.0.0-alpha.128
+  - @geekmidas/logger@10.0.0-alpha.128
+  - @geekmidas/manifest@10.0.0-alpha.128
+  - @geekmidas/rate-limit@10.0.0-alpha.128
+  - @geekmidas/schema@10.0.0-alpha.128
+  - @geekmidas/services@10.0.0-alpha.128
+  - @geekmidas/storage@10.0.0-alpha.128
+  - @geekmidas/telescope@10.0.0-alpha.128
+  - @geekmidas/testkit@10.0.0-alpha.128
+
 ## 10.0.0-alpha.127
 
 ### Minor Changes

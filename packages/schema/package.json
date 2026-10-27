@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/schema",
-	"version": "10.0.0-alpha.127",
+	"version": "10.0.0-alpha.128",
 	"type": "module",
 	"exports": {
 		".": {
