@@ -22,8 +22,6 @@ import {
 } from '@geekmidas/schema/openapi';
 import type { Service, ServiceRecord } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import pick from 'lodash.pick';
-import set from 'lodash.set';
 import type { OpenAPIV3_1 } from 'openapi-types';
 import { ConstructType } from '../Construct';
 import { Function, type FunctionHandler } from '../functions';
@@ -347,13 +345,14 @@ export class Endpoint<
 	refineInput(
 		ctx: EndpointContext<TInput, TServices, TLogger, TSession>,
 	): InferComposableStandardSchema<TInput> {
-		const input = pick(ctx, [
-			'body',
-			'query',
-			'params',
-		]) as InferComposableStandardSchema<TInput>;
+		const input: Record<string, unknown> = {};
+		for (const key of ['body', 'query', 'params'] as const) {
+			if (key in ctx) {
+				input[key] = (ctx as Record<string, unknown>)[key];
+			}
+		}
 
-		return input;
+		return input as InferComposableStandardSchema<TInput>;
 	}
 
 	handler = (
@@ -471,11 +470,9 @@ export class Endpoint<
 				componentCollector,
 			);
 			if (responseSchema) {
-				set(
-					operation,
-					['responses', '200', 'content', this.responseType, 'schema'],
-					responseSchema,
-				);
+				(operation.responses!['200'] as OpenAPIV3_1.ResponseObject).content = {
+					[this.responseType]: { schema: responseSchema },
+				};
 			}
 		}
 
@@ -498,14 +495,14 @@ export class Endpoint<
 					componentCollector,
 				);
 				if (bodySchema) {
-					set(operation, ['requestBody'], {
+					operation.requestBody = {
 						required: true,
 						content: {
 							'application/json': {
 								schema: bodySchema,
 							},
 						},
-					});
+					};
 				}
 			}
 

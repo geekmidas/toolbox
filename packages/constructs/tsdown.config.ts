@@ -28,8 +28,6 @@ export default defineConfig({
 	noExternal: [
 		'lodash.compact',
 		'lodash.get',
-		'lodash.pick',
-		'lodash.set',
 		'lodash.uniqby',
 	],
 });

@@ -426,6 +426,27 @@ export class OpenApiTsGenerator {
 
 			// Remove $defs from the schema before converting to interface
 			const { $defs, ...schemaWithoutDefs } = jsonSchema;
+
+			// A schema that *is* a registered schema converts to nothing but a
+			// `$ref` at it, and the def it points at has already been collected
+			// above — so emitting a declaration here as well produces
+			// `export type User = User`, a circular alias that is not a type.
+			//
+			// Zod used to inline this case and only started emitting the `$ref` in
+			// 4.6, which is how the bug arrived without the generator changing.
+			const ref = (schemaWithoutDefs as { $ref?: string }).$ref;
+			if (
+				ref &&
+				Object.keys(schemaWithoutDefs).every(
+					(k) => k === '$ref' || k === '$schema',
+				)
+			) {
+				const target = ref.split('/').pop();
+				// The def's own interface is the declaration. Only alias it when the
+				// names actually differ, which is when the alias says something.
+				return target === name ? null : `export type ${name} = ${target};`;
+			}
+
 			return this.jsonSchemaToInterface(schemaWithoutDefs, name);
 		} catch {
 			return null;
