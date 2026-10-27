@@ -24,6 +24,14 @@ export const TURBO_VERSION = '2.5.4';
 export const STATIC_SITE_IMAGE = 'caddy:2.10-alpine';
 
 /**
+ * The image generated Dockerfiles build on unless one is configured. Pinned to
+ * a Node security release, not the floating `node:22-alpine` tag, so a cached
+ * or older image can't put a build below the patched version — and the
+ * Dockerfile says which version it runs.
+ */
+export const DEFAULT_BASE_IMAGE = 'node:22.23.4-alpine';
+
+/**
  * How an image is built: every template prunes the build root to the app's
  * slice, installs it, builds it and copies the result into a runner.
  *
@@ -687,7 +695,7 @@ export function resolveDockerConfig(config: GkmConfig): Required<DockerConfig> {
 		// The project's name, from the config — what somebody types after
 		// `docker pull` — never whatever the directory's package.json is called.
 		imageName: docker.imageName ?? config.name ?? 'api',
-		baseImage: docker.baseImage ?? 'node:22-alpine',
+		baseImage: docker.baseImage ?? DEFAULT_BASE_IMAGE,
 		port: docker.port ?? 3000,
 	};
 }

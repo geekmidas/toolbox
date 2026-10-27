@@ -495,8 +495,8 @@ export default defineConfig({
     registry: 'ghcr.io/myorg',
     // Image name (defaults to package.json name)
     imageName: 'my-api',
-    // Base image (default: node:22-alpine)
-    baseImage: 'node:22-alpine',
+    // Base image (default: node:22.23.4-alpine)
+    baseImage: 'node:22.23.4-alpine',
     // Port to expose (default: 3000)
     port: 3000,
   },
@@ -1971,7 +1971,7 @@ interface GkmConfig {
 interface DockerConfig {
   registry?: string;        // Container registry URL
   imageName?: string;       // Image name (defaults to package.json name)
-  baseImage?: string;       // Base image (default: node:22-alpine)
+  baseImage?: string;       // Base image (default: node:22.23.4-alpine)
   port?: number;            // Port to expose (default: 3000)
 }
 
