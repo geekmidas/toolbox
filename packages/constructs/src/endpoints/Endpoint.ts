@@ -512,8 +512,9 @@ export class Endpoint<
 				componentCollector,
 			);
 			if (responseSchema) {
-				(operation.responses![status] as OpenAPIV3_1.ResponseObject).content =
-					{ [this.responseType]: { schema: responseSchema } };
+				(operation.responses![status] as OpenAPIV3_1.ResponseObject).content = {
+					[this.responseType]: { schema: responseSchema },
+				};
 			}
 		}
 

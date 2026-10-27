@@ -44,10 +44,6 @@ export default defineConfig({
 	// Bundle lodash utilities — they are not hoisted to the workspace root
 	// and would fail to resolve when consumers load the dist from the root context.
 	deps: {
-		alwaysBundle: [
-			'lodash.compact',
-			'lodash.get',
-			'lodash.uniqby',
-		],
+		alwaysBundle: ['lodash.compact', 'lodash.get', 'lodash.uniqby'],
 	},
 });
