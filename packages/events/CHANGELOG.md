@@ -1,5 +1,12 @@
 # @geekmidas/events
 
+## 9.2.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/schema@9.2.0
+
 ## 9.1.0
 
 ### Patch Changes

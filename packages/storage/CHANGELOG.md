@@ -1,5 +1,12 @@
 # @geekmidas/storage
 
+## 9.2.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@9.2.0
+
 ## 9.1.0
 
 ### Patch Changes

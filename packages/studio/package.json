@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/studio",
-	"version": "9.1.0",
+	"version": "9.2.0",
 	"description": "Unified development tools dashboard with database browser and request monitoring",
 	"type": "module",
 	"scripts": {
