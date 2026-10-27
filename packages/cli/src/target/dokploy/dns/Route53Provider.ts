@@ -140,7 +140,13 @@ export class Route53Provider implements DnsProvider {
 
 		// Remove the domain suffix
 		const subdomain = normalizedName.replace(`.${normalizedDomain}`, '');
-		return subdomain.replace(/\.$/, ''); // Remove trailing dot if any
+		// Route 53 returns a name's special characters as octal escapes — a
+		// wildcard record's `*` as `\052` — so the label is read back as written.
+		return subdomain
+			.replace(/\.$/, '') // Remove trailing dot if any
+			.replace(/\\(\d{3})/g, (_, code: string) =>
+				String.fromCharCode(Number.parseInt(code, 8)),
+			);
 	}
 
 	async getRecords(domain: string): Promise<DnsRecord[]> {

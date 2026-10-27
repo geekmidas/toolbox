@@ -16,6 +16,7 @@ import type { WorkspaceDnsConfig } from '../../workspace/types';
 import {
 	applyStackDns,
 	checkStackDns,
+	DnsWildcardRefused,
 	diffRecordedDns,
 	HostNotPointingAtServer,
 	planStackDns,
@@ -25,6 +26,7 @@ import {
 	ServerAddressInvalid,
 	ServerAddressMissing,
 	serverAddress,
+	WILDCARD_PROBE,
 } from '../dns';
 
 /**
@@ -257,6 +259,40 @@ describe('the plan', () => {
 		});
 
 		expect(plan.uncovered).toEqual(['files.other.org']);
+	});
+
+	it("writes one *.<domain> record for the stage's wildcard site", () => {
+		const plan = planStackDns({
+			stage: 'production',
+			hosts: ['api.shop.example.com', '*.shop.example.com'],
+			server: { ipv4: IPV4 },
+			dns: dns(),
+			wildcard: '*.shop.example.com',
+		});
+
+		expect(
+			plan.domains[0]!.records.map((r) => `${r.name} ${r.type} ${r.value}`),
+		).toEqual([`*.shop A ${IPV4}`, `api.shop A ${IPV4}`]);
+	});
+
+	it('refuses every other wildcard host', () => {
+		expect(() =>
+			planStackDns({
+				stage: 'production',
+				hosts: ['*.files.shop.example.com'],
+				server: { ipv4: IPV4 },
+				dns: dns(),
+				wildcard: '*.shop.example.com',
+			}),
+		).toThrow(DnsWildcardRefused);
+		expect(() =>
+			planStackDns({
+				stage: 'production',
+				hosts: ['*.shop.example.com'],
+				server: { ipv4: IPV4 },
+				dns: dns(),
+			}),
+		).toThrow(DnsWildcardRefused);
 	});
 });
 
@@ -538,6 +574,23 @@ describe('the check', () => {
 
 		expect(failure.message).toContain('create these records at the DNS host');
 		expect(failure.message).toMatch(/files\.other\.org\s+A\s+203\.0\.113\.10/);
+	});
+
+	it('resolves a wildcard record through one label no app takes', async () => {
+		const asked: string[] = [];
+		const ok = await checkStackDns({
+			stage: 'production',
+			hosts: ['*.shop.example.com'],
+			server: { ipv4: IPV4 },
+			dns: dns(),
+			lookup: async (host) => {
+				asked.push(host);
+				return [IPV4];
+			},
+		});
+
+		expect(asked).toEqual([`${WILDCARD_PROBE}.shop.example.com`]);
+		expect(ok).toEqual(['*.shop.example.com']);
 	});
 });
 

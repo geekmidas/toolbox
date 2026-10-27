@@ -82,6 +82,33 @@ export interface EdgeRoute {
 	auth?: { user: string; hash: string };
 	/** The path the upstream answers its health on — `/health`, `/`. */
 	health?: string;
+	/**
+	 * For a wildcard site's route, whose `host` is `*.<domain>`: every one
+	 * label under the domain that no other route answers, and how its
+	 * certificate is had. Named hosts always win over it.
+	 */
+	wildcard?: EdgeWildcard;
+}
+
+/** How a `*.<domain>` route is matched and certified. */
+export interface EdgeWildcard {
+	/** The domain under the `*` — `example.com`. */
+	domain: string;
+	/**
+	 * Labels under the domain that never reach it, although no route of this
+	 * stack answers them: the protected subdomains (`www`, `mail`), and a
+	 * stage whose domain sits under this one's (`staging`).
+	 */
+	except: readonly string[];
+	/**
+	 * Where its certificate comes from:
+	 * - `stage`: the stage's own (`deploy.compose.tls`), a wildcard one;
+	 * - `dns`: one `*.<domain>` certificate from Let's Encrypt over the DNS
+	 *   challenge, which the shared Traefik edge answers through Route 53;
+	 * - `on-demand`: one per host, as Caddy is first asked for it, once the
+	 *   site's `hosts` route — `ask`, on the stack's network — answers 200.
+	 */
+	tls: { kind: 'stage' } | { kind: 'dns' } | { kind: 'on-demand'; ask: string };
 }
 
 /** Some of a route's paths, answered by another upstream. */

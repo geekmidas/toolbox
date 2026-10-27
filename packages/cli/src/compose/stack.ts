@@ -21,6 +21,7 @@ import {
 	isWildcardSite,
 	provideKey,
 	provisionOrder,
+	WILDCARD_SUBDOMAIN,
 } from '@geekmidas/manifest';
 import { stageBackups } from '../backups/config.js';
 import {
@@ -97,6 +98,10 @@ import {
 import { type Plan, type PlannedResource, planFor } from '../reconcile/plan.js';
 import { bucketLifecycles, bucketPolicies } from '../reconcile/provision.js';
 import type { StageSecrets } from '../secrets/types.js';
+import {
+	findRootDomain,
+	normalizeDnsConfig,
+} from '../target/dokploy/dns/index.js';
 import { NoDomainForStage } from '../target/dokploy/domain.js';
 import {
 	otlpTelemetryEnv,
@@ -140,6 +145,7 @@ import {
 	EDGE_LIMITS,
 	type EdgeRoute,
 	type EdgeTls,
+	type EdgeWildcard,
 	NOFILE,
 } from './routes.js';
 import { publicBuildValues } from './siteBuild.js';
@@ -502,6 +508,16 @@ export interface ComposeStack {
 	proxy: ComposeProxy;
 	/** Every public host and what answers it — what either proxy renders. */
 	routes: EdgeRoute[];
+	/**
+	 * A deployed stage's wildcard site: its id, the `*.<domain>` host its
+	 * one DNS record is written for, and where its certificate comes from —
+	 * `dns` when the deploy has to give the shared edge its Route 53 key.
+	 */
+	wildcard?: {
+		site: string;
+		host: string;
+		tls: EdgeWildcard['tls']['kind'];
+	};
 	/** The stack's own Caddy's configuration — with `proxy: 'caddy'`. */
 	caddyfile?: string;
 	/**
@@ -773,15 +789,22 @@ function probe(port: number, path: string): StackService['healthcheck'] {
  * Redis.
  */
 export function stackPlan(
-	workspace: Pick<NormalizedWorkspace, 'stages' | 'protectedSubdomains'>,
+	workspace: Pick<
+		NormalizedWorkspace,
+		'stages' | 'protectedSubdomains' | 'domains'
+	>,
 	manifest: ConstructManifest,
 	stage: string,
 ): Plan {
+	// A stage whose domain sits under this one's is a label of it no tenant
+	// may take: `staging`, beside every app's own and the configured names.
+	const protectedSubdomains = [
+		...(workspace.protectedSubdomains ?? []),
+		...nestedStageLabels(workspace.domains, stage),
+	];
 	return planFor(manifest, stage, provisionOrder(manifest), {
 		localStage: workspace.stages.local,
-		...(workspace.protectedSubdomains
-			? { protectedSubdomains: workspace.protectedSubdomains }
-			: {}),
+		...(protectedSubdomains.length > 0 ? { protectedSubdomains } : {}),
 		events: DEFAULT_EVENTS.server,
 		cache: STACK_CACHE,
 		// The stack brings its own edge; reconcile's would front the host.
@@ -1480,12 +1503,27 @@ export function composeStack(input: StackInput): ComposeStack {
 		}
 	}
 
+	// The wildcard site's tenants, on a deployed stage: every label under
+	// the domain nothing else answers, and where their certificate comes from.
+	const wildcard = local
+		? undefined
+		: stackWildcard(apps, {
+				manifest,
+				byId,
+				workspace,
+				stage,
+				proxy,
+				certificate: certificate !== undefined,
+				hostOf,
+			});
+
 	// One route per public host — the data both proxies render.
 	const routes: EdgeRoute[] = [
 		...apps.map(
 			(app): EdgeRoute => ({
 				name: app.name,
 				host: app.host,
+				...(wildcard?.site === app.id ? { wildcard: wildcard.edge } : {}),
 				upstreams: replicaNames(app).map((service) => ({
 					service,
 					port: app.port,
@@ -1603,6 +1641,15 @@ export function composeStack(input: StackInput): ComposeStack {
 		compose,
 		proxy,
 		routes,
+		...(wildcard
+			? {
+					wildcard: {
+						site: wildcard.site,
+						host: `*.${wildcard.edge.domain}`,
+						tls: wildcard.edge.tls.kind,
+					},
+				}
+			: {}),
 		...(proxy === 'caddy'
 			? { caddyfile: edgeCaddyfile(routes, { tls }) }
 			: {
@@ -1670,12 +1717,6 @@ function stackApps(
 		const app = workspace.apps[name];
 		const resource = resources.get(id);
 		if (!app || !resource || !app.port) continue;
-
-		// A deployed edge has no route, certificate or DNS record yet for
-		// every subdomain (#298), so refuse rather than serve nothing.
-		if (!options.local && isWildcardSite(declaration)) {
-			throw new WildcardSiteNotDeployable(id, options.stage);
-		}
 
 		const host = hostOf(name, app, workspace, resource, options);
 		const site = declaration.kind === 'site';
@@ -1791,22 +1832,106 @@ function recordedSubscriptions(
 }
 
 /**
- * A wildcard site on a deployed compose stage, whose edge cannot yet route,
- * certify or point DNS at every subdomain.
+ * A wildcard site on a deployed stage with nowhere to get a certificate for
+ * its tenants' hosts from. Let's Encrypt issues a wildcard certificate only
+ * over the DNS challenge, so the stage either brings its own or gives the
+ * proxy a way to get one.
  */
-export class WildcardSiteNotDeployable extends GkmError {
+export class WildcardSiteCertificateMissing extends GkmError {
 	constructor(
 		readonly site: string,
 		readonly stage: string,
+		readonly proxy: ComposeProxy,
+		readonly domain: string,
 	) {
 		super(
-			`'${site}' answers on every subdomain, and gkm compose cannot yet ` +
-				`route, certify and point DNS at every subdomain of '${stage}'. ` +
-				`Run it locally with gkm dev, or give it a subdomain of its own to ` +
-				`deploy it.`,
+			proxy === 'traefik'
+				? `'${site}' answers on every subdomain of ${domain}, and '${stage}' ` +
+						`has no certificate for them. Set deploy.compose.tls for ` +
+						`'${stage}' to a *.${domain} certificate, or manage ${domain} ` +
+						`with dns: { '<root domain>': { provider: 'route53' } } so the ` +
+						`shared edge gets one over the DNS challenge.`
+				: `'${site}' answers on every subdomain of ${domain}, and '${stage}' ` +
+						`has no certificate for them. Set deploy.compose.tls for ` +
+						`'${stage}' to a *.${domain} certificate, or give the site ` +
+						`\`hosts\` so Caddy gets one per tenant, on demand.`,
 		);
-		this.name = 'WildcardSiteNotDeployable';
+		this.name = 'WildcardSiteCertificateMissing';
 	}
+}
+
+/**
+ * A deployed stage's wildcard site, as its edge serves it: the labels it
+ * never takes, and its certificate — the stage's own (`deploy.compose.tls`)
+ * first; then, on the shared Traefik edge, a `*.<domain>` one over the DNS
+ * challenge when Route 53 manages the domain; on the stack's own Caddy, one
+ * per host on demand, asked of the site's `hosts` route.
+ *
+ * @throws {WildcardSiteCertificateMissing} when neither applies
+ */
+function stackWildcard(
+	apps: readonly StackApp[],
+	options: {
+		manifest: ConstructManifest;
+		byId: ReadonlyMap<string, PlannedResource>;
+		workspace: NormalizedWorkspace;
+		stage: string;
+		proxy: ComposeProxy;
+		certificate: boolean;
+		hostOf: (service: string) => string;
+	},
+): { site: string; edge: EdgeWildcard } | undefined {
+	const { manifest, workspace, stage, proxy } = options;
+	const app = apps.find((a) => isWildcardSite(manifest[a.id]));
+	if (!app) return undefined;
+	const declaration = manifest[app.id];
+	if (!isWildcardSite(declaration)) return undefined;
+
+	const domain = workspace.domains?.[stage];
+	if (!domain) throw new NoDomainForStage(stage);
+	const except = options.byId.get(app.id)?.protectedSubdomains ?? [];
+
+	const tls = ((): EdgeWildcard['tls'] => {
+		if (options.certificate) return { kind: 'stage' };
+		if (proxy === 'traefik') {
+			const dns = workspace.dns ? normalizeDnsConfig(workspace.dns) : {};
+			const root = findRootDomain(domain, dns);
+			if (root && dns[root]?.provider === 'route53') return { kind: 'dns' };
+		} else if (declaration.hosts) {
+			const surface = apps.find((a) => a.id === declaration.hosts?.surface);
+			if (surface) {
+				return {
+					kind: 'on-demand',
+					ask: `http://${options.hostOf(surface.name)}:${surface.port}${declaration.hosts.path}`,
+				};
+			}
+		}
+		throw new WildcardSiteCertificateMissing(app.id, stage, proxy, domain);
+	})();
+
+	return { site: app.id, edge: { domain, except, tls } };
+}
+
+/**
+ * The first label under `stage`'s domain of every other stage's domain that
+ * sits beneath it — `staging` for `staging.example.com` (or
+ * `a.staging.example.com`) under `example.com`.
+ */
+export function nestedStageLabels(
+	domains: NormalizedWorkspace['domains'],
+	stage: string,
+): string[] {
+	const own = domains?.[stage]?.toLowerCase();
+	if (!own) return [];
+	const labels = new Set<string>();
+	for (const [other, domain] of Object.entries(domains ?? {})) {
+		if (other === stage || !domain) continue;
+		const lower = domain.toLowerCase();
+		if (!lower.endsWith(`.${own}`)) continue;
+		const rest = lower.slice(0, -(own.length + 1)).split('.');
+		labels.add(rest.at(-1)!);
+	}
+	return [...labels].sort();
 }
 
 /** Two constructs the edge would answer on one host. */
@@ -1924,6 +2049,13 @@ function hostOf(
 	options: { local: boolean; stage: string },
 ): string {
 	if (options.local) return hostFor(resource, workspace.name);
+	// Every label under the stage's domain, never the domain itself: a
+	// wildcard site is no stage's root, whatever else the project has.
+	if (resource.subdomain === WILDCARD_SUBDOMAIN) {
+		const domain = workspace.domains?.[options.stage];
+		if (!domain) throw new NoDomainForStage(options.stage);
+		return `${WILDCARD_SUBDOMAIN}.${domain}`;
+	}
 
 	return resolveHost(
 		name,

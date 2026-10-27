@@ -687,8 +687,13 @@ serves — see [Changing the domain](#changing-the-domain). What it wrote is
 recorded in the stage's deploy state as `dns-record` resources. A `manual`
 domain is printed, not written.
 
-**No wildcard.** One record is written per host, never `*.shop.example.com`.
-A wildcard host is refused with `DnsWildcardRefused`.
+**One wildcard, for a wildcard site.** One record is written per host. The
+only wildcard written is `*.<stage domain>` for a site declared
+`subdomain: '*'` (see [A site on every subdomain](#a-site-on-every-subdomain)):
+its tenants are created by the running app, not by a deploy. It is read back
+like the others, and resolved, where no provider confirms it, through
+`gkm-wildcard-check.<stage domain>`. Every other wildcard host is refused with
+`DnsWildcardRefused`.
 
 The DNS provider's credentials are read by the machine that runs the deploy —
 see [DNS Providers](./deployment.md#dns-providers) for GoDaddy's token and its
@@ -904,6 +909,52 @@ is not there fails the run with `ComposeTlsFileMissing` before anything starts,
 a certificate for the local stage with `ComposeTlsOnLocalStage`, and a stage the
 workspace does not have — in `tls` or a per-stage `proxy` — with
 `ComposeStageUnknown`.
+
+### A site on every subdomain
+
+A site declared `subdomain: '*'` (see
+[Naming](./naming.md#a-site-on-every-subdomain)) answers on every one label
+under the stage's domain that no other app does: `acme.shop.example.com`
+reaches it, `api.shop.example.com` still reaches the API, and
+`a.b.shop.example.com` reaches nothing. The deploy writes one
+`*.shop.example.com` record to the server beside the named ones.
+
+A tenant never takes a label the stage needs. The site's protected
+subdomains — every app's own label, `protectedSubdomains`, and the first
+label of any other stage whose domain sits under this one's (`staging` for
+`staging.shop.example.com`) — never reach it, on either proxy.
+
+Let's Encrypt issues a wildcard certificate only over the DNS challenge, so
+each proxy gets the tenants' certificates its own way:
+
+- **Traefik (the shared edge)**: one `*.<stage domain>` certificate per stage,
+  obtained and renewed by the edge over the DNS challenge when Route 53 holds
+  the domain (`dns: { 'example.com': { provider: 'route53' } }`). The wildcard
+  router (`HostRegexp`, priority 1) sits below every named host's. The deploy
+  creates what the edge writes the challenge with: an IAM user for the server,
+  `gkm-edge-acme-<hash>` under `/gkm/`, with one inline policy per stack
+  allowing `ChangeResourceRecordSets` on the stage's zone for the TXT record
+  `_acme-challenge.<stage domain>` alone — plus `ListResourceRecordSets` on
+  that zone, `GetChange` and `ListHostedZonesByName`, which write nothing. Its
+  key is written into the edge's `certs/aws-credentials` (`0600`), never into
+  the stage's secrets, and the deploy prints the user and the zone. A user by
+  that name that gkm did not tag for the server is refused with
+  `EdgeAcmeUserNotOwned`.
+- **Caddy (the stack's own)**: one certificate per tenant, on demand. Before
+  Caddy gets one for a host, it asks the site's `hosts` route on the stack's
+  network (`GET <path>?domain=<host>`); a host that is no tenant gets no
+  certificate, so it fails in the browser rather than reaching the app.
+- **Either**: the stage's own wildcard certificate, `deploy.compose.tls` (see
+  [Certificates](#certificates)), wins over both, for a server that must hold
+  no key.
+
+A stage with none of these is refused with `WildcardSiteCertificateMissing`,
+naming what would give it one. Two stages on one server each get their own
+router and certificate: a wildcard covers one label, so `*.example.com` never
+matches `acme.staging.example.com`.
+
+The verify phase asks the wildcard site's container for its health rather than
+a tenant's host, which only the app knows.
 
 ### Switching a server from Caddy to the shared edge
 

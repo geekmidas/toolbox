@@ -106,6 +106,36 @@ describe('Route53Provider against a hosted zone', () => {
 		value,
 	});
 
+	describe('a wildcard record', () => {
+		it('reads back as written, though Route 53 returns its * escaped', async () => {
+			await provider.upsertRecords(DOMAIN, [a('*.shop')]);
+
+			const read = await provider.getRecords(DOMAIN);
+
+			expect(read.filter((r) => r.type === 'A').map((r) => r.name)).toEqual([
+				'*.shop',
+			]);
+			// Written again with the same value, it is left as it is.
+			const [again] = await provider.upsertRecords(DOMAIN, [a('*.shop')]);
+			expect(again?.unchanged).toBe(true);
+		});
+
+		it('reads back the octal escape AWS returns for it', async () => {
+			// What AWS itself answers for `*.shop`: the `*` as `\052`.
+			server.use(
+				http.get(`${ENDPOINT}/2013-04-01/hostedzone/:id/rrset*`, () =>
+					HttpResponse.xml(
+						`<ListResourceRecordSetsResponse><ResourceRecordSets><ResourceRecordSet><Name>\\052.shop.${DOMAIN}.</Name><Type>A</Type><TTL>300</TTL><ResourceRecords><ResourceRecord><Value>1.2.3.4</Value></ResourceRecord></ResourceRecords></ResourceRecordSet></ResourceRecordSets><IsTruncated>false</IsTruncated><MaxItems>100</MaxItems></ListResourceRecordSetsResponse>`,
+					),
+				),
+			);
+
+			const read = await provider.getRecords(DOMAIN);
+
+			expect(read.map((r) => r.name)).toEqual(['*.shop']);
+		});
+	});
+
 	describe('deleteRecords', () => {
 		it('deletes what exists and reports the rest as not found', async () => {
 			await provider.upsertRecords(DOMAIN, [a('api'), a('@', '5.6.7.8')]);

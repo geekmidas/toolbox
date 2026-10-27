@@ -206,6 +206,39 @@ export async function ensureEdge(
 	return [file];
 }
 
+/** A file inside the edge's running container, or undefined where there is none. */
+export async function readEdgeFile(
+	docker: ComposeDocker,
+	edge: StackRef,
+	path: string,
+): Promise<string | undefined> {
+	const result = await docker.exec(edge, EDGE_SERVICE, ['cat', path]);
+	return result.code === 0 ? result.stdout : undefined;
+}
+
+/** A file written into the edge's running container, whole, readable by it alone. */
+export async function writeEdgeSecret(
+	docker: ComposeDocker,
+	edge: StackRef,
+	path: string,
+	content: string,
+): Promise<void> {
+	await put(docker, edge, path, content, '600');
+}
+
+/**
+ * The edge restarted — what it reads once and keeps, a key among them, read
+ * again — and waited on until it is healthy. Its own restart policy brings
+ * it back; `up` waits for it.
+ */
+export async function restartEdge(
+	docker: ComposeDocker,
+	edge: StackRef,
+): Promise<void> {
+	await docker.exec(edge, EDGE_SERVICE, ['kill', '1']);
+	await docker.up(edge, [EDGE_SERVICE]);
+}
+
 /** A stack's routes, inside the edge's container. */
 export function routesPath(project: string): string {
 	return `${EDGE_DYNAMIC_DIR}/${project}.yml`;

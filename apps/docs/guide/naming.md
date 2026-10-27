@@ -144,8 +144,9 @@ export const app = new StaticSite('App', {
   any one label, never the domain itself or two labels deep.
 
 Locally the site answers on `*.shop.localhost` (`*.test.shop.localhost` for
-`gkm test`). Deployed targets do not route every subdomain yet: `gkm compose`
-and the AWS target refuse a wildcard site by name rather than serve nothing.
+`gkm test`). `gkm compose` routes, certifies and points DNS at every
+subdomain — see [A site on every subdomain](./compose.md#a-site-on-every-subdomain).
+The AWS target refuses a wildcard site by name rather than serve nothing.
 
 ## Renaming
 

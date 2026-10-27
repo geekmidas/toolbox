@@ -39,6 +39,18 @@ export function edgeCaddyfile(
 	options: CaddyfileOptions,
 ): string {
 	const { tls } = options;
+	// A wildcard site certified host by host: Caddy asks its `hosts` route
+	// before it gets a certificate for one, so a name no tenant has is never
+	// sent to Let's Encrypt.
+	const ask = routes.find((route) => route.wildcard?.tls.kind === 'on-demand')
+		?.wildcard?.tls;
+	const onDemand =
+		ask?.kind === 'on-demand'
+			? `
+	on_demand_tls {
+		ask ${ask.ask}
+	}`
+			: '';
 	const global =
 		tls.kind === 'internal'
 			? `{
@@ -47,9 +59,8 @@ export function edgeCaddyfile(
 	local_certs
 	auto_https disable_redirects
 }`
-			: options.email
-				? `{
-	email ${options.email}
+			: options.email || onDemand
+				? `{${options.email ? `\n\temail ${options.email}` : ''}${onDemand}
 }`
 				: '';
 
@@ -64,7 +75,23 @@ export function edgeCaddyfile(
 `
 				: '';
 
-	const blocks = routes.map((route) => siteBlock(route, certificate));
+	// The wildcard site last: Caddy prefers a named host to `*.<domain>`
+	// wherever the blocks are, and reading it last says the same.
+	const blocks = [
+		...routes.filter((route) => !route.wildcard),
+		...routes.filter((route) => route.wildcard),
+	].map((route) =>
+		siteBlock(
+			route,
+			route.wildcard?.tls.kind === 'on-demand'
+				? `
+	tls {
+		on_demand
+	}
+`
+				: certificate,
+		),
+	);
 
 	// No blank line under the header: `caddy fmt` wants the first block there.
 	return `${HEADER}${global ? `${global}\n\n` : ''}${blocks.join('\n\n')}\n`;
@@ -79,7 +106,16 @@ function siteBlock(route: EdgeRoute, certificate: string): string {
 		...(prefixes ?? []).map((prefix) => `${prefix}*`),
 	];
 
+	const except = route.wildcard?.except ?? [];
 	const checks = `${
+		except.length
+			? `
+	# Labels no tenant may take, although nothing in this stack answers them.
+	@protected host ${except.map((label) => `${label}.${route.wildcard?.domain}`).join(' ')}
+	respond @protected 404
+`
+			: ''
+	}${
 		allow
 			? `
 	# Only these addresses — the peer Caddy sees, never a header a client
