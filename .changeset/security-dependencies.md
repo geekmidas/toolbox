@@ -1,14 +1,14 @@
 ---
-'@geekmidas/constructs': minor
-'@geekmidas/envkit': minor
-'@geekmidas/emailkit': minor
-'@geekmidas/client': minor
-'@geekmidas/schema': minor
-'@geekmidas/storage': minor
-'@geekmidas/telescope': minor
-'@geekmidas/testkit': minor
-'@geekmidas/db': minor
-'@geekmidas/cli': minor
+'@geekmidas/constructs': patch
+'@geekmidas/envkit': patch
+'@geekmidas/emailkit': patch
+'@geekmidas/client': patch
+'@geekmidas/schema': patch
+'@geekmidas/storage': patch
+'@geekmidas/telescope': patch
+'@geekmidas/testkit': patch
+'@geekmidas/db': patch
+'@geekmidas/cli': patch
 ---
 
 Dependency changes that let consumers clear security advisories
