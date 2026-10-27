@@ -139,13 +139,18 @@ export function assertSubdomains(
 	const site = wildcards[0];
 	if (site?.hosts) {
 		const surface = manifest[site.hosts.surface];
+		// A surface's globbed endpoints are folded into its node by a build,
+		// not by discovery, so an empty list says nothing: the site was handed
+		// the endpoint itself, and its construct checked it is a GET on that
+		// surface. Only routes the node does list can show it missing.
 		const served =
 			surface?.kind === 'rest-api' &&
-			surface.endpoints.some(
-				(endpoint) =>
-					endpoint.method.toUpperCase() === 'GET' &&
-					endpoint.path === site.hosts?.path,
-			);
+			(surface.endpoints.length === 0 ||
+				surface.endpoints.some(
+					(endpoint) =>
+						endpoint.method.toUpperCase() === 'GET' &&
+						endpoint.path === site.hosts?.path,
+				));
 		if (!served) {
 			throw new SiteHostsEndpointMissing(
 				site.id,

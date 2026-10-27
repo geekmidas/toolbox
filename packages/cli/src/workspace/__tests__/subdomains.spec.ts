@@ -114,6 +114,26 @@ describe('loading a project with a wildcard site', () => {
 		expect(() => assertSubdomains(missing)).toThrow(SiteHostsEndpointMissing);
 	});
 
+	it("trusts the endpoint while the surface's globbed routes are not folded in", () => {
+		// Discovery leaves a surface's endpoints empty until a build: the site
+		// was handed the endpoint, which its construct checked is a GET there.
+		const unbuilt = {
+			...manifest,
+			Api: { ...manifest.Api, endpoints: [] },
+		} as ConstructManifest;
+
+		expect(() => assertSubdomains(unbuilt)).not.toThrow();
+	});
+
+	it('refuses a hosts check on something that is not a surface', () => {
+		const onWorker = {
+			...manifest,
+			App: { ...manifest.App, hosts: { surface: 'Jobs', path: '/hosts' } },
+		} as ConstructManifest;
+
+		expect(() => assertSubdomains(onWorker)).toThrow(SiteHostsEndpointMissing);
+	});
+
 	it('is refused when the apps are derived, before anything else', () => {
 		expect(() => derivedApps(manifest, workspace(['admin']))).toThrow(
 			ProtectedSubdomainIsAnApp,
