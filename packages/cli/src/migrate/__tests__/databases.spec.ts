@@ -525,6 +525,28 @@ describe('seedDatabases', () => {
 		expect(await roles()).toEqual(['Demo', 'Member', 'Super admin']);
 	});
 
+	it("hands every seed the stage's env, which process.env does not carry", async () => {
+		await seedFile(
+			'from_env.ts',
+			`export async function seed(db, { env }) {
+  if (process.env.SEED_ROLE !== undefined) throw new Error('read process.env');
+  await db.insertInto('roles').values({ name: env.SEED_ROLE }).onConflict((oc) => oc.doNothing()).execute();
+}
+`,
+		);
+
+		await migrateAndSeed({
+			root,
+			manifest,
+			sources,
+			env: { ...env, SEED_ROLE: 'From env' },
+			stage,
+			backends,
+		});
+
+		expect(await roles()).toEqual(['From env', 'Member', 'Super admin']);
+	});
+
 	it('rolls a failing seed back and names it', async () => {
 		await seedFile(
 			'zz_broken.ts',
