@@ -66,7 +66,6 @@ import {
 	ProvidesMismatch,
 	UnknownDeclarationKind,
 	UnresolvedDependency,
-	WildcardSiteNotSupported,
 } from './errors';
 import type { GkmLinkable } from './Linkable';
 import type { ManifestBackends, ManifestOverrides } from './overrides';
@@ -119,6 +118,8 @@ export interface ProvisionContext {
 	 */
 	cache?: 'upstash' | 'elasticache' | 'db';
 	email?: 'resend' | 'ses' | 'smtp';
+	/** The labels no tenant of a wildcard site may take. */
+	protectedSubdomains?: readonly string[];
 	/**
 	 * One deferred caller list per surface, resolved once everything exists.
 	 *
@@ -184,13 +185,19 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 
 	site: (stack, d, props, context) => {
 		if (d.kind !== 'site') throw new UnknownDeclarationKind(d.kind, []);
-		// Routing every subdomain through CloudFront is #299's.
-		if (isWildcardSite(d)) throw new WildcardSiteNotSupported(d.id);
 
 		return new StaticSite(stack, d.id, {
 			path: d.app.path,
 			variant: d.variant,
-			environment: siteEnvironment(d, context),
+			environment: siteEnvironment(d, context, stack),
+			// Every subdomain, on one distribution: see `StaticSite`.
+			...(isWildcardSite(d)
+				? {
+						tenants: {
+							protectedSubdomains: context.protectedSubdomains ?? [],
+						},
+					}
+				: {}),
 			...props,
 		});
 	},
@@ -445,9 +452,24 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 export function siteEnvironment(
 	declaration: SiteDeclaration,
 	context: ProvisionContext,
+	stack?: StackType,
 ): Record<string, $util.Input<string>> {
 	const prefix = PUBLIC_PREFIX[declaration.variant];
 	const environment: Record<string, $util.Input<string>> = {};
+
+	// A wildcard site takes its tenant off the host it is reached on, so it
+	// inlines the domain to take the label off against, and the labels no
+	// tenant may be — the same two keys `publicEnvFor` names locally.
+	if (isWildcardSite(declaration) && stack?.domain) {
+		const own = {
+			domain: stack.domain,
+			protectedSubdomains: (context.protectedSubdomains ?? []).join(','),
+		};
+		for (const [role, value] of Object.entries(own)) {
+			environment[`${prefix}${providedKeyFor(declaration.id, 'site', role)}`] =
+				value;
+		}
+	}
 
 	for (const edge of declaration.dependencies) {
 		const target = context.manifest[edge.target];
@@ -1082,6 +1104,9 @@ export function fromManifest<
 		bootstraps: new Map<string, DatabaseBootstrap>(),
 		...(backends.cache ? { cache: backends.cache } : {}),
 		...(backends.email ? { email: backends.email } : {}),
+		...(backends.protectedSubdomains
+			? { protectedSubdomains: backends.protectedSubdomains }
+			: {}),
 	};
 
 	for (const id of [...rest, ...sites]) {
