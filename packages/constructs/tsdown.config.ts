@@ -25,9 +25,5 @@ export default defineConfig({
 	}),
 	// Bundle lodash utilities — they are not hoisted to the workspace root
 	// and would fail to resolve when consumers load the dist from the root context.
-	noExternal: [
-		'lodash.compact',
-		'lodash.get',
-		'lodash.uniqby',
-	],
+	noExternal: ['lodash.compact', 'lodash.get', 'lodash.uniqby'],
 });
