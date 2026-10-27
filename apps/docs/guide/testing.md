@@ -107,6 +107,19 @@ it('updates my profile', async ({ browser, faker }) => {
 - **An `ExternalApi`'s fake** — `test/fakes/<id>.ts` — answers at the URL the
   test stage resolved for it, so a handler that calls Polar calls the fake with
   nothing for the test to set up. See [Fakes](#fakes).
+- **`browser.on(slug)`**, in an app with a
+  [site on every subdomain](./naming#a-site-on-every-subdomain), is the same
+  browser on that tenant's host: one cookie jar, its clients, and `Origin:
+  https://<slug>.test.<project>.localhost:<port>` on every request. A test signs
+  in once and acts as two tenants:
+
+  ```typescript
+  it('keeps each tenant to its own orders', async ({ browser }) => {
+    await browser.signIn();
+    await browser.on('acme').api.post('/orders', { body: { sku: 'A1' } });
+    expect(await browser.on('globex').api.get('/orders')).toEqual([]);
+  });
+  ```
 
 ## Fakes
 

@@ -37,11 +37,35 @@ export interface BrowserOptions {
 	 * private range nothing routes to — see {@link Browser.address}.
 	 */
 	address?: string;
+	/**
+	 * The cookies it starts with — another browser's jar, to be the same
+	 * person on another tab. A fresh jar by default.
+	 */
+	jar?: CookieJar;
+	/**
+	 * The address of the app's site on every subdomain,
+	 * `https://*.test.shop.localhost:8443`, which {@link Browser.on} puts a
+	 * tenant's slug into. A feature test passes it when the app declares one.
+	 */
+	site?: string;
+	/**
+	 * The page this browser is on: sent as `Origin` on every request that does
+	 * not set its own, and what a relative {@link Browser.visit} resolves
+	 * against. See {@link Browser.on}.
+	 */
+	origin?: string;
 }
 
 export class Browser {
 	/** The cookies this browser holds. */
-	readonly jar = new CookieJar();
+	readonly jar: CookieJar;
+
+	/**
+	 * The page this browser is on, sent as `Origin` — what a surface's CORS
+	 * and an auth server's trusted origins check, and what a multi-tenant app
+	 * reads its tenant from. None until {@link Browser.on} gives it one.
+	 */
+	readonly origin?: string;
 
 	/**
 	 * The address this browser connects from, sent as `x-forwarded-for` the way
@@ -66,10 +90,14 @@ export class Browser {
 	readonly fetch: typeof fetch;
 
 	private readonly send: typeof fetch;
+	private readonly site?: string;
 
 	constructor(options: BrowserOptions = {}) {
 		this.send = options.fetch ?? globalThis.fetch;
 		this.address = options.address ?? privateAddress();
+		this.jar = options.jar ?? new CookieJar();
+		if (options.site) this.site = options.site;
+		if (options.origin) this.origin = options.origin;
 		this.fetch = (input, init) => {
 			if (currentTestContext()?.side === 'server') {
 				return this.send(input, init);
@@ -78,9 +106,42 @@ export class Browser {
 		};
 	}
 
-	/** Open a URL the way clicking a link does: a GET, redirects followed. */
+	/**
+	 * Open a URL the way clicking a link does: a GET, redirects followed. A
+	 * path is opened on the page this browser is on.
+	 */
 	visit(url: string | URL): Promise<Response> {
-		return this.fetch(String(url));
+		return this.fetch(
+			this.origin ? new URL(url, this.origin).toString() : String(url),
+		);
+	}
+
+	/**
+	 * The same person on a tenant's host: this browser — its cookies, its
+	 * address, its clients — on `https://<slug>.<domain>`, the app's site on
+	 * every subdomain. Each request it makes says so in `Origin`, as a page on
+	 * that host would, so a test signs in once and calls the app as two
+	 * tenants:
+	 *
+	 * ```ts
+	 * await browser.signIn();
+	 * await browser.on('acme').api.post('/orders', { body });
+	 * expect(await browser.on('globex').api.get('/orders')).toEqual([]);
+	 * ```
+	 */
+	on(slug: string): this {
+		if (!this.site) throw new NoWildcardSite(slug);
+		if (!SLUG.test(slug)) throw new NotATenantSlug(slug);
+
+		const origin = new URL(this.site.replace('*', slug)).origin;
+		const Same = this.constructor as new (options: BrowserOptions) => this;
+		return new Same({
+			fetch: this.send,
+			address: this.address,
+			jar: this.jar,
+			site: this.site,
+			origin,
+		});
 	}
 
 	/** The cookies this browser would send to `url`, as a header value. */
@@ -112,6 +173,9 @@ export class Browser {
 		const headers = new Headers(request.headers);
 		if (!headers.has('x-forwarded-for')) {
 			headers.set('x-forwarded-for', this.address);
+		}
+		if (this.origin && !headers.has('origin')) {
+			headers.set('origin', this.origin);
 		}
 		return this.request(
 			{ url: request.url, method: request.method, headers, body },
@@ -202,6 +266,32 @@ export class TooManyRedirects extends Error {
 				`too — look for a redirect loop.`,
 		);
 		this.name = 'TooManyRedirects';
+	}
+}
+
+/** One DNS label, as a tenant's slug is. */
+const SLUG = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+
+/** `browser.on(slug)` in an app with no site on every subdomain. */
+export class NoWildcardSite extends Error {
+	constructor(readonly slug: string) {
+		super(
+			`browser.on('${slug}') puts a tenant's slug into the app's site on ` +
+				`every subdomain, and this browser knows of none. Declare a ` +
+				`StaticSite with subdomain: '*', or pass its address as \`site\`.`,
+		);
+		this.name = 'NoWildcardSite';
+	}
+}
+
+/** `browser.on(slug)` with something no host can start with. */
+export class NotATenantSlug extends Error {
+	constructor(readonly slug: string) {
+		super(
+			`'${slug}' is not a tenant's slug: one DNS label of lowercase ` +
+				`letters, digits and inner hyphens, such as 'acme'.`,
+		);
+		this.name = 'NotATenantSlug';
 	}
 }
 

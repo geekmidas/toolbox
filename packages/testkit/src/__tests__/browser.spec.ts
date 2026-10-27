@@ -1,7 +1,12 @@
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Browser, TooManyRedirects } from '../browser';
+import {
+	Browser,
+	NotATenantSlug,
+	NoWildcardSite,
+	TooManyRedirects,
+} from '../browser';
 import {
 	runAsServer,
 	runInTestContext,
@@ -21,6 +26,7 @@ const seen: {
 	cookie?: string;
 	context?: string;
 	forwardedFor?: string;
+	origin?: string;
 	body: string;
 }[] = [];
 
@@ -42,6 +48,7 @@ beforeAll(async () => {
 			cookie: request.headers.cookie,
 			context: request.headers[TEST_CONTEXT_HEADER] as string | undefined,
 			forwardedFor: request.headers['x-forwarded-for'] as string | undefined,
+			origin: request.headers.origin,
 			body: await read(request),
 		});
 
@@ -228,6 +235,85 @@ describe('Browser', () => {
 		}
 
 		expect(globalThis.fetch).toBe(original);
+	});
+});
+
+describe('Browser.on', () => {
+	const site = 'https://*.test.shop.localhost:8443';
+
+	/** A browser's clients, as the generated one has them. */
+	class AppBrowser extends Browser {
+		readonly api = {
+			me: () => this.fetch(`${base}/profile`),
+		};
+	}
+
+	it('says which tenant it is on in every request’s Origin', async () => {
+		const browser = new Browser({ site });
+
+		await browser.on('acme').fetch(`${base}/profile`);
+		expect(last().origin).toBe('https://acme.test.shop.localhost:8443');
+
+		await browser.on('globex').fetch(`${base}/profile`);
+		expect(last().origin).toBe('https://globex.test.shop.localhost:8443');
+	});
+
+	it('is the same person on each tenant: one jar, one address', async () => {
+		const browser = new Browser({ site });
+
+		await browser.on('acme').fetch(`${base}/sign-in`);
+		await browser.on('globex').fetch(`${base}/profile`);
+
+		expect(last().cookie).toBe('session=ada');
+		expect(last().forwardedFor).toBe(browser.address);
+	});
+
+	it('keeps the app’s clients, calling from the tenant’s host', async () => {
+		const browser = new AppBrowser({ site });
+
+		await browser.on('acme').api.me();
+
+		expect(last().origin).toBe('https://acme.test.shop.localhost:8443');
+	});
+
+	it('sends no Origin of its own before it is on a tenant', async () => {
+		await new Browser({ site }).fetch(`${base}/profile`);
+
+		expect(last().origin).toBeUndefined();
+	});
+
+	it('keeps an Origin a request set itself', async () => {
+		await new Browser({ site })
+			.on('acme')
+			.fetch(`${base}/profile`, { headers: { origin: 'https://other.test' } });
+
+		expect(last().origin).toBe('https://other.test');
+	});
+
+	it('opens a path on the tenant’s host', async () => {
+		const opened: string[] = [];
+		const browser = new Browser({
+			site,
+			fetch: async (input) => {
+				opened.push(String(input));
+				return new Response('ok');
+			},
+		});
+
+		await browser.on('acme').visit('/orders/42');
+
+		expect(opened).toEqual(['https://acme.test.shop.localhost:8443/orders/42']);
+	});
+
+	it('refuses a tenant when the app has no site on every subdomain', () => {
+		expect(() => new Browser().on('acme')).toThrow(NoWildcardSite);
+	});
+
+	it('refuses what is not one DNS label', () => {
+		const browser = new Browser({ site });
+
+		expect(() => browser.on('a.b')).toThrow(NotATenantSlug);
+		expect(() => browser.on('Acme')).toThrow(NotATenantSlug);
 	});
 });
 

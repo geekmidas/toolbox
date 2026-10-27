@@ -359,6 +359,17 @@ On the server side of a test — a handler serving a request — `browser.fetch`
 the plain `fetch`: a server forwards what it was handed and never reaches into a
 browser's jar.
 
+Given the address of a site on every subdomain, `on(slug)` is the same browser
+(the same jar, address and clients) on that tenant's host. It sends `Origin` on
+every request and opens a relative `visit` there:
+
+```typescript
+const browser = new Browser({ site: 'https://*.test.shop.localhost:8443' });
+await browser.on('acme').api.get('/orders'); // Origin: https://acme.test.shop.localhost:8443
+```
+
+A feature test passes `site` itself when the app declares one.
+
 ### `createMailbox`
 
 Reads the mail an app actually sent, from Mailpit's HTTP API. One address per
