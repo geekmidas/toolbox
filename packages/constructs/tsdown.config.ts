@@ -47,8 +47,6 @@ export default defineConfig({
 		alwaysBundle: [
 			'lodash.compact',
 			'lodash.get',
-			'lodash.pick',
-			'lodash.set',
 			'lodash.uniqby',
 		],
 	},
