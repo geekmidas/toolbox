@@ -1,5 +1,14 @@
 # @geekmidas/rate-limit
 
+## 9.3.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@9.3.0
+  - @geekmidas/logger@9.3.0
+  - @geekmidas/services@9.3.0
+
 ## 9.2.1
 
 ### Patch Changes

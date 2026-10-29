@@ -1,5 +1,14 @@
 # @geekmidas/testkit
 
+## 9.3.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/envkit@9.3.0
+  - @geekmidas/logger@9.3.0
+  - @geekmidas/services@9.3.0
+
 ## 9.2.1
 
 ### Patch Changes
