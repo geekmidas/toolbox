@@ -147,6 +147,8 @@ Object.assign(globalThis, {
 			Postgres: StubPostgres,
 			/** A grant, recorded as given, so a link's IAM is assertable. */
 			permission: (args: unknown) => ({ permission: args }),
+			/** A DNS adapter, recorded as given, so a domain's zone is assertable. */
+			dns: (args: unknown) => ({ dns: args }),
 		},
 	},
 	$util: util,

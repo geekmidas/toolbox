@@ -144,8 +144,22 @@ export const app = new StaticSite('App', {
   any one label, never the domain itself or two labels deep.
 
 Locally the site answers on `*.shop.localhost` (`*.test.shop.localhost` for
-`gkm test`). Deployed targets do not route every subdomain yet: `gkm compose`
-and the AWS target refuse a wildcard site by name rather than serve nothing.
+`gkm test`). `gkm compose` does not route every subdomain yet, and refuses a
+wildcard site by name rather than serve nothing.
+
+On AWS the site is one CloudFront distribution under `*.example.com`: a
+wildcard certificate in `us-east-1`, validated through the stage's Route 53
+zone when it deploys, and one `*.example.com` alias record. Nothing is created
+per tenant: a tenant exists because the app says so, and the `hosts` route
+answers an unknown one with a `404`. It needs the stage's domain on the stack,
+`new App({ domain, hostedZoneId })` in `sst.config.ts`; without one the deploy
+refuses the site by name (`WildcardSiteNeedsDomain`).
+
+A host with a record of its own, `api.example.com`, is answered by that record:
+Route 53 prefers it over the wildcard. A protected label nothing serves —
+`www`, `mail` — has no record, so it reaches the wildcard site like a tenant
+would. Refusing it is the app's: it is in `APP_PROTECTED_SUBDOMAINS`, so the
+app answers it as it answers an unknown slug.
 
 ## Renaming
 
