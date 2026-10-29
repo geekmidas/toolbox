@@ -231,6 +231,7 @@
     "upgrade-follows-release-line",
     "v10-the-manifest-is-the-source",
     "websocket-api",
+    "wildcard-compose",
     "wildcard-site-aws",
     "wildcard-site-dev",
     "wildcard-site",
