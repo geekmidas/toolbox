@@ -6,7 +6,13 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import chokidar from 'chokidar';
 import fg from 'fast-glob';
-import { appPackageName, buildApp, turboFilters } from '../build/index';
+import {
+	appPackageName,
+	buildApp,
+	detectPackageManager,
+	getTurboArgs,
+	turboFilters,
+} from '../build/index';
 import type {
 	NormalizedHooksConfig,
 	NormalizedProductionConfig,
@@ -1115,7 +1121,7 @@ async function workspaceDevCommand(
 	);
 	if (firstUrl) await ensureTrusted(workspace.root, firstUrl);
 
-	// Build turbo filter
+	// The packages turbo runs `dev` in
 	let turboFilter: string[] = [];
 	if (options.app) {
 		// Run specific app
@@ -1125,20 +1131,17 @@ async function workspaceDevCommand(
 				`App "${options.app}" not found. Available apps: ${appNames}`,
 			);
 		}
-		turboFilter = [
-			'--filter',
-			appPackageName(workspace, options.app) ?? options.app,
-		];
+		turboFilter = [appPackageName(workspace, options.app) ?? options.app];
 	} else if (options.filter) {
 		// Use custom filter
-		turboFilter = ['--filter', options.filter];
+		turboFilter = [options.filter];
 	} else {
 		// Every app, by name. Left to infer its own scope at the workspace root,
 		// turbo includes the root package — whose `dev` script is `gkm dev`,
 		// which arrives here and starts turbo again, and every app twice over.
 		// `gkm build` names its apps for the same reason.
 		const { filters, unpackaged } = turboFilters(workspace);
-		turboFilter = filters.flatMap((name) => ['--filter', name]);
+		turboFilter = filters;
 		if (unpackaged.length > 0) {
 			logger.warn(
 				`⚠️  No package.json with a name for: ${unpackaged.join(', ')} — turbo cannot run ${unpackaged.length === 1 ? 'it' : 'them'}.`,
@@ -1244,7 +1247,14 @@ async function workspaceDevCommand(
 		`🚀 Starting ${appCount} app(s) — each builds before it answers, and says so when it is ready`,
 	);
 
-	const turboProcess = spawn('pnpm', ['turbo', 'run', 'dev', ...turboFilter], {
+	// Through the workspace's own package manager, as `gkm build` runs turbo: a
+	// Yarn or npm workspace need not have pnpm installed at all.
+	const [turboBin, turboArgs] = getTurboArgs(
+		detectPackageManager(workspace.root),
+		turboFilter,
+		{ task: 'dev' },
+	);
+	const turboProcess = spawn(turboBin, turboArgs, {
 		cwd: workspace.root,
 		stdio: 'inherit',
 		env: turboEnv,
