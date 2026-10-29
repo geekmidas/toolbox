@@ -1,5 +1,29 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.129
+
+### Patch Changes
+
+- 🐛 [#326](https://github.com/geekmidas/toolbox/pull/326) [`56cd171`](https://github.com/geekmidas/toolbox/commit/56cd171801e75c0390a85075661128f0d0535511) Thanks [@geekmidas](https://github.com/geekmidas)! - No longer depend on `lodash.pick` and `lodash.set`, which are affected by GHSA-p6mc-m468-83gw and have no fixed release. Native code does the same work, and constructs no longer bundles either module into its dist.
+
+- Updated dependencies [[`56cd171`](https://github.com/geekmidas/toolbox/commit/56cd171801e75c0390a85075661128f0d0535511)]:
+  - @geekmidas/envkit@10.0.0-alpha.129
+  - @geekmidas/audit@10.0.0-alpha.129
+  - @geekmidas/auth@10.0.0-alpha.129
+  - @geekmidas/cache@10.0.0-alpha.129
+  - @geekmidas/db@10.0.0-alpha.129
+  - @geekmidas/emailkit@10.0.0-alpha.129
+  - @geekmidas/errors@10.0.0-alpha.129
+  - @geekmidas/events@10.0.0-alpha.129
+  - @geekmidas/logger@10.0.0-alpha.129
+  - @geekmidas/manifest@10.0.0-alpha.129
+  - @geekmidas/rate-limit@10.0.0-alpha.129
+  - @geekmidas/schema@10.0.0-alpha.129
+  - @geekmidas/services@10.0.0-alpha.129
+  - @geekmidas/storage@10.0.0-alpha.129
+  - @geekmidas/telescope@10.0.0-alpha.129
+  - @geekmidas/testkit@10.0.0-alpha.129
+
 ## 10.0.0-alpha.128
 
 ### Patch Changes
