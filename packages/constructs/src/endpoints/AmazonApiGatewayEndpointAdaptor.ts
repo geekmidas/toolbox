@@ -9,7 +9,6 @@ import type {
 	APIGatewayProxyEventV2,
 	Context,
 } from 'aws-lambda';
-import set from 'lodash.set';
 import type { HttpMethod } from '../types';
 import { Endpoint, type EndpointSchemas, ResponseBuilder } from './Endpoint';
 import type { Telemetry } from './lambdaTelemetry';
@@ -219,20 +218,13 @@ export abstract class AmazonApiGatewayEndpoint<
 					const header = Endpoint.createHeaders(headers);
 					const cookie = this.getCookies(req.event);
 
-					set(req.event, 'body', await this.endpoint.parseInput(body, 'body'));
-
-					set(
-						req.event,
-						'query',
-						await this.endpoint.parseInput(query, 'query'),
-					);
-					set(
-						req.event,
-						'params',
-						await this.endpoint.parseInput(params, 'params'),
-					);
-					set(req.event, 'header', header);
-					set(req.event, 'cookie', cookie);
+					Object.assign(req.event, {
+						body: await this.endpoint.parseInput(body, 'body'),
+						query: await this.endpoint.parseInput(query, 'query'),
+						params: await this.endpoint.parseInput(params, 'params'),
+						header,
+						cookie,
+					});
 				} catch (error) {
 					// Convert validation errors to 422 Unprocessable Entity
 					if (error && typeof error === 'object' && Array.isArray(error)) {
