@@ -9,7 +9,7 @@ import { DatabaseService } from '../services/DatabaseService.js';
 export const cleanupStaleUsers = c
 	.logger(logger)
 	.services([DatabaseService])
-	.schedule('rate(1 day)')
+	.schedule('cron(0 0 * * *)')
 	.handle(async ({ services, logger }) => {
 		const cutoff = new Date(Date.now() - 1000 * 60 * 60 * 24 * 30);
 		const result = await services.database

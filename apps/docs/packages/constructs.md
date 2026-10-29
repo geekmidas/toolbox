@@ -1283,7 +1283,7 @@ export default defineConfig({
 
 ## Cron Jobs
 
-The `c` builder creates scheduled tasks that run on a cron or rate schedule. Cron jobs extend the same function builder as cloud functions, so they support services, input/output schemas, logging, event publishing, and database access.
+The `c` builder creates scheduled tasks that run on a cron schedule. Cron jobs extend the same function builder as cloud functions, so they support services, input/output schemas, logging, event publishing, and database access.
 
 ### Basic Cron
 
@@ -1291,7 +1291,7 @@ The `c` builder creates scheduled tasks that run on a cron or rate schedule. Cro
 import { c } from '@geekmidas/constructs/crons';
 
 export const dailyCleanup = c
-  .schedule('rate(1 day)')
+  .schedule('cron(0 0 * * *)')
   .handle(async ({ logger }) => {
     logger.info('Running daily cleanup');
     await cleanupExpiredSessions();
@@ -1301,31 +1301,455 @@ export const dailyCleanup = c
 
 ### Schedule Expressions
 
-Crons accept two schedule formats:
+`.schedule()` takes a `cron(…)` in either of two forms, told apart by the
+number of fields:
 
-**Rate expressions** — run at a fixed interval:
+| | Unix (5 fields) | AWS (6 fields) |
+|---|---|---|
+| Fields | `min hour day-of-month month day-of-week` | the same, then `year` (1970–2199) |
+| Day-of-week | `0`–`7` (SUN is `0` or `7`), or `SUN`–`SAT` | `1`–`7` (SUN is `1`), or `SUN`–`SAT` |
+| `?` | not allowed | required in exactly one of the two day fields |
+| Both day fields restricted | allowed: runs on either | not allowed |
+| `L`, `W`, `#` | not allowed | `L`, `L-n`, `LW`, `15W` in day-of-month; `5L`, `6#3` in day-of-week |
+
+Within each field, both forms accept `*`, values (a leading zero is fine),
+ranges `a-b`, steps `/n` and comma lists. Months take `JAN`–`DEC`.
 
 ```typescript
-c.schedule('rate(5 minutes)')
-c.schedule('rate(1 hour)')
-c.schedule('rate(7 days)')
+// Unix
+c.schedule('cron(0 0 * * *)')               // every day at midnight
+c.schedule('cron(0 9 * * MON)')             // every Monday at 9am
+c.schedule('cron(*/15 9-17 * * MON-FRI)')   // every 15 minutes, business hours
+
+// AWS
+c.schedule('cron(0 12 1 * ? *)')            // first of the month at noon
+c.schedule('cron(0 9 ? * 6#3 *)')           // third Friday of the month at 9am
+c.schedule('cron(0 18 L * ? *)')            // last day of the month at 6pm
 ```
 
-**Cron expressions** — run on a specific schedule (minute, hour, day, month, weekday):
+Both forms are checked at compile time, so `cron(0 25 * * *)` or a `?` in a
+Unix expression doesn't type-check. A schedule built at runtime can be cast to
+`ScheduleExpression`; `gkm build` and `gkm dev` validate every schedule and
+fail, listing each invalid cron with the field and token that failed.
+
+#### Where it runs
+
+The manifest always records the AWS form, since EventBridge reads only that,
+so `gkm build` converts a Unix expression:
+
+| Unix | AWS |
+|---|---|
+| — | a year of `*` is appended |
+| both day fields `*` | day-of-week becomes `?` |
+| one day field restricted | the other becomes `?` |
+| both day fields restricted | **approximate:** day-of-week is kept and day-of-month becomes `?`, so the cron runs on fewer days. The build warns. |
+| day-of-week numbers `0`–`7` | shifted to `1`–`7`. Names are unchanged. |
+
+`toUnixCron` from `@geekmidas/manifest` goes the other way, for runners that
+read Unix cron: `?` becomes `*`, day-of-week numbers shift back, `L`, `nL` and
+`n#k` are kept, and a specific year is dropped with a warning. `W`, `LW` and
+`L-n` have no Unix equivalent and fail.
+
+`cronPeriod` from `@geekmidas/manifest` gives the longest gap between runs of
+the AWS form, in seconds: the period a heartbeat should expect. A weekdays-only
+cron's period is the Friday-to-Monday gap, so it doesn't alert at the weekend.
 
 ```typescript
-// Every day at midnight
-c.schedule('cron(0 0 * * *)')
+import { cronPeriod } from '@geekmidas/manifest';
 
-// Every Monday at 9am
-c.schedule('cron(0 9 * * MON)')
-
-// Every 15 minutes during business hours on weekdays
-c.schedule('cron(*/15 9-17 * * MON-FRI)')
-
-// First day of every month at noon
-c.schedule('cron(0 12 1 * *)')
+cronPeriod('cron(0 9 * * MON-FRI)'); // 259200, three days
 ```
+
+#### Rate expressions
+
+`rate(…)` isn't supported. Write the cron it stands for:
+
+| Instead of | Write |
+|---|---|
+| `rate(5 minutes)` | `cron(*/5 * * * *)` |
+| `rate(1 hour)` | `cron(0 * * * *)` |
+| `rate(6 hours)` | `cron(0 */6 * * *)` |
+| `rate(1 day)` | `cron(0 0 * * *)` |
+
+A rate that doesn't divide its unit, such as `rate(7 hours)`, has no cron
+equivalent: choose the times it should run.
+
+### With Services
+
+```typescript
+export const onOrderPlaced = s
+  .services([databaseService, emailService])
+  .subscribe('order.placed')
+  .handle(async ({ events, services, logger }) => {
+    for (const event of events) {
+      const order = await services.database
+        .selectFrom('orders')
+        .where('id', '=', event.payload.orderId)
+        .selectAll()
+        .executeTakeFirstOrThrow();
+
+      await services.email.send('order-confirmation', {
+        to: order.customerEmail,
+        props: { orderId: order.id, total: order.total },
+      });
+
+      logger.info({ orderId: order.id }, 'Order confirmation sent');
+    }
+  });
+```
+
+### Subscribing to Multiple Events
+
+```typescript
+export const onUserEvents = s
+  .subscribe(['user.created', 'user.updated'])
+  .handle(async ({ events, logger }) => {
+    for (const event of events) {
+      if (event.type === 'user.created') {
+        // TypeScript narrows payload to { userId: string; email: string }
+        await indexNewUser(event.payload.userId);
+      } else {
+        // event.type === 'user.updated'
+        await reindexUser(event.payload.userId);
+      }
+    }
+  });
+```
+
+### With Publisher (Chaining Events)
+
+Subscribers can publish follow-up events using a publisher service:
+
+```typescript
+export const onUserCreated = s
+  .publisher(eventPublisherService)
+  .subscribe('user.created')
+  .handle(async ({ events, publish }) => {
+    for (const event of events) {
+      await createUserProfile(event.payload.userId);
+
+      // Publish a follow-up event
+      await publish('notification.sent', {
+        userId: event.payload.userId,
+        type: 'welcome',
+      });
+    }
+  });
+```
+
+### Configuration Options
+
+| Method | Description |
+|--------|-------------|
+| `.subscribe(events)` | Event type(s) to listen for (string or string array) |
+| `.services(services)` | Inject services into the handler context |
+| `.publisher(service)` | Set publisher service (provides `publish` in context) |
+| `.output(schema)` | Validate the return value with a StandardSchema |
+| `.logger(logger)` | Set a custom logger instance |
+| `.timeout(ms)` | Set execution timeout in milliseconds |
+| `.handle(fn)` | Define the handler function and build the `Subscriber` instance |
+
+### Handler Context
+
+The handler receives:
+
+```typescript
+{
+  events: Array<{ type: string; payload: T }>;  // Batch of events (type-safe)
+  services: ServiceRecord;                       // Registered services
+  logger: Logger;                                // Logger instance
+  publish: (type, payload) => Promise<void>;     // If .publisher() is set
+}
+```
+
+### How Subscribers Run
+
+**Development (`gkm dev`):**
+The CLI scans your routes for exported `Subscriber` instances, generates polling code, and starts listening on server startup. It uses `EVENT_SUBSCRIBER_CONNECTION_STRING` to connect. See [Events: Dev Server](/packages/events#dev-server) for details.
+
+**Production (AWS Lambda):**
+Each subscriber is compiled into a Lambda handler via `AWSLambdaSubscriber`. The handler parses SQS/SNS events, filters to subscribed types, and invokes the handler. Configure event source mappings in your IaC tool.
+
+```typescript
+import { AWSLambdaSubscriber } from '@geekmidas/constructs/aws';
+import { EnvironmentParser } from '@geekmidas/envkit';
+import { onUserCreated } from './subscribers/userEvents';
+
+const envParser = new EnvironmentParser(process.env);
+const adaptor = new AWSLambdaSubscriber(envParser, onUserCreated);
+
+export const handler = adaptor.handler;
+```
+
+**Production (Server):**
+When building with `gkm build --provider server`, subscribers are included in the generated server and poll using the configured connection string.
+
+### Testing Subscribers
+
+```typescript
+import { TestSubscriberAdaptor } from '@geekmidas/constructs/testing';
+import { describe, it, expect } from 'vitest';
+
+describe('onUserCreated subscriber', () => {
+  it('should send welcome email', async () => {
+    const adaptor = new TestSubscriberAdaptor(onUserCreated);
+
+    const result = await adaptor.invoke({
+      events: [
+        {
+          type: 'user.created',
+          payload: { userId: '123', email: 'test@example.com' },
+        },
+      ],
+    });
+
+    // Assert side effects (email sent, etc.)
+  });
+});
+```
+
+### Project Configuration
+
+Register subscriber files in `gkm.config.ts` so the CLI can discover them:
+
+```typescript
+import { defineConfig } from '@geekmidas/cli/config';
+
+export default defineConfig({
+  routes: './src/endpoints/**/*.ts',
+  subscribers: './src/subscribers/**/*.ts',
+  envParser: './src/config/env',
+  logger: './src/logger',
+});
+```
+
+::: tip
+Subscribers can also be co-located with endpoints in the same route files. The CLI discovers all exported `Subscriber` instances regardless of file location.
+:::
+
+## Queues
+
+A **queue** is point-to-point work distribution: a queue and its *single* consumer. Where a subscriber (`s`) is topic fan-out — many subscribers each filtering a stream by `subscribedEvents` — a queue (`q`) drains *every* message of its one typed `message` and hands it to exactly one handler. Reach for `q` for job/task processing (send an order to be fulfilled), and `s` for broadcasting domain events (notify everyone a user was created).
+
+### Basic Queue
+
+```typescript
+import { q } from '@geekmidas/constructs/queue';
+import { z } from 'zod';
+
+export const ordersQueue = q
+  .queue('orders')
+  .message(z.object({ orderId: z.string() }))
+  .handle(async ({ messages, logger }) => {
+    for (const { orderId } of messages) {
+      logger.info({ orderId }, 'Fulfilling order');
+    }
+  });
+```
+
+### With Services
+
+Services are an **array** (the same shape endpoints/subscribers use) and are sniffed for the env vars they require — those flow into the manifest so infra provisions them:
+
+```typescript
+export const ordersQueue = q
+  .queue('orders')
+  .services([databaseService])
+  .message(z.object({ orderId: z.string() }))
+  .handle(async ({ messages, services }) => {
+    for (const { orderId } of messages) {
+      await services.database.fulfil(orderId);
+    }
+  });
+```
+
+### Sending to a Queue (the auto-publisher)
+
+Every queue exposes a `publisher` — a ready-to-inject `Service` typed to the queue's `message`. Any endpoint, function, or other worker connects to the queue by dropping it into `.services([...])`:
+
+```typescript
+import { e } from '@geekmidas/constructs/endpoints';
+import { ordersQueue } from './queues/orders';
+
+export const createOrder = e
+  .post('/orders')
+  .body(z.object({ sku: z.string() }))
+  .services([ordersQueue.publisher]) // producer side
+  .handle(async ({ body, services }) => {
+    const orderId = crypto.randomUUID();
+    // serviceName is `<name>Publisher` → here `ordersPublisher`
+    await services.ordersPublisher.publish([
+      { type: 'orders', payload: { orderId } },
+    ]);
+    return { orderId };
+  });
+```
+
+The publisher reads `ORDERS_PUBLISHER_CONNECTION_STRING` and selects its transport from the URL protocol — `pgboss://` locally, `sqs://` when deployed — so the same code publishes to Postgres in dev and SQS in prod. Because it's a `Service`, the connection-string requirement is sniffed into the manifest and infra links *exactly* that queue with least privilege. Multiple queues never collide: each gets its own `<NAME>_PUBLISHER_CONNECTION_STRING`.
+
+### Configuration Options
+
+| Method | Description |
+|--------|-------------|
+| `.queue(name)` | Queue name — drives the infra queue and its `<NAME>_*` env vars |
+| `.message(schema)` | The typed message (job) payload |
+| `.services([...])` | Services available to the handler (sniffed for env vars) |
+| `.timeout(ms)` | Handler timeout (default `30000`) |
+| `.batchSize(n)` | SQS event-source batch size (deployed) |
+| `.fifo()` | Mark the queue as FIFO (deployed) |
+| `.logger(logger)` | Custom logger |
+
+### How Queues Run
+
+A queue is **not** an HTTP route — it's a background worker, and it runs in three modes:
+
+**Development (`gkm dev`):**
+The CLI generates a `setupQueues()` pg-boss poller that runs **in-process alongside** the Hono server. Each queue subscribes by its **name** on the shared `EVENT_SUBSCRIBER_CONNECTION_STRING` (pg-boss routes by name), so a producer publishing with `pgboss://` reaches it. No SQS or Lambda required locally.
+
+**Production (AWS Lambda):**
+Each queue is compiled into a Lambda handler via `AWSLambdaQueue`, backed by an SQS event-source mapping. The handler unwraps each record's `payload`, validates it against `message`, and hands the batch to the handler. It uses SQS partial-batch responses, so a record that fails validation (or a handler error) is retried without re-processing the rest.
+
+```typescript
+import { AWSLambdaQueue } from '@geekmidas/constructs/aws';
+import { EnvironmentParser } from '@geekmidas/envkit';
+import { ordersQueue } from './queues/orders';
+
+const envParser = new EnvironmentParser(process.env);
+const adaptor = new AWSLambdaQueue(envParser, ordersQueue);
+
+export const handler = adaptor.handler;
+```
+
+**Production (Server):**
+With `gkm build --provider server`, queues are included in the generated server and poll using the configured connection string (same as dev).
+
+### Testing Queues
+
+```typescript
+import { TestQueueAdaptor } from '@geekmidas/constructs/testing';
+import { describe, it, expect } from 'vitest';
+
+describe('ordersQueue', () => {
+  it('fulfils each order in the batch', async () => {
+    const adaptor = new TestQueueAdaptor(ordersQueue);
+
+    const result = await adaptor.invoke({
+      messages: [{ orderId: '1' }, { orderId: '2' }],
+    });
+
+    // Assert side effects (orders fulfilled, etc.)
+  });
+});
+```
+
+### Project Configuration
+
+Register queue files in `gkm.config.ts` so the CLI discovers them:
+
+```typescript
+import { defineConfig } from '@geekmidas/cli/config';
+
+export default defineConfig({
+  routes: './src/endpoints/**/*.ts',
+  subscribers: './src/subscribers/**/*.ts',
+  queues: './src/queues/**/*.ts',
+  envParser: './src/config/env',
+  logger: './src/logger',
+});
+```
+
+## Cron Jobs
+
+The `c` builder creates scheduled tasks that run on a cron schedule. Cron jobs extend the same function builder as cloud functions, so they support services, input/output schemas, logging, event publishing, and database access.
+
+### Basic Cron
+
+```typescript
+import { c } from '@geekmidas/constructs/crons';
+
+export const dailyCleanup = c
+  .schedule('cron(0 0 * * *)')
+  .handle(async ({ logger }) => {
+    logger.info('Running daily cleanup');
+    await cleanupExpiredSessions();
+    return { cleaned: true };
+  });
+```
+
+### Schedule Expressions
+
+`.schedule()` takes a `cron(…)` in either of two forms, told apart by the
+number of fields:
+
+| | Unix (5 fields) | AWS (6 fields) |
+|---|---|---|
+| Fields | `min hour day-of-month month day-of-week` | the same, then `year` (1970–2199) |
+| Day-of-week | `0`–`7` (SUN is `0` or `7`), or `SUN`–`SAT` | `1`–`7` (SUN is `1`), or `SUN`–`SAT` |
+| `?` | not allowed | required in exactly one of the two day fields |
+| Both day fields restricted | allowed: runs on either | not allowed |
+| `L`, `W`, `#` | not allowed | `L`, `L-n`, `LW`, `15W` in day-of-month; `5L`, `6#3` in day-of-week |
+
+Within each field, both forms accept `*`, values (a leading zero is fine),
+ranges `a-b`, steps `/n` and comma lists. Months take `JAN`–`DEC`.
+
+```typescript
+// Unix
+c.schedule('cron(0 0 * * *)')               // every day at midnight
+c.schedule('cron(0 9 * * MON)')             // every Monday at 9am
+c.schedule('cron(*/15 9-17 * * MON-FRI)')   // every 15 minutes, business hours
+
+// AWS
+c.schedule('cron(0 12 1 * ? *)')            // first of the month at noon
+c.schedule('cron(0 9 ? * 6#3 *)')           // third Friday of the month at 9am
+c.schedule('cron(0 18 L * ? *)')            // last day of the month at 6pm
+```
+
+Both forms are checked at compile time, so `cron(0 25 * * *)` or a `?` in a
+Unix expression doesn't type-check. A schedule built at runtime can be cast to
+`ScheduleExpression`; `gkm build` and `gkm dev` validate every schedule and
+fail, listing each invalid cron with the field and token that failed.
+
+#### Where it runs
+
+The manifest always records the AWS form, since EventBridge reads only that,
+so `gkm build` converts a Unix expression:
+
+| Unix | AWS |
+|---|---|
+| — | a year of `*` is appended |
+| both day fields `*` | day-of-week becomes `?` |
+| one day field restricted | the other becomes `?` |
+| both day fields restricted | **approximate:** day-of-week is kept and day-of-month becomes `?`, so the cron runs on fewer days. The build warns. |
+| day-of-week numbers `0`–`7` | shifted to `1`–`7`. Names are unchanged. |
+
+`toUnixCron` from `@geekmidas/manifest` goes the other way, for runners that
+read Unix cron: `?` becomes `*`, day-of-week numbers shift back, `L`, `nL` and
+`n#k` are kept, and a specific year is dropped with a warning. `W`, `LW` and
+`L-n` have no Unix equivalent and fail.
+
+`cronPeriod` from `@geekmidas/manifest` gives the longest gap between runs of
+the AWS form, in seconds: the period a heartbeat should expect. A weekdays-only
+cron's period is the Friday-to-Monday gap, so it doesn't alert at the weekend.
+
+```typescript
+import { cronPeriod } from '@geekmidas/manifest';
+
+cronPeriod('cron(0 9 * * MON-FRI)'); // 259200, three days
+```
+
+#### Rate expressions
+
+`rate(…)` isn't supported. Write the cron it stands for:
+
+| Instead of | Write |
+|---|---|
+| `rate(5 minutes)` | `cron(*/5 * * * *)` |
+| `rate(1 hour)` | `cron(0 * * * *)` |
+| `rate(6 hours)` | `cron(0 */6 * * *)` |
+| `rate(1 day)` | `cron(0 0 * * *)` |
+
+A rate that doesn't divide its unit, such as `rate(7 hours)`, has no cron
+equivalent: choose the times it should run.
 
 ### With Services
 
@@ -1334,7 +1758,7 @@ import { c } from '@geekmidas/constructs/crons';
 
 export const syncCron = c
   .services([databaseService, cacheService])
-  .schedule('rate(30 minutes)')
+  .schedule('cron(*/30 * * * *)')
   .handle(async ({ services, logger }) => {
     const db = services.database;
     const cache = services.cache;
@@ -1408,7 +1832,7 @@ import { c } from '@geekmidas/constructs/crons';
 export const reminderCron = c
   .services([databaseService])
   .publisher(eventPublisherService)
-  .schedule('rate(1 hour)')
+  .schedule('cron(0 * * * *)')
   .handle(async ({ services, publish }) => {
     const users = await services.database
       .selectFrom('users')
@@ -1428,7 +1852,7 @@ export const reminderCron = c
 
 | Method | Description |
 |--------|-------------|
-| `.schedule(expression)` | Set the cron or rate schedule expression |
+| `.schedule(expression)` | Set the cron schedule, Unix or AWS form |
 | `.input(schema)` | Validate the input payload with a StandardSchema |
 | `.output(schema)` | Validate the return value with a StandardSchema |
 | `.services(services)` | Inject services into the handler context |

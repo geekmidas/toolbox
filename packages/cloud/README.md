@@ -96,11 +96,11 @@ settings while custom authorizers require a `handler`.
 ### Cron
 
 Wraps `sst.aws.CronV2` (`sst.aws.Cron` is deprecated). `processor` is a
-`Function` (or anything with an `arn`); `schedule` is a typed `rate(…)` /
-`cron(…)` / `at(…)`.
+`Function` (or anything with an `arn`); `schedule` is a typed `cron(…)` /
+`at(…)`.
 
 ```ts
-const cron = new Cron(stack, 'Nightly', { processor: fn, schedule: 'rate(1 day)' });
+const cron = new Cron(stack, 'Nightly', { processor: fn, schedule: 'cron(0 0 * * ? *)' });
 ```
 
 ### From a `gkm build` manifest

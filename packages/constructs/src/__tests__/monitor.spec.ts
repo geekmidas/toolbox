@@ -100,7 +100,7 @@ describe('heartbeat', () => {
 	it('pings the URL when a run succeeds', async () => {
 		const cron = new CronBuilder()
 			.input(z.object({}))
-			.schedule('rate(1 day)')
+			.schedule('cron(0 0 * * *)')
 			.monitor(heartbeat.betterStack())
 			.handle(async () => ({ ok: true }));
 
@@ -115,7 +115,7 @@ describe('heartbeat', () => {
 	it('pings the failure URL and rethrows when a run fails', async () => {
 		const cron = new CronBuilder()
 			.input(z.object({}))
-			.schedule('rate(1 day)')
+			.schedule('cron(0 0 * * *)')
 			.monitor(heartbeat.betterStack())
 			.handle(async () => {
 				throw new Error('boom');
@@ -148,7 +148,7 @@ describe('heartbeat', () => {
 	it('skips the heartbeat but still runs when its env var is missing', async () => {
 		const cron = new CronBuilder()
 			.input(z.object({}))
-			.schedule('rate(1 day)')
+			.schedule('cron(0 0 * * *)')
 			.monitor(heartbeat.betterStack())
 			.output(z.object({ ok: z.boolean() }))
 			.handle(async () => ({ ok: true }));
@@ -165,7 +165,7 @@ describe('heartbeat', () => {
 	it('reads the env var it was given', async () => {
 		const cron = new CronBuilder()
 			.input(z.object({}))
-			.schedule('rate(1 day)')
+			.schedule('cron(0 0 * * *)')
 			.monitor(heartbeat.betterStack('NIGHTLY_HEARTBEAT_URL'))
 			.handle(async () => ({}));
 
@@ -185,7 +185,7 @@ describe('heartbeat', () => {
 		);
 		const cron = new CronBuilder()
 			.input(z.object({}))
-			.schedule('rate(1 day)')
+			.schedule('cron(0 0 * * *)')
 			.monitor(heartbeat.betterStack())
 			.output(z.object({ ok: z.boolean() }))
 			.handle(async () => ({ ok: true }));
@@ -201,7 +201,7 @@ describe('heartbeat', () => {
 	it('declares its env var as required', async () => {
 		const cron = new CronBuilder()
 			.input(z.object({}))
-			.schedule('rate(1 day)')
+			.schedule('cron(0 0 * * *)')
 			.monitor(heartbeat.betterStack('NIGHTLY_HEARTBEAT_URL'))
 			.handle(async () => ({}));
 
@@ -278,7 +278,7 @@ describe('functions and crons', () => {
 		const two = recorder('two');
 		const cron = new CronBuilder()
 			.input(z.object({}))
-			.schedule('rate(1 day)')
+			.schedule('cron(0 0 * * *)')
 			.monitor(one.service)
 			.monitor(two.service)
 			.handle(async () => {
@@ -316,10 +316,10 @@ describe('functions and crons', () => {
 		const base = new CronBuilder().monitor(shared.service);
 
 		const nightly = base
-			.schedule('rate(1 day)')
+			.schedule('cron(0 0 * * *)')
 			.monitor(own.service)
 			.handle(async () => ({}));
-		const hourly = base.schedule('rate(1 hour)').handle(async () => ({}));
+		const hourly = base.schedule('cron(0 * * * *)').handle(async () => ({}));
 
 		expect(nightly.monitors.map((m) => m.serviceName)).toEqual([
 			'shared',
@@ -523,7 +523,7 @@ describe('heartbeat requests, per construct', () => {
 		it('sends the success ping', async () => {
 			await invoke(
 				new CronBuilder()
-					.schedule('rate(1 day)')
+					.schedule('cron(0 0 * * *)')
 					.monitor(heartbeat.betterStack())
 					.handle(async () => ({})),
 			);
@@ -534,7 +534,7 @@ describe('heartbeat requests, per construct', () => {
 			await expect(
 				invoke(
 					new CronBuilder()
-						.schedule('rate(1 day)')
+						.schedule('cron(0 0 * * *)')
 						.monitor(heartbeat.betterStack())
 						.handle(async () => {
 							throw new Error('boom');
@@ -547,7 +547,7 @@ describe('heartbeat requests, per construct', () => {
 		it('sends the start ping first, for Healthchecks.io', async () => {
 			await invoke(
 				new CronBuilder()
-					.schedule('rate(1 day)')
+					.schedule('cron(0 0 * * *)')
 					.monitor(heartbeat.healthchecks())
 					.handle(async () => ({})),
 			);
@@ -557,8 +557,8 @@ describe('heartbeat requests, per construct', () => {
 		it('sends one ping per run, from a shared base', async () => {
 			const base = new CronBuilder().monitor(heartbeat.betterStack());
 
-			await invoke(base.schedule('rate(1 day)').handle(async () => ({})));
-			await invoke(base.schedule('rate(1 hour)').handle(async () => ({})));
+			await invoke(base.schedule('cron(0 0 * * *)').handle(async () => ({})));
+			await invoke(base.schedule('cron(0 * * * *)').handle(async () => ({})));
 
 			expect(pings).toEqual(['/abc', '/abc']);
 		});
@@ -641,7 +641,7 @@ describe('heartbeat requests, per construct', () => {
 describe('getMonitoring', () => {
 	it('records each monitor for the manifest', () => {
 		const cron = new CronBuilder()
-			.schedule('rate(1 day)')
+			.schedule('cron(0 0 * * *)')
 			.monitor(heartbeat.betterStack('MONITORING_URL'))
 			.monitor(heartbeat.healthchecks('HEALTHCHECKS_URL'))
 			.handle(async () => ({}));
@@ -688,7 +688,7 @@ describe('getMonitoring', () => {
 
 	it('records nothing for a construct without monitors', () => {
 		const cron = new CronBuilder()
-			.schedule('rate(1 day)')
+			.schedule('cron(0 0 * * *)')
 			.handle(async () => ({}));
 
 		expect(cron.getMonitoring()).toBeUndefined();

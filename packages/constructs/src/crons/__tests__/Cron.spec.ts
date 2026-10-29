@@ -3,7 +3,7 @@ import type { Service } from '@geekmidas/services';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { ConstructType } from '../../Construct';
-import { Cron, type CronExpression, type RateExpression } from '../Cron';
+import { Cron, type ScheduleExpression } from '../Cron';
 import { CronBuilder } from '../CronBuilder';
 
 // Mock service for testing
@@ -41,7 +41,7 @@ describe('Cron', () => {
 
 		it('should create a Cron instance with schedule expression', () => {
 			const handler = vi.fn();
-			const schedule: CronExpression = 'cron(0 12 * * MON)';
+			const schedule: ScheduleExpression = 'cron(0 12 * * MON)';
 			const cron = new Cron(handler, undefined, schedule);
 
 			expect(cron).toBeInstanceOf(Cron);
@@ -134,7 +134,7 @@ describe('Cron', () => {
 		it('should create a Cron with all parameters', () => {
 			const inputSchema = z.object({ name: z.string() });
 			const outputSchema = z.object({ greeting: z.string() });
-			const schedule: RateExpression = 'rate(5 minutes)';
+			const schedule: ScheduleExpression = 'cron(*/5 * * * *)';
 			const timeout = 60000;
 			const service = new MockService();
 			const logger = new ConsoleLogger();
@@ -207,7 +207,7 @@ describe('Cron', () => {
 
 		it('should set schedule with schedule() method', () => {
 			const builder = new CronBuilder();
-			const schedule: CronExpression = 'cron(0 0 * * SUN)';
+			const schedule: ScheduleExpression = 'cron(0 0 * * SUN)';
 
 			const result = builder.schedule(schedule);
 
@@ -231,7 +231,7 @@ describe('Cron', () => {
 		it('should build Cron with full builder chain', () => {
 			const inputSchema = z.object({ task: z.string() });
 			const outputSchema = z.object({ completed: z.boolean() });
-			const schedule: RateExpression = 'rate(1 hour)';
+			const schedule: ScheduleExpression = 'cron(0 * * * *)';
 			const service = new MockService();
 			const logger = new ConsoleLogger();
 
@@ -259,7 +259,7 @@ describe('Cron', () => {
 
 		it('should support method chaining in any order', () => {
 			const builder = new CronBuilder();
-			const schedule: CronExpression = 'cron(30 2 * * TUE)';
+			const schedule: ScheduleExpression = 'cron(30 2 * * TUE)';
 
 			const chained = builder
 				.timeout(30000)
@@ -274,90 +274,52 @@ describe('Cron', () => {
 	});
 
 	describe('Schedule Expression Types', () => {
-		it('should accept valid rate expressions', () => {
-			const validRates: RateExpression[] = [
-				'rate(5 minutes)',
-				'rate(1 hour)',
-				'rate(7 days)',
-				'rate(30 seconds)',
-				'rate(2 weeks)',
-			];
+		it('accepts Unix and AWS literals and rejects invalid ones', () => {
+			const c = new CronBuilder();
 
-			validRates.forEach((rate) => {
-				const builder = new CronBuilder();
-				expect(() => builder.schedule(rate)).not.toThrow();
-			});
-		});
+			c.schedule('cron(0 8 * * *)');
+			c.schedule('cron(0 9 * * MON-FRI)');
+			c.schedule('cron(0 9 1 * MON)');
+			c.schedule('cron(0 0 * * 7)');
+			c.schedule('cron(0 8 * * ? *)');
+			c.schedule('cron(0 9 ? * MON-FRI *)');
+			c.schedule('cron(0 9 L * ? *)');
+			c.schedule('cron(0 9 15W * ? *)');
+			c.schedule('cron(0 9 ? * 6#3 *)');
+			c.schedule('cron(0 9 ? * FRIL 2026-2027)');
 
-		it('should accept valid cron expressions', () => {
-			const validCrons: CronExpression[] = [
-				'cron(0 12 * * MON)',
-				'cron(15 10 * * FRI)',
-				'cron(0 0 1 JAN SUN)',
-				'cron(*/5 * * * *)',
-				'cron(0 0-23/2 * * *)',
-				'cron(30 4 1,15 * *)',
-				'cron(0 12 * DEC MON)',
-			];
-
-			validCrons.forEach((cron) => {
-				const builder = new CronBuilder();
-				expect(() => builder.schedule(cron)).not.toThrow();
-			});
-		});
-
-		it('should work with complex cron patterns', () => {
-			const complexPatterns: CronExpression[] = [
-				'cron(*/15 * * * *)', // Every 15 minutes
-				'cron(0 */4 * * *)', // Every 4 hours
-				'cron(0 9-17 * * MON-FRI)', // Every hour 9-5 on weekdays
-				'cron(0 0 1-7 * SUN)', // First Sunday of month
-				'cron(*/30 8-18 * * *)', // Every 30 min during business hours
-			];
-
-			complexPatterns.forEach((pattern) => {
-				const builder = new CronBuilder();
-				expect(() => builder.schedule(pattern)).not.toThrow();
-			});
-		});
-
-		it('should handle all month names', () => {
-			const months: CronExpression[] = [
-				'cron(0 0 1 JAN *)',
-				'cron(0 0 1 FEB *)',
-				'cron(0 0 1 MAR *)',
-				'cron(0 0 1 APR *)',
-				'cron(0 0 1 MAY *)',
-				'cron(0 0 1 JUN *)',
-				'cron(0 0 1 JUL *)',
-				'cron(0 0 1 AUG *)',
-				'cron(0 0 1 SEP *)',
-				'cron(0 0 1 OCT *)',
-				'cron(0 0 1 NOV *)',
-				'cron(0 0 1 DEC *)',
-			];
-
-			months.forEach((expression) => {
-				const builder = new CronBuilder();
-				expect(() => builder.schedule(expression)).not.toThrow();
-			});
-		});
-
-		it('should handle all weekday names', () => {
-			const weekdays: CronExpression[] = [
-				'cron(0 0 * * SUN)',
-				'cron(0 0 * * MON)',
-				'cron(0 0 * * TUE)',
-				'cron(0 0 * * WED)',
-				'cron(0 0 * * THU)',
-				'cron(0 0 * * FRI)',
-				'cron(0 0 * * SAT)',
-			];
-
-			weekdays.forEach((expression) => {
-				const builder = new CronBuilder();
-				expect(() => builder.schedule(expression)).not.toThrow();
-			});
+			// @ts-expect-error 4 fields
+			c.schedule('cron(0 8 * *)');
+			// @ts-expect-error 7 fields
+			c.schedule('cron(0 0 8 * * ? *)');
+			// @ts-expect-error `?` is AWS, not Unix
+			c.schedule('cron(0 8 * * ?)');
+			// @ts-expect-error AWS needs `?` in one day field
+			c.schedule('cron(0 8 * * * *)');
+			// @ts-expect-error AWS with `?` in both day fields
+			c.schedule('cron(0 8 ? * ? *)');
+			// @ts-expect-error AWS with both day fields restricted
+			c.schedule('cron(0 9 1 * MON *)');
+			// @ts-expect-error AWS day-of-week is 1-7
+			c.schedule('cron(0 9 ? * 0 *)');
+			// @ts-expect-error hour 25
+			c.schedule('cron(0 25 * * *)');
+			// @ts-expect-error minute 60
+			c.schedule('cron(60 * * * ? *)');
+			// @ts-expect-error `L` is AWS only
+			c.schedule('cron(0 9 L * *)');
+			// @ts-expect-error rate() is not supported
+			c.schedule('rate(1 day)');
+			// @ts-expect-error double space
+			c.schedule('cron(0  8 * * *)');
+			// @ts-expect-error not a month
+			c.schedule('cron(0 8 * FOO *)');
+			// @ts-expect-error a year before 1970
+			c.schedule('cron(0 8 * * ? 1969)');
+			// @ts-expect-error a plain string needs a cast
+			c.schedule('cron(0 8 * * *)' as string);
+			// A runtime schedule cast to ScheduleExpression is checked at build.
+			c.schedule('cron(0 8 * * *)' as ScheduleExpression);
 		});
 	});
 
@@ -454,7 +416,7 @@ describe('Cron', () => {
 
 			const cron1 = new CronBuilder()
 				.timeout(1000)
-				.schedule('rate(5 minutes)')
+				.schedule('cron(*/5 * * * *)')
 				.handle(handler1);
 
 			const cron2 = new CronBuilder()

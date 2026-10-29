@@ -96,7 +96,7 @@ export async function createMockCronFile(
 	dir: string,
 	filename: string,
 	exportName: string,
-	schedule = 'rate(1 hour)',
+	schedule = 'cron(0 * * * *)',
 ): Promise<string> {
 	const content = `
 import { CronBuilder } from '@geekmidas/constructs/crons';
@@ -134,11 +134,11 @@ export function createTestFunction(timeout: number = 30) {
 }
 
 export function createTestCron(
-	schedule: ScheduleExpression = 'rate(1 hour)',
+	schedule: ScheduleExpression | null = 'cron(0 * * * *)',
 	timeout: number = 30,
 ) {
-	const builder = new CronBuilder()
-		.schedule(schedule)
+	const cron = new CronBuilder();
+	const builder = (schedule ? cron.schedule(schedule) : cron)
 		.output(z.object({ processed: z.number() }))
 		.timeout(timeout);
 	return builder.handle(async () => {

@@ -36,7 +36,11 @@ const manifest = {
 		{ name: 'worker', handler: 'worker.handler', environment: ['DB_URL'] },
 	],
 	crons: [
-		{ name: 'nightly', handler: 'nightly.handler', schedule: 'rate(1 day)' },
+		{
+			name: 'nightly',
+			handler: 'nightly.handler',
+			schedule: 'cron(0 0 * * ? *)',
+		},
 	],
 } as const satisfies Manifest;
 

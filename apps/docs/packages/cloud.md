@@ -102,13 +102,13 @@ also accepts a `Function`).
 ### Cron
 
 Wraps `sst.aws.CronV2` (`sst.aws.Cron` is deprecated in SST v4). `processor` is a
-`Function` (or anything with an `arn`); `schedule` is a typed `rate(…)` /
-`cron(…)` / `at(…)`.
+`Function` (or anything with an `arn`); `schedule` is a typed `cron(…)` /
+`at(…)`.
 
 ```ts
 const cron = new Cron(stack, 'Nightly', {
   processor: fn,
-  schedule: 'rate(1 day)',
+  schedule: 'cron(0 0 * * ? *)',
 });
 ```
 

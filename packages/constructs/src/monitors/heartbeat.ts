@@ -36,7 +36,7 @@ export interface HeartbeatOptions {
  * @example
  * ```typescript
  * cron
- *   .schedule('rate(1 day)')
+ *   .schedule('cron(0 0 * * *)')
  *   .monitor(heartbeat.betterStack())
  *   .handle(async () => {});
  * ```

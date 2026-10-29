@@ -31,7 +31,7 @@ export const dailyReport = c
  * Example cron that runs every hour
  */
 export const hourlyCleanup = c
-	.schedule('rate(1 hour)')
+	.schedule('cron(0 * * * *)')
 	.timeout(300000) // 5 minutes
 	.handle(async ({ logger }) => {
 		logger.info('Running hourly cleanup');

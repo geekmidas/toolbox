@@ -12,7 +12,6 @@ export {
 	Cron,
 	type CronExpression,
 	type CronProps,
-	type CronRate,
 	type CronSchedule,
 } from './Cron';
 export { Function, type FunctionProps } from './Function';

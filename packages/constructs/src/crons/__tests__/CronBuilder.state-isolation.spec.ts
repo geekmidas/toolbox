@@ -26,12 +26,12 @@ describe('CronBuilder - State Isolation', () => {
 
 			// First cron with ServiceA and ServiceB
 			const cron1 = c
-				.schedule('rate(5 minutes)')
+				.schedule('cron(*/5 * * * *)')
 				.services([ServiceA, ServiceB])
 				.handle(async () => ({}));
 
 			// Second cron should not have any services from first
-			const cron2 = c.schedule('rate(10 minutes)').handle(async () => ({}));
+			const cron2 = c.schedule('cron(*/10 * * * *)').handle(async () => ({}));
 
 			expect(cron1.services.map((s) => s.serviceName)).toEqual(['a', 'b']);
 			expect(cron2.services.map((s) => s.serviceName)).toEqual([]);
@@ -43,12 +43,12 @@ describe('CronBuilder - State Isolation', () => {
 
 			// First cron with custom logger
 			const cron1 = c
-				.schedule('rate(5 minutes)')
+				.schedule('cron(*/5 * * * *)')
 				.logger(customLogger)
 				.handle(async () => ({}));
 
 			// Second cron should have default logger (not the custom one)
-			const cron2 = c.schedule('rate(10 minutes)').handle(async () => ({}));
+			const cron2 = c.schedule('cron(*/10 * * * *)').handle(async () => ({}));
 
 			expect(cron1.logger).toBe(customLogger);
 			expect(cron2.logger).not.toBe(customLogger);
@@ -59,13 +59,13 @@ describe('CronBuilder - State Isolation', () => {
 			const c = new CronBuilder();
 
 			// First cron with schedule
-			const cron1 = c.schedule('rate(5 minutes)').handle(async () => ({}));
+			const cron1 = c.schedule('cron(*/5 * * * *)').handle(async () => ({}));
 
 			// Second cron should not have schedule from first
-			const cron2 = c.schedule('rate(10 minutes)').handle(async () => ({}));
+			const cron2 = c.schedule('cron(*/10 * * * *)').handle(async () => ({}));
 
-			expect(cron1.schedule).toBe('rate(5 minutes)');
-			expect(cron2.schedule).toBe('rate(10 minutes)');
+			expect(cron1.schedule).toBe('cron(*/5 * * * *)');
+			expect(cron2.schedule).toBe('cron(*/10 * * * *)');
 
 			// Check internal state is reset
 			expect((c as any)._schedule).toBeUndefined();
@@ -75,7 +75,7 @@ describe('CronBuilder - State Isolation', () => {
 			const c = new CronBuilder();
 
 			// Create first cron (events array should be empty initially)
-			const _cron1 = c.schedule('rate(5 minutes)').handle(async () => ({}));
+			const _cron1 = c.schedule('cron(*/5 * * * *)').handle(async () => ({}));
 
 			// Verify state was reset
 			expect((c as any)._events).toEqual([]);
@@ -90,13 +90,13 @@ describe('CronBuilder - State Isolation', () => {
 
 			// First cron with schemas
 			const cron1 = c
-				.schedule('rate(5 minutes)')
+				.schedule('cron(*/5 * * * *)')
 				.input(inputSchema)
 				.output(outputSchema)
 				.handle(async () => ({}));
 
 			// Second cron should not have schemas
-			const cron2 = c.schedule('rate(10 minutes)').handle(async () => ({}));
+			const cron2 = c.schedule('cron(*/10 * * * *)').handle(async () => ({}));
 
 			expect(cron1.input).toBe(inputSchema);
 			expect(cron1.outputSchema).toBe(outputSchema);
@@ -109,12 +109,12 @@ describe('CronBuilder - State Isolation', () => {
 
 			// First cron with custom timeout
 			const cron1 = c
-				.schedule('rate(5 minutes)')
+				.schedule('cron(*/5 * * * *)')
 				.timeout(5000)
 				.handle(async () => ({}));
 
 			// Second cron should have default timeout (30000)
-			const cron2 = c.schedule('rate(10 minutes)').handle(async () => ({}));
+			const cron2 = c.schedule('cron(*/10 * * * *)').handle(async () => ({}));
 
 			expect(cron1.timeout).toBe(5000);
 			expect(cron2.timeout).toBe(30000); // Default timeout
@@ -126,7 +126,7 @@ describe('CronBuilder - State Isolation', () => {
 			const c = new CronBuilder();
 
 			const cron = c
-				.schedule('rate(5 minutes)')
+				.schedule('cron(*/5 * * * *)')
 				.services([ServiceA])
 				.services([ServiceB])
 				.handle(async () => ({}));
@@ -165,27 +165,27 @@ describe('CronBuilder - State Isolation', () => {
 			const c = new CronBuilder();
 
 			const cron1 = c
-				.schedule('rate(5 minutes)')
+				.schedule('cron(*/5 * * * *)')
 				.services([ServiceA, ServiceB])
 				.handle(async () => ({ result: 1 }));
 
 			const cron2 = c
-				.schedule('rate(10 minutes)')
+				.schedule('cron(*/10 * * * *)')
 				.services([ServiceA])
 				.handle(async () => ({ result: 2 }));
 
 			const cron3 = c
-				.schedule('rate(15 minutes)')
+				.schedule('cron(*/15 * * * *)')
 				.handle(async () => ({ result: 3 }));
 
 			expect(cron1.services.map((s) => s.serviceName)).toEqual(['a', 'b']);
-			expect(cron1.schedule).toBe('rate(5 minutes)');
+			expect(cron1.schedule).toBe('cron(*/5 * * * *)');
 
 			expect(cron2.services.map((s) => s.serviceName)).toEqual(['a']);
-			expect(cron2.schedule).toBe('rate(10 minutes)');
+			expect(cron2.schedule).toBe('cron(*/10 * * * *)');
 
 			expect(cron3.services.map((s) => s.serviceName)).toEqual([]);
-			expect(cron3.schedule).toBe('rate(15 minutes)');
+			expect(cron3.schedule).toBe('cron(*/15 * * * *)');
 		});
 	});
 
@@ -200,11 +200,11 @@ describe('CronBuilder - State Isolation', () => {
 			};
 
 			const cron1 = c
-				.schedule('rate(5 minutes)')
+				.schedule('cron(*/5 * * * *)')
 				.publisher(mockPublisher)
 				.handle(async () => ({}));
 
-			const cron2 = c.schedule('rate(10 minutes)').handle(async () => ({}));
+			const cron2 = c.schedule('cron(*/10 * * * *)').handle(async () => ({}));
 
 			expect((cron1 as any).publisherService).toBe(mockPublisher);
 			expect((cron2 as any).publisherService).toBeUndefined();
@@ -215,13 +215,13 @@ describe('CronBuilder - State Isolation', () => {
 		it('should handle different schedule expression formats', () => {
 			const c = new CronBuilder();
 
-			const cron1 = c.schedule('rate(5 minutes)').handle(async () => ({}));
+			const cron1 = c.schedule('cron(*/5 * * * *)').handle(async () => ({}));
 			const cron2 = c.schedule('cron(0 12 * * ? *)').handle(async () => ({}));
-			const cron3 = c.schedule('rate(1 hour)').handle(async () => ({}));
+			const cron3 = c.schedule('cron(0 * * * *)').handle(async () => ({}));
 
-			expect(cron1.schedule).toBe('rate(5 minutes)');
+			expect(cron1.schedule).toBe('cron(*/5 * * * *)');
 			expect(cron2.schedule).toBe('cron(0 12 * * ? *)');
-			expect(cron3.schedule).toBe('rate(1 hour)');
+			expect(cron3.schedule).toBe('cron(0 * * * *)');
 		});
 	});
 
@@ -230,7 +230,7 @@ describe('CronBuilder - State Isolation', () => {
 			const base = new CronBuilder()
 				.logger(customLogger)
 				.timeout(60_000)
-				.schedule('rate(1 day)');
+				.schedule('cron(0 0 * * *)');
 
 			const first = base.services([ServiceA]).handle(async () => ({}));
 			const second = base.services([ServiceB]).handle(async () => ({}));
@@ -254,7 +254,7 @@ describe('CronBuilder - State Isolation', () => {
 			const base = new CronBuilder()
 				.logger(customLogger)
 				.timeout(60_000)
-				.schedule('rate(1 day)');
+				.schedule('cron(0 0 * * *)');
 
 			// No clone in between: `.handle()` is called straight on the base,
 			// twice. Cloning the config methods was not enough on its own —

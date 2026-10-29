@@ -144,3 +144,5 @@ export interface Manifest {
 	queues?: ManifestField<QueueInfo>;
 	topics?: ManifestField<TopicInfo>;
 }
+
+export * from './cron';

@@ -145,7 +145,6 @@ export {
   type CronProps,
   type CronSchedule,
   type CronExpression,
-  type CronRate,
 } from './Cron';
 ```
 
@@ -462,7 +461,7 @@ deprecated in SST v4; `CronProps` extends `sst.aws.CronV2Args`, so `enabled`,
 ```ts
 const cron = new Cron(stack, 'Nightly', {
   processor: fn,                         // a Function (or any { arn })
-  schedule: 'rate(1 day)',
+  schedule: 'cron(0 0 * * ? *)',
 });
 ```
 
@@ -470,9 +469,8 @@ const cron = new Cron(stack, 'Nightly', {
 
 ```ts
 type CronExpression = `cron(${CronString})`;     // e.g. cron(0 12 * * ? *)
-type CronRate = `rate(${number} ${'minute'|'minutes'|'hour'|'hours'|'day'|'days'})`;
 type CronAt = `at(${string})`;                   // one-time, e.g. at(2025-06-01T10:00:00)
-type CronSchedule = CronExpression | CronRate | CronAt;
+type CronSchedule = CronExpression | CronAt;
 ```
 
 **Props** (on top of `CronV2Args`)
@@ -480,7 +478,7 @@ type CronSchedule = CronExpression | CronRate | CronAt;
 | Prop | Type | Notes |
 | --- | --- | --- |
 | `processor` | `` Function \| { arn } `` | Target invoked on schedule. |
-| `schedule` | `CronSchedule` | `cron(…)`, `rate(…)`, or `at(…)`. |
+| `schedule` | `CronSchedule` | `cron(…)` or `at(…)`. |
 
 `Cron` is not `Linkable` — nothing links *to* a cron — so it carries no `_type`
 discriminator (see §11.3). The earlier `links` prop is dropped (it was a no-op

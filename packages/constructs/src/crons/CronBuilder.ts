@@ -7,7 +7,7 @@ import uniqBy from 'lodash.uniqby';
 import { ConstructType } from '../Construct';
 import { cloneWith } from '../clone';
 import { FunctionBuilder, type FunctionHandler } from '../functions';
-import { Cron, type ScheduleExpression } from './Cron';
+import { Cron, type CronExpression, type ScheduleExpression } from './Cron';
 
 export class CronBuilder<
 	TInput extends ComposableStandardSchema,
@@ -40,8 +40,12 @@ export class CronBuilder<
 		return cloneWith(this, { _memorySize: memorySize });
 	}
 
-	schedule(
-		_expression: ScheduleExpression,
+	/**
+	 * When the cron runs: a five-field Unix `cron(…)` or a six-field AWS one.
+	 * `gkm build` writes it to the manifest in the AWS form.
+	 */
+	schedule<const T extends string>(
+		_expression: CronExpression<T>,
 	): CronBuilder<
 		TInput,
 		TServices,
@@ -52,7 +56,9 @@ export class CronBuilder<
 		TDatabase,
 		TDatabaseServiceName
 	> {
-		return cloneWith(this, { _schedule: _expression });
+		return cloneWith(this, {
+			_schedule: _expression as ScheduleExpression,
+		});
 	}
 
 	override input<T extends ComposableStandardSchema>(
