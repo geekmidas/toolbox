@@ -1,5 +1,15 @@
 # @geekmidas/envkit
 
+## 10.0.0-alpha.131
+
+## 10.0.0-alpha.130
+
+## 10.0.0-alpha.129
+
+### Patch Changes
+
+- 🐛 [#326](https://github.com/geekmidas/toolbox/pull/326) [`56cd171`](https://github.com/geekmidas/toolbox/commit/56cd171801e75c0390a85075661128f0d0535511) Thanks [@geekmidas](https://github.com/geekmidas)! - No longer depend on `lodash.pick` and `lodash.set`, which are affected by GHSA-p6mc-m468-83gw and have no fixed release. Native code does the same work, and constructs no longer bundles either module into its dist.
+
 ## 10.0.0-alpha.128
 
 ## 10.0.0-alpha.127

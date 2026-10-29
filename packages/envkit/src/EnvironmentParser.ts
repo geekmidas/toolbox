@@ -1,5 +1,4 @@
 import get from 'lodash.get';
-import set from 'lodash.set';
 import { z } from 'zod/v4';
 import { formatParseError, isDevelopment } from './formatter.js';
 
@@ -41,7 +40,7 @@ export class ConfigParser<TResponse extends EmptyObject> {
 				if (schema instanceof z.ZodType) {
 					const parsed = schema.safeParse(undefined);
 					if (parsed.success) {
-						set(result, key, parsed.data);
+						result[key] = parsed.data;
 					} else {
 						// If the schema is invalid, assign the error
 						errors.push(
@@ -52,7 +51,7 @@ export class ConfigParser<TResponse extends EmptyObject> {
 						);
 					}
 				} else if (schema) {
-					set(result, key, parseDeep(schema as EmptyObject, currentPath));
+					result[key] = parseDeep(schema as EmptyObject, currentPath);
 				}
 			}
 
