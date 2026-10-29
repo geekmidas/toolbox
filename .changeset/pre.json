@@ -231,6 +231,7 @@
     "v10-the-manifest-is-the-source",
     "websocket-api",
     "wildcard-site-aws",
+    "wildcard-site-dev",
     "wildcard-site",
     "worker-database",
     "worker-push-host",

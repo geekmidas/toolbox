@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/websocket-load",
-	"version": "10.0.0-alpha.133",
+	"version": "10.0.0-alpha.134",
 	"private": true,
 	"type": "module",
 	"description": "Real-socket load for a WebSocketApi: a target server, a connection simulator, and a compose scenario that runs both through the edge gkm compose deploys.",
