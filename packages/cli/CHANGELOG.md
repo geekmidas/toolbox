@@ -1,5 +1,38 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.135
+
+### Patch Changes
+
+- [#336](https://github.com/geekmidas/toolbox/pull/336) [`30333d2`](https://github.com/geekmidas/toolbox/commit/30333d2054d575f73c262377d775a895b70b4735) Thanks [@geekmidas](https://github.com/geekmidas)! - A bucket's links reach a phone on a local stage with a mobile app
+
+  A surface a mobile app calls hands it links its buckets built: a file
+  server's public URL (`https://assetsserver.<project>.localhost:…`) and an
+  object store's presigned ones (signed for `localhost`). A phone resolves no
+  `*.localhost` host and reaches no `localhost`, and a presigned URL's
+  signature covers its host, so nothing downstream could move it.
+
+  When a surface a mobile app calls depends on a bucket, the local stage now
+  resolves the bucket on the LAN address, as it already does `<ID>_DEVICE_URL`
+  for an auth server: an `ObjectStorage` presigns against
+  `endpoint=http://<lan>:<minio port>`, and a `FileServer` links to
+  `http://<lan>:<minio port>/<bucket>`. A file server with processors stays
+  behind the edge, which is the only place they answer. A project with no
+  mobile app, or a machine on no network, resolves what it did before.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.135
+  - @geekmidas/constructs@10.0.0-alpha.135
+  - @geekmidas/db@10.0.0-alpha.135
+  - @geekmidas/envkit@10.0.0-alpha.135
+  - @geekmidas/errors@10.0.0-alpha.135
+  - @geekmidas/logger@10.0.0-alpha.135
+  - @geekmidas/manifest@10.0.0-alpha.135
+  - @geekmidas/schema@10.0.0-alpha.135
+  - @geekmidas/services@10.0.0-alpha.135
+  - @geekmidas/storage@10.0.0-alpha.135
+  - @geekmidas/telescope@10.0.0-alpha.135
+
 ## 10.0.0-alpha.134
 
 ### Patch Changes

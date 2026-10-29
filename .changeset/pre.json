@@ -100,6 +100,7 @@
     "dev-service-urls",
     "dev-strict-ports",
     "dev-tsx-owning-tsconfig-jsx",
+    "device-bucket-links",
     "dns-godaddy-compose",
     "dokploy-request-timeouts",
     "dokploy-verify-rollback-migrations",
