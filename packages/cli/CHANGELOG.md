@@ -1,5 +1,42 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.131
+
+### Patch Changes
+
+- [#332](https://github.com/geekmidas/toolbox/pull/332) [`18c880d`](https://github.com/geekmidas/toolbox/commit/18c880d1fca929e91b849b853fcfb521a16db253) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm dev` runs turbo through the workspace's own package manager
+
+  It spawned `pnpm turbo run dev` whatever the workspace used, so on a Yarn or
+  npm workspace without pnpm installed every app failed to start with
+  `spawn pnpm ENOENT` — after the containers, migrations and seeds had already
+  run. It now reads the lockfile at the workspace root, as `gkm build` does, and
+  runs `pnpm exec turbo`, `yarn turbo` or `npx turbo` accordingly.
+
+- [#333](https://github.com/geekmidas/toolbox/pull/333) [`dda1c9b`](https://github.com/geekmidas/toolbox/commit/dda1c9b956850bb87531e19d56c716cd99cf9275) Thanks [@geekmidas](https://github.com/geekmidas)! - Seeds are handed the stage's custom secrets, as its apps are
+
+  A seed's `env` held what reconcile resolves — every construct's URL — but
+  not the keys set with `gkm secrets:set`, which the apps do get. A seed that
+  needed one (a client id it upserts, a third party's key, an admin's email)
+  found it missing under `gkm seed` and `gkm dev --seed`, and only worked under
+  `gkm exec`.
+
+  `gkm seed` (and `gkm migrate`) now merge the stage's stored secrets under the
+  resolved URLs, reading the local stage's store for `test` as `gkm test` does.
+  `gkm dev --seed` hands the seeds the same env it starts the apps with.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.131
+  - @geekmidas/constructs@10.0.0-alpha.131
+  - @geekmidas/db@10.0.0-alpha.131
+  - @geekmidas/envkit@10.0.0-alpha.131
+  - @geekmidas/errors@10.0.0-alpha.131
+  - @geekmidas/logger@10.0.0-alpha.131
+  - @geekmidas/manifest@10.0.0-alpha.131
+  - @geekmidas/schema@10.0.0-alpha.131
+  - @geekmidas/services@10.0.0-alpha.131
+  - @geekmidas/storage@10.0.0-alpha.131
+  - @geekmidas/telescope@10.0.0-alpha.131
+
 ## 10.0.0-alpha.130
 
 ### Minor Changes
