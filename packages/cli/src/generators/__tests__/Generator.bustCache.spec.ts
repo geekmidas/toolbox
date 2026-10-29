@@ -7,17 +7,25 @@ import { EndpointGenerator } from '../EndpointGenerator';
 import { clearZodGlobalRegistry } from '../Generator';
 
 describe('clearZodGlobalRegistry', () => {
-	it('removes an id from the global registry so the same id can be re-registered', () => {
-		// Register once — succeeds
+	it('removes a registered id from the global registry', () => {
+		const registry = (
+			globalThis as {
+				__zod_globalRegistry?: { _idmap?: Map<string, unknown> };
+			}
+		).__zod_globalRegistry;
+
 		z.object({ x: z.string() }).meta({ id: 'BustCacheSchema_A' });
+		expect(registry?._idmap?.has('BustCacheSchema_A')).toBe(true);
 
-		// Re-registering without clearing throws
-		expect(() =>
-			z.object({ y: z.string() }).meta({ id: 'BustCacheSchema_A' }),
-		).toThrow(/already exists in the registry/);
-
-		// After clearing, the id can be registered again
+		// The contract is that the id is gone, asserted on the registry itself.
+		// This used to be asserted by re-registering and expecting a throw, which
+		// stopped meaning anything in Zod 4.6: a duplicate id is accepted now
+		// rather than rejected. That made the test pass for the wrong reason
+		// first, and then fail for the wrong reason — neither of which was ever
+		// about `clearZodGlobalRegistry`.
 		clearZodGlobalRegistry();
+		expect(registry?._idmap?.has('BustCacheSchema_A')).toBe(false);
+
 		expect(() =>
 			z.object({ z: z.string() }).meta({ id: 'BustCacheSchema_A' }),
 		).not.toThrow();

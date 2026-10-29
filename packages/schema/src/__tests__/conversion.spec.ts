@@ -156,7 +156,18 @@ describe('Schema Conversion', () => {
 
 			const jsonSchema = await convertStandardSchemaToJsonSchema(schema);
 
-			expect(jsonSchema).toHaveProperty('anyOf');
+			// A union of primitives comes out as a type array rather than `anyOf`.
+			// Both say the same thing, and the array is the 2020-12 spelling — which
+			// is the dialect this project emits, since OpenAPI 3.1 adopted it. The
+			// assertion is that the union survives conversion, so it is written
+			// against either encoding rather than whichever one Zod currently picks.
+			expect(jsonSchema).toEqual(
+				expect.objectContaining(
+					'anyOf' in (jsonSchema as object)
+						? { anyOf: expect.any(Array) }
+						: { type: ['string', 'number'] },
+				),
+			);
 		});
 	});
 

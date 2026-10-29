@@ -3,11 +3,8 @@ import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentation
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { PinoInstrumentation } from '@opentelemetry/instrumentation-pino';
-import { Resource } from '@opentelemetry/resources';
-import {
-	BatchLogRecordProcessor,
-	LoggerProvider,
-} from '@opentelemetry/sdk-logs';
+import * as resources from '@opentelemetry/resources';
+import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import {
 	ConsoleSpanExporter,
@@ -135,7 +132,7 @@ export function setupTelemetry(options: TelemetryOptions): void {
 	}
 
 	// Create resource
-	const resource = new Resource({
+	const resource = createResource({
 		[ATTR_SERVICE_NAME]: serviceName,
 		[ATTR_SERVICE_VERSION]: serviceVersion,
 		...resourceAttributes,
@@ -199,28 +196,34 @@ export function setupTelemetry(options: TelemetryOptions): void {
 	// Register globally for flush operations
 	setGlobalSpanProcessor(spanProcessor);
 
-	// Create and configure SDK
-	sdk = new NodeSDK({
-		resource,
-		traceExporter,
-		spanProcessors: [spanProcessor],
-		instrumentations,
-	});
-
 	// Set up log exporter if endpoint is provided
+	let logProcessor: BatchLogRecordProcessor | undefined;
 	if (endpoint) {
 		const logExporter = new OTLPLogExporter({
 			url: `${endpoint}/logs`,
 			headers,
 		});
-
-		const loggerProvider = new LoggerProvider({ resource });
-		const logProcessor = new BatchLogRecordProcessor(logExporter);
-		loggerProvider.addLogRecordProcessor(logProcessor);
+		// sdk-logs 0.57 takes the exporter itself, later versions an options
+		// object holding it. The exporter, pointing at itself as `exporter`, is
+		// read correctly by both.
+		logProcessor = new BatchLogRecordProcessor(
+			Object.assign(logExporter, { exporter: logExporter }),
+		);
 
 		// Register for flush operations
 		setGlobalLogProcessor(logProcessor);
 	}
+
+	// Create and configure SDK. The SDK owns the logger provider: from
+	// sdk-logs 0.200 a provider takes its processors only when constructed,
+	// and `logRecordProcessors` works on both lines.
+	sdk = new NodeSDK({
+		resource,
+		traceExporter,
+		spanProcessors: [spanProcessor],
+		...(logProcessor && { logRecordProcessors: [logProcessor] }),
+		instrumentations,
+	});
 
 	// Start the SDK
 	sdk.start();
@@ -243,4 +246,23 @@ export async function shutdownTelemetry(): Promise<void> {
 		await sdk.shutdown();
 		sdk = null;
 	}
+}
+
+/**
+ * A resource from attributes, on either OpenTelemetry line: resources 2.x
+ * replaced the `Resource` class with `resourceFromAttributes`, which 1.x
+ * doesn't have.
+ */
+function createResource(
+	attributes: Record<string, string | undefined>,
+): resources.Resource {
+	if ('resourceFromAttributes' in resources) {
+		return resources.resourceFromAttributes(attributes);
+	}
+	const { Resource } = resources as unknown as {
+		Resource: new (
+			attributes: Record<string, string | undefined>,
+		) => resources.Resource;
+	};
+	return new Resource(attributes);
 }
