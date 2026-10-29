@@ -70,6 +70,7 @@ import {
 	type NormalizedWorkspace,
 } from '../workspace/index.js';
 import { writeStageTypes } from '../workspace/stageTypes.js';
+import { describeAddress } from './addresses.js';
 import {
 	APP_TAG_ENV,
 	type AppRunning,
@@ -1178,9 +1179,7 @@ async function workspaceDevCommand(
 		const url = Object.entries(appUrls).find(
 			([id]) => appKey(id) === appName,
 		)?.[1];
-		logger.log(
-			`   ${appName.padEnd(width)}  ${url ? `${url} -> ${local}` : local}`,
-		);
+		logger.log(`   ${appName.padEnd(width)}  ${describeAddress(url, local)}`);
 	}
 	logger.log('');
 
@@ -1886,7 +1885,7 @@ class DevServer {
 
 		if (this.isRunning) {
 			const local = `http://localhost:${this.actualPort}`;
-			const address = this.publicUrl ? `${this.publicUrl} -> ${local}` : local;
+			const address = describeAddress(this.publicUrl, local);
 			const seconds = ((Date.now() - this.startTime) / 1000).toFixed(1);
 			logger.log(
 				`\x1b[32m✓\x1b[0m ${this.label} ready in ${seconds}s  ${address}`,

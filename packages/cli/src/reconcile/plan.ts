@@ -22,6 +22,7 @@ import {
 	providedKeyFor,
 	publicEnvFor,
 	type SecretFormat,
+	type SiteHosts,
 	WILDCARD_SUBDOMAIN,
 } from '@geekmidas/manifest';
 import { GkmError } from '../errors';
@@ -342,6 +343,11 @@ export interface PlannedResource {
 	 * `<ID>_PROTECTED_SUBDOMAINS`, and which an edge never sends to it.
 	 */
 	protectedSubdomains?: string[];
+	/**
+	 * For a wildcard site: the route its edge asks before serving a host,
+	 * `GET <path>?domain=<host>` on `surface` — the declaration's `hosts`.
+	 */
+	hosts?: SiteHosts;
 }
 
 export interface Plan {
@@ -625,6 +631,7 @@ export function planFor(
 							manifest,
 							options.protectedSubdomains,
 						),
+						...(declaration.hosts ? { hosts: declaration.hosts } : {}),
 					}
 				: {}),
 			...(fake

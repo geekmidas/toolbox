@@ -93,6 +93,47 @@ describe('a wildcard site, locally', () => {
 		expect(caddyfile).toContain('api.shop.localhost');
 	});
 
+	it('refuses every protected label and asks the hosts route about the rest', () => {
+		const { plan } = resolve();
+		const site = sitesFor(plan, 'shop', {
+			Api: 'http://localhost:3000',
+			App: 'http://localhost:3001',
+		}).find((s) => s.host === '*.shop.localhost');
+
+		expect(site?.tenants).toEqual({
+			protected: [
+				'api.shop.localhost',
+				'status.shop.localhost',
+				'web.shop.localhost',
+				'www.shop.localhost',
+			],
+			hosts: {
+				upstream: 'http://host.docker.internal:3000',
+				uri: '/tenants/hosts?domain={host}',
+			},
+		});
+	});
+
+	it('keeps the stage in the protected hosts, as in its own domain', () => {
+		const { plan } = resolve('test');
+		const site = sitesFor(plan, 'shop', {
+			Api: 'http://localhost:3000',
+			App: 'http://localhost:3001',
+		}).find((s) => s.host === '*.test.shop.localhost');
+
+		expect(site?.tenants?.protected).toContain('api.test.shop.localhost');
+	});
+
+	it('serves every host when the surface with the hosts route is not running', () => {
+		const { plan } = resolve();
+		const site = sitesFor(plan, 'shop', {
+			App: 'http://localhost:3001',
+		}).find((s) => s.host === '*.shop.localhost');
+
+		expect(site?.tenants?.hosts).toBeUndefined();
+		expect(site?.tenants?.protected).toContain('www.shop.localhost');
+	});
+
 	it('never holds the base domain, so the other site does', () => {
 		const { plan } = resolve();
 

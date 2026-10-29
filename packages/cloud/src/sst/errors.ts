@@ -65,16 +65,16 @@ export class UnresolvedDependency extends Error {
 }
 
 /**
- * A site declared `subdomain: '*'`, which the AWS target cannot serve yet: a
- * distribution answers on the hosts it was given, and a tenant's host is
- * created by the running app.
+ * A site declared `subdomain: '*'` on a stack with no domain: its tenants'
+ * hosts are `<slug>.<domain>`, and without the domain there is nothing for
+ * the `*` to stand in front of.
  */
-export class WildcardSiteNotSupported extends Error {
+export class WildcardSiteNeedsDomain extends Error {
 	constructor(readonly id: string) {
 		super(
-			`'${id}' answers on every subdomain, which the AWS target cannot ` +
-				`serve yet. Give it a subdomain of its own to deploy it here.`,
+			`'${id}' answers on every subdomain, so its stack needs a domain: ` +
+				`pass the stage's domain (and its Route 53 hosted zone) to \`new App({ domain, hostedZoneId })\` in sst.config.ts.`,
 		);
-		this.name = 'WildcardSiteNotSupported';
+		this.name = 'WildcardSiteNeedsDomain';
 	}
 }

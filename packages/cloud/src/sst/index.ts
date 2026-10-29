@@ -59,7 +59,7 @@ export {
 	ProvidesMismatch,
 	UnknownDeclarationKind,
 	UnresolvedDependency,
-	WildcardSiteNotSupported,
+	WildcardSiteNeedsDomain,
 } from './errors';
 export {
 	assertProvides,

@@ -32,6 +32,11 @@ import type { TopicProps } from './aws/Topic';
 export interface ManifestBackends {
 	cache?: 'upstash' | 'elasticache' | 'db';
 	email?: 'resend' | 'ses' | 'smtp';
+	/**
+	 * The labels no tenant of a wildcard site may take: every app's own and
+	 * the workspace's `protectedSubdomains`, as `gkm build` derived them.
+	 */
+	protectedSubdomains?: readonly string[];
 }
 
 /** The backend a choice resolves to — the provisioner's default when unset. */
@@ -71,7 +76,12 @@ export type OverrideFor<D, B extends ManifestBackends = {}> = D extends {
 		: K extends 'file-server'
 			? Partial<Omit<FileServerProps, 'origin'>>
 			: K extends 'site'
-				? Partial<Omit<StaticSiteProps, 'path' | 'variant' | 'environment'>>
+				? Partial<
+						Omit<
+							StaticSiteProps,
+							'path' | 'variant' | 'environment' | 'tenants'
+						>
+					>
 				: K extends 'queue'
 					? Partial<Omit<QueueProps, 'fifo'>>
 					: K extends 'topic'

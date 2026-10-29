@@ -815,6 +815,55 @@ export default {
 		}
 	});
 
+	it('writes a wildcard site’s protected labels beside the backends', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'gkm-manifest-'));
+		const write = (constructs: Record<string, unknown>) =>
+			writeManifest({
+				workspaceRoot: dir,
+				target: 'aws',
+				builds: [],
+				constructs: constructs as never,
+				backends: { cache: 'db' },
+				protectedSubdomains: ['www', 'mail'],
+			});
+		const api = {
+			kind: 'rest-api',
+			id: 'Api',
+			provides: [],
+			endpoints: [],
+		};
+		const site = (subdomain: string) => ({
+			kind: 'site',
+			id: 'App',
+			variant: 'static',
+			subdomain,
+			app: { path: 'apps/web' },
+			dependencies: [],
+			provides: [],
+		});
+
+		try {
+			// Read off the whole workspace, which sst.config.ts never sees:
+			// every app's own label, and the names no construct declares.
+			await write({ Api: api, App: site('*') });
+			const { backends } = await readManifest(
+				join(dir, '.gkm/manifest/aws.ts'),
+			);
+			expect(backends).toEqual({
+				cache: 'db',
+				protectedSubdomains: ['api', 'mail', 'www'],
+			});
+
+			// Without a wildcard site there is nothing to protect. Its source,
+			// not an import: the module at that path is already cached.
+			await write({ Api: api, App: site('app') });
+			const named = await readFile(join(dir, '.gkm/manifest/aws.ts'), 'utf-8');
+			expect(named).not.toContain('protectedSubdomains:');
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	itWithDir(
 		'clears what an older build left, so only this build’s output is read',
 		async ({ dir }) => {

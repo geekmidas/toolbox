@@ -1,3 +1,4 @@
+import { WildcardSiteNeedsDomain } from '../errors';
 import { type GkmLinkable, ResourceType } from '../Linkable';
 import type { StackType } from '../Stack';
 
@@ -14,6 +15,14 @@ import type { StackType } from '../Stack';
  * which provided values may be shipped to a browser, and renamed by the
  * variant's prefix. That derivation is shared with the local target, so a site
  * built by `gkm dev` and the same site built by a deploy inline the same names.
+ *
+ * A site on every subdomain (`tenants`) is the same distribution under one
+ * `*.<domain>` alternate domain name: a wildcard certificate in us-east-1,
+ * validated through the stack's hosted zone at deploy time, and one
+ * `*.<domain>` alias record. Nothing is created per tenant — a tenant exists
+ * because the app says so, and its `hosts` route is what answers an unknown
+ * one. Every named host keeps its own record, which Route 53 prefers over the
+ * wildcard, so `api.<domain>` is never the tenants' site.
  */
 export class StaticSite<
 		TStage extends string = string,
@@ -23,6 +32,7 @@ export class StaticSite<
 	implements GkmLinkable
 {
 	readonly _id!: string;
+	private readonly tenants?: { domain: string; protectedSubdomains: string };
 
 	get _type() {
 		return ResourceType.StaticSite;
@@ -33,7 +43,8 @@ export class StaticSite<
 		name: string,
 		props: StaticSiteProps = {},
 	) {
-		const { variant = 'static', ...args } = props;
+		const { variant = 'static', tenants, ...args } = props;
+		if (tenants && !_stack.domain) throw new WildcardSiteNeedsDomain(name);
 
 		super(name, {
 			// The variant's build, unless the caller supplied one. A site is
@@ -42,9 +53,30 @@ export class StaticSite<
 			// exactly what the variant knows and the declaration deliberately does
 			// not.
 			build: BUILDS[variant],
+			// Every tenant's host on one distribution. SST requests the `*.`
+			// certificate and validates it through the zone, then writes the
+			// alias; a zone left unresolved is looked up by the domain's name.
+			...(tenants
+				? {
+						domain: {
+							name: `*.${_stack.domain}`,
+							dns: sst.aws.dns(
+								_stack.app.hostedZoneId
+									? { zone: _stack.app.hostedZoneId }
+									: {},
+							),
+						},
+					}
+				: {}),
 			...args,
 		});
 		this._id = name;
+		if (tenants) {
+			this.tenants = {
+				domain: _stack.domain,
+				protectedSubdomains: tenants.protectedSubdomains.join(','),
+			};
+		}
 	}
 
 	/**
@@ -56,6 +88,11 @@ export class StaticSite<
 	 * site was meant to remove.
 	 */
 	provides(): Record<string, $util.Input<string>> {
+		// A tenants' site is at `https://*.<domain>`, the address every target
+		// gives it: what the surfaces it calls trust, one label in for the `*`.
+		if (this.tenants) {
+			return { url: `https://*.${this.tenants.domain}`, ...this.tenants };
+		}
 		return { url: this.url };
 	}
 
@@ -71,6 +108,12 @@ export class StaticSite<
 export interface StaticSiteProps extends sst.aws.StaticSiteArgs {
 	/** Which framework builds it, for the default build command. */
 	variant?: 'static' | 'next' | 'tanstack';
+	/**
+	 * Serve it on every subdomain of the stack's domain — a site declared
+	 * `subdomain: '*'`. `protectedSubdomains` are the labels no tenant may
+	 * take, provided to the site so it refuses them as slugs.
+	 */
+	tenants?: { protectedSubdomains: readonly string[] };
 }
 
 /**

@@ -87,6 +87,7 @@ import {
 	type NormalizedWorkspace,
 } from '../workspace/index.js';
 import { writeStageTypes } from '../workspace/stageTypes.js';
+import { protectedSubdomains, wildcardSite } from '../workspace/subdomains.js';
 import type { StageTelemetryConfig } from '../workspace/types.js';
 import { ownersContext, reachedBy, servedBy } from './owners';
 import {
@@ -236,6 +237,9 @@ export async function buildCommand(
 			builds: output.built ? [output.built] : [],
 			constructs: await declaredIn(config, workspaceRoot),
 			backends: backendsOf(loadedConfig.workspace),
+			...(loadedConfig.workspace.protectedSubdomains
+				? { protectedSubdomains: loadedConfig.workspace.protectedSubdomains }
+				: {}),
 		});
 	}
 
@@ -415,8 +419,21 @@ export async function writeManifest(input: {
 	builds: readonly AppBuild[];
 	constructs: ConstructManifest;
 	backends: Backends;
+	/** The workspace's `protectedSubdomains`, for a wildcard site's. */
+	protectedSubdomains?: readonly string[];
 }): Promise<void> {
-	const { workspaceRoot, target, builds, constructs, backends } = input;
+	const { workspaceRoot, target, builds, constructs } = input;
+	// A wildcard site's protected labels are read off the whole workspace,
+	// which a deploy config never sees: they are written beside the backends.
+	const backends: Backends = wildcardSite(constructs)
+		? {
+				...input.backends,
+				protectedSubdomains: protectedSubdomains(
+					constructs,
+					input.protectedSubdomains,
+				),
+			}
+		: input.backends;
 	const manifestDir = join(workspaceRoot, '.gkm', 'manifest');
 	await mkdir(manifestDir, { recursive: true });
 
@@ -1425,6 +1442,9 @@ export async function workspaceBuildCommand(
 				cwd: workspace.root,
 			}),
 			backends: backendsOf(workspace),
+			...(workspace.protectedSubdomains
+				? { protectedSubdomains: workspace.protectedSubdomains }
+				: {}),
 		});
 
 		// Everything else is its own toolchain's — Vite, Next — through turbo.
