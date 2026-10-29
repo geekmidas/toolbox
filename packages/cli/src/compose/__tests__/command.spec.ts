@@ -1193,7 +1193,7 @@ describe('a site behind a password', { timeout: RUN_TIMEOUT }, () => {
 		dir = realpathSync(await createTempDir('gkm-compose-command-'));
 		writeComposeApp(dir, {
 			registry: 'registry.example.com/acme',
-			sitePassword: { production: true },
+			sitePassword: ['production'],
 		});
 		home = realpathSync(await createTempDir('gkm-compose-home-'));
 		vi.stubEnv('GKM_HOME', home);
@@ -1245,15 +1245,15 @@ describe('a site behind a password', { timeout: RUN_TIMEOUT }, () => {
 			'utf-8',
 		);
 
-	it('generates its password once, puts the site behind it, and checks it with the login', async () => {
+	it('generates its RandomPassword once, puts the site behind it, and checks it with the login', async () => {
 		const first = await release();
 		const stored = (await (await store()).read('production'))?.custom
-			.WEB_SITE_PASSWORD;
+			.SITE_PASSWORD;
 
-		expect(stored).toMatch(/^[A-Za-z0-9_-]{32}$/);
-		expect(first.said).toContain('WEB_SITE_PASSWORD');
+		expect(stored).toMatch(/^[A-Za-z0-9_-]{43}$/);
+		expect(first.said).toContain('SITE_PASSWORD');
 		expect(first.said).toContain(
-			'🔒 user: production, password: gkm secrets:show --stage production --reveal → WEB_SITE_PASSWORD',
+			'🔒 user: production, password: gkm secrets:show --stage production --reveal → SITE_PASSWORD',
 		);
 
 		// The site's host asks for the login; the API's does not, and the
@@ -1279,14 +1279,18 @@ describe('a site behind a password', { timeout: RUN_TIMEOUT }, () => {
 		const before = caddyfile();
 		const second = await release();
 		expect(
-			(await (await store()).read('production'))?.custom.WEB_SITE_PASSWORD,
+			(await (await store()).read('production'))?.custom.SITE_PASSWORD,
 		).toBe(stored);
 		expect(second.said).not.toContain('Generated for');
 		expect(caddyfile()).toBe(before);
 	});
 
-	it('serves a site the stage set no password for to everyone', async () => {
-		writeComposeApp(dir, { registry: 'registry.example.com/acme' });
+	it('serves the site to everyone on a stage its password does not name', async () => {
+		writeComposeApp(dir, {
+			registry: 'registry.example.com/acme',
+			deployed: ['production', 'staging'],
+			sitePassword: ['staging'],
+		});
 
 		const { result } = await release();
 
@@ -1294,9 +1298,6 @@ describe('a site behind a password', { timeout: RUN_TIMEOUT }, () => {
 		expect(result?.stack.apps.every((app) => app.auth === undefined)).toBe(
 			true,
 		);
-		expect(
-			(await (await store()).read('production'))?.custom,
-		).not.toHaveProperty('WEB_SITE_PASSWORD');
 	});
 });
 

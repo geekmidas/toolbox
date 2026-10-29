@@ -713,6 +713,23 @@ export interface SiteDeclaration extends Node {
 	 * nothing of it can reach a bundle.
 	 */
 	telemetry?: ConstructId;
+	/**
+	 * The `RandomPassword` the site is served behind on some deployed stages,
+	 * so a staging build is not public while it is tried.
+	 *
+	 * Not an edge: the site's bundle and process are handed none of it. Only
+	 * the edge in front of the site reads it, and asks for it before a request
+	 * reaches the site.
+	 */
+	password?: SitePassword;
+}
+
+/** The login a site is served behind — see {@link SiteDeclaration.password}. */
+export interface SitePassword {
+	/** The `RandomPassword`'s id. */
+	secret: ConstructId;
+	/** The deployed stages that ask for it. */
+	stages: readonly string[];
 }
 
 /** A site's subdomain that means every subdomain — see `SiteDeclaration`. */

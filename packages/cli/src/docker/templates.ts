@@ -24,6 +24,14 @@ export const TURBO_VERSION = '2.5.4';
 export const STATIC_SITE_IMAGE = 'caddy:2.10-alpine';
 
 /**
+ * The image generated Dockerfiles build on unless one is configured. Pinned to
+ * a Node security release, not the floating `node:22-alpine` tag, so a cached
+ * or older image can't put a build below the patched version — and the
+ * Dockerfile says which version it runs.
+ */
+export const DEFAULT_BASE_IMAGE = 'node:22.23.4-alpine';
+
+/**
  * How an image is built: every template prunes the build root to the app's
  * slice, installs it, builds it and copies the result into a runner.
  *
@@ -359,6 +367,17 @@ function layout(options: ImageTemplateOptions) {
  * outside any package are copied in beside them. A single package is copied
  * whole.
  */
+/**
+ * The Node image every stage builds on, as a build argument: declared before
+ * the first `FROM`, so each stage can read it, and defaulted to the configured
+ * image. A compose file's `build.args`, or `docker build --build-arg`, picks
+ * another version without regenerating the Dockerfile.
+ */
+function nodeImageArg(options: ImageTemplateOptions): string {
+	return `# The Node image; override with --build-arg NODE_IMAGE=node:<version>-alpine
+ARG NODE_IMAGE=${options.baseImage}`;
+}
+
 function prunerStage(options: ImageTemplateOptions): string {
 	const { pm, turbo, installPm, monorepo, gkmRoot } = layout(options);
 	const scopes = [options.turboPackage, ...(options.prunePackages ?? [])].join(
@@ -366,8 +385,10 @@ function prunerStage(options: ImageTemplateOptions): string {
 	);
 
 	if (!monorepo) {
-		return `# Stage 1: The build context, in the layout the stages below read
-FROM ${options.baseImage} AS pruner
+		return `${nodeImageArg(options)}
+
+# Stage 1: The build context, in the layout the stages below read
+FROM \${NODE_IMAGE} AS pruner
 WORKDIR /app
 COPY . .
 RUN mkdir -p /tmp/out/json /tmp/out/full && \\
@@ -392,8 +413,10 @@ RUN ${nested ? `cd ${gkmRoot} && ` : ''}for path in ${gkmPaths.join(' ')}; do \\
     done`
 		: '';
 
-	return `# Stage 1: Prune the monorepo to the app's slice
-FROM ${options.baseImage} AS pruner
+	return `${nodeImageArg(options)}
+
+# Stage 1: Prune the monorepo to the app's slice
+FROM \${NODE_IMAGE} AS pruner
 WORKDIR /app
 ${installPm}
 COPY . .
@@ -413,7 +436,7 @@ RUN find . -maxdepth 1 -type f ! -name '${pm.lockfile}' ! -name package.json \\
 function depsStage(options: ImageTemplateOptions): string {
 	const { pm, installPm } = layout(options);
 	return `# Stage 2: Install dependencies
-FROM ${options.baseImage} AS deps
+FROM \${NODE_IMAGE} AS deps
 WORKDIR /app
 ${installPm}
 COPY --from=pruner /app/out/${pm.lockfile} ./
@@ -593,7 +616,7 @@ for (const name of names) {
 writeFileSync('/tmp/externals.json', JSON.stringify({ private: true, dependencies }));
 EOF
 
-FROM ${options.baseImage} AS externals
+FROM \${NODE_IMAGE} AS externals
 WORKDIR /externals
 COPY --from=externals-manifest /tmp/externals.json ./package.json
 RUN --mount=type=cache,id=npm,target=/root/.npm \\
@@ -687,7 +710,7 @@ export function resolveDockerConfig(config: GkmConfig): Required<DockerConfig> {
 		// The project's name, from the config — what somebody types after
 		// `docker pull` — never whatever the directory's package.json is called.
 		imageName: docker.imageName ?? config.name ?? 'api',
-		baseImage: docker.baseImage ?? 'node:22-alpine',
+		baseImage: docker.baseImage ?? DEFAULT_BASE_IMAGE,
 		port: docker.port ?? 3000,
 	};
 }
@@ -743,7 +766,7 @@ RUN if [ ! -d ${appPath}/.next/standalone ]; then \\
     fi
 
 # Stage 4: Production
-FROM ${options.baseImage} AS runner
+FROM \${NODE_IMAGE} AS runner
 
 WORKDIR /app
 
@@ -882,7 +905,7 @@ ${builderStage(options)}
 ${credentialsStep(app, `cd ${app} && ${gkmCommand(`build --provider server --production${options.cache ? ` --cache ${options.cache}` : ''}`)}`)}
 ${externals.stage}
 # Production
-FROM ${options.baseImage} AS runner
+FROM \${NODE_IMAGE} AS runner
 
 WORKDIR /app
 
@@ -960,7 +983,7 @@ RUN --mount=type=secret,id=gkm_credentials,required=false \\
     fi
 
 # Production
-FROM ${options.baseImage} AS runner
+FROM \${NODE_IMAGE} AS runner
 
 WORKDIR /app
 
@@ -1014,7 +1037,7 @@ ${siteWorkspaceSteps(options)}
 
 ${siteBuild(options)}
 
-FROM ${options.baseImage} AS runner
+FROM \${NODE_IMAGE} AS runner
 WORKDIR /app
 RUN apk add --no-cache tini
 RUN addgroup --system --gid 1001 nodejs && \\

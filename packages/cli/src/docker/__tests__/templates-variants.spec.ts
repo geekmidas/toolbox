@@ -335,7 +335,7 @@ describe('a backend’s externals', () => {
 
 		expect(dockerfile).toContain('FROM builder AS externals-manifest');
 		expect(dockerfile).toContain('const names = ["sharp","@node-rs/argon2"];');
-		expect(dockerfile).toContain('FROM node:22-alpine AS externals');
+		expect(dockerfile).toContain('FROM ${NODE_IMAGE} AS externals');
 		expect(dockerfile).toContain(
 			'npm install --omit=dev --no-package-lock --no-audit --no-fund',
 		);

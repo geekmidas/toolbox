@@ -583,41 +583,45 @@ For the local stage the URLs then carry the port
 The local CA's root is copied to `.gkm/compose/<stage>/caddy-root.crt`; point
 `NODE_EXTRA_CA_CERTS` at it, or trust it in a browser.
 
-### A stage's sites behind a password
+### A site behind a password
 
-`deploy.sitePassword` keeps a deployed stage's sites private. It's meant for
-a staging build you're still trying out:
+A site can stay private on some deployed stages. It's meant for a staging
+build you're still trying out. Give the site a `RandomPassword` and the
+stages it guards:
 
 ```ts
-// gkm.config.ts
-deploy: {
-  sitePassword: {
-    staging: true,     // every site on staging
-    preview: ['web'],  // only these sites
-  },
-}
+// constructs/site.ts
+import { RandomPassword } from '@geekmidas/constructs/random-password';
+import { StaticSite } from '@geekmidas/constructs/site';
+
+export const sitePassword = new RandomPassword('SitePassword');
+
+export const web = new StaticSite('Web', {
+  path: 'apps/web',
+  password: { secret: sitePassword, stages: ['staging'] },
+});
 ```
 
 The edge asks with HTTP basic auth before a request reaches the site. The
 browser shows its own login prompt, and nothing of the site loads until the
-right login is given. The user is the stage's name. The password is generated
-on the first deploy and kept in the stage's secrets as `<SITE>_SITE_PASSWORD`.
-Read it with:
+right login is given. The user is the stage's name. The password is the
+`RandomPassword`'s value on that stage: generated on the first deploy and
+kept in the stage's secrets under its key, `SITE_PASSWORD`. Read it with:
 
 ```bash
-gkm secrets:show --stage staging --reveal   # → WEB_SITE_PASSWORD
+gkm secrets:show --stage staging --reveal   # → SITE_PASSWORD
 ```
 
 To choose the password yourself, set it with
-`gkm secrets:set WEB_SITE_PASSWORD '…' --stage staging`. A value set by hand
+`gkm secrets:set SITE_PASSWORD '…' --stage staging`. A value set by hand
 always wins over a generated one.
 
-- The keys are your deployed stages, typed from `stages.deployed`. A typo,
-  or the local stage, is refused when the config loads. A stage that isn't
-  listed is public.
-- A name in the list is a site's app name (`web`) or its construct id (`Web`).
-  A name that isn't a site fails the deploy, and the error lists the sites
-  you have.
+- `stages` are your deployed stages, typed from `stages.deployed`. A stage
+  the workspace doesn't deploy fails the deploy (`UnknownPasswordStage`). A
+  stage that isn't listed is public.
+- Export the `RandomPassword`, as any construct is. It isn't an edge: the
+  site is handed none of it, and only the edge reads it. Several sites can
+  share one, or each have their own.
 - Only the sites are covered. The APIs and the auth server they call answer
   on hosts of their own, so a site's requests to them carry no login and
   need none.
@@ -625,9 +629,9 @@ always wins over a generated one.
   `basicAuth` middleware). Both get only the password's bcrypt hash.
 - The deploy's health check signs in with the login, so a wrong one fails
   the deploy rather than leaving a site nobody can open.
-- Compose only for now. A stage it names that deploys through Dokploy or
-  AWS fails before anything is deployed (`SitePasswordNeedsCompose`), so it
-  never ends up public by mistake.
+- Compose only for now. A site behind a password on a stage that deploys
+  through Dokploy or AWS fails before anything is deployed
+  (`SitePasswordNeedsCompose`), so it never ends up public by mistake.
 
 ## DNS
 
