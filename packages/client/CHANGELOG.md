@@ -1,5 +1,13 @@
 # @geekmidas/client
 
+## 9.4.0
+
+### Patch Changes
+
+- Updated dependencies [[`b03c43d`](https://github.com/geekmidas/toolbox/commit/b03c43dfd2c86b1daa7f0a47f43e5fb2e518518b)]:
+  - @geekmidas/constructs@9.4.0
+  - @geekmidas/schema@9.4.0
+
 ## 9.3.0
 
 ### Patch Changes
