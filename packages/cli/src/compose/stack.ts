@@ -143,7 +143,7 @@ import {
 	NOFILE,
 } from './routes.js';
 import { publicBuildValues } from './siteBuild.js';
-import { passwordSites, type SiteAuth, siteAuth } from './sitePassword.js';
+import { type SiteAuth, siteAuth, sitePasswordKey } from './sitePassword.js';
 import {
 	EDGE_NETWORK,
 	edgeAlias,
@@ -255,7 +255,7 @@ export interface StackApp extends AppImage {
 	build?: AppBuild;
 	/** A backend's environment, exactly the keys it reads. Absent for a site. */
 	env?: Record<string, string>;
-	/** The login the edge asks for, where `deploy.sitePassword` puts it behind one. */
+	/** The login the edge asks for, where the site is behind a password. */
 	auth?: SiteAuth;
 }
 
@@ -1465,18 +1465,13 @@ export function composeStack(input: StackInput): ComposeStack {
 		),
 	});
 
-	// The sites the stage puts behind a password, each with its login.
+	// The sites behind a password on this stage, each with its login.
 	if (!local) {
-		const sites = apps.filter((app) => app.kind === 'site');
-		const chosen = passwordSites(
-			workspace,
-			stage,
-			sites.map((app) => app.name),
-		);
-		for (const app of sites) {
-			if (chosen.includes(app.name)) {
-				app.auth = siteAuth(stage, app.name, custom);
-			}
+		for (const app of apps) {
+			const site = manifest[app.id];
+			if (site?.kind !== 'site') continue;
+			const key = sitePasswordKey(manifest, site, stage);
+			if (key) app.auth = siteAuth(stage, key, custom);
 		}
 	}
 

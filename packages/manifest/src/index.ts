@@ -59,6 +59,7 @@ export type {
 	SecretDeclaration,
 	SiteDeclaration,
 	SiteHosts,
+	SitePassword,
 	TelemetryDeclaration,
 	TelemetryKey,
 	TopicDeclaration,

@@ -112,7 +112,11 @@ export interface ReadyStage {
 	workspace: NormalizedWorkspace;
 	manifest: ConstructManifest;
 	sources: Record<string, ConstructSource>;
-	/** Every URL the stage resolved — the owner URLs among them. */
+	/**
+	 * What the stage's apps are given: its stored secrets — a third party's
+	 * key, an admin's email — under every URL it resolved, the owner URLs
+	 * among them.
+	 */
 	env: Record<string, string>;
 	/** The stage it is: the local one, or `test`. */
 	stage: string;
@@ -149,11 +153,19 @@ export async function readyStage(
 		start: true,
 	});
 
+	// The local stage's store for `test` too, as `gkm test` reads it: one store
+	// serves both, and only the resources reconcile names differ.
+	const secrets = await loadSecretsForApp(
+		await secretsStoreFor(workspace, local),
+		local,
+	);
+
 	return {
 		workspace,
 		manifest,
 		sources,
-		env: { ...reconciled.env },
+		// The resolved URLs win, as they do for the apps.
+		env: { ...secrets, ...reconciled.env },
 		stage: target,
 	};
 }
@@ -400,14 +412,9 @@ async function writeAuthMigration(
 	});
 
 	// Its secret and URL come from the stage's secrets; the tenant's owner URL
-	// from the reconcile above, which wins.
-	const stage = ready.workspace.stages.local;
-	const secrets = await loadSecretsForApp(
-		await secretsStoreFor(ready.workspace, stage),
-		stage,
-	);
+	// from the reconcile, which wins.
 	const pending = await auth.pendingMigration({
-		envParser: new EnvironmentParser({ ...secrets, ...ready.env }),
+		envParser: new EnvironmentParser(ready.env),
 		context: serviceContext,
 	});
 
