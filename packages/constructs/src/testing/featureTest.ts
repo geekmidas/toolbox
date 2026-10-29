@@ -25,14 +25,17 @@
 
 import { randomUUID } from 'node:crypto';
 import { EnvironmentParser } from '@geekmidas/envkit';
-import { provideKey } from '@geekmidas/manifest';
+import { provideKey, WILDCARD_SUBDOMAIN } from '@geekmidas/manifest';
 import {
 	ServiceDiscovery,
 	type ServiceRegisterOptions,
 	serviceContext,
 } from '@geekmidas/services';
 import type { StorageClient } from '@geekmidas/storage';
-import { Browser as TestBrowser } from '@geekmidas/testkit/browser';
+import {
+	type BrowserOptions,
+	Browser as TestBrowser,
+} from '@geekmidas/testkit/browser';
 import {
 	currentTestContext,
 	installContextFetch,
@@ -85,7 +88,9 @@ export interface FeatureTestOptions<
 	 */
 	modules?: Readonly<Record<string, Record<string, unknown>>>;
 	/** The browser each test gets — the generated one, with the app's clients. */
-	browser?: new () => TBrowser;
+	browser?: new (
+		options?: BrowserOptions,
+	) => TBrowser;
 	/**
 	 * Each database's test factory — `createFactory` from
 	 * `test/factories/<construct>.ts`, which the generated harness imports —
@@ -370,7 +375,10 @@ export function featureTest<
 	options: FeatureTestOptions<TBrowser, TFactories> = {},
 ): FeatureIt<TBrowser, TDatabases, TFactories, TServices> {
 	const manifest = options.manifest ?? loadTestManifest();
-	const BrowserClass = (options.browser ?? TestBrowser) as new () => TBrowser;
+	const BrowserClass = (options.browser ?? TestBrowser) as new (
+		options?: BrowserOptions,
+	) => TBrowser;
+	const site = wildcardSiteUrl(manifest);
 
 	let app: LoadedApp;
 	let factoryDatabases: [string, KyselyDatabase][] = [];
@@ -453,7 +461,7 @@ export function featureTest<
 
 			try {
 				await runInTestContext(id, async () => {
-					const browser = new BrowserClass();
+					const browser = new BrowserClass(site ? { site } : {});
 					const restore = browser.install();
 					try {
 						// A database's transaction for this test, opened on first use —
@@ -1184,6 +1192,22 @@ export interface MagicLinkAuthClient<TSession> {
 		}): Promise<{ error?: { message?: string } | null }>;
 	};
 	getSession(): Promise<{ data: TSession | null }>;
+}
+
+/**
+ * The test stage's address for the app's site on every subdomain —
+ * `https://*.test.shop.localhost:8443` — which `browser.on(slug)` puts a
+ * tenant into, or `undefined` when the app declares none.
+ */
+function wildcardSiteUrl(manifest: TestManifest): string | undefined {
+	for (const [id, construct] of Object.entries(manifest.constructs)) {
+		if (construct.kind !== 'site') continue;
+		const url = manifest.env[provideKey(id, 'url')];
+		if (url && new URL(url).hostname.startsWith(`${WILDCARD_SUBDOMAIN}.`)) {
+			return url;
+		}
+	}
+	return undefined;
 }
 
 /**

@@ -51,6 +51,18 @@ export interface CaddySite {
 		/** Prepended to the path: `/__gkm/processors/AssetsServer`. */
 		under: string;
 	};
+	/**
+	 * For a wildcard site: what keeps a host that is not a tenant from
+	 * reaching it — the hosts nothing but an app may answer on, refused
+	 * outright, and the route asked about every other host before it is
+	 * served.
+	 */
+	tenants?: {
+		/** Full hosts — `api.shop.localhost`, `www.shop.localhost`. */
+		protected: readonly string[];
+		/** Its `hosts` route: `200` serves the host, anything else is returned. */
+		hosts?: { upstream: string; uri: string };
+	};
 }
 
 /**
@@ -159,10 +171,61 @@ export function sitesFor(
 		const port = portOf(address);
 		if (!port) continue;
 
-		sites.push({ host, upstream: `http://${HOST_GATEWAY}:${port}` });
+		const upstream = `http://${HOST_GATEWAY}:${port}`;
+		if (resource.subdomain === WILDCARD_SUBDOMAIN) {
+			sites.push({
+				host,
+				upstream,
+				tenants: tenantsOf(resource, host, addresses),
+			});
+			continue;
+		}
+
+		sites.push({ host, upstream });
 	}
 
 	return sites;
+}
+
+/**
+ * What stands between a wildcard site and a host that is not a tenant.
+ *
+ * Caddy already prefers a named host to the `*`, so `api.shop.localhost`
+ * reaches the API whatever the wildcard says. What it cannot know is the
+ * labels nothing is running on: `www`, or an app this stage has not started.
+ * Those are refused here, so no slug that a deploy would protect is ever
+ * served locally either.
+ *
+ * The `hosts` route is asked through `forward_auth`, which is a deployed
+ * edge's check in miniature: a `2xx` lets the request through, and any other
+ * answer — the app's own `404` — is what the browser gets, so a mistyped
+ * slug fails here and not first in production. Without an address for the
+ * surface serving it there is nothing to ask, and every host is served.
+ */
+function tenantsOf(
+	resource: PlannedResource,
+	host: string,
+	addresses: Readonly<Record<string, string>>,
+): CaddySite['tenants'] {
+	const domain = host.slice(`${WILDCARD_SUBDOMAIN}.`.length);
+	const surface = resource.hosts
+		? addresses[resource.hosts.surface]
+		: undefined;
+	const port = surface ? portOf(surface) : undefined;
+
+	return {
+		protected: (resource.protectedSubdomains ?? []).map(
+			(label) => `${label}.${domain}`,
+		),
+		...(resource.hosts && port
+			? {
+					hosts: {
+						upstream: `http://${HOST_GATEWAY}:${port}`,
+						uri: `${resource.hosts.path}?domain={host}`,
+					},
+				}
+			: {}),
+	};
 }
 
 /** The port a local address answers on, defaulting by scheme. */
@@ -266,7 +329,24 @@ export function toCaddyfile(sites: readonly CaddySite[]): string {
 	}
 
 	const blocks = sites.map(
-		({ host, upstream, rewrite, processors }) => `
+		({ host, upstream, rewrite, processors, tenants }) => {
+			const proxy = `reverse_proxy ${upstream} {${
+				rewrite
+					? `
+		rewrite ${rewrite}
+		# MinIO routes and signs on the Host header, so forwarding the requested
+		# hostname would make it look for a bucket named after the domain.
+		header_up Host {upstream_hostport}`
+					: `
+		# The application reads whatever address was injected, so it has to see
+		# the one a caller used — that is what makes a redirect, a cookie domain
+		# and a generated link point back here rather than at the upstream.
+		header_up Host {host}
+		header_up X-Forwarded-Proto {scheme}`
+			}
+	}`;
+
+			return `
 https://${host} {
 	tls internal
 
@@ -287,26 +367,47 @@ ${
 	}
 `
 		: ''
-}
-	reverse_proxy ${upstream} {${
-		rewrite
-			? `
-		rewrite ${rewrite}
-		# MinIO routes and signs on the Host header, so forwarding the requested
-		# hostname would make it look for a bucket named after the domain.
-		header_up Host {upstream_hostport}`
-			: `
-		# The application reads whatever address was injected, so it has to see
-		# the one a caller used — that is what makes a redirect, a cookie domain
-		# and a generated link point back here rather than at the upstream.
-		header_up Host {host}
-		header_up X-Forwarded-Proto {scheme}`
-	}
-	}
-}`,
+}${tenants ? tenantBlock(tenants, proxy) : `	${proxy}`}
+}`;
+		},
 	);
 
 	return `${GENERATED}${blocks.join('\n')}\n`;
+}
+
+/**
+ * A wildcard site's routes: a protected host refused, every other host asked
+ * about before it is proxied. `handle` blocks rather than bare directives,
+ * because Caddy orders directives itself and would proxy before it refused.
+ */
+function tenantBlock(
+	tenants: NonNullable<CaddySite['tenants']>,
+	proxy: string,
+): string {
+	const refused = tenants.protected.length
+		? `
+	# Labels an app answers on, or that the workspace protects: never a
+	# tenant's, whether or not anything is running on them.
+	@protected host ${tenants.protected.join(' ')}
+	handle @protected {
+		respond 404
+	}
+`
+		: '';
+	const check = tenants.hosts
+		? `
+		# Which hosts are tenants is the app's to say: its \`hosts\` route
+		# answers 200 to serve this one, and anything else goes back as is.
+		forward_auth ${tenants.hosts.upstream} {
+			uri ${tenants.hosts.uri}
+		}
+`
+		: '';
+
+	return `${refused}
+	handle {${check}
+		${proxy.replaceAll('\n', '\n\t')}
+	}`;
 }
 
 const GENERATED = `# Generated by gkm from the construct manifest — do not edit.

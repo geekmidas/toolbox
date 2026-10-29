@@ -144,8 +144,23 @@ export const app = new StaticSite('App', {
   any one label, never the domain itself or two labels deep.
 
 Locally the site answers on `*.shop.localhost` (`*.test.shop.localhost` for
-`gkm test`). `gkm compose` does not route every subdomain yet, and refuses a
-wildcard site by name rather than serve nothing.
+`gkm test`), behind the dev edge like every other app, with a certificate from
+its own CA. Nothing has to be installed: browsers resolve every `*.localhost`
+to this machine, and so do macOS and systemd-resolved. `gkm dev` prints the
+address with a tenant to open:
+
+```
+   app  https://*.shop.localhost:8443 -> http://localhost:3001 (open a tenant: https://acme.shop.localhost:8443)
+```
+
+The dev edge asks the `hosts` endpoint about every host before serving it,
+so a slug that is not a tenant gets the endpoint's own `404` locally, as it
+will deployed, and a protected label (`www`, or an app that is not running) is
+refused without asking. In a feature test, `browser.on('acme')` acts on a
+tenant's host: see [Feature Tests](./testing#feature-tests).
+
+`gkm compose` does not route every subdomain yet, and refuses a wildcard site
+by name rather than serve nothing.
 
 On AWS the site is one CloudFront distribution under `*.example.com`: a
 wildcard certificate in `us-east-1`, validated through the stage's Route 53
