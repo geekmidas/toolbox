@@ -39,7 +39,7 @@ describe('buildCommand', () => {
 				dir,
 				'src/crons/cleanup.ts',
 				'cleanupCron',
-				'rate(1 day)',
+				'cron(0 0 * * *)',
 			);
 
 			// Create a basic config file
@@ -136,7 +136,7 @@ export default {
 				dir,
 				'src/crons/dailyCleanup.ts',
 				'dailyCleanupCron',
-				'rate(1 day)',
+				'cron(0 0 * * *)',
 			);
 			await createMockCronFile(
 				dir,
@@ -243,7 +243,7 @@ export default {
 				// Verify crons are included
 				expect(manifestContent).toContain('dailyCleanupCron');
 				expect(manifestContent).toContain('hourlyReportCron');
-				expect(manifestContent).toContain('rate(1 day)');
+				expect(manifestContent).toContain('cron(0 0 * * ? *)');
 				expect(manifestContent).toContain('cron(0 * * * ? *)');
 			} finally {
 				process.chdir(originalCwd);

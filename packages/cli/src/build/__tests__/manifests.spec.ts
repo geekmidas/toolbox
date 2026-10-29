@@ -97,7 +97,7 @@ describe('generateAwsManifest', () => {
 			{
 				name: 'dailyCleanup',
 				handler: '.gkm/aws/dailyCleanup.handler',
-				schedule: 'rate(1 day)',
+				schedule: 'cron(0 0 * * *)',
 				timeout: 300,
 				memorySize: 256,
 				environment: [],
@@ -110,7 +110,7 @@ describe('generateAwsManifest', () => {
 		const content = await readFile(manifestPath, 'utf-8');
 
 		expect(content).toContain('dailyCleanup');
-		expect(content).toContain('rate(1 day)');
+		expect(content).toContain('cron(0 0 * * *)');
 	});
 
 	itWithDir(

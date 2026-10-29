@@ -24,16 +24,9 @@ export type CronExpressionDay =
 export type CronString =
 	`${CronExpressionValue} ${CronExpressionValue} ${CronExpressionValue} ${CronExpressionValue} ${CronExpressionDay} ${CronExpressionValue}`;
 export type CronExpression = `cron(${CronString})`;
-export type CronRate = `rate(${number} ${
-	| 'minute'
-	| 'minutes'
-	| 'hour'
-	| 'hours'
-	| 'day'
-	| 'days'})`;
 /** One-time `at(…)` schedule (e.g. `at(2025-06-01T10:00:00)`). */
 export type CronAt = `at(${string})`;
-export type CronSchedule = CronExpression | CronRate | CronAt;
+export type CronSchedule = CronExpression | CronAt;
 
 /**
  * `Cron` — wraps `sst.aws.CronV2` to invoke a `Function` on a schedule.
@@ -108,6 +101,6 @@ export interface CronProps
 	extends Omit<sst.aws.CronV2Args, 'function' | 'schedule'> {
 	/** The function invoked on schedule — a `Function` (or anything with an `arn`). */
 	processor: Function | { arn: $util.Input<string> };
-	/** Cron `rate(…)`, `cron(…)`, or `at(…)` schedule, fully type-checked. */
+	/** Cron `cron(…)` or `at(…)` schedule, fully type-checked. */
 	schedule: CronSchedule;
 }

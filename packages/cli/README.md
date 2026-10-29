@@ -1554,7 +1554,7 @@ export const manifest = {
     {
       name: 'dailyCleanup',
       handler: '.gkm/aws-lambda/crons/dailyCleanup.handler',
-      schedule: 'rate(1 day)',
+      schedule: 'cron(0 0 * * ? *)',
       timeout: 300,
       memorySize: 512,
     },

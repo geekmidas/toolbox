@@ -15,7 +15,7 @@ import {
 	createTempDir,
 	createTestCron,
 } from '../../__tests__/test-helpers';
-import { CronGenerator } from '../CronGenerator';
+import { CronGenerator, InvalidCronSchedulesError } from '../CronGenerator';
 import type { GeneratedConstruct } from '../Generator';
 
 describe('CronGenerator', () => {
@@ -37,7 +37,7 @@ describe('CronGenerator', () => {
 
 	describe('isConstruct', () => {
 		it('should identify valid crons', () => {
-			const testCron = createTestCron('rate(1 hour)', 30);
+			const testCron = createTestCron('cron(0 * * * *)', 30);
 			expect(generator.isConstruct(testCron)).toBe(true);
 		});
 
@@ -51,7 +51,7 @@ describe('CronGenerator', () => {
 	describe('build', () => {
 		const _createMockCronConstruct = (
 			key: string,
-			schedule: ScheduleExpression = 'rate(1 hour)',
+			schedule: ScheduleExpression = 'cron(0 * * * *)',
 			timeout: number = 30,
 		): GeneratedConstruct<Cron<any, any, any, any>> => ({
 			key,
@@ -74,13 +74,13 @@ describe('CronGenerator', () => {
 						cronsDir,
 						'dailyReport.ts',
 						'dailyReport',
-						'rate(1 day)',
+						'cron(0 0 * * *)',
 					),
 					createMockCronFile(
 						cronsDir,
 						'hourlyCleanup.ts',
 						'hourlyCleanup',
-						'rate(1 hour)',
+						'cron(0 * * * *)',
 					),
 					createMockCronFile(
 						cronsDir,
@@ -109,12 +109,12 @@ describe('CronGenerator', () => {
 				expect(dailyReport).toMatchObject({
 					name: 'dailyReport',
 					handler: expect.stringContaining('crons/dailyReport.handler'),
-					schedule: 'rate(1 day)',
+					schedule: 'cron(0 0 * * ? *)',
 				});
 				expect(hourlyCleanup).toMatchObject({
 					name: 'hourlyCleanup',
 					handler: expect.stringContaining('crons/hourlyCleanup.handler'),
-					schedule: 'rate(1 hour)',
+					schedule: 'cron(0 * * * ? *)',
 				});
 				expect(weeklyBackup).toMatchObject({
 					name: 'weeklyBackup',
@@ -190,8 +190,7 @@ describe('CronGenerator', () => {
 			});
 
 			it('should use default schedule when none provided', async () => {
-				// Create a cron with empty schedule that will use default
-				const cronWithDefaultSchedule = createTestCron(undefined, 30);
+				const cronWithDefaultSchedule = createTestCron(null, 30);
 
 				const construct: GeneratedConstruct<Cron<any, any, any, any>> = {
 					key: 'defaultScheduleCron',
@@ -210,8 +209,18 @@ describe('CronGenerator', () => {
 					{ provider: 'aws-lambda' },
 				);
 
-				// Since the construct has a schedule, it should use that or default logic
-				expect(cronInfos[0].schedule).toBeDefined();
+				expect(cronInfos[0].schedule).toBe('cron(0 * * * ? *)');
+			});
+
+			it('keeps day-of-week when a Unix schedule restricts both day fields', async () => {
+				const cronInfos = await generator.build(
+					context,
+					[_createMockCronConstruct('monthly', 'cron(0 9 1 * MON)')],
+					outputDir,
+					{ provider: 'aws-lambda' },
+				);
+
+				expect(cronInfos[0].schedule).toBe('cron(0 9 ? * MON *)');
 			});
 
 			itWithDir(
@@ -225,7 +234,7 @@ describe('CronGenerator', () => {
 						nestedDir,
 						'deepCron.ts',
 						'deepCron',
-						'rate(1 day)',
+						'cron(0 0 * * *)',
 					);
 
 					const constructs = await generator.load(
@@ -259,7 +268,7 @@ describe('CronGenerator', () => {
 					cronsDir,
 					'testCron.ts',
 					'testCron',
-					'rate(1 hour)',
+					'cron(0 * * * *)',
 				);
 
 				const constructs = await generator.load('**/crons/*.ts', dir);
@@ -286,7 +295,7 @@ describe('CronGenerator', () => {
 						cronsDir,
 						'testCron.ts',
 						'testCron',
-						'rate(1 hour)',
+						'cron(0 * * * *)',
 					);
 
 					const constructs = await generator.load('**/crons/*.ts', dir);
@@ -313,7 +322,7 @@ describe('CronGenerator', () => {
 						cronsDir,
 						'testCron.ts',
 						'testCron',
-						'rate(1 hour)',
+						'cron(0 * * * *)',
 					);
 
 					const constructs = await generator.load('**/crons/*.ts', dir);
@@ -327,6 +336,48 @@ describe('CronGenerator', () => {
 
 					expect(cronInfos).toEqual([]);
 				},
+			);
+		});
+
+		it.each([
+			'aws-lambda',
+			'server',
+		] as const)('fails the %s build listing every invalid schedule', async (provider) => {
+			const build = generator.build(
+				context,
+				[
+					_createMockCronConstruct('valid', 'cron(0 8 * * *)'),
+					_createMockCronConstruct(
+						'badHour',
+						'cron(0 25 * * *)' as ScheduleExpression,
+					),
+					_createMockCronConstruct('rate', 'rate(1 day)' as ScheduleExpression),
+				],
+				outputDir,
+				{ provider },
+			);
+
+			await expect(build).rejects.toThrow(InvalidCronSchedulesError);
+			await expect(build).rejects.toThrow(
+				expect.objectContaining({
+					message: 'Invalid cron schedules',
+					cause: {
+						crons: [
+							{
+								cron: 'badHour',
+								schedule: 'cron(0 25 * * *)',
+								field: 'hour',
+								token: '25',
+							},
+							{
+								cron: 'rate',
+								schedule: 'rate(1 day)',
+								field: undefined,
+								token: 'rate(1 day)',
+							},
+						],
+					},
+				}),
 			);
 		});
 
@@ -348,7 +399,7 @@ describe('CronGenerator', () => {
 					cronsDir,
 					'defaultCron.ts',
 					'defaultCron',
-					'rate(1 hour)',
+					'cron(0 * * * *)',
 				);
 
 				const constructs = await generator.load('**/crons/*.ts', dir);
@@ -375,7 +426,7 @@ describe('CronGenerator', () => {
 					cronsDir,
 					'rateCron.ts',
 					'rateCron',
-					'rate(5 minutes)',
+					'cron(*/5 * * * *)',
 				),
 				createMockCronFile(
 					cronsDir,
@@ -387,7 +438,7 @@ describe('CronGenerator', () => {
 					cronsDir,
 					'dailyRate.ts',
 					'dailyRate',
-					'rate(1 day)',
+					'cron(0 0 * * *)',
 				),
 			]);
 
@@ -402,9 +453,9 @@ describe('CronGenerator', () => {
 			const cronExpression = cronInfos.find((c) => c.name === 'cronExpression');
 			const dailyRate = cronInfos.find((c) => c.name === 'dailyRate');
 
-			expect(rateCron?.schedule).toBe('rate(5 minutes)');
+			expect(rateCron?.schedule).toBe('cron(*/5 * * * ? *)');
 			expect(cronExpression?.schedule).toBe('cron(0 12 * * ? *)');
-			expect(dailyRate?.schedule).toBe('rate(1 day)');
+			expect(dailyRate?.schedule).toBe('cron(0 0 * * ? *)');
 		});
 
 		itWithDir(
@@ -419,13 +470,13 @@ describe('CronGenerator', () => {
 						cronsDir,
 						'quickCron.ts',
 						'quickCron',
-						'rate(1 minute)',
+						'cron(* * * * *)',
 					),
 					createMockCronFile(
 						cronsDir,
 						'slowCron.ts',
 						'slowCron',
-						'rate(1 hour)',
+						'cron(0 * * * *)',
 					),
 				]);
 
@@ -467,7 +518,7 @@ describe('CronGenerator', () => {
 					cronsDir,
 					'customCron.ts',
 					'customCron',
-					'rate(1 hour)',
+					'cron(0 * * * *)',
 				);
 
 				const constructs = await generator.load('**/crons/*.ts', dir);

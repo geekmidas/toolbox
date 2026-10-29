@@ -79,7 +79,7 @@ export const manifest = {
     {
       name: 'dailyReport',
       handler: '.gkm/aws-lambda/dailyReport.handler',
-      schedule: 'rate(1 day)',
+      schedule: 'cron(0 0 * * ? *)',
       timeout: 300,
       memorySize: 256,
       environment: [],

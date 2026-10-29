@@ -219,7 +219,7 @@ describe('Construct environment getter', () => {
 
 			const cronJob = c
 				.services([emailService])
-				.schedule('rate(1 hour)')
+				.schedule('cron(0 * * * *)')
 				.handle(async () => {
 					// Send daily report email
 				});
@@ -668,7 +668,7 @@ describe('Construct environment getter', () => {
 
 		it('works on Cron constructs', async () => {
 			const cron = c
-				.schedule('rate(1 hour)')
+				.schedule('cron(0 * * * *)')
 				.services([authService])
 				.handle(async () => {});
 

@@ -233,8 +233,8 @@ reusable(
 	[
 		{
 			name: 'schedule',
-			a: 'rate(1 day)',
-			b: 'rate(2 days)',
+			a: 'cron(0 0 * * *)',
+			b: 'cron(0 0 */2 * *)',
 			set: (b, v) => b.schedule(v),
 			get: (c) => c.schedule,
 		},

@@ -77,9 +77,11 @@ describe('AWSScheduledFunction', () => {
 
 	it('runs the cron handler on a scheduled event', async () => {
 		const ran = vi.fn();
-		const cron = new CronBuilder().schedule('rate(1 day)').handle(async () => {
-			ran();
-		});
+		const cron = new CronBuilder()
+			.schedule('cron(0 0 * * *)')
+			.handle(async () => {
+				ran();
+			});
 
 		const adapter = new AWSScheduledFunction(envParser, cron);
 		const result = await adapter.handler(
@@ -96,7 +98,7 @@ describe('AWSScheduledFunction', () => {
 
 	it('parses and returns output when the cron declares an output schema', async () => {
 		const cron = new CronBuilder()
-			.schedule('rate(1 day)')
+			.schedule('cron(0 0 * * *)')
 			.output(z.object({ cancelled: z.number() }))
 			.handle(async () => ({ cancelled: 3 }));
 
@@ -113,7 +115,7 @@ describe('AWSScheduledFunction', () => {
 	it('exposes services to the cron handler', async () => {
 		let observed = 0;
 		const cron = new CronBuilder()
-			.schedule('rate(1 hour)')
+			.schedule('cron(0 * * * *)')
 			.services([new CounterService()])
 			.handle(async ({ services }) => {
 				observed = services.counter.increment();
@@ -134,7 +136,7 @@ describe('AWSScheduledFunction', () => {
 		const logger = makeSpyLogger();
 
 		const cron = new CronBuilder()
-			.schedule('rate(1 day)')
+			.schedule('cron(0 0 * * *)')
 			.logger(logger)
 			.handle(async () => {
 				hadContext = serviceContext.hasContext();

@@ -1,9 +1,10 @@
 export { AWSScheduledFunction } from './AWSScheduledFunction';
 export {
+	type AwsCronExpression,
 	Cron,
 	type CronExpression,
-	type RateExpression,
 	type ScheduleExpression,
+	type UnixCronExpression,
 } from './Cron';
 export { CronBuilder } from './CronBuilder';
 

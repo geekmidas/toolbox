@@ -165,7 +165,7 @@ export const dailyReport = cron
 
 // Hourly cleanup
 export const hourlyCleanup = cron
-  .schedule('rate(1 hour)')
+  .schedule('cron(0 * * * *)')
   .timeout(300000) // 5 minutes
   .handle(async ({ logger }) => {
     logger.info('Running hourly cleanup');
