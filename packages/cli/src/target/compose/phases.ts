@@ -44,6 +44,7 @@ import { dirname, join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { stringify } from 'yaml';
 import { BACKUPS_SERVICE, backupsRoleStatements } from '../../backups/service';
+import { type AcmeDnsClients, ensureEdgeAcmeKey } from '../../compose/acmeDns';
 import {
 	type HostLookup,
 	HostNotPointingAtServer,
@@ -165,7 +166,8 @@ import type {
 	DnsProvider as DnsProviderConfig,
 	NormalizedWorkspace,
 } from '../../workspace/types.js';
-import type { DnsProvider } from '../dokploy/dns/DnsProvider';
+import type { DnsProvider, Route53DnsConfig } from '../dokploy/dns/DnsProvider';
+import { findRootDomain, normalizeDnsConfig } from '../dokploy/dns/index';
 import {
 	DeploySeedsFailed,
 	reportDatabaseRuns,
@@ -228,6 +230,12 @@ export interface ComposeDeps {
 	 * confirmation and wait for it — `confirmPendingSubscriptions` by default.
 	 */
 	confirmSubscriptions?: typeof confirmPendingSubscriptions;
+	/**
+	 * The IAM and Route 53 clients the shared edge's DNS-challenge key is
+	 * issued through, for a domain's Route 53 entry — the AWS SDK's own
+	 * chain, with its `profile` and `region`, by default.
+	 */
+	acmeClients?: (config: Route53DnsConfig) => Promise<AcmeDnsClients>;
 }
 
 /** One app's image, as the stage runs it. */
@@ -665,6 +673,7 @@ export async function readyCompose(
 		deps,
 		stackHosts(stack).filter((host) => !isLocalHost(host)),
 		run.secrets?.custom,
+		stack.wildcard?.host,
 	);
 	if (prune) run.pruneDns = prune;
 }
@@ -743,6 +752,7 @@ async function stageHostsDns(
 	deps: ComposeDeps,
 	hosts: readonly string[],
 	custom: Readonly<Record<string, string>> | undefined,
+	wildcard: string | undefined,
 ): Promise<(() => Promise<PrunedDnsRecord[]>) | undefined> {
 	const { workspace, stage } = ctx;
 	const server = requiredServerAddress(
@@ -777,6 +787,7 @@ async function stageHostsDns(
 			server,
 			dns: workspace.dns,
 			recorded: dnsResources(stored?.resources ?? {}),
+			...(wildcard ? { wildcard } : {}),
 			credentials: ctx.credentials,
 			log,
 			lookup: deps.lookup ?? systemLookup,
@@ -989,6 +1000,65 @@ export async function planCompose(
 	}
 }
 
+/**
+ * The shared edge's key for the stage's wildcard certificate: the DNS
+ * challenge's record, and nothing else, through the stage domain's Route 53
+ * entry — before the stack's routes ask for the certificate.
+ */
+async function edgeAcmeKey(
+	ctx: ComposeContext,
+	run: ComposeRun,
+	deps: ComposeDeps,
+): Promise<void> {
+	const { workspace, stage } = ctx;
+	const domain = workspace.domains?.[stage];
+	const dns = workspace.dns ? normalizeDnsConfig(workspace.dns) : {};
+	const zone = domain ? findRootDomain(domain, dns) : null;
+	const config = zone ? dns[zone] : undefined;
+	if (!domain || !zone || config?.provider !== 'route53') return;
+	const route53 = config as Route53DnsConfig;
+
+	// The edge is the server's: its key is named for the server, whichever
+	// stage on it asked first.
+	const server =
+		requiredServerAddress(stage, domain, run.secrets?.custom)?.ipv4 ??
+		run.server?.host ??
+		'local';
+	const clients = await (deps.acmeClients ?? defaultAcmeClients)(route53);
+	await ensureEdgeAcmeKey(deps.docker, {
+		clients,
+		edge: edgeRef(edgeFile(run), {
+			...(run.ref.host ? { host: run.ref.host } : {}),
+			...(run.ref.output ? { output: run.ref.output } : {}),
+		}),
+		server,
+		project: run.stack.project,
+		domain,
+		zone,
+		...(route53.hostedZoneId ? { hostedZoneId: route53.hostedZoneId } : {}),
+		...(ctx.dryRun ? { dryRun: true } : {}),
+		log: (line) => ctx.logger.info(line),
+	});
+}
+
+/** IAM and Route 53 through the AWS SDK's own chain, or the entry's profile. */
+async function defaultAcmeClients(
+	config: Route53DnsConfig,
+): Promise<AcmeDnsClients> {
+	const [{ IAMClient }, { Route53Client }, { fromIni }] = await Promise.all([
+		import('@aws-sdk/client-iam'),
+		import('@aws-sdk/client-route-53'),
+		import('@aws-sdk/credential-providers'),
+	]);
+	const options = {
+		region: config.region ?? 'us-east-1',
+		...(config.profile
+			? { credentials: fromIni({ profile: config.profile }) }
+			: {}),
+	};
+	return { iam: new IAMClient(options), route53: new Route53Client(options) };
+}
+
 // ============================================================================
 // provision
 // ============================================================================
@@ -1056,6 +1126,7 @@ export async function provisionCompose(
 			id: `${EDGE_PROJECT}/${EDGE_SERVICE}`,
 			via: 'found',
 		});
+		if (stack.wildcard?.tls === 'dns') await edgeAcmeKey(ctx, run, deps);
 	}
 
 	if (stack.infra.length > 0) {
@@ -1515,8 +1586,15 @@ export async function verifyCompose(
 		: run.server
 			? { connectTo: run.server.host, connectPort: edgePorts(deps.env).https }
 			: undefined;
+	// A wildcard site has no one host to ask: each tenant's is the app's to
+	// answer, and an unknown one may get no certificate. Its container's own
+	// health check is the answer, as a worker's is.
 	const results = await Promise.all(
-		stack.apps.map((app) => checkApp(ctx, app, deps, { ca, edge })),
+		stack.apps.map((app) =>
+			app.id === stack.wildcard?.site
+				? checkContainer(ctx, run, deps, app.name)
+				: checkApp(ctx, app, deps, { ca, edge }),
+		),
 	);
 
 	// A worker has no route through the edge: its own health check, as Docker

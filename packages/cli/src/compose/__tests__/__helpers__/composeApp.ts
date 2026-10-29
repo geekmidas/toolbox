@@ -66,6 +66,13 @@ export interface ComposeAppOptions {
 	 * one route — and an API endpoint that sends to its sockets.
 	 */
 	realtime?: boolean;
+	/**
+	 * The site answers on every subdomain — one host per tenant — checked by
+	 * the API's `GET /tenants/hosts`, which knows the tenant `acme`.
+	 */
+	wildcard?: boolean;
+	/** `protectedSubdomains`, as it is written in the config. */
+	protectedSubdomains?: readonly string[];
 }
 
 /**
@@ -114,6 +121,7 @@ export const telemetry = new Telemetry('Telemetry', {
 		writeFileSync(join(dir, path), `${JSON.stringify(value, null, 2)}\n`);
 
 	if (options.reviewer) writeReviewer(dir, name);
+	if (options.wildcard) writeWildcardSite(dir);
 	if (options.sitePassword) {
 		writeFileSync(
 			join(dir, 'constructs', 'passwords.ts'),
@@ -212,6 +220,7 @@ export default defineWorkspace({
     './apps/*/crons/**/*.ts',
   ],
   domains: ${JSON.stringify(options.domains ?? { production: options.domain ?? 'shop.example.com' })},
+  ${options.protectedSubdomains ? `protectedSubdomains: ${JSON.stringify(options.protectedSubdomains)},` : ''}
   ${options.dns ? `dns: ${JSON.stringify(options.dns)},` : ''}
   ${options.state ? `state: ${JSON.stringify(options.state)},` : ''}
   ${options.secrets ? `secrets: ${JSON.stringify(options.secrets)},` : ''}
@@ -410,5 +419,43 @@ export async function stageGenerated(
 	return (
 		stored.seed !== undefined ||
 		Object.keys(stored.custom).some((key) => !key.startsWith('GKM_SERVER_'))
+	);
+}
+
+/** The wildcard site and its hosts check — see `ComposeAppOptions.wildcard`. */
+function writeWildcardSite(dir: string): void {
+	writeFileSync(
+		join(dir, 'apps', 'api', 'endpoints', 'tenantHosts.ts'),
+		`import { NotFoundError } from '@geekmidas/errors';
+import { z } from 'zod';
+import { api } from '../../../constructs/api.js';
+
+/** Which hosts are tenants: the edge asks before it serves one. */
+export const tenantHosts = api
+  .get('/tenants/hosts')
+  .query(z.object({ domain: z.string() }))
+  .output(z.object({ ok: z.boolean() }))
+  .handle(async ({ query }) => {
+    if (!query.domain.startsWith('acme.')) throw new NotFoundError('No tenant');
+    return { ok: true };
+  });
+`,
+	);
+	writeFileSync(
+		join(dir, 'constructs', 'site.ts'),
+		`import { StaticSite } from '@geekmidas/constructs/site';
+import { tenantHosts } from '../apps/api/endpoints/tenantHosts.js';
+import { api } from './api.js';
+import { auth } from './auth.js';
+import { telemetry } from './telemetry.js';
+
+/** A Vite site on every subdomain, one per tenant. */
+export const web = new StaticSite('Web', {
+  path: 'apps/web',
+  subdomain: '*',
+  hosts: tenantHosts,
+  telemetry,
+}).dependsOn([api, auth]);
+`,
 	);
 }

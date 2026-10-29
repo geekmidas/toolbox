@@ -50,6 +50,20 @@ export const EDGE_CERTS_DIR = '/etc/gkm-edge/certs';
 /** The certificate resolver every deployed route without its own certificate uses. */
 export const ACME_RESOLVER = 'letsencrypt';
 
+/**
+ * The resolver a wildcard site's `*.<domain>` certificate comes from: Let's
+ * Encrypt issues a wildcard only over the DNS challenge, which the edge
+ * answers by writing an `_acme-challenge` TXT record through Route 53.
+ */
+export const ACME_DNS_RESOLVER = 'letsencrypt-dns';
+
+/**
+ * The key the edge writes those records with, inside its container: written
+ * by the deploy of a stage with a wildcard site, and allowed nothing but
+ * each such stage's `_acme-challenge` record (see `acmeDns.ts`).
+ */
+export const EDGE_AWS_CREDENTIALS = `${EDGE_CERTS_DIR}/aws-credentials`;
+
 /** The internal entrypoint the edge's health check asks; never published. */
 const PING_PORT = 8082;
 
@@ -114,6 +128,17 @@ export function traefikStatic(ports: EdgePorts): Record<string, unknown> {
 					httpChallenge: { entryPoint: 'web' },
 				},
 			},
+			[ACME_DNS_RESOLVER]: {
+				acme: {
+					storage: '/acme/acme-dns.json',
+					dnsChallenge: {
+						provider: 'route53',
+						// Asked directly, so the record is seen as soon as Route 53
+						// serves it rather than when a cache on the server expires.
+						resolvers: ['1.1.1.1:53', '8.8.8.8:53'],
+					},
+				},
+			},
 		},
 		log: { level: 'INFO' },
 	};
@@ -154,6 +179,12 @@ export function edgeCompose(options: {
 						.update(options.staticConfig)
 						.digest('hex')
 						.slice(0, 16),
+				},
+				// What the DNS challenge writes with: read from the file a stage
+				// with a wildcard site puts there, and never needed otherwise.
+				environment: {
+					AWS_SHARED_CREDENTIALS_FILE: EDGE_AWS_CREDENTIALS,
+					AWS_REGION: 'us-east-1',
 				},
 				networks: ['edge'],
 				// Every stack on the server shares it, so it is sized for the one
@@ -246,6 +277,16 @@ export function traefikDynamic(
 			? ` && Header(\`${route.requireHeader.name}\`, \`${route.requireHeader.value}\`)`
 			: '';
 
+		const certificate = (): Record<string, unknown> =>
+			route.wildcard?.tls.kind === 'dns'
+				? {
+						certResolver: ACME_DNS_RESOLVER,
+						domains: [{ main: `*.${route.wildcard.domain}` }],
+					}
+				: tls.kind === 'acme'
+					? { certResolver: ACME_RESOLVER }
+					: {};
+
 		// Each handler: a router of its own on the same host, ahead of the
 		// route's, to a service of its own.
 		for (const handler of route.handlers ?? []) {
@@ -259,7 +300,7 @@ export function traefikDynamic(
 				entryPoints: ['websecure'],
 				service: handlerName,
 				middlewares: [strip],
-				tls: tls.kind === 'acme' ? { certResolver: ACME_RESOLVER } : {},
+				tls: certificate(),
 			};
 			services[handlerName] = {
 				loadBalancer: {
@@ -271,11 +312,14 @@ export function traefikDynamic(
 		}
 
 		routers[name(route)] = {
-			rule: `Host(\`${route.host}\`)${paths}${header}`,
+			rule: `${hostRule(route)}${paths}${header}`,
+			// Below every named host's router, whatever the rules' lengths: a
+			// wildcard site gets only the labels nothing else answers.
+			...(route.wildcard ? { priority: 1 } : {}),
 			entryPoints: ['websecure'],
 			service: name(route),
 			middlewares: chain,
-			tls: tls.kind === 'acme' ? { certResolver: ACME_RESOLVER } : {},
+			tls: certificate(),
 		};
 
 		services[name(route)] = {
@@ -319,6 +363,22 @@ export function traefikDynamic(
 				}
 			: {}),
 	};
+}
+
+/**
+ * The hosts a route answers, as a Traefik rule: its own, or — for a wildcard
+ * site — exactly one label under its domain, but the ones it never takes.
+ * One label, as a wildcard certificate covers: a stage at
+ * `staging.example.com` is never reached through `example.com`'s wildcard.
+ */
+function hostRule(route: EdgeRoute): string {
+	if (!route.wildcard) return `Host(\`${route.host}\`)`;
+	const { domain, except } = route.wildcard;
+	const pattern = `^[a-z0-9-]+\\.${domain.replace(/\./g, '\\.')}$`;
+	return [
+		`HostRegexp(\`${pattern}\`)`,
+		...except.map((label) => `!Host(\`${label}.${domain}\`)`),
+	].join(' && ');
 }
 
 /** A stack's dynamic configuration file, as written to the edge's directory. */

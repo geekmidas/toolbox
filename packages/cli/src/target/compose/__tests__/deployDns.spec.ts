@@ -1,5 +1,18 @@
 import { realpathSync } from 'node:fs';
-import { HttpResponse, http } from 'msw';
+import {
+	DeleteAccessKeyCommand,
+	DeleteUserCommand,
+	DeleteUserPolicyCommand,
+	IAMClient,
+	ListAccessKeysCommand,
+	ListUserPoliciesCommand,
+} from '@aws-sdk/client-iam';
+import {
+	CreateHostedZoneCommand,
+	DeleteHostedZoneCommand,
+	Route53Client,
+} from '@aws-sdk/client-route-53';
+import { HttpResponse, http, passthrough } from 'msw';
 import { setupServer } from 'msw/node';
 import {
 	afterAll,
@@ -11,6 +24,7 @@ import {
 	it,
 	vi,
 } from 'vitest';
+import { LOCALSTACK_URL } from '../../../../../testkit/test/ports';
 import { cleanupDir, createTempDir } from '../../../__tests__/test-helpers';
 import {
 	SERVER_IPV4,
@@ -22,6 +36,7 @@ import {
 	fakeDocker,
 	fakeServer,
 } from '../../../compose/__tests__/__helpers__/fakeDocker';
+import { edgeAcmeUser } from '../../../compose/acmeDns';
 import { DnsCredentialMissing } from '../../../compose/dns';
 import { composeCommand } from '../../../compose/index';
 import { storedCredentials } from '../../../deploy/credentials';
@@ -36,6 +51,11 @@ import { DeployJournal } from '../../../deploy/journal';
 import { createStateStore } from '../../../deploy/StateStore';
 import { createComposeState } from '../../../deploy/state';
 import type { SqlClient } from '../../../reconcile/provision';
+import type {
+	DnsProvider,
+	DnsRecord,
+	UpsertDnsRecord,
+} from '../../dokploy/dns/DnsProvider';
 import { ComposeAppsUnhealthy } from '../health';
 import { type ComposeDeps, composeTarget } from '../index';
 
@@ -148,6 +168,8 @@ async function run(
 		lookup?: (host: string) => Promise<string[]>;
 		/** Every app answers with this status — 200 by default. */
 		status?: number;
+		/** Deps beyond the recorders — a DNS provider, the edge key's clients. */
+		deps?: Partial<ComposeDeps>;
 	} = {},
 ) {
 	const fake = fakeDocker();
@@ -177,6 +199,7 @@ async function run(
 			options.status === undefined
 				? answering(fake.calls)
 				: async () => options.status!,
+		...options.deps,
 	};
 	const token = options.token === undefined ? TOKEN : options.token;
 	const deployed = deploy({
@@ -199,7 +222,7 @@ async function run(
 	const logs = seen
 		.filter((e) => e.type === 'log')
 		.map((e) => (e as { message: string }).message);
-	return { seen, error, ops: fake.ops(), looked, logs };
+	return { seen, error, ops: fake.ops(), calls: fake.calls, looked, logs };
 }
 
 const released = (seen: DeployEvent[]) =>
@@ -546,3 +569,135 @@ describe(
 		});
 	},
 );
+
+/** A DNS provider holding one zone in memory, recording every write. */
+function recordingDns() {
+	const zone: DnsRecord[] = [];
+	const writes: string[] = [];
+	const provider: DnsProvider = {
+		name: 'recording',
+		async getRecords() {
+			return zone;
+		},
+		async upsertRecords(_domain: string, records: UpsertDnsRecord[]) {
+			for (const r of records) {
+				writes.push(`put ${r.type} ${r.name} ${r.value} ${r.ttl}`);
+				zone.push({
+					name: r.name,
+					type: r.type,
+					ttl: r.ttl,
+					values: [r.value],
+				});
+			}
+			return records.map((record) => ({
+				record,
+				created: true,
+				unchanged: false,
+			}));
+		},
+		async deleteRecords() {
+			return [];
+		},
+	};
+	return Object.assign(provider, { writes });
+}
+
+describe('a wildcard site', { timeout: RUN_TIMEOUT }, () => {
+	it('gets one *.<domain> record, beside the named hosts', async () => {
+		workspace({ wildcard: true, protectedSubdomains: ['www'] });
+		await serveFrom(dir);
+
+		const { error, seen, logs } = await run('production');
+
+		expect(error).toBeUndefined();
+		expect(released(seen)).toBe(true);
+		expect(PUTS().sort()).toEqual([
+			'PUT example.com A *.shop',
+			'PUT example.com A api.shop',
+			'PUT example.com A auth.shop',
+		]);
+		expect(logs).toContain('🌐 3 hosts confirmed by the DNS provider');
+	});
+
+	describe('behind the shared edge, with Route 53 holding the domain', () => {
+		const AWS = {
+			region: 'us-east-1',
+			endpoint: LOCALSTACK_URL,
+			credentials: { accessKeyId: 'test', secretAccessKey: 'test' },
+		};
+		const iam = new IAMClient(AWS);
+		const route53 = new Route53Client(AWS);
+		let zoneId: string;
+
+		beforeAll(async () => {
+			server.use(http.all(`${LOCALSTACK_URL}/*`, () => passthrough()));
+			const created = await route53.send(
+				new CreateHostedZoneCommand({
+					Name: 'example.com',
+					CallerReference: `deploy-dns-wildcard-${Date.now()}`,
+				}),
+			);
+			zoneId = created.HostedZone!.Id!.replace('/hostedzone/', '');
+		});
+
+		afterAll(async () => {
+			const UserName = edgeAcmeUser(SERVER_IPV4);
+			const keys = await iam
+				.send(new ListAccessKeysCommand({ UserName }))
+				.catch(() => undefined);
+			for (const key of keys?.AccessKeyMetadata ?? []) {
+				await iam.send(
+					new DeleteAccessKeyCommand({
+						UserName,
+						AccessKeyId: key.AccessKeyId,
+					}),
+				);
+			}
+			if (keys) {
+				const { PolicyNames = [] } = await iam.send(
+					new ListUserPoliciesCommand({ UserName }),
+				);
+				for (const PolicyName of PolicyNames) {
+					await iam.send(new DeleteUserPolicyCommand({ UserName, PolicyName }));
+				}
+				await iam.send(new DeleteUserCommand({ UserName }));
+			}
+			await route53.send(new DeleteHostedZoneCommand({ Id: zoneId }));
+		});
+
+		it("gives the edge a key for the stage's challenge record before its routes ask for the certificate", async () => {
+			workspace({
+				wildcard: true,
+				compose: { proxy: 'traefik' },
+				dns: { 'example.com': { provider: 'route53', hostedZoneId: zoneId } },
+			});
+			await serveFrom(dir);
+			const records = recordingDns();
+
+			const { error, logs, calls } = await run('production', {
+				deps: {
+					dnsProviderFor: async () => records,
+					acmeClients: async () => ({ iam, route53 }),
+				},
+			});
+
+			expect(error).toBeUndefined();
+			expect(records.writes).toContain(`put A *.shop ${SERVER_IPV4} 300`);
+			expect(logs).toContain(
+				`🔑 gkm-edge may write _acme-challenge.shop.example.com TXT records in ${zoneId}, and nothing else there, as IAM user ${edgeAcmeUser(SERVER_IPV4)}`,
+			);
+			const { AccessKeyMetadata = [] } = await iam.send(
+				new ListAccessKeysCommand({ UserName: edgeAcmeUser(SERVER_IPV4) }),
+			);
+			expect(AccessKeyMetadata).toHaveLength(1);
+			// The key is in the edge before the stack's routes are.
+			const written = calls
+				.filter((call) => call.op === 'exec')
+				.map((call) => JSON.stringify(call.args));
+			const key = written.findIndex((w) => w.includes('aws-credentials'));
+			const routes = written.findIndex((w) => w.includes('dynamic/'));
+			expect(key).toBeGreaterThanOrEqual(0);
+			expect(key).toBeLessThan(routes);
+		});
+	});
+});

@@ -533,6 +533,12 @@ describe('the edge', () => {
 			edge: { name: EDGE_NETWORK, external: true },
 		});
 		expect(compose.volumes).toEqual({ acme: {}, dynamic: {}, certs: {} });
+		// The DNS challenge's key, read from the file a stage with a wildcard
+		// site writes — never a key in the compose file itself.
+		expect(compose.services.traefik.environment).toEqual({
+			AWS_SHARED_CREDENTIALS_FILE: '/etc/gkm-edge/certs/aws-credentials',
+			AWS_REGION: 'us-east-1',
+		});
 	});
 
 	describe('through the engine', () => {

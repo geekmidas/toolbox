@@ -25,7 +25,6 @@ import {
 	type StackInput,
 	StageSecretMissing,
 	StageSeedMissing,
-	WildcardSiteNotDeployable,
 } from '../stack';
 import { loadComposeApp, writeComposeApp } from './__helpers__/composeApp';
 
@@ -426,17 +425,6 @@ describe('a deployed stage', () => {
 			ports: {},
 			...overrides,
 		});
-
-	it('refuses a site on every subdomain, which its edge cannot serve yet', () => {
-		const wildcard = {
-			...manifest,
-			Web: { ...manifest.Web, subdomain: '*' },
-		} as ConstructManifest;
-
-		expect(() => deployed({ manifest: wildcard })).toThrow(
-			WildcardSiteNotDeployable,
-		);
-	});
 
 	it("never writes the server's address into an app's or a worker's env", () => {
 		const s = deployed({

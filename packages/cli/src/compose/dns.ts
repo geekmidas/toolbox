@@ -223,12 +223,20 @@ export interface PlanStackDnsInput {
 	hosts: readonly string[];
 	server: ServerAddress;
 	dns: WorkspaceDnsConfig | undefined;
+	/**
+	 * The stage's wildcard site's host, `*.<domain>` — the one wildcard
+	 * record gkm writes, because its tenants are created by the running app
+	 * and no deploy could write a record for each.
+	 */
+	wildcard?: string;
 }
 
 /**
- * A wildcard host: gkm writes one record per public host, so a stage on
- * another server — or a name someone else points elsewhere — is never caught
- * by a record it did not ask for.
+ * A wildcard host that is not the stage's wildcard site's: gkm writes one
+ * record per public host, so a stage on another server — or a name someone
+ * else points elsewhere — is never caught by a record it did not ask for.
+ * Only `*.<domain>` for a site declared `subdomain: '*'` is written, and it
+ * covers no name that has a record of its own.
  */
 export class DnsWildcardRefused extends GkmError {
 	constructor(
@@ -274,7 +282,9 @@ export function planStackDns(input: PlanStackDnsInput): StackDnsPlan {
 
 	for (const raw of input.hosts) {
 		const host = raw.toLowerCase();
-		if (host.includes('*')) throw new DnsWildcardRefused(stage, host);
+		if (host.includes('*') && host !== input.wildcard?.toLowerCase()) {
+			throw new DnsWildcardRefused(stage, host);
+		}
 		const domain = findRootDomain(host, dns);
 		if (!domain) {
 			uncovered.push(host);
@@ -992,6 +1002,12 @@ export interface CheckStackDnsInput {
 }
 
 /**
+ * The name a wildcard record is resolved through: one label no app takes,
+ * which only the `*` record answers.
+ */
+export const WILDCARD_PROBE = 'gkm-wildcard-check';
+
+/**
  * Every host resolved: each must resolve to the server's IPv4 address and to
  * nothing but the server's addresses.
  *
@@ -1009,8 +1025,11 @@ export async function checkStackDns(
 	const ok: string[] = [];
 	for (const host of input.hosts) {
 		let resolved: string[];
+		const asked = host.startsWith('*.')
+			? `${WILDCARD_PROBE}.${host.slice(2)}`
+			: host;
 		try {
-			resolved = [...new Set(await lookup(host))];
+			resolved = [...new Set(await lookup(asked))];
 		} catch (error) {
 			const code =
 				error && typeof error === 'object' && 'code' in error
@@ -1198,6 +1217,8 @@ export interface StageDnsInput {
 	godaddy?: Pick<GoDaddyProviderOptions, 'baseUrl' | 'sleep' | 'maxAttempts'>;
 	/** The records the stage's state says gkm wrote: the stale ones are pruned. */
 	recorded?: readonly RecordedDnsRecord[];
+	/** The stage's wildcard site's `*.<domain>`, the one wildcard written. */
+	wildcard?: string;
 }
 
 export interface StageDnsResult {
@@ -1222,7 +1243,8 @@ export interface StageDnsResult {
  * stage's own hosts planned, written through each domain's provider where
  * they differ, and read back from it — and each record gkm wrote for a host
  * the stage no longer serves found, for `prune` to delete. Only A, AAAA and CNAME records of those
- * names are touched; nothing is a wildcard, and no other name is read,
+ * names are touched; nothing is a wildcard but a wildcard site's
+ * `*.<domain>`, and no other name is read,
  * written or deleted. What no provider confirms — a `manual` domain, a host
  * under no domain in `dns`, a key that cannot read — is resolved publicly.
  * A dry run prints the plan and writes nothing.
@@ -1239,6 +1261,7 @@ export async function stageDns(input: StageDnsInput): Promise<StageDnsResult> {
 		hosts: input.hosts,
 		server,
 		dns: input.dns,
+		...(input.wildcard ? { wildcard: input.wildcard } : {}),
 	});
 	const recorded = diffRecordedDns(plan, input.recorded ?? []);
 	// A stale record's domain needs its provider's token too — the stage's

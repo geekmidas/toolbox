@@ -11,6 +11,18 @@ exports[`the edge > redirects HTTP to HTTPS, answers ACME, and watches one direc
         "storage": "/acme/acme.json",
       },
     },
+    "letsencrypt-dns": {
+      "acme": {
+        "dnsChallenge": {
+          "provider": "route53",
+          "resolvers": [
+            "1.1.1.1:53",
+            "8.8.8.8:53",
+          ],
+        },
+        "storage": "/acme/acme-dns.json",
+      },
+    },
   },
   "entryPoints": {
     "ping": {

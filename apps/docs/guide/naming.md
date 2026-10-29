@@ -159,8 +159,8 @@ will deployed, and a protected label (`www`, or an app that is not running) is
 refused without asking. In a feature test, `browser.on('acme')` acts on a
 tenant's host: see [Feature Tests](./testing#feature-tests).
 
-`gkm compose` does not route every subdomain yet, and refuses a wildcard site
-by name rather than serve nothing.
+`gkm compose` routes, certifies and points DNS at every subdomain — see
+[A site on every subdomain](./compose.md#a-site-on-every-subdomain).
 
 On AWS the site is one CloudFront distribution under `*.example.com`: a
 wildcard certificate in `us-east-1`, validated through the stage's Route 53
