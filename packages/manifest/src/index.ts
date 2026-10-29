@@ -58,6 +58,7 @@ export type {
 	RestApiEndpoint,
 	SecretDeclaration,
 	SiteDeclaration,
+	SitePassword,
 	TelemetryDeclaration,
 	TelemetryKey,
 	TopicDeclaration,

@@ -31,6 +31,8 @@ import {
 	type SiteDeclaration,
 } from '@geekmidas/manifest';
 import { type Declarable, edgeTo } from './construct-interface';
+import type { RandomPassword } from './random-password';
+import type { DeployedStage } from './stages';
 import type { Telemetry } from './telemetry';
 
 /**
@@ -92,6 +94,33 @@ export interface StaticSiteConfig {
 	 * exporting through the API) builds on this edge.
 	 */
 	telemetry?: Telemetry;
+	/**
+	 * A login the site is served behind on the stages named, so a staging
+	 * build is not public while it is tried.
+	 *
+	 * ```ts
+	 * export const sitePassword = new RandomPassword('SitePassword');
+	 *
+	 * export const web = new StaticSite('Web', {
+	 *   path: 'apps/web',
+	 *   password: { secret: sitePassword, stages: ['staging'] },
+	 * });
+	 * ```
+	 *
+	 * The edge asks for it with HTTP basic auth before a request reaches the
+	 * site: the user is the stage's name, the password the `RandomPassword`'s
+	 * value on that stage. Like any `RandomPassword` it is generated on the
+	 * first deploy and kept, and one set by hand wins. It is not an edge — the
+	 * site is handed none of it — so export it from a constructs file of its
+	 * own, as any construct is.
+	 *
+	 * The compose target alone serves it so far; another refuses the stage
+	 * rather than serving it publicly.
+	 */
+	password?: {
+		secret: RandomPassword;
+		stages: readonly [DeployedStage, ...DeployedStage[]];
+	};
 }
 
 export class StaticSite<TName extends string = string>
@@ -149,6 +178,14 @@ export class StaticSite<TName extends string = string>
 				dependencies: this.dependencies,
 				...(this.config.telemetry
 					? { telemetry: this.config.telemetry.id }
+					: {}),
+				...(this.config.password
+					? {
+							password: {
+								secret: this.config.password.secret.id,
+								stages: [...this.config.password.stages],
+							},
+						}
 					: {}),
 				provides: [this.keys.url],
 			},

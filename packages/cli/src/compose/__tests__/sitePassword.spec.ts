@@ -1,119 +1,105 @@
+import { RandomPassword } from '@geekmidas/constructs/random-password';
+import { StaticSite } from '@geekmidas/constructs/site';
+import type { ConstructManifest, SiteDeclaration } from '@geekmidas/manifest';
 import bcrypt from 'bcryptjs';
 import { describe, expect, it } from 'vitest';
-import { initStageSecrets } from '../../secrets/storage';
-import { safeValidateWorkspaceConfig } from '../../workspace/schema';
 import { edgeCaddyfile } from '../caddyfile';
 import type { EdgeRoute } from '../routes';
 import {
-	assertSitePasswordTarget,
-	passwordSites,
+	assertSitePasswords,
 	SitePasswordMissing,
 	SitePasswordNeedsCompose,
+	SitePasswordNotDeclared,
 	siteAuth,
 	sitePasswordKey,
-	UnknownPasswordSite,
-	withSitePasswords,
+	UnknownPasswordStage,
 } from '../sitePassword';
 import { traefikDynamic } from '../traefik';
 
-const SITES = ['web', 'admin'];
-const workspace = (sitePassword: Record<string, true | string[]>) => ({
-	deploy: { sitePassword },
+const sitePassword = new RandomPassword('SitePassword');
+const guarded = new StaticSite('Web', {
+	path: 'apps/web',
+	password: { secret: sitePassword, stages: ['staging'] },
+});
+const manifestOf = (
+	...constructs: { declare(): readonly { id: string }[] }[]
+): ConstructManifest =>
+	Object.fromEntries(
+		constructs.flatMap((c) => c.declare()).map((d) => [d.id, d]),
+	) as ConstructManifest;
+const manifest = manifestOf(sitePassword, guarded);
+const site = manifest.Web as SiteDeclaration;
+const workspace = {
+	stages: { local: 'development', deployed: ['staging', 'production'] },
+};
+
+describe('the password a site is served behind', () => {
+	it("is its RandomPassword's key, on the stages it names", () => {
+		expect(sitePasswordKey(manifest, site, 'staging')).toBe('SITE_PASSWORD');
+		expect(sitePasswordKey(manifest, site, 'production')).toBeUndefined();
+	});
+
+	it('is refused where the RandomPassword was not exported', () => {
+		expect(() => sitePasswordKey(manifestOf(guarded), site, 'staging')).toThrow(
+			SitePasswordNotDeclared,
+		);
+		expect(() => sitePasswordKey(manifestOf(guarded), site, 'staging')).toThrow(
+			"export const sitePassword = new RandomPassword('SitePassword')",
+		);
+	});
 });
 
-describe('which sites a stage puts behind a password', () => {
-	it('is every site for true', () => {
-		expect(
-			passwordSites(workspace({ staging: true }), 'staging', SITES),
-		).toEqual(SITES);
+describe('a site behind a password, before a deploy', () => {
+	it('is refused on another target, rather than deployed in public', () => {
+		expect(() =>
+			assertSitePasswords(workspace, manifest, 'staging', ['web'], 'dokploy'),
+		).toThrow(SitePasswordNeedsCompose);
+		expect(() =>
+			assertSitePasswords(workspace, manifest, 'staging', ['web'], 'sst'),
+		).toThrow("Remove staging from its password's stages");
 	});
 
-	it('is the sites it names, by app name or construct id', () => {
-		expect(
-			passwordSites(workspace({ staging: ['Admin'] }), 'staging', SITES),
-		).toEqual(['admin']);
+	it('goes ahead on compose, on a stage it does not name, or without the site', () => {
+		const go = (stage: string, apps: string[], target: string) => () =>
+			assertSitePasswords(workspace, manifest, stage, apps, target);
+
+		expect(go('staging', ['web'], 'compose')).not.toThrow();
+		expect(go('production', ['web'], 'dokploy')).not.toThrow();
+		expect(go('staging', ['api'], 'dokploy')).not.toThrow();
 	});
 
-	it('is none on a stage it leaves out', () => {
-		expect(
-			passwordSites(workspace({ staging: true }), 'production', SITES),
-		).toEqual([]);
-		expect(passwordSites({}, 'staging', SITES)).toEqual([]);
-	});
+	it('refuses a stage the workspace does not deploy', () => {
+		const typo = manifestOf(
+			sitePassword,
+			new StaticSite('Web', {
+				path: 'apps/web',
+				password: { secret: sitePassword, stages: ['stagin'] },
+			}),
+		);
 
-	it('refuses a name that is not a site, listing the ones that are', () => {
 		const error = (() => {
 			try {
-				passwordSites(workspace({ staging: ['api'] }), 'staging', SITES);
+				assertSitePasswords(workspace, typo, 'staging', ['web'], 'compose');
 			} catch (caught) {
 				return caught;
 			}
 		})();
-
-		expect(error).toBeInstanceOf(UnknownPasswordSite);
-		expect(error).toMatchObject({
-			stage: 'staging',
-			site: 'api',
-			sites: SITES,
-		});
-		expect((error as Error).message).toContain("'web', 'admin'");
+		expect(error).toBeInstanceOf(UnknownPasswordStage);
+		expect(error).toMatchObject({ site: 'Web', stage: 'stagin' });
+		expect((error as Error).message).toContain("'staging', 'production'");
 	});
 });
 
-describe('a stage behind a password, on another target', () => {
-	it('is refused, rather than deployed in public', () => {
-		const ws = workspace({ staging: true });
-
-		expect(() => assertSitePasswordTarget(ws, 'staging', 'dokploy')).toThrow(
-			SitePasswordNeedsCompose,
-		);
-		expect(() => assertSitePasswordTarget(ws, 'staging', 'sst')).toThrow(
-			'Remove staging from deploy.sitePassword',
-		);
-		expect(() =>
-			assertSitePasswordTarget(ws, 'staging', 'compose'),
-		).not.toThrow();
-		expect(() =>
-			assertSitePasswordTarget(ws, 'production', 'dokploy'),
-		).not.toThrow();
-	});
-});
-
-describe("a site's password", () => {
-	it('is generated once, into the stage secret named after the site', () => {
-		const { secrets, generated } = withSitePasswords(
-			initStageSecrets('staging'),
-			['web'],
-		);
-
-		expect(generated).toEqual(['WEB_SITE_PASSWORD']);
-		expect(secrets.custom.WEB_SITE_PASSWORD).toMatch(/^[A-Za-z0-9_-]{32}$/);
-		expect(withSitePasswords(secrets, ['web'])).toEqual({
-			secrets,
-			generated: [],
-		});
-	});
-
-	it('keeps one set by hand', () => {
-		const set = {
-			...initStageSecrets('staging'),
-			custom: { [sitePasswordKey('web')]: 'chosen by hand' },
-		};
-
-		expect(withSitePasswords(set, ['web']).secrets.custom).toEqual({
-			WEB_SITE_PASSWORD: 'chosen by hand',
-		});
-	});
-
-	it("is the stage's login, with only its bcrypt hash for the edge", () => {
-		const auth = siteAuth('staging', 'web', {
-			WEB_SITE_PASSWORD: 'open sesame',
+describe("a site's login", () => {
+	it("is the stage's name and its password, with only a bcrypt hash for the edge", () => {
+		const auth = siteAuth('staging', 'SITE_PASSWORD', {
+			SITE_PASSWORD: 'open sesame',
 		});
 
 		expect(auth).toMatchObject({
 			user: 'staging',
 			password: 'open sesame',
-			key: 'WEB_SITE_PASSWORD',
+			key: 'SITE_PASSWORD',
 		});
 		expect(auth.hash).toMatch(/^\$2a\$10\$/);
 		expect(bcrypt.compareSync('open sesame', auth.hash)).toBe(true);
@@ -121,20 +107,22 @@ describe("a site's password", () => {
 	});
 
 	it('hashes the same password the same way, so an unchanged deploy rewrites nothing', () => {
-		const custom = { WEB_SITE_PASSWORD: 'open sesame' };
+		const custom = { SITE_PASSWORD: 'open sesame' };
 
-		expect(siteAuth('staging', 'web', custom).hash).toBe(
-			siteAuth('staging', 'web', custom).hash,
+		expect(siteAuth('staging', 'SITE_PASSWORD', custom).hash).toBe(
+			siteAuth('staging', 'SITE_PASSWORD', custom).hash,
 		);
-		expect(siteAuth('staging', 'web', custom).hash).not.toBe(
-			siteAuth('staging', 'web', { WEB_SITE_PASSWORD: 'another' }).hash,
+		expect(siteAuth('staging', 'SITE_PASSWORD', custom).hash).not.toBe(
+			siteAuth('staging', 'SITE_PASSWORD', { SITE_PASSWORD: 'another' }).hash,
 		);
 	});
 
 	it('is refused where the stage holds none, naming the secret', () => {
-		expect(() => siteAuth('staging', 'web', {})).toThrow(SitePasswordMissing);
-		expect(() => siteAuth('staging', 'web', {})).toThrow(
-			"gkm secrets:set WEB_SITE_PASSWORD '…' --stage staging",
+		expect(() => siteAuth('staging', 'SITE_PASSWORD', {})).toThrow(
+			SitePasswordMissing,
+		);
+		expect(() => siteAuth('staging', 'SITE_PASSWORD', {})).toThrow(
+			"gkm secrets:set SITE_PASSWORD '…' --stage staging",
 		);
 	});
 });
@@ -188,37 +176,5 @@ describe('the edge, for a site behind a password', () => {
 		expect(edgeCaddyfile([route()], { tls: { kind: 'acme' } })).not.toContain(
 			'basic_auth',
 		);
-	});
-});
-
-describe('deploy.sitePassword in the workspace config', () => {
-	const config = (sitePassword: unknown) => ({
-		name: 'shop',
-		stages: { local: 'development', deployed: ['staging', 'production'] },
-		deploy: { sitePassword },
-	});
-
-	it('takes true or a list of sites, per deployed stage', () => {
-		expect(
-			safeValidateWorkspaceConfig(
-				config({ staging: true, production: ['web'] }),
-			).success,
-		).toBe(true);
-		expect(safeValidateWorkspaceConfig(config({ staging: [] })).success).toBe(
-			false,
-		);
-		expect(
-			safeValidateWorkspaceConfig(config({ staging: false })).success,
-		).toBe(false);
-	});
-
-	it('refuses a stage that is not deployed, and the local one', () => {
-		const typo = safeValidateWorkspaceConfig(config({ stagin: true }));
-		expect(typo.error?.issues[0]?.message).toContain(
-			"deploy.sitePassword names the stage 'stagin'",
-		);
-
-		const local = safeValidateWorkspaceConfig(config({ development: true }));
-		expect(local.error?.issues[0]?.message).toContain('the local stage');
 	});
 });
