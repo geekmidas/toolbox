@@ -1078,7 +1078,9 @@ async function workspaceDevCommand(
 	);
 	if (options.migrate || options.seed) {
 		const { prepareDevDatabases } = await import('../migrate/index.js');
-		await prepareDevDatabases(workspace, reconciled.env, {
+		// The env the apps get, stored secrets and all: a seed that needs a
+		// client's id or a third party's key reads it where its app does.
+		await prepareDevDatabases(workspace, secretsEnv, {
 			seed: !!options.seed,
 		});
 	} else {
