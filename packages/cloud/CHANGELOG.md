@@ -1,5 +1,13 @@
 # @geekmidas/cloud
 
+## 9.2.1
+
+### Patch Changes
+
+- Updated dependencies [[`836d73e`](https://github.com/geekmidas/toolbox/commit/836d73e8ab6db8ab0bcda2eb7847dcd9df023cbb)]:
+  - @geekmidas/envkit@9.2.1
+  - @geekmidas/manifest@9.2.1
+
 ## 9.2.0
 
 ### Patch Changes

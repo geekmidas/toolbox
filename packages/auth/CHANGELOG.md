@@ -1,5 +1,12 @@
 # @geekmidas/auth
 
+## 9.2.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@9.2.1
+
 ## 9.2.0
 
 ### Patch Changes

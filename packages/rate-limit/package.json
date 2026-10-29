@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/rate-limit",
-	"version": "9.2.0",
+	"version": "9.2.1",
 	"private": false,
 	"type": "module",
 	"exports": {
