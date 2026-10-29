@@ -1350,6 +1350,16 @@ read Unix cron: `?` becomes `*`, day-of-week numbers shift back, `L`, `nL` and
 `n#k` are kept, and a specific year is dropped with a warning. `W`, `LW` and
 `L-n` have no Unix equivalent and fail.
 
+`cronPeriod` from `@geekmidas/manifest` gives the longest gap between runs of
+the AWS form, in seconds: the period a heartbeat should expect. A weekdays-only
+cron's period is the Friday-to-Monday gap, so it doesn't alert at the weekend.
+
+```typescript
+import { cronPeriod } from '@geekmidas/manifest';
+
+cronPeriod('cron(0 9 * * MON-FRI)'); // 259200, three days
+```
+
 #### Rate expressions
 
 `rate(…)` isn't supported. Write the cron it stands for:
@@ -1716,6 +1726,16 @@ so `gkm build` converts a Unix expression:
 read Unix cron: `?` becomes `*`, day-of-week numbers shift back, `L`, `nL` and
 `n#k` are kept, and a specific year is dropped with a warning. `W`, `LW` and
 `L-n` have no Unix equivalent and fail.
+
+`cronPeriod` from `@geekmidas/manifest` gives the longest gap between runs of
+the AWS form, in seconds: the period a heartbeat should expect. A weekdays-only
+cron's period is the Friday-to-Monday gap, so it doesn't alert at the weekend.
+
+```typescript
+import { cronPeriod } from '@geekmidas/manifest';
+
+cronPeriod('cron(0 9 * * MON-FRI)'); // 259200, three days
+```
 
 #### Rate expressions
 

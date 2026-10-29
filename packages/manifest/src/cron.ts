@@ -215,13 +215,9 @@ export function parseCron(expression: string): ParsedCron {
 	return { dialect, minute, hour, dayOfMonth, month, dayOfWeek, year };
 }
 
-/**
- * The days a day-of-week field runs on, as Unix numbers 0–6 (SUN = 0).
- * Only for plain fields: values, ranges, steps and lists.
- */
-const unixDays = (field: string, dialect: CronDialect): Set<number> => {
-	const rule = dialect === 'unix' ? RULES.unixDayOfWeek : RULES.awsDayOfWeek;
-	const days = new Set<number>();
+/** The values a plain field allows: values, ranges, steps and lists. */
+const fieldValues = (field: string, rule: FieldRule): Set<number> => {
+	const values = new Set<number>();
 	for (const atom of field.split(',')) {
 		const [base = '', step] = atom.split('/');
 		const [from = '', to] = base.split('-');
@@ -232,9 +228,22 @@ const unixDays = (field: string, dialect: CronDialect): Set<number> => {
 				: base === '*' || step !== undefined
 					? rule.max
 					: start;
-		for (let day = start; day <= end; day += Number(step ?? 1)) {
-			days.add(dialect === 'unix' ? day % 7 : day - 1);
+		for (let value = start; value <= end; value += Number(step ?? 1)) {
+			values.add(value);
 		}
+	}
+	return values;
+};
+
+/**
+ * The days a day-of-week field runs on, as Unix numbers 0–6 (SUN = 0).
+ * Only for plain fields: values, ranges, steps and lists.
+ */
+const unixDays = (field: string, dialect: CronDialect): Set<number> => {
+	const rule = dialect === 'unix' ? RULES.unixDayOfWeek : RULES.awsDayOfWeek;
+	const days = new Set<number>();
+	for (const day of fieldValues(field, rule)) {
+		days.add(dialect === 'unix' ? day % 7 : day - 1);
 	}
 	return days;
 };
@@ -361,3 +370,133 @@ const convertAwsDayOfWeek = (field: string): string => {
 	}
 	return convertDayOfWeek(field, 'aws');
 };
+
+/** The expression runs less than twice in the window, so has no period. */
+export class CronPeriodError extends Error {
+	constructor(readonly expression: string) {
+		super('Cron expression runs less than twice in eight years', {
+			cause: { expression },
+		});
+		this.name = 'CronPeriodError';
+	}
+}
+
+const MINUTE = 60;
+const DAY = 24 * 60 * MINUTE;
+
+/** 2024 to 2031: every weekday and month combination, and two leap years. */
+const PERIOD_START = Date.UTC(2024, 0, 1);
+const PERIOD_DAYS = 8 * 365 + 2;
+
+/**
+ * Whether a date in UTC matches an AWS day-of-month field, including `L`,
+ * `L-n`, `LW` and `nW`.
+ */
+const dayOfMonthMatcher = (field: string): ((date: Date) => boolean) => {
+	if (field === '?') return () => true;
+	const lastDay = (date: Date) =>
+		new Date(
+			Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0),
+		).getUTCDate();
+	// The weekday nearest `day`, without leaving the month.
+	const nearestWeekday = (date: Date, day: number) => {
+		const last = lastDay(date);
+		const weekday = new Date(
+			Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), day),
+		).getUTCDay();
+		if (weekday === 6) return day === 1 ? 3 : day - 1;
+		if (weekday === 0) return day === last ? day - 2 : day + 1;
+		return day;
+	};
+
+	if (field === 'L') return (date) => date.getUTCDate() === lastDay(date);
+	if (field.startsWith('L-')) {
+		const offset = Number(field.slice(2));
+		return (date) => date.getUTCDate() === lastDay(date) - offset;
+	}
+	if (field === 'LW') {
+		return (date) => date.getUTCDate() === nearestWeekday(date, lastDay(date));
+	}
+	if (field.endsWith('W')) {
+		const day = Number(field.slice(0, -1));
+		return (date) =>
+			day <= lastDay(date) && date.getUTCDate() === nearestWeekday(date, day);
+	}
+	const days = fieldValues(field, RULES.dayOfMonth);
+	return (date) => days.has(date.getUTCDate());
+};
+
+/** Whether a date in UTC matches an AWS day-of-week field, including `nL` and `n#k`. */
+const dayOfWeekMatcher = (field: string): ((date: Date) => boolean) => {
+	if (field === '?') return () => true;
+	const special = /^(\w+?)(L|#([1-5]))$/.exec(field);
+	if (special) {
+		const [, day = '', , nth] = special;
+		const weekday = (toValue(day, RULES.awsDayOfWeek) as number) - 1;
+		return (date) => {
+			if (date.getUTCDay() !== weekday) return false;
+			if (nth !== undefined) {
+				return Math.ceil(date.getUTCDate() / 7) === Number(nth);
+			}
+			// The last one: a week later is next month.
+			return new Date(date.getTime() + 7 * DAY * 1000).getUTCDate() <= 7;
+		};
+	}
+	const days = unixDays(field, 'aws');
+	return (date) => days.has(date.getUTCDay());
+};
+
+/**
+ * The longest gap between two runs of a cron expression, in seconds: the
+ * period a heartbeat should expect. A weekdays-only cron has the Friday to
+ * Monday gap, so its heartbeat doesn't alert at the weekend.
+ *
+ * The expression is first converted to the AWS form, so the period is of
+ * what EventBridge runs. Runs are worked out in UTC over 2024–2031, and the
+ * year field is ignored.
+ *
+ * @throws {InvalidCronExpressionError} when the expression is invalid.
+ * @throws {CronPeriodError} when it runs less than twice in that time.
+ */
+export function cronPeriod(expression: string): number {
+	const cron = parseCron(toAwsCron(expression).expression);
+	const minutes = [...fieldValues(cron.minute, RULES.minute)];
+	const hours = [...fieldValues(cron.hour, RULES.hour)];
+	const months = fieldValues(cron.month, RULES.month);
+	const matchesDayOfMonth = dayOfMonthMatcher(cron.dayOfMonth);
+	const matchesDayOfWeek = dayOfWeekMatcher(cron.dayOfWeek);
+
+	// Every matching day runs at the same times, so only the gaps within a
+	// day and from one day's last run to the next day's first can differ.
+	const times = hours
+		.flatMap((hour) => minutes.map((minute) => (hour * 60 + minute) * MINUTE))
+		.sort((a, b) => a - b);
+	const first = times[0] as number;
+	const last = times[times.length - 1] as number;
+
+	let longest = 0;
+	for (let i = 1; i < times.length; i++) {
+		longest = Math.max(
+			longest,
+			(times[i] as number) - (times[i - 1] as number),
+		);
+	}
+
+	let runs = 0;
+	let previousLast: number | undefined;
+	for (let day = 0; day < PERIOD_DAYS; day++) {
+		const date = new Date(PERIOD_START + day * DAY * 1000);
+		if (!months.has(date.getUTCMonth() + 1)) continue;
+		if (!matchesDayOfMonth(date) || !matchesDayOfWeek(date)) continue;
+
+		const start = date.getTime() / 1000;
+		if (previousLast !== undefined) {
+			longest = Math.max(longest, start + first - previousLast);
+		}
+		previousLast = start + last;
+		runs += times.length;
+	}
+
+	if (runs < 2) throw new CronPeriodError(expression);
+	return longest;
+}

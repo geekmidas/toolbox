@@ -19,4 +19,4 @@ c.schedule('cron(0 25 * * *)'); // type error: hour 25
 
 `gkm build` and `gkm dev` validate every cron's schedule and fail on an invalid one, listing each cron with the field and token that failed. The manifest always records the AWS form, converting a Unix expression and warning when the conversion is approximate.
 
-`@geekmidas/manifest` exports `parseCron`, `toAwsCron` and `toUnixCron`.
+`@geekmidas/manifest` exports `parseCron`, `toAwsCron` and `toUnixCron`, and `cronPeriod`: the longest gap between runs in seconds, the period a heartbeat should expect.

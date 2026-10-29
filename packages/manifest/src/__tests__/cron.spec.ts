@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+	CronPeriodError,
+	cronPeriod,
 	InvalidCronExpressionError,
 	parseCron,
 	toAwsCron,
@@ -183,5 +185,69 @@ describe('round trip', () => {
 		'cron(0 0 * * 0)',
 	])('%s converts to AWS and back unchanged', (unix) => {
 		expect(toUnixCron(toAwsCron(unix).expression).expression).toBe(unix);
+	});
+});
+
+describe('cronPeriod', () => {
+	const MINUTE = 60;
+	const HOUR = 60 * MINUTE;
+	const DAY = 24 * HOUR;
+
+	it.each([
+		['cron(0 8 * * ? *)', DAY, 'once a day'],
+		['cron(0 8 * * *)', DAY, 'once a day, Unix'],
+		['cron(0/15 * * * ? *)', 15 * MINUTE, 'every 15 minutes'],
+		['cron(* * * * *)', MINUTE, 'every minute'],
+		['cron(0 */2 * * *)', 2 * HOUR, 'every 2 hours'],
+		['cron(0 6,18 * * ? *)', 12 * HOUR, 'twice a day, evenly'],
+		['cron(0 6,9 * * ? *)', 21 * HOUR, 'twice a day, unevenly'],
+		['cron(0 9 ? * MON-FRI *)', 3 * DAY, 'weekdays, over the weekend'],
+		['cron(0 9 * * 1-5)', 3 * DAY, 'weekdays, Unix numbers'],
+		['cron(0 9 ? * MON *)', 7 * DAY, 'weekly'],
+		['cron(0 0 1 * ? *)', 31 * DAY, 'monthly, over a 31-day month'],
+		['cron(0 0 L * ? *)', 31 * DAY, 'the last day of the month'],
+		['cron(0 0 L-2 * ? *)', 31 * DAY, 'two days before the last'],
+		['cron(0 0 ? * 6#3 *)', 35 * DAY, 'the third Friday of the month'],
+		['cron(0 0 ? * 6L *)', 35 * DAY, 'the last Friday of the month'],
+		['cron(0 0 1 JAN ? *)', 366 * DAY, 'yearly, over a leap year'],
+		['cron(0 0 29 2 ? *)', (4 * 365 + 1) * DAY, 'leap days only'],
+	])('%s is %i seconds (%s)', (expression, period) => {
+		expect(cronPeriod(expression)).toBe(period);
+	});
+
+	it('runs on the nearest weekday for nW', () => {
+		// The 15th falls on a weekend in some months, moving the run a day, so
+		// the longest gap is a month plus up to two days.
+		const period = cronPeriod('cron(0 9 15W * ? *)');
+		expect(period).toBeGreaterThan(31 * DAY);
+		expect(period).toBeLessThanOrEqual(33 * DAY);
+	});
+
+	it('runs on the last weekday for LW', () => {
+		const period = cronPeriod('cron(0 9 LW * ? *)');
+		expect(period).toBeGreaterThan(31 * DAY);
+		expect(period).toBeLessThanOrEqual(33 * DAY);
+	});
+
+	it('uses the AWS form when a Unix expression restricts both day fields', () => {
+		// AWS keeps day-of-week, so this runs on Mondays, not also on the 1st.
+		expect(cronPeriod('cron(0 9 1 * MON)')).toBe(7 * DAY);
+	});
+
+	it('rejects an invalid expression', () => {
+		expect(() => cronPeriod('cron(0 25 * * *)')).toThrow(
+			InvalidCronExpressionError,
+		);
+	});
+
+	it('rejects an expression that runs less than twice', () => {
+		const expression = 'cron(0 0 30 2 ? *)';
+		expect(() => cronPeriod(expression)).toThrow(CronPeriodError);
+		expect(() => cronPeriod(expression)).toThrow(
+			expect.objectContaining({
+				message: 'Cron expression runs less than twice in eight years',
+				cause: { expression },
+			}),
+		);
 	});
 });
