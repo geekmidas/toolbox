@@ -418,6 +418,7 @@ ${apps}
 		it('runs every app through turbo, and exits with it', async () => {
 			workspace([api, web, mobile].join('\n'));
 			nextApp();
+			writeFileSync(join(dir, 'pnpm-lock.yaml'), '');
 
 			const running = devCommand({});
 			await until(() => fakes.spawned.length === 1);
@@ -426,7 +427,13 @@ ${apps}
 			expect(turbo!.command).toBe('pnpm');
 			// Each app by its package name. Unfiltered, turbo at the root runs the
 			// root package's own `dev` — `gkm dev` — and recurses.
-			expect(turbo!.args).toEqual(['turbo', 'run', 'dev', '--filter', 'web']);
+			expect(turbo!.args).toEqual([
+				'exec',
+				'turbo',
+				'run',
+				'dev',
+				'--filter=web',
+			]);
 			expect(turbo!.options.cwd).toBe(dir);
 			expect(turbo!.options.env?.GKM_CONFIG_PATH).toBe(
 				join(dir, 'gkm.config.ts'),
@@ -440,6 +447,26 @@ ${apps}
 			expect(output(warn)).toContain(
 				'No package.json with a name for: api, app',
 			);
+
+			turbo!.emit('exit', 0);
+			await expect(running).resolves.toBeUndefined();
+		});
+
+		// A Yarn or npm workspace need not have pnpm installed at all.
+		it.each([
+			['yarn.lock', 'yarn', ['turbo', 'run', 'dev', '--filter=web']],
+			['package-lock.json', 'npx', ['turbo', 'run', 'dev', '--filter=web']],
+		])('runs turbo through the package manager its %s names', async (lockfile, command, args) => {
+			workspace([api, web].join('\n'));
+			nextApp();
+			writeFileSync(join(dir, lockfile), '');
+
+			const running = devCommand({});
+			await until(() => fakes.spawned.length === 1);
+
+			const [turbo] = fakes.spawned;
+			expect(turbo!.command).toBe(command);
+			expect(turbo!.args).toEqual(args);
 
 			turbo!.emit('exit', 0);
 			await expect(running).resolves.toBeUndefined();
@@ -501,8 +528,7 @@ ${apps}
 				'turbo',
 				'run',
 				'dev',
-				'--filter',
-				'api',
+				'--filter=api',
 			]);
 
 			fakes.spawned[0]!.emit('exit', 1);
@@ -514,10 +540,7 @@ ${apps}
 
 			const running = devCommand({ filter: './apps/*' });
 			await until(() => fakes.spawned.length === 1);
-			expect(fakes.spawned[0]!.args.slice(-2)).toEqual([
-				'--filter',
-				'./apps/*',
-			]);
+			expect(fakes.spawned[0]!.args.at(-1)).toBe('--filter=./apps/*');
 
 			fakes.spawned[0]!.emit('error', new Error('pnpm: not found'));
 			await expect(running).rejects.toThrow('pnpm: not found');
@@ -736,6 +759,8 @@ ${apps}
 				'tools',
 			);
 			await secrets(dir, { SHARED: 'yes' });
+			// The workspace root's lockfile, not the directory it is run from.
+			writeFileSync(join(dir, 'pnpm-lock.yaml'), '');
 			process.chdir(tools);
 
 			const running = devCommand({});
