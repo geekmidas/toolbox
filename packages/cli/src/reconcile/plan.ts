@@ -328,7 +328,8 @@ export interface PlannedResource {
 	 *
 	 * Carried on surfaces, where it is the whole answer to "who may call this":
 	 * CORS origins, trusted origins, and the cookie domain are three readings of
-	 * this one list. Resolved to addresses by the target, because the manifest
+	 * this one list. And on buckets, where it says whether a surface a mobile
+	 * app calls hands out their links. Resolved to addresses by the target, because the manifest
 	 * knows which constructs call which and only the target knows where any of
 	 * them answer.
 	 */
@@ -570,11 +571,14 @@ export function planFor(
 				ROLES[declaration.kind] ?? 'url',
 			),
 			provisions: PROVISIONS[declaration.kind] === true,
-			// Only for surfaces. Every other kind is reached by a URL that says
-			// nothing about who holds it, so a caller list would be a fact with
-			// no reader.
+			// For surfaces and buckets. A surface's callers are who may call it;
+			// a bucket's say whether its links can end up on a phone (`envFor`).
+			// Every other kind is reached by a URL that says nothing about who
+			// holds it, so a caller list would be a fact with no reader.
 			...(declaration.kind === 'rest-api' ||
-			declaration.kind === 'websocket-api'
+			declaration.kind === 'websocket-api' ||
+			declaration.kind === 'objects' ||
+			declaration.kind === 'file-server'
 				? { callers: dependentsOf(manifest, id) }
 				: {}),
 			...(declaration.kind === 'site'

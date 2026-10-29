@@ -217,3 +217,104 @@ describe('an app that depends on mail, locally', () => {
 		expect(env).not.toHaveProperty('EXPO_PUBLIC_MAILER_FROM');
 	});
 });
+
+/**
+ * A bucket whose links a surface hands a phone: a photo URL the API built is
+ * opened on the device, which resolves no `*.localhost` host and reaches no
+ * `localhost` (#335).
+ */
+describe('a bucket whose links reach a phone, locally', () => {
+	const withBuckets = (
+		app: 'Api' | 'Web',
+		processors: { prefix: string }[] = [],
+	) =>
+		({
+			Documents: {
+				kind: 'objects',
+				id: 'Documents',
+				provides: ['DOCUMENTS_URL'],
+			},
+			Photos: { kind: 'objects', id: 'Photos', provides: ['PHOTOS_URL'] },
+			Assets: {
+				kind: 'file-server',
+				id: 'Assets',
+				of: 'Photos',
+				open: ['**'],
+				...(processors.length ? { processors } : {}),
+				provides: ['ASSETS_URL'],
+			},
+			Api: {
+				kind: 'rest-api',
+				id: 'Api',
+				path: 'apps/api',
+				dependencies: [
+					{ target: 'Documents', kind: 'objects' },
+					{ target: 'Assets', kind: 'file-server' },
+				],
+				provides: ['API_URL', 'API_TRUSTED_ORIGINS', 'API_COOKIE_DOMAIN'],
+				endpoints: [],
+			},
+			Caller: {
+				kind: app === 'Api' ? 'mobile-app' : 'site',
+				id: 'Caller',
+				variant: app === 'Api' ? 'expo' : 'static',
+				app: { path: 'apps/caller' },
+				dependencies: [{ target: 'Api', kind: 'rest-api' }],
+				provides: [app === 'Api' ? 'CALLER_SCHEME' : 'CALLER_URL'],
+			},
+		}) as unknown as ConstructManifest;
+
+	const resolve = (
+		manifest: ConstructManifest,
+		/** `null` for a machine on no network. */
+		lan: string | null = LAN,
+	) => {
+		const plan = planFor(manifest, 'dev', provisionOrder(manifest), {
+			localStage: 'dev',
+		});
+		const ports = Object.fromEntries(
+			portKeys(plan.containers).map((key, index) => [key, 28000 + index]),
+		);
+		return {
+			minio: ports.minio,
+			env: envFor(plan, {
+				ports,
+				project: 'shop',
+				addresses: { Api: 'http://localhost:3000' },
+				credentials: TEST_CREDENTIALS,
+				...(lan ? { lanAddress: lan } : {}),
+			}),
+		};
+	};
+
+	it('presigns against MinIO on the LAN address', () => {
+		const { env, minio } = resolve(withBuckets('Api'));
+
+		expect(env.DOCUMENTS_URL).toContain(`endpoint=http://${LAN}:${minio}&`);
+	});
+
+	it('serves a file server’s links from MinIO on the LAN address', () => {
+		const { env, minio } = resolve(withBuckets('Api'));
+
+		expect(env.ASSETS_URL).toBe(`http://${LAN}:${minio}/photos`);
+	});
+
+	it('keeps a file server with processors behind the edge', () => {
+		const { env } = resolve(withBuckets('Api', [{ prefix: '/i/' }]));
+
+		expect(env.ASSETS_URL).toMatch(/^https:\/\/.+\.shop\.localhost:/);
+	});
+
+	it('stays on localhost when only a browser calls the surface', () => {
+		const { env, minio } = resolve(withBuckets('Web'));
+
+		expect(env.DOCUMENTS_URL).toContain(`endpoint=http://localhost:${minio}&`);
+		expect(env.ASSETS_URL).toMatch(/^https:\/\/.+\.shop\.localhost:/);
+	});
+
+	it('stays on localhost on a machine with no network', () => {
+		const { env, minio } = resolve(withBuckets('Api'), null);
+
+		expect(env.DOCUMENTS_URL).toContain(`endpoint=http://localhost:${minio}&`);
+	});
+});

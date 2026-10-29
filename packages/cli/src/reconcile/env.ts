@@ -176,6 +176,7 @@ export function envFor(
 	// loop happened to reach them would make the answer depend on the order the
 	// manifest was keyed in.
 	const resolved: Record<string, string> = {};
+	const devices = options.lanAddress ? deviceBuckets(plan) : new Set<string>();
 	for (const resource of plan.resources) {
 		const url = urlFor(
 			resource,
@@ -184,6 +185,7 @@ export function envFor(
 			options.project ?? '',
 			options.addresses,
 			credential,
+			devices.has(resource.id) ? options.lanAddress : undefined,
 		);
 		if (url) resolved[resource.id] = url;
 	}
@@ -472,6 +474,35 @@ function surfaceEnv(
 }
 
 /**
+ * The buckets whose links a phone opens: those a surface a mobile app calls
+ * depends on.
+ *
+ * The surface hands the app a URL it built — a file server's public link, a
+ * bucket's presigned one — and the phone cannot resolve `*.localhost`, or
+ * reach `localhost` at all. A presigned URL's signature covers its host, so
+ * nothing downstream can move it either: the bucket has to be resolved on the
+ * LAN address in the first place.
+ */
+function deviceBuckets(plan: Plan): Set<string> {
+	const byId = new Map(plan.resources.map((r) => [r.id, r]));
+	const fromApp = (id: string): boolean => {
+		const caller = byId.get(id);
+		if (caller?.kind === 'mobile-app') return true;
+		return (
+			(caller?.kind === 'rest-api' || caller?.kind === 'websocket-api') &&
+			(caller.callers ?? []).some((c) => byId.get(c)?.kind === 'mobile-app')
+		);
+	};
+
+	return new Set(
+		plan.resources
+			.filter((r) => r.kind === 'objects' || r.kind === 'file-server')
+			.filter((r) => (r.callers ?? []).some(fromApp))
+			.map((r) => r.id),
+	);
+}
+
+/**
  * Where a WebSocket surface's publisher meets its sockets: the local Redis,
  * on channels named for the project and the surface, so two projects sharing
  * one Redis never see each other's frames.
@@ -614,6 +645,11 @@ function urlFor(
 	project: string,
 	addresses: Readonly<Record<string, string>> | undefined,
 	credential: StageCredential,
+	/**
+	 * The LAN address, for a bucket whose links a phone opens — see
+	 * `deviceBuckets`. Undefined for everything else.
+	 */
+	lan?: string,
 ): string | undefined {
 	// A secret has no address, so there is no port to wait for.
 	if (resource.kind === 'secret') return localSecret(project, plan, resource);
@@ -739,7 +775,11 @@ function urlFor(
 			// is identical, only the URL differs. Path-style addressing goes with
 			// it: virtual-host style resolves `bucket.localhost`, which is not
 			// MinIO and not anything.
-			return `s3://${resource.name}?region=${LOCAL_REGION}&endpoint=http://${LOCAL_HOST}:${port}&forcePathStyle=true`;
+			//
+			// On the LAN address when a phone opens its links: a presigned URL is
+			// signed for the endpoint's host, so it is the endpoint that moves.
+			// MinIO answers on it from this machine too.
+			return `s3://${resource.name}?region=${LOCAL_REGION}&endpoint=http://${lan ?? LOCAL_HOST}:${port}&forcePathStyle=true`;
 
 		case 'file-server': {
 			// A host of its own, over TLS — the shape it has deployed, and the one
@@ -755,6 +795,18 @@ function urlFor(
 			// hostname — a cookie domain, a CORS origin — looks at it.
 			const origin = plan.resources.find((r) => r.id === resource.of);
 			if (!origin) return undefined;
+
+			// A phone resolves no `*.localhost` host, and the edge routes on it,
+			// so a file server whose links reach one is the path under MinIO on
+			// the LAN address — the one address that needs no Host routing.
+			// Not with processors: they answer only through the edge, and a link
+			// past it would serve the original rather than what was asked for.
+			const objects = origin.container
+				? ports[primaryPortKey(origin.container)]
+				: undefined;
+			if (lan && !resource.processors?.length && objects !== undefined) {
+				return `http://${lan}:${objects}/${origin.name}`;
+			}
 
 			// With the edge off, the honest local answer is the address that
 			// works: a path under the object store. It is not the deployed shape,
