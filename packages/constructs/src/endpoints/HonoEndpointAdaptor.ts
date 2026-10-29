@@ -18,7 +18,6 @@ import { logger as honoLogger } from 'hono/logger';
 import { timing } from 'hono/timing';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { validator } from 'hono/validator';
-import { startMonitors } from '../monitor';
 import { publishConstructEvents } from '../publisher';
 import type { HttpMethod, LowerHttpMethod } from '../types';
 import type { MappedAudit } from './audit';
@@ -67,7 +66,6 @@ interface EndpointFeatures {
 	hasEvents: boolean;
 	hasRateLimit: boolean;
 	hasRls: boolean;
-	hasMonitors: boolean;
 }
 
 /**
@@ -113,7 +111,6 @@ function analyzeEndpointFeatures(
 		hasEvents: (endpoint.events?.length ?? 0) > 0,
 		hasRateLimit: !!endpoint.rateLimit,
 		hasRls: !!endpoint.rlsConfig && !endpoint.rlsBypass,
-		hasMonitors: endpoint.monitors.length > 0,
 	};
 }
 
@@ -364,13 +361,8 @@ export class HonoEndpoint<
 			// Set response header
 			c.header('X-Request-ID', requestId);
 
-			const monitor = features.hasMonitors
-				? await startMonitors(endpoint, serviceDiscovery, logger)
-				: undefined;
-			let failure: unknown;
-
 			// Wrap entire handler in request context for services to access
-			const response = await runWithRequestContext(
+			return runWithRequestContext(
 				{ logger, requestId, startTime },
 				async () => {
 					try {
@@ -639,7 +631,6 @@ export class HonoEndpoint<
 							return c.json(error, error.statusCode as ContentfulStatusCode);
 						}
 					} catch (e: any) {
-						failure = e;
 						logger.error(e, 'Error processing endpoint request');
 						const error = wrapError(e, 500, 'Internal Server Error');
 						if (HonoEndpoint.isDev) {
@@ -652,12 +643,6 @@ export class HonoEndpoint<
 					}
 				},
 			);
-
-			// Not awaited: a server stays up after responding, so the request
-			// does not wait on the monitoring service. `settle` never throws.
-			void monitor?.settle(response.status, failure);
-
-			return response;
 		};
 
 		// Register route with conditional validators

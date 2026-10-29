@@ -3,17 +3,18 @@ import type { Service, ServiceDiscovery } from '@geekmidas/services';
 import type { ConstructType } from './Construct';
 
 /**
- * What a monitor is told about the construct whose run it is reporting.
+ * What a monitor is told about the cron whose run it is reporting.
  */
 export interface MonitorContext {
-	/** The kind of construct: function, cron or endpoint. */
+	/** The kind of construct, always a cron. */
 	type: ConstructType;
 	logger: Logger;
 }
 
 /**
- * Reports a construct's runs to an outside service — a heartbeat, an uptime
- * check, an error tracker.
+ * Reports a cron's runs to an uptime service, set with `.uptime()`, so a cron
+ * that stops running is noticed. A failure is already logged where it
+ * happens; what only a monitor can report is a run that never happened.
  *
  * `start` runs before the handler and whatever it returns is handed back to
  * `success` or `failure`, so a provider that pairs the two (a check-in id) can.
@@ -22,12 +23,8 @@ export interface MonitorContext {
  */
 export interface ConstructMonitor<TRun = unknown> {
 	start?(ctx: MonitorContext): Promise<TRun>;
-	success(
-		ctx: MonitorContext & { run: TRun; output: unknown; status?: number },
-	): Promise<void>;
-	failure(
-		ctx: MonitorContext & { run: TRun; error: unknown; status?: number },
-	): Promise<void>;
+	success(ctx: MonitorContext & { run: TRun; output: unknown }): Promise<void>;
+	failure(ctx: MonitorContext & { run: TRun; error: unknown }): Promise<void>;
 }
 
 /**
@@ -50,41 +47,13 @@ export type MonitorService = Service<string, ConstructMonitor<any>> & {
 
 /** A run in progress, closed by exactly one of its two methods. */
 export interface MonitoredRun {
-	success(output: unknown, status?: number): Promise<void>;
-	failure(error: unknown, status?: number): Promise<void>;
-	/**
-	 * Close an HTTP run from its response status: a 5xx is a failure, anything
-	 * else is a success. A 4xx is the caller's mistake, not an outage.
-	 */
-	settle(status: number, error?: unknown): Promise<void>;
-}
-
-/**
- * Add a monitor to a construct's list, refusing one that is already there.
- *
- * Services are cached by name, so two monitors with one name would silently
- * share an instance: two heartbeats reading `HEARTBEAT_URL` would both ping
- * whichever was registered first, and the other provider would never hear
- * from the construct.
- */
-export function addMonitor(
-	monitors: readonly MonitorService[],
-	monitor: MonitorService,
-): MonitorService[] {
-	if (monitors.some((m) => m.serviceName === monitor.serviceName)) {
-		throw new Error(
-			`Monitor "${monitor.serviceName}" is already set on this construct. ` +
-				'Two heartbeats reading the same env var would share one URL; ' +
-				"give one its own, e.g. heartbeat.healthchecks('HEALTHCHECKS_HEARTBEAT_URL').",
-		);
-	}
-	return [...monitors, monitor];
+	success(output: unknown): Promise<void>;
+	failure(error: unknown): Promise<void>;
 }
 
 const NOOP_RUN: MonitoredRun = {
 	async success() {},
 	async failure() {},
-	async settle() {},
 };
 
 /**
@@ -142,20 +111,10 @@ export async function startMonitors(
 		}
 	};
 
-	const run: MonitoredRun = {
-		success: (output, status) =>
-			report((monitor, r) =>
-				monitor.success({ ...ctx, run: r, output, status }),
-			),
-		failure: (error, status) =>
-			report((monitor, r) =>
-				monitor.failure({ ...ctx, run: r, error, status }),
-			),
-		settle: (status, error) =>
-			status >= 500
-				? run.failure(error ?? new Error(`Responded with ${status}`), status)
-				: run.success(undefined, status),
+	return {
+		success: (output) =>
+			report((monitor, run) => monitor.success({ ...ctx, run, output })),
+		failure: (error) =>
+			report((monitor, run) => monitor.failure({ ...ctx, run, error })),
 	};
-
-	return run;
 }

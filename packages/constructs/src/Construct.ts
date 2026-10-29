@@ -9,7 +9,7 @@ import type { Logger } from '@geekmidas/logger';
 import type { Service, ServiceContext } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import compact from 'lodash.compact';
-import type { MonitorInfo, MonitorService } from './monitor';
+import type { MonitorService } from './monitor';
 
 // Cache for service environment variables to handle singleton services
 // Stores both the full list and the optional subset so the same sniff result
@@ -61,7 +61,7 @@ export abstract class Construct<
 	/** Database service for this construct (used by Endpoint for RLS/audit context) */
 	public databaseService?: Service<TDatabaseServiceName, TDatabase>;
 
-	/** Monitors told about each run of this construct (see `.monitor()`). */
+	/** Monitors told about each run: a cron's `.uptime()`, if it has one. */
 	public monitors: MonitorService[] = [];
 
 	constructor(
@@ -79,17 +79,6 @@ export abstract class Construct<
 			TAuditStorage
 		>,
 	) {}
-
-	/**
-	 * This construct's monitors as the build manifest records them, or nothing
-	 * when it has none.
-	 */
-	getMonitoring(): MonitorInfo[] | undefined {
-		if (!this.monitors.length) return undefined;
-		return this.monitors.map(
-			(monitor) => monitor.monitor ?? { type: monitor.serviceName },
-		);
-	}
 
 	/**
 	 * Returns an array of environment variable names required by this construct's services.

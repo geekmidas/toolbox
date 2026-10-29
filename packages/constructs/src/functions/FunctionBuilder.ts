@@ -374,8 +374,6 @@ export class FunctionBuilder<
 		// configured base keeps its configuration for every construct built
 		// from it. The reset that used to be here wiped the base on first use.
 
-		func.monitors = this._monitors;
-
 		return func;
 	}
 }

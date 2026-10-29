@@ -150,10 +150,14 @@ describe('CronGenerator', () => {
 				expect(hourlyCleanupContent).toContain('import { hourlyCleanup }');
 			});
 
-			it('records the cron’s monitors in its manifest entry', async () => {
+			it.each([
+				['cron(0 8 * * ? *)', 86400],
+				['cron(*/15 * * * *)', 900],
+				['cron(0 9 * * MON-FRI)', 259200],
+			])('records %s’s uptime with a period of %i seconds', async (schedule, period) => {
 				const monitored = new CronBuilder()
-					.schedule('cron(0 8 * * ? *)')
-					.monitor(heartbeat.betterStack('MONITORING_URL'))
+					.schedule(schedule as ScheduleExpression)
+					.uptime(heartbeat.betterStack('MONITORING_URL'))
 					.handle(async () => ({}));
 				const plain = createTestCron();
 
@@ -183,10 +187,13 @@ describe('CronGenerator', () => {
 					{ provider: 'aws-lambda' },
 				);
 
-				expect(cronInfos[0].monitoring).toEqual([
-					{ type: 'heartbeat', provider: 'betterStack', env: 'MONITORING_URL' },
-				]);
-				expect(cronInfos[1].monitoring).toBeUndefined();
+				expect(cronInfos[0].uptime).toEqual({
+					type: 'heartbeat',
+					provider: 'betterStack',
+					env: 'MONITORING_URL',
+					period,
+				});
+				expect(cronInfos[1].uptime).toBeUndefined();
 			});
 
 			it('should use default schedule when none provided', async () => {

@@ -1374,6 +1374,42 @@ cronPeriod('cron(0 9 * * MON-FRI)'); // 259200, three days
 A rate that doesn't divide its unit, such as `rate(7 hours)`, has no cron
 equivalent: choose the times it should run.
 
+### Uptime
+
+`.uptime()` reports each run to a heartbeat, so a cron that stops running is
+noticed: the heartbeat service alerts when no ping arrives in time.
+
+```typescript
+import { c } from '@geekmidas/constructs/crons';
+import { heartbeat } from '@geekmidas/constructs/monitors';
+
+export const nightlyReport = c
+  .schedule('cron(0 8 * * MON-FRI)')
+  .uptime(heartbeat.betterStack('MONITORING_URL'))
+  .handle(async () => {
+    // ...
+  });
+```
+
+At runtime the cron requests the URL in `MONITORING_URL` when it succeeds, and
+`{url}/fail` when it fails. If the variable is unset, or the service is down,
+the run goes on without it.
+
+`gkm build` records it on the cron's manifest entry, with the period the
+heartbeat should expect: the longest gap between runs, so this weekdays-only
+cron expects the three-day weekend gap.
+
+```typescript
+uptime: { type: 'heartbeat', provider: 'betterStack', env: 'MONITORING_URL', period: 259200 }
+```
+
+Infrastructure creates the heartbeat from that entry and sets its URL in
+`MONITORING_URL`.
+
+`.uptime()` is for crons only. A function or endpoint runs when it's called,
+so there's no time a ping is due, and its failures are already logged and
+traced where they happen.
+
 ### With Services
 
 ```typescript
@@ -1750,6 +1786,42 @@ cronPeriod('cron(0 9 * * MON-FRI)'); // 259200, three days
 
 A rate that doesn't divide its unit, such as `rate(7 hours)`, has no cron
 equivalent: choose the times it should run.
+
+### Uptime
+
+`.uptime()` reports each run to a heartbeat, so a cron that stops running is
+noticed: the heartbeat service alerts when no ping arrives in time.
+
+```typescript
+import { c } from '@geekmidas/constructs/crons';
+import { heartbeat } from '@geekmidas/constructs/monitors';
+
+export const nightlyReport = c
+  .schedule('cron(0 8 * * MON-FRI)')
+  .uptime(heartbeat.betterStack('MONITORING_URL'))
+  .handle(async () => {
+    // ...
+  });
+```
+
+At runtime the cron requests the URL in `MONITORING_URL` when it succeeds, and
+`{url}/fail` when it fails. If the variable is unset, or the service is down,
+the run goes on without it.
+
+`gkm build` records it on the cron's manifest entry, with the period the
+heartbeat should expect: the longest gap between runs, so this weekdays-only
+cron expects the three-day weekend gap.
+
+```typescript
+uptime: { type: 'heartbeat', provider: 'betterStack', env: 'MONITORING_URL', period: 259200 }
+```
+
+Infrastructure creates the heartbeat from that entry and sets its URL in
+`MONITORING_URL`.
+
+`.uptime()` is for crons only. A function or endpoint runs when it's called,
+so there's no time a ping is due, and its failures are already logged and
+traced where they happen.
 
 ### With Services
 

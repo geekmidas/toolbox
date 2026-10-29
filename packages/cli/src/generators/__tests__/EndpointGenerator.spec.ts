@@ -1,9 +1,7 @@
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { HttpMethod } from '@geekmidas/constructs';
-import { type Endpoint, e } from '@geekmidas/constructs/endpoints';
-import { heartbeat } from '@geekmidas/constructs/monitors';
+import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import { itWithDir } from '@geekmidas/testkit/os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -51,82 +49,6 @@ describe('EndpointGenerator', () => {
 			absolute: join(dir, `${key}.ts`),
 			relative: `./${key}.ts`,
 		},
-	});
-
-	describe('monitoring', () => {
-		const MONITOR = {
-			type: 'heartbeat',
-			provider: 'betterStack',
-			env: 'MONITORING_URL',
-		};
-		let dir: string;
-
-		beforeEach(async () => {
-			dir = await mkdtemp(join(tmpdir(), 'endpoint-monitoring-'));
-			await mkdir(join(dir, 'output'), { recursive: true });
-		});
-
-		afterEach(async () => {
-			await rm(dir, { recursive: true, force: true });
-		});
-
-		const monitoredAt = (key: string, path: string) => {
-			const construct = createTestEndpointConstruct(key, path, 'GET', dir);
-			construct.construct = e
-				.monitor(heartbeat.betterStack('MONITORING_URL'))
-				.get(path)
-				.handle(async () => ({}));
-			return construct;
-		};
-
-		it.each([
-			'aws-lambda',
-			'aws-apigatewayv2',
-		] as const)('records each route’s monitors (%s)', async (provider) => {
-			const routes = await generator.build(
-				context,
-				[
-					monitoredAt('monitored', '/monitored'),
-					createTestEndpointConstruct('plain', '/plain', 'GET', dir),
-				],
-				join(dir, 'output'),
-				{ provider },
-			);
-
-			expect(routes.find((r) => r.path === '/monitored')?.monitoring).toEqual([
-				MONITOR,
-			]);
-			expect(
-				routes.find((r) => r.path === '/plain')?.monitoring,
-			).toBeUndefined();
-		});
-
-		it('records the distinct monitors across endpoints on the server route', async () => {
-			const routes = await generator.build(
-				context,
-				[
-					monitoredAt('first', '/first'),
-					monitoredAt('second', '/second'),
-					createTestEndpointConstruct('plain', '/plain', 'GET', dir),
-				],
-				join(dir, 'output'),
-				{ provider: 'server' },
-			);
-
-			expect(routes).toHaveLength(1);
-			expect(routes[0].monitoring).toEqual([MONITOR]);
-		});
-
-		it('records no monitoring on a server whose endpoints have none', async () => {
-			const routes = await generator.build(
-				context,
-				[createTestEndpointConstruct('plain', '/plain', 'GET', dir)],
-				join(dir, 'output'),
-				{ provider: 'server' },
-			);
-
-			expect(routes[0].monitoring).toBeUndefined();
-		});
 	});
 
 	itWithDir('should generate a single server app file', async ({ dir }) => {
