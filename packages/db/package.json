@@ -1,6 +1,6 @@
 {
 	"name": "@geekmidas/db",
-	"version": "10.0.0-alpha.128",
+	"version": "10.0.0-alpha.131",
 	"private": false,
 	"type": "module",
 	"exports": {

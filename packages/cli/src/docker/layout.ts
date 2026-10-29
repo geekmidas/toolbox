@@ -18,6 +18,7 @@ import type {
 } from '../workspace/types.js';
 import {
 	type BuildTools,
+	DEFAULT_BASE_IMAGE,
 	findBuildRoot,
 	hasTurboConfig,
 	type ImageTemplateOptions,
@@ -132,7 +133,7 @@ export function appImageOptions(
 		) ?? appName;
 	return {
 		imageName: appName,
-		baseImage: 'node:22-alpine',
+		baseImage: DEFAULT_BASE_IMAGE,
 		port: app.port,
 		appPath: fromBuildRoot(layout, app.path),
 		turboPackage,

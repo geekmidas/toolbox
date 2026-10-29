@@ -159,8 +159,22 @@ will deployed, and a protected label (`www`, or an app that is not running) is
 refused without asking. In a feature test, `browser.on('acme')` acts on a
 tenant's host: see [Feature Tests](./testing#feature-tests).
 
-Deployed targets do not route every subdomain yet: `gkm compose` and the AWS
-target refuse a wildcard site by name rather than serve nothing.
+`gkm compose` does not route every subdomain yet, and refuses a wildcard site
+by name rather than serve nothing.
+
+On AWS the site is one CloudFront distribution under `*.example.com`: a
+wildcard certificate in `us-east-1`, validated through the stage's Route 53
+zone when it deploys, and one `*.example.com` alias record. Nothing is created
+per tenant: a tenant exists because the app says so, and the `hosts` route
+answers an unknown one with a `404`. It needs the stage's domain on the stack,
+`new App({ domain, hostedZoneId })` in `sst.config.ts`; without one the deploy
+refuses the site by name (`WildcardSiteNeedsDomain`).
+
+A host with a record of its own, `api.example.com`, is answered by that record:
+Route 53 prefers it over the wildcard. A protected label nothing serves —
+`www`, `mail` — has no record, so it reaches the wildcard site like a tenant
+would. Refusing it is the app's: it is in `APP_PROTECTED_SUBDOMAINS`, so the
+app answers it as it answers an unknown slug.
 
 ## Renaming
 

@@ -1,5 +1,101 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.131
+
+### Patch Changes
+
+- [#332](https://github.com/geekmidas/toolbox/pull/332) [`18c880d`](https://github.com/geekmidas/toolbox/commit/18c880d1fca929e91b849b853fcfb521a16db253) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm dev` runs turbo through the workspace's own package manager
+
+  It spawned `pnpm turbo run dev` whatever the workspace used, so on a Yarn or
+  npm workspace without pnpm installed every app failed to start with
+  `spawn pnpm ENOENT` — after the containers, migrations and seeds had already
+  run. It now reads the lockfile at the workspace root, as `gkm build` does, and
+  runs `pnpm exec turbo`, `yarn turbo` or `npx turbo` accordingly.
+
+- [#333](https://github.com/geekmidas/toolbox/pull/333) [`dda1c9b`](https://github.com/geekmidas/toolbox/commit/dda1c9b956850bb87531e19d56c716cd99cf9275) Thanks [@geekmidas](https://github.com/geekmidas)! - Seeds are handed the stage's custom secrets, as its apps are
+
+  A seed's `env` held what reconcile resolves — every construct's URL — but
+  not the keys set with `gkm secrets:set`, which the apps do get. A seed that
+  needed one (a client id it upserts, a third party's key, an admin's email)
+  found it missing under `gkm seed` and `gkm dev --seed`, and only worked under
+  `gkm exec`.
+
+  `gkm seed` (and `gkm migrate`) now merge the stage's stored secrets under the
+  resolved URLs, reading the local stage's store for `test` as `gkm test` does.
+  `gkm dev --seed` hands the seeds the same env it starts the apps with.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.131
+  - @geekmidas/constructs@10.0.0-alpha.131
+  - @geekmidas/db@10.0.0-alpha.131
+  - @geekmidas/envkit@10.0.0-alpha.131
+  - @geekmidas/errors@10.0.0-alpha.131
+  - @geekmidas/logger@10.0.0-alpha.131
+  - @geekmidas/manifest@10.0.0-alpha.131
+  - @geekmidas/schema@10.0.0-alpha.131
+  - @geekmidas/services@10.0.0-alpha.131
+  - @geekmidas/storage@10.0.0-alpha.131
+  - @geekmidas/telescope@10.0.0-alpha.131
+
+## 10.0.0-alpha.130
+
+### Minor Changes
+
+- A site's password is a `RandomPassword` it names, on the stages it names
+
+  `deploy.sitePassword` is gone. A `StaticSite` now takes a `RandomPassword` and the stages it guards, so the password is generated, kept, revealed and set like every other one:
+
+  ```ts
+  export const sitePassword = new RandomPassword("SitePassword");
+
+  export const web = new StaticSite("Web", {
+    path: "apps/web",
+    password: { secret: sitePassword, stages: ["staging"] },
+  });
+  ```
+
+  On compose, the edge asks for it with HTTP basic auth, with Caddy's `basic_auth` or a Traefik `basicAuth` middleware on the shared edge. The user is the stage's name and the password is the `RandomPassword`'s value on that stage, generated on the first deploy and kept like any other, under the site's key `SITE_PASSWORD`. One set by hand wins. A password generated for the old `<SITE>_SITE_PASSWORD` key is not carried over. Only its bcrypt hash reaches the edge's config, and its salt is derived from the password, so a deploy that changed nothing renders the same edge.
+
+  The stages are typed from `stages.deployed`, and a deploy refuses one the workspace doesn't deploy (`UnknownPasswordStage`) or a `RandomPassword` that wasn't exported (`SitePasswordNotDeclared`). The deploy's health check signs in with the login, and the summary says where to read the password: `gkm secrets:show --stage <stage> --reveal`. Dokploy and AWS don't support it yet. A site behind a password on a stage that deploys through either fails with `SitePasswordNeedsCompose` before anything is deployed, rather than being served publicly.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/constructs@10.0.0-alpha.130
+  - @geekmidas/manifest@10.0.0-alpha.130
+  - @geekmidas/cache@10.0.0-alpha.130
+  - @geekmidas/db@10.0.0-alpha.130
+  - @geekmidas/envkit@10.0.0-alpha.130
+  - @geekmidas/errors@10.0.0-alpha.130
+  - @geekmidas/logger@10.0.0-alpha.130
+  - @geekmidas/schema@10.0.0-alpha.130
+  - @geekmidas/services@10.0.0-alpha.130
+  - @geekmidas/storage@10.0.0-alpha.130
+  - @geekmidas/telescope@10.0.0-alpha.130
+
+## 10.0.0-alpha.129
+
+### Minor Changes
+
+- [#328](https://github.com/geekmidas/toolbox/pull/328) [`f071b8c`](https://github.com/geekmidas/toolbox/commit/f071b8c7b4689a7fae6d929b504bd9c5f09a6c54) Thanks [@geekmidas](https://github.com/geekmidas)! - Generated Dockerfiles default to `node:22.23.4-alpine`, the latest Node 22 security release, instead of the floating `node:22-alpine` tag. A cached or older image can no longer put a build below the patched version, and the Dockerfile shows which version it runs.
+
+  The image is a `NODE_IMAGE` build argument, so you can pick another Node version without regenerating anything: set `build.args.NODE_IMAGE` on the app in your own `docker-compose.yml`, or pass `docker build --build-arg NODE_IMAGE=…`.
+
+### Patch Changes
+
+- Updated dependencies [[`56cd171`](https://github.com/geekmidas/toolbox/commit/56cd171801e75c0390a85075661128f0d0535511)]:
+  - @geekmidas/constructs@10.0.0-alpha.129
+  - @geekmidas/envkit@10.0.0-alpha.129
+  - @geekmidas/cache@10.0.0-alpha.129
+  - @geekmidas/db@10.0.0-alpha.129
+  - @geekmidas/errors@10.0.0-alpha.129
+  - @geekmidas/logger@10.0.0-alpha.129
+  - @geekmidas/manifest@10.0.0-alpha.129
+  - @geekmidas/schema@10.0.0-alpha.129
+  - @geekmidas/services@10.0.0-alpha.129
+  - @geekmidas/storage@10.0.0-alpha.129
+  - @geekmidas/telescope@10.0.0-alpha.129
+
 ## 10.0.0-alpha.128
 
 ### Patch Changes

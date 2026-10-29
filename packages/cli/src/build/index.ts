@@ -87,6 +87,7 @@ import {
 	type NormalizedWorkspace,
 } from '../workspace/index.js';
 import { writeStageTypes } from '../workspace/stageTypes.js';
+import { protectedSubdomains, wildcardSite } from '../workspace/subdomains.js';
 import type { StageTelemetryConfig } from '../workspace/types.js';
 import { ownersContext, reachedBy, servedBy } from './owners';
 import {
@@ -236,6 +237,9 @@ export async function buildCommand(
 			builds: output.built ? [output.built] : [],
 			constructs: await declaredIn(config, workspaceRoot),
 			backends: backendsOf(loadedConfig.workspace),
+			...(loadedConfig.workspace.protectedSubdomains
+				? { protectedSubdomains: loadedConfig.workspace.protectedSubdomains }
+				: {}),
 		});
 	}
 
@@ -415,8 +419,21 @@ export async function writeManifest(input: {
 	builds: readonly AppBuild[];
 	constructs: ConstructManifest;
 	backends: Backends;
+	/** The workspace's `protectedSubdomains`, for a wildcard site's. */
+	protectedSubdomains?: readonly string[];
 }): Promise<void> {
-	const { workspaceRoot, target, builds, constructs, backends } = input;
+	const { workspaceRoot, target, builds, constructs } = input;
+	// A wildcard site's protected labels are read off the whole workspace,
+	// which a deploy config never sees: they are written beside the backends.
+	const backends: Backends = wildcardSite(constructs)
+		? {
+				...input.backends,
+				protectedSubdomains: protectedSubdomains(
+					constructs,
+					input.protectedSubdomains,
+				),
+			}
+		: input.backends;
 	const manifestDir = join(workspaceRoot, '.gkm', 'manifest');
 	await mkdir(manifestDir, { recursive: true });
 
@@ -1254,17 +1271,20 @@ export interface WorkspaceBuildResult extends BuildResult {
 }
 
 /**
- * Detect available package manager.
+ * The package manager a workspace uses, by the lockfile at its root.
  * @internal Exported for testing
  */
-export function detectPackageManager(): 'pnpm' | 'npm' | 'yarn' {
-	if (existsSync('pnpm-lock.yaml')) return 'pnpm';
-	if (existsSync('yarn.lock')) return 'yarn';
+export function detectPackageManager(
+	root: string = process.cwd(),
+): 'pnpm' | 'npm' | 'yarn' {
+	if (existsSync(join(root, 'pnpm-lock.yaml'))) return 'pnpm';
+	if (existsSync(join(root, 'yarn.lock'))) return 'yarn';
 	return 'npm';
 }
 
 /**
- * The program and argv that run turbo's build.
+ * The program and argv that run a turbo task — `build` unless another is
+ * named — through the workspace's own package manager.
  *
  * `filters` names the packages to build. Passing none lets turbo infer its own
  * scope from the working directory, which for a workspace root means the
@@ -1281,14 +1301,21 @@ export function detectPackageManager(): 'pnpm' | 'npm' | 'yarn' {
 export function getTurboArgs(
 	pm: 'pnpm' | 'npm' | 'yarn',
 	filters: string | readonly string[] = [],
-	/** Build only the named packages, not what they depend on. */
-	{ only = false }: { only?: boolean } = {},
+	{
+		only = false,
+		task = 'build',
+	}: {
+		/** Run only the named packages, not what they depend on. */
+		only?: boolean;
+		/** The turbo task: `build` for `gkm build`, `dev` for `gkm dev`. */
+		task?: string;
+	} = {},
 ): [bin: string, args: string[]] {
 	const list = typeof filters === 'string' ? [filters] : filters;
 	const turbo = [
 		'turbo',
 		'run',
-		'build',
+		task,
 		...list.map((f) => `--filter=${f}`),
 		...(only ? ['--only'] : []),
 	];
@@ -1415,6 +1442,9 @@ export async function workspaceBuildCommand(
 				cwd: workspace.root,
 			}),
 			backends: backendsOf(workspace),
+			...(workspace.protectedSubdomains
+				? { protectedSubdomains: workspace.protectedSubdomains }
+				: {}),
 		});
 
 		// Everything else is its own toolchain's — Vite, Next — through turbo.

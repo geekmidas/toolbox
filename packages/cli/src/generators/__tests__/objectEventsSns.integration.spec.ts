@@ -11,6 +11,7 @@ import {
 } from '@aws-sdk/client-s3';
 import {
 	CreateTopicCommand,
+	GetSubscriptionAttributesCommand,
 	ListSubscriptionsByTopicCommand,
 	SNSClient,
 } from '@aws-sdk/client-sns';
@@ -269,24 +270,33 @@ describe(
 			});
 
 			// The emulator runs in Docker, where this machine is host.docker.internal:
-			// the worker subscribes its route there once it is listening.
+			// the worker subscribes its route there once it is listening. The
+			// emulator lists a subscription with its ARN before it is confirmed,
+			// and drops what is published to it meanwhile — so wait for the
+			// confirmation, not the ARN, before putting anything in the bucket.
 			const route = `http://host.docker.internal:${running.port}${subscriberRoute('onAvatar')}`;
-			await until(
-				async () =>
-					(
-						await sns.send(
-							new ListSubscriptionsByTopicCommand({ TopicArn: topicArn }),
-						)
-					).Subscriptions ?? [],
-				(subs) =>
-					subs.some(
-						(s) =>
-							s.Endpoint?.startsWith(
-								`http://host.docker.internal:${running.port}`,
-							) && s.SubscriptionArn?.startsWith('arn:'),
-					),
+			const confirmed = await until(
+				async () => {
+					const { Subscriptions = [] } = await sns.send(
+						new ListSubscriptionsByTopicCommand({ TopicArn: topicArn }),
+					);
+					const ours = Subscriptions.find((s) =>
+						s.Endpoint?.startsWith(
+							`http://host.docker.internal:${running.port}`,
+						),
+					);
+					if (!ours?.SubscriptionArn?.startsWith('arn:')) return false;
+					const { Attributes } = await sns.send(
+						new GetSubscriptionAttributesCommand({
+							SubscriptionArn: ours.SubscriptionArn,
+						}),
+					);
+					return Attributes?.PendingConfirmation === 'false';
+				},
+				Boolean,
 				30_000,
 			);
+			expect(confirmed, running.output()).toBe(true);
 
 			// A space in the key, which S3's notification encodes as `+`, and one
 			// the subscriber does not watch.
