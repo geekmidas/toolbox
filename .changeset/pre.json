@@ -196,6 +196,7 @@
     "single-app-paths",
     "site-build-args",
     "site-image-client",
+    "site-password-construct",
     "sns-push-subscribers",
     "sns-push-without-middy",
     "ssm-lock-readback",

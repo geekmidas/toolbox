@@ -1,5 +1,16 @@
 # @geekmidas/cloud
 
+## 10.0.0-alpha.130
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/manifest@10.0.0-alpha.130
+  - @geekmidas/db@10.0.0-alpha.130
+  - @geekmidas/envkit@10.0.0-alpha.130
+  - @geekmidas/events@10.0.0-alpha.130
+  - @geekmidas/storage@10.0.0-alpha.130
+
 ## 10.0.0-alpha.129
 
 ### Patch Changes
