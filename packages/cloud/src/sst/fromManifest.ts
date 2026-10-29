@@ -28,6 +28,7 @@ import {
 	cookieDomain,
 	DEFAULT_POSTGRES_VERSION,
 	dependentsOf,
+	isWildcardSite,
 	mobileOrigins,
 	PUBLIC,
 	PUBLIC_PREFIX,
@@ -65,6 +66,7 @@ import {
 	ProvidesMismatch,
 	UnknownDeclarationKind,
 	UnresolvedDependency,
+	WildcardSiteNotSupported,
 } from './errors';
 import type { GkmLinkable } from './Linkable';
 import type { ManifestBackends, ManifestOverrides } from './overrides';
@@ -182,6 +184,8 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 
 	site: (stack, d, props, context) => {
 		if (d.kind !== 'site') throw new UnknownDeclarationKind(d.kind, []);
+		// Routing every subdomain through CloudFront is #299's.
+		if (isWildcardSite(d)) throw new WildcardSiteNotSupported(d.id);
 
 		return new StaticSite(stack, d.id, {
 			path: d.app.path,

@@ -18,6 +18,7 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import {
 	type ConstructManifest,
+	isWildcardSite,
 	provideKey,
 	provisionOrder,
 } from '@geekmidas/manifest';
@@ -772,12 +773,15 @@ function probe(port: number, path: string): StackService['healthcheck'] {
  * Redis.
  */
 export function stackPlan(
-	workspace: Pick<NormalizedWorkspace, 'stages'>,
+	workspace: Pick<NormalizedWorkspace, 'stages' | 'protectedSubdomains'>,
 	manifest: ConstructManifest,
 	stage: string,
 ): Plan {
 	return planFor(manifest, stage, provisionOrder(manifest), {
 		localStage: workspace.stages.local,
+		...(workspace.protectedSubdomains
+			? { protectedSubdomains: workspace.protectedSubdomains }
+			: {}),
 		events: DEFAULT_EVENTS.server,
 		cache: STACK_CACHE,
 		// The stack brings its own edge; reconcile's would front the host.
@@ -1662,6 +1666,12 @@ function stackApps(
 		const resource = resources.get(id);
 		if (!app || !resource || !app.port) continue;
 
+		// A deployed edge has no route, certificate or DNS record yet for
+		// every subdomain (#298), so refuse rather than serve nothing.
+		if (!options.local && isWildcardSite(declaration)) {
+			throw new WildcardSiteNotDeployable(id, options.stage);
+		}
+
 		const host = hostOf(name, app, workspace, resource, options);
 		const site = declaration.kind === 'site';
 		const tag = site
@@ -1773,6 +1783,25 @@ function recordedSubscriptions(
 		arns[name] = arn;
 	}
 	return JSON.stringify(arns);
+}
+
+/**
+ * A wildcard site on a deployed compose stage, whose edge cannot yet route,
+ * certify or point DNS at every subdomain.
+ */
+export class WildcardSiteNotDeployable extends GkmError {
+	constructor(
+		readonly site: string,
+		readonly stage: string,
+	) {
+		super(
+			`'${site}' answers on every subdomain, and gkm compose cannot yet ` +
+				`route, certify and point DNS at every subdomain of '${stage}'. ` +
+				`Run it locally with gkm dev, or give it a subdomain of its own to ` +
+				`deploy it.`,
+		);
+		this.name = 'WildcardSiteNotDeployable';
+	}
 }
 
 /** Two constructs the edge would answer on one host. */

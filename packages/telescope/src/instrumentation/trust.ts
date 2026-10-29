@@ -57,7 +57,9 @@ function normalizeOrigin(origin: string): string | undefined {
 
 /**
  * Whether `origin` is one of `trustedOrigins` — exactly, scheme, host and
- * port. A wildcard trusts nothing: an API that answers any origin's CORS has
+ * port — or one label in place of the `*` of an entry written
+ * `https://*.example.com`, which is where a wildcard site's tenants call
+ * from. A bare `*` trusts nothing: an API that answers any origin's CORS has
  * not said which sites are its own.
  */
 export function isTrustedOrigin(
@@ -67,9 +69,19 @@ export function isTrustedOrigin(
 	if (!origin || !trustedOrigins?.length) return false;
 	const normalized = normalizeOrigin(origin);
 	if (!normalized) return false;
-	return trustedOrigins.some(
-		(trusted) => trusted !== '*' && normalizeOrigin(trusted) === normalized,
-	);
+	return trustedOrigins.some((trusted) => {
+		if (trusted === '*') return false;
+		const allowed = normalizeOrigin(trusted);
+		if (!allowed) return false;
+		if (allowed === normalized) return true;
+
+		// `https://*.example.com:8443` against `https://acme.example.com:8443`:
+		// the same text once the request's first label is put back as `*`.
+		const tenant = normalized.match(
+			/^([a-z][a-z0-9+.-]*:\/\/)([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(\..+)$/,
+		);
+		return tenant !== null && allowed === `${tenant[1]}*${tenant[3]}`;
+	});
 }
 
 /**

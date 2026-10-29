@@ -183,6 +183,9 @@ export function normalizeWorkspace(
 		...(config.constructs ? { constructs: config.constructs } : {}),
 		apps: normalizedApps,
 		...(config.domains ? { domains: config.domains } : {}),
+		...(config.protectedSubdomains
+			? { protectedSubdomains: config.protectedSubdomains }
+			: {}),
 		...(config.dns ? { dns: config.dns } : {}),
 		deploy: config.deploy ?? { default: 'dokploy' },
 		shared: config.shared ?? { packages: ['packages/*'] },

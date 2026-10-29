@@ -13,6 +13,7 @@ import type { Duplex } from 'node:stream';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import { HttpError } from '@geekmidas/errors';
 import type { Logger } from '@geekmidas/logger';
+import { trustsOrigin } from '@geekmidas/manifest';
 import { runWithRequestContext, ServiceDiscovery } from '@geekmidas/services';
 import type { WebSocket, WebSocketServer } from 'ws';
 import type { Authenticator } from '../construct-interface';
@@ -181,7 +182,7 @@ export class WebSocketSurfaceServer<
 		if (this.closing) return refuse(socket, 503, 'Service Unavailable');
 
 		const origin = request.headers.origin;
-		if (origin && !this.options.trustedOrigins.includes(origin)) {
+		if (origin && !trustsOrigin(origin, this.options.trustedOrigins)) {
 			return refuse(socket, 403, 'Forbidden');
 		}
 

@@ -58,6 +58,7 @@ export type {
 	RestApiEndpoint,
 	SecretDeclaration,
 	SiteDeclaration,
+	SiteHosts,
 	SitePassword,
 	TelemetryDeclaration,
 	TelemetryKey,
@@ -68,8 +69,10 @@ export type {
 export {
 	DEFAULT_POSTGRES_VERSION,
 	DERIVES_FROM,
+	isWildcardSite,
 	PUBLIC,
 	TELEMETRY_KEYS,
+	WILDCARD_SUBDOMAIN,
 } from './declaration';
 export {
 	assertDerivations,
@@ -124,6 +127,7 @@ export {
 	scopedName,
 	serviceKey,
 } from './naming';
+export { trustsOrigin, wildcardDomainOf } from './origins';
 export {
 	drawSecret,
 	SECRET_LENGTH,

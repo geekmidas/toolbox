@@ -20,7 +20,9 @@ import {
 	type AppSpec,
 	type ConstructManifest,
 	kebabCase,
+	WILDCARD_SUBDOMAIN,
 } from '@geekmidas/manifest';
+import { assertSubdomains } from './subdomains.js';
 import type {
 	AppDomainConfig,
 	DeployTargetName,
@@ -114,7 +116,10 @@ function assignPorts(apps: Record<string, NormalizedAppConfig>): void {
  * rely on. Then an explicit `root: true`. A project with one site needs neither.
  */
 function markRoot(apps: Record<string, NormalizedAppConfig>): void {
-	const sites = Object.entries(apps).filter(([, a]) => a.type === 'web');
+	// A wildcard site answers on every subdomain, never on the domain itself.
+	const sites = Object.entries(apps).filter(
+		([, a]) => a.type === 'web' && a.subdomain !== WILDCARD_SUBDOMAIN,
+	);
 	if (sites.length === 0) return;
 	if (sites.some(([, a]) => a.root)) return;
 
@@ -128,6 +133,8 @@ export function derivedApps(
 	manifest: ConstructManifest,
 	workspace: NormalizedWorkspace,
 ): Record<string, NormalizedAppConfig> {
+	assertSubdomains(manifest, workspace.protectedSubdomains);
+
 	const apps: Record<string, NormalizedAppConfig> = {};
 	const defaultTarget: DeployTargetName =
 		workspace.deploy?.default ?? 'dokploy';

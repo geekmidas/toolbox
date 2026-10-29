@@ -668,8 +668,23 @@ export interface SiteDeclaration extends Node {
 	 * The label it answers on under a stage's domain — `api` for
 	 * `api.myapp.com`, from `domains` — and under the project locally,
 	 * `api.myapp.localhost`. Absent, its id kebab-cased.
+	 *
+	 * `'*'` ({@link WILDCARD_SUBDOMAIN}) is every label nothing else answers
+	 * on: one host per tenant, `acme.myapp.com`. Such a site never holds the
+	 * base domain, names its {@link SiteDeclaration.hosts} check, and is the
+	 * only one of its kind in a project.
 	 */
 	subdomain?: string;
+	/**
+	 * Which hosts a wildcard site serves: the route the edge asks,
+	 * `GET <path>?domain=<host>`, before it serves a host — `200` for a
+	 * tenant, `404` for anything else.
+	 *
+	 * A route on a surface rather than a list, because tenants are created by
+	 * the running app and not by a deploy. Present exactly when `subdomain` is
+	 * `'*'`.
+	 */
+	hosts?: SiteHosts;
 	/**
 	 * How it is built and run, `path` included.
 	 *
@@ -715,6 +730,28 @@ export interface SitePassword {
 	secret: ConstructId;
 	/** The deployed stages that ask for it. */
 	stages: readonly string[];
+}
+
+/** A site's subdomain that means every subdomain — see `SiteDeclaration`. */
+export const WILDCARD_SUBDOMAIN = '*';
+
+/** Where a wildcard site's hosts are checked: one `GET` route on a surface. */
+export interface SiteHosts {
+	/** The surface serving it, by id. */
+	surface: ConstructId;
+	/** Its path on that surface — `/tenants/hosts`. */
+	path: string;
+}
+
+/**
+ * Whether a declaration is a site answering on every subdomain.
+ */
+export function isWildcardSite(
+	declaration: Declaration | undefined,
+): declaration is SiteDeclaration {
+	return (
+		declaration?.kind === 'site' && declaration.subdomain === WILDCARD_SUBDOMAIN
+	);
 }
 
 /**
@@ -1156,8 +1193,16 @@ export interface ProvidesByKind {
 	function: { url: string };
 	/** A cron is reached by its schedule and by nothing else, so it provides none. */
 	cron: Record<never, never>;
-	/** Where the site is served. Public for the same reason an API's is. */
-	site: { url: string };
+	/**
+	 * Where the site is served. Public for the same reason an API's is.
+	 *
+	 * A wildcard site's address is `https://*.<domain>`, and it provides two
+	 * more: the domain its tenants' hosts sit under — what a request's host
+	 * has its leading label taken off against — and the comma-separated labels
+	 * no tenant may take (every app's own, and the workspace's
+	 * `protectedSubdomains`).
+	 */
+	site: { url: string; domain: string; protectedSubdomains: string };
 	/**
 	 * The URL scheme it answers on — `shop`, on every stage. What its
 	 * `app.config.ts` registers and what the surfaces it calls trust.

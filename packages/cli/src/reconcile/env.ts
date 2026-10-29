@@ -25,6 +25,7 @@ import {
 	mobileOrigins,
 	provideKey,
 	schemeBase,
+	wildcardDomainOf,
 } from '@geekmidas/manifest';
 import { LOGS_ORG, otlpHeaders } from '../compose/logs.js';
 import { GkmError } from '../errors';
@@ -228,6 +229,18 @@ export function envFor(
 			}
 		}
 		if (url) env[resource.envKey] = url;
+
+		// A wildcard site's tenant is the leading label of the host it is
+		// reached on: the domain under its `*` is what that label comes off,
+		// and the protected labels are the ones no tenant can be.
+		if (resource.kind === 'site' && resource.protectedSubdomains && url) {
+			const domain = wildcardDomainOf(new URL(url).hostname);
+			if (domain) {
+				env[provideKey(resource.id, 'domain')] = domain;
+				env[provideKey(resource.id, 'protectedSubdomains')] =
+					resource.protectedSubdomains.join(',');
+			}
+		}
 
 		// A database owns a second key, and it is deliberately not in `provides`:
 		// the owner URL is what a migrator connects with, so no edge in any

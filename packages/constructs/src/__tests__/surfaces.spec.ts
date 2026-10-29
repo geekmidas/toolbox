@@ -11,7 +11,13 @@ import { KyselyDatabase } from '../database/kysely';
 import { MobileApp } from '../mobile-app';
 import { RandomPassword } from '../random-password';
 import { RestApi } from '../rest-api';
-import { StaticSite } from '../site';
+import {
+	SiteHostsNeedsWildcard,
+	SiteHostsNotGet,
+	StaticSite,
+	WildcardSiteCannotBeRoot,
+	WildcardSiteNeedsHosts,
+} from '../site';
 
 const api = new RestApi('Api', {
 	path: '.',
@@ -94,6 +100,64 @@ describe('StaticSite', () => {
 		) as ConstructManifest;
 
 		expect(dependentsOf(manifest, 'Api')).toEqual(['Console']);
+	});
+
+	describe('on every subdomain', () => {
+		const hosts = api.get('/tenants/hosts').handle(async () => ({}));
+
+		it('declares its hosts check and the two keys a tenant is read with', () => {
+			const app = new StaticSite('App', {
+				path: 'apps/app',
+				variant: 'next',
+				subdomain: '*',
+				hosts,
+			});
+
+			expect(app.declare()[0]).toMatchObject({
+				subdomain: '*',
+				hosts: { surface: 'Api', path: '/tenants/hosts' },
+				provides: ['APP_URL', 'APP_DOMAIN', 'APP_PROTECTED_SUBDOMAINS'],
+			});
+		});
+
+		it('is refused without a hosts check, or with one on a single host', () => {
+			expect(
+				() => new StaticSite('App', { path: 'apps/app', subdomain: '*' }),
+			).toThrow(WildcardSiteNeedsHosts);
+			expect(
+				() =>
+					new StaticSite('App', {
+						path: 'apps/app',
+						subdomain: 'app',
+						hosts,
+					}),
+			).toThrow(SiteHostsNeedsWildcard);
+		});
+
+		it('is refused a hosts check the edge cannot ask with GET', () => {
+			const post = api.post('/tenants/hosts').handle(async () => ({}));
+
+			expect(
+				() =>
+					new StaticSite('App', {
+						path: 'apps/app',
+						subdomain: '*',
+						hosts: post,
+					}),
+			).toThrow(SiteHostsNotGet);
+		});
+
+		it('is refused the base domain', () => {
+			expect(
+				() =>
+					new StaticSite('App', {
+						path: 'apps/app',
+						subdomain: '*',
+						hosts,
+						root: true,
+					}),
+			).toThrow(WildcardSiteCannotBeRoot);
+		});
 	});
 
 	it('names the password it is served behind, and on which stages', () => {

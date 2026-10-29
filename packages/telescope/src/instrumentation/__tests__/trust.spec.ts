@@ -24,6 +24,15 @@ describe('isTrustedOrigin', () => {
 		expect(isTrustedOrigin('https://web.example.com', undefined)).toBe(false);
 		expect(isTrustedOrigin(undefined, origins)).toBe(false);
 	});
+
+	it("trusts one label in place of a wildcard site's *, and no more", () => {
+		const tenants = ['https://*.example.com'];
+
+		expect(isTrustedOrigin('https://acme.example.com', tenants)).toBe(true);
+		expect(isTrustedOrigin('https://example.com', tenants)).toBe(false);
+		expect(isTrustedOrigin('https://a.b.example.com', tenants)).toBe(false);
+		expect(isTrustedOrigin('http://acme.example.com', tenants)).toBe(false);
+	});
 });
 
 describe('isPrivateAddress', () => {

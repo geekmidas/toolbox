@@ -176,6 +176,9 @@ export async function reconcileWorkspace(
 		stage: options.stage,
 		localStage: workspace.stages.local,
 		...backendsOf(workspace),
+		...(workspace.protectedSubdomains
+			? { protectedSubdomains: workspace.protectedSubdomains }
+			: {}),
 		saved: await loadPortState(workspace.root),
 		addresses: surfaceAddresses(workspace, manifest),
 		processorAddresses: processorAddresses(workspace, manifest),

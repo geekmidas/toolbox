@@ -96,6 +96,57 @@ the root because it is the only one; a site named `web` wins by convention; past
 that a site says `root: true` and anything else is an error rather than a coin
 toss.
 
+### A site on every subdomain
+
+A multi-tenant app can serve each tenant on its own host,
+`acme.example.com/orders/42`, by declaring one site with `subdomain: '*'`:
+
+```ts
+// endpoints/tenants.ts — 200 for a host it serves, 404 for anything else
+export const tenantHosts = api
+  .get('/tenants/hosts')
+  .query(z.object({ domain: z.string() }))
+  .handle(async ({ query, db }) => { … });
+
+// constructs/app.ts
+export const app = new StaticSite('App', {
+  path: 'apps/app',
+  variant: 'next',
+  subdomain: '*',
+  hosts: tenantHosts,
+}).dependsOn([api, auth]);
+```
+
+- **Named hosts win.** `api.`, `auth.`, `admin.` and every other app keep their
+  own hosts; the wildcard site gets whatever is left. It never holds the base
+  domain, and a project has at most one.
+- **`hosts`** is a `GET` endpoint the edge asks, `?domain=<host>`, before it
+  serves a host. It runs without a session.
+- **Protected subdomains.** A tenant can never take a label the stage needs:
+  every app's own (derived, never listed) and the names no construct declares,
+  listed once in the workspace config. Listing an app's own is an error:
+
+  ```ts
+  export default defineWorkspace({
+    name: 'shop',
+    domains: { production: 'example.com' },
+    protectedSubdomains: ['www', 'mail', 'status', 'docs'],
+  });
+  ```
+
+- **The app reads its tenant from the host.** The site is handed
+  `APP_DOMAIN` (`example.com`, or `shop.localhost` locally) and
+  `APP_PROTECTED_SUBDOMAINS` (comma-separated), both inlined for its bundle
+  (`NEXT_PUBLIC_APP_DOMAIN`), so the leading label comes off the request's
+  host without hard-coding the domain.
+- **Origins follow.** A surface the site depends on trusts
+  `https://*.example.com` in its CORS and in Better Auth's `trustedOrigins`:
+  any one label, never the domain itself or two labels deep.
+
+Locally the site answers on `*.shop.localhost` (`*.test.shop.localhost` for
+`gkm test`). Deployed targets do not route every subdomain yet: `gkm compose`
+and the AWS target refuse a wildcard site by name rather than serve nothing.
+
 ## Renaming
 
 **A construct id is a physical name.** Renaming `Database` to `Orders` renames

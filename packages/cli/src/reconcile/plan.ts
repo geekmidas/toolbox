@@ -17,10 +17,12 @@ import {
 	type Declaration,
 	type DeclarationKind,
 	dependentsOf,
+	isWildcardSite,
 	type PostgresVersion,
 	providedKeyFor,
 	publicEnvFor,
 	type SecretFormat,
+	WILDCARD_SUBDOMAIN,
 } from '@geekmidas/manifest';
 import { GkmError } from '../errors';
 import { usesTelemetry } from '../telemetry/edges.js';
@@ -32,6 +34,7 @@ import {
 } from '../types';
 import { appKey } from '../workspace/derive.js';
 import { rootSite } from '../workspace/rootSite.js';
+import { protectedSubdomains } from '../workspace/subdomains.js';
 import { EDGE_KINDS } from './caddyfile';
 import { fakeKey, type PlannedFake } from './containers';
 import type { LocalFake } from './fakes';
@@ -333,6 +336,12 @@ export interface PlannedResource {
 	 * them answer.
 	 */
 	callers?: string[];
+	/**
+	 * For a wildcard site: the labels no tenant may take — every app's own
+	 * and the workspace's `protectedSubdomains` — which it resolves as
+	 * `<ID>_PROTECTED_SUBDOMAINS`, and which an edge never sends to it.
+	 */
+	protectedSubdomains?: string[];
 }
 
 export interface Plan {
@@ -430,6 +439,11 @@ export interface PlanOptions {
 	 * `gkm dev --fake`). A credential without one is the stage's own.
 	 */
 	credentialFakes?: Readonly<Record<string, string>>;
+	/**
+	 * The workspace's `protectedSubdomains`: the names, beyond every app's
+	 * own, that a wildcard site's tenants may never take.
+	 */
+	protectedSubdomains?: readonly string[];
 }
 
 /**
@@ -605,6 +619,14 @@ export function planFor(
 			declaration.subdomain
 				? { subdomain: declaration.subdomain }
 				: {}),
+			...(isWildcardSite(declaration)
+				? {
+						protectedSubdomains: protectedSubdomains(
+							manifest,
+							options.protectedSubdomains,
+						),
+					}
+				: {}),
 			...(fake
 				? { fake: { key: fake.key, credentials: fake.credentials } }
 				: {}),
@@ -727,7 +749,10 @@ export function planFor(
 
 	// The site the base domain points at: the same answer a deploy gives, so the
 	// local edge serves it on the bare host.
-	const sites = resources.filter((r) => r.kind === 'site');
+	// Never a wildcard site, which answers on every subdomain instead.
+	const sites = resources.filter(
+		(r) => r.kind === 'site' && r.subdomain !== WILDCARD_SUBDOMAIN,
+	);
 	const root = rootSite(
 		sites.map((r) => {
 			const declared = manifest[r.id];

@@ -104,6 +104,9 @@ function localPlan(
 	return planFor(manifest, workspace.stages.local, provisionOrder(manifest), {
 		localStage: workspace.stages.local,
 		...backendsOf(workspace),
+		...(workspace.protectedSubdomains
+			? { protectedSubdomains: workspace.protectedSubdomains }
+			: {}),
 		fakes,
 		credentialFakes,
 		edge: false,

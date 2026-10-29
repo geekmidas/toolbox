@@ -275,6 +275,8 @@ export interface ReconcileOptions {
 	credentials: LocalCredentials;
 	/** Whether the local edge fronts surfaces, sites and file servers. */
 	edge?: boolean;
+	/** The workspace's `protectedSubdomains` — see `PlanOptions`. */
+	protectedSubdomains?: readonly string[];
 	/**
 	 * Where MinIO posts each watched bucket's events — see `objectEvents.ts`.
 	 * The same for every stage, because one MinIO serves them all; only the
@@ -405,6 +407,9 @@ export async function reconcile(
 			? { credentialFakes: options.credentialFakes }
 			: {}),
 		...(options.edge === undefined ? {} : { edge: options.edge }),
+		...(options.protectedSubdomains
+			? { protectedSubdomains: options.protectedSubdomains }
+			: {}),
 	});
 
 	// `gkm test` exports nothing: its stage starts no collector and hands no
