@@ -8,8 +8,6 @@ import type { Logger } from '@geekmidas/logger';
 import { ConsoleLogger } from '@geekmidas/logger/console';
 import type { Service } from '@geekmidas/services';
 import uniqBy from 'lodash.uniqby';
-import { cloneWith } from '../clone';
-import { addMonitor, type MonitorService } from '../monitor';
 import type { HttpMethod } from '../types';
 import {
 	type Authorizer,
@@ -81,7 +79,6 @@ export class EndpointFactory<
 	private defaultActorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
 	private customSecuritySchemes: TSecuritySchemes = {} as TSecuritySchemes;
 	private defaultRlsConfig?: TRlsConfig;
-	private defaultMonitors: MonitorService[] = [];
 
 	constructor({
 		basePath,
@@ -98,7 +95,6 @@ export class EndpointFactory<
 		defaultActorExtractor,
 		customSecuritySchemes = {} as TSecuritySchemes,
 		defaultRlsConfig,
-		defaultMonitors = [],
 	}: EndpointFactoryOptions<
 		TServices,
 		TBasePath,
@@ -132,17 +128,6 @@ export class EndpointFactory<
 		this.defaultActorExtractor = defaultActorExtractor;
 		this.customSecuritySchemes = customSecuritySchemes;
 		this.defaultRlsConfig = defaultRlsConfig;
-		this.defaultMonitors = defaultMonitors;
-	}
-
-	/**
-	 * Report every endpoint's requests to a monitor. Endpoints built from this
-	 * factory inherit it, and can add their own with `.monitor()`.
-	 */
-	monitor(monitor: MonitorService): this {
-		return cloneWith(this, {
-			defaultMonitors: addMonitor(this.defaultMonitors, monitor),
-		});
 	}
 
 	static joinPaths<TBasePath extends string, P extends string>(
@@ -227,7 +212,6 @@ export class EndpointFactory<
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			defaultEventPublisher: this.defaultEventPublisher,
-			defaultMonitors: this.defaultMonitors,
 			availableAuthorizers: authorizerConfigs,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -294,7 +278,6 @@ export class EndpointFactory<
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			defaultEventPublisher: this.defaultEventPublisher,
-			defaultMonitors: this.defaultMonitors,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -377,7 +360,6 @@ export class EndpointFactory<
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			defaultEventPublisher: this.defaultEventPublisher,
-			defaultMonitors: this.defaultMonitors,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName:
 				name === 'none' ? undefined : (name as TAuthorizers[number]),
@@ -431,7 +413,6 @@ export class EndpointFactory<
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			defaultEventPublisher: this.defaultEventPublisher,
-			defaultMonitors: this.defaultMonitors,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -483,7 +464,6 @@ export class EndpointFactory<
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			defaultEventPublisher: this.defaultEventPublisher,
-			defaultMonitors: this.defaultMonitors,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -541,7 +521,6 @@ export class EndpointFactory<
 				| SessionFn<[...S, ...TServices], TLogger, TSession, TDatabase>
 				| undefined,
 			defaultEventPublisher: this.defaultEventPublisher,
-			defaultMonitors: this.defaultMonitors,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -605,7 +584,6 @@ export class EndpointFactory<
 				TSession
 			>,
 			defaultEventPublisher: this.defaultEventPublisher,
-			defaultMonitors: this.defaultMonitors,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -666,7 +644,6 @@ export class EndpointFactory<
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			defaultEventPublisher: publisher,
-			defaultMonitors: this.defaultMonitors,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -721,7 +698,6 @@ export class EndpointFactory<
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: session,
 			defaultEventPublisher: this.defaultEventPublisher,
-			defaultMonitors: this.defaultMonitors,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -789,7 +765,6 @@ export class EndpointFactory<
 				| SessionFn<TServices, TLogger, TSession, T>
 				| undefined,
 			defaultEventPublisher: this.defaultEventPublisher,
-			defaultMonitors: this.defaultMonitors,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -844,7 +819,6 @@ export class EndpointFactory<
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			defaultEventPublisher: this.defaultEventPublisher,
-			defaultMonitors: this.defaultMonitors,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: storage,
@@ -904,7 +878,6 @@ export class EndpointFactory<
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			defaultEventPublisher: this.defaultEventPublisher,
-			defaultMonitors: this.defaultMonitors,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -973,7 +946,6 @@ export class EndpointFactory<
 			defaultLogger: this.defaultLogger,
 			defaultSessionExtractor: this.defaultSessionExtractor,
 			defaultEventPublisher: this.defaultEventPublisher,
-			defaultMonitors: this.defaultMonitors,
 			availableAuthorizers: this.availableAuthorizers,
 			defaultAuthorizerName: this.defaultAuthorizerName,
 			defaultAuditorStorage: this.defaultAuditorStorage,
@@ -1046,8 +1018,6 @@ export class EndpointFactory<
 		if (this.defaultEventPublisher) {
 			builder._setPublisher(this.defaultEventPublisher);
 		}
-
-		builder._monitors = [...this.defaultMonitors];
 
 		// Set available authorizers and default
 		builder._availableAuthorizers = this.availableAuthorizers;
@@ -1173,7 +1143,6 @@ export interface EndpointFactoryOptions<
 	defaultActorExtractor?: ActorExtractor<TServices, TSession, TLogger>;
 	customSecuritySchemes?: TSecuritySchemes;
 	defaultRlsConfig?: TRlsConfig;
-	defaultMonitors?: MonitorService[];
 }
 
 export const e = new EndpointFactory();

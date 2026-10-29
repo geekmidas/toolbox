@@ -3,6 +3,7 @@ import { dirname, join, relative } from 'node:path';
 import { Cron } from '@geekmidas/constructs/crons';
 import {
 	type CronField,
+	cronPeriod,
 	InvalidCronExpressionError,
 	toAwsCron,
 } from '@geekmidas/manifest';
@@ -49,19 +50,22 @@ export class CronGenerator extends ConstructGenerator<
 				context,
 			);
 
+			const schedule = schedules.get(key) as string;
+			const uptime = construct.getUptime();
+
 			cronInfos.push({
 				name: key,
 				handler: relative(process.cwd(), handlerFile).replace(
 					/\.ts$/,
 					'.handler',
 				),
-				schedule: schedules.get(key) as string,
+				schedule,
 				timeout: construct.timeout,
 				memorySize: construct.memorySize,
 				environment: await construct.getEnvironment({
 					markOptional: context.markOptional,
 				}),
-				monitoring: construct.getMonitoring(),
+				...(uptime && { uptime: { ...uptime, period: cronPeriod(schedule) } }),
 			});
 
 			logger.log(`Generated cron handler: ${key}`);

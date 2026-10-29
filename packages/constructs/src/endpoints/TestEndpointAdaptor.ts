@@ -5,7 +5,7 @@ import type {
 } from '@geekmidas/audit';
 import { DefaultAuditor } from '@geekmidas/audit';
 import { EnvironmentParser } from '@geekmidas/envkit';
-import { ForbiddenError, wrapError } from '@geekmidas/errors';
+import { ForbiddenError } from '@geekmidas/errors';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import type {
@@ -19,7 +19,6 @@ import {
 	type ServiceRecord,
 } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import { startMonitors } from '../monitor';
 import { publishConstructEvents } from '../publisher';
 import type { HttpMethod } from '../types';
 import type { MappedAudit } from './audit';
@@ -200,25 +199,10 @@ export class TestEndpointAdaptor<
 		// Get database from context for session extraction
 		const rawDb = (ctx as any).database as TDatabase;
 
-		const monitor = await startMonitors(
-			this.endpoint,
-			this.serviceDiscovery,
-			logger,
-		);
-
 		// Wrap handler execution in request context
-		try {
-			const response = await runWithRequestContext(
-				{ logger, requestId, startTime },
-				async () =>
-					this.run(ctx, { body, query, params, header, cookie, logger, rawDb }),
-			);
-			await monitor.settle(response.status);
-			return response;
-		} catch (error) {
-			await monitor.settle(wrapError(error).statusCode, error);
-			throw error;
-		}
+		return runWithRequestContext({ logger, requestId, startTime }, async () =>
+			this.run(ctx, { body, query, params, header, cookie, logger, rawDb }),
+		);
 	}
 
 	private async run(

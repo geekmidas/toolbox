@@ -7,6 +7,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { ConstructType } from '../Construct';
 import { Function, type FunctionHandler } from '../functions';
+import type { MonitorInfo } from '../monitor';
 
 export class Cron<
 	TInput extends ComposableStandardSchema | undefined = undefined,
@@ -70,6 +71,15 @@ export class Cron<
 
 	get schedule(): ScheduleExpression | undefined {
 		return this._schedule;
+	}
+
+	/**
+	 * The monitor set with `.uptime()` as the build manifest records it, or
+	 * nothing when the cron has none.
+	 */
+	getUptime(): MonitorInfo | undefined {
+		const [uptime] = this.monitors;
+		return uptime && (uptime.monitor ?? { type: uptime.serviceName });
 	}
 }
 

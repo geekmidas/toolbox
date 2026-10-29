@@ -37,16 +37,21 @@ export function flattenManifestField<T>(
 }
 
 /**
- * A monitor set with `.monitor()`, so infrastructure can provision what it
- * reports to, e.g. create a heartbeat and set its URL in `env`.
+ * A cron's uptime monitor, set with `.uptime()`, so infrastructure can create
+ * what it reports to, e.g. a heartbeat whose URL it sets in `env`.
  */
-export interface MonitorInfo {
+export interface UptimeInfo {
 	/** The kind of monitor, e.g. `heartbeat`. */
 	type: string;
 	/** The service it reports to, e.g. `betterStack`. Absent for a custom one. */
 	provider?: string;
 	/** The environment variable it reads its target from. */
 	env?: string;
+	/**
+	 * The longest gap between runs of the cron's schedule, in seconds: how
+	 * often the monitor should expect to hear from it (see `cronPeriod`).
+	 */
+	period: number;
 }
 
 /** A single HTTP route. */
@@ -63,8 +68,6 @@ export interface RouteInfo {
 	environment?: readonly string[];
 	/** Authorizer name: `none`, `iam`, or a declared authorizer. */
 	authorizer: string;
-	/** Monitors set with `.monitor()`; absent when there are none. */
-	monitoring?: readonly MonitorInfo[];
 }
 
 /** A standalone Lambda function. */
@@ -74,21 +77,19 @@ export interface FunctionInfo {
 	timeout?: number;
 	memorySize?: number;
 	environment?: readonly string[];
-	/** Monitors set with `.monitor()`; absent when there are none. */
-	monitoring?: readonly MonitorInfo[];
 }
 
 /** A scheduled (cron) function. */
 export interface CronInfo {
 	name: string;
 	handler: string;
-	/** Schedule expression, e.g. `rate(1 day)` or `cron(0 12 * * ? *)`. */
+	/** Schedule, always the six-field AWS form, e.g. `cron(0 12 * * ? *)`. */
 	schedule: string;
 	timeout?: number;
 	memorySize?: number;
 	environment?: readonly string[];
-	/** Monitors set with `.monitor()`; absent when there are none. */
-	monitoring?: readonly MonitorInfo[];
+	/** Set with `.uptime()`; absent when the cron has none. */
+	uptime?: UptimeInfo;
 }
 
 /** An event subscriber function (topic/queue resolved by `transport`). */

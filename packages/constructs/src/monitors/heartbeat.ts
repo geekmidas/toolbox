@@ -37,7 +37,7 @@ export interface HeartbeatOptions {
  * ```typescript
  * cron
  *   .schedule('cron(0 0 * * *)')
- *   .monitor(heartbeat.betterStack())
+ *   .uptime(heartbeat.betterStack())
  *   .handle(async () => {});
  * ```
  */
@@ -69,7 +69,9 @@ export function heartbeat(
 					signal: AbortSignal.timeout(timeout),
 				});
 				if (!response.ok) {
-					throw new Error(`Heartbeat responded with ${response.status}`);
+					throw new Error('Heartbeat responded with an error status', {
+						cause: { status: response.status },
+					});
 				}
 			};
 

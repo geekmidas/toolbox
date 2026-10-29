@@ -7,6 +7,7 @@ import uniqBy from 'lodash.uniqby';
 import { ConstructType } from '../Construct';
 import { cloneWith } from '../clone';
 import { FunctionBuilder, type FunctionHandler } from '../functions';
+import type { MonitorService } from '../monitor';
 import { Cron, type CronExpression, type ScheduleExpression } from './Cron';
 
 export class CronBuilder<
@@ -31,6 +32,7 @@ export class CronBuilder<
 	TDatabaseServiceName
 > {
 	private _schedule?: ScheduleExpression;
+	private _uptime?: MonitorService;
 
 	constructor() {
 		super(ConstructType.Cron);
@@ -59,6 +61,18 @@ export class CronBuilder<
 		return cloneWith(this, {
 			_schedule: _expression as ScheduleExpression,
 		});
+	}
+
+	/**
+	 * Report each run to an uptime monitor, so a cron that stops running is
+	 * noticed: `heartbeat.betterStack()` pings on success and reports a
+	 * failure. Calling it again replaces the monitor.
+	 *
+	 * `gkm build` records it in the manifest with the schedule's period, the
+	 * longest gap between runs, so infrastructure can create the heartbeat.
+	 */
+	uptime(monitor: MonitorService): this {
+		return cloneWith(this, { _uptime: monitor });
 	}
 
 	override input<T extends ComposableStandardSchema>(
@@ -260,7 +274,7 @@ export class CronBuilder<
 		// configured base keeps its configuration for every construct built
 		// from it. The reset that used to be here wiped the base on first use.
 
-		cron.monitors = this._monitors;
+		cron.monitors = this._uptime ? [this._uptime] : [];
 
 		return cron;
 	}
