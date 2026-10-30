@@ -166,6 +166,7 @@
     "no-hand-rolled-services",
     "no-rabbitmq-url",
     "object-events",
+    "one-manifest",
     "openapi-document-fixes",
     "owner-creates-extensions",
     "patched-node-image",
