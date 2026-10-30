@@ -6,7 +6,7 @@ Scope: `packages/cli/src/dev/index.ts`, `packages/cli/src/generators/Generator.t
 
 ## Background
 
-Running `gkm dev` against a real workspace (e.g. `rezgo`: api, auth, web, app/Expo)
+Running `gkm dev` against a real workspace (e.g. `myapp`: api, auth, web, app/Expo)
 exposes three classes of failure. None are caused by user code; they are
 limitations of the current dev orchestrator and hot-reload implementation.
 
@@ -123,11 +123,11 @@ After pressing Ctrl+C in a workspace `gkm dev`, the shell returns but
 shell
   └── gkm dev (top-level, workspace)
         └── pnpm turbo run dev          [spawned with detached: true]
-              ├── @rezgo/api: gkm dev   (per-app)
+              ├── @myapp/api: gkm dev   (per-app)
               │     └── tsx              [spawned with detached: true]
               │           └── node       (Hono server)
-              ├── @rezgo/auth: ...
-              └── @rezgo/app: ...
+              ├── @myapp/auth: ...
+              └── @myapp/app: ...
 ```
 
 ### Root cause
@@ -161,8 +161,8 @@ This makes the kill reachable regardless of process-group escape.
 
 ### Symptoms
 
-`@rezgo/app` (Expo) crashed with a Metro `DependencyGraph._onHasteChange`
-TypeError. Within seconds, `@rezgo/api`, `@rezgo/auth`, `@rezgo/web` all
+`@myapp/app` (Expo) crashed with a Metro `DependencyGraph._onHasteChange`
+TypeError. Within seconds, `@myapp/api`, `@myapp/auth`, `@myapp/web` all
 received SIGTERM and shut down. The user lost 21 minutes of warmed dev state.
 
 ### Root causes

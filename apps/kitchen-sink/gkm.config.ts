@@ -53,7 +53,7 @@ export default defineWorkspace({
 		telemetry: { production: false },
 		...(process.env.DOKPLOY_ENDPOINT
 			? {
-					registry: 'ghcr.io/technanimals',
+					registry: 'ghcr.io/geekmidas',
 					dokploy: {
 						endpoint: process.env.DOKPLOY_ENDPOINT,
 					},
