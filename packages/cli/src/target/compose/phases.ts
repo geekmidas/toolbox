@@ -458,15 +458,11 @@ export async function validateCompose(
 		);
 	}
 
-	// The runnables' edges say which surface reaches which; the manifest the
-	// run discovered has the declarations but not them.
-	const runnables: Record<string, string[]> = {};
 	const background: Record<string, string[]> = {};
 	const subscribers: Record<string, BoundSubscriber[]> = {};
 	const manifest = await discover({
 		patterns: constructGlobs(workspace),
 		cwd: root,
-		runnables,
 		background,
 		subscribers,
 	});
@@ -483,7 +479,6 @@ export async function validateCompose(
 	const input: StackInput = {
 		workspace,
 		manifest,
-		runnables,
 		background,
 		subscribers,
 		stage,
@@ -527,7 +522,7 @@ export async function validateCompose(
 	// A cache is reached over the Redis wire protocol, and the client is the
 	// project's own dependency: a build without it fails deep inside Docker.
 	if (mode === 'build') {
-		assertRedisClient(workspace, composed, manifest, runnables);
+		assertRedisClient(workspace, composed, manifest);
 	}
 
 	// No image embeds the stage's secrets: a backend reads them at runtime
@@ -701,7 +696,6 @@ function assertRedisClient(
 	workspace: NormalizedWorkspace,
 	stack: ComposeStack,
 	manifest: ConstructManifest,
-	runnables: Readonly<Record<string, readonly string[]>>,
 ): void {
 	if (!stack.plan.resources.some((r) => r.kind === 'cache')) return;
 
@@ -716,13 +710,11 @@ function assertRedisClient(
 			.filter(
 				(app) =>
 					(app.kind === 'rest-api' || app.kind === 'websocket-api') &&
-					reachesCache(appEnvKeys(manifest, app.name, runnables)),
+					reachesCache(appEnvKeys(manifest, app.name)),
 			)
 			.map((a) => a.name),
 		...stack.workers
-			.filter((worker) =>
-				reachesCache(workerEnvKeys(manifest, worker.id, runnables)),
-			)
+			.filter((worker) => reachesCache(workerEnvKeys(manifest, worker.id)))
 			.map((worker) => worker.host),
 	]);
 	const missing = [...hosts]

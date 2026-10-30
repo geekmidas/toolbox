@@ -74,9 +74,9 @@ describe('inNetworkEnv', () => {
 });
 
 /**
- * The graph an app's environment is composed from: an API whose endpoints use
- * the `Auth` tenant — edges the glob finds, not the surface's own node — and a
- * site that calls the API. `Orders` is reached by nothing.
+ * The graph an app's environment is composed from: an API whose endpoint uses
+ * the `Auth` tenant, and a site that calls the API. `Orders` is reached by
+ * nothing.
  */
 const withApps = {
 	...manifest,
@@ -84,7 +84,15 @@ const withApps = {
 		kind: 'rest-api',
 		id: 'Api',
 		path: 'apps/api',
-		endpoints: [],
+		endpoints: [
+			{
+				id: 'ApiGET/me',
+				handler: 'endpoints/me.ts#me',
+				method: 'GET',
+				path: '/me',
+				dependencies: [{ target: 'Auth', kind: 'database-schema' }],
+			},
+		],
 		provides: ['API_URL', 'API_TRUSTED_ORIGINS', 'API_COOKIE_DOMAIN'],
 	},
 	Web: {
@@ -127,9 +135,6 @@ const withAppsWorkspace = {
 	},
 } as unknown as NormalizedWorkspace;
 
-/** What the glob found: the API's endpoints use the tenant. */
-const runnables = { Api: ['Auth'] };
-
 describe('appServices', () => {
 	it('builds each app from its Dockerfile, behind the apps profile', () => {
 		const services = appServices(
@@ -137,7 +142,6 @@ describe('appServices', () => {
 			withApps,
 			['postgres'],
 			TEST_CREDENTIALS,
-			runnables,
 		);
 
 		expect(Object.keys(services)).toEqual(['api', 'web', 'signer']);
@@ -158,13 +162,9 @@ describe('appServices', () => {
 	// the database's owner URL. An app's environment is its edges.
 	describe('an app gets what its edges reach, and nothing else', () => {
 		const env = (app: string) =>
-			appServices(
-				withAppsWorkspace,
-				withApps,
-				['postgres'],
-				TEST_CREDENTIALS,
-				runnables,
-			)[app]?.environment ?? {};
+			appServices(withAppsWorkspace, withApps, ['postgres'], TEST_CREDENTIALS)[
+				app
+			]?.environment ?? {};
 
 		it('gives the API the tenant its endpoints use, and not the database nothing reaches', () => {
 			expect(env('api')).toHaveProperty('AUTH_URL');
@@ -184,6 +184,19 @@ describe('appServices', () => {
 	describe("a credential's fake", () => {
 		const faked = {
 			...withApps,
+			// The API's endpoint charges through the credential too.
+			Api: {
+				...withApps.Api,
+				endpoints: [
+					{
+						id: 'ApiPOST/charges',
+						handler: 'endpoints/charges.ts#charge',
+						method: 'POST',
+						path: '/charges',
+						dependencies: [{ target: 'Payments', kind: 'credential' }],
+					},
+				],
+			},
 			Payments: {
 				kind: 'credential',
 				id: 'Payments',
@@ -196,7 +209,6 @@ describe('appServices', () => {
 				faked,
 				['postgres'],
 				TEST_CREDENTIALS,
-				{ Api: ['Auth', 'Payments'] },
 				{},
 				credentialFakes,
 			)[app]?.environment ?? {};
@@ -223,13 +235,8 @@ describe('appServices', () => {
 	// empty `VITE_API_URL`.
 	describe('a site', () => {
 		const web = () =>
-			appServices(
-				withAppsWorkspace,
-				withApps,
-				['postgres'],
-				TEST_CREDENTIALS,
-				runnables,
-			).web;
+			appServices(withAppsWorkspace, withApps, ['postgres'], TEST_CREDENTIALS)
+				.web;
 
 		it('is built with its public URLs as build args, at addresses a browser opens', () => {
 			expect(web()?.build?.args).toEqual({

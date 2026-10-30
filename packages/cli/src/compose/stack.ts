@@ -630,8 +630,6 @@ export interface StackStorage {
 export interface StackInput {
 	workspace: NormalizedWorkspace;
 	manifest: ConstructManifest;
-	/** Each owner's runnables' edges, from discovery. */
-	runnables?: Readonly<Record<string, readonly string[]>>;
 	/**
 	 * Each Worker's crons', queues' and subscribers' files, from discovery —
 	 * which workers run, and which app each is built from.
@@ -951,7 +949,6 @@ export function composeStack(input: StackInput): ComposeStack {
 				stage,
 				declarations: stageServiceDeclarations({
 					manifest,
-					...(input.runnables ? { runnables: input.runnables } : {}),
 				}),
 				supplied: custom,
 				allow: input.allowDevServices === true,
@@ -1253,7 +1250,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		// at runtime is the deploy's business, not the build's.
 		if (input.buildOnly) continue;
 
-		const keys = appEnvKeys(manifest, app.name, input.runnables) ?? new Set();
+		const keys = appEnvKeys(manifest, app.name) ?? new Set();
 		const values = valuesFor(app, keys);
 
 		// The origins Better Auth trusts are the browser's and, now, each
@@ -1318,8 +1315,7 @@ export function composeStack(input: StackInput): ComposeStack {
 	// A worker reaches every surface across the compose network: it is never
 	// one, so no address is its own — unless SNS pushes to it.
 	for (const worker of input.buildOnly ? [] : workers) {
-		const keys =
-			workerEnvKeys(manifest, worker.id, input.runnables) ?? new Set();
+		const keys = workerEnvKeys(manifest, worker.id) ?? new Set();
 		const resolved = valuesFor(
 			{ name: worker.name, id: worker.id, kind: 'rest-api' },
 			keys,
@@ -1387,8 +1383,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		}
 
 		if (input.buildOnly) continue;
-		const keys =
-			processorEnvKeys(manifest, unit.id, input.runnables) ?? new Set();
+		const keys = processorEnvKeys(manifest, unit.id) ?? new Set();
 		unit.env = {
 			// Telemetry: the stage's, when the file server has an edge to the node.
 			...scopeTelemetryEnv(

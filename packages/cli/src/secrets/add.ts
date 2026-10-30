@@ -138,11 +138,9 @@ export async function secretsAddCommand(
 	if (!local) assertDeployedStage(workspace.stages, stage);
 
 	const patterns = constructGlobs(workspace);
-	const runnables: Record<string, string[]> = {};
 	const manifest = await discover({
 		patterns,
 		cwd: workspace.root,
-		runnables,
 	});
 
 	const store = await secretsStoreFor(workspace, stage, {
@@ -153,7 +151,6 @@ export async function secretsAddCommand(
 
 	const all = workspaceStageKeys({
 		manifest,
-		runnables,
 		local,
 		supplied: stored?.custom ?? {},
 		...(domain ? { domain } : {}),

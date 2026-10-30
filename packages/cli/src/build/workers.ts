@@ -168,12 +168,11 @@ function hostApps(
 			return {
 				name,
 				root: isAbsolute(app.path) ? app.path : join(workspace.root, app.path),
-				// Endpoints declared on the surface itself are one that serves
-				// itself — an auth server — whose build generates no server. A
-				// WebSocket surface always serves itself.
+				// A surface that serves itself — an auth server — has a build that
+				// generates no server. A WebSocket surface always serves itself.
 				generated: !(
 					surface?.kind === 'websocket-api' ||
-					(surface?.kind === 'rest-api' && surface.endpoints.length > 0)
+					(surface?.kind === 'rest-api' && surface.servesItself === true)
 				),
 			};
 		})

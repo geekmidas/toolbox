@@ -19,7 +19,6 @@ import { bucketOrigins } from '../s3/origins';
 let dir: string;
 let workspace: NormalizedWorkspace;
 let manifest: ConstructManifest;
-let runnables: Record<string, string[]>;
 
 beforeAll(async () => {
 	dir = realpathSync(await createTempDir('gkm-provider-origins-'));
@@ -47,7 +46,7 @@ export const upload = api
 	.handle(async () => ({ ok: true }));
 `,
 	);
-	({ workspace, manifest, runnables } = await loadComposeApp(dir));
+	({ workspace, manifest } = await loadComposeApp(dir));
 }, 120_000);
 
 afterAll(async () => {
@@ -60,7 +59,6 @@ describe("a bucket's CORS origins", () => {
 			bucketOrigins({
 				workspace,
 				manifest,
-				runnables,
 				stage: 'production',
 				bucket: 'Uploads',
 			}),
@@ -72,7 +70,6 @@ describe("a bucket's CORS origins", () => {
 			bucketOrigins({
 				workspace,
 				manifest,
-				runnables,
 				stage: 'production',
 				bucket: 'Archive',
 			}),
@@ -84,7 +81,6 @@ describe("a bucket's CORS origins", () => {
 			bucketOrigins({
 				workspace,
 				manifest,
-				runnables,
 				stage: 'preview',
 				bucket: 'Uploads',
 			}),

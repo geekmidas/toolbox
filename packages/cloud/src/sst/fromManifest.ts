@@ -642,8 +642,8 @@ export function describeRoutes(manifest: ConstructManifest): string[] {
 		lines.push(`${id}:`);
 
 		if (declaration.endpoints.length === 0) {
-			// Empty is now genuinely empty: the build folds discovered routes into
-			// the surface that serves them, so a surface with none has none.
+			// Empty is genuinely empty: discovery nests every route in the
+			// surface that serves it, so a surface with none has none.
 			lines.push('  (no routes)');
 		}
 
@@ -657,11 +657,11 @@ export function describeRoutes(manifest: ConstructManifest): string[] {
 			);
 		}
 
-		// A caller relationship, printed apart from the routes because it grants
-		// nothing — see `RestApiDeclaration.calls`.
-		if (declaration.calls?.length) {
+		// What authenticates it, printed apart from the routes because it grants
+		// nothing: the auth server learns this surface's origin.
+		if (declaration.auth) {
 			lines.push(
-				`  calls ${declaration.calls.map((edge) => edge.target).join(', ')} (origin only; grants nothing)`,
+				`  auth ${declaration.auth.target} (origin only; grants nothing)`,
 			);
 		}
 	}

@@ -60,11 +60,11 @@ describe('publicEnvFor', () => {
 });
 
 describe('dependenciesOf', () => {
-	it("includes a surface's calls alongside its handlers' edges", () => {
+	it("includes a surface's authenticator alongside its handlers' edges", () => {
 		const api = {
 			kind: 'rest-api',
 			id: 'Api',
-			calls: [{ target: 'Auth', kind: 'rest-api' }],
+			auth: { target: 'Auth', kind: 'rest-api' },
 			endpoints: [
 				{ id: 'e', dependencies: [{ target: 'Orders', kind: 'database' }] },
 			],

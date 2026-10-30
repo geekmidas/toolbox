@@ -243,16 +243,25 @@ describe('a bucket whose links reach a phone, locally', () => {
 				...(processors.length ? { processors } : {}),
 				provides: ['ASSETS_URL'],
 			},
+			// The buckets are an endpoint's, as `.dependsOn([…])` declares them
+			// (#337) — not the surface's.
 			Api: {
 				kind: 'rest-api',
 				id: 'Api',
 				path: 'apps/api',
-				dependencies: [
-					{ target: 'Documents', kind: 'objects' },
-					{ target: 'Assets', kind: 'file-server' },
-				],
 				provides: ['API_URL', 'API_TRUSTED_ORIGINS', 'API_COOKIE_DOMAIN'],
-				endpoints: [],
+				endpoints: [
+					{
+						id: 'ApiGET/trips/:id',
+						handler: 'endpoints/trips.ts#getTrip',
+						method: 'GET',
+						path: '/trips/:id',
+						dependencies: [
+							{ target: 'Documents', kind: 'objects' },
+							{ target: 'Assets', kind: 'file-server' },
+						],
+					},
+				],
 			},
 			Caller: {
 				kind: app === 'Api' ? 'mobile-app' : 'site',

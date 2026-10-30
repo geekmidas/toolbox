@@ -358,7 +358,6 @@ async function provisionResources(
 			workspace: phaseCtx.workspace,
 			stage: phaseCtx.stage,
 			manifest: phaseCtx.manifest,
-			runnables: (phaseCtx.runnables ?? {}) as Record<string, string[]>,
 			...(phaseCtx.subscribers ? { subscribers: phaseCtx.subscribers } : {}),
 			secrets: phaseCtx.secrets,
 			state: store,
@@ -486,13 +485,11 @@ async function prepare(
 	// `site` is one site — and the config only says how to run each. A project
 	// that declares no surfaces keeps its configured apps, so adopting
 	// constructs stays something you do a piece at a time.
-	const runnables: Record<string, string[]> = {};
 	const background: Record<string, string[]> = {};
 	const subscribers: Record<string, BoundSubscriber[]> = {};
 	const manifest = await discover({
 		patterns: constructGlobs(configured),
 		cwd: configured.root,
-		runnables,
 		background,
 		subscribers,
 	});
@@ -593,7 +590,6 @@ async function prepare(
 		identity,
 		workspace,
 		manifest,
-		runnables,
 		background,
 		subscribers,
 		options,

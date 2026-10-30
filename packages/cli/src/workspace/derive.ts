@@ -19,6 +19,7 @@
 import {
 	type AppSpec,
 	type ConstructManifest,
+	dependenciesOf,
 	kebabCase,
 	WILDCARD_SUBDOMAIN,
 } from '@geekmidas/manifest';
@@ -229,11 +230,9 @@ export function derivedApps(
 		const app = apps[appKey(id)];
 		if (!app) continue;
 
-		// A site names its edges `dependencies`; a surface names them `calls`.
-		const edges =
-			declaration.kind === 'rest-api' || declaration.kind === 'websocket-api'
-				? (declaration.calls ?? [])
-				: (declaration.dependencies ?? []);
+		// Every edge it has: a site's own, a surface's authenticator and its
+		// routes' — the same graph every other reader sees.
+		const edges = dependenciesOf(declaration);
 
 		const names = new Set<string>();
 		for (const edge of edges) {

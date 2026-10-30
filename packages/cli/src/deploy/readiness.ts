@@ -61,7 +61,6 @@ export async function assertStageReady(
 			stage,
 			declarations: stageServiceDeclarations({
 				manifest,
-				...(ctx.runnables ? { runnables: ctx.runnables } : {}),
 			}),
 			supplied,
 			allow: ctx.allowDevServices,

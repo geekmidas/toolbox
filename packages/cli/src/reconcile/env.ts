@@ -507,12 +507,21 @@ function deviceBuckets(plan: Plan): Set<string> {
 		);
 	};
 
-	return new Set(
+	const buckets = new Set(
 		plan.resources
 			.filter((r) => r.kind === 'objects' || r.kind === 'file-server')
 			.filter((r) => (r.callers ?? []).some(fromApp))
 			.map((r) => r.id),
 	);
+	// A `FileServer` is one construct declaring two nodes, and a handler's
+	// edge is to the bucket — so the server fronting a bucket a phone's links
+	// come from serves the phone too.
+	for (const r of plan.resources) {
+		if (r.kind === 'file-server' && r.of && buckets.has(r.of)) {
+			buckets.add(r.id);
+		}
+	}
+	return buckets;
 }
 
 /**

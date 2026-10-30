@@ -24,13 +24,12 @@ import { loadComposeApp, writeComposeApp } from './__helpers__/composeApp';
 let dir: string;
 let workspace: NormalizedWorkspace;
 let manifest: ConstructManifest;
-let runnables: Record<string, string[]>;
 let background: Record<string, string[]>;
 
 beforeAll(async () => {
 	dir = realpathSync(await createTempDir('gkm-compose-wildcard-'));
 	writeComposeApp(dir, { registry: 'registry.example.com/acme' });
-	({ workspace, manifest, runnables, background } = await loadComposeApp(dir));
+	({ workspace, manifest, background } = await loadComposeApp(dir));
 });
 
 afterAll(async () => {
@@ -90,7 +89,6 @@ function deployed(
 	return composeStack({
 		workspace: ws,
 		manifest: wildcardManifest(options.hosts ?? true),
-		runnables,
 		background,
 		stage: 'production',
 		identity: deployIdentity(ws, 'production'),

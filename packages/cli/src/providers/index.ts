@@ -118,7 +118,6 @@ export interface ProvisionOptions {
 	workspace: NormalizedWorkspace;
 	stage: string;
 	manifest: ConstructManifest;
-	runnables?: Record<string, string[]>;
 	/** Each Worker's subscribers, from discovery. */
 	subscribers?: Readonly<Record<string, readonly BoundSubscriber[]>>;
 	/** The stage's secrets — where each runtime key is written. */
@@ -208,7 +207,6 @@ export async function provisionStage(
 	const dryRun = options.dryRun === true;
 	const env = options.env ?? process.env;
 	const log = options.log ?? ((line: string) => console.log(line));
-	const runnables = options.runnables ?? {};
 
 	const reports: KindReport[] = [];
 	const configured: {
@@ -279,7 +277,7 @@ export async function provisionStage(
 	let secrets = (await options.secrets.read())?.custom ?? {};
 	for (const entry of configured) {
 		entry.report.planned = entry.provider
-			.runtimeKeys(manifest, runnables)
+			.runtimeKeys(manifest)
 			.filter((key) => secrets[key] === undefined);
 	}
 
@@ -312,7 +310,6 @@ export async function provisionStage(
 		await entry.provider.ensure({
 			workspace,
 			manifest,
-			runnables,
 			...(options.subscribers ? { subscribers: options.subscribers } : {}),
 			stage,
 			identity,

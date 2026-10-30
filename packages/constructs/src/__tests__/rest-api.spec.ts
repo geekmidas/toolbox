@@ -103,17 +103,16 @@ describe('RestApi', () => {
 		expect(users.databaseService?.serviceName).toBe('appDb');
 	});
 
-	it('names its authenticator, as an edge and as the auth it declares', () => {
+	it('names its authenticator, as an edge', () => {
 		const base = api();
 		const authed = base.auth(authServer);
 
 		expect(authed.declare()[0]).toMatchObject({
-			auth: 'Auth',
-			calls: [{ target: 'Auth', kind: 'rest-api' }],
+			auth: { target: 'Auth', kind: 'rest-api' },
 		});
-		// Immutable: the surface it was built from has neither.
+		expect(authed.declare()[0]).not.toHaveProperty('calls');
+		// Immutable: the surface it was built from has none.
 		expect(base.declare()[0]).not.toHaveProperty('auth');
-		expect(base.declare()[0]).not.toHaveProperty('calls');
 	});
 
 	it('declares its CORS tunables and that it streams into a Telescope', () => {

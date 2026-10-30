@@ -257,9 +257,17 @@ describe('a WebSocket surface, locally', () => {
 				endpoints: [],
 				provides: ['API_URL', 'API_TRUSTED_ORIGINS', 'API_COOKIE_DOMAIN'],
 			},
+			// A route on the socket calls the API.
 			Realtime: {
 				...manifest.Realtime,
-				calls: [{ target: 'Api', kind: 'rest-api' }],
+				routes: [
+					{
+						id: 'Realtimechat.send',
+						handler: 'routes/chat.ts#send',
+						action: 'chat.send',
+						dependencies: [{ target: 'Api', kind: 'rest-api' }],
+					},
+				],
 			},
 		} as unknown as ConstructManifest;
 		const plan = planFor(calling, 'dev', provisionOrder(calling), {

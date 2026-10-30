@@ -266,6 +266,7 @@ export class BetterAuth<
 					this.keys.trustedOrigins,
 					this.keys.cookieDomain,
 				],
+				servesItself: true,
 				endpoints: [
 					{
 						id: `${this.id}Handler`,

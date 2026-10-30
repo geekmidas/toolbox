@@ -72,7 +72,6 @@
  */
 
 import type { EnvironmentParser } from '@geekmidas/envkit';
-import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
@@ -149,7 +148,7 @@ export class Worker<
 	constructor(
 		id: ConstructName<TName>,
 		private readonly config: WorkerConfig = {},
-		/** Internal: how `.calls()` carries edges into the copy it returns. */
+		/** Internal: how `.database()` carries its edge into the copy it returns. */
 		private readonly dependencies: readonly Dependency[] = [],
 		scheduleStore?: Consumable<string, unknown>,
 	) {
@@ -383,23 +382,6 @@ export class Worker<
 				TDatabase,
 				TDatabaseServiceName
 			>().logger(this.logger),
-		);
-	}
-
-	/**
-	 * Resources and surfaces this worker calls.
-	 *
-	 * Not `.dependsOn()`: this records the edge that derives the worker's
-	 * environment and its access, the same distinction `RestApi.calls()` draws.
-	 */
-	calls(
-		constructs: readonly Declarable[],
-	): Worker<TName, TDatabase, TDatabaseServiceName> {
-		return new Worker<TName, TDatabase, TDatabaseServiceName>(
-			this.id as ConstructName<TName>,
-			this.config,
-			[...this.dependencies, ...constructs.map(edgeTo)],
-			this.scheduleStore,
 		);
 	}
 

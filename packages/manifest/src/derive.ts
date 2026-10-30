@@ -109,15 +109,20 @@ export function dependenciesOf(
 	const own =
 		'dependencies' in declaration ? (declaration.dependencies ?? []) : [];
 
-	// A surface's `calls` is a caller relationship rather than an injection, so
-	// it is read here — reverse lookups want it — and is never a dependency
-	// anything links from. See `RestApiDeclaration.calls`.
-	const calls = 'calls' in declaration ? (declaration.calls ?? []) : [];
+	// What authenticates a surface is an edge to it: the auth server learns
+	// this surface's origin, and the two share a cookie domain.
+	const auth =
+		(declaration.kind === 'rest-api' || declaration.kind === 'websocket-api') &&
+		declaration.auth
+			? [declaration.auth]
+			: [];
 
 	const nested =
 		declaration.kind === 'rest-api'
 			? declaration.endpoints.flatMap((endpoint) => endpoint.dependencies)
-			: [];
+			: declaration.kind === 'websocket-api'
+				? (declaration.routes ?? []).flatMap((route) => route.dependencies)
+				: [];
 
 	// The `Telemetry` node a process emits through: an edge like any other, so
 	// the keys it provides follow it to exactly the processes that use it.
@@ -126,7 +131,7 @@ export function dependenciesOf(
 			? [{ target: declaration.telemetry, kind: 'telemetry' as const }]
 			: [];
 
-	return [...own, ...calls, ...nested, ...telemetry];
+	return [...own, ...auth, ...nested, ...telemetry];
 }
 
 /**

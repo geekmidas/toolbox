@@ -34,7 +34,6 @@ interface Project {
 	dir: string;
 	workspace: NormalizedWorkspace;
 	manifest: ConstructManifest;
-	runnables: Record<string, string[]>;
 	background: Record<string, string[]>;
 }
 
@@ -97,7 +96,7 @@ function stack(
 	} = {},
 	overrides: Partial<StackInput> = {},
 ): ComposeStack {
-	const { workspace, manifest, runnables, background } = options.project ?? all;
+	const { workspace, manifest, background } = options.project ?? all;
 	const stage = overrides.stage ?? 'development';
 	return composeStack({
 		workspace: {
@@ -108,7 +107,6 @@ function stack(
 			},
 		},
 		manifest,
-		runnables,
 		background,
 		stage,
 		identity: deployIdentity(workspace, stage),

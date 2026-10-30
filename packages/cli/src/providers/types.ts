@@ -81,8 +81,6 @@ export interface StateEntry {
 export interface EnsureContext<C extends ProviderConfig, K> {
 	workspace: NormalizedWorkspace;
 	manifest: ConstructManifest;
-	/** Each owner's runnables' edges, from discovery. */
-	runnables: Readonly<Record<string, readonly string[]>>;
 	/**
 	 * Each Worker's subscribers, from discovery — by export and the key its
 	 * deliveries come from. What a provider subscribes on a worker's behalf.
@@ -195,10 +193,7 @@ export interface ResourceProvider<
 	/** Its provisioning credentials, or `undefined` when there are none. */
 	credentials(lookup: CredentialLookup): Promise<K | undefined>;
 	/** The keys it writes into the stage's secrets for these constructs. */
-	runtimeKeys(
-		manifest: ConstructManifest,
-		runnables?: Readonly<Record<string, readonly string[]>>,
-	): string[];
+	runtimeKeys(manifest: ConstructManifest): string[];
 	ensure(ctx: EnsureContext<C, K>): Promise<void>;
 	verify(ctx: VerifyContext<C>): Promise<void>;
 }

@@ -50,8 +50,7 @@ import { type ConstructSource, discover } from '../reconcile/discover.js';
 import {
 	type Backends,
 	manifestModule,
-	withCompute,
-	withRoutes,
+	withHandlers,
 } from '../reconcile/emit.js';
 import { CommandFailed, DEFAULT_TIMEOUT_MS } from '../run';
 import { LocalSandbox } from '../sandbox/local';
@@ -443,21 +442,13 @@ export async function writeManifest(input: {
 	const other = target === 'aws' ? 'server' : 'aws';
 	await rm(join(manifestDir, `${other}.ts`), { force: true });
 
-	// Each app's routes go to the surface it serves; then the compute every
-	// app generated, which nests in the queue or topic that triggers it.
-	const withServed = builds.reduce(
-		(manifest, build) =>
-			withRoutes(
-				manifest,
-				build.routes.filter((route) => route.method !== 'ALL'),
-				{
-					perRoute: true,
-					...(build.surface ? { surface: build.surface } : {}),
-				},
+	// Discovery nested every handler; the build says where it wrote each one.
+	const folded = withHandlers(constructs, {
+		routes: builds.flatMap((build) =>
+			build.routes.map((route) =>
+				build.surface ? { ...route, surface: build.surface } : route,
 			),
-		constructs,
-	);
-	const folded = withCompute(withServed, {
+		),
 		functions: builds.flatMap((build) => build.functions),
 		crons: builds.flatMap((build) => build.crons),
 		queues: builds.flatMap((build) => build.queues),

@@ -67,9 +67,8 @@ authorizers.
 It must never hold `dependsOn`, `database`, `auditor` or a topic's
 `.event(topic, …)`. Those four inject a client into a handler, so putting one on the surface hands it to every
 route the surface serves — a health check gets the database because a profile
-endpoint needed it. This is the reasoning already written into
-`RestApi.calls()`'s doc comment: spelling it `dependsOn` would invite the thing
-least privilege forbids.
+endpoint needed it: a surface-level `dependsOn` would invite the thing least
+privilege forbids.
 
 `auth` is excluded for a second reason: `.auth(construct)` already declares it,
 and a second way to say the same thing is the duplication this model removes.
@@ -211,8 +210,9 @@ The factory itself is private. `services` is not among them: it is replaced by
 What this section argues still holds, because each of those *returns a branch*
 and leaves the surface untouched: the surface's config carries no grant, and a
 group opts in. `dependsOn` stays off the surface — it is per endpoint, and
-`api.dependsOn(x)` would read as the API depending on something, which `.calls()`
-and `.auth()` already say. Examples above have been updated to this spelling.
+`api.dependsOn(x)` would read as the API depending on something, when what it
+reaches is the edges of the endpoints it serves (and `.auth()`'s). Examples
+above have been updated to this spelling.
 
 ## Addendum: no `.publisher()`
 

@@ -1,202 +1,179 @@
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
-import { manifestModule, withCompute, withRoutes } from '../emit';
+import { manifestModule, withHandlers } from '../emit';
 
+/** What discovery nested: every handler at its source, with its edges. */
 const base = {
 	Api: {
 		kind: 'rest-api',
 		id: 'Api',
 		path: '.',
-		endpoints: [],
-		defaultAuthorizer: 'none',
-	},
-	Auth: {
-		kind: 'rest-api',
-		id: 'Auth',
-		path: '.',
 		endpoints: [
 			{
-				id: 'AuthHandler',
-				handler: 'Auth.handler',
-				method: 'ANY',
-				path: '/api/auth/*',
+				id: 'ApiPOST/users',
+				handler: 'endpoints/users.ts#createUser',
+				method: 'POST',
+				path: '/users',
+				dependencies: [{ target: 'Uploads', kind: 'objects' }],
+				authorizer: 'none',
+			},
+		],
+		defaultAuthorizer: 'none',
+	},
+	Uploads: {
+		kind: 'objects',
+		id: 'Uploads',
+		subscribers: [
+			{
+				id: 'onAvatar',
+				handler: 'subscribers/avatars.ts#onAvatar',
+				events: ['object.created'],
 				dependencies: [],
+				owner: 'Jobs',
+			},
+		],
+	},
+	UploadsServer: {
+		kind: 'file-server',
+		id: 'UploadsServer',
+		of: 'Uploads',
+		processors: [
+			{
+				id: 'thumbnails',
+				handler: 'processors/thumbnails.ts#thumbnails',
+				path: '/i/:width/*',
+				prefix: '/i/',
+				dependencies: [{ target: 'Uploads', kind: 'objects' }],
 			},
 		],
 	},
 	Emails: {
 		kind: 'queue',
 		id: 'Emails',
-		worker: { id: 'x', handler: 'x', dependencies: [] },
+		worker: {
+			id: 'EmailsWorker',
+			handler: 'queues/emails.ts#emails',
+			dependencies: [{ target: 'Uploads', kind: 'objects' }],
+			owner: 'Jobs',
+		},
 	},
 	Users: {
 		kind: 'topic',
 		id: 'Users',
 		events: ['user.created'],
-		subscribers: [],
+		subscribers: [
+			{
+				id: 'welcome',
+				handler: 'subscribers/welcome.ts#welcome',
+				events: ['user.created'],
+				dependencies: [],
+				owner: 'Jobs',
+			},
+		],
+	},
+	nightly: {
+		kind: 'cron',
+		id: 'nightly',
+		handler: 'crons/nightly.ts#nightly',
+		schedule: 'rate(1 day)',
+		dependencies: [{ target: 'Uploads', kind: 'objects' }],
+		owner: 'Jobs',
 	},
 } as const satisfies ConstructManifest;
 
-const route = {
-	path: '/users',
-	method: 'POST',
-	handler: '.gkm/aws-apigatewayv2/createUser.handler',
-	authorizer: 'none',
-};
-
-describe('withRoutes', () => {
-	it('folds routes into the surface that declared none', () => {
-		const merged = withRoutes(base, [route], { perRoute: true });
-		const api = merged.Api as { endpoints: unknown[] };
-
-		expect(api.endpoints).toEqual([
+/**
+ * The build's one fact: where it wrote each handler. Discovery already
+ * nested every runnable with its edges, so a build changes `handler` and
+ * nothing else — the graph is the same as `gkm dev`'s.
+ */
+describe('withHandlers', () => {
+	const generated = withHandlers(base, {
+		routes: [
 			{
-				id: 'ApiPOST/users',
-				handler: '.gkm/aws-apigatewayv2/createUser.handler',
-				method: 'POST',
 				path: '/users',
-				dependencies: [],
+				method: 'POST',
+				handler: '.gkm/aws/routes/createUser.handler',
 				authorizer: 'none',
+				surface: 'Api',
 			},
-		]);
+		],
+		crons: [
+			{
+				name: 'nightly',
+				handler: '.gkm/aws/crons/nightly.handler',
+				schedule: 'rate(1 day)',
+			},
+		],
+		queues: [{ name: 'Emails', handler: '.gkm/aws/queues/emails.handler' }],
+		subscribers: [
+			{
+				name: 'welcome',
+				handler: '.gkm/aws/subscribers/welcome.handler',
+				subscribedEvents: ['user.created'],
+				topic: 'Users',
+			},
+			{
+				name: 'onAvatar',
+				handler: '.gkm/aws/subscribers/onAvatar.handler',
+				subscribedEvents: ['object.created'],
+				bucket: 'Uploads',
+			},
+		],
+		processors: [
+			{
+				name: 'thumbnails',
+				fileServer: 'UploadsServer',
+				handler: '.gkm/aws/processors/thumbnails.handler',
+				path: '/i/:width/*',
+				prefix: '/i/',
+			},
+		],
 	});
 
-	it('leaves a surface that enumerated its own alone', () => {
-		// An auth server declares its wildcard statically; discovered routes are
-		// not its.
-		const merged = withRoutes(base, [route], { perRoute: true });
-
-		expect((merged.Auth as { endpoints: unknown[] }).endpoints).toHaveLength(1);
-	});
-
-	it('ignores a provider that does not generate one handler per route', () => {
-		// `server` mounts everything in one process and emits a single catch-all,
-		// which is a true description of that build and a false one of the app.
-		// Merging it wrote `ALL *` into a manifest for an app with five routes.
-		const merged = withRoutes(base, [route], { perRoute: false });
-
-		expect((merged.Api as { endpoints: unknown[] }).endpoints).toEqual([]);
-	});
-});
-
-describe('withCompute', () => {
-	it('adds a function as its own node, because nothing triggers it but a caller', () => {
-		const merged = withCompute(base, {
-			functions: [
-				{ name: 'SendEmail', handler: '.gkm/aws-lambda/sendEmail.handler' },
-			],
+	it('points each handler at the entry the build wrote', () => {
+		expect(generated.Api).toMatchObject({
+			endpoints: [{ handler: '.gkm/aws/routes/createUser.handler' }],
 		});
-
-		expect(merged.SendEmail).toMatchObject({
-			kind: 'function',
-			handler: '.gkm/aws-lambda/sendEmail.handler',
-			provides: ['SEND_EMAIL_URL'],
+		expect(generated.nightly).toMatchObject({
+			handler: '.gkm/aws/crons/nightly.handler',
 		});
-	});
-
-	it('keeps a cron’s schedule, which is structural', () => {
-		const merged = withCompute(base, {
-			crons: [{ name: 'Nightly', handler: 'h', schedule: 'rate(1 day)' }],
+		expect(generated.Emails).toMatchObject({
+			worker: { handler: '.gkm/aws/queues/emails.handler' },
 		});
-
-		expect(merged.Nightly).toMatchObject({
-			kind: 'cron',
-			schedule: 'rate(1 day)',
+		expect(generated.Users).toMatchObject({
+			subscribers: [{ handler: '.gkm/aws/subscribers/welcome.handler' }],
 		});
-	});
-
-	it('nests a worker inside the queue that triggers it', () => {
-		// Position carries the trigger: this handler is reached by messages on
-		// this queue and by nothing else, so there is no `trigger` field.
-		const merged = withCompute(base, {
-			queues: [{ name: 'Emails', handler: '.gkm/aws-lambda/emails.handler' }],
+		expect(generated.Uploads).toMatchObject({
+			subscribers: [{ handler: '.gkm/aws/subscribers/onAvatar.handler' }],
 		});
-
-		expect(merged.Emails).toMatchObject({
-			kind: 'queue',
-			worker: { handler: '.gkm/aws-lambda/emails.handler' },
+		expect(generated.UploadsServer).toMatchObject({
+			processors: [{ handler: '.gkm/aws/processors/thumbnails.handler' }],
 		});
 	});
 
-	it('nests a subscriber inside the topic it bound to', () => {
-		const merged = withCompute(base, {
-			subscribers: [
+	it('changes nothing but the handler', () => {
+		const strip = (value: unknown): unknown =>
+			JSON.parse(
+				JSON.stringify(value, (key, v) => (key === 'handler' ? undefined : v)),
+			);
+
+		expect(strip(generated)).toEqual(strip(base));
+	});
+
+	it('keeps the source where the build generated no entry of its own', () => {
+		// The `server` provider generates one catch-all, which is no endpoint.
+		const server = withHandlers(base, {
+			routes: [
 				{
-					name: 'SendWelcome',
-					handler: 'h',
-					topic: 'Users',
-					subscribedEvents: ['user.created'],
+					path: '*',
+					method: 'ALL',
+					handler: '.gkm/server/app.ts',
+					authorizer: 'none',
 				},
 			],
 		});
 
-		expect((merged.Users as { subscribers: unknown[] }).subscribers).toEqual([
-			{
-				id: 'SendWelcome',
-				handler: 'h',
-				events: ['user.created'],
-				dependencies: [],
-			},
-		]);
-	});
-
-	it('nests a bucket’s subscriber inside the bucket, with the keys it watches', () => {
-		const merged = withCompute(
-			{
-				...base,
-				Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
-			},
-			{
-				subscribers: [
-					{
-						name: 'onAvatar',
-						handler: 'h',
-						bucket: 'Uploads',
-						prefix: 'avatars/',
-						suffix: '.png',
-						subscribedEvents: ['object.created'],
-						dependencies: ['Uploads'],
-					},
-				],
-			},
-		);
-
-		expect(merged.Uploads).toEqual({
-			kind: 'objects',
-			id: 'Uploads',
-			provides: ['UPLOADS_URL'],
-			subscribers: [
-				{
-					id: 'onAvatar',
-					handler: 'h',
-					events: ['object.created'],
-					prefix: 'avatars/',
-					suffix: '.png',
-					dependencies: [{ target: 'Uploads', kind: 'objects' }],
-				},
-			],
-		});
-		// Not a topic subscriber.
-		expect((merged.Users as { subscribers: unknown[] }).subscribers).toEqual(
-			[],
-		);
-	});
-
-	it('ignores a subscriber whose topic is not declared', () => {
-		// Better a missing binding than a topic invented to hold it — the
-		// reference check is what should report this, not a silent creation.
-		const merged = withCompute(base, {
-			subscribers: [
-				{
-					name: 'Orphan',
-					handler: 'h',
-					topic: 'Nowhere',
-					subscribedEvents: [],
-				},
-			],
-		});
-
-		expect(merged.Nowhere).toBeUndefined();
+		expect(server).toEqual(base);
 	});
 });
 
@@ -215,159 +192,5 @@ describe('manifestModule', () => {
 		const source = manifestModule(base, { cache: 'db', email: 'ses' });
 
 		expect(source).toContain("cache: 'db'");
-	});
-});
-
-/**
- * The edges, arriving from the build.
- *
- * The manifest's whole job here is to say which function may reach which
- * construct. It said nothing for a long time — every generated handler carried
- * `dependencies: []` — because `.dependsOn()` dissolved into services and the
- * ids never made it out of the builder. These assert the other end of that wire.
- */
-describe('withRoutes — the edges it records', () => {
-	const manifest = {
-		...base,
-		Uploads: { kind: 'objects', id: 'Uploads' },
-		Orders: { kind: 'database', id: 'Orders' },
-	} as unknown as ConstructManifest;
-
-	it('resolves an id to the kind the manifest gives it', () => {
-		// The kind is read off the target rather than recorded beside the edge:
-		// one fact, one place, so the copy cannot go stale.
-		const merged = withRoutes(
-			manifest,
-			[{ ...route, dependencies: ['Uploads', 'Orders'] }],
-			{ perRoute: true },
-		);
-
-		expect(
-			(merged.Api as { endpoints: { dependencies: unknown }[] }).endpoints[0]
-				?.dependencies,
-		).toEqual([
-			{ target: 'Uploads', kind: 'objects' },
-			{ target: 'Orders', kind: 'database' },
-		]);
-	});
-
-	it('drops an id that names no declaration', () => {
-		// A lifted `Service` is a legitimate dependency that declares no node, so
-		// this is not an error — a target can only grant what it can find.
-		const merged = withRoutes(
-			manifest,
-			[{ ...route, dependencies: ['Uploads', 'Clock'] }],
-			{ perRoute: true },
-		);
-
-		expect(
-			(merged.Api as { endpoints: { dependencies: unknown }[] }).endpoints[0]
-				?.dependencies,
-		).toEqual([{ target: 'Uploads', kind: 'objects' }]);
-	});
-});
-
-describe('withCompute — the edges it records', () => {
-	const manifest = {
-		...base,
-		Uploads: { kind: 'objects', id: 'Uploads' },
-	} as unknown as ConstructManifest;
-
-	it('carries them onto a function and a cron', () => {
-		const merged = withCompute(manifest, {
-			functions: [
-				{ name: 'Resize', handler: 'r.handler', dependencies: ['Uploads'] },
-			],
-			crons: [
-				{
-					name: 'Sweep',
-					handler: 's.handler',
-					schedule: 'rate(1 day)',
-					dependencies: ['Uploads'],
-				},
-			],
-		});
-
-		expect((merged.Resize as { dependencies: unknown }).dependencies).toEqual([
-			{ target: 'Uploads', kind: 'objects' },
-		]);
-		expect((merged.Sweep as { dependencies: unknown }).dependencies).toEqual([
-			{ target: 'Uploads', kind: 'objects' },
-		]);
-	});
-
-	it('carries them onto a nested worker and subscriber', () => {
-		// Nested rather than top-level because position carries the trigger — and
-		// the edge has to survive that nesting, which is where it is easiest to
-		// drop.
-		const merged = withCompute(manifest, {
-			queues: [
-				{ name: 'emails', handler: 'w.handler', dependencies: ['Uploads'] },
-			],
-			subscribers: [
-				{
-					name: 'OnCreated',
-					handler: 'sub.handler',
-					subscribedEvents: ['user.created'],
-					topic: 'users',
-					dependencies: ['Uploads'],
-				},
-			],
-		});
-
-		expect(
-			(merged.Emails as { worker: { dependencies: unknown } }).worker
-				.dependencies,
-		).toEqual([{ target: 'Uploads', kind: 'objects' }]);
-		expect(
-			(merged.Users as { subscribers: { dependencies: unknown }[] })
-				.subscribers[0]?.dependencies,
-		).toEqual([{ target: 'Uploads', kind: 'objects' }]);
-	});
-
-	it("replaces a processor's source with the handler the build wrote, in its file server", () => {
-		const served = {
-			...base,
-			Media: { kind: 'objects', id: 'Media', provides: ['MEDIA_URL'] },
-			MediaServer: {
-				kind: 'file-server',
-				id: 'MediaServer',
-				of: 'Media',
-				processors: [
-					{
-						id: 'thumbnails',
-						handler: 'processors/thumbnails.ts#thumbnails',
-						path: '/i/:width/*',
-						prefix: '/i/',
-						dependencies: [],
-					},
-				],
-			},
-		} as unknown as ConstructManifest;
-
-		const merged = withCompute(served, {
-			processors: [
-				{
-					name: 'thumbnails',
-					handler: 'apps/api/.gkm/aws/processors/thumbnails.handler',
-					fileServer: 'MediaServer',
-					path: '/i/:width/*',
-					prefix: '/i/',
-					native: ['sharp'],
-					dependencies: ['Media'],
-				},
-			],
-		});
-
-		expect(merged.MediaServer).toMatchObject({
-			processors: [
-				{
-					id: 'thumbnails',
-					handler: 'apps/api/.gkm/aws/processors/thumbnails.handler',
-					native: ['sharp'],
-					dependencies: [{ target: 'Media', kind: 'objects' }],
-				},
-			],
-		});
 	});
 });

@@ -769,13 +769,22 @@ export default {
 		},
 	);
 
-	it('folds each app’s routes into its own surface, in one manifest', async () => {
+	it('points each app’s routes at its own surface’s endpoints, in one manifest', async () => {
 		const dir = mkdtempSync(join(tmpdir(), 'gkm-manifest-'));
+		// What discovery nested: one `GET /x` on each surface, at its source.
 		const surface = (id: string) => ({
 			kind: 'rest-api',
 			id,
 			provides: [],
-			endpoints: [],
+			endpoints: [
+				{
+					id: `${id}GET/x`,
+					handler: `endpoints/${id}.ts#x`,
+					method: 'GET',
+					path: '/x',
+					dependencies: [],
+				},
+			],
 		});
 		const route = (app: string) => ({
 			path: '/x',

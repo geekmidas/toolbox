@@ -33,7 +33,7 @@ existed.
 - **A construct, `MobileApp`, shaped like `StaticSite`.** The same config
   (`path`, `port?`, `config?`, `variant?`, here `'expo'`) plus `scheme?`, and
   the same `.dependsOn([api, auth])` as the single fact everything below is
-  derived from. Not `.calls()`: a site and an app depend on surfaces.
+  derived from: a site and an app depend on surfaces.
 - **One scheme, for every stage.** It is the project's name (`shop`), or the
   one the construct gives. A development build and the store build register
   the same scheme, and whichever stage's auth server a build talks to trusts

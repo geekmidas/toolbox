@@ -126,9 +126,11 @@ describe('session({ auth })', () => {
 		).rejects.toBeInstanceOf(NoAuthenticator);
 	});
 
-	it('declares the authenticator by id', () => {
+	it('declares the authenticator as an edge', () => {
 		const { construct } = authenticator();
 
-		expect(surface(construct).declare()[0]).toMatchObject({ auth: 'Auth' });
+		expect(surface(construct).declare()[0]).toMatchObject({
+			auth: { target: 'Auth' },
+		});
 	});
 });

@@ -31,12 +31,12 @@ export function ownersContext(options: {
 	// Which surface this server answers on, so the entry can derive its CORS.
 	//
 	// The app's own API, not the auth server it may also mount: an auth surface
-	// declares its own endpoints, and the origins that may call *it* are a
-	// different list from the ones that may call the API.
+	// serves itself, and the origins that may call *it* are a different list
+	// from the ones that may call the API.
 	const surfaces = restApis(declared);
 	const served = servedSurface(declared, workspaceRoot, appRoot);
 	const primary =
-		served ?? surfaces.find((d) => d.endpoints.length === 0) ?? surfaces[0];
+		served ?? surfaces.find((d) => !d.servesItself) ?? surfaces[0];
 
 	// Which database the JSON API reads: the one the app declared. A reader is
 	// not a candidate — it is the same data through a role that cannot write,

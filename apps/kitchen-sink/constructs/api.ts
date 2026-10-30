@@ -17,11 +17,10 @@ import { telescope } from './telescope.js';
  * because a field was left off is the one default worth refusing to have, so
  * public-by-default has to be a sentence someone wrote.
  *
- * `.auth(auth)` rather than `.calls([auth])`: what authenticates a surface is a
- * different fact from what it happens to call, and it is the one that decides
- * what a request is allowed to be. It records the edge either way — the auth
- * server learns this origin, and the two share a cookie domain — but it says
- * which relationship it is.
+ * `.auth(auth)` records the edge to the auth server — it learns this origin,
+ * and the two share a cookie domain — and names it as what decides what a
+ * request is allowed to be. Everything else the API reaches is an endpoint's
+ * `.dependsOn([...])`.
  */
 export const api = new RestApi('Api', {
 	path: 'apps/api',

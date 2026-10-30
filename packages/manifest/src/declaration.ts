@@ -75,8 +75,22 @@ export interface Dependency<TTarget extends ConstructId = ConstructId> {
 
 /** Anything with a handler. */
 export interface Fn extends Node {
+	/**
+	 * Where it is defined, as `<file>#<export>` relative to the workspace —
+	 * until a build that generates one handler per function replaces it with
+	 * the generated entry.
+	 */
 	handler: string;
 	dependencies: readonly Dependency[];
+	/**
+	 * The `Worker` whose process runs it — for a cron, a function, a queue's
+	 * consumer or a subscriber built from one. What a worker's process
+	 * reaches is the edges of everything it owns.
+	 *
+	 * Absent where position already says it: an endpoint runs in its surface's
+	 * process, a processor in its file server's.
+	 */
+	owner?: ConstructId;
 }
 
 // ---------------------------------------------------------------------------
@@ -504,12 +518,12 @@ export interface RestApiDeclaration extends Node {
 	 * authenticates me" is a different fact from "who I happen to call", and
 	 * only one of them decides what a request is allowed to be.
 	 *
-	 * It is the id rather than the client: what every endpoint consumes is
+	 * It is the edge rather than the client: what every endpoint consumes is
 	 * `verify(request) → Session | null`, and that is the one thing every
 	 * provider shares. A surface names its authenticator; the target decides
 	 * what verifying means.
 	 */
-	auth?: ConstructId;
+	auth?: Dependency;
 	/**
 	 * CORS tunables for this surface.
 	 *
@@ -550,21 +564,10 @@ export interface RestApiDeclaration extends Node {
 	 */
 	endpoints: readonly RestApiEndpoint[];
 	/**
-	 * Other surfaces this one calls.
-	 *
-	 * **Not a dependency, and deliberately not spelled like one.** A dependency
-	 * is an injection: `resolveEdges` gives a function exactly the constructs it
-	 * declared and nothing else, which is what makes least privilege fall out of
-	 * the graph instead of out of discipline. A surface-level `dependencies`
-	 * would hand *every route* on this API whatever the surface named — which is
-	 * precisely the over-granting that rule exists to prevent.
-	 *
-	 * What this records is weaker and only flows one way: it puts this API's
-	 * origin on the called surface's trusted-origin list. Nothing links from it,
-	 * nothing is granted by it, and per-route edges stay on the endpoints where
-	 * they belong.
+	 * The construct is its own server — an auth server mounting one wildcard
+	 * route — so no build generates one for it: its app's entry only starts it.
 	 */
-	calls?: readonly Dependency[];
+	servesItself?: true;
 	/**
 	 * The `Telemetry` node this surface's process emits through, by id — an
 	 * edge, read by `dependenciesOf` like any other.
@@ -576,9 +579,10 @@ export interface RestApiDeclaration extends Node {
  * A WebSocket surface: one long-lived connection per client, and the routes a
  * frame is dispatched to by its `action`.
  *
- * A process of its own, like a `rest-api` — it owns an address and a container
- * — but the routes are not listed: a frame is reached by its action rather
- * than a method and path, and nothing outside the process routes on it.
+ * A process of its own, like a `rest-api` — it owns an address and a container.
+ * Its routes are listed for their edges: a frame is reached by its action, and
+ * nothing outside the process routes on it, but what each route depends on is
+ * what its process reaches.
  *
  * Anything else reaches a socket through its publisher: a `redis://` string on
  * a stack, over which whichever replica holds the socket delivers.
@@ -590,9 +594,9 @@ export interface WebSocketApiDeclaration extends Node {
 	/** The app that serves this surface, relative to the workspace root. */
 	path: string;
 	/** The construct that authenticates a connection, as a `rest-api`'s. */
-	auth?: ConstructId;
-	/** Other surfaces this one calls. See `RestApiDeclaration.calls`. */
-	calls?: readonly Dependency[];
+	auth?: Dependency;
+	/** Every route on this surface, as a `rest-api`'s endpoints. */
+	routes?: readonly WebSocketRouteDeclaration[];
 	/** The `Telemetry` node its process emits through. */
 	telemetry?: ConstructId;
 	/**
@@ -844,6 +848,12 @@ export interface WorkerDeclaration extends Node {
 	dependencies?: readonly Dependency[];
 	/** The `Telemetry` node its process emits through, by id. */
 	telemetry?: ConstructId;
+}
+
+/** One route on a WebSocket surface: the `action` a frame names. */
+export interface WebSocketRouteDeclaration extends Fn {
+	/** The action it answers; `$connect` and `$disconnect` for the lifecycle. */
+	action: string;
 }
 
 /** One route on a surface. */

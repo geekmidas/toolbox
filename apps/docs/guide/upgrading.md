@@ -12,6 +12,43 @@ gkm upgrade --all
 `10.0.0-alpha.x` project), never goes backwards, and with `--all` also raises
 third-party packages to the floor of the peer ranges the new version declares.
 
+## After 10.0.0-alpha.136: one manifest for every command {#one-manifest}
+
+Discovery now writes the whole application into the manifest: every endpoint
+in its surface, every WebSocket route in its socket, every cron and function,
+and every queue consumer and subscriber where it runs, each with the edges its
+`.dependsOn([...])` declares and `owner` naming the `Worker` that runs it.
+`gkm dev`, `gkm exec`, `gkm test`, `gkm build` and a deploy read the same
+graph. Until a build that generates one handler per function (`--provider
+aws`) points it at the generated entry, a `handler` is the source:
+`src/endpoints/users.ts#createUser`.
+
+### `.calls()` is removed
+
+`RestApi`, `WebSocketApi` and `Worker` no longer have `.calls([...])`. Name
+what a handler reaches on the handler, which also gives it the client:
+
+```ts
+// before
+export const api = new RestApi('Api', { path: 'apps/api', logger }).calls([billing]);
+
+// after
+export const charge = api
+  .post('/charges')
+  .dependsOn([billing])
+  .handle(async ({ services }) => services.billing.charge(/* … */));
+```
+
+A worker's crons, consumers and subscribers name theirs the same way; the
+worker's process reaches the edges of everything it owns.
+
+### A surface's `auth` is an edge
+
+In the manifest, `auth` is `{ target, kind }` rather than the id, and the
+`calls` copy `.auth()` used to add beside it is gone. An `sst.config.ts`
+reading the manifest through `fromManifest` needs no change; code reading
+`declaration.auth` as a string reads `declaration.auth.target`.
+
 ## After 10.0.0-alpha.98: a compose deploy drives the server over SSH {#compose-remote-docker}
 
 gkm no longer runs on a compose stage's server. `gkm compose --stage <stage>`

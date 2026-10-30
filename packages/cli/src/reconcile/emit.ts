@@ -22,249 +22,123 @@ import type {
 	ConstructManifest,
 	CronInfo,
 	Declaration,
-	Dependency,
 	FunctionInfo,
 	ProcessorInfo,
 	QueueInfo,
-	RestApiEndpoint,
 	RouteInfo,
 	SubscriberInfo,
 } from '@geekmidas/manifest';
-import { canonicalId, provideKey } from '@geekmidas/manifest';
+import { canonicalId } from '@geekmidas/manifest';
 import type { CacheBackend, EmailBackend } from '../types.js';
 
-/**
- * Fold the build's generated routes into the surface that serves them.
- *
- * The routes already exist: `gkm build` generates one handler per endpoint and
- * records its path, method and environment. What was missing is that the
- * *construct* manifest never learned about them, so a `rest-api` node said
- * `endpoints: []` while five handlers sat in `.gkm/`. Two documents describing
- * the same routes, one of them wrong.
- *
- * Merging here rather than making the construct name a glob or import its
- * endpoints: the build is the thing that already walked the filesystem and
- * already knows where it wrote each handler. Asking the declaration to restate
- * any of that is how the two come to disagree.
- *
- * Attribution is to the surface the build served — the one whose `path` is
- * the app being built. Without one, routes go to the surface that declared none
- * of its own; a surface with static endpoints (an auth server's single
- * wildcard) keeps them.
- *
- * **Only from a provider that generates one handler per route.** The `server`
- * provider generates a single catch-all — `ALL *` pointing at the Hono app that
- * routes in-process — which is a true description of that build and a false
- * description of the application. Merging it wrote `endpoints: [{ method:
- * 'ALL', path: '*' }]` into a manifest for an app with five routes, and made the
- * document's contents depend on which `--provider` ran last. A manifest must not
- * do that.
- */
-export function withRoutes(
-	manifest: ConstructManifest,
-	routes: readonly RouteInfo[],
-	options: { perRoute: boolean; surface?: string },
-): ConstructManifest {
-	if (routes.length === 0 || !options.perRoute) return manifest;
-
-	const target = Object.entries(manifest).find(([id, declaration]) =>
-		options.surface
-			? id === options.surface
-			: declaration.kind === 'rest-api' && declaration.endpoints.length === 0,
-	);
-
-	if (!target) return manifest;
-
-	const [id, declaration] = target;
-	if (declaration.kind !== 'rest-api') return manifest;
-
-	return {
-		...manifest,
-		[id]: {
-			...declaration,
-			endpoints: routes.map((route) => asEndpoint(manifest, id, route)),
-		},
-	};
+/** What a build generated: the entry each handler was written to. */
+export interface GeneratedHandlers {
+	/** Each route, with the surface the app that generated it serves. */
+	routes?: readonly (RouteInfo & { surface?: string })[];
+	functions?: readonly FunctionInfo[];
+	crons?: readonly CronInfo[];
+	queues?: readonly QueueInfo[];
+	subscribers?: readonly SubscriberInfo[];
+	processors?: readonly ProcessorInfo[];
 }
 
 /**
- * Fold in the compute the build generated: functions, crons, queue workers and
- * topic subscribers.
+ * Point each handler discovery found at the entry the build generated for it.
  *
- * All four are named by their *export*, the same way an endpoint's handler is —
- * `CronGenerator` uses the export key as the name — so none of them can declare
- * themselves and all of them are the build's to add. That is why a `Function`
- * has no `declare()` and never will.
+ * Discovery already nested every endpoint, route, cron, function, consumer,
+ * subscriber and processor, with its edges — the graph is the same for every
+ * command. A build adds one fact: where it wrote each handler. So this
+ * replaces `handler` and nothing else, and a handler the build generated no
+ * entry of its own for keeps its source.
  *
- * A worker and a subscriber **nest** inside the queue or topic that triggers
- * them, because position carries the trigger. A function and a cron are
- * top-level, because nothing triggers them but a caller or a clock.
+ * That is the `server` provider's whole application: it generates one
+ * catch-all — `ALL *` pointing at the Hono app that routes in-process — which
+ * matches no endpoint, so every endpoint keeps the source it was found at.
  */
-export function withCompute(
+export function withHandlers(
 	manifest: ConstructManifest,
-	compute: {
-		functions?: readonly FunctionInfo[];
-		crons?: readonly CronInfo[];
-		queues?: readonly QueueInfo[];
-		subscribers?: readonly SubscriberInfo[];
-		processors?: readonly ProcessorInfo[];
-	},
+	generated: GeneratedHandlers,
 ): ConstructManifest {
 	const next: Record<string, Declaration> = { ...manifest };
+	const at = <T extends { id: string; handler: string }>(
+		list: readonly T[],
+		id: string,
+		handler: string,
+	): T[] => list.map((item) => (item.id === id ? { ...item, handler } : item));
 
-	for (const fn of compute.functions ?? []) {
-		next[fn.name] = {
-			kind: 'function',
-			id: fn.name,
-			handler: fn.handler,
-			dependencies: edgesTo(manifest, fn.dependencies),
-			provides: [provideKey(fn.name, 'url')],
-		};
+	for (const route of generated.routes ?? []) {
+		for (const [id, declaration] of Object.entries(next)) {
+			if (declaration.kind !== 'rest-api') continue;
+			if (route.surface && route.surface !== id) continue;
+			next[id] = {
+				...declaration,
+				endpoints: declaration.endpoints.map((endpoint) =>
+					endpoint.method === route.method && endpoint.path === route.path
+						? { ...endpoint, handler: route.handler }
+						: endpoint,
+				),
+			};
+		}
 	}
 
-	for (const cron of compute.crons ?? []) {
-		next[cron.name] = {
-			kind: 'cron',
-			id: cron.name,
-			handler: cron.handler,
-			schedule: cron.schedule,
-			dependencies: edgesTo(manifest, cron.dependencies),
-		};
+	for (const fn of [
+		...(generated.functions ?? []),
+		...(generated.crons ?? []),
+	]) {
+		const declaration = next[fn.name];
+		if (declaration?.kind === 'function' || declaration?.kind === 'cron') {
+			next[fn.name] = { ...declaration, handler: fn.handler };
+		}
 	}
 
-	// A worker drains exactly one queue, so it is matched by the queue it names
-	// rather than by anything about the handler.
-	for (const worker of compute.queues ?? []) {
-		const queue = next[canonicalId(worker.name)];
+	for (const consumer of generated.queues ?? []) {
+		const queue = next[canonicalId(consumer.name)];
 		if (queue?.kind !== 'queue') continue;
-
 		next[queue.id] = {
 			...queue,
-			worker: {
-				id: `${queue.id}Worker`,
-				handler: worker.handler,
-				dependencies: edgesTo(manifest, worker.dependencies),
-			},
+			worker: { ...queue.worker, handler: consumer.handler },
 		};
 	}
 
-	for (const subscriber of compute.subscribers ?? []) {
-		// A bucket's subscriber nests in the bucket, as a topic's does in the
-		// topic: the storage is what triggers it.
-		if (subscriber.bucket) {
-			const bucket = next[canonicalId(subscriber.bucket)];
-			if (bucket?.kind !== 'objects') continue;
-
+	for (const subscriber of generated.subscribers ?? []) {
+		const bucket = subscriber.bucket
+			? next[canonicalId(subscriber.bucket)]
+			: undefined;
+		if (bucket?.kind === 'objects') {
 			next[bucket.id] = {
 				...bucket,
-				subscribers: [
-					...(bucket.subscribers ?? []),
-					{
-						id: subscriber.name,
-						handler: subscriber.handler,
-						events: subscriber.subscribedEvents,
-						...(subscriber.prefix ? { prefix: subscriber.prefix } : {}),
-						...(subscriber.suffix ? { suffix: subscriber.suffix } : {}),
-						dependencies: edgesTo(manifest, subscriber.dependencies),
-					},
-				],
+				subscribers: at(
+					bucket.subscribers ?? [],
+					subscriber.name,
+					subscriber.handler,
+				),
 			};
 			continue;
 		}
-
-		const topicId = subscriber.topic && canonicalId(subscriber.topic);
-		const topic = topicId ? next[topicId] : undefined;
+		const topic = subscriber.topic
+			? next[canonicalId(subscriber.topic)]
+			: undefined;
 		if (topic?.kind !== 'topic') continue;
-
 		next[topic.id] = {
 			...topic,
-			subscribers: [
-				...topic.subscribers,
-				{
-					id: subscriber.name,
-					handler: subscriber.handler,
-					events: subscriber.subscribedEvents,
-					dependencies: edgesTo(manifest, subscriber.dependencies),
-				},
-			],
+			subscribers: at(topic.subscribers, subscriber.name, subscriber.handler),
 		};
 	}
 
-	// Discovery nested each processor with its source as its handler; the
-	// build's is the one a target runs.
-	for (const processor of compute.processors ?? []) {
+	for (const processor of generated.processors ?? []) {
 		const server = next[processor.fileServer];
 		if (server?.kind !== 'file-server') continue;
-
 		next[server.id] = {
 			...server,
-			processors: [
-				...(server.processors ?? []).filter((p) => p.id !== processor.name),
-				{
-					id: processor.name,
-					handler: processor.handler,
-					path: processor.path,
-					prefix: processor.prefix,
-					...(processor.native?.length ? { native: processor.native } : {}),
-					...(processor.timeout !== undefined
-						? { timeout: processor.timeout }
-						: {}),
-					...(processor.memorySize !== undefined
-						? { memorySize: processor.memorySize }
-						: {}),
-					dependencies: edgesTo(manifest, processor.dependencies),
-				},
-			].sort((a, b) => a.id.localeCompare(b.id)),
+			processors: at(
+				server.processors ?? [],
+				processor.name,
+				processor.handler,
+			),
 		};
 	}
 
 	return next;
-}
-
-/**
- * Construct ids as manifest edges.
- *
- * A `Dependency` carries the target's kind as well as its id, and the kind is
- * read off the manifest rather than recorded beside the edge — the same rule
- * `edgeTo` follows, for the same reason: a hand-written kind is one fact stated
- * twice, and the copy is what goes stale.
- *
- * An id that names nothing is dropped rather than thrown on. A handler can
- * depend on a construct that declares no node of its own — a lifted `Service`
- * is exactly that — and a build is the wrong place to refuse it; what a target
- * needs from this list is the subset it can actually grant.
- */
-function edgesTo(
-	manifest: ConstructManifest,
-	ids: readonly string[] = [],
-): Dependency[] {
-	return ids.flatMap((target) => {
-		const declaration = manifest[target];
-
-		return declaration ? [{ target, kind: declaration.kind }] : [];
-	});
-}
-
-/** One generated route as the manifest's shape. */
-function asEndpoint(
-	manifest: ConstructManifest,
-	surface: string,
-	route: RouteInfo,
-): RestApiEndpoint {
-	return {
-		// The handler path is already unique per route and is what a target needs
-		// to point a function at, so it is also the natural id.
-		id: `${surface}${route.method}${route.path}`,
-		handler: route.handler,
-		method: route.method,
-		path: route.path,
-		// The edges the handler declared, which is what a target reads to grant
-		// this one function access to exactly those constructs. `environment` is
-		// the same edges' shadow — the keys read — and cannot be turned back into
-		// them, which is why the ids are carried rather than inferred.
-		dependencies: edgesTo(manifest, route.dependencies),
-		...(route.authorizer ? { authorizer: route.authorizer } : {}),
-	};
 }
 
 /**

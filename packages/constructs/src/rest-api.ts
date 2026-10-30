@@ -28,7 +28,6 @@ import {
 	type ConstructName,
 	canonicalId,
 	type Declaration,
-	type Dependency,
 	provideKey,
 } from '@geekmidas/manifest';
 import type { Telescope } from '@geekmidas/telescope';
@@ -155,8 +154,7 @@ export interface RestApiConfig<
  * `dependsOn`, `database`, `auditor` and `.event(topic, …)` all inject a capability
  * into a handler. Putting one on the surface hands it to every route the
  * surface serves — a health check gets the database because a report needed it
- * — which is the thing least privilege forbids and the reason `.calls()` is not
- * spelled `dependsOn`. They belong to the endpoint, or to a branch —
+ * — which is the thing least privilege forbids. They belong to the endpoint, or to a branch —
  * `api.database(db)` — for a group of endpoints that genuinely share them. A
  * branch is a new factory; the surface config stays free of grants.
  *
@@ -212,8 +210,6 @@ export class RestApi<
 	constructor(
 		id: ConstructName<TName>,
 		private readonly config: RestApiConfig<TAuthorizers>,
-		/** Internal: how `.calls()` carries edges into the copy it returns. */
-		private readonly dependencies: readonly Dependency[] = [],
 		/** Internal: how `.auth()` carries the authenticator into its copy. */
 		private readonly authenticator?: Authenticator,
 	) {
@@ -309,9 +305,8 @@ export class RestApi<
 	 * group opts in, where the surface would grant it to every route it serves —
 	 * a health check handed the database because a profile endpoint needed it.
 	 *
-	 * `dependsOn` is deliberately not here. It is per endpoint, and on the
-	 * surface it would read as the API depending on something, which is what
-	 * `.calls()` and `.auth()` say instead.
+	 * `dependsOn` is deliberately not here. It is per endpoint: what the API's
+	 * process reaches is the edges of the endpoints it serves.
 	 */
 	readonly database: Endpoints['database'];
 	readonly session: Endpoints['session'];
@@ -325,11 +320,10 @@ export class RestApi<
 	/**
 	 * What authenticates this surface.
 	 *
-	 * An edge like `.calls()` — the auth server learns this origin, and the two
-	 * share a cookie domain — but a named one, because *who authenticates me* is
-	 * a different fact from *who I happen to call*, and only one of them decides
-	 * what a request is allowed to be. A surface with two of the first is a
-	 * mistake; two of the second is Tuesday.
+	 * An edge — the auth server learns this origin, and the two share a cookie
+	 * domain — but a named one, because *who authenticates me* is a different
+	 * fact from *who an endpoint happens to call*, and only one of them decides
+	 * what a request is allowed to be.
 	 *
 	 * It declares the id, and keeps the construct: a session callback reads from
 	 * it as `auth` — `session(async ({ auth }) => auth.getSession())` — which
@@ -341,36 +335,12 @@ export class RestApi<
 		return new RestApi<TName, TAuthorizers>(
 			this.id as ConstructName<TName>,
 			this.config,
-			[...this.dependencies, edgeTo(construct)],
 			construct,
 		);
 	}
 
 	/**
-	 * Other surfaces this one calls.
-	 *
-	 * **Not `.dependsOn()`, and the difference matters.** An endpoint's
-	 * `.dependsOn()` injects a client into that handler and grants it exactly
-	 * what it named. This grants nothing and injects nothing: it records that
-	 * this API calls another surface, which is what puts this API's origin on
-	 * that surface's trusted-origin list.
-	 *
-	 * Spelling it `dependsOn` would invite the thing least privilege forbids —
-	 * every route on the surface receiving whatever the surface named.
-	 *
-	 * Immutable, like every other builder here.
-	 */
-	calls(constructs: readonly Declarable[]): RestApi<TName, TAuthorizers> {
-		return new RestApi<TName, TAuthorizers>(
-			this.id as ConstructName<TName>,
-			this.config,
-			[...this.dependencies, ...constructs.map(edgeTo)],
-			this.authenticator,
-		);
-	}
-
-	/**
-	 * One surface node, with its endpoints left to the build.
+	 * One surface node, with its endpoints left to discovery.
 	 *
 	 * The three provided keys are one fact about this surface and two about its
 	 * callers. Declaring the caller-derived pair here rather than having the
@@ -387,13 +357,12 @@ export class RestApi<
 				...(this.config.subdomain ? { subdomain: this.config.subdomain } : {}),
 				...(this.config.telescope ? { telescope: true } : {}),
 				...(this.config.cors ? { cors: this.config.cors } : {}),
-				...(this.authenticator ? { auth: this.authenticator.id } : {}),
+				...(this.authenticator ? { auth: edgeTo(this.authenticator) } : {}),
 				// Filled by the build, which already generates one handler per
 				// endpoint and knows the path it wrote it to. A surface that
 				// enumerates its own routes statically — an auth server's single
 				// wildcard — puts them here instead.
 				endpoints: [],
-				...(this.dependencies.length ? { calls: this.dependencies } : {}),
 				...(this.config.telemetry
 					? { telemetry: this.config.telemetry.id }
 					: {}),

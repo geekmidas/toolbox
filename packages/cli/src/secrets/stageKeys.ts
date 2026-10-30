@@ -27,8 +27,6 @@ export interface WorkspaceStageKey extends StageKey {
 
 export interface WorkspaceStageKeysInput {
 	manifest: ConstructManifest;
-	/** Each owner's runnables' edges, from discovery. */
-	runnables?: Readonly<Record<string, readonly string[]>>;
 	/** Whether the stage is the workspace's local one. */
 	local: boolean;
 	/** What the stage's secrets hold, by key. */
@@ -62,9 +60,9 @@ export function workspaceStageKeys(
 			kind === 'websocket-api' ||
 			kind === 'site' ||
 			kind === 'mobile-app'
-				? appEnvKeys(manifest, name, input.runnables)
+				? appEnvKeys(manifest, name)
 				: kind === 'worker'
-					? workerEnvKeys(manifest, id, input.runnables)
+					? workerEnvKeys(manifest, id)
 					: undefined;
 		if (keys) reads.set(name, keys);
 	}
@@ -87,7 +85,6 @@ export function workspaceStageKeys(
 	// Mail and storage: the list a deploy's readiness check refuses by.
 	const services = stageServiceDeclarations({
 		manifest,
-		...(input.runnables ? { runnables: input.runnables } : {}),
 	});
 
 	return requiredStageKeys({

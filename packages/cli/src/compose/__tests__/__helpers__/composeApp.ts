@@ -354,25 +354,22 @@ export const sweep = worker
 }
 
 /**
- * The workspace at `dir`, its manifest, its runnables' edges, and where each
+ * The workspace at `dir`, its manifest, and where each
  * worker's work is declared.
  */
 export async function loadComposeApp(dir: string): Promise<{
 	workspace: NormalizedWorkspace;
 	manifest: ConstructManifest;
-	runnables: Record<string, string[]>;
 	background: Record<string, string[]>;
 }> {
 	const { workspace } = await loadWorkspaceConfig(dir);
-	const runnables: Record<string, string[]> = {};
 	const background: Record<string, string[]> = {};
 	const manifest = await discover({
 		patterns: constructGlobs(workspace),
 		cwd: workspace.root,
-		runnables,
 		background,
 	});
-	return { workspace, manifest, runnables, background };
+	return { workspace, manifest, background };
 }
 
 /** The documentation address the fixture's servers stand on. */

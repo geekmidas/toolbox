@@ -176,12 +176,12 @@ describe('Worker', () => {
 		});
 	});
 
-	describe('.calls()', () => {
+	describe('a copy', () => {
 		it('records an edge without mutating the worker it came from', () => {
 			const database = new KyselyDatabase<Record<string, never>, 'Db'>('Db');
 			const worker = new Worker('Worker');
 
-			const withDatabase = worker.calls([database]);
+			const withDatabase = worker.database(database);
 
 			expect(withDatabase.declare()[0]).toMatchObject({
 				dependencies: [expect.objectContaining({ target: 'Db' })],
@@ -194,7 +194,7 @@ describe('Worker', () => {
 			const logger = testLogger();
 			const database = new KyselyDatabase<Record<string, never>, 'Db'>('Db');
 
-			const worker = new Worker('Worker', { logger }).calls([database]);
+			const worker = new Worker('Worker', { logger }).database(database);
 
 			expect(worker.logger).toBe(logger);
 		});

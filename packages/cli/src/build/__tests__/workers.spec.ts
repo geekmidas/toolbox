@@ -34,11 +34,12 @@ const manifest = {
 		path: 'apps/billing',
 		endpoints: [],
 	},
-	// An auth server: its endpoints are its own declaration.
+	// An auth server: it serves itself.
 	Auth: {
 		kind: 'rest-api',
 		id: 'Auth',
 		path: 'apps/auth',
+		servesItself: true,
 		endpoints: [{ id: 'Handler', method: 'ALL', path: '/api/auth/*' }],
 	},
 	Jobs: { kind: 'worker', id: 'Jobs' },

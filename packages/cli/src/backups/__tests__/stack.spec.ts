@@ -33,7 +33,6 @@ const BACKUPS_URL =
 let dir: string;
 let workspace: NormalizedWorkspace;
 let manifest: ConstructManifest;
-let runnables: Record<string, string[]>;
 let background: Record<string, string[]>;
 
 beforeAll(async () => {
@@ -45,7 +44,7 @@ beforeAll(async () => {
 		domains: { production: 'shop.example.com', staging: 'staging.example.com' },
 		deployBackups: { staging: false },
 	});
-	({ workspace, manifest, runnables, background } = await loadComposeApp(dir));
+	({ workspace, manifest, background } = await loadComposeApp(dir));
 });
 
 afterAll(async () => {
@@ -75,7 +74,6 @@ function stack(
 	return composeStack({
 		workspace,
 		manifest,
-		runnables,
 		background,
 		stage,
 		identity: deployIdentity(workspace, stage),

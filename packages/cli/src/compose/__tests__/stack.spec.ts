@@ -31,13 +31,12 @@ import { loadComposeApp, writeComposeApp } from './__helpers__/composeApp';
 let dir: string;
 let workspace: NormalizedWorkspace;
 let manifest: ConstructManifest;
-let runnables: Record<string, string[]>;
 let background: Record<string, string[]>;
 
 beforeAll(async () => {
 	dir = realpathSync(await createTempDir('gkm-compose-stack-'));
 	writeComposeApp(dir, { registry: 'registry.example.com/acme' });
-	({ workspace, manifest, runnables, background } = await loadComposeApp(dir));
+	({ workspace, manifest, background } = await loadComposeApp(dir));
 });
 
 afterAll(async () => {
@@ -62,7 +61,6 @@ function stack(overrides: Partial<StackInput> = {}): ComposeStack {
 	return composeStack({
 		workspace,
 		manifest,
-		runnables,
 		background,
 		stage,
 		identity: deployIdentity(workspace, stage),
@@ -1085,8 +1083,8 @@ describe("a file server's processors", () => {
 
 describe('a worker SNS pushes to', () => {
 	/**
-	 * The workspace with a topic the worker subscribes to: the build would
-	 * find it through discovery, which records the subscriber under `Jobs`.
+	 * The workspace with a topic the worker subscribes to: discovery nests the
+	 * subscriber in the topic, owned by `Jobs`.
 	 */
 	const withTopic = (base: ConstructManifest = manifest): ConstructManifest =>
 		({
@@ -1096,7 +1094,15 @@ describe('a worker SNS pushes to', () => {
 				id: 'Alerts',
 				provides: ['ALERTS_PUBLISHER_CONNECTION_STRING'],
 				events: ['alert.raised'],
-				subscribers: [],
+				subscribers: [
+					{
+						id: 'onAlert',
+						handler: 'subscribers/alerts.ts#onAlert',
+						events: ['alert.raised'],
+						dependencies: [],
+						owner: 'Jobs',
+					},
+				],
 			},
 		}) as unknown as ConstructManifest;
 	const SNS =
@@ -1112,7 +1118,6 @@ describe('a worker SNS pushes to', () => {
 		stack({
 			stage: 'production',
 			manifest: withTopic(),
-			runnables: { ...runnables, Jobs: [...(runnables.Jobs ?? []), 'Alerts'] },
 			subscribers: {
 				Jobs: [
 					{
@@ -1206,12 +1211,21 @@ describe('a worker SNS pushes to', () => {
 		const s = deployed({
 			manifest: withTopic({
 				...manifest,
-				Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+				Uploads: {
+					kind: 'objects',
+					id: 'Uploads',
+					provides: ['UPLOADS_URL'],
+					subscribers: [
+						{
+							id: 'onAvatar',
+							handler: 'subscribers/avatars.ts#onAvatar',
+							events: ['object.created'],
+							dependencies: [],
+							owner: 'Jobs',
+						},
+					],
+				},
 			} as unknown as ConstructManifest),
-			runnables: {
-				...runnables,
-				Jobs: [...(runnables.Jobs ?? []), 'Uploads#events'],
-			},
 			subscribers: {
 				Jobs: [
 					{
@@ -1244,7 +1258,6 @@ describe('a worker SNS pushes to', () => {
 	it('stays private on the local stage, where the emulator pushes to the host', () => {
 		const s = stack({
 			manifest: withTopic(),
-			runnables: { ...runnables, Jobs: [...(runnables.Jobs ?? []), 'Alerts'] },
 			subscribers: {
 				Jobs: [
 					{
@@ -1289,13 +1302,22 @@ describe("a watched bucket in the stack's MinIO", () => {
 		stack({
 			manifest: {
 				...manifest,
-				Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+				Uploads: {
+					kind: 'objects',
+					id: 'Uploads',
+					provides: ['UPLOADS_URL'],
+					subscribers: [
+						{
+							id: 'onAvatar',
+							handler: 'subscribers/avatars.ts#onAvatar',
+							events: ['object.created'],
+							dependencies: [],
+							owner: 'Jobs',
+						},
+					],
+				},
 				Reports: { kind: 'objects', id: 'Reports', provides: ['REPORTS_URL'] },
 			} as unknown as ConstructManifest,
-			runnables: {
-				...runnables,
-				Jobs: [...(runnables.Jobs ?? []), 'Uploads#events'],
-			},
 			subscribers: {
 				Jobs: [
 					{
@@ -1664,7 +1686,6 @@ describe('a WebSocket surface', () => {
 					}
 				: realtime.workspace,
 			manifest: realtime.manifest,
-			runnables: realtime.runnables,
 			background: realtime.background,
 			stage: 'production',
 			identity: deployIdentity(realtime.workspace, 'production'),

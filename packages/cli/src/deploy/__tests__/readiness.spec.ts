@@ -28,7 +28,6 @@ import type { DeployResult } from '../types';
 let dir: string;
 let workspace: NormalizedWorkspace;
 let manifest: ConstructManifest;
-let runnables: Record<string, string[]>;
 let background: Record<string, string[]>;
 
 function withMailAndFiles(root: string): void {
@@ -58,7 +57,7 @@ beforeAll(async () => {
 	dir = realpathSync(await createTempDir('gkm-readiness-'));
 	writeComposeApp(dir, { registry: 'registry.example.com/acme' });
 	withMailAndFiles(dir);
-	({ workspace, manifest, runnables, background } = await loadComposeApp(dir));
+	({ workspace, manifest, background } = await loadComposeApp(dir));
 }, 60_000);
 
 afterAll(async () => {
@@ -81,7 +80,6 @@ function phase(
 		stage,
 		workspace: overrides.workspace ?? workspace,
 		manifest,
-		runnables,
 		background,
 		allowDevServices: overrides.allowDevServices ?? false,
 		secrets: {

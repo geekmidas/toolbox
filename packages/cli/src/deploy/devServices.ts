@@ -181,8 +181,6 @@ const SERVICE_KINDS: Readonly<Record<string, ServiceDeclaration['kind']>> = {
 
 export interface StageServiceDeclarationsInput {
 	manifest: ConstructManifest;
-	/** Each owner's runnables' edges, from discovery. */
-	runnables?: Readonly<Record<string, readonly string[]>>;
 }
 
 /**
@@ -198,7 +196,6 @@ export function stageServiceDeclarations(
 	input: StageServiceDeclarationsInput,
 ): ServiceDeclaration[] {
 	const { manifest } = input;
-	const runnables = input.runnables ?? {};
 
 	// The construct each key belongs to.
 	const owners = new Map<string, string>();
@@ -232,14 +229,14 @@ export function stageServiceDeclarations(
 			declaration.kind === 'site' ||
 			declaration.kind === 'mobile-app'
 		) {
-			read(name, appEnvKeys(manifest, name, runnables) ?? []);
+			read(name, appEnvKeys(manifest, name) ?? []);
 		}
 		// A site's build args, by the keys they rename.
 		if (declaration.kind === 'site') {
 			read(name, Object.values(publicEnvFor(declaration, manifest)));
 		}
 		if (declaration.kind === 'worker') {
-			read(name, workerEnvKeys(manifest, id, runnables) ?? []);
+			read(name, workerEnvKeys(manifest, id) ?? []);
 		}
 	}
 
