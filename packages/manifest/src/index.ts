@@ -64,6 +64,7 @@ export type {
 	TelemetryKey,
 	TopicDeclaration,
 	WebSocketApiDeclaration,
+	WebSocketRouteDeclaration,
 	WorkerDeclaration,
 } from './declaration';
 export {

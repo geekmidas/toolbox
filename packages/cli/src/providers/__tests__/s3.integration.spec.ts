@@ -114,7 +114,6 @@ let home: string;
 let name: string;
 let workspace: NormalizedWorkspace;
 let manifest: ConstructManifest;
-let runnables: Record<string, string[]>;
 const lines: string[] = [];
 
 /** Every bucket and user a run made, to remove afterwards. */
@@ -156,7 +155,6 @@ const provision = async (
 		workspace,
 		stage,
 		manifest,
-		runnables,
 		home,
 		secrets: {
 			read: () => store.read(stage),
@@ -255,7 +253,7 @@ beforeAll(async () => {
 		},
 	});
 	withFileServer(dir);
-	({ workspace, manifest, runnables } = await loadComposeApp(dir));
+	({ workspace, manifest } = await loadComposeApp(dir));
 }, 120_000);
 
 beforeEach(() => {

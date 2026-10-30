@@ -151,15 +151,22 @@ describe('a credential, on a deployed stage', () => {
 		const keys = workspaceStageKeys({
 			manifest: {
 				...manifest,
+				// An endpoint on the API depends on the credential.
 				Api: {
 					kind: 'rest-api',
 					id: 'Api',
-					endpoints: [],
+					endpoints: [
+						{
+							id: 'ApiPOST/charges',
+							handler: 'endpoints/charges.ts#charge',
+							method: 'POST',
+							path: '/charges',
+							dependencies: [{ target: 'Payments', kind: 'credential' }],
+						},
+					],
 					provides: ['API_URL'],
 				},
 			} as ConstructManifest,
-			// An endpoint on the API depends on the credential.
-			runnables: { Api: ['Payments'] },
 			local: false,
 			supplied: {},
 		});

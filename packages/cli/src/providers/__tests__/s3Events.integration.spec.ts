@@ -29,7 +29,10 @@ import {
 	reconcileHttpSubscriptions,
 	SNSConnection,
 } from '@geekmidas/events/sns';
-import type { ConstructManifest } from '@geekmidas/manifest';
+import type {
+	ConstructManifest,
+	ObjectsDeclaration,
+} from '@geekmidas/manifest';
 import type { ObjectEvent } from '@geekmidas/storage/events';
 import {
 	afterAll,
@@ -99,7 +102,6 @@ let home: string;
 let name: string;
 let workspace: NormalizedWorkspace;
 let manifest: ConstructManifest;
-let runnables: Record<string, string[]>;
 let subscribers: Record<string, BoundSubscriber[]>;
 const lines: string[] = [];
 
@@ -120,7 +122,6 @@ const provision = async (
 		workspace,
 		stage: STAGE,
 		manifest,
-		runnables,
 		subscribers,
 		home,
 		secrets: {
@@ -180,12 +181,10 @@ export const onAvatar = worker
 `,
 	);
 	({ workspace } = await loadWorkspaceConfig(dir));
-	runnables = {};
 	subscribers = {};
 	manifest = await discover({
 		patterns: constructGlobs(workspace),
 		cwd: workspace.root,
-		runnables,
 		subscribers,
 	});
 }, 120_000);
@@ -368,7 +367,18 @@ describe('a watched bucket on an s3 stage', () => {
 		const arn = (await resources())['sns-subscription:Jobs/onAvatar']!.id!;
 
 		// The same worker, now with a subscriber of another name.
+		const uploads = manifest.Uploads as ObjectsDeclaration;
 		await provision({
+			manifest: {
+				...manifest,
+				Uploads: {
+					...uploads,
+					subscribers: (uploads.subscribers ?? []).map((s) => ({
+						...s,
+						id: 'onPhoto',
+					})),
+				},
+			},
 			subscribers: {
 				Jobs: [
 					{

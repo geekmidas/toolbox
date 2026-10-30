@@ -16,15 +16,20 @@
 
 import { relative } from 'node:path';
 import { Cron } from '@geekmidas/constructs/crons';
+import { Endpoint } from '@geekmidas/constructs/endpoints';
+import { Function } from '@geekmidas/constructs/functions';
 import { Processor } from '@geekmidas/constructs/processors';
 import { Queue } from '@geekmidas/constructs/queue';
 import { Subscriber } from '@geekmidas/constructs/subscribers';
+import { WebSocketRoute } from '@geekmidas/constructs/websocket-api';
 import {
 	assertDerivations,
 	type ConstructManifest,
 	canonicalId,
 	type Declaration,
+	type Dependency,
 	type ProcessorDeclaration,
+	provideKey,
 } from '@geekmidas/manifest';
 import fg from 'fast-glob';
 import { z } from 'zod';
@@ -33,7 +38,7 @@ import { clearZodGlobalRegistry } from '../generators/Generator';
 import { output } from '../output';
 import { activeSandbox, type Sandbox } from '../sandbox/sandbox';
 import { runWorker } from '../sandbox/worker';
-import { eventsEdge, subscriberConnectionKey } from './edges';
+import { subscriberConnectionKey } from './edges';
 
 /** `console`, or the deploy run discovering the manifest. */
 const logger = output;
@@ -86,18 +91,6 @@ export interface DiscoverOptions {
 	 * caller, which wants the manifest and nothing else, is unchanged.
 	 */
 	sources?: Record<string, ConstructSource>;
-	/**
-	 * Filled in, when provided, with the ids each owner's runnables declared an
-	 * edge to — keyed by the surface an endpoint was built from, or the worker
-	 * a cron or subscriber was.
-	 *
-	 * A runnable is not a declaration: a surface's endpoints are found by the
-	 * glob, not listed by the surface, so its node says `endpoints: []` until a
-	 * build folds the routes in. Anything deciding what an app's process reaches
-	 * — which keys its container is given — needs those edges before any build,
-	 * and discovery is already importing the files they are in.
-	 */
-	runnables?: Record<string, string[]>;
 	/**
 	 * Filled in, when provided, with the files each worker's background work is
 	 * declared in — its crons, queue consumers and topic subscribers — keyed by
@@ -159,7 +152,6 @@ const DiscoverAnswer = z.discriminatedUnion('reason', [
 			z.string(),
 			z.object({ id: z.string(), kind: z.string() }).loose(),
 		),
-		runnables: z.record(z.string(), z.array(z.string())),
 		background: z.record(z.string(), z.array(z.string())).optional(),
 		subscribers: z
 			.record(
@@ -218,11 +210,6 @@ async function discoverInSandbox(
 
 	switch (value.reason) {
 		case 'discovered':
-			if (options.runnables) {
-				for (const [owner, edges] of Object.entries(value.runnables)) {
-					options.runnables[owner] = edges;
-				}
-			}
 			if (options.background) {
 				for (const [owner, files] of Object.entries(value.background ?? {})) {
 					options.background[owner] = files;
@@ -368,6 +355,8 @@ export async function discover(
 		object,
 		{ exportName: string; file: string; processor: Processor<string> }
 	>();
+	/** Each runnable, once, under the export most likely to define it. */
+	const runnables = new Map<object, Found>();
 
 	for await (const found of files) {
 		matched++;
@@ -386,26 +375,19 @@ export async function discover(
 					processors.set(exported, { exportName, file, processor: exported });
 				}
 			}
-			if (!isDeclarable(exported)) {
-				if (options.runnables) recordRunnable(options.runnables, exported);
-				continue;
+			if (isRunnable(exported)) {
+				const seenAt = runnables.get(exported);
+				if (!seenAt || definedIn(file, seenAt.file)) {
+					runnables.set(exported, { exportName, file, construct: exported });
+				}
 			}
+			if (!isDeclarable(exported)) continue;
 
 			// The same construct, reached again through a re-export. Skipped
 			// rather than re-declared: it has already claimed its id, from the
 			// file that defined it.
 			if (seen.has(exported as object)) continue;
 			seen.add(exported as object);
-
-			// A construct that is also something a process runs — a queue and its
-			// consumer, built from a worker — reaches what it depends on through
-			// that process, exactly as an endpoint or a cron does.
-			if (
-				options.runnables &&
-				typeof (exported as { owner?: unknown }).owner === 'string'
-			) {
-				recordRunnable(options.runnables, exported);
-			}
 
 			for (const declaration of exported.declare()) {
 				// Canonicalise here too: a construct built by hand rather than through
@@ -426,6 +408,7 @@ export async function discover(
 	}
 
 	nestProcessors(manifest, [...processors.values()], cwd);
+	nestRunnables(manifest, [...runnables.values()], cwd);
 
 	// Reference integrity before anyone reads it — a schema tenant naming a
 	// database that was deleted is a manifest error, not a reconcile failure.
@@ -554,6 +537,171 @@ function nestProcessors(
 	}
 }
 
+/** A runnable export, under the name and file it was found by. */
+interface Found {
+	exportName: string;
+	file: string;
+	construct: unknown;
+}
+
+/**
+ * Whether an export is something a process runs: an endpoint or a WebSocket
+ * route its surface serves, or a cron, function, queue consumer or subscriber
+ * a worker does.
+ */
+function isRunnable(value: unknown): value is object {
+	return (
+		Endpoint.isEndpoint(value) ||
+		WebSocketRoute.isRoute(value) ||
+		Cron.isCron(value) ||
+		Function.isFunction(value) ||
+		Queue.isQueue(value) ||
+		Subscriber.isSubscriber(value)
+	);
+}
+
+/**
+ * Nest each runnable where it runs: an endpoint in its surface, a route in
+ * its WebSocket surface, a consumer in its queue, a subscriber in its topic or
+ * bucket; a cron or function as a node of its own.
+ *
+ * Here and not in the build, so the manifest is the whole application in every
+ * command: `gkm dev` reads the same edges `gkm build` writes and a deploy
+ * grants. Each handler is its source, `<file>#<export>`, until a build that
+ * generates one per function replaces it with the generated entry.
+ */
+function nestRunnables(
+	manifest: Record<string, Declaration>,
+	found: readonly Found[],
+	cwd: string,
+): void {
+	// An id that names nothing is dropped: a handler can depend on a lifted
+	// `Service`, which declares no node of its own.
+	const edges = (ids: readonly string[] = []): Dependency[] =>
+		[...new Set(ids.map(canonicalId))].flatMap((id) => {
+			const target = manifest[id];
+			return target ? [{ target: target.id, kind: target.kind }] : [];
+		});
+	const ownerOf = (construct: { owner?: unknown }) =>
+		typeof construct.owner === 'string'
+			? { owner: canonicalId(construct.owner) }
+			: {};
+	const byId = <T extends { id: string }>(list: readonly T[], next: T) =>
+		[...list.filter((item) => item.id !== next.id), next].sort((a, b) =>
+			a.id.localeCompare(b.id),
+		);
+
+	const sorted = [...found].sort((a, b) =>
+		a.exportName.localeCompare(b.exportName),
+	);
+	for (const { exportName, file, construct } of sorted) {
+		const handler = `${relative(cwd, file)}#${exportName}`;
+
+		if (Endpoint.isEndpoint(construct)) {
+			const surfaceId = construct.surface?.id;
+			const surface = surfaceId ? manifest[canonicalId(surfaceId)] : undefined;
+			if (surface?.kind !== 'rest-api') continue;
+			manifest[surface.id] = {
+				...surface,
+				endpoints: byId(surface.endpoints, {
+					id: `${surface.id}${construct.method}${construct._path}`,
+					handler,
+					method: construct.method,
+					path: construct._path,
+					dependencies: edges(construct.constructs),
+					authorizer: construct.authorizer?.name ?? 'none',
+				}),
+			};
+			continue;
+		}
+
+		if (WebSocketRoute.isRoute(construct)) {
+			const surface = manifest[canonicalId(construct.surface.id)];
+			if (surface?.kind !== 'websocket-api') continue;
+			manifest[surface.id] = {
+				...surface,
+				routes: byId(surface.routes ?? [], {
+					id: `${surface.id}${construct.action}`,
+					handler,
+					action: construct.action,
+					dependencies: edges(construct.constructs),
+				}),
+			};
+			continue;
+		}
+
+		if (Cron.isCron(construct)) {
+			manifest[exportName] = {
+				kind: 'cron',
+				id: exportName,
+				handler,
+				schedule: construct.schedule || 'rate(1 hour)',
+				dependencies: edges(construct.constructs),
+				...ownerOf(construct),
+			};
+			continue;
+		}
+
+		if (Function.isFunction(construct)) {
+			manifest[exportName] = {
+				kind: 'function',
+				id: exportName,
+				handler,
+				dependencies: edges(construct.constructs),
+				provides: [provideKey(exportName, 'url')],
+				...ownerOf(construct),
+			};
+			continue;
+		}
+
+		// A queue declared itself; its consumer is what the worker runs.
+		if (Queue.isQueue(construct)) {
+			const queue = manifest[construct.id];
+			if (queue?.kind !== 'queue') continue;
+			manifest[queue.id] = {
+				...queue,
+				worker: {
+					...queue.worker,
+					handler,
+					dependencies: edges(construct.constructs),
+					...ownerOf(construct),
+				},
+			};
+			continue;
+		}
+
+		if (Subscriber.isSubscriber(construct)) {
+			const subscriber = {
+				id: exportName,
+				handler,
+				events: [...(construct.subscribedEvents ?? [])],
+				dependencies: edges(construct.constructs),
+				...ownerOf(construct),
+			};
+			if (construct.bucketName) {
+				const bucket = manifest[canonicalId(construct.bucketName)];
+				if (bucket?.kind !== 'objects') continue;
+				manifest[bucket.id] = {
+					...bucket,
+					subscribers: byId(bucket.subscribers ?? [], {
+						...subscriber,
+						...construct.objectFilter,
+					}),
+				};
+				continue;
+			}
+			const topic = construct.topicName
+				? manifest[canonicalId(construct.topicName)]
+				: undefined;
+			if (topic?.kind !== 'topic') continue;
+			manifest[topic.id] = {
+				...topic,
+				subscribers: byId(topic.subscribers, subscriber),
+			};
+		}
+	}
+}
+
 /**
  * Record a subscriber — to a topic or to a bucket — under the worker that
  * runs it, by its export. Once per name: a file reached twice through a
@@ -599,58 +747,6 @@ export function consumedBy(runnable: unknown): string[] {
 		return [canonicalId(runnable.bucketName)];
 	}
 	return [];
-}
-
-/**
- * The edges a runnable's process records for what it consumes. A bucket's
- * subscriber consumes the bucket's *events*, not the bucket: binding to its
- * changes is not reading its objects, so its process is handed the events
- * key and not the bucket's URL — that still takes `.dependsOn([bucket])`.
- */
-function consumedEdges(runnable: unknown): string[] {
-	if (Subscriber.isSubscriber(runnable) && runnable.bucketName) {
-		return [eventsEdge(canonicalId(runnable.bucketName))];
-	}
-	return consumedBy(runnable);
-}
-
-/**
- * Record a runnable's edges under the construct that owns it — the surface an
- * endpoint was built from, or the worker a cron or subscriber was. Anything
- * with no owner, or that is not a runnable at all, is left alone.
- */
-function recordRunnable(
-	runnables: Record<string, string[]>,
-	exported: unknown,
-): void {
-	if (typeof exported !== 'object' || exported === null) return;
-
-	const runnable = exported as {
-		surface?: { id?: unknown };
-		owner?: unknown;
-		constructs?: unknown;
-	};
-	const owner =
-		typeof runnable.surface?.id === 'string'
-			? runnable.surface.id
-			: typeof runnable.owner === 'string'
-				? runnable.owner
-				: undefined;
-	if (!owner || !Array.isArray(runnable.constructs)) return;
-
-	const key = canonicalId(owner);
-	const edges = runnables[key] ?? [];
-	runnables[key] = edges;
-	// What it consumes is an edge of its process too, so a worker is handed
-	// the carriers its own work is bound to and no other.
-	for (const id of runnable.constructs) {
-		if (typeof id !== 'string') continue;
-		const target = canonicalId(id);
-		if (!edges.includes(target)) edges.push(target);
-	}
-	for (const edge of consumedEdges(exported)) {
-		if (!edges.includes(edge)) edges.push(edge);
-	}
 }
 
 /**

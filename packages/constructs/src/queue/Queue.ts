@@ -178,14 +178,11 @@ export class Queue<
 				// trigger: this handler is reached by messages on this queue and
 				// by nothing else, so there is no `trigger` field to keep in step.
 				//
-				// `handler` is the export name; which directory the build wrote it
-				// to is the target's business, and a path with a cloud in it does
-				// not belong in a neutral declaration.
+				// Its handler, edges and owner are discovery's to fill: only it
+				// knows the file and export the consumer was found under.
 				worker: {
 					id: `${this.id}Worker`,
 					handler: `${this.id}.handler`,
-					// Filled by the build from what the worker declared. Empty is a
-					// stated gap, not a claim that it reaches nothing.
 					dependencies: [],
 				},
 			},

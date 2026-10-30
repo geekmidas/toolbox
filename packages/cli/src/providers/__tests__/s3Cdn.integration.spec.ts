@@ -150,7 +150,6 @@ let name: string;
 let domain: string;
 let workspace: NormalizedWorkspace;
 let manifest: ConstructManifest;
-let runnables: Record<string, string[]>;
 let zone: Zone;
 const lines: string[] = [];
 const made = { buckets: new Set<string>(), users: new Set<string>() };
@@ -234,7 +233,6 @@ const provision = async (
 		workspace,
 		stage,
 		manifest,
-		runnables,
 		home,
 		secrets: {
 			read: () => store.read(stage),
@@ -332,7 +330,7 @@ export const upload = api
 	.handle(async () => ({ ok: true }));
 `,
 	);
-	({ workspace, manifest, runnables } = await loadComposeApp(dir));
+	({ workspace, manifest } = await loadComposeApp(dir));
 }, 120_000);
 
 beforeEach(() => {

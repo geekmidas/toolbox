@@ -8,8 +8,25 @@ import {
 	mergedNotifications,
 } from '../s3/events';
 
+/** Discovery nests each bucket subscriber in its bucket, with its worker. */
+const subscriber = (id: string, owner: string) => ({
+	id,
+	handler: `subscribers/${id}.ts#${id}`,
+	events: ['object.created'],
+	dependencies: [],
+	owner,
+});
+
 const manifest = {
-	Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+	Uploads: {
+		kind: 'objects',
+		id: 'Uploads',
+		provides: ['UPLOADS_URL'],
+		subscribers: [
+			subscriber('onPhoto', 'Media'),
+			subscriber('onAvatar', 'Jobs'),
+		],
+	},
 	Exports: { kind: 'objects', id: 'Exports', provides: ['EXPORTS_URL'] },
 } as unknown as ConstructManifest;
 
@@ -17,28 +34,7 @@ const TOPIC = 'arn:aws:sns:eu-west-1:123456789012:acme-uploads-events';
 
 describe('bucketWatchers', () => {
 	it('names each subscriber watching a bucket, by worker and export', () => {
-		const watched = bucketWatchers(
-			manifest,
-			{ Jobs: ['Uploads#events'] },
-			{
-				Jobs: [
-					{
-						name: 'onAvatar',
-						connectionKey: 'UPLOADS_EVENTS_CONNECTION_STRING',
-					},
-					{
-						name: 'onAlert',
-						connectionKey: 'ALERTS_PUBLISHER_CONNECTION_STRING',
-					},
-				],
-				Media: [
-					{
-						name: 'onPhoto',
-						connectionKey: 'UPLOADS_EVENTS_CONNECTION_STRING',
-					},
-				],
-			},
-		);
+		const watched = bucketWatchers(manifest);
 
 		expect([...watched.keys()]).toEqual(['Uploads']);
 		expect(watched.get('Uploads')).toEqual([
@@ -47,15 +43,8 @@ describe('bucketWatchers', () => {
 		]);
 	});
 
-	it('counts a bucket watched by an edge alone, with nobody to subscribe', () => {
-		const watched = bucketWatchers(manifest, { Jobs: ['Exports#events'] });
-
-		expect(watched.get('Exports')).toEqual([]);
-		expect(watched.has('Uploads')).toBe(false);
-	});
-
 	it('watches nothing when no subscriber does', () => {
-		expect(bucketWatchers(manifest, { Jobs: ['Uploads'] }).size).toBe(0);
+		expect(bucketWatchers(manifest).has('Exports')).toBe(false);
 	});
 });
 

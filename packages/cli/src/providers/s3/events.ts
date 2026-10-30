@@ -33,8 +33,6 @@ import {
 } from '../../deploy/snsSubscriptions.js';
 import { GkmError } from '../../errors';
 import { subscriberRoute } from '../../generators/subscriberRoute.js';
-import type { BoundSubscriber } from '../../reconcile/discover.js';
-import { eventsEdge } from '../../reconcile/edges.js';
 import { NoDomainForStage } from '../../target/dokploy/domain.js';
 import { appKey } from '../../workspace/derive.js';
 import type { S3ObjectsConfig } from '../../workspace/types.js';
@@ -59,37 +57,28 @@ export interface BucketWatcher {
 }
 
 /**
- * Each bucket a subscriber watches, with the subscribers discovery could name.
+ * Each bucket a subscriber watches, with the subscribers watching it: the
+ * worker that runs each, and its export — what its route is named after.
  *
- * A bucket is watched when a process consumes its events — discovery records
- * the edge, and the subscriber by its export — or when a build put a
- * subscriber in its declaration. Only a named subscriber can be subscribed: a
- * route is named after its export.
+ * Read off the bucket's own node, where discovery nests every subscriber
+ * bound to it with the worker that owns it.
  */
 export function bucketWatchers(
 	manifest: ConstructManifest,
-	runnables: Readonly<Record<string, readonly string[]>>,
-	subscribers: Readonly<Record<string, readonly BoundSubscriber[]>> = {},
 ): Map<string, BucketWatcher[]> {
 	const watched = new Map<string, BucketWatcher[]>();
 	for (const [id, declaration] of Object.entries(manifest)) {
 		if (declaration.kind !== 'objects') continue;
-		const key = provideKey(id, 'eventsConnectionString');
-		const named = Object.entries(subscribers)
-			.flatMap(([worker, bound]) =>
-				bound
-					.filter((s) => s.connectionKey === key)
-					.map((s) => ({ worker, name: s.name })),
-			)
-			.sort((a, b) =>
-				`${a.worker}/${a.name}`.localeCompare(`${b.worker}/${b.name}`),
-			);
-		const edged = Object.values(runnables).some((edges) =>
-			edges.includes(eventsEdge(id)),
+		const subscribers = (declaration as ObjectsDeclaration).subscribers ?? [];
+		if (subscribers.length === 0) continue;
+		watched.set(
+			id,
+			subscribers
+				.flatMap((s) => (s.owner ? [{ worker: s.owner, name: s.id }] : []))
+				.sort((a, b) =>
+					`${a.worker}/${a.name}`.localeCompare(`${b.worker}/${b.name}`),
+				),
 		);
-		const declared =
-			((declaration as ObjectsDeclaration).subscribers?.length ?? 0) > 0;
-		if (named.length > 0 || edged || declared) watched.set(id, named);
 	}
 	return watched;
 }

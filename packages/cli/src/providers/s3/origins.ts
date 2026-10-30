@@ -26,8 +26,6 @@ import type { NormalizedWorkspace } from '../../workspace/types.js';
 export interface BucketOriginsInput {
 	workspace: Pick<NormalizedWorkspace, 'apps' | 'deploy' | 'domains'>;
 	manifest: ConstructManifest;
-	/** Each owner's runnables' edges, from discovery. */
-	runnables?: Readonly<Record<string, readonly string[]>>;
 	stage: string;
 	/** The `objects` construct's id. */
 	bucket: string;
@@ -62,7 +60,7 @@ export function bucketOrigins(input: BucketOriginsInput): BucketOrigins {
 				d.kind === 'site',
 		)
 		.filter(([id]) => {
-			const env = appEnvKeys(manifest, appKey(id), input.runnables);
+			const env = appEnvKeys(manifest, appKey(id));
 			return env !== undefined && keys.some((key) => env.has(key));
 		});
 

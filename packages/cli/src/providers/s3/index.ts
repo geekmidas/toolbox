@@ -383,7 +383,7 @@ export function useS3Clients(factory: S3ClientFactory): S3ClientFactory {
 async function ensureS3(ctx: Ctx): Promise<void> {
 	const region = s3Region(ctx);
 	const clients = await makeClients(ctx.credential, region);
-	const watched = bucketWatchers(ctx.manifest, ctx.runnables, ctx.subscribers);
+	const watched = bucketWatchers(ctx.manifest);
 	for (const construct of bucketConstructs(ctx.manifest)) {
 		await ensureBucket(ctx, clients, construct, watched.get(construct.id));
 	}
@@ -433,7 +433,6 @@ async function ensureBucket(
 					origins: bucketOrigins({
 						workspace: ctx.workspace,
 						manifest: ctx.manifest,
-						runnables: ctx.runnables,
 						stage: ctx.stage,
 						bucket: id,
 					}).origins,
@@ -885,7 +884,6 @@ async function ensureBucketSettings(
 	const { origins, unresolved } = bucketOrigins({
 		workspace: ctx.workspace,
 		manifest: ctx.manifest,
-		runnables: ctx.runnables,
 		stage: ctx.stage,
 		bucket: id,
 	});
@@ -1031,8 +1029,8 @@ export const s3Provider: ResourceProvider<S3ObjectsConfig, AwsProvisioning> = {
 	check: checkS3Config,
 	provisioning: S3_PROVISIONING,
 	credentials: awsProvisioningCredentials,
-	runtimeKeys(manifest, runnables = {}) {
-		const watched = bucketWatchers(manifest, runnables);
+	runtimeKeys(manifest) {
+		const watched = bucketWatchers(manifest);
 		return bucketConstructs(manifest).flatMap((b) => [
 			provideKey(b.id, 'url'),
 			...(watched.has(b.id)

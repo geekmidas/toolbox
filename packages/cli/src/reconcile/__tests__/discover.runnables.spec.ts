@@ -1,3 +1,4 @@
+import { dependentsOf, provisionOrder } from '@geekmidas/manifest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
 	cleanupDir,
@@ -5,20 +6,26 @@ import {
 	createTestFile,
 } from '../../__tests__/test-helpers';
 import { LocalSandbox } from '../../sandbox/local';
-import { workerEnvKeys } from '../apps';
+import { processorEnvKeys, workerEnvKeys } from '../apps';
+import { portKeys } from '../containers';
 import {
 	type BoundSubscriber,
 	discover,
 	ProcessorServerUnknown,
 } from '../discover';
+import { workerEdges } from '../edges';
+import { envFor } from '../env';
+import { planFor } from '../plan';
+import { TEST_CREDENTIALS } from './__helpers__/credentials';
 
 /**
- * A runnable's edges, collected by the discovery that already imports it.
+ * Every runnable, nested in the manifest by the discovery that already
+ * imports it — with its edges, and its source as its handler.
  *
- * A surface's endpoints are found by the glob, not listed by the surface, so
- * its node says `endpoints: []` and the manifest has no edge for them until a
- * build folds the routes in. An app container composed from edges needs them
- * before any build — without them the API was given no database at all.
+ * The manifest is the whole application in every command. When a surface's
+ * endpoints were left for a build to fold in, `gkm dev` saw an API with no
+ * edges: no database for its container, and no caller for the buckets its
+ * endpoints sign links to.
  */
 describe('discover — runnables', () => {
 	let dir: string;
@@ -91,9 +98,7 @@ export const nightly = jobs
 		await cleanupDir(dir);
 	});
 
-	it('records what each owner’s runnables reach, under the owner', async () => {
-		const runnables: Record<string, string[]> = {};
-
+	it('nests each runnable where it runs, with its edges', async () => {
 		const manifest = await discover({
 			patterns: [
 				'constructs/**/*.ts',
@@ -102,23 +107,62 @@ export const nightly = jobs
 				'queues/**/*.ts',
 			],
 			cwd: dir,
-			runnables,
 		});
 
-		// The surface's own node is unchanged — the edges are beside it.
-		expect(manifest.Api).toMatchObject({ kind: 'rest-api', endpoints: [] });
-		expect(runnables).toEqual({
-			// `api.database(orders)` is an edge like `.dependsOn()`, and so is
-			// `.event(users, …)`: without it the API's container was composed
-			// without `USERS_PUBLISHER_CONNECTION_STRING`.
-			Api: ['Orders', 'Uploads', 'Users'],
-			// The queue's consumer runs in the worker, so its bucket is the worker's
-			// too — a queue is a declaration *and* a runnable — and so is the
-			// queue it drains.
-			Jobs: expect.arrayContaining(['Orders', 'Uploads', 'Receipts']),
+		// `api.database(orders)` is an edge like `.dependsOn()`, and so is
+		// `.event(users, …)`: without it the API's container was composed
+		// without `USERS_PUBLISHER_CONNECTION_STRING`.
+		expect(manifest.Api).toMatchObject({
+			kind: 'rest-api',
+			endpoints: [
+				{
+					id: 'ApiGET/orders',
+					handler: 'endpoints/orders.ts#listOrders',
+					method: 'GET',
+					path: '/orders',
+					dependencies: [
+						{ target: 'Orders', kind: 'database' },
+						{ target: 'Uploads', kind: 'objects' },
+						{ target: 'Users', kind: 'topic' },
+					],
+					authorizer: 'none',
+				},
+			],
 		});
-		expect(runnables.Jobs).toHaveLength(3);
-		expect(manifest.Receipts).toMatchObject({ kind: 'queue' });
+		// A queue is a declaration *and* a runnable: its consumer is the
+		// worker's, with its own edges.
+		expect(manifest.Receipts).toMatchObject({
+			kind: 'queue',
+			worker: {
+				handler: 'queues/receipts.ts#receipts',
+				dependencies: [{ target: 'Uploads', kind: 'objects' }],
+				owner: 'Jobs',
+			},
+		});
+		expect(manifest.nightly).toEqual({
+			kind: 'cron',
+			id: 'nightly',
+			handler: 'crons/nightly.ts#nightly',
+			schedule: 'rate(1 day)',
+			dependencies: [{ target: 'Orders', kind: 'database' }],
+			owner: 'Jobs',
+		});
+		// The worker's process reaches what everything it owns does, and the
+		// queue its consumer drains.
+		expect(workerEdges(manifest, 'Jobs').sort()).toEqual([
+			'Orders',
+			'Receipts',
+			'Uploads',
+		]);
+	});
+
+	it('counts an endpoint’s surface among the callers of what it uses', async () => {
+		const manifest = await discover({
+			patterns: ['constructs/**/*.ts', 'endpoints/**/*.ts'],
+			cwd: dir,
+		});
+
+		expect(dependentsOf(manifest, 'Uploads')).toEqual(['Api']);
 	});
 
 	// A child process that loads tsx and imports the project: seconds, not
@@ -133,25 +177,14 @@ export const nightly = jobs
 				'crons/**/*.ts',
 				'queues/**/*.ts',
 			];
-			const here: Record<string, string[]> = {};
-			const there: Record<string, string[]> = {};
-
-			const local = await discover({ patterns, cwd: dir, runnables: here });
+			const local = await discover({ patterns, cwd: dir });
 			const sandboxed = await discover({
 				patterns,
 				cwd: dir,
-				runnables: there,
 				sandbox: new LocalSandbox({ root: dir }),
 			});
 
 			expect(sandboxed).toEqual(local);
-			// The same edges, in whatever order the glob streamed their files —
-			// which is not fixed, here or there.
-			const sorted = (edges: Record<string, string[]>) =>
-				Object.fromEntries(
-					Object.entries(edges).map(([owner, ids]) => [owner, [...ids].sort()]),
-				);
-			expect(sorted(there)).toEqual(sorted(here));
 		},
 	);
 
@@ -195,7 +228,7 @@ import { z } from 'zod';
 import { orders, users } from '../constructs/index.js';
 
 // A worker with no database of its own; its runnables name theirs.
-const reports = new Worker('Reports');
+export const reports = new Worker('Reports');
 
 export const audit = reports
 	.topic(users)
@@ -210,18 +243,15 @@ export const rollup = reports
 	.handle(async () => {});
 `,
 		);
-		const runnables: Record<string, string[]> = {};
-
-		await discover({
+		const manifest = await discover({
 			patterns: ['constructs/**/*.ts', 'subscribers/**/*.ts'],
 			cwd: dir,
-			runnables,
 		});
 
 		// The handler's `db` reaches the database, so the process running it has
 		// to be composed with it — and each reaches what it consumes: the
 		// subscriber its topic, the consumer its queue.
-		expect([...(runnables.Reports ?? [])].sort()).toEqual([
+		expect(workerEdges(manifest, 'Reports').sort()).toEqual([
 			'Orders',
 			'Rollup',
 			'Users',
@@ -248,18 +278,25 @@ export const send = realtime
 	.handle(() => null);
 `,
 		);
-		const runnables: Record<string, string[]> = {};
 		const served: Record<string, string[]> = {};
 
 		const manifest = await discover({
 			patterns: ['constructs/**/*.ts', 'endpoints/**/*.ts', 'routes/**/*.ts'],
 			cwd: dir,
-			runnables,
 			served,
 		});
 
-		expect(manifest.Realtime?.kind).toBe('websocket-api');
-		expect(runnables.Realtime).toEqual(['Orders']);
+		expect(manifest.Realtime).toMatchObject({
+			kind: 'websocket-api',
+			routes: [
+				{
+					id: 'Realtimechat.send',
+					handler: 'routes/chat.ts#send',
+					action: 'chat.send',
+					dependencies: [{ target: 'Orders', kind: 'database' }],
+				},
+			],
+		});
 		expect(served.Realtime).toEqual([
 			expect.stringMatching(/routes\/chat\.ts$/),
 		]);
@@ -281,22 +318,28 @@ export const onAvatar = jobs
 `,
 		);
 		const patterns = ['constructs/**/*.ts', 'subscribers/**/*.ts'];
-		const runnables: Record<string, string[]> = {};
 		const subscribers: Record<string, BoundSubscriber[]> = {};
 
-		const manifest = await discover({
-			patterns,
-			cwd: dir,
-			runnables,
-			subscribers,
-		});
+		const manifest = await discover({ patterns, cwd: dir, subscribers });
 
 		expect(subscribers).toEqual({
 			Jobs: [
 				{ name: 'onAvatar', connectionKey: 'UPLOADS_EVENTS_CONNECTION_STRING' },
 			],
 		});
-		const keys = workerEnvKeys(manifest, 'Jobs', runnables);
+		expect(manifest.Uploads).toMatchObject({
+			subscribers: [
+				{
+					id: 'onAvatar',
+					handler: 'subscribers/avatars.ts#onAvatar',
+					events: ['object.created'],
+					prefix: 'avatars/',
+					dependencies: [],
+					owner: 'Jobs',
+				},
+			],
+		});
+		const keys = workerEnvKeys(manifest, 'Jobs');
 		expect(keys).toContain('UPLOADS_EVENTS_CONNECTION_STRING');
 		// Reading the objects takes `.dependsOn([uploads])`; being told they
 		// changed does not.
@@ -392,9 +435,7 @@ export const pages = media
 				`export { thumbnails } from './thumbnails.js';\n`,
 			);
 			const patterns = ['constructs/**/*.ts', 'processors/**/*.ts'];
-			const runnables: Record<string, string[]> = {};
-
-			const local = await discover({ patterns, cwd: dir, runnables });
+			const local = await discover({ patterns, cwd: dir });
 			const sandboxed = await discover({
 				patterns,
 				cwd: dir,
@@ -424,7 +465,7 @@ export const pages = media
 			});
 			expect(sandboxed).toEqual(local);
 			// Its unit reaches the bucket, as a worker reaches what its work does.
-			expect(runnables.MediaServer).toEqual(['Media']);
+			expect(processorEnvKeys(local, 'MediaServer')).toContain('MEDIA_URL');
 		},
 	);
 
@@ -446,5 +487,79 @@ export const orphan = hidden
 		await expect(
 			discover({ patterns: ['processors/orphan.ts'], cwd: dir }),
 		).rejects.toBeInstanceOf(ProcessorServerUnknown);
+	});
+});
+
+/**
+ * #337: a bucket an endpoint uses, found by the same discovery `gkm dev` runs.
+ * Its links reach a phone when a mobile app calls the endpoint's surface, so
+ * the local stage resolves it on the LAN address.
+ */
+describe('discover — a bucket an endpoint hands a phone', () => {
+	let dir: string;
+
+	beforeEach(async () => {
+		dir = await createTempDir('discover-device-');
+		await createTestFile(dir, 'package.json', '{ "type": "module" }');
+		await createTestFile(
+			dir,
+			'constructs/index.ts',
+			`import { FileServer } from '@geekmidas/constructs/file-server';
+import { MobileApp } from '@geekmidas/constructs/mobile-app';
+import { ObjectStorage } from '@geekmidas/constructs/object-storage';
+import { RestApi } from '@geekmidas/constructs/rest-api';
+
+export const documents = new ObjectStorage('Documents');
+export const assets = new FileServer('Assets', { open: ['**'] });
+export const api = new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'none' });
+export const app = new MobileApp('App', { path: 'apps/app' }).dependsOn([api]);
+`,
+		);
+		await createTestFile(
+			dir,
+			'endpoints/trips.ts',
+			`import { api, assets, documents } from '../constructs/index.js';
+
+export const getTrip = api
+	.get('/trips/:id')
+	.dependsOn([documents, assets])
+	.handle(async () => null);
+`,
+		);
+	});
+
+	afterEach(async () => {
+		await cleanupDir(dir);
+	});
+
+	it('presigns and links on the LAN address', async () => {
+		const manifest = await discover({
+			patterns: ['constructs/**/*.ts', 'endpoints/**/*.ts'],
+			cwd: dir,
+		});
+		const plan = planFor(manifest, 'dev', provisionOrder(manifest), {
+			localStage: 'dev',
+		});
+		const ports = Object.fromEntries(
+			portKeys(plan.containers).map((key, index) => [key, 28000 + index]),
+		);
+		const env = envFor(plan, {
+			ports,
+			project: 'shop',
+			addresses: { Api: 'http://localhost:3000' },
+			credentials: TEST_CREDENTIALS,
+			lanAddress: '192.168.1.20',
+		});
+
+		expect(env.DOCUMENTS_URL).toContain(
+			`endpoint=http://192.168.1.20:${ports.minio}&`,
+		);
+		// The edge is to the bucket; the server fronting it follows.
+		expect(env.ASSETS_URL).toContain(
+			`endpoint=http://192.168.1.20:${ports.minio}&`,
+		);
+		expect(env.ASSETS_SERVER_URL).toBe(
+			`http://192.168.1.20:${ports.minio}/assets`,
+		);
 	});
 });

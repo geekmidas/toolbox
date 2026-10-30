@@ -34,7 +34,6 @@ import {
 	type ConstructName,
 	canonicalId,
 	type Declaration,
-	type Dependency,
 	provideKey,
 	serviceKey,
 } from '@geekmidas/manifest';
@@ -162,8 +161,6 @@ export class WebSocketApi<
 	constructor(
 		id: ConstructName<TName>,
 		private readonly config: WebSocketApiConfig<TMessages>,
-		/** Internal: how `.calls()` carries edges into the copy it returns. */
-		private readonly dependencies: readonly Dependency[] = [],
 		/** Internal: how `.auth()` carries the authenticator into its copy. */
 		readonly authenticator?: Authenticator,
 	) {
@@ -241,18 +238,7 @@ export class WebSocketApi<
 		return new WebSocketApi<TName, TMessages>(
 			this.id as ConstructName<TName>,
 			this.config,
-			[...this.dependencies, edgeTo(construct)],
 			construct,
-		);
-	}
-
-	/** Other surfaces this one calls. See `RestApi.calls`. */
-	calls(constructs: readonly Declarable[]): WebSocketApi<TName, TMessages> {
-		return new WebSocketApi<TName, TMessages>(
-			this.id as ConstructName<TName>,
-			this.config,
-			[...this.dependencies, ...constructs.map(edgeTo)],
-			this.authenticator,
 		);
 	}
 
@@ -350,8 +336,7 @@ export class WebSocketApi<
 				id: this.id,
 				path: this.config.path,
 				...(this.config.subdomain ? { subdomain: this.config.subdomain } : {}),
-				...(this.authenticator ? { auth: this.authenticator.id } : {}),
-				...(this.dependencies.length ? { calls: this.dependencies } : {}),
+				...(this.authenticator ? { auth: edgeTo(this.authenticator) } : {}),
 				...(this.config.telemetry
 					? { telemetry: this.config.telemetry.id }
 					: {}),

@@ -170,11 +170,6 @@ export interface DeployPhaseContext<Options = undefined> {
 	/** What the workspace declares. */
 	readonly manifest: ConstructManifest;
 	/**
-	 * Each owner's runnables' edges, from the same discovery — what a process
-	 * that runs them reads, beyond what its own declaration lists.
-	 */
-	readonly runnables?: Readonly<Record<string, readonly string[]>>;
-	/**
 	 * Where each Worker's crons, queues and subscribers are declared, from the
 	 * same discovery: which workers have work to run, and which app each is
 	 * built from (`workerUnits`).

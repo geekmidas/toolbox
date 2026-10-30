@@ -39,7 +39,6 @@ import { fakeDocker } from './__helpers__/fakeDocker';
 let dir: string;
 let workspace: NormalizedWorkspace;
 let manifest: ConstructManifest;
-let runnables: Record<string, string[]>;
 let background: Record<string, string[]>;
 
 beforeAll(async () => {
@@ -48,7 +47,7 @@ beforeAll(async () => {
 		registry: 'registry.example.com/acme',
 		reviewer: true,
 	});
-	({ workspace, manifest, runnables, background } = await loadComposeApp(dir));
+	({ workspace, manifest, background } = await loadComposeApp(dir));
 });
 
 afterAll(async () => {
@@ -64,7 +63,7 @@ const WORKER_KEYS = [
 
 describe('two surfaces and a worker', () => {
 	it('hands the second surface only its own edge', () => {
-		const keys = [...(appEnvKeys(manifest, 'reviewer', runnables) ?? [])];
+		const keys = [...(appEnvKeys(manifest, 'reviewer') ?? [])];
 
 		expect(keys).toContain('AUTH_DATABASE_URL');
 		for (const key of [...WORKER_KEYS, 'DATABASE_URL', 'SESSIONS_URL']) {
@@ -73,7 +72,7 @@ describe('two surfaces and a worker', () => {
 	});
 
 	it('hands the API its endpoints’ edges, and none of the worker’s own', () => {
-		const keys = [...(appEnvKeys(manifest, 'api', runnables) ?? [])];
+		const keys = [...(appEnvKeys(manifest, 'api') ?? [])];
 
 		// It sends to the queue, so it reaches it; the cron's credential and the
 		// broker the cron schedules through are the worker's.
@@ -92,7 +91,6 @@ describe('two surfaces and a worker', () => {
 		const stack = composeStack({
 			workspace,
 			manifest,
-			runnables,
 			background,
 			stage: 'development',
 			identity: deployIdentity(workspace, 'development'),
@@ -120,7 +118,7 @@ describe('two surfaces and a worker', () => {
 
 		// What the worker's process reads: its queue, its cron's credential,
 		// its database and the broker its cron schedules through.
-		const keys = [...(workerEnvKeys(manifest, 'Jobs', runnables) ?? [])];
+		const keys = [...(workerEnvKeys(manifest, 'Jobs') ?? [])];
 		expect(keys).toEqual(
 			expect.arrayContaining([...WORKER_KEYS, 'DATABASE_URL']),
 		);
@@ -131,7 +129,6 @@ describe('two surfaces and a worker', () => {
 	it('asks the stage for the cron’s credential for the worker alone', () => {
 		const keys = workspaceStageKeys({
 			manifest,
-			runnables,
 			local: false,
 			supplied: {},
 		});

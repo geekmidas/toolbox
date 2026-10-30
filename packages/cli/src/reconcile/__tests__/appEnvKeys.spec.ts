@@ -11,7 +11,16 @@ const manifest = {
 		kind: 'rest-api',
 		id: 'Api',
 		path: 'apps/api',
-		endpoints: [],
+		auth: { target: 'Auth', kind: 'rest-api' },
+		endpoints: [
+			{
+				id: 'ApiPOST/uploads',
+				handler: 'endpoints/uploads.ts#createUploadUrl',
+				method: 'POST',
+				path: '/uploads',
+				dependencies: [{ target: 'Uploads', kind: 'objects' }],
+			},
+		],
 		provides: ['API_URL', 'API_TRUSTED_ORIGINS', 'API_COOKIE_DOMAIN'],
 	},
 	AuthSecret: { kind: 'secret', id: 'AuthSecret', provides: ['AUTH_SECRET'] },
@@ -45,11 +54,9 @@ const manifest = {
 	},
 } as unknown as ConstructManifest;
 
-const runnables = { Api: ['Auth', 'Uploads'] };
-
 describe('appEnvKeys', () => {
 	it('gives a caller of the auth server its URL, and none of its own keys', () => {
-		const keys = appEnvKeys(manifest, 'api', runnables)!;
+		const keys = appEnvKeys(manifest, 'api')!;
 
 		expect(keys).toContain('AUTH_URL');
 		for (const key of [
@@ -65,7 +72,7 @@ describe('appEnvKeys', () => {
 	});
 
 	it('gives the auth app its secret, its tenant and its mailer', () => {
-		const keys = appEnvKeys(manifest, 'auth', runnables)!;
+		const keys = appEnvKeys(manifest, 'auth')!;
 
 		expect([...keys].sort()).toEqual([
 			'AUTH_COOKIE_DOMAIN',
@@ -79,7 +86,7 @@ describe('appEnvKeys', () => {
 	});
 
 	it('gives a caller of a file server’s bucket the address that serves it', () => {
-		const keys = appEnvKeys(manifest, 'api', runnables)!;
+		const keys = appEnvKeys(manifest, 'api')!;
 
 		expect(keys).toContain('UPLOADS_URL');
 		expect(keys).toContain('UPLOADS_SERVER_URL');
@@ -102,7 +109,15 @@ describe('an edge to a WebSocket surface', () => {
 			kind: 'rest-api',
 			id: 'Api',
 			path: 'apps/api',
-			endpoints: [],
+			endpoints: [
+				{
+					id: 'ApiPOST/notify',
+					handler: 'endpoints/notify.ts#notify',
+					method: 'POST',
+					path: '/notify',
+					dependencies: [{ target: 'Realtime', kind: 'websocket-api' }],
+				},
+			],
 			provides: ['API_URL'],
 		},
 		Web: {
@@ -116,7 +131,7 @@ describe('an edge to a WebSocket surface', () => {
 	} as unknown as ConstructManifest;
 
 	it('hands a server its address and its publisher', () => {
-		const keys = appEnvKeys(sockets, 'api', { Api: ['Realtime'] })!;
+		const keys = appEnvKeys(sockets, 'api')!;
 
 		expect(keys).toContain('REALTIME_URL');
 		expect(keys).toContain('REALTIME_PUBLISHER_CONNECTION_STRING');

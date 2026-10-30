@@ -3,7 +3,13 @@
  * construct ids `.dependsOn()` names.
  */
 
-import { canonicalId, provideKey } from '@geekmidas/manifest';
+import {
+	type ConstructManifest,
+	canonicalId,
+	dependenciesOf,
+	type Fn,
+	provideKey,
+} from '@geekmidas/manifest';
 
 const EVENTS_SUFFIX = '#events';
 
@@ -56,4 +62,50 @@ export function subscriberTokenKey(construct: {
 	return construct.bucketName
 		? provideKey(canonicalId(construct.bucketName), 'eventsToken')
 		: undefined;
+}
+
+/**
+ * What a worker's process reaches: the worker's own edges, and those of
+ * everything it owns — its crons and functions, its queue consumers and the
+ * queue each drains, its subscribers and the topic each is bound to, or the
+ * events of the bucket each watches.
+ *
+ * Read off the manifest: the same nodes every command sees, so `gkm dev`
+ * hands a worker what a deploy grants it.
+ */
+export function workerEdges(
+	manifest: ConstructManifest,
+	workerId: string,
+): string[] {
+	const worker = manifest[workerId];
+	if (worker?.kind !== 'worker') return [];
+
+	const edges = dependenciesOf(worker).map((edge) => edge.target);
+	const owned = (fn: Fn | undefined, consumed?: string) => {
+		if (fn?.owner !== workerId) return;
+		edges.push(...fn.dependencies.map((edge) => edge.target));
+		if (consumed) edges.push(consumed);
+	};
+
+	for (const declaration of Object.values(manifest)) {
+		switch (declaration.kind) {
+			case 'cron':
+			case 'function':
+				owned(declaration);
+				break;
+			case 'queue':
+				owned(declaration.worker, declaration.id);
+				break;
+			case 'topic':
+				for (const s of declaration.subscribers) owned(s, declaration.id);
+				break;
+			case 'objects':
+				for (const s of declaration.subscribers ?? []) {
+					owned(s, eventsEdge(declaration.id));
+				}
+				break;
+		}
+	}
+
+	return [...new Set(edges)];
 }

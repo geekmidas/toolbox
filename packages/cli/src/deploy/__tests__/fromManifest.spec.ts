@@ -887,8 +887,16 @@ describe('a surface with callers', () => {
 					kind: 'rest-api',
 					id: 'Web',
 					path: '.',
-					endpoints: [],
-					calls: [{ target: 'Api', kind: 'rest-api' }],
+					// An endpoint on it calls the API.
+					endpoints: [
+						{
+							id: 'WebGET/',
+							handler: 'endpoints/home.ts#home',
+							method: 'GET',
+							path: '/',
+							dependencies: [{ target: 'Api', kind: 'rest-api' }],
+						},
+					],
 					provides: ['WEB_URL'],
 				},
 				Admin: {

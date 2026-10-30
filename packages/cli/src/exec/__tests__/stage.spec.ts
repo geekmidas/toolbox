@@ -106,13 +106,11 @@ async function deployed(
 }
 
 async function productionStack() {
-	const { workspace, manifest, runnables, background } =
-		await loadComposeApp(dir);
+	const { workspace, manifest, background } = await loadComposeApp(dir);
 	const store = await secretsStoreFor(workspace, 'production');
 	return composeStack({
 		workspace,
 		manifest,
-		runnables,
 		background,
 		stage: 'production',
 		identity: deployIdentity(workspace, 'production'),

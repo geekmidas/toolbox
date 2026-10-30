@@ -123,10 +123,8 @@ describe.runIf(RUN)('the backups container', () => {
 		dir = realpathSync(await createTempDir('gkm-backups-e2e-'));
 		const name = `bke2e-${Date.now().toString(36)}`;
 		writeComposeApp(dir, { name, target: 'compose' });
-		let runnables: Record<string, string[]>;
 		let background: Record<string, string[]>;
-		({ workspace, manifest, runnables, background } =
-			await loadComposeApp(dir));
+		({ workspace, manifest, background } = await loadComposeApp(dir));
 
 		bucket = projectBucketName(
 			deployIdentity(workspace, '').scope,
@@ -151,7 +149,6 @@ describe.runIf(RUN)('the backups container', () => {
 		stack = composeStack({
 			workspace,
 			manifest,
-			runnables,
 			background,
 			stage: STAGE,
 			identity: deployIdentity(workspace, STAGE),

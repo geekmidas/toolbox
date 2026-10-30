@@ -865,7 +865,6 @@ describe('a stack behind the shared edge', () => {
 	let dir: string;
 	let workspace: NormalizedWorkspace;
 	let manifest: ConstructManifest;
-	let runnables: Record<string, string[]>;
 	let background: Record<string, string[]>;
 
 	beforeAll(async () => {
@@ -881,8 +880,7 @@ describe('a stack behind the shared edge', () => {
 			},
 			compose: { proxy: 'traefik' },
 		});
-		({ workspace, manifest, runnables, background } =
-			await loadComposeApp(dir));
+		({ workspace, manifest, background } = await loadComposeApp(dir));
 	});
 	afterAll(async () => {
 		await cleanupDir(dir);
@@ -903,7 +901,6 @@ describe('a stack behind the shared edge', () => {
 		return composeStack({
 			workspace,
 			manifest,
-			runnables,
 			background,
 			stage,
 			identity: deployIdentity(workspace, stage),

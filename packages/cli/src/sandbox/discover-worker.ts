@@ -26,13 +26,11 @@ async function main(): Promise<void> {
 		};
 		await registerAdjacentTsconfig();
 
-		const runnables: Record<string, string[]> = {};
 		const background: Record<string, string[]> = {};
 		const subscribers: Record<string, BoundSubscriber[]> = {};
 		const manifest = await discover({
 			patterns: request.patterns,
 			cwd: request.cwd,
-			runnables,
 			background,
 			subscribers,
 		});
@@ -44,7 +42,6 @@ async function main(): Promise<void> {
 				: {
 						reason: 'discovered',
 						manifest,
-						runnables,
 						background,
 						subscribers,
 					},

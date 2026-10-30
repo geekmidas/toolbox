@@ -180,6 +180,7 @@ describe('BetterAuth.declare', () => {
 				id: 'Auth',
 				path: 'apps/auth',
 				provides: ['AUTH_URL', 'AUTH_TRUSTED_ORIGINS', 'AUTH_COOKIE_DOMAIN'],
+				servesItself: true,
 				endpoints: [
 					{
 						id: 'AuthHandler',

@@ -291,12 +291,10 @@ export async function loadStage(
 	assertDeployedStage(workspace.stages, stage);
 	if (!deploysWithCompose(workspace)) throw new ExecStageNotComposed(stage);
 
-	const runnables: Record<string, string[]> = {};
 	const background: Record<string, string[]> = {};
 	const manifest: ConstructManifest = await discover({
 		patterns: constructGlobs(workspace),
 		cwd: workspace.root,
-		runnables,
 		background,
 	});
 
@@ -314,7 +312,6 @@ export async function loadStage(
 	const stack = composeStack({
 		workspace,
 		manifest,
-		runnables,
 		background,
 		stage,
 		identity: deployIdentity(workspace, stage),

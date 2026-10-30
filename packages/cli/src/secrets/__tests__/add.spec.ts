@@ -73,11 +73,10 @@ afterEach(async () => {
 
 describe('the keys a stage must be given', () => {
 	it('lists each key a deployed stage supplies once, with its construct, kind and readers', async () => {
-		const { manifest, runnables } = await loadComposeApp(dir);
+		const { manifest } = await loadComposeApp(dir);
 
 		const keys = workspaceStageKeys({
 			manifest,
-			runnables,
 			local: false,
 			supplied: { MAIL_URL: 'smtp://x' },
 		});
@@ -124,11 +123,10 @@ describe('the keys a stage must be given', () => {
 	});
 
 	it('offers the local stage only what it cannot derive: third parties’ credentials', async () => {
-		const { manifest, runnables } = await loadComposeApp(dir);
+		const { manifest } = await loadComposeApp(dir);
 
 		const keys = workspaceStageKeys({
 			manifest,
-			runnables,
 			local: true,
 			supplied: {},
 		});

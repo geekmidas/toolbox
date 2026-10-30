@@ -12,4 +12,4 @@
  */
 
 export { type DiscoverOptions, discover, isDeclarable } from './discover.js';
-export { manifestModule, withRoutes } from './emit.js';
+export { manifestModule, withHandlers } from './emit.js';

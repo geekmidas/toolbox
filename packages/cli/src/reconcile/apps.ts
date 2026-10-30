@@ -34,7 +34,7 @@ import { appKey } from '../workspace/derive.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import type { ComposeService } from './compose.js';
 import { portKeys, portsOf } from './containers.js';
-import { eventsEdgeBucket } from './edges.js';
+import { eventsEdgeBucket, workerEdges } from './edges.js';
 import { type EnvOptions, envFor } from './env.js';
 import type { LocalCredentials } from './localCredentials.js';
 import { type Plan, type PlanOptions, planFor } from './plan.js';
@@ -210,8 +210,6 @@ export function networkEnv(
 export function appEnvKeys(
 	manifest: ConstructManifest,
 	appName: string,
-	/** Each owner's runnables' edges, from discovery — see `DiscoverOptions`. */
-	runnables: Readonly<Record<string, readonly string[]>> = {},
 ): Set<string> | undefined {
 	const entry = Object.entries(manifest).find(
 		([id, d]) =>
@@ -222,7 +220,7 @@ export function appEnvKeys(
 			appKey(id) === appName,
 	);
 	if (!entry) return undefined;
-	const [id, declaration] = entry;
+	const [, declaration] = entry;
 
 	const keys = new Set<string>([
 		...(declaration.provides ?? []),
@@ -234,12 +232,8 @@ export function appEnvKeys(
 			: []),
 	]);
 
-	const edges = [
-		...dependenciesOf(declaration).map((edge) => edge.target),
-		// The endpoints the glob found, which the surface's node does not list —
-		// the ones built from this surface, wherever their files are.
-		...(runnables[id] ?? []),
-	];
+	// A surface's own edges and its endpoints' — every route it serves.
+	const edges = dependenciesOf(declaration).map((edge) => edge.target);
 	addEdgeKeys(
 		manifest,
 		edges,
@@ -263,16 +257,14 @@ export function appEnvKeys(
 /**
  * The keys a Worker's own process reads: what the worker and everything built
  * from it declared an edge to — the queues its consumers drain and the topics
- * its subscribers are bound to among them (see `DiscoverOptions.runnables`) —
- * and the broker its crons schedule through.
+ * its subscribers are bound to among them (see `workerEdges`) — and the
+ * broker its crons schedule through.
  *
  * `undefined` when no worker has that id.
  */
 export function workerEnvKeys(
 	manifest: ConstructManifest,
 	workerId: string,
-	/** Each owner's runnables' edges, from discovery — see `DiscoverOptions`. */
-	runnables: Readonly<Record<string, readonly string[]>> = {},
 ): Set<string> | undefined {
 	const declaration = manifest[workerId];
 	if (declaration?.kind !== 'worker') return undefined;
@@ -283,14 +275,7 @@ export function workerEnvKeys(
 		// A server schedules its crons through the broker.
 		'EVENT_PUBLISHER_CONNECTION_STRING',
 	]);
-	addEdgeKeys(
-		manifest,
-		[
-			...dependenciesOf(declaration).map((edge) => edge.target),
-			...(runnables[workerId] ?? []),
-		],
-		keys,
-	);
+	addEdgeKeys(manifest, workerEdges(manifest, workerId), keys);
 	return keys;
 }
 
@@ -302,8 +287,6 @@ export function workerEnvKeys(
 export function processorEnvKeys(
 	manifest: ConstructManifest,
 	fileServerId: string,
-	/** Each owner's runnables' edges, from discovery — see `DiscoverOptions`. */
-	runnables: Readonly<Record<string, readonly string[]>> = {},
 ): Set<string> | undefined {
 	const server = manifest[fileServerId];
 	if (server?.kind !== 'file-server' || !server.processors?.length) {
@@ -316,7 +299,6 @@ export function processorEnvKeys(
 		[
 			server.of,
 			...server.processors.flatMap((p) => p.dependencies.map((d) => d.target)),
-			...(runnables[fileServerId] ?? []),
 		],
 		keys,
 	);
@@ -393,7 +375,6 @@ export function appServices(
 	containers: readonly string[],
 	/** The workspace's local logins — see `localCredentials.ts`. */
 	credentials: LocalCredentials,
-	runnables: Readonly<Record<string, readonly string[]>> = {},
 	fakes: PlanOptions['fakes'] = {},
 	/**
 	 * Each credential's fake value, under `gkm dev --fake` — handed to the
@@ -458,7 +439,7 @@ export function appServices(
 			continue;
 		}
 
-		const allowed = appEnvKeys(manifest, name, runnables);
+		const allowed = appEnvKeys(manifest, name);
 		// The local stage's telemetry, named for this app, where it has the
 		// edge — and none of it where it has not.
 		const own = scopeTelemetryEnv(

@@ -45,35 +45,14 @@ describe('RestApi', () => {
 		).toBe('UserApi');
 	});
 
-	it('leaves its routes to the build', () => {
-		// The build already generates one handler per endpoint and knows where it
-		// wrote each one, so it folds them in. Restating any of that on the
-		// declaration is how the two come to disagree — and a `routes` glob here
-		// duplicated a string `gkm.config.ts` already holds.
+	it('leaves its routes to discovery', () => {
+		// Discovery already imports every endpoint built from it, so it nests
+		// them. Restating any of that on the declaration is how the two come to
+		// disagree — and a `routes` glob here duplicated a string `gkm.config.ts`
+		// already holds.
 		const [surface] = api.declare();
 
 		expect(surface).toMatchObject({ endpoints: [] });
-	});
-
-	it('does not mutate when it calls another surface', () => {
-		// Immutable builders: a module exporting both a base and a variant must
-		// not have the second silently change the first.
-		const withAuth = api.calls([
-			{
-				id: 'Auth',
-				declare: () => [
-					{ kind: 'rest-api', id: 'Auth', path: '.', endpoints: [] },
-				],
-			},
-		]);
-
-		// `calls`, not `dependencies` — a surface-level dependency would hand
-		// every route on this API whatever the surface named, which is the
-		// over-granting least privilege exists to prevent.
-		expect(api.declare()[0]).not.toHaveProperty('calls');
-		expect(withAuth.declare()[0]).toMatchObject({
-			calls: [{ target: 'Auth', kind: 'rest-api' }],
-		});
 	});
 });
 

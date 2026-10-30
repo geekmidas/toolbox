@@ -138,15 +138,13 @@ export async function reconcileWorkspace(
 	workspace: NormalizedWorkspace,
 	options: WorkspaceReconcileOptions,
 ): Promise<ReconcileResult & { manifest: ConstructManifest }> {
-	// Discovered here even when a manifest was handed in: the apps' services
-	// are given the keys their runnables reach, and only discovery sees those.
-	const runnables: Record<string, string[]> = {};
+	// Discovered here even when a manifest was handed in: where each worker's
+	// background work and each bucket's subscribers are is only discovery's.
 	const background: Record<string, string[]> = {};
 	const subscribers: Record<string, BoundSubscriber[]> = {};
 	const discovered = await discover({
 		patterns: constructGlobs(workspace),
 		cwd: workspace.root,
-		runnables,
 		background,
 		subscribers,
 	});
@@ -192,7 +190,6 @@ export async function reconcileWorkspace(
 				manifest,
 				containers,
 				credentials,
-				runnables,
 				fakes,
 				credentialFakes,
 			),

@@ -359,8 +359,6 @@ export interface DokployRun {
 	 * host the CDN in front of the bucket reaches.
 	 */
 	processors: readonly ProcessorUnit[];
-	/** Each owner's runnables' edges, from discovery: what a worker reads. */
-	runnables: Readonly<Record<string, readonly string[]>>;
 	provisioned?: Provisioned;
 	released?: Released;
 	/** What the run changed live, for `rollback` to undo. */
@@ -485,7 +483,6 @@ export async function validateDokploy(
 		stage,
 		declarations: stageServiceDeclarations({
 			manifest: phase.manifest,
-			...(phase.runnables ? { runnables: phase.runnables } : {}),
 		}),
 		supplied: stored?.custom ?? {},
 		allow: phase.allowDevServices,
@@ -494,9 +491,8 @@ export async function validateDokploy(
 	});
 	const devServices = devServicesUsed(services);
 
-	// Which workers run, and what each reads: the runnables' edges and where
-	// each worker's work is declared, from the run's own discovery.
-	const runnables = phase.runnables ?? {};
+	// Which workers run: where each worker's work is declared, from the run's
+	// own discovery.
 	const background = phase.background ?? {};
 	const workers = workerUnits(workspace, phase.manifest, background).filter(
 		(worker) => appsToDeployNames.includes(worker.app),
@@ -521,7 +517,6 @@ export async function validateDokploy(
 		devServices: devServices.map((use) => use.service),
 		workers,
 		processors,
-		runnables,
 		preflight: await preflight(run),
 		verify: verifySettings(workspace.deploy.dokploy?.verify),
 		atomic: phase.atomic,
@@ -1320,7 +1315,7 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 				// The stage's telemetry goes to a backend with an edge to the
 				// `Telemetry` node, named for it, and to no other. A site never
 				// gets it — its environment ends up in a browser bundle.
-				const own = appEnvKeys(run.manifest, appName, run.runnables);
+				const own = appEnvKeys(run.manifest, appName);
 				const withDeclared = scopeTelemetryEnv(
 					{
 						...resolved,
@@ -1419,9 +1414,7 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 				// Exactly what its constructs read: the stage's secrets among
 				// them embedded, encrypted, as a backend's are; the declared
 				// URLs among them as its environment.
-				const keys = [
-					...(workerEnvKeys(run.manifest, worker.id, run.runnables) ?? []),
-				].sort();
+				const keys = [...(workerEnvKeys(run.manifest, worker.id) ?? [])].sort();
 				const secrets = prepareSecretsForApp(stageSecrets, {
 					appName: worker.name,
 					requiredEnvVars: keys,
@@ -1540,7 +1533,7 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 				);
 
 				const keys = [
-					...(processorEnvKeys(run.manifest, unit.id, run.runnables) ?? []),
+					...(processorEnvKeys(run.manifest, unit.id) ?? []),
 				].sort();
 				const secrets = prepareSecretsForApp(stageSecrets, {
 					appName: unit.name,

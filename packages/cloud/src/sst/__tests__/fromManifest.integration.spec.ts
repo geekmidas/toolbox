@@ -93,7 +93,7 @@ function manifest(): ConstructManifest {
 					dependencies: [],
 				},
 			],
-			calls: [{ target: 'Auth', kind: 'rest-api' }],
+			auth: { target: 'Auth', kind: 'rest-api' },
 			provides: keys('Api', 'rest-api', SURFACE),
 		},
 		Auth: {
@@ -288,7 +288,7 @@ describe('fromManifest', () => {
 			'Api:',
 			'  GET /orders → Orders (database)',
 			'  GET /health → nothing',
-			'  calls Auth (origin only; grants nothing)',
+			'  auth Auth (origin only; grants nothing)',
 			'Auth:',
 			'  (no routes)',
 		]);
