@@ -213,7 +213,7 @@ export interface BucketEvents {
 	deadLetterArn: string;
 }
 
-interface EventsClients {
+export interface EventsClients {
 	SNS: SnsModule;
 	SQS: SqsModule;
 	sns: InstanceType<SnsModule['SNSClient']>;
@@ -267,6 +267,14 @@ export const defaultEventsClients: EventsClientFactory = async (
 
 let makeEventsClients: EventsClientFactory = defaultEventsClients;
 
+/** The stage's SNS, SQS and account, through the factory a test may replace. */
+export function eventsClients(
+	credential: AwsProvisioning,
+	region: string,
+): Promise<EventsClients> {
+	return makeEventsClients(credential, region);
+}
+
 /** Replace the client factory — a test intercepting a call. Returns the old one. */
 export function useEventsClients(
 	factory: EventsClientFactory,
@@ -294,20 +302,23 @@ async function readOr<T>(
 }
 
 /**
- * The topic, its policy, the dead-letter queue and the bucket's notification
- * entry for one watched bucket — created where missing, put back where they
- * drifted.
+ * An SNS topic of the stage's, created where missing, whose policy lets
+ * exactly one AWS service publish to it — put back where it drifted. A
+ * watched bucket's topic is published to by S3; an inbox's by SES.
  */
-export async function ensureBucketEvents(
-	ctx: Ctx,
-	s3: { S3: S3Module; s3: InstanceType<S3Module['S3Client']> },
-	input: { id: string; bucket: string; region: string },
-): Promise<BucketEvents> {
-	const { id, bucket, region } = input;
-	const clients = await makeEventsClients(ctx.credential, region);
-	const { SNS, SQS, sns, sqs, account } = clients;
-
-	const topicName = eventsTopicName(bucket);
+export async function ensureTopic(
+	ctx: Pick<Ctx, 'state' | 'change'> & Parameters<typeof identityTags>[0],
+	clients: EventsClients,
+	input: {
+		id: string;
+		topicName: string;
+		/** Who may publish, as the change log says it: `'acme-uploads'`. */
+		publisher: string;
+		policy: (topicArn: string) => PolicyDocument;
+	},
+): Promise<string> {
+	const { SNS, sns, account, region } = clients;
+	const { id, topicName } = input;
 	const topicArn = `arn:aws:sns:${region}:${account}:${topicName}`;
 	const topicEntry = { key: `sns-topic:${id}`, type: 'sns-topic' };
 	const topic = await readOr(
@@ -332,7 +343,7 @@ export async function ensureBucketEvents(
 		);
 	}
 
-	const topicPolicy = eventsTopicPolicy(topicArn, bucket, account);
+	const topicPolicy = input.policy(topicArn);
 	const currentTopicPolicy = topic?.Attributes?.Policy;
 	if (
 		!currentTopicPolicy ||
@@ -343,7 +354,7 @@ export async function ensureBucketEvents(
 			{
 				construct: id,
 				resource: `SNS topic ${topicName}`,
-				change: `publishable by '${bucket}' only`,
+				change: `publishable by ${input.publisher} only`,
 			},
 			async () => {
 				await sns.send(
@@ -356,6 +367,31 @@ export async function ensureBucketEvents(
 			},
 		);
 	}
+
+	return topicArn;
+}
+
+/**
+ * The topic, its policy, the dead-letter queue and the bucket's notification
+ * entry for one watched bucket — created where missing, put back where they
+ * drifted.
+ */
+export async function ensureBucketEvents(
+	ctx: Ctx,
+	s3: { S3: S3Module; s3: InstanceType<S3Module['S3Client']> },
+	input: { id: string; bucket: string; region: string },
+): Promise<BucketEvents> {
+	const { id, bucket, region } = input;
+	const clients = await makeEventsClients(ctx.credential, region);
+	const { SQS, sns, sqs, account } = clients;
+
+	const topicName = eventsTopicName(bucket);
+	const topicArn = await ensureTopic(ctx, clients, {
+		id,
+		topicName,
+		publisher: `'${bucket}'`,
+		policy: (arn) => eventsTopicPolicy(arn, bucket, account),
+	});
 
 	const queueName = eventsDeadLetterName(bucket);
 	const deadLetterArn = `arn:aws:sqs:${region}:${account}:${queueName}`;
@@ -464,16 +500,26 @@ export async function ensureBucketEvents(
 }
 
 /**
- * The events key: the topic's address, signed by the bucket's own access key
- * — read off the bucket's URL, so a rotated key rotates this one with it.
+ * A topic's connection string: its address, signed by the access key in a
+ * bucket's URL — read off that URL, so a rotated key rotates this one with
+ * it. A watched bucket's events key by default; an inbox's topic, signed by
+ * its own bucket's key, otherwise.
  */
 export async function ensureEventsKey(
-	ctx: Ctx,
-	input: { id: string; topicArn: string; region: string },
+	ctx: Pick<Ctx, 'secrets' | 'change' | 'writeSecrets' | 'state'>,
+	input: {
+		id: string;
+		topicArn: string;
+		region: string;
+		/** The key written — `<ID>_EVENTS_CONNECTION_STRING` by default. */
+		key?: string;
+		/** The URL whose access key signs it — `<ID>_URL` by default. */
+		urlKey?: string;
+	},
 ): Promise<void> {
 	const { id, topicArn, region } = input;
-	const key = provideKey(id, 'eventsConnectionString');
-	const url = ctx.secrets[provideKey(id, 'url')];
+	const key = input.key ?? provideKey(id, 'eventsConnectionString');
+	const url = ctx.secrets[input.urlKey ?? provideKey(id, 'url')];
 	let parsed: s3Url.S3Address | undefined;
 	try {
 		parsed = url ? s3Url.parse(url) : undefined;

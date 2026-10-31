@@ -40,6 +40,7 @@ export type {
 	Glob,
 	IdsOf,
 	IdsOfKind,
+	InboxDeclaration,
 	MobileAppDeclaration,
 	MobileAppStage,
 	Node,
@@ -101,6 +102,14 @@ export {
 	NoUrlForStage,
 } from './external';
 export { CLIENT_IP_HEADER } from './headers';
+export {
+	INBOX_EVENT,
+	INBOX_MESSAGES_PREFIX,
+	type InboxAddressing,
+	type InboxRecipient,
+	inboxRecipient,
+	receiptRecipients,
+} from './inbox';
 export {
 	DATABASE_FOLDERS,
 	databaseFolder,
@@ -215,6 +224,12 @@ export interface SubscriberInfo {
 	bucket?: string;
 	prefix?: string;
 	suffix?: string;
+	/**
+	 * The inbox this subscriber is bound to (via `worker.inbox(inbox)`), by id.
+	 * It is delivered on the inbox's topic, from what the provider publishes —
+	 * a receipt notification, not an event this toolbox wrote.
+	 */
+	inbox?: string;
 	timeout?: number;
 	memorySize?: number;
 	environment?: readonly string[];

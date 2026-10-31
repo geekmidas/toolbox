@@ -27,7 +27,7 @@ import type { BoundSubscriber } from '../reconcile/discover.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 
 /** The manifest kinds a stage can name a provider for. */
-export const PROVIDER_KINDS = ['objects'] as const;
+export const PROVIDER_KINDS = ['objects', 'inbox'] as const;
 
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 
@@ -113,19 +113,30 @@ export interface EnsureContext<C extends ProviderConfig, K> {
 	/**
 	 * Writes DNS records through the stage's DNS providers (`dns`), as the
 	 * deploy's own DNS step does — what a certificate's validation record and
-	 * a CDN's name need. A dry run prints them and writes nothing.
+	 * a CDN's name, a domain's inbound mail (MX) need. A dry run prints them
+	 * and writes nothing.
 	 */
 	writeDns(records: readonly ProviderDnsRecord[]): Promise<ProviderDnsResult>;
 	log(line: string): void;
 }
 
 /** One record a provider asks the stage's DNS for. */
-export interface ProviderDnsRecord {
-	/** The full name: `_abc.files.example.com`. */
-	host: string;
-	type: 'CNAME';
-	value: string;
-}
+export type ProviderDnsRecord =
+	| {
+			/** The full name: `_abc.files.example.com`. */
+			host: string;
+			type: 'CNAME';
+			value: string;
+	  }
+	| {
+			/** The full name: `example.com`, `*.example.com`. */
+			host: string;
+			type: 'MX';
+			/** The mail server: `inbound-smtp.eu-west-1.amazonaws.com`. */
+			value: string;
+			/** Lower is preferred: `10`. */
+			priority: number;
+	  };
 
 /** What writing a provider's records came to. */
 export interface ProviderDnsResult {

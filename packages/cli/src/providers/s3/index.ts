@@ -46,6 +46,7 @@ import {
 } from '../iam.js';
 import type {
 	EnsureContext,
+	ProviderConfig,
 	ResourceProvider,
 	StateEntry,
 	VerifyContext,
@@ -523,6 +524,73 @@ async function ensureBucket(
  * The bucket's name: the recorded one, else the good name, else the good
  * name with a random suffix — up to {@link SUFFIX_ATTEMPTS} times.
  */
+/**
+ * A private bucket a provider makes for a construct that owns one — an
+ * inbox's — by the same steps as any of the stage's buckets: found or
+ * created, its settings put back where they drifted, and reached by an IAM
+ * user of its own whose key is written into `urlKey`. Nothing serves it and
+ * nothing watches it.
+ */
+export async function ensureOwnedBucket(
+	ctx: EnsureContext<ProviderConfig & { region?: string }, AwsProvisioning>,
+	input: {
+		/** The construct it is for — what state and tags record it under. */
+		id: string;
+		/** What it is named for, after the stage: `requests-mail`. */
+		name: string;
+		/** The secret its URL, key included, is written to. */
+		urlKey: string;
+		/** SES may write under a prefix of it. */
+		sesWrite?: { prefix: string; account: string };
+		/** A topic its key confirms subscriptions to. */
+		topicArn?: string;
+	},
+): Promise<{ bucket: string; region: string }> {
+	// The bucket steps read the region and nothing else of the config.
+	const bucketCtx = ctx as unknown as Ctx;
+	const stageClients = await makeClients(ctx.credential, s3Region(bucketCtx));
+	const nameInput = {
+		scope: ctx.identity.scope,
+		stage: ctx.stage,
+		id: input.name,
+	};
+	const located = await ensureBucketName(
+		bucketCtx,
+		stageClients,
+		input.id,
+		bucketName(nameInput),
+	);
+	const clients =
+		located.region === stageClients.region
+			? stageClients
+			: await makeClients(ctx.credential, located.region);
+	await ensureBucketSettings(bucketCtx, clients, {
+		id: input.id,
+		bucket: located.bucket,
+		exists: located.exists,
+		versioning: false,
+		open: [],
+		...(input.sesWrite ? { sesWrite: input.sesWrite } : {}),
+	});
+	const user = await ensureIamUser(bucketCtx, clients, {
+		id: input.id,
+		user: iamUserName(nameInput),
+		policyName: IAM_POLICY_NAME,
+		policy: userPolicy(
+			located.bucket,
+			input.topicArn ? { eventsTopicArn: input.topicArn } : {},
+		),
+		describe: 'this bucket only',
+	});
+	await ensureAccessKey(bucketCtx, clients, {
+		id: input.id,
+		bucket: located.bucket,
+		urlKey: input.urlKey,
+		...user,
+	});
+	return { bucket: located.bucket, region: clients.region };
+}
+
 async function ensureBucketName(
 	ctx: Ctx,
 	clients: Clients,
@@ -688,6 +756,8 @@ async function ensureBucketSettings(
 		/** The distributions serving it, when a CDN does. */
 		cdn?: { distributionArns: readonly string[] };
 		expire?: Readonly<Record<string, number>>;
+		/** SES writes received mail under a prefix — an inbox's bucket. */
+		sesWrite?: { prefix: string; account: string };
 	},
 ): Promise<void> {
 	const { S3, s3 } = clients;
@@ -763,11 +833,10 @@ async function ensureBucketSettings(
 		}
 	};
 
-	const policy = bucketPolicy(
-		bucket,
-		input.open,
-		input.cdn ? { cdn: input.cdn } : {},
-	);
+	const policy = bucketPolicy(bucket, input.open, {
+		...(input.cdn ? { cdn: input.cdn } : {}),
+		...(input.sesWrite ? { sesWrite: input.sesWrite } : {}),
+	});
 	const ensurePolicy = async () => {
 		const current = await read(
 			() => s3.send(new S3.GetBucketPolicyCommand({ Bucket })),

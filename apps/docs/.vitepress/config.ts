@@ -50,6 +50,7 @@ export default defineConfig({
           { text: 'Typed API Client', link: '/guide/openapi-typescript' },
           { text: 'File Server Processors', link: '/guide/file-server-processors' },
           { text: 'Object Events', link: '/guide/object-events' },
+          { text: 'Receiving Email', link: '/guide/receiving-email' },
           { text: 'Testing', link: '/guide/testing' },
           { text: 'Upgrading to 10.0.0-alpha', link: '/guide/upgrading' },
         ],

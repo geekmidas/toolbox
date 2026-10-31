@@ -225,6 +225,31 @@ export interface EmailDeclaration extends Node {
 }
 
 /**
+ * Mail received at addresses on the stage's domain, each message handled in
+ * a worker.
+ *
+ * The local parts are structural — *that* the app receives at `requests` is a
+ * fact about it — and the domain is the stage's (`domains`), never the
+ * construct's. Receiving is a construct of its own rather than a half of
+ * {@link EmailDeclaration}: it owns addresses, a bucket of raw messages and a
+ * channel they are announced on, and an app that only sends gets none of it.
+ *
+ * It provides where its raw messages are read from — the bucket SES stores
+ * them in deployed, which the provider creates for it, and Mailpit's API
+ * locally — and its domain, which the decoder in front of a handler takes a
+ * recipient apart against (`inboxRecipient`).
+ */
+export interface InboxDeclaration extends Node {
+	kind: 'inbox';
+	/** The local parts it receives at: `requests` takes `requests+<tag>@` too. */
+	addresses: readonly string[];
+	/** At `<address>@<label>.<domain>` — one label, a tenant's — rather than `<domain>`. */
+	subdomains?: boolean;
+	/** The topic each received message is announced on, declared by the inbox. */
+	topic: ConstructId;
+}
+
+/**
  * A logical database, its schema, and the roles that reach it.
  *
  * Provides one key — the *runtime* role's URL. The owner URL exists but is
@@ -975,6 +1000,7 @@ export type Declaration =
 	| ObjectsDeclaration
 	| FileServerDeclaration
 	| EmailDeclaration
+	| InboxDeclaration
 	| DatabaseDeclaration
 	| DatabaseReaderDeclaration
 	| DatabaseSchemaDeclaration
@@ -1143,6 +1169,19 @@ export interface ProvidesByKind {
 		inboxUrl?: string;
 	};
 	/**
+	 * Where its raw messages are read from — its own bucket deployed, Mailpit's
+	 * API locally — and the stage's domain it receives on: `fixwell.example`.
+	 */
+	inbox: {
+		url: string;
+		domain: string;
+		/**
+		 * Where mail is delivered to it — Mailpit's SMTP. Local stages only: a
+		 * deployed inbox is reached through its domain's MX records.
+		 */
+		smtpUrl?: string;
+	};
+	/**
 	 * One key, the runtime role's. The owner URL is not here by design — see
 	 * {@link DatabaseDeclaration}.
 	 */
@@ -1263,6 +1302,9 @@ export const PUBLIC: {
 	// a phone opens the sign-in link the server just sent, without fishing it
 	// out of Mailpit by hand.
 	email: ['inboxUrl'],
+	// Not secret, but read by the decoder in front of a handler and nothing a
+	// browser needs.
+	inbox: [],
 	// A connection string is never shippable, whichever role it carries.
 	database: [],
 	'database-reader': [],

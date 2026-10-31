@@ -38,6 +38,7 @@ import {
 	emulatorQueueUrl,
 	emulatorTopicArn,
 } from './emulator';
+import { INBOX_RELAY_TOKEN_KEY, inboxRelayToken } from './inboxRelay';
 import type { ContainerCredentials } from './localCredentials';
 import { objectsWebhookToken } from './objectEvents';
 import { PgBossNeedsDatabase, type Plan, type PlannedResource } from './plan';
@@ -315,6 +316,32 @@ export function envFor(
 		// Mail owns a second key. It is the sending identity, which is the one
 		// thing about mail that differs per stage — so it travels with the URL
 		// rather than being written into the construct.
+		// An inbox owns two more. Its domain, as a wildcard site's is locally:
+		// the project's own under `localhost`, with a label for any stage but
+		// the local one — `test.shop.localhost` — so `gkm test` never receives
+		// what `gkm dev` does; a tenant is a label under it, as deployed. And,
+		// locally, where mail is delivered to it: Mailpit's SMTP, which a test
+		// sends through as any sender would.
+		if (resource.kind === 'inbox' && url) {
+			const base = resource.id.toLowerCase();
+			const stage =
+				resource.name === base
+					? undefined
+					: resource.name.slice(base.length + 1);
+			env[provideKey(resource.id, 'domain')] = [
+				stage,
+				options.project,
+				LOCAL_HOST,
+			]
+				.filter(Boolean)
+				.join('.');
+			const smtp = options.ports[primaryPortKey('mailpit')];
+			if (smtp !== undefined) {
+				env[provideKey(resource.id, 'smtpUrl')] =
+					`smtp://${LOCAL_HOST}:${smtp}`;
+			}
+		}
+
 		if (resource.kind === 'email' && url) {
 			env[provideKey(resource.id, 'from')] =
 				options.mailFrom ?? `noreply@${LOCAL_HOST}`;
@@ -360,6 +387,15 @@ export function envFor(
 				credential.seed,
 			);
 		}
+	}
+
+	// The token Mailpit's webhook presents to the worker that receives for
+	// every inbox — derived beside its URL, so the two cannot disagree.
+	if (plan.resources.some((r) => r.kind === 'inbox' && env[r.envKey])) {
+		env[INBOX_RELAY_TOKEN_KEY] = inboxRelayToken(
+			options.project ?? '',
+			credential.seed,
+		);
 	}
 
 	// Only once a bucket actually resolved: an unresolvable plan resolves
@@ -814,6 +850,14 @@ function urlFor(
 			// The same scheme the deployed target writes; only host and credentials
 			// differ, which is what lets the client never branch on provider.
 			return `smtp://${LOCAL_HOST}:${port}`;
+
+		case 'inbox': {
+			// Where its raw messages are read from: Mailpit's API, which keeps
+			// every message it receives. Deployed it is the bucket SES stores
+			// them in; the decoder reads by key from whichever this names.
+			const api = ports[MAILPIT_INBOX_PORT];
+			return api === undefined ? undefined : `http://${LOCAL_HOST}:${api}`;
+		}
 
 		case 'objects':
 			// `?endpoint=` is what points the same S3 client at MinIO — the client

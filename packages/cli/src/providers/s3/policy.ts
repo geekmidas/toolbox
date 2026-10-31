@@ -105,7 +105,14 @@ export function openResource(bucket: string, pattern: string): string {
 export function bucketPolicy(
 	bucket: string,
 	open: readonly string[] = [],
-	options: { cdn?: { distributionArns: readonly string[] } } = {},
+	options: {
+		cdn?: { distributionArns: readonly string[] };
+		/**
+		 * SES may write received mail under this prefix — the bucket an inbox
+		 * owns — and only for this account's receipt rules.
+		 */
+		sesWrite?: { prefix: string; account: string };
+	} = {},
 ): PolicyDocument {
 	const statements: PolicyStatement[] = [
 		{
@@ -140,6 +147,18 @@ export function bucketPolicy(
 			Principal: '*',
 			Action: 's3:GetObject',
 			Resource: resources,
+		});
+	}
+	if (options.sesWrite) {
+		statements.push({
+			Sid: 'GkmSesWritesMail',
+			Effect: 'Allow',
+			Principal: { Service: 'ses.amazonaws.com' },
+			Action: 's3:PutObject',
+			Resource: `${bucketArn(bucket)}/${options.sesWrite.prefix}*`,
+			Condition: {
+				StringEquals: { 'aws:SourceAccount': options.sesWrite.account },
+			},
 		});
 	}
 	return { Version: '2012-10-17', Statement: statements };

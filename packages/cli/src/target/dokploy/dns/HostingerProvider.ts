@@ -1,7 +1,12 @@
 /**
  * Hostinger DNS Provider
  *
- * Implements DnsProvider interface using the Hostinger DNS API.
+ * Implements DnsProvider interface using the Hostinger DNS API. A record's
+ * `content` is its zone-file value — an MX record's is `<priority> <host>`,
+ * Hostinger having no field of its own for the priority — so values pass
+ * through as they are. Each write replaces its one name and type
+ * (`overwrite: true`): without it Hostinger appends, and a record with
+ * another value would end up holding both.
  */
 
 import { getHostingerToken } from '../../../auth/credentials';
@@ -18,6 +23,11 @@ import type {
 	UpsertResult,
 } from './DnsProvider';
 import { HostingerApi } from './hostinger-api';
+
+/** A value compared the way DNS does: case, a trailing dot and spacing aside. */
+function normalize(value: string): string {
+	return value.trim().replace(/\.$/, '').replace(/\s+/g, ' ').toLowerCase();
+}
 
 /**
  * Hostinger DNS provider implementation.
@@ -73,7 +83,11 @@ export class HostingerProvider implements DnsProvider {
 
 			const existingValue = existing?.records?.[0]?.content;
 
-			if (existing && existingValue === record.value) {
+			if (
+				existing &&
+				existingValue !== undefined &&
+				normalize(existingValue) === normalize(record.value)
+			) {
 				// Record exists with same value - unchanged
 				results.push({
 					record,
@@ -83,15 +97,19 @@ export class HostingerProvider implements DnsProvider {
 				continue;
 			}
 
-			// Create or update the record
-			await api.upsertRecords(domain, [
-				{
-					name: record.name,
-					type: record.type,
-					ttl: record.ttl,
-					records: [{ content: record.value }],
-				},
-			]);
+			// Create the record, or replace this name's records of this type.
+			await api.upsertRecords(
+				domain,
+				[
+					{
+						name: record.name,
+						type: record.type,
+						ttl: record.ttl,
+						records: [{ content: record.value }],
+					},
+				],
+				true,
+			);
 
 			results.push({
 				record,

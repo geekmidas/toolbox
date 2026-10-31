@@ -39,7 +39,8 @@
 	},
 	"dependencies": {
 		"@opentelemetry/api": "~1.9.1",
-		"nodemailer": "~10.0.10"
+		"nodemailer": "~10.0.10",
+		"postal-mime": "~4.1.4"
 	},
 	"devDependencies": {
 		"@opentelemetry/sdk-trace-node": "~2.11.0",
@@ -49,9 +50,9 @@
 		"typescript": "~7.0.2"
 	},
 	"peerDependencies": {
+		"@react-email/components": ">=1.0.12",
 		"react": ">=18.0.0",
-		"react-dom": ">=18.0.0",
-		"@react-email/components": ">=1.0.12"
+		"react-dom": ">=18.0.0"
 	},
 	"engines": {
 		"node": ">=22.0.0"

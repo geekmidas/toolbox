@@ -84,6 +84,12 @@ export interface ComposeOptions {
 	 * Declared as MinIO's environment, so a change recreates the container.
 	 */
 	objectWebhooks?: readonly ObjectWebhook[];
+	/**
+	 * Where Mailpit posts each message it receives, when an inbox is declared:
+	 * `gkm dev`'s relay, on the host. Mailpit's environment, so a change
+	 * recreates the container.
+	 */
+	inboxRelay?: string;
 }
 
 /**
@@ -147,6 +153,17 @@ export function composeFor(plan: Plan, options: ComposeOptions): ComposeFile {
 			)
 		) {
 			minio.extra_hosts = [`${HOST_GATEWAY}:host-gateway`];
+		}
+	}
+
+	const mailpit = services.mailpit;
+	if (mailpit && options.inboxRelay) {
+		mailpit.environment = {
+			...mailpit.environment,
+			MP_WEBHOOK_URL: options.inboxRelay,
+		};
+		if (options.inboxRelay.includes(`//${HOST_GATEWAY}:`)) {
+			mailpit.extra_hosts = [`${HOST_GATEWAY}:host-gateway`];
 		}
 	}
 

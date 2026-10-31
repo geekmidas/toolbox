@@ -5,6 +5,7 @@
  */
 
 import { s3Provider } from './s3/index.js';
+import { sesProvider } from './ses/index.js';
 import type { ProviderKind, ResourceProvider } from './types.js';
 
 export const BUILTIN_PROVIDERS: {
@@ -13,6 +14,7 @@ export const BUILTIN_PROVIDERS: {
 	>;
 } = {
 	objects: { s3: s3Provider },
+	inbox: { ses: sesProvider },
 };
 
 /** The provider `kind` names `name`, if gkm has one. */

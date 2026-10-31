@@ -92,8 +92,10 @@ import type { ScheduleExpression } from './crons/Cron';
 import { CronBuilder } from './crons/CronBuilder';
 import { envParserFor } from './endpoints/surfaceEnv';
 import { FunctionBuilder } from './functions/FunctionBuilder';
+import type { Inbox } from './inbox';
 import type { ObjectStorage } from './object-storage';
 import { QueueBuilder } from './queue/QueueBuilder';
+import { InboxSubscriberBuilder } from './subscribers/InboxSubscriberBuilder';
 import { ObjectSubscriberBuilder } from './subscribers/ObjectSubscriberBuilder';
 import { SubscriberBuilder } from './subscribers/SubscriberBuilder';
 import type { Telemetry } from './telemetry';
@@ -286,6 +288,49 @@ export class Worker<
 			TDatabase,
 			TDatabaseServiceName
 		>(inner, bucket.id);
+	}
+
+	/**
+	 * A runnable handed the mail an {@link Inbox} receives.
+	 *
+	 * Bound, as a topic subscriber is: the inbox's topic is what it consumes,
+	 * and what it is handed is the messages on it, parsed — one per envelope
+	 * recipient the inbox receives at. It reads its inbox's raw messages
+	 * without depending on it; anything else it uses it names, as ever.
+	 *
+	 * @example
+	 * ```ts
+	 * export const onRequest = worker
+	 *   .inbox(requests)
+	 *   .handle(async ({ messages, db }) => {
+	 *     for (const message of messages) message.recipient.subdomain;
+	 *   });
+	 * ```
+	 */
+	inbox<TInboxName extends string>(inbox: Inbox<TInboxName>) {
+		const inner = this.own(
+			new SubscriberBuilder<
+				[],
+				Logger,
+				undefined,
+				undefined,
+				[],
+				TDatabase,
+				TDatabaseServiceName
+			>().logger(this.logger),
+		)
+			.topic(inbox.topic)
+			// The inbox itself: its client reads the raw messages from the
+			// inbox's own bucket, which is what the edge grants — and nothing
+			// the handler did not name besides.
+			.dependsOn([inbox]);
+		return new InboxSubscriberBuilder<
+			[],
+			Logger,
+			undefined,
+			TDatabase,
+			TDatabaseServiceName
+		>(inner, inbox);
 	}
 
 	/**

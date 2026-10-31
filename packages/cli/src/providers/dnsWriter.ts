@@ -1,10 +1,11 @@
 /**
  * The DNS records a provider asks for — a certificate's validation record, a
- * CDN's name — written through the stage's own DNS providers.
+ * CDN's name, a domain's MX — written through the stage's own DNS providers.
  *
  * The same machinery the deploy's DNS step uses for the stack's hosts
- * (`settleStackDns`), handed a plan of CNAMEs instead of the server's
- * addresses: a record holding its value is left alone, one with another value
+ * (`settleStackDns`), handed a plan of CNAMEs and MX records instead of the
+ * server's addresses — an MX's value in its zone-file form,
+ * `<priority> <host>`, which every DNS provider reads and writes: a record holding its value is left alone, one with another value
  * is replaced and printed, and what is written is read back. A host under no
  * domain in `dns`, or under a `manual` one, is printed for the person to
  * create and reported back, so the provider can say what it is waiting on.
@@ -18,7 +19,10 @@ import {
 	settleStackDns,
 } from '../compose/dns.js';
 import type { CredentialProvider } from '../deploy/credentials.js';
-import type { DnsProvider } from '../target/dokploy/dns/DnsProvider.js';
+import {
+	type DnsProvider,
+	mxValue,
+} from '../target/dokploy/dns/DnsProvider.js';
 import {
 	extractSubdomain,
 	findRootDomain,
@@ -54,10 +58,12 @@ export async function writeProviderDns(
 
 	for (const record of records) {
 		const host = record.host.toLowerCase().replace(/\.$/, '');
-		const value = record.value.replace(/\.$/, '');
+		const target = record.value.replace(/\.$/, '');
+		const value =
+			record.type === 'MX' ? mxValue(record.priority, target) : target;
 		const domain = findRootDomain(host, dns);
 		if (!domain) {
-			log(`   create at its DNS host: ${host} CNAME ${value}`);
+			log(`   create at its DNS host: ${host} ${record.type} ${value}`);
 			manual.push(host);
 			continue;
 		}
@@ -91,7 +97,7 @@ export async function writeProviderDns(
 	const applied = await settleStackDns(
 		{
 			stage: options.stage,
-			// No address: these records are CNAMEs, never the server's.
+			// No address: these records are CNAMEs and MX, never the server's.
 			server: { ipv4: '' },
 			domains: plans,
 			uncovered: [],

@@ -1,6 +1,7 @@
 import type { ConstructManifest } from '@geekmidas/manifest';
 import type { DnsRecordsMode } from '../compose/dnsConfig.js';
 import type { AwsRegion, StateConfig } from '../deploy/StateProvider.js';
+import type { SesInboxConfig } from '../providers/ses/config.js';
 import type { DeployTargetEntry } from '../target/types';
 
 export type { AwsRegion };
@@ -312,6 +313,24 @@ export type StageTelemetryConfig =
 export type StageObjectsConfig = 'external' | S3ObjectsConfig | false;
 
 /**
+ * What receives one deployed stage's inboxes — `deploy.inbox`, by stage:
+ *
+ * - `{ provider: 'ses' }` — the deploy creates each inbox in the stage's AWS
+ *   account: its own bucket and topic, the domain's SES identity and MX
+ *   records, and a receipt rule in the region's active rule set.
+ * - `'external'` — the default: the stage's secrets hold each inbox's keys.
+ * - `false` — the stage receives no mail; an inbox on it is refused.
+ *
+ * Every local stage receives through Mailpit, whatever this says.
+ *
+ * @example
+ * ```ts
+ * inbox: { production: { provider: 'ses', region: 'eu-west-1' } }
+ * ```
+ */
+export type StageInboxConfig = 'external' | SesInboxConfig | false;
+
+/**
  * One deployed compose stage's backups — `deploy.backups`, by stage.
  *
  * A stage that runs Postgres is backed up whether it names one or not: every
@@ -484,6 +503,11 @@ export interface DeployConfig<S extends string = string> {
 	 * `ObjectStorage` and `FileServer` produce. See {@link StageObjectsConfig}.
 	 */
 	objects?: StageMap<S, StageObjectsConfig>;
+	/**
+	 * What receives each deployed stage's inboxes — the `inbox` kind `Inbox`
+	 * produces. See {@link StageInboxConfig}.
+	 */
+	inbox?: StageMap<S, StageInboxConfig>;
 	/**
 	 * When each deployed compose stage's databases are backed up, and how
 	 * long a backup is kept — see {@link StageBackupsConfig}.

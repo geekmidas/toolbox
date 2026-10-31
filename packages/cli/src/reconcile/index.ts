@@ -284,6 +284,8 @@ export interface ReconcileOptions {
 	 * reach the process `gkm dev` runs.
 	 */
 	objectWebhooks?: readonly ObjectWebhook[];
+	/** Mailpit's webhook, where an inbox has a subscriber — see `inboxRelay.ts`. */
+	inboxRelay?: string;
 	/**
 	 * The apps, as services beside the containers — see `reconcile/apps.ts`.
 	 * Handed the derived containers so an app can depend on them.
@@ -466,6 +468,7 @@ export async function reconcile(
 		...(options.objectWebhooks?.length
 			? { objectWebhooks: options.objectWebhooks }
 			: {}),
+		...(options.inboxRelay ? { inboxRelay: options.inboxRelay } : {}),
 	});
 
 	// The edge's config is part of what "converged" means: a file server added or

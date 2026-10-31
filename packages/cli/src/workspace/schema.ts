@@ -339,7 +339,10 @@ export const DnsRecordSchema = z.object({
 	type: DnsRecordTypeSchema,
 	/** TTL in seconds */
 	ttl: z.number().int().positive(),
-	/** Record values */
+	/**
+	 * Record values, as a zone file writes them: an MX record's is
+	 * `<priority> <host>` (`10 inbound-smtp.eu-west-1.amazonaws.com`).
+	 */
 	values: z.array(z.string()),
 });
 
@@ -353,7 +356,10 @@ export const UpsertDnsRecordSchema = z.object({
 	type: DnsRecordTypeSchema,
 	/** TTL in seconds */
 	ttl: z.number().int().positive(),
-	/** Record value (IP address, hostname, etc.) */
+	/**
+	 * Record value (IP address, hostname, etc.), as a zone file writes it: an
+	 * MX record's is `<priority> <host>` — see `mxValue`.
+	 */
 	value: z.string(),
 });
 
@@ -711,6 +717,23 @@ const ObjectsConfigSchema = z
 		}
 	});
 
+/** `deploy.inbox` — what receives each deployed stage's inboxes; `checkStageProvider`'s rules. */
+const InboxConfigSchema = z
+	.record(z.string(), z.unknown())
+	.superRefine((entries, ctx) => {
+		for (const [stage, value] of Object.entries(entries)) {
+			try {
+				checkStageProvider('inbox', stage, value);
+			} catch (error) {
+				ctx.addIssue({
+					code: 'custom',
+					message: error instanceof Error ? error.message : String(error),
+					path: [stage],
+				});
+			}
+		}
+	});
+
 /**
  * Deploy configuration schema.
  */
@@ -746,6 +769,7 @@ const DeployConfigSchema = z.object({
 	compose: ComposeWorkspaceConfigSchema.optional(),
 	telemetry: TelemetryConfigSchema.optional(),
 	objects: ObjectsConfigSchema.optional(),
+	inbox: InboxConfigSchema.optional(),
 	backups: BackupsConfigSchema.optional(),
 });
 
@@ -1168,6 +1192,7 @@ export const WorkspaceConfigSchema = z
 		const perStage: [string, (string | number)[], unknown][] = [
 			['domains', ['domains'], data.domains],
 			['deploy.objects', ['deploy', 'objects'], data.deploy?.objects],
+			['deploy.inbox', ['deploy', 'inbox'], data.deploy?.inbox],
 			['deploy.backups', ['deploy', 'backups'], data.deploy?.backups],
 			['deploy.telemetry', ['deploy', 'telemetry'], data.deploy?.telemetry],
 			...Object.entries(data.dns ?? {}).map(

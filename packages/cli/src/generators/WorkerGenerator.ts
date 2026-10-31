@@ -200,6 +200,8 @@ async function answers(connection: unknown): Promise<boolean> {
 export interface WorkerRequest {
   headers: Record<string, string | string[] | undefined>;
   body: string;
+  /** The request's query — Mailpit's webhook carries its token there. */
+  query?: URLSearchParams;
 }
 export interface WorkerAnswer {
   status: number;
@@ -224,6 +226,7 @@ async function route(path: string, request: WorkerRequest): Promise<WorkerAnswer
   const c = {
     req: {
       text: async () => request.body,
+      query: (name: string) => request.query?.get(name) ?? undefined,
       header: (name: string) => {
         const value = request.headers[name.toLowerCase()];
         return Array.isArray(value) ? value[0] : value;
@@ -315,7 +318,9 @@ let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
 let stopping = false;
 
 const server = createServer((req, res) => {
-  const path = (req.url ?? '/').split('?')[0] ?? '/';
+  // Parsed once: the path routes, the query goes to the route.
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  const path = url.pathname;
   const answer = (status: number, body: unknown) => {
     res.writeHead(status, { 'content-type': 'application/json' });
     res.end(JSON.stringify(body));
@@ -333,7 +338,7 @@ const server = createServer((req, res) => {
     req.on('end', () => {
       if (stopping) return answer(503, { status: 'stopping' });
       if (!worker) return answer(503, { status: 'starting' });
-      worker.route(path, { headers: req.headers, body }).then(
+      worker.route(path, { headers: req.headers, body, query: url.searchParams }).then(
         (routed) => (routed ? answer(routed.status, routed.body) : answer(404, { status: 'not found' })),
         (error) => {
           logger.error({ err: error, path }, 'Route failed');

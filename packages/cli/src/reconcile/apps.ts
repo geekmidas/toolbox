@@ -36,6 +36,7 @@ import type { ComposeService } from './compose.js';
 import { portKeys, portsOf } from './containers.js';
 import { eventsEdgeBucket, workerEdges } from './edges.js';
 import { type EnvOptions, envFor } from './env.js';
+import { INBOX_RELAY_TOKEN_KEY } from './inboxRelay.js';
 import type { LocalCredentials } from './localCredentials.js';
 import { type Plan, type PlanOptions, planFor } from './plan.js';
 import { backendsOf, surfaceAddresses } from './workspace.js';
@@ -344,6 +345,10 @@ function addEdgeKeys(
 			continue;
 		}
 		for (const key of target.provides ?? []) keys.add(key);
+
+		// Locally Mailpit posts what an inbox receives to the worker that
+		// runs its subscriber, with this token.
+		if (target.kind === 'inbox') keys.add(INBOX_RELAY_TOKEN_KEY);
 
 		if (target.kind === 'queue' || target.kind === 'topic') {
 			keys.add('EVENT_PUBLISHER_CONNECTION_STRING');

@@ -18,6 +18,7 @@ export {
 	type FactoryBuilders,
 	type FeatureContext,
 	type FeatureIt,
+	type FeatureMailbox,
 	type FeatureTestOptions,
 	featureTest,
 	type MagicLinkAuthClient,
@@ -46,3 +47,10 @@ export {
 	type InProcessBindings,
 	inProcessBindings,
 } from '../testing/peer';
+export {
+	InboxNotLocal,
+	type MailToReceive,
+	NoInboxForAddress,
+	ReceiveFieldsOrRaw,
+	ReceiveNeedsRecipient,
+} from '../testing/receive';
