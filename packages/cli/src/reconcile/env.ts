@@ -96,7 +96,9 @@ export interface EnvOptions {
 	project?: string;
 	/**
 	 * Where each address-owning construct answers, keyed by id — surfaces and
-	 * sites, e.g. `{ Api: 'http://localhost:3000', Console: 'http://localhost:5173' }`.
+	 * sites, e.g. `{ Api: 'http://localhost:3000', Console: 'http://localhost:5173' }`
+	 * — and a file server a target placed at a host of its own (`gkm compose`'s
+	 * edge).
 	 *
 	 * Not container addresses: `gkm dev` assigns these, which is why they arrive
 	 * here rather than being read off a published port. Keyed by id rather than
@@ -157,6 +159,27 @@ function credentialOf(options: {
 		containers: options.credentials,
 		...(options.seed ? { seed: options.seed } : {}),
 	};
+}
+
+/**
+ * What project code run against a stage is handed — a migration, a seed, an
+ * app under `gkm dev`, `gkm exec`'s command, `gkm compose`'s seeds: the
+ * stage's stored secrets, under every value the stage resolved.
+ *
+ * One merge for every command, so a seed sees the same keys whichever one
+ * runs it. Each command supplies only what is its own — the ports it reaches
+ * the containers on, their logins — as inputs to {@link envFor}.
+ *
+ * The resolved values win: they are the statement of what exists, and a
+ * stored URL naming an old port is the drift resolution replaces. A command
+ * whose stage says a value by hand (a deployed stack's) leaves that key out
+ * of `resolved`.
+ */
+export function stageEnv(
+	stored: Readonly<Record<string, string>>,
+	resolved: Readonly<Record<string, string>>,
+): Record<string, string> {
+	return { ...stored, ...resolved };
 }
 
 /**
@@ -817,6 +840,12 @@ function urlFor(
 			// hostname — a cookie domain, a CORS origin — looks at it.
 			const origin = plan.resources.find((r) => r.id === resource.of);
 			if (!origin) return undefined;
+
+			// Where a target put it — a stack's edge, at the host its links are
+			// built on — which is the one address a link stored by a seed stays
+			// right at.
+			const placed = addresses?.[resource.id];
+			if (placed) return placed;
 
 			// A phone resolves no `*.localhost` host, and the edge routes on it,
 			// so a file server whose links reach one is the path under MinIO on

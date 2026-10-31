@@ -83,7 +83,7 @@ import { type ComposeService, composeFor } from '../reconcile/compose.js';
 import { DEFAULT_IMAGES, portKeys } from '../reconcile/containers.js';
 import type { BoundSubscriber } from '../reconcile/discover.js';
 import { EMULATOR_ACCESS_KEY_ID } from '../reconcile/emulator.js';
-import { localRolePassword } from '../reconcile/env.js';
+import { type EnvOptions, localRolePassword } from '../reconcile/env.js';
 import {
 	type ContainerCredentials,
 	LOCAL_RABBITMQ_USER,
@@ -537,6 +537,16 @@ export interface ComposeStack {
 	/** The containers' logins, and the seed role passwords take. */
 	credential: StackCredential;
 	/**
+	 * What the stack resolves its values with, but the ports: its logins, its
+	 * seed, and each app's and file server's public address.
+	 *
+	 * What runs on this machine against the stack — its migrations and seeds
+	 * — resolves with the same (`stageEnv`), on the ports it reaches each of
+	 * {@link LOOPBACK_SERVICES} by, so a seed sees the keys `gkm seed` would
+	 * hand it and the addresses the stack's apps are given.
+	 */
+	resolution: Omit<EnvOptions, 'ports'>;
+	/**
 	 * The stack's MinIO, where it runs one: its root credential — what the
 	 * backends sign with — and the buckets and open paths provisioning
 	 * creates in it.
@@ -562,6 +572,17 @@ export interface ComposeStack {
 	 */
 	backups?: StackBackups;
 }
+
+/**
+ * The services a stack publishes on its engine's loopback, and the port each
+ * answers on inside — what gkm reaches from this machine to provision the
+ * stack and run its migrations and seeds. Everything else is reached only on
+ * the stack's network.
+ */
+export const LOOPBACK_SERVICES = {
+	postgres: 5432,
+	minio: 9000,
+} as const satisfies Record<string, number>;
 
 /** What a stack's containers run with, and what its role passwords take. */
 export interface StackCredential {
@@ -1089,12 +1110,12 @@ export function composeStack(input: StackInput): ComposeStack {
 			...watchedBuckets(manifest, input.subscribers ?? {}).keys(),
 		].filter((bucket) => services.minio.includes(bucket)),
 	};
+	const publicAddresses = Object.fromEntries(
+		apps.map((app) => [app.id, app.url]),
+	);
 	const outside = networkEnv(
 		plan,
-		{
-			...derivation,
-			addresses: Object.fromEntries(apps.map((app) => [app.id, app.url])),
-		},
+		{ ...derivation, addresses: publicAddresses },
 		hostOf,
 	);
 	const inside = networkEnv(
@@ -1652,6 +1673,16 @@ export function composeStack(input: StackInput): ComposeStack {
 		dockerfiles,
 		plan,
 		credential,
+		resolution: {
+			...derivation,
+			// A file server at its host on the edge, as the apps are handed it.
+			addresses: {
+				...publicAddresses,
+				...Object.fromEntries(
+					[...fileServers].map(([id, { url }]) => [id, url]),
+				),
+			},
+		},
 		...(storage ? { storage } : {}),
 		devServices: local ? [] : devServicesUsed(services),
 		...(logs ? { logs } : {}),
@@ -2144,7 +2175,7 @@ function stackFile(options: {
 		// Loopback only, on a port Docker picks: gkm creates the databases and
 		// roles and runs the migrations from this machine, and nothing else
 		// should reach the database from outside the stack.
-		postgres.ports = ['127.0.0.1::5432'];
+		postgres.ports = [`127.0.0.1::${LOOPBACK_SERVICES.postgres}`];
 	}
 
 	const minio = services.minio;
@@ -2160,7 +2191,7 @@ function stackFile(options: {
 		// Loopback only, like Postgres: gkm creates the buckets and their
 		// policies from this machine. The apps reach it on the network, and a
 		// browser through a file server's host on the edge.
-		minio.ports = ['127.0.0.1::9000'];
+		minio.ports = [`127.0.0.1::${LOOPBACK_SERVICES.minio}`];
 	}
 
 	// Its own definition rather than reconcile's: `gkm dev`'s Redis is an
