@@ -45,6 +45,7 @@ import {
 	describeServices,
 	type ServiceAddress,
 } from '../reconcile/containers.js';
+import { stageEnv } from '../reconcile/env.js';
 import { TELEMETRY_CONTAINER } from '../reconcile/plan.js';
 import { describeLogins } from '../reconcile/serviceLogins.js';
 import { FAKE_ENV, reconcileWorkspace } from '../reconcile/workspace.js';
@@ -1060,7 +1061,7 @@ async function workspaceDevCommand(
 	// dev` takes its share, named for it, where it has the edge — and a site
 	// has none to take.
 	const secretsEnv: Record<string, string> = scopeTelemetryEnv(
-		{ ...rawSecrets, ...reconciled.env },
+		stageEnv(rawSecrets, reconciled.env),
 		{ uses: false, serviceName: workspace.name },
 	);
 

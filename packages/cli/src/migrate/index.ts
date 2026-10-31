@@ -24,6 +24,7 @@ import { loadWorkspaceConfig } from '../config';
 import { loadSecretsForApp } from '../credentials';
 import { GkmError } from '../errors';
 import { type ConstructSource, discover } from '../reconcile/discover';
+import { stageEnv } from '../reconcile/env.js';
 import {
 	backendsOf,
 	constructGlobs,
@@ -164,8 +165,7 @@ export async function readyStage(
 		workspace,
 		manifest,
 		sources,
-		// The resolved URLs win, as they do for the apps.
-		env: { ...secrets, ...reconciled.env },
+		env: stageEnv(secrets, reconciled.env),
 		stage: target,
 	};
 }

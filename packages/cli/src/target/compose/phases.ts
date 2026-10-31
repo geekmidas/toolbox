@@ -97,6 +97,7 @@ import {
 	envFile,
 	LOG_ROTATION,
 	LOGS_PORT_ENV,
+	LOOPBACK_SERVICES,
 	type StackApp,
 	type StackInput,
 	stackDir,
@@ -145,7 +146,7 @@ import {
 	type ConstructSource,
 	discover,
 } from '../../reconcile/discover.js';
-import { envFor } from '../../reconcile/env.js';
+import { envFor, stageEnv } from '../../reconcile/env.js';
 import { loadLocalCredentials } from '../../reconcile/localCredentials.js';
 import {
 	ensurePostgresLogin,
@@ -161,6 +162,7 @@ import {
 } from '../../reconcile/provision.js';
 import { backendsOf, constructGlobs } from '../../reconcile/workspace.js';
 import { runOutput } from '../../run';
+import { toEmbeddableSecrets } from '../../secrets/storage.js';
 import type { StageSecrets } from '../../secrets/types.js';
 import type {
 	DnsProvider as DnsProviderConfig,
@@ -1135,11 +1137,13 @@ export async function provisionCompose(
 		}
 	}
 
-	if (stack.infra.includes('postgres')) {
-		await prepareDatabases(ctx, run, deps);
-	}
+	// The buckets before the seeds: a seed that uploads one object writes it
+	// to a bucket that has to exist.
 	if (stack.storage && stack.infra.includes('minio')) {
 		await prepareBuckets(ctx, run, deps);
+	}
+	if (stack.infra.includes('postgres')) {
+		await prepareDatabases(ctx, run, deps);
 	}
 }
 
@@ -1195,7 +1199,7 @@ async function prepareBuckets(
 	const storage = run.stack.storage!;
 	if (storage.buckets.length === 0) return;
 
-	const tunnel = await reach(run, deps, 'minio', 9000);
+	const tunnel = await reach(run, deps, 'minio', LOOPBACK_SERVICES.minio);
 	let done: Awaited<ReturnType<typeof applyBuckets>>;
 	try {
 		const client = deps.buckets(tunnel.port, storage);
@@ -1223,17 +1227,28 @@ async function prepareBuckets(
 /**
  * Create what the plan names in the stack's Postgres, migrate it, then run
  * its seeds — every one, every time, as each construct's owner.
+ *
+ * Every service the stack publishes on its loopback is reached, not only
+ * Postgres: a seed runs project code, and project code that uploads a file
+ * reaches the stack's MinIO as well.
  */
 async function prepareDatabases(
 	ctx: ComposeContext,
 	run: ComposeRun,
 	deps: ComposeDeps,
 ): Promise<void> {
-	const tunnel = await reach(run, deps, 'postgres', 5432);
+	const tunnels: { port: number; close: () => Promise<void> }[] = [];
 	try {
-		await migrateAndSeed(ctx, run, deps, tunnel.port);
+		const ports: Record<string, number> = {};
+		for (const [service, inside] of Object.entries(LOOPBACK_SERVICES)) {
+			if (!run.stack.infra.includes(service)) continue;
+			const tunnel = await reach(run, deps, service, inside);
+			tunnels.push(tunnel);
+			ports[primaryPortKey(service)] = tunnel.port;
+		}
+		await migrateAndSeed(ctx, run, deps, ports);
 	} finally {
-		await tunnel.close();
+		await Promise.all(tunnels.map((tunnel) => tunnel.close()));
 	}
 }
 
@@ -1262,10 +1277,12 @@ async function migrateAndSeed(
 	ctx: ComposeContext,
 	run: ComposeRun,
 	deps: ComposeDeps,
-	port: number,
+	/** Each loopback service's port on this machine, by port key. */
+	ports: Record<string, number>,
 ): Promise<void> {
 	const { stack } = run;
 	const workspace: NormalizedWorkspace = ctx.workspace;
+	const port = ports[primaryPortKey('postgres')]!;
 
 	// A stack an older gkm started made its superuser under the old fixed
 	// name, with the password this stage derives; it is moved to the
@@ -1301,16 +1318,25 @@ async function migrateAndSeed(
 		sources,
 	});
 
-	// The owner URLs, on the port published to this machine.
-	const env = envFor(stack.plan, {
-		ports: { [primaryPortKey('postgres')]: port },
-		project: workspace.name,
+	// What `gkm seed` hands a seed — the stage's secrets under what it
+	// resolves — resolved as the stack resolves it, on the ports this machine
+	// reaches the stack by. A key the stage set by hand is what its apps are
+	// given, so it is not resolved over.
+	const custom = run.secrets?.custom ?? {};
+	const resolved = envFor(stack.plan, {
+		...stack.resolution,
+		ports,
 		credentials: {
-			...stack.credential.containers,
+			...stack.resolution.credentials,
 			postgres: login.login,
 		},
-		seed: stack.credential.seed,
 	});
+	const env = stageEnv(
+		run.secrets ? toEmbeddableSecrets(run.secrets) : {},
+		Object.fromEntries(
+			Object.entries(resolved).filter(([key]) => custom[key] === undefined),
+		),
+	);
 	const options = { root: workspace.root, manifest, sources, env };
 	const runs = await deps.migrate(options);
 

@@ -1016,6 +1016,84 @@ describe("a stage's addresses", { timeout: RUN_TIMEOUT }, () => {
 	});
 });
 
+describe("a seed's environment", { timeout: RUN_TIMEOUT }, () => {
+	let home: string;
+
+	beforeEach(async () => {
+		dir = await project();
+		home = realpathSync(await createTempDir('gkm-compose-seed-home-'));
+		vi.stubEnv('GKM_HOME', home);
+		// A file server over its own bucket, as a seed that uploads uses it.
+		writeFileSync(
+			join(dir, 'constructs', 'assets.ts'),
+			`import { FileServer } from '@geekmidas/constructs/file-server';
+
+export const assets = new FileServer('Assets', { open: ['public/**'] });
+`,
+		);
+	});
+	afterEach(async () => {
+		vi.unstubAllEnvs();
+		await cleanupDir(dir);
+		await cleanupDir(home);
+	});
+
+	it('is what `gkm seed` hands it: the stored secrets, and every URL the stack resolves, on the ports this machine reaches it by', async () => {
+		await new FileSecretsStore(
+			dir,
+			keystoreProject(await loadWorkspaceSettings(dir), home),
+		).write('development', {
+			...initStageSecrets('development'),
+			custom: { ADMIN_EMAIL: 'admin@example.com' },
+		});
+		const fake = fakeDocker();
+		let env: Readonly<Record<string, string>> = {};
+
+		await composeCommand(
+			{ cwd: dir, stage: 'development' },
+			{
+				lookup: resolvesHere,
+				docker: fake.docker,
+				server: fakeServer([]),
+				probe: answering(fake.calls),
+				revision: async () => 'abc1234',
+				logins: signedIn,
+				sql: () => ({ query: async () => [] }),
+				migrate: async () => [],
+				seed: async (options) => {
+					env = options.env;
+					fake.calls.push({ op: 'seed' });
+					return [];
+				},
+				buckets: recordingBuckets(fake.calls),
+			},
+		);
+
+		expect(env.ADMIN_EMAIL).toBe('admin@example.com');
+		// The bucket in the stack's MinIO, reached on its loopback port.
+		expect(env.ASSETS_URL).toMatch(
+			/^s3:\/\/[^?]+\?region=us-east-1&endpoint=http:\/\/localhost:55432&forcePathStyle=true$/,
+		);
+		// Signed for with the MinIO login the stack runs, and no key in the URL.
+		expect(env.AWS_ACCESS_KEY_ID).toBeTruthy();
+		expect(env.ASSETS_URL).not.toContain(env.AWS_ACCESS_KEY_ID!);
+		// The file server at its host on the stack's edge — what the apps are
+		// handed, so a link a seed stores is the one they serve.
+		const api = readFileSync(
+			join(dir, '.gkm', 'compose', 'development', 'api.env'),
+			'utf-8',
+		);
+		expect(env.ASSETS_SERVER_URL).toMatch(/^https:\/\//);
+		expect(api).not.toContain('ASSETS_SERVER_URL=http://localhost');
+		expect(env.DATABASE_URL).toContain('@localhost:55432/');
+
+		// The bucket exists before the seed that uploads to it runs.
+		const ops = fake.ops();
+		expect(ops).toContain('bucket');
+		expect(ops.indexOf('bucket')).toBeLessThan(ops.indexOf('seed'));
+	});
+});
+
 describe('telemetry, self-hosted by default', { timeout: RUN_TIMEOUT }, () => {
 	let home: string;
 	const registry = [
