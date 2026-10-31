@@ -1,5 +1,23 @@
 # @geekmidas/errors
 
+## 10.0.0-alpha.139
+
+### Patch Changes
+
+- [#342](https://github.com/geekmidas/toolbox/pull/342) [`044f04e`](https://github.com/geekmidas/toolbox/commit/044f04e44508c32976a795172c036b21631d1f43) Thanks [@geekmidas](https://github.com/geekmidas)! - :boom: `@geekmidas/schema` converts to JSON Schema through Standard JSON Schema only
+
+  `convertStandardSchemaToJsonSchema` reads the schema's own
+  `~standard.jsonSchema.output({ target: 'draft-2020-12' })`, whatever its vendor,
+  and throws `SchemaHasNoJsonSchema` for a schema without it. `toJsonSchema` and
+  `hasJsonSchema` are exported for the raw schema with its `$defs`.
+
+  Removed: `StandardSchemaJsonSchema`, `SchemaVendor`, `VendorConvertor(s)`, and
+  the `zod-to-json-schema` and `@valibot/to-json-schema` peers. Their dynamic
+  `import()`s made every bundle resolve both converters, so `gkm build
+--production` failed for an app that used neither. zod ≥ 4.2 needs nothing;
+  wrap a valibot schema in `toStandardJsonSchema(schema)` from
+  `@valibot/to-json-schema`.
+
 ## 10.0.0-alpha.138
 
 ## 10.0.0-alpha.137

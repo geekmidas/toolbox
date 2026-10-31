@@ -1,5 +1,15 @@
 # @geekmidas/rate-limit
 
+## 10.0.0-alpha.139
+
+### Patch Changes
+
+- Updated dependencies [[`044f04e`](https://github.com/geekmidas/toolbox/commit/044f04e44508c32976a795172c036b21631d1f43)]:
+  - @geekmidas/errors@10.0.0-alpha.139
+  - @geekmidas/cache@10.0.0-alpha.139
+  - @geekmidas/logger@10.0.0-alpha.139
+  - @geekmidas/services@10.0.0-alpha.139
+
 ## 10.0.0-alpha.138
 
 ### Patch Changes

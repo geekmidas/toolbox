@@ -187,6 +187,7 @@
     "runner-stdin-epipe",
     "s3-object-events",
     "scaffold-typescript-7",
+    "schema-standard-json-schema",
     "secrets-add-checkpoints",
     "secrets-in-project-bucket",
     "secrets-manager-store",
