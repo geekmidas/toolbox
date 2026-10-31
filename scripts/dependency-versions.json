@@ -249,7 +249,6 @@
 		"peerDependencies": ">=1.39.0"
 	},
 	"@valibot/to-json-schema": {
-		"peerDependencies": ">=1.8.0",
 		"devDependencies": "~1.8.0"
 	},
 	"@vitest/coverage-v8": {
@@ -457,8 +456,5 @@
 		"dependencies": "~4.6.5",
 		"devDependencies": "~4.6.5",
 		"peerDependencies": ">=4.6.5"
-	},
-	"zod-to-json-schema": {
-		"peerDependencies": ">=3.25.2"
 	}
 }

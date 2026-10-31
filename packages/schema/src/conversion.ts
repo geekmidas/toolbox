@@ -3,47 +3,46 @@ import type {
 	StandardSchemaV1,
 } from '@standard-schema/spec';
 
-export enum SchemaVendor {
-	zod = 'zod',
-	valibot = 'valibot',
-}
-
-export type VendorConvertor = (schema: any) => Promise<any>;
-export type VendorConvertors = Record<SchemaVendor, VendorConvertor>;
-
-function isSchemaVendor(vendor?: string): vendor is SchemaVendor {
-	if (!vendor) {
-		return false;
+/**
+ * A schema that does not implement Standard JSON Schema
+ * (`~standard.jsonSchema`), so nothing can say what JSON Schema it is.
+ */
+export class SchemaHasNoJsonSchema extends Error {
+	constructor(readonly vendor: string | undefined) {
+		super(
+			`This ${vendor ? `'${vendor}' ` : ''}schema does not implement Standard ` +
+				`JSON Schema (\`~standard.jsonSchema\`), so it cannot be converted to ` +
+				`JSON Schema. Use a library that implements it — zod ≥ 4.2 does on ` +
+				`every schema — or wrap the schema in its library's adapter, e.g. ` +
+				`valibot's \`toStandardJsonSchema(schema)\` from \`@valibot/to-json-schema\`.`,
+		);
+		this.name = 'SchemaHasNoJsonSchema';
 	}
-
-	return Object.values(SchemaVendor).includes(vendor as SchemaVendor);
 }
 
-export const StandardSchemaJsonSchema: VendorConvertors = {
-	zod: async (schema): Promise<any> => {
-		try {
-			const { z } = await import('zod/v4').catch(() => ({ z: {} }));
+/** Whether a schema implements Standard JSON Schema — can say its JSON Schema. */
+export function hasJsonSchema(
+	schema: StandardSchemaV1,
+): schema is StandardSchemaV1 & StandardJSONSchemaV1 {
+	const standard = schema['~standard'] as Partial<StandardJSONSchemaV1.Props>;
+	return typeof standard?.jsonSchema?.output === 'function';
+}
 
-			if ('toJSONSchema' in z && typeof z.toJSONSchema === 'function') {
-				return z.toJSONSchema(schema);
-			}
-			const { zodToJsonSchema } = await import('zod-to-json-schema');
-
-			const result = zodToJsonSchema(schema, {
-				removeAdditionalStrategy: 'strict',
-			});
-
-			return result;
-		} catch {
-			// Fallback to basic conversion if zod-to-json-schema is not available
-			return { type: 'object' };
-		}
-	},
-	valibot: async (schema): Promise<any> => {
-		const { toJsonSchema } = await import('@valibot/to-json-schema');
-		return toJsonSchema(schema as any);
-	},
-};
+/**
+ * A schema's JSON Schema, as the schema itself says — Standard JSON Schema's
+ * `~standard.jsonSchema.output`, in draft 2020-12 — with its `$defs` intact.
+ *
+ * Converted the way the package validates: through the schema's own
+ * `~standard`, never a converter per vendor. A converter behind an `import()`
+ * is a specifier every bundler resolves, so each one would be a package every
+ * app has to install whether or not it uses that library.
+ */
+export function toJsonSchema(schema: StandardSchemaV1): any {
+	if (!hasJsonSchema(schema)) {
+		throw new SchemaHasNoJsonSchema(schema['~standard']?.vendor);
+	}
+	return schema['~standard'].jsonSchema.output({ target: 'draft-2020-12' });
+}
 
 function extractAndConvertDefs(
 	jsonSchema: any,
@@ -119,32 +118,8 @@ export async function convertStandardSchemaToJsonSchema(
 		return undefined;
 	}
 
-	const standard = schema['~standard'] as StandardSchemaV1.Props &
-		Partial<StandardJSONSchemaV1.Props>;
-	const vendor = standard?.vendor;
-	// A schema that converts itself (Standard JSON Schema) needs no vendor
-	// convertor — one written by hand, with no schema library behind it, can
-	// still be documented.
-	if (
-		!isSchemaVendor(vendor) &&
-		typeof standard?.jsonSchema?.output === 'function'
-	) {
-		return extractAndConvertDefs(
-			standard.jsonSchema.output({ target: 'draft-2020-12' }),
-			componentCollector,
-		);
-	}
-	if (!isSchemaVendor(vendor)) {
-		throw new Error(
-			`Unsupported or missing vendor "${vendor}" for Standard Schema. Supported vendors are: ${Object.keys(StandardSchemaJsonSchema).join(', ')}`,
-		);
-	}
-
-	const toJSONSchema = StandardSchemaJsonSchema[vendor];
-	const jsonSchema = await toJSONSchema(schema);
-
 	// Extract and convert $defs to components
-	return extractAndConvertDefs(jsonSchema, componentCollector);
+	return extractAndConvertDefs(toJsonSchema(schema), componentCollector);
 }
 
 export async function getZodMetadata(
