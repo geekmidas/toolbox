@@ -61,6 +61,7 @@
     "compose-logs",
     "compose-redis-cache",
     "compose-remote-docker",
+    "compose-seed-env",
     "compose-server-fresh-root",
     "compose-server",
     "compose-site-password",

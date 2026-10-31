@@ -1,5 +1,33 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.138
+
+### Patch Changes
+
+- 🐛 [#340](https://github.com/geekmidas/toolbox/pull/340) [`0003870`](https://github.com/geekmidas/toolbox/commit/000387034da8a0d59326f98de911757939cc798e) Thanks [@geekmidas](https://github.com/geekmidas)! - :bug: `gkm compose` seeds see what `gkm seed` hands them
+
+  A seed run by `gkm compose` was given only the Postgres URLs: no stored secrets,
+  and no bucket, so one that uploaded through a `FileServer` failed on
+  `ASSETS_URL` / `ASSETS_SERVER_URL`. Every command now merges a stage's secrets
+  under what it resolves through one `stageEnv`, and compose resolves with the
+  stack's own inputs — each loopback service it reaches (Postgres and MinIO), its
+  logins, and each app's and file server's public address. A key the stage set by
+  hand stays what its apps are given. The buckets are created before the seeds
+  run.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.138
+  - @geekmidas/constructs@10.0.0-alpha.138
+  - @geekmidas/db@10.0.0-alpha.138
+  - @geekmidas/envkit@10.0.0-alpha.138
+  - @geekmidas/errors@10.0.0-alpha.138
+  - @geekmidas/logger@10.0.0-alpha.138
+  - @geekmidas/manifest@10.0.0-alpha.138
+  - @geekmidas/schema@10.0.0-alpha.138
+  - @geekmidas/services@10.0.0-alpha.138
+  - @geekmidas/storage@10.0.0-alpha.138
+  - @geekmidas/telescope@10.0.0-alpha.138
+
 ## 10.0.0-alpha.137
 
 ### Minor Changes
