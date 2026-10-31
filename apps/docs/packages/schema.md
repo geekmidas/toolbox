@@ -116,3 +116,24 @@ Works with any StandardSchema-compatible validation library:
 - **Valibot** - `v.object(...)`
 - **ArkType** - `type({...})`
 - **Typebox** - `Type.Object(...)`
+
+### JSON Schema
+
+Conversion to JSON Schema (the OpenAPI document, the generated client) goes
+through the schema itself: [Standard JSON Schema](https://standardschema.dev)'s
+`~standard.jsonSchema`. No converter per library is installed, so an app bundles
+only the schema library it uses.
+
+zod ≥ 4.2 implements it on every schema. A library that does not wraps its
+schema in its own adapter — valibot's, for example:
+
+```typescript
+import { toStandardJsonSchema } from '@valibot/to-json-schema';
+import * as v from 'valibot';
+
+const product = toStandardJsonSchema(
+  v.object({ id: v.string(), price: v.number() }),
+);
+```
+
+A schema with no `~standard.jsonSchema` is refused with `SchemaHasNoJsonSchema`.

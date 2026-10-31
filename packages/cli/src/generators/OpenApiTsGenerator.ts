@@ -2,7 +2,8 @@ import type { Endpoint } from '@geekmidas/constructs/endpoints';
 import {
 	getRegisteredZodJsonSchemas,
 	getSchemaMetadata,
-	StandardSchemaJsonSchema,
+	hasJsonSchema,
+	toJsonSchema,
 } from '@geekmidas/schema/conversion';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import {
@@ -419,18 +420,11 @@ export class OpenApiTsGenerator {
 		collectedDefs: Map<string, JsonSchema>,
 	): Promise<string | null> {
 		try {
-			// Get raw JSON schema with $defs intact (don't use convertStandardSchemaToJsonSchema
-			// which strips $defs)
-			const vendor = schema['~standard']?.vendor;
-			if (!vendor || !(vendor in StandardSchemaJsonSchema)) {
-				return unknownType(name);
-			}
-
-			const toJsonSchema =
-				StandardSchemaJsonSchema[
-					vendor as keyof typeof StandardSchemaJsonSchema
-				];
-			const jsonSchema = await toJsonSchema(schema);
+			// The raw JSON Schema, $defs intact (convertStandardSchemaToJsonSchema
+			// strips them). A schema with no Standard JSON Schema is typed as
+			// unknown rather than failing the whole client.
+			if (!hasJsonSchema(schema)) return unknownType(name);
+			const jsonSchema = toJsonSchema(schema);
 			if (!jsonSchema) return unknownType(name);
 
 			// Extract $defs from the JSON schema (these come from .meta({ id: 'X' }))

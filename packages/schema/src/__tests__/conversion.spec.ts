@@ -5,7 +5,8 @@ import {
 	convertStandardSchemaToJsonSchema,
 	getSchemaMetadata,
 	getZodMetadata,
-	SchemaVendor,
+	SchemaHasNoJsonSchema,
+	toJsonSchema,
 } from '../conversion';
 import { createComponentCollector } from '../openapi';
 
@@ -113,7 +114,7 @@ describe('Schema Conversion', () => {
 			expect(jsonSchema).not.toHaveProperty('$defs');
 		});
 
-		it('should throw error for unsupported vendor', async () => {
+		it('refuses a schema that does not implement Standard JSON Schema, naming its vendor', async () => {
 			const invalidSchema = {
 				'~standard': {
 					vendor: 'unsupported' as any,
@@ -121,9 +122,22 @@ describe('Schema Conversion', () => {
 				},
 			};
 
-			await expect(
-				convertStandardSchemaToJsonSchema(invalidSchema as any),
-			).rejects.toThrow(/Unsupported or missing vendor/);
+			const error = await convertStandardSchemaToJsonSchema(
+				invalidSchema as any,
+			).catch((caught: unknown) => caught);
+
+			expect(error).toBeInstanceOf(SchemaHasNoJsonSchema);
+			expect((error as SchemaHasNoJsonSchema).vendor).toBe('unsupported');
+			expect((error as Error).message).toContain(
+				'does not implement Standard JSON Schema',
+			);
+		});
+
+		it("converts zod through its own `~standard.jsonSchema`, the same as zod's converter", () => {
+			const User = z.object({ id: z.string() }).meta({ id: 'StdUser' });
+			const schema = z.object({ user: User, n: z.number().optional() });
+
+			expect(toJsonSchema(schema)).toEqual(z.toJSONSchema(schema));
 		});
 
 		it('converts a schema of any vendor that converts itself (Standard JSON Schema)', async () => {
@@ -153,7 +167,7 @@ describe('Schema Conversion', () => {
 			expect(output).toHaveBeenCalledWith({ target: 'draft-2020-12' });
 		});
 
-		it('should throw error for missing vendor', async () => {
+		it('refuses a schema with no vendor and no Standard JSON Schema', async () => {
 			const invalidSchema = {
 				'~standard': {
 					vendor: undefined,
@@ -163,7 +177,7 @@ describe('Schema Conversion', () => {
 
 			await expect(
 				convertStandardSchemaToJsonSchema(invalidSchema as any),
-			).rejects.toThrow(/Unsupported or missing vendor/);
+			).rejects.toBeInstanceOf(SchemaHasNoJsonSchema);
 		});
 
 		it('should handle schema with descriptions', async () => {
@@ -342,16 +356,6 @@ describe('Schema Conversion', () => {
 
 			expect(result).toEqual({ $ref: '#/components/schemas/UserData' });
 			expect(collector.schemas).toHaveProperty('UserData');
-		});
-	});
-
-	describe('SchemaVendor enum', () => {
-		it('should have zod vendor', () => {
-			expect(SchemaVendor.zod).toBe('zod');
-		});
-
-		it('should have valibot vendor', () => {
-			expect(SchemaVendor.valibot).toBe('valibot');
 		});
 	});
 
