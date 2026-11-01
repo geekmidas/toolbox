@@ -198,6 +198,7 @@
     "seed-env",
     "seeds-use-client-config",
     "server-crons",
+    "server-native-packages",
     "session-reads-auth",
     "setup-leaves-node-env",
     "single-app-paths",

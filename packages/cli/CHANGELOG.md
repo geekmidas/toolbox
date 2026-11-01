@@ -1,5 +1,26 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.141
+
+### Patch Changes
+
+- [#347](https://github.com/geekmidas/toolbox/pull/347) [`557c765`](https://github.com/geekmidas/toolbox/commit/557c7654e9a53e61fe0798004f8c3c43ba960c9e) Thanks [@geekmidas](https://github.com/geekmidas)! - A server image installs the native packages its bundle imports
+
+  `gkm build --production` inlined every package into `server.mjs`, and the image shipped no `node_modules`, so an app using a package with native code — `argon2`, `better-sqlite3` — crashed on boot (`ERR_AMBIGUOUS_MODULE_SYNTAX` from `__dirname` in the bundle, and no binary to load). The build now finds each native package the bundle imports, leaves it out, and records it at the version it resolved in `dist/<bundle>.externals.json`; the server, worker and processor images install exactly those, for Linux, beside the bundle. A processor's `.native([...])` is recorded the same way.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.141
+  - @geekmidas/constructs@10.0.0-alpha.141
+  - @geekmidas/db@10.0.0-alpha.141
+  - @geekmidas/envkit@10.0.0-alpha.141
+  - @geekmidas/errors@10.0.0-alpha.141
+  - @geekmidas/logger@10.0.0-alpha.141
+  - @geekmidas/manifest@10.0.0-alpha.141
+  - @geekmidas/schema@10.0.0-alpha.141
+  - @geekmidas/services@10.0.0-alpha.141
+  - @geekmidas/storage@10.0.0-alpha.141
+  - @geekmidas/telescope@10.0.0-alpha.141
+
 ## 10.0.0-alpha.140
 
 ### Minor Changes
