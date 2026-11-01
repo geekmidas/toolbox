@@ -360,7 +360,6 @@ export async function workspaceDockerCommand(
 		const dockerfile = processorDockerfile(unit, workspace.apps[unit.app]!, {
 			layout,
 			workspaceRoot: workspace.root,
-			native: processorNative(manifest!, unit.id),
 		});
 		const path = workerDockerfileOf(unit.name);
 		const dockerfilePath = join(workspace.root, path);
@@ -511,18 +510,6 @@ export function workerDockerfile(
 	});
 }
 
-/** The native packages a file server's processors named, once each. */
-export function processorNative(
-	manifest: ConstructManifest,
-	fileServerId: string,
-): string[] {
-	const server = manifest[fileServerId];
-	if (server?.kind !== 'file-server') return [];
-	return [
-		...new Set((server.processors ?? []).flatMap((p) => p.native ?? [])),
-	].sort();
-}
-
 /**
  * A file server's processor unit's Dockerfile: its host app's build, and the
  * unit's bundle as the runner, with its processors' native packages
@@ -534,8 +521,6 @@ export function processorDockerfile(
 	options: {
 		layout: ImageLayout;
 		workspaceRoot: string;
-		/** Packages with native code its processors named. */
-		native: readonly string[];
 		cache?: CacheBackend;
 	},
 ): string {
@@ -552,7 +537,6 @@ export function processorDockerfile(
 		fileServer: unit.id,
 		bundle: processorBundleName(unit.id),
 		healthCheckPath: '/health',
-		...(options.native.length ? { external: [...options.native] } : {}),
 		...(options.cache ? { cache: options.cache } : {}),
 	});
 }

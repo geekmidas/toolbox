@@ -5,6 +5,7 @@ import {
 	generateNextjsDockerfile,
 	generateNodeWebDockerfile,
 	generateViteStaticDockerfile,
+	generateWorkerDockerfile,
 	STATIC_SITE_IMAGE,
 	TURBO_VERSION,
 } from '../templates';
@@ -316,31 +317,32 @@ describe('a site that imports a generated client', () => {
 });
 
 describe('a backend’s externals', () => {
-	it('leaves the runner a single file when the bundle has none', () => {
+	it('installs what the build left out of the bundle, for Linux, beside it', () => {
 		const dockerfile = generateBackendDockerfile(backend);
 
-		expect(dockerfile).not.toContain('AS externals');
-		expect(dockerfile).not.toContain('node_modules ./node_modules');
-		const runner = dockerfile.slice(dockerfile.indexOf('AS runner'));
-		expect(runner.match(/^COPY .*$/gm)).toEqual([
-			'COPY --from=builder --chown=hono:nodejs /app/apps/api/.gkm/server/dist/server.mjs ./',
-		]);
-	});
-
-	it('installs exactly the externals, for Linux, at the versions the build resolved', () => {
-		const dockerfile = generateBackendDockerfile({
-			...backend,
-			external: ['sharp', '@node-rs/argon2'],
-		});
-
-		expect(dockerfile).toContain('FROM builder AS externals-manifest');
-		expect(dockerfile).toContain('const names = ["sharp","@node-rs/argon2"];');
 		expect(dockerfile).toContain('FROM ${NODE_IMAGE} AS externals');
+		expect(dockerfile).toContain(
+			'COPY --from=builder /app/apps/api/.gkm/server/dist/server.externals.json ./package.json',
+		);
 		expect(dockerfile).toContain(
 			'npm install --omit=dev --no-package-lock --no-audit --no-fund',
 		);
-		expect(dockerfile).toContain(
+		const runner = dockerfile.slice(dockerfile.indexOf('AS runner'));
+		expect(runner.match(/^COPY .*$/gm)).toEqual([
+			'COPY --from=builder --chown=hono:nodejs /app/apps/api/.gkm/server/dist/server.mjs ./',
 			'COPY --from=externals --chown=hono:nodejs /externals/node_modules ./node_modules',
+		]);
+	});
+
+	it('reads a worker’s from beside its own bundle', () => {
+		const dockerfile = generateWorkerDockerfile({
+			...backend,
+			worker: 'Jobs',
+			bundle: 'worker-jobs.mjs',
+		});
+
+		expect(dockerfile).toContain(
+			'COPY --from=builder /app/apps/api/.gkm/server/dist/worker-jobs.externals.json ./package.json',
 		);
 	});
 });

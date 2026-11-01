@@ -957,7 +957,6 @@ describe("a file server's processors", () => {
 			host: 'api',
 			port: 3000,
 			prefixes: ['/i/'],
-			native: ['sharp'],
 		});
 		const service = s.compose.services['uploads-processors']!;
 		expect(service.ports).toBeUndefined();
@@ -1020,7 +1019,7 @@ describe("a file server's processors", () => {
 		expect(unit(s).origin).toBeUndefined();
 	});
 
-	it('install their native packages in their image, for linux', () => {
+	it('install what their build left out — sharp — in their image, for linux', () => {
 		const s = stack({ manifest: withProcessors() });
 		const dockerfile =
 			s.dockerfiles['.gkm/compose/development/Dockerfile.uploads-processors']!;
@@ -1029,7 +1028,12 @@ describe("a file server's processors", () => {
 		expect(dockerfile).toContain(
 			'/app/apps/api/.gkm/server/dist/uploads-processors.mjs ./processors.mjs',
 		);
-		expect(dockerfile).toContain('const names = ["sharp"];');
+		expect(dockerfile).toContain(
+			'COPY --from=builder /app/apps/api/.gkm/server/dist/uploads-processors.externals.json ./package.json',
+		);
+		expect(dockerfile).toContain(
+			'COPY --from=externals --chown=hono:nodejs /externals/node_modules ./node_modules',
+		);
 		expect(dockerfile).toContain('CMD ["node", "processors.mjs"]');
 	});
 

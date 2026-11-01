@@ -52,6 +52,15 @@ RUN --mount=type=secret,id=gkm_credentials,required=false \\
     cd /app/apps/api && GKM_BIN="$(node -e 'let d=process.cwd();const{existsSync:e}=require("fs"),{dirname:u,join:j}=require("path");for(;;){const p=j(d,"node_modules/@geekmidas/cli/bin/gkm.mjs");if(e(p)){console.log(p);break}if(u(d)===d){console.error("@geekmidas/cli is not installed where the app can resolve it");process.exit(1)}d=u(d)}')" && node "$GKM_BIN" build --provider server --production && \\
     rm -f /app/apps/api/.gkm/credentials.enc /app/apps/api/.gkm/credentials.iv
 
+# The packages the bundle leaves out, installed for Linux at the versions the
+# build resolved — and nothing else.
+FROM \${NODE_IMAGE} AS externals
+WORKDIR /externals
+COPY --from=builder /app/apps/api/.gkm/server/dist/server.externals.json ./package.json
+RUN --mount=type=cache,id=npm,target=/root/.npm \\
+    npm install --omit=dev --no-package-lock --no-audit --no-fund && \\
+    mkdir -p node_modules
+
 # Production
 FROM \${NODE_IMAGE} AS runner
 
@@ -64,6 +73,7 @@ RUN addgroup --system --gid 1001 nodejs && \\
 
 # The bundled server
 COPY --from=builder --chown=hono:nodejs /app/apps/api/.gkm/server/dist/server.mjs ./
+COPY --from=externals --chown=hono:nodejs /externals/node_modules ./node_modules
 
 ENV NODE_ENV=production
 ENV PORT=3000

@@ -51,7 +51,6 @@ import { validateImageRef } from '../docker/imageRef.js';
 import {
 	appDockerfile,
 	processorDockerfile,
-	processorNative,
 	workerDockerfile,
 } from '../docker/index.js';
 import { composeBuildPaths, type ImageLayout } from '../docker/layout.js';
@@ -343,8 +342,6 @@ export interface StackProcessor extends AppImage {
 	port: number;
 	/** Its processors' prefixes — `/i/` — the paths the edge sends it. */
 	prefixes: string[];
-	/** Packages with native code, installed in its image for linux. */
-	native: string[];
 	/**
 	 * Where a CDN reaches it, when the bucket is served by one: its host, and
 	 * the header value the CDN adds, without which the edge refuses.
@@ -1676,7 +1673,6 @@ export function composeStack(input: StackInput): ComposeStack {
 			{
 				layout,
 				workspaceRoot: workspace.root,
-				native: unit.native,
 				cache: STACK_CACHE,
 			},
 		);
@@ -2044,7 +2040,6 @@ function stackProcessors(
 			host: unit.app,
 			port: PROCESSOR_PORT,
 			prefixes: [...new Set(processors.map((p) => p.prefix))].sort(),
-			native: processorNative(options.manifest, unit.id),
 			ref: validateImageRef(
 				imageRef(
 					options.identity,

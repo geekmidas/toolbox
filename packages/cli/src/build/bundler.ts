@@ -1,9 +1,14 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import type { Construct } from '@geekmidas/constructs';
+import {
+	bundleExternals,
+	externalsManifestName,
+	importedPackages,
+} from './native';
 
 /**
  * Banner to inject into ESM bundle for CJS compatibility.
@@ -24,7 +29,10 @@ export interface BundleOptions {
 	minify: boolean;
 	/** Generate sourcemaps (default: false) */
 	sourcemap: boolean;
-	/** Packages to exclude from bundling */
+	/**
+	 * Packages to leave out of the bundle besides its native ones, which are
+	 * always left out and recorded beside it — see `externalsManifestName`.
+	 */
 	external: string[];
 	/** Stage for secrets injection (optional) */
 	stage?: string;
@@ -37,6 +45,19 @@ export interface BundleResult {
 	outputPath: string;
 	/** Ephemeral master key for deployment (only if stage was provided) */
 	masterKey?: string;
+	/** What the bundle left out, at the version to install beside it. */
+	externals: Record<string, string>;
+}
+
+/** The app a bundle is built for: the nearest `package.json` above its entry. */
+function appRootOf(entryPoint: string): string {
+	let dir = dirname(entryPoint);
+	while (!existsSync(join(dir, 'package.json'))) {
+		const parent = dirname(dir);
+		if (parent === dir) return dirname(entryPoint);
+		dir = parent;
+	}
+	return dir;
 }
 
 /**
@@ -126,7 +147,15 @@ export async function bundleServer(
 	// Ensure output directory exists
 	await mkdir(outputDir, { recursive: true });
 
-	const mjsOutput = join(outputDir, options.outfile ?? 'server.mjs');
+	const outfile = options.outfile ?? 'server.mjs';
+	const mjsOutput = join(outputDir, outfile);
+
+	// A package with native code loads a binary from beside its own source,
+	// built for the platform it was installed on: inlined, it finds neither.
+	// Every one the app could reach stays out of the bundle, and the ones the
+	// bundle imports are installed for the image's platform at this version.
+	const candidates = bundleExternals(appRootOf(entryPoint), external);
+	const metafile = join(outputDir, `.${outfile}.meta.json`);
 
 	// Build command-line arguments for esbuild
 	const args = [
@@ -139,6 +168,7 @@ export async function bundleServer(
 		`--outfile=${mjsOutput}`,
 		'--packages=bundle', // Bundle all dependencies for standalone output
 		`--banner:js=${ESM_CJS_COMPAT_BANNER}`, // CJS compatibility for packages like pino
+		`--metafile=${metafile}`,
 	];
 
 	if (minify) {
@@ -151,8 +181,7 @@ export async function bundleServer(
 		args.push('--sourcemap');
 	}
 
-	// Add external packages (user-specified)
-	for (const ext of external) {
+	for (const ext of Object.keys(candidates)) {
 		args.push(`--external:${ext}`);
 	}
 
@@ -294,8 +323,29 @@ export async function bundleServer(
 		);
 	}
 
+	// Declared ones always; a native package only where the bundle imports it
+	// — an app that depends on `@geekmidas/cli` reaches esbuild, and never
+	// runs it.
+	const imported = importedPackages(metafile);
+	await rm(metafile, { force: true });
+	const externals = Object.fromEntries(
+		Object.entries(candidates).filter(
+			([name]) => external.includes(name) || imported.has(name),
+		),
+	);
+	await writeFile(
+		join(outputDir, externalsManifestName(outfile)),
+		`${JSON.stringify({ private: true, dependencies: externals }, null, 2)}\n`,
+	);
+	if (Object.keys(externals).length > 0) {
+		console.log(
+			`  Left out of the bundle, installed beside it: ${Object.keys(externals).join(', ')}`,
+		);
+	}
+
 	return {
 		outputPath: mjsOutput,
 		masterKey,
+		externals,
 	};
 }
