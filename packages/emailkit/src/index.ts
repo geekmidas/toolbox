@@ -1,3 +1,10 @@
+export {
+	AUTO_SUBMITTED_HEADER,
+	type AutoSubmitted,
+	autoReplying,
+	currentAutoSubmitted,
+	isAutoSubmitted,
+} from './autoSubmitted';
 export { createEmailClient, SMTPClient } from './client';
 export {
 	EmailUrlError,

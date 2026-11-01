@@ -38,6 +38,12 @@ export { Encryption, type EncryptionProps } from './aws/Encryption';
 export { FileServer, type FileServerProps } from './aws/FileServer';
 export { Function, type FunctionProps } from './aws/Function';
 export {
+	Inbox,
+	InboxNotProvisioned,
+	type InboxProps,
+	InboxTopic,
+} from './aws/Inbox';
+export {
 	ObjectStorage,
 	type ObjectStorageProps,
 } from './aws/ObjectStorage';

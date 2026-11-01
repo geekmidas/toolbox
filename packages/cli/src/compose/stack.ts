@@ -738,6 +738,65 @@ export class StageSecretMissing extends GkmError {
 	}
 }
 
+/** Where a deployed inbox's values come from: the stage's domain, and its secrets. */
+export interface DeployedInboxSources {
+	/** Who reads them, named in the error when one is missing. */
+	reader: string;
+	stage: string;
+	domain: string | undefined;
+	/** The stage's secrets, where the inbox's provider wrote its keys. */
+	secrets: Readonly<Record<string, string>>;
+}
+
+/**
+ * One key of a deployed inbox — the one rule every target reads it by.
+ *
+ * Its domain is the stage's, which mail is addressed to. Everything else (where
+ * its raw messages are read, its topic's publisher string) is what its
+ * provider made and wrote to the stage's secrets; nothing can derive it.
+ *
+ * @throws {NoDomainForStage} for its domain when the stage has none.
+ * @throws {StageSecretMissing} when the provider has not written the key.
+ */
+export function deployedInboxValue(
+	inbox: string,
+	key: string,
+	sources: DeployedInboxSources,
+): string {
+	if (key === provideKey(inbox, 'domain')) {
+		if (!sources.domain) throw new NoDomainForStage(sources.stage);
+		return sources.domain;
+	}
+	const value = sources.secrets[key];
+	if (value === undefined) {
+		throw new StageSecretMissing(sources.reader, key, sources.stage);
+	}
+	return value;
+}
+
+/**
+ * Every deployed inbox's keys, and its topic's publisher string, by key: what
+ * a target that provisions nothing of the inbox's (SST) is handed, read by
+ * {@link deployedInboxValue} as the compose stack reads each.
+ */
+export function deployedInboxEnv(
+	manifest: ConstructManifest,
+	sources: DeployedInboxSources,
+): Record<string, string> {
+	const env: Record<string, string> = {};
+	for (const declaration of Object.values(manifest)) {
+		if (declaration.kind !== 'inbox') continue;
+		const keys = [
+			...(declaration.provides ?? []),
+			provideKey(declaration.topic, 'publisherConnectionString'),
+		];
+		for (const key of keys) {
+			env[key] = deployedInboxValue(declaration.id, key, sources);
+		}
+	}
+	return env;
+}
+
 /** A deployed stage's secrets with no seed to derive its passwords from. */
 export class StageSeedMissing extends GkmError {
 	constructor(readonly stage: string) {
@@ -1175,15 +1234,12 @@ export function composeStack(input: StackInput): ComposeStack {
 		// the stage's domain, which mail is addressed to.
 		if (owner?.kind === 'inbox') {
 			if (local) return outside[key];
-			if (key === provideKey(owner.id, 'domain')) {
-				if (!domain) throw new NoDomainForStage(stage);
-				return domain;
-			}
-			const value = custom[key];
-			if (value === undefined) {
-				throw new StageSecretMissing(app.name, key, stage);
-			}
-			return value;
+			return deployedInboxValue(owner.id, key, {
+				reader: app.name,
+				stage,
+				domain,
+				secrets: custom,
+			});
 		}
 		// A deployed stage has no inbox: Mailpit runs only locally — not for a
 		// backend, a site's bundle or a phone.

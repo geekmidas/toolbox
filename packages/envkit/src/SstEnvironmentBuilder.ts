@@ -48,6 +48,9 @@ export enum ResourceType {
 	Credential = 'gkm:aws:Credential',
 	// A KMS key and its HMAC key, handed over as one `kms://` URL.
 	Encryption = 'gkm:aws:Encryption',
+	// Mail received: where its raw messages are read, and the domain it is
+	// addressed to — both made by the inbox's provider, not by SST.
+	Inbox = 'gkm:aws:Inbox',
 }
 
 /**
@@ -155,6 +158,7 @@ type SecretValue = Omit<Secret, 'type'>;
 type ExternalApiValue = { url: string; credentials: string };
 type CredentialValue = { credentials: string };
 type EncryptionValue = { url: string };
+type InboxValue = { url: string; domain: string };
 type PostgresValue = Omit<Postgres, 'type'>;
 type BucketValue = Omit<Bucket, 'type'>;
 type SnsTopicValue = Omit<SnsTopic, 'type'>;
@@ -227,6 +231,11 @@ const encryptionResolver = (name: string, value: EncryptionValue) => ({
 	[`${name}Url`]: value.url,
 });
 
+const inboxResolver = (name: string, value: InboxValue) => ({
+	[`${name}Url`]: value.url,
+	[`${name}Domain`]: value.domain,
+});
+
 const noopResolver = () => ({});
 
 /**
@@ -255,6 +264,7 @@ export const sstResolvers: Resolvers = {
 	[ResourceType.ExternalApi]: externalApiResolver,
 	[ResourceType.Credential]: credentialResolver,
 	[ResourceType.Encryption]: encryptionResolver,
+	[ResourceType.Inbox]: inboxResolver,
 };
 
 /**

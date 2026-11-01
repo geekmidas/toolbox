@@ -6,6 +6,7 @@ import {
 } from '@opentelemetry/api';
 import { render } from '@react-email/components';
 import nodemailer, { type Transporter } from 'nodemailer';
+import { AUTO_SUBMITTED_HEADER, currentAutoSubmitted } from './autoSubmitted';
 import type {
 	EmailClient,
 	EmailClientConfig,
@@ -37,9 +38,12 @@ export class SMTPClient<T extends TemplateRecord> implements EmailClient<T> {
 	}
 
 	private async deliver(options: SendOptions): Promise<SendResult> {
+		const marked = currentAutoSubmitted();
 		const mailOptions = {
 			...this.config.defaults,
 			...options,
+			// A send inside an inbox handler is a reply to mail, whatever it says.
+			...(marked ? { headers: { [AUTO_SUBMITTED_HEADER]: marked } } : {}),
 		};
 
 		if (!mailOptions.from) {

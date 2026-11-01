@@ -85,6 +85,26 @@ describe('mailbox', () => {
 		expect(Buffer.from(await email.attachments[0]!.content())).toEqual(pdf);
 	});
 
+	it('hands over its headers, by lower-case name', async () => {
+		const to = address();
+		const response = await fetch(`${MAILPIT_URL}/api/v1/send`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				From: { Email: 'requests@acme.fixwell.test' },
+				To: [{ Email: to }],
+				Subject: 'We got your request',
+				Text: 'Ticket t_1.',
+				Headers: { 'Auto-Submitted': 'auto-replied' },
+			}),
+		});
+		expect(response.ok).toBe(true);
+
+		const email = await mailbox(to).last();
+
+		expect(email.headers['auto-submitted']).toEqual(['auto-replied']);
+	});
+
 	it('waits for mail still on its way', async () => {
 		const to = address();
 		setTimeout(() => void send(to, { subject: 'Late' }), 200);

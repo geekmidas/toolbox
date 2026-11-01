@@ -7,8 +7,16 @@
  * is the messages, parsed, one per envelope recipient the inbox receives at.
  * The inbox's own client does that, which is also why the handler can read
  * its inbox's raw messages without naming it in `.dependsOn`.
+ *
+ * **Loops.** Mail sent while the handler runs is marked
+ * `Auto-Submitted: auto-replied`, and mail that arrives marked automatic is
+ * dropped before the handler sees it (RFC 3834). Together they stop a reply
+ * coming back to an inbox and being answered again — the app's own inboxes, or
+ * someone's out-of-office. `.automated()` hands a handler that mail instead.
+ * This is the handler every adaptor runs, so dev, tests and SES drop alike.
  */
 
+import { autoReplying, isAutoSubmitted } from '@geekmidas/emailkit';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { INBOX_EVENT, serviceKey } from '@geekmidas/manifest';
@@ -84,7 +92,22 @@ export class InboxSubscriberBuilder<
 			any
 		>,
 		private readonly inbox: Inbox<string>,
+		private readonly acceptsAutomated = false,
 	) {}
+
+	/**
+	 * Hands this handler mail marked `Auto-Submitted` too — auto-replies,
+	 * out-of-office notices, bounces — which are otherwise dropped so a reply
+	 * can never be answered by another. A handler that takes them should not
+	 * reply to them.
+	 */
+	automated(): this {
+		return new InboxSubscriberBuilder<any, any, any, any, any>(
+			this.inner,
+			this.inbox,
+			true,
+		) as this;
+	}
 
 	dependsOn<const T extends readonly Consumable[]>(
 		constructs: T,
@@ -154,6 +177,7 @@ export class InboxSubscriberBuilder<
 		TDatabaseServiceName
 	> {
 		const key = serviceKey(this.inbox.id);
+		const acceptsAutomated = this.acceptsAutomated;
 
 		// Every adaptor hands the handler `{ type, payload }` messages; each
 		// payload here is a receipt notification, and the inbox's client turns
@@ -166,14 +190,28 @@ export class InboxSubscriberBuilder<
 			);
 			const messages: InboxMessage[] = [];
 			for (const { payload } of notifications) {
-				messages.push(...(await inbox.messages(payload)));
+				for (const message of await inbox.messages(payload)) {
+					if (!acceptsAutomated && isAutoSubmitted(message.headers)) {
+						ctx.logger.debug(
+							{
+								recipient: message.recipient.address,
+								autoSubmitted: message.headers['auto-submitted'],
+							},
+							'Dropped automatic mail: it is never answered',
+						);
+						continue;
+					}
+					messages.push(message);
+				}
 			}
 			if (messages.length === 0) return undefined;
-			return fn({
-				...ctx,
-				messages,
-				inbox,
-			} as unknown as InboxSubscriberContext<TServices, TLogger, TDatabase>);
+			return autoReplying(() =>
+				fn({
+					...ctx,
+					messages,
+					inbox,
+				} as unknown as InboxSubscriberContext<TServices, TLogger, TDatabase>),
+			);
 		};
 
 		const subscriber = this.inner
@@ -194,6 +232,7 @@ export class InboxSubscriberBuilder<
 		return new InboxSubscriberBuilder<any, any, any, any, any>(
 			inner,
 			this.inbox,
+			this.acceptsAutomated,
 		);
 	}
 }
