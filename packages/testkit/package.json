@@ -171,7 +171,8 @@
 		"@geekmidas/logger": "workspace:^",
 		"@geekmidas/services": "workspace:^",
 		"@types/pg": "~8.23.1",
-		"better-auth": "~1.7.6"
+		"better-auth": "~1.7.6",
+		"@geekmidas/emailkit": "workspace:^"
 	},
 	"repository": {
 		"type": "git",
@@ -189,7 +190,8 @@
 		"db-errors": "~0.2.3",
 		"vitest": "~5.0.2",
 		"@types/aws-lambda": ">=8.10.163",
-		"better-auth": ">=1.7.5"
+		"better-auth": ">=1.7.5",
+		"@geekmidas/emailkit": "workspace:^"
 	},
 	"peerDependenciesMeta": {
 		"kysely": {
@@ -214,6 +216,9 @@
 			"optional": true
 		},
 		"better-auth": {
+			"optional": true
+		},
+		"@geekmidas/emailkit": {
 			"optional": true
 		}
 	},

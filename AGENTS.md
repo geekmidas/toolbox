@@ -4,6 +4,39 @@ Rules for anyone — human or agent — writing code in this repository. The sta
 layout, and architectural patterns live in [CLAUDE.md](./CLAUDE.md); this file is
 for conventions that are easy to get wrong and cheap to state.
 
+## One path for every command and stage
+
+**`gkm dev`, `gkm test`, `gkm exec`, `gkm seed`/`migrate`, `gkm build` and
+`gkm compose` run a feature through the same code. Never write a second
+implementation of a step for one of them.**
+
+A feature is built once and handed what differs as *inputs*: the ports a
+command reaches the containers on, their logins, the stage's domain, which
+provider backs a construct. When one command needs something the others do
+not, extend the shared step to take it — do not copy the step into that
+command. Every past "fixed in `gkm seed`, still broken in `gkm compose`" bug
+(#310, #339) came from a step written twice.
+
+Where the outside world genuinely differs — SES receives mail deployed,
+Mailpit locally; SNS pushes deployed, pg-boss is polled locally — keep the
+difference at that edge only, and make everything after it shared:
+
+- **One entry point per step.** A local stand-in for a provider (a relay, a
+  test helper) calls the same function `gkm dev` and `gkm test` both use. A
+  feature test never re-implements what `gkm dev` does.
+- **One rule for each resource, applied by every target.** If a construct owns
+  a bucket, every target creates it the same way it creates any bucket on that
+  stage. No resource is invented for one target's plan only.
+- **No per-construct exceptions to a shared rule.** A credential, a URL shape
+  or an env key follows what every other construct of its kind does on that
+  stage. If the rule is wrong, change it for all of them, in its own change.
+- **Compose is a production target.** Anything with an AWS deploy also works on
+  a compose stage (a provider creates the AWS resource; SNS pushes over HTTPS
+  to the worker). "Not supported on compose" is not a default.
+
+Before writing a step, find where the other commands already do it, and reuse
+or extend that. The PR template asks this of every change.
+
 ## Validation schemas (Zod)
 
 **Use Zod's top-level format validators. Never chain a format onto

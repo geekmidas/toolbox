@@ -2,13 +2,17 @@
  * GoDaddy DNS Provider
  *
  * Implements DnsProvider against GoDaddy's v1 API, one record set — a name
- * and a type — at a time: it reads and writes only the A, AAAA and CNAME
+ * and a type — at a time: it reads and writes only the A, AAAA, CNAME and MX
  * records of the names it is handed, and never the zone as a whole, a domain
  * or the account. A Personal Access Token scoped to `domains.dns:update` is all it needs.
  *
  * A token that may write records and not read them puts the provider in
  * write-only mode: every record is PUT — idempotent, so one that already has
  * its value is left as it was — and nothing is compared or deleted.
+ *
+ * An MX value is `<priority> <host>` on the DnsProvider side, as everywhere
+ * in gkm; GoDaddy keeps the priority apart, so it is split on a write and
+ * joined on a read.
  *
  * Credentials: `GODADDY_API_TOKEN`, else what `gkm login --provider godaddy`
  * stored. Never logged.
@@ -26,6 +30,8 @@ import {
 	type DnsProvider,
 	type DnsRecord,
 	DnsRecordsUnreadable,
+	mxValue,
+	parseMxValue,
 	type UpsertDnsRecord,
 	type UpsertResult,
 } from './DnsProvider';
@@ -39,6 +45,7 @@ import {
 	type GoDaddyRecord,
 	GoDaddyRecordNotAllowed,
 	type GoDaddyRecordType,
+	type GoDaddyRecordValue,
 	GoDaddyScopeMissing,
 } from './godaddy-api';
 
@@ -72,7 +79,21 @@ export class GoDaddyZoneListingUnsupported extends GkmError {
 
 /** A value compared the way DNS does: case-insensitive, no trailing dot. */
 function normalize(value: string): string {
-	return value.trim().replace(/\.$/, '').toLowerCase();
+	return value.trim().replace(/\.$/, '').replace(/\s+/g, ' ').toLowerCase();
+}
+
+/** A GoDaddy record's value in gkm's form: an MX's is `<priority> <host>`. */
+function valueOf(type: string, record: GoDaddyRecord): string {
+	return type === 'MX'
+		? mxValue(record.priority ?? 0, record.data)
+		: record.data;
+}
+
+/** gkm's value as GoDaddy takes it: an MX's priority beside its `data`. */
+function goDaddyValue(type: string, value: string): GoDaddyRecordValue {
+	if (type !== 'MX') return { data: value };
+	const { priority, host } = parseMxValue(value);
+	return { data: host, priority };
 }
 
 function managed(type: string): type is GoDaddyRecordType {
@@ -170,7 +191,7 @@ export class GoDaddyProvider implements DnsProvider {
 				name,
 				type,
 				ttl: records[0]!.ttl ?? GODADDY_MIN_TTL,
-				values: records.map((r) => r.data),
+				values: records.map((r) => valueOf(type, r)),
 			});
 		}
 		return found;
@@ -187,13 +208,14 @@ export class GoDaddyProvider implements DnsProvider {
 	): Promise<UpsertResult[]> {
 		// Every record is checked before any is written, so a refused one
 		// leaves the zone as it was.
-		for (const record of records) {
+		const values = records.map((record) => {
 			this.assertManaged(domain, record.type, record.name);
-		}
+			return goDaddyValue(record.type, record.value);
+		});
 		const api = await this.getApi();
 
 		const results: UpsertResult[] = [];
-		for (const record of records) {
+		for (const [i, record] of records.entries()) {
 			const type = record.type as GoDaddyRecordType;
 			let existing: GoDaddyRecord[] | undefined;
 			if (!this.writeOnly) {
@@ -208,8 +230,8 @@ export class GoDaddyProvider implements DnsProvider {
 				}
 			}
 			if (existing) {
-				const values = existing.map((r) => normalize(r.data));
-				if (values.length === 1 && values[0] === normalize(record.value)) {
+				const found = existing.map((r) => normalize(valueOf(type, r)));
+				if (found.length === 1 && found[0] === normalize(record.value)) {
 					results.push({ record, created: false, unchanged: true });
 					continue;
 				}
@@ -218,7 +240,7 @@ export class GoDaddyProvider implements DnsProvider {
 				domain,
 				type,
 				record.name,
-				[record.value],
+				[values[i]!],
 				Math.max(record.ttl, GODADDY_MIN_TTL),
 			);
 			results.push({

@@ -321,3 +321,6 @@ pnpm fmt      # Format with Biome
 3. **Composability** — small focused utilities that compose
 4. **Integration testing** — real deps over mocks
 5. **Avoid over-engineering** — minimum complexity for current task
+6. **One path for every command and stage** — dev, test, exec, seed, build and
+   compose share each step; only true provider edges differ. See
+   [AGENTS.md](./AGENTS.md#one-path-for-every-command-and-stage).

@@ -11,6 +11,8 @@
  * `to:`, and cleared afterwards.
  */
 
+import type { ReceivedAttachment } from '@geekmidas/emailkit/inbound';
+
 /** How long `last()` waits for mail that is still on its way. */
 const DEFAULT_TIMEOUT = 5_000;
 const POLL_INTERVAL = 50;
@@ -36,6 +38,11 @@ export interface Email {
 	links: string[];
 	/** The first link — the one a sign-in or confirmation email is about. */
 	link: string | undefined;
+	/**
+	 * Its files, read from the raw message by the parser an inbox's handler
+	 * uses — so what survives one survives the other.
+	 */
+	attachments: ReceivedAttachment[];
 }
 
 export interface Mailbox {
@@ -65,9 +72,13 @@ export function createMailbox(
 				inbox,
 			);
 			return Promise.all(
-				found.messages.map(async ({ ID }) =>
-					email(await json<Message>(await get(`/api/v1/message/${ID}`), inbox)),
-				),
+				found.messages.map(async ({ ID }) => {
+					const response = await get(`/api/v1/message/${ID}/raw`);
+					if (!response.ok) {
+						throw new InboxUnreachable(inbox, response.status);
+					}
+					return email(ID, new Uint8Array(await response.arrayBuffer()));
+				}),
 			);
 		};
 
@@ -98,39 +109,36 @@ interface SearchResult {
 	messages: { ID: string }[];
 }
 
-interface Message {
-	ID: string;
-	From: { Address: string };
-	To: { Address: string }[];
-	Subject: string;
-	Text: string;
-	HTML: string;
-}
-
 async function json<T>(response: Response, inbox: string): Promise<T> {
 	if (!response.ok) throw new InboxUnreachable(inbox, response.status);
 	return (await response.json()) as T;
 }
 
-function email(message: Message): Email {
+/** The message, through the one MIME parser everything that reads mail uses. */
+async function email(id: string, raw: Uint8Array): Promise<Email> {
+	const { parseEmail } = await import('@geekmidas/emailkit/inbound');
+	const message = await parseEmail(raw);
+	const html = message.html ?? '';
+	const text = message.text ?? '';
 	const links = [
 		...new Set(
 			[
-				...(message.HTML ?? '').matchAll(/href="(https?:\/\/[^"]+)"/g),
-				...(message.Text ?? '').matchAll(/(https?:\/\/[^\s<>"]+)/g),
+				...html.matchAll(/href="(https?:\/\/[^"]+)"/g),
+				...text.matchAll(/(https?:\/\/[^\s<>"]+)/g),
 			].map(([, url]) => decodeEntities(url!)),
 		),
 	];
 
 	return {
-		id: message.ID,
-		from: message.From.Address,
-		to: message.To.map(({ Address }) => Address),
-		subject: message.Subject,
-		text: message.Text ?? '',
-		html: message.HTML ?? '',
+		id,
+		from: message.from?.address ?? '',
+		to: message.to.map(({ address }) => address),
+		subject: message.subject ?? '',
+		text,
+		html,
 		links,
 		link: links[0],
+		attachments: message.attachments,
 	};
 }
 

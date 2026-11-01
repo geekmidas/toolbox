@@ -167,10 +167,14 @@ export function requiredServerAddress(
 	return server;
 }
 
-/** The record types the DNS step writes. */
-export type StackRecordType = 'A' | 'AAAA' | 'CNAME';
+/**
+ * The record types gkm writes: A, AAAA and CNAME for the stack's hosts, and
+ * the CNAME and MX records a provider asks for (`writeProviderDns`).
+ */
+export type StackRecordType = 'A' | 'AAAA' | 'CNAME' | 'MX';
 
-const MANAGED: readonly StackRecordType[] = ['A', 'AAAA', 'CNAME'];
+/** The types that point a name somewhere — a name holds a CNAME or the others. */
+const ADDRESS_TYPES: readonly StackRecordType[] = ['A', 'AAAA', 'CNAME'];
 
 /** One record a stack's host needs. */
 export interface PlannedDnsRecord {
@@ -181,6 +185,10 @@ export interface PlannedDnsRecord {
 	/** Relative to the domain, as providers take it: `api`, `@`. */
 	name: string;
 	type: StackRecordType;
+	/**
+	 * As a zone file writes it — an MX record's is `<priority> <host>`
+	 * (`mxValue`).
+	 */
 	value: string;
 	ttl: number;
 }
@@ -434,17 +442,25 @@ function printManual(
 	}));
 }
 
-/** The existing records of every planned name, for the types gkm manages. */
+/**
+ * The existing records of every planned name: A, AAAA and CNAME where one of
+ * them is planned — what the name points at, and what a change of mode
+ * deletes — and MX where an MX is. No other type is read.
+ */
 async function existingRecords(
 	provider: DnsProvider,
 	plan: DomainDnsPlan,
 ): Promise<DnsRecord[]> {
-	const names = [...new Set(plan.records.map((r) => r.name))];
-	return readRecords(
-		provider,
-		plan.domain,
-		names.flatMap((name) => MANAGED.map((type) => ({ name, type }))),
-	);
+	const wanted = new Map<string, { name: string; type: StackRecordType }>();
+	for (const record of plan.records) {
+		const types = ADDRESS_TYPES.includes(record.type)
+			? ADDRESS_TYPES
+			: [record.type];
+		for (const type of types) {
+			wanted.set(`${record.name} ${type}`, { name: record.name, type });
+		}
+	}
+	return readRecords(provider, plan.domain, [...wanted.values()]);
 }
 
 /** Exactly these names and types, as the provider holds them. */
@@ -478,14 +494,19 @@ function providerResolver(
 	);
 }
 
-const same = (a: string, b: string) =>
-	a.trim().replace(/\.$/, '').toLowerCase() ===
-	b.trim().replace(/\.$/, '').toLowerCase();
+/** Two values compared as DNS does: case, a trailing dot and spacing aside. */
+const same = (a: string, b: string) => {
+	const normalize = (value: string) =>
+		value.trim().replace(/\.$/, '').replace(/\s+/g, ' ').toLowerCase();
+	return normalize(a) === normalize(b);
+};
 
 /**
  * What each domain's records need, compared with what is there: creates,
  * updates, and the deletes a change of mode needs — a name moving from an A
- * record to a CNAME, or back, cannot hold both. Nothing else is deleted.
+ * record to a CNAME, or back, cannot hold both. Nothing else is deleted: an
+ * MX planned at a name deletes nothing, and a CNAME or A planned at a name
+ * never deletes its MX.
  */
 export function diffDomainDns(
 	plan: DomainDnsPlan,
@@ -507,7 +528,9 @@ export function diffDomainDns(
 	for (const [name, types] of planned) {
 		const conflicting: StackRecordType[] = types.has('CNAME')
 			? ['A', 'AAAA']
-			: ['CNAME'];
+			: types.has('A') || types.has('AAAA')
+				? ['CNAME']
+				: [];
 		for (const type of conflicting) {
 			const found = find(name, type);
 			if (!found || found.values.length === 0) continue;

@@ -4,6 +4,9 @@
  * Abstracts DNS operations for different providers.
  * Built-in providers: HostingerProvider, Route53Provider, GoDaddyProvider
  * Users can also supply custom implementations.
+ *
+ * Every value is the record's zone-file form, read and written alike: an MX
+ * record's is `<priority> <host>` (see {@link mxValue}).
  */
 
 import type { z } from 'zod/v4';
@@ -45,6 +48,47 @@ export type UpsertDnsRecord = z.infer<typeof UpsertDnsRecordSchema>;
  * Result of an upsert operation.
  */
 export type UpsertResult = z.infer<typeof UpsertResultSchema>;
+
+// =============================================================================
+// MX values
+// =============================================================================
+
+/**
+ * An MX record's value as every provider here reads and writes it — the zone
+ * file's `<priority> <host>`, which is what Route53 and Hostinger take as is.
+ * A provider whose API keeps the priority apart (GoDaddy) splits it with
+ * {@link parseMxValue}.
+ */
+export function mxValue(priority: number, host: string): string {
+	return `${priority} ${host.trim().replace(/\.$/, '')}`;
+}
+
+/** An MX value that is not `<priority> <host>`. */
+export class MxValueInvalid extends GkmError {
+	constructor(readonly value: string) {
+		super(
+			`'${value}' is not an MX record's value: it is written ` +
+				"'<priority> <host>', like '10 inbound-smtp.eu-west-1.amazonaws.com'. " +
+				'Build it with mxValue(priority, host).',
+		);
+		this.name = 'MxValueInvalid';
+	}
+}
+
+/**
+ * The priority and host of an MX value.
+ *
+ * @throws {MxValueInvalid} for a value that is not `<priority> <host>`
+ */
+export function parseMxValue(value: string): {
+	priority: number;
+	host: string;
+} {
+	const match = value.trim().match(/^(\d{1,5})\s+(\S+)$/);
+	const priority = match ? Number(match[1]) : Number.NaN;
+	if (!match || priority > 65535) throw new MxValueInvalid(value);
+	return { priority, host: match[2]!.replace(/\.$/, '') };
+}
 
 // =============================================================================
 // DNS Provider Interface

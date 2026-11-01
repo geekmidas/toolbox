@@ -25,7 +25,11 @@
 
 import { randomUUID } from 'node:crypto';
 import { EnvironmentParser } from '@geekmidas/envkit';
-import { provideKey, WILDCARD_SUBDOMAIN } from '@geekmidas/manifest';
+import {
+	INBOX_EVENT,
+	provideKey,
+	WILDCARD_SUBDOMAIN,
+} from '@geekmidas/manifest';
 import {
 	ServiceDiscovery,
 	type ServiceRegisterOptions,
@@ -67,6 +71,12 @@ import { TestSubscriberAdaptor } from '../subscribers/TestSubscriberAdaptor';
 import { Topic } from '../topic/Topic';
 import { loadTestManifest, type TestManifest } from './manifest';
 import { inProcessBindings } from './peer';
+import {
+	isInboxConstruct,
+	type MailToReceive,
+	receiveInTest,
+	type TestInbox,
+} from './receive';
 
 /** How each database's test factory is built, keyed by its service name. */
 export type FactoryBuilders = Record<string, (db: Kysely<any>) => unknown>;
@@ -183,8 +193,11 @@ export interface FeatureContext<
 	 * imports nothing to make some.
 	 */
 	faker: FakerFactory;
-	/** The mail sent to an address during this test, read from Mailpit. */
-	mailbox: (address: string) => Mailbox;
+	/**
+	 * The mail sent to an address during this test, read from Mailpit — and,
+	 * with `receive`, mail arriving at one of the app's inboxes.
+	 */
+	mailbox: FeatureMailbox;
 	/**
 	 * What this test published to a topic or enqueued on a queue, in order.
 	 *
@@ -223,6 +236,19 @@ export interface FeatureContext<
 	objects: (bucket: { id: string }) => {
 		emit: (...events: EmittedObjectEvent[]) => Promise<void>;
 	};
+}
+
+/** `mailbox(address)` reads what was sent; `mailbox.receive(…)` sends to an inbox. */
+export interface FeatureMailbox {
+	(address: string): Mailbox;
+	/**
+	 * Mail arriving at an inbox: delivered to Mailpit with `to` as its envelope
+	 * recipient, received as `gkm dev` receives it, and handed to each inbox
+	 * subscriber in this test's transaction. Resolves once they have run.
+	 *
+	 * @throws {NoInboxForAddress} when no declared inbox receives at `to`.
+	 */
+	receive(mail: MailToReceive): Promise<void>;
 }
 
 /** An object changing, as a test reports it: the bucket is the one emitted on. */
@@ -356,6 +382,10 @@ interface LoadedApp {
 	channels: (Topic<any, any> | Queue<any, any>)[];
 	/** Every bucket a subscriber is bound to — whose changes are reported. */
 	watched: ObjectStorage[];
+	/** Every inbox — what `mailbox.receive` routes to. */
+	inboxes: TestInbox[];
+	/** The environment `gkm test` resolved. */
+	env: Readonly<Record<string, string | undefined>>;
 	/** Every construct a handler can depend on — what `services` resolves. */
 	consumables: Consumable[];
 	/** Every topic subscriber, by the name it is exported as. */
@@ -513,10 +543,30 @@ export function featureTest<
 							db: db as TestDatabases<TDatabases>,
 							factories: factories as TestFactories<TFactories>,
 							faker,
-							mailbox: (address) => {
-								if (!state.mailbox) throw new NoInbox();
-								return state.mailbox(address);
-							},
+							mailbox: Object.assign(
+								(address: string) => {
+									if (!state.mailbox) throw new NoInbox();
+									return state.mailbox(address);
+								},
+								{
+									receive: async (mail: MailToReceive) => {
+										await receiveInTest(
+											mail,
+											app.inboxes,
+											app.env,
+											async (inbox, notification) => {
+												state.pending.push({
+													channel: inbox.topic,
+													messages: [
+														{ type: INBOX_EVENT, payload: notification },
+													],
+												});
+											},
+										);
+										await deliver(app, state, id);
+									},
+								},
+							),
 							published: (channel) => [
 								...(state.published.get(channel.id) ?? []),
 							],
@@ -673,6 +723,8 @@ async function load(
 		),
 	);
 
+	const inboxes = unique(constructs.filter(isInboxConstruct));
+
 	const inbox = emails
 		.map((email) => manifest.env[provideKey(email.id, 'inboxUrl')])
 		.find(Boolean);
@@ -685,6 +737,8 @@ async function load(
 		emails,
 		channels,
 		watched,
+		inboxes,
+		env: manifest.env,
 		consumables,
 		subscribers,
 		...(inbox ? { readMail: createMailbox({ inbox }) } : {}),

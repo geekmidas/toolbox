@@ -1,12 +1,13 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { Subscriber } from '@geekmidas/constructs/subscribers';
-import { canonicalId } from '@geekmidas/manifest';
+import { canonicalId, INBOX_EVENT, provideKey } from '@geekmidas/manifest';
 import type { BuildContext } from '../build/types';
 import {
 	subscriberConnectionKey,
 	subscriberTokenKey,
 } from '../reconcile/edges.js';
+import { INBOX_RELAY_TOKEN_KEY, INBOX_ROUTE } from '../reconcile/inboxRelay';
 import type { SubscriberInfo } from '../types';
 import { runtimeFor } from './EndpointGenerator.js';
 import {
@@ -105,6 +106,9 @@ export class SubscriberGenerator extends ConstructGenerator<
 							...construct.objectFilter,
 						}
 					: {}),
+				// An inbox's subscriber is a topic subscriber, delivered what SES
+				// publishes rather than what a producer wrote.
+				...(construct.inboxName ? { inbox: construct.inboxName } : {}),
 				timeout: construct.timeout,
 				memorySize: construct.memorySize,
 				environment: await construct.getEnvironment({
@@ -221,6 +225,7 @@ export async function stopSubscribers(): Promise<void> {}
 		// key — resolved here, at build time, from the binding. A bucket's
 		// subscriber reaches the bucket's events, which carry no `type`
 		// attribute for SNS to filter on: it filters what it is sent itself.
+		// So does an inbox's: SES publishes its receipt notification bare.
 		const entries = subscribers
 			.map(({ key, construct }) => {
 				const connectionKey = subscriberConnectionKey(construct);
@@ -233,11 +238,26 @@ export async function stopSubscribers(): Promise<void> {}
 					topic ? `'${topic}'` : 'undefined'
 				}, connectionKey: ${
 					connectionKey ? `'${connectionKey}'` : 'undefined'
-				}, filtered: ${construct.bucketName ? 'false' : 'true'}, bucket: ${
+				}, filtered: ${
+					construct.bucketName || construct.inboxName ? 'false' : 'true'
+				}, bucket: ${
 					bucket ? `'${bucket}'` : 'undefined'
-				}, tokenKey: ${tokenKey ? `'${tokenKey}'` : 'undefined'} },`;
+				}, tokenKey: ${tokenKey ? `'${tokenKey}'` : 'undefined'}, inbox: ${
+					construct.inboxName
+						? JSON.stringify({
+								id: construct.inboxName,
+								domainKey: provideKey(construct.inboxName, 'domain'),
+								addressing: construct.inboxAddressing ?? { addresses: [] },
+							})
+						: 'undefined'
+				} },`;
 			})
 			.join('\n');
+
+		// The route Mailpit posts what an inbox receives to — generated only
+		// for an app with an inbox subscriber, so no other bundle ever names
+		// the inbox's module.
+		const receives = subscribers.some(({ construct }) => construct.inboxName);
 
 		const content = `/**
  * Generated subscribers setup.
@@ -274,7 +294,7 @@ import type { Logger } from '@geekmidas/logger';
 import { EventConnectionFactory, Publisher, Subscriber } from '@geekmidas/events';
 import type { EventConnection } from '@geekmidas/events';
 import { ServiceDiscovery } from '@geekmidas/services';
-${imports}
+${receives ? "import { type ReceivingInbox, receiveMail } from '@geekmidas/constructs/inbox';\n" : ''}${imports}
 
 const subscribers = [
 ${entries}
@@ -363,7 +383,67 @@ async function mountObjectRelay(
   logger.info({ bucket: relay.bucket }, 'Relaying object events');
 }
 
-/** Resolves once something is accepting connections on the port. */
+${
+	receives
+		? `// The inboxes this server receives for locally, by id.
+const inboxRelays = new Map<string, ReceivingInbox>();
+
+/**
+ * Mount the route Mailpit posts each message it receives to, and hand the
+ * message to the receiver a receipt rule stands for: each inbox one of its
+ * envelope recipients is addressed to gets the receipt notification on its
+ * topic. Mailpit names envelope recipients missing from the headers as Bcc.
+ */
+function mountInboxRelay(
+  app: { post: (path: string, handler: (c: any) => unknown) => unknown },
+  logger: Logger,
+): void {
+  const token = process.env.${INBOX_RELAY_TOKEN_KEY};
+  if (!token) {
+    logger.error('No ${INBOX_RELAY_TOKEN_KEY}: the mail Mailpit posts cannot be received');
+    failed.push('inbox');
+    return;
+  }
+  const expected = Buffer.from(token);
+
+  app.post('${INBOX_ROUTE}', async (c: any) => {
+    const given = Buffer.from(c.req.query('token') ?? '');
+    if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
+      return c.json({ status: 'refused' }, 401);
+    }
+
+    let message: { key: string; from: string; recipients: string[] };
+    try {
+      const summary = JSON.parse(await c.req.text());
+      const addresses = (list: unknown) =>
+        Array.isArray(list) ? list.map((a: any) => a?.Address).filter(Boolean) : [];
+      message = {
+        key: String(summary.ID),
+        from: summary.From?.Address ?? '',
+        recipients: [...addresses(summary.To), ...addresses(summary.Cc), ...addresses(summary.Bcc)],
+      };
+    } catch (error) {
+      logger.warn({ err: error }, 'Refused a Mailpit webhook that did not parse');
+      return c.json({ status: 'malformed' }, 400);
+    }
+
+    try {
+      const received = await receiveMail(
+        { ...message, store: 'mailpit' },
+        [...inboxRelays.values()],
+      );
+      return c.json({ status: 'ok', received }, 200);
+    } catch (error) {
+      logger.error({ err: error, message: message.key }, 'Failed to receive mail');
+      return c.json({ status: 'failed' }, 500);
+    }
+  });
+  logger.info({ inboxes: [...inboxRelays.keys()] }, 'Receiving mail from Mailpit');
+}
+
+`
+		: ''
+}/** Resolves once something is accepting connections on the port. */
 async function listening(port: number): Promise<void> {
   for (let attempt = 0; attempt < 100; attempt++) {
     const open = await new Promise<boolean>((resolve) => {
@@ -395,7 +475,7 @@ export async function setupSubscribers(
   const recorded = recordedSubscriptions(logger);
   const afterListening: ((port: number) => Promise<void>)[] = [];
 
-  for (const { id, subscriber, topic, connectionKey, filtered, bucket, tokenKey } of subscribers) {
+  for (const { id, subscriber, topic, connectionKey, filtered, bucket, tokenKey, inbox } of subscribers) {
     const events = subscriber.subscribedEvents || [];
     if (events.length === 0) {
       logger.warn({ subscriber: id }, 'Subscriber has no subscribed events, skipping');
@@ -537,7 +617,25 @@ ${
       if (bucket && tokenKey && topic && !relays.has(bucket)) {
         relays.add(bucket);
         await mountObjectRelay(app, { bucket, topic, connection, tokenKey }, logger);
-      }
+      }${
+				receives
+					? `
+      // An inbox polled here is a local one: Mailpit posts what it receives
+      // to this server, which announces it on the inbox's topic.
+      const domain = inbox ? process.env[inbox.domainKey] : undefined;
+      if (inbox && topic && domain && !inboxRelays.has(inbox.id)) {
+        const publisher = await Publisher.fromConnection(connection, { topic });
+        inboxRelays.set(inbox.id, {
+          id: inbox.id,
+          addressing: inbox.addressing,
+          domain,
+          publish: async (payload) => {
+            await publisher.publish([{ type: '${INBOX_EVENT}', payload }] as any);
+          },
+        });
+      }`
+					: ''
+			}
     } catch (error) {
       // The message too: a missing module's code alone does not say which.
       logger.error(
@@ -548,7 +646,7 @@ ${
     }
   }
 
-  return async (port) => {
+${receives ? '  if (inboxRelays.size > 0) mountInboxRelay(app, logger);\n\n' : ''}  return async (port) => {
     if (afterListening.length === 0) return;
     await listening(port);
     for (const subscribe of afterListening) {

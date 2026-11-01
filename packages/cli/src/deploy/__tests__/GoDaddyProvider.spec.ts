@@ -13,9 +13,11 @@ import {
 } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { storeGoDaddyToken } from '../../auth/credentials';
+import { writeProviderDns } from '../../providers/dnsWriter';
 import {
 	createDnsProvider,
 	DnsRecordsUnreadable,
+	MxValueInvalid,
 } from '../../target/dokploy/dns/DnsProvider';
 import {
 	GoDaddyProvider,
@@ -51,7 +53,7 @@ interface Recorded {
 }
 
 /** The zone: `<type> <name>` → its records. */
-let zone: Map<string, { data: string; ttl: number }[]>;
+let zone: Map<string, { data: string; ttl: number; priority?: number }[]>;
 let requests: Recorded[];
 /** Overrides for one method, answered before the zone is consulted. */
 let answer: {
@@ -101,7 +103,11 @@ const server = setupServer(
 			);
 		}
 		if (request.method === 'PUT') {
-			const records = body as { data: string; ttl: number }[];
+			const records = body as {
+				data: string;
+				ttl: number;
+				priority?: number;
+			}[];
 			if (records.some((r) => r.ttl < 600)) {
 				return error(422, {
 					code: 'INVALID_BODY',
@@ -127,7 +133,7 @@ afterAll(() => server.close());
 beforeEach(() => {
 	zone = new Map([
 		['A @', [{ data: '198.51.100.7', ttl: 3600 }]],
-		['MX @', [{ data: 'mail.example.com', ttl: 3600 }]],
+		['MX @', [{ data: 'mail.example.com', priority: 10, ttl: 3600 }]],
 		['TXT @', [{ data: 'v=spf1 -all', ttl: 3600 }]],
 	]);
 	requests = [];
@@ -226,12 +232,82 @@ describe('GoDaddyProvider', () => {
 			'PUT /v1/domains/example.com/records/CNAME/www',
 		]);
 		// Mail and the SPF record are as they were.
-		expect(zone.get('MX @')).toEqual([{ data: 'mail.example.com', ttl: 3600 }]);
+		expect(zone.get('MX @')).toEqual([
+			{ data: 'mail.example.com', priority: 10, ttl: 3600 },
+		]);
 		expect(zone.get('TXT @')).toEqual([{ data: 'v=spf1 -all', ttl: 3600 }]);
 	});
 
-	it('refuses an MX, TXT or NS record before sending anything', async () => {
-		for (const type of ['MX', 'TXT', 'NS', 'SOA'] as const) {
+	it('reads an MX as "<priority> <host>"', async () => {
+		const records = await provider().readRecords(DOMAIN, [
+			{ name: '@', type: 'MX' },
+		]);
+
+		expect(records).toEqual([
+			{ name: '@', type: 'MX', ttl: 3600, values: ['10 mail.example.com'] },
+		]);
+	});
+
+	it("writes an MX's priority beside its data, and leaves a matching one alone", async () => {
+		const mx = {
+			name: '*',
+			type: 'MX' as const,
+			value: '10 inbound-smtp.eu-west-1.amazonaws.com',
+			ttl: 600,
+		};
+		const [created] = await provider().upsertRecords(DOMAIN, [mx]);
+
+		expect(created).toMatchObject({ created: true, unchanged: false });
+		expect(requests.filter((r) => r.method === 'PUT')).toEqual([
+			{
+				method: 'PUT',
+				path: '/v1/domains/example.com/records/MX/*',
+				body: [
+					{
+						data: 'inbound-smtp.eu-west-1.amazonaws.com',
+						priority: 10,
+						ttl: 600,
+					},
+				],
+			},
+		]);
+
+		requests = [];
+		const [again] = await provider().upsertRecords(DOMAIN, [mx]);
+		expect(again).toMatchObject({ unchanged: true });
+		expect(requests.map((r) => r.method)).toEqual(['GET']);
+	});
+
+	it('replaces an MX with another priority or host', async () => {
+		await provider().upsertRecords(DOMAIN, [
+			{
+				name: '@',
+				type: 'MX',
+				value: '10 inbound-smtp.eu-west-1.amazonaws.com',
+				ttl: 600,
+			},
+		]);
+
+		expect(zone.get('MX @')).toEqual([
+			{
+				data: 'inbound-smtp.eu-west-1.amazonaws.com',
+				priority: 10,
+				ttl: 600,
+			},
+		]);
+	});
+
+	it('refuses an MX value that is not "<priority> <host>" before sending anything', async () => {
+		await expect(
+			provider().upsertRecords(DOMAIN, [
+				{ name: '@', type: 'MX', value: 'mail.example.com', ttl: 600 },
+			]),
+		).rejects.toBeInstanceOf(MxValueInvalid);
+		expect(requests).toEqual([]);
+	});
+
+	it('refuses a TXT, NS or SOA record before sending anything', async () => {
+		for (const type of ['TXT', 'NS', 'SOA'] as const) {
 			await expect(
 				provider().upsertRecords(DOMAIN, [
 					{ name: 'api', type: 'A', value: '203.0.113.10', ttl: 600 },
@@ -502,5 +578,47 @@ describe("the Dokploy target's DNS step, through GoDaddy", () => {
 			requests.filter((r) => r.method === 'PUT').map((r) => r.path),
 		).toEqual(['/v1/domains/example.com/records/A/api']);
 		expect(zone.get('A api')).toEqual([{ data: '203.0.113.10', ttl: 600 }]);
+	});
+});
+
+describe("a provider's MX records, through GoDaddy", () => {
+	const mx = (host: string) => ({
+		host,
+		type: 'MX' as const,
+		value: 'inbound-smtp.eu-west-1.amazonaws.com',
+		priority: 10,
+	});
+	const write = () =>
+		writeProviderDns([mx(DOMAIN), mx(`*.${DOMAIN}`)], {
+			workspace: { dns: { [DOMAIN]: { provider: 'godaddy' } } as never },
+			stage: 'prod',
+			dryRun: false,
+			credentials: { get: async () => ({ token: TOKEN }) } as never,
+			providerFor: async () => provider(),
+			log: () => {},
+		});
+
+	it('replaces the apex MX and creates the wildcard one, then writes nothing', async () => {
+		expect(await write()).toEqual({ manual: [] });
+
+		const value = {
+			data: 'inbound-smtp.eu-west-1.amazonaws.com',
+			priority: 10,
+			ttl: 600,
+		};
+		expect(zone.get('MX @')).toEqual([value]);
+		expect(zone.get('MX *')).toEqual([value]);
+		// Only the MX record sets were read or written.
+		expect(new Set(requests.map((r) => r.path))).toEqual(
+			new Set([
+				'/v1/domains/example.com/records/MX/@',
+				'/v1/domains/example.com/records/MX/*',
+			]),
+		);
+		expect(zone.get('A @')).toEqual([{ data: '198.51.100.7', ttl: 3600 }]);
+
+		requests = [];
+		await write();
+		expect(requests.map((r) => r.method)).toEqual(['GET', 'GET']);
 	});
 });

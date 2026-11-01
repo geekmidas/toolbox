@@ -22,6 +22,9 @@
 		"dependencies": "~3.1136.0",
 		"peerDependencies": ">=3.1136.0"
 	},
+	"@aws-sdk/client-ses": {
+		"dependencies": "~3.1136.0"
+	},
 	"@aws-sdk/client-sns": {
 		"dependencies": "~3.1136.0",
 		"peerDependencies": ">=3.1136.0"
@@ -388,6 +391,9 @@
 	},
 	"pino-pretty": {
 		"peerDependencies": ">=13.1.3"
+	},
+	"postal-mime": {
+		"dependencies": "~4.1.4"
 	},
 	"prompts": {
 		"dependencies": "~2.4.2"

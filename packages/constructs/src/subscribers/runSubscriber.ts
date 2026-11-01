@@ -9,6 +9,7 @@
 
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
+import { INBOX_EVENT } from '@geekmidas/manifest';
 import { ServiceDiscovery } from '@geekmidas/services';
 import type { SNSEvent, SNSEventRecord, SQSEvent, SQSRecord } from 'aws-lambda';
 import type { Subscriber } from './Subscriber';
@@ -52,10 +53,15 @@ export async function subscribedEvents(
 	for (const record of records) {
 		try {
 			const event = parse(record);
+			const untyped = !(typeof event === 'object' && event?.type);
+			// An inbox's subscriber is sent SES's receipt notification as SES
+			// wrote it, with no type of ours on it.
 			const parsed =
-				toObjectEvents && !(typeof event === 'object' && event?.type)
-					? toObjectEvents(event)
-					: [event];
+				subscriber.inboxName && untyped
+					? [{ type: INBOX_EVENT, payload: event }]
+					: toObjectEvents && untyped
+						? toObjectEvents(event)
+						: [event];
 			for (const one of parsed) {
 				if (isSubscribed(subscriber, one)) events.push(one);
 			}

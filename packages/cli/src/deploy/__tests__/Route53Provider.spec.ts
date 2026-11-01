@@ -15,6 +15,7 @@ import {
 	it,
 } from 'vitest';
 import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
+import { writeProviderDns } from '../../providers/dnsWriter';
 import { Route53Provider } from '../dns/Route53Provider';
 
 /**
@@ -374,6 +375,67 @@ describe('Route53Provider', () => {
 			expect(results).toHaveLength(2);
 			expect(results[0]?.unchanged).toBe(true);
 			expect(results[1]?.created).toBe(true);
+		});
+	});
+
+	describe('MX records', () => {
+		const mx = [
+			{
+				host: TEST_DOMAIN,
+				type: 'MX' as const,
+				value: 'inbound-smtp.eu-west-1.amazonaws.com',
+				priority: 10,
+			},
+			{
+				host: `*.${TEST_DOMAIN}`,
+				type: 'MX' as const,
+				value: 'inbound-smtp.eu-west-1.amazonaws.com',
+				priority: 10,
+			},
+		];
+		const write = (lines: string[]) =>
+			writeProviderDns(mx, {
+				workspace: {
+					dns: { [TEST_DOMAIN]: { provider: 'route53' } } as never,
+				},
+				stage: 'prod',
+				dryRun: false,
+				credentials: { get: async () => undefined } as never,
+				providerFor: async () => provider,
+				log: (line) => lines.push(line),
+			});
+
+		it('writes "<priority> <host>" as the value, and nothing on a second run', async () => {
+			const first: string[] = [];
+			expect(await write(first)).toEqual({ manual: [] });
+
+			const response = await client.send(
+				new ListResourceRecordSetsCommand({ HostedZoneId: hostedZoneId }),
+			);
+			const sets = (response.ResourceRecordSets ?? [])
+				.filter((r) => r.Type === 'MX')
+				.map((r) => ({
+					name: r.Name?.replace(/\\052/, '*'),
+					values: r.ResourceRecords?.map((v) => v.Value),
+				}));
+			expect(sets).toEqual(
+				expect.arrayContaining([
+					{
+						name: `${TEST_DOMAIN}.`,
+						values: ['10 inbound-smtp.eu-west-1.amazonaws.com'],
+					},
+					{
+						name: `*.${TEST_DOMAIN}.`,
+						values: ['10 inbound-smtp.eu-west-1.amazonaws.com'],
+					},
+				]),
+			);
+			expect(first.filter((l) => l.includes('— create'))).toHaveLength(2);
+
+			const second: string[] = [];
+			await write(second);
+			expect(second.filter((l) => l.includes('up to date'))).toHaveLength(2);
+			expect(second.some((l) => /create|update/.test(l))).toBe(false);
 		});
 	});
 

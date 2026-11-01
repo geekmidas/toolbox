@@ -31,6 +31,11 @@ import type { NormalizedWorkspace } from '../workspace/types.js';
 import { appServices } from './apps.js';
 import { type BoundSubscriber, discover } from './discover.js';
 import { readCredentialFakes, readFakes } from './fakes.js';
+import {
+	inboxRelayToken,
+	inboxRelayWorker,
+	inboxWebhookUrl,
+} from './inboxRelay';
 import { type ReconcileResult, reconcile } from './index.js';
 import {
 	loadLocalCredentials,
@@ -166,6 +171,12 @@ export async function reconcileWorkspace(
 		seed: credentials.seed,
 	});
 
+	const inboxRelay = localInboxWebhook(workspace, manifest, {
+		background,
+		subscribers,
+		seed: credentials.seed,
+	});
+
 	const result = await reconcile({
 		credentials,
 		root: workspace.root,
@@ -184,6 +195,7 @@ export async function reconcileWorkspace(
 		fakes,
 		credentialFakes,
 		...(objectWebhooks.length > 0 ? { objectWebhooks } : {}),
+		...(inboxRelay ? { inboxRelay } : {}),
 		apps: (containers) =>
 			appServices(
 				workspace,
@@ -263,6 +275,40 @@ export function localObjectWebhooks(
 		});
 	}
 	return hooks;
+}
+
+/**
+ * Where Mailpit posts each message it receives, locally: the relay route on
+ * the dev server of the app that builds the worker running the inbox
+ * subscribers, through the host's gateway — as MinIO reaches a bucket's
+ * subscribers. `undefined` with no inbox subscriber, or none an app builds.
+ */
+export function localInboxWebhook(
+	workspace: NormalizedWorkspace,
+	manifest: ConstructManifest,
+	options: {
+		background: Readonly<Record<string, readonly string[]>>;
+		subscribers: Readonly<Record<string, readonly BoundSubscriber[]>>;
+		seed?: string;
+	},
+): string | undefined {
+	const worker = inboxRelayWorker(manifest, options.subscribers);
+	if (!worker) return undefined;
+
+	let units: WorkerUnit[];
+	try {
+		units = workerUnits(workspace, manifest, options.background);
+	} catch (error) {
+		if (error instanceof WorkerHasNoApp) return undefined;
+		throw error;
+	}
+	const app = units.find((unit) => unit.id === worker)?.app;
+	const port = app ? workspace.apps[app]?.port : undefined;
+	if (!port) return undefined;
+	return inboxWebhookUrl(
+		`http://${HOST_GATEWAY}:${port}`,
+		inboxRelayToken(workspace.name, options.seed),
+	);
 }
 
 /**

@@ -64,6 +64,9 @@ const CONTAINERS: Partial<Record<DeclarationKind, string>> = {
 	// one is selected — which is the same reason the declaration has no
 	// `provider` field.
 	email: 'mailpit',
+	// Locally mail is received the way it is sent: into Mailpit, whose
+	// webhook hands `gkm dev` each message an inbox receives at.
+	inbox: 'mailpit',
 	// A WebSocket surface answers on its app's port like a REST one, but its
 	// publisher is Redis pub/sub: an endpoint in another process reaches a
 	// socket through it, so it runs wherever the surface is declared.
@@ -226,6 +229,15 @@ export interface PlannedResource {
 	container?: string;
 	/** The stage-scoped name, e.g. `orders_test`. */
 	name: string;
+	/**
+	 * An inbox's addressing and the topic it declared — what the receiver
+	 * routes a message by, and where it announces it.
+	 */
+	inbox?: {
+		addresses: readonly string[];
+		subdomains: boolean;
+		topic: string;
+	};
 	/** The env key it resolves onto anything depending on it. */
 	envKey: string;
 	/** The parent it derives from, for kinds that provision nothing themselves. */
@@ -618,6 +630,15 @@ export function planFor(
 						processors: [
 							...new Set(declaration.processors.map((p) => p.prefix)),
 						].sort(),
+					}
+				: {}),
+			...(declaration.kind === 'inbox'
+				? {
+						inbox: {
+							addresses: declaration.addresses,
+							subdomains: declaration.subdomains === true,
+							topic: declaration.topic,
+						},
 					}
 				: {}),
 			...(declaration.kind === 'objects' && bucketExpiry(manifest, id)

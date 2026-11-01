@@ -164,6 +164,16 @@
 				"default": "./dist/email.cjs"
 			}
 		},
+		"./inbox": {
+			"import": {
+				"types": "./dist/inbox.d.mts",
+				"default": "./dist/inbox.mjs"
+			},
+			"require": {
+				"types": "./dist/inbox.d.cts",
+				"default": "./dist/inbox.cjs"
+			}
+		},
 		"./cache": {
 			"import": {
 				"types": "./dist/cache.d.mts",

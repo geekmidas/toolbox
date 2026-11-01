@@ -725,7 +725,13 @@ function recordSubscriber(
 			(s) => s.connectionKey === connectionKey && s.name === exportName,
 		)
 	) {
-		const events = exported.topicName ? exported.subscribedEvents : undefined;
+		// An inbox's topic is published to by the provider, bare, with no
+		// `type` attribute a filter could match: its subscriber takes it all and
+		// keeps what its inbox receives at.
+		const events =
+			exported.topicName && !exported.inboxName
+				? exported.subscribedEvents
+				: undefined;
 		bound.push({
 			name: exportName,
 			connectionKey,

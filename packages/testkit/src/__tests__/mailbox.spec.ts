@@ -52,6 +52,39 @@ describe('mailbox', () => {
 		});
 	});
 
+	it('keeps what the email attached, read by the parser an inbox uses (#315)', async () => {
+		const to = address();
+		const pdf = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x00, 0xff]);
+		const response = await fetch(`${MAILPIT_URL}/api/v1/send`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				From: { Email: 'noreply@shop.test' },
+				To: [{ Email: to }],
+				Subject: 'Your invoice',
+				Text: 'Attached.',
+				Attachments: [
+					{
+						Filename: 'invoice.pdf',
+						ContentType: 'application/pdf',
+						Content: pdf.toString('base64'),
+					},
+				],
+			}),
+		});
+		expect(response.ok).toBe(true);
+
+		const email = await mailbox(to).last();
+
+		expect(email.attachments).toHaveLength(1);
+		expect(email.attachments[0]).toMatchObject({
+			filename: 'invoice.pdf',
+			contentType: 'application/pdf',
+			size: 6,
+		});
+		expect(Buffer.from(await email.attachments[0]!.content())).toEqual(pdf);
+	});
+
 	it('waits for mail still on its way', async () => {
 		const to = address();
 		setTimeout(() => void send(to, { subject: 'Late' }), 200);

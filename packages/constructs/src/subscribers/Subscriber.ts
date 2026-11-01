@@ -111,6 +111,15 @@ export class Subscriber<
 	/** Which of the bucket's keys it watches — see `worker.objects()`. */
 	objectFilter?: { prefix?: string; suffix?: string };
 
+	/**
+	 * The inbox it is bound to, by id — see `worker.inbox()`. Set, it reads what
+	 * the provider publishes (a receipt notification) as an `email.received`.
+	 */
+	inboxName?: string;
+
+	/** Its inbox's addressing, which the local receiver routes by. */
+	inboxAddressing?: { addresses: readonly string[]; subdomains?: boolean };
+
 	get subscribedEvents(): TSubscribedEvents | undefined {
 		return this._subscribedEvents;
 	}

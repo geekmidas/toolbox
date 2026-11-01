@@ -17,6 +17,7 @@ import {
 	applyStackDns,
 	checkStackDns,
 	DnsWildcardRefused,
+	diffDomainDns,
 	diffRecordedDns,
 	HostNotPointingAtServer,
 	planStackDns,
@@ -778,5 +779,80 @@ describe('pruning what the stage no longer serves', () => {
 		expect(asked).toBe(false);
 		expect(pruned.map((p) => p.action)).toEqual(['manual']);
 		expect(lines.join('\n')).toContain('example.com: manual');
+	});
+});
+
+describe('an MX record against what is there', () => {
+	const plan = {
+		domain: 'example.com',
+		provider: 'route53',
+		config: { provider: 'route53' } as never,
+		records: [
+			{
+				host: 'example.com',
+				domain: 'example.com',
+				name: '@',
+				type: 'MX' as const,
+				value: '10 inbound-smtp.eu-west-1.amazonaws.com',
+				ttl: 300,
+			},
+		],
+	};
+
+	it('is up to date where the same MX is there, whatever its spacing or dot', () => {
+		expect(
+			diffDomainDns(plan, [
+				{
+					name: '@',
+					type: 'MX',
+					ttl: 300,
+					values: ['10  inbound-smtp.eu-west-1.amazonaws.com.'],
+				},
+			]).map((c) => c.action),
+		).toEqual(['unchanged']);
+	});
+
+	it('updates another priority or host, and deletes nothing at the name', () => {
+		const changes = diffDomainDns(plan, [
+			{ name: '@', type: 'A', ttl: 300, values: [IPV4] },
+			{ name: '@', type: 'CNAME', ttl: 300, values: ['elsewhere.example'] },
+			{
+				name: '@',
+				type: 'MX',
+				ttl: 300,
+				values: ['20 inbound-smtp.eu-west-1.amazonaws.com'],
+			},
+		]);
+
+		expect(changes).toEqual([
+			{
+				domain: 'example.com',
+				name: '@',
+				type: 'MX',
+				action: 'update',
+				value: '10 inbound-smtp.eu-west-1.amazonaws.com',
+				previous: '20 inbound-smtp.eu-west-1.amazonaws.com',
+				ttl: 300,
+			},
+		]);
+	});
+
+	it('reads only the MX of its name', async () => {
+		const read: string[] = [];
+		const provider = new RecordingDns();
+		provider.readRecords = async (_domain, wanted) => {
+			read.push(...wanted.map((w) => `${w.type} ${w.name}`));
+			return [];
+		};
+
+		await applyStackDns(
+			{ stage: 'prod', server: { ipv4: '' }, domains: [plan], uncovered: [] },
+			{ log: () => {}, providerFor: async () => provider },
+		);
+
+		expect(read).toEqual(['MX @']);
+		expect(provider.writes).toEqual([
+			'put MX @ 10 inbound-smtp.eu-west-1.amazonaws.com 300',
+		]);
 	});
 });

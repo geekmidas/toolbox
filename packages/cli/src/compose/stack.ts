@@ -85,6 +85,11 @@ import type { BoundSubscriber } from '../reconcile/discover.js';
 import { EMULATOR_ACCESS_KEY_ID } from '../reconcile/emulator.js';
 import { type EnvOptions, localRolePassword } from '../reconcile/env.js';
 import {
+	INBOX_RELAY_TOKEN_KEY,
+	inboxRelayWorker,
+	inboxWebhookUrl,
+} from '../reconcile/inboxRelay.js';
+import {
 	type ContainerCredentials,
 	LOCAL_RABBITMQ_USER,
 	type LocalCredentials,
@@ -907,6 +912,9 @@ export function composeStack(input: StackInput): ComposeStack {
 		if (resource.kind === 'external-api') {
 			owners.set(provideKey(resource.id, 'credentials'), resource);
 		}
+		if (resource.kind === 'inbox') {
+			owners.set(provideKey(resource.id, 'domain'), resource);
+		}
 		if (resource.kind === 'websocket-api') {
 			owners.set(
 				provideKey(resource.id, 'publisherConnectionString'),
@@ -962,8 +970,9 @@ export function composeStack(input: StackInput): ComposeStack {
 				minio: plan.resources
 					.filter((r) => r.kind === 'objects')
 					.map((r) => r.id),
+				// Mailpit receives for an inbox as it sends for mail.
 				mailpit: plan.resources
-					.filter((r) => r.kind === 'email')
+					.filter((r) => r.kind === 'email' || r.kind === 'inbox')
 					.map((r) => r.id),
 			}
 		: externalServices({
@@ -1162,6 +1171,22 @@ export function composeStack(input: StackInput): ComposeStack {
 		if (watching) {
 			if (custom[key] !== undefined) return custom[key];
 			return services.minio.includes(watching) ? outside[key] : undefined;
+		}
+		// An inbox: locally, Mailpit's API and the project's local domain, as
+		// `gkm dev` resolves them. Deployed, where its raw messages are read —
+		// the bucket its provider made and wrote to the stage's secrets — and
+		// the stage's domain, which mail is addressed to.
+		if (owner?.kind === 'inbox') {
+			if (local) return outside[key];
+			if (key === provideKey(owner.id, 'domain')) {
+				if (!domain) throw new NoDomainForStage(stage);
+				return domain;
+			}
+			const value = custom[key];
+			if (value === undefined) {
+				throw new StageSecretMissing(app.name, key, stage);
+			}
+			return value;
 		}
 		// A deployed stage has no inbox: Mailpit runs only locally — not for a
 		// backend, a site's bundle or a phone.
@@ -1444,6 +1469,22 @@ export function composeStack(input: StackInput): ComposeStack {
 		}
 	}
 
+	// Mailpit posts what an inbox receives to the worker that runs every
+	// inbox subscriber, across the stack's network, with the token that worker
+	// was handed. Locally only: deployed, SES publishes to the inbox's topic.
+	let inboxRelay: string | undefined;
+	if (local && infra.includes('mailpit') && !input.buildOnly) {
+		const relayId = inboxRelayWorker(manifest, input.subscribers ?? {});
+		const relay = workers.find((w) => w.id === relayId);
+		const token = relay?.env?.[INBOX_RELAY_TOKEN_KEY];
+		if (relay && token) {
+			inboxRelay = inboxWebhookUrl(
+				`http://${hostOf(relay.name)}:${relay.port}`,
+				token,
+			);
+		}
+	}
+
 	// A deployed stage's certificates: its own, where it set one, as the
 	// proxy's container reads them — otherwise Let's Encrypt's.
 	const deployedTls: Exclude<EdgeTls, { kind: 'internal' }> = certificate
@@ -1489,6 +1530,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		processors,
 		credentials: credential.containers,
 		...(storage ? { storage } : {}),
+		...(inboxRelay ? { inboxRelay } : {}),
 		...(logs ? { logs } : {}),
 		...(redis ? { redis } : {}),
 		...(backups ? { backups } : {}),
@@ -2110,6 +2152,8 @@ function stackFile(options: {
 	processors: readonly StackProcessor[];
 	credentials: ContainerCredentials;
 	storage?: StackStorage;
+	/** Mailpit's webhook: the inbox relay worker on the stack's network. */
+	inboxRelay?: string;
 	logs?: StackLogs;
 	redis?: StackRedis;
 	backups?: StackBackups;
@@ -2192,6 +2236,14 @@ function stackFile(options: {
 		// policies from this machine. The apps reach it on the network, and a
 		// browser through a file server's host on the edge.
 		minio.ports = [`127.0.0.1::${LOOPBACK_SERVICES.minio}`];
+	}
+
+	const mailpit = services.mailpit;
+	if (mailpit && options.inboxRelay) {
+		mailpit.environment = {
+			...mailpit.environment,
+			MP_WEBHOOK_URL: options.inboxRelay,
+		};
 	}
 
 	// Its own definition rather than reconcile's: `gkm dev`'s Redis is an

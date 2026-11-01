@@ -30,6 +30,9 @@ describe('HostingerProvider', () => {
 		records: Array<{ content: string }>;
 	}> = [];
 
+	/** Every PUT body, in order. */
+	let puts: Array<{ overwrite?: boolean; zone: unknown[] }> = [];
+
 	// MSW server setup
 	const server = setupServer(
 		// GET /api/dns/v1/zones/{domain} - Get DNS records
@@ -76,15 +79,19 @@ describe('HostingerProvider', () => {
 					}>;
 				};
 
-				// Simulate upsert behavior
+				puts.push(body);
+				// As the API documents it: `overwrite` (the default) replaces a
+				// name's records of a type; without it they are appended to.
 				for (const record of body.zone) {
 					const existingIndex = mockRecords.findIndex(
 						(r) => r.name === record.name && r.type === record.type,
 					);
-					if (existingIndex >= 0) {
-						mockRecords[existingIndex] = record;
-					} else {
+					if (existingIndex < 0) {
 						mockRecords.push(record);
+					} else if (body.overwrite === false) {
+						mockRecords[existingIndex]!.records.push(...record.records);
+					} else {
+						mockRecords[existingIndex] = record;
 					}
 				}
 
@@ -102,6 +109,7 @@ describe('HostingerProvider', () => {
 	beforeEach(() => {
 		// Reset mock records before each test
 		mockRecords = [];
+		puts = [];
 	});
 
 	afterEach(() => {
@@ -382,6 +390,66 @@ describe('HostingerProvider', () => {
 
 			// Verify both records exist in mock store
 			expect(mockRecords).toHaveLength(2);
+		});
+	});
+
+	describe('MX records', () => {
+		const mx = {
+			name: '*',
+			type: 'MX' as const,
+			ttl: 300,
+			value: '10 inbound-smtp.eu-west-1.amazonaws.com',
+		};
+
+		it('writes "<priority> <host>" as the content, and leaves a matching one alone', async () => {
+			const provider = new HostingerProvider();
+			const [created] = await provider.upsertRecords(TEST_DOMAIN, [mx]);
+
+			expect(created).toMatchObject({ created: true, unchanged: false });
+			expect(puts).toEqual([
+				{
+					overwrite: true,
+					zone: [
+						{
+							name: '*',
+							type: 'MX',
+							ttl: 300,
+							records: [{ content: '10 inbound-smtp.eu-west-1.amazonaws.com' }],
+						},
+					],
+				},
+			]);
+
+			// Hostinger hands the host back with a trailing dot.
+			mockRecords[0]!.records = [
+				{ content: '10 inbound-smtp.eu-west-1.amazonaws.com.' },
+			];
+			const [again] = await provider.upsertRecords(TEST_DOMAIN, [mx]);
+			expect(again).toMatchObject({ unchanged: true });
+			expect(puts).toHaveLength(1);
+		});
+
+		it('replaces an MX with another value rather than adding to it', async () => {
+			mockRecords = [
+				{
+					name: '*',
+					type: 'MX',
+					ttl: 300,
+					records: [{ content: '20 mail.example.com' }],
+				},
+			];
+
+			const provider = new HostingerProvider();
+			await provider.upsertRecords(TEST_DOMAIN, [mx]);
+
+			expect(await provider.getRecords(TEST_DOMAIN)).toEqual([
+				{
+					name: '*',
+					type: 'MX',
+					ttl: 300,
+					values: ['10 inbound-smtp.eu-west-1.amazonaws.com'],
+				},
+			]);
 		});
 	});
 

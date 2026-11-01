@@ -305,8 +305,12 @@ describe('SubscriberGenerator', () => {
 			expect(subscribersContent).toContain('orderEventSubscriber');
 			// Not bound to a topic, so there is no topic string to reach.
 			expect(subscribersContent).toContain(
-				"{ id: 'userEventSubscriber', subscriber: userEventSubscriber, topic: undefined, connectionKey: undefined, filtered: true, bucket: undefined, tokenKey: undefined }",
+				"{ id: 'userEventSubscriber', subscriber: userEventSubscriber, topic: undefined, connectionKey: undefined, filtered: true, bucket: undefined, tokenKey: undefined, inbox: undefined }",
 			);
+			// No inbox subscriber, so no bundle of this app ever names the inbox
+			// module — or the MIME parser it brings.
+			expect(subscribersContent).not.toContain('@geekmidas/constructs/inbox');
+			expect(subscribersContent).not.toContain('mountInboxRelay');
 		});
 
 		it('reaches each subscriber’s topic by that topic’s own key', async () => {
@@ -433,7 +437,7 @@ describe('SubscriberGenerator', () => {
 				);
 
 				expect(content).toContain(
-					"{ id: 'onAvatar', subscriber: onAvatar, topic: 'Uploads', connectionKey: 'UPLOADS_EVENTS_CONNECTION_STRING', filtered: false, bucket: 'Uploads', tokenKey: 'UPLOADS_EVENTS_TOKEN' }",
+					"{ id: 'onAvatar', subscriber: onAvatar, topic: 'Uploads', connectionKey: 'UPLOADS_EVENTS_CONNECTION_STRING', filtered: false, bucket: 'Uploads', tokenKey: 'UPLOADS_EVENTS_TOKEN', inbox: undefined }",
 				);
 				// In MinIO the bucket posts its events here, with its token, and
 				// they are relayed onto the broker under the bucket's name.

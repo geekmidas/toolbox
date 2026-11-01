@@ -233,7 +233,6 @@ export async function provisionStage(
 		};
 		reports.push(report);
 		const ids = constructsOf(manifest, kind);
-		if (ids.length === 0) continue;
 
 		const credential = await provider.credentials({
 			stage,
@@ -241,6 +240,11 @@ export async function provisionStage(
 			...(options.profile ? { profile: options.profile } : {}),
 			...(options.home ? { home: options.home } : {}),
 		});
+		// With nothing of the kind declared, a provider still runs where it
+		// can: what it made for a construct since removed is its to retire —
+		// a receipt rule left behind would keep receiving. Without credentials
+		// there is nothing to retire with, and nothing is asked for.
+		if (ids.length === 0 && credential === undefined) continue;
 		if (credential === undefined) {
 			throw new ProviderCredentialsMissing(
 				stage,

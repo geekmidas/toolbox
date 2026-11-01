@@ -3,8 +3,9 @@
  * at a time.
  *
  * - read: `GET /v1/domains/{domain}/records/{type}/{name}`
- * - write: `PUT /v1/domains/{domain}/records/{type}/{name}` with `[{ data, ttl }]`,
- *   which replaces that one name's records of that one type
+ * - write: `PUT /v1/domains/{domain}/records/{type}/{name}` with `[{ data, ttl }]`
+ *   — and an MX record's `priority` beside its `data` — which replaces that
+ *   one name's records of that one type
  * - delete: `DELETE /v1/domains/{domain}/records/{type}/{name}`
  *
  * Never the zone-wide `PUT /v1/domains/{domain}/records`, which replaces every
@@ -29,8 +30,8 @@ export const GODADDY_API_BASE = 'https://api.godaddy.com';
 /** GoDaddy refuses a TTL below this. */
 export const GODADDY_MIN_TTL = 600;
 
-/** The record types gkm writes. Never MX, TXT, NS, SOA, SRV or CAA. */
-export const GODADDY_MANAGED_TYPES = ['A', 'AAAA', 'CNAME'] as const;
+/** The record types gkm writes. Never TXT, NS, SOA, SRV or CAA. */
+export const GODADDY_MANAGED_TYPES = ['A', 'AAAA', 'CNAME', 'MX'] as const;
 
 export type GoDaddyRecordType = (typeof GODADDY_MANAGED_TYPES)[number];
 
@@ -40,6 +41,15 @@ export interface GoDaddyRecord {
 	name: string;
 	data: string;
 	ttl?: number;
+	/** An MX record's: GoDaddy keeps it apart from `data`. */
+	priority?: number;
+}
+
+/** One value of a record set, as a write sends it. */
+export interface GoDaddyRecordValue {
+	data: string;
+	/** An MX record's. */
+	priority?: number;
 }
 
 /** GoDaddy's error body. */
@@ -168,7 +178,8 @@ export class GoDaddyRecordNotAllowed extends GkmError {
 	) {
 		super(
 			`Refused to change the ${type} record '${recordName}' on ${domain}: ${reason}. ` +
-				'gkm only ever writes the A, AAAA and CNAME records of the hosts it serves.',
+				'gkm only ever writes the A, AAAA and CNAME records of the hosts it ' +
+				'serves, and the CNAME and MX records its providers ask for.',
 		);
 		this.name = 'GoDaddyRecordNotAllowed';
 	}
@@ -184,10 +195,14 @@ export interface GoDaddyApiOptions {
 	maxAttempts?: number;
 }
 
-/** A record name GoDaddy's path takes: `@` for the apex, else relative. */
+/**
+ * A record name GoDaddy's path takes: `@` for the apex, `*` for the apex's
+ * wildcard, else relative.
+ */
 function isRecordName(name: string): boolean {
 	return (
 		name === '@' ||
+		name === '*' ||
 		/^(\*\.)?[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9])?(\.[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9])?)*$/i.test(
 			name,
 		)
@@ -232,7 +247,7 @@ export class GoDaddyApi {
 		domain: string,
 		type: GoDaddyRecordType,
 		name: string,
-		values: readonly string[],
+		values: readonly GoDaddyRecordValue[],
 		ttl: number,
 	): Promise<void> {
 		this.guard(domain, type, name);
@@ -240,8 +255,9 @@ export class GoDaddyApi {
 			'PUT',
 			domain,
 			this.recordPath(domain, type, name),
-			values.map((data) => ({
+			values.map(({ data, priority }) => ({
 				data,
+				...(priority !== undefined ? { priority } : {}),
 				ttl: Math.max(ttl, GODADDY_MIN_TTL),
 			})),
 		);
@@ -261,7 +277,7 @@ export class GoDaddyApi {
 		return `/v1/domains/${encodeURIComponent(domain)}/records/${type}/${encodeURIComponent(name)}`;
 	}
 
-	/** Only A, AAAA and CNAME, at a real record name. */
+	/** Only A, AAAA, CNAME and MX, at a real record name. */
 	private guard(domain: string, type: string, name: string): void {
 		if (!(GODADDY_MANAGED_TYPES as readonly string[]).includes(type)) {
 			throw new GoDaddyRecordNotAllowed(
