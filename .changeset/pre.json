@@ -135,6 +135,7 @@
     "headless-toolbox",
     "identify-request-user",
     "images-built-in-docker",
+    "inbox-receive-email",
     "init-admin-email",
     "init-deploy-registry",
     "init-deploy-target",

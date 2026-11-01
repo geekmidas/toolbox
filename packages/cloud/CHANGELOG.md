@@ -1,5 +1,16 @@
 # @geekmidas/cloud
 
+## 10.0.0-alpha.140
+
+### Patch Changes
+
+- Updated dependencies [[`a452053`](https://github.com/geekmidas/toolbox/commit/a452053e6e9dcc7eab62639a55f1aa3ca2215088)]:
+  - @geekmidas/manifest@10.0.0-alpha.140
+  - @geekmidas/db@10.0.0-alpha.140
+  - @geekmidas/envkit@10.0.0-alpha.140
+  - @geekmidas/events@10.0.0-alpha.140
+  - @geekmidas/storage@10.0.0-alpha.140
+
 ## 10.0.0-alpha.139
 
 ### Patch Changes
