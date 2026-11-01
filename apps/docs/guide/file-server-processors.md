@@ -139,4 +139,6 @@ the stage's `OTEL_*` keys. Without the edge, the unit loads no tracing at all.
 `.native(['sharp'])` names packages with native code. They are left out of
 the bundle and installed for the platform the processor runs on: linux in its
 image, at the version the build resolved; `nodejs.install` on Lambda. Add them
-to the app's dependencies.
+to the app's dependencies. In an image, a native package the bundle imports is
+left out whether or not it is named — see
+[Build Targets](./deployment.md#server).

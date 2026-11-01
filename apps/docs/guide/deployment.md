@@ -133,6 +133,14 @@ Publishing is unchanged. Each `Worker` gets an entry of its own beside it,
 `dist/worker-<worker>.mjs`, which runs that worker's crons, consumers and
 subscribers and serves only `/health`; see [Workers](./production.md#workers).
 
+A package with native code — `argon2`, `better-sqlite3`, `sharp` — loads a
+binary from beside its own source, built for the platform it was installed on,
+so it is never inlined. The build finds each one the bundle imports (a
+`binding.gyp`, prebuilt binaries, a loader such as `node-gyp-build`, or a binary
+package per platform), leaves it out, and writes it at the version it resolved
+to `dist/<bundle>.externals.json` beside the bundle. The image installs exactly
+those, for Linux, next to `server.mjs`; for most apps that is nothing.
+
 ### AWS
 
 One Lambda per construct.

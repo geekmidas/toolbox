@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, parse } from 'node:path';
+import { externalsManifestName } from '../build/native';
 import { IMAGE_BUILD_ENV } from '../exec/imageBuild';
 import {
 	type ClientTelemetryDefault,
@@ -575,54 +576,28 @@ RUN --mount=type=secret,id=gkm_credentials,required=false \\
 }
 
 /**
- * The externals a backend's bundle leaves out (esbuild `--external`), each
- * installed for Linux at the version the builder resolved, so the runner has
- * exactly those beside `server.mjs`. Nothing when there are none: the runner
- * is the one file.
+ * The packages a bundle left out — its native ones, which load a binary built
+ * for the platform they were installed on — installed for Linux beside it.
+ * `gkm build` records them, at the versions it resolved, in a `package.json`
+ * beside the bundle (`externalsManifestName`), so the image installs exactly
+ * what the build left out: nothing, for most apps.
  */
 function externalsStages(
-	options: ImageTemplateOptions & { external?: string[] },
 	appDir: string,
+	bundle: string,
 ): { stage: string; copy: string } {
-	const external = options.external ?? [];
-	if (external.length === 0) return { stage: '', copy: '' };
-
 	return {
 		stage: `
-# Stage 4: The packages the bundle leaves external, installed for Linux at the
-# versions the build resolved — and nothing else.
-FROM builder AS externals-manifest
-WORKDIR ${appDir}
-RUN node <<'EOF'
-const { existsSync, readFileSync, writeFileSync } = require('node:fs');
-const { dirname, join } = require('node:path');
-const names = ${JSON.stringify(external)};
-const dependencies = {};
-for (const name of names) {
-  let dir = process.cwd();
-  for (;;) {
-    const manifest = join(dir, 'node_modules', name, 'package.json');
-    if (existsSync(manifest)) {
-      dependencies[name] = JSON.parse(readFileSync(manifest, 'utf-8')).version;
-      break;
-    }
-    if (dirname(dir) === dir) {
-      console.error(name + ' is external to the bundle, and is not installed: add it to the app\\'s dependencies.');
-      process.exit(1);
-    }
-    dir = dirname(dir);
-  }
-}
-writeFileSync('/tmp/externals.json', JSON.stringify({ private: true, dependencies }));
-EOF
-
+# The packages the bundle leaves out, installed for Linux at the versions the
+# build resolved — and nothing else.
 FROM \${NODE_IMAGE} AS externals
 WORKDIR /externals
-COPY --from=externals-manifest /tmp/externals.json ./package.json
+COPY --from=builder ${appDir}/.gkm/server/dist/${externalsManifestName(bundle)} ./package.json
 RUN --mount=type=cache,id=npm,target=/root/.npm \\
-    npm install --omit=dev --no-package-lock --no-audit --no-fund
+    npm install --omit=dev --no-package-lock --no-audit --no-fund && \\
+    mkdir -p node_modules
 `,
-		copy: '\nCOPY --from=externals --chown=hono:nodejs /externals/node_modules ./node_modules',
+		copy: `\nCOPY --from=externals --chown=hono:nodejs /externals/node_modules ./node_modules`,
 	};
 }
 
@@ -802,14 +777,13 @@ CMD ["node", "${appPath}/server.js"]
 /**
  * Generate a Dockerfile for a gkm backend: pruned, installed, and bundled by
  * `gkm build --provider server --production` inside the image. The runner is
- * `server.mjs` alone — plus any package the bundle leaves external.
+ * `server.mjs` — plus the packages the bundle leaves out, which is none
+ * unless it uses one with native code.
  * @internal Exported for testing
  */
 export function generateBackendDockerfile(
 	options: ImageTemplateOptions & {
 		healthCheckPath?: string;
-		/** Packages the bundle leaves external (esbuild `--external`). */
-		external?: string[];
 		/** The cache backend the entry registers, where not the target's. */
 		cache?: CacheBackend;
 	},
@@ -843,7 +817,6 @@ export function generateWorkerDockerfile(
 		/** Its bundle under the host app's `.gkm/server/dist`. */
 		bundle: string;
 		healthCheckPath?: string;
-		external?: string[];
 		/** The cache backend the entry registers, where not the target's. */
 		cache?: CacheBackend;
 	},
@@ -859,7 +832,8 @@ export function generateWorkerDockerfile(
 /**
  * A file server's processor unit: its host app's build, and the unit's bundle
  * as the runner. Its native packages — `sharp` — are installed for the image's
- * platform beside the bundle, at the versions the build resolved.
+ * platform beside the bundle, at the versions the build resolved, as for
+ * every bundle.
  */
 export function generateProcessorDockerfile(
 	options: ImageTemplateOptions & {
@@ -868,7 +842,6 @@ export function generateProcessorDockerfile(
 		/** Its bundle under the host app's `.gkm/server/dist`. */
 		bundle: string;
 		healthCheckPath?: string;
-		external?: string[];
 		cache?: CacheBackend;
 	},
 ): string {
@@ -883,14 +856,13 @@ export function generateProcessorDockerfile(
 function gkmBundleDockerfile(
 	options: ImageTemplateOptions & {
 		healthCheckPath?: string;
-		external?: string[];
 		cache?: CacheBackend;
 	},
 	runner: { title: string; bundle: string; as: string; expose: boolean },
 ): string {
 	const { port, healthCheckPath = '/health' } = options;
 	const { app } = layout(options);
-	const externals = externalsStages(options, app);
+	const externals = externalsStages(app, runner.bundle);
 
 	return `# syntax=docker/dockerfile:1
 # ${runner.title}: a turbo-pruned slice, bundled by gkm build in the image

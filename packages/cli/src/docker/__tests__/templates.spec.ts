@@ -383,6 +383,7 @@ describe('docker templates', () => {
 			).toEqual([
 				'FROM ${NODE_IMAGE} AS pruner',
 				'FROM ${NODE_IMAGE} AS deps',
+				'FROM ${NODE_IMAGE} AS externals',
 				'FROM ${NODE_IMAGE} AS runner',
 			]);
 		});
