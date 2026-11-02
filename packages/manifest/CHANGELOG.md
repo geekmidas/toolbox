@@ -1,5 +1,72 @@
 # @geekmidas/manifest
 
+## 10.0.0-alpha.156
+
+### Minor Changes
+
+- [#387](https://github.com/geekmidas/toolbox/pull/387) [`bd9cd6e`](https://github.com/geekmidas/toolbox/commit/bd9cd6e694622a6bd46b46b429fa14811a33a576) Thanks [@geekmidas](https://github.com/geekmidas)! - A `WebSocketApi` deploys to AWS: API Gateway serves the same surface compose does
+
+  Until now a `WebSocketApi` ran only as a Node process. A project deploying to
+  AWS had to keep a hand-written API Gateway WebSocket API next to it, with its
+  own `$connect`/`$disconnect` Lambdas and its own `postToConnection` publisher.
+  The same surface now deploys to both targets, unchanged.
+
+  - **`AmazonApiGatewayWebSocket`** (`@geekmidas/constructs/aws`) is the API
+    Gateway adaptor over the surface's `WebSocketCore`. `$connect` checks the
+    Origin and calls `connect()`, and a refusal answers with its status.
+    Each route calls `message()`, and its reply is posted back to the caller.
+    `$disconnect` calls `disconnect()`. A connection's `data` is kept in a
+    DynamoDB connection table between invocations.
+  - **`services.<surface>`** on AWS sends through the management API.
+    `<ID>_PUBLISHER_CONNECTION_STRING` is an `apigateway://` string there, so the
+    same `.dependsOn([realtime])` works from any Lambda. A connection that
+    answers 410 is dropped from the table, not reported. `broadcast` sends to
+    every id in the table.
+  - **`gkm build --provider aws`** writes one Lambda per route under
+    `.gkm/aws/websocket/`, plus `$connect` and `$disconnect` even when the
+    surface declares neither.
+  - **`fromManifest`** (`@geekmidas/cloud`) provisions a `websocket-api` as a
+    `WebSocketApiSurface`: an API Gateway WebSocket API that routes on the
+    frame's action key, and its connection table. It mounts each route linked
+    to what that route depends on. `$connect` is also linked to the surface's
+    authenticator.
+  - The `sst` target skips the HTTP health check for a WebSocket surface,
+    because API Gateway has no HTTP path to ask.
+
+  New optional peers of `@geekmidas/constructs`, which only the AWS adaptor
+  loads, and only when it first needs them: `@aws-sdk/client-apigatewaymanagementapi`
+  and `@aws-sdk/client-dynamodb`. A surface on compose never loads either.
+
+  The limits on AWS are API Gateway's, and are documented with the surface:
+  connections last at most 2 hours (10 minutes idle), frames are 128 KB, and
+  API Gateway chooses its own close code.
+
+- [#386](https://github.com/geekmidas/toolbox/pull/386) [`a9cc445`](https://github.com/geekmidas/toolbox/commit/a9cc44542412a86ab03f36de02358051058f21e8) Thanks [@geekmidas](https://github.com/geekmidas)! - WebSocketApi: limits on handshake, connection and inbound-frame floods
+
+  A `WebSocketApi` now bounds what one client may ask of it, on by default:
+
+  | Limit                                          | Default    | Past it                                                       |
+  | ---------------------------------------------- | ---------- | ------------------------------------------------------------- |
+  | `handshakesPerMinute`, per client address      | 120        | 429 with `Retry-After`, before the connect handler runs       |
+  | `inFlightHandshakes`, per client address       | 16         | 429                                                           |
+  | `connectionsPerIp`                             | 256        | 429                                                           |
+  | `messagesPerSecond` + `burst`, per socket      | 50, 100    | one `$error`, then close 1008                                 |
+  | `maxConnections` per `maxConnectionsPer(data)` | 16, opt-in | 429, or `overflow: 'closeOldest'` closes the oldest with 1008 |
+
+  On the Redis transport the counts live in the publisher's Redis, so every
+  limit holds across replicas. Set a limit to `false` to lift it.
+  `requireOrigin: true` refuses an upgrade that sends no `Origin` with 403.
+
+  The surface declares its per-address limits in the manifest, and
+  `gkm compose` renders them on the shared Traefik as `rateLimit` and
+  `inFlightReq` middlewares on its route. Caddy has no rate limiter, so behind
+  it the surface's own count is what holds.
+
+  **Behaviour change:** a client past a default limit is now refused. Raise or
+  lift the limit on a surface that legitimately needs more, for example many
+  clients behind one NAT (`connectionsPerIp`) or a chatty socket
+  (`messagesPerSecond`).
+
 ## 10.0.0-alpha.155
 
 ## 10.0.0-alpha.154

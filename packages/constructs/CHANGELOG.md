@@ -1,5 +1,105 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.156
+
+### Minor Changes
+
+- [#387](https://github.com/geekmidas/toolbox/pull/387) [`bd9cd6e`](https://github.com/geekmidas/toolbox/commit/bd9cd6e694622a6bd46b46b429fa14811a33a576) Thanks [@geekmidas](https://github.com/geekmidas)! - A `WebSocketApi` deploys to AWS: API Gateway serves the same surface compose does
+
+  Until now a `WebSocketApi` ran only as a Node process. A project deploying to
+  AWS had to keep a hand-written API Gateway WebSocket API next to it, with its
+  own `$connect`/`$disconnect` Lambdas and its own `postToConnection` publisher.
+  The same surface now deploys to both targets, unchanged.
+
+  - **`AmazonApiGatewayWebSocket`** (`@geekmidas/constructs/aws`) is the API
+    Gateway adaptor over the surface's `WebSocketCore`. `$connect` checks the
+    Origin and calls `connect()`, and a refusal answers with its status.
+    Each route calls `message()`, and its reply is posted back to the caller.
+    `$disconnect` calls `disconnect()`. A connection's `data` is kept in a
+    DynamoDB connection table between invocations.
+  - **`services.<surface>`** on AWS sends through the management API.
+    `<ID>_PUBLISHER_CONNECTION_STRING` is an `apigateway://` string there, so the
+    same `.dependsOn([realtime])` works from any Lambda. A connection that
+    answers 410 is dropped from the table, not reported. `broadcast` sends to
+    every id in the table.
+  - **`gkm build --provider aws`** writes one Lambda per route under
+    `.gkm/aws/websocket/`, plus `$connect` and `$disconnect` even when the
+    surface declares neither.
+  - **`fromManifest`** (`@geekmidas/cloud`) provisions a `websocket-api` as a
+    `WebSocketApiSurface`: an API Gateway WebSocket API that routes on the
+    frame's action key, and its connection table. It mounts each route linked
+    to what that route depends on. `$connect` is also linked to the surface's
+    authenticator.
+  - The `sst` target skips the HTTP health check for a WebSocket surface,
+    because API Gateway has no HTTP path to ask.
+
+  New optional peers of `@geekmidas/constructs`, which only the AWS adaptor
+  loads, and only when it first needs them: `@aws-sdk/client-apigatewaymanagementapi`
+  and `@aws-sdk/client-dynamodb`. A surface on compose never loads either.
+
+  The limits on AWS are API Gateway's, and are documented with the surface:
+  connections last at most 2 hours (10 minutes idle), frames are 128 KB, and
+  API Gateway chooses its own close code.
+
+- [#386](https://github.com/geekmidas/toolbox/pull/386) [`a9cc445`](https://github.com/geekmidas/toolbox/commit/a9cc44542412a86ab03f36de02358051058f21e8) Thanks [@geekmidas](https://github.com/geekmidas)! - WebSocketApi: limits on handshake, connection and inbound-frame floods
+
+  A `WebSocketApi` now bounds what one client may ask of it, on by default:
+
+  | Limit                                          | Default    | Past it                                                       |
+  | ---------------------------------------------- | ---------- | ------------------------------------------------------------- |
+  | `handshakesPerMinute`, per client address      | 120        | 429 with `Retry-After`, before the connect handler runs       |
+  | `inFlightHandshakes`, per client address       | 16         | 429                                                           |
+  | `connectionsPerIp`                             | 256        | 429                                                           |
+  | `messagesPerSecond` + `burst`, per socket      | 50, 100    | one `$error`, then close 1008                                 |
+  | `maxConnections` per `maxConnectionsPer(data)` | 16, opt-in | 429, or `overflow: 'closeOldest'` closes the oldest with 1008 |
+
+  On the Redis transport the counts live in the publisher's Redis, so every
+  limit holds across replicas. Set a limit to `false` to lift it.
+  `requireOrigin: true` refuses an upgrade that sends no `Origin` with 403.
+
+  The surface declares its per-address limits in the manifest, and
+  `gkm compose` renders them on the shared Traefik as `rateLimit` and
+  `inFlightReq` middlewares on its route. Caddy has no rate limiter, so behind
+  it the surface's own count is what holds.
+
+  **Behaviour change:** a client past a default limit is now refused. Raise or
+  lift the limit on a surface that legitimately needs more, for example many
+  clients behind one NAT (`connectionsPerIp`) or a chatty socket
+  (`messagesPerSecond`).
+
+### Patch Changes
+
+- [#389](https://github.com/geekmidas/toolbox/pull/389) [`d7cdb04`](https://github.com/geekmidas/toolbox/commit/d7cdb04aa9d88991140770b363415b193d2abee2) Thanks [@geekmidas](https://github.com/geekmidas)! - The API Gateway WebSocket adaptor imports `OptionalPeerMissing` from where it now lives, so `@geekmidas/constructs` builds again.
+
+- 🐛 [#384](https://github.com/geekmidas/toolbox/pull/384) [`66e2a01`](https://github.com/geekmidas/toolbox/commit/66e2a010081a266441770f0a6fb70eb885f7f647) Thanks [@geekmidas](https://github.com/geekmidas)! - Optional peers are imported only by the entry that needs them, and alpha ranges no longer resolve to the stray `10.0.0` (#371)
+
+  - 🐛 **The alpha line stays on the alpha line.** `@geekmidas/*@10.0.0`, published by mistake from the v9 branch, outranks every `10.0.0-alpha.N`, so `~10.0.0-alpha.N` and `^10.0.0-alpha.N` resolved to it, deprecated or not. A prerelease now names its `@geekmidas` siblings as `>=10.0.0-alpha.N <10.0.0` in the published manifest, `gkm init` writes the same range, and `gkm upgrade` moves a project's `~`/`^` alpha ranges to it.
+  - **A release can't leave the wrong branch.** The publish step refuses a version that is not a prerelease while the packages are in prerelease mode, and a version outside the major a `vN` branch is named for.
+  - **`@geekmidas/constructs`**: `./aws`, `./crons`, `./endpoints`, `./subscribers`, `./worker`, `./websocket-api`, `./database/kysely`, `./cache`, `./email` and `./testing` no longer import `@geekmidas/audit`, `@geekmidas/db`, `@geekmidas/cache`, `@geekmidas/emailkit`, `@geekmidas/storage`, `hono`, `ws`, `ioredis`, `better-auth` or the AWS SNS/SQS SDKs when they load. Each is loaded when the construct that uses it runs, and a missing one throws `OptionalPeerMissing` naming the package to install. SNS push subscribers verify messages through `@geekmidas/events/sns/message`, which needs no AWS SDK.
+  - ✨ **`@geekmidas/events`**: new `./sns/message` entry, receiving what SNS pushes to an HTTP endpoint (verify, confirm, `toSnsEvent`) without the AWS SDK. `./sns` still exports all of it.
+  - **`@geekmidas/audit`**: `./memory` no longer needs `@geekmidas/cache`.
+  - **`@geekmidas/telescope`**: `./hono` and `./server/hono` flush telemetry only when OpenTelemetry is installed.
+  - **`@geekmidas/testkit`**: `./mailbox` loads `@geekmidas/emailkit` only when it reads mail, and throws `MailboxNeedsEmailkit` without it.
+  - Each package README lists which entries need which optional peers.
+
+- Updated dependencies [[`66e2a01`](https://github.com/geekmidas/toolbox/commit/66e2a010081a266441770f0a6fb70eb885f7f647), [`bd9cd6e`](https://github.com/geekmidas/toolbox/commit/bd9cd6e694622a6bd46b46b429fa14811a33a576), [`a9cc445`](https://github.com/geekmidas/toolbox/commit/a9cc44542412a86ab03f36de02358051058f21e8)]:
+  - @geekmidas/audit@10.0.0-alpha.156
+  - @geekmidas/events@10.0.0-alpha.156
+  - @geekmidas/telescope@10.0.0-alpha.156
+  - @geekmidas/testkit@10.0.0-alpha.156
+  - @geekmidas/manifest@10.0.0-alpha.156
+  - @geekmidas/envkit@10.0.0-alpha.156
+  - @geekmidas/auth@10.0.0-alpha.156
+  - @geekmidas/cache@10.0.0-alpha.156
+  - @geekmidas/db@10.0.0-alpha.156
+  - @geekmidas/emailkit@10.0.0-alpha.156
+  - @geekmidas/errors@10.0.0-alpha.156
+  - @geekmidas/logger@10.0.0-alpha.156
+  - @geekmidas/rate-limit@10.0.0-alpha.156
+  - @geekmidas/schema@10.0.0-alpha.156
+  - @geekmidas/services@10.0.0-alpha.156
+  - @geekmidas/storage@10.0.0-alpha.156
+
 ## 10.0.0-alpha.155
 
 ### Minor Changes
