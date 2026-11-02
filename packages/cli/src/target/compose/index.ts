@@ -22,7 +22,9 @@
  *   --remove-orphans`, and each app's image, tag and digest in the stage's
  *   state — an app that never turns healthy fails it only once the rest is
  *   released and routed
- * - `verify`: each app asked through Caddy over HTTPS
+ * - `verify`: each app asked through Caddy over HTTPS, then each
+ *   server-rendered site warmed — its `/` and its sitemap's pages asked, a
+ *   failure only warned of
  *
  * With `push` (`gkm compose --build --push`), run with `buildOnly`, it builds
  * every image and pushes it to `deploy.registry`, and does nothing else: no

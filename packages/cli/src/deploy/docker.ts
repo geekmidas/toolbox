@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
+import { OFFLINE_BUILD_ADDRESS } from '../compose/siteBuild.js';
 import { DockerBuildFailed, DockerPushFailed, dockerCommand } from '../docker';
 import { validateImageRef } from '../docker/imageRef';
 import { output } from '../output';
@@ -52,6 +53,11 @@ export interface DockerDeployOptions {
 	 */
 	credentials?: BuildCredentials;
 	/**
+	 * A site's own host and its edges' hosts, refused for the length of its
+	 * build (`--add-host <host>:127.0.0.1`) — see `offlineBuildHosts`.
+	 */
+	offlineHosts?: readonly string[];
+	/**
 	 * Public URL argument names for frontend Dockerfile generation.
 	 * Used to ensure the Dockerfile declares these as ARG/ENV.
 	 */
@@ -92,6 +98,8 @@ interface DockerRun {
 	stdio?: RunOptions['stdio'];
 	/** The stage the image is for — a site's clients trace at its rate. */
 	stage?: string;
+	/** A site's hosts, refused for the length of its build. */
+	offlineHosts?: readonly string[];
 }
 
 /**
@@ -121,10 +129,22 @@ export function dockerBuildArgs(options: {
 	dockerfilePath: string;
 	imageRef: string;
 	buildArgs?: readonly string[];
+	/**
+	 * Hosts the build's `/etc/hosts` points at {@link OFFLINE_BUILD_ADDRESS},
+	 * so a fetch to one is refused at once — a site's, see
+	 * `offlineBuildHosts`.
+	 */
+	offlineHosts?: readonly string[];
 	/** The file holding the encrypted credentials, if the build gets them. */
 	credentialsFile?: string;
 }): string[] {
-	const { dockerfilePath, imageRef, buildArgs = [], credentialsFile } = options;
+	const {
+		dockerfilePath,
+		imageRef,
+		buildArgs = [],
+		offlineHosts = [],
+		credentialsFile,
+	} = options;
 	return [
 		'build',
 		// linux/amd64 is what most cloud servers run.
@@ -132,6 +152,9 @@ export function dockerBuildArgs(options: {
 		`--file=${dockerfilePath}`,
 		`--tag=${imageRef}`,
 		...buildArgs.map((arg) => `--build-arg=${arg}`),
+		...offlineHosts.map(
+			(host) => `--add-host=${host}:${OFFLINE_BUILD_ADDRESS}`,
+		),
 		...(credentialsFile
 			? [`--secret=id=${CREDENTIALS_SECRET_ID},src=${credentialsFile}`]
 			: []),
@@ -193,7 +216,7 @@ async function buildImage(
 	imageRef: string,
 	buildArgs: string[] | undefined,
 	credentials: BuildCredentials | undefined,
-	{ cwd, dockerfile, signal, stdio, stage }: DockerRun,
+	{ cwd, dockerfile, signal, stdio, stage, offlineHosts }: DockerRun,
 ): Promise<void> {
 	logger.log(`\n🔨 Building Docker image: ${imageRef}`);
 
@@ -228,6 +251,7 @@ async function buildImage(
 					...(buildArgs ?? []),
 					...(credentials ? [credentialsBuildArg(credentials)] : []),
 				],
+				...(offlineHosts ? { offlineHosts } : {}),
 				credentialsFile: secret?.path,
 			}),
 			{
@@ -329,6 +353,7 @@ export async function deployDocker(
 		),
 		...(options.signal ? { signal: options.signal } : {}),
 		...(options.stdio ? { stdio: options.stdio } : {}),
+		...(options.offlineHosts ? { offlineHosts: options.offlineHosts } : {}),
 		stage,
 	};
 

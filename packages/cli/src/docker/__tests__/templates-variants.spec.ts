@@ -271,6 +271,25 @@ describe('a site that imports a generated client', () => {
 
 	it.each(
 		sites,
+	)('tells the site its build reaches no stage, and only its build (%s)', (_, generate) => {
+		const dockerfile = generate(site);
+		const runner = dockerfile.slice(dockerfile.lastIndexOf('\nFROM '));
+		const builder = dockerfile.slice(
+			dockerfile.indexOf('AS builder'),
+			dockerfile.lastIndexOf('\nFROM '),
+		);
+
+		// Set in the builder, before the site's own build runs.
+		expect(builder).toContain('ENV GKM_BUILD_OFFLINE=1');
+		expect(dockerfile.indexOf('ENV GKM_BUILD_OFFLINE=1')).toBeLessThan(
+			dockerfile.indexOf("run build --filter='@shop/web' --env-mode=loose"),
+		);
+		// A running container is not a build: the runner never has it.
+		expect(runner).not.toContain('GKM_BUILD_OFFLINE');
+	});
+
+	it.each(
+		sites,
 	)('generates nothing for a site that calls no API (%s)', (_, generate) => {
 		const dockerfile = generate({ ...site, clients: [] });
 

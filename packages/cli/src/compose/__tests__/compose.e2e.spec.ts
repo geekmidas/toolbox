@@ -626,6 +626,17 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				expect(state.releases.api.current.digest).toMatch(/^sha256:/);
 			});
 
+			it("built the site with its hosts refused, and warmed no static site's pages", () => {
+				// The image built with the site's own host and its edges' at a
+				// refusing address — and, as the next test shows, the real URLs
+				// inlined. A static site's pages are files: nothing to warm.
+				const stack = readFileSync(file(), 'utf-8');
+				for (const app of ['api', 'auth', 'web'] as const) {
+					expect(stack).toContain(`${host(app)}:127.0.0.1`);
+				}
+				expect(output).not.toContain('Warming each server-rendered site');
+			});
+
 			it('serves the site, built with the public URLs it was given', async () => {
 				const page = await edge('web', '/');
 				expect(page.status).toBe(200);

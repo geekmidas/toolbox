@@ -1,6 +1,10 @@
 import { realpathSync } from 'node:fs';
 import { EnvironmentParser } from '@geekmidas/envkit';
-import { type ConstructManifest, TELEMETRY_KEYS } from '@geekmidas/manifest';
+import {
+	type ConstructManifest,
+	type SiteDeclaration,
+	TELEMETRY_KEYS,
+} from '@geekmidas/manifest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { deployIdentity } from '../../deploy/identity';
@@ -14,6 +18,7 @@ import { NoDomainForStage } from '../../target/dokploy/domain';
 import { localAuthorityPaths } from '../../trust/authority';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { REDIS_IMAGE, RedisPasswordMissing } from '../redis';
+import { offlineBuildHosts, siteOfflineHosts } from '../siteBuild';
 import {
 	type ComposeStack,
 	composeStack,
@@ -468,6 +473,93 @@ describe('a static site', () => {
 			webUrl: 'https://compose-app.localhost:8443',
 			publicWebUrl: 'https://compose-app.localhost:8443',
 		});
+	});
+
+	it('is built with its own host and its edges refused, and their real URLs inlined', () => {
+		const s = stack();
+		const build = s.compose.services.web!.build!;
+
+		// Nothing in the build container listens on loopback, so a fetch to one
+		// of them is refused at once rather than waiting on a stack not up yet.
+		expect(build.extra_hosts).toEqual([
+			'api.compose-app.localhost:127.0.0.1',
+			'auth.compose-app.localhost:127.0.0.1',
+			'compose-app.localhost:127.0.0.1',
+		]);
+		// The mapping is the build's own: what the bundle inlines is unchanged.
+		expect(build.args!.VITE_API_URL).toBe(
+			'https://api.compose-app.localhost:8443',
+		);
+		// And a backend's build reaches whatever it reaches.
+		expect(s.compose.services.api?.build?.extra_hosts).toBeUndefined();
+	});
+
+	it("leaves another service's host alone in its build", () => {
+		const s = stack({
+			stage: 'production',
+			images: {
+				mode: 'build',
+				tag: 'v1',
+				registry: 'registry.example.com/acme',
+			},
+			secrets: production({
+				VITE_APP_STORE_URL: 'https://apps.apple.com/app/id1',
+			}),
+			ports: {},
+		});
+		const build = s.compose.services.web!.build!;
+
+		expect(build.args!.VITE_APP_STORE_URL).toBe(
+			'https://apps.apple.com/app/id1',
+		);
+		expect(build.extra_hosts).not.toContainEqual(
+			expect.stringContaining('apps.apple.com'),
+		);
+		expect(build.extra_hosts).toEqual([
+			'api.shop.example.com:127.0.0.1',
+			'auth.shop.example.com:127.0.0.1',
+			'shop.example.com:127.0.0.1',
+		]);
+	});
+
+	it('maps only names in its build: never localhost, an address or a wildcard', () => {
+		const site = manifest.Web as SiteDeclaration;
+		const values: Record<string, string> = {
+			WEB_URL: 'https://*.example.com',
+			API_URL: 'http://localhost:3000',
+			AUTH_URL: 'http://10.0.0.5:3001',
+		};
+
+		expect(offlineBuildHosts(site, manifest, (key) => values[key])).toEqual([]);
+		values.API_URL = 'https://api.example.com';
+		expect(offlineBuildHosts(site, manifest, (key) => values[key])).toEqual([
+			'api.example.com',
+		]);
+	});
+
+	it('refuses the same hosts on a target that knows URLs by app', () => {
+		const s = stack({
+			stage: 'production',
+			images: {
+				mode: 'build',
+				tag: 'v1',
+				registry: 'registry.example.com/acme',
+			},
+			secrets: production(),
+			ports: {},
+		});
+
+		// One rule: what `docker build --add-host` gets is what compose's
+		// `build.extra_hosts` gets.
+		expect(
+			siteOfflineHosts(manifest, 'web', 'https://shop.example.com', {
+				api: 'https://api.shop.example.com',
+				auth: 'https://auth.shop.example.com',
+			}).map((host) => `${host}:127.0.0.1`),
+		).toEqual(s.compose.services.web!.build!.extra_hosts);
+		expect(
+			siteOfflineHosts(manifest, 'api', 'https://x.example.com', {}),
+		).toEqual([]);
 	});
 
 	it('keeps its own address over a stage secret of the same name', () => {

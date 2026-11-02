@@ -6,6 +6,7 @@ import {
 	publicEnvFor,
 	type SiteDeclaration,
 } from '@geekmidas/manifest';
+import { appKey } from '../workspace/derive.js';
 
 /**
  * What a site's image is built with — or a mobile app's EAS build: every
@@ -54,4 +55,81 @@ export function publicBuildValues(
 	}
 
 	return args;
+}
+
+/**
+ * Where a site's own hosts point during its image build: this loopback
+ * address, on which nothing in a build container listens — so a request to
+ * one is refused at once instead of waiting on a host that is not up yet.
+ */
+export const OFFLINE_BUILD_ADDRESS = '127.0.0.1';
+
+/**
+ * The hosts a site's image build must not wait on: its own and those of the
+ * constructs its `.dependsOn()` names, as this stage serves them.
+ *
+ * None of them answers while the image is built — the stack the site belongs
+ * to is started after it — and a fetch to a public host that does not answer
+ * yet can stall until the framework's prerender limit (Next's 60s). Mapped to
+ * {@link OFFLINE_BUILD_ADDRESS} in the build's `/etc/hosts`, each is refused
+ * at once, and the page renders on its first request instead.
+ *
+ * The mapping is the build's only: the URLs the bundle inlines are the real
+ * ones, and the running container resolves them as anything else does. A
+ * stage secret named for the bundle is someone else's host (an analytics
+ * service, a store) and is left alone, as are `localhost` and an address.
+ */
+export function offlineBuildHosts(
+	site: SiteDeclaration,
+	manifest: ConstructManifest,
+	resolve: (key: string) => string | undefined,
+): string[] {
+	const sources = [
+		provideKey(site.id, 'url'),
+		...Object.values(publicEnvFor(site, manifest)),
+	];
+	const hosts = new Set<string>();
+	for (const source of sources) {
+		const host = hostOf(resolve(source));
+		if (host) hosts.add(host);
+	}
+	return [...hosts].sort();
+}
+
+/** A URL's host, where it is a name `/etc/hosts` can map. */
+function hostOf(value: string | undefined): string | undefined {
+	if (!value || !URL.canParse(value)) return undefined;
+	const { protocol, hostname } = new URL(value);
+	if (!/^(https?|wss?):$/.test(protocol)) return undefined;
+	// A wildcard is no one name: `/etc/hosts` maps names, not patterns.
+	if (hostname === 'localhost' || hostname.includes('*')) return undefined;
+	// An address is reached as it is; only a name is looked up.
+	if (/^[\d.]+$/.test(hostname) || hostname.startsWith('[')) return undefined;
+	return hostname;
+}
+
+/**
+ * {@link offlineBuildHosts} for a target that knows each app's public URL by
+ * its app key rather than by construct key — the site's own, and each app it
+ * calls. None, for an app that declares no site.
+ */
+export function siteOfflineHosts(
+	manifest: ConstructManifest,
+	appName: string,
+	ownUrl: string,
+	urls: Readonly<Record<string, string>>,
+): string[] {
+	const entries = Object.entries(manifest);
+	const site = entries.find(
+		([id, d]) => d.kind === 'site' && appKey(id) === appName,
+	)?.[1];
+	if (site?.kind !== 'site') return [];
+
+	const byKey = new Map<string, string>();
+	for (const [id] of entries) {
+		const name = appKey(id);
+		const url = name === appName ? ownUrl : urls[name];
+		if (url) byKey.set(provideKey(id, 'url'), url);
+	}
+	return offlineBuildHosts(site, manifest, (key) => byKey.get(key));
 }

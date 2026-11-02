@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, parse } from 'node:path';
 import { externalsManifestName } from '../build/native';
-import { IMAGE_BUILD_ENV } from '../exec/imageBuild';
+import { BUILD_OFFLINE_ENV, IMAGE_BUILD_ENV } from '../exec/imageBuild';
 import {
 	type ClientTelemetryDefault,
 	telemetryArgs,
@@ -519,6 +519,9 @@ const FIND_GKM_BIN = `let d=process.cwd();const{existsSync:e}=require("fs"),{dir
  *   no bin linked.
  * - `GKM_IMAGE_BUILD`, which has `gkm exec` inject the build args above — the
  *   stage's public URLs — and never load a secret or resolve a local address.
+ * - `GKM_BUILD_OFFLINE`, which tells the site's own code that no stage is
+ *   reachable from this build: its APIs are not up yet, so a page that
+ *   fetches from them renders on request rather than at build.
  * - each backend's typed client, generated from its endpoints at the
  *   workspace root's `.gkm/client/`, where the site's tsconfig paths point.
  */
@@ -540,13 +543,16 @@ RUN cd ${root} && GKM_BIN="$(node -e '${FIND_GKM_BIN}')" && \\
     chmod +x /usr/local/bin/gkm
 
 # \`gkm exec\` in this build injects the build args, never a stage's secrets
-ENV ${IMAGE_BUILD_ENV}=1${generate}`;
+ENV ${IMAGE_BUILD_ENV}=1
+# No stage is reachable from this build: the site's APIs are not up yet
+ENV ${BUILD_OFFLINE_ENV}=1${generate}`;
 }
 
 /**
  * Build the site with turbo. Loose env mode, so the task sees what the
- * Dockerfile set — the build args and `GKM_IMAGE_BUILD` — whatever the
- * project's turbo.json declares: the image's environment holds nothing else.
+ * Dockerfile set — the build args, `GKM_IMAGE_BUILD` and `GKM_BUILD_OFFLINE`
+ * — whatever the project's turbo.json declares: the image's environment
+ * holds nothing else.
  */
 function siteBuild(options: ImageTemplateOptions): string {
 	const { turbo } = layout(options);

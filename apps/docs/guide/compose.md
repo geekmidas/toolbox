@@ -491,6 +491,61 @@ bundle never inlines a developer's `localhost`. The site is built with
 `turbo run build --env-mode=loose`, so those values reach its build whatever the
 project's `turbo.json` declares.
 
+### A site is built without its APIs
+
+A site's image is built before the stack it belongs to starts, so **no stage
+is reachable from the build**: the APIs its `.dependsOn()` names are not up
+yet, on the local stage or a deployed one. A page that fetches from them
+while the framework renders it at build gets no data, and a framework that
+caches what it rendered (Next's static and ISR pages, a sitemap with no
+`revalidate`) serves that empty page until it is rendered again.
+
+Two things make that explicit:
+
+- **`GKM_BUILD_OFFLINE=1`** is set in every site's builder stage — `next`,
+  `tanstack` and `static` alike — and never in the running container. It is
+  the one signal a site's own code tests to know it is being built with no
+  stage behind it. (`GKM_IMAGE_BUILD=1`, beside it, is about something else:
+  it tells `gkm exec` to inject the build args rather than a stage's secrets.)
+- **The site's own host and its edges' hosts are refused during the build.**
+  Every image build gkm drives maps each of them to `127.0.0.1` in the
+  build's `/etc/hosts` (compose's `build.extra_hosts`, or `docker build
+  --add-host` where a deploy builds the image itself), where nothing listens, so a fetch to
+  `https://api.example.com` fails at once with `ECONNREFUSED` rather than
+  hanging until the framework's limit (`Failed to build /… after 60
+  seconds`). The build args — the URLs the bundle inlines — are the real ones,
+  and the mapping is the build's only: the running container resolves the
+  same hosts as anything else does. Hosts the site did not get from an edge
+  (an analytics service, a store link named `NEXT_PUBLIC_*`) are left alone.
+
+So a site renders its data-backed pages **on request**, not at build, and the
+[warm-up](#the-warm-up) after the deploy makes that first request:
+
+- **`next`**: render data-backed pages at request time. Read request data, or
+  call `await connection()` (from `next/server`) before fetching, or give the
+  page a `revalidate` and skip the fetch while offline, so the build caches
+  nothing stale:
+
+  ```ts
+  // app/page.tsx
+  export const revalidate = 300;
+
+  export default async function Page() {
+    const notes =
+      process.env.GKM_BUILD_OFFLINE === '1' ? [] : await api.notes.list();
+    // …
+  }
+  ```
+
+  Give `app/sitemap.ts` a `revalidate` too (or make it dynamic): with none it
+  is rendered once, in the image build, and lists no data-backed URL until the
+  next build.
+- **`tanstack`**: leave pre-rendering off — pages render on the server at
+  request time — or guard any route it pre-renders with `GKM_BUILD_OFFLINE`.
+- **`static`**: load data in the browser. A static site that pre-renders data
+  at build (vite-ssg and the like) has nothing to fetch it from in a gkm-built
+  image, and nothing at runtime can fill it in.
+
 ## The files
 
 Everything for a stage is in `.gkm/compose/<stage>/` (directory `0700`), on
@@ -1045,7 +1100,7 @@ first request after the switch to wait for one.
 | `provision` | the stage's generated secrets kept, the files written, the infrastructure started, its databases, roles, grants and migrations applied, then its seeds run |
 | `build` | every image built inside Docker — or, with a tag, pulled. With `--push`, each built image pushed, and the run ends here |
 | `release` | `docker compose up --wait --remove-orphans`, and each app's image recorded |
-| `verify` | each app asked through the edge — its own Caddy, or the shared Traefik — over HTTPS: an API at `/health`, a site at `/`, with the certificate verified |
+| `verify` | each app asked through the edge — its own Caddy, or the shared Traefik — over HTTPS: an API at `/health`, a site at `/`, with the certificate verified; then each server-rendered site [warmed](#the-warm-up) |
 
 `verify` goes through the edge by hostname, so it proves what `up --wait`
 cannot: that Caddy routes each host and presents a certificate a client
@@ -1058,6 +1113,35 @@ the previous tag again is the way back.
 The events are the ones every target reports: `artifact.built` per image (with
 its digest), `resource.applied` per service, `app.deployed` per app and
 `health.checked` per check — `gkm deploy --target compose --json` writes them.
+
+### The warm-up
+
+Once every app is healthy, `verify` warms each server-rendered site — a
+`next` or `tanstack` one; a `static` site's pages are files. It asks the site
+for `/`, then for `/sitemap.xml` and every page it lists (a sitemap index's
+sitemaps are followed one level), through the edge exactly as the health
+check is asked: connected to the edge, the site's host as SNI and `Host`, the
+local CA trusted on the local stage, and the site's login sent where it is
+behind a password. Pages are asked four at a time, each given 30 seconds, at
+most 500 per site, and only those on the site's own origin.
+
+Since the image was [built without its APIs](#a-site-is-built-without-its-apis),
+each page renders on its first request; the warm-up makes that request, from
+the deployed APIs, before any visitor does, and a page Next caches is cached
+with its data. It is plain HTTP and does not depend on the framework.
+
+**A page that fails to warm never fails the deploy** — a 5xx, a timeout, no
+answer at all. Every app is already healthy, and the page renders on the
+next request for it. The summary says what happened:
+
+```
+🔥 Warming each server-rendered site…
+   ⚠ web          warmed 41 page(s), 1 warning(s):
+       https://example.com/notes/broken: HTTP 500
+```
+
+A site with no sitemap is warmed at `/` alone. A site on every subdomain has
+no one host to ask, and is skipped with a note.
 
 ## Mail and storage on a deployed stage
 

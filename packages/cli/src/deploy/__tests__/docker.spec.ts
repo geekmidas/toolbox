@@ -116,6 +116,28 @@ describe('the docker build command line', () => {
 		]);
 	});
 
+	it("points a site's hosts at a refusing address for the build", () => {
+		expect(
+			dockerBuildArgs({
+				dockerfilePath,
+				imageRef: 'ghcr.io/acme/web:v1',
+				buildArgs: ['NEXT_PUBLIC_API_URL=https://api.example.com'],
+				offlineHosts: ['api.example.com', 'example.com'],
+			}),
+		).toEqual([
+			'build',
+			'--platform=linux/amd64',
+			`--file=${dockerfilePath}`,
+			'--tag=ghcr.io/acme/web:v1',
+			// The URL the bundle inlines is the real one; only the build's
+			// /etc/hosts sends its host to loopback, where nothing listens.
+			'--build-arg=NEXT_PUBLIC_API_URL=https://api.example.com',
+			'--add-host=api.example.com:127.0.0.1',
+			'--add-host=example.com:127.0.0.1',
+			'.',
+		]);
+	});
+
 	it.each([
 		['a shell separator', 'api:v1;rm -rf /', 'X=1;id'],
 		['a command substitution', 'api:$(id)', 'X=$(id)'],
@@ -232,6 +254,19 @@ export default defineConfig({
 			['docker', 'build'],
 			['docker', 'push'],
 		]);
+	});
+
+	it("hands docker build a site's offline hosts", async () => {
+		await deployDocker({
+			stage: 'production',
+			tag: 'v1',
+			skipPush: true,
+			config: { imageName: 'web' },
+			offlineHosts: ['api.example.com'],
+		});
+
+		const [, args] = vi.mocked(run).mock.calls[0]!;
+		expect(args).toContain('--add-host=api.example.com:127.0.0.1');
 	});
 
 	it.each([

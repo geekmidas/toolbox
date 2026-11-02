@@ -21,6 +21,7 @@ import {
 	isWildcardSite,
 	provideKey,
 	provisionOrder,
+	type SiteDeclaration,
 	WILDCARD_SUBDOMAIN,
 } from '@geekmidas/manifest';
 import { stageBackups } from '../backups/config.js';
@@ -156,7 +157,11 @@ import {
 	type EdgeWildcard,
 	NOFILE,
 } from './routes.js';
-import { publicBuildValues } from './siteBuild.js';
+import {
+	OFFLINE_BUILD_ADDRESS,
+	offlineBuildHosts,
+	publicBuildValues,
+} from './siteBuild.js';
 import { type SiteAuth, siteAuth, sitePasswordKey } from './sitePassword.js';
 import {
 	EDGE_NETWORK,
@@ -245,6 +250,11 @@ export interface AppBuild {
 	dockerfile: string;
 	/** A site's public URLs, inlined by its bundler. */
 	args?: Record<string, string>;
+	/**
+	 * A site's own hosts and its edges', refused for the length of its build —
+	 * see {@link offlineBuildHosts}.
+	 */
+	offlineHosts?: string[];
 }
 
 /** One app in the stack. */
@@ -254,6 +264,11 @@ export interface StackApp extends AppImage {
 	/** The construct it serves. */
 	id: string;
 	kind: 'rest-api' | 'websocket-api' | 'site';
+	/**
+	 * A site's framework — whether its pages are rendered by a server (`next`,
+	 * `tanstack`) or built once as files (`static`). Absent for a backend.
+	 */
+	variant?: SiteDeclaration['variant'];
 	/**
 	 * How many containers serve it, each an upstream of its route: `api`,
 	 * then `api-2`, `api-3`. One, but for a surface that asked for more.
@@ -398,6 +413,8 @@ export interface StackService {
 		context: string;
 		dockerfile: string;
 		args?: Record<string, string>;
+		/** `host:address` lines for the build's own `/etc/hosts`. */
+		extra_hosts?: string[];
 	};
 	/** `build` for an image built on the server and never pulled. */
 	pull_policy?: 'build';
@@ -1428,6 +1445,11 @@ export function composeStack(input: StackInput): ComposeStack {
 				custom,
 			);
 			if (app.build && Object.keys(args).length > 0) app.build.args = args;
+			// The build runs before the stack does: none of these answers yet.
+			const offline = offlineBuildHosts(site, manifest, (key) =>
+				valueFor(app, key, owners.get(key)),
+			);
+			if (app.build && offline.length > 0) app.build.offlineHosts = offline;
 			continue;
 		}
 		// Built to be pushed, a backend's image is every stage's: what it reads
@@ -1973,6 +1995,7 @@ function stackApps(
 			name,
 			id,
 			kind: declaration.kind,
+			...(declaration.kind === 'site' ? { variant: declaration.variant } : {}),
 			replicas:
 				declaration.kind === 'websocket-api' ? (declaration.replicas ?? 1) : 1,
 			path: app.path,
@@ -2499,6 +2522,13 @@ function stackFile(options: {
 								dockerfile: app.build.dockerfile,
 							}),
 							...(app.build.args ? { args: app.build.args } : {}),
+							...(app.build.offlineHosts
+								? {
+										extra_hosts: app.build.offlineHosts.map(
+											(host) => `${host}:${OFFLINE_BUILD_ADDRESS}`,
+										),
+									}
+								: {}),
 						},
 					}
 				: {}),

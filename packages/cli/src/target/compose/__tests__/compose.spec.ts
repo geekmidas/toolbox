@@ -33,6 +33,7 @@ import { CommandFailed } from '../../../run';
 import { S3SecretsStore } from '../../../secrets/s3';
 import { UndeclaredStage } from '../../../workspace/stages';
 import { resolveTarget } from '../../resolve';
+import { HealthRequestTimedOut } from '../health';
 import {
 	ComposeAppsUnhealthy,
 	type ComposeDeps,
@@ -846,3 +847,110 @@ describe(
 		});
 	},
 );
+
+describe('warming a server-rendered site', { timeout: RUN_TIMEOUT }, () => {
+	/** The run's events, and each page the warm-up asked the edge for. */
+	async function deployWith(
+		fetch: ComposeDeps['fetch'],
+	): Promise<{ seen: DeployEvent[]; result: unknown; ops: string[] }> {
+		const fake = fakeDocker();
+		const run = deploy({
+			cwd: dir,
+			stage: 'development',
+			target: 'compose',
+			targets: {
+				compose: composeTarget({
+					...quiet(),
+					docker: fake.docker,
+					server: fakeServer([]),
+					probe: answering(fake.calls),
+					fetch: async (request) => {
+						fake.calls.push({ op: 'warm', args: request.url });
+						return fetch!(request);
+					},
+				}),
+			},
+		});
+		const seen = await events(run);
+		const result = await run.result.catch((error: unknown) => error);
+		return { seen, result, ops: fake.ops() };
+	}
+
+	const logs = (seen: DeployEvent[], level: 'info' | 'warn') =>
+		seen
+			.filter((e) => e.type === 'log' && e.level === level)
+			.map((e) => (e as { message: string }).message);
+
+	it('asks a Next site for its root and its sitemap once the stack is healthy, and only warns on a failed page', async () => {
+		writeComposeApp(dir, {
+			registry: 'registry.example.com/acme',
+			siteVariant: 'next',
+		});
+		const asked: { url: string; connectTo?: string }[] = [];
+		const { seen, result, ops } = await deployWith(
+			async ({ url, connectTo }) => {
+				asked.push({ url, ...(connectTo ? { connectTo } : {}) });
+				const { pathname } = new URL(url);
+				if (pathname === '/sitemap.xml') {
+					return {
+						status: 200,
+						body: `<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://compose-app.localhost/</loc></url><url><loc>https://compose-app.localhost/notes</loc></url><url><loc>https://compose-app.localhost/broken</loc></url></urlset>`,
+					};
+				}
+				return { status: pathname === '/broken' ? 500 : 200, body: '' };
+			},
+		);
+
+		// The deploy succeeds: a page that did not warm fails nothing.
+		expect(result).toMatchObject({ stage: 'development', successCount: 4 });
+		// Through the local edge, by the site's host, after every check passed.
+		expect(asked.map(({ url }) => url).sort()).toEqual([
+			'https://compose-app.localhost/',
+			'https://compose-app.localhost/broken',
+			'https://compose-app.localhost/notes',
+			'https://compose-app.localhost/sitemap.xml',
+		]);
+		expect(asked.every(({ connectTo }) => connectTo === '127.0.0.1')).toBe(
+			true,
+		);
+		expect(ops.indexOf('warm')).toBeGreaterThan(ops.lastIndexOf('probe'));
+		expect(logs(seen, 'warn')).toEqual(
+			expect.arrayContaining([
+				expect.stringContaining('web          warmed 2 page(s), 1 warning(s)'),
+				expect.stringContaining(
+					'https://compose-app.localhost/broken: HTTP 500',
+				),
+			]),
+		);
+	});
+
+	it('only warns when the edge does not answer the warm-up at all', async () => {
+		writeComposeApp(dir, {
+			registry: 'registry.example.com/acme',
+			siteVariant: 'tanstack',
+		});
+		const { seen, result } = await deployWith(async ({ url, timeoutMs }) => {
+			throw new HealthRequestTimedOut(url, timeoutMs);
+		});
+
+		expect(result).toMatchObject({ stage: 'development', successCount: 4 });
+		expect(logs(seen, 'warn')).toEqual(
+			expect.arrayContaining([
+				expect.stringContaining('web          warmed 0 page(s), 2 warning(s)'),
+				expect.stringContaining(
+					'https://compose-app.localhost/: no answer within 30000ms',
+				),
+			]),
+		);
+	});
+
+	it('never warms a static site: its pages are files', async () => {
+		const { result, ops } = await deployWith(async () => ({
+			status: 200,
+			body: '',
+		}));
+
+		expect(result).toMatchObject({ successCount: 4 });
+		expect(ops).not.toContain('warm');
+	});
+});
