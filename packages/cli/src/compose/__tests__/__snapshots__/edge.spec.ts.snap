@@ -83,6 +83,11 @@ https://api.shop.example.com {
 		# Never buffer: a streamed response — server-sent events, a Next.js
 		# RSC payload — reaches the client as each chunk is written.
 		flush_interval -1
+		# Each upstream asked on its own: one that stops answering is out of
+		# rotation until it answers again.
+		health_uri /health
+		health_interval 5s
+		health_timeout 3s
 	}
 }
 
@@ -97,6 +102,11 @@ https://shop.example.com {
 		# Never buffer: a streamed response — server-sent events, a Next.js
 		# RSC payload — reaches the client as each chunk is written.
 		flush_interval -1
+		# Each upstream asked on its own: one that stops answering is out of
+		# rotation until it answers again.
+		health_uri /
+		health_interval 5s
+		health_timeout 3s
 	}
 }
 

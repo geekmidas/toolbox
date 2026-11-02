@@ -98,6 +98,7 @@ import {
 	LOG_ROTATION,
 	LOGS_PORT_ENV,
 	LOOPBACK_SERVICES,
+	replicaNames,
 	type StackApp,
 	type StackInput,
 	stackDir,
@@ -1452,13 +1453,13 @@ export async function releaseCompose(
 	// A push starts nothing and records nothing: a stage runs what it pulls.
 	if (run.push) return;
 
-	ctx.logger.info('\n🚀 Starting the stack…');
-	await deps.docker.up(ref);
-
-	// Registered with the shared edge once its services are up, so the edge
-	// never routes to a container that is not there yet. A stack on its own
-	// Caddy leaves nothing behind there from a run on the edge.
-	// The local stage is never on the edge, which is a server's.
+	// Registered with the shared edge before anything waits on health, so one
+	// app that never turns healthy leaves the others routed: a route to an
+	// app not up yet answers 502, which says more than no route at all. It is
+	// also what lets an app whose own health check goes through the edge — a
+	// site whose `/` calls its API at the API's public host — turn healthy.
+	// A stack on its own Caddy leaves nothing behind there from a run on the
+	// edge. The local stage is never on the edge, which is a server's.
 	const edge = edgeRef(edgeFile(run), {
 		...(ref.host ? { host: ref.host } : {}),
 		...(ref.output ? { output: ref.output } : {}),
@@ -1478,6 +1479,17 @@ export async function releaseCompose(
 		await removeEdgeRoutes(deps.docker, edge, stack.project);
 	}
 
+	ctx.logger.info('\n🚀 Starting the stack…');
+	// Caddy starts once its apps have, not once they are healthy, so its
+	// routes are served whatever their health. `up --wait` still fails when
+	// one never turns healthy: which ones is asked of Docker, and said once
+	// the rest of the stack is released — never instead of releasing it.
+	const down = await deps.docker.up(ref).then(
+		() => [],
+		(error: unknown) => unhealthyAfterUp(ctx, run, deps, error),
+	);
+	const isDown = new Set(down.map(({ app }) => app));
+
 	if (stack.local) {
 		// Caddy's CA is generated on its first start. Copied out so a process —
 		// `verify` among them — can trust it without installing anything.
@@ -1494,6 +1506,7 @@ export async function releaseCompose(
 	await recordImages(ctx, run);
 
 	for (const app of stack.apps) {
+		if (isDown.has(app.name)) continue;
 		const image = run.images[app.name];
 		applied(ctx, run, {
 			key: `service:${app.name}`,
@@ -1514,6 +1527,7 @@ export async function releaseCompose(
 	// A worker has no URL, so no `app.deployed`: its service, applied, is it —
 	// nor has a processor unit, which answers on its file server's.
 	for (const worker of [...stack.workers, ...stack.processors]) {
+		if (isDown.has(worker.name)) continue;
 		applied(ctx, run, {
 			key: `service:${worker.name}`,
 			resourceType: 'service',
@@ -1525,6 +1539,7 @@ export async function releaseCompose(
 
 	ctx.logger.info(`\n✅ ${stack.project} is running:`);
 	for (const app of stack.apps) {
+		if (isDown.has(app.name)) continue;
 		ctx.logger.info(
 			`   ${app.name.padEnd(12)} ${app.url}${
 				app.auth
@@ -1534,9 +1549,11 @@ export async function releaseCompose(
 		);
 	}
 	for (const worker of stack.workers) {
+		if (isDown.has(worker.name)) continue;
 		ctx.logger.info(`   ${worker.name.padEnd(12)} worker ${worker.id}`);
 	}
 	for (const unit of stack.processors) {
+		if (isDown.has(unit.name)) continue;
 		ctx.logger.info(`   ${unit.name.padEnd(12)} processors of ${unit.id}`);
 	}
 	if (stack.local) {
@@ -1544,6 +1561,57 @@ export async function releaseCompose(
 			`\n🔐 Certificates are from Caddy's local CA: NODE_EXTRA_CA_CERTS=${join(stackDir(ctx.stage), 'caddy-root.crt')}`,
 		);
 	}
+
+	if (down.length > 0) {
+		throw new ComposeAppsUnhealthy(stack.project, down, stack.proxy);
+	}
+}
+
+/**
+ * After `up --wait` failed: each app's and worker's service that is not
+ * healthy once its health settles — waited on while it is still starting,
+ * as `--wait` stops at the first that is not. None means the failure was not
+ * health's, and it is thrown as it was.
+ */
+async function unhealthyAfterUp(
+	ctx: ComposeContext,
+	run: ComposeRun,
+	deps: ComposeDeps,
+	error: unknown,
+): Promise<{ app: string; url: string; last: string }[]> {
+	const { stack } = run;
+	const services = [
+		...stack.apps.flatMap(replicaNames),
+		...stack.workers.map((worker) => worker.name),
+		...stack.processors.map((unit) => unit.name),
+	];
+	const settled = await Promise.all(
+		services.map(async (service) => {
+			let last: string | undefined;
+			for (let attempt = 1; attempt <= deps.healthAttempts; attempt++) {
+				ctx.signal.throwIfAborted();
+				last = await deps.docker
+					.health(run.ref, service)
+					.catch(() => undefined);
+				if (last !== 'starting') break;
+				if (attempt < deps.healthAttempts) {
+					await new Promise((resolve) =>
+						setTimeout(resolve, deps.healthIntervalMs),
+					);
+				}
+			}
+			return { app: service, url: `docker:${service}`, last };
+		}),
+	);
+	const down = settled
+		.filter(({ last }) => last !== 'healthy')
+		.map(({ app, url, last }) => ({ app, url, last: last ?? 'not running' }));
+	if (down.length === 0) throw error;
+
+	ctx.logger.warn(
+		`\n⚠️  ${down.map(({ app }) => app).join(', ')} did not turn healthy; the rest of the stack is released and routed.`,
+	);
+	return down;
 }
 
 /**

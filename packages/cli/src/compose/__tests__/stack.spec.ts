@@ -123,6 +123,22 @@ describe('the local stage', () => {
 		expect(s.compose.volumes).toHaveProperty('caddy-data');
 	});
 
+	it('starts Caddy once its apps have started, never waiting on their health', () => {
+		const { compose, caddyfile } = stack();
+
+		// One app that never turns healthy must not keep the others unrouted,
+		// nor a site whose own health check goes through the edge from ever
+		// turning healthy.
+		expect(compose.services.caddy?.depends_on).toEqual({
+			api: { condition: 'service_started' },
+			auth: { condition: 'service_started' },
+			web: { condition: 'service_started' },
+		});
+		// Caddy checks each upstream itself instead.
+		expect(caddyfile).toContain('health_uri /health');
+		expect(caddyfile).toContain('health_uri /\n');
+	});
+
 	it('serves each app on its *.localhost host, through the published edge', () => {
 		const s = stack();
 

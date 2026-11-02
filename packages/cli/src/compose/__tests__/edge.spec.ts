@@ -23,12 +23,14 @@ import { parse } from 'yaml';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { deployIdentity } from '../../deploy/identity';
 import { TEST_CREDENTIALS } from '../../reconcile/__tests__/__helpers__/credentials';
+import { CommandFailed } from '../../run';
 import { initStageSecrets } from '../../secrets/storage';
 import type { StageSecrets } from '../../secrets/types';
+import { ComposeAppsUnhealthy } from '../../target/compose/health';
 import { safeValidateWorkspaceConfig } from '../../workspace/schema';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { edgeCaddyfile } from '../caddyfile';
-import { portHolders, publishedPorts } from '../docker';
+import { type ComposeDocker, portHolders, publishedPorts } from '../docker';
 import {
 	assertEdgePorts,
 	ComposeProxyClash,
@@ -139,6 +141,21 @@ describe('the route model, rendered for Caddy', () => {
 				/tls \/etc\/caddy\/tls\/cert\.pem \/etc\/caddy\/tls\/key\.pem/g,
 			),
 		).toHaveLength(4);
+	});
+
+	it('checks each upstream on its health path, as the Traefik edge does', () => {
+		const caddyfile = edgeCaddyfile(ROUTES, { tls: { kind: 'acme' } });
+		const block = (host: string) =>
+			caddyfile.slice(caddyfile.indexOf(`https://${host} {`)).split('\n}')[0];
+
+		expect(block('api.shop.example.com')).toContain(`		health_uri /health
+		health_interval 5s
+		health_timeout 3s`);
+		expect(block('shop.example.com')).toContain('health_uri /\n');
+		// A route with no health path is never checked.
+		expect(caddyfile.match(/health_uri/g)).toHaveLength(
+			ROUTES.filter((route) => route.health).length,
+		);
 	});
 
 	it('balances over every upstream a route names', () => {
@@ -438,6 +455,21 @@ describe('the route model, rendered for Traefik', () => {
 				keyFile: '/etc/gkm-edge/certs/shop-production.key',
 			},
 		]);
+	});
+
+	it('checks each upstream on its health path, as the Traefik edge does', () => {
+		const caddyfile = edgeCaddyfile(ROUTES, { tls: { kind: 'acme' } });
+		const block = (host: string) =>
+			caddyfile.slice(caddyfile.indexOf(`https://${host} {`)).split('\n}')[0];
+
+		expect(block('api.shop.example.com')).toContain(`		health_uri /health
+		health_interval 5s
+		health_timeout 3s`);
+		expect(block('shop.example.com')).toContain('health_uri /\n');
+		// A route with no health path is never checked.
+		expect(caddyfile.match(/health_uri/g)).toHaveLength(
+			ROUTES.filter((route) => route.health).length,
+		);
 	});
 
 	it('balances over every upstream a route names', () => {
@@ -1041,13 +1073,14 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 
 	const release = async (
 		holders: NonNullable<Parameters<typeof fakeDocker>[0]>['holders'] = {},
+		docker: Partial<ComposeDocker> = {},
 	) => {
 		const fake = fakeDocker({ registry, holders, exec: edgeOnDisk(volumes()) });
 		const result = await composeCommand(
 			{ cwd: dir, stage: 'production', tag: 'v1.4.0' },
 			{
 				lookup: resolvesHere,
-				docker: fake.docker,
+				docker: { ...fake.docker, ...docker },
 				server: fakeServer([]),
 				probe: async (request) => {
 					fake.calls.push({ op: 'probe', args: request });
@@ -1063,7 +1096,7 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 		return { ...fake, result };
 	};
 
-	it('starts the edge before the stack, registers after it is up, and asks through the edge', async () => {
+	it('starts the edge before the stack, registers before waiting on it, and asks through the edge', async () => {
 		const { calls, ops } = await release();
 		const sequence = ops();
 		const host = `ssh://deploy@${SERVER_IPV4}`;
@@ -1076,9 +1109,18 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 			{ op: 'up', args: ['postgres', 'redis'], host },
 			{ op: 'up', args: 'all', host },
 		]);
-		// Registered once the stack is up.
-		expect(sequence.lastIndexOf('up')).toBeLessThan(
-			sequence.lastIndexOf('exec'),
+		// Registered before the stack is waited on: a route to an app not up
+		// yet answers 502 rather than going missing.
+		const registered = calls.findIndex(
+			(call) =>
+				call.op === 'exec' &&
+				JSON.stringify(call.args).includes(
+					'dynamic/compose-app-production.yml',
+				),
+		);
+		expect(registered).toBeGreaterThan(-1);
+		expect(registered).toBeLessThan(
+			calls.findIndex((call) => call.op === 'up' && call.args === 'all'),
 		);
 
 		const edge = volumes();
@@ -1112,6 +1154,57 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 		for (const probe of probes) {
 			expect(probe).toMatchObject({ connectTo: SERVER_IPV4, connectPort: 443 });
 		}
+	});
+
+	it('keeps every route registered when an app never turns healthy, then fails naming it', async () => {
+		const error = await release(
+			{},
+			{
+				// What `up --wait` does when one container fails its check.
+				async up(stack, services) {
+					if (!services && stack.project === 'compose-app-production') {
+						throw new CommandFailed('docker', ['compose', 'up'], 1, null);
+					}
+				},
+				health: async (_stack, service) =>
+					service === 'api' ? 'unhealthy' : 'healthy',
+			},
+		).catch((e: unknown) => e);
+
+		expect(error).toBeInstanceOf(ComposeAppsUnhealthy);
+		expect((error as ComposeAppsUnhealthy).apps).toEqual([
+			{ app: 'api', url: 'docker:api', last: 'unhealthy' },
+		]);
+		// The healthy apps are still routed — and so is the one that is not,
+		// which answers 502 until it is up.
+		const file = parse(
+			readFileSync(
+				join(volumes(), 'dynamic', 'compose-app-production.yml'),
+				'utf-8',
+			),
+		);
+		expect(Object.keys(file.http.routers)).toEqual(
+			expect.arrayContaining([
+				'compose-app-production-api',
+				'compose-app-production-web',
+			]),
+		);
+	});
+
+	it('throws what up threw when every app is healthy: the failure was not health', async () => {
+		const failed = new CommandFailed('docker', ['compose', 'up'], 1, null);
+		const error = await release(
+			{},
+			{
+				async up(stack, services) {
+					if (!services && stack.project === 'compose-app-production') {
+						throw failed;
+					}
+				},
+			},
+		).catch((e: unknown) => e);
+
+		expect(error).toBe(failed);
 	});
 
 	it("refuses to start while the stack's own Caddy holds the ports, touching nothing", async () => {

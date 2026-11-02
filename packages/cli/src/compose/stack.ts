@@ -409,7 +409,10 @@ export interface StackService {
 	/** Per-container kernel settings — namespaced ones only. */
 	sysctls?: Record<string, string>;
 	ulimits?: Record<string, { soft: number; hard: number }>;
-	depends_on?: Record<string, { condition: 'service_healthy' }>;
+	depends_on?: Record<
+		string,
+		{ condition: 'service_healthy' | 'service_started' }
+	>;
 	healthcheck?: ComposeService['healthcheck'];
 	/**
 	 * Behind the shared edge, a public service is on the stack's own network
@@ -836,8 +839,17 @@ export class EnvValueMultiline extends GkmError {
 	}
 }
 
-/** The services a stack's apps wait on and the edge waits on in turn. */
+/** The services a stack's apps wait on. */
 const HEALTHY = { condition: 'service_healthy' } as const;
+
+/**
+ * What Caddy waits on of each app: that it started, never that it is
+ * healthy. Its routes are served whatever an app's health — Caddy's own
+ * upstream health checks take one out of rotation — so one app that never
+ * turns healthy leaves the others routed, and a site whose health check goes
+ * through the edge can turn healthy at all.
+ */
+const STARTED = { condition: 'service_started' } as const;
 
 /**
  * An app's health check: its own server, asked on 127.0.0.1 — not
@@ -2398,7 +2410,7 @@ function stackFile(options: {
 					...apps.flatMap(replicaNames),
 					...options.workers.filter((w) => w.push).map((w) => w.name),
 					...options.processors.map((p) => p.name),
-				].map((name) => [name, HEALTHY]),
+				].map((name) => [name, STARTED]),
 			),
 			healthcheck: {
 				test: ['CMD', 'caddy', 'version'],
