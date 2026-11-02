@@ -4,3 +4,15 @@ export { AmazonApiGatewayV2Endpoint } from '../endpoints/AmazonApiGatewayV2Endpo
 export { AWSLambdaFunction } from '../functions/AWSLambdaFunction';
 export { AWSLambdaQueue } from '../queue/AWSLambdaQueueAdaptor';
 export { AWSLambdaSubscriber } from '../subscribers/AWSLambdaSubscriberAdaptor';
+export {
+	AmazonApiGatewayWebSocket,
+	type AmazonApiGatewayWebSocketOptions,
+	ApiGatewaySink,
+	type ApiGatewayWebSocketEvent,
+	type ApiGatewayWebSocketResult,
+	apiGatewayFromConnectionString,
+	CONNECTION_TTL_SECONDS,
+	type ConnectionTable,
+	DynamoConnectionTable,
+	WebSocketPublisherNotConfigured,
+} from '../websocket/apigateway';

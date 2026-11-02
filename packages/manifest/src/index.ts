@@ -149,6 +149,13 @@ export {
 	SECRET_SYMBOLS,
 	type SecretFormat,
 } from './secret';
+export {
+	API_GATEWAY_WEBSOCKET_SCHEME,
+	type ApiGatewayWebSocketTarget,
+	apiGatewayWebSocketUrl,
+	InvalidApiGatewayWebSocketUrl,
+	parseApiGatewayWebSocketUrl,
+} from './websocket';
 
 /** A single HTTP route. */
 export interface RouteInfo {
@@ -173,6 +180,19 @@ export interface RouteInfo {
 	dependencies?: readonly string[];
 	/** Authorizer name: `none`, `iam`, or a declared authorizer. */
 	authorizer: string;
+}
+
+/**
+ * One route of a WebSocket surface, as a build for AWS generated it: the
+ * Lambda API Gateway invokes for that route key.
+ */
+export interface WebSocketRouteInfo {
+	/** The surface it belongs to. */
+	surface: string;
+	/** Its route key — an action, `$connect`, `$disconnect` or `$default`. */
+	action: string;
+	/** Bundled handler entrypoint. */
+	handler: string;
 }
 
 /** A standalone Lambda function. */

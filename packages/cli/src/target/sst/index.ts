@@ -308,8 +308,16 @@ export function createSstTarget(
 
 		async verify(ctx, run) {
 			const unhealthy: SurfacesUnhealthy['surfaces'][number][] = [];
+			const kinds = kindsOf(ctx.manifest);
 
 			for (const app of run.apps) {
+				const path = healthPath(kinds.get(app), ctx.workspace.apps[app]?.type);
+				if (!path) {
+					ctx.logger.info(
+						`   ${app}: API Gateway holds its sockets and has no HTTP path to ask, so it was not checked.`,
+					);
+					continue;
+				}
 				const base = run.urls[app];
 				if (!base) {
 					ctx.logger.warn(
@@ -317,9 +325,7 @@ export function createSstTarget(
 					);
 					continue;
 				}
-				// A surface — a `rest-api` — is the backend app it derives.
-				const backend = ctx.workspace.apps[app]?.type === 'backend';
-				const url = healthUrl(base, backend ? '/health' : '/');
+				const url = healthUrl(base, path);
 				const answer = await checkHealth(app, url, {
 					...health,
 					signal: ctx.signal,
@@ -384,6 +390,20 @@ function deployCommand(
 	run: SstRun,
 ): [string, string[]] {
 	return projectCommand(run.pm, 'sst', ['deploy', '--stage', ctx.stage]);
+}
+
+/**
+ * The path a released app is asked on: a backend's `/health`, a site's `/`.
+ * A WebSocket surface has none on AWS — API Gateway answers its handshake,
+ * and its routes are Lambdas behind it — so it is not asked.
+ */
+export function healthPath(
+	kind: string | undefined,
+	appType: string | undefined,
+): string | undefined {
+	if (kind === 'websocket-api') return undefined;
+	// A surface — a `rest-api` — is the backend app it derives.
+	return appType === 'backend' ? '/health' : '/';
 }
 
 export const sstTarget = createSstTarget();

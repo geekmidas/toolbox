@@ -28,6 +28,7 @@ import {
 	TokenBucket,
 	type WebSocketLimitStore,
 } from './limits';
+import { ownOrigins } from './origins';
 import type {
 	NoMessages,
 	WebSocketMessages,
@@ -502,17 +503,6 @@ export class WebSocketSurfaceServer<
 		await this.options.transport.close();
 		this.wss.close();
 	}
-}
-
-/**
- * The origins a client of the surface's own address sends: the `https://`
- * one a native socket derives from `wss://`, and the address's own.
- */
-function ownOrigins(url: string | undefined): string[] {
-	if (!url || !URL.canParse(url)) return [];
-	const own = new URL(url);
-	const web = new URL(url.replace(/^ws(s?):/i, 'http$1:'));
-	return [...new Set([`${own.protocol}//${own.host}`, web.origin])];
 }
 
 /** A binary frame's bytes, however `ws` delivered them. */

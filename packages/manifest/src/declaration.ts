@@ -622,6 +622,12 @@ export interface WebSocketApiDeclaration extends Node {
 	auth?: Dependency;
 	/** Every route on this surface, as a `rest-api`'s endpoints. */
 	routes?: readonly WebSocketRouteDeclaration[];
+	/**
+	 * The key a frame names its action under, where it is not `action` — the
+	 * surface's `frame.discriminator`. What API Gateway selects a route on:
+	 * `$request.body.<key>`.
+	 */
+	discriminator?: string;
 	/** The `Telemetry` node its process emits through. */
 	telemetry?: ConstructId;
 	/**

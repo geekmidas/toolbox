@@ -33,6 +33,7 @@ import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
+	API_GATEWAY_WEBSOCKET_SCHEME,
 	type ConstructName,
 	canonicalId,
 	type Declaration,
@@ -313,22 +314,16 @@ export class WebSocketApi<
 
 		const envVar = this.keys.publisherConnectionString;
 		const channel = channelOf(canonical);
-		const declared = this.declared;
 		this.service = {
 			serviceName: serviceKey(canonical) as Uncapitalize<TName>,
-			async register({ envParser }) {
+			// The same publisher an adaptor builds over a sink of its own: only
+			// where the sink sends differs, by the string's scheme.
+			register: async ({ envParser }) => {
 				const { connectionString } = envParser
 					.create((get) => ({ connectionString: get(envVar).string() }))
 					.parse();
-				const transport = await transportFromConnectionString(
-					connectionString,
-					channel,
-				);
-				onShutdown(() => transport.close());
-				return new WebSocketPublisher<TMessages>(
-					new TransportSink(transport),
-					declared,
-					frame,
+				return this.publisher(
+					await sinkFromConnectionString(connectionString, channel),
 				);
 			},
 		};
@@ -541,6 +536,9 @@ export class WebSocketApi<
 				id: this.id,
 				path: this.config.path,
 				...(this.config.subdomain ? { subdomain: this.config.subdomain } : {}),
+				...(this.config.frame?.discriminator
+					? { discriminator: this.config.frame.discriminator }
+					: {}),
 				...(this.authenticator ? { auth: edgeTo(this.authenticator) } : {}),
 				...(this.config.telemetry
 					? { telemetry: this.config.telemetry.id }
@@ -557,6 +555,32 @@ export class WebSocketApi<
 			},
 		];
 	}
+}
+
+/**
+ * Where `services.<surface>` sends, by the publisher string's scheme: on an
+ * AWS stage (`apigateway://`) the gateway's management API, which holds every
+ * socket; anywhere else (`redis://`, `memory://`) whichever process does.
+ *
+ * The API Gateway sink is loaded only for its scheme, so a server stage never
+ * resolves it — nor the AWS SDK it loads in turn.
+ */
+async function sinkFromConnectionString(
+	connectionString: string,
+	channel: string,
+): Promise<WebSocketSink> {
+	if (connectionString.startsWith(API_GATEWAY_WEBSOCKET_SCHEME)) {
+		const { apiGatewayFromConnectionString } = await import(
+			'./websocket/apigateway'
+		);
+		return apiGatewayFromConnectionString(connectionString).sink;
+	}
+	const transport = await transportFromConnectionString(
+		connectionString,
+		channel,
+	);
+	onShutdown(() => transport.close());
+	return new TransportSink(transport);
 }
 
 /** The prefix a surface's channels are named under. */
