@@ -11,6 +11,7 @@
 
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
+import { EDGE_PROJECT } from '../../compose/traefik';
 import { GkmError } from '../../errors';
 
 /** One request to the edge. */
@@ -200,7 +201,7 @@ export class ComposeAppsUnhealthy extends GkmError {
 						apps.map(({ url, last }) => `  - ${url}: ${last}`).join('\n') +
 						(proxy === 'caddy'
 							? `\nSee why with \`docker compose -p ${project} logs caddy ${names}\`.`
-							: `\nSee why with \`docker compose -p gkm-edge logs traefik\` and \`docker compose -p ${project} logs ${names}\`.`),
+							: `\nSee why with \`docker compose -p ${EDGE_PROJECT} logs traefik\` and \`docker compose -p ${project} logs ${names}\`.`),
 		);
 		this.name = 'ComposeAppsUnhealthy';
 	}

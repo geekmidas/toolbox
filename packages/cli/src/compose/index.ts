@@ -98,8 +98,11 @@ export {
 	StageSeedMissing,
 } from './stack';
 export {
+	DEFAULT_EDGE_PROJECT,
 	EDGE_NETWORK,
 	EDGE_PROJECT,
+	EDGE_PROJECT_ENV,
+	edgeProject,
 	TRAEFIK_IMAGE,
 	traefikDynamic,
 } from './traefik';

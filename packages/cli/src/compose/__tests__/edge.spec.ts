@@ -61,9 +61,11 @@ import {
 import { type EdgeRoute, EdgeRouteConflict } from '../routes';
 import { type ComposeStack, composeStack, type StackInput } from '../stack';
 import {
+	DEFAULT_EDGE_PROJECT,
 	EDGE_NETWORK,
 	EDGE_PROJECT,
 	edgeCompose,
+	edgeProject,
 	TRAEFIK_IMAGE,
 	traefikDynamic,
 	traefikStatic,
@@ -535,6 +537,17 @@ describe('the edge', () => {
 		});
 	});
 
+	it('is gkm-edge, unless GKM_EDGE_PROJECT names another', () => {
+		expect(DEFAULT_EDGE_PROJECT).toBe('gkm-edge');
+		expect(edgeProject({})).toBe('gkm-edge');
+		expect(edgeProject({ GKM_EDGE_PROJECT: '' })).toBe('gkm-edge');
+		expect(edgeProject({ GKM_EDGE_PROJECT: 'gkm-edge-e2e-1a2b3c' })).toBe(
+			'gkm-edge-e2e-1a2b3c',
+		);
+		// Its network is named after it, so a renamed edge shares nothing.
+		expect(EDGE_NETWORK).toBe(EDGE_PROJECT);
+	});
+
 	it('runs the pinned image on the shared network, with its ACME state on a volume', () => {
 		const compose = edgeCompose({
 			ports: { https: 443, http: 80 },
@@ -781,8 +794,8 @@ describe('a clash over the edge ports', () => {
 			holders: {
 				80: [
 					{
-						container: 'gkm-edge-traefik-1',
-						project: 'gkm-edge',
+						container: `${EDGE_PROJECT}-traefik-1`,
+						project: EDGE_PROJECT,
 						service: 'traefik',
 					},
 				],
@@ -803,7 +816,9 @@ describe('a clash over the edge ports', () => {
 	it('accepts the stack’s own proxy holding them', async () => {
 		const traefik = fakeDocker({
 			holders: {
-				443: [{ container: 'gkm-edge-traefik-1', project: 'gkm-edge' }],
+				443: [
+					{ container: `${EDGE_PROJECT}-traefik-1`, project: EDGE_PROJECT },
+				],
 			},
 		});
 		await assertEdgePorts(traefik.docker, {
@@ -1067,7 +1082,9 @@ describe('a stack behind the shared edge', () => {
 	it('puts only its public services on the shared network, each under a unique alias', () => {
 		const { services, networks } = stack().compose;
 
-		expect(networks).toEqual({ edge: { name: 'gkm-edge', external: true } });
+		expect(networks).toEqual({
+			edge: { name: EDGE_NETWORK, external: true },
+		});
 		for (const name of ['api', 'auth', 'web', 'openobserve']) {
 			expect(services[name]?.networks).toEqual({
 				default: { aliases: [`compose-app-production-${name}`] },

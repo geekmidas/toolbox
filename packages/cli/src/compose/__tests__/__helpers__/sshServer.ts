@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -18,9 +18,24 @@ import { join } from 'node:path';
 
 export const DIND_IMAGE = 'docker:28.5.1-dind';
 
+/**
+ * The server's image: Docker-in-Docker with sshd already installed. Built
+ * once on this machine and reused — a boot that installed it fetched the
+ * Alpine index and package from the network on every run, which under load
+ * was the slow, and sometimes failing, part of starting a server.
+ */
+const SERVER_DOCKERFILE = `FROM ${DIND_IMAGE}
+RUN apk add --no-cache openssh-server
+`;
+
+/** Tagged by what it is built from, so a change to it is a new image. */
+export const SERVER_IMAGE = `gkm-e2e-server:${createHash('sha256')
+	.update(SERVER_DOCKERFILE)
+	.digest('hex')
+	.slice(0, 12)}`;
+
 /** What the server runs at boot: sshd, then Docker. */
 const BOOT = `set -e
-apk add --no-cache openssh-server >/dev/null
 ssh-keygen -A >/dev/null
 addgroup -S docker 2>/dev/null || true
 adduser -D -s /bin/sh deploy
@@ -63,6 +78,48 @@ export interface SshServer {
 	stop(): Promise<void>;
 }
 
+/** A command the server's setup ran failed. */
+export class SshServerCommandFailed extends Error {
+	constructor(
+		readonly command: string,
+		readonly code: number | null,
+		readonly output: string,
+	) {
+		super(`${command} exited ${code}:\n${output.slice(-4000)}`);
+		this.name = 'SshServerCommandFailed';
+	}
+}
+
+/** The server's container stopped before sshd and Docker were up. */
+export class SshServerExited extends Error {
+	constructor(
+		readonly container: string,
+		readonly logs: string,
+	) {
+		super(
+			`${container} exited while it booted, before sshd and Docker were up. Its log:\n${logs.slice(-4000)}`,
+		);
+		this.name = 'SshServerExited';
+	}
+}
+
+/** The server's sshd or Docker was not up within the wait. */
+export class SshServerNotReady extends Error {
+	constructor(
+		readonly container: string,
+		readonly waitedMs: number,
+		readonly logs: string,
+	) {
+		super(
+			`${container} did not start sshd and Docker within ${waitedMs / 1000}s. Its log:\n${logs.slice(-4000)}`,
+		);
+		this.name = 'SshServerNotReady';
+	}
+}
+
+/** How long a booted server has to answer: sshd and dockerd, nothing pulled. */
+const READY_WITHIN_MS = 120_000;
+
 function run(
 	command: string,
 	args: readonly string[],
@@ -85,12 +142,32 @@ function run(
 			code === 0
 				? resolve(output)
 				: reject(
-						new Error(
-							`${command} ${args.join(' ')} exited ${code}:\n${output.slice(-4000)}`,
+						new SshServerCommandFailed(
+							`${command} ${args.join(' ')}`,
+							code,
+							output,
 						),
 					),
 		);
 	});
+}
+
+/**
+ * The server's image, built from {@link SERVER_DOCKERFILE} the first time and
+ * found by its tag after that. Its context is an empty directory: nothing of
+ * the run — the deploy key least of all — is sent to the builder.
+ */
+async function serverImage(dir: string): Promise<string> {
+	const present = await run('docker', ['image', 'inspect', SERVER_IMAGE]).then(
+		() => true,
+		() => false,
+	);
+	if (present) return SERVER_IMAGE;
+	const context = join(dir, 'image');
+	mkdirSync(context, { recursive: true });
+	writeFileSync(join(context, 'Dockerfile'), SERVER_DOCKERFILE);
+	await run('docker', ['build', '--quiet', '-t', SERVER_IMAGE, context]);
+	return SERVER_IMAGE;
 }
 
 /** Start a server, publishing `ports` at the same numbers on loopback. */
@@ -105,11 +182,13 @@ export async function startSshServer(options: {
 	const key = join(dir, 'deploy_key');
 	await run('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', key]);
 	writeFileSync(join(dir, 'boot.sh'), BOOT);
+	const image = await serverImage(dir);
 
+	// Not `--rm`: a server whose boot failed is still there to say why, and
+	// `stop` removes it either way.
 	await run('docker', [
 		'run',
 		'-d',
-		'--rm',
 		'--privileged',
 		'--name',
 		name,
@@ -124,7 +203,7 @@ export async function startSshServer(options: {
 		...options.ports.flatMap((port) => ['-p', `127.0.0.1:${port}:${port}`]),
 		'--entrypoint',
 		'sh',
-		DIND_IMAGE,
+		image,
 		'/boot.sh',
 	]);
 
@@ -134,19 +213,33 @@ export async function startSshServer(options: {
 		await run('docker', ['rm', '-f', '-v', name]).catch(() => '');
 	};
 
+	const logs = () => run('docker', ['logs', name]).catch((e) => String(e));
+	const running = () =>
+		run('docker', ['inspect', '-f', '{{.State.Running}}', name]).then(
+			(said) => said.trim() === 'true',
+			() => false,
+		);
+
 	try {
-		// sshd once its packages are in, and Docker once it answers.
+		// sshd once it has written its pid — `pgrep -f` matched the shell
+		// asking — and Docker once it answers. A deadline, not a number of
+		// attempts: under load each `docker exec` takes a while itself.
+		const deadline = Date.now() + READY_WITHIN_MS;
 		let ready = false;
-		for (let attempt = 0; attempt < 120 && !ready; attempt++) {
+		while (!ready) {
 			ready = await shell(
-				'pgrep -f /usr/sbin/sshd >/dev/null && docker version >/dev/null 2>&1',
+				'test -s /var/run/sshd.pid && docker version >/dev/null 2>&1',
 			).then(
 				() => true,
 				() => false,
 			);
-			if (!ready) await new Promise((resolve) => setTimeout(resolve, 1000));
+			if (ready) break;
+			if (!(await running())) throw new SshServerExited(name, await logs());
+			if (Date.now() > deadline) {
+				throw new SshServerNotReady(name, READY_WITHIN_MS, await logs());
+			}
+			await new Promise((resolve) => setTimeout(resolve, 500));
 		}
-		if (!ready) throw new Error(`${name} did not start sshd and Docker`);
 
 		const sshPort = Number(
 			(await run('docker', ['port', name, '22'])).trim().split(':').pop(),

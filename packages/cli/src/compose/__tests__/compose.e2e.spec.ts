@@ -48,7 +48,7 @@
  * images included, whatever happens.
  */
 
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { randomBytes, X509Certificate } from 'node:crypto';
 import {
 	existsSync,
@@ -68,6 +68,13 @@ import { FileSecretsStore } from '../../secrets/file';
 import { keystoreProject } from '../../secrets/keystore';
 import { initStageSecrets } from '../../secrets/storage';
 import { localAuthorityPaths } from '../../trust/authority';
+import {
+	DEFAULT_EDGE_PROJECT,
+	EDGE_DYNAMIC_DIR,
+	EDGE_NETWORK,
+	EDGE_PROJECT,
+	EDGE_PROJECT_ENV,
+} from '../traefik';
 import { writeComposeApp } from './__helpers__/composeApp';
 import { type SshServer, startSshServer } from './__helpers__/sshServer';
 
@@ -1524,9 +1531,9 @@ describe.runIf(RUN)(
 			(
 				await server.docker([
 					'exec',
-					'gkm-edge-traefik-1',
+					`${EDGE_PROJECT}-traefik-1`,
 					'ls',
-					'/etc/gkm-edge/dynamic',
+					EDGE_DYNAMIC_DIR,
 				])
 			)
 				.split('\n')
@@ -1782,7 +1789,7 @@ describe.runIf(RUN)(
 
 		it('puts only public services on the shared network, by their aliases', async () => {
 			const inspected = JSON.parse(
-				await server.docker(['network', 'inspect', 'gkm-edge']),
+				await server.docker(['network', 'inspect', EDGE_NETWORK]),
 			)[0] as { Containers: Record<string, { Name: string }> };
 			const names = Object.values(inspected.Containers).map((c) => c.Name);
 
@@ -1794,7 +1801,7 @@ describe.runIf(RUN)(
 					expect(names).not.toContain(`${project(stage)}-${service}-1`);
 				}
 			}
-			expect(names).toContain('gkm-edge-traefik-1');
+			expect(names).toContain(`${EDGE_PROJECT}-traefik-1`);
 		});
 
 		it('redirects plain HTTP to HTTPS', async () => {
@@ -1997,7 +2004,7 @@ describe.runIf(RUN)(
 			const edgePs = await server.docker([
 				'ps',
 				'--filter',
-				'name=gkm-edge-traefik-1',
+				`name=${EDGE_PROJECT}-traefik-1`,
 				'--format',
 				'{{.Status}}',
 			]);
@@ -2006,27 +2013,55 @@ describe.runIf(RUN)(
 	},
 );
 
-/**
- * Whether a shared edge already runs on this machine's engine — a developer's
- * own local stage behind it. There is one `gkm-edge` per engine, and a run on
- * other ports would recreate it on them, so the suite below runs only where
- * none does.
- */
-function edgeRunningHere(): boolean {
-	if (!RUN) return false;
-	const ps = spawnSync(
-		'docker',
-		['ps', '-a', '-q', '--filter', 'label=com.docker.compose.project=gkm-edge'],
-		{ encoding: 'utf-8' },
-	);
-	return ps.status !== 0 || ps.stdout.trim() !== '';
+/** The suite was about to remove an edge it did not start. */
+class RefusedToRemoveEdge extends Error {
+	constructor(readonly project: string) {
+		super(
+			`Refusing to remove the edge '${project}' and its volumes: that is the default edge, which holds a developer's own routes, certificates and ACME state. ` +
+				`The suite removes only the edge it started under its own ${EDGE_PROJECT_ENV}.`,
+		);
+		this.name = 'RefusedToRemoveEdge';
+	}
 }
 
-const EDGE_HERE = edgeRunningHere();
+/**
+ * Remove an edge this suite started — its containers, its volumes and its
+ * network — and never the default one, whoever started it.
+ */
+async function removeOwnEdge(project: string): Promise<void> {
+	if (project === DEFAULT_EDGE_PROJECT) {
+		throw new RefusedToRemoveEdge(project);
+	}
+	// By project alone, so an edge whose compose file was never written —
+	// a run that failed half-way — still goes.
+	await exec('docker', ['compose', '-p', project, 'down', '--volumes']).catch(
+		() => {},
+	);
+	const volumes = await exec('docker', [
+		'volume',
+		'ls',
+		'--quiet',
+		'--filter',
+		`label=com.docker.compose.project=${project}`,
+	]).catch(() => '');
+	const names = volumes.split('\n').filter(Boolean);
+	if (names.length > 0) {
+		await exec('docker', ['volume', 'rm', '-f', ...names]).catch(() => {});
+	}
+	await exec('docker', ['network', 'rm', project]).catch(() => {});
+}
+
+describe('the local edge suite’s teardown', () => {
+	it('refuses to remove the default edge, before it asks Docker anything', async () => {
+		await expect(removeOwnEdge(DEFAULT_EDGE_PROJECT)).rejects.toBeInstanceOf(
+			RefusedToRemoveEdge,
+		);
+	});
+});
 
 /**
  * The local stage behind the shared Traefik edge (#352), end to end, on this
- * machine's Docker: `proxy: { development: 'traefik' }` starts `gkm-edge`
+ * machine's Docker: `proxy: { development: 'traefik' }` starts an edge
  * here, on free ports, and registers the local stack with it. The edge serves
  * the certificate gkm's local CA issued — written into its `certs/` volume as
  * a deployed stage's own certificate is — and the check after the start
@@ -2034,15 +2069,22 @@ const EDGE_HERE = edgeRunningHere();
  * public host through the edge's published port, and `--down` unregisters the
  * stack and leaves the edge running.
  *
- * Skipped where a `gkm-edge` already runs on this engine (see
- * {@link edgeRunningHere}); the edge it starts is removed afterwards.
+ * The edge is the suite's own — `GKM_EDGE_PROJECT=gkm-edge-e2e-<random>`,
+ * so its own project, network and volumes — beside any `gkm-edge` a
+ * developer runs on this engine, which it never touches. Only the suite's own
+ * edge is removed afterwards ({@link removeOwnEdge}).
  */
-describe.runIf(RUN && !EDGE_HERE)(
+describe.runIf(RUN)(
 	'gkm compose on the local stage behind the shared Traefik edge, end to end',
 	{ timeout: 60_000 },
 	() => {
 		const name = `compose-local-edge-${randomBytes(3).toString('hex')}`;
 		const project = `${name}-development`;
+		const edgeName = `gkm-edge-e2e-${randomBytes(3).toString('hex')}`;
+		const edgeContainer = `${edgeName}-traefik-1`;
+		/** Every gkm this suite runs names its own edge. */
+		const env = (extra: Record<string, string> = {}) =>
+			childEnv({ [EDGE_PROJECT_ENV]: edgeName, ...extra });
 		let dir: string;
 		let https: number;
 		let http: number;
@@ -2058,7 +2100,7 @@ describe.runIf(RUN && !EDGE_HERE)(
 		const gkm = (args: readonly string[]) =>
 			exec(process.execPath, [CLI, ...args], {
 				cwd: dir,
-				env: childEnv({
+				env: env({
 					GKM_COMPOSE_HTTPS_PORT: String(https),
 					GKM_COMPOSE_HTTP_PORT: String(http),
 				}),
@@ -2103,14 +2145,7 @@ describe.runIf(RUN && !EDGE_HERE)(
 		}
 
 		const dynamic = async () =>
-			(
-				await exec('docker', [
-					'exec',
-					'gkm-edge-traefik-1',
-					'ls',
-					'/etc/gkm-edge/dynamic',
-				])
-			)
+			(await exec('docker', ['exec', edgeContainer, 'ls', EDGE_DYNAMIC_DIR]))
 				.split('\n')
 				.filter(Boolean)
 				.sort();
@@ -2142,7 +2177,7 @@ describe.runIf(RUN && !EDGE_HERE)(
 				['secrets:init', '--stage', 'development'],
 				['setup', '--stage', 'development', '--skip-docker'],
 			]) {
-				await exec(process.execPath, [CLI, ...args], { cwd: dir });
+				await exec(process.execPath, [CLI, ...args], { cwd: dir, env: env() });
 			}
 
 			https = await freePort();
@@ -2155,7 +2190,7 @@ describe.runIf(RUN && !EDGE_HERE)(
 
 		afterAll(async () => {
 			if (process.env.GKM_E2E_KEEP === '1') {
-				console.log(`Kept ${project} and gkm-edge in ${dir}`);
+				console.log(`Kept ${project} and ${edgeName} in ${dir}`);
 				return;
 			}
 			if (dir && existsSync(file())) {
@@ -2182,22 +2217,8 @@ describe.runIf(RUN && !EDGE_HERE)(
 					await exec('docker', ['image', 'rm', '-f', ...ids]).catch(() => {});
 				}
 			}
-			// The edge this suite started: nothing else was on this engine's.
-			const edgeFile = dir
-				? join(dir, '.gkm', 'compose', 'development', 'gkm-edge.yml')
-				: '';
-			if (edgeFile && existsSync(edgeFile)) {
-				await exec('docker', [
-					'compose',
-					'-p',
-					'gkm-edge',
-					'-f',
-					edgeFile,
-					'down',
-					'--volumes',
-				]).catch(() => {});
-				await exec('docker', ['network', 'rm', 'gkm-edge']).catch(() => {});
-			}
+			// The edge this suite started, and nothing else.
+			await removeOwnEdge(edgeName);
 			if (dir) await cleanupDir(dir);
 		}, 5 * 60_000);
 
@@ -2252,7 +2273,7 @@ describe.runIf(RUN && !EDGE_HERE)(
 			const edgePs = await exec('docker', [
 				'ps',
 				'--filter',
-				'name=gkm-edge-traefik-1',
+				`name=${edgeContainer}`,
 				'--format',
 				'{{.Status}}',
 			]);

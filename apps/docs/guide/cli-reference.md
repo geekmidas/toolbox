@@ -631,6 +631,10 @@ Environment:
   GKM_COMPOSE_HTTP_PORT   Where the edge publishes HTTP (default 80)
   GKM_COMPOSE_LOGS_PORT   Local stage: where OpenObserve is published on
                           127.0.0.1 (default 5080)
+  GKM_EDGE_PROJECT        Testing/advanced: the shared Traefik edge's compose
+                          project, and so its network and volumes (default
+                          gkm-edge). Give every command for one edge the same
+                          value
 ```
 
 `gkm compose --stage <stage> --build --push --tag <tag>` is the CI half of a
