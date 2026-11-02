@@ -1,5 +1,59 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.148
+
+### Patch Changes
+
+- 🐛 [#364](https://github.com/geekmidas/toolbox/pull/364) [`74894c6`](https://github.com/geekmidas/toolbox/commit/74894c66a94574ff317cb8c52999c90ffca4a90a) Thanks [@geekmidas](https://github.com/geekmidas)! - :bug: `gkm compose` hands each app the env `gkm dev` does
+
+  `gkm dev`/`gkm exec` gave every app the stage's whole env, while `gkm compose`
+  wrote each env file from the keys its constructs declare and dropped the
+  stage's own secrets. One rule now decides an app's keys on every command
+  (`processEnvKeys`): what its constructs reach by their edges, plus every stage
+  secret no construct provides (a `get('STRIPE_KEY')` key), to every process —
+  never gkm's own keys for the stack. Under `gkm dev` an API's process also has
+  the keys of the workers it runs.
+
+  - `<ID>_URL` is the public URL on every command and stage: a backend reaches a
+    sibling through the edge, not at `http://<app>:<port>` on the compose
+    network.
+  - A site that runs a server (`variant: 'next'` or `'tanstack'`) gets a runtime
+    env file under `gkm compose`: its edges' public URLs, its own address and the
+    stage's own secrets. Its `NEXT_PUBLIC_*` values stay build args; a `static`
+    site still reads nothing at runtime.
+  - `gkm dev` no longer hands every app the whole stage env through turbo: each
+    app's own `gkm dev`/`gkm exec` resolves its keys, so code that reads a key
+    without the edge finds it missing locally as it would on a stack.
+  - ✨ No internal origin is added to an auth server's trusted origins any more:
+    a sibling calls it at its public address. A self-serving surface's server
+    (an auth server) now continues the trace of a request from one of its
+    trusted origins, as a generated API does, so an API's session check through
+    the edge stays in the API's trace.
+
+- 🐛 [#364](https://github.com/geekmidas/toolbox/pull/364) [`74894c6`](https://github.com/geekmidas/toolbox/commit/74894c66a94574ff317cb8c52999c90ffca4a90a) Thanks [@geekmidas](https://github.com/geekmidas)! - :bug: A session check through the edge keeps the client's address
+
+  An API calls its auth server at its public address, through the stack's edge,
+  which removed `x-gkm-client-ip` from every request — so the auth server
+  rate-limited every session check by the API's address. Each stack now has a
+  token (`GKM_EDGE_TOKEN`, derived from the stage's seed and handed to every
+  process), which the session check sends as `x-gkm-edge-token`. Caddy, the
+  shared Traefik and the `gkm dev` edge keep `x-gkm-client-ip` only on a request
+  carrying it and strip it from every other; the auth server believes the header
+  only from an internal caller or a request carrying its own token.
+
+- Updated dependencies [[`74894c6`](https://github.com/geekmidas/toolbox/commit/74894c66a94574ff317cb8c52999c90ffca4a90a), [`74894c6`](https://github.com/geekmidas/toolbox/commit/74894c66a94574ff317cb8c52999c90ffca4a90a)]:
+  - @geekmidas/constructs@10.0.0-alpha.148
+  - @geekmidas/manifest@10.0.0-alpha.148
+  - @geekmidas/cache@10.0.0-alpha.148
+  - @geekmidas/db@10.0.0-alpha.148
+  - @geekmidas/envkit@10.0.0-alpha.148
+  - @geekmidas/errors@10.0.0-alpha.148
+  - @geekmidas/logger@10.0.0-alpha.148
+  - @geekmidas/schema@10.0.0-alpha.148
+  - @geekmidas/services@10.0.0-alpha.148
+  - @geekmidas/storage@10.0.0-alpha.148
+  - @geekmidas/telescope@10.0.0-alpha.148
+
 ## 10.0.0-alpha.147
 
 ### Minor Changes

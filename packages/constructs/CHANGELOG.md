@@ -1,5 +1,51 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.148
+
+### Patch Changes
+
+- [#364](https://github.com/geekmidas/toolbox/pull/364) [`74894c6`](https://github.com/geekmidas/toolbox/commit/74894c66a94574ff317cb8c52999c90ffca4a90a) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: Depend on a site's or an API's public URL
+
+  `StaticSite` and `RestApi` now have a `service`: their public `<ID>_URL`, as a
+  string. A worker's cron or an endpoint that builds links — an email's sign-in
+  link, a payment callback — declares `.dependsOn([web, api])` and reads
+  `services.web` / `services.api`, rather than an undeclared `WEB_URL`. The edge
+  is what puts the key in its process's environment.
+
+  An API's session check (`services.auth`) now forwards the request's `Origin`
+  to the auth server. It reaches the auth server at its public address, through
+  the edge, so the origin is what lets the auth server continue the API's trace
+  for a request from a site both trust.
+
+- 🐛 [#364](https://github.com/geekmidas/toolbox/pull/364) [`74894c6`](https://github.com/geekmidas/toolbox/commit/74894c66a94574ff317cb8c52999c90ffca4a90a) Thanks [@geekmidas](https://github.com/geekmidas)! - :bug: A session check through the edge keeps the client's address
+
+  An API calls its auth server at its public address, through the stack's edge,
+  which removed `x-gkm-client-ip` from every request — so the auth server
+  rate-limited every session check by the API's address. Each stack now has a
+  token (`GKM_EDGE_TOKEN`, derived from the stage's seed and handed to every
+  process), which the session check sends as `x-gkm-edge-token`. Caddy, the
+  shared Traefik and the `gkm dev` edge keep `x-gkm-client-ip` only on a request
+  carrying it and strip it from every other; the auth server believes the header
+  only from an internal caller or a request carrying its own token.
+
+- Updated dependencies [[`74894c6`](https://github.com/geekmidas/toolbox/commit/74894c66a94574ff317cb8c52999c90ffca4a90a)]:
+  - @geekmidas/manifest@10.0.0-alpha.148
+  - @geekmidas/audit@10.0.0-alpha.148
+  - @geekmidas/auth@10.0.0-alpha.148
+  - @geekmidas/cache@10.0.0-alpha.148
+  - @geekmidas/db@10.0.0-alpha.148
+  - @geekmidas/emailkit@10.0.0-alpha.148
+  - @geekmidas/envkit@10.0.0-alpha.148
+  - @geekmidas/errors@10.0.0-alpha.148
+  - @geekmidas/events@10.0.0-alpha.148
+  - @geekmidas/logger@10.0.0-alpha.148
+  - @geekmidas/rate-limit@10.0.0-alpha.148
+  - @geekmidas/schema@10.0.0-alpha.148
+  - @geekmidas/services@10.0.0-alpha.148
+  - @geekmidas/storage@10.0.0-alpha.148
+  - @geekmidas/telescope@10.0.0-alpha.148
+  - @geekmidas/testkit@10.0.0-alpha.148
+
 ## 10.0.0-alpha.147
 
 ### Minor Changes

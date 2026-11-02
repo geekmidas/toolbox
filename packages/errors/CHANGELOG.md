@@ -1,5 +1,7 @@
 # @geekmidas/errors
 
+## 10.0.0-alpha.148
+
 ## 10.0.0-alpha.147
 
 ## 10.0.0-alpha.146
