@@ -21,6 +21,11 @@ import { NEXT_REVALIDATE_HEADER, nextPreviewModeId, warmSite } from '../warmup';
  * carrying `x-prerender-revalidate: <previewModeId>` — the id read from the
  * standalone output's prerender manifest — renders from the API.
  *
+ * Gated behind GKM_E2E=1, like the other e2e suites: a real `next build`
+ * takes seconds of CPU, enough to starve the unit suites running beside it.
+ * The fast checks of the same rules, against a fake Next, are in
+ * `warmup.spec.ts`.
+ *
  * Built with webpack (`--webpack`): Turbopack refuses a `node_modules`
  * outside its root, and this app's are this package's. Which bundler built
  * the pages is no part of what the header does at runtime.
@@ -84,7 +89,9 @@ function freePort(): Promise<number> {
 	});
 }
 
-describe('warming a real Next site built offline', () => {
+const RUN = process.env.GKM_E2E === '1';
+
+describe.runIf(RUN)('warming a real Next site built offline', () => {
 	let dir: string;
 	let standalone: string;
 	let appPath: string;
