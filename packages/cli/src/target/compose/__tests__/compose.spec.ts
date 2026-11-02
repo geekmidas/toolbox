@@ -29,6 +29,7 @@ import { deployIdentity } from '../../../deploy/identity';
 import { LocalStateInCi } from '../../../deploy/StateStore';
 import { SeedFailed } from '../../../migrate/databases';
 import type { SqlClient } from '../../../reconcile/provision';
+import { CommandFailed } from '../../../run';
 import { S3SecretsStore } from '../../../secrets/s3';
 import { UndeclaredStage } from '../../../workspace/stages';
 import { resolveTarget } from '../../resolve';
@@ -333,6 +334,10 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 				last: 'HTTP 502',
 			},
 		]);
+		expect((error as ComposeAppsUnhealthy).via).toBe('edge');
+		expect((error as ComposeAppsUnhealthy).message).toContain(
+			'this app does not answer through Caddy',
+		);
 		expect(
 			seen
 				.filter((e) => e.type === 'health.checked' && e.app === 'api')
@@ -342,6 +347,71 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 		expect(seen).not.toContainEqual(
 			expect.objectContaining({ type: 'phase.started', phase: 'rollback' }),
 		);
+	});
+
+	it('releases the rest of the stack when an app never turns healthy, then fails release naming it', async () => {
+		const fake = fakeDocker();
+		const run = deploy({
+			cwd: dir,
+			stage: 'development',
+			target: 'compose',
+			targets: {
+				compose: composeTarget({
+					...quiet(),
+					docker: {
+						...fake.docker,
+						// What `up --wait` does when one container fails its check.
+						async up(stack, services) {
+							await fake.docker.up(stack, services);
+							if (!services) {
+								throw new CommandFailed('docker', ['compose', 'up'], 1, null);
+							}
+						},
+						health: async (_stack, service) =>
+							service === 'api' ? 'unhealthy' : 'healthy',
+					},
+					server: fakeServer([]),
+					probe: answering(fake.calls),
+				}),
+			},
+		});
+		const seen = await events(run);
+		const error = await run.result.catch((e: unknown) => e);
+
+		expect(error).toBeInstanceOf(ComposeAppsUnhealthy);
+		expect((error as ComposeAppsUnhealthy).apps).toEqual([
+			{ app: 'api', url: 'docker:api', last: 'unhealthy' },
+		]);
+		// Docker's own check failed, not a request through the edge.
+		expect((error as ComposeAppsUnhealthy).via).toBe('docker');
+		expect((error as ComposeAppsUnhealthy).message).toContain(
+			"this container's health check has not passed",
+		);
+		expect((error as ComposeAppsUnhealthy).message).toContain(
+			'  - api: Docker reports it unhealthy',
+		);
+		expect((error as ComposeAppsUnhealthy).message).toContain(
+			'docker compose -p compose-app-development logs api',
+		);
+		expect((error as ComposeAppsUnhealthy).message).not.toContain(
+			'answer through',
+		);
+		expect(seen).toContainEqual(
+			expect.objectContaining({ type: 'phase.failed', phase: 'release' }),
+		);
+		// Caddy is up — its CA copied out — and the healthy apps are released.
+		expect(fake.calls).toContainEqual(
+			expect.objectContaining({
+				op: 'copyOut',
+				args: ['caddy', '/data/caddy/pki/authorities/local/root.crt'],
+			}),
+		);
+		const deployed = seen
+			.filter((e) => e.type === 'app.deployed')
+			.map((e) => (e as { app: string }).app)
+			.sort();
+		expect(deployed).toEqual(['auth', 'web']);
+		expect(fake.ops()).not.toContain('probe');
 	});
 
 	it('checks the log UI in verify and reports where it is', async () => {

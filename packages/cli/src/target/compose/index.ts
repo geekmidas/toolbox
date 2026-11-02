@@ -18,8 +18,10 @@
  *   databases, roles, grants and migrations
  * - `build`: each backend bundled on the host and every image built — or, for
  *   a tag, pulled
- * - `release`: `up --wait --remove-orphans`, and each app's image, tag and
- *   digest in the stage's state
+ * - `release`: the stack's routes on the shared edge, then `up --wait
+ *   --remove-orphans`, and each app's image, tag and digest in the stage's
+ *   state — an app that never turns healthy fails it only once the rest is
+ *   released and routed
  * - `verify`: each app asked through Caddy over HTTPS
  *
  * With `push` (`gkm compose --build --push`), run with `buildOnly`, it builds
