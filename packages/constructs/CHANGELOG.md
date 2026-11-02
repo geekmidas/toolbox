@@ -1,5 +1,66 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.153
+
+### Minor Changes
+
+- [#380](https://github.com/geekmidas/toolbox/pull/380) [`7606df6`](https://github.com/geekmidas/toolbox/commit/7606df643fb502012f7309f7d629bfa8126c84ad) Thanks [@geekmidas](https://github.com/geekmidas)! - WebSocketApi: one transport-agnostic core, served by the Node adaptor
+
+  A `WebSocketApi`'s route dispatch, connect/disconnect handling and service
+  injection now live in a `WebSocketCore` with no socket in it.
+  `realtime.core({ envParser, sink, modules })` returns it, and a runtime calls
+  `connect({ connectionId, headers, query, session? })`,
+  `message(connection, raw, write)` and `disconnect(connection, { code, reason })`
+  on it. Each returns an outcome (accepted or refused with a status; the reply
+  or the `$error` and what was thrown) rather than writing to a socket itself.
+  Each also takes `{ services }` to hand in what it would otherwise register.
+
+  `WebSocketSurfaceServer`, what `realtime.server()` runs, is now the Node
+  adaptor over the core. It keeps the upgrade, the Origin check, connection ids,
+  the heartbeat and backpressure, and behaves as before.
+
+  The publisher sends through a `WebSocketSink` (`send`, `broadcast`, `close` of
+  encoded frames) instead of a transport. `TransportSink` is the one over
+  Redis/memory that `services.<surface>` and the Node adaptor use, so an API
+  Gateway sink (`postToConnection`) or a recording one for tests can sit in the
+  same place.
+
+  **Migrating:** `DuplicateWebSocketRoute` is thrown by the core; it is still
+  exported from `@geekmidas/constructs/websocket-api`.
+  `WebSocketServerOptions` takes `core: (sink) => WebSocketCore` in place of
+  `surface`, `routes`, `messages`, `frame`, `envParser`, `logger` and
+  `authenticator`. `new WebSocketPublisher(sink, declared, frame)` takes a sink
+  where it took a transport and a local deliverer.
+
+### Patch Changes
+
+- [#379](https://github.com/geekmidas/toolbox/pull/379) [`f0dfde2`](https://github.com/geekmidas/toolbox/commit/f0dfde2106baeebfde8a4536d419ebe9c6364dc7) Thanks [@geekmidas](https://github.com/geekmidas)! - A `WebSocketApi` route's `.dependsOn()` types its handler's `services`
+
+  `.dependsOn([database])` on `connect()`, `disconnect()` or `route()` typed
+  `services` as empty, so `services.database` was a type error even though the
+  service was there at runtime. The constructs are inferred as a readonly tuple,
+  and the route builder only kept their services when that tuple extended the
+  mutable `Service[]`, which it never does. It now appends them as an endpoint's
+  `.dependsOn()` does, and repeated calls accumulate.
+
+- Updated dependencies []:
+  - @geekmidas/audit@10.0.0-alpha.153
+  - @geekmidas/auth@10.0.0-alpha.153
+  - @geekmidas/cache@10.0.0-alpha.153
+  - @geekmidas/db@10.0.0-alpha.153
+  - @geekmidas/emailkit@10.0.0-alpha.153
+  - @geekmidas/envkit@10.0.0-alpha.153
+  - @geekmidas/errors@10.0.0-alpha.153
+  - @geekmidas/events@10.0.0-alpha.153
+  - @geekmidas/logger@10.0.0-alpha.153
+  - @geekmidas/manifest@10.0.0-alpha.153
+  - @geekmidas/rate-limit@10.0.0-alpha.153
+  - @geekmidas/schema@10.0.0-alpha.153
+  - @geekmidas/services@10.0.0-alpha.153
+  - @geekmidas/storage@10.0.0-alpha.153
+  - @geekmidas/telescope@10.0.0-alpha.153
+  - @geekmidas/testkit@10.0.0-alpha.153
+
 ## 10.0.0-alpha.152
 
 ### Patch Changes
