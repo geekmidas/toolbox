@@ -1533,6 +1533,9 @@ export async function releaseCompose(
 			}`,
 		);
 	}
+	if (stack.mailInbox) {
+		ctx.logger.info(`   ${'mail'.padEnd(12)} ${stack.mailInbox.url}  (inbox)`);
+	}
 	for (const worker of stack.workers) {
 		ctx.logger.info(`   ${worker.name.padEnd(12)} worker ${worker.id}`);
 	}

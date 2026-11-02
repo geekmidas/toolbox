@@ -54,8 +54,9 @@ and the hosts they answer on all come from what the workspace declares.
   [The cache](#the-cache).
 - **Mail and object storage, on the local stage**: Mailpit, and MinIO with
   every declared bucket (and its file servers' open paths) created before any
-  app starts. Nothing needs setting — no bucket URL, no mail server. A
-  deployed stage brings its own; see
+  app starts. Nothing needs setting — no bucket URL, no mail server. Mailpit's
+  inbox is served through the stack's edge — see
+  [The local inbox](#the-local-inbox). A deployed stage brings its own; see
   [Mail and storage on a deployed stage](#mail-and-storage-on-a-deployed-stage).
 - **OpenObserve, when a process uses a `Telemetry` construct** and the
   stage's telemetry is self-hosted, receiving the logs and traces of every
@@ -582,6 +583,28 @@ For the local stage the URLs then carry the port
 (`https://api.shop.localhost:8443`), and the env files and site builds use them.
 The local CA's root is copied to `.gkm/compose/<stage>/caddy-root.crt`; point
 `NODE_EXTRA_CA_CERTS` at it, or trust it in a browser.
+
+### The local inbox
+
+A local stack that sends mail runs its own Mailpit, separate from `gkm dev`'s,
+so the mail it sends — a magic-link sign-in, an invite — is only in its inbox.
+The edge serves that inbox at `https://mail.<project>.localhost`, beside the
+apps, and `gkm compose` prints it with the stack's other URLs:
+
+```
+✅ shop is running:
+   api          https://api.shop.localhost
+   web          https://shop.localhost
+   mail         https://mail.shop.localhost  (inbox)
+```
+
+The route is the edge's, like an app's: Mailpit publishes no port, and any
+number of local stacks serve their inboxes side by side. `mail` is reserved for
+it on the local stage, so an app whose host would be `mail.<project>.localhost`
+(`subdomain: 'mail'`, or an app named `mail`) fails with `MailInboxHostTaken`.
+
+A deployed stage has no inbox route. With `--allow-dev-services` its Mailpit
+runs on the stack's network only, and nothing outside the stack reaches it.
 
 ### A site behind a password
 

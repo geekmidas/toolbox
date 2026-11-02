@@ -77,7 +77,7 @@ import {
 	processorEnvKeys,
 	workerEnvKeys,
 } from '../reconcile/apps.js';
-import { hostFor } from '../reconcile/caddyfile.js';
+import { hostFor, LOCAL_TLD } from '../reconcile/caddyfile.js';
 import { type ComposeService, composeFor } from '../reconcile/compose.js';
 import { DEFAULT_IMAGES, portKeys } from '../reconcile/containers.js';
 import type { BoundSubscriber } from '../reconcile/discover.js';
@@ -573,6 +573,41 @@ export interface ComposeStack {
 	 * set `deploy.backups.<stage>: false`.
 	 */
 	backups?: StackBackups;
+	/**
+	 * The stack's Mailpit inbox, on the local stage where it runs Mailpit:
+	 * its web UI, routed through the edge at `mail.<project>.localhost`. A
+	 * deployed stage never has one — a dev service's Mailpit stays internal.
+	 */
+	mailInbox?: StackMailInbox;
+}
+
+/** The local stage's Mailpit inbox, as the edge serves it. */
+export interface StackMailInbox {
+	/** `mail.<project>.localhost` */
+	host: string;
+	/** What a browser opens, with the edge's port when it is not 443. */
+	url: string;
+}
+
+/** The label the local stage's Mailpit inbox answers on. */
+export const MAIL_INBOX_LABEL = 'mail';
+
+/** Mailpit's web UI and API, inside the stack's network. */
+const MAILPIT_WEB_PORT = 8025;
+
+/** An app of the local stage on the host its Mailpit inbox is served at. */
+export class MailInboxHostTaken extends GkmError {
+	constructor(
+		readonly host: string,
+		readonly app: string,
+	) {
+		super(
+			`'${app}' answers on ${host}, which the local stage serves its Mailpit ` +
+				`inbox at. Give '${app}' another subdomain — '${MAIL_INBOX_LABEL}' is ` +
+				`reserved for the inbox on the local stage.`,
+		);
+		this.name = 'MailInboxHostTaken';
+	}
 }
 
 /**
@@ -1063,6 +1098,23 @@ export function composeStack(input: StackInput): ComposeStack {
 		...(logsBase ? [LOGS_SERVICE] : []),
 	].sort();
 
+	// The local stage's inbox: Mailpit's web UI on a host of the edge's, as
+	// the apps are — `mail.<project>.localhost` — so a link a stack mails
+	// can be opened and followed. Never on a deployed stage, where a dev
+	// service's Mailpit stays internal.
+	const mailInbox: StackMailInbox | undefined =
+		local && infra.includes('mailpit')
+			? (() => {
+					const host = [MAIL_INBOX_LABEL, workspace.name, LOCAL_TLD]
+						.filter(Boolean)
+						.join('.');
+					return {
+						host,
+						url: `https://${host}${https !== 443 ? `:${https}` : ''}`,
+					};
+				})()
+			: undefined;
+
 	// The stack's MinIO signs with the stage's own key pair where it set one,
 	// and otherwise with the stage's login: the local one `gkm dev` generated,
 	// or — deployed — one derived from the stage's seed.
@@ -1143,6 +1195,7 @@ export function composeStack(input: StackInput): ComposeStack {
 					...apps.flatMap(replicaNames),
 					...(fileServers.size > 0 ? ['minio'] : []),
 					...(logsBase?.host && logsBase.public ? [LOGS_SERVICE] : []),
+					...(mailInbox ? ['mailpit'] : []),
 				]
 			: [],
 	);
@@ -1686,6 +1739,19 @@ export function composeStack(input: StackInput): ComposeStack {
 				]
 			: []),
 	];
+	if (mailInbox) {
+		// Before every other route is checked against every other, so an app
+		// on the inbox's host is told what the host is for.
+		const taken = routes.find((route) => route.host === mailInbox.host);
+		if (taken) throw new MailInboxHostTaken(mailInbox.host, taken.name);
+		routes.push({
+			name: 'mailpit',
+			host: mailInbox.host,
+			upstreams: [{ service: 'mailpit', port: MAILPIT_WEB_PORT }],
+			// Its UI follows new mail live, over a websocket.
+			streaming: true,
+		});
+	}
 	assertHostsUnique(routes);
 	const dockerfiles: Record<string, string> = {};
 	for (const app of apps) {
@@ -1783,6 +1849,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		...(telemetry ? { telemetry } : {}),
 		...(redis ? { redis } : {}),
 		...(backups ? { backups } : {}),
+		...(mailInbox ? { mailInbox } : {}),
 	};
 }
 

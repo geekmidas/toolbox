@@ -19,6 +19,7 @@ import {
 	EdgeHostTaken,
 	envFile,
 	LocalCredentialsMissing,
+	MailInboxHostTaken,
 	NothingToCompose,
 	ProcessorOriginSecretMissing,
 	PushSubscriptionMissing,
@@ -596,6 +597,48 @@ describe('mail and storage on the local stage', () => {
 		expect(s.devServices).toEqual([]);
 	});
 
+	it("serves Mailpit's inbox on the edge, at mail.<project>.localhost", () => {
+		const s = stack({ manifest: withServices() });
+
+		expect(s.mailInbox).toEqual({
+			host: 'mail.compose-app.localhost',
+			url: 'https://mail.compose-app.localhost:8443',
+		});
+		// In the route list both proxies render from, not Caddy's alone.
+		expect(s.routes).toContainEqual({
+			name: 'mailpit',
+			host: 'mail.compose-app.localhost',
+			upstreams: [{ service: 'mailpit', port: 8025 }],
+			streaming: true,
+		});
+		expect(s.caddyfile).toContain('https://mail.compose-app.localhost {');
+		expect(s.caddyfile).toContain('reverse_proxy mailpit:8025');
+		// Reached through the edge, never on a published port.
+		expect(s.compose.services.mailpit?.ports).toBeUndefined();
+	});
+
+	it('has no inbox to route where nothing sends mail', () => {
+		const s = stack();
+
+		expect(s.infra).not.toContain('mailpit');
+		expect(s.mailInbox).toBeUndefined();
+		expect(s.routes.map((route) => route.name)).not.toContain('mailpit');
+	});
+
+	it("refuses an app on the inbox's host, naming the app", () => {
+		const manifest = withServices();
+		const run = () =>
+			stack({
+				manifest: {
+					...manifest,
+					Api: { ...manifest.Api, subdomain: 'mail' },
+				} as unknown as ConstructManifest,
+			});
+
+		expect(run).toThrow(MailInboxHostTaken);
+		expect(run).toThrow(/'api' answers on mail\.compose-app\.localhost/);
+	});
+
 	it("serves the file server on the edge, at gkm dev's host for it", () => {
 		const s = stack({ manifest: withServices() });
 
@@ -732,6 +775,11 @@ describe('mail and storage on a deployed stage', () => {
 		expect(api.MAIL_FROM).toBe('noreply@shop.example.com');
 		// Mailpit's inbox is not a deployed stage's to hand out.
 		expect(api).not.toHaveProperty('MAIL_INBOX_URL');
+		// Nor its web UI: no route, no published port.
+		expect(s.mailInbox).toBeUndefined();
+		expect(s.routes.map((route) => route.name)).not.toContain('mailpit');
+		expect(s.caddyfile).not.toContain('mailpit:8025');
+		expect(s.compose.services.mailpit?.ports).toBeUndefined();
 		expect(s.storage?.buckets).toEqual(['uploads-production']);
 		expect(s.caddyfile).toContain('https://uploads-server.shop.example.com {');
 		expect(s.devServices).toEqual([
