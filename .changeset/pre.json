@@ -255,6 +255,7 @@
     "websocket-api",
     "websocket-flat-frames",
     "websocket-route-depends-on-types",
+    "websocket-test-harness",
     "wildcard-compose",
     "wildcard-site-aws",
     "wildcard-site-dev",
