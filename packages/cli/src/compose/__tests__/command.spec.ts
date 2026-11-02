@@ -35,6 +35,7 @@ import { keystoreProject } from '../../secrets/keystore';
 import { StaleStageSecrets } from '../../secrets/stale';
 import { initStageSecrets } from '../../secrets/storage';
 import { ensureStageSecrets } from '../../setup/index';
+import { HealthRequestTimedOut } from '../../target/compose/health';
 import { DeploySeedsFailed } from '../../target/seeds';
 import { localAuthorityPaths } from '../../trust/authority';
 import { DnsCredentialMissing } from '../dns';
@@ -2029,3 +2030,85 @@ describe('gkm compose --tag --digests-file', { timeout: RUN_TIMEOUT }, () => {
 		expect(ops()).toEqual([]);
 	});
 });
+
+describe(
+	'gkm compose --build --push, with a site pre-rendered against its stage',
+	{
+		timeout: RUN_TIMEOUT,
+	},
+	() => {
+		beforeEach(async () => {
+			dir = realpathSync(await createTempDir('gkm-compose-command-'));
+			writeComposeApp(dir, {
+				registry: 'registry.example.com/acme',
+				sitePrerender: true,
+			});
+			await serveFrom(dir);
+		});
+		afterEach(async () => {
+			await cleanupDir(dir);
+		});
+
+		it('asks the running stage for the APIs the site pre-renders from, then builds and pushes everything', async () => {
+			const { docker, calls } = fakeDocker();
+			const asked: string[] = [];
+
+			await composeCommand(
+				{ cwd: dir, stage: 'production', build: true, push: true, tag: 'v2' },
+				{
+					lookup: resolvesHere,
+					docker,
+					probe: async ({ url, connectTo }) => {
+						// No server is reached for a push: the stage's hosts, as DNS has them.
+						expect(connectTo).toBeUndefined();
+						asked.push(url);
+						return 200;
+					},
+				},
+			);
+
+			expect(asked.sort()).toEqual([
+				'https://api.shop.example.com/health',
+				'https://auth.shop.example.com/health',
+			]);
+			expect(calls[0]).toMatchObject({
+				op: 'build',
+				args: ['api', 'auth', 'web', 'jobs'],
+			});
+			const compose = readFileSync(
+				join(dir, '.gkm', 'compose', 'production', 'docker-compose.yml'),
+				'utf-8',
+			);
+			const build = parse(compose).services.web.build;
+			// Its hosts are not refused in its build: it reaches them.
+			expect(build.extra_hosts).toBeUndefined();
+			expect(build.args.GKM_PRERENDER_RUN).toEqual(expect.any(String));
+		});
+
+		it('refuses to build when the stage it pre-renders from is not running, and pushes nothing', async () => {
+			const { docker, ops } = fakeDocker();
+
+			const pushed = composeCommand(
+				{ cwd: dir, stage: 'production', build: true, push: true, tag: 'v2' },
+				{
+					lookup: resolvesHere,
+					docker,
+					healthAttempts: 1,
+					probe: async ({ url, timeoutMs }) => {
+						throw new HealthRequestTimedOut(url, timeoutMs);
+					},
+				},
+			);
+
+			await expect(pushed).rejects.toMatchObject({
+				name: 'SitePrerenderApisDown',
+				site: 'web',
+				via: 'push',
+				message: expect.stringContaining(
+					'deploy the stage first, then build and push the site',
+				),
+			});
+			expect(ops()).toEqual([]);
+		});
+	},
+);

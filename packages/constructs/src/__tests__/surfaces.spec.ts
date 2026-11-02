@@ -12,6 +12,7 @@ import { MobileApp } from '../mobile-app';
 import { RandomPassword } from '../random-password';
 import { RestApi } from '../rest-api';
 import {
+	PrerenderNeedsStaticSite,
 	SiteHostsNeedsWildcard,
 	SiteHostsNotGet,
 	StaticSite,
@@ -152,6 +153,28 @@ describe('StaticSite', () => {
 			dependencies: [],
 		});
 		expect(site.declare()[0]).not.toHaveProperty('password');
+	});
+
+	it('says when its build pre-renders against the stage, and only for a static site', () => {
+		const prerendered = new StaticSite('Docs', {
+			path: 'apps/docs',
+			prerender: 'stage',
+		}).dependsOn([api]);
+
+		expect(prerendered.declare()[0]).toMatchObject({
+			variant: 'static',
+			prerender: 'stage',
+			dependencies: [{ target: 'Api', kind: 'rest-api' }],
+		});
+		expect(site.declare()[0]).not.toHaveProperty('prerender');
+		expect(
+			() =>
+				new StaticSite('Shop', {
+					path: 'apps/shop',
+					variant: 'next',
+					prerender: 'stage',
+				}),
+		).toThrow(PrerenderNeedsStaticSite);
 	});
 });
 

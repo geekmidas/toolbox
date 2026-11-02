@@ -78,12 +78,16 @@ export const OFFLINE_BUILD_ADDRESS = '127.0.0.1';
  * ones, and the running container resolves them as anything else does. A
  * stage secret named for the bundle is someone else's host (an analytics
  * service, a store) and is left alone, as are `localhost` and an address.
+ *
+ * None for a site that pre-renders against its stage (`prerender: 'stage'`):
+ * it is built once those hosts answer, and has to reach them.
  */
 export function offlineBuildHosts(
 	site: SiteDeclaration,
 	manifest: ConstructManifest,
 	resolve: (key: string) => string | undefined,
 ): string[] {
+	if (site.prerender === 'stage') return [];
 	const sources = [
 		provideKey(site.id, 'url'),
 		...Object.values(publicEnvFor(site, manifest)),

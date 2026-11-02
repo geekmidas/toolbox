@@ -751,6 +751,17 @@ export interface SiteDeclaration extends Node {
 	 * reaches the site.
 	 */
 	password?: SitePassword;
+	/**
+	 * `'stage'`: the site's build fetches from the APIs it depends on and
+	 * bakes what they answer into its files (vite-ssg and similar), so it is
+	 * built only once those APIs are up and healthy on the stage, against
+	 * their live addresses. Absent, it is built offline, before the stack it
+	 * belongs to runs, as every site is.
+	 *
+	 * Only a `static` site takes it. Its image then holds that stage's data,
+	 * so one commit builds a different image per stage.
+	 */
+	prerender?: 'stage';
 }
 
 /** The login a site is served behind — see {@link SiteDeclaration.password}. */
