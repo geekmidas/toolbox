@@ -16,7 +16,6 @@
  * This is the handler every adaptor runs, so dev, tests and SES drop alike.
  */
 
-import { autoReplying, isAutoSubmitted } from '@geekmidas/emailkit';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import { INBOX_EVENT, serviceKey } from '@geekmidas/manifest';
@@ -187,6 +186,12 @@ export class InboxSubscriberBuilder<
 			const notifications = (ctx.events as unknown[]).filter(
 				(event): event is { type: string; payload: ReceiptNotification } =>
 					(event as { type?: string })?.type === INBOX_EVENT,
+			);
+			if (notifications.length === 0) return undefined;
+			// emailkit is an optional peer: loaded here, by a worker that
+			// receives mail, so a worker that never does still starts without it.
+			const { autoReplying, isAutoSubmitted } = await import(
+				'@geekmidas/emailkit/autoSubmitted'
 			);
 			const messages: InboxMessage[] = [];
 			for (const { payload } of notifications) {
