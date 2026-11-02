@@ -677,6 +677,10 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 	});
 
 	it('runs MinIO and Mailpit on the local stage with no secret, creating the bucket before any app starts', async () => {
+		const said: string[] = [];
+		vi.spyOn(console, 'log').mockImplementation((...a) => {
+			said.push(a.join(' '));
+		});
 		const fake = fakeDocker();
 
 		const result = await composeCommand(
@@ -722,6 +726,13 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 			'UPLOADS_URL=s3://uploads?region=us-east-1&endpoint=http://minio:9000&forcePathStyle=true',
 		);
 		expect(env).toContain('MAIL_URL=smtp://mailpit:1025');
+		// The inbox, through the stack's edge, printed with its other URLs.
+		expect(result?.stack.mailInbox?.url).toBe(
+			'https://mail.compose-app.localhost',
+		);
+		expect(said.join('\n')).toMatch(
+			/ mail +https:\/\/mail\.compose-app\.localhost +\(inbox\)/,
+		);
 	});
 
 	it('refuses a deployed stage with neither configured, naming every key, and writes nothing', async () => {
@@ -753,6 +764,10 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 		const warned: string[] = [];
 		vi.spyOn(console, 'warn').mockImplementation((...a) => {
 			warned.push(a.join(' '));
+		});
+		const said: string[] = [];
+		vi.spyOn(console, 'log').mockImplementation((...a) => {
+			said.push(a.join(' '));
 		});
 		const fake = fakeDocker();
 
@@ -805,6 +820,9 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 			warned.filter((line) => line.includes('DEV SERVICE ON A DEPLOYED STAGE')),
 		).toHaveLength(2);
 		expect(result?.deploy.stage).toBe('production');
+		// Its Mailpit stays internal: no route to its inbox, none printed.
+		expect(result?.stack.mailInbox).toBeUndefined();
+		expect(said.join('\n')).not.toMatch(/\(inbox\)/);
 	});
 });
 
