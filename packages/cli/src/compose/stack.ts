@@ -519,13 +519,15 @@ export interface ComposeStack {
 	stage: string;
 	/**
 	 * The project's local stage, served with the certificate gkm's local
-	 * authority issues — see {@link ComposeStack.authority}.
+	 * authority issues — see {@link ComposeStack.authority} — unless it set
+	 * its own.
 	 */
 	local: boolean;
 	/**
-	 * The local stage's certificate authority: gkm's, on this machine. Its
-	 * root is what every app container trusts and the verify step checks
-	 * against, and it issues the edge's certificate as the stack is written.
+	 * The local stage's certificate authority: gkm's, on this machine — absent
+	 * when the stage set its own certificate (`deploy.compose.tls`). Its root
+	 * is what every app container trusts and the verify step checks against,
+	 * and it issues the edge's certificate as the stack is written.
 	 */
 	authority?: LocalAuthorityPaths;
 	apps: StackApp[];
@@ -539,8 +541,8 @@ export interface ComposeStack {
 	infra: string[];
 	compose: StackFile;
 	/**
-	 * What serves the stack: its own Caddy, or the server's shared Traefik
-	 * edge (`deploy.compose.proxy`). The local stage is always Caddy.
+	 * What serves the stack: its own Caddy, or the machine's shared Traefik
+	 * edge (`deploy.compose.proxy` — see `proxyFor`).
 	 */
 	proxy: ComposeProxy;
 	/** Every public host and what answers it — what either proxy renders. */
@@ -564,7 +566,8 @@ export interface ComposeStack {
 	traefik?: string;
 	/**
 	 * The stage's own certificate and key, on this machine
-	 * (`deploy.compose.tls`) — copied to where the proxy reads it.
+	 * (`deploy.compose.tls`) — copied to where the proxy reads it — and the
+	 * root it chains to, where it named one.
 	 */
 	tls?: ComposeTlsConfig;
 	/** Generated Dockerfiles, by path relative to the workspace root. */
@@ -985,9 +988,11 @@ export function composeStack(input: StackInput): ComposeStack {
 	const https = input.ports?.https ?? 443;
 	const http = input.ports?.http ?? 80;
 	const proxy = proxyFor(workspace.deploy?.compose, stage, local);
-	const certificate = local
-		? undefined
-		: certificateFor(workspace.deploy?.compose, stage, workspace.root);
+	const certificate = certificateFor(
+		workspace.deploy?.compose,
+		stage,
+		workspace.root,
+	);
 
 	// A server target's backends, whatever `deploy.default` says: the stack is
 	// one machine running containers, so events are pg-boss beside the
@@ -1645,31 +1650,31 @@ export function composeStack(input: StackInput): ComposeStack {
 		}
 	}
 
-	// A deployed stage's certificates: its own, where it set one, as the
-	// proxy's container reads them — otherwise Let's Encrypt's.
-	const deployedTls: EdgeTls = certificate
-		? {
-				kind: 'files',
-				...(proxy === 'caddy'
-					? {
-							certFile: `${CADDY_TLS_DIR}/cert.pem`,
-							keyFile: `${CADDY_TLS_DIR}/key.pem`,
-						}
-					: edgeCertificatePaths(project)),
-			}
-		: { kind: 'acme' };
-	// The local stage's is gkm's, issued as the stack is written and handed to
-	// Caddy where a deployed stage's own is.
-	const tls: EdgeTls = local
-		? {
-				kind: 'files',
-				certFile: `${CADDY_TLS_DIR}/cert.pem`,
-				keyFile: `${CADDY_TLS_DIR}/key.pem`,
-			}
-		: deployedTls;
-	const authority = local
-		? (input.localAuthority ?? localAuthorityPaths())
-		: undefined;
+	// The stage's certificate, as the proxy's container reads it: its own,
+	// where it set one — any stage, either proxy — and otherwise, on the
+	// local stage, the one gkm's local CA issues as the stack is written. A
+	// deployed stage without one asks Let's Encrypt.
+	const tls: EdgeTls =
+		certificate || local
+			? {
+					kind: 'files',
+					...(proxy === 'caddy'
+						? {
+								certFile: `${CADDY_TLS_DIR}/cert.pem`,
+								keyFile: `${CADDY_TLS_DIR}/key.pem`,
+							}
+						: edgeCertificatePaths(project)),
+				}
+			: { kind: 'acme' };
+	// gkm's local CA: the local stage's issuer, unless it set its own.
+	const authority =
+		local && !certificate
+			? (input.localAuthority ?? localAuthorityPaths())
+			: undefined;
+	// The root the stage's certificate chains to, on this machine: gkm's, or
+	// the one its own certificate names. What the local stack's containers
+	// trust for the stage's public hosts.
+	const root = authority?.certFile ?? certificate?.caFile;
 
 	// The stage's backups: a deployed stage with Postgres, unless it said
 	// `false`. A stack that only builds runs nothing, so has none.
@@ -1818,11 +1823,11 @@ export function composeStack(input: StackInput): ComposeStack {
 		),
 		// The local stage's own public hosts, which a container's own loopback
 		// would answer, and the root their certificate chains to.
-		...(authority
+		...(local
 			? {
 					localEdge: {
 						hosts: stackPublicHosts(routes),
-						authority: authority.certFile,
+						...(root ? { authority: root } : {}),
 					},
 				}
 			: {}),
@@ -1907,7 +1912,7 @@ export function composeStack(input: StackInput): ComposeStack {
 			: {
 					traefik: traefikDynamicFile(routes, {
 						project,
-						tls: deployedTls,
+						tls,
 					}),
 				}),
 		...(certificate ? { tls: certificate } : {}),
@@ -2361,15 +2366,17 @@ function stackPublicHosts(routes: readonly EdgeRoute[]): string[] {
  * handed because a browser is.
  *
  * Inside a container `*.localhost` is its own loopback, so each host is
- * resolved to the host's gateway, where the edge publishes its ports. Not a
- * network alias on the edge: the address may carry the edge's published port
+ * resolved to the host's gateway, where the edge — the stack's Caddy, or the
+ * shared Traefik edge — publishes its ports. Not a network alias on the edge:
+ * the address may carry the edge's published port
  * (`https://api.shop.localhost:8443`), which only the host answers on. And the
- * certificate there is gkm's, so the container trusts gkm's root — its public
- * certificate, never its key, mounted read-only.
+ * container trusts the root the edge's certificate chains to — gkm's, or the
+ * one the stage's own certificate names — its public certificate, never a
+ * key, mounted read-only.
  */
 export function localEdgeAccess(edge: {
 	hosts: readonly string[];
-	authority: string;
+	authority?: string;
 }): {
 	extra_hosts: string[];
 	volumes: string[];
@@ -2377,8 +2384,12 @@ export function localEdgeAccess(edge: {
 } {
 	return {
 		extra_hosts: edge.hosts.map((host) => `${host}:host-gateway`),
-		volumes: [`${edge.authority}:${LOCAL_CA_IN_CONTAINER}:ro`],
-		environment: { NODE_EXTRA_CA_CERTS: LOCAL_CA_IN_CONTAINER },
+		volumes: edge.authority
+			? [`${edge.authority}:${LOCAL_CA_IN_CONTAINER}:ro`]
+			: [],
+		environment: edge.authority
+			? { NODE_EXTRA_CA_CERTS: LOCAL_CA_IN_CONTAINER }
+			: {},
 	};
 }
 
@@ -2408,10 +2419,10 @@ function stackFile(options: {
 	/** Behind the shared edge: each service it routes to, and its alias. */
 	edge: ReadonlyMap<string, string>;
 	/**
-	 * The local stage: its public hosts, and gkm's root certificate on this
-	 * machine — see {@link localEdgeAccess}.
+	 * The local stage: its public hosts, and the root its certificate chains
+	 * to on this machine — see {@link localEdgeAccess}.
 	 */
-	localEdge?: { hosts: readonly string[]; authority: string };
+	localEdge?: { hosts: readonly string[]; authority?: string };
 }): StackFile {
 	const { project, plan, apps } = options;
 	// What reconcile defines; OpenObserve is the stack's own.
@@ -2599,7 +2610,9 @@ function stackFile(options: {
 			services[name] = {
 				...service,
 				environment: { ...service.environment, ...access.environment },
-				volumes: [...(service.volumes ?? []), ...access.volumes],
+				...(access.volumes.length
+					? { volumes: [...(service.volumes ?? []), ...access.volumes] }
+					: {}),
 				...(access.extra_hosts.length
 					? {
 							extra_hosts: [
