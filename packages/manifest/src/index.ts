@@ -101,7 +101,11 @@ export {
 	externalApiUrl,
 	NoUrlForStage,
 } from './external';
-export { CLIENT_IP_HEADER } from './headers';
+export {
+	CLIENT_IP_HEADER,
+	EDGE_TOKEN_HEADER,
+	EDGE_TOKEN_KEY,
+} from './headers';
 export {
 	INBOX_EVENT,
 	INBOX_MESSAGES_PREFIX,

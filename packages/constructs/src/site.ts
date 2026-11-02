@@ -11,10 +11,17 @@
  *   .dependsOn([api, auth]);
  * ```
  *
- * It has no `.service`. A site is not a process that registers clients — it is
- * built, and the values it needs are inlined or fetched by its own framework —
- * so the edge is {@link Declarable} rather than {@link Consumable}, and the
- * asymmetry is the honest one: a site consumes addresses, not connections.
+ * A site consumes addresses, not connections: it is built, and the values it
+ * needs are inlined or fetched by its own framework, so its own edges take any
+ * {@link Declarable}. Its `.service` is its public address — what a worker's
+ * cron or an endpoint that builds links to it reads:
+ *
+ * ```ts
+ * export const digest = worker
+ *   .cron('rate(1 day)')
+ *   .dependsOn([web])
+ *   .handle(async ({ services }) => link(services.web, '/inbox'));
+ * ```
  *
  * Only the static variant ships. SSR deploy shapes are unstable and each one is
  * its own maintenance, so they follow rather than arrive together. A mobile app
@@ -29,9 +36,16 @@ import {
 	type Dependency,
 	provideKey,
 	type SiteDeclaration,
+	serviceKey,
 	WILDCARD_SUBDOMAIN,
 } from '@geekmidas/manifest';
-import { type Declarable, edgeTo } from './construct-interface';
+import type { Service } from '@geekmidas/services';
+import {
+	type Construct,
+	type Declarable,
+	edgeTo,
+	publicUrl,
+} from './construct-interface';
 import type { RandomPassword } from './random-password';
 import type { DeployedStage } from './stages';
 import type { Telemetry } from './telemetry';
@@ -198,10 +212,17 @@ export class WildcardSiteCannotBeRoot extends Error {
 }
 
 export class StaticSite<TName extends string = string>
-	implements Declarable<TName>
+	implements Declarable<TName>, Construct<TName, string>
 {
 	readonly id: TName;
 	readonly keys: { url: string };
+
+	/**
+	 * Its public address, `https://web.example.com` — a string, no await. The
+	 * same `<ID>_URL` on every command and stage, so a link built from it opens
+	 * in a browser.
+	 */
+	readonly service: Service<Uncapitalize<TName>, string>;
 
 	constructor(
 		id: ConstructName<TName>,
@@ -216,6 +237,11 @@ export class StaticSite<TName extends string = string>
 	) {
 		this.id = canonicalId(id as string) as TName;
 		this.keys = { url: provideKey(this.id, 'url') };
+		// A field, not a getter: consumers cache services by object identity.
+		this.service = {
+			serviceName: serviceKey(this.id) as Uncapitalize<TName>,
+			register: (options) => publicUrl(options, this.keys.url),
+		};
 
 		const wildcard = config.subdomain === WILDCARD_SUBDOMAIN;
 		if (wildcard && !config.hosts) throw new WildcardSiteNeedsHosts(this.id);

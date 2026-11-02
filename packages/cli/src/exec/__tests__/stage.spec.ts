@@ -225,20 +225,16 @@ describe("the app's environment on a deployed stage", () => {
 			port: 5432,
 		});
 
-		const here = throughTunnels(
-			env,
-			stack,
-			new Map([['postgres:5432', 61_000]]),
-		);
+		const here = throughTunnels(env, new Map([['postgres:5432', 61_000]]));
 		const tunneled = new URL(here.DATABASE_URL!);
 		expect(tunneled.host).toBe('127.0.0.1:61000');
 		// The app's own login, untouched.
 		expect(tunneled.username).toBe(db.username);
 		expect(tunneled.password).toBe(db.password);
 		expect(tunneled.pathname).toBe(db.pathname);
-		// A sibling is reached at its public address, not the network's.
+		// A sibling is reached at its public address, in the container as here.
 		const auth = stack.apps.find((app) => app.name === 'auth')!;
-		expect(env.AUTH_URL).toMatch(/^http:\/\/auth:\d+$/);
+		expect(env.AUTH_URL).toBe(auth.url);
 		expect(here.AUTH_URL).toBe(auth.url);
 		// Everything else is as the container has it.
 		expect(here.AUTH_SECRET ?? SIGNING_SECRET).toBe(SIGNING_SECRET);

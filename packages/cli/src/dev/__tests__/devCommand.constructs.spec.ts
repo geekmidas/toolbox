@@ -53,6 +53,9 @@ vi.mock('../../reconcile/workspace.js', async (importOriginal) => {
 			plan: { containers: [], resources: [] },
 			services: [],
 			env: fakes.env,
+			// No declarations to scope by: the app is handed every key.
+			manifest: {},
+			background: {},
 		})),
 	};
 });

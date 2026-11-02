@@ -1029,12 +1029,31 @@ describe('a stack behind the shared edge', () => {
 			'openobserve',
 		]);
 		const file = parse(s.traefik!);
+		// Each route twice: for everyone, and for the stack's own services,
+		// which prove it with its token and keep gkm's client address.
 		expect(Object.keys(file.http.routers)).toEqual([
 			'compose-app-production-api',
+			'compose-app-production-api-stack',
 			'compose-app-production-auth',
+			'compose-app-production-auth-stack',
 			'compose-app-production-web',
+			'compose-app-production-web-stack',
 			'compose-app-production-openobserve',
+			'compose-app-production-openobserve-stack',
 		]);
+		const token = s.apps.find((app) => app.name === 'api')!.env!
+			.GKM_EDGE_TOKEN!;
+		expect(token).toBeTruthy();
+		const api = file.http.routers['compose-app-production-api'];
+		const own = file.http.routers['compose-app-production-api-stack'];
+		expect(api.middlewares).toEqual([
+			'compose-app-production-strip-gkm-headers',
+		]);
+		expect(own.rule).toBe(
+			`${api.rule} && Header(\`x-gkm-edge-token\`, \`${token}\`)`,
+		);
+		expect(own.service).toBe(api.service);
+		expect(own).not.toHaveProperty('middlewares');
 		expect(file.http.middlewares).toEqual({
 			'compose-app-production-strip-gkm-headers': {
 				headers: { customRequestHeaders: { 'x-gkm-client-ip': '' } },
@@ -1065,14 +1084,15 @@ describe('a stack behind the shared edge', () => {
 		const api = s.apps.find((app) => app.name === 'api')!;
 		const auth = s.apps.find((app) => app.name === 'auth')!;
 
-		// The API calls the auth server across the network by its alias.
-		expect(api.env?.AUTH_URL).toBe('http://compose-app-production-auth:3001');
-		// The auth server trusts the browser's origin and the API's alias.
+		// The API calls the auth server at its public address, through the edge.
+		expect(api.env?.AUTH_URL).toBe(auth.url);
+		// The auth server trusts the browser's origin and the API's, both
+		// public — no alias on the network calls it.
 		expect(auth.env?.AUTH_TRUSTED_ORIGINS?.split(',')).toEqual(
-			expect.arrayContaining([
-				'https://shop.example.com',
-				'http://compose-app-production-api:3000',
-			]),
+			expect.arrayContaining(['https://shop.example.com', api.url]),
+		);
+		expect(auth.env?.AUTH_TRUSTED_ORIGINS).not.toContain(
+			'compose-app-production-api:3000',
 		);
 		// Telemetry goes to OpenObserve by its alias, as it is on the edge.
 		expect(api.env?.OTEL_EXPORTER_OTLP_ENDPOINT).toBe(

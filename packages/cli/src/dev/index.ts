@@ -41,6 +41,7 @@ import {
 } from '../generators/telemetry.js';
 import { resolveOpenApiConfig } from '../openapi';
 import { withOwningTsconfigJsx } from '../owningTsconfigJsx.js';
+import { appProcess, processEnv } from '../reconcile/apps.js';
 import {
 	describeServices,
 	type ServiceAddress,
@@ -438,9 +439,23 @@ export async function devCommand(options: DevOptions): Promise<void> {
 			}
 		}
 
-		// Declared URLs win over anything sniffed or stored — the manifest is the
-		// statement of what exists.
-		Object.assign(appSecrets, reconciled.env);
+		// The keys this app's process is handed — its edges', and the stage's
+		// own — by the rule `gkm exec` and `gkm compose` apply too
+		// (`processEnv`). Declared URLs win over anything stored: the manifest
+		// is the statement of what exists.
+		const processValues = processEnv(
+			reconciled.manifest,
+			appProcess(
+				workspace,
+				reconciled.manifest,
+				reconciled.background,
+				workspaceAppName,
+			),
+			{ ...appSecrets },
+			reconciled.env,
+		);
+		for (const key of Object.keys(appSecrets)) delete appSecrets[key];
+		Object.assign(appSecrets, processValues);
 
 		// The local telemetry, named for this app, when it has an edge to the
 		// `Telemetry` node — or a worker whose work its process runs here does
@@ -1230,11 +1245,13 @@ async function workspaceDevCommand(
 	});
 	announce(discovery);
 
-	// Prepare environment variables
-	// Order matters: secrets first, then dependencies (dependencies can override)
+	// What every app's process is handed whatever it runs: the stage's own
+	// keys (`processEnv` with nothing declared). Each app's own `gkm dev` or
+	// `gkm exec` resolves the rest — its edges' — as `gkm compose` does, so
+	// nothing reaches an app here that its container would not have.
 	const turboEnv: Record<string, string> = {
 		...process.env,
-		...secretsEnv,
+		...processEnv(reconciled.manifest, {}, rawSecrets, reconciled.env),
 		NODE_ENV: 'development',
 		// Inject config path so child processes can find the workspace config
 		...(configPath ? { GKM_CONFIG_PATH: configPath } : {}),
@@ -1355,6 +1372,7 @@ async function entryDevCommand(options: DevOptions): Promise<void> {
 	const { credentials, resolvedPort, secretsJsonPath, appName } =
 		await prepareEntryCredentials({
 			explicitPort: options.portExplicit ? options.port : undefined,
+			scoped: true,
 		});
 
 	if (appName) {

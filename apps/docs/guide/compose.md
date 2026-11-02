@@ -41,7 +41,9 @@ and the hosts they answer on all come from what the workspace declares.
 ## What runs
 
 - **Every `RestApi`** — one container each, an auth server included.
-- **Every site** (`StaticSite`, Next.js, TanStack) — one container each.
+- **Every site** (`StaticSite`, Next.js, TanStack) — one container each. A
+  site that runs a server (`variant: 'next'` or `'tanstack'`) reads its own
+  `0600` env file at runtime, as a backend does; a `static` one reads none.
 - **Every `Worker`** with crons, queue consumers or topic subscribers — one
   container each, running them. It has no Caddy route and no published port,
   restarts `unless-stopped`, reads exactly the keys its constructs read from
@@ -443,11 +445,12 @@ to its app's slice with `turbo prune`, installs it, builds the workspace
 packages the app depends on, and then the app: a backend by `gkm build
 --provider server --production` — one file, no dependencies, in a slim
 runner — and a site by its framework, with its public URLs passed as **build
-args**. A site's container gets no server environment and waits on no
-database.
+args**. A `static` site's container gets no server environment; a Next or
+TanStack Start site's server gets an env file of its own (see
+[Env files](#env-files)). Neither waits on a database.
 
-No image embeds anything of a stage. A backend or a worker reads every
-secret at runtime from its own env file (mode `0600`, written by the deploy),
+No image embeds anything of a stage. A backend, a worker or a site's server
+reads every secret at runtime from its own env file (mode `0600`, written by the deploy),
 so the image built at a commit is the same for every stage: the image tested
 on staging is the one production runs, and rotating a secret needs a restart,
 not a rebuild. Only a site differs per stage, by its public URLs.
@@ -557,8 +560,10 @@ docker-compose.yml   the stack — compose project <scope>-<stage>; Caddy's file
 Caddyfile            a copy, for reading, of the inline one (proxy: 'caddy')
 traefik.yml          a copy of what the stack registers with the edge (proxy: 'traefik')
 gkm-edge.yml         the shared edge's compose file (proxy: 'traefik')
-api.env              one env file per backend, mode 0600
+api.env              one env file per backend, worker and site server, mode 0600
 auth.env
+jobs.env
+web.env              a Next or TanStack Start site's server
 openobserve.env      with self-hosted telemetry: its root login, mode 0600
 redis.env            with a cache: the Redis password, mode 0600
 Dockerfile.api       when building
@@ -571,21 +576,46 @@ stages, or two workspaces, can run side by side on one machine.
 
 ## Env files
 
-Each backend's env file holds **only the keys that app reads** — what its
-constructs provide and require, and what each construct it has an edge to
-provides — resolved for the stage:
+Each process's env file holds **the keys `gkm dev` hands the same app** —
+one rule, shared by `gkm dev`, `gkm exec` and `gkm compose`:
+
+- **what its constructs reach**: what its own declaration provides and
+  requires, and what each construct it has an edge to provides — a worker's
+  through every cron, consumer and subscriber built from it;
+- **the stage's own secrets**: every key set with `gkm secrets:set` that no
+  construct provides (`STRIPE_KEY`, read with `get('STRIPE_KEY')`), for every
+  process — but for what gkm keeps for the stack itself, such as a
+  container's login or the server's address. A key a construct provides —
+  an auth server's signing secret — reaches only the processes with an edge
+  to it.
+
+Resolved for the stage, that is:
 
 - its own public URL, `https://<host>`, which it builds links and cookies on;
-- each surface it calls, **on the compose network** (`AUTH_URL=http://auth:3001`);
+- each surface and site it depends on, **at its public address**
+  (`AUTH_URL=https://auth.shop.example.com`), as `gkm dev` hands it and as a
+  browser reaches it — through the edge. On the local stage the containers
+  reach the stage's hosts through the edge too (see
+  [Calling the stage's own hosts](#calling-the-stage-s-own-hosts-from-inside-the-stack));
 - connection strings to the stack's own Postgres, and each cache's URL on
   the stack's Redis;
 - `PORT`, `STAGE` and `NODE_ENV=production`;
 - its secrets and credentials, from the stage's secrets store;
-- for a process with an edge to a `Telemetry` construct, the stage's
+- for a backend with an edge to a `Telemetry` construct, the stage's
   `OTEL_*` keys — the stack's OpenObserve, or the provider
   `deploy.telemetry` names — see [Telemetry](#telemetry).
 
-A secret an app does not read is never written to its file. Images stay
+Under `gkm dev` an API's own process also runs the crons, consumers and
+subscribers of the workers whose code it holds, so it has their keys as well;
+the stack runs each worker in its own container, with its own file.
+
+A site that runs a server — `variant: 'next'` or `'tanstack'` — gets a file
+too: its edges' public URLs (`API_URL`, `AUTH_URL`), its own `WEB_URL`, and
+the stage's own secrets, which its server components read. Its `NEXT_PUBLIC_*`
+values stay build args, inlined into the bundle. A `static` site has no file.
+
+A construct's secret is never written to the file of a process without an
+edge to it. Images stay
 stage-agnostic: no secret is baked into one. Compose reads the files raw, so
 nothing in a value is interpolated — and reads them where the deploy runs: on a
 deployed stage it sends the values with the call that creates each container on
@@ -622,10 +652,28 @@ the address its caller used. Responses are never buffered (`flush_interval
 -1`): server-sent events and streamed Next.js RSC payloads reach the client as
 they are written.
 
-The edge removes **`x-gkm-client-ip`** from every request it forwards
-(`request_header -x-gkm-client-ip` in each site block). That header is gkm's
-own: an API's session check carries the client's address in it, and the auth
-server rate-limits by it, so only a service inside the stack may send it.
+The edge removes **`x-gkm-client-ip`** from every request it forwards but
+one from a service of this stack. That header is gkm's own: an API's session
+check carries the client's address in it, and the auth server rate-limits by
+it. The API calls the auth server at its public address, through the edge, so
+it proves it is one of the stack's own with the stack's token,
+**`x-gkm-edge-token`** — derived from the stage's seed, handed to every
+process as `GKM_EDGE_TOKEN`, never to a browser:
+
+```
+@gkm_outside not header x-gkm-edge-token <token>
+request_header @gkm_outside -x-gkm-client-ip
+```
+
+A request without the token, or with a wrong one, has the header removed, so
+nobody outside can choose the address they are rate-limited by. The auth
+server checks the token again before it believes the header. The `gkm dev`
+edge does the same with the local stage's token.
+
+Why a token rather than the caller's address: a stack's services reach the
+edge the way anything else does — on the local stage through the host
+gateway, deployed through the server's own public address — so the address
+the edge sees cannot tell one of them from a browser on the same network.
 
 The edge is published on 443 and 80. When those are taken — locally they often
 are — move it:
@@ -956,9 +1004,12 @@ Both proxies serve the same routes. A stack's routes are worked out once — eac
 host, the service and port behind it, whether it streams, its allowlist and its
 health path — and rendered as a Caddyfile or as Traefik configuration, so the
 two never drift. Either way `Host` and `X-Forwarded-*` reach the app as the
-caller sent them, `x-gkm-client-ip` never does (Traefik removes it with a
-`<project>-strip-gkm-headers` headers middleware first in every router's
-chain), a streamed response is never buffered, and the log UI's public mode
+caller sent them, `x-gkm-client-ip` only from a service of the stack (Traefik
+removes it with a `<project>-strip-gkm-headers` headers middleware first in
+every router's chain, and a `<route>-stack` router matching
+`Header(\`x-gkm-edge-token\`, \`<token>\`)` — a longer rule, so ahead of
+the route's own — sends the stack's own calls to the same service without
+it), a streamed response is never buffered, and the log UI's public mode
 answers only its `allow` list (Traefik's `ipAllowList`, matched on the
 connection's own address).
 
@@ -1606,10 +1657,9 @@ it resolve from `.gkm/compose/<stage>/`, the generated file's directory.
 An auth server (`BetterAuth`) checks the origin of every state-changing
 request — a sibling service's included, not only a browser's. Its
 `<ID>_TRUSTED_ORIGINS` lists the public origin of every app that declared an
-edge to it and, for each API among them, that API's **internal** origin on the
-compose network (`http://api:3000`, or `http://<project>-api:3000` behind the
-[shared edge](#the-shared-edge)), so a service calling it across the
-network is not rejected. The session cookie's domain is the parent the public
+edge to it. A sibling service calls it at its public address, through the
+edge, so its public origin is the one it is trusted by — there is no internal
+one. The session cookie's domain is the parent the public
 hosts share (`.example.com`), so the site and the APIs all see the session.
 
 ## Backups

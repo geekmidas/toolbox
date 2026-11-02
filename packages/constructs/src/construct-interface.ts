@@ -17,7 +17,7 @@
 
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Declaration, Dependency } from '@geekmidas/manifest';
-import type { Service } from '@geekmidas/services';
+import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 
 /**
  * @typeParam TName - the construct's canonical id, PascalCase. Keeping it a
@@ -259,4 +259,16 @@ export function serviceOf<TName extends string, TClient>(
 	return isConsumable(source)
 		? (source.service as unknown as Service<TName, TClient>)
 		: (source as Service<TName, TClient>);
+}
+
+/**
+ * A surface's or a site's public address, read from its `<ID>_URL` — the
+ * client a `RestApi` or a `StaticSite` hands whatever `.dependsOn()` it.
+ */
+export function publicUrl(
+	options: ServiceRegisterOptions,
+	key: string,
+): string {
+	return options.envParser.create((get) => ({ url: get(key).string() })).parse()
+		.url;
 }

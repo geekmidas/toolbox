@@ -96,7 +96,7 @@ export async function execCommand(
 	// stage's public values, and nothing on a developer's machine is reachable.
 	const { credentials, secretsJsonPath, appName } = isImageBuild()
 		? await imageBuildEntry(cwd)
-		: await prepareEntryCredentials({ cwd });
+		: await prepareEntryCredentials({ cwd, scoped: true });
 
 	if (appName) {
 		logger.log(`📦 App: ${appName}`);

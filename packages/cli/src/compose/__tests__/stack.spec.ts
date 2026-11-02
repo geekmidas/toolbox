@@ -314,6 +314,7 @@ describe("a backend's env file", () => {
 			'AUTH_URL',
 			'DATABASE_URL',
 			'EVENT_PUBLISHER_CONNECTION_STRING',
+			'GKM_EDGE_TOKEN',
 			'NODE_ENV',
 			'NOTES_PUBLISHER_CONNECTION_STRING',
 			'PORT',
@@ -322,10 +323,11 @@ describe("a backend's env file", () => {
 		]);
 	});
 
-	it('reaches a sibling on the compose network, and names itself by its public address', () => {
+	it('reaches a sibling and names itself by their public addresses', () => {
 		const env = app(stack(), 'api').env!;
 
-		expect(env.AUTH_URL).toBe('http://auth:3001');
+		// Through the edge, as gkm dev hands it and as it is deployed.
+		expect(env.AUTH_URL).toBe('https://auth.compose-app.localhost:8443');
 		expect(env.API_URL).toBe('https://api.compose-app.localhost:8443');
 		expect(env.PORT).toBe('3000');
 		expect(env.STAGE).toBe('development');
@@ -345,13 +347,12 @@ describe("a backend's env file", () => {
 		expect(env).not.toHaveProperty('AUTH_DATABASE_OWNER_URL');
 	});
 
-	it('trusts the browser origins and the internal origin of every service that calls it', () => {
+	it('trusts the public origin of every app that calls it, and no other', () => {
 		const env = app(stack(), 'auth').env!;
 
 		expect(env.AUTH_TRUSTED_ORIGINS!.split(',')).toEqual([
 			'https://api.compose-app.localhost:8443',
 			'https://compose-app.localhost:8443',
-			'http://api:3000',
 		]);
 	});
 
@@ -361,18 +362,37 @@ describe("a backend's env file", () => {
 		);
 	});
 
-	it('never carries a secret the app does not read', () => {
+	it("never carries a construct's secret to an app without the edge", () => {
 		const s = stack({
 			secrets: {
 				...initStageSecrets('development'),
-				custom: { AUTH_SECRET: 'set-by-hand', STRIPE_KEY: 'sk_live_x' },
+				custom: { AUTH_SECRET: 'set-by-hand' },
 			},
 		});
 
 		expect(app(s, 'auth').env!.AUTH_SECRET).toBe('set-by-hand');
-		expect(app(s, 'auth').env).not.toHaveProperty('STRIPE_KEY');
 		expect(app(s, 'api').env).not.toHaveProperty('AUTH_SECRET');
-		expect(app(s, 'api').env).not.toHaveProperty('STRIPE_KEY');
+	});
+
+	it("hands every app the stage's own secrets, as gkm dev does", () => {
+		const s = stack({
+			secrets: {
+				...initStageSecrets('development'),
+				custom: { STRIPE_KEY: 'sk_test_x', GKM_SERVER_IPV4: '203.0.113.7' },
+			},
+		});
+
+		// Read with get('STRIPE_KEY'), which no construct declares a reader of.
+		for (const name of ['api', 'auth']) {
+			expect(app(s, name).env!.STRIPE_KEY).toBe('sk_test_x');
+			// gkm's own key for the stack is no app's.
+			expect(app(s, name).env).not.toHaveProperty('GKM_SERVER_IPV4');
+		}
+		expect(s.workers.find((w) => w.name === 'jobs')!.env!.STRIPE_KEY).toBe(
+			'sk_test_x',
+		);
+		// A static site is a bundle: nothing at runtime.
+		expect(app(s, 'web').env).toBeUndefined();
 	});
 
 	it('renders one KEY=value line per key, sorted', () => {
@@ -1078,6 +1098,7 @@ describe('a worker', () => {
 		expect(Object.keys(env).sort()).toEqual([
 			'DATABASE_URL',
 			'EVENT_PUBLISHER_CONNECTION_STRING',
+			'GKM_EDGE_TOKEN',
 			'NODE_ENV',
 			'NOTES_PUBLISHER_CONNECTION_STRING',
 			'PORT',
@@ -1979,13 +2000,11 @@ describe('a WebSocket surface', () => {
 		);
 		expect(realtimeApp.env?.REALTIME_URL).toBe(realtimeApp.url);
 		// The API sends to it, so it holds the same publisher — and reaches
-		// the surface across the network.
+		// the surface at its public address.
 		expect(app(s, 'api').env?.REALTIME_PUBLISHER_CONNECTION_STRING).toBe(
 			publisher,
 		);
-		expect(app(s, 'api').env?.REALTIME_URL).toBe(
-			`ws://realtime:${realtimeApp.port}`,
-		);
+		expect(app(s, 'api').env?.REALTIME_URL).toBe(realtimeApp.url);
 		// Nothing else reaches it.
 		expect(app(s, 'auth').env).not.toHaveProperty(
 			'REALTIME_PUBLISHER_CONNECTION_STRING',

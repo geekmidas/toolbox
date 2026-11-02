@@ -21,21 +21,30 @@
 import {
 	type ConstructManifest,
 	dependenciesOf,
+	EDGE_TOKEN_KEY,
 	provideKey,
 	provisionOrder,
 	publicEnvFor,
 	TELEMETRY_KEYS,
 } from '@geekmidas/manifest';
+import {
+	ProcessorsHaveNoApp,
+	processorUnits,
+	WorkerHasNoApp,
+	WorkerNameTaken,
+	workerUnits,
+} from '../build/workers.js';
 import { publicBuildValues } from '../compose/siteBuild.js';
 import { composeBuildPaths } from '../docker/layout.js';
 import { findBuildRoot } from '../docker/templates.js';
+import { isStackKey } from '../secrets/stackKeys.js';
 import { appTelemetry, scopeTelemetryEnv } from '../telemetry/edges.js';
 import { appKey } from '../workspace/derive.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import type { ComposeService } from './compose.js';
 import { portKeys, portsOf } from './containers.js';
 import { eventsEdgeBucket, workerEdges } from './edges.js';
-import { type EnvOptions, envFor } from './env.js';
+import { type EnvOptions, envFor, stageEnv } from './env.js';
 import { INBOX_RELAY_TOKEN_KEY } from './inboxRelay.js';
 import type { LocalCredentials } from './localCredentials.js';
 import { type Plan, type PlanOptions, planFor } from './plan.js';
@@ -145,9 +154,10 @@ export function sitePublicArgs(
  * name on the compose network — `postgres:5432` rather than the port
  * published for the host.
  *
- * The addresses of surfaces and sites are the caller's: on the compose
- * network for a service another service calls, public for what a browser is
- * handed. `gkm compose` asks twice, once for each.
+ * The addresses of surfaces and sites are the caller's: `gkm compose` hands
+ * every process the public ones, which one app calls another on through the
+ * edge; `gkm docker`'s apps profile, which runs no edge, the compose
+ * network's.
  */
 export function networkEnv(
 	plan: Plan,
@@ -280,7 +290,6 @@ export function workerEnvKeys(
 	return keys;
 }
 
-/** What each construct an edge reaches hands the process that reaches it. */
 /**
  * The keys a file server's processor unit reads: its bucket's, and what each
  * of its processors depends on. `undefined` for a file server with none.
@@ -304,6 +313,158 @@ export function processorEnvKeys(
 		keys,
 	);
 	return keys;
+}
+
+/**
+ * What one process runs: an app's surface or site, and the workers and file
+ * servers' processors whose work it carries.
+ *
+ * The same app is a different process on different commands — under `gkm
+ * dev` an API's own process runs the crons of the workers it hosts, while a
+ * stack runs each worker in a container of its own — so a command names what
+ * its process runs, and the keys follow from that alone.
+ */
+export interface ProcessUnits {
+	/** The app's name, `api` or `web`. */
+	app?: string;
+	/** Worker ids, `Jobs`. */
+	workers?: readonly string[];
+	/** File servers' ids whose processors it runs, `AssetsServer`. */
+	processors?: readonly string[];
+}
+
+/**
+ * The keys the declared constructs hand to some process — each scoped to the
+ * processes with an edge to it. A stage key outside this set is the stage's
+ * own: one set by hand, which nothing declares a reader of.
+ */
+export function constructKeys(manifest: ConstructManifest): Set<string> {
+	const keys = new Set<string>();
+	const add = (more: Iterable<string> | undefined) => {
+		for (const key of more ?? []) keys.add(key);
+	};
+	for (const [id, declaration] of Object.entries(manifest)) {
+		add(declaration.provides);
+		add(declaration.requires);
+		if (declaration.kind === 'worker') add(workerEnvKeys(manifest, id));
+		if (declaration.kind === 'file-server') {
+			add(processorEnvKeys(manifest, id));
+		}
+		if (
+			declaration.kind === 'rest-api' ||
+			declaration.kind === 'websocket-api' ||
+			declaration.kind === 'site' ||
+			declaration.kind === 'mobile-app'
+		) {
+			add(appEnvKeys(manifest, appKey(id)));
+		}
+	}
+	return keys;
+}
+
+/**
+ * The keys one process is handed — the one rule `gkm dev`, `gkm exec` and
+ * `gkm compose` all apply, so an app gets the same keys whichever runs it:
+ *
+ * - **What its constructs reach**, by their edges: `appEnvKeys` for its app,
+ *   `workerEnvKeys` for each worker it runs, `processorEnvKeys` for each
+ *   file server's processors. A key a construct provides reaches only a
+ *   process with an edge to it, a stored one included — an auth server's
+ *   signing secret stays with the auth server.
+ * - **The stack's edge token** (`EDGE_TOKEN_KEY`), which a call to a
+ *   sibling through the edge carries beside the client's address.
+ * - **Every one of the stage's own keys** (`stageKeys` no construct
+ *   provides): a value set with `gkm secrets:set` that the code reads with
+ *   `get('X')`. Nothing declares which process reads it, so every process is
+ *   handed it — but for what gkm keeps for the stack itself (`isStackKey`):
+ *   a container's login, the backups key, the server's address.
+ *
+ * `undefined` for an app no declaration describes, which nothing narrows.
+ */
+export function processEnvKeys(
+	manifest: ConstructManifest,
+	units: ProcessUnits,
+	stageKeys: Iterable<string>,
+): Set<string> | undefined {
+	const keys = new Set<string>();
+	if (units.app !== undefined) {
+		const own = appEnvKeys(manifest, units.app);
+		if (!own && !units.workers?.length && !units.processors?.length) {
+			return undefined;
+		}
+		for (const key of own ?? []) keys.add(key);
+	}
+	for (const id of units.workers ?? []) {
+		for (const key of workerEnvKeys(manifest, id) ?? []) keys.add(key);
+	}
+	for (const id of units.processors ?? []) {
+		for (const key of processorEnvKeys(manifest, id) ?? []) keys.add(key);
+	}
+
+	// Every process may call a sibling through the edge, with the stack's
+	// token beside the client's address.
+	keys.add(EDGE_TOKEN_KEY);
+
+	const owned = constructKeys(manifest);
+	for (const key of stageKeys) {
+		if (!owned.has(key) && !isStackKey(key)) keys.add(key);
+	}
+	return keys;
+}
+
+/**
+ * One process's environment, from the stage's stored keys and every value
+ * it resolved (`stageEnv`'s merge): exactly {@link processEnvKeys}.
+ */
+export function processEnv(
+	manifest: ConstructManifest,
+	units: ProcessUnits,
+	stored: Readonly<Record<string, string>>,
+	resolved: Readonly<Record<string, string>>,
+): Record<string, string> {
+	const env = stageEnv(stored, resolved);
+	const keys = processEnvKeys(manifest, units, Object.keys(stored));
+	if (!keys) return env;
+	return Object.fromEntries(
+		Object.entries(env).filter(([key]) => keys.has(key)),
+	);
+}
+
+/**
+ * What an app's own process runs locally: its surface or site, and the
+ * workers and processors whose code it holds — the same choice `gkm build`
+ * makes (`workerUnits`, `processorUnits`).
+ *
+ * A worker no app can build is left out here: `gkm build` says so, and a
+ * dev loop has nothing to run it in.
+ */
+export function appProcess(
+	workspace: NormalizedWorkspace,
+	manifest: ConstructManifest,
+	background: Readonly<Record<string, readonly string[]>>,
+	appName: string,
+): ProcessUnits {
+	const hosted = <T extends { id: string; app: string }>(units: () => T[]) => {
+		try {
+			return units()
+				.filter((unit) => unit.app === appName)
+				.map((unit) => unit.id);
+		} catch (error) {
+			if (
+				error instanceof WorkerHasNoApp ||
+				error instanceof WorkerNameTaken ||
+				error instanceof ProcessorsHaveNoApp
+			) {
+				return [];
+			}
+			throw error;
+		}
+	};
+	return {
+		app: appName,
+		workers: hosted(() => workerUnits(workspace, manifest, background)),
+		processors: hosted(() => processorUnits(workspace, manifest)),
+	};
 }
 
 function addEdgeKeys(

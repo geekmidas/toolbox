@@ -324,6 +324,13 @@ export async function prepareEntryCredentials(options: {
 	 * unsuffixed. Only read by workspaces that have adopted the constructs glob.
 	 */
 	reconcileStage?: string;
+	/**
+	 * Hand an app only what its own process reads (`processEnv`) — its
+	 * edges' keys and the stage's own — as `gkm dev` and `gkm compose` do.
+	 * `gkm exec` asks; `gkm test` does not, since a feature test runs every
+	 * process's code in one.
+	 */
+	scoped?: boolean;
 }): Promise<EntryCredentialsResult> {
 	const cwd = options.cwd ?? process.cwd();
 
@@ -415,16 +422,31 @@ export async function prepareEntryCredentials(options: {
 	// there is nothing to resolve, only the secrets above.
 	if (workspace) {
 		const { reconcileWorkspace } = await import('../reconcile/workspace.js');
-		reconciled = await reconcileWorkspace(workspace, {
+		const result = await reconcileWorkspace(workspace, {
 			stage: options.reconcileStage ?? workspace.stages.local,
 			start: options.startDocker ?? false,
 		});
+		reconciled = result;
 
 		// Declared URLs win over anything stored: the manifest is the statement
 		// of what exists, and a stale secret naming an old port is exactly the
 		// drift this replaces.
-		Object.assign(credentials, reconciled.env);
-		declaredKeys.push(...Object.keys(reconciled.env));
+		if (options.scoped && appName) {
+			const { appProcess, processEnv } = await import('../reconcile/apps.js');
+			const own = processEnv(
+				result.manifest,
+				appProcess(workspace, result.manifest, result.background, appName),
+				{ ...credentials },
+				result.env,
+			);
+			for (const key of Object.keys(credentials)) delete credentials[key];
+			Object.assign(credentials, own);
+		} else {
+			Object.assign(credentials, reconciled.env);
+		}
+		declaredKeys.push(
+			...Object.keys(reconciled.env).filter((key) => key in credentials),
+		);
 
 		if (Object.keys(reconciled.env).length > 0) {
 			logger.log(

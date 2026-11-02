@@ -74,7 +74,7 @@ describe('session({ auth })', () => {
 		).rejects.toBeInstanceOf(UnauthorizedError);
 	});
 
-	it('forwards the session headers and whose request it is, nothing else', async () => {
+	it('forwards the session headers, whose request it is and its origin, nothing else', async () => {
 		const { construct, asked } = authenticator();
 		const me = signedIn(surface(construct))
 			.get('/me')
@@ -86,6 +86,7 @@ describe('session({ auth })', () => {
 				cookie: 'session=ada',
 				authorization: 'Bearer t',
 				'x-forwarded-for': '10.0.0.1',
+				origin: 'https://web.example.com',
 				'x-request-id': 'r-1',
 			},
 		});
@@ -96,6 +97,9 @@ describe('session({ auth })', () => {
 			cookie: 'session=ada',
 			authorization: 'Bearer t',
 			'x-forwarded-for': '10.0.0.1',
+			// And the site it came from, which the auth server, reached through
+			// the edge, continues the trace on.
+			origin: 'https://web.example.com',
 		});
 	});
 

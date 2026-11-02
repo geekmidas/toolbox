@@ -120,8 +120,8 @@ drift.
 | `Email` | `/email` | an `EmailClient` typed by your templates |
 | `Topic` | `/topic` | an `EventPublisher` typed to its events |
 | `Queue` | `worker.queue(…)` | an `EventPublisher` typed to its `message` |
-| `RestApi` | `/rest-api` | — a surface; it owns a URL, not a client |
-| `StaticSite` | `/site` | — a surface |
+| `RestApi` | `/rest-api` | its public URL, a `string` — `API_URL` |
+| `StaticSite` | `/site` | its public URL, a `string` — `WEB_URL` |
 | `BetterAuth` | `/auth` | an `AuthClient` — `api.getSession({ headers })`, over HTTP to the auth app |
 
 A `FileServer` serves the paths it calls `open` without a signature, and
@@ -342,6 +342,25 @@ manifest** — what an edge implies on a given cloud is the adapter's business.
 does not match the shape, which is what keeps environment sniffing confined to
 `.services()`.
 
+Code that builds a link — an email's sign-in link, a payment provider's
+callback — depends on the site or the API it points at, rather than reading a
+key nothing declares:
+
+```typescript
+export const digest = worker
+  .cron('rate(1 day)')
+  .dependsOn([web, api])
+  .handle(async ({ services }) => {
+    const inbox = new URL('/inbox', services.web); // WEB_URL
+    const callback = new URL('/payments/callback', services.api); // API_URL
+  });
+```
+
+A `RestApi` or a `StaticSite` hands back its **public** URL — `<ID>_URL`, the
+same address on every command and stage, which a browser opens and another
+app's server calls through the edge. The edge is what puts the key in the
+worker's environment, under `gkm dev` and `gkm compose` alike.
+
 A construct that owns no client — a `Cron`, a `Subscriber` — types its
 `service` as `never`, so depending on one is a compile error rather than a stub
 that throws at runtime. You cannot call a queue worker; you send to its queue.
@@ -372,8 +391,8 @@ export const getUser = router
   });
 ```
 
-- Only `cookie` and `authorization` are forwarded, with the active trace
-  context and the client's address — see below.
+- Only `cookie`, `authorization` and `origin` are forwarded, with the active
+  trace context and the client's address — see below.
 - The client's address (the request's `x-forwarded-for`) travels as
   **`x-gkm-client-ip`**, never as `x-forwarded-for`. The auth server reads it
   first when it rate-limits (`advanced.ipAddress.ipAddressHeaders` is
@@ -381,12 +400,15 @@ export const getUser = router
   a bucket of their own. Sent as a forwarding header, the call would look like
   outside traffic, and the auth server's span would start a trace of its own
   instead of continuing the API's.
-- `x-gkm-client-ip` is **reserved by gkm**. The stack's edge — Caddy, the
-  shared Traefik, the `gkm dev` edge — removes it from every incoming request,
-  and the auth server ignores it on any request that is not an internal
-  caller's (no `Origin`, no forwarding header, a private or loopback peer), so
-  nobody outside can choose the address they are rate-limited by. Don't send
-  it from your own code.
+- `x-gkm-client-ip` is **reserved by gkm**. The session check goes to the
+  auth server's public address, through the stack's edge — Caddy, the shared
+  Traefik, the `gkm dev` edge — with the stack's token, `x-gkm-edge-token`
+  (`GKM_EDGE_TOKEN`, derived from the stage's seed and handed to every
+  process). The edge removes the header from every request without it, and
+  the auth server ignores the header unless the request carries its own token
+  or comes from an internal caller (no `Origin`, no forwarding header, a
+  private or loopback peer), so nobody outside can choose the address they are
+  rate-limited by. Don't send it from your own code.
 - No session — Better Auth's `null`, or a `401` — is `null`.
 - A server that answers with any other failure throws `SessionCheckFailed`
   (with its `status`), and one that cannot be reached throws

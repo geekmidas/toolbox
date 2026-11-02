@@ -148,8 +148,17 @@ app `GET <basePath>/get-session` with the request's cookie, so the API never
 builds Better Auth, never opens its tenant and cannot sign a session. See
 [The auth server, and what its callers hold](/packages/constructs#the-auth-server-and-what-its-callers-hold).
 
-`gkm compose` writes each backend's environment to its own `<app>.env`, so
-what an app holds is a file you can read.
+A surface's or a site's URL is always its **public** one, on every command
+and stage — one app calls another through the edge, as a browser does.
+
+Beside its edges, every app holds the stage's own secrets: each key set with
+`gkm secrets:set` that no construct provides, which code reads with
+`get('X')`. `gkm dev`, `gkm exec` and `gkm compose` apply this one rule, so an
+app holds the same keys under each.
+
+`gkm compose` writes each backend's, worker's and server-rendered site's
+environment to its own `<app>.env`, so what an app holds is a file you can
+read.
 
 ## Mail and object storage
 
