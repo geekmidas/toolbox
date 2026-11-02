@@ -63,12 +63,16 @@ export interface EdgeResponse {
 	status: number;
 	/** The body, as text — empty unless the request asked to `read` it. */
 	body: string;
+	/** The response's headers, by lower-case name. */
+	headers?: Readonly<Record<string, string | string[] | undefined>>;
 }
 
 /** A request to the edge, and whether its body is wanted. */
 export interface EdgeRequest extends HealthRequest {
 	/** Read the body, up to {@link EDGE_BODY_LIMIT} bytes; drained otherwise. */
 	read?: boolean;
+	/** Headers sent besides `Host` and `Authorization`. */
+	headers?: Readonly<Record<string, string>>;
 }
 
 /** Asks once. Rejects when nothing answers. */
@@ -104,6 +108,7 @@ export const edgeFetch: EdgeFetch = ({
 	timeoutMs,
 	signal,
 	read,
+	headers,
 }) => {
 	const target = new URL(url);
 	const secure = target.protocol === 'https:';
@@ -117,6 +122,7 @@ export const edgeFetch: EdgeFetch = ({
 				path: `${target.pathname}${target.search}`,
 				method: 'GET',
 				headers: {
+					...headers,
 					host: target.host,
 					...(authorization ? { authorization } : {}),
 				},
@@ -126,10 +132,11 @@ export const edgeFetch: EdgeFetch = ({
 			},
 			(res) => {
 				const status = res.statusCode ?? 0;
+				const answered = { status, headers: res.headers };
 				if (!read) {
 					// The status is the answer; the body is drained so the socket closes.
 					res.resume();
-					res.on('end', () => resolve({ status, body: '' }));
+					res.on('end', () => resolve({ ...answered, body: '' }));
 					res.on('error', reject);
 					return;
 				}
@@ -144,7 +151,10 @@ export const edgeFetch: EdgeFetch = ({
 					chunks.push(chunk);
 				});
 				res.on('end', () =>
-					resolve({ status, body: Buffer.concat(chunks).toString('utf-8') }),
+					resolve({
+						...answered,
+						body: Buffer.concat(chunks).toString('utf-8'),
+					}),
 				);
 				res.on('error', reject);
 			},

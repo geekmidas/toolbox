@@ -524,10 +524,10 @@ Two things make that explicit:
 So a site renders its data-backed pages **on request**, not at build, and the
 [warm-up](#the-warm-up) after the deploy makes that first request:
 
-- **`next`**: render data-backed pages at request time. Read request data, or
-  call `await connection()` (from `next/server`) before fetching, or give the
-  page a `revalidate` and skip the fetch while offline, so the build caches
-  nothing stale:
+- **`next`**: give a data-backed page a `revalidate` and skip the fetch
+  while offline. The build caches the page empty, and the
+  [warm-up](#the-warm-up) has Next render it again from the deployed APIs
+  before any visitor asks:
 
   ```ts
   // app/page.tsx
@@ -540,9 +540,22 @@ So a site renders its data-backed pages **on request**, not at build, and the
   }
   ```
 
-  Give `app/sitemap.ts` a `revalidate` too (or make it dynamic): with none it
-  is rendered once, in the image build, and lists no data-backed URL until the
-  next build.
+  Give `app/sitemap.ts` a `revalidate` and the same skip: the warm-up
+  renders it again first, and follows the URLs it then lists. With no
+  `revalidate` it is rendered once, in the image build, and lists no
+  data-backed URL until the next build. Keep the fetches such a page makes
+  cacheable (no `cache: 'no-store'`): a page that was static at build and
+  makes an uncached fetch when rendered again fails with Next's
+  `DYNAMIC_SERVER_USAGE` error.
+
+  The warm-up can force that render only where it can read the image's
+  preview-mode id (see [the warm-up](#the-warm-up)). Where it cannot, an
+  ISR page the build cached is served empty until its `revalidate` window,
+  counted from the build, has passed — up to an hour after every deploy
+  for `revalidate = 3600`. A page that must have its data on the first
+  request whatever the Next version renders at request time instead:
+  `export const dynamic = 'force-dynamic'`, or `await connection()` (from
+  `next/server`) before it fetches.
 - **`tanstack`**: leave pre-rendering off — pages render on the server at
   request time — or guard any route it pre-renders with `GKM_BUILD_OFFLINE`.
 - **`static`**: load data in the browser. A static site that pre-renders data
@@ -1237,17 +1250,49 @@ its digest), `resource.applied` per service, `app.deployed` per app and
 
 Once every app is healthy, `verify` warms each server-rendered site — a
 `next` or `tanstack` one; a `static` site's pages are files. It asks the site
-for `/`, then for `/sitemap.xml` and every page it lists (a sitemap index's
-sitemaps are followed one level), through the edge exactly as the health
-check is asked: connected to the edge, the site's host as SNI and `Host`, the
-local CA trusted on the local stage, and the site's login sent where it is
-behind a password. Pages are asked four at a time, each given 30 seconds, at
-most 500 per site, and only those on the site's own origin.
+for `/sitemap.xml` first (a sitemap index's sitemaps are followed one level),
+then for `/` and every page the sitemap lists, through the edge exactly as
+the health check is asked: connected to the edge, the site's host as SNI and
+`Host`, the local CA trusted on the local stage, and the site's login sent
+where it is behind a password. Pages are asked four at a time, each given 30
+seconds, at most 500 per site, and only those on the site's own origin.
 
 Since the image was [built without its APIs](#a-site-is-built-without-its-apis),
 each page renders on its first request; the warm-up makes that request, from
-the deployed APIs, before any visitor does, and a page Next caches is cached
-with its data. It is plain HTTP and does not depend on the framework.
+the deployed APIs, before any visitor does.
+
+**A `next` site's pages are rendered, whatever the build cached.** An offline
+build still prerenders each ISR page, empty, and Next counts that copy as
+fresh for the page's whole `revalidate` window — a plain request would be
+answered from it and render nothing. So the warm-up reads the build's
+preview-mode id (`preview.previewModeId` in `.next/prerender-manifest.json`)
+from the running site's container, through the stack's Docker — on a
+deployed stage, the server's engine; never a file on the deploying machine —
+and sends it as Next's on-demand revalidation header,
+`x-prerender-revalidate`, with every request to that site. Next renders each
+page again from the deployed APIs and caches that. The id is only ever sent
+to the site: it is not logged or written anywhere.
+
+If the id cannot be read — the container did not answer, or a Next version
+whose manifest has no `previewModeId` — the deploy says so once and warms
+the site with plain requests:
+
+```
+   ⚠ web          can't force ISR pages to render: /app/apps/web/.next/prerender-manifest.json has no preview.previewModeId, which this version of Next may not write. Warming with plain requests; …
+```
+
+Then an ISR page is rendered only once its window has passed; see
+[built without its APIs](#a-site-is-built-without-its-apis) for making such
+a page dynamic instead.
+
+**The summary never says a page rendered when it did not.** Each response's
+`x-nextjs-cache` is read, and a page Next answered from its cache (`HIT`, or
+`STALE`) is counted apart and named:
+
+```
+🔥 Warming each server-rendered site…
+   ✓ web          warmed 12 page(s), 2 served from the build cache: /, /about
+```
 
 **A page that fails to warm never fails the deploy** — a 5xx, a timeout, no
 answer at all. Every app is already healthy, and the page renders on the
