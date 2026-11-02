@@ -317,6 +317,31 @@ await services.realtime.send(ids, 'chat.message.created', { chatId, message });
 - `realtime.frame` is the shape (`{ discriminator: 'type' }`, or `{}`), for a
   client of the surface to decode by.
 
+#### One core, served by a runtime
+
+A surface is defined once and served by an adaptor, as an endpoint is by
+Hono, API Gateway or `endpoint.request()`. `realtime.core({ envParser, sink,
+modules })` is the part with no socket in it — a `WebSocketCore` that, given
+a connection id, runs the handlers:
+
+- `connect({ connectionId, headers, query, session? })` → accepted with the
+  connection's `data`, or refused with the status of the `HttpError` the
+  handler threw (500 for anything else). Without `session`, the surface's
+  `.auth()` verifies the headers.
+- `message(connection, raw, write)` decodes by `frame`, checks the route's
+  `body`, runs the handler and writes the reply or `$error` with `write`.
+- `disconnect(connection, { code, reason })`.
+
+Each takes `{ services }` to hand in what it would otherwise register. The
+`sink` is where the handlers' `sockets` send: an object with `send(ids,
+payload)`, `broadcast(payload, except?)` and `close(ids, code, reason)`, given
+frames already encoded and checked against `messages`.
+
+`realtime.server()` is the Node adaptor over it. It owns what only a real
+socket has: the upgrade, the Origin check, connection ids, the heartbeat and
+backpressure. Its sink is a `TransportSink`: its own sockets directly, the
+rest over Redis.
+
 ### `.dependsOn()` — the one primitive
 
 Every builder takes it: endpoints, functions, crons, queue workers, and

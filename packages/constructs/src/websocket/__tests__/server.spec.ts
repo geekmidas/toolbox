@@ -12,6 +12,7 @@ import { REDIS_PORT } from '../../../../testkit/test/ports';
 import type { Authenticator } from '../../construct-interface';
 import { runShutdownHooks } from '../../shutdown';
 import { WebSocketApi } from '../../websocket-api';
+import { DuplicateWebSocketRoute } from '../core';
 import {
 	WebSocketDataHasDiscriminator,
 	WebSocketDataNotAnObject,
@@ -19,7 +20,7 @@ import {
 	WebSocketMessageNotAnObject,
 } from '../frame';
 import { InvalidWebSocketMessage, UnknownWebSocketMessage } from '../publisher';
-import { CLOSE, DuplicateWebSocketRoute } from '../server';
+import { CLOSE } from '../server';
 import { UnsupportedWebSocketTransport } from '../transport';
 
 const silent = {

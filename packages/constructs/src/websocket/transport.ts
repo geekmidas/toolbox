@@ -9,6 +9,8 @@
  * a map.
  */
 
+import type { WebSocketSink } from './publisher';
+
 /** What one process is asked to do with the sockets it holds. */
 export type Delivery =
 	| { kind: 'send'; ids: readonly string[]; payload: string }
@@ -28,6 +30,75 @@ export interface WebSocketTransport {
 
 /** Every instance — what a broadcast is published to. */
 export const EVERY_INSTANCE = '*';
+
+/** The instance a connection id was issued by: everything before its dot. */
+export function instanceOf(connectionId: string): string | undefined {
+	const dot = connectionId.indexOf('.');
+	return dot > 0 ? connectionId.slice(0, dot) : undefined;
+}
+
+/**
+ * A publisher's sink over a transport: a send goes to the instance each
+ * connection id names, a broadcast to every instance. What `services.<id>`
+ * sends through, and what the Node adaptor's own `sockets` do.
+ */
+export class TransportSink implements WebSocketSink {
+	constructor(
+		private readonly transport: WebSocketTransport,
+		/**
+		 * Delivers to this process's own sockets without a round trip through
+		 * the transport — set by the process that holds them.
+		 */
+		private readonly local?: {
+			instance: string;
+			deliver(delivery: Delivery): void;
+		},
+	) {}
+
+	send(ids: readonly string[], payload: string): Promise<void> {
+		return this.each(ids, (group) => ({ kind: 'send', ids: group, payload }));
+	}
+
+	async broadcast(payload: string, except?: readonly string[]): Promise<void> {
+		await this.transport.publish(EVERY_INSTANCE, {
+			kind: 'broadcast',
+			payload,
+			...(except?.length ? { except } : {}),
+		});
+	}
+
+	close(ids: readonly string[], code: number, reason: string): Promise<void> {
+		return this.each(ids, (group) => ({
+			kind: 'close',
+			ids: group,
+			code,
+			reason,
+		}));
+	}
+
+	/** One delivery per process that holds any of `ids`. */
+	private async each(
+		ids: readonly string[],
+		delivery: (group: string[]) => Delivery,
+	): Promise<void> {
+		const byInstance = new Map<string, string[]>();
+		for (const id of ids) {
+			const instance = instanceOf(id);
+			if (!instance) continue;
+			const group = byInstance.get(instance) ?? [];
+			group.push(id);
+			byInstance.set(instance, group);
+		}
+
+		await Promise.all(
+			[...byInstance].map(([instance, group]) =>
+				this.local?.instance === instance
+					? this.local.deliver(delivery(group))
+					: this.transport.publish(instance, delivery(group)),
+			),
+		);
+	}
+}
 
 /** A connection string names no transport this package knows. */
 export class UnsupportedWebSocketTransport extends Error {
