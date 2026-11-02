@@ -18,6 +18,28 @@ export function isImageBuild(env: NodeJS.ProcessEnv = process.env): boolean {
 }
 
 /**
+ * Set by a site's Dockerfile in its builder stage: this build is offline —
+ * no stage is reachable from it.
+ *
+ * A site's image is built before the stack it belongs to runs, so the APIs
+ * its `.dependsOn()` names do not answer yet: data a page fetches while the
+ * framework prerenders it would be none, cached as the page. A site tests
+ * `process.env.GKM_BUILD_OFFLINE === '1'` to skip that fetch, and renders the
+ * page on its first request instead — which gkm's warm-up after a deploy
+ * makes before any visitor does.
+ *
+ * Separate from {@link IMAGE_BUILD_ENV}, which says what `gkm exec` injects:
+ * this says what the build can reach. Only the builder stage sets it; the
+ * running container never has it.
+ */
+export const BUILD_OFFLINE_ENV = 'GKM_BUILD_OFFLINE';
+
+/** Whether this process is a build that no stage is reachable from. */
+export function isOfflineBuild(env: NodeJS.ProcessEnv = process.env): boolean {
+	return env[BUILD_OFFLINE_ENV] === '1';
+}
+
+/**
  * What `gkm exec` injects inside an image build: the public values its build
  * args set — every `NEXT_PUBLIC_*`, `VITE_*` and `EXPO_PUBLIC_*` — and
  * nothing read from a secrets store, a file or a container.

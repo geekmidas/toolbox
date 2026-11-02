@@ -19,7 +19,8 @@
  *   was released under and the digest it resolved to are written to the
  *   stage's state, so "what is this stage running" has an exact answer.
  * - What was started answers (`verify`): each app is asked through Caddy,
- *   over HTTPS, with the certificate verified.
+ *   over HTTPS, with the certificate verified. Then each server-rendered site
+ *   is warmed (`warmup.ts`): a page that fails to warm is said, never failed.
  *
  * Every image is built inside Docker from a pruned slice of the build root —
  * the same Dockerfiles `gkm docker` writes — so nothing is built on this
@@ -186,6 +187,8 @@ import {
 import type { DeployPhaseContext } from '../types';
 import {
 	ComposeAppsUnhealthy,
+	type EdgeFetch,
+	edgeFetch,
 	type HealthProbe,
 	httpsProbe,
 	isHealthy,
@@ -196,6 +199,7 @@ import {
 	type TopicPush,
 	topicPushes,
 } from './topicSubscriptions';
+import { WARMUP_MAX_URLS, warmSite } from './warmup';
 
 /** Every phase's context: the compose target takes no options. */
 export type ComposeContext = DeployPhaseContext<undefined>;
@@ -217,6 +221,11 @@ export interface ComposeDeps {
 	seed: typeof seedDatabases;
 	/** Ask one app, through the edge, whether it answers. */
 	probe: HealthProbe;
+	/**
+	 * Ask the edge for a page — and, for a sitemap, its body — once the stack
+	 * is healthy, to warm each server-rendered site. `edgeFetch` by default.
+	 */
+	fetch?: EdgeFetch;
 	/** How many times each app is asked before it counts as down. */
 	healthAttempts: number;
 	/** How long to wait between two asks of one app. */
@@ -429,6 +438,7 @@ export const defaultDeps: ComposeDeps = {
 	migrate: migrateDatabases,
 	seed: seedDatabases,
 	probe: httpsProbe,
+	fetch: edgeFetch,
 	healthAttempts: 90,
 	healthIntervalMs: 2_000,
 	env: process.env,
@@ -1703,7 +1713,80 @@ export async function verifyCompose(
 
 	await confirmSubscriptions(ctx, run, deps);
 
+	await warmSites(ctx, run, deps, { ca, edge });
+
 	if (stack.logs) reportLogs(ctx, stack.logs, stack.local, run.server);
+}
+
+/**
+ * Each server-rendered site (`next`, `tanstack`) asked for its `/` and every
+ * page its sitemap lists, through the edge as `checkApp` asks it — see
+ * `warmup.ts`. Its image was built with no API reachable, so each page
+ * renders on its first request: this is that request, made before any
+ * visitor's.
+ *
+ * Only ever said, never failed on: every app is already healthy, and a page
+ * that did not warm renders on the next request for it.
+ */
+async function warmSites(
+	ctx: ComposeContext,
+	run: ComposeRun,
+	deps: ComposeDeps,
+	options: {
+		ca: string | undefined;
+		edge?: { connectTo: string; connectPort?: number };
+	},
+): Promise<void> {
+	const { stack } = run;
+	const sites = stack.apps.filter(
+		(app) =>
+			app.kind === 'site' &&
+			(app.variant === 'next' || app.variant === 'tanstack'),
+	);
+	if (sites.length === 0) return;
+
+	ctx.logger.info('\n🔥 Warming each server-rendered site…');
+	for (const app of sites) {
+		if (app.id === stack.wildcard?.site) {
+			ctx.logger.info(
+				`   – ${app.name.padEnd(12)} serves every subdomain: there is no one host to warm, so it is skipped`,
+			);
+			continue;
+		}
+		try {
+			const { warmed, warnings, leftOut } = await warmSite({
+				url: app.url,
+				fetch: deps.fetch ?? edgeFetch,
+				edge: {
+					...(options.ca ? { ca: options.ca } : {}),
+					...(app.auth ? { authorization: basicAuthorization(app.auth) } : {}),
+					...options.edge,
+					signal: ctx.signal,
+				},
+			});
+			const said = `warmed ${warmed.length} page(s)${
+				warnings.length > 0 ? `, ${warnings.length} warning(s)` : ''
+			}`;
+			if (warnings.length === 0) {
+				ctx.logger.info(`   ✓ ${app.name.padEnd(12)} ${said}`);
+			} else {
+				ctx.logger.warn(`   ⚠ ${app.name.padEnd(12)} ${said}:`);
+				for (const { url, reason } of warnings) {
+					ctx.logger.warn(`       ${url}: ${reason}`);
+				}
+			}
+			if (leftOut > 0) {
+				ctx.logger.info(
+					`       ${leftOut} more page(s) in its sitemap were not asked: at most ${WARMUP_MAX_URLS} are warmed per site`,
+				);
+			}
+		} catch (error) {
+			if (ctx.signal.aborted) throw error;
+			ctx.logger.warn(
+				`   ⚠ ${app.name.padEnd(12)} not warmed: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	}
 }
 
 /**

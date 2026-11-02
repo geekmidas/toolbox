@@ -9,7 +9,8 @@
  * goes through the edge, by hostname, and verifies the certificate.
  */
 
-import { request } from 'node:https';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { GkmError } from '../../errors';
 
 /** One request to the edge. */
@@ -57,8 +58,44 @@ export class HealthRequestTimedOut extends GkmError {
 	}
 }
 
-/** The real probe: one HTTPS GET, the certificate verified. */
-export const httpsProbe: HealthProbe = ({
+/** What the edge answered: its status, and the body where it was asked for. */
+export interface EdgeResponse {
+	status: number;
+	/** The body, as text — empty unless the request asked to `read` it. */
+	body: string;
+}
+
+/** A request to the edge, and whether its body is wanted. */
+export interface EdgeRequest extends HealthRequest {
+	/** Read the body, up to {@link EDGE_BODY_LIMIT} bytes; drained otherwise. */
+	read?: boolean;
+}
+
+/** Asks once. Rejects when nothing answers. */
+export type EdgeFetch = (request: EdgeRequest) => Promise<EdgeResponse>;
+
+/** The most of a body read — a sitemap may be 50 MB, and none needs to be. */
+export const EDGE_BODY_LIMIT = 10 * 1024 * 1024;
+
+/** A body larger than {@link EDGE_BODY_LIMIT}. */
+export class EdgeResponseTooLarge extends GkmError {
+	constructor(
+		readonly url: string,
+		readonly limit: number,
+	) {
+		super(
+			`${url} answered with more than ${limit} bytes, which is more than gkm reads. Split it — a sitemap index can list several sitemaps.`,
+		);
+		this.name = 'EdgeResponseTooLarge';
+	}
+}
+
+/**
+ * The real request: one GET to the edge — over HTTPS, the certificate
+ * verified, for an `https:` URL, and plain HTTP for an `http:` one — with
+ * the URL's host as SNI and `Host` wherever it connects.
+ */
+export const edgeFetch: EdgeFetch = ({
 	url,
 	ca,
 	connectTo,
@@ -66,28 +103,49 @@ export const httpsProbe: HealthProbe = ({
 	authorization,
 	timeoutMs,
 	signal,
+	read,
 }) => {
 	const target = new URL(url);
+	const secure = target.protocol === 'https:';
+	const request = secure ? httpsRequest : httpRequest;
 	return new Promise((resolve, reject) => {
 		const req = request(
 			{
 				host: connectTo ?? target.hostname,
-				port: connectPort ?? (target.port || 443),
-				servername: target.hostname,
+				port: connectPort ?? (target.port || (secure ? 443 : 80)),
+				...(secure ? { servername: target.hostname } : {}),
 				path: `${target.pathname}${target.search}`,
 				method: 'GET',
 				headers: {
 					host: target.host,
 					...(authorization ? { authorization } : {}),
 				},
-				...(ca ? { ca } : {}),
+				...(secure && ca ? { ca } : {}),
 				...(signal ? { signal } : {}),
 				timeout: timeoutMs,
 			},
 			(res) => {
-				// The status is the answer; the body is drained so the socket closes.
-				res.resume();
-				res.on('end', () => resolve(res.statusCode ?? 0));
+				const status = res.statusCode ?? 0;
+				if (!read) {
+					// The status is the answer; the body is drained so the socket closes.
+					res.resume();
+					res.on('end', () => resolve({ status, body: '' }));
+					res.on('error', reject);
+					return;
+				}
+				const chunks: Buffer[] = [];
+				let size = 0;
+				res.on('data', (chunk: Buffer) => {
+					size += chunk.length;
+					if (size > EDGE_BODY_LIMIT) {
+						req.destroy(new EdgeResponseTooLarge(url, EDGE_BODY_LIMIT));
+						return;
+					}
+					chunks.push(chunk);
+				});
+				res.on('end', () =>
+					resolve({ status, body: Buffer.concat(chunks).toString('utf-8') }),
+				);
 				res.on('error', reject);
 			},
 		);
@@ -98,6 +156,10 @@ export const httpsProbe: HealthProbe = ({
 		req.end();
 	});
 };
+
+/** The real probe: one GET through the edge, answered by its status. */
+export const httpsProbe: HealthProbe = (request) =>
+	edgeFetch(request).then(({ status }) => status);
 
 /** Whether a status means the app answered as it should. */
 export function isHealthy(status: number): boolean {

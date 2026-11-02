@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { loadWorkspaceConfig } from '../../../config';
@@ -75,6 +75,8 @@ export interface ComposeAppOptions {
 	wildcard?: boolean;
 	/** `protectedSubdomains`, as it is written in the config. */
 	protectedSubdomains?: readonly string[];
+	/** The site's `variant` — `static` when absent. */
+	siteVariant?: 'next' | 'tanstack';
 }
 
 /**
@@ -151,6 +153,16 @@ export const web = new StaticSite('Web', {
 	},
 }).dependsOn([api, auth]);
 `,
+		);
+	}
+	if (options.siteVariant) {
+		const file = join(dir, 'constructs', 'site.ts');
+		writeFileSync(
+			file,
+			readFileSync(file, 'utf-8').replace(
+				"path: 'apps/web',",
+				`path: 'apps/web',\n\tvariant: '${options.siteVariant}',`,
+			),
 		);
 	}
 	if (options.realtime) writeRealtime(dir, name);
