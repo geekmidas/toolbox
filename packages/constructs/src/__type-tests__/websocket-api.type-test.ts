@@ -1,5 +1,5 @@
 /**
- * Type-level tests for a WebSocket surface's publisher.
+ * Type-level tests for a WebSocket surface's publisher and its routes.
  *
  * The frame shape is a wire concern: `send(ids, action, data)` is typed by the
  * declared messages the same way whether frames are `{ action, data }` or flat
@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import { KyselyDatabase } from '../database/kysely';
 import {
 	type MessageAction,
 	type MessageData,
@@ -79,3 +80,47 @@ void publisher.send('id', 'scan.result', { ok: 'yes' });
 
 // @ts-expect-error — the action is not data: flat frames are still sent as (action, data)
 void publisher.broadcast({ type: 'scan.result', ok: true });
+
+/**
+ * A route's `.dependsOn()` types its handler's `services` as an endpoint's
+ * does: each construct's client under its own id. `T` is inferred as a
+ * readonly tuple, and gating the services on `extends Service[]` once typed
+ * them all away.
+ */
+interface UsersDB {
+	users: { id: string };
+}
+
+const database = new KyselyDatabase<UsersDB, 'Database'>('Database');
+const cache = new KyselyDatabase<UsersDB, 'Cache'>('Cache');
+
+type DatabaseClient = Awaited<
+	ReturnType<(typeof database)['service']['register']>
+>;
+
+nested
+	.connect()
+	.dependsOn([database])
+	.handle(({ services }) => {
+		type _Typed = Expect<Equals<typeof services.database, DatabaseClient>>;
+		return undefined;
+	});
+
+nested
+	.disconnect()
+	.dependsOn([database])
+	.handle(({ services }) => {
+		type _Typed = Expect<Equals<typeof services.database, DatabaseClient>>;
+	});
+
+nested
+	.route('chat.send')
+	.dependsOn([database])
+	.dependsOn([cache])
+	.handle(({ services }) => {
+		type _Typed = Expect<Equals<typeof services.database, DatabaseClient>>;
+		// Repeated calls accumulate, as an endpoint's do.
+		void services.cache;
+		// @ts-expect-error — only what the route depends on is there
+		void services.storage;
+	});
