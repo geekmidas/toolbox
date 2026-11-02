@@ -208,10 +208,7 @@ describe('AmazonApiGatewayWebSocket', () => {
 			envParser: envFor(table),
 			modules: [routes],
 		});
-		rows = new DynamoConnectionTable(table, {
-			region,
-			endpoint: LOCALSTACK_URL,
-		});
+		rows = new DynamoConnectionTable(table, dynamo);
 	});
 
 	it('keeps what $connect returned, and hands it to every later frame', async () => {
@@ -334,11 +331,7 @@ describe('AmazonApiGatewayWebSocket', () => {
 	});
 
 	it('leaves out a row whose time has passed, before DynamoDB deletes it', async () => {
-		const expiring = new DynamoConnectionTable(table, {
-			region,
-			endpoint: LOCALSTACK_URL,
-			ttl: -1,
-		});
+		const expiring = new DynamoConnectionTable(table, dynamo, { ttl: -1 });
 		await expiring.put({ id: 'old', data: {} });
 		await rows.put({ id: 'new', data: {} });
 

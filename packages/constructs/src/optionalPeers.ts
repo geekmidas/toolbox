@@ -181,36 +181,6 @@ export async function loadIoredis(): Promise<typeof import('ioredis')> {
 	}
 }
 
-/** The DynamoDB client, for a `WebSocketApi`'s connection table on AWS. */
-export async function loadDynamo(): Promise<
-	typeof import('@aws-sdk/client-dynamodb')
-> {
-	try {
-		return await import('@aws-sdk/client-dynamodb');
-	} catch (cause) {
-		throw new OptionalPeerMissing(
-			'@aws-sdk/client-dynamodb',
-			'A WebSocketApi served by API Gateway',
-			cause,
-		);
-	}
-}
-
-/** The management API client, for a `WebSocketApi`'s sends on AWS. */
-export async function loadApiGatewayManagement(): Promise<
-	typeof import('@aws-sdk/client-apigatewaymanagementapi')
-> {
-	try {
-		return await import('@aws-sdk/client-apigatewaymanagementapi');
-	} catch (cause) {
-		throw new OptionalPeerMissing(
-			'@aws-sdk/client-apigatewaymanagementapi',
-			'A WebSocketApi served by API Gateway',
-			cause,
-		);
-	}
-}
-
 /** `better-auth`, for an `Auth` construct's server. */
 export async function loadBetterAuth(): Promise<typeof import('better-auth')> {
 	try {

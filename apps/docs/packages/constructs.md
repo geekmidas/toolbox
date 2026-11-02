@@ -354,7 +354,7 @@ surface's typed publisher over a sink of an adaptor's own.
 The same surface deploys to an SST stage unchanged. `gkm build --provider
 aws` writes one Lambda per route under `.gkm/aws/websocket/`, each serving
 only its own route through `AmazonApiGatewayWebSocket` (from
-`@geekmidas/constructs/aws`). It also writes `$connect` and `$disconnect`,
+`@geekmidas/constructs/aws-websocket`). It also writes `$connect` and `$disconnect`,
 even when the surface declares no handler for them. `fromManifest` in
 `@geekmidas/cloud` then creates an API Gateway WebSocket API and mounts
 each Lambda on its route key. API Gateway picks the route from

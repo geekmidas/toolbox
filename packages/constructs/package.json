@@ -104,6 +104,16 @@
 				"default": "./dist/adaptors/aws.cjs"
 			}
 		},
+		"./aws-websocket": {
+			"import": {
+				"types": "./dist/adaptors/awsWebsocket.d.mts",
+				"default": "./dist/adaptors/awsWebsocket.mjs"
+			},
+			"require": {
+				"types": "./dist/adaptors/awsWebsocket.d.cts",
+				"default": "./dist/adaptors/awsWebsocket.cjs"
+			}
+		},
 		"./testing": {
 			"import": {
 				"types": "./dist/adaptors/testing.d.mts",
@@ -374,6 +384,7 @@
 		"@types/qs": "~6.15.1",
 		"@types/ws": "~8.18.1",
 		"better-auth": "~1.7.6",
+		"electrodb": "~3.9.3",
 		"ioredis": "~6.0.0",
 		"kysely": "~0.29.6",
 		"msw": "~2.15.0",
@@ -397,6 +408,7 @@
 		"@middy/core": ">=7.9.2",
 		"@types/aws-lambda": ">=8.10.163",
 		"better-auth": ">=1.7.5",
+		"electrodb": ">=3.9.3",
 		"hono": ">=4.13.8",
 		"ioredis": ">=6.0.0",
 		"kysely": "~0.29.6",
@@ -445,6 +457,9 @@
 			"optional": true
 		},
 		"better-auth": {
+			"optional": true
+		},
+		"electrodb": {
 			"optional": true
 		},
 		"hono": {

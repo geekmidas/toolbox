@@ -836,6 +836,9 @@ importers:
       better-auth:
         specifier: ~1.7.6
         version: 1.7.6(@opentelemetry/api@1.9.1)(next@16.3.6(@babel/core@7.28.0)(@opentelemetry/api@1.9.1)(@types/node@24.9.1)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(pg@8.23.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(vitest@5.0.2)(vue@3.5.18(typescript@7.0.2))
+      electrodb:
+        specifier: ~3.9.3
+        version: 3.9.3(@aws-sdk/client-dynamodb@3.1136.0)
       ioredis:
         specifier: ~6.0.0
         version: 6.0.0
@@ -1521,6 +1524,12 @@ packages:
     resolution: {integrity: sha512-8q1ICxcDjHId3bBryuu/j+1L9y5/3uQnwzLDt5j2ElcjZSoWmFtymdJy7OjLrluSMe0Z4mq5bcH4fxBXvlEHfw==}
     engines: {node: '>=20.0.0'}
 
+  '@aws-sdk/lib-dynamodb@3.1161.0':
+    resolution: {integrity: sha512-7BBhAGJHc5bbw8PenvVg2GN0L6JkNGrnZI0JBm7nQ8fCiGgwmA0c+jWrJkQtI+1R65MTpuFLAVU1qq0wsPsXaw==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      '@aws-sdk/client-dynamodb': ^3.1161.0
+
   '@aws-sdk/middleware-endpoint-discovery@3.972.37':
     resolution: {integrity: sha512-+KAK020JY95Q7Swwo5b9pl9S11VPuNLqecCW5bzkksWiU5pmI85lAloOD4qlIKIA/P8FlrRJ60XJ6+lnDQK/DQ==}
     engines: {node: '>=20.0.0'}
@@ -1592,6 +1601,12 @@ packages:
   '@aws-sdk/types@3.975.0':
     resolution: {integrity: sha512-WQlhs6juByzWOzj5fwxOx0mPJaEqMcG/sDpl3Id61B3XhKE63xY+0QWcnG+sWR/sCfprmreyUo1lM7IKZmHMzw==}
     engines: {node: '>=20.0.0'}
+
+  '@aws-sdk/util-dynamodb@3.996.9':
+    resolution: {integrity: sha512-16x2tRvl7OYpZ0W/DdFJieFriD13+RvuRBDbe5sj/tCEfK86HSGd7I2s5j0ivz8p6KWGkS+5wKRO9OliJkjUOQ==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      '@aws-sdk/client-dynamodb': ^3.1111.0
 
   '@aws-sdk/util-locate-window@3.804.0':
     resolution: {integrity: sha512-zVoRfpmBVPodYlnMjgVjfGoEZagyRF5IPn3Uo6ZvOZp24chnW/FRstH7ESDHDDRga4z3V+ElUQHKpFDXWyBW5A==}
@@ -6061,6 +6076,9 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
+  electrodb@3.9.3:
+    resolution: {integrity: sha512-7RGiQt1mXunlhswzLW3wEwXdlIv2x32FzifOoJfyHFiyIrvRoUmfe69xIpoiOysHN4N/RKdxFQ53FlFA2nPQDA==}
+
   electron-to-chromium@1.5.200:
     resolution: {integrity: sha512-rFCxROw7aOe4uPTfIAx+rXv9cEcGx+buAF4npnhtTqCJk5KDFRnh3+KYj7rdVh6lsFt5/aPs+Irj9rZ33WMA7w==}
 
@@ -6890,6 +6908,9 @@ packages:
   jsonparse@1.3.1:
     resolution: {integrity: sha512-POQXvpdL69+CluYsillJ7SUhKvytYjW9vG/GKpnf+xP8UWgYEM/RaMzHHofbALDiKbbP1W8UEYmgGl39WkPZsg==}
     engines: {'0': node >= 0.2.0}
+
+  jsonschema@1.5.0:
+    resolution: {integrity: sha512-K+A9hhqbn0f3pJX17Q/7H6yQfD/5OXgdrR5UE12gMXCiN9D5Xq2o5mddV2QEcX/bjla99ASsAAQUyMCCRWAEhw==}
 
   jsonwebtoken@9.0.3:
     resolution: {integrity: sha512-MT/xP0CrubFRNLNKvxJ2BYfy53Zkm++5bX9dtuPbqAeQpTVe0MQTFhao8+Cp//EmJp244xt6Drw/GVEGCUj40g==}
@@ -10050,6 +10071,15 @@ snapshots:
       mnemonist: 0.38.3
       tslib: 2.8.1
 
+  '@aws-sdk/lib-dynamodb@3.1161.0(@aws-sdk/client-dynamodb@3.1136.0)':
+    dependencies:
+      '@aws-sdk/client-dynamodb': 3.1136.0
+      '@aws-sdk/core': 3.979.1
+      '@aws-sdk/util-dynamodb': 3.996.9(@aws-sdk/client-dynamodb@3.1136.0)
+      '@smithy/core': 3.38.1
+      '@smithy/types': 4.19.0
+      tslib: 2.8.1
+
   '@aws-sdk/middleware-endpoint-discovery@3.972.37':
     dependencies:
       '@aws-sdk/endpoint-cache': 3.972.11
@@ -10192,6 +10222,11 @@ snapshots:
   '@aws-sdk/types@3.975.0':
     dependencies:
       '@smithy/types': 4.19.0
+      tslib: 2.8.1
+
+  '@aws-sdk/util-dynamodb@3.996.9(@aws-sdk/client-dynamodb@3.1136.0)':
+    dependencies:
+      '@aws-sdk/client-dynamodb': 3.1136.0
       tslib: 2.8.1
 
   '@aws-sdk/util-locate-window@3.804.0':
@@ -15176,6 +15211,14 @@ snapshots:
 
   ee-first@1.1.1: {}
 
+  electrodb@3.9.3(@aws-sdk/client-dynamodb@3.1136.0):
+    dependencies:
+      '@aws-sdk/lib-dynamodb': 3.1161.0(@aws-sdk/client-dynamodb@3.1136.0)
+      '@aws-sdk/util-dynamodb': 3.996.9(@aws-sdk/client-dynamodb@3.1136.0)
+      jsonschema: 1.5.0
+    transitivePeerDependencies:
+      - '@aws-sdk/client-dynamodb'
+
   electron-to-chromium@1.5.200: {}
 
   emoji-regex-xs@1.0.0: {}
@@ -16094,6 +16137,8 @@ snapshots:
       graceful-fs: 4.2.11
 
   jsonparse@1.3.1: {}
+
+  jsonschema@1.5.0: {}
 
   jsonwebtoken@9.0.3:
     dependencies:

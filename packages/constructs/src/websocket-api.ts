@@ -39,6 +39,7 @@ import {
 	type Declaration,
 	provideKey,
 	serviceKey,
+	type WebSocketEdgeLimits,
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import type { Hono } from 'hono';
@@ -53,6 +54,11 @@ import { onShutdown } from './shutdown';
 import type { Telemetry } from './telemetry';
 import { WebSocketCore } from './websocket/core';
 import { FrameShape, type WebSocketFrame } from './websocket/frame';
+import {
+	type ResolvedWebSocketLimits,
+	resolveLimits,
+	type WebSocketLimits,
+} from './websocket/limits';
 import {
 	type NoMessages,
 	type WebSocketMessages,
@@ -85,6 +91,18 @@ export {
 	WebSocketMessageDeclaresDiscriminator,
 	WebSocketMessageNotAnObject,
 } from './websocket/frame';
+export {
+	DEFAULT_WEBSOCKET_LIMITS,
+	InvalidWebSocketLimit,
+	LIMIT_CLOSE,
+	MemoryLimitStore,
+	RedisLimitStore,
+	type ResolvedWebSocketLimits,
+	resolveLimits,
+	TokenBucket,
+	type WebSocketLimitStore,
+	type WebSocketLimits,
+} from './websocket/limits';
 export {
 	InvalidWebSocketMessage,
 	type MessageAction,
@@ -183,8 +201,35 @@ export interface WebSocketApiConfig<
 	telemetry?: Telemetry;
 	/** Seconds between pings; a socket that misses one is dropped. Default 30. */
 	heartbeat?: number;
-	/** The largest frame accepted, in bytes. Default 1 MiB. */
+	/**
+	 * The largest frame accepted, in bytes. Default 1 MiB. A surface that
+	 * only pushes — its clients write over HTTP — declares no routes and
+	 * sets this small.
+	 */
 	maxPayload?: number;
+	/**
+	 * What one client may ask of it: handshakes a minute, handshakes in
+	 * flight and open sockets per client address, frames a second per
+	 * socket, and — with `maxConnectionsPer` — sockets per identity. All but
+	 * the last are on by default; on the Redis transport they hold across
+	 * every replica. See `WebSocketLimits`.
+	 *
+	 * ```ts
+	 * limits: {
+	 *   messagesPerSecond: 20,
+	 *   maxConnectionsPer: (data) => data.userId as string,
+	 *   maxConnections: 5,
+	 *   overflow: 'closeOldest',
+	 * }
+	 * ```
+	 */
+	limits?: WebSocketLimits;
+	/**
+	 * Refuse, with 403, an upgrade that sends no `Origin` — which no browser
+	 * and no native client omits, but a script does. Default false: a server
+	 * may hold a socket too, and the limits apply to it either way.
+	 */
+	requireOrigin?: boolean;
 }
 
 /** A replica count that is not a whole number of at least one. */
@@ -221,6 +266,8 @@ export class WebSocketApi<
 	 * `discriminator`. What a client of the surface decodes by.
 	 */
 	readonly frame: { readonly discriminator?: string };
+	/** What one client may ask of it, defaults filled in. */
+	readonly limits: ResolvedWebSocketLimits;
 
 	/**
 	 * The surface as a dependency: `services.<id>` is its publisher, so an
@@ -247,6 +294,7 @@ export class WebSocketApi<
 		this.frame = config.frame
 			? { discriminator: config.frame.discriminator }
 			: {};
+		this.limits = resolveLimits(canonical, config.limits);
 
 		this.keys = {
 			url: provideKey(canonical, 'url'),
@@ -363,6 +411,9 @@ export class WebSocketApi<
 				channelOf(this.id),
 			),
 			trustedOrigins: origins,
+			...(this.config.requireOrigin ? { requireOrigin: true } : {}),
+			limits: this.limits,
+			logger: this.logger,
 			...(url ? { url } : {}),
 			...(this.config.heartbeat
 				? { heartbeatMs: this.config.heartbeat * 1000 }
@@ -458,6 +509,19 @@ export class WebSocketApi<
 		);
 	}
 
+	/**
+	 * The per-address limits the edge in front of it enforces too, so a
+	 * flood is refused before it reaches a replica.
+	 */
+	private get edgeLimits(): WebSocketEdgeLimits | undefined {
+		const { handshakesPerMinute, connectionsPerIp } = this.limits;
+		if (!handshakesPerMinute && !connectionsPerIp) return undefined;
+		return {
+			...(handshakesPerMinute ? { handshakesPerMinute } : {}),
+			...(connectionsPerIp ? { connectionsPerIp } : {}),
+		};
+	}
+
 	/** The declared messages, with the surface they are checked for. */
 	private get declared(): { surface: string; messages: TMessages } | undefined {
 		return this.config.messages
@@ -482,6 +546,7 @@ export class WebSocketApi<
 				...(this.config.replicas && this.config.replicas > 1
 					? { replicas: this.config.replicas }
 					: {}),
+				...(this.edgeLimits ? { limits: this.edgeLimits } : {}),
 				provides: [
 					this.keys.url,
 					this.keys.trustedOrigins,
