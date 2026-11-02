@@ -1,5 +1,7 @@
 # @geekmidas/envkit
 
+## 10.0.0-alpha.144
+
 ## 10.0.0-alpha.143
 
 ## 10.0.0-alpha.142
