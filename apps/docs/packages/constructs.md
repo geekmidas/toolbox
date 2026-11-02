@@ -261,13 +261,61 @@ export const say = realtime
 - **Browsers are checked against the graph.** An upgrade carrying an `Origin`
   outside `REALTIME_TRUSTED_ORIGINS` — read off what declares an edge to the
   surface, as a `RestApi`'s CORS origins are — is refused with 403. A client
-  with no `Origin` (a server, a load generator) is not a browser.
+  with no `Origin` (a server, a load generator) is not a browser. The origin
+  of the surface's own address, `REALTIME_URL`, is always trusted too — both
+  `https://realtime.example.com` and `wss://realtime.example.com` for
+  `wss://realtime.example.com` — because React Native's `WebSocket` sends the
+  socket's own origin as its `Origin`, so a native app connects without being
+  listed.
 - **Liveness** is the server's: a ping every `heartbeat` seconds (30), and a
   socket that missed the last one is dropped. One that stops reading while
   4 MB is queued for it is closed with 1013. On SIGTERM every socket is closed
   with **1012** — reconnect, and land on a process that is still up.
 - A site that declares an edge to the surface gets its URL alone, never the
   publisher: whoever holds that string can write to every socket.
+
+#### Flat frames — `frame: { discriminator }`
+
+Clients that already parse another shape — a released mobile build can't be
+changed in place — usually route on a flat key rather than `{ action, data }`.
+Name that key and the surface speaks it both ways:
+
+```typescript
+export const realtime = new WebSocketApi('Realtime', {
+  path: 'apps/realtime',
+  frame: { discriminator: 'type' }, // absent: { action, data }
+  messages: {
+    'chat.message.created': z.object({
+      chatId: z.string(),
+      message: ChatMessage,
+    }),
+    'scan.result': z.object({ ok: z.boolean() }),
+  },
+});
+
+// in a handler that .dependsOn([realtime]), or a route's `sockets`
+await services.realtime.send(ids, 'chat.message.created', { chatId, message });
+// wire: {"type":"chat.message.created","chatId":"…","message":{…}}
+```
+
+- **Outbound** is `{ [discriminator]: action, ...data }`, with `data` checked
+  by the action's schema first, as in the default shape. `send(ids, action,
+  data)` and `broadcast(action, data)` are typed the same way in both.
+- **Inbound** frames are routed on the same key, and every other field is the
+  route's body: `{ "type": "chat.say", "text": "hi" }` reaches
+  `route('chat.say')` with `body` `{ text: 'hi' }`. A reply is flat too —
+  `{ "type": "chat.say", ...returned }` — so a handler returns an object.
+- **`$error`** uses the same shape: `{ "type": "$error", "message", "issues"? }`.
+- **A flat frame carries no `id`.** Every field but the discriminator is data,
+  so a reply is paired by its action, not an echoed id.
+- **Refused when the surface is built.** A flat frame needs object data, so
+  `new WebSocketApi(…)` throws `WebSocketMessageNotAnObject` for a message
+  whose schema isn't an object (a union of objects is fine), and
+  `WebSocketMessageDeclaresDiscriminator` for one that has a field named the
+  discriminator itself. A surface without `messages` checks at send time
+  instead: `WebSocketDataNotAnObject`, `WebSocketDataHasDiscriminator`.
+- `realtime.frame` is the shape (`{ discriminator: 'type' }`, or `{}`), for a
+  client of the surface to decode by.
 
 ### `.dependsOn()` — the one primitive
 

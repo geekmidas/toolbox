@@ -5,7 +5,9 @@
  * built from it, and they run in its container and nowhere else. A frame is
  * routed on its `action` — `{ "action": "chat.send", "data": … }`, API
  * Gateway's shape — and the connection's lifecycle on `$connect` and
- * `$disconnect`.
+ * `$disconnect`. A surface whose clients already parse flat frames names the
+ * key the action lives in instead — `frame: { discriminator: 'type' }` reads
+ * and writes `{ "type": "chat.send", …data }`.
  *
  * Anything else reaches a socket through the surface's publisher:
  * `.dependsOn([realtime])` puts `services.realtime` in an endpoint, a cron or
@@ -47,6 +49,7 @@ import {
 import { envParserFor } from './endpoints/surfaceEnv';
 import { onShutdown } from './shutdown';
 import type { Telemetry } from './telemetry';
+import { FrameShape, type WebSocketFrame } from './websocket/frame';
 import {
 	type NoMessages,
 	type WebSocketMessages,
@@ -56,6 +59,13 @@ import { WebSocketRoute, WebSocketRouteBuilder } from './websocket/route';
 import { WebSocketSurfaceServer } from './websocket/server';
 import { transportFromConnectionString } from './websocket/transport';
 
+export {
+	WebSocketDataHasDiscriminator,
+	WebSocketDataNotAnObject,
+	type WebSocketFrame,
+	WebSocketMessageDeclaresDiscriminator,
+	WebSocketMessageNotAnObject,
+} from './websocket/frame';
 export {
 	InvalidWebSocketMessage,
 	type MessageAction,
@@ -109,6 +119,23 @@ export interface WebSocketApiConfig<
 	 * alike. Absent, any action and any data go, unchecked.
 	 */
 	messages?: TMessages;
+	/**
+	 * The shape its frames take. Absent, `{ "action": …, "id"?: …, "data": … }`.
+	 *
+	 * With a `discriminator`, frames are flat — the action under that key and
+	 * the data's fields beside it, both ways, `$error` replies included:
+	 *
+	 * ```ts
+	 * frame: { discriminator: 'type' },
+	 * // realtime.send(ids, 'chat.message.created', { chatId, message })
+	 * // wire: {"type":"chat.message.created","chatId":"…","message":{…}}
+	 * ```
+	 *
+	 * Every message must then be an object schema that has no field of that
+	 * name; one that is not is refused when the surface is built. A flat frame
+	 * carries no `id`: every other field is the data.
+	 */
+	frame?: WebSocketFrame;
 	/** The label it answers on. Absent, its id kebab-cased. */
 	subdomain?: string;
 	/** How many processes serve it on one machine. Default 1. */
@@ -151,6 +178,11 @@ export class WebSocketApi<
 	readonly logger: Logger;
 	readonly envParser: EnvironmentParser<{}>;
 	readonly telemetry?: Telemetry;
+	/**
+	 * The shape its frames take — `{ action, data }`, or flat under
+	 * `discriminator`. What a client of the surface decodes by.
+	 */
+	readonly frame: { readonly discriminator?: string };
 
 	/**
 	 * The surface as a dependency: `services.<id>` is its publisher, so an
@@ -171,6 +203,12 @@ export class WebSocketApi<
 		if (!Number.isInteger(replicas) || replicas < 1) {
 			throw new InvalidReplicaCount(canonical, replicas);
 		}
+
+		const frame = new FrameShape(canonical, config.frame?.discriminator);
+		if (config.messages) frame.check(config.messages);
+		this.frame = config.frame
+			? { discriminator: config.frame.discriminator }
+			: {};
 
 		this.keys = {
 			url: provideKey(canonical, 'url'),
@@ -206,6 +244,7 @@ export class WebSocketApi<
 					transport,
 					undefined,
 					declared,
+					frame,
 				);
 			},
 		};
@@ -224,7 +263,8 @@ export class WebSocketApi<
 	}
 
 	/**
-	 * The handler for frames whose `action` is `action`. `$default` answers
+	 * The handler for frames whose `action` — or, for flat frames, whose
+	 * discriminator — is `action`. `$default` answers
 	 * any action nothing else does.
 	 */
 	route(
@@ -264,7 +304,7 @@ export class WebSocketApi<
 			Object.values(module).filter(WebSocketRoute.isRoute),
 		);
 
-		const { connectionString, origins } = options.envParser
+		const { connectionString, origins, url } = options.envParser
 			.create((get) => ({
 				connectionString: get(this.keys.publisherConnectionString)
 					.string()
@@ -280,6 +320,8 @@ export class WebSocketApi<
 							.map((origin) => origin.trim())
 							.filter(Boolean),
 					),
+				// Its own address: a native client sends that origin.
+				url: get(this.keys.url).string().optional(),
 			}))
 			.parse();
 
@@ -293,6 +335,8 @@ export class WebSocketApi<
 			envParser: options.envParser,
 			logger: this.logger,
 			trustedOrigins: origins,
+			...(url ? { url } : {}),
+			...(this.config.frame ? { frame: this.config.frame } : {}),
 			...(this.declared ? { messages: this.declared.messages } : {}),
 			...(this.authenticator ? { authenticator: this.authenticator } : {}),
 			...(this.config.heartbeat

@@ -12,6 +12,12 @@ import { REDIS_PORT } from '../../../../testkit/test/ports';
 import type { Authenticator } from '../../construct-interface';
 import { runShutdownHooks } from '../../shutdown';
 import { WebSocketApi } from '../../websocket-api';
+import {
+	WebSocketDataHasDiscriminator,
+	WebSocketDataNotAnObject,
+	WebSocketMessageDeclaresDiscriminator,
+	WebSocketMessageNotAnObject,
+} from '../frame';
 import { InvalidWebSocketMessage, UnknownWebSocketMessage } from '../publisher';
 import { CLOSE, DuplicateWebSocketRoute } from '../server';
 import { UnsupportedWebSocketTransport } from '../transport';
@@ -276,6 +282,55 @@ describe('WebSocketApi', () => {
 		await expect(client(url)).resolves.toBeDefined();
 	});
 
+	it('trusts the origin of its own address, as a native client sends it', async () => {
+		const realtime = new WebSocketApi('Realtime', {
+			path: '.',
+			logger: silent,
+		});
+		const { url } = await serve(realtime, [], {
+			REALTIME_URL: 'wss://realtime.example.com',
+			REALTIME_TRUSTED_ORIGINS: 'https://app.example.com',
+		});
+
+		// React Native derives `Origin` from the socket's URL, wss:// as https://.
+		await expect(
+			client(url, { origin: 'https://realtime.example.com' }),
+		).resolves.toBeDefined();
+		await expect(
+			client(url, { origin: 'wss://realtime.example.com' }),
+		).resolves.toBeDefined();
+		// The configured ones still go, and nothing else does.
+		await expect(
+			client(url, { origin: 'https://app.example.com' }),
+		).resolves.toBeDefined();
+		await expect(
+			refused(url, { origin: 'https://evil.example.com' }),
+		).resolves.toBe(403);
+		await expect(
+			refused(url, { origin: 'http://realtime.example.com' }),
+		).resolves.toBe(403);
+		await expect(
+			refused(url, { origin: 'https://realtime.example.com:8443' }),
+		).resolves.toBe(403);
+	});
+
+	it('trusts its own address with a port, as gkm dev serves it', async () => {
+		const realtime = new WebSocketApi('Realtime', {
+			path: '.',
+			logger: silent,
+		});
+		const { url } = await serve(realtime, [], {
+			REALTIME_URL: 'ws://localhost:3001',
+		});
+
+		await expect(
+			client(url, { origin: 'http://localhost:3001' }),
+		).resolves.toBeDefined();
+		await expect(
+			refused(url, { origin: 'http://localhost:3002' }),
+		).resolves.toBe(403);
+	});
+
 	it('runs disconnect with the close code once a client leaves', async () => {
 		const realtime = new WebSocketApi('Realtime', {
 			path: '.',
@@ -521,6 +576,260 @@ describe('WebSocketApi', () => {
 		expect(
 			() => new WebSocketApi('Realtime', { path: '.', replicas: 0 }),
 		).toThrow(/at least one process/);
+	});
+});
+
+describe('WebSocketApi with flat frames', () => {
+	const messages = {
+		'chat.message.created': z.object({
+			chatId: z.string(),
+			message: z.object({ text: z.string().trim() }),
+		}),
+		'scan.result': z.object({ ok: z.boolean() }),
+	};
+
+	function flatSurface() {
+		return new WebSocketApi('Realtime', {
+			path: '.',
+			logger: silent,
+			frame: { discriminator: 'type' },
+			messages,
+		});
+	}
+
+	async function publisherOf(surface: ReturnType<typeof flatSurface>) {
+		return surface.service.register({
+			envParser: new EnvironmentParser({
+				REALTIME_PUBLISHER_CONNECTION_STRING: 'memory://gkm:ws:Realtime',
+			}),
+			context: undefined as never,
+		});
+	}
+
+	it('says the shape its frames take', () => {
+		expect(flatSurface().frame).toEqual({ discriminator: 'type' });
+		expect(
+			new WebSocketApi('Realtime', { path: '.', logger: silent }).frame,
+		).toEqual({});
+	});
+
+	it('sends a declared message flat, its data checked by its schema first', async () => {
+		const realtime = flatSurface();
+		const hello = realtime
+			.route('hello')
+			.handle(({ connection }) => ({ id: connection.id }));
+		const { url } = await serve(realtime, [{ hello }]);
+		const c = await client(url);
+		c.send({ type: 'hello' });
+		const { id } = await c.next();
+
+		const publisher = await publisherOf(realtime);
+		await publisher.send([id], 'chat.message.created', {
+			chatId: 'c1',
+			message: { text: '  hi  ' },
+		});
+
+		expect(await c.next()).toEqual({
+			type: 'chat.message.created',
+			chatId: 'c1',
+			message: { text: 'hi' },
+		});
+
+		await publisher.broadcast('scan.result', { ok: true });
+		expect(await c.next()).toEqual({ type: 'scan.result', ok: true });
+
+		await expect(
+			// @ts-expect-error — data its schema refuses
+			publisher.send(id, 'scan.result', { ok: 'yes' }),
+		).rejects.toBeInstanceOf(InvalidWebSocketMessage);
+		expect(c.frames).toEqual([]);
+	});
+
+	it('routes an inbound frame on its discriminator, the rest of it the data', async () => {
+		const realtime = flatSurface();
+		const say = realtime
+			.route('chat.say')
+			.body(z.object({ chatId: z.string(), text: z.string() }))
+			.handle(({ body }) => ({ heard: body.text, in: body.chatId }));
+		const fallback = realtime
+			.route('$default')
+			.handle(({ body }) => ({ caught: body }));
+		const { url } = await serve(realtime, [{ say, fallback }]);
+		const c = await client(url);
+
+		c.send({ type: 'chat.say', chatId: 'c1', text: 'hi' });
+		expect(await c.next()).toEqual({
+			type: 'chat.say',
+			heard: 'hi',
+			in: 'c1',
+		});
+
+		// An `action` field is only data now.
+		c.send({ type: 'other', action: 'chat.say', n: 1 });
+		expect(await c.next()).toEqual({
+			type: 'other',
+			caught: { action: 'chat.say', n: 1 },
+		});
+	});
+
+	it('answers a bad frame with a flat $error', async () => {
+		const realtime = flatSurface();
+		const say = realtime
+			.route('chat.say')
+			.body(z.object({ text: z.string() }))
+			.handle(({ body }) => body);
+		const scalar = realtime.route('scalar').handle(() => 42);
+		const { url } = await serve(realtime, [{ say, scalar }]);
+		const c = await client(url);
+
+		c.socket.send('not json');
+		expect(await c.next()).toEqual({
+			type: '$error',
+			message: 'Frames are JSON.',
+		});
+
+		c.send({ action: 'chat.say', data: { text: 'hi' } });
+		expect(await c.next()).toEqual({
+			type: '$error',
+			message: 'A frame names its `type`.',
+		});
+
+		c.send({ type: 'nope' });
+		expect(await c.next()).toEqual({
+			type: '$error',
+			message: "No route answers 'nope'.",
+		});
+
+		c.send({ type: 'chat.say', text: 3 });
+		const invalid = await c.next();
+		expect(invalid).toMatchObject({
+			type: '$error',
+			message: 'The frame was invalid.',
+		});
+		expect(invalid.issues).toHaveLength(1);
+
+		// A reply that is not an object has no fields to sit beside `type`.
+		c.send({ type: 'scalar' });
+		expect(await c.next()).toEqual({
+			type: '$error',
+			message: 'The route failed.',
+		});
+
+		c.send({ type: 'chat.say', text: 'still here' });
+		expect(await c.next()).toEqual({ type: 'chat.say', text: 'still here' });
+	});
+
+	it('refuses data it cannot put beside the discriminator, when nothing is declared', async () => {
+		const realtime = new WebSocketApi('Realtime', {
+			path: '.',
+			logger: silent,
+			frame: { discriminator: 'type' },
+		});
+		const hello = realtime
+			.route('hello')
+			.handle(({ connection }) => ({ id: connection.id }));
+		const { url } = await serve(realtime, [{ hello }]);
+		const c = await client(url);
+		c.send({ type: 'hello' });
+		const { id } = await c.next();
+		const publisher = await realtime.service.register({
+			envParser: new EnvironmentParser({
+				REALTIME_PUBLISHER_CONNECTION_STRING: 'memory://gkm:ws:Realtime',
+			}),
+			context: undefined as never,
+		});
+
+		await expect(publisher.send(id, 'note', 'text')).rejects.toBeInstanceOf(
+			WebSocketDataNotAnObject,
+		);
+		await expect(
+			publisher.broadcast('note', { type: 'spoofed' }),
+		).rejects.toBeInstanceOf(WebSocketDataHasDiscriminator);
+
+		await publisher.send(id, 'note', { text: 'hi' });
+		expect(await c.next()).toEqual({ type: 'note', text: 'hi' });
+		expect(c.frames).toEqual([]);
+	});
+
+	it('refuses, when it is built, a message that is not an object', () => {
+		const build = () =>
+			new WebSocketApi('Realtime', {
+				path: '.',
+				frame: { discriminator: 'type' },
+				messages: {
+					'chat.said': z.object({ text: z.string() }),
+					count: z.number(),
+				},
+			});
+
+		expect(build).toThrow(WebSocketMessageNotAnObject);
+		expect(build).toThrow(/'count' is not an object schema/);
+	});
+
+	it('refuses, when it is built, a message that declares the discriminator', () => {
+		const build = () =>
+			new WebSocketApi('Realtime', {
+				path: '.',
+				frame: { discriminator: 'type' },
+				messages: {
+					'scan.result': z.object({ type: z.string(), ok: z.boolean() }),
+				},
+			});
+
+		expect(build).toThrow(WebSocketMessageDeclaresDiscriminator);
+		expect(build).toThrow(/'scan.result' message declares a 'type' field/);
+	});
+
+	it('takes a union of objects, and refuses one whose member is not', () => {
+		expect(
+			() =>
+				new WebSocketApi('Realtime', {
+					path: '.',
+					frame: { discriminator: 'type' },
+					messages: {
+						result: z.union([
+							z.object({ ok: z.literal(true) }),
+							z.object({ ok: z.literal(false), reason: z.string() }),
+						]),
+					},
+				}),
+		).not.toThrow();
+		expect(
+			() =>
+				new WebSocketApi('Realtime', {
+					path: '.',
+					frame: { discriminator: 'type' },
+					messages: {
+						result: z.union([z.object({ ok: z.boolean() }), z.string()]),
+					},
+				}),
+		).toThrow(WebSocketMessageNotAnObject);
+		expect(
+			() =>
+				new WebSocketApi('Realtime', {
+					path: '.',
+					frame: { discriminator: 'kind' },
+					messages: {
+						result: z.union([
+							z.object({ ok: z.boolean() }),
+							z.object({ kind: z.string() }),
+						]),
+					},
+				}),
+		).toThrow(WebSocketMessageDeclaresDiscriminator);
+	});
+
+	it('takes any message schema when frames are { action, data }', () => {
+		expect(
+			() =>
+				new WebSocketApi('Realtime', {
+					path: '.',
+					messages: {
+						count: z.number(),
+						typed: z.object({ type: z.string() }),
+					},
+				}),
+		).not.toThrow();
 	});
 });
 
