@@ -48,6 +48,10 @@ export enum ResourceType {
 	Credential = 'gkm:aws:Credential',
 	// A KMS key and its HMAC key, handed over as one `kms://` URL.
 	Encryption = 'gkm:aws:Encryption',
+	// An API Gateway WebSocket API and the table its connections are kept in:
+	// where a client opens it, who may, and the `apigateway://` string its
+	// publisher sends through.
+	WebSocketApi = 'gkm:aws:WebSocketApi',
 	// Mail received: where its raw messages are read, and the domain it is
 	// addressed to — both made by the inbox's provider, not by SST.
 	Inbox = 'gkm:aws:Inbox',
@@ -159,6 +163,11 @@ type ExternalApiValue = { url: string; credentials: string };
 type CredentialValue = { credentials: string };
 type EncryptionValue = { url: string };
 type InboxValue = { url: string; domain: string };
+type WebSocketApiValue = {
+	url: string;
+	trustedOrigins: string;
+	publisherConnectionString: string;
+};
 type PostgresValue = Omit<Postgres, 'type'>;
 type BucketValue = Omit<Bucket, 'type'>;
 type SnsTopicValue = Omit<SnsTopic, 'type'>;
@@ -236,6 +245,12 @@ const inboxResolver = (name: string, value: InboxValue) => ({
 	[`${name}Domain`]: value.domain,
 });
 
+const webSocketApiResolver = (name: string, value: WebSocketApiValue) => ({
+	[`${name}Url`]: value.url,
+	[`${name}TrustedOrigins`]: value.trustedOrigins,
+	[`${name}PublisherConnectionString`]: value.publisherConnectionString,
+});
+
 const noopResolver = () => ({});
 
 /**
@@ -265,6 +280,7 @@ export const sstResolvers: Resolvers = {
 	[ResourceType.Credential]: credentialResolver,
 	[ResourceType.Encryption]: encryptionResolver,
 	[ResourceType.Inbox]: inboxResolver,
+	[ResourceType.WebSocketApi]: webSocketApiResolver,
 };
 
 /**

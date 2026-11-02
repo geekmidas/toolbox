@@ -177,6 +177,60 @@ describe('withHandlers', () => {
 	});
 });
 
+describe('withHandlers, for a WebSocket surface on AWS', () => {
+	const surface = {
+		Realtime: {
+			kind: 'websocket-api',
+			id: 'Realtime',
+			path: 'apps/realtime',
+			routes: [
+				{
+					id: 'Realtimechat.send',
+					action: 'chat.send',
+					handler: 'src/routes.ts#send',
+					dependencies: [{ target: 'Uploads', kind: 'objects' }],
+				},
+			],
+			provides: [],
+		},
+	} as const satisfies ConstructManifest;
+
+	const generated = withHandlers(surface, {
+		websocketRoutes: [
+			{
+				surface: 'Realtime',
+				action: '$connect',
+				handler: 'apps/realtime/.gkm/aws/websocket/connect.handler',
+			},
+			{
+				surface: 'Realtime',
+				action: 'chat.send',
+				handler: 'apps/realtime/.gkm/aws/websocket/route-chat_send.handler',
+			},
+		],
+	});
+
+	it('points a declared route at its Lambda, keeping its edges', () => {
+		expect(generated.Realtime.routes).toContainEqual({
+			id: 'Realtimechat.send',
+			action: 'chat.send',
+			handler: 'apps/realtime/.gkm/aws/websocket/route-chat_send.handler',
+			dependencies: [{ target: 'Uploads', kind: 'objects' }],
+		});
+	});
+
+	it('adds the adaptor’s own $connect, which reaches nothing', () => {
+		// It writes the connection table whether or not the surface has a
+		// connect handler, so a broadcast has every connection to read.
+		expect(generated.Realtime.routes).toContainEqual({
+			id: 'Realtime$connect',
+			action: '$connect',
+			handler: 'apps/realtime/.gkm/aws/websocket/connect.handler',
+			dependencies: [],
+		});
+	});
+});
+
 describe('manifestModule', () => {
 	it('emits literals, not data', () => {
 		// `as const satisfies` is what keeps every id and key selectable by

@@ -62,6 +62,13 @@ export {
 } from './aws/ses';
 export { Topic, type TopicProps } from './aws/Topic';
 export {
+	regionOfEndpoint,
+	routeSelectionExpression,
+	WebSocketApiSurface,
+	type WebSocketApiSurfaceProps,
+	type WebSocketSurfaceRoute,
+} from './aws/WebSocketApiSurface';
+export {
 	ProvidesMismatch,
 	UnknownDeclarationKind,
 	UnresolvedDependency,

@@ -349,6 +349,54 @@ and `surface.testPublisher()` is a publisher over a recording sink (see
 [WebSocket clients](#websocket-clients)). `surface.publisher(sink)` is the
 surface's typed publisher over a sink of an adaptor's own.
 
+#### On AWS: API Gateway
+
+The same surface deploys to an SST stage unchanged. `gkm build --provider
+aws` writes one Lambda per route under `.gkm/aws/websocket/`, each serving
+only its own route through `AmazonApiGatewayWebSocket` (from
+`@geekmidas/constructs/aws`). It also writes `$connect` and `$disconnect`,
+even when the surface declares no handler for them. `fromManifest` in
+`@geekmidas/cloud` then creates an API Gateway WebSocket API and mounts
+each Lambda on its route key. API Gateway picks the route from
+`$request.body.action`, or from `$request.body.<discriminator>` when the
+surface sets `frame.discriminator`, so a frame reaches the route
+`message()` would send it to on Node.
+
+| | compose (Node) | AWS (API Gateway) |
+|---|---|---|
+| who holds the socket | the surface's process | API Gateway |
+| `$connect` | the upgrade: Origin check, then `connect()` | a Lambda: Origin check, then `connect()`. A refusal answers with its status |
+| `connection.data` | in memory, beside the socket | a DynamoDB connection table the surface owns |
+| `send` / `close` | over Redis, to the process holding the socket | `postToConnection` / `deleteConnection` |
+| `broadcast` | every process | every id in the connection table |
+| `<ID>_PUBLISHER_CONNECTION_STRING` | `redis://…` | `apigateway://<region>?endpoint=…&table=…` |
+
+`services.realtime` works from any Lambda that declared the edge
+(`.dependsOn([realtime])`). The link hands that Lambda the `apigateway://`
+string, `execute-api:ManageConnections` on the API, and access to the table.
+A connection that has gone (410) is dropped from the table without an error,
+the same way the Redis publisher drops a socket no process holds.
+
+The connection table is a DynamoDB table that `@geekmidas/cloud` creates next
+to the API. It is keyed by connection id, and rows expire through a TTL a
+little after API Gateway's two-hour limit on a connection. It isn't the
+`Cache` construct, because a cache has no way to list its keys and a
+broadcast needs every id. A surface on AWS declares nothing extra for it.
+
+This target's limits come from API Gateway, not from the surface's config:
+
+- **Connection lifetime**: at most 2 hours, and 10 minutes idle. API Gateway
+  sends its own pings, so `heartbeat` doesn't apply. A client reconnects
+  as it would after a restart.
+- **Frame size**: 128 KB per message, sent in frames of up to 32 KB. This
+  replaces `maxPayload`.
+- **Close codes**: `close(ids, code, reason)` ends the connections, but
+  API Gateway closes with a code of its own, so the client doesn't see
+  `code` or `reason`.
+- **Sending from `$connect`**: a `$connect` handler can't send to the
+  connection it is accepting, because the connection doesn't exist until
+  the handler returns. Send from the first route the client calls instead.
+
 ### `.dependsOn()` — the one primitive
 
 Every builder takes it: endpoints, functions, crons, queue workers, and

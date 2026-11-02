@@ -348,6 +348,8 @@
 		"qs": "~6.16.0"
 	},
 	"devDependencies": {
+		"@aws-sdk/client-apigatewaymanagementapi": "~3.1136.0",
+		"@aws-sdk/client-dynamodb": "~3.1136.0",
 		"@aws-sdk/client-kms": "~3.1136.0",
 		"@better-auth/expo": "~1.7.6",
 		"@geekmidas/audit": "workspace:^",
@@ -380,6 +382,8 @@
 		"zod": "~4.6.5"
 	},
 	"peerDependencies": {
+		"@aws-sdk/client-apigatewaymanagementapi": ">=3.1136.0",
+		"@aws-sdk/client-dynamodb": ">=3.1136.0",
 		"@aws-sdk/client-kms": ">=3.1136.0",
 		"@geekmidas/audit": "workspace:^",
 		"@geekmidas/auth": "workspace:*",
@@ -401,6 +405,12 @@
 		"ws": ">=8.22.0"
 	},
 	"peerDependenciesMeta": {
+		"@aws-sdk/client-apigatewaymanagementapi": {
+			"optional": true
+		},
+		"@aws-sdk/client-dynamodb": {
+			"optional": true
+		},
 		"@aws-sdk/client-kms": {
 			"optional": true
 		},

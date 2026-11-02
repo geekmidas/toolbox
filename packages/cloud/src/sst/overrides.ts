@@ -98,19 +98,21 @@ export type OverrideFor<D, B extends ManifestBackends = {}> = D extends {
 									? EmailOverride<EmailBackendOf<B>>
 									: K extends 'rest-api'
 										? Partial<sst.aws.ApiGatewayV2Args>
-										: K extends 'secret'
-											? SecretProps
-											: K extends 'credential'
-												? CredentialProps
-												: K extends 'encryption'
-													? Partial<EncryptionProps>
-													: K extends 'external-api'
-														? Omit<ExternalApiProps, 'url'>
-														: K extends 'inbox'
-															? // Its provider's values; the deploy's env otherwise.
-																Partial<Omit<InboxProps, 'topicId'>>
-															: // Derived databases, compute, mobile apps, OIDC.
-																never
+										: K extends 'websocket-api'
+											? Partial<sst.aws.ApiGatewayWebSocketArgs>
+											: K extends 'secret'
+												? SecretProps
+												: K extends 'credential'
+													? CredentialProps
+													: K extends 'encryption'
+														? Partial<EncryptionProps>
+														: K extends 'external-api'
+															? Omit<ExternalApiProps, 'url'>
+															: K extends 'inbox'
+																? // Its provider's values; the deploy's env otherwise.
+																	Partial<Omit<InboxProps, 'topicId'>>
+																: // Derived databases, compute, mobile apps, OIDC.
+																	never
 	: never;
 
 /** Whether `{}` satisfies an override — whether the id can be left out. */

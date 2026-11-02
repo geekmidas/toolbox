@@ -5,8 +5,16 @@
 	"@aws-sdk/client-acm": {
 		"dependencies": "~3.1136.0"
 	},
+	"@aws-sdk/client-apigatewaymanagementapi": {
+		"devDependencies": "~3.1136.0",
+		"peerDependencies": ">=3.1136.0"
+	},
 	"@aws-sdk/client-cloudfront": {
 		"dependencies": "~3.1136.0"
+	},
+	"@aws-sdk/client-dynamodb": {
+		"devDependencies": "~3.1136.0",
+		"peerDependencies": ">=3.1136.0"
 	},
 	"@aws-sdk/client-iam": {
 		"dependencies": "~3.1136.0"

@@ -32,7 +32,7 @@ import type {
 	SandboxResult,
 } from '../../../sandbox/sandbox';
 import { SurfacesUnhealthy } from '../health';
-import { createSstTarget, SstConfigNotFound } from '../index';
+import { createSstTarget, healthPath, SstConfigNotFound } from '../index';
 import { SST_OUTPUTS_FILE } from '../outputs';
 
 const STAGE = 'production';
@@ -428,5 +428,16 @@ describe('AWS credentials from the environment', () => {
 	it('has nothing for half a key pair', async () => {
 		await expect(get({ AWS_ACCESS_KEY_ID: 'AKIA' })).resolves.toBeUndefined();
 		await expect(get({})).resolves.toBeUndefined();
+	});
+});
+
+describe('healthPath', () => {
+	it('asks a backend on /health and a site on /', () => {
+		expect(healthPath('rest-api', 'backend')).toBe('/health');
+		expect(healthPath('site', 'web')).toBe('/');
+	});
+
+	it('asks a WebSocket surface nothing: API Gateway answers its handshake', () => {
+		expect(healthPath('websocket-api', 'backend')).toBeUndefined();
 	});
 });
