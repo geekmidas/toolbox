@@ -13,6 +13,17 @@ import type {
 	WebSocketMessages,
 	WebSocketPublisher,
 } from './publisher';
+import {
+	requestConnect,
+	requestDisconnect,
+	requestMessage,
+	type TestConnectRequest,
+	type TestDisconnectRequest,
+	type TestMessageRequest,
+	type TestMessageResponse,
+	type TestWebSocketPublisher,
+	type WebSocketTestSurface,
+} from './testing';
 
 /** One open connection, as a handler sees it. */
 export interface Connection {
@@ -79,7 +90,14 @@ export type RouteKind = 'connect' | 'disconnect' | 'message';
  * Carries `surface` and `constructs` the way an endpoint does, so discovery
  * records what its process reaches without knowing what a route is.
  */
-export class WebSocketRoute {
+export class WebSocketRoute<
+	TKind extends RouteKind = RouteKind,
+	TSchema extends StandardSchemaV1 | undefined = StandardSchemaV1 | undefined,
+	TServices extends Service[] = Service[],
+	/** What the handler returns. */
+	TReturn = unknown,
+	TMessages extends WebSocketMessages = WebSocketMessages,
+> {
 	readonly __IS_WEBSOCKET_ROUTE__ = true;
 
 	static isRoute(value: unknown): value is WebSocketRoute {
@@ -91,17 +109,130 @@ export class WebSocketRoute {
 	}
 
 	constructor(
-		readonly kind: RouteKind,
+		readonly kind: TKind,
 		/** The `action` it answers; `$connect` and `$disconnect` for the lifecycle. */
 		readonly action: string,
-		readonly surface: { id: string },
+		/** The surface it was built from — what `request()` builds a core on. */
+		readonly surface: WebSocketTestSurface,
 		readonly services: readonly Service[],
 		/** Construct ids it depends on — its edges in the manifest. */
 		readonly constructs: readonly string[],
 		readonly handler: (context: never) => unknown,
-		readonly schema?: StandardSchemaV1,
+		readonly schema?: TSchema,
 	) {}
+
+	/**
+	 * Run the handler as its surface would, with no server and no socket —
+	 * as `endpoint.request()` runs an endpoint.
+	 *
+	 * - `connect`: resolves with the connection's `data`, or rejects with what
+	 *   refused it (an `UnauthorizedError` stays a 401).
+	 * - a message route: `body` is encoded as a frame and checked by the
+	 *   route's schema; resolves with the handler's return, or rejects with
+	 *   what it threw or an `InvalidWebSocketRequest`.
+	 * - `disconnect`: resolves once the handler has run, or rejects with what
+	 *   it threw.
+	 */
+	request(
+		...[request]: RequestArgs<TKind, TSchema, TServices, TMessages>
+	): Promise<WebSocketRouteResult<TKind, TReturn>> {
+		const route = this as AnyRoute;
+		const given = (request ?? {}) as TestConnectRequest & TestDisconnectRequest;
+		if (this.kind === 'connect') {
+			return requestConnect(route, this.surface, given) as never;
+		}
+		if (this.kind === 'disconnect') {
+			return requestDisconnect(route, this.surface, given) as never;
+		}
+		return requestMessage(
+			route,
+			this.surface,
+			given as unknown as TestMessageRequest,
+		).then(({ returned }) => returned) as never;
+	}
+
+	/**
+	 * A message route's `request()`, with every frame it wrote back to the
+	 * connection — each `reply()` and the reply itself — beside its return.
+	 */
+	fullRequest(
+		this: WebSocketRoute<'message', TSchema, TServices, TReturn, TMessages>,
+		request: WebSocketRouteRequest<'message', TSchema, TServices, TMessages>,
+	): Promise<TestMessageResponse<Awaited<TReturn>>> {
+		return requestMessage(
+			this as AnyRoute,
+			this.surface,
+			request as unknown as TestMessageRequest,
+		) as Promise<TestMessageResponse<Awaited<TReturn>>>;
+	}
 }
+
+type AnyRoute = WebSocketRoute<any, any, any, any, any>;
+
+/** A message route needs a body; the lifecycle's request may be left out. */
+type RequestArgs<
+	TKind extends RouteKind,
+	TSchema extends StandardSchemaV1 | undefined,
+	TServices extends Service[],
+	TMessages extends WebSocketMessages,
+> = TKind extends 'message'
+	? [request: WebSocketRouteRequest<TKind, TSchema, TServices, TMessages>]
+	: [request?: WebSocketRouteRequest<TKind, TSchema, TServices, TMessages>];
+
+/** What `request()` takes for each kind of route. */
+export type WebSocketRouteRequest<
+	TKind extends RouteKind,
+	TSchema extends StandardSchemaV1 | undefined,
+	TServices extends Service[],
+	TMessages extends WebSocketMessages,
+> = TestCallOverrides<TServices, TMessages> &
+	(TKind extends 'connect'
+		? Omit<TestConnectRequest, 'services' | 'sockets'>
+		: TKind extends 'disconnect'
+			? Omit<TestDisconnectRequest, 'services' | 'sockets'>
+			: Omit<
+					TestMessageRequest<
+						TSchema extends StandardSchemaV1
+							? StandardSchemaV1.InferInput<TSchema>
+							: unknown
+					>,
+					'services' | 'sockets'
+				>);
+
+/** `services` typed by what the route depends on; `sockets` by the surface. */
+export interface TestCallOverrides<
+	TServices extends Service[],
+	TMessages extends WebSocketMessages,
+> {
+	/**
+	 * Instances for the route's dependencies — a test's transaction for
+	 * `database`. Any it depends on and is not handed here is registered.
+	 */
+	services?: Partial<ServiceRecord<TServices>>;
+	/** The handler's `sockets` — `surface.testPublisher()` to assert on. */
+	sockets?: TestWebSocketPublisher<TMessages>;
+}
+
+/** What `request()` resolves with for each kind of route. */
+export type WebSocketRouteResult<
+	TKind extends RouteKind,
+	TReturn,
+> = TKind extends 'connect'
+	? ConnectData<Awaited<TReturn>>
+	: TKind extends 'disconnect'
+		? undefined
+		: Awaited<TReturn>;
+
+/** A connect handler's return as the connection keeps it: `{}` for nothing. */
+type ConnectData<T> = T extends undefined ? {} : T;
+
+/** What a handler may return, by kind: connect's becomes `data`. */
+type HandlerReturn<TKind extends RouteKind> = TKind extends 'connect'
+	?
+			| Record<string, unknown>
+			| undefined
+			| Promise<Record<string, unknown> | undefined>
+	: unknown;
 
 /** The builder `connect()`, `disconnect()` and `route()` start. */
 export class WebSocketRouteBuilder<
@@ -114,7 +245,7 @@ export class WebSocketRouteBuilder<
 	constructor(
 		private readonly kind: TKind,
 		private readonly action: string,
-		private readonly surface: { id: string },
+		private readonly surface: WebSocketTestSurface,
 		private readonly _services: readonly Service[] = [],
 		private readonly _constructs: readonly string[] = [],
 		private readonly schema?: TSchema,
@@ -158,16 +289,11 @@ export class WebSocketRouteBuilder<
 	 * sent back to the connection as the reply to that frame; a connect
 	 * handler's is kept as the connection's `data`.
 	 */
-	handle(
+	handle<TReturn extends HandlerReturn<TKind>>(
 		handler: TKind extends 'connect'
-			? (
-					context: ConnectContext<TServices, TMessages>,
-				) =>
-					| Record<string, unknown>
-					| undefined
-					| Promise<Record<string, unknown> | undefined>
+			? (context: ConnectContext<TServices, TMessages>) => TReturn
 			: TKind extends 'disconnect'
-				? (context: DisconnectContext<TServices, TMessages>) => unknown
+				? (context: DisconnectContext<TServices, TMessages>) => TReturn
 				: (
 						context: MessageContext<
 							TSchema extends StandardSchemaV1
@@ -176,8 +302,8 @@ export class WebSocketRouteBuilder<
 							TServices,
 							TMessages
 						>,
-					) => unknown,
-	): WebSocketRoute {
+					) => TReturn,
+	): WebSocketRoute<TKind, TSchema, TServices, TReturn, TMessages> {
 		return new WebSocketRoute(
 			this.kind,
 			this.action,

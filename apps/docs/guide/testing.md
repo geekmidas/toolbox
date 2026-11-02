@@ -281,6 +281,33 @@ string deployed — write payload schemas with `z.iso.datetime()`, not
 `queue(q).invoke(...)` / `subscriber(s).invoke(...)` run a consumer on its own —
 a redelivery, say — and deliver whatever it publishes.
 
+### Pushes to a WebSocket surface
+
+What a handler sends through `services.<surface>` of a `WebSocketApi` is
+recorded, per test, rather than delivered: `sockets(realtime)` is the
+recorder every handler in the test was handed. Each send is still checked by
+the surface's declared `messages`, so an invalid push fails the request as it
+would deployed.
+
+```typescript
+it('tells the chat a message arrived', async ({ browser, sockets }) => {
+  await browser.api.post('/chats/c1/messages', { body: { text: 'hi' } });
+
+  expect(sockets(realtime).sent).toEqual([
+    {
+      ids: ['a.1'],
+      action: 'chat.message.created',
+      data: { chatId: 'c1', text: 'hi' },
+      frame: { type: 'chat.message.created', chatId: 'c1', text: 'hi' }, // the wire
+    },
+  ]);
+});
+```
+
+`.broadcasts` and `.closed` record the rest. The surface's own routes are
+tested with `route.request()` — see
+[Testing WebSocket routes](/packages/constructs#testing-websocket-routes).
+
 ### State lives for the test file
 
 A fake is loaded once per test file, not once per test, so what it keeps

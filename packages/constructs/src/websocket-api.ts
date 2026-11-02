@@ -59,6 +59,7 @@ import {
 } from './websocket/publisher';
 import { WebSocketRoute, WebSocketRouteBuilder } from './websocket/route';
 import { WebSocketSurfaceServer } from './websocket/server';
+import { TestWebSocketPublisher } from './websocket/testing';
 import {
 	TransportSink,
 	transportFromConnectionString,
@@ -98,6 +99,9 @@ export type {
 	DisconnectContext,
 	MessageContext,
 	RouteKind,
+	TestCallOverrides,
+	WebSocketRouteRequest,
+	WebSocketRouteResult,
 } from './websocket/route';
 export { WebSocketRoute, WebSocketRouteBuilder } from './websocket/route';
 export {
@@ -105,6 +109,21 @@ export {
 	type WebSocketServerOptions,
 	WebSocketSurfaceServer,
 } from './websocket/server';
+export {
+	InvalidWebSocketRequest,
+	type RecordedBroadcast,
+	type RecordedClose,
+	type RecordedMessage,
+	type RecordedSend,
+	RecordingSink,
+	type TestConnection,
+	type TestConnectRequest,
+	type TestDisconnectRequest,
+	type TestMessageRequest,
+	type TestMessageResponse,
+	TestWebSocketPublisher,
+	type WebSocketTestSurface,
+} from './websocket/testing';
 export {
 	type Delivery,
 	MemoryTransport,
@@ -268,14 +287,12 @@ export class WebSocketApi<
 
 	/** The handler a connection's upgrade runs: refuse it, or say who it is. */
 	connect(): WebSocketRouteBuilder<'connect', undefined, [], TMessages> {
-		return new WebSocketRouteBuilder('connect', '$connect', { id: this.id });
+		return new WebSocketRouteBuilder('connect', '$connect', this);
 	}
 
 	/** The handler a closed connection runs. */
 	disconnect(): WebSocketRouteBuilder<'disconnect', undefined, [], TMessages> {
-		return new WebSocketRouteBuilder('disconnect', '$disconnect', {
-			id: this.id,
-		});
+		return new WebSocketRouteBuilder('disconnect', '$disconnect', this);
 	}
 
 	/**
@@ -286,7 +303,7 @@ export class WebSocketApi<
 	route(
 		action: string,
 	): WebSocketRouteBuilder<'message', undefined, [], TMessages> {
-		return new WebSocketRouteBuilder('message', action, { id: this.id });
+		return new WebSocketRouteBuilder('message', action, this);
 	}
 
 	/** What authenticates a connection — its session reaches `connect()`. */
@@ -406,6 +423,43 @@ export class WebSocketApi<
 			...(this.declared ? { messages: this.declared.messages } : {}),
 			...(this.authenticator ? { authenticator: this.authenticator } : {}),
 		});
+	}
+
+	/**
+	 * The surface's publisher over `sink` — typed, checked and encoded as
+	 * `services.<id>` is. What an adaptor with a sink of its own (MSW, a
+	 * Lambda) hands the code that sends to its connections.
+	 */
+	publisher(sink: WebSocketSink): WebSocketPublisher<TMessages> {
+		return new WebSocketPublisher<TMessages>(
+			sink,
+			this.declared,
+			new FrameShape(this.id, this.config.frame?.discriminator),
+		);
+	}
+
+	/**
+	 * A publisher of the type `services.<id>` is, that records rather than
+	 * sends — hand it to an endpoint's spec, or to a route's `request()` as
+	 * `sockets`, and assert on `sent`, `broadcasts` and `closed`.
+	 *
+	 * Every send is checked by the declared `messages` and encoded by `frame`,
+	 * as deployed: an invalid push rejects, and each record carries the
+	 * frame a client would parse.
+	 *
+	 * ```ts
+	 * const realtime = surface.testPublisher();
+	 * await sendMessage.request({ services: { realtime }, … });
+	 * expect(realtime.sent).toEqual([
+	 *   { ids: ['a.1'], action: 'chat.sent', data: { text: 'hi' }, frame: … },
+	 * ]);
+	 * ```
+	 */
+	testPublisher(): TestWebSocketPublisher<TMessages> {
+		return new TestWebSocketPublisher<TMessages>(
+			new FrameShape(this.id, this.config.frame?.discriminator),
+			this.declared,
+		);
 	}
 
 	/** The declared messages, with the surface they are checked for. */
