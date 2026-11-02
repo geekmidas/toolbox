@@ -1,5 +1,31 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.146
+
+### Patch Changes
+
+- 🐛 [#359](https://github.com/geekmidas/toolbox/pull/359) [`159ca7e`](https://github.com/geekmidas/toolbox/commit/159ca7eab16548facd75f3891c38474fd2010a04) Thanks [@geekmidas](https://github.com/geekmidas)! - :bug: A server bundle builds without `@geekmidas/emailkit` installed
+
+  The worker loads emailkit lazily, but bundling a server (`gkm build`, esbuild) still failed with `Could not resolve "@geekmidas/emailkit/autoSubmitted"`. That broke every app that does not install emailkit. A missing emailkit is now left to run time. It is bundled in as before wherever it is installed. A worker that receives inbox mail without it throws `InboxNeedsEmailkit`, which says to install it.
+
+- Updated dependencies []:
+  - @geekmidas/audit@10.0.0-alpha.146
+  - @geekmidas/auth@10.0.0-alpha.146
+  - @geekmidas/cache@10.0.0-alpha.146
+  - @geekmidas/db@10.0.0-alpha.146
+  - @geekmidas/emailkit@10.0.0-alpha.146
+  - @geekmidas/envkit@10.0.0-alpha.146
+  - @geekmidas/errors@10.0.0-alpha.146
+  - @geekmidas/events@10.0.0-alpha.146
+  - @geekmidas/logger@10.0.0-alpha.146
+  - @geekmidas/manifest@10.0.0-alpha.146
+  - @geekmidas/rate-limit@10.0.0-alpha.146
+  - @geekmidas/schema@10.0.0-alpha.146
+  - @geekmidas/services@10.0.0-alpha.146
+  - @geekmidas/storage@10.0.0-alpha.146
+  - @geekmidas/telescope@10.0.0-alpha.146
+  - @geekmidas/testkit@10.0.0-alpha.146
+
 ## 10.0.0-alpha.145
 
 ### Patch Changes
