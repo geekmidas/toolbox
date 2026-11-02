@@ -58,6 +58,7 @@
     "compose-deploy-state",
     "compose-dns-prune",
     "compose-env-follows-edges",
+    "compose-local-mail-inbox",
     "compose-logs",
     "compose-redis-cache",
     "compose-remote-docker",
