@@ -21,6 +21,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
+import { deployedInboxEnv } from '../../compose/stack';
 import {
 	type AwsCredential,
 	MissingCredential,
@@ -162,6 +163,31 @@ async function exec(
 	}
 }
 
+/**
+ * What SST reads for each inbox, by key: the stage's domain, and what the
+ * inbox's provider made — its bucket's URL and its topic's string — from the
+ * stage's secrets, read by the same rule as on compose. SST provisions none
+ * of it; `fromManifest` references the topic and links the inbox's values.
+ */
+export async function inboxEnv(
+	ctx: DeployPhaseContext<unknown>,
+): Promise<Record<string, string>> {
+	if (!Object.values(ctx.manifest).some((d) => d.kind === 'inbox')) return {};
+	const stored = await ctx.secrets.read();
+	const domain = ctx.workspace.domains?.[ctx.stage];
+	const env = deployedInboxEnv(ctx.manifest, {
+		reader: 'sst deploy',
+		stage: ctx.stage,
+		domain,
+		secrets: stored?.custom ?? {},
+	});
+	// The URLs carry the provider's access key; the domain is public.
+	for (const value of Object.values(env)) {
+		if (value !== domain) ctx.secrets.mask(value);
+	}
+	return env;
+}
+
 /** The `sst` target, with its health checks tuned — for tests and hosts. */
 export function createSstTarget(
 	options: SstTargetOptions = {},
@@ -259,7 +285,11 @@ export function createSstTarget(
 			ctx.logger.info(`\n☁️  sst deploy --stage ${ctx.stage}`);
 			await clearOutputs(ctx.cwd);
 			await exec(ctx, run, deployCommand(ctx, run), {
-				env: { ...withoutAws(run.sandbox.env), ...awsEnv(run.aws) },
+				env: {
+					...withoutAws(run.sandbox.env),
+					...(await inboxEnv(ctx)),
+					...awsEnv(run.aws),
+				},
 				timeoutMs: DEPLOY_TIMEOUT_MS,
 			});
 

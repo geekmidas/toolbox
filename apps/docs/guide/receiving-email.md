@@ -81,8 +81,39 @@ sent it.
 - **Never use an attachment's `filename`** as a key or a path. It is the
   sender's to choose, `../../etc/passwd` included.
 - **Reply to addresses you know**, not to `Reply-To:`.
-- **Ignore auto-replies** (`Auto-Submitted:` other than `no`), or two systems
-  answer each other forever.
+
+## Reply loops
+
+A handler that replies to mail can end up answering its own reply. Say a
+message to `requests@acme…` forges `From: requests@globex…`. Acme's handler
+replies to Globex's inbox, whose handler replies back to Acme, and so on. A
+reply to someone's out-of-office loops the same way, between the handler and
+their auto-responder.
+
+Toolbox stops both with the `Auto-Submitted` header
+([RFC 3834](https://www.rfc-editor.org/rfc/rfc3834)), with no code in the
+handler:
+
+- **Every email sent while an inbox handler runs is marked
+  `Auto-Submitted: auto-replied`.** That covers any `Email` the handler or
+  anything it awaits sends. Mail sent from endpoints, crons and other
+  subscribers is not marked.
+- **Mail that arrives marked automatic never reaches the handler.** That is an
+  `Auto-Submitted` value other than `no`. It is dropped with a debug log, the
+  same way under `gkm dev`, in tests and when deployed.
+
+A handler that wants that mail, for example to record out-of-office replies,
+asks for it. It should not reply to it:
+
+```typescript
+export const onAutomated = worker
+  .inbox(requests)
+  .automated()
+  .handle(async ({ messages }) => { … });
+```
+
+Mail a handler hands to a queue and sends from there is not marked. Send replies
+from the handler itself.
 
 ## Locally: `gkm dev`
 
@@ -179,6 +210,23 @@ The region must be one SES receives mail in: `us-east-1`, `us-east-2`,
 `sa-east-1`. Any other fails the deploy with `SesReceivingUnsupported`, and a
 stage with no domain fails with `NoDomainForStage`.
 
+### On SST
+
+Deploying through SST (`gkm deploy --target sst`) works the same way. The
+`ses` provider runs first and creates everything above, then `gkm deploy`
+hands `sst deploy` what it created:
+
+- the inbox's URL and its topic's string, from the stage's secrets;
+- the stage's domain.
+
+SST creates nothing for the inbox. It subscribes the inbox subscriber's Lambda
+to the provider's topic, unfiltered, and links the inbox's `<ID>_URL` and
+`<ID>_DOMAIN` to that Lambda.
+
+Run outside `gkm deploy`, `sst deploy` fails with `InboxNotProvisioned`,
+naming the missing key. You can also pass the values to `fromManifest`
+yourself: `{ Requests: { url, domain, topic } }`.
+
 ## Worked example: Fixwell
 
 Fixwell is a made-up maintenance-request app for property-management
@@ -192,9 +240,7 @@ export const onRequest = worker.inbox(requests).handle(async ({ messages }) => {
     // The envelope says which agency. Never To:, never From:.
     const agency = agencies.find(message.recipient.subdomain);
     if (!agency || agency.suspended) continue;                    // 9, 10
-
-    const auto = message.headers['auto-submitted']?.[0];
-    if (auto && auto !== 'no') continue;                         // 11
+    // 11: an out-of-office never gets here: see "Reply loops".
 
     if (message.verdicts.virus === 'fail') {                     // 12
       await quarantine(agency, message.raw);                     // raw kept,
@@ -237,6 +283,6 @@ Each row of this table is a test, in
 | 8 | `requests+t_8f3k2q@globex…` (an Acme token) | anyone | any | Token not found in Globex: a new Globex ticket |
 | 9 | `requests@initech…` | anyone | any | Dropped: agency suspended |
 | 10 | `requests@unknown…` | anyone | any | Dropped: no such agency |
-| 11 | `requests@acme…` | an out-of-office reply | pass | Ignored: `Auto-Submitted: auto-replied` |
+| 11 | `requests@acme…` | an out-of-office reply | pass | Never handled: it is marked `Auto-Submitted: auto-replied` |
 | 12 | `requests@acme…` | anyone | virus fail | Quarantined: raw kept, attachments not stored |
 | 13 | `support@acme…` | anyone | any | Never received: not a declared address |

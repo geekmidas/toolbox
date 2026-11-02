@@ -22,6 +22,7 @@ import type { DatabaseProps } from './aws/Database';
 import type { EncryptionProps } from './aws/Encryption';
 import type { ExternalApiProps } from './aws/ExternalApi';
 import type { FileServerProps } from './aws/FileServer';
+import type { InboxProps } from './aws/Inbox';
 import type { ObjectStorageProps } from './aws/ObjectStorage';
 import type { QueueProps } from './aws/Queue';
 import type { SecretProps } from './aws/Secret';
@@ -105,8 +106,11 @@ export type OverrideFor<D, B extends ManifestBackends = {}> = D extends {
 													? Partial<EncryptionProps>
 													: K extends 'external-api'
 														? Omit<ExternalApiProps, 'url'>
-														: // Derived databases, compute, mobile apps, OIDC.
-															never
+														: K extends 'inbox'
+															? // Its provider's values; the deploy's env otherwise.
+																Partial<Omit<InboxProps, 'topicId'>>
+															: // Derived databases, compute, mobile apps, OIDC.
+																never
 	: never;
 
 /** Whether `{}` satisfies an override — whether the id can be left out. */

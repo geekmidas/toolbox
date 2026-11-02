@@ -33,7 +33,7 @@ interface Ticket {
 }
 
 interface Outcome {
-	kind: 'ticket' | 'threaded' | 'dropped' | 'ignored' | 'quarantined';
+	kind: 'ticket' | 'threaded' | 'dropped' | 'quarantined';
 	agency?: string;
 	reason?: string;
 	ticket?: Ticket;
@@ -58,11 +58,7 @@ async function handle(message: InboxMessage): Promise<Outcome> {
 	if (agency.suspended) {
 		return { kind: 'dropped', agency: slug, reason: 'agency suspended' };
 	}
-
-	const auto = message.headers['auto-submitted']?.[0];
-	if (auto && auto !== 'no') {
-		return { kind: 'ignored', agency: slug, reason: `auto-submitted: ${auto}` };
-	}
+	// An out-of-office never gets here: mail marked `Auto-Submitted` is dropped.
 
 	// Kept, never opened: the raw message stays where the provider stored it.
 	if (message.verdicts.virus === 'fail') {
@@ -296,7 +292,7 @@ describe('Fixwell', () => {
 		expect(last()).toEqual({ kind: 'dropped', reason: 'no such agency' });
 	});
 
-	it('11. an out-of-office reply: ignored', async ({ mailbox }) => {
+	it('11. an out-of-office reply: never handled', async ({ mailbox }) => {
 		await mailbox.receive({
 			to: 'requests@acme.fixwell.test',
 			from: ADA,
@@ -306,7 +302,7 @@ describe('Fixwell', () => {
 			verdicts: pass,
 		});
 
-		expect(last()).toMatchObject({ kind: 'ignored', agency: 'acme' });
+		expect(outcomes).toEqual([]);
 		expect(tickets).toHaveLength(1);
 	});
 

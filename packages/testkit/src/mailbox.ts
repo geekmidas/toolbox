@@ -34,6 +34,8 @@ export interface Email {
 	subject: string;
 	text: string;
 	html: string;
+	/** Every header, by lower-case name, as the parser an inbox uses reads them. */
+	headers: Readonly<Record<string, readonly string[]>>;
 	/** Every `http(s)` link in the email, in order. */
 	links: string[];
 	/** The first link — the one a sign-in or confirmation email is about. */
@@ -136,6 +138,7 @@ async function email(id: string, raw: Uint8Array): Promise<Email> {
 		subject: message.subject ?? '',
 		text,
 		html,
+		headers: message.headers,
 		links,
 		link: links[0],
 		attachments: message.attachments,

@@ -56,6 +56,7 @@ import { Encryption, type EncryptionProps } from './aws/Encryption';
 import { ExternalApi, type ExternalApiProps } from './aws/ExternalApi';
 import { FileServer } from './aws/FileServer';
 import { Function } from './aws/Function';
+import { Inbox, InboxTopic } from './aws/Inbox';
 import { ObjectStorage } from './aws/ObjectStorage';
 import { Queue } from './aws/Queue';
 import { RestApiSurface } from './aws/RestApiSurface';
@@ -214,6 +215,12 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	// producer's and subscribers' business, and SNS has no per-event
 	// configuration to map it onto.
 	topic: (stack, d, props) => new Topic(stack, d.id, props),
+	// What receives the mail is its provider's, made before SST runs; the
+	// inbox is the values that made, linked. See `aws/Inbox`.
+	inbox: (stack, d, props) => {
+		if (d.kind !== 'inbox') throw new UnknownDeclarationKind(d.kind, []);
+		return new Inbox(stack, d.id, { ...props, topicId: d.topic });
+	},
 
 	database: (stack, d, props, context) => {
 		if (d.kind !== 'database') throw new UnknownDeclarationKind(d.kind, []);
@@ -1007,6 +1014,76 @@ export function subscribeConsumers(
 	}
 }
 
+/** The topics inboxes declared: their provider's, never SST's to create. */
+export function inboxTopicIds(manifest: ConstructManifest): Set<string> {
+	return new Set(
+		Object.values(manifest).flatMap((declaration) =>
+			declaration.kind === 'inbox' ? [declaration.topic] : [],
+		),
+	);
+}
+
+/**
+ * Each inbox's topic, as the provider made it — the ARN the inbox read from
+ * the deploy — under the topic's own id, so its declaration's contract is
+ * checked like any other.
+ */
+export function referenceInboxTopics(
+	manifest: ConstructManifest,
+	provisioned: ProvisionedManifest,
+): void {
+	for (const declaration of Object.values(manifest)) {
+		if (declaration.kind !== 'inbox') continue;
+		const inbox = provisioned[declaration.id];
+		if (!(inbox instanceof Inbox)) continue;
+
+		const topic = new InboxTopic(declaration.topic, inbox);
+		const topicDeclaration = manifest[declaration.topic];
+		assertProvides(
+			declaration.topic,
+			topicDeclaration?.provides,
+			Object.keys(topic.provides()).map((role) =>
+				providedKeyFor(declaration.topic, 'topic', role),
+			),
+		);
+		provisioned[declaration.topic] = topic as unknown as Provisioned;
+	}
+}
+
+/**
+ * Subscribe each inbox subscriber's Lambda to its inbox's topic — the
+ * provider's, by ARN — linked to what it depends on, its inbox included.
+ *
+ * Unfiltered: SES publishes its receipt notification with no `type` attribute
+ * to filter on, and every message on an inbox's topic is for its subscribers.
+ * The subscriber's adaptor reads the notification as `email.received`.
+ */
+export function subscribeInboxes(
+	manifest: ConstructManifest,
+	provisioned: ProvisionedManifest,
+): void {
+	for (const declaration of Object.values(manifest)) {
+		if (declaration.kind !== 'inbox') continue;
+		const inbox = provisioned[declaration.id];
+		const topic = manifest[declaration.topic];
+		if (!(inbox instanceof Inbox) || topic?.kind !== 'topic') continue;
+
+		for (const subscriber of topic.subscribers) {
+			const { link } = resolveEdges(subscriber.dependencies, provisioned);
+			const vpc = vpcFor(link);
+			sst.aws.SnsTopic.subscribe(
+				`${subscriber.id}Subscription`,
+				inbox.topicArn,
+				{
+					handler: subscriber.handler,
+					link,
+					...(vpc ? { vpc } : {}),
+				},
+			);
+		}
+	}
+}
+
 /** The provisioner for a kind. Pure — the lookup is testable without Pulumi. */
 export function provisionerFor(kind: DeclarationKind): Provisioner {
 	const provisioner = PROVISIONERS[kind];
@@ -1109,10 +1186,14 @@ export function fromManifest<
 			: {}),
 	};
 
+	const inboxTopics = inboxTopicIds(manifest);
+
 	for (const id of [...rest, ...sites]) {
 		const declaration = manifest[id];
 		if (!declaration) continue;
 		if (PROVISIONED_ELSEWHERE.has(declaration.kind)) continue;
+		// Its provider made it: referenced once its inbox is, below.
+		if (inboxTopics.has(id)) continue;
 
 		const component = provisionerFor(declaration.kind)(
 			stack,
@@ -1136,9 +1217,12 @@ export function fromManifest<
 		provisioned[id] = component;
 	}
 
+	referenceInboxTopics(manifest, provisioned);
+
 	// The functions and crons, each queue's one consumer and each surface's
 	// endpoints, once everything they link to exists.
 	provisionCompute(stack, manifest, provisioned);
+	subscribeInboxes(manifest, provisioned);
 	provisionProcessors(stack, manifest, provisioned);
 	subscribeConsumers(manifest, provisioned);
 	mountRoutes(manifest, provisioned);

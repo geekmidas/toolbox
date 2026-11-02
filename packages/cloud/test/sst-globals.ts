@@ -54,6 +54,29 @@ class StubComponent {
 	}
 }
 
+/**
+ * A topic, plus SST's static `subscribe` to a topic made outside the app,
+ * recorded so a subscription to one is assertable.
+ */
+class StubSnsTopic extends StubComponent {
+	static readonly external: {
+		name: string;
+		topicArn: unknown;
+		subscriber: unknown;
+		args: unknown;
+	}[] = [];
+
+	static subscribe(
+		name: string,
+		topicArn: unknown,
+		subscriber: unknown,
+		args?: unknown,
+	) {
+		StubSnsTopic.external.push({ name, topicArn, subscriber, args });
+		return { name };
+	}
+}
+
 /** A router records what it was asked to route, so the wiring is assertable. */
 class StubRouter extends StubComponent {
 	readonly routed: { pattern: string; bucket: unknown }[] = [];
@@ -138,7 +161,7 @@ Object.assign(globalThis, {
 		aws: {
 			Bucket: StubComponent,
 			Queue: StubComponent,
-			SnsTopic: StubComponent,
+			SnsTopic: StubSnsTopic,
 			Function: StubComponent,
 			ApiGatewayV2: StubApiGateway,
 			CronV2: StubComponent,

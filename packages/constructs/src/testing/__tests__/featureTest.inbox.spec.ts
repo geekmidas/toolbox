@@ -143,10 +143,10 @@ describe('mailbox.receive', () => {
 		const eml = [
 			'From: Bea <bea@resident.example>',
 			'To: requests@acme.fixwell.test',
-			'Subject: Out of office',
-			'Auto-Submitted: auto-replied',
+			'Subject: Re: Leaking tap',
+			'X-Ticket: t_8f3k2q',
 			'',
-			'I am away.',
+			'Still dripping.',
 			'',
 		].join('\r\n');
 
@@ -156,7 +156,7 @@ describe('mailbox.receive', () => {
 			name: 'Bea',
 			address: 'bea@resident.example',
 		});
-		expect(received[0]!.headers['auto-submitted']).toEqual(['auto-replied']);
+		expect(received[0]!.headers['x-ticket']).toEqual(['t_8f3k2q']);
 	});
 
 	it('refuses an address no inbox receives at, as the receipt rule would', async ({
