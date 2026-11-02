@@ -29,7 +29,7 @@ import {
 	parseApiGatewayWebSocketUrl,
 	trustsOrigin,
 } from '@geekmidas/manifest';
-import { OptionalPeerMissing } from '../endpoints/optionalPeers';
+import { OptionalPeerMissing } from '../optionalPeers';
 import type { WebSocketApi } from '../websocket-api';
 import type { WebSocketCore } from './core';
 import { ownOrigins } from './origins';
