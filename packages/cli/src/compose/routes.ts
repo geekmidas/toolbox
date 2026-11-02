@@ -144,13 +144,12 @@ export function assertRouteRenderable(route: EdgeRoute): void {
 
 /** Where a stack's certificates come from. */
 export type EdgeTls =
-	/** The local stage: the proxy's own CA — Caddy's, which `gkm trust` installs. */
-	| { kind: 'internal' }
 	/** A deployed stage: Let's Encrypt, over HTTP-01, on first request. */
 	| { kind: 'acme' }
 	/**
-	 * A deployed stage's own certificate and key (`deploy.compose.tls`),
-	 * as the proxy's container reads them.
+	 * A certificate and key, as the proxy's container reads them: a deployed
+	 * stage's own (`deploy.compose.tls`), or — on the local stage — the one
+	 * gkm's local authority issued (`trust/authority.ts`).
 	 */
 	| { kind: 'files'; certFile: string; keyFile: string };
 

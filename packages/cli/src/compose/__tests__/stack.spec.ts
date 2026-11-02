@@ -11,6 +11,7 @@ import { postgresStatements } from '../../reconcile/provision';
 import { initStageSecrets } from '../../secrets/storage';
 import type { StageSecrets } from '../../secrets/types';
 import { NoDomainForStage } from '../../target/dokploy/domain';
+import { localAuthorityPaths } from '../../trust/authority';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { REDIS_IMAGE, RedisPasswordMissing } from '../redis';
 import {
@@ -18,6 +19,7 @@ import {
 	composeStack,
 	EdgeHostTaken,
 	envFile,
+	LOCAL_CA_IN_CONTAINER,
 	LocalCredentialsMissing,
 	MailInboxHostTaken,
 	NothingToCompose,
@@ -150,17 +152,81 @@ describe('the local stage', () => {
 		expect(s.compose.services.caddy?.ports).toEqual(['8443:443', '8080:80']);
 	});
 
-	it("issues the edge's certificates from Caddy's internal CA", () => {
+	it("serves the certificate gkm's local CA issues, as a deployed stage serves its own", () => {
 		const { caddyfile } = stack();
 
-		expect(caddyfile).toContain('local_certs');
+		expect(caddyfile).not.toContain('local_certs');
+		expect(caddyfile).not.toContain('tls internal');
+		// Plain HTTP is not sent to 443: the published port may be another.
+		expect(caddyfile).toContain('auto_https disable_redirects');
 		expect(caddyfile).toContain(`https://api.compose-app.localhost {
-	tls internal`);
+	tls /etc/caddy/tls/cert.pem /etc/caddy/tls/key.pem`);
 		expect(caddyfile).toContain('reverse_proxy api:3000');
 		expect(caddyfile).toContain('reverse_proxy auth:3001');
 		expect(caddyfile).toContain('https://compose-app.localhost {');
 		// A streamed response reaches the browser as it is written.
 		expect(caddyfile.match(/flush_interval -1/g)).toHaveLength(3);
+	});
+
+	describe("reaching the stage's own public hosts from a container (#351)", () => {
+		const authority = localAuthorityPaths('/home/dev/.gkm');
+		const local = () => stack({ localAuthority: authority });
+		const runsCode = ['api', 'auth', 'web', 'jobs'];
+
+		it('resolves each public host to the edge, through the host it publishes on', () => {
+			const s = local();
+			const hosts = s.routes
+				.map((route) => route.host)
+				.filter((host) => !host.startsWith('*.'));
+			expect(hosts).toEqual(
+				expect.arrayContaining([
+					'api.compose-app.localhost',
+					'auth.compose-app.localhost',
+					'compose-app.localhost',
+				]),
+			);
+
+			for (const name of runsCode) {
+				expect(s.compose.services[name]?.extra_hosts, name).toEqual(
+					[...new Set(hosts)].sort().map((host) => `${host}:host-gateway`),
+				);
+			}
+			// The URL a container is handed carries the edge's published port,
+			// which only the host answers on.
+			expect(app(s, 'api').url).toBe('https://api.compose-app.localhost:8443');
+		});
+
+		it("trusts gkm's root — its public certificate, read-only, never its key", () => {
+			const s = local();
+
+			for (const name of runsCode) {
+				const service = s.compose.services[name]!;
+				expect(service.volumes, name).toContain(
+					`/home/dev/.gkm/ca/root.pem:${LOCAL_CA_IN_CONTAINER}:ro`,
+				);
+				expect(service.environment?.NODE_EXTRA_CA_CERTS, name).toBe(
+					LOCAL_CA_IN_CONTAINER,
+				);
+			}
+			expect(JSON.stringify(s.compose)).not.toContain('root-key.pem');
+			expect(s.authority).toEqual(authority);
+		});
+
+		it('leaves the infrastructure and the edge as they are', () => {
+			const s = local();
+
+			for (const name of ['postgres', 'redis', 'caddy']) {
+				expect(s.compose.services[name]?.extra_hosts, name).toBeUndefined();
+				expect(
+					s.compose.services[name]?.environment?.NODE_EXTRA_CA_CERTS,
+					name,
+				).toBeUndefined();
+			}
+		});
+
+		it("uses the CLI's home's authority when none is given", () => {
+			expect(stack().authority).toEqual(localAuthorityPaths());
+		});
 	});
 
 	it('builds each image from this checkout, a site per stage', () => {
@@ -421,7 +487,10 @@ describe('a static site', () => {
 		const web = stack().compose.services.web!;
 
 		expect(web.env_file).toBeUndefined();
-		expect(web.environment).toBeUndefined();
+		// Only what lets its server-side code reach the stage's own hosts.
+		expect(web.environment).toEqual({
+			NODE_EXTRA_CA_CERTS: LOCAL_CA_IN_CONTAINER,
+		});
 		expect(web.depends_on).toBeUndefined();
 		expect(app(stack(), 'web').env).toBeUndefined();
 	});
@@ -457,13 +526,26 @@ describe('a deployed stage', () => {
 		expect(envs).not.toContain('203.0.113.10');
 	});
 
+	it('points no container at the edge and mounts no local root: its hosts are public', () => {
+		const s = deployed();
+
+		expect(s.authority).toBeUndefined();
+		for (const service of Object.values(s.compose.services)) {
+			expect(service.extra_hosts).toBeUndefined();
+			expect(service.environment?.NODE_EXTRA_CA_CERTS).toBeUndefined();
+			expect(JSON.stringify(service.volumes ?? [])).not.toContain(
+				LOCAL_CA_IN_CONTAINER,
+			);
+		}
+	});
+
 	it("answers on the stage's domains, with certificates from ACME", () => {
 		const s = deployed();
 
 		expect(app(s, 'api').url).toBe('https://api.shop.example.com');
 		expect(app(s, 'web').url).toBe('https://shop.example.com');
-		expect(s.caddyfile).not.toContain('tls internal');
-		expect(s.caddyfile).not.toContain('local_certs');
+		expect(s.caddyfile).not.toMatch(/^\s*tls /m);
+		expect(s.caddyfile).not.toContain('auto_https');
 		expect(s.caddyfile).toContain('https://api.shop.example.com {');
 		expect(s.compose.services.caddy?.ports).toEqual(['443:443', '80:80']);
 	});

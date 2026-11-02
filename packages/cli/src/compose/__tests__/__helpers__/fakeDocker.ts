@@ -78,9 +78,6 @@ export function fakeDocker(
 			calls.push({ op: 'health', args: service, ...on(stack) });
 			return 'healthy';
 		},
-		async copyOut(stack, service, from) {
-			calls.push({ op: 'copyOut', args: [service, from], ...on(stack) });
-		},
 		async push(stack, ref) {
 			calls.push({ op: 'push', args: ref, ...on(stack) });
 			return fakeDigest(ref);

@@ -1,3 +1,4 @@
+import { X509Certificate } from 'node:crypto';
 import {
 	mkdir,
 	mkdtemp,
@@ -11,6 +12,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+	ensureLocalAuthority,
+	issueLocalCertificate,
+	localAuthorityPaths,
+} from '../../trust/authority';
 import { sitesFor, toCaddyfile } from '../caddyfile';
 import type { Docker } from '../index';
 import { COMPOSE_PATH, reconcile } from '../index';
@@ -60,7 +66,6 @@ function fakeDocker(
 			calls.healthy++;
 			return options.healthy ?? false;
 		},
-		async copyOut() {},
 		async reload() {},
 	};
 
@@ -82,6 +87,7 @@ function postgresWith(databases: readonly string[]) {
 
 describe('reconcile', () => {
 	let root: string;
+	const rootDir = () => root;
 
 	beforeEach(async () => {
 		root = await mkdtemp(join(tmpdir(), 'gkm-reconcile-'));
@@ -317,7 +323,9 @@ describe('reconcile', () => {
 		const sites = join(root, '.gkm/caddy-sites');
 		await mkdir(sites, { recursive: true });
 		await writeFile(join(sites, 'development.caddy'), 'stale');
+		await writeFile(join(sites, 'development.pem'), 'stale');
 		await writeFile(join(sites, 'test.caddy'), 'the test stage');
+		await writeFile(join(sites, 'test.pem'), 'the test stage');
 
 		await run({
 			manifest: withApi,
@@ -326,7 +334,108 @@ describe('reconcile', () => {
 			addresses: { Api: 'http://localhost:3000' },
 		});
 
-		expect((await readdir(sites)).sort()).toEqual(['dev.caddy', 'test.caddy']);
+		// Each stage's certificate goes with its routes.
+		expect((await readdir(sites)).sort()).toEqual([
+			'dev.caddy',
+			'dev.pem',
+			'test.caddy',
+			'test.pem',
+		]);
+	});
+
+	describe('the edge certificate', () => {
+		const withApi = {
+			...manifest,
+			Api: {
+				kind: 'rest-api',
+				id: 'Api',
+				path: '.',
+				endpoints: [],
+				provides: ['API_URL'],
+			},
+		} as const satisfies ConstructManifest;
+		const authority = () => localAuthorityPaths(join(root, 'home'));
+		const edged = (overrides: Partial<Parameters<typeof reconcile>[0]> = {}) =>
+			run({
+				manifest: withApi,
+				authority: authority(),
+				addresses: { Api: 'http://localhost:3000' },
+				...overrides,
+			});
+
+		it('is issued from gkm’s local CA before anything starts, and Node trusts its root', async () => {
+			const result = await edged();
+
+			const root = new X509Certificate(
+				await readFile(authority().certFile, 'utf-8'),
+			);
+			const pem = await readFile(
+				join(rootDir(), '.gkm/caddy-sites/development.pem'),
+				'utf-8',
+			);
+			const leaf = new X509Certificate(pem);
+			expect(leaf.verify(root.publicKey)).toBe(true);
+			expect(leaf.checkIssued(root)).toBe(true);
+			expect(leaf.checkHost('api.toolbox.localhost')).toBe(
+				'*.toolbox.localhost',
+			);
+			expect(leaf.checkHost('toolbox.localhost')).toBe('toolbox.localhost');
+			// The key beside it, for the edge — the authority's own never is.
+			expect(pem).toMatch(/PRIVATE KEY/);
+			expect(pem).not.toContain(
+				(await readFile(authority().keyFile, 'utf-8')).trim(),
+			);
+			expect(result.env.NODE_EXTRA_CA_CERTS).toBe(authority().certFile);
+			const sites = await readFile(
+				join(rootDir(), '.gkm/caddy-sites/development.caddy'),
+				'utf-8',
+			);
+			expect(sites).toContain(
+				'tls /etc/caddy/sites/development.pem /etc/caddy/sites/development.pem',
+			);
+		});
+
+		it('is kept across runs, so a converged stack stays converged', async () => {
+			await edged();
+			const first = await readFile(
+				join(rootDir(), '.gkm/caddy-sites/development.pem'),
+				'utf-8',
+			);
+
+			const { docker } = fakeDocker({ healthy: true });
+			const second = await edged({ docker, sql: postgresWith(['orders']) });
+
+			expect(second.changed).toBe(false);
+			expect(
+				await readFile(
+					join(rootDir(), '.gkm/caddy-sites/development.pem'),
+					'utf-8',
+				),
+			).toBe(first);
+		});
+
+		it('is issued again when one in the file was not the authority’s', async () => {
+			await edged();
+			const file = join(rootDir(), '.gkm/caddy-sites/development.pem');
+			const other = await ensureLocalAuthority(
+				localAuthorityPaths(join(rootDir(), 'other-home')),
+			);
+			await writeFile(
+				file,
+				Object.values(issueLocalCertificate(other, ['x.localhost'])).join(''),
+			);
+
+			const { docker } = fakeDocker({ healthy: true });
+			const again = await edged({ docker, sql: postgresWith(['orders']) });
+
+			expect(again.changed).toBe(true);
+			const leaf = new X509Certificate(await readFile(file, 'utf-8'));
+			expect(
+				leaf.checkIssued(
+					new X509Certificate(await readFile(authority().certFile, 'utf-8')),
+				),
+			).toBe(true);
+		});
 	});
 
 	it('reports what changed on a first run', async () => {
@@ -472,7 +581,9 @@ describe('reconcile', () => {
 		await saveState(root, {
 			stage: 'development',
 			hash: planHash(first.plan, first.compose, {
-				caddyfile: toCaddyfile(sitesFor(first.plan, 'toolbox')),
+				caddyfile: toCaddyfile(sitesFor(first.plan, 'toolbox'), {
+					certificate: '/etc/caddy/sites/development.pem',
+				}),
 			}),
 		});
 

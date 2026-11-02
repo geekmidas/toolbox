@@ -145,7 +145,7 @@ export const app = new StaticSite('App', {
 
 Locally the site answers on `*.shop.localhost` (`*.test.shop.localhost` for
 `gkm test`), behind the dev edge like every other app, with a certificate from
-its own CA. Nothing has to be installed: browsers resolve every `*.localhost`
+gkm's local CA. Nothing has to be installed: browsers resolve every `*.localhost`
 to this machine, and so do macOS and systemd-resolved. `gkm dev` prints the
 address with a tenant to open:
 

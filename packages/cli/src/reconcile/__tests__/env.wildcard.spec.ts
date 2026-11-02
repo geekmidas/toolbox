@@ -87,6 +87,7 @@ describe('a wildcard site, locally', () => {
 				Api: 'http://localhost:3000',
 				App: 'http://localhost:3001',
 			}),
+			{ certificate: '/etc/caddy/sites/dev.pem' },
 		);
 
 		expect(caddyfile).toContain('*.shop.localhost');

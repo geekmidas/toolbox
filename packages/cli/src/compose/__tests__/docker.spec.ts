@@ -6,7 +6,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -137,21 +137,6 @@ describe("the suite's own stack, read through its compose file", () => {
 				'postgres',
 			),
 		).toBeUndefined();
-	});
-
-	it('copies a file out of a running service', async () => {
-		const to = join(
-			mkdtempSync(join(tmpdir(), 'gkm-docker-')),
-			'out',
-			'version',
-		);
-		await dockerCompose.copyOut(
-			SUITE,
-			'postgres',
-			'/usr/local/bin/docker-entrypoint.sh',
-			to,
-		);
-		expect(readFileSync(to, 'utf-8')).toMatch(/^#!/);
 	});
 
 	it('cannot ask a registry that is not there about an image, and says so', async () => {

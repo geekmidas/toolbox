@@ -266,7 +266,9 @@ describe("a file server's processors under gkm dev", () => {
 			},
 		});
 
-		const caddyfile = toCaddyfile([site!]);
+		const caddyfile = toCaddyfile([site!], {
+			certificate: '/etc/caddy/sites/dev.pem',
+		});
 		expect(caddyfile).toContain(`	@processors path /i/* /pdf/*
 	handle @processors {
 		reverse_proxy http://host.docker.internal:3000 {
@@ -281,7 +283,9 @@ describe("a file server's processors under gkm dev", () => {
 		const [site] = sitesFor(processingPlan(), 'shop');
 
 		expect(site).not.toHaveProperty('processors');
-		expect(toCaddyfile([site!])).not.toContain('@processors');
+		expect(
+			toCaddyfile([site!], { certificate: '/etc/caddy/sites/dev.pem' }),
+		).not.toContain('@processors');
 	});
 });
 
@@ -296,10 +300,11 @@ describe('hostFor', () => {
 });
 
 describe('caddyfileRoot', () => {
-	it('issues its own certificates rather than asking an authority', () => {
-		// `local_certs` rather than ACME: the CA is local and so are the names, so
-		// there is nothing to prove to a public one.
-		expect(caddyfileRoot()).toContain('local_certs');
+	it('asks no authority for certificates: each stage brings gkm’s own', () => {
+		// No ACME and no Caddy CA: every site names the certificate gkm's local
+		// authority issued for its stage.
+		expect(caddyfileRoot()).not.toContain('local_certs');
+		expect(caddyfileRoot()).toContain('auto_https disable_redirects');
 	});
 
 	it('imports each stage rather than holding the routes itself', () => {
@@ -312,11 +317,18 @@ describe('caddyfileRoot', () => {
 });
 
 describe('toCaddyfile', () => {
-	const rendered = () => toCaddyfile(sitesFor(plan(), 'shop'));
+	const rendered = () =>
+		toCaddyfile(sitesFor(plan(), 'shop'), {
+			certificate: '/etc/caddy/sites/dev.pem',
+		});
 
-	it('serves each host over TLS from the local CA', () => {
+	it('serves each host with the stage’s certificate from gkm’s local CA', () => {
 		expect(rendered()).toContain('https://uploadsserver.shop.localhost {');
-		expect(rendered()).toContain('tls internal');
+		// Certificate and key in one PEM, so the same path is both.
+		expect(rendered()).toContain(
+			'tls /etc/caddy/sites/dev.pem /etc/caddy/sites/dev.pem',
+		);
+		expect(rendered()).not.toContain('tls internal');
 	});
 
 	it('rewrites the bucket in as a prefix', () => {
@@ -334,13 +346,16 @@ describe('toCaddyfile', () => {
 	it('removes x-gkm-client-ip from every request it serves', () => {
 		// Only a service of the stack may say whose request it is: the auth
 		// server rate-limits by the address in it.
-		const caddyfile = toCaddyfile([
-			{
-				host: 'api.shop.localhost',
-				upstream: 'http://host.docker.internal:3000',
-			},
-			{ host: 'uploads.shop.localhost', upstream: 'http://minio:9000' },
-		]);
+		const caddyfile = toCaddyfile(
+			[
+				{
+					host: 'api.shop.localhost',
+					upstream: 'http://host.docker.internal:3000',
+				},
+				{ host: 'uploads.shop.localhost', upstream: 'http://minio:9000' },
+			],
+			{ certificate: '/etc/caddy/sites/dev.pem' },
+		);
 
 		expect(
 			caddyfile.match(/^\trequest_header -x-gkm-client-ip$/gm),
@@ -350,6 +365,8 @@ describe('toCaddyfile', () => {
 	it('renders a routeless edge rather than an invalid one', () => {
 		// An empty site list is a project that declared no file server, which is
 		// ordinary — not a reason to emit a config Caddy refuses to load.
-		expect(toCaddyfile([])).toContain('routes nothing');
+		expect(
+			toCaddyfile([], { certificate: '/etc/caddy/sites/dev.pem' }),
+		).toContain('routes nothing');
 	});
 });

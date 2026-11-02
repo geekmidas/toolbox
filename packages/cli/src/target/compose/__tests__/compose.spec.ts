@@ -399,13 +399,13 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 		expect(seen).toContainEqual(
 			expect.objectContaining({ type: 'phase.failed', phase: 'release' }),
 		);
-		// Caddy is up — its CA copied out — and the healthy apps are released.
-		expect(fake.calls).toContainEqual(
-			expect.objectContaining({
-				op: 'copyOut',
-				args: ['caddy', '/data/caddy/pki/authorities/local/root.crt'],
-			}),
-		);
+		// Caddy is up, serving the certificate gkm's local CA issued before
+		// anything started — nothing is copied out of it — and the healthy
+		// apps are released.
+		expect(fake.ops()).not.toContain('copyOut');
+		expect(
+			existsSync(join(dir, '.gkm', 'compose', 'development', 'local-edge.pem')),
+		).toBe(true);
 		const deployed = seen
 			.filter((e) => e.type === 'app.deployed')
 			.map((e) => (e as { app: string }).app)

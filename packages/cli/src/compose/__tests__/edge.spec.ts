@@ -884,7 +884,7 @@ describe('deploy.compose.proxy and tls', () => {
 		const local = safeValidateWorkspaceConfig(
 			config({ tls: { development: { certFile: 'a', keyFile: 'b' } } }),
 		);
-		expect(local.error?.issues[0]?.message).toContain("Caddy's local CA");
+		expect(local.error?.issues[0]?.message).toContain("gkm's local CA");
 		expect(
 			safeValidateWorkspaceConfig(
 				config({ tls: { production: { certFile: 'a' } } }),
@@ -1023,7 +1023,9 @@ describe('a stack behind the shared edge', () => {
 		});
 
 		expect(local.proxy).toBe('caddy');
-		expect(local.caddyfile).toContain('tls internal');
+		expect(local.caddyfile).toContain(
+			'tls /etc/caddy/tls/cert.pem /etc/caddy/tls/key.pem',
+		);
 		expect(local.traefik).toBeUndefined();
 		expect(local.compose.networks).toBeUndefined();
 	});

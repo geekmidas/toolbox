@@ -1,8 +1,10 @@
 /**
- * Installing the local edge's certificate authority into the OS trust store.
+ * Installing gkm's local certificate authority (`./authority.ts`) — the root
+ * every local edge's certificate is issued from — into the OS trust store.
  *
  * `NODE_EXTRA_CA_CERTS` covers everything gkm starts — the dev server, the test
- * suite, anything under `gkm exec` — because reconcile injects it. A browser
+ * suite, anything under `gkm exec`, a local stack's containers — because gkm
+ * injects it. A browser
  * reads none of that: it asks the operating system, so until the root is in the
  * system store a local `https://` address is "not secure", which is true and
  * unhelpful.
@@ -20,9 +22,12 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import prompts from 'prompts';
-import { loadWorkspaceConfig } from '../config.js';
 import { GkmError } from '../errors';
-import { LOCAL_CA_PATH } from '../reconcile/index.js';
+import {
+	ensureLocalAuthority,
+	type LocalAuthorityPaths,
+	localAuthorityPaths,
+} from './authority.js';
 
 const logger = console;
 
@@ -31,6 +36,8 @@ const run = promisify(execFile);
 export interface TrustOptions {
 	/** Print the commands rather than running them. */
 	dryRun?: boolean;
+	/** The authority to trust. Defaults to the one in the CLI's home. */
+	authority?: LocalAuthorityPaths;
 }
 
 /**
@@ -109,18 +116,16 @@ function installation(
 }
 
 /**
- * Trust the certificate authority this project's edge issues from.
+ * Trust gkm's local certificate authority, making it first if this machine
+ * has none — so it works before any edge has started, in any directory.
  *
  * Idempotent in effect: installing a root that is already trusted replaces the
  * same entry, so running it twice is not an error.
  */
 export async function trustCommand(options: TrustOptions = {}): Promise<void> {
-	const { workspace } = await loadWorkspaceConfig();
-	const certificate = join(workspace.root, LOCAL_CA_PATH);
-
-	if (!existsSync(certificate)) {
-		throw new NoLocalAuthority(certificate);
-	}
+	const { certFile: certificate } = await ensureLocalAuthority(
+		options.authority ?? localAuthorityPaths(),
+	);
 
 	const { describe, asks, steps } = installation(process.platform, certificate);
 
@@ -185,7 +190,7 @@ export async function ensureTrusted(
 			type: 'confirm',
 			name: 'install',
 			message:
-				"Trust this project's local certificate authority, so a browser " +
+				"Trust gkm's local certificate authority, so a browser " +
 				'accepts its https addresses? (asks for your password)',
 			initial: false,
 		});
@@ -257,30 +262,18 @@ export async function isTrusted(url: string): Promise<boolean> {
 }
 
 /**
- * Copy the root somewhere a tool that wants a file can read it.
+ * Copy the root — never its key — somewhere a tool that wants a file can read
+ * it.
  *
  * For anything that takes a CA bundle rather than reading the system store —
  * another language's HTTP client, a container, a CI job.
  */
-export async function exportLocalAuthority(to: string): Promise<void> {
-	const { workspace } = await loadWorkspaceConfig();
-	const certificate = join(workspace.root, LOCAL_CA_PATH);
-
-	if (!existsSync(certificate)) throw new NoLocalAuthority(certificate);
-
-	await copyFile(certificate, to);
-}
-
-/** The edge has not run, so there is no authority to trust yet. */
-export class NoLocalAuthority extends GkmError {
-	constructor(readonly path: string) {
-		super(
-			`No local certificate authority at ${path}. It is generated the first ` +
-				`time the edge starts, so run "gkm setup" (or "gkm dev") once — and ` +
-				`if this project declares no file server, nothing needs one.`,
-		);
-		this.name = 'NoLocalAuthority';
-	}
+export async function exportLocalAuthority(
+	to: string,
+	authority: LocalAuthorityPaths = localAuthorityPaths(),
+): Promise<void> {
+	const { certFile } = await ensureLocalAuthority(authority);
+	await copyFile(certFile, to);
 }
 
 /** A platform with no trust store this knows how to write to. */

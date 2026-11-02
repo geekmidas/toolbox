@@ -54,17 +54,20 @@ describe('sitesFor', () => {
 
 describe('toCaddyfile', () => {
 	it('forwards the host a caller used to an app, but not to a bucket', () => {
-		const file = toCaddyfile([
-			{
-				host: 'api.shop.localhost',
-				upstream: 'http://host.docker.internal:3000',
-			},
-			{
-				host: 'files.shop.localhost',
-				upstream: 'http://minio:9000',
-				rewrite: '/uploads{uri}',
-			},
-		]);
+		const file = toCaddyfile(
+			[
+				{
+					host: 'api.shop.localhost',
+					upstream: 'http://host.docker.internal:3000',
+				},
+				{
+					host: 'files.shop.localhost',
+					upstream: 'http://minio:9000',
+					rewrite: '/uploads{uri}',
+				},
+			],
+			{ certificate: '/etc/caddy/sites/dev.pem' },
+		);
 
 		const [app, bucket] = file.split('https://').slice(1);
 		expect(app).toContain('header_up Host {host}');

@@ -165,6 +165,13 @@ import { backendsOf, constructGlobs } from '../../reconcile/workspace.js';
 import { runOutput } from '../../run';
 import { toEmbeddableSecrets } from '../../secrets/storage.js';
 import type { StageSecrets } from '../../secrets/types.js';
+import {
+	ensureLocalAuthority,
+	ensureLocalCertificate,
+	type LocalAuthorityPaths,
+	localCertificateNames,
+	readLocalAuthority,
+} from '../../trust/authority.js';
 import type {
 	DnsProvider as DnsProviderConfig,
 	NormalizedWorkspace,
@@ -1490,19 +1497,6 @@ export async function releaseCompose(
 	);
 	const isDown = new Set(down.map(({ app }) => app));
 
-	if (stack.local) {
-		// Caddy's CA is generated on its first start. Copied out so a process —
-		// `verify` among them — can trust it without installing anything.
-		await deps.docker
-			.copyOut(
-				ref,
-				'caddy',
-				'/data/caddy/pki/authorities/local/root.crt',
-				caFile(run),
-			)
-			.catch(() => {});
-	}
-
 	await recordImages(ctx, run);
 
 	for (const app of stack.apps) {
@@ -1559,9 +1553,9 @@ export async function releaseCompose(
 		if (isDown.has(unit.name)) continue;
 		ctx.logger.info(`   ${unit.name.padEnd(12)} processors of ${unit.id}`);
 	}
-	if (stack.local) {
+	if (stack.authority) {
 		ctx.logger.info(
-			`\n🔐 Certificates are from Caddy's local CA: NODE_EXTRA_CA_CERTS=${join(stackDir(ctx.stage), 'caddy-root.crt')}`,
+			`\n🔐 Certificates are from gkm's local CA ("gkm trust" trusts it here): NODE_EXTRA_CA_CERTS=${stack.authority.certFile}`,
 		);
 	}
 
@@ -1649,8 +1643,8 @@ async function recordImages(
 /**
  * Each app asked through Caddy, over HTTPS, the certificate verified: an API
  * at `/health`, a site at `/`. On the local stage the edge is this machine and
- * its certificates are Caddy's internal CA's, so the CA `release` copied out
- * is the one trusted and the request goes to 127.0.0.1.
+ * its certificate is from gkm's local CA, so that root is the one trusted and
+ * the request goes to 127.0.0.1.
  */
 export async function verifyCompose(
 	ctx: ComposeContext,
@@ -1659,8 +1653,8 @@ export async function verifyCompose(
 ): Promise<void> {
 	const { stack } = run;
 	if (run.push) return;
-	const ca = stack.local
-		? await readFile(caFile(run), 'utf-8').catch(() => undefined)
+	const ca = stack.authority
+		? (await readLocalAuthority(stack.authority)).cert
 		: undefined;
 
 	ctx.logger.info(
@@ -1935,10 +1929,6 @@ export function composeResult(
 // Files
 // ============================================================================
 
-function caFile(run: ComposeRun): string {
-	return join(run.dir, 'caddy-root.crt');
-}
-
 /** The shared edge's compose file, as this machine hands it to compose. */
 function edgeFile(run: ComposeRun): string {
 	return join(run.dir, `${EDGE_PROJECT}.yml`);
@@ -1955,6 +1945,27 @@ function applied(
 	const { via, ...rest } = change;
 	run.changes.push(rest);
 	ctx.emit({ type: 'resource.applied', ...rest, via });
+}
+
+/** Where the local stage's edge certificate is kept, between runs. */
+export const LOCAL_EDGE_CERTIFICATE = 'local-edge.pem';
+
+/**
+ * The local stage's edge certificate, from gkm's local CA: the one kept in
+ * the stack's directory while it still covers every host, so an unchanged
+ * stack does not recreate its Caddy for a new certificate each run.
+ */
+async function localEdgeCertificate(
+	dir: string,
+	stack: ComposeStack,
+	authority: LocalAuthorityPaths,
+): Promise<{ cert: string; key: string }> {
+	const { cert, key } = await ensureLocalCertificate(
+		await ensureLocalAuthority(authority),
+		localCertificateNames(stack.resolution.project ?? '', stackHosts(stack)),
+		join(dir, LOCAL_EDGE_CERTIFICATE),
+	);
+	return { cert, key };
 }
 
 /** Write the stack's files: owner-only, since the env files hold secrets. */
@@ -1983,7 +1994,9 @@ async function writeStack(
 					cert: await readFile(stack.tls.certFile, 'utf-8'),
 					key: await readFile(stack.tls.keyFile, 'utf-8'),
 				}
-			: undefined;
+			: stack.authority
+				? await localEdgeCertificate(dir, stack, stack.authority)
+				: undefined;
 	const compose =
 		stack.caddyfile !== undefined
 			? withCaddyConfigs(stack.compose, {

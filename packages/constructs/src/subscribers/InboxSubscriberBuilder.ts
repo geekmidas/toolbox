@@ -190,9 +190,14 @@ export class InboxSubscriberBuilder<
 			if (notifications.length === 0) return undefined;
 			// emailkit is an optional peer: loaded here, by a worker that
 			// receives mail, so a worker that never does still starts without it.
+			// The `.catch` is what lets a bundler (esbuild, `gkm build`) leave a
+			// missing emailkit to run time instead of failing the build — and it
+			// is bundled in like any import wherever it is installed.
 			const { autoReplying, isAutoSubmitted } = await import(
 				'@geekmidas/emailkit/autoSubmitted'
-			);
+			).catch((error: unknown) => {
+				throw new InboxNeedsEmailkit(error);
+			});
 			const messages: InboxMessage[] = [];
 			for (const { payload } of notifications) {
 				for (const message of await inbox.messages(payload)) {
@@ -239,5 +244,17 @@ export class InboxSubscriberBuilder<
 			this.inbox,
 			this.acceptsAutomated,
 		);
+	}
+}
+
+/** A worker received mail for an inbox, and `@geekmidas/emailkit` is not installed. */
+export class InboxNeedsEmailkit extends Error {
+	constructor(override readonly cause: unknown) {
+		super(
+			'A worker received mail for an inbox, and reading it needs ' +
+				'@geekmidas/emailkit, which is not installed. Add it to the app that ' +
+				'runs the worker: pnpm add @geekmidas/emailkit',
+		);
+		this.name = 'InboxNeedsEmailkit';
 	}
 }

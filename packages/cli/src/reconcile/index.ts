@@ -30,9 +30,21 @@ import {
 import { dirname, join } from 'node:path';
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import { scopeTelemetryEnv } from '../telemetry/edges';
+import {
+	ensureLocalAuthority,
+	ensureLocalCertificate,
+	type LocalAuthorityPaths,
+	localAuthorityPaths,
+	localCertificateNames,
+} from '../trust/authority';
 import type { CacheBackend, EventsBackend } from '../types';
 import { TEST_STAGE } from '../workspace/stages';
-import { caddyfileRoot, sitesFor, toCaddyfile } from './caddyfile';
+import {
+	CADDY_SITES_IN_CONTAINER,
+	caddyfileRoot,
+	sitesFor,
+	toCaddyfile,
+} from './caddyfile';
 import { bucketClient, carrierClient, pgClient } from './clients';
 import {
 	type ComposeFile,
@@ -132,18 +144,13 @@ export const caddySitesPath = (stage: string) =>
 	`.gkm/caddy-sites/${stage}.caddy`;
 
 /**
- * Where the local edge's root certificate is copied to.
- *
- * Exported so a process can be pointed at it without installing anything:
- * `NODE_EXTRA_CA_CERTS` is the whole of the trust story for Node, and it needs
- * no sudo. A browser is the case that still wants the root in the system store,
- * which is a one-time `caddy trust` rather than something a reconcile should do
- * on a developer's behalf.
+ * Where one stage's certificate is kept: certificate and key in one PEM,
+ * issued from gkm's local authority (`trust/authority.ts`), beside the
+ * stage's routes — so the edge reads it through the mount it already has, and
+ * a stage removed takes its certificate with it.
  */
-export const LOCAL_CA_PATH = '.gkm/caddy-root.crt';
-
-/** Where Caddy keeps the root of the CA it generated. */
-const CADDY_ROOT_IN_CONTAINER = '/data/caddy/pki/authorities/local/root.crt';
+export const caddyCertificatePath = (stage: string) =>
+	`.gkm/caddy-sites/${stage}.pem`;
 
 /**
  * The Docker operations reconcile needs.
@@ -197,19 +204,6 @@ export interface Docker {
 		options?: { mounted?: readonly string[] },
 	): Promise<boolean>;
 	/**
-	 * Copy a file out of a running container.
-	 *
-	 * One case: the certificate authority the local edge generates. It lives in
-	 * the container's volume, and everything that has to *trust* it — Node, the
-	 * test suite, curl — lives outside.
-	 */
-	copyOut(
-		composePath: string,
-		service: string,
-		from: string,
-		to: string,
-	): Promise<void>;
-	/**
 	 * Ask a running service to re-read its configuration.
 	 *
 	 * The local edge is the case: its routes are a mounted file, and a container
@@ -232,6 +226,12 @@ export interface Docker {
 export interface ReconcileOptions {
 	/** The project root — where `.gkm/` lives. */
 	root: string;
+	/**
+	 * gkm's local certificate authority, which the edge's certificate is
+	 * issued from and every process is pointed at. The CLI's home's when not
+	 * given.
+	 */
+	authority?: LocalAuthorityPaths;
 	/**
 	 * Told each slow step as it starts — starting the containers, creating what
 	 * the constructs declare — and, given one, Docker shows its own progress.
@@ -474,9 +474,17 @@ export async function reconcile(
 	// The edge's config is part of what "converged" means: a file server added or
 	// a bucket renamed changes the routing without changing a container, and a
 	// hash that ignored it would leave the old routes in place.
-	const caddyfile = toCaddyfile(
-		sitesFor(plan, project, options.addresses, options.processorAddresses),
+	const sites = sitesFor(
+		plan,
+		project,
+		options.addresses,
+		options.processorAddresses,
 	);
+	const edged = plan.containers.includes('caddy');
+	const authorityPaths = options.authority ?? localAuthorityPaths();
+	const caddyfile = toCaddyfile(sites, {
+		certificate: `${CADDY_SITES_IN_CONTAINER}/${stage}.pem`,
+	});
 	// And so is what provisioning runs. A toolbox upgrade that changes the role
 	// DDL — a new grant — changes no container and no route, so a hash without
 	// it reported convergence and the existing database never got the grant.
@@ -511,11 +519,9 @@ export async function reconcile(
 		const env = exports
 			? resolved
 			: scopeTelemetryEnv(resolved, { uses: false, serviceName: project });
-		// Pointed at whether or not it exists yet: the copy below fills it in,
-		// and anything that reads the environment starts after this returns.
-		if (plan.containers.includes('caddy')) {
-			env.NODE_EXTRA_CA_CERTS = join(root, LOCAL_CA_PATH);
-		}
+		// gkm's root, which the edge's certificate is issued from — made below,
+		// before anything that reads the environment starts.
+		if (edged) env.NODE_EXTRA_CA_CERTS = authorityPaths.certFile;
 		return env;
 	};
 	const env = envWith(options.credentials);
@@ -536,9 +542,24 @@ export async function reconcile(
 		changed: false,
 	};
 
+	// The edge's certificate, issued before anything starts: the root exists
+	// from the first run, and one issued again — expiring, or a host it did
+	// not name — is a change the running edge has to be told about.
+	const certificate = edged
+		? await ensureLocalCertificate(
+				await ensureLocalAuthority(authorityPaths),
+				localCertificateNames(
+					project,
+					sites.map((site) => site.host),
+				),
+				join(root, caddyCertificatePath(stage)),
+			)
+		: undefined;
+
 	const recorded = await loadState(root, stage);
 	const postgresPort = ports[primaryPortKey('postgres')];
 	const converged =
+		!certificate?.issued &&
 		recorded?.hash === hash &&
 		// The file is gitignored and derived; a fresh checkout with the state
 		// still around must write it rather than trust a hash of nothing.
@@ -565,7 +586,7 @@ export async function reconcile(
 
 	// Before the containers: Caddy reads these at startup, and mounting a file
 	// that does not exist yet gets a directory instead.
-	if (plan.containers.includes('caddy')) {
+	if (edged) {
 		await write(join(root, CADDYFILE_PATH), caddyfileRoot());
 		await write(join(root, caddySitesPath(stage)), caddyfile);
 		await pruneCaddySites(root, [stage, options.localStage, TEST_STAGE]);
@@ -582,29 +603,12 @@ export async function reconcile(
 		);
 	}
 
-	// A running Caddy does not notice a changed import, so the routes this
-	// reconcile just wrote are inert until it is told. Failing is not fatal: the
-	// container may have only this second come up, in which case it already read
-	// them.
-	if (start && plan.containers.includes('caddy')) {
+	// A running Caddy does not notice a changed import or a certificate issued
+	// again, so what this reconcile just wrote is inert until it is told.
+	// Failing is not fatal: the container may have only this second come up, in
+	// which case it already read them.
+	if (start && edged) {
 		await docker.reload(composePath, 'caddy').catch(() => {});
-	}
-
-	// After `up`, because Caddy generates its CA on first start — and only then,
-	// so copying earlier gets nothing.
-	if (start && plan.containers.includes('caddy')) {
-		await docker
-			.copyOut(
-				composePath,
-				'caddy',
-				CADDY_ROOT_IN_CONTAINER,
-				join(root, LOCAL_CA_PATH),
-			)
-			.catch(() => {
-				// Not fatal. Without it, `https://` local addresses fail to verify
-				// and say so clearly; taking the whole reconcile down would be a
-				// worse trade for a developer who is not using them yet.
-			});
 	}
 
 	// A container that already had data may have been made with another
@@ -793,10 +797,15 @@ async function pruneCaddySites(
 	stages: ReadonlyArray<string | undefined>,
 ): Promise<void> {
 	const dir = dirname(join(root, caddySitesPath(TEST_STAGE)));
-	const keep = new Set(stages.map((stage) => stage && `${stage}.caddy`));
+	const keep = new Set(
+		stages.flatMap((stage) =>
+			stage ? [`${stage}.caddy`, `${stage}.pem`] : [],
+		),
+	);
 
 	for (const file of await readdir(dir)) {
-		if (file.endsWith('.caddy') && !keep.has(file)) {
+		// A stage's certificate goes with its routes.
+		if (/\.(caddy|pem)$/.test(file) && !keep.has(file)) {
 			await rm(join(dir, file));
 		}
 	}

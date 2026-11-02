@@ -12,7 +12,6 @@
 
 import { execFile, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { Docker } from './index';
@@ -117,20 +116,11 @@ export const dockerCli: Docker = {
 		await run('docker', args);
 	},
 
-	async copyOut(composePath, service, from, to) {
-		await mkdir(dirname(to), { recursive: true });
-		await run('docker', [
-			'compose',
-			...composeFiles(composePath),
-			'cp',
-			`${service}:${from}`,
-			to,
-		]);
-	},
-
 	async reload(composePath, service) {
 		// Caddy's own reload is graceful and validates first, so a config it
 		// refuses leaves the previous one serving rather than dropping the edge.
+		// Forced: a certificate issued again changes no line of the config, and
+		// an unforced reload of an unchanged config is skipped.
 		await run('docker', [
 			'compose',
 			...composeFiles(composePath),
@@ -141,6 +131,7 @@ export const dockerCli: Docker = {
 			'reload',
 			'--config',
 			'/etc/caddy/Caddyfile',
+			'--force',
 		]);
 	},
 

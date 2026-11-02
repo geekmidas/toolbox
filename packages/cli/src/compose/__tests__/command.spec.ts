@@ -1,3 +1,4 @@
+import { X509Certificate } from 'node:crypto';
 import {
 	existsSync,
 	mkdirSync,
@@ -20,6 +21,7 @@ import {
 	it,
 	vi,
 } from 'vitest';
+import { parse } from 'yaml';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { loadWorkspaceSettings } from '../../config';
 import { ExternalServicesNotConfigured } from '../../deploy/devServices';
@@ -34,6 +36,7 @@ import { StaleStageSecrets } from '../../secrets/stale';
 import { initStageSecrets } from '../../secrets/storage';
 import { ensureStageSecrets } from '../../setup/index';
 import { DeploySeedsFailed } from '../../target/seeds';
+import { localAuthorityPaths } from '../../trust/authority';
 import { DnsCredentialMissing } from '../dns';
 import {
 	ComposeModeConflict,
@@ -242,7 +245,6 @@ describe(
 				'seed',
 				'build',
 				'up',
-				'copyOut',
 				'probe',
 				// The worker has no route: Docker's health check is asked.
 				'health',
@@ -285,6 +287,52 @@ describe(
 			const env = readFileSync(join(stack, 'api.env'), 'utf-8');
 			expect(env).toMatch(/^DATABASE_URL=postgres:\/\//m);
 			expect(env).not.toContain('GKM_MASTER_KEY');
+		});
+
+		it("serves a certificate from gkm's local CA, whose root every app container trusts and reaches the edge by", async () => {
+			const stack = join(dir, '.gkm', 'compose', 'development');
+			const compose = parse(
+				readFileSync(join(stack, 'docker-compose.yml'), 'utf-8'),
+			);
+			const authority = localAuthorityPaths();
+			const root = new X509Certificate(
+				readFileSync(authority.certFile, 'utf-8'),
+			);
+
+			// Caddy's certificate is the one issued for the stage's hosts, and
+			// its CA is gkm's — not one Caddy made.
+			const leaf = new X509Certificate(compose.configs['tls-cert'].content);
+			expect(leaf.checkIssued(root)).toBe(true);
+			expect(leaf.verify(root.publicKey)).toBe(true);
+			for (const host of [
+				'api.compose-app.localhost',
+				'auth.compose-app.localhost',
+				'compose-app.localhost',
+			]) {
+				expect(leaf.checkHost(host), host).toBeDefined();
+			}
+			expect(compose.configs['tls-key'].content).toMatch(/PRIVATE KEY/);
+			// The root's key is never in the stack.
+			expect(JSON.stringify(compose)).not.toContain(
+				readFileSync(authority.keyFile, 'utf-8').trim().split('\n')[1],
+			);
+			// Kept for the next run, so an unchanged stack keeps its Caddy.
+			expect(readFileSync(join(stack, 'local-edge.pem'), 'utf-8')).toContain(
+				compose.configs['tls-cert'].content.trim(),
+			);
+
+			for (const name of ['api', 'auth', 'web', 'jobs']) {
+				const service = compose.services[name];
+				expect(service.extra_hosts, name).toContain(
+					'api.compose-app.localhost:host-gateway',
+				);
+				expect(service.volumes, name).toContain(
+					`${authority.certFile}:/etc/gkm/local-ca.pem:ro`,
+				);
+				expect(service.environment.NODE_EXTRA_CA_CERTS, name).toBe(
+					'/etc/gkm/local-ca.pem',
+				);
+			}
 		});
 
 		it('creates the roles with the master credential on the published port', async () => {
@@ -732,6 +780,25 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 		);
 		expect(said.join('\n')).toMatch(
 			/ mail +https:\/\/mail\.compose-app\.localhost +\(inbox\)/,
+		);
+		// Its host is on the certificate gkm's local CA issued for the edge.
+		const compose = parse(
+			readFileSync(
+				join(dir, '.gkm', 'compose', 'development', 'docker-compose.yml'),
+				'utf-8',
+			),
+		);
+		const leaf = new X509Certificate(compose.configs['tls-cert'].content);
+		expect(
+			leaf.checkIssued(
+				new X509Certificate(
+					readFileSync(localAuthorityPaths().certFile, 'utf-8'),
+				),
+			),
+		).toBe(true);
+		expect(leaf.checkHost('mail.compose-app.localhost')).toBeDefined();
+		expect(compose.services.api.extra_hosts).toContain(
+			'mail.compose-app.localhost:host-gateway',
 		);
 	});
 

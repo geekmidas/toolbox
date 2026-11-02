@@ -5,8 +5,9 @@
  * certificate from Let's Encrypt on first request — the same automatic HTTPS
  * it does anywhere, with nothing to configure but the name — or serves the
  * stage's own certificate (`deploy.compose.tls`). Locally the hosts are
- * `*.localhost` and the certificates come from Caddy's own CA, as the `gkm
- * dev` edge does, so a local stack is `https://` like a deployed one.
+ * `*.localhost` and the certificate is the one gkm's local authority issued,
+ * as the `gkm dev` edge's is, so a local stack is `https://` like a deployed
+ * one.
  *
  * Pure: the routes are data (`routes.ts`), and rendering them is one string.
  */
@@ -26,6 +27,11 @@ export interface CaddyfileOptions {
 	tls: EdgeTls;
 	/** Where ACME sends expiry notices, when someone wants them. */
 	email?: string;
+	/**
+	 * `false` on the local stage: plain HTTP is not sent to HTTPS, whose
+	 * published port there may not be 443.
+	 */
+	redirects?: boolean;
 }
 
 /** An upstream on the stack's own network: its service name. */
@@ -51,29 +57,17 @@ export function edgeCaddyfile(
 		ask ${ask.ask}
 	}`
 			: '';
-	const global =
-		tls.kind === 'internal'
-			? `{
-	# No ACME and no public DNS: the CA is Caddy's own and the names resolve
-	# to this machine.
-	local_certs
-	auto_https disable_redirects
-}`
-			: options.email || onDemand
-				? `{${options.email ? `\n\temail ${options.email}` : ''}${onDemand}
-}`
-				: '';
+	const settings = `${options.email ? `\n\temail ${options.email}` : ''}${
+		options.redirects === false ? '\n\tauto_https disable_redirects' : ''
+	}${onDemand}`;
+	const global = settings ? `{${settings}\n}` : '';
 
 	const certificate =
-		tls.kind === 'internal'
+		tls.kind === 'files'
 			? `
-	tls internal
-`
-			: tls.kind === 'files'
-				? `
 	tls ${tls.certFile} ${tls.keyFile}
 `
-				: '';
+			: '';
 
 	// The wildcard site last: Caddy prefers a named host to `*.<domain>`
 	// wherever the blocks are, and reading it last says the same.
