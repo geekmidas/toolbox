@@ -1,5 +1,35 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.147
+
+### Minor Changes
+
+- [#356](https://github.com/geekmidas/toolbox/pull/356) [`e37a723`](https://github.com/geekmidas/toolbox/commit/e37a72350a295750bfb28c2f0704223a5052a87a) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: A `WebSocketApi` can speak flat frames — `frame: { discriminator: 'type' }` — and trusts its own origin
+
+  - **`frame: { discriminator }`** makes the surface's frames flat both ways: outbound `{ [discriminator]: action, ...data }` (data still checked by the action's schema first), inbound routed on the same key with every other field as the body, and `$error` replies in the same shape. Absent, frames stay `{ action, data }`. `send(ids, action, data)` is typed the same in both modes, and `realtime.frame` exposes the shape for a client to decode by.
+  - **Refused when the surface is built:** with a discriminator, a message schema that isn't an object throws `WebSocketMessageNotAnObject`, and one that declares the discriminator field throws `WebSocketMessageDeclaresDiscriminator`. A surface without `messages` checks at send time (`WebSocketDataNotAnObject`, `WebSocketDataHasDiscriminator`).
+  - **The surface trusts the origin of its own address** (`<ID>_URL`), as well as `<ID>_TRUSTED_ORIGINS`: React Native's `WebSocket` sends the socket's own origin (`https://` for `wss://`) as `Origin`, which was refused with 403.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/audit@10.0.0-alpha.147
+  - @geekmidas/auth@10.0.0-alpha.147
+  - @geekmidas/cache@10.0.0-alpha.147
+  - @geekmidas/db@10.0.0-alpha.147
+  - @geekmidas/emailkit@10.0.0-alpha.147
+  - @geekmidas/envkit@10.0.0-alpha.147
+  - @geekmidas/errors@10.0.0-alpha.147
+  - @geekmidas/events@10.0.0-alpha.147
+  - @geekmidas/logger@10.0.0-alpha.147
+  - @geekmidas/manifest@10.0.0-alpha.147
+  - @geekmidas/rate-limit@10.0.0-alpha.147
+  - @geekmidas/schema@10.0.0-alpha.147
+  - @geekmidas/services@10.0.0-alpha.147
+  - @geekmidas/storage@10.0.0-alpha.147
+  - @geekmidas/telescope@10.0.0-alpha.147
+  - @geekmidas/testkit@10.0.0-alpha.147
+
 ## 10.0.0-alpha.146
 
 ### Patch Changes

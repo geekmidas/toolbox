@@ -1,5 +1,50 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.147
+
+### Minor Changes
+
+- [#363](https://github.com/geekmidas/toolbox/pull/363) [`8817c67`](https://github.com/geekmidas/toolbox/commit/8817c676208393e9e3bbc89fc885f26e300d551c) Thanks [@geekmidas](https://github.com/geekmidas)! - :globe_with_meridians: `gkm compose` can run the local stage behind the shared Traefik edge, and any stage can bring its own certificate
+
+  **The local stage behind Traefik (#352).** Name the local stage in the per-stage map, as in `deploy.compose.proxy: { development: 'traefik', production: 'traefik' }`, and `gkm compose --stage development` starts `gkm-edge` on this machine and registers the local stack with it, the way a deployed stage registers on its server. Local runs then go through the same edge, routes and middlewares as staging and production. The plain string form (`proxy: 'traefik'`) still applies to the deployed stages only, so the local stage stays on Caddy in that case. On Traefik, the local stage's certificate is the one gkm's local CA issues, written into the edge's `certs/` volume where a deployed stage's own certificate goes. `gkm trust` is still the one step to trust it. The Mailpit inbox route and the containers' `extra_hosts`/host-gateway entries work as they do on Caddy, and `--down` unregisters the local stack from the edge.
+
+  **Certificates don't depend on the proxy.** `deploy.compose.tls.<stage>` is accepted for any stage, the local one included, on either proxy. `ComposeTlsOnLocalStage` is removed. Without a certificate of its own, a deployed stage uses Let's Encrypt and the local stage uses gkm's local CA. A local certificate you supply replaces gkm's.
+
+  **`tls.<stage>.caFile`.** This is the root the certificate chains to, for one no public CA issued (an mkcert root, a company CA). The post-start check (🩺) trusts whichever CA issued the stage's certificate: gkm's root for gkm's certificate, the `caFile` for a supplied one, and otherwise Node's default roots plus `NODE_EXTRA_CA_CERTS`. It never assumes gkm's root. On the local stage, the stack's containers are given the `caFile` in place of gkm's root, and the printed hint names it.
+
+### Patch Changes
+
+- [#362](https://github.com/geekmidas/toolbox/pull/362) [`4e28f29`](https://github.com/geekmidas/toolbox/commit/4e28f29625655e3e8036de5c8b2be0a95c3a3a9b) Thanks [@geekmidas](https://github.com/geekmidas)! - A site's image build fails fast on its APIs, and a deploy warms its pages
+
+  A site's image is built without its APIs, and now says so. Every site
+  Dockerfile sets `GKM_BUILD_OFFLINE=1` in its builder stage (never in the
+  running container): the signal a site's own code tests to skip build-time
+  fetches and render data-backed pages on request instead. Every image build
+  gkm drives (`gkm compose`'s `build.extra_hosts`, a deploy's `docker build
+-✨ -add-host`) also maps the site's own host and its `.dependsOn()` hosts to
+  `127.0.0.1` in the build's `/etc/hosts`, so a fetch to an API that is not up yet is refused at
+  once instead of hanging until Next's 60-second prerender limit. The URLs the
+  bundle inlines are unchanged.
+
+  After a compose deploy is healthy, `verify` warms each `next` and `tanstack`
+  site: it asks `/`, `/sitemap.xml` and every page the sitemap (or a sitemap
+  index, one level deep) lists, through the edge as the health check does, four
+  at a time and at most 500 per site. A page that fails to warm is listed as a
+  warning and never fails the deploy. A site on every subdomain is skipped.
+
+- Updated dependencies [[`e37a723`](https://github.com/geekmidas/toolbox/commit/e37a72350a295750bfb28c2f0704223a5052a87a)]:
+  - @geekmidas/constructs@10.0.0-alpha.147
+  - @geekmidas/cache@10.0.0-alpha.147
+  - @geekmidas/db@10.0.0-alpha.147
+  - @geekmidas/envkit@10.0.0-alpha.147
+  - @geekmidas/errors@10.0.0-alpha.147
+  - @geekmidas/logger@10.0.0-alpha.147
+  - @geekmidas/manifest@10.0.0-alpha.147
+  - @geekmidas/schema@10.0.0-alpha.147
+  - @geekmidas/services@10.0.0-alpha.147
+  - @geekmidas/storage@10.0.0-alpha.147
+  - @geekmidas/telescope@10.0.0-alpha.147
+
 ## 10.0.0-alpha.146
 
 ### Minor Changes
