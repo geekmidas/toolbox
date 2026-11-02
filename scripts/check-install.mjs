@@ -91,6 +91,11 @@ const OPTIONAL = new Set([
 	// Test-only. `@geekmidas/testkit` is imported by test files, which run under
 	// a runner the consumer already has.
 	'vitest',
+	// `@geekmidas/constructs/testing` is the feature-test harness, built on
+	// testkit (see ALLOWED in check-optional-peers.mjs). It used to fail on
+	// emailkit or audit first, which the harness no longer loads up front, so
+	// testkit is now the first optional peer it reaches.
+	'@geekmidas/testkit',
 ]);
 
 function run(command, args, cwd) {
