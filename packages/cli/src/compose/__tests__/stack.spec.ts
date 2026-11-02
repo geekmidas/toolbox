@@ -306,7 +306,8 @@ describe("a backend's env file", () => {
 		const env = app(stack(), 'api').env!;
 
 		// Of the auth server it calls, only the address: its CORS list and
-		// cookie domain are its own settings, as its secret is.
+		// cookie domain are its own settings, as its secret is. Of the site
+		// that calls it, the address it links back to.
 		expect(Object.keys(env).sort()).toEqual([
 			'API_COOKIE_DOMAIN',
 			'API_TRUSTED_ORIGINS',
@@ -320,7 +321,37 @@ describe("a backend's env file", () => {
 			'PORT',
 			'SESSIONS_URL',
 			'STAGE',
+			'WEB_URL',
 		]);
+	});
+
+	it("gives a deployed API each client's identity: a phone app's scheme, the site's address", () => {
+		// `MobileApp('App').dependsOn([api])`, and the API redirects an OAuth
+		// callback back into it (`<scheme>://…`).
+		const withPhone: ConstructManifest = {
+			...manifest,
+			App: {
+				kind: 'mobile-app',
+				id: 'App',
+				variant: 'expo',
+				app: { path: 'apps/app' },
+				dependencies: [{ target: 'Api', kind: 'rest-api' }],
+				provides: ['APP_SCHEME'],
+			},
+		};
+		const s = stack({
+			stage: 'production',
+			manifest: withPhone,
+			images: { mode: 'pull', tag: 'v1.4.0' },
+			secrets: production(),
+			ports: {},
+		});
+		const env = app(s, 'api').env!;
+
+		expect(env.APP_SCHEME).toBe('compose-app');
+		expect(env.WEB_URL).toBe('https://shop.example.com');
+		// And the auth server, which the phone does not call, gets no scheme.
+		expect(app(s, 'auth').env).not.toHaveProperty('APP_SCHEME');
 	});
 
 	it('reaches a sibling and names itself by their public addresses', () => {

@@ -595,6 +595,10 @@ one rule, shared by `gkm dev`, `gkm exec` and `gkm compose`:
 - **what its constructs reach**: what its own declaration provides and
   requires, and what each construct it has an edge to provides — a worker's
   through every cron, consumer and subscriber built from it;
+- **who calls it**, for a surface: each site's `<ID>_URL` and each mobile
+  app's `<ID>_SCHEME` that has an edge to it (`APP_SCHEME`, `WEB_URL`), so it
+  can link and redirect back to them — see
+  [Edges and Environment](./edges.md);
 - **the stage's own secrets**: every key set with `gkm secrets:set` that no
   construct provides (`STRIPE_KEY`, read with `get('STRIPE_KEY')`), for every
   process — but for what gkm keeps for the stack itself, such as a
