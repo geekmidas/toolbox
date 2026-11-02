@@ -221,6 +221,7 @@
     "sns-push-without-middy",
     "ssm-lock-readback",
     "sst-deploy-target",
+    "stage-key-written-whole",
     "stage-secrets-no-db-urls",
     "stages-action",
     "state-in-project-bucket",

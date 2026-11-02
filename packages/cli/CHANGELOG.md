@@ -1,5 +1,31 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.152
+
+### Patch Changes
+
+- [#377](https://github.com/geekmidas/toolbox/pull/377) [`927198c`](https://github.com/geekmidas/toolbox/commit/927198c184cb4d4085b2b3ed19b07512e60de157) Thanks [@geekmidas](https://github.com/geekmidas)! - A stage's encryption key is written whole, or not at all
+
+  Two commands creating the same stage's key at once could fail with
+  `KeyNotFound`. The key file was created empty and filled in afterwards, so
+  the command that lost the race to create it could read it in between, find
+  nothing, and stop. A key is now written beside its final path and then linked
+  or renamed into place, so a reader sees either no key or the complete one.
+  Keys copied over from their old location are placed the same way.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.152
+  - @geekmidas/constructs@10.0.0-alpha.152
+  - @geekmidas/db@10.0.0-alpha.152
+  - @geekmidas/envkit@10.0.0-alpha.152
+  - @geekmidas/errors@10.0.0-alpha.152
+  - @geekmidas/logger@10.0.0-alpha.152
+  - @geekmidas/manifest@10.0.0-alpha.152
+  - @geekmidas/schema@10.0.0-alpha.152
+  - @geekmidas/services@10.0.0-alpha.152
+  - @geekmidas/storage@10.0.0-alpha.152
+  - @geekmidas/telescope@10.0.0-alpha.152
+
 ## 10.0.0-alpha.151
 
 ### Patch Changes
