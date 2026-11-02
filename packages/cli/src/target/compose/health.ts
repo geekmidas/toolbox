@@ -104,22 +104,41 @@ export function isHealthy(status: number): boolean {
 	return status >= 200 && status < 400;
 }
 
-/** Apps that did not answer through the edge. */
+/**
+ * Apps that are not healthy. `via` says which check said so:
+ * - `edge`: verify asked each app through the edge, by its host, and it did
+ *   not answer as it should (a worker, with no route, by its container's
+ *   health);
+ * - `docker`: `up --wait` failed, and these containers' own health checks
+ *   had not passed — the rest of the stack was released and routed first.
+ * One class either way, so a caller matches one failure: apps not healthy.
+ */
 export class ComposeAppsUnhealthy extends GkmError {
 	constructor(
 		readonly project: string,
-		/** Each app, and the last thing its check got: a status or an error. */
+		/**
+		 * Each app, and the last thing its check got: a status or an error —
+		 * for `docker`, the container's health as Docker reports it.
+		 */
 		readonly apps: readonly { app: string; url: string; last: string }[],
-		/** The proxy they were asked through. */
+		/** The proxy the stack is served through. */
 		readonly proxy: 'caddy' | 'traefik' = 'caddy',
+		/** Which check failed: through the edge, or Docker's own. */
+		readonly via: 'edge' | 'docker' = 'edge',
 	) {
 		const names = apps.map((a) => a.app).join(' ');
 		super(
-			`${project} started, but ${apps.length === 1 ? 'this app does' : 'these apps do'} not answer through ${proxy === 'caddy' ? 'Caddy' : 'the shared Traefik edge'}:\n` +
-				apps.map(({ url, last }) => `  - ${url}: ${last}`).join('\n') +
-				(proxy === 'caddy'
-					? `\nSee why with \`docker compose -p ${project} logs caddy ${names}\`.`
-					: `\nSee why with \`docker compose -p gkm-edge logs traefik\` and \`docker compose -p ${project} logs ${names}\`.`),
+			via === 'docker'
+				? `${project} started, but ${apps.length === 1 ? "this container's health check has" : "these containers' health checks have"} not passed. The rest of the stack is up and routed:\n` +
+						apps
+							.map(({ app, last }) => `  - ${app}: Docker reports it ${last}`)
+							.join('\n') +
+						`\nSee why with \`docker compose -p ${project} ps ${names}\` and \`docker compose -p ${project} logs ${names}\`, fix the app, and deploy again.`
+				: `${project} started, but ${apps.length === 1 ? 'this app does' : 'these apps do'} not answer through ${proxy === 'caddy' ? 'Caddy' : 'the shared Traefik edge'}:\n` +
+						apps.map(({ url, last }) => `  - ${url}: ${last}`).join('\n') +
+						(proxy === 'caddy'
+							? `\nSee why with \`docker compose -p ${project} logs caddy ${names}\`.`
+							: `\nSee why with \`docker compose -p gkm-edge logs traefik\` and \`docker compose -p ${project} logs ${names}\`.`),
 		);
 		this.name = 'ComposeAppsUnhealthy';
 	}

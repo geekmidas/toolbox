@@ -334,6 +334,10 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 				last: 'HTTP 502',
 			},
 		]);
+		expect((error as ComposeAppsUnhealthy).via).toBe('edge');
+		expect((error as ComposeAppsUnhealthy).message).toContain(
+			'this app does not answer through Caddy',
+		);
 		expect(
 			seen
 				.filter((e) => e.type === 'health.checked' && e.app === 'api')
@@ -378,6 +382,20 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 		expect((error as ComposeAppsUnhealthy).apps).toEqual([
 			{ app: 'api', url: 'docker:api', last: 'unhealthy' },
 		]);
+		// Docker's own check failed, not a request through the edge.
+		expect((error as ComposeAppsUnhealthy).via).toBe('docker');
+		expect((error as ComposeAppsUnhealthy).message).toContain(
+			"this container's health check has not passed",
+		);
+		expect((error as ComposeAppsUnhealthy).message).toContain(
+			'  - api: Docker reports it unhealthy',
+		);
+		expect((error as ComposeAppsUnhealthy).message).toContain(
+			'docker compose -p compose-app-development logs api',
+		);
+		expect((error as ComposeAppsUnhealthy).message).not.toContain(
+			'answer through',
+		);
 		expect(seen).toContainEqual(
 			expect.objectContaining({ type: 'phase.failed', phase: 'release' }),
 		);

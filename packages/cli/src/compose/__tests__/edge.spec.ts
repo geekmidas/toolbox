@@ -1175,6 +1175,20 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 		expect((error as ComposeAppsUnhealthy).apps).toEqual([
 			{ app: 'api', url: 'docker:api', last: 'unhealthy' },
 		]);
+		// Docker's own check failed, not a request through the edge.
+		expect((error as ComposeAppsUnhealthy).via).toBe('docker');
+		expect((error as ComposeAppsUnhealthy).message).toContain(
+			"this container's health check has not passed",
+		);
+		expect((error as ComposeAppsUnhealthy).message).toContain(
+			'  - api: Docker reports it unhealthy',
+		);
+		expect((error as ComposeAppsUnhealthy).message).toContain(
+			'docker compose -p compose-app-production logs api',
+		);
+		expect((error as ComposeAppsUnhealthy).message).not.toContain(
+			'answer through',
+		);
 		// The healthy apps are still routed — and so is the one that is not,
 		// which answers 502 until it is up.
 		const file = parse(

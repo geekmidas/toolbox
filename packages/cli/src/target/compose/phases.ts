@@ -1563,7 +1563,7 @@ export async function releaseCompose(
 	}
 
 	if (down.length > 0) {
-		throw new ComposeAppsUnhealthy(stack.project, down, stack.proxy);
+		throw new ComposeAppsUnhealthy(stack.project, down, stack.proxy, 'docker');
 	}
 }
 
