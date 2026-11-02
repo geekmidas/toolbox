@@ -21,6 +21,7 @@ import {
 	cacheTable,
 	cookieDomain,
 	drawSecret,
+	EDGE_TOKEN_KEY,
 	externalApiUrl,
 	mobileOrigins,
 	provideKey,
@@ -181,6 +182,19 @@ export function stageEnv(
 	resolved: Readonly<Record<string, string>>,
 ): Record<string, string> {
 	return { ...stored, ...resolved };
+}
+
+/**
+ * The token a stack's own services prove themselves with at its edge
+ * (`EDGE_TOKEN_HEADER`): derived from the stage's seed, as a bucket's webhook
+ * token is, so every process, the edge and the auth server agree on it with
+ * nothing stored.
+ */
+export function edgeToken(project: string, seed?: string): string {
+	return createHash('sha256')
+		.update(`${seed ? `${seed}:` : ''}${project}:edge-token`)
+		.digest('base64url')
+		.slice(0, 43);
 }
 
 /**
@@ -396,6 +410,18 @@ export function envFor(
 			options.project ?? '',
 			credential.seed,
 		);
+	}
+
+	// The stack's token, which its services send when they call a sibling
+	// through the edge — and which the edge and the auth server know it by.
+	// Only where a surface resolved: with none, there is no sibling to call.
+	if (
+		plan.resources.some(
+			(r) =>
+				(r.kind === 'rest-api' || r.kind === 'websocket-api') && env[r.envKey],
+		)
+	) {
+		env[EDGE_TOKEN_KEY] = edgeToken(options.project ?? '', credential.seed);
 	}
 
 	// Only once a bucket actually resolved: an unresolvable plan resolves

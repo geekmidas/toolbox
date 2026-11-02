@@ -60,7 +60,7 @@ import {
 	serviceAddresses,
 } from './containers';
 import { dockerCli } from './docker';
-import { envFor } from './env';
+import { edgeToken, envFor } from './env';
 import type { LocalFake } from './fakes';
 import { lanAddress } from './lan';
 import type { LocalCredentials, Login } from './localCredentials';
@@ -484,6 +484,9 @@ export async function reconcile(
 	const authorityPaths = options.authority ?? localAuthorityPaths();
 	const caddyfile = toCaddyfile(sites, {
 		certificate: `${CADDY_SITES_IN_CONTAINER}/${stage}.pem`,
+		// What the apps are handed (`envFor`), so a service calling a sibling
+		// through this edge keeps the client's address.
+		edgeToken: edgeToken(project, seed),
 	});
 	// And so is what provisioning runs. A toolbox upgrade that changes the role
 	// DDL — a new grant — changes no container and no route, so a hash without

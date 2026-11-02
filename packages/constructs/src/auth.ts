@@ -25,12 +25,15 @@
  * application config.
  */
 
+import { timingSafeEqual } from 'node:crypto';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import {
 	CLIENT_IP_HEADER,
 	type ConstructName,
 	canonicalId,
 	type Declaration,
+	EDGE_TOKEN_HEADER,
+	EDGE_TOKEN_KEY,
 	environmentCase,
 	isWebOrigin,
 	provideKey,
@@ -310,15 +313,18 @@ export class BetterAuth<
 	 * that is all there is — so this is everything it can know.
 	 */
 	client(envParser: EnvironmentParser<{}>): AuthClient {
-		const { url } = envParser
-			.create((get) => ({ url: get(this.keys.url).string() }))
+		const { url, edgeToken } = envParser
+			.create((get) => ({
+				url: get(this.keys.url).string(),
+				edgeToken: get(EDGE_TOKEN_KEY).string().optional(),
+			}))
 			.parse();
 		const endpoint = `${url.replace(/\/$/, '')}${this.basePath}`;
 
 		return {
 			api: {
 				getSession: ({ headers }) =>
-					fetchSession(this.id, endpoint, new Headers(headers)),
+					fetchSession(this.id, endpoint, new Headers(headers), edgeToken),
 			},
 		};
 	}
@@ -412,8 +418,11 @@ export class BetterAuth<
 		// by the target from whatever declared an edge to this construct, so a
 		// site that depends on the auth server is allowed to reach it and
 		// nothing else is. Nobody writes an origin down.
-		const { origins } = options.envParser
+		const { origins, edgeToken } = options.envParser
 			.create((get) => ({
+				// The stack's token, which its own services send when they call
+				// this server through the edge — see `withTrustedClientIp`.
+				edgeToken: get(EDGE_TOKEN_KEY).string().optional(),
 				origins: get(this.keys.trustedOrigins)
 					.string()
 					.default('')
@@ -443,7 +452,9 @@ export class BetterAuth<
 					: ([endpoint.method] as const);
 
 			app.on([...methods], endpoint.path, (c) =>
-				server.handler(withTrustedClientIp(c.req.raw, remoteAddressOf(c))),
+				server.handler(
+					withTrustedClientIp(c.req.raw, remoteAddressOf(c), edgeToken),
+				),
 			);
 		}
 
@@ -704,14 +715,18 @@ const SESSION_HEADERS = ['cookie', 'authorization', 'origin'] as const;
  * rate-limits `/get-session` by the client's address, so without it every
  * caller shares the API's one bucket — and never as `X-Forwarded-For`, which
  * marks a request as outside traffic. The call goes to the auth server's
- * public address, though, through the stack's edge, which strips gkm's
- * header and adds its own forwarding one; the request's `Origin` is passed
- * on so the trace is still continued for a site both trust.
+ * public address, through the stack's edge, so the stack's token goes with
+ * it ({@link EDGE_TOKEN_HEADER}): the edge keeps gkm's header only on a
+ * request carrying it, and the auth server honours it from one. The
+ * request's `Origin` is passed on so the trace is continued for a site both
+ * trust.
  */
 async function fetchSession(
 	authenticator: string,
 	endpoint: string,
 	given: Headers,
+	/** The stack's token, which keeps the client's address through the edge. */
+	edgeToken?: string,
 ): Promise<AuthSession | null> {
 	const headers = new Headers();
 	for (const name of SESSION_HEADERS) {
@@ -724,7 +739,12 @@ async function fetchSession(
 	// here whether its own caller was internal, and the auth server trusts
 	// whatever an internal caller — this one — says.
 	const client = given.get('x-forwarded-for');
-	if (client) headers.set(CLIENT_IP_HEADER, client);
+	if (client) {
+		headers.set(CLIENT_IP_HEADER, client);
+		// Through the edge, which keeps gkm's header only on a request that
+		// proves it comes from a service of this stack.
+		if (edgeToken) headers.set(EDGE_TOKEN_HEADER, edgeToken);
+	}
 	injectTraceContext(headers);
 
 	const url = `${endpoint}/get-session`;
@@ -823,17 +843,36 @@ const FORWARDING_HEADERS = [
 export function withTrustedClientIp(
 	request: Request,
 	remoteAddress: string | undefined,
+	/**
+	 * The stack's token. A request carrying it came from one of the stack's
+	 * own services through its edge — which keeps the header only then — so
+	 * the forwarding header the edge added does not make it outside traffic.
+	 */
+	edgeToken?: string,
 ): Request {
 	if (!request.headers.has(CLIENT_IP_HEADER)) return request;
 	const internal =
 		!request.headers.has('origin') &&
 		!FORWARDING_HEADERS.some((name) => request.headers.has(name)) &&
 		isPrivateAddress(remoteAddress);
-	if (internal) return request;
+	if (
+		internal ||
+		sameToken(request.headers.get(EDGE_TOKEN_HEADER), edgeToken)
+	) {
+		return request;
+	}
 
 	const headers = new Headers(request.headers);
 	headers.delete(CLIENT_IP_HEADER);
 	return new Request(request, { headers });
+}
+
+/** Whether a request's token is the stack's, compared in constant time. */
+function sameToken(sent: string | null, expected: string | undefined): boolean {
+	if (!sent || !expected) return false;
+	const a = Buffer.from(sent);
+	const b = Buffer.from(expected);
+	return a.length === b.length && timingSafeEqual(a, b);
 }
 
 /** The TCP peer of a request served by `@hono/node-server`, when there is one. */

@@ -715,6 +715,24 @@ describe('BetterAuth.service — what .dependsOn([auth]) hands a caller', () => 
 		expect(seen[0]!.headers.get('x-internal')).toBeNull();
 	});
 
+	it("sends the stack's token beside the client's address, for the edge to keep it", async () => {
+		const seen = record(() => HttpResponse.json(null));
+		const client = await auth().service.register({
+			envParser: new EnvironmentParser({
+				AUTH_URL,
+				GKM_EDGE_TOKEN: 'stack-token',
+			}),
+			context: serviceContext,
+		});
+
+		await client.api.getSession({
+			headers: { cookie: 'a=1', 'x-forwarded-for': '203.0.113.7' },
+		});
+
+		expect(seen[0]!.headers.get('x-gkm-client-ip')).toBe('203.0.113.7');
+		expect(seen[0]!.headers.get('x-gkm-edge-token')).toBe('stack-token');
+	});
+
 	it('never passes on a client address it was sent in gkm’s own header', async () => {
 		const seen = record(() => HttpResponse.json(null));
 		const client = await auth().service.register(caller());
@@ -908,5 +926,34 @@ describe('withTrustedClientIp', () => {
 			),
 		).toBeNull();
 		expect(ip(withTrustedClientIp(request(sent), undefined))).toBeNull();
+	});
+
+	it("keeps it through the edge from a service carrying the stack's token, and from nobody else", () => {
+		// What the edge forwards for one of the stack's own services: its
+		// forwarding header and the site's origin, and the stack's token.
+		const viaEdge = (token: string) =>
+			request({
+				'x-gkm-client-ip': '203.0.113.7',
+				'x-forwarded-for': '172.18.0.5',
+				origin: WEB_ORIGIN,
+				'x-gkm-edge-token': token,
+			});
+
+		expect(
+			ip(
+				withTrustedClientIp(
+					viaEdge('stack-token'),
+					'172.18.0.1',
+					'stack-token',
+				),
+			),
+		).toBe('203.0.113.7');
+		expect(
+			ip(withTrustedClientIp(viaEdge('guessed'), '172.18.0.1', 'stack-token')),
+		).toBeNull();
+		// A server that holds no token trusts none.
+		expect(
+			ip(withTrustedClientIp(viaEdge('stack-token'), '172.18.0.1', undefined)),
+		).toBeNull();
 	});
 });

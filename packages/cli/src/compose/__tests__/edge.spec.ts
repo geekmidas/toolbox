@@ -1029,12 +1029,31 @@ describe('a stack behind the shared edge', () => {
 			'openobserve',
 		]);
 		const file = parse(s.traefik!);
+		// Each route twice: for everyone, and for the stack's own services,
+		// which prove it with its token and keep gkm's client address.
 		expect(Object.keys(file.http.routers)).toEqual([
 			'compose-app-production-api',
+			'compose-app-production-api-stack',
 			'compose-app-production-auth',
+			'compose-app-production-auth-stack',
 			'compose-app-production-web',
+			'compose-app-production-web-stack',
 			'compose-app-production-openobserve',
+			'compose-app-production-openobserve-stack',
 		]);
+		const token = s.apps.find((app) => app.name === 'api')!.env!
+			.GKM_EDGE_TOKEN!;
+		expect(token).toBeTruthy();
+		const api = file.http.routers['compose-app-production-api'];
+		const own = file.http.routers['compose-app-production-api-stack'];
+		expect(api.middlewares).toEqual([
+			'compose-app-production-strip-gkm-headers',
+		]);
+		expect(own.rule).toBe(
+			`${api.rule} && Header(\`x-gkm-edge-token\`, \`${token}\`)`,
+		);
+		expect(own.service).toBe(api.service);
+		expect(own).not.toHaveProperty('middlewares');
 		expect(file.http.middlewares).toEqual({
 			'compose-app-production-strip-gkm-headers': {
 				headers: { customRequestHeaders: { 'x-gkm-client-ip': '' } },

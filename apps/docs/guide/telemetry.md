@@ -189,10 +189,11 @@ middleware as the production server: both are generated from one
   [Trace context](../packages/events.md#trace-context));
 - an API's session check as part of the request's trace: the API's SERVER
   span → the `GET …/get-session` CLIENT span → the auth server's own SERVER
-  span. The call carries the trace context and no forwarding header (the
-  client's address goes as `x-gkm-client-ip` —
-  [see the auth server](../packages/constructs.md#the-auth-server-and-what-its-callers-hold)),
-  so the auth server trusts it as an internal caller and continues the trace.
+  span. The call carries the trace context and the request's `Origin`; it
+  reaches the auth server at its public address, through the edge, and the
+  auth server continues the trace for an origin it trusts (the client's
+  address goes as `x-gkm-client-ip` —
+  [see the auth server](../packages/constructs.md#the-auth-server-and-what-its-callers-hold)).
 
 Each query also carries its span in its
 [sqlcommenter](https://google.github.io/sqlcommenter/) tag —

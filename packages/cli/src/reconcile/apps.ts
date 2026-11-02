@@ -21,6 +21,7 @@
 import {
 	type ConstructManifest,
 	dependenciesOf,
+	EDGE_TOKEN_KEY,
 	provideKey,
 	provisionOrder,
 	publicEnvFor,
@@ -370,6 +371,8 @@ export function constructKeys(manifest: ConstructManifest): Set<string> {
  *   file server's processors. A key a construct provides reaches only a
  *   process with an edge to it, a stored one included — an auth server's
  *   signing secret stays with the auth server.
+ * - **The stack's edge token** (`EDGE_TOKEN_KEY`), which a call to a
+ *   sibling through the edge carries beside the client's address.
  * - **Every one of the stage's own keys** (`stageKeys` no construct
  *   provides): a value set with `gkm secrets:set` that the code reads with
  *   `get('X')`. Nothing declares which process reads it, so every process is
@@ -397,6 +400,10 @@ export function processEnvKeys(
 	for (const id of units.processors ?? []) {
 		for (const key of processorEnvKeys(manifest, id) ?? []) keys.add(key);
 	}
+
+	// Every process may call a sibling through the edge, with the stack's
+	// token beside the client's address.
+	keys.add(EDGE_TOKEN_KEY);
 
 	const owned = constructKeys(manifest);
 	for (const key of stageKeys) {

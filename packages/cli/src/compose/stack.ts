@@ -19,6 +19,7 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import {
 	type ConstructManifest,
+	EDGE_TOKEN_KEY,
 	isWildcardSite,
 	provideKey,
 	provisionOrder,
@@ -1868,6 +1869,7 @@ export function composeStack(input: StackInput): ComposeStack {
 			? {
 					caddyfile: edgeCaddyfile(routes, {
 						tls,
+						edgeToken: outside[EDGE_TOKEN_KEY],
 						...(local ? { redirects: false } : {}),
 					}),
 				}
@@ -1875,6 +1877,7 @@ export function composeStack(input: StackInput): ComposeStack {
 					traefik: traefikDynamicFile(routes, {
 						project,
 						tls,
+						edgeToken: outside[EDGE_TOKEN_KEY],
 					}),
 				}),
 		...(certificate ? { tls: certificate } : {}),

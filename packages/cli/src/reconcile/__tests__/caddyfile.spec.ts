@@ -362,6 +362,26 @@ describe('toCaddyfile', () => {
 		).toHaveLength(2);
 	});
 
+	it("keeps it under gkm dev's edge only for a request carrying the stack's token", () => {
+		// An app calls a sibling at its public address, through this edge: the
+		// stack's token is what says it is one of the stack's own services.
+		const caddyfile = toCaddyfile(
+			[
+				{
+					host: 'auth.shop.localhost',
+					upstream: 'http://host.docker.internal:3001',
+				},
+			],
+			{ certificate: '/etc/caddy/sites/dev.pem', edgeToken: 'stack-token' },
+		);
+
+		expect(caddyfile).toContain(
+			'@gkm_outside not header x-gkm-edge-token stack-token',
+		);
+		expect(caddyfile).toContain('request_header @gkm_outside -x-gkm-client-ip');
+		expect(caddyfile).not.toMatch(/^\trequest_header -x-gkm-client-ip$/m);
+	});
+
 	it('renders a routeless edge rather than an invalid one', () => {
 		// An empty site list is a project that declared no file server, which is
 		// ordinary — not a reason to emit a config Caddy refuses to load.

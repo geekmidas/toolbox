@@ -652,10 +652,28 @@ the address its caller used. Responses are never buffered (`flush_interval
 -1`): server-sent events and streamed Next.js RSC payloads reach the client as
 they are written.
 
-The edge removes **`x-gkm-client-ip`** from every request it forwards
-(`request_header -x-gkm-client-ip` in each site block). That header is gkm's
-own: an API's session check carries the client's address in it, and the auth
-server rate-limits by it, so only a service inside the stack may send it.
+The edge removes **`x-gkm-client-ip`** from every request it forwards but
+one from a service of this stack. That header is gkm's own: an API's session
+check carries the client's address in it, and the auth server rate-limits by
+it. The API calls the auth server at its public address, through the edge, so
+it proves it is one of the stack's own with the stack's token,
+**`x-gkm-edge-token`** — derived from the stage's seed, handed to every
+process as `GKM_EDGE_TOKEN`, never to a browser:
+
+```
+@gkm_outside not header x-gkm-edge-token <token>
+request_header @gkm_outside -x-gkm-client-ip
+```
+
+A request without the token, or with a wrong one, has the header removed, so
+nobody outside can choose the address they are rate-limited by. The auth
+server checks the token again before it believes the header. The `gkm dev`
+edge does the same with the local stage's token.
+
+Why a token rather than the caller's address: a stack's services reach the
+edge the way anything else does — on the local stage through the host
+gateway, deployed through the server's own public address — so the address
+the edge sees cannot tell one of them from a browser on the same network.
 
 The edge is published on 443 and 80. When those are taken — locally they often
 are — move it:
@@ -986,9 +1004,12 @@ Both proxies serve the same routes. A stack's routes are worked out once — eac
 host, the service and port behind it, whether it streams, its allowlist and its
 health path — and rendered as a Caddyfile or as Traefik configuration, so the
 two never drift. Either way `Host` and `X-Forwarded-*` reach the app as the
-caller sent them, `x-gkm-client-ip` never does (Traefik removes it with a
-`<project>-strip-gkm-headers` headers middleware first in every router's
-chain), a streamed response is never buffered, and the log UI's public mode
+caller sent them, `x-gkm-client-ip` only from a service of the stack (Traefik
+removes it with a `<project>-strip-gkm-headers` headers middleware first in
+every router's chain, and a `<route>-stack` router matching
+`Header(\`x-gkm-edge-token\`, \`<token>\`)` — a longer rule, so ahead of
+the route's own — sends the stack's own calls to the same service without
+it), a streamed response is never buffered, and the log UI's public mode
 answers only its `allow` list (Traefik's `ipAllowList`, matched on the
 connection's own address).
 

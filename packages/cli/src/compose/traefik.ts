@@ -18,7 +18,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { CLIENT_IP_HEADER } from '@geekmidas/manifest';
+import { CLIENT_IP_HEADER, EDGE_TOKEN_HEADER } from '@geekmidas/manifest';
 import { stringify } from 'yaml';
 import {
 	assertRouteRenderable,
@@ -210,6 +210,11 @@ export interface TraefikStackOptions {
 	project: string;
 	/** ACME, or the stage's own certificate. */
 	tls: EdgeTls;
+	/**
+	 * The stack's token, on which a service of the stack keeps gkm's client
+	 * address through the edge — see `clientIpRule`.
+	 */
+	edgeToken?: string;
 }
 
 /** A stack's dynamic configuration, as an object. */
@@ -217,7 +222,7 @@ export function traefikDynamic(
 	routes: readonly EdgeRoute[],
 	options: TraefikStackOptions,
 ): Record<string, unknown> {
-	const { project, tls } = options;
+	const { project, tls, edgeToken } = options;
 	const name = (route: EdgeRoute, suffix?: string) =>
 		`${project}-${route.name}${suffix ? `-${suffix}` : ''}`;
 	const url = ({ service, port }: Upstream) =>
@@ -230,7 +235,9 @@ export function traefikDynamic(
 	// gkm's own header, which only a service of this stack may send — the
 	// auth server rate-limits by the client address it carries — removed from
 	// every request that arrives from outside. An empty value is Traefik's
-	// way of removing a request header.
+	// way of removing a request header. A request carrying the stack's token
+	// is one of its own services calling a sibling through the edge: it is
+	// matched by a router of its own, below, whose chain keeps the header.
 	const strip = `${project}-strip-gkm-headers`;
 	if (routes.length > 0) {
 		middlewares[strip] = {
@@ -311,8 +318,9 @@ export function traefikDynamic(
 			};
 		}
 
+		const rule = `${hostRule(route)}${paths}${header}`;
 		routers[name(route)] = {
-			rule: `${hostRule(route)}${paths}${header}`,
+			rule,
 			// Below every named host's router, whatever the rules' lengths: a
 			// wildcard site gets only the labels nothing else answers.
 			...(route.wildcard ? { priority: 1 } : {}),
@@ -321,6 +329,19 @@ export function traefikDynamic(
 			middlewares: chain,
 			tls: certificate(),
 		};
+		// The stack's own services, proven by its token: the same route, to
+		// the same service, keeping gkm's header. Its longer rule puts it ahead
+		// of the route's own; a wildcard's, just above that one's.
+		if (edgeToken && !route.prefix) {
+			routers[name(route, 'stack')] = {
+				rule: `${rule} && Header(\`${EDGE_TOKEN_HEADER}\`, \`${edgeToken}\`)`,
+				...(route.wildcard ? { priority: 2 } : {}),
+				entryPoints: ['websecure'],
+				service: name(route),
+				...(chain.length > 1 ? { middlewares: chain.slice(1) } : {}),
+				tls: certificate(),
+			};
+		}
 
 		services[name(route)] = {
 			loadBalancer: {

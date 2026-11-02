@@ -314,6 +314,7 @@ describe("a backend's env file", () => {
 			'AUTH_URL',
 			'DATABASE_URL',
 			'EVENT_PUBLISHER_CONNECTION_STRING',
+			'GKM_EDGE_TOKEN',
 			'NODE_ENV',
 			'NOTES_PUBLISHER_CONNECTION_STRING',
 			'PORT',
@@ -1097,6 +1098,7 @@ describe('a worker', () => {
 		expect(Object.keys(env).sort()).toEqual([
 			'DATABASE_URL',
 			'EVENT_PUBLISHER_CONNECTION_STRING',
+			'GKM_EDGE_TOKEN',
 			'NODE_ENV',
 			'NOTES_PUBLISHER_CONNECTION_STRING',
 			'PORT',

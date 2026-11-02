@@ -12,7 +12,7 @@
  * Pure: the routes are data (`routes.ts`), and rendering them is one string.
  */
 
-import { CLIENT_IP_HEADER } from '@geekmidas/manifest';
+import { clientIpRule } from '../reconcile/caddyfile.js';
 import {
 	assertRouteRenderable,
 	type EdgeRoute,
@@ -25,6 +25,11 @@ export const CADDY_TLS_DIR = '/etc/caddy/tls';
 
 export interface CaddyfileOptions {
 	tls: EdgeTls;
+	/**
+	 * The stack's token, on which a service of the stack keeps gkm's client
+	 * address through the edge — see `clientIpRule`.
+	 */
+	edgeToken?: string;
 	/** Where ACME sends expiry notices, when someone wants them. */
 	email?: string;
 	/**
@@ -77,6 +82,7 @@ export function edgeCaddyfile(
 	].map((route) =>
 		siteBlock(
 			route,
+			options.edgeToken,
 			route.wildcard?.tls.kind === 'on-demand'
 				? `
 	tls {
@@ -92,7 +98,11 @@ export function edgeCaddyfile(
 }
 
 /** One route's site block. */
-function siteBlock(route: EdgeRoute, certificate: string): string {
+function siteBlock(
+	route: EdgeRoute,
+	edgeToken: string | undefined,
+	certificate: string,
+): string {
 	assertRouteRenderable(route);
 	const { host, allow, auth, paths, prefixes, requireHeader, handlers } = route;
 	const allowed = [
@@ -164,10 +174,7 @@ function siteBlock(route: EdgeRoute, certificate: string): string {
 	}`
 		: proxy;
 
-	return `https://${host} {${certificate}
-	# gkm's own header, which only a service of this stack may send: the auth
-	# server rate-limits by the client address it carries.
-	request_header -${CLIENT_IP_HEADER}
+	return `https://${host} {${certificate}${clientIpRule(edgeToken)}
 ${checks}${body}
 }`;
 }

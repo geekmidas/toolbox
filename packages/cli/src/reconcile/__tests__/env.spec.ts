@@ -105,6 +105,9 @@ describe('envFor', () => {
 			'CONSOLE_URL',
 			'EMAILS_PUBLISHER_CONNECTION_STRING',
 			'EVENT_PUBLISHER_CONNECTION_STRING',
+			// A surface resolved: the token its callers prove themselves with
+			// at the edge.
+			'GKM_EDGE_TOKEN',
 			'MAIL_FROM',
 			'MAIL_INBOX_URL',
 			'MAIL_URL',
