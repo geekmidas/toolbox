@@ -21,6 +21,7 @@
 import {
 	type ConstructManifest,
 	dependenciesOf,
+	dependentsOf,
 	EDGE_TOKEN_KEY,
 	provideKey,
 	provisionOrder,
@@ -198,7 +199,40 @@ export function networkEnv(
 
 /**
  * The keys one app's environment may hold: what its own declaration provides
- * and requires, and what each construct it has an edge to provides.
+ * and requires, what each construct it has an edge to provides, and — for a
+ * surface — the identity of each client with an edge to it.
+ *
+ * The one rule for every command and stage: `gkm dev`, `gkm exec` and `gkm
+ * test` hand an app these keys (through `processEnvKeys`), `gkm compose`
+ * writes them to its env file, and `gkm docker`'s apps profile to its
+ * service. A key missing here is missing everywhere, so an app that reads it
+ * fails on its first local request rather than in production.
+ *
+ * What an edge `caller.dependsOn([target])` hands each side, `<C>` and `<T>`
+ * being the caller's and the target's ids (`provideKey`) — keep this list and
+ * `apps/docs/guide/edges.md` in step with the code below:
+ *
+ * - `rest-api`: the caller gets `<T>_URL`. The target gets `<C>_URL` from a
+ *   site caller and `<C>_SCHEME` from a mobile app caller (`callerKeys`).
+ * - `websocket-api`: the caller gets `<T>_URL`, and a server process also
+ *   `<T>_PUBLISHER_CONNECTION_STRING`. The target gets what a `rest-api`
+ *   does.
+ * - `queue`, `topic`: the caller gets the target's `provides` and
+ *   `EVENT_PUBLISHER_CONNECTION_STRING`. The target gets nothing.
+ * - `objects`: the target's `provides`, its file server's, and the S3 key
+ *   pair (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`).
+ * - `inbox`: the target's `provides`, and the local relay token.
+ * - anything else (a database, cache, secret, credential, external API…):
+ *   the target's `provides`. The target gets nothing.
+ *
+ * Beside the keys, a surface's `<T>_TRUSTED_ORIGINS` lists every caller's
+ * origin (a mobile app's as its scheme) and `<T>_COOKIE_DOMAIN` the parent
+ * they share — values of the surface's own keys, derived from the same
+ * inbound edges (`surfaceEnv`).
+ *
+ * A site or mobile app is a bundle: it also gets the public-prefixed name of
+ * each of those its bundler inlines (`publicEnvFor`: `VITE_API_URL`,
+ * `EXPO_PUBLIC_API_URL`), and never a `Telemetry` node's keys.
  *
  * The edges, not the manifest. Every app used to be handed every key the
  * workspace resolved — a web app got the database's owner URL and the auth
@@ -207,8 +241,7 @@ export function networkEnv(
  * app's environment from its edges; so does this.
  *
  * One hop: a surface an app calls is reached over HTTP, so its URL is the
- * app's business and its database is not. A site also gets the public
- * variant of each key its bundle inlines (`NEXT_PUBLIC_API_URL`).
+ * app's business and its database is not.
  *
  * A surface's process runs its own endpoints and nothing else. A Worker's
  * crons, queue consumers and subscribers run in the worker's own process
@@ -231,7 +264,7 @@ export function appEnvKeys(
 			appKey(id) === appName,
 	);
 	if (!entry) return undefined;
-	const [, declaration] = entry;
+	const [id, declaration] = entry;
 
 	const keys = new Set<string>([
 		...(declaration.provides ?? []),
@@ -251,6 +284,12 @@ export function appEnvKeys(
 		keys,
 		declaration.kind === 'site' || declaration.kind === 'mobile-app',
 	);
+
+	// The other direction: who calls this surface, by the identity it links
+	// and redirects back to (`APP_SCHEME`, `WEB_URL`).
+	if (declaration.kind === 'rest-api' || declaration.kind === 'websocket-api') {
+		for (const key of callerKeys(manifest, id)) keys.add(key);
+	}
 
 	if (declaration.kind === 'site' || declaration.kind === 'mobile-app') {
 		// A site's edge to a `Telemetry` node hands it none of the node's keys:
@@ -467,6 +506,41 @@ export function appProcess(
 	};
 }
 
+/**
+ * What a surface is told about the clients that call it: the identity it
+ * links and redirects back to.
+ *
+ * An API that finishes an OAuth callback by sending a phone back into the app
+ * builds `<scheme>://…`; one that mails a link to the site builds it on the
+ * site's address. Both are the caller's own key, named by the caller's id —
+ * `APP_SCHEME` for `MobileApp('App')`, `WEB_URL` for `StaticSite('Web')` — so
+ * two apps calling one API arrive as `APP_SCHEME` and `ADMIN_APP_SCHEME`.
+ *
+ * Clients only. A surface or a worker that calls this one is something it
+ * answers, never somewhere it sends a user, so nothing of theirs comes back
+ * along the edge. Their origins still reach the surface, folded into its
+ * `<ID>_TRUSTED_ORIGINS`.
+ */
+export function callerKeys(
+	manifest: ConstructManifest,
+	surfaceId: string,
+): string[] {
+	const keys: string[] = [];
+	for (const caller of dependentsOf(manifest, surfaceId)) {
+		const declaration = manifest[caller];
+		if (declaration?.kind === 'mobile-app') {
+			keys.push(provideKey(caller, 'scheme'));
+		} else if (declaration?.kind === 'site') {
+			keys.push(provideKey(caller, 'url'));
+		}
+	}
+	return keys;
+}
+
+/**
+ * What a caller gets for each construct it has an edge to — the left half of
+ * the table on {@link appEnvKeys}.
+ */
 function addEdgeKeys(
 	manifest: ConstructManifest,
 	edges: readonly string[],

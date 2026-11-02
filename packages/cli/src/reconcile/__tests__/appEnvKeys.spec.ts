@@ -145,13 +145,96 @@ describe('an edge to a WebSocket surface', () => {
 		expect(keys).not.toContain('REALTIME_PUBLISHER_CONNECTION_STRING');
 	});
 
-	it('hands the surface its own keys', () => {
+	it('hands the surface its own keys, and the site that opens it', () => {
 		const keys = appEnvKeys(sockets, 'realtime')!;
 
 		expect([...keys].sort()).toEqual([
 			'REALTIME_PUBLISHER_CONNECTION_STRING',
 			'REALTIME_TRUSTED_ORIGINS',
 			'REALTIME_URL',
+			'WEB_URL',
 		]);
+	});
+});
+
+describe("the caller's identity, along the edge", () => {
+	/**
+	 * The issue's workspace: a phone app and a site that call one API, a
+	 * second phone app beside them, and an auth server the API calls.
+	 */
+	const clients = {
+		Api: {
+			kind: 'rest-api',
+			id: 'Api',
+			path: 'apps/api',
+			auth: { target: 'Auth', kind: 'rest-api' },
+			endpoints: [],
+			provides: ['API_URL', 'API_TRUSTED_ORIGINS', 'API_COOKIE_DOMAIN'],
+		},
+		Auth: {
+			kind: 'rest-api',
+			id: 'Auth',
+			path: 'apps/auth',
+			endpoints: [],
+			provides: ['AUTH_URL', 'AUTH_TRUSTED_ORIGINS', 'AUTH_COOKIE_DOMAIN'],
+		},
+		App: {
+			kind: 'mobile-app',
+			id: 'App',
+			variant: 'expo',
+			app: { path: 'apps/app' },
+			dependencies: [
+				{ target: 'Api', kind: 'rest-api' },
+				{ target: 'Auth', kind: 'rest-api' },
+			],
+			provides: ['APP_SCHEME'],
+		},
+		AdminApp: {
+			kind: 'mobile-app',
+			id: 'AdminApp',
+			variant: 'expo',
+			app: { path: 'apps/admin-app' },
+			dependencies: [{ target: 'Api', kind: 'rest-api' }],
+			provides: ['ADMIN_APP_SCHEME'],
+		},
+		Web: {
+			kind: 'site',
+			id: 'Web',
+			variant: 'static',
+			app: { path: 'apps/web' },
+			dependencies: [{ target: 'Api', kind: 'rest-api' }],
+			provides: ['WEB_URL'],
+		},
+	} as unknown as ConstructManifest;
+
+	it("gives the API each phone app's scheme, by the app's own id", () => {
+		const keys = appEnvKeys(clients, 'api')!;
+
+		expect(keys).toContain('APP_SCHEME');
+		expect(keys).toContain('ADMIN_APP_SCHEME');
+	});
+
+	it("gives the API the site's address, to link and redirect back to", () => {
+		expect(appEnvKeys(clients, 'api')).toContain('WEB_URL');
+	});
+
+	it('gives the auth server only the clients that call it', () => {
+		const keys = appEnvKeys(clients, 'auth')!;
+
+		expect(keys).toContain('APP_SCHEME');
+		expect(keys).not.toContain('ADMIN_APP_SCHEME');
+		expect(keys).not.toContain('WEB_URL');
+		// A surface that calls it is something it answers, not somewhere it
+		// sends a user.
+		expect(keys).not.toContain('API_URL');
+	});
+
+	it('still gives the caller the address it calls, and nothing back', () => {
+		const app = appEnvKeys(clients, 'app')!;
+
+		expect(app).toContain('API_URL');
+		expect(app).toContain('EXPO_PUBLIC_API_URL');
+		expect(app).not.toContain('ADMIN_APP_SCHEME');
+		expect(app).not.toContain('WEB_URL');
 	});
 });

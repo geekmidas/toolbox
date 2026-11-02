@@ -258,8 +258,11 @@ Each app is then handed exactly the keys its process reads — the rule
 
 A key a construct provides reaches only an app with an edge to it: a site
 gets `API_URL` because it `.dependsOn([api])`, and a worker's cron gets
-`WEB_URL` because it `.dependsOn([web])`. Code that reads such a key without
-the edge finds it missing here as it would on a stack.
+`WEB_URL` because it `.dependsOn([web])`. The edge also runs back: the API
+gets `WEB_URL` and a mobile app's `APP_SCHEME` because they call it. Code that
+reads such a key without the edge finds it missing here as it would on a
+stack. [Edges and Environment](./edges.md) lists what each edge hands each
+side.
 
 Each app answers behind the edge on its own HTTPS host — the left of each line
 above. That is the address the other apps receive (`API_URL`, and
