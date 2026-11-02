@@ -56,6 +56,12 @@ import {
 	edgeTo,
 	type ServicesOf,
 } from './construct-interface';
+import {
+	loadBetterAuth,
+	loadBetterAuthMigration,
+	loadHono,
+	loadHonoCors,
+} from './optionalPeers';
 import type { Telemetry } from './telemetry';
 import { injectTraceContext } from './tracing';
 
@@ -362,7 +368,7 @@ export class BetterAuth<
 			// better-auth 1.7 split the migration builder out of `better-auth/db`
 			// into its own entry, so importing it no longer drags the whole db
 			// layer in behind it.
-			const { getMigrations } = await import('better-auth/db/migration');
+			const { getMigrations } = await loadBetterAuthMigration();
 			const { toBeCreated, toBeAdded, toBeAddedIndexes, compileMigrations } =
 				await getMigrations(resolved);
 
@@ -408,8 +414,8 @@ export class BetterAuth<
 	async server(
 		options: ServiceRegisterOptions,
 	): Promise<{ app: Hono; auth: AuthServer }> {
-		const { Hono } = await import('hono');
-		const { cors } = await import('hono/cors');
+		const { Hono } = await loadHono('An Auth');
+		const { cors } = await loadHonoCors('An Auth');
 		const app = new Hono();
 		const server = await this.connect(options);
 
@@ -499,7 +505,7 @@ export class BetterAuth<
 		options: ServiceRegisterOptions,
 		as: { owner?: boolean } = {},
 	): Promise<AuthServer> {
-		const { betterAuth } = await import('better-auth');
+		const { betterAuth } = await loadBetterAuth();
 		// `Auth<O>` is invariant in its options in better-auth 1.7, so the value
 		// built from a concrete literal is not assignable to the `AuthServer`
 		// alias, which names the constraint. The runtime object is the same one

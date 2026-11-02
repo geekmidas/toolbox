@@ -79,6 +79,9 @@ case "${1:-}" in
 		# `gkm init` pins the stages action it scaffolds to it.
 		GKM_RELEASE_COMMIT=$(git rev-parse HEAD)
 		export GKM_RELEASE_COMMIT
+		# Nothing goes up that does not belong on this branch's line: the v9
+		# branch once published 10.0.0 over the alpha line (#371).
+		node scripts/release-state.mjs --check-line
 		build
 		# npm signs each package's provenance with Sigstore, and a dropped
 		# connection there fails that package mid-release (alpha.94 went out
@@ -101,6 +104,7 @@ case "${1:-}" in
 			exit 1
 		fi
 		version
+		node scripts/release-state.mjs --check-line
 		build
 		# Packs and validates every public package without uploading, under the
 		# dist-tag `changeset publish` would use.

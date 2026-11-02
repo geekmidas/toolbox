@@ -67,3 +67,15 @@ export function simpleRange(
 		.match(/^(\^|~|>=|)v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/);
 	return match ? { operator: match[1]!, version: match[2]! } : undefined;
 }
+
+/**
+ * The version a capped prerelease range starts at: `10.0.0-alpha.152` for
+ * `>=10.0.0-alpha.152 <10.0.0`, the range `gkm init` writes on a prerelease
+ * line (see `versionRange`). Undefined for anything else.
+ */
+export function cappedPrerelease(range: string): string | undefined {
+	const match = range
+		.trim()
+		.match(/^>=\s*v?(\d+\.\d+\.\d+)-([0-9A-Za-z.-]+)\s+<\s*v?(\d+\.\d+\.\d+)$/);
+	return match && match[1] === match[3] ? `${match[1]}-${match[2]}` : undefined;
+}

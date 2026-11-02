@@ -1,5 +1,5 @@
 import type { RateLimitConfig, RateLimitContext } from '@geekmidas/rate-limit';
-import { loadRateLimit } from './optionalPeers';
+import { loadRateLimit } from '../optionalPeers';
 
 /**
  * An endpoint's `.rateLimit()`, checked the one way every adaptor checks it —

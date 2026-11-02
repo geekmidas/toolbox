@@ -47,6 +47,7 @@ import {
 	edgeTo,
 } from './construct-interface';
 import { envParserFor } from './endpoints/surfaceEnv';
+import { loadHono } from './optionalPeers';
 import { onShutdown } from './shutdown';
 import type { Telemetry } from './telemetry';
 import { FrameShape, type WebSocketFrame } from './websocket/frame';
@@ -299,7 +300,7 @@ export class WebSocketApi<
 		release(): Promise<void>;
 		server: WebSocketSurfaceServer<TMessages>;
 	}> {
-		const { Hono } = await import('hono');
+		const { Hono } = await loadHono('A WebSocketApi');
 		const routes = (options.modules ?? []).flatMap((module) =>
 			Object.values(module).filter(WebSocketRoute.isRoute),
 		);

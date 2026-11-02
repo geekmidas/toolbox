@@ -26,6 +26,10 @@
  *                                               requests, so a main that never
  *                                               published is visible on every
  *                                               one of them
+ *   node scripts/release-state.mjs --check-line fail unless every version
+ *                                               belongs on this branch's line
+ *                                               (see `lineFaults`); run before
+ *                                               every publish
  */
 
 import { execFileSync } from 'node:child_process';
@@ -96,6 +100,69 @@ function npmView(field) {
 	return Array.isArray(value) && value.length === 1 ? value[0] : value;
 }
 
+/** Every public package's manifest. */
+function publicPackages() {
+	const packages = join(root, 'packages');
+	return readdirSync(packages)
+		.map((dir) => join(packages, dir, 'package.json'))
+		.filter((file) => existsSync(file))
+		.map((file) => JSON.parse(readFileSync(file, 'utf-8')))
+		.filter((pkg) => !pkg.private);
+}
+
+/**
+ * Why these versions may not be published from this branch, if they may not.
+ *
+ * `@geekmidas/*@10.0.0` reached npm from the v9 branch: a peer range pushed a
+ * changeset to major there, and nothing asked whether a v9 branch publishing
+ * a 10 made sense. A release outranks every prerelease of it, so each
+ * `^10.0.0-alpha.N` range on the alpha line resolved to that week-older build
+ * (#371). Two rules, checked before anything is uploaded:
+ *
+ *   - in prerelease mode (`.changeset/pre.json`), every version is a
+ *     prerelease on that tag — a release can only come from leaving it;
+ *   - on a branch named for a major (`v9`), every version is in that major.
+ */
+export function lineFaults({ pre, branch, packages }) {
+	const faults = [];
+	const major = /^v(\d+)$/.exec(branch ?? '')?.[1];
+	for (const { name, version } of packages) {
+		const { core, ids } = parse(version);
+		if (pre?.mode === 'pre' && ids[0] !== pre.tag) {
+			faults.push(
+				`${name}@${version} is not a "${pre.tag}" prerelease, and the packages are in prerelease mode. Leave it with \`changeset pre exit\` to release.`,
+			);
+		}
+		if (major !== undefined && String(core[0]) !== major) {
+			faults.push(
+				`${name}@${version} is not a ${major}.x version, and this is the ${branch} branch.`,
+			);
+		}
+	}
+	return faults;
+}
+
+function checkLine() {
+	let pre;
+	try {
+		pre = JSON.parse(readFileSync(join(root, '.changeset/pre.json'), 'utf-8'));
+	} catch {
+		// Not in prerelease mode.
+	}
+	// A pull request is judged by the branch it merges into.
+	const branch = process.env.GITHUB_BASE_REF || process.env.GITHUB_REF_NAME;
+	const faults = lineFaults({ pre, branch, packages: publicPackages() });
+	if (faults.length > 0) {
+		for (const fault of faults) {
+			console.error(`::error title=Wrong release line::${fault}`);
+		}
+		process.exit(1);
+	}
+	console.log(
+		`Every version belongs on ${branch ?? 'this branch'}${pre?.mode === 'pre' ? ` ("${pre.tag}" prereleases)` : ''}.`,
+	);
+}
+
 /** The public packages whose version in git npm does not have. */
 function unpublished() {
 	const packages = join(root, 'packages');
@@ -140,6 +207,7 @@ function waitForNpm(version, tag) {
 
 function main() {
 	const args = process.argv.slice(2);
+	if (args.includes('--check-line')) return checkLine();
 	const bumped = args.includes('--bumped');
 	const expectReleased = args.includes('--released');
 

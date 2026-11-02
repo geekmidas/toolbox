@@ -24,6 +24,13 @@ import { minimalTemplate } from '../templates/minimal.js';
 import { serverlessTemplate } from '../templates/serverless.js';
 import { workerTemplate } from '../templates/worker.js';
 
+/**
+ * A `@geekmidas/*` range `gkm init` writes: `~x.y.z` on a stable line, and on
+ * a prerelease line one that stops below the release (`>=x.y.z-alpha.N
+ * <x.y.z`), so a stray `x.y.z` on npm is never installed (#371).
+ */
+const RELEASE_LINE = /^(~\d+\.\d+\.\d+|>=\d+\.\d+\.\d+-\S+ <\d+\.\d+\.\d+)$/;
+
 const baseOptions: TemplateOptions = {
 	stages: { local: 'development', deployed: ['production'] },
 	name: 'test-project',
@@ -78,14 +85,14 @@ describe('generatePackageJson', () => {
 	it('should include telescope, and its live feed, when enabled', () => {
 		const files = generatePackageJson(baseOptions, minimalTemplate);
 		const pkg = JSON.parse(files[0].content);
-		expect(pkg.dependencies['@geekmidas/telescope']).toMatch(/^~/);
+		expect(pkg.dependencies['@geekmidas/telescope']).toMatch(RELEASE_LINE);
 		expect(pkg.dependencies['@hono/node-ws']).toMatch(/^~/);
 	});
 
 	it('should include database dependencies when enabled', () => {
 		const files = generatePackageJson(baseOptions, minimalTemplate);
 		const pkg = JSON.parse(files[0].content);
-		expect(pkg.dependencies['@geekmidas/db']).toMatch(/^~/);
+		expect(pkg.dependencies['@geekmidas/db']).toMatch(RELEASE_LINE);
 		expect(pkg.dependencies.kysely).toBeDefined();
 		expect(pkg.dependencies.pg).toBeDefined();
 	});
@@ -98,12 +105,12 @@ describe('generatePackageJson', () => {
 		expect(pkg.dependencies['@hono/node-ws']).toBeUndefined();
 	});
 
-	it('should use tilde versions for @geekmidas packages', () => {
+	it('should keep @geekmidas packages on the CLI release line', () => {
 		const files = generatePackageJson(baseOptions, minimalTemplate);
 		const pkg = JSON.parse(files[0].content);
-		expect(pkg.dependencies['@geekmidas/constructs']).toMatch(/^~/);
-		expect(pkg.dependencies['@geekmidas/envkit']).toMatch(/^~/);
-		expect(pkg.dependencies['@geekmidas/logger']).toMatch(/^~/);
+		expect(pkg.dependencies['@geekmidas/constructs']).toMatch(RELEASE_LINE);
+		expect(pkg.dependencies['@geekmidas/envkit']).toMatch(RELEASE_LINE);
+		expect(pkg.dependencies['@geekmidas/logger']).toMatch(RELEASE_LINE);
 	});
 
 	it('should use tilde versions for external packages', () => {
@@ -1584,7 +1591,7 @@ describe('generatePackageJson - testkit dependencies', () => {
 	it('should include testkit and faker when database is enabled', () => {
 		const files = generatePackageJson(baseOptions, minimalTemplate);
 		const pkg = JSON.parse(files[0].content);
-		expect(pkg.devDependencies['@geekmidas/testkit']).toMatch(/^~/);
+		expect(pkg.devDependencies['@geekmidas/testkit']).toMatch(RELEASE_LINE);
 		expect(pkg.devDependencies['@faker-js/faker']).toMatch(/^~/);
 	});
 

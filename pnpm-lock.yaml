@@ -7,6 +7,8 @@ settings:
 overrides:
   '@docsearch/react>@types/react': ~19.3.0
 
+pnpmfileChecksum: sha256-ohADSU7XhIla8ivYq7M8ZWYD2F/IzIZQtvataVzvH8Q=
+
 importers:
 
   .:
@@ -36,6 +38,9 @@ importers:
       '@vitest/ui':
         specifier: ~5.0.2
         version: 5.0.2(vitest@5.0.2)
+      acorn:
+        specifier: ~8.15.0
+        version: 8.15.0
       jsdom:
         specifier: ~26.1.0
         version: 26.1.0
@@ -13344,7 +13349,9 @@ snapshots:
       metro-runtime: 0.83.1
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.5': {}
 

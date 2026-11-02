@@ -263,6 +263,9 @@
 	"@vitest/ui": {
 		"devDependencies": "~5.0.2"
 	},
+	"acorn": {
+		"devDependencies": "~8.15.0"
+	},
 	"amqplib": {
 		"peerDependencies": ">=2.0.1"
 	},

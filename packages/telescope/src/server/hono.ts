@@ -7,12 +7,19 @@ import type {
 import type { Telescope } from '../Telescope';
 import type { MetricsQueryOptions, QueryOptions } from '../types';
 
-// Lazy-loaded telemetry flush function (only loads @opentelemetry/* when actually used)
+// Lazy-loaded telemetry flush function (only loads @opentelemetry/* when
+// actually used). The `@opentelemetry/*` packages are optional peers: without
+// them there is no telemetry to flush, so the flush is a no-op. The `try` also
+// lets a bundler leave them to run time in an app that never installs them.
 let _flushTelemetry: (() => Promise<void>) | null = null;
 async function getFlushTelemetry(): Promise<() => Promise<void>> {
 	if (!_flushTelemetry) {
-		const { flushTelemetry } = await import('../instrumentation/core');
-		_flushTelemetry = flushTelemetry;
+		try {
+			const { flushTelemetry } = await import('../instrumentation/core');
+			_flushTelemetry = flushTelemetry;
+		} catch {
+			_flushTelemetry = async () => {};
+		}
 	}
 	return _flushTelemetry;
 }

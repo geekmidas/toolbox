@@ -9,6 +9,8 @@
  * a map.
  */
 
+import { loadIoredis } from '../optionalPeers';
+
 /** What one process is asked to do with the sockets it holds. */
 export type Delivery =
 	| { kind: 'send'; ids: readonly string[]; payload: string }
@@ -185,7 +187,7 @@ export async function transportFromConnectionString(
 	if (url.protocol === 'redis:' || url.protocol === 'rediss:') {
 		const channel = url.searchParams.get('channel') || fallback;
 		url.searchParams.delete('channel');
-		const { Redis } = await import('ioredis');
+		const { Redis } = await loadIoredis();
 		const client = new Redis(url.toString(), {
 			// A publish while Redis restarts waits for it rather than failing the
 			// request that sent it.

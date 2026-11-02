@@ -10,7 +10,13 @@ import {
 	getInstallCommand,
 	type PackageManager,
 } from '../init/utils.js';
-import { compareVersions, prereleaseTag, simpleRange } from './version.js';
+import { versionRange } from '../init/versionRange.js';
+import {
+	cappedPrerelease,
+	compareVersions,
+	prereleaseTag,
+	simpleRange,
+} from './version.js';
 
 const logger = console;
 
@@ -138,6 +144,29 @@ function withVersion(range: string, version: string): string {
 	return `${simpleRange(range)?.operator ?? ''}${version}`;
 }
 
+/** The version a `@geekmidas` range names, simple or capped. */
+function versionOf(range: string): string | undefined {
+	return simpleRange(range)?.version ?? cappedPrerelease(range);
+}
+
+/**
+ * A `@geekmidas` range moved to `version`.
+ *
+ * An exact pin stays exact. Otherwise a prerelease target gets the capped
+ * range `gkm init` writes — `>=10.0.0-alpha.152 <10.0.0` — whatever operator
+ * was there: `~` and `^` on a prerelease also admit the release, and a stray
+ * `10.0.0` is on npm (#371), so moving a project along the alpha line also
+ * moves it off a range that resolves to that release. A capped range moving
+ * to a release becomes `~`, as `gkm init` would write it.
+ */
+function ourRange(range: string, version: string): string {
+	if (simpleRange(range)?.operator === '') return version;
+	if (prereleaseTag(version) || cappedPrerelease(range)) {
+		return versionRange(version);
+	}
+	return withVersion(range, version);
+}
+
 export async function upgradeCommand(
 	options: UpgradeOptions = {},
 ): Promise<void> {
@@ -164,7 +193,7 @@ export async function upgradeCommand(
 	}
 
 	const installed = ours
-		.map((o) => simpleRange(o.range)?.version)
+		.map((o) => versionOf(o.range))
 		.filter((v): v is string => Boolean(v));
 
 	const cli = await packument(`${SCOPE}cli`);
@@ -185,13 +214,13 @@ export async function upgradeCommand(
 	for (const o of moving) {
 		// A range like `>=8 <10` says something on purpose; it is reported for a
 		// person to widen rather than flattened to one version.
-		if (!simpleRange(o.range)) {
+		if (!versionOf(o.range)) {
 			logger.log(
 				`  ⚠ ${o.name} ${o.range} is not a simple range; left as is (target ${target.version}).`,
 			);
 			continue;
 		}
-		const next = withVersion(o.range, target.version);
+		const next = ourRange(o.range, target.version);
 		if (next !== o.range) changes.push({ ...o, next });
 	}
 

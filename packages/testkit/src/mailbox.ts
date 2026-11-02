@@ -118,8 +118,15 @@ async function json<T>(response: Response, inbox: string): Promise<T> {
 
 /** The message, through the one MIME parser everything that reads mail uses. */
 async function email(id: string, raw: Uint8Array): Promise<Email> {
-	const { parseEmail } = await import('@geekmidas/emailkit/inbound');
-	const message = await parseEmail(raw);
+	// emailkit is an optional peer: loaded when mail is read, inside a `try`
+	// so a bundled test harness for an app that sends none leaves it alone.
+	let inbound: typeof import('@geekmidas/emailkit/inbound');
+	try {
+		inbound = await import('@geekmidas/emailkit/inbound');
+	} catch (cause) {
+		throw new MailboxNeedsEmailkit(cause);
+	}
+	const message = await inbound.parseEmail(raw);
 	const html = message.html ?? '';
 	const text = message.text ?? '';
 	const links = [
@@ -161,6 +168,19 @@ export class NoMail extends Error {
 				`code under test sends it, and to that address.`,
 		);
 		this.name = 'NoMail';
+	}
+}
+
+/** Reading mail needs `@geekmidas/emailkit`, and it is not installed. */
+export class MailboxNeedsEmailkit extends Error {
+	constructor(cause: unknown) {
+		super(
+			'Reading mail from the mailbox parses it with @geekmidas/emailkit, ' +
+				'which could not be loaded. Add it to the dev dependencies of the ' +
+				'app whose mail the test reads.',
+			{ cause },
+		);
+		this.name = 'MailboxNeedsEmailkit';
 	}
 }
 

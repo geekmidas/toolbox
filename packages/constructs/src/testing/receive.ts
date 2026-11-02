@@ -17,6 +17,7 @@ import {
 	provideKey,
 } from '@geekmidas/manifest';
 import type { ReceiptNotification, Verdicts } from '../inbox';
+import { OptionalPeerMissing } from '../optionalPeers';
 import type { Topic } from '../topic/Topic';
 
 /** What a test hands `mailbox.receive`. */
@@ -170,10 +171,23 @@ export async function receiveInTest(
 		);
 	}
 
-	const { composeEmail, deliverRaw, parseEmail } = await import(
-		'@geekmidas/emailkit/inbound'
-	);
-	const { receiveMail } = await import('../inbox');
+	// Inside a `try`, so a test harness bundled for an app without an Inbox
+	// leaves both to run time: emailkit parses the mail, and `../inbox` stores
+	// it in the inbox's bucket through @geekmidas/storage.
+	let inbound: typeof import('@geekmidas/emailkit/inbound');
+	let inbox: typeof import('../inbox');
+	try {
+		inbound = await import('@geekmidas/emailkit/inbound');
+		inbox = await import('../inbox');
+	} catch (cause) {
+		throw new OptionalPeerMissing(
+			'@geekmidas/emailkit and @geekmidas/storage',
+			'Receiving mail into an Inbox',
+			cause,
+		);
+	}
+	const { composeEmail, deliverRaw, parseEmail } = inbound;
+	const { receiveMail } = inbox;
 
 	let raw: string | Uint8Array;
 	let from: string;

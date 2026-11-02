@@ -12,12 +12,7 @@
  * shape, and the provider survives only as a host and a credential.
  */
 
-import {
-	createEmailClient,
-	type EmailClient,
-	parseEmailUrl,
-	type TemplateRecord,
-} from '@geekmidas/emailkit';
+import type { EmailClient, TemplateRecord } from '@geekmidas/emailkit';
 import {
 	type ConstructName,
 	canonicalId,
@@ -27,6 +22,7 @@ import {
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import type { Construct } from './construct-interface';
+import { loadEmailkit } from './optionalPeers';
 
 export interface EmailOptions<TTemplates extends TemplateRecord> {
 	/**
@@ -111,6 +107,9 @@ export class Email<
 			}))
 			.parse();
 
+		// Loaded here, not at the top: the test harness names this construct in
+		// every app, and an app that sends no mail does not install emailkit.
+		const { createEmailClient, parseEmailUrl } = await loadEmailkit();
 		return createEmailClient({
 			smtp: parseEmailUrl(url),
 			templates: this.options.templates,

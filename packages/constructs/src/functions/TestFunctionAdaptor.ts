@@ -1,5 +1,4 @@
 import type { AuditableAction, Auditor, AuditStorage } from '@geekmidas/audit';
-import { DefaultAuditor } from '@geekmidas/audit';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
@@ -15,6 +14,7 @@ import {
 	type ServiceRecord,
 } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import { loadAudit } from '../optionalPeers';
 import { publishEvents } from '../publisher';
 import type { Function } from './Function';
 import { FunctionBuilder } from './FunctionBuilder';
@@ -129,6 +129,7 @@ export class TestFunctionAdaptor<
 				this.fn.auditorStorageService.serviceName as keyof typeof auditServices
 			] as AuditStorage;
 
+			const { DefaultAuditor } = await loadAudit();
 			auditor = new DefaultAuditor<TAuditAction>({
 				actor: { id: 'system', type: 'system' },
 				storage,

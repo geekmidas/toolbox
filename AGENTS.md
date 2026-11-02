@@ -37,6 +37,23 @@ difference at that edge only, and make everything after it shared:
 Before writing a step, find where the other commands already do it, and reuse
 or extend that. The PR template asks this of every change.
 
+## Optional peers
+
+**An optional peer is imported only by the subpath that exists for it.**
+`ioredis` by `@geekmidas/cache/redis`, the AWS SDK by
+`@geekmidas/storage/aws`, `@middy/core` by `@geekmidas/constructs/aws`. Any
+other entry that needs one for a feature loads it when that feature runs, with
+an `import()` inside a `try` whose error names the package to install
+(`packages/constructs/src/optionalPeers.ts`). A bundler leaves a guarded import
+to run time; an unguarded one, or a top-level import in a shared chunk, breaks
+the build of every app that never installed the peer.
+
+`pnpm check:optional-peers` (CI, after the build) walks every `exports` entry's
+built ESM and CJS and fails on anything else. Its `ALLOWED` table is the list
+of adaptors, and each package README's "Optional peers" section is generated
+from it: run `node scripts/check-optional-peers.mjs --write-docs` after
+changing what an entry imports.
+
 ## Validation schemas (Zod)
 
 **Use Zod's top-level format validators. Never chain a format onto

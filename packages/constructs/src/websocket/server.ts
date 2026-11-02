@@ -17,6 +17,7 @@ import { trustsOrigin } from '@geekmidas/manifest';
 import { runWithRequestContext, ServiceDiscovery } from '@geekmidas/services';
 import type { WebSocket, WebSocketServer } from 'ws';
 import type { Authenticator } from '../construct-interface';
+import { loadWs } from '../optionalPeers';
 import { FrameShape, type WebSocketFrame } from './frame';
 import {
 	type NoMessages,
@@ -152,7 +153,7 @@ export class WebSocketSurfaceServer<
 	static async start<TMessages extends WebSocketMessages = NoMessages>(
 		options: WebSocketServerOptions<TMessages>,
 	): Promise<WebSocketSurfaceServer<TMessages>> {
-		const { WebSocketServer } = await import('ws');
+		const { WebSocketServer } = await loadWs();
 		const wss = new WebSocketServer({
 			noServer: true,
 			maxPayload: options.maxPayload ?? 1024 * 1024,

@@ -10,6 +10,7 @@ import {
 	SpanStatusCode,
 	trace,
 } from '@opentelemetry/api';
+import { loadAudit } from '../optionalPeers';
 import { publishEvents } from '../publisher';
 import type { Cron } from './Cron';
 
@@ -76,7 +77,7 @@ async function run(
 	// Only imported for a cron that audits: `@geekmidas/audit` is optional.
 	let auditor: { flush(): Promise<void> } | undefined;
 	if (cron.auditorStorageService) {
-		const { DefaultAuditor } = await import('@geekmidas/audit');
+		const { DefaultAuditor } = await loadAudit();
 		const registered: Record<string, unknown> = await serviceDiscovery.register(
 			[cron.auditorStorageService],
 		);

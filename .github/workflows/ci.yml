@@ -77,6 +77,14 @@ jobs:
       - name: Check declared exports resolve
         run: pnpm run check:exports
 
+      # Every optional peer is imported only by the subpath that exists for it
+      # (`cache/redis` -> ioredis), or by an import() inside a try, which a
+      # bundler leaves to run time. A general entry that reached one broke every
+      # project without it: @aws-sdk/client-kms (#268), emailkit (#360),
+      # @middy/core (#371). Reads the built ESM and CJS, so it runs after Build.
+      - name: Check optional peers stay behind their adaptors
+        run: pnpm run check:optional-peers
+
       # Packs the tarballs and installs each into an empty project. The
       # workspace cannot catch a missing dependency — pnpm links everything
       # regardless of what a package.json claims — so this is the only step

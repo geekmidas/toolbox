@@ -5,6 +5,13 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initCommand, UnknownWebFramework } from '../index.js';
 
+/**
+ * A `@geekmidas/*` range `gkm init` writes: `~x.y.z` on a stable line, and on
+ * a prerelease line one that stops below the release (`>=x.y.z-alpha.N
+ * <x.y.z`), so a stray `x.y.z` on npm is never installed (#371).
+ */
+const RELEASE_LINE = /^(~\d+\.\d+\.\d+|>=\d+\.\d+\.\d+-\S+ <\d+\.\d+\.\d+)$/;
+
 describe('initCommand', () => {
 	let tempDir: string;
 	let originalCwd: string;
@@ -67,8 +74,8 @@ describe('initCommand', () => {
 
 			expect(pkg.name).toBe('my-api');
 			expect(pkg.type).toBe('module');
-			expect(pkg.dependencies['@geekmidas/constructs']).toMatch(/^~/);
-			expect(pkg.dependencies['@geekmidas/telescope']).toMatch(/^~/);
+			expect(pkg.dependencies['@geekmidas/constructs']).toMatch(RELEASE_LINE);
+			expect(pkg.dependencies['@geekmidas/telescope']).toMatch(RELEASE_LINE);
 			expect(pkg.dependencies.zod).toMatch(/^~/);
 			expect(pkg.devDependencies['@biomejs/biome']).toBeDefined();
 			expect(pkg.devDependencies.turbo).toBeDefined();
@@ -930,7 +937,7 @@ describe('initCommand', () => {
 			const pkgPath = join(tempDir, 'my-api', 'package.json');
 			const content = await readFile(pkgPath, 'utf-8');
 			const pkg = JSON.parse(content);
-			expect(pkg.devDependencies['@geekmidas/testkit']).toMatch(/^~/);
+			expect(pkg.devDependencies['@geekmidas/testkit']).toMatch(RELEASE_LINE);
 			expect(pkg.devDependencies['@faker-js/faker']).toMatch(/^~/);
 		});
 

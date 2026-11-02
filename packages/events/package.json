@@ -63,6 +63,16 @@
 				"default": "./dist/sns/index.cjs"
 			}
 		},
+		"./sns/message": {
+			"import": {
+				"types": "./dist/sns/message.d.mts",
+				"default": "./dist/sns/message.mjs"
+			},
+			"require": {
+				"types": "./dist/sns/message.d.cts",
+				"default": "./dist/sns/message.cjs"
+			}
+		},
 		"./sns/url": {
 			"import": {
 				"types": "./dist/sns/snsUrl.d.mts",
