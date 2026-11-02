@@ -114,6 +114,7 @@
     "drop-generate-react-query",
     "drop-lodash-pick-set",
     "eas-workflow",
+    "edge-project-override",
     "edge-root-site",
     "edge-token-client-ip",
     "emailkit-bundles-without",

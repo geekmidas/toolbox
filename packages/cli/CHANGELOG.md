@@ -1,5 +1,24 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.149
+
+### Patch Changes
+
+- 🔥 [#369](https://github.com/geekmidas/toolbox/pull/369) [`d7e92de`](https://github.com/geekmidas/toolbox/commit/d7e92de6b41f88cb4fc2e34183381c8e7f95da78) Thanks [@geekmidas](https://github.com/geekmidas)! - `GKM_EDGE_PROJECT` renames the shared Traefik edge — its compose project, and with it its Docker network and its volumes (`<project>_acme`, `_certs`, `_dynamic`). The default stays `gkm-edge`. It is a testing and advanced knob: the local-stage-on-Traefik end-to-end suite now runs an edge of its own (`gkm-edge-e2e-<random>`, on free ports) beside a developer's `gkm-edge`, instead of skipping wherever one exists, and its teardown refuses to remove the default edge. The hint printed when an app does not answer through the edge names the edge's real project.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.149
+  - @geekmidas/constructs@10.0.0-alpha.149
+  - @geekmidas/db@10.0.0-alpha.149
+  - @geekmidas/envkit@10.0.0-alpha.149
+  - @geekmidas/errors@10.0.0-alpha.149
+  - @geekmidas/logger@10.0.0-alpha.149
+  - @geekmidas/manifest@10.0.0-alpha.149
+  - @geekmidas/schema@10.0.0-alpha.149
+  - @geekmidas/services@10.0.0-alpha.149
+  - @geekmidas/storage@10.0.0-alpha.149
+  - @geekmidas/telescope@10.0.0-alpha.149
+
 ## 10.0.0-alpha.148
 
 ### Patch Changes
