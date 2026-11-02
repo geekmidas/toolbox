@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import {
 	DeleteAccessKeyCommand,
@@ -628,6 +629,10 @@ describe('a wildcard site', { timeout: RUN_TIMEOUT }, () => {
 		const iam = new IAMClient(AWS);
 		const route53 = new Route53Client(AWS);
 		let zoneId: string;
+		// The edge's IAM user is named after the server, and the emulator is
+		// shared by every run on the machine: a server of this run's own, so
+		// a concurrent run never adds a key to, or deletes, this one's user.
+		const edgeServer = `198.18.${randomInt(256)}.${randomInt(1, 255)}`;
 
 		beforeAll(async () => {
 			server.use(http.all(`${LOCALSTACK_URL}/*`, () => passthrough()));
@@ -641,7 +646,7 @@ describe('a wildcard site', { timeout: RUN_TIMEOUT }, () => {
 		});
 
 		afterAll(async () => {
-			const UserName = edgeAcmeUser(SERVER_IPV4);
+			const UserName = edgeAcmeUser(edgeServer);
 			const keys = await iam
 				.send(new ListAccessKeysCommand({ UserName }))
 				.catch(() => undefined);
@@ -671,10 +676,11 @@ describe('a wildcard site', { timeout: RUN_TIMEOUT }, () => {
 				compose: { proxy: 'traefik' },
 				dns: { 'example.com': { provider: 'route53', hostedZoneId: zoneId } },
 			});
-			await serveFrom(dir);
+			await serveFrom(dir, 'production', edgeServer);
 			const records = recordingDns();
 
 			const { error, logs, calls } = await run('production', {
+				lookup: async () => [edgeServer],
 				deps: {
 					dnsProviderFor: async () => records,
 					acmeClients: async () => ({ iam, route53 }),
@@ -682,12 +688,12 @@ describe('a wildcard site', { timeout: RUN_TIMEOUT }, () => {
 			});
 
 			expect(error).toBeUndefined();
-			expect(records.writes).toContain(`put A *.shop ${SERVER_IPV4} 300`);
+			expect(records.writes).toContain(`put A *.shop ${edgeServer} 300`);
 			expect(logs).toContain(
-				`🔑 gkm-edge may write _acme-challenge.shop.example.com TXT records in ${zoneId}, and nothing else there, as IAM user ${edgeAcmeUser(SERVER_IPV4)}`,
+				`🔑 gkm-edge may write _acme-challenge.shop.example.com TXT records in ${zoneId}, and nothing else there, as IAM user ${edgeAcmeUser(edgeServer)}`,
 			);
 			const { AccessKeyMetadata = [] } = await iam.send(
-				new ListAccessKeysCommand({ UserName: edgeAcmeUser(SERVER_IPV4) }),
+				new ListAccessKeysCommand({ UserName: edgeAcmeUser(edgeServer) }),
 			);
 			expect(AccessKeyMetadata).toHaveLength(1);
 			// The key is in the edge before the stack's routes are.

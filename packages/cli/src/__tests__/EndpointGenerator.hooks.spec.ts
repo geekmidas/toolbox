@@ -1,4 +1,5 @@
-import { mkdir, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { RestApi } from '@geekmidas/constructs/rest-api';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -13,7 +14,10 @@ const api = new RestApi('Test', { path: '.', defaultAuthorizer: 'none' });
 const mockEndpoint = api.get('/test').handle(async () => ({ ok: true }));
 
 describe('EndpointGenerator hooks generation', () => {
-	const testOutputDir = join(process.cwd(), '.test-output');
+	// A directory of each test's own. This was `.test-output` under the
+	// process's cwd — the repo root — so two runs at once wrote, read and
+	// deleted each other's files.
+	let testOutputDir: string;
 	let generator: EndpointGenerator;
 
 	// Mock endpoint construct for testing
@@ -28,7 +32,7 @@ describe('EndpointGenerator hooks generation', () => {
 
 	beforeEach(async () => {
 		generator = new EndpointGenerator();
-		await mkdir(testOutputDir, { recursive: true });
+		testOutputDir = await mkdtemp(join(tmpdir(), 'gkm-endpoint-hooks-'));
 	});
 
 	afterEach(async () => {

@@ -271,7 +271,7 @@ describe(
 		}, SETUP_TIMEOUT);
 
 		afterAll(async () => {
-			await docker('rm', '-f', container).catch(() => {});
+			await docker('rm', '-f', '-v', container).catch(() => {});
 			await new Promise((resolve) => server.server.close(resolve));
 		});
 
@@ -339,7 +339,7 @@ describe(
 		}, SETUP_TIMEOUT);
 
 		afterAll(async () => {
-			await docker('rm', '-f', edge).catch(() => {});
+			await docker('rm', '-f', '-v', edge).catch(() => {});
 			await new Promise((resolve) => server.server.close(resolve));
 		});
 

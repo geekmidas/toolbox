@@ -5,6 +5,21 @@ export default defineConfig({
 		globals: true,
 		environment: 'jsdom',
 		testTimeout: 10000,
+		// Locally, half the cores rather than Vitest's default of all but one.
+		// Vitest sizes its pool for tests that run inside the worker, and the
+		// cli suites mostly don't: each worker starts servers, tsx and esbuild
+		// processes and Docker commands of its own. On a developer machine
+		// running more than one suite at once, that oversubscription pushed
+		// tests past their timeouts and workers past Vitest's 90s start
+		// deadline. A full cli run was no slower for it on 28 cores (81s against
+		// 92s).
+		//
+		// On CI, Vitest's default. The runner is dedicated to the one suite and
+		// has few cores, and half of them roughly doubled the unit step's time.
+		// What keeps CI stable is fixing the causes (a database per run, unique
+		// emulator names, listeners on the address they are reached at), not
+		// fewer workers.
+		maxWorkers: process.env.CI ? undefined : '50%',
 		projects: ['packages/*'],
 		coverage: {
 			provider: 'v8',

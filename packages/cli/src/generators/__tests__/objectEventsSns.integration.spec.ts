@@ -214,7 +214,9 @@ async function startWorker(
 		output += chunk;
 	});
 
-	const deadline = Date.now() + 30_000;
+	// A bundled worker starts in a second or two alone; a full run with every
+	// core busy has taken far longer, and the test has 180s.
+	const deadline = Date.now() + 90_000;
 	for (;;) {
 		const health = await fetch(`http://localhost:${port}/health`).then(
 			(r) => r.status,
@@ -294,7 +296,9 @@ describe(
 					return Attributes?.PendingConfirmation === 'false';
 				},
 				Boolean,
-				30_000,
+				// The emulator confirms over HTTP to this machine, as busy as
+				// every other suite of a full run makes it.
+				60_000,
 			);
 			expect(confirmed, running.output()).toBe(true);
 

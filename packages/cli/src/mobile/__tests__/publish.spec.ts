@@ -1,7 +1,19 @@
 import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
+import {
+	WARM_TIMEOUT,
+	warmComposeApp,
+} from '../../compose/__tests__/__helpers__/composeApp';
 import { easCli } from '../eas';
 import { NoStoreBuildForUpdate, publish } from '../publish';
 import {
@@ -19,6 +31,8 @@ import {
 
 let dir: string;
 let appDir: string;
+
+beforeAll(warmComposeApp, WARM_TIMEOUT);
 
 beforeEach(async () => {
 	dir = realpathSync(await createTempDir('gkm-publish-'));

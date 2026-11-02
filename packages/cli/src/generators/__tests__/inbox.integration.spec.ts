@@ -186,7 +186,7 @@ export const onRequest = jobs
 afterAll(async () => {
 	for (const child of children) child.kill('SIGKILL');
 	try {
-		execFileSync('docker', ['rm', '-f', MAILPIT], { stdio: 'ignore' });
+		execFileSync('docker', ['rm', '-f', '-v', MAILPIT], { stdio: 'ignore' });
 	} catch {
 		// Already gone.
 	}

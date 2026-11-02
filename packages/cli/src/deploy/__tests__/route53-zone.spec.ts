@@ -8,6 +8,7 @@
  * through to the emulator.
  */
 
+import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -34,7 +35,10 @@ import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import { Route53Provider } from '../dns/Route53Provider';
 
 const ENDPOINT = LOCALSTACK_URL;
-const DOMAIN = 'route53-zone.test';
+// A zone of this run's own. The emulator outlives the run and is shared by
+// every run on the machine, and the provider finds a zone by its name: under
+// one fixed name, two runs at once each read and wrote the other's records.
+const DOMAIN = `route53-zone-${randomBytes(4).toString('hex')}.test`;
 
 describe('Route53Provider against a hosted zone', () => {
 	const server = setupServer();

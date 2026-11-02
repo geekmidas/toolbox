@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import {
 	DeleteAccessKeyCommand,
 	DeleteUserCommand,
@@ -41,6 +42,12 @@ import type { BackupState } from '../state';
 describe('backup-provisioner', () => {
 	const LOCALSTACK_ENDPOINT = LOCALSTACK_URL;
 	const DOKPLOY_BASE_URL = 'https://dokploy.example.com';
+	// The emulator is shared by every run on the machine, and IAM user names
+	// are global in it: under one fixed name, a run creating the user while
+	// another's was still there failed with EntityAlreadyExists.
+	const RUN = randomBytes(3).toString('hex');
+	const PROJECT = `test-project-${RUN}`;
+	const USER = `dokploy-backup-${PROJECT}-production`;
 
 	let s3Client: S3Client;
 	let iamClient: IAMClient;
@@ -161,7 +168,7 @@ describe('backup-provisioner', () => {
 		return {
 			api: dokployApi,
 			projectId: 'proj_test123',
-			projectName: 'test-project',
+			projectName: PROJECT,
 			stage: 'production',
 			config: {
 				type: 's3',
@@ -206,7 +213,7 @@ describe('backup-provisioner', () => {
 			http.post(`${DOKPLOY_BASE_URL}/api/destination.create`, () => {
 				return HttpResponse.json({
 					destinationId: options.createDestinationId ?? 'dest_new123',
-					name: 'test-project-production-s3',
+					name: `${PROJECT}-production-s3`,
 				});
 			}),
 
@@ -230,7 +237,9 @@ describe('backup-provisioner', () => {
 			createdBuckets.push(result.bucketName);
 			createdUsers.push(result.iamUserName);
 
-			expect(result.bucketName).toMatch(/^test-project-production-backups-/);
+			expect(result.bucketName).toMatch(
+				new RegExp(`^${PROJECT}-production-backups-`),
+			);
 			expect(result.bucketArn).toBe(`arn:aws:s3:::${result.bucketName}`);
 			expect(logs.some((l) => l.includes('Creating S3 bucket'))).toBe(true);
 		});
@@ -245,7 +254,7 @@ describe('backup-provisioner', () => {
 			createdBuckets.push(result.bucketName);
 			createdUsers.push(result.iamUserName);
 
-			expect(result.iamUserName).toBe('dokploy-backup-test-project-production');
+			expect(result.iamUserName).toBe(USER);
 
 			// Verify user exists in IAM
 			const userResponse = await iamClient.send(
@@ -319,7 +328,7 @@ describe('backup-provisioner', () => {
 			const existingState: BackupState = {
 				bucketName: 'existing-bucket',
 				bucketArn: 'arn:aws:s3:::existing-bucket',
-				iamUserName: 'dokploy-backup-test-project-production',
+				iamUserName: USER,
 				iamAccessKeyId: 'AKIA123',
 				iamSecretAccessKey: 'secret123',
 				destinationId: 'dest_deleted',
@@ -340,7 +349,7 @@ describe('backup-provisioner', () => {
 			// Should reuse bucket name from state
 			expect(result.bucketName).toBe('existing-bucket');
 			// Should reuse IAM user name
-			expect(result.iamUserName).toBe('dokploy-backup-test-project-production');
+			expect(result.iamUserName).toBe(USER);
 			// Should reuse credentials from state
 			expect(result.iamAccessKeyId).toBe('AKIA123');
 			// Should create new destination
@@ -354,7 +363,7 @@ describe('backup-provisioner', () => {
 			setupDokployMocks({ createDestinationId: 'dest_123' });
 
 			const options = createOptions({
-				projectName: 'My Project_Name!@#',
+				projectName: `My Project_Name!@#${RUN}`,
 			});
 			const result = await provisionBackupDestination(options);
 
@@ -363,12 +372,12 @@ describe('backup-provisioner', () => {
 			createdUsers.push(result.iamUserName);
 
 			// Should be lowercase with only alphanumeric and hyphens
-			// 'My Project_Name!@#' -> 'my-project-name----' (space, underscore, !, @, # all become hyphens)
+			// 'My Project_Name!@#<run>' -> 'my-project-name---<run>' (space, underscore, !, @, # all become hyphens)
 			expect(result.bucketName).toMatch(
-				/^my-project-name----production-backups-/,
+				new RegExp(`^my-project-name---${RUN}-production-backups-`),
 			);
 			expect(result.iamUserName).toBe(
-				'dokploy-backup-my-project-name----production',
+				`dokploy-backup-my-project-name---${RUN}-production`,
 			);
 		});
 
@@ -383,9 +392,11 @@ describe('backup-provisioner', () => {
 			createdUsers.push(result.iamUserName);
 
 			expect(result).toMatchObject({
-				bucketName: expect.stringMatching(/^test-project-production-backups-/),
+				bucketName: expect.stringMatching(
+					new RegExp(`^${PROJECT}-production-backups-`),
+				),
 				bucketArn: expect.stringMatching(/^arn:aws:s3:::/),
-				iamUserName: 'dokploy-backup-test-project-production',
+				iamUserName: USER,
 				iamAccessKeyId: expect.any(String),
 				iamSecretAccessKey: expect.any(String),
 				destinationId: 'dest_complete',
@@ -438,7 +449,7 @@ describe('backup-provisioner', () => {
 			setupDokployMocks({
 				existingDestination: {
 					destinationId: 'dest_kept',
-					name: 'test-project-production-s3',
+					name: `${PROJECT}-production-s3`,
 				},
 			});
 			logs.length = 0;

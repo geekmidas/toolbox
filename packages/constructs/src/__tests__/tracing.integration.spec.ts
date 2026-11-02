@@ -298,7 +298,13 @@ describe('with a provider', () => {
 				res.writeHead(200, { 'content-type': 'application/json' });
 				res.end('null');
 			});
-			await new Promise<void>((resolve) => server.listen(0, resolve));
+			// On the address it is reached at. Listening on `::` (the default),
+			// macOS still lets another process bind 127.0.0.1 on the same port —
+			// and that one answers 127.0.0.1, which under a full run reset the
+			// request before it ever reached this server.
+			await new Promise<void>((resolve) =>
+				server.listen(0, '127.0.0.1', resolve),
+			);
 			const { port } = server.address() as AddressInfo;
 			const client = new BetterAuth('Auth', {
 				database: new KyselyDatabase('AuthDb'),

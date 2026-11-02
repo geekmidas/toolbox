@@ -64,7 +64,7 @@ async function serve(
 		res.end(await response.text());
 	});
 	attach(http);
-	await new Promise<void>((resolve) => http.listen(0, resolve));
+	await new Promise<void>((resolve) => http.listen(0, '127.0.0.1', resolve));
 	const { port } = http.address() as AddressInfo;
 	const handle = {
 		url: `ws://127.0.0.1:${port}`,

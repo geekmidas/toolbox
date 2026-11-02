@@ -191,7 +191,7 @@ describe.skipIf(!e2e)('a wildcard site behind the dev edge', () => {
 	}, 120_000);
 
 	afterAll(async () => {
-		await run('docker', ['rm', '-f', container]).catch(() => {});
+		await run('docker', ['rm', '-f', '-v', container]).catch(() => {});
 		api?.close();
 		app?.close();
 		if (dir) await rm(dir, { recursive: true, force: true });

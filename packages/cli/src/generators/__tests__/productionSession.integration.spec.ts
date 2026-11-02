@@ -90,26 +90,39 @@ export const missing = api
 	);
 
 	port = await freePort();
-	child = spawn(
+	const server = spawn(
 		process.execPath,
 		['--import', 'tsx', join(outputDir, 'server.ts')],
 		{
 			cwd: dir,
 			env: { ...process.env, PORT: String(port) },
-			stdio: 'ignore',
+			stdio: ['ignore', 'pipe', 'pipe'],
 		},
 	);
-	const deadline = Date.now() + 30_000;
+	child = server;
+	let output = '';
+	server.stdout!.on('data', (chunk) => {
+		output += chunk;
+	});
+	server.stderr!.on('data', (chunk) => {
+		output += chunk;
+	});
+	// Compiling the server with tsx is a few seconds alone and much longer in
+	// a full run; a server that exited is reported at once, with what it said,
+	// rather than waited on.
+	const deadline = Date.now() + 90_000;
 	for (;;) {
 		const up = await fetch(`http://localhost:${port}/health`).then(
 			(r) => r.ok,
 			() => false,
 		);
 		if (up) break;
-		if (Date.now() > deadline) throw new Error('server did not start');
+		if (Date.now() > deadline || server.exitCode !== null) {
+			throw new Error(`server did not start:\n${output}`);
+		}
 		await new Promise((r) => setTimeout(r, 100));
 	}
-}, 60_000);
+}, 120_000);
 
 afterAll(() => {
 	child?.kill('SIGKILL');
