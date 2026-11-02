@@ -1,5 +1,7 @@
 # @geekmidas/emailkit
 
+## 10.0.0-alpha.154
+
 ## 10.0.0-alpha.153
 
 ## 10.0.0-alpha.152

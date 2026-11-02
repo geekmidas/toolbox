@@ -69,6 +69,9 @@ import { TestQueueAdaptor } from '../queue/TestQueueAdaptor';
 import type { Subscriber } from '../subscribers/Subscriber';
 import { TestSubscriberAdaptor } from '../subscribers/TestSubscriberAdaptor';
 import { Topic } from '../topic/Topic';
+import type { WebSocketMessages } from '../websocket/publisher';
+import type { TestWebSocketPublisher } from '../websocket/testing';
+import { WebSocketApi } from '../websocket-api';
 import { loadTestManifest, type TestManifest } from './manifest';
 import { inProcessBindings } from './peer';
 import {
@@ -207,6 +210,18 @@ export interface FeatureContext<
 	 */
 	published: (channel: { id: string }) => PublishedMessage[];
 	/**
+	 * What this test sent to a `WebSocketApi`'s sockets — through
+	 * `services.<surface>` in an endpoint, a subscriber, a consumer — recorded
+	 * rather than delivered: `sockets(realtime).sent`, `.broadcasts`,
+	 * `.closed`. Each send is checked by the surface's declared messages, as
+	 * deployed.
+	 *
+	 * @throws {UnknownWebSocketApi} when the manifest declares no such surface.
+	 */
+	sockets: <S extends WebSocketApi<string, any>>(
+		surface: S,
+	) => TestWebSocketPublisher<MessagesOf<S>>;
+	/**
 	 * A subscriber, run on its own — handed events rather than delivered them —
 	 * with this test's services: its databases resolve to this test's
 	 * transactions, as an endpoint's do.
@@ -300,6 +315,12 @@ type QueueAdaptorOf<Q> =
 			>
 		: never;
 
+/** The messages a WebSocket surface declares — what its recorder is typed by. */
+type MessagesOf<S> =
+	S extends WebSocketApi<string, infer TMessages extends WebSocketMessages>
+		? TMessages
+		: never;
+
 /** The schema a database construct was declared with — what `db` is typed by. */
 export type DatabaseOf<C> =
 	C extends KyselyDatabase<infer DB, any> ? DB : unknown;
@@ -356,6 +377,8 @@ interface ContextState {
 	mailbox?: (address: string) => Mailbox;
 	/** What this test published, by topic or queue id. */
 	published: Map<string, PublishedMessage[]>;
+	/** What this test sent each WebSocket surface's sockets, by surface id. */
+	sockets: Map<string, TestWebSocketPublisher<any>>;
 	/** What was published and is still to be delivered, in order. */
 	pending: {
 		channel: Topic<any, any> | Queue<any, any> | ObjectStorage;
@@ -382,6 +405,8 @@ interface LoadedApp {
 	channels: (Topic<any, any> | Queue<any, any>)[];
 	/** Every bucket a subscriber is bound to — whose changes are reported. */
 	watched: ObjectStorage[];
+	/** Every WebSocket surface — what a test's pushes are recorded for. */
+	surfaces: WebSocketApi<string, any>[];
 	/** Every inbox — what `mailbox.receive` routes to. */
 	inboxes: TestInbox[];
 	/** The environment `gkm test` resolved. */
@@ -473,6 +498,7 @@ export function featureTest<
 				auth: new Map(),
 				addresses: new Set(),
 				published: new Map(),
+				sockets: new Map(),
 				pending: [],
 				delivering: false,
 			};
@@ -487,6 +513,7 @@ export function featureTest<
 			// Before anything resolves them: a publisher is a service, so the one this
 			// test's endpoints get is whichever is registered under its name first.
 			await state.discovery.register(recorders(app.channels, state));
+			await state.discovery.register(socketRecorders(app.surfaces, state));
 			await state.discovery.register(watchers(app, state));
 
 			try {
@@ -570,6 +597,15 @@ export function featureTest<
 							published: (channel) => [
 								...(state.published.get(channel.id) ?? []),
 							],
+							sockets: (surface) => {
+								const recorder = state.sockets.get(surface.id);
+								if (!recorder) {
+									throw new UnknownWebSocketApi(surface.id, [
+										...state.sockets.keys(),
+									]);
+								}
+								return recorder;
+							},
 							services: {
 								get: (name) => resolveService(app, state, name) as never,
 							},
@@ -724,6 +760,12 @@ async function load(
 	);
 
 	const inboxes = unique(constructs.filter(isInboxConstruct));
+	const surfaces = unique(
+		constructs.filter(
+			(value): value is WebSocketApi<string, any> =>
+				value instanceof WebSocketApi,
+		),
+	);
 
 	const inbox = emails
 		.map((email) => manifest.env[provideKey(email.id, 'inboxUrl')])
@@ -738,6 +780,7 @@ async function load(
 		channels,
 		watched,
 		inboxes,
+		surfaces,
 		env: manifest.env,
 		consumables,
 		subscribers,
@@ -768,6 +811,24 @@ function recorders(
 		return {
 			serviceName: channel.service.serviceName,
 			register: () => publisher,
+		};
+	});
+}
+
+/**
+ * A WebSocket surface's publisher that records rather than sends, under the
+ * name `.dependsOn([realtime])` injects it by — one per surface per test.
+ */
+function socketRecorders(
+	surfaces: LoadedApp['surfaces'],
+	state: ContextState,
+): { serviceName: string; register: () => unknown }[] {
+	return surfaces.map((surface) => {
+		const recorder = surface.testPublisher();
+		state.sockets.set(surface.id, recorder);
+		return {
+			serviceName: surface.service.serviceName,
+			register: () => recorder,
 		};
 	});
 }
@@ -1026,6 +1087,23 @@ function isBucket(value: unknown): value is ObjectStorage {
 }
 
 /** `objects(bucket)` named a bucket no subscriber in the app is bound to. */
+/** `sockets(surface)` for a surface the test manifest does not declare. */
+export class UnknownWebSocketApi extends Error {
+	constructor(
+		readonly surface: string,
+		readonly declared: readonly string[],
+	) {
+		super(
+			`The test manifest declares no WebSocketApi '${surface}'` +
+				(declared.length
+					? ` — it declares ${declared.map((id) => `'${id}'`).join(', ')}.`
+					: ', and no WebSocketApi at all.') +
+				' Export the surface from the app so `gkm test` records it.',
+		);
+		this.name = 'UnknownWebSocketApi';
+	}
+}
+
 export class BucketNotWatched extends Error {
 	constructor(readonly bucket: string) {
 		super(

@@ -1,5 +1,57 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.154
+
+### Patch Changes
+
+- [#381](https://github.com/geekmidas/toolbox/pull/381) [`5a1fc8c`](https://github.com/geekmidas/toolbox/commit/5a1fc8cbd402fcaa3754891c6cc7d5d28c50ade5) Thanks [@geekmidas](https://github.com/geekmidas)! - A surface gets the identity of each client that calls it
+
+  `MobileApp('App').dependsOn([api])` gave the app `API_URL`, but gave the API
+  nothing of the app except its scheme inside `API_TRUSTED_ORIGINS`. An API
+  that redirected an OAuth callback back into the app with
+  `get('APP_SCHEME')` failed at startup on a deployed stage.
+
+  An edge from a client to a `RestApi` or `WebSocketApi` now also hands the
+  surface the client's own key: `<ID>_SCHEME` from a mobile app and `<ID>_URL`
+  from a site (`APP_SCHEME`, `WEB_URL`). Each key is named by the caller's id,
+  so two apps calling one API arrive as `APP_SCHEME` and `ADMIN_APP_SCHEME`.
+  `gkm dev`, `gkm exec`, `gkm compose` and `gkm docker` all hand out the same
+  keys, from one rule. The new guide page "Edges and Environment" lists what
+  each edge hands each side.
+
+- [#382](https://github.com/geekmidas/toolbox/pull/382) [`24c4648`](https://github.com/geekmidas/toolbox/commit/24c46483ef2d3e30eece1dddd2486cd39ad985b3) Thanks [@geekmidas](https://github.com/geekmidas)! - A static site can pre-render against its stage's live APIs
+
+  `new StaticSite('Docs', { variant: 'static', prerender: 'stage' })` declares
+  a site whose build fetches from the APIs it `.dependsOn()` and bakes their
+  answers into its files (vite-ssg and similar). `gkm compose` builds every
+  other image first, starts the stack but that site, asks each API it depends
+  on through the edge, and only then builds the site, against the URLs it
+  inlines: no `GKM_BUILD_OFFLINE`, no refused hosts, and on the local stage its
+  hosts point at the edge and the build trusts gkm's local CA (build secret
+  `gkm_local_ca`). The step that fetches is keyed by a per-run
+  `GKM_PRERENDER_RUN` build argument, so Docker's cache never ships the last
+  deploy's data. An API that does not answer fails the deploy with
+  `SitePrerenderApisDown` before the site is built.
+
+  It is opt-in because the image then holds that stage's data. `gkm compose
+-👷 -build --push` builds such a site against the stage as it is running, and
+  refuses (`SitePrerenderApisDown`, nothing pushed) when it does not answer.
+  Only a `static` site takes it: the construct throws
+  `PrerenderNeedsStaticSite` on `next` or `tanstack`.
+
+- Updated dependencies [[`24c4648`](https://github.com/geekmidas/toolbox/commit/24c46483ef2d3e30eece1dddd2486cd39ad985b3)]:
+  - @geekmidas/constructs@10.0.0-alpha.154
+  - @geekmidas/manifest@10.0.0-alpha.154
+  - @geekmidas/cache@10.0.0-alpha.154
+  - @geekmidas/db@10.0.0-alpha.154
+  - @geekmidas/envkit@10.0.0-alpha.154
+  - @geekmidas/errors@10.0.0-alpha.154
+  - @geekmidas/logger@10.0.0-alpha.154
+  - @geekmidas/schema@10.0.0-alpha.154
+  - @geekmidas/services@10.0.0-alpha.154
+  - @geekmidas/storage@10.0.0-alpha.154
+  - @geekmidas/telescope@10.0.0-alpha.154
+
 ## 10.0.0-alpha.153
 
 ### Patch Changes

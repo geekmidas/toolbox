@@ -34,6 +34,7 @@ export {
 	UnknownFactory,
 	UnknownService,
 	UnknownTestContext,
+	UnknownWebSocketApi,
 } from '../testing/featureTest';
 export {
 	loadTestManifest,
@@ -54,3 +55,19 @@ export {
 	ReceiveFieldsOrRaw,
 	ReceiveNeedsRecipient,
 } from '../testing/receive';
+export {
+	type CreateMswWebSocketHandlersOptions,
+	createMswWebSocketHandlers,
+	type MswWebSocketContext,
+	type MswWebSocketHandlers,
+	REFUSED_CLOSE_BASE,
+	TEST_CONTEXT_PARAM,
+	UnknownWebSocketTestContext,
+} from '../websocket/msw';
+export {
+	InvalidWebSocketRequest,
+	type RecordedBroadcast,
+	type RecordedClose,
+	type RecordedSend,
+	TestWebSocketPublisher,
+} from '../websocket/testing';

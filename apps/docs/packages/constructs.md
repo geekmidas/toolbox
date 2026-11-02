@@ -342,6 +342,13 @@ socket has: the upgrade, the Origin check, connection ids, the heartbeat and
 backpressure. Its sink is a `TransportSink`: its own sockets directly, the
 rest over Redis.
 
+Two more adaptors are for tests. `route.request()` calls the core directly,
+and `surface.testPublisher()` is a publisher over a recording sink (see
+[Testing WebSocket routes](#testing-websocket-routes)).
+`createMswWebSocketHandlers` hands MSW-intercepted sockets to the core (see
+[WebSocket clients](#websocket-clients)). `surface.publisher(sink)` is the
+surface's typed publisher over a sink of an adaptor's own.
+
 ### `.dependsOn()` — the one primitive
 
 Every builder takes it: endpoints, functions, crons, queue workers, and
@@ -2627,6 +2634,78 @@ expect(published).toEqual([
 
 In a `featureTest`, `published(users)` does this for you.
 
+### Testing WebSocket routes
+
+A `WebSocketApi` route is tested the way an endpoint is: by calling it.
+`route.request()` runs its handler through the surface's core — no server,
+no socket, no auth server.
+
+```typescript
+// connect: resolves with the connection's `data`, or rejects with the
+// HttpError that refused it (an UnauthorizedError stays a 401)
+const data = await connect.request({
+  connectionId: 'a.1',              // optional; `test.<n>` when absent
+  headers: { cookie: 'session=…' }, // what `.auth()` verifies without a session
+  query: { room: 'kitchen' },
+  session: { user: { email } },     // what `.auth()` would have resolved, or null
+  services: { database: trx },      // overrides; the rest are registered
+});
+
+// a message route: `body` is encoded as a frame and checked by the route's
+// `body` schema; resolves with the handler's return
+const reply = await say.request({
+  connection: { id: 'a.1', data },
+  body: { text: 'hi' },
+  services: { database: trx },
+});
+
+// …and every frame written back — each `reply()` and the reply itself
+const { returned, frames } = await say.fullRequest({ body: { text: 'hi' } });
+
+await disconnect.request({ connection: { id: 'a.1', data }, code: 1000 });
+```
+
+A body the schema refuses rejects with `InvalidWebSocketRequest` (its
+`issues` are the schema's). What the handler threw rejects as it is. A
+disconnect handler's error, which the core only logs, rejects too.
+`request()` is typed by the route: `body` by its schema's input, `services`
+by its `.dependsOn()`, and a connect route resolves with its handler's return.
+
+#### Recording what was sent
+
+`surface.testPublisher()` returns a publisher of the type `services.<surface>`
+is, which records instead of sending. Hand it to an endpoint that
+`.dependsOn([realtime])`, or to a route as `sockets`:
+
+```typescript
+const realtime = surface.testPublisher();
+
+await new TestEndpointAdaptor(sendMessage).request({
+  body: { to: ['a.1'], text: 'hi' },
+  services: { realtime },
+  headers: {},
+});
+
+expect(realtime.sent).toEqual([
+  {
+    ids: ['a.1'],
+    action: 'chat.message.created',
+    data: { chatId: 'c1', text: 'hi' },
+    // the frame a client parses: flat here, under `frame.discriminator`
+    frame: { type: 'chat.message.created', chatId: 'c1', text: 'hi' },
+  },
+]);
+realtime.broadcasts; // { action, data, except, frame }[]
+realtime.closed;     // { ids, code, reason }[]
+realtime.clear();
+```
+
+Each send is checked by the declared `messages` and encoded by `frame`, as
+deployed: an undeclared action or invalid data rejects
+(`UnknownWebSocketMessage`, `InvalidWebSocketMessage`), and `data` is what
+the schema returned. In a `featureTest`, `sockets(realtime)` is the recorder
+every handler in the test was handed.
+
 ## Frontend Integration Testing with MSW
 
 Use `createMswHandlers` to test frontend code against real backend endpoints — with full validation, authorization, and session handling — without running an HTTP server.
@@ -2750,6 +2829,51 @@ registerContext(contextId, {
 | `services` | `Record<string, unknown>` | Service instances keyed by `serviceName` |
 | `database` | `unknown` | Database instance (required when endpoints use `.database()`) |
 | `auditorStorage` | `unknown` | Audit storage instance (required when endpoints use `.auditor()`) |
+
+### WebSocket clients
+
+`createMswWebSocketHandlers` does the same for a `WebSocketApi`: MSW's
+`ws.link()` intercepts the client's `WebSocket`, and each connection is handed
+to the surface's real routes. Client code — its reconnects, its decoding by
+`frame` — runs unchanged, and an endpoint's push reaches it in the same
+process:
+
+```typescript
+import {
+  createMswWebSocketHandlers,
+  TEST_CONTEXT_PARAM,
+} from '@geekmidas/constructs/testing';
+
+const ws = createMswWebSocketHandlers(realtime, [routes], {
+  url: 'wss://realtime.test',
+});
+server.use(...ws.handlers);
+
+it('shows a new message', async () => {
+  const id = crypto.randomUUID();
+  ws.registerContext(id, { session: { user: { email } }, services: { database: trx } });
+  const socket = new WebSocket(`wss://realtime.test/?${TEST_CONTEXT_PARAM}=${id}`);
+
+  // endpoint → in-process channel → the surface → MSW → socket.onmessage
+  await new TestEndpointAdaptor(sendMessage).request({
+    services: { realtime: ws.publisher },
+    // …
+  });
+});
+```
+
+- The context travels as a query parameter, since a browser `WebSocket`
+  cannot set headers. The adaptor strips it before `connect()` sees `query`.
+- There is no handshake, so the session is the context's (no context is no
+  session). A refused connection is closed with `4000 + status`, so a 401 is
+  4401 (`REFUSED_CLOSE_BASE`). A context nobody registered closes it with 1011.
+- `ws.publisher` sends to these connections. `ws.connectionString` (a
+  `memory://` channel of its own) is the same channel as
+  `<ID>_PUBLISHER_CONNECTION_STRING`, for code that registers
+  `services.<surface>` itself. `ws.connections` lists the open ones.
+
+The Origin check, the handshake headers and the heartbeat need a real
+upgrade, and stay covered by the Node adaptor's own tests.
 
 ## OpenAPI Documentation
 
