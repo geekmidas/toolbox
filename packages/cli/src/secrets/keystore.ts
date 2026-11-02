@@ -13,12 +13,13 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { constants, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import {
 	chmod,
-	copyFile,
+	link,
 	mkdir,
 	readFile,
+	rename,
 	rm,
 	writeFile,
 } from 'node:fs/promises';
@@ -186,13 +187,37 @@ export async function generateKey(
 	// Generate random key
 	const key = randomBytes(KEY_LENGTH).toString('hex');
 
-	// Write key with restricted permissions (owner read/write only)
-	await writeFile(keyPath, key, { mode: 0o600, encoding: 'utf-8', flag });
-
-	// Ensure permissions are set correctly (in case file existed)
-	await chmod(keyPath, 0o600);
+	await placeKey(keyPath, key, flag === 'wx');
 
 	return key;
+}
+
+/**
+ * Put a key at `keyPath` whole, or not at all.
+ *
+ * Written beside it first, then linked (exclusive) or renamed into place.
+ * Writing the path directly — even with `wx` — creates it empty and fills it
+ * after, and another process reading in between found an empty key and
+ * failed with `KeyNotFound`: two commands, or two test files, creating one
+ * project's key at once.
+ */
+async function placeKey(
+	keyPath: string,
+	key: string,
+	exclusive: boolean,
+): Promise<void> {
+	const staged = `${keyPath}.${process.pid}.${randomBytes(4).toString('hex')}`;
+	// Owner read/write only.
+	await writeFile(staged, key, { mode: 0o600, encoding: 'utf-8' });
+	try {
+		// `link` refuses an existing path with EEXIST, as `wx` does.
+		if (exclusive) await link(staged, keyPath);
+		else await rename(staged, keyPath);
+	} finally {
+		await rm(staged, { force: true });
+	}
+	// Ensure permissions are set correctly (in case the file existed)
+	await chmod(keyPath, 0o600);
 }
 
 /**
@@ -214,11 +239,10 @@ async function migrateLegacyKey(
 	const keyPath = getKeyPath(stage, project);
 	await mkdir(getKeystoreDir(project), { recursive: true, mode: 0o700 });
 	try {
-		await copyFile(legacy, keyPath, constants.COPYFILE_EXCL);
+		await placeKey(keyPath, await readFile(legacy, 'utf-8'), true);
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
 	}
-	await chmod(keyPath, 0o600);
 	return true;
 }
 
