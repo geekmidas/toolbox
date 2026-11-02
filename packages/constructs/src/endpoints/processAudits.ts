@@ -8,9 +8,9 @@ import type { Logger } from '@geekmidas/logger';
 import type { InferStandardSchema } from '@geekmidas/schema';
 import type { Service, ServiceDiscovery } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import { loadAudit } from '../optionalPeers';
 import type { ActorExtractor, MappedAudit } from './audit';
 import type { CookieFn, Endpoint, HeaderFn } from './Endpoint';
-import { loadAudit } from './optionalPeers';
 
 /**
  * Process declarative audit definitions after successful endpoint execution.

@@ -6,8 +6,34 @@
  * everything when `header()` or `cookie()` is called without arguments.
  */
 import type { Context } from 'hono';
-import { getCookie } from 'hono/cookie';
 import type { CookieFn, HeaderFn } from './Endpoint';
+
+/**
+ * One cookie from a `Cookie` header, read the way Hono's `getCookie` reads it:
+ * surrounding quotes dropped and percent-escapes decoded.
+ *
+ * Not `getCookie` itself: `hono` is an optional peer, and `./endpoints` is
+ * loaded by every app — including one served by API Gateway, which never
+ * installs Hono.
+ */
+function readCookie(header: string | undefined, name: string) {
+	if (!header) return undefined;
+	for (const part of header.split(';')) {
+		const eq = part.indexOf('=');
+		if (eq <= 0 || part.slice(0, eq).trim() !== name) continue;
+		let value = part.slice(eq + 1).trim();
+		if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+			value = value.slice(1, -1);
+		}
+		if (!value.includes('%')) return value;
+		try {
+			return decodeURIComponent(value);
+		} catch {
+			return value;
+		}
+	}
+	return undefined;
+}
 
 /**
  * Create a lazy header accessor for Hono.
@@ -32,7 +58,7 @@ export function createHonoHeaders(c: Context): HeaderFn {
 
 /**
  * Create a lazy cookie accessor for Hono.
- * Uses `getCookie(c, name)` for single lookups (native).
+ * Reads one cookie from the header for single lookups.
  * Only parses the cookie header when all cookies are requested.
  */
 export function createHonoCookies(c: Context): CookieFn {
@@ -40,8 +66,8 @@ export function createHonoCookies(c: Context): CookieFn {
 
 	return ((name?: string) => {
 		if (name !== undefined) {
-			// Single cookie lookup - use native Hono method
-			return getCookie(c, name);
+			// Single cookie lookup
+			return readCookie(c.req.header('cookie'), name);
 		}
 		// Get all cookies - parse and cache
 		if (!allCookies) {

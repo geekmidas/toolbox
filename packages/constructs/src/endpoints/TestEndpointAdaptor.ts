@@ -3,7 +3,6 @@ import type {
 	AuditableAction,
 	AuditStorage,
 } from '@geekmidas/audit';
-import { DefaultAuditor } from '@geekmidas/audit';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { ForbiddenError } from '@geekmidas/errors';
 import type { EventPublisher } from '@geekmidas/events';
@@ -20,6 +19,7 @@ import {
 	type ServiceRecord,
 } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import { loadAudit } from '../optionalPeers';
 import { publishConstructEvents } from '../publisher';
 import type { HttpMethod } from '../types';
 import type { MappedAudit } from './audit';
@@ -267,6 +267,7 @@ export class TestEndpointAdaptor<
 						}
 					}
 
+					const { DefaultAuditor } = await loadAudit();
 					const auditor = new DefaultAuditor<TAuditAction>({
 						actor,
 						storage: auditorStorage as AuditStorage,

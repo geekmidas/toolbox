@@ -34,11 +34,15 @@ import {
 	rmSync,
 	writeFileSync,
 } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const { admitsRelease } = createRequire(import.meta.url)(
+	'./prerelease-range.cjs',
+);
 const keep = process.argv.includes('--keep');
 
 /**
@@ -87,6 +91,11 @@ const OPTIONAL = new Set([
 	// Test-only. `@geekmidas/testkit` is imported by test files, which run under
 	// a runner the consumer already has.
 	'vitest',
+	// `@geekmidas/constructs/testing` is the feature-test harness, built on
+	// testkit (see ALLOWED in check-optional-peers.mjs). It used to fail on
+	// emailkit or audit first, which the harness no longer loads up front, so
+	// testkit is now the first optional peer it reaches.
+	'@geekmidas/testkit',
 ]);
 
 function run(command, args, cwd) {
@@ -146,6 +155,43 @@ run('mkdir', ['-p', tarballs]);
 console.log('Packing publishable packages...');
 const packed = packAll(tarballs);
 console.log(`  ${packed.size} packages packed.\n`);
+
+/**
+ * A prerelease names its siblings with ranges that stop below the release.
+ *
+ * `^10.0.0-alpha.152` admits `10.0.0`, and a stray `10.0.0` is on npm (#371),
+ * so a published alpha with such a range installs that release beneath
+ * itself. `.pnpmfile.cjs` caps them at pack time; this reads the packed
+ * manifests, which are what npm serves, to prove it did.
+ */
+const uncapped = [];
+for (const [name, { tarball }] of packed) {
+	const published = JSON.parse(
+		run('tar', ['-xOf', tarball, 'package/package.json'], root),
+	);
+	if (!published.version.includes('-')) continue;
+	for (const field of [
+		'dependencies',
+		'peerDependencies',
+		'optionalDependencies',
+	]) {
+		for (const [dep, range] of Object.entries(published[field] ?? {})) {
+			if (dep.startsWith('@geekmidas/') && admitsRelease(range)) {
+				uncapped.push(`${name} ${field}.${dep}: ${range}`);
+			}
+		}
+	}
+}
+if (uncapped.length > 0) {
+	console.error(
+		'Packed prereleases name a sibling with a range that admits its release:\n',
+	);
+	for (const line of uncapped) console.error(`  ${line}`);
+	console.error(
+		'\n`.pnpmfile.cjs` caps these at pack time. Is it loaded (pnpm, not npm)?\n',
+	);
+	process.exit(1);
+}
 
 /**
  * Every workspace package resolves to the tarball just built.

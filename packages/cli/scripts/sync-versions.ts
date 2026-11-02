@@ -8,6 +8,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { versionRange } from '../src/init/versionRange';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packagesDir = join(__dirname, '../../'); // packages/cli/scripts -> packages/
@@ -50,10 +51,11 @@ function generateVersionsFile(): string {
 
 	for (const pkg of PACKAGES) {
 		const version = getPackageVersion(pkg);
-		versions[`@geekmidas/${pkg}`] = `~${version}`;
+		versions[`@geekmidas/${pkg}`] = versionRange(version);
 	}
 
 	const content = `import { createRequire } from 'node:module';
+import { versionRange } from './versionRange.js';
 
 const require = createRequire(import.meta.url);
 
@@ -73,7 +75,7 @@ const pkg = loadPackageJson();
 /**
  * CLI version resolved from package.json at runtime
  */
-export const CLI_VERSION = \`~\${pkg.version}\`;
+export const CLI_VERSION = versionRange(pkg.version);
 
 /**
  * Package versions for @geekmidas packages

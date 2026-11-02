@@ -12,6 +12,7 @@ import type { Logger } from '@geekmidas/logger';
 import { INBOX_EVENT } from '@geekmidas/manifest';
 import { ServiceDiscovery } from '@geekmidas/services';
 import type { SNSEvent, SNSEventRecord, SQSEvent, SQSRecord } from 'aws-lambda';
+import { loadStorageEvents } from '../optionalPeers';
 import type { Subscriber } from './Subscriber';
 
 type AnySubscriber = Subscriber<any, any, any, any, any, any, any>;
@@ -47,7 +48,7 @@ export async function subscribedEvents(
 	// of records — and reads it as object events. Loaded only then: an app
 	// with no bucket never installs the storage package.
 	const toObjectEvents = subscriber.bucketName
-		? (await import('@geekmidas/storage/events')).toObjectEvents
+		? (await loadStorageEvents()).toObjectEvents
 		: undefined;
 
 	for (const record of records) {

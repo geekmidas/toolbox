@@ -15,6 +15,7 @@ import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { trustsOrigin } from '@geekmidas/manifest';
 import type { RawData, WebSocket, WebSocketServer } from 'ws';
+import { loadWs } from '../optionalPeers';
 import type { WebSocketCore } from './core';
 import type {
 	NoMessages,
@@ -110,7 +111,7 @@ export class WebSocketSurfaceServer<
 	static async start<TMessages extends WebSocketMessages = NoMessages>(
 		options: WebSocketServerOptions<TMessages>,
 	): Promise<WebSocketSurfaceServer<TMessages>> {
-		const { WebSocketServer } = await import('ws');
+		const { WebSocketServer } = await loadWs();
 		const wss = new WebSocketServer({
 			noServer: true,
 			maxPayload: options.maxPayload ?? 1024 * 1024,

@@ -1,10 +1,35 @@
-import { InMemoryCache } from '@geekmidas/cache/memory';
+import type { Cache } from '@geekmidas/cache';
 import { CacheAuditStorage } from './cache';
 import type { AuditableAction } from './types';
 
 /**
+ * A `Map` behind the `Cache` interface, so the in-memory store needs no
+ * `@geekmidas/cache` — an optional peer — at run time. Records never expire:
+ * they live as long as the process.
+ */
+class MapCache implements Cache {
+	private readonly store = new Map<string, unknown>();
+
+	async get<T>(key: string): Promise<T | undefined> {
+		return this.store.get(key) as T | undefined;
+	}
+
+	async set<T>(key: string, value: T): Promise<void> {
+		this.store.set(key, value);
+	}
+
+	async delete(key: string): Promise<void> {
+		this.store.delete(key);
+	}
+
+	async ttl(key: string): Promise<number> {
+		return this.store.has(key) ? Number.POSITIVE_INFINITY : 0;
+	}
+}
+
+/**
  * In-memory audit storage implementation.
- * Convenience wrapper around CacheAuditStorage with InMemoryCache.
+ * Convenience wrapper around CacheAuditStorage with an in-process map.
  *
  * Useful for testing, development, and applications that don't need persistent audit logs.
  *
@@ -41,10 +66,6 @@ export class InMemoryAuditStorage<
 	>,
 > extends CacheAuditStorage<TAuditAction> {
 	constructor() {
-		super({
-			cache: new InMemoryCache(),
-			// Use a long TTL since in-memory cache expires items
-			ttl: 86400 * 365, // 1 year
-		});
+		super({ cache: new MapCache() });
 	}
 }

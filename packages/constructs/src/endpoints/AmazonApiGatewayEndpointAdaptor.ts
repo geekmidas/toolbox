@@ -1,5 +1,4 @@
 import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
-import { withRlsContext } from '@geekmidas/db/rls';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 import middy, { type MiddlewareObj } from '@middy/core';
@@ -9,6 +8,7 @@ import type {
 	APIGatewayProxyEventV2,
 	Context,
 } from 'aws-lambda';
+import { loadRls } from '../optionalPeers';
 import type { HttpMethod } from '../types';
 import { Endpoint, type EndpointSchemas, ResponseBuilder } from './Endpoint';
 import type { Telemetry } from './lambdaTelemetry';
@@ -521,6 +521,7 @@ export abstract class AmazonApiGatewayEndpoint<
 
 				// If RLS is active, wrap handler with RLS context
 				if (rlsActive && rlsContext && baseDb) {
+					const { withRlsContext } = await loadRls();
 					return withRlsContext(
 						baseDb,
 						rlsContext,

@@ -62,9 +62,19 @@ describe('optional peers', () => {
 		).toEqual([]);
 	});
 
-	it('sees a value import, so the check above can fail', () => {
-		const loaded = packagesLoadedBy(join(SRC, 'email.ts'));
+	it('the test harness loads no emailkit, cache or audit for an app without them', () => {
+		const loaded = [
+			...packagesLoadedBy(join(SRC, 'adaptors', 'testing.ts')),
+		].filter((specifier) =>
+			/^@geekmidas\/(emailkit|cache|audit)(\/|$)/.test(specifier),
+		);
 
-		expect(loaded).toContain('@geekmidas/emailkit');
+		expect(loaded).toEqual([]);
+	});
+
+	it('sees a value import, so the checks above can fail', () => {
+		const loaded = packagesLoadedBy(join(SRC, 'inbox.ts'));
+
+		expect(loaded).toContain('@geekmidas/emailkit/inbound');
 	});
 });

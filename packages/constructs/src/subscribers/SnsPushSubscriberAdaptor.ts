@@ -6,7 +6,7 @@ import {
 	type SnsHttpMessage,
 	toSnsEvent,
 	verifySnsMessage,
-} from '@geekmidas/events/sns';
+} from '@geekmidas/events/sns/message';
 import { runWithRequestContext } from '@geekmidas/services';
 import {
 	runSubscriber,

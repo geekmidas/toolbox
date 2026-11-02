@@ -16,7 +16,7 @@
  * app caching in Upstash are the same application code.
  */
 
-import { type Cache as CacheClient, createCacheClient } from '@geekmidas/cache';
+import type { Cache as CacheClient } from '@geekmidas/cache';
 import {
 	type ConstructName,
 	canonicalId,
@@ -26,6 +26,7 @@ import {
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import type { Construct } from './construct-interface';
+import { loadCache } from './optionalPeers';
 
 export interface CacheOptions {
 	/**
@@ -98,6 +99,10 @@ export class Cache<TName extends string = string>
 			.create((get) => ({ url: get(this.key).string() }))
 			.parse();
 
+		// Loaded here, not at the top: a database's `.cache()` and the test
+		// harness name this construct, and neither may need the package until
+		// a cache is actually opened.
+		const { createCacheClient } = await loadCache();
 		return createCacheClient(url);
 	}
 }

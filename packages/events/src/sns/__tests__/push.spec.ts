@@ -11,16 +11,18 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import {
 	confirmSnsSubscription,
-	confirmSubscription,
-	reconcileHttpSubscriptions,
 	SnsCertificateUntrusted,
 	type SnsHttpMessage,
 	SnsNotAConfirmation,
 	SnsSignatureInvalid,
 	snsStringToSign,
-	subscribeHttpEndpoint,
 	toSnsEvent,
 	verifySnsMessage,
+} from '../message';
+import {
+	confirmSubscription,
+	reconcileHttpSubscriptions,
+	subscribeHttpEndpoint,
 } from '../push';
 import { SNSConnection } from '../SNSConnection';
 import { SNSPublisher } from '../SNSPublisher';

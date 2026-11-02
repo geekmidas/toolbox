@@ -20,6 +20,7 @@ import type {
 	RedirectStatusCode,
 } from 'hono/utils/http-status';
 import { validator } from 'hono/validator';
+import { loadRls } from '../optionalPeers';
 import { publishConstructEvents } from '../publisher';
 import type { HttpMethod, LowerHttpMethod } from '../types';
 import type { MappedAudit } from './audit';
@@ -31,7 +32,6 @@ import {
 } from './Endpoint';
 import { getEndpointsFromRoutes } from './helpers';
 import { createHonoCookies, createHonoHeaders } from './lazyAccessors';
-import { loadRls } from './optionalPeers';
 import { parseHonoQuery } from './parseHonoQuery';
 import {
 	createAuditContext,

@@ -11,6 +11,7 @@ import type {
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Consumable, ServicesOf } from '../construct-interface';
 import type { DatabaseContext } from '../functions/Function';
+import { loadStorageEvents } from '../optionalPeers';
 import type { Subscriber } from './Subscriber';
 import type { SubscriberBuilder } from './SubscriberBuilder';
 
@@ -231,7 +232,7 @@ export class ObjectSubscriberBuilder<
 		// adaptor's word is final on the key, whatever filtered at the source
 		// — and hands over the objects.
 		const handler = async (ctx: Record<string, any>) => {
-			const { matchesObjectFilter } = await import('@geekmidas/storage/events');
+			const { matchesObjectFilter } = await loadStorageEvents();
 			const wanted = (ctx.events as unknown[]).filter(
 				(event): event is ObjectMessage =>
 					isObjectMessage(event) &&

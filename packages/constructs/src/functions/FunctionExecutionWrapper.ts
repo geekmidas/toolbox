@@ -1,6 +1,4 @@
 import type { AuditableAction, Auditor, AuditStorage } from '@geekmidas/audit';
-import { DefaultAuditor } from '@geekmidas/audit';
-import { withAuditableTransaction } from '@geekmidas/audit/kysely';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
@@ -15,6 +13,7 @@ import {
 	type ServiceRecord,
 } from '@geekmidas/services';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import { loadAudit, loadAuditKysely } from '../optionalPeers';
 import { publishEvents } from '../publisher';
 import type { Function, FunctionHandler } from './Function';
 import { FunctionBuilder } from './FunctionBuilder';
@@ -117,6 +116,7 @@ export abstract class FunctionExecutionWrapper<
 			return undefined;
 		}
 
+		const { DefaultAuditor } = await loadAudit();
 		return new DefaultAuditor<TAuditAction>({
 			actor: { id: 'system', type: 'system' },
 			storage: storage as AuditStorage,
@@ -157,6 +157,7 @@ export abstract class FunctionExecutionWrapper<
 		// If the audit storage has a database and we're using the same database service
 		// (or the audit storage provides the database), use transactional execution
 		if (storageDb && databaseServiceName && auditDbServiceName) {
+			const { withAuditableTransaction } = await loadAuditKysely();
 			return withAuditableTransaction(
 				storageDb as any,
 				auditor as any,

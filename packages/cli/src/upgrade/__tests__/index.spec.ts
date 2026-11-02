@@ -111,14 +111,29 @@ describe('upgradeCommand', () => {
 
 		await upgradeCommand();
 
+		// Capped below the release: `~10.0.0-alpha.8` also admits 10.0.0, and a
+		// stray 10.0.0 is on npm (#371).
 		expect(read(join(dir, 'package.json')).devDependencies).toEqual({
-			'@geekmidas/cli': '~10.0.0-alpha.8',
+			'@geekmidas/cli': '>=10.0.0-alpha.8 <10.0.0',
 		});
 		expect(output()).toContain('Target: 10.0.0-alpha.8 (npm "alpha")');
 		expect(execSync).toHaveBeenCalledWith(
 			'pnpm install',
 			expect.objectContaining({ cwd: dir }),
 		);
+	});
+
+	it('moves a capped prerelease range along the alpha line', async () => {
+		registry();
+		await workspace({
+			devDependencies: { '@geekmidas/cli': '>=10.0.0-alpha.6 <10.0.0' },
+		});
+
+		await upgradeCommand();
+
+		expect(read(join(dir, 'package.json')).devDependencies).toEqual({
+			'@geekmidas/cli': '>=10.0.0-alpha.8 <10.0.0',
+		});
 	});
 
 	it('follows latest for a project on a release', async () => {
@@ -161,9 +176,10 @@ describe('upgradeCommand', () => {
 
 		await upgradeCommand({ all: true });
 
-		// Each keeps the operator it was written with.
+		// An exact pin stays exact; a range on the alpha line is capped below
+		// the release, whatever operator it was written with.
 		expect(read(join(dir, 'apps/api/package.json')).dependencies).toEqual({
-			'@geekmidas/constructs': '^10.0.0-alpha.8',
+			'@geekmidas/constructs': '>=10.0.0-alpha.8 <10.0.0',
 			'@geekmidas/envkit': '10.0.0-alpha.8',
 		});
 	});
@@ -221,8 +237,12 @@ describe('upgradeCommand', () => {
 
 		const yaml = readFileSync(join(dir, 'pnpm-workspace.yaml'), 'utf-8');
 		expect(yaml).toContain('# The toolchain, pinned once.');
-		expect(yaml).toMatch(/'@geekmidas\/cli': ~10\.0\.0-alpha\.8/);
-		expect(yaml).toMatch(/'@geekmidas\/constructs': ~10\.0\.0-alpha\.8/);
+		expect(yaml).toMatch(
+			/'@geekmidas\/cli': ["']?>=10\.0\.0-alpha\.8 <10\.0\.0/,
+		);
+		expect(yaml).toMatch(
+			/'@geekmidas\/constructs': ["']?>=10\.0\.0-alpha\.8 <10\.0\.0/,
+		);
 		// The references themselves stay references.
 		expect(read(join(dir, 'package.json')).devDependencies).toEqual({
 			'@geekmidas/cli': 'catalog:',
@@ -253,7 +273,7 @@ describe('upgradeCommand', () => {
 		await upgradeCommand({ all: true });
 
 		expect(read(join(dir, 'apps/api/package.json')).dependencies).toEqual({
-			'@geekmidas/constructs': '~10.0.0-alpha.8',
+			'@geekmidas/constructs': '>=10.0.0-alpha.8 <10.0.0',
 			kysely: '~0.29.6',
 			hono: '^4.14.0',
 			pg: '>=8.0.0 <9',
@@ -288,7 +308,7 @@ describe('upgradeCommand', () => {
 		await upgradeCommand({ dryRun: true });
 
 		expect(output()).toContain('@geekmidas/cli');
-		expect(output()).toContain('~10.0.0-alpha.6 → ~10.0.0-alpha.8');
+		expect(output()).toContain('~10.0.0-alpha.6 → >=10.0.0-alpha.8 <10.0.0');
 		expect(read(join(dir, 'package.json')).devDependencies).toEqual({
 			'@geekmidas/cli': '~10.0.0-alpha.6',
 		});
@@ -298,7 +318,7 @@ describe('upgradeCommand', () => {
 	it('does nothing when already on the target', async () => {
 		registry();
 		await workspace({
-			devDependencies: { '@geekmidas/cli': '~10.0.0-alpha.8' },
+			devDependencies: { '@geekmidas/cli': '>=10.0.0-alpha.8 <10.0.0' },
 		});
 
 		await upgradeCommand();

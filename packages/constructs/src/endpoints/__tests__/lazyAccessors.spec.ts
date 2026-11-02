@@ -63,6 +63,23 @@ describe('Hono accessors', () => {
 	it('has no cookies when the request sent none', async () => {
 		expect(await within({}, (c) => createHonoCookies(c)())).toEqual({});
 	});
+
+	it("reads one cookie the way Hono's getCookie does", async () => {
+		// Read without hono/cookie, which `./endpoints` may not import: hono is
+		// an optional peer. The answers are the ones getCookie gives.
+		const { getCookie } = await import('hono/cookie');
+		const header = 'quoted="a b"; encoded=caf%C3%A9; bad=%E0%A4%A; plain=x';
+
+		const seen = await within({ cookie: header }, (c) => {
+			const cookie = createHonoCookies(c);
+			return ['quoted', 'encoded', 'bad', 'plain', 'missing'].map((name) => [
+				cookie(name),
+				getCookie(c, name),
+			]);
+		});
+
+		for (const [ours, hono] of seen) expect(ours).toBe(hono);
+	});
 });
 
 describe('lazyAccessors', () => {
