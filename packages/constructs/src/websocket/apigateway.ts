@@ -31,15 +31,19 @@ import {
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
-import { Entity } from 'electrodb';
 import {
+	API_GATEWAY_WEBSOCKET_SCHEME,
 	type ApiGatewayWebSocketTarget,
 	parseApiGatewayWebSocketUrl,
 	trustsOrigin,
 } from '@geekmidas/manifest';
-import { OptionalPeerMissing } from '../optionalPeers';
+import { Entity } from 'electrodb';
 import type { WebSocketApi } from '../websocket-api';
 import type { WebSocketCore } from './core';
+import {
+	registerWebSocketSinkDriver,
+	type WebSocketSinkDriver,
+} from './drivers';
 import { ownOrigins } from './origins';
 import type { NoMessages, WebSocketMessages, WebSocketSink } from './publisher';
 import type { Connection } from './route';
@@ -130,8 +134,8 @@ export class DynamoConnectionTable implements ConnectionTable {
 	}
 
 	async ids(): Promise<string[]> {
-		const { data: items } = await this.connections
-			.scan.where(({ expiresAt }, { gt }) => gt(expiresAt, nowSeconds()))
+		const { data: items } = await this.connections.scan
+			.where(({ expiresAt }, { gt }) => gt(expiresAt, nowSeconds()))
 			.go({ pages: 'all', attributes: ['connectionId', 'expiresAt'] });
 		// DynamoDB deletes an expired item eventually, not on time.
 		return items.map((item) => item.connectionId);
@@ -157,7 +161,13 @@ function connectionEntity(table: string, client: DynamoDBClient) {
 			},
 			indexes: {
 				primary: {
-					pk: { field: 'connectionId', composite: ['connectionId'] },
+					// A connection id is case-sensitive; ElectroDB lowercases keys
+					// unless told not to, and a lowered id is a 410 on every post.
+					pk: {
+						field: 'connectionId',
+						composite: ['connectionId'],
+						casing: 'none',
+					},
 				},
 			},
 		},
@@ -243,6 +253,18 @@ export class ApiGatewaySink implements WebSocketSink {
 	}
 }
 
+/**
+ * `services.<surface>` on an AWS stage: the management API's sink for an
+ * `apigateway://` publisher string. An AWS build's entry registers it with
+ * `registerWebSocketSinkDriver`, and {@link AmazonApiGatewayWebSocket} does
+ * for its own Lambda.
+ */
+export const apiGatewayWebSocketDriver: WebSocketSinkDriver = {
+	scheme: API_GATEWAY_WEBSOCKET_SCHEME,
+	sink: (connectionString) =>
+		apiGatewayFromConnectionString(connectionString).sink,
+};
+
 /** A table and a sink from an `apigateway://` publisher string. */
 export function apiGatewayFromConnectionString(connectionString: string): {
 	target: ApiGatewayWebSocketTarget;
@@ -322,7 +344,10 @@ export class AmazonApiGatewayWebSocket<
 	constructor(
 		private readonly surface: WebSocketApi<string, TMessages>,
 		private readonly options: AmazonApiGatewayWebSocketOptions = {},
-	) {}
+	) {
+		// A route's own `services.<surface>` publishes through API Gateway too.
+		registerWebSocketSinkDriver(apiGatewayWebSocketDriver);
+	}
 
 	/** The Lambda handler. */
 	readonly handler = (

@@ -11,6 +11,7 @@ export {
 	type ApiGatewayWebSocketEvent,
 	type ApiGatewayWebSocketResult,
 	apiGatewayFromConnectionString,
+	apiGatewayWebSocketDriver,
 	CONNECTION_TTL_SECONDS,
 	type ConnectionTable,
 	DynamoConnectionTable,
