@@ -688,19 +688,25 @@ export class ExpoPluginRequired extends Error {
 	}
 }
 
-/** What is forwarded to the auth server: the headers a session travels in. */
-const SESSION_HEADERS = ['cookie', 'authorization'] as const;
+/**
+ * What is forwarded to the auth server: the headers a session travels in, and
+ * the origin the request came from. The API calls the auth server at its
+ * public address, through the edge, which marks the call as outside traffic;
+ * the origin is what lets the auth server continue the trace exactly when
+ * the API did — for a request from one of the sites both trust.
+ */
+const SESSION_HEADERS = ['cookie', 'authorization', 'origin'] as const;
 
 /**
  * `GET <basePath>/get-session`, read the way Better Auth answers it.
  *
  * Whose request it is travels in {@link CLIENT_IP_HEADER} — the server
  * rate-limits `/get-session` by the client's address, so without it every
- * caller shares the API's one bucket — and never as `X-Forwarded-For`. A
- * forwarding header is what marks a request as outside traffic, so the auth
- * server would start its span in a trace of its own rather than continue the
- * API's. Without one, this is an internal caller's request, and the trace
- * context it carries is continued.
+ * caller shares the API's one bucket — and never as `X-Forwarded-For`, which
+ * marks a request as outside traffic. The call goes to the auth server's
+ * public address, though, through the stack's edge, which strips gkm's
+ * header and adds its own forwarding one; the request's `Origin` is passed
+ * on so the trace is still continued for a site both trust.
  */
 async function fetchSession(
 	authenticator: string,

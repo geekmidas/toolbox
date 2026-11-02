@@ -1065,14 +1065,15 @@ describe('a stack behind the shared edge', () => {
 		const api = s.apps.find((app) => app.name === 'api')!;
 		const auth = s.apps.find((app) => app.name === 'auth')!;
 
-		// The API calls the auth server across the network by its alias.
-		expect(api.env?.AUTH_URL).toBe('http://compose-app-production-auth:3001');
-		// The auth server trusts the browser's origin and the API's alias.
+		// The API calls the auth server at its public address, through the edge.
+		expect(api.env?.AUTH_URL).toBe(auth.url);
+		// The auth server trusts the browser's origin and the API's, both
+		// public — no alias on the network calls it.
 		expect(auth.env?.AUTH_TRUSTED_ORIGINS?.split(',')).toEqual(
-			expect.arrayContaining([
-				'https://shop.example.com',
-				'http://compose-app-production-api:3000',
-			]),
+			expect.arrayContaining(['https://shop.example.com', api.url]),
+		);
+		expect(auth.env?.AUTH_TRUSTED_ORIGINS).not.toContain(
+			'compose-app-production-api:3000',
 		);
 		// Telemetry goes to OpenObserve by its alias, as it is on the edge.
 		expect(api.env?.OTEL_EXPORTER_OTLP_ENDPOINT).toBe(

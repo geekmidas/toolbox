@@ -133,3 +133,13 @@ export function siteOfflineHosts(
 	}
 	return offlineBuildHosts(site, manifest, (key) => byKey.get(key));
 }
+
+/**
+ * Whether a site runs a server of its own — Next's, TanStack Start's — which
+ * reads an environment at runtime as a backend does: its edges' public URLs
+ * and the stage's secrets. A `static` site is a finished bundle, and reads
+ * nothing once it is built.
+ */
+export function runsServer(site: Pick<SiteDeclaration, 'variant'>): boolean {
+	return site.variant !== 'static';
+}

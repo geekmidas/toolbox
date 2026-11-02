@@ -120,8 +120,8 @@ drift.
 | `Email` | `/email` | an `EmailClient` typed by your templates |
 | `Topic` | `/topic` | an `EventPublisher` typed to its events |
 | `Queue` | `worker.queue(…)` | an `EventPublisher` typed to its `message` |
-| `RestApi` | `/rest-api` | — a surface; it owns a URL, not a client |
-| `StaticSite` | `/site` | — a surface |
+| `RestApi` | `/rest-api` | its public URL, a `string` — `API_URL` |
+| `StaticSite` | `/site` | its public URL, a `string` — `WEB_URL` |
 | `BetterAuth` | `/auth` | an `AuthClient` — `api.getSession({ headers })`, over HTTP to the auth app |
 
 A `FileServer` serves the paths it calls `open` without a signature, and
@@ -341,6 +341,25 @@ manifest** — what an edge implies on a given cloud is the adapter's business.
 `.dependsOn()` takes constructs only. A `Service` (`{ serviceName, register }`)
 does not match the shape, which is what keeps environment sniffing confined to
 `.services()`.
+
+Code that builds a link — an email's sign-in link, a payment provider's
+callback — depends on the site or the API it points at, rather than reading a
+key nothing declares:
+
+```typescript
+export const digest = worker
+  .cron('rate(1 day)')
+  .dependsOn([web, api])
+  .handle(async ({ services }) => {
+    const inbox = new URL('/inbox', services.web); // WEB_URL
+    const callback = new URL('/payments/callback', services.api); // API_URL
+  });
+```
+
+A `RestApi` or a `StaticSite` hands back its **public** URL — `<ID>_URL`, the
+same address on every command and stage, which a browser opens and another
+app's server calls through the edge. The edge is what puts the key in the
+worker's environment, under `gkm dev` and `gkm compose` alike.
 
 A construct that owns no client — a `Cron`, a `Subscriber` — types its
 `service` as `never`, so depending on one is a compile error rather than a stub

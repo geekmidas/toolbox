@@ -248,6 +248,19 @@ Secrets are loaded from the local stage's file — `.gkm/secrets/dev.json` for
 resolved is merged over them, and declared addresses win: a stale URL in a
 secret cannot point an app at the wrong port.
 
+Each app is then handed exactly the keys its process reads — the rule
+`gkm compose` writes each env file by, so an app gets the same keys under both:
+
+- what its constructs reach by their edges — for an API, the workers whose
+  crons, consumers and subscribers its process runs too;
+- every key the stage set by hand that no construct provides (`STRIPE_KEY`,
+  read with `get('STRIPE_KEY')`), to every app.
+
+A key a construct provides reaches only an app with an edge to it: a site
+gets `API_URL` because it `.dependsOn([api])`, and a worker's cron gets
+`WEB_URL` because it `.dependsOn([web])`. Code that reads such a key without
+the edge finds it missing here as it would on a stack.
+
 Each app answers behind the edge on its own HTTPS host — the left of each line
 above. That is the address the other apps receive (`API_URL`, and
 `NEXT_PUBLIC_API_URL` / `VITE_API_URL` for a frontend) and the one their CORS
@@ -542,7 +555,8 @@ Resolved ports are saved to `.gkm/ports.json` so external tools keep working acr
 2. Encrypted secrets             (.gkm/secrets/{stage}.json, decrypted)
 3. Declared addresses            (reconcile: containers, the edge, every app)
 4. GKM_CONFIG_PATH set           (for child processes)
-5. All injected into turbo env   (NODE_ENV=development)
+5. The stage's own secrets       (injected into turbo env, NODE_ENV=development)
+6. Each app's own gkm dev/exec   (its edges' keys, as gkm compose hands them)
 ```
 
 ### Single-App Mode

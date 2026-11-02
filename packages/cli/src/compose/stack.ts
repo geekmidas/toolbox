@@ -2,16 +2,17 @@
  * The stack a workspace runs as for one stage — pure.
  *
  * Everything `gkm compose` writes is decided here, as data: the compose file,
- * the Caddyfile, one env file per backend, and the image each app runs. The
+ * the Caddyfile, one env file per process that reads one — each backend,
+ * worker and site that runs a server — and the image each app runs. The
  * command around it reads the workspace, asks the registry, writes the files
  * and starts Docker; none of those decide anything, so all of it can be
  * asserted without a daemon.
  *
  * The values come from the same derivations every other target uses. The
- * plan is reconcile's `planFor`, the keys an app reads are `appEnvKeys`, and
- * every URL is `envFor`'s — asked twice, once with each app at its public
- * address and once on the compose network, because a browser and a sibling
- * service reach the same API by different names.
+ * plan is reconcile's `planFor`, the keys a process reads are
+ * `processEnvKeys` — the rule `gkm dev` and `gkm exec` apply — and every URL
+ * is `envFor`'s, with each app at its public address: a browser and a sibling
+ * service reach an API by the same name, through the edge.
  */
 
 import { createHash } from 'node:crypto';
@@ -72,12 +73,7 @@ import {
 	originSecretKey,
 	processorOriginHost,
 } from '../providers/processorOrigin.js';
-import {
-	appEnvKeys,
-	networkEnv,
-	processorEnvKeys,
-	workerEnvKeys,
-} from '../reconcile/apps.js';
+import { networkEnv, processEnvKeys } from '../reconcile/apps.js';
 import { hostFor, LOCAL_TLD } from '../reconcile/caddyfile.js';
 import { type ComposeService, composeFor } from '../reconcile/compose.js';
 import { DEFAULT_IMAGES, portKeys } from '../reconcile/containers.js';
@@ -161,6 +157,7 @@ import {
 	OFFLINE_BUILD_ADDRESS,
 	offlineBuildHosts,
 	publicBuildValues,
+	runsServer,
 } from './siteBuild.js';
 import { type SiteAuth, siteAuth, sitePasswordKey } from './sitePassword.js';
 import {
@@ -282,7 +279,15 @@ export interface StackApp extends AppImage {
 	/** `https://<host>` — with the edge's port where it is not 443. */
 	url: string;
 	build?: AppBuild;
-	/** A backend's environment, exactly the keys it reads. Absent for a site. */
+	/**
+	 * Whether it reads an environment at runtime: every backend, and a site
+	 * that runs a server (`runsServer`). A static site is a bundle.
+	 */
+	runtime: boolean;
+	/**
+	 * Exactly the keys it reads at runtime (`processEnvKeys`). Absent for a
+	 * static site.
+	 */
 	env?: Record<string, string>;
 	/** The login the edge asks for, where the site is behind a password. */
 	auth?: SiteAuth;
@@ -1267,9 +1272,9 @@ export function composeStack(input: StackInput): ComposeStack {
 		},
 	};
 
-	// Every key the stage resolves, twice: with each app at its public address
-	// — what a browser is handed, and what an app says it is — and with each on
-	// the compose network, which is how one service reaches another.
+	// Every key the stage resolves, with each app at its public address — what
+	// a browser is handed, what an app says it is, and what one app calls
+	// another on: through the edge, as it does deployed.
 	const derivation = {
 		project: workspace.name,
 		credentials: credential.containers,
@@ -1290,31 +1295,6 @@ export function composeStack(input: StackInput): ComposeStack {
 		{ ...derivation, addresses: publicAddresses },
 		hostOf,
 	);
-	const inside = networkEnv(
-		plan,
-		{
-			...derivation,
-			addresses: Object.fromEntries(
-				apps.map((app) => [
-					app.id,
-					`${app.kind === 'websocket-api' ? 'ws' : 'http'}://${hostOf(app.name)}:${app.port}`,
-				]),
-			),
-		},
-		hostOf,
-	);
-
-	const surfaceUrls = new Map(
-		plan.resources
-			.filter(
-				(r) =>
-					r.kind === 'rest-api' ||
-					r.kind === 'websocket-api' ||
-					r.kind === 'site',
-			)
-			.map((r) => [r.envKey, r.id]),
-	);
-	const appById = new Map(apps.map((app) => [app.id, app]));
 
 	/**
 	 * What a key resolves to for one app, from the stage's secrets where only
@@ -1385,18 +1365,8 @@ export function composeStack(input: StackInput): ComposeStack {
 			return redis?.urls[key];
 		}
 
-		// A backend reaches a sibling surface on the compose network; its own
-		// address is the public one, which is what it builds links on. A site
-		// runs in a browser, which has only the public addresses.
-		const surface = surfaceUrls.get(key);
-		if (
-			(app.kind === 'rest-api' || app.kind === 'websocket-api') &&
-			surface &&
-			surface !== app.id
-		) {
-			return inside[key];
-		}
-
+		// A surface's or a site's address is its public one for every process
+		// — a backend, a worker, a site's server — as `gkm dev` hands it.
 		return outside[key];
 	};
 
@@ -1438,11 +1408,13 @@ export function composeStack(input: StackInput): ComposeStack {
 		return values;
 	};
 
-	for (const app of apps) {
-		if (app.kind === 'site') {
-			const site = manifest[app.id];
-			if (site?.kind !== 'site') continue;
+	// The stage's own keys — set by hand, read with `get('X')` — which every
+	// process is handed, as `gkm dev` hands them (`processEnvKeys`).
+	const stageKeys = Object.keys(custom);
 
+	for (const app of apps) {
+		const site = manifest[app.id];
+		if (site?.kind === 'site') {
 			const args = publicBuildValues(
 				site,
 				manifest,
@@ -1455,39 +1427,25 @@ export function composeStack(input: StackInput): ComposeStack {
 				valueFor(app, key, owners.get(key)),
 			);
 			if (app.build && offline.length > 0) app.build.offlineHosts = offline;
-			continue;
+			// A static bundle reads nothing at runtime. A site that runs a server
+			// — Next, TanStack Start — reads its edges and the stage's secrets
+			// on it, as a backend does; its public values stay build arguments.
+			if (!app.runtime) continue;
 		}
-		// Built to be pushed, a backend's image is every stage's: what it reads
-		// at runtime is the deploy's business, not the build's.
+		// Built to be pushed, an image is every stage's: what it reads at
+		// runtime is the deploy's business, not the build's.
 		if (input.buildOnly) continue;
 
-		const keys = appEnvKeys(manifest, app.name) ?? new Set();
+		const keys =
+			processEnvKeys(manifest, { app: app.name }, stageKeys) ?? new Set();
 		const values = valuesFor(app, keys);
 
-		// The origins Better Auth trusts are the browser's and, now, each
-		// service that calls this surface across the compose network: its CSRF
-		// check applies to every caller, and a sibling's request carries its
-		// own origin, not a browser's.
-		const trusted = provideKey(app.id, 'trustedOrigins');
-		if (keys.has(trusted)) {
-			const internal = (byId.get(app.id)?.callers ?? [])
-				.map((caller) => appById.get(caller))
-				.filter(
-					(caller): caller is StackApp =>
-						caller?.kind === 'rest-api' || caller?.kind === 'websocket-api',
-				)
-				.map((caller) => `http://${hostOf(caller.name)}:${caller.port}`);
-			const origins = [
-				...(values[trusted] ?? '').split(',').filter(Boolean),
-				...internal,
-			];
-			values[trusted] = [...new Set(origins)].join(',');
-		}
-
-		// Telemetry: the stage's, to a process with an edge to the node.
+		// Telemetry: the stage's, to a backend with an edge to the node. A
+		// site's server gets none — the exporter is the API's.
 		app.env = {
 			...scopeTelemetryEnv(values, {
-				uses: telemetryOf(manifest, app.id) !== undefined,
+				uses:
+					app.kind !== 'site' && telemetryOf(manifest, app.id) !== undefined,
 				serviceName: app.name,
 				...(telemetryValues ? { telemetry: telemetryValues } : {}),
 			}),
@@ -1523,10 +1481,12 @@ export function composeStack(input: StackInput): ComposeStack {
 		});
 	}
 
-	// A worker reaches every surface across the compose network: it is never
-	// one, so no address is its own — unless SNS pushes to it.
+	// A worker reaches every surface at its public address: it is never one,
+	// so no address is its own — unless SNS pushes to it.
 	for (const worker of input.buildOnly ? [] : workers) {
-		const keys = workerEnvKeys(manifest, worker.id) ?? new Set();
+		const keys =
+			processEnvKeys(manifest, { workers: [worker.id] }, stageKeys) ??
+			new Set();
 		const resolved = valuesFor(
 			{ name: worker.name, id: worker.id, kind: 'rest-api' },
 			keys,
@@ -1594,7 +1554,9 @@ export function composeStack(input: StackInput): ComposeStack {
 		}
 
 		if (input.buildOnly) continue;
-		const keys = processorEnvKeys(manifest, unit.id) ?? new Set();
+		const keys =
+			processEnvKeys(manifest, { processors: [unit.id] }, stageKeys) ??
+			new Set();
 		unit.env = {
 			// Telemetry: the stage's, when the file server has an edge to the node.
 			...scopeTelemetryEnv(
@@ -2003,6 +1965,7 @@ function stackApps(
 			...(declaration.kind === 'site' ? { variant: declaration.variant } : {}),
 			replicas:
 				declaration.kind === 'websocket-api' ? (declaration.replicas ?? 1) : 1,
+			runtime: !site || runsServer(declaration),
 			path: app.path,
 			port: app.port,
 			host,
@@ -2544,18 +2507,19 @@ function stackFile(options: {
 					}
 				: {}),
 			restart: 'unless-stopped',
-			// A site is a bundle and reads nothing at runtime; a backend reads
-			// exactly the keys in its own file.
-			...(app.kind !== 'site'
+			// A static site is a bundle and reads nothing at runtime; a backend,
+			// and a site that runs a server, reads exactly the keys in its own
+			// file. Only a backend waits on the stack's services.
+			...(app.runtime
 				? {
 						env_file: [{ path: `./${app.name}.env`, format: 'raw' as const }],
-						...(infra.length
-							? {
-									depends_on: Object.fromEntries(
-										infra.map((name) => [name, HEALTHY]),
-									),
-								}
-							: {}),
+					}
+				: {}),
+			...(app.kind !== 'site' && infra.length
+				? {
+						depends_on: Object.fromEntries(
+							infra.map((name) => [name, HEALTHY]),
+						),
 					}
 				: {}),
 			healthcheck: probe(app.port, app.kind === 'site' ? '/' : '/health'),

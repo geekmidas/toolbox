@@ -29,12 +29,16 @@ import {
 	canonicalId,
 	type Declaration,
 	provideKey,
+	serviceKey,
 } from '@geekmidas/manifest';
+import type { Service } from '@geekmidas/services';
 import type { Telescope } from '@geekmidas/telescope';
 import {
 	type Authenticator,
+	type Construct,
 	type Declarable,
 	edgeTo,
+	publicUrl,
 } from './construct-interface';
 
 export type { Authenticator } from './construct-interface';
@@ -167,9 +171,16 @@ export interface RestApiConfig<
 export class RestApi<
 	TName extends string = string,
 	const TAuthorizers extends readonly string[] = readonly [],
-> implements Declarable<TName>
+> implements Declarable<TName>, Construct<TName, string>
 {
 	readonly id: TName;
+
+	/**
+	 * Its public address, `https://api.example.com` — what a worker or another
+	 * surface's endpoint that `.dependsOn([api])` reads to build a link or a
+	 * callback URL. The same `<ID>_URL` on every command and stage.
+	 */
+	readonly service: Service<Uncapitalize<TName>, string>;
 
 	/**
 	 * Declared once and read by both `declare()` and anything that consumes this
@@ -221,6 +232,12 @@ export class RestApi<
 			url: provideKey(canonical, 'url'),
 			trustedOrigins: provideKey(canonical, 'trustedOrigins'),
 			cookieDomain: provideKey(canonical, 'cookieDomain'),
+		};
+		// A field, not a getter: consumers cache services by object identity.
+		const url = this.keys.url;
+		this.service = {
+			serviceName: serviceKey(canonical) as Uncapitalize<TName>,
+			register: (options) => publicUrl(options, url),
 		};
 
 		this.logger = config.logger ?? DEFAULT_LOGGER;

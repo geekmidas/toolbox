@@ -149,6 +149,11 @@ export async function writeSurfaceServer(
 		gracefulShutdown: boolean;
 		/** What it starts OpenTelemetry with — none without an edge. */
 		telemetry?: TelemetryContext;
+		/**
+		 * The surface's `<ID>_TRUSTED_ORIGINS`: the origins whose trace context
+		 * its request spans continue, as a generated API's CORS origins are.
+		 */
+		trustedOriginsKey?: string;
 	},
 ): Promise<string> {
 	await mkdir(outputDir, { recursive: true });
@@ -189,7 +194,19 @@ process.on('SIGINT', shutdown);
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 ${options.gracefulShutdown ? "import { runShutdownHooks } from '@geekmidas/constructs';\n" : ''}
-${startTelemetryCode([options.healthCheck])}
+${startTelemetryCode([options.healthCheck])}${
+	options.trustedOriginsKey
+		? `
+// The origins it trusts — the apps with an edge to it — are the ones whose
+// trace context its request spans continue: a sibling calls it through the
+// edge, as a browser does, with the origin of the site it is acting for.
+trustedOrigins = (process.env[${JSON.stringify(options.trustedOriginsKey)}] ?? '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+`
+		: ''
+}
 const { app: surface, attach, release } = await import('./app.js');
 
 const port = Number(process.env.PORT) || 3000;

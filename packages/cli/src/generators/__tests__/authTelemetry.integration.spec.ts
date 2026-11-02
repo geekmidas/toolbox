@@ -190,6 +190,7 @@ export const me = api
 		healthCheck: '/health',
 		gracefulShutdown: false,
 		telemetry: telemetry('Auth'),
+		trustedOriginsKey: 'AUTH_TRUSTED_ORIGINS',
 	});
 	authBundle = (
 		await bundleServer({
@@ -347,5 +348,72 @@ describe('API → auth server', { timeout: 120_000 }, () => {
 			ancestors.add(span.parentSpanId);
 		}
 		expect(ancestors).toContain(request.spanId);
+	});
+
+	it('stays one trace through the edge, for a request from a site the auth server trusts', async () => {
+		const site = 'https://web.shop.example.com';
+		const authPort = await freePort();
+		await start(authBundle, authPort, {
+			AUTH_DB_URL: DATABASE,
+			AUTH_SECRET: 'a-signing-secret-that-is-at-least-32-chars',
+			AUTH_URL: `http://127.0.0.1:${authPort}`,
+			AUTH_TRUSTED_ORIGINS: site,
+		});
+		// The stack's edge in front of it: gkm's client header stripped, a
+		// forwarding header added — the API calls the auth server at its public
+		// address, as a browser does.
+		const edgePort = await freePort();
+		const edge = createHttpServer(async (req, res) => {
+			const headers = Object.fromEntries(
+				Object.entries(req.headers)
+					.filter(([name]) => name !== 'x-gkm-client-ip' && name !== 'host')
+					.map(([name, value]) => [name, String(value)]),
+			);
+			const upstream = await fetch(`http://127.0.0.1:${authPort}${req.url}`, {
+				headers: { ...headers, 'x-forwarded-for': '172.18.0.5' },
+			});
+			res.writeHead(upstream.status, {
+				'content-type': upstream.headers.get('content-type') ?? 'text/plain',
+			});
+			res.end(await upstream.text());
+		}).listen(edgePort);
+		const apiPort = await freePort();
+		await start(apiBundle, apiPort, {
+			AUTH_URL: `http://127.0.0.1:${edgePort}`,
+		});
+
+		try {
+			const response = await fetch(`http://localhost:${apiPort}/me`, {
+				headers: { origin: site, 'x-forwarded-for': '203.0.113.7' },
+			});
+			expect(response.status).toBe(200);
+
+			const check = await until(
+				() =>
+					spans.find(
+						(s) =>
+							s.service === 'Shop' &&
+							s.kind === CLIENT &&
+							attr(s.attributes, 'url.full') ===
+								`http://127.0.0.1:${edgePort}/api/auth/get-session`,
+					),
+				'the session check through the edge',
+			);
+			// The site's origin travelled with it, so the auth server continued
+			// the API's trace rather than starting one of its own.
+			const getSession = await until(
+				() =>
+					spans.find(
+						(s) =>
+							s.service === 'Auth' &&
+							s.kind === SERVER &&
+							s.parentSpanId === check.spanId,
+					),
+				"the auth server's get-session span, under the session check",
+			);
+			expect(getSession.traceId).toBe(check.traceId);
+		} finally {
+			await new Promise((resolve) => edge.close(resolve));
+		}
 	});
 });

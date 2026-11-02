@@ -29,7 +29,6 @@ import {
 	type Tunnel,
 } from '../compose/server.js';
 import { type ComposeStack, composeStack } from '../compose/stack.js';
-import { edgeAlias } from '../compose/traefik.js';
 import {
 	loadWorkspaceAppInfo,
 	loadWorkspaceConfig,
@@ -148,8 +147,9 @@ export interface StackAddress {
 
 /**
  * The environment an app runs with on the stage: a backend's container's,
- * over the keys of each worker built from it; a site's or a mobile app's,
- * the public values its build reads.
+ * over the keys of each worker built from it; a site's, the public values its
+ * build reads and — a site that runs a server — its container's; a mobile
+ * app's, the public values its build reads.
  *
  * @throws {ExecAppNotInStack}
  */
@@ -168,7 +168,7 @@ export function appEnvironment(
 			...stack.mobileApps.map((candidate) => candidate.name),
 		]);
 	}
-	if (app.kind === 'site') return { ...app.build?.args };
+	if (app.kind === 'site') return { ...app.build?.args, ...app.env };
 	const workers = stack.workers.filter((worker) => worker.host === app.name);
 	return Object.assign(
 		{},
@@ -208,29 +208,17 @@ export function stackAddresses(
 
 /**
  * The environment as this machine reaches it: each service at its tunnel's
- * local port, and each sibling app at its public address. What has no
- * tunnel is left as the container has it.
+ * local port. What has no tunnel is left as the container has it — a sibling
+ * app's address among it, which is its public one already.
  */
 export function throughTunnels(
 	env: Readonly<Record<string, string>>,
-	stack: Pick<ComposeStack, 'apps' | 'project'>,
 	tunnels: ReadonlyMap<string, number>,
 ): Record<string, string> {
 	const rewrites: [RegExp, string][] = [];
 	for (const [address, port] of tunnels) {
 		const [service, inside] = address.split(':');
 		rewrites.push([authority(service!, Number(inside)), `127.0.0.1:${port}`]);
-	}
-	for (const app of stack.apps) {
-		for (const host of [app.name, edgeAlias(stack.project, app.name)]) {
-			rewrites.push([
-				new RegExp(
-					`http://${host.replace(/[.-]/g, '\\$&')}:${app.port}(?!\\d)`,
-					'g',
-				),
-				app.url,
-			]);
-		}
 	}
 	const out: Record<string, string> = {};
 	for (const [key, value] of Object.entries(env)) {
@@ -408,7 +396,7 @@ export async function execOnStage(
 			logger.log(`🚇 ${address.service} → 127.0.0.1:${tunnel.port} (over SSH)`);
 		}
 
-		const credentials = throughTunnels(env, stack, ports);
+		const credentials = throughTunnels(env, ports);
 		logger.log(
 			`🔐 Loaded ${Object.keys(credentials).length} value(s) for '${stage}'`,
 		);

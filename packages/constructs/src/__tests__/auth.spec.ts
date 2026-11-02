@@ -684,7 +684,7 @@ describe('BetterAuth.service — what .dependsOn([auth]) hands a caller', () => 
 		expect(await client.api.getSession({ headers: new Headers() })).toBeNull();
 	});
 
-	it('asks <basePath>/get-session, forwarding only the session headers and the client in gkm’s own header', async () => {
+	it('asks <basePath>/get-session, forwarding only the session headers, the origin, and the client in gkm’s own header', async () => {
 		const seen = record(() => HttpResponse.json(null));
 		const client = await auth({}, '/auth').service.register(caller());
 
@@ -692,6 +692,7 @@ describe('BetterAuth.service — what .dependsOn([auth]) hands a caller', () => 
 			headers: {
 				cookie: 'better-auth.session_token=abc',
 				authorization: 'Bearer t0ken',
+				origin: 'https://web.example.com',
 				'x-forwarded-for': '203.0.113.7',
 				'x-internal': 'not for the auth server',
 			},
@@ -704,6 +705,9 @@ describe('BetterAuth.service — what .dependsOn([auth]) hands a caller', () => 
 			'better-auth.session_token=abc',
 		);
 		expect(seen[0]!.headers.get('authorization')).toBe('Bearer t0ken');
+		// The site it came from: through the edge, that is what the auth server
+		// continues the API's trace on.
+		expect(seen[0]!.headers.get('origin')).toBe('https://web.example.com');
 		// Whose request it is, in a header no proxy adds: a forwarding header
 		// would make the auth server treat this as outside traffic.
 		expect(seen[0]!.headers.get('x-gkm-client-ip')).toBe('203.0.113.7');

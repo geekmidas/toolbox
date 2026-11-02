@@ -142,7 +142,13 @@ export function fakesApply(
 export async function reconcileWorkspace(
 	workspace: NormalizedWorkspace,
 	options: WorkspaceReconcileOptions,
-): Promise<ReconcileResult & { manifest: ConstructManifest }> {
+): Promise<
+	ReconcileResult & {
+		manifest: ConstructManifest;
+		/** Each worker's background files, which say which app runs its work. */
+		background: Record<string, string[]>;
+	}
+> {
 	// Discovered here even when a manifest was handed in: where each worker's
 	// background work and each bucket's subscribers are is only discovery's.
 	const background: Record<string, string[]> = {};
@@ -227,7 +233,7 @@ export async function reconcileWorkspace(
 
 	// With the manifest, so `gkm dev` can say what the workspace declares
 	// without discovering it a second time.
-	return { ...result, manifest };
+	return { ...result, manifest, background };
 }
 
 /**

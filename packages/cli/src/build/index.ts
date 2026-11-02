@@ -8,7 +8,7 @@ import type { Processor } from '@geekmidas/constructs/processors';
 import type { Queue } from '@geekmidas/constructs/queue';
 import type { Subscriber } from '@geekmidas/constructs/subscribers';
 import type { Topic } from '@geekmidas/constructs/topic';
-import type { ConstructManifest } from '@geekmidas/manifest';
+import { type ConstructManifest, provideKey } from '@geekmidas/manifest';
 import { loadAppConfig, loadConfig, loadWorkspaceConfig } from '../config';
 import {
 	normalizeHooksConfig,
@@ -542,6 +542,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 			const entryPoint = await writeSurfaceServer(outputDir, {
 				...production,
 				...(telemetry ? { telemetry } : {}),
+				trustedOriginsKey: provideKey(selfServing.id, 'trustedOrigins'),
 			});
 			const { bundleServer } = await import('./bundler');
 			await bundleServer({

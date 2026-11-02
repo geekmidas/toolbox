@@ -14,16 +14,25 @@ export interface SessionAuth {
 }
 
 /**
- * What is forwarded to the auth server: the headers a session travels in, and
- * whose request it is — nothing else.
+ * What is forwarded to the auth server: the headers a session travels in,
+ * whose request it is, and the origin it came from — nothing else.
  *
  * The client's address goes with the session because the auth server
  * rate-limits by it, `/get-session` included. Without it every user's session
  * check arrived from the surface itself — one shared bucket, so enough
  * traffic from anyone turned every session check into a 429 — and in tests,
  * concurrent tests queued on the same rate-limit row.
+ *
+ * The origin, because the surface calls the auth server at its public
+ * address, through the edge: it is what lets the auth server continue this
+ * request's trace for a site both trust.
  */
-const SESSION_HEADERS = ['cookie', 'authorization', 'x-forwarded-for'] as const;
+const SESSION_HEADERS = [
+	'cookie',
+	'authorization',
+	'x-forwarded-for',
+	'origin',
+] as const;
 
 /** `auth` for one request on one surface. */
 export function sessionAuth(

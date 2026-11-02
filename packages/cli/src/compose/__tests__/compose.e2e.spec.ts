@@ -19,9 +19,9 @@
  * - (a) signing in from the site's origin, through Caddy, sets a session
  *   cookie on the cookie domain the public hosts share;
  * - (b) the API, called with that cookie, validates the session by calling
- *   the auth server across the compose network;
+ *   the auth server at its public address, through the edge;
  * - (c) a state-changing request — sign-out — is accepted from the browser's
- *   origin, and from a sibling service's internal origin, and refused from
+ *   origin, and from a sibling service's public origin, and refused from
  *   one nobody declared: the trusted origins are right for both callers.
  *
  * - (e) a request to the API sends a message to a queue, and the Worker's
@@ -748,7 +748,7 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				expect(session).toMatch(/Secure/i);
 			});
 
-			it('(b) the API validates the session by asking the auth server inside the network', async () => {
+			it('(b) the API validates the session by asking the auth server at its public address', async () => {
 				const email = `b-${randomBytes(4).toString('hex')}@example.com`;
 				const signUp = await edge('auth', '/api/auth/sign-up/email', {
 					method: 'POST',
@@ -767,7 +767,7 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				expect(anonymous.status).toBe(401);
 			});
 
-			it('(c) accepts sign-out from the browser origin and from a sibling service, and refuses an undeclared origin', async () => {
+			it('(c) accepts sign-out from the browser origin and from a sibling service at its public origin, and refuses any other', async () => {
 				const email = `c-${randomBytes(4).toString('hex')}@example.com`;
 				const signUp = await edge('auth', '/api/auth/sign-up/email', {
 					method: 'POST',
@@ -789,8 +789,9 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				});
 				expect(after.status).toBe(401);
 
-				// From the API's container, to the auth server on the compose network,
-				// carrying the API's internal origin.
+				// From the API's container, to the auth server at the address the API
+				// is handed — its public one, through the edge — carrying the API's
+				// public origin. No internal origin is trusted any more.
 				const signIn = await edge('auth', '/api/auth/sign-in/email', {
 					method: 'POST',
 					headers: { origin: origin('web') },
@@ -801,11 +802,12 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 
 				const signOutFrom = (from: string) =>
 					fromApi(
-						`fetch('http://auth:3001/api/auth/sign-out', { method: 'POST', headers: { origin: ${JSON.stringify(from)}, cookie: ${JSON.stringify(serviceSession)}, 'content-type': 'application/json' }, body: '{}' }).then((r) => console.log(r.status))`,
+						`fetch(process.env.AUTH_URL + '/api/auth/sign-out', { method: 'POST', headers: { origin: ${JSON.stringify(from)}, cookie: ${JSON.stringify(serviceSession)}, 'content-type': 'application/json' }, body: '{}' }).then((r) => console.log(r.status))`,
 					).then((said) => Number(said.trim().split('\n').pop()));
 
 				expect(await signOutFrom('http://evil.example')).toBe(403);
-				expect(await signOutFrom('http://api:3000')).toBe(200);
+				expect(await signOutFrom('http://api:3000')).toBe(403);
+				expect(await signOutFrom(origin('api'))).toBe(200);
 			});
 
 			it('streams a response through Caddy as it is written', async () => {
@@ -1668,6 +1670,17 @@ describe.runIf(RUN)(
 			});
 
 			configure();
+			// Each stage's hosts are `*.localhost` on this machine's free ports,
+			// which no container resolves: on a real stage they are public DNS.
+			// So the API — the one app here that calls another — is pointed at
+			// the auth server's alias in the project's own compose file, as a
+			// stage without public DNS would be.
+			for (const stage of stages) {
+				writeFileSync(
+					join(dir, `docker-compose.${stage}.yml`),
+					`services:\n  api:\n    environment:\n      AUTH_URL: http://${project(stage)}-auth:3001\n`,
+				);
+			}
 			await dependOnThisCheckout(dir, name, { telemetry: true });
 			await exec('pnpm', ['install', '--lockfile-only'], { cwd: dir });
 			const git = childEnv({
@@ -1853,7 +1866,7 @@ describe.runIf(RUN)(
 			expect(JSON.parse(spoofed.body)).toEqual({ clientIp: null });
 		});
 
-		it("trusts a sibling's internal origin — its alias — and refuses one nobody declared", async () => {
+		it("trusts a sibling's public origin, and refuses its alias and one nobody declared", async () => {
 			const email = `o-${randomBytes(4).toString('hex')}@example.com`;
 			const signUp = await edge('staging', 'auth', '/api/auth/sign-up/email', {
 				method: 'POST',
@@ -1882,9 +1895,12 @@ describe.runIf(RUN)(
 					.then((said) => Number(said.trim().split('\n').pop()));
 
 			expect(await signOutFrom('http://evil.example')).toBe(403);
+			// The API calls the auth server at its public address, so the origin
+			// it is trusted by is its public one — not its alias on the network.
 			expect(await signOutFrom(`http://${project('staging')}-api:3000`)).toBe(
-				200,
+				403,
 			);
+			expect(await signOutFrom(origin('staging', 'api'))).toBe(200);
 		});
 
 		it('serves the site, built with its public URLs', async () => {
