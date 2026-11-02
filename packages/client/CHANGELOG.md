@@ -1,5 +1,13 @@
 # @geekmidas/client
 
+## 10.0.0-alpha.151
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/constructs@10.0.0-alpha.151
+  - @geekmidas/schema@10.0.0-alpha.151
+
 ## 10.0.0-alpha.150
 
 ### Patch Changes

@@ -1,5 +1,27 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.151
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/audit@10.0.0-alpha.151
+  - @geekmidas/auth@10.0.0-alpha.151
+  - @geekmidas/cache@10.0.0-alpha.151
+  - @geekmidas/db@10.0.0-alpha.151
+  - @geekmidas/emailkit@10.0.0-alpha.151
+  - @geekmidas/envkit@10.0.0-alpha.151
+  - @geekmidas/errors@10.0.0-alpha.151
+  - @geekmidas/events@10.0.0-alpha.151
+  - @geekmidas/logger@10.0.0-alpha.151
+  - @geekmidas/manifest@10.0.0-alpha.151
+  - @geekmidas/rate-limit@10.0.0-alpha.151
+  - @geekmidas/schema@10.0.0-alpha.151
+  - @geekmidas/services@10.0.0-alpha.151
+  - @geekmidas/storage@10.0.0-alpha.151
+  - @geekmidas/telescope@10.0.0-alpha.151
+  - @geekmidas/testkit@10.0.0-alpha.151
+
 ## 10.0.0-alpha.150
 
 ### Patch Changes
