@@ -17,8 +17,12 @@
  * - `provision`: generated secrets kept, files written, infrastructure up,
  *   databases, roles, grants and migrations
  * - `build`: each backend bundled on the host and every image built — or, for
- *   a tag, pulled
- * - `release`: the stack's routes on the shared edge, then `up --wait
+ *   a tag, pulled. A site that pre-renders against its stage
+ *   (`prerender: 'stage'`) is held back, but for a push, which first asks the
+ *   running stage's APIs and builds it against them
+ * - `release`: the stack's routes on the shared edge; a held-back site built
+ *   once the rest of the stack is up and its APIs answer through the edge;
+ *   then `up --wait
  *   --remove-orphans`, and each app's image, tag and digest in the stage's
  *   state — an app that never turns healthy fails it only once the rest is
  *   released and routed

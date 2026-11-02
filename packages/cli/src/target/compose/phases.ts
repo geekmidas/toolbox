@@ -369,6 +369,39 @@ export class EdgePortInvalid extends GkmError {
 	}
 }
 
+/**
+ * A site that pre-renders against its stage (`prerender: 'stage'`) whose
+ * APIs do not answer, so it is not built: pages built without their data
+ * would ship, and nothing at runtime could fill them.
+ */
+export class SitePrerenderApisDown extends GkmError {
+	constructor(
+		readonly site: string,
+		/** Each API it depends on that did not answer, and what it got. */
+		readonly apis: readonly { app: string; url: string; last: string }[],
+		/**
+		 * Which check failed: its container's health, through the edge on
+		 * this deploy, or through the edge of the stage a push builds for.
+		 */
+		readonly via: 'docker' | 'edge' | 'push',
+	) {
+		const lines = apis
+			.map(({ app, url, last }) =>
+				via === 'docker'
+					? `  - ${app}: Docker reports it ${last}`
+					: `  - ${url}: ${last}`,
+			)
+			.join('\n');
+		super(
+			`'${site}' pre-renders from its stage's APIs (prerender: 'stage'), and ${apis.length === 1 ? 'this one does' : 'these do'} not answer, so it was not built:\n${lines}\n` +
+				(via === 'push'
+					? 'An image pushed for it is built against the stage as it runs now: deploy the stage first, then build and push the site.'
+					: 'Fix the API and deploy again.'),
+		);
+		this.name = 'SitePrerenderApisDown';
+	}
+}
+
 /** A build with no commit to tag its images with. */
 export class NoGitRevision extends GkmError {
 	constructor(readonly root: string) {
@@ -527,6 +560,9 @@ export async function validateCompose(
 		ports: edgePorts(deps.env),
 		...(layout ? { layout } : {}),
 		...(push ? { buildOnly: true } : {}),
+		// A site pre-rendered against the stage fetches its data afresh on
+		// every run: this one's moment is part of its build's cache key.
+		...(mode === 'build' ? { prerenderRun: new Date().toISOString() } : {}),
 	};
 	const recordedArns = recordedPushSubscriptions(recorded?.resources);
 
@@ -1454,9 +1490,20 @@ export async function buildCompose(
 		printPlan(ctx, run);
 	}
 
+	// A site built against its stage: pushed, against the one already running,
+	// which has to answer before anything is built; deployed, once `release`
+	// has its APIs up.
+	const prerendered = prerenderedHere(run);
+	if (run.push) await stageAnswers(ctx, run, deps, prerendered);
+	const held = new Set(run.push ? [] : prerendered.map(({ app }) => app));
+	const now = images.filter((image) => !held.has(image.app));
+
 	if (run.mode === 'build') {
 		ctx.logger.info('\n🐳 Building images…');
-		await deps.docker.build(ref, apps);
+		await deps.docker.build(
+			ref,
+			now.map((image) => image.app),
+		);
 	} else {
 		ctx.logger.info(`\n🐳 Pulling ${ctx.tag}…`);
 		await deps.docker.pull(ref, apps);
@@ -1464,8 +1511,21 @@ export async function buildCompose(
 
 	if (run.push) ctx.logger.info('\n📤 Pushing images…');
 
-	// What each tag resolved to: the registry's digest for a pushed or pulled
-	// image, or — for one built here and never pushed — its content id.
+	await recordBuilt(ctx, run, deps, now);
+}
+
+/**
+ * Each image's tag as it resolved — the registry's digest for a pushed or
+ * pulled image, or, for one built here and never pushed, its content id —
+ * in the run, and said.
+ */
+async function recordBuilt(
+	ctx: ComposeContext,
+	run: ComposeRun,
+	deps: ComposeDeps,
+	images: readonly { app: string; ref: string; tag: string }[],
+): Promise<void> {
+	const { ref } = run;
 	for (const image of images) {
 		const digest = run.push
 			? await deps.docker.push(ref, image.ref)
@@ -1535,6 +1595,11 @@ export async function releaseCompose(
 		);
 	} else if (!stack.local || existsSync(edgeFile(run))) {
 		await removeEdgeRoutes(deps.docker, edge, stack.project);
+	}
+
+	const prerendered = prerenderedHere(run);
+	if (prerendered.length > 0) {
+		await buildAgainstStage(ctx, run, deps, prerendered);
 	}
 
 	ctx.logger.info('\n🚀 Starting the stack…');
@@ -1632,13 +1697,15 @@ async function unhealthyAfterUp(
 	run: ComposeRun,
 	deps: ComposeDeps,
 	error: unknown,
+	/** Services not started, so not asked. */
+	except: ReadonlySet<string> = new Set(),
 ): Promise<{ app: string; url: string; last: string }[]> {
 	const { stack } = run;
 	const services = [
 		...stack.apps.flatMap(replicaNames),
 		...stack.workers.map((worker) => worker.name),
 		...stack.processors.map((unit) => unit.name),
-	];
+	].filter((service) => !except.has(service));
 	const settled = await Promise.all(
 		services.map(async (service) => {
 			let last: string | undefined;
@@ -1666,6 +1733,137 @@ async function unhealthyAfterUp(
 		`\n⚠️  ${down.map(({ app }) => app).join(', ')} did not turn healthy; the rest of the stack is released and routed.`,
 	);
 	return down;
+}
+
+/**
+ * Where a check through the edge connects: this machine for the local stage,
+ * a deployed stage's server on its published port — or, for a push, which
+ * has no server, wherever the host resolves.
+ */
+function edgeTarget(
+	run: ComposeRun,
+	deps: ComposeDeps,
+): { connectTo: string; connectPort?: number } | undefined {
+	if (run.stack.local) return { connectTo: '127.0.0.1' };
+	if (run.server) {
+		return {
+			connectTo: run.server.host,
+			connectPort: edgePorts(deps.env).https,
+		};
+	}
+	return undefined;
+}
+
+/**
+ * The sites this run builds against their stage's running APIs
+ * (`prerender: 'stage'`). None for a run that pulls: a pulled image was built
+ * against the stage when it was pushed.
+ */
+function prerenderedHere(run: ComposeRun): StackApp[] {
+	if (run.mode !== 'build') return [];
+	return run.stack.apps.filter((app) => app.prerender && app.build);
+}
+
+/**
+ * A site that pre-renders against its stage, built once its APIs answer:
+ * every service of the stack started but those sites — `up --wait`, so each
+ * is healthy by its own check — then each API the site depends on asked
+ * through the edge, as a browser reaches it, and only then the site built.
+ * The full `up` that follows starts it.
+ */
+async function buildAgainstStage(
+	ctx: ComposeContext,
+	run: ComposeRun,
+	deps: ComposeDeps,
+	sites: readonly StackApp[],
+): Promise<void> {
+	const { stack, ref } = run;
+	const held = new Set(sites.flatMap(replicaNames));
+	const services = Object.keys(stack.compose.services).filter(
+		(service) => !held.has(service),
+	);
+
+	ctx.logger.info(
+		`\n🚀 Starting the stack, but ${listNames(sites)}, built once its APIs answer…`,
+	);
+	const down = await deps.docker.up(ref, services).then(
+		() => [],
+		(error: unknown) => unhealthyAfterUp(ctx, run, deps, error, held),
+	);
+	for (const site of sites) {
+		const against = new Set(site.prerender?.against);
+		const blocking = down.filter(({ app }) => against.has(app));
+		if (blocking.length > 0) {
+			throw new SitePrerenderApisDown(site.name, blocking, 'docker');
+		}
+	}
+
+	await stageAnswers(ctx, run, deps, sites);
+
+	ctx.logger.info(
+		`\n🐳 Building ${listNames(sites)} against the stage's APIs…`,
+	);
+	await deps.docker.build(
+		ref,
+		sites.map((site) => site.app),
+	);
+	await recordBuilt(ctx, run, deps, sites);
+}
+
+/** `web` — or `docs and web`. */
+function listNames(apps: readonly { name: string }[]): string {
+	const names = apps.map(({ name }) => name);
+	return names.length > 1
+		? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
+		: (names[0] ?? '');
+}
+
+/**
+ * Each API a site pre-rendered against its stage depends on, asked through
+ * the edge as `verify` asks it — the address the site's build fetches from.
+ * Any that does not answer fails the run before the site is built: a build
+ * that cannot reach them bakes in pages without their data.
+ */
+async function stageAnswers(
+	ctx: ComposeContext,
+	run: ComposeRun,
+	deps: ComposeDeps,
+	sites: readonly StackApp[],
+): Promise<void> {
+	const { stack } = run;
+	const names = new Set(sites.flatMap((site) => site.prerender?.against ?? []));
+	const apps = stack.apps.filter((app) => names.has(app.name));
+	if (apps.length === 0) return;
+
+	ctx.logger.info(
+		`\n🩺 Checking the APIs ${listNames(sites)} ${sites.length > 1 ? 'pre-render' : 'pre-renders'} from…`,
+	);
+	const ca = await verifyAuthority(stack);
+	const edge = edgeTarget(run, deps);
+	const results = await Promise.all(
+		apps.map((app) =>
+			// A wildcard site has no one host: its container says, where it runs.
+			app.id === stack.wildcard?.site && !run.push
+				? checkContainer(ctx, run, deps, app.name)
+				: checkApp(ctx, app, deps, { ca, edge }),
+		),
+	);
+	const down = new Map(
+		results.filter((r) => !r.healthy).map((r) => [r.app, r] as const),
+	);
+	for (const site of sites) {
+		const blocking = (site.prerender?.against ?? []).flatMap((name) => {
+			const result = down.get(name);
+			return result ? [result] : [];
+		});
+		if (blocking.length > 0) {
+			throw new SitePrerenderApisDown(
+				site.name,
+				blocking,
+				run.push ? 'push' : 'edge',
+			);
+		}
+	}
 }
 
 /**
@@ -1719,11 +1917,7 @@ export async function verifyCompose(
 	// server. Either is asked directly, on its published port, with each host
 	// as SNI and Host: what is checked is its routing and its certificate,
 	// whatever DNS — or a record not yet propagated — says.
-	const edge = stack.local
-		? { connectTo: '127.0.0.1' }
-		: run.server
-			? { connectTo: run.server.host, connectPort: edgePorts(deps.env).https }
-			: undefined;
+	const edge = edgeTarget(run, deps);
 	// A wildcard site has no one host to ask: each tenant's is the app's to
 	// answer, and an unknown one may get no certificate. Its container's own
 	// health check is the answer, as a worker's is.

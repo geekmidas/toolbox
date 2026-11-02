@@ -306,7 +306,8 @@ describe("a backend's env file", () => {
 		const env = app(stack(), 'api').env!;
 
 		// Of the auth server it calls, only the address: its CORS list and
-		// cookie domain are its own settings, as its secret is.
+		// cookie domain are its own settings, as its secret is. Of the site
+		// that calls it, the address it links back to.
 		expect(Object.keys(env).sort()).toEqual([
 			'API_COOKIE_DOMAIN',
 			'API_TRUSTED_ORIGINS',
@@ -320,7 +321,37 @@ describe("a backend's env file", () => {
 			'PORT',
 			'SESSIONS_URL',
 			'STAGE',
+			'WEB_URL',
 		]);
+	});
+
+	it("gives a deployed API each client's identity: a phone app's scheme, the site's address", () => {
+		// `MobileApp('App').dependsOn([api])`, and the API redirects an OAuth
+		// callback back into it (`<scheme>://…`).
+		const withPhone: ConstructManifest = {
+			...manifest,
+			App: {
+				kind: 'mobile-app',
+				id: 'App',
+				variant: 'expo',
+				app: { path: 'apps/app' },
+				dependencies: [{ target: 'Api', kind: 'rest-api' }],
+				provides: ['APP_SCHEME'],
+			},
+		};
+		const s = stack({
+			stage: 'production',
+			manifest: withPhone,
+			images: { mode: 'pull', tag: 'v1.4.0' },
+			secrets: production(),
+			ports: {},
+		});
+		const env = app(s, 'api').env!;
+
+		expect(env.APP_SCHEME).toBe('compose-app');
+		expect(env.WEB_URL).toBe('https://shop.example.com');
+		// And the auth server, which the phone does not call, gets no scheme.
+		expect(app(s, 'auth').env).not.toHaveProperty('APP_SCHEME');
 	});
 
 	it('reaches a sibling and names itself by their public addresses', () => {
@@ -512,6 +543,96 @@ describe('a static site', () => {
 		);
 		// And a backend's build reaches whatever it reaches.
 		expect(s.compose.services.api?.build?.extra_hosts).toBeUndefined();
+	});
+
+	describe("pre-rendered against its stage (prerender: 'stage')", () => {
+		const prerendered = (): ConstructManifest => ({
+			...manifest,
+			Web: { ...(manifest.Web as SiteDeclaration), prerender: 'stage' },
+		});
+		const authority = localAuthorityPaths('/home/dev/.gkm');
+
+		it('waits on the apps its edges name, and Caddy does not wait on it', () => {
+			const s = stack({ manifest: prerendered() });
+
+			expect(app(s, 'web').prerender).toEqual({ against: ['api', 'auth'] });
+			expect(app(s, 'api').prerender).toBeUndefined();
+			// Started before it is built: Caddy routes to it once it is up.
+			expect(s.compose.services.caddy?.depends_on).toEqual({
+				api: { condition: 'service_started' },
+				auth: { condition: 'service_started' },
+			});
+			expect(stack().compose.services.caddy?.depends_on).toHaveProperty('web');
+		});
+
+		it("reaches the local stage's hosts through the edge, trusting gkm's root, and is never told it is offline", () => {
+			const s = stack({
+				manifest: prerendered(),
+				localAuthority: authority,
+				prerenderRun: '2026-11-02T12:00:00.000Z',
+			});
+			const build = s.compose.services.web!.build!;
+
+			// Its hosts point at the edge rather than at a refusing address.
+			expect(build.extra_hosts).toEqual([
+				'api.compose-app.localhost:host-gateway',
+				'auth.compose-app.localhost:host-gateway',
+				'compose-app.localhost:host-gateway',
+			]);
+			expect(build.secrets).toEqual(['gkm_local_ca']);
+			expect(s.compose.secrets).toEqual({
+				gkm_local_ca: { file: '/home/dev/.gkm/ca/root.pem' },
+			});
+			// Its real URLs, and the run that keys its build.
+			expect(build.args).toMatchObject({
+				VITE_API_URL: 'https://api.compose-app.localhost:8443',
+				GKM_PRERENDER_RUN: '2026-11-02T12:00:00.000Z',
+			});
+			const dockerfile = dockerfileOf(s);
+			expect(dockerfile).not.toContain('GKM_BUILD_OFFLINE');
+			// Declared once, by the build step that reads it — never inlined.
+			expect(dockerfile.match(/ARG GKM_PRERENDER_RUN=/g)).toHaveLength(1);
+			expect(dockerfile).not.toContain('ENV GKM_PRERENDER_RUN');
+		});
+
+		it('reaches a deployed stage at its public hosts, as anything else does', () => {
+			const s = stack({
+				manifest: prerendered(),
+				stage: 'production',
+				images: {
+					mode: 'build',
+					tag: 'v1',
+					registry: 'registry.example.com/acme',
+				},
+				secrets: production(),
+				ports: {},
+			});
+			const build = s.compose.services.web!.build!;
+
+			expect(build.extra_hosts).toBeUndefined();
+			expect(build.secrets).toBeUndefined();
+			expect(s.compose.secrets).toBeUndefined();
+			expect(build.args!.VITE_API_URL).toBe('https://api.shop.example.com');
+			expect(
+				siteOfflineHosts(prerendered(), 'web', 'https://shop.example.com', {
+					api: 'https://api.shop.example.com',
+				}),
+			).toEqual([]);
+		});
+
+		it('is pulled as it was pushed, with nothing held back', () => {
+			const s = stack({
+				manifest: prerendered(),
+				images: {
+					mode: 'pull',
+					tag: 'v1',
+					registry: 'registry.example.com/acme',
+				},
+			});
+
+			expect(s.compose.services.web?.build).toBeUndefined();
+			expect(s.compose.services.caddy?.depends_on).toHaveProperty('web');
+		});
 	});
 
 	it("leaves another service's host alone in its build", () => {

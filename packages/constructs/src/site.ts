@@ -149,6 +149,30 @@ export interface StaticSiteConfig {
 		secret: RandomPassword;
 		stages: readonly [DeployedStage, ...DeployedStage[]];
 	};
+	/**
+	 * `'stage'` for a `static` site that pre-renders data at build time
+	 * (vite-ssg and similar): its build fetches from the APIs it
+	 * `.dependsOn()`, and bakes their answers into its files.
+	 *
+	 * ```ts
+	 * new StaticSite('Web', {
+	 *   path: 'apps/web',
+	 *   variant: 'static',
+	 *   prerender: 'stage',
+	 * }).dependsOn([api]);
+	 * ```
+	 *
+	 * The deploy then builds the site only once those APIs are up and
+	 * healthy on the stage, and the build reaches them at their public
+	 * addresses, as a browser would. Without it, a site is built offline,
+	 * before its stage runs (`GKM_BUILD_OFFLINE=1`), and nothing at runtime
+	 * can fill a page built without its data.
+	 *
+	 * Opt-in, because the image then holds that stage's data: the same commit
+	 * builds a different image per stage, and `gkm compose --build --push`
+	 * needs the stage it builds for already running.
+	 */
+	prerender?: 'stage';
 }
 
 /**
@@ -196,6 +220,27 @@ export class SiteHostsNotGet extends Error {
 				`with GET ${route}?domain=<host>. Make it a GET endpoint.`,
 		);
 		this.name = 'SiteHostsNotGet';
+	}
+}
+
+/**
+ * `prerender: 'stage'` on a site that renders its pages on a server, where a
+ * page renders on its first request — which the deploy's warm-up makes — and
+ * needs no data at build.
+ */
+export class PrerenderNeedsStaticSite extends Error {
+	constructor(
+		readonly id: string,
+		readonly variant: SiteDeclaration['variant'],
+	) {
+		super(
+			`'${id}' is a '${variant}' site, which renders its pages on its own ` +
+				`server, so it never needs its APIs at build: drop \`prerender\`, ` +
+				`and render data-backed pages on request (the deploy warms them). ` +
+				`\`prerender: 'stage'\` is for a 'static' site that bakes data into ` +
+				`its files.`,
+		);
+		this.name = 'PrerenderNeedsStaticSite';
 	}
 }
 
@@ -247,6 +292,10 @@ export class StaticSite<TName extends string = string>
 		if (wildcard && !config.hosts) throw new WildcardSiteNeedsHosts(this.id);
 		if (!wildcard && config.hosts) throw new SiteHostsNeedsWildcard(this.id);
 		if (wildcard && config.root) throw new WildcardSiteCannotBeRoot(this.id);
+		const variant = config.variant ?? 'static';
+		if (config.prerender && variant !== 'static') {
+			throw new PrerenderNeedsStaticSite(this.id, variant);
+		}
 		if (config.hosts && config.hosts.method.toUpperCase() !== 'GET') {
 			throw new SiteHostsNotGet(
 				this.id,
@@ -308,6 +357,7 @@ export class StaticSite<TName extends string = string>
 							},
 						}
 					: {}),
+				...(this.config.prerender ? { prerender: this.config.prerender } : {}),
 				provides: [
 					this.keys.url,
 					...(hosts

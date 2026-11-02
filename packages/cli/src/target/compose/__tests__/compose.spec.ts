@@ -1062,3 +1062,157 @@ describe('warming a server-rendered site', { timeout: RUN_TIMEOUT }, () => {
 		expect(ops).not.toContain('warm');
 	});
 });
+
+describe(
+	"a site pre-rendered against its stage (prerender: 'stage')",
+	{
+		timeout: RUN_TIMEOUT,
+	},
+	() => {
+		beforeEach(() => {
+			writeComposeApp(dir, {
+				registry: 'registry.example.com/acme',
+				sitePrerender: true,
+			});
+		});
+
+		async function deployWith(
+			probe: (url: string) => number,
+		): Promise<{ seen: DeployEvent[]; result: unknown; calls: Call[] }> {
+			const fake = fakeDocker();
+			const run = deploy({
+				cwd: dir,
+				stage: 'development',
+				target: 'compose',
+				targets: {
+					compose: composeTarget({
+						...quiet(),
+						healthAttempts: 2,
+						docker: fake.docker,
+						server: fakeServer([]),
+						probe: async ({ url }) => {
+							fake.calls.push({ op: 'probe', args: url });
+							return probe(url);
+						},
+					}),
+				},
+			});
+			const seen = await events(run);
+			const result = await run.result.catch((error: unknown) => error);
+			return { seen, result, calls: fake.calls };
+		}
+
+		/** `build` and `up` as they were asked of the stack, and each probe, in order. */
+		const steps = (calls: Call[]) =>
+			calls
+				.filter((c) => ['build', 'up', 'probe'].includes(c.op) && !c.edge)
+				.map((c) => ({ op: c.op, args: c.args }));
+
+		it('is built only once the APIs it depends on are up and answer through the edge', async () => {
+			const { seen, result, calls } = await deployWith(() => 200);
+
+			expect(result).toMatchObject({ stage: 'development', successCount: 4 });
+			const order = steps(calls);
+			const at = (match: (s: (typeof order)[number]) => boolean) =>
+				order.findIndex(match);
+
+			// Everything else is built first; the site is held back.
+			const first = at((s) => s.op === 'build');
+			expect(order[first]?.args).toEqual(['api', 'auth', 'jobs']);
+			// The stack but the site is started, and healthy by its own checks…
+			const started = at(
+				(s) =>
+					s.op === 'up' &&
+					Array.isArray(s.args) &&
+					(s.args as string[]).includes('caddy'),
+			);
+			expect(started).toBeGreaterThan(first);
+			expect(order[started]?.args).toEqual(
+				expect.arrayContaining(['api', 'auth', 'jobs', 'caddy', 'postgres']),
+			);
+			expect(order[started]?.args).not.toContain('web');
+			// …each API it calls answers through the edge…
+			const asked = order
+				.slice(started)
+				.filter((s) => s.op === 'probe')
+				.slice(0, 2)
+				.map((s) => s.args as string);
+			expect(asked.sort()).toEqual([
+				'https://api.compose-app.localhost/health',
+				'https://auth.compose-app.localhost/health',
+			]);
+			// …and only then is it built, then the whole stack started.
+			const site = at(
+				(s) => s.op === 'build' && (s.args as string[])[0] === 'web',
+			);
+			expect(order[site]?.args).toEqual(['web']);
+			expect(site).toBeGreaterThan(started + 2);
+			expect(at((s) => s.op === 'up' && s.args === 'all')).toBeGreaterThan(
+				site,
+			);
+
+			const built = seen
+				.filter((e) => e.type === 'artifact.built')
+				.map((e) => (e as { app: string }).app);
+			expect(built).toEqual(['api', 'auth', 'jobs', 'web']);
+		});
+
+		it('is not built when an API it depends on does not answer, and nothing more is started', async () => {
+			const { seen, calls } = await deployWith((url) =>
+				url.startsWith('https://api.') ? 503 : 200,
+			);
+
+			expect(seen).toContainEqual({
+				type: 'phase.failed',
+				phase: 'release',
+				error: {
+					name: 'SitePrerenderApisDown',
+					message: expect.stringContaining(
+						"'web' pre-renders from its stage's APIs (prerender: 'stage'), and this one does not answer, so it was not built:\n  - https://api.compose-app.localhost/health: HTTP 503",
+					),
+				},
+			});
+			const order = steps(calls);
+			expect(order).not.toContainEqual({ op: 'build', args: ['web'] });
+			expect(order).not.toContainEqual({ op: 'up', args: 'all' });
+		});
+
+		it('is never held back when pulled: its image was built against the stage when it was pushed', async () => {
+			await serveFrom(dir);
+			const fake = fakeDocker({
+				registry: [
+					'registry.example.com/acme/compose-app/compose-app-api:v1.4.0',
+					'registry.example.com/acme/compose-app/compose-app-auth:v1.4.0',
+					'registry.example.com/acme/compose-app/compose-app-jobs:v1.4.0',
+					'registry.example.com/acme/compose-app/compose-app-web:v1.4.0-production',
+				],
+			});
+			const run = deploy({
+				cwd: dir,
+				stage: 'production',
+				target: 'compose',
+				tag: 'v1.4.0',
+				targets: {
+					compose: composeTarget({
+						...quiet(),
+						docker: fake.docker,
+						server: fakeServer(fake.calls),
+						probe: answering(fake.calls),
+					}),
+				},
+			});
+			await events(run);
+			await run.result;
+
+			expect(fake.ops()).not.toContain('build');
+			// One start of the whole stack; none of the stack but the site.
+			const ups = fake.calls.filter((c) => c.op === 'up' && !c.edge);
+			expect(
+				ups.filter(
+					(c) =>
+						Array.isArray(c.args) && (c.args as string[]).includes('caddy'),
+				),
+			).toEqual([]);
+		});
+	},
+);

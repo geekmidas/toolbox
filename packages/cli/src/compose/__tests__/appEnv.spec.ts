@@ -66,7 +66,10 @@ beforeAll(async () => {
 	vi.spyOn(console, 'log').mockImplementation(() => {});
 	vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-	writeComposeApp(dir, { registry: 'registry.example.com/acme' });
+	writeComposeApp(dir, {
+		registry: 'registry.example.com/acme',
+		mobile: true,
+	});
 	await serveFrom(dir);
 	write(
 		'constructs/site.ts',
@@ -192,6 +195,29 @@ describe(
 				expect(api[key]).toBe(own[key]);
 			}
 			expect(api.STRIPE_KEY).toBe('sk_test_parity');
+		});
+
+		it('gives the API the identity of each client that calls it, as gkm dev does', () => {
+			const api = composed.api!;
+			const own = local.api!;
+
+			// `MobileApp('App').dependsOn([api])`: the API links and redirects
+			// back into the app (an OAuth callback's `<scheme>://…`).
+			expect(api.APP_SCHEME).toBe('compose-app');
+			expect(own.APP_SCHEME).toBe(api.APP_SCHEME);
+			// `StaticSite('Web').dependsOn([api])`: and back to the site.
+			expect(api.WEB_URL).toMatch(/^https:\/\//);
+			expect(own.WEB_URL).toBe(api.WEB_URL);
+			// Not only folded into the origins it trusts.
+			expect(api.API_TRUSTED_ORIGINS).toContain('compose-app://');
+		});
+
+		it('gives the auth server the clients that call it, and not the API', () => {
+			const auth = composed.auth!;
+
+			expect(auth.APP_SCHEME).toBe('compose-app');
+			expect(auth.WEB_URL).toBe(composed.web!.WEB_URL);
+			expect(auth).not.toHaveProperty('API_URL');
 		});
 
 		it("hands the worker's cron the site's and the API's public URLs it depends on", () => {

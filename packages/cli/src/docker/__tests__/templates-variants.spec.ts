@@ -290,6 +290,32 @@ describe('a site that imports a generated client', () => {
 
 	it.each(
 		sites,
+	)('builds a site that pre-renders against its stage online, trusting the root it is handed, afresh each run (%s)', (_, generate) => {
+		const dockerfile = generate({ ...site, prerender: true });
+		// The site's own build, from the argument that keys it.
+		const build = dockerfile.slice(dockerfile.indexOf('ARG GKM_PRERENDER_RUN'));
+
+		// Its APIs answer while it builds: it is not told they do not.
+		expect(dockerfile).not.toContain('GKM_BUILD_OFFLINE');
+		expect(dockerfile).toContain('ENV GKM_IMAGE_BUILD=1');
+		// The run is part of the build's cache key, so the stage's data is
+		// fetched again rather than served from Docker's cache.
+		expect(build).toContain('ARG GKM_PRERENDER_RUN=""');
+		expect(build).toContain(
+			'echo "prerendered for: ${GKM_PRERENDER_RUN:-any run}"',
+		);
+		// The local stage's root, where the build is handed one.
+		expect(build).toContain(
+			'RUN --mount=type=secret,id=gkm_local_ca,required=false',
+		);
+		expect(build).toContain(
+			'if [ -s /run/secrets/gkm_local_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/gkm_local_ca; fi',
+		);
+		expect(build).toContain("run build --filter='@shop/web' --env-mode=loose");
+	});
+
+	it.each(
+		sites,
 	)('generates nothing for a site that calls no API (%s)', (_, generate) => {
 		const dockerfile = generate({ ...site, clients: [] });
 

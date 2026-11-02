@@ -50,16 +50,32 @@ import { envParserFor } from './endpoints/surfaceEnv';
 import { loadHono } from './optionalPeers';
 import { onShutdown } from './shutdown';
 import type { Telemetry } from './telemetry';
+import { WebSocketCore } from './websocket/core';
 import { FrameShape, type WebSocketFrame } from './websocket/frame';
 import {
 	type NoMessages,
 	type WebSocketMessages,
 	WebSocketPublisher,
+	type WebSocketSink,
 } from './websocket/publisher';
 import { WebSocketRoute, WebSocketRouteBuilder } from './websocket/route';
 import { WebSocketSurfaceServer } from './websocket/server';
-import { transportFromConnectionString } from './websocket/transport';
+import {
+	TransportSink,
+	transportFromConnectionString,
+} from './websocket/transport';
 
+export {
+	type ConnectOutcome,
+	type ConnectRequest,
+	type DisconnectOutcome,
+	DuplicateWebSocketRoute,
+	type MessageOutcome,
+	type WebSocketCallOptions,
+	WebSocketCore,
+	type WebSocketCoreOptions,
+	type WriteFrame,
+} from './websocket/core';
 export {
 	WebSocketDataHasDiscriminator,
 	WebSocketDataNotAnObject,
@@ -75,6 +91,7 @@ export {
 	UnknownWebSocketMessage,
 	type WebSocketMessages,
 	WebSocketPublisher,
+	type WebSocketSink,
 } from './websocket/publisher';
 export type {
 	ConnectContext,
@@ -86,7 +103,6 @@ export type {
 export { WebSocketRoute, WebSocketRouteBuilder } from './websocket/route';
 export {
 	CLOSE,
-	DuplicateWebSocketRoute,
 	type WebSocketServerOptions,
 	WebSocketSurfaceServer,
 } from './websocket/server';
@@ -94,6 +110,7 @@ export {
 	type Delivery,
 	MemoryTransport,
 	RedisTransport,
+	TransportSink,
 	transportFromConnectionString,
 	UnsupportedWebSocketTransport,
 	type WebSocketTransport,
@@ -242,8 +259,7 @@ export class WebSocketApi<
 				);
 				onShutdown(() => transport.close());
 				return new WebSocketPublisher<TMessages>(
-					transport,
-					undefined,
+					new TransportSink(transport),
 					declared,
 					frame,
 				);
@@ -301,9 +317,6 @@ export class WebSocketApi<
 		server: WebSocketSurfaceServer<TMessages>;
 	}> {
 		const { Hono } = await loadHono('A WebSocketApi');
-		const routes = (options.modules ?? []).flatMap((module) =>
-			Object.values(module).filter(WebSocketRoute.isRoute),
-		);
 
 		const { connectionString, origins, url } = options.envParser
 			.create((get) => ({
@@ -327,19 +340,18 @@ export class WebSocketApi<
 			.parse();
 
 		const server = await WebSocketSurfaceServer.start<TMessages>({
-			surface: this.id,
-			routes,
+			core: (sink) =>
+				this.core({
+					envParser: options.envParser,
+					sink,
+					...(options.modules ? { modules: options.modules } : {}),
+				}),
 			transport: await transportFromConnectionString(
 				connectionString,
 				channelOf(this.id),
 			),
-			envParser: options.envParser,
-			logger: this.logger,
 			trustedOrigins: origins,
 			...(url ? { url } : {}),
-			...(this.config.frame ? { frame: this.config.frame } : {}),
-			...(this.declared ? { messages: this.declared.messages } : {}),
-			...(this.authenticator ? { authenticator: this.authenticator } : {}),
 			...(this.config.heartbeat
 				? { heartbeatMs: this.config.heartbeat * 1000 }
 				: {}),
@@ -365,6 +377,36 @@ export class WebSocketApi<
 			release: () => server.close(),
 			server,
 		};
+	}
+
+	/**
+	 * The surface with no socket in it — what every runtime serves. The
+	 * routes exported by `modules` that were built from this surface answer
+	 * its frames; `sink` is where its handlers' `sockets` send.
+	 *
+	 * `server()` is the Node adaptor over it. Another runtime (a Lambda
+	 * behind API Gateway, a test) builds one with a sink of its own and
+	 * calls `connect()`, `message()` and `disconnect()` per connection id.
+	 *
+	 * @throws {DuplicateWebSocketRoute} when two routes answer one action.
+	 */
+	core(options: {
+		envParser: EnvironmentParser<{}>;
+		sink: WebSocketSink;
+		modules?: readonly object[];
+	}): WebSocketCore<TMessages> {
+		return new WebSocketCore<TMessages>({
+			surface: this.id,
+			routes: (options.modules ?? []).flatMap((module) =>
+				Object.values(module).filter(WebSocketRoute.isRoute),
+			),
+			sink: options.sink,
+			envParser: options.envParser,
+			logger: this.logger,
+			...(this.config.frame ? { frame: this.config.frame } : {}),
+			...(this.declared ? { messages: this.declared.messages } : {}),
+			...(this.authenticator ? { authenticator: this.authenticator } : {}),
+		});
 	}
 
 	/** The declared messages, with the surface they are checked for. */

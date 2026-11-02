@@ -170,7 +170,10 @@ describe('appServices', () => {
 			expect(env('api')).toHaveProperty('AUTH_URL');
 			expect(env('api')).toHaveProperty('API_URL');
 			expect(env('api')).not.toHaveProperty('ORDERS_URL');
-			expect(env('api')).not.toHaveProperty('WEB_URL');
+			// The site that calls it, to link and redirect back to.
+			expect(env('api')).toHaveProperty('WEB_URL');
+			// Not the signer, which nothing on the API calls or is called by.
+			expect(env('api')).not.toHaveProperty('SIGNER_URL');
 		});
 
 		it('gives a surface what its own handler requires', () => {

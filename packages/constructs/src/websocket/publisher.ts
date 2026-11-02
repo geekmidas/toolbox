@@ -1,15 +1,20 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { FrameShape } from './frame';
-import {
-	type Delivery,
-	EVERY_INSTANCE,
-	type WebSocketTransport,
-} from './transport';
 
-/** The instance a connection id was issued by: everything before its dot. */
-export function instanceOf(connectionId: string): string | undefined {
-	const dot = connectionId.indexOf('.');
-	return dot > 0 ? connectionId.slice(0, dot) : undefined;
+/**
+ * Where a publisher's frames go once they are encoded — the one thing a
+ * runtime supplies to send to its sockets.
+ *
+ * On Node it is a `TransportSink`: each id's process, over Redis or memory.
+ * On API Gateway it would be the management API's `postToConnection`; under
+ * test, a recording. A payload is the frame already serialised, once, however
+ * many ids it goes to. An id that is gone is dropped, not an error.
+ */
+export interface WebSocketSink {
+	send(ids: readonly string[], payload: string): Promise<void>;
+	/** Every open connection but `except`. */
+	broadcast(payload: string, except?: readonly string[]): Promise<void>;
+	close(ids: readonly string[], code: number, reason: string): Promise<void>;
 }
 
 /**
@@ -85,15 +90,8 @@ export class WebSocketPublisher<
 	TMessages extends WebSocketMessages = NoMessages,
 > {
 	constructor(
-		private readonly transport: WebSocketTransport,
-		/**
-		 * Delivers to this process's own sockets without a round trip through
-		 * the transport — set on the server's own publisher.
-		 */
-		private readonly local?: {
-			instance: string;
-			deliver(delivery: Delivery): void;
-		},
+		/** Where an encoded frame goes. */
+		private readonly sink: WebSocketSink,
 		/** The surface's declared messages, which every send is checked by. */
 		private readonly declared?: { surface: string; messages: TMessages },
 		/** How the surface writes a frame. Absent, `{ action, data }`. */
@@ -109,7 +107,7 @@ export class WebSocketPublisher<
 		data: MessageData<TMessages, TAction>,
 	): Promise<void> {
 		const payload = await this.payload(action, data);
-		await this.each(ids, (group) => ({ kind: 'send', ids: group, payload }));
+		await this.sink.send(listOf(ids), payload);
 	}
 
 	/** Send `action`'s message to every open connection, on every process. */
@@ -119,11 +117,10 @@ export class WebSocketPublisher<
 		options: { except?: readonly string[] } = {},
 	): Promise<void> {
 		const payload = await this.payload(action, data);
-		await this.transport.publish(EVERY_INSTANCE, {
-			kind: 'broadcast',
+		await this.sink.broadcast(
 			payload,
-			...(options.except?.length ? { except: options.except } : {}),
-		});
+			options.except?.length ? options.except : undefined,
+		);
 	}
 
 	/** Close each connection, with a close code and reason its client sees. */
@@ -132,12 +129,7 @@ export class WebSocketPublisher<
 		code = 1000,
 		reason = '',
 	): Promise<void> {
-		await this.each(ids, (group) => ({
-			kind: 'close',
-			ids: group,
-			code,
-			reason,
-		}));
+		await this.sink.close(listOf(ids), code, reason);
 	}
 
 	/**
@@ -161,27 +153,8 @@ export class WebSocketPublisher<
 		}
 		return this.frame.encode(action, result.value);
 	}
+}
 
-	/** One delivery per process that holds any of `ids`. */
-	private async each(
-		ids: string | readonly string[],
-		delivery: (group: string[]) => Delivery,
-	): Promise<void> {
-		const byInstance = new Map<string, string[]>();
-		for (const id of typeof ids === 'string' ? [ids] : ids) {
-			const instance = instanceOf(id);
-			if (!instance) continue;
-			const group = byInstance.get(instance) ?? [];
-			group.push(id);
-			byInstance.set(instance, group);
-		}
-
-		await Promise.all(
-			[...byInstance].map(([instance, group]) =>
-				this.local?.instance === instance
-					? this.local.deliver(delivery(group))
-					: this.transport.publish(instance, delivery(group)),
-			),
-		);
-	}
+function listOf(ids: string | readonly string[]): readonly string[] {
+	return typeof ids === 'string' ? [ids] : ids;
 }

@@ -1,31 +1,34 @@
 /**
- * The process that holds a WebSocket surface's sockets.
+ * The Node adaptor: the process that holds a WebSocket surface's sockets.
  *
- * Node's own `http` server and `ws`, nothing between them: a frame is parsed,
- * validated and handed to its route, and that is the whole hot path. The HTTP
- * server is whatever the entry started — the generated one serves `/health`
- * on the same port — and this attaches to its `upgrade` event.
+ * Node's own `http` server and `ws`, nothing between them. This owns what
+ * only a real socket has — the upgrade, the Origin check, connection ids,
+ * the heartbeat, backpressure — and hands the rest to the surface's
+ * `WebSocketCore`: a handshake to `connect()`, each frame to `message()`, a
+ * close to `disconnect()`. The HTTP server is whatever the entry started —
+ * the generated one serves `/health` on the same port — and this attaches to
+ * its `upgrade` event.
  */
 
 import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
-import type { EnvironmentParser } from '@geekmidas/envkit';
-import { HttpError } from '@geekmidas/errors';
-import type { Logger } from '@geekmidas/logger';
 import { trustsOrigin } from '@geekmidas/manifest';
-import { runWithRequestContext, ServiceDiscovery } from '@geekmidas/services';
-import type { WebSocket, WebSocketServer } from 'ws';
-import type { Authenticator } from '../construct-interface';
+import type { RawData, WebSocket, WebSocketServer } from 'ws';
 import { loadWs } from '../optionalPeers';
-import { FrameShape, type WebSocketFrame } from './frame';
-import {
-	type NoMessages,
-	type WebSocketMessages,
+import type { WebSocketCore } from './core';
+import type {
+	NoMessages,
+	WebSocketMessages,
 	WebSocketPublisher,
+	WebSocketSink,
 } from './publisher';
-import type { Connection, WebSocketRoute } from './route';
-import type { Delivery, WebSocketTransport } from './transport';
+import type { Connection } from './route';
+import {
+	type Delivery,
+	TransportSink,
+	type WebSocketTransport,
+} from './transport';
 
 /** Close codes a client sees. */
 export const CLOSE = {
@@ -36,32 +39,15 @@ export const CLOSE = {
 	tooSlow: 1013,
 } as const;
 
-/** Two routes answer one action. */
-export class DuplicateWebSocketRoute extends Error {
-	constructor(
-		readonly surface: string,
-		readonly action: string,
-	) {
-		super(
-			`Two routes on ${surface} answer '${action}'. Each action has one handler — rename one of them.`,
-		);
-		this.name = 'DuplicateWebSocketRoute';
-	}
-}
-
 export interface WebSocketServerOptions<
 	TMessages extends WebSocketMessages = NoMessages,
 > {
-	surface: string;
-	/** What the surface sends its sockets — see `WebSocketApiConfig.messages`. */
-	messages?: TMessages;
-	/** The shape its frames take — see `WebSocketApiConfig.frame`. */
-	frame?: WebSocketFrame;
-	routes: readonly WebSocketRoute[];
+	/**
+	 * The surface's core, over the sink this process sends through — its own
+	 * sockets directly, every other process's over `transport`.
+	 */
+	core(sink: WebSocketSink): WebSocketCore<TMessages>;
 	transport: WebSocketTransport;
-	envParser: EnvironmentParser<{}>;
-	logger: Logger;
-	authenticator?: Authenticator;
 	/**
 	 * Origins a browser may open a socket from. A request with an `Origin`
 	 * not in the list is refused with 403; one with none — a server, a load
@@ -93,17 +79,11 @@ export class WebSocketSurfaceServer<
 > {
 	/** This process, as connection ids name it. */
 	readonly instance = randomBytes(6).toString('hex');
-	/** `sockets` in a route: local sends skip the transport. */
-	readonly publisher: WebSocketPublisher<TMessages>;
+	/** Where each handshake, frame and close is handed. */
+	readonly core: WebSocketCore<TMessages>;
 
 	private readonly held = new Map<string, Held>();
-	private readonly routes = new Map<string, WebSocketRoute>();
-	private readonly lifecycle: {
-		connect?: WebSocketRoute;
-		disconnect?: WebSocketRoute;
-	} = {};
 	private readonly heartbeat: NodeJS.Timeout;
-	private readonly frame: FrameShape;
 	private readonly trusted: readonly string[];
 	private next = 0;
 	private closing = false;
@@ -112,36 +92,14 @@ export class WebSocketSurfaceServer<
 		private readonly wss: WebSocketServer,
 		private readonly options: WebSocketServerOptions<TMessages>,
 	) {
-		for (const route of options.routes) {
-			if (route.surface.id !== options.surface) continue;
-			if (route.kind === 'message') {
-				if (this.routes.has(route.action)) {
-					throw new DuplicateWebSocketRoute(options.surface, route.action);
-				}
-				this.routes.set(route.action, route);
-			} else {
-				if (this.lifecycle[route.kind]) {
-					throw new DuplicateWebSocketRoute(options.surface, route.action);
-				}
-				this.lifecycle[route.kind] = route;
-			}
-		}
-
-		this.frame = new FrameShape(options.surface, options.frame?.discriminator);
-		if (options.messages) this.frame.check(options.messages);
-		this.trusted = [...options.trustedOrigins, ...ownOrigins(options.url)];
-
-		this.publisher = new WebSocketPublisher<TMessages>(
-			options.transport,
-			{
+		// Local sends skip the transport.
+		this.core = options.core(
+			new TransportSink(options.transport, {
 				instance: this.instance,
 				deliver: (delivery) => this.deliver(delivery),
-			},
-			options.messages
-				? { surface: options.surface, messages: options.messages }
-				: undefined,
-			this.frame,
+			}),
 		);
+		this.trusted = [...options.trustedOrigins, ...ownOrigins(options.url)];
 
 		this.heartbeat = setInterval(
 			() => this.beat(),
@@ -170,6 +128,11 @@ export class WebSocketSurfaceServer<
 		return server;
 	}
 
+	/** `sockets` in a route: local sends skip the transport. */
+	get publisher(): WebSocketPublisher<TMessages> {
+		return this.core.sockets;
+	}
+
 	/** How many sockets this process holds. */
 	get size(): number {
 		return this.held.size;
@@ -195,188 +158,47 @@ export class WebSocketSurfaceServer<
 			return refuse(socket, 403, 'Forbidden');
 		}
 
-		const connectionId = `${this.instance}.${(this.next++).toString(36)}`;
-		const headers = headersOf(request);
-		let data: Record<string, unknown> = {};
-
-		const connect = this.lifecycle.connect;
-		if (connect) {
-			try {
-				const session = this.options.authenticator
-					? await this.options.authenticator.verify(
-							headers,
-							this.options.envParser,
-						)
-					: null;
-				const returned = await this.run(connect, connectionId, (base) => ({
-					...base,
-					connectionId,
-					headers,
-					query: new URL(request.url ?? '/', 'http://localhost').searchParams,
-					session,
-				}));
-				if (returned && typeof returned === 'object') {
-					data = returned as Record<string, unknown>;
-				}
-			} catch (error) {
-				if (error instanceof HttpError) {
-					return refuse(socket, error.statusCode, error.statusMessage);
-				}
-				this.options.logger.error(
-					{ err: error, connectionId },
-					'WebSocket connect handler failed',
-				);
-				return refuse(socket, 500, 'Internal Server Error');
-			}
+		const outcome = await this.core.connect({
+			connectionId: `${this.instance}.${(this.next++).toString(36)}`,
+			headers: headersOf(request),
+			query: new URL(request.url ?? '/', 'http://localhost').searchParams,
+		});
+		if (!outcome.accepted) {
+			return refuse(socket, outcome.status, outcome.statusText);
 		}
 
 		// The client may have gone while the connect handler ran.
 		if (socket.destroyed) return;
 
 		this.wss.handleUpgrade(request, socket, head, (ws) =>
-			this.open(ws, { id: connectionId, data }),
+			this.open(ws, outcome.connection),
 		);
 	}
 
 	private open(socket: WebSocket, connection: Connection): void {
 		const held: Held = { socket, connection, alive: true };
 		this.held.set(connection.id, held);
+		const write = (payload: string) => this.write(held, payload);
 
 		socket.on('pong', () => {
 			held.alive = true;
 		});
 		socket.on('message', (raw, isBinary) => {
 			held.alive = true;
-			if (isBinary) {
-				return this.error(held, undefined, 'Frames are JSON text.');
-			}
-			void this.dispatch(held, raw.toString());
+			void this.core.message(
+				connection,
+				isBinary ? bytesOf(raw) : raw.toString(),
+				write,
+			);
 		});
 		socket.on('error', () => socket.terminate());
 		socket.on('close', (code, reason) => {
 			this.held.delete(connection.id);
-			const disconnect = this.lifecycle.disconnect;
-			if (!disconnect) return;
-			void this.run(disconnect, connection.id, (base) => ({
-				...base,
-				connection,
+			void this.core.disconnect(connection, {
 				code,
 				reason: reason.toString(),
-			})).catch((error) =>
-				this.options.logger.error(
-					{ err: error, connectionId: connection.id },
-					'WebSocket disconnect handler failed',
-				),
-			);
+			});
 		});
-	}
-
-	/** Parse, validate and run one frame. Errors go back as frames, not closes. */
-	private async dispatch(held: Held, text: string): Promise<void> {
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(text);
-		} catch {
-			return this.error(held, undefined, 'Frames are JSON.');
-		}
-		const frame = this.frame.decode(parsed);
-		if (!frame) {
-			return this.error(
-				held,
-				this.frame.idOf(parsed),
-				`A frame names its \`${this.frame.key}\`.`,
-			);
-		}
-
-		const route = this.routes.get(frame.action) ?? this.routes.get('$default');
-		if (!route) {
-			return this.error(held, frame.id, `No route answers '${frame.action}'.`);
-		}
-
-		let body = frame.data;
-		if (route.schema) {
-			const result = await route.schema['~standard'].validate(frame.data);
-			if (result.issues) {
-				return this.error(
-					held,
-					frame.id,
-					'The frame was invalid.',
-					result.issues,
-				);
-			}
-			body = result.value;
-		}
-
-		try {
-			const returned = await this.run(route, held.connection.id, (base) => ({
-				...base,
-				connection: held.connection,
-				body,
-				reply: (message: unknown) => this.write(held, JSON.stringify(message)),
-			}));
-			if (returned !== undefined) {
-				this.write(held, this.frame.encode(frame.action, returned, frame.id));
-			}
-		} catch (error) {
-			if (error instanceof HttpError) {
-				return this.error(held, frame.id, error.message);
-			}
-			this.options.logger.error(
-				{ err: error, connectionId: held.connection.id, action: frame.action },
-				'WebSocket route failed',
-			);
-			this.error(held, frame.id, 'The route failed.');
-		}
-	}
-
-	/** Run a handler with its services, inside a request context of its own. */
-	private async run(
-		route: WebSocketRoute,
-		connectionId: string,
-		context: (base: {
-			services: unknown;
-			logger: Logger;
-			sockets: WebSocketPublisher<TMessages>;
-		}) => object,
-	): Promise<unknown> {
-		const logger = this.options.logger.child({
-			connectionId,
-			action: route.action,
-		});
-		return runWithRequestContext(
-			{
-				logger,
-				requestId: connectionId,
-				startTime: Date.now(),
-				operation: `ws ${route.action}`,
-			},
-			async () => {
-				const services = route.services.length
-					? await ServiceDiscovery.getInstance(this.options.envParser).register(
-							[...route.services],
-						)
-					: {};
-				return (route.handler as (context: object) => unknown)(
-					context({ services, logger, sockets: this.publisher }),
-				);
-			},
-		);
-	}
-
-	private error(
-		held: Held,
-		id: string | number | undefined,
-		message: string,
-		issues?: unknown,
-	): void {
-		this.write(
-			held,
-			this.frame.encode(
-				'$error',
-				{ message, ...(issues ? { issues } : {}) },
-				id,
-			),
-		);
 	}
 
 	/** Write, unless the socket has stopped reading and its queue is full. */
@@ -470,6 +292,12 @@ function ownOrigins(url: string | undefined): string[] {
 	const own = new URL(url);
 	const web = new URL(url.replace(/^ws(s?):/i, 'http$1:'));
 	return [...new Set([`${own.protocol}//${own.host}`, web.origin])];
+}
+
+/** A binary frame's bytes, however `ws` delivered them. */
+function bytesOf(raw: RawData): Uint8Array {
+	if (Array.isArray(raw)) return Buffer.concat(raw);
+	return raw instanceof ArrayBuffer ? new Uint8Array(raw) : raw;
 }
 
 function headersOf(request: IncomingMessage): Headers {
