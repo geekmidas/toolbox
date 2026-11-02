@@ -2132,6 +2132,17 @@ describe('a WebSocket surface', () => {
 		);
 	});
 
+	it('limits each client address at the edge, as the surface declares', () => {
+		const s = deployed('traefik');
+		const route = s.routes.find((r) => r.name === 'realtime')!;
+		expect(route.limits).toEqual({
+			handshakesPerMinute: 120,
+			connectionsPerIp: 256,
+		});
+		// Only the surface's route: an API has no such limit.
+		expect(s.routes.find((r) => r.name === 'api')?.limits).toBeUndefined();
+	});
+
 	it('widens the edge for the connections it holds', () => {
 		const caddy = deployed().compose.services.caddy!;
 

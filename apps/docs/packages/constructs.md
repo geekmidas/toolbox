@@ -271,8 +271,66 @@ export const say = realtime
   socket that missed the last one is dropped. One that stops reading while
   4 MB is queued for it is closed with 1013. On SIGTERM every socket is closed
   with **1012** — reconnect, and land on a process that is still up.
+- **Limits** bound what one client may ask of it — see below.
 - A site that declares an edge to the surface gets its URL alone, never the
   publisher: whoever holds that string can write to every socket.
+
+#### Limits — `limits`
+
+Every upgrade runs the connect handler, usually a session lookup, and every
+frame is parsed, validated and answered. Without a bound, one script can open
+handshakes as fast as the edge accepts them, one session can hold any number
+of sockets, and one socket can send as fast as it likes. A surface limits all
+three by default:
+
+| Limit | Per | Default | Past it |
+|---|---|---|---|
+| `handshakesPerMinute` | client address | 120 | the upgrade is answered **429** with `Retry-After`, before the connect handler runs |
+| `inFlightHandshakes` | client address | 16 | **429** — handshakes still waiting on the connect handler |
+| `connectionsPerIp` | client address | 256 | **429** |
+| `messagesPerSecond` + `burst` | socket | 50, burst 100 | the frame is dropped and the socket is sent one `$error`; if it keeps sending before its budget refills, it is closed with **1008** |
+| `maxConnections` (with `maxConnectionsPer`) | identity | 16 | `overflow: 'refuse'`: **429**; `'closeOldest'`: the new socket is let in and the identity's oldest are closed with **1008** |
+
+```typescript
+export const realtime = new WebSocketApi('Realtime', {
+  path: 'apps/realtime',
+  limits: {
+    messagesPerSecond: 20,
+    burst: 40,
+    // who a connection is: read from what connect() returned
+    maxConnectionsPer: (data) => data.userId as string,
+    maxConnections: 5,
+    overflow: 'closeOldest', // a new tab wins; 'refuse' (default) turns it away
+    connectionsPerIp: false, // lift one: every client behind one NAT
+  },
+  requireOrigin: true, // 403 for an upgrade with no Origin
+}).auth(auth);
+```
+
+- **Across replicas.** The counts per address and per identity live where the
+  publisher does: on Redis (`REALTIME_PUBLISHER_CONNECTION_STRING`) every
+  replica counts in one place, so `connectionsPerIp: 10` is ten across the
+  surface, not ten per process. A socket's place is renewed with each
+  heartbeat and lapses three heartbeats after a process that died without
+  giving it back. With `closeOldest`, the oldest socket is closed on whichever
+  replica holds it. If Redis can't be reached, the limit is logged and not
+  applied rather than refusing everyone.
+- **The client address** is the TCP peer's — or, from a private peer (the
+  stack's edge), the last `X-Forwarded-For` entry, the one the edge wrote.
+  Traefik and Caddy both replace what an outside client sends there, and a
+  client that reaches the port directly can't pick its own bucket.
+- **The edge enforces the per-address limits too.** The surface declares
+  `handshakesPerMinute` and `connectionsPerIp`, and the shared Traefik renders
+  them as `rateLimit` and `inFlightReq` middlewares on its route, so a flood
+  is answered 429 before it reaches a replica. Caddy ships no rate limiter;
+  behind it, the surface's own count is what holds.
+- **No `Origin`.** Browsers and native clients always send one, so an upgrade
+  without it is a server or a script. `requireOrigin: true` refuses those with
+  403. It's off by default because a backend may hold a socket too; the limits
+  apply either way.
+- **A surface that only pushes**, whose clients write over HTTP, declares no
+  routes and sets a small `maxPayload` (say `1024`): every inbound frame is
+  then refused before it's parsed.
 
 #### Flat frames — `frame: { discriminator }`
 

@@ -80,6 +80,13 @@ export interface EdgeRoute {
 	 * The password's bcrypt hash, never the password.
 	 */
 	auth?: { user: string; hash: string };
+	/**
+	 * What one client address may ask of it — a WebSocket surface's
+	 * handshakes a minute and open sockets — refused with 429 at the edge.
+	 * Rendered for Traefik (`rateLimit`, `inFlightReq`); Caddy ships no rate
+	 * limiter, so behind it the surface's own count is what holds.
+	 */
+	limits?: { handshakesPerMinute?: number; connectionsPerIp?: number };
 	/** The path the upstream answers its health on — `/health`, `/`. */
 	health?: string;
 	/**

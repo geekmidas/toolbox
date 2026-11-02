@@ -24,6 +24,7 @@ import {
 	provideKey,
 	provisionOrder,
 	type SiteDeclaration,
+	type WebSocketEdgeLimits,
 	WILDCARD_SUBDOMAIN,
 } from '@geekmidas/manifest';
 import { stageBackups } from '../backups/config.js';
@@ -300,6 +301,8 @@ export interface StackApp extends AppImage {
 	 * what has to answer, healthy, before its image is built.
 	 */
 	prerender?: { against: string[] };
+	/** A WebSocket surface's per-address limits, which its route enforces. */
+	limits?: WebSocketEdgeLimits;
 }
 
 /**
@@ -1719,6 +1722,7 @@ export function composeStack(input: StackInput): ComposeStack {
 				...(app.auth
 					? { auth: { user: app.auth.user, hash: app.auth.hash } }
 					: {}),
+				...(app.limits ? { limits: app.limits } : {}),
 				health: app.kind === 'site' ? '/' : '/health',
 			}),
 		),
@@ -1994,6 +1998,9 @@ function stackApps(
 			...(declaration.kind === 'site' ? { variant: declaration.variant } : {}),
 			replicas:
 				declaration.kind === 'websocket-api' ? (declaration.replicas ?? 1) : 1,
+			...(declaration.kind === 'websocket-api' && declaration.limits
+				? { limits: declaration.limits }
+				: {}),
 			runtime: !site || runsServer(declaration),
 			path: app.path,
 			port: app.port,
