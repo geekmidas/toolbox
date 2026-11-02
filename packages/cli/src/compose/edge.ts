@@ -26,13 +26,16 @@ import type {
 } from './docker.js';
 import type { ComposeProxy } from './routes.js';
 import {
+	claimsOverlap,
 	EDGE_CERTS_DIR,
 	EDGE_DYNAMIC_DIR,
 	EDGE_NETWORK,
 	EDGE_PROJECT,
 	EDGE_SERVICE,
+	type EdgeClaim,
 	type EdgePorts,
 	edgeComposeFile,
+	readEdgeClaims,
 	traefikStaticFile,
 } from './traefik.js';
 
@@ -244,6 +247,89 @@ export function routesPath(project: string): string {
 	return `${EDGE_DYNAMIC_DIR}/${project}.yml`;
 }
 
+/**
+ * A host this stack routes is already routed through the shared edge by
+ * another project: two routers for one host, and which stack serves it — and
+ * which gets its certificate — would be the edge's choice.
+ */
+export class EdgeHostClaimed extends GkmError {
+	constructor(
+		readonly host: string,
+		readonly owner: string,
+		readonly project: string,
+		readonly edge: string = EDGE_PROJECT,
+	) {
+		super(
+			`${project} routes ${host}, and ${owner} already routes it through the ` +
+				`shared edge (${edge}) on this server. A host is served by one ` +
+				`stack only. Give ${project} another domain, or take ${owner} off the ` +
+				`edge first: gkm compose --stage <stage> --down in its workspace (or ` +
+				`remove ${routesPath(owner)} from the edge).`,
+		);
+		this.name = 'EdgeHostClaimed';
+	}
+}
+
+/**
+ * Every other stack's claims on the edge, by project: each `dynamic/*.yml`
+ * but this project's, read through the engine. None where the edge is not
+ * running — nothing is routed through it.
+ */
+export async function edgeClaimsByProject(
+	docker: ComposeDocker,
+	edge: StackRef,
+	project: string,
+): Promise<Map<string, EdgeClaim[]>> {
+	const claimed = new Map<string, EdgeClaim[]>();
+	const listed = await docker.exec(edge, EDGE_SERVICE, [
+		'ls',
+		'-1',
+		EDGE_DYNAMIC_DIR,
+	]);
+	if (listed.code !== 0) return claimed;
+	for (const name of listed.stdout.split('\n').map((line) => line.trim())) {
+		// Only what the edge loads, and only a stack's: a file being written
+		// is `.tmp` until its rename.
+		if (!name.endsWith('.yml')) continue;
+		const owner = name.slice(0, -'.yml'.length);
+		if (!owner || owner === project) continue;
+		const file = await readEdgeFile(docker, edge, routesPath(owner));
+		if (file === undefined) continue;
+		const claims = readEdgeClaims(file);
+		if (claims.length > 0) claimed.set(owner, claims);
+	}
+	return claimed;
+}
+
+/**
+ * Refuse a stack's routes when a host in them is routed through the edge by
+ * another project — checked before a deploy changes anything, and again
+ * before its routes are written. Its own file, from its last deploy, is
+ * replaced, never a clash.
+ */
+export async function assertEdgeHostsFree(
+	docker: ComposeDocker,
+	edge: StackRef,
+	project: string,
+	routes: string,
+): Promise<void> {
+	const mine = readEdgeClaims(routes);
+	if (mine.length === 0) return;
+	const others = await edgeClaimsByProject(docker, edge, project);
+	for (const [owner, theirs] of [...others].sort(([a], [b]) =>
+		a.localeCompare(b),
+	)) {
+		for (const claim of mine) {
+			for (const other of theirs) {
+				const host = claimsOverlap(claim, other);
+				if (host !== undefined) {
+					throw new EdgeHostClaimed(host, owner, project, edge.project);
+				}
+			}
+		}
+	}
+}
+
 function certificatePaths(project: string): [string, string] {
 	return [
 		`${EDGE_CERTS_DIR}/${project}.crt`,
@@ -252,7 +338,8 @@ function certificatePaths(project: string): [string, string] {
 }
 
 /**
- * Register a stack with the edge: its certificate first, where it has one,
+ * Register a stack with the edge — refused, before anything is written, when
+ * another project routes one of its hosts: its certificate first, where it has one,
  * so the routes that need it never load without it — then its routes, in one
  * rename the edge picks up whole. The certificate — the stage's own, or the
  * one gkm's local CA issued the local stage — is PEM read on this machine and
@@ -265,6 +352,7 @@ export async function writeEdgeRoutes(
 	routes: string,
 	certificate?: { cert: string; key: string },
 ): Promise<string[]> {
+	await assertEdgeHostsFree(docker, edge, project, routes);
 	const written: string[] = [];
 	const [crt, key] = certificatePaths(project);
 	if (certificate) {
