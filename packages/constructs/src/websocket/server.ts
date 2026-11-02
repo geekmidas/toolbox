@@ -17,6 +17,7 @@ import { trustsOrigin } from '@geekmidas/manifest';
 import { runWithRequestContext, ServiceDiscovery } from '@geekmidas/services';
 import type { WebSocket, WebSocketServer } from 'ws';
 import type { Authenticator } from '../construct-interface';
+import { FrameShape, type WebSocketFrame } from './frame';
 import {
 	type NoMessages,
 	type WebSocketMessages,
@@ -33,14 +34,6 @@ export const CLOSE = {
 	/** It stopped reading, and what was queued for it passed the limit. */
 	tooSlow: 1013,
 } as const;
-
-/** A frame a client sends: `{ "action": "chat.send", "id": 1, "data": … }`. */
-interface InboundFrame {
-	action: string;
-	/** Echoed on the reply, so a client can pair them. */
-	id?: string | number;
-	data?: unknown;
-}
 
 /** Two routes answer one action. */
 export class DuplicateWebSocketRoute extends Error {
@@ -61,6 +54,8 @@ export interface WebSocketServerOptions<
 	surface: string;
 	/** What the surface sends its sockets — see `WebSocketApiConfig.messages`. */
 	messages?: TMessages;
+	/** The shape its frames take — see `WebSocketApiConfig.frame`. */
+	frame?: WebSocketFrame;
 	routes: readonly WebSocketRoute[];
 	transport: WebSocketTransport;
 	envParser: EnvironmentParser<{}>;
@@ -72,6 +67,12 @@ export interface WebSocketServerOptions<
 	 * generator — is not a browser, and is let through.
 	 */
 	trustedOrigins: readonly string[];
+	/**
+	 * The surface's own public address, `<ID>_URL`. Its origin is always
+	 * trusted: a native client (React Native's `WebSocket`) sends the socket's
+	 * own origin as its `Origin`.
+	 */
+	url?: string;
 	/** How often each socket is pinged; one that missed the last is dropped. */
 	heartbeatMs?: number;
 	/** The largest frame accepted, in bytes. */
@@ -101,6 +102,8 @@ export class WebSocketSurfaceServer<
 		disconnect?: WebSocketRoute;
 	} = {};
 	private readonly heartbeat: NodeJS.Timeout;
+	private readonly frame: FrameShape;
+	private readonly trusted: readonly string[];
 	private next = 0;
 	private closing = false;
 
@@ -123,6 +126,10 @@ export class WebSocketSurfaceServer<
 			}
 		}
 
+		this.frame = new FrameShape(options.surface, options.frame?.discriminator);
+		if (options.messages) this.frame.check(options.messages);
+		this.trusted = [...options.trustedOrigins, ...ownOrigins(options.url)];
+
 		this.publisher = new WebSocketPublisher<TMessages>(
 			options.transport,
 			{
@@ -132,6 +139,7 @@ export class WebSocketSurfaceServer<
 			options.messages
 				? { surface: options.surface, messages: options.messages }
 				: undefined,
+			this.frame,
 		);
 
 		this.heartbeat = setInterval(
@@ -182,7 +190,7 @@ export class WebSocketSurfaceServer<
 		if (this.closing) return refuse(socket, 503, 'Service Unavailable');
 
 		const origin = request.headers.origin;
-		if (origin && !trustsOrigin(origin, this.options.trustedOrigins)) {
+		if (origin && !trustsOrigin(origin, this.trusted)) {
 			return refuse(socket, 403, 'Forbidden');
 		}
 
@@ -264,14 +272,19 @@ export class WebSocketSurfaceServer<
 
 	/** Parse, validate and run one frame. Errors go back as frames, not closes. */
 	private async dispatch(held: Held, text: string): Promise<void> {
-		let frame: InboundFrame;
+		let parsed: unknown;
 		try {
-			frame = JSON.parse(text);
+			parsed = JSON.parse(text);
 		} catch {
 			return this.error(held, undefined, 'Frames are JSON.');
 		}
-		if (!frame || typeof frame.action !== 'string') {
-			return this.error(held, frame?.id, 'A frame names its `action`.');
+		const frame = this.frame.decode(parsed);
+		if (!frame) {
+			return this.error(
+				held,
+				this.frame.idOf(parsed),
+				`A frame names its \`${this.frame.key}\`.`,
+			);
 		}
 
 		const route = this.routes.get(frame.action) ?? this.routes.get('$default');
@@ -301,14 +314,7 @@ export class WebSocketSurfaceServer<
 				reply: (message: unknown) => this.write(held, JSON.stringify(message)),
 			}));
 			if (returned !== undefined) {
-				this.write(
-					held,
-					JSON.stringify({
-						action: frame.action,
-						...(frame.id !== undefined ? { id: frame.id } : {}),
-						data: returned,
-					}),
-				);
+				this.write(held, this.frame.encode(frame.action, returned, frame.id));
 			}
 		} catch (error) {
 			if (error instanceof HttpError) {
@@ -358,17 +364,17 @@ export class WebSocketSurfaceServer<
 
 	private error(
 		held: Held,
-		id: InboundFrame['id'],
+		id: string | number | undefined,
 		message: string,
 		issues?: unknown,
 	): void {
 		this.write(
 			held,
-			JSON.stringify({
-				action: '$error',
-				...(id !== undefined ? { id } : {}),
-				data: { message, ...(issues ? { issues } : {}) },
-			}),
+			this.frame.encode(
+				'$error',
+				{ message, ...(issues ? { issues } : {}) },
+				id,
+			),
 		);
 	}
 
@@ -452,6 +458,17 @@ export class WebSocketSurfaceServer<
 		await this.options.transport.close();
 		this.wss.close();
 	}
+}
+
+/**
+ * The origins a client of the surface's own address sends: the `https://`
+ * one a native socket derives from `wss://`, and the address's own.
+ */
+function ownOrigins(url: string | undefined): string[] {
+	if (!url || !URL.canParse(url)) return [];
+	const own = new URL(url);
+	const web = new URL(url.replace(/^ws(s?):/i, 'http$1:'));
+	return [...new Set([`${own.protocol}//${own.host}`, web.origin])];
 }
 
 function headersOf(request: IncomingMessage): Headers {

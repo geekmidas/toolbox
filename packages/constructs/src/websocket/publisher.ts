@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
+import { FrameShape } from './frame';
 import {
 	type Delivery,
 	EVERY_INSTANCE,
@@ -70,7 +71,9 @@ export class InvalidWebSocketMessage extends Error {
  * How anything reaches a socket — `services.realtime` in an endpoint, and
  * `sockets` in a route of the surface itself.
  *
- * A message is `{ action, data }`, the shape a client's frames arrive in.
+ * A message is `{ action, data }`, the shape a client's frames arrive in —
+ * or, where the surface names a `frame.discriminator`, flat: `{ [key]: action,
+ * ...data }`.
  * Where the surface declares its messages, `action` is one of them and
  * `data` is typed and checked by its schema before anything is sent; where it
  * declares none, any action and any JSON value go. A message is serialised
@@ -93,6 +96,10 @@ export class WebSocketPublisher<
 		},
 		/** The surface's declared messages, which every send is checked by. */
 		private readonly declared?: { surface: string; messages: TMessages },
+		/** How the surface writes a frame. Absent, `{ action, data }`. */
+		private readonly frame: FrameShape = new FrameShape(
+			declared?.surface ?? '',
+		),
 	) {}
 
 	/** Send `action`'s message to each connection. */
@@ -137,10 +144,11 @@ export class WebSocketPublisher<
 	 * The frame, checked by the action's schema where the surface declares
 	 * its messages.
 	 *
-	 * @throws {UnknownWebSocketMessage}, {InvalidWebSocketMessage}
+	 * @throws {UnknownWebSocketMessage}, {InvalidWebSocketMessage}, and for a
+	 *   flat frame {WebSocketDataNotAnObject}, {WebSocketDataHasDiscriminator}
 	 */
 	private async payload(action: string, data: unknown): Promise<string> {
-		if (!this.declared) return JSON.stringify({ action, data });
+		if (!this.declared) return this.frame.encode(action, data);
 
 		const { surface, messages } = this.declared;
 		const schema = messages[action];
@@ -151,7 +159,7 @@ export class WebSocketPublisher<
 		if (result.issues) {
 			throw new InvalidWebSocketMessage(surface, action, result.issues);
 		}
-		return JSON.stringify({ action, data: result.value });
+		return this.frame.encode(action, result.value);
 	}
 
 	/** One delivery per process that holds any of `ids`. */
