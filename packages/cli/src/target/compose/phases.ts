@@ -662,7 +662,8 @@ export async function readyCompose(
 	// Read when the stack starts; one that is not there stops the run here,
 	// before anything is written or started.
 	if (stack.tls) {
-		for (const file of [stack.tls.certFile, stack.tls.keyFile]) {
+		const { certFile, keyFile, caFile } = stack.tls;
+		for (const file of [certFile, keyFile, ...(caFile ? [caFile] : [])]) {
 			if (!existsSync(file)) throw new ComposeTlsFileMissing(ctx.stage, file);
 		}
 	}
@@ -1466,7 +1467,8 @@ export async function releaseCompose(
 	// also what lets an app whose own health check goes through the edge — a
 	// site whose `/` calls its API at the API's public host — turn healthy.
 	// A stack on its own Caddy leaves nothing behind there from a run on the
-	// edge. The local stage is never on the edge, which is a server's.
+	// edge — the server's, or this machine's for a local stage that ran
+	// behind it before (its directory still has the edge's file).
 	const edge = edgeRef(edgeFile(run), {
 		...(ref.host ? { host: ref.host } : {}),
 		...(ref.output ? { output: ref.output } : {}),
@@ -1477,12 +1479,12 @@ export async function releaseCompose(
 			edge,
 			stack.project,
 			stack.traefik,
-			stack.tls,
+			await edgeCertificate(run.dir, stack),
 		);
 		ctx.logger.info(
 			`🌐 Registered ${stack.routes.length} route(s) with ${EDGE_PROJECT}: ${written.at(-1)}`,
 		);
-	} else if (!stack.local) {
+	} else if (!stack.local || existsSync(edgeFile(run))) {
 		await removeEdgeRoutes(deps.docker, edge, stack.project);
 	}
 
@@ -1556,6 +1558,12 @@ export async function releaseCompose(
 	if (stack.authority) {
 		ctx.logger.info(
 			`\n🔐 Certificates are from gkm's local CA ("gkm trust" trusts it here): NODE_EXTRA_CA_CERTS=${stack.authority.certFile}`,
+		);
+	} else if (stack.local && stack.tls) {
+		ctx.logger.info(
+			stack.tls.caFile
+				? `\n🔐 Certificates are the stage's own (deploy.compose.tls), from the CA in ${stack.tls.caFile}: NODE_EXTRA_CA_CERTS=${stack.tls.caFile}`
+				: `\n🔐 Certificates are the stage's own (deploy.compose.tls): ${stack.tls.certFile}. Set its caFile to the root it chains to, so gkm and the stack's containers trust it.`,
 		);
 	}
 
@@ -1653,9 +1661,7 @@ export async function verifyCompose(
 ): Promise<void> {
 	const { stack } = run;
 	if (run.push) return;
-	const ca = stack.authority
-		? (await readLocalAuthority(stack.authority)).cert
-		: undefined;
+	const ca = await verifyAuthority(stack);
 
 	ctx.logger.info(
 		`\n🩺 Checking each app through ${stack.proxy === 'caddy' ? 'Caddy' : 'the shared edge'}…`,
@@ -1947,6 +1953,41 @@ function applied(
 	ctx.emit({ type: 'resource.applied', ...rest, via });
 }
 
+/**
+ * The root the check after a start trusts, PEM: gkm's on the local stage that
+ * set no certificate of its own, and otherwise the one the stage's own names
+ * (`deploy.compose.tls.<stage>.caFile`). Undefined — Node's own roots, and
+ * `NODE_EXTRA_CA_CERTS` — for a certificate that names none: a public CA's.
+ */
+export async function verifyAuthority(
+	stack: Pick<ComposeStack, 'authority' | 'tls'>,
+): Promise<string | undefined> {
+	if (stack.authority) return (await readLocalAuthority(stack.authority)).cert;
+	if (stack.tls?.caFile) return readFile(stack.tls.caFile, 'utf-8');
+	return undefined;
+}
+
+/**
+ * The certificate the stack's proxy serves, PEM: the stage's own where it set
+ * one, the one gkm's local CA issued the local stage otherwise, and none — a
+ * deployed stage's comes from Let's Encrypt — when neither.
+ */
+async function edgeCertificate(
+	dir: string,
+	stack: ComposeStack,
+): Promise<{ cert: string; key: string } | undefined> {
+	if (stack.tls) {
+		return {
+			cert: await readFile(stack.tls.certFile, 'utf-8'),
+			key: await readFile(stack.tls.keyFile, 'utf-8'),
+		};
+	}
+	if (stack.authority) {
+		return localEdgeCertificate(dir, stack, stack.authority);
+	}
+	return undefined;
+}
+
 /** Where the local stage's edge certificate is kept, between runs. */
 export const LOCAL_EDGE_CERTIFICATE = 'local-edge.pem';
 
@@ -1988,15 +2029,11 @@ async function writeStack(
 	// Caddy's files go inline, in the compose file: nothing the stack runs
 	// mounts a path on this machine, so the same file runs on a server's
 	// engine over SSH. With the stage's own key in it, it is owner-only.
-	const tls =
-		stack.proxy === 'caddy' && stack.tls
-			? {
-					cert: await readFile(stack.tls.certFile, 'utf-8'),
-					key: await readFile(stack.tls.keyFile, 'utf-8'),
-				}
-			: stack.authority
-				? await localEdgeCertificate(dir, stack, stack.authority)
-				: undefined;
+	// Behind the shared edge, the certificate is written into the edge as the
+	// stack registers with it (`writeEdgeRoutes`); the local stage's is still
+	// issued here, kept beside the stack between runs.
+	const issued = await edgeCertificate(dir, stack);
+	const tls = stack.proxy === 'caddy' ? issued : undefined;
 	const compose =
 		stack.caddyfile !== undefined
 			? withCaddyConfigs(stack.compose, {

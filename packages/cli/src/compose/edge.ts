@@ -254,27 +254,22 @@ function certificatePaths(project: string): [string, string] {
 /**
  * Register a stack with the edge: its certificate first, where it has one,
  * so the routes that need it never load without it — then its routes, in one
- * rename the edge picks up whole. The certificate is read here and written
- * through the engine. The paths written, inside the edge.
+ * rename the edge picks up whole. The certificate — the stage's own, or the
+ * one gkm's local CA issued the local stage — is PEM read on this machine and
+ * written through the engine. The paths written, inside the edge.
  */
 export async function writeEdgeRoutes(
 	docker: ComposeDocker,
 	edge: StackRef,
 	project: string,
 	routes: string,
-	certificate?: { certFile: string; keyFile: string },
+	certificate?: { cert: string; key: string },
 ): Promise<string[]> {
 	const written: string[] = [];
 	const [crt, key] = certificatePaths(project);
 	if (certificate) {
-		await put(docker, edge, crt, await readFile(certificate.certFile, 'utf-8'));
-		await put(
-			docker,
-			edge,
-			key,
-			await readFile(certificate.keyFile, 'utf-8'),
-			'600',
-		);
+		await put(docker, edge, crt, certificate.cert);
+		await put(docker, edge, key, certificate.key, '600');
 		written.push(crt, key);
 	} else {
 		await remove(docker, edge, [crt, key]);

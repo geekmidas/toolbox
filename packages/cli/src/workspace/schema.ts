@@ -628,7 +628,11 @@ const ComposeWorkspaceConfigSchema = z
 			.record(
 				z.string(),
 				z
-					.object({ certFile: z.string().min(1), keyFile: z.string().min(1) })
+					.object({
+						certFile: z.string().min(1),
+						keyFile: z.string().min(1),
+						caFile: z.string().min(1).optional(),
+					})
 					.strict(),
 			)
 			.optional(),

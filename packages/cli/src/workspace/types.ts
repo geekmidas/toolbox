@@ -207,25 +207,36 @@ export interface DokployVerifyConfig {
  */
 export interface ComposeWorkspaceConfig<S extends string = string> {
 	/**
-	 * What serves a deployed stage's stack: `'caddy'` (the default) — the
-	 * stack's own Caddy on 80/443 — or `'traefik'`, the server's shared
-	 * Traefik edge, which every stack registers its routes with. One value
-	 * for every deployed stage, or one per stage. The local stage is always
-	 * Caddy.
+	 * What serves a stage's stack: `'caddy'` (the default) — the stack's own
+	 * Caddy on 80/443 — or `'traefik'`, the machine's shared Traefik edge,
+	 * which every stack registers its routes with.
+	 *
+	 * One value applies to every deployed stage; the local stage stays on
+	 * Caddy then. A map sets each stage it names, the local stage included,
+	 * so the local stack runs behind a Traefik edge on this machine — the
+	 * path the deployed stages take — only when the map names it.
 	 *
 	 * ```ts
-	 * proxy: 'traefik'
-	 * proxy: { staging: 'traefik', production: 'caddy' }
+	 * proxy: 'traefik' // every deployed stage; local stays on Caddy
+	 * proxy: { development: 'traefik', production: 'traefik' }
 	 * ```
 	 */
 	proxy?: ComposeProxy | StageMap<S, ComposeProxy>;
 	/**
-	 * A deployed stage's own certificate, by stage, instead of one from
-	 * Let's Encrypt: a PEM certificate (with its chain) and its key, relative
-	 * to the workspace root or absolute. Either proxy serves it.
+	 * A stage's own certificate, by stage: a PEM certificate (with its chain)
+	 * and its key, relative to the workspace root or absolute. Either proxy
+	 * serves it, on any stage. Without one, a deployed stage's comes from
+	 * Let's Encrypt and the local stage's from gkm's local CA (`gkm trust`).
 	 *
 	 * ```ts
 	 * tls: { production: { certFile: 'certs/origin.pem', keyFile: 'certs/origin.key' } }
+	 * tls: {
+	 *   development: {
+	 *     certFile: 'certs/dev.pem',
+	 *     keyFile: 'certs/dev-key.pem',
+	 *     caFile: 'certs/rootCA.pem',
+	 *   },
+	 * }
 	 * ```
 	 */
 	tls?: StageMap<S, ComposeTlsConfig>;
@@ -262,6 +273,14 @@ export type ComposeProxy = 'caddy' | 'traefik';
 export interface ComposeTlsConfig {
 	certFile: string;
 	keyFile: string;
+	/**
+	 * The root the certificate chains to, PEM, when no public CA issued it —
+	 * an mkcert root, a company CA. gkm's check after a start trusts it; on
+	 * the local stage the stack's containers are handed it too
+	 * (`NODE_EXTRA_CA_CERTS`). Without it, the check trusts what Node does by
+	 * default: its bundled roots, and `NODE_EXTRA_CA_CERTS` where it is set.
+	 */
+	caFile?: string;
 }
 
 /**

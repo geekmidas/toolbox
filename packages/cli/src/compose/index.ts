@@ -75,7 +75,6 @@ export {
 	ComposeServerOnLocalStage,
 	ComposeStageUnknown,
 	ComposeTlsFileMissing,
-	ComposeTlsOnLocalStage,
 } from './proxy';
 export {
 	REDIS_MAXMEMORY,
@@ -221,13 +220,15 @@ export async function composeCommand(
 		const docker = deps.docker ?? dockerCompose;
 		if (server) console.log(`→ ${sshTarget(server)} (docker over ssh)`);
 		// Unregistered from the shared edge first, so it stops routing to the
-		// stack before the stack stops. The edge keeps serving every other
+		// stack before the stack stops — the server's, or this machine's for
+		// a local stage that ran behind it. The edge keeps serving every other
 		// stack — and keeps running.
+		const edgeFile = join(dir, `${EDGE_PROJECT}.yml`);
 		if (
-			server &&
+			(server || existsSync(edgeFile)) &&
 			(await removeEdgeRoutes(
 				docker,
-				edgeRef(join(dir, `${EDGE_PROJECT}.yml`), { host: ref.host }),
+				edgeRef(edgeFile, { host: ref.host }),
 				ref.project,
 			))
 		) {

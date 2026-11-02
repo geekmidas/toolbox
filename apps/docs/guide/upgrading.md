@@ -12,6 +12,20 @@ gkm upgrade --all
 `10.0.0-alpha.x` project), never goes backwards, and with `--all` also raises
 third-party packages to the floor of the peer ranges the new version declares.
 
+## After 10.0.0-alpha.145: the local stage can run behind Traefik {#local-traefik}
+
+Nothing to change unless you want it. `deploy.compose.proxy: 'traefik'` still
+applies to the deployed stages only, so a local stack stays on its own Caddy.
+To put the local stage behind the shared Traefik edge too, name it in the
+per-stage map: `proxy: { development: 'traefik', production: 'traefik' }`
+([Compose](./compose.md#the-local-stage-behind-the-shared-edge)).
+
+`ComposeTlsOnLocalStage` is removed: `deploy.compose.tls.<local stage>` is
+accepted now, on either proxy, and replaces the certificate gkm's local CA
+would issue. Give it a `caFile` (the root it chains to, such as mkcert's) so
+the check after a start and the stack's containers trust it. Code that
+caught `ComposeTlsOnLocalStage` should drop the catch.
+
 ## After 10.0.0-alpha.136: one manifest for every command {#one-manifest}
 
 Discovery now writes the whole application into the manifest: every endpoint

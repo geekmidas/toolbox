@@ -31,21 +31,6 @@ export class ComposeStageUnknown extends GkmError {
 }
 
 /**
- * A certificate for the local stage, whose certificate is always issued by
- * gkm's local CA — the one `gkm trust` installs.
- */
-export class ComposeTlsOnLocalStage extends GkmError {
-	constructor(readonly stage: string) {
-		super(
-			`deploy.compose.tls sets a certificate for '${stage}', the local stage, ` +
-				"whose certificate always comes from gkm's local CA (`gkm trust` " +
-				'installs it). Remove it, or set it for a deployed stage.',
-		);
-		this.name = 'ComposeTlsOnLocalStage';
-	}
-}
-
-/**
  * A server for the local stage, which always runs on this machine's Docker.
  */
 export class ComposeServerOnLocalStage extends GkmError {
@@ -67,29 +52,35 @@ export class ComposeTlsFileMissing extends GkmError {
 		super(
 			`deploy.compose.tls for '${stage}' names ${file}, and there is no file ` +
 				'there. Point certFile and keyFile at the PEM certificate (with its ' +
-				'chain) and key — relative to the workspace root, or absolute.',
+				'chain) and key, and caFile at the root it chains to where you set ' +
+				'one — relative to the workspace root, or absolute.',
 		);
 		this.name = 'ComposeTlsFileMissing';
 	}
 }
 
 /**
- * The proxy a stage's stack is served by. The local stage is always Caddy —
- * serving gkm's local certificate — whatever is configured.
+ * The proxy a stage's stack is served by: Caddy unless `deploy.compose.proxy`
+ * says otherwise. The plain string form is for the deployed stages — a
+ * server's shared edge — so the local stage stays on its own Caddy then; it
+ * runs behind a Traefik edge on this machine only when the per-stage map
+ * names it (`proxy: { development: 'traefik', production: 'traefik' }`).
  */
 export function proxyFor(
 	config: ComposeWorkspaceConfig | undefined,
 	stage: string,
 	local: boolean,
 ): ComposeProxy {
-	if (local) return 'caddy';
 	const proxy = config?.proxy;
 	if (!proxy) return 'caddy';
-	if (typeof proxy === 'string') return proxy;
+	if (typeof proxy === 'string') return local ? 'caddy' : proxy;
 	return proxy[stage] ?? 'caddy';
 }
 
-/** A deployed stage's own certificate, its paths absolute, when it sets one. */
+/**
+ * A stage's own certificate, its paths absolute, when it sets one — any
+ * stage's, the local one's included, served by either proxy.
+ */
 export function certificateFor(
 	config: ComposeWorkspaceConfig | undefined,
 	stage: string,
@@ -99,13 +90,17 @@ export function certificateFor(
 	if (!tls) return undefined;
 	const absolute = (file: string) =>
 		isAbsolute(file) ? file : resolve(root, file);
-	return { certFile: absolute(tls.certFile), keyFile: absolute(tls.keyFile) };
+	return {
+		certFile: absolute(tls.certFile),
+		keyFile: absolute(tls.keyFile),
+		...(tls.caFile ? { caFile: absolute(tls.caFile) } : {}),
+	};
 }
 
 /**
  * Throws the named error for the first thing wrong with the per-stage
- * settings: a stage the workspace does not have, or a certificate for the
- * local stage.
+ * settings: a stage the workspace does not have, or a server for the local
+ * stage.
  */
 export function checkComposeStages(
 	config: ComposeWorkspaceConfig | undefined,
@@ -120,7 +115,6 @@ export function checkComposeStages(
 		}
 	}
 	for (const stage of Object.keys(config?.tls ?? {})) {
-		if (stage === stages.local) throw new ComposeTlsOnLocalStage(stage);
 		if (!known.includes(stage)) {
 			throw new ComposeStageUnknown('tls', stage, known);
 		}

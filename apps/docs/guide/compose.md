@@ -553,7 +553,7 @@ Each app answers on its own host:
 
 | Stage | Hosts | Certificates |
 | --- | --- | --- |
-| local | `api.<project>.localhost`, `<project>.localhost` for the root site | gkm's local CA, as `gkm dev`'s edge |
+| local | `api.<project>.localhost`, `<project>.localhost` for the root site | gkm's local CA, as `gkm dev`'s edge — or the stage's own, [`deploy.compose.tls`](#certificates) |
 | deployed | the stage's domains, from `domains` — `api.example.com`, `example.com` | Let's Encrypt, automatically |
 
 The hosts are the ones `gkm deploy` uses: an app's `subdomain` (or its name)
@@ -582,17 +582,22 @@ GKM_COMPOSE_HTTPS_PORT=8443 GKM_COMPOSE_HTTP_PORT=8080 gkm compose --stage devel
 For the local stage the URLs then carry the port
 (`https://api.shop.localhost:8443`), and the env files and site builds use them.
 
-### The local stage's certificate
+### The local stage's certificate {#local-certificate}
 
-The local stage's Caddy serves a certificate from **gkm's local certificate
-authority** — the same per-machine root `gkm dev`'s edge uses, in `~/.gkm/ca/`
-(or `$GKM_HOME/ca/`). It is issued for `<project>.localhost`,
-`*.<project>.localhost` and any other host the stack routes, handed to Caddy
-the way a deployed stage's `deploy.compose.tls` files are, and kept in
-`.gkm/compose/<stage>/local-edge.pem` so an unchanged stack keeps its Caddy.
-`gkm trust` puts the root in the system store for a browser; for anything
-else, point `NODE_EXTRA_CA_CERTS` at `~/.gkm/ca/root.pem`. The root's key never
-leaves `~/.gkm/ca/`.
+The local stage's edge — its own Caddy, or the shared Traefik edge on this
+machine ([with a per-stage `proxy`](#the-local-stage-behind-the-shared-edge)) —
+serves a certificate from **gkm's local certificate authority**: the same
+per-machine root `gkm dev`'s edge uses, in `~/.gkm/ca/` (or `$GKM_HOME/ca/`).
+It is issued for `<project>.localhost`, `*.<project>.localhost` and any other
+host the stack routes, handed to the proxy the way a deployed stage's
+`deploy.compose.tls` files are (Caddy's inline configs, or the edge's `certs/`
+volume), and kept in `.gkm/compose/<stage>/local-edge.pem` so an unchanged
+stack keeps it. `gkm trust` puts the root in the system store for a browser;
+for anything else, point `NODE_EXTRA_CA_CERTS` at `~/.gkm/ca/root.pem`. The
+root's key never leaves `~/.gkm/ca/`.
+
+A `deploy.compose.tls` entry for the local stage replaces it, on either proxy —
+see [Certificates](#certificates).
 
 ### Calling the stage's own hosts from inside the stack
 
@@ -612,9 +617,11 @@ api:
     NODE_EXTRA_CA_CERTS: /etc/gkm/local-ca.pem
 ```
 
-Each host resolves to the machine, where the edge publishes its port — so an
-address carrying a moved port (`:8443`) works too — and the certificate there
-verifies against gkm's root. A wildcard site's tenants have no one name to
+Each host resolves to the machine, where the edge — the stack's Caddy or the
+shared Traefik edge — publishes its port, so an address carrying a moved port
+(`:8443`) works too, and the certificate there verifies against gkm's root.
+With the stage's own certificate, the root mounted is its `caFile`, and with
+no `caFile` none is. A wildcard site's tenants have no one name to
 list. A deployed stage needs none of this: its hosts resolve to the server and
 its certificates are publicly trusted.
 
@@ -863,13 +870,14 @@ checked.
 
 ## Proxy: Caddy or Traefik
 
-What sits in front of a deployed stage's stack is `deploy.compose.proxy`:
+What sits in front of a stage's stack is `deploy.compose.proxy`:
 
 ```ts
 deploy: {
   compose: {
     proxy: 'traefik',                                  // every deployed stage
     // proxy: { staging: 'traefik', production: 'caddy' }  // or one per stage
+    // proxy: { development: 'traefik', production: 'traefik' } // local too
   },
 },
 ```
@@ -883,9 +891,11 @@ Two stacks with their own Caddy cannot share a server: both want 80 and 443.
 With `'traefik'`, one edge owns those ports, the ACME state and the redirect to
 HTTPS, and each stack adds its hosts to it.
 
-**The local stage always uses Caddy**, whatever is configured, serving the
-certificate gkm's local CA issues — the root `gkm trust` installs. A site's
-image keeps Caddy inside it as its file server either way.
+**The string form is for the deployed stages.** `proxy: 'traefik'` sets every
+deployed stage, and the local stage stays on its own Caddy. To run the local
+stage behind the edge too, name it in the per-stage map — see
+[The local stage behind the shared edge](#the-local-stage-behind-the-shared-edge).
+A site's image keeps Caddy inside it as its file server either way.
 
 Both proxies serve the same routes. A stack's routes are worked out once — each
 host, the service and port behind it, whether it streams, its allowlist and its
@@ -942,21 +952,63 @@ on its own next deploy.
 - **Stop the edge**, once no stack uses it: `docker compose -p gkm-edge down`
   on the server.
 
+### The local stage behind the shared edge
+
+Local testing exercises the path staging and production take — the edge, its
+routes, its middlewares, Traefik itself — when the local stage is named in the
+per-stage map:
+
+```ts
+deploy: {
+  compose: {
+    proxy: { development: 'traefik', production: 'traefik' },
+  },
+},
+```
+
+`gkm compose --stage development` then starts the same `gkm-edge` on this
+machine's Docker and registers the local stack with it, as a deployed stage's
+deploy does on its server. What differs is the certificate: Let's Encrypt
+cannot issue for `*.localhost`, so the edge serves the one gkm's local CA
+issues (see [The local stage's certificate](#local-certificate)),
+written into its `certs/` volume where a deployed stage's own certificate goes.
+`gkm trust` is still the one step to trust it in a browser.
+
+Everything else is as it is on Caddy: the hosts (`https://api.<project>.localhost`,
+and `:8443` with `GKM_COMPOSE_HTTPS_PORT=8443`), the Mailpit inbox at
+`https://mail.<project>.localhost`, the containers' `extra_hosts` entries —
+the edge publishes on the host, as the stack's Caddy did — and the check
+after the start, which asks `127.0.0.1` and trusts gkm's root.
+`gkm compose --stage development --down` unregisters the stack and leaves the
+edge running.
+
+Switching the local stage between proxies is the
+[same one-time step](#switching-a-server-from-caddy-to-the-shared-edge) as on
+a server: the stack's own Caddy and the edge cannot both hold the ports.
+
 ### Certificates
 
-A deployed stage gets its certificates from Let's Encrypt on either proxy —
-Traefik over the HTTP-01 challenge on port 80, keeping its account and
-certificates in the edge's `acme` volume. Point the stage's names at the server
-and leave 80 and 443 open.
+Certificates do not depend on the proxy. Without one of its own, a stage gets:
 
-A stage can bring its own certificate instead — an origin certificate from a
-CDN, one from an internal CA, a wildcard you already have:
+| Stage | Certificate |
+| --- | --- |
+| deployed | Let's Encrypt, on either proxy — Traefik over the HTTP-01 challenge on port 80, keeping its account and certificates in the edge's `acme` volume. Point the stage's names at the server and leave 80 and 443 open. |
+| local | one gkm's local CA issues ([above](#local-certificate)), on either proxy. |
+
+Any stage — the local one included — can bring its own instead: an origin
+certificate from a CDN, one from an internal CA, a wildcard you already have,
+an mkcert certificate for `*.<project>.localhost`:
 
 ```ts
 deploy: {
   compose: {
     tls: {
       production: { certFile: 'certs/origin.pem', keyFile: 'certs/origin.key' },
+      development: {
+        certFile: 'certs/dev.pem',
+        keyFile: 'certs/dev-key.pem',
+        caFile: 'certs/rootCA.pem', // the root it chains to: `mkcert -CAROOT`
+      },
     },
   },
 },
@@ -965,11 +1017,27 @@ deploy: {
 Paths are relative to the workspace root, or absolute; the certificate is PEM
 with its chain. It is read where the deploy runs: Caddy gets it as inline
 configs beside its Caddyfile; Traefik gets a copy in the edge's `certs/` volume
-(the key `0600`) and the stack's file names it. A file that
-is not there fails the run with `ComposeTlsFileMissing` before anything starts,
-a certificate for the local stage with `ComposeTlsOnLocalStage`, and a stage the
-workspace does not have — in `tls` or a per-stage `proxy` — with
-`ComposeStageUnknown`.
+(the key `0600`) and the stack's file names it. On the local stage it replaces
+the certificate gkm would issue.
+
+**`caFile`** is the root the certificate chains to, for one no public CA
+issued. The check after a start (`🩺`) trusts whichever CA issued the stage's
+certificate:
+
+- gkm's root, for the local stage's certificate from gkm's local CA;
+- the `caFile`, for a stage's own certificate that names one — and on the local
+  stage the stack's containers are handed it too (mounted read-only, with
+  `NODE_EXTRA_CA_CERTS`), so they call the stage's hosts as they would with
+  gkm's;
+- otherwise what Node trusts by default — its bundled roots, and
+  `NODE_EXTRA_CA_CERTS` where it is set — as for a publicly trusted
+  certificate. A local certificate from a private CA without `caFile` fails
+  that check, unless `NODE_EXTRA_CA_CERTS` names its root.
+
+The check never assumes gkm's root for a certificate gkm did not issue. A file
+that is not there — the certificate, its key or its `caFile` — fails the run
+with `ComposeTlsFileMissing` before anything starts, and a stage the workspace
+does not have — in `tls` or a per-stage `proxy` — with `ComposeStageUnknown`.
 
 ### A site on every subdomain
 

@@ -48,8 +48,8 @@
  * images included, whatever happens.
  */
 
-import { spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { spawn, spawnSync } from 'node:child_process';
+import { randomBytes, X509Certificate } from 'node:crypto';
 import {
 	existsSync,
 	readdirSync,
@@ -1975,6 +1975,261 @@ describe.runIf(RUN)(
 				'{{.Status}}',
 			]);
 			expect(edgePs).toMatch(/healthy/);
+		});
+	},
+);
+
+/**
+ * Whether a shared edge already runs on this machine's engine — a developer's
+ * own local stage behind it. There is one `gkm-edge` per engine, and a run on
+ * other ports would recreate it on them, so the suite below runs only where
+ * none does.
+ */
+function edgeRunningHere(): boolean {
+	if (!RUN) return false;
+	const ps = spawnSync(
+		'docker',
+		['ps', '-a', '-q', '--filter', 'label=com.docker.compose.project=gkm-edge'],
+		{ encoding: 'utf-8' },
+	);
+	return ps.status !== 0 || ps.stdout.trim() !== '';
+}
+
+const EDGE_HERE = edgeRunningHere();
+
+/**
+ * The local stage behind the shared Traefik edge (#352), end to end, on this
+ * machine's Docker: `proxy: { development: 'traefik' }` starts `gkm-edge`
+ * here, on free ports, and registers the local stack with it. The edge serves
+ * the certificate gkm's local CA issued — written into its `certs/` volume as
+ * a deployed stage's own certificate is — and the check after the start
+ * verified each app against gkm's root. A container reaches the stage's own
+ * public host through the edge's published port, and `--down` unregisters the
+ * stack and leaves the edge running.
+ *
+ * Skipped where a `gkm-edge` already runs on this engine (see
+ * {@link edgeRunningHere}); the edge it starts is removed afterwards.
+ */
+describe.runIf(RUN && !EDGE_HERE)(
+	'gkm compose on the local stage behind the shared Traefik edge, end to end',
+	{ timeout: 60_000 },
+	() => {
+		const name = `compose-local-edge-${randomBytes(3).toString('hex')}`;
+		const project = `${name}-development`;
+		let dir: string;
+		let https: number;
+		let http: number;
+		let ca: string;
+		let output = '';
+
+		const host = (app: 'api' | 'auth' | 'web') =>
+			app === 'web' ? `${name}.localhost` : `${app}.${name}.localhost`;
+		const origin = (app: 'api' | 'auth' | 'web') =>
+			`https://${host(app)}:${https}`;
+		const file = () =>
+			join(dir, '.gkm', 'compose', 'development', 'docker-compose.yml');
+		const gkm = (args: readonly string[]) =>
+			exec(process.execPath, [CLI, ...args], {
+				cwd: dir,
+				env: childEnv({
+					GKM_COMPOSE_HTTPS_PORT: String(https),
+					GKM_COMPOSE_HTTP_PORT: String(http),
+				}),
+			});
+
+		/** A request to the edge, verified against `ca`, by the app's host. */
+		function edge(
+			app: 'api' | 'auth' | 'web',
+			path: string,
+		): Promise<Response & { issuer?: string }> {
+			return new Promise((resolve, reject) => {
+				const req = httpsRequest(
+					{
+						host: '127.0.0.1',
+						port: https,
+						servername: host(app),
+						path,
+						ca,
+						headers: { host: `${host(app)}:${https}` },
+					},
+					(res) => {
+						const peer = (
+							res.socket as import('node:tls').TLSSocket
+						).getPeerX509Certificate();
+						let text = '';
+						res.on('data', (chunk: Buffer) => {
+							text += chunk.toString();
+						});
+						res.on('end', () =>
+							resolve({
+								status: res.statusCode ?? 0,
+								headers: res.headers,
+								body: text,
+								...(peer ? { issuer: peer.issuer } : {}),
+							}),
+						);
+					},
+				);
+				req.on('error', reject);
+				req.end();
+			});
+		}
+
+		const dynamic = async () =>
+			(
+				await exec('docker', [
+					'exec',
+					'gkm-edge-traefik-1',
+					'ls',
+					'/etc/gkm-edge/dynamic',
+				])
+			)
+				.split('\n')
+				.filter(Boolean)
+				.sort();
+
+		beforeAll(async () => {
+			if (!existsSync(DIST)) {
+				throw new Error(
+					`The CLI is not built (${DIST}). Run \`npx tsdown --config ./tsdown.config.ts\` from the repo root first.`,
+				);
+			}
+			dir = realpathSync(await createTempDir('gkm-compose-local-edge-'));
+			writeComposeApp(dir, {
+				name,
+				compose: { proxy: { development: 'traefik' } },
+			});
+			await dependOnThisCheckout(dir, name);
+			await exec('pnpm', ['install', '--lockfile-only'], { cwd: dir });
+			writeFileSync(join(dir, '.gitignore'), '.gkm/\n');
+			const git = childEnv({
+				GIT_AUTHOR_NAME: 'gkm',
+				GIT_AUTHOR_EMAIL: 'gkm@example.com',
+				GIT_COMMITTER_NAME: 'gkm',
+				GIT_COMMITTER_EMAIL: 'gkm@example.com',
+			});
+			await exec('git', ['init', '-q'], { cwd: dir, env: git });
+			await exec('git', ['add', '-A'], { cwd: dir, env: git });
+			await exec('git', ['commit', '-q', '-m', 'init'], { cwd: dir, env: git });
+			for (const args of [
+				['secrets:init', '--stage', 'development'],
+				['setup', '--stage', 'development', '--skip-docker'],
+			]) {
+				await exec(process.execPath, [CLI, ...args], { cwd: dir });
+			}
+
+			https = await freePort();
+			http = await freePort();
+			output = await gkm(['compose', '--stage', 'development']);
+			// gkm's root, which issued the edge's certificate: the child ran
+			// with this suite's GKM_HOME.
+			ca = readFileSync(localAuthorityPaths().certFile, 'utf-8');
+		}, BUILD_TIMEOUT);
+
+		afterAll(async () => {
+			if (process.env.GKM_E2E_KEEP === '1') {
+				console.log(`Kept ${project} and gkm-edge in ${dir}`);
+				return;
+			}
+			if (dir && existsSync(file())) {
+				await exec('docker', [
+					'compose',
+					'-p',
+					project,
+					'-f',
+					file(),
+					'down',
+					'--volumes',
+					'--remove-orphans',
+					'--rmi',
+					'local',
+				]).catch(() => {});
+				const images = await exec('docker', [
+					'images',
+					'--quiet',
+					'--filter',
+					`reference=${name}/*`,
+				]).catch(() => '');
+				const ids = [...new Set(images.split('\n').filter(Boolean))];
+				if (ids.length > 0) {
+					await exec('docker', ['image', 'rm', '-f', ...ids]).catch(() => {});
+				}
+			}
+			// The edge this suite started: nothing else was on this engine's.
+			const edgeFile = dir
+				? join(dir, '.gkm', 'compose', 'development', 'gkm-edge.yml')
+				: '';
+			if (edgeFile && existsSync(edgeFile)) {
+				await exec('docker', [
+					'compose',
+					'-p',
+					'gkm-edge',
+					'-f',
+					edgeFile,
+					'down',
+					'--volumes',
+				]).catch(() => {});
+				await exec('docker', ['network', 'rm', 'gkm-edge']).catch(() => {});
+			}
+			if (dir) await cleanupDir(dir);
+		}, 5 * 60_000);
+
+		it('runs no Caddy of its own, and verified each app through the shared edge', async () => {
+			expect(output).toContain(`${project} is running`);
+			expect(output).toContain('Checking each app through the shared edge');
+			for (const app of ['api', 'auth', 'web', 'jobs']) {
+				expect(output).toContain(`✓ ${app}`);
+			}
+			expect(output).toContain("Certificates are from gkm's local CA");
+			const services = await exec('docker', [
+				'compose',
+				'-p',
+				project,
+				'-f',
+				file(),
+				'ps',
+				'--services',
+			]);
+			expect(services.split('\n')).not.toContain('caddy');
+			expect(await dynamic()).toEqual([`${project}.yml`]);
+		});
+
+		it("serves the certificate gkm's local CA issued, which verifies against its root", async () => {
+			const health = await edge('api', '/health');
+			expect(health.status).toBe(200);
+			expect(health.issuer).toBe(new X509Certificate(ca).subject);
+			expect((await edge('web', '/')).status).toBe(200);
+		});
+
+		it("reaches the stage's own public host from inside a container, through the edge's published port", async () => {
+			const said = await exec('docker', [
+				'compose',
+				'-p',
+				project,
+				'-f',
+				file(),
+				'exec',
+				'-T',
+				'api',
+				'node',
+				'-e',
+				`fetch(${JSON.stringify(`${origin('auth')}/health`)}).then((r) => console.log(r.status), (e) => { console.log(String(e.cause ?? e)); process.exit(1); })`,
+			]);
+			expect(said.trim().split('\n').pop()).toBe('200');
+		});
+
+		it('--down unregisters the stack, and leaves the edge running', async () => {
+			const said = await gkm(['compose', '--stage', 'development', '--down']);
+			expect(said).toContain(`Removed ${project}'s routes`);
+			expect(await dynamic()).toEqual([]);
+			const edgePs = await exec('docker', [
+				'ps',
+				'--filter',
+				'name=gkm-edge-traefik-1',
+				'--format',
+				'{{.Status}}',
+			]);
+			expect(edgePs).toMatch(/Up/);
 		});
 	},
 );

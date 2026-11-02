@@ -1,3 +1,4 @@
+import { X509Certificate } from 'node:crypto';
 import {
 	existsSync,
 	mkdirSync,
@@ -27,8 +28,17 @@ import { CommandFailed } from '../../run';
 import { initStageSecrets } from '../../secrets/storage';
 import type { StageSecrets } from '../../secrets/types';
 import { ComposeAppsUnhealthy } from '../../target/compose/health';
+import { verifyAuthority } from '../../target/compose/phases';
+import {
+	ensureLocalAuthority,
+	issueLocalCertificate,
+	localAuthorityPaths,
+} from '../../trust/authority';
 import { safeValidateWorkspaceConfig } from '../../workspace/schema';
-import type { NormalizedWorkspace } from '../../workspace/types';
+import type {
+	ComposeWorkspaceConfig,
+	NormalizedWorkspace,
+} from '../../workspace/types';
 import { edgeCaddyfile } from '../caddyfile';
 import { type ComposeDocker, portHolders, publishedPorts } from '../docker';
 import {
@@ -44,7 +54,7 @@ import {
 import { ComposeTlsFileMissing, composeCommand } from '../index';
 import {
 	ComposeStageUnknown,
-	ComposeTlsOnLocalStage,
+	certificateFor,
 	checkComposeStages,
 	proxyFor,
 } from '../proxy';
@@ -635,20 +645,12 @@ describe('the edge', () => {
 			const edge = edgeRef(join(dir, 'gkm-edge.yml'), {
 				host: 'ssh://deploy@203.0.113.10',
 			});
-			const source = join(dir, 'source');
-			mkdirSync(source);
-			writeFileSync(join(source, 'cert.pem'), 'CERT');
-			writeFileSync(join(source, 'key.pem'), 'KEY');
-
 			const files = await writeEdgeRoutes(
 				docker,
 				edge,
 				'shop-production',
 				'http: {}\n',
-				{
-					certFile: join(source, 'cert.pem'),
-					keyFile: join(source, 'key.pem'),
-				},
+				{ cert: 'CERT', key: 'KEY' },
 			);
 
 			expect(files.at(-1)).toBe(routesPath('shop-production'));
@@ -827,28 +829,81 @@ describe('a clash over the edge ports', () => {
 describe('deploy.compose.proxy and tls', () => {
 	const stages = { local: 'development', deployed: ['staging', 'production'] };
 
-	it('is caddy by default, for every stage, and always on the local one', () => {
-		expect(proxyFor(undefined, 'production', false)).toBe('caddy');
-		expect(proxyFor({ proxy: 'traefik' }, 'production', false)).toBe('traefik');
-		expect(proxyFor({ proxy: 'traefik' }, 'development', true)).toBe('caddy');
-		expect(proxyFor({ proxy: { staging: 'traefik' } }, 'staging', false)).toBe(
+	it.each([
+		// [proxy, stage, local, expected]
+		[undefined, 'production', false, 'caddy'],
+		[undefined, 'development', true, 'caddy'],
+		// The string form is the deployed stages': the local one keeps Caddy.
+		['traefik', 'production', false, 'traefik'],
+		['traefik', 'development', true, 'caddy'],
+		['caddy', 'production', false, 'caddy'],
+		// A map sets each stage it names — the local one included.
+		[{ staging: 'traefik' }, 'staging', false, 'traefik'],
+		[{ staging: 'traefik' }, 'production', false, 'caddy'],
+		[{ staging: 'traefik' }, 'development', true, 'caddy'],
+		[{ development: 'traefik' }, 'development', true, 'traefik'],
+		[{ development: 'traefik' }, 'production', false, 'caddy'],
+		[
+			{ development: 'traefik', production: 'traefik' },
+			'development',
+			true,
 			'traefik',
-		);
+		],
+		[
+			{ development: 'caddy', production: 'traefik' },
+			'development',
+			true,
+			'caddy',
+		],
+	] as const)('proxy %j on %s (local: %s) is %s', (proxy, stage, local, expected) => {
 		expect(
-			proxyFor({ proxy: { staging: 'traefik' } }, 'production', false),
-		).toBe('caddy');
+			proxyFor(proxy === undefined ? undefined : { proxy }, stage, local),
+		).toBe(expected);
 	});
 
-	it('refuses a stage the workspace does not have, and a certificate for the local stage', () => {
+	it('takes a certificate for any stage, the local one included, its paths made absolute', () => {
+		expect(() =>
+			checkComposeStages(
+				{
+					tls: {
+						development: { certFile: 'a', keyFile: 'b', caFile: 'c' },
+						production: { certFile: 'a', keyFile: 'b' },
+					},
+				},
+				stages,
+			),
+		).not.toThrow();
+		expect(
+			certificateFor(
+				{
+					tls: {
+						development: {
+							certFile: 'certs/dev.pem',
+							keyFile: '/abs/dev-key.pem',
+							caFile: 'certs/root.pem',
+						},
+					},
+				},
+				'development',
+				'/work',
+			),
+		).toEqual({
+			certFile: '/work/certs/dev.pem',
+			keyFile: '/abs/dev-key.pem',
+			caFile: '/work/certs/root.pem',
+		});
+	});
+
+	it('refuses a stage the workspace does not have', () => {
 		expect(() =>
 			checkComposeStages({ proxy: { prod: 'traefik' } }, stages),
 		).toThrow(ComposeStageUnknown);
 		expect(() =>
 			checkComposeStages(
-				{ tls: { development: { certFile: 'a', keyFile: 'b' } } },
+				{ tls: { prod: { certFile: 'a', keyFile: 'b' } } },
 				stages,
 			),
-		).toThrow(ComposeTlsOnLocalStage);
+		).toThrow(ComposeStageUnknown);
 		expect(() =>
 			checkComposeStages(
 				{
@@ -881,10 +936,23 @@ describe('deploy.compose.proxy and tls', () => {
 			config({ proxy: { prod: 'traefik' } }),
 		);
 		expect(unknown.error?.issues[0]?.message).toContain("the stage 'prod'");
-		const local = safeValidateWorkspaceConfig(
-			config({ tls: { development: { certFile: 'a', keyFile: 'b' } } }),
-		);
-		expect(local.error?.issues[0]?.message).toContain("gkm's local CA");
+		expect(
+			safeValidateWorkspaceConfig(
+				config({
+					proxy: { development: 'traefik', production: 'traefik' },
+					tls: {
+						development: { certFile: 'a', keyFile: 'b', caFile: 'c' },
+					},
+				}),
+			).success,
+		).toBe(true);
+		expect(
+			safeValidateWorkspaceConfig(
+				config({
+					tls: { development: { certFile: 'a', keyFile: 'b', caFile: '' } },
+				}),
+			).success,
+		).toBe(false);
 		expect(
 			safeValidateWorkspaceConfig(
 				config({ tls: { production: { certFile: 'a' } } }),
@@ -1014,7 +1082,7 @@ describe('a stack behind the shared edge', () => {
 		expect(api.env?.DATABASE_URL).toMatch(/@postgres:5432\//);
 	});
 
-	it('keeps Caddy for the local stage, whatever is configured', () => {
+	it('keeps Caddy for the local stage when proxy is one value for the deployed stages', () => {
 		const local = stack({
 			stage: 'development',
 			localCredentials: TEST_CREDENTIALS,
@@ -1270,3 +1338,370 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 		expect(readdirSync(join(volumes(), 'certs'))).toEqual([]);
 	});
 });
+
+/** An `Email` construct the API sends with: the local stage runs Mailpit. */
+function withMail(root: string): void {
+	writeFileSync(
+		join(root, 'constructs', 'mail.ts'),
+		`import { Email } from '@geekmidas/constructs/email';
+
+export const mail = new Email('Mail', { templates: {} });
+`,
+	);
+	writeFileSync(
+		join(root, 'apps', 'api', 'endpoints', 'notify.ts'),
+		`import { api } from '../../../constructs/api.js';
+import { mail } from '../../../constructs/mail.js';
+
+export const notify = api
+	.post('/notify')
+	.dependsOn([mail])
+	.handle(async () => ({ ok: true }));
+`,
+	);
+}
+
+describe('the local stage behind the shared edge', () => {
+	let dir: string;
+	let home: string;
+	let workspace: NormalizedWorkspace;
+	let manifest: ConstructManifest;
+	let background: Record<string, string[]>;
+
+	beforeAll(async () => {
+		dir = realpathSync(await createTempDir('gkm-compose-local-traefik-'));
+		home = realpathSync(await createTempDir('gkm-compose-local-traefik-home-'));
+		writeComposeApp(dir, {
+			registry: 'registry.example.com/acme',
+			compose: { proxy: { development: 'traefik', production: 'traefik' } },
+		});
+		withMail(dir);
+		({ workspace, manifest, background } = await loadComposeApp(dir));
+	});
+	afterAll(async () => {
+		await cleanupDir(dir);
+		await cleanupDir(home);
+	});
+
+	function local(
+		compose: ComposeWorkspaceConfig | undefined = workspace.deploy?.compose,
+	): ComposeStack {
+		return composeStack({
+			workspace: {
+				...workspace,
+				deploy: { ...workspace.deploy, compose },
+			},
+			manifest,
+			background,
+			stage: 'development',
+			identity: deployIdentity(workspace, 'development'),
+			images: { mode: 'build', tag: 'abc' },
+			secrets: null,
+			localCredentials: TEST_CREDENTIALS,
+			localAuthority: localAuthorityPaths(home),
+			ports: {},
+		});
+	}
+
+	it("registers with the edge, serving gkm's certificate where a deployed stage's own is served", () => {
+		const s = local();
+
+		expect(s.proxy).toBe('traefik');
+		expect(s.caddyfile).toBeUndefined();
+		expect(s.compose.services.caddy).toBeUndefined();
+		expect(s.authority).toEqual(localAuthorityPaths(home));
+		expect(s.tls).toBeUndefined();
+		const file = parse(s.traefik!);
+		expect(file.tls.certificates).toEqual([
+			{
+				certFile: '/etc/gkm-edge/certs/compose-app-development.crt',
+				keyFile: '/etc/gkm-edge/certs/compose-app-development.key',
+			},
+		]);
+		for (const router of Object.values(file.http.routers)) {
+			// Its own certificate, never Let's Encrypt, which cannot issue for
+			// `*.localhost`.
+			expect((router as { tls: unknown }).tls).toEqual({});
+		}
+	});
+
+	it('routes Mailpit through the edge, and its containers reach the edge on the host', () => {
+		const s = local();
+
+		const mail = s.routes.find((route) => route.name === 'mailpit');
+		expect(mail?.host).toBe('mail.compose-app.localhost');
+		expect(Object.keys(parse(s.traefik!).http.routers)).toContain(
+			'compose-app-development-mailpit',
+		);
+		expect(s.compose.services.mailpit?.networks).toEqual({
+			default: { aliases: ['compose-app-development-mailpit'] },
+			edge: { aliases: ['compose-app-development-mailpit'] },
+		});
+		for (const name of ['api', 'auth', 'web', 'jobs']) {
+			const service = s.compose.services[name]!;
+			// The edge publishes on the host, as the stack's own Caddy did.
+			expect(service.extra_hosts, name).toContain(
+				'api.compose-app.localhost:host-gateway',
+			);
+			expect(service.volumes, name).toContain(
+				`${localAuthorityPaths(home).certFile}:/etc/gkm/local-ca.pem:ro`,
+			);
+			expect(service.environment?.NODE_EXTRA_CA_CERTS, name).toBe(
+				'/etc/gkm/local-ca.pem',
+			);
+		}
+	});
+
+	it.each([
+		['traefik', '/etc/gkm-edge/certs/compose-app-development.crt'],
+		['caddy', '/etc/caddy/tls/cert.pem'],
+	] as const)('takes the local stage’s own certificate on %s, in place of gkm’s', (proxy, served) => {
+		const s = local({
+			proxy: { development: proxy },
+			tls: {
+				development: {
+					certFile: 'certs/dev.pem',
+					keyFile: 'certs/dev-key.pem',
+					caFile: 'certs/root.pem',
+				},
+			},
+		});
+
+		expect(s.proxy).toBe(proxy);
+		expect(s.authority).toBeUndefined();
+		expect(s.tls).toEqual({
+			certFile: join(dir, 'certs/dev.pem'),
+			keyFile: join(dir, 'certs/dev-key.pem'),
+			caFile: join(dir, 'certs/root.pem'),
+		});
+		if (proxy === 'traefik') {
+			expect(parse(s.traefik!).tls.certificates[0].certFile).toBe(served);
+		} else {
+			expect(s.caddyfile).toContain(`tls ${served}`);
+		}
+		// The containers trust the root it names, not gkm's.
+		const api = s.compose.services.api!;
+		expect(api.volumes).toContain(
+			`${join(dir, 'certs/root.pem')}:/etc/gkm/local-ca.pem:ro`,
+		);
+		expect(api.volumes?.join()).not.toContain(home);
+		expect(api.extra_hosts).toContain('api.compose-app.localhost:host-gateway');
+	});
+
+	it('hands the containers no root for its own certificate that names none', () => {
+		const s = local({
+			proxy: { development: 'traefik' },
+			tls: {
+				development: {
+					certFile: 'certs/dev.pem',
+					keyFile: 'certs/dev-key.pem',
+				},
+			},
+		});
+
+		const api = s.compose.services.api!;
+		expect(api.environment?.NODE_EXTRA_CA_CERTS).toBeUndefined();
+		expect(api.volumes?.join() ?? '').not.toContain('/etc/gkm/local-ca.pem');
+		expect(api.extra_hosts).toContain('api.compose-app.localhost:host-gateway');
+	});
+
+	it('verifies against whichever CA issued the certificate', async () => {
+		const authority = localAuthorityPaths(home);
+		const root = await ensureLocalAuthority(authority);
+		expect(await verifyAuthority({ authority })).toBe(root.cert);
+
+		mkdirSync(join(dir, 'certs'), { recursive: true });
+		writeFileSync(join(dir, 'certs', 'root.pem'), 'THEIR ROOT');
+		expect(
+			await verifyAuthority({
+				tls: {
+					certFile: join(dir, 'certs/dev.pem'),
+					keyFile: join(dir, 'certs/dev-key.pem'),
+					caFile: join(dir, 'certs', 'root.pem'),
+				},
+			}),
+		).toBe('THEIR ROOT');
+		// A certificate that names no root: Node's own, as a deployed stage's.
+		expect(
+			await verifyAuthority({
+				tls: { certFile: 'a.pem', keyFile: 'a-key.pem' },
+			}),
+		).toBeUndefined();
+	});
+});
+
+describe(
+	'gkm compose on the local stage with proxy: traefik',
+	{ timeout: 60_000 },
+	() => {
+		let dir: string;
+		let home: string;
+
+		beforeEach(async () => {
+			vi.spyOn(console, 'log').mockImplementation(() => {});
+			dir = realpathSync(await createTempDir('gkm-compose-local-edge-'));
+			home = realpathSync(await createTempDir('gkm-compose-local-edge-home-'));
+			vi.stubEnv('GKM_HOME', home);
+		});
+		afterEach(async () => {
+			vi.restoreAllMocks();
+			vi.unstubAllEnvs();
+			await cleanupDir(dir);
+			await cleanupDir(home);
+		});
+
+		const volumes = () => join(home, 'edge');
+
+		const up = async (compose: Record<string, unknown>) => {
+			writeComposeApp(dir, {
+				registry: 'registry.example.com/acme',
+				compose,
+			});
+			withMail(dir);
+			const fake = fakeDocker({ exec: edgeOnDisk(volumes()) });
+			await composeCommand(
+				{ cwd: dir, stage: 'development' },
+				{
+					lookup: resolvesHere,
+					docker: fake.docker,
+					server: fakeServer([]),
+					probe: async (request) => {
+						fake.calls.push({ op: 'probe', args: request });
+						return 200;
+					},
+					revision: async () => 'abc1234',
+					sql: () => ({ query: async () => [] }),
+					logins: signedIn,
+					migrate: async () => [],
+					seed: async () => [],
+				},
+			);
+			const probes = fake.calls
+				.filter((call) => call.op === 'probe')
+				.map((call) => call.args as { ca?: string; connectTo?: string });
+			return { ...fake, probes };
+		};
+
+		const served = () =>
+			readFileSync(
+				join(volumes(), 'certs', 'compose-app-development.crt'),
+				'utf-8',
+			);
+
+		it("writes gkm's certificate into the edge, chaining to gkm's root, and verifies against that root", async () => {
+			const { calls, probes } = await up({
+				proxy: { development: 'traefik', production: 'traefik' },
+			});
+
+			// The edge is this machine's: no engine host on any call.
+			expect(calls.find((call) => call.op === 'up')).toEqual({
+				op: 'up',
+				args: ['traefik'],
+				edge: true,
+			});
+			expect(calls.some((call) => call.host)).toBe(false);
+
+			const authority = localAuthorityPaths(home);
+			const root = new X509Certificate(
+				readFileSync(authority.certFile, 'utf-8'),
+			);
+			const leaf = new X509Certificate(served());
+			expect(leaf.checkIssued(root)).toBe(true);
+			expect(leaf.verify(root.publicKey)).toBe(true);
+			for (const host of [
+				'api.compose-app.localhost',
+				'compose-app.localhost',
+				'mail.compose-app.localhost',
+			]) {
+				expect(leaf.checkHost(host), host).toBeDefined();
+			}
+			expect(
+				statSync(join(volumes(), 'certs', 'compose-app-development.key')).mode &
+					0o777,
+			).toBe(0o600);
+			// The same certificate kept beside the stack, so the next run reuses it.
+			const stack = join(dir, '.gkm', 'compose', 'development');
+			expect(readFileSync(join(stack, 'local-edge.pem'), 'utf-8')).toContain(
+				served().trim(),
+			);
+			expect(existsSync(join(stack, 'Caddyfile'))).toBe(false);
+			const routes = parse(
+				readFileSync(
+					join(volumes(), 'dynamic', 'compose-app-development.yml'),
+					'utf-8',
+				),
+			);
+			expect(Object.keys(routes.http.routers)).toContain(
+				'compose-app-development-mailpit',
+			);
+
+			// Verified on this machine, against gkm's root.
+			expect(probes.length).toBeGreaterThan(0);
+			for (const probe of probes) {
+				expect(probe.connectTo).toBe('127.0.0.1');
+				expect(probe.ca).toBe(readFileSync(authority.certFile, 'utf-8'));
+			}
+			const said = vi
+				.mocked(console.log)
+				.mock.calls.map((call) => String(call[0]))
+				.join('\n');
+			expect(said).toContain("Certificates are from gkm's local CA");
+		});
+
+		it('serves the local stage’s own certificate instead, and verifies against the root it names', async () => {
+			// A certificate from another CA — mkcert's, say — and that CA's root.
+			const other = await ensureLocalAuthority(
+				localAuthorityPaths(join(dir, 'other-ca')),
+			);
+			const own = issueLocalCertificate(other, [
+				'compose-app.localhost',
+				'*.compose-app.localhost',
+			]);
+			mkdirSync(join(dir, 'certs'), { recursive: true });
+			writeFileSync(join(dir, 'certs', 'dev.pem'), own.cert);
+			writeFileSync(join(dir, 'certs', 'dev-key.pem'), own.key);
+			writeFileSync(join(dir, 'certs', 'root.pem'), other.cert);
+
+			const { probes } = await up({
+				proxy: { development: 'traefik' },
+				tls: {
+					development: {
+						certFile: 'certs/dev.pem',
+						keyFile: 'certs/dev-key.pem',
+						caFile: 'certs/root.pem',
+					},
+				},
+			});
+
+			expect(served()).toBe(own.cert);
+			const stack = join(dir, '.gkm', 'compose', 'development');
+			expect(existsSync(join(stack, 'local-edge.pem'))).toBe(false);
+			expect(probes.length).toBeGreaterThan(0);
+			for (const probe of probes) expect(probe.ca).toBe(other.cert);
+			const compose = parse(
+				readFileSync(join(stack, 'docker-compose.yml'), 'utf-8'),
+			);
+			expect(compose.services.api.volumes).toContain(
+				`${join(dir, 'certs', 'root.pem')}:/etc/gkm/local-ca.pem:ro`,
+			);
+		});
+
+		it('--down unregisters the local stack from the edge on this machine', async () => {
+			await up({ proxy: { development: 'traefik' } });
+			const dynamic = join(volumes(), 'dynamic');
+			expect(readdirSync(dynamic)).toEqual(['compose-app-development.yml']);
+
+			const { docker, calls } = fakeDocker({ exec: edgeOnDisk(volumes()) });
+			await composeCommand(
+				{ cwd: dir, stage: 'development', down: true },
+				{ lookup: resolvesHere, docker },
+			);
+
+			expect(calls.filter((call) => call.op === 'down')).toEqual([
+				{ op: 'down', args: 'compose-app-development' },
+			]);
+			expect(readdirSync(dynamic)).toEqual([]);
+			expect(readdirSync(join(volumes(), 'certs'))).toEqual([]);
+		});
+	},
+);
