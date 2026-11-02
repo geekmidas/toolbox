@@ -1258,7 +1258,7 @@ Each of these entries imports an optional peer when it loads, so using it means 
 | `@geekmidas/constructs/object-storage` | `@geekmidas/storage` |
 | `@geekmidas/constructs/testing` | `@geekmidas/testkit`, `hono`, `kysely`, `msw`, `pg` |
 
-No other entry imports an optional peer when it loads. `@geekmidas/audit`, `@geekmidas/cache`, `@geekmidas/db`, `@geekmidas/rate-limit`, `@geekmidas/telescope`, `@types/aws-lambda`, `better-auth`, `ioredis`, `ws` are loaded only when a feature that uses one runs (an `import()` inside a `try`, whose error names the package to install), or named only in types.
+No other entry imports an optional peer when it loads. `@aws-sdk/client-apigatewaymanagementapi`, `@aws-sdk/client-dynamodb`, `@geekmidas/audit`, `@geekmidas/cache`, `@geekmidas/db`, `@geekmidas/rate-limit`, `@geekmidas/telescope`, `@types/aws-lambda`, `better-auth`, `ioredis`, `ws` are loaded only when a feature that uses one runs (an `import()` inside a `try`, whose error names the package to install), or named only in types.
 
 <!-- optional-peers:end -->
 
