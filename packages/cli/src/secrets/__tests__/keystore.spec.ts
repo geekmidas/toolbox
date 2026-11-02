@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import {
 	existsSync,
 	mkdirSync,
@@ -220,6 +221,54 @@ describe('the key store', () => {
 
 		expect(second).toBe(first);
 	});
+
+	it('gives every process creating one key at once the same, whole key', async () => {
+		// Separate processes, as two gkm commands — or two test files — are.
+		// A key used to be created empty and filled after, and a process that
+		// lost the race to create it read it in between and failed.
+		const keystore = join(import.meta.dirname, '..', 'keystore.ts');
+		const script = join(project, 'create-keys.mjs');
+		writeFileSync(
+			script,
+			`const { getOrCreateKey } = await import(${JSON.stringify(keystore)});
+const start = Number(process.argv[2]);
+while (Date.now() < start) {}
+const keys = [];
+for (let i = 0; i < 300; i++) {
+  keys.push(await getOrCreateKey('prod', { key: 'race/p' + i }).catch((e) => e.name));
+}
+process.stdout.write(JSON.stringify(keys));
+`,
+		);
+		const home = join(project, 'home');
+		// Started together once every process has loaded.
+		const start = Date.now() + 5_000;
+		const runs = await Promise.all(
+			Array.from(
+				{ length: 8 },
+				() =>
+					new Promise<string[]>((resolve, reject) => {
+						const child = spawn(
+							process.execPath,
+							['--import', 'tsx', script, String(start)],
+							{
+								env: { ...process.env, GKM_HOME: home },
+								stdio: ['ignore', 'pipe', 'inherit'],
+							},
+						);
+						let out = '';
+						child.stdout.on('data', (chunk) => {
+							out += chunk;
+						});
+						child.on('error', reject);
+						child.on('exit', () => resolve(JSON.parse(out)));
+					}),
+			),
+		);
+
+		for (const keys of runs) expect(keys).toEqual(runs[0]);
+		expect(runs[0]!.every((key) => /^[0-9a-f]{64}$/.test(key))).toBe(true);
+	}, 60_000);
 
 	it('cannot read an encrypted stage whose key is gone', async () => {
 		// Written encrypted, then the key removed: the file is unreadable, and
