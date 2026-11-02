@@ -58,6 +58,8 @@ import {
 } from '../docker/index.js';
 import { composeBuildPaths, type ImageLayout } from '../docker/layout.js';
 import {
+	LOCAL_CA_BUILD_SECRET,
+	PRERENDER_RUN_ARG,
 	PROCESSOR_PORT,
 	TURBO_VERSION,
 	WORKER_PORT,
@@ -292,6 +294,12 @@ export interface StackApp extends AppImage {
 	env?: Record<string, string>;
 	/** The login the edge asks for, where the site is behind a password. */
 	auth?: SiteAuth;
+	/**
+	 * A site that pre-renders against its stage (`prerender: 'stage'`): the
+	 * apps of the stack its `.dependsOn()` names, by compose service name —
+	 * what has to answer, healthy, before its image is built.
+	 */
+	prerender?: { against: string[] };
 }
 
 /**
@@ -421,6 +429,8 @@ export interface StackService {
 		args?: Record<string, string>;
 		/** `host:address` lines for the build's own `/etc/hosts`. */
 		extra_hosts?: string[];
+		/** Top-level {@link StackFile.secrets} the build may mount. */
+		secrets?: string[];
 	};
 	/** `build` for an image built on the server and never pulled. */
 	pull_policy?: 'build';
@@ -462,6 +472,8 @@ export interface StackFile {
 	networks?: Record<string, { name: string; external: true }>;
 	/** Files the stack's containers are handed, by content. */
 	configs?: Record<string, { content: string }>;
+	/** Files a build mounts as a secret, from this machine. */
+	secrets?: Record<string, { file: string }>;
 }
 
 /**
@@ -798,6 +810,12 @@ export interface StackInput {
 	 * secrets. A site's build args — its public URLs — are still resolved.
 	 */
 	buildOnly?: boolean;
+	/**
+	 * What names this deploy to a site that pre-renders against its stage —
+	 * its build's `GKM_PRERENDER_RUN`, so the layer that fetches the stage's
+	 * data is built again on every deploy rather than served from cache.
+	 */
+	prerenderRun?: string;
 	/**
 	 * For builds: where the images are built from and with what — the build
 	 * root, its package manager and turbo. The workspace's root, with pnpm,
@@ -1422,6 +1440,9 @@ export function composeStack(input: StackInput): ComposeStack {
 				(key) => valueFor(app, key, owners.get(key)),
 				custom,
 			);
+			if (app.prerender && input.prerenderRun) {
+				args[PRERENDER_RUN_ARG] = input.prerenderRun;
+			}
 			if (app.build && Object.keys(args).length > 0) app.build.args = args;
 			// The build runs before the stack does: none of these answers yet.
 			const offline = offlineBuildHosts(site, manifest, (key) =>
@@ -1815,9 +1836,14 @@ export function composeStack(input: StackInput): ComposeStack {
 				workspace,
 				stage,
 				// Every build argument the site is handed, declared, or the
-				// build drops it.
+				// build drops it — but the run it is pre-rendered for, which
+				// its Dockerfile declares itself.
 				...(app.kind === 'site' && app.build.args
-					? { publicUrlArgs: Object.keys(app.build.args) }
+					? {
+							publicUrlArgs: Object.keys(app.build.args).filter(
+								(key) => key !== PRERENDER_RUN_ARG,
+							),
+						}
 					: {}),
 			},
 		);
@@ -1983,6 +2009,19 @@ function stackApps(
 					}
 				: {}),
 		});
+	}
+
+	// A site built against its stage waits on each app its edges name.
+	const byId = new Map(apps.map((app) => [app.id, app.name]));
+	for (const app of apps) {
+		const declaration = manifest[app.id];
+		if (declaration?.kind !== 'site' || declaration.prerender !== 'stage') {
+			continue;
+		}
+		const against = declaration.dependencies
+			.map(({ target }) => byId.get(target))
+			.filter((name): name is string => !!name && name !== app.name);
+		app.prerender = { against: [...new Set(against)].sort() };
 	}
 
 	return apps.sort((a, b) => a.name.localeCompare(b.name));
@@ -2359,6 +2398,28 @@ export function localEdgeAccess(edge: {
 	};
 }
 
+/**
+ * What the build of a site that pre-renders against its stage needs to reach
+ * the stage's public hosts. A deployed stage's resolve and are trusted as
+ * anywhere. The local stage's are `*.localhost` — the build's own loopback —
+ * so each is pointed at the host's gateway, where the edge publishes its
+ * ports, and the build is handed the root the edge's certificate chains to,
+ * as {@link localEdgeAccess} hands a container both.
+ *
+ * Not the stack's network: BuildKit builds on none but its own.
+ */
+function prerenderBuildAccess(edge?: {
+	hosts: readonly string[];
+	authority?: string;
+}): { extra_hosts?: string[]; secrets?: string[] } {
+	if (!edge) return {};
+	const { extra_hosts } = localEdgeAccess(edge);
+	return {
+		...(extra_hosts.length ? { extra_hosts } : {}),
+		...(edge.authority ? { secrets: [LOCAL_CA_BUILD_SECRET] } : {}),
+	};
+}
+
 /** The compose document: the infrastructure, the apps, and the edge. */
 function stackFile(options: {
 	project: string;
@@ -2506,6 +2567,9 @@ function stackFile(options: {
 										),
 									}
 								: {}),
+							// Built once its APIs answer, it reaches them as the stack's
+							// containers do — see `prerenderBuildAccess`.
+							...(app.prerender ? prerenderBuildAccess(options.localEdge) : {}),
 						},
 					}
 				: {}),
@@ -2601,9 +2665,13 @@ function stackFile(options: {
 			// added as the file is written (`withCaddyConfigs`).
 			volumes: ['caddy-data:/data', 'caddy-config:/config'],
 			...EDGE_LIMITS,
+			// Not a site built against its stage: it is built once Caddy, and
+			// the APIs behind it, already answer.
 			depends_on: Object.fromEntries(
 				[
-					...apps.flatMap(replicaNames),
+					...apps
+						.filter((app) => !(app.prerender && app.build))
+						.flatMap(replicaNames),
 					...options.workers.filter((w) => w.push).map((w) => w.name),
 					...options.processors.map((p) => p.name),
 				].map((name) => [name, STARTED]),
@@ -2638,10 +2706,17 @@ function stackFile(options: {
 		};
 	}
 
+	// The local edge's root, for a build that reaches the stage through it.
+	const authority = options.localEdge?.authority;
+	const prerendered = apps.some((app) => app.prerender && app.build);
+
 	return {
 		name: project,
 		services,
 		volumes,
+		...(prerendered && authority
+			? { secrets: { [LOCAL_CA_BUILD_SECRET]: { file: authority } } }
+			: {}),
 		...(options.edge.size > 0
 			? { networks: { edge: { name: EDGE_NETWORK, external: true as const } } }
 			: {}),

@@ -559,8 +559,74 @@ So a site renders its data-backed pages **on request**, not at build, and the
 - **`tanstack`**: leave pre-rendering off — pages render on the server at
   request time — or guard any route it pre-renders with `GKM_BUILD_OFFLINE`.
 - **`static`**: load data in the browser. A static site that pre-renders data
-  at build (vite-ssg and the like) has nothing to fetch it from in a gkm-built
-  image, and nothing at runtime can fill it in.
+  at build (vite-ssg and the like) has nothing to fetch it from in an offline
+  build, and nothing at runtime can fill it in: declare it
+  [`prerender: 'stage'`](#a-site-pre-rendered-against-its-stage).
+
+### A site pre-rendered against its stage
+
+A `static` site whose build fetches from its APIs and bakes their answers into
+its files says so on its construct:
+
+```ts
+// constructs/site.ts
+export const docs = new StaticSite('Docs', {
+  path: 'apps/docs',
+  variant: 'static',
+  prerender: 'stage',
+}).dependsOn([api]);
+```
+
+Its image is then built **after** the APIs its `.dependsOn()` names are up,
+not before the stack starts:
+
+1. `build` builds every other image, and holds the site back.
+2. `release` registers the routes, then starts every service of the stack
+   but the site (`up --wait`), so each API is healthy by its own check.
+3. Each API the site depends on is asked through the edge, by its public host
+   (`/health`), exactly as [`verify`](#the-phases) asks it — the address the
+   site's build will fetch from. One that does not answer fails the deploy
+   with `SitePrerenderApisDown`, and the site is not built: pages built
+   without their data would ship.
+4. The site is built, and the full `up` starts it.
+
+The build reaches the APIs the way the stack's own containers do, at the URLs
+it inlines (`VITE_API_URL`, …):
+
+- **No offline signal, no refused hosts.** `GKM_BUILD_OFFLINE` is not set, and
+  its hosts are not mapped to `127.0.0.1`.
+- **On a deployed stage**, its hosts resolve as anywhere and are served with
+  the stage's public certificate.
+- **On the local stage**, each `*.localhost` host points at the host's gateway,
+  where the edge publishes its ports (compose's `build.extra_hosts`), and the
+  build trusts gkm's local CA, handed in as the build secret `gkm_local_ca`
+  and set as `NODE_EXTRA_CA_CERTS` for the site's build step only.
+- **Built afresh on every deploy.** The step that fetches is keyed by a
+  `GKM_PRERENDER_RUN` build argument that changes with each run, so Docker's
+  cache never ships the last deploy's data. The layers before it are cached
+  as usual.
+
+It is opt-in because **the image holds that stage's data**: the same commit
+builds a different image per stage. Its tag is already per stage
+(`<tag>-<stage>`), but its content also depends on when it was built.
+
+- **`gkm compose --build --push`** builds such a site against the stage as it
+  runs now: its APIs are asked through their public hosts before anything is
+  built, and a stage that does not answer fails the push with
+  `SitePrerenderApisDown` (nothing is built or pushed). Deploy the stage once
+  before pushing its site, and a change to an API reaches a pre-rendered page
+  only once the site is built again after that API is deployed.
+- **`--tag`** runs the image the push built, as for any app: nothing is held
+  back, and nothing is fetched at deploy time.
+
+Only a `static` site takes it — `next` and `tanstack` render on their own
+server, and the [warm-up](#the-warm-up) renders their pages from the deployed
+APIs — and the construct refuses it on another variant
+(`PrerenderNeedsStaticSite`).
+
+On the SST target the option changes nothing: SST builds a site during the
+deploy, from an environment resolved from the resources behind its edges, so
+the build already runs after those are created.
 
 ## The files
 
@@ -1305,8 +1371,8 @@ first request after the switch to wait for one.
 | `validate` | the stack, worked out from the manifest; with `--push` or a tag, `deploy.registry` required; with a tag, every image looked up in the registry |
 | `plan` (`--dry-run`) | the files written, and what a run would build, pull and start — nothing else |
 | `provision` | the stage's generated secrets kept, the files written, the infrastructure started, its databases, roles, grants and migrations applied, then its seeds run |
-| `build` | every image built inside Docker — or, with a tag, pulled. With `--push`, each built image pushed, and the run ends here |
-| `release` | `docker compose up --wait --remove-orphans`, and each app's image recorded |
+| `build` | every image built inside Docker — or, with a tag, pulled. A site [pre-rendered against its stage](#a-site-pre-rendered-against-its-stage) is held back. With `--push`, each built image pushed (such a site built once the running stage's APIs answer), and the run ends here |
+| `release` | a held-back site built once the rest of the stack is up and its APIs answer through the edge; then `docker compose up --wait --remove-orphans`, and each app's image recorded |
 | `verify` | each app asked through the edge — its own Caddy, or the shared Traefik — over HTTPS: an API at `/health`, a site at `/`, with the certificate verified; then each server-rendered site [warmed](#the-warm-up) |
 
 `verify` goes through the edge by hostname, so it proves what `up --wait`

@@ -574,7 +574,14 @@ export function siteDockerfile(
 				]
 			: getPublicUrlArgNames(app));
 
-	const webOpts = { ...options.image, publicUrlArgs };
+	const webOpts = {
+		...options.image,
+		publicUrlArgs,
+		// Built against its stage's running APIs, so not offline.
+		...(declared?.kind === 'site' && declared.prerender === 'stage'
+			? { prerender: true }
+			: {}),
+	};
 
 	switch (app.framework) {
 		case 'vite':

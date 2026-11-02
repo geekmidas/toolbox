@@ -85,6 +85,8 @@ export interface ComposeAppOptions {
 	protectedSubdomains?: readonly string[];
 	/** The site's `variant` — `static` when absent. */
 	siteVariant?: 'next' | 'tanstack';
+	/** The site pre-renders from its APIs at build: `prerender: 'stage'`. */
+	sitePrerender?: boolean;
 }
 
 /**
@@ -170,6 +172,16 @@ export const web = new StaticSite('Web', {
 			readFileSync(file, 'utf-8').replace(
 				"path: 'apps/web',",
 				`path: 'apps/web',\n\tvariant: '${options.siteVariant}',`,
+			),
+		);
+	}
+	if (options.sitePrerender) {
+		const file = join(dir, 'constructs', 'site.ts');
+		writeFileSync(
+			file,
+			readFileSync(file, 'utf-8').replace(
+				"path: 'apps/web',",
+				"path: 'apps/web',\n\tprerender: 'stage',",
 			),
 		);
 	}

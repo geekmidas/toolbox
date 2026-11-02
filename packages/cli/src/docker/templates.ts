@@ -101,7 +101,30 @@ export interface FrontendDockerfileOptions extends ImageTemplateOptions {
 	 * Example: ['NEXT_PUBLIC_API_URL', 'NEXT_PUBLIC_AUTH_URL']
 	 */
 	publicUrlArgs?: string[];
+	/**
+	 * The site pre-renders against its stage (`prerender: 'stage'`): its
+	 * build is not offline — it runs once the site's APIs are up, and reaches
+	 * them — so `GKM_BUILD_OFFLINE` is not set, and the build trusts the root
+	 * {@link LOCAL_CA_BUILD_SECRET} hands it, where it is handed one.
+	 */
+	prerender?: boolean;
 }
+
+/**
+ * The build secret a site that pre-renders against its stage reads the root
+ * certificate of the stage's edge from — gkm's local CA, on the local stage,
+ * whose hosts no public root vouches for. A certificate, not a key; a secret
+ * only because a build has no other way to be handed a file it should not
+ * keep. Absent on a deployed stage, whose certificates are public ones.
+ */
+export const LOCAL_CA_BUILD_SECRET = 'gkm_local_ca';
+
+/**
+ * The build argument naming the deploy a site that pre-renders against its
+ * stage is built for — new on every deploy, so the layer that fetches the
+ * stage's data is never served from Docker's cache.
+ */
+export const PRERENDER_RUN_ARG = 'GKM_PRERENDER_RUN';
 
 const LOCKFILES: [string, PackageManager][] = [
 	['pnpm-lock.yaml', 'pnpm'],
@@ -525,7 +548,7 @@ const FIND_GKM_BIN = `let d=process.cwd();const{existsSync:e}=require("fs"),{dir
  * - each backend's typed client, generated from its endpoints at the
  *   workspace root's `.gkm/client/`, where the site's tsconfig paths point.
  */
-function siteWorkspaceSteps(options: ImageTemplateOptions): string {
+function siteWorkspaceSteps(options: FrontendDockerfileOptions): string {
 	const { gkmRoot } = layout(options);
 	const root = `/app/${gkmRoot}`.replace(/\/\.$/, '');
 	const clients = options.clients ?? [];
@@ -544,8 +567,12 @@ RUN cd ${root} && GKM_BIN="$(node -e '${FIND_GKM_BIN}')" && \\
 
 # \`gkm exec\` in this build injects the build args, never a stage's secrets
 ENV ${IMAGE_BUILD_ENV}=1
-# No stage is reachable from this build: the site's APIs are not up yet
-ENV ${BUILD_OFFLINE_ENV}=1${generate}`;
+${
+	options.prerender
+		? `# Built once the site's APIs are up on its stage: it pre-renders from them`
+		: `# No stage is reachable from this build: the site's APIs are not up yet
+ENV ${BUILD_OFFLINE_ENV}=1`
+}${generate}`;
 }
 
 /**
@@ -554,9 +581,20 @@ ENV ${BUILD_OFFLINE_ENV}=1${generate}`;
  * — whatever the project's turbo.json declares: the image's environment
  * holds nothing else.
  */
-function siteBuild(options: ImageTemplateOptions): string {
+function siteBuild(options: FrontendDockerfileOptions): string {
 	const { turbo } = layout(options);
-	return `RUN ${turbo} run build --filter='${options.turboPackage}' --env-mode=loose`;
+	const build = `${turbo} run build --filter='${options.turboPackage}' --env-mode=loose`;
+	if (!options.prerender) return `RUN ${build}`;
+	// Its APIs answer at their public hosts, behind the stage's certificate:
+	// on the local stage that chains to gkm's own root, handed in as a secret.
+	// What they answer changes with no change to the source, so each deploy's
+	// run is part of the cache key: a cached layer would ship the last data.
+	const ca = `/run/secrets/${LOCAL_CA_BUILD_SECRET}`;
+	return `ARG ${PRERENDER_RUN_ARG}=""
+RUN --mount=type=secret,id=${LOCAL_CA_BUILD_SECRET},required=false \\
+    echo "prerendered for: \${${PRERENDER_RUN_ARG}:-any run}" && \\
+    if [ -s ${ca} ]; then export NODE_EXTRA_CA_CERTS=${ca}; fi && \\
+    ${build}`;
 }
 
 /**
