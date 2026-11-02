@@ -140,7 +140,7 @@ export class WebSocketRouteBuilder<
 	): WebSocketRouteBuilder<
 		TKind,
 		TSchema,
-		[...TServices, ...(ServicesOf<T> extends Service[] ? ServicesOf<T> : [])],
+		[...TServices, ...ServicesOf<T>],
 		TMessages
 	> {
 		return new WebSocketRouteBuilder(
