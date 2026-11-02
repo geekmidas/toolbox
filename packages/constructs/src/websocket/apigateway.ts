@@ -29,7 +29,7 @@ import {
 	parseApiGatewayWebSocketUrl,
 	trustsOrigin,
 } from '@geekmidas/manifest';
-import { OptionalPeerMissing } from '../endpoints/optionalPeers';
+import { loadApiGatewayManagement, loadDynamo } from '../optionalPeers';
 import type { WebSocketApi } from '../websocket-api';
 import type { WebSocketCore } from './core';
 import { ownOrigins } from './origins';
@@ -64,30 +64,6 @@ interface DynamoClient {
 type DynamoModule = typeof import('@aws-sdk/client-dynamodb');
 type ManagementModule =
 	typeof import('@aws-sdk/client-apigatewaymanagementapi');
-
-async function loadDynamo(): Promise<DynamoModule> {
-	try {
-		return await import('@aws-sdk/client-dynamodb');
-	} catch (cause) {
-		throw new OptionalPeerMissing(
-			'@aws-sdk/client-dynamodb',
-			'A WebSocketApi served by API Gateway',
-			cause,
-		);
-	}
-}
-
-async function loadManagement(): Promise<ManagementModule> {
-	try {
-		return await import('@aws-sdk/client-apigatewaymanagementapi');
-	} catch (cause) {
-		throw new OptionalPeerMissing(
-			'@aws-sdk/client-apigatewaymanagementapi',
-			'A WebSocketApi served by API Gateway',
-			cause,
-		);
-	}
-}
 
 /**
  * The connection table in DynamoDB: one item per connection, keyed by
@@ -221,7 +197,7 @@ export class ApiGatewaySink implements WebSocketSink {
 	) {}
 
 	private connect() {
-		this.client ??= loadManagement().then((management) => ({
+		this.client ??= loadApiGatewayManagement().then((management) => ({
 			management,
 			client: new management.ApiGatewayManagementApiClient({
 				region: this.target.region,
