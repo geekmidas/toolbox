@@ -1,5 +1,39 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.150
+
+### Patch Changes
+
+- 🐛 [#367](https://github.com/geekmidas/toolbox/pull/367) [`6f23d33`](https://github.com/geekmidas/toolbox/commit/6f23d339332b280713d3a97cefe78ed54310b3b6) Thanks [@geekmidas](https://github.com/geekmidas)! - :bug: The compose warm-up renders a Next site's ISR pages from the deployed APIs
+
+  An offline image build still prerenders each ISR page, empty, and Next counts
+  that copy as fresh for its whole `revalidate` window, so the warm-up's plain
+  request was answered from the build's cache and rendered nothing (#365).
+
+  - For a `next` site, the warm-up reads `preview.previewModeId` from the
+    running image's `.next/prerender-manifest.json` — in its container, through
+    the stack's Docker engine — and sends it as `x-prerender-revalidate` with
+    every request, so Next renders each page again. `/sitemap.xml` is asked
+    first, then the URLs it lists. The id is never logged or written.
+  - Where the id cannot be read, the deploy warns once ("can't force ISR pages
+    to render: …") and warms with plain requests; it never fails the deploy.
+  - The summary reads `x-nextjs-cache`: a page Next answered from its cache is
+    counted and named apart (`warmed 12 page(s), 2 served from the build
+cache: /, /about`).
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.150
+  - @geekmidas/constructs@10.0.0-alpha.150
+  - @geekmidas/db@10.0.0-alpha.150
+  - @geekmidas/envkit@10.0.0-alpha.150
+  - @geekmidas/errors@10.0.0-alpha.150
+  - @geekmidas/logger@10.0.0-alpha.150
+  - @geekmidas/manifest@10.0.0-alpha.150
+  - @geekmidas/schema@10.0.0-alpha.150
+  - @geekmidas/services@10.0.0-alpha.150
+  - @geekmidas/storage@10.0.0-alpha.150
+  - @geekmidas/telescope@10.0.0-alpha.150
+
 ## 10.0.0-alpha.149
 
 ### Patch Changes
