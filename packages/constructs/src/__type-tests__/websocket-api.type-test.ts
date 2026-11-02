@@ -124,3 +124,57 @@ nested
 		// @ts-expect-error — only what the route depends on is there
 		void services.storage;
 	});
+
+/**
+ * A route's `request()` is typed by what it was built with: a connect
+ * route resolves with the data its handler returns, a message route takes
+ * its body schema's input and resolves with the handler's return, and
+ * `services` are the ones it depends on.
+ */
+const joins = nested.connect().handle(() => ({ userId: 'u1' }));
+const opens = nested.connect().handle(() => undefined);
+const says = nested
+	.route('chat.say')
+	.body(z.object({ text: z.string() }))
+	.handle(({ body }) => ({ said: body.text }));
+const reads = nested
+	.route('chat.read')
+	.dependsOn([database])
+	.handle(() => 1);
+
+export async function requests() {
+	const data = await joins.request({ session: null });
+	type _Data = Expect<Equals<typeof data, { userId: string }>>;
+	const none = await opens.request();
+	type _None = Expect<Equals<typeof none, {}>>;
+
+	const said = await says.request({ body: { text: 'hi' } });
+	type _Said = Expect<Equals<typeof said, { said: string }>>;
+	const full = await says.fullRequest({ body: { text: 'hi' } });
+	type _Full = Expect<Equals<typeof full.returned, { said: string }>>;
+
+	// @ts-expect-error — a message route needs its body
+	await says.request();
+	// @ts-expect-error — a body its schema does not take
+	await says.request({ body: { text: 1 } });
+	// @ts-expect-error — fullRequest is a message route's
+	await joins.fullRequest({ body: {} });
+
+	await reads.request({
+		body: undefined,
+		services: { database: {} as DatabaseClient },
+		sockets: nested.testPublisher(),
+	});
+	// @ts-expect-error — only what the route depends on is handed in
+	await reads.request({ body: undefined, services: { storage: 1 } });
+
+	const recorded = nested.testPublisher();
+	// Records are typed by the declared messages.
+	const sent = recorded.sent[0]!;
+	if (sent.action === 'scan.result') {
+		type _Sent = Expect<Equals<typeof sent.data, { ok: boolean }>>;
+	}
+	// It is the publisher `services.<surface>` is.
+	const publisher: NestedPublisher = recorded;
+	return publisher;
+}
