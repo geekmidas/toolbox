@@ -20,6 +20,10 @@ import {
 	vi,
 } from 'vitest';
 import { cleanupDir, createTempDir } from '../../../__tests__/test-helpers';
+import {
+	WARM_TIMEOUT,
+	warmComposeApp,
+} from '../../../compose/__tests__/__helpers__/composeApp';
 import { deployedMobileApp } from '../../__tests__/__helpers__/mobileApp';
 import { easApi } from '../easApi';
 import {
@@ -434,6 +438,8 @@ let appDir: string;
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterAll(() => server.close());
+
+beforeAll(warmComposeApp, WARM_TIMEOUT);
 
 beforeEach(async () => {
 	dir = realpathSync(await createTempDir('gkm-google-play-'));

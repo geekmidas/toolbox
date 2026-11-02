@@ -206,7 +206,7 @@ const children: ChildProcess[] = [];
 afterAll(async () => {
 	for (const child of children) child.kill('SIGKILL');
 	try {
-		execFileSync('docker', ['rm', '-f', MINIO], { stdio: 'ignore' });
+		execFileSync('docker', ['rm', '-f', '-v', MINIO], { stdio: 'ignore' });
 	} catch {
 		// Already gone.
 	}

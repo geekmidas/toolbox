@@ -8,7 +8,15 @@ import {
 import { ServiceDiscovery } from '@geekmidas/services';
 import { Hono } from 'hono';
 import { Client } from 'pg';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	describe,
+	expect,
+	it,
+	vi,
+} from 'vitest';
 import { z } from 'zod';
 import { POSTGRES_PORT } from '../../../../testkit/test/ports';
 import { RestApi } from '../../rest-api';
@@ -92,7 +100,16 @@ async function dropTestSchema() {
 	}
 }
 
-describe('HonoEndpoint with PgBoss Publisher', () => {
+/**
+ * Until pg-boss has delivered what `check` waits for. The subscriber polls
+ * every second, so delivery is usually that; under a full run the poll and
+ * the database are both slower, and a fixed 3s sleep inside a 5s test was
+ * where these failed.
+ */
+const delivered = (check: () => void) =>
+	vi.waitFor(check, { timeout: 20_000, interval: 100 });
+
+describe('HonoEndpoint with PgBoss Publisher', { timeout: 30_000 }, () => {
 	let connection: PgBossConnection;
 	let serviceDiscovery: ServiceDiscovery<any>;
 	let topic: Topic<'Orders', any>;
@@ -180,15 +197,14 @@ describe('HonoEndpoint with PgBoss Publisher', () => {
 			total: 99.99,
 		});
 
-		// Wait for pg-boss to poll and deliver the event
-		await new Promise((resolve) => setTimeout(resolve, 3000));
-
-		expect(received).toEqual([
-			{
-				type: eventType,
-				payload: { orderId: 'order-42', total: 99.99 },
-			},
-		]);
+		await delivered(() =>
+			expect(received).toEqual([
+				{
+					type: eventType,
+					payload: { orderId: 'order-42', total: 99.99 },
+				},
+			]),
+		);
 	});
 
 	it('should publish multiple events and respect when conditions', async () => {
@@ -234,10 +250,7 @@ describe('HonoEndpoint with PgBoss Publisher', () => {
 
 		expect(response.status).toBe(200);
 
-		// Wait for pg-boss to poll and deliver events
-		await new Promise((resolve) => setTimeout(resolve, 3000));
-
-		expect(received).toHaveLength(2);
+		await delivered(() => expect(received).toHaveLength(2));
 		expect(received).toEqual(
 			expect.arrayContaining([
 				{
@@ -287,7 +300,7 @@ describe('HonoEndpoint with PgBoss Publisher', () => {
 
 		expect(response.status).toBe(200);
 
-		// Wait to confirm no events arrive
+		// Long enough for a subscriber polling every second to have seen one.
 		await new Promise((resolve) => setTimeout(resolve, 3000));
 
 		expect(received).toEqual([]);

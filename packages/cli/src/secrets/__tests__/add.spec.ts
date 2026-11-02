@@ -3,7 +3,16 @@ import { join } from 'node:path';
 import { parseEmailUrl } from '@geekmidas/emailkit/url';
 import { parse as parseS3Url } from '@geekmidas/storage/s3-url';
 import prompts from 'prompts';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import {
 	loadComposeApp,
@@ -54,6 +63,22 @@ const seed = async (custom: Record<string, string>, stage = STAGE) =>
 		...initStageSecrets(stage),
 		custom,
 	});
+
+// The first workspace a worker loads imports the constructs package and
+// everything under it — a second alone, and well past a test's 5s when the
+// whole suite is compiling in every other worker. That cost is the module
+// cache's, not any test's: paid once here, with room for a loaded machine,
+// every test after it loads in tens of milliseconds.
+let warm: string;
+beforeAll(async () => {
+	warm = realpathSync(await createTempDir('gkm-secrets-add-warm-'));
+	writeServicesApp(warm);
+	await loadComposeApp(warm);
+}, 60_000);
+
+afterAll(async () => {
+	await cleanupDir(warm);
+});
 
 beforeEach(async () => {
 	dir = realpathSync(await createTempDir('gkm-secrets-add-'));

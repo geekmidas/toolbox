@@ -1,4 +1,12 @@
-import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+	cpSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { loadWorkspaceConfig } from '../../../config';
@@ -385,6 +393,34 @@ export async function loadComposeApp(dir: string): Promise<{
 		background,
 	});
 	return { workspace, manifest, background };
+}
+
+/**
+ * How long `warmComposeApp` may take: the constructs package's first import
+ * is real disk reads and compiling, a second alone and several when every
+ * worker of a full run is doing the same.
+ */
+export const WARM_TIMEOUT = 60_000;
+
+/**
+ * Loads the fixture once, in a directory of its own, so the import of the
+ * constructs package and everything under it — which the first load in a
+ * worker pays, and every later one finds cached — is paid in a `beforeAll`
+ * rather than inside whichever test happens to run first. Under a full run
+ * that first test took more than its 5s for this alone.
+ *
+ * ```ts
+ * beforeAll(warmComposeApp, WARM_TIMEOUT);
+ * ```
+ */
+export async function warmComposeApp(): Promise<void> {
+	const dir = mkdtempSync(join(tmpdir(), 'gkm-compose-warm-'));
+	try {
+		writeComposeApp(dir, { target: 'compose', mobile: true });
+		await loadComposeApp(dir);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
 }
 
 /** The documentation address the fixture's servers stand on. */

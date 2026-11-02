@@ -10,6 +10,7 @@ import { createConnection, createServer, type Server } from 'node:net';
 import { join } from 'node:path';
 import {
 	afterEach,
+	beforeAll,
 	beforeEach,
 	describe,
 	expect,
@@ -22,6 +23,8 @@ import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import {
 	loadComposeApp,
 	SERVER_IPV4,
+	WARM_TIMEOUT,
+	warmComposeApp,
 	writeComposeApp,
 } from '../../compose/__tests__/__helpers__/composeApp';
 import {
@@ -61,6 +64,8 @@ import {
 const SIGNING_SECRET = 'the-production-signing-secret';
 
 let dir: string;
+
+beforeAll(warmComposeApp, WARM_TIMEOUT);
 
 beforeEach(async () => {
 	dir = realpathSync(await createTempDir('gkm-exec-stage-'));

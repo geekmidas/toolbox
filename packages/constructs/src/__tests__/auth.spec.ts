@@ -816,7 +816,9 @@ describe('the client’s address on a session check', () => {
 			res.writeHead(response.status, Object.fromEntries(response.headers));
 			res.end(Buffer.from(await response.arrayBuffer()));
 		});
-		await new Promise<void>((resolve) => listener.listen(0, resolve));
+		await new Promise<void>((resolve) =>
+			listener.listen(0, '127.0.0.1', resolve),
+		);
 		base = `http://127.0.0.1:${(listener.address() as AddressInfo).port}`;
 	});
 

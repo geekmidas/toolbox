@@ -203,6 +203,15 @@ async function deployed(stage: string): Promise<void> {
 	await journal.save();
 }
 
+/**
+ * Each provision is a dozen round trips to the AWS emulator — bucket, its
+ * settings, an IAM user, its policy and key. Alone that is under a second; in
+ * a full run, with every other suite on the same emulator and the machine
+ * busy, one took more than 5s, and its calls carried on after the timeout and
+ * wrote the deploy state under the next test (`StateVersionConflict`).
+ */
+const EMULATOR_TIMEOUT = 30_000;
+
 beforeAll(async () => {
 	vi.stubEnv('AWS_ENDPOINT_URL', LOCALSTACK_URL);
 	vi.stubEnv('AWS_ACCESS_KEY_ID', 'test');
@@ -300,379 +309,392 @@ afterAll(async () => {
 	await cleanupDir(home);
 });
 
-describe('objects: s3 on a deployed stage', () => {
-	const bucket = () => bucketName({ scope: name, stage: STAGE, id: 'uploads' });
-	const user = () => iamUserName({ scope: name, stage: STAGE, id: 'uploads' });
+describe(
+	'objects: s3 on a deployed stage',
+	{ timeout: EMULATOR_TIMEOUT },
+	() => {
+		const bucket = () =>
+			bucketName({ scope: name, stage: STAGE, id: 'uploads' });
+		const user = () =>
+			iamUserName({ scope: name, stage: STAGE, id: 'uploads' });
 
-	it('creates the bucket, its settings, user, policy and key, and writes the URL', async () => {
-		made.buckets.add(bucket());
-		made.users.add(user());
+		it('creates the bucket, its settings, user, policy and key, and writes the URL', async () => {
+			made.buckets.add(bucket());
+			made.users.add(user());
 
-		const [report] = await provision(STAGE);
+			const [report] = await provision(STAGE);
 
-		expect(report).toMatchObject({
-			kind: 'objects',
-			mode: 'provider',
-			provider: 's3',
-			planned: ['UPLOADS_URL', 'UPLOADS_SERVER_URL'],
-		});
-		const changes = report!.actions.map((a) => `${a.resource}: ${a.change}`);
-		expect(changes).toEqual([
-			`bucket ${bucket()}: create in ${REGION}`,
-			`bucket ${bucket()}: tag`,
-			`bucket ${bucket()}: block public access (ACLs; the policy opens the open paths)`,
-			`bucket ${bucket()}: policy: TLS only, public read on brand/**`,
-			`bucket ${bucket()}: expire tmp/ after 1 day`,
-			`bucket ${bucket()}: CORS for https://${DOMAIN}`,
-			`IAM user ${user()}: create under /gkm/`,
-			`IAM user ${user()}: policy gkm-bucket: this bucket only`,
-			`IAM user ${user()}: create an access key`,
-			`UPLOADS_SERVER_URL: set to ${LOCALSTACK_URL}/${bucket()}`,
-		]);
+			expect(report).toMatchObject({
+				kind: 'objects',
+				mode: 'provider',
+				provider: 's3',
+				planned: ['UPLOADS_URL', 'UPLOADS_SERVER_URL'],
+			});
+			const changes = report!.actions.map((a) => `${a.resource}: ${a.change}`);
+			expect(changes).toEqual([
+				`bucket ${bucket()}: create in ${REGION}`,
+				`bucket ${bucket()}: tag`,
+				`bucket ${bucket()}: block public access (ACLs; the policy opens the open paths)`,
+				`bucket ${bucket()}: policy: TLS only, public read on brand/**`,
+				`bucket ${bucket()}: expire tmp/ after 1 day`,
+				`bucket ${bucket()}: CORS for https://${DOMAIN}`,
+				`IAM user ${user()}: create under /gkm/`,
+				`IAM user ${user()}: policy gkm-bucket: this bucket only`,
+				`IAM user ${user()}: create an access key`,
+				`UPLOADS_SERVER_URL: set to ${LOCALSTACK_URL}/${bucket()}`,
+			]);
 
-		// The bucket's URL, with the user's key in it, in the stage's secrets.
-		const secrets = await secretsOf(STAGE);
-		const address = s3Url.parse(secrets.UPLOADS_URL!);
-		expect(address).toMatchObject({
-			bucket: bucket(),
-			region: REGION,
-			endpoint: LOCALSTACK_URL,
-			forcePathStyle: true,
-		});
-		expect(address.accessKeyId).toBeTruthy();
-		expect(await keysOf(user())).toEqual([address.accessKeyId]);
-		// The secret is never printed.
-		expect(lines.join('\n')).not.toContain(address.secretAccessKey);
-		expect(secrets.UPLOADS_SERVER_URL).toBe(`${LOCALSTACK_URL}/${bucket()}`);
+			// The bucket's URL, with the user's key in it, in the stage's secrets.
+			const secrets = await secretsOf(STAGE);
+			const address = s3Url.parse(secrets.UPLOADS_URL!);
+			expect(address).toMatchObject({
+				bucket: bucket(),
+				region: REGION,
+				endpoint: LOCALSTACK_URL,
+				forcePathStyle: true,
+			});
+			expect(address.accessKeyId).toBeTruthy();
+			expect(await keysOf(user())).toEqual([address.accessKeyId]);
+			// The secret is never printed.
+			expect(lines.join('\n')).not.toContain(address.secretAccessKey);
+			expect(secrets.UPLOADS_SERVER_URL).toBe(`${LOCALSTACK_URL}/${bucket()}`);
 
-		// Recorded in the stage's state, by identity.
-		const state = await stateOf(STAGE);
-		expect(state?.resources['s3-bucket:Uploads']).toMatchObject({
-			status: 'ready',
-			id: bucket(),
-		});
-		expect(state?.resources['iam-user:Uploads']).toMatchObject({
-			status: 'ready',
-			id: user(),
-		});
-		expect(state?.resources['iam-access-key:Uploads']).toMatchObject({
-			status: 'ready',
-			id: address.accessKeyId,
-		});
+			// Recorded in the stage's state, by identity.
+			const state = await stateOf(STAGE);
+			expect(state?.resources['s3-bucket:Uploads']).toMatchObject({
+				status: 'ready',
+				id: bucket(),
+			});
+			expect(state?.resources['iam-user:Uploads']).toMatchObject({
+				status: 'ready',
+				id: user(),
+			});
+			expect(state?.resources['iam-access-key:Uploads']).toMatchObject({
+				status: 'ready',
+				id: address.accessKeyId,
+			});
 
-		// What the bucket holds.
-		const Bucket = bucket();
-		expect(
-			(await s3.send(new GetPublicAccessBlockCommand({ Bucket })))
-				.PublicAccessBlockConfiguration,
-		).toEqual({
-			BlockPublicAcls: true,
-			IgnorePublicAcls: true,
-			BlockPublicPolicy: false,
-			RestrictPublicBuckets: false,
-		});
-		expect(
-			(await s3.send(new GetBucketEncryptionCommand({ Bucket })))
-				.ServerSideEncryptionConfiguration?.Rules?.[0]
-				?.ApplyServerSideEncryptionByDefault?.SSEAlgorithm,
-		).toBe('AES256');
-		// floci does not enforce bucket policies, so the document is what is
-		// asserted: TLS only, and anonymous reads on exactly `brand/*`.
-		const policy = JSON.parse(
-			(await s3.send(new GetBucketPolicyCommand({ Bucket }))).Policy!,
-		);
-		expect(policy.Statement).toEqual([
-			{
-				Sid: 'GkmDenyInsecureTransport',
-				Effect: 'Deny',
-				Principal: '*',
-				Action: 's3:*',
-				Resource: [`arn:aws:s3:::${Bucket}`, `arn:aws:s3:::${Bucket}/*`],
-				Condition: { Bool: { 'aws:SecureTransport': 'false' } },
-			},
-			{
-				Sid: 'GkmOpenPaths',
-				Effect: 'Allow',
-				Principal: '*',
-				Action: 's3:GetObject',
-				Resource: [`arn:aws:s3:::${Bucket}/brand/*`],
-			},
-		]);
-		expect(
-			(await s3.send(new GetBucketCorsCommand({ Bucket }))).CORSRules,
-		).toEqual([
-			{
-				AllowedMethods: ['GET', 'HEAD', 'POST', 'PUT'],
-				AllowedOrigins: [`https://${DOMAIN}`],
-				AllowedHeaders: ['*'],
-				ExposeHeaders: ['ETag'],
-				MaxAgeSeconds: 3000,
-			},
-		]);
-		expect(
-			(await s3.send(new GetBucketTaggingCommand({ Bucket }))).TagSet,
-		).toEqual(
-			expect.arrayContaining([
-				{ Key: 'gkm:project', Value: `${name}/${name}` },
-				{ Key: 'gkm:stage', Value: STAGE },
-				{ Key: 'gkm:construct', Value: 'Uploads' },
-			]),
-		);
-		expect(
-			(await s3.send(new GetBucketVersioningCommand({ Bucket }))).Status,
-		).toBeUndefined();
-		expect(
-			(await s3.send(new GetBucketLifecycleConfigurationCommand({ Bucket })))
-				.Rules,
-		).toEqual([
-			expect.objectContaining({
-				ID: expireRuleId('tmp/'),
-				Status: 'Enabled',
-				Filter: expect.objectContaining({ Prefix: 'tmp/' }),
-				Expiration: expect.objectContaining({ Days: 1 }),
-			}),
-		]);
-
-		// The user: under /gkm/, tagged, with a policy for this bucket only.
-		const found = await iam.send(new GetUserCommand({ UserName: user() }));
-		expect(found.User?.Path).toBe('/gkm/');
-		const tags = await iam.send(new ListUserTagsCommand({ UserName: user() }));
-		expect(tags.Tags).toEqual(
-			expect.arrayContaining([
-				{ Key: 'gkm:project', Value: `${name}/${name}` },
-				{ Key: 'gkm:stage', Value: STAGE },
-			]),
-		);
-		const inline = await iam.send(
-			new GetUserPolicyCommand({ UserName: user(), PolicyName: 'gkm-bucket' }),
-		);
-		expect(JSON.parse(decodeURIComponent(inline.PolicyDocument!))).toEqual(
-			userPolicy(Bucket),
-		);
-	});
-
-	it('changes nothing on a second run', async () => {
-		const before = await secretsOf(STAGE);
-
-		const [report] = await provision(STAGE);
-
-		expect(report?.actions).toEqual([]);
-		expect(await secretsOf(STAGE)).toEqual(before);
-		expect(await keysOf(user())).toHaveLength(1);
-		expect(lines).toContain('   up to date');
-	});
-
-	it('puts back what drifted', async () => {
-		const Bucket = bucket();
-		await s3.send(new DeleteBucketCorsCommand({ Bucket }));
-		await s3.send(
-			new PutPublicAccessBlockCommand({
-				Bucket,
-				PublicAccessBlockConfiguration: {
-					BlockPublicAcls: false,
-					IgnorePublicAcls: false,
-					BlockPublicPolicy: false,
-					RestrictPublicBuckets: false,
-				},
-			}),
-		);
-
-		const [report] = await provision(STAGE);
-
-		expect(report?.actions.map((a) => a.change)).toEqual([
-			'block public access (ACLs; the policy opens the open paths)',
-			`CORS for https://${DOMAIN}`,
-		]);
-		expect(
-			(await s3.send(new GetBucketCorsCommand({ Bucket }))).CORSRules?.[0]
-				?.AllowedOrigins,
-		).toEqual([`https://${DOMAIN}`]);
-		expect(
-			(await s3.send(new GetPublicAccessBlockCommand({ Bucket })))
-				.PublicAccessBlockConfiguration?.BlockPublicAcls,
-		).toBe(true);
-	});
-
-	it("merges its expiry into the bucket's lifecycle, keeping every other rule", async () => {
-		const Bucket = bucket();
-		const foreign = {
-			ID: 'abort-multipart',
-			Status: 'Enabled' as const,
-			Filter: { Prefix: 'uploads/' },
-			AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 },
-		};
-		// Someone else's rule, and a gkm rule nothing declares any more.
-		await s3.send(
-			new PutBucketLifecycleConfigurationCommand({
-				Bucket,
-				LifecycleConfiguration: {
-					Rules: [
-						foreign,
-						{
-							ID: expireRuleId('old/'),
-							Status: 'Enabled',
-							Filter: { Prefix: 'old/' },
-							Expiration: { Days: 3 },
-						},
-					],
-				},
-			}),
-		);
-
-		const [report] = await provision(STAGE);
-		const [again] = await provision(STAGE);
-
-		expect(report?.actions.map((a) => a.change)).toEqual([
-			'expire tmp/ after 1 day',
-		]);
-		expect(again?.actions).toEqual([]);
-		const rules =
-			(await s3.send(new GetBucketLifecycleConfigurationCommand({ Bucket })))
-				.Rules ?? [];
-		expect(rules.map((r) => r.ID).sort()).toEqual(
-			['abort-multipart', expireRuleId('tmp/')].sort(),
-		);
-		expect(rules.find((r) => r.ID === 'abort-multipart')).toMatchObject({
-			Filter: { Prefix: 'uploads/' },
-			AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 },
-		});
-	});
-
-	it('presigns a PUT and a GET with the key it wrote', async () => {
-		const storage = createStorageClient((await secretsOf(STAGE)).UPLOADS_URL!);
-		const body = 'hello from the provisioned key';
-
-		const put = await storage.getUploadURL({
-			path: 'docs/hello.txt',
-			contentType: 'text/plain',
-			contentLength: body.length,
-		});
-		const uploaded = await fetch(put, {
-			method: 'PUT',
-			headers: { 'Content-Type': 'text/plain' },
-			body,
-		});
-		expect(uploaded.status).toBe(200);
-
-		const get = await storage.getDownloadURL({ path: 'docs/hello.txt' });
-		const downloaded = await fetch(get);
-		expect(downloaded.status).toBe(200);
-		expect(await downloaded.text()).toBe(body);
-	});
-
-	it('verifies with the written key, and fails once the bucket is gone', async () => {
-		const secrets = await secretsOf(STAGE);
-
-		await expect(
-			verifyStageProviders({ workspace, manifest, stage: STAGE, secrets }),
-		).resolves.toEqual(['objects: s3']);
-
-		// The same key, pointed at a bucket that does not exist.
-		const address = s3Url.parse(secrets.UPLOADS_URL!);
-		const missing = s3Url.build({ ...address, bucket: `${bucket()}-gone` });
-		const run = verifyStageProviders({
-			workspace,
-			manifest,
-			stage: STAGE,
-			secrets: { ...secrets, UPLOADS_URL: missing },
-		});
-		await expect(run).rejects.toBeInstanceOf(ProvisionedBucketUnreachable);
-		await expect(run).rejects.toThrow(
-			/does not exist \(HTTP 404 NotFound[^)]*\)\. Deploy 'production' with the stage account's credentials/,
-		);
-	});
-
-	it('rotates the key: a second key now, the first deleted after the next deploy', async () => {
-		const first = s3Url.parse((await secretsOf(STAGE)).UPLOADS_URL!)
-			.accessKeyId!;
-
-		const [rotated] = await provision(STAGE, { rotateKeys: true });
-
-		expect(rotated?.actions.map((a) => a.change)).toEqual([
-			'rotate: issue a new access key',
-		]);
-		const second = s3Url.parse((await secretsOf(STAGE)).UPLOADS_URL!)
-			.accessKeyId!;
-		expect(second).not.toBe(first);
-		expect(await keysOf(user())).toEqual([first, second].sort());
-		expect(lines.join('\n')).toContain(
-			`This deploy moves '${STAGE}' onto it; the next deploy after it deletes the old key ${first}`,
-		);
-
-		// Not deployed yet: the old key stays, and a second rotation waits.
-		const [waiting] = await provision(STAGE);
-		expect(waiting?.actions).toEqual([]);
-		expect(await keysOf(user())).toEqual([first, second].sort());
-		await expect(provision(STAGE, { rotateKeys: true })).rejects.toBeInstanceOf(
-			RotationInProgress,
-		);
-
-		// Deployed with the new key: the next run deletes the old one.
-		await deployed(STAGE);
-		const [retired] = await provision(STAGE);
-		expect(retired?.actions.map((a) => a.change)).toEqual([
-			`delete the rotated-out access key ${first}`,
-		]);
-		expect(await keysOf(user())).toEqual([second]);
-		expect(
-			(await stateOf(STAGE))?.resources['iam-access-key:Uploads'],
-		).toMatchObject({ id: second, data: { user: user() } });
-	});
-
-	it('retires the old key at once with --retire-old-keys', async () => {
-		const before = s3Url.parse((await secretsOf(STAGE)).UPLOADS_URL!)
-			.accessKeyId!;
-		await provision(STAGE, { rotateKeys: true });
-		const after = s3Url.parse((await secretsOf(STAGE)).UPLOADS_URL!)
-			.accessKeyId!;
-
-		await provision(STAGE, { retireOldKeys: true });
-
-		expect(await keysOf(user())).toEqual([after]);
-		expect(after).not.toBe(before);
-	});
-
-	it('passes a compose deploy of the stage, which verifies the bucket', async () => {
-		// Mail is not the provider's: the stage's own.
-		const store = await secretsStoreFor(workspace, STAGE, { home });
-		const stored = (await store.read(STAGE))!;
-		await store.write(STAGE, {
-			...stored,
-			custom: {
-				...stored.custom,
-				MAIL_URL: 'smtp://user:password@smtp.example.com:587',
-				MAIL_FROM: `noreply@${DOMAIN}`,
-				GKM_SERVER_IPV4: SERVER_IPV4,
-			},
-		});
-		const info: string[] = [];
-		vi.spyOn(console, 'log').mockImplementation((...a) => {
-			info.push(a.join(' '));
-		});
-		const fake = fakeDocker();
-
-		try {
-			const result = await composeCommand(
-				{ cwd: dir, stage: STAGE, dryRun: true },
+			// What the bucket holds.
+			const Bucket = bucket();
+			expect(
+				(await s3.send(new GetPublicAccessBlockCommand({ Bucket })))
+					.PublicAccessBlockConfiguration,
+			).toEqual({
+				BlockPublicAcls: true,
+				IgnorePublicAcls: true,
+				BlockPublicPolicy: false,
+				RestrictPublicBuckets: false,
+			});
+			expect(
+				(await s3.send(new GetBucketEncryptionCommand({ Bucket })))
+					.ServerSideEncryptionConfiguration?.Rules?.[0]
+					?.ApplyServerSideEncryptionByDefault?.SSEAlgorithm,
+			).toBe('AES256');
+			// floci does not enforce bucket policies, so the document is what is
+			// asserted: TLS only, and anonymous reads on exactly `brand/*`.
+			const policy = JSON.parse(
+				(await s3.send(new GetBucketPolicyCommand({ Bucket }))).Policy!,
+			);
+			expect(policy.Statement).toEqual([
 				{
-					docker: fake.docker,
-					server: fakeServer([]),
-					probe: answering(fake.calls),
-					revision: async () => 'abc1234',
-					lookup: resolvesHere,
+					Sid: 'GkmDenyInsecureTransport',
+					Effect: 'Deny',
+					Principal: '*',
+					Action: 's3:*',
+					Resource: [`arn:aws:s3:::${Bucket}`, `arn:aws:s3:::${Bucket}/*`],
+					Condition: { Bool: { 'aws:SecureTransport': 'false' } },
 				},
+				{
+					Sid: 'GkmOpenPaths',
+					Effect: 'Allow',
+					Principal: '*',
+					Action: 's3:GetObject',
+					Resource: [`arn:aws:s3:::${Bucket}/brand/*`],
+				},
+			]);
+			expect(
+				(await s3.send(new GetBucketCorsCommand({ Bucket }))).CORSRules,
+			).toEqual([
+				{
+					AllowedMethods: ['GET', 'HEAD', 'POST', 'PUT'],
+					AllowedOrigins: [`https://${DOMAIN}`],
+					AllowedHeaders: ['*'],
+					ExposeHeaders: ['ETag'],
+					MaxAgeSeconds: 3000,
+				},
+			]);
+			expect(
+				(await s3.send(new GetBucketTaggingCommand({ Bucket }))).TagSet,
+			).toEqual(
+				expect.arrayContaining([
+					{ Key: 'gkm:project', Value: `${name}/${name}` },
+					{ Key: 'gkm:stage', Value: STAGE },
+					{ Key: 'gkm:construct', Value: 'Uploads' },
+				]),
+			);
+			expect(
+				(await s3.send(new GetBucketVersioningCommand({ Bucket }))).Status,
+			).toBeUndefined();
+			expect(
+				(await s3.send(new GetBucketLifecycleConfigurationCommand({ Bucket })))
+					.Rules,
+			).toEqual([
+				expect.objectContaining({
+					ID: expireRuleId('tmp/'),
+					Status: 'Enabled',
+					Filter: expect.objectContaining({ Prefix: 'tmp/' }),
+					Expiration: expect.objectContaining({ Days: 1 }),
+				}),
+			]);
+
+			// The user: under /gkm/, tagged, with a policy for this bucket only.
+			const found = await iam.send(new GetUserCommand({ UserName: user() }));
+			expect(found.User?.Path).toBe('/gkm/');
+			const tags = await iam.send(
+				new ListUserTagsCommand({ UserName: user() }),
+			);
+			expect(tags.Tags).toEqual(
+				expect.arrayContaining([
+					{ Key: 'gkm:project', Value: `${name}/${name}` },
+					{ Key: 'gkm:stage', Value: STAGE },
+				]),
+			);
+			const inline = await iam.send(
+				new GetUserPolicyCommand({
+					UserName: user(),
+					PolicyName: 'gkm-bucket',
+				}),
+			);
+			expect(JSON.parse(decodeURIComponent(inline.PolicyDocument!))).toEqual(
+				userPolicy(Bucket),
+			);
+		});
+
+		it('changes nothing on a second run', async () => {
+			const before = await secretsOf(STAGE);
+
+			const [report] = await provision(STAGE);
+
+			expect(report?.actions).toEqual([]);
+			expect(await secretsOf(STAGE)).toEqual(before);
+			expect(await keysOf(user())).toHaveLength(1);
+			expect(lines).toContain('   up to date');
+		});
+
+		it('puts back what drifted', async () => {
+			const Bucket = bucket();
+			await s3.send(new DeleteBucketCorsCommand({ Bucket }));
+			await s3.send(
+				new PutPublicAccessBlockCommand({
+					Bucket,
+					PublicAccessBlockConfiguration: {
+						BlockPublicAcls: false,
+						IgnorePublicAcls: false,
+						BlockPublicPolicy: false,
+						RestrictPublicBuckets: false,
+					},
+				}),
 			);
 
-			// No MinIO: the bucket is the provider's.
-			expect(result?.stack.infra).not.toContain('minio');
-			expect(info.join('\n')).toContain('✓ objects: s3 verified');
-		} finally {
-			vi.mocked(console.log).mockRestore();
-		}
-	}, 120_000);
-});
+			const [report] = await provision(STAGE);
 
-describe('a name another account holds', () => {
+			expect(report?.actions.map((a) => a.change)).toEqual([
+				'block public access (ACLs; the policy opens the open paths)',
+				`CORS for https://${DOMAIN}`,
+			]);
+			expect(
+				(await s3.send(new GetBucketCorsCommand({ Bucket }))).CORSRules?.[0]
+					?.AllowedOrigins,
+			).toEqual([`https://${DOMAIN}`]);
+			expect(
+				(await s3.send(new GetPublicAccessBlockCommand({ Bucket })))
+					.PublicAccessBlockConfiguration?.BlockPublicAcls,
+			).toBe(true);
+		});
+
+		it("merges its expiry into the bucket's lifecycle, keeping every other rule", async () => {
+			const Bucket = bucket();
+			const foreign = {
+				ID: 'abort-multipart',
+				Status: 'Enabled' as const,
+				Filter: { Prefix: 'uploads/' },
+				AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 },
+			};
+			// Someone else's rule, and a gkm rule nothing declares any more.
+			await s3.send(
+				new PutBucketLifecycleConfigurationCommand({
+					Bucket,
+					LifecycleConfiguration: {
+						Rules: [
+							foreign,
+							{
+								ID: expireRuleId('old/'),
+								Status: 'Enabled',
+								Filter: { Prefix: 'old/' },
+								Expiration: { Days: 3 },
+							},
+						],
+					},
+				}),
+			);
+
+			const [report] = await provision(STAGE);
+			const [again] = await provision(STAGE);
+
+			expect(report?.actions.map((a) => a.change)).toEqual([
+				'expire tmp/ after 1 day',
+			]);
+			expect(again?.actions).toEqual([]);
+			const rules =
+				(await s3.send(new GetBucketLifecycleConfigurationCommand({ Bucket })))
+					.Rules ?? [];
+			expect(rules.map((r) => r.ID).sort()).toEqual(
+				['abort-multipart', expireRuleId('tmp/')].sort(),
+			);
+			expect(rules.find((r) => r.ID === 'abort-multipart')).toMatchObject({
+				Filter: { Prefix: 'uploads/' },
+				AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 },
+			});
+		});
+
+		it('presigns a PUT and a GET with the key it wrote', async () => {
+			const storage = createStorageClient(
+				(await secretsOf(STAGE)).UPLOADS_URL!,
+			);
+			const body = 'hello from the provisioned key';
+
+			const put = await storage.getUploadURL({
+				path: 'docs/hello.txt',
+				contentType: 'text/plain',
+				contentLength: body.length,
+			});
+			const uploaded = await fetch(put, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'text/plain' },
+				body,
+			});
+			expect(uploaded.status).toBe(200);
+
+			const get = await storage.getDownloadURL({ path: 'docs/hello.txt' });
+			const downloaded = await fetch(get);
+			expect(downloaded.status).toBe(200);
+			expect(await downloaded.text()).toBe(body);
+		});
+
+		it('verifies with the written key, and fails once the bucket is gone', async () => {
+			const secrets = await secretsOf(STAGE);
+
+			await expect(
+				verifyStageProviders({ workspace, manifest, stage: STAGE, secrets }),
+			).resolves.toEqual(['objects: s3']);
+
+			// The same key, pointed at a bucket that does not exist.
+			const address = s3Url.parse(secrets.UPLOADS_URL!);
+			const missing = s3Url.build({ ...address, bucket: `${bucket()}-gone` });
+			const run = verifyStageProviders({
+				workspace,
+				manifest,
+				stage: STAGE,
+				secrets: { ...secrets, UPLOADS_URL: missing },
+			});
+			await expect(run).rejects.toBeInstanceOf(ProvisionedBucketUnreachable);
+			await expect(run).rejects.toThrow(
+				/does not exist \(HTTP 404 NotFound[^)]*\)\. Deploy 'production' with the stage account's credentials/,
+			);
+		});
+
+		it('rotates the key: a second key now, the first deleted after the next deploy', async () => {
+			const first = s3Url.parse((await secretsOf(STAGE)).UPLOADS_URL!)
+				.accessKeyId!;
+
+			const [rotated] = await provision(STAGE, { rotateKeys: true });
+
+			expect(rotated?.actions.map((a) => a.change)).toEqual([
+				'rotate: issue a new access key',
+			]);
+			const second = s3Url.parse((await secretsOf(STAGE)).UPLOADS_URL!)
+				.accessKeyId!;
+			expect(second).not.toBe(first);
+			expect(await keysOf(user())).toEqual([first, second].sort());
+			expect(lines.join('\n')).toContain(
+				`This deploy moves '${STAGE}' onto it; the next deploy after it deletes the old key ${first}`,
+			);
+
+			// Not deployed yet: the old key stays, and a second rotation waits.
+			const [waiting] = await provision(STAGE);
+			expect(waiting?.actions).toEqual([]);
+			expect(await keysOf(user())).toEqual([first, second].sort());
+			await expect(
+				provision(STAGE, { rotateKeys: true }),
+			).rejects.toBeInstanceOf(RotationInProgress);
+
+			// Deployed with the new key: the next run deletes the old one.
+			await deployed(STAGE);
+			const [retired] = await provision(STAGE);
+			expect(retired?.actions.map((a) => a.change)).toEqual([
+				`delete the rotated-out access key ${first}`,
+			]);
+			expect(await keysOf(user())).toEqual([second]);
+			expect(
+				(await stateOf(STAGE))?.resources['iam-access-key:Uploads'],
+			).toMatchObject({ id: second, data: { user: user() } });
+		});
+
+		it('retires the old key at once with --retire-old-keys', async () => {
+			const before = s3Url.parse((await secretsOf(STAGE)).UPLOADS_URL!)
+				.accessKeyId!;
+			await provision(STAGE, { rotateKeys: true });
+			const after = s3Url.parse((await secretsOf(STAGE)).UPLOADS_URL!)
+				.accessKeyId!;
+
+			await provision(STAGE, { retireOldKeys: true });
+
+			expect(await keysOf(user())).toEqual([after]);
+			expect(after).not.toBe(before);
+		});
+
+		it('passes a compose deploy of the stage, which verifies the bucket', async () => {
+			// Mail is not the provider's: the stage's own.
+			const store = await secretsStoreFor(workspace, STAGE, { home });
+			const stored = (await store.read(STAGE))!;
+			await store.write(STAGE, {
+				...stored,
+				custom: {
+					...stored.custom,
+					MAIL_URL: 'smtp://user:password@smtp.example.com:587',
+					MAIL_FROM: `noreply@${DOMAIN}`,
+					GKM_SERVER_IPV4: SERVER_IPV4,
+				},
+			});
+			const info: string[] = [];
+			vi.spyOn(console, 'log').mockImplementation((...a) => {
+				info.push(a.join(' '));
+			});
+			const fake = fakeDocker();
+
+			try {
+				const result = await composeCommand(
+					{ cwd: dir, stage: STAGE, dryRun: true },
+					{
+						docker: fake.docker,
+						server: fakeServer([]),
+						probe: answering(fake.calls),
+						revision: async () => 'abc1234',
+						lookup: resolvesHere,
+					},
+				);
+
+				// No MinIO: the bucket is the provider's.
+				expect(result?.stack.infra).not.toContain('minio');
+				expect(info.join('\n')).toContain('✓ objects: s3 verified');
+			} finally {
+				vi.mocked(console.log).mockRestore();
+			}
+		}, 120_000);
+	},
+);
+
+describe('a name another account holds', { timeout: EMULATOR_TIMEOUT }, () => {
 	const taken = (names: (bucket: string) => boolean) =>
 		useS3Clients(async (credential, region) => {
 			const clients = await defaultClients(credential, region);
@@ -743,55 +765,59 @@ describe('a name another account holds', () => {
 	});
 });
 
-describe('a bucket in another region than the stage', () => {
-	const stage = 'elsewhere';
-	const bucket = () => bucketName({ scope: name, stage, id: 'uploads' });
+describe(
+	'a bucket in another region than the stage',
+	{ timeout: EMULATOR_TIMEOUT },
+	() => {
+		const stage = 'elsewhere';
+		const bucket = () => bucketName({ scope: name, stage, id: 'uploads' });
 
-	it('adopts it where it is: its URL and record name its own region', async () => {
-		made.buckets.add(bucket());
-		made.users.add(iamUserName({ scope: name, stage, id: 'uploads' }));
-		// Made by hand in us-east-1; the stage's region is eu-west-1.
-		await new S3Client({ ...admin, region: 'us-east-1' }).send(
-			new CreateBucketCommand({ Bucket: bucket() }),
-		);
+		it('adopts it where it is: its URL and record name its own region', async () => {
+			made.buckets.add(bucket());
+			made.users.add(iamUserName({ scope: name, stage, id: 'uploads' }));
+			// Made by hand in us-east-1; the stage's region is eu-west-1.
+			await new S3Client({ ...admin, region: 'us-east-1' }).send(
+				new CreateBucketCommand({ Bucket: bucket() }),
+			);
 
-		await provision(stage);
+			await provision(stage);
 
-		const url = s3Url.parse((await secretsOf(stage)).UPLOADS_URL!);
-		expect(url.bucket).toBe(bucket());
-		expect(url.region).toBe('us-east-1');
-		expect(
-			(await stateOf(stage))?.resources['s3-bucket:Uploads']?.data?.region,
-		).toBe('us-east-1');
-		expect(lines).toContain(
-			`   '${bucket()}' is in us-east-1, not ${REGION}: 'Uploads' is reached and addressed there`,
-		);
-	});
-
-	it('rewrites a URL naming another region, keeping its key', async () => {
-		const store = await secretsStoreFor(workspace, stage, { home });
-		const stored = (await store.read(stage))!;
-		const right = s3Url.parse(stored.custom.UPLOADS_URL!);
-		await store.write(stage, {
-			...stored,
-			custom: {
-				...stored.custom,
-				UPLOADS_URL: s3Url.build({ ...right, region: REGION }),
-			},
+			const url = s3Url.parse((await secretsOf(stage)).UPLOADS_URL!);
+			expect(url.bucket).toBe(bucket());
+			expect(url.region).toBe('us-east-1');
+			expect(
+				(await stateOf(stage))?.resources['s3-bucket:Uploads']?.data?.region,
+			).toBe('us-east-1');
+			expect(lines).toContain(
+				`   '${bucket()}' is in us-east-1, not ${REGION}: 'Uploads' is reached and addressed there`,
+			);
 		});
 
-		const [report] = await provision(stage);
+		it('rewrites a URL naming another region, keeping its key', async () => {
+			const store = await secretsStoreFor(workspace, stage, { home });
+			const stored = (await store.read(stage))!;
+			const right = s3Url.parse(stored.custom.UPLOADS_URL!);
+			await store.write(stage, {
+				...stored,
+				custom: {
+					...stored.custom,
+					UPLOADS_URL: s3Url.build({ ...right, region: REGION }),
+				},
+			});
 
-		expect(report?.actions).toContainEqual({
-			construct: 'Uploads',
-			resource: 'UPLOADS_URL',
-			change: `name us-east-1, the bucket's region (it said ${REGION})`,
+			const [report] = await provision(stage);
+
+			expect(report?.actions).toContainEqual({
+				construct: 'Uploads',
+				resource: 'UPLOADS_URL',
+				change: `name us-east-1, the bucket's region (it said ${REGION})`,
+			});
+			expect(s3Url.parse((await secretsOf(stage)).UPLOADS_URL!)).toEqual(right);
 		});
-		expect(s3Url.parse((await secretsOf(stage)).UPLOADS_URL!)).toEqual(right);
-	});
-});
+	},
+);
 
-describe('--dry-run', () => {
+describe('--dry-run', { timeout: EMULATOR_TIMEOUT }, () => {
 	it('prints the plan, and creates and writes nothing', async () => {
 		const good = bucketName({ scope: name, stage: 'preview', id: 'uploads' });
 
@@ -831,36 +857,43 @@ describe('--dry-run', () => {
 	});
 });
 
-describe('with no credentials to provision with', () => {
-	it('stops the deploy by name, saying what it needs here and in CI', async () => {
-		vi.stubEnv('AWS_ACCESS_KEY_ID', undefined);
-		vi.stubEnv('AWS_SECRET_ACCESS_KEY', undefined);
-		vi.stubEnv('AWS_SESSION_TOKEN', undefined);
-		vi.stubEnv('AWS_PROFILE', undefined);
-		vi.stubEnv('AWS_CONFIG_FILE', join(home, 'no-aws-config'));
-		vi.stubEnv('AWS_SHARED_CREDENTIALS_FILE', join(home, 'no-aws-credentials'));
-		vi.stubEnv('AWS_EC2_METADATA_DISABLED', 'true');
-		try {
-			const run = provision('preview');
+describe(
+	'with no credentials to provision with',
+	{ timeout: EMULATOR_TIMEOUT },
+	() => {
+		it('stops the deploy by name, saying what it needs here and in CI', async () => {
+			vi.stubEnv('AWS_ACCESS_KEY_ID', undefined);
+			vi.stubEnv('AWS_SECRET_ACCESS_KEY', undefined);
+			vi.stubEnv('AWS_SESSION_TOKEN', undefined);
+			vi.stubEnv('AWS_PROFILE', undefined);
+			vi.stubEnv('AWS_CONFIG_FILE', join(home, 'no-aws-config'));
+			vi.stubEnv(
+				'AWS_SHARED_CREDENTIALS_FILE',
+				join(home, 'no-aws-credentials'),
+			);
+			vi.stubEnv('AWS_EC2_METADATA_DISABLED', 'true');
+			try {
+				const run = provision('preview');
 
-			await expect(run).rejects.toBeInstanceOf(ProviderCredentialsMissing);
-			const error = (await run.catch((e) => e)) as ProviderCredentialsMissing;
-			expect(error).toMatchObject({
-				stage: 'preview',
-				kind: 'objects',
-				provider: 's3',
-				ids: ['Uploads'],
-			});
-			expect(error.message).toContain('AWS_PROFILE');
-			expect(error.message).toContain('AWS_ROLE_ARN');
-			expect(error.message).not.toContain('gkm setup');
-			expect(await secretsOf('preview')).toEqual({});
-		} finally {
-			vi.stubEnv('AWS_ACCESS_KEY_ID', 'test');
-			vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'test');
-		}
-	});
-});
+				await expect(run).rejects.toBeInstanceOf(ProviderCredentialsMissing);
+				const error = (await run.catch((e) => e)) as ProviderCredentialsMissing;
+				expect(error).toMatchObject({
+					stage: 'preview',
+					kind: 'objects',
+					provider: 's3',
+					ids: ['Uploads'],
+				});
+				expect(error.message).toContain('AWS_PROFILE');
+				expect(error.message).toContain('AWS_ROLE_ARN');
+				expect(error.message).not.toContain('gkm setup');
+				expect(await secretsOf('preview')).toEqual({});
+			} finally {
+				vi.stubEnv('AWS_ACCESS_KEY_ID', 'test');
+				vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'test');
+			}
+		});
+	},
+);
 
 describe('the deploy creates them', () => {
 	/** The stage's own keys, set by hand: its mail and its server. */

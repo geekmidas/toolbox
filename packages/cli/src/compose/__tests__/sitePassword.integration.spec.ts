@@ -199,7 +199,7 @@ describe(
 		}, SETUP_TIMEOUT);
 
 		afterAll(async () => {
-			await docker('rm', '-f', container).catch(() => {});
+			await docker('rm', '-f', '-v', container).catch(() => {});
 		});
 
 		itAsksForTheLogin(() => port);
@@ -278,7 +278,7 @@ describe(
 		}, SETUP_TIMEOUT);
 
 		afterAll(async () => {
-			await docker('rm', '-f', edge, site).catch(() => {});
+			await docker('rm', '-f', '-v', edge, site).catch(() => {});
 			await docker('network', 'rm', network).catch(() => {});
 		});
 

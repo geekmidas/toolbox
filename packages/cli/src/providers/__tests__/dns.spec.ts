@@ -3,6 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import {
 	loadComposeApp,
+	WARM_TIMEOUT,
+	warmComposeApp,
 	writeComposeApp,
 } from '../../compose/__tests__/__helpers__/composeApp';
 import { deploysWithCompose } from '../dns';
@@ -18,7 +20,8 @@ beforeAll(async () => {
 		domain: 'shop.example.com',
 		dns: { 'example.com': { provider: 'godaddy' } },
 	});
-});
+	await warmComposeApp();
+}, WARM_TIMEOUT);
 
 afterAll(async () => {
 	await cleanupDir(dir);

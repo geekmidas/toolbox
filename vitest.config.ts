@@ -5,6 +5,15 @@ export default defineConfig({
 		globals: true,
 		environment: 'jsdom',
 		testTimeout: 10000,
+		// Half the cores, not Vitest's default of all but one. Vitest sizes its
+		// pool for tests that run in the worker, and the cli suites mostly don't:
+		// each worker starts servers, tsx and esbuild processes and Docker
+		// commands of its own, so all-but-one workers already put several
+		// processes on every core. On a machine running more than one suite at
+		// once that went past what timeouts tolerate — tests timing out and
+		// workers missing Vitest's 90s start deadline. Nor is it slower: a full
+		// cli run took 81s with half of 28 cores, against 92s with 27 workers.
+		maxWorkers: '50%',
 		projects: ['packages/*'],
 		coverage: {
 			provider: 'v8',
