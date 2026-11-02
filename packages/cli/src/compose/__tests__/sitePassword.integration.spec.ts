@@ -9,7 +9,7 @@
 
 import { execFile } from 'node:child_process';
 import { randomBytes, randomInt } from 'node:crypto';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { request } from 'node:https';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -19,7 +19,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { DEFAULT_IMAGES } from '../../reconcile/containers';
-import { edgeCaddyfile } from '../caddyfile';
+import {
+	ensureLocalAuthority,
+	issueLocalCertificate,
+	localAuthorityPaths,
+} from '../../trust/authority';
+import { CADDY_TLS_DIR, edgeCaddyfile } from '../caddyfile';
 import type { EdgeRoute } from '../routes';
 import { siteAuth } from '../sitePassword';
 import { TRAEFIK_IMAGE, traefikDynamic } from '../traefik';
@@ -61,7 +66,7 @@ function get(
 							}
 						: {}),
 				},
-				// Caddy's internal CA and Traefik's default certificate.
+				// gkm's local certificate and Traefik's default one.
 				rejectUnauthorized: false,
 				timeout: 5_000,
 			},
@@ -151,7 +156,13 @@ describe(
 				streaming: true,
 				auth: { user: auth.user, hash: auth.hash },
 			};
-			const caddyfile = `${edgeCaddyfile([route], { tls: { kind: 'internal' } })}
+			const caddyfile = `${edgeCaddyfile([route], {
+				tls: {
+					kind: 'files',
+					certFile: `${CADDY_TLS_DIR}/cert.pem`,
+					keyFile: `${CADDY_TLS_DIR}/key.pem`,
+				},
+			})}
 :8080 {
 	respond "${SITE}"
 }
@@ -160,6 +171,15 @@ describe(
 			try {
 				const file = join(dir, 'Caddyfile');
 				writeFileSync(file, caddyfile);
+				// The local stage's certificate: issued by gkm's local CA.
+				const tls = join(dir, 'tls');
+				mkdirSync(tls);
+				const { cert, key } = issueLocalCertificate(
+					await ensureLocalAuthority(localAuthorityPaths(join(dir, 'home'))),
+					[HOST],
+				);
+				writeFileSync(join(tls, 'cert.pem'), cert);
+				writeFileSync(join(tls, 'key.pem'), key, { mode: 0o644 });
 				await docker(
 					'create',
 					'--name',
@@ -169,6 +189,7 @@ describe(
 					DEFAULT_IMAGES.caddy!,
 				);
 				await docker('cp', file, `${container}:/etc/caddy/Caddyfile`);
+				await docker('cp', tls, `${container}:${CADDY_TLS_DIR}`);
 			} finally {
 				await cleanupDir(dir);
 			}

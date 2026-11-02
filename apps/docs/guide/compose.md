@@ -507,7 +507,7 @@ auth.env
 openobserve.env      with self-hosted telemetry: its root login, mode 0600
 redis.env            with a cache: the Redis password, mode 0600
 Dockerfile.api       when building
-caddy-root.crt       the local stage's CA root
+local-edge.pem       the local stage's edge certificate and key, from gkm's local CA, mode 0600
 ```
 
 The compose project is named after the workspace's deploy identity and the
@@ -553,7 +553,7 @@ Each app answers on its own host:
 
 | Stage | Hosts | Certificates |
 | --- | --- | --- |
-| local | `api.<project>.localhost`, `<project>.localhost` for the root site | Caddy's internal CA |
+| local | `api.<project>.localhost`, `<project>.localhost` for the root site | gkm's local CA, as `gkm dev`'s edge |
 | deployed | the stage's domains, from `domains` — `api.example.com`, `example.com` | Let's Encrypt, automatically |
 
 The hosts are the ones `gkm deploy` uses: an app's `subdomain` (or its name)
@@ -581,8 +581,42 @@ GKM_COMPOSE_HTTPS_PORT=8443 GKM_COMPOSE_HTTP_PORT=8080 gkm compose --stage devel
 
 For the local stage the URLs then carry the port
 (`https://api.shop.localhost:8443`), and the env files and site builds use them.
-The local CA's root is copied to `.gkm/compose/<stage>/caddy-root.crt`; point
-`NODE_EXTRA_CA_CERTS` at it, or trust it in a browser.
+
+### The local stage's certificate
+
+The local stage's Caddy serves a certificate from **gkm's local certificate
+authority** — the same per-machine root `gkm dev`'s edge uses, in `~/.gkm/ca/`
+(or `$GKM_HOME/ca/`). It is issued for `<project>.localhost`,
+`*.<project>.localhost` and any other host the stack routes, handed to Caddy
+the way a deployed stage's `deploy.compose.tls` files are, and kept in
+`.gkm/compose/<stage>/local-edge.pem` so an unchanged stack keeps its Caddy.
+`gkm trust` puts the root in the system store for a browser; for anything
+else, point `NODE_EXTRA_CA_CERTS` at `~/.gkm/ca/root.pem`. The root's key never
+leaves `~/.gkm/ca/`.
+
+### Calling the stage's own hosts from inside the stack
+
+A site's server-side code calls the API at the public address it was built
+with — `https://api.<project>.localhost` — because a browser is handed the
+same one. Inside a container `*.localhost` is the container's own loopback, so
+on the local stage every app, worker and processor container is given:
+
+```yaml
+api:
+  extra_hosts:
+    - api.shop.localhost:host-gateway     # each of the stage's public hosts
+    - shop.localhost:host-gateway
+  volumes:
+    - ~/.gkm/ca/root.pem:/etc/gkm/local-ca.pem:ro   # the root's certificate only
+  environment:
+    NODE_EXTRA_CA_CERTS: /etc/gkm/local-ca.pem
+```
+
+Each host resolves to the machine, where the edge publishes its port — so an
+address carrying a moved port (`:8443`) works too — and the certificate there
+verifies against gkm's root. A wildcard site's tenants have no one name to
+list. A deployed stage needs none of this: its hosts resolve to the server and
+its certificates are publicly trusted.
 
 ### The local inbox
 
@@ -849,9 +883,9 @@ Two stacks with their own Caddy cannot share a server: both want 80 and 443.
 With `'traefik'`, one edge owns those ports, the ACME state and the redirect to
 HTTPS, and each stack adds its hosts to it.
 
-**The local stage always uses Caddy**, whatever is configured: its internal CA
-is the one `gkm trust` installs. A site's image keeps Caddy inside it as its
-file server either way.
+**The local stage always uses Caddy**, whatever is configured, serving the
+certificate gkm's local CA issues — the root `gkm trust` installs. A site's
+image keeps Caddy inside it as its file server either way.
 
 Both proxies serve the same routes. A stack's routes are worked out once — each
 host, the service and port behind it, whether it streams, its allowlist and its
@@ -1015,8 +1049,8 @@ first request after the switch to wait for one.
 
 `verify` goes through the edge by hostname, so it proves what `up --wait`
 cannot: that Caddy routes each host and presents a certificate a client
-accepts. On the local stage it trusts the copied `caddy-root.crt` and connects
-to 127.0.0.1. Each app is asked for up to three minutes; one that never answers
+accepts. On the local stage it trusts gkm's local root (`~/.gkm/ca/root.pem`)
+and connects to 127.0.0.1. Each app is asked for up to three minutes; one that never answers
 fails the deploy with `ComposeAppsUnhealthy`, naming it and what it answered.
 The target has no rollback: the previous images are still tagged, so deploying
 the previous tag again is the way back.

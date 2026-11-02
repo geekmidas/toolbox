@@ -31,14 +31,14 @@ export class ComposeStageUnknown extends GkmError {
 }
 
 /**
- * A certificate for the local stage, whose certificates are always Caddy's
- * own CA — the one `gkm trust` installs.
+ * A certificate for the local stage, whose certificate is always issued by
+ * gkm's local CA — the one `gkm trust` installs.
  */
 export class ComposeTlsOnLocalStage extends GkmError {
 	constructor(readonly stage: string) {
 		super(
 			`deploy.compose.tls sets a certificate for '${stage}', the local stage, ` +
-				"whose certificates always come from Caddy's local CA (`gkm trust` " +
+				"whose certificate always comes from gkm's local CA (`gkm trust` " +
 				'installs it). Remove it, or set it for a deployed stage.',
 		);
 		this.name = 'ComposeTlsOnLocalStage';
@@ -75,7 +75,7 @@ export class ComposeTlsFileMissing extends GkmError {
 
 /**
  * The proxy a stage's stack is served by. The local stage is always Caddy —
- * its internal CA and `gkm trust` — whatever is configured.
+ * serving gkm's local certificate — whatever is configured.
  */
 export function proxyFor(
 	config: ComposeWorkspaceConfig | undefined,

@@ -1,3 +1,4 @@
+import { X509Certificate } from 'node:crypto';
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -74,10 +75,10 @@ const {
 	ensureTrusted,
 	exportLocalAuthority,
 	isTrusted,
-	NoLocalAuthority,
 	trustCommand,
 	UnsupportedPlatform,
 } = await import('../index');
+const { localAuthorityPaths } = await import('../authority');
 
 const DEBIAN = '/usr/local/share/ca-certificates';
 
@@ -91,7 +92,8 @@ describe('gkm trust', () => {
 	const on = (value: NodeJS.Platform) =>
 		Object.defineProperty(process, 'platform', { value });
 	const output = () => log.mock.calls.flat().join('\n');
-	const certificate = () => join(dir, '.gkm', 'caddy-root.crt');
+	const authority = () => localAuthorityPaths(join(dir, 'home'));
+	const certificate = () => authority().certFile;
 
 	beforeEach(async () => {
 		dir = realpathSync(await createTempDir('gkm-trust-'));
@@ -107,7 +109,6 @@ describe('gkm trust', () => {
 `,
 		);
 		mkdirSync(join(dir, '.gkm'), { recursive: true });
-		writeFileSync(certificate(), '-----BEGIN CERTIFICATE-----\n');
 		boundary.calls.length = 0;
 		boundary.trusted = false;
 		boundary.answer = false;
@@ -131,7 +132,7 @@ describe('gkm trust', () => {
 		it('trusts the root in the login keychain on macOS, without sudo', async () => {
 			on('darwin');
 
-			await trustCommand();
+			await trustCommand({ authority: authority() });
 
 			// No sudo: sudo plus macOS's own trust-settings authorization asked
 			// for the password twice. One prompt, from macOS.
@@ -157,7 +158,7 @@ describe('gkm trust', () => {
 			on('linux');
 			boundary.present.add(DEBIAN);
 
-			await trustCommand();
+			await trustCommand({ authority: authority() });
 
 			expect(boundary.calls).toEqual([
 				['sudo', ['cp', certificate(), `${DEBIAN}/gkm-local-ca.crt`]],
@@ -169,7 +170,7 @@ describe('gkm trust', () => {
 			on('linux');
 			boundary.missing.add(DEBIAN);
 
-			await trustCommand();
+			await trustCommand({ authority: authority() });
 
 			expect(boundary.calls).toEqual([
 				[
@@ -188,7 +189,7 @@ describe('gkm trust', () => {
 		it('prints the commands instead of running them on --dry-run', async () => {
 			on('darwin');
 
-			await trustCommand({ dryRun: true });
+			await trustCommand({ dryRun: true, authority: authority() });
 
 			expect(boundary.calls).toEqual([]);
 			expect(output()).toContain('security add-trusted-cert -r trustRoot');
@@ -198,13 +199,24 @@ describe('gkm trust', () => {
 		it('refuses a platform it has no trust store for', async () => {
 			on('win32');
 
-			await expect(trustCommand()).rejects.toBeInstanceOf(UnsupportedPlatform);
+			await expect(
+				trustCommand({ authority: authority() }),
+			).rejects.toBeInstanceOf(UnsupportedPlatform);
 		});
 
-		it('refuses when the edge has not generated an authority yet', async () => {
-			boundary.missing.add(certificate());
+		it('makes gkm’s authority the first time — before any edge has run — and trusts that one after', async () => {
+			on('darwin');
 
-			await expect(trustCommand()).rejects.toBeInstanceOf(NoLocalAuthority);
+			await trustCommand({ authority: authority() });
+			const root = readFileSync(certificate(), 'utf-8');
+			expect(new X509Certificate(root).ca).toBe(true);
+
+			await trustCommand({ authority: authority() });
+			expect(readFileSync(certificate(), 'utf-8')).toBe(root);
+			// The root is what is installed, never its key.
+			expect(
+				boundary.calls.every(([, args]) => !args.includes(authority().keyFile)),
+			).toBe(true);
 		});
 	});
 
@@ -290,20 +302,14 @@ describe('gkm trust', () => {
 	});
 
 	describe('exportLocalAuthority', () => {
-		it('copies the root where a tool can read it', async () => {
+		it('copies the root — and only the root — where a tool can read it', async () => {
 			const to = join(dir, 'ca.pem');
 
-			await exportLocalAuthority(to);
+			await exportLocalAuthority(to, authority());
 
-			expect(readFileSync(to, 'utf-8')).toBe('-----BEGIN CERTIFICATE-----\n');
-		});
-
-		it('refuses when there is nothing to export', async () => {
-			boundary.missing.add(certificate());
-
-			await expect(exportLocalAuthority(join(dir, 'ca.pem'))).rejects.toThrow(
-				NoLocalAuthority,
-			);
+			const exported = readFileSync(to, 'utf-8');
+			expect(exported).toBe(readFileSync(certificate(), 'utf-8'));
+			expect(exported).not.toContain('PRIVATE KEY');
 		});
 	});
 });

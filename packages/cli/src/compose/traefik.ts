@@ -208,8 +208,8 @@ export function edgeCompose(options: {
 /** What a stack registers with the edge — its routes, and its certificate. */
 export interface TraefikStackOptions {
 	project: string;
-	/** ACME, or the stage's own certificate. Never the local CA: that is Caddy's. */
-	tls: Exclude<EdgeTls, { kind: 'internal' }>;
+	/** ACME, or the stage's own certificate. */
+	tls: EdgeTls;
 }
 
 /** A stack's dynamic configuration, as an object. */

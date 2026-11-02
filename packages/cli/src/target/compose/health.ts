@@ -17,8 +17,8 @@ export interface HealthRequest {
 	/** The app's public URL plus its health path. */
 	url: string;
 	/**
-	 * The certificate authority to verify against, PEM — Caddy's internal CA
-	 * on the local stage. The system's when absent.
+	 * The certificate authority to verify against, PEM — gkm's local CA on
+	 * the local stage. The system's when absent.
 	 */
 	ca?: string;
 	/**

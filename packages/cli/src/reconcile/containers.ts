@@ -46,7 +46,7 @@ export const DEFAULT_IMAGES: Readonly<Record<string, string>> = {
 	// Pinned: 2.2.0 answers a KMS decrypt under the wrong encryption context
 	// with UnknownError instead of InvalidCiphertextException.
 	localstack: 'floci/floci:2.1.0',
-	// The local edge: TLS with its own CA, and host-based routing onto the
+	// The local edge: TLS with gkm's local CA, and host-based routing onto the
 	// bucket behind it. Not a CDN — what is missing locally is the *mapping*
 	// and the certificate, not caching, and a caching proxy would add an
 	// invalidation story no local stack needs.

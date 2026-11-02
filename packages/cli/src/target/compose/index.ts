@@ -93,7 +93,7 @@ export function composeTarget(
 			migrations: 'target',
 			images: true,
 			// The local stage runs where the deploy does — the `gkm dev`
-			// hostnames, behind Caddy's own CA.
+			// hostnames, behind gkm's local CA.
 			localStage: true,
 			// OpenObserve, in the stack, on loopback.
 			selfHostedTelemetry: true,

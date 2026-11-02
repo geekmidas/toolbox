@@ -112,7 +112,7 @@ program
 program
 	.command('trust')
 	.description(
-		"Trust the local edge's certificate authority, so a browser accepts https",
+		"Trust gkm's local certificate authority, so a browser accepts local https",
 	)
 	.option('--dry-run', 'Print the commands instead of running them')
 	.action(async (options: { dryRun?: boolean }) => {

@@ -11,8 +11,6 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
 import { GkmError } from '../errors';
 import { type RunOptions, run, runOutput } from '../run';
 
@@ -130,13 +128,6 @@ export interface ComposeDocker {
 	 * `starting`, `unhealthy` — or undefined when it is not running.
 	 */
 	health(stack: StackRef, service: string): Promise<string | undefined>;
-	/** Copy a file out of a running service. */
-	copyOut(
-		stack: StackRef,
-		service: string,
-		from: string,
-		to: string,
-	): Promise<void>;
 	/**
 	 * Push an image built here to its registry, and return the digest the
 	 * registry stored it under (`sha256:…`).
@@ -458,15 +449,6 @@ export const dockerCompose: ComposeDocker = {
 		);
 		if (code !== 0) return undefined;
 		return stdout.trim().split('\n')[0] || undefined;
-	},
-
-	async copyOut(stack, service, from, to) {
-		await mkdir(dirname(to), { recursive: true });
-		await run(
-			'docker',
-			compose(stack, ['cp', `${service}:${from}`, to]),
-			runOptions(stack),
-		);
 	},
 
 	async push(stack, ref) {

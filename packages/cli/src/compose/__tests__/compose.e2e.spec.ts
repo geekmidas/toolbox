@@ -67,6 +67,7 @@ import { loadWorkspaceSettings } from '../../config';
 import { FileSecretsStore } from '../../secrets/file';
 import { keystoreProject } from '../../secrets/keystore';
 import { initStageSecrets } from '../../secrets/storage';
+import { localAuthorityPaths } from '../../trust/authority';
 import { writeComposeApp } from './__helpers__/composeApp';
 import { type SshServer, startSshServer } from './__helpers__/sshServer';
 
@@ -396,7 +397,7 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 
 			/**
 			 * A request to the edge, as a browser makes one: to the app's hostname,
-			 * verified against Caddy's local CA. The hostname is sent as SNI and Host
+			 * verified against gkm's local CA. The hostname is sent as SNI and Host
 			 * and the connection made to loopback, so nothing depends on how this
 			 * machine resolves `*.localhost`.
 			 */
@@ -535,10 +536,9 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 					}),
 				});
 
-				ca = readFileSync(
-					join(dir, '.gkm', 'compose', 'development', 'caddy-root.crt'),
-					'utf-8',
-				);
+				// gkm's root, which issued the edge's certificate: the child ran
+				// with this suite's GKM_HOME.
+				ca = readFileSync(localAuthorityPaths().certFile, 'utf-8');
 			}, BUILD_TIMEOUT);
 
 			afterAll(async () => {
@@ -826,6 +826,16 @@ function endToEnd(entry: (typeof ENTRY_POINTS)[number]): void {
 				expect(JSON.parse(internal.trim().split('\n').pop()!)).toEqual({
 					clientIp: '198.51.100.66',
 				});
+			});
+
+			it("reaches the stage's own public host from inside a container, as a site's server-side code does (#351)", async () => {
+				// `*.localhost` is the container's own loopback: the host is
+				// resolved to the edge, and the certificate there verified
+				// against gkm's root, mounted read-only.
+				const said = await fromApi(
+					`fetch(${JSON.stringify(`${origin('auth')}/health`)}).then((r) => console.log(r.status), (e) => { console.log(String(e.cause ?? e)); process.exit(1); })`,
+				);
+				expect(said.trim().split('\n').pop()).toBe('200');
 			});
 
 			/** `docker compose <args>` against this stack. */

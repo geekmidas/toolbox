@@ -18,7 +18,18 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { type ConstructManifest, provisionOrder } from '@geekmidas/manifest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { caddyfileRoot, sitesFor, toCaddyfile } from '../caddyfile';
+import {
+	ensureLocalAuthority,
+	ensureLocalCertificate,
+	localAuthorityPaths,
+	localCertificateNames,
+} from '../../trust/authority';
+import {
+	CADDY_SITES_IN_CONTAINER,
+	caddyfileRoot,
+	sitesFor,
+	toCaddyfile,
+} from '../caddyfile';
 import { DEFAULT_IMAGES } from '../containers';
 import { planFor } from '../plan';
 
@@ -68,6 +79,7 @@ describe.skipIf(!e2e)('a wildcard site behind the dev edge', () => {
 	let api: Server;
 	let app: Server;
 	let edge: number;
+	let ca: string;
 
 	/** GET `/` on `host` through the edge: its status and body. */
 	function get(host: string): Promise<{ status: number; body: string }> {
@@ -79,8 +91,9 @@ describe.skipIf(!e2e)('a wildcard site behind the dev edge', () => {
 					servername: host,
 					headers: { host },
 					path: '/',
-					// Caddy's own CA, which this process has no reason to trust.
-					rejectUnauthorized: false,
+					// gkm's root, which issued the edge's certificate: verified, not
+					// waved through.
+					ca,
 				},
 				(res) => {
 					let body = '';
@@ -125,7 +138,28 @@ describe.skipIf(!e2e)('a wildcard site behind the dev edge', () => {
 		dir = await mkdtemp(join(tmpdir(), 'gkm-wildcard-'));
 		await writeFile(join(dir, 'Caddyfile'), caddyfileRoot());
 		await run('mkdir', ['-p', join(dir, 'sites')]);
-		await writeFile(join(dir, 'sites', 'dev.caddy'), toCaddyfile(sites));
+		await writeFile(
+			join(dir, 'sites', 'dev.caddy'),
+			toCaddyfile(sites, {
+				certificate: `${CADDY_SITES_IN_CONTAINER}/dev.pem`,
+			}),
+		);
+		// The certificate reconcile issues: gkm's root, made in this run's
+		// directory, and one PEM — certificate and key — beside the routes.
+		const authority = await ensureLocalAuthority(
+			localAuthorityPaths(join(dir, 'home')),
+		);
+		ca = authority.cert;
+		await ensureLocalCertificate(
+			authority,
+			localCertificateNames(
+				'shop',
+				sites.map((site) => site.host),
+			),
+			join(dir, 'sites', 'dev.pem'),
+		);
+		// Caddy runs as root; the key is owner-only on this machine.
+		await run('chmod', ['644', join(dir, 'sites', 'dev.pem')]);
 
 		await run('docker', [
 			'run',

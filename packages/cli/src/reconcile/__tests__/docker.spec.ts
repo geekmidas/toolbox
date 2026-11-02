@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -69,14 +69,6 @@ describe('dockerCli', { timeout: 180_000 }, () => {
 		await expect(
 			dockerCli.healthy(composePath, ['probe', 'ghost']),
 		).resolves.toBe(false);
-	});
-
-	it('copies a file out of a running container', async () => {
-		const to = join(dir, 'out', 'marker');
-
-		await dockerCli.copyOut(composePath, 'probe', '/tmp/marker', to);
-
-		expect(readFileSync(to, 'utf-8')).toBe('probe\n');
 	});
 
 	it('fails to reload a container that runs no Caddy', async () => {

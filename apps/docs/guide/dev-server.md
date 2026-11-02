@@ -263,10 +263,24 @@ forwarding to the ports the worktree's apps had.
 The site the base domain points at when deployed answers on the project's bare
 host locally — `https://shop.localhost` — by the same rule: the only site, else
 the site named `web`, else the one declaring `root: true`. Every other app is a
-subdomain of it. A browser trusts these addresses once the edge's authority is
-trusted on the machine: `gkm dev` asks once, or run `gkm trust`. On macOS that
-is your login keychain, and macOS asks for your password (or Touch ID) once;
-on Linux it is the system store, through `sudo`.
+subdomain of it.
+
+The edge's certificate comes from **gkm's local certificate authority**: one
+root per machine, made the first time anything needs it and kept in the CLI's
+home (`~/.gkm/ca/`, or `$GKM_HOME/ca/`) — outside every project, its key
+owner-only and never copied into a workspace or a container. Each stage's
+certificate is issued from it for `<project>.localhost` and
+`*.<project>.localhost` (and any other host the edge routes), kept beside the
+stage's routes in `.gkm/caddy-sites/<stage>.pem`, and issued again when it
+nears its end or a new host is not on it. Every process gkm starts is pointed
+at the root with `NODE_EXTRA_CA_CERTS`, so code trusts these addresses with
+nothing installed.
+
+A browser trusts them once the root is trusted on the machine: `gkm dev` asks
+once, or run `gkm trust`. On macOS that is your login keychain, and macOS asks
+for your password (or Touch ID) once; on Linux it is the system store, through
+`sudo`. `gkm dev` and a local `gkm compose` stack serve certificates from the
+same root, so trusting it once covers both.
 
 ### 6. Start All Apps via Turbo
 

@@ -323,6 +323,13 @@ cache table on a server, SNS/SQS and Upstash on AWS). Delete `services` from
 `gkm.config.ts`, `docker.compose` from any app config, and `trustLocalCa`
 (trusting the local CA is per machine: `gkm trust`).
 
+The local certificate authority is gkm's own now, not Caddy's: one root per
+machine in `~/.gkm/ca/` (or `$GKM_HOME/ca/`), which `gkm dev`'s edge and a
+local `gkm compose` stack both serve certificates from. `.gkm/caddy-root.crt`
+and `.gkm/compose/<stage>/caddy-root.crt` are no longer written — delete them.
+Run `gkm trust` once to trust the new root; a browser that trusted Caddy's
+root does not trust gkm's until then.
+
 Compose is two files now: `docker-compose.constructs.yml` is generated and
 gitignored, and the project's own `docker-compose.yml` is merged over it. Move
 image pins and extra services there, and add

@@ -91,7 +91,6 @@ function fakeDocker() {
 		async healthy() {
 			return false;
 		},
-		async copyOut() {},
 		async reload() {},
 	};
 	return { docker, up };
