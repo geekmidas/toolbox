@@ -1020,7 +1020,7 @@ two never drift. Either way `Host` and `X-Forwarded-*` reach the app as the
 caller sent them, `x-gkm-client-ip` only from a service of the stack (Traefik
 removes it with a `<project>-strip-gkm-headers` headers middleware first in
 every router's chain, and a `<route>-stack` router matching
-`Header(\`x-gkm-edge-token\`, \`<token>\`)` — a longer rule, so ahead of
+``Header(`x-gkm-edge-token`, `<token>`)`` — a longer rule, so ahead of
 the route's own — sends the stack's own calls to the same service without
 it), a streamed response is never buffered, and the log UI's public mode
 answers only its `allow` list (Traefik's `ipAllowList`, matched on the
