@@ -404,9 +404,7 @@ describe('the compose target', { timeout: RUN_TIMEOUT }, () => {
 		// apps are released.
 		expect(fake.ops()).not.toContain('copyOut');
 		expect(
-			existsSync(
-				join(dir, '.gkm', 'compose', 'development', 'local-edge.pem'),
-			),
+			existsSync(join(dir, '.gkm', 'compose', 'development', 'local-edge.pem')),
 		).toBe(true);
 		const deployed = seen
 			.filter((e) => e.type === 'app.deployed')

@@ -107,6 +107,10 @@ describe('gkm’s local certificate authority', () => {
 			expect(await get(port, 'shop.localhost', authority.cert)).toBe(
 				'hello shop.localhost',
 			);
+			// The local stage's Mailpit UI answers on the same certificate.
+			expect(await get(port, 'mail.shop.localhost', authority.cert)).toBe(
+				'hello mail.shop.localhost',
+			);
 			// A name the certificate does not carry, and a root that did not
 			// sign it, both fail.
 			await expect(
@@ -131,6 +135,8 @@ describe('gkm’s local certificate authority', () => {
 				'*.shop.localhost',
 				'*.test.shop.localhost',
 				'files.test.shop.localhost',
+				// The local stage's Mailpit, on the edge.
+				'mail.shop.localhost',
 			]),
 		).toEqual(['shop.localhost', '*.shop.localhost', '*.test.shop.localhost']);
 		// Without a project, only the hosts: `*.localhost` is nobody's.

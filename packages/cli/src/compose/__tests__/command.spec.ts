@@ -781,6 +781,25 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 		expect(said.join('\n')).toMatch(
 			/ mail +https:\/\/mail\.compose-app\.localhost +\(inbox\)/,
 		);
+		// Its host is on the certificate gkm's local CA issued for the edge.
+		const compose = parse(
+			readFileSync(
+				join(dir, '.gkm', 'compose', 'development', 'docker-compose.yml'),
+				'utf-8',
+			),
+		);
+		const leaf = new X509Certificate(compose.configs['tls-cert'].content);
+		expect(
+			leaf.checkIssued(
+				new X509Certificate(
+					readFileSync(localAuthorityPaths().certFile, 'utf-8'),
+				),
+			),
+		).toBe(true);
+		expect(leaf.checkHost('mail.compose-app.localhost')).toBeDefined();
+		expect(compose.services.api.extra_hosts).toContain(
+			'mail.compose-app.localhost:host-gateway',
+		);
 	});
 
 	it('refuses a deployed stage with neither configured, naming every key, and writes nothing', async () => {
