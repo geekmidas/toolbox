@@ -1,5 +1,5 @@
-import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
 import {
 	createServer as createHttpServer,
 	type IncomingMessage,
@@ -11,7 +11,12 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cleanupDir, createTempDir } from '../../../__tests__/test-helpers';
 import { edgeFetch } from '../health';
-import { readSitemap, warmSite } from '../warmup';
+import {
+	NEXT_REVALIDATE_HEADER,
+	nextPreviewModeId,
+	readSitemap,
+	warmSite,
+} from '../warmup';
 
 /**
  * The warm-up against a real server standing in for the edge: it answers
@@ -180,8 +185,8 @@ describe('warming a site through the edge', () => {
 			const paths = edge.seen.map((line) => line.split(' ')[1]);
 			expect(paths.filter((p) => p === '/')).toHaveLength(1);
 			expect(paths).not.toContain('/cover.png');
-			expect(paths[0]).toBe('/');
-			expect(paths[1]).toBe('/sitemap.xml');
+			// The sitemap first: what it lists is what is then asked.
+			expect(paths[0]).toBe('/sitemap.xml');
 		} finally {
 			await edge.close();
 		}
@@ -204,12 +209,13 @@ describe('warming a site through the edge', () => {
 
 			expect(result).toEqual({
 				warmed: [`http://site.test:${edge.port}/`],
+				cached: [],
 				warnings: [],
 				leftOut: 0,
 			});
 			expect(edge.seen).toEqual([
-				`site.test:${edge.port} /`,
 				`site.test:${edge.port} /sitemap.xml`,
+				`site.test:${edge.port} /`,
 			]);
 			expect(authorizations).toEqual(['Basic dTpw', 'Basic dTpw']);
 		} finally {
@@ -257,6 +263,149 @@ describe('warming a site through the edge', () => {
 			expect(most).toBeGreaterThan(1);
 		} finally {
 			await edge.close();
+		}
+	});
+});
+
+describe('warming a Next site', () => {
+	/**
+	 * Next as the warm-up meets it after an offline build: every page is in
+	 * its cache, empty and fresh, and only a request carrying the build's
+	 * preview-mode id is rendered — from the APIs, which now hold two notes.
+	 */
+	const PREVIEW_MODE_ID = 'f00dfeedf00dfeedf00dfeedf00dfeed';
+
+	function next(port: () => number): Handler {
+		return (req, res) => {
+			const forced = req.headers[NEXT_REVALIDATE_HEADER] === PREVIEW_MODE_ID;
+			const origin = `http://site.test:${port()}`;
+			res.setHeader('x-nextjs-cache', forced ? 'REVALIDATED' : 'HIT');
+			if (req.url === '/sitemap.xml') {
+				return xml(
+					res,
+					urlset(
+						forced
+							? [`${origin}/`, `${origin}/notes/1`, `${origin}/notes/2`]
+							: [`${origin}/`],
+					),
+				);
+			}
+			res.writeHead(200, { 'content-type': 'text/html' });
+			res.end(forced ? '<p>note</p>' : '');
+		};
+	}
+
+	it('sends the revalidation header with every request, the sitemap first, so each page renders', async () => {
+		const headers: (string | string[] | undefined)[] = [];
+		const edge: Edge = await serve(false, (req, res) => {
+			headers.push(req.headers[NEXT_REVALIDATE_HEADER]);
+			next(() => edge.port)(req, res);
+		});
+
+		try {
+			const origin = `http://site.test:${edge.port}`;
+			const result = await warmSite({
+				url: origin,
+				fetch: edgeFetch,
+				edge: { connectTo: '127.0.0.1' },
+				headers: { [NEXT_REVALIDATE_HEADER]: PREVIEW_MODE_ID },
+			});
+
+			// The sitemap, rendered again, lists what the APIs hold.
+			expect(result.warmed.sort()).toEqual([
+				`${origin}/`,
+				`${origin}/notes/1`,
+				`${origin}/notes/2`,
+			]);
+			expect(result.cached).toEqual([]);
+			expect(edge.seen[0]).toBe(`site.test:${edge.port} /sitemap.xml`);
+			expect(headers).toHaveLength(4);
+			expect(headers.every((h) => h === PREVIEW_MODE_ID)).toBe(true);
+		} finally {
+			await edge.close();
+		}
+	});
+
+	it('counts apart each page Next answered from its cache, when asked without the header', async () => {
+		const edge: Edge = await serve(false, (req, res) =>
+			next(() => edge.port)(req, res),
+		);
+
+		try {
+			const origin = `http://site.test:${edge.port}`;
+			const result = await warmSite({
+				url: origin,
+				fetch: edgeFetch,
+				edge: { connectTo: '127.0.0.1' },
+			});
+
+			expect(result.warmed).toEqual([`${origin}/`]);
+			expect(result.cached).toEqual([`${origin}/sitemap.xml`, `${origin}/`]);
+		} finally {
+			await edge.close();
+		}
+	});
+});
+
+describe("reading a Next site's preview-mode id", () => {
+	/** `exec` as this machine's `node`, with the container's path as given. */
+	const local = (command: readonly string[]) => {
+		const [program, ...args] = command;
+		const result = spawnSync(program!, args, { encoding: 'utf-8' });
+		return Promise.resolve({
+			code: result.status,
+			stdout: result.stdout,
+			stderr: result.stderr,
+		});
+	};
+
+	it('prints the id alone from the manifest, and says why where there is none', async () => {
+		const dir = await createTempDir('gkm-preview-mode-');
+		try {
+			const manifest = join(dir, 'prerender-manifest.json');
+			writeFileSync(
+				manifest,
+				JSON.stringify({
+					version: 4,
+					preview: {
+						previewModeId: 'abc123',
+						previewModeSigningKey: 'signing',
+						previewModeEncryptionKey: 'encryption',
+					},
+				}),
+			);
+			const commands: (readonly string[])[] = [];
+			expect(
+				await nextPreviewModeId((command) => {
+					commands.push(command);
+					return local(command);
+				}, manifest),
+			).toEqual({ id: 'abc123' });
+			expect(commands[0]?.[0]).toBe('node');
+
+			const older = join(dir, 'older.json');
+			writeFileSync(older, JSON.stringify({ version: 3, routes: {} }));
+			expect(await nextPreviewModeId(local, older)).toEqual({
+				reason: expect.stringContaining('has no preview.previewModeId'),
+			});
+
+			expect(await nextPreviewModeId(local, join(dir, 'missing.json'))).toEqual(
+				{
+					reason: expect.stringMatching(/could not read .*missing\.json/),
+				},
+			);
+			expect(
+				await nextPreviewModeId(
+					async () => ({
+						code: null,
+						stdout: '',
+						stderr: 'web is not running',
+					}),
+					manifest,
+				),
+			).toEqual({ reason: 'web is not running' });
+		} finally {
+			await cleanupDir(dir);
 		}
 	});
 });

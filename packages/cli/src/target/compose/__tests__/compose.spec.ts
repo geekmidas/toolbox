@@ -14,6 +14,7 @@ import {
 } from '../../../compose/__tests__/__helpers__/composeApp';
 import {
 	answering,
+	type Call,
 	fakeDocker,
 	fakeServer,
 } from '../../../compose/__tests__/__helpers__/fakeDocker';
@@ -852,8 +853,14 @@ describe('warming a server-rendered site', { timeout: RUN_TIMEOUT }, () => {
 	/** The run's events, and each page the warm-up asked the edge for. */
 	async function deployWith(
 		fetch: ComposeDeps['fetch'],
-	): Promise<{ seen: DeployEvent[]; result: unknown; ops: string[] }> {
-		const fake = fakeDocker();
+		docker: Parameters<typeof fakeDocker>[0] = {},
+	): Promise<{
+		seen: DeployEvent[];
+		result: unknown;
+		ops: string[];
+		calls: Call[];
+	}> {
+		const fake = fakeDocker(docker);
 		const run = deploy({
 			cwd: dir,
 			stage: 'development',
@@ -873,7 +880,7 @@ describe('warming a server-rendered site', { timeout: RUN_TIMEOUT }, () => {
 		});
 		const seen = await events(run);
 		const result = await run.result.catch((error: unknown) => error);
-		return { seen, result, ops: fake.ops() };
+		return { seen, result, ops: fake.ops(), calls: fake.calls };
 	}
 
 	const logs = (seen: DeployEvent[], level: 'info' | 'warn') =>
@@ -919,6 +926,107 @@ describe('warming a server-rendered site', { timeout: RUN_TIMEOUT }, () => {
 				expect.stringContaining('web          warmed 2 page(s), 1 warning(s)'),
 				expect.stringContaining(
 					'https://compose-app.localhost/broken: HTTP 500',
+				),
+			]),
+		);
+	});
+
+	it('has a Next site render each page from the deployed APIs, with the id read from its running container', async () => {
+		writeComposeApp(dir, {
+			registry: 'registry.example.com/acme',
+			siteVariant: 'next',
+		});
+		const PREVIEW_MODE_ID = '5ec1e7c0ffee5ec1e7c0ffee5ec1e7c0';
+		const sent: (string | undefined)[] = [];
+		const { seen, result, calls } = await deployWith(
+			async ({ url, headers }) => {
+				const id = headers?.['x-prerender-revalidate'];
+				sent.push(id);
+				const forced = id === PREVIEW_MODE_ID;
+				const { pathname } = new URL(url);
+				return {
+					status: 200,
+					// `/old` is not a page Next caches: it never says HIT.
+					headers: {
+						'x-nextjs-cache':
+							pathname === '/old' ? undefined : forced ? 'REVALIDATED' : 'HIT',
+					},
+					body:
+						pathname === '/sitemap.xml'
+							? `<urlset><url><loc>https://compose-app.localhost/notes</loc></url><url><loc>https://compose-app.localhost/old</loc></url></urlset>`
+							: '',
+				};
+			},
+			{
+				exec: (_stack, service, command) =>
+					service === 'web' && command[0] === 'node'
+						? { code: 0, stdout: PREVIEW_MODE_ID, stderr: '' }
+						: undefined,
+			},
+		);
+
+		expect(result).toMatchObject({ stage: 'development', successCount: 4 });
+		// Read in the site's container, at the standalone layout's path.
+		const read = calls.find(
+			(call) =>
+				call.op === 'exec' &&
+				(call.args as { service: string }).service === 'web',
+		);
+		expect((read?.args as { command: string[] }).command).toEqual([
+			'node',
+			'-e',
+			expect.any(String),
+			'/app/apps/web/.next/prerender-manifest.json',
+		]);
+		expect(sent).toHaveLength(4);
+		expect(sent.every((id) => id === PREVIEW_MODE_ID)).toBe(true);
+		expect(logs(seen, 'info')).toEqual(
+			expect.arrayContaining([
+				expect.stringMatching(/✓ web +warmed 3 page\(s\)$/),
+			]),
+		);
+		// The id is the site's secret: it is sent, never said.
+		expect(JSON.stringify(seen)).not.toContain(PREVIEW_MODE_ID);
+	});
+
+	it('warns once and warms with plain requests where the id cannot be read, saying which pages came from the build cache', async () => {
+		writeComposeApp(dir, {
+			registry: 'registry.example.com/acme',
+			siteVariant: 'next',
+		});
+		const sent: (string | undefined)[] = [];
+		const { seen, result } = await deployWith(
+			async ({ url, headers }) => {
+				sent.push(headers?.['x-prerender-revalidate']);
+				const { pathname } = new URL(url);
+				return {
+					status: 200,
+					headers: { 'x-nextjs-cache': pathname === '/live' ? 'MISS' : 'HIT' },
+					body:
+						pathname === '/sitemap.xml'
+							? `<urlset><url><loc>https://compose-app.localhost/about</loc></url><url><loc>https://compose-app.localhost/live</loc></url></urlset>`
+							: '',
+				};
+			},
+			{
+				exec: (_stack, _service, command) =>
+					command[0] === 'node'
+						? { code: 3, stdout: '', stderr: '' }
+						: undefined,
+			},
+		);
+
+		expect(result).toMatchObject({ stage: 'development', successCount: 4 });
+		expect(sent.every((id) => id === undefined)).toBe(true);
+		const warned = logs(seen, 'warn').filter((line) =>
+			line.includes("can't force ISR pages to render"),
+		);
+		expect(warned).toHaveLength(1);
+		expect(warned[0]).toContain('has no preview.previewModeId');
+		expect(logs(seen, 'info')).toEqual(
+			expect.arrayContaining([
+				expect.stringContaining(
+					'web          warmed 3 page(s), 3 served from the build cache: /sitemap.xml, /, /about',
 				),
 			]),
 		);

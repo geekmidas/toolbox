@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, parse } from 'node:path';
+import { dirname, join, parse, posix } from 'node:path';
 import { externalsManifestName } from '../build/native';
 import { BUILD_OFFLINE_ENV, IMAGE_BUILD_ENV } from '../exec/imageBuild';
 import {
@@ -778,6 +778,16 @@ ${siteHealthcheck(port)}
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "${appPath}/server.js"]
 `;
+}
+
+/**
+ * Where Next's prerender manifest is in the image {@link
+ * generateNextjsDockerfile} builds: the standalone output is copied to the
+ * runner's `/app`, and the app's `.next/` — its manifests among them — sits
+ * beside its `server.js`, at `appPath` under it.
+ */
+export function nextPrerenderManifest(appPath: string): string {
+	return posix.join('/app', appPath, '.next', 'prerender-manifest.json');
 }
 
 /**

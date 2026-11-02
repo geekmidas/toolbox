@@ -41,7 +41,7 @@ import {
 	writeFile,
 } from 'node:fs/promises';
 import { hostname, userInfo } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { stringify } from 'yaml';
 import { BACKUPS_SERVICE, backupsRoleStatements } from '../../backups/service';
@@ -130,8 +130,11 @@ import {
 } from '../../deploy/state.js';
 import type { DeployResult } from '../../deploy/types';
 import { ensureDockerignore } from '../../docker/index.js';
-import { imageLayout } from '../../docker/layout.js';
-import { findBuildRoot } from '../../docker/templates.js';
+import { fromBuildRoot, imageLayout } from '../../docker/layout.js';
+import {
+	findBuildRoot,
+	nextPrerenderManifest,
+} from '../../docker/templates.js';
 import { GkmError } from '../../errors';
 import { installedFrom } from '../../generators/drivers.js';
 import {
@@ -199,7 +202,12 @@ import {
 	type TopicPush,
 	topicPushes,
 } from './topicSubscriptions';
-import { WARMUP_MAX_URLS, warmSite } from './warmup';
+import {
+	NEXT_REVALIDATE_HEADER,
+	nextPreviewModeId,
+	WARMUP_MAX_URLS,
+	warmSite,
+} from './warmup';
 
 /** Every phase's context: the compose target takes no options. */
 export type ComposeContext = DeployPhaseContext<undefined>;
@@ -1725,11 +1733,13 @@ export async function verifyCompose(
 }
 
 /**
- * Each server-rendered site (`next`, `tanstack`) asked for its `/` and every
- * page its sitemap lists, through the edge as `checkApp` asks it — see
- * `warmup.ts`. Its image was built with no API reachable, so each page
- * renders on its first request: this is that request, made before any
- * visitor's.
+ * Each server-rendered site (`next`, `tanstack`) asked for its sitemap, its
+ * `/` and every page the sitemap lists, through the edge as `checkApp` asks
+ * it — see `warmup.ts`. Its image was built with no API reachable, so each
+ * page renders on its first request: this is that request, made before any
+ * visitor's. A Next site is asked with its on-demand revalidation header,
+ * so a page its build cached (empty) is rendered again from the deployed
+ * APIs rather than served from that cache.
  *
  * Only ever said, never failed on: every app is already healthy, and a page
  * that did not warm renders on the next request for it.
@@ -1760,9 +1770,12 @@ async function warmSites(
 			continue;
 		}
 		try {
-			const { warmed, warnings, leftOut } = await warmSite({
+			const headers =
+				app.variant === 'next' ? await forceRender(ctx, run, deps, app) : {};
+			const { warmed, cached, warnings, leftOut } = await warmSite({
 				url: app.url,
 				fetch: deps.fetch ?? edgeFetch,
+				headers,
 				edge: {
 					...(options.ca ? { ca: options.ca } : {}),
 					...(app.auth ? { authorization: basicAuthorization(app.auth) } : {}),
@@ -1771,14 +1784,23 @@ async function warmSites(
 				},
 			});
 			const said = `warmed ${warmed.length} page(s)${
-				warnings.length > 0 ? `, ${warnings.length} warning(s)` : ''
-			}`;
+				cached.length > 0
+					? `, ${cached.length} served from the build cache`
+					: ''
+			}${warnings.length > 0 ? `, ${warnings.length} warning(s)` : ''}`;
 			if (warnings.length === 0) {
-				ctx.logger.info(`   ✓ ${app.name.padEnd(12)} ${said}`);
+				ctx.logger.info(
+					`   ✓ ${app.name.padEnd(12)} ${said}${cached.length > 0 ? `: ${listed(cached)}` : ''}`,
+				);
 			} else {
 				ctx.logger.warn(`   ⚠ ${app.name.padEnd(12)} ${said}:`);
 				for (const { url, reason } of warnings) {
 					ctx.logger.warn(`       ${url}: ${reason}`);
+				}
+				if (cached.length > 0) {
+					ctx.logger.warn(
+						`       served from the build cache: ${listed(cached)}`,
+					);
 				}
 			}
 			if (leftOut > 0) {
@@ -1793,6 +1815,57 @@ async function warmSites(
 			);
 		}
 	}
+}
+
+/** The most pages a summary names; the rest are counted. */
+const LISTED_PAGES = 10;
+
+/** Pages by path, `/about`, the first {@link LISTED_PAGES} of them. */
+function listed(urls: readonly string[]): string {
+	const paths = urls.map((url) => {
+		const { pathname, search } = new URL(url);
+		return `${pathname}${search}`;
+	});
+	const shown = paths.slice(0, LISTED_PAGES).join(', ');
+	return paths.length > LISTED_PAGES
+		? `${shown} and ${paths.length - LISTED_PAGES} more`
+		: shown;
+}
+
+/**
+ * The header that has a Next site render each warmed page whatever its
+ * cache says: `x-prerender-revalidate` with the preview-mode id of the image
+ * running — read in its container, through the stack's Docker engine, at
+ * the path the generated Dockerfile puts the standalone output at. Where the
+ * id cannot be read, said once, and the site is warmed with plain requests.
+ */
+async function forceRender(
+	ctx: ComposeContext,
+	run: ComposeRun,
+	deps: ComposeDeps,
+	app: { name: string; path: string },
+): Promise<Record<string, string>> {
+	let reason: string;
+	try {
+		const root = ctx.workspace.root;
+		const gkmRoot = relative(findBuildRoot(root), root) || '.';
+		const manifest = nextPrerenderManifest(
+			fromBuildRoot({ gkmRoot }, app.path),
+		);
+		const lookup = await nextPreviewModeId(
+			(command) => deps.docker.exec(run.ref, app.name, command),
+			manifest,
+		);
+		if ('id' in lookup) return { [NEXT_REVALIDATE_HEADER]: lookup.id };
+		reason = lookup.reason;
+	} catch (error) {
+		if (ctx.signal.aborted) throw error;
+		reason = error instanceof Error ? error.message : String(error);
+	}
+	ctx.logger.warn(
+		`   ⚠ ${app.name.padEnd(12)} can't force ISR pages to render: ${reason}. Warming with plain requests; a page Next cached at build is served from that cache until its revalidate window ends.`,
+	);
+	return {};
 }
 
 /**

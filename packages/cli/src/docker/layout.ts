@@ -104,7 +104,10 @@ export function composeBuildPaths(options: {
 }
 
 /** A path under the gkm root, as the build root sees it. */
-export function fromBuildRoot(layout: ImageLayout, path: string): string {
+export function fromBuildRoot(
+	layout: Pick<ImageLayout, 'gkmRoot'>,
+	path: string,
+): string {
 	if (layout.gkmRoot === '.') return toPosix(path);
 	const joined = toPosix(join(layout.gkmRoot, path));
 	return joined === '' ? '.' : joined;

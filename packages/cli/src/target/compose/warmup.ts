@@ -3,16 +3,27 @@
  *
  * A site's image is built before the APIs it fetches from run, so its pages
  * render on their first request rather than at build (`GKM_BUILD_OFFLINE`).
- * The warm-up is that first request: the site's `/` and every page its
- * `/sitemap.xml` lists, asked through the edge the way a visitor's browser
- * asks, so a framework that caches a rendered page (Next's ISR) has it cached
- * from the deployed APIs before traffic arrives.
+ * The warm-up is that first request: the site's `/sitemap.xml`, then `/` and
+ * every page the sitemap lists, asked through the edge the way a visitor's
+ * browser asks, so a framework that caches a rendered page (Next's ISR) has
+ * it cached from the deployed APIs before traffic arrives.
  *
- * Plain HTTP, whatever the framework. A page that fails to warm is said and
- * never fails the deploy: every app is already healthy, and the page renders
- * on the next request that asks for it.
+ * Plain HTTP, whatever the framework — with one exception for Next. An ISR
+ * page Next prerendered at build (empty, offline) is cached as fresh for its
+ * whole `revalidate` window, so a plain request is answered from that cache
+ * and renders nothing. A Next site is therefore asked with Next's on-demand
+ * revalidation header, `x-prerender-revalidate: <previewModeId>`, the id
+ * read from the running image's prerender manifest: each page it caches is
+ * rendered again, from the deployed APIs, by the warm-up's own request.
+ * Where the id cannot be read, the site is warmed with plain requests, and
+ * every page Next answered from its cache (`x-nextjs-cache: HIT`) is counted
+ * apart, so nothing claims a page rendered when it did not.
+ *
+ * A page that fails to warm is said and never fails the deploy: every app is
+ * already healthy, and the page renders on the next request that asks for it.
  */
 
+import type { ExecResult } from '../../compose/docker';
 import {
 	type EdgeFetch,
 	type HealthRequest,
@@ -39,10 +50,28 @@ export interface WarmupWarning {
 	reason: string;
 }
 
+/**
+ * Next's on-demand revalidation header: a request carrying the build's
+ * preview-mode id is rendered afresh whatever the page's cache says.
+ */
+export const NEXT_REVALIDATE_HEADER = 'x-prerender-revalidate';
+
+/**
+ * What Next answered a request from: `HIT` and `STALE` are a cached copy —
+ * on a fresh deploy, the build's — and the request rendered nothing.
+ */
+const NEXT_CACHE_HEADER = 'x-nextjs-cache';
+const FROM_CACHE = new Set(['HIT', 'STALE']);
+
 /** What one site's warm-up did. */
 export interface WarmupResult {
 	/** Each page that answered, in the order asked. */
 	warmed: string[];
+	/**
+	 * Each page — or sitemap — that answered from the framework's cache
+	 * (`x-nextjs-cache: HIT`) rather than rendering, in the order asked.
+	 */
+	cached: string[];
 	/** Each page — or sitemap — that did not. */
 	warnings: WarmupWarning[];
 	/** Pages its sitemaps listed beyond {@link WARMUP_MAX_URLS}, not asked. */
@@ -58,16 +87,23 @@ export interface WarmupOptions {
 		HealthRequest,
 		'ca' | 'connectTo' | 'connectPort' | 'authorization' | 'signal'
 	>;
+	/**
+	 * Sent with every request: for a Next site, `x-prerender-revalidate` —
+	 * see {@link nextPreviewModeId}.
+	 */
+	headers?: Readonly<Record<string, string>>;
 	maxUrls?: number;
 	concurrency?: number;
 	timeoutMs?: number;
 }
 
 /**
- * Asks the site for `/`, then for every page its `/sitemap.xml` lists — a
- * sitemap index's sitemaps followed one level — up to `maxUrls` pages in
- * all, `concurrency` at a time. Only pages on the site's own origin are
- * asked: a sitemap may list another's, which this deploy did not start.
+ * Asks the site for its `/sitemap.xml` — a sitemap index's sitemaps followed
+ * one level — then for `/` and every page it lists, up to `maxUrls` pages in
+ * all, `concurrency` at a time. The sitemap comes first so that, rendered
+ * again with `headers`, it lists what the deployed APIs hold. Only pages on
+ * the site's own origin are asked: a sitemap may list another's, which this
+ * deploy did not start.
  */
 export async function warmSite(options: WarmupOptions): Promise<WarmupResult> {
 	const {
@@ -76,9 +112,15 @@ export async function warmSite(options: WarmupOptions): Promise<WarmupResult> {
 		maxUrls = WARMUP_MAX_URLS,
 		concurrency = WARMUP_CONCURRENCY,
 		timeoutMs = WARMUP_TIMEOUT_MS,
+		headers,
 	} = options;
 	const origin = new URL(options.url).origin;
-	const result: WarmupResult = { warmed: [], warnings: [], leftOut: 0 };
+	const result: WarmupResult = {
+		warmed: [],
+		cached: [],
+		warnings: [],
+		leftOut: 0,
+	};
 
 	/** One GET; a failure is a warning, and `undefined`. */
 	const get = async (
@@ -86,7 +128,18 @@ export async function warmSite(options: WarmupOptions): Promise<WarmupResult> {
 		read: boolean,
 	): Promise<{ status: number; body: string } | undefined> => {
 		try {
-			return await fetch({ url, ...edge, timeoutMs, read });
+			const response = await fetch({
+				url,
+				...edge,
+				...(headers ? { headers } : {}),
+				timeoutMs,
+				read,
+			});
+			const cache = response.headers?.[NEXT_CACHE_HEADER];
+			if (typeof cache === 'string' && FROM_CACHE.has(cache.toUpperCase())) {
+				result.cached.push(url);
+			}
+			return response;
 		} catch (error) {
 			if (edge.signal?.aborted) throw error;
 			result.warnings.push({
@@ -124,8 +177,6 @@ export async function warmSite(options: WarmupOptions): Promise<WarmupResult> {
 	};
 
 	const root = `${origin}/`;
-	await warm(root);
-
 	const pages = new Set<string>([root]);
 	const sameOrigin = (loc: string): string | undefined => {
 		if (!URL.canParse(loc, root)) return undefined;
@@ -154,12 +205,63 @@ export async function warmSite(options: WarmupOptions): Promise<WarmupResult> {
 		list(top.locs);
 	}
 
+	await warm(root);
 	const listed = [...pages].slice(1);
 	const room = Math.max(0, maxUrls - 1);
 	result.leftOut = Math.max(0, listed.length - room);
 	await pool(listed.slice(0, room), concurrency, warm);
 
 	return result;
+}
+
+/** A Next site's preview-mode id, or why it could not be read. */
+export type PreviewModeLookup = { id: string } | { reason: string };
+
+/**
+ * Prints the preview-mode id of the prerender manifest at `argv[1]`, and
+ * nothing else of it: the manifest's signing and encryption keys never leave
+ * the container. Exit 3 when the manifest has no id.
+ */
+const PRINT_PREVIEW_MODE_ID = [
+	'let m;',
+	"try { m = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')); }",
+	'catch (e) { process.stderr.write(String(e && e.message)); process.exit(2); }',
+	'const id = m && m.preview && m.preview.previewModeId;',
+	"if (typeof id !== 'string' || id === '') process.exit(3);",
+	'process.stdout.write(id);',
+].join(' ');
+
+/**
+ * The preview-mode id of a running Next site, from the prerender manifest
+ * of its image — `manifest`, a path inside the container — by running the
+ * image's own `node` in it through `exec` (`docker exec`, on whichever
+ * engine runs the stack). Never read from this machine's disk: the image
+ * that runs is the one whose id counts.
+ *
+ * The id is a secret of the site's: it is returned to the warm-up and
+ * nowhere else — never logged, never written.
+ */
+export async function nextPreviewModeId(
+	exec: (command: readonly string[]) => Promise<ExecResult>,
+	manifest: string,
+): Promise<PreviewModeLookup> {
+	const { code, stdout, stderr } = await exec([
+		'node',
+		'-e',
+		PRINT_PREVIEW_MODE_ID,
+		manifest,
+	]);
+	if (code === 0 && stdout) return { id: stdout };
+	if (code === 3 || code === 0) {
+		return {
+			reason: `${manifest} has no preview.previewModeId, which this version of Next may not write`,
+		};
+	}
+	const said = stderr.trim().split('\n')[0];
+	if (code === null) return { reason: said || 'its container is not running' };
+	return {
+		reason: `could not read ${manifest} in its container (${said || `exit ${code}`})`,
+	};
 }
 
 /** A sitemap's kind and the `<loc>` of each entry. */
