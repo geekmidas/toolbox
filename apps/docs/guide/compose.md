@@ -508,8 +508,9 @@ Two things make that explicit:
   stage behind it. (`GKM_IMAGE_BUILD=1`, beside it, is about something else:
   it tells `gkm exec` to inject the build args rather than a stage's secrets.)
 - **The site's own host and its edges' hosts are refused during the build.**
-  `gkm compose` maps each of them to `127.0.0.1` in the build's `/etc/hosts`
-  (compose's `build.extra_hosts`), where nothing listens, so a fetch to
+  Every image build gkm drives maps each of them to `127.0.0.1` in the
+  build's `/etc/hosts` (compose's `build.extra_hosts`, or `docker build
+  --add-host` where a deploy builds the image itself), where nothing listens, so a fetch to
   `https://api.example.com` fails at once with `ECONNREFUSED` rather than
   hanging until the framework's limit (`Failed to build /… after 60
   seconds`). The build args — the URLs the bundle inlines — are the real ones,

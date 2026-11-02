@@ -6,6 +6,7 @@ import {
 	publicEnvFor,
 	type SiteDeclaration,
 } from '@geekmidas/manifest';
+import { appKey } from '../workspace/derive.js';
 
 /**
  * What a site's image is built with — or a mobile app's EAS build: every
@@ -105,4 +106,30 @@ function hostOf(value: string | undefined): string | undefined {
 	// An address is reached as it is; only a name is looked up.
 	if (/^[\d.]+$/.test(hostname) || hostname.startsWith('[')) return undefined;
 	return hostname;
+}
+
+/**
+ * {@link offlineBuildHosts} for a target that knows each app's public URL by
+ * its app key rather than by construct key — the site's own, and each app it
+ * calls. None, for an app that declares no site.
+ */
+export function siteOfflineHosts(
+	manifest: ConstructManifest,
+	appName: string,
+	ownUrl: string,
+	urls: Readonly<Record<string, string>>,
+): string[] {
+	const entries = Object.entries(manifest);
+	const site = entries.find(
+		([id, d]) => d.kind === 'site' && appKey(id) === appName,
+	)?.[1];
+	if (site?.kind !== 'site') return [];
+
+	const byKey = new Map<string, string>();
+	for (const [id] of entries) {
+		const name = appKey(id);
+		const url = name === appName ? ownUrl : urls[name];
+		if (url) byKey.set(provideKey(id, 'url'), url);
+	}
+	return offlineBuildHosts(site, manifest, (key) => byKey.get(key));
 }

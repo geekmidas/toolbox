@@ -29,6 +29,7 @@ import {
 	type WorkerUnit,
 	workerUnits,
 } from '../../build/workers.js';
+import { siteOfflineHosts } from '../../compose/siteBuild.js';
 import { currentActor } from '../../deploy/actor.js';
 import {
 	type CredentialProvider,
@@ -1715,6 +1716,15 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 
 				logger.log(`      Building Docker image: ${imageRef}`);
 
+				// The site's own host and its edges', refused while it builds:
+				// the same rule, and the same hosts, as a compose stage's build.
+				const offlineHosts = siteOfflineHosts(
+					run.manifest,
+					appName,
+					`https://${frontendHost}`,
+					publicUrls,
+				);
+
 				const image = await deployDocker({
 					stage,
 					tag: imageTag,
@@ -1725,6 +1735,7 @@ export async function releaseDokploy(run: DokployRun): Promise<void> {
 						appName,
 					},
 					buildArgs,
+					offlineHosts,
 					// Pass arg names for Dockerfile ARG generation
 					publicUrlArgs: publicUrlArgNames,
 					...dockerRun(workspace, app, ctx),

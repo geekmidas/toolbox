@@ -7,9 +7,10 @@ A site's image build fails fast on its APIs, and a deploy warms its pages
 A site's image is built without its APIs, and now says so. Every site
 Dockerfile sets `GKM_BUILD_OFFLINE=1` in its builder stage (never in the
 running container): the signal a site's own code tests to skip build-time
-fetches and render data-backed pages on request instead. `gkm compose` also
-maps the site's own host and its `.dependsOn()` hosts to `127.0.0.1` in the
-build's `/etc/hosts`, so a fetch to an API that is not up yet is refused at
+fetches and render data-backed pages on request instead. Every image build
+gkm drives (`gkm compose`'s `build.extra_hosts`, a deploy's `docker build
+--add-host`) also maps the site's own host and its `.dependsOn()` hosts to
+`127.0.0.1` in the build's `/etc/hosts`, so a fetch to an API that is not up yet is refused at
 once instead of hanging until Next's 60-second prerender limit. The URLs the
 bundle inlines are unchanged.
 

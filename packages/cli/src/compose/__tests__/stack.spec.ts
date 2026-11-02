@@ -18,7 +18,7 @@ import { NoDomainForStage } from '../../target/dokploy/domain';
 import { localAuthorityPaths } from '../../trust/authority';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { REDIS_IMAGE, RedisPasswordMissing } from '../redis';
-import { offlineBuildHosts } from '../siteBuild';
+import { offlineBuildHosts, siteOfflineHosts } from '../siteBuild';
 import {
 	type ComposeStack,
 	composeStack,
@@ -535,6 +535,31 @@ describe('a static site', () => {
 		expect(offlineBuildHosts(site, manifest, (key) => values[key])).toEqual([
 			'api.example.com',
 		]);
+	});
+
+	it('refuses the same hosts on a target that knows URLs by app', () => {
+		const s = stack({
+			stage: 'production',
+			images: {
+				mode: 'build',
+				tag: 'v1',
+				registry: 'registry.example.com/acme',
+			},
+			secrets: production(),
+			ports: {},
+		});
+
+		// One rule: what `docker build --add-host` gets is what compose's
+		// `build.extra_hosts` gets.
+		expect(
+			siteOfflineHosts(manifest, 'web', 'https://shop.example.com', {
+				api: 'https://api.shop.example.com',
+				auth: 'https://auth.shop.example.com',
+			}).map((host) => `${host}:127.0.0.1`),
+		).toEqual(s.compose.services.web!.build!.extra_hosts);
+		expect(
+			siteOfflineHosts(manifest, 'api', 'https://x.example.com', {}),
+		).toEqual([]);
 	});
 
 	it('keeps its own address over a stage secret of the same name', () => {
