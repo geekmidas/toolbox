@@ -5,6 +5,7 @@ import {
 	readdirSync,
 	readFileSync,
 	realpathSync,
+	rmSync,
 	statSync,
 	writeFileSync,
 } from 'node:fs';
@@ -42,8 +43,10 @@ import type {
 import { edgeCaddyfile } from '../caddyfile';
 import { type ComposeDocker, portHolders, publishedPorts } from '../docker';
 import {
+	assertEdgeHostsFree,
 	assertEdgePorts,
 	ComposeProxyClash,
+	EdgeHostClaimed,
 	EdgeWriteFailed,
 	edgeRef,
 	ensureEdge,
@@ -61,13 +64,17 @@ import {
 import { type EdgeRoute, EdgeRouteConflict } from '../routes';
 import { type ComposeStack, composeStack, type StackInput } from '../stack';
 import {
+	claimsOverlap,
 	DEFAULT_EDGE_PROJECT,
 	EDGE_NETWORK,
 	EDGE_PROJECT,
+	edgeClaims,
 	edgeCompose,
 	edgeProject,
+	readEdgeClaims,
 	TRAEFIK_IMAGE,
 	traefikDynamic,
+	traefikDynamicFile,
 	traefikStatic,
 } from '../traefik';
 import {
@@ -739,6 +746,322 @@ describe('the edge', () => {
 	});
 });
 
+/** A wildcard site's route: every label under its domain but `www`, `staging`. */
+const WILDCARD: EdgeRoute = {
+	name: 'tenants',
+	host: '*.example.com',
+	upstreams: [{ service: 'tenants', port: 3003 }],
+	streaming: true,
+	wildcard: {
+		domain: 'example.com',
+		except: ['www', 'staging'],
+		tls: { kind: 'dns' },
+	},
+};
+
+describe('the hosts a stack claims on the edge', () => {
+	const file = (routes: EdgeRoute[], project = 'shop-production') =>
+		traefikDynamicFile(routes, { project, tls: { kind: 'acme' } });
+
+	it('carries them in a comment the edge ignores, read back as written', () => {
+		const written = file([...ROUTES, WILDCARD]);
+
+		// A comment: Traefik refuses a file over a key it does not know.
+		expect(written).toMatch(/^# gkm-claims: \[/m);
+		expect(Object.keys(parse(written))).toEqual(['http']);
+		expect(readEdgeClaims(written)).toEqual(edgeClaims([...ROUTES, WILDCARD]));
+		expect(readEdgeClaims(written)).toContainEqual({
+			wildcard: 'example.com',
+			except: ['www', 'staging'],
+		});
+	});
+
+	it("reads a file without the comment from its routers' rules", () => {
+		const old = file([...ROUTES, WILDCARD])
+			.split('\n')
+			.filter((line) => !line.startsWith('# gkm-claims:'))
+			.join('\n');
+
+		const claims = readEdgeClaims(old);
+
+		for (const { host } of ROUTES) expect(claims).toContainEqual({ host });
+		expect(claims).toContainEqual({
+			wildcard: 'example.com',
+			except: ['www', 'staging'],
+		});
+		// Never a host a rule leaves out.
+		expect(claims).not.toContainEqual({ host: 'www.example.com' });
+	});
+
+	it('reads every host of a rule that names several', () => {
+		const claims = readEdgeClaims(`http:
+  routers:
+    a:
+      rule: Host(\`a.example.org\`) || Host(\`B.example.org\`)
+      service: a
+`);
+
+		expect(claims).toEqual([
+			{ host: 'a.example.org' },
+			{ host: 'b.example.org' },
+		]);
+	});
+
+	it('claims nothing in a file that routes nothing', () => {
+		expect(readEdgeClaims('# Unregistered by gkm compose --down.\n')).toEqual(
+			[],
+		);
+		expect(readEdgeClaims('http: {}\n')).toEqual([]);
+		expect(readEdgeClaims('not: [yaml')).toEqual([]);
+	});
+
+	it('meets another claim on one host, or one label under a wildcard', () => {
+		const wildcard = { wildcard: 'example.com', except: ['staging'] };
+
+		expect(
+			claimsOverlap({ host: 'api.example.com' }, { host: 'api.example.com' }),
+		).toBe('api.example.com');
+		expect(
+			claimsOverlap({ host: 'api.example.com' }, { host: 'web.example.com' }),
+		).toBeUndefined();
+		expect(claimsOverlap({ host: 'acme.example.com' }, wildcard)).toBe(
+			'acme.example.com',
+		);
+		expect(claimsOverlap(wildcard, { host: 'acme.example.com' })).toBe(
+			'acme.example.com',
+		);
+		expect(
+			claimsOverlap(wildcard, { wildcard: 'example.com', except: [] }),
+		).toBe('*.example.com');
+		// A label it leaves out, two labels down, and the domain itself are
+		// not the wildcard's.
+		expect(claimsOverlap({ host: 'staging.example.com' }, wildcard)).toBe(
+			undefined,
+		);
+		expect(
+			claimsOverlap({ host: 'api.staging.example.com' }, wildcard),
+		).toBeUndefined();
+		expect(claimsOverlap({ host: 'example.com' }, wildcard)).toBeUndefined();
+		expect(
+			claimsOverlap(wildcard, { wildcard: 'staging.example.com', except: [] }),
+		).toBeUndefined();
+	});
+
+	describe('through the engine', () => {
+		let dir: string;
+		let volumes: string;
+		beforeEach(async () => {
+			dir = realpathSync(await createTempDir('gkm-edge-claims-'));
+			volumes = join(dir, 'edge');
+		});
+		afterEach(async () => {
+			await cleanupDir(dir);
+		});
+
+		const engine = () => {
+			const fake = fakeDocker({ exec: edgeOnDisk(volumes) });
+			const edge = edgeRef(join(dir, 'gkm-edge.yml'), {
+				host: 'ssh://deploy@203.0.113.10',
+			});
+			return { ...fake, edge };
+		};
+		const listing = () => ({
+			dynamic: readdirSync(join(volumes, 'dynamic')).sort(),
+			certs: readdirSync(join(volumes, 'certs')).sort(),
+		});
+
+		it('refuses a host another project routes, writing nothing', async () => {
+			const { docker, edge, calls } = engine();
+			await writeEdgeRoutes(
+				docker,
+				edge,
+				'shop-production',
+				file(ROUTES, 'shop-production'),
+			);
+			const before = listing();
+			calls.length = 0;
+
+			const error = await writeEdgeRoutes(
+				docker,
+				edge,
+				'market-production',
+				file([ROUTES[0]!], 'market-production'),
+				{ cert: 'CERT', key: 'KEY' },
+			).catch((e: unknown) => e);
+
+			expect(error).toBeInstanceOf(EdgeHostClaimed);
+			expect(error).toMatchObject({
+				host: 'api.shop.example.com',
+				owner: 'shop-production',
+				project: 'market-production',
+			});
+			expect((error as Error).message).toContain('gkm compose');
+			expect((error as Error).message).toContain('--down');
+			// Not its certificate, not its routes.
+			expect(listing()).toEqual(before);
+			// Read through the edge's container on the server's engine.
+			for (const call of calls) {
+				expect(call.host).toBe('ssh://deploy@203.0.113.10');
+				expect(call.args).toMatchObject({ project: EDGE_PROJECT });
+			}
+		});
+
+		it('reads the edge it is given, under whatever name GKM_EDGE_PROJECT gave it', async () => {
+			const { docker, edge, calls } = engine();
+			const renamed = { ...edge, project: 'gkm-edge-e2e-1a2b3c' };
+			await writeEdgeRoutes(
+				docker,
+				renamed,
+				'shop-production',
+				file(ROUTES, 'shop-production'),
+			);
+			calls.length = 0;
+
+			const error = await assertEdgeHostsFree(
+				docker,
+				renamed,
+				'market-production',
+				file([ROUTES[0]!], 'market-production'),
+			).catch((e: unknown) => e);
+
+			expect(error).toMatchObject({
+				name: 'EdgeHostClaimed',
+				edge: 'gkm-edge-e2e-1a2b3c',
+			});
+			expect((error as Error).message).toContain('(gkm-edge-e2e-1a2b3c)');
+			for (const call of calls) {
+				expect(call.args).toMatchObject({ project: 'gkm-edge-e2e-1a2b3c' });
+			}
+		});
+
+		it("refuses a host under another project's wildcard, and a wildcard over another's host", async () => {
+			const { docker, edge } = engine();
+			await writeEdgeRoutes(
+				docker,
+				edge,
+				'tenants-production',
+				file([WILDCARD], 'tenants-production'),
+			);
+
+			await expect(
+				assertEdgeHostsFree(
+					docker,
+					edge,
+					'acme-production',
+					file(
+						[{ ...ROUTES[0]!, host: 'acme.example.com' }],
+						'acme-production',
+					),
+				),
+			).rejects.toMatchObject({
+				name: 'EdgeHostClaimed',
+				host: 'acme.example.com',
+				owner: 'tenants-production',
+			});
+			// A label the wildcard leaves out is free: a stage of its own.
+			await writeEdgeRoutes(
+				docker,
+				edge,
+				'tenants-staging',
+				file(
+					[{ ...ROUTES[0]!, host: 'staging.example.com' }],
+					'tenants-staging',
+				),
+			);
+
+			// The other way round: a wildcard over a host already routed.
+			await expect(
+				writeEdgeRoutes(
+					docker,
+					edge,
+					'other-production',
+					file(
+						[{ ...WILDCARD, wildcard: { ...WILDCARD.wildcard!, except: [] } }],
+						'other-production',
+					),
+				),
+			).rejects.toBeInstanceOf(EdgeHostClaimed);
+			expect(listing().dynamic).toEqual([
+				'tenants-production.yml',
+				'tenants-staging.yml',
+			]);
+		});
+
+		it('replaces its own routes on a redeploy', async () => {
+			const { docker, edge } = engine();
+			await writeEdgeRoutes(
+				docker,
+				edge,
+				'shop-production',
+				file(ROUTES, 'shop-production'),
+			);
+
+			await writeEdgeRoutes(
+				docker,
+				edge,
+				'shop-production',
+				file(ROUTES.slice(0, 2), 'shop-production'),
+			);
+
+			expect(listing().dynamic).toEqual(['shop-production.yml']);
+			expect(
+				readEdgeClaims(
+					readFileSync(
+						join(volumes, 'dynamic', 'shop-production.yml'),
+						'utf-8',
+					),
+				),
+			).toEqual(edgeClaims(ROUTES.slice(0, 2)));
+		});
+
+		it('frees the host once the other project is down', async () => {
+			const { docker, edge } = engine();
+			await writeEdgeRoutes(
+				docker,
+				edge,
+				'shop-production',
+				file(ROUTES, 'shop-production'),
+			);
+			const market = file([ROUTES[0]!], 'market-production');
+			await expect(
+				writeEdgeRoutes(docker, edge, 'market-production', market),
+			).rejects.toBeInstanceOf(EdgeHostClaimed);
+
+			await removeEdgeRoutes(docker, edge, 'shop-production');
+			await writeEdgeRoutes(docker, edge, 'market-production', market);
+
+			expect(listing().dynamic).toEqual(['market-production.yml']);
+		});
+
+		it('reads only route files, and nothing where the edge is not running', async () => {
+			const { docker, edge } = engine();
+			mkdirSync(join(volumes, 'dynamic'), { recursive: true });
+			// A rename in flight, and something that is not a stack's.
+			writeFileSync(
+				join(volumes, 'dynamic', 'shop-production.yml.tmp'),
+				file(ROUTES, 'shop-production'),
+			);
+			writeFileSync(join(volumes, 'dynamic', 'notes.txt'), 'Host(`x`)');
+			await assertEdgeHostsFree(
+				docker,
+				edge,
+				'market-production',
+				file(ROUTES, 'market-production'),
+			);
+
+			const { docker: stopped } = fakeDocker({
+				exec: () => ({ code: null, stdout: '', stderr: 'not running' }),
+			});
+			await assertEdgeHostsFree(
+				stopped,
+				edge,
+				'market-production',
+				file(ROUTES, 'market-production'),
+			);
+		});
+	});
+});
+
 describe('a clash over the edge ports', () => {
 	const ports = { https: 443, http: 80 };
 
@@ -1351,6 +1674,68 @@ describe('gkm compose with proxy: traefik', { timeout: 60_000 }, () => {
 
 		expect(error).toBeInstanceOf(ComposeTlsFileMissing);
 		expect(existsSync(join(dir, '.gkm', 'compose', 'production'))).toBe(false);
+	});
+
+	it('refuses a host another project on the edge routes, before anything is built, started or written', async () => {
+		// Another workspace's stack, routing one of this stack's hosts.
+		await release();
+		const dynamic = join(volumes(), 'dynamic');
+		const own = readFileSync(
+			join(dynamic, 'compose-app-production.yml'),
+			'utf-8',
+		);
+		rmSync(join(volumes()), { recursive: true });
+		mkdirSync(dynamic, { recursive: true });
+		mkdirSync(join(volumes(), 'certs'));
+		writeFileSync(join(dynamic, 'other-production.yml'), own);
+
+		const fake = fakeDocker({ registry, exec: edgeOnDisk(volumes()) });
+		const error = await composeCommand(
+			{ cwd: dir, stage: 'production', tag: 'v1.4.0' },
+			{
+				lookup: resolvesHere,
+				docker: fake.docker,
+				server: fakeServer(fake.calls),
+				probe: async () => 200,
+				revision: async () => 'abc1234',
+				sql: () => ({ query: async () => [] }),
+				logins: signedIn,
+				migrate: async () => [],
+				seed: async () => [],
+			},
+		).catch((e: unknown) => e);
+
+		expect(error).toBeInstanceOf(EdgeHostClaimed);
+		expect(error).toMatchObject({
+			owner: 'other-production',
+			project: 'compose-app-production',
+		});
+		// Refused once the server answered, before anything ran there.
+		const ops = fake.ops();
+		expect(ops).toContain('ssh');
+		for (const op of ['network', 'up', 'build', 'pull', 'push', 'runOnce']) {
+			expect(ops).not.toContain(op);
+		}
+		expect(readdirSync(dynamic)).toEqual(['other-production.yml']);
+		expect(readdirSync(join(volumes(), 'certs'))).toEqual([]);
+
+		// Its `--down` frees the host.
+		await removeEdgeRoutes(
+			fake.docker,
+			edgeRef(join(dir, 'gkm-edge.yml')),
+			'other-production',
+		);
+		await release();
+		expect(readdirSync(dynamic)).toEqual(['compose-app-production.yml']);
+	});
+
+	it('redeploys over its own routes on the edge', async () => {
+		await release();
+		await release();
+
+		expect(readdirSync(join(volumes(), 'dynamic'))).toEqual([
+			'compose-app-production.yml',
+		]);
 	});
 
 	it('--down stops the stack and unregisters it, leaving the edge and every other stack', async () => {

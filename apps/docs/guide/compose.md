@@ -1047,9 +1047,14 @@ on its own next deploy.
   an API calls its auth server at `http://shop-production-auth:3001`, and the
   auth server trusts that origin. Every router, service and middleware in a
   stack's file is prefixed the same way, so stacks never collide.
-- **A stack's file** is written after its services are up, whole — a
+- **A stack's file** is written before its apps are waited on, whole — a
   temporary file, then a rename the edge picks up — and removed by
   `gkm compose --down`, which leaves every other stack served.
+- **One host, one stack.** A host is routed by one project only. Each stack's
+  file opens with the hosts it routes (a `# gkm-claims:` comment, which
+  Traefik ignores), and before a deploy changes anything it reads every other
+  project's file on the edge and refuses a host one of them already routes
+  — see [Several workspaces on one server](#several-workspaces-on-one-server).
 - **The edge's ports** are 443 and 80; `GKM_COMPOSE_HTTPS_PORT` and
   `GKM_COMPOSE_HTTP_PORT` move them, as they move a stack's own Caddy.
 - **`verify`** asks the edge on the server's address, on its published port,
@@ -1064,6 +1069,65 @@ on its own next deploy.
   ports beside a developer's `gkm-edge`, and removes only its own. Every
   command that registers with an edge — `gkm compose`, `--down` — must be run
   with the same value, or it registers with another one.
+
+### Several workspaces on one server
+
+Two workspaces — or two stages of one — share a server by both setting
+`proxy: 'traefik'` and pointing their stage at the same server. Each is its
+own compose project (`<workspace>-<stage>`), with its own containers and
+network, and each registers its own hosts with the one edge:
+
+```ts
+// shop/gkm.config.ts
+domains: { production: 'shop.example.com' },
+deploy: {
+  default: 'compose',
+  compose: {
+    proxy: 'traefik',
+    server: { production: { user: 'deploy', host: '203.0.113.10' } },
+  },
+},
+
+// blog/gkm.config.ts — another workspace, the same server
+domains: { production: 'blog.example.com' },
+deploy: {
+  default: 'compose',
+  compose: {
+    proxy: 'traefik',
+    server: { production: { user: 'deploy', host: '203.0.113.10' } },
+  },
+},
+```
+
+```bash
+(cd shop && gkm compose --stage production)  # starts gkm-edge, registers shop-production
+(cd blog && gkm compose --stage production)  # registers blog-production beside it
+```
+
+```
+gkm-edge
+  dynamic/shop-production.yml   api.shop.example.com, shop.example.com
+  dynamic/blog-production.yml   api.blog.example.com, blog.example.com
+```
+
+A host belongs to the project that routes it first. Were `blog` to set
+`domains.production: 'shop.example.com'` as well, its deploy would stop
+before it touched DNS, a secret, an image or a container, with
+`EdgeHostClaimed` naming the host and the project that routes it:
+
+```
+blog-production routes api.shop.example.com, and shop-production already
+routes it through the shared edge (gkm-edge) on this server. …
+```
+
+Give it another domain, or take the other stack off the edge first with
+`gkm compose --stage production --down` in its workspace — that frees its
+hosts. A redeploy of the same project replaces its own file, so it never
+clashes with itself. A [site on every subdomain](#a-site-on-every-subdomain) claims every one
+label under its domain but the ones it leaves out, so another project's
+`acme.example.com` clashes with `*.example.com`, while a stage it leaves out
+(`staging.example.com`) does not. The check runs once more as the routes are
+written, for an edge that was not running when the deploy began.
 
 ### The local stage behind the shared edge
 

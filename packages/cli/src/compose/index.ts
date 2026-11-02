@@ -49,7 +49,7 @@ export {
 	NetworkCreateFailed,
 	PushDigestUnknown,
 } from './docker';
-export { ComposeProxyClash, EdgeWriteFailed } from './edge';
+export { ComposeProxyClash, EdgeHostClaimed, EdgeWriteFailed } from './edge';
 export {
 	assertImagesExist,
 	ImageDigestMismatch,

@@ -65,6 +65,7 @@ import {
 	type StackRef,
 } from '../../compose/docker';
 import {
+	assertEdgeHostsFree,
 	assertEdgePorts,
 	edgeRef,
 	ensureEdge,
@@ -678,12 +679,16 @@ export async function readyCompose(
 		}
 	}
 
-	if (stack.local) return;
+	if (stack.local) {
+		await edgeHostsFree(ctx, run, deps);
+		return;
+	}
 	// The server answers before anything is written — a DNS record included.
 	// A dry run changes nothing anywhere, and connects to nothing.
 	if (run.server && !ctx.dryRun && !run.push) {
 		await deps.server.check(run.server);
 	}
+	await edgeHostsFree(ctx, run, deps);
 	const prune = await stageHostsDns(
 		ctx,
 		deps,
@@ -692,6 +697,32 @@ export async function readyCompose(
 		stack.wildcard?.host,
 	);
 	if (prune) run.pruneDns = prune;
+}
+
+/**
+ * No host the stack routes through the shared edge is routed there by another
+ * project — asked of the edge on the stage's engine before a record, a
+ * secret, an image or a container is touched, so a clash fails the deploy
+ * with nothing changed. Asked again as the routes are written
+ * (`writeEdgeRoutes`), for an edge that was not running yet.
+ */
+async function edgeHostsFree(
+	ctx: ComposeContext,
+	run: ComposeRun,
+	deps: ComposeDeps,
+): Promise<void> {
+	const { stack, ref } = run;
+	if (ctx.dryRun || run.push) return;
+	if (stack.proxy !== 'traefik' || !stack.traefik) return;
+	await assertEdgeHostsFree(
+		deps.docker,
+		edgeRef(edgeFile(run), {
+			...(ref.host ? { host: ref.host } : {}),
+			...(ref.output ? { output: ref.output } : {}),
+		}),
+		stack.project,
+		stack.traefik,
+	);
 }
 
 /** A stack whose caches are in Redis, built for an app that has no client. */
