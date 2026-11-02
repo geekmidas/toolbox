@@ -244,6 +244,7 @@
     "wildcard-site-dev",
     "wildcard-site",
     "worker-database",
+    "worker-emailkit-optional",
     "worker-push-host",
     "worker-template",
     "workers-deploy-unit"
