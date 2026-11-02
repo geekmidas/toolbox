@@ -1618,6 +1618,28 @@ A deploy replaces the containers, and every socket on them is closed with
 1012; clients reconnect, which the edge spreads across the replicas that are
 up.
 
+### What is limited
+
+A surface bounds what one client may ask of it ([`limits`](../packages/constructs.md#limits-limits)),
+counted on the stack's Redis so each limit holds across every replica:
+
+| | Default | Enforced by | Past it |
+|---|---|---|---|
+| Handshakes per client address | 120 a minute | Traefik (`rateLimit`) and the surface | 429, `Retry-After` |
+| Sockets per client address | 256 open | Traefik (`inFlightReq`) and the surface | 429 |
+| Handshakes in flight per address | 16 | the surface | 429 |
+| Frames per socket | 50/s, burst 100 | the surface | one `$error`, then close 1008 |
+| Sockets per identity | off; 16 with `maxConnectionsPer` | the surface | 429, or the oldest closed with 1008 |
+| Frame size | 1 MiB (`maxPayload`) | the surface | close 1009 |
+| A socket that stops reading | 4 MB queued | the surface | close 1013 |
+
+Under Caddy only the surface counts, because Caddy has no rate limiter. The
+stack's own services, which reach the surface through the edge from one
+address, aren't counted against the edge's limits. An upgrade with no `Origin`
+gets through unless the surface sets `requireOrigin: true`. What's not limited:
+the total number of sockets a replica holds (memory is the bound, see below),
+and how fast the surface's own publisher sends.
+
 ### How many connections fit
 
 Measured with real sockets through the edge as `gkm compose` renders it — the

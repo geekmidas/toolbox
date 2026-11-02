@@ -272,6 +272,9 @@ export function traefikDynamic(
 
 	for (const route of routes) {
 		const chain: string[] = [strip];
+		// The client-address limits, which the stack's own services — all
+		// behind one address — are not counted against.
+		const limited = new Set<string>();
 		if (route.allow) {
 			// The peer Traefik sees — never X-Forwarded-For, which a client
 			// could set. Everything else gets 403.
@@ -288,6 +291,25 @@ export function traefikDynamic(
 				basicAuth: { users: [`${route.auth.user}:${route.auth.hash}`] },
 			};
 			chain.push(name(route, 'auth'));
+		}
+		// Per client address, as the edge — the first hop — sees it: an
+		// upgrade past either is answered 429 before it reaches a replica.
+		// An upgraded request stays in flight while its socket is open, so
+		// `inFlightReq` counts open sockets.
+		if (route.limits?.handshakesPerMinute) {
+			const perMinute = route.limits.handshakesPerMinute;
+			middlewares[name(route, 'rate')] = {
+				rateLimit: { average: perMinute, period: '1m', burst: perMinute },
+			};
+			chain.push(name(route, 'rate'));
+			limited.add(name(route, 'rate'));
+		}
+		if (route.limits?.connectionsPerIp) {
+			middlewares[name(route, 'in-flight')] = {
+				inFlightReq: { amount: route.limits.connectionsPerIp },
+			};
+			chain.push(name(route, 'in-flight'));
+			limited.add(name(route, 'in-flight'));
 		}
 		if (route.prefix) {
 			middlewares[name(route, 'prefix')] = {
@@ -358,12 +380,13 @@ export function traefikDynamic(
 		// the same service, keeping gkm's header. Its longer rule puts it ahead
 		// of the route's own; a wildcard's, just above that one's.
 		if (edgeToken && !route.prefix) {
+			const trusted = chain.slice(1).filter((m) => !limited.has(m));
 			routers[name(route, 'stack')] = {
 				rule: `${rule} && Header(\`${EDGE_TOKEN_HEADER}\`, \`${edgeToken}\`)`,
 				...(route.wildcard ? { priority: 2 } : {}),
 				entryPoints: ['websecure'],
 				service: name(route),
-				...(chain.length > 1 ? { middlewares: chain.slice(1) } : {}),
+				...(trusted.length > 0 ? { middlewares: trusted } : {}),
 				tls: certificate(),
 			};
 		}
