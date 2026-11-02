@@ -27,6 +27,7 @@ import type {
 	QueueInfo,
 	RouteInfo,
 	SubscriberInfo,
+	WebSocketRouteInfo,
 } from '@geekmidas/manifest';
 import { canonicalId } from '@geekmidas/manifest';
 import type { CacheBackend, EmailBackend } from '../types.js';
@@ -40,6 +41,8 @@ export interface GeneratedHandlers {
 	queues?: readonly QueueInfo[];
 	subscribers?: readonly SubscriberInfo[];
 	processors?: readonly ProcessorInfo[];
+	/** A WebSocket surface's routes, each the Lambda API Gateway invokes. */
+	websocketRoutes?: readonly WebSocketRouteInfo[];
 }
 
 /**
@@ -79,6 +82,31 @@ export function withHandlers(
 				),
 			};
 		}
+	}
+
+	// A route the build generated and discovery did not find is the adaptor's
+	// own lifecycle — `$connect` writes the connection table even where the
+	// surface declares no connect handler — so it is added, with no edges.
+	for (const route of generated.websocketRoutes ?? []) {
+		const surface = next[route.surface];
+		if (surface?.kind !== 'websocket-api') continue;
+		const routes = surface.routes ?? [];
+		next[surface.id] = {
+			...surface,
+			routes: routes.some((r) => r.action === route.action)
+				? routes.map((r) =>
+						r.action === route.action ? { ...r, handler: route.handler } : r,
+					)
+				: [
+						...routes,
+						{
+							id: `${surface.id}${route.action}`,
+							action: route.action,
+							handler: route.handler,
+							dependencies: [],
+						},
+					],
+		};
 	}
 
 	for (const fn of [

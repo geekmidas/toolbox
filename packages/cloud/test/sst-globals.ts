@@ -109,6 +109,47 @@ class StubApiGateway extends StubComponent {
 }
 
 /**
+ * A WebSocket API: its two addresses shaped like the real ones — `provides()`
+ * reads the region out of the management endpoint — and the routes and the
+ * transform it was given, so the wiring is assertable.
+ */
+class StubApiGatewayWebSocket extends StubComponent {
+	readonly routes: { key: string; handler: unknown; args: unknown }[] = [];
+
+	get url() {
+		return `wss://${this.name}.execute-api.${STUB_REGION}.amazonaws.com/$default`;
+	}
+
+	get managementEndpoint() {
+		return `https://${this.name}.execute-api.${STUB_REGION}.amazonaws.com/$default`;
+	}
+
+	route(key: string, handler: unknown, args?: unknown) {
+		this.routes.push({ key, handler, args });
+	}
+
+	getSSTLink() {
+		return {
+			properties: {
+				url: this.url,
+				managementEndpoint: this.managementEndpoint,
+			},
+			include: [{ permission: { actions: ['execute-api:ManageConnections'] } }],
+		};
+	}
+}
+
+/** A table, with the name a link hands over and the grant it carries. */
+class StubDynamo extends StubComponent {
+	getSSTLink() {
+		return {
+			properties: { name: this.name },
+			include: [{ permission: { actions: ['dynamodb:*'] } }],
+		};
+	}
+}
+
+/**
  * An instance with the five parts a connection URL is composed from, and no
  * `reader` — an RDS instance has one endpoint, which is the whole reason
  * `urlFor({ reader: true })` hands back the writer's address.
@@ -164,6 +205,8 @@ Object.assign(globalThis, {
 			SnsTopic: StubSnsTopic,
 			Function: StubComponent,
 			ApiGatewayV2: StubApiGateway,
+			ApiGatewayWebSocket: StubApiGatewayWebSocket,
+			Dynamo: StubDynamo,
 			CronV2: StubComponent,
 			StaticSite: StubComponent,
 			Router: StubRouter,

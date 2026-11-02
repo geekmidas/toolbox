@@ -63,6 +63,7 @@ import { RestApiSurface } from './aws/RestApiSurface';
 import { Secret, type SecretProps } from './aws/Secret';
 import { StaticSite } from './aws/StaticSite';
 import { Topic } from './aws/Topic';
+import { WebSocketApiSurface } from './aws/WebSocketApiSurface';
 import {
 	ProvidesMismatch,
 	UnknownDeclarationKind,
@@ -406,6 +407,20 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 			callers: context.callers?.get(d.id)?.promise,
 		}),
 
+	/**
+	 * An API Gateway WebSocket API and its connection table, without its
+	 * routes yet — mounted by {@link mountWebSocketRoutes} once everything
+	 * they link to exists, as a REST surface's endpoints are.
+	 */
+	'websocket-api': (stack, d, props, context) =>
+		new WebSocketApiSurface(stack, d.id, {
+			...(props as sst.aws.ApiGatewayWebSocketArgs),
+			callers: context.callers?.get(d.id)?.promise,
+			...(d.kind === 'websocket-api' && d.discriminator
+				? { discriminator: d.discriminator }
+				: {}),
+		}),
+
 	// Generated on the first deploy and kept in the stage's state, as a server
 	// stage keeps it in its secrets: every later deploy reads the same value
 	// back. One set with `sst secret set` wins over it.
@@ -644,6 +659,19 @@ export function describeRoutes(manifest: ConstructManifest): string[] {
 	const lines: string[] = [];
 
 	for (const [id, declaration] of Object.entries(manifest)) {
+		if (declaration.kind === 'websocket-api') {
+			lines.push(`${id}:`);
+			for (const route of declaration.routes ?? []) {
+				const reaches = route.dependencies
+					.map((edge) => `${edge.target} (${edge.kind})`)
+					.join(', ');
+				lines.push(`  ${route.action} → ${reaches || 'its connections'}`);
+			}
+			if (declaration.auth) {
+				lines.push(`  auth ${declaration.auth.target} ($connect verifies)`);
+			}
+			continue;
+		}
 		if (declaration.kind !== 'rest-api') continue;
 
 		lines.push(`${id}:`);
@@ -988,6 +1016,41 @@ export function mountRoutes(
 }
 
 /**
+ * Mount every WebSocket surface's routes — the Lambdas the build wrote, each
+ * linked to what that route depends on and to the surface itself (its
+ * connection table and management API). `$connect` is also linked to what
+ * authenticates the surface, since it verifies the handshake's session.
+ *
+ * After every construct is provisioned, for the reason endpoints are.
+ */
+export function mountWebSocketRoutes(
+	manifest: ConstructManifest,
+	provisioned: ProvisionedManifest,
+): void {
+	for (const [id, declaration] of Object.entries(manifest)) {
+		if (declaration?.kind !== 'websocket-api') continue;
+
+		const surface = provisioned[id];
+		if (!(surface instanceof WebSocketApiSurface)) continue;
+
+		for (const route of declaration.routes ?? []) {
+			const edges =
+				route.action === '$connect' && declaration.auth
+					? [...route.dependencies, declaration.auth]
+					: route.dependencies;
+			const { link } = resolveEdges(edges, provisioned);
+			const vpc = vpcFor(link);
+			surface.mount({
+				action: route.action,
+				handler: route.handler,
+				link,
+				...(vpc ? { vpc } : {}),
+			});
+		}
+	}
+}
+
+/**
  * Subscribe every queue's one consumer — the handler the build wrote for it,
  * linked to what that consumer depends on.
  *
@@ -1171,7 +1234,12 @@ export function fromManifest<
 	// the things that call it exist.
 	const callers = new Map<string, Deferred>();
 	for (const [id, declaration] of Object.entries(manifest)) {
-		if (declaration.kind === 'rest-api') callers.set(id, defer());
+		if (
+			declaration.kind === 'rest-api' ||
+			declaration.kind === 'websocket-api'
+		) {
+			callers.set(id, defer());
+		}
 	}
 
 	const context: ProvisionContext = {
@@ -1226,6 +1294,7 @@ export function fromManifest<
 	provisionProcessors(stack, manifest, provisioned);
 	subscribeConsumers(manifest, provisioned);
 	mountRoutes(manifest, provisioned);
+	mountWebSocketRoutes(manifest, provisioned);
 
 	for (const line of describeRoutes(manifest)) console.log(line);
 

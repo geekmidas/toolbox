@@ -8,6 +8,7 @@ import type { Processor } from '@geekmidas/constructs/processors';
 import type { Queue } from '@geekmidas/constructs/queue';
 import type { Subscriber } from '@geekmidas/constructs/subscribers';
 import type { Topic } from '@geekmidas/constructs/topic';
+import type { WebSocketRouteInfo } from '@geekmidas/manifest';
 import { type ConstructManifest, provideKey } from '@geekmidas/manifest';
 import { loadAppConfig, loadConfig, loadWorkspaceConfig } from '../config';
 import {
@@ -100,6 +101,7 @@ import type {
 	NormalizedProductionConfig,
 	NormalizedTelescopeConfig,
 } from './types';
+import { writeWebSocketLambdas } from './websocketLambdas';
 import {
 	isUnder,
 	processorUnits,
@@ -402,6 +404,8 @@ export interface AppBuild {
 	queues: QueueInfo[];
 	/** The file servers' processors whose unit this app builds. */
 	processors?: ProcessorInfo[];
+	/** A WebSocket surface's routes, each a Lambda on AWS. */
+	websocketRoutes?: WebSocketRouteInfo[];
 }
 
 /**
@@ -454,6 +458,7 @@ export async function writeManifest(input: {
 		queues: builds.flatMap((build) => build.queues),
 		subscribers: builds.flatMap((build) => build.subscribers),
 		processors: builds.flatMap((build) => build.processors ?? []),
+		websocketRoutes: builds.flatMap((build) => build.websocketRoutes ?? []),
 	});
 
 	const path = join(manifestDir, `${target}.ts`);
@@ -554,6 +559,34 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 				...(input.stage ? { stage: input.stage } : {}),
 			});
 			logger.log(`✅ Bundle complete: .gkm/server/dist/server.mjs`);
+		}
+
+		// On AWS a WebSocket surface is API Gateway's: a Lambda per route,
+		// each folded into the manifest as its route's handler.
+		const surface = declared[selfServing.id];
+		if (target === 'aws' && surface?.kind === 'websocket-api') {
+			const websocketRoutes = await writeWebSocketLambdas({
+				outputDir: join(appRoot, '.gkm', 'aws'),
+				appRoot,
+				workspaceRoot,
+				surface: selfServing.source,
+				declaration: surface,
+			});
+			logger.log(
+				`Generated ${websocketRoutes.length} API Gateway handlers for ${selfServing.id}`,
+			);
+			return {
+				selfServing: selfServing.id,
+				built: {
+					surface: selfServing.id,
+					routes: [],
+					functions: [],
+					crons: [],
+					subscribers: [],
+					queues: [],
+					websocketRoutes,
+				},
+			};
 		}
 
 		return { selfServing: selfServing.id };
