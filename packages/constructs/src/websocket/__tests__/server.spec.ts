@@ -567,6 +567,8 @@ describe('WebSocketApi', () => {
 				id: 'Realtime',
 				path: 'apps/realtime',
 				replicas: 4,
+				// The per-address limits, for the edge to enforce too.
+				limits: { handshakesPerMinute: 120, connectionsPerIp: 256 },
 				provides: [
 					'REALTIME_URL',
 					'REALTIME_TRUSTED_ORIGINS',

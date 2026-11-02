@@ -630,6 +630,19 @@ export interface WebSocketApiDeclaration extends Node {
 	 * Absent, one.
 	 */
 	replicas?: number;
+	/**
+	 * What one client address may ask of it, which the stack's edge enforces
+	 * ahead of the surface's own count. Absent, the edge limits nothing.
+	 */
+	limits?: WebSocketEdgeLimits;
+}
+
+/** A surface's per-address limits, as the edge in front of it renders them. */
+export interface WebSocketEdgeLimits {
+	/** Handshakes one address may start in a minute; past it, 429. */
+	handshakesPerMinute?: number;
+	/** Sockets one address may hold open at once; past it, 429. */
+	connectionsPerIp?: number;
 }
 
 /** One glob, or several. Mirrors the CLI's `Routes` without depending on it. */

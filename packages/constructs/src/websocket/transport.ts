@@ -10,6 +10,11 @@
  */
 
 import { loadIoredis } from '../optionalPeers';
+import {
+	MemoryLimitStore,
+	RedisLimitStore,
+	type WebSocketLimitStore,
+} from './limits';
 import type { WebSocketSink } from './publisher';
 
 /** What one process is asked to do with the sockets it holds. */
@@ -27,6 +32,12 @@ export interface WebSocketTransport {
 		receive: (delivery: Delivery) => void,
 	): Promise<void>;
 	close(): Promise<void>;
+	/**
+	 * Where the surface's limits are counted — somewhere every process on
+	 * this transport sees, so a limit holds across them. Absent, each
+	 * process counts its own.
+	 */
+	limits?(): WebSocketLimitStore;
 }
 
 /** Every instance — what a broadcast is published to. */
@@ -130,6 +141,16 @@ const registry = globalThis as Record<
 registry[key] ??= new Map();
 const channels = registry[key];
 
+// The limits each channel counts in, beside it: two servers on one channel
+// are replicas, and share them.
+const limitsKey = Symbol.for('@geekmidas/constructs/websocket/memory-limits');
+const limitRegistry = globalThis as Record<
+	symbol,
+	Map<string, MemoryLimitStore> | undefined
+>;
+limitRegistry[limitsKey] ??= new Map();
+const limitStores = limitRegistry[limitsKey];
+
 /**
  * In one process: the server and whoever sends meet in a map, keyed by the
  * channel the connection string names.
@@ -166,6 +187,17 @@ export class MemoryTransport implements WebSocketTransport {
 		const instances = channels.get(this.channel);
 		for (const instance of this.subscribed) instances?.delete(instance);
 		this.subscribed.clear();
+		// The last process on the channel is gone: what it counted goes too.
+		if (!instances?.size) limitStores.delete(this.channel);
+	}
+
+	limits(): WebSocketLimitStore {
+		let store = limitStores.get(this.channel);
+		if (!store) {
+			store = new MemoryLimitStore();
+			limitStores.set(this.channel, store);
+		}
+		return store;
 	}
 }
 
@@ -179,6 +211,11 @@ interface RedisClient {
 	): unknown;
 	duplicate(): RedisClient;
 	quit(): Promise<unknown>;
+	eval(
+		script: string,
+		numKeys: number,
+		...args: (string | number)[]
+	): Promise<unknown>;
 }
 
 /**
@@ -219,6 +256,11 @@ export class RedisTransport implements WebSocketTransport {
 			receive(JSON.parse(message) as Delivery);
 		});
 		await subscriber.subscribe(own, every);
+	}
+
+	/** Counted in this Redis, under the transport's prefix. */
+	limits(): WebSocketLimitStore {
+		return new RedisLimitStore(this.client, this.prefix);
 	}
 
 	/** Idempotent: the server and a shutdown hook may both close it. */
