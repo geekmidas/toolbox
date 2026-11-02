@@ -14,7 +14,9 @@
  * project (`<project>-api`), because the network is shared: a bare service
  * name there would be answered by every stack's `api`.
  *
- * Pure: the documents are data, and the edge's side effects are `edge.ts`'s.
+ * Pure but for the edge's name, read from the environment once (see
+ * {@link EDGE_PROJECT_ENV}): the documents are data, and the edge's side
+ * effects are `edge.ts`'s.
  */
 
 import { createHash } from 'node:crypto';
@@ -34,11 +36,34 @@ import {
  */
 export const TRAEFIK_IMAGE = 'traefik:v3.7.13';
 
-/** The edge's compose project, one per server. */
-export const EDGE_PROJECT = 'gkm-edge';
+/** The edge's name when nothing renames it: one per server. */
+export const DEFAULT_EDGE_PROJECT = 'gkm-edge';
 
-/** The external network the edge and every stack's public services share. */
-export const EDGE_NETWORK = 'gkm-edge';
+/**
+ * The variable that renames the edge — its compose project, and with it its
+ * network and its volumes (`<project>_acme`, `_certs`, `_dynamic`). A testing
+ * and advanced knob: an end-to-end suite runs an edge of its own beside a
+ * developer's, and never touches theirs. Every command that registers with
+ * one edge must be run with the same value.
+ */
+export const EDGE_PROJECT_ENV = 'GKM_EDGE_PROJECT';
+
+/** The edge's compose project: `GKM_EDGE_PROJECT`, else `gkm-edge`. */
+export function edgeProject(env: NodeJS.ProcessEnv = process.env): string {
+	return env[EDGE_PROJECT_ENV] || DEFAULT_EDGE_PROJECT;
+}
+
+/**
+ * The edge's compose project, one per server — read once, when gkm starts,
+ * so every step of a run names the same edge.
+ */
+export const EDGE_PROJECT = edgeProject();
+
+/**
+ * The external network the edge and every stack's public services share:
+ * named after the edge, so a renamed edge has a network of its own.
+ */
+export const EDGE_NETWORK = EDGE_PROJECT;
 
 /** The edge's compose service. */
 export const EDGE_SERVICE = 'traefik';

@@ -10,6 +10,7 @@ import type {
 	StackRef,
 } from '../../docker';
 import type { ServerAccess } from '../../server';
+import { EDGE_PROJECT } from '../../traefik';
 
 /**
  * Docker, the registry and the health probe as recorders, for asserting the
@@ -63,7 +64,7 @@ export function fakeDocker(
 			calls.push({
 				op: 'up',
 				args: services ? [...services] : 'all',
-				...(stack.project === 'gkm-edge' ? { edge: true } : {}),
+				...(stack.project === EDGE_PROJECT ? { edge: true } : {}),
 				...on(stack),
 			});
 		},

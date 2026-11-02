@@ -9,7 +9,7 @@
  * deploy runs anywhere that reaches the engine — a CI runner over SSH — and
  * nothing it writes depends on a path on that machine.
  *
- *   gkm-edge (compose project)
+ *   gkm-edge (compose project — `GKM_EDGE_PROJECT` renames it)
  *     traefik.yml                   its static configuration (inline config)
  *     dynamic/<project>.yml         one per stack: routers, services, middlewares
  *     certs/<project>.crt|.key      a stack's own certificate, where it has one

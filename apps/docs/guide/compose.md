@@ -1057,6 +1057,13 @@ on its own next deploy.
   presents a certificate a client accepts.
 - **Stop the edge**, once no stack uses it: `docker compose -p gkm-edge down`
   on the server.
+- **Another edge on one engine** — a testing and advanced knob:
+  `GKM_EDGE_PROJECT` renames the edge's compose project, and with it its
+  network and its volumes (`<project>_acme`, `_certs`, `_dynamic`). gkm's own
+  end-to-end suite runs `GKM_EDGE_PROJECT=gkm-edge-e2e-<random>` on free
+  ports beside a developer's `gkm-edge`, and removes only its own. Every
+  command that registers with an edge — `gkm compose`, `--down` — must be run
+  with the same value, or it registers with another one.
 
 ### The local stage behind the shared edge
 
