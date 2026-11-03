@@ -149,6 +149,28 @@ They come from the node's provides, like every other construct's keys — not
 from the stage's secrets. An `OTEL_*` key set in a stage's secrets is passed to
 nothing; name the provider instead.
 
+## Metrics
+
+Every process with the edge exports metrics to the same collector, at
+`/v1/metrics`, once a minute and whenever telemetry is flushed (a Lambda
+flushes after each invocation):
+
+| Metric | From | Attributes |
+| --- | --- | --- |
+| `http.server.request.duration` (seconds, histogram) | The request middleware — the Hono server's and the Lambda adaptors' | `http.request.method`, `http.route`, `http.response.status_code`, `url.scheme`, and `error.type` on a 5xx |
+| `http.client.request.duration` | Outgoing `fetch`/`http` calls | The spec's |
+| `nodejs.eventloop.delay.*`, `v8js.memory.heap.*`, `v8js.gc.duration`, … | The Node.js runtime | The spec's |
+
+They follow the OpenTelemetry semantic conventions, so a backend's stock HTTP
+dashboards read them as they are. `http.route` is the matched route —
+`/users/:id`, never `/users/42` — and is left off a request no route matched,
+so a scanner cannot mint a series per path. A 4xx carries no `error.type`: it
+is the client's mistake, not the server's failure.
+
+Unlike traces they are not sampled: every request is counted whatever the
+stage's `sampleRate`. `OTEL_METRIC_EXPORT_INTERVAL` changes how often they are
+sent, and `OTEL_METRICS_EXPORTER=none` turns them off.
+
 ## Locally
 
 ### `gkm dev`
@@ -180,6 +202,8 @@ middleware as the production server: both are generated from one
 `telemetry.ts`. So what you see locally is what a deployed stage sends:
 
 - a SERVER span per request (`POST /users`, with its status and route);
+- [metrics](#metrics): each request's `http.server.request.duration`, the
+  Node.js runtime's and outgoing requests';
 - every line a `createLogger` logger writes, in the trace of the request
   that wrote it;
 - the constructs' own spans — each query, cache and storage call, mail send
@@ -222,10 +246,12 @@ package its instrumentation loads, resolvable from its app:
 - `@opentelemetry/api`
 - `@opentelemetry/auto-instrumentations-node`
 - `@opentelemetry/exporter-logs-otlp-http`
+- `@opentelemetry/exporter-metrics-otlp-http`
 - `@opentelemetry/exporter-trace-otlp-http`
 - `@opentelemetry/instrumentation-pino`
 - `@opentelemetry/resources`
 - `@opentelemetry/sdk-logs`
+- `@opentelemetry/sdk-metrics`
 - `@opentelemetry/sdk-node`
 - `@opentelemetry/sdk-trace-base`
 - `@opentelemetry/sdk-trace-node`

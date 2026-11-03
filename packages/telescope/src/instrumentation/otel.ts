@@ -51,6 +51,7 @@ import {
 	extractTraceContext,
 	type HttpSpanAttributes,
 } from './http';
+import { recordHttpServerRequest } from './metrics';
 
 /**
  * Options for OTelTelemetry
@@ -90,6 +91,8 @@ export interface OTelTelemetryOptions {
 interface OTelContext extends TelemetryContext {
 	span: Span;
 	otelContext: any;
+	startedAt: number;
+	attrs: HttpSpanAttributes;
 }
 
 /**
@@ -128,6 +131,7 @@ export class OTelTelemetry implements Telemetry {
 		const attrs = this.buildSpanAttributes(event, lambdaContext);
 
 		// Create the span
+		const startedAt = performance.now();
 		const span = createHttpServerSpan(attrs, parentContext);
 		const otelContext = trace.setSpan(parentContext, span);
 
@@ -147,7 +151,7 @@ export class OTelTelemetry implements Telemetry {
 			);
 		}
 
-		return { span, otelContext } as OTelContext;
+		return { span, otelContext, startedAt, attrs } as OTelContext;
 	}
 
 	onRequestEnd(ctx: TelemetryContext, response: TelemetryResponse): void {
@@ -163,11 +167,13 @@ export class OTelTelemetry implements Telemetry {
 		}
 
 		endHttpSpan(span, { statusCode: response.statusCode });
+		recordRequest(ctx as OTelContext, response.statusCode);
 	}
 
 	onRequestError(ctx: TelemetryContext, error: Error): void {
 		const { span } = ctx as OTelContext;
 		endHttpSpan(span, { statusCode: 500 }, error);
+		recordRequest(ctx as OTelContext, 500, error);
 	}
 
 	/**
@@ -268,4 +274,20 @@ function normalizeHeaders(
 		normalized[key.toLowerCase()] = value;
 	}
 	return normalized;
+}
+
+/** Records a finished request on `http.server.request.duration`. */
+function recordRequest(
+	ctx: OTelContext,
+	statusCode: number,
+	error?: Error,
+): void {
+	recordHttpServerRequest({
+		method: ctx.attrs.method,
+		route: ctx.attrs.route,
+		scheme: ctx.attrs.scheme,
+		statusCode,
+		durationMs: performance.now() - ctx.startedAt,
+		...(error && { error }),
+	});
 }

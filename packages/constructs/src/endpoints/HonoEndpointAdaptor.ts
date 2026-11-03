@@ -1,6 +1,11 @@
 import type { AuditableAction, AuditStorage } from '@geekmidas/audit';
 import type { EnvironmentParser } from '@geekmidas/envkit';
-import { type HttpError, isHttpError, wrapError } from '@geekmidas/errors';
+import {
+	type HttpError,
+	isHttpError,
+	UnprocessableEntityError,
+	wrapError,
+} from '@geekmidas/errors';
 import type { EventPublisher } from '@geekmidas/events';
 import type { Logger } from '@geekmidas/logger';
 import {
@@ -158,6 +163,8 @@ export class HonoEndpoint<
 		c: Context<any, string, {}>,
 		data: unknown,
 		schema?: T,
+		/** Told of the issues before the 422 goes out — to log the rejection. */
+		onInvalid?: (issues: readonly StandardSchemaV1.Issue[]) => void,
 	) {
 		if (!schema) {
 			return undefined;
@@ -166,6 +173,7 @@ export class HonoEndpoint<
 		const parsed = await Endpoint.validate(schema, data);
 
 		if (parsed.issues) {
+			onInvalid?.(parsed.issues);
 			return c.json(parsed.issues, 422);
 		}
 
@@ -312,6 +320,41 @@ export class HonoEndpoint<
 		// Analyze endpoint features once at registration time (not per-request)
 		const features = analyzeEndpointFeatures(endpoint);
 
+		// One id per request, whichever of the validators or the handler asks
+		// for it first — so a rejected request's log line and its
+		// `X-Request-ID` name the same request a handled one would.
+		const requestIds = new WeakMap<Request, string>();
+		const requestIdOf = (c: Context): string => {
+			let requestId = requestIds.get(c.req.raw);
+			if (!requestId) {
+				requestId = c.req.header('X-Request-ID') ?? crypto.randomUUID();
+				requestIds.set(c.req.raw, requestId);
+			}
+			return requestId;
+		};
+		const loggerFor = (c: Context): TLogger =>
+			requestLogger<TLogger>(endpoint, {
+				requestId: requestIdOf(c),
+				host: c.req.header('host'),
+				path: c.req.path,
+			});
+
+		// A request turned away before the handler runs is logged as one the
+		// handler failed would be: the Lambda adaptors log a rejected input
+		// through the same `onError` as any other failure.
+		const rejected =
+			(c: Context, part: 'body' | 'query' | 'params') =>
+			(issues: readonly StandardSchemaV1.Issue[]): void => {
+				c.header('X-Request-ID', requestIdOf(c));
+				loggerFor(c).error(
+					{
+						err: new UnprocessableEntityError('Validation failed', issues),
+						part,
+					},
+					'Request validation failed',
+				);
+			};
+
 		// Build validators array - only add validators for schemas that exist
 		const validators: any[] = [];
 
@@ -326,13 +369,23 @@ export class HonoEndpoint<
 					});
 				} catch (error) {
 					if (!isHttpError(error)) throw error;
+					c.header('X-Request-ID', requestIdOf(c));
+					loggerFor(c).error(
+						{ err: error, part: 'body' },
+						'Request body could not be read',
+					);
 					setErrorHeaders(c, error);
 					return c.json(
 						errorBody(error),
 						error.statusCode as ContentfulStatusCode,
 					);
 				}
-				const body = await HonoEndpoint.validate(c, raw, endpoint.input?.body);
+				const body = await HonoEndpoint.validate(
+					c,
+					raw,
+					endpoint.input?.body,
+					rejected(c, 'body'),
+				);
 				if (body instanceof Response) return body;
 				c.req.addValidatedData('json', body as {});
 				await next();
@@ -343,7 +396,12 @@ export class HonoEndpoint<
 			validators.push(
 				validator('query', (_, c) => {
 					const parsedQuery = parseHonoQuery(c);
-					return HonoEndpoint.validate(c, parsedQuery, endpoint.input?.query);
+					return HonoEndpoint.validate(
+						c,
+						parsedQuery,
+						endpoint.input?.query,
+						rejected(c, 'query'),
+					);
 				}),
 			);
 		}
@@ -351,7 +409,12 @@ export class HonoEndpoint<
 		if (features.hasParamValidation) {
 			validators.push(
 				validator('param', (params, c) =>
-					HonoEndpoint.validate(c, params, endpoint.input?.params),
+					HonoEndpoint.validate(
+						c,
+						params,
+						endpoint.input?.params,
+						rejected(c, 'params'),
+					),
 				),
 			);
 		}
@@ -360,13 +423,9 @@ export class HonoEndpoint<
 		const handler = async (c: Context) => {
 			// Request context setup
 			const startTime = Date.now();
-			const requestId = c.req.header('X-Request-ID') ?? crypto.randomUUID();
+			const requestId = requestIdOf(c);
 
-			let logger = requestLogger<TLogger>(endpoint, {
-				requestId,
-				host: c.req.header('host'),
-				path: c.req.path,
-			});
+			let logger = loggerFor(c);
 
 			// Set response header
 			c.header('X-Request-ID', requestId);

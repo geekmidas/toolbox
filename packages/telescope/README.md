@@ -726,7 +726,7 @@ Each of these entries imports an optional peer when it loads, so using it means 
 | --- | --- |
 | `@geekmidas/telescope/core` | `@opentelemetry/api`, `@opentelemetry/sdk-trace-base` |
 | `@geekmidas/telescope/hono` | `hono` |
-| `@geekmidas/telescope/instrumentation` | `@opentelemetry/api`, `@opentelemetry/auto-instrumentations-node`, `@opentelemetry/exporter-logs-otlp-http`, `@opentelemetry/exporter-trace-otlp-http`, `@opentelemetry/instrumentation-pino`, `@opentelemetry/resources`, `@opentelemetry/sdk-logs`, `@opentelemetry/sdk-node`, `@opentelemetry/sdk-trace-base`, `@opentelemetry/sdk-trace-node`, `@opentelemetry/semantic-conventions`, `hono` |
+| `@geekmidas/telescope/instrumentation` | `@opentelemetry/api`, `@opentelemetry/auto-instrumentations-node`, `@opentelemetry/exporter-logs-otlp-http`, `@opentelemetry/exporter-metrics-otlp-http`, `@opentelemetry/exporter-trace-otlp-http`, `@opentelemetry/instrumentation-pino`, `@opentelemetry/resources`, `@opentelemetry/sdk-logs`, `@opentelemetry/sdk-metrics`, `@opentelemetry/sdk-node`, `@opentelemetry/sdk-trace-base`, `@opentelemetry/sdk-trace-node`, `@opentelemetry/semantic-conventions`, `hono` |
 | `@geekmidas/telescope/instrumentation/hono` | `@opentelemetry/api`, `hono` |
 | `@geekmidas/telescope/lambda` | `@opentelemetry/api`, `@opentelemetry/sdk-trace-base` |
 | `@geekmidas/telescope/logger/pino` | `pino-abstract-transport` |

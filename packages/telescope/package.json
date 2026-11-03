@@ -166,10 +166,12 @@
 		"@opentelemetry/api": ">=1.9.1",
 		"@opentelemetry/auto-instrumentations-node": "~0.80.0",
 		"@opentelemetry/exporter-logs-otlp-http": "~0.222.0",
+		"@opentelemetry/exporter-metrics-otlp-http": "~0.222.0",
 		"@opentelemetry/exporter-trace-otlp-http": "~0.222.0",
 		"@opentelemetry/instrumentation-pino": "~0.68.0",
 		"@opentelemetry/resources": ">=2.11.0",
 		"@opentelemetry/sdk-logs": "~0.222.0",
+		"@opentelemetry/sdk-metrics": ">=2.11.0",
 		"@opentelemetry/sdk-node": "~0.222.0",
 		"@opentelemetry/sdk-trace-base": ">=2.11.0",
 		"@opentelemetry/sdk-trace-node": ">=2.11.0",
@@ -192,6 +194,9 @@
 		"@opentelemetry/exporter-logs-otlp-http": {
 			"optional": true
 		},
+		"@opentelemetry/exporter-metrics-otlp-http": {
+			"optional": true
+		},
 		"@opentelemetry/exporter-trace-otlp-http": {
 			"optional": true
 		},
@@ -204,6 +209,9 @@
 		"@opentelemetry/sdk-logs": {
 			"optional": true
 		},
+		"@opentelemetry/sdk-metrics": {
+			"optional": true
+		},
 		"@opentelemetry/sdk-node": {
 			"optional": true
 		},
@@ -213,10 +221,10 @@
 		"@opentelemetry/sdk-trace-node": {
 			"optional": true
 		},
-		"@types/aws-lambda": {
+		"@opentelemetry/semantic-conventions": {
 			"optional": true
 		},
-		"@opentelemetry/semantic-conventions": {
+		"@types/aws-lambda": {
 			"optional": true
 		},
 		"hono": {
@@ -237,10 +245,12 @@
 		"@opentelemetry/api-logs": "~0.222.0",
 		"@opentelemetry/auto-instrumentations-node": "~0.80.0",
 		"@opentelemetry/exporter-logs-otlp-http": "~0.222.0",
+		"@opentelemetry/exporter-metrics-otlp-http": "~0.222.0",
 		"@opentelemetry/exporter-trace-otlp-http": "~0.222.0",
 		"@opentelemetry/instrumentation-pino": "~0.68.0",
 		"@opentelemetry/resources": "~2.11.0",
 		"@opentelemetry/sdk-logs": "~0.222.0",
+		"@opentelemetry/sdk-metrics": "~2.11.0",
 		"@opentelemetry/sdk-node": "~0.222.0",
 		"@opentelemetry/sdk-trace-base": "~2.11.0",
 		"@opentelemetry/sdk-trace-node": "~2.11.0",

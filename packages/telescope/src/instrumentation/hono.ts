@@ -14,6 +14,7 @@ import {
 	type HttpSpanAttributes,
 	incomingTraceContext,
 } from './http';
+import { recordHttpServerRequest } from './metrics';
 import { isInternalCaller, isTrustedOrigin } from './trust';
 
 /**
@@ -131,6 +132,7 @@ export function honoTelemetryMiddleware(
 		const attrs = buildHonoSpanAttributes(c, options);
 
 		// Create the span
+		const startedAt = performance.now();
 		const span = createHttpServerSpan(attrs, parentContext, links);
 		const spanContext = trace.setSpan(parentContext, span);
 
@@ -182,13 +184,26 @@ export function honoTelemetryMiddleware(
 			// Hono hands a thrown error to `onError` and sets `c.error`
 			// rather than rethrowing, so that is where it is found.
 			endHttpSpan(span, { statusCode }, c.error);
+			recordHttpServerRequest({
+				method: c.req.method,
+				route: matchedRoute(c),
+				scheme: attrs.scheme,
+				statusCode,
+				durationMs: performance.now() - startedAt,
+				...(c.error && { error: c.error }),
+			});
 		} catch (error) {
 			nameAfterRoute(c, span);
-			endHttpSpan(
-				span,
-				{ statusCode: 500 },
-				error instanceof Error ? error : new Error(String(error)),
-			);
+			const failure = error instanceof Error ? error : new Error(String(error));
+			endHttpSpan(span, { statusCode: 500 }, failure);
+			recordHttpServerRequest({
+				method: c.req.method,
+				route: matchedRoute(c),
+				scheme: attrs.scheme,
+				statusCode: 500,
+				durationMs: performance.now() - startedAt,
+				error: failure,
+			});
 			throw error;
 		}
 	};
