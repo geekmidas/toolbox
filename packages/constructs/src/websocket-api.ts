@@ -53,6 +53,10 @@ import { loadHono } from './optionalPeers';
 import { onShutdown } from './shutdown';
 import type { Telemetry } from './telemetry';
 import { WebSocketCore } from './websocket/core';
+import {
+	UnregisteredWebSocketScheme,
+	webSocketSinkDriverFor,
+} from './websocket/drivers';
 import { FrameShape, type WebSocketFrame } from './websocket/frame';
 import {
 	type ResolvedWebSocketLimits,
@@ -84,6 +88,11 @@ export {
 	type WebSocketCoreOptions,
 	type WriteFrame,
 } from './websocket/core';
+export {
+	registerWebSocketSinkDriver,
+	UnregisteredWebSocketScheme,
+	type WebSocketSinkDriver,
+} from './websocket/drivers';
 export {
 	WebSocketDataHasDiscriminator,
 	WebSocketDataNotAnObject,
@@ -323,7 +332,7 @@ export class WebSocketApi<
 					.create((get) => ({ connectionString: get(envVar).string() }))
 					.parse();
 				return this.publisher(
-					await sinkFromConnectionString(connectionString, channel),
+					await sinkFromConnectionString(this.id, connectionString, channel),
 				);
 			},
 		};
@@ -558,22 +567,25 @@ export class WebSocketApi<
 }
 
 /**
- * Where `services.<surface>` sends, by the publisher string's scheme: on an
- * AWS stage (`apigateway://`) the gateway's management API, which holds every
- * socket; anywhere else (`redis://`, `memory://`) whichever process does.
+ * Where `services.<surface>` sends, by the publisher string's scheme: a
+ * registered driver's sink — API Gateway's management API on an AWS stage,
+ * registered by the build's entry — or else whichever process holds the
+ * sockets (`redis://`, `memory://`).
  *
- * The API Gateway sink is loaded only for its scheme, so a server stage never
- * resolves it — nor the AWS SDK it loads in turn.
+ * @throws {UnregisteredWebSocketScheme} for `apigateway://` with no driver.
  */
 async function sinkFromConnectionString(
+	surface: string,
 	connectionString: string,
 	channel: string,
 ): Promise<WebSocketSink> {
+	const driver = webSocketSinkDriverFor(connectionString);
+	if (driver) return driver.sink(connectionString);
 	if (connectionString.startsWith(API_GATEWAY_WEBSOCKET_SCHEME)) {
-		const { apiGatewayFromConnectionString } = await import(
-			'./websocket/apigateway'
+		throw new UnregisteredWebSocketScheme(
+			surface,
+			API_GATEWAY_WEBSOCKET_SCHEME,
 		);
-		return apiGatewayFromConnectionString(connectionString).sink;
 	}
 	const transport = await transportFromConnectionString(
 		connectionString,

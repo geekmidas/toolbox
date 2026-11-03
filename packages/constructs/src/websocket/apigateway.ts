@@ -18,20 +18,32 @@
  * an `apigateway://` string on an AWS stage, which is also what
  * `services.<surface>` reads in any other Lambda.
  *
- * The AWS SDK clients are optional peers, loaded the first time a send or a
- * table read needs one. Nothing here imports them at the top.
+ * This is the AWS adaptor, `@geekmidas/constructs/aws-websocket`: it imports
+ * the AWS SDK clients it is built on, so they are needed only by a project
+ * that serves a surface from API Gateway.
  */
 
+import {
+	ApiGatewayManagementApiClient,
+	DeleteConnectionCommand,
+	PostToConnectionCommand,
+} from '@aws-sdk/client-apigatewaymanagementapi';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 import {
+	API_GATEWAY_WEBSOCKET_SCHEME,
 	type ApiGatewayWebSocketTarget,
 	parseApiGatewayWebSocketUrl,
 	trustsOrigin,
 } from '@geekmidas/manifest';
-import { OptionalPeerMissing } from '../optionalPeers';
+import { Entity } from 'electrodb';
 import type { WebSocketApi } from '../websocket-api';
 import type { WebSocketCore } from './core';
+import {
+	registerWebSocketSinkDriver,
+	type WebSocketSinkDriver,
+} from './drivers';
 import { ownOrigins } from './origins';
 import type { NoMessages, WebSocketMessages, WebSocketSink } from './publisher';
 import type { Connection } from './route';
@@ -56,39 +68,6 @@ export interface ConnectionTable {
 	ids(): Promise<string[]>;
 }
 
-/** The subset of a DynamoDB client the table uses. */
-interface DynamoClient {
-	send(command: unknown): Promise<Record<string, unknown>>;
-}
-
-type DynamoModule = typeof import('@aws-sdk/client-dynamodb');
-type ManagementModule =
-	typeof import('@aws-sdk/client-apigatewaymanagementapi');
-
-async function loadDynamo(): Promise<DynamoModule> {
-	try {
-		return await import('@aws-sdk/client-dynamodb');
-	} catch (cause) {
-		throw new OptionalPeerMissing(
-			'@aws-sdk/client-dynamodb',
-			'A WebSocketApi served by API Gateway',
-			cause,
-		);
-	}
-}
-
-async function loadManagement(): Promise<ManagementModule> {
-	try {
-		return await import('@aws-sdk/client-apigatewaymanagementapi');
-	} catch (cause) {
-		throw new OptionalPeerMissing(
-			'@aws-sdk/client-apigatewaymanagementapi',
-			'A WebSocketApi served by API Gateway',
-			cause,
-		);
-	}
-}
-
 /**
  * The connection table in DynamoDB: one item per connection, keyed by
  * `connectionId`, with its `data` as JSON and an `expiresAt` the table's TTL
@@ -96,104 +75,104 @@ async function loadManagement(): Promise<ManagementModule> {
  * AWS needs nothing declared for it.
  */
 export class DynamoConnectionTable implements ConnectionTable {
-	private client?: Promise<{ dynamo: DynamoModule; client: DynamoClient }>;
+	private readonly connections: ReturnType<typeof connectionEntity>;
 
-	constructor(
-		readonly table: string,
-		private readonly options: {
+	/** A table on a client of DynamoDB at `region` (or an emulator's `endpoint`). */
+	static create(
+		table: string,
+		options: {
 			region: string;
 			/** An emulator's address; AWS's own when absent. */
 			endpoint?: string;
 			/** Seconds a row is kept. Default {@link CONNECTION_TTL_SECONDS}. */
 			ttl?: number;
 		},
-	) {}
+	): DynamoConnectionTable {
+		const client = new DynamoDBClient({
+			region: options.region,
+			...(options.endpoint ? { endpoint: options.endpoint } : {}),
+		});
+		return new DynamoConnectionTable(table, client, { ttl: options.ttl });
+	}
 
-	private connect() {
-		this.client ??= loadDynamo().then((dynamo) => ({
-			dynamo,
-			client: new dynamo.DynamoDBClient({
-				region: this.options.region,
-				...(this.options.endpoint ? { endpoint: this.options.endpoint } : {}),
-			}) as unknown as DynamoClient,
-		}));
-		return this.client;
+	constructor(
+		readonly table: string,
+		client: DynamoDBClient,
+		private readonly options: {
+			/** Seconds a row is kept. Default {@link CONNECTION_TTL_SECONDS}. */
+			ttl?: number;
+		} = {},
+	) {
+		this.connections = connectionEntity(table, client);
 	}
 
 	async put(connection: Connection): Promise<void> {
-		const { dynamo, client } = await this.connect();
 		const ttl = this.options.ttl ?? CONNECTION_TTL_SECONDS;
-		await client.send(
-			new dynamo.PutItemCommand({
-				TableName: this.table,
-				Item: {
-					connectionId: { S: connection.id },
-					data: { S: JSON.stringify(connection.data) },
-					expiresAt: { N: String(nowSeconds() + ttl) },
-				},
-			}),
-		);
+		await this.connections
+			.put({
+				connectionId: connection.id,
+				data: JSON.stringify(connection.data),
+				expiresAt: nowSeconds() + ttl,
+			})
+			.go();
 	}
 
 	async get(id: string): Promise<Connection | undefined> {
-		const { dynamo, client } = await this.connect();
-		const { Item: item } = (await client.send(
-			new dynamo.GetItemCommand({
-				TableName: this.table,
-				Key: { connectionId: { S: id } },
-				// `$connect` wrote it a moment ago; the first frame must see it.
-				ConsistentRead: true,
-			}),
-		)) as { Item?: Record<string, { S?: string; N?: string }> };
-		if (!item || expired(item)) return undefined;
-		return { id, data: JSON.parse(item.data?.S ?? '{}') };
+		// `$connect` wrote it a moment ago; the first frame must see it.
+		const { data: item } = await this.connections
+			.get({ connectionId: id })
+			.go({ consistent: true });
+		if (!item || item.expiresAt <= nowSeconds()) return undefined;
+		return { id, data: JSON.parse(item.data) };
 	}
 
 	async delete(ids: readonly string[]): Promise<void> {
 		if (ids.length === 0) return;
-		const { dynamo, client } = await this.connect();
-		await Promise.all(
-			ids.map((id) =>
-				client.send(
-					new dynamo.DeleteItemCommand({
-						TableName: this.table,
-						Key: { connectionId: { S: id } },
-					}),
-				),
-			),
-		);
+		await this.connections
+			.delete(ids.map((connectionId) => ({ connectionId })))
+			.go();
 	}
 
 	async ids(): Promise<string[]> {
-		const { dynamo, client } = await this.connect();
-		const ids: string[] = [];
-		let start: Record<string, unknown> | undefined;
-		do {
-			const page = (await client.send(
-				new dynamo.ScanCommand({
-					TableName: this.table,
-					ProjectionExpression: 'connectionId, expiresAt',
-					...(start ? { ExclusiveStartKey: start as never } : {}),
-				}),
-			)) as {
-				Items?: Record<string, { S?: string; N?: string }>[];
-				LastEvaluatedKey?: Record<string, unknown>;
-			};
-			for (const item of page.Items ?? []) {
-				// DynamoDB deletes an expired item eventually, not on time.
-				if (item.connectionId?.S && !expired(item)) {
-					ids.push(item.connectionId.S);
-				}
-			}
-			start = page.LastEvaluatedKey;
-		} while (start);
-		return ids;
+		const { data: items } = await this.connections.scan
+			.where(({ expiresAt }, { gt }) => gt(expiresAt, nowSeconds()))
+			.go({ pages: 'all', attributes: ['connectionId', 'expiresAt'] });
+		// DynamoDB deletes an expired item eventually, not on time.
+		return items.map((item) => item.connectionId);
 	}
 }
 
-/** The subset of a management API client the sink uses. */
-interface ManagementClient {
-	send(command: unknown): Promise<unknown>;
+/**
+ * One connection's row. The table's hash key is the `connectionId` attribute
+ * itself, as `@geekmidas/cloud` provisions it, and `expiresAt` is its TTL.
+ */
+function connectionEntity(table: string, client: DynamoDBClient) {
+	return new Entity(
+		{
+			model: {
+				entity: 'connection',
+				service: 'gkm-websocket',
+				version: '1',
+			},
+			attributes: {
+				connectionId: { type: 'string', required: true },
+				data: { type: 'string', required: true },
+				expiresAt: { type: 'number', required: true },
+			},
+			indexes: {
+				primary: {
+					// A connection id is case-sensitive; ElectroDB lowercases keys
+					// unless told not to, and a lowered id is a 410 on every post.
+					pk: {
+						field: 'connectionId',
+						composite: ['connectionId'],
+						casing: 'none',
+					},
+				},
+			},
+		},
+		{ table, client },
+	);
 }
 
 /**
@@ -207,37 +186,29 @@ interface ManagementClient {
  * `reason`.
  */
 export class ApiGatewaySink implements WebSocketSink {
-	private client?: Promise<{
-		management: ManagementModule;
-		client: ManagementClient;
-	}>;
+	/** A sink on a client of the management API at `target`. */
+	static create(
+		target: Pick<ApiGatewayWebSocketTarget, 'endpoint' | 'region'>,
+		table: ConnectionTable,
+	): ApiGatewaySink {
+		const client = new ApiGatewayManagementApiClient({
+			region: target.region,
+			endpoint: target.endpoint,
+		});
+		return new ApiGatewaySink(client, table);
+	}
 
 	constructor(
-		private readonly target: Pick<
-			ApiGatewayWebSocketTarget,
-			'endpoint' | 'region'
-		>,
+		private readonly client: ApiGatewayManagementApiClient,
 		private readonly table: ConnectionTable,
 	) {}
 
-	private connect() {
-		this.client ??= loadManagement().then((management) => ({
-			management,
-			client: new management.ApiGatewayManagementApiClient({
-				region: this.target.region,
-				endpoint: this.target.endpoint,
-			}) as unknown as ManagementClient,
-		}));
-		return this.client;
-	}
-
 	async send(ids: readonly string[], payload: string): Promise<void> {
 		if (ids.length === 0) return;
-		const { management, client } = await this.connect();
 		const data = new TextEncoder().encode(payload);
 		const gone = await this.each(ids, (id) =>
-			client.send(
-				new management.PostToConnectionCommand({
+			this.client.send(
+				new PostToConnectionCommand({
 					ConnectionId: id,
 					Data: data,
 				}),
@@ -254,9 +225,8 @@ export class ApiGatewaySink implements WebSocketSink {
 
 	async close(ids: readonly string[]): Promise<void> {
 		if (ids.length === 0) return;
-		const { management, client } = await this.connect();
 		await this.each(ids, (id) =>
-			client.send(new management.DeleteConnectionCommand({ ConnectionId: id })),
+			this.client.send(new DeleteConnectionCommand({ ConnectionId: id })),
 		);
 		// Its `$disconnect` deletes the row too; a connection that was already
 		// gone has no `$disconnect` left to run.
@@ -283,6 +253,18 @@ export class ApiGatewaySink implements WebSocketSink {
 	}
 }
 
+/**
+ * `services.<surface>` on an AWS stage: the management API's sink for an
+ * `apigateway://` publisher string. An AWS build's entry registers it with
+ * `registerWebSocketSinkDriver`, and {@link AmazonApiGatewayWebSocket} does
+ * for its own Lambda.
+ */
+export const apiGatewayWebSocketDriver: WebSocketSinkDriver = {
+	scheme: API_GATEWAY_WEBSOCKET_SCHEME,
+	sink: (connectionString) =>
+		apiGatewayFromConnectionString(connectionString).sink,
+};
+
 /** A table and a sink from an `apigateway://` publisher string. */
 export function apiGatewayFromConnectionString(connectionString: string): {
 	target: ApiGatewayWebSocketTarget;
@@ -290,11 +272,11 @@ export function apiGatewayFromConnectionString(connectionString: string): {
 	sink: ApiGatewaySink;
 } {
 	const target = parseApiGatewayWebSocketUrl(connectionString);
-	const table = new DynamoConnectionTable(target.table, {
+	const table = DynamoConnectionTable.create(target.table, {
 		region: target.region,
 		...(target.tableEndpoint ? { endpoint: target.tableEndpoint } : {}),
 	});
-	return { target, table, sink: new ApiGatewaySink(target, table) };
+	return { target, table, sink: ApiGatewaySink.create(target, table) };
 }
 
 /**
@@ -362,7 +344,10 @@ export class AmazonApiGatewayWebSocket<
 	constructor(
 		private readonly surface: WebSocketApi<string, TMessages>,
 		private readonly options: AmazonApiGatewayWebSocketOptions = {},
-	) {}
+	) {
+		// A route's own `services.<surface>` publishes through API Gateway too.
+		registerWebSocketSinkDriver(apiGatewayWebSocketDriver);
+	}
 
 	/** The Lambda handler. */
 	readonly handler = (
@@ -547,9 +532,4 @@ function isGone(error: unknown): boolean {
 
 function nowSeconds(): number {
 	return Math.floor(Date.now() / 1000);
-}
-
-function expired(item: Record<string, { N?: string }>): boolean {
-	const at = Number(item.expiresAt?.N);
-	return Number.isFinite(at) && at > 0 && at <= nowSeconds();
 }

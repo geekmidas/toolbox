@@ -74,6 +74,13 @@ export const ALLOWED = {
 	'@geekmidas/constructs': {
 		// The Lambda adaptor: every handler is wrapped in middy.
 		'./aws': ['@middy/core'],
+		// A WebSocketApi on API Gateway: the management API posts to its
+		// sockets, and its connections are an ElectroDB entity in DynamoDB.
+		'./aws-websocket': [
+			'@aws-sdk/client-apigatewaymanagementapi',
+			'@aws-sdk/client-dynamodb',
+			'electrodb',
+		],
 		// A database construct is a Kysely client over a pg pool.
 		'./database/kysely': ['kysely', 'pg'],
 		// The KMS cipher driver, registered by an AWS entry (#268).

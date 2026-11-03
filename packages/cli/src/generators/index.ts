@@ -4,6 +4,7 @@ export {
 	driversFor,
 	eventsBackendsIn,
 	opensKmsKeys,
+	publishesToApiGateway,
 	type RuntimeDrivers,
 	type StorageDrivers,
 	storageDriversFor,

@@ -7,6 +7,7 @@ import {
 	driversFor,
 	eventsBackendsIn,
 	opensKmsKeys,
+	publishesToApiGateway,
 	storageDriversFor,
 } from '../drivers';
 
@@ -139,6 +140,38 @@ describe('opensKmsKeys', () => {
 		expect(kms.setup).toBe('registerCipherDriver(kmsCipherDriver);');
 
 		expect(driversFor({ appRoot, kms: false })).toEqual({
+			imports: '',
+			setup: '',
+		});
+	});
+});
+
+describe('publishesToApiGateway', () => {
+	const realtime = manifest({ Realtime: { kind: 'websocket-api' } });
+
+	it('is an AWS entry that reaches a WebSocketApi', () => {
+		expect(publishesToApiGateway(realtime, 'aws')).toBe(true);
+	});
+
+	it('is never a server entry, whose surfaces are redis:// or memory://', () => {
+		expect(publishesToApiGateway(realtime, 'server')).toBe(false);
+	});
+
+	it('is no entry that reaches no WebSocketApi', () => {
+		expect(
+			publishesToApiGateway(manifest({ Orders: { kind: 'database' } }), 'aws'),
+		).toBe(false);
+	});
+
+	it('registers the API Gateway sink from its own entry, and only when asked', () => {
+		const appRoot = '/nonexistent';
+		const aws = driversFor({ appRoot, apiGatewayWebSockets: true });
+		expect(aws.imports).toContain('@geekmidas/constructs/aws-websocket');
+		expect(aws.setup).toBe(
+			'registerWebSocketSinkDriver(apiGatewayWebSocketDriver);',
+		);
+
+		expect(driversFor({ appRoot, apiGatewayWebSockets: false })).toEqual({
 			imports: '',
 			setup: '',
 		});

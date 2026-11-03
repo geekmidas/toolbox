@@ -113,6 +113,31 @@ const KMS: RuntimeDrivers = {
 };
 
 /**
+ * The API Gateway sink, for an AWS entry that reaches a `WebSocketApi`: its
+ * `services.<surface>` publishes through the gateway's management API, and
+ * only this subpath imports that SDK.
+ */
+const AWS_WEBSOCKET: RuntimeDrivers = {
+	imports: `import { registerWebSocketSinkDriver } from '@geekmidas/constructs/websocket-api';\nimport { apiGatewayWebSocketDriver } from '@geekmidas/constructs/aws-websocket';`,
+	setup: 'registerWebSocketSinkDriver(apiGatewayWebSocketDriver);',
+};
+
+/**
+ * Whether an entry publishes to a `WebSocketApi` on API Gateway: built for
+ * AWS, from a process that reaches one. A server's surfaces are `redis://` or
+ * `memory://`, which need no driver.
+ */
+export function publishesToApiGateway(
+	manifest: Record<string, { kind: string }>,
+	target: 'aws' | 'server',
+): boolean {
+	return (
+		target === 'aws' &&
+		Object.values(manifest).some((d) => d.kind === 'websocket-api')
+	);
+}
+
+/**
  * Whether an entry opens KMS keys: built for AWS, from a process that reaches
  * an `Encryption`. A server's keys are keyrings, and `gkm dev` and `gkm test`
  * derive theirs locally — none of them imports `@aws-sdk/client-kms`.
@@ -152,6 +177,8 @@ export function driversFor(options: {
 	events?: EventsBackend | readonly EventsBackend[] | false;
 	/** Whether it opens KMS keys — see {@link opensKmsKeys}. */
 	kms?: boolean;
+	/** Whether it publishes through API Gateway — see {@link publishesToApiGateway}. */
+	apiGatewayWebSockets?: boolean;
 }): RuntimeDrivers {
 	const backends = listOf(options.cache);
 	const brokers = listOf(options.events);
@@ -163,6 +190,7 @@ export function driversFor(options: {
 		),
 		...[...new Set(brokers)].map((broker) => EVENTS_DRIVERS[broker]),
 		...(options.kms ? [KMS] : []),
+		...(options.apiGatewayWebSockets ? [AWS_WEBSOCKET] : []),
 	].filter((part) => part.imports || part.setup);
 
 	if (parts.length === 0) return NONE;

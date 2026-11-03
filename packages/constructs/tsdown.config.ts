@@ -32,6 +32,7 @@ export default defineConfig({
 		'src/topic/index.ts',
 		'src/adaptors/hono.ts',
 		'src/adaptors/aws.ts',
+		'src/adaptors/awsWebsocket.ts',
 		'src/adaptors/testing.ts',
 	],
 	clean: true,

@@ -7,6 +7,9 @@ import {
 } from 'node:http';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
+import { EnvironmentParser } from '@geekmidas/envkit';
+import { serviceContext } from '@geekmidas/services';
+import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { POSTGRES_PORT } from '../../../../testkit/test/ports';
 import { bundleServer } from '../../build/bundler';
@@ -181,6 +184,26 @@ export const me = api
 	// The auth server: the construct's own app, behind the generated server.
 	const authDir = join(dir, '.gkm', 'auth');
 	const { auth } = await import(join(dir, 'auth.ts'));
+	// better-auth's own tables, from the SQL `gkm migration` would commit,
+	// applied before its server starts — which checks for them and refuses
+	// to serve without. Idempotent, so a database that has them is left be.
+	const pending = await auth.pendingMigration({
+		envParser: new EnvironmentParser({
+			AUTH_DB_URL: DATABASE,
+			AUTH_SECRET: 'a-signing-secret-that-is-at-least-32-chars',
+			AUTH_URL: 'http://127.0.0.1',
+		}),
+		context: serviceContext,
+	});
+	if (pending) {
+		const client = new pg.Client({ connectionString: DATABASE });
+		await client.connect();
+		try {
+			await client.query(pending);
+		} finally {
+			await client.end();
+		}
+	}
 	await writeSurfaceEntry(authDir, {
 		file: join(dir, 'auth.ts'),
 		exportName: 'auth',

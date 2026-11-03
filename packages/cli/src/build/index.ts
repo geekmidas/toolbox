@@ -26,6 +26,7 @@ import {
 	FunctionGenerator,
 	type GeneratedConstruct,
 	opensKmsKeys,
+	publishesToApiGateway,
 	QueueGenerator,
 	SubscriberGenerator,
 	TopicGenerator,
@@ -942,8 +943,9 @@ function processTelemetry(
  * The drivers a process's entry registers, from the declarations it reaches:
  * the cache's — the declaration for one that named its database, the deploy
  * target's default for one that named nowhere — and the broker's, only when
- * it reaches a topic or a queue (see `eventsBackendsIn`) — and the KMS
- * cipher, only built for AWS and only when it reaches an `Encryption`.
+ * it reaches a topic or a queue (see `eventsBackendsIn`) — and, built for
+ * AWS, the KMS cipher when it reaches an `Encryption` and the API Gateway
+ * sink when it reaches a `WebSocketApi`.
  */
 function runtimeDrivers(options: {
 	appRoot: string;
@@ -959,6 +961,10 @@ function runtimeDrivers(options: {
 			cache: cacheBackendsIn(options.reach, options.cacheBackend),
 			events: eventsBackends,
 			kms: opensKmsKeys(options.reach, options.target),
+			apiGatewayWebSockets: publishesToApiGateway(
+				options.reach,
+				options.target,
+			),
 		}),
 		eventsBackends,
 	};
