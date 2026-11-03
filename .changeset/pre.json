@@ -40,6 +40,7 @@
     "auth-client-for-callers",
     "auth-migrations-no-server",
     "auth-pending-migration",
+    "aws-websocket-adaptor",
     "branch-from-the-surface",
     "browser-client-address",
     "browser-trace-context",

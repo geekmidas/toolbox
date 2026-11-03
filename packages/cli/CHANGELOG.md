@@ -1,5 +1,42 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.157
+
+### Patch Changes
+
+- [#388](https://github.com/geekmidas/toolbox/pull/388) [`cbd3747`](https://github.com/geekmidas/toolbox/commit/cbd37473f936a8d9305d4087e3e4249a60d9cd71) Thanks [@geekmidas](https://github.com/geekmidas)! - A WebSocketApi on API Gateway is its own adaptor: `@geekmidas/constructs/aws-websocket`
+
+  `AmazonApiGatewayWebSocket`, `ApiGatewaySink` and `DynamoConnectionTable` moved
+  out of `@geekmidas/constructs/aws` into an entry that imports what it is built
+  on — `@aws-sdk/client-apigatewaymanagementapi`, `@aws-sdk/client-dynamodb` and
+  `electrodb` — directly. They are needed only by a project that serves a surface
+  from API Gateway, and stay optional peers of the package as a whole.
+
+  - The connection table is an ElectroDB entity. `DynamoConnectionTable` and
+    `ApiGatewaySink` take their clients in the constructor; `create()` builds
+    them from connection details.
+  - `services.<surface>` reaches an `apigateway://` publisher string through a
+    sink driver the entry registers (`registerWebSocketSinkDriver`), as events
+    and KMS ciphers are. `gkm build --provider aws` registers it in every entry
+    that reaches a WebSocketApi; anywhere else the string fails with
+    `UnregisteredWebSocketScheme`, naming the build to use.
+  - Connection ids keep their case. ElectroDB lowercases keys by default, which
+    sent every post to an id API Gateway did not know: a 410, and the row was
+    dropped as gone.
+
+- Updated dependencies [[`cbd3747`](https://github.com/geekmidas/toolbox/commit/cbd37473f936a8d9305d4087e3e4249a60d9cd71)]:
+  - @geekmidas/constructs@10.0.0-alpha.157
+  - @geekmidas/cache@10.0.0-alpha.157
+  - @geekmidas/db@10.0.0-alpha.157
+  - @geekmidas/envkit@10.0.0-alpha.157
+  - @geekmidas/errors@10.0.0-alpha.157
+  - @geekmidas/logger@10.0.0-alpha.157
+  - @geekmidas/manifest@10.0.0-alpha.157
+  - @geekmidas/schema@10.0.0-alpha.157
+  - @geekmidas/services@10.0.0-alpha.157
+  - @geekmidas/storage@10.0.0-alpha.157
+  - @geekmidas/telescope@10.0.0-alpha.157
+
 ## 10.0.0-alpha.156
 
 ### Minor Changes
