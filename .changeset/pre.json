@@ -64,6 +64,7 @@
     "compose-backups",
     "compose-build-push",
     "compose-deploy-state",
+    "compose-destroy",
     "compose-dns-prune",
     "compose-env-follows-edges",
     "compose-local-mail-inbox",
