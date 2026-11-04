@@ -35,6 +35,8 @@ export interface AwsDestroyStep {
 	leftAlone?: string;
 	/** Already gone from the account: only its record is forgotten. */
 	gone?: boolean;
+	/** Deleted along with its user's step: only its record is forgotten here. */
+	withUser?: boolean;
 	/** Deletes it. Absent when it is left alone or already gone. */
 	remove?: () => Promise<void>;
 }
@@ -257,7 +259,7 @@ export async function planAwsDestroy(
 				...(owner?.leftAlone
 					? { leftAlone: `its user is left alone: ${owner.leftAlone}` }
 					: owner
-						? { gone: true }
+						? { withUser: true }
 						: { leftAlone: 'its user is not one this stage recorded' }),
 			});
 		}

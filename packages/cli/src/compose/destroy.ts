@@ -446,7 +446,11 @@ async function plan(
 function awsStep(step: AwsDestroyStep): Step {
 	if (step.leftAlone) return { label: step.label, leftAlone: step.leftAlone };
 	return {
-		label: step.gone ? `${step.label} (already gone)` : step.label,
+		label: step.gone
+			? `${step.label} (already gone)`
+			: step.withUser
+				? `${step.label} — deleted with its user`
+				: step.label,
 		keys: [step.key],
 		...(step.remove ? { run: step.remove } : {}),
 	};
