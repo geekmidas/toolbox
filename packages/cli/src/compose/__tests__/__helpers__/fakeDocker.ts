@@ -68,8 +68,12 @@ export function fakeDocker(
 				...on(stack),
 			});
 		},
-		async down(stack) {
-			calls.push({ op: 'down', args: stack.project, ...on(stack) });
+		async down(stack, options) {
+			calls.push({
+				op: options?.volumes ? 'down --volumes' : 'down',
+				args: stack.project,
+				...on(stack),
+			});
 		},
 		async port(stack, service, inside) {
 			calls.push({ op: 'port', args: [service, inside], ...on(stack) });

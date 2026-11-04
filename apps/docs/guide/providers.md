@@ -284,6 +284,11 @@ a policy, and a construct you remove from the code leaves its bucket where it
 is. The one deletion is the old access key a `--rotate-keys` replaced, after
 the deploy that stopped using it, or when you pass `--retire-old-keys`.
 
+A deploy never deletes. Deleting a whole stage is a separate command that asks
+first: `gkm compose --stage <stage> --destroy`. It deletes only what it can
+prove gkm made for that stage. See
+[Destroying a stage](./compose.md#destroying-a-stage).
+
 ## DNS records
 
 The deploy also points a compose stage's public hosts at its server, through

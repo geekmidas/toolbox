@@ -11,6 +11,7 @@ gkm compose --stage development         # the local stage, built from this check
 gkm compose --stage production --tag v1.4.0   # the images CI pushed as v1.4.0
 gkm compose --stage production --build --push --tag v1.4.0  # CI: build and push, start nothing
 gkm compose --stage production --down    # stop it (volumes are kept)
+gkm compose --stage production --destroy # delete everything it made — asks first
 gkm compose --stage preview --allow-dev-services  # a demo, on dev services
 ```
 
@@ -1986,6 +1987,85 @@ A restore asks first (`--yes` skips it), then:
    open ones, and recreates it from the file as the stack's superuser.
 
 `--at` takes a run's folder, or a time for the newest run at or before it.
+
+## Destroying a stage
+
+`--down` stops a stage and keeps everything. `--destroy` deletes what the
+stage's deploys made, for good:
+
+```bash
+gkm compose --stage production --destroy --dry-run   # what it would delete
+gkm compose --stage production --destroy             # delete it — asks first
+gkm compose --stage production --destroy --secrets   # its secrets too
+```
+
+```
+🧨 This deletes stage 'production' of shop for good:
+
+   - on deploy@203.0.113.10: stack shop-production — its containers, its volumes and their data, its routes on gkm-edge
+   - CloudFront distribution E2ABC… (uploads-server.shop.example.com)
+   - CloudFront origin access control gkm-shop-production-uploads-server
+   - CloudFront response headers policy gkm-shop-production-uploads-server-cors
+   - ACM certificate uploads-server.shop.example.com (us-east-1)
+   - IAM user gkm-shop-production-uploads, its access keys and policies
+   - S3 bucket shop-production-uploads, emptied first: 1204 object versions
+   - DNS: A shop.example.com, A api.shop.example.com, CNAME uploads-server.shop.example.com, …
+
+   Left where it is:
+   · ses-receipt-rule gkm-shop-production-inbox — gkm does not delete a ses-receipt-rule yet: delete it by hand
+
+   Type shop-production to destroy it:
+```
+
+**It asks, every time.** The whole plan is printed, then the compose project's
+name, `<project>-<stage>`, has to be typed back. No flag answers it, and with
+no terminal to ask at (in CI, from a script) it refuses before it reads
+anything. Only `--dry-run` runs anywhere.
+
+**It deletes only what it can prove is the stage's.** A deploy records what it
+found as well as what it made: a certificate someone requested for the host, a
+bucket that existed. So each AWS resource is checked against gkm's own mark
+before it is deleted: the `gkm:project` and `gkm:stage` tags (on a bucket, a
+user, a certificate, a topic, a queue), the `gkm <project> <stage> <server>`
+comment on a distribution, and the stage's own name on an origin access
+control or a headers policy. What fails the check is listed under **Left where
+it is**, and so is everything a distribution that stays still uses. A DNS
+record is deleted only while it holds the value gkm wrote, so a name pointed
+elsewhere since is kept. That includes the CDN's name and its certificate's
+validation record, which the stage's state never recorded.
+
+**The order is the one AWS needs**, and a run that stops part way carries on
+when it is run again. Each resource is forgotten from the stage's state as soon
+as it is gone:
+
+1. the stack: its routes on the shared edge, then its containers and volumes;
+2. each distribution, disabled and then deleted once CloudFront has deployed
+   that (often 15 minutes), then its origin access control, headers policies
+   and certificate;
+3. SNS subscriptions, topics and queues;
+4. IAM users, with their keys and policies;
+5. buckets, emptied first, every version included;
+6. DNS records;
+7. with `--secrets`, the stage's secrets, wherever its store keeps them.
+
+**What it never touches:**
+- what other stages and projects share: the project bucket holding every
+  stage's state and backups, the shared Traefik edge, and the server's own
+  setup (`gkm compose:server`);
+- images in the registry.
+
+The stage's secrets are kept unless you pass `--secrets`, so a deploy of the
+stage again reuses its passwords and keys. A custom secrets store needs a
+`delete(stage)` for `--secrets` (`SecretsStoreCannotDelete` otherwise).
+
+| Error | What happened |
+|---|---|
+| `ComposeDestroyNeedsTerminal` | No terminal to type the project's name at. Run it yourself; `--dry-run` works anywhere. |
+| `ComposeDestroyNotConfirmed` | What was typed wasn't `<project>-<stage>`. Nothing was deleted. |
+| `ComposeDestroyNeedsAwsCredentials` | The stage has AWS resources, and no credentials to delete them with. Supply them as for a deploy. |
+| `DistributionStillDeploying` | A disabled distribution was still deploying when the wait ran out. Run it again later; it carries on. |
+| `ComposeDestroyConflict` | `--destroy` with `--down`, `--build`, `--pull`, `--push` or `--tag`. |
+| `ComposeSecretsNeedsDestroy` | `--secrets` without `--destroy`. |
 
 ## Running a script against a deployed stage
 

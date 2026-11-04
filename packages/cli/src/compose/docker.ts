@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 /**
  * The Docker operations `gkm compose` needs, behind an interface.
  *
@@ -119,8 +120,11 @@ export interface ComposeDocker {
 	 * removed.
 	 */
 	up(stack: StackRef, services?: readonly string[]): Promise<void>;
-	/** Stop the stack. Its volumes are kept. */
-	down(stack: StackRef): Promise<void>;
+	/**
+	 * Stop and remove the stack's containers. `volumes` removes its volumes
+	 * too — only `gkm compose --destroy` asks for that.
+	 */
+	down(stack: StackRef, options?: { volumes?: boolean }): Promise<void>;
 	/** The host port a running service publishes for `inside`. */
 	port(stack: StackRef, service: string, inside: number): Promise<number>;
 	/**
@@ -417,8 +421,16 @@ export const dockerCompose: ComposeDocker = {
 		);
 	},
 
-	async down(stack) {
-		await run('docker', compose(stack, ['down']), runOptions(stack));
+	async down(stack, options) {
+		const args = ['down', ...(options?.volumes ? ['--volumes'] : [])];
+		await run(
+			'docker',
+			// A stack whose file is gone is still found by its project's name.
+			existsSync(stack.file)
+				? compose(stack, args)
+				: ['compose', '-p', stack.project, ...args],
+			runOptions(stack),
+		);
 	},
 
 	async port(stack, service, inside) {

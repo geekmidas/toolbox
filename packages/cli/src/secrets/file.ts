@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { GkmError } from '../errors';
 import {
@@ -95,6 +95,11 @@ export class FileSecretsStore implements SecretsStore {
 			JSON.stringify(encrypt(secrets, key), null, 2),
 			'utf-8',
 		);
+	}
+
+	/** The stage's file. Its key is kept: it opens nothing once this is gone. */
+	async delete(stage: string): Promise<void> {
+		await rm(this.path(stage), { force: true });
 	}
 }
 

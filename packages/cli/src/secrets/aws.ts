@@ -15,6 +15,7 @@
  */
 
 import {
+	DeleteParameterCommand,
 	GetParameterCommand,
 	ParameterNotFound,
 	PutParameterCommand,
@@ -111,5 +112,20 @@ export class AwsSecretsStore implements SecretsStore {
 				}),
 			),
 		);
+	}
+
+	async delete(stage: string): Promise<void> {
+		const ssm = await this.ssm();
+		try {
+			await withStageCredentials(this.context(stage, 'write'), () =>
+				ssm.send(
+					new DeleteParameterCommand({
+						Name: secretsParameterName(this.options.project, stage),
+					}),
+				),
+			);
+		} catch (error) {
+			if (!(error instanceof ParameterNotFound)) throw error;
+		}
 	}
 }

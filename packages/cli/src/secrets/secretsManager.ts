@@ -13,6 +13,7 @@
 
 import {
 	CreateSecretCommand,
+	DeleteSecretCommand,
 	GetSecretValueCommand,
 	PutSecretValueCommand,
 	ResourceNotFoundException,
@@ -104,6 +105,27 @@ export class SecretsManagerSecretsStore implements SecretsStore {
 		await withStageCredentials(this.context(stage, 'write'), () =>
 			this.put(client, stage, name, value),
 		);
+	}
+
+	/**
+	 * At once, with no recovery window: a stage destroyed and deployed again
+	 * creates its secret under the same name, which a secret waiting out its
+	 * window would still hold.
+	 */
+	async delete(stage: string): Promise<void> {
+		const client = await this.secretsManager();
+		try {
+			await withStageCredentials(this.context(stage, 'write'), () =>
+				client.send(
+					new DeleteSecretCommand({
+						SecretId: this.secretName(stage),
+						ForceDeleteWithoutRecovery: true,
+					}),
+				),
+			);
+		} catch (error) {
+			if (!(error instanceof ResourceNotFoundException)) throw error;
+		}
 	}
 
 	/** Put the secret, creating it on the stage's first write. */

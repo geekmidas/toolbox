@@ -27,6 +27,12 @@ export interface SecretsStore {
 	read(stage: string): Promise<StageSecrets | null>;
 	/** Replace the stage's secrets. */
 	write(stage: string, secrets: StageSecrets): Promise<void>;
+	/**
+	 * Delete the stage's secrets, every kept version of them included — what
+	 * `gkm compose --destroy --secrets` does. Optional for a custom store; one
+	 * without it cannot have its stage's secrets destroyed by gkm.
+	 */
+	delete?(stage: string): Promise<void>;
 }
 
 /** Secrets in SSM Parameter Store, in the account of the active credentials. */
