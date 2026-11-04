@@ -1,5 +1,43 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.160
+
+### Patch Changes
+
+- 🐛 [#399](https://github.com/geekmidas/toolbox/pull/399) [`7700cfc`](https://github.com/geekmidas/toolbox/commit/7700cfc19cab1fec79566bc607dc1c110775c6c0) Thanks [@geekmidas](https://github.com/geekmidas)! - :bug: Adding processors to a file server whose CDN already exists updates its distribution
+
+  An update replaces each CloudFront origin and behaviour whole, and CloudFront
+  refuses one missing a field it fills in itself on create: the deploy that
+  added a file server's first processor stopped with `IllegalUpdate: The
+'OriginCustomHeaders' field is missing`, then `The parameter SmoothStreaming
+flag is missing`. Every origin and behaviour now spells those fields out at
+  CloudFront's own defaults, so an existing distribution is still seen as
+  holding what it should.
+
+- 🐛 [#400](https://github.com/geekmidas/toolbox/pull/400) [`81bb708`](https://github.com/geekmidas/toolbox/commit/81bb708d89e1a28bcc98ebfb7f2ac49c6f56be13) Thanks [@geekmidas](https://github.com/geekmidas)! - :bug: A config that reads the environment gives the deploy the same settings at every step
+
+  `gkm compose` and `gkm deploy` loaded `gkm.config.ts` in their own process,
+  then `deploy()` loaded it again in its sandbox, whose environment is an
+  allowlist. A config reading `process.env.DOMAIN` had a domain for the first
+  load and none for the deploy, which stopped with `FileServerCdnNeedsDomain`.
+  Both commands now hand the config they loaded to the run, as
+  `deploy({ config })`, and every step reads that one. The constructs are still
+  discovered, and the apps built, in the sandbox. A `deploy()` called with no
+  `config` loads it in its sandbox as before.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.160
+  - @geekmidas/constructs@10.0.0-alpha.160
+  - @geekmidas/db@10.0.0-alpha.160
+  - @geekmidas/envkit@10.0.0-alpha.160
+  - @geekmidas/errors@10.0.0-alpha.160
+  - @geekmidas/logger@10.0.0-alpha.160
+  - @geekmidas/manifest@10.0.0-alpha.160
+  - @geekmidas/schema@10.0.0-alpha.160
+  - @geekmidas/services@10.0.0-alpha.160
+  - @geekmidas/storage@10.0.0-alpha.160
+  - @geekmidas/telescope@10.0.0-alpha.160
+
 ## 10.0.0-alpha.159
 
 ### Minor Changes

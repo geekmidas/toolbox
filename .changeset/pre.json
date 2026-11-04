@@ -29,7 +29,10 @@
     "@geekmidas/telescope": "9.0.2",
     "@geekmidas/testkit": "9.0.2",
     "@kitchen-sink/realtime": "0.0.0",
-    "@geekmidas/websocket-load": "0.0.0"
+    "@geekmidas/websocket-load": "0.0.0",
+    "@file-drop/workspace": "0.0.0",
+    "@file-drop/api": "0.0.0",
+    "@file-drop/web": "0.0.0"
   },
   "changesets": [
     "align-deps-tranche-1",
@@ -51,6 +54,7 @@
     "bundle-missing-optional-peers",
     "cache-table-after-database",
     "caller-identity-along-edge",
+    "cdn-update-fields",
     "claude-md-imports-agents",
     "cli-starts-again",
     "client-at-root",
@@ -90,6 +94,7 @@
     "deploy-github-oidc-subject",
     "deploy-github-oidc",
     "deploy-identity",
+    "deploy-one-config-load",
     "deploy-owned-sns-subscriptions",
     "deploy-sandbox",
     "deploy-shell-and-secrets",

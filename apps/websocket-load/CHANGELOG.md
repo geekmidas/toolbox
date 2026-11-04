@@ -1,5 +1,14 @@
 # @geekmidas/websocket-load
 
+## 10.0.0-alpha.160
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/constructs@10.0.0-alpha.160
+  - @geekmidas/envkit@10.0.0-alpha.160
+  - @geekmidas/logger@10.0.0-alpha.160
+
 ## 10.0.0-alpha.159
 
 ### Patch Changes
