@@ -36,6 +36,15 @@ The config is loaded in a child process with the CLI's own `tsx`, and comes back
 as JSON checked by a schema. A program calling `deploy()` does not need `tsx`
 loaded itself.
 
+`gkm deploy` and `gkm compose` load the config themselves, in their own process
+and with the environment they were run in, and pass it to the run as
+`deploy({ config })`. Every step then reads those settings, so a config that
+reads `process.env` (a domain, an endpoint) gives the same answer at every
+step. The sandbox's environment is an allowlist, so loading the file again
+there would not. The constructs are still discovered in the sandbox. A program
+that passes no `config` gets the config loaded in the sandbox, as above. A
+program that passes one vouches for it.
+
 `docker build` is not a sandboxed step. It runs through the Docker daemon, and
 the Dockerfile's steps run in Docker's own build containers.
 

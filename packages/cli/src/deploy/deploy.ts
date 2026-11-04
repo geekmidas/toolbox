@@ -11,13 +11,19 @@
  */
 
 import { resolve } from 'node:path';
-import { findWorkspaceRoot, loadWorkspaceConfig } from '../config';
+import {
+	findWorkspaceRoot,
+	loadWorkspaceConfig,
+	withLoadedConfig,
+} from '../config';
 import { gkmHome } from '../home';
 import { type OutputLevel, withOutput } from '../output';
 import { LocalSandbox } from '../sandbox/local';
 import { type Sandbox, withSandbox } from '../sandbox/sandbox';
 import { Redactor } from '../target/secrets';
 import type { AnyDeployTarget } from '../target/types';
+import type { GkmConfig } from '../types.js';
+import type { WorkspaceConfig } from '../workspace/index.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 import { type CredentialProvider, storedCredentials } from './credentials';
 import { type DeployEvent, eventError } from './events';
@@ -40,6 +46,16 @@ export interface DeployInput {
 	 * directory inside it. Never assumed to be `process.cwd()`.
 	 */
 	cwd: string;
+	/**
+	 * The workspace's config, already loaded by the caller — `gkm deploy` and
+	 * `gkm compose` load it in their own process, with the environment they
+	 * were run in. Every step of the run then reads these settings rather than
+	 * loading the file again in the sandbox, whose environment is an
+	 * allowlist: a config reading `process.env.DOMAIN` gave the deploy no
+	 * domain. Absent, the run loads it in its sandbox, as for a checkout the
+	 * host does not trust; a host that passes one vouches for it.
+	 */
+	config?: GkmConfig | WorkspaceConfig;
 	/**
 	 * The stage to deploy — one of the config's deployed stages, or its local
 	 * stage through a target that runs one (`compose`).
@@ -249,28 +265,32 @@ export function deploy(input: DeployInput): DeployRun {
 		async () => {
 			try {
 				input.signal?.throwIfAborted();
-				const sandbox =
-					input.sandbox ??
-					new LocalSandbox({ root: findWorkspaceRoot(resolve(input.cwd)) });
+				const root = findWorkspaceRoot(resolve(input.cwd));
+				const sandbox = input.sandbox ?? new LocalSandbox({ root });
 				// Every step of the run that executes the project's code — the
-				// engine's own discoveries and sniffs included — runs in it.
-				const deployed = await withSandbox(sandbox, () =>
-					runDeploy(
-						() => load(input, sandbox),
-						{
-							stage: input.stage,
-							...(input.target ? { target: input.target } : {}),
-							...(input.tag ? { tag: input.tag } : {}),
-							...(input.apps ? { apps: input.apps } : {}),
-							...(input.atomic ? { atomic: true } : {}),
-							...(input.allowDevServices
-								? { allowDevServices: input.allowDevServices }
-								: {}),
-							...(input.skipDns ? { skipDns: true } : {}),
-							...(input.rotateKeys ? { rotateKeys: true } : {}),
-							...(input.retireOldKeys ? { retireOldKeys: true } : {}),
-						},
-						ctx,
+				// engine's own discoveries and sniffs included — runs in it. The
+				// config, when the caller loaded it, is the one every step reads.
+				const inRun = <T>(fn: () => T): T =>
+					input.config ? withLoadedConfig(root, input.config, fn) : fn();
+				const deployed = await inRun(() =>
+					withSandbox(sandbox, () =>
+						runDeploy(
+							() => load(input, sandbox),
+							{
+								stage: input.stage,
+								...(input.target ? { target: input.target } : {}),
+								...(input.tag ? { tag: input.tag } : {}),
+								...(input.apps ? { apps: input.apps } : {}),
+								...(input.atomic ? { atomic: true } : {}),
+								...(input.allowDevServices
+									? { allowDevServices: input.allowDevServices }
+									: {}),
+								...(input.skipDns ? { skipDns: true } : {}),
+								...(input.rotateKeys ? { rotateKeys: true } : {}),
+								...(input.retireOldKeys ? { retireOldKeys: true } : {}),
+							},
+							ctx,
+						),
 					),
 				);
 				emit({ type: 'deploy.finished', result: deployed });

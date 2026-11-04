@@ -7,6 +7,7 @@
  * `deploy()` a host calls.
  */
 
+import { loadRawWorkspaceConfig } from '../config';
 import { formatError } from '../debug';
 import { targetForProvider } from '../target/provider';
 import { storedCredentials } from './credentials';
@@ -67,8 +68,20 @@ export async function deployCli(
 		}
 	}
 
+	// Loaded here, with the environment `gkm deploy` was run in, and handed
+	// to the run: a reload in its sandbox sees only an allowlist of it, so a
+	// setting the config reads from the environment would differ by step.
+	let config: Awaited<ReturnType<typeof loadRawWorkspaceConfig>>['config'];
+	try {
+		({ config } = await loadRawWorkspaceConfig(options.cwd));
+	} catch (error) {
+		console.error(formatError(error));
+		return 1;
+	}
+
 	const input = {
 		cwd: options.cwd,
+		config,
 		stage: options.stage,
 		...(target ? { target } : {}),
 		...(options.tag ? { tag: options.tag } : {}),
