@@ -1,5 +1,31 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.159
+
+### Minor Changes
+
+- [#397](https://github.com/geekmidas/toolbox/pull/397) [`89fa501`](https://github.com/geekmidas/toolbox/commit/89fa501569f2807ea36dd0b60ebd3bc5162f1ebc) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm compose:server --zsh` and `--oh-my-zsh` give the admin a zsh login shell
+
+  `--zsh` installs zsh and makes it the admin's login shell. `--oh-my-zsh` does
+  the same and clones Oh My Zsh into the admin's home, starting a `.zshrc` from
+  its template; an existing `.zshrc` is kept and named if it does not load Oh My
+  Zsh. Running it again changes nothing. The deploy user's shell is untouched.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.159
+  - @geekmidas/constructs@10.0.0-alpha.159
+  - @geekmidas/db@10.0.0-alpha.159
+  - @geekmidas/envkit@10.0.0-alpha.159
+  - @geekmidas/errors@10.0.0-alpha.159
+  - @geekmidas/logger@10.0.0-alpha.159
+  - @geekmidas/manifest@10.0.0-alpha.159
+  - @geekmidas/schema@10.0.0-alpha.159
+  - @geekmidas/services@10.0.0-alpha.159
+  - @geekmidas/storage@10.0.0-alpha.159
+  - @geekmidas/telescope@10.0.0-alpha.159
+
 ## 10.0.0-alpha.158
 
 ### Minor Changes

@@ -70,6 +70,7 @@
     "compose-routes-before-health",
     "compose-seed-env",
     "compose-server-fresh-root",
+    "compose-server-zsh",
     "compose-server",
     "compose-site-password",
     "compose-target",
