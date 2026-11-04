@@ -1,7 +1,10 @@
 import type { ConstructManifest } from '@geekmidas/manifest';
 import type { DnsRecordsMode } from '../compose/dnsConfig.js';
 import type { AwsRegion, StateConfig } from '../deploy/StateProvider.js';
-import type { SesInboxConfig } from '../providers/ses/config.js';
+import type {
+	SesEmailConfig,
+	SesInboxConfig,
+} from '../providers/ses/config.js';
 import type { DeployTargetEntry } from '../target/types';
 
 export type { AwsRegion };
@@ -350,6 +353,31 @@ export type StageObjectsConfig = 'external' | S3ObjectsConfig | false;
 export type StageInboxConfig = 'external' | SesInboxConfig | false;
 
 /**
+ * What sends one deployed stage's mail — `deploy.email`, by stage:
+ *
+ * - `{ provider: 'ses' }` — the deploy creates what each `Email` construct
+ *   sends with in the stage's AWS account: the sender's domain as an SES
+ *   identity (its DKIM records through `dns`), an IAM user allowed only to
+ *   send as it, and its key — written as `<ID>_URL`, an `smtp://` URL with
+ *   the SMTP password derived from the key — and `<ID>_FROM`. A `<ID>_URL`
+ *   the stage's secrets already hold wins, and nothing is created for it.
+ * - `'external'` — the default: the stage's secrets hold each construct's
+ *   `<ID>_URL` and `<ID>_FROM`, set by you.
+ * - `false` — the stage sends no mail; an `Email` on it is refused.
+ *
+ * Every local stage sends to Mailpit, whatever this says.
+ *
+ * @example
+ * ```ts
+ * email: {
+ *   production: { provider: 'ses', region: 'eu-west-1' },
+ *   staging: 'external',
+ * }
+ * ```
+ */
+export type StageEmailConfig = 'external' | SesEmailConfig | false;
+
+/**
  * One deployed compose stage's backups — `deploy.backups`, by stage.
  *
  * A stage that runs Postgres is backed up whether it names one or not: every
@@ -527,6 +555,11 @@ export interface DeployConfig<S extends string = string> {
 	 * produces. See {@link StageInboxConfig}.
 	 */
 	inbox?: StageMap<S, StageInboxConfig>;
+	/**
+	 * What sends each deployed stage's mail — the `email` kind `Email`
+	 * produces. See {@link StageEmailConfig}.
+	 */
+	email?: StageMap<S, StageEmailConfig>;
 	/**
 	 * When each deployed compose stage's databases are backed up, and how
 	 * long a backup is kept — see {@link StageBackupsConfig}.

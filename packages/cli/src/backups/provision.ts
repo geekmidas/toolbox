@@ -32,6 +32,7 @@ import {
 	ensureIamUser,
 	issuedJustNow,
 	type KeyContext,
+	s3KeySecret,
 	whileKeyIsNew,
 } from '../providers/iam.js';
 import {
@@ -274,8 +275,7 @@ export async function ensureStageBackups(
 	});
 	await ensureAccessKey(ctx, clients, {
 		id: BACKUPS_ID,
-		bucket,
-		urlKey: BACKUPS_URL_KEY,
+		secret: s3KeySecret(ctx, clients, { bucket, urlKey: BACKUPS_URL_KEY }),
 		...user,
 	});
 	return choice;

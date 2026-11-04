@@ -97,6 +97,28 @@ describe('what --allow-dev-services stands in for', () => {
 		expect(services.missing[0]).not.toHaveProperty('service');
 	});
 
+	it('no Mailpit for mail a provider sends; its keys name the deploy as what writes them', () => {
+		const services = externalServices({
+			stage: 'preview',
+			declarations,
+			supplied: {},
+			allow: true,
+			providers: {
+				email: {
+					accounted: true,
+					hint: 'the deploy (gkm deploy --stage preview) creates it',
+				},
+			},
+		});
+		expect(services.mailpit).toEqual([]);
+		const mail = services.missing.filter((m) => m.id === 'Mail');
+		expect(mail.map((m) => m.key)).toEqual(['MAIL_URL', 'MAIL_FROM']);
+		for (const m of mail) {
+			expect(m.hint).toBe('the deploy (gkm deploy --stage preview) creates it');
+			expect(m).not.toHaveProperty('service');
+		}
+	});
+
 	it('nothing at all without the flag', () => {
 		const services = externalServices({
 			stage: 'preview',

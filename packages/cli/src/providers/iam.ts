@@ -1,8 +1,8 @@
 /**
  * An IAM user gkm creates for one thing on a stage, its inline policy, and
- * the access key written into the stage's secrets as an `s3://` URL — what
- * the `s3` provider gives each bucket, and the deploy gives a stage's
- * backups.
+ * the access key written into the stage's secrets — as an `s3://` URL for
+ * what the `s3` provider gives each bucket and the deploy gives a stage's
+ * backups, as an `smtp://` one for the `ses` mail provider.
  *
  * - **The user** is under `/gkm/`, tagged with the deploy identity, the stage
  *   and what it is for. One that exists without those tags is someone
@@ -198,20 +198,94 @@ export async function ensureIamUser(
 	return { user, exists };
 }
 
+/**
+ * The secret a user's access key is written into, and how: an `s3://` URL
+ * for a bucket ({@link s3KeySecret}), an `smtp://` one for mail.
+ */
+export interface KeySecret {
+	/** The secret's key: `UPLOADS_URL`, `BACKUPS_URL`, `MAIL_URL`. */
+	key: string;
+	/**
+	 * The access key a stored value holds — or `undefined` when it holds
+	 * none this user could have issued for it, so a new one is.
+	 *
+	 * @throws when the value is another resource's, set by hand
+	 */
+	keyIdOf(value: string): string | undefined;
+	/** The value for a newly issued key. */
+	value(accessKeyId: string, secretAccessKey: string): string;
+	/**
+	 * A value holding the right key whose address drifted: what it should
+	 * be, and the change line. `undefined` when it is right.
+	 */
+	repair?(value: string): { value: string; change: string } | undefined;
+}
+
+/**
+ * A bucket's URL as a key's secret: `s3://KEY:SECRET@bucket?region=…`.
+ *
+ * @throws {BucketKeySetElsewhere} from `keyIdOf`, when the URL names another bucket
+ */
+export function s3KeySecret(
+	ctx: Pick<KeyContext, 'stage'>,
+	clients: Pick<IamClients, 'region' | 'endpoint'>,
+	input: { bucket: string; urlKey: string },
+): KeySecret {
+	const { bucket, urlKey } = input;
+	const parse = (value: string) => {
+		let parsed: s3Url.S3Address | undefined;
+		try {
+			parsed = s3Url.parse(value);
+		} catch {
+			parsed = undefined;
+		}
+		if (parsed?.bucket !== bucket) {
+			throw new BucketKeySetElsewhere(
+				urlKey,
+				bucket,
+				parsed?.bucket ?? value.replace(/\/\/[^@]*@/, '//'),
+				ctx.stage,
+			);
+		}
+		return parsed;
+	};
+	return {
+		key: urlKey,
+		keyIdOf: (value) => parse(value).accessKeyId,
+		value: (accessKeyId, secretAccessKey) =>
+			s3Url.build({
+				bucket,
+				region: clients.region,
+				...(clients.endpoint
+					? { endpoint: clients.endpoint, forcePathStyle: true }
+					: {}),
+				accessKeyId,
+				secretAccessKey,
+			}),
+		repair(value) {
+			// The key is good; the address must name where the bucket is.
+			const address = parse(value);
+			if (address.region === clients.region) return undefined;
+			return {
+				value: s3Url.build({ ...address, region: clients.region }),
+				change: `name ${clients.region}, the bucket's region (it said ${address.region ?? 'none'})`,
+			};
+		},
+	};
+}
+
 export interface AccessKeyInput {
 	/** What it is for, as {@link IamUserInput.id}. */
 	id: string;
 	user: string;
 	/** Whether the user exists yet — false in a dry run that would create it. */
 	exists: boolean;
-	/** The bucket the URL addresses. */
-	bucket: string;
-	/** The secret the URL is written to: `UPLOADS_URL`, `BACKUPS_URL`. */
-	urlKey: string;
+	/** Where the key is written. */
+	secret: KeySecret;
 }
 
 /**
- * The user's access key, in the stage's secrets as the bucket's URL.
+ * The user's access key, in the stage's secrets as `secret` writes it.
  *
  * - First run: one key, written into the stage's secrets.
  * - `--rotate-keys`: a second key, written in place of the first; the first
@@ -220,7 +294,7 @@ export interface AccessKeyInput {
  * - A key the secrets no longer hold (a store emptied by hand): replaced the
  *   same way, since its secret cannot be read back.
  *
- * @throws {BucketKeySetElsewhere} when the secret names another bucket
+ * @throws whatever `secret.keyIdOf` throws for a value set elsewhere
  * @throws {RotationInProgress} on `--rotate-keys` with the last rotation's old key still active
  * @throws {AccessKeyLimit} when the user has two keys gkm did not record
  */
@@ -230,29 +304,12 @@ export async function ensureAccessKey(
 	input: AccessKeyInput,
 ): Promise<void> {
 	const { IAM, iam } = clients;
-	const { id, bucket, user, urlKey } = input;
+	const { id, user, secret } = input;
 	const entryKey = `iam-access-key:${id}`;
 	const record = ctx.state.record(entryKey);
 
-	const given = ctx.secrets[urlKey];
-	let inUrl: string | undefined;
-	let parsed: s3Url.S3Address | undefined;
-	if (given !== undefined) {
-		try {
-			parsed = s3Url.parse(given);
-		} catch {
-			parsed = undefined;
-		}
-		if (parsed?.bucket !== bucket) {
-			throw new BucketKeySetElsewhere(
-				urlKey,
-				bucket,
-				parsed?.bucket ?? given.replace(/\/\/[^@]*@/, '//'),
-				ctx.stage,
-			);
-		}
-		inUrl = parsed.accessKeyId;
-	}
+	const given = ctx.secrets[secret.key];
+	const inUrl = given !== undefined ? secret.keyIdOf(given) : undefined;
 
 	const listed = input.exists
 		? ((
@@ -319,19 +376,11 @@ export async function ensureAccessKey(
 	const valid =
 		current !== undefined && listed.includes(current) && inUrl === current;
 	if (valid && !ctx.rotateKeys) {
-		// The key is good; the address must name where the bucket is.
-		if (parsed && parsed.region !== clients.region) {
-			const address = parsed;
+		const repaired = given !== undefined ? secret.repair?.(given) : undefined;
+		if (repaired) {
 			await ctx.change(
-				{
-					construct: id,
-					resource: urlKey,
-					change: `name ${clients.region}, the bucket's region (it said ${address.region ?? 'none'})`,
-				},
-				() =>
-					ctx.writeSecrets({
-						[urlKey]: s3Url.build({ ...address, region: clients.region }),
-					}),
+				{ construct: id, resource: secret.key, change: repaired.change },
+				() => ctx.writeSecrets({ [secret.key]: repaired.value }),
 			);
 		}
 		return;
@@ -359,15 +408,7 @@ export async function ensureAccessKey(
 			// Into the stage's secrets before anything else: IAM shows a secret
 			// once, and a key whose secret is lost is a key to replace.
 			await ctx.writeSecrets({
-				[urlKey]: s3Url.build({
-					bucket,
-					region: clients.region,
-					...(clients.endpoint
-						? { endpoint: clients.endpoint, forcePathStyle: true }
-						: {}),
-					accessKeyId: key.AccessKeyId!,
-					secretAccessKey: key.SecretAccessKey!,
-				}),
+				[secret.key]: secret.value(key.AccessKeyId!, key.SecretAccessKey!),
 			});
 			// When it was issued: IAM takes seconds to make a new key usable,
 			// and the deploy's check waits for one this young.
@@ -384,7 +425,7 @@ export async function ensureAccessKey(
 	);
 	if (outgoing) {
 		ctx.log(
-			`   ${urlKey} holds the new key. This deploy moves '${ctx.stage}' onto it; the next deploy after it deletes the old key ${outgoing}`,
+			`   ${secret.key} holds the new key. This deploy moves '${ctx.stage}' onto it; the next deploy after it deletes the old key ${outgoing}`,
 		);
 	}
 }

@@ -75,10 +75,15 @@ export function stageProviderNotes(
 	workspace: Pick<NormalizedWorkspace, 'deploy' | 'stages'>,
 	stage: string,
 ): StageProviderNotes {
-	const choice = stageProvider(workspace as never, 'objects', stage);
-	if (choice.mode === 'external') return {};
-	const hint = provisionHint(workspace, 'objects', stage);
-	return { objects: { accounted: true, ...(hint ? { hint } : {}) } };
+	const notes: StageProviderNotes = {};
+	for (const kind of ['objects', 'email'] as const) {
+		if (stageProvider(workspace as never, kind, stage).mode === 'external') {
+			continue;
+		}
+		const hint = provisionHint(workspace, kind, stage);
+		notes[kind] = { accounted: true, ...(hint ? { hint } : {}) };
+	}
+	return notes;
 }
 
 /**

@@ -26,9 +26,10 @@ gkm deploy --stage production             # create it, fix drift, write the keys
 `gkm compose --stage production` is the same deploy, and runs the providers
 the same way.
 
-The first kind is `objects` — what `ObjectStorage` and `FileServer` produce.
-`cache` and `email` take the same `deploy.<kind>.<stage>` shape as their
-providers arrive.
+The kinds are `objects` — what `ObjectStorage` and `FileServer` produce —
+`email`, what `Email` produces, and `inbox` (see
+[Receiving email](./receiving-email.md#deployed-deploy-inbox)). `cache` takes
+the same `deploy.<kind>.<stage>` shape when its provider arrives.
 
 ## What a provider is
 
@@ -201,6 +202,77 @@ keeps all four flags on. Either way, a URL you set yourself is kept.
 A single `*` in an S3 policy or a CloudFront path pattern crosses `/`, so
 `avatars/*.png` is wider there than in the construct's own check, which stops
 at a segment. Prefer `**` where crossing segments is what you meant.
+
+## `deploy.email.<stage>`
+
+```ts
+// gkm.config.ts
+deploy: {
+  email: {
+    production: { provider: 'ses', region: 'eu-west-1' },
+    staging: 'external',
+  },
+},
+```
+
+| Value | Meaning |
+|---|---|
+| `'external'` (or nothing) | Each `Email` construct's `<ID>_URL` and `<ID>_FROM` are set in the stage's secrets by you — any SMTP server. |
+| `{ provider: 'ses', region?, from? }` | Every deploy of the stage creates what each `Email` sends with in the stage's AWS account, and writes its keys. |
+| `false` | The stage sends no mail. A deploy of a workspace that declares an `Email` is refused with `StageProviderDisabled`. |
+
+- `region` — where SES sends from: the identity, and the SMTP endpoint the URL
+  names. Defaults to the secrets store's region, then `AWS_REGION`.
+- `from` — the address mail is sent from. Its domain is the identity the
+  deploy verifies. Defaults to what the stage's secrets hold, then
+  `noreply@<stage domain>`; a stage with neither fails with
+  `EmailSenderUnknown`.
+
+## `email: ses`
+
+Per `Email` construct, on the stage:
+
+**The sender's domain** as an SES identity, verified by Easy DKIM: its three
+CNAMEs go through the stage's `dns` config, as a file server's records do. An
+identity that is already verified is left as it is. One that exists unverified
+— made by another stack, say — is adopted: SES hands back the same tokens, and
+makes no second identity. An inbox on the same domain uses the same identity,
+since SES has one per domain. Neither provider deletes it.
+
+**An IAM user**, `gkm-<project>-<stage>-<id>` under `/gkm/`, tagged like a
+bucket's. Its one inline policy, `gkm-email`, allows `ses:SendRawEmail` on that
+identity and nothing else.
+
+**Its access key**, written as `<ID>_URL`:
+
+```text
+smtp://<key id>:<smtp password>@email-smtp.<region>.amazonaws.com:587
+```
+
+The SMTP password is derived from the key's secret and the region, as SES
+documents it, so it works in that region only. A URL on another region's
+endpoint is replaced with a new key.
+
+**`<ID>_FROM`**: `from`, or the address described above.
+
+**Existing credentials win.** A `<ID>_URL` the stage's secrets already hold,
+and the provider did not write, is kept: the construct sends with it, and
+nothing is created for it. Moving a stack that already sends through SES onto
+compose stays a `gkm secrets:import`. Delete the key from the stage's secrets
+to have the deploy create its own.
+
+**The sandbox.** A new SES account delivers only to verified addresses. When
+the account's daily quota is the sandbox's (200), the deploy says so, rather
+than leaving the first send to fail. Request production access in the SES
+console.
+
+`--rotate-keys` issues each user a successor key, and with it a new
+password, as it does for a bucket's (see [Rotating a key](#rotating-a-key)).
+
+Every deploy checks each construct's `<ID>_URL` and `<ID>_FROM` are in the
+stage's secrets, and stops with `EmailNotProvisioned` if not.
+
+Receiving is not this: that is `deploy.inbox`.
 
 ## Credentials
 

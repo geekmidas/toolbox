@@ -16,8 +16,8 @@
  * | `verify()`               | The cheap check every deploy runs.                      |
  *
  * The key under `deploy` is the manifest kind — `objects`, which
- * `ObjectStorage` and `FileServer` produce — so `deploy.cache` and
- * `deploy.email` slot in beside it with providers of their own.
+ * `ObjectStorage` and `FileServer` produce, `inbox`, `email` — so a kind
+ * such as `deploy.cache` slots in beside them with providers of its own.
  */
 
 import type { ConstructManifest } from '@geekmidas/manifest';
@@ -27,7 +27,7 @@ import type { BoundSubscriber } from '../reconcile/discover.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 
 /** The manifest kinds a stage can name a provider for. */
-export const PROVIDER_KINDS = ['objects', 'inbox'] as const;
+export const PROVIDER_KINDS = ['objects', 'inbox', 'email'] as const;
 
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 
