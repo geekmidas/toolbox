@@ -40,9 +40,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const { admitsRelease } = createRequire(import.meta.url)(
-	'./prerelease-range.cjs',
-);
+const { admitsRelease } = createRequire(import.meta.url)('../.pnpmfile.cjs');
 const keep = process.argv.includes('--keep');
 
 /**

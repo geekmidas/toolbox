@@ -7,7 +7,7 @@ settings:
 overrides:
   '@docsearch/react>@types/react': ~19.3.0
 
-pnpmfileChecksum: sha256-ohADSU7XhIla8ivYq7M8ZWYD2F/IzIZQtvataVzvH8Q=
+pnpmfileChecksum: sha256-JI07BeHDRgpalepiAXqrDK+lo7aN1kqxxZwOdTUBcWw=
 
 importers:
 
