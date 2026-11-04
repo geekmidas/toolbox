@@ -332,6 +332,31 @@ describe('gkm compose:server', () => {
 		expect(said()).toContain('is ready for "production"');
 	});
 
+	it.each([
+		[{}, 'none', undefined],
+		[{ zsh: true }, 'zsh', 'admin logs in to zsh'],
+		[{ ohMyZsh: true }, 'oh-my-zsh', 'admin logs in to zsh, with Oh My Zsh'],
+		[{ zsh: true, ohMyZsh: true }, 'oh-my-zsh', 'with Oh My Zsh'],
+	])('gives the admin the shell asked for: %o', async (flags, shell, step) => {
+		const fake = server();
+		const keyFile = join(dir, 'deploy_key');
+
+		await composeServerCommand(
+			{ cwd: dir, stage: 'production', admin: 'admin', keyFile, ...flags },
+			{ ...fake.deps, ask: vi.fn().mockResolvedValue('y') },
+		);
+
+		const setup = fake.calls.find((call) =>
+			call.args.some((arg) => arg.includes(SERVER_B64)),
+		)!;
+		const publicKey = readFileSync(`${keyFile}.pub`, 'utf-8').trim();
+		expect(setup.args.at(-1)).toContain(
+			`'${publicKey}' 'gkm-compose-app-production-deploy' '${shell}'`,
+		);
+		if (step) expect(said()).toContain(step);
+		else expect(said()).not.toContain('zsh');
+	});
+
 	it('gives GitHub nothing when the network shows another host key', async () => {
 		const fake = server({
 			scanned:

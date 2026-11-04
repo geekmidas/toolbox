@@ -1139,6 +1139,11 @@ program
 	)
 	.option('--repo <owner/name>', 'GitHub repository (default: this one)')
 	.option('--no-github', "Leave the GitHub environment's key and host alone")
+	.option('--zsh', "Install zsh and make it the admin's login shell")
+	.option(
+		'--oh-my-zsh',
+		'Install zsh with Oh My Zsh for the admin (implies --zsh)',
+	)
 	.option('--yes', 'Set the server up without asking first')
 	.option('--dry-run', 'Print the plan and the script; connect to nothing')
 	.action(async (options) => {
