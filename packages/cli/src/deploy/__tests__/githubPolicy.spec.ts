@@ -467,8 +467,9 @@ describe('deployAccess', () => {
 				'StageMailUsers',
 			]);
 			expect(statements[1]!.Action).toEqual([
-				'ses:GetIdentityVerificationAttributes',
+				'ses:GetIdentityDkimAttributes',
 				'ses:VerifyDomainDkim',
+				'ses:SetIdentityDkimEnabled',
 				'ses:GetSendQuota',
 			]);
 			expect(statements[2]!.Action).toContain('iam:CreateAccessKey');
