@@ -1,5 +1,24 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.163
+
+### Patch Changes
+
+- [#405](https://github.com/geekmidas/toolbox/pull/405) [`630cc26`](https://github.com/geekmidas/toolbox/commit/630cc266656b9f11777c3820b6c76c482486284e) Thanks [@geekmidas](https://github.com/geekmidas)! - `deploy.email` with `ses` checks the sending domain's DKIM status, not just its domain verification. A domain verified only by its older TXT record is now given DKIM, rather than sending unsigned. A verified domain whose DKIM signing was turned off has it turned back on. `gkm deploy:github` grants `ses:GetIdentityDkimAttributes` and `ses:SetIdentityDkimEnabled` in place of `ses:GetIdentityVerificationAttributes`.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.163
+  - @geekmidas/constructs@10.0.0-alpha.163
+  - @geekmidas/db@10.0.0-alpha.163
+  - @geekmidas/envkit@10.0.0-alpha.163
+  - @geekmidas/errors@10.0.0-alpha.163
+  - @geekmidas/logger@10.0.0-alpha.163
+  - @geekmidas/manifest@10.0.0-alpha.163
+  - @geekmidas/schema@10.0.0-alpha.163
+  - @geekmidas/services@10.0.0-alpha.163
+  - @geekmidas/storage@10.0.0-alpha.163
+  - @geekmidas/telescope@10.0.0-alpha.163
+
 ## 10.0.0-alpha.162
 
 ### Minor Changes
