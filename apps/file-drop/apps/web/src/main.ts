@@ -1,6 +1,7 @@
 /**
  * Pick an image, ask the API for a presigned PUT, send the bytes straight to
- * the bucket, then load the file back through the CDN.
+ * the bucket, then load it back through the CDN — the original, and a
+ * thumbnail a processor makes on first read.
  */
 const apiUrl = import.meta.env.VITE_API_URL;
 
@@ -29,9 +30,10 @@ form?.addEventListener('submit', async (event) => {
 		}),
 	});
 	if (!presign.ok) return say(`API refused: ${presign.status}`);
-	const { uploadUrl, url } = (await presign.json()) as {
+	const { uploadUrl, url, thumbnailUrl } = (await presign.json()) as {
 		uploadUrl: string;
 		url: string;
+		thumbnailUrl: string;
 	};
 
 	say('Uploading…');
@@ -49,7 +51,11 @@ form?.addEventListener('submit', async (event) => {
 			href: url,
 			textContent: url,
 		});
+		const thumb = Object.assign(document.createElement('img'), {
+			src: thumbnailUrl,
+			alt: '256px thumbnail',
+		});
 		const img = Object.assign(document.createElement('img'), { src: url });
-		result.append(link, img);
+		result.append(link, thumb, img);
 	}
 });

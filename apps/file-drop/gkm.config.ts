@@ -17,7 +17,10 @@ import { defineWorkspace } from '@geekmidas/cli/config';
 export default defineWorkspace({
 	name: 'file-drop',
 	stages: { local: 'dev', deployed: ['prod'] },
-	constructs: ['./constructs/**/*.ts', './apps/*/endpoints/**/*.ts'],
+	constructs: [
+		'./constructs/**/*.ts',
+		'./apps/*/{endpoints,processors}/**/*.ts',
+	],
 	domains: { prod: 'geekmidas.cloud' },
 	dns: { 'geekmidas.cloud': { provider: 'hostinger' } },
 	deploy: {

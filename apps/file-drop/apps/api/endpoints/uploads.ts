@@ -2,13 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { api } from '@file-drop/constructs/api.js';
 import { drop } from '@file-drop/constructs/storage.js';
 import { z } from 'zod';
+import { resize } from '../processors/resize.js';
 
 /** Anyone may upload, so keep it to small images. */
 const MAX_BYTES = 5 * 1024 * 1024;
 
 /**
  * A presigned PUT for a new public object, and the CDN address it will be
- * served from. The key is random, so nobody overwrites anybody else's file.
+ * served from, and its 256px thumbnail. The key is random, so nobody overwrites anybody else's file.
  */
 export const createUpload = api
 	.post('/uploads')
@@ -25,7 +26,13 @@ export const createUpload = api
 			contentLength: z.number().int().positive().max(MAX_BYTES),
 		}),
 	)
-	.output(z.object({ uploadUrl: z.string(), url: z.string() }))
+	.output(
+		z.object({
+			uploadUrl: z.string(),
+			url: z.string(),
+			thumbnailUrl: z.string(),
+		}),
+	)
 	.handle(async ({ body, services }) => {
 		const safe = body.name.replace(/[^a-zA-Z0-9._-]/g, '_');
 		const key = `public/${randomUUID()}-${safe}` as const;
@@ -37,5 +44,9 @@ export const createUpload = api
 			},
 			300,
 		);
-		return { uploadUrl, url: services.drop.url(key) };
+		return {
+			uploadUrl,
+			url: services.drop.url(key),
+			thumbnailUrl: services.drop.processedUrl(resize, { width: '256' }, key),
+		};
 	});
