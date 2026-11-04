@@ -239,6 +239,8 @@ describe("a file server's processors behind the distribution", () => {
 			Id: 'processors',
 			DomainName: 'assets-server-processors.shop.example.com',
 			OriginPath: '',
+			ConnectionAttempts: 3,
+			ConnectionTimeout: 10,
 			CustomOriginConfig: {
 				HTTPPort: 80,
 				HTTPSPort: 443,
@@ -270,6 +272,32 @@ describe("a file server's processors behind the distribution", () => {
 			ResponseHeadersPolicyId: 'CORS',
 			ViewerProtocolPolicy: 'redirect-to-https',
 		});
+	});
+
+	it('spells out every field an update of the distribution requires', () => {
+		// An update replaces each origin and behaviour whole; CloudFront
+		// refuses one missing what it would have filled in on create.
+		for (const origin of config.Origins?.Items ?? []) {
+			expect(origin).toMatchObject({
+				CustomHeaders: { Quantity: expect.any(Number) },
+				ConnectionAttempts: 3,
+				ConnectionTimeout: 10,
+			});
+		}
+		expect(config.Origins?.Items?.[0]?.CustomHeaders).toEqual({ Quantity: 0 });
+		for (const behaviour of [
+			config.DefaultCacheBehavior,
+			...(config.CacheBehaviors?.Items ?? []),
+		]) {
+			expect(behaviour).toMatchObject({
+				SmoothStreaming: false,
+				FieldLevelEncryptionId: '',
+				TrustedSigners: { Enabled: false, Quantity: 0 },
+				TrustedKeyGroups: { Enabled: false, Quantity: 0 },
+				LambdaFunctionAssociations: { Quantity: 0 },
+				FunctionAssociations: { Quantity: 0 },
+			});
+		}
 	});
 
 	it('has no processors origin for a file server without processors', () => {

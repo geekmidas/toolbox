@@ -286,6 +286,7 @@ export function distributionConfig(input: {
 		Compress: true,
 		CachePolicyId: CACHING_OPTIMIZED,
 		...(policy ? { ResponseHeadersPolicyId: policy } : {}),
+		...BEHAVIOUR_DEFAULTS,
 	});
 	const patterns = [...new Set(input.immutable.map(pathPattern))].sort();
 	const processors = input.processors;
@@ -304,6 +305,8 @@ export function distributionConfig(input: {
 				OriginPath: '',
 				S3OriginConfig: { OriginAccessIdentity: '' },
 				OriginAccessControlId: input.originAccessControlId,
+				CustomHeaders: { Quantity: 0 },
+				...ORIGIN_DEFAULTS,
 			},
 			...(processors
 				? [
@@ -321,6 +324,7 @@ export function distributionConfig(input: {
 							},
 							// What the processor unit's edge checks: without it, its
 							// public host refuses the request.
+							...ORIGIN_DEFAULTS,
 							CustomHeaders: {
 								Quantity: 1,
 								Items: [
@@ -361,6 +365,29 @@ export function distributionConfig(input: {
 		DefaultRootObject: '',
 	} as DistributionConfig;
 }
+
+/**
+ * What CloudFront fills in a behaviour, at its own defaults. Optional when a
+ * distribution is created, required when it is updated — an update replaces
+ * each behaviour and origin whole, and one without them is refused ("The
+ * parameter SmoothStreaming flag is missing", "The 'OriginCustomHeaders'
+ * field is missing"). At the defaults, `holds` still matches a distribution
+ * CloudFront filled in itself.
+ */
+const BEHAVIOUR_DEFAULTS = {
+	SmoothStreaming: false,
+	FieldLevelEncryptionId: '',
+	TrustedSigners: { Enabled: false, Quantity: 0 },
+	TrustedKeyGroups: { Enabled: false, Quantity: 0 },
+	LambdaFunctionAssociations: { Quantity: 0 },
+	FunctionAssociations: { Quantity: 0 },
+} as const;
+
+/** What CloudFront fills in an origin, at its own defaults: see above. */
+const ORIGIN_DEFAULTS = {
+	ConnectionAttempts: 3,
+	ConnectionTimeout: 10,
+} as const;
 
 /**
  * Whether `current` already holds everything in `wanted`: each key `wanted`
