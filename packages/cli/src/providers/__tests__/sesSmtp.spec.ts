@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { domainOf, senderOf, urlSetElsewhere } from '../ses/email';
 import { EmailSenderUnknown } from '../ses/errors';
-import {
-	smtpHost,
-	smtpKeySecret,
-	smtpPassword,
-	smtpUrl,
-} from '../ses/smtp';
+import { smtpHost, smtpKeySecret, smtpPassword, smtpUrl } from '../ses/smtp';
 
 /** AWS's documented example secret. */
 const SECRET = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY';
