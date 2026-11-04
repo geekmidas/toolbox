@@ -449,6 +449,9 @@
 		"devDependencies": "^19.3.0",
 		"peerDependencies": ">=18.0.0"
 	},
+	"sharp": {
+		"dependencies": "~0.35.5"
+	},
 	"sst": {
 		"devDependencies": "~4.17.1",
 		"peerDependencies": ">=4.17.1"
