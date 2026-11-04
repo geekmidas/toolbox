@@ -65,7 +65,7 @@ and the hosts they answer on all come from what the workspace declares.
   stage's telemetry is self-hosted, receiving the logs and traces of every
   process with an edge to it — see [Telemetry](#telemetry).
 - **One Caddy**, one host per app — and one per file server over the stack's
-  MinIO (`https://uploadsserver.<project>.localhost` locally), rewriting to its
+  MinIO (`https://uploads.<project>.localhost` locally), rewriting to its
   bucket the way `gkm dev`'s edge does. With `proxy: 'traefik'` the stack runs
   no Caddy: it registers the same hosts with the server's shared edge.
 
@@ -2010,13 +2010,13 @@ gkm compose --stage production --destroy --secrets   # its secrets too
 🧨 This deletes stage 'production' of shop for good:
 
    - on deploy@203.0.113.10: stack shop-production — its containers, its volumes and their data, its routes on gkm-edge
-   - CloudFront distribution E2ABC… (uploads-server.shop.example.com)
+   - CloudFront distribution E2ABC… (uploads.shop.example.com)
    - CloudFront origin access control gkm-shop-production-uploads-server
    - CloudFront response headers policy gkm-shop-production-uploads-server-cors
-   - ACM certificate uploads-server.shop.example.com (us-east-1)
+   - ACM certificate uploads.shop.example.com (us-east-1)
    - IAM user gkm-shop-production-uploads, its access keys and policies
    - S3 bucket shop-production-uploads, emptied first: 1204 object versions
-   - DNS: A shop.example.com, A api.shop.example.com, CNAME uploads-server.shop.example.com, …
+   - DNS: A shop.example.com, A api.shop.example.com, CNAME uploads.shop.example.com, …
 
    Left where it is:
    · ses-receipt-rule gkm-shop-production-inbox — gkm does not delete a ses-receipt-rule yet: delete it by hand

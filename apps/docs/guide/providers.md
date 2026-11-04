@@ -129,9 +129,9 @@ URL — `UPLOADS_URL=s3://KEY:SECRET@<bucket>?region=<region>`, percent-encoded.
 The key id is recorded in the state; the secret is never printed.
 
 **A `FileServer`, behind a CDN.** By default each file server over the bucket
-is served through CloudFront on `<fileserver>.<domain>` —
-`https://uploads-server.shop.example.com` — and that is its URL
-(`UPLOADS_SERVER_URL`), what `uploads.url('brand/logo.png')` appends a key to.
+is served through CloudFront on its own name, `<fileserver>.<domain>` —
+`https://uploads.shop.example.com` for `new FileServer('Uploads')` — and that
+is its URL (`UPLOADS_SERVER_URL`), what `uploads.url('brand/logo.png')` appends a key to.
 Per file server, on the stage:
 
 - **A certificate** for that name, from ACM in `us-east-1` (the one region

@@ -137,8 +137,11 @@ export const assets = new FileServer('Assets', {
 });
 ```
 
-On a stage whose buckets the `s3` provider creates, the file server answers on
-`<fileserver>.<domain>` through CloudFront, with that header on the immutable
+A file server answers on the name it was given: `assets.<domain>` here, while
+its key stays `ASSETS_SERVER_URL`. An app or site that would answer on the same
+name is refused with `FileServerHostTaken`. On a stage whose buckets the `s3`
+provider creates, the file server answers on `<fileserver>.<domain>` through
+CloudFront, with that header on the immutable
 paths — see [Providers](../guide/providers.md#objects-s3).
 
 A file server can also make derivatives of its open objects on read — a

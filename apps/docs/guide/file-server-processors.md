@@ -29,7 +29,7 @@ export const thumbnails = assets
 ```typescript
 // anywhere that depends on the file server
 services.assets.processedUrl(thumbnails, { width: '256' }, 'avatars/7.png');
-// → https://assets-server.example.com/i/256/avatars/7.png
+// → https://assets.example.com/i/256/avatars/7.png
 ```
 
 ## The pattern
@@ -93,7 +93,7 @@ Two file servers over one bucket keep them for the longer of the two.
 |---|---|---|
 | `gkm dev` | the dev server of the app holding the processors, under `/__gkm/processors/<FileServer>` | the file server's local host: the edge rewrites each pattern there, every other path to MinIO |
 | Compose, bucket in the stack's MinIO | its own container, `<fileserver>-processors`, built from the app holding the processors | the file server's host: the patterns go to the container, every other path to the bucket |
-| Compose, bucket on S3 (the `s3` provider, CDN on) | the same container | CloudFront: each pattern is a behaviour whose origin is the container's own host, `<fileserver>-server-processors.<domain>` |
+| Compose, bucket on S3 (the `s3` provider, CDN on) | the same container | CloudFront: each pattern is a behaviour whose origin is the container's own host, `<fileserver>-processors.<domain>` |
 | Dokploy, bucket on S3 (CDN on) | an application of its own, from the same image | CloudFront, at the same host; the unit checks the CDN's header itself |
 | SST | a Lambda behind a function URL with IAM auth | the file server's router, on the pattern's prefix, signed with origin access control |
 

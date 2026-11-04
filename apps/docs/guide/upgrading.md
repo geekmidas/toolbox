@@ -12,6 +12,38 @@ gkm upgrade --all
 `10.0.0-alpha.x` project), never goes backwards, and with `--all` also raises
 third-party packages to the floor of the peer ranges the new version declares.
 
+## After 10.0.0-alpha.163: a file server answers on its own name {#file-server-host}
+
+`new FileServer('Assets', …)` used to answer on `assets-server.<domain>`, the
+id of its surface node. It now answers on the name it was given,
+`assets.<domain>`, and its processors' origin on `assets-processors.<domain>`
+rather than `assets-server-processors.<domain>`. Locally the same holds:
+`https://assets.<project>.localhost`, not `https://assetsserver.<project>.localhost`.
+The node ids and keys do not change: `ASSETS_SERVER_URL`,
+`ASSETS_SERVER_ORIGIN_SECRET` and the rest keep their names, so no secret is
+renamed.
+
+A stage already deployed on `<id>-server.<domain>` moves on its next deploy:
+
+- **Behind the `s3` provider's CDN**, the deploy requests a certificate for the
+  new name (validated by a CNAME through `dns`, or printed and waited on as for
+  any new one), moves the distribution's alias to it and writes its CNAME.
+  The old certificate is not deleted, and the old CNAME may outlive the move;
+  remove what nothing uses once the new host answers.
+- **On compose over MinIO**, the edge serves the new host and stops serving
+  the old one in the same deploy.
+- **`<ID>_SERVER_URL`** is written with the new host where gkm derives it. A
+  value set by hand with `gkm secrets:set` is kept as it is.
+
+Anything holding the old host has to be updated: links stored in a database,
+a client that recognises the CDN by hostname, a mobile build that baked the
+URL in. The old host is not kept as an alias.
+
+An app, site or worker that answers on a file server's name — a `RestApi`
+named `Assets`, or one with `subdomain: 'assets'`, beside `FileServer('Assets')`
+— is now refused when the workspace loads, with `FileServerHostTaken`.
+Rename one of them, or give the app a `subdomain` of its own.
+
 ## After 10.0.0-alpha.157: telemetry exports metrics {#telemetry-metrics}
 
 An app with a `Telemetry` construct needs two more OpenTelemetry packages, or
