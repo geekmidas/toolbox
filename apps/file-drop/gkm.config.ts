@@ -8,12 +8,16 @@ import { defineWorkspace } from '@geekmidas/cli/config';
  * ACM certificate, the CloudFront distribution, the bucket policy — which
  * kitchen-sink is too big to iterate on.
  *
- * `prod` is `geekmidas.cloud`: the site answers on the apex, the API on
- * `api.geekmidas.cloud`, and the CDN on `drop-server.geekmidas.cloud`.
- * Hostinger holds the zone; the deploy reads its token (`gkm login --provider
- * hostinger`, or `HOSTINGER_API_TOKEN`) to write the records and the CDN
- * certificate's validation CNAME.
+ * `prod`'s domain is `FILE_DROP_DOMAIN`, read from the environment so no
+ * one's domain is baked into the example: the site answers on it, the API on
+ * `api.<domain>`, and the CDN on `drop-server.<domain>`. Hostinger holds its
+ * zone; the deploy reads its token (`gkm login --provider hostinger`, or
+ * `HOSTINGER_API_TOKEN`) to write the records and the CDN certificate's
+ * validation CNAME. Unset, there is no domain: `gkm dev` needs none, and a
+ * deploy stops with `FileServerCdnNeedsDomain`.
  */
+const domain = process.env.FILE_DROP_DOMAIN;
+
 export default defineWorkspace({
 	name: 'file-drop',
 	stages: { local: 'dev', deployed: ['prod'] },
@@ -21,8 +25,12 @@ export default defineWorkspace({
 		'./constructs/**/*.ts',
 		'./apps/*/{endpoints,processors}/**/*.ts',
 	],
-	domains: { prod: 'geekmidas.cloud' },
-	dns: { 'geekmidas.cloud': { provider: 'hostinger' } },
+	...(domain
+		? {
+				domains: { prod: domain },
+				dns: { [domain]: { provider: 'hostinger' as const } },
+			}
+		: {}),
 	deploy: {
 		default: 'compose',
 		telemetry: { prod: false },
