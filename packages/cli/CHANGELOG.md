@@ -1,5 +1,56 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.158
+
+### Minor Changes
+
+- [#396](https://github.com/geekmidas/toolbox/pull/396) [`b01bd17`](https://github.com/geekmidas/toolbox/commit/b01bd17a6ae63513589b227d4fcf957e36f829f2) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: **Telemetry exports metrics.** Every process with a `Telemetry` edge now sends
+  OTLP metrics to the same collector as its traces and logs — OpenObserve under
+  `gkm dev` and `gkm compose`, or the stage's `otlp` endpoint:
+
+  - `http.server.request.duration` (seconds, the semantic conventions' buckets),
+    recorded by `honoTelemetryMiddleware`, the Lambda `telemetryMiddleware` and
+    `OTelTelemetry`, by `http.request.method`, `http.route` (the matched route,
+    left off when none matched), `http.response.status_code`, `url.scheme`, and
+    `error.type` on a 5xx. Not sampled: every request is counted.
+  - The Node.js runtime's metrics and outgoing requests'
+    `http.client.request.duration`, from the auto-instrumentation.
+
+  `setupTelemetry` builds the reader itself: `<endpoint>/metrics` for an explicit
+  endpoint, `/v1/metrics` from `OTEL_EXPORTER_OTLP_ENDPOINT`, and none with no
+  collector — the SDK left to itself exported to `localhost:4318` whether or not
+  anything listened. `metrics: false` or `OTEL_METRICS_EXPORTER=none` turns them
+  off; `OTEL_METRIC_EXPORT_INTERVAL` sets the interval (60s). `flushTelemetry()`
+  flushes metrics too, so a Lambda exports them before it freezes. New exports:
+  `recordHttpServerRequest`, `HTTP_SERVER_REQUEST_DURATION`,
+  `setGlobalMetricReader`, `MetricFlushTimeout`.
+
+  :boom: `@opentelemetry/exporter-metrics-otlp-http` and `@opentelemetry/sdk-metrics` join
+  the instrumentation's optional peers and `TELEMETRY_PACKAGES`: an app with the
+  construct adds them, or `gkm build` fails with `TelemetryPackagesMissing`.
+
+  **The Hono adaptor logs a request it rejects before the handler.** A body,
+  query or params that fails its schema (`'Request validation failed'`, with an
+  `UnprocessableEntityError` under `err` and the `part`) and a body that cannot be
+  read (`'Request body could not be read'`) are logged at `error` through the
+  request's logger, as the Lambda adaptors already did — they returned a 422
+  without a line. The response carries the same `X-Request-ID` the line does.
+
+### Patch Changes
+
+- Updated dependencies [[`b01bd17`](https://github.com/geekmidas/toolbox/commit/b01bd17a6ae63513589b227d4fcf957e36f829f2)]:
+  - @geekmidas/telescope@10.0.0-alpha.158
+  - @geekmidas/constructs@10.0.0-alpha.158
+  - @geekmidas/cache@10.0.0-alpha.158
+  - @geekmidas/db@10.0.0-alpha.158
+  - @geekmidas/envkit@10.0.0-alpha.158
+  - @geekmidas/errors@10.0.0-alpha.158
+  - @geekmidas/logger@10.0.0-alpha.158
+  - @geekmidas/manifest@10.0.0-alpha.158
+  - @geekmidas/schema@10.0.0-alpha.158
+  - @geekmidas/services@10.0.0-alpha.158
+  - @geekmidas/storage@10.0.0-alpha.158
+
 ## 10.0.0-alpha.157
 
 ### Patch Changes

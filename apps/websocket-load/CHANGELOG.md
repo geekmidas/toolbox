@@ -1,5 +1,14 @@
 # @geekmidas/websocket-load
 
+## 10.0.0-alpha.158
+
+### Patch Changes
+
+- Updated dependencies [[`b01bd17`](https://github.com/geekmidas/toolbox/commit/b01bd17a6ae63513589b227d4fcf957e36f829f2)]:
+  - @geekmidas/constructs@10.0.0-alpha.158
+  - @geekmidas/envkit@10.0.0-alpha.158
+  - @geekmidas/logger@10.0.0-alpha.158
+
 ## 10.0.0-alpha.157
 
 ### Patch Changes
