@@ -4,7 +4,8 @@
  * and safe to run again: every step changes only what is missing or wrong.
  *
  * Arguments, in order: the admin user (the one running sudo), the deploy
- * user, the SSH port, the deploy key's public line, and its comment.
+ * user, the SSH port, the deploy key's public line, its comment, and the
+ * admin's shell — `none`, `zsh`, or `oh-my-zsh`.
  *
  * The last line it prints is `HOSTKEY=<fingerprint>` — the server's own
  * ed25519 host key, which the command checks the network's against before
@@ -12,7 +13,7 @@
  */
 export const SERVER_SCRIPT = String.raw`set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
-ADMIN="$1"; DEPLOY="$2"; SSH_PORT="$3"; PUB="$4"; COMMENT="$5"
+ADMIN="$1"; DEPLOY="$2"; SSH_PORT="$3"; PUB="$4"; COMMENT="$5"; ADMIN_SHELL="$6"
 say() { echo "   $*"; }
 fail() { echo "   ✗ $*" >&2; exit 1; }
 
@@ -125,6 +126,34 @@ modprobe nf_conntrack
 echo 262144 > /sys/module/nf_conntrack/parameters/hashsize 2>/dev/null || true
 sysctl --quiet --system
 say "kernel: $(sysctl -n net.netfilter.nf_conntrack_max) tracked connections, a backlog of $(sysctl -n net.core.somaxconn)"
+
+# ── The admin's shell: zsh, and Oh My Zsh, when asked for ─────────────────
+# The admin's alone: the deploy user never opens a shell. An existing .zshrc
+# is the admin's own and is never replaced.
+case "$ADMIN_SHELL" in
+	none) ;;
+	zsh | oh-my-zsh)
+		command -v zsh >/dev/null || apt-get install -y -qq zsh >/dev/null
+		ZSH_BIN="$(command -v zsh)"
+		[ "$(getent passwd "$ADMIN" | cut -d: -f7)" = "$ZSH_BIN" ] || chsh -s "$ZSH_BIN" "$ADMIN"
+		if [ "$ADMIN_SHELL" = oh-my-zsh ]; then
+			command -v git >/dev/null || apt-get install -y -qq git >/dev/null
+			[ -d "$ADMIN_HOME/.oh-my-zsh" ] ||
+				sudo -u "$ADMIN" -H git clone --quiet --depth 1 https://github.com/ohmyzsh/ohmyzsh.git "$ADMIN_HOME/.oh-my-zsh"
+			if [ ! -e "$ADMIN_HOME/.zshrc" ]; then
+				sudo -u "$ADMIN" -H cp "$ADMIN_HOME/.oh-my-zsh/templates/zshrc.zsh-template" "$ADMIN_HOME/.zshrc"
+			elif ! grep -q 'oh-my-zsh.sh' "$ADMIN_HOME/.zshrc"; then
+				say "⚠ $ADMIN_HOME/.zshrc is $ADMIN's own and does not load Oh My Zsh; it was left as it is"
+			fi
+			say "$ADMIN logs in to zsh, with Oh My Zsh in $ADMIN_HOME/.oh-my-zsh"
+		else
+			# No .zshrc at all starts zsh's first-run wizard on every login.
+			[ -e "$ADMIN_HOME/.zshrc" ] || sudo -u "$ADMIN" -H touch "$ADMIN_HOME/.zshrc"
+			say "$ADMIN logs in to zsh"
+		fi
+		;;
+	*) fail "unknown shell '$ADMIN_SHELL' for $ADMIN: none, zsh or oh-my-zsh." ;;
+esac
 
 # ── The deploy user: no password, no sudo, in the docker group ─────────────
 id "$DEPLOY" >/dev/null 2>&1 || adduser --disabled-password --gecos "" "$DEPLOY" >/dev/null

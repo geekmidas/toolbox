@@ -221,6 +221,10 @@ It logs in as the server's **admin** — the sudo user you log in as, never root
 - installs **Docker** and its compose plugin from Docker's own repository;
 - creates the **deploy user** (in the docker group, no sudo, no password) and
   authorizes a deploy key there as `restrict,port-forwarding`.
+- with `--zsh`, makes **zsh** the admin's login shell; with `--oh-my-zsh`,
+  also clones **Oh My Zsh** into the admin's home and starts a `.zshrc` from
+  its template. An existing `.zshrc` is the admin's own and is never replaced.
+  Only the admin's shell changes: the deploy user never opens one.
 
 Off the server, it makes that key pair here (`~/.ssh/gkm-<project>-<stage>`),
 pins the server's host key — checked against the fingerprint the server
