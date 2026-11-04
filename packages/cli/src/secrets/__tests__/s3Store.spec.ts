@@ -267,6 +267,29 @@ describe('S3SecretsStore', { timeout: 60_000 }, () => {
 		expect(versions.Versions).toHaveLength(2);
 	});
 
+	it('deletes every version of a stage, and keeps the other stages', async () => {
+		const store = open(project);
+		const first = initStageSecrets(STAGE);
+		await store.write(STAGE, first);
+		await store.write(STAGE, { ...first, custom: { ROTATED: 'yes' } });
+		await store.write('staging', initStageSecrets('staging'));
+
+		await store.delete(STAGE);
+
+		expect(await open(project).read(STAGE)).toBeNull();
+		const versions = await s3.send(
+			new ListObjectVersionsCommand({
+				Bucket: bucketOf(project),
+				Prefix: `gkm/${project}/${STAGE}/secrets.json`,
+			}),
+		);
+		expect(versions.Versions ?? []).toHaveLength(0);
+		expect(await open(project).read('staging')).not.toBeNull();
+		// Written again from scratch, as a stage deployed after a destroy is.
+		await store.write(STAGE, first);
+		expect(await open(project).read(STAGE)).toEqual(first);
+	});
+
 	it('holds a stage past any SSM parameter', async () => {
 		const secrets = initStageSecrets(STAGE);
 		secrets.custom = { BLOB: 'x'.repeat(SSM_PARAMETER_LIMIT * 4) };

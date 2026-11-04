@@ -679,6 +679,14 @@ program
 	.option('--dry-run', 'Write the files and print the plan; start nothing')
 	.option('--down', "Stop the stage's stack (its volumes are kept)")
 	.option(
+		'--destroy',
+		"Delete everything the stage's deploys made: its stack and volumes, and the AWS resources and DNS records gkm made. Asks you to type the project's name; no flag skips it",
+	)
+	.option(
+		'--secrets',
+		"With --destroy: delete the stage's secrets too (kept otherwise)",
+	)
+	.option(
 		'--allow-dev-services',
 		"Deployed stage: run the dev service (MinIO, Mailpit) for every bucket and mail the stage doesn't account for. Not production-grade",
 	)

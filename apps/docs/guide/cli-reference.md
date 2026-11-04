@@ -580,6 +580,12 @@ Options:
                    With --tag: run each image at the digest the file names
   --dry-run        Write the files and print the plan; start nothing
   --down           Stop the stage's stack (its volumes are kept)
+  --destroy        Delete everything the stage's deploys made: its stack and
+                   volumes, the AWS resources and DNS records gkm can prove it
+                   made. Prints the plan, then asks you to type
+                   <project>-<stage>; no flag skips that, and it refuses with
+                   no terminal. With --dry-run: the plan only, anywhere
+  --secrets        With --destroy: delete the stage's secrets too
   --allow-dev-services
                    Deployed stage: run MinIO and Mailpit for every bucket and
                    mail it doesn't account for (no key in its secrets, no
@@ -592,7 +598,8 @@ Options:
                    Deployed stage: delete a rotated-out key now
 
 The same as `gkm deploy --target compose --stage <stage>`, plus --build, --pull,
---push, --digests-file and --down.
+--push, --digests-file, --down and --destroy. See
+[Destroying a stage](./compose.md#destroying-a-stage).
 
 Errors:
   ServerAddressMissing    a deployed stage with a domain and no GKM_SERVER_IPV4

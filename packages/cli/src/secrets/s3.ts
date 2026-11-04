@@ -18,8 +18,10 @@
  */
 
 import {
+	DeleteObjectsCommand,
 	GetObjectCommand,
 	HeadObjectCommand,
+	ListObjectVersionsCommand,
 	PutObjectCommand,
 	S3Client,
 	type S3ClientConfig,
@@ -268,6 +270,39 @@ export class S3SecretsStore implements SecretsStore {
 			}
 			throw error;
 		}
+	}
+
+	/**
+	 * Every version of the stage's secrets: the bucket keeps each past
+	 * document, and a secret left in an old version is not destroyed.
+	 */
+	async delete(stage: string): Promise<void> {
+		const { s3, bucket } = await this.use(stage, false);
+		if (!bucket) return;
+		const Key = this.key(stage);
+		const listed = await this.call(stage, 'write', () =>
+			s3.send(new ListObjectVersionsCommand({ Bucket: bucket, Prefix: Key })),
+		);
+		const objects = [
+			...(listed.Versions ?? []),
+			...(listed.DeleteMarkers ?? []),
+		]
+			.filter((o) => o.Key === Key)
+			.map((o) => ({
+				Key,
+				...(o.VersionId ? { VersionId: o.VersionId } : {}),
+			}));
+		if (objects.length > 0) {
+			await this.call(stage, 'write', () =>
+				s3.send(
+					new DeleteObjectsCommand({
+						Bucket: bucket,
+						Delete: { Objects: objects, Quiet: true },
+					}),
+				),
+			);
+		}
+		this.etags.set(stage, null);
 	}
 
 	/**

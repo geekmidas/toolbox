@@ -14,10 +14,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { loadWorkspaceConfig } from '../config';
 import { deploy } from '../deploy/deploy';
-import { deployIdentity } from '../deploy/identity.js';
 import type { DeployResult } from '../deploy/types';
 import { GkmError } from '../errors';
-import { secretsStoreFor } from '../secrets/store.js';
 import {
 	type ComposeDeps,
 	type ComposeImage,
@@ -25,13 +23,12 @@ import {
 	ComposePushNeedsBuild,
 	type ComposeRun,
 	composeTarget,
-	stackOverrideFile,
 } from '../target/compose/index';
-import { dockerCompose, type StackRef } from './docker';
+import { dockerCompose } from './docker';
 import { edgeRef, removeEdgeRoutes } from './edge';
 import { type ImageDigests, parseDigests, pinnedRef } from './images';
-import { composeServer, dockerHost, sshTarget } from './server';
-import { type ComposeStack, composeProject, stackDir } from './stack';
+import { sshTarget } from './server';
+import type { ComposeStack } from './stack';
 import { EDGE_PROJECT } from './traefik';
 
 export {
@@ -131,6 +128,14 @@ export interface ComposeOptions {
 	dryRun?: boolean;
 	/** Stop the stage's stack. Its volumes are kept. */
 	down?: boolean;
+	/**
+	 * Delete everything the stage's deploys made — its stack and volumes,
+	 * the AWS resources and DNS records gkm can prove it made — after the
+	 * project's name is typed back. See `compose/destroy.ts`.
+	 */
+	destroy?: boolean;
+	/** With `destroy`: delete the stage's secrets too. */
+	secrets?: boolean;
 	/** The workspace — the current directory when absent. */
 	cwd?: string;
 	/**
@@ -171,6 +176,27 @@ export class ComposeModeConflict extends GkmError {
 	}
 }
 
+/** `--secrets` asks what only `--destroy` does. */
+export class ComposeSecretsNeedsDestroy extends GkmError {
+	constructor() {
+		super(
+			"--secrets deletes the stage's secrets, which only --destroy does. " +
+				'Pass --destroy with it, or leave it off.',
+		);
+		this.name = 'ComposeSecretsNeedsDestroy';
+	}
+}
+
+/** `--destroy` beside a switch for a deploy. */
+export class ComposeDestroyConflict extends GkmError {
+	constructor(readonly flag: string) {
+		super(
+			`--destroy deletes the stage; ${flag} is for a deploy of it. Pass one of them.`,
+		);
+		this.name = 'ComposeDestroyConflict';
+	}
+}
+
 /** Each pushed image as `<ref>@sha256:…`, by app. */
 function pushedDigests(run: ComposeRun): ImageDigests {
 	return Object.fromEntries(
@@ -186,6 +212,31 @@ export async function composeCommand(
 	options: ComposeOptions,
 	deps: Partial<ComposeDeps> = {},
 ): Promise<ComposeResult | undefined> {
+	if (options.secrets && !options.destroy) {
+		throw new ComposeSecretsNeedsDestroy();
+	}
+	if (options.destroy) {
+		const flag = (
+			[
+				['down', '--down'],
+				['build', '--build'],
+				['pull', '--pull'],
+				['push', '--push'],
+				['tag', '--tag'],
+			] as const
+		).find(
+			([key]) => options[key] !== undefined && options[key] !== false,
+		)?.[1];
+		if (flag) throw new ComposeDestroyConflict(flag);
+		const { composeDestroyCommand } = await import('./destroy');
+		await composeDestroyCommand({
+			stage: options.stage,
+			...(options.cwd ? { cwd: options.cwd } : {}),
+			...(options.secrets ? { secrets: true } : {}),
+			...(options.dryRun ? { dryRun: true } : {}),
+		});
+		return undefined;
+	}
 	if (options.build && options.pull) throw new ComposeModeConflict();
 	if (options.push && !options.build) throw new ComposePushNeedsBuild();
 	const pulls = !options.build && (options.pull || options.tag !== undefined);
@@ -203,26 +254,8 @@ export async function composeCommand(
 	const { stage } = options;
 
 	if (options.down) {
-		const local = stage === workspace.stages.local;
-		// A deployed stage stops on its server, whose host may be its secret.
-		const server = local
-			? undefined
-			: composeServer({
-					stage,
-					local,
-					config: workspace.deploy?.compose?.server,
-					custom: (await (await secretsStoreFor(workspace, stage)).read(stage))
-						?.custom,
-				});
-		const override = stackOverrideFile(workspace.root, stage);
-		const dir = join(workspace.root, stackDir(stage));
-		const ref: StackRef = {
-			project: composeProject(deployIdentity(workspace, stage)),
-			file: join(dir, 'docker-compose.yml'),
-			...(existsSync(override) ? { overrides: [override] } : {}),
-			cwd: workspace.root,
-			...(server ? { host: dockerHost(server) } : {}),
-		};
+		const { composeStackRef } = await import('./destroy');
+		const { ref, dir, server } = await composeStackRef(workspace, stage);
 		const docker = deps.docker ?? dockerCompose;
 		if (server) console.log(`→ ${sshTarget(server)} (docker over ssh)`);
 		// Unregistered from the shared edge first, so it stops routing to the

@@ -125,6 +125,26 @@ function conformance(
 			expect(await create(project()).read('prod')).toBeNull();
 		});
 
+		it('deletes a stage, keeps the others, and takes it again under the same name', async () => {
+			const store = create(project());
+			const prod = { ...initStageSecrets('prod'), custom: { A: 'prod' } };
+			const staging = { ...initStageSecrets('staging'), custom: { A: 'stg' } };
+			await store.write('prod', prod);
+			await store.write('staging', staging);
+
+			await store.delete!('prod');
+
+			expect(await store.read('prod')).toBeNull();
+			expect(await store.read('staging')).toEqual(staging);
+			// A stage destroyed and deployed again writes under the same name.
+			await store.write('prod', prod);
+			expect(await store.read('prod')).toEqual(prod);
+		});
+
+		it('deletes a stage never written without failing', async () => {
+			await expect(create(project()).delete!('prod')).resolves.toBeUndefined();
+		});
+
 		it('keeps stages apart', async () => {
 			const store = create(project());
 			const prod = { ...initStageSecrets('prod'), custom: { A: 'prod' } };
