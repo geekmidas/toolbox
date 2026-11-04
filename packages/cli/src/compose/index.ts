@@ -194,9 +194,12 @@ export async function composeCommand(
 	}
 
 	const cwd = resolve(options.cwd ?? process.cwd());
-	// Read here only for what the command adds: the project `--down` stops. The deploy loads it again, as it
-	// loads every project, in its sandbox.
-	const { workspace } = await loadWorkspaceConfig(cwd);
+	// Read once, here, with the environment this command was run in: the
+	// deploy below is handed it rather than loading the file again in its
+	// sandbox, so a setting the config reads from the environment is the same
+	// at every step.
+	const loaded = await loadWorkspaceConfig(cwd);
+	const { workspace } = loaded;
 	const { stage } = options;
 
 	if (options.down) {
@@ -260,6 +263,7 @@ export async function composeCommand(
 
 	const run = deploy({
 		cwd,
+		config: loaded.raw,
 		stage,
 		target: 'compose',
 		// The target with this command's switches, in place of the built-in.

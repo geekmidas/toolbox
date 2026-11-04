@@ -16,7 +16,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	ConfigLoadFailed,
 	ConfigObjectNotSerializable,
+	loadRawWorkspaceConfig,
 	loadWorkspaceConfig,
+	withLoadedConfig,
 } from '../config';
 import { CommandTimedOut } from '../run';
 import { LocalSandbox } from '../sandbox/local';
@@ -201,5 +203,87 @@ export const api = new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'no
 		} finally {
 			rmSync(elsewhere, { recursive: true, force: true });
 		}
+	});
+});
+
+describe('a config its caller already loaded', () => {
+	let root: string;
+	let other: string;
+
+	/** A workspace whose production domain is read from the environment. */
+	const workspace = (dir: string, name: string) => {
+		writeFileSync(join(dir, 'package.json'), '{ "type": "module" }');
+		mkdirSync(join(dir, 'constructs'));
+		writeFileSync(
+			join(dir, 'constructs', 'api.ts'),
+			`import { RestApi } from '@geekmidas/constructs/rest-api';
+export const api = new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'none' });
+`,
+		);
+		mkdirSync(join(dir, 'apps', 'api'), { recursive: true });
+		writeFileSync(
+			join(dir, 'gkm.config.ts'),
+			config(
+				`name: '${name}',
+  ...(process.env.SHOP_DOMAIN
+    ? { domains: { production: process.env.SHOP_DOMAIN } }
+    : {}),`,
+			).replace("name: 'shop',\n", ''),
+		);
+	};
+
+	beforeEach(() => {
+		root = realpathSync(mkdtempSync(join(tmpdir(), 'gkm-config-loaded-')));
+		other = realpathSync(mkdtempSync(join(tmpdir(), 'gkm-config-other-')));
+		workspace(root, 'shop');
+		workspace(other, 'other');
+		vi.stubEnv('SHOP_DOMAIN', 'shop.example.com');
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		rmSync(root, { recursive: true, force: true });
+		rmSync(other, { recursive: true, force: true });
+	});
+
+	it('loses a setting read from the environment when reloaded in a sandbox', async () => {
+		// Why the caller's own load has to be the one a run reads: the
+		// sandbox passes on an allowlist of the environment, and the domain
+		// is not on it.
+		const sandboxed = await loadWorkspaceConfig(root, {
+			sandbox: isolating(root),
+		});
+
+		expect(sandboxed.workspace.domains).toBeUndefined();
+	});
+
+	it('is what every load of that workspace answers with, starting no config worker', async () => {
+		const { config: raw } = await loadRawWorkspaceConfig(root);
+		const ran: string[] = [];
+
+		const loaded = await withLoadedConfig(root, raw, () =>
+			loadWorkspaceConfig(join(root, 'apps', 'api'), {
+				sandbox: isolating(root, ran),
+			}),
+		);
+
+		expect(loaded.workspace.domains).toEqual({
+			production: 'shop.example.com',
+		});
+		// The constructs are still discovered in the sandbox; the config is not
+		// imported again anywhere.
+		expect(
+			ran.map((script) => script.match(/(config|discover)-worker/)?.[0]),
+		).toEqual(['discover-worker']);
+	});
+
+	it('answers for its own workspace only', async () => {
+		const { config: raw } = await loadRawWorkspaceConfig(root);
+
+		const loaded = await withLoadedConfig(root, raw, () =>
+			loadWorkspaceConfig(other),
+		);
+
+		expect(loaded.workspace.name).toBe('other');
 	});
 });

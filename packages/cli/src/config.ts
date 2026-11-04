@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join, parse, resolve, sep } from 'node:path';
 import { z } from 'zod';
@@ -156,7 +157,7 @@ export class ConfigNotFound extends GkmError {
 	}
 }
 
-interface RawConfigResult {
+export interface RawConfigResult {
 	config: GkmConfig | WorkspaceConfig;
 	workspaceRoot: string;
 }
@@ -279,6 +280,46 @@ async function loadConfigInSandbox(
 	}
 }
 
+/** A run's config, as its caller already loaded it (`withLoadedConfig`). */
+interface LoadedRun {
+	workspaceRoot: string;
+	config: GkmConfig | WorkspaceConfig;
+}
+
+const loadedRun = new AsyncLocalStorage<LoadedRun>();
+
+/**
+ * Run `fn` with `config` as the config of the workspace at `workspaceRoot`:
+ * every load of it inside — however deep, sandboxed or not — answers with
+ * this one rather than importing the file again.
+ *
+ * A config is the workspace's settings, and settings may come from the
+ * environment it was loaded in (`domains: { prod: process.env.DOMAIN }`). A
+ * reload in a sandbox, which passes on an allowlist of the environment, read
+ * the same file to a different answer: the deploy saw no domain the command
+ * had been given. Loaded once by the caller, every step of the run sees the
+ * same settings. The constructs are still discovered in the run's sandbox.
+ */
+export function withLoadedConfig<T>(
+	workspaceRoot: string,
+	config: GkmConfig | WorkspaceConfig,
+	fn: () => T,
+): T {
+	return loadedRun.run({ workspaceRoot: resolve(workspaceRoot), config }, fn);
+}
+
+/**
+ * The raw config of the workspace a directory belongs to, imported in this
+ * process: what a caller hands {@link withLoadedConfig}, or `deploy()` as its
+ * `config`.
+ */
+export async function loadRawWorkspaceConfig(
+	cwd: string = process.cwd(),
+): Promise<RawConfigResult> {
+	const { configPath, workspaceRoot } = findConfigPath(cwd);
+	return { config: await importConfig(configPath), workspaceRoot };
+}
+
 /**
  * Load raw configuration from file.
  */
@@ -287,6 +328,10 @@ async function loadRawConfig(
 	options: LoadConfigOptions = {},
 ): Promise<RawConfigResult> {
 	const { configPath, workspaceRoot } = findConfigPath(cwd);
+	const loaded = loadedRun.getStore();
+	if (loaded && loaded.workspaceRoot === resolve(workspaceRoot)) {
+		return { config: loaded.config, workspaceRoot };
+	}
 	// The run's own sandbox when none is given: a deploy reloads the config
 	// deep in the engine (generating Dockerfiles), and that load is the
 	// project's code as much as the first.

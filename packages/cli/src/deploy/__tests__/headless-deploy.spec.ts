@@ -28,7 +28,10 @@ import {
 	vi,
 } from 'vitest';
 import { storeDokployCredentials } from '../../auth/credentials';
-import { ConfigObjectNotSerializable } from '../../config';
+import {
+	ConfigObjectNotSerializable,
+	loadRawWorkspaceConfig,
+} from '../../config';
 import { run, runOutput } from '../../run';
 import { LocalSandbox } from '../../sandbox/local';
 import type { Sandbox } from '../../sandbox/sandbox';
@@ -534,6 +537,19 @@ writeFileSync(new URL('../seen.json', import.meta.url), JSON.stringify(process.e
 			);
 			expect(seen).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
 			expect(seen).not.toHaveProperty('DOKPLOY_API_TOKEN');
+		});
+
+		it('reads the config its caller handed it, and imports it nowhere again', async () => {
+			const { config } = await loadRawWorkspaceConfig(root);
+
+			const result = await start({ sandbox, config }).result;
+
+			expect(result.successCount).toBe(1);
+			const scripts = execs.map(({ script }) =>
+				script.replace(/^.*[\\/]([\w-]+)\.[cm]?[tj]s$/, '$1'),
+			);
+			// The constructs and the API are still run in the sandbox.
+			expect(scripts).toEqual(['discover-worker', 'sniffer-worker']);
 		});
 
 		it('refuses a config holding live objects when the sandbox isolates', async () => {
