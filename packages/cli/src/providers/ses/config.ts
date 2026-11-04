@@ -1,3 +1,4 @@
+import { appKey } from '../../workspace/derive.js';
 import { S3_PROVISIONING } from '../s3/config.js';
 import { iamUserName } from '../s3/naming.js';
 import type { ProviderConfig } from '../types.js';
@@ -122,6 +123,25 @@ export function checkSesEmailConfig(
  */
 export function emailUserName(scope: string, stage: string, id: string) {
 	return iamUserName({ scope, stage, id });
+}
+
+/**
+ * What an inbox's bucket and its IAM user are named for, after the stage:
+ * `requests-mail`.
+ */
+export function inboxBucketId(inbox: string): string {
+	return `${appKey(inbox)}-mail`;
+}
+
+/** The SNS topic SES announces an inbox's mail on. */
+export function inboxTopicName(
+	scope: string,
+	stage: string,
+	inbox: string,
+): string {
+	return `gkm-${scope}-${stage}-${inboxBucketId(inbox)}`
+		.replace(/[^A-Za-z0-9_-]/g, '-')
+		.slice(0, 256);
 }
 
 /** The stage's AWS account, as every AWS provider asks for it. */

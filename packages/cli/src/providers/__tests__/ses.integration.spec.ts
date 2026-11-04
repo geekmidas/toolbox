@@ -1,5 +1,6 @@
 import { realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { IAMClient, ListUsersCommand } from '@aws-sdk/client-iam';
 import { GetBucketPolicyCommand, S3Client } from '@aws-sdk/client-s3';
 import {
 	DescribeActiveReceiptRuleSetCommand,
@@ -22,6 +23,7 @@ import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { writeComposeApp } from '../../compose/__tests__/__helpers__/composeApp';
 import { loadWorkspaceConfig } from '../../config';
+import { deployAccess } from '../../deploy/githubPolicy';
 import { createStateStore } from '../../deploy/StateStore';
 import { type BoundSubscriber, discover } from '../../reconcile/discover';
 import { constructGlobs } from '../../reconcile/workspace';
@@ -54,6 +56,7 @@ const admin = {
 const s3 = new S3Client({ ...admin, forcePathStyle: true });
 const sns = new SNSClient(admin);
 const ses = new SESClient(admin);
+const iam = new IAMClient(admin);
 
 let dir: string;
 let home: string;
@@ -225,6 +228,38 @@ describe('the ses provider', { timeout: 120_000 }, () => {
 
 		expect(lines.join('\n')).not.toMatch(/SES receipt rule .* create/);
 		expect(lines.join('\n')).not.toMatch(/receive at /);
+	});
+
+	it("names what it made in the policy gkm deploy:github gives the stage's CI role", async () => {
+		const secrets = await secretsOf();
+		const bucket = s3Url.parse(secrets.REQUESTS_URL!).bucket;
+		const topicArn = new URL(
+			secrets.REQUESTS_MAIL_PUBLISHER_CONNECTION_STRING!,
+		).searchParams.get('topicArn')!;
+		const users = await iam.send(new ListUsersCommand({ PathPrefix: '/gkm/' }));
+		const user = users.Users!.find((u) =>
+			u.UserName!.includes(`${name}-${STAGE}-requests-mail`),
+		)!;
+
+		const access = deployAccess(workspace, STAGE, undefined, manifest);
+		if (access.kind !== 'scoped') return expect.unreachable();
+		const statements = Object.fromEntries(
+			access.statements('000000000000').map((s) => [s.Sid, s]),
+		);
+		const allows = (sid: string, arn: string) =>
+			[statements[sid]!.Resource].flat().some((pattern) =>
+				new RegExp(
+					`^${pattern
+						.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+						.replace(/\*/g, '.*')
+						.replace(/\?/g, '.')}$`,
+				).test(arn),
+			);
+
+		expect(allows('StageInboxBuckets', `arn:aws:s3:::${bucket}`)).toBe(true);
+		expect(allows('StageInboxTopics', topicArn)).toBe(true);
+		expect(allows('StageInboxUsers', user.Arn!)).toBe(true);
+		expect(allows('StageInboxUsers', `${user.Arn!}x`)).toBe(false);
 	});
 
 	it("deletes a removed inbox's rule on the next run, and nothing else", async () => {

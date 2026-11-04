@@ -15,6 +15,7 @@ function workspace(
 		target?: string;
 		objects?: Record<string, unknown>;
 		email?: Record<string, unknown>;
+		inbox?: Record<string, unknown>;
 		store?: NormalizedWorkspace['secrets']['store'];
 	},
 ): NormalizedWorkspace {
@@ -25,6 +26,7 @@ function workspace(
 			...(parts.target ? { default: parts.target } : {}),
 			...(parts.objects ? { objects: parts.objects } : {}),
 			...(parts.email ? { email: parts.email } : {}),
+			...(parts.inbox ? { inbox: parts.inbox } : {}),
 		},
 		stages: { local: 'dev', deployed: ['prod', 'dev-stage'] },
 		secrets: parts.store ? { store: parts.store } : {},
@@ -485,6 +487,79 @@ describe('deployAccess', () => {
 				'prod',
 				undefined,
 				mail,
+			);
+
+			if (access.kind !== 'scoped') return expect.unreachable();
+			expect(access.statements('111').map((s) => s.Sid)).toEqual([
+				'StageSecrets',
+			]);
+		});
+	});
+
+	describe('the inboxes an ses inbox provider receives', () => {
+		const ssm = { provider: 'ssm', region: 'eu-west-1' } as const;
+		const inboxes = {
+			Requests: { kind: 'inbox' },
+			Support: { kind: 'inbox' },
+		} as unknown as ConstructManifest;
+
+		it("keeps the domain and receipt rules, and creates exactly those inboxes' buckets, users and topics", () => {
+			const access = deployAccess(
+				workspace({
+					target: 'compose',
+					store: ssm,
+					inbox: { prod: { provider: 'ses', region: 'eu-west-1' } },
+				}),
+				'prod',
+				undefined,
+				inboxes,
+			);
+
+			if (access.kind !== 'scoped') return expect.unreachable();
+			const statements = access.statements('111');
+			const bySid = Object.fromEntries(statements.map((s) => [s.Sid, s]));
+			expect(statements.map((s) => s.Sid)).toEqual([
+				'StageSecrets',
+				'StageInboxRules',
+				'StageInboxBuckets',
+				'StageInboxTopics',
+				'StageInboxUsers',
+			]);
+			expect(bySid.StageInboxRules!.Action).toEqual(
+				expect.arrayContaining([
+					'ses:VerifyDomainDkim',
+					'ses:DescribeActiveReceiptRuleSet',
+					'ses:CreateReceiptRule',
+					'ses:UpdateReceiptRule',
+					'ses:DeleteReceiptRule',
+				]),
+			);
+			expect(bySid.StageInboxBuckets!.Action).toContain('s3:PutBucketPolicy');
+			expect(bySid.StageInboxBuckets!.Resource).toEqual([
+				'arn:aws:s3:::shop-prod-requests-mail',
+				'arn:aws:s3:::shop-prod-requests-mail-??????',
+				'arn:aws:s3:::shop-prod-support-mail',
+				'arn:aws:s3:::shop-prod-support-mail-??????',
+			]);
+			expect(bySid.StageInboxTopics!.Resource).toEqual([
+				'arn:aws:sns:*:111:gkm-shop-prod-requests-mail',
+				'arn:aws:sns:*:111:gkm-shop-prod-requests-mail:*',
+				'arn:aws:sns:*:111:gkm-shop-prod-support-mail',
+				'arn:aws:sns:*:111:gkm-shop-prod-support-mail:*',
+			]);
+			expect(bySid.StageInboxUsers!.Action).toContain('iam:CreateAccessKey');
+			expect(bySid.StageInboxUsers!.Resource).toEqual([
+				'arn:aws:iam::111:user/gkm/gkm-shop-prod-requests-mail',
+				'arn:aws:iam::111:user/gkm/gkm-shop-prod-support-mail',
+			]);
+		});
+
+		it('is nothing for inboxes the stage receives externally', () => {
+			const access = deployAccess(
+				workspace({ target: 'compose', store: ssm }),
+				'prod',
+				undefined,
+				inboxes,
 			);
 
 			if (access.kind !== 'scoped') return expect.unreachable();
