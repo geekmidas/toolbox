@@ -1450,11 +1450,16 @@ describe('a site behind a password', { timeout: RUN_TIMEOUT }, () => {
 	});
 
 	it('serves the site to everyone on a stage its password does not name', async () => {
+		// A project of its own: a process imports a config once, so rewriting
+		// the one beforeEach already loaded would still read as it was.
+		await cleanupDir(dir);
+		dir = realpathSync(await createTempDir('gkm-compose-command-'));
 		writeComposeApp(dir, {
 			registry: 'registry.example.com/acme',
 			deployed: ['production', 'staging'],
 			sitePassword: ['staging'],
 		});
+		await serveFrom(dir);
 
 		const { result } = await release();
 
