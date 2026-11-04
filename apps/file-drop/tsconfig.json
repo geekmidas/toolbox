@@ -1,0 +1,13 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"types": ["node"],
+		"declaration": false,
+		"declarationMap": false,
+		"paths": {
+			"@file-drop/constructs/*": ["./constructs/*"]
+		}
+	},
+	"include": ["constructs/**/*", "apps/api/**/*", "gkm.config.ts", ".gkm/stages.d.ts"],
+	"exclude": ["**/node_modules", "**/dist"]
+}

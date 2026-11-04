@@ -1,0 +1,15 @@
+{
+	"name": "@file-drop/web",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "gkm exec -- vite",
+		"build": "vite build",
+		"preview": "vite preview"
+	},
+	"devDependencies": {
+		"@geekmidas/envkit": "workspace:*",
+		"vite": "~8.3.1"
+	}
+}

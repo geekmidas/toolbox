@@ -1,0 +1,12 @@
+{
+	"extends": "../../../../tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["dom", "dom.iterable", "esnext"],
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"noEmit": true,
+		"types": ["node", "vite/client"]
+	},
+	"include": ["src/**/*", "vite.config.ts"],
+	"exclude": ["node_modules", "dist"]
+}

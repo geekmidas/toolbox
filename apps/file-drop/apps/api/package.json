@@ -1,0 +1,15 @@
+{
+	"name": "@file-drop/api",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "gkm build",
+		"dev": "gkm dev"
+	},
+	"dependencies": {
+		"@geekmidas/services": "workspace:*",
+		"sharp": "~0.35.5",
+		"zod": "~4.6.5"
+	}
+}

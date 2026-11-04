@@ -4,6 +4,7 @@ packages:
   # shared constructs at its root and its apps beneath. Its members need naming
   # here or pnpm only sees the outer directory.
   - "apps/kitchen-sink/apps/*"
+  - "apps/file-drop/apps/*"
   - "packages/*"
 
 # One @types/react for the whole workspace. VitePress's @docsearch/react

@@ -1,0 +1,30 @@
+{
+	"name": "@file-drop/workspace",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "The smallest workspace that deploys a FileServer: an upload page, a presign endpoint and a bucket behind a CDN, with no database.",
+	"scripts": {
+		"dev": "gkm dev",
+		"build": "gkm build",
+		"ts:check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@aws-sdk/client-s3": "~3.1136.0",
+		"@aws-sdk/s3-request-presigner": "~3.1136.0",
+		"@geekmidas/cli": "workspace:*",
+		"@geekmidas/constructs": "workspace:*",
+		"@geekmidas/envkit": "workspace:*",
+		"@geekmidas/logger": "workspace:*",
+		"@geekmidas/services": "workspace:*",
+		"@geekmidas/storage": "workspace:*",
+		"@geekmidas/telescope": "workspace:*",
+		"@hono/node-server": "~1.19.5",
+		"hono": "~4.13.8",
+		"pino": "~10.3.1",
+		"zod": "~4.6.5"
+	},
+	"devDependencies": {
+		"@types/node": "~24.9.1"
+	}
+}
