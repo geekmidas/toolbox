@@ -659,6 +659,8 @@ Options:
   --key-file <path>    The deploy key pair (default ~/.ssh/gkm-<project>-<stage>)
   --repo <owner/name>  GitHub repository (default: this one)
   --no-github          Leave the GitHub environment alone
+  --zsh                Install zsh and make it the admin's login shell
+  --oh-my-zsh          zsh with Oh My Zsh for the admin (implies --zsh)
   --yes                Set the server up without asking first
   --dry-run            Print the plan and the script; connect to nothing
 

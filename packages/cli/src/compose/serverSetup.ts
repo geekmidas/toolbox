@@ -62,6 +62,10 @@ export interface ComposeServerSetupOptions {
 	repo?: string;
 	/** `--no-github`: leave the GitHub environment alone. */
 	github?: boolean;
+	/** `--zsh`: install zsh and make it the admin's login shell. */
+	zsh?: boolean;
+	/** `--oh-my-zsh`: zsh, with Oh My Zsh, for the admin. Implies `zsh`. */
+	ohMyZsh?: boolean;
 	/** Print the plan and the script; connect to nothing. */
 	dryRun?: boolean;
 	/** Apply without asking first. */
@@ -346,6 +350,11 @@ export async function composeServerCommand(
 				instead: 'Name the server user with --admin and pass --yes.',
 			}));
 	const github = options.github !== false;
+	const adminShell = options.ohMyZsh
+		? 'oh-my-zsh'
+		: options.zsh
+			? 'zsh'
+			: 'none';
 	const { stage } = options;
 
 	const cwd = resolve(options.cwd ?? process.cwd());
@@ -428,6 +437,11 @@ export async function composeServerCommand(
 		`firewall: ${server.port}, 80 and 443 in, everything out`,
 		'security updates installed daily (unattended-upgrades); fail2ban on sshd',
 		"Docker and its compose plugin, from Docker's repository",
+		...(adminShell === 'none'
+			? []
+			: [
+					`${admin} logs in to zsh${adminShell === 'oh-my-zsh' ? ', with Oh My Zsh' : ''}`,
+				]),
 		`user ${server.user}, the deploy key authorized with restrict,port-forwarding`,
 	]) {
 		console.log(`    · ${step}`);
@@ -435,7 +449,7 @@ export async function composeServerCommand(
 
 	if (options.dryRun) {
 		console.log(
-			`\n  The script, run as: sudo bash setup.sh ${[admin, server.user, String(server.port), '<deploy key>', comment].map(shellQuote).join(' ')}\n`,
+			`\n  The script, run as: sudo bash setup.sh ${[admin, server.user, String(server.port), '<deploy key>', comment, adminShell].map(shellQuote).join(' ')}\n`,
 		);
 		console.log(SERVER_SCRIPT.replace(/^/gm, '    '));
 		console.log('  --dry-run: nothing changed.\n');
@@ -564,7 +578,14 @@ export async function composeServerCommand(
 			adminTarget,
 			remoteCommand(
 				SERVER_SCRIPT,
-				[admin, server.user, String(server.port), publicKey, comment],
+				[
+					admin,
+					server.user,
+					String(server.port),
+					publicKey,
+					comment,
+					adminShell,
+				],
 				true,
 			),
 		],
