@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { derivedApps } from '../derive';
 import {
 	assertSubdomains,
+	FileServerHostTaken,
 	ProtectedSubdomainIsAnApp,
 	protectedSubdomains,
 	SecondWildcardSite,
@@ -134,5 +135,115 @@ describe('loading a project with a wildcard site', () => {
 
 		expect(apps.app?.root).toBeUndefined();
 		expect(apps['admin-console']?.root).toBe(true);
+	});
+});
+
+describe("a file server's host", () => {
+	const assets = {
+		Assets: { kind: 'objects', id: 'Assets' },
+		AssetsServer: {
+			kind: 'file-server',
+			id: 'AssetsServer',
+			of: 'Assets',
+			processors: [
+				{
+					id: 'thumbnails',
+					handler: 'processors/thumbnails.ts#thumbnails',
+					path: '/i/:width/*',
+					prefix: '/i/',
+					dependencies: [],
+				},
+			],
+		},
+	} as const satisfies ConstructManifest;
+
+	it("is the construct's own name, and its processors' origin follows it", () => {
+		expect(protectedSubdomains({ ...manifest, ...assets })).toEqual(
+			expect.arrayContaining(['assets', 'assets-processors']),
+		);
+		expect(protectedSubdomains({ ...manifest, ...assets })).not.toContain(
+			'assets-server',
+		);
+	});
+
+	it('is refused when an app of the same name answers on it', () => {
+		const clash = {
+			...assets,
+			Assets2: {
+				kind: 'rest-api',
+				id: 'Assets2',
+				path: 'apps/assets',
+				subdomain: 'assets',
+				endpoints: [],
+			},
+		} as ConstructManifest;
+
+		const error = (() => {
+			try {
+				assertSubdomains(clash);
+			} catch (e) {
+				return e;
+			}
+		})() as FileServerHostTaken;
+		expect(error).toBeInstanceOf(FileServerHostTaken);
+		expect(error).toMatchObject({
+			fileServer: 'AssetsServer',
+			subdomain: 'assets',
+			app: 'Assets2',
+		});
+	});
+
+	it('is refused whichever of the two the manifest lists first', () => {
+		const clash = {
+			Media: {
+				kind: 'site',
+				id: 'Media',
+				variant: 'static',
+				app: { path: 'apps/media' },
+				dependencies: [],
+			},
+			MediaBucket: { kind: 'objects', id: 'MediaBucket' },
+			MediaServer: {
+				kind: 'file-server',
+				id: 'MediaServer',
+				of: 'MediaBucket',
+			},
+		} as ConstructManifest;
+
+		expect(() => assertSubdomains(clash)).toThrow(FileServerHostTaken);
+	});
+
+	it("is refused when an app takes its processors' origin", () => {
+		const clash = {
+			...assets,
+			AssetsProcessors: { kind: 'worker', id: 'AssetsProcessors' },
+		} as ConstructManifest;
+
+		expect(() => assertSubdomains(clash)).toThrow(FileServerHostTaken);
+	});
+
+	it('is refused when the apps are derived', () => {
+		const clash = {
+			...manifest,
+			...assets,
+			AdminConsole: { ...manifest.AdminConsole, subdomain: 'assets' },
+		} as ConstructManifest;
+
+		expect(() => derivedApps(clash, workspace())).toThrow(FileServerHostTaken);
+	});
+
+	it('leaves an app named for the surface node alone, since it answers elsewhere', () => {
+		const beside = {
+			...assets,
+			AssetsServerApi: {
+				kind: 'rest-api',
+				id: 'AssetsServerApi',
+				path: 'apps/api',
+				subdomain: 'assets-server',
+				endpoints: [],
+			},
+		} as ConstructManifest;
+
+		expect(() => assertSubdomains(beside)).not.toThrow();
 	});
 });

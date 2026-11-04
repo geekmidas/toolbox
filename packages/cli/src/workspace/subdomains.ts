@@ -62,6 +62,28 @@ export class SiteHostsEndpointMissing extends GkmError {
 	}
 }
 
+/**
+ * A file server whose host another construct already answers on.
+ *
+ * A file server answers on its own name — `FileServer('Assets')` on
+ * `assets.<domain>` — so an app named `Assets` beside it would claim the same
+ * host, and whichever deployed second would take it from the first.
+ */
+export class FileServerHostTaken extends GkmError {
+	constructor(
+		readonly fileServer: string,
+		readonly subdomain: string,
+		readonly app: string,
+	) {
+		super(
+			`'${fileServer}' answers on '${subdomain}', which '${app}' answers on ` +
+				`too, and two constructs cannot share a host. Rename one of them, ` +
+				`or give '${app}' a subdomain of its own.`,
+		);
+		this.name = 'FileServerHostTaken';
+	}
+}
+
 /** The project's one wildcard site, or `undefined` when it has none. */
 export function wildcardSite(
 	manifest: ConstructManifest,
@@ -82,29 +104,34 @@ export function wildcardSite(
 export function appSubdomains(
 	manifest: ConstructManifest,
 ): Map<string, string> {
-	const labels = new Map<string, string>();
+	return new Map(claimedLabels(manifest));
+}
+
+/** Each label a construct answers on, with that construct's id, in manifest order. */
+function* claimedLabels(
+	manifest: ConstructManifest,
+): Generator<[label: string, id: string]> {
 	for (const [id, declaration] of Object.entries(manifest)) {
 		switch (declaration.kind) {
 			case 'rest-api':
 			case 'websocket-api':
-				labels.set(declaration.subdomain ?? appKey(id), id);
+				yield [declaration.subdomain ?? appKey(id), id];
 				break;
 			case 'site':
 				if (declaration.subdomain === WILDCARD_SUBDOMAIN) break;
-				labels.set(declaration.subdomain ?? appKey(id), id);
+				yield [declaration.subdomain ?? appKey(id), id];
 				break;
 			case 'file-server':
-				labels.set(fileServerLabel(id), id);
+				yield [fileServerLabel(id), id];
 				if (declaration.processors?.length) {
-					labels.set(`${fileServerLabel(id)}-processors`, id);
+					yield [`${fileServerLabel(id)}-processors`, id];
 				}
 				break;
 			case 'worker':
-				labels.set(appKey(id), id);
+				yield [appKey(id), id];
 				break;
 		}
 	}
-	return labels;
 }
 
 /**
@@ -127,6 +154,7 @@ export function protectedSubdomains(
  * @throws {SecondWildcardSite} when two sites declare `subdomain: '*'`
  * @throws {SiteHostsEndpointMissing} when the wildcard site's `hosts` route is not served
  * @throws {ProtectedSubdomainIsAnApp} when `protectedSubdomains` repeats an app's own
+ * @throws {FileServerHostTaken} when a file server's host is another construct's
  */
 export function assertSubdomains(
 	manifest: ConstructManifest,
@@ -157,9 +185,31 @@ export function assertSubdomains(
 		}
 	}
 
+	assertFileServerHosts(manifest);
+
 	const labels = appSubdomains(manifest);
 	for (const subdomain of configured) {
 		const app = labels.get(subdomain);
 		if (app) throw new ProtectedSubdomainIsAnApp(subdomain, app);
+	}
+}
+
+/**
+ * Every host a file server answers on — its own and its processors' origin —
+ * is no other construct's. {@link appSubdomains} keeps one owner per label,
+ * so the clash it would hide is found here, before either is deployed.
+ */
+function assertFileServerHosts(manifest: ConstructManifest): void {
+	const owners = new Map<string, string>();
+	for (const [label, id] of claimedLabels(manifest)) {
+		const other = owners.get(label);
+		owners.set(label, id);
+		if (other === undefined || other === id) continue;
+		if (manifest[id]?.kind === 'file-server') {
+			throw new FileServerHostTaken(id, label, other);
+		}
+		if (manifest[other]?.kind === 'file-server') {
+			throw new FileServerHostTaken(other, label, id);
+		}
 	}
 }
