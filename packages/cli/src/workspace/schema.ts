@@ -738,6 +738,23 @@ const InboxConfigSchema = z
 		}
 	});
 
+/** `deploy.email` — what sends each deployed stage's mail; `checkStageProvider`'s rules. */
+const EmailConfigSchema = z
+	.record(z.string(), z.unknown())
+	.superRefine((entries, ctx) => {
+		for (const [stage, value] of Object.entries(entries)) {
+			try {
+				checkStageProvider('email', stage, value);
+			} catch (error) {
+				ctx.addIssue({
+					code: 'custom',
+					message: error instanceof Error ? error.message : String(error),
+					path: [stage],
+				});
+			}
+		}
+	});
+
 /**
  * Deploy configuration schema.
  */
@@ -774,6 +791,7 @@ const DeployConfigSchema = z.object({
 	telemetry: TelemetryConfigSchema.optional(),
 	objects: ObjectsConfigSchema.optional(),
 	inbox: InboxConfigSchema.optional(),
+	email: EmailConfigSchema.optional(),
 	backups: BackupsConfigSchema.optional(),
 });
 
@@ -1197,6 +1215,7 @@ export const WorkspaceConfigSchema = z
 			['domains', ['domains'], data.domains],
 			['deploy.objects', ['deploy', 'objects'], data.deploy?.objects],
 			['deploy.inbox', ['deploy', 'inbox'], data.deploy?.inbox],
+			['deploy.email', ['deploy', 'email'], data.deploy?.email],
 			['deploy.backups', ['deploy', 'backups'], data.deploy?.backups],
 			['deploy.telemetry', ['deploy', 'telemetry'], data.deploy?.telemetry],
 			...Object.entries(data.dns ?? {}).map(

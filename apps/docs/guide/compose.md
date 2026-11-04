@@ -1503,6 +1503,12 @@ key in the stage's AWS account and writes `UPLOADS_URL` and
 key in the stage's secrets (`verify()`), and stops with
 `ProvisionedBucketUnreachable` if it does not.
 
+Mail too: with `deploy.email.production: { provider: 'ses' }`, the deploy
+verifies the sending domain in SES, creates an IAM user allowed only to send
+as it, and writes `MAIL_URL` (its key, as an SES SMTP URL) and `MAIL_FROM` —
+see [`email: ses`](./providers.md#email-ses). A `MAIL_URL` the stage already
+set is kept, and nothing is created for it.
+
 ### `--allow-dev-services`
 
 For a stage that is not production — a preview box, a demo — the stack can run
@@ -1516,7 +1522,8 @@ gkm deploy --target compose --stage preview --allow-dev-services
 It is a switch, with no value: every construct the stage does not **account
 for** gets the dev service the local stage runs for it. A construct is
 accounted for when the stage's secrets hold its key, or when a provider backs
-its kind (`deploy.objects.<stage>: { provider: 's3' }`, or `false`).
+its kind (`deploy.objects.<stage>: { provider: 's3' }`,
+`deploy.email.<stage>: { provider: 'ses' }`, or `false`).
 
 - **A bucket** gets MinIO in the stack: the buckets are created from this
   machine on a loopback port, and the backends are handed MinIO's URL and key

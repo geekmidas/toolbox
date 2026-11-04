@@ -34,6 +34,7 @@ import {
 	iamUserName,
 	SUFFIX_LENGTH,
 } from '../providers/s3/naming.js';
+import { emailUserName } from '../providers/ses/config.js';
 import { secretsParameterName } from '../secrets/aws.js';
 import { s3SecretsKey, s3SecretsLocation } from '../secrets/providers.js';
 import { secretsManagerSecretName } from '../secrets/secretsManager.js';
@@ -410,6 +411,52 @@ export function deployAccess(
 				},
 			]);
 		}
+	}
+
+	// The deploy creates each mail construct's sender when an ses provider
+	// sends its mail: the identity, verified by DKIM — SES scopes none of
+	// these to a name — and each construct's IAM user and key, by name.
+	const emails = Object.entries(manifest)
+		.filter(([, d]) => d.kind === 'email')
+		.map(([id]) => id)
+		.sort();
+	const email = stageProvider(workspace, 'email', stage);
+	if (email.mode === 'provider' && email.name === 'ses' && emails.length) {
+		const { scope } = deployIdentity(workspace, stage);
+		const users = emails.map((id) => emailUserName(scope, stage, id));
+		describe.push(
+			`verify the sending domain in SES and create the mail users ${users.join(', ')} and their keys (SES, IAM)`,
+		);
+		build.push((account) => [
+			{
+				Sid: 'StageMailIdentity',
+				Effect: 'Allow',
+				Action: [
+					'ses:GetIdentityVerificationAttributes',
+					'ses:VerifyDomainDkim',
+					'ses:GetSendQuota',
+				],
+				Resource: '*',
+			},
+			{
+				Sid: 'StageMailUsers',
+				Effect: 'Allow',
+				Action: [
+					'iam:GetUser',
+					'iam:CreateUser',
+					'iam:TagUser',
+					'iam:ListUserTags',
+					'iam:GetUserPolicy',
+					'iam:PutUserPolicy',
+					'iam:ListAccessKeys',
+					'iam:CreateAccessKey',
+					'iam:DeleteAccessKey',
+				],
+				Resource: users.map(
+					(user) => `arn:aws:iam::${account}:user${IAM_USER_PATH}${user}`,
+				),
+			},
+		]);
 	}
 
 	// The stage's backups: the deploy creates the project bucket if it is not

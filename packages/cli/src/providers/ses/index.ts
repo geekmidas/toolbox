@@ -139,7 +139,7 @@ export function receiptTopicPolicy(
 	};
 }
 
-interface SesClients {
+export interface SesClients {
 	SES: SesModule;
 	ses: InstanceType<SesModule['SESClient']>;
 }
@@ -164,6 +164,14 @@ export const defaultSesClients: SesClientFactory = async (
 };
 
 let makeSesClients: SesClientFactory = defaultSesClients;
+
+/** The stage's SES, through the factory a test may replace. */
+export function sesClients(
+	credential: AwsProvisioning,
+	region: string,
+): Promise<SesClients> {
+	return makeSesClients(credential, region);
+}
 
 /** Replace the client factory — a test intercepting a call. Returns the old one. */
 export function useSesClients(factory: SesClientFactory): SesClientFactory {

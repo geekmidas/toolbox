@@ -41,6 +41,7 @@ import {
 	ensureIamUser,
 	identityTags,
 	issuedJustNow,
+	s3KeySecret,
 	TAG_PROJECT,
 	whileKeyIsNew,
 } from '../iam.js';
@@ -471,8 +472,10 @@ async function ensureBucket(
 	});
 	await ensureAccessKey(ctx, clients, {
 		id,
-		bucket,
-		urlKey: provideKey(id, 'url'),
+		secret: s3KeySecret(ctx, clients, {
+			bucket,
+			urlKey: provideKey(id, 'url'),
+		}),
 		...user,
 	});
 
@@ -584,8 +587,10 @@ export async function ensureOwnedBucket(
 	});
 	await ensureAccessKey(bucketCtx, clients, {
 		id: input.id,
-		bucket: located.bucket,
-		urlKey: input.urlKey,
+		secret: s3KeySecret(bucketCtx, clients, {
+			bucket: located.bucket,
+			urlKey: input.urlKey,
+		}),
 		...user,
 	});
 	return { bucket: located.bucket, region: clients.region };

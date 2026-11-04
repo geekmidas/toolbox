@@ -7,6 +7,7 @@ import {
 } from '../config';
 import { provisionHint, stageProviderNotes } from '../notes';
 import { S3ProviderConfigInvalid } from '../s3/errors';
+import { SesProviderConfigInvalid } from '../ses/errors';
 
 const workspace = (objects?: Record<string, unknown>) => ({
 	stages: { local: 'development' },
@@ -147,5 +148,68 @@ describe('the hint a missing key is given', () => {
 				'prod',
 			).objects?.accounted,
 		).toBe(true);
+	});
+});
+
+describe('deploy.email.<stage>', () => {
+	const withEmail = (email: Record<string, unknown>) => ({
+		stages: { local: 'development' },
+		deploy: { email },
+	});
+
+	it("takes 'external', false and { provider: 'ses', region?, from? }", () => {
+		expect(checkStageProvider('email', 'prod', 'external')).toBe('external');
+		expect(checkStageProvider('email', 'prod', false)).toBe(false);
+		expect(
+			checkStageProvider('email', 'prod', {
+				provider: 'ses',
+				region: 'eu-west-1',
+				from: 'hello@shop.example.com',
+			}),
+		).toEqual({
+			provider: 'ses',
+			region: 'eu-west-1',
+			from: 'hello@shop.example.com',
+		});
+	});
+
+	it('refuses a sender that is not an address, and a field it does not take', () => {
+		expect(() =>
+			checkStageProvider('email', 'prod', { provider: 'ses', from: 'shop' }),
+		).toThrow(SesProviderConfigInvalid);
+		expect(() =>
+			checkStageProvider('email', 'prod', { provider: 'ses', from: 'shop' }),
+		).toThrow(/deploy\.email\.prod\.from is "shop"/);
+		expect(() =>
+			checkStageProvider('email', 'prod', {
+				provider: 'ses',
+				subdomains: true,
+			}),
+		).toThrow('the ses provider takes region, from only');
+	});
+
+	it('is refused by the workspace schema with the same words', () => {
+		const result = safeValidateWorkspaceConfig({
+			name: 'shop',
+			stages: { local: 'development', deployed: ['production'] },
+			apps: { api: { type: 'backend', path: 'apps/api', port: 3000 } },
+			deploy: { email: { production: { provider: 'resend' } } },
+		});
+		expect(result.success).toBe(false);
+		expect(JSON.stringify(result.error?.issues)).toContain(
+			'deploy.email.production is',
+		);
+	});
+
+	it('accounts for mail a provider sends, naming the deploy as what writes its keys', () => {
+		const notes = stageProviderNotes(
+			withEmail({ prod: { provider: 'ses' } }) as never,
+			'prod',
+		);
+		expect(notes.email?.accounted).toBe(true);
+		expect(notes.email?.hint).toMatch(
+			/^deploy\.email\.prod is ses: the deploy/,
+		);
+		expect(notes.objects).toBeUndefined();
 	});
 });

@@ -14,6 +14,7 @@ function workspace(
 	> & {
 		target?: string;
 		objects?: Record<string, unknown>;
+		email?: Record<string, unknown>;
 		store?: NormalizedWorkspace['secrets']['store'];
 	},
 ): NormalizedWorkspace {
@@ -23,6 +24,7 @@ function workspace(
 		deploy: {
 			...(parts.target ? { default: parts.target } : {}),
 			...(parts.objects ? { objects: parts.objects } : {}),
+			...(parts.email ? { email: parts.email } : {}),
 		},
 		stages: { local: 'dev', deployed: ['prod', 'dev-stage'] },
 		secrets: parts.store ? { store: parts.store } : {},
@@ -435,6 +437,59 @@ describe('deployAccess', () => {
 						.filter((a) => a.startsWith('route53:')),
 				).toEqual([]);
 			}
+		});
+	});
+
+	describe('the senders an ses mail provider creates', () => {
+		const ssm = { provider: 'ssm', region: 'eu-west-1' } as const;
+		const mail = {
+			Mail: { kind: 'email' },
+			Alerts: { kind: 'email' },
+		} as unknown as ConstructManifest;
+
+		it('verifies the domain and creates exactly those users and their keys', () => {
+			const access = deployAccess(
+				workspace({
+					target: 'compose',
+					store: ssm,
+					email: { prod: { provider: 'ses', region: 'eu-west-1' } },
+				}),
+				'prod',
+				undefined,
+				mail,
+			);
+
+			if (access.kind !== 'scoped') return expect.unreachable();
+			const statements = access.statements('111');
+			expect(statements.map((s) => s.Sid)).toEqual([
+				'StageSecrets',
+				'StageMailIdentity',
+				'StageMailUsers',
+			]);
+			expect(statements[1]!.Action).toEqual([
+				'ses:GetIdentityVerificationAttributes',
+				'ses:VerifyDomainDkim',
+				'ses:GetSendQuota',
+			]);
+			expect(statements[2]!.Action).toContain('iam:CreateAccessKey');
+			expect(statements[2]!.Resource).toEqual([
+				'arn:aws:iam::111:user/gkm/gkm-shop-prod-alerts',
+				'arn:aws:iam::111:user/gkm/gkm-shop-prod-mail',
+			]);
+		});
+
+		it('is nothing for mail the stage sends externally', () => {
+			const access = deployAccess(
+				workspace({ target: 'compose', store: ssm }),
+				'prod',
+				undefined,
+				mail,
+			);
+
+			if (access.kind !== 'scoped') return expect.unreachable();
+			expect(access.statements('111').map((s) => s.Sid)).toEqual([
+				'StageSecrets',
+			]);
 		});
 	});
 

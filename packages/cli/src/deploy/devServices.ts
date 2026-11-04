@@ -282,12 +282,16 @@ export interface ExternalServicesInput {
 
 /** The stage's providers, as a deploy's checks read them. */
 export interface StageProviderNotes {
-	objects?: {
-		/** A provider (or `false`) backs the kind: no dev service for it. */
-		accounted: boolean;
-		/** What creates a missing key of it. */
-		hint?: string;
-	};
+	objects?: StageProviderNote;
+	email?: StageProviderNote;
+}
+
+/** What the stage's provider says of one kind. */
+export interface StageProviderNote {
+	/** A provider (or `false`) backs the kind: no dev service for it. */
+	accounted: boolean;
+	/** What creates a missing key of it. */
+	hint?: string;
 }
 
 /** Where a deployed stage's mail and storage come from. */
@@ -394,12 +398,13 @@ export function requiredStageKeys(input: StageKeysInput): StageKey[] {
 		const services = byId(input.services);
 		// A kind a provider backs on the stage has no dev service, and a key of
 		// it names what creates it.
-		const objects = input.providers?.objects;
-		const storage = objects?.accounted
-			? objects.hint
-				? { hint: objects.hint }
-				: {}
-			: { service: 'minio' as const };
+		const backing = (
+			note: StageProviderNote | undefined,
+			service: DevService,
+		) =>
+			note?.accounted ? (note.hint ? { hint: note.hint } : {}) : { service };
+		const storage = backing(input.providers?.objects, 'minio');
+		const mail = backing(input.providers?.email, 'mailpit');
 		for (const d of services.filter((d) => d.kind === 'email')) {
 			add({
 				key: provideKey(d.id, 'url'),
@@ -407,7 +412,7 @@ export function requiredStageKeys(input: StageKeysInput): StageKey[] {
 				kind: 'email',
 				what: `where '${d.id}' sends mail — any SMTP server`,
 				example: `smtp://user:password@smtp.${domain}:587`,
-				service: 'mailpit',
+				...mail,
 				...apps(d),
 			});
 			add({
@@ -416,7 +421,7 @@ export function requiredStageKeys(input: StageKeysInput): StageKey[] {
 				kind: 'email',
 				what: `the address '${d.id}' sends from, on a domain the mail server has verified`,
 				example: `noreply@${domain}`,
-				service: 'mailpit',
+				...mail,
 				...apps(d),
 			});
 		}
