@@ -27,8 +27,12 @@ export default defineWorkspace({
 		default: 'compose',
 		telemetry: { prod: false },
 		// The server is the stage's `GKM_SERVER_IPV4` secret; `deploy` is the
-		// user `gkm compose:server` creates there.
-		compose: { server: { prod: { user: 'deploy' } } },
+		// user `gkm compose:server` creates there. Served by the server's
+		// shared Traefik edge rather than the stack's own Caddy.
+		compose: {
+			proxy: { prod: 'traefik' },
+			server: { prod: { user: 'deploy' } },
+		},
 		// The point of this app: the deploy creates the bucket in AWS and puts
 		// CloudFront in front of each file server, while the API and the site
 		// run in the compose stack. The certificate is in us-east-1 whatever
