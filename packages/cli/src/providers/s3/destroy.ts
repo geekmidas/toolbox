@@ -563,7 +563,12 @@ async function topicStep(
 	const client = await sns(arnParts(arn).region);
 	const tags = await readOr(
 		() => client.send(new SNS.ListTagsForResourceCommand({ ResourceArn: arn })),
-		['NotFound', 'NotFoundException', 'ResourceNotFound'],
+		[
+			'NotFound',
+			'NotFoundException',
+			'ResourceNotFound',
+			'ResourceNotFoundException',
+		],
 	);
 	if (!tags) return { key: record.key, label, gone: true };
 	if (!ours(tags.Tags, input)) {

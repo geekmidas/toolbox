@@ -244,7 +244,7 @@ const destroy = (stage: string) =>
 			docker: fakeDocker().docker,
 			interactive: () => true,
 			ask: async () => `${name}-${stage}`,
-			awsCredential: { chain: true, region: REGION },
+			awsCredentials: async () => ({ chain: true, region: REGION }),
 			aws: { wait: { timeoutMs: 60_000, intervalMs: 200 } },
 			dnsProviderFor: async () => zone,
 			home,

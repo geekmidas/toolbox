@@ -89,8 +89,11 @@ export interface ComposeDestroyDeps {
 	credentials?: CredentialProvider;
 	/** The provider for a domain — `createDnsProvider` by default. */
 	dnsProviderFor?: (config: DnsProviderConfig) => Promise<DnsProvider | null>;
-	/** The AWS account's credential, rather than the machine's. */
-	awsCredential?: AwsProvisioning;
+	/**
+	 * How the AWS account's credential is found — the machine's, as a deploy
+	 * finds it, by default.
+	 */
+	awsCredentials?: () => Promise<AwsProvisioning | undefined>;
 	/** For tests: the AWS clients and how long a distribution is waited on. */
 	aws?: Pick<AwsDestroyInput, 'clients' | 'wait'>;
 	state?: StateStore;
@@ -333,13 +336,15 @@ async function plan(
 	);
 	let cdnDns: RecordedDnsRecord[] = [];
 	if (aws.length > 0) {
-		const credential =
-			deps.awsCredential ??
-			(await awsProvisioningCredentials({
-				stage,
-				env,
-				...(deps.home ? { home: deps.home } : {}),
-			}));
+		const credential = await (
+			deps.awsCredentials ??
+			(() =>
+				awsProvisioningCredentials({
+					stage,
+					env,
+					...(deps.home ? { home: deps.home } : {}),
+				}))
+		)();
 		if (!credential) {
 			throw new ComposeDestroyNeedsAwsCredentials(
 				stage,

@@ -20,6 +20,7 @@ import { createStateStore, type StateStore } from '../../deploy/StateStore';
 import { createComposeState } from '../../deploy/state';
 import { secretsStoreFor } from '../../secrets/store';
 import {
+	ComposeDestroyNeedsAwsCredentials,
 	ComposeDestroyNeedsTerminal,
 	ComposeDestroyNotConfirmed,
 	composeDestroyCommand,
@@ -189,6 +190,55 @@ describe('gkm compose --destroy', () => {
 		await destroy(PROJECT, { secrets: true }).run;
 
 		expect(await secrets()).toBeNull();
+	});
+});
+
+describe('gkm compose --destroy, before it deletes anything', () => {
+	it('stops, naming the resources, when there are AWS resources and no credentials', async () => {
+		await state.putResource(STAGE, {
+			key: 's3-bucket:Uploads',
+			type: 's3-bucket',
+			id: 'compose-app-production-uploads',
+			status: 'ready',
+			data: { name: 'compose-app-production-uploads', region: 'eu-west-1' },
+		});
+		const fake = fakeDocker();
+
+		const error = await composeDestroyCommand(
+			{ cwd: dir, stage: STAGE },
+			{
+				docker: fake.docker,
+				interactive: () => true,
+				ask: async () => PROJECT,
+				awsCredentials: async () => undefined,
+				home,
+				log: (line) => said.push(line),
+			},
+		).catch((e) => e);
+
+		expect(error).toBeInstanceOf(ComposeDestroyNeedsAwsCredentials);
+		expect(error.resources).toEqual(['s3-bucket:Uploads']);
+		expect(fake.calls).toEqual([]);
+		expect(await records()).toContain('s3-bucket:Uploads');
+	});
+
+	it('destroys the local stage on this machine', async () => {
+		const fake = fakeDocker();
+
+		await composeDestroyCommand(
+			{ cwd: dir, stage: 'development' },
+			{
+				docker: fake.docker,
+				interactive: () => true,
+				ask: async () => 'compose-app-development',
+				home,
+				log: (line) => said.push(line),
+			},
+		);
+
+		expect(fake.calls.filter((c) => c.op.startsWith('down'))).toEqual([
+			{ op: 'down --volumes', args: 'compose-app-development' },
+		]);
 	});
 });
 
