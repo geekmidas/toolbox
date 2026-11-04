@@ -1,10 +1,12 @@
 import { DiagConsoleLogger, DiagLogLevel, diag } from '@opentelemetry/api';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { PinoInstrumentation } from '@opentelemetry/instrumentation-pino';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs';
+import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import {
 	ConsoleSpanExporter,
@@ -20,6 +22,7 @@ import {
 	createSpanProcessor,
 	getRecommendedStrategy,
 	setGlobalLogProcessor,
+	setGlobalMetricReader,
 	setGlobalSpanProcessor,
 } from './core';
 import { traceSampler, traceSamplerFromEnv } from './sampler';
@@ -53,12 +56,14 @@ export interface TelemetryOptions {
 
 	/**
 	 * OTLP endpoint URL (e.g., 'http://localhost:3000/__telescope/v1').
-	 * Traces go to `<endpoint>/traces` and logs to `<endpoint>/logs`.
+	 * Traces go to `<endpoint>/traces`, logs to `<endpoint>/logs` and metrics
+	 * to `<endpoint>/metrics`.
 	 *
 	 * If not provided, the standard `OTEL_EXPORTER_OTLP_ENDPOINT` (and its
-	 * per-signal `_TRACES_`/`_LOGS_` variants and `OTEL_EXPORTER_OTLP_HEADERS`)
-	 * configure the exporters, with the spec's `/v1/traces` and `/v1/logs`
-	 * paths. With neither, traces are written to the console.
+	 * per-signal `_TRACES_`/`_LOGS_`/`_METRICS_` variants and
+	 * `OTEL_EXPORTER_OTLP_HEADERS`) configure the exporters, with the spec's
+	 * `/v1/traces`, `/v1/logs` and `/v1/metrics` paths. With neither, traces
+	 * are written to the console and no metrics are exported.
 	 */
 	endpoint?: string;
 
@@ -73,6 +78,18 @@ export interface TelemetryOptions {
 	 * is the same capped sampler at 0.1; with neither, every trace is sampled.
 	 */
 	sampleRatio?: number;
+
+	/**
+	 * Whether to export metrics: `http.server.request.duration` from the
+	 * request middleware, the Node.js runtime's (event loop delay, heap, GC)
+	 * and outgoing requests' `http.client.request.duration` from the
+	 * auto-instrumentation. Exported every `OTEL_METRIC_EXPORT_INTERVAL`
+	 * milliseconds (60000 by default), and on `flushTelemetry()`.
+	 *
+	 * `OTEL_METRICS_EXPORTER=none` turns them off too.
+	 * @default true
+	 */
+	metrics?: boolean;
 
 	/**
 	 * Shut the SDK down and exit on `SIGTERM`.
@@ -159,11 +176,63 @@ export class InvalidSampleRatio extends Error {
 }
 
 /** Whether the standard OTLP environment variables name a collector. */
-function otlpEndpointFromEnv(signal: 'TRACES' | 'LOGS'): boolean {
+function otlpEndpointFromEnv(signal: 'TRACES' | 'LOGS' | 'METRICS'): boolean {
 	return Boolean(
 		process.env[`OTEL_EXPORTER_OTLP_${signal}_ENDPOINT`] ||
 			process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
 	);
+}
+
+/** A positive whole number of milliseconds from the environment, or undefined. */
+function millisFromEnv(name: string): number | undefined {
+	const value = Number(process.env[name]);
+	return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+/**
+ * The reader that exports metrics, or undefined when none should be: off by
+ * option or by `OTEL_METRICS_EXPORTER=none`, or with no collector named.
+ *
+ * Always decided here rather than left to the SDK, which — given no reader —
+ * would export to `localhost:4318` whether or not anything listens there.
+ */
+function metricReaderFor(options: {
+	enabled: boolean;
+	endpoint: string | undefined;
+	headers: Record<string, string> | undefined;
+}): PeriodicExportingMetricReader | undefined {
+	if (!options.enabled) return undefined;
+	const exporters = (process.env.OTEL_METRICS_EXPORTER ?? '')
+		.split(',')
+		.map((exporter) => exporter.trim());
+	if (exporters.includes('none')) return undefined;
+
+	let exporter: OTLPMetricExporter;
+	if (options.endpoint) {
+		exporter = new OTLPMetricExporter({
+			url: `${options.endpoint}/metrics`,
+			headers: options.headers ?? {},
+		});
+	} else if (otlpEndpointFromEnv('METRICS')) {
+		exporter = new OTLPMetricExporter(
+			options.headers ? { headers: options.headers } : {},
+		);
+	} else {
+		return undefined;
+	}
+
+	const exportIntervalMillis =
+		millisFromEnv('OTEL_METRIC_EXPORT_INTERVAL') ?? 60_000;
+	// The SDK refuses a timeout longer than the interval.
+	const exportTimeoutMillis = Math.min(
+		millisFromEnv('OTEL_METRIC_EXPORT_TIMEOUT') ?? 30_000,
+		exportIntervalMillis,
+	);
+	return new PeriodicExportingMetricReader({
+		exporter,
+		exportIntervalMillis,
+		exportTimeoutMillis,
+	});
 }
 
 /**
@@ -210,6 +279,7 @@ export function setupTelemetry(options: TelemetryOptions): void {
 		deploymentEnvironment,
 		endpoint,
 		sampleRatio,
+		metrics = true,
 		handleSignals = true,
 		instrumentPino = true,
 		incomingHttpSpans = true,
@@ -328,6 +398,9 @@ export function setupTelemetry(options: TelemetryOptions): void {
 		setGlobalLogProcessor(logProcessor);
 	}
 
+	const metricReader = metricReaderFor({ enabled: metrics, endpoint, headers });
+	if (metricReader) setGlobalMetricReader(metricReader);
+
 	// Create and configure SDK. The SDK owns the logger provider, so the log
 	// processor is handed to it rather than to a provider of our own — one
 	// nothing registered would never receive a record.
@@ -336,6 +409,9 @@ export function setupTelemetry(options: TelemetryOptions): void {
 		traceExporter,
 		spanProcessors: [spanProcessor],
 		...(logProcessor && { logRecordProcessors: [logProcessor] }),
+		// An empty list, not a missing one, when there is no reader: left out,
+		// the SDK builds its own from the environment.
+		metricReaders: metricReader ? [metricReader] : [],
 		...(sampler && { sampler }),
 		instrumentations,
 	});

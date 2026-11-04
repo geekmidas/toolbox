@@ -117,6 +117,11 @@
 		"devDependencies": "~0.222.0",
 		"peerDependencies": "~0.222.0"
 	},
+	"@opentelemetry/exporter-metrics-otlp-http": {
+		"dependencies": "~0.222.0",
+		"devDependencies": "~0.222.0",
+		"peerDependencies": "~0.222.0"
+	},
 	"@opentelemetry/instrumentation-pino": {
 		"dependencies": "~0.68.0",
 		"devDependencies": "~0.68.0",
@@ -131,6 +136,11 @@
 		"dependencies": "~0.222.0",
 		"devDependencies": "~0.222.0",
 		"peerDependencies": "~0.222.0"
+	},
+	"@opentelemetry/sdk-metrics": {
+		"dependencies": "~2.11.0",
+		"devDependencies": "~2.11.0",
+		"peerDependencies": ">=2.11.0"
 	},
 	"@opentelemetry/sdk-node": {
 		"dependencies": "~0.222.0",

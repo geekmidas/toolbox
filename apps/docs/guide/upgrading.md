@@ -12,6 +12,18 @@ gkm upgrade --all
 `10.0.0-alpha.x` project), never goes backwards, and with `--all` also raises
 third-party packages to the floor of the peer ranges the new version declares.
 
+## After 10.0.0-alpha.157: telemetry exports metrics {#telemetry-metrics}
+
+An app with a `Telemetry` construct needs two more OpenTelemetry packages, or
+`gkm build` and `gkm dev` stop with `TelemetryPackagesMissing`:
+
+```bash
+pnpm --dir apps/api add @opentelemetry/exporter-metrics-otlp-http@~0.222.0 @opentelemetry/sdk-metrics@~2.11.0
+```
+
+Nothing else changes: each process with the edge now sends
+[metrics](./telemetry.md#metrics) to the same collector as its traces and logs.
+
 ## After 10.0.0-alpha.145: the local stage can run behind Traefik {#local-traefik}
 
 Nothing to change unless you want it. `deploy.compose.proxy: 'traefik'` still

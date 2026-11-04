@@ -68,10 +68,12 @@ export const TELEMETRY_PACKAGES = [
 	'@opentelemetry/api',
 	'@opentelemetry/auto-instrumentations-node',
 	'@opentelemetry/exporter-logs-otlp-http',
+	'@opentelemetry/exporter-metrics-otlp-http',
 	'@opentelemetry/exporter-trace-otlp-http',
 	'@opentelemetry/instrumentation-pino',
 	'@opentelemetry/resources',
 	'@opentelemetry/sdk-logs',
+	'@opentelemetry/sdk-metrics',
 	'@opentelemetry/sdk-node',
 	'@opentelemetry/sdk-trace-base',
 	'@opentelemetry/sdk-trace-node',
@@ -278,7 +280,7 @@ export async function startTelemetry(
 export class TelemetryUnavailable extends Error {
   constructor(readonly reason: string, options?: { cause?: unknown }) {
     super(
-      \`OTEL_EXPORTER_OTLP_ENDPOINT is set, but \${reason} This server exports no traces or logs until that is fixed.\`,
+      \`OTEL_EXPORTER_OTLP_ENDPOINT is set, but \${reason} This server exports no traces, metrics or logs until that is fixed.\`,
       options,
     );
     this.name = 'TelemetryUnavailable';

@@ -503,7 +503,7 @@ Production builds (`gkm build --production`, which `gkm docker` images run)
 leave the Telescope dashboard out. In its place, the generated server entry of
 a process given a [`Telemetry` construct](/guide/telemetry) starts
 OpenTelemetry when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, before the app is
-imported, so traces and logs go to your collector with no code in the app. The
+imported, so traces, metrics and logs go to your collector with no code in the app. The
 deploy sets the variables from the stage's `deploy.telemetry`.
 
 Install the instrumentation's optional peers in each app that uses the
@@ -511,19 +511,21 @@ construct — the build fails with `TelemetryPackagesMissing` without them:
 
 ```bash
 pnpm add @geekmidas/telescope @opentelemetry/api @opentelemetry/auto-instrumentations-node \
-  @opentelemetry/exporter-logs-otlp-http @opentelemetry/exporter-trace-otlp-http \
-  @opentelemetry/instrumentation-pino @opentelemetry/resources @opentelemetry/sdk-logs \
+  @opentelemetry/exporter-logs-otlp-http @opentelemetry/exporter-metrics-otlp-http \
+  @opentelemetry/exporter-trace-otlp-http @opentelemetry/instrumentation-pino \
+  @opentelemetry/resources @opentelemetry/sdk-logs @opentelemetry/sdk-metrics \
   @opentelemetry/sdk-node @opentelemetry/sdk-trace-base @opentelemetry/sdk-trace-node \
   @opentelemetry/semantic-conventions
 ```
 
 | Variable | Effect |
 | --- | --- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Turns telemetry on. The collector's base URL; traces go to `/v1/traces`, logs to `/v1/logs`. Unset, the entry never loads the packages. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Turns telemetry on. The collector's base URL; traces go to `/v1/traces`, logs to `/v1/logs`, metrics to `/v1/metrics`. Unset, the entry never loads the packages. |
 | `OTEL_EXPORTER_OTLP_HEADERS` | Headers for the collector, e.g. `authorization=Bearer …`. |
 | `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG` | Sampling, e.g. `parentbased_traceidratio` and `0.1` to keep one trace in ten. Every trace is kept by default. |
 | `OTEL_RESOURCE_ATTRIBUTES` | Extra resource attributes, and overrides — e.g. `service.version=1.4.2` for the release. |
 | `OTEL_SERVICE_NAME` | Overrides `service.name`. |
+| `OTEL_METRIC_EXPORT_INTERVAL` | How often metrics are exported, in milliseconds — `60000` by default. `OTEL_METRICS_EXPORTER=none` exports none. |
 | `STAGE` | Sent as `deployment.environment.name` (and `deployment.environment`). `gkm deploy` sets it. |
 
 The entry names the resource for you:

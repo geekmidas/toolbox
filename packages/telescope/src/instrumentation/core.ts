@@ -18,12 +18,33 @@ import type {
 interface TelemetryState {
 	spanProcessor: SpanProcessor | null;
 	logProcessor: unknown | null;
+	metricReader: FlushableMetricReader | null;
 	initialized: boolean;
+}
+
+/**
+ * What flushing needs of a metric reader — the shape, so this module loads
+ * without `@opentelemetry/sdk-metrics`.
+ */
+export interface FlushableMetricReader {
+	forceFlush(): Promise<void>;
+	shutdown(): Promise<void>;
+}
+
+/** A metric flush that did not finish in time; the process carries on. */
+export class MetricFlushTimeout extends Error {
+	constructor(readonly timeoutMs: number) {
+		super(
+			`Metrics were not exported within ${timeoutMs}ms. Check that the collector is reachable, or pass flushTelemetry a longer timeout.`,
+		);
+		this.name = 'MetricFlushTimeout';
+	}
 }
 
 const state: TelemetryState = {
 	spanProcessor: null,
 	logProcessor: null,
+	metricReader: null,
 	initialized: false,
 };
 
@@ -78,6 +99,13 @@ export function setGlobalSpanProcessor(processor: SpanProcessor): void {
  */
 export function setGlobalLogProcessor(processor: unknown): void {
 	state.logProcessor = processor;
+}
+
+/**
+ * Set the global metric reader for flush operations
+ */
+export function setGlobalMetricReader(reader: FlushableMetricReader): void {
+	state.metricReader = reader;
 }
 
 /**
@@ -146,6 +174,27 @@ export async function flushTelemetry(timeoutMs = 30000): Promise<void> {
 		);
 	}
 
+	// Flush metrics — a Lambda freezes between invocations, so its periodic
+	// export would otherwise wait for an invocation that may never come.
+	if (state.metricReader) {
+		const reader = state.metricReader;
+		promises.push(
+			Promise.race([
+				reader.forceFlush(),
+				new Promise<void>((_, reject) =>
+					setTimeout(
+						() => reject(new MetricFlushTimeout(timeoutMs)),
+						timeoutMs,
+					),
+				),
+			]).catch((error) => {
+				if (diag.debug) {
+					diag.debug(`Metric flush error: ${error.message}`);
+				}
+			}),
+		);
+	}
+
 	await Promise.all(promises);
 }
 
@@ -169,6 +218,11 @@ export async function shutdownTelemetry(): Promise<void> {
 			(state.logProcessor as { shutdown: () => Promise<void> }).shutdown(),
 		);
 		state.logProcessor = null;
+	}
+
+	if (state.metricReader) {
+		promises.push(state.metricReader.shutdown());
+		state.metricReader = null;
 	}
 
 	state.initialized = false;

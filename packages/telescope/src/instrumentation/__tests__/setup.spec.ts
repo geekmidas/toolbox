@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { context, diag, propagation, trace } from '@opentelemetry/api';
+import { context, diag, metrics, propagation, trace } from '@opentelemetry/api';
 import { logs } from '@opentelemetry/api-logs';
 import {
 	afterAll,
@@ -15,6 +15,7 @@ import {
 	flushTelemetry,
 	shutdownTelemetry as shutdownProcessors,
 } from '../core';
+import { recordHttpServerRequest } from '../metrics';
 import {
 	InvalidSampleRatio,
 	setupTelemetry,
@@ -57,6 +58,7 @@ describe('setupTelemetry', () => {
 		context.disable();
 		propagation.disable();
 		logs.disable();
+		metrics.disable();
 		received.length = 0;
 		vi.restoreAllMocks();
 		vi.unstubAllEnvs();
@@ -230,6 +232,123 @@ describe('setupTelemetry', () => {
 			.join('');
 		expect(body).toContain('a log line');
 		expect(body).toContain('logs-api');
+	});
+
+	describe('metrics', () => {
+		/** One request, recorded the way the middleware records it. */
+		function recordRequest() {
+			recordHttpServerRequest({
+				method: 'GET',
+				route: '/orders/:id',
+				scheme: 'https',
+				statusCode: 200,
+				durationMs: 42,
+			});
+		}
+
+		it(
+			'exports request durations to <endpoint>/metrics on flush',
+			{ timeout: 20_000 },
+			async () => {
+				setupTelemetry({
+					serviceName: 'metrics-api',
+					endpoint: ENDPOINT,
+					autoInstrument: false,
+					instrumentPino: false,
+					spanProcessorStrategy: 'simple',
+				});
+
+				recordRequest();
+				await flushTelemetry(5000);
+
+				const body = received
+					.filter((r) => r.path === '/__telescope/v1/metrics')
+					.map((r) => r.body)
+					.join('');
+				expect(body).toContain('http.server.request.duration');
+				expect(body).toContain('/orders/:id');
+				expect(body).toContain('metrics-api');
+			},
+		);
+
+		it(
+			'reads the collector from OTEL_EXPORTER_OTLP_ENDPOINT, at /v1/metrics',
+			{ timeout: 20_000 },
+			async () => {
+				vi.stubEnv(
+					'OTEL_EXPORTER_OTLP_ENDPOINT',
+					ENDPOINT.replace(/\/__telescope\/v1$/, ''),
+				);
+
+				setupTelemetry({
+					serviceName: 'from-env',
+					autoInstrument: false,
+					instrumentPino: false,
+					spanProcessorStrategy: 'simple',
+				});
+
+				recordRequest();
+				await flushTelemetry(5000);
+
+				const body = received
+					.filter((r) => r.path === '/v1/metrics')
+					.map((r) => r.body)
+					.join('');
+				expect(body).toContain('http.server.request.duration');
+			},
+		);
+
+		it('exports none with metrics: false', { timeout: 20_000 }, async () => {
+			setupTelemetry({
+				serviceName: 'no-metrics',
+				endpoint: ENDPOINT,
+				metrics: false,
+				autoInstrument: false,
+				instrumentPino: false,
+				spanProcessorStrategy: 'simple',
+			});
+
+			recordRequest();
+			await flushTelemetry(5000);
+
+			expect(received.filter((r) => r.path.endsWith('/metrics'))).toEqual([]);
+		});
+
+		it(
+			'exports none with OTEL_METRICS_EXPORTER=none',
+			{ timeout: 20_000 },
+			async () => {
+				vi.stubEnv('OTEL_METRICS_EXPORTER', 'none');
+				setupTelemetry({
+					serviceName: 'no-metrics',
+					endpoint: ENDPOINT,
+					autoInstrument: false,
+					instrumentPino: false,
+					spanProcessorStrategy: 'simple',
+				});
+
+				recordRequest();
+				await flushTelemetry(5000);
+
+				expect(received.filter((r) => r.path.endsWith('/metrics'))).toEqual([]);
+			},
+		);
+
+		it('registers no meter provider when no collector is named', () => {
+			const before = metrics.getMeterProvider();
+			vi.stubEnv('OTEL_EXPORTER_OTLP_ENDPOINT', '');
+			vi.spyOn(console, 'dir').mockImplementation(() => {});
+			vi.spyOn(console, 'log').mockImplementation(() => {});
+
+			setupTelemetry({
+				serviceName: 'no-collector',
+				autoInstrument: false,
+				instrumentPino: false,
+			});
+
+			// Left to itself, the SDK would export to localhost:4318.
+			expect(metrics.getMeterProvider()).toBe(before);
+		});
 	});
 
 	it('samples no traces with a sampleRatio of 0', async () => {

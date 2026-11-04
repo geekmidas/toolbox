@@ -23,14 +23,17 @@ export type {
 	SpanProcessorOptions,
 	SpanProcessorStrategy,
 } from '../adapters/types';
+export type { FlushableMetricReader } from './core';
 export {
 	createSpanProcessor,
 	enableTelemetryDebug,
 	flushTelemetry,
 	getRecommendedStrategy,
 	isTelemetryInitialized,
+	MetricFlushTimeout,
 	NoopSpanProcessor,
 	setGlobalLogProcessor,
+	setGlobalMetricReader,
 	setGlobalSpanProcessor,
 	withTelemetryFlush,
 } from './core';
@@ -65,8 +68,13 @@ export {
 	withChildSpan,
 	withHttpSpan,
 } from './http';
+export type { HttpServerRequestMetric } from './metrics';
+// The HTTP server's request metrics, recorded by the middleware above
+export {
+	HTTP_SERVER_REQUEST_DURATION,
+	recordHttpServerRequest,
+} from './metrics';
 export type { TelemetryMiddlewareOptions } from './middleware';
-
 // Middleware for Lambda auto-instrumentation
 export {
 	getContextFromEvent,

@@ -14,6 +14,7 @@ import {
 	type HttpSpanAttributes,
 	incomingTraceContext,
 } from './http';
+import { recordHttpServerRequest } from './metrics';
 import { isTrustedOrigin } from './trust';
 
 /**
@@ -71,6 +72,28 @@ export interface TelemetryMiddlewareOptions {
 // Symbol for storing span on event
 const SPAN_SYMBOL = Symbol('telemetry.span');
 const CONTEXT_SYMBOL = Symbol('telemetry.context');
+const REQUEST_SYMBOL = Symbol('telemetry.request');
+
+/** What the request's duration metric is recorded with, once it ends. */
+interface StartedRequest {
+	startedAt: number;
+	attrs: HttpSpanAttributes;
+}
+
+/** Records the request on `http.server.request.duration`, once. */
+function recordFinished(event: any, statusCode: number, error?: Error): void {
+	const started: StartedRequest | undefined = event?.[REQUEST_SYMBOL];
+	if (!started) return;
+	delete event[REQUEST_SYMBOL];
+	recordHttpServerRequest({
+		method: started.attrs.method,
+		route: started.attrs.route,
+		scheme: started.attrs.scheme,
+		statusCode,
+		durationMs: performance.now() - started.startedAt,
+		...(error && { error }),
+	});
+}
 
 /**
  * Get the current span from the Lambda event
@@ -127,11 +150,13 @@ export function telemetryMiddleware(
 			const attrs = buildSpanAttributes(event, lambdaContext, options);
 
 			// Create the span
+			const startedAt = performance.now();
 			const span = createHttpServerSpan(attrs, parentContext, links);
 
 			// Store span and context on event for access in handler
 			event[SPAN_SYMBOL] = span;
 			event[CONTEXT_SYMBOL] = trace.setSpan(parentContext, span);
+			event[REQUEST_SYMBOL] = { startedAt, attrs } satisfies StartedRequest;
 
 			// Add Lambda-specific attributes
 			span.setAttribute('faas.invocation_id', lambdaContext.awsRequestId);
@@ -172,6 +197,7 @@ export function telemetryMiddleware(
 			}
 
 			endHttpSpan(span, { statusCode });
+			recordFinished(request.event, statusCode);
 		},
 
 		onError: async (request) => {
@@ -191,11 +217,9 @@ export function telemetryMiddleware(
 				statusCode = (error as any).statusCode;
 			}
 
-			endHttpSpan(
-				span,
-				{ statusCode },
-				error instanceof Error ? error : new Error(String(error)),
-			);
+			const failure = error instanceof Error ? error : new Error(String(error));
+			endHttpSpan(span, { statusCode }, failure);
+			recordFinished(request.event, statusCode, failure);
 		},
 	};
 }
