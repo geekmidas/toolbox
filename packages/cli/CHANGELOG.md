@@ -1,5 +1,39 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.162
+
+### Minor Changes
+
+- [#404](https://github.com/geekmidas/toolbox/pull/404) [`e7ea3c5`](https://github.com/geekmidas/toolbox/commit/e7ea3c52902523953504d7b67eb7dc532c263c63) Thanks [@geekmidas](https://github.com/geekmidas)! - `deploy.email.<stage>: { provider: 'ses' }` provisions a stage's outbound mail at deploy
+
+  Each deploy of the stage creates, in its AWS account, what every `Email`
+  construct sends with, and writes `<ID>_URL` and `<ID>_FROM` into the stage's
+  secrets before its checks:
+
+  - the sender's domain as an SES identity, verified by DKIM through `dns`;
+  - an IAM user allowed only `ses:SendRawEmail` as that identity;
+  - its access key, as `smtp://<key id>:<smtp password>@email-smtp.<region>.amazonaws.com:587`.
+
+  `from` names the sender (default `noreply@<stage domain>`). A `<ID>_URL` the
+  stage already holds wins and nothing is created for it. `--rotate-keys`
+  issues a successor key and password. A sandboxed SES account is reported at
+  deploy. `gkm deploy:github` scopes the stage's role to it.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.162
+  - @geekmidas/constructs@10.0.0-alpha.162
+  - @geekmidas/db@10.0.0-alpha.162
+  - @geekmidas/envkit@10.0.0-alpha.162
+  - @geekmidas/errors@10.0.0-alpha.162
+  - @geekmidas/logger@10.0.0-alpha.162
+  - @geekmidas/manifest@10.0.0-alpha.162
+  - @geekmidas/schema@10.0.0-alpha.162
+  - @geekmidas/services@10.0.0-alpha.162
+  - @geekmidas/storage@10.0.0-alpha.162
+  - @geekmidas/telescope@10.0.0-alpha.162
+
 ## 10.0.0-alpha.161
 
 ### Minor Changes

@@ -1,5 +1,18 @@
 # @file-drop/workspace
 
+## 0.0.1-alpha.2
+
+### Patch Changes
+
+- Updated dependencies [[`e7ea3c5`](https://github.com/geekmidas/toolbox/commit/e7ea3c52902523953504d7b67eb7dc532c263c63)]:
+  - @geekmidas/cli@10.0.0-alpha.162
+  - @geekmidas/constructs@10.0.0-alpha.162
+  - @geekmidas/envkit@10.0.0-alpha.162
+  - @geekmidas/logger@10.0.0-alpha.162
+  - @geekmidas/services@10.0.0-alpha.162
+  - @geekmidas/storage@10.0.0-alpha.162
+  - @geekmidas/telescope@10.0.0-alpha.162
+
 ## 0.0.1-alpha.1
 
 ### Patch Changes

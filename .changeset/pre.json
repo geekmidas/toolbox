@@ -92,6 +92,7 @@
     "depend-on-public-urls",
     "deploy-creates-resources",
     "deploy-domains-subdomains",
+    "deploy-email-ses",
     "deploy-github-oidc-subject",
     "deploy-github-oidc",
     "deploy-identity",
