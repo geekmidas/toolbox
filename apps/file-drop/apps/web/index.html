@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>File Drop</title>
+		<style>
+			body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; }
+			img { display: block; max-width: 100%; margin-top: 1rem; }
+			a { word-break: break-all; }
+		</style>
+	</head>
+	<body>
+		<h1>File Drop</h1>
+		<form id="upload">
+			<input id="file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
+			<button type="submit">Upload</button>
+		</form>
+		<p id="status"></p>
+		<div id="result"></div>
+		<script type="module" src="/src/main.ts"></script>
+	</body>
+</html>

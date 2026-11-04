@@ -75,6 +75,70 @@ importers:
         specifier: ^3.5.13
         version: 3.5.18(typescript@7.0.2)
 
+  apps/file-drop:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ~3.1136.0
+        version: 3.1136.0
+      '@aws-sdk/s3-request-presigner':
+        specifier: ~3.1136.0
+        version: 3.1136.0
+      '@geekmidas/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+      '@geekmidas/constructs':
+        specifier: workspace:*
+        version: link:../../packages/constructs
+      '@geekmidas/envkit':
+        specifier: workspace:*
+        version: link:../../packages/envkit
+      '@geekmidas/logger':
+        specifier: workspace:*
+        version: link:../../packages/logger
+      '@geekmidas/services':
+        specifier: workspace:*
+        version: link:../../packages/services
+      '@geekmidas/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
+      '@geekmidas/telescope':
+        specifier: workspace:*
+        version: link:../../packages/telescope
+      '@hono/node-server':
+        specifier: ~1.19.5
+        version: 1.19.5(hono@4.13.8)
+      hono:
+        specifier: ~4.13.8
+        version: 4.13.8
+      pino:
+        specifier: ~10.3.1
+        version: 10.3.1
+      zod:
+        specifier: ~4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@types/node':
+        specifier: ~24.9.1
+        version: 24.9.1
+
+  apps/file-drop/apps/api:
+    dependencies:
+      '@geekmidas/services':
+        specifier: workspace:*
+        version: link:../../../../packages/services
+      zod:
+        specifier: ~4.6.5
+        version: 4.6.5
+
+  apps/file-drop/apps/web:
+    devDependencies:
+      '@geekmidas/envkit':
+        specifier: workspace:*
+        version: link:../../../../packages/envkit
+      vite:
+        specifier: ~8.3.1
+        version: 8.3.1(@types/node@24.9.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.43.1)(tsx@4.23.15)(yaml@2.9.1)
+
   apps/kitchen-sink:
     dependencies:
       '@aws-sdk/client-s3':
