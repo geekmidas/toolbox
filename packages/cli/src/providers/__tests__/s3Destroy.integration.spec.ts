@@ -362,7 +362,7 @@ describe('gkm compose --destroy, against AWS', () => {
 				provider: 'route53',
 			}),
 		);
-		const alias = `uploads-server`;
+		const alias = `uploads`;
 		expect(zone.value(alias)).toBeDefined();
 
 		await destroy('production');
@@ -410,7 +410,7 @@ describe('gkm compose --destroy, against AWS', () => {
 
 	it('leaves a certificate it adopted, and a record pointed elsewhere since', async () => {
 		// Made by hand, before the stage's first deploy: no gkm tags.
-		const host = `uploads-server.adopted.${domain}`;
+		const host = `uploads.adopted.${domain}`;
 		const own = await acm.send(
 			new RequestCertificateCommand({
 				DomainName: host,
@@ -425,7 +425,7 @@ describe('gkm compose --destroy, against AWS', () => {
 			);
 			expect(adopted?.id).toBe(own.CertificateArn);
 			// Someone pointed the CDN's name somewhere else since.
-			const alias = 'uploads-server.adopted';
+			const alias = 'uploads.adopted';
 			expect(zone.value(alias)).toBeDefined();
 			await zone.upsertRecords(domain, [
 				{

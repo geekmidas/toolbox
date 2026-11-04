@@ -344,16 +344,14 @@ describe('envFor', () => {
 		// agree and never for a server fronting two buckets. The edge in front of
 		// it does the mapping, and issues the certificate.
 		expect(env().UPLOADS_SERVER_URL).toBe(
-			`https://uploadsserver.localhost:${portsFor('development').caddy}`,
+			`https://uploads.localhost:${portsFor('development').caddy}`,
 		);
 	});
 
 	it('gives each stage its own host rather than its own path', () => {
 		// The stage is in the *name*, which is the leading label — so two stages
 		// cannot answer on one address, and neither carries a bucket in its path.
-		expect(env('test').UPLOADS_SERVER_URL).toContain(
-			'https://uploadsserver-test.',
-		);
+		expect(env('test').UPLOADS_SERVER_URL).toContain('https://uploads-test.');
 	});
 
 	it('gives a site its API’s address under the name its bundler inlines', () => {

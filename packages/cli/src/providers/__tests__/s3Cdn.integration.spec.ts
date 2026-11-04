@@ -377,7 +377,7 @@ const track = (stage: string) => {
 
 describe('a file server behind a CDN', () => {
 	const bucket = () => bucketName({ scope: name, stage: STAGE, id: 'uploads' });
-	const host = () => `uploads-server.${domain}`;
+	const host = () => `uploads.${domain}`;
 	const distributionId = async () =>
 		(await resourcesOf(STAGE))['cloudfront-distribution:UploadsServer']!.id!;
 
@@ -466,7 +466,7 @@ describe('a file server behind a CDN', () => {
 
 		// The name points at the distribution, and the certificate's
 		// validation record is kept beside it, for ACM to renew against.
-		expect(zone.value('uploads-server')).toBe(Distribution!.DomainName);
+		expect(zone.value('uploads')).toBe(Distribution!.DomainName);
 		const { Certificate } = await acm.send(
 			new DescribeCertificateCommand({ CertificateArn: certificateArn }),
 		);
@@ -641,7 +641,7 @@ describe("a file server's processors behind the CDN", () => {
 		const config = await configOf();
 		const origin = config.Origins?.Items?.find((o) => o.Id === 'processors');
 		expect(origin).toMatchObject({
-			DomainName: `uploads-server-processors.processed.${domain}`,
+			DomainName: `uploads-processors.processed.${domain}`,
 			CustomOriginConfig: { OriginProtocolPolicy: 'https-only' },
 			CustomHeaders: {
 				Quantity: 1,
@@ -728,7 +728,7 @@ describe('a certificate waiting on its record', () => {
 			await expect(run).rejects.toBeInstanceOf(CdnCertificatePending);
 			const error = (await run.catch((e) => e)) as CdnCertificatePending;
 			expect(error.reason).toBe('manual');
-			expect(error.host).toBe(`uploads-server.${name}.example.org`);
+			expect(error.host).toBe(`uploads.${name}.example.org`);
 			expect(error.message).toContain(
 				`${error.record.name} CNAME ${error.record.value}`,
 			);
@@ -753,7 +753,7 @@ describe('a certificate waiting on its record', () => {
 			const error = (await run.catch((e) => e)) as CdnCertificatePending;
 			expect(error.reason).toBe('timeout');
 			expect(lines).toContain(
-				`   waiting for ACM to issue the certificate for uploads-server.${domain}…`,
+				`   waiting for ACM to issue the certificate for uploads.${domain}…`,
 			);
 		} finally {
 			useCdnClients(previous);
@@ -764,7 +764,7 @@ describe('a certificate waiting on its record', () => {
 describe('--dry-run', () => {
 	it('prints the CDN it would create, and creates and writes nothing', async () => {
 		const [report] = await provision('planned', { dryRun: true });
-		const host = `uploads-server.planned.${domain}`;
+		const host = `uploads.planned.${domain}`;
 
 		expect(report!.actions.map((a) => `${a.resource}: ${a.change}`)).toEqual(
 			expect.arrayContaining([

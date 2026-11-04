@@ -31,6 +31,7 @@ import {
 	WILDCARD_SUBDOMAIN,
 } from '@geekmidas/manifest';
 import { processorsDevRoute } from '../generators/processorRoute.js';
+import { fileServerLabel } from '../workspace/fileServerLabel.js';
 import type { Plan, PlannedResource } from './plan';
 
 /** One host on the edge, and what answers behind it. */
@@ -279,14 +280,18 @@ export function hostFor(resource: PlannedResource, project: string): string {
 }
 
 /**
- * A resource's own label: its `subdomain` where it declared one — the label a
- * deploy uses too — with the stage it carries kept, so `gkm test` and `gkm dev`
- * still answer on different hosts.
+ * A resource's own label: its `subdomain` where it declared one, and a file
+ * server's own name — the label a deploy uses too — with the stage it carries
+ * kept, so `gkm test` and `gkm dev` still answer on different hosts.
  */
 function labelOf(resource: PlannedResource): string {
-	if (!resource.subdomain) return resource.name;
+	const own =
+		resource.kind === 'file-server'
+			? fileServerLabel(resource.id)
+			: resource.subdomain;
+	if (!own) return resource.name;
 	const stage = stageOf(resource);
-	return stage ? `${resource.subdomain}-${stage}` : resource.subdomain;
+	return stage ? `${own}-${stage}` : own;
 }
 
 /** The stage a resource's name carries, or nothing for the local stage's. */

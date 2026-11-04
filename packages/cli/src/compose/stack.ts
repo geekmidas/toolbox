@@ -126,6 +126,7 @@ import {
 } from '../trust/authority.js';
 import { DEFAULT_EVENTS } from '../types.js';
 import { appKey } from '../workspace/derive.js';
+import { fileServerLabel } from '../workspace/fileServerLabel.js';
 import type {
 	ComposeTlsConfig,
 	NormalizedAppConfig,
@@ -1251,7 +1252,7 @@ export function composeStack(input: StackInput): ComposeStack {
 				host = hostFor(resource, workspace.name);
 			} else {
 				if (!domain) throw new NoDomainForStage(stage);
-				host = `${resource.subdomain ?? appKey(resource.id)}.${domain}`;
+				host = `${fileServerLabel(resource.id)}.${domain}`;
 			}
 			fileServers.set(resource.id, {
 				url: `https://${host}${local && https !== 443 ? `:${https}` : ''}`,

@@ -17,6 +17,7 @@ import {
 	WILDCARD_SUBDOMAIN,
 } from '@geekmidas/manifest';
 import { GkmError } from '../errors';
+import { fileServerLabel } from './fileServerLabel.js';
 
 /** A `protectedSubdomains` entry an app already answers on. */
 export class ProtectedSubdomainIsAnApp extends GkmError {
@@ -93,9 +94,9 @@ export function appSubdomains(
 				labels.set(declaration.subdomain ?? appKey(id), id);
 				break;
 			case 'file-server':
-				labels.set(appKey(id), id);
+				labels.set(fileServerLabel(id), id);
 				if (declaration.processors?.length) {
-					labels.set(`${appKey(id)}-processors`, id);
+					labels.set(`${fileServerLabel(id)}-processors`, id);
 				}
 				break;
 			case 'worker':

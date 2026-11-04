@@ -69,7 +69,7 @@ beforeEach(async () => {
 	await state.putResource(STAGE, {
 		key: 'file-server:UploadsServer',
 		type: 'url',
-		id: 'https://uploads-server.example.com',
+		id: 'https://uploads.example.com',
 		status: 'ready',
 	});
 	await state.putResource(STAGE, {

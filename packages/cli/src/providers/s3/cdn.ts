@@ -38,6 +38,7 @@ import type {
 } from '@aws-sdk/client-cloudfront';
 import { GkmError } from '../../errors';
 import { appKey } from '../../workspace/derive.js';
+import { fileServerLabel } from '../../workspace/fileServerLabel.js';
 import type { S3ObjectsConfig } from '../../workspace/types.js';
 import { type AwsProvisioning, awsClientConfig, awsEndpoint } from '../aws.js';
 import { identityTags } from '../iam.js';
@@ -157,9 +158,12 @@ export class CdnCertificateFailed extends GkmError {
 // Names and documents — pure
 // ---------------------------------------------------------------------------
 
-/** Where a file server answers: `<fileserver>.<domain>`. */
+/**
+ * Where a file server answers: its own name, `assets.<domain>` for
+ * `AssetsServer` — see {@link fileServerLabel}.
+ */
 export function cdnHost(serverId: string, domain: string): string {
-	return `${appKey(serverId)}.${domain}`.toLowerCase();
+	return `${fileServerLabel(serverId)}.${domain}`.toLowerCase();
 }
 
 /**

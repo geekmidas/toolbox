@@ -10,7 +10,7 @@ import { defineWorkspace } from '@geekmidas/cli/config';
  *
  * `prod`'s domain is `FILE_DROP_DOMAIN`, read from the environment so no
  * one's domain is baked into the example: the site answers on it, the API on
- * `api.<domain>`, and the CDN on `drop-server.<domain>`. Hostinger holds its
+ * `api.<domain>`, and the CDN on `drop.<domain>`. Hostinger holds its
  * zone; the deploy reads its token (`gkm login --provider hostinger`, or
  * `HOSTINGER_API_TOKEN`) to write the records and the CDN certificate's
  * validation CNAME. Unset, there is no domain: `gkm dev` needs none, and a

@@ -35,10 +35,7 @@ describe('sitesFor', () => {
 		// bucket would make them collide, and that arrangement is legitimate.
 		const hosts = sitesFor(plan(), 'shop').map((s) => s.host);
 
-		expect(hosts).toEqual([
-			'uploadsserver.shop.localhost',
-			'assetsserver.shop.localhost',
-		]);
+		expect(hosts).toEqual(['uploads.shop.localhost', 'assets.shop.localhost']);
 	});
 
 	it('points both at the one bucket behind them', () => {
@@ -195,7 +192,7 @@ describe('sitesFor', () => {
 		// The stage is already in the resource name, so it lands in the label and
 		// two stages cannot answer on one address.
 		expect(sitesFor(plan('test'), 'shop')[0]).toEqual({
-			host: 'uploadsserver-test.shop.localhost',
+			host: 'uploads-test.shop.localhost',
 			upstream: 'http://minio:9000',
 			rewrite: '/uploads-test{uri}',
 		});
@@ -256,7 +253,7 @@ describe("a file server's processors under gkm dev", () => {
 		);
 
 		expect(site).toEqual({
-			host: 'uploadsserver.shop.localhost',
+			host: 'uploads.shop.localhost',
 			upstream: 'http://minio:9000',
 			rewrite: '/uploads{uri}',
 			processors: {
@@ -295,7 +292,7 @@ describe('hostFor', () => {
 		// certificate can be issued for.
 		const [server] = plan().resources.filter((r) => r.kind === 'file-server');
 
-		expect(hostFor(server as never, '')).toBe('uploadsserver.localhost');
+		expect(hostFor(server as never, '')).toBe('uploads.localhost');
 	});
 });
 
@@ -323,7 +320,7 @@ describe('toCaddyfile', () => {
 		});
 
 	it('serves each host with the stage’s certificate from gkm’s local CA', () => {
-		expect(rendered()).toContain('https://uploadsserver.shop.localhost {');
+		expect(rendered()).toContain('https://uploads.shop.localhost {');
 		// Certificate and key in one PEM, so the same path is both.
 		expect(rendered()).toContain(
 			'tls /etc/caddy/sites/dev.pem /etc/caddy/sites/dev.pem',

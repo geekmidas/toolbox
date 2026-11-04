@@ -109,7 +109,7 @@ const ROUTES: EdgeRoute[] = [
 	},
 	{
 		name: 'files-uploads-server',
-		host: 'uploads-server.shop.example.com',
+		host: 'uploads.shop.example.com',
 		upstreams: [{ service: 'minio', port: 9000 }],
 		streaming: false,
 		prefix: '/uploads',
@@ -207,7 +207,7 @@ const PUSHED: EdgeRoute = {
 /** A file server over MinIO whose processor patterns go to their own service. */
 const PROCESSED: EdgeRoute = {
 	name: 'files-assets-server',
-	host: 'assets-server.shop.example.com',
+	host: 'assets.shop.example.com',
 	upstreams: [{ service: 'minio', port: 9000 }],
 	streaming: false,
 	prefix: '/assets',
@@ -223,7 +223,7 @@ const PROCESSED: EdgeRoute = {
 /** A processor unit's own host, which only the CDN may call. */
 const ORIGIN: EdgeRoute = {
 	name: 'assets-processors',
-	host: 'assets-server-processors.shop.example.com',
+	host: 'assets-processors.shop.example.com',
 	upstreams: [{ service: 'assets-processors', port: 3000 }],
 	streaming: false,
 	prefixes: ['/i/'],
@@ -270,7 +270,7 @@ describe('a route whose processor paths go elsewhere', () => {
 		const handler =
 			http.routers['shop-production-files-assets-server-assets-processors'];
 		expect(handler).toMatchObject({
-			rule: 'Host(`assets-server.shop.example.com`) && (PathPrefix(`/i/`) || PathPrefix(`/pdf/`))',
+			rule: 'Host(`assets.shop.example.com`) && (PathPrefix(`/i/`) || PathPrefix(`/pdf/`))',
 			priority: 10_000,
 			service: 'shop-production-files-assets-server-assets-processors',
 		});
@@ -279,7 +279,7 @@ describe('a route whose processor paths go elsewhere', () => {
 				?.loadBalancer.servers,
 		).toEqual([{ url: 'http://shop-production-assets-processors:3000' }]);
 		expect(http.routers['shop-production-files-assets-server']?.rule).toBe(
-			'Host(`assets-server.shop.example.com`)',
+			'Host(`assets.shop.example.com`)',
 		);
 	});
 
@@ -317,7 +317,7 @@ describe('an origin only the CDN may call', () => {
 		}) as { http: { routers: Record<string, { rule: string }> } };
 
 		expect(http.routers['shop-production-assets-processors']?.rule).toBe(
-			'Host(`assets-server-processors.shop.example.com`) && (PathPrefix(`/i/`)) && Header(`X-Gkm-Origin-Verify`, `s3cr3t`)',
+			'Host(`assets-processors.shop.example.com`) && (PathPrefix(`/i/`)) && Header(`X-Gkm-Origin-Verify`, `s3cr3t`)',
 		);
 	});
 });

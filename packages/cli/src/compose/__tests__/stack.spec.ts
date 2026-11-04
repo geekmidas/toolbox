@@ -974,11 +974,9 @@ describe('mail and storage on the local stage', () => {
 		const s = stack({ manifest: withServices() });
 
 		expect(app(s, 'web').build?.args?.VITE_UPLOADS_SERVER_URL).toBe(
-			'https://uploadsserver.compose-app.localhost:8443',
+			'https://uploads.compose-app.localhost:8443',
 		);
-		expect(s.caddyfile).toContain(
-			'https://uploadsserver.compose-app.localhost {',
-		);
+		expect(s.caddyfile).toContain('https://uploads.compose-app.localhost {');
 		expect(s.caddyfile).toContain('reverse_proxy minio:9000');
 		expect(s.caddyfile).toContain('rewrite /uploads{uri}');
 	});
@@ -1112,7 +1110,7 @@ describe('mail and storage on a deployed stage', () => {
 		expect(s.caddyfile).not.toContain('mailpit:8025');
 		expect(s.compose.services.mailpit?.ports).toBeUndefined();
 		expect(s.storage?.buckets).toEqual(['uploads-production']);
-		expect(s.caddyfile).toContain('https://uploads-server.shop.example.com {');
+		expect(s.caddyfile).toContain('https://uploads.shop.example.com {');
 		expect(s.devServices).toEqual([
 			{ service: 'mailpit', ids: ['Mail'] },
 			{ service: 'minio', ids: ['Uploads'] },
@@ -1143,7 +1141,7 @@ describe('mail and storage on a deployed stage', () => {
 			MINIO_ROOT_PASSWORD: 'stage-secret-value',
 		});
 		expect(app(s, 'web').build).toBeUndefined();
-		expect(s.caddyfile).not.toContain('uploads-server');
+		expect(s.caddyfile).not.toContain('https://uploads.');
 		expect(s.devServices).toEqual([{ service: 'minio', ids: ['Uploads'] }]);
 	});
 
@@ -1426,7 +1424,7 @@ describe("a file server's processors", () => {
 				images: { mode: 'pull', tag: 'v1.4.0' },
 				secrets: production({
 					...EXTERNAL,
-					UPLOADS_SERVER_URL: 'https://uploads-server.shop.example.com',
+					UPLOADS_SERVER_URL: 'https://uploads.shop.example.com',
 					...custom,
 				}),
 				ports: {},
@@ -1436,12 +1434,12 @@ describe("a file server's processors", () => {
 			const s = deployed({ UPLOADS_SERVER_ORIGIN_SECRET: 'from-the-deploy' });
 
 			expect(unit(s).origin).toEqual({
-				host: 'uploads-server-processors.shop.example.com',
+				host: 'uploads-processors.shop.example.com',
 				secret: 'from-the-deploy',
 			});
 			expect(s.routes.find((r) => r.name === 'uploads-processors')).toEqual({
 				name: 'uploads-processors',
-				host: 'uploads-server-processors.shop.example.com',
+				host: 'uploads-processors.shop.example.com',
 				upstreams: [{ service: 'uploads-processors', port: 3000 }],
 				streaming: false,
 				prefixes: ['/i/'],

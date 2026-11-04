@@ -2,6 +2,7 @@ import { isAbsolute, join, relative, sep } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import { GkmError } from '../errors';
 import { appKey } from '../workspace/derive.js';
+import { fileServerLabel } from '../workspace/fileServerLabel.js';
 import type { NormalizedWorkspace } from '../workspace/types.js';
 
 /**
@@ -87,7 +88,7 @@ export function workerUnits(
 
 /** The service and image name of a file server's processors: `assets-processors`. */
 export function processorUnitName(fileServerId: string): string {
-	return `${appKey(fileServerId.replace(/Server$/, ''))}-processors`;
+	return `${fileServerLabel(fileServerId)}-processors`;
 }
 
 /** A file server's processors as a deploy unit: one process, one image. */

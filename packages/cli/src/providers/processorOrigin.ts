@@ -11,14 +11,18 @@
 
 import { randomBytes } from 'node:crypto';
 import { provideKey } from '@geekmidas/manifest';
-import { appKey } from '../workspace/derive.js';
+import { fileServerLabel } from '../workspace/fileServerLabel.js';
 
 /** The header the CDN adds to every request it sends a processor. */
 export const ORIGIN_VERIFY_HEADER = 'X-Gkm-Origin-Verify';
 
-/** Where a file server's processors answer the CDN: `<fileserver>-processors.<domain>`. */
+/**
+ * Where a file server's processors answer the CDN:
+ * `<fileserver>-processors.<domain>`, `assets-processors.example.com` for
+ * `AssetsServer`.
+ */
 export function processorOriginHost(serverId: string, domain: string): string {
-	return `${appKey(serverId)}-processors.${domain}`.toLowerCase();
+	return `${fileServerLabel(serverId)}-processors.${domain}`.toLowerCase();
 }
 
 /** The stage secret holding the header's value: `ASSETS_SERVER_ORIGIN_SECRET`. */

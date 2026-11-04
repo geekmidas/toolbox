@@ -36,6 +36,7 @@ import { SERVER_IPV4_KEY, SERVER_IPV6_KEY } from '../compose/dnsConfig.js';
 import { GkmError } from '../errors';
 import { appEnvKeys, workerEnvKeys } from '../reconcile/apps.js';
 import { appKey } from '../workspace/derive.js';
+import { fileServerLabel } from '../workspace/fileServerLabel.js';
 
 /**
  * The dev services a deployed stage can run — one per kind that has one on
@@ -443,7 +444,7 @@ export function requiredStageKeys(input: StageKeysInput): StageKey[] {
 				id: d.id,
 				kind: 'file-server',
 				what: `the public address '${d.id}' serves its bucket on — a CDN or the bucket's own domain`,
-				example: `https://${appKey(d.id)}.${domain}`,
+				example: `https://${fileServerLabel(d.id)}.${domain}`,
 				...storage,
 				...(d.of ? { of: d.of } : {}),
 				...apps(d),

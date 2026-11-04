@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ORIGIN_VERIFY_HEADER } from '../processorOrigin';
+import { ORIGIN_VERIFY_HEADER, processorOriginHost } from '../processorOrigin';
 import {
 	CACHING_OPTIMIZED,
 	CACHING_OPTIMIZED_UNCOMPRESSED,
@@ -16,7 +16,13 @@ import {
 describe('names', () => {
 	it('answers on <fileserver>.<domain>', () => {
 		expect(cdnHost('UploadsServer', 'Shop.Example.com')).toBe(
-			'uploads-server.shop.example.com',
+			'uploads.shop.example.com',
+		);
+	});
+
+	it('reaches its processors at <fileserver>-processors.<domain>', () => {
+		expect(processorOriginHost('UploadsServer', 'Shop.Example.com')).toBe(
+			'uploads-processors.shop.example.com',
 		);
 	});
 
@@ -127,7 +133,7 @@ describe('the distribution', () => {
 	const config = distributionConfig({
 		comment: 'gkm shop prod UploadsServer',
 		callerReference: 'gkm-shop-prod-uploads-server',
-		host: 'uploads-server.shop.example.com',
+		host: 'uploads.shop.example.com',
 		certificateArn: 'arn:aws:acm:us-east-1:111:certificate/c',
 		bucketDomain: 'shop-prod-uploads.s3.eu-west-1.amazonaws.com',
 		originAccessControlId: 'OAC',
@@ -139,7 +145,7 @@ describe('the distribution', () => {
 	it('answers on its name over HTTPS, with its certificate, reading the bucket through the origin access control', () => {
 		expect(config.Aliases).toEqual({
 			Quantity: 1,
-			Items: ['uploads-server.shop.example.com'],
+			Items: ['uploads.shop.example.com'],
 		});
 		expect(config.ViewerCertificate).toMatchObject({
 			ACMCertificateArn: 'arn:aws:acm:us-east-1:111:certificate/c',
@@ -218,7 +224,7 @@ describe("a file server's processors behind the distribution", () => {
 	const config = distributionConfig({
 		comment: 'gkm shop prod AssetsServer',
 		callerReference: 'gkm-shop-prod-assets-server',
-		host: 'assets-server.shop.example.com',
+		host: 'assets.shop.example.com',
 		certificateArn: 'arn:aws:acm:us-east-1:111:certificate/c',
 		bucketDomain: 'shop-prod-assets.s3.eu-west-1.amazonaws.com',
 		originAccessControlId: 'OAC',
@@ -228,7 +234,7 @@ describe("a file server's processors behind the distribution", () => {
 		immutable: ['**'],
 		processors: {
 			prefixes: ['/i/', '/pdf/'],
-			host: 'assets-server-processors.shop.example.com',
+			host: 'assets-processors.shop.example.com',
 			secret: 'the-secret',
 		},
 	});
@@ -237,7 +243,7 @@ describe("a file server's processors behind the distribution", () => {
 		expect(config.Origins?.Quantity).toBe(2);
 		expect(config.Origins?.Items?.[1]).toEqual({
 			Id: 'processors',
-			DomainName: 'assets-server-processors.shop.example.com',
+			DomainName: 'assets-processors.shop.example.com',
 			OriginPath: '',
 			ConnectionAttempts: 3,
 			ConnectionTimeout: 10,

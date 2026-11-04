@@ -90,7 +90,7 @@ describe('presigned uploads', () => {
 		const url = new URL((await client()).openUrl('brand/probe.txt'));
 
 		expect(url.protocol).toBe('https:');
-		expect(url.hostname).toMatch(/^uploadsserver-test\..+\.localhost$/);
+		expect(url.hostname).toMatch(/^uploads-test\..+\.localhost$/);
 	});
 
 	it('refuses to mint an unsigned address for a private key', async () => {

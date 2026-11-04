@@ -945,7 +945,7 @@ export const sweep = jobs.cron('rate(1 hour)').handle(async () => null);
 				urls: {},
 				custom: {
 					ASSETS_URL: 's3://acme-assets?region=eu-west-1',
-					ASSETS_SERVER_URL: 'https://assets-server.shop.example.com',
+					ASSETS_SERVER_URL: 'https://assets.shop.example.com',
 					...custom,
 				},
 			});
@@ -992,11 +992,11 @@ export const echo = assets
 			);
 			expect(dokploy.domains.filter((d) => d.applicationId === unit)).toEqual([
 				expect.objectContaining({
-					host: 'assets-server-processors.shop.example.com',
+					host: 'assets-processors.shop.example.com',
 				}),
 			]);
 			expect(deployed.urls['assets-processors']).toBe(
-				'https://assets-server-processors.shop.example.com',
+				'https://assets-processors.shop.example.com',
 			);
 
 			// Dokploy's Traefik routes by host alone, so the unit checks the
@@ -1031,7 +1031,7 @@ export const echo = assets
 				expect.objectContaining({
 					appName: 'assets-processors',
 					imageRef: ref('assets-processors', 'v1'),
-					url: 'https://assets-server-processors.shop.example.com',
+					url: 'https://assets-processors.shop.example.com',
 				}),
 			);
 			expect(planned.changes).toEqual(

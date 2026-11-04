@@ -110,7 +110,7 @@ https://shop.example.com {
 	}
 }
 
-https://uploads-server.shop.example.com {
+https://uploads.shop.example.com {
 	# gkm's own header, which only a service of this stack may send: the auth
 	# server rate-limits by the client address it carries.
 	request_header -x-gkm-client-ip
@@ -191,7 +191,7 @@ exports[`the route model, rendered for Traefik > renders routers, services and m
           "shop-production-strip-gkm-headers",
           "shop-production-files-uploads-server-prefix",
         ],
-        "rule": "Host(\`uploads-server.shop.example.com\`)",
+        "rule": "Host(\`uploads.shop.example.com\`)",
         "service": "shop-production-files-uploads-server",
         "tls": {
           "certResolver": "letsencrypt",
