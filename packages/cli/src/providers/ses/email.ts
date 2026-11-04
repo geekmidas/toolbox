@@ -213,22 +213,42 @@ async function ensureSesEmail(ctx: Ctx): Promise<void> {
 }
 
 /**
- * The domain as an SES identity, verified by Easy DKIM: its three CNAMEs,
- * through the stage's DNS. A verified one is left as it is; one that is not
- * — new, or created by another stack and never finished — is asked for its
- * tokens again, which SES answers without making a second identity.
+ * The domain as an SES identity that signs what it sends with Easy DKIM: its
+ * three CNAMEs, through the stage's DNS.
+ *
+ * The check is DKIM's own status, not the domain's: a domain verified by its
+ * older TXT record is verified, and sends unsigned until DKIM is set up on it.
+ * One whose DKIM is verified is left as it is, signing turned back on if it
+ * was turned off; any other — new, verified only by TXT, or created by
+ * another stack and never finished — is asked for its tokens, which SES
+ * answers without making a second identity.
  */
-async function ensureIdentity(
-	ctx: Ctx,
+export async function ensureIdentity(
+	ctx: Pick<Ctx, 'change' | 'writeDns' | 'log'>,
 	{ SES, ses }: SesClients,
 	domain: string,
 ): Promise<void> {
-	const status = await ses.send(
-		new SES.GetIdentityVerificationAttributesCommand({ Identities: [domain] }),
+	const { DkimAttributes } = await ses.send(
+		new SES.GetIdentityDkimAttributesCommand({ Identities: [domain] }),
 	);
-	if (
-		status.VerificationAttributes?.[domain]?.VerificationStatus === 'Success'
-	) {
+	const dkim = DkimAttributes?.[domain];
+	if (dkim?.DkimVerificationStatus === 'Success') {
+		if (dkim.DkimEnabled) return;
+		await ctx.change(
+			{
+				construct: 'email',
+				resource: `SES identity ${domain}`,
+				change: 'turn DKIM signing back on',
+			},
+			async () => {
+				await ses.send(
+					new SES.SetIdentityDkimEnabledCommand({
+						Identity: domain,
+						DkimEnabled: true,
+					}),
+				);
+			},
+		);
 		return;
 	}
 	let tokens: string[] = [];

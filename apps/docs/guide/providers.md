@@ -234,9 +234,11 @@ Per `Email` construct, on the stage:
 
 **The sender's domain** as an SES identity, verified by Easy DKIM: its three
 CNAMEs go through the stage's `dns` config, as a file server's records do. An
-identity that is already verified is left as it is. One that exists unverified
-— made by another stack, say — is adopted: SES hands back the same tokens, and
-makes no second identity. An inbox on the same domain uses the same identity,
+identity whose DKIM is already verified is left as it is, with signing turned
+back on if it was turned off. Any other is adopted and given DKIM: one made by
+another stack and never finished, or a domain verified only by its older TXT
+record, which would otherwise send unsigned. SES hands back the same tokens,
+and makes no second identity. An inbox on the same domain uses the same identity,
 since SES has one per domain. Neither provider deletes it.
 
 **An IAM user**, `gkm-<project>-<stage>-<id>` under `/gkm/`, tagged like a

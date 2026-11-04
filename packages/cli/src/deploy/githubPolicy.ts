@@ -432,8 +432,9 @@ export function deployAccess(
 				Sid: 'StageMailIdentity',
 				Effect: 'Allow',
 				Action: [
-					'ses:GetIdentityVerificationAttributes',
+					'ses:GetIdentityDkimAttributes',
 					'ses:VerifyDomainDkim',
+					'ses:SetIdentityDkimEnabled',
 					'ses:GetSendQuota',
 				],
 				Resource: '*',
