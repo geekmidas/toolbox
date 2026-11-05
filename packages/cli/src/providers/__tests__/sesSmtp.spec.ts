@@ -118,25 +118,65 @@ describe('the address mail is sent from', () => {
 		config: { from?: string },
 		secrets: Record<string, string> = {},
 		domain: string | null = 'shop.example.com',
+		wrote?: string,
 	) =>
 		({
 			config: { provider: 'ses', ...config },
 			secrets,
 			workspace: { domains: domain ? { production: domain } : {} },
 			stage: 'production',
+			state: {
+				record: (key: string) =>
+					wrote && key === 'email-from:Mail' ? { id: wrote } : undefined,
+			},
 		}) as never;
 
-	it("is `from`, else the stage's secrets, else noreply@ the stage's domain", () => {
+	it("is `from`, else an address set by hand, else noreply@ the stage's domain", () => {
 		expect(
 			senderOf(
 				ctx({ from: 'hi@other.example' }, { MAIL_FROM: 'x@y.z' }),
 				'Mail',
 			),
-		).toBe('hi@other.example');
-		expect(senderOf(ctx({}, { MAIL_FROM: 'x@y.example' }), 'Mail')).toBe(
-			'x@y.example',
+		).toEqual({ address: 'hi@other.example', ours: true });
+		expect(senderOf(ctx({}, { MAIL_FROM: 'x@y.example' }), 'Mail')).toEqual({
+			address: 'x@y.example',
+			ours: false,
+		});
+		expect(senderOf(ctx({}), 'Mail')).toEqual({
+			address: 'noreply@shop.example.com',
+			ours: true,
+		});
+	});
+
+	it("follows the stage's domain when the address held is the one gkm wrote", () => {
+		const moved = ctx(
+			{},
+			{ MAIL_FROM: 'noreply@old.example' },
+			'new.example',
+			'noreply@old.example',
 		);
-		expect(senderOf(ctx({}), 'Mail')).toBe('noreply@shop.example.com');
+
+		expect(senderOf(moved, 'Mail')).toEqual({
+			address: 'noreply@new.example',
+			ours: true,
+		});
+	});
+
+	it('follows the domain once `from` is removed, rather than keep what `from` was', () => {
+		const dropped = ctx(
+			{},
+			{ MAIL_FROM: 'hi@other.example' },
+			'shop.example.com',
+			'hi@other.example',
+		);
+
+		expect(senderOf(dropped, 'Mail').address).toBe('noreply@shop.example.com');
+	});
+
+	it('adopts the default it finds unrecorded — written before gkm recorded it', () => {
+		expect(
+			senderOf(ctx({}, { MAIL_FROM: 'noreply@shop.example.com' }), 'Mail'),
+		).toEqual({ address: 'noreply@shop.example.com', ours: true });
 	});
 
 	it('is refused with no domain to send from, saying what to set', () => {

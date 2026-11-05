@@ -599,7 +599,7 @@ describe("a provider's MX records, through GoDaddy", () => {
 		});
 
 	it('replaces the apex MX and creates the wildcard one, then writes nothing', async () => {
-		expect(await write()).toEqual({ manual: [] });
+		expect(await write()).toMatchObject({ manual: [] });
 
 		const value = {
 			data: 'inbound-smtp.eu-west-1.amazonaws.com',

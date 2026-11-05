@@ -407,7 +407,7 @@ describe('Route53Provider', () => {
 
 		it('writes "<priority> <host>" as the value, and nothing on a second run', async () => {
 			const first: string[] = [];
-			expect(await write(first)).toEqual({ manual: [] });
+			expect(await write(first)).toMatchObject({ manual: [] });
 
 			const response = await client.send(
 				new ListResourceRecordSetsCommand({ HostedZoneId: hostedZoneId }),

@@ -995,6 +995,26 @@ Keep the old domain's entry in `dns` until a deploy has run without it in
 `domains`: that entry is how the deploy reaches the provider to delete its
 records.
 
+**What the providers made on the old domain.** The resources a provider
+creates move to the new domain on the same deploy:
+
+- **Mail** (`deploy.email`): the new domain is verified in SES, its DKIM
+  records are written, and the sending user may send as it. A `MAIL_FROM`
+  gkm wrote becomes `noreply@<new domain>`. One you set yourself, or `from`,
+  is kept.
+- **Inboxes** (`deploy.inbox`): the new domain gets its own SES identity and
+  MX records, and each receipt rule its new addresses.
+- **File servers behind CloudFront**: a certificate for the new host is
+  requested and validated, and the distribution moves to it.
+
+The DNS records providers write — DKIM, MX, certificate validation, a file
+server's CNAME — are kept in the stage's state like the stack's, marked as a
+provider's. Each provider asks for its records on every deploy. One it asked
+for before and not now, such as the old domain's DKIM records, is pruned
+with the stack's records, after the apps answer, under the same rules. The
+old domain's SES identity and certificate are left in place, since another
+stack may use them. Delete them by hand if nothing does.
+
 ### A stage on another server
 
 Each deployed stage has its own `GKM_SERVER_IPV4` (and `GKM_SERVER_IPV6`), so

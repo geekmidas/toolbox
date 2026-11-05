@@ -12,6 +12,7 @@
  */
 
 import {
+	type DnsChange,
 	type DomainDnsPlan,
 	dnsCredentials,
 	type PlannedDnsRecord,
@@ -45,10 +46,16 @@ export interface ProviderDnsOptions {
 	log: (line: string) => void;
 }
 
+/** What the writer did, for the stage's state: each change, and its domain's provider. */
+export interface ProviderDnsWritten extends ProviderDnsResult {
+	changes: DnsChange[];
+	providers: Record<string, string>;
+}
+
 export async function writeProviderDns(
 	records: readonly ProviderDnsRecord[],
 	options: ProviderDnsOptions,
-): Promise<ProviderDnsResult> {
+): Promise<ProviderDnsWritten> {
 	const { log } = options;
 	const dns = options.workspace.dns
 		? normalizeDnsConfig(options.workspace.dns)
@@ -86,7 +93,7 @@ export async function writeProviderDns(
 		plan.records.push(planned);
 		domains.set(domain, plan);
 	}
-	if (domains.size === 0) return { manual };
+	if (domains.size === 0) return { manual, changes: [], providers: {} };
 
 	const plans = [...domains.values()];
 	const tokens = await dnsCredentials(
@@ -122,5 +129,9 @@ export async function writeProviderDns(
 			?.records.find((r) => r.name === change.name)?.host;
 		if (host) manual.push(host);
 	}
-	return { manual: [...new Set(manual)].sort() };
+	return {
+		manual: [...new Set(manual)].sort(),
+		changes: applied.changes,
+		providers: Object.fromEntries(plans.map((p) => [p.domain, p.provider])),
+	};
 }

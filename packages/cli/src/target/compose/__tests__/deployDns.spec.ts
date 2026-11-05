@@ -59,6 +59,7 @@ import type {
 } from '../../dokploy/dns/DnsProvider';
 import { ComposeAppsUnhealthy } from '../health';
 import { type ComposeDeps, composeTarget } from '../index';
+import { recordedForStack } from '../phases';
 
 /**
  * The deploy writes its stage's DNS records: `gkm deploy` (and `gkm compose`,
@@ -554,6 +555,44 @@ describe(
 			).toBeDefined();
 		});
 
+		it("deletes the old domain's records a provider asked for, once no provider asks for them", async () => {
+			workspace();
+			await serveFrom(dir);
+			await deployedAtOldDomain();
+			// A mail provider's DKIM record on the old domain, kept as gkm's;
+			// this stage has no provider now, so none asks for it.
+			const journal = await DeployJournal.open(
+				await stateStore(),
+				'production',
+				() => createComposeState('production'),
+			);
+			zone.set('example.com CNAME tok._domainkey.old', [
+				{ data: 'tok.dkim.amazonses.com', ttl: 600 },
+			]);
+			await recordDnsResource(journal, {
+				domain: 'example.com',
+				name: 'tok._domainkey.old',
+				type: 'CNAME',
+				value: 'tok.dkim.amazonses.com',
+				ttl: 600,
+				provider: 'godaddy',
+				source: 'provider',
+			});
+
+			const { error } = await run('production');
+
+			expect(error).toBeUndefined();
+			expect(DELETES()).toContain(
+				'DELETE example.com CNAME tok._domainkey.old',
+			);
+			const stored = await (await stateStore()).read('production');
+			expect(
+				stored!.resources[
+					dnsResourceKey('tok._domainkey.old.example.com', 'CNAME')
+				],
+			).toBeUndefined();
+		});
+
 		it('prints what it would delete on a dry run, and deletes nothing', async () => {
 			workspace();
 			await serveFrom(dir);
@@ -602,6 +641,32 @@ function recordingDns() {
 	};
 	return Object.assign(provider, { writes });
 }
+
+describe('the records the stack weighs against its plan', () => {
+	const stack = { fqdn: 'api.example.com', type: 'A' };
+	const dkim = {
+		fqdn: 'tok._domainkey.example.com',
+		type: 'CNAME',
+		source: 'provider',
+	};
+
+	it('are every stack record, and each provider record no provider asked for', () => {
+		expect(recordedForStack([stack, dkim], [])).toEqual([stack, dkim]);
+	});
+
+	it('leave out a provider record a provider asked for on this run', () => {
+		expect(
+			recordedForStack(
+				[stack, dkim],
+				[dnsResourceKey('tok._domainkey.example.com', 'CNAME')],
+			),
+		).toEqual([stack]);
+	});
+
+	it('leave out every provider record when the providers did not run, so none is pruned', () => {
+		expect(recordedForStack([stack, dkim], undefined)).toEqual([stack]);
+	});
+});
 
 describe('a wildcard site', { timeout: RUN_TIMEOUT }, () => {
 	it('gets one *.<domain> record, beside the named hosts', async () => {
