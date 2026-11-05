@@ -15,7 +15,7 @@ A complete guide to `gkm dev` — what it does, how it orchestrates a fullstack 
 |---|---|---|
 | Trigger | at least one app sets `constructs:` | no app does |
 | Where containers come from | the manifest — a declared `KyselyDatabase` is why a Postgres exists | a `docker-compose.yml` you wrote |
-| Where URLs come from | derived and injected (`ORDERS_URL`, `UPLOADS_URL`) | secrets, rewritten with resolved ports |
+| Where URLs come from | derived and injected (`ORDERS_URL`, `UPLOADS_CONNECTION_STRING`) | secrets, rewritten with resolved ports |
 | Compose file | generated at `docker-compose.constructs.yml`, with your `docker-compose.yml` merged over it | yours, at the project root |
 
 Steps 5 through 8 below describe the **hand-written** path. On the declared

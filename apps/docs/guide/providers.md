@@ -44,7 +44,7 @@ the same `deploy.<kind>.<stage>` shape when its provider arrives.
 
 | Value | Meaning |
 |---|---|
-| `'external'` (or nothing) | Today's behaviour. Each bucket's `<ID>_URL` and each file server's `<ID>_URL` are set in the stage's secrets by you — S3, R2, any S3-compatible store. A missing key fails `validate` with `ExternalServicesNotConfigured`. |
+| `'external'` (or nothing) | Today's behaviour. Each bucket's `<ID>_CONNECTION_STRING` and each file server's `<ID>_URL` are set in the stage's secrets by you — S3, R2, any S3-compatible store. A missing key fails `validate` with `ExternalServicesNotConfigured`. |
 | `{ provider: 's3', region?, versioning?, cdn? }` | Every deploy of the stage creates and maintains the buckets in the stage's AWS account and writes their keys. |
 | `false` | The stage has no object storage. A deploy of a workspace that declares a bucket is refused with `StageProviderDisabled`. |
 
@@ -125,13 +125,14 @@ and never touches anyone else's (`IamUserNotOwned`). Its one inline policy,
 `s3:GetObjectVersion` is added when the bucket keeps versions.
 
 **The key.** Created once and written into the stage's secrets as the bucket's
-URL — `UPLOADS_URL=s3://KEY:SECRET@<bucket>?region=<region>`, percent-encoded.
+connection — `UPLOADS_CONNECTION_STRING=s3://KEY:SECRET@<bucket>?region=<region>`, percent-encoded.
 The key id is recorded in the state; the secret is never printed.
 
 **A `FileServer`, behind a CDN.** By default each file server over the bucket
 is served through CloudFront on its own name, `<fileserver>.<domain>` —
 `https://uploads.shop.example.com` for `new FileServer('Uploads')` — and that
-is its URL (`UPLOADS_SERVER_URL`), what `uploads.url('brand/logo.png')` appends a key to.
+is its URL (`UPLOADS_URL`), what `uploads.url('brand/logo.png')` appends a
+key to.
 Per file server, on the stage:
 
 - **A certificate** for that name, from ACM in `us-east-1` (the one region

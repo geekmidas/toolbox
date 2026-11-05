@@ -27,7 +27,7 @@ import type { ConstructManifest } from '@geekmidas/manifest';
 const manifest = {
   Orders: { kind: 'database', id: 'Orders', engine: 'postgres', schema: 'app',
             version: 18, provides: ['ORDERS_URL'] },
-  Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+  Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_CONNECTION_STRING'] },
 } as const satisfies ConstructManifest;
 ```
 
@@ -82,7 +82,7 @@ key a target publishes and the key a client reads from drifting apart:
 import { canonicalId, provideKey, serviceKey, cloudName } from '@geekmidas/manifest';
 
 canonicalId('user-uploads');            // 'UserUploads'  — PascalCase
-provideKey('Uploads', 'url');           // 'UPLOADS_URL'
+provideKey('Uploads', 'connectionString'); // 'UPLOADS_CONNECTION_STRING'
 provideKey('Orders', 'ownerUrl');       // 'ORDERS_OWNER_URL'
 serviceKey('Uploads');                  // 'uploads'      — the handler's key
 cloudName({ stage: 'prod', app: 'shop' }, 'UserUploads');

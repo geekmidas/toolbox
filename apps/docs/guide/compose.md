@@ -1481,8 +1481,8 @@ secrets — the stack runs no Mailpit or MinIO for it:
 | Declared | Keys the stage sets |
 |---|---|
 | `Email('Mail')` | `MAIL_URL` (any SMTP server: `smtp://user:pass@host:587`) and `MAIL_FROM` |
-| a bucket, `ObjectStorage('Uploads')` | `UPLOADS_URL` (`s3://bucket?region=…`, with `&endpoint=…` for R2 or any S3-compatible store). Its credentials are optional: a key for this bucket alone in the URL (`s3://KEY:SECRET@bucket?…`), or the shared `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` for every bucket whose URL has none |
-| its file server, `UploadsServer` | `UPLOADS_SERVER_URL` — the public address its objects are served on |
+| a bucket, `ObjectStorage('Uploads')` | `UPLOADS_CONNECTION_STRING` (`s3://bucket?region=…`, with `&endpoint=…` for R2 or any S3-compatible store). Its credentials are optional: a key for this bucket alone in the URL (`s3://KEY:SECRET@bucket?…`), or the shared `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` for every bucket whose URL has none |
+| a file server, `FileServer('Uploads')` | `UPLOADS_CONNECTION_STRING` for its bucket, and `UPLOADS_URL` — the public address its objects are served on |
 
 Every mail and storage construct the workspace declares counts. A stage
 missing any of them stops in the deploy's readiness check — after the stage's
@@ -1509,7 +1509,7 @@ with the shared pair, which every app that reads a bucket is handed when the
 stage set it. Prefer a key per bucket, scoped to it, over one shared pair:
 
 ```bash
-gkm secrets:set UPLOADS_URL 's3://AKIA…:…@acme-uploads?region=eu-west-1' --stage production
+gkm secrets:set UPLOADS_CONNECTION_STRING 's3://AKIA…:…@acme-uploads?region=eu-west-1' --stage production
 # or, for every bucket whose URL carries no key:
 gkm secrets:set AWS_ACCESS_KEY_ID 'AKIA…' --stage production
 gkm secrets:set AWS_SECRET_ACCESS_KEY '…' --stage production
@@ -1517,8 +1517,8 @@ gkm secrets:set AWS_SECRET_ACCESS_KEY '…' --stage production
 
 Or have gkm create the buckets: with `deploy.objects.production: { provider:
 's3' }`, `gkm deploy --stage production` creates each bucket, its IAM user and
-key in the stage's AWS account and writes `UPLOADS_URL` and
-`UPLOADS_SERVER_URL` itself, before its checks run — see
+key in the stage's AWS account and writes `UPLOADS_CONNECTION_STRING`
+and `UPLOADS_URL` itself, before its checks run — see
 [Providers](./providers.md). Every deploy then checks the bucket answers the
 key in the stage's secrets (`verify()`), and stops with
 `ProvisionedBucketUnreachable` if it does not.

@@ -363,7 +363,7 @@ fails the run with `MissingCredential`. Exit code 0 when the deploy finished,
 
 On a server target (`dokploy`, `compose`), a deployed stage's mail and object
 storage come from its secrets: each `Email`'s `<ID>_URL` and `<ID>_FROM`, each
-bucket's `<ID>_URL`, and each file server's `<ID>_URL`. A bucket's credentials
+bucket's `<ID>_CONNECTION_STRING`, and each file server's `<ID>_URL`. A bucket's credentials
 are optional: a key in its URL (`s3://KEY:SECRET@bucket?…`) wins, and the
 shared `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, when set, serves every
 bucket whose URL has none. A stage missing any fails before anything is built

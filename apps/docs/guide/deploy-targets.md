@@ -61,7 +61,7 @@ container's disk:
 The keys, per construct:
 
 - an `Email`: `<ID>_URL` (an SMTP URL) and `<ID>_FROM`;
-- a bucket: `<ID>_URL` (`s3://bucket?region=…`, plus `&endpoint=…` for R2 or
+- a bucket: `<ID>_CONNECTION_STRING` (`s3://bucket?region=…`, plus `&endpoint=…` for R2 or
   any S3-compatible store). Credentials are optional, from either of two
   places: a key for that bucket alone in the URL's userinfo
   (`s3://KEY:SECRET@bucket?…`, the secret percent-encoded), which wins; or the
