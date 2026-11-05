@@ -53,7 +53,7 @@ const emails = testWorker
 
 /** The env a reconciled stage injects. */
 const envParser = new EnvironmentParser({
-	UPLOADS_URL: 's3://uploads?region=us-east-1',
+	UPLOADS_CONNECTION_STRING: 's3://uploads?region=us-east-1',
 	// `basic://` rather than `pgboss://`: the transport is chosen by the
 	// protocol, which is exactly what lets a test pick one that needs no
 	// container. The construct is identical either way.

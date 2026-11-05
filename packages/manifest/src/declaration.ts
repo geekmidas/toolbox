@@ -1105,11 +1105,11 @@ export type DeclarationKind = Declaration['kind'];
  *
  * ```ts
  * export const constructs = {
- *   Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+ *   Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_CONNECTION_STRING'] },
  * } as const satisfies ConstructManifest;
  *
  * type Ids = IdsOf<typeof constructs>;                     // 'Uploads'
- * type Env = ProvidedKeys<typeof constructs, 'Uploads'>;   // 'UPLOADS_URL'
+ * type Env = ProvidedKeys<typeof constructs, 'Uploads'>;   // 'UPLOADS_CONNECTION_STRING'
  * ```
  */
 export type ConstructManifest = Readonly<Record<ConstructId, Declaration>>;
@@ -1174,11 +1174,31 @@ export interface ProvidesByKind {
 	 * nothing from anyone else.
 	 */
 	objects: {
-		url: string;
+		/**
+		 * `s3://<bucket>?region=…&endpoint=…`: what a server presigns and
+		 * uploads through. A connection, not an address anyone opens — which
+		 * is why it is not `url`: on a bucket behind a file server, `<ID>_URL`
+		 * is the file server's public address.
+		 */
+		connectionString: string;
+		/**
+		 * The scheme and host its presigned links are on —
+		 * `https://<bucket>.s3.<region>.amazonaws.com`, an S3-compatible
+		 * endpoint's host, MinIO's address locally. Derived from the
+		 * connection wherever it is resolved, never stored: a page that
+		 * shows private objects through signed links allows this host.
+		 */
+		signedOrigin?: string;
 		eventsConnectionString?: string;
 		eventsToken?: string;
 	};
-	/** Where the served objects answer. Public: a browser is the point of it. */
+	/**
+	 * Where the served objects answer. Public: a browser is the point of it.
+	 *
+	 * Keyed by the construct's name rather than the surface node's id —
+	 * `new FileServer('Assets')` provides `ASSETS_URL`, as it answers on
+	 * `assets.<domain>` (see `providedKeyFor`).
+	 */
 	'file-server': { url: string };
 	/**
 	 * An `smtp://` URL, credentials included — never shippable — and the
@@ -1322,7 +1342,9 @@ export type Provides<K extends keyof ProvidesByKind> = ProvidesByKind[K];
 export const PUBLIC: {
 	readonly [K in keyof ProvidesByKind]: readonly (keyof ProvidesByKind[K])[];
 } = {
-	objects: [],
+	// Where its signed links point, and nothing else of it: an origin carries
+	// no credentials, and a page showing a signed link has to allow its host.
+	objects: ['signedOrigin'],
 	// The address a browser fetches an image from. The bucket's own URL is not
 	// here and must not be: it presigns, and a presigner in a bundle is a
 	// credential in a bundle.

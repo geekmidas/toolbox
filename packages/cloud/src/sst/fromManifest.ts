@@ -28,6 +28,9 @@ import {
 	cookieDomain,
 	DEFAULT_POSTGRES_VERSION,
 	dependentsOf,
+	IMAGE_ORIGINS_KEY,
+	imageOriginSources,
+	imageOrigins,
 	isWildcardSite,
 	mobileOrigins,
 	PUBLIC,
@@ -38,6 +41,7 @@ import {
 	SECRET_SYMBOLS,
 	schemeBase,
 } from '@geekmidas/manifest';
+import { s3Url } from '@geekmidas/storage/aws';
 import { RandomPassword } from '@pulumi/random';
 import {
 	Cache,
@@ -493,30 +497,76 @@ export function siteEnvironment(
 		}
 	}
 
-	for (const edge of declaration.dependencies) {
-		const target = context.manifest[edge.target];
-		if (!target) continue;
-
+	const inline = (id: string, target: Declaration) => {
 		const roles = PUBLIC[target.kind] ?? [];
-		if (roles.length === 0) continue;
+		if (roles.length === 0) return;
 
-		const component = context.provisioned[edge.target];
+		const component = context.provisioned[id];
 		if (!component) {
-			throw new UnresolvedDependency(
-				edge.target,
-				Object.keys(context.provisioned),
-			);
+			throw new UnresolvedDependency(id, Object.keys(context.provisioned));
 		}
 
-		const provided = component.provides();
+		const provided = { ...component.provides() };
+		// A bucket's signed origin is derived from its connection, not
+		// provided: where its presigned links point is a function of it.
+		if (target.kind === 'objects' && provided.connectionString !== undefined) {
+			provided.signedOrigin ??= $util
+				.output(provided.connectionString)
+				.apply((connection) => s3Url.signedOrigin(s3Url.parse(connection)));
+		}
 		for (const role of roles) {
 			const value = provided[role as string];
 			if (value === undefined) continue;
 
 			environment[
-				`${prefix}${providedKeyFor(edge.target, target.kind, role as string)}`
+				`${prefix}${providedKeyFor(id, target.kind, role as string)}`
 			] = value;
 		}
+	};
+
+	for (const edge of declaration.dependencies) {
+		const target = context.manifest[edge.target];
+		if (!target) continue;
+		inline(edge.target, target);
+
+		// An edge to a bucket still shows its objects from where they are
+		// served — the same rule `publicEnvFor` follows.
+		if (target.kind === 'objects') {
+			for (const [id, other] of Object.entries(context.manifest)) {
+				if (other.kind === 'file-server' && other.of === edge.target) {
+					inline(id, other);
+				}
+			}
+		}
+		// And an edge to a file server gets where its bucket's signed links
+		// point.
+		if (target.kind === 'file-server') {
+			const bucket = context.manifest[target.of];
+			if (bucket) inline(target.of, bucket);
+		}
+	}
+
+	// The origins its pages load files from, as one list: composed from the
+	// values just inlined, under the names `imageOriginSources` gives them.
+	const inlined = imageOriginSources(declaration, context.manifest).flatMap(
+		(source) => {
+			const value = environment[`${prefix}${source}`];
+			return value === undefined ? [] : [{ source, value }];
+		},
+	);
+	if (inlined.length > 0) {
+		environment[`${prefix}${IMAGE_ORIGINS_KEY}`] = $util
+			.all(inlined.map(({ value }) => value))
+			.apply((values) => {
+				const resolved = new Map(
+					inlined.map(({ source }, index) => [source, values[index]]),
+				);
+				return (
+					imageOrigins([...resolved.keys()], (source) =>
+						resolved.get(source),
+					) ?? ''
+				);
+			});
 	}
 
 	return environment;

@@ -183,7 +183,7 @@ await storage.delete('documents/old-report.pdf');
 
 ## Storage URLs and credentials
 
-A declared bucket reaches an app as one URL, `<ID>_URL`, and
+A declared bucket reaches an app as one URL, `<ID>_CONNECTION_STRING`, and
 `createStorageClient(url)` picks the driver by its scheme. An `s3://` URL
 names the bucket as its host and the rest as query parameters:
 

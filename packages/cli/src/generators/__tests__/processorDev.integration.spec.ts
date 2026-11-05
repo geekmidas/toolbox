@@ -66,7 +66,10 @@ export const shouting = media
 
 	const { setupProcessors } = await import(file);
 	app = new Hono();
-	setupProcessors(app, new EnvironmentParser({ MEDIA_URL: BUCKET_URL }));
+	setupProcessors(
+		app,
+		new EnvironmentParser({ MEDIA_CONNECTION_STRING: BUCKET_URL }),
+	);
 }, 120_000);
 
 afterAll(() => {

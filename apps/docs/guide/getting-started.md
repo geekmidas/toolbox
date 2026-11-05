@@ -186,7 +186,7 @@ instead is absence:
 | You wrote | The glob missed it | What you see |
 |---|---|---|
 | a `KyselyDatabase` | no Postgres container starts | the app fails on its first query |
-| an `ObjectStorage` | no bucket, no `UPLOADS_URL` | `undefined` where a URL should be |
+| an `ObjectStorage` | no bucket, no `UPLOADS_CONNECTION_STRING` | `undefined` where a URL should be |
 | an endpoint | the route is not generated | a 404, and it is absent from the OpenAPI spec too |
 
 The failure always appears somewhere other than the cause, which is what makes
@@ -290,7 +290,7 @@ export const createAvatarUpload = router
   });
 ```
 
-From that one edge: the handler's env gets `UPLOADS_URL` at build, its client is
+From that one edge: the handler's env gets `UPLOADS_CONNECTION_STRING` at build, its client is
 bound on the first request, and the deploy target grants exactly the S3 access
 this function named — and nothing else. **Permissions are not a framework
 concept and are not in the manifest.** The manifest records what is depended on;

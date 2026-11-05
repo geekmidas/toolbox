@@ -35,7 +35,7 @@ import {
 	type MobileAppStage,
 	provideKey,
 } from '@geekmidas/manifest';
-import { type Declarable, edgeTo } from './construct-interface';
+import { type Declarable, frontendEdgeTo } from './construct-interface';
 
 export interface MobileAppConfig {
 	/**
@@ -104,11 +104,15 @@ export class MobileApp<TName extends string = string>
 	 *
 	 * Immutable, like every other builder: it returns a new app rather than
 	 * changing this one.
+	 *
+	 * A plain edge to a `FileServer` is to its public face — the address its
+	 * objects are served on, inlined — never to the bucket a phone has no
+	 * business holding a key to.
 	 */
 	dependsOn(constructs: readonly Declarable[]): MobileApp<TName> {
 		return new MobileApp<TName>(this.id as ConstructName<TName>, this.config, [
 			...this.dependencies,
-			...constructs.map(edgeTo),
+			...constructs.map(frontendEdgeTo),
 		]);
 	}
 

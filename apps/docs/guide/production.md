@@ -168,8 +168,8 @@ come from its secrets. gkm runs no Mailpit or MinIO for it unless told to:
 ```bash
 gkm secrets:set MAIL_URL 'smtp://user:password@smtp.example.com:587' --stage production
 gkm secrets:set MAIL_FROM 'noreply@example.com' --stage production
-gkm secrets:set UPLOADS_URL 's3://AKIA…:…@acme-uploads?region=eu-west-1' --stage production
-gkm secrets:set UPLOADS_SERVER_URL 'https://files.example.com' --stage production
+gkm secrets:set UPLOADS_CONNECTION_STRING 's3://AKIA…:…@acme-uploads?region=eu-west-1' --stage production
+gkm secrets:set UPLOADS_URL 'https://files.example.com' --stage production
 ```
 
 Or let gkm ask for each one: `gkm secrets:add --stage production` walks every
@@ -181,9 +181,10 @@ store as soon as it is built. See
 [Guided secrets](./deployment.md#guided-secrets).
 
 The names follow the constructs: `Email('Mail')` reads `MAIL_URL` and
-`MAIL_FROM`, `ObjectStorage('Uploads')` reads `UPLOADS_URL`, its file server
-`UPLOADS_SERVER_URL`. Any SMTP provider works, and any S3-compatible store —
-add `&endpoint=https://…` to the URL for one that is not S3. A deploy missing
+`MAIL_FROM`, `ObjectStorage('Uploads')` reads `UPLOADS_CONNECTION_STRING`, and
+`FileServer('Uploads')` reads that and `UPLOADS_URL`, its public address.
+Any SMTP provider works, and any S3-compatible store — add
+`&endpoint=https://…` to the connection string for one that is not S3. A deploy missing
 any of them fails before it builds, provisions or writes anything, with
 `ExternalServicesNotConfigured` listing every key it lacks.
 
@@ -210,9 +211,9 @@ Or let gkm create the buckets. With `deploy.objects.production: { provider:
 's3' }`, every `gkm deploy --stage production` — with the stage account's
 credentials, in CI the stage's role — creates each bucket (private, SSE-S3,
 TLS-only, CORS for the stage's sites), an IAM user for it with a policy for
-that bucket alone, and a key, and writes `UPLOADS_URL` (key included) and
-`UPLOADS_SERVER_URL` into the stage's secrets, before its checks run. Each
-later deploy repairs drift and says "up to date" when there is none; it never
+that bucket alone, and a key, and writes `UPLOADS_CONNECTION_STRING` (key
+included) and, for a file server, `UPLOADS_URL` into the stage's secrets,
+before its checks run. Each later deploy repairs drift and says "up to date" when there is none; it never
 deletes a bucket or a user. Rotate the key with `gkm deploy --stage production
 --rotate-keys`. Every deploy checks the bucket answers that key. See
 [Providers](./providers.md).

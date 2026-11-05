@@ -119,7 +119,7 @@ describe('SstEnvironmentBuilder', () => {
 			const bucket: Bucket = {
 				type: ResourceType.ObjectStorage,
 				name: 'my-s3-bucket',
-				url: 's3://my-s3-bucket?region=us-east-1',
+				connectionString: 's3://my-s3-bucket?region=us-east-1',
 			};
 
 			const env = new SstEnvironmentBuilder({
@@ -128,7 +128,7 @@ describe('SstEnvironmentBuilder', () => {
 
 			expect(env).toEqual({
 				UPLOAD_BUCKET_NAME: 'my-s3-bucket',
-				UPLOAD_BUCKET_URL: 's3://my-s3-bucket?region=us-east-1',
+				UPLOAD_BUCKET_CONNECTION_STRING: 's3://my-s3-bucket?region=us-east-1',
 			});
 		});
 
@@ -136,7 +136,7 @@ describe('SstEnvironmentBuilder', () => {
 			const bucket: Bucket = {
 				type: ResourceType.SSTObjectStorage,
 				name: 'assets-bucket-prod',
-				url: 's3://assets-bucket-prod?region=us-east-1',
+				connectionString: 's3://assets-bucket-prod?region=us-east-1',
 			};
 
 			const env = new SstEnvironmentBuilder({
@@ -145,7 +145,8 @@ describe('SstEnvironmentBuilder', () => {
 
 			expect(env).toEqual({
 				ASSET_STORAGE_NAME: 'assets-bucket-prod',
-				ASSET_STORAGE_URL: 's3://assets-bucket-prod?region=us-east-1',
+				ASSET_STORAGE_CONNECTION_STRING:
+					's3://assets-bucket-prod?region=us-east-1',
 			});
 		});
 	});
@@ -255,7 +256,7 @@ describe('SstEnvironmentBuilder', () => {
 			const bucket: Bucket = {
 				type: ResourceType.ObjectStorage,
 				name: 'uploads-bucket',
-				url: 's3://uploads-bucket?region=us-east-1',
+				connectionString: 's3://uploads-bucket?region=us-east-1',
 			};
 
 			const topic: SnsTopic = {
@@ -285,7 +286,7 @@ describe('SstEnvironmentBuilder', () => {
 					'postgresql://app_user:db-pass@db.example.com:5432/app_db',
 				JWT_SECRET: 'jwt-secret',
 				UPLOADS_NAME: 'uploads-bucket',
-				UPLOADS_URL: 's3://uploads-bucket?region=us-east-1',
+				UPLOADS_CONNECTION_STRING: 's3://uploads-bucket?region=us-east-1',
 				EVENTS_ARN: 'arn:aws:sns:us-east-1:123456789:events',
 				EVENTS_PUBLISHER_CONNECTION_STRING:
 					'sns://?topicArn=arn%3Aaws%3Asns%3Aus-east-1%3A123456789%3Aevents',

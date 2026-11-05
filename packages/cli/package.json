@@ -55,6 +55,16 @@
 				"default": "./dist/target/public.cjs"
 			}
 		},
+		"./next": {
+			"import": {
+				"types": "./dist/next.d.mts",
+				"default": "./dist/next.mjs"
+			},
+			"require": {
+				"types": "./dist/next.d.cts",
+				"default": "./dist/next.cjs"
+			}
+		},
 		"./workspace": {
 			"import": {
 				"types": "./dist/workspace/index.d.mts",

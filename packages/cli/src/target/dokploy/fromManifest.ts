@@ -49,6 +49,7 @@ import {
 	dependentsOf,
 	externalApiUrl,
 	mobileOrigins,
+	providedKeyFor,
 	provideKey,
 	schemeBase,
 } from '@geekmidas/manifest';
@@ -458,7 +459,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	objects: async (declaration, context) => {
 		if (declaration.kind !== 'objects') throw new WrongKind(declaration.kind);
 
-		const key = provideKey(declaration.id, 'url');
+		const key = provideKey(declaration.id, 'connectionString');
 		const given = context.supplied?.[key];
 		if (given !== undefined) {
 			return {
@@ -531,12 +532,13 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 		if (declaration.kind !== 'file-server')
 			throw new WrongKind(declaration.kind);
 
-		const key = provideKey(declaration.id, 'url');
+		const key = providedKeyFor(declaration.id, 'file-server', 'url');
 		const given = context.supplied?.[key];
 		if (given !== undefined) return { provides: { [key]: given } };
 
 		const parent = context.provisioned[declaration.of];
-		const parentUrl = parent?.provides[provideKey(declaration.of, 'url')];
+		const parentUrl =
+			parent?.provides[provideKey(declaration.of, 'connectionString')];
 		if (!parentUrl) throw new UnresolvedParent(declaration.id, declaration.of);
 
 		const endpoint = new URL(parentUrl).searchParams.get('endpoint');

@@ -29,6 +29,7 @@
 
 import {
 	type ConstructManifest,
+	providedKeyFor,
 	provideKey,
 	publicEnvFor,
 } from '@geekmidas/manifest';
@@ -202,7 +203,14 @@ export function stageServiceDeclarations(
 	const owners = new Map<string, string>();
 	for (const [id, declaration] of Object.entries(manifest)) {
 		if (!SERVICE_KINDS[declaration.kind]) continue;
-		owners.set(provideKey(id, 'url'), id);
+		owners.set(
+			providedKeyFor(
+				id,
+				declaration.kind,
+				declaration.kind === 'objects' ? 'connectionString' : 'url',
+			),
+			id,
+		);
 		if (declaration.kind === 'email') owners.set(provideKey(id, 'from'), id);
 	}
 
@@ -428,7 +436,7 @@ export function requiredStageKeys(input: StageKeysInput): StageKey[] {
 		}
 		for (const d of services.filter((d) => d.kind === 'objects')) {
 			add({
-				key: provideKey(d.id, 'url'),
+				key: provideKey(d.id, 'connectionString'),
 				id: d.id,
 				kind: 'bucket',
 				what: `the bucket '${d.id}' — S3, R2, or any S3-compatible store (add &endpoint=… for one that is not S3)`,
@@ -440,7 +448,7 @@ export function requiredStageKeys(input: StageKeysInput): StageKey[] {
 		}
 		for (const d of services.filter((d) => d.kind === 'file-server')) {
 			add({
-				key: provideKey(d.id, 'url'),
+				key: providedKeyFor(d.id, 'file-server', 'url'),
 				id: d.id,
 				kind: 'file-server',
 				what: `the public address '${d.id}' serves its bucket on — a CDN or the bucket's own domain`,

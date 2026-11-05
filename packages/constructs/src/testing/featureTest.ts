@@ -1065,7 +1065,9 @@ function bucketName(
 	envParser: EnvironmentParser<{}>,
 ): string {
 	const { url } = envParser
-		.create((get) => ({ url: get(provideKey(bucket.id, 'url')).string() }))
+		.create((get) => ({
+			url: get(provideKey(bucket.id, 'connectionString')).string(),
+		}))
 		.parse();
 	try {
 		return new URL(url).hostname || bucket.id;

@@ -41,7 +41,8 @@ address too, through the edge.
 | `RestApi` (an auth server included) | `<T>_URL` | from a `MobileApp` caller: `<C>_SCHEME`<br>from a site caller: `<C>_URL` |
 | `WebSocketApi` | `<T>_URL`; a server process also gets `<T>_PUBLISHER_CONNECTION_STRING` | same as a `RestApi` |
 | `Queue`, `Topic` | its keys, and `EVENT_PUBLISHER_CONNECTION_STRING` | nothing |
-| `ObjectStorage` | its keys, its file server's `<SERVER>_URL`, and `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` | nothing |
+| `ObjectStorage` | its keys (`<T>_CONNECTION_STRING`, `<T>_SIGNED_ORIGIN`), the `<F>_URL` of each file server over it, and `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` | nothing |
+| `FileServer` | from a server process: its bucket's keys, as for `ObjectStorage`, and its own `<T>_URL`<br>from a `StaticSite` or `MobileApp`: `<T>_URL` and its bucket's `<B>_SIGNED_ORIGIN` only, no connection and no credentials; through `.dependsOn([assets.server])`, the bucket's keys too | nothing |
 | `Inbox` | its keys (and, locally, the token Mailpit relays mail with) | nothing |
 | a database, schema, reader, cache, secret, credential, external API, mail, encryption, `Telemetry` | its keys | nothing |
 
@@ -51,6 +52,13 @@ Some notes on the table:
   goes to the API. The auth server's secret, database and mailer stay with the
   auth server. A surface's `<T>_TRUSTED_ORIGINS` and `<T>_COOKIE_DOMAIN` are
   its own settings, and only its own process reads them.
+- **A frontend's plain edge to a file server is to its public face.** A
+  site or a mobile app that depends on `assets` gets the address its objects
+  are served on, and nothing that writes to the bucket: its `assets` client
+  serves (`url()`, `openUrl()`, `processedUrl()`), and a bucket method throws
+  `FileServerReadOnly`. A full-stack site whose server half uploads or
+  presigns asks for the bucket by name, `.dependsOn([assets.server])`. A
+  backend's plain edge is to the bucket already, so it never needs `.server`.
 - **The edge is one hop.** An app that calls the API gets `API_URL`, not the
   API's database.
 - **`.auth(auth)` is an edge** to the auth server, just like `.dependsOn([auth])`.
@@ -115,9 +123,12 @@ built, under the prefix its bundler inlines (`publicEnvFor`):
 | `expo` | `EXPO_PUBLIC_` |
 
 Only public values get the prefix: a surface's or a WebSocket surface's
-`<T>_URL`, a file server's `<T>_URL`, the local mail inbox's address, and the
+`<T>_URL`, a file server's `<T>_URL` (`VITE_ASSETS_URL` for
+`FileServer('Assets')`, on either edge), a bucket's `<T>_SIGNED_ORIGIN`,
+`GKM_IMAGE_ORIGINS`, the local mail inbox's address, and the
 site's own `<C>_URL` (with `<C>_DOMAIN` and `<C>_PROTECTED_SUBDOMAINS` for a
-site on every subdomain). A connection string, a bucket's presigning URL or a
+site on every subdomain). A connection string (a bucket's
+`<T>_CONNECTION_STRING` included, even through `.server`) or a
 secret is never prefixed into a bundle, even when the site has an edge to it.
 A site's server half (Next, TanStack Start) reads the unprefixed keys at
 runtime, as a backend does.

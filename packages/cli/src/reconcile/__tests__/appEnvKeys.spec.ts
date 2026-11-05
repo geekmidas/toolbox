@@ -45,12 +45,34 @@ const manifest = {
 			},
 		],
 	},
-	Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+	Uploads: {
+		kind: 'objects',
+		id: 'Uploads',
+		provides: ['UPLOADS_CONNECTION_STRING'],
+	},
 	UploadsServer: {
 		kind: 'file-server',
 		id: 'UploadsServer',
 		of: 'Uploads',
-		provides: ['UPLOADS_SERVER_URL'],
+		provides: ['UPLOADS_URL'],
+	},
+	// A site that only shows the objects: its plain edge is to the surface.
+	Web: {
+		kind: 'site',
+		id: 'Web',
+		variant: 'next',
+		app: { path: 'apps/web' },
+		dependencies: [{ target: 'UploadsServer', kind: 'file-server' }],
+		provides: ['WEB_URL'],
+	},
+	// A full-stack site whose server half uploads: `uploads.server`.
+	Shop: {
+		kind: 'site',
+		id: 'Shop',
+		variant: 'next',
+		app: { path: 'apps/shop' },
+		dependencies: [{ target: 'Uploads', kind: 'objects' }],
+		provides: ['SHOP_URL'],
 	},
 } as unknown as ConstructManifest;
 
@@ -88,8 +110,26 @@ describe('appEnvKeys', () => {
 	it('gives a caller of a file server’s bucket the address that serves it', () => {
 		const keys = appEnvKeys(manifest, 'api')!;
 
+		expect(keys).toContain('UPLOADS_CONNECTION_STRING');
 		expect(keys).toContain('UPLOADS_URL');
-		expect(keys).toContain('UPLOADS_SERVER_URL');
+		expect(keys).toContain('AWS_ACCESS_KEY_ID');
+	});
+
+	it("gives a site's plain edge the served address, and nothing that writes", () => {
+		const keys = appEnvKeys(manifest, 'web')!;
+
+		expect(keys).toContain('UPLOADS_URL');
+		expect(keys).not.toContain('UPLOADS_CONNECTION_STRING');
+		expect(keys).not.toContain('AWS_ACCESS_KEY_ID');
+		expect(keys).not.toContain('AWS_SECRET_ACCESS_KEY');
+	});
+
+	it("gives a site's edge to the bucket the bucket too, for its server half", () => {
+		const keys = appEnvKeys(manifest, 'shop')!;
+
+		expect(keys).toContain('UPLOADS_CONNECTION_STRING');
+		expect(keys).toContain('UPLOADS_URL');
+		expect(keys).toContain('AWS_ACCESS_KEY_ID');
 	});
 });
 

@@ -3,6 +3,9 @@ import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import {
 	type ConstructManifest,
+	IMAGE_ORIGINS_KEY,
+	imageOriginSources,
+	PUBLIC_PREFIX,
 	provideKey,
 	publicEnvFor,
 } from '@geekmidas/manifest';
@@ -545,7 +548,7 @@ export function processorDockerfile(
  * A site's Dockerfile, with an `ARG` for every key its bundler inlines.
  *
  * The keys come from the site's declaration where there is one — every
- * public key its edges give it, `VITE_UPLOADS_SERVER_URL` included — and an
+ * public key its edges give it, `VITE_UPLOADS_URL` included — and an
  * `ARG` the Dockerfile does not declare is a build argument the build drops,
  * leaving the bundle with an empty URL.
  */
@@ -571,6 +574,10 @@ export function siteDockerfile(
 					// at build — what `publicBuildValues` hands every image build.
 					provideKey(declared.id, 'url'),
 					...Object.keys(publicEnvFor(declared, options.manifest)),
+					// The origins its pages load files from, where it has any.
+					...(imageOriginSources(declared, options.manifest).length > 0
+						? [`${PUBLIC_PREFIX[declared.variant]}${IMAGE_ORIGINS_KEY}`]
+						: []),
 				]
 			: getPublicUrlArgNames(app));
 

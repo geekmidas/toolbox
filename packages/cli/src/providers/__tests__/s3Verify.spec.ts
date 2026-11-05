@@ -35,7 +35,11 @@ const REQUEST_ID = 'R3QU35T1D';
 const ID2 = 'ext/id+2=';
 
 const manifest = {
-	Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+	Uploads: {
+		kind: 'objects',
+		id: 'Uploads',
+		provides: ['UPLOADS_CONNECTION_STRING'],
+	},
 } as unknown as ConstructManifest;
 
 const server = setupServer();
@@ -80,7 +84,7 @@ function verify(
 		manifest,
 		stage: STAGE,
 		config: { provider: 's3' },
-		secrets: { UPLOADS_URL: options.url ?? urlIn('eu-west-1') },
+		secrets: { UPLOADS_CONNECTION_STRING: options.url ?? urlIn('eu-west-1') },
 		...(options.resources ? { resources: options.resources } : {}),
 		log: (line) => lines.push(line),
 	});
@@ -131,7 +135,7 @@ describe('verify: a bucket in another region than its URL says', () => {
 		expect(mismatch.bucketRegion).toBe('us-east-1');
 		expect(mismatch.urlRegion).toBe('eu-west-1');
 		expect(mismatch.message).toContain(
-			`The bucket '${BUCKET}' (Uploads) is in us-east-1, but UPLOADS_URL in the stage 'prod''s secrets says eu-west-1 (HTTP 301`,
+			`The bucket '${BUCKET}' (Uploads) is in us-east-1, but UPLOADS_CONNECTION_STRING in the stage 'prod''s secrets says eu-west-1 (HTTP 301`,
 		);
 		expect(mismatch.message).toContain(`x-amz-request-id: ${REQUEST_ID}`);
 		expect(mismatch.message).toContain(
@@ -158,7 +162,7 @@ describe('verify: a bucket in another region than its URL says', () => {
 		expect(error).toBeInstanceOf(BucketRegionMismatch);
 		expect((error as BucketRegionMismatch).urlRegion).toBeUndefined();
 		expect(error.message).toContain(
-			"is in eu-west-2, but UPLOADS_URL in the stage 'prod''s secrets names no region, so us-east-1 was asked",
+			"is in eu-west-2, but UPLOADS_CONNECTION_STRING in the stage 'prod''s secrets names no region, so us-east-1 was asked",
 		);
 	});
 });

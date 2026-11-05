@@ -12,6 +12,47 @@ gkm upgrade --all
 `10.0.0-alpha.x` project), never goes backwards, and with `--all` also raises
 third-party packages to the floor of the peer ranges the new version declares.
 
+## After 10.0.0-alpha.166: a bucket's connection and a file server's address are renamed {#bucket-connection-string}
+
+`_URL` now always means an address a browser opens. A bucket's connection and
+a file server's public address have new keys:
+
+| | Before | Now |
+|---|---|---|
+| a bucket's connection (`s3://<bucket>?region=…`) | `<ID>_URL` | `<ID>_CONNECTION_STRING` |
+| a file server's public address (`https://<id>.<domain>`) | `<ID>_SERVER_URL` | `<ID>_URL` |
+
+`new FileServer('Uploads')` provides `UPLOADS_CONNECTION_STRING` and
+`UPLOADS_URL`, `ObjectStorage('Uploads')` provides
+`UPLOADS_CONNECTION_STRING`, and a site's bundle gets `VITE_UPLOADS_URL`
+(`NEXT_PUBLIC_UPLOADS_URL` for Next). This supersedes the
+[alpha.163 note](#file-server-host) that `<ID>_SERVER_URL` keeps its name.
+`DATABASE_URL`, a cache's `<ID>_URL` and `MAIL_URL` do not change.
+
+- **The stored keys move on the first deploy.** A deployed stage still holds
+  the old names. The first `gkm deploy` after upgrading renames them in the
+  stage's secrets: each bucket's `<ID>_URL` to `<ID>_CONNECTION_STRING` first,
+  then each file server's `<ID>_SERVER_URL` to `<ID>_URL`. A key you set by
+  hand on an `external` stage moves the same way, and a provider reuses the
+  bucket's access key it already wrote. `--dry-run` prints the moves and
+  writes nothing.
+- **Code that reads the raw keys changes.** Through `services.<id>` nothing
+  changes. A `get('UPLOADS_URL')` meant for the bucket becomes
+  `get('UPLOADS_CONNECTION_STRING')`, a `get('UPLOADS_SERVER_URL')` becomes
+  `get('UPLOADS_URL')`, and so do `import.meta.env.VITE_UPLOADS_SERVER_URL`,
+  `process.env.NEXT_PUBLIC_UPLOADS_SERVER_URL` and the like in a bundle.
+  `gkm secrets:set` takes the new names.
+- **`.server` means the bucket now.** A site's or a mobile app's plain
+  `.dependsOn([uploads])` used to point at the bucket, and `uploads.server` at
+  the file server's surface. Now the plain edge is the surface (the bundle
+  gets `<PREFIX>UPLOADS_URL`, no bucket, no credentials), and
+  `uploads.server` is the bucket, its credentials and `UPLOADS_URL`. A site
+  that depended on `uploads.server` to get the address can drop `.server`. A
+  site whose server half uploads or presigns through a plain edge moves to
+  `.dependsOn([uploads.server])`; otherwise its bucket methods throw
+  `FileServerReadOnly`. A backend's edges do not change. See
+  [Edges and Environment](./edges.md#what-each-side-of-an-edge-gets).
+
 ## After 10.0.0-alpha.163: a file server answers on its own name {#file-server-host}
 
 `new FileServer('Assets', …)` used to answer on `assets-server.<domain>`, the

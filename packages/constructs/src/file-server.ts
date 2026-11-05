@@ -36,13 +36,19 @@ import {
 	canonicalId,
 	DERIVED_PREFIX,
 	type Declaration,
+	fileServerSurfaceId,
+	providedKeyFor,
 	provideKey,
 	serviceKey,
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { createStorageClient, type StorageClient } from '@geekmidas/storage';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import type { Construct, Declarable } from './construct-interface';
+import type {
+	Construct,
+	Declarable,
+	HasPublicFace,
+} from './construct-interface';
 import { expiryDays, type ObjectExpiry } from './expire';
 import type { Processor } from './processors/Processor';
 import { ProcessorBuilder } from './processors/ProcessorBuilder';
@@ -251,6 +257,57 @@ export class BucketOptionOnOrigin extends Error {
 	}
 }
 
+/**
+ * A bucket method called on a file server's client that was handed only its
+ * public address — a frontend's plain edge.
+ */
+export class FileServerReadOnly extends Error {
+	constructor(
+		readonly id: string,
+		readonly method: string,
+		readonly key: string,
+	) {
+		super(
+			`'${id}' was reached through its public address only, so it serves ` +
+				`and cannot ${method}(): ${key} is not in this process's environment. ` +
+				`A site or app whose server half writes or presigns depends on ` +
+				`'${id}'.server instead — .dependsOn([${id.charAt(0).toLowerCase()}${id.slice(1)}.server]).`,
+		);
+		this.name = 'FileServerReadOnly';
+	}
+}
+
+/** Names asked of any object, which a read-only client must not answer. */
+const INTROSPECTED = new Set([
+	'then',
+	'toJSON',
+	'constructor',
+	'asymmetricMatch',
+	'$$typeof',
+	'nodeType',
+	'inspect',
+]);
+
+/**
+ * The bucket half of a client that has no bucket: every method throws
+ * {@link FileServerReadOnly}, naming itself.
+ *
+ * A proxy rather than a list of stubs, so a method the storage client grows
+ * later refuses the same way. What a runtime asks of any object is left
+ * alone: `then`, because a client is resolved from a promise, and the names a
+ * serialiser or a test's printer looks for.
+ */
+function readOnlyStorage(id: string, key: string): StorageClient {
+	return new Proxy({} as StorageClient, {
+		get(_target, property) {
+			if (typeof property !== 'string' || INTROSPECTED.has(property)) return;
+			return () => {
+				throw new FileServerReadOnly(id, property, key);
+			};
+		},
+	});
+}
+
 /** A key was asked to be served unsigned, and no open pattern admits it. */
 export class NotOpen extends Error {
 	constructor(
@@ -270,7 +327,7 @@ export class NotOpen extends Error {
 export class FileServer<
 	TName extends string = string,
 	TOpen extends string = never,
-> implements Construct<TName, FileServerClient<TOpen>>
+> implements Construct<TName, FileServerClient<TOpen>>, HasPublicFace
 {
 	readonly id: TName;
 	readonly service: Service<Uncapitalize<TName>, FileServerClient<TOpen>>;
@@ -328,11 +385,11 @@ export class FileServer<
 					DERIVED_PREFIX
 				]
 			: undefined;
-		this.surfaceId = `${canonical}Server`;
+		this.surfaceId = fileServerSurfaceId(canonical);
 
 		this.keys = {
-			origin: provideKey(originId, 'url'),
-			server: provideKey(this.surfaceId, 'url'),
+			origin: provideKey(originId, 'connectionString'),
+			server: providedKeyFor(this.surfaceId, 'file-server', 'url'),
 		};
 
 		// A field, not a getter: consumers cache services by object identity.
@@ -392,20 +449,14 @@ export class FileServer<
 	}
 
 	/**
-	 * The served surface, as something an edge can point at.
+	 * The served surface: what a site's or a mobile app's plain
+	 * `.dependsOn([uploads])` points at.
 	 *
-	 * Depending on the `FileServer` itself points at the **bucket** — its
-	 * canonical node — which is right for a handler: it presigns and writes. But
-	 * a bucket's URL is never public, so a site depending on it gets nothing
-	 * inlined, which is correct and also useless.
-	 *
-	 * This is the other half: `.dependsOn([uploads.server])` points at the
-	 * surface, whose address *is* public, and is what puts
-	 * `VITE_UPLOADS_SERVER_URL` in a bundle. The same accessor shape
-	 * `database.reader()` uses, and for the same reason — one construct owning
-	 * two addresses needs a way to name the second.
+	 * Its address is public, so the frontend is built with it
+	 * (`VITE_UPLOADS_URL`) — and it is all the frontend gets: no bucket, no
+	 * key. A backend's plain edge is to the bucket, as it presigns and writes.
 	 */
-	get server(): Declarable {
+	get publicFace(): Declarable {
 		const surface = this.declare().find(
 			(declaration) => declaration.id === this.surfaceId,
 		);
@@ -414,6 +465,24 @@ export class FileServer<
 			id: this.surfaceId,
 			declare: () => (surface ? [surface] : []),
 		};
+	}
+
+	/**
+	 * Everything: the bucket, its credentials, and the address it is served
+	 * on.
+	 *
+	 * What a backend's plain edge already is. A frontend asks for it by name —
+	 * `.dependsOn([uploads.server])` — when its server half uploads or
+	 * presigns: a full-stack site's, never a bundle's. The bucket's connection
+	 * is never inlined into a bundle either way; only the served address is.
+	 */
+	get server(): Declarable {
+		const originId = this.options.origin?.id ?? this.id;
+		const declarations = this.options.origin
+			? this.options.origin.declare()
+			: this.declare();
+
+		return { id: originId, declare: () => declarations };
 	}
 
 	/**
@@ -462,22 +531,28 @@ export class FileServer<
 	/**
 	 * The bucket's client, with the serving half added.
 	 *
-	 * Both addresses are read here, which is also how the environment reaches a
+	 * Both keys are read here, which is also how the environment reaches a
 	 * handler: the sniffer records what this reads, so `.dependsOn([uploads])`
-	 * carries the bucket URL and the server URL without either being written
-	 * down beside the handler.
+	 * carries the bucket's connection and the server's address without either
+	 * being written down beside the handler.
+	 *
+	 * Without the connection — a site's or an app's plain edge, which is to
+	 * the public face — the client serves and does nothing else: its bucket
+	 * methods throw {@link FileServerReadOnly}.
 	 */
 	private async connect(
 		options: ServiceRegisterOptions,
 	): Promise<FileServerClient<TOpen>> {
 		const { origin, server } = options.envParser
 			.create((get) => ({
-				origin: get(this.keys.origin).string(),
+				origin: get(this.keys.origin).string().optional(),
 				server: get(this.keys.server).string(),
 			}))
 			.parse();
 
-		const storage = createStorageClient(origin);
+		const storage = origin
+			? createStorageClient(origin)
+			: readOnlyStorage(this.id, this.keys.origin);
 		const base = server.replace(/\/+$/, '');
 
 		const serve = (key: string): string => {

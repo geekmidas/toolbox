@@ -12,15 +12,23 @@ import {
 const stack = {} as never;
 
 const manifest = {
-	Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+	Uploads: {
+		kind: 'objects',
+		id: 'Uploads',
+		provides: ['UPLOADS_CONNECTION_STRING'],
+	},
 	UploadsServer: {
 		kind: 'file-server',
 		id: 'UploadsServer',
 		of: 'Uploads',
 		open: ['brand/**'],
-		provides: ['UPLOADS_SERVER_URL'],
+		provides: ['UPLOADS_URL'],
 	},
-	Assets: { kind: 'objects', id: 'Assets', provides: ['ASSETS_URL'] },
+	Assets: {
+		kind: 'objects',
+		id: 'Assets',
+		provides: ['ASSETS_CONNECTION_STRING'],
+	},
 	Api: {
 		kind: 'rest-api',
 		id: 'Api',
@@ -106,6 +114,9 @@ describe('siteEnvironment', () => {
 			context({
 				Api: provided({ url: 'https://api.example.com' }),
 				Orders: provided({ url: 'postgres://user:pw@db/orders' }),
+				Uploads: provided({
+					connectionString: 's3://uploads-x1?region=eu-west-1',
+				}),
 				UploadsServer: provided({ url: 'https://files.example.com' }),
 				Mailer: provided({
 					url: 'smtp://user:pw@email-smtp.example.com:587',
@@ -121,8 +132,43 @@ describe('siteEnvironment', () => {
 	it('inlines a served bucket’s address, but never the bucket’s own', () => {
 		// A served URL is what a browser fetches; the bucket's presigns, and a
 		// presigner in a bundle is a credential in a bundle.
-		expect(built().VITE_UPLOADS_SERVER_URL).toBe('https://files.example.com');
-		expect(built()).not.toHaveProperty('VITE_UPLOADS_URL');
+		expect(built().VITE_UPLOADS_URL).toBe('https://files.example.com');
+		expect(built()).not.toHaveProperty('VITE_UPLOADS_CONNECTION_STRING');
+	});
+
+	it("inlines where a served bucket's signed links point", () => {
+		expect(built().VITE_UPLOADS_SIGNED_ORIGIN).toBe(
+			'https://uploads-x1.s3.eu-west-1.amazonaws.com',
+		);
+	});
+
+	it("inlines a bucket's served address on an edge to the bucket itself", () => {
+		// A full-stack site's `.dependsOn([uploads.server])`: the server half
+		// holds the bucket, and the bundle still shows its objects from where
+		// they are served.
+		const env = siteEnvironment(
+			{
+				...manifest.Console,
+				dependencies: [{ target: 'Uploads', kind: 'objects' }],
+			},
+			context({
+				Uploads: provided({
+					connectionString: 's3://uploads-x1?region=eu-west-1',
+				}),
+				UploadsServer: provided({ url: 'https://files.example.com' }),
+			}),
+		);
+
+		// And where the bucket's signed links point, derived from its
+		// connection — never the connection itself.
+		expect(env).toEqual({
+			VITE_UPLOADS_SIGNED_ORIGIN:
+				'https://uploads-x1.s3.eu-west-1.amazonaws.com',
+			VITE_UPLOADS_URL: 'https://files.example.com',
+			// Both, as the one list a page's image config reads.
+			VITE_GKM_IMAGE_ORIGINS:
+				'https://files.example.com,https://uploads-x1.s3.eu-west-1.amazonaws.com',
+		});
 	});
 
 	it('keeps a connection string out of the bundle entirely', () => {

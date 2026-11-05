@@ -31,7 +31,7 @@ function manifest(): ConstructManifest {
 			kind: 'objects',
 			id: 'Uploads',
 			versioned: true,
-			provides: keys('Uploads', 'objects', ['url']),
+			provides: keys('Uploads', 'objects', ['connectionString']),
 		},
 		Files: {
 			kind: 'file-server',

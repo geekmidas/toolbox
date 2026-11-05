@@ -21,7 +21,7 @@ import type {
 } from './declaration';
 import { DERIVES_FROM, isWildcardSite, PUBLIC } from './declaration';
 import { IllegalDerivation, UnknownParent } from './errors';
-import { provideKey } from './naming';
+import { providedKeyFor, provideKey } from './naming';
 
 /** Whether a declaration names a parent. */
 export function isDerived(
@@ -224,15 +224,104 @@ export function publicEnvFor(
 		}
 	}
 
+	const inline = (id: string, target: Declaration) => {
+		for (const role of PUBLIC[target.kind] ?? []) {
+			const key = providedKeyFor(id, target.kind, role as string);
+			keys[`${prefix}${key}`] = key;
+		}
+	};
+
 	for (const edge of declaration.dependencies) {
 		const target = manifest[edge.target];
 		if (!target) continue;
+		inline(edge.target, target);
 
-		for (const role of PUBLIC[target.kind] ?? []) {
-			const key = provideKey(edge.target, role as string);
-			keys[`${prefix}${key}`] = key;
+		// An edge to a bucket — a full-stack site's `.dependsOn([assets.server])`
+		// — still has its objects served somewhere public, and the bundle shows
+		// them from there: each file server over it is inlined as a plain edge
+		// to it would be. The bucket's own connection never is.
+		if (target.kind === 'objects') {
+			for (const [id, other] of Object.entries(manifest)) {
+				if (other.kind === 'file-server' && other.of === edge.target) {
+					inline(id, other);
+				}
+			}
+		}
+		// And the other way: an edge to a file server shows private objects
+		// through links the bucket under it signs, so the bundle gets where
+		// those point — the bucket's public values, never its connection.
+		if (target.kind === 'file-server') {
+			const bucket = manifest[target.of];
+			if (bucket) inline(target.of, bucket);
 		}
 	}
 
 	return keys;
+}
+
+/**
+ * The key, under a site's public prefix, that lists every origin its pages
+ * load files from: `NEXT_PUBLIC_GKM_IMAGE_ORIGINS`. Comma-separated.
+ *
+ * One composed key rather than a rule over names, because a file server's
+ * `<ID>_URL` and an API's look the same: which of a bundle's addresses serve
+ * files is a fact about the graph, so the graph says it.
+ */
+export const IMAGE_ORIGINS_KEY = 'GKM_IMAGE_ORIGINS';
+
+/**
+ * The keys whose values are the origins a site's pages load files from: each
+ * file server it reaches, and where each bucket it reaches signs its links —
+ * by either edge, the same walk {@link publicEnvFor} makes. Sorted, so the
+ * value composed from them does not churn.
+ */
+export function imageOriginSources(
+	declaration: SiteDeclaration | MobileAppDeclaration,
+	manifest: ConstructManifest,
+): string[] {
+	const sources = new Set<string>();
+	const bucket = (id: string) =>
+		sources.add(providedKeyFor(id, 'objects', 'signedOrigin'));
+	const server = (id: string) =>
+		sources.add(providedKeyFor(id, 'file-server', 'url'));
+
+	for (const edge of declaration.dependencies) {
+		const target = manifest[edge.target];
+		if (target?.kind === 'objects') {
+			bucket(edge.target);
+			for (const [id, other] of Object.entries(manifest)) {
+				if (other.kind === 'file-server' && other.of === edge.target) {
+					server(id);
+				}
+			}
+		}
+		if (target?.kind === 'file-server') {
+			server(edge.target);
+			if (manifest[target.of]?.kind === 'objects') bucket(target.of);
+		}
+	}
+
+	return [...sources].sort();
+}
+
+/**
+ * {@link IMAGE_ORIGINS_KEY}'s value: the origin of each source that resolved,
+ * de-duplicated and comma-separated. `undefined` when none did, so a site
+ * that shows no files is built without the key at all.
+ */
+export function imageOrigins(
+	sources: readonly string[],
+	resolve: (key: string) => string | undefined,
+): string | undefined {
+	const origins = new Set<string>();
+	for (const source of sources) {
+		const value = resolve(source);
+		if (!value) continue;
+		try {
+			origins.add(new URL(value).origin);
+		} catch {
+			// Not an address: nothing a page could load from.
+		}
+	}
+	return origins.size > 0 ? [...origins].sort().join(',') : undefined;
 }

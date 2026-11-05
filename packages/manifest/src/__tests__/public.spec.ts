@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { ConstructManifest, SiteDeclaration } from '../declaration';
-import { dependenciesOf, provisionOrder, publicEnvFor } from '../derive';
+import {
+	dependenciesOf,
+	imageOriginSources,
+	imageOrigins,
+	provisionOrder,
+	publicEnvFor,
+} from '../derive';
 import { cloudName, cookieDomain, providedKeyFor } from '../naming';
 
 const manifest = {
@@ -42,6 +48,35 @@ describe('publicEnvFor', () => {
 		expect(
 			Object.keys(publicEnvFor(site('tanstack', ['Api']), manifest)),
 		).toEqual(['VITE_WEB_URL', 'VITE_API_URL']);
+	});
+
+	it("inlines a bucket's file server and signed origin, never its connection", () => {
+		// A full-stack site's `.dependsOn([assets.server])`: its server half
+		// holds the bucket, its bundle still shows the objects from where they
+		// are served.
+		const served = {
+			Assets: {
+				kind: 'objects',
+				id: 'Assets',
+				provides: ['ASSETS_CONNECTION_STRING'],
+			},
+			AssetsServer: { kind: 'file-server', id: 'AssetsServer', of: 'Assets' },
+		} as unknown as ConstructManifest;
+
+		// Either edge also gets where the bucket's signed links point: an
+		// origin, no credentials.
+		const expected = {
+			NEXT_PUBLIC_WEB_URL: 'WEB_URL',
+			NEXT_PUBLIC_ASSETS_SIGNED_ORIGIN: 'ASSETS_SIGNED_ORIGIN',
+			NEXT_PUBLIC_ASSETS_URL: 'ASSETS_URL',
+		};
+		expect(publicEnvFor(site('next', ['Assets']), served)).toEqual(expected);
+		expect(publicEnvFor(site('next', ['AssetsServer']), served)).toEqual(
+			expected,
+		);
+		expect(
+			Object.keys(publicEnvFor(site('next', ['Assets']), served)),
+		).not.toContain('NEXT_PUBLIC_ASSETS_CONNECTION_STRING');
 	});
 
 	it('skips an edge to something the manifest does not have', () => {
@@ -107,5 +142,48 @@ describe('naming helpers', () => {
 	it('scopes no cookie for nothing, or for something that is not an address', () => {
 		expect(cookieDomain([])).toBeUndefined();
 		expect(cookieDomain(['not a url', 'https://a.shop.test'])).toBeUndefined();
+	});
+});
+
+describe('image origins', () => {
+	const files = {
+		Assets: {
+			kind: 'objects',
+			id: 'Assets',
+			provides: ['ASSETS_CONNECTION_STRING'],
+		},
+		AssetsServer: { kind: 'file-server', id: 'AssetsServer', of: 'Assets' },
+		Exports: {
+			kind: 'objects',
+			id: 'Exports',
+			provides: ['EXPORTS_CONNECTION_STRING'],
+		},
+		Api: { kind: 'rest-api', id: 'Api', path: '.', endpoints: [] },
+	} as unknown as ConstructManifest;
+
+	it('are the file servers and signed-link hosts a site reaches, not its APIs', () => {
+		expect(
+			imageOriginSources(
+				site('next', ['Api', 'AssetsServer', 'Exports']),
+				files,
+			),
+		).toEqual(['ASSETS_SIGNED_ORIGIN', 'ASSETS_URL', 'EXPORTS_SIGNED_ORIGIN']);
+	});
+
+	it('compose to one sorted list of origins, or nothing', () => {
+		const values: Record<string, string> = {
+			ASSETS_URL: 'https://assets.example.com/',
+			ASSETS_SIGNED_ORIGIN: 'https://acme-assets.s3.eu-west-1.amazonaws.com',
+		};
+		const sources = [
+			'ASSETS_SIGNED_ORIGIN',
+			'ASSETS_URL',
+			'EXPORTS_SIGNED_ORIGIN',
+		];
+
+		expect(imageOrigins(sources, (key) => values[key])).toBe(
+			'https://acme-assets.s3.eu-west-1.amazonaws.com,https://assets.example.com',
+		);
+		expect(imageOrigins(sources, () => undefined)).toBeUndefined();
 	});
 });

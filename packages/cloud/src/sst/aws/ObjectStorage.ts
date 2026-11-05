@@ -40,7 +40,7 @@ export class ObjectStorage<
 	/**
 	 * The values this bucket resolves onto anything that depends on it, keyed by
 	 * role. `provideKey` turns a role into the env key the app declared, so
-	 * `url` here is `UPLOADS_URL` there.
+	 * `connectionString` here is `UPLOADS_CONNECTION_STRING` there.
 	 *
 	 * Composed *here* because only the resource knows its own shape: the name may
 	 * be supplied through props or generated, and the region is the bucket's, not
@@ -50,7 +50,7 @@ export class ObjectStorage<
 	 */
 	provides(): Record<string, $util.Input<string>> {
 		return {
-			url: $util
+			connectionString: $util
 				.all([this.name, this.nodes.bucket.region])
 				.apply(([bucket, region]) => s3Url.build({ bucket, region })),
 		};

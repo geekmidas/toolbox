@@ -16,7 +16,7 @@ describe('a bucket that expires a prefix', () => {
 			{
 				kind: 'objects',
 				id: 'Private',
-				provides: ['PRIVATE_URL'],
+				provides: ['PRIVATE_CONNECTION_STRING'],
 				expire: { 'quotes/': 30, 'tmp/': 1 },
 			},
 		]);
@@ -24,7 +24,11 @@ describe('a bucket that expires a prefix', () => {
 
 	it('declares nothing for an empty expiry', () => {
 		expect(new ObjectStorage('Private', { expire: {} }).declare()).toEqual([
-			{ kind: 'objects', id: 'Private', provides: ['PRIVATE_URL'] },
+			{
+				kind: 'objects',
+				id: 'Private',
+				provides: ['PRIVATE_CONNECTION_STRING'],
+			},
 		]);
 	});
 
@@ -38,7 +42,7 @@ describe('a bucket that expires a prefix', () => {
 			{
 				kind: 'objects',
 				id: 'Uploads',
-				provides: ['UPLOADS_URL'],
+				provides: ['UPLOADS_CONNECTION_STRING'],
 				expire: { 'previews/': 7 },
 			},
 			{
@@ -46,7 +50,7 @@ describe('a bucket that expires a prefix', () => {
 				id: 'UploadsServer',
 				of: 'Uploads',
 				open: ['brand/**'],
-				provides: ['UPLOADS_SERVER_URL'],
+				provides: ['UPLOADS_URL'],
 			},
 		]);
 	});

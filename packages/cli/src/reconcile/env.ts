@@ -23,6 +23,7 @@ import {
 	drawSecret,
 	EDGE_TOKEN_KEY,
 	externalApiUrl,
+	imageOrigins,
 	mobileOrigins,
 	provideKey,
 	schemeBase,
@@ -44,6 +45,7 @@ import type { ContainerCredentials } from './localCredentials';
 import { objectsWebhookToken } from './objectEvents';
 import { PgBossNeedsDatabase, type Plan, type PlannedResource } from './plan';
 import type { PortAssignments } from './ports';
+import { signedOrigins } from './signedOrigins';
 
 /** The host containers are published on. */
 const LOCAL_HOST = 'localhost';
@@ -377,6 +379,13 @@ export function envFor(
 	// constructs it depends on resolved, so every source has to exist before any
 	// of them can be read. Doing it inline would make the result depend on the
 	// order the manifest happened to be keyed in.
+	Object.assign(
+		env,
+		signedOrigins(
+			plan.resources.filter((r) => r.kind === 'objects').map((r) => r.id),
+			(key) => env[key],
+		),
+	);
 	Object.assign(env, publicEnv(plan, env, options.addresses));
 
 	Object.assign(env, brokerEnv(plan, options.ports, credential));
@@ -469,6 +478,13 @@ function publicEnv(
 					: undefined;
 			const value = direct ?? resolved[source];
 			if (value) env[key] = value;
+		}
+		if (resource.imageOrigins) {
+			const origins = imageOrigins(
+				resource.imageOrigins.sources,
+				(key) => resolved[key],
+			);
+			if (origins) env[resource.imageOrigins.key] = origins;
 		}
 	}
 

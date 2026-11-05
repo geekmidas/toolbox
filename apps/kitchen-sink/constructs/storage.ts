@@ -8,9 +8,9 @@ import { FileServer } from '@geekmidas/constructs/file-server';
  * server to a bucket that already holds data has to be an edit that *adds* a
  * node, never one that renames the node holding it.
  *
- * Locally `UPLOADS_URL` is an `s3://` URL carrying MinIO's endpoint and
- * `UPLOADS_SERVER_URL` is where MinIO serves that bucket; deployed the same two
- * keys carry a real bucket and a real domain. The endpoint that presigns an
+ * Locally `UPLOADS_CONNECTION_STRING` is an `s3://` connection carrying
+ * MinIO's endpoint and `UPLOADS_URL` is where the local edge serves that
+ * bucket; deployed the same two keys carry a real bucket and a real domain. The endpoint that presigns an
  * upload knows neither — the scheme in the URL picks the driver, and which
  * drivers exist is decided by the generated entry point (`gkm dev`'s server, or
  * the Lambda handler), never by application code.

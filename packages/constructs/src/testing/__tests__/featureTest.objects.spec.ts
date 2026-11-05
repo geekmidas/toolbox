@@ -76,7 +76,7 @@ const manifest: TestManifest = {
 	})),
 	env: {
 		API_URL: 'http://api.objects.test',
-		UPLOADS_URL: 'memory://acme-uploads',
+		UPLOADS_CONNECTION_STRING: 'memory://acme-uploads',
 	},
 };
 

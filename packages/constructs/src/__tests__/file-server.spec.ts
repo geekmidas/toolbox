@@ -2,8 +2,15 @@ import type { ConstructManifest } from '@geekmidas/manifest';
 import { assertDerivations, UnknownParent } from '@geekmidas/manifest';
 import { registerStorageDriver } from '@geekmidas/storage';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { FileServer, ImmutableNotOpen, NotOpen } from '../file-server';
+import {
+	FileServer,
+	FileServerReadOnly,
+	ImmutableNotOpen,
+	NotOpen,
+} from '../file-server';
+import { MobileApp } from '../mobile-app';
 import { ObjectStorage } from '../object-storage';
+import { StaticSite } from '../site';
 import { Telemetry } from '../telemetry';
 
 /** A driver that records the URL it was built from and nothing else. */
@@ -22,7 +29,10 @@ const parserFor = (values: Record<string, string>) =>
 	({
 		create(build: (get: (key: string) => any) => Record<string, unknown>) {
 			const shape = build((key) => ({
-				string: () => ({ __key: key }),
+				string: () => {
+					const spec = { __key: key, optional: () => spec };
+					return spec;
+				},
 			}));
 
 			return {
@@ -44,8 +54,8 @@ const uploads = new FileServer('Uploads', {
 const client = () =>
 	uploads.service.register({
 		envParser: parserFor({
-			UPLOADS_URL: 'fake://uploads',
-			UPLOADS_SERVER_URL: 'https://files.example.com/',
+			UPLOADS_CONNECTION_STRING: 'fake://uploads',
+			UPLOADS_URL: 'https://files.example.com/',
 		}),
 	} as never);
 
@@ -56,13 +66,17 @@ describe('FileServer', () => {
 		// The id names the bucket. Serving a bucket you already have then *adds*
 		// a node rather than renaming the one holding the data.
 		expect(uploads.declare()).toEqual([
-			{ kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+			{
+				kind: 'objects',
+				id: 'Uploads',
+				provides: ['UPLOADS_CONNECTION_STRING'],
+			},
 			{
 				kind: 'file-server',
 				id: 'UploadsServer',
 				of: 'Uploads',
 				open: ['brand/**', 'avatars/*.png'],
-				provides: ['UPLOADS_SERVER_URL'],
+				provides: ['UPLOADS_URL'],
 			},
 		]);
 	});
@@ -76,7 +90,7 @@ describe('FileServer', () => {
 				kind: 'file-server',
 				id: 'FilesServer',
 				of: 'Assets',
-				provides: ['FILES_SERVER_URL'],
+				provides: ['FILES_URL'],
 			},
 		]);
 	});
@@ -187,31 +201,78 @@ describe('FileServer telemetry', () => {
 	});
 });
 
-describe('FileServer.server', () => {
-	it('points an edge at the surface rather than the bucket', () => {
-		// Depending on the file server itself points at the *bucket*, which is
-		// right for a handler that presigns — and useless to a site, because a
-		// bucket's URL is never public and so is never inlined.
-		expect(uploads.server.id).toBe('UploadsServer');
-		expect(uploads.server.declare()).toEqual([
+describe('FileServer.publicFace', () => {
+	it('is the surface, whose address is public', () => {
+		expect(uploads.publicFace.id).toBe('UploadsServer');
+		expect(uploads.publicFace.declare()).toEqual([
 			{
 				kind: 'file-server',
 				id: 'UploadsServer',
 				of: 'Uploads',
 				open: ['brand/**', 'avatars/*.png'],
-				provides: ['UPLOADS_SERVER_URL'],
+				provides: ['UPLOADS_URL'],
 			},
 		]);
 	});
 
-	it('is the half that is safe to ship', () => {
-		// `PUBLIC` is what draws the line: a served address may be prefixed into
-		// a bundle, a presigning one may not.
-		const bucket = uploads.declare().find((d) => d.kind === 'objects');
-
-		expect(bucket?.provides).toEqual(['UPLOADS_URL']);
-		expect(uploads.server.declare()[0]?.provides).toEqual([
-			'UPLOADS_SERVER_URL',
+	it("is what a site's and an app's plain edge points at", () => {
+		const web = new StaticSite('Web', { path: 'apps/web' }).dependsOn([
+			uploads,
 		]);
+		const app = new MobileApp('App', { path: 'apps/app' }).dependsOn([uploads]);
+
+		const edge = { target: 'UploadsServer', kind: 'file-server' };
+		expect(web.declare()[0]).toMatchObject({ dependencies: [edge] });
+		expect(app.declare()[0]).toMatchObject({ dependencies: [edge] });
+	});
+});
+
+describe('FileServer.server', () => {
+	it('is the bucket: what a frontend asks for when its server half writes', () => {
+		const web = new StaticSite('Web', { path: 'apps/web' }).dependsOn([
+			uploads.server,
+		]);
+
+		expect(uploads.server.id).toBe('Uploads');
+		expect(web.declare()[0]).toMatchObject({
+			dependencies: [{ target: 'Uploads', kind: 'objects' }],
+		});
+	});
+
+	it('is the bucket it was given, for a server over another construct', () => {
+		const files = new ObjectStorage('Files');
+		const cdn = new FileServer('Cdn', { origin: files });
+
+		expect(cdn.server.id).toBe('Files');
+		expect(cdn.publicFace.id).toBe('CdnServer');
+		expect(
+			new StaticSite('Web', { path: 'apps/web' })
+				.dependsOn([cdn.server])
+				.declare()[0],
+		).toMatchObject({ dependencies: [{ target: 'Files', kind: 'objects' }] });
+	});
+});
+
+describe('a file server reached through its public face', () => {
+	const served = () =>
+		uploads.service.register({
+			envParser: parserFor({ UPLOADS_URL: 'https://files.example.com/' }),
+		} as never);
+
+	it('serves', async () => {
+		expect((await served()).url('brand/logo.png')).toBe(
+			'https://files.example.com/brand/logo.png',
+		);
+	});
+
+	it('refuses everything that needs the bucket, naming the edge that has it', async () => {
+		const client = await served();
+
+		expect(() =>
+			client.getUploadURL({ path: 'a.png', contentType: 'image/png' }),
+		).toThrow(FileServerReadOnly);
+		await expect(async () =>
+			client.signedUrl('invoices/7.pdf'),
+		).rejects.toThrow(/uploads\.server/);
 	});
 });

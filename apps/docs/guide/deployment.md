@@ -169,7 +169,7 @@ A declaration is what publishes a URL, under the key it owns:
 
 ```typescript
 new KyselyDatabase<Database, 'Orders'>('Orders');  // → ORDERS_URL, ORDERS_OWNER_URL
-new ObjectStorage('Uploads');                      // → UPLOADS_URL
+new ObjectStorage('Uploads');                      // → UPLOADS_CONNECTION_STRING
 new Cache('Sessions');                             // → SESSIONS_URL
 new Email('Mail');                                 // → MAIL_URL, MAIL_FROM
 ```
@@ -247,8 +247,8 @@ gkm secrets:set SENDGRID_API_KEY SG.xxx --stage production
 
 Sniffing is what covers the code a construct cannot describe.
 
-A declared construct needs none of it: the build knows `UPLOADS_URL` exists
-because `ObjectStorage` declared it, and knows which handler needs it because
+A declared construct needs none of it: the build knows
+`UPLOADS_CONNECTION_STRING` exists because `ObjectStorage` declared it, and knows which handler needs it because
 the handler named that construct in `.dependsOn()`. Sniffing is the fallback for
 hand-written services and entry files, where the only way to learn which keys
 are touched is to run the code and watch.
@@ -543,7 +543,7 @@ that reads it, its kind, the apps that read it, and whether it is set:
 
 | Kind | Keys | Built from |
 | --- | --- | --- |
-| Bucket | `<ID>_URL` | AWS S3 (bucket, region), Cloudflare R2 (account id or endpoint, bucket), MinIO or any S3-compatible store (endpoint, bucket, path-style), or a pasted `s3://` URL. Then, optionally, a key for that bucket alone, written into the URL percent-encoded — or the stage's shared `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`. Neither is required. |
+| Bucket | `<ID>_CONNECTION_STRING` | AWS S3 (bucket, region), Cloudflare R2 (account id or endpoint, bucket), MinIO or any S3-compatible store (endpoint, bucket, path-style), or a pasted `s3://` URL. Then, optionally, a key for that bucket alone, written into the URL percent-encoded — or the stage's shared `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`. Neither is required. |
 | Email | `<ID>_URL`, `<ID>_FROM` | The mail service first. Resend (its API key: `smtps://resend:…@smtp.resend.com:465`), Amazon SES (the region and the SMTP credentials: `email-smtp.<region>.amazonaws.com:587`), Postmark (the server API token, as user and password: `smtp.postmarkapp.com:587`) and Mailgun (US or EU, then the domain's SMTP login and password: `smtp.mailgun.org` / `smtp.eu.mailgun.org`, 587) ask only for their secrets. Any other SMTP server: host, port (587 by default), user, password and TLS mode, as `smtp://` (STARTTLS) or `smtps://` (TLS on connect). Then the address it sends from. |
 | File server | `<ID>_URL` | Its public `https://` address. |
 | External API, `Credential` | `<ID>_CREDENTIALS` | The construct's own schema: one prompt per field of a zod object (hidden for a field named like a secret, key, token or password), or the JSON itself for any other schema. |
@@ -573,12 +573,12 @@ asks before it is replaced.
 
 A key a provider on the stage creates is not a checkpoint. With
 `deploy.objects.production: { provider: 's3' }`, `gkm deploy --stage production`
-creates each bucket and writes its `<ID>_URL` (and its file server's), so they
-are listed once instead:
+creates each bucket and writes its `<ID>_CONNECTION_STRING` (and its file
+server's `<ID>_URL`), so they are listed once instead:
 
 ```
 Not offered — a provider on the stage creates them:
-  UPLOADS_URL — created by gkm deploy --stage production (deploy.objects.production is s3)
+  UPLOADS_CONNECTION_STRING — created by gkm deploy --stage production (deploy.objects.production is s3)
 ```
 
 The deploy creates them before its checks run, so a key it creates is never
@@ -985,8 +985,8 @@ if something declared it.
 **Provision what the manifest declares**
 - a Postgres per declared database, and the role DDL for it — a runtime role, an
   owner, and a reader where anything reads through one
-- each declared bucket and `Email` from the stage's secrets (`<ID>_URL`,
-  `<ID>_FROM`; a bucket's key in its URL or the shared S3 key pair, both
+- each declared bucket and `Email` from the stage's secrets
+  (`<ID>_CONNECTION_STRING`, `<ID>_URL`, `<ID>_FROM`; a bucket's key in its URL or the shared S3 key pair, both
   optional) — a stage missing any fails `validate` with
   `ExternalServicesNotConfigured`. A stage whose `deploy.objects` names a
   provider has its buckets and keys created by the deploy itself, before

@@ -64,12 +64,12 @@ describe('what --allow-dev-services stands in for', () => {
 		const services = externalServices({
 			stage: 'preview',
 			declarations,
-			supplied: { UPLOADS_URL: 's3://mine?region=eu-west-1' },
+			supplied: { UPLOADS_CONNECTION_STRING: 's3://mine?region=eu-west-1' },
 			allow: true,
 		});
 		expect(services.minio).toEqual([]);
 		expect(services.mailpit).toEqual(['Mail']);
-		expect(services.missing.map((m) => m.key)).toEqual(['UPLOADS_SERVER_URL']);
+		expect(services.missing.map((m) => m.key)).toEqual(['UPLOADS_URL']);
 	});
 
 	it('nothing a provider backs, whose missing keys say what creates them', () => {
@@ -89,10 +89,10 @@ describe('what --allow-dev-services stands in for', () => {
 		expect(services.mailpit).toEqual(['Mail']);
 		expect(services.missing).toEqual([
 			expect.objectContaining({
-				key: 'UPLOADS_URL',
+				key: 'UPLOADS_CONNECTION_STRING',
 				hint: 'the deploy (gkm deploy --stage preview) creates it',
 			}),
-			expect.objectContaining({ key: 'UPLOADS_SERVER_URL' }),
+			expect.objectContaining({ key: 'UPLOADS_URL' }),
 		]);
 		expect(services.missing[0]).not.toHaveProperty('service');
 	});

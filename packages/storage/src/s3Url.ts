@@ -135,3 +135,27 @@ function decode(url: string, value: string): string {
 		throw new MalformedStorageUrl(url);
 	}
 }
+
+/**
+ * The scheme and host a presigned link to one of the bucket's objects is on —
+ * what a page showing private objects through signed links has to allow
+ * (`next/image`'s `remotePatterns`, a CSP's `img-src`).
+ *
+ * The SDK's own rule: path-style against an endpoint (MinIO) is the endpoint;
+ * virtual-host style puts the bucket in front of the endpoint's host, or of
+ * S3's regional one. Carries no credentials, so it is public.
+ *
+ * `undefined` for an S3 bucket whose URL names no region: the SDK takes it
+ * from the process, so the host is not knowable from the URL alone.
+ */
+export function signedOrigin(address: S3Address): string | undefined {
+	const { bucket, region, endpoint, forcePathStyle } = address;
+	if (endpoint) {
+		const url = new URL(endpoint);
+		return forcePathStyle
+			? url.origin
+			: `${url.protocol}//${bucket}.${url.host}`;
+	}
+	if (!region) return undefined;
+	return `https://${bucket}.s3.${region}.amazonaws.com`;
+}

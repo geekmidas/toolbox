@@ -513,13 +513,13 @@ export async function ensureEventsKey(
 		region: string;
 		/** The key written — `<ID>_EVENTS_CONNECTION_STRING` by default. */
 		key?: string;
-		/** The URL whose access key signs it — `<ID>_URL` by default. */
+		/** The connection whose access key signs it — `<ID>_CONNECTION_STRING` by default. */
 		urlKey?: string;
 	},
 ): Promise<void> {
 	const { id, topicArn, region } = input;
 	const key = input.key ?? provideKey(id, 'eventsConnectionString');
-	const url = ctx.secrets[input.urlKey ?? provideKey(id, 'url')];
+	const url = ctx.secrets[input.urlKey ?? provideKey(id, 'connectionString')];
 	let parsed: s3Url.S3Address | undefined;
 	try {
 		parsed = url ? s3Url.parse(url) : undefined;

@@ -232,9 +232,13 @@ describe('a bucket whose links reach a phone, locally', () => {
 			Documents: {
 				kind: 'objects',
 				id: 'Documents',
-				provides: ['DOCUMENTS_URL'],
+				provides: ['DOCUMENTS_CONNECTION_STRING'],
 			},
-			Photos: { kind: 'objects', id: 'Photos', provides: ['PHOTOS_URL'] },
+			Photos: {
+				kind: 'objects',
+				id: 'Photos',
+				provides: ['PHOTOS_CONNECTION_STRING'],
+			},
 			Assets: {
 				kind: 'file-server',
 				id: 'Assets',
@@ -299,7 +303,9 @@ describe('a bucket whose links reach a phone, locally', () => {
 	it('presigns against MinIO on the LAN address', () => {
 		const { env, minio } = resolve(withBuckets('Api'));
 
-		expect(env.DOCUMENTS_URL).toContain(`endpoint=http://${LAN}:${minio}&`);
+		expect(env.DOCUMENTS_CONNECTION_STRING).toContain(
+			`endpoint=http://${LAN}:${minio}&`,
+		);
 	});
 
 	it('serves a file server’s links from MinIO on the LAN address', () => {
@@ -317,13 +323,17 @@ describe('a bucket whose links reach a phone, locally', () => {
 	it('stays on localhost when only a browser calls the surface', () => {
 		const { env, minio } = resolve(withBuckets('Web'));
 
-		expect(env.DOCUMENTS_URL).toContain(`endpoint=http://localhost:${minio}&`);
+		expect(env.DOCUMENTS_CONNECTION_STRING).toContain(
+			`endpoint=http://localhost:${minio}&`,
+		);
 		expect(env.ASSETS_URL).toMatch(/^https:\/\/.+\.shop\.localhost:/);
 	});
 
 	it('stays on localhost on a machine with no network', () => {
 		const { env, minio } = resolve(withBuckets('Api'), null);
 
-		expect(env.DOCUMENTS_URL).toContain(`endpoint=http://localhost:${minio}&`);
+		expect(env.DOCUMENTS_CONNECTION_STRING).toContain(
+			`endpoint=http://localhost:${minio}&`,
+		);
 	});
 });

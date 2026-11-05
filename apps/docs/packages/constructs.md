@@ -102,7 +102,7 @@ export const stripe = new Credential('Stripe', {
 ```
 
 Each canonicalises its id — `uploads` and `Uploads` are one construct, not two
-that collide — and derives its env key from it: `UPLOADS_URL`, `SESSIONS_URL`,
+that collide — and derives its env key from it: `UPLOADS_CONNECTION_STRING`, `SESSIONS_URL`,
 `ORDERS_URL` (plus `ORDERS_OWNER_URL` for the DDL role). The key the target
 publishes and the key the client reads come from the same field, so they cannot
 drift.
@@ -137,12 +137,52 @@ export const assets = new FileServer('Assets', {
 });
 ```
 
-A file server answers on the name it was given: `assets.<domain>` here, while
-its key stays `ASSETS_SERVER_URL`. An app or site that would answer on the same
+A file server answers on the name it was given: `assets.<domain>` here, and
+its address is `ASSETS_URL` (its bucket's connection is
+`ASSETS_CONNECTION_STRING`). An app or site that would answer on the same
 name is refused with `FileServerHostTaken`. On a stage whose buckets the `s3`
 provider creates, the file server answers on `<fileserver>.<domain>` through
 CloudFront, with that header on the immutable
 paths — see [Providers](../guide/providers.md#objects-s3).
+
+A site's or a mobile app's plain `.dependsOn([assets])` is to the file
+server's public face: the bundle gets `VITE_ASSETS_URL` (`NEXT_PUBLIC_`,
+`EXPO_PUBLIC_`) and nothing that writes to the bucket. Its `assets` client
+serves (`url()`, `openUrl()`, `processedUrl()`), and a bucket method throws
+`FileServerReadOnly`. A full-stack site whose server half uploads or presigns
+depends on `assets.server` instead, which is the bucket, its credentials and
+`ASSETS_URL`. A backend's plain edge is already that. See
+[Edges and Environment](../guide/edges.md#what-each-side-of-an-edge-gets).
+
+**Next images.** A Next site builds `images.remotePatterns` from the
+workspace rather than a hand-kept list:
+
+```typescript
+// apps/web/next.config.ts
+import { imageRemotePatterns } from '@geekmidas/cli/next';
+
+export default {
+  images: { remotePatterns: [...imageRemotePatterns() /* , third parties */] },
+};
+```
+
+It returns one pattern for each file server the site has an edge to, and one
+for the host each bucket it reaches signs its links on, for the stage being
+built. Under `gkm dev` those are the local file server host and MinIO's
+address. Without gkm's environment (a plain `next build`) it returns `[]`.
+
+What it reads is not Next-specific:
+
+- **`<ID>_SIGNED_ORIGIN`**: where a bucket's presigned links point
+  (`https://<bucket>.s3.<region>.amazonaws.com`, an S3-compatible endpoint's
+  host, MinIO locally). It is derived from the bucket's connection, carries no
+  credentials, and is inlined into a site or app with an edge to the bucket
+  or to a file server over it. `s3Url.signedOrigin()` in `@geekmidas/storage`
+  computes it.
+- **`<PREFIX>GKM_IMAGE_ORIGINS`**: the site's file-server and signed-link
+  origins as one comma-separated list, passed by `gkm dev`, compose site
+  builds (an `ARG` in the site's Dockerfile) and the AWS target. A Vite or
+  Expo site can feed it to a CSP.
 
 A file server can also make derivatives of its open objects on read — a
 thumbnail at `/i/256/avatars/7.png` — with `assets.process('/i/:width/*')`. See

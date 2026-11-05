@@ -26,7 +26,11 @@ const manifest = {
 		of: 'Auth',
 		provides: ['AUTH_READER_URL'],
 	},
-	Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+	Uploads: {
+		kind: 'objects',
+		id: 'Uploads',
+		provides: ['UPLOADS_CONNECTION_STRING'],
+	},
 	Mail: { kind: 'email', id: 'Mail', provides: ['MAIL_URL', 'MAIL_FROM'] },
 	Emails: {
 		kind: 'queue',
@@ -200,7 +204,7 @@ describe('planFor', () => {
 			'ORDERS_URL',
 			'AUTH_URL',
 			'AUTH_READER_URL',
-			'UPLOADS_URL',
+			'UPLOADS_CONNECTION_STRING',
 			'MAIL_URL',
 			'EMAILS_PUBLISHER_CONNECTION_STRING',
 			'USERS_PUBLISHER_CONNECTION_STRING',

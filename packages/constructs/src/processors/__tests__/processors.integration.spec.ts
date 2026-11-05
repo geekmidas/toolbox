@@ -61,9 +61,9 @@ const preview = media.process('/p/*').handle(async ({ object }) => {
 });
 
 const envParser = new EnvironmentParser({
-	MEDIA_URL: BUCKET_URL,
-	MEDIA_SERVER_URL: 'https://media.example.com',
-	OTHER_SERVER_URL: 'https://other.example.com',
+	MEDIA_CONNECTION_STRING: BUCKET_URL,
+	MEDIA_URL: 'https://media.example.com',
+	OTHER_URL: 'https://other.example.com',
 });
 const serviceDiscovery = ServiceDiscovery.getInstance(envParser);
 const storage = () => createStorageClient(BUCKET_URL);
@@ -208,7 +208,9 @@ describe('a processor as a construct', () => {
 		expect(thumbnails.owner).toBe('MediaServer');
 		expect(thumbnails.constructs).toEqual(['Media']);
 		expect(thumbnails.prefix).toBe('/i/');
-		expect(await thumbnails.getEnvironment()).toEqual(['MEDIA_URL']);
+		expect(await thumbnails.getEnvironment()).toEqual([
+			'MEDIA_CONNECTION_STRING',
+		]);
 	});
 
 	it('names the native packages it needs installed', () => {

@@ -402,13 +402,11 @@ describe('a file server behind a CDN', () => {
 			`IAM user ${iamUserName({ scope: name, stage: STAGE, id: 'uploads' })}: create under /gkm/`,
 			`IAM user ${iamUserName({ scope: name, stage: STAGE, id: 'uploads' })}: policy gkm-bucket: this bucket only`,
 			`IAM user ${iamUserName({ scope: name, stage: STAGE, id: 'uploads' })}: create an access key`,
-			`UPLOADS_SERVER_URL: set to https://${host()}`,
+			`UPLOADS_URL: set to https://${host()}`,
 		]);
 
 		// The file server's address is its own name, on the stage's domain.
-		expect((await secretsOf(STAGE)).UPLOADS_SERVER_URL).toBe(
-			`https://${host()}`,
-		);
+		expect((await secretsOf(STAGE)).UPLOADS_URL).toBe(`https://${host()}`);
 
 		const resources = await resourcesOf(STAGE);
 		const certificateArn = resources['acm-certificate:UploadsServer']!.id!;
@@ -681,7 +679,7 @@ describe('a stage without a CDN', () => {
 		expect(report!.actions.map((a) => a.resource)).not.toContain(
 			expect.stringMatching(/distribution|certificate/),
 		);
-		expect((await secretsOf('unserved')).UPLOADS_SERVER_URL).toBe(
+		expect((await secretsOf('unserved')).UPLOADS_URL).toBe(
 			`${LOCALSTACK_URL}/${bucket}`,
 		);
 	});

@@ -12,6 +12,8 @@ export default defineConfig({
 		// `defineTarget` and the target interface, for a deploy target package.
 		'src/target/public.ts',
 		'src/workspace/index.ts',
+		// `imageRemotePatterns()`, imported by a Next site's `next.config.ts`.
+		'src/next.ts',
 		'src/openapi.ts',
 		// A Vitest global setup: `globalSetup: ['@geekmidas/cli/vitest']`.
 		'src/vitest.ts',

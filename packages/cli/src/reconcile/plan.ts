@@ -17,8 +17,11 @@ import {
 	type Declaration,
 	type DeclarationKind,
 	dependentsOf,
+	IMAGE_ORIGINS_KEY,
+	imageOriginSources,
 	isWildcardSite,
 	type PostgresVersion,
+	PUBLIC_PREFIX,
 	providedKeyFor,
 	publicEnvFor,
 	type SecretFormat,
@@ -153,6 +156,7 @@ const ROLES: Partial<Record<DeclarationKind, string>> = {
 	topic: 'publisherConnectionString',
 	credential: 'credentials',
 	'mobile-app': 'scheme',
+	objects: 'connectionString',
 };
 
 /** The kinds whose container is the events backend's rather than their own. */
@@ -337,6 +341,12 @@ export interface PlannedResource {
 	 * under the name its bundler will inline.
 	 */
 	publicEnv?: Record<string, string>;
+	/**
+	 * A site's or app's list of the origins its pages load files from: the
+	 * key it is inlined under, and the keys whose values make it up
+	 * (`imageOriginSources`).
+	 */
+	imageOrigins?: { key: string; sources: string[] };
 	/** For a mobile app: the scheme it gave, when not the project's name. */
 	scheme?: string;
 	/**
@@ -615,6 +625,15 @@ export function planFor(
 				: {}),
 			...(declaration.kind === 'site'
 				? { publicEnv: publicEnvFor(declaration, manifest) }
+				: {}),
+			...((declaration.kind === 'site' || declaration.kind === 'mobile-app') &&
+			imageOriginSources(declaration, manifest).length > 0
+				? {
+						imageOrigins: {
+							key: `${PUBLIC_PREFIX[declaration.variant]}${IMAGE_ORIGINS_KEY}`,
+							sources: imageOriginSources(declaration, manifest),
+						},
+					}
 				: {}),
 			...(declaration.kind === 'mobile-app'
 				? {

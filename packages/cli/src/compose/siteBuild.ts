@@ -1,11 +1,16 @@
 import {
 	type ConstructManifest,
+	IMAGE_ORIGINS_KEY,
+	imageOriginSources,
+	imageOrigins,
 	type MobileAppDeclaration,
 	PUBLIC_PREFIX,
+	providedKeyFor,
 	provideKey,
 	publicEnvFor,
 	type SiteDeclaration,
 } from '@geekmidas/manifest';
+import { signedOrigins } from '../reconcile/signedOrigins.js';
 import { appKey } from '../workspace/derive.js';
 
 /**
@@ -42,12 +47,24 @@ export function publicBuildValues(
 	const ownValue = resolve(own);
 	if (ownValue) args[own] = ownValue;
 
+	// A bucket's signed origin is derived from its connection, wherever that
+	// resolved — so it is resolved here too, rather than looked up.
+	const derived = signedOrigins(
+		Object.keys(manifest).filter((id) => manifest[id]?.kind === 'objects'),
+		resolve,
+	);
 	for (const [key, source] of Object.entries(publicEnvFor(site, manifest))) {
-		const value = resolve(source);
+		const value = resolve(source) ?? derived[source];
 		if (value) args[key] = value;
 	}
 
 	const prefix = PUBLIC_PREFIX[site.variant];
+	const origins = imageOrigins(
+		imageOriginSources(site, manifest),
+		(source) => resolve(source) ?? derived[source],
+	);
+	if (origins) args[`${prefix}${IMAGE_ORIGINS_KEY}`] = origins;
+
 	for (const [key, value] of Object.entries(secrets)) {
 		if (key.startsWith(prefix) && args[key] === undefined && value) {
 			args[key] = value;
@@ -133,7 +150,7 @@ export function siteOfflineHosts(
 	for (const [id] of entries) {
 		const name = appKey(id);
 		const url = name === appName ? ownUrl : urls[name];
-		if (url) byKey.set(provideKey(id, 'url'), url);
+		if (url) byKey.set(providedKeyFor(id, manifest[id]!.kind, 'url'), url);
 	}
 	return offlineBuildHosts(site, manifest, (key) => byKey.get(key));
 }

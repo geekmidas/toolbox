@@ -104,6 +104,27 @@ export function edgeTo(construct: Declarable): Dependency {
 	return { target: construct.id, kind: canonical.kind };
 }
 
+/**
+ * A construct whose public half is a node of its own: what a site's or a
+ * mobile app's plain edge points at instead of the construct itself.
+ *
+ * A `FileServer` is the one: its own node is the bucket, which presigns and
+ * writes, and a frontend that only shows the objects needs the address they
+ * are served on and nothing that can write to them.
+ */
+export interface HasPublicFace {
+	readonly publicFace: Declarable;
+}
+
+/**
+ * The edge a frontend — a site or a mobile app — has to a construct: its
+ * public face where it has one, the construct itself otherwise.
+ */
+export function frontendEdgeTo(construct: Declarable): Dependency {
+	const face = (construct as Partial<HasPublicFace>).publicFace;
+	return edgeTo(face ?? construct);
+}
+
 /** What consuming a construct hands you. */
 export type Infer<C> =
 	C extends Construct<string, infer TClient> ? TClient : never;
