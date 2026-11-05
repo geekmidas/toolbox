@@ -2,7 +2,7 @@ import type { EmailClient } from '@geekmidas/emailkit';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { describe, expect, it } from 'vitest';
 import { snifferContext } from '../Construct';
-import { Email } from '../email';
+import { Email, EmailFromNotALocalPart } from '../email';
 
 /** A template record — the only structural option the construct takes. */
 const templates = {
@@ -40,6 +40,36 @@ describe('Email', () => {
 		const [declaration] = new Email('Mail', { templates }).declare();
 
 		expect(Object.keys(declaration).sort()).toEqual(['id', 'kind', 'provides']);
+	});
+
+	it('declares the local part it sends from, never a domain', () => {
+		expect(new Email('Mail', { templates, from: 'info' }).declare()).toEqual([
+			{
+				kind: 'email',
+				id: 'Mail',
+				provides: ['MAIL_URL', 'MAIL_FROM'],
+				from: 'info',
+			},
+		]);
+	});
+
+	it('refuses a whole address as from, naming the per-stage field', () => {
+		const make = () =>
+			new Email('Mail', { templates, from: 'info@example.com' });
+
+		expect(make).toThrow(EmailFromNotALocalPart);
+		expect(make).toThrow(/from: 'info'[\s\S]*deploy\.email\.<stage>\.from/);
+	});
+
+	it('refuses a from that is not a local part', () => {
+		for (const from of ['', 'hello there', '.info', 'info.']) {
+			expect(() => new Email('Mail', { templates, from })).toThrow(
+				EmailFromNotALocalPart,
+			);
+		}
+		expect(
+			() => new Email('Mail', { templates, from: 'team.info+app' }),
+		).not.toThrow();
 	});
 
 	it('is consumed under the uncapitalised form of its id', () => {

@@ -1090,6 +1090,19 @@ describe('mail and storage on a deployed stage', () => {
 		expect(api).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
 	});
 
+	it("sends Mailpit's mail as the construct's local part at the stage's domain", () => {
+		const manifest = withServices();
+		const s = deployed({
+			allowDevServices: true,
+			manifest: {
+				...manifest,
+				Mail: { ...manifest.Mail, from: 'info' },
+			} as ConstructManifest,
+		});
+
+		expect(app(s, 'api').env!.MAIL_FROM).toBe('info@shop.example.com');
+	});
+
 	it('runs MinIO and Mailpit where allowed, with keys derived from them', () => {
 		const s = deployed({ allowDevServices: true });
 		const api = app(s, 'api').env!;

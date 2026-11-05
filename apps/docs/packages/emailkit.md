@@ -12,6 +12,17 @@ import { Email } from '@geekmidas/constructs/email';
 export const email = new Email('Mail', { templates: { welcome: WelcomeEmail } });
 ```
 
+The sender is the stage's: `noreply@<stage domain>` deployed, `noreply@localhost`
+under `gkm dev`. Name another local part on the construct and every stage sends
+as it, at its own domain:
+
+```typescript
+new Email('Mail', { templates, from: 'info' }); // info@<stage domain>
+```
+
+`from` takes the local part only. A whole address for one stage is
+`deploy.email.<stage>.from`, which wins over it.
+
 Every backend speaks SMTP, so the client never changes — Mailpit locally, SES,
 Resend, or your own SMTP deployed, whichever the stage's mail URL names.
 :::

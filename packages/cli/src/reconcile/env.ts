@@ -27,6 +27,7 @@ import {
 	mobileOrigins,
 	providedKeyFor,
 	schemeBase,
+	senderAddress,
 	wildcardDomainOf,
 } from '@geekmidas/manifest';
 import { LOGS_ORG, otlpHeaders } from '../compose/logs.js';
@@ -120,12 +121,13 @@ export interface EnvOptions {
 	/** Each mobile app's Metro port, by id — the exact port its `exp://` origins name. */
 	metroPorts?: Readonly<Record<string, number>>;
 	/**
-	 * The domain mail is sent from locally.
+	 * The domain mail is sent from, `localhost` by default. Each mail
+	 * construct sends as its own local part at it (`senderAddress`).
 	 *
 	 * Stage config, exactly as it is deployed — the difference is only that here
 	 * nobody had to verify it.
 	 */
-	mailFrom?: string;
+	mailDomain?: string;
 	/**
 	 * The stage's random seed, salting every derived role password.
 	 *
@@ -368,8 +370,10 @@ export function envFor(
 		}
 
 		if (resource.kind === 'email' && url) {
-			env[providedKeyFor(resource.id, resource.kind, 'from')] =
-				options.mailFrom ?? `noreply@${LOCAL_HOST}`;
+			env[providedKeyFor(resource.id, resource.kind, 'from')] = senderAddress(
+				resource,
+				options.mailDomain ?? LOCAL_HOST,
+			);
 
 			// And, locally, a third: where the mail it sent can be read back.
 			// Mailpit answers SMTP on one port and its inbox on another; a feature

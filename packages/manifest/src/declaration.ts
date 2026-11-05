@@ -222,6 +222,12 @@ export interface ProcessorDeclaration extends Fn {
  */
 export interface EmailDeclaration extends Node {
 	kind: 'email';
+	/**
+	 * The local part mail is sent from — `info` — the same on every stage.
+	 * The domain is the stage's; `senderAddress` joins them. Absent, it is
+	 * `noreply`.
+	 */
+	from?: string;
 }
 
 /**

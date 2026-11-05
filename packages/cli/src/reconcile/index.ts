@@ -302,8 +302,8 @@ export interface ReconcileOptions {
 	 * off. Never seeds, resets, or drops — the line is at data, not side effects.
 	 */
 	provision?: boolean;
-	/** The address mail is sent from locally. */
-	mailFrom?: string;
+	/** The domain mail is sent from locally — see `EnvOptions.mailDomain`. */
+	mailDomain?: string;
 	/**
 	 * Where each address-owning construct answers, keyed by id.
 	 *
@@ -508,7 +508,7 @@ export async function reconcile(
 			project,
 			credentials,
 			seed,
-			...(options.mailFrom ? { mailFrom: options.mailFrom } : {}),
+			...(options.mailDomain ? { mailDomain: options.mailDomain } : {}),
 			...(options.addresses ? { addresses: options.addresses } : {}),
 			...(lan ? { lanAddress: lan } : {}),
 			...(options.metroPorts ? { metroPorts: options.metroPorts } : {}),

@@ -35,13 +35,39 @@ export interface EmailOptions<TTemplates extends TemplateRecord> {
 	 */
 	templates: TTemplates;
 	/**
-	 * A reply-to address for every send.
+	 * The local part mail is sent from — `'info'` sends as `info@` the stage's
+	 * domain (`info@localhost` under `gkm dev`). Defaults to `noreply`.
 	 *
-	 * `from` is deliberately absent: it belongs to the verified sending domain,
-	 * which is `myapp.test` locally and the real domain deployed, so it arrives
-	 * as stage config rather than being written here.
+	 * Only the local part: it is structural, the same on every stage, and the
+	 * templates' copy is written for it. The domain is the stage's, so a stage
+	 * whose domain changes sends from the new one. A whole address for one
+	 * stage is `deploy.email.<stage>.from`, which wins over this.
 	 */
+	from?: string;
+	/** A reply-to address for every send. */
 	replyTo?: string;
+}
+
+/**
+ * The address-shaped characters a local part may hold: the dot-atom of RFC
+ * 5322, which is every sender anyone sends from.
+ */
+const LOCAL_PART =
+	/^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*$/;
+
+/** An `Email`'s `from` that is not a bare local part. */
+export class EmailFromNotALocalPart extends Error {
+	constructor(
+		readonly id: string,
+		readonly from: string,
+	) {
+		super(
+			from.includes('@')
+				? `Email '${id}' has from: '${from}', a whole address. 'from' is the local part only — from: '${from.slice(0, from.lastIndexOf('@'))}' sends as that @ the stage's domain. A whole address for one stage is deploy.email.<stage>.from.`
+				: `Email '${id}' has from: '${from}', which is not a mail local part. Set it to what goes before the @, like 'info' or 'noreply'.`,
+		);
+		this.name = 'EmailFromNotALocalPart';
+	}
 }
 
 export class Email<
@@ -63,13 +89,15 @@ export class Email<
 		private readonly options: EmailOptions<TTemplates>,
 	) {
 		const canonical = canonicalId(id as string);
+		if (options.from !== undefined && !LOCAL_PART.test(options.from)) {
+			throw new EmailFromNotALocalPart(canonical, options.from);
+		}
 
 		this.id = canonical as TName;
 		this.keys = {
 			url: providedKeyFor(canonical, 'email', 'url'),
-			// The sending identity travels with the URL rather than being a second
-			// construct option, for the same reason the URL does: it is the one
-			// thing about mail that differs per stage.
+			// The whole address arrives with the URL: its domain is the stage's,
+			// so only the local part (`options.from`) is written here.
 			from: providedKeyFor(canonical, 'email', 'from'),
 		};
 
@@ -86,6 +114,7 @@ export class Email<
 				kind: 'email',
 				id: this.id,
 				provides: [this.keys.url, this.keys.from],
+				...(this.options.from ? { from: this.options.from } : {}),
 			},
 		];
 	}
