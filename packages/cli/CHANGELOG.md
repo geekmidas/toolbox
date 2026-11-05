@@ -1,5 +1,42 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.164
+
+### Minor Changes
+
+- ✨ [`8d47f08`](https://github.com/geekmidas/toolbox/commit/8d47f08ba5b4345875073119835f702f884f1c8a) Thanks [@geekmidas](https://github.com/geekmidas)! - :boom: **A file server answers on its own name.** `new FileServer('Assets', …)`
+  is served on `assets.<domain>`, not `assets-server.<domain>`, and its
+  processors' origin on `assets-processors.<domain>`. One helper,
+  `fileServerLabel`, names every host a file server has: the `s3` provider's CDN
+  alias, certificate and DNS record, the compose edge's route, the local
+  `*.localhost` host and the processors' origin. The surface's node id and keys
+  (`AssetsServer`, `ASSETS_SERVER_URL`, `ASSETS_SERVER_ORIGIN_SECRET`) do not
+  change.
+
+  **Breaking for a deployed stage:** its next deploy requests a certificate for
+  the new name, moves the CDN alias and writes a new DNS record; links holding
+  the old host have to be updated. See "a file server answers on its own name"
+  in the upgrading guide.
+
+  A construct that answers on a file server's name, such as an app named
+  `assets` beside `FileServer('Assets')`, is refused when the workspace loads
+  with `FileServerHostTaken`.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.164
+  - @geekmidas/constructs@10.0.0-alpha.164
+  - @geekmidas/db@10.0.0-alpha.164
+  - @geekmidas/envkit@10.0.0-alpha.164
+  - @geekmidas/errors@10.0.0-alpha.164
+  - @geekmidas/logger@10.0.0-alpha.164
+  - @geekmidas/manifest@10.0.0-alpha.164
+  - @geekmidas/schema@10.0.0-alpha.164
+  - @geekmidas/services@10.0.0-alpha.164
+  - @geekmidas/storage@10.0.0-alpha.164
+  - @geekmidas/telescope@10.0.0-alpha.164
+
 ## 10.0.0-alpha.163
 
 ### Patch Changes

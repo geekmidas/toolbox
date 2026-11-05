@@ -143,6 +143,7 @@
     "featuretest-loopback-peer",
     "featuretest-services-fixture",
     "file-server-cdn",
+    "file-server-own-host",
     "file-server-processors",
     "fresh-scaffold-tests-run",
     "gkm-compose",
