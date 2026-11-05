@@ -44,6 +44,29 @@ describe('publicEnvFor', () => {
 		).toEqual(['VITE_WEB_URL', 'VITE_API_URL']);
 	});
 
+	it("inlines a bucket's file server on an edge to the bucket, never the bucket", () => {
+		// A full-stack site's `.dependsOn([assets.server])`: its server half
+		// holds the bucket, its bundle still shows the objects from where they
+		// are served.
+		const served = {
+			Assets: {
+				kind: 'objects',
+				id: 'Assets',
+				provides: ['ASSETS_CONNECTION_STRING'],
+			},
+			AssetsServer: { kind: 'file-server', id: 'AssetsServer', of: 'Assets' },
+		} as unknown as ConstructManifest;
+
+		expect(publicEnvFor(site('next', ['Assets']), served)).toEqual({
+			NEXT_PUBLIC_WEB_URL: 'WEB_URL',
+			NEXT_PUBLIC_ASSETS_URL: 'ASSETS_URL',
+		});
+		expect(publicEnvFor(site('next', ['AssetsServer']), served)).toEqual({
+			NEXT_PUBLIC_WEB_URL: 'WEB_URL',
+			NEXT_PUBLIC_ASSETS_URL: 'ASSETS_URL',
+		});
+	});
+
 	it('skips an edge to something the manifest does not have', () => {
 		expect(publicEnvFor(site('static', ['Gone']), manifest)).toEqual({
 			VITE_WEB_URL: 'WEB_URL',

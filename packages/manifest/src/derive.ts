@@ -224,13 +224,28 @@ export function publicEnvFor(
 		}
 	}
 
+	const inline = (id: string, target: Declaration) => {
+		for (const role of PUBLIC[target.kind] ?? []) {
+			const key = providedKeyFor(id, target.kind, role as string);
+			keys[`${prefix}${key}`] = key;
+		}
+	};
+
 	for (const edge of declaration.dependencies) {
 		const target = manifest[edge.target];
 		if (!target) continue;
+		inline(edge.target, target);
 
-		for (const role of PUBLIC[target.kind] ?? []) {
-			const key = providedKeyFor(edge.target, target.kind, role as string);
-			keys[`${prefix}${key}`] = key;
+		// An edge to a bucket — a full-stack site's `.dependsOn([assets.server])`
+		// — still has its objects served somewhere public, and the bundle shows
+		// them from there: each file server over it is inlined as a plain edge
+		// to it would be. The bucket's own connection never is.
+		if (target.kind === 'objects') {
+			for (const [id, other] of Object.entries(manifest)) {
+				if (other.kind === 'file-server' && other.of === edge.target) {
+					inline(id, other);
+				}
+			}
 		}
 	}
 

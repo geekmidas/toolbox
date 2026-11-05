@@ -16,11 +16,10 @@ import { telemetry } from './telemetry.js';
  * - the auth server's trusted origins
  * - the cookie domain the two share
  *
- * Note the edge is `uploads.server`, not `uploads`. Depending on the file server
- * itself points at the *bucket*, which is right for a handler that presigns and
- * wrong here: a bucket's URL is never public, so the site would get nothing
- * inlined. `PUBLIC` is what makes that distinction, and `.server` is how you ask
- * for the half that is safe to ship.
+ * The edge to `uploads` is to its public face: a site's plain edge to a file
+ * server gets the address its objects are served on, inlined, and nothing
+ * that writes to the bucket. A full-stack site whose server half uploads would
+ * ask for the bucket by name, `uploads.server`.
  */
 // No `path`: `Web` means `apps/web` where that directory exists, which is the
 // thing the id already said. No `variant`: static is the default, and Vite
@@ -31,7 +30,7 @@ import { telemetry } from './telemetry.js';
 export const web = new StaticSite('Web', {
 	path: 'apps/web',
 	telemetry,
-}).dependsOn([api, auth, uploads.server]);
+}).dependsOn([api, auth, uploads]);
 
 /**
  * The admin console — the second site, and the second *variant*.

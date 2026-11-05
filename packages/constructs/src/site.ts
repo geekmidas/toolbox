@@ -43,7 +43,7 @@ import type { Service } from '@geekmidas/services';
 import {
 	type Construct,
 	type Declarable,
-	edgeTo,
+	frontendEdgeTo,
 	publicUrl,
 } from './construct-interface';
 import type { RandomPassword } from './random-password';
@@ -315,11 +315,16 @@ export class StaticSite<TName extends string = string>
 	 * Takes {@link Declarable} rather than {@link Consumable} because a site's
 	 * edge is a build-time link and not a service injection — requiring a client
 	 * would exclude exactly the surfaces a frontend actually depends on.
+	 *
+	 * A plain edge to a `FileServer` is to its public face: the site is built
+	 * with the address its objects are served on, and handed nothing that
+	 * writes to the bucket. `.dependsOn([assets.server])` asks for the bucket
+	 * too, for a server half that uploads.
 	 */
 	dependsOn(constructs: readonly Declarable[]): StaticSite<TName> {
 		return new StaticSite<TName>(this.id as ConstructName<TName>, this.config, [
 			...this.dependencies,
-			...constructs.map(edgeTo),
+			...constructs.map(frontendEdgeTo),
 		]);
 	}
 

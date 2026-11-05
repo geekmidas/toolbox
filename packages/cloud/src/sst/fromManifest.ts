@@ -493,19 +493,13 @@ export function siteEnvironment(
 		}
 	}
 
-	for (const edge of declaration.dependencies) {
-		const target = context.manifest[edge.target];
-		if (!target) continue;
-
+	const inline = (id: string, target: Declaration) => {
 		const roles = PUBLIC[target.kind] ?? [];
-		if (roles.length === 0) continue;
+		if (roles.length === 0) return;
 
-		const component = context.provisioned[edge.target];
+		const component = context.provisioned[id];
 		if (!component) {
-			throw new UnresolvedDependency(
-				edge.target,
-				Object.keys(context.provisioned),
-			);
+			throw new UnresolvedDependency(id, Object.keys(context.provisioned));
 		}
 
 		const provided = component.provides();
@@ -514,8 +508,24 @@ export function siteEnvironment(
 			if (value === undefined) continue;
 
 			environment[
-				`${prefix}${providedKeyFor(edge.target, target.kind, role as string)}`
+				`${prefix}${providedKeyFor(id, target.kind, role as string)}`
 			] = value;
+		}
+	};
+
+	for (const edge of declaration.dependencies) {
+		const target = context.manifest[edge.target];
+		if (!target) continue;
+		inline(edge.target, target);
+
+		// An edge to a bucket still shows its objects from where they are
+		// served — the same rule `publicEnvFor` follows.
+		if (target.kind === 'objects') {
+			for (const [id, other] of Object.entries(context.manifest)) {
+				if (other.kind === 'file-server' && other.of === edge.target) {
+					inline(id, other);
+				}
+			}
 		}
 	}
 

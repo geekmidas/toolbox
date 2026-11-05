@@ -24,7 +24,11 @@ const manifest = {
 		open: ['brand/**'],
 		provides: ['UPLOADS_URL'],
 	},
-	Assets: { kind: 'objects', id: 'Assets', provides: ['ASSETS_URL'] },
+	Assets: {
+		kind: 'objects',
+		id: 'Assets',
+		provides: ['ASSETS_CONNECTION_STRING'],
+	},
 	Api: {
 		kind: 'rest-api',
 		id: 'Api',
@@ -127,6 +131,24 @@ describe('siteEnvironment', () => {
 		// presigner in a bundle is a credential in a bundle.
 		expect(built().VITE_UPLOADS_URL).toBe('https://files.example.com');
 		expect(built()).not.toHaveProperty('VITE_UPLOADS_CONNECTION_STRING');
+	});
+
+	it("inlines a bucket's served address on an edge to the bucket itself", () => {
+		// A full-stack site's `.dependsOn([uploads.server])`: the server half
+		// holds the bucket, and the bundle still shows its objects from where
+		// they are served.
+		const env = siteEnvironment(
+			{
+				...manifest.Console,
+				dependencies: [{ target: 'Uploads', kind: 'objects' }],
+			},
+			context({
+				Uploads: provided({ connectionString: 's3://uploads?region=x' }),
+				UploadsServer: provided({ url: 'https://files.example.com' }),
+			}),
+		);
+
+		expect(env).toEqual({ VITE_UPLOADS_URL: 'https://files.example.com' });
 	});
 
 	it('keeps a connection string out of the bundle entirely', () => {
