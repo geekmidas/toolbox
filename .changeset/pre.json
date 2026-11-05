@@ -79,6 +79,7 @@
     "compose-server-fresh-root",
     "compose-server-zsh",
     "compose-server",
+    "compose-signed-origins",
     "compose-site-password",
     "compose-target",
     "compose-topic-push-subscriptions",
