@@ -184,6 +184,13 @@ What it reads is not Next-specific:
   builds (an `ARG` in the site's Dockerfile) and the AWS target. A Vite or
   Expo site can feed it to a CSP.
 
+On a deployed stage, both come from the bucket's stored connection. A compose
+stack's MinIO is the origin only for the buckets it serves; a bucket on a
+provider (`deploy.objects.<stage>: { provider: 's3' }`) signs on S3. A site
+image built for a stage that has not resolved them yet (a CI build ahead of
+the stage's first deploy) fails with `SiteBuildValueUnresolved`, naming the
+key, rather than ship without its own asset host. Deploy the stage first.
+
 A file server can also make derivatives of its open objects on read — a
 thumbnail at `/i/256/avatars/7.png` — with `assets.process('/i/:width/*')`. See
 [File Server Processors](../guide/file-server-processors.md).

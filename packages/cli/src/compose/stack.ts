@@ -107,6 +107,7 @@ import {
 } from '../reconcile/objectEvents.js';
 import { type Plan, type PlannedResource, planFor } from '../reconcile/plan.js';
 import { bucketLifecycles, bucketPolicies } from '../reconcile/provision.js';
+import { signedOrigins } from '../reconcile/signedOrigins.js';
 import type { StageSecrets } from '../secrets/types.js';
 import {
 	findRootDomain,
@@ -1095,6 +1096,14 @@ export function composeStack(input: StackInput): ComposeStack {
 				resource,
 			);
 		}
+		// A bucket's signed origin is its own: derived from its connection,
+		// wherever that resolved — never the stack's MinIO for a bucket on S3.
+		if (resource.kind === 'objects') {
+			owners.set(
+				providedKeyFor(resource.id, resource.kind, 'signedOrigin'),
+				resource,
+			);
+		}
 		if (resource.kind === 'external-api') {
 			owners.set(
 				providedKeyFor(resource.id, resource.kind, 'credentials'),
@@ -1395,6 +1404,15 @@ export function composeStack(input: StackInput): ComposeStack {
 		if (owner && SERVICE_KINDS[owner.kind]) {
 			if (custom[key] !== undefined) return custom[key];
 			if (owner.kind === 'file-server') return fileServers.get(owner.id)?.url;
+			if (owner.kind === 'objects') {
+				const origin = providedKeyFor(owner.id, owner.kind, 'signedOrigin');
+				if (key === origin) {
+					return signedOrigins([owner.id], (k) => valueFor(app, k, owner))[key];
+				}
+				// The stack's MinIO serves only the buckets it was given: one on a
+				// provider is what the provider wrote, or nothing yet.
+				if (!services.minio.includes(owner.id)) return undefined;
+			}
 			return outside[key];
 		}
 
@@ -1476,6 +1494,9 @@ export function composeStack(input: StackInput): ComposeStack {
 				manifest,
 				(key) => valueFor(app, key, owners.get(key)),
 				custom,
+				// Built here for a deployed stage, an image that cannot say where
+				// its pages load files from is refused — not shipped without it.
+				!local && app.build ? { requireFileOrigins: { stage } } : {},
 			);
 			if (app.prerender && input.prerenderRun) {
 				args[PRERENDER_RUN_ARG] = input.prerenderRun;
