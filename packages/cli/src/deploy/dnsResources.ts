@@ -27,6 +27,12 @@ export interface DnsResourceRecord {
 	 * migrated from a v2 state, which did not say.
 	 */
 	provider?: string;
+	/**
+	 * `provider`: a resource provider asked for it — a DKIM, MX, validation
+	 * or CDN record — rather than the stack's hosts. Pruned when no provider
+	 * asks for it on a deploy, not when the stack stops serving it.
+	 */
+	source?: 'provider';
 }
 
 /** `data` of a `dns-record` resource. */
@@ -52,6 +58,7 @@ export function dnsRecordResource(record: DnsResourceRecord): ResourceInput {
 		value: record.value,
 		ttl: record.ttl,
 		...(record.provider ? { provider: record.provider } : {}),
+		...(record.source ? { source: record.source } : {}),
 	};
 	return {
 		key: dnsResourceKey(fqdn, type),

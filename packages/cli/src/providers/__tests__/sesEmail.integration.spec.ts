@@ -22,8 +22,13 @@ import { LOCALSTACK_URL } from '../../../../testkit/test/ports';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { writeComposeApp } from '../../compose/__tests__/__helpers__/composeApp';
 import { loadWorkspaceConfig } from '../../config';
+import { dnsResourceKey, dnsResources } from '../../deploy/dnsResources';
 import { createStateStore } from '../../deploy/StateStore';
 import { secretsStoreFor } from '../../secrets/store';
+import type {
+	DnsProvider,
+	DnsRecord,
+} from '../../target/dokploy/dns/DnsProvider';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { provisionStage } from '../index';
 import { emailUserName } from '../ses/config';
@@ -254,6 +259,72 @@ describe('the ses mail provider', { timeout: 120_000 }, () => {
 			}),
 		);
 		expect(policy.PolicyDocument).toContain(`notify.${DOMAIN}`);
+	});
+
+	it('moves to a new domain: sends as it, and asks only for its DKIM records', async () => {
+		const MOVED = 'moved.example';
+		const zone: DnsRecord[] = [];
+		const dns: DnsProvider = {
+			name: 'memory',
+			async getRecords() {
+				return zone;
+			},
+			async upsertRecords(_domain, records) {
+				for (const r of records) {
+					zone.push({
+						name: r.name,
+						type: r.type,
+						ttl: r.ttl,
+						values: [r.value],
+					});
+				}
+				return records.map((record) => ({
+					record,
+					created: true,
+					unchanged: false,
+				}));
+			},
+			async deleteRecords() {
+				return [];
+			},
+		};
+
+		const reports = await provision({
+			workspace: {
+				...workspace,
+				domains: { [STAGE]: MOVED },
+				dns: { [MOVED]: { provider: 'route53', hostedZoneId: 'ZMOVED' } },
+			} as NormalizedWorkspace,
+			dnsProviderFor: async () => dns,
+		});
+
+		// The sender gkm chose follows the domain; the user may send as it.
+		expect((await secretsOf()).MAIL_FROM).toBe(`noreply@${MOVED}`);
+		const policy = await iam.send(
+			new GetUserPolicyCommand({
+				UserName: userName(),
+				PolicyName: SEND_POLICY_NAME,
+			}),
+		);
+		expect(policy.PolicyDocument).toContain(`identity/${MOVED}`);
+
+		// The new domain's DKIM records: written, kept as gkm's, and the only
+		// ones the provider asked for — the old domain's are the deploy's to prune.
+		const asked = reports.find((r) => r.kind === 'email')!.dns;
+		expect(asked).toHaveLength(3);
+		for (const key of asked) {
+			expect(key).toMatch(
+				new RegExp(`^dns-record:[^:]+\\._domainkey\\.${MOVED}:CNAME$`),
+			);
+		}
+		const stored = await (await stateStore()).read(STAGE);
+		const kept = dnsResources(stored!.resources).filter(
+			(r) => r.source === 'provider',
+		);
+		expect(kept.map((r) => dnsResourceKey(r.fqdn, r.type)).sort()).toEqual(
+			[...asked].sort(),
+		);
+		expect(zone.filter((r) => r.type === 'CNAME')).toHaveLength(3);
 	});
 
 	it('leaves a URL the stage already held alone, and creates nothing for it', async () => {

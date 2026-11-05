@@ -109,6 +109,7 @@ import {
 import { EDGE_PROJECT, EDGE_SERVICE } from '../../compose/traefik';
 import { currentActor } from '../../deploy/actor.js';
 import {
+	dnsResourceKey,
 	dnsResources,
 	forgetDnsResource,
 	recordDnsChanges,
@@ -835,6 +836,26 @@ function assertRedisClient(
  * @throws {ServerAddressInvalid} for a value that is not an address
  * @throws {HostNotPointingAtServer} when a host is not the server
  */
+/**
+ * The records the stack's DNS step weighs against its plan: every one gkm
+ * wrote for the stage's hosts, and each a provider asked for on an earlier
+ * deploy and not on this one — which the plan does not have either, so it is
+ * pruned once the stack answers. One a provider asked for this run is not
+ * the stack's to prune; nor is any provider's, when the providers did not
+ * run.
+ */
+export function recordedForStack<
+	R extends { fqdn: string; type: string; source?: string },
+>(recorded: readonly R[], providerDns: readonly string[] | undefined): R[] {
+	const asked = new Set(providerDns ?? []);
+	return recorded.filter(
+		(record) =>
+			record.source !== 'provider' ||
+			(providerDns !== undefined &&
+				!asked.has(dnsResourceKey(record.fqdn, record.type))),
+	);
+}
+
 async function stageHostsDns(
 	ctx: ComposeContext,
 	deps: ComposeDeps,
@@ -874,7 +895,10 @@ async function stageHostsDns(
 			hosts,
 			server,
 			dns: workspace.dns,
-			recorded: dnsResources(stored?.resources ?? {}),
+			recorded: recordedForStack(
+				dnsResources(stored?.resources ?? {}),
+				ctx.providerDns,
+			),
 			...(wildcard ? { wildcard } : {}),
 			credentials: ctx.credentials,
 			log,

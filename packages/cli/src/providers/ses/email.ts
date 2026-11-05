@@ -114,22 +114,36 @@ export function urlSetElsewhere(
 	return user !== record.id && user !== record.data?.previous;
 }
 
+/** The state entry of the address gkm last wrote as `email`'s sender. */
+export function senderEntry(email: string) {
+	return { key: `email-from:${email}`, type: 'email-from' };
+}
+
 /**
- * The address `email` sends from: `from`, else what the stage's secrets
- * hold, else `noreply@` the stage's domain.
+ * The address `email` sends from: `from`; else one the stage's secrets hold
+ * that gkm did not write — set by hand, or imported; else `noreply@` the
+ * stage's domain. An address gkm wrote follows the domain: after a change of
+ * `domains.<stage>`, mail is sent as the new one.
  *
+ * @returns the address, and whether it is gkm's to write and record
  * @throws {EmailSenderUnknown} with none of them
  */
 export function senderOf(
-	ctx: Pick<Ctx, 'config' | 'secrets' | 'workspace' | 'stage'>,
+	ctx: Pick<Ctx, 'config' | 'secrets' | 'workspace' | 'stage' | 'state'>,
 	email: string,
-): string {
-	if (ctx.config.from) return ctx.config.from;
+): { address: string; ours: boolean } {
+	if (ctx.config.from) return { address: ctx.config.from, ours: true };
 	const held = ctx.secrets[provideKey(email, 'from')];
-	if (held) return held;
+	const wrote = ctx.state.record(senderEntry(email).key)?.id;
 	const domain = ctx.workspace.domains?.[ctx.stage];
-	if (!domain) throw new EmailSenderUnknown(ctx.stage);
-	return `noreply@${domain}`;
+	const fallback = domain ? `noreply@${domain}` : undefined;
+	// Not recorded and not the default: someone else's choice, kept.
+	if (held && held !== wrote && held !== fallback) {
+		return { address: held, ours: false };
+	}
+	if (fallback) return { address: fallback, ours: true };
+	if (held) return { address: held, ours: false };
+	throw new EmailSenderUnknown(ctx.stage);
 }
 
 /** The domain of an address — `noreply@x.com` or `Acme <noreply@x.com>`. */
@@ -173,7 +187,9 @@ async function ensureSesEmail(ctx: Ctx): Promise<void> {
 
 	const region = s3Region(ctx as never);
 	const senders = new Map(owned.map((e) => [e.id, senderOf(ctx, e.id)]));
-	const domains = [...new Set([...senders.values()].map(domainOf))].sort();
+	const domains = [
+		...new Set([...senders.values()].map((s) => domainOf(s.address))),
+	].sort();
 
 	const ses = await sesClients(ctx.credential, region);
 	const clients = await iamClients(ctx.credential, region);
@@ -183,7 +199,7 @@ async function ensureSesEmail(ctx: Ctx): Promise<void> {
 		await noteSandbox(ctx, ses, region);
 
 		for (const email of owned) {
-			const from = senders.get(email.id)!;
+			const { address: from, ours } = senders.get(email.id)!;
 			const domain = domainOf(from);
 			const user = await ensureIamUser(ctx, clients, {
 				id: email.id,
@@ -203,6 +219,11 @@ async function ensureSesEmail(ctx: Ctx): Promise<void> {
 					{ construct: email.id, resource: fromKey, change: `set to ${from}` },
 					() => ctx.writeSecrets({ [fromKey]: from }),
 				);
+			}
+			// What gkm chose is recorded, so the next deploy knows it may
+			// replace it — a change of domain moves the sender with it.
+			if (ours && ctx.state.record(senderEntry(email.id).key)?.id !== from) {
+				await ctx.state.ready(senderEntry(email.id), from);
 			}
 		}
 	} finally {
@@ -232,8 +253,9 @@ export async function ensureIdentity(
 		new SES.GetIdentityDkimAttributesCommand({ Identities: [domain] }),
 	);
 	const dkim = DkimAttributes?.[domain];
-	if (dkim?.DkimVerificationStatus === 'Success') {
-		if (dkim.DkimEnabled) return;
+	const verified = dkim?.DkimVerificationStatus === 'Success';
+	let tokens = dkim?.DkimTokens ?? [];
+	if (verified && !dkim.DkimEnabled) {
 		await ctx.change(
 			{
 				construct: 'email',
@@ -249,23 +271,25 @@ export async function ensureIdentity(
 				);
 			},
 		);
-		return;
 	}
-	let tokens: string[] = [];
-	await ctx.change(
-		{
-			construct: 'email',
-			resource: `SES identity ${domain}`,
-			change: 'verify with DKIM',
-		},
-		async () => {
-			const dkim = await ses.send(
-				new SES.VerifyDomainDkimCommand({ Domain: domain }),
-			);
-			tokens = dkim.DkimTokens ?? [];
-		},
-	);
+	if (!verified) {
+		await ctx.change(
+			{
+				construct: 'email',
+				resource: `SES identity ${domain}`,
+				change: 'verify with DKIM',
+			},
+			async () => {
+				const asked = await ses.send(
+					new SES.VerifyDomainDkimCommand({ Domain: domain }),
+				);
+				tokens = asked.DkimTokens ?? tokens;
+			},
+		);
+	}
 	if (tokens.length === 0) return;
+	// Asked for on every deploy, verified or not: a record no provider asks
+	// for is pruned, and DKIM keeps checking these.
 	await ctx.writeDns(
 		tokens.map((token) => ({
 			host: `${token}._domainkey.${domain}`,
@@ -273,6 +297,7 @@ export async function ensureIdentity(
 			value: `${token}.dkim.amazonses.com`,
 		})),
 	);
+	if (verified) return;
 	ctx.log(
 		`   ${domain}: SES sends as it once its DKIM records resolve — usually minutes, at most 72 hours`,
 	);

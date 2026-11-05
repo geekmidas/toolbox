@@ -180,7 +180,7 @@ const KEPT_TYPES: Record<string, string> = {
 };
 
 /** Records that name no resource of their own — a key in the secrets. */
-const VALUE_TYPES = new Set(['url']);
+const VALUE_TYPES = new Set(['url', 'email-from']);
 
 /**
  * The stage's stack: its project on the server (or this machine), as

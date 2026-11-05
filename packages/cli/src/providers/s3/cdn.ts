@@ -32,6 +32,7 @@
  * Nothing is ever deleted.
  */
 
+import { createHash } from 'node:crypto';
 import type {
 	DistributionConfig,
 	ResponseHeadersPolicyConfig,
@@ -646,6 +647,19 @@ async function ensureServerCdn(
 }
 
 /**
+ * The idempotency token a certificate is requested with: one per file server
+ * and host. ACM answers a repeat of a token within the hour with the
+ * certificate it issued for it — so a host changed within the hour of the
+ * last request would otherwise get the old host's certificate back.
+ */
+export function certificateToken(name: string, host: string): string {
+	return createHash('sha256')
+		.update(`${name}\n${host.toLowerCase()}`)
+		.digest('hex')
+		.slice(0, 32);
+}
+
+/**
  * The secret the CDN sends a file server's processors: the one in the stage's
  * secrets, or a new one written there — read by the stack, whose edge checks
  * it, when it composes.
@@ -713,7 +727,7 @@ async function ensureCertificate(
 			new ACM.RequestCertificateCommand({
 				DomainName: host,
 				ValidationMethod: 'DNS',
-				IdempotencyToken: input.name.replace(/[^A-Za-z0-9]/g, '').slice(0, 32),
+				IdempotencyToken: certificateToken(input.name, host),
 				Tags: identityTags(ctx, id).map((t) => ({
 					Key: t.Key,
 					Value: t.Value,

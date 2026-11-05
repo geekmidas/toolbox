@@ -224,9 +224,11 @@ deploy: {
 - `region` — where SES sends from: the identity, and the SMTP endpoint the URL
   names. Defaults to the secrets store's region, then `AWS_REGION`.
 - `from` — the address mail is sent from. Its domain is the identity the
-  deploy verifies. Defaults to what the stage's secrets hold, then
-  `noreply@<stage domain>`; a stage with neither fails with
-  `EmailSenderUnknown`.
+  deploy verifies. Defaults to an address you set in the stage's secrets,
+  then `noreply@<stage domain>`; a stage with neither fails with
+  `EmailSenderUnknown`. An address gkm wrote is not one you set: it follows
+  the stage's domain, so after a change of `domains.<stage>` mail is sent as
+  the new one.
 
 ## `email: ses`
 
@@ -255,7 +257,9 @@ The SMTP password is derived from the key's secret and the region, as SES
 documents it, so it works in that region only. A URL on another region's
 endpoint is replaced with a new key.
 
-**`<ID>_FROM`**: `from`, or the address described above.
+**`<ID>_FROM`**: `from`, or the address described above. gkm records the
+address it writes in the stage's deploy state, which is how a later deploy
+tells it from one you set by hand.
 
 **Existing credentials win.** A `<ID>_URL` the stage's secrets already hold,
 and the provider did not write, is kept: the construct sends with it, and

@@ -180,6 +180,14 @@ export interface DeployPhaseContext<Options = undefined> {
 	 * key its deliveries come from: which of them SNS pushes to.
 	 */
 	readonly subscribers?: Readonly<Record<string, readonly BoundSubscriber[]>>;
+	/**
+	 * The DNS records the stage's providers asked for on this run, as
+	 * `dns-record` keys — set once they have run. A record a provider asked
+	 * for on an earlier deploy and not on this one is stale, and pruned with
+	 * the stack's. Unset when the providers did not run: then none of theirs
+	 * is pruned.
+	 */
+	providerDns?: readonly string[];
 	/** The target's options, as its `options` schema parsed them. */
 	readonly options: Options;
 	/**

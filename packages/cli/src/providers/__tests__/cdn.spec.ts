@@ -5,6 +5,7 @@ import {
 	CACHING_OPTIMIZED_UNCOMPRESSED,
 	cdnHost,
 	cdnName,
+	certificateToken,
 	distributionConfig,
 	headersPolicyConfig,
 	holds,
@@ -321,5 +322,21 @@ describe("a file server's processors behind the distribution", () => {
 			Quantity: 1,
 			Items: [expect.objectContaining({ Id: 'bucket' })],
 		});
+	});
+});
+
+describe("a certificate's idempotency token", () => {
+	it('differs per host, so a host changed within the hour gets its own certificate', () => {
+		const name = 'gkm-shop-production-assets';
+
+		expect(certificateToken(name, 'assets.new.example')).not.toBe(
+			certificateToken(name, 'assets.old.example'),
+		);
+		expect(certificateToken(name, 'Assets.New.Example')).toBe(
+			certificateToken(name, 'assets.new.example'),
+		);
+		expect(certificateToken(name, 'assets.new.example')).toMatch(
+			/^[0-9a-f]{32}$/,
+		);
 	});
 });

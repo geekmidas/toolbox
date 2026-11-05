@@ -368,6 +368,7 @@ async function provisionResources(
 			credentials: ctx.credentials,
 			log: (line) => phaseCtx.logger.info(line),
 		});
+		phaseCtx.providerDns = reports.flatMap((r) => r.dns);
 		if (!ctx.dryRun) return;
 		const planned = reports.flatMap((r) => r.planned);
 		if (planned.length === 0) return;

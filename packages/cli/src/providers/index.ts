@@ -18,6 +18,7 @@ import {
 	type CredentialProvider,
 	storedCredentials,
 } from '../deploy/credentials.js';
+import { dnsResourceKey, recordDnsResource } from '../deploy/dnsResources.js';
 import { deployIdentity } from '../deploy/identity.js';
 import { DeployJournal } from '../deploy/journal.js';
 import type { ResourceRecord, StateStore } from '../deploy/StateStore.js';
@@ -33,7 +34,7 @@ import type {
 } from '../workspace/types.js';
 import { stageProvider } from './config.js';
 import { deploysWithCompose } from './dns.js';
-import { writeProviderDns } from './dnsWriter.js';
+import { type ProviderDnsWritten, writeProviderDns } from './dnsWriter.js';
 import { builtinProvider } from './registry.js';
 import {
 	PROVIDER_KINDS,
@@ -157,6 +158,12 @@ export interface KindReport {
 	 * writes — or, on a dry run, would.
 	 */
 	planned: string[];
+	/**
+	 * The DNS records its provider asked for this run, as `dns-record` keys —
+	 * every one it needs, written or already right. A record a provider asked
+	 * for before and not now is the deploy's to prune.
+	 */
+	dns: string[];
 }
 
 /**
@@ -220,7 +227,13 @@ export async function provisionStage(
 	for (const kind of PROVIDER_KINDS) {
 		const choice = stageProvider(workspace, kind, stage);
 		if (choice.mode !== 'provider') {
-			reports.push({ kind, mode: choice.mode, actions: [], planned: [] });
+			reports.push({
+				kind,
+				mode: choice.mode,
+				actions: [],
+				planned: [],
+				dns: [],
+			});
 			continue;
 		}
 		const provider = builtinProvider(kind, choice.name)!;
@@ -230,6 +243,7 @@ export async function provisionStage(
 			provider: provider.name,
 			actions: [],
 			planned: [],
+			dns: [],
 		};
 		reports.push(report);
 		const ids = constructsOf(manifest, kind);
@@ -285,15 +299,16 @@ export async function provisionStage(
 			.filter((key) => secrets[key] === undefined);
 	}
 
-	const state: ProvisionState = dryRun
-		? await readOnlyState(options.state, stage)
-		: journalState(
-				await DeployJournal.open(options.state, stage, () =>
-					deploysWithCompose(workspace)
-						? createComposeState(stage)
-						: createEmptyState(stage, '', ''),
-				),
+	const journal = dryRun
+		? undefined
+		: await DeployJournal.open(options.state, stage, () =>
+				deploysWithCompose(workspace)
+					? createComposeState(stage)
+					: createEmptyState(stage, '', ''),
 			);
+	const state: ProvisionState = journal
+		? journalState(journal)
+		: await readOnlyState(options.state, stage);
 
 	const writeSecrets = async (values: Record<string, string>) => {
 		if (dryRun) return;
@@ -334,8 +349,13 @@ export async function provisionStage(
 				);
 			},
 			writeSecrets,
-			writeDns: (records) =>
-				writeProviderDns(records, {
+			writeDns: async (records) => {
+				for (const record of records) {
+					entry.report.dns.push(
+						dnsResourceKey(record.host.replace(/\.$/, ''), record.type),
+					);
+				}
+				const written = await writeProviderDns(records, {
 					workspace,
 					stage,
 					dryRun,
@@ -349,7 +369,10 @@ export async function provisionStage(
 						? { providerFor: options.dnsProviderFor }
 						: {}),
 					log,
-				}),
+				});
+				if (journal) await recordProviderDns(journal, written);
+				return { manual: written.manual };
+			},
 			log,
 		});
 		if (entry.report.actions.length === 0) {
@@ -362,6 +385,7 @@ export async function provisionStage(
 			kind: 'backups',
 			mode: backups.mode === 'on' ? 'provider' : 'none',
 			actions: [],
+			dns: [],
 			planned:
 				backups.mode === 'on' && secrets[BACKUPS_URL_KEY] === undefined
 					? [BACKUPS_URL_KEY]
@@ -402,6 +426,34 @@ export async function provisionStage(
 	}
 
 	return reports;
+}
+
+/**
+ * What a provider's records came to, kept in the stage's state as `dns-record`
+ * resources a provider asked for — so a deploy on which no provider asks for
+ * one any more, after a change of domain, prunes it like a stack's record.
+ * One found already right is kept too: its value is an AWS resource's own —
+ * a DKIM token, a validation record, a distribution — and gkm made that.
+ */
+async function recordProviderDns(
+	journal: DeployJournal,
+	written: ProviderDnsWritten,
+): Promise<void> {
+	for (const change of written.changes) {
+		if (change.value === undefined) continue;
+		if (change.action === 'delete' || change.action === 'manual') continue;
+		await recordDnsResource(journal, {
+			domain: change.domain,
+			name: change.name,
+			type: change.type,
+			value: change.value,
+			ttl: change.ttl ?? 0,
+			source: 'provider',
+			...(written.providers[change.domain]
+				? { provider: written.providers[change.domain] }
+				: {}),
+		});
+	}
 }
 
 /** The journal as `ensure()` sees it. */
