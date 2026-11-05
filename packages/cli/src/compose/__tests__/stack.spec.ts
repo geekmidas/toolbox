@@ -18,7 +18,11 @@ import { NoDomainForStage } from '../../target/dokploy/domain';
 import { localAuthorityPaths } from '../../trust/authority';
 import type { NormalizedWorkspace } from '../../workspace/types';
 import { REDIS_IMAGE, RedisPasswordMissing } from '../redis';
-import { offlineBuildHosts, siteOfflineHosts } from '../siteBuild';
+import {
+	offlineBuildHosts,
+	SiteBuildValueUnresolved,
+	siteOfflineHosts,
+} from '../siteBuild';
 import {
 	type ComposeStack,
 	composeStack,
@@ -1183,6 +1187,44 @@ describe('mail and storage on a deployed stage', () => {
 
 			expect(s.infra).toEqual(['mailpit', 'postgres', 'redis']);
 			expect(s.devServices).toEqual([{ service: 'mailpit', ids: ['Mail'] }]);
+		});
+
+		const STORED = {
+			UPLOADS_CONNECTION_STRING:
+				's3://AKIAUPLOADS:secret@compose-app-production-uploads?region=eu-west-1',
+			UPLOADS_URL: 'https://files.shop.example.com',
+		};
+		const built = (secrets: Record<string, string>) =>
+			deployed({
+				workspace: withS3(),
+				allowDevServices: true,
+				images: { mode: 'build', tag: 'abc1234' },
+				secrets: production(secrets),
+			});
+
+		it("builds a site with each bucket's signed origin from its stored connection, never MinIO's", () => {
+			const args = app(built(STORED), 'web').build!.args!;
+
+			expect(args.VITE_UPLOADS_SIGNED_ORIGIN).toBe(
+				'https://compose-app-production-uploads.s3.eu-west-1.amazonaws.com',
+			);
+			expect(args.VITE_GKM_IMAGE_ORIGINS).toBe(
+				'https://compose-app-production-uploads.s3.eu-west-1.amazonaws.com,https://files.shop.example.com',
+			);
+			expect(JSON.stringify(args)).not.toContain('minio');
+		});
+
+		it('refuses to build a site before the deploy wrote where it loads files from', () => {
+			// A CI image build ahead of the stage's first deploy.
+			expect(() => built({})).toThrow(SiteBuildValueUnresolved);
+			expect(() => built({})).toThrow(
+				/'Web' inlines UPLOADS_URL[\s\S]*gkm deploy --stage production/,
+			);
+			// The file server's URL is there, the bucket's connection is not.
+			const { UPLOADS_CONNECTION_STRING, ...urlOnly } = STORED;
+			expect(() => built(urlOnly)).toThrow(
+				/UPLOADS_SIGNED_ORIGIN[\s\S]*no UPLOADS_CONNECTION_STRING/,
+			);
 		});
 
 		it('deploys with the keys the provider wrote, and runs mail on Mailpit', () => {

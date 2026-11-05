@@ -7,10 +7,47 @@ import {
 	type PublicDeclaration,
 	providedKeyFor,
 	publicEnvFor,
+	publicValues,
 	type SiteDeclaration,
 } from '@geekmidas/manifest';
+import { GkmError } from '../errors.js';
 import { signedOrigins } from '../reconcile/signedOrigins.js';
 import { appKey } from '../workspace/derive.js';
+
+/**
+ * A site's build inlines where it loads files from — a file server's URL, a
+ * bucket's signed origin — and the stage has not resolved it yet: a provider
+ * writes it on the stage's first deploy. Built anyway, the bundle would ship
+ * without its own asset host, and every image from it would be refused.
+ */
+export class SiteBuildValueUnresolved extends GkmError {
+	constructor(
+		readonly site: string,
+		readonly key: string,
+		readonly stage: string,
+		/** The stored key it is derived from, where it is derived. */
+		readonly from?: string,
+	) {
+		super(
+			`'${site}' inlines ${key} into its build, and the stage '${stage}' ` +
+				`has ${from ? `no ${from} to derive it from` : 'no value for it'} yet. ` +
+				`A provider writes it on the stage's first deploy: deploy the stage ` +
+				`first (gkm deploy --stage ${stage}), then build. Or set it: ` +
+				`gkm secrets:set ${from ?? key} '…' --stage ${stage}`,
+		);
+		this.name = 'SiteBuildValueUnresolved';
+	}
+}
+
+/** How {@link publicBuildValues} treats a value it inlines that is missing. */
+export interface PublicBuildOptions {
+	/**
+	 * Refuse a build whose file origins — each file server's URL, each
+	 * bucket's signed origin — the stage has not resolved, naming the stage.
+	 * A deployed stage's build; locally every one resolves.
+	 */
+	requireFileOrigins?: { stage: string };
+}
 
 /**
  * What a site's image is built with — or a mobile app's EAS build: every
@@ -30,7 +67,8 @@ import { appKey } from '../workspace/derive.js';
  *   declared public by whoever named it, so it is passed. Anything else is
  *   not: a secret without the prefix never reaches a site's build.
  *
- * A value the stage resolves to nothing is left out rather than passed empty.
+ * A value the stage resolves to nothing is left out rather than passed empty
+ * — except, with `requireFileOrigins`, where its pages load files from.
  * A derived value wins over a stage secret of the same name: the site's
  * addresses are the construct's, not a copy someone set.
  */
@@ -39,6 +77,7 @@ export function publicBuildValues(
 	manifest: ConstructManifest,
 	resolve: (key: string) => string | undefined,
 	secrets: Readonly<Record<string, string>>,
+	options: PublicBuildOptions = {},
 ): Record<string, string> {
 	const args: Record<string, string> = {};
 
@@ -62,6 +101,37 @@ export function publicBuildValues(
 	}
 
 	const prefix = PUBLIC_PREFIX[site.variant];
+	const required = options.requireFileOrigins;
+	if (required) {
+		for (const value of publicValues(site, manifest)) {
+			if (value.kind === 'file-server' && value.role === 'url') {
+				if (!resolve(value.key)) {
+					throw new SiteBuildValueUnresolved(
+						site.id,
+						value.key,
+						required.stage,
+					);
+				}
+			}
+			// A signed origin is derived: what has to resolve is the connection.
+			// One that resolved to no knowable host is not a missing value.
+			if (value.kind === 'objects' && value.role === 'signedOrigin') {
+				const connection = providedKeyFor(
+					value.id,
+					'objects',
+					'connectionString',
+				);
+				if (!resolve(value.key) && !resolve(connection)) {
+					throw new SiteBuildValueUnresolved(
+						site.id,
+						value.key,
+						required.stage,
+						connection,
+					);
+				}
+			}
+		}
+	}
 	const origins = imageOrigins(
 		imageOriginSources(site, manifest),
 		(source) => resolve(source) ?? derived[source],
