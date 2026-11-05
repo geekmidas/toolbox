@@ -26,7 +26,7 @@ import {
 	minioWebhookEnv,
 	type ObjectWebhook,
 } from './objectEvents';
-import type { Plan } from './plan';
+import { type Plan, TELEMETRY_CONTAINER } from './plan';
 import type { PortAssignments } from './ports';
 
 /** A compose service definition — as much of the schema as is emitted here. */
@@ -117,7 +117,11 @@ export function composeFor(plan: Plan, options: ComposeOptions): ComposeFile {
 				? plan.resources.find((r) => r.version)?.version
 				: undefined;
 		const named =
-			container === 'postgres' ? declaredPostgresImage(plan) : undefined;
+			container === 'postgres'
+				? declaredPostgresImage(plan)
+				: container === TELEMETRY_CONTAINER
+					? declaredTelemetryImage(plan)
+					: undefined;
 
 		const fake = plan.fakes?.[container];
 		const image =
@@ -210,6 +214,16 @@ function declaredPostgresImage(plan: Plan): string | undefined {
 	}
 
 	return images[0];
+}
+
+/**
+ * The image a `Telemetry` node named for OpenObserve, if one did — the same
+ * one the stack runs (`stackTelemetry` refuses two that disagree).
+ */
+function declaredTelemetryImage(plan: Plan): string | undefined {
+	return plan.resources
+		.filter((r) => r.kind === 'telemetry' && r.image)
+		.sort((a, b) => a.id.localeCompare(b.id))[0]?.image;
 }
 
 /** Two databases on the one local cluster named different images for it. */

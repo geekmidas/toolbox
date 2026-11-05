@@ -425,22 +425,45 @@ describe('served publicly', () => {
 			},
 		});
 
-	it('answers on logs.<stage domain>, to the listed addresses alone, with no host port', () => {
+	it("answers on the construct's label under the stage domain, to the listed addresses alone, with no host port", () => {
 		const s = publicly(allow);
 		const site = s.caddyfile.slice(
-			s.caddyfile.indexOf('https://logs.shop.example.com {'),
+			s.caddyfile.indexOf('https://telemetry.shop.example.com {'),
 		);
 
 		expect(s.compose.services.openobserve?.ports).toBeUndefined();
-		expect(site).toMatch(/^https:\/\/logs\.shop\.example\.com \{\n/);
+		expect(site).toMatch(/^https:\/\/telemetry\.shop\.example\.com \{\n/);
 		// Refused before anything is proxied.
 		expect(site.indexOf('@denied')).toBeLessThan(site.indexOf('reverse_proxy'));
 		expect(site).toContain('@denied not remote_ip 203.0.113.7 10.0.0.0/8');
 		expect(site).toContain('respond @denied 403');
 		expect(site).toContain('reverse_proxy openobserve:5080');
-		expect(s.logs?.url).toBe('https://logs.shop.example.com');
+		expect(s.logs?.url).toBe('https://telemetry.shop.example.com');
 		// No other host is gated.
 		expect(s.caddyfile.match(/remote_ip/g)).toHaveLength(1);
+	});
+
+	it("answers on the construct's subdomain, and runs the image it names", () => {
+		const named = {
+			...all.manifest,
+			Telemetry: {
+				...all.manifest.Telemetry,
+				subdomain: 'logs',
+				image: 'registry.example.com/openobserve:v1.1.0',
+			},
+		} as ConstructManifest;
+		const s = deployed({
+			project: { ...all, manifest: named },
+			telemetry: {
+				production: { provider: 'self-hosted', public: { allow } },
+			},
+		});
+
+		expect(s.logs?.url).toBe('https://logs.shop.example.com');
+		expect(s.caddyfile).toContain('https://logs.shop.example.com {');
+		expect(s.compose.services.openobserve?.image).toBe(
+			'registry.example.com/openobserve:v1.1.0',
+		);
 	});
 
 	it('refuses an empty allow list, and an entry that is not an address or a range', () => {
@@ -503,7 +526,7 @@ describe('how to open it', () => {
 			ctx,
 		);
 
-		expect(lines[0]).toContain('https://logs.shop.example.com');
+		expect(lines[0]).toContain('https://telemetry.shop.example.com');
 		expect(lines[1]).toContain('203.0.113.7');
 	});
 

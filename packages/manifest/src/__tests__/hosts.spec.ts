@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	assertHostLabels,
+	assertSubdomainLabel,
 	HostLabelBothAliasAndRedirect,
 	hostLabels,
 	InvalidHostLabel,
@@ -106,6 +107,27 @@ describe('assertHostLabels', () => {
 		} catch (error) {
 			expect(error).toBeInstanceOf(HostLabelBothAliasAndRedirect);
 			expect((error as HostLabelBothAliasAndRedirect).label).toBe('www');
+		}
+	});
+});
+
+describe('assertSubdomainLabel', () => {
+	it('takes one DNS label', () => {
+		for (const label of ['telemetry', 'logs', 'o11y', 'my-logs']) {
+			expect(() => assertSubdomainLabel('Telemetry', label)).not.toThrow();
+		}
+	});
+
+	it('refuses a wildcard, a dot, or anything not a label, naming the field', () => {
+		for (const label of ['*', 'logs.ops', 'Logs', '-logs', '']) {
+			try {
+				assertSubdomainLabel('Telemetry', label);
+				expect.unreachable();
+			} catch (error) {
+				expect(error).toBeInstanceOf(InvalidHostLabel);
+				expect((error as InvalidHostLabel).field).toBe('subdomain');
+				expect((error as Error).message).toContain(`subdomain: '${label}'`);
+			}
 		}
 	});
 });

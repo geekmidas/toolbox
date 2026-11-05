@@ -117,6 +117,7 @@ export {
 } from './headers';
 export {
 	assertHostLabels,
+	assertSubdomainLabel,
 	type HostedDeclaration,
 	HostLabelBothAliasAndRedirect,
 	type HostLabelSource,

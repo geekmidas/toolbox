@@ -12,7 +12,8 @@
  * It is reached, by default, through an SSH tunnel: published on 127.0.0.1
  * only, because a port Docker publishes on every interface is opened in the
  * firewall by Docker itself, past ufw's rules. Served publicly, it is a host
- * on the stack's Caddy that refuses every address not allowed.
+ * on the stack's edge — the `Telemetry` construct's label under the stage's
+ * domain — that refuses every address not allowed.
  *
  * Pure: the stack decides it, and the phases print and check it.
  */
@@ -25,8 +26,9 @@ import { LOGS_PORT, type ResolvedLogs } from './logsConfig.js';
 import type { StackService } from './stack.js';
 
 /**
- * The image, pinned. A log store's on-disk format is the thing that must not
- * move under a running stack, so a new version is a change to this line.
+ * The image, pinned — unless the `Telemetry` construct names its own. A log
+ * store's on-disk format is the thing that must not move under a running
+ * stack, so a new version is a change to this line, or to the construct's.
  */
 export const OPENOBSERVE_IMAGE = 'public.ecr.aws/zinclabs/openobserve:v1.0.4';
 
@@ -55,8 +57,10 @@ export interface StackLogs extends ResolvedLogs {
 	passwordFromSecrets: boolean;
 	/** Where a browser opens it: the tunnel's end, or its public host. */
 	url: string;
-	/** Its public host, when it is served through Caddy. */
+	/** Its public host, when it is served through the edge. */
 	host?: string;
+	/** The image it runs: the construct's, else {@link OPENOBSERVE_IMAGE}. */
+	image: string;
 	/** Its own environment, written to `openobserve.env` (0600). */
 	env: Record<string, string>;
 	/** Where every process with a `Telemetry` edge sends, and how it signs. */
@@ -77,6 +81,33 @@ export class LogsPasswordWeak extends GkmError {
 				'it to have one generated.',
 		);
 		this.name = 'LogsPasswordWeak';
+	}
+}
+
+/**
+ * The loopback port a stage's OpenObserve is published on is held by another
+ * stack on its server — two stages on one machine, both on `5080`.
+ */
+export class LogsPortTaken extends GkmError {
+	constructor(
+		readonly stage: string,
+		readonly port: number,
+		/** Who holds it: a compose project, else the container's name. */
+		readonly holder: string,
+		/** Whether the stage named the port, or no free one was found. */
+		readonly named: boolean,
+	) {
+		super(
+			named
+				? `deploy.telemetry.${stage}.port is ${port}, and '${holder}' already ` +
+						`publishes ${port} on this server. Give the stage another: ` +
+						`deploy.telemetry.${stage}.port = ${port + 1}, or remove port to ` +
+						'have a free one picked.'
+				: `No loopback port from ${port} up is free for the stage '${stage}'s ` +
+						`OpenObserve on this server ('${holder}' holds the last one tried). ` +
+						`Set one: deploy.telemetry.${stage}.port = <free port>.`,
+		);
+		this.name = 'LogsPortTaken';
 	}
 }
 
@@ -156,6 +187,8 @@ export function stackLogs(options: {
 	/** The workspace's name: the local stage's public host is under it. */
 	project: string;
 	domain?: string;
+	/** The `Telemetry` construct's label and image — see `stackTelemetry`. */
+	telemetry: { label: string; image?: string };
 	custom: Readonly<Record<string, string>>;
 	/** The edge's HTTPS port, which a local public URL carries. */
 	https: number;
@@ -176,14 +209,15 @@ export function stackLogs(options: {
 	if (!password) throw new LogsPasswordMissing(stage);
 	if (!isStrongLogsPassword(password)) throw new LogsPasswordWeak(stage);
 
+	const { label } = options.telemetry;
 	const host = config.public
 		? local
-			? `logs.${options.project}.localhost`
-			: `logs.${options.domain}`
+			? `${label}.${options.project}.localhost`
+			: `${label}.${options.domain}`
 		: undefined;
 	const url = host
 		? `https://${host}${local && options.https !== 443 ? `:${options.https}` : ''}`
-		: `http://localhost:${config.port}`;
+		: loopbackUrl(config.port);
 
 	return {
 		...config,
@@ -192,6 +226,7 @@ export function stackLogs(options: {
 		passwordFromSecrets: Boolean(set),
 		url,
 		...(host ? { host } : {}),
+		image: options.telemetry.image ?? OPENOBSERVE_IMAGE,
 		env: {
 			[LOGS_EMAIL_KEY]: email,
 			[LOGS_PASSWORD_KEY]: password,
@@ -208,6 +243,30 @@ export function stackLogs(options: {
 	};
 }
 
+/** Where a browser opens a loopback-published OpenObserve: the tunnel's end. */
+function loopbackUrl(port: number): string {
+	return `http://localhost:${port}`;
+}
+
+/**
+ * The stack's OpenObserve published on another loopback port — the one the
+ * server has free for it (`logsPortOnServer`). Served publicly, it publishes
+ * none, and is returned as it is.
+ */
+export function logsOnPort(logs: StackLogs, port: number): StackLogs {
+	if (logs.public || logs.port === port) return logs;
+	return { ...logs, port, url: loopbackUrl(port) };
+}
+
+/**
+ * What OpenObserve's service publishes: its port on the server's loopback
+ * only — Docker opens a port it publishes on every interface in the firewall
+ * itself, past ufw — and nothing when it is served through the edge.
+ */
+export function logsPorts(logs: StackLogs): { ports?: string[] } {
+	return logs.public ? {} : { ports: [`127.0.0.1:${logs.port}:${LOGS_PORT}`] };
+}
+
 /**
  * OpenObserve's service. The image has no shell, `wget` or `curl`, so its
  * health check is its own binary asking the running server for its status —
@@ -215,13 +274,11 @@ export function stackLogs(options: {
  */
 export function logsService(logs: StackLogs): StackService {
 	return {
-		image: OPENOBSERVE_IMAGE,
+		image: logs.image,
 		restart: 'unless-stopped',
 		env_file: [{ path: `./${LOGS_SERVICE}.env`, format: 'raw' }],
 		volumes: ['openobserve-data:/data'],
-		// Loopback only: Docker opens a port it publishes on every interface in
-		// the firewall itself, past ufw. Served publicly, Caddy is the way in.
-		...(logs.public ? {} : { ports: [`127.0.0.1:${logs.port}:${LOGS_PORT}`] }),
+		...logsPorts(logs),
 		healthcheck: {
 			test: ['CMD', '/openobserve', 'node', 'status'],
 			interval: '10s',

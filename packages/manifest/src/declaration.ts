@@ -1062,6 +1062,13 @@ export interface TelemetryDeclaration extends Node {
 	ignorePaths?: readonly string[];
 	/** Resource attributes every span and log carries — `service.namespace`. */
 	attributes?: Readonly<Record<string, string>>;
+	/**
+	 * The label its log UI answers on under the stage's domain, where a stage
+	 * serves it publicly. Absent, its id kebab-cased (`hostLabels`).
+	 */
+	subdomain?: string;
+	/** The image the self-hosted provider runs, in place of the pinned one. */
+	image?: string;
 }
 
 /**

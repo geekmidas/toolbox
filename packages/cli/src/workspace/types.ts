@@ -451,7 +451,8 @@ export interface SelfHostedTelemetryConfig extends TelemetryProviderConfig {
 	 */
 	retentionDays?: number;
 	/**
-	 * Serve it on `logs.<stage domain>` through the stack's proxy, to these
+	 * Serve it on the `Telemetry` construct's label under the stage's domain —
+	 * `telemetry.<stage domain>` by default — through the stack's proxy, to these
 	 * addresses only (IPs or CIDRs), instead of on a loopback port. Every
 	 * other address is answered 403.
 	 */

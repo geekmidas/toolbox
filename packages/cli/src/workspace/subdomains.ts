@@ -155,6 +155,11 @@ function* claimedLabels(
 			case 'worker':
 				yield [appKey(id), id];
 				break;
+			// Its log UI's host, where a stage serves it publicly — claimed on
+			// every stage, so no app or tenant takes it on one that does.
+			case 'telemetry':
+				yield [hostLabels(declaration).primary, id];
+				break;
 		}
 	}
 }
@@ -232,6 +237,13 @@ function assertLabelsUnique(manifest: ConstructManifest): void {
 		const other = owners.get(label);
 		owners.set(label, id);
 		if (other === undefined || other === id) continue;
+		// Every `Telemetry` node is served by the stack's one log UI.
+		if (
+			manifest[id]?.kind === 'telemetry' &&
+			manifest[other]?.kind === 'telemetry'
+		) {
+			continue;
+		}
 		if (manifest[id]?.kind === 'file-server') {
 			throw new FileServerHostTaken(id, label, other);
 		}
@@ -239,8 +251,14 @@ function assertLabelsUnique(manifest: ConstructManifest): void {
 			throw new FileServerHostTaken(other, label, id);
 		}
 		// Two apps on one label: only an alias or a redirect can make one,
-		// since each own label is the construct's id or a subdomain it chose.
-		if (aliased(manifest, id, label) || aliased(manifest, other, label)) {
+		// since each own label is the construct's id or a subdomain it chose —
+		// or a log UI's, which no app's own label may be.
+		if (
+			aliased(manifest, id, label) ||
+			aliased(manifest, other, label) ||
+			manifest[id]?.kind === 'telemetry' ||
+			manifest[other]?.kind === 'telemetry'
+		) {
 			throw new HostLabelTaken(label, other, id);
 		}
 	}

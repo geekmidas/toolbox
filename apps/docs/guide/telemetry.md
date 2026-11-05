@@ -21,8 +21,10 @@ export const telemetry = new Telemetry('Telemetry', {
 | --- | --- |
 | `ignorePaths` | Request paths no span is recorded for, on every surface that uses it. A trailing `*` matches a prefix. |
 | `attributes` | Resource attributes every span and log record carries. |
+| `subdomain` | The label the self-hosted log UI answers on, where a stage serves it publicly. Defaults to the id kebab-cased: `telemetry.<stage domain>`. |
+| `image` | The OpenObserve image the self-hosted provider runs, verbatim. Defaults to the version gkm pins. |
 
-There is no sample rate and no endpoint here: both are the deploy's.
+There is no sample rate and no endpoint here: both are the deploy's. What is here is the same on every stage; whether the UI is served publicly, on which port, and to whom, is each stage's (`deploy.telemetry.<stage>`).
 
 ### Who uses it: an edge
 
