@@ -1,5 +1,24 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.166
+
+### Patch Changes
+
+- [#406](https://github.com/geekmidas/toolbox/pull/406) [`bdeecd0`](https://github.com/geekmidas/toolbox/commit/bdeecd01302c0b6a21045770d256073e190cbd5f) Thanks [@geekmidas](https://github.com/geekmidas)! - `gkm deploy:github` now gives a compose stage's CI role the permissions an `ses` inbox (`deploy.inbox.<stage>`) needs. Before this, a CI deploy of such a stage was refused by AWS, while the same deploy run with your own credentials worked. The role may now verify the domain and manage SES receipt rules. It may also create each inbox's bucket, SNS topic and IAM user, but only those, by name.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.166
+  - @geekmidas/constructs@10.0.0-alpha.166
+  - @geekmidas/db@10.0.0-alpha.166
+  - @geekmidas/envkit@10.0.0-alpha.166
+  - @geekmidas/errors@10.0.0-alpha.166
+  - @geekmidas/logger@10.0.0-alpha.166
+  - @geekmidas/manifest@10.0.0-alpha.166
+  - @geekmidas/schema@10.0.0-alpha.166
+  - @geekmidas/services@10.0.0-alpha.166
+  - @geekmidas/storage@10.0.0-alpha.166
+  - @geekmidas/telescope@10.0.0-alpha.166
+
 ## 10.0.0-alpha.165
 
 ### Patch Changes

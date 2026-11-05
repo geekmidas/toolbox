@@ -158,6 +158,7 @@
     "headless-toolbox",
     "identify-request-user",
     "images-built-in-docker",
+    "inbox-ci-policy",
     "inbox-loops-sst",
     "inbox-receive-email",
     "init-admin-email",
