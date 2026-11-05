@@ -482,11 +482,13 @@ export async function reconcile(
 	);
 	const edged = plan.containers.includes('caddy');
 	const authorityPaths = options.authority ?? localAuthorityPaths();
+	const edgePort = ports[primaryPortKey('caddy')];
 	const caddyfile = toCaddyfile(sites, {
 		certificate: `${CADDY_SITES_IN_CONTAINER}/${stage}.pem`,
 		// What the apps are handed (`envFor`), so a service calling a sibling
 		// through this edge keeps the client's address.
 		edgeToken: edgeToken(project, seed),
+		...(edgePort !== undefined ? { port: edgePort } : {}),
 	});
 	// And so is what provisioning runs. A toolbox upgrade that changes the role
 	// DDL — a new grant — changes no container and no route, so a hash without
@@ -553,7 +555,11 @@ export async function reconcile(
 				await ensureLocalAuthority(authorityPaths),
 				localCertificateNames(
 					project,
-					sites.map((site) => site.host),
+					sites.flatMap((site) => [
+						site.host,
+						...(site.aliases ?? []),
+						...(site.redirects ?? []),
+					]),
 				),
 				join(root, caddyCertificatePath(stage)),
 			)

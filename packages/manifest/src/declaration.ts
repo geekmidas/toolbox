@@ -532,6 +532,12 @@ export interface RestApiDeclaration extends Node {
 	 */
 	subdomain?: string;
 	/**
+	 * More labels it answers on, exactly as on its own — `['rest']` for
+	 * `rest.myapp.com` beside `api.myapp.com`. Its own label stays the one it
+	 * is called by (`<ID>_URL`); read through `hostLabels`.
+	 */
+	aliases?: readonly string[];
+	/**
 	 * The app that serves this surface, relative to the workspace root.
 	 *
 	 * Required, and the only thing about its process a surface says: its code
@@ -622,6 +628,8 @@ export interface WebSocketApiDeclaration extends Node {
 	kind: 'websocket-api';
 	/** The label it answers on, as a `rest-api`'s. Absent, its id kebab-cased. */
 	subdomain?: string;
+	/** More labels it answers on, as a `rest-api`'s. */
+	aliases?: readonly string[];
 	/** The app that serves this surface, relative to the workspace root. */
 	path: string;
 	/** The construct that authenticates a connection, as a `rest-api`'s. */
@@ -755,6 +763,18 @@ export interface SiteDeclaration extends PublicDeclaration {
 	 * only one of its kind in a project.
 	 */
 	subdomain?: string;
+	/**
+	 * More labels it answers on, exactly as on its own: each its own origin,
+	 * trusted by every surface the site depends on. Never on a wildcard site.
+	 */
+	aliases?: readonly string[];
+	/**
+	 * Labels that answer with a permanent redirect to its own host, path and
+	 * query kept — `['www']` sends `www.myapp.com` to `myapp.com`. The
+	 * browser only ever runs on the one host, so these join no origin list.
+	 * Never on a wildcard site.
+	 */
+	redirects?: readonly string[];
 	/**
 	 * Which hosts a wildcard site serves: the route the edge asks,
 	 * `GET <path>?domain=<host>`, before it serves a host — `200` for a

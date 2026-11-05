@@ -27,6 +27,7 @@ import {
 	EDGE_LIMITS,
 	type EdgeRoute,
 	type EdgeTls,
+	routeHosts,
 	type Upstream,
 } from './routes.js';
 
@@ -346,7 +347,8 @@ export function traefikDynamic(
 		for (const handler of route.handlers ?? []) {
 			const handlerName = name(route, handler.name);
 			routers[handlerName] = {
-				rule: `Host(\`${route.host}\`) && (${handler.prefixes
+				// Every host of the route, as its own router's rule has them.
+				rule: `${hostRule(route)} && (${handler.prefixes
 					.map((prefix) => `PathPrefix(\`${prefix}\`)`)
 					.join(' || ')})`,
 				// Above the route's own router, whatever the rules' lengths.
@@ -363,6 +365,30 @@ export function traefikDynamic(
 					})),
 				},
 			};
+		}
+
+		// Each redirect host: a router of its own, answering a permanent
+		// redirect to the canonical host with the path and query it was asked
+		// for. Nothing is behind it — Traefik's `noop` service never answers,
+		// because the middleware always does first.
+		if (route.redirects?.hosts.length) {
+			const redirect = name(route, 'redirect');
+			middlewares[redirect] = {
+				redirectRegex: {
+					regex: '^https?://[^/]+(.*)$',
+					replacement: `${route.redirects.to}$\{1}`,
+					permanent: true,
+				},
+			};
+			route.redirects.hosts.forEach((host, index) => {
+				routers[name(route, `redirect-${index + 1}`)] = {
+					rule: `Host(\`${host}\`)`,
+					entryPoints: ['websecure'],
+					service: 'noop@internal',
+					middlewares: [redirect],
+					tls: certificate(),
+				};
+			});
 		}
 
 		const rule = `${hostRule(route)}${paths}${header}`;
@@ -435,13 +461,23 @@ export function traefikDynamic(
 }
 
 /**
- * The hosts a route answers, as a Traefik rule: its own, or — for a wildcard
- * site — exactly one label under its domain, but the ones it never takes.
- * One label, as a wildcard certificate covers: a stage at
+ * The hosts a route answers, as a Traefik rule: its own and its aliases', or
+ * — for a wildcard site — exactly one label under its domain, but the ones
+ * it never takes. One label, as a wildcard certificate covers: a stage at
  * `staging.example.com` is never reached through `example.com`'s wildcard.
+ *
+ * Several hosts are parenthesised, `(Host(a) || Host(b))`, so whatever is
+ * joined to the rule with `&&` — the path allowlist, a required header, the
+ * stack's token — holds on every one of them. One router's hosts are one
+ * certificate's names under ACME.
  */
 function hostRule(route: EdgeRoute): string {
-	if (!route.wildcard) return `Host(\`${route.host}\`)`;
+	if (!route.wildcard) {
+		const hosts = [route.host, ...(route.aliases ?? [])].map(
+			(host) => `Host(\`${host}\`)`,
+		);
+		return hosts.length === 1 ? hosts[0]! : `(${hosts.join(' || ')})`;
+	}
 	const { domain, except } = route.wildcard;
 	const pattern = `^[a-z0-9-]+\\.${domain.replace(/\./g, '\\.')}$`;
 	return [
@@ -458,15 +494,20 @@ export type EdgeClaim =
 	| { host: string }
 	| { wildcard: string; except: readonly string[] };
 
-/** What a stack's routes claim on the edge, from the route model. */
+/**
+ * What a stack's routes claim on the edge, from the route model: one claim
+ * per host, each route's aliases and redirects included.
+ */
 export function edgeClaims(routes: readonly EdgeRoute[]): EdgeClaim[] {
-	return routes.map((route) =>
+	return routes.flatMap((route): EdgeClaim[] =>
 		route.wildcard
-			? {
-					wildcard: route.wildcard.domain.toLowerCase(),
-					except: [...route.wildcard.except],
-				}
-			: { host: route.host.toLowerCase() },
+			? [
+					{
+						wildcard: route.wildcard.domain.toLowerCase(),
+						except: [...route.wildcard.except],
+					},
+				]
+			: routeHosts(route).map((host) => ({ host: host.toLowerCase() })),
 	);
 }
 

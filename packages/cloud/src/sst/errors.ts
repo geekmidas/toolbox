@@ -78,3 +78,25 @@ export class WildcardSiteNeedsDomain extends Error {
 		this.name = 'WildcardSiteNeedsDomain';
 	}
 }
+
+/**
+ * A surface or site with `aliases` or `redirects` on an AWS stage. Only a
+ * wildcard site is given a custom domain there; every other surface answers
+ * on the address AWS assigns it, so there is no domain to put the extra
+ * labels under — and dropping them silently would deploy a host that never
+ * answers.
+ */
+export class HostLabelNeedsCustomDomain extends Error {
+	constructor(
+		readonly id: string,
+		readonly labels: readonly string[],
+	) {
+		super(
+			`'${id}' answers on ${labels.map((label) => `'${label}'`).join(', ')} ` +
+				`besides its own host, but on AWS it has no custom domain to put ` +
+				`them under. Deploy this stage with gkm compose, or drop its ` +
+				`\`aliases\` and \`redirects\` for it.`,
+		);
+		this.name = 'HostLabelNeedsCustomDomain';
+	}
+}

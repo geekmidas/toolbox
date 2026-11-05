@@ -41,6 +41,16 @@ export interface CaddySite {
 	/** Where the request is sent, e.g. `http://minio:9000`. */
 	upstream: string;
 	/**
+	 * More hosts answered exactly as `host` is — a construct's `aliases`,
+	 * under the project: `rest.kitchen-sink.localhost`.
+	 */
+	aliases?: readonly string[];
+	/**
+	 * Hosts that answer with a permanent redirect to `host`, path and query
+	 * kept — a site's `redirects`: `www.kitchen-sink.localhost`.
+	 */
+	redirects?: readonly string[];
+	/**
 	 * A path to rewrite to, where the upstream expects a different one.
 	 *
 	 * The bucket prefix on an object store is the case. A surface and a site
@@ -191,7 +201,13 @@ export function sitesFor(
 			continue;
 		}
 
-		sites.push({ host, upstream });
+		const { aliases, redirects } = hostsFor(resource, project);
+		sites.push({
+			host,
+			upstream,
+			...(aliases.length ? { aliases } : {}),
+			...(redirects.length ? { redirects } : {}),
+		});
 	}
 
 	return sites;
@@ -279,6 +295,37 @@ export function hostFor(resource: PlannedResource, project: string): string {
 	return [label, project, LOCAL_TLD].filter(Boolean).join('.');
 }
 
+/** Every host a resource answers on: its own, its aliases, its redirects. */
+export interface ResourceHosts {
+	/** The canonical one — what its `<ID>_URL` is built on. */
+	host: string;
+	/** Answered exactly as `host` is. */
+	aliases: string[];
+	/** Answered with a permanent redirect to `host`. */
+	redirects: string[];
+}
+
+/**
+ * Where a resource answers, every host of it: {@link hostFor}'s, and each
+ * alias and redirect label under the project, carrying the stage as its own
+ * label does — `www-test.shop.localhost` for `gkm test`.
+ */
+export function hostsFor(
+	resource: PlannedResource,
+	project: string,
+): ResourceHosts {
+	const stage = stageOf(resource);
+	const under = (label: string) =>
+		[stage ? `${label}-${stage}` : label, project, LOCAL_TLD]
+			.filter(Boolean)
+			.join('.');
+	return {
+		host: hostFor(resource, project),
+		aliases: (resource.aliases ?? []).map(under),
+		redirects: (resource.redirects ?? []).map(under),
+	};
+}
+
 /**
  * A resource's own label: its `subdomain` where it declared one, and a file
  * server's own name — the label a deploy uses too — with the stage it carries
@@ -345,6 +392,11 @@ export function toCaddyfile(
 		certificate: string;
 		/** The stack's token: see {@link clientIpRule}. */
 		edgeToken?: string;
+		/**
+		 * The port the edge is published on, where it is not 443: what a
+		 * redirect to a canonical host keeps.
+		 */
+		port?: number;
 	},
 ): string {
 	if (sites.length === 0) {
@@ -353,8 +405,9 @@ export function toCaddyfile(
 `;
 	}
 
+	const port = options.port && options.port !== 443 ? `:${options.port}` : '';
 	const blocks = sites.map(
-		({ host, upstream, rewrite, processors, tenants }) => {
+		({ host, upstream, rewrite, processors, tenants, aliases, redirects }) => {
 			const proxy = `reverse_proxy ${upstream} {${
 				rewrite
 					? `
@@ -371,8 +424,24 @@ export function toCaddyfile(
 			}
 	}`;
 
+			// Each redirect host, one block: the browser is sent to the
+			// canonical host with its path and query, and nothing is proxied.
+			const redirectBlocks = (redirects ?? [])
+				.map(
+					(from) => `
+https://${from} {
+	tls ${options.certificate} ${options.certificate}
+
+	redir https://${host}${port}{uri} permanent
+}`,
+				)
+				.join('');
+			const names = [host, ...(aliases ?? [])]
+				.map((name) => `https://${name}`)
+				.join(', ');
+
 			return `
-https://${host} {
+${names} {
 	tls ${options.certificate} ${options.certificate}
 
 ${clientIpRule(options.edgeToken)}
@@ -391,7 +460,7 @@ ${
 `
 		: ''
 }${tenants ? tenantBlock(tenants, proxy) : `	${proxy}`}
-}`;
+}${redirectBlocks}`;
 		},
 	);
 

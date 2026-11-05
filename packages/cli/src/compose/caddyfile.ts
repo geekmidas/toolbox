@@ -174,9 +174,25 @@ function siteBlock(
 	}`
 		: proxy;
 
-	return `https://${host} {${certificate}${clientIpRule(edgeToken)}
+	// Its aliases join the block: every check and handler holds on each.
+	const names = [host, ...(route.aliases ?? [])]
+		.map((name) => `https://${name}`)
+		.join(', ');
+	// Each redirect host, a block of its own that sends the browser to the
+	// canonical host, path and query kept, and proxies nothing.
+	const redirects = (route.redirects?.hosts ?? [])
+		.map(
+			(from) => `
+
+https://${from} {${certificate}
+	redir ${route.redirects?.to}{uri} permanent
+}`,
+		)
+		.join('');
+
+	return `${names} {${certificate}${clientIpRule(edgeToken)}
 ${checks}${body}
-}`;
+}${redirects}`;
 }
 
 /** Where a route's requests go, when no handler took them. */

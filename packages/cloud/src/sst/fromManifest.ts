@@ -28,9 +28,11 @@ import {
 	cookieDomain,
 	DEFAULT_POSTGRES_VERSION,
 	dependentsOf,
+	hostLabels,
 	IMAGE_ORIGINS_KEY,
 	imageOriginSources,
 	imageOrigins,
+	isHostedDeclaration,
 	isWildcardSite,
 	mobileOrigins,
 	PUBLIC_PREFIX,
@@ -69,6 +71,7 @@ import { StaticSite } from './aws/StaticSite';
 import { Topic } from './aws/Topic';
 import { WebSocketApiSurface } from './aws/WebSocketApiSurface';
 import {
+	HostLabelNeedsCustomDomain,
 	ProvidesMismatch,
 	UnknownDeclarationKind,
 	UnresolvedDependency,
@@ -733,6 +736,22 @@ export function describeRoutes(manifest: ConstructManifest): string[] {
 	return lines;
 }
 
+/**
+ * An AWS stage refuses aliases and redirects outright: no surface but a
+ * wildcard site has a custom domain there to put them under.
+ *
+ * @throws {HostLabelNeedsCustomDomain} naming the first construct with either
+ */
+export function assertNoHostLabels(manifest: ConstructManifest): void {
+	for (const [id, declaration] of Object.entries(manifest)) {
+		if (!isHostedDeclaration(declaration)) continue;
+		const { aliases, redirects } = hostLabels(declaration);
+		if (aliases.length || redirects.length) {
+			throw new HostLabelNeedsCustomDomain(id, [...aliases, ...redirects]);
+		}
+	}
+}
+
 /** A promise with its settle function, for a value that arrives later. */
 function defer(): Deferred {
 	let resolve!: Deferred['resolve'];
@@ -764,6 +783,8 @@ async function callersOf(
 	provisioned: ProvisionedManifest,
 	/** The app's name — a mobile caller's scheme base when it gives none. */
 	project: string,
+	/** The stack's domain, which a caller's aliases are labels under. */
+	domain?: string,
 ): Promise<{ trustedOrigins: string; cookieDomain?: string }> {
 	// Every address here is a Pulumi output, not a string — a CloudFront domain
 	// and an API Gateway endpoint are both known only after their resource
@@ -777,16 +798,29 @@ async function callersOf(
 		),
 	);
 
+	// A caller's aliases are hosts it really answers on, so each is an
+	// origin beside its own; its redirects never run a page, so none is.
+	const aliases = domain
+		? dependentsOf(manifest, id).flatMap((caller) => {
+				const declaration = manifest[caller];
+				return isHostedDeclaration(declaration)
+					? hostLabels(declaration).aliases.map(
+							(label) => `https://${label}.${domain}`,
+						)
+					: [];
+			})
+		: [];
+
 	const origins = [
 		...new Set(
-			urls
+			[...urls, ...aliases]
 				.map((url) => (url ? originOf(url) : undefined))
 				.filter((origin): origin is string => Boolean(origin)),
 		),
 	].sort();
 
 	const own = await resolved(provisioned[id]?.provides().url);
-	const domain = cookieDomain([...(own ? [own] : []), ...origins]);
+	const shared = cookieDomain([...(own ? [own] : []), ...origins]);
 
 	// A mobile caller is reached by its scheme — the bare one, deployed: what
 	// the store build registers.
@@ -799,7 +833,7 @@ async function callersOf(
 
 	return {
 		trustedOrigins: [...origins, ...schemes].join(','),
-		...(domain ? { cookieDomain: domain } : {}),
+		...(shared ? { cookieDomain: shared } : {}),
 	};
 }
 
@@ -1243,6 +1277,7 @@ export function fromManifest<
 	 */
 	backends: B = {} as B,
 ): ProvisionedManifest {
+	assertNoHostLabels(manifest);
 	const provisioned: ProvisionedManifest = {};
 
 	// In provisioning order, so a derived node finds the component its parent
@@ -1332,7 +1367,9 @@ export function fromManifest<
 	for (const [id, deferred] of callers) {
 		// Resolved with the promise itself: the addresses it needs are Pulumi
 		// outputs, so the answer arrives when they do.
-		deferred.resolve(callersOf(id, manifest, provisioned, $app.name));
+		deferred.resolve(
+			callersOf(id, manifest, provisioned, $app.name, stack.domain),
+		);
 	}
 
 	// Last, and only now: the roles exist as passwords and secrets from the

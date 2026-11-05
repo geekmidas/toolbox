@@ -34,6 +34,7 @@ import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
 	API_GATEWAY_WEBSOCKET_SCHEME,
+	assertHostLabels,
 	type ConstructName,
 	canonicalId,
 	type Declaration,
@@ -41,6 +42,10 @@ import {
 	serviceKey,
 	type WebSocketEdgeLimits,
 } from '@geekmidas/manifest';
+
+/** Thrown at construction for an alias or redirect that cannot be a host label. */
+export { InvalidHostLabel } from '@geekmidas/manifest';
+
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import type { Hono } from 'hono';
 import {
@@ -203,6 +208,12 @@ export interface WebSocketApiConfig<
 	frame?: WebSocketFrame;
 	/** The label it answers on. Absent, its id kebab-cased. */
 	subdomain?: string;
+	/**
+	 * More labels it answers on under the stage's domain, exactly as on its
+	 * own — `['rest']` serves `rest.myapp.com` beside `api.myapp.com`. Its own
+	 * label stays canonical: `<ID>_URL`, clients and OpenAPI are built on it.
+	 */
+	aliases?: readonly string[];
 	/** How many processes serve it on one machine. Default 1. */
 	replicas?: number;
 	logger?: Logger;
@@ -292,6 +303,11 @@ export class WebSocketApi<
 	) {
 		const canonical = canonicalId(id as string);
 		this.id = canonical as TName;
+		assertHostLabels({
+			id: canonical,
+			...(config.subdomain ? { subdomain: config.subdomain } : {}),
+			...(config.aliases ? { aliases: config.aliases } : {}),
+		});
 
 		const replicas = config.replicas ?? 1;
 		if (!Number.isInteger(replicas) || replicas < 1) {
@@ -550,6 +566,9 @@ export class WebSocketApi<
 				id: this.id,
 				path: this.config.path,
 				...(this.config.subdomain ? { subdomain: this.config.subdomain } : {}),
+				...(this.config.aliases?.length
+					? { aliases: [...this.config.aliases] }
+					: {}),
 				...(this.config.frame?.discriminator
 					? { discriminator: this.config.frame.discriminator }
 					: {}),

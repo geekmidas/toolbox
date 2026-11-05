@@ -730,7 +730,9 @@ Each app answers on its own host:
 | deployed | the stage's domains, from `domains` — `api.example.com`, `example.com` | Let's Encrypt, automatically |
 
 The hosts are the ones `gkm deploy` uses: an app's `subdomain` (or its name)
-under the stage's base domain, and the root site on the base domain itself.
+under the stage's base domain, and the root site on the base domain itself,
+plus each of its `aliases` and `redirects` (see
+[Domains, Aliases and Redirects](./domains.md)).
 For a deployed stage, those names point at the machine — [the deploy writes
 the records](#dns) through the domain's DNS provider — and ports 80 and 443
 stay open; Caddy obtains each certificate on first request.

@@ -91,6 +91,10 @@ it is config rather than derivation:
 
   The same label is used locally under the project: `v1.shop.localhost`.
 
+  A construct can answer on more labels than its own, `aliases: ['rest']`,
+  and a site can redirect others to it, `redirects: ['www']`. See
+  [Domains, Aliases and Redirects](./domains.md).
+
 Which site holds the base domain is itself declared, not guessed. One site is
 the root because it is the only one; a site named `web` wins by convention; past
 that a site says `root: true` and anything else is an error rather than a coin

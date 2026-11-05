@@ -78,7 +78,12 @@ import {
 	processorOriginHost,
 } from '../providers/processorOrigin.js';
 import { networkEnv, processEnvKeys } from '../reconcile/apps.js';
-import { hostFor, LOCAL_TLD } from '../reconcile/caddyfile.js';
+import {
+	hostFor,
+	hostsFor,
+	LOCAL_TLD,
+	type ResourceHosts,
+} from '../reconcile/caddyfile.js';
 import { type ComposeService, composeFor } from '../reconcile/compose.js';
 import { DEFAULT_IMAGES, portKeys } from '../reconcile/containers.js';
 import type { BoundSubscriber } from '../reconcile/discover.js';
@@ -157,6 +162,7 @@ import {
 	type EdgeTls,
 	type EdgeWildcard,
 	NOFILE,
+	routeHosts,
 } from './routes.js';
 import {
 	OFFLINE_BUILD_ADDRESS,
@@ -279,8 +285,12 @@ export interface StackApp extends AppImage {
 	/** Its directory, relative to the workspace root. */
 	path: string;
 	port: number;
-	/** The host the edge answers it on. */
+	/** The host the edge answers it on — canonical: its `<ID>_URL`'s. */
 	host: string;
+	/** More hosts the edge answers it on, as `host`: its `aliases`. */
+	aliases?: string[];
+	/** Hosts the edge redirects to `host`, permanently: a site's `redirects`. */
+	redirects?: string[];
 	/** `https://<host>` — with the edge's port where it is not 443. */
 	url: string;
 	build?: AppBuild;
@@ -1325,9 +1335,20 @@ export function composeStack(input: StackInput): ComposeStack {
 	const publicAddresses = Object.fromEntries(
 		apps.map((app) => [app.id, app.url]),
 	);
+	// Where each app also answers — its aliases, at the edge's port as its
+	// own address is — so a surface trusts a site on every host it serves.
+	const aliasAddresses = Object.fromEntries(
+		apps.map((app) => [
+			app.id,
+			(app.aliases ?? []).map(
+				(alias) =>
+					`https://${alias}${local && https !== 443 ? `:${https}` : ''}`,
+			),
+		]),
+	);
 	const outside = networkEnv(
 		plan,
-		{ ...derivation, addresses: publicAddresses },
+		{ ...derivation, addresses: publicAddresses, aliasAddresses },
 		hostOf,
 	);
 
@@ -1730,6 +1751,13 @@ export function composeStack(input: StackInput): ComposeStack {
 			(app): EdgeRoute => ({
 				name: app.name,
 				host: app.host,
+				...(app.aliases?.length ? { aliases: app.aliases } : {}),
+				...(app.redirects?.length
+					? {
+							// Only a site has redirects, so its URL is the https origin.
+							redirects: { hosts: app.redirects, to: app.url },
+						}
+					: {}),
 				...(wildcard?.site === app.id ? { wildcard: wildcard.edge } : {}),
 				upstreams: replicaNames(app).map((service) => ({
 					service,
@@ -1791,7 +1819,9 @@ export function composeStack(input: StackInput): ComposeStack {
 	if (mailInbox) {
 		// Before every other route is checked against every other, so an app
 		// on the inbox's host is told what the host is for.
-		const taken = routes.find((route) => route.host === mailInbox.host);
+		const taken = routes.find((route) =>
+			routeHosts(route).includes(mailInbox.host),
+		);
 		if (taken) throw new MailInboxHostTaken(mailInbox.host, taken.name);
 		routes.push({
 			name: 'mailpit',
@@ -1998,7 +2028,13 @@ function stackApps(
 		const resource = resources.get(id);
 		if (!app || !resource || !app.port) continue;
 
-		const host = hostOf(name, app, workspace, resource, options);
+		const { host, aliases, redirects } = appHosts(
+			name,
+			app,
+			workspace,
+			resource,
+			options,
+		);
 		const site = declaration.kind === 'site';
 		const tag = site
 			? siteTag(options.images.tag, options.stage)
@@ -2022,6 +2058,8 @@ function stackApps(
 			path: app.path,
 			port: app.port,
 			host,
+			...(aliases.length ? { aliases } : {}),
+			...(redirects.length ? { redirects } : {}),
 			url: `${declaration.kind === 'websocket-api' ? 'wss' : 'https'}://${host}${options.local && options.https !== 443 ? `:${options.https}` : ''}`,
 			ref,
 			tag,
@@ -2248,13 +2286,20 @@ export class EdgeHostTaken extends GkmError {
 	}
 }
 
-/** Refuse a stack where one host would be routed to two services. */
+/**
+ * Refuse a stack where one host would be routed to two services — every
+ * host of every route, its aliases and redirects included.
+ */
 function assertHostsUnique(routes: readonly EdgeRoute[]): void {
 	const claimed = new Map<string, string>();
-	for (const { host, name } of routes) {
-		const first = claimed.get(host);
-		if (first !== undefined) throw new EdgeHostTaken(host, first, name);
-		claimed.set(host, name);
+	for (const route of routes) {
+		for (const host of routeHosts(route)) {
+			const first = claimed.get(host);
+			if (first !== undefined && first !== route.name) {
+				throw new EdgeHostTaken(host, first, route.name);
+			}
+			claimed.set(host, route.name);
+		}
 	}
 }
 
@@ -2334,33 +2379,47 @@ function stackWorkers(
 }
 
 /**
- * The host an app answers on for a stage: the `gkm dev` edge's
- * `*.localhost` names for the local stage, and the stage's domain — by the
- * same rule a deploy follows — for any other.
+ * The hosts an app answers on for a stage: the `gkm dev` edge's
+ * `*.localhost` names for the local stage (`hostsFor`), and the stage's
+ * domain — by the same rule a deploy follows — for any other. Its aliases
+ * and redirects are labels under the stage's domain, as its own is.
  */
-function hostOf(
+function appHosts(
 	name: string,
 	app: NormalizedAppConfig,
 	workspace: NormalizedWorkspace,
 	resource: PlannedResource,
 	options: { local: boolean; stage: string },
-): string {
-	if (options.local) return hostFor(resource, workspace.name);
+): ResourceHosts {
+	if (options.local) return hostsFor(resource, workspace.name);
+	const domain = workspace.domains?.[options.stage];
 	// Every label under the stage's domain, never the domain itself: a
 	// wildcard site is no stage's root, whatever else the project has.
 	if (resource.subdomain === WILDCARD_SUBDOMAIN) {
-		const domain = workspace.domains?.[options.stage];
 		if (!domain) throw new NoDomainForStage(options.stage);
-		return `${WILDCARD_SUBDOMAIN}.${domain}`;
+		return {
+			host: `${WILDCARD_SUBDOMAIN}.${domain}`,
+			aliases: [],
+			redirects: [],
+		};
 	}
 
-	return resolveHost(
+	const host = resolveHost(
 		name,
 		app,
 		options.stage,
 		workspace.domains,
 		isMainFrontendApp(name, app, workspace.apps),
 	);
+	const under = (label: string) => {
+		if (!domain) throw new NoDomainForStage(options.stage);
+		return `${label}.${domain}`;
+	};
+	return {
+		host,
+		aliases: (resource.aliases ?? []).map(under),
+		redirects: (resource.redirects ?? []).map(under),
+	};
 }
 
 /** An app's compose services, one per replica: `api`, `api-2`, `api-3`. */
@@ -2384,7 +2443,7 @@ export const LOCAL_CA_IN_CONTAINER = '/etc/gkm/local-ca.pem';
  * route's but a wildcard's, which no host entry can name.
  */
 function stackPublicHosts(routes: readonly EdgeRoute[]): string[] {
-	return [...new Set(routes.map((route) => route.host))]
+	return [...new Set(routes.flatMap(routeHosts))]
 		.filter((host) => !host.startsWith('*.'))
 		.sort();
 }

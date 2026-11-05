@@ -12,6 +12,8 @@
 import {
 	kebabCase as appKey,
 	type ConstructManifest,
+	hostLabels,
+	isHostedDeclaration,
 	isWildcardSite,
 	type SiteDeclaration,
 	WILDCARD_SUBDOMAIN,
@@ -27,8 +29,9 @@ export class ProtectedSubdomainIsAnApp extends GkmError {
 	) {
 		super(
 			`protectedSubdomains lists '${subdomain}', which '${app}' already ` +
-				`answers on — a construct's own subdomain is protected without ` +
-				`being listed. Remove it from protectedSubdomains.`,
+				`answers on — a construct's own subdomain, aliases and redirects ` +
+				`are protected without being listed. Remove it from ` +
+				`protectedSubdomains.`,
 		);
 		this.name = 'ProtectedSubdomainIsAnApp';
 	}
@@ -84,6 +87,26 @@ export class FileServerHostTaken extends GkmError {
 	}
 }
 
+/**
+ * Two apps that both answer on one label — an alias or a redirect of one is
+ * the other's own label, or both list it. Found before anything is
+ * deployed, rather than as the edge refusing the second host.
+ */
+export class HostLabelTaken extends GkmError {
+	constructor(
+		readonly label: string,
+		readonly first: string,
+		readonly second: string,
+	) {
+		super(
+			`'${first}' and '${second}' both answer on '${label}', and two ` +
+				`constructs cannot share a host. Remove it from one's aliases or ` +
+				`redirects, or give one a subdomain of its own.`,
+		);
+		this.name = 'HostLabelTaken';
+	}
+}
+
 /** The project's one wildcard site, or `undefined` when it has none. */
 export function wildcardSite(
 	manifest: ConstructManifest,
@@ -93,8 +116,8 @@ export function wildcardSite(
 
 /**
  * Every label an app answers on, by the app it belongs to — what a deploy
- * puts under the stage's domain: a surface's or site's `subdomain` (or its id
- * kebab-cased), each file server and its processors' origin, and each worker,
+ * puts under the stage's domain: a surface's or site's `hostLabels` — its
+ * own, its aliases and its redirects — each file server and its processors' origin, and each worker,
  * which SNS may push to on a host of its own.
  *
  * The root site's is kept although it answers on the domain itself: which
@@ -115,12 +138,14 @@ function* claimedLabels(
 		switch (declaration.kind) {
 			case 'rest-api':
 			case 'websocket-api':
-				yield [declaration.subdomain ?? appKey(id), id];
+			case 'site': {
+				const labels = hostLabels(declaration);
+				if (labels.primary !== WILDCARD_SUBDOMAIN) yield [labels.primary, id];
+				for (const label of [...labels.aliases, ...labels.redirects]) {
+					yield [label, id];
+				}
 				break;
-			case 'site':
-				if (declaration.subdomain === WILDCARD_SUBDOMAIN) break;
-				yield [declaration.subdomain ?? appKey(id), id];
-				break;
+			}
 			case 'file-server':
 				yield [fileServerLabel(id), id];
 				if (declaration.processors?.length) {
@@ -155,6 +180,7 @@ export function protectedSubdomains(
  * @throws {SiteHostsEndpointMissing} when the wildcard site's `hosts` route is not served
  * @throws {ProtectedSubdomainIsAnApp} when `protectedSubdomains` repeats an app's own
  * @throws {FileServerHostTaken} when a file server's host is another construct's
+ * @throws {HostLabelTaken} when two apps answer on one label
  */
 export function assertSubdomains(
 	manifest: ConstructManifest,
@@ -185,7 +211,7 @@ export function assertSubdomains(
 		}
 	}
 
-	assertFileServerHosts(manifest);
+	assertLabelsUnique(manifest);
 
 	const labels = appSubdomains(manifest);
 	for (const subdomain of configured) {
@@ -195,11 +221,12 @@ export function assertSubdomains(
 }
 
 /**
- * Every host a file server answers on — its own and its processors' origin —
- * is no other construct's. {@link appSubdomains} keeps one owner per label,
- * so the clash it would hide is found here, before either is deployed.
+ * Every label is one construct's. {@link appSubdomains} keeps one owner per
+ * label, so the clash it would hide is found here, before either is
+ * deployed: a file server's host — its own and its processors' origin — and
+ * an app's aliases and redirects, against every other construct's labels.
  */
-function assertFileServerHosts(manifest: ConstructManifest): void {
+function assertLabelsUnique(manifest: ConstructManifest): void {
 	const owners = new Map<string, string>();
 	for (const [label, id] of claimedLabels(manifest)) {
 		const other = owners.get(label);
@@ -211,5 +238,22 @@ function assertFileServerHosts(manifest: ConstructManifest): void {
 		if (manifest[other]?.kind === 'file-server') {
 			throw new FileServerHostTaken(other, label, id);
 		}
+		// Two apps on one label: only an alias or a redirect can make one,
+		// since each own label is the construct's id or a subdomain it chose.
+		if (aliased(manifest, id, label) || aliased(manifest, other, label)) {
+			throw new HostLabelTaken(label, other, id);
+		}
 	}
+}
+
+/** Whether a construct lists a label among its aliases or redirects. */
+function aliased(
+	manifest: ConstructManifest,
+	id: string,
+	label: string,
+): boolean {
+	const declaration = manifest[id];
+	if (!isHostedDeclaration(declaration)) return false;
+	const { aliases, redirects } = hostLabels(declaration);
+	return aliases.includes(label) || redirects.includes(label);
 }
