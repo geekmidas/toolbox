@@ -1,5 +1,28 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.165
+
+### Patch Changes
+
+- [#408](https://github.com/geekmidas/toolbox/pull/408) [`1d63e73`](https://github.com/geekmidas/toolbox/commit/1d63e73eba00e18d148ff4dafef46405afeecf67) Thanks [@geekmidas](https://github.com/geekmidas)! - A compose deploy after a stage changes its domain now moves what providers made, not just the server's records:
+
+  - 🔥 **Old provider DNS records are deleted.** Records written by providers (DKIM, MX, certificate validation, a file server's CNAME) are now kept in the stage's state. Once the apps answer, any record no provider asks for anymore is deleted, by the same rules as the stack's own records.
+  - ✨ **`MAIL_FROM` follows the new domain.** If gkm wrote the address, it becomes `noreply@<new domain>`. An address you set yourself is kept.
+  - ✨ **CloudFront certificates:** a file server whose host changes within an hour of the last certificate request now gets a certificate for the new host. Before, ACM handed back the old host's certificate.
+
+- Updated dependencies []:
+  - @geekmidas/cache@10.0.0-alpha.165
+  - @geekmidas/constructs@10.0.0-alpha.165
+  - @geekmidas/db@10.0.0-alpha.165
+  - @geekmidas/envkit@10.0.0-alpha.165
+  - @geekmidas/errors@10.0.0-alpha.165
+  - @geekmidas/logger@10.0.0-alpha.165
+  - @geekmidas/manifest@10.0.0-alpha.165
+  - @geekmidas/schema@10.0.0-alpha.165
+  - @geekmidas/services@10.0.0-alpha.165
+  - @geekmidas/storage@10.0.0-alpha.165
+  - @geekmidas/telescope@10.0.0-alpha.165
+
 ## 10.0.0-alpha.164
 
 ### Minor Changes

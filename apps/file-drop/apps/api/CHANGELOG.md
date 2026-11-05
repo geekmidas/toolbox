@@ -1,5 +1,12 @@
 # @file-drop/api
 
+## 0.0.1-alpha.5
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @geekmidas/services@10.0.0-alpha.165
+
 ## 0.0.1-alpha.4
 
 ### Patch Changes

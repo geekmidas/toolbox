@@ -121,6 +121,7 @@
     "dns-godaddy-compose",
     "dokploy-request-timeouts",
     "dokploy-verify-rollback-migrations",
+    "domain-change-providers",
     "drop-free-standing-builders",
     "drop-generate-react-query",
     "drop-lodash-pick-set",
