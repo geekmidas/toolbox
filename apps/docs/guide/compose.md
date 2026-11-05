@@ -1942,8 +1942,10 @@ and recreates its database, owners and grants included.
 
 ### Retention
 
-An S3 lifecycle rule on each stage's `backups/` prefix expires a backup after
-its `keep`, and aborts an upload that never finished. A bucket has one
+An S3 lifecycle rule on each stage's runs expires a backup after its `keep`,
+and aborts an upload that never finished. A lifecycle filter cannot leave a
+folder out, so the rule matches what every run folder starts with — its year,
+`backups/2…` — and the stage's `imports/` is never expired. A bucket has one
 lifecycle, so the deploy rebuilds the whole of it from every stage's
 `deploy.backups` — the bucket's own rule for old versions, and each stage's
 expiry — and puts it only when it differs. One stage's deploy never drops
@@ -1996,7 +1998,7 @@ longest gap, after a startup grace — so a missed night shows in
 Run from a laptop, or CI, with the stage account's own credentials:
 
 ```bash
-gkm backup:list --stage production          # newest first: time, databases, sizes
+gkm backup:list --stage production          # newest first: time, databases, sizes; then imports/
 gkm backup:now --stage production           # docker exec on the server, over SSH: a run now
 gkm backup:restore --stage production --latest
 gkm backup:restore --stage production --at 2026-10-10/02-00-00Z --database auth-database
@@ -2014,6 +2016,88 @@ A restore asks first (`--yes` skips it), then:
    open ones, and recreates it from the file as the stack's superuser.
 
 `--at` takes a run's folder, or a time for the newest run at or before it.
+
+### Importing a database
+
+Moving an existing database onto a compose stage — from RDS, another host, or
+an older layout — goes through the same command. The data has to land after
+the stack and its roles exist and before the next deploy migrates, so a
+prepared file is kept beside the stage's runs, in its own `imports/` folder,
+and loaded with `--from`:
+
+```
+gkm/<project>/<stage>/backups/imports/app.sql.gz
+```
+
+`backup:list` shows what is in `imports/` under the runs, apart from them:
+`--latest` never picks an import, and the stage's expiry never deletes one.
+
+1. **Prepare the file offline.** Restore the source dump into a scratch
+   Postgres, migrate it to the stack's latest migration, and compare a
+   schema-only dump of it with a fresh build of the stack, so its rows fit
+   the schema the deploy made. Then dump it **data only**, as plain SQL,
+   leaving out the migration bookkeeping tables, wrapped in one transaction
+   that empties the stack's tables first, and gzip it:
+
+   ```sql
+   BEGIN;
+   SET LOCAL session_replication_role = replica;  -- FK triggers off for the load
+   -- empty every table but the migration bookkeeping, so the first deploy's
+   -- seed rows don't collide
+   DO $$ DECLARE t text; BEGIN
+     SELECT string_agg(format('%I.%I', schemaname, tablename), ', ') INTO t
+     FROM pg_tables
+     WHERE schemaname IN ('public') AND tablename !~ '^(kysely_migration|knex_migrations)';
+     EXECUTE 'TRUNCATE ' || t;
+   END $$;
+   -- pg_dump --data-only -n public --exclude-table='kysely_migration*'
+   COMMIT;
+   ```
+
+   A data-only file keeps the schema the stack's migrations built and brings
+   only rows; a `--create` dump would replace that schema with the source's,
+   drift included.
+2. **Upload it** to `<backups prefix>/imports/`, with the stage account's
+   credentials: `aws s3 cp app.sql.gz s3://<project bucket>/gkm/<project>/<stage>/backups/imports/`.
+3. **Deploy once**, so the stack, its databases and its roles exist.
+4. **Load it:**
+
+   ```bash
+   gkm backup:restore --stage production --from imports/app.sql.gz --database database
+   ```
+
+5. **Deploy again**: provision, the pending migrations, and the seeds.
+
+`--from` is relative to the stage's backups prefix and must name a
+`.sql.gz` file in `imports/` — a path that leaves it (`..`, an absolute path, a
+URL) fails with `ImportPathInvalid`. One file loads one database, so
+`--database` is required (`ImportNeedsDatabase`), and `--from` stands in for
+`--at`/`--latest`, never beside them.
+
+A data-only file has to run connected to the database it loads, so the
+database cannot be closed to connections the way a run's restore closes it.
+After asking and taking a fresh backup, `--from` instead:
+
+1. stops every container of the stack but its infrastructure — Postgres, the
+   backups container, the proxy and the other services the stack runs — so no
+   app, worker or processor is connected or reconnects;
+2. ends any other session still open on the database;
+3. runs the file inside it, as the stack's superuser, in one transaction
+   (`psql --single-transaction -v ON_ERROR_STOP=1`): a file that fails halfway
+   changes nothing;
+4. starts the stopped containers again — whether the load worked or not. If
+   they will not start, `AppsNotRestarted` names them, for `docker start` on
+   the server, or the next deploy.
+
+**Seeds run over imported rows.** The deploy after an import migrates and runs
+every seed on top of what was loaded, so a seed must match an existing row by
+its natural key — a name, an identifier — and keep that row's id. A seed that
+upserts with an id taken from the stage's secrets rewrites the row to
+whatever the stage holds, so the stage's secrets have to carry the source's
+values before that deploy.
+
+The local stage takes no backups, so `--from` runs only where `backup:restore`
+does: a deployed compose stage.
 
 ## Destroying a stage
 

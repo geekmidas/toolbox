@@ -3,9 +3,9 @@
  * its checks, beside the stage's providers, with the same credentials:
  *
  * - **the project bucket**, if it is not there yet, and its lifecycle — the
- *   bucket's own rule and an expiry on every stage's `backups/` prefix,
- *   rebuilt from every stage's `deploy.backups` each time, so one stage's
- *   deploy never drops another's rule;
+ *   bucket's own rule and an expiry on every stage's backup runs (never its
+ *   `imports/`), rebuilt from every stage's `deploy.backups` each time, so
+ *   one stage's deploy never drops another's rule;
  * - **an IAM user**, `gkm-<project>-<stage>-backups` under `/gkm/`, whose
  *   inline policy allows `s3:PutObject` under the stage's backups prefix and
  *   nothing else — no get, no list, no delete: a server that is broken into
@@ -49,6 +49,7 @@ import type { NormalizedWorkspace } from '../workspace/types.js';
 import {
 	backupExpiries,
 	backupsPrefix,
+	RUNS_PREFIX,
 	type StageBackupsChoice,
 	stageBackups,
 } from './config.js';
@@ -258,7 +259,7 @@ export async function ensureStageBackups(
 			{
 				construct: BACKUPS_SERVICE,
 				resource: `bucket ${bucket}`,
-				change: `lifecycle: ${expiries.map((e) => `${e.prefix} after ${e.days} days`).join(', ')}`,
+				change: `lifecycle: ${expiries.map((e) => `runs in ${e.prefix.slice(0, -RUNS_PREFIX.length)} after ${e.days} days`).join(', ')}`,
 			},
 			async () => {
 				await reconcileProjectBucketLifecycle(clients.s3, bucket, expiries);

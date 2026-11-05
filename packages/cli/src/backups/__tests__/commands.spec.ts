@@ -30,11 +30,16 @@ import {
 	writeComposeApp,
 } from '../../compose/__tests__/__helpers__/composeApp';
 import { fakeDocker } from '../../compose/__tests__/__helpers__/fakeDocker';
-import type { ComposeDocker } from '../../compose/docker';
+import {
+	type ComposeDocker,
+	ContainersNotStarted,
+	ContainersNotStopped,
+} from '../../compose/docker';
 import { loadWorkspaceConfig } from '../../config';
 import { initStageSecrets } from '../../secrets/storage';
 import { secretsStoreFor } from '../../secrets/store';
 import {
+	AppsNotRestarted,
 	BackupDatabaseMissing,
 	BackupDatabaseUnknown,
 	type BackupRun,
@@ -49,9 +54,15 @@ import {
 	backupNowCommand,
 	backupRestoreCommand,
 	chooseRun,
+	formatImports,
 	formatRuns,
 	formatSize,
+	ImportNeedsDatabase,
+	ImportNotFound,
+	ImportPathInvalid,
+	importKey,
 	listBackups,
+	listImports,
 	NoBackups,
 	RestoreFailed,
 	RestoreNotConfirmed,
@@ -103,6 +114,12 @@ beforeAll(async () => {
 	// One that lost a database, and keys that are no run's.
 	await put(`${PREFIX}/2026-10-09/14-30-00Z/database.sql.gz`, 'd');
 	await put(`${PREFIX}/.gkm-verify`, 'marker');
+	// Imports, one shaped like a run and newer than any: never a run.
+	await put(`${PREFIX}/imports/app.sql.gz`, 'i'.repeat(30));
+	await put(
+		`${PREFIX}/imports/2026-12-01/02-00-00Z/database.sql.gz`,
+		'i'.repeat(5),
+	);
 	await put(`${PREFIX}/2026-10-09/notes.txt`, 'x');
 });
 
@@ -138,6 +155,29 @@ describe('backup:list', () => {
 		expect(await listBackups(s3, BUCKET, 'gkm/shop/qa/backups')).toEqual([]);
 	});
 
+	it('lists the imports apart from the runs, by the name --from takes', async () => {
+		const imports = await listImports(s3, BUCKET, PREFIX);
+		expect(imports.map(({ file, size }) => ({ file, size }))).toEqual([
+			{ file: 'imports/2026-12-01/02-00-00Z/database.sql.gz', size: 5 },
+			{ file: 'imports/app.sql.gz', size: 30 },
+		]);
+		expect(imports[0]!.modified).toBeInstanceOf(Date);
+		expect(
+			formatImports([
+				{
+					file: 'imports/app.sql.gz',
+					size: 1536,
+					modified: new Date('2026-11-01T10:00:00.500Z'),
+				},
+				{ file: 'imports/b.sql.gz', size: 3 },
+			]),
+		).toEqual([
+			'imports/app.sql.gz  1.5 KB  uploaded 2026-11-01 10:00:00Z',
+			'imports/b.sql.gz  3 B',
+		]);
+		expect(await listImports(s3, BUCKET, 'gkm/shop/qa/backups')).toEqual([]);
+	});
+
 	it('says a size the way a person reads it', () => {
 		expect(formatSize(0)).toBe('0 B');
 		expect(formatSize(1023)).toBe('1023 B');
@@ -154,7 +194,7 @@ describe('which run a restore takes', () => {
 		runs = await listBackups(s3, BUCKET, PREFIX);
 	});
 
-	it('is the newest with --latest', () => {
+	it('is the newest with --latest — never an import, however it is named', () => {
 		expect(chooseRun(runs, { latest: true }).folder).toBe(
 			'2026-10-09/14-30-00Z',
 		);
@@ -275,7 +315,7 @@ describe('backup:restore', () => {
 			},
 		});
 
-		expect(result.run.folder).toBe('2026-10-08/02-00-00Z');
+		expect(result.run?.folder).toBe('2026-10-08/02-00-00Z');
 		expect(result.restored).toEqual(['auth-database', 'database']);
 		expect(asked).toEqual([
 			"Replace auth_database_production, database_production on 'production' with the backup 2026-10-08/02-00-00Z? Everything written since is lost (a backup is taken first).",
@@ -406,6 +446,210 @@ describe('backup:restore', () => {
 	});
 });
 
+describe('backup:restore --from', () => {
+	const RUNNING = [
+		{ id: 'c-postgres', service: 'postgres' },
+		{ id: 'c-backups', service: 'backups' },
+		{ id: 'c-redis', service: 'redis' },
+		{ id: 'c-caddy', service: 'caddy' },
+		{ id: 'c-api', service: 'api' },
+		{ id: 'c-api-2', service: 'api-2' },
+		{ id: 'c-jobs', service: 'jobs' },
+	];
+	const restore = (
+		options: Partial<Parameters<typeof restoreBackup>[0]> & {
+			docker: ComposeDocker;
+		},
+	) =>
+		restoreBackup({
+			s3,
+			bucket: BUCKET,
+			prefix: PREFIX,
+			project: PROJECT,
+			engine: { host: 'ssh://deploy@203.0.113.10' },
+			stage: 'production',
+			superuser: SUPERUSER,
+			databases: DATABASES,
+			from: 'imports/app.sql.gz',
+			database: 'database',
+			keep: ['postgres', 'redis', 'caddy'],
+			confirm: async () => true,
+			log: () => {},
+			...options,
+		});
+
+	it('asks, backs up, stops the apps, loads the file inside the database in one transaction, then starts them', async () => {
+		const { docker, calls } = fakeDocker({ running: RUNNING });
+		const asked: string[] = [];
+		let body = '';
+		const runOnce = docker.runOnce.bind(docker);
+		docker.runOnce = async (engine, run) => {
+			for await (const chunk of run.stdin as AsyncIterable<Buffer>) {
+				body += chunk.toString();
+			}
+			return runOnce(engine, { ...run, stdin: undefined });
+		};
+
+		const result = await restore({
+			docker,
+			confirm: async (question) => {
+				asked.push(question);
+				return true;
+			},
+		});
+
+		expect(result).toEqual({
+			from: 'imports/app.sql.gz',
+			restored: ['database'],
+		});
+		expect(asked).toEqual([
+			"Load imports/app.sql.gz into database_production on 'production'? Its apps are stopped while it loads, and what the file replaces is lost (a backup is taken first).",
+		]);
+		expect(calls.map((c) => c.op)).toEqual([
+			'container',
+			'exec',
+			'stop',
+			'runOnce',
+			'start',
+		]);
+		expect(calls.every((c) => c.host === 'ssh://deploy@203.0.113.10')).toBe(
+			true,
+		);
+		// Postgres and the backups container always stay; so does what the
+		// stack names as its infrastructure.
+		expect(calls[2]!.args).toEqual([
+			PROJECT,
+			['postgres', 'backups', 'postgres', 'redis', 'caddy'],
+		]);
+		expect(calls[4]!.args).toEqual(['c-api', 'c-api-2', 'c-jobs']);
+
+		const run = calls[3]!.args as {
+			network: string;
+			command: string[];
+			env: Record<string, string>;
+		};
+		expect(run.network).toBe(`${PROJECT}_default`);
+		const script = run.command[2]!;
+		expect(script).not.toContain('ALLOW_CONNECTIONS');
+		expect(script).toContain('pg_terminate_backend');
+		expect(script).toContain(
+			'gunzip | psql -X -q -v ON_ERROR_STOP=1 --single-transaction -d "$RESTORE_DATABASE" -f -',
+		);
+		expect(run.env).toMatchObject({
+			PGUSER: 'shop_admin',
+			RESTORE_DATABASE: 'database_production',
+		});
+		expect(body).toBe('i'.repeat(30));
+	});
+
+	it('starts the apps again when the file fails, and says the load failed', async () => {
+		const { docker, calls } = fakeDocker({ running: RUNNING });
+		docker.runOnce = async () => 3;
+		await expect(restore({ docker })).rejects.toMatchObject({
+			name: 'RestoreFailed',
+			database: 'database_production',
+			code: 3,
+		});
+		expect(calls.map((c) => c.op)).toEqual([
+			'container',
+			'exec',
+			'stop',
+			'start',
+		]);
+		expect(calls.at(-1)!.args).toEqual(['c-api', 'c-api-2', 'c-jobs']);
+	});
+
+	it('starts the apps again when the load cannot even start', async () => {
+		const { docker, calls } = fakeDocker({ running: RUNNING });
+		docker.runOnce = async () => {
+			throw new Error('docker is gone');
+		};
+		await expect(restore({ docker })).rejects.toThrow('docker is gone');
+		expect(calls.map((c) => c.op).slice(-2)).toEqual(['stop', 'start']);
+	});
+
+	it('says so, naming what to start, when the apps do not start again', async () => {
+		const { docker } = fakeDocker({ running: RUNNING });
+		docker.start = async (_engine, ids) => {
+			throw new ContainersNotStarted(ids, 'no such container');
+		};
+		const error = await restore({ docker }).catch((e) => e);
+		expect(error).toBeInstanceOf(AppsNotRestarted);
+		expect(error).toMatchObject({
+			loaded: true,
+			ids: ['c-api', 'c-api-2', 'c-jobs'],
+			output: 'no such container',
+		});
+		expect(error.message).toContain('docker start c-api c-api-2 c-jobs');
+	});
+
+	it('starts what did stop when stopping the apps fails, and loads nothing', async () => {
+		const { docker, calls } = fakeDocker({ running: RUNNING });
+		docker.stop = async (_engine, project) => {
+			throw new ContainersNotStopped(project, ['c-api', 'c-jobs'], 'timeout');
+		};
+		await expect(restore({ docker })).rejects.toBeInstanceOf(
+			ContainersNotStopped,
+		);
+		expect(calls.map((c) => c.op)).toEqual(['container', 'exec', 'start']);
+		expect(calls.at(-1)!.args).toEqual(['c-api', 'c-jobs']);
+	});
+
+	it('refuses, before anything changes, a path outside imports/, no database, an unknown one, or a missing file', async () => {
+		const { docker, calls } = fakeDocker({ running: RUNNING });
+		for (const from of [
+			'../production/backups/imports/app.sql.gz',
+			'imports/../2026-10-08/02-00-00Z/database.sql.gz',
+			'/gkm/shop/production/backups/imports/app.sql.gz',
+			's3://elsewhere/imports/app.sql.gz',
+			'https://example.com/app.sql.gz',
+			'2026-10-08/02-00-00Z/database.sql.gz',
+			'imports//app.sql.gz',
+			'imports/./app.sql.gz',
+			'imports\\app.sql.gz',
+			'imports/app.sql',
+			'imports',
+		]) {
+			await expect(restore({ docker, from }), from).rejects.toBeInstanceOf(
+				ImportPathInvalid,
+			);
+		}
+		await expect(
+			restore({ docker, database: undefined }),
+		).rejects.toMatchObject({
+			name: 'ImportNeedsDatabase',
+			known: ['auth-database', 'database'],
+		});
+		await expect(
+			restore({ docker, database: 'analytics' }),
+		).rejects.toBeInstanceOf(BackupDatabaseUnknown);
+		await expect(
+			restore({ docker, from: 'imports/nope.sql.gz' }),
+		).rejects.toBeInstanceOf(ImportNotFound);
+		expect(calls).toEqual([]);
+		expect(ImportNeedsDatabase).toBeDefined();
+	});
+
+	it('is one source: never with --at or --latest', async () => {
+		const { docker } = fakeDocker();
+		await expect(restore({ docker, latest: true })).rejects.toBeInstanceOf(
+			BackupRunNotChosen,
+		);
+		await expect(
+			restore({ docker, at: '2026-10-08/02-00-00Z' }),
+		).rejects.toBeInstanceOf(BackupRunNotChosen);
+	});
+
+	it('keys a file under the prefix it names', () => {
+		expect(importKey(PREFIX, 'imports/app.sql.gz')).toBe(
+			`${PREFIX}/imports/app.sql.gz`,
+		);
+		expect(importKey(PREFIX, 'imports/2026/rds.sql.gz')).toBe(
+			`${PREFIX}/imports/2026/rds.sql.gz`,
+		);
+	});
+});
+
 describe('the commands, on a workspace', () => {
 	let dir: string;
 	const lines: string[] = [];
@@ -468,19 +712,32 @@ describe('the commands, on a workspace', () => {
 		await cleanupDir(dir);
 	});
 
-	it("backup:list reads the stage's bucket with the caller's own credentials", async () => {
-		const runs = await backupListCommand({ stage: 'production', cwd: dir });
+	it("backup:list reads the stage's bucket with the caller's own credentials, imports apart", async () => {
+		const { runs, imports } = await backupListCommand({
+			stage: 'production',
+			cwd: dir,
+		});
 		expect(runs.map((r) => r.folder)).toEqual([
 			'2026-10-09/14-30-00Z',
 			'2026-10-09/02-00-00Z',
 			'2026-10-08/02-00-00Z',
 		]);
-		expect(lines[0]).toBe(`💾 s3://${BUCKET}/${PREFIX}/ — newest first\n`);
-		expect(lines.slice(1)).toEqual(formatRuns(runs));
+		expect(imports.map((i) => i.file)).toEqual([
+			'imports/2026-12-01/02-00-00Z/database.sql.gz',
+			'imports/app.sql.gz',
+		]);
+		expect(lines).toEqual([
+			`💾 s3://${BUCKET}/${PREFIX}/ — newest first\n`,
+			...formatRuns(runs),
+			'\n📥 Imports — gkm backup:restore --stage production --from <file> --database <name>\n',
+			...formatImports(imports),
+		]);
 
 		lines.length = 0;
 		await backupListCommand({ stage: 'production', cwd: dir, json: true });
-		expect(JSON.parse(lines[0]!)).toHaveLength(3);
+		const json = JSON.parse(lines[0]!);
+		expect(json.runs).toHaveLength(3);
+		expect(json.imports).toHaveLength(2);
 	});
 
 	it('backup:now runs on the stage server, over SSH', async () => {
@@ -537,8 +794,85 @@ describe('the commands, on a workspace', () => {
 	});
 
 	it('backup:list says a stage has none yet', async () => {
-		expect(await backupListCommand({ stage: 'demo', cwd: dir })).toEqual([]);
+		expect(await backupListCommand({ stage: 'demo', cwd: dir })).toEqual({
+			runs: [],
+			imports: [],
+		});
 		expect(lines).toEqual(["No backups of 'demo' yet."]);
+	});
+
+	it('backup:restore --from loads an import with the stack infrastructure kept running', async () => {
+		const { docker, calls } = fakeDocker();
+		await backupRestoreCommand(
+			{
+				stage: 'production',
+				cwd: dir,
+				from: 'imports/app.sql.gz',
+				database: 'database',
+				yes: true,
+			},
+			docker,
+		);
+		const stop = calls.find((c) => c.op === 'stop')!;
+		const [project, keep] = stop.args as [string, string[]];
+		expect(project).toBe('shop-production');
+		expect(keep).toEqual(
+			expect.arrayContaining(['postgres', 'backups', 'caddy']),
+		);
+		expect(keep).not.toContain('api');
+		expect(calls.map((c) => c.op)).toEqual([
+			'container',
+			'exec',
+			'stop',
+			'runOnce',
+			'start',
+		]);
+		expect(lines.at(-1)).toBe(
+			"✅ Restored database on 'production' from imports/app.sql.gz.",
+		);
+	});
+
+	it('backup:restore --from refuses a path that escapes, or no --database, before reading anything', async () => {
+		const { docker, calls } = fakeDocker();
+		await expect(
+			backupRestoreCommand(
+				{
+					stage: 'production',
+					cwd: dir,
+					from: '../staging/backups/imports/app.sql.gz',
+					database: 'database',
+					yes: true,
+				},
+				docker,
+			),
+		).rejects.toBeInstanceOf(ImportPathInvalid);
+		await expect(
+			backupRestoreCommand(
+				{
+					stage: 'production',
+					cwd: dir,
+					from: 'imports/app.sql.gz',
+					yes: true,
+				},
+				docker,
+			),
+		).rejects.toMatchObject({
+			name: 'ImportNeedsDatabase',
+			known: ['database'],
+		});
+		await expect(
+			backupRestoreCommand(
+				{
+					stage: 'production',
+					cwd: dir,
+					from: 'imports/app.sql.gz',
+					latest: true,
+					database: 'database',
+				},
+				docker,
+			),
+		).rejects.toBeInstanceOf(BackupRunNotChosen);
+		expect(calls).toEqual([]);
 	});
 
 	it('backup:restore asks at a terminal, and says how to skip asking where there is none', async () => {

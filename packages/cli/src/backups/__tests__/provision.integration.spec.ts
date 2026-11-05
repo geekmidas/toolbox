@@ -227,7 +227,7 @@ describe("a deployed compose stage's backups", () => {
 		const reports = await provision('production');
 		const backups = reports.find((r) => r.kind === 'backups');
 		expect(backups?.actions.map((a) => `${a.resource}: ${a.change}`)).toEqual([
-			`bucket ${bucket()}: lifecycle: gkm/${name}/production/backups/ after 30 days, gkm/${name}/qa/backups/ after 30 days, gkm/${name}/staging/backups/ after 7 days`,
+			`bucket ${bucket()}: lifecycle: runs in gkm/${name}/production/backups/ after 30 days, runs in gkm/${name}/qa/backups/ after 30 days, runs in gkm/${name}/staging/backups/ after 7 days`,
 			`IAM user ${user('production')}: create under /gkm/`,
 			`IAM user ${user('production')}: policy gkm-backups: put objects under gkm/${name}/production/backups/ only`,
 			`IAM user ${user('production')}: create an access key`,
@@ -247,19 +247,19 @@ describe("a deployed compose stage's backups", () => {
 		const expected = [
 			{
 				id: 'gkm-backups-production',
-				prefix: `gkm/${name}/production/backups/`,
+				prefix: `gkm/${name}/production/backups/2`,
 				days: 30,
 				noncurrent: undefined,
 			},
 			{
 				id: 'gkm-backups-qa',
-				prefix: `gkm/${name}/qa/backups/`,
+				prefix: `gkm/${name}/qa/backups/2`,
 				days: 30,
 				noncurrent: undefined,
 			},
 			{
 				id: 'gkm-backups-staging',
-				prefix: `gkm/${name}/staging/backups/`,
+				prefix: `gkm/${name}/staging/backups/2`,
 				days: 7,
 				noncurrent: undefined,
 			},

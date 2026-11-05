@@ -902,9 +902,9 @@ A deployed compose stage with Postgres is backed up on schedule — see
 (`--profile`, or the usual AWS variables):
 
 ```bash
-# Every run, newest first: when, which databases, how big
+# Every run, newest first: when, which databases, how big — then the imports
 gkm backup:list --stage production
-gkm backup:list --stage production --json
+gkm backup:list --stage production --json   # { "runs": [...], "imports": [...] }
 
 # A backup now: the stack's backups container, through docker exec
 gkm backup:now --stage production
@@ -913,12 +913,16 @@ gkm backup:now --stage production
 gkm backup:restore --stage production --latest
 gkm backup:restore --stage production --at 2026-10-10/02-00-00Z
 gkm backup:restore --stage production --at 2026-10-10T12:00:00Z --database auth-database --yes
+
+# Load a prepared, data-only import kept in the stage's backups imports/ folder
+gkm backup:restore --stage production --from imports/app.sql.gz --database database
 ```
 
 | Option | |
 | --- | --- |
 | `--at <time>` | A run's folder, or a time: the newest run at or before it |
 | `--latest` | The newest run |
+| `--from <file>` | A prepared import, relative to the stage's backups prefix: `imports/<file>.sql.gz`. Needs `--database`; not with `--at` or `--latest`. See [Importing a database](./compose.md#importing-a-database) |
 | `--database <name>` | One database, by its file name (`auth-database`); every one by default |
 | `-y, --yes` | Restore without asking |
 | `--profile <profile>` | AWS profile for the stage's account |
