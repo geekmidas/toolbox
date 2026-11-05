@@ -34,7 +34,11 @@ import {
 	iamUserName,
 	SUFFIX_LENGTH,
 } from '../providers/s3/naming.js';
-import { emailUserName } from '../providers/ses/config.js';
+import {
+	emailUserName,
+	inboxBucketId,
+	inboxTopicName,
+} from '../providers/ses/config.js';
 import { secretsParameterName } from '../secrets/aws.js';
 import { s3SecretsKey, s3SecretsLocation } from '../secrets/providers.js';
 import { secretsManagerSecretName } from '../secrets/secretsManager.js';
@@ -47,6 +51,59 @@ import { deployIdentity } from './identity.js';
  * `--policy-arn`.
  */
 export const DEFAULT_POLICY_ARN = 'arn:aws:iam::aws:policy/AdministratorAccess';
+
+/**
+ * What the deploy does to a bucket of the stage's: creates it, and puts each
+ * of its settings back where they drifted.
+ */
+const BUCKET_ACTIONS = [
+	's3:CreateBucket',
+	's3:ListBucket',
+	's3:GetBucketTagging',
+	's3:PutBucketTagging',
+	's3:GetBucketPublicAccessBlock',
+	's3:PutBucketPublicAccessBlock',
+	's3:GetBucketPolicy',
+	's3:PutBucketPolicy',
+	's3:GetEncryptionConfiguration',
+	's3:PutEncryptionConfiguration',
+	's3:GetBucketVersioning',
+	's3:PutBucketVersioning',
+	's3:GetBucketCORS',
+	's3:PutBucketCORS',
+	's3:GetBucketNotification',
+	's3:PutBucketNotification',
+	// A construct's `expire`, and removing it: S3 authorises
+	// DeleteBucketLifecycle as PutLifecycleConfiguration.
+	's3:GetLifecycleConfiguration',
+	's3:PutLifecycleConfiguration',
+];
+
+/** What the deploy does to a topic a bucket or an inbox announces on. */
+const TOPIC_ACTIONS = [
+	'sns:CreateTopic',
+	'sns:TagResource',
+	'sns:GetTopicAttributes',
+	'sns:SetTopicAttributes',
+	'sns:Subscribe',
+	'sns:Unsubscribe',
+	'sns:ListSubscriptionsByTopic',
+	'sns:GetSubscriptionAttributes',
+	'sns:SetSubscriptionAttributes',
+];
+
+/** What the deploy does to an IAM user it reaches a resource with, and its key. */
+const USER_ACTIONS = [
+	'iam:GetUser',
+	'iam:CreateUser',
+	'iam:TagUser',
+	'iam:ListUserTags',
+	'iam:GetUserPolicy',
+	'iam:PutUserPolicy',
+	'iam:ListAccessKeys',
+	'iam:CreateAccessKey',
+	'iam:DeleteAccessKey',
+];
 
 /** The name of the inline policy a compose stage's role is given. */
 export const SCOPED_POLICY_NAME = 'gkm-deploy';
@@ -277,28 +334,7 @@ export function deployAccess(
 			{
 				Sid: 'StageBuckets',
 				Effect: 'Allow',
-				Action: [
-					's3:CreateBucket',
-					's3:ListBucket',
-					's3:GetBucketTagging',
-					's3:PutBucketTagging',
-					's3:GetBucketPublicAccessBlock',
-					's3:PutBucketPublicAccessBlock',
-					's3:GetBucketPolicy',
-					's3:PutBucketPolicy',
-					's3:GetEncryptionConfiguration',
-					's3:PutEncryptionConfiguration',
-					's3:GetBucketVersioning',
-					's3:PutBucketVersioning',
-					's3:GetBucketCORS',
-					's3:PutBucketCORS',
-					's3:GetBucketNotification',
-					's3:PutBucketNotification',
-					// A construct's `expire`, and removing it: S3 authorises
-					// DeleteBucketLifecycle as PutLifecycleConfiguration.
-					's3:GetLifecycleConfiguration',
-					's3:PutLifecycleConfiguration',
-				],
+				Action: BUCKET_ACTIONS,
 				Resource: names.flatMap((n) => [
 					`arn:aws:s3:::${n.bucket}`,
 					`arn:aws:s3:::${n.bucket}-${suffix}`,
@@ -309,17 +345,7 @@ export function deployAccess(
 			{
 				Sid: 'StageBucketTopics',
 				Effect: 'Allow',
-				Action: [
-					'sns:CreateTopic',
-					'sns:TagResource',
-					'sns:GetTopicAttributes',
-					'sns:SetTopicAttributes',
-					'sns:Subscribe',
-					'sns:Unsubscribe',
-					'sns:ListSubscriptionsByTopic',
-					'sns:GetSubscriptionAttributes',
-					'sns:SetSubscriptionAttributes',
-				],
+				Action: TOPIC_ACTIONS,
 				Resource: names.flatMap((n) =>
 					[`${n.bucket}-events`, `${n.bucket}-${suffix}-events`].flatMap(
 						(topic) => [
@@ -347,17 +373,7 @@ export function deployAccess(
 			{
 				Sid: 'StageBucketUsers',
 				Effect: 'Allow',
-				Action: [
-					'iam:GetUser',
-					'iam:CreateUser',
-					'iam:TagUser',
-					'iam:ListUserTags',
-					'iam:GetUserPolicy',
-					'iam:PutUserPolicy',
-					'iam:ListAccessKeys',
-					'iam:CreateAccessKey',
-					'iam:DeleteAccessKey',
-				],
+				Action: USER_ACTIONS,
 				Resource: names.map(
 					(n) => `arn:aws:iam::${account}:user${IAM_USER_PATH}${n.user}`,
 				),
@@ -442,19 +458,78 @@ export function deployAccess(
 			{
 				Sid: 'StageMailUsers',
 				Effect: 'Allow',
-				Action: [
-					'iam:GetUser',
-					'iam:CreateUser',
-					'iam:TagUser',
-					'iam:ListUserTags',
-					'iam:GetUserPolicy',
-					'iam:PutUserPolicy',
-					'iam:ListAccessKeys',
-					'iam:CreateAccessKey',
-					'iam:DeleteAccessKey',
-				],
+				Action: USER_ACTIONS,
 				Resource: users.map(
 					(user) => `arn:aws:iam::${account}:user${IAM_USER_PATH}${user}`,
+				),
+			},
+		]);
+	}
+
+	// The deploy receives each inbox's mail when an ses provider does: the
+	// stage's domain verified by DKIM, the receipt rules in the region's
+	// active set — SES scopes none of these to a name — and, by their names,
+	// each inbox's bucket, its IAM user and the topic its mail is announced on.
+	const inboxes = Object.entries(manifest)
+		.filter(([, d]) => d.kind === 'inbox')
+		.map(([id]) => id)
+		.sort();
+	const inbox = stageProvider(workspace, 'inbox', stage);
+	if (inbox.mode === 'provider' && inbox.name === 'ses' && inboxes.length) {
+		const { scope } = deployIdentity(workspace, stage);
+		const names = inboxes.map((id) => {
+			const named = { scope, stage, id: inboxBucketId(id) };
+			return {
+				bucket: bucketName(named),
+				user: iamUserName(named),
+				topic: inboxTopicName(scope, stage, id),
+			};
+		});
+		const suffix = '?'.repeat(SUFFIX_LENGTH - 1);
+		describe.push(
+			`verify the stage's domain in SES and keep its receipt rules, and create the inbox buckets ${names.map((n) => n.bucket).join(', ')}, their IAM users and topics (SES, S3, IAM, SNS)`,
+		);
+		build.push((account) => [
+			{
+				Sid: 'StageInboxRules',
+				Effect: 'Allow',
+				Action: [
+					'ses:VerifyDomainDkim',
+					'ses:DescribeActiveReceiptRuleSet',
+					'ses:CreateReceiptRuleSet',
+					'ses:SetActiveReceiptRuleSet',
+					'ses:DescribeReceiptRuleSet',
+					'ses:DescribeReceiptRule',
+					'ses:CreateReceiptRule',
+					'ses:UpdateReceiptRule',
+					'ses:DeleteReceiptRule',
+				],
+				Resource: '*',
+			},
+			{
+				Sid: 'StageInboxBuckets',
+				Effect: 'Allow',
+				Action: BUCKET_ACTIONS,
+				Resource: names.flatMap((n) => [
+					`arn:aws:s3:::${n.bucket}`,
+					`arn:aws:s3:::${n.bucket}-${suffix}`,
+				]),
+			},
+			{
+				Sid: 'StageInboxTopics',
+				Effect: 'Allow',
+				Action: TOPIC_ACTIONS,
+				Resource: names.flatMap((n) => [
+					`arn:aws:sns:*:${account}:${n.topic}`,
+					`arn:aws:sns:*:${account}:${n.topic}:*`,
+				]),
+			},
+			{
+				Sid: 'StageInboxUsers',
+				Effect: 'Allow',
+				Action: USER_ACTIONS,
+				Resource: names.map(
+					(n) => `arn:aws:iam::${account}:user${IAM_USER_PATH}${n.user}`,
 				),
 			},
 		]);
@@ -487,17 +562,7 @@ export function deployAccess(
 			{
 				Sid: 'StageBackupsUser',
 				Effect: 'Allow',
-				Action: [
-					'iam:GetUser',
-					'iam:CreateUser',
-					'iam:TagUser',
-					'iam:ListUserTags',
-					'iam:GetUserPolicy',
-					'iam:PutUserPolicy',
-					'iam:ListAccessKeys',
-					'iam:CreateAccessKey',
-					'iam:DeleteAccessKey',
-				],
+				Action: USER_ACTIONS,
 				Resource: `arn:aws:iam::${account}:user${IAM_USER_PATH}${user}`,
 			},
 		]);

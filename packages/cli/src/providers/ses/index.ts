@@ -51,6 +51,8 @@ import type {
 } from '../types.js';
 import {
 	checkSesConfig,
+	inboxBucketId,
+	inboxTopicName,
 	SES_PROVISIONING,
 	type SesInboxConfig,
 } from './config.js';
@@ -313,14 +315,12 @@ async function ensureInbox(
 	},
 ): Promise<void> {
 	const { inbox, domain, region, ruleSet } = input;
-	const name = `${appKey(inbox.id)}-mail`;
+	const name = inboxBucketId(inbox.id);
 	const urlKey = provideKey(inbox.id, 'url');
 
 	const topicArn = await ensureTopic(ctx as never, events, {
 		id: inbox.id,
-		topicName: `gkm-${ctx.identity.scope}-${ctx.stage}-${name}`
-			.replace(/[^A-Za-z0-9_-]/g, '-')
-			.slice(0, 256),
+		topicName: inboxTopicName(ctx.identity.scope, ctx.stage, inbox.id),
 		publisher: 'SES',
 		policy: (arn) => receiptTopicPolicy(arn, events.account),
 	});
