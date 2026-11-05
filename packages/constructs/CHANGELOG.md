@@ -1,5 +1,49 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.167
+
+### Patch Changes
+
+- ✨ [#413](https://github.com/geekmidas/toolbox/pull/413) [`dd801e1`](https://github.com/geekmidas/toolbox/commit/dd801e1a48d38f865751397a9842ff2a0e7400f8) Thanks [@geekmidas](https://github.com/geekmidas)! - A bucket's connection and a file server's public address have new keys, so `_URL` always means an address a browser opens:
+
+  |                                                          | Before            | Now                      |
+  | -------------------------------------------------------- | ----------------- | ------------------------ |
+  | a bucket's connection (`s3://<bucket>?region=…`)         | `<ID>_URL`        | `<ID>_CONNECTION_STRING` |
+  | a file server's public address (`https://<id>.<domain>`) | `<ID>_SERVER_URL` | `<ID>_URL`               |
+
+  `new FileServer('Assets')` now provides `ASSETS_CONNECTION_STRING` and `ASSETS_URL`, and a Vite site's bundle gets `VITE_ASSETS_URL`. `DATABASE_URL`, a cache's `<ID>_URL` and `MAIL_URL` keep their names.
+
+  The constructs read the new keys, and gkm writes them. A deployed stage still holds the old ones. The first deploy after upgrading moves them in its secrets: the bucket's `<ID>_URL` to `<ID>_CONNECTION_STRING`, then the file server's `<ID>_SERVER_URL` to `<ID>_URL`. A provider reuses its bucket's access key, and a key you set by hand on an `external` stage moves the same way. A dry run prints the moves and writes nothing. Only code that reads the raw keys instead of `services.<id>` needs to change.
+
+- [#413](https://github.com/geekmidas/toolbox/pull/413) [`dd801e1`](https://github.com/geekmidas/toolbox/commit/dd801e1a48d38f865751397a9842ff2a0e7400f8) Thanks [@geekmidas](https://github.com/geekmidas)! - A site's or mobile app's plain edge to a file server now gives it the public address only, and `.server` is how it asks for the bucket.
+
+  | Caller                               | `.dependsOn([assets])`                                                                        | `.dependsOn([assets.server])`                                             |
+  | ------------------------------------ | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+  | an API, a worker, any server process | the bucket's connection, the AWS key pair, the file server's `ASSETS_URL` (unchanged)         | n/a: use the plain edge                                                   |
+  | a `StaticSite` or `MobileApp`        | `ASSETS_URL` only, inlined into the bundle as `<PREFIX>ASSETS_URL`. No bucket, no credentials | the bucket and its credentials for the server half too, plus `ASSETS_URL` |
+
+  - **The bundle gets the file server's address.** Before, the site's Dockerfile and compose build args had no file-server key, so a `next.config` reading it got `undefined`. Now they do on either edge, and the bucket's own connection is never inlined.
+  - **A site that only shows the objects holds nothing that writes.** On a plain edge, a frontend's `assets` client serves (`url()`, `openUrl()`, `processedUrl()`). Its bucket methods throw `FileServerReadOnly`, which names `.server`.
+  - ⬆️ **Upgrading:** `.server` used to point at the file server's surface. A site whose server half uploads or presigns through a plain edge moves to `.dependsOn([assets.server])`.
+
+- Updated dependencies [[`dd801e1`](https://github.com/geekmidas/toolbox/commit/dd801e1a48d38f865751397a9842ff2a0e7400f8), [`dd801e1`](https://github.com/geekmidas/toolbox/commit/dd801e1a48d38f865751397a9842ff2a0e7400f8), [`dd801e1`](https://github.com/geekmidas/toolbox/commit/dd801e1a48d38f865751397a9842ff2a0e7400f8)]:
+  - @geekmidas/manifest@10.0.0-alpha.167
+  - @geekmidas/envkit@10.0.0-alpha.167
+  - @geekmidas/storage@10.0.0-alpha.167
+  - @geekmidas/audit@10.0.0-alpha.167
+  - @geekmidas/auth@10.0.0-alpha.167
+  - @geekmidas/cache@10.0.0-alpha.167
+  - @geekmidas/db@10.0.0-alpha.167
+  - @geekmidas/emailkit@10.0.0-alpha.167
+  - @geekmidas/errors@10.0.0-alpha.167
+  - @geekmidas/events@10.0.0-alpha.167
+  - @geekmidas/logger@10.0.0-alpha.167
+  - @geekmidas/rate-limit@10.0.0-alpha.167
+  - @geekmidas/schema@10.0.0-alpha.167
+  - @geekmidas/services@10.0.0-alpha.167
+  - @geekmidas/telescope@10.0.0-alpha.167
+  - @geekmidas/testkit@10.0.0-alpha.167
+
 ## 10.0.0-alpha.166
 
 ### Patch Changes

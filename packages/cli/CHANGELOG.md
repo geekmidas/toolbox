@@ -1,5 +1,94 @@
 # @geekmidas/cli
 
+## 10.0.0-alpha.167
+
+### Minor Changes
+
+- [#412](https://github.com/geekmidas/toolbox/pull/412) [`eb2e187`](https://github.com/geekmidas/toolbox/commit/eb2e1876d36fbaf7b5fe7b350f37263e228a4875) Thanks [@geekmidas](https://github.com/geekmidas)! - :sparkles: **`gkm backup:restore --from imports/<file> --database <name>` loads a prepared import into a compose stage.**
+  A database moved onto a compose stage — from RDS, another host, an older
+  layout — is prepared offline as a gzipped, data-only SQL file, uploaded to the
+  stage's own backups prefix under `imports/`, and loaded between the first
+  deploy and the next:
+
+  ```bash
+  gkm backup:restore --stage production --from imports/app.sql.gz --database database
+  ```
+
+  `--from` stands in for `--at`/`--latest` (`BackupRunNotChosen` for more than
+  one), is relative to the stage's backups prefix and must name a `.sql.gz` in
+  `imports/` (`ImportPathInvalid` for `..`, absolute paths and URLs), and needs
+  `--database` (`ImportNeedsDatabase`). Like any restore it asks and takes a
+  fresh backup first. A data-only file has to run connected to the database
+  itself, so instead of closing the database to connections it stops the stack's
+  containers but its infrastructure (Postgres, the backups container, the proxy
+  and the stack's other services), ends any other session on the database, runs
+  the file in one transaction (`psql --single-transaction -v ON_ERROR_STOP=1`)
+  and starts the stopped containers again, whether the load worked or not
+  (`AppsNotRestarted` names any that would not start).
+
+  `gkm backup:list` shows `imports/` in a section of its own, and `--json` now
+  prints `{ "runs": [...], "imports": [...] }`. `--latest` never picks an import,
+  and the stage's backup expiry no longer applies to it: its lifecycle rule
+  matches the run folders (`backups/2…`) instead of the whole prefix, so the next
+  deploy rewrites each stage's rule.
+
+### Patch Changes
+
+- ✨ [#413](https://github.com/geekmidas/toolbox/pull/413) [`dd801e1`](https://github.com/geekmidas/toolbox/commit/dd801e1a48d38f865751397a9842ff2a0e7400f8) Thanks [@geekmidas](https://github.com/geekmidas)! - A bucket's connection and a file server's public address have new keys, so `_URL` always means an address a browser opens:
+
+  |                                                          | Before            | Now                      |
+  | -------------------------------------------------------- | ----------------- | ------------------------ |
+  | a bucket's connection (`s3://<bucket>?region=…`)         | `<ID>_URL`        | `<ID>_CONNECTION_STRING` |
+  | a file server's public address (`https://<id>.<domain>`) | `<ID>_SERVER_URL` | `<ID>_URL`               |
+
+  `new FileServer('Assets')` now provides `ASSETS_CONNECTION_STRING` and `ASSETS_URL`, and a Vite site's bundle gets `VITE_ASSETS_URL`. `DATABASE_URL`, a cache's `<ID>_URL` and `MAIL_URL` keep their names.
+
+  The constructs read the new keys, and gkm writes them. A deployed stage still holds the old ones. The first deploy after upgrading moves them in its secrets: the bucket's `<ID>_URL` to `<ID>_CONNECTION_STRING`, then the file server's `<ID>_SERVER_URL` to `<ID>_URL`. A provider reuses its bucket's access key, and a key you set by hand on an `external` stage moves the same way. A dry run prints the moves and writes nothing. Only code that reads the raw keys instead of `services.<id>` needs to change.
+
+- [#413](https://github.com/geekmidas/toolbox/pull/413) [`dd801e1`](https://github.com/geekmidas/toolbox/commit/dd801e1a48d38f865751397a9842ff2a0e7400f8) Thanks [@geekmidas](https://github.com/geekmidas)! - A site's or mobile app's plain edge to a file server now gives it the public address only, and `.server` is how it asks for the bucket.
+
+  | Caller                               | `.dependsOn([assets])`                                                                        | `.dependsOn([assets.server])`                                             |
+  | ------------------------------------ | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+  | an API, a worker, any server process | the bucket's connection, the AWS key pair, the file server's `ASSETS_URL` (unchanged)         | n/a: use the plain edge                                                   |
+  | a `StaticSite` or `MobileApp`        | `ASSETS_URL` only, inlined into the bundle as `<PREFIX>ASSETS_URL`. No bucket, no credentials | the bucket and its credentials for the server half too, plus `ASSETS_URL` |
+
+  - **The bundle gets the file server's address.** Before, the site's Dockerfile and compose build args had no file-server key, so a `next.config` reading it got `undefined`. Now they do on either edge, and the bucket's own connection is never inlined.
+  - **A site that only shows the objects holds nothing that writes.** On a plain edge, a frontend's `assets` client serves (`url()`, `openUrl()`, `processedUrl()`). Its bucket methods throw `FileServerReadOnly`, which names `.server`.
+  - ⬆️ **Upgrading:** `.server` used to point at the file server's surface. A site whose server half uploads or presigns through a plain edge moves to `.dependsOn([assets.server])`.
+
+- [#413](https://github.com/geekmidas/toolbox/pull/413) [`dd801e1`](https://github.com/geekmidas/toolbox/commit/dd801e1a48d38f865751397a9842ff2a0e7400f8) Thanks [@geekmidas](https://github.com/geekmidas)! - A Next site can build `images.remotePatterns` from the workspace:
+
+  ```ts
+  // apps/web/next.config.ts
+  import { imageRemotePatterns } from "@geekmidas/cli/next";
+
+  export default {
+    images: {
+      remotePatterns: [...imageRemotePatterns() /* , third parties */],
+    },
+  };
+  ```
+
+  It returns one pattern for each file server the site has an edge to, and one for the host each bucket it reaches signs its links on. The values are the stage's own, so new stages, renamed file servers and newly created buckets need no edits. Under `gkm dev` the patterns are the local file server host and MinIO's address. Without gkm's env (a plain `next build`) it returns `[]`.
+
+  What it reads is not Next-specific:
+
+  - **`<ID>_SIGNED_ORIGIN`**: where a bucket's presigned links point (`https://<bucket>.s3.<region>.amazonaws.com`, an S3-compatible endpoint's host, MinIO locally). It is derived from the bucket's connection, carries no credentials, and is inlined into a site or app with an edge to the bucket or to a file server over it. `s3Url.signedOrigin()` in `@geekmidas/storage` computes it.
+  - **`<PREFIX>GKM_IMAGE_ORIGINS`**: the site's file-server and signed-link origins as one comma-separated list. It is passed by `gkm dev`, compose site builds (an `ARG` in the site's Dockerfile) and the AWS target. A Vite or Expo site can feed it to a CSP.
+
+- Updated dependencies [[`dd801e1`](https://github.com/geekmidas/toolbox/commit/dd801e1a48d38f865751397a9842ff2a0e7400f8), [`dd801e1`](https://github.com/geekmidas/toolbox/commit/dd801e1a48d38f865751397a9842ff2a0e7400f8), [`dd801e1`](https://github.com/geekmidas/toolbox/commit/dd801e1a48d38f865751397a9842ff2a0e7400f8)]:
+  - @geekmidas/manifest@10.0.0-alpha.167
+  - @geekmidas/constructs@10.0.0-alpha.167
+  - @geekmidas/envkit@10.0.0-alpha.167
+  - @geekmidas/storage@10.0.0-alpha.167
+  - @geekmidas/cache@10.0.0-alpha.167
+  - @geekmidas/db@10.0.0-alpha.167
+  - @geekmidas/errors@10.0.0-alpha.167
+  - @geekmidas/logger@10.0.0-alpha.167
+  - @geekmidas/schema@10.0.0-alpha.167
+  - @geekmidas/services@10.0.0-alpha.167
+  - @geekmidas/telescope@10.0.0-alpha.167
+
 ## 10.0.0-alpha.166
 
 ### Patch Changes
