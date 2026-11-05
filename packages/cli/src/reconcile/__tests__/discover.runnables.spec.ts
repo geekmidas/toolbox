@@ -343,7 +343,7 @@ export const onAvatar = jobs
 		expect(keys).toContain('UPLOADS_EVENTS_CONNECTION_STRING');
 		// Reading the objects takes `.dependsOn([uploads])`; being told they
 		// changed does not.
-		expect(keys).not.toContain('UPLOADS_URL');
+		expect(keys).not.toContain('UPLOADS_CONNECTION_STRING');
 		expect(keys).not.toContain('AWS_SECRET_ACCESS_KEY');
 	});
 
@@ -465,7 +465,9 @@ export const pages = media
 			});
 			expect(sandboxed).toEqual(local);
 			// Its unit reaches the bucket, as a worker reaches what its work does.
-			expect(processorEnvKeys(local, 'MediaServer')).toContain('MEDIA_URL');
+			expect(processorEnvKeys(local, 'MediaServer')).toContain(
+				'MEDIA_CONNECTION_STRING',
+			);
 		},
 	);
 
@@ -551,15 +553,13 @@ export const getTrip = api
 			lanAddress: '192.168.1.20',
 		});
 
-		expect(env.DOCUMENTS_URL).toContain(
+		expect(env.DOCUMENTS_CONNECTION_STRING).toContain(
 			`endpoint=http://192.168.1.20:${ports.minio}&`,
 		);
 		// The edge is to the bucket; the server fronting it follows.
-		expect(env.ASSETS_URL).toContain(
+		expect(env.ASSETS_CONNECTION_STRING).toContain(
 			`endpoint=http://192.168.1.20:${ports.minio}&`,
 		);
-		expect(env.ASSETS_SERVER_URL).toBe(
-			`http://192.168.1.20:${ports.minio}/assets`,
-		);
+		expect(env.ASSETS_URL).toBe(`http://192.168.1.20:${ports.minio}/assets`);
 	});
 });

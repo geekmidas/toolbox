@@ -208,7 +208,7 @@ describe('a processor unit with telemetry', { timeout: 60_000 }, () => {
 			env: {
 				...process.env,
 				PORT: String(port),
-				MEDIA_URL: BUCKET_URL,
+				MEDIA_CONNECTION_STRING: BUCKET_URL,
 				OTEL_EXPORTER_OTLP_ENDPOINT: collector,
 				OTEL_BSP_SCHEDULE_DELAY: '200',
 			},

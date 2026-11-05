@@ -153,6 +153,7 @@ const ROLES: Partial<Record<DeclarationKind, string>> = {
 	topic: 'publisherConnectionString',
 	credential: 'credentials',
 	'mobile-app': 'scheme',
+	objects: 'connectionString',
 };
 
 /** The kinds whose container is the events backend's rather than their own. */

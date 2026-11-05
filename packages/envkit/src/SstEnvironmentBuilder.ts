@@ -99,7 +99,8 @@ export type Bucket = {
 	 * composed where the resource's shape is known.
 	 */
 	region?: string;
-	url?: string;
+	/** `s3://<bucket>?region=…`: what the construct's client connects with. */
+	connectionString?: string;
 };
 
 /**
@@ -201,11 +202,12 @@ const postgresResolver = (key: string, value: PostgresValue) => ({
 
 const bucketResolver = (name: string, value: BucketValue) => ({
 	[`${name}Name`]: value.name,
-	// The single URL a construct reads. Composed by the component, which knows
-	// its own shape; this only renames it into env case. Always emitted, even
-	// when absent, so `resolveEnvKeys` can derive the key from the link's type
-	// alone — a bucket linked without our component yields an empty one.
-	[`${name}Url`]: value.url ?? '',
+	// The connection string a construct reads. Composed by the component,
+	// which knows its own shape; this only renames it into env case. Always
+	// emitted, even when absent, so `resolveEnvKeys` can derive the key from
+	// the link's type alone — a bucket linked without our component yields an
+	// empty one.
+	[`${name}ConnectionString`]: value.connectionString ?? '',
 });
 
 const topicResolver = (name: string, value: SnsTopicValue) => ({

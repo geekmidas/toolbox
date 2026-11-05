@@ -8,8 +8,8 @@ import { z } from 'zod';
  * router's database, auditor and publisher.
  *
  * `.dependsOn([uploads])` is the whole of the wiring: the construct
- * declares the bucket, the target injects `UPLOADS_URL`, and the scheme in that
- * URL builds the client. Nothing here names MinIO, S3, a region, or a key.
+ * declares the bucket, the target injects `UPLOADS_CONNECTION_STRING`, and
+ * the scheme in that connection builds the client. Nothing here names MinIO, S3, a region, or a key.
  */
 export const createUploadUrl = api
 	.post('/uploads')

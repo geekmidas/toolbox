@@ -138,7 +138,12 @@ async function start(env: Record<string, string> = {}) {
 	const port = await freePort();
 	const child = spawn(process.execPath, [bundle], {
 		cwd: dir,
-		env: { ...process.env, PORT: String(port), MEDIA_URL: BUCKET_URL, ...env },
+		env: {
+			...process.env,
+			PORT: String(port),
+			MEDIA_CONNECTION_STRING: BUCKET_URL,
+			...env,
+		},
 		stdio: ['ignore', 'pipe', 'pipe'],
 	});
 	children.push(child);

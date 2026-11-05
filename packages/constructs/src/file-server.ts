@@ -36,6 +36,8 @@ import {
 	canonicalId,
 	DERIVED_PREFIX,
 	type Declaration,
+	fileServerSurfaceId,
+	providedKeyFor,
 	provideKey,
 	serviceKey,
 } from '@geekmidas/manifest';
@@ -328,11 +330,11 @@ export class FileServer<
 					DERIVED_PREFIX
 				]
 			: undefined;
-		this.surfaceId = `${canonical}Server`;
+		this.surfaceId = fileServerSurfaceId(canonical);
 
 		this.keys = {
-			origin: provideKey(originId, 'url'),
-			server: provideKey(this.surfaceId, 'url'),
+			origin: provideKey(originId, 'connectionString'),
+			server: providedKeyFor(this.surfaceId, 'file-server', 'url'),
 		};
 
 		// A field, not a getter: consumers cache services by object identity.

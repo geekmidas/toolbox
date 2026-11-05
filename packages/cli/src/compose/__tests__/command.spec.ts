@@ -772,7 +772,7 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 			'utf-8',
 		);
 		expect(env).toContain(
-			'UPLOADS_URL=s3://uploads?region=us-east-1&endpoint=http://minio:9000&forcePathStyle=true',
+			'UPLOADS_CONNECTION_STRING=s3://uploads?region=us-east-1&endpoint=http://minio:9000&forcePathStyle=true',
 		);
 		expect(env).toContain('MAIL_URL=smtp://mailpit:1025');
 		// The inbox, through the stack's edge, printed with its other URLs.
@@ -818,7 +818,7 @@ describe('mail and storage', { timeout: RUN_TIMEOUT }, () => {
 
 		await expect(run).rejects.toBeInstanceOf(ExternalServicesNotConfigured);
 		await expect(run).rejects.toThrow(
-			/MAIL_URL[\s\S]*MAIL_FROM[\s\S]*UPLOADS_URL/,
+			/MAIL_URL[\s\S]*MAIL_FROM[\s\S]*UPLOADS_CONNECTION_STRING/,
 		);
 		// Refused by the deploy's one readiness check, not by the target.
 		const error = (await run.catch((e: unknown) => e)) as Error;
@@ -1157,20 +1157,20 @@ export const assets = new FileServer('Assets', { open: ['public/**'] });
 
 		expect(env.ADMIN_EMAIL).toBe('admin@example.com');
 		// The bucket in the stack's MinIO, reached on its loopback port.
-		expect(env.ASSETS_URL).toMatch(
+		expect(env.ASSETS_CONNECTION_STRING).toMatch(
 			/^s3:\/\/[^?]+\?region=us-east-1&endpoint=http:\/\/localhost:55432&forcePathStyle=true$/,
 		);
 		// Signed for with the MinIO login the stack runs, and no key in the URL.
 		expect(env.AWS_ACCESS_KEY_ID).toBeTruthy();
-		expect(env.ASSETS_URL).not.toContain(env.AWS_ACCESS_KEY_ID!);
+		expect(env.ASSETS_CONNECTION_STRING).not.toContain(env.AWS_ACCESS_KEY_ID!);
 		// The file server at its host on the stack's edge — what the apps are
 		// handed, so a link a seed stores is the one they serve.
 		const api = readFileSync(
 			join(dir, '.gkm', 'compose', 'development', 'api.env'),
 			'utf-8',
 		);
-		expect(env.ASSETS_SERVER_URL).toMatch(/^https:\/\//);
-		expect(api).not.toContain('ASSETS_SERVER_URL=http://localhost');
+		expect(env.ASSETS_URL).toMatch(/^https:\/\//);
+		expect(api).not.toContain('ASSETS_URL=http://localhost');
 		expect(env.DATABASE_URL).toContain('@localhost:55432/');
 
 		// The bucket exists before the seed that uploads to it runs.

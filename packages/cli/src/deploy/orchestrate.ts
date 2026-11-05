@@ -14,6 +14,7 @@ import { GkmError } from '../errors';
 import { provisionStage } from '../providers/index.js';
 import { type BoundSubscriber, discover } from '../reconcile/discover.js';
 import { constructGlobs } from '../reconcile/workspace.js';
+import { moveBucketKeys } from '../secrets/bucketKeys.js';
 import { initStageSecrets } from '../secrets/storage.js';
 import { builtinTarget } from '../target/builtins';
 import {
@@ -247,6 +248,7 @@ export async function runDeploy(
 				throw error;
 			}
 		}
+		await moveStoredBucketKeys(phaseCtx, ctx.dryRun);
 		await provisionResources(phaseCtx, request, ctx, store, emit);
 	};
 
@@ -387,6 +389,48 @@ async function provisionResources(
 		emit({ type: 'phase.failed', phase: 'validate', error: eventError(error) });
 		throw error;
 	}
+}
+
+/**
+ * The stage's bucket and file-server keys moved to the names they are read
+ * from (`moveBucketKeys`), before its providers or its readiness check read
+ * them. A dry run moves them in what it reads, and writes nothing.
+ */
+async function moveStoredBucketKeys(
+	phaseCtx: DeployPhaseContext<unknown>,
+	dryRun: boolean,
+): Promise<void> {
+	const secrets = phaseCtx.secrets;
+	const stored = await secrets.read();
+	if (!stored) return;
+	const { custom, moved } = moveBucketKeys(phaseCtx.manifest, stored.custom);
+	if (moved.length === 0) return;
+
+	for (const { from, to } of moved) {
+		phaseCtx.logger.info(
+			`🔑 ${from} → ${to}${dryRun ? ' (dry run: not written)' : ''}`,
+		);
+	}
+	if (!dryRun) {
+		await secrets.write({
+			...stored,
+			custom,
+			updatedAt: new Date().toISOString(),
+		});
+		return;
+	}
+	(phaseCtx as { secrets: typeof secrets }).secrets = {
+		...secrets,
+		async read() {
+			const current = await secrets.read();
+			return current
+				? {
+						...current,
+						custom: moveBucketKeys(phaseCtx.manifest, current.custom).custom,
+					}
+				: current;
+		},
+	};
 }
 
 /** What a dry run reads for a key its providers would write. */

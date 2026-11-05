@@ -124,14 +124,14 @@ describe('the keys a stage must be given', () => {
 				set: false,
 			},
 			{
-				key: 'UPLOADS_URL',
+				key: 'UPLOADS_CONNECTION_STRING',
 				id: 'Uploads',
 				kind: 'bucket',
 				apps: ['api'],
 				set: false,
 			},
 			{
-				key: 'UPLOADS_SERVER_URL',
+				key: 'UPLOADS_URL',
 				id: 'UploadsServer',
 				kind: 'file-server',
 				apps: ['api'],
@@ -179,14 +179,14 @@ describe('gkm secrets:add --json', () => {
 				set: false,
 			},
 			{
-				key: 'UPLOADS_URL',
+				key: 'UPLOADS_CONNECTION_STRING',
 				kind: 'bucket',
 				construct: 'Uploads',
 				apps: ['api'],
 				set: false,
 			},
 			{
-				key: 'UPLOADS_SERVER_URL',
+				key: 'UPLOADS_URL',
 				kind: 'file-server',
 				construct: 'UploadsServer',
 				apps: ['api'],
@@ -231,7 +231,7 @@ describe('gkm secrets:add', () => {
 			'set',
 			'not-an-address',
 			'noreply@shop.example.com',
-			// UPLOADS_URL: an S3-compatible store, with a key of its own.
+			// UPLOADS_CONNECTION_STRING: an S3-compatible store, with a key of its own.
 			'set',
 			'compatible',
 			'https://minio.example.com',
@@ -241,7 +241,7 @@ describe('gkm secrets:add', () => {
 			true,
 			'AKIA/EXAMPLE+1',
 			'se/cr+et==',
-			// UPLOADS_SERVER_URL: refused, then taken.
+			// UPLOADS_URL: refused, then taken.
 			'set',
 			'ftp://files.example.com',
 			'https://files.shop.example.com',
@@ -263,8 +263,8 @@ describe('gkm secrets:add', () => {
 		expect(result.saved).toEqual([
 			'MAIL_URL',
 			'MAIL_FROM',
+			'UPLOADS_CONNECTION_STRING',
 			'UPLOADS_URL',
-			'UPLOADS_SERVER_URL',
 			'SHIPPING_CREDENTIALS',
 		]);
 		expect(result.missing).toEqual([]);
@@ -278,7 +278,7 @@ describe('gkm secrets:add', () => {
 			auth: { user: 'mailer@example.com', pass: 'p@ss/word+1' },
 		});
 		expect(values.MAIL_FROM).toBe('noreply@shop.example.com');
-		expect(parseS3Url(values.UPLOADS_URL!)).toEqual({
+		expect(parseS3Url(values.UPLOADS_CONNECTION_STRING!)).toEqual({
 			bucket: 'acme-uploads',
 			region: 'us-east-1',
 			endpoint: 'https://minio.example.com',
@@ -286,7 +286,7 @@ describe('gkm secrets:add', () => {
 			accessKeyId: 'AKIA/EXAMPLE+1',
 			secretAccessKey: 'se/cr+et==',
 		});
-		expect(values.UPLOADS_SERVER_URL).toBe('https://files.shop.example.com');
+		expect(values.UPLOADS_URL).toBe('https://files.shop.example.com');
 		expect(JSON.parse(values.SHIPPING_CREDENTIALS!)).toEqual({
 			apiKey: 'sk_live_123',
 			accountId: 'acct_1',
@@ -317,7 +317,9 @@ describe('gkm secrets:add', () => {
 	});
 
 	it('asks before replacing a key that is set, and offers the shared key pair', async () => {
-		await seed({ UPLOADS_URL: 's3://old-bucket?region=eu-west-1' });
+		await seed({
+			UPLOADS_CONNECTION_STRING: 's3://old-bucket?region=eu-west-1',
+		});
 
 		// The unset keys come first; the set one is walked last.
 		prompts.inject(['skip', 'skip', 'skip', 'skip', 'set', false]);
@@ -326,9 +328,11 @@ describe('gkm secrets:add', () => {
 			io(),
 		);
 
-		expect(kept.keys.map((k) => k.key).at(-1)).toBe('UPLOADS_URL');
+		expect(kept.keys.map((k) => k.key).at(-1)).toBe(
+			'UPLOADS_CONNECTION_STRING',
+		);
 		expect(kept.saved).toEqual([]);
-		expect((await stored()).UPLOADS_URL).toBe(
+		expect((await stored()).UPLOADS_CONNECTION_STRING).toBe(
 			's3://old-bucket?region=eu-west-1',
 		);
 
@@ -354,12 +358,12 @@ describe('gkm secrets:add', () => {
 		);
 
 		expect(replaced.saved).toEqual([
-			'UPLOADS_URL',
+			'UPLOADS_CONNECTION_STRING',
 			'AWS_ACCESS_KEY_ID',
 			'AWS_SECRET_ACCESS_KEY',
 		]);
 		const values = await stored();
-		expect(parseS3Url(values.UPLOADS_URL!)).toEqual({
+		expect(parseS3Url(values.UPLOADS_CONNECTION_STRING!)).toEqual({
 			bucket: 'new-bucket',
 			region: 'eu-central-1',
 		});
@@ -382,7 +386,7 @@ describe('gkm secrets:add', () => {
 
 		await secretsAddCommand({ cwd: dir, stage: STAGE, home }, io());
 
-		expect(parseS3Url((await stored()).UPLOADS_URL!)).toEqual({
+		expect(parseS3Url((await stored()).UPLOADS_CONNECTION_STRING!)).toEqual({
 			bucket: 'media',
 			region: 'auto',
 			endpoint: 'https://abc123.r2.cloudflarestorage.com',
@@ -446,8 +450,8 @@ describe('checkpoints', () => {
 		expect(result.saved).toEqual(['MAIL_URL']);
 		expect(result.missing).toEqual([
 			'MAIL_FROM',
+			'UPLOADS_CONNECTION_STRING',
 			'UPLOADS_URL',
-			'UPLOADS_SERVER_URL',
 			'SHIPPING_CREDENTIALS',
 		]);
 		expect(Object.keys(await stored())).toEqual(['MAIL_URL']);
@@ -456,7 +460,7 @@ describe('checkpoints', () => {
 			"Saved to the stage 'production' (file store): MAIL_URL",
 		);
 		expect(printed).toContain(
-			'Still missing: MAIL_FROM, UPLOADS_URL, UPLOADS_SERVER_URL, SHIPPING_CREDENTIALS',
+			'Still missing: MAIL_FROM, UPLOADS_CONNECTION_STRING, UPLOADS_URL, SHIPPING_CREDENTIALS',
 		);
 	});
 
@@ -472,8 +476,8 @@ describe('checkpoints', () => {
 
 		expect(again.keys.map((k) => k.key)).toEqual([
 			'MAIL_FROM',
+			'UPLOADS_CONNECTION_STRING',
 			'UPLOADS_URL',
-			'UPLOADS_SERVER_URL',
 			'SHIPPING_CREDENTIALS',
 		]);
 	});
@@ -501,10 +505,10 @@ describe('a stage whose buckets a provider creates', () => {
 		]);
 		const printed = lines.join('\n');
 		expect(printed).toContain(
-			'UPLOADS_URL — created by gkm deploy --stage production (deploy.objects.production is s3)',
+			'UPLOADS_CONNECTION_STRING — created by gkm deploy --stage production (deploy.objects.production is s3)',
 		);
 		expect(printed).toContain(
-			'UPLOADS_SERVER_URL — created by gkm deploy --stage production',
+			'UPLOADS_URL — created by gkm deploy --stage production',
 		);
 		expect(result.missing).toEqual([
 			'MAIL_URL',
@@ -530,7 +534,9 @@ describe('a stage whose buckets a provider creates', () => {
 		expect(printed).toContain(
 			"Nothing to add: the stage 'production' has every key it needs.",
 		);
-		expect(printed).toContain('UPLOADS_URL — created by gkm deploy');
+		expect(printed).toContain(
+			'UPLOADS_CONNECTION_STRING — created by gkm deploy',
+		);
 	});
 
 	it('marks them provisioned in --json', async () => {
@@ -540,7 +546,9 @@ describe('a stage whose buckets a provider creates', () => {
 		);
 
 		const listed = JSON.parse(written.join('')) as StageKeyJson[];
-		expect(listed.find((k) => k.key === 'UPLOADS_URL')).toMatchObject({
+		expect(
+			listed.find((k) => k.key === 'UPLOADS_CONNECTION_STRING'),
+		).toMatchObject({
 			provisioned: true,
 		});
 		expect(listed.find((k) => k.key === 'MAIL_URL')).not.toHaveProperty(

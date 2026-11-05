@@ -2,7 +2,7 @@
  * The Caddy configuration a plan implies.
  *
  * A file server is a *domain that serves a bucket*, and locally it had neither:
- * `UPLOADS_SERVER_URL` resolved to MinIO's path-style address, which works and
+ * `UPLOADS_URL` resolved to MinIO's path-style address, which works and
  * is not the deployed shape. MinIO's own virtual-host mode cannot fix that —
  * it reads the leading label *as the bucket name*, so it produces the right
  * shape only when the server's id and the bucket's happen to agree, and never

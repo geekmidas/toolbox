@@ -46,7 +46,7 @@ export class ObjectStorage<TName extends string = string>
 	 * build publishes and the key the client reads cannot drift — the whole point
 	 * of the construct owning both faces.
 	 */
-	private readonly keys: { url: string };
+	private readonly keys: { connectionString: string };
 
 	/** Checked once, at declaration: prefix → days. */
 	private readonly expire: Record<string, number> | undefined;
@@ -60,7 +60,9 @@ export class ObjectStorage<TName extends string = string>
 		const canonical = canonicalId(id as string);
 
 		this.id = canonical as TName;
-		this.keys = { url: provideKey(canonical, 'url') };
+		this.keys = {
+			connectionString: provideKey(canonical, 'connectionString'),
+		};
 		this.expire = expiryDays(canonical, options.expire);
 
 		// A field, not a getter: consumers cache services by object identity.
@@ -75,7 +77,7 @@ export class ObjectStorage<TName extends string = string>
 			{
 				kind: 'objects',
 				id: this.id,
-				provides: [this.keys.url],
+				provides: [this.keys.connectionString],
 				...(this.options.versioned ? { versioned: true } : {}),
 				...(this.expire ? { expire: this.expire } : {}),
 			},
@@ -83,19 +85,21 @@ export class ObjectStorage<TName extends string = string>
 	}
 
 	/**
-	 * Builds the client from the single URL the adapter supplied.
+	 * Builds the client from the connection string the adapter supplied.
 	 *
-	 * The URL's scheme selects the driver, so this construct imports no provider
+	 * Its scheme selects the driver, so this construct imports no provider
 	 * and an app that never touches S3 never resolves the AWS SDK. Whoever
 	 * assembles the application registers the drivers its target needs.
 	 */
 	private async connect({
 		envParser,
 	}: ServiceRegisterOptions): Promise<StorageClient> {
-		const { url } = envParser
-			.create((get) => ({ url: get(this.keys.url).string() }))
+		const { connectionString } = envParser
+			.create((get) => ({
+				connectionString: get(this.keys.connectionString).string(),
+			}))
 			.parse();
 
-		return createStorageClient(url);
+		return createStorageClient(connectionString);
 	}
 }

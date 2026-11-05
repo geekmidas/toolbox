@@ -545,7 +545,7 @@ export function processorDockerfile(
  * A site's Dockerfile, with an `ARG` for every key its bundler inlines.
  *
  * The keys come from the site's declaration where there is one — every
- * public key its edges give it, `VITE_UPLOADS_SERVER_URL` included — and an
+ * public key its edges give it, `VITE_UPLOADS_URL` included — and an
  * `ARG` the Dockerfile does not declare is a build argument the build drops,
  * leaving the bundle with an empty URL.
  */

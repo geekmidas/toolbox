@@ -21,7 +21,7 @@ import type {
 } from './declaration';
 import { DERIVES_FROM, isWildcardSite, PUBLIC } from './declaration';
 import { IllegalDerivation, UnknownParent } from './errors';
-import { provideKey } from './naming';
+import { providedKeyFor, provideKey } from './naming';
 
 /** Whether a declaration names a parent. */
 export function isDerived(
@@ -229,7 +229,7 @@ export function publicEnvFor(
 		if (!target) continue;
 
 		for (const role of PUBLIC[target.kind] ?? []) {
-			const key = provideKey(edge.target, role as string);
+			const key = providedKeyFor(edge.target, target.kind, role as string);
 			keys[`${prefix}${key}`] = key;
 		}
 	}

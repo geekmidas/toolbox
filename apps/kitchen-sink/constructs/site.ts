@@ -11,7 +11,7 @@ import { telemetry } from './telemetry.js';
  * Four things derive from the one edge below, all of which were hand-maintained
  * lists before:
  *
- * - `VITE_API_URL`, `VITE_AUTH_URL` and `VITE_UPLOADS_SERVER_URL` at build time
+ * - `VITE_API_URL`, `VITE_AUTH_URL` and `VITE_UPLOADS_URL` at build time
  * - the API's CORS origins
  * - the auth server's trusted origins
  * - the cookie domain the two share

@@ -17,7 +17,7 @@ is injected — `gkm dev` reconciles all of it before the server starts.
 | `.schema()` tenant | `src/constructs/auth.ts` | `AUTH_DB_URL` | the `authdb` schema, on its own search path | own role, no grant to the app |
 | `BetterAuth` | `src/constructs/auth.ts` | `AUTH_SECRET` | a real auth server on the tenant above, signing in by magic link | same server, real mail |
 | `Cache` | `src/constructs/cache.ts` | `SESSIONS_URL` | Redis + the HTTP proxy the client speaks | Upstash |
-| `FileServer` | `src/constructs/storage.ts` | `UPLOADS_URL`, `UPLOADS_SERVER_URL` | MinIO container + a Caddy edge serving `https://uploads.kitchen-sink.localhost` | S3 bucket + CloudFront |
+| `FileServer` | `src/constructs/storage.ts` | `UPLOADS_CONNECTION_STRING`, `UPLOADS_URL` | MinIO container + a Caddy edge serving `https://uploads.kitchen-sink.localhost` | S3 bucket + CloudFront |
 | `Email` | `src/constructs/email.ts` | `MAIL_URL`, `MAIL_FROM` | Mailpit — a real inbox on its own port | SES over SMTP |
 | `Topic` | `constructs/topics.ts` | `USERS_PUBLISHER_CONNECTION_STRING` | pg-boss, in the declared database | SNS topic |
 | `worker.queue()` | `apps/api/queues/emails.ts` | `EMAILS_PUBLISHER_CONNECTION_STRING` | pg-boss, in the declared database | SQS queue |

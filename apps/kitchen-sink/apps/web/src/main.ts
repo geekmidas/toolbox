@@ -10,7 +10,7 @@
 const config = {
 	apiUrl: import.meta.env.VITE_API_URL,
 	authUrl: import.meta.env.VITE_AUTH_URL,
-	filesUrl: import.meta.env.VITE_UPLOADS_SERVER_URL,
+	filesUrl: import.meta.env.VITE_UPLOADS_URL,
 };
 
 const app = document.querySelector('#app');

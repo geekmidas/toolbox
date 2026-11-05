@@ -328,7 +328,7 @@ describe(
 				kind: 'objects',
 				mode: 'provider',
 				provider: 's3',
-				planned: ['UPLOADS_URL', 'UPLOADS_SERVER_URL'],
+				planned: ['UPLOADS_CONNECTION_STRING', 'UPLOADS_URL'],
 			});
 			const changes = report!.actions.map((a) => `${a.resource}: ${a.change}`);
 			expect(changes).toEqual([
@@ -341,12 +341,12 @@ describe(
 				`IAM user ${user()}: create under /gkm/`,
 				`IAM user ${user()}: policy gkm-bucket: this bucket only`,
 				`IAM user ${user()}: create an access key`,
-				`UPLOADS_SERVER_URL: set to ${LOCALSTACK_URL}/${bucket()}`,
+				`UPLOADS_URL: set to ${LOCALSTACK_URL}/${bucket()}`,
 			]);
 
 			// The bucket's URL, with the user's key in it, in the stage's secrets.
 			const secrets = await secretsOf(STAGE);
-			const address = s3Url.parse(secrets.UPLOADS_URL!);
+			const address = s3Url.parse(secrets.UPLOADS_CONNECTION_STRING!);
 			expect(address).toMatchObject({
 				bucket: bucket(),
 				region: REGION,
@@ -357,7 +357,7 @@ describe(
 			expect(await keysOf(user())).toEqual([address.accessKeyId]);
 			// The secret is never printed.
 			expect(lines.join('\n')).not.toContain(address.secretAccessKey);
-			expect(secrets.UPLOADS_SERVER_URL).toBe(`${LOCALSTACK_URL}/${bucket()}`);
+			expect(secrets.UPLOADS_URL).toBe(`${LOCALSTACK_URL}/${bucket()}`);
 
 			// Recorded in the stage's state, by identity.
 			const state = await stateOf(STAGE);
@@ -559,7 +559,7 @@ describe(
 
 		it('presigns a PUT and a GET with the key it wrote', async () => {
 			const storage = createStorageClient(
-				(await secretsOf(STAGE)).UPLOADS_URL!,
+				(await secretsOf(STAGE)).UPLOADS_CONNECTION_STRING!,
 			);
 			const body = 'hello from the provisioned key';
 
@@ -589,13 +589,13 @@ describe(
 			).resolves.toEqual(['objects: s3']);
 
 			// The same key, pointed at a bucket that does not exist.
-			const address = s3Url.parse(secrets.UPLOADS_URL!);
+			const address = s3Url.parse(secrets.UPLOADS_CONNECTION_STRING!);
 			const missing = s3Url.build({ ...address, bucket: `${bucket()}-gone` });
 			const run = verifyStageProviders({
 				workspace,
 				manifest,
 				stage: STAGE,
-				secrets: { ...secrets, UPLOADS_URL: missing },
+				secrets: { ...secrets, UPLOADS_CONNECTION_STRING: missing },
 			});
 			await expect(run).rejects.toBeInstanceOf(ProvisionedBucketUnreachable);
 			await expect(run).rejects.toThrow(
@@ -604,16 +604,18 @@ describe(
 		});
 
 		it('rotates the key: a second key now, the first deleted after the next deploy', async () => {
-			const first = s3Url.parse((await secretsOf(STAGE)).UPLOADS_URL!)
-				.accessKeyId!;
+			const first = s3Url.parse(
+				(await secretsOf(STAGE)).UPLOADS_CONNECTION_STRING!,
+			).accessKeyId!;
 
 			const [rotated] = await provision(STAGE, { rotateKeys: true });
 
 			expect(rotated?.actions.map((a) => a.change)).toEqual([
 				'rotate: issue a new access key',
 			]);
-			const second = s3Url.parse((await secretsOf(STAGE)).UPLOADS_URL!)
-				.accessKeyId!;
+			const second = s3Url.parse(
+				(await secretsOf(STAGE)).UPLOADS_CONNECTION_STRING!,
+			).accessKeyId!;
 			expect(second).not.toBe(first);
 			expect(await keysOf(user())).toEqual([first, second].sort());
 			expect(lines.join('\n')).toContain(
@@ -641,11 +643,13 @@ describe(
 		});
 
 		it('retires the old key at once with --retire-old-keys', async () => {
-			const before = s3Url.parse((await secretsOf(STAGE)).UPLOADS_URL!)
-				.accessKeyId!;
+			const before = s3Url.parse(
+				(await secretsOf(STAGE)).UPLOADS_CONNECTION_STRING!,
+			).accessKeyId!;
 			await provision(STAGE, { rotateKeys: true });
-			const after = s3Url.parse((await secretsOf(STAGE)).UPLOADS_URL!)
-				.accessKeyId!;
+			const after = s3Url.parse(
+				(await secretsOf(STAGE)).UPLOADS_CONNECTION_STRING!,
+			).accessKeyId!;
 
 			await provision(STAGE, { retireOldKeys: true });
 
@@ -733,9 +737,10 @@ describe('a name another account holds', { timeout: EMULATOR_TIMEOUT }, () => {
 		}
 
 		expect(recorded).toMatch(new RegExp(`^${good}-[a-z0-9]{6}$`));
-		expect(s3Url.parse((await secretsOf('staging')).UPLOADS_URL!).bucket).toBe(
-			recorded,
-		);
+		expect(
+			s3Url.parse((await secretsOf('staging')).UPLOADS_CONNECTION_STRING!)
+				.bucket,
+		).toBe(recorded);
 		expect(lines.join('\n')).toContain(`'${good}' is taken by another account`);
 		await expect(
 			s3.send(new HeadBucketCommand({ Bucket: good })),
@@ -782,7 +787,9 @@ describe(
 
 			await provision(stage);
 
-			const url = s3Url.parse((await secretsOf(stage)).UPLOADS_URL!);
+			const url = s3Url.parse(
+				(await secretsOf(stage)).UPLOADS_CONNECTION_STRING!,
+			);
 			expect(url.bucket).toBe(bucket());
 			expect(url.region).toBe('us-east-1');
 			expect(
@@ -796,12 +803,12 @@ describe(
 		it('rewrites a URL naming another region, keeping its key', async () => {
 			const store = await secretsStoreFor(workspace, stage, { home });
 			const stored = (await store.read(stage))!;
-			const right = s3Url.parse(stored.custom.UPLOADS_URL!);
+			const right = s3Url.parse(stored.custom.UPLOADS_CONNECTION_STRING!);
 			await store.write(stage, {
 				...stored,
 				custom: {
 					...stored.custom,
-					UPLOADS_URL: s3Url.build({ ...right, region: REGION }),
+					UPLOADS_CONNECTION_STRING: s3Url.build({ ...right, region: REGION }),
 				},
 			});
 
@@ -809,10 +816,12 @@ describe(
 
 			expect(report?.actions).toContainEqual({
 				construct: 'Uploads',
-				resource: 'UPLOADS_URL',
+				resource: 'UPLOADS_CONNECTION_STRING',
 				change: `name us-east-1, the bucket's region (it said ${REGION})`,
 			});
-			expect(s3Url.parse((await secretsOf(stage)).UPLOADS_URL!)).toEqual(right);
+			expect(
+				s3Url.parse((await secretsOf(stage)).UPLOADS_CONNECTION_STRING!),
+			).toEqual(right);
 		});
 	},
 );
@@ -833,7 +842,7 @@ describe('--dry-run', { timeout: EMULATOR_TIMEOUT }, () => {
 			`IAM user ${iamUserName({ scope: name, stage: 'preview', id: 'uploads' })}: create under /gkm/`,
 			`IAM user ${iamUserName({ scope: name, stage: 'preview', id: 'uploads' })}: policy gkm-bucket: this bucket only`,
 			`IAM user ${iamUserName({ scope: name, stage: 'preview', id: 'uploads' })}: create an access key`,
-			`UPLOADS_SERVER_URL: set to ${LOCALSTACK_URL}/${good}`,
+			`UPLOADS_URL: set to ${LOCALSTACK_URL}/${good}`,
 		]);
 		expect(lines.join('\n')).toContain(
 			`would create in ${REGION} — bucket ${good}`,
@@ -976,7 +985,9 @@ describe('the deploy creates them', () => {
 		expect(error).toBeUndefined();
 		expect(released(seen)).toBe(true);
 		await s3.send(new HeadBucketCommand({ Bucket: bucket }));
-		const url = s3Url.parse((await secretsOf('shipped')).UPLOADS_URL!);
+		const url = s3Url.parse(
+			(await secretsOf('shipped')).UPLOADS_CONNECTION_STRING!,
+		);
 		expect(url.bucket).toBe(bucket);
 		expect(await keysOf(user)).toEqual([url.accessKeyId]);
 		expect(logs).toContain(`   create in ${REGION} — bucket ${bucket}`);
@@ -992,7 +1003,7 @@ describe('the deploy creates them', () => {
 
 	it('without credentials to create them, stops on those before any key is asked for', async () => {
 		// A stage with nothing in its secrets: were the keys checked first, the
-		// run would name UPLOADS_URL and the mail — none of it the fix.
+		// run would name UPLOADS_CONNECTION_STRING and the mail — none of it the fix.
 		vi.stubEnv('AWS_ACCESS_KEY_ID', undefined);
 		vi.stubEnv('AWS_SECRET_ACCESS_KEY', undefined);
 		vi.stubEnv('AWS_SESSION_TOKEN', undefined);
@@ -1029,9 +1040,10 @@ describe('the deploy creates them', () => {
 
 		expect(error).toBeUndefined();
 		expect(logs).not.toContain(`   create in ${REGION} — bucket ${bucket}`);
-		expect(s3Url.parse((await secretsOf('adopted')).UPLOADS_URL!).bucket).toBe(
-			bucket,
-		);
+		expect(
+			s3Url.parse((await secretsOf('adopted')).UPLOADS_CONNECTION_STRING!)
+				.bucket,
+		).toBe(bucket);
 		expect((await stateOf('adopted'))?.resources['s3-bucket:Uploads']?.id).toBe(
 			bucket,
 		);
@@ -1049,19 +1061,23 @@ describe('the deploy creates them', () => {
 		await expect(
 			s3.send(new HeadBucketCommand({ Bucket: bucket })),
 		).rejects.toThrow();
-		expect((await secretsOf('planned')).UPLOADS_URL).toBeUndefined();
+		expect(
+			(await secretsOf('planned')).UPLOADS_CONNECTION_STRING,
+		).toBeUndefined();
 	}, 120_000);
 
 	it('rotates the key with --rotate-keys, and retires the old one on the next deploy', async () => {
 		const user = iamUserName({ scope: name, stage: 'shipped', id: 'uploads' });
-		const first = s3Url.parse((await secretsOf('shipped')).UPLOADS_URL!)
-			.accessKeyId!;
+		const first = s3Url.parse(
+			(await secretsOf('shipped')).UPLOADS_CONNECTION_STRING!,
+		).accessKeyId!;
 
 		const rotated = await deployStage('shipped', { rotateKeys: true });
 
 		expect(rotated.error).toBeUndefined();
-		const second = s3Url.parse((await secretsOf('shipped')).UPLOADS_URL!)
-			.accessKeyId!;
+		const second = s3Url.parse(
+			(await secretsOf('shipped')).UPLOADS_CONNECTION_STRING!,
+		).accessKeyId!;
 		expect(second).not.toBe(first);
 		expect(await keysOf(user)).toEqual([first, second].sort());
 

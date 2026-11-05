@@ -5,7 +5,10 @@ import {
 	cloudName,
 	cookieDomain,
 	environmentCase,
+	fileServerName,
+	fileServerSurfaceId,
 	kebabCase,
+	providedKeyFor,
 	provideKey,
 	scopedName,
 	serviceKey,
@@ -38,6 +41,30 @@ describe('provideKey', () => {
 		['UserUploads', 'url', 'USER_UPLOADS_URL'],
 	])('%s + %s → %s', (id, role, expected) => {
 		expect(provideKey(id, role)).toBe(expected);
+	});
+});
+
+describe('providedKeyFor', () => {
+	it("keys a bucket's connection apart from any address", () => {
+		expect(providedKeyFor('Assets', 'objects', 'connectionString')).toBe(
+			'ASSETS_CONNECTION_STRING',
+		);
+	});
+
+	it('names a file server after its construct, not its surface node', () => {
+		expect(providedKeyFor('AssetsServer', 'file-server', 'url')).toBe(
+			'ASSETS_URL',
+		);
+		expect(providedKeyFor('UserUploadsServer', 'file-server', 'url')).toBe(
+			'USER_UPLOADS_URL',
+		);
+	});
+
+	it('round-trips a file server id through its surface node', () => {
+		expect(fileServerSurfaceId('Assets')).toBe('AssetsServer');
+		expect(fileServerName(fileServerSurfaceId('Assets'))).toBe('Assets');
+		// A surface node named nothing but the suffix keeps its name.
+		expect(fileServerName('Server')).toBe('Server');
 	});
 });
 

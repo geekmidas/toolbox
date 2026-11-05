@@ -443,13 +443,17 @@ describe('the cache', () => {
 describe('a bucket', () => {
 	const storing = {
 		...manifest,
-		Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+		Uploads: {
+			kind: 'objects',
+			id: 'Uploads',
+			provides: ['UPLOADS_CONNECTION_STRING'],
+		},
 		UploadsServer: {
 			kind: 'file-server',
 			id: 'UploadsServer',
 			of: 'Uploads',
 			open: ['brand/**'],
-			provides: ['UPLOADS_SERVER_URL'],
+			provides: ['UPLOADS_URL'],
 		},
 	} as ConstructManifest;
 
@@ -464,8 +468,8 @@ describe('a bucket', () => {
 
 		// Kebab, not snake: a bucket name is a DNS label, so it takes the
 		// same rule a hostname does rather than the one a Postgres role does.
-		expect(env.UPLOADS_URL).toContain('s3://uploads-production');
-		expect(env.UPLOADS_URL).toContain('forcePathStyle=true');
+		expect(env.UPLOADS_CONNECTION_STRING).toContain('s3://uploads-production');
+		expect(env.UPLOADS_CONNECTION_STRING).toContain('forcePathStyle=true');
 	});
 
 	it('is reached by the name every other service is named by', async () => {
@@ -477,7 +481,7 @@ describe('a bucket', () => {
 			storing,
 		);
 
-		expect(env.UPLOADS_URL).toContain(
+		expect(env.UPLOADS_CONNECTION_STRING).toContain(
 			'endpoint=http://production-shop-uploads:9000',
 		);
 	});
@@ -492,7 +496,7 @@ describe('a bucket', () => {
 			storing,
 		);
 
-		expect(env.UPLOADS_URL).not.toContain('@');
+		expect(env.UPLOADS_CONNECTION_STRING).not.toContain('@');
 		expect(env.AWS_ACCESS_KEY_ID).toBe('uploads-production-root');
 		expect(env.AWS_SECRET_ACCESS_KEY).toBeTruthy();
 	});
@@ -511,7 +515,7 @@ describe('a bucket', () => {
 			storing,
 		);
 
-		expect(env.UPLOADS_SERVER_URL).toBe(
+		expect(env.UPLOADS_URL).toBe(
 			'http://production-shop-uploads:9000/uploads-production',
 		);
 	});
@@ -522,16 +526,16 @@ describe('a bucket', () => {
 		const run = provision({ storage: 'minio' }, storing);
 
 		await expect(run).rejects.toThrow(ExternalServicesNotConfigured);
-		await expect(run).rejects.toThrow(/UPLOADS_URL/);
+		await expect(run).rejects.toThrow(/UPLOADS_CONNECTION_STRING/);
 		await expect(run).rejects.toThrow(/with --allow-dev-services\./);
 	});
 
 	it("is the stage's own bucket when its secrets hold one, and runs nothing", async () => {
 		const external = {
-			UPLOADS_URL: 's3://acme-uploads?region=eu-west-1',
+			UPLOADS_CONNECTION_STRING: 's3://acme-uploads?region=eu-west-1',
 			AWS_ACCESS_KEY_ID: 'AKIAEXAMPLE',
 			AWS_SECRET_ACCESS_KEY: 'external-secret',
-			UPLOADS_SERVER_URL: 'https://files.example.com',
+			UPLOADS_URL: 'https://files.example.com',
 		};
 		// Allowed or not: a URL the stage set wins over the dev service.
 		const { env, created } = await provision(
@@ -539,28 +543,30 @@ describe('a bucket', () => {
 			storing,
 		);
 
-		expect(env.UPLOADS_URL).toBe(external.UPLOADS_URL);
+		expect(env.UPLOADS_CONNECTION_STRING).toBe(
+			external.UPLOADS_CONNECTION_STRING,
+		);
 		expect(env.AWS_ACCESS_KEY_ID).toBe('AKIAEXAMPLE');
 		expect(env.AWS_SECRET_ACCESS_KEY).toBe('external-secret');
-		expect(env.UPLOADS_SERVER_URL).toBe('https://files.example.com');
+		expect(env.UPLOADS_URL).toBe('https://files.example.com');
 		expect(created).not.toContain('production-shop-uploads');
 	});
 
 	it("passes a bucket URL's own key through, with no shared pair beside it", async () => {
-		const UPLOADS_URL =
+		const UPLOADS_CONNECTION_STRING =
 			's3://AKIAUPLOADS:a%2Fsecret%2Bvalue@acme-uploads?region=eu-west-1';
 		const { env } = await provision(
 			{
 				storage: 'minio',
 				supplied: {
-					UPLOADS_URL,
-					UPLOADS_SERVER_URL: 'https://files.example.com',
+					UPLOADS_CONNECTION_STRING,
+					UPLOADS_URL: 'https://files.example.com',
 				},
 			},
 			storing,
 		);
 
-		expect(env.UPLOADS_URL).toBe(UPLOADS_URL);
+		expect(env.UPLOADS_CONNECTION_STRING).toBe(UPLOADS_CONNECTION_STRING);
 		expect(env).not.toHaveProperty('AWS_ACCESS_KEY_ID');
 		expect(env).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
 	});
@@ -816,14 +822,16 @@ describe('provisioning out of order', () => {
 			kind: 'file-server',
 			id: 'UploadsServer',
 			of: 'Uploads',
-			provides: ['UPLOADS_SERVER_URL'],
+			provides: ['UPLOADS_URL'],
 		} as never;
 		const run = (provisioned: Record<string, Provisioned>) =>
 			provisionerFor('file-server')?.(server, { ...context, provisioned });
 
 		await expect(run({})).rejects.toThrow(UnresolvedParent);
 		await expect(
-			run({ Uploads: { provides: { UPLOADS_URL: 's3://uploads' } } }),
+			run({
+				Uploads: { provides: { UPLOADS_CONNECTION_STRING: 's3://uploads' } },
+			}),
 		).rejects.toThrow(UnresolvedParent);
 	});
 });

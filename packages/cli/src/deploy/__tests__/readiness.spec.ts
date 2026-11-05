@@ -111,8 +111,8 @@ describe('a deployed stage', () => {
 		expect(missing.map((m) => m.key)).toEqual([
 			'MAIL_URL',
 			'MAIL_FROM',
+			'UPLOADS_CONNECTION_STRING',
 			'UPLOADS_URL',
-			'UPLOADS_SERVER_URL',
 		]);
 		// A bucket's credentials are optional, so neither half is asked for.
 		expect(missing.map((m) => m.key)).not.toContain('AWS_ACCESS_KEY_ID');
@@ -131,8 +131,8 @@ describe('a deployed stage', () => {
 				custom: {
 					MAIL_URL: 'smtp://user:password@smtp.example.com:587',
 					MAIL_FROM: 'noreply@shop.example.com',
-					UPLOADS_URL: 's3://acme-uploads?region=eu-west-1',
-					UPLOADS_SERVER_URL: 'https://files.shop.example.com',
+					UPLOADS_CONNECTION_STRING: 's3://acme-uploads?region=eu-west-1',
+					UPLOADS_URL: 'https://files.shop.example.com',
 				},
 			}).ctx,
 		);
@@ -188,8 +188,8 @@ describe('a deployed stage', () => {
 			expect(error).toBeInstanceOf(ExternalServicesNotConfigured);
 			const missing = (error as ExternalServicesNotConfigured).missing;
 			expect(missing.map((m) => m.key)).toEqual([
+				'UPLOADS_CONNECTION_STRING',
 				'UPLOADS_URL',
-				'UPLOADS_SERVER_URL',
 			]);
 			expect(missing[0]?.service).toBeUndefined();
 			const message = (error as Error).message;

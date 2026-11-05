@@ -944,8 +944,8 @@ export const sweep = jobs.cron('rate(1 hour)').handle(async () => null);
 				services: {},
 				urls: {},
 				custom: {
-					ASSETS_URL: 's3://acme-assets?region=eu-west-1',
-					ASSETS_SERVER_URL: 'https://assets.shop.example.com',
+					ASSETS_CONNECTION_STRING: 's3://acme-assets?region=eu-west-1',
+					ASSETS_URL: 'https://assets.shop.example.com',
 					...custom,
 				},
 			});
@@ -1005,7 +1005,7 @@ export const echo = assets
 			expect(env).toEqual(
 				expect.arrayContaining([
 					'GKM_PROCESSOR_ORIGIN_SECRET=from-the-cdn',
-					'ASSETS_URL=s3://acme-assets?region=eu-west-1',
+					'ASSETS_CONNECTION_STRING=s3://acme-assets?region=eu-west-1',
 					'PORT=3000',
 				]),
 			);
@@ -1155,7 +1155,7 @@ export const echo = assets
 				join(root, 'src', 'constructs', 'services.ts'),
 				`export const Uploads = {
   id: 'Uploads',
-  declare: () => [{ kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] }],
+  declare: () => [{ kind: 'objects', id: 'Uploads', provides: ['UPLOADS_CONNECTION_STRING'] }],
 };
 export const Mail = {
   id: 'Mail',
@@ -1172,11 +1172,11 @@ export const Mail = {
 			expect(error).toBeInstanceOf(ExternalServicesNotConfigured);
 			expect(
 				(error as ExternalServicesNotConfigured).missing.map((m) => m.key),
-			).toEqual(['MAIL_URL', 'MAIL_FROM', 'UPLOADS_URL']);
+			).toEqual(['MAIL_URL', 'MAIL_FROM', 'UPLOADS_CONNECTION_STRING']);
 			// Refused by the deploy's one readiness check, not by the target.
 			expect((error as Error).stack).toContain('assertStageReady');
 			expect((error as Error).message).toContain(
-				"gkm secrets:set UPLOADS_URL 's3://uploads?region=eu-west-1' --stage production",
+				"gkm secrets:set UPLOADS_CONNECTION_STRING 's3://uploads?region=eu-west-1' --stage production",
 			);
 			expect((error as Error).message).toContain(
 				'can run instead, with --allow-dev-services.',
@@ -1241,7 +1241,7 @@ export const Mail = {
 			)!;
 			const env = dokploy.env[api.applicationId]!;
 			expect(env).toContain(
-				'UPLOADS_URL=s3://uploads-production?region=us-east-1&endpoint=http://production-shop-uploads:9000&forcePathStyle=true',
+				'UPLOADS_CONNECTION_STRING=s3://uploads-production?region=us-east-1&endpoint=http://production-shop-uploads:9000&forcePathStyle=true',
 			);
 			expect(env).toContain('MAIL_URL=smtp://production-shop-mail:1025');
 			expect(env).toContain('MAIL_FROM=noreply@shop.example.com');
@@ -1257,7 +1257,7 @@ export const Mail = {
 				custom: {
 					MAIL_URL: 'smtp://user:password@smtp.example.com:587',
 					MAIL_FROM: 'hi@shop.example.com',
-					UPLOADS_URL: 's3://acme-uploads?region=eu-west-1',
+					UPLOADS_CONNECTION_STRING: 's3://acme-uploads?region=eu-west-1',
 					AWS_ACCESS_KEY_ID: 'AKIAEXAMPLE',
 					AWS_SECRET_ACCESS_KEY: 'external-secret',
 				},
@@ -1272,7 +1272,7 @@ export const Mail = {
 				a.name.endsWith('-api'),
 			)!;
 			expect(dokploy.env[api.applicationId]).toContain(
-				'UPLOADS_URL=s3://acme-uploads?region=eu-west-1',
+				'UPLOADS_CONNECTION_STRING=s3://acme-uploads?region=eu-west-1',
 			);
 		});
 
@@ -1283,7 +1283,9 @@ export const Mail = {
 				updatedAt: '2026-01-01T00:00:00.000Z',
 				services: {},
 				urls: {},
-				custom: { UPLOADS_URL: 's3://acme-uploads?region=eu-west-1' },
+				custom: {
+					UPLOADS_CONNECTION_STRING: 's3://acme-uploads?region=eu-west-1',
+				},
 			});
 
 			const code = await deployCli(

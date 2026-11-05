@@ -12,13 +12,17 @@ import {
 const stack = {} as never;
 
 const manifest = {
-	Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+	Uploads: {
+		kind: 'objects',
+		id: 'Uploads',
+		provides: ['UPLOADS_CONNECTION_STRING'],
+	},
 	UploadsServer: {
 		kind: 'file-server',
 		id: 'UploadsServer',
 		of: 'Uploads',
 		open: ['brand/**'],
-		provides: ['UPLOADS_SERVER_URL'],
+		provides: ['UPLOADS_URL'],
 	},
 	Assets: { kind: 'objects', id: 'Assets', provides: ['ASSETS_URL'] },
 	Api: {
@@ -121,8 +125,8 @@ describe('siteEnvironment', () => {
 	it('inlines a served bucket’s address, but never the bucket’s own', () => {
 		// A served URL is what a browser fetches; the bucket's presigns, and a
 		// presigner in a bundle is a credential in a bundle.
-		expect(built().VITE_UPLOADS_SERVER_URL).toBe('https://files.example.com');
-		expect(built()).not.toHaveProperty('VITE_UPLOADS_URL');
+		expect(built().VITE_UPLOADS_URL).toBe('https://files.example.com');
+		expect(built()).not.toHaveProperty('VITE_UPLOADS_CONNECTION_STRING');
 	});
 
 	it('keeps a connection string out of the bundle entirely', () => {

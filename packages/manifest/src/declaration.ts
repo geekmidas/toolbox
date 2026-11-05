@@ -1105,11 +1105,11 @@ export type DeclarationKind = Declaration['kind'];
  *
  * ```ts
  * export const constructs = {
- *   Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+ *   Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_CONNECTION_STRING'] },
  * } as const satisfies ConstructManifest;
  *
  * type Ids = IdsOf<typeof constructs>;                     // 'Uploads'
- * type Env = ProvidedKeys<typeof constructs, 'Uploads'>;   // 'UPLOADS_URL'
+ * type Env = ProvidedKeys<typeof constructs, 'Uploads'>;   // 'UPLOADS_CONNECTION_STRING'
  * ```
  */
 export type ConstructManifest = Readonly<Record<ConstructId, Declaration>>;
@@ -1174,11 +1174,23 @@ export interface ProvidesByKind {
 	 * nothing from anyone else.
 	 */
 	objects: {
-		url: string;
+		/**
+		 * `s3://<bucket>?region=…&endpoint=…`: what a server presigns and
+		 * uploads through. A connection, not an address anyone opens — which
+		 * is why it is not `url`: on a bucket behind a file server, `<ID>_URL`
+		 * is the file server's public address.
+		 */
+		connectionString: string;
 		eventsConnectionString?: string;
 		eventsToken?: string;
 	};
-	/** Where the served objects answer. Public: a browser is the point of it. */
+	/**
+	 * Where the served objects answer. Public: a browser is the point of it.
+	 *
+	 * Keyed by the construct's name rather than the surface node's id —
+	 * `new FileServer('Assets')` provides `ASSETS_URL`, as it answers on
+	 * `assets.<domain>` (see `providedKeyFor`).
+	 */
 	'file-server': { url: string };
 	/**
 	 * An `smtp://` URL, credentials included — never shippable — and the

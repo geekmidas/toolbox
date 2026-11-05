@@ -31,7 +31,7 @@ describe('SstEnvValidator', () => {
 			// is kept for hand-written services.
 			expect(
 				resolveEnvKeys({ uploads: { type: ResourceType.ObjectStorage } }),
-			).toEqual(['UPLOADS_NAME', 'UPLOADS_URL']);
+			).toEqual(['UPLOADS_NAME', 'UPLOADS_CONNECTION_STRING']);
 		});
 
 		it('derives queue keys incl. the publisher connection string', () => {

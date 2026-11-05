@@ -858,13 +858,17 @@ function withServices(): ConstructManifest {
 	};
 	return {
 		...manifest,
-		Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+		Uploads: {
+			kind: 'objects',
+			id: 'Uploads',
+			provides: ['UPLOADS_CONNECTION_STRING'],
+		},
 		UploadsServer: {
 			kind: 'file-server',
 			id: 'UploadsServer',
 			of: 'Uploads',
 			open: ['brand/**'],
-			provides: ['UPLOADS_SERVER_URL'],
+			provides: ['UPLOADS_URL'],
 		},
 		Mail: { kind: 'email', id: 'Mail', provides: ['MAIL_URL', 'MAIL_FROM'] },
 		Api: {
@@ -896,10 +900,10 @@ function withServices(): ConstructManifest {
 const EXTERNAL = {
 	MAIL_URL: 'smtp://user:password@smtp.example.com:587',
 	MAIL_FROM: 'noreply@shop.example.com',
-	UPLOADS_URL: 's3://acme-uploads?region=eu-west-1',
+	UPLOADS_CONNECTION_STRING: 's3://acme-uploads?region=eu-west-1',
 	AWS_ACCESS_KEY_ID: 'AKIAEXAMPLE',
 	AWS_SECRET_ACCESS_KEY: 'external-secret',
-	UPLOADS_SERVER_URL: 'https://files.shop.example.com',
+	UPLOADS_URL: 'https://files.shop.example.com',
 };
 
 describe('mail and storage on the local stage', () => {
@@ -908,7 +912,7 @@ describe('mail and storage on the local stage', () => {
 		const api = app(s, 'api').env!;
 
 		expect(s.infra).toEqual(['mailpit', 'minio', 'postgres', 'redis']);
-		expect(api.UPLOADS_URL).toBe(
+		expect(api.UPLOADS_CONNECTION_STRING).toBe(
 			's3://uploads?region=us-east-1&endpoint=http://minio:9000&forcePathStyle=true',
 		);
 		// This machine's generated login: the one `gkm dev`'s MinIO runs with.
@@ -973,7 +977,7 @@ describe('mail and storage on the local stage', () => {
 	it("serves the file server on the edge, at gkm dev's host for it", () => {
 		const s = stack({ manifest: withServices() });
 
-		expect(app(s, 'web').build?.args?.VITE_UPLOADS_SERVER_URL).toBe(
+		expect(app(s, 'web').build?.args?.VITE_UPLOADS_URL).toBe(
 			'https://uploads.compose-app.localhost:8443',
 		);
 		expect(s.caddyfile).toContain('https://uploads.compose-app.localhost {');
@@ -1049,7 +1053,9 @@ describe('mail and storage on a deployed stage', () => {
 		expect(s.compose.services).not.toHaveProperty('mailpit');
 		expect(api.MAIL_URL).toBe(EXTERNAL.MAIL_URL);
 		expect(api.MAIL_FROM).toBe(EXTERNAL.MAIL_FROM);
-		expect(api.UPLOADS_URL).toBe(EXTERNAL.UPLOADS_URL);
+		expect(api.UPLOADS_CONNECTION_STRING).toBe(
+			EXTERNAL.UPLOADS_CONNECTION_STRING,
+		);
 		expect(api.AWS_ACCESS_KEY_ID).toBe(EXTERNAL.AWS_ACCESS_KEY_ID);
 		expect(api.AWS_SECRET_ACCESS_KEY).toBe(EXTERNAL.AWS_SECRET_ACCESS_KEY);
 		expect(app(s, 'web').build).toBeUndefined();
@@ -1059,13 +1065,15 @@ describe('mail and storage on a deployed stage', () => {
 
 	it("signs with the bucket URL's own key, and hands the app no shared pair", () => {
 		const { AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, ...rest } = EXTERNAL;
-		const UPLOADS_URL =
+		const UPLOADS_CONNECTION_STRING =
 			's3://AKIAUPLOADS:a%2Fsecret%2Bvalue@acme-uploads?region=eu-west-1';
-		const s = deployed({ secrets: production({ ...rest, UPLOADS_URL }) });
+		const s = deployed({
+			secrets: production({ ...rest, UPLOADS_CONNECTION_STRING }),
+		});
 		const api = app(s, 'api').env!;
 
 		expect(s.infra).toEqual(['postgres', 'redis']);
-		expect(api.UPLOADS_URL).toBe(UPLOADS_URL);
+		expect(api.UPLOADS_CONNECTION_STRING).toBe(UPLOADS_CONNECTION_STRING);
 		expect(api).not.toHaveProperty('AWS_ACCESS_KEY_ID');
 		expect(api).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
 	});
@@ -1075,7 +1083,9 @@ describe('mail and storage on a deployed stage', () => {
 		const s = deployed({ secrets: production(rest) });
 		const api = app(s, 'api').env!;
 
-		expect(api.UPLOADS_URL).toBe(EXTERNAL.UPLOADS_URL);
+		expect(api.UPLOADS_CONNECTION_STRING).toBe(
+			EXTERNAL.UPLOADS_CONNECTION_STRING,
+		);
 		expect(api).not.toHaveProperty('AWS_ACCESS_KEY_ID');
 		expect(api).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
 	});
@@ -1095,7 +1105,7 @@ describe('mail and storage on a deployed stage', () => {
 			MINIO_ROOT_USER: 'compose-app-minio',
 			MINIO_ROOT_PASSWORD: password,
 		});
-		expect(api.UPLOADS_URL).toBe(
+		expect(api.UPLOADS_CONNECTION_STRING).toBe(
 			's3://uploads-production?region=us-east-1&endpoint=http://minio:9000&forcePathStyle=true',
 		);
 		expect(api.AWS_ACCESS_KEY_ID).toBe('compose-app-minio');
@@ -1125,7 +1135,7 @@ describe('mail and storage on a deployed stage', () => {
 				MAIL_FROM: EXTERNAL.MAIL_FROM,
 				AWS_ACCESS_KEY_ID: 'stage-key',
 				AWS_SECRET_ACCESS_KEY: 'stage-secret-value',
-				UPLOADS_SERVER_URL: EXTERNAL.UPLOADS_SERVER_URL,
+				UPLOADS_URL: EXTERNAL.UPLOADS_URL,
 			}),
 		});
 		const api = app(s, 'api').env!;
@@ -1167,9 +1177,9 @@ describe('mail and storage on a deployed stage', () => {
 				workspace: withS3(),
 				allowDevServices: true,
 				secrets: production({
-					UPLOADS_URL:
+					UPLOADS_CONNECTION_STRING:
 						's3://AKIAUPLOADS:secret@compose-app-production-uploads?region=eu-west-1',
-					UPLOADS_SERVER_URL:
+					UPLOADS_URL:
 						'https://compose-app-production-uploads.s3.eu-west-1.amazonaws.com',
 				}),
 			});
@@ -1350,7 +1360,7 @@ describe("a file server's processors", () => {
 	it('read their bucket, on the compose network', () => {
 		const env = unit(stack({ manifest: withProcessors() })).env!;
 
-		expect(env.UPLOADS_URL).toMatch(/^s3:\/\//);
+		expect(env.UPLOADS_CONNECTION_STRING).toMatch(/^s3:\/\//);
 		expect(env.PORT).toBe('3000');
 		// Not the API's secret: only what the processors reach.
 		expect(env).not.toHaveProperty('AUTH_SECRET');
@@ -1424,7 +1434,7 @@ describe("a file server's processors", () => {
 				images: { mode: 'pull', tag: 'v1.4.0' },
 				secrets: production({
 					...EXTERNAL,
-					UPLOADS_SERVER_URL: 'https://uploads.shop.example.com',
+					UPLOADS_URL: 'https://uploads.shop.example.com',
 					...custom,
 				}),
 				ports: {},
@@ -1596,7 +1606,7 @@ describe('a worker SNS pushes to', () => {
 				Uploads: {
 					kind: 'objects',
 					id: 'Uploads',
-					provides: ['UPLOADS_URL'],
+					provides: ['UPLOADS_CONNECTION_STRING'],
 					subscribers: [
 						{
 							id: 'onAvatar',
@@ -1625,7 +1635,7 @@ describe('a worker SNS pushes to', () => {
 			onAvatar: ARN('onAvatar'),
 		});
 		expect(jobs(s).env?.UPLOADS_EVENTS_CONNECTION_STRING).toBe(SNS);
-		expect(jobs(s).env).not.toHaveProperty('UPLOADS_URL');
+		expect(jobs(s).env).not.toHaveProperty('UPLOADS_CONNECTION_STRING');
 	});
 
 	it('stays private while its topics are on pg-boss', () => {
@@ -1687,7 +1697,7 @@ describe("a watched bucket in the stack's MinIO", () => {
 				Uploads: {
 					kind: 'objects',
 					id: 'Uploads',
-					provides: ['UPLOADS_URL'],
+					provides: ['UPLOADS_CONNECTION_STRING'],
 					subscribers: [
 						{
 							id: 'onAvatar',
@@ -1698,7 +1708,11 @@ describe("a watched bucket in the stack's MinIO", () => {
 						},
 					],
 				},
-				Reports: { kind: 'objects', id: 'Reports', provides: ['REPORTS_URL'] },
+				Reports: {
+					kind: 'objects',
+					id: 'Reports',
+					provides: ['REPORTS_CONNECTION_STRING'],
+				},
 			} as unknown as ConstructManifest,
 			subscribers: {
 				Jobs: [
@@ -1722,7 +1736,7 @@ describe("a watched bucket in the stack's MinIO", () => {
 		);
 		expect(env.UPLOADS_EVENTS_TOKEN).toMatch(/^[\w-]{32}$/);
 		// Not the bucket itself: binding to its events is not reading it.
-		expect(env).not.toHaveProperty('UPLOADS_URL');
+		expect(env).not.toHaveProperty('UPLOADS_CONNECTION_STRING');
 
 		expect(s.storage?.webhooks).toEqual([
 			{
@@ -1811,8 +1825,8 @@ describe("a watched bucket in the stack's MinIO", () => {
 			stage: 'production',
 			images: { mode: 'pull', tag: 'v1.4.0' },
 			secrets: production({
-				UPLOADS_URL: 's3://acme-uploads?region=eu-west-1',
-				REPORTS_URL: 's3://acme-reports?region=eu-west-1',
+				UPLOADS_CONNECTION_STRING: 's3://acme-uploads?region=eu-west-1',
+				REPORTS_CONNECTION_STRING: 's3://acme-reports?region=eu-west-1',
 			}),
 			ports: {},
 		});

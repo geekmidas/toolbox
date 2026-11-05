@@ -249,5 +249,39 @@ export function providedKeyFor(
 	// OpenTelemetry's own variable, whatever the node is called: an SDK reads
 	// nothing else.
 	if (kind === 'telemetry') return 'OTEL_EXPORTER_OTLP_ENDPOINT';
+	// Named after the construct, not its surface node: `AssetsServer` answers
+	// on `assets.<domain>` and provides `ASSETS_URL`. The bucket under it
+	// keeps the plain id, and its connection is `ASSETS_CONNECTION_STRING`,
+	// so the two never share a key.
+	if (kind === 'file-server') return provideKey(fileServerName(id), role);
 	return provideKey(id, role);
+}
+
+/**
+ * What a file server's surface node adds to the construct's id. The bucket
+ * keeps the plain id, so serving a bucket you already have adds a node rather
+ * than renaming the one holding the data.
+ */
+export const FILE_SERVER_SUFFIX = 'Server';
+
+/**
+ * A file server's surface node id, from the construct's id.
+ *
+ * @example fileServerSurfaceId('Assets') // 'AssetsServer'
+ */
+export function fileServerSurfaceId(id: string): string {
+	return `${id}${FILE_SERVER_SUFFIX}`;
+}
+
+/**
+ * The construct's id, from its surface node's: what its key and its host are
+ * named after.
+ *
+ * @example fileServerName('AssetsServer') // 'Assets'
+ */
+export function fileServerName(surfaceId: string): string {
+	return surfaceId.endsWith(FILE_SERVER_SUFFIX) &&
+		surfaceId.length > FILE_SERVER_SUFFIX.length
+		? surfaceId.slice(0, -FILE_SERVER_SUFFIX.length)
+		: surfaceId;
 }

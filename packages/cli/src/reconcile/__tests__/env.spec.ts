@@ -21,13 +21,17 @@ const manifest = {
 		of: 'Auth',
 		provides: ['AUTH_READER_URL'],
 	},
-	Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+	Uploads: {
+		kind: 'objects',
+		id: 'Uploads',
+		provides: ['UPLOADS_CONNECTION_STRING'],
+	},
 	UploadsServer: {
 		kind: 'file-server',
 		id: 'UploadsServer',
 		of: 'Uploads',
 		open: ['brand/**'],
-		provides: ['UPLOADS_SERVER_URL'],
+		provides: ['UPLOADS_URL'],
 	},
 	Mail: { kind: 'email', id: 'Mail', provides: ['MAIL_URL', 'MAIL_FROM'] },
 	Sessions: { kind: 'cache', id: 'Sessions', provides: ['SESSIONS_URL'] },
@@ -114,7 +118,7 @@ describe('envFor', () => {
 			'ORDERS_OWNER_URL',
 			'ORDERS_URL',
 			'SESSIONS_URL',
-			'UPLOADS_SERVER_URL',
+			'UPLOADS_CONNECTION_STRING',
 			'UPLOADS_URL',
 			'USERS_PUBLISHER_CONNECTION_STRING',
 			// The site's own copy of its API's address, under the name its
@@ -185,14 +189,16 @@ describe('envFor', () => {
 	it('gives object storage an endpoint so one client serves both', () => {
 		// `?endpoint=` is the whole difference between S3 and MinIO — the client
 		// is identical.
-		expect(env().UPLOADS_URL).toMatch(/^s3:\/\/uploads\?/);
-		expect(env().UPLOADS_URL).toContain('endpoint=http://localhost:');
+		expect(env().UPLOADS_CONNECTION_STRING).toMatch(/^s3:\/\/uploads\?/);
+		expect(env().UPLOADS_CONNECTION_STRING).toContain(
+			'endpoint=http://localhost:',
+		);
 	});
 
 	it('always carries a region, never inheriting one', () => {
 		// A bucket can live in a different region than the function reading it,
 		// so a URL missing this breaks cross-region silently at runtime.
-		expect(env().UPLOADS_URL).toContain('region=');
+		expect(env().UPLOADS_CONNECTION_STRING).toContain('region=');
 	});
 
 	it('resolves mail to the same scheme a deployed provider gets', () => {
@@ -246,7 +252,7 @@ describe('envFor', () => {
 	it('addresses a local bucket path-style', () => {
 		// Virtual-host style would resolve `uploads.localhost`, which is not
 		// MinIO and not anything.
-		expect(env().UPLOADS_URL).toContain('forcePathStyle=true');
+		expect(env().UPLOADS_CONNECTION_STRING).toContain('forcePathStyle=true');
 	});
 
 	it('injects the credentials the S3 client resolves for MinIO', () => {
@@ -343,7 +349,7 @@ describe('envFor', () => {
 		// bucket name, so it matches only when the server's id and the bucket's
 		// agree and never for a server fronting two buckets. The edge in front of
 		// it does the mapping, and issues the certificate.
-		expect(env().UPLOADS_SERVER_URL).toBe(
+		expect(env().UPLOADS_URL).toBe(
 			`https://uploads.localhost:${portsFor('development').caddy}`,
 		);
 	});
@@ -351,7 +357,7 @@ describe('envFor', () => {
 	it('gives each stage its own host rather than its own path', () => {
 		// The stage is in the *name*, which is the leading label — so two stages
 		// cannot answer on one address, and neither carries a bucket in its path.
-		expect(env('test').UPLOADS_SERVER_URL).toContain('https://uploads-test.');
+		expect(env('test').UPLOADS_URL).toContain('https://uploads-test.');
 	});
 
 	it('gives a site its API’s address under the name its bundler inlines', () => {

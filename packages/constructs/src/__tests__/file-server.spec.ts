@@ -44,8 +44,8 @@ const uploads = new FileServer('Uploads', {
 const client = () =>
 	uploads.service.register({
 		envParser: parserFor({
-			UPLOADS_URL: 'fake://uploads',
-			UPLOADS_SERVER_URL: 'https://files.example.com/',
+			UPLOADS_CONNECTION_STRING: 'fake://uploads',
+			UPLOADS_URL: 'https://files.example.com/',
 		}),
 	} as never);
 
@@ -56,13 +56,17 @@ describe('FileServer', () => {
 		// The id names the bucket. Serving a bucket you already have then *adds*
 		// a node rather than renaming the one holding the data.
 		expect(uploads.declare()).toEqual([
-			{ kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+			{
+				kind: 'objects',
+				id: 'Uploads',
+				provides: ['UPLOADS_CONNECTION_STRING'],
+			},
 			{
 				kind: 'file-server',
 				id: 'UploadsServer',
 				of: 'Uploads',
 				open: ['brand/**', 'avatars/*.png'],
-				provides: ['UPLOADS_SERVER_URL'],
+				provides: ['UPLOADS_URL'],
 			},
 		]);
 	});
@@ -76,7 +80,7 @@ describe('FileServer', () => {
 				kind: 'file-server',
 				id: 'FilesServer',
 				of: 'Assets',
-				provides: ['FILES_SERVER_URL'],
+				provides: ['FILES_URL'],
 			},
 		]);
 	});
@@ -199,7 +203,7 @@ describe('FileServer.server', () => {
 				id: 'UploadsServer',
 				of: 'Uploads',
 				open: ['brand/**', 'avatars/*.png'],
-				provides: ['UPLOADS_SERVER_URL'],
+				provides: ['UPLOADS_URL'],
 			},
 		]);
 	});
@@ -209,9 +213,7 @@ describe('FileServer.server', () => {
 		// a bundle, a presigning one may not.
 		const bucket = uploads.declare().find((d) => d.kind === 'objects');
 
-		expect(bucket?.provides).toEqual(['UPLOADS_URL']);
-		expect(uploads.server.declare()[0]?.provides).toEqual([
-			'UPLOADS_SERVER_URL',
-		]);
+		expect(bucket?.provides).toEqual(['UPLOADS_CONNECTION_STRING']);
+		expect(uploads.server.declare()[0]?.provides).toEqual(['UPLOADS_URL']);
 	});
 });

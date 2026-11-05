@@ -2,6 +2,7 @@ import {
 	type ConstructManifest,
 	type MobileAppDeclaration,
 	PUBLIC_PREFIX,
+	providedKeyFor,
 	provideKey,
 	publicEnvFor,
 	type SiteDeclaration,
@@ -133,7 +134,7 @@ export function siteOfflineHosts(
 	for (const [id] of entries) {
 		const name = appKey(id);
 		const url = name === appName ? ownUrl : urls[name];
-		if (url) byKey.set(provideKey(id, 'url'), url);
+		if (url) byKey.set(providedKeyFor(id, manifest[id]!.kind, 'url'), url);
 	}
 	return offlineBuildHosts(site, manifest, (key) => byKey.get(key));
 }

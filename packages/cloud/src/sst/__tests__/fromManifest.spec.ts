@@ -60,17 +60,21 @@ describe('provisionerFor', () => {
 describe('assertProvides', () => {
 	it('passes when declared and supplied agree', () => {
 		expect(() =>
-			assertProvides('Uploads', ['UPLOADS_URL'], ['UPLOADS_URL']),
+			assertProvides(
+				'Uploads',
+				['UPLOADS_CONNECTION_STRING'],
+				['UPLOADS_CONNECTION_STRING'],
+			),
 		).not.toThrow();
 	});
 
 	it('catches infra supplying nothing for a declared key', () => {
 		expect.assertions(2);
 		try {
-			assertProvides('Uploads', ['UPLOADS_URL'], []);
+			assertProvides('Uploads', ['UPLOADS_CONNECTION_STRING'], []);
 		} catch (error) {
 			const e = error as ProvidesMismatch;
-			expect(e.missing).toEqual(['UPLOADS_URL']);
+			expect(e.missing).toEqual(['UPLOADS_CONNECTION_STRING']);
 			expect(e.extra).toEqual([]);
 		}
 	});
@@ -80,8 +84,8 @@ describe('assertProvides', () => {
 		try {
 			assertProvides(
 				'Uploads',
-				['UPLOADS_URL'],
-				['UPLOADS_URL', 'UPLOADS_CDN_URL'],
+				['UPLOADS_CONNECTION_STRING'],
+				['UPLOADS_CONNECTION_STRING', 'UPLOADS_CDN_URL'],
 			);
 		} catch (error) {
 			const e = error as ProvidesMismatch;
@@ -109,14 +113,16 @@ describe('ObjectStorage', () => {
 	const bucket = new ObjectStorage({} as never, 'Uploads');
 
 	it('composes the url from the resource, not the stack', () => {
-		expect(bucket.provides().url).toBe('s3://Uploads?region=stub-region');
+		expect(bucket.provides().connectionString).toBe(
+			's3://Uploads?region=stub-region',
+		);
 	});
 
 	it('carries those values on the link, which is what reaches runtime', () => {
 		const link = bucket.getSSTLink();
 		expect(link.properties).toMatchObject({
 			name: 'Uploads',
-			url: 's3://Uploads?region=stub-region',
+			connectionString: 's3://Uploads?region=stub-region',
 		});
 	});
 
@@ -125,11 +131,11 @@ describe('ObjectStorage', () => {
 	});
 
 	it('supplies exactly the key the construct declares', () => {
-		// The construct emits provides: ['UPLOADS_URL']; a role becomes that key.
+		// The construct emits provides: ['UPLOADS_CONNECTION_STRING']; a role becomes that key.
 		expect(() =>
 			assertProvides(
 				'Uploads',
-				['UPLOADS_URL'],
+				['UPLOADS_CONNECTION_STRING'],
 				Object.keys(bucket.provides()).map((role) =>
 					provideKey('Uploads', role),
 				),
@@ -139,7 +145,7 @@ describe('ObjectStorage', () => {
 
 	it('is what envkit flattens into env', () => {
 		expect(resolveEnvKeys({ Uploads: { type: bucket._type } })).toContain(
-			'UPLOADS_URL',
+			'UPLOADS_CONNECTION_STRING',
 		);
 	});
 });
@@ -191,7 +197,7 @@ describe('resolveEdges', () => {
 			provisioned,
 		);
 		expect(link.map((l) => l._id)).toEqual(['Uploads']);
-		expect(envKeys).toContain('UPLOADS_URL');
+		expect(envKeys).toContain('UPLOADS_CONNECTION_STRING');
 	});
 
 	it('links nothing more — the property least privilege depends on', () => {
@@ -235,7 +241,9 @@ describe('resolveEdges', () => {
 
 describe('the key a provided role becomes', () => {
 	it('qualifies an ordinary role by its id', () => {
-		expect(providedKeyFor('Uploads', 'objects', 'url')).toBe('UPLOADS_URL');
+		expect(providedKeyFor('Uploads', 'objects', 'connectionString')).toBe(
+			'UPLOADS_CONNECTION_STRING',
+		);
 	});
 
 	it('leaves a secret’s name as its key', () => {
@@ -366,7 +374,11 @@ describe('a queue’s one consumer', () => {
 
 		subscribeConsumers(
 			{
-				Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+				Uploads: {
+					kind: 'objects',
+					id: 'Uploads',
+					provides: ['UPLOADS_CONNECTION_STRING'],
+				},
 				Emails: {
 					kind: 'queue',
 					id: 'Emails',
@@ -417,7 +429,11 @@ describe('a surface’s endpoints', () => {
 
 		mountRoutes(
 			{
-				Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+				Uploads: {
+					kind: 'objects',
+					id: 'Uploads',
+					provides: ['UPLOADS_CONNECTION_STRING'],
+				},
 				Api: {
 					kind: 'rest-api',
 					id: 'Api',
@@ -515,7 +531,11 @@ describe('functions and crons', () => {
 			stack,
 			{
 				Orders: { kind: 'database', id: 'Orders' },
-				Uploads: { kind: 'objects', id: 'Uploads', provides: ['UPLOADS_URL'] },
+				Uploads: {
+					kind: 'objects',
+					id: 'Uploads',
+					provides: ['UPLOADS_CONNECTION_STRING'],
+				},
 				Invoice: {
 					kind: 'function',
 					id: 'Invoice',

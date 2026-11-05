@@ -275,7 +275,7 @@ describe('a watched bucket on an s3 stage', () => {
 		// The events key: the topic, signed by the bucket's own key.
 		const secrets = await secretsOf();
 		const events = new URL(secrets.UPLOADS_EVENTS_CONNECTION_STRING!);
-		const bucketUrl = new URL(secrets.UPLOADS_URL!);
+		const bucketUrl = new URL(secrets.UPLOADS_CONNECTION_STRING!);
 		expect(events.protocol).toBe('sns:');
 		expect(events.searchParams.get('topicArn')).toBe(topicArn());
 		expect(events.searchParams.get('accessKeyId')).toBe(
@@ -571,7 +571,7 @@ describe('a compose deploy of a stage with a watched bucket', () => {
 		);
 		expect(env).toMatch(/^UPLOADS_EVENTS_CONNECTION_STRING=sns:/m);
 		// The bucket's events, not the bucket.
-		expect(env).not.toMatch(/^UPLOADS_URL=/m);
+		expect(env).not.toMatch(/^UPLOADS_CONNECTION_STRING=/m);
 
 		// Once the workers answered: the recorded subscriptions, to confirm.
 		expect(asked).toHaveLength(1);
