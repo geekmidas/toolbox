@@ -1000,8 +1000,8 @@ creates move to the new domain on the same deploy:
 
 - **Mail** (`deploy.email`): the new domain is verified in SES, its DKIM
   records are written, and the sending user may send as it. A `MAIL_FROM`
-  gkm wrote becomes `noreply@<new domain>`. One you set yourself, or `from`,
-  is kept.
+  gkm wrote moves to the new domain, keeping the construct's local part
+  (`noreply@` without one). One you set yourself, or `from`, is kept.
 - **Inboxes** (`deploy.inbox`): the new domain gets its own SES identity and
   MX records, and each receipt rule its new addresses.
 - **File servers behind CloudFront**: a certificate for the new host is
@@ -1553,7 +1553,7 @@ its kind (`deploy.objects.<stage>: { provider: 's3' }`,
   it answers on `https://<id>.<stage domain>` through Caddy, unless its URL is
   set.
 - **Mail** gets Mailpit, unless the stage set `MAIL_URL`. `MAIL_FROM` is
-  `noreply@<stage domain>` unless set. Mailpit catches every message and
+  the construct's `from` (`noreply` without one) `@<stage domain>` unless set. Mailpit catches every message and
   **delivers none** — nobody receives a sign-in link.
 
 What the stage accounts for always wins: a key it set, or a provider. Every run

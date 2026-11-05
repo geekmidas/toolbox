@@ -31,6 +31,7 @@ import {
 	type ConstructManifest,
 	providedKeyFor,
 	publicEnvFor,
+	senderAddress,
 } from '@geekmidas/manifest';
 import { SERVER_IPV4_KEY, SERVER_IPV6_KEY } from '../compose/dnsConfig.js';
 import { GkmError } from '../errors';
@@ -169,6 +170,8 @@ export interface ServiceDeclaration {
 	kind: 'email' | 'objects' | 'file-server';
 	/** A file server's bucket. */
 	of?: string;
+	/** Mail's local part — its declaration's `from`. */
+	from?: string;
 	/** The apps that read it, where known. */
 	apps?: readonly string[];
 }
@@ -260,6 +263,9 @@ export function stageServiceDeclarations(
 					kind,
 					...(declaration.kind === 'file-server' && declaration.of
 						? { of: declaration.of }
+						: {}),
+					...(declaration.kind === 'email' && declaration.from
+						? { from: declaration.from }
 						: {}),
 					...(apps.length ? { apps } : {}),
 				},
@@ -429,7 +435,7 @@ export function requiredStageKeys(input: StageKeysInput): StageKey[] {
 				id: d.id,
 				kind: 'email',
 				what: `the address '${d.id}' sends from, on a domain the mail server has verified`,
-				example: `noreply@${domain}`,
+				example: senderAddress(d, domain),
 				...mail,
 				...apps(d),
 			});

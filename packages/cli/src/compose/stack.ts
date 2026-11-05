@@ -1315,7 +1315,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		credentials: credential.containers,
 		seed: credential.seed,
 		// Mailpit on a deployed stage sends as the stage's domain.
-		...(!local && domain ? { mailFrom: `noreply@${domain}` } : {}),
+		...(!local && domain ? { mailDomain: domain } : {}),
 		// Each watched bucket in the stack's MinIO, whose events it posts to a
 		// worker to relay onto the stack's broker.
 		relayedBuckets: [

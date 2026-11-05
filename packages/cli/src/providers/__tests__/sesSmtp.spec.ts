@@ -114,6 +114,8 @@ describe('which mail the provider leaves alone', () => {
 });
 
 describe('the address mail is sent from', () => {
+	const MAIL = { id: 'Mail' };
+	const INFO = { id: 'Mail', from: 'info' };
 	const ctx = (
 		config: { from?: string },
 		secrets: Record<string, string> = {},
@@ -133,16 +135,13 @@ describe('the address mail is sent from', () => {
 
 	it("is `from`, else an address set by hand, else noreply@ the stage's domain", () => {
 		expect(
-			senderOf(
-				ctx({ from: 'hi@other.example' }, { MAIL_FROM: 'x@y.z' }),
-				'Mail',
-			),
+			senderOf(ctx({ from: 'hi@other.example' }, { MAIL_FROM: 'x@y.z' }), MAIL),
 		).toEqual({ address: 'hi@other.example', ours: true });
-		expect(senderOf(ctx({}, { MAIL_FROM: 'x@y.example' }), 'Mail')).toEqual({
+		expect(senderOf(ctx({}, { MAIL_FROM: 'x@y.example' }), MAIL)).toEqual({
 			address: 'x@y.example',
 			ours: false,
 		});
-		expect(senderOf(ctx({}), 'Mail')).toEqual({
+		expect(senderOf(ctx({}), MAIL)).toEqual({
 			address: 'noreply@shop.example.com',
 			ours: true,
 		});
@@ -156,7 +155,7 @@ describe('the address mail is sent from', () => {
 			'noreply@old.example',
 		);
 
-		expect(senderOf(moved, 'Mail')).toEqual({
+		expect(senderOf(moved, MAIL)).toEqual({
 			address: 'noreply@new.example',
 			ours: true,
 		});
@@ -170,20 +169,48 @@ describe('the address mail is sent from', () => {
 			'hi@other.example',
 		);
 
-		expect(senderOf(dropped, 'Mail').address).toBe('noreply@shop.example.com');
+		expect(senderOf(dropped, MAIL).address).toBe('noreply@shop.example.com');
 	});
 
 	it('adopts the default it finds unrecorded — written before gkm recorded it', () => {
 		expect(
-			senderOf(ctx({}, { MAIL_FROM: 'noreply@shop.example.com' }), 'Mail'),
+			senderOf(ctx({}, { MAIL_FROM: 'noreply@shop.example.com' }), MAIL),
 		).toEqual({ address: 'noreply@shop.example.com', ours: true });
 	});
 
-	it('is refused with no domain to send from, saying what to set', () => {
-		expect(() => senderOf(ctx({}, {}, null), 'Mail')).toThrow(
-			EmailSenderUnknown,
+	it("is the construct's local part at the stage's domain", () => {
+		expect(senderOf(ctx({}), INFO)).toEqual({
+			address: 'info@shop.example.com',
+			ours: true,
+		});
+		// The whole address for the stage still wins.
+		expect(senderOf(ctx({ from: 'hi@other.example' }), INFO).address).toBe(
+			'hi@other.example',
 		);
-		expect(() => senderOf(ctx({}, {}, null), 'Mail')).toThrow(
+		// As does one set by hand.
+		expect(senderOf(ctx({}, { MAIL_FROM: 'x@y.example' }), INFO)).toEqual({
+			address: 'x@y.example',
+			ours: false,
+		});
+	});
+
+	it('moves to the local part once the construct names one', () => {
+		const recorded = ctx(
+			{},
+			{ MAIL_FROM: 'noreply@shop.example.com' },
+			'shop.example.com',
+			'noreply@shop.example.com',
+		);
+		expect(senderOf(recorded, INFO).address).toBe('info@shop.example.com');
+		// Unrecorded too: noreply@ is gkm's old default, never someone's choice.
+		expect(
+			senderOf(ctx({}, { MAIL_FROM: 'noreply@shop.example.com' }), INFO),
+		).toEqual({ address: 'info@shop.example.com', ours: true });
+	});
+
+	it('is refused with no domain to send from, saying what to set', () => {
+		expect(() => senderOf(ctx({}, {}, null), MAIL)).toThrow(EmailSenderUnknown);
+		expect(() => senderOf(ctx({}, {}, null), MAIL)).toThrow(
 			/domains\.production.*deploy\.email\.production\.from/,
 		);
 	});

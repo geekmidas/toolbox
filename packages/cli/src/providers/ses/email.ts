@@ -12,8 +12,8 @@
  *   that identity and nothing else, and **its access key**, written into the
  *   stage's secrets as `<ID>_URL` — `smtp://<key id>:<smtp password>@
  *   email-smtp.<region>.amazonaws.com:587`, the password derived from the key;
- * - **`<ID>_FROM`**: `from`, else what the secrets hold, else `noreply@` the
- *   stage's domain.
+ * - **`<ID>_FROM`**: `from`, else what the secrets hold, else the construct's
+ *   local part (`noreply` without one) at the stage's domain.
  *
  * A `<ID>_URL` the stage's secrets already hold, and this provider did not
  * write, wins: the construct sends with it and nothing is created for it — an
@@ -28,6 +28,7 @@ import {
 	type ConstructManifest,
 	type EmailDeclaration,
 	providedKeyFor,
+	senderAddress,
 } from '@geekmidas/manifest';
 import {
 	type AwsProvisioning,
@@ -121,24 +122,28 @@ export function senderEntry(email: string) {
 
 /**
  * The address `email` sends from: `from`; else one the stage's secrets hold
- * that gkm did not write — set by hand, or imported; else `noreply@` the
- * stage's domain. An address gkm wrote follows the domain: after a change of
- * `domains.<stage>`, mail is sent as the new one.
+ * that gkm did not write — set by hand, or imported; else the construct's
+ * local part at the stage's domain (`senderAddress`). An address gkm wrote
+ * follows both: after a change of `domains.<stage>` or of the construct's
+ * `from`, mail is sent as the new one.
  *
  * @returns the address, and whether it is gkm's to write and record
  * @throws {EmailSenderUnknown} with none of them
  */
 export function senderOf(
 	ctx: Pick<Ctx, 'config' | 'secrets' | 'workspace' | 'stage' | 'state'>,
-	email: string,
+	email: Pick<EmailDeclaration, 'id' | 'from'>,
 ): { address: string; ours: boolean } {
 	if (ctx.config.from) return { address: ctx.config.from, ours: true };
-	const held = ctx.secrets[providedKeyFor(email, 'email', 'from')];
-	const wrote = ctx.state.record(senderEntry(email).key)?.id;
+	const held = ctx.secrets[providedKeyFor(email.id, 'email', 'from')];
+	const wrote = ctx.state.record(senderEntry(email.id).key)?.id;
 	const domain = ctx.workspace.domains?.[ctx.stage];
-	const fallback = domain ? `noreply@${domain}` : undefined;
-	// Not recorded and not the default: someone else's choice, kept.
-	if (held && held !== wrote && held !== fallback) {
+	const fallback = domain ? senderAddress(email, domain) : undefined;
+	// Not recorded and not a default: someone else's choice, kept. `noreply@`
+	// counts as a default even once the construct names another local part —
+	// it is what gkm wrote before recording what it wrote.
+	const adopted = [fallback, domain && senderAddress({}, domain)];
+	if (held && held !== wrote && !adopted.includes(held)) {
 		return { address: held, ours: false };
 	}
 	if (fallback) return { address: fallback, ours: true };
@@ -186,7 +191,7 @@ async function ensureSesEmail(ctx: Ctx): Promise<void> {
 	if (owned.length === 0) return;
 
 	const region = s3Region(ctx as never);
-	const senders = new Map(owned.map((e) => [e.id, senderOf(ctx, e.id)]));
+	const senders = new Map(owned.map((e) => [e.id, senderOf(ctx, e)]));
 	const domains = [
 		...new Set([...senders.values()].map((s) => domainOf(s.address))),
 	].sort();

@@ -243,6 +243,8 @@ export interface PlannedResource {
 		subdomains: boolean;
 		topic: string;
 	};
+	/** Mail's local part — its declaration's `from` — joined to the stage's domain. */
+	from?: string;
 	/** The env key it resolves onto anything depending on it. */
 	envKey: string;
 	/** The parent it derives from, for kinds that provision nothing themselves. */
@@ -651,6 +653,9 @@ export function planFor(
 							...new Set(declaration.processors.map((p) => p.prefix)),
 						].sort(),
 					}
+				: {}),
+			...(declaration.kind === 'email' && declaration.from
+				? { from: declaration.from }
 				: {}),
 			...(declaration.kind === 'inbox'
 				? {

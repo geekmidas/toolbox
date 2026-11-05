@@ -79,7 +79,7 @@ const portsFor = (stage: string) => {
 	);
 };
 
-const env = (stage = 'development', mailFrom?: string) => {
+const env = (stage = 'development', mailDomain?: string) => {
 	const plan = planFor(manifest, stage, provisionOrder(manifest), {
 		localStage: 'development',
 	});
@@ -91,7 +91,7 @@ const env = (stage = 'development', mailFrom?: string) => {
 			AuthApi: 'http://localhost:3000',
 			Console: 'http://localhost:5173',
 		},
-		...(mailFrom ? { mailFrom } : {}),
+		...(mailDomain ? { mailDomain } : {}),
 	});
 };
 
@@ -222,10 +222,34 @@ describe('envFor', () => {
 		);
 	});
 
-	it('lets the stage choose the sending identity', () => {
-		expect(env('development', 'hello@myapp.test').MAIL_FROM).toBe(
-			'hello@myapp.test',
+	it("sends from the stage's domain", () => {
+		expect(env('development', 'myapp.test').MAIL_FROM).toBe(
+			'noreply@myapp.test',
 		);
+	});
+
+	it("sends as the construct's own local part, at the stage's domain", () => {
+		const named = {
+			...manifest,
+			Mail: { ...manifest.Mail, from: 'info' },
+		} as typeof manifest;
+		const resolve = (mailDomain?: string) =>
+			envFor(
+				planFor(named, 'development', provisionOrder(named), {
+					localStage: 'development',
+				}),
+				{
+					credentials: TEST_CREDENTIALS,
+					ports: portsFor('development'),
+					addresses: {
+						AuthApi: 'http://localhost:3000',
+						Console: 'http://localhost:5173',
+					},
+					...(mailDomain ? { mailDomain } : {}),
+				},
+			);
+		expect(resolve().MAIL_FROM).toBe('info@localhost');
+		expect(resolve('shop.example.com').MAIL_FROM).toBe('info@shop.example.com');
 	});
 
 	it('resolves the same keys whatever the stage', () => {

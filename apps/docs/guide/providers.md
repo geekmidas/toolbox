@@ -226,10 +226,12 @@ deploy: {
   names. Defaults to the secrets store's region, then `AWS_REGION`.
 - `from` — the address mail is sent from. Its domain is the identity the
   deploy verifies. Defaults to an address you set in the stage's secrets,
-  then `noreply@<stage domain>`; a stage with neither fails with
-  `EmailSenderUnknown`. An address gkm wrote is not one you set: it follows
-  the stage's domain, so after a change of `domains.<stage>` mail is sent as
-  the new one.
+  then the construct's local part at the stage's domain —
+  `new Email('Mail', { templates, from: 'info' })` sends as
+  `info@<stage domain>`, and without `from` as `noreply@<stage domain>`; a
+  stage with no domain fails with `EmailSenderUnknown`. An address gkm wrote
+  is not one you set: it follows the stage's domain and the construct's
+  `from`, so after a change of either mail is sent as the new one.
 
 ## `email: ses`
 
