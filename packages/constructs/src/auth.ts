@@ -36,7 +36,7 @@ import {
 	EDGE_TOKEN_KEY,
 	environmentCase,
 	isWebOrigin,
-	provideKey,
+	providedKeyFor,
 	serviceKey,
 } from '@geekmidas/manifest';
 import type {
@@ -230,9 +230,9 @@ export class BetterAuth<
 		this.keys = {
 			secretId,
 			secret: environmentCase(secretId),
-			url: provideKey(canonical, 'url'),
-			trustedOrigins: provideKey(canonical, 'trustedOrigins'),
-			cookieDomain: provideKey(canonical, 'cookieDomain'),
+			url: providedKeyFor(canonical, 'rest-api', 'url'),
+			trustedOrigins: providedKeyFor(canonical, 'rest-api', 'trustedOrigins'),
+			cookieDomain: providedKeyFor(canonical, 'rest-api', 'cookieDomain'),
 		};
 
 		// A field, not a getter: consumers cache services by object identity.
@@ -555,7 +555,9 @@ export class BetterAuth<
 					cookieDomain: get(this.keys.cookieDomain).string().optional(),
 					// Where a phone reaches this server, on a local stage with a mobile
 					// app: its own port on the LAN address. Never deployed.
-					deviceUrl: get(provideKey(this.id, 'deviceUrl')).string().optional(),
+					deviceUrl: get(providedKeyFor(this.id, 'rest-api', 'deviceUrl'))
+						.string()
+						.optional(),
 				}))
 				.parse();
 
@@ -799,7 +801,7 @@ export class AuthServerUnreachable extends Error {
 		super(
 			`'${authenticator}' could not be reached at ${url} to check a session. ` +
 				`Check that the auth app is running and that this app's ` +
-				`${provideKey(authenticator, 'url')} points at it.`,
+				`${providedKeyFor(authenticator, 'rest-api', 'url')} points at it.`,
 			{ cause },
 		);
 		this.name = 'AuthServerUnreachable';

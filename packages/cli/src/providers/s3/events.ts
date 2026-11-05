@@ -25,7 +25,7 @@ import type {
 	ConstructManifest,
 	ObjectsDeclaration,
 } from '@geekmidas/manifest';
-import { provideKey } from '@geekmidas/manifest';
+import { providedKeyFor } from '@geekmidas/manifest';
 import * as s3Url from '@geekmidas/storage/s3-url';
 import {
 	subscriptionKey,
@@ -518,8 +518,12 @@ export async function ensureEventsKey(
 	},
 ): Promise<void> {
 	const { id, topicArn, region } = input;
-	const key = input.key ?? provideKey(id, 'eventsConnectionString');
-	const url = ctx.secrets[input.urlKey ?? provideKey(id, 'connectionString')];
+	const key =
+		input.key ?? providedKeyFor(id, 'objects', 'eventsConnectionString');
+	const url =
+		ctx.secrets[
+			input.urlKey ?? providedKeyFor(id, 'objects', 'connectionString')
+		];
 	let parsed: s3Url.S3Address | undefined;
 	try {
 		parsed = url ? s3Url.parse(url) : undefined;

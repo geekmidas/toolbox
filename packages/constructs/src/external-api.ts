@@ -40,7 +40,7 @@ import {
 	type ConstructName,
 	canonicalId,
 	type Declaration,
-	provideKey,
+	providedKeyFor,
 	serviceKey,
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
@@ -110,8 +110,8 @@ export class ExternalApi<
 
 		this.id = canonical as TName;
 		this.keys = {
-			url: provideKey(canonical, 'url'),
-			credentials: provideKey(canonical, 'credentials'),
+			url: providedKeyFor(canonical, 'external-api', 'url'),
+			credentials: providedKeyFor(canonical, 'external-api', 'credentials'),
 		};
 
 		// A field, not a getter: consumers cache services by object identity.

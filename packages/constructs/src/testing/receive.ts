@@ -14,7 +14,7 @@ import type { Declaration } from '@geekmidas/manifest';
 import {
 	type InboxAddressing,
 	inboxRecipient,
-	provideKey,
+	providedKeyFor,
 } from '@geekmidas/manifest';
 import type { ReceiptNotification, Verdicts } from '../inbox';
 import { OptionalPeerMissing } from '../optionalPeers';
@@ -101,7 +101,7 @@ export class NoInboxForAddress extends Error {
 export class InboxNotLocal extends Error {
 	constructor(readonly inbox: string) {
 		super(
-			`'${inbox}' has no ${provideKey(inbox, 'smtpUrl')} in this test's ` +
+			`'${inbox}' has no ${providedKeyFor(inbox, 'inbox', 'smtpUrl')} in this test's ` +
 				`environment, so there is no Mailpit to deliver to. Run it under ` +
 				`\`gkm test\`, which resolves it.`,
 		);
@@ -161,7 +161,7 @@ export async function receiveInTest(
 	if (mail.raw !== undefined && built) throw new ReceiveFieldsOrRaw('both');
 
 	const addressed = inboxes.filter((inbox) => {
-		const domain = env[provideKey(inbox.id, 'domain')];
+		const domain = env[providedKeyFor(inbox.id, 'inbox', 'domain')];
 		return domain && inboxRecipient(mail.to, inbox.addressing, domain);
 	});
 	if (addressed.length === 0) {
@@ -212,7 +212,7 @@ export async function receiveInTest(
 		});
 	}
 
-	const smtp = env[provideKey(addressed[0]!.id, 'smtpUrl')];
+	const smtp = env[providedKeyFor(addressed[0]!.id, 'inbox', 'smtpUrl')];
 	if (!smtp) throw new InboxNotLocal(addressed[0]!.id);
 	const key = await deliverRaw(smtp, { from, to: [mail.to] }, raw);
 
@@ -227,7 +227,7 @@ export async function receiveInTest(
 		addressed.map((inbox) => ({
 			id: inbox.id,
 			addressing: inbox.addressing,
-			domain: env[provideKey(inbox.id, 'domain')]!,
+			domain: env[providedKeyFor(inbox.id, 'inbox', 'domain')]!,
 			publish: (notification) => publish(inbox, notification),
 		})),
 	);

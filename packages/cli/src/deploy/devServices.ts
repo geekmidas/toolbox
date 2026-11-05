@@ -30,7 +30,6 @@
 import {
 	type ConstructManifest,
 	providedKeyFor,
-	provideKey,
 	publicEnvFor,
 } from '@geekmidas/manifest';
 import { SERVER_IPV4_KEY, SERVER_IPV6_KEY } from '../compose/dnsConfig.js';
@@ -211,7 +210,8 @@ export function stageServiceDeclarations(
 			),
 			id,
 		);
-		if (declaration.kind === 'email') owners.set(provideKey(id, 'from'), id);
+		if (declaration.kind === 'email')
+			owners.set(providedKeyFor(id, declaration.kind, 'from'), id);
 	}
 
 	// Who reads which construct.
@@ -416,7 +416,7 @@ export function requiredStageKeys(input: StageKeysInput): StageKey[] {
 		const mail = backing(input.providers?.email, 'mailpit');
 		for (const d of services.filter((d) => d.kind === 'email')) {
 			add({
-				key: provideKey(d.id, 'url'),
+				key: providedKeyFor(d.id, 'email', 'url'),
 				id: d.id,
 				kind: 'email',
 				what: `where '${d.id}' sends mail — any SMTP server`,
@@ -425,7 +425,7 @@ export function requiredStageKeys(input: StageKeysInput): StageKey[] {
 				...apps(d),
 			});
 			add({
-				key: provideKey(d.id, 'from'),
+				key: providedKeyFor(d.id, 'email', 'from'),
 				id: d.id,
 				kind: 'email',
 				what: `the address '${d.id}' sends from, on a domain the mail server has verified`,
@@ -436,7 +436,7 @@ export function requiredStageKeys(input: StageKeysInput): StageKey[] {
 		}
 		for (const d of services.filter((d) => d.kind === 'objects')) {
 			add({
-				key: provideKey(d.id, 'connectionString'),
+				key: providedKeyFor(d.id, 'objects', 'connectionString'),
 				id: d.id,
 				kind: 'bucket',
 				what: `the bucket '${d.id}' — S3, R2, or any S3-compatible store (add &endpoint=… for one that is not S3)`,
@@ -473,7 +473,7 @@ export function requiredStageKeys(input: StageKeysInput): StageKey[] {
 
 	for (const d of byId(input.credentials)) {
 		add({
-			key: provideKey(d.id, 'credentials'),
+			key: providedKeyFor(d.id, d.kind, 'credentials'),
 			id: d.id,
 			kind: d.kind,
 			what:
@@ -503,7 +503,8 @@ export function suppliedOnly(
 	local: boolean,
 ): boolean {
 	if (kind === 'credential') return true;
-	if (kind === 'external-api') return key === provideKey(id, 'credentials');
+	if (kind === 'external-api')
+		return key === providedKeyFor(id, 'external-api', 'credentials');
 	if (local) return false;
 	return kind === 'secret' || kind === 'encryption';
 }
@@ -540,7 +541,10 @@ export function externalServices(
 	const standIn = (k: StageKey) =>
 		allow && k.service !== undefined && !has(k.key);
 	const mailpit = required
-		.filter((k) => k.kind === 'email' && k.key === provideKey(k.id, 'url'))
+		.filter(
+			(k) =>
+				k.kind === 'email' && k.key === providedKeyFor(k.id, 'email', 'url'),
+		)
 		.filter(standIn)
 		.map((k) => k.id);
 	const minio = required

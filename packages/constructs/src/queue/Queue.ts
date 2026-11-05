@@ -9,7 +9,7 @@ import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
 	canonicalId,
 	type Declaration,
-	provideKey,
+	providedKeyFor,
 	serviceKey,
 } from '@geekmidas/manifest';
 import type { InferStandardSchema } from '@geekmidas/schema';
@@ -142,7 +142,11 @@ export class Queue<
 
 		this.databaseService = databaseService;
 		this.id = canonicalId(name);
-		this.connectionKey = provideKey(this.id, 'publisherConnectionString');
+		this.connectionKey = providedKeyFor(
+			this.id,
+			'queue',
+			'publisherConnectionString',
+		);
 
 		const envVar = this.connectionKey;
 		this.service = {

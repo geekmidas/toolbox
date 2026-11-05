@@ -20,6 +20,7 @@ import {
 	type AppSpec,
 	type ConstructManifest,
 	dependenciesOf,
+	isPublicDeclaration,
 	kebabCase,
 	WILDCARD_SUBDOMAIN,
 } from '@geekmidas/manifest';
@@ -154,15 +155,14 @@ export function derivedApps(
 			continue;
 
 		// No opt-in to be had. Each says where it lives.
-		const spec: AppSpec =
-			declaration.kind === 'site' || declaration.kind === 'mobile-app'
-				? declaration.app
-				: {
-						path: declaration.path,
-						...(declaration.kind === 'rest-api' && declaration.telescope
-							? { telescope: true }
-							: {}),
-					};
+		const spec: AppSpec = isPublicDeclaration(declaration)
+			? declaration.app
+			: {
+					path: declaration.path,
+					...(declaration.kind === 'rest-api' && declaration.telescope
+						? { telescope: true }
+						: {}),
+				};
 
 		const name = appKey(id);
 		// A config entry of the same name still wins, so a workspace can override

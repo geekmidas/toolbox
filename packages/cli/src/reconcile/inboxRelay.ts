@@ -14,7 +14,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { type ConstructManifest, provideKey } from '@geekmidas/manifest';
+import { type ConstructManifest, providedKeyFor } from '@geekmidas/manifest';
 import { GkmError } from '../errors';
 import type { BoundSubscriber } from './discover';
 
@@ -51,7 +51,9 @@ export function inboxRelayWorker(
 	const topicKeys = new Set<string>();
 	for (const declaration of Object.values(manifest)) {
 		if (declaration.kind !== 'inbox') continue;
-		topicKeys.add(provideKey(declaration.topic, 'publisherConnectionString'));
+		topicKeys.add(
+			providedKeyFor(declaration.topic, 'topic', 'publisherConnectionString'),
+		);
 	}
 	if (topicKeys.size === 0) return undefined;
 

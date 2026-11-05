@@ -695,6 +695,32 @@ export interface AppSpec {
 }
 
 /**
+ * What is built into a bundle anyone can read: a site, or a mobile app.
+ *
+ * The one shape every question about a frontend is asked of — what its edges
+ * reach publicly (`publicValues`), the names its bundler inlines them under
+ * (`PUBLIC_PREFIX[variant]`), the origins it loads files from — so they are
+ * answered once, for both kinds, rather than for a union spelled out at each
+ * call.
+ */
+export interface PublicDeclaration extends Node {
+	kind: 'site' | 'mobile-app';
+	/** The framework, which decides how values are delivered (`VITE_`, …). */
+	variant: 'static' | 'next' | 'tanstack' | 'expo';
+	/** How it is built and run, `path` included. */
+	app: AppSpec;
+	/** What it calls, and so what its bundle is built with. */
+	dependencies: readonly Dependency[];
+}
+
+/** Whether a declaration is built into a public bundle — a site or an app. */
+export function isPublicDeclaration(
+	declaration: Declaration,
+): declaration is SiteDeclaration | MobileAppDeclaration {
+	return declaration.kind === 'site' || declaration.kind === 'mobile-app';
+}
+
+/**
  * A frontend — a construct like any other, which is what removes the last
  * mechanism that ran in parallel to the graph.
  *
@@ -709,7 +735,7 @@ export interface AppSpec {
  * it selects how the values are delivered (`VITE_`, `NEXT_PUBLIC_`, a
  * `config.json`), never which values there are.
  */
-export interface SiteDeclaration extends Node {
+export interface SiteDeclaration extends PublicDeclaration {
 	kind: 'site';
 	variant: 'static' | 'next' | 'tanstack';
 	/**
@@ -806,10 +832,12 @@ export interface SiteHosts {
  * Whether a declaration is a site answering on every subdomain.
  */
 export function isWildcardSite(
-	declaration: Declaration | undefined,
+	declaration: Declaration | PublicDeclaration | undefined,
 ): declaration is SiteDeclaration {
 	return (
-		declaration?.kind === 'site' && declaration.subdomain === WILDCARD_SUBDOMAIN
+		declaration?.kind === 'site' &&
+		'subdomain' in declaration &&
+		declaration.subdomain === WILDCARD_SUBDOMAIN
 	);
 }
 
@@ -825,7 +853,7 @@ export function isWildcardSite(
  * It ships through its own toolchain (EAS, the stores), so nothing deploys it:
  * it is an app the targets derive for, never one they run.
  */
-export interface MobileAppDeclaration extends Node {
+export interface MobileAppDeclaration extends PublicDeclaration {
 	kind: 'mobile-app';
 	/** Which toolchain builds it. Expo is the one that ships. */
 	variant: 'expo';

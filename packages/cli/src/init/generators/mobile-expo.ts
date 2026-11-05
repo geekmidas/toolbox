@@ -1,6 +1,6 @@
 import {
 	type MobileAppDeclaration,
-	provideKey,
+	providedKeyFor,
 	schemeBase,
 } from '@geekmidas/manifest';
 import { easWorkflow, easWorkflowPath } from '../../mobile/easWorkflow.js';
@@ -45,7 +45,7 @@ export function generateExpoAppFiles(
 	const scheme = schemeBase(options.name);
 	// Mailpit's inbox, which the construct's edge to the mailer publishes on a
 	// local stage: `EXPO_PUBLIC_<MAILER>_INBOX_URL`, derived as it derives it.
-	const inboxKey = `EXPO_PUBLIC_${provideKey(emailFor().id, 'inboxUrl')}`;
+	const inboxKey = `EXPO_PUBLIC_${providedKeyFor(emailFor().id, 'email', 'inboxUrl')}`;
 
 	const packageJson = {
 		name: packageName,

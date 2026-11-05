@@ -50,7 +50,6 @@ import {
 	externalApiUrl,
 	mobileOrigins,
 	providedKeyFor,
-	provideKey,
 	schemeBase,
 } from '@geekmidas/manifest';
 import {
@@ -267,7 +266,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 
 		return {
 			provides: {
-				[provideKey(declaration.id, 'url')]: postgresUrl(
+				[providedKeyFor(declaration.id, declaration.kind, 'url')]: postgresUrl(
 					runtime,
 					derivedPassword(context, runtime),
 					host,
@@ -276,12 +275,13 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 				// Deliberately not in `provides` on any manifest edge — the migrator
 				// reads it from the injected environment and nothing can depend on
 				// it, so DDL rights are never granted by an edge.
-				[provideKey(declaration.id, 'ownerUrl')]: postgresUrl(
-					owner,
-					derivedPassword(context, owner),
-					host,
-					postgres.databaseName,
-				),
+				[providedKeyFor(declaration.id, declaration.kind, 'ownerUrl')]:
+					postgresUrl(
+						owner,
+						derivedPassword(context, owner),
+						host,
+						postgres.databaseName,
+					),
 			},
 		};
 	},
@@ -305,7 +305,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 		const owner = ownerRole(runtime);
 		const reads = readsFrom(context.manifest, declaration.id);
 		const parentUrl = new URL(
-			parent.provides[provideKey(declaration.of, 'url')] ?? '',
+			parent.provides[providedKeyFor(declaration.of, 'database', 'url')] ?? '',
 		);
 
 		context.deferred.push(
@@ -322,18 +322,19 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 
 		return {
 			provides: {
-				[provideKey(declaration.id, 'url')]: postgresUrl(
+				[providedKeyFor(declaration.id, declaration.kind, 'url')]: postgresUrl(
 					runtime,
 					derivedPassword(context, runtime),
 					parentUrl.hostname,
 					parentUrl.pathname.slice(1),
 				),
-				[provideKey(declaration.id, 'ownerUrl')]: postgresUrl(
-					owner,
-					derivedPassword(context, owner),
-					parentUrl.hostname,
-					parentUrl.pathname.slice(1),
-				),
+				[providedKeyFor(declaration.id, declaration.kind, 'ownerUrl')]:
+					postgresUrl(
+						owner,
+						derivedPassword(context, owner),
+						parentUrl.hostname,
+						parentUrl.pathname.slice(1),
+					),
 			},
 		};
 	},
@@ -355,13 +356,13 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 		if (!parent) throw new UnresolvedParent(declaration.id, declaration.of);
 
 		const parentUrl = new URL(
-			parent.provides[provideKey(declaration.of, 'url')] ?? '',
+			parent.provides[providedKeyFor(declaration.of, 'database', 'url')] ?? '',
 		);
 		const reader = readerRole(parentUrl.username);
 
 		return {
 			provides: {
-				[provideKey(declaration.id, 'url')]: postgresUrl(
+				[providedKeyFor(declaration.id, declaration.kind, 'url')]: postgresUrl(
 					reader,
 					derivedPassword(context, reader),
 					parentUrl.hostname,
@@ -392,7 +393,8 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 		const parent = context.provisioned[parentId];
 		if (!parent) throw new UnresolvedParent(declaration.id, parentId);
 
-		const parentUrl = parent.provides[provideKey(parentId, 'url')];
+		const parentUrl =
+			parent.provides[providedKeyFor(parentId, 'database', 'url')];
 		if (!parentUrl) throw new UnresolvedParent(declaration.id, parentId);
 
 		const table = declaration.table ?? cacheTable(declaration.id);
@@ -428,7 +430,10 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 		url.searchParams.set('table', table);
 
 		return {
-			provides: { [provideKey(declaration.id, 'url')]: url.toString() },
+			provides: {
+				[providedKeyFor(declaration.id, declaration.kind, 'url')]:
+					url.toString(),
+			},
 		};
 	},
 
@@ -459,7 +464,11 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	objects: async (declaration, context) => {
 		if (declaration.kind !== 'objects') throw new WrongKind(declaration.kind);
 
-		const key = provideKey(declaration.id, 'connectionString');
+		const key = providedKeyFor(
+			declaration.id,
+			declaration.kind,
+			'connectionString',
+		);
 		const given = context.supplied?.[key];
 		if (given !== undefined) {
 			return {
@@ -538,7 +547,9 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 
 		const parent = context.provisioned[declaration.of];
 		const parentUrl =
-			parent?.provides[provideKey(declaration.of, 'connectionString')];
+			parent?.provides[
+				providedKeyFor(declaration.of, 'objects', 'connectionString')
+			];
 		if (!parentUrl) throw new UnresolvedParent(declaration.id, declaration.of);
 
 		const endpoint = new URL(parentUrl).searchParams.get('endpoint');
@@ -563,8 +574,8 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	email: async (declaration, context) => {
 		if (declaration.kind !== 'email') throw new WrongKind(declaration.kind);
 
-		const key = provideKey(declaration.id, 'url');
-		const from = provideKey(declaration.id, 'from');
+		const key = providedKeyFor(declaration.id, declaration.kind, 'url');
+		const from = providedKeyFor(declaration.id, declaration.kind, 'from');
 		const given = context.supplied?.[key];
 		if (given !== undefined) {
 			return {
@@ -617,13 +628,13 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 	topic: async (declaration, context) => {
 		if (declaration.kind !== 'topic') throw new WrongKind(declaration.kind);
 
-		return broker(declaration.id, context);
+		return broker(declaration.id, declaration.kind, context);
 	},
 
 	queue: async (declaration, context) => {
 		if (declaration.kind !== 'queue') throw new WrongKind(declaration.kind);
 
-		return broker(declaration.id, context);
+		return broker(declaration.id, declaration.kind, context);
 	},
 
 	/**
@@ -662,7 +673,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 			throw new WrongKind(declaration.kind);
 		}
 
-		const key = provideKey(declaration.id, 'url');
+		const key = providedKeyFor(declaration.id, declaration.kind, 'url');
 		return { provides: { [key]: supplied(declaration.id, key, context) } };
 	},
 
@@ -678,7 +689,7 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 			throw new WrongKind(declaration.kind);
 		}
 
-		const key = provideKey(declaration.id, 'credentials');
+		const key = providedKeyFor(declaration.id, declaration.kind, 'credentials');
 		return { provides: { [key]: supplied(declaration.id, key, context) } };
 	},
 
@@ -691,13 +702,15 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 			throw new WrongKind(declaration.kind);
 		}
 
-		const credentials = provideKey(declaration.id, 'credentials');
+		const credentials = providedKeyFor(
+			declaration.id,
+			declaration.kind,
+			'credentials',
+		);
 		return {
 			provides: {
-				[provideKey(declaration.id, 'url')]: externalApiUrl(
-					declaration,
-					context.stage,
-				),
+				[providedKeyFor(declaration.id, declaration.kind, 'url')]:
+					externalApiUrl(declaration, context.stage),
 				[credentials]: supplied(declaration.id, credentials, context),
 			},
 		};
@@ -750,13 +763,19 @@ const PROVISIONERS: Partial<Record<DeclarationKind, Provisioner>> = {
 
 		return {
 			provides: {
-				[provideKey(declaration.id, 'url')]: url,
-				[provideKey(declaration.id, 'trustedOrigins')]: [
+				[providedKeyFor(declaration.id, declaration.kind, 'url')]: url,
+				[providedKeyFor(declaration.id, declaration.kind, 'trustedOrigins')]: [
 					...origins,
 					...schemes,
 				].join(','),
 				...(domain
-					? { [provideKey(declaration.id, 'cookieDomain')]: domain }
+					? {
+							[providedKeyFor(
+								declaration.id,
+								declaration.kind,
+								'cookieDomain',
+							)]: domain,
+						}
 					: {}),
 			},
 		};
@@ -823,7 +842,11 @@ function statementsFor(options: {
  * the §4.3 question, and composing a plausible URL for either would fail at the
  * first publish instead of here.
  */
-function broker(id: string, context: DokployProvisionContext): Provisioned {
+function broker(
+	id: string,
+	kind: 'topic' | 'queue',
+	context: DokployProvisionContext,
+): Provisioned {
 	const backend = context.events ?? 'pgboss';
 	if (backend !== 'pgboss') throw new UnprovisionableCarrier(id, backend);
 
@@ -831,7 +854,8 @@ function broker(id: string, context: DokployProvisionContext): Provisioned {
 	if (!parentId) throw new BrokerNeedsADatabase(id);
 
 	const parent = context.provisioned[parentId];
-	const parentUrl = parent?.provides[provideKey(parentId, 'url')];
+	const parentUrl =
+		parent?.provides[providedKeyFor(parentId, 'database', 'url')];
 	if (!parentUrl) throw new UnresolvedParent(id, parentId);
 
 	const url = new URL(parentUrl);
@@ -866,7 +890,7 @@ function broker(id: string, context: DokployProvisionContext): Provisioned {
 
 	return {
 		provides: {
-			[provideKey(id, 'publisherConnectionString')]: connection,
+			[providedKeyFor(id, kind, 'publisherConnectionString')]: connection,
 		},
 	};
 }

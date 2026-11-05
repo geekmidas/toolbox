@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { Queue } from '@geekmidas/constructs/queue';
-import { provideKey } from '@geekmidas/manifest';
+import { providedKeyFor } from '@geekmidas/manifest';
 import type { BuildContext } from '../build/types';
 import type { QueueInfo } from '../types';
 import { runtimeFor } from './EndpointGenerator.js';
@@ -177,8 +177,9 @@ export async function stopQueues(): Promise<void> {}
 		const entries = queues
 			.map(
 				({ key, construct }) =>
-					`  { queue: ${key}, connectionKey: '${provideKey(
+					`  { queue: ${key}, connectionKey: '${providedKeyFor(
 						construct.id,
+						'queue',
 						'publisherConnectionString',
 					)}' },`,
 			)

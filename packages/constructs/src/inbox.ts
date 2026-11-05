@@ -43,7 +43,7 @@ import {
 	type InboxAddressing,
 	type InboxRecipient,
 	inboxRecipient,
-	provideKey,
+	providedKeyFor,
 	serviceKey,
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
@@ -241,8 +241,8 @@ export class Inbox<TName extends string = string>
 			...(this.subdomains ? { subdomains: true } : {}),
 		};
 		this.keys = {
-			url: provideKey(canonical, 'url'),
-			domain: provideKey(canonical, 'domain'),
+			url: providedKeyFor(canonical, 'inbox', 'url'),
+			domain: providedKeyFor(canonical, 'inbox', 'domain'),
 		};
 		this.topic = new Topic(`${canonical}Mail`, {
 			events: { [INBOX_EVENT]: RECEIPT_NOTIFICATION },

@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
-import { provideKey } from '@geekmidas/manifest';
+import { providedKeyFor } from '@geekmidas/manifest';
 import pg from 'pg';
 import { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -135,7 +135,7 @@ async function start(env: Record<string, string>) {
 			PORT: String(port),
 			ORDERS_URL: URL,
 			GKM_APP_NAME: NAME,
-			[provideKey('Slow', 'publisherConnectionString')]: BROKER,
+			[providedKeyFor('Slow', 'queue', 'publisherConnectionString')]: BROKER,
 			...env,
 		},
 		stdio: ['ignore', 'pipe', 'pipe'],

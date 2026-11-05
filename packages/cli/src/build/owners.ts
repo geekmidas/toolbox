@@ -3,7 +3,7 @@ import {
 	type ConstructManifest,
 	canonicalId,
 	dependenciesOf,
-	provideKey,
+	providedKeyFor,
 } from '@geekmidas/manifest';
 import { type ConstructSource, consumedBy } from '../reconcile/discover.js';
 import { type BuildContext, DEV_DATABASE_API_PATH } from './types';
@@ -65,7 +65,11 @@ export function ownersContext(options: {
 			? {
 					surface: {
 						id: primary.id,
-						trustedOriginsKey: provideKey(primary.id, 'trustedOrigins'),
+						trustedOriginsKey: providedKeyFor(
+							primary.id,
+							'rest-api',
+							'trustedOrigins',
+						),
 						...(primary.cors ? { cors: primary.cors } : {}),
 						...(primarySource
 							? {

@@ -21,7 +21,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { type ConstructManifest, provideKey } from '@geekmidas/manifest';
+import { type ConstructManifest, providedKeyFor } from '@geekmidas/manifest';
 import type { BoundSubscriber } from './discover.js';
 import type { BucketNotification } from './provision.js';
 
@@ -134,7 +134,11 @@ export function watchedBuckets(
 	for (const declaration of Object.values(manifest)) {
 		if (declaration.kind !== 'objects') continue;
 		byKey.set(
-			provideKey(declaration.id, 'eventsConnectionString'),
+			providedKeyFor(
+				declaration.id,
+				declaration.kind,
+				'eventsConnectionString',
+			),
 			declaration.id,
 		);
 	}

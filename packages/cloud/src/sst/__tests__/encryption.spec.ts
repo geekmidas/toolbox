@@ -1,5 +1,5 @@
 import { ResourceType } from '@geekmidas/envkit/sst';
-import { providedKeyFor, provideKey } from '@geekmidas/manifest';
+import { providedKeyFor } from '@geekmidas/manifest';
 import { describe, expect, it, vi } from 'vitest';
 import { Encryption } from '../aws/Encryption';
 import { provisionerFor, resolveEdges } from '../fromManifest';
@@ -51,7 +51,7 @@ describe('Encryption on AWS', () => {
 			Object.keys(pii.provides()).map((role) =>
 				providedKeyFor('Pii', 'encryption', role),
 			),
-		).toEqual([provideKey('Pii', 'url')]);
+		).toEqual([providedKeyFor('Pii', 'encryption', 'url')]);
 		expect(pii._type).toBe(ResourceType.Encryption);
 	});
 

@@ -24,7 +24,7 @@ change to this page.
 ## Naming
 
 Every key is named after the construct it describes, using its id
-(`provideKey`): `Api` → `API_URL`, `AdminApp` → `ADMIN_APP_SCHEME`,
+(`providedKeyFor`): `Api` → `API_URL`, `AdminApp` → `ADMIN_APP_SCHEME`,
 `Orders` → `ORDERS_URL`. Below, `<T>` is the target's id and `<C>` is the
 caller's.
 

@@ -9,7 +9,7 @@
  * `workerEnvKeys`) and which of the keys the stage has set.
  */
 
-import { type ConstructManifest, provideKey } from '@geekmidas/manifest';
+import { type ConstructManifest, providedKeyFor } from '@geekmidas/manifest';
 import {
 	type CredentialDeclaration,
 	requiredStageKeys,
@@ -67,8 +67,8 @@ export function workspaceStageKeys(
 		if (keys) reads.set(name, keys);
 	}
 
-	const readers = (id: string) => {
-		const key = provideKey(id, 'credentials');
+	const readers = (id: string, kind: 'external-api' | 'credential') => {
+		const key = providedKeyFor(id, kind, 'credentials');
 		return [...reads]
 			.filter(([, env]) => env.has(key))
 			.map(([app]) => app)
@@ -79,7 +79,7 @@ export function workspaceStageKeys(
 	for (const [id, declaration] of Object.entries(manifest)) {
 		const { kind } = declaration;
 		if (kind !== 'external-api' && kind !== 'credential') continue;
-		const apps = readers(id);
+		const apps = readers(id, kind);
 		if (apps.length > 0) credentials.push({ id, kind, apps });
 	}
 	// Mail and storage: the list a deploy's readiness check refuses by.

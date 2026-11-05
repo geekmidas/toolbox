@@ -17,7 +17,7 @@ import {
 	DEFAULT_POSTGRES_VERSION,
 	type Declaration,
 	type PostgresVersion,
-	provideKey,
+	providedKeyFor,
 	serviceKey,
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
@@ -162,8 +162,8 @@ export class KyselyDatabase<DB = unknown, TName extends string = string>
 
 		this.id = canonical as TName;
 		this.config = {
-			url: provideKey(canonical, 'url'),
-			ownerUrl: provideKey(canonical, 'ownerUrl'),
+			url: providedKeyFor(canonical, 'database', 'url'),
+			ownerUrl: providedKeyFor(canonical, 'database', 'ownerUrl'),
 		};
 		this.schemaName = options.schema ?? DEFAULT_SCHEMA;
 		this.roles = options.roles ?? true;

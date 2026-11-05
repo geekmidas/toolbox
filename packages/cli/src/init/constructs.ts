@@ -9,7 +9,12 @@
  * reason the constructs own both faces at runtime.
  */
 
-import { migrationFolder, provideKey, serviceKey } from '@geekmidas/manifest';
+import {
+	type DeclarationKind,
+	migrationFolder,
+	providedKeyFor,
+	serviceKey,
+} from '@geekmidas/manifest';
 import { stamp } from '../migrate/names.js';
 import type { GeneratedFile, RoutesStructure } from './templates/index.js';
 
@@ -62,26 +67,31 @@ export interface ScaffoldedDatabase extends ScaffoldedConstruct {
  * workspace the constructs are declared once, at its root, so there is no
  * second app's `Database` to collide with.
  */
-function scaffolded(id: string): ScaffoldedConstruct {
-	return { id, service: serviceKey(id), urlKey: provideKey(id, 'url') };
+function scaffolded(id: string, kind: DeclarationKind): ScaffoldedConstruct {
+	return {
+		id,
+		service: serviceKey(id),
+		urlKey: providedKeyFor(id, kind, 'url'),
+	};
 }
 
 /** The database a project declares. */
 export function databaseFor(): ScaffoldedDatabase {
 	return {
-		...scaffolded('Database'),
-		ownerUrlKey: provideKey('Database', 'ownerUrl'),
+		...scaffolded('Database', 'database'),
+		ownerUrlKey: providedKeyFor('Database', 'database', 'ownerUrl'),
 	};
 }
 
 /** The bucket a project declares. */
-export const storageFor = (): ScaffoldedConstruct => scaffolded('Uploads');
+export const storageFor = (): ScaffoldedConstruct =>
+	scaffolded('Uploads', 'objects');
 
 /** The mail sender a project declares. */
-export const emailFor = (): ScaffoldedConstruct => scaffolded('Mail');
+export const emailFor = (): ScaffoldedConstruct => scaffolded('Mail', 'email');
 
 /** The cache a project declares. */
-export const cacheFor = (): ScaffoldedConstruct => scaffolded('Cache');
+export const cacheFor = (): ScaffoldedConstruct => scaffolded('Cache', 'cache');
 
 /**
  * The files a project's declared database needs.

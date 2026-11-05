@@ -37,7 +37,7 @@ import {
 	type ConstructName,
 	canonicalId,
 	type Declaration,
-	provideKey,
+	providedKeyFor,
 	serviceKey,
 	type WebSocketEdgeLimits,
 } from '@geekmidas/manifest';
@@ -306,10 +306,15 @@ export class WebSocketApi<
 		this.limits = resolveLimits(canonical, config.limits);
 
 		this.keys = {
-			url: provideKey(canonical, 'url'),
-			trustedOrigins: provideKey(canonical, 'trustedOrigins'),
-			publisherConnectionString: provideKey(
+			url: providedKeyFor(canonical, 'websocket-api', 'url'),
+			trustedOrigins: providedKeyFor(
 				canonical,
+				'websocket-api',
+				'trustedOrigins',
+			),
+			publisherConnectionString: providedKeyFor(
+				canonical,
+				'websocket-api',
 				'publisherConnectionString',
 			),
 		};

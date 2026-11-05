@@ -25,7 +25,7 @@ import {
 	externalApiUrl,
 	imageOrigins,
 	mobileOrigins,
-	provideKey,
+	providedKeyFor,
 	schemeBase,
 	wildcardDomainOf,
 } from '@geekmidas/manifest';
@@ -255,10 +255,11 @@ export function envFor(
 			// Who may open it from a browser, read off its inbound edges as a
 			// REST surface's are. A socket carries no cookie scope of its own.
 			const origins = surfaceEnv(resource, url, resolved)[
-				provideKey(resource.id, 'trustedOrigins')
+				providedKeyFor(resource.id, resource.kind, 'trustedOrigins')
 			];
 			if (origins !== undefined) {
-				env[provideKey(resource.id, 'trustedOrigins')] = origins;
+				env[providedKeyFor(resource.id, resource.kind, 'trustedOrigins')] =
+					origins;
 			}
 			const publisher = webSocketPublisher(
 				resource,
@@ -267,7 +268,13 @@ export function envFor(
 				credential,
 			);
 			if (publisher) {
-				env[provideKey(resource.id, 'publisherConnectionString')] = publisher;
+				env[
+					providedKeyFor(
+						resource.id,
+						resource.kind,
+						'publisherConnectionString',
+					)
+				] = publisher;
 			}
 		}
 		if (url) env[resource.envKey] = url;
@@ -278,8 +285,8 @@ export function envFor(
 		if (resource.kind === 'site' && resource.protectedSubdomains && url) {
 			const domain = wildcardDomainOf(new URL(url).hostname);
 			if (domain) {
-				env[provideKey(resource.id, 'domain')] = domain;
-				env[provideKey(resource.id, 'protectedSubdomains')] =
+				env[providedKeyFor(resource.id, resource.kind, 'domain')] = domain;
+				env[providedKeyFor(resource.id, resource.kind, 'protectedSubdomains')] =
 					resource.protectedSubdomains.join(',');
 			}
 		}
@@ -296,13 +303,15 @@ export function envFor(
 				options.project ?? '',
 				credential,
 			);
-			if (owner) env[provideKey(resource.id, 'ownerUrl')] = owner;
+			if (owner)
+				env[providedKeyFor(resource.id, resource.kind, 'ownerUrl')] = owner;
 		}
 
 		// An external API owns a second key. Faked, it is the fake's; otherwise
 		// it is the stage's own, from its secrets like any value it was given.
 		if (resource.kind === 'external-api' && url && resource.fake) {
-			env[provideKey(resource.id, 'credentials')] = resource.fake.credentials;
+			env[providedKeyFor(resource.id, resource.kind, 'credentials')] =
+				resource.fake.credentials;
 		}
 
 		// A credential resolves nothing (see `urlFor`) — unless the plan was
@@ -344,7 +353,7 @@ export function envFor(
 				resource.name === base
 					? undefined
 					: resource.name.slice(base.length + 1);
-			env[provideKey(resource.id, 'domain')] = [
+			env[providedKeyFor(resource.id, resource.kind, 'domain')] = [
 				stage,
 				options.project,
 				LOCAL_HOST,
@@ -353,13 +362,13 @@ export function envFor(
 				.join('.');
 			const smtp = options.ports[primaryPortKey('mailpit')];
 			if (smtp !== undefined) {
-				env[provideKey(resource.id, 'smtpUrl')] =
+				env[providedKeyFor(resource.id, resource.kind, 'smtpUrl')] =
 					`smtp://${LOCAL_HOST}:${smtp}`;
 			}
 		}
 
 		if (resource.kind === 'email' && url) {
-			env[provideKey(resource.id, 'from')] =
+			env[providedKeyFor(resource.id, resource.kind, 'from')] =
 				options.mailFrom ?? `noreply@${LOCAL_HOST}`;
 
 			// And, locally, a third: where the mail it sent can be read back.
@@ -369,7 +378,7 @@ export function envFor(
 			// publishes this key.
 			const inbox = options.ports[MAILPIT_INBOX_PORT];
 			if (inbox !== undefined) {
-				env[provideKey(resource.id, 'inboxUrl')] =
+				env[providedKeyFor(resource.id, resource.kind, 'inboxUrl')] =
 					`http://${LOCAL_HOST}:${inbox}`;
 			}
 		}
@@ -403,12 +412,15 @@ export function envFor(
 			}
 			if (!options.relayedBuckets.includes(resource.id)) continue;
 			if (!env[resource.envKey]) continue;
-			env[provideKey(resource.id, 'eventsConnectionString')] = relay;
-			env[provideKey(resource.id, 'eventsToken')] = objectsWebhookToken(
-				options.project ?? '',
-				resource.id,
-				credential.seed,
-			);
+			env[
+				providedKeyFor(resource.id, resource.kind, 'eventsConnectionString')
+			] = relay;
+			env[providedKeyFor(resource.id, resource.kind, 'eventsToken')] =
+				objectsWebhookToken(
+					options.project ?? '',
+					resource.id,
+					credential.seed,
+				);
 		}
 	}
 
@@ -578,12 +590,16 @@ function surfaceEnv(
 			: undefined;
 
 	return {
-		[provideKey(resource.id, 'trustedOrigins')]: [
+		[providedKeyFor(resource.id, resource.kind, 'trustedOrigins')]: [
 			...origins,
 			...new Set(schemes),
 		].join(','),
-		...(domain ? { [provideKey(resource.id, 'cookieDomain')]: domain } : {}),
-		...(device ? { [provideKey(resource.id, 'deviceUrl')]: device } : {}),
+		...(domain
+			? { [providedKeyFor(resource.id, resource.kind, 'cookieDomain')]: domain }
+			: {}),
+		...(device
+			? { [providedKeyFor(resource.id, resource.kind, 'deviceUrl')]: device }
+			: {}),
 	};
 }
 

@@ -26,7 +26,7 @@ import type {
 	FileServerDeclaration,
 	ObjectsDeclaration,
 } from '@geekmidas/manifest';
-import { bucketExpiry, providedKeyFor, provideKey } from '@geekmidas/manifest';
+import { bucketExpiry, providedKeyFor } from '@geekmidas/manifest';
 import * as s3Url from '@geekmidas/storage/s3-url';
 import { appKey } from '../../workspace/derive.js';
 import type { S3ObjectsConfig } from '../../workspace/types.js';
@@ -474,7 +474,7 @@ async function ensureBucket(
 		id,
 		secret: s3KeySecret(ctx, clients, {
 			bucket,
-			urlKey: provideKey(id, 'connectionString'),
+			urlKey: providedKeyFor(id, 'objects', 'connectionString'),
 		}),
 		...user,
 	});
@@ -1014,7 +1014,7 @@ function canonicalCors(rule: Partial<CorsRule>): string {
 async function verifyS3(ctx: VerifyContext<S3ObjectsConfig>): Promise<void> {
 	const S3 = await import('@aws-sdk/client-s3');
 	for (const { id } of bucketConstructs(ctx.manifest)) {
-		const urlKey = provideKey(id, 'connectionString');
+		const urlKey = providedKeyFor(id, 'objects', 'connectionString');
 		const url = ctx.secrets[urlKey];
 		if (url === undefined) continue;
 		const address = s3Url.parse(url);
@@ -1106,9 +1106,9 @@ export const s3Provider: ResourceProvider<S3ObjectsConfig, AwsProvisioning> = {
 	runtimeKeys(manifest) {
 		const watched = bucketWatchers(manifest);
 		return bucketConstructs(manifest).flatMap((b) => [
-			provideKey(b.id, 'connectionString'),
+			providedKeyFor(b.id, 'objects', 'connectionString'),
 			...(watched.has(b.id)
-				? [provideKey(b.id, 'eventsConnectionString')]
+				? [providedKeyFor(b.id, 'objects', 'eventsConnectionString')]
 				: []),
 			...b.servers.map((s) => providedKeyFor(s.id, 'file-server', 'url')),
 		]);

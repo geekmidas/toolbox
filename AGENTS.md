@@ -37,6 +37,52 @@ difference at that edge only, and make everything after it shared:
 Before writing a step, find where the other commands already do it, and reuse
 or extend that. The PR template asks this of every change.
 
+## One derivation for every manifest value
+
+**Every name or value derived from the manifest — an env key, what an edge
+hands its caller, what a bundle inlines, a value computed from another — comes
+from one function in `@geekmidas/manifest` (or, for a provider's value format,
+`@geekmidas/storage`). Constructs, every CLI command, every target and every
+test call it. Nobody re-derives it inline.**
+
+This has drifted repeatedly, and each time the copy was right until the rule
+changed. #411 moved a file server's key to `<ID>_URL` and a bucket's to
+`<ID>_CONNECTION_STRING`, and a dozen places broke because they built the key
+as `provideKey(id, 'url')` instead of asking. #409 and #410 then copied the
+walk over a site's edges into the AWS target and into the image-origin list,
+so the next change to it would have had to be made three times.
+
+| What | Ask | Never |
+|---|---|---|
+| The env key a construct provides | `providedKeyFor(id, kind, role)` | `provideKey(id, 'url')`, `` `${id}_URL` ``, a hand-written key |
+| A file server's surface id, its name back | `fileServerSurfaceId`, `fileServerName` | `` `${id}Server` ``, `.replace(/Server$/, '')` |
+| A site or a mobile app, in any frontend question | `PublicDeclaration`, `isPublicDeclaration` | `SiteDeclaration \| MobileAppDeclaration`, `kind === 'site' \|\| kind === 'mobile-app'` |
+| What a site's or app's edges reach, publicly | `publicValues`, and `publicEnvFor` over it | a loop over `declaration.dependencies` checking `PUBLIC` |
+| The origins a site loads files from | `imageOriginSources`, `imageOrigins` | filtering keys by name |
+| An edge from a construct | `edgeTo`, `frontendEdgeTo` | `{ target: x.id, kind: '…' }` |
+| Who depends on what | `dependenciesOf`, `dependentsOf` | reading `endpoints[].dependencies` directly |
+| Where a bucket signs its links | `s3Url.signedOrigin` | composing `https://<bucket>.s3.<region>…` |
+
+- **Before writing a loop over a declaration's edges, or composing a key or a
+  value from an id, grep `packages/manifest/src/index.ts`.** If a function is
+  close, extend it and move every caller onto it. Don't add a second one beside
+  it.
+- **A target turns the shared answer into its own form, and that's all it
+  does.** The AWS target reads `publicValues` and looks each value up on a
+  component; the compose build reads the same list and looks it up in the
+  stage's secrets. Neither decides which values those are.
+- **`provideKey(id, role)` is private to `naming.ts`.** `@geekmidas/manifest`
+  doesn't export it, so a provided key can only come from `providedKeyFor`.
+  It agrees with `provideKey` only for kinds that have no naming rule of their
+  own (a secret's key is its name, a file server's is its construct's,
+  telemetry's is OpenTelemetry's). A name that isn't a provided key, such as
+  a stored key's old name in a migration, uses `environmentCase` with a
+  comment saying why.
+- **A test pins the shared function, not a copy of it.** A spec asserts what
+  `publicValues` or `providedKeyFor` returns, and each target's spec asserts
+  that the target used it, for example that a bucket edge reached the file
+  server. It doesn't re-implement the rule as its expected value.
+
 ## Optional peers
 
 **An optional peer is imported only by the subpath that exists for it.**

@@ -20,7 +20,7 @@ import {
 	retireKey,
 	rotateKeyring,
 } from '@geekmidas/constructs/encryption';
-import { canonicalId, provideKey } from '@geekmidas/manifest';
+import { canonicalId, providedKeyFor } from '@geekmidas/manifest';
 import { loadWorkspaceSettings } from '../config';
 import { GkmError } from '../errors';
 import { withCustomSecret } from '../secrets/storage.js';
@@ -124,7 +124,7 @@ async function updateKeyring(
 	if (providerOf(workspace) === 'aws') throw new KmsRotatesItself(id);
 
 	const store = context.store ?? (await secretsStoreFor(workspace, stage));
-	const key = provideKey(id, 'url');
+	const key = providedKeyFor(id, 'encryption', 'url');
 	const secrets = await store.read(stage);
 	const url = secrets?.custom[key];
 	if (!secrets || !url) throw new NoKeyringYet(id, stage, key);

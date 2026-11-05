@@ -29,7 +29,7 @@ import {
 	type Declaration,
 	type Dependency,
 	type ProcessorDeclaration,
-	provideKey,
+	providedKeyFor,
 } from '@geekmidas/manifest';
 import fg from 'fast-glob';
 import { z } from 'zod';
@@ -648,7 +648,7 @@ function nestRunnables(
 				id: exportName,
 				handler,
 				dependencies: edges(construct.constructs),
-				provides: [provideKey(exportName, 'url')],
+				provides: [providedKeyFor(exportName, 'function', 'url')],
 				...ownerOf(construct),
 			};
 			continue;

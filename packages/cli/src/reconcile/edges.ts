@@ -8,7 +8,7 @@ import {
 	canonicalId,
 	dependenciesOf,
 	type Fn,
-	provideKey,
+	providedKeyFor,
 } from '@geekmidas/manifest';
 
 const EVENTS_SUFFIX = '#events';
@@ -38,14 +38,16 @@ export function subscriberConnectionKey(construct: {
 	bucketName?: string;
 }): string | undefined {
 	if (construct.bucketName) {
-		return provideKey(
+		return providedKeyFor(
 			canonicalId(construct.bucketName),
+			'objects',
 			'eventsConnectionString',
 		);
 	}
 	if (construct.topicName) {
-		return provideKey(
+		return providedKeyFor(
 			canonicalId(construct.topicName),
+			'topic',
 			'publisherConnectionString',
 		);
 	}
@@ -60,7 +62,11 @@ export function subscriberTokenKey(construct: {
 	bucketName?: string;
 }): string | undefined {
 	return construct.bucketName
-		? provideKey(canonicalId(construct.bucketName), 'eventsToken')
+		? providedKeyFor(
+				canonicalId(construct.bucketName),
+				'objects',
+				'eventsToken',
+			)
 		: undefined;
 }
 

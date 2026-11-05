@@ -54,6 +54,7 @@ export type {
 	ProvidedKeys,
 	Provides,
 	ProvidesByKind,
+	PublicDeclaration,
 	QueueDeclaration,
 	RestApiDeclaration,
 	RestApiEndpoint,
@@ -72,6 +73,7 @@ export type {
 export {
 	DEFAULT_POSTGRES_VERSION,
 	DERIVES_FROM,
+	isPublicDeclaration,
 	isWildcardSite,
 	PUBLIC,
 	TELEMETRY_KEYS,
@@ -86,8 +88,10 @@ export {
 	imageOrigins,
 	isDerived,
 	PUBLIC_PREFIX,
+	type PublicValue,
 	provisionOrder,
 	publicEnvFor,
+	publicValues,
 } from './derive';
 export {
 	bucketExpiry,
@@ -144,7 +148,6 @@ export {
 	fileServerSurfaceId,
 	kebabCase,
 	providedKeyFor,
-	provideKey,
 	scopedName,
 	serviceKey,
 } from './naming';

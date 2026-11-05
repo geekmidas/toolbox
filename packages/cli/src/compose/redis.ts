@@ -16,7 +16,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { type ConstructManifest, provideKey } from '@geekmidas/manifest';
+import { type ConstructManifest, providedKeyFor } from '@geekmidas/manifest';
 import { GkmError } from '../errors';
 import { DEFAULT_IMAGES } from '../reconcile/containers.js';
 import type { Plan } from '../reconcile/plan.js';
@@ -99,8 +99,13 @@ export function runsRedis(
 		}
 		return (
 			declaration?.kind === 'websocket-api' &&
-			custom[provideKey(declaration.id, 'publisherConnectionString')] ===
-				undefined
+			custom[
+				providedKeyFor(
+					declaration.id,
+					declaration.kind,
+					'publisherConnectionString',
+				)
+			] === undefined
 		);
 	});
 }
@@ -154,7 +159,7 @@ export function stackRedis(options: {
 		.sort((a, b) => a.id.localeCompare(b.id));
 	const publishers = plan.resources
 		.filter((r) => r.kind === 'websocket-api')
-		.map((r) => provideKey(r.id, 'publisherConnectionString'))
+		.map((r) => providedKeyFor(r.id, r.kind, 'publisherConnectionString'))
 		.filter((key) => custom[key] === undefined);
 	if (caches.length === 0 && publishers.length === 0) return undefined;
 

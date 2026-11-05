@@ -46,7 +46,7 @@ export class Secret<
 	/**
 	 * The one value this secret resolves onto anything that depends on it.
 	 *
-	 * `value` is the role, so `provideKey` turns it into the key the app
+	 * `value` is the role, so `providedKeyFor` turns it into the key the app
 	 * declared. Note that a secret's key is its *name* rather than
 	 * `<NAME>_VALUE` — `Auth` signs with `AUTH_SECRET`, which is also what
 	 * better-auth's own tooling looks for — so the manifest declares that key

@@ -9,7 +9,7 @@ import {
 	type ConstructName,
 	canonicalId,
 	type Declaration,
-	provideKey,
+	providedKeyFor,
 	serviceKey,
 } from '@geekmidas/manifest';
 import type { InferStandardSchema } from '@geekmidas/schema';
@@ -107,7 +107,11 @@ export class Topic<
 		this.name = name as TName;
 		this.id = canonicalId(name as string);
 		this.eventSchemas = options.events;
-		this.connectionKey = provideKey(this.id, 'publisherConnectionString');
+		this.connectionKey = providedKeyFor(
+			this.id,
+			'topic',
+			'publisherConnectionString',
+		);
 
 		const envVar = this.connectionKey;
 		const topic = this.name as string;

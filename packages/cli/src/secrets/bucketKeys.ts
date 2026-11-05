@@ -16,8 +16,8 @@
 
 import {
 	type ConstructManifest,
+	environmentCase,
 	providedKeyFor,
-	provideKey,
 } from '@geekmidas/manifest';
 
 /** One stored key moved to its new name. */
@@ -52,14 +52,19 @@ export function moveBucketKeys(
 		// Only a connection: an `https://` value under the old name is already
 		// a file server's address, written by hand ahead of the move.
 		move(
-			provideKey(id, 'url'),
-			provideKey(id, 'connectionString'),
+			// The stored key's old name, not a provided key.
+			environmentCase(`${id}_url`),
+			providedKeyFor(id, declaration.kind, 'connectionString'),
 			(value) => !/^https?:\/\//i.test(value),
 		);
 	}
 	for (const [id, declaration] of entries) {
 		if (declaration.kind !== 'file-server') continue;
-		move(provideKey(id, 'url'), providedKeyFor(id, 'file-server', 'url'));
+		// The stored key's old name, not a provided key.
+		move(
+			environmentCase(`${id}_url`),
+			providedKeyFor(id, 'file-server', 'url'),
+		);
 	}
 
 	return { custom: next, moved };

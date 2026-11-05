@@ -19,6 +19,7 @@ import {
 	dependentsOf,
 	IMAGE_ORIGINS_KEY,
 	imageOriginSources,
+	isPublicDeclaration,
 	isWildcardSite,
 	type PostgresVersion,
 	PUBLIC_PREFIX,
@@ -149,7 +150,7 @@ const REQUIRES: Readonly<Record<string, readonly string[]>> = {
  *
  * The twin of `ProvidesByKind` in `@geekmidas/manifest`: that is what a
  * construct declares, this is what the local target resolves, and both derive
- * the key from the same `provideKey` so they cannot disagree.
+ * the key from the same `providedKeyFor` so they cannot disagree.
  */
 const ROLES: Partial<Record<DeclarationKind, string>> = {
 	queue: 'publisherConnectionString',
@@ -626,7 +627,7 @@ export function planFor(
 			...(declaration.kind === 'site'
 				? { publicEnv: publicEnvFor(declaration, manifest) }
 				: {}),
-			...((declaration.kind === 'site' || declaration.kind === 'mobile-app') &&
+			...(isPublicDeclaration(declaration) &&
 			imageOriginSources(declaration, manifest).length > 0
 				? {
 						imageOrigins: {

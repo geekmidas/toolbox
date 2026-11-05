@@ -39,7 +39,7 @@ export class ObjectStorage<
 
 	/**
 	 * The values this bucket resolves onto anything that depends on it, keyed by
-	 * role. `provideKey` turns a role into the env key the app declared, so
+	 * role. `providedKeyFor` turns a role into the env key the app declared, so
 	 * `connectionString` here is `UPLOADS_CONNECTION_STRING` there.
 	 *
 	 * Composed *here* because only the resource knows its own shape: the name may

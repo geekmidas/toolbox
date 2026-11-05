@@ -54,7 +54,7 @@ import {
 	type ConstructName,
 	canonicalId,
 	type Declaration,
-	provideKey,
+	providedKeyFor,
 	serviceKey,
 } from '@geekmidas/manifest';
 import { parseSchema } from '@geekmidas/schema/parser';
@@ -124,7 +124,9 @@ export class Credential<
 		const canonical = canonicalId(id as string);
 
 		this.id = canonical as TName;
-		this.keys = { credentials: provideKey(canonical, 'credentials') };
+		this.keys = {
+			credentials: providedKeyFor(canonical, 'credential', 'credentials'),
+		};
 
 		// A field, not a getter: consumers cache services by object identity.
 		this.service = {
