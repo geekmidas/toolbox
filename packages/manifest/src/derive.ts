@@ -14,10 +14,10 @@ import type {
 	ConstructId,
 	ConstructManifest,
 	Declaration,
+	DeclarationKind,
 	Dependency,
 	DerivedDeclaration,
-	MobileAppDeclaration,
-	SiteDeclaration,
+	PublicDeclaration,
 } from './declaration';
 import { DERIVES_FROM, isWildcardSite, PUBLIC } from './declaration';
 import { IllegalDerivation, UnknownParent } from './errors';
@@ -170,15 +170,67 @@ export function dependentsOf(
  * `EXPO_PUBLIC_` all mean "inline this into the bundle" — so it is the one thing
  * a variant changes, and it changes nothing else.
  */
-export const PUBLIC_PREFIX: Record<
-	SiteDeclaration['variant'] | MobileAppDeclaration['variant'],
-	string
-> = {
+export const PUBLIC_PREFIX: Record<PublicDeclaration['variant'], string> = {
 	static: 'VITE_',
 	tanstack: 'VITE_',
 	next: 'NEXT_PUBLIC_',
 	expo: 'EXPO_PUBLIC_',
 };
+
+/** One public value a frontend's edges reach: whose, which role, its key. */
+export interface PublicValue {
+	id: string;
+	kind: DeclarationKind;
+	role: string;
+	/** `providedKeyFor(id, kind, role)` — the unprefixed key. */
+	key: string;
+}
+
+/**
+ * Every public value a site's or a mobile app's edges reach — the one walk of
+ * its edges that every target makes, so what a bundle inlines cannot differ
+ * between `gkm dev`, a compose build and the AWS target.
+ *
+ * Each edge's `PUBLIC` roles, and, because a bucket and the file server over
+ * it are one construct to a page:
+ *
+ * - an edge to a bucket (a full-stack site's `.dependsOn([assets.server])`)
+ *   also reaches each file server over it — its objects are shown from there;
+ * - an edge to a file server also reaches its bucket's public values — where
+ *   the bucket signs the links to its private objects.
+ *
+ * A bucket's connection is never one: `PUBLIC.objects` does not list it.
+ */
+export function publicValues(
+	declaration: PublicDeclaration,
+	manifest: ConstructManifest,
+): PublicValue[] {
+	const values = new Map<string, PublicValue>();
+	const reach = (id: string) => {
+		const target = manifest[id];
+		if (!target) return;
+		for (const role of PUBLIC[target.kind] ?? []) {
+			const key = providedKeyFor(id, target.kind, role as string);
+			values.set(key, { id, kind: target.kind, role: role as string, key });
+		}
+	};
+
+	for (const edge of declaration.dependencies) {
+		const target = manifest[edge.target];
+		if (!target) continue;
+		reach(edge.target);
+		if (target.kind === 'objects') {
+			for (const [id, other] of Object.entries(manifest)) {
+				if (other.kind === 'file-server' && other.of === edge.target) {
+					reach(id);
+				}
+			}
+		}
+		if (target.kind === 'file-server') reach(target.of);
+	}
+
+	return [...values.values()];
+}
 
 /**
  * The keys a site's bundle needs, mapped to the key each value comes from —
@@ -200,7 +252,7 @@ export const PUBLIC_PREFIX: Record<
  * locally and the same site built by a deploy must inline the same names.
  */
 export function publicEnvFor(
-	declaration: SiteDeclaration | MobileAppDeclaration,
+	declaration: PublicDeclaration,
 	manifest: ConstructManifest,
 ): Record<string, string> {
 	const prefix = PUBLIC_PREFIX[declaration.variant];
@@ -224,36 +276,8 @@ export function publicEnvFor(
 		}
 	}
 
-	const inline = (id: string, target: Declaration) => {
-		for (const role of PUBLIC[target.kind] ?? []) {
-			const key = providedKeyFor(id, target.kind, role as string);
-			keys[`${prefix}${key}`] = key;
-		}
-	};
-
-	for (const edge of declaration.dependencies) {
-		const target = manifest[edge.target];
-		if (!target) continue;
-		inline(edge.target, target);
-
-		// An edge to a bucket — a full-stack site's `.dependsOn([assets.server])`
-		// — still has its objects served somewhere public, and the bundle shows
-		// them from there: each file server over it is inlined as a plain edge
-		// to it would be. The bucket's own connection never is.
-		if (target.kind === 'objects') {
-			for (const [id, other] of Object.entries(manifest)) {
-				if (other.kind === 'file-server' && other.of === edge.target) {
-					inline(id, other);
-				}
-			}
-		}
-		// And the other way: an edge to a file server shows private objects
-		// through links the bucket under it signs, so the bundle gets where
-		// those point — the bucket's public values, never its connection.
-		if (target.kind === 'file-server') {
-			const bucket = manifest[target.of];
-			if (bucket) inline(target.of, bucket);
-		}
+	for (const { key } of publicValues(declaration, manifest)) {
+		keys[`${prefix}${key}`] = key;
 	}
 
 	return keys;
@@ -272,36 +296,21 @@ export const IMAGE_ORIGINS_KEY = 'GKM_IMAGE_ORIGINS';
 /**
  * The keys whose values are the origins a site's pages load files from: each
  * file server it reaches, and where each bucket it reaches signs its links —
- * by either edge, the same walk {@link publicEnvFor} makes. Sorted, so the
+ * by either edge, read off {@link publicValues}. Sorted, so the
  * value composed from them does not churn.
  */
 export function imageOriginSources(
-	declaration: SiteDeclaration | MobileAppDeclaration,
+	declaration: PublicDeclaration,
 	manifest: ConstructManifest,
 ): string[] {
-	const sources = new Set<string>();
-	const bucket = (id: string) =>
-		sources.add(providedKeyFor(id, 'objects', 'signedOrigin'));
-	const server = (id: string) =>
-		sources.add(providedKeyFor(id, 'file-server', 'url'));
-
-	for (const edge of declaration.dependencies) {
-		const target = manifest[edge.target];
-		if (target?.kind === 'objects') {
-			bucket(edge.target);
-			for (const [id, other] of Object.entries(manifest)) {
-				if (other.kind === 'file-server' && other.of === edge.target) {
-					server(id);
-				}
-			}
-		}
-		if (target?.kind === 'file-server') {
-			server(edge.target);
-			if (manifest[target.of]?.kind === 'objects') bucket(target.of);
-		}
-	}
-
-	return [...sources].sort();
+	return publicValues(declaration, manifest)
+		.filter(
+			({ kind, role }) =>
+				(kind === 'file-server' && role === 'url') ||
+				(kind === 'objects' && role === 'signedOrigin'),
+		)
+		.map(({ key }) => key)
+		.sort();
 }
 
 /**

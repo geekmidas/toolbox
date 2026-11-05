@@ -6,6 +6,7 @@ import {
 	imageOrigins,
 	provisionOrder,
 	publicEnvFor,
+	publicValues,
 } from '../derive';
 import { cloudName, cookieDomain, providedKeyFor } from '../naming';
 
@@ -185,5 +186,42 @@ describe('image origins', () => {
 			'https://acme-assets.s3.eu-west-1.amazonaws.com,https://assets.example.com',
 		);
 		expect(imageOrigins(sources, () => undefined)).toBeUndefined();
+	});
+});
+
+describe('publicValues', () => {
+	const files = {
+		Assets: { kind: 'objects', id: 'Assets' },
+		AssetsServer: { kind: 'file-server', id: 'AssetsServer', of: 'Assets' },
+		Api: { kind: 'rest-api', id: 'Api', path: '.', endpoints: [] },
+		Orders: { kind: 'database', id: 'Orders' },
+	} as unknown as ConstructManifest;
+
+	it('is each public role an edge reaches, a bucket and its server as one', () => {
+		const expected = [
+			{
+				id: 'AssetsServer',
+				kind: 'file-server',
+				role: 'url',
+				key: 'ASSETS_URL',
+			},
+			{
+				id: 'Assets',
+				kind: 'objects',
+				role: 'signedOrigin',
+				key: 'ASSETS_SIGNED_ORIGIN',
+			},
+		];
+
+		expect(
+			publicValues(site('next', ['Api', 'AssetsServer', 'Orders']), files),
+		).toEqual([
+			{ id: 'Api', kind: 'rest-api', role: 'url', key: 'API_URL' },
+			...expected,
+		]);
+		// From the bucket's side, the same two values: one construct to a page.
+		expect(
+			new Set(publicValues(site('next', ['Assets']), files).map((v) => v.key)),
+		).toEqual(new Set(expected.map((v) => v.key)));
 	});
 });

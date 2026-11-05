@@ -33,10 +33,10 @@ import {
 	imageOrigins,
 	isWildcardSite,
 	mobileOrigins,
-	PUBLIC,
 	PUBLIC_PREFIX,
 	providedKeyFor,
 	provisionOrder,
+	publicValues,
 	SECRET_LENGTH,
 	SECRET_SYMBOLS,
 	schemeBase,
@@ -497,53 +497,32 @@ export function siteEnvironment(
 		}
 	}
 
-	const inline = (id: string, target: Declaration) => {
-		const roles = PUBLIC[target.kind] ?? [];
-		if (roles.length === 0) return;
-
+	// The one walk of a frontend's edges every target makes (`publicValues`):
+	// each value is read off the component that provides it.
+	for (const { id, kind, role, key } of publicValues(
+		declaration,
+		context.manifest,
+	)) {
 		const component = context.provisioned[id];
 		if (!component) {
 			throw new UnresolvedDependency(id, Object.keys(context.provisioned));
 		}
 
-		const provided = { ...component.provides() };
+		const provided = component.provides();
+		let value = provided[role];
 		// A bucket's signed origin is derived from its connection, not
 		// provided: where its presigned links point is a function of it.
-		if (target.kind === 'objects' && provided.connectionString !== undefined) {
-			provided.signedOrigin ??= $util
+		if (
+			value === undefined &&
+			kind === 'objects' &&
+			role === 'signedOrigin' &&
+			provided.connectionString !== undefined
+		) {
+			value = $util
 				.output(provided.connectionString)
 				.apply((connection) => s3Url.signedOrigin(s3Url.parse(connection)));
 		}
-		for (const role of roles) {
-			const value = provided[role as string];
-			if (value === undefined) continue;
-
-			environment[
-				`${prefix}${providedKeyFor(id, target.kind, role as string)}`
-			] = value;
-		}
-	};
-
-	for (const edge of declaration.dependencies) {
-		const target = context.manifest[edge.target];
-		if (!target) continue;
-		inline(edge.target, target);
-
-		// An edge to a bucket still shows its objects from where they are
-		// served — the same rule `publicEnvFor` follows.
-		if (target.kind === 'objects') {
-			for (const [id, other] of Object.entries(context.manifest)) {
-				if (other.kind === 'file-server' && other.of === edge.target) {
-					inline(id, other);
-				}
-			}
-		}
-		// And an edge to a file server gets where its bucket's signed links
-		// point.
-		if (target.kind === 'file-server') {
-			const bucket = context.manifest[target.of];
-			if (bucket) inline(target.of, bucket);
-		}
+		if (value !== undefined) environment[`${prefix}${key}`] = value;
 	}
 
 	// The origins its pages load files from, as one list: composed from the

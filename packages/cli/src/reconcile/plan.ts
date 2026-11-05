@@ -19,6 +19,7 @@ import {
 	dependentsOf,
 	IMAGE_ORIGINS_KEY,
 	imageOriginSources,
+	isPublicDeclaration,
 	isWildcardSite,
 	type PostgresVersion,
 	PUBLIC_PREFIX,
@@ -626,7 +627,7 @@ export function planFor(
 			...(declaration.kind === 'site'
 				? { publicEnv: publicEnvFor(declaration, manifest) }
 				: {}),
-			...((declaration.kind === 'site' || declaration.kind === 'mobile-app') &&
+			...(isPublicDeclaration(declaration) &&
 			imageOriginSources(declaration, manifest).length > 0
 				? {
 						imageOrigins: {

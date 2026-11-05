@@ -23,6 +23,7 @@ import {
 	dependenciesOf,
 	dependentsOf,
 	EDGE_TOKEN_KEY,
+	isPublicDeclaration,
 	provideKey,
 	provisionOrder,
 	publicEnvFor,
@@ -278,12 +279,7 @@ export function appEnvKeys(
 
 	// A surface's own edges and its endpoints' — every route it serves.
 	const edges = dependenciesOf(declaration).map((edge) => edge.target);
-	addEdgeKeys(
-		manifest,
-		edges,
-		keys,
-		declaration.kind === 'site' || declaration.kind === 'mobile-app',
-	);
+	addEdgeKeys(manifest, edges, keys, isPublicDeclaration(declaration));
 
 	// The other direction: who calls this surface, by the identity it links
 	// and redirects back to (`APP_SCHEME`, `WEB_URL`).
@@ -291,7 +287,7 @@ export function appEnvKeys(
 		for (const key of callerKeys(manifest, id)) keys.add(key);
 	}
 
-	if (declaration.kind === 'site' || declaration.kind === 'mobile-app') {
+	if (isPublicDeclaration(declaration)) {
 		// A site's edge to a `Telemetry` node hands it none of the node's keys:
 		// an exporter's endpoint and headers are a server's, and a site's
 		// environment is a bundle's.

@@ -3,8 +3,8 @@ import {
 	IMAGE_ORIGINS_KEY,
 	imageOriginSources,
 	imageOrigins,
-	type MobileAppDeclaration,
 	PUBLIC_PREFIX,
+	type PublicDeclaration,
 	providedKeyFor,
 	provideKey,
 	publicEnvFor,
@@ -36,7 +36,7 @@ import { appKey } from '../workspace/derive.js';
  * addresses are the construct's, not a copy someone set.
  */
 export function publicBuildValues(
-	site: SiteDeclaration | MobileAppDeclaration,
+	site: PublicDeclaration,
 	manifest: ConstructManifest,
 	resolve: (key: string) => string | undefined,
 	secrets: Readonly<Record<string, string>>,
