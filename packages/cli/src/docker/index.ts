@@ -3,6 +3,9 @@ import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import {
 	type ConstructManifest,
+	IMAGE_ORIGINS_KEY,
+	imageOriginSources,
+	PUBLIC_PREFIX,
 	provideKey,
 	publicEnvFor,
 } from '@geekmidas/manifest';
@@ -571,6 +574,10 @@ export function siteDockerfile(
 					// at build — what `publicBuildValues` hands every image build.
 					provideKey(declared.id, 'url'),
 					...Object.keys(publicEnvFor(declared, options.manifest)),
+					// The origins its pages load files from, where it has any.
+					...(imageOriginSources(declared, options.manifest).length > 0
+						? [`${PUBLIC_PREFIX[declared.variant]}${IMAGE_ORIGINS_KEY}`]
+						: []),
 				]
 			: getPublicUrlArgNames(app));
 

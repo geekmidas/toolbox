@@ -114,6 +114,9 @@ describe('siteEnvironment', () => {
 			context({
 				Api: provided({ url: 'https://api.example.com' }),
 				Orders: provided({ url: 'postgres://user:pw@db/orders' }),
+				Uploads: provided({
+					connectionString: 's3://uploads-x1?region=eu-west-1',
+				}),
 				UploadsServer: provided({ url: 'https://files.example.com' }),
 				Mailer: provided({
 					url: 'smtp://user:pw@email-smtp.example.com:587',
@@ -133,6 +136,12 @@ describe('siteEnvironment', () => {
 		expect(built()).not.toHaveProperty('VITE_UPLOADS_CONNECTION_STRING');
 	});
 
+	it("inlines where a served bucket's signed links point", () => {
+		expect(built().VITE_UPLOADS_SIGNED_ORIGIN).toBe(
+			'https://uploads-x1.s3.eu-west-1.amazonaws.com',
+		);
+	});
+
 	it("inlines a bucket's served address on an edge to the bucket itself", () => {
 		// A full-stack site's `.dependsOn([uploads.server])`: the server half
 		// holds the bucket, and the bundle still shows its objects from where
@@ -143,12 +152,23 @@ describe('siteEnvironment', () => {
 				dependencies: [{ target: 'Uploads', kind: 'objects' }],
 			},
 			context({
-				Uploads: provided({ connectionString: 's3://uploads?region=x' }),
+				Uploads: provided({
+					connectionString: 's3://uploads-x1?region=eu-west-1',
+				}),
 				UploadsServer: provided({ url: 'https://files.example.com' }),
 			}),
 		);
 
-		expect(env).toEqual({ VITE_UPLOADS_URL: 'https://files.example.com' });
+		// And where the bucket's signed links point, derived from its
+		// connection — never the connection itself.
+		expect(env).toEqual({
+			VITE_UPLOADS_SIGNED_ORIGIN:
+				'https://uploads-x1.s3.eu-west-1.amazonaws.com',
+			VITE_UPLOADS_URL: 'https://files.example.com',
+			// Both, as the one list a page's image config reads.
+			VITE_GKM_IMAGE_ORIGINS:
+				'https://files.example.com,https://uploads-x1.s3.eu-west-1.amazonaws.com',
+		});
 	});
 
 	it('keeps a connection string out of the bundle entirely', () => {

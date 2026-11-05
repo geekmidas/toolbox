@@ -5,7 +5,7 @@ import {
 	MissingStorageBucket,
 	UnexpectedStorageScheme,
 } from '../errors';
-import { build, parse, type S3Address } from '../s3Url';
+import { build, parse, type S3Address, signedOrigin } from '../s3Url';
 
 describe('s3Url', () => {
 	const cases: [string, S3Address][] = [
@@ -131,5 +131,39 @@ describe('s3Url', () => {
 
 	it('omits absent parts rather than emitting empty values', () => {
 		expect(parse('s3://uploads')).toEqual({ bucket: 'uploads' });
+	});
+});
+
+describe('signedOrigin', () => {
+	// Each expectation is the origin the SDK's own presigner produced for the
+	// same configuration.
+	it('is the bucket on S3’s regional host', () => {
+		expect(signedOrigin(parse('s3://my-bucket?region=eu-west-1'))).toBe(
+			'https://my-bucket.s3.eu-west-1.amazonaws.com',
+		);
+	});
+
+	it('is the endpoint itself, path-style', () => {
+		expect(
+			signedOrigin(
+				parse(
+					's3://my-bucket?region=us-east-1&endpoint=http://192.168.1.5:9000&forcePathStyle=true',
+				),
+			),
+		).toBe('http://192.168.1.5:9000');
+	});
+
+	it('puts the bucket in front of an endpoint, virtual-host style', () => {
+		expect(
+			signedOrigin(
+				parse(
+					's3://KEY:SECRET@my-bucket?region=auto&endpoint=https://acct.r2.cloudflarestorage.com',
+				),
+			),
+		).toBe('https://my-bucket.acct.r2.cloudflarestorage.com');
+	});
+
+	it('is unknown for an S3 bucket that names no region', () => {
+		expect(signedOrigin(parse('s3://my-bucket'))).toBeUndefined();
 	});
 });

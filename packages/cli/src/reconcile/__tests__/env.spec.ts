@@ -119,6 +119,7 @@ describe('envFor', () => {
 			'ORDERS_URL',
 			'SESSIONS_URL',
 			'UPLOADS_CONNECTION_STRING',
+			'UPLOADS_SIGNED_ORIGIN',
 			'UPLOADS_URL',
 			'USERS_PUBLISHER_CONNECTION_STRING',
 			// The site's own copy of its API's address, under the name its

@@ -1181,6 +1181,14 @@ export interface ProvidesByKind {
 		 * is the file server's public address.
 		 */
 		connectionString: string;
+		/**
+		 * The scheme and host its presigned links are on —
+		 * `https://<bucket>.s3.<region>.amazonaws.com`, an S3-compatible
+		 * endpoint's host, MinIO's address locally. Derived from the
+		 * connection wherever it is resolved, never stored: a page that
+		 * shows private objects through signed links allows this host.
+		 */
+		signedOrigin?: string;
 		eventsConnectionString?: string;
 		eventsToken?: string;
 	};
@@ -1334,7 +1342,9 @@ export type Provides<K extends keyof ProvidesByKind> = ProvidesByKind[K];
 export const PUBLIC: {
 	readonly [K in keyof ProvidesByKind]: readonly (keyof ProvidesByKind[K])[];
 } = {
-	objects: [],
+	// Where its signed links point, and nothing else of it: an origin carries
+	// no credentials, and a page showing a signed link has to allow its host.
+	objects: ['signedOrigin'],
 	// The address a browser fetches an image from. The bucket's own URL is not
 	// here and must not be: it presigns, and a presigner in a bundle is a
 	// credential in a bundle.
