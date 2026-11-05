@@ -17,8 +17,10 @@ import {
 	type Declaration,
 	type DeclarationKind,
 	dependentsOf,
+	hostLabels,
 	IMAGE_ORIGINS_KEY,
 	imageOriginSources,
+	isHostedDeclaration,
 	isPublicDeclaration,
 	isWildcardSite,
 	type PostgresVersion,
@@ -265,6 +267,10 @@ export interface PlannedResource {
 	 * the same one a deploy puts under the stage's domain.
 	 */
 	subdomain?: string;
+	/** More labels it answers on, from `hostLabels` — the same a deploy adds. */
+	aliases?: string[];
+	/** Labels that redirect to its host, from `hostLabels`. A site's only. */
+	redirects?: string[];
 	/** The schema a tenant pins on its roles' `search_path`. */
 	schema?: string;
 	/** For a secret: the format it is derived in, as a deploy generates it. */
@@ -669,6 +675,14 @@ export function planFor(
 				declaration.kind === 'site') &&
 			declaration.subdomain
 				? { subdomain: declaration.subdomain }
+				: {}),
+			...(isHostedDeclaration(declaration) &&
+			hostLabels(declaration).aliases.length
+				? { aliases: [...hostLabels(declaration).aliases] }
+				: {}),
+			...(isHostedDeclaration(declaration) &&
+			hostLabels(declaration).redirects.length
+				? { redirects: [...hostLabels(declaration).redirects] }
 				: {}),
 			...(isWildcardSite(declaration)
 				? {

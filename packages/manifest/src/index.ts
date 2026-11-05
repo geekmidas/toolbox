@@ -115,6 +115,17 @@ export {
 	EDGE_TOKEN_KEY,
 } from './headers';
 export {
+	assertHostLabels,
+	type HostedDeclaration,
+	HostLabelBothAliasAndRedirect,
+	type HostLabelSource,
+	type HostLabels,
+	hostLabels,
+	InvalidHostLabel,
+	isHostedDeclaration,
+	WildcardSiteCannotHaveAliases,
+} from './hosts';
+export {
 	INBOX_EVENT,
 	INBOX_MESSAGES_PREFIX,
 	type InboxAddressing,

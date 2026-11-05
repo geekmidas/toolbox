@@ -4,6 +4,7 @@ import { derivedApps } from '../derive';
 import {
 	assertSubdomains,
 	FileServerHostTaken,
+	HostLabelTaken,
 	ProtectedSubdomainIsAnApp,
 	protectedSubdomains,
 	SecondWildcardSite,
@@ -245,5 +246,75 @@ describe("a file server's host", () => {
 		} as ConstructManifest;
 
 		expect(() => assertSubdomains(beside)).not.toThrow();
+	});
+});
+
+describe('aliases and redirects', () => {
+	const aliased = {
+		...manifest,
+		Api: { ...manifest.Api, aliases: ['rest'] },
+		AdminConsole: { ...manifest.AdminConsole, redirects: ['backoffice'] },
+	} as ConstructManifest;
+
+	it('are labels no tenant may take', () => {
+		expect(protectedSubdomains(aliased)).toEqual([
+			'admin',
+			'api',
+			'backoffice',
+			'jobs',
+			'login',
+			'rest',
+		]);
+	});
+
+	it('refuses a protected name that is an alias or a redirect', () => {
+		for (const label of ['rest', 'backoffice']) {
+			try {
+				assertSubdomains(aliased, [label]);
+				expect.unreachable();
+			} catch (error) {
+				expect(error).toBeInstanceOf(ProtectedSubdomainIsAnApp);
+				expect((error as Error).message).toContain('protectedSubdomains');
+			}
+		}
+	});
+
+	it("refuses an alias that is another app's own label", () => {
+		const clash = {
+			...manifest,
+			Api: { ...manifest.Api, aliases: ['login'] },
+		} as ConstructManifest;
+
+		try {
+			assertSubdomains(clash);
+			expect.unreachable();
+		} catch (error) {
+			expect(error).toBeInstanceOf(HostLabelTaken);
+			expect((error as HostLabelTaken).label).toBe('login');
+			expect([
+				(error as HostLabelTaken).first,
+				(error as HostLabelTaken).second,
+			]).toEqual(['Api', 'Auth']);
+		}
+	});
+
+	it('refuses one label listed by two apps', () => {
+		const clash = {
+			...manifest,
+			Api: { ...manifest.Api, aliases: ['rest'] },
+			AdminConsole: { ...manifest.AdminConsole, aliases: ['rest'] },
+		} as ConstructManifest;
+
+		expect(() => assertSubdomains(clash)).toThrow(HostLabelTaken);
+	});
+
+	it("refuses an alias on a file server's host", () => {
+		const clash = {
+			...manifest,
+			Api: { ...manifest.Api, aliases: ['assets'] },
+			Assets: { kind: 'file-server', id: 'Assets', of: 'Uploads' },
+		} as ConstructManifest;
+
+		expect(() => assertSubdomains(clash)).toThrow(FileServerHostTaken);
 	});
 });

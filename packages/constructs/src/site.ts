@@ -30,6 +30,7 @@
  */
 
 import {
+	assertHostLabels,
 	type ConstructName,
 	canonicalId,
 	type Declaration,
@@ -39,6 +40,14 @@ import {
 	serviceKey,
 	WILDCARD_SUBDOMAIN,
 } from '@geekmidas/manifest';
+
+/** Thrown at construction for an alias or redirect that cannot be a host label. */
+export {
+	HostLabelBothAliasAndRedirect,
+	InvalidHostLabel,
+	WildcardSiteCannotHaveAliases,
+} from '@geekmidas/manifest';
+
 import type { Service } from '@geekmidas/services';
 import {
 	type Construct,
@@ -75,6 +84,20 @@ export interface StaticSiteConfig {
 	 * such site.
 	 */
 	subdomain?: string;
+	/**
+	 * More labels it answers on under the stage's domain, exactly as on its
+	 * own: each a host the site really serves, and an origin every surface it
+	 * depends on trusts. Its own host stays canonical (`<ID>_URL`).
+	 */
+	aliases?: readonly string[];
+	/**
+	 * Labels that answer with a permanent (301) redirect to its own host,
+	 * path and query kept — `['www']` sends `www.myapp.com` to `myapp.com`.
+	 * Nothing answers on a host unless a construct names it, so there is no
+	 * automatic `www`. Sites only: an API client does not reliably follow a
+	 * redirect on a `POST`.
+	 */
+	redirects?: readonly string[];
 	/**
 	 * With `subdomain: '*'`, the route that says which hosts are tenants: an
 	 * exported `GET` endpoint the edge asks before it serves a host,
@@ -292,6 +315,12 @@ export class StaticSite<TName extends string = string>
 		if (wildcard && !config.hosts) throw new WildcardSiteNeedsHosts(this.id);
 		if (!wildcard && config.hosts) throw new SiteHostsNeedsWildcard(this.id);
 		if (wildcard && config.root) throw new WildcardSiteCannotBeRoot(this.id);
+		assertHostLabels({
+			id: this.id,
+			...(config.subdomain ? { subdomain: config.subdomain } : {}),
+			...(config.aliases ? { aliases: config.aliases } : {}),
+			...(config.redirects ? { redirects: config.redirects } : {}),
+		});
 		const variant = config.variant ?? 'static';
 		if (config.prerender && variant !== 'static') {
 			throw new PrerenderNeedsStaticSite(this.id, variant);
@@ -336,6 +365,12 @@ export class StaticSite<TName extends string = string>
 				id: this.id,
 				variant: this.config.variant ?? 'static',
 				...(this.config.subdomain ? { subdomain: this.config.subdomain } : {}),
+				...(this.config.aliases?.length
+					? { aliases: [...this.config.aliases] }
+					: {}),
+				...(this.config.redirects?.length
+					? { redirects: [...this.config.redirects] }
+					: {}),
 				...(hosts
 					? {
 							hosts: {

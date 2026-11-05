@@ -32,7 +32,7 @@ import {
 import { LOGS_ORG, otlpHeaders } from '../compose/logs.js';
 import { GkmError } from '../errors';
 import { telemetryEnv } from '../telemetry/config.js';
-import { hostFor } from './caddyfile';
+import { hostFor, hostsFor } from './caddyfile';
 import { primaryPortKey } from './containers';
 import {
 	EMULATOR_REGION,
@@ -110,6 +110,14 @@ export interface EnvOptions {
 	 * workspace and the difference between them is exactly what CORS is about.
 	 */
 	addresses?: Readonly<Record<string, string>>;
+	/**
+	 * The other addresses each construct answers on, keyed by id: its
+	 * `aliases`, as a target placed them (`gkm compose`'s edge). Absent, a
+	 * construct behind the local edge answers its aliases under the project,
+	 * as `hostsFor` names them. A site's are origins every surface it calls
+	 * trusts; its `redirects` are not, since the browser never runs there.
+	 */
+	aliasAddresses?: Readonly<Record<string, readonly string[]>>;
 	/**
 	 * This machine's address on the local network — what a phone running the
 	 * app reaches it on. Only a local stage has one, and only a project with a
@@ -230,6 +238,7 @@ export function envFor(
 		);
 		if (url) resolved[resource.id] = url;
 	}
+	const aliased = aliasAddressesFor(plan, options);
 
 	for (const resource of plan.resources) {
 		const url = resolved[resource.id];
@@ -245,6 +254,7 @@ export function envFor(
 				env,
 				surfaceEnv(resource, url, resolved, {
 					plan,
+					aliased,
 					...(options.addresses ? { addresses: options.addresses } : {}),
 					...(options.lanAddress ? { lanAddress: options.lanAddress } : {}),
 					...(options.metroPorts ? { metroPorts: options.metroPorts } : {}),
@@ -254,7 +264,7 @@ export function envFor(
 		if (resource.kind === 'websocket-api') {
 			// Who may open it from a browser, read off its inbound edges as a
 			// REST surface's are. A socket carries no cookie scope of its own.
-			const origins = surfaceEnv(resource, url, resolved)[
+			const origins = surfaceEnv(resource, url, resolved, { aliased })[
 				providedKeyFor(resource.id, resource.kind, 'trustedOrigins')
 			];
 			if (origins !== undefined) {
@@ -535,6 +545,8 @@ function surfaceEnv(
 	resolved: Readonly<Record<string, string>> = {},
 	local: {
 		plan?: Plan;
+		/** Each caller's alias addresses — origins beside its own. */
+		aliased?: Readonly<Record<string, readonly string[]>>;
 		addresses?: Readonly<Record<string, string>>;
 		lanAddress?: string;
 		metroPorts?: Readonly<Record<string, number>>;
@@ -545,8 +557,11 @@ function surfaceEnv(
 	const origins = [
 		...new Set(
 			(resource.callers ?? [])
-				.map((caller) => resolved[caller])
-				.filter((address): address is string => Boolean(address))
+				.flatMap((caller) =>
+					resolved[caller]
+						? [resolved[caller], ...(local.aliased?.[caller] ?? [])]
+						: [],
+				)
 				.map(originOf)
 				.filter((origin): origin is string => Boolean(origin)),
 		),
@@ -601,6 +616,32 @@ function surfaceEnv(
 			? { [providedKeyFor(resource.id, resource.kind, 'deviceUrl')]: device }
 			: {}),
 	};
+}
+
+/**
+ * Every construct's alias addresses: where a target placed them, and
+ * otherwise — behind the local edge — each alias under the project, on the
+ * edge's port, as {@link hostsFor} names it. Never a redirect's.
+ */
+function aliasAddressesFor(
+	plan: Plan,
+	options: EnvOptions,
+): Record<string, readonly string[]> {
+	if (options.aliasAddresses) return { ...options.aliasAddresses };
+	const edge = plan.containers.includes('caddy')
+		? options.ports[primaryPortKey('caddy')]
+		: undefined;
+	if (edge === undefined) return {};
+	const aliased: Record<string, readonly string[]> = {};
+	for (const resource of plan.resources) {
+		if (!resource.aliases?.length) continue;
+		if (!options.addresses?.[resource.id]) continue;
+		aliased[resource.id] = hostsFor(
+			resource,
+			options.project ?? '',
+		).aliases.map((host) => `https://${host}:${edge}`);
+	}
+	return aliased;
 }
 
 /**

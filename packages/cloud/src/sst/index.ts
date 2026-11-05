@@ -69,6 +69,7 @@ export {
 	type WebSocketSurfaceRoute,
 } from './aws/WebSocketApiSurface';
 export {
+	HostLabelNeedsCustomDomain,
 	ProvidesMismatch,
 	UnknownDeclarationKind,
 	UnresolvedDependency,

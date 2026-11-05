@@ -68,6 +68,7 @@ import {
 export { isReservedStageKey, SERVER_IPV4_KEY, SERVER_IPV6_KEY };
 
 import { GkmError } from '../errors';
+import { routeHosts } from './routes.js';
 import type { ComposeStack } from './stack';
 
 /** A deployed stage's server: what its hosts' records point at. */
@@ -210,9 +211,13 @@ export interface StackDnsPlan {
 	uncovered: string[];
 }
 
-/** Every public host the stack serves, once each, sorted. */
+/**
+ * Every public host the stack serves, once each, sorted — each route's
+ * aliases and redirects included, which need a record and a certificate as
+ * much as its own host does.
+ */
 export function stackHosts(stack: Pick<ComposeStack, 'routes'>): string[] {
-	return [...new Set(stack.routes.map((route) => route.host))].sort();
+	return [...new Set(stack.routes.flatMap(routeHosts))].sort();
 }
 
 /** The TTL a domain's records are written with. */

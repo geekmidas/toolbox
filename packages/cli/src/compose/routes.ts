@@ -22,8 +22,19 @@ export interface EdgeRoute {
 	 * its routers and middlewares after: `api`, `files-uploads`.
 	 */
 	name: string;
-	/** e.g. `api.example.com` */
+	/** e.g. `api.example.com` — the canonical host, its `<ID>_URL`'s. */
 	host: string;
+	/**
+	 * More hosts answered exactly as `host` is — a construct's `aliases`:
+	 * every check, handler and upstream of the route holds on each of them.
+	 */
+	aliases?: readonly string[];
+	/**
+	 * Hosts answered with a permanent redirect to `to`, the canonical origin
+	 * (`https://example.com`, with the edge's port where it is not 443), path
+	 * and query kept — a site's `redirects`. Nothing is proxied for them.
+	 */
+	redirects?: { hosts: readonly string[]; to: string };
 	/**
 	 * Where requests go. One today; a release that swaps containers without
 	 * downtime routes to the old and the new while it does.
@@ -95,6 +106,18 @@ export interface EdgeRoute {
 	 * certificate is had. Named hosts always win over it.
 	 */
 	wildcard?: EdgeWildcard;
+}
+
+/**
+ * Every host a route answers on — its own, its aliases and its redirects —
+ * in that order: what DNS, certificates and the edge's claims cover.
+ */
+export function routeHosts(route: EdgeRoute): string[] {
+	return [
+		route.host,
+		...(route.aliases ?? []),
+		...(route.redirects?.hosts ?? []),
+	];
 }
 
 /** How a `*.<domain>` route is matched and certified. */

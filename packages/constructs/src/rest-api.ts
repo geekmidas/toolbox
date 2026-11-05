@@ -25,12 +25,17 @@ import type { EnvironmentParser } from '@geekmidas/envkit';
 import type { Logger } from '@geekmidas/logger';
 import { DEFAULT_LOGGER } from '@geekmidas/logger/console';
 import {
+	assertHostLabels,
 	type ConstructName,
 	canonicalId,
 	type Declaration,
 	providedKeyFor,
 	serviceKey,
 } from '@geekmidas/manifest';
+
+/** Thrown at construction for an alias or redirect that cannot be a host label. */
+export { InvalidHostLabel } from '@geekmidas/manifest';
+
 import type { Service } from '@geekmidas/services';
 import type { Telescope } from '@geekmidas/telescope';
 import {
@@ -78,6 +83,12 @@ export interface RestApiConfig<
 	 * `api.myapp.localhost`. Absent, its id kebab-cased.
 	 */
 	subdomain?: string;
+	/**
+	 * More labels it answers on under the stage's domain, exactly as on its
+	 * own — `['rest']` serves `rest.myapp.com` beside `api.myapp.com`. Its own
+	 * label stays canonical: `<ID>_URL`, clients and OpenAPI are built on it.
+	 */
+	aliases?: readonly string[];
 	/**
 	 * CORS tunables. The *origins* are never here — they are read off the
 	 * constructs that declared an edge to this surface, which is the whole point
@@ -227,6 +238,11 @@ export class RestApi<
 		const canonical = canonicalId(id as string);
 
 		this.id = canonical as TName;
+		assertHostLabels({
+			id: canonical,
+			...(config.subdomain ? { subdomain: config.subdomain } : {}),
+			...(config.aliases ? { aliases: config.aliases } : {}),
+		});
 
 		this.keys = {
 			url: providedKeyFor(canonical, 'rest-api', 'url'),
@@ -372,6 +388,9 @@ export class RestApi<
 				id: this.id,
 				path: this.config.path,
 				...(this.config.subdomain ? { subdomain: this.config.subdomain } : {}),
+				...(this.config.aliases?.length
+					? { aliases: [...this.config.aliases] }
+					: {}),
 				...(this.config.telescope ? { telescope: true } : {}),
 				...(this.config.cors ? { cors: this.config.cors } : {}),
 				...(this.authenticator ? { auth: edgeTo(this.authenticator) } : {}),
