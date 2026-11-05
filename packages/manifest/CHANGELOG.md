@@ -1,5 +1,17 @@
 # @geekmidas/manifest
 
+## 10.0.0-alpha.168
+
+### Patch Changes
+
+- [#414](https://github.com/geekmidas/toolbox/pull/414) [`b9c695e`](https://github.com/geekmidas/toolbox/commit/b9c695e202205157619ab437cfe78dbc8ae69543) Thanks [@geekmidas](https://github.com/geekmidas)! - One derivation for every manifest value:
+
+  - **`publicValues()`** is the one walk of a site's or app's edges that every target makes. `publicEnvFor`, `imageOriginSources` and the AWS target's site build now read it instead of each walking the edges themselves.
+  - **`PublicDeclaration`** is the base a site and a mobile app share, with `isPublicDeclaration()` to test for one.
+  - **`provideKey` is no longer exported** from `@geekmidas/manifest`. Every provided key comes from `providedKeyFor(id, kind, role)`, which knows each kind's naming rule. Code that imported `provideKey` moves to `providedKeyFor`, or to `environmentCase` for a name that isn't a provided key.
+
+  No env key or value changes.
+
 ## 10.0.0-alpha.167
 
 ### Patch Changes

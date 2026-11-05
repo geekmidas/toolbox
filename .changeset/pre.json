@@ -211,6 +211,7 @@
     "production-telemetry-redaction",
     "providers-s3",
     "provisioned-key-errors",
+    "public-values",
     "publisher-edge",
     "queues-topics-constructs",
     "random-password",

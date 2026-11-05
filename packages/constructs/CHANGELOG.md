@@ -1,5 +1,35 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.168
+
+### Patch Changes
+
+- [#414](https://github.com/geekmidas/toolbox/pull/414) [`b9c695e`](https://github.com/geekmidas/toolbox/commit/b9c695e202205157619ab437cfe78dbc8ae69543) Thanks [@geekmidas](https://github.com/geekmidas)! - One derivation for every manifest value:
+
+  - **`publicValues()`** is the one walk of a site's or app's edges that every target makes. `publicEnvFor`, `imageOriginSources` and the AWS target's site build now read it instead of each walking the edges themselves.
+  - **`PublicDeclaration`** is the base a site and a mobile app share, with `isPublicDeclaration()` to test for one.
+  - **`provideKey` is no longer exported** from `@geekmidas/manifest`. Every provided key comes from `providedKeyFor(id, kind, role)`, which knows each kind's naming rule. Code that imported `provideKey` moves to `providedKeyFor`, or to `environmentCase` for a name that isn't a provided key.
+
+  No env key or value changes.
+
+- Updated dependencies [[`b9c695e`](https://github.com/geekmidas/toolbox/commit/b9c695e202205157619ab437cfe78dbc8ae69543)]:
+  - @geekmidas/manifest@10.0.0-alpha.168
+  - @geekmidas/audit@10.0.0-alpha.168
+  - @geekmidas/auth@10.0.0-alpha.168
+  - @geekmidas/cache@10.0.0-alpha.168
+  - @geekmidas/db@10.0.0-alpha.168
+  - @geekmidas/emailkit@10.0.0-alpha.168
+  - @geekmidas/envkit@10.0.0-alpha.168
+  - @geekmidas/errors@10.0.0-alpha.168
+  - @geekmidas/events@10.0.0-alpha.168
+  - @geekmidas/logger@10.0.0-alpha.168
+  - @geekmidas/rate-limit@10.0.0-alpha.168
+  - @geekmidas/schema@10.0.0-alpha.168
+  - @geekmidas/services@10.0.0-alpha.168
+  - @geekmidas/storage@10.0.0-alpha.168
+  - @geekmidas/telescope@10.0.0-alpha.168
+  - @geekmidas/testkit@10.0.0-alpha.168
+
 ## 10.0.0-alpha.167
 
 ### Patch Changes
