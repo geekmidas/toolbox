@@ -14,6 +14,9 @@
  * gkm/<project>/<stage>/backups/2026-10-10/02-00-00Z/auth-database.sql.gz
  * ```
  *
+ * Beside the runs, `imports/` holds files prepared by hand for
+ * `gkm backup:restore --from` — never listed as a run, never expired.
+ *
  * The file is named after the database's construct, the way its migrations
  * folder is: `AuthDatabase` is `db/auth-database`, and `auth-database.sql.gz`.
  */
@@ -93,6 +96,13 @@ export function backupsPrefix(
 	return `${prefix ? `${prefix}/` : ''}${workspace.name}/${stage}/backups`;
 }
 
+/**
+ * What every run folder's key starts with, under the stage's backups prefix:
+ * the first digit of its year. What the expiry rule matches — `imports/`
+ * does not.
+ */
+export const RUNS_PREFIX = '2';
+
 /** One run's folder: `2026-10-10/02-00-00Z`, for the time it started. */
 export function runFolder(at: Date): string {
 	const iso = at.toISOString();
@@ -140,6 +150,10 @@ export function backupDatabases(
  * deployed stage each time, never from the stage being deployed alone: one
  * stage's deploy keeps every other's rule. A stage set to `false` has none,
  * and its backups are kept until someone deletes them.
+ *
+ * The rule covers the runs and nothing else beside them: a lifecycle filter
+ * cannot leave a folder out, so it matches what every run folder starts
+ * with — its year, `2…` — and the stage's `imports/` is never expired.
  */
 export function backupExpiries(
 	workspace: BackupsWorkspace,
@@ -151,7 +165,7 @@ export function backupExpiries(
 		if (choice.mode !== 'on') continue;
 		expiries.push({
 			id: `gkm-backups-${stage}`,
-			prefix: `${backupsPrefix(workspace, stage)}/`,
+			prefix: `${backupsPrefix(workspace, stage)}/${RUNS_PREFIX}`,
 			days: choice.backups.keepDays,
 			abortIncompleteDays: 1,
 		});

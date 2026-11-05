@@ -37,6 +37,8 @@ export function fakeDocker(
 		holders?: Readonly<Record<number, readonly PortHolder[]>>;
 		/** The host port each service publishes on its engine, by name. */
 		published?: Readonly<Record<string, number>>;
+		/** The stack's running containers, as `stop` finds them. */
+		running?: readonly { id: string; service: string }[];
 		/** What a command run in a container answers — exit 0 by default. */
 		exec?: (
 			stack: StackRef,
@@ -121,6 +123,15 @@ export function fakeDocker(
 				...on(engine),
 			});
 			return options.published?.[service];
+		},
+		async stop(engine, project, keep) {
+			calls.push({ op: 'stop', args: [project, [...keep]], ...on(engine) });
+			return (options.running ?? [])
+				.filter((c) => !keep.includes(c.service))
+				.map((c) => c.id);
+		},
+		async start(engine, ids) {
+			calls.push({ op: 'start', args: [...ids], ...on(engine) });
 		},
 		async runOnce(engine, run) {
 			calls.push({ op: 'runOnce', args: run, ...on(engine) });

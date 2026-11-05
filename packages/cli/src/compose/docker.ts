@@ -177,6 +177,25 @@ export interface ComposeDocker {
 		inside: number,
 	): Promise<number | undefined>;
 	/**
+	 * Stop every running container of a compose project but those of the
+	 * services in `keep`, found by their labels — without the stack's compose
+	 * file. Resolves with the ids it stopped, for {@link ComposeDocker.start}.
+	 *
+	 * @throws {ContainersNotStopped} with every id it meant to stop
+	 */
+	stop(
+		engine: DockerEngine,
+		project: string,
+		keep: readonly string[],
+	): Promise<string[]>;
+	/**
+	 * Start containers by id — what {@link ComposeDocker.stop} stopped, with
+	 * the configuration and network compose gave them.
+	 *
+	 * @throws {ContainersNotStarted}
+	 */
+	start(engine: DockerEngine, ids: readonly string[]): Promise<void>;
+	/**
 	 * Run `command` once on the engine, in a new container of `image` on
 	 * `network`, removed when it ends, with `stdin` streamed in. Each of `env`
 	 * is passed by name, never on the command line. Resolves with its exit
@@ -604,6 +623,53 @@ export const dockerCompose: ComposeDocker = {
 		return publishedPort(stdout, inside);
 	},
 
+	async stop(engine, project, keep) {
+		const env = engineEnv(engine);
+		const options = env ? { env } : {};
+		const listed = await capture(
+			'docker',
+			[
+				'ps',
+				'--filter',
+				`label=com.docker.compose.project=${project}`,
+				'--format',
+				'{{.ID}}\t{{.Label "com.docker.compose.service"}}',
+			],
+			options,
+		);
+		if (listed.code !== 0) {
+			throw new DockerUnreachable(engine.host ?? 'this machine', listed.stderr);
+		}
+		const ids = listed.stdout
+			.split('\n')
+			.filter(Boolean)
+			.map((line) => line.split('\t'))
+			.filter(([, service = '']) => !keep.includes(service))
+			.map(([id = '']) => id)
+			.filter(Boolean);
+		if (ids.length === 0) return [];
+		const stopped = await capture('docker', ['stop', ...ids], {
+			...options,
+			timeoutMs: 120_000,
+		});
+		if (stopped.code !== 0) {
+			throw new ContainersNotStopped(project, ids, stopped.stderr);
+		}
+		return ids;
+	},
+
+	async start(engine, ids) {
+		if (ids.length === 0) return;
+		const env = engineEnv(engine);
+		const started = await capture('docker', ['start', ...ids], {
+			...(env ? { env } : {}),
+			timeoutMs: 120_000,
+		});
+		if (started.code !== 0) {
+			throw new ContainersNotStarted(ids, started.stderr);
+		}
+	},
+
 	runOnce(engine, options) {
 		return dockerExit(
 			[
@@ -652,6 +718,36 @@ function dockerExit(
 		child.on('error', reject);
 		child.on('close', (code) => resolve(code ?? 1));
 	});
+}
+
+/** `docker stop` failed for some of a project's containers. */
+export class ContainersNotStopped extends GkmError {
+	constructor(
+		readonly project: string,
+		readonly ids: readonly string[],
+		readonly output: string,
+	) {
+		super(
+			`Could not stop ${project}'s containers ${ids.join(', ')} (docker said: ` +
+				`${output.trim() || 'nothing'}). Check \`docker ps\` on the stage's server.`,
+		);
+		this.name = 'ContainersNotStopped';
+	}
+}
+
+/** `docker start` failed for containers that were stopped. */
+export class ContainersNotStarted extends GkmError {
+	constructor(
+		readonly ids: readonly string[],
+		readonly output: string,
+	) {
+		super(
+			`Could not start the containers ${ids.join(', ')} again (docker said: ` +
+				`${output.trim() || 'nothing'}). Start them on the stage's server with ` +
+				`\`docker start ${ids.join(' ')}\`, or deploy the stage.`,
+		);
+		this.name = 'ContainersNotStarted';
+	}
 }
 
 /** `docker network create` failed. */

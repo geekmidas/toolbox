@@ -1575,6 +1575,10 @@ program
 	)
 	.option('--latest', 'The newest run')
 	.option(
+		'--from <file>',
+		"A prepared data-only import in the stage's backups prefix (imports/app.sql.gz); needs --database",
+	)
+	.option(
 		'--database <name>',
 		'One database, by its file name (auth-database); every one by default',
 	)
@@ -1585,6 +1589,7 @@ program
 			stage: string;
 			at?: string;
 			latest?: boolean;
+			from?: string;
 			database?: string;
 			profile?: string;
 			yes?: boolean;

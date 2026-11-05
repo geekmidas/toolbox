@@ -236,13 +236,13 @@ describe('where backups are kept', () => {
 		).toEqual([
 			{
 				id: 'gkm-backups-prod',
-				prefix: 'gkm/shop/prod/backups/',
+				prefix: 'gkm/shop/prod/backups/2',
 				days: 90,
 				abortIncompleteDays: 1,
 			},
 			{
 				id: 'gkm-backups-staging',
-				prefix: 'gkm/shop/staging/backups/',
+				prefix: 'gkm/shop/staging/backups/2',
 				days: 30,
 				abortIncompleteDays: 1,
 			},

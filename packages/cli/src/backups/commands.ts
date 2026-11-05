@@ -10,6 +10,10 @@
  *   streams each database's file from S3 — with the caller's credentials —
  *   into a one-off container of the backups image on the stack's network,
  *   which recreates the database from it as the stack's superuser.
+ * - **restore --from** loads a prepared, data-only file kept under the
+ *   stage's `imports/` instead: the stack's apps are stopped, the database's
+ *   other sessions ended, and the file run inside it in one transaction —
+ *   then the apps are started again, whatever happened.
  */
 
 import type { Readable } from 'node:stream';
@@ -17,6 +21,8 @@ import type { S3Client } from '@aws-sdk/client-s3';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import {
 	type ComposeDocker,
+	ContainersNotStarted,
+	ContainersNotStopped,
 	type DockerEngine,
 	dockerCompose,
 	projectNetwork,
@@ -109,12 +115,13 @@ export class BackupRunNotFound extends GkmError {
 	}
 }
 
-/** `--at` and `--latest` together, or neither. */
+/** Not exactly one of `--at`, `--latest` and `--from`. */
 export class BackupRunNotChosen extends GkmError {
 	constructor() {
 		super(
-			'Say which backup to restore: --latest, or --at <time> — a run folder ' +
-				'(2026-10-10/02-00-00Z) or a time, for the newest run at or before it.',
+			'Say which backup to restore, and only one: --latest; --at <time> — a run ' +
+				'folder (2026-10-10/02-00-00Z) or a time, for the newest run at or ' +
+				'before it; or --from imports/<file>.sql.gz, a prepared import.',
 		);
 		this.name = 'BackupRunNotChosen';
 	}
@@ -148,6 +155,159 @@ export class BackupDatabaseMissing extends GkmError {
 		);
 		this.name = 'BackupDatabaseMissing';
 	}
+}
+
+/** The folder every import is kept in, under the stage's backups prefix. */
+export const IMPORTS_FOLDER = 'imports';
+
+/** A file prepared to be loaded with `--from`: `imports/app.sql.gz`. */
+export interface BackupImport {
+	/** Relative to the stage's backups prefix — what `--from` takes. */
+	file: string;
+	size: number;
+	modified?: Date;
+}
+
+/** `--from` names something that is not a file under the stage's `imports/`. */
+export class ImportPathInvalid extends GkmError {
+	constructor(
+		readonly from: string,
+		readonly reason: string,
+	) {
+		super(
+			`--from '${from}' ${reason}. Name a file in the ${IMPORTS_FOLDER}/ folder ` +
+				`under the stage's backups prefix: --from ${IMPORTS_FOLDER}/<file>.sql.gz ` +
+				'(gkm backup:list shows what is there).',
+		);
+		this.name = 'ImportPathInvalid';
+	}
+}
+
+/** `--from` without `--database`: a file loads into one database. */
+export class ImportNeedsDatabase extends GkmError {
+	constructor(
+		readonly from: string,
+		readonly known: readonly string[],
+	) {
+		super(
+			`--from ${from} loads into one database: name it with --database ` +
+				`(${known.join(', ') || 'the stack runs none'}).`,
+		);
+		this.name = 'ImportNeedsDatabase';
+	}
+}
+
+/** No file at the key `--from` names. */
+export class ImportNotFound extends GkmError {
+	constructor(
+		readonly from: string,
+		readonly location: string,
+	) {
+		super(
+			`There is no ${from} at ${location}. Upload the prepared file there, ` +
+				'or pick one gkm backup:list shows.',
+		);
+		this.name = 'ImportNotFound';
+	}
+}
+
+/**
+ * The stack's apps, stopped for an import, could not be started again.
+ * `loaded` says whether the import itself went in.
+ */
+export class AppsNotRestarted extends GkmError {
+	constructor(
+		readonly project: string,
+		readonly database: string,
+		readonly loaded: boolean,
+		readonly ids: readonly string[],
+		readonly output: string,
+	) {
+		super(
+			`${loaded ? `${database} was loaded` : `Loading ${database} failed and changed nothing`}, ` +
+				`but ${project}'s apps, stopped for it, did not start again (docker said: ` +
+				`${output.trim() || 'nothing'}). Start them on the stage's server with ` +
+				`\`docker start ${ids.join(' ')}\`, or deploy the stage.`,
+		);
+		this.name = 'AppsNotRestarted';
+	}
+}
+
+/**
+ * The key `--from` names, under the stage's backups prefix — refusing
+ * anything that would read outside its `imports/` folder.
+ *
+ * @throws {ImportPathInvalid}
+ */
+export function importKey(prefix: string, from: string): string {
+	if (/^[a-z][a-z\d+.-]*:/i.test(from)) {
+		throw new ImportPathInvalid(from, 'is a URL, not a path');
+	}
+	if (from.startsWith('/')) {
+		throw new ImportPathInvalid(from, 'is absolute');
+	}
+	if (from.includes('\\')) {
+		throw new ImportPathInvalid(from, 'has a backslash');
+	}
+	const segments = from.split('/');
+	if (segments.some((s) => s === '' || s === '.' || s === '..')) {
+		throw new ImportPathInvalid(from, "has an empty, '.' or '..' segment");
+	}
+	if (segments[0] !== IMPORTS_FOLDER || segments.length < 2) {
+		throw new ImportPathInvalid(from, `is not in ${IMPORTS_FOLDER}/`);
+	}
+	if (!from.endsWith('.sql.gz')) {
+		throw new ImportPathInvalid(from, 'is not a gzipped SQL file (.sql.gz)');
+	}
+	return `${prefix}/${from}`;
+}
+
+/** Every file under the stage's `imports/`, by name. */
+export async function listImports(
+	s3: S3Client,
+	bucket: string,
+	prefix: string,
+): Promise<BackupImport[]> {
+	const { ListObjectsV2Command } = await import('@aws-sdk/client-s3');
+	const imports: BackupImport[] = [];
+	let token: string | undefined;
+	do {
+		const page = await s3.send(
+			new ListObjectsV2Command({
+				Bucket: bucket,
+				Prefix: `${prefix}/${IMPORTS_FOLDER}/`,
+				...(token ? { ContinuationToken: token } : {}),
+			}),
+		);
+		for (const object of page.Contents ?? []) {
+			const file = object.Key?.slice(prefix.length + 1) ?? '';
+			if (!file || file.endsWith('/')) continue;
+			imports.push({
+				file,
+				size: object.Size ?? 0,
+				...(object.LastModified ? { modified: object.LastModified } : {}),
+			});
+		}
+		token = page.IsTruncated ? page.NextContinuationToken : undefined;
+	} while (token);
+	return imports.sort((a, b) => a.file.localeCompare(b.file));
+}
+
+/** The lines `backup:list` prints for the imports, by name. */
+export function formatImports(imports: readonly BackupImport[]): string[] {
+	return imports.map(
+		(i) =>
+			`${i.file}  ${formatSize(i.size)}` +
+			(i.modified ? `  uploaded ${formatTime(i.modified)}` : ''),
+	);
+}
+
+/** `2026-10-10 02:00:00Z`. */
+function formatTime(at: Date): string {
+	return at
+		.toISOString()
+		.replace('T', ' ')
+		.replace(/\.\d{3}Z$/, 'Z');
 }
 
 /** Nobody said yes. */
@@ -249,10 +409,7 @@ export function formatSize(bytes: number): string {
 export function formatRuns(runs: readonly BackupRun[]): string[] {
 	return runs.map(
 		(run) =>
-			`${run.at
-				.toISOString()
-				.replace('T', ' ')
-				.replace(/\.\d{3}Z$/, 'Z')}  ${run.folder}  ` +
+			`${formatTime(run.at)}  ${run.folder}  ` +
 			run.files.map((f) => `${f.database} (${formatSize(f.size)})`).join(', '),
 	);
 }
@@ -332,6 +489,18 @@ if ! gunzip | psql -X -q -v ON_ERROR_STOP=1 -o /dev/null; then
 fi
 `;
 
+/**
+ * What runs in the one-off container for `--from`: every other session of
+ * the database ended — the stack's apps are already stopped, so nothing
+ * comes back — then the file, a data-only dump, run connected to the
+ * database itself, in one transaction. A file that fails changes nothing.
+ */
+const IMPORT_SCRIPT = `set -e
+printf '%s\\n' "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = :'db' AND pid <> pg_backend_pid();" \\
+  | psql -X -q -v ON_ERROR_STOP=1 -v db="$RESTORE_DATABASE" -o /dev/null
+gunzip | psql -X -q -v ON_ERROR_STOP=1 --single-transaction -d "$RESTORE_DATABASE" -f - -o /dev/null
+`;
+
 export interface RestoreOptions {
 	s3: S3Client;
 	bucket: string;
@@ -347,8 +516,20 @@ export interface RestoreOptions {
 	databases: readonly BackupDatabase[];
 	at?: string;
 	latest?: boolean;
+	/**
+	 * A prepared, data-only file in the prefix's `imports/` —
+	 * `imports/app.sql.gz` — loaded into `database` instead of a run.
+	 */
+	from?: string;
 	/** One database, by its file name: `auth-database`. Every one when absent. */
 	database?: string;
+	/**
+	 * The stack's services left running while `from` loads: its
+	 * infrastructure. Every other container — its apps, workers and
+	 * processors — is stopped, and started again after. Postgres and the
+	 * backups container are always kept.
+	 */
+	keep?: readonly string[];
 	/** Asked before anything changes; false stops the restore. */
 	confirm: (question: string) => Promise<boolean>;
 	log: (line: string) => void;
@@ -356,20 +537,24 @@ export interface RestoreOptions {
 }
 
 /**
- * Restore a run's databases into the stack's Postgres. Asks, takes a fresh
- * backup, then recreates each database from its file. Returns the run and
- * the databases restored.
+ * Restore a run's databases into the stack's Postgres — or, with `from`,
+ * load a prepared import into one. Asks, takes a fresh backup, then
+ * recreates each database from its file. Returns the run (or the import)
+ * and the databases restored.
  *
  * @throws {BackupRunNotChosen}, {NoBackups}, {BackupRunNotFound},
+ *   {ImportPathInvalid}, {ImportNeedsDatabase}, {ImportNotFound},
  *   {BackupDatabaseUnknown}, {BackupDatabaseMissing}, {RestoreNotConfirmed},
- *   {BackupsContainerNotRunning}, {BackupRunFailed}, {RestoreFailed}
+ *   {BackupsContainerNotRunning}, {BackupRunFailed}, {RestoreFailed},
+ *   {ContainersNotStopped}, {AppsNotRestarted}
  */
 export async function restoreBackup(
 	options: RestoreOptions,
-): Promise<{ run: BackupRun; restored: string[] }> {
-	if (Boolean(options.at) === Boolean(options.latest)) {
-		throw new BackupRunNotChosen();
-	}
+): Promise<{ run?: BackupRun; from?: string; restored: string[] }> {
+	const chosen = [options.at, options.latest, options.from].filter(Boolean);
+	if (chosen.length !== 1) throw new BackupRunNotChosen();
+	if (options.from) return importBackup({ ...options, from: options.from });
+
 	const runs = await listBackups(options.s3, options.bucket, options.prefix);
 	if (runs.length === 0) {
 		throw new NoBackups(
@@ -393,6 +578,121 @@ export async function restoreBackup(
 		}
 	}
 
+	const { engine, image } = await beforeRestore(
+		options,
+		`Replace ${targets.map((t) => t.name).join(', ')} on '${options.stage}' ` +
+			`with the backup ${run.folder}? Everything written since is lost (a backup ` +
+			'is taken first).',
+	);
+
+	const restored: string[] = [];
+	for (const target of targets) {
+		const Key = `${options.prefix}/${run.folder}/${backupFile(target)}`;
+		options.log(
+			`♻️  Restoring ${target.name} from s3://${options.bucket}/${Key}…`,
+		);
+		const code = await streamInto(options, engine, image, {
+			Key,
+			script: RESTORE_SCRIPT,
+			database: target.name,
+		});
+		if (code !== 0) throw new RestoreFailed(target.name, code);
+		restored.push(target.file);
+	}
+	return { run, restored };
+}
+
+/**
+ * Load `from` — a data-only file in the prefix's `imports/` — into one
+ * database. The file has to run connected to the database itself, so the
+ * database cannot be closed to connections the way a run's restore closes it
+ * (that would shut the load out too); the stack's apps are stopped instead,
+ * and started again whatever happens.
+ */
+async function importBackup(
+	options: RestoreOptions & { from: string },
+): Promise<{ from: string; restored: string[] }> {
+	const Key = importKey(options.prefix, options.from);
+	const known = options.databases.map((d) => d.file);
+	if (!options.database) throw new ImportNeedsDatabase(options.from, known);
+	const target = options.databases.find((d) => d.file === options.database);
+	if (!target) throw new BackupDatabaseUnknown(options.database, known);
+
+	const { HeadObjectCommand } = await import('@aws-sdk/client-s3');
+	try {
+		await options.s3.send(
+			new HeadObjectCommand({ Bucket: options.bucket, Key }),
+		);
+	} catch (error) {
+		const status = (error as { $metadata?: { httpStatusCode?: number } })
+			.$metadata?.httpStatusCode;
+		if (status !== 404) throw error;
+		throw new ImportNotFound(
+			options.from,
+			`s3://${options.bucket}/${options.prefix}/`,
+		);
+	}
+
+	const { engine, image } = await beforeRestore(
+		options,
+		`Load ${options.from} into ${target.name} on '${options.stage}'? Its apps ` +
+			'are stopped while it loads, and what the file replaces is lost (a ' +
+			'backup is taken first).',
+	);
+
+	const keep = ['postgres', BACKUPS_SERVICE, ...(options.keep ?? [])];
+	options.log(`⏸️  Stopping ${options.project}'s apps…`);
+	let stopped: string[];
+	try {
+		stopped = await options.docker.stop(engine, options.project, keep);
+	} catch (error) {
+		// Nothing has changed yet: whatever did stop starts again.
+		if (error instanceof ContainersNotStopped) {
+			await options.docker.start(engine, error.ids).catch(() => {});
+		}
+		throw error;
+	}
+
+	let code: number;
+	try {
+		options.log(
+			`📥 Loading ${target.name} from s3://${options.bucket}/${Key}…`,
+		);
+		code = await streamInto(options, engine, image, {
+			Key,
+			script: IMPORT_SCRIPT,
+			database: target.name,
+		});
+	} catch (error) {
+		await options.docker.start(engine, stopped).catch(() => {});
+		throw error;
+	}
+
+	options.log(`▶️  Starting ${options.project}'s apps again…`);
+	try {
+		await options.docker.start(engine, stopped);
+	} catch (error) {
+		throw new AppsNotRestarted(
+			options.project,
+			target.name,
+			code === 0,
+			stopped,
+			error instanceof ContainersNotStarted ? error.output : String(error),
+		);
+	}
+	if (code !== 0) throw new RestoreFailed(target.name, code);
+	return { from: options.from, restored: [target.file] };
+}
+
+/**
+ * What every restore does before it changes anything: find the stack's
+ * backups container — its image runs the restore — ask, and take a fresh
+ * backup.
+ */
+async function beforeRestore(
+	options: RestoreOptions,
+	question: string,
+): Promise<{ engine: DockerEngine; image: string }> {
 	const engine: DockerEngine = options.engine ?? {};
 	const container = await options.docker.container(
 		engine,
@@ -401,10 +701,6 @@ export async function restoreBackup(
 	);
 	if (!container) throw new BackupsContainerNotRunning(options.project);
 
-	const question =
-		`Replace ${targets.map((t) => t.name).join(', ')} on '${options.stage}' ` +
-		`with the backup ${run.folder}? Everything written since is lost (a backup ` +
-		'is taken first).';
 	if (!(await options.confirm(question))) {
 		throw new RestoreNotConfirmed(options.stage);
 	}
@@ -416,36 +712,39 @@ export async function restoreBackup(
 		engine,
 		log: options.log,
 	});
+	return { engine, image: container.image };
+}
 
+/**
+ * Stream a file from S3, with the caller's credentials, into `script` in a
+ * one-off container of the backups image on the stack's network, signed in
+ * as the stack's superuser. Resolves with its exit code.
+ */
+async function streamInto(
+	options: RestoreOptions,
+	engine: DockerEngine,
+	image: string,
+	file: { Key: string; script: string; database: string },
+): Promise<number> {
 	const { GetObjectCommand } = await import('@aws-sdk/client-s3');
-	const restored: string[] = [];
-	for (const target of targets) {
-		const Key = `${options.prefix}/${run.folder}/${backupFile(target)}`;
-		options.log(
-			`♻️  Restoring ${target.name} from s3://${options.bucket}/${Key}…`,
-		);
-		const object = await options.s3.send(
-			new GetObjectCommand({ Bucket: options.bucket, Key }),
-		);
-		const code = await options.docker.runOnce(engine, {
-			image: container.image,
-			network: projectNetwork(options.project),
-			command: ['sh', '-c', RESTORE_SCRIPT],
-			env: {
-				PGHOST: 'postgres',
-				PGPORT: '5432',
-				PGUSER: options.superuser.user,
-				PGPASSWORD: options.superuser.password,
-				PGDATABASE: 'postgres',
-				RESTORE_DATABASE: target.name,
-			},
-			stdin: object.Body as Readable,
-			...(options.output ? { output: options.output } : {}),
-		});
-		if (code !== 0) throw new RestoreFailed(target.name, code);
-		restored.push(target.file);
-	}
-	return { run, restored };
+	const object = await options.s3.send(
+		new GetObjectCommand({ Bucket: options.bucket, Key: file.Key }),
+	);
+	return options.docker.runOnce(engine, {
+		image,
+		network: projectNetwork(options.project),
+		command: ['sh', '-c', file.script],
+		env: {
+			PGHOST: 'postgres',
+			PGPORT: '5432',
+			PGUSER: options.superuser.user,
+			PGPASSWORD: options.superuser.password,
+			PGDATABASE: 'postgres',
+			RESTORE_DATABASE: file.database,
+		},
+		stdin: object.Body as Readable,
+		...(options.output ? { output: options.output } : {}),
+	});
 }
 
 // ============================================================================
@@ -553,22 +852,37 @@ async function callerS3(
 	};
 }
 
+/** What `gkm backup:list` finds: the runs, and the imports beside them. */
+export interface BackupListing {
+	runs: BackupRun[];
+	imports: BackupImport[];
+}
+
 /** `gkm backup:list --stage <stage>`. */
 export async function backupListCommand(
 	options: BackupCommandOptions & { json?: boolean },
-): Promise<BackupRun[]> {
+): Promise<BackupListing> {
 	const resolved = await resolveStage(options);
 	const { s3, bucket } = await callerS3(resolved, options);
 	const runs = await listBackups(s3, bucket, resolved.prefix);
+	const imports = await listImports(s3, bucket, resolved.prefix);
 	if (options.json) {
-		console.log(JSON.stringify(runs, null, 2));
-	} else if (runs.length === 0) {
+		console.log(JSON.stringify({ runs, imports }, null, 2));
+		return { runs, imports };
+	}
+	if (runs.length === 0) {
 		console.log(`No backups of '${options.stage}' yet.`);
 	} else {
 		console.log(`💾 s3://${bucket}/${resolved.prefix}/ — newest first\n`);
 		for (const line of formatRuns(runs)) console.log(line);
 	}
-	return runs;
+	if (imports.length > 0) {
+		console.log(
+			`\n📥 Imports — gkm backup:restore --stage ${options.stage} --from <file> --database <name>\n`,
+		);
+		for (const line of formatImports(imports)) console.log(line);
+	}
+	return { runs, imports };
 }
 
 /** `gkm backup:now --stage <stage>`. */
@@ -587,20 +901,34 @@ export async function backupNowCommand(
 	console.log('✅ Backed up.');
 }
 
-/** `gkm backup:restore --stage <stage> (--at <time> | --latest)`. */
+/** The stack's own proxy: kept running while an import loads. */
+const STACK_PROXY_SERVICE = 'caddy';
+
+/**
+ * `gkm backup:restore --stage <stage> (--at <time> | --latest |
+ * --from imports/<file> --database <name>)`.
+ */
 export async function backupRestoreCommand(
 	options: BackupCommandOptions & {
 		at?: string;
 		latest?: boolean;
+		from?: string;
 		database?: string;
 		yes?: boolean;
 	},
 	docker: ComposeDocker = dockerCompose,
 ): Promise<void> {
-	if (Boolean(options.at) === Boolean(options.latest)) {
-		throw new BackupRunNotChosen();
-	}
+	// What the flags alone refuse, refused before the stage is read.
+	const chosen = [options.at, options.latest, options.from].filter(Boolean);
+	if (chosen.length !== 1) throw new BackupRunNotChosen();
+	if (options.from) importKey('', options.from);
 	const resolved = await resolveStage(options);
+	if (options.from && !options.database) {
+		throw new ImportNeedsDatabase(
+			options.from,
+			resolved.databases.map((d) => d.file),
+		);
+	}
 	const { s3, bucket } = await callerS3(resolved, options);
 	if (!resolved.seed) throw new BackupsNotProvisioned(options.stage);
 	const plan = stackPlan(resolved.workspace, resolved.manifest, options.stage);
@@ -620,8 +948,11 @@ export async function backupRestoreCommand(
 		stage: options.stage,
 		superuser,
 		databases: resolved.databases,
+		// The stack's infrastructure keeps running while an import loads.
+		keep: [...plan.containers, STACK_PROXY_SERVICE],
 		...(options.at ? { at: options.at } : {}),
 		...(options.latest ? { latest: true } : {}),
+		...(options.from ? { from: options.from } : {}),
 		...(options.database ? { database: options.database } : {}),
 		confirm: async (question) => {
 			if (options.yes) return true;
@@ -633,6 +964,6 @@ export async function backupRestoreCommand(
 		log: (line) => console.log(line),
 	});
 	console.log(
-		`✅ Restored ${restored.join(', ')} on '${options.stage}' from ${run.folder}.`,
+		`✅ Restored ${restored.join(', ')} on '${options.stage}' from ${run ? run.folder : options.from}.`,
 	);
 }

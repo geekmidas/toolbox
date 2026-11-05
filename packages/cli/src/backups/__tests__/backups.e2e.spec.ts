@@ -21,10 +21,12 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import {
 	DeleteBucketCommand,
 	DeleteObjectsCommand,
 	ListObjectVersionsCommand,
+	PutObjectCommand,
 	S3Client,
 } from '@aws-sdk/client-s3';
 import type { ConstructManifest } from '@geekmidas/manifest';
@@ -174,6 +176,11 @@ describe.runIf(RUN)('the backups container', () => {
 				[BACKUPS_SERVICE]: {
 					...stack.compose.services[BACKUPS_SERVICE],
 					extra_hosts: ['host.docker.internal:host-gateway'],
+				},
+				// An app: what an import stops while it loads, and starts after.
+				api: {
+					image: stack.compose.services.postgres!.image,
+					command: ['sleep', 'infinity'],
 				},
 			},
 			volumes: { 'postgres-data': {} },
@@ -337,7 +344,119 @@ describe.runIf(RUN)('the backups container', () => {
 			// The backup taken first is the newest now — of the emptied database.
 			const runs = await listBackups(s3, bucket, stack.backups!.prefix);
 			expect(runs).toHaveLength(3);
-			expect(runs[1]!.folder).toBe(run.folder);
+			expect(runs[1]!.folder).toBe(run!.folder);
+		},
+		5 * 60_000,
+	);
+
+	it(
+		'loads a data-only import inside the database, in one transaction, with the apps stopped and started again',
+		async () => {
+			const database = stack.backups!.databases[0]!.name;
+			const prefix = stack.backups!.prefix;
+			const upload = async (name: string, sqlText: string) =>
+				s3.send(
+					new PutObjectCommand({
+						Bucket: bucket,
+						Key: `${prefix}/imports/${name}`,
+						Body: gzipSync(sqlText),
+					}),
+				);
+			// The shape of a prepared file: data only, its own transaction.
+			await upload(
+				'app.sql.gz',
+				[
+					'BEGIN;',
+					'SET LOCAL session_replication_role = replica;',
+					'TRUNCATE notes;',
+					"INSERT INTO notes (id, body) VALUES (10, 'imported'), (11, 'rows');",
+					"SELECT setval('notes_id_seq', 11);",
+					'COMMIT;',
+				].join('\n'),
+			);
+			// One that fails halfway: nothing it did is kept.
+			await upload(
+				'broken.sql.gz',
+				'TRUNCATE notes;\nINSERT INTO missing_table VALUES (1);\n',
+			);
+
+			const startedAt = async () =>
+				(
+					await docker([
+						'inspect',
+						'-f',
+						'{{.State.Running}} {{.State.StartedAt}}',
+						(await dockerCompose.container({}, stack.project, 'api'))!.id,
+					])
+				).trim();
+			const before = await startedAt();
+
+			// A session someone left open: ended before the load.
+			const open = new Client({
+				host: '127.0.0.1',
+				port,
+				user: stack.credential.containers.postgres.user,
+				password: stack.credential.containers.postgres.password,
+				database,
+			});
+			const ended = new Promise<void>((resolve) => {
+				open.on('error', () => resolve());
+				open.on('end', () => resolve());
+			});
+			await open.connect();
+
+			const options = {
+				s3,
+				bucket,
+				prefix,
+				docker: dockerCompose,
+				project: stack.project,
+				stage: STAGE,
+				superuser: stack.credential.containers.postgres,
+				databases: stack.backups!.databases,
+				database: 'database',
+				keep: ['postgres'],
+				confirm: async () => true,
+				log: () => {},
+				output: 'ignore' as const,
+			};
+			const result = await restoreBackup({
+				...options,
+				from: 'imports/app.sql.gz',
+			});
+			await ended;
+
+			expect(result).toEqual({
+				from: 'imports/app.sql.gz',
+				restored: ['database'],
+			});
+			expect(
+				await sql<{ id: number; body: string }>(
+					database,
+					'SELECT id, body FROM notes ORDER BY id',
+				),
+			).toEqual([
+				{ id: 10, body: 'imported' },
+				{ id: 11, body: 'rows' },
+			]);
+			const after = await startedAt();
+			expect(after.startsWith('true ')).toBe(true);
+			expect(after).not.toBe(before);
+
+			await expect(
+				restoreBackup({ ...options, from: 'imports/broken.sql.gz' }),
+			).rejects.toMatchObject({ name: 'RestoreFailed' });
+			expect(
+				await sql<{ body: string }>(
+					database,
+					'SELECT body FROM notes ORDER BY id',
+				),
+			).toEqual([{ body: 'imported' }, { body: 'rows' }]);
+			expect((await startedAt()).startsWith('true ')).toBe(true);
+
+			// Imports are never runs.
+			const runs = await listBackups(s3, bucket, prefix);
+			expect(runs.every((r) => !r.folder.startsWith('imports'))).toBe(true);
 		},
 		5 * 60_000,
 	);
