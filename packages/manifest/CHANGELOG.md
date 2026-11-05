@@ -1,5 +1,49 @@
 # @geekmidas/manifest
 
+## 10.0.0-alpha.169
+
+### Minor Changes
+
+- [#419](https://github.com/geekmidas/toolbox/pull/419) [`367b61e`](https://github.com/geekmidas/toolbox/commit/367b61e647ae7b00d2d9fe8413ceefbe835e867e) Thanks [@geekmidas](https://github.com/geekmidas)! - Host aliases and redirects for `RestApi`, `WebSocketApi` and `StaticSite`
+
+  A construct can now answer on more than its one label. `aliases: ['rest']`
+  serves `rest.example.com` exactly as `api.example.com`, and a site's
+  `redirects: ['www']` sends `www.example.com` to `example.com` with a 301,
+  path and query kept. Both are labels under the stage's domain, like
+  `subdomain`, so they follow per-stage domains, the local `*.localhost` names
+  and the stage suffix (`www-test.shop.localhost`). The primary host stays
+  canonical: `<ID>_URL`, client base URLs and OpenAPI servers are unchanged.
+
+  - `hostLabels(declaration)` in `@geekmidas/manifest` is the one derivation
+    of a construct's labels; `InvalidHostLabel`,
+    `HostLabelBothAliasAndRedirect` and `WildcardSiteCannotHaveAliases` are
+    thrown when the construct is built.
+  - Aliases and redirects are protected from a wildcard site's tenants, and a
+    label two apps answer on fails the workspace load with `HostLabelTaken`.
+  - `gkm dev` and both `gkm compose` proxies (Caddy and Traefik) serve every
+    host from one route: aliases share the route's checks and handlers, and
+    each redirect host answers a permanent redirect. The shared edge's claims,
+    DNS records and certificates cover every host.
+  - A site's aliases join the CORS origins and Better Auth `trustedOrigins`
+    of every surface it depends on. Its redirects do not.
+  - On AWS, where only a wildcard site has a custom domain, either field fails
+    the deploy with `HostLabelNeedsCustomDomain`.
+
+### Patch Changes
+
+- [#418](https://github.com/geekmidas/toolbox/pull/418) [`7c17e1b`](https://github.com/geekmidas/toolbox/commit/7c17e1bd26eef73575c333fcb6c56275648f1784) Thanks [@geekmidas](https://github.com/geekmidas)! - `Email` names its sender's local part; the domain stays the stage's:
+
+  ```ts
+  new Email("Mail", { templates, from: "info" });
+  ```
+
+  - Deployed, `MAIL_FROM` is `info@<stage domain>` — through the `ses` provider and a compose stack's Mailpit alike — and follows the stage's domain when it changes. `gkm dev`/`gkm test` send as `info@localhost`.
+  - `from` is a local part only: a whole address throws `EmailFromNotALocalPart`, pointing at `deploy.email.<stage>.from`, which still takes a full address and wins.
+  - `senderAddress(declaration, domain)` in `@geekmidas/manifest` is the one place the address is joined; `EmailDeclaration` carries `from`.
+  - ✨ A `MAIL_FROM` gkm wrote as `noreply@…` moves to the new local part on the next deploy. One you set by hand is kept.
+
+  Without `from`, nothing changes.
+
 ## 10.0.0-alpha.168
 
 ### Patch Changes
