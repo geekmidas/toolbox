@@ -20,7 +20,7 @@ import { join } from 'node:path';
 import {
 	type ConstructManifest,
 	migrationTargets,
-	provideKey,
+	providedKeyFor,
 } from '@geekmidas/manifest';
 import { z } from 'zod';
 import { migrationFiles } from '../../migrate/provider';
@@ -88,7 +88,7 @@ export async function migrationUrls(
 		// The owner's, and the runtime one a `roles: false` database migrates
 		// with — whichever the migrator asks for is there.
 		for (const role of ['ownerUrl', 'url']) {
-			const key = provideKey(target.id, role);
+			const key = providedKeyFor(target.id, 'database', role);
 			const url = env[key];
 			if (!url) continue;
 

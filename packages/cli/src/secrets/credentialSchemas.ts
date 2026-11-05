@@ -14,7 +14,7 @@
  */
 
 import { decodeCredentials } from '@geekmidas/constructs/credential';
-import { type ConstructManifest, provideKey } from '@geekmidas/manifest';
+import { type ConstructManifest, providedKeyFor } from '@geekmidas/manifest';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 import { GkmError } from '../errors';
@@ -72,7 +72,13 @@ export function credentialKeys(
 ): { key: string; id: string; kind: 'external-api' | 'credential' }[] {
 	return Object.entries(manifest).flatMap(([id, declaration]) =>
 		declaration.kind === 'external-api' || declaration.kind === 'credential'
-			? [{ key: provideKey(id, 'credentials'), id, kind: declaration.kind }]
+			? [
+					{
+						key: providedKeyFor(id, declaration.kind, 'credentials'),
+						id,
+						kind: declaration.kind,
+					},
+				]
 			: [],
 	);
 }

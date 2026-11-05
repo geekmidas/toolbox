@@ -12,7 +12,7 @@
  */
 
 import type { ConstructManifest } from '@geekmidas/manifest';
-import { provideKey } from '@geekmidas/manifest';
+import { providedKeyFor } from '@geekmidas/manifest';
 import type { ComposeStack } from '../../compose/stack.js';
 import type { ResourceInput, ResourceRecord } from '../../deploy/StateStore.js';
 import {
@@ -49,7 +49,9 @@ export function topicPushes(
 	const topicKeys = new Set(
 		Object.values(manifest)
 			.filter((declaration) => declaration.kind === 'topic')
-			.map((topic) => provideKey(topic.id, 'publisherConnectionString')),
+			.map((topic) =>
+				providedKeyFor(topic.id, topic.kind, 'publisherConnectionString'),
+			),
 	);
 
 	const pushes: TopicPush[] = [];

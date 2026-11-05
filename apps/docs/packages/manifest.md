@@ -79,15 +79,29 @@ Every key in the system comes from these four functions, which is what keeps the
 key a target publishes and the key a client reads from drifting apart:
 
 ```typescript
-import { canonicalId, provideKey, serviceKey, cloudName } from '@geekmidas/manifest';
+import {
+  canonicalId,
+  providedKeyFor,
+  serviceKey,
+  cloudName,
+} from '@geekmidas/manifest';
 
 canonicalId('user-uploads');            // 'UserUploads'  — PascalCase
-provideKey('Uploads', 'connectionString'); // 'UPLOADS_CONNECTION_STRING'
-provideKey('Orders', 'ownerUrl');       // 'ORDERS_OWNER_URL'
+providedKeyFor('Uploads', 'objects', 'connectionString');
+// 'UPLOADS_CONNECTION_STRING'
+providedKeyFor('Orders', 'database', 'ownerUrl'); // 'ORDERS_OWNER_URL'
+providedKeyFor('AssetsServer', 'file-server', 'url'); // 'ASSETS_URL'
+providedKeyFor('AuthSecret', 'secret', 'value');      // 'AUTH_SECRET'
 serviceKey('Uploads');                  // 'uploads'      — the handler's key
 cloudName({ stage: 'prod', app: 'shop' }, 'UserUploads');
 // 'prod-shop-user-uploads'
 ```
+
+A key takes the construct's kind as well as its id, because some kinds name
+theirs their own way: a secret's key is its name, a file server's is its
+construct's rather than its surface node's, and telemetry's is OpenTelemetry's
+`OTEL_EXPORTER_OTLP_ENDPOINT`. Ask `providedKeyFor` rather than composing a key
+from an id.
 
 `uploads`, `Uploads`, `user_uploads`, and `user-uploads` all canonicalise to the
 same id, so declaring two of them is a duplicate rather than a collision to

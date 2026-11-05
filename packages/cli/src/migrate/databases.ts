@@ -17,7 +17,7 @@ import {
 	MIGRATIONS_ROOT,
 	type MigrationTarget,
 	migrationTargets,
-	provideKey,
+	providedKeyFor,
 } from '@geekmidas/manifest';
 import type { Kysely, KyselyConfig } from 'kysely';
 import type { Migrator } from 'kysely/migration';
@@ -541,13 +541,13 @@ function clientConfigOf(
  * no owner — both URLs are the master credential by design.
  */
 function ownerUrl(options: DatabasesOptions, target: MigrationTarget): string {
-	const key = provideKey(target.id, 'ownerUrl');
+	const key = providedKeyFor(target.id, 'database', 'ownerUrl');
 	const owner = options.env[key];
 	if (owner) return owner;
 
 	const database = options.manifest[target.of ?? target.id];
 	if (database?.kind === 'database' && database.roles === false) {
-		const url = options.env[provideKey(target.id, 'url')];
+		const url = options.env[providedKeyFor(target.id, 'database', 'url')];
 		if (url) return url;
 	}
 

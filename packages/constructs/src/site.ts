@@ -34,7 +34,7 @@ import {
 	canonicalId,
 	type Declaration,
 	type Dependency,
-	provideKey,
+	providedKeyFor,
 	type SiteDeclaration,
 	serviceKey,
 	WILDCARD_SUBDOMAIN,
@@ -281,7 +281,7 @@ export class StaticSite<TName extends string = string>
 		private readonly dependencies: readonly Dependency[] = [],
 	) {
 		this.id = canonicalId(id as string) as TName;
-		this.keys = { url: provideKey(this.id, 'url') };
+		this.keys = { url: providedKeyFor(this.id, 'site', 'url') };
 		// A field, not a getter: consumers cache services by object identity.
 		this.service = {
 			serviceName: serviceKey(this.id) as Uncapitalize<TName>,
@@ -367,8 +367,8 @@ export class StaticSite<TName extends string = string>
 					this.keys.url,
 					...(hosts
 						? [
-								provideKey(this.id, 'domain'),
-								provideKey(this.id, 'protectedSubdomains'),
+								providedKeyFor(this.id, 'site', 'domain'),
+								providedKeyFor(this.id, 'site', 'protectedSubdomains'),
 							]
 						: []),
 				],

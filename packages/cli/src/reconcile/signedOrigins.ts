@@ -7,7 +7,7 @@
  * the links the bucket's client signs.
  */
 
-import { provideKey } from '@geekmidas/manifest';
+import { providedKeyFor } from '@geekmidas/manifest';
 import * as s3Url from '@geekmidas/storage/s3-url';
 
 /**
@@ -21,7 +21,9 @@ export function signedOrigins(
 ): Record<string, string> {
 	const origins: Record<string, string> = {};
 	for (const id of buckets) {
-		const connection = lookup(provideKey(id, 'connectionString'));
+		const connection = lookup(
+			providedKeyFor(id, 'objects', 'connectionString'),
+		);
 		if (!connection?.startsWith('s3:')) continue;
 		let origin: string | undefined;
 		try {
@@ -29,7 +31,7 @@ export function signedOrigins(
 		} catch {
 			continue;
 		}
-		if (origin) origins[provideKey(id, 'signedOrigin')] = origin;
+		if (origin) origins[providedKeyFor(id, 'objects', 'signedOrigin')] = origin;
 	}
 	return origins;
 }

@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { Subscriber } from '@geekmidas/constructs/subscribers';
-import { canonicalId, INBOX_EVENT, provideKey } from '@geekmidas/manifest';
+import { canonicalId, INBOX_EVENT, providedKeyFor } from '@geekmidas/manifest';
 import type { BuildContext } from '../build/types';
 import {
 	subscriberConnectionKey,
@@ -246,7 +246,11 @@ export async function stopSubscribers(): Promise<void> {}
 					construct.inboxName
 						? JSON.stringify({
 								id: construct.inboxName,
-								domainKey: provideKey(construct.inboxName, 'domain'),
+								domainKey: providedKeyFor(
+									construct.inboxName,
+									'inbox',
+									'domain',
+								),
 								addressing: construct.inboxAddressing ?? { addresses: [] },
 							})
 						: 'undefined'

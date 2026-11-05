@@ -26,7 +26,7 @@ import { EnvironmentParser } from '@geekmidas/envkit';
 import {
 	canonicalId,
 	kebabCase,
-	provideKey,
+	providedKeyFor,
 	serviceKey,
 } from '@geekmidas/manifest';
 import { serviceContext } from '@geekmidas/services';
@@ -564,11 +564,14 @@ function harnessModule(options: {
 	];
 
 	const url = (id: string) =>
-		`manifest.env[${JSON.stringify(provideKey(id, 'url'))}]!`;
+		`manifest.env[${JSON.stringify(providedKeyFor(id, 'rest-api', 'url'))}]!`;
 
 	const members = [
 		...surfaces.map(
-			({ id, secured }) => `	/** \`${id}\`, at ${provideKey(id, 'url')}. */
+			({
+				id,
+				secured,
+			}) => `	/** \`${id}\`, at ${providedKeyFor(id, 'rest-api', 'url')}. */
 	readonly ${propertyOf(id)} = create${id}({
 		baseURL: ${url(id)},
 		fetch: this.fetch,${
@@ -582,7 +585,9 @@ function harnessModule(options: {
 	});`,
 		),
 		...auths.map(
-			(auth) => `	/** \`${auth.id}\`, at ${provideKey(auth.id, 'url')}. */
+			(
+				auth,
+			) => `	/** \`${auth.id}\`, at ${providedKeyFor(auth.id, 'rest-api', 'url')}. */
 	readonly ${propertyOf(auth.id)} = createAuthClient({
 		baseURL: \`\${${url(auth.id)}}${auth.basePath}\`,
 		plugins: [${auth.plugins.map((plugin) => `${plugin}()`).join(', ')}],

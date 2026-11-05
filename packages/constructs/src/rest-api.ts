@@ -28,7 +28,7 @@ import {
 	type ConstructName,
 	canonicalId,
 	type Declaration,
-	provideKey,
+	providedKeyFor,
 	serviceKey,
 } from '@geekmidas/manifest';
 import type { Service } from '@geekmidas/services';
@@ -229,9 +229,9 @@ export class RestApi<
 		this.id = canonical as TName;
 
 		this.keys = {
-			url: provideKey(canonical, 'url'),
-			trustedOrigins: provideKey(canonical, 'trustedOrigins'),
-			cookieDomain: provideKey(canonical, 'cookieDomain'),
+			url: providedKeyFor(canonical, 'rest-api', 'url'),
+			trustedOrigins: providedKeyFor(canonical, 'rest-api', 'trustedOrigins'),
+			cookieDomain: providedKeyFor(canonical, 'rest-api', 'cookieDomain'),
 		};
 		// A field, not a getter: consumers cache services by object identity.
 		const url = this.keys.url;

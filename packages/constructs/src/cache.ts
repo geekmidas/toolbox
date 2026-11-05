@@ -21,7 +21,7 @@ import {
 	type ConstructName,
 	canonicalId,
 	type Declaration,
-	provideKey,
+	providedKeyFor,
 	serviceKey,
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
@@ -60,7 +60,7 @@ export class Cache<TName extends string = string>
 		const canonical = canonicalId(id as string);
 
 		this.id = canonical as TName;
-		this.key = provideKey(canonical, 'url');
+		this.key = providedKeyFor(canonical, 'cache', 'url');
 
 		// A field, not a getter: consumers cache services by object identity.
 		this.service = {

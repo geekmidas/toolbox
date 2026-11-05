@@ -1,6 +1,6 @@
 import { EnvironmentParser } from '@geekmidas/envkit';
 import { Credentials } from '@geekmidas/envkit/credentials';
-import { provideKey } from '@geekmidas/manifest';
+import { providedKeyFor } from '@geekmidas/manifest';
 import { auth } from '@kitchen-sink/constructs/auth.js';
 import { describe, expect } from 'vitest';
 import { it } from '#test';
@@ -39,7 +39,9 @@ describe('the application', () => {
 		// server, so the cookie has to be readable on both hosts.
 		const { domain } = new EnvironmentParser({ ...process.env, ...Credentials })
 			.create((get) => ({
-				domain: get(provideKey(auth.id, 'cookieDomain')).string().optional(),
+				domain: get(providedKeyFor(auth.id, 'rest-api', 'cookieDomain'))
+					.string()
+					.optional(),
 			}))
 			.parse();
 

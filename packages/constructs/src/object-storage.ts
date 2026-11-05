@@ -11,7 +11,7 @@ import {
 	type ConstructName,
 	canonicalId,
 	type Declaration,
-	provideKey,
+	providedKeyFor,
 	serviceKey,
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
@@ -61,7 +61,11 @@ export class ObjectStorage<TName extends string = string>
 
 		this.id = canonical as TName;
 		this.keys = {
-			connectionString: provideKey(canonical, 'connectionString'),
+			connectionString: providedKeyFor(
+				canonical,
+				'objects',
+				'connectionString',
+			),
 		};
 		this.expire = expiryDays(canonical, options.expire);
 

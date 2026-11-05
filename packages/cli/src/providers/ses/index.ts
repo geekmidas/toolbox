@@ -30,7 +30,7 @@ import {
 	type ConstructManifest,
 	INBOX_MESSAGES_PREFIX,
 	type InboxDeclaration,
-	provideKey,
+	providedKeyFor,
 	receiptRecipients,
 } from '@geekmidas/manifest';
 import { NoDomainForStage } from '../../target/dokploy/domain.js';
@@ -316,7 +316,7 @@ async function ensureInbox(
 ): Promise<void> {
 	const { inbox, domain, region, ruleSet } = input;
 	const name = inboxBucketId(inbox.id);
-	const urlKey = provideKey(inbox.id, 'url');
+	const urlKey = providedKeyFor(inbox.id, inbox.kind, 'url');
 
 	const topicArn = await ensureTopic(ctx as never, events, {
 		id: inbox.id,
@@ -337,7 +337,7 @@ async function ensureInbox(
 		id: inbox.id,
 		topicArn,
 		region,
-		key: provideKey(inbox.topic, 'publisherConnectionString'),
+		key: providedKeyFor(inbox.topic, 'topic', 'publisherConnectionString'),
 		urlKey,
 	});
 
@@ -522,8 +522,8 @@ async function verifySes(ctx: VerifyContext<SesInboxConfig>): Promise<void> {
 	stageDomain(ctx);
 	for (const inbox of inboxes) {
 		const missing = [
-			provideKey(inbox.id, 'url'),
-			provideKey(inbox.topic, 'publisherConnectionString'),
+			providedKeyFor(inbox.id, inbox.kind, 'url'),
+			providedKeyFor(inbox.topic, 'topic', 'publisherConnectionString'),
 		].filter((key) => ctx.secrets[key] === undefined);
 		if (missing.length > 0) {
 			throw new InboxNotProvisioned(ctx.stage, inbox.id, missing);
@@ -539,8 +539,8 @@ export const sesProvider: ResourceProvider<SesInboxConfig, AwsProvisioning> = {
 	credentials: awsProvisioningCredentials,
 	runtimeKeys(manifest) {
 		return inboxConstructs(manifest).flatMap((inbox) => [
-			provideKey(inbox.id, 'url'),
-			provideKey(inbox.topic, 'publisherConnectionString'),
+			providedKeyFor(inbox.id, inbox.kind, 'url'),
+			providedKeyFor(inbox.topic, 'topic', 'publisherConnectionString'),
 		]);
 	},
 	ensure: ensureSes,

@@ -33,7 +33,7 @@ import {
 	type Dependency,
 	type MobileAppDeclaration,
 	type MobileAppStage,
-	provideKey,
+	providedKeyFor,
 } from '@geekmidas/manifest';
 import { type Declarable, frontendEdgeTo } from './construct-interface';
 
@@ -95,7 +95,7 @@ export class MobileApp<TName extends string = string>
 		private readonly dependencies: readonly Dependency[] = [],
 	) {
 		this.id = canonicalId(id as string) as TName;
-		this.keys = { scheme: provideKey(this.id, 'scheme') };
+		this.keys = { scheme: providedKeyFor(this.id, 'mobile-app', 'scheme') };
 	}
 
 	/**

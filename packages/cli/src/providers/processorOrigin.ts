@@ -10,7 +10,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { provideKey } from '@geekmidas/manifest';
+import { environmentCase } from '@geekmidas/manifest';
 import { fileServerLabel } from '../workspace/fileServerLabel.js';
 
 /** The header the CDN adds to every request it sends a processor. */
@@ -27,7 +27,8 @@ export function processorOriginHost(serverId: string, domain: string): string {
 
 /** The stage secret holding the header's value: `ASSETS_SERVER_ORIGIN_SECRET`. */
 export function originSecretKey(serverId: string): string {
-	return provideKey(serverId, 'originSecret');
+	// A key of the surface node itself, not one it provides.
+	return environmentCase(`${serverId}_originSecret`);
 }
 
 /**

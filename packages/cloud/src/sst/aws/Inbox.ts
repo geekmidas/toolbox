@@ -1,6 +1,6 @@
 // The codec alone — see the note in `Queue.ts`.
 import * as snsUrl from '@geekmidas/events/sns/url';
-import { provideKey } from '@geekmidas/manifest';
+import { providedKeyFor } from '@geekmidas/manifest';
 import { type GkmLinkable, ResourceType } from '../Linkable';
 import { regionOfArn } from '../naming';
 import type { StackType } from '../Stack';
@@ -53,10 +53,13 @@ export class Inbox<
 			return value;
 		};
 
-		this.url = read(props.url, provideKey(name, 'url'));
-		this.domain = read(props.domain, provideKey(name, 'domain'));
+		this.url = read(props.url, providedKeyFor(name, 'inbox', 'url'));
+		this.domain = read(props.domain, providedKeyFor(name, 'inbox', 'domain'));
 		this.topicArn = snsUrl.parse(
-			read(props.topic, provideKey(props.topicId, 'publisherConnectionString')),
+			read(
+				props.topic,
+				providedKeyFor(props.topicId, 'topic', 'publisherConnectionString'),
+			),
 		).topicArn;
 	}
 

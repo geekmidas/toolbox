@@ -1,5 +1,5 @@
 import { resolveEnvKeys } from '@geekmidas/envkit/sst';
-import { NoUrlForStage, providedKeyFor, provideKey } from '@geekmidas/manifest';
+import { NoUrlForStage, providedKeyFor } from '@geekmidas/manifest';
 import { describe, expect, it } from 'vitest';
 import { App } from '../App';
 import { Cron } from '../aws/Cron';
@@ -137,7 +137,7 @@ describe('ObjectStorage', () => {
 				'Uploads',
 				['UPLOADS_CONNECTION_STRING'],
 				Object.keys(bucket.provides()).map((role) =>
-					provideKey('Uploads', role),
+					providedKeyFor('Uploads', 'objects', role),
 				),
 			),
 		).not.toThrow();

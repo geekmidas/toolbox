@@ -148,7 +148,6 @@ export {
 	fileServerSurfaceId,
 	kebabCase,
 	providedKeyFor,
-	provideKey,
 	scopedName,
 	serviceKey,
 } from './naming';

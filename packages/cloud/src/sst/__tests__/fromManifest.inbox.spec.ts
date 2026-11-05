@@ -1,10 +1,6 @@
 import { resolveEnvKeys } from '@geekmidas/envkit/sst';
 import * as snsUrl from '@geekmidas/events/sns/url';
-import {
-	type ConstructManifest,
-	providedKeyFor,
-	provideKey,
-} from '@geekmidas/manifest';
+import { type ConstructManifest, providedKeyFor } from '@geekmidas/manifest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { type Inbox, InboxNotProvisioned, InboxTopic } from '../aws/Inbox';
 import { Topic } from '../aws/Topic';
@@ -78,10 +74,11 @@ function manifest(): ConstructManifest {
 const env = {
 	REQUESTS_URL: URL,
 	REQUESTS_DOMAIN: 'shop.example',
-	[provideKey('RequestsMail', 'publisherConnectionString')]: snsUrl.build({
-		topicArn: TOPIC_ARN,
-		region: 'eu-west-1',
-	}),
+	[providedKeyFor('RequestsMail', 'topic', 'publisherConnectionString')]:
+		snsUrl.build({
+			topicArn: TOPIC_ARN,
+			region: 'eu-west-1',
+		}),
 };
 
 beforeEach(() => {

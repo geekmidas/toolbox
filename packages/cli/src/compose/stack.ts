@@ -21,7 +21,7 @@ import {
 	type ConstructManifest,
 	EDGE_TOKEN_KEY,
 	isWildcardSite,
-	provideKey,
+	providedKeyFor,
 	provisionOrder,
 	type SiteDeclaration,
 	type WebSocketEdgeLimits,
@@ -869,7 +869,7 @@ export function deployedInboxValue(
 	key: string,
 	sources: DeployedInboxSources,
 ): string {
-	if (key === provideKey(inbox, 'domain')) {
+	if (key === providedKeyFor(inbox, 'inbox', 'domain')) {
 		if (!sources.domain) throw new NoDomainForStage(sources.stage);
 		return sources.domain;
 	}
@@ -894,7 +894,7 @@ export function deployedInboxEnv(
 		if (declaration.kind !== 'inbox') continue;
 		const keys = [
 			...(declaration.provides ?? []),
-			provideKey(declaration.topic, 'publisherConnectionString'),
+			providedKeyFor(declaration.topic, 'topic', 'publisherConnectionString'),
 		];
 		for (const key of keys) {
 			env[key] = deployedInboxValue(declaration.id, key, sources);
@@ -1079,18 +1079,27 @@ export function composeStack(input: StackInput): ComposeStack {
 	for (const resource of plan.resources) {
 		owners.set(resource.envKey, resource);
 		if (resource.kind === 'email') {
-			owners.set(provideKey(resource.id, 'from'), resource);
-			owners.set(provideKey(resource.id, 'inboxUrl'), resource);
+			owners.set(providedKeyFor(resource.id, resource.kind, 'from'), resource);
+			owners.set(
+				providedKeyFor(resource.id, resource.kind, 'inboxUrl'),
+				resource,
+			);
 		}
 		if (resource.kind === 'external-api') {
-			owners.set(provideKey(resource.id, 'credentials'), resource);
+			owners.set(
+				providedKeyFor(resource.id, resource.kind, 'credentials'),
+				resource,
+			);
 		}
 		if (resource.kind === 'inbox') {
-			owners.set(provideKey(resource.id, 'domain'), resource);
+			owners.set(
+				providedKeyFor(resource.id, resource.kind, 'domain'),
+				resource,
+			);
 		}
 		if (resource.kind === 'websocket-api') {
 			owners.set(
-				provideKey(resource.id, 'publisherConnectionString'),
+				providedKeyFor(resource.id, resource.kind, 'publisherConnectionString'),
 				resource,
 			);
 		}
@@ -1230,10 +1239,13 @@ export function composeStack(input: StackInput): ComposeStack {
 	for (const resource of plan.resources) {
 		if (resource.kind !== 'objects') continue;
 		bucketEventKeys.set(
-			provideKey(resource.id, 'eventsConnectionString'),
+			providedKeyFor(resource.id, resource.kind, 'eventsConnectionString'),
 			resource.id,
 		);
-		bucketEventKeys.set(provideKey(resource.id, 'eventsToken'), resource.id);
+		bucketEventKeys.set(
+			providedKeyFor(resource.id, resource.kind, 'eventsToken'),
+			resource.id,
+		);
 	}
 
 	// Each file server over the stack's MinIO, at a host of its own on the
@@ -1383,7 +1395,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		if (owner?.kind === 'cache') return redis?.urls[key];
 		if (
 			owner?.kind === 'websocket-api' &&
-			key === provideKey(owner.id, 'publisherConnectionString')
+			key === providedKeyFor(owner.id, owner.kind, 'publisherConnectionString')
 		) {
 			return redis?.urls[key];
 		}
@@ -1611,8 +1623,12 @@ export function composeStack(input: StackInput): ComposeStack {
 		for (const [bucket, workerId] of watched) {
 			if (!services.minio.includes(bucket)) continue;
 			const worker = workers.find((w) => w.id === workerId);
-			const relay = worker?.env?.[provideKey(bucket, 'eventsConnectionString')];
-			const token = worker?.env?.[provideKey(bucket, 'eventsToken')];
+			const relay =
+				worker?.env?.[
+					providedKeyFor(bucket, 'objects', 'eventsConnectionString')
+				];
+			const token =
+				worker?.env?.[providedKeyFor(bucket, 'objects', 'eventsToken')];
 			if (!worker || !relay || relay.startsWith('sns:') || !token) continue;
 			storage.webhooks.push({
 				bucket,

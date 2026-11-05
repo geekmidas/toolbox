@@ -36,7 +36,7 @@ import {
 	canonicalId,
 	type Declaration,
 	KMS_SCHEME,
-	provideKey,
+	providedKeyFor,
 	serviceKey,
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
@@ -114,7 +114,7 @@ export class Encryption<TName extends string = string>
 		const canonical = canonicalId(id as string);
 
 		this.id = canonical as TName;
-		this.key = provideKey(canonical, 'url');
+		this.key = providedKeyFor(canonical, 'encryption', 'url');
 
 		// A field, not a getter: consumers cache services by object identity.
 		this.service = {

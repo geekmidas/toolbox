@@ -27,7 +27,7 @@
 import {
 	type ConstructManifest,
 	type EmailDeclaration,
-	provideKey,
+	providedKeyFor,
 } from '@geekmidas/manifest';
 import {
 	type AwsProvisioning,
@@ -106,7 +106,7 @@ export function urlSetElsewhere(
 	ctx: Pick<Ctx, 'secrets' | 'state'>,
 	email: string,
 ): boolean {
-	const given = ctx.secrets[provideKey(email, 'url')];
+	const given = ctx.secrets[providedKeyFor(email, 'email', 'url')];
 	if (given === undefined) return false;
 	const record = ctx.state.record(`iam-access-key:${email}`);
 	if (!record) return true;
@@ -133,7 +133,7 @@ export function senderOf(
 	email: string,
 ): { address: string; ours: boolean } {
 	if (ctx.config.from) return { address: ctx.config.from, ours: true };
-	const held = ctx.secrets[provideKey(email, 'from')];
+	const held = ctx.secrets[providedKeyFor(email, 'email', 'from')];
 	const wrote = ctx.state.record(senderEntry(email).key)?.id;
 	const domain = ctx.workspace.domains?.[ctx.stage];
 	const fallback = domain ? `noreply@${domain}` : undefined;
@@ -179,7 +179,7 @@ async function ensureSesEmail(ctx: Ctx): Promise<void> {
 	const owned = emails.filter((email) => {
 		if (!urlSetElsewhere(ctx, email.id)) return true;
 		ctx.log(
-			`   ${email.id}: ${provideKey(email.id, 'url')} is set in the stage's secrets — it sends with that, and nothing is created for it`,
+			`   ${email.id}: ${providedKeyFor(email.id, 'email', 'url')} is set in the stage's secrets — it sends with that, and nothing is created for it`,
 		);
 		return false;
 	});
@@ -210,10 +210,10 @@ async function ensureSesEmail(ctx: Ctx): Promise<void> {
 			});
 			await ensureAccessKey(ctx, clients, {
 				id: email.id,
-				secret: smtpKeySecret(provideKey(email.id, 'url'), region),
+				secret: smtpKeySecret(providedKeyFor(email.id, 'email', 'url'), region),
 				...user,
 			});
-			const fromKey = provideKey(email.id, 'from');
+			const fromKey = providedKeyFor(email.id, 'email', 'from');
 			if (ctx.secrets[fromKey] !== from) {
 				await ctx.change(
 					{ construct: email.id, resource: fromKey, change: `set to ${from}` },
@@ -322,8 +322,8 @@ async function verifySesEmail(
 ): Promise<void> {
 	for (const email of emailConstructs(ctx.manifest)) {
 		const missing = [
-			provideKey(email.id, 'url'),
-			provideKey(email.id, 'from'),
+			providedKeyFor(email.id, 'email', 'url'),
+			providedKeyFor(email.id, 'email', 'from'),
 		].filter((key) => ctx.secrets[key] === undefined);
 		if (missing.length > 0) {
 			throw new EmailNotProvisioned(ctx.stage, email.id, missing);
@@ -342,8 +342,8 @@ export const sesEmailProvider: ResourceProvider<
 	credentials: awsProvisioningCredentials,
 	runtimeKeys(manifest) {
 		return emailConstructs(manifest).flatMap((email) => [
-			provideKey(email.id, 'url'),
-			provideKey(email.id, 'from'),
+			providedKeyFor(email.id, 'email', 'url'),
+			providedKeyFor(email.id, 'email', 'from'),
 		]);
 	},
 	ensure: ensureSesEmail,

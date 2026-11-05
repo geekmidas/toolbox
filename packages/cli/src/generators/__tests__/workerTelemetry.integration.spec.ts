@@ -8,7 +8,7 @@ import {
 } from 'node:http';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
-import { provideKey } from '@geekmidas/manifest';
+import { providedKeyFor } from '@geekmidas/manifest';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { POSTGRES_PORT } from '../../../../testkit/test/ports';
@@ -258,7 +258,7 @@ async function start(bundle: string) {
 			PORT: String(port),
 			STORE_URL: URL,
 			EVENT_PUBLISHER_CONNECTION_STRING: BROKER,
-			[provideKey('Pack', 'publisherConnectionString')]: BROKER,
+			[providedKeyFor('Pack', 'queue', 'publisherConnectionString')]: BROKER,
 			OTEL_EXPORTER_OTLP_ENDPOINT: collector,
 			OTEL_BSP_SCHEDULE_DELAY: '200',
 		},

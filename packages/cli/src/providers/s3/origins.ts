@@ -13,7 +13,6 @@ import {
 	type ConstructManifest,
 	dependentsOf,
 	providedKeyFor,
-	provideKey,
 } from '@geekmidas/manifest';
 import { appEnvKeys } from '../../reconcile/apps.js';
 import {
@@ -45,7 +44,7 @@ export interface BucketOrigins {
  */
 export function bucketKeys(manifest: ConstructManifest, bucket: string) {
 	return [
-		provideKey(bucket, 'connectionString'),
+		providedKeyFor(bucket, 'objects', 'connectionString'),
 		...Object.entries(manifest)
 			.filter(([, d]) => d.kind === 'file-server' && d.of === bucket)
 			.map(([id]) => providedKeyFor(id, 'file-server', 'url')),

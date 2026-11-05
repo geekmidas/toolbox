@@ -8,7 +8,7 @@ import {
 	PutObjectCommand,
 	S3Client,
 } from '@aws-sdk/client-s3';
-import { provideKey } from '@geekmidas/manifest';
+import { providedKeyFor } from '@geekmidas/manifest';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { POSTGRES_PORT } from '../../../../testkit/test/ports';
@@ -226,8 +226,8 @@ async function startWorker() {
 			PORT: String(workerPort),
 			STORE_URL: URL,
 			EVENT_PUBLISHER_CONNECTION_STRING: BROKER,
-			[provideKey('Uploads', 'eventsConnectionString')]: BROKER,
-			[provideKey('Uploads', 'eventsToken')]: TOKEN,
+			[providedKeyFor('Uploads', 'objects', 'eventsConnectionString')]: BROKER,
+			[providedKeyFor('Uploads', 'objects', 'eventsToken')]: TOKEN,
 		},
 		stdio: ['ignore', 'pipe', 'pipe'],
 	});

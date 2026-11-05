@@ -27,7 +27,7 @@ import { randomUUID } from 'node:crypto';
 import { EnvironmentParser } from '@geekmidas/envkit';
 import {
 	INBOX_EVENT,
-	provideKey,
+	providedKeyFor,
 	WILDCARD_SUBDOMAIN,
 } from '@geekmidas/manifest';
 import {
@@ -768,7 +768,7 @@ async function load(
 	);
 
 	const inbox = emails
-		.map((email) => manifest.env[provideKey(email.id, 'inboxUrl')])
+		.map((email) => manifest.env[providedKeyFor(email.id, 'email', 'inboxUrl')])
 		.find(Boolean);
 
 	return {
@@ -1066,7 +1066,9 @@ function bucketName(
 ): string {
 	const { url } = envParser
 		.create((get) => ({
-			url: get(provideKey(bucket.id, 'connectionString')).string(),
+			url: get(
+				providedKeyFor(bucket.id, 'objects', 'connectionString'),
+			).string(),
 		}))
 		.parse();
 	try {
@@ -1183,7 +1185,9 @@ function bindToTests(database: KyselyDatabase): void {
 
 function urlOf(database: { id: string }, envParser: EnvironmentParser<{}>) {
 	return envParser
-		.create((get) => ({ url: get(provideKey(database.id, 'url')).string() }))
+		.create((get) => ({
+			url: get(providedKeyFor(database.id, 'database', 'url')).string(),
+		}))
 		.parse().url;
 }
 
@@ -1200,7 +1204,7 @@ function surfaceHandlers(
 	}
 
 	return [...bySurface].flatMap(([surface, served]) => {
-		const base = env[provideKey(surface, 'url')];
+		const base = env[providedKeyFor(surface, 'rest-api', 'url')];
 		if (!base) return [];
 
 		return http.all(`${trim(base)}/*`, ({ request }) =>
@@ -1235,7 +1239,7 @@ function fakeHandler(
 	fake: Fake,
 	env: Record<string, string | undefined>,
 ) {
-	const base = env[provideKey(id, 'url')];
+	const base = env[providedKeyFor(id, 'external-api', 'url')];
 	if (fake.kind !== 'app' || !base) return [];
 
 	return [
@@ -1273,7 +1277,7 @@ function authHandler(
 	env: Record<string, string | undefined>,
 	envParser: EnvironmentParser<{}>,
 ) {
-	const base = trim(env[provideKey(auth.id, 'url')] ?? '');
+	const base = trim(env[providedKeyFor(auth.id, 'rest-api', 'url')] ?? '');
 
 	// The whole origin, not only `basePath`: the auth server answers its own
 	// host deployed, and a redirect it issues — to `/` after verifying a magic
@@ -1336,7 +1340,7 @@ export interface MagicLinkAuthClient<TSession> {
 function wildcardSiteUrl(manifest: TestManifest): string | undefined {
 	for (const [id, construct] of Object.entries(manifest.constructs)) {
 		if (construct.kind !== 'site') continue;
-		const url = manifest.env[provideKey(id, 'url')];
+		const url = manifest.env[providedKeyFor(id, construct.kind, 'url')];
 		if (url && new URL(url).hostname.startsWith(`${WILDCARD_SUBDOMAIN}.`)) {
 			return url;
 		}

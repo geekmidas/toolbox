@@ -38,7 +38,6 @@ import {
 	type Declaration,
 	fileServerSurfaceId,
 	providedKeyFor,
-	provideKey,
 	serviceKey,
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
@@ -388,7 +387,7 @@ export class FileServer<
 		this.surfaceId = fileServerSurfaceId(canonical);
 
 		this.keys = {
-			origin: provideKey(originId, 'connectionString'),
+			origin: providedKeyFor(originId, 'objects', 'connectionString'),
 			server: providedKeyFor(this.surfaceId, 'file-server', 'url'),
 		};
 

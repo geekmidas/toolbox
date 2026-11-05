@@ -71,11 +71,13 @@ so the next change to it would have had to be made three times.
   does.** The AWS target reads `publicValues` and looks each value up on a
   component; the compose build reads the same list and looks it up in the
   stage's secrets. Neither decides which values those are.
-- **`provideKey(id, role)` is the naming primitive inside `naming.ts`.** It
-  agrees with `providedKeyFor` only for kinds with no naming rule of their own,
-  so a caller that uses it is waiting for the next rule to break it. (A secret's
-  key is its name, a file server's is its construct's, telemetry's is
-  OpenTelemetry's.)
+- **`provideKey(id, role)` is private to `naming.ts`.** `@geekmidas/manifest`
+  doesn't export it, so a provided key can only come from `providedKeyFor`.
+  It agrees with `provideKey` only for kinds that have no naming rule of their
+  own (a secret's key is its name, a file server's is its construct's,
+  telemetry's is OpenTelemetry's). A name that isn't a provided key, such as
+  a stored key's old name in a migration, uses `environmentCase` with a
+  comment saying why.
 - **A test pins the shared function, not a copy of it.** A spec asserts what
   `publicValues` or `providedKeyFor` returns, and each target's spec asserts
   that the target used it, for example that a bucket edge reached the file

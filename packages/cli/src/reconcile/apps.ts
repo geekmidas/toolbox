@@ -24,7 +24,7 @@ import {
 	dependentsOf,
 	EDGE_TOKEN_KEY,
 	isPublicDeclaration,
-	provideKey,
+	providedKeyFor,
 	provisionOrder,
 	publicEnvFor,
 	TELEMETRY_KEYS,
@@ -210,7 +210,7 @@ export function networkEnv(
  * fails on its first local request rather than in production.
  *
  * What an edge `caller.dependsOn([target])` hands each side, `<C>` and `<T>`
- * being the caller's and the target's ids (`provideKey`) — keep this list and
+ * being the caller's and the target's ids (`providedKeyFor`) — keep this list and
  * `apps/docs/guide/edges.md` in step with the code below:
  *
  * - `rest-api`: the caller gets `<T>_URL`. The target gets `<C>_URL` from a
@@ -525,9 +525,9 @@ export function callerKeys(
 	for (const caller of dependentsOf(manifest, surfaceId)) {
 		const declaration = manifest[caller];
 		if (declaration?.kind === 'mobile-app') {
-			keys.push(provideKey(caller, 'scheme'));
+			keys.push(providedKeyFor(caller, declaration.kind, 'scheme'));
 		} else if (declaration?.kind === 'site') {
-			keys.push(provideKey(caller, 'url'));
+			keys.push(providedKeyFor(caller, declaration.kind, 'url'));
 		}
 	}
 	return keys;
@@ -550,8 +550,8 @@ function addEdgeKeys(
 		const bucket = eventsEdgeBucket(id);
 		if (bucket) {
 			if (manifest[bucket]?.kind === 'objects') {
-				keys.add(provideKey(bucket, 'eventsConnectionString'));
-				keys.add(provideKey(bucket, 'eventsToken'));
+				keys.add(providedKeyFor(bucket, 'objects', 'eventsConnectionString'));
+				keys.add(providedKeyFor(bucket, 'objects', 'eventsToken'));
 			}
 			continue;
 		}
@@ -564,15 +564,16 @@ function addEdgeKeys(
 		// process. For an auth server that is the whole point — the API gets
 		// AUTH_URL, and the auth app alone holds its secret, tenant and mailer.
 		if (target.kind === 'rest-api') {
-			keys.add(provideKey(id, 'url'));
+			keys.add(providedKeyFor(id, target.kind, 'url'));
 			continue;
 		}
 		// A WebSocket surface is opened at its address, and sent to through its
 		// publisher — which writes to every socket, so a client is handed the
 		// address alone.
 		if (target.kind === 'websocket-api') {
-			keys.add(provideKey(id, 'url'));
-			if (!client) keys.add(provideKey(id, 'publisherConnectionString'));
+			keys.add(providedKeyFor(id, target.kind, 'url'));
+			if (!client)
+				keys.add(providedKeyFor(id, target.kind, 'publisherConnectionString'));
 			continue;
 		}
 		for (const key of target.provides ?? []) keys.add(key);

@@ -16,7 +16,7 @@ import {
 	SNSClient,
 } from '@aws-sdk/client-sns';
 import { snsUrl } from '@geekmidas/events/sns';
-import { provideKey } from '@geekmidas/manifest';
+import { providedKeyFor } from '@geekmidas/manifest';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { LOCALSTACK_URL, POSTGRES_PORT } from '../../../../testkit/test/ports';
@@ -256,7 +256,11 @@ async function handled(): Promise<string[]> {
 	}
 }
 
-const EVENTS_KEY = provideKey('Uploads', 'eventsConnectionString');
+const EVENTS_KEY = providedKeyFor(
+	'Uploads',
+	'objects',
+	'eventsConnectionString',
+);
 
 describe(
 	'object events from S3, in a worker image',

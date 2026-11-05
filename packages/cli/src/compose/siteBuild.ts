@@ -6,7 +6,6 @@ import {
 	PUBLIC_PREFIX,
 	type PublicDeclaration,
 	providedKeyFor,
-	provideKey,
 	publicEnvFor,
 	type SiteDeclaration,
 } from '@geekmidas/manifest';
@@ -43,7 +42,11 @@ export function publicBuildValues(
 ): Record<string, string> {
 	const args: Record<string, string> = {};
 
-	const own = provideKey(site.id, site.kind === 'site' ? 'url' : 'scheme');
+	const own = providedKeyFor(
+		site.id,
+		site.kind,
+		site.kind === 'site' ? 'url' : 'scheme',
+	);
 	const ownValue = resolve(own);
 	if (ownValue) args[own] = ownValue;
 
@@ -106,7 +109,7 @@ export function offlineBuildHosts(
 ): string[] {
 	if (site.prerender === 'stage') return [];
 	const sources = [
-		provideKey(site.id, 'url'),
+		providedKeyFor(site.id, site.kind, 'url'),
 		...Object.values(publicEnvFor(site, manifest)),
 	];
 	const hosts = new Set<string>();

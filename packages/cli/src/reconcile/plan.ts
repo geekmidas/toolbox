@@ -150,7 +150,7 @@ const REQUIRES: Readonly<Record<string, readonly string[]>> = {
  *
  * The twin of `ProvidesByKind` in `@geekmidas/manifest`: that is what a
  * construct declares, this is what the local target resolves, and both derive
- * the key from the same `provideKey` so they cannot disagree.
+ * the key from the same `providedKeyFor` so they cannot disagree.
  */
 const ROLES: Partial<Record<DeclarationKind, string>> = {
 	queue: 'publisherConnectionString',

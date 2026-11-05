@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
-import { provideKey } from '@geekmidas/manifest';
+import { providedKeyFor } from '@geekmidas/manifest';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { POSTGRES_PORT } from '../../../../testkit/test/ports';
@@ -200,8 +200,8 @@ const freePort = () =>
 const ENV = {
 	STORE_URL: URL,
 	EVENT_PUBLISHER_CONNECTION_STRING: BROKER,
-	[provideKey('Work', 'publisherConnectionString')]: BROKER,
-	[provideKey('Things', 'publisherConnectionString')]: BROKER,
+	[providedKeyFor('Work', 'queue', 'publisherConnectionString')]: BROKER,
+	[providedKeyFor('Things', 'topic', 'publisherConnectionString')]: BROKER,
 };
 
 /** A bundle, run with node alone; resolves once its health check passes. */

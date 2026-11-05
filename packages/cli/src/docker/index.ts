@@ -6,7 +6,7 @@ import {
 	IMAGE_ORIGINS_KEY,
 	imageOriginSources,
 	PUBLIC_PREFIX,
-	provideKey,
+	providedKeyFor,
 	publicEnvFor,
 } from '@geekmidas/manifest';
 import {
@@ -572,7 +572,7 @@ export function siteDockerfile(
 			? [
 					// Its own address under its own name, for server code that runs
 					// at build — what `publicBuildValues` hands every image build.
-					provideKey(declared.id, 'url'),
+					providedKeyFor(declared.id, declared.kind, 'url'),
 					...Object.keys(publicEnvFor(declared, options.manifest)),
 					// The origins its pages load files from, where it has any.
 					...(imageOriginSources(declared, options.manifest).length > 0

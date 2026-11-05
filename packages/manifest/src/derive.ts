@@ -21,7 +21,7 @@ import type {
 } from './declaration';
 import { DERIVES_FROM, isWildcardSite, PUBLIC } from './declaration';
 import { IllegalDerivation, UnknownParent } from './errors';
-import { providedKeyFor, provideKey } from './naming';
+import { providedKeyFor } from './naming';
 
 /** Whether a declaration names a parent. */
 export function isDerived(
@@ -262,7 +262,7 @@ export function publicEnvFor(
 	// itself with — a canonical URL, an Open Graph image. A site with no edges
 	// still has one.
 	if (declaration.kind === 'site') {
-		const own = provideKey(declaration.id, 'url');
+		const own = providedKeyFor(declaration.id, 'site', 'url');
 		keys[`${prefix}${own}`] = own;
 	}
 
@@ -271,7 +271,7 @@ export function publicEnvFor(
 	// the labels no tenant may be.
 	if (isWildcardSite(declaration)) {
 		for (const role of ['domain', 'protectedSubdomains']) {
-			const key = provideKey(declaration.id, role);
+			const key = providedKeyFor(declaration.id, 'site', role);
 			keys[`${prefix}${key}`] = key;
 		}
 	}

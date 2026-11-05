@@ -17,7 +17,7 @@ import {
 	type ConstructName,
 	canonicalId,
 	type Declaration,
-	provideKey,
+	providedKeyFor,
 	serviceKey,
 } from '@geekmidas/manifest';
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
@@ -66,11 +66,11 @@ export class Email<
 
 		this.id = canonical as TName;
 		this.keys = {
-			url: provideKey(canonical, 'url'),
+			url: providedKeyFor(canonical, 'email', 'url'),
 			// The sending identity travels with the URL rather than being a second
 			// construct option, for the same reason the URL does: it is the one
 			// thing about mail that differs per stage.
-			from: provideKey(canonical, 'from'),
+			from: providedKeyFor(canonical, 'email', 'from'),
 		};
 
 		// A field, not a getter: consumers cache services by object identity.

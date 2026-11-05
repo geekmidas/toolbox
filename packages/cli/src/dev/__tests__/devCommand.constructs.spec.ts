@@ -9,7 +9,7 @@ import {
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { EnvironmentParser } from '@geekmidas/envkit';
-import { provideKey } from '@geekmidas/manifest';
+import { providedKeyFor } from '@geekmidas/manifest';
 import { serviceContext } from '@geekmidas/services';
 import pg from 'pg';
 import {
@@ -77,15 +77,15 @@ const broker = `pgboss://${user}:${password}@${host}:${port}/${database}?schema=
 /** What reconcile resolves for this workspace, with auth answering on `authPort`. */
 function envFor(authPort: number): Record<string, string> {
 	return {
-		[provideKey('Database', 'url')]: url,
-		[provideKey('Database', 'ownerUrl')]: url,
-		[provideKey('AuthDatabase', 'url')]: url,
-		[provideKey('AuthDatabase', 'ownerUrl')]: url,
+		[providedKeyFor('Database', 'database', 'url')]: url,
+		[providedKeyFor('Database', 'database', 'ownerUrl')]: url,
+		[providedKeyFor('AuthDatabase', 'database', 'url')]: url,
+		[providedKeyFor('AuthDatabase', 'database', 'ownerUrl')]: url,
 		// A secret's name is its key: `Auth` signs with `AUTH_SECRET`.
 		AUTH_SECRET: 'a-signing-secret-that-is-at-least-32-chars',
-		[provideKey('Auth', 'url')]: `http://localhost:${authPort}`,
-		[provideKey('Auth', 'trustedOrigins')]: WEB_ORIGIN,
-		[provideKey('Api', 'trustedOrigins')]: WEB_ORIGIN,
+		[providedKeyFor('Auth', 'rest-api', 'url')]: `http://localhost:${authPort}`,
+		[providedKeyFor('Auth', 'rest-api', 'trustedOrigins')]: WEB_ORIGIN,
+		[providedKeyFor('Api', 'rest-api', 'trustedOrigins')]: WEB_ORIGIN,
 		// What reconcile resolves for a declared worker on pg-boss: the broker a
 		// server schedules the worker's crons through.
 		EVENT_PUBLISHER_CONNECTION_STRING: broker,
@@ -256,7 +256,7 @@ export default defineWorkspace({
 			const written = JSON.parse(
 				readFileSync(join(dir, '.gkm', 'dev-secrets-api.json'), 'utf-8'),
 			);
-			expect(written[provideKey('Auth', 'url')]).toBe(
+			expect(written[providedKeyFor('Auth', 'rest-api', 'url')]).toBe(
 				`http://localhost:${authPort}`,
 			);
 
