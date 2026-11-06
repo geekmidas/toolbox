@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import {
 	type ConstructManifest,
 	IMAGE_ORIGINS_KEY,
@@ -9,6 +9,7 @@ import {
 	providedKeyFor,
 	publicEnvFor,
 } from '@geekmidas/manifest';
+import { sharedDirectoryTree } from '../build/outputDir.js';
 import {
 	type ProcessorUnit,
 	processorUnits,
@@ -337,6 +338,7 @@ export async function workspaceDockerCommand(
 		const dockerfile = workerDockerfile(worker, workspace.apps[worker.app]!, {
 			layout,
 			workspaceRoot: workspace.root,
+			...(manifest ? { manifest } : {}),
 		});
 		// Always named for the worker: an app at the root has the bare
 		// `Dockerfile`, which this must not overwrite.
@@ -363,6 +365,7 @@ export async function workspaceDockerCommand(
 		const dockerfile = processorDockerfile(unit, workspace.apps[unit.app]!, {
 			layout,
 			workspaceRoot: workspace.root,
+			...(manifest ? { manifest } : {}),
 		});
 		const path = workerDockerfileOf(unit.name);
 		const dockerfilePath = join(workspace.root, path);
@@ -472,9 +475,30 @@ export function appDockerfile(
 	}
 	return generateBackendDockerfile({
 		...image,
+		...sharedDirectory(options, appName, app),
 		healthCheckPath: '/health',
 		...(options.cache ? { cache: options.cache } : {}),
 	});
+}
+
+/**
+ * For a gkm backend whose directory holds another surface: the app its image's
+ * build is for, which is also the tree under `.gkm/server` it writes — see
+ * `sharedDirectoryTree`. Nothing for an app alone in its directory.
+ */
+function sharedDirectory(
+	options: { manifest?: ConstructManifest; workspaceRoot: string },
+	appName: string,
+	app: NormalizedAppConfig,
+): { sharedDirectoryApp?: string } {
+	if (!options.manifest) return {};
+	const tree = sharedDirectoryTree(
+		options.manifest,
+		options.workspaceRoot,
+		resolve(options.workspaceRoot, app.path),
+		appName,
+	);
+	return tree ? { sharedDirectoryApp: tree } : {};
 }
 
 /** Where `gkm docker` writes a worker's Dockerfile. */
@@ -492,16 +516,19 @@ export function workerDockerfile(
 	options: {
 		layout: ImageLayout;
 		workspaceRoot: string;
+		/**
+		 * What the workspace declares, so the host's build knows whether its
+		 * directory holds another surface.
+		 */
+		manifest?: ConstructManifest;
 		/** As {@link appDockerfile}'s: the cache backend its entry registers. */
 		cache?: CacheBackend;
 	},
 ): string {
-	const image = appImageOptions(
-		options.layout,
-		worker.app,
-		host,
-		options.workspaceRoot,
-	);
+	const image = {
+		...appImageOptions(options.layout, worker.app, host, options.workspaceRoot),
+		...sharedDirectory(options, worker.app, host),
+	};
 	return generateWorkerDockerfile({
 		...image,
 		imageName: worker.name,
@@ -524,15 +551,15 @@ export function processorDockerfile(
 	options: {
 		layout: ImageLayout;
 		workspaceRoot: string;
+		/** As {@link workerDockerfile}'s. */
+		manifest?: ConstructManifest;
 		cache?: CacheBackend;
 	},
 ): string {
-	const image = appImageOptions(
-		options.layout,
-		unit.app,
-		host,
-		options.workspaceRoot,
-	);
+	const image = {
+		...appImageOptions(options.layout, unit.app, host, options.workspaceRoot),
+		...sharedDirectory(options, unit.app, host),
+	};
 	return generateProcessorDockerfile({
 		...image,
 		imageName: unit.name,

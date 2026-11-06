@@ -92,6 +92,13 @@ export interface ImageTemplateOptions {
 		 */
 		telemetry?: ClientTelemetryDefault;
 	}[];
+	/**
+	 * A backend's: its workspace name, when its directory holds another app.
+	 * The build in the image is told which app it is (`gkm build --app`),
+	 * since the directory alone names the first, and writes under
+	 * `.gkm/server/<app>/`.
+	 */
+	sharedDirectoryApp?: string;
 }
 
 export interface FrontendDockerfileOptions extends ImageTemplateOptions {
@@ -627,7 +634,7 @@ RUN --mount=type=secret,id=gkm_credentials,required=false \\
  * what the build left out: nothing, for most apps.
  */
 function externalsStages(
-	appDir: string,
+	distDir: string,
 	bundle: string,
 ): { stage: string; copy: string } {
 	return {
@@ -636,7 +643,7 @@ function externalsStages(
 # build resolved — and nothing else.
 FROM \${NODE_IMAGE} AS externals
 WORKDIR /externals
-COPY --from=builder ${appDir}/.gkm/server/dist/${externalsManifestName(bundle)} ./package.json
+COPY --from=builder ${distDir}/${externalsManifestName(bundle)} ./package.json
 RUN --mount=type=cache,id=npm,target=/root/.npm \\
     npm install --omit=dev --no-package-lock --no-audit --no-fund && \\
     mkdir -p node_modules
@@ -916,7 +923,11 @@ function gkmBundleDockerfile(
 ): string {
 	const { port, healthCheckPath = '/health' } = options;
 	const { app } = layout(options);
-	const externals = externalsStages(app, runner.bundle);
+	// Where `gkm build` leaves the bundles: its own tree, for an app sharing
+	// its directory with another.
+	const shared = options.sharedDirectoryApp;
+	const dist = `${app}/.gkm/server${shared ? `/${shared}` : ''}/dist`;
+	const externals = externalsStages(dist, runner.bundle);
 
 	return `# syntax=docker/dockerfile:1
 # ${runner.title}: a turbo-pruned slice, bundled by gkm build in the image
@@ -928,7 +939,7 @@ ${depsStage(options)}
 ${builderStage(options)}
 
 # Bundle the production server, with the encrypted credentials embedded
-${credentialsStep(app, `cd ${app} && ${gkmCommand(`build --provider server --production${options.cache ? ` --cache ${options.cache}` : ''}`)}`)}
+${credentialsStep(app, `cd ${app} && ${gkmCommand(`build --provider server --production${shared ? ` --app ${shared}` : ''}${options.cache ? ` --cache ${options.cache}` : ''}`)}`)}
 ${externals.stage}
 # Production
 FROM \${NODE_IMAGE} AS runner
@@ -941,7 +952,7 @@ RUN addgroup --system --gid 1001 nodejs && \\
     adduser --system --uid 1001 hono
 
 # The bundled ${runner.as.replace(/\.mjs$/, '')}
-COPY --from=builder --chown=hono:nodejs ${app}/.gkm/server/dist/${runner.bundle} ./${runner.as === runner.bundle ? '' : runner.as}${externals.copy}
+COPY --from=builder --chown=hono:nodejs ${dist}/${runner.bundle} ./${runner.as === runner.bundle ? '' : runner.as}${externals.copy}
 
 ENV NODE_ENV=production
 ENV PORT=${port}

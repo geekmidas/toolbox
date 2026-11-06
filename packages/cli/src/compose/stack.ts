@@ -2034,7 +2034,12 @@ export function composeStack(input: StackInput): ComposeStack {
 		dockerfiles[worker.build.dockerfile] = workerDockerfile(
 			{ id: worker.id, name: worker.name, app: worker.host },
 			workspace.apps[worker.host]!,
-			{ layout, workspaceRoot: workspace.root, cache: STACK_CACHE },
+			{
+				layout,
+				workspaceRoot: workspace.root,
+				manifest,
+				cache: STACK_CACHE,
+			},
 		);
 	}
 	for (const unit of processors) {
@@ -2045,6 +2050,7 @@ export function composeStack(input: StackInput): ComposeStack {
 			{
 				layout,
 				workspaceRoot: workspace.root,
+				manifest,
 				cache: STACK_CACHE,
 			},
 		);

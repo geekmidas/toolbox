@@ -6,6 +6,7 @@ import {
 	providedKeyFor,
 } from '@geekmidas/manifest';
 import { type ConstructSource, consumedBy } from '../reconcile/discover.js';
+import { appKey } from '../workspace/derive.js';
 import { type BuildContext, DEV_DATABASE_API_PATH } from './types';
 
 /**
@@ -23,10 +24,16 @@ export function ownersContext(options: {
 	workspaceRoot: string;
 	/** The directory being built — the app a surface's `path` names. */
 	appRoot: string;
+	/**
+	 * The workspace app being built, `webhooks` — which of the surfaces in
+	 * that directory it is, when more than one names it.
+	 */
+	app?: string;
 	/** Whether to serve the database's JSON API — `gkm dev` only. */
 	databaseApi?: boolean;
 }): Pick<BuildContext, 'owners' | 'surface' | 'databaseApi'> {
-	const { declared, sources, workspaceRoot, appRoot, databaseApi } = options;
+	const { declared, sources, workspaceRoot, appRoot, app, databaseApi } =
+		options;
 
 	// Which surface this server answers on, so the entry can derive its CORS.
 	//
@@ -34,7 +41,7 @@ export function ownersContext(options: {
 	// serves itself, and the origins that may call *it* are a different list
 	// from the ones that may call the API.
 	const surfaces = restApis(declared);
-	const served = servedSurface(declared, workspaceRoot, appRoot);
+	const served = servedSurface(declared, workspaceRoot, appRoot, app);
 	const primary =
 		served ?? surfaces.find((d) => !d.servesItself) ?? surfaces[0];
 
@@ -130,14 +137,54 @@ function restApis(declared: ConstructManifest): RestApiDeclaration[] {
  * The surface whose declared `path` is the directory being built — asked of
  * every surface, because a workspace has several and each app's build serves
  * exactly one.
+ *
+ * Two surfaces can share a directory — an API and its webhooks, both
+ * `apps/api` — so the folder alone does not say which is being built. The app
+ * does: each surface is the app its id names, `Webhooks` is `webhooks`. A
+ * directory holding one surface needs no name, and a build that gives none
+ * gets the first, as it always did.
+ *
+ * Undefined when the named app is another kind of surface in the same
+ * directory — a WebSocket API beside a RestApi is not the RestApi.
  */
 export function servedSurface(
 	declared: ConstructManifest,
 	workspaceRoot: string,
 	appRoot: string,
+	app?: string,
 ): RestApiDeclaration | undefined {
-	return restApis(declared).find(
-		(d) => resolve(workspaceRoot, d.path) === resolve(appRoot),
+	const served = surfaceAt(declared, workspaceRoot, appRoot, app);
+	return served?.kind === 'rest-api' ? served : undefined;
+}
+
+type SurfaceDeclaration = Extract<
+	ConstructManifest[string],
+	{ kind: 'rest-api' | 'websocket-api' }
+>;
+
+/**
+ * The surface — a RestApi, or a WebSocket API — an app's build serves: the
+ * one in its directory that the app is named for, else the first RestApi
+ * there, else the first WebSocket API.
+ */
+export function surfaceAt(
+	declared: ConstructManifest,
+	workspaceRoot: string,
+	appRoot: string,
+	app?: string,
+): SurfaceDeclaration | undefined {
+	const here = Object.values(declared).filter(
+		(d): d is SurfaceDeclaration =>
+			(d.kind === 'rest-api' || d.kind === 'websocket-api') &&
+			resolve(workspaceRoot, d.path) === resolve(appRoot),
+	);
+	const named =
+		app !== undefined ? here.find((d) => appKey(d.id) === app) : undefined;
+
+	return (
+		named ??
+		here.find((d) => d.kind === 'rest-api') ??
+		here.find((d) => d.kind === 'websocket-api')
 	);
 }
 

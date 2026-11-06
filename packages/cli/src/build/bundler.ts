@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import type { Construct } from '@geekmidas/constructs';
 import {
 	bundleExternals,
@@ -277,8 +277,10 @@ export async function bundleServer(
 	} else {
 		// Credentials encrypted elsewhere — an image build hands them in as a
 		// BuildKit secret and writes them beside the app's `.gkm/server` — are
-		// embedded as they are; whoever encrypted them holds the key.
-		const gkmDir = join(outputDir, '..', '..');
+		// embedded as they are; whoever encrypted them holds the key. They sit
+		// in the app's `.gkm`, however deep under it this bundle is written —
+		// an app sharing its directory builds into `.gkm/server/<app>/dist`.
+		const gkmDir = gkmDirOf(outputDir);
 		const encryptedPath = join(gkmDir, 'credentials.enc');
 		const ivPath = join(gkmDir, 'credentials.iv');
 		if (existsSync(encryptedPath) && existsSync(ivPath)) {
@@ -348,4 +350,15 @@ export async function bundleServer(
 		masterKey,
 		externals,
 	};
+}
+
+/**
+ * The `.gkm` directory a bundle's output is under: the nearest ancestor of
+ * that name, else two levels up, where `.gkm/server/dist` puts it.
+ */
+function gkmDirOf(outputDir: string): string {
+	for (let dir = resolve(outputDir); dir !== dirname(dir); dir = dirname(dir)) {
+		if (basename(dir) === '.gkm') return dir;
+	}
+	return join(outputDir, '..', '..');
 }

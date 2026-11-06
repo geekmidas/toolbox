@@ -65,6 +65,11 @@ export interface ComposeAppOptions {
 	 */
 	reviewer?: boolean;
 	/**
+	 * A second RestApi, `Webhooks`, in the API's own directory — `path:
+	 * 'apps/api'` — on the `wh` subdomain, with one endpoint of its own.
+	 */
+	webhooks?: boolean;
+	/**
 	 * A `MobileApp`, `App` in `apps/app`, that calls the API and the auth
 	 * server — with each stage's `stages` setting, where given.
 	 */
@@ -137,6 +142,7 @@ export const telemetry = new Telemetry('Telemetry', {
 		writeFileSync(join(dir, path), `${JSON.stringify(value, null, 2)}\n`);
 
 	if (options.reviewer) writeReviewer(dir, name);
+	if (options.webhooks) writeWebhooks(dir);
 	if (options.wildcard) writeWildcardSite(dir);
 	if (options.sitePassword) {
 		writeFileSync(
@@ -324,6 +330,39 @@ export const notify = api
 	write(
 		'apps/realtime/package.json',
 		`${JSON.stringify({ name: `@${name}/realtime`, private: true, type: 'module' }, null, 2)}\n`,
+	);
+}
+
+/**
+ * The surface sharing the API's directory — see `ComposeAppOptions.webhooks`.
+ */
+function writeWebhooks(dir: string): void {
+	writeFileSync(
+		join(dir, 'constructs', 'webhooks.ts'),
+		`import { RestApi } from '@geekmidas/constructs/rest-api';
+import { logger } from './logger.js';
+
+/** What a payment provider calls: the API's code, its own surface. */
+export const webhooks = new RestApi('Webhooks', {
+  path: 'apps/api',
+  subdomain: 'wh',
+  defaultAuthorizer: 'none',
+  logger,
+});
+`,
+	);
+	writeFileSync(
+		join(dir, 'apps', 'api', 'endpoints', 'payments.ts'),
+		`import { z } from 'zod';
+import { webhooks } from '../../../constructs/webhooks.js';
+
+/** A payment provider's notification. */
+export const paymentsWebhook = webhooks
+  .post('/payments')
+  .body(z.object({ id: z.string() }))
+  .output(z.object({ received: z.boolean() }))
+  .handle(async () => ({ received: true }));
+`,
 	);
 }
 
