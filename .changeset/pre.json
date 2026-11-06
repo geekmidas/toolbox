@@ -43,6 +43,7 @@
     "auth-client-for-callers",
     "auth-migrations-no-server",
     "auth-pending-migration",
+    "aws-handlers-reached-drivers",
     "aws-websocket-adaptor",
     "backup-restore-from",
     "branch-from-the-surface",
