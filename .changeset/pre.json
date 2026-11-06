@@ -53,6 +53,7 @@
     "bucket-expire",
     "build-follows-deploy-target",
     "build-skips-readiness",
+    "build-surfaces-sharing-a-directory",
     "bundle-missing-optional-peers",
     "cache-table-after-database",
     "caller-identity-along-edge",
