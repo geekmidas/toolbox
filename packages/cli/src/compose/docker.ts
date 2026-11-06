@@ -710,14 +710,34 @@ function dockerExit(
 			env: options.env ?? process.env,
 			shell: false,
 		});
+		// A stdin that fails partway must not look like one that ended: the
+		// command would see a short input and fail for a reason it can't name.
+		let stdinFailed: Error | undefined;
 		if (options.stdin && child.stdin) {
-			options.stdin.on('error', (error) => child.stdin?.destroy(error));
+			options.stdin.on('error', (error) => {
+				stdinFailed = error;
+				child.stdin?.destroy(error);
+			});
 			child.stdin.on('error', () => {});
 			options.stdin.pipe(child.stdin);
 		}
 		child.on('error', reject);
-		child.on('close', (code) => resolve(code ?? 1));
+		child.on('close', (code) => {
+			if (stdinFailed) reject(new StdinNotDelivered(stdinFailed));
+			else resolve(code ?? 1);
+		});
 	});
+}
+
+/** What a command run with {@link dockerExit} read from stdin failed partway. */
+export class StdinNotDelivered extends GkmError {
+	constructor(readonly reason: Error) {
+		super(
+			`The input to docker stopped before its end (${reason.message}), so ` +
+				'the command only read part of it. Run it again.',
+		);
+		this.name = 'StdinNotDelivered';
+	}
 }
 
 /** `docker stop` failed for some of a project's containers. */
