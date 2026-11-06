@@ -53,6 +53,15 @@ export function checkS3Config(
 	return entry as unknown as S3ObjectsConfig;
 }
 
+/**
+ * Whether a stage's buckets on S3 serve their file servers behind a CDN, at
+ * `fileServerHost` on the stage's domain — the default — rather than on the
+ * bucket's own endpoint (`cdn: false`).
+ */
+export function servesOnCdn(config: Pick<S3ObjectsConfig, 'cdn'>): boolean {
+	return config.cdn !== false;
+}
+
 /** How the s3 provider's provisioning credentials are supplied. */
 export const S3_PROVISIONING = {
 	env: [

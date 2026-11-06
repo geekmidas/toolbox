@@ -22,3 +22,14 @@ import { fileServerName, kebabCase } from '@geekmidas/manifest';
 export function fileServerLabel(serverId: string): string {
 	return kebabCase(fileServerName(serverId));
 }
+
+/**
+ * Where a file server answers on a deployed stage: its label on the stage's
+ * domain, `assets.example.com` for `AssetsServer`. The CDN in front of a
+ * bucket on S3 is issued its certificate for it, the stack's edge routes it
+ * over its MinIO, and a site's build inlines it — all read off this one name,
+ * so a domain change moves every one of them at once.
+ */
+export function fileServerHost(serverId: string, domain: string): string {
+	return `${fileServerLabel(serverId)}.${domain}`.toLowerCase();
+}

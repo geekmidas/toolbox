@@ -191,6 +191,16 @@ image built for a stage that has not resolved them yet (a CI build ahead of
 the stage's first deploy) fails with `SiteBuildValueUnresolved`, naming the
 key, rather than ship without its own asset host. Deploy the stage first.
 
+A file server's own URL is derived wherever the stage's domain decides it:
+over the stack's MinIO, or behind the CDN the `s3` provider puts in front of
+a bucket, it is `https://<label>.<domain>` (`assets.<domain>` for
+`new FileServer('Assets', …)`). A site built right after `domains.<stage>`
+changes inlines the new domain's host, even though the stored copy is
+rewritten only by the deploy that follows the build. A URL set by hand (an
+`'external'` bucket) is kept, and `gkm compose` warns when it differs from
+the one the stage's domain gives. On S3 with `cdn: false` it is the bucket's
+own endpoint, which only the deploy knows.
+
 A file server can also make derivatives of its open objects on read — a
 thumbnail at `/i/256/avatars/7.png` — with `assets.process('/i/:width/*')`. See
 [File Server Processors](../guide/file-server-processors.md).

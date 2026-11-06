@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { fileServerHost } from '../../workspace/fileServerLabel';
 import { ORIGIN_VERIFY_HEADER, processorOriginHost } from '../processorOrigin';
 import {
 	CACHING_OPTIMIZED,
 	CACHING_OPTIMIZED_UNCOMPRESSED,
-	cdnHost,
 	cdnName,
 	certificateToken,
 	distributionConfig,
@@ -16,7 +16,7 @@ import {
 
 describe('names', () => {
 	it('answers on <fileserver>.<domain>', () => {
-		expect(cdnHost('UploadsServer', 'Shop.Example.com')).toBe(
+		expect(fileServerHost('UploadsServer', 'Shop.Example.com')).toBe(
 			'uploads.shop.example.com',
 		);
 	});

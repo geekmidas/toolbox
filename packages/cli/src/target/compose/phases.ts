@@ -599,6 +599,7 @@ export async function validateCompose(
 			? withPinnedImages(unpinned, options.pin.file, options.pin.digests)
 			: unpinned;
 	const stack = pinned(composed);
+	for (const warning of stack.warnings) ctx.logger.warn(`⚠ ${warning}`);
 
 	// A release is all of its images or none of them. A dry run asks nothing,
 	// so it can be run without a registry login.
