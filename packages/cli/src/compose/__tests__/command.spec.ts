@@ -2117,3 +2117,91 @@ describe(
 		});
 	},
 );
+
+describe("a Next site's edge to a bucket", { timeout: RUN_TIMEOUT }, () => {
+	let home: string;
+
+	/** A Next site that depends on the bucket through `edge`. */
+	const withDocuments = (edge: 'documents' | 'documents.server') => {
+		writeFileSync(
+			join(dir, 'constructs', 'documents.ts'),
+			`import { ObjectStorage } from '@geekmidas/constructs/object-storage';
+
+export const documents = new ObjectStorage('Documents');
+`,
+		);
+		writeFileSync(
+			join(dir, 'constructs', 'site.ts'),
+			`import { StaticSite } from '@geekmidas/constructs/site';
+import { api } from './api.js';
+import { auth } from './auth.js';
+import { documents } from './documents.js';
+
+export const web = new StaticSite('Web', {
+	path: 'apps/web',
+	variant: 'next',
+}).dependsOn([api, auth, ${edge}]);
+`,
+		);
+	};
+
+	beforeEach(async () => {
+		dir = await project();
+		home = realpathSync(await createTempDir('gkm-compose-home-'));
+		vi.stubEnv('GKM_HOME', home);
+	});
+	afterEach(async () => {
+		vi.unstubAllEnvs();
+		await cleanupDir(dir);
+		await cleanupDir(home);
+	});
+
+	const webEnv = async () => {
+		await composeCommand(
+			{ cwd: dir, stage: 'development', dryRun: true },
+			{
+				lookup: resolvesHere,
+				docker: fakeDocker().docker,
+				server: fakeServer([]),
+				revision: async () => 'abc1234',
+			},
+		);
+		return Object.fromEntries(
+			readFileSync(
+				join(dir, '.gkm', 'compose', 'development', 'web.env'),
+				'utf-8',
+			)
+				.split('\n')
+				.filter((line) => line.includes('='))
+				.map((line) => [
+					line.slice(0, line.indexOf('=')),
+					line.slice(line.indexOf('=') + 1),
+				]),
+		);
+	};
+
+	const WRITES = [
+		'DOCUMENTS_CONNECTION_STRING',
+		'AWS_ACCESS_KEY_ID',
+		'AWS_SECRET_ACCESS_KEY',
+		'AWS_REGION',
+	];
+
+	it('hands its server half where the links are signed, and nothing that writes', async () => {
+		withDocuments('documents');
+		const env = await webEnv();
+
+		expect(env.DOCUMENTS_SIGNED_ORIGIN).toMatch(/^https?:\/\//);
+		for (const key of WRITES) expect(env).not.toHaveProperty(key);
+	});
+
+	it('hands it the connection and the key pair through .server', async () => {
+		withDocuments('documents.server');
+		const env = await webEnv();
+
+		expect(env.DOCUMENTS_CONNECTION_STRING).toMatch(/^s3:\/\//);
+		expect(env.AWS_ACCESS_KEY_ID).toBeTruthy();
+		expect(env.AWS_SECRET_ACCESS_KEY).toBeTruthy();
+		expect(env.DOCUMENTS_SIGNED_ORIGIN).toMatch(/^https?:\/\//);
+	});
+});

@@ -43,10 +43,12 @@ import {
 import type { Service, ServiceRegisterOptions } from '@geekmidas/services';
 import { createStorageClient, type StorageClient } from '@geekmidas/storage';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
-import type {
-	Construct,
-	Declarable,
-	HasPublicFace,
+import {
+	type Construct,
+	type Declarable,
+	type HasPublicFace,
+	type ServerHalf,
+	serverHalfOf,
 } from './construct-interface';
 import { expiryDays, type ObjectExpiry } from './expire';
 import type { Processor } from './processors/Processor';
@@ -56,6 +58,7 @@ import {
 	type PatternParams,
 	parsePattern,
 } from './processors/pattern';
+import { readOnlyStorage } from './readOnlyStorage';
 import type { Telemetry } from './telemetry';
 
 /**
@@ -276,37 +279,6 @@ export class FileServerReadOnly extends Error {
 	}
 }
 
-/** Names asked of any object, which a read-only client must not answer. */
-const INTROSPECTED = new Set([
-	'then',
-	'toJSON',
-	'constructor',
-	'asymmetricMatch',
-	'$$typeof',
-	'nodeType',
-	'inspect',
-]);
-
-/**
- * The bucket half of a client that has no bucket: every method throws
- * {@link FileServerReadOnly}, naming itself.
- *
- * A proxy rather than a list of stubs, so a method the storage client grows
- * later refuses the same way. What a runtime asks of any object is left
- * alone: `then`, because a client is resolved from a promise, and the names a
- * serialiser or a test's printer looks for.
- */
-function readOnlyStorage(id: string, key: string): StorageClient {
-	return new Proxy({} as StorageClient, {
-		get(_target, property) {
-			if (typeof property !== 'string' || INTROSPECTED.has(property)) return;
-			return () => {
-				throw new FileServerReadOnly(id, property, key);
-			};
-		},
-	});
-}
-
 /** A key was asked to be served unsigned, and no open pattern admits it. */
 export class NotOpen extends Error {
 	constructor(
@@ -475,13 +447,8 @@ export class FileServer<
 	 * presigns: a full-stack site's, never a bundle's. The bucket's connection
 	 * is never inlined into a bundle either way; only the served address is.
 	 */
-	get server(): Declarable {
-		const originId = this.options.origin?.id ?? this.id;
-		const declarations = this.options.origin
-			? this.options.origin.declare()
-			: this.declare();
-
-		return { id: originId, declare: () => declarations };
+	get server(): ServerHalf {
+		return serverHalfOf(this.options.origin ?? this);
 	}
 
 	/**
@@ -551,7 +518,9 @@ export class FileServer<
 
 		const storage = origin
 			? createStorageClient(origin)
-			: readOnlyStorage(this.id, this.keys.origin);
+			: readOnlyStorage(
+					(method) => new FileServerReadOnly(this.id, method, this.keys.origin),
+				);
 		const base = server.replace(/\/+$/, '');
 
 		const serve = (key: string): string => {

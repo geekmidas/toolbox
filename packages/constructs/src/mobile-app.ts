@@ -107,7 +107,8 @@ export class MobileApp<TName extends string = string>
 	 *
 	 * A plain edge to a `FileServer` is to its public face — the address its
 	 * objects are served on, inlined — never to the bucket a phone has no
-	 * business holding a key to.
+	 * business holding a key to. A plain edge to an `ObjectStorage` is to where
+	 * its links are signed, and nothing else of it.
 	 */
 	dependsOn(constructs: readonly Declarable[]): MobileApp<TName> {
 		return new MobileApp<TName>(this.id as ConstructName<TName>, this.config, [

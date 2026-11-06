@@ -19,7 +19,12 @@ import type {
 	DerivedDeclaration,
 	PublicDeclaration,
 } from './declaration';
-import { DERIVES_FROM, isWildcardSite, PUBLIC } from './declaration';
+import {
+	DERIVES_FROM,
+	isPublicDeclaration,
+	isWildcardSite,
+	PUBLIC,
+} from './declaration';
 import { IllegalDerivation, UnknownParent } from './errors';
 import { providedKeyFor } from './naming';
 
@@ -230,6 +235,25 @@ export function publicValues(
 	}
 
 	return [...values.values()];
+}
+
+/**
+ * Whether an edge hands its caller what a server holds of the target — a
+ * bucket's connection and the key pair that signs for it — or only the
+ * target's public values.
+ *
+ * A server process's edge always does: it presigns and writes. A site's or a
+ * mobile app's does only when it named the server half
+ * (`.dependsOn([documents.server])`), for a server half that uploads or
+ * presigns. Its plain edge to a bucket is to where the bucket's links are
+ * signed (`<T>_SIGNED_ORIGIN`): a page that shows presigned links needs to
+ * allow their host, and nothing that writes to the bucket.
+ */
+export function reachesServerHalf(
+	caller: Declaration,
+	edge: Dependency,
+): boolean {
+	return !isPublicDeclaration(caller) || edge.server === true;
 }
 
 /**

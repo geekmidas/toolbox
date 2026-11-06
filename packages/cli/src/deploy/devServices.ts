@@ -215,6 +215,10 @@ export function stageServiceDeclarations(
 		);
 		if (declaration.kind === 'email')
 			owners.set(providedKeyFor(id, declaration.kind, 'from'), id);
+		// Derived from the connection: a site that holds only where the
+		// bucket signs its links still needs the bucket configured.
+		if (declaration.kind === 'objects')
+			owners.set(providedKeyFor(id, declaration.kind, 'signedOrigin'), id);
 	}
 
 	// Who reads which construct.

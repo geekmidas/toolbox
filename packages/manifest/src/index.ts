@@ -92,6 +92,7 @@ export {
 	provisionOrder,
 	publicEnvFor,
 	publicValues,
+	reachesServerHalf,
 } from './derive';
 export {
 	bucketExpiry,
