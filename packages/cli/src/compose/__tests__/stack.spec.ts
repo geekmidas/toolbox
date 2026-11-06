@@ -5,7 +5,16 @@ import {
 	type SiteDeclaration,
 	TELEMETRY_KEYS,
 } from '@geekmidas/manifest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from 'vitest';
 import { cleanupDir, createTempDir } from '../../__tests__/test-helpers';
 import { deployIdentity } from '../../deploy/identity';
 import { TEST_CREDENTIALS } from '../../reconcile/__tests__/__helpers__/credentials';
@@ -1181,7 +1190,18 @@ describe('mail and storage on a deployed stage', () => {
 	});
 
 	describe("with a provider backing the stage's buckets", () => {
-		const withS3 = (config: { cdn?: boolean } = {}) => ({
+		// Where the buckets are is the stage's config, never this machine's.
+		beforeEach(() => {
+			vi.stubEnv('AWS_REGION', undefined);
+			vi.stubEnv('AWS_DEFAULT_REGION', undefined);
+			vi.stubEnv('AWS_ENDPOINT_URL', undefined);
+			vi.stubEnv('AWS_ENDPOINT_URL_S3', undefined);
+		});
+		afterEach(() => {
+			vi.unstubAllEnvs();
+		});
+
+		const withS3 = (config: { cdn?: boolean; region?: string } = {}) => ({
 			...workspace,
 			deploy: {
 				...workspace.deploy,
@@ -1205,7 +1225,7 @@ describe('mail and storage on a deployed stage', () => {
 		};
 		const built = (
 			secrets: Record<string, string>,
-			config: { cdn?: boolean } = {},
+			config: { cdn?: boolean; region?: string } = {},
 		) =>
 			deployed({
 				workspace: withS3(config),
@@ -1261,10 +1281,45 @@ describe('mail and storage on a deployed stage', () => {
 			expect(s.warnings).toEqual([]);
 		});
 
+		it("builds a site before the stage's first deploy, with the origin of the bucket that deploy creates", () => {
+			// A protected stage's images are built on every push, ahead of the
+			// release that first deploys it and writes the bucket's connection.
+			const s = built({}, { region: 'eu-west-1' });
+			const args = app(s, 'web').build!.args!;
+			const origin =
+				'https://compose-app-production-uploads.s3.eu-west-1.amazonaws.com';
+
+			expect(args.VITE_UPLOADS_SIGNED_ORIGIN).toBe(origin);
+			expect(args.VITE_GKM_IMAGE_ORIGINS).toBe(
+				`${origin},https://uploads.shop.example.com`,
+			);
+			// The same origin the stored connection gives once the deploy ran.
+			expect(
+				app(built(STORED, { region: 'eu-west-1' }), 'web').build!.args!
+					.VITE_UPLOADS_SIGNED_ORIGIN,
+			).toBe(origin);
+		});
+
+		it("builds a site from the stored connection over the planned one: the bucket's real name wins", () => {
+			// A clash gave the bucket a suffix; the deploy stored where it is.
+			const s = built(
+				{
+					...STORED,
+					UPLOADS_CONNECTION_STRING:
+						's3://AKIAUPLOADS:secret@compose-app-production-uploads-x7k2p9?region=eu-west-1',
+				},
+				{ region: 'eu-west-1' },
+			);
+
+			expect(app(s, 'web').build!.args!.VITE_UPLOADS_SIGNED_ORIGIN).toBe(
+				'https://compose-app-production-uploads-x7k2p9.s3.eu-west-1.amazonaws.com',
+			);
+		});
+
 		it('refuses to build a site before the deploy wrote where it loads files from', () => {
-			// A CI image build ahead of the stage's first deploy: behind a CDN the
-			// file server's address is the stage's domain's, the signed origin
-			// still needs the bucket's connection.
+			// Ahead of the stage's first deploy with no region to name the bucket
+			// in: behind a CDN the file server's address is the stage's domain's,
+			// the signed origin still needs the bucket's connection.
 			expect(() => built({})).toThrow(SiteBuildValueUnresolved);
 			expect(() => built({})).toThrow(
 				/UPLOADS_SIGNED_ORIGIN[\s\S]*no UPLOADS_CONNECTION_STRING[\s\S]*gkm deploy --stage production/,

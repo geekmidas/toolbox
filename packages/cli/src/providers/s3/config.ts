@@ -1,8 +1,11 @@
 /** `deploy.objects.<stage>` for the `s3` provider, checked. */
 
-import type { S3ObjectsConfig } from '../../workspace/types.js';
+import type {
+	NormalizedWorkspace,
+	S3ObjectsConfig,
+} from '../../workspace/types.js';
 import type { ProviderConfig } from '../types.js';
-import { S3ProviderConfigInvalid } from './errors.js';
+import { S3ProviderConfigInvalid, S3RegionRequired } from './errors.js';
 
 const FIELDS = ['provider', 'region', 'versioning', 'cdn'] as const;
 
@@ -73,3 +76,34 @@ export const S3_PROVISIONING = {
 	describe:
 		"the stage's AWS account — AWS_PROFILE, or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY (in CI, what aws-actions/configure-aws-credentials exports)",
 } as const;
+
+/**
+ * The region the stage's buckets are created in: the entry's, the secrets
+ * store's when it is in AWS, the credential's, `AWS_REGION`.
+ *
+ * Here rather than beside the provider so a stage's stack can name it
+ * without loading the AWS SDK.
+ */
+export function s3Region(
+	ctx: {
+		config: Pick<S3ObjectsConfig, 'region'>;
+		workspace: Pick<NormalizedWorkspace, 'secrets'>;
+		stage: string;
+		credential?: { region?: string };
+	},
+	env: NodeJS.ProcessEnv = process.env,
+): string {
+	const store = ctx.workspace.secrets?.store;
+	const storeRegion =
+		store && typeof store === 'object' && 'region' in store
+			? (store as { region?: string }).region
+			: undefined;
+	const region =
+		ctx.config.region ??
+		storeRegion ??
+		ctx.credential?.region ??
+		env.AWS_REGION ??
+		env.AWS_DEFAULT_REGION;
+	if (!region) throw new S3RegionRequired(ctx.stage);
+	return region;
+}
