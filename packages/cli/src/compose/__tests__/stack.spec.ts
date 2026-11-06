@@ -1170,14 +1170,22 @@ describe('mail and storage on a deployed stage', () => {
 		expect(app(s, 'web').build).toBeUndefined();
 		expect(s.caddyfile).not.toContain('https://uploads.');
 		expect(s.devServices).toEqual([{ service: 'minio', ids: ['Uploads'] }]);
+		// The file server's address set by hand is kept, and said to differ
+		// from the one the stage's domain gives.
+		expect(api.UPLOADS_URL).toBe(EXTERNAL.UPLOADS_URL);
+		expect(s.warnings).toEqual([
+			expect.stringMatching(
+				/UPLOADS_URL is set by hand to https:\/\/files\.shop\.example\.com, and kept[\s\S]*https:\/\/uploads\.shop\.example\.com/,
+			),
+		]);
 	});
 
 	describe("with a provider backing the stage's buckets", () => {
-		const withS3 = () => ({
+		const withS3 = (config: { cdn?: boolean } = {}) => ({
 			...workspace,
 			deploy: {
 				...workspace.deploy,
-				objects: { production: { provider: 's3' as const } },
+				objects: { production: { provider: 's3' as const, ...config } },
 			},
 		});
 
@@ -1192,38 +1200,79 @@ describe('mail and storage on a deployed stage', () => {
 		const STORED = {
 			UPLOADS_CONNECTION_STRING:
 				's3://AKIAUPLOADS:secret@compose-app-production-uploads?region=eu-west-1',
-			UPLOADS_URL: 'https://files.shop.example.com',
+			// What the provider wrote: its CDN, on the stage's domain.
+			UPLOADS_URL: 'https://uploads.shop.example.com',
 		};
-		const built = (secrets: Record<string, string>) =>
+		const built = (
+			secrets: Record<string, string>,
+			config: { cdn?: boolean } = {},
+		) =>
 			deployed({
-				workspace: withS3(),
+				workspace: withS3(config),
 				allowDevServices: true,
 				images: { mode: 'build', tag: 'abc1234' },
 				secrets: production(secrets),
 			});
 
 		it("builds a site with each bucket's signed origin from its stored connection, never MinIO's", () => {
-			const args = app(built(STORED), 'web').build!.args!;
+			const s = built(STORED);
+			const args = app(s, 'web').build!.args!;
 
 			expect(args.VITE_UPLOADS_SIGNED_ORIGIN).toBe(
 				'https://compose-app-production-uploads.s3.eu-west-1.amazonaws.com',
 			);
 			expect(args.VITE_GKM_IMAGE_ORIGINS).toBe(
-				'https://compose-app-production-uploads.s3.eu-west-1.amazonaws.com,https://files.shop.example.com',
+				'https://compose-app-production-uploads.s3.eu-west-1.amazonaws.com,https://uploads.shop.example.com',
 			);
 			expect(JSON.stringify(args)).not.toContain('minio');
+			expect(s.warnings).toEqual([]);
+		});
+
+		it("builds a site with its file server on the stage's domain after the domain changed", () => {
+			// The deploy that rewrites the stored copy runs after this build.
+			const s = built({
+				...STORED,
+				UPLOADS_URL: 'https://uploads.old-shop.example.com',
+			});
+			const args = app(s, 'web').build!.args!;
+
+			expect(args.VITE_UPLOADS_URL).toBe('https://uploads.shop.example.com');
+			expect(args.VITE_GKM_IMAGE_ORIGINS).toBe(
+				'https://compose-app-production-uploads.s3.eu-west-1.amazonaws.com,https://uploads.shop.example.com',
+			);
+			expect(JSON.stringify(args)).not.toContain('old-shop');
+			// The API it calls links to the same host its pages allow.
+			expect(app(s, 'api').env!.UPLOADS_URL).toBe(
+				'https://uploads.shop.example.com',
+			);
+			expect(s.warnings).toEqual([
+				expect.stringMatching(
+					/UPLOADS_URL is stored as https:\/\/uploads\.old-shop\.example\.com[\s\S]*https:\/\/uploads\.shop\.example\.com/,
+				),
+			]);
+		});
+
+		it("keeps the bucket's own endpoint where the stage serves it without a CDN", () => {
+			const endpoint =
+				'https://compose-app-production-uploads.s3.eu-west-1.amazonaws.com';
+			const s = built({ ...STORED, UPLOADS_URL: endpoint }, { cdn: false });
+
+			expect(app(s, 'web').build!.args!.VITE_UPLOADS_URL).toBe(endpoint);
+			expect(s.warnings).toEqual([]);
 		});
 
 		it('refuses to build a site before the deploy wrote where it loads files from', () => {
-			// A CI image build ahead of the stage's first deploy.
+			// A CI image build ahead of the stage's first deploy: behind a CDN the
+			// file server's address is the stage's domain's, the signed origin
+			// still needs the bucket's connection.
 			expect(() => built({})).toThrow(SiteBuildValueUnresolved);
 			expect(() => built({})).toThrow(
-				/'Web' inlines UPLOADS_URL[\s\S]*gkm deploy --stage production/,
+				/UPLOADS_SIGNED_ORIGIN[\s\S]*no UPLOADS_CONNECTION_STRING[\s\S]*gkm deploy --stage production/,
 			);
-			// The file server's URL is there, the bucket's connection is not.
-			const { UPLOADS_CONNECTION_STRING, ...urlOnly } = STORED;
-			expect(() => built(urlOnly)).toThrow(
-				/UPLOADS_SIGNED_ORIGIN[\s\S]*no UPLOADS_CONNECTION_STRING/,
+			// On the bucket's own endpoint, only the deploy knows the address.
+			const { UPLOADS_URL, ...connectionOnly } = STORED;
+			expect(() => built(connectionOnly, { cdn: false })).toThrow(
+				/'Web' inlines UPLOADS_URL[\s\S]*gkm deploy --stage production/,
 			);
 		});
 

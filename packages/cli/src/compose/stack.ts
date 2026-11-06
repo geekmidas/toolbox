@@ -71,12 +71,14 @@ import {
 	SNS_SUBSCRIPTIONS_KEY,
 	subscriberRoute,
 } from '../generators/subscriberRoute.js';
+import { stageProvider } from '../providers/config.js';
 import { stageProviderNotes } from '../providers/notes.js';
 import {
 	ORIGIN_VERIFY_HEADER,
 	originSecretKey,
 	processorOriginHost,
 } from '../providers/processorOrigin.js';
+import { servesOnCdn } from '../providers/s3/config.js';
 import { networkEnv, processEnvKeys } from '../reconcile/apps.js';
 import {
 	hostFor,
@@ -133,11 +135,12 @@ import {
 } from '../trust/authority.js';
 import { DEFAULT_EVENTS } from '../types.js';
 import { appKey } from '../workspace/derive.js';
-import { fileServerLabel } from '../workspace/fileServerLabel.js';
+import { fileServerHost } from '../workspace/fileServerLabel.js';
 import type {
 	ComposeTlsConfig,
 	NormalizedAppConfig,
 	NormalizedWorkspace,
+	S3ObjectsConfig,
 } from '../workspace/types.js';
 import { CADDY_TLS_DIR, edgeCaddyfile } from './caddyfile.js';
 import { isReservedStageKey } from './dnsConfig.js';
@@ -653,6 +656,12 @@ export interface ComposeStack {
 	 * deployed stage never has one — a dev service's Mailpit stays internal.
 	 */
 	mailInbox?: StackMailInbox;
+	/**
+	 * What the stack resolved and says without refusing it: a file server's
+	 * stored address that its stage's domain disagrees with. Printed by
+	 * whatever composed it.
+	 */
+	warnings: string[];
 }
 
 /** The local stage's Mailpit inbox, as the edge serves it. */
@@ -1287,7 +1296,7 @@ export function composeStack(input: StackInput): ComposeStack {
 				host = hostFor(resource, workspace.name);
 			} else {
 				if (!domain) throw new NoDomainForStage(stage);
-				host = `${fileServerLabel(resource.id)}.${domain}`;
+				host = fileServerHost(resource.id, domain);
 			}
 			fileServers.set(resource.id, {
 				url: `https://${host}${local && https !== 443 ? `:${https}` : ''}`,
@@ -1300,6 +1309,65 @@ export function composeStack(input: StackInput): ComposeStack {
 				},
 			});
 		}
+	}
+
+	// What the stack says, without stopping, about a value it resolved.
+	const warnings: string[] = [];
+
+	// Where each file server answers on this stage. Derived wherever the
+	// stage's domain decides it — the stack's MinIO, or the CDN the s3
+	// provider puts in front of a bucket at the same host — so an image built
+	// ahead of the deploy that rewrites the stored copy (a domain change)
+	// inlines the domain it is built for. Otherwise it is what the stage
+	// stores: an address set by hand, or a bucket's own endpoint.
+	const objectsProvider = stageProvider(workspace, 'objects', stage);
+	const onCdn =
+		objectsProvider.mode === 'provider' &&
+		objectsProvider.name === 's3' &&
+		servesOnCdn(objectsProvider.config as S3ObjectsConfig);
+	const fileServerUrls = new Map<string, string>();
+	for (const resource of plan.resources) {
+		if (resource.kind !== 'file-server') continue;
+		const key = resource.envKey;
+		const stored = custom[key];
+		const inMinio = Boolean(
+			resource.of && services.minio.includes(resource.of),
+		);
+		const derived =
+			fileServers.get(resource.id)?.url ??
+			(!local && domain
+				? `https://${fileServerHost(resource.id, domain)}`
+				: undefined);
+
+		if (onCdn && !inMinio && derived) {
+			fileServerUrls.set(resource.id, derived);
+			if (stored !== undefined && stored !== derived) {
+				warnings.push(
+					`${key} is stored as ${stored}, and '${resource.id}' answers on ` +
+						`${derived} — its CDN on the stage's domain. The stack is built ` +
+						`and run with ${derived}; the deploy rewrites the stored copy.`,
+				);
+			}
+			continue;
+		}
+		if (stored !== undefined) {
+			fileServerUrls.set(resource.id, stored);
+			// Set by hand — an external file server, or one over the stack's
+			// MinIO — and kept. Said when the stage's domain gives another,
+			// which is what a previous domain's address looks like.
+			const byHand = inMinio || objectsProvider.mode === 'external';
+			if (byHand && derived && stored !== derived) {
+				warnings.push(
+					`${key} is set by hand to ${stored}, and kept. On the stage's ` +
+						`domain '${resource.id}' would answer on ${derived}; if ${stored} ` +
+						`is a previous domain's, set it again: gkm secrets:set ${key} ` +
+						`'${derived}' --stage ${stage}`,
+				);
+			}
+			continue;
+		}
+		const served = fileServers.get(resource.id)?.url;
+		if (served) fileServerUrls.set(resource.id, served);
 	}
 
 	// Behind the shared edge, the services it routes to are on a network
@@ -1406,8 +1474,10 @@ export function composeStack(input: StackInput): ComposeStack {
 		// and otherwise the dev service it runs, which `services` has already
 		// checked it may.
 		if (owner && SERVICE_KINDS[owner.kind]) {
+			// A file server's address is decided once, above, for every process
+			// and every site's build alike.
+			if (owner.kind === 'file-server') return fileServerUrls.get(owner.id);
 			if (custom[key] !== undefined) return custom[key];
-			if (owner.kind === 'file-server') return fileServers.get(owner.id)?.url;
 			if (owner.kind === 'objects') {
 				const origin = providedKeyFor(owner.id, owner.kind, 'signedOrigin');
 				if (key === origin) {
@@ -1988,12 +2058,10 @@ export function composeStack(input: StackInput): ComposeStack {
 		credential,
 		resolution: {
 			...derivation,
-			// A file server at its host on the edge, as the apps are handed it.
+			// A file server at its address, as the apps are handed it.
 			addresses: {
 				...publicAddresses,
-				...Object.fromEntries(
-					[...fileServers].map(([id, { url }]) => [id, url]),
-				),
+				...Object.fromEntries(fileServerUrls),
 			},
 		},
 		...(storage ? { storage } : {}),
@@ -2003,6 +2071,7 @@ export function composeStack(input: StackInput): ComposeStack {
 		...(redis ? { redis } : {}),
 		...(backups ? { backups } : {}),
 		...(mailInbox ? { mailInbox } : {}),
+		warnings,
 	};
 }
 

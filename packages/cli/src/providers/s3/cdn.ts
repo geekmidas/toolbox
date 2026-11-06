@@ -39,7 +39,7 @@ import type {
 } from '@aws-sdk/client-cloudfront';
 import { GkmError } from '../../errors';
 import { appKey } from '../../workspace/derive.js';
-import { fileServerLabel } from '../../workspace/fileServerLabel.js';
+import { fileServerHost } from '../../workspace/fileServerLabel.js';
 import type { S3ObjectsConfig } from '../../workspace/types.js';
 import { type AwsProvisioning, awsClientConfig, awsEndpoint } from '../aws.js';
 import { identityTags } from '../iam.js';
@@ -158,14 +158,6 @@ export class CdnCertificateFailed extends GkmError {
 // ---------------------------------------------------------------------------
 // Names and documents — pure
 // ---------------------------------------------------------------------------
-
-/**
- * Where a file server answers: its own name, `assets.<domain>` for
- * `AssetsServer` — see {@link fileServerLabel}.
- */
-export function cdnHost(serverId: string, domain: string): string {
-	return `${fileServerLabel(serverId)}.${domain}`.toLowerCase();
-}
 
 /**
  * The name the stage's CDN resources go by, within CloudFront's limits:
@@ -546,7 +538,7 @@ export async function ensureBucketCdn(
 		const { arn, url } = await ensureServerCdn(ctx, clients, {
 			...input,
 			server,
-			host: cdnHost(server.id, domain),
+			host: fileServerHost(server.id, domain),
 			processorHost: processorOriginHost(server.id, domain),
 		});
 		out.distributionArns.push(arn);

@@ -53,7 +53,7 @@ import type {
 	VerifyContext,
 } from '../types.js';
 import { ensureBucketCdn } from './cdn.js';
-import { checkS3Config, S3_PROVISIONING } from './config.js';
+import { checkS3Config, S3_PROVISIONING, servesOnCdn } from './config.js';
 import {
 	BucketNameUnavailable,
 	BucketOwnedByAnotherProject,
@@ -427,7 +427,7 @@ async function ensureBucket(
 	// Its file servers behind a CDN, unless the stage said not to — first,
 	// because the bucket's policy grants exactly the distributions it made.
 	const cdn =
-		ctx.config.cdn !== false && construct.servers.length > 0
+		servesOnCdn(ctx.config) && construct.servers.length > 0
 			? await ensureBucketCdn(ctx, {
 					bucket,
 					region: clients.region,
