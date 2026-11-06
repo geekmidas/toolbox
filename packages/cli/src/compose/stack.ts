@@ -79,6 +79,7 @@ import {
 	processorOriginHost,
 } from '../providers/processorOrigin.js';
 import { servesOnCdn } from '../providers/s3/config.js';
+import { plannedSignedOrigin } from '../providers/s3/plannedOrigin.js';
 import { networkEnv, processEnvKeys } from '../reconcile/apps.js';
 import {
 	hostFor,
@@ -1325,6 +1326,40 @@ export function composeStack(input: StackInput): ComposeStack {
 		objectsProvider.mode === 'provider' &&
 		objectsProvider.name === 's3' &&
 		servesOnCdn(objectsProvider.config as S3ObjectsConfig);
+	// Where each bucket the s3 provider has not created yet will sign its
+	// links: a site or mobile build inlines it, and a protected stage is built
+	// on every push, before the release that first deploys it writes the
+	// connection the origin is otherwise derived from.
+	const plannedOrigins = new Map<string, string>();
+	if (
+		!local &&
+		objectsProvider.mode === 'provider' &&
+		objectsProvider.name === 's3'
+	) {
+		for (const resource of plan.resources) {
+			if (resource.kind !== 'objects') continue;
+			if (services.minio.includes(resource.id)) continue;
+			const connection = providedKeyFor(
+				resource.id,
+				'objects',
+				'connectionString',
+			);
+			if (custom[connection] !== undefined) continue;
+			const origin = plannedSignedOrigin({
+				workspace,
+				stage,
+				scope: identity.scope,
+				config: objectsProvider.config as S3ObjectsConfig,
+				bucket: resource.id,
+			});
+			if (origin) {
+				plannedOrigins.set(
+					providedKeyFor(resource.id, 'objects', 'signedOrigin'),
+					origin,
+				);
+			}
+		}
+	}
 	const fileServerUrls = new Map<string, string>();
 	for (const resource of plan.resources) {
 		if (resource.kind !== 'file-server') continue;
@@ -1566,7 +1601,7 @@ export function composeStack(input: StackInput): ComposeStack {
 			const args = publicBuildValues(
 				site,
 				manifest,
-				(key) => valueFor(app, key, owners.get(key)),
+				(key) => valueFor(app, key, owners.get(key)) ?? plannedOrigins.get(key),
 				custom,
 				// Built here for a deployed stage, an image that cannot say where
 				// its pages load files from is refused — not shipped without it.
@@ -1629,7 +1664,7 @@ export function composeStack(input: StackInput): ComposeStack {
 			values: publicBuildValues(
 				declaration,
 				manifest,
-				(key) => valueFor(app, key, owners.get(key)),
+				(key) => valueFor(app, key, owners.get(key)) ?? plannedOrigins.get(key),
 				custom,
 			),
 		});

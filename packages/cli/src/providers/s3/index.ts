@@ -53,7 +53,12 @@ import type {
 	VerifyContext,
 } from '../types.js';
 import { ensureBucketCdn } from './cdn.js';
-import { checkS3Config, S3_PROVISIONING, servesOnCdn } from './config.js';
+import {
+	checkS3Config,
+	S3_PROVISIONING,
+	s3Region,
+	servesOnCdn,
+} from './config.js';
 import {
 	BucketNameUnavailable,
 	BucketOwnedByAnotherProject,
@@ -62,7 +67,6 @@ import {
 	BucketRegionUnknown,
 	ProvisionedBucketUnreachable,
 	RecordedBucketUnreachable,
-	S3RegionRequired,
 } from './errors.js';
 import {
 	type BucketWatcher,
@@ -92,6 +96,9 @@ import {
 
 type S3Module = typeof import('@aws-sdk/client-s3');
 type IamModule = typeof import('@aws-sdk/client-iam');
+
+// The providers that share the stage's region name it from here, as before.
+export { s3Region };
 
 type Ctx = EnsureContext<S3ObjectsConfig, AwsProvisioning>;
 
@@ -145,31 +152,6 @@ export function bucketConstructs(
 				.sort((a, b) => a.id.localeCompare(b.id)),
 		}))
 		.sort((a, b) => a.id.localeCompare(b.id));
-}
-
-/**
- * The region the stage's buckets are created in: the entry's, the secrets
- * store's when it is in AWS, the credential's, `AWS_REGION`.
- */
-export function s3Region(
-	ctx: Pick<Ctx, 'config' | 'workspace' | 'stage'> & {
-		credential?: AwsProvisioning;
-	},
-	env: NodeJS.ProcessEnv = process.env,
-): string {
-	const store = ctx.workspace.secrets?.store;
-	const storeRegion =
-		store && typeof store === 'object' && 'region' in store
-			? (store as { region?: string }).region
-			: undefined;
-	const region =
-		ctx.config.region ??
-		storeRegion ??
-		ctx.credential?.region ??
-		env.AWS_REGION ??
-		env.AWS_DEFAULT_REGION;
-	if (!region) throw new S3RegionRequired(ctx.stage);
-	return region;
 }
 
 /**
