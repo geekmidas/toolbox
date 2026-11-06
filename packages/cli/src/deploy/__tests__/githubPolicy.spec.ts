@@ -477,7 +477,9 @@ describe('deployAccess', () => {
 			expect(statements[2]!.Action).toContain('iam:CreateAccessKey');
 			expect(statements[2]!.Resource).toEqual([
 				'arn:aws:iam::111:user/gkm/gkm-shop-prod-alerts',
+				'arn:aws:iam::111:user/gkm-shop-prod-alerts',
 				'arn:aws:iam::111:user/gkm/gkm-shop-prod-mail',
+				'arn:aws:iam::111:user/gkm-shop-prod-mail',
 			]);
 		});
 
@@ -550,7 +552,9 @@ describe('deployAccess', () => {
 			expect(bySid.StageInboxUsers!.Action).toContain('iam:CreateAccessKey');
 			expect(bySid.StageInboxUsers!.Resource).toEqual([
 				'arn:aws:iam::111:user/gkm/gkm-shop-prod-requests-mail',
+				'arn:aws:iam::111:user/gkm-shop-prod-requests-mail',
 				'arn:aws:iam::111:user/gkm/gkm-shop-prod-support-mail',
+				'arn:aws:iam::111:user/gkm-shop-prod-support-mail',
 			]);
 		});
 
@@ -635,7 +639,9 @@ describe('deployAccess', () => {
 			]);
 			expect(statements[4]!.Resource).toEqual([
 				'arn:aws:iam::111:user/gkm/gkm-shop-prod-avatars',
+				'arn:aws:iam::111:user/gkm-shop-prod-avatars',
 				'arn:aws:iam::111:user/gkm/gkm-shop-prod-uploads',
+				'arn:aws:iam::111:user/gkm-shop-prod-uploads',
 			]);
 		});
 
@@ -757,7 +763,10 @@ describe('deployAccess', () => {
 					'iam:CreateAccessKey',
 					'iam:DeleteAccessKey',
 				],
-				Resource: 'arn:aws:iam::111:user/gkm/gkm-shop-prod-backups',
+				Resource: [
+					'arn:aws:iam::111:user/gkm/gkm-shop-prod-backups',
+					'arn:aws:iam::111:user/gkm-shop-prod-backups',
+				],
 			});
 			// Never a read of the backups themselves.
 			expect(
