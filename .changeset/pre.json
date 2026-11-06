@@ -73,6 +73,7 @@
     "compose-local-mail-inbox",
     "compose-local-traefik",
     "compose-logs",
+    "compose-planned-signed-origin",
     "compose-redis-cache",
     "compose-remote-docker",
     "compose-routes-before-health",
