@@ -259,6 +259,7 @@
     "telemetry-construct",
     "telemetry-metrics",
     "telemetry-propagation",
+    "telemetry-stored-root-login",
     "test-client-config",
     "test-db-teardown",
     "test-factories",
