@@ -379,6 +379,11 @@ export interface BuildOptions {
 	/** Overrides the deploy target's: a Dockerfile builds a server regardless. */
 	provider?: MainProvider;
 	/**
+	 * The workspace app to build, `webhooks` — set by an image whose app shares
+	 * its directory with another, where the directory alone names the first.
+	 */
+	app?: string;
+	/**
 	 * Overrides the target's cache backend for the drivers the entry
 	 * registers — set by the Dockerfiles `gkm compose` writes, whose stack runs
 	 * its own Redis.

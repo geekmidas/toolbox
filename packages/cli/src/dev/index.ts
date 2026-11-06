@@ -366,6 +366,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 				// which surface this app serves.
 				workspaceRoot: workspace?.root ?? secretsRoot,
 				appRoot,
+				app: workspaceAppName,
 				target: 'server',
 				enableOpenApi,
 				cacheBackend: cacheBackendFor(providerOf(workspace ?? config)),
@@ -515,6 +516,8 @@ export async function devCommand(options: DevOptions): Promise<void> {
 		appRoot,
 		secretsJsonPath,
 		initial.selfServing !== undefined,
+		// Where the build above wrote its entry.
+		initial.serverDir,
 	);
 
 	devServer.label = workspaceAppName ?? 'server';
@@ -1803,6 +1806,8 @@ class DevServer {
 		private secretsJsonPath?: string,
 		/** Whether `app.ts` is a surface serving itself rather than `createApp`. */
 		public selfServing = false,
+		/** The build's server output, which the entry is written into. */
+		private serverDir: string = join(appRoot, '.gkm', 'server'),
 	) {
 		this.actualPort = requestedPort;
 	}
@@ -1852,7 +1857,7 @@ class DevServer {
 			}
 		}
 
-		const serverEntryPath = join(this.appRoot, '.gkm', 'server', 'server.ts');
+		const serverEntryPath = join(this.serverDir, 'server.ts');
 
 		// Create server entry file
 		await this.createServerEntry();
@@ -1989,7 +1994,7 @@ class DevServer {
 	private async createServerEntry(): Promise<void> {
 		const { writeFile: fsWriteFile } = await import('node:fs/promises');
 
-		const serverPath = join(this.appRoot, '.gkm', 'server', 'server.ts');
+		const serverPath = join(this.serverDir, 'server.ts');
 
 		const content = generateServerEntryContent({
 			secretsJsonPath: this.secretsJsonPath,

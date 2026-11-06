@@ -166,6 +166,10 @@ program
 	.option('--skip-bundle', 'Skip bundling step in production build')
 	.option('--stage <stage>', 'Inject encrypted secrets for deployment stage')
 	.option(
+		'--app <name>',
+		'Build this workspace app, where its directory holds more than one',
+	)
+	.option(
 		'--mark-optional',
 		'Suffix optional env vars with ? in manifest envVars field (e.g. PORT?)',
 	)
@@ -185,6 +189,7 @@ program
 			production?: boolean;
 			skipBundle?: boolean;
 			stage?: string;
+			app?: string;
 			markOptional?: boolean;
 		}) => {
 			try {
@@ -206,6 +211,7 @@ program
 				await buildCommand({
 					...(options.provider ? { provider: options.provider } : {}),
 					...(options.cache ? { cache: options.cache } : {}),
+					...(options.app ? { app: options.app } : {}),
 					enableOpenApi: options.enableOpenapi || false,
 					production: options.production || false,
 					skipBundle: options.skipBundle || false,

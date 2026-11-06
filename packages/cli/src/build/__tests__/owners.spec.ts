@@ -72,4 +72,30 @@ export const api = new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'no
 		expect(context.surface?.id).toBe('Api');
 		expect(context.surface?.module?.exportName).toBe('api');
 	});
+
+	it('serves the surface the app is named for, when two share its directory', async () => {
+		await createTestFile(
+			dir,
+			'src/constructs/surfaces.ts',
+			`import { RestApi } from '@geekmidas/constructs/rest-api';
+
+export const api = new RestApi('Api', { path: 'apps/api', defaultAuthorizer: 'none' });
+export const webhooks = new RestApi('Webhooks', { path: 'apps/api', defaultAuthorizer: 'none' });
+`,
+		);
+		const found = await discovered();
+		const served = (app?: string) =>
+			ownersContext({
+				...found,
+				workspaceRoot: dir,
+				appRoot: join(dir, 'apps/api'),
+				...(app ? { app } : {}),
+			}).surface?.id;
+
+		expect(served('webhooks')).toBe('Webhooks');
+		expect(served('api')).toBe('Api');
+		// Named for nothing there, or not named: the first, as before.
+		expect(served('admin')).toBe('Api');
+		expect(served()).toBe('Api');
+	});
 });

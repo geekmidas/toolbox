@@ -10,7 +10,12 @@ import type { Subscriber } from '@geekmidas/constructs/subscribers';
 import type { Topic } from '@geekmidas/constructs/topic';
 import type { WebSocketRouteInfo } from '@geekmidas/manifest';
 import { type ConstructManifest, providedKeyFor } from '@geekmidas/manifest';
-import { loadAppConfig, loadConfig, loadWorkspaceConfig } from '../config';
+import {
+	loadAppConfig,
+	loadConfig,
+	loadWorkspaceConfig,
+	NotABackendApp,
+} from '../config';
 import {
 	normalizeHooksConfig,
 	normalizeProductionConfig,
@@ -90,6 +95,7 @@ import {
 import { writeStageTypes } from '../workspace/stageTypes.js';
 import { protectedSubdomains, wildcardSite } from '../workspace/subdomains.js';
 import type { StageTelemetryConfig } from '../workspace/types.js';
+import { appOutputDir, sharedDirectoryTree } from './outputDir';
 import { ownersContext, reachedBy, servedBy } from './owners';
 import {
 	selfServingSurface,
@@ -199,7 +205,9 @@ export async function buildCommand(
 			(app) => resolve(workspaceRoot, app.path) !== workspaceRoot,
 		);
 
-		if (isAtWorkspaceRoot && someAppIsElsewhere) {
+		// `--app` names one app to build, wherever the command runs — an image
+		// builds one app, and its directory may hold another.
+		if (isAtWorkspaceRoot && someAppIsElsewhere && !options.app) {
 			logger.log('📦 Detected workspace configuration');
 			return workspaceBuildCommand(loadedConfig.workspace, options);
 		}
@@ -208,25 +216,33 @@ export async function buildCommand(
 	// At the root there is no app to pick: the build reads every construct the
 	// globs find and writes one manifest and a spec per surface. Asking
 	// package.json which app this is was a question only a subdirectory has.
-	const config =
+	//
+	// In a subdirectory the app is the one whose path holds it — unless
+	// `--app` says which, because two apps can share one directory.
+	const { config, appName, appRoot } =
 		loadedConfig.type !== 'workspace'
-			? await loadConfig()
-			: resolve(process.cwd()) === resolve(loadedConfig.workspace.root)
-				? rootGkmConfig(loadedConfig.workspace)
-				: (await loadAppConfig()).gkmConfig;
+			? { config: await loadConfig(), appRoot: process.cwd() }
+			: options.app
+				? namedApp(loadedConfig.workspace, options.app)
+				: resolve(process.cwd()) === resolve(loadedConfig.workspace.root)
+					? {
+							config: rootGkmConfig(loadedConfig.workspace),
+							appRoot: process.cwd(),
+						}
+					: await appHere();
 
 	// Where it deploys decides what it builds: one Lambda per construct for
 	// AWS, one process for a server. `--provider` overrides it for a Dockerfile,
 	// which builds a server whatever the project deploys to.
 	const target = options.provider ?? providerOf(loadedConfig.workspace);
 	const workspaceRoot = loadedConfig.workspace.root;
-	const appRoot = process.cwd();
 
 	const output = await buildOneApp({
 		config,
 		options,
 		workspace: loadedConfig.workspace,
 		appRoot,
+		...(appName ? { appName } : {}),
 		target,
 	});
 
@@ -246,6 +262,41 @@ export async function buildCommand(
 	}
 
 	return output;
+}
+
+/** The app this directory is part of, by its path. */
+async function appHere(): Promise<{
+	config: GkmConfig;
+	appName: string;
+	appRoot: string;
+}> {
+	const { gkmConfig, appName } = await loadAppConfig();
+	return { config: gkmConfig, appName, appRoot: process.cwd() };
+}
+
+/** The app `--app` names, built from its own directory. */
+function namedApp(
+	workspace: NormalizedWorkspace,
+	appName: string,
+): { config: GkmConfig; appName: string; appRoot: string } {
+	const app = workspace.apps[appName];
+	if (!app) throw new UnknownBuildApp(appName, Object.keys(workspace.apps));
+	const config = getAppGkmConfig(workspace, appName);
+	if (!config) throw new NotABackendApp(appName);
+	return { config, appName, appRoot: join(workspace.root, app.path) };
+}
+
+/** `--app` named no app in the workspace. */
+export class UnknownBuildApp extends GkmError {
+	constructor(
+		readonly app: string,
+		readonly apps: readonly string[],
+	) {
+		super(
+			`'${app}' is not an app in this workspace. Pass --app with one of: ${apps.join(', ')}.`,
+		);
+		this.name = 'UnknownBuildApp';
+	}
 }
 
 /** What the workspace declares, read through a config's globs. */
@@ -276,9 +327,11 @@ async function buildOneApp(input: {
 	options: BuildOptions;
 	workspace: NormalizedWorkspace;
 	appRoot: string;
+	/** The workspace app being built, when it is known. */
+	appName?: string;
 	target: MainProvider;
 }): Promise<AppBuildOutput> {
-	const { config, options, workspace, appRoot, target } = input;
+	const { config, options, workspace, appRoot, appName, target } = input;
 
 	// One answer for which backends this app uses, read once — from the
 	// deploy target, which is the same place reconcile reads it. The build
@@ -316,6 +369,7 @@ async function buildOneApp(input: {
 		config,
 		workspaceRoot: workspace.root,
 		appRoot,
+		...(appName ? { app: appName } : {}),
 		target,
 		enableOpenApi: options.enableOpenApi ?? false,
 		cacheBackend,
@@ -337,6 +391,12 @@ export interface BuildAppInput {
 	workspaceRoot: string;
 	/** The app being built — the directory a surface's `path` names. */
 	appRoot: string;
+	/**
+	 * The workspace app being built, `webhooks`. Its directory alone does not
+	 * say: two surfaces can name one folder, and each is an app with its own
+	 * endpoints. Without it, the first app whose path is `appRoot`.
+	 */
+	app?: string;
 	/** Where the build deploys: one Lambda per construct, or one process. */
 	target: MainProvider;
 	enableOpenApi: boolean;
@@ -378,6 +438,11 @@ export interface BuildAppInput {
 }
 
 export interface AppBuildOutput extends BuildResult {
+	/**
+	 * Where its server's entry is written — `.gkm/server`, or a tree of its own
+	 * under it when its directory holds another surface. See `appOutputDir`.
+	 */
+	serverDir?: string;
 	/**
 	 * The surface the entry starts, when the app's surface serves itself — its
 	 * `app.ts` exports the construct's own `app`, with no `createApp` to call.
@@ -493,6 +558,10 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 
 	const constructGlobs = config.constructs;
 
+	// Which app this is: the caller's name for it, since its directory may
+	// hold another.
+	const appName = appNameOf(input);
+
 	// Discovery imports application code, so it runs once here and everything
 	// downstream reads what it wrote — a deploy config calling it would evaluate
 	// the whole runtime graph inside its own toolchain. It runs before the build
@@ -512,6 +581,13 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 			})
 		: {};
 
+	// Where its output goes — a tree of its own when another surface shares
+	// its directory.
+	const tree = sharedDirectoryTree(declared, workspaceRoot, appRoot, appName);
+	const outputOf = (target: MainProvider) =>
+		appOutputDir(appRoot, target, tree);
+	const serverDir = outputOf('server');
+
 	// A surface that serves itself is started, not generated for: its routes
 	// are the construct's, and the entry only has to call it.
 	const selfServing = selfServingSurface({
@@ -519,11 +595,12 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		sources: constructSources,
 		workspaceRoot,
 		appRoot,
+		app: appName,
 	});
 
 	if (selfServing) {
 		await writeSurfaceEntry(
-			join(appRoot, '.gkm', 'server'),
+			serverDir,
 			selfServing.source,
 			served[selfServing.id] ?? [],
 		);
@@ -532,19 +609,19 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		const telemetry = telemetryFor({
 			node: telemetryOf(declared, selfServing.id),
 			appRoot,
-			app: appNameOf(input),
+			app: appName,
 			cwd: workspaceRoot,
 			serviceName: selfServing.id,
 			...(input.workspaceName && { workspaceName: input.workspaceName }),
 		});
-		await writeTelemetryModule(join(appRoot, '.gkm', 'server'), telemetry);
+		await writeTelemetryModule(serverDir, telemetry);
 		logger.log(
 			`Generated a server for ${selfServing.id} from its own declaration`,
 		);
 
 		// An image needs a process that listens, which the dev entry is not.
 		if (production?.bundle && !input.skipBundle) {
-			const outputDir = join(appRoot, '.gkm', 'server');
+			const outputDir = serverDir;
 			const entryPoint = await writeSurfaceServer(outputDir, {
 				...production,
 				...(telemetry ? { telemetry } : {}),
@@ -563,7 +640,9 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 				external: production.external,
 				...(input.stage ? { stage: input.stage } : {}),
 			});
-			logger.log(`✅ Bundle complete: .gkm/server/dist/server.mjs`);
+			logger.log(
+				`✅ Bundle complete: ${relative(appRoot, join(outputDir, 'dist', 'server.mjs'))}`,
+			);
 		}
 
 		// On AWS a WebSocket surface is API Gateway's: a Lambda per route,
@@ -571,7 +650,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		const surface = declared[selfServing.id];
 		if (target === 'aws' && surface?.kind === 'websocket-api') {
 			const websocketRoutes = await writeWebSocketLambdas({
-				outputDir: join(appRoot, '.gkm', 'aws'),
+				outputDir: outputOf('aws'),
 				appRoot,
 				workspaceRoot,
 				surface: selfServing.source,
@@ -582,6 +661,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 			);
 			return {
 				selfServing: selfServing.id,
+				serverDir,
 				built: {
 					surface: selfServing.id,
 					routes: [],
@@ -594,7 +674,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 			};
 		}
 
-		return { selfServing: selfServing.id };
+		return { selfServing: selfServing.id, serverDir };
 	}
 
 	const derived = ownersContext({
@@ -602,6 +682,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		sources: constructSources,
 		workspaceRoot,
 		appRoot,
+		app: appName,
 		databaseApi,
 	});
 
@@ -657,7 +738,6 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 	// subscribers in this app's process, and an image build writes their
 	// entries beside its server's. Every app's glob finds every worker's work;
 	// only the one host runs it, so a second surface never does.
-	const appName = appNameOf(input);
 	const hosted = workerUnits(input.workspace, declared, background).filter(
 		(unit) => unit.app === appName,
 	);
@@ -756,7 +836,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 				servesOnly ? [] : hosted.map((unit) => unit.id),
 			),
 			appRoot,
-			app: appNameOf(input),
+			app: appName,
 			cwd: workspaceRoot,
 			serviceName: derived.surface?.id ?? basename(appRoot),
 			...(input.workspaceName && { workspaceName: input.workspaceName }),
@@ -783,7 +863,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		logger.log(
 			'No endpoints, functions, crons, subscribers, queues, or topics found to process',
 		);
-		return {};
+		return { serverDir };
 	}
 
 	if (servesOnly && production) {
@@ -793,10 +873,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 	// `gkm dev` serves the processors this app holds in its own process, under
 	// a route the local edge rewrites each pattern onto.
 	if (target === 'server' && !production?.enabled && hostedProcessors.length) {
-		await processorGenerator.buildDev(
-			join(appRoot, '.gkm', 'server'),
-			hostedProcessors,
-		);
+		await processorGenerator.buildDev(serverDir, hostedProcessors);
 		buildContext.devProcessors = true;
 	}
 
@@ -804,6 +881,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		target,
 		buildContext,
 		appRoot,
+		outputOf(target),
 		workspaceRoot,
 		endpointGenerator,
 		functionGenerator,
@@ -841,7 +919,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 				telemetryFor({
 					node: telemetryOf(declared, workerId),
 					appRoot,
-					app: appNameOf(input),
+					app: appName,
 					cwd: workspaceRoot,
 					serviceName: workerId,
 					...(input.workspaceName && {
@@ -849,7 +927,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 					}),
 				}),
 			workers: hosted,
-			serverDir: join(appRoot, '.gkm', 'server'),
+			serverDir,
 			crons: hostedCrons,
 			queues: hostedQueues,
 			subscribers: hostedSubscribers,
@@ -865,7 +943,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		processors = await processorGenerator.build(
 			buildContext,
 			hostedProcessors,
-			join(appRoot, '.gkm', target),
+			outputOf(target),
 			{ target, root: workspaceRoot },
 		);
 	} else if (production?.enabled) {
@@ -874,14 +952,14 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 			// in the declarations: the app's drivers cover it.
 			context: buildContext,
 			units: hostedUnits.map((unit) => unit.id),
-			serverDir: join(appRoot, '.gkm', 'server'),
+			serverDir,
 			processors: hostedProcessors,
 			// The file server's own edge decides, as a worker's does.
 			telemetry: (fileServerId) =>
 				telemetryFor({
 					node: telemetryOf(declared, fileServerId),
 					appRoot,
-					app: appNameOf(input),
+					app: appName,
 					cwd: workspaceRoot,
 					serviceName: fileServerId,
 					...(input.workspaceName && {
@@ -918,6 +996,7 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 
 	return {
 		...result,
+		serverDir,
 		...(buildContext.databaseApi
 			? { databaseApi: buildContext.databaseApi.path }
 			: {}),
@@ -1036,7 +1115,9 @@ async function buildWorkers(input: {
 			...(input.stage ? { stage: input.stage } : {}),
 			constructs: [...crons, ...queues, ...subscribers].map((c) => c.construct),
 		});
-		logger.log(`✅ Bundle complete: .gkm/server/dist/${outfile}`);
+		logger.log(
+			`✅ Bundle complete: ${relative(process.cwd(), join(input.serverDir, 'dist', outfile))}`,
+		);
 	}
 }
 
@@ -1098,7 +1179,9 @@ async function buildProcessors(input: {
 			...(input.stage ? { stage: input.stage } : {}),
 			constructs: processors.map((p) => p.construct),
 		});
-		logger.log(`✅ Bundle complete: .gkm/server/dist/${outfile}`);
+		logger.log(
+			`✅ Bundle complete: ${relative(process.cwd(), join(input.serverDir, 'dist', outfile))}`,
+		);
 	}
 	return infos;
 }
@@ -1126,8 +1209,12 @@ function clientTelemetry(options: {
 	return sampleRate === undefined ? {} : { telemetry: { sampleRate } };
 }
 
-/** The app being built, by its workspace name or its directory's. */
+/**
+ * The app being built: the one the caller named, else the workspace app
+ * whose path is the directory, else the directory's own name.
+ */
 function appNameOf(input: BuildAppInput): string {
+	if (input.app) return input.app;
 	const named = input.workspace
 		? Object.entries(input.workspace.apps).find(
 				([, app]) =>
@@ -1141,6 +1228,12 @@ async function buildForTarget(
 	target: MainProvider,
 	context: BuildContext,
 	appRoot: string,
+	/**
+	 * Where this app's handlers go — see `appOutputDir`. They live beside the
+	 * app they import. What they are goes into the application's manifest,
+	 * which the root writes, so every path is measured from there.
+	 */
+	outputDir: string,
 	workspaceRoot: string,
 	endpointGenerator: EndpointGenerator,
 	functionGenerator: FunctionGenerator,
@@ -1160,11 +1253,6 @@ async function buildForTarget(
 	skipBundle: boolean,
 	stage?: string,
 ): Promise<AppBuildOutput> {
-	// The handlers live beside the app they import. What they are goes into
-	// the application's manifest, which the root writes, so every path is
-	// measured from there.
-	const outputDir = join(appRoot, '.gkm', target);
-
 	// What an older build wrote and nothing writes now — the per-provider trees
 	// and an app-level manifest — would otherwise sit beside the real output
 	// forever, read by whoever opens `.gkm/` first.
@@ -1263,7 +1351,9 @@ async function buildForTarget(
 				constructs: allConstructs,
 			});
 			masterKey = bundleResult.masterKey;
-			logger.log(`✅ Bundle complete: .gkm/server/dist/server.mjs`);
+			logger.log(
+				`✅ Bundle complete: ${relative(appRoot, join(outputDir, 'dist', 'server.mjs'))}`,
+			);
 
 			// The key is written, not printed: it decrypts every secret of the
 			// stage, and build output lands in CI logs and scrollback. The
@@ -1463,6 +1553,7 @@ export async function workspaceBuildCommand(
 				options,
 				workspace,
 				appRoot: join(workspace.root, app.path),
+				appName,
 				target,
 			});
 			if (output.built) builds.push(output.built);

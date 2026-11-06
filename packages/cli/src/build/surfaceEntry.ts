@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join, relative, resolve } from 'node:path';
+import { join, relative } from 'node:path';
 import type { ConstructManifest } from '@geekmidas/manifest';
 import {
 	mountRequestSpansCode,
@@ -8,7 +8,7 @@ import {
 	writeTelemetryModule,
 } from '../generators/telemetry.js';
 import type { ConstructSource } from '../reconcile/discover.js';
-import { servedSurface } from './owners';
+import { surfaceAt } from './owners';
 
 /** A construct that builds its own server — `BetterAuth` and its routes. */
 interface ServesItself {
@@ -35,30 +35,17 @@ export function selfServingSurface(options: {
 	sources: Record<string, ConstructSource>;
 	workspaceRoot: string;
 	appRoot: string;
+	/** The workspace app being built, when its directory holds several. */
+	app?: string;
 }): { id: string; source: ConstructSource } | undefined {
-	const { declared, sources, workspaceRoot, appRoot } = options;
+	const { declared, sources, workspaceRoot, appRoot, app } = options;
 
-	const served =
-		servedSurface(declared, workspaceRoot, appRoot) ??
-		servedWebSocketApi(declared, workspaceRoot, appRoot);
+	const served = surfaceAt(declared, workspaceRoot, appRoot, app);
 	const source = served ? sources[served.id] : undefined;
 
 	if (!served || !source || !servesItself(source.construct)) return undefined;
 
 	return { id: served.id, source };
-}
-
-/** The WebSocket surface whose `path` is the directory being built. */
-function servedWebSocketApi(
-	declared: ConstructManifest,
-	workspaceRoot: string,
-	appRoot: string,
-): { id: string } | undefined {
-	return Object.values(declared).find(
-		(d) =>
-			d.kind === 'websocket-api' &&
-			resolve(workspaceRoot, d.path) === resolve(appRoot),
-	);
 }
 
 /** An import specifier for `file`, from `outputDir`, as the bundle sees it. */
