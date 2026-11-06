@@ -58,6 +58,7 @@ export {
 	siteTag,
 } from './images';
 export {
+	LogsLoginMissing,
 	LogsPasswordMissing,
 	LogsPasswordWeak,
 	OPENOBSERVE_IMAGE,

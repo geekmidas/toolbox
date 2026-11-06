@@ -520,8 +520,9 @@ short:
   it at `https://telemetry.<stage domain>` (the `Telemetry` construct's label) through the stack's edge, refusing every other
   address with 403, and publishes no port.
 
-The root password is generated on the first run and kept in the stage's
-secrets as `ZO_ROOT_USER_PASSWORD`. Every detail, and the tunnel and Tailscale
+The root login is stored on the first run, in the stage's secrets as
+`ZO_ROOT_USER_EMAIL` and `ZO_ROOT_USER_PASSWORD`, and read back on every run
+after — a domain change never changes it. Every detail, and the tunnel and Tailscale
 examples, is in [Deploy with Docker Compose → Telemetry](./compose.md#telemetry).
 
 Every `gkm compose` service's Docker logs are rotated (`json-file`, 3 × 10 MB),

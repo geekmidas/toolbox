@@ -4,6 +4,7 @@
  */
 
 import { isReservedStageKey } from '../compose/dnsConfig.js';
+import { LOGS_EMAIL_KEY } from '../compose/logs.js';
 import { secretsStoreFor } from '../secrets/store';
 import type { StageSecrets } from '../secrets/types';
 import type { NormalizedWorkspace } from '../workspace/types';
@@ -39,9 +40,10 @@ function secretValues(secrets: StageSecrets): string[] {
 	return [
 		secrets.seed,
 		// The server's address is not one: it is in public DNS, and the deploy
-		// prints it as the place it is deploying to.
+		// prints it as the place it is deploying to. Nor is the log UI's
+		// login, which it prints beside the way to the password.
 		...Object.entries(secrets.custom ?? {})
-			.filter(([key]) => !isReservedStageKey(key))
+			.filter(([key]) => !isReservedStageKey(key) && key !== LOGS_EMAIL_KEY)
 			.map(([, value]) => value),
 		...Object.values(secrets.urls ?? {}),
 		...Object.values(secrets.services ?? {}).map(

@@ -103,6 +103,14 @@ describe(
 			expect(said).not.toContain('-L 5080:');
 		});
 
+		it('prints the root login it stored, unmasked, beside the tunnel', async () => {
+			const { result, said } = await release({});
+
+			expect(result).not.toBeInstanceOf(Error);
+			expect(said).toContain('login: admin@shop.example.com,');
+			expect(said).not.toContain('login: ***');
+		});
+
 		it('keeps the port it already publishes on a redeploy', async () => {
 			const { result } = await release({
 				holders: { 5080: [STAGING] },
