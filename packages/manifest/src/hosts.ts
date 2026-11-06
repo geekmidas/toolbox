@@ -75,20 +75,40 @@ export function hostLabels(source: HostLabelSource): HostLabels {
 /** One label of a DNS name: lowercase letters, digits and inner hyphens. */
 const LABEL = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
-/** An alias or redirect that cannot be a label of its own under the domain. */
+/**
+ * A `subdomain`, alias or redirect that cannot be a label of its own under
+ * the domain.
+ */
 export class InvalidHostLabel extends Error {
 	constructor(
 		readonly id: string,
 		readonly label: string,
-		readonly field: 'aliases' | 'redirects',
+		readonly field: 'aliases' | 'redirects' | 'subdomain',
 	) {
 		super(
-			`'${id}' lists '${label}' in ${field}, which is not a host label it ` +
-				`can add: each entry is one lowercase label under the stage's ` +
-				`domain ('rest', 'www') — no '*', no dots — listed once, and not ` +
-				`the construct's own label. Fix or remove the entry.`,
+			field === 'subdomain'
+				? `'${id}' has subdomain: '${label}', which is not a host label: ` +
+						`it is one lowercase label under the stage's domain ` +
+						`('telemetry', 'logs') — letters, digits and inner hyphens, ` +
+						`no '*' and no dots.`
+				: `'${id}' lists '${label}' in ${field}, which is not a host label it ` +
+						`can add: each entry is one lowercase label under the stage's ` +
+						`domain ('rest', 'www') — no '*', no dots — listed once, and not ` +
+						`the construct's own label. Fix or remove the entry.`,
 		);
 		this.name = 'InvalidHostLabel';
+	}
+}
+
+/**
+ * A construct's own `subdomain`, checked where it is constructed: one label,
+ * never a wildcard — for a construct that cannot answer on every subdomain.
+ *
+ * @throws {InvalidHostLabel} for `'*'`, a dot, or anything not a DNS label
+ */
+export function assertSubdomainLabel(id: string, subdomain: string): void {
+	if (!LABEL.test(subdomain)) {
+		throw new InvalidHostLabel(id, subdomain, 'subdomain');
 	}
 }
 

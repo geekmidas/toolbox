@@ -517,7 +517,7 @@ short:
   yourself, in the project's `docker-compose.<stage>.yml`, which `gkm compose`
   merges over the stack it generates.
 - **Public, to some addresses**: `public: { allow: ['203.0.113.7'] }` serves
-  it at `https://logs.<stage domain>` through the stack's edge, refusing every other
+  it at `https://telemetry.<stage domain>` (the `Telemetry` construct's label) through the stack's edge, refusing every other
   address with 403, and publishes no port.
 
 The root password is generated on the first run and kept in the stage's

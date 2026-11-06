@@ -308,6 +308,27 @@ describe('aliases and redirects', () => {
 		expect(() => assertSubdomains(clash)).toThrow(HostLabelTaken);
 	});
 
+	it("claims a Telemetry node's label: no tenant takes it, and no app shares it", () => {
+		const observed = {
+			...manifest,
+			Telemetry: { kind: 'telemetry', id: 'Telemetry' },
+		} as ConstructManifest;
+		expect(protectedSubdomains(observed)).toContain('telemetry');
+
+		const clash = {
+			...observed,
+			Telemetry: { kind: 'telemetry', id: 'Telemetry', subdomain: 'api' },
+		} as ConstructManifest;
+		expect(() => assertSubdomains(clash)).toThrow(HostLabelTaken);
+
+		// Two nodes on one label are the stack's one log UI.
+		const two = {
+			...observed,
+			Traces: { kind: 'telemetry', id: 'Traces', subdomain: 'telemetry' },
+		} as ConstructManifest;
+		expect(() => assertSubdomains(two)).not.toThrow();
+	});
+
 	it("refuses an alias on a file server's host", () => {
 		const clash = {
 			...manifest,

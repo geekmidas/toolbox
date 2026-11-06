@@ -123,6 +123,7 @@ import {
 import {
 	isTelemetryKey,
 	scopeTelemetryEnv,
+	stackTelemetry,
 	telemetryOf,
 	usesTelemetry,
 } from '../telemetry/edges.js';
@@ -143,6 +144,8 @@ import { isReservedStageKey } from './dnsConfig.js';
 import { type AppImage, siteTag } from './images.js';
 import {
 	LOGS_SERVICE,
+	logsOnPort,
+	logsPorts,
 	logsService,
 	type StackLogs,
 	stackLogs,
@@ -1155,6 +1158,7 @@ export function composeStack(input: StackInput): ComposeStack {
 					local,
 					project: workspace.name,
 					...(domain ? { domain } : {}),
+					telemetry: stackTelemetry(manifest),
 					custom,
 					https,
 					...(local ? { localLogin: input.localCredentials!.logs } : {}),
@@ -2850,4 +2854,27 @@ export function envFile(env: Readonly<Record<string, string>>): string {
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([key, value]) => `${key}=${value}`)
 		.join('\n')}\n`;
+}
+
+/**
+ * The stack with its OpenObserve on another loopback port — the one its
+ * server has free for it, found before anything is written. Its UI's URL and
+ * its service's published port move together; nothing else reads the port.
+ */
+export function withLogsPort(stack: ComposeStack, port: number): ComposeStack {
+	if (!stack.logs) return stack;
+	const logs = logsOnPort(stack.logs, port);
+	const service = stack.compose.services[LOGS_SERVICE];
+	if (logs === stack.logs || !service) return stack;
+	return {
+		...stack,
+		logs,
+		compose: {
+			...stack.compose,
+			services: {
+				...stack.compose.services,
+				[LOGS_SERVICE]: { ...service, ...logsPorts(logs) },
+			},
+		},
+	};
 }

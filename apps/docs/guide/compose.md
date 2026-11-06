@@ -1730,7 +1730,7 @@ deploy: {
 
 | Option | Default | |
 | --- | --- | --- |
-| `port` | `5080` | the port it is published on — on `127.0.0.1` only |
+| `port` | the first free from `5080` | the port it is published on — on `127.0.0.1` only. Named, a deploy refuses it when another stack on the server holds it (`LogsPortTaken`) |
 | `retentionDays` | `30` | days of data kept (OpenObserve's `ZO_COMPACT_DATA_RETENTION_DAYS`); at least 3, which is OpenObserve's own minimum |
 | `public.allow` | — | serve it through the edge instead, to these IPs and CIDRs only |
 | `sampleRate` | `1` | `OTEL_TRACES_SAMPLER_ARG`, with `parentbased_traceidratio` |
@@ -1743,7 +1743,7 @@ taken.
 With it on, the stack adds:
 
 - an `openobserve` service (`public.ecr.aws/zinclabs/openobserve`, a pinned
-  version), its data in the `openobserve-data` volume — kept by
+  version, or the `image` the `Telemetry` construct names), its data in the `openobserve-data` volume — kept by
   `gkm compose --down`, as every volume is — with a health check and
   `restart: unless-stopped`. Its anonymous usage reporting is off;
 - in the env file of each process with an edge to the `Telemetry`
@@ -1803,6 +1803,26 @@ Host shop-logs
 
 `ssh -N shop-logs`, then open `http://localhost:5080`.
 
+**Two stages on one server.** Each stage's stack runs its own OpenObserve, so
+each needs its own loopback port. Before a deploy changes anything, it reads
+the ports every other stack on the server publishes:
+
+- with no `port` set, the stack keeps the port it already publishes, or takes
+  the first free one from `5080` up. A second stage on the box gets `5081`,
+  and its run prints that tunnel;
+- a `port` the stage names, held by another stack, fails the deploy with
+  `LogsPortTaken`, naming the stack that holds it.
+
+One `~/.ssh/config` entry can forward both:
+
+```
+Host shop-logs
+  HostName 203.0.113.10
+  User deploy
+  LocalForward 5080 localhost:5080   # production
+  LocalForward 5081 localhost:5081   # staging
+```
+
 **Why loopback: the ufw trap.** A port Docker publishes on every interface
 (`5080:5080`) is opened by Docker's own iptables rules, ahead of ufw's — so
 `ufw deny 5080` does not close it, and `ufw status` does not show it open. A
@@ -1836,13 +1856,24 @@ telemetry: {
 }
 ```
 
-serves it through the stack's edge at `https://logs.<stage domain>`, with a certificate
+serves it through the stack's edge at `https://telemetry.<stage domain>`, with a certificate
 like every other host. Caddy answers only the listed addresses — matched on
 the connection's own address, never a header — and every other gets 403. No
 host port is published. `allow` must name at least one address; an empty one
 fails with `LogsAllowEmpty`, and an entry that is not an IP or a CIDR with
-`LogsAllowEntryInvalid`. Point `logs.<stage domain>` at the machine, as you
-did the apps' hosts.
+`LogsAllowEntryInvalid`. The host is DNS-planned and checked with the apps'
+hosts.
+
+The label is the `Telemetry` construct's, the same on every stage: its id
+kebab-cased, or the `subdomain` it names. Like any app's label it is claimed,
+so no app, alias or tenant can take it:
+
+```ts
+export const telemetry = new Telemetry('Telemetry', {
+  subdomain: 'logs',  // https://logs.<stage domain>
+  image: 'public.ecr.aws/zinclabs/openobserve:v1.0.4', // optional
+});
+```
 
 ### A hosted OTLP backend instead
 

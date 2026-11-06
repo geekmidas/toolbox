@@ -11,9 +11,11 @@
 
 import {
 	type ConstructManifest,
+	hostLabels,
 	TELEMETRY_KEYS,
 	type TelemetryDeclaration,
 } from '@geekmidas/manifest';
+import { GkmError } from '../errors.js';
 import { appKey } from '../workspace/derive.js';
 import type { StageTelemetryConfig } from '../workspace/types.js';
 import { stageSampleRate } from './config.js';
@@ -175,4 +177,62 @@ export function siteClientTelemetry(
 		!stage || stage === workspace.stages.local,
 	);
 	return sampleRate === undefined ? undefined : { sampleRate };
+}
+
+/** The label a log UI answers on when the workspace declares no `Telemetry`. */
+const DEFAULT_TELEMETRY_ID = 'Telemetry';
+
+/**
+ * Two `Telemetry` nodes declare different labels or images for the one
+ * OpenObserve a stack runs.
+ */
+export class TelemetryNodesDisagree extends GkmError {
+	constructor(
+		readonly field: 'subdomain' | 'image',
+		readonly ids: readonly string[],
+	) {
+		super(
+			`A stack runs one OpenObserve for every Telemetry node, and ` +
+				`${ids.join(', ')} give it different ${field === 'subdomain' ? 'labels' : 'images'}. ` +
+				`Give each the same ${field}${field === 'subdomain' ? ' (each defaults to its id kebab-cased)' : ''}.`,
+		);
+		this.name = 'TelemetryNodesDisagree';
+	}
+}
+
+/**
+ * The stack's one OpenObserve, as the workspace's `Telemetry` nodes declare
+ * it: the label its UI answers on (`hostLabels`: `subdomain`, else the id
+ * kebab-cased) and the image it runs, where a node names one.
+ *
+ * @throws {TelemetryNodesDisagree} when two nodes declare different ones
+ */
+export function stackTelemetry(manifest: ConstructManifest): {
+	label: string;
+	image?: string;
+} {
+	const nodes = Object.values(manifest)
+		.filter((d): d is TelemetryDeclaration => d.kind === 'telemetry')
+		.sort((a, b) => a.id.localeCompare(b.id));
+	const labels = [
+		...new Set(
+			(nodes.length ? nodes : [{ id: DEFAULT_TELEMETRY_ID }]).map(
+				(node) => hostLabels(node).primary,
+			),
+		),
+	];
+	if (labels.length > 1) {
+		throw new TelemetryNodesDisagree(
+			'subdomain',
+			nodes.map((node) => node.id),
+		);
+	}
+	const images = [...new Set(nodes.flatMap((node) => node.image ?? []))];
+	if (images.length > 1) {
+		throw new TelemetryNodesDisagree(
+			'image',
+			nodes.filter((node) => node.image).map((node) => node.id),
+		);
+	}
+	return { label: labels[0]!, ...(images[0] ? { image: images[0] } : {}) };
 }

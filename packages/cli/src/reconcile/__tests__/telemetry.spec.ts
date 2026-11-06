@@ -125,6 +125,23 @@ describe('reconcile, with a Telemetry construct', () => {
 			sql: () => ({ query: async () => [] }),
 		});
 
+	it('runs the image the node names', async () => {
+		const { docker } = fakeDocker();
+		await run(
+			{
+				...used,
+				Telemetry: { ...TELEMETRY, image: 'registry.example.com/oo:v2' },
+			} as ConstructManifest,
+			'development',
+			docker,
+		);
+
+		const compose = parse(await readFile(join(root, COMPOSE_PATH), 'utf-8'));
+		expect(compose.services.openobserve.image).toBe(
+			'registry.example.com/oo:v2',
+		);
+	});
+
 	it('adds OpenObserve to the dev services when a process uses the node', async () => {
 		const { docker, up } = fakeDocker();
 		const result = await run(used, 'development', docker);

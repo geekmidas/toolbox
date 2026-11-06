@@ -78,7 +78,13 @@ import {
 	pinImages,
 	RegistryRequired,
 } from '../../compose/images';
-import { LOGS_SERVICE, logsAccess, type StackLogs } from '../../compose/logs';
+import {
+	LOGS_SERVICE,
+	LogsPortTaken,
+	logsAccess,
+	type StackLogs,
+} from '../../compose/logs';
+import { LOGS_PORT } from '../../compose/logsConfig';
 import { ComposeTlsFileMissing } from '../../compose/proxy';
 import { REDIS_SERVICE } from '../../compose/redis';
 import { deployedStackSecrets } from '../../compose/secrets';
@@ -105,6 +111,7 @@ import {
 	type StackInput,
 	stackDir,
 	withCaddyConfigs,
+	withLogsPort,
 } from '../../compose/stack';
 import { EDGE_PROJECT, EDGE_SERVICE } from '../../compose/traefik';
 import { currentActor } from '../../deploy/actor.js';
@@ -734,6 +741,7 @@ export async function readyCompose(
 		await deps.server.check(run.server);
 	}
 	await edgeHostsFree(ctx, run, deps);
+	await logsPortOnServer(ctx, run, deps);
 	const prune = await stageHostsDns(
 		ctx,
 		deps,
@@ -768,6 +776,79 @@ async function edgeHostsFree(
 		stack.project,
 		stack.traefik,
 	);
+}
+
+/** How many ports past the first a stage's OpenObserve is tried on. */
+const LOGS_PORT_TRIES = 100;
+
+/**
+ * The loopback port the stack's OpenObserve is published on, settled against
+ * what every other stack on the server publishes — before anything is
+ * written, so two stages on one machine cannot both take `5080` and fail at
+ * `up`.
+ *
+ * - A port the stage named is refused when another project holds it.
+ * - Otherwise the stack keeps the port it already publishes, or takes the
+ *   first from the default up that no other project holds — and the stack,
+ *   its tunnel line included, is moved onto it.
+ *
+ * Asked of the server's engine, so not on a dry run, a push, or the local
+ * stage; nor for a log UI served through the edge, which publishes nothing.
+ *
+ * @throws {LogsPortTaken}
+ */
+async function logsPortOnServer(
+	ctx: ComposeContext,
+	run: ComposeRun,
+	deps: ComposeDeps,
+): Promise<void> {
+	const logs = run.stack.logs;
+	if (!logs || logs.public || run.stack.local) return;
+	if (ctx.dryRun || run.push || !run.server) return;
+
+	const engine = run.ref.host ? { host: run.ref.host } : {};
+	const project = run.ref.project;
+	const holder = async (port: number) => {
+		const others = (await deps.docker.publishers(engine, port)).filter(
+			(held) => held.project !== project,
+		);
+		return others[0] && (others[0].project ?? others[0].container);
+	};
+
+	if (logs.portSet) {
+		const taken = await holder(logs.port);
+		if (taken) throw new LogsPortTaken(ctx.stage, logs.port, taken, true);
+		return;
+	}
+
+	const kept = await deps.docker.published(
+		engine,
+		project,
+		LOGS_SERVICE,
+		LOGS_PORT,
+	);
+	let port = kept;
+	if (port === undefined) {
+		let taken: string | undefined;
+		for (let next = logs.port; next < logs.port + LOGS_PORT_TRIES; next++) {
+			taken = await holder(next);
+			if (!taken) {
+				port = next;
+				break;
+			}
+		}
+		if (port === undefined) {
+			throw new LogsPortTaken(ctx.stage, logs.port, taken ?? '', false);
+		}
+	}
+	if (port !== logs.port) {
+		ctx.logger.info(
+			kept === undefined
+				? `📜 OpenObserve: ${logs.port} is another stack's on this server, so "${ctx.stage}" publishes ${port}`
+				: `📜 OpenObserve: "${ctx.stage}" keeps ${port}, the port it already publishes`,
+		);
+		run.stack = withLogsPort(run.stack, port);
+	}
 }
 
 /** A stack whose caches are in Redis, built for an app that has no client. */

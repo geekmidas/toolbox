@@ -1,6 +1,7 @@
 import {
 	dependenciesOf,
 	dependentsOf,
+	InvalidHostLabel,
 	PUBLIC,
 	publicEnvFor,
 } from '@geekmidas/manifest';
@@ -49,6 +50,31 @@ describe('Telemetry', () => {
 		expect(new Telemetry('telemetry').declare()).toEqual([
 			{ kind: 'telemetry', id: 'Telemetry', provides: OTEL_KEYS },
 		]);
+	});
+
+	it('declares the label its log UI answers on and the image that runs it', () => {
+		const telemetry = new Telemetry('Telemetry', {
+			subdomain: 'logs',
+			image: 'public.ecr.aws/zinclabs/openobserve:v1.1.0',
+		});
+
+		expect(telemetry.declare()).toEqual([
+			{
+				kind: 'telemetry',
+				id: 'Telemetry',
+				subdomain: 'logs',
+				image: 'public.ecr.aws/zinclabs/openobserve:v1.1.0',
+				provides: OTEL_KEYS,
+			},
+		]);
+	});
+
+	it('refuses a subdomain that is not one label', () => {
+		for (const subdomain of ['*', 'logs.ops', 'Logs']) {
+			expect(() => new Telemetry('Telemetry', { subdomain })).toThrow(
+				InvalidHostLabel,
+			);
+		}
 	});
 
 	it('is never part of a site’s public values', () => {

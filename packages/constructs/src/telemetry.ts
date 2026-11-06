@@ -25,6 +25,7 @@
  */
 
 import {
+	assertSubdomainLabel,
 	type ConstructName,
 	canonicalId,
 	type Declaration,
@@ -46,6 +47,20 @@ export interface TelemetryConfig {
 	 * them: it is the app's, set per process.
 	 */
 	attributes?: Readonly<Record<string, string>>;
+	/**
+	 * The label the log UI answers on under the stage's domain, where a stage
+	 * serves it publicly (`deploy.telemetry.<stage>.public`). Defaults to the
+	 * id kebab-cased — `telemetry.<stage domain>` for `Telemetry`.
+	 *
+	 * Here rather than in the stage's config because it is the same on every
+	 * stage; whether it is served, and to whom, is the stage's.
+	 */
+	subdomain?: string;
+	/**
+	 * The image the self-hosted provider runs — OpenObserve, taken verbatim.
+	 * Defaults to the version gkm pins.
+	 */
+	image?: string;
 }
 
 export class Telemetry<TName extends string = string>
@@ -54,17 +69,25 @@ export class Telemetry<TName extends string = string>
 	readonly id: TName;
 	readonly ignorePaths: readonly string[];
 	readonly attributes: Readonly<Record<string, string>>;
+	readonly subdomain: string | undefined;
+	readonly image: string | undefined;
 
 	constructor(id: ConstructName<TName>, config: TelemetryConfig = {}) {
 		this.id = canonicalId(id as string) as TName;
+		if (config.subdomain !== undefined) {
+			assertSubdomainLabel(this.id, config.subdomain);
+		}
 		this.ignorePaths = [...(config.ignorePaths ?? [])];
 		this.attributes = { ...config.attributes };
+		this.subdomain = config.subdomain;
+		this.image = config.image;
 	}
 
 	/**
-	 * One node, providing OpenTelemetry's own variables. No address of its
-	 * own: where the telemetry goes is the deploy's, so it is resolved by the
-	 * target for each stage, never declared here.
+	 * One node, providing OpenTelemetry's own variables. Where the telemetry
+	 * goes is the deploy's, resolved by the target for each stage; what is
+	 * declared is only what is the same on every stage — the log UI's label
+	 * and the image that runs it.
 	 */
 	declare(): Declaration[] {
 		return [
@@ -75,6 +98,8 @@ export class Telemetry<TName extends string = string>
 				...(Object.keys(this.attributes).length
 					? { attributes: this.attributes }
 					: {}),
+				...(this.subdomain ? { subdomain: this.subdomain } : {}),
+				...(this.image ? { image: this.image } : {}),
 				provides: [...TELEMETRY_KEYS],
 			},
 		];

@@ -24,8 +24,13 @@ export const LOGS_MIN_RETENTION_DAYS = 3;
 export interface ResolvedLogs {
 	/** The loopback port it is published on. Not published when `public` is set. */
 	port: number;
+	/**
+	 * Whether the stage named `port`. One it named is refused when another
+	 * stack on its server holds it; the default moves to a free one instead.
+	 */
+	portSet?: true;
 	retentionDays: number;
-	/** Served on `logs.<stage domain>`, to these addresses only. */
+	/** Served on the construct's label under the stage's domain, to these addresses only. */
 	public?: { allow: string[] };
 }
 
@@ -129,5 +134,9 @@ export function resolveSelfHosted(
 		return { port, retentionDays, public: { allow: [...allow] } };
 	}
 
-	return { port, retentionDays };
+	return {
+		port,
+		retentionDays,
+		...(config.port !== undefined ? { portSet: true as const } : {}),
+	};
 }
