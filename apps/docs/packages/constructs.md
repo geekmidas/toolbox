@@ -154,6 +154,14 @@ depends on `assets.server` instead, which is the bucket, its credentials and
 `ASSETS_URL`. A backend's plain edge is already that. See
 [Edges and Environment](../guide/edges.md#what-each-side-of-an-edge-gets).
 
+An `ObjectStorage` splits the same way. A site's or a mobile app's plain
+`.dependsOn([documents])` gets where the bucket signs its links,
+`DOCUMENTS_SIGNED_ORIGIN` (inlined as `<PREFIX>DOCUMENTS_SIGNED_ORIGIN`), and
+no connection or credentials: its `documents` client's methods throw
+`ObjectStorageReadOnly`. A server half that uploads or presigns depends on
+`documents.server`, the connection and the AWS key pair as well. A backend's
+plain edge is already the full one, and a backend cannot depend on `.server`.
+
 **Next images.** A Next site builds `images.remotePatterns` from the
 workspace rather than a hand-kept list:
 

@@ -71,7 +71,7 @@ const manifest = {
 		id: 'Shop',
 		variant: 'next',
 		app: { path: 'apps/shop' },
-		dependencies: [{ target: 'Uploads', kind: 'objects' }],
+		dependencies: [{ target: 'Uploads', kind: 'objects', server: true }],
 		provides: ['SHOP_URL'],
 	},
 } as unknown as ConstructManifest;
@@ -130,6 +130,94 @@ describe('appEnvKeys', () => {
 		expect(keys).toContain('UPLOADS_CONNECTION_STRING');
 		expect(keys).toContain('UPLOADS_URL');
 		expect(keys).toContain('AWS_ACCESS_KEY_ID');
+	});
+});
+
+describe('an edge to an ObjectStorage', () => {
+	const buckets = {
+		Documents: {
+			kind: 'objects',
+			id: 'Documents',
+			provides: ['DOCUMENTS_CONNECTION_STRING'],
+		},
+		Api: {
+			kind: 'rest-api',
+			id: 'Api',
+			path: 'apps/api',
+			endpoints: [
+				{
+					id: 'ApiGET/documents',
+					handler: 'endpoints/documents.ts#list',
+					method: 'GET',
+					path: '/documents',
+					dependencies: [{ target: 'Documents', kind: 'objects' }],
+				},
+			],
+			provides: ['API_URL'],
+		},
+		// Shows the presigned links the API mints: `.dependsOn([documents])`.
+		Web: {
+			kind: 'site',
+			id: 'Web',
+			variant: 'next',
+			app: { path: 'apps/web' },
+			dependencies: [{ target: 'Documents', kind: 'objects' }],
+			provides: ['WEB_URL'],
+		},
+		App: {
+			kind: 'mobile-app',
+			id: 'App',
+			variant: 'expo',
+			app: { path: 'apps/app' },
+			dependencies: [{ target: 'Documents', kind: 'objects' }],
+			provides: ['APP_SCHEME'],
+		},
+		// Uploads from its server half: `.dependsOn([documents.server])`.
+		Admin: {
+			kind: 'site',
+			id: 'Admin',
+			variant: 'next',
+			app: { path: 'apps/admin' },
+			dependencies: [{ target: 'Documents', kind: 'objects', server: true }],
+			provides: ['ADMIN_URL'],
+		},
+	} as unknown as ConstructManifest;
+
+	const writes = [
+		'DOCUMENTS_CONNECTION_STRING',
+		'AWS_ACCESS_KEY_ID',
+		'AWS_SECRET_ACCESS_KEY',
+		'AWS_REGION',
+	];
+
+	it("gives a site's plain edge the signed origin, and nothing that writes", () => {
+		const keys = appEnvKeys(buckets, 'web')!;
+
+		expect(keys).toContain('DOCUMENTS_SIGNED_ORIGIN');
+		expect(keys).toContain('NEXT_PUBLIC_DOCUMENTS_SIGNED_ORIGIN');
+		for (const key of writes) expect(keys).not.toContain(key);
+	});
+
+	it("gives a mobile app's plain edge the signed origin, and nothing that writes", () => {
+		const keys = appEnvKeys(buckets, 'app')!;
+
+		expect(keys).toContain('EXPO_PUBLIC_DOCUMENTS_SIGNED_ORIGIN');
+		for (const key of writes) expect(keys).not.toContain(key);
+	});
+
+	it("gives a site's .server edge the connection, the key pair and the signed origin", () => {
+		const keys = appEnvKeys(buckets, 'admin')!;
+
+		for (const key of writes) expect(keys).toContain(key);
+		expect(keys).toContain('DOCUMENTS_SIGNED_ORIGIN');
+		expect(keys).toContain('NEXT_PUBLIC_DOCUMENTS_SIGNED_ORIGIN');
+		expect(keys).not.toContain('NEXT_PUBLIC_DOCUMENTS_CONNECTION_STRING');
+	});
+
+	it("leaves a backend's plain edge the full one", () => {
+		const keys = appEnvKeys(buckets, 'api')!;
+
+		for (const key of writes) expect(keys).toContain(key);
 	});
 });
 

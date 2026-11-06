@@ -235,7 +235,7 @@ describe('FileServer.server', () => {
 
 		expect(uploads.server.id).toBe('Uploads');
 		expect(web.declare()[0]).toMatchObject({
-			dependencies: [{ target: 'Uploads', kind: 'objects' }],
+			dependencies: [{ target: 'Uploads', kind: 'objects', server: true }],
 		});
 	});
 
@@ -249,7 +249,9 @@ describe('FileServer.server', () => {
 			new StaticSite('Web', { path: 'apps/web' })
 				.dependsOn([cdn.server])
 				.declare()[0],
-		).toMatchObject({ dependencies: [{ target: 'Files', kind: 'objects' }] });
+		).toMatchObject({
+			dependencies: [{ target: 'Files', kind: 'objects', server: true }],
+		});
 	});
 });
 

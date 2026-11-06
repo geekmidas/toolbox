@@ -41,7 +41,7 @@ address too, through the edge.
 | `RestApi` (an auth server included) | `<T>_URL` | from a `MobileApp` caller: `<C>_SCHEME`<br>from a site caller: `<C>_URL` |
 | `WebSocketApi` | `<T>_URL`; a server process also gets `<T>_PUBLISHER_CONNECTION_STRING` | same as a `RestApi` |
 | `Queue`, `Topic` | its keys, and `EVENT_PUBLISHER_CONNECTION_STRING` | nothing |
-| `ObjectStorage` | its keys (`<T>_CONNECTION_STRING`, `<T>_SIGNED_ORIGIN`), the `<F>_URL` of each file server over it, and `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` | nothing |
+| `ObjectStorage` | from a server process: its keys (`<T>_CONNECTION_STRING`), the `<F>_URL` of each file server over it, and `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`<br>from a `StaticSite` or `MobileApp`: `<T>_SIGNED_ORIGIN` (and the `<F>_URL` of each file server over it) only, no connection and no credentials; through `.dependsOn([documents.server])`, the connection and the key pair too | nothing |
 | `FileServer` | from a server process: its bucket's keys, as for `ObjectStorage`, and its own `<T>_URL`<br>from a `StaticSite` or `MobileApp`: `<T>_URL` and its bucket's `<B>_SIGNED_ORIGIN` only, no connection and no credentials; through `.dependsOn([assets.server])`, the bucket's keys too | nothing |
 | `Inbox` | its keys (and, locally, the token Mailpit relays mail with) | nothing |
 | a database, schema, reader, cache, secret, credential, external API, mail, encryption, `Telemetry` | its keys | nothing |
@@ -59,6 +59,15 @@ Some notes on the table:
   `FileServerReadOnly`. A full-stack site whose server half uploads or
   presigns asks for the bucket by name, `.dependsOn([assets.server])`. A
   backend's plain edge is to the bucket already, so it never needs `.server`.
+- **A frontend's plain edge to a bucket is to where its links are signed.**
+  A site or a mobile app that depends on `documents` (an `ObjectStorage`)
+  gets `DOCUMENTS_SIGNED_ORIGIN`, inlined as `<PREFIX>DOCUMENTS_SIGNED_ORIGIN`
+  and in `<PREFIX>GKM_IMAGE_ORIGINS`, so its pages can show the presigned
+  links an API mints. Nothing that writes to the bucket comes with it: its
+  `documents` client's methods throw `ObjectStorageReadOnly`. A server half
+  that uploads or presigns depends on `documents.server`, which is the
+  connection, the key pair and the signed origin. `.server` is not something
+  a backend can depend on: its plain edge is already the full one.
 - **The edge is one hop.** An app that calls the API gets `API_URL`, not the
   API's database.
 - **`.auth(auth)` is an edge** to the auth server, just like `.dependsOn([auth])`.

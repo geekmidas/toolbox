@@ -347,8 +347,11 @@ export class StaticSite<TName extends string = string>
 	 *
 	 * A plain edge to a `FileServer` is to its public face: the site is built
 	 * with the address its objects are served on, and handed nothing that
-	 * writes to the bucket. `.dependsOn([assets.server])` asks for the bucket
-	 * too, for a server half that uploads.
+	 * writes to the bucket. A plain edge to an `ObjectStorage` is to where its
+	 * links are signed (`<PREFIX><T>_SIGNED_ORIGIN`), and to nothing else of
+	 * it. `.dependsOn([assets.server])` or `.dependsOn([documents.server])`
+	 * asks for the bucket and its credentials too, for a server half that
+	 * uploads or presigns.
 	 */
 	dependsOn(constructs: readonly Declarable[]): StaticSite<TName> {
 		return new StaticSite<TName>(this.id as ConstructName<TName>, this.config, [

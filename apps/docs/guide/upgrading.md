@@ -12,6 +12,24 @@ gkm upgrade --all
 `10.0.0-alpha.x` project), never goes backwards, and with `--all` also raises
 third-party packages to the floor of the peer ranges the new version declares.
 
+## After 10.0.0-alpha.170: a frontend's plain edge to a bucket holds no credentials {#frontend-bucket-edge}
+
+A site's or a mobile app's plain `.dependsOn([documents])` on an
+`ObjectStorage` used to hand its server half `DOCUMENTS_CONNECTION_STRING`
+and the AWS key pair. It now holds `DOCUMENTS_SIGNED_ORIGIN` only (inlined as
+`<PREFIX>DOCUMENTS_SIGNED_ORIGIN`, and in `<PREFIX>GKM_IMAGE_ORIGINS`), on
+every command: `gkm dev`, `gkm test`, `gkm exec`, builds and compose.
+
+- **A site whose server half uploads, presigns or reads through the bucket**
+  moves to `.dependsOn([documents.server])`, which is the connection, the key
+  pair and the signed origin. Otherwise its `documents` client's methods
+  throw `ObjectStorageReadOnly`, which names `.server`.
+- **A site that only shows the presigned links an API mints** changes
+  nothing.
+- **A backend's edges do not change**, and a backend cannot depend on
+  `.server`. See
+  [Edges and Environment](./edges.md#what-each-side-of-an-edge-gets).
+
 ## After 10.0.0-alpha.166: a bucket's connection and a file server's address are renamed {#bucket-connection-string}
 
 `_URL` now always means an address a browser opens. A bucket's connection and

@@ -71,6 +71,17 @@ export interface Dependency<TTarget extends ConstructId = ConstructId> {
 	 */
 	target: TTarget;
 	kind: DeclarationKind;
+	/**
+	 * A frontend's edge to a construct's server half — `documents.server`,
+	 * `assets.server` — rather than its plain one.
+	 *
+	 * A site's or a mobile app's plain edge to a bucket hands it where the
+	 * bucket's links are signed and nothing that writes to it; this edge hands
+	 * its server half the connection and the key pair too
+	 * (`reachesServerHalf`). Meaningless on a server process's edge, whose
+	 * plain edge is already the full one.
+	 */
+	server?: true;
 }
 
 /** Anything with a handler. */

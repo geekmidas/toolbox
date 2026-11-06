@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { ConstructManifest, SiteDeclaration } from '../declaration';
+import type {
+	ConstructManifest,
+	Declaration,
+	SiteDeclaration,
+} from '../declaration';
 import {
 	dependenciesOf,
 	imageOriginSources,
@@ -7,6 +11,7 @@ import {
 	provisionOrder,
 	publicEnvFor,
 	publicValues,
+	reachesServerHalf,
 } from '../derive';
 import { cloudName, cookieDomain, providedKeyFor } from '../naming';
 
@@ -223,5 +228,24 @@ describe('publicValues', () => {
 		expect(
 			new Set(publicValues(site('next', ['Assets']), files).map((v) => v.key)),
 		).toEqual(new Set(expected.map((v) => v.key)));
+	});
+});
+
+describe('reachesServerHalf', () => {
+	const bucket = { target: 'Documents', kind: 'objects' } as const;
+	const server = { ...bucket, server: true } as const;
+	const api = { kind: 'rest-api', id: 'Api' } as unknown as Declaration;
+	const app = { kind: 'mobile-app', id: 'App' } as unknown as Declaration;
+
+	it("is every server process's edge, plain or not", () => {
+		expect(reachesServerHalf(api, bucket)).toBe(true);
+		expect(reachesServerHalf(api, server)).toBe(true);
+	});
+
+	it("is a frontend's edge only when it named the server half", () => {
+		for (const frontend of [site('next', []), app]) {
+			expect(reachesServerHalf(frontend, bucket)).toBe(false);
+			expect(reachesServerHalf(frontend, server)).toBe(true);
+		}
 	});
 });

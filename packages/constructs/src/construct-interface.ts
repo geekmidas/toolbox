@@ -117,10 +117,38 @@ export interface HasPublicFace {
 }
 
 /**
- * The edge a frontend — a site or a mobile app — has to a construct: its
- * public face where it has one, the construct itself otherwise.
+ * A construct's server half, as a frontend names it: `documents.server`,
+ * `assets.server`.
+ *
+ * A `Declarable` and not a `Consumable`, so only a site or a mobile app can
+ * depend on it — a backend's plain edge is already the full one. A frontend's
+ * plain edge to a bucket holds where its links are signed and nothing that
+ * writes to it; this one hands its server half the connection and the key
+ * pair too.
+ */
+export interface ServerHalf extends Declarable {
+	readonly serverHalf: true;
+}
+
+/** `construct`, as the server half a frontend's edge can name. */
+export function serverHalfOf(construct: Declarable): ServerHalf {
+	const declarations = construct.declare();
+	return {
+		id: construct.id,
+		declare: () => declarations,
+		serverHalf: true,
+	};
+}
+
+/**
+ * The edge a frontend — a site or a mobile app — has to a construct: to its
+ * server half when it named one (`.server`, marked `server: true`), to its
+ * public face where it has one, to the construct itself otherwise.
  */
 export function frontendEdgeTo(construct: Declarable): Dependency {
+	if ((construct as Partial<ServerHalf>).serverHalf) {
+		return { ...edgeTo(construct), server: true };
+	}
 	const face = (construct as Partial<HasPublicFace>).publicFace;
 	return edgeTo(face ?? construct);
 }

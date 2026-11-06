@@ -27,6 +27,8 @@ import {
 	providedKeyFor,
 	provisionOrder,
 	publicEnvFor,
+	publicValues,
+	reachesServerHalf,
 	TELEMETRY_KEYS,
 } from '@geekmidas/manifest';
 import {
@@ -221,7 +223,10 @@ export function networkEnv(
  * - `queue`, `topic`: the caller gets the target's `provides` and
  *   `EVENT_PUBLISHER_CONNECTION_STRING`. The target gets nothing.
  * - `objects`: the target's `provides`, its file server's, and the S3 key
- *   pair (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`).
+ *   pair (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`). A site
+ *   or mobile app gets `<T>_SIGNED_ORIGIN` and nothing else on its plain
+ *   edge, and all of it, signed origin included, on `.server`
+ *   (`reachesServerHalf`).
  * - `inbox`: the target's `provides`, and the local relay token.
  * - anything else (a database, cache, secret, credential, external API…):
  *   the target's `provides`. The target gets nothing.
@@ -278,8 +283,18 @@ export function appEnvKeys(
 	]);
 
 	// A surface's own edges and its endpoints' — every route it serves.
-	const edges = dependenciesOf(declaration).map((edge) => edge.target);
-	addEdgeKeys(manifest, edges, keys, isPublicDeclaration(declaration));
+	const client = isPublicDeclaration(declaration);
+	// A frontend's plain edge to a bucket is to where the bucket's links are
+	// signed — one of its public values, below — and to nothing that writes
+	// to it. `.server` asks for the rest.
+	const edges = dependenciesOf(declaration)
+		.filter(
+			(edge) =>
+				manifest[edge.target]?.kind !== 'objects' ||
+				reachesServerHalf(declaration, edge),
+		)
+		.map((edge) => edge.target);
+	addEdgeKeys(manifest, edges, keys, client);
 
 	// The other direction: who calls this surface, by the identity it links
 	// and redirects back to (`APP_SCHEME`, `WEB_URL`).
@@ -287,7 +302,7 @@ export function appEnvKeys(
 		for (const key of callerKeys(manifest, id)) keys.add(key);
 	}
 
-	if (isPublicDeclaration(declaration)) {
+	if (client) {
 		// A site's edge to a `Telemetry` node hands it none of the node's keys:
 		// an exporter's endpoint and headers are a server's, and a site's
 		// environment is a bundle's.
@@ -295,6 +310,9 @@ export function appEnvKeys(
 		for (const key of Object.keys(publicEnvFor(declaration, manifest))) {
 			keys.add(key);
 		}
+		// And each unprefixed, for its server half: `<T>_SIGNED_ORIGIN` on
+		// either edge to a bucket, a file server's address.
+		for (const { key } of publicValues(declaration, manifest)) keys.add(key);
 	}
 
 	return keys;

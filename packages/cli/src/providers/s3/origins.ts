@@ -39,12 +39,14 @@ export interface BucketOrigins {
 }
 
 /**
- * The keys a reader of this bucket holds: its connection, and each server's
- * address over it.
+ * The keys a reader of this bucket holds: its connection, where it signs its
+ * links (all a site's plain edge to it holds), and each server's address over
+ * it.
  */
 export function bucketKeys(manifest: ConstructManifest, bucket: string) {
 	return [
 		providedKeyFor(bucket, 'objects', 'connectionString'),
+		providedKeyFor(bucket, 'objects', 'signedOrigin'),
 		...Object.entries(manifest)
 			.filter(([, d]) => d.kind === 'file-server' && d.of === bucket)
 			.map(([id]) => providedKeyFor(id, 'file-server', 'url')),
