@@ -1,5 +1,16 @@
 # @geekmidas/cloud
 
+## 10.0.0-alpha.171
+
+### Patch Changes
+
+- Updated dependencies [[`aa317b1`](https://github.com/geekmidas/toolbox/commit/aa317b1bf07ad85e1b9d7b4fdb373e60c1e1092e), [`abffb23`](https://github.com/geekmidas/toolbox/commit/abffb2309652bfd805e7d59b212e2df09b0a095c)]:
+  - @geekmidas/manifest@10.0.0-alpha.171
+  - @geekmidas/db@10.0.0-alpha.171
+  - @geekmidas/envkit@10.0.0-alpha.171
+  - @geekmidas/events@10.0.0-alpha.171
+  - @geekmidas/storage@10.0.0-alpha.171
+
 ## 10.0.0-alpha.170
 
 ### Patch Changes

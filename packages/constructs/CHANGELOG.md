@@ -1,5 +1,48 @@
 # @geekmidas/constructs
 
+## 10.0.0-alpha.171
+
+### Patch Changes
+
+- [#428](https://github.com/geekmidas/toolbox/pull/428) [`aa317b1`](https://github.com/geekmidas/toolbox/commit/aa317b1bf07ad85e1b9d7b4fdb373e60c1e1092e) Thanks [@geekmidas](https://github.com/geekmidas)! - **Security:** a site's or mobile app's plain edge to an `ObjectStorage` no longer hands it the bucket's credentials. `.server` is how it asks for them.
+
+  | Caller                               | `.dependsOn([documents])`                                                                                                              | `.dependsOn([documents.server])`                                                |
+  | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+  | an API, a worker, any server process | the bucket's connection and the AWS key pair (unchanged)                                                                               | n/a: the plain edge is already the full one                                     |
+  | a `StaticSite` or `MobileApp`        | `DOCUMENTS_SIGNED_ORIGIN` only, inlined as `<PREFIX>DOCUMENTS_SIGNED_ORIGIN` and in `GKM_IMAGE_ORIGINS`. No connection, no credentials | the connection and the AWS key pair for the server half, plus the signed origin |
+
+  - **A site that only shows presigned links holds nothing that writes.** Before, the server half of a site with a plain edge to a bucket held `<T>_CONNECTION_STRING`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_REGION`, on every command (`gkm dev`, `test`, `exec`, compose). Now it holds the signed origin alone, and its `documents` client's methods throw `ObjectStorageReadOnly`, which names `.server`.
+  - **`ObjectStorage.server`** is a `Declarable`, the same shape as `FileServer.server`, so only a frontend can depend on it. A frontend's edge to a construct's server half is recorded as `server: true` on the manifest's `Dependency`, and `reachesServerHalf()` in `@geekmidas/manifest` is the one rule every command derives a process's keys by.
+  - ⬆️ **Upgrading:** a site whose server half uploads, presigns or reads through a plain edge to a bucket moves to `.dependsOn([documents.server])`. A backend's edges do not change.
+
+- [#426](https://github.com/geekmidas/toolbox/pull/426) [`abffb23`](https://github.com/geekmidas/toolbox/commit/abffb2309652bfd805e7d59b212e2df09b0a095c) Thanks [@geekmidas](https://github.com/geekmidas)! - Self-hosted telemetry: the parts that are the same on every stage move to the `Telemetry` construct, and two stages on one server no longer clash on the logs port.
+
+  - 💥 **Breaking for `public` log UIs:** the host is the construct's label, `telemetry.<stage domain>` for `new Telemetry('Telemetry')`, instead of the hardcoded `logs.<stage domain>`. The next deploy plans the new DNS record and certificate. To keep the old host, set `subdomain: 'logs'`.
+  - `Telemetry` takes `subdomain` (checked as one DNS label, `InvalidHostLabel`) and `image` (the OpenObserve image, verbatim, for both `gkm dev` and compose; defaults to the pinned one).
+  - The telemetry label is claimed like an app's: an app, alias or wildcard tenant on it fails with `HostLabelTaken`, and a `protectedSubdomains` entry repeating it with `ProtectedSubdomainIsAnApp`.
+  - **Logs port on a shared server:** before anything changes, a deploy reads what other stacks on the server publish.
+    - With no `deploy.telemetry.<stage>.port`, the stack keeps the port it already publishes, or takes the first free one from 5080 up, and prints that tunnel.
+    - A port the stage names that another stack holds fails with `LogsPortTaken`.
+  - Two `Telemetry` nodes that give the stack's one OpenObserve different labels or images fail with `TelemetryNodesDisagree`.
+
+- Updated dependencies [[`aa317b1`](https://github.com/geekmidas/toolbox/commit/aa317b1bf07ad85e1b9d7b4fdb373e60c1e1092e), [`abffb23`](https://github.com/geekmidas/toolbox/commit/abffb2309652bfd805e7d59b212e2df09b0a095c)]:
+  - @geekmidas/manifest@10.0.0-alpha.171
+  - @geekmidas/audit@10.0.0-alpha.171
+  - @geekmidas/auth@10.0.0-alpha.171
+  - @geekmidas/cache@10.0.0-alpha.171
+  - @geekmidas/db@10.0.0-alpha.171
+  - @geekmidas/emailkit@10.0.0-alpha.171
+  - @geekmidas/envkit@10.0.0-alpha.171
+  - @geekmidas/errors@10.0.0-alpha.171
+  - @geekmidas/events@10.0.0-alpha.171
+  - @geekmidas/logger@10.0.0-alpha.171
+  - @geekmidas/rate-limit@10.0.0-alpha.171
+  - @geekmidas/schema@10.0.0-alpha.171
+  - @geekmidas/services@10.0.0-alpha.171
+  - @geekmidas/storage@10.0.0-alpha.171
+  - @geekmidas/telescope@10.0.0-alpha.171
+  - @geekmidas/testkit@10.0.0-alpha.171
+
 ## 10.0.0-alpha.170
 
 ### Patch Changes
