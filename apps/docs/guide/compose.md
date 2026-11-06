@@ -150,15 +150,20 @@ arguments its Dockerfile declares:
 `gkm exec -- next build` has the same values locally, so a site that builds on
 your machine builds in the image.
 
-So for a release, `gkm compose --build --push` pushes:
+So a site's image belongs to one stage, and so does every other image: two
+builds of one commit are never the same image, so a tag two stages pushed
+would belong to whichever push finished last. Every image carries the stage in
+its tag. For a release, `gkm compose --build --push` pushes:
 
 | App | Image |
 | --- | --- |
-| an API | `ghcr.io/acme/shop/shop-api:v1.4.0` |
-| a site, per stage | `ghcr.io/acme/shop/shop-web:v1.4.0-production`, `…:v1.4.0-staging` |
+| an API | `ghcr.io/acme/shop/shop-api:v1.4.0-production`, `…:v1.4.0-staging` |
+| a site | `ghcr.io/acme/shop/shop-web:v1.4.0-production`, `…:v1.4.0-staging` |
 
-and `gkm compose --stage production --tag v1.4.0` pulls exactly those. A site
-built by `gkm compose` without a tag is tagged `<commit>-<stage>` the same way.
+and `gkm compose --stage production --tag v1.4.0` pulls exactly the
+`-production` ones. An image built by `gkm compose` without a tag is tagged
+`<commit>-<stage>` the same way, and `gkm deploy --target dokploy` names its
+images by the same rule.
 
 ## The server
 
@@ -330,8 +335,8 @@ gkm compose --stage production --tag $SHA --digests-file digests.json
 ```
 
 `--build --push` builds every image the stack needs exactly as a deploy of the
-stage would — each backend and worker at `<tag>`, each site at
-`<tag>-<stage>` with the stage's public URLs — pushes each to
+stage would — every image at `<tag>-<stage>`, a site with the stage's public
+URLs — pushes each to
 `deploy.registry`, and prints every pushed ref with the digest the registry
 stored. Nothing else happens: no stage lock, no infrastructure, no
 provisioning, migrations or seeds, no container started, no secret generated and
@@ -346,11 +351,15 @@ written the bucket's URL. `--push` without `--build`, or with `--pull`, is
 
 `--digests-file <path>` writes each pushed image as JSON, `{ "api":
 "<ref>@sha256:…" }`. Handed the same file, a pull runs each image at its digest
-rather than its tag, so a tag moved after the push cannot change what is
+rather than its tag, and asks the registry for it by digest alone
+(`<image>@sha256:…`), so a tag moved after the push cannot change what is
 released, and the stage's state records the pinned ref.
 
 A file missing an app is `ImageDigestMissing`, and an entry for another image
-or tag `ImageDigestMismatch` — both before the registry is asked.
+or tag `ImageDigestMismatch` — both before the registry is asked. A pinned
+digest the registry will not give, while its tag answers, is
+`PinnedImageMoved`: the tag names another image now, which is not a login
+problem.
 
 ### A GitHub Actions workflow
 

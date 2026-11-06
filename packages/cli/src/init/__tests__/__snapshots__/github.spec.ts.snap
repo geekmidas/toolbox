@@ -127,8 +127,8 @@ jobs:
           role-to-assume: \${{ vars.AWS_ROLE_ARN }}
           aws-region: \${{ needs.stages.outputs.aws-region }}
 
-      # Builds and pushes every image the stage runs, tagged with the commit,
-      # and starts nothing.
+      # Builds and pushes every image the stage runs, tagged with the commit
+      # and the stage (<sha>-<stage>), and starts nothing.
       - name: Build and push
         run: pnpm exec gkm compose --stage "$STAGE" --build --push --tag "$SHA" --digests-file digests.json
         env:

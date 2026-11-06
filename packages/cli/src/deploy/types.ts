@@ -9,7 +9,7 @@ export interface DeployOptions {
 	provider: DeployProvider;
 	/** Deployment stage (e.g., 'production', 'staging') */
 	stage: string;
-	/** Image tag (default: stage-timestamp) */
+	/** Release tag (default: the deploy's timestamp); images add the stage. */
 	tag?: string;
 	/** Skip pushing image to registry */
 	skipPush?: boolean;

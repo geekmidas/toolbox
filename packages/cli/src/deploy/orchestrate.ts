@@ -50,7 +50,7 @@ import type { DeployResult } from './types';
 export interface DeployRequest {
 	/** Deployment stage (e.g., 'production', 'staging') */
 	stage: string;
-	/** Image tag (default: stage-timestamp) */
+	/** Release tag (default: the deploy's timestamp); images add the stage. */
 	tag?: string;
 	/** Specific apps to deploy (default: all) */
 	apps?: string[];
@@ -155,11 +155,11 @@ export class RollbackFailed extends Error {
 }
 
 /**
- * Generate image tag from stage and timestamp
+ * A release tag for a deploy given none: the moment it started. Each target
+ * puts the stage on it for the images it builds (`stageTag`).
  */
-export function generateTag(stage: string): string {
-	const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-	return `${stage}-${timestamp}`;
+export function generateTag(): string {
+	return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 }
 
 /** Why an app that deploys through another target is left out. */
@@ -565,7 +565,7 @@ async function prepare(
 		request.tag ??
 		(resolved.target.tag
 			? await resolved.target.tag({ cwd: workspace.root, stage })
-			: generateTag(stage));
+			: generateTag());
 
 	// The apps asked for, in dependency order.
 	const buildOrder = getAppBuildOrder(workspace);

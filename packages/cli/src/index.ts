@@ -1035,7 +1035,7 @@ program
 	)
 	.option(
 		'--tag <tag>',
-		'Image tag (default: stage-timestamp; compose: the commit). Compose pulls a given tag',
+		'Release tag (default: a timestamp; compose: the commit). Each image is tagged <tag>-<stage>. Compose pulls a given tag',
 	)
 	.option('--skip-push', 'Skip pushing image to registry')
 	.option('--skip-build', 'Skip build step (use existing build)')
