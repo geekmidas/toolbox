@@ -153,6 +153,53 @@ export function opensKmsKeys(
 }
 
 /**
+ * Whether an entry reaches a bucket: an `objects`, or a file server that
+ * serves one. Only answerable from a reach that is complete — one Lambda
+ * handler's — which is why a server's entry still asks the dependency.
+ */
+export function readsObjects(
+	manifest: Record<string, { kind: string }>,
+): boolean {
+	return Object.values(manifest).some(
+		(d) => d.kind === 'objects' || d.kind === 'file-server',
+	);
+}
+
+/**
+ * Whether one Lambda handler speaks the broker: it reaches a topic or a
+ * queue. Not {@link eventsBackendsIn}, whose worker-beside-a-database rule is
+ * a server scheduling its crons through pg-boss — on AWS a cron is an
+ * EventBridge rule, and a handler that publishes nothing loads no broker.
+ */
+export function handlerEventsBackends(
+	manifest: Record<string, { kind: string }>,
+	configured: EventsBackend,
+): EventsBackend[] {
+	return Object.values(manifest).some(
+		(d) => d.kind === 'topic' || d.kind === 'queue',
+	)
+		? [configured]
+		: [];
+}
+
+/**
+ * The drivers one generated handler registers: its own, where the build
+ * worked them out from what the construct reaches, else the app's.
+ */
+export function driversOf(
+	context: {
+		storageDrivers?: RuntimeDrivers;
+		handlerDrivers?: (construct: {
+			owner?: string;
+			constructs?: readonly string[];
+		}) => RuntimeDrivers | undefined;
+	},
+	construct: { owner?: string; constructs?: readonly string[] },
+): RuntimeDrivers | undefined {
+	return context.handlerDrivers?.(construct) ?? context.storageDrivers;
+}
+
+/**
  * Everything a generated entry should register: object storage, the cache,
  * the events broker and the KMS cipher.
  *
@@ -179,12 +226,18 @@ export function driversFor(options: {
 	kms?: boolean;
 	/** Whether it publishes through API Gateway — see {@link publishesToApiGateway}. */
 	apiGatewayWebSockets?: boolean;
+	/**
+	 * Whether it reads or writes objects — see {@link readsObjects}. Absent
+	 * means it may, so the S3 driver is registered wherever
+	 * `@geekmidas/storage` is installed.
+	 */
+	storage?: boolean;
 }): RuntimeDrivers {
 	const backends = listOf(options.cache);
 	const brokers = listOf(options.events);
 
 	const parts = [
-		storageDriversFor(options.appRoot),
+		...(options.storage === false ? [] : [storageDriversFor(options.appRoot)]),
 		...[...new Set(backends)].map(
 			(backend) => CACHE_DRIVERS[backend] ?? CACHE_DRIVERS[DEFAULT_CACHE.aws],
 		),

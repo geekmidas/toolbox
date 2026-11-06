@@ -9,6 +9,7 @@ import {
 } from '../reconcile/edges.js';
 import { INBOX_RELAY_TOKEN_KEY, INBOX_ROUTE } from '../reconcile/inboxRelay';
 import type { SubscriberInfo } from '../types';
+import { driversOf } from './drivers.js';
 import { runtimeFor } from './EndpointGenerator.js';
 import {
 	ConstructGenerator,
@@ -81,7 +82,7 @@ export class SubscriberGenerator extends ConstructGenerator<
 				path.relative,
 				key,
 				construct,
-				context,
+				{ ...context, storageDrivers: driversOf(context, construct) },
 				construct.owner,
 			);
 

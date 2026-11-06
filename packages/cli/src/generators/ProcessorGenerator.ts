@@ -8,6 +8,7 @@ import {
 	ORIGIN_VERIFY_HEADER,
 	PROCESSOR_ORIGIN_SECRET_ENV,
 } from '../providers/processorOrigin';
+import { driversOf } from './drivers';
 import {
 	ConstructGenerator,
 	type GeneratedConstruct,
@@ -71,12 +72,13 @@ export class ProcessorGenerator extends ConstructGenerator<
 				/\.ts$/,
 				'.js',
 			);
+			const drivers = driversOf(context, construct);
 			await writeFile(
 				file,
 				`import { AWSLambdaProcessor } from '@geekmidas/constructs/processors';
 import { ${key} } from '${importPath}';
-${context.storageDrivers?.imports ?? ''}
-${context.storageDrivers?.setup ? `\n// The handler registers the drivers its target needs.\n${context.storageDrivers.setup}\n` : ''}
+${drivers?.imports ?? ''}
+${drivers?.setup ? `\n// The handler registers the drivers its target needs.\n${drivers.setup}\n` : ''}
 const adapter = new AWSLambdaProcessor(${key});
 
 export const handler = adapter.handler;

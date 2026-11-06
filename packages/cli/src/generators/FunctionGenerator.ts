@@ -3,6 +3,7 @@ import { dirname, join, relative } from 'node:path';
 import { Function } from '@geekmidas/constructs/functions';
 import type { BuildContext } from '../build/types';
 import type { FunctionInfo } from '../types';
+import { driversOf } from './drivers.js';
 import { runtimeFor } from './EndpointGenerator.js';
 import {
 	ConstructGenerator,
@@ -46,7 +47,7 @@ export class FunctionGenerator extends ConstructGenerator<
 				functionsDir,
 				path.relative,
 				key,
-				context,
+				{ ...context, storageDrivers: driversOf(context, construct) },
 				construct.owner,
 			);
 

@@ -5,7 +5,17 @@ import {
 	dependenciesOf,
 	providedKeyFor,
 } from '@geekmidas/manifest';
+import {
+	cacheBackendsIn,
+	driversFor,
+	handlerEventsBackends,
+	opensKmsKeys,
+	publishesToApiGateway,
+	type RuntimeDrivers,
+	readsObjects,
+} from '../generators/drivers.js';
 import { type ConstructSource, consumedBy } from '../reconcile/discover.js';
+import type { CacheBackend, EventsBackend } from '../types.js';
 import { appKey } from '../workspace/derive.js';
 import { type BuildContext, DEV_DATABASE_API_PATH } from './types';
 
@@ -216,4 +226,74 @@ export function reachedBy(
 	return Object.fromEntries(
 		Object.entries(declared).filter(([id]) => reached.has(id)),
 	);
+}
+
+/**
+ * The declarations one Lambda handler reaches: its owner — the surface or
+ * worker it was built from — with that owner's own edges, and what the
+ * runnable itself depends on or consumes. The same reach `reachedBy` gives a
+ * process, for a process that runs exactly one construct.
+ *
+ * A surface's own edges, not its routes': `dependenciesOf` folds every
+ * endpoint's edges into its surface's, which is right for a server running
+ * them all and wrong for a Lambda running one — a handler that reaches no
+ * topic would register a broker because a sibling route publishes.
+ *
+ * Undefined where the owner is unknown — a construct from a free-standing
+ * builder, or one whose owner was not discovered — so the caller can fall
+ * back to the drivers of the whole app rather than guess.
+ */
+export function reachedByHandler(
+	declared: ConstructManifest,
+	construct: { owner?: string; constructs?: readonly string[] },
+): ConstructManifest | undefined {
+	if (!construct.owner) return undefined;
+	const ownerId = declared[construct.owner]
+		? construct.owner
+		: canonicalId(construct.owner);
+	const owner = declared[ownerId];
+	if (!owner) return undefined;
+
+	const own =
+		owner.kind === 'rest-api'
+			? { ...owner, endpoints: [] }
+			: owner.kind === 'websocket-api'
+				? { ...owner, routes: [] }
+				: owner;
+	// A processor reads its file server's bucket, as it does under `gkm dev`.
+	const processes =
+		owner.kind === 'file-server' ? [ownerId, owner.of] : [ownerId];
+
+	return reachedBy({ ...declared, [ownerId]: own }, processes, [{ construct }]);
+}
+
+/**
+ * The drivers each AWS handler registers, from {@link reachedByHandler}: the
+ * cache's, the broker's, the KMS cipher, the API Gateway sink and S3, each
+ * only where the construct reaches what needs it.
+ *
+ * Undefined for a construct whose reach is unknown, so the generator falls
+ * back to the app's whole set — the safe answer, and the old one.
+ */
+export function handlerDriversFor(options: {
+	declared: ConstructManifest;
+	appRoot: string;
+	cacheBackend: CacheBackend;
+	eventsBackend: EventsBackend;
+}): (construct: {
+	owner?: string;
+	constructs?: readonly string[];
+}) => RuntimeDrivers | undefined {
+	return (construct) => {
+		const reach = reachedByHandler(options.declared, construct);
+		if (!reach) return undefined;
+		return driversFor({
+			appRoot: options.appRoot,
+			cache: cacheBackendsIn(reach, options.cacheBackend),
+			events: handlerEventsBackends(reach, options.eventsBackend),
+			kms: opensKmsKeys(reach, 'aws'),
+			apiGatewayWebSockets: publishesToApiGateway(reach, 'aws'),
+			storage: readsObjects(reach),
+		});
+	};
 }
