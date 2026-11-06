@@ -96,7 +96,12 @@ import { writeStageTypes } from '../workspace/stageTypes.js';
 import { protectedSubdomains, wildcardSite } from '../workspace/subdomains.js';
 import type { StageTelemetryConfig } from '../workspace/types.js';
 import { appOutputDir, sharedDirectoryTree } from './outputDir';
-import { ownersContext, reachedBy, servedBy } from './owners';
+import {
+	handlerDriversFor,
+	ownersContext,
+	reachedBy,
+	servedBy,
+} from './owners';
 import {
 	selfServingSurface,
 	writeSurfaceEntry,
@@ -823,6 +828,16 @@ export async function buildApp(input: BuildAppInput): Promise<AppBuildOutput> {
 		buildContext,
 		runtimeDrivers({ appRoot, reach, cacheBackend, eventsBackend, target }),
 	);
+	// On AWS each construct is a Lambda of its own, so each handler registers
+	// what its construct reaches rather than what the whole app does.
+	if (target === 'aws') {
+		buildContext.handlerDrivers = handlerDriversFor({
+			declared,
+			appRoot,
+			cacheBackend,
+			eventsBackend,
+		});
+	}
 
 	// Decided by the process's edge to a `Telemetry` node, never by which
 	// packages happen to be installed: with the edge, the server's entry

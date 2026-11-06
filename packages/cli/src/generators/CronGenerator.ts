@@ -3,6 +3,7 @@ import { dirname, join, relative } from 'node:path';
 import { Cron } from '@geekmidas/constructs/crons';
 import type { BuildContext } from '../build/types';
 import type { CronInfo } from '../types';
+import { driversOf } from './drivers.js';
 import { runtimeFor } from './EndpointGenerator.js';
 import {
 	ConstructGenerator,
@@ -51,7 +52,7 @@ export class CronGenerator extends ConstructGenerator<
 				cronsDir,
 				path.relative,
 				key,
-				context,
+				{ ...context, storageDrivers: driversOf(context, construct) },
 				construct.owner,
 			);
 

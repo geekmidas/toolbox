@@ -3,7 +3,7 @@ import { dirname, join, relative } from 'node:path';
 import { Endpoint } from '@geekmidas/constructs/endpoints';
 import type { BuildContext } from '../build/types';
 import type { RouteInfo } from '../types';
-import type { StorageDrivers } from './drivers';
+import { driversOf, type StorageDrivers } from './drivers';
 import {
 	ConstructGenerator,
 	type GeneratedConstruct,
@@ -219,7 +219,7 @@ export class EndpointGenerator extends ConstructGenerator<
 				routesDir,
 				path.relative,
 				key,
-				context,
+				{ ...context, storageDrivers: driversOf(context, construct) },
 			);
 
 			const routeInfo: RouteInfo = {

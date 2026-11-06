@@ -122,6 +122,16 @@ export interface BuildContext {
 	 */
 	storageDrivers?: import('../generators/drivers.js').RuntimeDrivers;
 	/**
+	 * The drivers one AWS handler registers, from what its own construct
+	 * reaches — so a Lambda that publishes nothing never bundles a broker.
+	 * Undefined, for a construct whose reach is unknown, means
+	 * `storageDrivers`: the app's whole set. Set only for `--provider aws`.
+	 */
+	handlerDrivers?: (construct: {
+		owner?: string;
+		constructs?: readonly string[];
+	}) => import('../generators/drivers.js').RuntimeDrivers | undefined;
+	/**
 	 * The constructs glob, so the build can emit the manifest once the routes it
 	 * folds in are known.
 	 */

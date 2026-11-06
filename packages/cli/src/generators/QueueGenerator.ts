@@ -4,6 +4,7 @@ import { Queue } from '@geekmidas/constructs/queue';
 import { providedKeyFor } from '@geekmidas/manifest';
 import type { BuildContext } from '../build/types';
 import type { QueueInfo } from '../types';
+import { driversOf } from './drivers.js';
 import { runtimeFor } from './EndpointGenerator.js';
 import {
 	ConstructGenerator,
@@ -60,7 +61,7 @@ export class QueueGenerator extends ConstructGenerator<
 				queuesDir,
 				path.relative,
 				key,
-				context,
+				{ ...context, storageDrivers: driversOf(context, construct) },
 				construct.owner,
 			);
 
