@@ -1330,6 +1330,7 @@ describe('a stack behind the shared edge', () => {
 		custom: {
 			AUTH_SECRET: 'the-production-signing-secret',
 			REDIS_PASSWORD: 'the-redis-password',
+			ZO_ROOT_USER_EMAIL: 'admin@shop.example.com',
 			ZO_ROOT_USER_PASSWORD: 'Strong-Passw0rd!',
 		},
 	};

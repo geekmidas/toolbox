@@ -14,12 +14,13 @@ import type {
 } from '../../workspace/types';
 import {
 	isStrongLogsPassword,
+	LogsLoginMissing,
 	LogsPasswordMissing,
 	LogsPasswordWeak,
 	logsAccess,
 	OPENOBSERVE_IMAGE,
 	otlpHeaders,
-	withLogsPassword,
+	withLogsLogin,
 } from '../logs';
 import { LogsAllowEmpty, LogsAllowEntryInvalid } from '../logsConfig';
 import { type ComposeStack, composeStack, type StackInput } from '../stack';
@@ -75,6 +76,8 @@ afterAll(async () => {
 });
 
 const PASSWORD = 'Generated-once-1';
+/** The login a deployed stage stored the first time it ran OpenObserve. */
+const EMAIL = 'admin@shop.example.com';
 
 function production(custom: Record<string, string> = {}): StageSecrets {
 	return {
@@ -82,6 +85,7 @@ function production(custom: Record<string, string> = {}): StageSecrets {
 		seed: 'a-random-seed',
 		custom: {
 			AUTH_SECRET: 'the-production-signing-secret',
+			ZO_ROOT_USER_EMAIL: EMAIL,
 			ZO_ROOT_USER_PASSWORD: PASSWORD,
 			REDIS_PASSWORD: 'the-redis-password',
 			...custom,
@@ -93,6 +97,8 @@ function stack(
 	options: {
 		project?: Project;
 		telemetry?: Record<string, StageTelemetryConfig>;
+		/** The production stage's domain, where it moved. */
+		domain?: string;
 	} = {},
 	overrides: Partial<StackInput> = {},
 ): ComposeStack {
@@ -101,6 +107,9 @@ function stack(
 	return composeStack({
 		workspace: {
 			...workspace,
+			...(options.domain
+				? { domains: { ...workspace.domains, production: options.domain } }
+				: {}),
 			deploy: {
 				...workspace.deploy,
 				...(options.telemetry ? { telemetry: options.telemetry } : {}),
@@ -303,16 +312,43 @@ describe('only the processes with an edge', () => {
 });
 
 describe('a deployed stage', () => {
-	it('runs the self-hosted provider when it names nothing, signed in with its generated password', () => {
+	it('runs the self-hosted provider when it names nothing, signed in with its stored login', () => {
 		const s = deployed();
 
 		expect(s.infra).toContain('openobserve');
-		expect(s.logs?.email).toBe('admin@shop.example.com');
+		expect(s.logs?.email).toBe(EMAIL);
 		expect(s.logs?.env.ZO_ROOT_USER_PASSWORD).toBe(PASSWORD);
 		expect(loginOf(env(s, 'api')?.OTEL_EXPORTER_OTLP_HEADERS)).toBe(
-			`admin@shop.example.com:${PASSWORD}`,
+			`${EMAIL}:${PASSWORD}`,
 		);
 		expect(env(s, 'api')?.OTEL_TRACES_SAMPLER_ARG).toBe('1');
+	});
+
+	it('keeps its root login when the domain moves: OpenObserve, its health check, every header and the printed login', () => {
+		const s = deployed({ domain: 'moved.example.org' });
+
+		// What OpenObserve creates its root user from, and what its health
+		// check (`/openobserve node status`, in the same container) signs in as.
+		expect(s.logs?.env).toMatchObject({
+			ZO_ROOT_USER_EMAIL: EMAIL,
+			ZO_ROOT_USER_PASSWORD: PASSWORD,
+		});
+		expect(s.compose.services.openobserve?.env_file).toEqual([
+			{ path: './openobserve.env', format: 'raw' },
+		]);
+		for (const name of ['api', 'auth', 'jobs']) {
+			expect(loginOf(env(s, name)?.OTEL_EXPORTER_OTLP_HEADERS)).toBe(
+				`${EMAIL}:${PASSWORD}`,
+			);
+		}
+		expect(
+			logsAccess(s.logs!, {
+				stage: 'production',
+				local: false,
+				user: 'deploy',
+				hostname: 'box-1',
+			}).join('\n'),
+		).toContain(`login: ${EMAIL},`);
 	});
 
 	it('samples at the rate the stage sets, for every process with the edge', () => {
@@ -398,11 +434,33 @@ describe('a deployed stage', () => {
 					images: { mode: 'pull', tag: 'v1.4.0' },
 					secrets: {
 						...production(),
-						custom: { AUTH_SECRET: 'the-production-signing-secret' },
+						custom: {
+							AUTH_SECRET: 'the-production-signing-secret',
+							ZO_ROOT_USER_EMAIL: EMAIL,
+						},
 					},
 				},
 			),
 		).toThrow(LogsPasswordMissing);
+	});
+
+	it('refuses a stage whose secrets have no root login yet, rather than deriving one', () => {
+		expect(() =>
+			stack(
+				{},
+				{
+					stage: 'production',
+					images: { mode: 'pull', tag: 'v1.4.0' },
+					secrets: {
+						...production(),
+						custom: {
+							AUTH_SECRET: 'the-production-signing-secret',
+							ZO_ROOT_USER_PASSWORD: PASSWORD,
+						},
+					},
+				},
+			),
+		).toThrow(LogsLoginMissing);
 	});
 
 	it('refuses a password OpenObserve would refuse to start with', () => {
@@ -474,17 +532,40 @@ describe('served publicly', () => {
 	});
 });
 
-describe('the root password', () => {
-	it('is generated once, meeting OpenObserve’s rules, and kept after', () => {
-		const first = withLogsPassword(initStageSecrets('production'));
+describe('the root login', () => {
+	it('is stored once — the domain’s admin and a password meeting OpenObserve’s rules — and kept after, wherever the domain moves', () => {
+		const first = withLogsLogin(
+			initStageSecrets('production'),
+			'shop.example.com',
+		);
 		const password = first.secrets.custom.ZO_ROOT_USER_PASSWORD!;
 
-		expect(first.generated).toEqual(['ZO_ROOT_USER_PASSWORD']);
+		expect(first.generated).toEqual([
+			'ZO_ROOT_USER_EMAIL',
+			'ZO_ROOT_USER_PASSWORD',
+		]);
+		expect(first.secrets.custom.ZO_ROOT_USER_EMAIL).toBe(EMAIL);
 		expect(isStrongLogsPassword(password)).toBe(true);
 
-		const again = withLogsPassword(first.secrets);
+		const again = withLogsLogin(first.secrets, 'moved.example.org');
 		expect(again.generated).toEqual([]);
-		expect(again.secrets.custom.ZO_ROOT_USER_PASSWORD).toBe(password);
+		expect(again.secrets).toBe(first.secrets);
+	});
+
+	it('stores only what a stage that already ran OpenObserve lacks', () => {
+		const { secrets, generated } = withLogsLogin(
+			{
+				...initStageSecrets('production'),
+				custom: { ZO_ROOT_USER_PASSWORD: PASSWORD },
+			},
+			'shop.example.com',
+		);
+
+		expect(generated).toEqual(['ZO_ROOT_USER_EMAIL']);
+		expect(secrets.custom).toEqual({
+			ZO_ROOT_USER_EMAIL: EMAIL,
+			ZO_ROOT_USER_PASSWORD: PASSWORD,
+		});
 	});
 
 	it('is encoded into the header for any root login', () => {

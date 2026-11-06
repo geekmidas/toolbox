@@ -1768,14 +1768,21 @@ the trace of the request that sent it, and the spans of outbound `fetch`, DNS
 and TCP. [Telemetry → What is exported](./production.md#what-is-exported) has
 the detail.
 
-The root user is `admin@<stage domain>` on a deployed stage. Its password is
-generated on the first run and kept in the stage's secrets as
-`ZO_ROOT_USER_PASSWORD`, like the stage's seed, so every later run reads it
-back; `gkm secrets:show --stage production --reveal` shows it. The local stage
-signs in as `admin@gkm.localhost` with a password generated for this machine,
-alongside `gkm dev`'s other local logins; `gkm dev:credentials` prints it. Set
-`ZO_ROOT_USER_EMAIL` or `ZO_ROOT_USER_PASSWORD` in the stage's secrets to
-choose your own; a password OpenObserve would refuse (8–128 characters, with a
+The root login is stored on a deployed stage's first run, in its secrets,
+like the stage's seed: `ZO_ROOT_USER_EMAIL` — `admin@<stage domain>` as the
+domain was then — and a generated `ZO_ROOT_USER_PASSWORD`. Every later run
+reads both back and derives neither, so the login OpenObserve signs in with,
+its health check, the header each app sends and the login the run prints are
+one value, whatever the stage's domain becomes. That matters because
+OpenObserve creates its root user from these only once, on its first start,
+in its data volume: a login that followed the domain would leave the stored
+user behind, and the health check would get 401s.
+`gkm secrets:show --stage production --reveal` shows the password. The local
+stage signs in as `admin@gkm.localhost` with a password generated for this
+machine, alongside `gkm dev`'s other local logins; `gkm dev:credentials`
+prints it. Set `ZO_ROOT_USER_EMAIL` or `ZO_ROOT_USER_PASSWORD` in the stage's
+secrets to choose your own — before OpenObserve's first start, or to the user
+its volume already holds; a password OpenObserve would refuse (8–128 characters, with a
 lowercase and an uppercase letter, a digit and a symbol) fails with
 `LogsPasswordWeak`.
 

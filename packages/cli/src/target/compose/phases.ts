@@ -79,6 +79,7 @@ import {
 	RegistryRequired,
 } from '../../compose/images';
 import {
+	LOGS_EMAIL_KEY,
 	LOGS_SERVICE,
 	LogsPortTaken,
 	logsAccess,
@@ -1070,7 +1071,9 @@ async function stageSecrets(
 	// Read through the store they are masked; made up here, they are not yet.
 	if (secrets.seed) ctx.secrets.mask(secrets.seed);
 	for (const [key, value] of Object.entries(secrets.custom ?? {})) {
-		if (!isReservedStageKey(key)) ctx.secrets.mask(value);
+		if (!isReservedStageKey(key) && key !== LOGS_EMAIL_KEY) {
+			ctx.secrets.mask(value);
+		}
 	}
 	return { secrets, generated };
 }

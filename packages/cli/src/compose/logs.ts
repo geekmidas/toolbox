@@ -50,7 +50,11 @@ export const LOCAL_LOGS_EMAIL = 'admin@gkm.localhost';
 
 /** The stack's OpenObserve, as the stack runs it. */
 export interface StackLogs extends ResolvedLogs {
-	/** The root user's email and password. */
+	/**
+	 * The root user's email and password: one login, read by OpenObserve
+	 * itself and its health check (`env`), by every process that sends to it
+	 * (`appEnv`), and printed by the deploy.
+	 */
 	email: string;
 	password: string;
 	/** Whether the stage's secrets set the password, rather than the local login. */
@@ -111,6 +115,19 @@ export class LogsPortTaken extends GkmError {
 	}
 }
 
+/** A deployed stage with logs on and no root login stored yet. */
+export class LogsLoginMissing extends GkmError {
+	constructor(readonly stage: string) {
+		super(
+			`The stage '${stage}' runs OpenObserve and has no ${LOGS_EMAIL_KEY} ` +
+				`in its secrets. Run gkm compose --stage ${stage} without --dry-run ` +
+				'once to store it, or set the login its OpenObserve already has: ' +
+				`gkm secrets:set ${LOGS_EMAIL_KEY} admin@… --stage ${stage}`,
+		);
+		this.name = 'LogsLoginMissing';
+	}
+}
+
 /** A deployed stage with logs on and no root password generated yet. */
 export class LogsPasswordMissing extends GkmError {
 	constructor(readonly stage: string) {
@@ -145,25 +162,40 @@ export function generateLogsPassword(): string {
 }
 
 /**
- * The stage's secrets with a generated root password, where it has none.
+ * The stage's secrets with its root login stored, where they hold none:
+ * a generated password, and the email `admin@<stage domain>`.
+ *
+ * Stored once and read ever after, never derived again: OpenObserve creates
+ * its root user from these only on its first start, in its data volume, so a
+ * login computed afresh on each deploy would leave the stored user behind
+ * the moment what it was computed from — the stage's domain — moved. The
+ * first email is the one every stage's OpenObserve was created with before
+ * the login was stored, so a running stage keeps signing in.
+ *
  * Pure, like `withGeneratedSecrets`: the caller keeps the result once the
  * run goes ahead.
  */
-export function withLogsPassword(secrets: StageSecrets): {
+export function withLogsLogin(
+	secrets: StageSecrets,
+	domain: string | undefined,
+): {
 	secrets: StageSecrets;
 	generated: string[];
 } {
-	if (secrets.custom?.[LOGS_PASSWORD_KEY]) return { secrets, generated: [] };
+	const custom = { ...secrets.custom };
+	const generated: string[] = [];
+	if (!custom[LOGS_EMAIL_KEY] && domain) {
+		custom[LOGS_EMAIL_KEY] = `admin@${domain}`;
+		generated.push(LOGS_EMAIL_KEY);
+	}
+	if (!custom[LOGS_PASSWORD_KEY]) {
+		custom[LOGS_PASSWORD_KEY] = generateLogsPassword();
+		generated.push(LOGS_PASSWORD_KEY);
+	}
+	if (generated.length === 0) return { secrets, generated };
 	return {
-		secrets: {
-			...secrets,
-			custom: {
-				...secrets.custom,
-				[LOGS_PASSWORD_KEY]: generateLogsPassword(),
-			},
-			updatedAt: new Date().toISOString(),
-		},
-		generated: [LOGS_PASSWORD_KEY],
+		secrets: { ...secrets, custom, updatedAt: new Date().toISOString() },
+		generated,
 	};
 }
 
@@ -199,11 +231,11 @@ export function stackLogs(options: {
 
 	if (!local && !options.domain) throw new NoDomainForStage(stage);
 
+	// The stored login, never one derived here: see `withLogsLogin`.
 	const email =
 		custom[LOGS_EMAIL_KEY] ??
-		(local
-			? (options.localLogin?.email ?? LOCAL_LOGS_EMAIL)
-			: `admin@${options.domain}`);
+		(local ? (options.localLogin?.email ?? LOCAL_LOGS_EMAIL) : undefined);
+	if (!email) throw new LogsLoginMissing(stage);
 	const set = custom[LOGS_PASSWORD_KEY];
 	const password = set ?? (local ? options.localLogin?.password : undefined);
 	if (!password) throw new LogsPasswordMissing(stage);

@@ -1,6 +1,6 @@
 /**
  * What a deployed stage's stack generates once and keeps: its seed, each
- * `secret` construct's value, the log UI's root password where its telemetry
+ * `secret` construct's value, the log UI's root login where its telemetry
  * is self-hosted, and the stack's Redis password where a cache lives in it.
  *
  * Pure: the compose target writes the result back to the stage's store.
@@ -16,7 +16,7 @@ import type { StageSecrets } from '../secrets/types.js';
 import { resolveStageTelemetry } from '../telemetry/config';
 import { usesTelemetry } from '../telemetry/edges';
 import type { NormalizedWorkspace } from '../workspace/types.js';
-import { withLogsPassword } from './logs';
+import { withLogsLogin } from './logs';
 import { runsRedis, withRedisPassword } from './redis';
 
 export function deployedStackSecrets(
@@ -29,8 +29,9 @@ export function deployedStackSecrets(
 		stored ?? initStageSecrets(stage),
 		manifest,
 	);
-	// The log UI's root password, generated once like the seed, where the
-	// stage's telemetry is self-hosted and the stage set none.
+	// The log UI's root login, stored once like the seed, where the stage's
+	// telemetry is self-hosted and the stage set none — read ever after, so
+	// it never moves with the domain under the user OpenObserve stored.
 	const telemetry = resolveStageTelemetry({
 		...(workspace.deploy?.telemetry
 			? { telemetry: workspace.deploy.telemetry }
@@ -44,7 +45,7 @@ export function deployedStackSecrets(
 	});
 	const withLogs =
 		telemetry?.provider === 'self-hosted'
-			? withLogsPassword(withSeed.secrets)
+			? withLogsLogin(withSeed.secrets, workspace.domains?.[stage])
 			: { secrets: withSeed.secrets, generated: [] };
 	// The stack's Redis password, the same way, where a cache lives in it.
 	const withRedis = runsRedis(manifest, withLogs.secrets.custom ?? {})
